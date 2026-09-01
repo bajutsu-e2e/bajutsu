@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 from _orch import FakeClock, _scenario, _tap_ids
-from conftest import el
+from conftest import GUARD_LABEL, AlertingDriver, el
 from pydantic import ValidationError
 
 from bajutsu.config import load_config, resolve
@@ -18,7 +18,6 @@ from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import Artifact, intervals
 from bajutsu.orchestrator import AlertGuardConfig, run_scenario
-from bajutsu.orchestrator.types import AlertEvent
 from bajutsu.orchestrator.waits import WaitTrace
 from bajutsu.scenario import Interrupt, Scenario, dump_scenarios, load_scenarios
 
@@ -40,6 +39,7 @@ class _RecordingSink:
         kinds: list[str],
         *,
         elements: list[base.Element] | None = None,
+        elements_source: str | None = None,
     ) -> list[Artifact]:
         if kinds:
             self.calls.append((step_id, kinds))
@@ -328,27 +328,21 @@ def test_recovery_failure_mid_wait_skips_the_end_of_step_alert_guard() -> None:
     short-circuit that skips the step's own action for the same reason. So the total stays at 1,
     not 2.
     """
-    calls = {"n": 0}
-
-    def on_blocked(_driver: object) -> AlertEvent:
-        calls["n"] += 1
-        return AlertEvent(label="Not Now")
-
-    driver = FakeDriver([el("ov.close", "X", ["button"])])  # target never appears
+    driver = AlertingDriver([el("ov.close", "X", ["button"])])  # target never appears
     result = run_scenario(
         driver,
         _scenario({"name": "d", "steps": [{"wait": {"for": {"id": "home.title"}, "timeout": 5}}]}),
         clock=FakeClock(),
-        alert_guard=AlertGuardConfig(vision=on_blocked),
+        alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]),
         interrupts=[
             _interrupt({"exists": {"id": "ov.close"}}, [{"tap": {"id": "does.not.exist"}}])
         ],
     )
     assert not result.ok
     assert "does.not.exist" in (result.failure or "")
-    # 1 call: the recovery step's own retry. Not 2: the outer wait step's decided failure must not
-    # also trigger the end-of-step alert-guard retry.
-    assert calls["n"] == 1
+    # 1 dismissal: the recovery step's own retry. Not 2: the outer wait step's decided failure must
+    # not also trigger the end-of-step alert-guard retry.
+    assert driver.dismissals == 1
 
 
 # --- screenChanged capture is not misattributed to the step (Unit 3) ----------------------------
@@ -388,7 +382,11 @@ def test_cleared_interstitial_is_not_misattributed_as_the_steps_screen_change() 
     # add is absent. It carries only the always-on captures every leaf step gets: the pre-step
     # baseline, the post-action shutter, and the tree read that pairs with it (BE-0341).
     step0 = [kinds for sid, kinds in sink.calls if sid == "x/step0"]
-    assert step0 == [["screenshot.before", "elements"], ["screenshot.after"], ["elements"]]
+    assert step0 == [
+        ["screenshot.before", "elements.before"],
+        ["screenshot.after"],
+        ["elements"],
+    ]
 
 
 def test_pre_act_guard_reads_fresh_not_a_stale_prev_after_snapshot() -> None:

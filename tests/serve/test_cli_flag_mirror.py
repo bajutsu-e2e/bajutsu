@@ -21,14 +21,13 @@ def _option_names(name: cf.Command) -> set[str]:
 
 def test_run_flag_surface_is_fully_classified() -> None:
     # Base args run_command emits by position, and the flags serve intentionally does not expose:
-    # evidence_store is env-driven (BAJUTSU_EVIDENCE_STORE), project is the CLI-only headless trigger
-    # (serve resolves the project through its own run_project op onto the bound config, so it never
-    # spawns `run --project`), and score is a CI-log convention tell (doctor's grade to stderr) that
-    # serve's own UI supersedes. Everything else must be pass-through-able.
+    # evidence_store is env-driven (BAJUTSU_EVIDENCE_STORE), and score is a CI-log convention tell
+    # (doctor's grade to stderr) that serve's own UI supersedes. Everything else must be
+    # pass-through-able.
     base_handled = {"target_name", "scenario", "config", "progress"}
     # ios_tipkit_handling stays CLI-only: it is a per-scenario iOS guard, and a serve user sets it as
     # `iosTipKitHandling` in the scenario file serve already edits, rather than as a run-wide toggle.
-    not_serve_exposed = {"evidence_store", "project", "score", "ios_tipkit_handling"}
+    not_serve_exposed = {"evidence_store", "score", "ios_tipkit_handling"}
     pass_through = {
         "backend",
         "udid",
@@ -49,12 +48,14 @@ def test_run_flag_surface_is_fully_classified() -> None:
         "log_predicate",
         "log_subsystem",
         "alert_labels",
-        "alert_vision_instruction",
         "alert_poll_interval",
         "zip_run",
         "config_offline",
         "require_pinned_config",
         "touch_markers",
+        # The run-history label serve resolves at enqueue and passes through, so the spawned run's
+        # manifest carries the same partition the run row does (BE-0404 unit 2).
+        "label",
     }
     buckets = [base_handled, not_serve_exposed, pass_through]
     # disjoint

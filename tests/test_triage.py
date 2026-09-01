@@ -140,8 +140,8 @@ def test_assemble_reads_failure_screenshot(tmp_path: Path) -> None:
 def test_assemble_reads_the_screenshot_the_viewers_show(tmp_path: Path) -> None:
     """A step records `before.png` first and `after.png` second, but its `elements.json` holds one
     tree — the post-action one under the default `defaults.capture`. Triage therefore resolves its
-    screenshot through `displayed_screenshot`, the same choice the report and the serve editor make,
-    so the investigator's image and tree describe the same moment (review follow-up)."""
+    screenshot through `step_view`, the same choice the report and the serve editor make, so the
+    investigator's image and tree describe the same moment (review follow-up)."""
     ctx = triage.assemble(
         _write_run(
             tmp_path / "runs",
@@ -176,7 +176,7 @@ def test_assemble_never_pairs_one_step_s_image_with_another_step_s_tree(tmp_path
     to the previous step: `_elements_near` takes the failing step's own `elements.json` with no such
     scan, so an image from step 0 beside a tree from step 1 would hand the investigator frames from
     one screen over pixels of another — the mispairing this seam exists to prevent (review
-    follow-up). No image is the honest answer, and the one the pre-`displayed_screenshot` code gave.
+    follow-up). No image is the honest answer, and the one the pre-`step_view` code gave.
     """
     run = tmp_path / "runs" / "r"
     for step in ("step0", "step1"):
@@ -225,6 +225,67 @@ def test_assemble_never_pairs_one_step_s_image_with_another_step_s_tree(tmp_path
     ctx = triage.assemble(run)
     assert ctx is not None
     assert ctx.screenshot is None  # not step0's after.png, which sits one step from step1's tree
+
+
+def test_assemble_takes_no_image_from_a_step_whose_screenshot_is_not_its_trees_screen(
+    tmp_path: Path,
+) -> None:
+    """A `web` block records a native screenshot beside a WebView tree. The investigator reads the
+    two as one screen, so handing over an image the tree does not describe would be a false account
+    of the failure. The scan stops at that step rather than reaching back, so the answer is "no
+    image for this failure" instead of an unrelated earlier step's."""
+    run = tmp_path / "runs" / "r"
+    (run / "00-s" / "step0").mkdir(parents=True)
+    (run / "00-s" / "step0" / "elements.json").write_text("[]", encoding="utf-8")
+    (run / "00-s" / "step0" / "after.png").write_bytes(b"\x89PNG\r\n\x1a\n native")
+    (run / "manifest.json").write_text(
+        json.dumps(
+            {
+                "runId": "r",
+                "ok": False,
+                "backend": "xcuitest",
+                "scenarios": [
+                    {
+                        "scenario": "s",
+                        "ok": False,
+                        "backend": "xcuitest",
+                        "steps": [
+                            {
+                                "index": 0,
+                                "action": "tap",
+                                "ok": False,
+                                "reason": "x",
+                                "artifacts": [
+                                    {
+                                        "name": "00-s/step0/after.png",
+                                        "kind": "screenshot",
+                                        "provider": "driver",
+                                        "depicts": "xcuitest:after",
+                                    },
+                                    {
+                                        "name": "00-s/step0/elements.json",
+                                        "kind": "elements",
+                                        "provider": "driver",
+                                        "depicts": "webview:after",
+                                    },
+                                ],
+                            }
+                        ],
+                        "expect_results": [],
+                        "failure": "step0 tap: x",
+                        "artifacts": [],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run / "scenario.yaml").write_text(
+        "- name: s\n  steps:\n    - tap: { id: a }\n", encoding="utf-8"
+    )
+    ctx = triage.assemble(run)
+    assert ctx is not None
+    assert ctx.screenshot is None
 
 
 def test_heuristic_selector_suggests_close_id(tmp_path: Path) -> None:

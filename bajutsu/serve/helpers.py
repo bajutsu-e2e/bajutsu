@@ -333,6 +333,11 @@ def list_runs(runs_dir: Path) -> list[dict[str, Any]]:
                 "scenarios": [str(s.get("scenario", "")) for s in scenarios],
                 "passed": sum(1 for s in scenarios if s.get("ok")),
                 "total": len(scenarios),
+                # The run-history partition and the target axis (BE-0404 units 2-4). Both empty on a
+                # run recorded before the stamp, which reads as "unlabeled" and so stays visible
+                # under the label filter's empty-match fallback.
+                "label": str(data.get("label") or ""),
+                "target": str(data.get("target") or ""),
             }
         )
     out.sort(key=lambda r: r["id"], reverse=True)

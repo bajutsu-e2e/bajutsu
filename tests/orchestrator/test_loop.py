@@ -12,7 +12,7 @@ from conftest import el
 
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence import Artifact, FileSink
+from bajutsu.evidence import Artifact, FileSink, step_view
 from bajutsu.evidence.intervals import Interval
 from bajutsu.orchestrator import RunResult, run_scenario
 from bajutsu.orchestrator.waits import WaitTrace
@@ -660,6 +660,61 @@ def test_pre_step_capture_downgrades_to_screenshot_only_when_web_query_fails(
     assert sum(1 for a in leaf_outcome.artifacts if a.kind == "elements") == 1
 
 
+def test_a_web_block_step_resolves_to_an_unpaired_screenshot_and_tree(tmp_path: Path) -> None:
+    """End to end: a `web` block's screenshot comes from the native driver (a `WebContextDriver`
+    cannot take one) while its tree comes from the WebView, whose frames are in the WebView's own
+    coordinate space. Each artifact records the driver it came from, so `step_view` refuses to pair
+    them and no viewer draws WebView frames onto a native image."""
+    native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
+    driver = FakeDriver(native_screen)
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"type": {"text": "hi"}}],
+                        }
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(tmp_path / "run1"),
+        webview_bridge=_FakeBridge([el("field", "Field", ["textField"])]),
+    )
+    assert result.ok, result.failure
+    leaf = next(s for s in result.steps if s.action == "type")
+    depicts = {(a.kind, a.depicts) for a in leaf.artifacts if a.kind in ("screenshot", "elements")}
+    assert depicts == {
+        ("screenshot", "fake:before"),
+        ("screenshot", "fake:after"),
+        ("elements", "webview:before"),
+        ("elements", "webview:after"),
+    }
+    view = step_view((a.kind, a.name, a.depicts) for a in leaf.artifacts)
+    assert view.screenshot is not None and view.elements is not None and not view.paired
+
+
+def test_a_native_step_resolves_to_a_paired_screenshot_and_tree(tmp_path: Path) -> None:
+    """The ordinary path, pinned beside the `web` block above: one driver reads both halves, so the
+    post-action image and the post-action tree pair and a viewer keeps its element frames."""
+    driver = FakeDriver([el("a", "A", ["button"])])
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"tap": {"id": "a"}}]}),
+        clock=FakeClock(),
+        sink=FileSink(tmp_path / "run1"),
+    )
+    assert result.ok, result.failure
+    view = step_view((a.kind, a.name, a.depicts) for a in result.steps[0].artifacts)
+    assert view.paired
+    assert view.screenshot is not None and view.screenshot.endswith("after.png")
+
+
 def test_pre_step_query_marks_prev_after_fresh_for_the_interrupt_guard(tmp_path: Path) -> None:
     """The pre-step baseline's own `active_driver.query()` for a `web` block's first nested step
     (BE-0341) must count as a *fresh* read for the interrupt guard's `before_is_fresh` bookkeeping,
@@ -793,10 +848,16 @@ def test_extract_still_reads_the_settled_post_action_value(tmp_path: Path) -> No
 
 
 class _VideoSink:
-    """A NullSink twin that hands back one video interval with a fixed `true_start`."""
+    """A NullSink twin that hands back one video interval with a fixed `true_start`.
 
-    def __init__(self, true_start: float | None) -> None:
+    `measured_start` is settled by the real `Interval.stop()`, which needs a finished file
+    on disk; here it is set on the interval the moment `finish_scenario_intervals` is called, which
+    is the same ordering `run_scenario` depends on — the anchor is resolved *after* the finalize.
+    """
+
+    def __init__(self, true_start: float | None, measured_start: float | None = None) -> None:
         self._true_start = true_start
+        self._measured_start = measured_start
 
     def capture(
         self,
@@ -805,6 +866,7 @@ class _VideoSink:
         kinds: list[str],
         *,
         elements: list[base.Element] | None = None,
+        elements_source: str | None = None,
     ) -> list[Artifact]:
         return []
 
@@ -819,6 +881,8 @@ class _VideoSink:
     def finish_scenario_intervals(
         self, scenario_id: str, started: list[Interval]
     ) -> list[Artifact]:
+        for interval in started:
+            interval.measured_start = self._measured_start
         return []
 
 
@@ -829,14 +893,16 @@ _WALL = 1_700_000_000.0
 
 
 def _run_with_video(
-    true_start: float | None, wall_clock: Callable[[], float] = lambda: _WALL
+    true_start: float | None,
+    wall_clock: Callable[[], float] = lambda: _WALL,
+    measured_start: float | None = None,
 ) -> RunResult:
     driver = FakeDriver([el("go", "Go", ["button"])])
     return run_scenario(
         driver,
         _scenario({"name": "x", "steps": [{"tap": {"id": "go"}}]}),
         clock=FakeClock(),
-        sink=_VideoSink(true_start),
+        sink=_VideoSink(true_start, measured_start),
         wall_clock=wall_clock,
     )
 
@@ -915,3 +981,32 @@ def test_an_untrusted_positive_offset_leaves_the_anchor_uncorrected(
     assert result.steps[0].started_at == _WALL
     assert result.video_anchor_s == _WALL
     assert any("is after scenario_start" in r.message for r in caplog.records)
+
+
+def test_the_recordings_own_origin_wins_over_the_start_confirmation_proxy() -> None:
+    # `true_start` marks when a *side signal* fired — a first flushed byte, a device-side
+    # pid, a browser page that exists — and each sits its own distance from the frame the recording
+    # actually opens on. Once the recording is finalized it states that distance itself, so the
+    # measured origin replaces the proxy rather than averaging with it.
+    result = _run_with_video(true_start=-2.5, measured_start=-4.0)
+    assert result.video_anchor_s == _WALL - 4.0
+
+
+def test_a_measured_origin_after_scenario_start_is_trusted(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # The `true_start` branch treats a positive offset as an anomaly, because a proxy that fires
+    # after scenario_start says the signal is wrong. A *measured* origin says something different
+    # and ordinary: the recorder opened on its first frame a beat after the scenario did. Trust it —
+    # the report's own `max(0.0, …)` floor is what keeps an early step on the recording.
+    with caplog.at_level("WARNING"):
+        result = _run_with_video(true_start=None, measured_start=0.75)
+    assert result.video_anchor_s == _WALL + 0.75
+    assert not any("is after scenario_start" in r.message for r in caplog.records)
+
+
+def test_an_unmeasurable_recording_keeps_the_proxy_anchor() -> None:
+    # The degradation contract: a duration that could not be read (a dropped pull, a truncated
+    # finalize, a container this build cannot parse) leaves every run exactly where BE-0346 left it.
+    result = _run_with_video(true_start=-2.5, measured_start=None)
+    assert result.video_anchor_s == _WALL - 2.5

@@ -90,7 +90,7 @@ gate: `make -C demos/showcase run-swiftui` (requires `make deps` first). Don't b
 - Python **3.13**, managed with **[uv](https://docs.astral.sh/uv/)**. `uv sync --group dev`
   installs everything the gate needs. In Claude Code web sessions this is done for you by
   [`.claude/hooks/session-start.sh`](.claude/hooks/session-start.sh).
-- Secrets: only the AI paths (`record`, `run --system-alert-handling`) need `ANTHROPIC_API_KEY`.
+- Secrets: only the AI paths (`record`, `crawl`, `triage --ai`) need `ANTHROPIC_API_KEY`.
   Copy [`.env.example`](.env.example) → `.env` (gitignored). The deterministic gate needs none.
 - `mypy` is **strict** and `ruff` is configured in [`pyproject.toml`](pyproject.toml) — match
   the existing style. Fullwidth/Japanese characters in strings are intentional (RUF001 is off).
@@ -141,6 +141,17 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   you; run `make setup` once on a fresh clone (web sessions get it automatically). The
   deterministic test suite is the regression net — if you change behavior, a test should change
   with it. Self-heal mechanism: [`docs/ai-development.md`](docs/ai-development.md#never-push-red).
+  **`git push --no-verify` is strictly forbidden — no exceptions, including emergencies.** It
+  skips the same `make check` gate CI would otherwise run first, so it does not save time — it only
+  moves the same red result from your terminal onto the shared PR. If the hook fails on something
+  you believe is a false positive (stale `.claude/worktrees/` state, e.g.), fix the root cause or
+  verify from a clean sibling worktree — never bypass the hook to force a push through. No git-side
+  mechanism can enforce this on its own: `--no-verify` skips every hook unconditionally, and git
+  refuses to let a config alias override an existing subcommand
+  ([`docs/ai-development.md`](docs/ai-development.md#never-push-red) has the evidence). `make
+  setup` best-effort installs a personal shell safeguard for this (`make git-guard-install` runs it
+  standalone); CI's independent `make check` re-run before merge is what actually makes the rule
+  hold regardless of what runs locally.
 - **Git defenses are wired the same way (BE-0043).** `make hooks` also self-heals the local git
   settings that ease parallel work: a `uv.lock` merge driver, the matching `apm.lock.yaml` one
   (BE-0390), and `rerere`. No manual `git config` needed. Mechanism:
@@ -164,7 +175,12 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   that worktree with `make worktree TOPIC=<topic>` (BE-0069). Pass `PREFIX=<user>` for a human
   branch. Claude Code keeps its own tooling under `.claude/worktrees/`. Do not invent ad-hoc
   `git worktree add` paths on Cursor, Codex, or other environments. Generated/scratch output
-  (`runs/`, `tmp/`, `.venv/`) is gitignored — keep it that way. Recipe:
+  (`runs/`, `tmp/`, `.venv/`) is gitignored — keep it that way. **Never put `core.worktree`, or
+  `core.bare = true`, in the shared `.git/config`** — with `extensions.worktreeConfig` on, git drops
+  its exception for those two, so a shared value governs *every* worktree at once: `core.worktree`
+  silently points them all at one directory, and `core.bare = true` fails every command that needs a
+  work tree. `make hooks` refuses to run until the value is cleared from the shared config; a
+  worktree that genuinely needs one adds it back with `git config --worktree` (issue #1803). Recipe:
   [`docs/ai-development.md`](docs/ai-development.md#isolate-concurrent-sessions-with-worktrees).
 - **Right-size the model and reasoning effort (BE-0103).** Match a session's model/effort to the
   task: heavy work (implementing, refactors, design) runs on a capable model at high effort; light

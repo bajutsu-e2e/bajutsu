@@ -216,7 +216,7 @@ test.describe('Components', () => {
 | `swipe { on, direction }` | 要素中心からその方向への `page.mouse.wheel` スクロール（BE-0227） |
 | `swipe { from, to }` | `// TODO`（座標スワイプは生成しない） |
 | `drag { on, direction }` | 要素中心から実際にポインタでドラッグ（move → down → move → up）します。方向指定の `swipe` は wheel で済ませますが、`drag` は web ドライバと同じくドラッグします（BE-0227） |
-| `scroll { to }` | `await loc.scrollIntoViewIfNeeded()`。Playwright のロケータは操作前に自動でスクロールして要素を可視領域に入れるため、`direction` / `within` / `maxScrolls` はブラウザ自身のスクロールに吸収されます（BE-0326） |
+| `scroll { to }` | `await loc.scrollIntoViewIfNeeded()`。Playwright のロケータは操作前に自動でスクロールして要素を可視領域に入れるため、`direction` / `within` / `maxScrolls` / `amount` は、自前でステップを刻むブラウザ自身のスクロールに吸収されます（BE-0326、BE-0400） |
 | `wait { for }` | `await expect(loc).toBeVisible({ timeout: <ms> })` |
 | `wait { until: gone }` | `await expect(loc).toBeHidden({ timeout: <ms> })` |
 | `wait { until: screenChanged/settled }` | コメント（Playwright は自動待機） |

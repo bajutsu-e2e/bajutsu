@@ -21,7 +21,6 @@ from bajutsu.cli.commands.run import (
     _resolve_network,
     _resolve_rules,
     _resolve_secrets,
-    _vision_instruction,
 )
 from bajutsu.config import Effective, load_config, resolve
 from bajutsu.orchestrator import DEFAULT_ALERT_POLL_INTERVAL
@@ -347,35 +346,15 @@ def test_resolve_network_falls_back_to_target_then_builtin() -> None:
     )  # no flag, target on (the resolve() built-in default)
 
 
-def test_alert_guard_factory_vision_noop_without_credential(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Guard on by default. With no AI credential the native path (BE-0315) still runs credential-free,
-    # so the factory hands back a real per-scenario guard — but its *vision fallback* no-ops rather
-    # than reaching a hosted default, so on a backend without the native capability the guard clears
-    # nothing and the deterministic gate stays AI-free.
-    from bajutsu.drivers.fake import FakeDriver
-    from bajutsu.orchestrator import AlertGuardConfig
-
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
-    scenarios = load_scenarios(_one_scenario("a"))
-    factory = _alert_guard_factory(scenarios, _eff(), None)
-    assert factory is not None
-    guard = factory(scenarios[0])
-    assert isinstance(guard, AlertGuardConfig)
-    # No native capability + no credential → the vision fallback no-ops, so nothing is dismissed.
-    assert guard(FakeDriver([])) is None
-
-
-def test_alert_guard_factory_vision_noop_under_provider_none(
+def test_alert_guard_factory_needs_no_credential_and_reaches_no_model(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """BE-0394: `ai.provider: none` holds with the key present — the whole point of the kill switch.
+    """BE-0402: `run`'s guard is deterministic throughout, with the key present or absent.
 
-    The unset-key case above is an accident of the shell; this one is a committed policy, so the
-    assertions are what a reviewer reads it as: no locator is built, the vision fallback no-ops, the
-    deterministic native path (BE-0315) still clears a prompt, and no AI event reaches the ledger.
+    The key is *set* here on purpose: before BE-0402 that is exactly what built the vision locator
+    and put a model on `run`'s path. Now the factory consults no credential, prints no
+    credential note, and hands back a guard whose every path is native — so the deterministic gate is
+    Claude-free by construction rather than by the shell happening to lack a variable.
     """
     from bajutsu.analytics import ledger as usage_ledger
     from bajutsu.drivers.fake import FakeDriver
@@ -384,7 +363,7 @@ def test_alert_guard_factory_vision_noop_under_provider_none(
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)
     ledger_path = tmp_path / "usage.jsonl"
-    eff = _eff(ai=f"{{ provider: none, usageLedger: {ledger_path} }}")
+    eff = _eff(ai=f"{{ usageLedger: {ledger_path} }}")
     usage_ledger.configure_from_ai_config(eff.ai)
     try:
         scenarios = load_scenarios(_one_scenario("a"))
@@ -392,9 +371,12 @@ def test_alert_guard_factory_vision_noop_under_provider_none(
         assert factory is not None
         guard = factory(scenarios[0])
         assert isinstance(guard, AlertGuardConfig)
+        assert not hasattr(guard, "vision")  # the fallback is gone from the type, not merely unused
 
-        # No alert the native query can see → the guard routes to vision, which no-ops.
+        # A backend with no native capability: nothing left to try, so the guard reports nothing and
+        # leaves no note — an absent alert is not a blocked screen.
         assert guard(FakeDriver([])) is None
+        assert guard.blocked_note == ""
 
         # The native path is untouched — it needs no credential, so it still taps the prompt.
         driver = FakeDriver([])
@@ -409,13 +391,55 @@ def test_alert_guard_factory_vision_noop_under_provider_none(
             }
             for label in ("Don't Allow", "Allow")
         ]
-        state, event = guard.probe_native(driver)
+        state, event, _ = guard.probe_native(driver)
         assert state == "dismissed" and event is not None
 
         assert not ledger_path.exists()  # no AI call, so no attributed event
-        assert "ai.provider: none" in capsys.readouterr().out
+        # No credential note either way. Named substrings rather than an empty stream, so an
+        # unrelated notice the factory may print later does not break a test about the AI boundary.
+        out = capsys.readouterr().out
+        for said in ("ANTHROPIC_API_KEY", "vision", "credential", "Bedrock", "ai.provider"):
+            assert said not in out
     finally:
         usage_ledger.reset()
+
+
+def test_alert_guard_factory_rejects_a_scenario_vision_instruction(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # BE-0402: the key steers only the fallback `run` no longer has. Silently ignoring it would turn
+    # a scenario written to *grant* a permission into one that denies it, so the run is refused
+    # outright, with the working forms named.
+    s = _tap_scenario("a", {"visionInstruction": "tap Allow"})
+    with pytest.raises(typer.Exit) as excinfo:
+        _alert_guard_factory([s], _eff(), None)
+    assert excinfo.value.exit_code == 2
+    out = capsys.readouterr().out
+    assert "scenario 'a'" in out and "labels" in out and "rules" in out
+
+
+def test_alert_guard_factory_rejects_a_target_vision_instruction(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # The same refusal from the layer an author may not have written themselves, named as such.
+    eff = _eff(systemAlertHandling='{ visionInstruction: "tap Allow" }')
+    with pytest.raises(typer.Exit) as excinfo:
+        _alert_guard_factory([_tap_scenario("a")], eff, None)
+    assert excinfo.value.exit_code == 2
+    assert "target config" in capsys.readouterr().out
+
+
+def test_alert_guard_factory_rejects_before_any_scenario_gets_a_guard() -> None:
+    # The check is eager over the whole suite, not per scenario inside the returned closure: the
+    # closure runs in a worker mid-run, so a check there would fail scenario 3 with 1 and 2 already
+    # executed. A suite whose *last* scenario carries the key is refused whole, before any of it runs.
+    scenarios = [
+        _tap_scenario("a"),
+        _tap_scenario("b"),
+        _tap_scenario("c", {"visionInstruction": "tap Allow"}),
+    ]
+    with pytest.raises(typer.Exit):
+        _alert_guard_factory(scenarios, _eff(), None)
 
 
 def _tap_scenario(name: str, dismiss: dict[str, object] | None = None) -> Scenario:
@@ -449,42 +473,15 @@ def test_alert_guard_factory_poll_interval_precedence() -> None:
     )
 
 
-def test_vision_instruction_prefers_an_explicit_instruction_over_the_label_hint() -> None:
-    # A hint derived from labels is not a statement about the fallback; an explicit
-    # `visionInstruction` is, so it outranks the hint whichever layer each came from (BE-0401).
-    assert _vision_instruction("tap Allow", ["Not Now"]) == "tap Allow"
-    assert (
-        _vision_instruction(None, ["Allow", "OK"])
-        == "Tap the button labeled one of, in order: Allow, OK"
-    )
-    assert _vision_instruction(None, []) is None
-
-
-def test_vision_instruction_hint_comes_from_one_layer_not_the_concatenation() -> None:
-    # The native path compares labels exactly, so a wider candidate list there is harmless. The
-    # fallback's instruction is free text a locator interprets loosely, and a concatenated list would
-    # hand it a target's "Allow" under a scenario's "Don't Allow" — both answers at once (BE-0401).
+def test_alert_guard_factory_labels_concatenate_across_layers() -> None:
+    # The native path compares labels exactly, so it walks both layers' candidates in innermost-first
+    # order (BE-0401). Since BE-0402 that list is the *only* thing a label can steer, so nothing
+    # narrows it back to one layer.
     eff = _eff(systemAlertHandling='{ labels: ["Allow"] }')
     s = _tap_scenario("a", {"labels": ["Don’t Allow"]})
     guard = _alert_guard_factory([s], eff, None)(s)  # type: ignore[misc]
     assert guard is not None
-    assert guard.labels == ["Don’t Allow", "Allow"]  # the native path still walks both layers
-    assert (
-        _vision_instruction(None, ["Don’t Allow"])
-        == "Tap the button labeled one of, in order: Don’t Allow"
-    )
-
-
-def test_vision_instruction_ignores_rules() -> None:
-    # `rules` must not steer the vision locator: every path reaching it is one where no rule
-    # identified the alert, so a rule's tap label is some *other* prompt's answer and would push the
-    # locator to accept a prompt the scenario never named. A rules-only scenario leaves the locator
-    # on its least-destructive default, exactly as before `rules` existed.
-    s = _tap_scenario("a", {"rules": [{"prompt": "tracking", "choice": "deny"}]})
-    guard = _alert_guard_factory([s], _eff(), None)(s)  # type: ignore[misc]
-    assert guard is not None
-    assert [r.tap_label for r in guard.rules] == ["Ask App Not to Track"]  # native path still armed
-    assert guard.labels == []  # ...but no candidate label, so the locator keeps its own default
+    assert guard.labels == ["Don’t Allow", "Allow"]
 
 
 def test_apply_system_alert_handling_off_replaces_the_whole_field() -> None:
@@ -689,7 +686,7 @@ def test_alert_guard_factory_notices_when_only_the_flag_answers_for_the_scenario
     s = _tap_scenario("a")
     deprecations._emitted.discard("systemAlertHandling.targetRule.a.tracking")
     with caplog.at_level(logging.WARNING, logger="bajutsu.deprecations"):
-        _alert_guard_factory([s], eff, _flag_alert_policy("Allow", "", None))(s)  # type: ignore[misc]
+        _alert_guard_factory([s], eff, _flag_alert_policy("Allow", None))(s)  # type: ignore[misc]
     assert [r for r in caplog.records if "tracking" in r.message]
 
 
@@ -698,7 +695,7 @@ def test_alert_guard_factory_composes_labels_across_all_three_layers() -> None:
     # tried first, and the layers above stay reachable for whatever it did not answer.
     eff = _eff(systemAlertHandling='{ labels: ["Cancel"] }')
     s = _tap_scenario("a", {"labels": ["Allow"]})
-    flag = _flag_alert_policy("OK", "", None)
+    flag = _flag_alert_policy("OK", None)
     guard = _alert_guard_factory([s], eff, flag)(s)  # type: ignore[misc]
     assert guard is not None
     assert guard.labels == ["Allow", "OK", "Cancel"]
@@ -706,11 +703,10 @@ def test_alert_guard_factory_composes_labels_across_all_three_layers() -> None:
 
 def test_alert_guard_factory_scalars_take_the_innermost_layer_that_supplies_one() -> None:
     # A scalar holds one value, so composition is not available and the innermost layer wins.
-    eff = _eff(
-        systemAlertHandling='{ visionInstruction: "target", pollInterval: 3 }',
-    )
-    flag = _flag_alert_policy("", "flag", 4)
-    s_scenario = _tap_scenario("a", {"visionInstruction": "scenario", "pollInterval": 5})
+    # `pollInterval` is the only scalar left to `run` — BE-0402 took `visionInstruction` away.
+    eff = _eff(systemAlertHandling="{ pollInterval: 3 }")
+    flag = _flag_alert_policy("", 4)
+    s_scenario = _tap_scenario("a", {"pollInterval": 5})
     guard = _alert_guard_factory([s_scenario], eff, flag)(s_scenario)  # type: ignore[misc]
     assert guard is not None and guard.poll_interval == 5.0
 
@@ -723,17 +719,18 @@ def test_alert_guard_factory_scalars_take_the_innermost_layer_that_supplies_one(
 
 
 def test_flag_alert_policy_builds_the_command_line_layer() -> None:
-    assert _flag_alert_policy("", "", None) is None
-    policy = _flag_alert_policy("Allow,OK", "tap Allow", 2)
-    assert policy == SystemAlertHandling(
-        labels=["Allow", "OK"], visionInstruction="tap Allow", pollInterval=2
-    )
+    # Two keys, not three: `run` retired `--alert-vision-instruction` with the fallback it steered
+    # (BE-0402), so no flag value can reach a key the command can no longer act on.
+    assert _flag_alert_policy("", None) is None
+    policy = _flag_alert_policy("Allow,OK", 2)
+    assert policy == SystemAlertHandling(labels=["Allow", "OK"], pollInterval=2)
+    assert policy.vision_instruction is None
 
 
 def test_flag_alert_policy_strips_each_label() -> None:
     # `--alert-labels "Allow, OK"` names two buttons. Without the strip the second would be " OK",
     # a label the native path compares exactly and so could never match.
-    policy = _flag_alert_policy("Allow, OK", "", None)
+    policy = _flag_alert_policy("Allow, OK", None)
     assert policy is not None and policy.labels == ["Allow", "OK"]
 
 
@@ -741,7 +738,7 @@ def test_flag_alert_policy_rejects_an_empty_label_as_a_cli_error() -> None:
     # Validated through the same model the file layers use, so a typo cannot resolve to the
     # dismissive default the flag was written to override — reported as a CLI error, not a traceback.
     with pytest.raises(typer.Exit) as exc:
-        _flag_alert_policy(",", "", None)
+        _flag_alert_policy(",", None)
     assert exc.value.exit_code == 2
 
 

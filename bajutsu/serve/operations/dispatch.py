@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.cloud.devicefarm import Platform
+from bajutsu.report.manifest import MAX_LABEL_LENGTH
 from bajutsu.run_id import new_run_id
 from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit
@@ -21,7 +22,7 @@ from bajutsu.serve.helpers import (
     valid_run_id,
 )
 from bajutsu.serve.operations._common import _device_args, _resolve_org_or_forbid
-from bajutsu.serve.operations.config import resolve_provider_env
+from bajutsu.serve.operations.config import launch_label, resolve_provider_env
 from bajutsu.serve.state import Job, ServeState
 
 _logger = logging.getLogger("bajutsu.serve.operations")
@@ -43,22 +44,31 @@ def _governed_build(state: ServeState, build: str | None) -> str | None:
     return build
 
 
-def _active_project_id(state: ServeState, org: str) -> str | None:
-    """The org's active project id, resolved at enqueue so it travels with the job (BE-0225 unit 3).
+def _run_label(
+    state: ServeState, body: dict[str, Any]
+) -> tuple[str | None, tuple[Any, int] | None]:
+    """The run-history label to stamp, and the 400 to return when the request's override is invalid.
 
-    None when no hub is wired or no project is active. Guarded like `_persist_run`: resolving reaches
-    the registry backend (a database for `SqlProjectRegistry`), so a flaky backend leaves the run
-    unlabeled rather than failing the dispatch it never used to touch.
+    Defaults to the label the launcher derives from the bound config, which is what partitions two
+    configs a deployment is restarted between (BE-0404 unit 2). The label is opaque: never parsed,
+    never matched against config, never consulted by authorization — only its length is checked.
     """
-    registry = state.project_registry
-    if registry is None:
-        return None
-    try:
-        active = registry.resolve_active(org_id=org)
-    except Exception:
-        _logger.warning("failed to resolve the active project at enqueue", exc_info=True)
-        return None
-    return active.id if active is not None else None
+    raw = body.get("label")
+    if raw is not None:
+        if not isinstance(raw, str):
+            return None, ({"error": "label must be a string"}, 400)
+        override = raw.strip()
+        if len(override) > MAX_LABEL_LENGTH:
+            return None, ({"error": f"label must be at most {MAX_LABEL_LENGTH} characters"}, 400)
+        if override:
+            return override, None
+    if state.config is None:
+        return None, None
+    # Bounded, unlike the override above: this default is spawned as `run --label`, whose own guard
+    # would refuse an over-long value and fail every run from that deployment with a usage error for
+    # a label the operator never typed. "Refuse, never truncate" protects an operator's own input —
+    # a value the tool derived from a long file stem or a deep in-repo path is the tool's to trim.
+    return launch_label(state.config, state.config_provenance)[:MAX_LABEL_LENGTH], None
 
 
 def _boot_targets(udid: str) -> list[str]:
@@ -93,11 +103,49 @@ def _system_alert_handling_flag(
     loudly, the same as every other layer's removed spellings, rather than silently dropped: `run`'s
     unset behaviour is per-scenario "on", so dropping a caller's `{removed: false}` would arm the
     guard on a request that asked to disable it. Returns ``(value, None)`` or ``(None, (error, 400))``.
+
+    Shared by `start_run`, `start_record`, and `start_crawl`, so it holds only what all three
+    reject. `alertVisionInstruction` is `run`'s alone (`_reject_run_vision_instruction` below):
+    `record` and `crawl` keep the vision guard that reads it.
     """
     for removed in ("alertHandling", "dismissAlerts"):
         if removed in body:
             return None, ({"error": f"'{removed}' was removed; use 'systemAlertHandling'"}, 400)
     return _bool_flag(body, "systemAlertHandling"), None
+
+
+def _run_alert_flags(
+    body: dict[str, Any],
+) -> tuple[bool | None, tuple[Any, int] | None]:
+    """`run`'s alert-key checks: the shared `systemAlertHandling` flag, then its own refusal.
+
+    One entry point so `start_run` spends a single early return on the pair — `record` / `crawl` call
+    `_system_alert_handling_flag` alone, since the refusal below is `run`'s.
+    """
+    value, err = _system_alert_handling_flag(body)
+    if err:
+        return None, err
+    return value, _reject_run_vision_instruction(body)
+
+
+def _reject_run_vision_instruction(body: dict[str, Any]) -> tuple[Any, int] | None:
+    """Refuse an `alertVisionInstruction` on a `run` request, or None when the body carries none.
+
+    BE-0402 retired the flag this key rendered. Dropping it silently would leave the HTTP API the one
+    entry point that inverts a caller's intent without saying so: a request sending "tap Allow" to
+    *grant* a permission would fall through to the built-in dismissive labels and deny it, which is
+    exactly the outcome the scenario and target-config layers now exit 2 to prevent. `run` only —
+    `record` and `crawl` still take the free-text form on their own `--alert-vision-instruction`
+    flag, so a body naming this key must not fail their jobs (serve does not surface it to them yet,
+    so it is simply unused there).
+    """
+    if "alertVisionInstruction" not in body:
+        return None
+    return {
+        "error": "'alertVisionInstruction' is not supported by run (BE-0402); "
+        "name the buttons with 'alertLabels', or write the scenario's own "
+        "systemAlertHandling.rules"
+    }, 400
 
 
 def _request_device_budget(
@@ -194,9 +242,12 @@ def start_run(
     backend, udid, err = _device_args(body)
     if err:
         return err
-    system_alert_handling, alert_err = _system_alert_handling_flag(body)
+    system_alert_handling, alert_err = _run_alert_flags(body)
     if alert_err:
         return alert_err
+    label, label_err = _run_label(state, body)
+    if label_err:
+        return label_err
     # When the scenario ships as materials (server backend), the worker has no project on disk, so
     # the config travels too and the run uses workspace-relative paths; locally nothing materializes
     # and the run uses the real config / baselines paths.
@@ -217,6 +268,7 @@ def start_run(
     cmd = run_command(
         runnable.arg,
         target,
+        label=label or "",
         backend=backend,
         udid=udid,
         workers=_int(body.get("workers"), 1),
@@ -243,7 +295,6 @@ def start_run(
         network=_bool_flag(body, "network"),
         zip_run=_bool_flag(body, "zip"),
         alert_labels=str(body.get("alertLabels") or ""),
-        alert_vision_instruction=str(body.get("alertVisionInstruction") or ""),
         alert_poll_interval=_float(body.get("alertPollInterval")),
         log_predicate=str(body.get("logPredicate") or ""),
         log_subsystem=str(body.get("logSubsystem") or ""),
@@ -278,10 +329,10 @@ def start_run(
             org=org,
             evidence_prefix=evidence_prefix,
             capabilities=target_capabilities(cfg, target),
-            # Resolve the active project once, at enqueue, and carry it on the job (BE-0225 unit 3):
-            # this fixes the finish-time race and lets a remote worker's `_persist_run` stamp the run
-            # without a registry. None when no hub is wired, leaving the run unlabeled as before.
-            project_id=_active_project_id(state, org),
+            # Resolve the label once, at enqueue, and carry it on the job (BE-0404 unit 2): the run
+            # keeps the partition it started under even if `serve` is rebound before it finishes, and
+            # a remote worker's `_persist_run` stamps it without consulting anything.
+            label=label,
             # A cancelled `run` is finished cooperatively so it still lands in the history as a failed
             # run (BE-0370). Only a `run` job declares this: it is the only kind with a pass/fail
             # verdict and a manifest to preserve.
@@ -298,8 +349,8 @@ def start_run(
 
 
 # Each return is a distinct HTTP status from a validation guard — the early-return shape RET505
-# itself asks for (BE-0386).
-def start_run_set(  # noqa: PLR0911
+# itself asks for (BE-0386) — and each branch is one more such guard, not tangled logic.
+def start_run_set(  # noqa: PLR0911, PLR0912
     state: ServeState, body: dict[str, Any], *, actor: str | None = None
 ) -> tuple[Any, int]:
     """Fan out a scenario-set request into one cloud-batch job per scenario (BE-0336 Unit 3).
@@ -397,7 +448,9 @@ def start_run_set(  # noqa: PLR0911
                 app_path=app_path,
             )
         )
-    project_id = _active_project_id(state, org)
+    label, label_err = _run_label(state, body)
+    if label_err:
+        return label_err
     # The device budget K bounds how many of this target's runs reserve a device at once (BE-0336
     # Unit 4): the target's configured `cloudBatchBudget`, which a per-request `deviceBudget` may
     # lower. Keyed on the batch provider (the device pool) inside `try_register`, so the (K+1)th job
@@ -410,7 +463,7 @@ def start_run_set(  # noqa: PLR0911
     for request in requests:
         job, capped = _register_and_dispatch(
             state,
-            Job(batch=request, actor=actor, org=org, project_id=project_id),
+            Job(batch=request, actor=actor, org=org, label=label),
             device_budget=device_budget,
         )
         if capped:

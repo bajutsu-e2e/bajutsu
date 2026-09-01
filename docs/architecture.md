@@ -91,7 +91,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `assertions/` | Machine assertion evaluation (total function — never raises) (package: `evaluate` / `network` / `visual` / `schema` / `_common`, BE-0250) | [selectors](selectors.md#assertion-evaluation) |
 | `orchestrator/` | The deterministic Tier 2 run loop (act → wait → verify) (package: `loop` / `waits` / `substitution` / `evidence_rules` / `actions`) | [run-loop](run-loop.md) |
 | `cancellation.py` | Cooperative cancellation (BE-0370): the read-only `CancelSource` the orchestrator's wait loops and the runner poll, the `RunCancelled` unwind exception a poll loop raises to the nearest safe boundary, and the `SIGTERM`→event bridge `bajutsu run`'s entry point installs — imports nothing from Bajutsu, so the deterministic core, the CLI, and `serve` all reach it | [run-loop](run-loop.md) |
-| `evidence/` | Evidence capture, split by role (BE-0257): `core` (instant / interval capture and Sinks), `intervals` (video / deviceLog as simctl child processes), `network` (collector + in-protocol deterministic mocks), `visual` (visual-regression image comparison), `golden` (element-tree comparison), `redaction` (labels / headers / fields + secret values) | [evidence](evidence.md) |
+| `evidence/` | Evidence capture, split by role (BE-0257): `core` (instant / interval capture and Sinks), `intervals` (video / deviceLog as simctl child processes), `media` (a finished recording's duration, read from the file), `network` (collector + in-protocol deterministic mocks), `visual` (visual-regression image comparison), `golden` (element-tree comparison), `redaction` (labels / headers / fields + secret values) | [evidence](evidence.md) |
 | `report/` | `manifest.json` + JUnit XML + CTRF JSON + interactive HTML, plus a finished run's `.zip` export and its offline reload for re-rendering (package: `format` / `manifest` / `ctrf` / `rows` / `panels` / `html` / `richtext` / `archive` / `load`) | [reporting](reporting.md) |
 | `interp.py` | `${ns.key}` interpolation primitive (`params.` / `row.` / `secrets.` / `vars.`) | [scenarios](scenarios.md) |
 | `mailbox.py` | Pure, network-free matching/extraction logic for the `email` step (BE-0046): normalize a mailbox provider's messages, match on `to`/`subject`/`subjectMatches`, select only a message that arrived after the step started, and extract a value by regex into `${vars.*}` | [scenarios](scenarios.md) |
@@ -118,7 +118,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `mcp/` | MCP server: exposes `run`/`doctor` as tools + run evidence as resources | [cli](cli.md) |
 | `lint.py` | Scenario linter + JSON Schema generation (`lint` / `schema` commands) | [cli](cli.md) |
 | `analysis/` · `serve/flakiness.py` | Read-only advisory analysis (BE-0257), no device/AI, never gates CI: `audit` (determinism/flakiness audit, BE-0049), `coverage` (scenario id-namespace coverage, BE-0050), `impact` (test impact analysis — affected steps from a diff, BE-0321), `stats` (the aggregate run-stats dashboard, BE-0102), plus cross-run flakiness ranking (`flakiness`, BE-0220) | [cli](cli.md) |
-| `cli/` | Typer-based CLI; one file per command in `cli/commands/` (`run`/`project`/`doctor`/`audit`/`coverage`/`impact`/`stats`/`flakiness`/`export`/`trace`/`report`/`triage`/`record`/`crawl`/`codegen`/`approve`/`serve`/`mcp`/`worker`/`lint`/`schema`) | [cli](cli.md) |
+| `cli/` | Typer-based CLI; one file per command in `cli/commands/` (`run`/`doctor`/`audit`/`coverage`/`impact`/`stats`/`flakiness`/`export`/`trace`/`report`/`triage`/`record`/`crawl`/`codegen`/`approve`/`serve`/`mcp`/`worker`/`lint`/`schema`) | [cli](cli.md) |
 | `dotenv.py` | Minimal `.env` loader (never overrides an existing var) | [cli](cli.md#environment-variables-env) |
 | `_yaml.py` | YAML loader that keeps `on`/`off`/`yes`/`no` as strings | [scenarios](scenarios.md#yaml-caveat) |
 
@@ -135,7 +135,7 @@ Lower layers are more stable; upper layers depend on lower ones. The core is `dr
 <!-- mermaid-svg: assets/diagrams/architecture-dependency-layers.svg -->
 ```mermaid
 flowchart TB
-    cli["cli/<br/>user entry (Typer): run · project · doctor · audit · coverage · impact · stats ·<br/>flakiness · export · trace · report · triage · record · crawl · codegen ·<br/>approve · serve · mcp · worker · lint · schema"]
+    cli["cli/<br/>user entry (Typer): run · doctor · audit · coverage · impact · stats ·<br/>flakiness · export · trace · report · triage · record · crawl · codegen ·<br/>approve · serve · mcp · worker · lint · schema"]
 
     runner["runner/"]
     record["record.py / crawl/<br/>(Tier 1 / AI)"]
@@ -290,6 +290,16 @@ The contract (`tests/driver_conformance.py`) is the "done" definition a new back
   contract because the `scroll` loop's correctness rests on it: a gesture that flings shares
   nothing, so it fails the suite here rather than carrying a target past the viewport unqueried
   during a run (BE-0329).
+- one `scroll` step travels the distance its endpoints asked for, within a stated tolerance, at the
+  default step size, at the smallest the loop's own recovery will take, and at a step below that
+  floor, which an author's `amount` can request. Overlap alone does not imply that
+  distance: a step can leave the viewports overlapping and still travel far further than it asked
+  for, which the iOS gesture did until BE-0400 — it traversed every drag at one fixed speed, so the
+  content flung on past the endpoints by up to six times the requested distance and no step travelled
+  less than about a third of a screen however little it asked for. That floor is why the property
+  belongs to the `Driver` contract rather than to one backend's tests: below it, the `scroll` action's
+  author-chosen `amount` and BE-0329's halving recovery both name step sizes no gesture could
+  deliver.
 
 To add a backend to the suite, implement a `ConformanceHarness` (given a screen, return a driver
 showing it) and subclass `DriverConformanceContract`; pytest then runs the inherited contract
@@ -610,7 +620,11 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   device-clock time of the newest accessibility event it has seen, and the driver takes a device-clock
   mark before an actuation, so a read is trusted the instant its mark postdates the action rather than
   idling to the budget. The budget then stands only for a one-shot `uiautomator dump`, which carries no
-  such mark (BE-0332 Units 3–4); see [drivers](drivers.md#adb-android). Each step is non-inertial (a bounded
+  such mark (BE-0332 Units 3–4); see [drivers](drivers.md#adb-android). A gesture the resident server
+  injects narrows the wait further still: the server watches its own accessibility event stream for
+  the injection to publish and reports that event back, so a confirmed gesture arms no barrier at all,
+  while one the device could not confirm arms it exactly as a coordinate injection does (BE-0339
+  Unit 5). Each step is non-inertial (a bounded
   advance with no fling), realized per backend behind `Driver.scroll` and a `ViewportProvider` (web,
   fake report the true viewport directly; a native backend's on-screen-only tree already is one) —
   closing the BE-0210 asymmetry
@@ -670,12 +684,22 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 - DSL `systemAlertHandling` (BE-0315), the reactive counterpart: an alert guard that fires only when
   a step or `wait` is blocked, polling `handleSystemAlert`'s SpringBoard query on its own interval
   (default 1s, decoupled from the wait's poll cadence) and dismissing by a deterministic
-  candidate-label policy — no model call, reusing BE-0316's plumbing rather than a parallel API — with
-  the AI-vision guard demoted to a fallback for what the native path can't name (a backend lacking the
-  capability, a non-enumerable blocking surface, or an alert carrying none of the policy's labels).
-  Since BE-0401 each key names exactly one of those paths — `rules` and `labels` the native one,
-  `visionInstruction` the fallback — and the three layers compose by the key's type: lists
-  concatenate innermost-first, scalars take the innermost layer that supplies one. XCUITest itself
+  candidate-label policy — no model call, reusing BE-0316's plumbing rather than a parallel API. Since
+  BE-0402 the guard is deterministic throughout: where nothing deterministic can act (a backend lacking
+  the capability, an alert carrying none of the policy's labels, or a non-enumerable blocking
+  surface whose button the scenario's own `labels` do not name either — the ones they do name, an
+  in-tree tap takes on) it does nothing, and what it saw rides the failure: a guarded `wait` always
+  carries the note (its gate watches the tree every poll), while a step outside a wait carries it only
+  where the native query enumerated the alert. The note names what the guard saw in its own
+  timeout —
+  `… — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`, or a hedged
+  form where no query enumerated the surface. Before BE-0402 that case fell back to an AI-vision guard
+  reading a screenshot, and `visionInstruction` steered that fallback alone, so `run` now
+  rejects it before any scenario starts rather than ignoring it — the silent inversion BE-0401 split
+  the old single `instruction` key to expose. Since BE-0401 each key names exactly one path, and
+  after BE-0402 only the native one has keys left naming it: `rules` and `labels` compose across the
+  three layers by concatenation, innermost-first, and the sole remaining scalar, `pollInterval`,
+  takes the innermost layer that supplies one. XCUITest itself
   intervenes on an alert that interrupts an in-flight interaction *before* this guard ever polls, and
   left alone answers with the alert's own default button — silently overriding a scenario's policy
   with nothing in the report. The runner therefore installs an interruption monitor that presses the
@@ -695,8 +719,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   end-of-step branch, and the dismiss also composes onto BE-0314's `on_interrupt_poll` hook so a tip
   does not hold a wait to its full timeout either. Defaults off (unlike `systemAlertHandling`) because a
   scenario sometimes asserts on the tip itself; `--ios-tipkit-handling`/`--no-ios-tipkit-handling`
-  follows the flag > scenario > target > default precedence `systemAlertHandling`'s own on/off bit
-  rides (BE-0177; its policy keys compose by type instead, BE-0401)
+  follows the same flag > scenario > target > default precedence as `systemAlertHandling`'s own
+  on/off bit (BE-0177); `systemAlertHandling`'s policy keys compose by type instead (BE-0401)
 
 #### Evidence, network observation, and reporting
 
@@ -738,10 +762,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 
 #### The CLI, `serve`, and codegen
 
-- The CLI: `run` / `project` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` / `export` / `trace` / `report` / `triage` / `record` / `crawl` / `codegen` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard
+- The CLI: `run` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` / `export` / `trace` / `report` / `triage` / `record` / `crawl` / `codegen` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard
 - The **parsed device OS** (`device_os.py`, BE-0358): the device's operating-system (OS) version as a small parsed fact — platform, major, minor — read from the `device_runtime` label a run already records per scenario. An absent or unrecognized label parses to "unknown" rather than to a guessed version. Both flakiness surfaces carry the parsed OS in their grouping key, so a scenario's verdict history is per OS version, and a reproducible cross-version difference no longer scores as flakiness. The XCUITest driver receives it as a `make_driver` keyword — not a `Driver` member, which every backend and every test double would then have to declare — so a driver-level report can name the OS it ran on. **Reading the OS is not a licence to branch on it**: this repository fixes a behavioural OS difference version-agnostically, and a per-OS branch must earn its place in its own roadmap item against that alternative
 - Read-only advisory analysis commands (no device, no AI, never gate CI — only a missing/unreadable input exits non-zero): a determinism/flakiness **audit** with static, repeat-and-diff, and longitudinal modes (`audit`, BE-0049); a scenario id-namespace **coverage** map (`coverage`, BE-0050); **test impact analysis** — the affected scenario steps a `git` diff selects, by inverting the coverage index (`impact`, BE-0321); the aggregate run-stats dashboard as CLI/HTML output (`stats`, BE-0102); cross-run **flakiness** ranking, from a runs directory or the `serve` database (`flakiness`, BE-0220); a finished run's **export** as a portable `.zip` (`export`, BE-0060); and **report** re-rendering (`report.html`/`junit.xml`/`ctrf.json`) from stored run data with no re-run (`report`, BE-0068)
-- The **config project hub** (`project add`/`ls`/`use`/`rm` and `run --project`, BE-0225): a named registry binding a project name to a config source, shared between the CLI and the `serve` web UI (DB-backed when configured, on-disk JSON otherwise); `serve` carries a header **project switcher** plus a top-level **Projects** page (BE-0275) that lists, adds, removes, and switches projects, rebinding the active config with no restart
+- The **run-history label and the target stamp** (BE-0404): a run records the config it ran (`runs.label`, from the config's own name or an explicit `run --label`) and the target it ran (`runs.target`, mirrored from the manifest), so restarting `serve` against a second config yields two readable histories instead of one interleaved list, and a per-target comparison is computable from stored data. The org row holds the one config source it last bound, which is how a hosted replica recovers an uploaded bundle it never received. This replaced BE-0225's named **project** registry, whose table, endpoints, CLI commands, and web surfaces are gone
 - **Database-backed org lifecycle and membership** (BE-0375): once a database is wired, an org's `members` / `githubOrgs` / `githubTeams` / `editorTeams` live in the `orgs` table rather than in the config file's `orgs:` block — seeded from that block once per org at startup and at every config rebind, then owned by the database — so `serve` gains four admin-only `/api/orgs…` endpoints and an **Orgs** page that create, re-member, and soft-delete a tenant without a redeploy; sign-in resolves against the table alone there, so an unreadable config no longer denies every user and an unreadable database answers with a 5xx naming the store; a target's identity becomes `(org, target)`, so two orgs may each claim one name. Target ownership itself stays in configuration (prime directive 3), and a database-less deployment keeps reading `orgs:` unchanged
 - **Choosing the active org on sign-in** (BE-0395): a login whose GitHub memberships match more than
   one org is no longer pinned to whichever the ranking put first — sign-in records every org a login
@@ -754,7 +778,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   that is still eligible — a user removed from the org they picked lands on the head of their new
   eligible list — and goes on re-resolving the rest. A single-org deployment renders the badge
   exactly as before
-- The **cross-project comparison dashboard** (BE-0226): a `serve` **Comparison** tab that ranks the registered projects side by side — pass-rate, flaky-rate, and p50/p95 run duration, plus a per-project trend sparkline — reusing BE-0102's per-config aggregation computed once per project (`GET /api/metrics/projects`); read-only and advisory, like BE-0102. A row opens that project's run history read-only (`GET /api/projects/{name}/runs`), by pointer or by keyboard; activating a project is a separate confirmed button, disabled with its reason for a caller the boot read's capability block says may not activate (#1721), since activation rebinds the config the whole deployment reads
+- The **cross-target comparison dashboard** (BE-0226, repointed to the target axis by BE-0404): a `serve` **Comparison** tab that ranks the bound config's targets side by side — pass-rate, flaky-rate, and p50/p95 run duration, plus a per-target trend sparkline — reusing BE-0102's per-config aggregation computed once per target (`GET /api/metrics/targets`); read-only and advisory, like BE-0102. A row opens that target's run history read-only, by pointer or by keyboard. The view writes nothing: a target is not a binding, so there is nothing on it to activate
 - AI **crawl** (`crawl/`): autonomous breadth-first exploration of an app → a screen map (`screenmap.json`)
 - The `serve` local web UI (Tier 1): author (`record` / `crawl`), edit, and run scenarios; **open a `.zip` bundle** of config + scenarios + the built app binary as the active config the tabs run from (BE-0073) — the server also accepts those same three pieces as independent content-addressed artifacts and composes them into that tree at bind time (`POST /api/artifacts/{config,scenarios,binary}`, BE-0268), with a **Compose & load** panel in the UI — a drop zone per artifact, each hashed in the browser and uploaded only on a content miss, composed into a bound config on demand, reopening the panel pre-fills each zone from the active composition (with a per-zone **Clear**) so only the legs that changed need re-uploading, while `POST /api/compose` stays a pure function of its request body (`GET /api/compose/current`, BE-0325); browse reports and evidence; a per-row or bulk **delete** on the Replay or Crawl history list moves a run to a shared **Trash**, restorable within a retention window before permanent removal (BE-0239); a past crawl's screen map can also be **resumed live** — continuing its remaining frontier with the same budget and worker controls, or re-exploring one pruned branch with the same budget (BE-0181); a read-only aggregate **run-stats dashboard** across the run history (BE-0102), with every axis — date, backend, scenario, and step/assertion hotspot — now a deep link into the matching runs in the history list (BE-0241); a ranked **Flaky** tab surfacing the cross-run flakiness ranking, linking each row to its representative passing and failing run evidence (BE-0220); a read-only **Usage** dashboard over the attributed AI usage/cost ledger — token and dollar totals by provider, model, command, and scenario (BE-0195, BE-0196); a per-target **Coverage** map — id-namespace coverage against declared `idNamespaces`, the gap list, and off-namespace ids, folding in the endpoint/observed-id dimensions with a selected run set and the screens-visited dimension when a crawl is selected alongside those runs (BE-0146); each of Stats, Flaky, Usage, and Coverage also opens as its own linkable page (`GET /stats`, `/flakiness`, `/usage`, and — since the map needs a target the other three don't — `/coverage?target=<name>`); a pre-run **readiness panel** (`doctor`: environment runnability + the current screen's convention score) in the Record and Replay forms (BE-0148); a read-only **scenario viewer** in the Replay form that shows the selected scenario's raw YAML and its runner-parsed structured steps before a run — the scenario-level mirror of the config viewer, non-gating and AI-free (BE-0273); an **upload scenario** control in the same form that adds a local `.yaml` file (via the existing `POST /api/scenario`) or a `.zip` of more than one (`POST /api/scenarios/upload`) straight into the bound config's target scope with no config rebind — reporting a same-named file as overwritten rather than replacing it silently, and parsing every zip entry before writing any of them, so one bad entry aborts the whole upload rather than leaving a partial batch behind (BE-0340); a **scenario secrets** panel that provisions the bound config's declared `${secrets.X}` names as write-once values from the browser, inherited by a spawned Record / Replay / Crawl run (BE-0274); a read-only **Server** settings tab reporting the running server's resolved configuration (deployment mode, bound config provenance, backends, run-storage/retention/concurrency settings) plus whether this build ships the bundled iOS XCUITest Simulator runner and what toolchain it was built against (`GET /api/server`, BE-0318); a **pluggable theme system** — drop-in visual tokens + swappable transitions, a header picker, and an in-UI editor with live preview and local-draft/server-upload persistence (BE-0191); a header **version badge** reporting which build of bajutsu is serving the page — the version string always, plus a short commit SHA / branch / dirty flag when serve runs from a Git checkout, or a build-time-embedded commit (`BAJUTSU_BUILD_COMMIT`, surfaced with `source: "build-arg"`) for a self-hosted Docker image shipping no `.git` (the checkout detail admin-gated, since a branch name can encode an in-progress topic; `GET /api/version` open, `GET /api/version/checkout` admin, read fresh per request via `git` plumbing with an environment-variable fallback — no LLM; BE-0272, BE-0277); approve visual baselines; live job streaming — from a browser (not for CI)
 - **MCP server** (`bajutsu mcp`): `bajutsu_run` and `bajutsu_doctor` as MCP tools + run evidence as resources, for Claude Desktop / Code integration (optional dependency `fastmcp`)

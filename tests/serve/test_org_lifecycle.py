@@ -445,7 +445,6 @@ def test_create_then_re_member_an_org_and_audit_both(
         "githubOrgs": [],
         "githubTeams": [],
         "editorTeams": [],
-        "projectCount": 0,
         "reserved": False,
     }
 
@@ -577,15 +576,11 @@ def test_deleting_an_org_retires_it_without_removing_its_row(
     assert ops.create_org(state, {"slug": "globex"}, actor=admin)[1] == 409
 
 
-def test_deleting_an_org_is_refused_while_it_owns_a_project_or_is_the_default(
+def test_deleting_the_default_org_is_refused(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
-    from bajutsu.serve.server.db import ProjectRecord
-
     state = _state(serve_engine, tmp_path)
     assert state.repository is not None
-    state.repository.create_project(ProjectRecord(id="p1", org_id="acme", name="hub"))
-    assert ops.delete_org(state, "acme", actor="root")[1] == 409
     # `default` is the fallback an unmatched bypass sign-in resolves to regardless of table state,
     # so retiring it would only leave a dead org users keep landing on.
     state.repository.ensure_org("default", slug="default", name="default")
@@ -824,12 +819,12 @@ def test_binding_an_uploaded_zip_does_not_seed(
     assert orgs_from_db(state.repository) == {}
 
 
-def test_reactivating_an_uploaded_project_does_not_seed(
+def test_restoring_an_uploaded_config_does_not_seed(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
     from _shared import FakeObjectStore
 
-    from bajutsu.serve.operations.upload import activate_uploaded_project
+    from bajutsu.serve.operations.upload import restore_uploaded_config
 
     sha256 = "c" * 64
     cached = tmp_path / "uploads" / "acme" / sha256  # an org-scoped cache hit: nothing to fetch
@@ -842,7 +837,7 @@ def test_reactivating_an_uploaded_project_does_not_seed(
         object_store=FakeObjectStore(),  # without one, the operation returns None before binding
     )
     assert state.repository is not None
-    result = activate_uploaded_project(state, {"kind": "upload", "sha256": sha256}, org="acme")
+    result = restore_uploaded_config(state, {"kind": "upload", "sha256": sha256}, org="acme")
     assert result is not None and result[1] == 200
     assert orgs_from_db(state.repository) == {}
 

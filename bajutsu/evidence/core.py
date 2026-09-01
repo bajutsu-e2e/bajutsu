@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Protocol
@@ -47,39 +47,110 @@ class Artifact:
     name: str
     kind: str
     provider: str
+    # Which screen this file shows, as `"<driver>:<moment>"` — the driver whose read produced it,
+    # and which side of the step's action it was taken on. Two artifacts describe the same screen
+    # exactly when their `depicts` are equal, which is the entire contract: a consumer compares, and
+    # never parses. `None` for a file that shows no screen (an interval recording, the wait
+    # diagnostic) and for every run recorded before this field existed — where `step_view` falls
+    # back to the pre-field choice rather than dropping frames a stored run has always shown.
+    depicts: str | None = None
 
 
-def displayed_screenshot(screenshot_names: list[str]) -> str | None:
-    """Which of a step's screenshots a viewer shows.
+def _depicts(source: str, modifier: str) -> str:
+    """The screen a capture token writes about: the reading driver and the side of the action."""
+    return f"{source}:{modifier or 'after'}"
 
-    The post-action `after.png` when the run recorded one, else the first screenshot it did record.
-    Every consumer that shows a step's screenshot resolves it through here — the HTML report's steps
-    table and element viewer, the serve editor's element picker, and the triage context handed to a
-    failure investigator — so none of them disagrees about which screenshot a step "is". Preferring
-    `after.png` keeps that image next to the tree in `elements.json`: the pre-step baseline writes
-    the pre-action tree (BE-0341), but the file has one fixed name, so the always-on post-step
-    `elements` capture replaces it with the post-action tree. The fallback covers the one path that
-    returns before that post-step call — a step failing on `UncoveredSystemAlertLocale` — so a step
-    still shows whichever screenshot it has.
 
-    The preference is sound only because the post-step `elements` write is unconditional, which is
-    true from this change onward and not of runs recorded before it. A stored run made under a
-    narrowed `capture` list can hold a pre-action `elements.json` next to an `after.png`, and
-    nothing in the manifest distinguishes the two — `kind` records the artifact, not which side of
-    the action it was taken on. Reading such a run (a re-rendered report, the serve editor's picker,
-    triage) therefore pairs its post-action image with a pre-action tree, where before it paired
-    `before.png` with that same tree. Pairing them correctly would mean recording the capture token
-    on each artifact entry, a manifest-schema change left to its own item.
+@dataclass(frozen=True)
+class StepView:
+    """The one screenshot and one element tree a viewer shows for a step.
 
-    Args:
-        screenshot_names: every `screenshot` artifact name the step recorded, in capture order.
-            Names are re-rooted under the step id (`00-login/step0/after.png`), so the post-action
-            one is matched on its filename — the only name `screenshot.after` writes.
+    `paired` says whether the two describe the same screen. A viewer that draws element frames onto
+    the image — the HTML report's element viewer, the serve editor's picker — must draw none when
+    `paired` is false: the frames would land at coordinates that never described that image.
+    """
+
+    screenshot: str | None
+    elements: str | None
+    paired: bool
+
+
+def _preferred_screenshot(names: list[str]) -> str | None:
+    """The post-action `after.png` when the step recorded one, else the first it did record.
+
+    The choice every consumer made before artifacts recorded what they depict, kept as the fallback
+    for the two cases `depicts` cannot decide: a run recorded before the field existed, and a step
+    none of whose screenshots matches its tree. Names are re-rooted under the step id
+    (`00-login/step0/after.png`), so the post-action one is matched on its filename — the only name
+    `screenshot.after` writes.
     """
     return next(
-        (n for n in screenshot_names if PurePosixPath(n).name == "after.png"),
-        screenshot_names[0] if screenshot_names else None,
+        (n for n in names if PurePosixPath(n).name == "after.png"),
+        names[0] if names else None,
     )
+
+
+def step_view(
+    entries: Iterable[tuple[str, str, str | None]],
+    *,
+    exists: Callable[[str], bool] | None = None,
+) -> StepView:
+    """Resolve a step's artifacts to the one screenshot and one tree a viewer shows.
+
+    Every consumer that shows a step's evidence resolves it through here — the HTML report's steps
+    table and element viewer, the serve editor's element picker, and the triage context handed to a
+    failure investigator — so none of them disagrees about which screen a step "is", nor about
+    whether the image and the tree it shows describe that same screen.
+
+    The tree is the **last** `elements` entry, not the first: `elements.json` has one fixed name, so
+    a step's later write replaces its earlier one and only the last entry's `depicts` describes what
+    the file now holds. The screenshot is the candidate whose `depicts` equals the tree's. With no
+    such candidate the result carries `_preferred_screenshot`'s choice and `paired=False`, so a
+    caller keeps an image to show and knows not to draw frames on it — the two cases being a `web`
+    block (a native image beside a WebView tree, in the WebView's own coordinate space) and a run
+    whose `after.png` the store no longer holds, leaving `before.png` beside a post-action tree.
+
+    `paired` is false only when there is an image the tree does not describe, so a consumer can read
+    it directly: a step whose screenshots the store no longer holds resolves to no image and reports
+    as paired, since there is nothing there to mispair.
+
+    A tree entry carrying no `depicts` is a run recorded before the field existed. Nothing in such a
+    manifest distinguishes a pre-action tree from a post-action one, so the result reproduces the
+    pre-field choice and reports it as paired: a stored run keeps the frames it has always drawn
+    rather than losing them to a fact that was never written down.
+
+    Args:
+        entries: the step's artifacts as `(kind, name, depicts)`, in capture order.
+        exists: whether the store actually holds a named artifact, or None to trust the manifest.
+            Probed lazily, in preference order, until one candidate passes: the manifest can name a
+            screenshot the store no longer holds (a run restored from Trash, or one synced into an
+            object store that never received the last write), and this call site is a live
+            object-store lookup on the hosted backend, so filtering every candidate up front would
+            cost a round trip per recorded screenshot per step.
+    """
+    shots: list[tuple[str, str | None]] = []
+    tree: tuple[str, str | None] | None = None
+    for kind, name, depicts in entries:
+        if kind == "screenshot":
+            shots.append((name, depicts))
+        elif kind == "elements":
+            tree = (name, depicts)
+    tree_name, tree_depicts = tree if tree is not None else (None, None)
+    held = exists if exists is not None else (lambda _name: True)
+    matching = [n for n, d in shots if tree_depicts is not None and d == tree_depicts]
+    for name in matching:
+        if held(name):
+            return StepView(name, tree_name, True)
+    rest = [n for n, _d in shots if n not in matching]
+    fallback = _preferred_screenshot(rest)
+    while fallback is not None and not held(fallback):
+        rest = [n for n in rest if n != fallback]
+        fallback = _preferred_screenshot(rest)
+    # `paired` is false only when there is an image the tree does not describe. A step left with no
+    # screenshot — none recorded, or none the store still holds — has nothing to mispair, so it
+    # reports as paired: a viewer with no image draws no frames either way, and "these describe
+    # different screens" would state a reason that is not the reason its frames are absent.
+    return StepView(fallback, tree_name, fallback is None or tree_depicts is None)
 
 
 def write_elements(
@@ -220,29 +291,46 @@ def capture(
     kinds: list[str],
     *,
     elements: list[base.Element] | None = None,
+    elements_source: str | None = None,
 ) -> list[Artifact]:
     """Capture the requested instant kinds under `<prefix>/`; return their artifact records.
 
     Names are relative to the run dir (`00-slug/step0/after.png`), so the HTML report written there
     can reference them directly. An unmatched-only kind list writes nothing and creates no directory.
+
+    The `elements_source` argument names the driver `elements` were read from, when that is not the
+    driver this call captures against. Inside a `web` block the two differ — a `WebContextDriver`
+    cannot screenshot, so the pixels come from the native driver while the tree comes from the
+    WebView — and recording each artifact's own source is what lets `step_view` refuse to pair them.
+    It defaults to the capture driver's own name.
     """
     out: list[Artifact] = []
+    tree_source = elements_source or driver.name
     # `rawTree` last, whatever order the scenario listed the kinds in: `write_elements` may issue the
-    # read itself (`elements is None`, line 69 above), and `write_raw_tree` persists the driver's
-    # *last* read — so a `[rawTree, elements]` order would pair a stale dump with a fresh
+    # read itself (the `elements is None` path in `write_elements`), and `write_raw_tree` persists
+    # the driver's *last* read — so a `[rawTree, elements]` order would pair a stale dump with a fresh
     # elements.json, exactly the mismatch this pair of artifacts exists to rule out. `sorted` is
     # stable, so no other kind's relative order moves.
     for token in sorted(kinds, key=lambda t: t.partition(".")[0] == "rawTree"):
         kind, _, modifier = token.partition(".")
         if kind == "rawTree":
             out.extend(
-                Artifact(name, "rawTree", "driver")
+                # `driver.name`, not `tree_source`: `write_raw_tree` reads `driver`'s own last
+                # reply, so that is the screen this dump depicts even when the tree beside it came
+                # from somewhere else. The two are identical on every path today — the run loop
+                # drops `rawTree` inside a `web` block — and stating the real source here is what
+                # keeps that true if a later `rawTree.before` lands on the pre-step baseline, where
+                # the elements source can be a different driver.
+                Artifact(name, "rawTree", "driver", _depicts(driver.name, modifier))
                 for name in write_raw_tree(driver, writer, prefix)
             )
         elif kind == "elements":
             out.append(
                 Artifact(
-                    write_elements(driver, writer, prefix, elements=elements), "elements", "driver"
+                    write_elements(driver, writer, prefix, elements=elements),
+                    "elements",
+                    "driver",
+                    _depicts(tree_source, modifier),
                 )
             )
         elif kind == "screenshot":
@@ -251,6 +339,7 @@ def capture(
                     write_screenshot(driver, writer, prefix, f"{modifier or 'after'}.png"),
                     "screenshot",
                     "driver",
+                    _depicts(driver.name, modifier),
                 )
             )
         # actionLog lives in the manifest; video / deviceLog / appTrace are intervals.
@@ -271,6 +360,7 @@ class EvidenceSink(Protocol):
         kinds: list[str],
         *,
         elements: list[base.Element] | None = None,
+        elements_source: str | None = None,
     ) -> list[Artifact]: ...
     def wait_diagnostic(
         self,
@@ -297,6 +387,7 @@ class NullSink:
         kinds: list[str],  # noqa: ARG002
         *,
         elements: list[base.Element] | None = None,  # noqa: ARG002
+        elements_source: str | None = None,  # noqa: ARG002
     ) -> list[Artifact]:
         return []
 
@@ -380,8 +471,16 @@ class FileSink:
         kinds: list[str],
         *,
         elements: list[base.Element] | None = None,
+        elements_source: str | None = None,
     ) -> list[Artifact]:
-        return capture(driver, self._writer, step_id, kinds, elements=elements)
+        return capture(
+            driver,
+            self._writer,
+            step_id,
+            kinds,
+            elements=elements,
+            elements_source=elements_source,
+        )
 
     def wait_diagnostic(
         self,

@@ -112,17 +112,16 @@ class Stats:
 
 
 @dataclass(frozen=True)
-class ProjectMetrics:
-    """One project's headline numbers for the cross-project comparison (BE-0226).
+class TargetMetrics:
+    """One target's headline numbers for the cross-target comparison (BE-0226, repointed by BE-0404).
 
-    A per-project roll-up of the same `Stats` `aggregate_runs` already computes, reduced to the
+    A per-target roll-up of the same `Stats` `aggregate_runs` already computes, reduced to the
     scalars a comparison ranks on plus a trend series for a sparkline. `flaky_rate` is a plain
     count over the BE-0102/BE-0049 per-scenario classification (flaky-classified ÷ total),
     adding no new flakiness heuristic. Both counts are over distinct scenarios, not over the per-OS
     series (BE-0358), so a wider device matrix neither inflates nor deflates the rate.
     """
 
-    project_id: str
     name: str
     runs: int
     pass_rate: float  # Stats.pass_rate over the window
@@ -197,35 +196,31 @@ def aggregate_runs(manifests: Iterable[Mapping[str, object]]) -> Stats:
     )
 
 
-def project_metrics(
-    project_id: str, name: str, manifests: Iterable[Mapping[str, object]]
-) -> ProjectMetrics:
-    """Roll one project's run manifests up into its comparison headline (BE-0226).
+def target_metrics(name: str, manifests: Iterable[Mapping[str, object]]) -> TargetMetrics:
+    """Roll one target's run manifests up into its comparison headline (BE-0226 / BE-0404 unit 4).
 
-    Runs the same `aggregate_runs` over the project's `project_id`-scoped run set, then reduces
-    the result to the scalars the cross-project view ranks on — pass-rate, flaky-rate, and the
-    median/95th-percentile per-run duration — plus the daily pass-rate trend. An empty run set
-    degrades to zeros (an unrun project charts as a blank row rather than an error).
+    Runs the same `aggregate_runs` over the target's run set, then reduces the result to the
+    scalars the cross-target view ranks on — pass-rate, flaky-rate, and the median/95th-percentile
+    per-run duration — plus the daily pass-rate trend. An empty run set degrades to zeros (a target
+    with no runs charts as a blank row rather than an error).
 
     Args:
-        project_id: The registry id the metrics are labelled with.
-        name: The project's display name.
-        manifests: Parsed `manifest.json` mappings for this project's runs, in any order.
+        name: The target's name, as declared in config.
+        manifests: Parsed `manifest.json` mappings for this target's runs, in any order.
 
     Returns:
-        The project's `ProjectMetrics`.
+        The target's `TargetMetrics`.
     """
     s = aggregate_runs(manifests)
     # Counted over *scenarios*, not over the per-OS series `aggregate_runs` produces (BE-0358): a
-    # project running one suite across a three-device matrix has three series per scenario, so a
-    # per-series denominator would rank it three times healthier than an identical project running
+    # target running one suite across a three-device matrix has three series per scenario, so a
+    # per-series denominator would rank it three times healthier than an identical target running
     # the same suite on one device — broader coverage would improve the score. A scenario is flaky
     # here when it flakes on any OS it ran on.
     scenarios = {(sc.scenario_hash, sc.name) for sc in s.scenarios}
     flaky = {(sc.scenario_hash, sc.name) for sc in s.scenarios if sc.classification == "flaky"}
     durations = [p.duration_s for p in s.by_run]
-    return ProjectMetrics(
-        project_id=project_id,
+    return TargetMetrics(
         name=name,
         runs=s.runs,
         pass_rate=s.pass_rate,

@@ -149,7 +149,7 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
             return _hardened(JSONResponse({"error": "host not allowed"}, status_code=403))
         # Block cross-origin state-changing requests unconditionally (BE-0121) — not only when a token
         # is configured. A no-token server would otherwise leave every POST as an unguarded CSRF
-        # surface (the CSRF-to-arbitrary-config hole this closes). DELETE (deregister a project,
+        # surface (the CSRF-to-arbitrary-config hole this closes). DELETE (delete a run,
         # BE-0225) is equally state-changing, so it is guarded too. No Origin (a non-browser client)
         # passes, matching the stdlib `_csrf_ok`.
         if request.method in ("POST", "DELETE") and not gate.csrf_ok(

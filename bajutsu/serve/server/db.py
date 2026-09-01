@@ -3,9 +3,9 @@
 Shaped like the other server seams (`object_store.py`): a `Protocol`, a SQLAlchemy implementation,
 and an env-driven factory — with SQLAlchemy and the ORM models lazy-imported inside the functions
 that need them, so the default `serve`/CLI path never loads them (the import guard locks this).
-7a ships the `runs` methods (`RunRecord`); BE-0225 extends the same seam with project methods
-(`ProjectRecord`: `create_project`, `get_project`, `list_projects`, `delete_project`). ORM rows
-never leak past the seam — only the boundary types cross."""
+7a ships the `runs` methods (`RunRecord`); the orgs, users, jobs, and secrets methods extend the
+same seam with their own boundary types. ORM rows never leak past the seam — only the boundary
+types cross."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
-    from bajutsu.serve.server.models import Org, Project, Run
+    from bajutsu.serve.server.models import Org, Run
 
 # A lease with no heartbeat for this long is treated as a dead worker and reclaimed; a job that is
 # reclaimed this many times is failed rather than re-queued forever (BE-0016 worker liveness). The
@@ -67,21 +67,6 @@ class JobMetrics:
 
 
 @dataclass
-class ProjectRecord:
-    """A registered project as the seam exchanges it — a named config binding within an org.
-
-    `source` is the discriminated config-source record (`{"kind": ..., "locator": ...}`) the project
-    binds, or None for a row that predates the binding (BE-0015's unwired `projects` scaffolding).
-    """
-
-    id: str
-    org_id: str
-    name: str
-    source: dict[str, Any] | None = None
-    created_at: datetime | None = None
-
-
-@dataclass
 class OrgRecord:
     """An org as the seam exchanges it — its identity plus the membership that decides sign-in.
 
@@ -89,7 +74,8 @@ class OrgRecord:
     (BE-0375); a row that predates the move, or one `ensure_org` created at sign-in, carries empty
     lists throughout.
     `membership_seeded_at` is the per-row cutover marker (set = the database owns this org's
-    membership), `deleted_at` the soft-delete marker.
+    membership), `deleted_at` the soft-delete marker. `config_source` is the flat `upload`-kind
+    record naming the last bundle this org uploaded (BE-0404 unit 1), None until it uploads one.
     """
 
     id: str
@@ -102,6 +88,7 @@ class OrgRecord:
     membership_seeded_at: datetime | None = None
     deleted_at: datetime | None = None
     created_at: datetime | None = None
+    config_source: dict[str, Any] | None = None
 
 
 @dataclass
@@ -111,7 +98,6 @@ class RunRecord:
     id: str
     org_id: str
     status: str
-    project_id: str | None = None
     created_by: str | None = None
     ok: bool | None = None
     created_at: datetime | None = None
@@ -126,6 +112,13 @@ class RunRecord:
     # OS (no device catalog, or scenarios spanning versions); None when it was never determined — a
     # row recorded before this field existed, which the hosted panel backfills from its manifest.
     device_runtime: str | None = None
+    # The run-history partition, resolved at enqueue and carried on the `Job` (BE-0404 unit 2) —
+    # the launcher's derived label or the operator's `--label`. None for a run recorded before the
+    # column existed, or one enqueued with no bound config to derive a label from.
+    label: str | None = None
+    # The target this run ran, mirrored from the manifest like `device_runtime` (BE-0404 unit 3), so
+    # a cross-target comparison reads it from the DB. None when the run named no target.
+    target: str | None = None
     # Soft-delete marker (BE-0239): when set, the run is trashed — hidden from `list_runs` unless
     # `include_deleted`. None for a live run. `record_run` never writes these (a status update must
     # not resurrect or re-trash a run); only `soft_delete_run`/`restore_run` touch them.
@@ -147,14 +140,17 @@ class Repository(Protocol):
         self,
         *,
         org_id: str,
-        project_id: str | None = None,
+        label: str | None = None,
+        target: str | None = None,
         limit: int | None = DEFAULT_RUN_LIMIT,
         include_deleted: bool = False,
     ) -> list[RunRecord]:
-        """An org's runs, newest first, capped at *limit*; ``None`` means unbounded (the per-project
-        `ProjectRegistry.run_ids` partition, which promises *all* of a project's runs). Only
-        *project_id*'s when given (BE-0225). Soft-deleted runs are excluded unless *include_deleted*
-        (BE-0239)."""
+        """An org's runs, newest first, capped at *limit*; ``None`` means unbounded.
+
+        *label* and *target* narrow the result to that partition and that target when given
+        (BE-0404 units 2 and 4); an unlabeled run matches every *label*, since it belongs to no
+        partition. Soft-deleted runs are excluded unless *include_deleted* (BE-0239).
+        """
 
     def soft_delete_run(
         self, run_id: str, *, org_id: str, deleted_by: str | None, at: datetime
@@ -176,24 +172,6 @@ class Repository(Protocol):
         """The org's soft-deleted runs trashed at or before *before* — the retention sweep's DB-side
         eligibility scan (BE-0239). Reaches a run trashed only in the DB (soft-deleted before any
         evidence upload, so it never got a store tombstone) that the store-side scan misses."""
-
-    def create_project(self, project: ProjectRecord) -> None:
-        """Register *project*, or update it in place when its id already exists (BE-0225).
-
-        Merges by id, so re-registering the same id rebinds it. Registering a *fresh* id for a
-        name the org already uses breaks the ``(org_id, name)`` uniqueness and raises — each
-        backend maps this to its own error, so a caller must resolve the existing id via
-        ``get_project`` first rather than relying on this to upsert by name.
-        """
-
-    def get_project(self, *, org_id: str, name: str) -> ProjectRecord | None:
-        """The org's project named *name*, or None if there is none (org-scoped, BE-0225)."""
-
-    def list_projects(self, *, org_id: str) -> list[ProjectRecord]:
-        """An org's registered projects, ordered by name (BE-0225)."""
-
-    def delete_project(self, *, org_id: str, name: str) -> None:
-        """Deregister the org's project named *name*; its run history is retained (BE-0225)."""
 
     def ensure_org(self, org_id: str, *, slug: str, name: str) -> None:
         """Create the org if it does not exist yet (idempotent) — 7c-1's single default org.
@@ -217,6 +195,16 @@ class Repository(Protocol):
         membership an admin sets. False when the slug is already taken — including by a soft-deleted
         row, which still occupies the UNIQUE constraint; reactivating one is a separate operation
         this seam does not offer.
+        """
+
+    def set_org_config_source(self, org_id: str, source: dict[str, Any]) -> bool:
+        """Remember *source* as the last bundle this org uploaded (BE-0404 unit 1). False when there
+        is no such live org.
+
+        One record per org, overwritten by each upload bind — a second bind replaces the first
+        locator rather than accumulating a named list, which is the project layer returning under
+        another name. Only an upload bind writes it, so a later `git` or `file` bind leaves the
+        record standing: it names what this org can *recover*, not what it is serving.
         """
 
     def set_org_membership(
@@ -398,16 +386,6 @@ class Repository(Protocol):
         """
 
 
-def _to_project(row: Project) -> ProjectRecord:
-    return ProjectRecord(
-        id=row.id,
-        org_id=row.org_id,
-        name=row.name,
-        source=dict(row.source) if row.source is not None else None,
-        created_at=row.created_at,
-    )
-
-
 def _to_org(row: Org) -> OrgRecord:
     # The membership columns are nullable — an org row that predates BE-0375, or one `ensure_org`
     # created at sign-in, holds NULL rather than `[]` (the model's `default` is Python-side only, so
@@ -423,6 +401,7 @@ def _to_org(row: Org) -> OrgRecord:
         membership_seeded_at=row.membership_seeded_at,
         deleted_at=row.deleted_at,
         created_at=row.created_at,
+        config_source=dict(row.config_source) if row.config_source is not None else None,
     )
 
 
@@ -431,7 +410,6 @@ def _to_record(row: Run) -> RunRecord:
         id=row.id,
         org_id=row.org_id,
         status=row.status,
-        project_id=row.project_id,
         created_by=row.created_by,
         ok=row.ok,
         created_at=row.created_at,
@@ -440,6 +418,8 @@ def _to_record(row: Run) -> RunRecord:
         tool_version=row.tool_version,
         git_revision=row.git_revision,
         device_runtime=row.device_runtime,
+        label=row.label,
+        target=row.target,
         deleted_at=row.deleted_at,
         deleted_by=row.deleted_by,
     )
@@ -471,7 +451,6 @@ class SqlRepository:
             "id": run.id,
             "org_id": run.org_id,
             "status": run.status,
-            "project_id": run.project_id,
             "created_by": run.created_by,
             "ok": run.ok,
             "summary": run.summary,
@@ -479,6 +458,8 @@ class SqlRepository:
             "tool_version": run.tool_version,
             "git_revision": run.git_revision,
             "device_runtime": run.device_runtime,
+            "label": run.label,
+            "target": run.target,
         }
         if run.created_at is not None:
             fields["created_at"] = run.created_at
@@ -499,7 +480,8 @@ class SqlRepository:
         self,
         *,
         org_id: str,
-        project_id: str | None = None,
+        label: str | None = None,
+        target: str | None = None,
         limit: int | None = DEFAULT_RUN_LIMIT,
         include_deleted: bool = False,
     ) -> list[RunRecord]:
@@ -509,8 +491,14 @@ class SqlRepository:
         from bajutsu.serve.server.models import Run
 
         stmt = select(Run).where(Run.org_id == org_id)
-        if project_id is not None:
-            stmt = stmt.where(Run.project_id == project_id)
+        if label is not None:
+            # An unlabeled run matches every label filter (BE-0404 unit 4): a run recorded before
+            # the column existed, or one enqueued with no config bound, belongs to no partition, and
+            # hiding it would make a deployment's pre-upgrade history vanish the moment its first
+            # labeled run lands.
+            stmt = stmt.where((Run.label == label) | Run.label.is_(None))
+        if target is not None:
+            stmt = stmt.where(Run.target == target)
         if not include_deleted:
             stmt = stmt.where(
                 Run.deleted_at.is_(None)
@@ -573,65 +561,6 @@ class SqlRepository:
         )
         with Session(self._engine) as session:
             return [_to_record(row) for row in session.scalars(stmt)]
-
-    def create_project(self, project: ProjectRecord) -> None:
-        from sqlalchemy.orm import Session
-
-        from bajutsu.serve.server.models import Project
-
-        # `merge` upserts by primary key, so re-registering a project (e.g. rebinding its source)
-        # updates it rather than colliding — the same idempotent shape as `record_run`. A fresh
-        # id reusing an existing `(org_id, name)` breaks the unique constraint; this backend
-        # surfaces the Protocol's documented collision as SQLAlchemy's `IntegrityError`.
-        # `source` and `created_at` are only injected when non-None: a caller that doesn't
-        # re-supply them (e.g. a rename-only update) must not clobber an existing binding or
-        # the DB-generated timestamp — same guard pattern as `record_run` with `created_at`.
-        fields: dict[str, Any] = {
-            "id": project.id,
-            "org_id": project.org_id,
-            "name": project.name,
-        }
-        if project.source is not None:
-            fields["source"] = project.source
-        if project.created_at is not None:
-            fields["created_at"] = project.created_at
-        with Session(self._engine) as session:
-            session.merge(Project(**fields))
-            session.commit()
-
-    def get_project(self, *, org_id: str, name: str) -> ProjectRecord | None:
-        from sqlalchemy import select
-        from sqlalchemy.orm import Session
-
-        from bajutsu.serve.server.models import Project
-
-        stmt = select(Project).where(Project.org_id == org_id, Project.name == name)
-        with Session(self._engine) as session:
-            row = session.scalars(stmt).first()
-            return _to_project(row) if row is not None else None
-
-    def list_projects(self, *, org_id: str) -> list[ProjectRecord]:
-        from sqlalchemy import select
-        from sqlalchemy.orm import Session
-
-        from bajutsu.serve.server.models import Project
-
-        stmt = select(Project).where(Project.org_id == org_id).order_by(Project.name)
-        with Session(self._engine) as session:
-            return [_to_project(row) for row in session.scalars(stmt)]
-
-    def delete_project(self, *, org_id: str, name: str) -> None:
-        from sqlalchemy import delete
-        from sqlalchemy.orm import Session
-
-        from bajutsu.serve.server.models import Project
-
-        # Only the binding is removed; the run history is retained (BE-0225). On Postgres, the FK's
-        # ON DELETE SET NULL (migration 0010) clears `runs.project_id` on the retained rows; on the
-        # SQLite gate (FKs unenforced by default) it stays pointing at the now-deregistered id.
-        with Session(self._engine) as session:
-            session.execute(delete(Project).where(Project.org_id == org_id, Project.name == name))
-            session.commit()
 
     def ensure_org(self, org_id: str, *, slug: str, name: str) -> None:
         from sqlalchemy.exc import IntegrityError
@@ -703,6 +632,19 @@ class SqlRepository:
                 # `get` above raced) — either way the slug is taken, which is this method's False.
                 session.rollback()
                 return False
+            return True
+
+    def set_org_config_source(self, org_id: str, source: dict[str, Any]) -> bool:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Org
+
+        with Session(self._engine) as session:
+            row = session.get(Org, org_id)
+            if row is None or row.deleted_at is not None:
+                return False
+            row.config_source = source
+            session.commit()
             return True
 
     def set_org_membership(

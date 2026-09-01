@@ -448,23 +448,35 @@ def _resolve_video_start_offset(
 ) -> float:
     """The correction the report's video anchor (`RunResult.video_anchor_s`) is offset by.
 
-    `video_interval.true_start` (confirmed or driver-stamped) may precede or follow
-    `scenario_start` — a prestarted device recording begins before it, an on-demand iOS
-    recording's confirmation wait completes just before it — so this offset, resolved once here,
-    places the anchor at the video's real origin instead of the moment `scenario_start`
-    happened to be stamped. `0.0` (no correction) both when no confirmed `true_start` exists and
-    when the resolved offset is positive: a video starting *after* `scenario_start` is not a case
-    this design expects to occur in production (see BE-0346's Motivation), so it is surfaced with a
-    warning rather than trusted. The guard is one-sided by construction: a *negative* offset is
-    trusted unconditionally, so a stale `true_start` — necessarily an older instant than
-    `scenario_start`, and so always negative — is not caught here.
+    Resolved from the *finished* recording where it can be: `Interval.measured_start` is
+    the recorder's own answer — the instant it was stopped, minus the duration the finalized file
+    states — so it names the moment the first frame was captured rather than the moment some side
+    signal fired. It is trusted in both directions, because a recording whose footage begins after
+    `scenario_start` is an ordinary outcome of a start that lagged its confirmation, not the
+    anomaly the `true_start` branch below treats it as; the report's own `max(0.0, …)` floor keeps
+    an early step on the recording.
 
-    Mixing the two time sources is deliberate but load-bearing: `true_start` is always a raw
-    `time.monotonic()` instant, so `clock` must share that epoch (`RealClock`). A clock with a
-    different origin makes this offset — and so every video-relative second a report derives from
-    the anchor — meaningless rather than merely shifted.
+    `video_interval.true_start` (confirmed or driver-stamped) is the fallback for a recording whose
+    duration could not be read. It may precede or follow `scenario_start` — a prestarted device
+    recording begins before it, an on-demand iOS recording's confirmation wait completes just
+    before it — so this offset places the anchor near the video's origin instead of at the moment
+    `scenario_start` happened to be stamped. `0.0` (no correction) both when no confirmed
+    `true_start` exists and when the resolved offset is positive: a video starting *after*
+    `scenario_start` is not a case that branch expects in production (see BE-0346's Motivation), so
+    it is surfaced with a warning rather than trusted. The guard is one-sided by construction: a
+    *negative* offset is trusted unconditionally, so a stale `true_start` — necessarily an older
+    instant than `scenario_start`, and so always negative — is not caught here.
+
+    Mixing the two time sources is deliberate but load-bearing: both `measured_start` and
+    `true_start` are raw `time.monotonic()` instants, so `clock` must share that epoch
+    (`RealClock`). A clock with a different origin makes this offset — and so every video-relative
+    second a report derives from the anchor — meaningless rather than merely shifted.
     """
-    if video_interval is None or video_interval.true_start is None:
+    if video_interval is None:
+        return 0.0
+    if video_interval.measured_start is not None:
+        return video_interval.measured_start - scenario_start
+    if video_interval.true_start is None:
         return 0.0
     offset = video_interval.true_start - scenario_start
     if offset > 0:
@@ -625,6 +637,8 @@ def run_scenario(
     # it is drained here rather than left in the driver's log with no step to carry it (see BE-0315's
     # `expect_alerts` beside it).
     expect_actuations: list[Actuation] = []
+    # What the guard saw blocking the screen during the `expect` retry and could not clear (BE-0402).
+    expect_block_note = ""
     failure: str | None = None
     artifacts: list[Artifact] = []
     # The anchor pair: a monotonic instant every in-run duration is measured from, and the wall-clock
@@ -635,8 +649,9 @@ def run_scenario(
     scenario_start = clock.now()
     scenario_wall_start = wall_clock()
     wall_offset_s = scenario_wall_start - scenario_start
+    # The offset this interval's recording implies is resolved once it is finalized, in the `finally`
+    # below — the exact answer is the finished file's own duration, which does not exist yet here.
     video_interval = next((r for r in recordings if r.kind == "video"), None)
-    video_start_offset = _resolve_video_start_offset(video_interval, scenario_start)
     # Mutable bindings: extract steps populate vars.* during the run; scenario-level
     # expect sees the accumulated values.
     live_bindings: dict[str, str] = dict(bindings or {})
@@ -705,6 +720,12 @@ def run_scenario(
                 expect_alerts.extend(drain_interruptions(driver))
                 if not assertions.passed(expect_results) and alert_guard is not None:
                     event = alert_guard(driver)
+                    if event is None and alert_guard.blocked_note:
+                        # The guard saw a prompt it could not clear (BE-0402 leaves an alert no rule
+                        # or candidate label names alone rather than guessing where to tap). Name it
+                        # on the `expect` failure below, which would otherwise report only the
+                        # assertion that never held.
+                        expect_block_note = alert_guard.blocked_note
                     if event is not None:
                         expect_alerts.append(event)
                         expect_actuations.extend(drain_actuations(driver).records)
@@ -718,6 +739,8 @@ def run_scenario(
                         )  # retry once
                 if not assertions.passed(expect_results):
                     failure = "expect: " + _fail_reason(expect_results)
+                    if expect_block_note:
+                        failure += f" \u2014 {expect_block_note}"
         except RunCancelled:
             # A cancelled run is a failed run, not a silent gap: the scenario the cancel interrupted
             # (or one whose first boundary was already past it) fails with the one spelling
@@ -737,6 +760,10 @@ def run_scenario(
             )
     finally:
         artifacts = sink.finish_scenario_intervals(sid, recordings)
+        # After the finalize, not before it: stopping the recording is what lets its own duration
+        # place its origin, which is a measurement rather than the start-confirmation proxy a
+        # scenario-start resolution would have to settle for (the correction BE-0346 introduced).
+        video_start_offset = _resolve_video_start_offset(video_interval, scenario_start)
 
     return RunResult(
         scenario=scenario.name,
@@ -1215,7 +1242,11 @@ class _StepRunner:
         # — the run loop's report contract guarantees a pre-step baseline for every leaf step, a
         # failure at this point notwithstanding.
         pre_elements = self.state.prev_after
-        pre_kinds = ["screenshot.before", "elements"]
+        # `elements.before`, not a bare `elements`: the modifier never reaches the filename
+        # (`write_elements` ignores it, so this still writes `elements.json`), but it is what tells
+        # `capture()` which side of the action this tree was read on — the fact `step_view` pairs
+        # the step's image against.
+        pre_kinds = ["screenshot.before", "elements.before"]
         pre_query_was_fresh = False
         if (
             pre_elements is None
@@ -1256,7 +1287,16 @@ class _StepRunner:
         # counterpart to `screenshot.before`, captured in this baseline where `pre_elements` pairs
         # with it. That is a scenario-schema addition, so it belongs to its own item.
         outcome.artifacts.extend(
-            self.cfg.sink.capture(self.cfg.driver, step_id, pre_kinds, elements=pre_elements)
+            self.cfg.sink.capture(
+                self.cfg.driver,
+                step_id,
+                pre_kinds,
+                elements=pre_elements,
+                # The tree came from the active driver, which inside a `web` block is not the one
+                # this call screenshots. Recording each artifact's own source is what lets a viewer
+                # refuse to draw a WebView tree's frames onto a native image.
+                elements_source=active_driver.name,
+            )
         )
         # Interpolate ${...} tokens, then turn a `handleSystemAlert` naming a prompt and a
         # choice into the concrete button label this run's locale renders (BE-0320). Resolving
@@ -1447,12 +1487,20 @@ class _StepRunner:
                     ok, reason = False, guard.failure
                 elif not ok and not guard_done and self.cfg.alert_guard is not None:
                     event = self.cfg.alert_guard(active_driver)
+                    note = self.cfg.alert_guard.blocked_note
+                    if event is None and note and note not in reason:
+                        # Same as the `expect` site: an alert the guard will not guess at still
+                        # explains the failure, so the step says so instead of failing as a bare
+                        # `element not found` (BE-0402). `not in reason` because a guarded `wait`
+                        # already carried the note out of `_wait`: this guard re-probes the same
+                        # still-unanswered alert, so appending unconditionally would say it twice.
+                        reason = f"{reason} \u2014 {note}"
                     if event is not None:
                         outcome.alerts.append(event)
                         wait_trace = WaitTrace() if wait_trace is not None else None
                         # The retry is the end-of-step "one more shot": it does not re-arm the
-                        # mid-wait guard (no alert_guard passed), so a step's AI-vision calls stay
-                        # bounded at _GUARD_MAX_ATTEMPTS (mid-wait) + 1 (this end-of-step dismiss).
+                        # mid-wait guard (no alert_guard passed), so one dismissed prompt buys one
+                        # extra attempt and no more.
                         ok, reason, results, snapshot = _run_step_body(
                             active_driver,
                             interp_step,
@@ -1631,7 +1679,9 @@ class _StepRunner:
             else screen.cached
         )
         outcome.artifacts.extend(
-            self.cfg.sink.capture(self.cfg.driver, step_id, instant, elements=els)
+            self.cfg.sink.capture(
+                self.cfg.driver, step_id, instant, elements=els, elements_source=active_driver.name
+            )
         )
         if screen.queried:
             self.state.total_reads += 1

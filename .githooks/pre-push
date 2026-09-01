@@ -8,7 +8,9 @@
 # Enable once per clone:   git config core.hooksPath .githooks
 # (Claude Code web sessions get this wired automatically by the SessionStart hook.)
 #
-# Bypass for a genuine emergency:   git push --no-verify
+# `git push --no-verify` is forbidden in this repository, no exceptions (CLAUDE.md, "The gate is
+# the contract") — it skips this hook entirely, which git does unconditionally at the flag-parsing
+# level, before any hook or git alias ever runs. See docs/ai-development.md#never-push-red.
 set -euo pipefail
 
 # git feeds ref updates on stdin as: <local ref> <local oid> <remote ref> <remote oid>
@@ -21,6 +23,16 @@ fi
 
 echo "pre-push: running 'make check'…" >&2
 
+# git exports its own location into every hook, and those variables override discovery from `cwd`
+# for every git command the gate runs — including the ones pytest issues against the throwaway
+# checkouts it builds. In a linked worktree they are absolute, so they aim at the pushing checkout
+# rather than at the tree under test, and the gate fails here while passing when the same command is
+# run directly (issue #1803). Scrubbing them once, here, is what keeps the gate runnable from a
+# worktree — the way CLAUDE.md asks concurrent sessions to work. Nothing in `make check` wants an
+# inherited repository location; the steps that need one discover it from their own directory, and
+# the tests that exercise this behaviour set the variables themselves.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR
+
 # The gate is defined once, in `make check`. A hand-rolled fallback drifts from it silently
 # (it used to run only ruff+mypy+pytest, skipping format/docstrings/imports/lock/roadmap/shell),
 # so a push could pass the hook yet fail CI — the exact "green locally predicts green in CI"
@@ -28,7 +40,7 @@ echo "pre-push: running 'make check'…" >&2
 if ! command -v make >/dev/null 2>&1; then
   echo "pre-push: 'make' not found — the gate is 'make check' and can't be run without it." >&2
   echo "pre-push: install make (macOS: 'xcode-select --install' or 'brew install make'; " \
-       "Debian/Ubuntu: 'apt-get install make') and retry, or bypass with 'git push --no-verify'." >&2
+       "Debian/Ubuntu: 'apt-get install make') and retry." >&2
   exit 1
 fi
 

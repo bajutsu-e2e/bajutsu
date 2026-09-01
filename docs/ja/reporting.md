@@ -49,8 +49,10 @@ runs/<runId>/
           "duration_s": 0.12,
           "assertion_results": [],
           "artifacts": [
-            { "name": "before.png", "kind": "screenshot", "provider": "driver" },
-            { "name": "after.png", "kind": "screenshot", "provider": "driver" }
+            { "name": "before.png", "kind": "screenshot", "provider": "driver",
+              "depicts": "xcuitest:before" },
+            { "name": "after.png", "kind": "screenshot", "provider": "driver",
+              "depicts": "xcuitest:after" }
           ]
         }
       ],
@@ -69,13 +71,15 @@ runs/<runId>/
   （[drivers](drivers.md#バックエンド選択と-actuator)）。
 - `steps[].duration_s`: 各ステップの計時です。run が求める経過時間は、すべて単調増加時計で測ります。実時刻の時計は run の途中で過去へ戻ることがあり（Network Time Protocol（NTP）による補正、手動での時刻変更）、経過時間やタイムアウトを壊すからです。実時刻の時計はシナリオごとに一度だけ読み、記録するタイムスタンプにだけ使います。
 - `steps[].started_at`: そのステップが始まった絶対的な実時刻（エポック秒）です。記録する値に動画の補正は入りません。録画のどこへシークするかは、描画のときに下の`video_anchor_s`を引いて求めます。[report.html](#reporthtml)はその値を**steps**テーブルの`at`列に表示します。補正済みのオフセットではなく生の時刻を保存するので、保存済みの run からシーク位置を計算し直せます。たとえば基準時刻の求め方を修正したときも、シナリオの実行し直しは要りません（[BE-0348](../../roadmaps/BE-0348-absolute-timestamp-recording/BE-0348-absolute-timestamp-recording-ja.md)）。
-- `video_anchor_s`（シナリオごと）: そのシナリオの動画が始まった絶対的な実時刻です。開始を確認できた場合は、録画の実際の開始時刻を取ります（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。描画する側は、どの表示でもこの値を引きます。`schemaVersion` 6 より前に記録された run は、この値を持ちません。その`started_at`はすでに動画基準の相対値なので、描画する側は欠けた基準時刻を`0.0`と読み、記録どおりに表示します。
+- `video_anchor_s`（シナリオごと）: そのシナリオの動画が始まった絶対的な実時刻です。確定した録画の長さが実時間の測定値になっている場合はその長さから測り、そうでない場合は録画の開始確認の信号から取ります（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。描画する側は、どの表示でもこの値を引きます。`schemaVersion` 6 より前に記録された run は、この値を持ちません。その`started_at`はすでに動画基準の相対値なので、描画する側は欠けた基準時刻を`0.0`と読み、記録どおりに表示します。
 - `wall_offset_s`（run 内だけの値で、永続化されません）: その run が、自分自身の単調増加時計の値を実時刻のエポックへ変換するために足す差分です。通信ログの受信時刻（単調増加時計）を、`video_anchor_s`と同じ基準時刻へ載せるためだけに使います。manifest には残りません。単調増加時計の値もmanifestには残らないので、あとから読む側にはこの差分を使って変換する対象自体がないからです。
 - `steps[].artifacts`: そのステップで取れた証跡の来歴です（[evidence](evidence.md#アーティファクトの来歴provider)）。
 - `steps[].actuations`: そのステップのあいだにドライバが画面に対して実際に行ったことです。タップが送った座標、スワイプが動いた端点、各ジェスチャを運んだ経路が入ります。これが `actionLog` の証跡種別で、ファイルではなく manifest に内在します（[evidence](evidence.md#各ステップが画面に対して実際に行ったことactionlog)）。`schemaVersion` 5 より前に記録された run は持ちません。`expect_actuations` はシナリオ末尾の `expect` の再チェックについて同じものを持ちます。そこではシステムアラートガードが、載せる先のステップなしに操作しうるからです。`schemaVersion` 7 からは、操作した要素がドライバの既定の規則の指す要素と異なる理由を `substitution` として持つことがあります。それより前の run は持たず、いまその項目がないのと同じに読めます。
 - `network.json`の`startedAt`（シナリオごとに1ファイルで、上のmanifestには出てきません）: 観測した各通信が始まった絶対的な実時刻です。`steps[].started_at`と同じ土俵に立ち、同じシナリオの基準時刻を通して導かれるので、描画する側は両方から`video_anchor_s`を引きます。両者がどのように1本のタイムラインへ織り込まれるかは[report.html](#reporthtml)を参照してください。
 - `failure`: 失敗時の要約です（例 `"step 3 (tap): 一致なし: {...}"`）。成功なら null です。
-- `provenance`（トップ、任意）: run の同一性スタンプです（[BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。`scenarioHash`（実行した `scenario.yaml` の `sha256:` フィンガープリント）、`toolVersion`（`bajutsu.__version__`）、`gitRevision`（コミット。git チェックアウト内の run のときだけ付く）、そして config が Git ソース由来のとき（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）は `configSource`（`{ host, owner, repo, ref, sha }`。ブランチ指定の run が実際に実行した正確なコミット）を持ちます。蓄積した run を同一性でグルーピングできるので、フィンガープリントが変わっていないのに判定が反転すれば、それは編集ではなく**真の flakiness** だと分かります。純粋なメタデータで、`ok` には一切入りません。（このブロックが出るようになった時点で `schemaVersion` は `3` 以上です。現在は `7` です。）
+- `provenance`（トップ、任意）: run の同一性スタンプです（[BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。`scenarioHash`（実行した `scenario.yaml` の `sha256:` フィンガープリント）、`toolVersion`（`bajutsu.__version__`）、`gitRevision`（コミット。git チェックアウト内の run のときだけ付く）、そして config が Git ソース由来のとき（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）は `configSource`（`{ host, owner, repo, ref, sha }`。ブランチ指定の run が実際に実行した正確なコミット）を持ちます。蓄積した run を同一性でグルーピングできるので、フィンガープリントが変わっていないのに判定が反転すれば、それは編集ではなく**真の flakiness** だと分かります。純粋なメタデータで、`ok` には一切入りません。（このブロックが出るようになった時点で `schemaVersion` は `3` 以上です。現在は `10` です。）
+- `target`（トップ、任意）: この run が実行した target です。「Android の target は通るのに iOS の target は落ちる」を、保存済みのデータから計算できます（[BE-0404](../../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer-ja.md)）。1 つの run が解決する target は 1 つなので、シナリオごとではなく `backend` の隣に置きます。`serve` はこれを run の行へ写し、target どうしを順位付けします。target を持たない run では省かれます。（この項目が出るようになった時点で `schemaVersion` は `10` 以上です。）
+- `label`（トップ、任意）: run 履歴の区切りです。bind している config 自身の名前か、運用者が `run --label` で上書きした値が入ります。不透明なメタデータで、解析も config との照合もせず、`ok` の入力にもなりません。`serve` を再起動したあとに 2 つの config の run を読み分けられるのは、この値のおかげです。label を持たない run では省かれます。（この項目が出るようになった時点で `schemaVersion` は `10` 以上です。）
 - `idb`（トップ、任意、レガシー）: 古い manifest には `idb_companion` / client のバージョンブロックが残っていることがあります（BE-0005）。idb バックエンドとともに BE-0290 で廃止され、今は書き出されません。未知のトップレベルキーは読み込み時に無視されるため、これを含む古い manifest も問題なく読めます。
 - `matrix`（トップ、任意）: クロスブラウザのエンジン × シナリオのグリッドで、`bajutsu run --browsers` の run のときだけ出ます（[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)）。`scenarios` はフラットな結果リストのままで、各エントリに `engine` が付きます。`matrix` は `{ engines, scenarios, cells: { "<scenario>": { "<engine>": { ok, sid, failure } } } }` で、エンジンごとの判定を集約しただけのものです（report はこれをグリッドとして描画します）。`ok` はエンジン × シナリオのすべてに対する all-must-pass です。単一エンジン／iOS の run では省かれます。（このブロックが出るようになった時点で `schemaVersion` は `4` 以上です。）
 
@@ -157,6 +161,13 @@ step 1 tap: FAIL 一致なし: {...}</failure>
 同じ瞬間を表します。ただし例外が1つあります。動作しないステップ（`assert` と `wait`）は、
 そのステップが落ち着いたときのツリーを再利用します（BE-0259）。このツリーは、スクリーンショットの
 あとではなく前の瞬間を表します。serve のエディタの要素ピッカーも、同じ理由から同じ画像を使います。
+画像と要素ツリーが *別々の* 画面を表すこともあります。
+[`web` ブロック](scenarios.md#webwebview-の-dom-コンテキストに入る)のネイティブ画像と WebView の要素
+ツリーの組や、`after.png` を失った実行結果が該当します。そのときビューアは、両方を見せたうえで枠を
+描きません。枠がない理由は要素ツリーのボタンに添えます
+（[evidence](evidence.md#アーティファクトが写した画面depicts)）。
+serve のエディタは、そうしたステップでは画像そのものを出しません。出せば、どこをクリックしても、
+その画素にはいなかった要素へ解決してしまうからです。
 detail 中の識別子（`#home.title`）と定数リテラル（`”text”` や数値）は、控えめなインライントークンで
 描画します。ソリッドな action/assert バッジと視覚的に区別されるため、変数と定数を一目で識別できます。`assert` ステップの複数チェックはネストしたテーブルになり、1 アサーション 1 行で
 `kind` / `target` / `comparison` のセルに分割します（読みにくい `a; b; c` 形式を解消）。実行されなかった
@@ -179,7 +190,7 @@ baseline に重ねてクロスフェード）/ **Blend**（`mix-blend-mode: diff
 [`bajutsu approve`](cli.md#approve)。
 
 失敗行は赤背景です。ステップをクリックすると録画をその時刻にシークしますが、**自動再生はしません**
-（停止中なら停止のまま、再生中なら再生を続けます）。シーク先は各ステップの`started_at`から`video_anchor_s`を引いた値（**steps**テーブルの`at`列）であり、シナリオのステップループが始まった生の瞬間ではなく、確認できた、あるいは分かっている範囲でもっとも確からしい動画の実際の開始時刻を基準にしています（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。クリックした行が実際に示す瞬間にシークが着地するのは、この基準のためです。この結果、目に見える変化が1つあります。動画を録画するAndroidまたはWebのシナリオでは、この描画時に求めた動画基準の秒数（**steps**テーブルの`at`列）が、シナリオ自身の`duration_s`を超えることがあります。この2つは、そもそも別のものを測っているためです。動画のタイムラインは実行本体のステップループより前から始まりますが、`duration_s`はそのステップループ自体の長さを測ります。これは想定された挙動であり、どちらかの数値が誤っているわけではありません。ステップのスクリーンショットをクリックすると原寸ライトボックスが
+（停止中なら停止のまま、再生中なら再生を続けます）。シーク先は各ステップの`started_at`から`video_anchor_s`を引いた値（**steps**テーブルの`at`列）であり、シナリオのステップループが始まった生の瞬間ではなく、録画そのものから測った原点を基準にしています。原点を測れない場合は、分かっている範囲でもっとも確からしい動画の実際の開始時刻を基準にします（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。クリックした行が実際に示す瞬間にシークが着地するのは、この基準のためです。この結果、目に見える変化が1つあります。動画を録画するAndroidまたはWebのシナリオでは、この描画時に求めた動画基準の秒数（**steps**テーブルの`at`列）が、シナリオ自身の`duration_s`を超えることがあります。この2つは、そもそも別のものを測っているためです。動画のタイムラインは実行本体のステップループより前から始まりますが、`duration_s`はそのステップループ自体の長さを測ります。これは想定された挙動であり、どちらかの数値が誤っているわけではありません。ステップのスクリーンショットをクリックすると原寸ライトボックスが
 開き、**← / →**（または画面上の矢印）で run 内の全スクリーンショットを**シナリオをまたいで**順送りできます
 （キャプションにシナリオ、ステップ、位置を表示）。run のアクチュエータはヘッダの `driver: <backend>`
 チップと各シナリオ行の小バッジで表示します。Device Log / App Trace は別タブのままです。
@@ -189,7 +200,7 @@ baseline に重ねてクロスフェード）/ **Blend**（`mix-blend-mode: diff
 ```python
 def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, provenance=None) -> Path  # 4 形式を書く。definitions=シナリオ毎の dict、sources=生 YAML、source_name=シナリオファイル名、description=ファイルレベルの説明、provenance=run の同一性スタンプ（BE-0049）
 def write_html_and_junit(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, provenance=None) -> None  # 再生成できる側だけ（report.html + junit.xml + ctrf.json）。manifest.json は触らない。再描画が使う。provenance は CTRF の tool/environment フィールドに使う
-def manifest_dict(run_id, results, *, source_name=None, provenance=None) -> dict  # バージョン付き render モデル（schemaVersion）。manifest の素（テスト、検査用）
+def manifest_dict(run_id, results, *, source_name=None, provenance=None, target=None, label=None) -> dict  # バージョン付き render モデル（schemaVersion）。manifest の素（テスト、検査用）
 def run_provenance(scenario_yaml, *, git_revision, config_source=None) -> dict  # run の同一性スタンプ: scenarioHash + toolVersion + 任意の gitRevision（BE-0049）+ 任意の configSource（BE-0063）
 def ctrf_json(run_id, results, *, provenance=None) -> dict  # 実行結果モデルの CTRF への射影（BE-0161）。provenance は tool.version / environment.commit に使う
 def junit_xml(results) -> str

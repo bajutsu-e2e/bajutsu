@@ -11,7 +11,7 @@ aggregate joins durations against the same widened key.
 from __future__ import annotations
 
 from bajutsu.analysis.audit import longitudinal, render_longitudinal
-from bajutsu.analysis.stats import aggregate_runs, project_metrics
+from bajutsu.analysis.stats import aggregate_runs, target_metrics
 from bajutsu.serve.flakiness import rank_flakiness, records_from_manifests, render
 from bajutsu.serve.server.db import RunRecord
 
@@ -247,8 +247,8 @@ def test_stats_does_not_pool_durations_across_os_versions() -> None:
     assert by_os == {"iOS 18.6": 1.0, "iOS 26.5": 9.0}
 
 
-def test_project_metrics_flaky_rate_counts_scenarios_not_per_os_series() -> None:
-    """A wider device matrix must not make a project look healthier than an identical one-device one."""
+def test_target_metrics_flaky_rate_counts_scenarios_not_per_os_series() -> None:
+    """A wider device matrix must not make a target look healthier than an identical one-device one."""
     one_device = [
         _manifest("20260812-013907", ok=True, runtime="iOS 18.6"),
         _manifest("20260812-013908", ok=False, runtime="iOS 18.6"),
@@ -259,5 +259,5 @@ def test_project_metrics_flaky_rate_counts_scenarios_not_per_os_series() -> None
         _manifest("20260812-014335", ok=True, runtime="iOS 26.5"),
         _manifest("20260812-014336", ok=True, runtime="iOS 26.5"),
     ]
-    assert project_metrics("p1", "one device", one_device).flaky_rate == 1.0
-    assert project_metrics("p2", "device matrix", matrix).flaky_rate == 1.0
+    assert target_metrics("one device", one_device).flaky_rate == 1.0
+    assert target_metrics("device matrix", matrix).flaky_rate == 1.0

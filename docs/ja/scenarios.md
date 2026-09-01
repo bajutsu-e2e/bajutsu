@@ -66,7 +66,7 @@ scenarios:
 | `network` | object | なし | `{ filter: { domains: [...] } }`。`filter.domains` は、レポートの Steps タイムラインに差し込む通信を URL ホストで絞る（親ドメインはサブドメインに一致）。未指定なら全件を表示する。Network タブは常に全件を表示する（[reporting](reporting.md#reporthtml)） |
 | `mocks` | list | `[]` | 決定的なネットワークスタブ。一致する送信リクエストには、ネットワークへ行かず定型レスポンスを返す（[ネットワークモック](#ネットワークモック決定的スタブ)） |
 | `redact` | object | なし | 証跡を書き出す前に適用するマスク（[evidence](evidence.md#マスキングredact)） |
-| `systemAlertHandling` | bool / object | なし（ON） | リアクティブな **アラートガード**。iOS バックエンドから見えない OS プロンプトを、XCUITest ではネイティブに（モデルなし、BE-0316 を再利用）片付け、vision をフォールバックにする。既定は ON。`false` で無効化し、`{ labels: ["Allow"] }` なら ON のまま指定したボタンを押し、`{ pollInterval: 2 }` でネイティブのポーリング間隔を変える。CLI の `--system-alert-handling`/`--no-system-alert-handling` が上書きする（[下記](#systemalerthandlingシステムアラートガード)） |
+| `systemAlertHandling` | bool / object | なし（ON） | リアクティブな **アラートガード**。iOS バックエンドから見えない OS プロンプトを、XCUITest ではネイティブに片付ける（モデルなし、BE-0316 を再利用）。名指しできないプロンプトには手を触れず、報告する。既定は ON。`false` で無効化し、`{ labels: ["Allow"] }` なら ON のまま指定したボタンを押し、`{ pollInterval: 2 }` でネイティブのポーリング間隔を変える。CLI の `--system-alert-handling`/`--no-system-alert-handling` が上書きする（[下記](#systemalerthandlingシステムアラートガード)） |
 | `iosTipKitHandling` | bool | なし（オフ） | 操作をブロックしている Apple **TipKit** の tip を閉じます。フレームワークが所有する popover であり、同じ回避策をシナリオごとに手で書かずに済ませるためのガードです。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ（`TipView`）の両方で判定します。ごく普通の `confirmationDialog` が同一の scrim を設置するため、そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの `interrupts` エントリを手で書く場合は `TipView` を手がかりにします（`TipView` は TipKit 自身のコンテナであり、SwiftUI と UIKit のどちらの表示でも存在を計測で確認済みです）。iOS 専用（他の環境では何もしません）で、既定は**オフ**です。tip 自体がシナリオの検証対象になる場合があるからです。CLI の `--ios-tipkit-handling`/`--no-ios-tipkit-handling` が優先します |
 | `permissions` | dict | `{}` | 宣言的な OS 権限の状態（`{ <service>: grant \| revoke }`）。**アプリの起動前**に適用する（[下記](#permissions起動前の権限状態)） |
 | `interrupts` | list | `[]` | **予測できない時点**で現れる差し込み画面のハンドラ。各エントリは `{ condition, steps }` で、画面が現れた場所を問わず随時判定する（[下記](#interrupts予測できない差し込み画面への対処)） |
@@ -112,11 +112,11 @@ scenarios:
 
 ## systemAlertHandling（システムアラートガード）
 
-iOS バックエンドは **SpringBoard レベルのプロンプト**（通知や App Tracking Transparency のリクエスト、"Allow Paste" など）を見ることも tap することもできません。これらのプロンプトはアプリを覆って要素ツリーを潰し、ステップを静かにブロックします。**アラートガード**がこれをリアクティブに片付けます。iOS の XCUITest バックエンドでは**決定論的なネイティブ経路**をとります（BE-0315）。BE-0316 の SpringBoard 照会を再利用してアラートが提示するボタンを把握し、方針が名指しするボタンを押します。スクリーンショットもモデルへの往復も使わないため、頻出するプロンプトを 0.1 秒を大きく下回る時間で片付け、`ANTHROPIC_API_KEY` が**なくても**動作します。ネイティブ経路が対処できない場合（capability を持たないバックエンド、または方針が label を名指しできないアラート）は、**vision guard**（`alerts.py`）にフォールバックします。これはモデルがどこを tap するか読み取るためのスクリーンショットです（[詳細](recording.md#システムアラートの自動対処)）。`wait` ステップ（`for`/`settled`/`screenChanged`）では、ガードは **wait の途中でも**発火します。ネイティブ経路は独自の間隔（既定は 1 秒）で SpringBoard をポーリングし、vision フォールバックはすでにポーリング済みの画面を監視してツリーが潰れて見えたら発火します（デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回まで）。wait 自体のタイムアウトを待たず、ステップが失敗する前に回復できます（BE-0269）。
+iOS バックエンドは **SpringBoard レベルのプロンプト**（通知や App Tracking Transparency のリクエスト、"Allow Paste" など）を見ることも tap することもできません。これらのプロンプトはアプリを覆って要素ツリーを潰し、ステップを静かにブロックします。**アラートガード**がこれをリアクティブに片付けます。iOS の XCUITest バックエンドでは**決定論的なネイティブ経路**をとります（BE-0315）。BE-0316 の SpringBoard 照会を再利用してアラートが提示するボタンを把握し、方針が名指しするボタンを押します。スクリーンショットもモデルへの往復も使わないため、頻出するプロンプトを 0.1 秒を大きく下回る時間で片付け、`ANTHROPIC_API_KEY` が**なくても**動作します。決定論的な経路がどれも対処できない場合（capability を持たないバックエンド、方針が label を名指しできないアラート、SpringBoard の照会が列挙できず、しかもシナリオ自身の `labels` もそのボタンを名指ししていない画面。`labels` が名指ししているものは、後述のツリー内の経路が片付けます）、**ガードは何もしません**（[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。ブロックされたステップまたは `wait` は、ガードを設定していないときとまったく同じように自身のタイムアウトまで進み、そのタイムアウトが**ガードの見たものを名指しします**。`wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)` の形、何も列挙できなかった場合は `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view` という曖昧な形です。BE-0402 より前は、この場合にスクリーンショットを読む AI 視覚ガードへフォールバックしていました。`run` はもうそれをしないため、**どのフラグを付けてもモデルに到達しません**。（`record` と `crawl` はオーサリング向けにそのガードを保持します。[詳細](recording.md#システムアラートの自動対処)）`wait` ステップ（`for`/`gone`/`settled`/`screenChanged`）では、ガードは **wait の途中でも**発火します。ネイティブ経路が独自の間隔（既定は 1 秒）で SpringBoard をポーリングするため、wait 自体のタイムアウトを待たず、ステップが失敗する前に回復できます（BE-0269）。
 
-これは **既定で ON** で、**ステップ（または `expect`）がブロックされたとき、あるいはガード対象の `wait` でネイティブのポーリングがアラートを見つけたとき（またはポーリング中の画面がブロックされて見えたとき）**に発火します。そのため、成功するシナリオは余計な処理をしません（ネイティブ照会はモデル呼び出しではありません）。vision フォールバックには `ANTHROPIC_API_KEY` が必要ですが、無くてもネイティブ経路が名指しできるプロンプトはそのまま片付けます。シナリオごとに動作を変えるには `systemAlertHandling` を使います。
+これは **既定で ON** で、**ステップ（または `expect`）がブロックされたとき、あるいはガード対象の `wait` でネイティブのポーリングがアラートを見つけたとき**に発火します。そのため、成功するシナリオは余計な処理をしません。`ANTHROPIC_API_KEY` は**不要**で、参照もしません。シナリオごとに動作を変えるには `systemAlertHandling` を使います。
 
-**どのキーも 2 つの経路のうち片方だけを指します**（[BE-0401](../../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)）。`rules` と `labels` はネイティブ経路を、`visionInstruction` は vision フォールバックを方向づけます。ON と OFF は真偽値が担うので、マッピングを書けば常に ON です。
+**どのキーも経路を 1 つだけ指します**（[BE-0401](../../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)）。`rules` と `labels` はネイティブ経路を方向づけます。`visionInstruction` は vision フォールバックを方向づけていましたが、いまはどのコマンドにも届きません。**`run` はこれを拒否し**（後述）、`record` と `crawl` は自由記述を自身の `--alert-vision-instruction` フラグからだけ読み、シナリオからは読みません。ON と OFF は真偽値が担うので、マッピングを書けば常に ON です。
 
 | 形 | 意味 |
 |---|---|
@@ -124,7 +124,7 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
 | `systemAlertHandling: false` | このシナリオでは無効 |
 | `systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` | ON。**名指しした対応済みプロンプト**に、他のプロンプトとどのラベルを共有していても、その規則自身の選択で答える |
 | `systemAlertHandling: { labels: ["Allow", "OK"] }` | ON。ネイティブ経路がこれらのうちアラートに存在する最初の label を押す。たとえば権限を**許可**する場合 |
-| `systemAlertHandling: { visionInstruction: "tap Allow" }` | ON。**vision** フォールバックだけが読む自由文字列。ネイティブ経路が名指しできないアラート向け |
+| `systemAlertHandling: { visionInstruction: "tap Allow" }` | **どのコマンドにも届きません。** `run` は黙って無視せず、**どのシナリオも実行する前に失敗します**（[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。`record` と `crawl` はシナリオのこのキーを読みません。スキーマが残しているのは、書いてしまったファイルにこのメッセージを返すためだけです |
 | `systemAlertHandling: { pollInterval: 2 }` | ON。ネイティブの presence 照会を既定の 1 秒ではなく 2 秒間隔でポーリングする |
 
 ```yaml
@@ -135,7 +135,7 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
     - wait: { for: { id: sys.notif.authorized }, timeout: 4 }   # the guard taps Allow, then this passes
 ```
 
-許可は `visionInstruction` ではなく `labels` で書いてください。XCUITest バックエンドではネイティブのタップが先に走ります。フォールバックしか読まない自由文字列の "tap Allow" を書くと、ネイティブ経路は既定の無害なラベル群のままになり、ファイルが許可と書いたプロンプトを**拒否**します。BE-0401 が単一の `instruction` キーを分割したのは、この反転を書けなくするためです。
+許可は `labels` で書いてください。`visionInstruction` はシナリオからどのコマンドにも届かないため、`run` の下では実行できない答えを名指しすることになります。既定の無害なラベル群に落ちてファイルが許可と書いたプロンプトを**拒否**するのではなく、`run` はどのシナリオも実行する前に呼び出し全体を拒否します。BE-0401 が単一の `instruction` キーを分割してこの反転を可視化し、BE-0402 が反転に到達する最後の道筋を取り除きました。
 
 自分で `labels` を挙げると、iOS ではもう 1 つ、ツリー内の経路も有効になります。相手は SpringBoard のアラートではありません。iOS は「パスワードを保存」アラートを**アプリ自身の**プロセスに出すので、そのボタンはラベルを持ち識別子を持たない形で要素ツリーに現れ、SpringBoard の照会には決して映りません。つまりツリー内のタップだけが、これを片付けられます。
 
@@ -144,9 +144,9 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
 割り込んできたアラートがどのボタンを受け取るかも、利用者の方針が決めます。XCUITest は割り込まれた操作より先にそのアラートを解決し、放っておけばアラート自身の**デフォルト**ボタンで答えます。`rules` が拒否したはずの権限を許可し、しかも実行結果には何も残りません。そこで runner は、`rules` と `labels` が名指ししたボタンを押す割り込み監視を入れます。判定の作法はネイティブ経路と同じで、押した結果は通常のアラートイベントとして報告されます。方針がどのボタンも名指ししないプロンプトは XCUITest に委ねます。これは、この仕組みが無かったときの挙動そのものです。
 （[`demos/showcase/scenarios/save_password_browser.yaml`](../../demos/showcase/scenarios/save_password_browser.yaml) 実物）
 
-`labels` は、ネイティブ経路が決定論的に解決する候補 label の順序付きリストです（アラートに存在する最初の label を、それを持つボタンがちょうど 1 つのときにだけ押します）。組み込みの無害なラベル群が代わりに使われるのは、`labels` をどの層も与えなかったときだけです。書かれたリストに継ぎ足されることはありません。自分でボタンを名指ししたシナリオが、そのどれも持たないアラートに出会った場合、ネイティブ経路は何も解決せずに vision フォールバックへ落ちます。作者が名指ししていないボタンを押すことはありません。
+`labels` は、ネイティブ経路が決定論的に解決する候補 label の順序付きリストです（アラートに存在する最初の label を、それを持つボタンがちょうど 1 つのときにだけ押します）。組み込みの無害なラベル群が代わりに使われるのは、`labels` をどの層も与えなかったときだけです。書かれたリストに継ぎ足されることはありません。自分でボタンを名指ししたシナリオが、そのどれも持たないアラートに出会った場合、ネイティブ経路は何も解決せず、そのアラートをブロックされたステップ自身の失敗理由に書き出します。作者が名指ししていないボタンを押すことはありません。
 
-CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**全シナリオを上書き**します。無指定ならシナリオごとの既定が使われます。その run にだけ同じ 3 つのキーを与えるフラグもあります。`--alert-labels "Allow,OK"`、`--alert-vision-instruction`、`--alert-poll-interval` です。入る位置はシナリオとターゲット config の中間です（後述の[層の重ね方](#層の重ね方1-つのキーは-3-か所から届く)を参照）。
+CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**全シナリオを上書き**します。無指定ならシナリオごとの既定が使われます。その run にだけ同じ 2 つのキーを与えるフラグもあります。`--alert-labels "Allow,OK"` と `--alert-poll-interval` です。入る位置はシナリオとターゲット config の中間です（後述の[層の重ね方](#層の重ね方1-つのキーは-3-か所から届く)を参照）。
 （[`demos/showcase/scenarios/permission.yaml`](../../demos/showcase/scenarios/permission.yaml) 実物）
 
 ### 複数のプロンプトに違う答えを返す: `rules`
@@ -169,7 +169,7 @@ CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**�
 
 ガードは、規則の順序ではなく、その規則のプロンプトから画面上のどのアラートかを同定します。実行時のロケールで解決した、許可側と拒否側の両方のラベルがアラート上に揃っていなければなりません。同じプロンプトを指定する規則が2つあると解析時に失敗します。規則はプロンプトを名指しし、ラベルはボタンを名指しするので、より限定的な宣言から順に参照します。まず `rules`、次に `labels` であり、`labels` はどの規則も名指ししなかったプロンプトの受け皿として残ります。2つのフィールドは排他ではなく組み合わせて使えます。
 
-`rules` が方向づけるのは**決定論的なネイティブ経路だけ**です。どの規則も同定しなかったアラート、つまりラベル表の外にあるもの、SpringBoard の照会が列挙できない画面、あるいはネイティブ経路を持たないバックエンド上のあらゆるアラートは、AI 視覚のフォールバックに届きます。そしてそのフォールバックに規則は何も伝えません。規則のラベルは別のプロンプトへの答えなので、渡せばシナリオが名指ししていないプロンプトを受諾する方向へモデルを押してしまいます。フォールバックに動いてほしいものには `labels`（または `visionInstruction`）を与えてください。規則だけなら、フォールバックは自身の最も無害な既定のままです。
+`rules` が方向づけるのは**決定論的なネイティブ経路だけ**です。どの規則も同定しなかったアラート、つまりラベル表の外にあるもの、SpringBoard の照会が列挙できない画面、あるいはネイティブ経路を持たないバックエンド上のあらゆるアラートには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。どのプロンプトが差し出しても押してほしいボタンがあるなら、`labels` を与えてください。
 
 ### 層の重ね方：1 つのキーは 3 か所から届く
 
@@ -179,15 +179,12 @@ CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**�
 |---|---|---|
 | `rules` | リスト | 内側の層から順に連結：シナリオ、次にターゲット |
 | `labels` | リスト | 内側の層から順に連結：シナリオ、次にコマンドライン、次にターゲット |
-| `visionInstruction` | スカラー | 値を持つもっとも内側の層が勝つ：シナリオ、無ければコマンドライン、無ければターゲット |
 | `pollInterval` | スカラー | 値を持つもっとも内側の層が勝つ：シナリオ、無ければコマンドライン、無ければターゲット |
 | ON / OFF | スカラー | `--system-alert-handling` / `--no-system-alert-handling`、無ければシナリオ、無ければターゲット、無ければ ON |
 
 リストを連結にするのは、両方の層のエントリが残るからです。シナリオの答えを先に試し、シナリオが答えなかったものにはターゲットの答えが届きます。スカラーは値を 1 つしか持てないので、もっとも内側の層が勝ちます。どの層の宣言も他の層に消されません。BE-0401 が確立しようとした性質はここにあります。`rules` が 2 層しか使えないのは、プロンプトと選択の組をフラグの値 1 つで読みやすく運べないからです。
 
 ネイティブ経路の中では、**宣言が来た層ではなく限定の度合いが衝突を決めます**。ターゲット config の tracking プロンプト向けの規則は、シナリオが自前の `labels` を持っていても tracking に答えます。規則はそのプロンプトを名指ししており、ラベルはどのプロンプトも名指ししていないからです。両方の宣言が有効なままです。その規則を上書きするには、シナリオ側に同じプロンプトの規則を書きます。上書きが及ぶ範囲は、名指しした 1 つのプロンプトだけです。自前のボタンを名指ししたシナリオにターゲットの規則が実際に答えるとき、ガードは構築時にその旨を通知します。通知は、影響を受けたシナリオとプロンプトの組ごとに 1 回だけ出ます。
-
-vision フォールバックが聞くのは**1 つの層だけ**です。どこかの層に `visionInstruction` があればそれを使います。無ければ `labels` を与えたもっとも内側の層からヒントを組み立てます（"Tap the button labeled one of, in order: …"）。連結したリストを渡すことはありません。渡せばターゲットの "Allow" とシナリオの "Don't Allow" を同時に差し出すことになり、locator がどちらを取ってもおかしくないからです。
 
 ### 旧来のキーからの移行
 
@@ -196,12 +193,12 @@ BE-0401 は下記のキーをエイリアスなしで削除しました。書い
 | 削除されたもの | 代わりに書くもの |
 |---|---|
 | `instruction: ["Allow"]` | `labels: ["Allow"]` |
-| `instruction: "tap Allow"` | `visionInstruction: "tap Allow"` |
+| `instruction: "tap Allow"` | `labels: ["Allow"]` — BE-0401 の改名先は `visionInstruction` ですが、BE-0402 でどのコマンドにも届かなくなったため、シナリオではボタンを名指しし直します |
 | `enabled: false` | `systemAlertHandling: false` |
 | `enabled: true` | マッピング（または `systemAlertHandling: true`）。マッピングは常に ON |
 | `alertHandling:` / `dismissAlerts:` | `systemAlertHandling:` |
 | `--alert-instruction "Allow,OK"` | `--alert-labels "Allow,OK"` |
-| `--alert-instruction "tap Allow"` | `--alert-vision-instruction "tap Allow"` |
+| `--alert-instruction "tap Allow"` | `--alert-vision-instruction "tap Allow"`（`record` / `crawl` 専用。`run` は BE-0402 で廃止） |
 | `--alert-handling` / `--dismiss-alerts` | `--system-alert-handling` |
 
 空の `labels` リスト、その中の空ラベル、空の `visionInstruction` もエラーになります。いずれも以前は黙って正規化され、既定の無害な方針へ落ちていました。打ち間違いがファイルの記述と正反対の答えを返していたわけです。
@@ -234,7 +231,7 @@ BE-0401 は下記のキーをエイリアスなしで削除しました。書い
 |---|---|---|---|
 | `permissions` | そもそも避けられる OS 権限プロンプト | 起動前、アプリが動き出す前 | 決定的なデバイス操作 |
 | `handleSystemAlert` | **既知の**、途中で tap するつもりのプロンプト | 作者が置いた明示的なステップ | 決定的（ネイティブなアクセシビリティ tap） |
-| `systemAlertHandling` | ツリーに見えない**想定外**のプロセス外プロンプト | ステップや wait がブロックされたときに反応 | XCUITest ではネイティブの SpringBoard 照会（モデルなし、BE-0316 を再利用）。AI 視覚はフォールバック |
+| `systemAlertHandling` | ツリーに見えない**想定外**のプロセス外プロンプト | ステップや wait がブロックされたときに反応 | XCUITest ではネイティブの SpringBoard 照会（モデルなし、BE-0316 を再利用）。名指しできないプロンプトは失敗理由に書き出す |
 
 ### テキストではなく意図で指定する
 
@@ -251,7 +248,7 @@ BE-0401 は下記のキーをエイリアスなしで削除しました。書い
 使う前に知っておきたい制限が 2 つあります。
 
 - **Simulator 専用です。** 言語の固定は `simctl` の操作なので、`xcuitest.deviceType: device` の target は実機が持つシステム言語のまま動きます。この形では、画面に出ている保証のない label を解決してしまいます。実機ではボタンを `sel.label` で指定してください。
-- **リアクティブなガードが持つ拒否ラベルの初期値は英語のままです。** `systemAlertHandling` が組み込みで持つラベル（`Don't Allow`、`Not Now`、`Cancel` など）は英語の文字列そのものです。そのため英語以外の `locale` ではネイティブ経路が一致せず、AI 視覚のガードへフォールバックします。ラベル表が対応するプロンプトについては、`rules`（上記）の1エントリが固定した言語向けにラベルを解決するので、決定的なまま保てます。それ以外のプロンプトには `labels` のリストを明示してください。
+- **リアクティブなガードが持つ拒否ラベルの初期値は英語のままです。** `systemAlertHandling` が組み込みで持つラベル（`Don't Allow`、`Not Now`、`Cancel` など）は英語の文字列そのものです。そのため英語以外の `locale` ではネイティブ経路が一致せず、何も片付けないまま、ブロックされたステップがアラートのボタンを名指しして失敗します。ラベル表が対応するプロンプトについては、`rules`（上記）の1エントリが固定した言語向けにラベルを解決します。それ以外のプロンプトには `labels` のリストを明示してください。
 
 （実物は [`demos/showcase/scenarios/permission_system_alert.yaml`](../../demos/showcase/scenarios/permission_system_alert.yaml) と [`demos/showcase/scenarios/paste_system_alert.yaml`](../../demos/showcase/scenarios/paste_system_alert.yaml)）
 
@@ -308,14 +305,14 @@ targets:
 
 **config** レベル（`targets.<name>.interrupts`）に置いた `interrupts` リストはアプリ全体の既定です。シナリオ独自の `interrupts` はその後ろに**連結**され、config のエントリを先に判定します。`systemAlertHandling` が従うのと同じ、config が先でシナリオが後という重ね方です。エントリの `steps` は、`if` の分岐とまったく同じように、囲んでいるシナリオの `vars.*` バインディングを共有します。シナリオ側のハンドラの `steps` では、ほかのステップと同じように[コンポーネント](#再利用とデータ駆動とタグ)を `use` で呼び出せます。展開は run の前に済みます。config レベルのエントリでは `use` を使えません。ターゲットの config はコンポーネント展開を通らないため、`targets.<name>.interrupts` の下に置いた `use` は config の読み込み時に拒否されます。ステップを直接書くか、ハンドラをシナリオ側へ移してください。ハンドラ自身の `steps` が `condition` を解消しないとき（セレクタの誤りや、同じ内容で再描画され続ける画面）は、エントリはステップごとに小さな上限回数までしか発火しません。そのあとはステップが本来の結末（成功、失敗、タイムアウト）へ戻ります。設定を誤ったエントリは、実行をハングさせずに、ステップをきれいに失敗させます。
 
-判定に使うのは決定的なアサーション DSL であり、モデル呼び出しではありません。そのため `interrupts` は `run` の判定に AI を持ち込みません。ここが `systemAlertHandling` との違いです。アラートガードは、アクセシビリティツリーに**見えない**プロセス外のシステムプロンプト専用の視覚ベースの経路です。一方 `interrupts` は、ツリーに**見える**画面を、マシンチェック可能な条件で扱います。どちらを選ぶかの目安を次に示します。
+判定に使うのは決定的なアサーション DSL であり、モデル呼び出しではありません。そのため `interrupts` は `run` の判定に AI を持ち込みません。BE-0402 以降は `systemAlertHandling` も同じです。両者の違いは届く先です。アラートガードは、アクセシビリティツリーに**見えない**プロセス外のシステムプロンプトを SpringBoard の照会で扱います。一方 `interrupts` は、ツリーに**見える**画面を、マシンチェック可能な条件で扱います。どちらを選ぶかの目安を次に示します。
 
 | フィールド | 対象 | タイミング | 仕組み |
 |---|---|---|---|
 | `if` | ステップ列の**わかっている**位置に出る画面 | 台本どおりの 1 回の判定 | 決定的（アサーション DSL） |
 | `interrupts` | **予測できない**位置に出る、ツリーに見える画面 | 全体を通して随時判定 | 決定的（アサーション DSL） |
 | `handleSystemAlert` | 途中で tap するつもりの**既知の**プロセス外プロンプト | 作者が置いた明示的なステップ | 決定的（ネイティブなアクセシビリティ tap） |
-| `systemAlertHandling` | ツリーに見えない**想定外**のプロセス外プロンプト | ステップや wait がブロックされたときに反応 | XCUITest ではネイティブの SpringBoard 照会（モデルなし、BE-0316 を再利用）。AI 視覚はフォールバック |
+| `systemAlertHandling` | ツリーに見えない**想定外**のプロセス外プロンプト | ステップや wait がブロックされたときに反応 | XCUITest ではネイティブの SpringBoard 照会（モデルなし、BE-0316 を再利用）。名指しできないプロンプトは失敗理由に書き出す |
 | `permissions` | そもそも避けられる OS 権限プロンプト | 起動前、アプリが動き出す前 | 決定的なデバイス操作 |
 
 「この条件をテスト全体を通して随時判定する」に対応するネイティブな XCUITest / Espresso / Playwright の構文はありません。そのため `codegen` はコードを生成する代わりに、フィールドと設定された各条件を名指ししたラベル付きの `// TODO` を出力します。`bajutsu run` が忠実に実行する経路です。
@@ -434,7 +431,7 @@ targets:
 | `setPickerValue` | `setPickerValue: { sel: <Selector>, value: "..." }` | ホイール型のピッカー（`UIPickerView`、ホイール表示の `UIDatePicker`）をこの value を持つ行へ動かす（[後述](#setpickervalue)）。iOS（XCUITest）専用。`sel` は 1 つのホイールを指し、複数コンポーネントのピッカーは `within` / `traits` / `index` で兄弟のホイールを区別し、コンポーネントごとに 1 ステップずつ書く |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` または `swipe: { from: [x,y], to: [x,y] }` | セレクタ形と座標形は混在できない。方向指定形式は**スクロール**する |
 | `drag` | `drag: { on: <Selector>, direction: up\|down\|left\|right, amount?: <frac> }` | 要素そのものを**ドラッグ**する（ハンドル／仕切り／スライダー）。スクロールではない |
-| `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, maxScrolls?: <int> }` | `to` が画面に入るまで（慣性なしに）スクロールし、上限に達したら失敗する。`direction` は**スクロール**方向（既定 `down`）で、`swipe` とは逆向き |
+| `scroll` | `scroll: { to: <Selector>, direction?: up\|down\|left\|right, within?: <Selector>, amount?: <frac>, maxScrolls?: <int> }` | `to` が画面に入るまで（慣性なしに）スクロールし、上限に達したら失敗する。`direction` は**スクロール**方向（既定 `down`）で、`swipe` とは逆向き |
 | `back` | `back: {}` | 1 階層戻ります。各バックエンドがプラットフォームに合った手段（Android のシステム戻るキー、iOS の OS 提供の戻るボタン、web の履歴）を使います（[BE-0210](../../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)） |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | 2 本指の拡縮。`scale > 0`（`>1` で拡大, `<1` で縮小） |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | 2 本指の回転。`>0` で時計回り |
@@ -559,6 +556,7 @@ targets:
 - tap: { id: notice.row.20 }
 - scroll: { to: { label: "Log out", traits: [button] }, # 特定のコンテナをスクロールする…
             within: { id: settings.list }, maxScrolls: 25 }
+- scroll: { to: { id: chart.point.7 }, amount: 0.2 }    # …既定より細かい歩幅で
 ```
 
 `scroll` は画面外の要素を表示領域に入れます。1 ステップ分スクロールしてツリーを再クエリし、`to` が解決してそのフレームの**中心**が画面内に入った時点で止まります。中心は続く `tap` が狙う点なので、ビューポートより高い要素でも、中心が入りさえすれば成功します。
@@ -573,9 +571,11 @@ targets:
 
 逆向きの誤りは、ステップの前に視野にあったものがその後どれも画面に残らなかったステップです。対象をビューポートの外へ運んでしまった可能性があるからです。一部だけ残っている場合も残ったと数えるので、一度に 1 枚のカードだけを見せる画面でのふつうのステップを取り違えることはありません。`scroll` は歩幅を半分にし、通り過ぎた範囲を読むために 1 回だけ逆向きにスクロールします。ループが取る最小の歩幅でもなお何も残らないときは、対象が見つからないと報告する代わりに、行き過ぎたことを名指して失敗します。
 
+`amount` は 1 ステップが進む距離を、ビューポートに対する比で指定します。単位と範囲は `swipe` と `drag` の `amount` と同じで、0 より大きく 1 以下です。省略すると 1 ステップはビューポートの 0.6 を進みます。既定の歩幅が粗すぎて目的の要素をまたいでしまう画面では、`amount` を小さくします。1 ステップで現れる量が少なすぎて、`maxScrolls` が対象へ届く前に尽きる画面では大きくします。`amount` が決めるのはループの出発点だけです。行き過ぎたときの半減は、`amount` が置いた歩幅からそのまま働きます。半減が止まる下限は `amount` に連動しません。下限と同じかそれより小さい `amount` には半減する余地がないので、最初に行き過ぎたステップで、そのステップが取った歩幅を名指して失敗します。
+
 ステップが領域を動かしたかどうかは、1 回のクエリではなく再読み取りが判定します。再読み取りが効くのは Android です。Android ではジェスチャがリストを動かした後にアクセシビリティツリーが公開されるため、1 回だけ読み取ったツリーはスクロール前の画面を表し、末尾に達した状態と同じに見えます。確認にかかるのは Android が読み取りに対して申告した猶予の分だけで、しかも `scroll` が失敗するときの最後のステップに限られます。読み取りが遅れない web と iOS では、時間がかかりません。`within` はジェスチャと、末尾および行き過ぎの判定を、1 つのスクロール可能なコンテナに限定します。省略すると画面全体をスクロールします。
 
-対象を**現れさせる**なら `scroll`、**決まったジェスチャ**なら `swipe`、**掴んだハンドルを動かす**なら `drag` を使います。各ステップは慣性を残しません。画面に対する有限の距離を進んで止まるので、同じシナリオが高速な実機と遅い CI エミュレータのどちらでも同じように対象へ届きます。手作業で調整した `swipe` の連鎖では保証できなかった決定論です。ジェスチャが求めた距離より先までコンテンツが運ばれた場合も、前提として済ませずに検出します。
+対象を**現れさせる**なら `scroll`、**決まったジェスチャ**なら `swipe`、**掴んだハンドルを動かす**なら `drag` を使います。各ステップは慣性を残しません。画面に対する有限の距離を進んで止まるので、同じシナリオが高速な実機と遅い CI エミュレータのどちらでも同じように対象へ届きます。手作業で調整した `swipe` の連鎖では保証できなかった決定論です。1 ステップが進む距離は、そのステップが求めた距離になります。すべてのバックエンドで成り立ちます。ドライバー conformance スイートが 1 ステップの実移動量を測り、ジェスチャの終点より先へコンテンツが運ばれるバックエンドを不合格にするからです。それでも行き過ぎたステップは、前提として済ませずに、上の逆向きの読み取りで検出します。
 
 > **`scroll` の `direction` は、指ではなくコンテンツが動く向きです**。`swipe` とは逆になります。`scroll: { direction: down }` は fold より下のコンテンツを現します（ドライバーは指を*上*へスワイプします）。`swipe: { direction: up }` は指が上に動きます。`scroll` に手を伸ばす書き手は「リストを下へスクロールする」と考えるので、`scroll` はその向きを名前にします。`swipe` は指を名前にします。
 

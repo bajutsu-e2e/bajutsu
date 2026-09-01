@@ -78,15 +78,6 @@ from bajutsu.serve.operations.orgs import (
     set_active_org,
     update_org_membership,
 )
-from bajutsu.serve.operations.project_comparison import project_metrics_view
-from bajutsu.serve.operations.projects import (
-    activate_project,
-    deregister_project,
-    list_projects_view,
-    project_runs,
-    register_project,
-    run_project,
-)
 from bajutsu.serve.operations.reads import (
     _primary_backend,
     _step_action_fields,
@@ -125,16 +116,18 @@ from bajutsu.serve.operations.sse import (
     job_log_events,
     job_sse,
 )
+from bajutsu.serve.operations.target_comparison import target_metrics_view
 from bajutsu.serve.operations.theme_editor import get_theme_contract, upload_theme
 from bajutsu.serve.operations.triage import start_triage
 from bajutsu.serve.operations.upload import (
     _safe_filename,
-    activate_uploaded_project,
     artifact_exists,
     bind_artifact,
     bind_composition,
     bind_upload_config,
     compose_current,
+    restore_org_config,
+    restore_uploaded_config,
     upload_scenarios,
 )
 from bajutsu.serve.operations.version import server_checkout, server_version
@@ -166,8 +159,6 @@ __all__ = [
     "_terminal_payload",
     "_valid_key_env_name",
     "_valid_step_id",
-    "activate_project",
-    "activate_uploaded_project",
     "active_key_env",
     "ant_login",
     "ant_login_status",
@@ -197,7 +188,6 @@ __all__ = [
     "declared_secret_names",
     "delete_org",
     "delete_run",
-    "deregister_project",
     "doctor_check",
     "finish_capture",
     "flakiness_html",
@@ -212,28 +202,25 @@ __all__ = [
     "job_view",
     "lint_scenario",
     "list_orgs_view",
-    "list_projects_view",
     "list_scenarios",
     "list_targets_payload",
     "login",
     "mark_capture",
     "oauth_callback",
     "oauth_login",
-    "project_metrics_view",
-    "project_runs",
     "provider_info",
     "read_scenario",
-    "register_project",
     "render_metrics",
     "required_role",
     "resolve_capture_pick",
     "resolve_scenario_pick",
     "respond_human",
+    "restore_org_config",
     "restore_run",
+    "restore_uploaded_config",
     "role_allows",
     "role_for",
     "run_file",
-    "run_project",
     "runs_payload",
     "save_scenario",
     "scenario_schema",
@@ -257,6 +244,7 @@ __all__ = [
     "start_triage",
     "stats_html",
     "sweep_expired_trash",
+    "target_metrics_view",
     "trashed_runs_payload",
     "update_org_membership",
     "upload_scenarios",

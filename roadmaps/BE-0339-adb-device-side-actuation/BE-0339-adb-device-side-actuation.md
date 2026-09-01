@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0339") |
-| Implementing PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455) (Units 1–3: the directional-gesture anchor, `POST /act`, and identity-addressed actuation), [#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702) (Unit 4 and Unit 6's fast-gate conformance coverage; a Unit 5 attempt reverted after review, Unit 6's on-device realization deferred after real-device evidence it wasn't safe to ship) |
+| Implementing PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455) (Units 1–3: the directional-gesture anchor, `POST /act`, and identity-addressed actuation), [#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702) (Unit 4 and Unit 6's fast-gate conformance coverage; a Unit 5 attempt reverted after review, Unit 6's on-device realization deferred after real-device evidence it wasn't safe to ship), [#1820](https://github.com/bajutsu-e2e/bajutsu/pull/1820) (Unit 5, on the device-side publish confirmation its first attempt assumed) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0332](../BE-0332-read-lag-barrier/BE-0332-read-lag-barrier.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0312](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) |
 <!-- /BE-METADATA -->
@@ -241,7 +241,7 @@ languages. The identity keeps the decision on the host and sends only its result
       for its *interval*. `pinch` and `rotate` stay on coordinates because a two-finger gesture needs
       a frame, not a center.
 - [x] Unit 4 — the coordinate path kept as a declared, logged degraded mode.
-- [ ] Unit 5 — the read-lag barrier narrowed to the reads that still need it.
+- [x] Unit 5 — the read-lag barrier narrowed to the reads that still need it.
 - [ ] Unit 6 — deterministic and conformance coverage, and a repeated Android-lane run.
 
 Log:
@@ -387,6 +387,51 @@ Log:
   every PR through the fast gate, which is what prime directive 1 asks of the actual CI verdict.
   The on-device realization of this case and the repeated Android-lane dispatch that samples the
   flake's residual rate are what Unit 6 still owes.
+
+- 2026-08-27 — Unit 5, on the premise its first attempt lacked. `POST /act` now follows its own
+  gesture to the accessibility event that publishes it before the endpoint answers. Having injected,
+  the handler waits on the event stream the warm session already observes — `ReadMark.awaitPostdate`,
+  the condition wait BE-0332 Unit 4 built for `GET /source?since=` — and stamps the confirming
+  event's device-clock time on the reply as `X-Bajutsu-Act-Publish`. That header is the host's only
+  licence to stop arming: a confirmed `tap` / `long_press` / `double_tap` arms no catch-up barrier,
+  and one the device could not confirm arms it exactly as before. Absence answers all three cases the
+  endpoint cannot tell apart — a gesture that moved no frame, a publish slower than the window, and
+  an older server that never waited at all — so the two ends need no version negotiation, and a
+  device without the wait is no worse off than it was.
+
+  The reverted attempt is what sizes the budget. `ACT_PUBLISH_BUDGET_MS` is 500 ms, an eighth of the
+  host's own `_READ_LAG_S` (4 s), because the two waits are not interchangeable: this
+  one is paid inline on every gesture, while the host's is spent lazily and is often absorbed by
+  reads the scenario was taking anyway. The window is not free: it is spent before the reply goes
+  out, so a gesture that publishes nothing pays it *and then* still arms the barrier — a fixed cost
+  on exactly the gestures that gain nothing, and `_await_catchup`'s own timeout message calls such a
+  gesture routine. What the window buys on the gestures that do confirm is a read: `_settle` would
+  otherwise open with `_await_catchup`'s poll sleep plus a whole extra `query()`, the dominant
+  per-step cost on this backend (BE-0234). Sizing it short is that trade, not a free lunch; what it
+  never decides is whether skipping the barrier is safe.
+
+  The mark the header carries is compared, not merely counted. `since` and the published mark are
+  both `SystemClock.uptimeMillis` readings, so the driver checks that the reported event actually
+  postdates the gesture rather than trusting the header's presence — a value that does not (a server
+  repurposing the header, one carried over from an earlier injection) would otherwise disable the
+  barrier on the strength of the header merely existing.
+
+  The fast gate pins both halves of the rule, so the reverted shape cannot return unnoticed: a
+  confirmed device tap arms no barrier and leaves the next read carrying no `?since=`, an unconfirmed
+  one still arms it, and a `swipe` after a confirmed tap still arms its own. Unlike Unit 2, Unit 3,
+  and Unit 6 before it, this change met a compiler and a device before it shipped — the authoring
+  environment here carries both a JDK and the Android SDK — so the Kotlin compiled locally and the
+  Compose lane ran on a `bajutsu-api34-arm64` emulator. The `gestures` run shows the mechanism
+  working in both directions. The long press logged `publish confirmed at 82535; no catchup barrier
+  armed`, and the read that followed returned in 0.20 s blocked on nothing, carrying that very mark.
+  The double tap went unconfirmed and armed the barrier, whose next reads then spent the device's
+  full `since` budget. Skipping on that double tap would have been wrong, and the rule did not skip.
+  What a local run cannot show is the residual rate: *Verification* above already records that this
+  flake does not reproduce on an Apple-silicon emulator, so this evidence covers the mechanism and
+  the absence of regression, nothing further.
+
+  Unit 6 is untouched by this: its on-device conformance realization, and the repeated Android-lane
+  dispatch that samples the flake's residual rate, are still what it owes.
 
 ## References
 

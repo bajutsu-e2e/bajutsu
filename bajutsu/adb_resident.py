@@ -28,6 +28,7 @@ from typing import Protocol
 from bajutsu import adb
 from bajutsu.drivers.adb import (
     ActFn,
+    ActOutcome,
     ActRequest,
     AdbActUncertain,
     AdbActUnsupported,
@@ -52,6 +53,12 @@ _READ_MARK_HEADER = "X-Bajutsu-Read-Mark"
 # the `<node>` it is reading — see `adb.py`'s `_native_z_key`. Absent on a server that does not
 # report it and on an app that opted no view in.
 _NATIVE_Z_HEADER = "X-Bajutsu-Native-Z"
+
+# The response header `POST /act` stamps when an accessibility event postdated the injection it just
+# made (BE-0339 Unit 5), carrying that event's device-clock time. Absent when the device saw none
+# within its budget — and absent from an older server that never waited at all — so its presence, and
+# nothing else, is what tells the driver the tree has already caught up with the gesture.
+_ACT_PUBLISH_HEADER = "X-Bajutsu-Act-Publish"
 
 # The status the resident server answers when the identity the host sent no longer names the same
 # number of nodes on its own dump: the screen moved between the two resolves, so nothing was injected.
@@ -123,6 +130,8 @@ def fetch_source(
         body = resp.read()
         if resp.status != 200:
             raise AdbResidentError(f"resident server returned HTTP {resp.status}")
+        # An absent or malformed mark here degrades the driver's barrier to its wall-clock budget
+        # rather than failing the read: the mark only ever tightens the wait.
         mark = _parse_mark(resp.getheader(_READ_MARK_HEADER))
         native_z = _parse_native_z(resp.getheader(_NATIVE_Z_HEADER))
         # A truncated/garbled body (a mid-write device server) must degrade to the dump fallback, not
@@ -136,7 +145,7 @@ def fetch_source(
         conn.close()
 
 
-def act(host_port: int, request: ActRequest, *, timeout: float = 10.0) -> bool:
+def act(host_port: int, request: ActRequest, *, timeout: float = 10.0) -> ActOutcome:
     """Ask the resident server to perform one gesture on an element the host already resolved.
 
     The element crosses as its four accessibility fields plus its ordinal among the nodes sharing them,
@@ -145,9 +154,11 @@ def act(host_port: int, request: ActRequest, *, timeout: float = 10.0) -> bool:
     the host computed a round trip earlier.
 
     Returns:
-        True when the device performed the gesture; False when it answered `409` — the identity no
-        longer names the same nodes there, so the host must re-resolve rather than let a coordinate be
-        guessed.
+        The device's answer: `acted` False for a `409` — the identity no longer names the same nodes
+        there, so the host must re-resolve rather than let a coordinate be guessed — and, when the
+        gesture landed, whether an accessibility event postdated it before the server replied
+        (`_ACT_PUBLISH_HEADER`). A server that never sends that header reports no confirmation, which
+        is what leaves the driver's read-lag barrier armed exactly as it was.
 
     Raises:
         AdbResidentError: the channel could not be reached, or answered anything else — including the
@@ -190,21 +201,29 @@ def act(host_port: int, request: ActRequest, *, timeout: float = 10.0) -> bool:
             ) from exc
         if resp.status == _STALE_STATUS:
             logger.debug("resident actuation reported the target moved: %s", body)
-            return False
+            return ActOutcome(acted=False, published_mark=None)
         if resp.status == _NO_ENDPOINT_STATUS:
             raise AdbActUnsupported(f"resident server has no /act endpoint (HTTP {resp.status})")
         if resp.status != 200:
             raise AdbResidentError(f"resident actuation returned HTTP {resp.status}: {body}")
-        return True
+        # `_parse_mark` reads a malformed value as no value, so a garbled header degrades to "the
+        # device could not confirm" — the barrier stays armed — rather than failing a gesture that
+        # actually landed.
+        return ActOutcome(
+            acted=True, published_mark=_parse_mark(resp.getheader(_ACT_PUBLISH_HEADER))
+        )
     finally:
         conn.close()
 
 
 def _parse_mark(raw: str | None) -> float | None:
-    """The `X-Bajutsu-Read-Mark` header as a device-clock float, or None when absent/unparseable.
+    """A device-clock mark header as a float, or None when the header is absent or unparseable.
 
-    A missing header (an older server without the read mark) or a malformed value degrades the barrier
-    to its wall-clock budget rather than failing the read: the mark only ever tightens the wait.
+    Shared by the two headers that carry one: `X-Bajutsu-Read-Mark` on a read and
+    `X-Bajutsu-Act-Publish` on an actuation. What an absent mark *costs* differs between them, so each
+    caller states its own consequence; what they share is that a mark is never required — an older
+    server sends neither header, and reading None rather than raising is what keeps such a server
+    working.
     """
     if raw is None:
         return None
@@ -276,7 +295,7 @@ class _Process(Protocol):
 Spawn = Callable[[list[str]], _Process]
 Fetch = Callable[[int, float | None], HierarchyRead]
 ClockProbe = Callable[[int], float | None]
-ActProbe = Callable[[int, ActRequest], bool]
+ActProbe = Callable[[int, ActRequest], ActOutcome]
 
 
 @dataclass(frozen=True)
@@ -419,7 +438,7 @@ class ResidentServer:
             # and a genuine channel death still surfaces through the next `fetch`.
             return self._clock(port)
 
-        def act_on_device(request: ActRequest) -> bool:
+        def act_on_device(request: ActRequest) -> ActOutcome:
             # Unlike `fetch`, a fault here does not tear the channel down. The reads are still good —
             # an older server answers 404 for this path alone — and the driver's own degrade puts the
             # gesture back on the coordinate actuators. Killing a working read channel over a missing

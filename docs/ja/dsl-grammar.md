@@ -145,11 +145,12 @@ Preconditions ::= {
 }
 
 # ── SystemAlertHandling（リアクティブなシステムアラートガード; 既定 ON）─
-# XCUITest ではネイティブの SpringBoard 照会 + tap（モデルなし、BE-0316 を再利用）。AI 視覚はフォールバック（BE-0315）。
+# XCUITest ではネイティブの SpringBoard 照会 + tap（モデルなし、BE-0316 を再利用。BE-0315）。
+# その経路が名指しできないアラートは、推測せずブロックされたステップの失敗理由に書き出す（BE-0402）。
 SystemAlertHandling ::= boolean                              # true=既定の方針で ON、false=OFF
                | { rules?: [<SystemAlertRule>],             # 名指ししたプロンプトに choice で答える。ネイティブ経路
-                   labels?: [string],                       # 順序付きのボタンラベル。ネイティブ経路（＋視覚へのヒント）
-                   visionInstruction?: string,              # 自由記述。AI 視覚フォールバック専用
+                   labels?: [string],                       # 順序付きのボタンラベル。ネイティブ経路
+                   visionInstruction?: string,              # 自由記述。どのコマンドにも届かない。run は拒否する
                    pollInterval?: number }                   # ネイティブのポーリング間隔・秒（既定 1）
 SystemAlertRule ::= { prompt: notifications|tracking|paste, choice: grant|deny }  # 1リストにつきプロンプトは一意
 
@@ -218,9 +219,10 @@ Swipe ::=
   | { from: <Point>,  to: <Point> }                                                # 座標形      ┘
     # amount（セレクタ形のみ）: 画面に対する移動量の割合。0 < amount ≤ 1。省略時は小さめの既定割合（0.125）
 Drag ::= { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # 要素アンカーのポインタドラッグ（BE-0227）。amount は Swipe と同じ
-Scroll ::= { to: <Selector>, direction?: ("up"|"down"|"left"|"right"), within?: <Selector>, maxScrolls?: integer }
+Scroll ::= { to: <Selector>, direction?: ("up"|"down"|"left"|"right"), within?: <Selector>, amount?: number, maxScrolls?: integer }
     # `to` のフレーム中心が画面に入るまでスクロールし、入らなければ失敗する（BE-0326）。direction はスクロール方向（既定 "down"）で、Swipe の指方向とは逆。
     # within: ジェスチャを行うスクロール可能なコンテナ（既定は画面全体）。maxScrolls: 失敗までのステップ上限（既定 15、> 0）。
+    # amount: 1 ステップの移動量（ビューポートに対する割合、0 < amount ≤ 1。省略時 0.6）。ループの出発点を決めるもので、リカバリの下限は動かさない（BE-0400）。
 Point ::= [ number, number ]
 
 Generate ::=
@@ -392,7 +394,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Preconditions.launchEnv` | `{}` |
 | `SystemAlertHandling.rules` | `[]`（名指しした規則なし。`labels`／組み込みの否定的ラベルがすべてのプロンプトに答える） |
 | `SystemAlertHandling.labels` | `[]`（どの層もボタンを名指ししない。組み込みの否定的ラベルが代わりに使われる） |
-| `SystemAlertHandling.visionInstruction` | 未設定（フォールバックは `labels` から導いたヒント、無ければ自身の既定を使う） |
+| `SystemAlertHandling.visionInstruction` | 未設定。ほかの値は使えません。`run` は拒否し（BE-0402）、`record` / `crawl` は自由記述を自身の `--alert-vision-instruction` フラグからのみ読みます |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |

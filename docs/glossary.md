@@ -118,6 +118,22 @@ is why BE-0057 renamed the config concept from `app` to `target`.
 
 So a **target** (config) points at an **app** (software) driven on a **device** (runtime instance).
 
+## label
+
+**label** — The run-history partition, recorded on every run
+([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)). It
+defaults to the bound configuration's own name — a local file's stem, or a Git-sourced
+configuration's repository plus its in-repo path — and an operator overrides it per run with
+`bajutsu run --label`. Its whole job is to keep two configurations' runs readable apart after a
+`serve` restart, so the run list, Replay, and the run-stats dashboard show one label's runs by
+default.
+
+A label is **opaque to the tool**: never parsed, never matched against configuration, and never
+consulted when deciding what a caller may run. That is what separates it from a
+[target](#target-app-device), which is configuration-declared and carries authorization weight
+through `orgs.<name>.targets` — the two live in columns of their own so an operator's free text can
+never stand where an authorization-bearing value is read.
+
 ## Evidence, capturePolicy, trace, triage
 
 **evidence** — Artifacts captured during a run, each tagged with the provider that produced it.

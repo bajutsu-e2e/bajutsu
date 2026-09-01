@@ -219,7 +219,7 @@ test.describe('Components', () => {
 | `swipe { on, direction }` | a `page.mouse.wheel` scroll from the element center in the direction (BE-0227) |
 | `swipe { from, to }` | `// TODO` (coordinate swipes are not generated) |
 | `drag { on, direction }` | a real pointer drag of the element (move → down → move → up) from its center, in the direction — the web driver drags for `drag` where it wheels for a directional `swipe` (BE-0227) |
-| `scroll { to }` | `await loc.scrollIntoViewIfNeeded()` — a Playwright locator auto-scrolls into view before acting, so `direction` / `within` / `maxScrolls` are subsumed by the browser's own scroll (BE-0326) |
+| `scroll { to }` | `await loc.scrollIntoViewIfNeeded()` — a Playwright locator auto-scrolls into view before acting, so `direction` / `within` / `maxScrolls` / `amount` are subsumed by the browser's own scroll, which does its own stepping (BE-0326, BE-0400) |
 | `wait { for }` | `await expect(loc).toBeVisible({ timeout: <ms> })` |
 | `wait { until: gone }` | `await expect(loc).toBeHidden({ timeout: <ms> })` |
 | `wait { until: screenChanged/settled }` | a comment (Playwright auto-waits) |

@@ -148,7 +148,7 @@ def test_select_returns_none_when_no_eligible_match() -> None:
 
 # --- handler + end-to-end (injected reader + fake clock; no network) ---
 
-from conftest import el  # noqa: E402
+from conftest import AlertingDriver, el  # noqa: E402
 
 from bajutsu.drivers import base  # noqa: E402
 from bajutsu.drivers.fake import FakeDriver  # noqa: E402
@@ -323,7 +323,6 @@ def test_email_requires_positive_timeout() -> None:
 def test_on_blocked_retry_preserves_the_mailbox() -> None:
     # Regression: the retry-after-on_blocked path must still pass the mailbox, or a transient first
     # failure would be masked by a spurious "no mailbox configured" on the retry.
-    from bajutsu.orchestrator import AlertEvent
 
     msg = _msg(id="new", subject="Verify", body="PIN 135790", at="2026-01-01T00:01:00Z")
     # First attempt (timeout 1s, ~1s poll) baselines + polls empty -> times out -> on_blocked fires
@@ -345,16 +344,13 @@ def test_on_blocked_retry_preserves_the_mailbox() -> None:
         }
     )
 
-    def on_blocked(_d: base.Driver) -> AlertEvent | None:
-        return AlertEvent(label="Allow")
-
     result = run_scenario(
-        FakeDriver([el("home.title", "Home")]),
+        AlertingDriver([el("home.title", "Home")], label="Allow"),
         scenario,
         clock=_FakeClock(),
         bindings={},
         mailbox=mailbox,
-        alert_guard=AlertGuardConfig(vision=on_blocked),
+        alert_guard=AlertGuardConfig(labels=["Allow"]),
     )
     assert result.ok, result.failure
     assert "no mailbox configured" not in (result.steps[0].reason or "")

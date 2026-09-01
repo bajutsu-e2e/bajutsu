@@ -56,16 +56,36 @@ def redact_totp_secrets(scenario: Scenario) -> Scenario:
     durable credential material, so it is replaced with a placeholder before the snapshot is
     written. A `${secrets.*}` reference is left intact (its resolved value never reaches the
     snapshot — BE-0032). Round-trips through the model so the result stays a valid scenario.
+
+    `exclude_defaults` is what keeps that round-trip total: a field validator may reject a value the
+    author can never write but a dump still emits — `systemAlertHandling.labels` rejects `[]`, which
+    is its own `default_factory` output and which `exclude_none` does not drop — so re-validating a
+    model's own dump would fail on a policy that named no button (BE-0401). Excluding default-valued
+    fields hands `model_validate` only what was declared, and re-validation restores each default, so
+    the returned model is field-for-field the input.
     """
-    data = scenario.model_dump(by_alias=True, exclude_none=True)
+    data = scenario.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
     return Scenario.model_validate(_mask_totp_secrets(data))
 
 
 def scenario_dict(scenario: Scenario) -> dict[str, Any]:
-    """A pruned, alias-keyed dict of one scenario (for the rich report view)."""
+    """A pruned, alias-keyed dict of one scenario (for the rich report view).
+
+    Drops default-valued fields for the same reason `redact_totp_secrets` does: a model dump that
+    emits every default is not reloadable, because a validator reading `model_fields_set` cannot tell
+    a default the dump added from a value the author wrote. `VisualMatch._engine_fields` is the
+    case — it rejects `colorTolerance` / `antialiasing` alongside `compare: exact`, and both carry
+    non-None defaults that `exclude_none` keeps — so the `scenario.yaml` written beside a run's
+    results failed to reload, against `dump_scenarios`' own round-trip contract. Excluding them also
+    keeps the snapshot as terse as the author wrote it, which is what `dump_block` already does.
+    """
     return cast(
         "dict[str, Any]",
-        _prune(scenario.model_dump(mode="json", by_alias=True, exclude_none=True)),
+        _prune(
+            scenario.model_dump(
+                mode="json", by_alias=True, exclude_none=True, exclude_defaults=True
+            )
+        ),
     )
 
 

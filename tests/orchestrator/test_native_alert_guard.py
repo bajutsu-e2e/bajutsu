@@ -71,10 +71,6 @@ def _fake_with_alert(labels: list[str], react: object = None) -> FakeDriver:
     return driver
 
 
-def _never_vision(_driver: base.Driver) -> AlertEvent | None:
-    raise AssertionError("the vision fallback must not be called on the native path")
-
-
 # --- pick_alert_label -------------------------------------------------------------------------------
 
 
@@ -146,19 +142,19 @@ def test_match_alert_rule_requires_each_identifying_label_exactly_once() -> None
 
 
 def test_probe_native_incapable_backend() -> None:
-    guard = AlertGuardConfig(vision=_never_vision)
-    assert guard.probe_native(_Incapable()) == ("incapable", None)  # type: ignore[arg-type]
+    guard = AlertGuardConfig()
+    assert guard.probe_native(_Incapable()) == ("incapable", None, [])  # type: ignore[arg-type]
 
 
 def test_probe_native_absent_when_no_alert() -> None:
-    guard = AlertGuardConfig(vision=_never_vision)
-    assert guard.probe_native(FakeDriver([])) == ("absent", None)  # capable, but no alert seeded
+    guard = AlertGuardConfig()
+    assert guard.probe_native(FakeDriver([])) == ("absent", None, [])  # capable, no alert seeded
 
 
 def test_probe_native_dismisses_a_named_button() -> None:
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Allow"])
+    guard = AlertGuardConfig(labels=["Allow"])
     driver = _fake_with_alert(["Don't Allow", "Allow"])
-    state, event = guard.probe_native(driver)
+    state, event, _ = guard.probe_native(driver)
     assert state == "dismissed"
     assert event == AlertEvent(label="Allow")
     # It tapped through BE-0316's handle_system_alert with the picked label.
@@ -166,9 +162,9 @@ def test_probe_native_dismisses_a_named_button() -> None:
 
 
 def test_probe_native_uses_default_dismissive_labels_when_none_configured() -> None:
-    guard = AlertGuardConfig(vision=_never_vision)  # no labels → default dismissive policy
+    guard = AlertGuardConfig()  # no labels → default dismissive policy
     driver = _fake_with_alert(["Don't Allow", "Allow"])
-    state, event = guard.probe_native(driver)
+    state, event, _ = guard.probe_native(driver)
     assert state == "dismissed"
     assert event is not None and event.label == "Don't Allow"
     assert event.label in DEFAULT_DISMISSIVE_LABELS
@@ -177,27 +173,29 @@ def test_probe_native_uses_default_dismissive_labels_when_none_configured() -> N
 def test_probe_native_prefers_a_matching_rule_over_the_candidate_labels() -> None:
     # A rule identifying the tracking prompt taps its own choice, even though "Allow" is also a
     # candidate label that would otherwise resolve first via pick_alert_label.
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Allow"], rules=[_TRACKING_RULE])
+    guard = AlertGuardConfig(labels=["Allow"], rules=[_TRACKING_RULE])
     driver = _fake_with_alert(["Allow", "Ask App Not to Track"])
-    state, event = guard.probe_native(driver)
+    state, event, _ = guard.probe_native(driver)
     assert state == "dismissed"
     assert event == AlertEvent(label="Ask App Not to Track")
 
 
 def test_probe_native_falls_back_to_labels_when_no_rule_matches() -> None:
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Allow"], rules=[_TRACKING_RULE])
+    guard = AlertGuardConfig(labels=["Allow"], rules=[_TRACKING_RULE])
     driver = _fake_with_alert(
         ["Don't Allow", "Allow"]
     )  # notifications prompt: no rule identifies it
-    state, event = guard.probe_native(driver)
+    state, event, _ = guard.probe_native(driver)
     assert state == "dismissed"
     assert event == AlertEvent(label="Allow")
 
 
 def test_probe_native_unhandled_when_no_candidate_resolves() -> None:
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Allow"])
+    # The buttons come back with the state (BE-0402): nothing will clear this alert, so they are all
+    # a blocked step or wait has left to name what stopped it.
+    guard = AlertGuardConfig(labels=["Allow"])
     driver = _fake_with_alert(["Weird Button"])
-    assert guard.probe_native(driver) == ("unhandled", None)
+    assert guard.probe_native(driver) == ("unhandled", None, ["Weird Button"])
 
 
 def test_probe_native_treats_a_dismiss_race_as_absent() -> None:
@@ -209,38 +207,44 @@ def test_probe_native_treats_a_dismiss_race_as_absent() -> None:
 
     driver = _RaceDriver([])
     driver.system_alert_buttons = [_button("Allow")]
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Allow"])
-    assert guard.probe_native(driver) == ("absent", None)
+    guard = AlertGuardConfig(labels=["Allow"])
+    assert guard.probe_native(driver) == ("absent", None, [])
 
 
-# --- AlertGuardConfig.__call__ (native-first, vision fallback) --------------------------------------
+# --- AlertGuardConfig.__call__ (native only since BE-0402) ------------------------------------------
 
 
-def test_call_returns_native_event_without_touching_vision() -> None:
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Allow"])
+def test_call_returns_the_native_event_and_leaves_no_note() -> None:
+    guard = AlertGuardConfig(labels=["Allow"])
     assert guard(_fake_with_alert(["Allow"])) == AlertEvent(label="Allow")
+    assert guard.blocked_note == ""  # the screen is unblocked; nothing to report
 
 
-def test_call_falls_back_to_vision_when_native_cannot_act() -> None:
-    calls = {"n": 0}
-
-    def vision(_driver: base.Driver) -> AlertEvent | None:
-        calls["n"] += 1
-        return AlertEvent(label="vision")
-
-    guard = AlertGuardConfig(vision=vision, labels=["Allow"])
-    assert guard(_fake_with_alert(["Weird Button"])) == AlertEvent(
-        label="vision"
-    )  # unhandled → vision
-    assert calls["n"] == 1
+def test_call_reports_an_unnamed_alert_instead_of_guessing_at_it() -> None:
+    # BE-0402: no rule or candidate label names this button, and nothing here will guess where to
+    # tap. The step keeps failing — but with the alert named, which is the whole point.
+    guard = AlertGuardConfig(labels=["Allow"])
+    assert guard(_fake_with_alert(["Weird Button"])) is None
+    assert "unhandled system alert" in guard.blocked_note
+    assert "Weird Button" in guard.blocked_note
 
 
-def test_call_falls_back_to_vision_on_an_incapable_backend() -> None:
-    def vision(_driver: base.Driver) -> AlertEvent | None:
-        return AlertEvent(label="vision")
+def test_call_leaves_no_note_on_an_incapable_backend() -> None:
+    # No native query ran, so nothing was observed. A note here would claim a block the guard never
+    # saw, on every failed step of every non-iOS backend.
+    guard = AlertGuardConfig()
+    assert guard(_Incapable()) is None  # type: ignore[arg-type]
+    assert guard.blocked_note == ""
 
-    guard = AlertGuardConfig(vision=vision)
-    assert guard(FakeDriver([])) == AlertEvent(label="vision")
+
+def test_call_clears_a_stale_note_once_the_alert_is_gone() -> None:
+    # The note states the *latest* observation, never that a block was ever seen: a scenario runs its
+    # steps against one config, so a sticky note would mislabel every later failure in it.
+    guard = AlertGuardConfig(labels=["Allow"])
+    assert guard(_fake_with_alert(["Weird Button"])) is None
+    assert guard.blocked_note
+    assert guard(FakeDriver([])) is None
+    assert guard.blocked_note == ""
 
 
 # --- the mid-wait gate on the native path -----------------------------------------------------------
@@ -263,7 +267,7 @@ def test_gate_dismisses_natively_mid_wait_and_records_the_alert() -> None:
             d.screen = [target]  # and the awaited element is revealed
 
     driver = _fake_with_alert(["Allow"], react=react)
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Allow"])
+    guard = AlertGuardConfig(labels=["Allow"])
     alerts: list[AlertEvent] = []
     ok, reason, _tree = _wait(
         driver, _for_wait("ready", 30.0), _LogicalClock(), alert_guard=guard, alerts=alerts
@@ -292,48 +296,34 @@ def test_gate_absent_native_alert_debounces_a_transient_collapse() -> None:
 
     # poll_interval=1.0 rate-limits only the native query; the collapsed-tree debounce still samples
     # every _POLL, so one transient frame that clears before the debounce is filtered regardless.
-    guard = AlertGuardConfig(vision=_never_vision, poll_interval=1.0)
+    guard = AlertGuardConfig(poll_interval=1.0)
     ok, reason, _tree = _wait(
         _OneFrameCollapse(), _for_wait("ready", 30.0), _LogicalClock(), alert_guard=guard, alerts=[]
     )
     assert ok and reason == ""  # revealed after one transient collapse; vision never called
 
 
-def test_gate_absent_native_alert_still_drives_vision_for_a_persistent_collapse() -> None:
+def test_gate_absent_native_alert_reports_a_persistent_collapse_it_cannot_name() -> None:
     # "absent" only rules out a *SpringBoard* alert: an action sheet or a WKWebView JS dialog the
-    # native query cannot enumerate reads as absent too while still collapsing the tree. A persistent
-    # collapse under "absent" must still drive the debounced vision fallback mid-wait — restoring the
-    # BE-0269 recovery the native path would otherwise skip on the now-default backend (PR #1330).
+    # native query cannot enumerate reads as absent too while still collapsing the tree. Nothing can
+    # clear that since BE-0402, so the wait runs to its own timeout — but the collapsed-tree proxy's
+    # observation rides along on the failure, hedged, because no query ever named a button here.
     from bajutsu.orchestrator.waits import _wait
-
-    target = _button("R")
-    target["identifier"] = "ready"
-    calls = {"n": 0}
-
-    def vision(d: base.Driver) -> AlertEvent | None:
-        calls["n"] += 1
-        assert isinstance(d, FakeDriver)
-        d.screen = [target]  # vision clears the non-SpringBoard surface the native query cannot see
-        return AlertEvent(label="Dismiss")
 
     driver = FakeDriver(
         []
     )  # capable, collapsed, no SpringBoard alert seeded → probe returns "absent"
-    # poll_interval=1.0 (the realistic default) but a tight 2s budget: the collapsed-tree debounce must
-    # sample every _POLL, not once per interval, or vision would first fire at ~3x poll_interval and
-    # miss this budget entirely (the regression this locks in). It recovers within a few _POLL ticks.
-    guard = AlertGuardConfig(vision=vision, poll_interval=1.0)
-    alerts: list[AlertEvent] = []
-    clock = _LogicalClock()
+    # poll_interval=1.0 (the realistic default) but a tight 2s budget: the collapsed-tree proxy must
+    # sample every _POLL, not once per interval, or its observation would first land at ~3x
+    # poll_interval and miss this budget entirely (the BE-0269 latency PR #1330 locked in).
+    guard = AlertGuardConfig(poll_interval=1.0)
     ok, reason, _tree = _wait(
-        driver, _for_wait("ready", 2.0), clock, alert_guard=guard, alerts=alerts
+        driver, _for_wait("ready", 2.0), _LogicalClock(), alert_guard=guard, alerts=[]
     )
-    assert ok and reason == ""
-    assert (
-        clock.now() < 1.0
-    )  # recovered at proxy latency, not throttled to the native-probe cadence
-    assert calls["n"] == 1  # the vision fallback fired mid-wait for the non-SpringBoard collapse
-    assert alerts == [AlertEvent(label="Dismiss")]
+    assert not ok
+    assert "wait timeout: for" in reason
+    assert "the screen appears blocked" in reason  # hedged: no button was ever enumerated
+    assert "buttons:" not in reason
 
 
 def test_gate_polls_the_native_query_on_its_own_interval_not_every_tick() -> None:
@@ -351,7 +341,7 @@ def test_gate_polls_the_native_query_on_its_own_interval_not_every_tick() -> Non
     # App UI is visible (a non-collapsed tree), so the collapsed-tree vision fallback never enters —
     # this isolates the native probe's cadence from the "absent + collapsed" fallback path.
     app_ui = _button("home")
-    guard = AlertGuardConfig(vision=_never_vision, poll_interval=1.0)
+    guard = AlertGuardConfig(poll_interval=1.0)
     ok, _reason, _tree = _wait(
         _CountingProbe([app_ui]),
         _for_wait("never", 2.0),
@@ -384,9 +374,7 @@ def test_gate_dismisses_an_app_attached_sheet_from_the_tree_without_vision() -> 
             d.screen = [target]  # dismissing the sheet reveals the awaited element
 
     driver = FakeDriver([prompt_button], react=react)  # capable; no SpringBoard alert seeded
-    guard = AlertGuardConfig(
-        vision=_never_vision, labels=["今はしない", "Not Now"], poll_interval=1.0
-    )
+    guard = AlertGuardConfig(labels=["今はしない", "Not Now"], poll_interval=1.0)
     alerts: list[AlertEvent] = []
     clock = _LogicalClock()
     ok, reason, _tree = _wait(
@@ -426,7 +414,7 @@ def test_dismiss_from_tree_taps_a_showing_at_most_once() -> None:
             return list(self.screen)
 
     driver = _LingeringDismiss()
-    guard = AlertGuardConfig(vision=_never_vision, labels=["今はしない"], poll_interval=1.0)
+    guard = AlertGuardConfig(labels=["今はしない"], poll_interval=1.0)
     alerts: list[AlertEvent] = []
     ok, _reason, _tree = _wait(
         driver, _for_wait("ready", 2.0), _LogicalClock(), alert_guard=guard, alerts=alerts
@@ -469,7 +457,7 @@ def test_dismiss_from_tree_retries_a_delivered_tap_that_did_not_clear_the_prompt
             super().tap(sel)  # delivered and recorded; `screen` deliberately left unchanged
 
     driver = _IneffectiveTap()
-    guard = AlertGuardConfig(vision=_never_vision, labels=["今はしない"], poll_interval=1.0)
+    guard = AlertGuardConfig(labels=["今はしない"], poll_interval=1.0)
     alerts: list[AlertEvent] = []
     # A 30s budget, far longer than `_TREE_DISMISS_MAX_TAPS` taps spaced by `_TREE_RETAP_DELAY`, so
     # what stops the retries here is the tap ceiling rather than the wait running out: no retry at all
@@ -490,6 +478,13 @@ def test_dismiss_from_tree_retries_a_delivered_tap_that_did_not_clear_the_prompt
     # timeout would read as "the awaited element never rendered" rather than "the prompt never left".
     gave_up = [r for r in caplog.records if "in-tree alert dismiss gave up" in r.message]
     assert len(gave_up) == 1
+    # And the same disclosure rides the failure, not only the log (BE-0402). This is the one case the
+    # collapsed-tree proxy cannot cover for: an app-attached sheet keeps the tree looking like
+    # ordinary app UI, so without the note here the timeout would say nothing about the prompt at all.
+    # Not the "unhandled" wording: this label *did* resolve and was tapped, and telling the author no
+    # candidate was named would send them to add a label they already wrote.
+    assert "a system prompt the guard could not clear is still up (button: 今はしない)" in _reason
+    assert "unhandled system alert" not in _reason
 
 
 def test_dismiss_from_tree_retry_that_lands_clears_the_prompt_and_passes_the_wait() -> None:
@@ -518,7 +513,7 @@ def test_dismiss_from_tree_retry_that_lands_clears_the_prompt_and_passes_the_wai
                 self.screen = [target]  # this one lands
 
     driver = _SecondTapLands()
-    guard = AlertGuardConfig(vision=_never_vision, labels=["今はしない"], poll_interval=1.0)
+    guard = AlertGuardConfig(labels=["今はしない"], poll_interval=1.0)
     alerts: list[AlertEvent] = []
     clock = _LogicalClock()
     ok, reason, _tree = _wait(
@@ -557,7 +552,7 @@ def test_dismiss_from_tree_does_not_retry_when_the_tap_moved_the_screen() -> Non
             self.screen = [app_button, content]  # sheet gone; the app's own button still matches
 
     driver = _RevealsSameLabelAppButton()
-    guard = AlertGuardConfig(vision=_never_vision, labels=["今はしない"], poll_interval=1.0)
+    guard = AlertGuardConfig(labels=["今はしない"], poll_interval=1.0)
     alerts: list[AlertEvent] = []
     ok, _reason, _tree = _wait(
         driver, _for_wait("ready", 5.0), _LogicalClock(), alert_guard=guard, alerts=alerts
@@ -610,9 +605,7 @@ def test_dismiss_from_tree_records_a_second_showing_after_an_untapped_other_labe
             return list(self.screen)
 
     driver = _TwoShowings()
-    guard = AlertGuardConfig(
-        vision=_never_vision, labels=["今はしない", "あとで"], poll_interval=1.0
-    )
+    guard = AlertGuardConfig(labels=["今はしない", "あとで"], poll_interval=1.0)
     alerts: list[AlertEvent] = []
     ok, _reason, _tree = _wait(
         driver, _for_wait("ready", 5.0), _LogicalClock(), alert_guard=guard, alerts=alerts
@@ -652,7 +645,7 @@ def test_dismiss_from_tree_declines_on_not_yet_tappable_then_dismisses() -> None
             self.screen = [target]  # the animation finishes; the screen updates
 
     driver = _NotYetTappableDismiss()
-    guard = AlertGuardConfig(vision=_never_vision, labels=["今はしない"], poll_interval=1.0)
+    guard = AlertGuardConfig(labels=["今はしない"], poll_interval=1.0)
     alerts: list[AlertEvent] = []
     ok, _reason, _tree = _wait(
         driver, _for_wait("ready", 3.0), _LogicalClock(), alert_guard=guard, alerts=alerts
@@ -685,7 +678,7 @@ def test_dismiss_from_tree_stops_retrying_a_permanently_covered_button() -> None
             raise base.ElementNotTappable("covered by a scrim that never lifts")
 
     driver = _PermanentlyCoveredDismiss()
-    guard = AlertGuardConfig(vision=_never_vision, labels=["今はしない"], poll_interval=1.0)
+    guard = AlertGuardConfig(labels=["今はしない"], poll_interval=1.0)
     ok, _reason, _tree = _wait(
         driver, _for_wait("ready", 3.0), _LogicalClock(), alert_guard=guard, alerts=[]
     )
@@ -694,6 +687,11 @@ def test_dismiss_from_tree_stops_retrying_a_permanently_covered_button() -> None
     # the give-up horizon is reached — bounded, not one attempt per poll for the whole 3s wait.
     assert driver.tap_calls == 2
     assert _decline_giveup(1.0) == 2.0  # the horizon the count above is derived from
+    # And the give-up says what it gave up on (BE-0402), like the tap-budget one: an obstructed sheet
+    # keeps its own labelled buttons in the tree, so nothing else on this path would report it — and
+    # in the same "could not clear" wording, since the label resolved here too.
+    assert "a system prompt the guard could not clear is still up (button: 今はしない)" in _reason
+    assert "unhandled system alert" not in _reason
 
 
 def test_dismiss_from_tree_declines_on_an_in_app_label_collision() -> None:
@@ -721,7 +719,7 @@ def test_dismiss_from_tree_declines_on_an_in_app_label_collision() -> None:
             super().tap(sel)
 
     driver = _CountingTapDriver()  # native-capable; no SpringBoard alert
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=1.0)
+    guard = AlertGuardConfig(labels=["Not Now"], poll_interval=1.0)
     ok, _reason, _tree = _wait(
         driver, _for_wait("ready", 0.2), _LogicalClock(), alert_guard=guard, alerts=[]
     )
@@ -752,7 +750,7 @@ def test_dismiss_from_tree_dismisses_despite_a_non_button_label_collision() -> N
     driver = FakeDriver(
         [prompt_button, caption], react=react
     )  # native-capable; no SpringBoard alert
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=1.0)
+    guard = AlertGuardConfig(labels=["Not Now"], poll_interval=1.0)
     alerts: list[AlertEvent] = []
     ok, _reason, _tree = _wait(
         driver, _for_wait("ready", 0.2), _LogicalClock(), alert_guard=guard, alerts=alerts
@@ -773,7 +771,7 @@ def test_dismiss_from_tree_never_matches_an_in_app_button_carrying_an_identifier
     app_button["identifier"] = "screen.home.button.not-now"  # an app-authored button, not a prompt
 
     driver = FakeDriver([app_button])  # capable; no SpringBoard alert seeded; never reveals "ready"
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=1.0)
+    guard = AlertGuardConfig(labels=["Not Now"], poll_interval=1.0)
     ok, _reason, _tree = _wait(
         driver, _for_wait("ready", 0.2), _LogicalClock(), alert_guard=guard, alerts=[]
     )
@@ -796,9 +794,7 @@ def test_dismiss_from_tree_never_fires_on_a_non_native_backend() -> None:
             d.screen = [target]  # would reveal "ready" if the in-tree path fired (it must not)
 
     driver = _NonNativeDriver([prompt_button], react=react)
-    guard = AlertGuardConfig(
-        vision=_never_vision, labels=["今はしない", "Not Now"], poll_interval=1.0
-    )
+    guard = AlertGuardConfig(labels=["今はしない", "Not Now"], poll_interval=1.0)
     ok, _reason, _tree = _wait(
         driver, _for_wait("ready", 0.2), _LogicalClock(), alert_guard=guard, alerts=[]
     )
@@ -823,7 +819,7 @@ def test_dismiss_from_tree_never_fires_on_default_dismissive_labels_alone() -> N
             d.screen = [target]  # would reveal "ready" if the in-tree path fired (it must not)
 
     driver = FakeDriver([cancel_button], react=react)  # native-capable; no labels configured
-    guard = AlertGuardConfig(vision=_never_vision, poll_interval=1.0)  # labels=[] (default)
+    guard = AlertGuardConfig(poll_interval=1.0)  # labels=[] (default)
     ok, _reason, _tree = _wait(
         driver, _for_wait("ready", 0.2), _LogicalClock(), alert_guard=guard, alerts=[]
     )
@@ -831,25 +827,46 @@ def test_dismiss_from_tree_never_fires_on_default_dismissive_labels_alone() -> N
     assert driver.actions == []
 
 
-def test_gate_unhandled_native_alert_falls_back_to_vision_bounded() -> None:
-    # An alert is up but no policy label resolves (unknown button): the gate routes to the vision
-    # fallback, bounded by the same attempt ceiling as the collapsed-tree path — never an unbounded
-    # per-interval stream of AI-vision calls (BE-0315).
-    from bajutsu.orchestrator.waits import _GUARD_MAX_ATTEMPTS, _wait
-
-    calls = {"n": 0}
-
-    def vision(_driver: base.Driver) -> AlertEvent | None:
-        calls["n"] += 1
-        return None  # vision can't clear it either, so the wait runs to its full budget
+def test_gate_unhandled_native_alert_names_it_in_the_wait_timeout() -> None:
+    # An alert is up but no policy label resolves (unknown button). BE-0402 leaves it alone rather
+    # than asking a model where to tap — and the wait, which would otherwise report only the element
+    # that never appeared, names the alert and the buttons the probe actually read.
+    from bajutsu.orchestrator.waits import _wait
 
     driver = _fake_with_alert(["Weird Button"])  # capable; alert stays up (never dismissed)
-    guard = AlertGuardConfig(vision=vision, labels=["Allow"], poll_interval=1.0)
-    ok, _reason, _tree = _wait(
+    guard = AlertGuardConfig(labels=["Allow"], poll_interval=1.0)
+    ok, reason, _tree = _wait(
         driver, _for_wait("never", 30.0), _LogicalClock(), alert_guard=guard, alerts=[]
     )
     assert not ok
-    assert calls["n"] == _GUARD_MAX_ATTEMPTS  # bounded, not one call per interval for 30s
+    assert reason.startswith("wait timeout: for")
+    assert "an unhandled system alert is blocking the screen (buttons: Weird Button)" in reason
+    assert driver.actions == []  # and nothing was tapped on the way there
+
+
+def test_gate_drops_the_note_once_the_prompt_goes_away() -> None:
+    # A prompt that appears and resolves itself mid-wait must leave nothing behind: the note states
+    # the latest observation, so a later, unrelated timeout never blames an alert long gone. The app
+    # is on screen throughout, so the collapsed-tree proxy has nothing of its own to say either.
+    from bajutsu.orchestrator.waits import _wait
+
+    class _SelfResolving(FakeDriver):
+        probes = 0
+
+        def system_alert_labels(self) -> list[str]:
+            self.probes += 1
+            return ["Weird Button"] if self.probes < 3 else []
+
+    app = _button("Home")
+    app["identifier"] = "screen.home"
+    driver = _SelfResolving([app])
+    guard = AlertGuardConfig(labels=["Allow"], poll_interval=0.05)
+    ok, reason, _tree = _wait(
+        driver, _for_wait("never", 1.0), _LogicalClock(), alert_guard=guard, alerts=[]
+    )
+    assert not ok
+    assert reason.startswith("wait timeout: for")
+    assert "\u2014" not in reason  # no note appended: the prompt resolved itself mid-wait
 
 
 # --- the in-tree dismiss is gated on a fresh "no SpringBoard alert" answer ---------------------
@@ -892,9 +909,7 @@ def test_dismiss_from_tree_is_withheld_while_a_springboard_alert_is_up() -> None
     # One `systemAlertHandling.instruction` covers both prompts, as an author would write it: the
     # permission request's refusal first, then the sheet's own dismissal. Each path resolves the one
     # candidate its own surface carries.
-    guard = AlertGuardConfig(
-        vision=_never_vision, labels=["Don't Allow", "Not Now"], poll_interval=1.0
-    )
+    guard = AlertGuardConfig(labels=["Don't Allow", "Not Now"], poll_interval=1.0)
     alerts: list[AlertEvent] = []
     ok, _reason, _tree = _wait(
         driver, _for_wait("ready", 5.0), _LogicalClock(), alert_guard=guard, alerts=alerts
@@ -936,7 +951,7 @@ def test_dismiss_from_tree_is_paced_by_the_native_probe_not_by_the_poll() -> Non
 
     clock = _LogicalClock()
     driver = _TapNeverLands()
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=2.0)
+    guard = AlertGuardConfig(labels=["Not Now"], poll_interval=2.0)
     ok, _reason, _tree = _wait(
         driver, _for_wait("ready", 10.0), clock, alert_guard=guard, alerts=[]
     )
@@ -966,7 +981,7 @@ def test_dismiss_from_tree_still_runs_when_no_springboard_alert_is_up() -> None:
             self.screen = [target]
 
     driver = _SheetOnly()
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=1.0)
+    guard = AlertGuardConfig(labels=["Not Now"], poll_interval=1.0)
     alerts: list[AlertEvent] = []
     ok, _reason, _tree = _wait(
         driver, _for_wait("ready", 5.0), _LogicalClock(), alert_guard=guard, alerts=alerts
@@ -1002,7 +1017,7 @@ def test_dismiss_from_tree_waits_out_the_retap_delay_at_a_short_poll_interval() 
     driver = _TapNeverLands()
     # A fifth of the retap delay: five in-tree passes fit inside one, so a gap of `poll_interval`
     # between taps would be plainly visible in the timings below.
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=0.2)
+    guard = AlertGuardConfig(labels=["Not Now"], poll_interval=0.2)
     ok, _reason, _tree = _wait(driver, _for_wait("ready", 5.0), clock, alert_guard=guard, alerts=[])
     assert not ok  # "ready" never appears; the wait times out on its own deadline
     assert len(driver.tap_times) == _TREE_DISMISS_MAX_TAPS
@@ -1024,7 +1039,7 @@ def test_push_interruption_policy_hands_the_backend_the_guard_s_own_labels() -> 
     rule = ResolvedAlertRule(
         identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Don't Allow"
     )
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], rules=[rule])
+    guard = AlertGuardConfig(labels=["Not Now"], rules=[rule])
     push_interruption_policy(driver, guard)
     assert driver.interruption_policy == ([({"Allow", "Don't Allow"}, "Don't Allow")], ["Not Now"])
 
@@ -1036,7 +1051,7 @@ def test_push_interruption_policy_falls_back_to_the_dismissive_defaults() -> Non
     from bajutsu.orchestrator import push_interruption_policy
 
     driver = FakeDriver([])
-    push_interruption_policy(driver, AlertGuardConfig(vision=_never_vision))
+    push_interruption_policy(driver, AlertGuardConfig())
     assert driver.interruption_policy is not None
     assert driver.interruption_policy[1] == list(DEFAULT_DISMISSIVE_LABELS)
 
@@ -1087,7 +1102,7 @@ def test_a_gone_wait_is_guarded_so_an_in_app_prompt_can_be_cleared() -> None:
             self.screen = [_button("Sign In")]  # the alert closes
 
     driver = _AppOwnedPrompt()
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"], poll_interval=1.0)
+    guard = AlertGuardConfig(labels=["Not Now"], poll_interval=1.0)
     alerts: list[AlertEvent] = []
     ok, _reason, _tree = _wait(
         driver,
@@ -1110,7 +1125,7 @@ def test_the_interruption_policy_is_skipped_on_a_backend_without_the_opt_in() ->
         """A backend stub carrying neither half of the opt-in (a web / Android shape)."""
 
     driver = cast("base.Driver", _NoOptIn())
-    push_interruption_policy(driver, AlertGuardConfig(vision=_never_vision))
+    push_interruption_policy(driver, AlertGuardConfig())
     assert drain_interruptions(driver) == []
 
 
@@ -1125,7 +1140,7 @@ def test_the_end_of_step_guard_clears_an_app_owned_prompt_from_the_tree() -> Non
     # covered tree.
     prompt_button = _button("Not Now")
     driver = FakeDriver([_button("Sign In"), prompt_button])
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Not Now"])
+    guard = AlertGuardConfig(labels=["Not Now"])
     assert guard(driver) == AlertEvent(label="Not Now")
     assert driver.actions and driver.actions[-1][0] == "tap"
 
@@ -1136,32 +1151,25 @@ def test_the_end_of_step_guard_leaves_the_tree_alone_while_a_springboard_alert_i
     # guard's to make. The native path answers that alert first; the tree is next time's business.
     driver = _fake_with_alert(["Don't Allow", "Allow"])
     driver.screen = [_button("Not Now")]
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Don't Allow", "Not Now"])
+    guard = AlertGuardConfig(labels=["Don't Allow", "Not Now"])
     assert guard(driver) == AlertEvent(label="Don't Allow")  # the SpringBoard alert, natively
     assert not any(action[0] == "tap" for action in driver.actions)
 
 
 def test_the_end_of_step_guard_declines_an_ambiguous_in_tree_label() -> None:
     # Determinism first, exactly as the mid-wait path: two buttons carrying the configured label is
-    # not a prompt this guard may guess at. It falls through to vision instead of tapping one.
-    seen: list[str] = []
-
-    def _vision(_driver: base.Driver) -> AlertEvent | None:
-        seen.append("vision")
-        return None
-
+    # not a prompt this guard may guess at. It reports nothing rather than tapping one.
     driver = FakeDriver([_button("Not Now"), _button("Not Now")])
-    guard = AlertGuardConfig(vision=_vision, labels=["Not Now"])
+    guard = AlertGuardConfig(labels=["Not Now"])
     assert guard(driver) is None
-    assert seen == ["vision"]
     assert not any(action[0] == "tap" for action in driver.actions)
 
 
 def test_the_end_of_step_guard_stays_off_the_tree_without_scenario_labels() -> None:
-    # The in-tree surface is armed only by the scenario's own `instruction`, never by the built-in
+    # The in-tree surface is armed only by the scenario's own `labels`, never by the built-in
     # dismissive defaults — "Cancel" / "Close" are ordinary UI vocabulary a real screen can show.
     driver = FakeDriver([_button("Cancel")])
-    guard = AlertGuardConfig(vision=lambda _d: None)
+    guard = AlertGuardConfig()
     assert guard(driver) is None
     assert not any(action[0] == "tap" for action in driver.actions)
 
@@ -1173,7 +1181,7 @@ def test_the_end_of_step_guard_declines_when_an_identified_button_shares_the_lab
     app_button = _button("Not Now")
     app_button["identifier"] = "screen.home.button.not-now"
     driver = FakeDriver([_button("Not Now"), app_button])
-    guard = AlertGuardConfig(vision=lambda _d: None, labels=["Not Now"])
+    guard = AlertGuardConfig(labels=["Not Now"])
     assert guard(driver) is None
     assert not any(action[0] == "tap" for action in driver.actions)
 
@@ -1186,8 +1194,84 @@ def test_the_end_of_step_guard_reports_nothing_when_the_prompt_closes_itself() -
             raise base.ElementNotFound("the prompt closed itself")
 
     driver = _VanishingPrompt([_button("Not Now")])
-    guard = AlertGuardConfig(vision=lambda _d: None, labels=["Not Now"])
+    guard = AlertGuardConfig(labels=["Not Now"])
     assert guard(driver) is None
+
+
+def test_a_blocked_tap_names_the_alert_in_the_step_s_own_failure() -> None:
+    # BE-0402's promise for the *step* call site, which holds no mid-wait gate: a `tap` blocked by an
+    # alert no rule or candidate label names would otherwise fail as a bare `element not found`, with
+    # nothing to say a prompt was on screen at all.
+    from bajutsu.orchestrator import run_scenario
+    from bajutsu.scenario import load_scenarios
+
+    driver = _fake_with_alert(["Weird Button"])  # nothing on screen, and an unnamed prompt over it
+    result = run_scenario(
+        driver,
+        load_scenarios("- name: t\n  steps:\n    - tap: { id: go }\n")[0],
+        alert_guard=AlertGuardConfig(labels=["Allow"]),
+    )
+    assert not result.ok
+    reason = result.steps[0].reason or ""
+    assert "an unhandled system alert is blocking the screen (buttons: Weird Button)" in reason
+    assert result.steps[0].alerts == []  # nothing was dismissed, and nothing claims otherwise
+
+
+def test_a_blocked_wait_names_the_alert_exactly_once() -> None:
+    # A guarded `wait` passes through both call sites: the mid-wait gate appends the note to the
+    # timeout it returns, and the end-of-step guard then re-probes the same still-unanswered alert.
+    # The note states one observation, so it must be said once — not doubled by the second look.
+    from bajutsu.orchestrator import run_scenario
+    from bajutsu.scenario import load_scenarios
+
+    driver = _fake_with_alert(["Weird Button"])
+    result = run_scenario(
+        driver,
+        load_scenarios("- name: t\n  steps:\n    - wait: { for: { id: never }, timeout: 0.3 }\n")[
+            0
+        ],
+        alert_guard=AlertGuardConfig(labels=["Allow"]),
+    )
+    assert not result.ok
+    reason = result.steps[0].reason or ""
+    assert reason.count("an unhandled system alert is blocking the screen") == 1
+
+
+def test_a_blocked_expect_names_the_alert_in_the_scenario_s_own_failure() -> None:
+    # The same promise for the `expect` phase, whose retry calls the guard directly too.
+    from bajutsu.orchestrator import run_scenario
+    from bajutsu.scenario import load_scenarios
+
+    driver = _fake_with_alert(["Weird Button"])
+    result = run_scenario(
+        driver,
+        load_scenarios(
+            "- name: t\n"
+            "  steps:\n    - wait: { until: settled, timeout: 0.1 }\n"
+            "  expect:\n    - exists: { id: later }\n"
+        )[0],
+        alert_guard=AlertGuardConfig(labels=["Allow"]),
+    )
+    assert not result.ok
+    assert (result.failure or "").startswith("expect: ")
+    assert "an unhandled system alert is blocking the screen (buttons: Weird Button)" in (
+        result.failure or ""
+    )
+
+
+def test_a_step_failing_with_no_alert_up_keeps_its_own_bare_reason() -> None:
+    # The note is not a blanket suffix on every failure: with no alert on screen there is nothing to
+    # report, and a step that failed for its own reasons must not be made to look blocked.
+    from bajutsu.orchestrator import run_scenario
+    from bajutsu.scenario import load_scenarios
+
+    result = run_scenario(
+        FakeDriver([]),
+        load_scenarios("- name: t\n  steps:\n    - tap: { id: go }\n")[0],
+        alert_guard=AlertGuardConfig(labels=["Allow"]),
+    )
+    assert not result.ok
+    assert "system alert" not in (result.steps[0].reason or "")
 
 
 def test_the_decline_give_up_follows_a_tuned_poll_interval() -> None:
@@ -1214,8 +1298,8 @@ def test_probe_native_reports_an_ambiguous_alert_as_unhandled_not_absent() -> No
 
     driver = _AmbiguousOnTap([])
     driver.system_alert_buttons = [_button("Don't Allow"), _button("Allow")]
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Don't Allow"])
-    assert guard.probe_native(driver) == ("unhandled", None)
+    guard = AlertGuardConfig(labels=["Don't Allow"])
+    assert guard.probe_native(driver) == ("unhandled", None, ["Don't Allow", "Allow"])
 
 
 def test_probe_native_still_reports_a_vanished_alert_as_absent() -> None:
@@ -1227,5 +1311,5 @@ def test_probe_native_still_reports_a_vanished_alert_as_absent() -> None:
 
     driver = _VanishedOnTap([])
     driver.system_alert_buttons = [_button("Don't Allow"), _button("Allow")]
-    guard = AlertGuardConfig(vision=_never_vision, labels=["Don't Allow"])
-    assert guard.probe_native(driver) == ("absent", None)
+    guard = AlertGuardConfig(labels=["Don't Allow"])
+    assert guard.probe_native(driver) == ("absent", None, [])

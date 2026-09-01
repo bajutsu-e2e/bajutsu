@@ -26,9 +26,9 @@ class Capability:
     """One command's place on the Claude / Claude-free boundary (BE-0101).
 
     `uses_claude` classifies the command's *default* path. `claude_flag`, when set, names the flag
-    that flips an otherwise-Claude-free command onto the Claude path (`triage --ai`,
-    `run --system-alert-handling`) — the path-granularity the classification is expressed at; it is
-    None when no flag changes the classification.
+    that flips an otherwise-Claude-free command onto the Claude path (`triage --ai`) — the
+    path-granularity the classification is expressed at; it is None when no flag changes the
+    classification, which since BE-0402 includes `run`: no flag of its own reaches a model.
     """
 
     command: str
@@ -42,7 +42,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability("record", uses_claude=True),
     Capability("crawl", uses_claude=True),
     Capability("triage", uses_claude=False, claude_flag="--ai"),
-    Capability("run", uses_claude=False, claude_flag="--system-alert-handling"),
+    Capability("run", uses_claude=False),
     Capability("doctor", uses_claude=False),
     Capability("codegen", uses_claude=False),
     Capability("trace", uses_claude=False),
@@ -59,7 +59,6 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability("flakiness", uses_claude=False),
     Capability("export", uses_claude=False),
     Capability("serve", uses_claude=False),
-    Capability("project", uses_claude=False),
 )
 
 _BY_COMMAND = {c.command: c for c in CAPABILITIES}

@@ -40,17 +40,18 @@ Claude を使わない側のすべては、設定ゼロで動きます。資格�
 | | `report` / `export` / `stats` | 完了した実行を再描画する、アーカイブする、実行ディレクトリ全体をスイート全体の傾向に集計する |
 | | `mcp` / `worker` | run / doctor を MCP ツールとして提供する、またはバックグラウンドのジョブワーカーを動かす |
 | | `serve` | ローカルの Web UI。何も設定せずに起動し、Claude のタブは無理なく縮退する |
-| | `project` | 設定プロジェクトハブを管理する（`add` / `ls` / `use` / `rm`） |
 | | `triage` | ルールベースのエージェントで失敗した実行を診断する（`--ai` なし） |
 | **Claude を使う** | `record` | Claude でアプリを操作しながらシナリオを作成する |
 | | `crawl` | Claude で自律的にアプリを探索し、画面マップを作る |
 | | `triage --ai` | ルールベースの代わりに Claude で失敗した実行を診断する |
-| | `run --system-alert-handling` | アラートガード。ステップを塞いだ OS のプロンプトを Claude が処理する |
 
 分類はコマンド名ではなく経路の粒度です。`triage` は Claude を使わず、`--ai` フラグ一つで Claude の
-経路に切り替わります。`run` も Claude を使わず、アラートガード（`--system-alert-handling`。シナリオごとに
-既定で有効）がその Claude 経路です。資格情報が無いとき、このガードは何もしない動作に縮退し、決定論的な
-実行を塞ぐことはありません。
+経路に切り替わります。`run` は [BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) 以降、**フラグで開く例外を1つも持たない**まま
+Claude を使いません。アラートガード（`--system-alert-handling`。シナリオごとに既定で有効）がかつての
+例外でした。ネイティブの SpringBoard 経路がプロンプトを名指しできないとき、ガードがスクリーンショットを
+モデルに読ませ、返ってきた座標をタップしていたからです。そのフォールバックは `run` から取り除かれたため、
+ガードは資格情報を必要とせず、参照もせず、名指しできないプロンプトには手を触れません。代わりに、ブロック
+されたステップ自身の失敗理由でそのプロンプトを名指しします。
 
 この分離は [Tier 1 と Tier 2 の境界](concepts.md)を目に見えるようにしたものです。ここに `run` や CI
 ゲートへモデルを持ち込む変更はありません。
@@ -61,8 +62,7 @@ Claude を使わない側のすべては、設定ゼロで動きます。資格�
 食い違うことはありません。
 
 - **`bajutsu --help`** は、各トップレベルコマンドを *Claude-free (zero-config)* か *Uses Claude*
-  のいずれかにまとめて表示します。`project` のサブコマンド（`add`、`ls`、`use`、`rm`）は別の
-  グループで表示されますが、分類上はこの列の他のコマンドと同じく Claude を使いません。
+  のいずれかにまとめて表示します。
 - **`doctor`** は、Claude の準備状況を独立した明らかに任意の節として報告します。AI の準備が無い
   ホストでも決定論的な経路については `Ready` と採点され、Claude は別立ての「not configured (optional)」の
   行として示されます。阻害要因と混同されることはありません。
@@ -79,7 +79,7 @@ AI のソフトウェア開発キット（SDK）は任意インストールの e
 - `pip install bajutsu`：決定論的なオーサリングと実行の経路（`run`、`doctor`、`lint`、`codegen`、
   `trace`、`approve` など、上記の Claude-free 列すべて）です。AI SDK はインストールされず、ここから
   モデルに到達することはありません。
-- `pip install bajutsu[ai]`：Claude の経路（`record`、`crawl`、`triage --ai`、`run --system-alert-handling`）を
+- `pip install bajutsu[ai]`：Claude の経路（`record`、`crawl`、`triage --ai`）を
   API キー・Bedrock・`ant` の各プロバイダで使うために、Anthropic の SDK を追加します。Amazon
   Bedrock プロバイダを使う場合は代わりに `bajutsu[bedrock]` を指定します。同じ SDK の上に Bedrock 版を
   重ねる形になります。`claude-code` プロバイダはどちらの extra も不要です。SDK ではなく外部の
@@ -114,8 +114,8 @@ Claude の経路をテストし続けます。AI-free の保証はあくまで**
 
 上に挙げた手段はどれも任意導入なので、何も設定しなければモデルには到達しません。ただしその沈黙は、
 リポジトリ上の表明ではなく環境の偶然です。意図はレビュアーが読める場所のどこにも残りません。
-しかも、1つのシナリオを `record` で書くために export したキーは、同じシェルで走るすべての `run` に
-ついて、アラートガードの vision フォールバックを有効に戻します。プロバイダを `none` に設定すると、この方針を
+しかも、1つのシナリオを `record` で書くために export したキーは、以後のどのシェルでも `record` と
+`crawl` をモデルに接続したままにします。プロバイダを `none` に設定すると、この方針を
 表明できます（[BE-0394](../../roadmaps/BE-0394-ai-provider-none-kill-switch/BE-0394-ai-provider-none-kill-switch-ja.md)）。
 
 ```yaml
@@ -126,9 +126,8 @@ defaults:
 
 この一行をコミットすると、執筆と調査の 3 つのコマンド（`record`、`crawl`、`triage --ai`）は
 起動せずに設定名を告げて終了し、どのコード経路も AI バックエンドを構築できなくなります。
-`run --system-alert-handling` だけは扱いが異なります。モデルへ届くのはその半分だけだからです。
-ガードの vision フォールバックは何もしない処理になる一方、資格情報を必要としない決定的な
-ネイティブのアラート経路は、処理できるシステムプロンプトを従来どおり処理し続けます。config の
+`run` はどちらの向きにも無関係です。BE-0402 がモデルへ到達しうる唯一の経路を取り除いたため、
+無効にすべき AI 経路をそもそも持ちません。config の
 `ai.provider` は `$BAJUTSU_AI_PROVIDER` より優先されるため、環境を誰も管理していない継続的
 インテグレーション（CI）のランナーでもこの設定は効きます。優先順位の詳細と、
 `none` を提示しない `serve` の Settings のドロップダウンという唯一の例外は、

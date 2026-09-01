@@ -15,7 +15,7 @@ from bajutsu.analytics import ledger as _usage_ledger
 from bajutsu.analytics import stats as _usage_stats
 from bajutsu.config import Config, load_config, resolve
 from bajutsu.drivers import base as driver_base
-from bajutsu.evidence import displayed_screenshot
+from bajutsu.evidence import StepView, step_view
 from bajutsu.scenario import declared_name, load_scenario_file
 from bajutsu.scenario.models import STEP_ACTIONS, Scenario, Step
 from bajutsu.serve import flakiness as _flakiness
@@ -31,7 +31,7 @@ from bajutsu.serve.helpers import (
     valid_scenario_ref,
 )
 from bajutsu.serve.operations._common import _resolve_org_or_forbid
-from bajutsu.serve.operations.config import FS_DISABLED_ERROR
+from bajutsu.serve.operations.config import FS_DISABLED_ERROR, launch_label
 from bajutsu.serve.operations.runs import sweep_expired_trash
 from bajutsu.serve.server.db import RunRecord
 from bajutsu.serve.state import ServeState
@@ -110,7 +110,7 @@ def simulators_payload(state: ServeState) -> tuple[Any, int]:
 
 
 # The newest-N run window the DB-backed history list, the `/stats` aggregation (BE-0102), and the
-# per-project roll-up behind the comparison (BE-0226) all read. One window for those three, because
+# per-target roll-up behind the comparison (BE-0226) all read. One window for those three, because
 # a Stats row and the history its drilldown opens (BE-0241) must agree: aggregated over a wider
 # window than the list shows, a row names runs the filtered list silently drops, so the detail view
 # contradicts the row that opened it (#1718). Two history-wide reads stay outside it deliberately:
@@ -136,13 +136,61 @@ def _target_scenario_names(state: ServeState, org: str, target: str) -> set[str]
     return {n for f in (scope.list() if scope else []) for n in f.get("names") or []}
 
 
+# The label filter's "every label" choice, so a reader can restore the unfiltered history the
+# default (the bound config's own label) narrows away (BE-0404 unit 4).
+ALL_LABELS = "*"
+
+
+def effective_label(state: ServeState, requested: str | None) -> str | None:
+    """The label partition to read, or None for the whole history (BE-0404 unit 4).
+
+    Defaults to the bound configuration's own label, which is what makes restarting `serve` against
+    a second configuration yield two readable histories rather than one interleaved list.
+    `ALL_LABELS` — and a deployment with nothing bound — asks for everything.
+    """
+    if requested == ALL_LABELS:
+        return None
+    label = requested or (
+        launch_label(state.config, state.config_provenance) if state.config else ""
+    )
+    return label or None
+
+
+def apply_label_filter(
+    state: ServeState, runs: list[dict[str, Any]], requested: str | None
+) -> list[dict[str, Any]]:
+    """Narrow *runs* to `effective_label`'s partition — the in-Python half of the filter.
+
+    The database path pushes the same predicate into the query instead (`Repository.list_runs`);
+    this serves the artifact-store path, which has no query to push into. An unlabeled run matches
+    every label, since it belongs to no partition. An empty match still opens the whole history
+    rather than an empty page, so a reader is never left staring at nothing with no filter visible
+    to clear.
+    """
+    label = effective_label(state, requested)
+    if label is None:
+        return runs
+    matching = [r for r in runs if r.get("label") in (label, "", None)]
+    return matching or runs
+
+
 def runs_payload(
     state: ServeState,
     *,
     actor: str | None = None,
     scenario: str | None = None,
     target: str | None = None,
+    label: str | None = None,
+    ran_target: str | None = None,
 ) -> tuple[Any, int]:
+    """The run history for the actor's org, newest first.
+
+    Two different target filters, deliberately named apart. *target* scopes to the runs whose
+    scenarios belong to that target's suite — the Coverage picker's question, answered from the
+    scenario names in each run's summary. *ran_target* scopes to the runs the target actually ran,
+    read from the `runs.target` stamp (BE-0404 unit 3), which is what the cross-target comparison's
+    drill-down needs so its list cannot contradict the row that opened it.
+    """
     # Opportunistically purge trash past the retention window before listing (BE-0239) — the lazy
     # sweep, on the history read rather than a background daemon (SqlSessionStore's expiry-on-read
     # precedent). A no-op when retention is disabled; scoped to the actor's org.
@@ -152,16 +200,38 @@ def runs_payload(
     # UI shape is identical. Without one (local / stdlib serve), list straight from the artifact
     # store.
     #
-    # When scoping to a scenario, the DB cap must count *scoped* runs, not global ones: the scenario
-    # name lives in the JSON summary, not an indexed column, so it can't push into the query — list
-    # unbounded and cap after filtering, or a run of the loaded scenario that falls outside the
-    # newest-N global window is silently dropped and the picker can't reach it (BE-0262 follow-up).
+    # The scenario and target filters below are *post*-filters — the names they match live in the
+    # JSON summary, not an indexed column — so on the DB path the cap must count filtered runs, not
+    # global ones: capping first silently drops a matching run that falls outside the newest-N
+    # global window and the picker can't reach it (BE-0262 follow-up). The label partition and
+    # *ran_target* are not among them: `runs.label` and `runs.target` are ordinary columns, so both
+    # push into the query and the window stays on — which keeps the most-hit read of all (the
+    # default history list) bounded, and keeps the comparison's drill-down reading the same
+    # newest-N window of one target the ranking row beside it was computed over.
     org = state.org_of(actor)
+    scoped = scenario is not None or target is not None
     if state.repository is not None:
-        limit = None if scenario is not None or target is not None else RUN_WINDOW
-        runs = [r.summary for r in state.repository.list_runs(org_id=org, limit=limit)]
+        partition = effective_label(state, label)
+        limit = None if scoped else RUN_WINDOW
+        runs = [
+            r.summary
+            for r in state.repository.list_runs(
+                org_id=org, label=partition, target=ran_target, limit=limit
+            )
+        ]
+        if not runs and partition is not None:
+            # The bound label matches no run at all — open the whole history rather than an empty
+            # page, the same fallback the artifact-store path applies.
+            runs = [
+                r.summary
+                for r in state.repository.list_runs(org_id=org, target=ran_target, limit=limit)
+            ]
     else:
-        runs = state.artifacts.list_runs()
+        runs = apply_label_filter(state, state.artifacts.list_runs(), label)
+        if ran_target is not None:
+            # The artifact-store listing carries the manifest's own `target` stamp, so the same
+            # partition is a post-filter here — the local stand-in, as the label filter is.
+            runs = [r for r in runs if r.get("target") == ran_target]
     # Scope the Author run picker to the loaded scenario (BE-0262): a chosen run's step ids only line
     # up with a scenario of the same name, so a run that never executed it can't feed the picker.
     # Scenario name is the step-id compatibility key the run-backed resolve already keys on (a run's
@@ -189,7 +259,7 @@ def runs_payload(
                 if isinstance(n, str)
             )
         ]
-    if (scenario is not None or target is not None) and state.repository is not None:
+    if scoped and state.repository is not None:
         runs = runs[:RUN_WINDOW]
     return runs, 200
 
@@ -225,20 +295,28 @@ def trashed_runs_payload(state: ServeState, *, actor: str | None = None) -> tupl
     return state.for_org(state.org_of(actor)).artifacts.list_trashed_runs(), 200
 
 
-def stats_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:
+def stats_html(
+    state: ServeState, *, actor: str | None = None, label: str | None = None
+) -> tuple[str, int]:
     """The aggregate run-stats dashboard (BE-0102) as a self-contained HTML page, org-scoped.
 
     Reuses the deterministic aggregator over the actor's org run history: read-only, no verdict, no
     LLM. The run-id list comes from the same seam as `runs_payload` (the system of record when wired,
     else the artifact store); each run's full `manifest.json` is read from the artifact store either
-    way, since the DB `summary` carries only the compact history-list shape.
+    way, since the DB `summary` carries only the compact history-list shape. *label* narrows the
+    history to one partition, defaulting to the bound config's own (BE-0404 unit 4).
     """
     # live=True: this is the serve /stats view, so the day/backend/hotspot cells render as drilldown
     # deep links into the SPA's run history (BE-0241); the CLI --html export leaves them plain text.
-    return _stats.render_html(_stats.aggregate_runs(_run_manifests(state, actor)), live=True), 200
+    return (
+        _stats.render_html(_stats.aggregate_runs(_run_manifests(state, actor, label)), live=True),
+        200,
+    )
 
 
-def flakiness_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:
+def flakiness_html(
+    state: ServeState, *, actor: str | None = None, label: str | None = None
+) -> tuple[str, int]:
     """The ranked flaky-scenario panel (BE-0220, Half 1) as a self-contained HTML page, org-scoped.
 
     Ranks the actor's org run history by how much each scenario's verdict flips at a constant
@@ -246,18 +324,28 @@ def flakiness_html(state: ServeState, *, actor: str | None = None) -> tuple[str,
     provenance stamp the BE-0220 prerequisite added to the run row is the grouping key, so no
     manifest re-read is needed; without one (local / stdlib serve) the same records are built from
     each run's `manifest.json`. Read-only and AI-free: it displays the ranking, deciding no verdict.
+    *label* narrows the history to one partition, defaulting to the bound config's own (BE-0404
+    unit 4): a flakiness score computed across two configs' interleaved histories is the same defect
+    the label exists to fix, so this reads the same partition the run list and `/stats` do.
     """
-    return _flakiness.render_html(_flakiness_report(state, actor)), 200
+    return _flakiness.render_html(_flakiness_report(state, actor, label)), 200
 
 
-def _flakiness_report(state: ServeState, actor: str | None) -> _flakiness.FlakinessReport:
+def _flakiness_report(
+    state: ServeState, actor: str | None, label: str | None = None
+) -> _flakiness.FlakinessReport:
     """Rank the actor's org run history — from the DB provenance stamp when wired, else manifests."""
     org = state.org_of(actor)
     if state.repository is not None:
-        records = state.repository.list_runs(org_id=org, limit=_flakiness.DEFAULT_RUN_LIMIT)
+        partition = effective_label(state, label)
+        records = state.repository.list_runs(
+            org_id=org, label=partition, limit=_flakiness.DEFAULT_RUN_LIMIT
+        )
+        if not records and partition is not None:
+            records = state.repository.list_runs(org_id=org, limit=_flakiness.DEFAULT_RUN_LIMIT)
         _fill_device_runtime(state, org, records)
     else:
-        records = _flakiness.records_from_manifests(_run_manifests(state, actor))
+        records = _flakiness.records_from_manifests(_run_manifests(state, actor, label))
     return _flakiness.rank_flakiness(records)
 
 
@@ -295,7 +383,9 @@ def _fill_device_runtime(state: ServeState, org: str, records: list[RunRecord]) 
         record.device_runtime = run_os.label if run_os is not None else ""
 
 
-def _run_manifests(state: ServeState, actor: str | None) -> list[dict[str, Any]]:
+def _run_manifests(
+    state: ServeState, actor: str | None, label: str | None = None
+) -> list[dict[str, Any]]:
     """The newest runs' parsed `manifest.json` for the actor's org; unreadable/malformed ones skipped.
 
     The ids come from the recorded runs when a repository is wired (org-scoped), else the artifact
@@ -306,19 +396,25 @@ def _run_manifests(state: ServeState, actor: str | None) -> list[dict[str, Any]]
     """
     org = state.org_of(actor)
     artifacts = state.for_org(org).artifacts
-    ids: list[Any]
+    rows: list[dict[str, Any]]
     if state.repository is not None:
-        ids = [r.id for r in state.repository.list_runs(org_id=org, limit=RUN_WINDOW)]
+        partition = effective_label(state, label)
+        rows = [
+            {"id": r.id}
+            for r in state.repository.list_runs(org_id=org, label=partition, limit=RUN_WINDOW)
+        ]
+        if not rows and partition is not None:
+            rows = [{"id": r.id} for r in state.repository.list_runs(org_id=org, limit=RUN_WINDOW)]
     else:
-        ids = [r.get("id") for r in artifacts.list_runs()[:RUN_WINDOW]]
-    return run_set_manifests(artifacts, ids)
+        rows = apply_label_filter(state, artifacts.list_runs(), label)[:RUN_WINDOW]
+    return run_set_manifests(artifacts, [r.get("id") for r in rows])
 
 
 def run_set_manifests(store: ArtifactStore, run_ids: Iterable[Any]) -> list[dict[str, Any]]:
     """Read the parsed `manifest.json` of each run in *run_ids* from *store*, skipping bad ones.
 
     The `ServeState`/actor-free core of `_run_manifests`: it takes the run set explicitly, so the
-    same aggregation can be run once per project over a project-scoped run set (BE-0226) rather than
+    same aggregation can be run once per target over a target-scoped run set (BE-0226) rather than
     only over the active config's org run history. An id that is not a single safe segment is
     rejected before it becomes a path (serve's containment model, BE-0015), and an unreadable or
     malformed manifest is skipped — the aggregator never fails on one bad run. Each manifest already
@@ -612,24 +708,32 @@ def _step_artifacts(
     for idx, step in enumerate(matched.steps):
         step_id = f"{sid}/{step.name or f'step{idx}'}"
         action, fields = _step_action_fields(step)
-        elements_name, screenshot_name = _artifact_names(
+        view = _artifact_names(
             artifacts_by_step_id.get(step_id, []),
             lambda name: _safe_exists(artifacts, f"{run_id}/{name}"),
         )
+        # An unpaired step offers no image at all. The picker's whole job is to turn a click on
+        # these pixels into a selector resolved through this tree, so an image the tree does not
+        # describe would resolve every click to the wrong element — silently, since the two look
+        # like an ordinary pair. `step_view` reports unpaired only when an image is actually there,
+        # so this stays distinct from a step that has no screenshot to offer, which the editor
+        # words differently.
+        unpaired = not view.paired
         result.append(
             {
                 "stepId": step_id,
                 "action": action,
                 "fields": fields,
-                "elementsUrl": f"/runs/{run_id}/{elements_name}"
-                if elements_name is not None
-                and _safe_exists(artifacts, f"{run_id}/{elements_name}")
+                "elementsUrl": f"/runs/{run_id}/{view.elements}"
+                if view.elements is not None
+                and _safe_exists(artifacts, f"{run_id}/{view.elements}")
                 else None,
-                # No existence check here: `_artifact_names` chose among the names the store
-                # actually holds, so a name at all means the file is there.
-                "screenshotUrl": f"/runs/{run_id}/{screenshot_name}"
-                if screenshot_name is not None
+                # No existence check here: `step_view` chose among the names the store actually
+                # holds, so a name at all means the file is there.
+                "screenshotUrl": f"/runs/{run_id}/{view.screenshot}"
+                if view.screenshot is not None and view.paired
                 else None,
+                "screenshotUnpaired": unpaired,
             }
         )
     return result
@@ -648,38 +752,40 @@ def _find_scenario(manifest: dict[str, Any], scenario_name: str | None) -> dict[
 
 def _artifact_names(
     step_artifacts: list[dict[str, Any]], exists: Callable[[str], bool]
-) -> tuple[str | None, str | None]:
-    """The `elements` / `screenshot` artifact names the editor shows for a step, or `None` for
-    either the run never recorded (BE-0341).
+) -> StepView:
+    """The `elements` / `screenshot` artifacts the editor shows for a step, or `None` for either
+    the run never recorded (BE-0341), plus whether the two describe the same screen.
 
-    `elements` takes the first recorded name — the file has one fixed name, so every later entry
-    names the same file. `screenshot` goes through `displayed_screenshot`, so the editor's element
-    picker and the HTML report resolve one step to one image: the post-action `after.png` when the
-    run recorded one, else the pre-step baseline's `before.png`.
+    Resolved by `step_view`, so the editor's element picker, the HTML report, and the triage context
+    resolve one step to one image: the post-action `after.png` when the run recorded one, else the
+    pre-step baseline's `before.png`. Both consumers share that one image because only one tree
+    survives the step: the post-step `elements` write replaces the baseline's pre-action tree, so no
+    pre-action pair is left for the picker to resolve against. The picker writes its resolved
+    selector back into the same step, so a step that navigates offers the screen it reached rather
+    than the one it targets — `docs/web-ui.md` (Author → Edit) sends an author to a live session for
+    that case.
 
-    Both consumers share that one image because only one tree survives the step: the post-step
-    `elements` write replaces the baseline's pre-action tree, so no pre-action pair is left for
-    the picker to resolve against. The picker writes its resolved selector back into the same
-    step, so a step that navigates offers the screen it reached rather than the one it targets —
-    `docs/web-ui.md` (Author → Edit) sends an author to a live session for that case.
+    A `StepView` reporting `paired=False` is why the caller withholds the image: the picker resolves
+    a click on those pixels through this tree, so an image the tree does not describe would author a
+    selector for an element that was never where the author clicked.
 
     Args:
+        step_artifacts: the step's manifest entries, already narrowed to `dict`s by the caller — a
+            stray non-`dict` never reaches here, so the `.get` calls below need no guard of their
+            own.
         exists: whether the store actually holds a named artifact. The manifest can name a file the
             store no longer holds (a run restored from Trash, or one synced into an object store
             that never received the last write), and choosing `after.png` from the names alone
             would leave the step with no image to pick against while its `before.png` sits right
-            there. Probed lazily, on the chosen name only, with the rest filtered just for the
-            fallback: this call site's `exists` is a live object-store lookup on the hosted backend,
-            and `read_scenario` walks every step of a scenario, so filtering all candidates up front
-            would cost one round trip per recorded screenshot per step — two, now that every acting
-            step records both — for a fallback that fires almost never.
+            there. `step_view` probes lazily, in preference order: this call site's `exists` is a
+            live object-store lookup on the hosted backend, and `read_scenario` walks every step of
+            a scenario, so filtering all candidates up front would cost one round trip per recorded
+            screenshot per step — two, now that every acting step records both — for a fallback that
+            fires almost never.
     """
-    by_kind: dict[str, str] = {}
-    shots: list[str] = []
+    entries: list[tuple[str, str, str | None]] = []
     for art in step_artifacts:
-        if not isinstance(art, dict):
-            continue
-        kind, name = art.get("kind"), art.get("name")
+        kind, name, depicts = art.get("kind"), art.get("name"), art.get("depicts")
         # Narrowed to `str`, not just non-`None`: a malformed/partially written manifest could carry
         # a non-string value here, which would otherwise flow into the URL/path built from it below.
         # `_valid_step_id` (a generic safe-relative-path check despite its name) also rejects an
@@ -687,13 +793,8 @@ def _artifact_names(
         # `runs_dir`, not per-run, so a traversal-shaped name could otherwise resolve to an
         # unrelated artifact elsewhere in the org's runs tree.
         if isinstance(kind, str) and isinstance(name, str) and _valid_step_id(name):
-            by_kind.setdefault(kind, name)
-            if kind == "screenshot":
-                shots.append(name)
-    chosen = displayed_screenshot(shots)
-    if chosen is not None and not exists(chosen):
-        chosen = displayed_screenshot([n for n in shots if n != chosen and exists(n)])
-    return by_kind.get("elements"), chosen
+            entries.append((kind, name, depicts if isinstance(depicts, str) else None))
+    return step_view(entries, exists=exists)
 
 
 def _safe_exists(store: ArtifactStore, rel: str) -> bool:

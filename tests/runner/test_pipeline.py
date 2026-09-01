@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from _runner import _eff, _el, _failing_lease, _fake_driver, _ios_eff, _lease
+from conftest import GUARD_LABEL, AlertingDriver
 
 from bajutsu.config import Effective, XcuitestConfig
 from bajutsu.doctor import Score
@@ -1273,7 +1274,7 @@ def test_run_all_releases_after_each_scenario() -> None:
 def test_run_all_alert_guard_for_selects_per_scenario() -> None:
     # The factory picks each scenario's guard from its systemAlertHandling: the guarded scenario
     # recovers from a blocked tap and passes; the one that disabled it fails.
-    from bajutsu.orchestrator import AlertEvent, AlertGuardConfig
+    from bajutsu.orchestrator import AlertGuardConfig
 
     scenarios = [
         Scenario.model_validate(
@@ -1284,16 +1285,24 @@ def test_run_all_alert_guard_for_selects_per_scenario() -> None:
         ),
     ]
 
-    def recover(d: base.Driver) -> AlertEvent:
-        assert isinstance(d, FakeDriver)
-        d.screen = [_el("later", "Later", ["button"])]  # "dismiss the alert": target appears
-        return AlertEvent(label="x")
-
     def alert_guard_for(s: Scenario) -> AlertGuardConfig | None:
         # `false` is the whole off form since BE-0401; a mapping (or an absent key) means on.
-        return None if s.system_alert_handling is False else AlertGuardConfig(vision=recover)
+        return None if s.system_alert_handling is False else AlertGuardConfig(labels=[GUARD_LABEL])
 
-    results = run_all(_eff(), scenarios, _lease, alert_guard_for=alert_guard_for)
+    # Answering the prompt reveals the tap's target, so the guarded scenario recovers and passes.
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        return Lease(
+            driver=AlertingDriver(
+                on_dismiss=lambda d: setattr(d, "screen", [_el("later", "Later", ["button"])])
+            ),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    results = run_all(_eff(), scenarios, lease, alert_guard_for=alert_guard_for)
     assert [r.ok for r in results] == [True, False]
 
 

@@ -429,12 +429,11 @@ def _record_provenance(state: ServeState, job: Job) -> None:
 
 def _persist_run(state: ServeState, job: Job) -> None:
     """Record a finished `run` into the system of record so the history list survives independently
-    of the artifact store and is org-scoped (BE-0015), and label it with the active project (BE-0225).
-    A no-op only for a job that produced no run id (record/crawl, or a build/boot failure). With a
-    repository the run is recorded under its actor's org (the single `default` org for a token/CI run
-    or an unknown user) so it shows in that org's history; without one (local / stdlib serve) there is
-    no history table, so the local registry instead tags the run into its project→run-ids index — the
-    stand-in for the `runs.project_id` column — when a project is active.
+    of the artifact store and is org-scoped (BE-0015), stamped with the run-history label the job
+    was enqueued under (BE-0404 unit 2). A no-op only for a job that produced no run id
+    (record/crawl, or a build/boot failure), and for a deployment with no repository (local /
+    stdlib serve keeps no history table). With one, the run is recorded under its actor's org (the
+    single `default` org for a token/CI run or an unknown user) so it shows in that org's history.
 
     Persistence must never break job finalization: this runs inside `run_job`'s `finally`, just
     before the live-log stream is closed, so any error (a missing org/user row, an FK violation on
@@ -443,33 +442,8 @@ def _persist_run(state: ServeState, job: Job) -> None:
         return
     run_id = job.run_id
     org = job.org
-    # The project that owns the run so a per-project listing (BE-0225) and the cross-project dashboard
-    # (BE-0226) can partition it. Prefer the id `start_run` resolved at enqueue and carried on the job
-    # (also the only source on a remote worker, whose state has no registry); fall back to resolving
-    # the active project here for a job built without going through the enqueue path. None when no hub
-    # is wired or no project is active, leaving the run unlabeled exactly as before.
-    registry = state.project_registry
-    project_id: str | None = job.project_id
-    if project_id is None and registry is not None:
-        try:
-            active = registry.resolve_active(org_id=org)
-            project_id = active.id if active is not None else None
-        except Exception:
-            # Resolving the active project reaches the registry backend (a database for
-            # `SqlProjectRegistry`), so it can fail like the persistence write below — and this runs in
-            # `run_job`'s `finally`, so an escape would strand the live-log stream (the docstring's
-            # contract). A failure leaves the run unlabeled, exactly as when no hub is wired.
-            logger.warning("failed to resolve the active project for run %s", run_id, exc_info=True)
     if state.repository is None:
-        # Local / stdlib serve: no system of record, so the local registry keeps the project→run-ids
-        # index (the stand-in for the runs.project_id column). Guarded like the DB path so a registry
-        # error can never break job finalization.
-        if registry is not None and project_id is not None:
-            try:
-                registry.tag_run(org_id=org, project_id=project_id, run_id=run_id)
-            except Exception:
-                logger.warning("failed to tag run %s to its project", run_id, exc_info=True)
-        return
+        return  # local / stdlib serve: no system of record to write into
     repo = state.repository
     try:
         # Lazy import: only a server backend has a repository, where SQLAlchemy is already loaded,
@@ -487,23 +461,43 @@ def _persist_run(state: ServeState, job: Job) -> None:
         # cost `_run_summary` was written to avoid.
         manifest = _read_manifest(state, run_id)
         scenario_hash, tool_version, git_revision = _run_provenance(manifest)
+        # The enqueue-time label wins: it is the only source for a cloud-batch run, whose manifest
+        # comes back from the device cloud without one. The manifest is the fallback for a job built
+        # outside the enqueue path.
+        label = job.label or _run_str(manifest, "label")
+        target = _run_str(manifest, "target")
         repo.record_run(
             RunRecord(
                 id=run_id,
                 org_id=org,
                 status="done",
-                project_id=project_id,
                 created_by=created_by,
                 ok=ok,
-                summary=_run_summary(run_id, manifest, ok=ok),
+                # The summary carries the same two values as the columns beside it: the DB-backed
+                # history list reads the summary, so a disagreement would hide a run from the very
+                # label filter its column says it belongs to (BE-0404 unit 4).
+                summary=_run_summary(run_id, manifest, ok=ok, label=label, target=target),
                 scenario_hash=scenario_hash,
                 tool_version=tool_version,
                 git_revision=git_revision,
                 device_runtime=_run_device_runtime(manifest),
+                label=label,
+                target=target,
             )
         )
     except Exception:
         logger.warning("failed to persist run %s to the system of record", run_id, exc_info=True)
+
+
+def _run_str(manifest: dict[str, Any] | None, key: str) -> str | None:
+    """A run's top-level string stamp (`target` / `label`) mirrored onto the DB record (BE-0404), so
+    a per-target comparison and a label filter read the axis from the DB instead of re-reading every
+    manifest. None for a run whose manifest is unreadable or predates the stamp — it drops out of
+    the comparison rather than charting under a wrong target."""
+    if manifest is None:
+        return None
+    value = manifest.get(key)
+    return value if isinstance(value, str) and value else None
 
 
 def _read_manifest(state: ServeState, run_id: str) -> dict[str, Any] | None:
@@ -549,12 +543,28 @@ def _run_device_runtime(manifest: dict[str, Any] | None) -> str | None:
     return run_os.label if run_os is not None else ""
 
 
-def _run_summary(run_id: str, manifest: dict[str, Any] | None, *, ok: bool) -> dict[str, Any]:
+def _run_summary(
+    run_id: str,
+    manifest: dict[str, Any] | None,
+    *,
+    ok: bool,
+    label: str | None = None,
+    target: str | None = None,
+) -> dict[str, Any]:
     """The run's history-list summary, from just this run's parsed `manifest.json` (not a full
     `list_runs()` scan, which re-reads every run's manifest from object storage). `write_report`
     writes `report.html` alongside the manifest, so a readable manifest means the report exists."""
     if manifest is None:
-        return {"id": run_id, "ok": ok, "report": False, "scenarios": [], "passed": 0, "total": 0}
+        return {
+            "id": run_id,
+            "ok": ok,
+            "report": False,
+            "scenarios": [],
+            "passed": 0,
+            "total": 0,
+            "label": label or "",
+            "target": target or "",
+        }
     scenarios = [s for s in (manifest.get("scenarios") or []) if isinstance(s, dict)]
     return {
         "id": run_id,
@@ -563,6 +573,10 @@ def _run_summary(run_id: str, manifest: dict[str, Any] | None, *, ok: bool) -> d
         "scenarios": [str(s.get("scenario", "")) for s in scenarios],
         "passed": sum(1 for s in scenarios if s.get("ok")),
         "total": len(scenarios),
+        # Mirrored so the DB-backed history list and the local artifact-store one carry the same
+        # shape, and the label filter reads one field either way (BE-0404 unit 4).
+        "label": label or str(manifest.get("label") or ""),
+        "target": target or str(manifest.get("target") or ""),
     }
 
 

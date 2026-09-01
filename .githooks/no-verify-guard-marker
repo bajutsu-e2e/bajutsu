@@ -1,0 +1,4 @@
+# Presence marker, not a hook. `scripts/install-no-verify-guard.sh` installs a personal `git()`
+# shell function that refuses `git push --no-verify` only inside a repository whose toplevel
+# carries this exact file — so the guard never fires in a developer's other, unrelated repos.
+# See docs/ai-development.md#never-push-red. Do not remove.

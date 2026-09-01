@@ -2117,21 +2117,28 @@ def test_instrument_cmd_starts_the_blocking_serve_test() -> None:
 
 def _recording_act(
     replies: list[object],
-) -> tuple[Callable[[adb_driver_mod.ActRequest], bool], list[adb_driver_mod.ActRequest]]:
+) -> tuple[
+    Callable[[adb_driver_mod.ActRequest], adb_driver_mod.ActOutcome],
+    list[adb_driver_mod.ActRequest],
+]:
     """An `ActFn` serving `replies` in order (holding the last) and recording every request.
 
-    A reply of True/False is the device's answer; an `AdbResidentError` instance is raised instead, so
-    one helper covers the acted, the stale, and the channel-fault paths.
+    A reply of True/False is the device's answer, unconfirmed — the shape a server that does not
+    report a publish mark returns; an `ActOutcome` states the confirmation explicitly; an
+    `AdbResidentError` instance is raised instead. So one helper covers the acted, the stale, the
+    publish-confirmed, and the channel-fault paths.
     """
     seq = list(replies)
     seen: list[adb_driver_mod.ActRequest] = []
 
-    def act(request: adb_driver_mod.ActRequest) -> bool:
+    def act(request: adb_driver_mod.ActRequest) -> adb_driver_mod.ActOutcome:
         seen.append(request)
         reply = seq.pop(0) if len(seq) > 1 else seq[0]
         if isinstance(reply, AdbResidentError):
             raise reply
-        return bool(reply)
+        if isinstance(reply, adb_driver_mod.ActOutcome):
+            return reply
+        return adb_driver_mod.ActOutcome(acted=bool(reply), published_mark=None)
 
     return act, seen
 
@@ -2322,17 +2329,99 @@ def test_without_the_channel_the_coordinate_tap_is_unchanged() -> None:
     assert tap == ["adb", "-s", "U", "shell", "input", "tap", "100", "250"]
 
 
-def test_a_device_tap_arms_the_catch_up_barrier_like_a_coordinate_tap() -> None:
+def test_a_device_tap_the_device_could_not_confirm_arms_the_barrier() -> None:
     # The gesture happened, so the same bookkeeping must follow it: the cached tree is stale and the
-    # next coordinate resolve has to postdate this tap. `respondAct` settles the tree it resolves
-    # against before injecting, but answers as soon as the injection call returns — it does not wait
-    # for the gesture's own accessibility event to publish — so left unarmed, a coordinate-resolving
-    # follower (`pinch`, `rotate`, a directional `swipe`/`drag` anchor) could still resolve against the
-    # pre-gesture screen, exactly the guarantee the coordinate path spent BE-0332 establishing.
+    # next coordinate resolve has to postdate this tap. Unconfirmed means the device injected and then
+    # saw no accessibility event postdate it — so left unarmed, a coordinate-resolving follower
+    # (`pinch`, `rotate`, a directional `swipe`/`drag` anchor) could still resolve against the
+    # pre-gesture screen, exactly the guarantee the coordinate path spent BE-0332 establishing. This
+    # is the pin on the regression a first pass at BE-0339 Unit 5 shipped and a review caught: the
+    # barrier may be skipped only on the device's own confirmation, never on the driver's assumption
+    # that the resident session must have synchronized.
     act, _ = _recording_act([True])
     run, _calls = _capturing_run([FIXTURE])
     driver = AdbDriver("U", run=run, act=act)
     driver.tap({"id": "stable.submit"})
+    assert driver._catchup is not None
+
+
+def test_a_device_tap_whose_publish_the_device_confirmed_arms_no_barrier() -> None:
+    # The other half of the same rule (BE-0339 Unit 5). A publish mark is the device answering that an
+    # accessibility event already postdates this injection, which is the whole thing the barrier exists
+    # to wait for — so waiting again buys nothing and costs `_settle` a poll sleep plus a full extra
+    # `query()`, the dominant per-step cost on this backend.
+    act, _ = _recording_act([adb_driver_mod.ActOutcome(acted=True, published_mark=98765.0)])
+    run, _calls = _capturing_run([FIXTURE])
+    # With a clock, the gesture carries a mark of its own, so this exercises the comparison rather
+    # than the no-clock degrade `test_a_publish_mark_is_trusted_alone_when_the_server_has_no_clock`
+    # covers: the reported publish postdates the mark taken before the gesture.
+    driver = AdbDriver("U", run=run, fetch_clock=lambda: 4200.0, act=act)
+    driver.tap({"id": "stable.submit"})
+    assert driver._catchup is None
+    # Skipping the barrier must not also skip the staleness bookkeeping: the screen moved, so no key
+    # proved stable before this tap may survive it.
+    assert driver._settled_key is None and driver._tree_current is False
+
+
+def test_a_publish_mark_that_does_not_postdate_the_gesture_still_arms_the_barrier() -> None:
+    # The header's presence is not the test — its mark is. Both marks come from the device's own
+    # `SystemClock.uptimeMillis`, so a reported publish that predates the gesture cannot be that
+    # gesture's, and taking it as one would disable the barrier for a coordinate-resolving follower on
+    # the strength of a header merely existing (BE-0339 Unit 5).
+    act, _ = _recording_act([adb_driver_mod.ActOutcome(acted=True, published_mark=100.0)])
+    run, _calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, fetch_clock=lambda: 4200.0, act=act)
+    driver.tap({"id": "stable.submit"})
+    assert driver._catchup is not None
+
+
+def test_a_publish_mark_is_trusted_alone_when_the_server_has_no_clock() -> None:
+    # An older server serves `/act` but no `/clock`, so the driver holds no mark to compare against.
+    # There is nothing to check the publish against there, and the presence of one is all the evidence
+    # available — the same degrade the barrier itself makes when it falls back to its wall-clock budget.
+    act, _ = _recording_act([adb_driver_mod.ActOutcome(acted=True, published_mark=100.0)])
+    run, _calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)  # no `fetch_clock`: every gesture's mark is None
+    driver.tap({"id": "stable.submit"})
+    assert driver._catchup is None
+
+
+def test_a_confirmed_device_tap_leaves_the_next_read_unblocked() -> None:
+    # What skipping the barrier is *for*, stated where it is observable: with nothing armed, the next
+    # read carries no `?since=` and so does not block the device on a mark it has already passed. The
+    # unconfirmed case below is the contrast — that read must still wait.
+    def read(driver: AdbDriver) -> float | None:
+        driver.tap({"id": "stable.submit"})
+        driver.query()
+        return sinces[-1]
+
+    sinces: list[float | None] = []
+
+    def fetch(since: float | None) -> adb_driver_mod.HierarchyRead:
+        sinces.append(since)
+        return adb_driver_mod.HierarchyRead(FIXTURE, None)
+
+    def driver(act: adb_driver_mod.ActFn) -> AdbDriver:
+        run, _ = _capturing_run([FIXTURE])
+        # A live clock, so an armed barrier really does carry a mark: without one it arms on None and
+        # the two cases would agree on `since` for a reason that has nothing to do with this rule.
+        return AdbDriver("U", run=run, fetch_hierarchy=fetch, fetch_clock=lambda: 4200.0, act=act)
+
+    confirmed, _ = _recording_act([adb_driver_mod.ActOutcome(acted=True, published_mark=98765.0)])
+    unconfirmed, _ = _recording_act([True])
+    assert read(driver(confirmed)) is None
+    assert read(driver(unconfirmed)) == 4200.0
+
+
+def test_a_confirmed_device_tap_still_leaves_a_pan_its_own_barrier() -> None:
+    # Narrowing the barrier is scoped to the gesture the device confirmed, never to the ones that
+    # follow it. A pan resolves its catch-up baseline from coordinates and has no `stale` re-resolve to
+    # self-heal with, so `swipe` must keep arming for itself whatever the tap before it reported.
+    act, _ = _recording_act([adb_driver_mod.ActOutcome(acted=True, published_mark=98765.0)])
+    run, _calls = _capturing_run([FIXTURE])
+    driver = AdbDriver("U", run=run, act=act)
+    driver.tap({"id": "stable.submit"})
+    driver.swipe((100, 900), (100, 300))
     assert driver._catchup is not None
 
 

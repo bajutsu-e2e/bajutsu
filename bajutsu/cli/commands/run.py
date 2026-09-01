@@ -11,22 +11,16 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 if TYPE_CHECKING:
     from bajutsu.doctor import Score
-    from bajutsu.drivers import base
 
 import typer
 from pydantic import ValidationError
 
 from bajutsu import device_errors
-from bajutsu.analytics import ledger as _usage_ledger
-from bajutsu.analytics import usage as _usage
 from bajutsu.assertions import GoldenContext
 from bajutsu.backends import select_actuator_for_scenario
 from bajutsu.cancellation import CancelSource, graceful_sigterm
-from bajutsu.cli._projects import config_from_source, open_registry
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
-    _ai_redactor,
-    _build_alert_locator,
     _load_effective_with_source,
     _log_subsystem_default,
     _resolve_browser,
@@ -40,14 +34,13 @@ from bajutsu.deprecations import warn_once
 from bajutsu.github import actions as github_actions
 from bajutsu.orchestrator import (
     DEFAULT_ALERT_POLL_INTERVAL,
-    AlertEvent,
     AlertGuardConfig,
     RunResult,
 )
 from bajutsu.orchestrator.types import ResolvedAlertRule
 from bajutsu.platform_lifecycle import ProvisionProfile, environment_for
 from bajutsu.report.archive import archive_run_dir
-from bajutsu.report.manifest import _run_backend
+from bajutsu.report.manifest import MAX_LABEL_LENGTH, _run_backend
 from bajutsu.run_files import DEFAULT_RUNS_DIR
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import device_pool, run_all, run_and_report, run_matrix_and_report
@@ -403,42 +396,15 @@ def _resolve_rules(rules: list[SystemAlertRule], locale: str) -> list[ResolvedAl
     return resolved
 
 
-def _vision_instruction(vision_instruction: str | None, labels: list[str]) -> str | None:
-    """The vision locator's free-text instruction: an explicit `visionInstruction`, else a hint.
-
-    A `visionInstruction` from any layer outranks the hint, because a hint derived from labels is not
-    a statement about the fallback and an explicit `visionInstruction` is. With none, the *innermost
-    layer that supplied labels* renders as "Tap the button labeled one of, in order: …" — one layer's
-    labels, not the concatenation the native path walks. The native path compares labels exactly, so
-    a wider candidate list there only lengthens a search that still taps a label some layer named;
-    the fallback's instruction is free text a locator interprets loosely, and handing it a target's
-    "Allow" under a scenario's "Don't Allow" offers both answers at once (BE-0401).
-
-    `systemAlertHandling.rules` deliberately contributes nothing here. Every path that reaches the
-    vision guard is one where no rule identified the alert — an incapable backend, a surface
-    `springboard.alerts` cannot enumerate, or an alert whose prompt no rule matched — so a rule's tap
-    label is by construction some *other* prompt's answer. Handing it to the locator, whose policy is
-    "follow the instruction if given, else the least-destructive button" (`agents/alerts.py`), would
-    steer it to accept a prompt the scenario never named: the silent inversion the `rules` form exists
-    to remove, re-created one layer down. A rules-only scenario therefore leaves the locator on its
-    least-destructive default, exactly as it did before `rules` existed.
-    """
-    if vision_instruction is not None:
-        return vision_instruction
-    if labels:
-        return "Tap the button labeled one of, in order: " + ", ".join(labels)
-    return None
-
-
-def _flag_alert_policy(
-    labels: str, vision_instruction: str, poll_interval: float | None
-) -> SystemAlertHandling | None:
+def _flag_alert_policy(labels: str, poll_interval: float | None) -> SystemAlertHandling | None:
     """The command-line layer of `systemAlertHandling`, or None when no flag declares one.
 
     Validated through the model the file layers use, so `--alert-labels ","` fails the same way an
     empty `labels:` list does rather than resolving to the dismissive default a flag was written to
     override (BE-0401). `rules` has no flag: an entry pairs a prompt with a choice, which one flag
-    value cannot carry legibly.
+    value cannot carry legibly. `visionInstruction` has none either since BE-0402 removed `run`'s
+    vision fallback — every value a bare string flag could carry was the free-text form, so the flag
+    was retired rather than left as a knob whose only outcomes are "no effect" and "abort the run".
 
     Raises:
         typer.Exit: a flag's value does not satisfy the schema, reported as a CLI error rather than a
@@ -449,8 +415,6 @@ def _flag_alert_policy(
         # Strip each entry, so `--alert-labels "Allow, OK"` names two buttons rather than one
         # button and one that can never match; an entry left empty by the strip raises below.
         fields["labels"] = [label.strip() for label in labels.split(",")]
-    if vision_instruction:
-        fields["visionInstruction"] = vision_instruction
     if poll_interval is not None:
         fields["pollInterval"] = poll_interval
     if not fields:
@@ -484,7 +448,7 @@ def _warn_target_rules_reach(
     process, so a prompt-only code would warn for the first affected scenario of a run and pass over
     the rest in the very silence this removes.
     """
-    answers_for_itself = any(layer.labels or layer.vision_instruction for layer in inner_layers)
+    answers_for_itself = any(layer.labels for layer in inner_layers)
     if not target_rules or not answers_for_itself:
         return
     ruled = {r.prompt for r in scenario_rules}
@@ -508,23 +472,69 @@ def _policy_of(value: SystemAlertHandlingField) -> SystemAlertHandling | None:
     return value if isinstance(value, SystemAlertHandling) else None
 
 
+def _reject_vision_instruction(
+    scenarios: list[Scenario], target_policy: SystemAlertHandling | None
+) -> None:
+    """Stop the whole run when a layer supplies a `visionInstruction` (BE-0402).
+
+    The key steers only the AI-vision fallback, which `run` no longer has, so acting on it is
+    impossible and ignoring it is worse than failing: a scenario that wrote `visionInstruction: "tap
+    Allow"` to *grant* a permission would silently fall through to the built-in dismissive labels and
+    deny it instead — the silent wrong answer BE-0382 spent its Motivation ruling out for the same
+    field. The key itself now reaches no command: `run` refuses it here, and `record` / `crawl` read
+    the free-text form only from their own `--alert-vision-instruction` flag, never from a scenario or
+    a target config. It stays in the schema so a file carrying it gets this message rather than
+    Pydantic's generic "extra fields not permitted" — the same reason BE-0401 kept `instruction`
+    reachable long enough to name its replacement. Two layers can carry it — a scenario and the
+    target config's `run_defaults`; the command line cannot, since `run` retired the flag that set it.
+
+    Checked eagerly over every scenario, before the per-scenario closure is ever returned. That
+    closure runs inside the run loop, in a worker, so a check placed there would fire on scenario N
+    with scenarios 1…N-1 already executed — partway through a run. This deliberately differs from
+    `resolved_locale`, which does raise from inside the closure and is caught as one scenario's
+    failure: an uncovered locale is a condition of the run, an unusable `visionInstruction` is an
+    authoring mistake in the file and is detectable without a device, so a suite is rejected or
+    accepted whole.
+
+    Raises:
+        typer.Exit: any layer supplies the key, reported as a CLI error naming where it came from.
+    """
+    named = [
+        f"scenario {s.name!r}"
+        for s in scenarios
+        if (policy := _policy_of(s.system_alert_handling)) is not None and policy.vision_instruction
+    ]
+    if target_policy is not None and target_policy.vision_instruction:
+        named.append("the target config's run_defaults")
+    if not named:
+        return
+    typer.echo(
+        f"systemAlertHandling.visionInstruction is not supported by `run` ({', '.join(named)}): "
+        "it steers only the AI-vision fallback, which `run` no longer has (BE-0402). Name the "
+        "buttons with `labels: [...]`, or answer a covered prompt with `rules: [...]`. "
+        "`record` and `crawl` still read it."
+    )
+    raise typer.Exit(2)
+
+
 def _alert_guard_factory(
     scenarios: list[Scenario], eff: Effective, flag_policy: SystemAlertHandling | None
 ) -> AlertGuardFor | None:
     """Build a per-scenario alert-guard factory, or None when no scenario wants a guard.
 
-    Each scenario gets its own `AlertGuardConfig`: the deterministic native path (BE-0315, reusing
-    BE-0316's `handle_system_alert`), plus the shared vision locator as the fallback. The native path
-    runs credential-free, so a guard is built even without an `ANTHROPIC_API_KEY`; only the vision
-    fallback is gated on the credential (BE-0053/BE-0047) — a missing one prints a note and makes the
-    fallback a no-op, never a client that falls back to a hosted default, so the deterministic gate
-    still runs Claude-free.
+    Each scenario gets its own `AlertGuardConfig`, which since BE-0402 is deterministic throughout:
+    the native path (BE-0315, reusing BE-0316's `handle_system_alert`) and the in-tree dismiss, and
+    nothing else. `run` reaches no model here under any flag, so no AI credential is consulted and
+    none is needed.
 
     A setting reaches the run from three layers — the scenario, *flag_policy* (the command line), and
     the target config (BE-0177) — composed by the key's type (BE-0401): a list concatenates innermost
     layer first, so both layers' entries stay reachable; a scalar takes the innermost layer that
     supplies one. `rules` reaches only two of the three, since no flag can carry a prompt paired with
     a choice legibly.
+
+    Raises:
+        typer.Exit: a layer supplies a `visionInstruction`, which `run` can no longer act on.
     """
 
     # A scenario's guard is on when its own `systemAlertHandling` says so, else the target config's,
@@ -539,15 +549,9 @@ def _alert_guard_factory(
 
     if not any(_enabled(s) for s in scenarios):
         return None
-    from bajutsu.agents.alerts import SystemAlertGuard
-
-    # One shared vision locator across the per-scenario guards (one client), None when the credential
-    # is missing (the shared helper prints the note; the fallback then no-ops, never a hosted
-    # fallback). Mask the (possibly user-supplied) alert instruction before it reaches the model (BE-0047).
-    redactor = _ai_redactor(eff)
-    locator = _build_alert_locator(eff, redactor)
 
     target_policy = _policy_of(eff.run_defaults.system_alert_handling)
+    _reject_vision_instruction(scenarios, target_policy)
 
     def _guard_for(s: Scenario) -> AlertGuardConfig | None:
         if not _enabled(s):
@@ -557,16 +561,10 @@ def _alert_guard_factory(
         scenario_policy = _policy_of(s.system_alert_handling)
         layers = [p for p in (scenario_policy, flag_policy, target_policy) if p is not None]
         labels = [label for layer in layers for label in layer.labels]
-        vision_instruction = next(
-            (layer.vision_instruction for layer in layers if layer.vision_instruction), None
-        )
         poll_interval = next(
             (layer.poll_interval for layer in layers if layer.poll_interval is not None),
             DEFAULT_ALERT_POLL_INTERVAL,
         )
-        # The hint the vision fallback falls back to comes from one layer — the innermost that named
-        # any button — never the concatenation above (see `_vision_instruction`).
-        hint_labels = next((layer.labels for layer in layers if layer.labels), [])
 
         # The scenario's own rules ahead of the target's: matching returns on the first rule whose
         # prompt it identifies, so a rule for the same prompt in both layers is an override, not the
@@ -590,26 +588,7 @@ def _alert_guard_factory(
         locale = s.preconditions.resolved_locale(eff.locale)
         rules = _resolve_rules([*scenario_rules, *target_rules], locale)
 
-        # None when the credential is missing: the vision fallback then no-ops (never a hosted default).
-        # `rules` deliberately does not steer the locator — see `_vision_instruction`.
-        handler = (
-            SystemAlertGuard(locator, _vision_instruction(vision_instruction, hint_labels)).dismiss
-            if locator is not None
-            else None
-        )
-
-        def vision(driver: base.Driver) -> AlertEvent | None:
-            if handler is None:
-                return None  # no usable AI credential: the vision fallback no-ops
-            # Attribute the vision guard's AI tokens/cost to this scenario (BE-0196). It fires inside
-            # the runner's `ThreadPoolExecutor` worker, so the scope must be entered *there* — a
-            # contextvar bound on the main thread would not reach the worker under `run --workers N`.
-            with _usage_ledger.attributed(command="run", scenario=s.name):
-                return handler(driver)
-
-        return AlertGuardConfig(
-            vision=vision, labels=labels, rules=rules, poll_interval=poll_interval
-        )
+        return AlertGuardConfig(labels=labels, rules=rules, poll_interval=poll_interval)
 
     return _guard_for
 
@@ -736,6 +715,9 @@ class _RunPlan:
     # `--score`: emit the app's entry-screen convention score once (doctor's grade, inline) so CI needs
     # no separate `doctor` cold-spawn. Diagnostic only — never on the verdict path.
     score: bool
+    # The run-history partition stamped into the manifest (BE-0404 unit 2). Empty = the config's own
+    # name, which `serve` derives; a bare CLI run keeps whatever the operator passed.
+    label: str
     # Reports whether a `SIGTERM` has asked this run to stop (BE-0370). The pipeline reads it at
     # each scenario, step, and condition-wait boundary and fails whatever it did not finish, so a
     # cancelled run still writes its manifest and report instead of vanishing from the history.
@@ -842,6 +824,7 @@ def _dispatch_single(
             resolve_actuator=lambda s: select_actuator_for_scenario(plan.backends, s),
             config_source=plan.config_source,
             exec_provenance=exec_decision,
+            label=plan.label or None,
             golden_context=plan.golden_context,
             lease_udid_spec=plan.udid_spec,
             # `--score`: fold doctor's entry-screen grade into this run's own first lease, so CI reads
@@ -914,6 +897,7 @@ def _dispatch_matrix(
         source_name=plan.source_name,
         description=plan.description,
         secret_values=plan.secret_values,
+        label=plan.label or None,
         config_source=plan.config_source,
         exec_provenance=exec_decision,
         cancelled=plan.cancelled,
@@ -961,14 +945,12 @@ def _upload_evidence(manifest: Path, evidence_store: str) -> None:
             typer.echo(f"  warning: upload failed for {key}: {reason}", err=True)
 
 
-def _finish(
-    plan: _RunPlan, results: list[RunResult], manifest: Path, before: _usage.TokenUsage
-) -> None:
+def _finish(plan: _RunPlan, results: list[RunResult], manifest: Path) -> None:
     """Emit the verdict and every post-verdict step, then exit with the machine-only code.
 
     Order is load-bearing: the PASS/FAIL verdict and exit code are decided first (machine-only, no
-    LLM); `--zip`, `--evidence-store`, and the AI usage summary all run strictly after and can only
-    warn, never flip the verdict (BE-0060/BE-0110).
+    LLM); `--zip` and `--evidence-store` run strictly after and can only warn, never flip the verdict
+    (BE-0060/BE-0110).
     """
     ok = all(r.ok for r in results)
     github_actions.emit(results, manifest.parent / "report.html")  # annotations + summary in CI
@@ -996,33 +978,7 @@ def _finish(
         _write_zip(manifest)
     if plan.evidence_store:
         _upload_evidence(manifest, plan.evidence_store)
-    # The only AI in `run` is the alert guard (when it actually fired). Report its token use on
-    # stderr so stdout stays the machine-readable PASS/FAIL line; silent when nothing fired.
-    spent = _usage.snapshot() - before
-    if spent.calls:
-        typer.echo(spent.render(), err=True)
     raise typer.Exit(0 if ok else 1)
-
-
-def _resolve_project_config(project: str, runs_dir: str) -> str:
-    """The `--config` spec for the named project — so `run --project X` is `run --config <X's source>`.
-
-    Reads the same project store the `project` subcommands and `serve` share (the DB when
-    `BAJUTSU_DATABASE_URL` is set, else the on-disk JSON beside *runs_dir*), resolves the project in
-    the local `default` org, and reconstructs its config spec. Unlike the API trigger — which runs the
-    serve-bound active project only — the CLI is stateless and resolves the config fresh each call, so
-    it runs any named project without a switch.
-    """
-    from bajutsu.serve.orgs import DEFAULT_ORG
-
-    registry = open_registry(runs_dir)
-    record = registry.get(org_id=DEFAULT_ORG, name=project)
-    if record is None:
-        raise typer.BadParameter(f"no project named {project!r}", param_hint="--project")
-    try:
-        return config_from_source(record.source)
-    except ValueError as e:
-        raise typer.BadParameter(str(e), param_hint="--project") from e
 
 
 def run(
@@ -1065,19 +1021,14 @@ def run(
     system_alert_handling: bool | None = typer.Option(
         None,
         "--system-alert-handling/--no-system-alert-handling",
-        help="override every scenario's systemAlertHandling (default: per-scenario, on; needs the "
-        "configured AI provider — ANTHROPIC_API_KEY, or AWS credentials for Bedrock)",
+        help="override every scenario's systemAlertHandling (default: per-scenario, on; the guard "
+        "is fully deterministic and makes no model call)",
     ),
     alert_labels: str = typer.Option(
         "",
         "--alert-labels",
         help='comma-separated button labels the native alert path taps, e.g. "Allow,OK" '
         "(a scenario's own labels are tried first, then these, then the target config's)",
-    ),
-    alert_vision_instruction: str = typer.Option(
-        "",
-        "--alert-vision-instruction",
-        help="free text only the AI vision fallback reads (a scenario's own wins)",
     ),
     alert_poll_interval: float | None = typer.Option(
         None,
@@ -1189,12 +1140,12 @@ def run(
     ),
     # --- Config sourcing ---
     config: str = typer.Option(DEFAULT_CONFIG),
-    project: str = typer.Option(
+    label: str = typer.Option(
         "",
-        "--project",
-        help="run a project registered with `bajutsu project add` by name — resolves its config "
-        "source and runs it, the headless trigger a CI/cron step calls (BE-0225). Mutually "
-        "exclusive with --config",
+        "--label",
+        help="tag this run's history entry with a short free-text label, so runs of two configs "
+        "stay readable apart (BE-0404). Opaque to the tool — never parsed or matched against "
+        "config; defaults to the config's own name",
     ),
     config_offline: bool = typer.Option(
         False,
@@ -1212,14 +1163,12 @@ def run(
     Pass/fail is machine-only; the sole AI is the alert guard (on by default per scenario), which
     only fires to clear an OS prompt that blocked a step — see each scenario's `systemAlertHandling`.
     """
-    # `--project` names a registered project; resolve its config source into the ordinary `--config`
-    # spec so the rest of the run path is unchanged — a project only says where the config comes from.
-    if project:
-        if config != DEFAULT_CONFIG:
-            raise typer.BadParameter(
-                "pass one of --project or --config, not both", param_hint="--project"
-            )
-        config = _resolve_project_config(project, runs_dir)
+    if len(label) > MAX_LABEL_LENGTH:
+        # Rejected, never truncated (BE-0404 unit 2): an operator learns the label was refused
+        # instead of finding a silently shortened one in the history.
+        raise typer.BadParameter(
+            f"a label must be at most {MAX_LABEL_LENGTH} characters", param_hint="--label"
+        )
     # Resolve the run's inputs from the flags — each step is an independently testable helper — then
     # assemble the plan and hand it to dispatch/finish. `run` itself stays a thin sequence.
     eff, config_source, engines = _resolve_config_and_engines(
@@ -1266,7 +1215,7 @@ def run(
         alert_guard_for = _alert_guard_factory(
             scenarios,
             eff,
-            _flag_alert_policy(alert_labels, alert_vision_instruction, alert_poll_interval),
+            _flag_alert_policy(alert_labels, alert_poll_interval),
         )
         # Network collection resolves `--network/--no-network` over the target's `network` config,
         # then on (BE-0177); the resolved bool baked into mocks and the plan drives collection and
@@ -1309,6 +1258,7 @@ def run(
                 log_subsystem=log_subsystem,
                 progress=progress,
                 zip_run=zip_run,
+                label=label,
                 evidence_store=evidence_store,
                 upload_exec=upload_exec,
                 score=score,
@@ -1317,16 +1267,10 @@ def run(
                 force_erase_on_retry=erase is not False,
                 cancelled=cancelled,
             )
-            # Install the usage/cost ledger before dispatch (BE-0196). Reporting only — emission is
-            # best-effort and off the deterministic verdict path (prime directive 1). Per-scenario
-            # `command` / `scenario` attribution is bound at the alert guard (`_alert_guard_factory`),
-            # which fires inside the runner's worker threads, so it reaches the worker under `--workers N`.
-            _usage_ledger.configure_from_ai_config(eff.ai)
-            # Snapshot AI usage before dispatch — the alert guard is the only thing that can spend tokens,
-            # and it fires during dispatch, so `_finish` reports exactly what this run used.
-            before = _usage.snapshot()
+            # No usage ledger and no token accounting here: since BE-0402 removed the alert guard's
+            # vision fallback, nothing in `run` can reach a model, so there is nothing to attribute.
             results, manifest = _dispatch(plan)
-            _finish(plan, results, manifest, before)
+            _finish(plan, results, manifest)
     finally:
         # Hand the device back to its provider (a no-op for the local one), even on failure so a
         # reserved cloud device is never leaked (BE-0236). Warn-only, never propagate: a provider's

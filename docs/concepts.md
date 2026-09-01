@@ -22,10 +22,12 @@ two-tier structure (below).
 | `run` | Tier 2 | **none** | each step is act → wait → verify; pass/fail comes only from the `expect` machine assertions ([run-loop](run-loop.md)) |
 | `codegen` | — | none | structural mapping of a scenario to XCUITest / Playwright / UI Automator ([codegen](codegen.md)) |
 
-The `run` path contains no `anthropic` call at all. The single exception is `--system-alert-handling`
-(it visually dismisses OS system alerts); it prepares the environment rather than deciding
-pass/fail, and runs only when explicitly opted in
-([the alert guard](recording.md#dismissing-system-alerts-automatically)).
+The `run` path contains no `anthropic` call at all, and since
+[BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)
+there is no exception behind a flag either. `--system-alert-handling` used to be one: its guard fell
+back to reading a screenshot with a model for a prompt the native path could not name. That fallback
+is gone from `run`, so the guard is deterministic throughout and a prompt it cannot name is reported
+in the blocked step's own failure ([the alert guard](recording.md#dismissing-system-alerts-automatically)).
 
 ## 2. Two tiers (Tier 1 / Tier 2)
 

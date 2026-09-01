@@ -336,7 +336,7 @@ backend sets `hosted: true`.
 ```bash
 cd deploy/self-host
 cp .env.example .env            # set BAJUTSU_SERVE_TOKEN, POSTGRES_PASSWORD, AWS_* (MinIO), bucket
-mkdir -p config && cp /path/to/bajutsu.config.yaml config/   # the app/project list to expose
+mkdir -p config && cp /path/to/bajutsu.config.yaml config/   # the target list to expose
 docker compose up -d            # postgres + minio + migrate (alembic upgrade head) + bajutsu
 ```
 
@@ -697,10 +697,10 @@ An **Orgs** page appears in the web UI for admins, backed by four admin-only end
 
 | Request | What it does |
 |---|---|
-| `GET /api/orgs` | List every live org with its membership and its project count. |
+| `GET /api/orgs` | List every live org with its membership. |
 | `POST /api/orgs` | Create an org from `{"slug": "...", "name": "..."}`, with **no** members — so it admits nobody until you set its membership. |
 | `POST /api/orgs/<slug>/membership` | Replace `{"members": [...], "githubOrgs": [...], "githubTeams": [...], "editorTeams": [...]}` as one unit. A body still carrying the retired singular `editorTeam` is refused with a 400: it names no `editorTeams`, and obeying it would strip the org's write access. |
-| `DELETE /api/orgs/<slug>` | Retire an org. Refused while it still owns a project, and refused outright for `default`. |
+| `DELETE /api/orgs/<slug>` | Retire an org. Refused outright for `default`. |
 
 The audit log records every one of the four. `default` is reserved on all three mutations — created,
 re-membered, and retired are each refused for it. It is the org an unmatched sign-in falls into,

@@ -264,13 +264,16 @@ def test_source_provenance_records_repo_and_resolved_sha() -> None:
         "host": "github.com",
         "owner": "acme",
         "repo": "tests",
+        "path": "e2e/cfg.yaml",
         "ref": "main",
         "sha": "deadbeef",
     }
     # no @ref ⇒ the default branch is labeled rather than left blank
-    assert source_provenance(GitConfigSpec("github.com", "a", "b", None, None), mat)["ref"] == (
-        "(default)"
-    )
+    bare = source_provenance(GitConfigSpec("github.com", "a", "b", None, None), mat)
+    assert bare["ref"] == "(default)"
+    # The in-repo path is what tells two configs of one repository apart in the run history
+    # (BE-0404 unit 2); a spec naming none records the empty string, not a missing key.
+    assert bare["path"] == ""
 
 
 # --- private-repo credential resolution + auth diagnostics (BE-0224) ---

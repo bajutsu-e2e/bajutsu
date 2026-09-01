@@ -47,6 +47,7 @@ it is imported by the per-backend suites.
 from __future__ import annotations
 
 import math
+import statistics
 import time
 from collections import Counter
 from collections.abc import Callable
@@ -57,12 +58,14 @@ import pytest
 from bajutsu.drivers import base
 from bajutsu.orchestrator.actions.handlers.scroll import (
     _AXIS,
+    _MIN_STEP_FRACTION,
     _STEP_FRACTION,
     _center_in_viewport,
     _region_after_step,
     _region_view,
     _resolve_target,
     _step_endpoints,
+    _unclipped,
     _viewport,
     scroll_to_target,
 )
@@ -78,6 +81,32 @@ SCROLL_ROW_COUNT = 20
 SCROLL_TALL_ID = "conformance.scroll.tall"
 SCROLL_FIRST_ROW = f"{SCROLL_ROW_PREFIX}0"
 SCROLL_LAST_ROW = f"{SCROLL_ROW_PREFIX}{SCROLL_ROW_COUNT - 1}"
+
+#: How far a scroll step's realized travel may depart from the travel it asked for, as a fraction of
+#: the request, before a backend fails the contract (BE-0400). Covers error that scales with the
+#: distance — sub-pixel rounding, a scale factor between the driver's points and a backend's own
+#: units. On the corrected iOS gesture that part measured zero: every step came back the same fixed
+#: 10.0 points short, which `_TRAVEL_SLACK_VIEWPORT_FRACTION` below absorbs, not this. So the whole
+#: 10 percent is headroom for a slower or coarser device, and still an order of magnitude under a
+#: fling, which ran from +25 percent on a full-size step to +515 percent on a small one.
+_TRAVEL_TOLERANCE = 0.10
+#: The fixed part of that allowance, as a fraction of the viewport: a per-gesture loss that does not
+#: scale with the request. A pan recognizer does not move the content until the finger has travelled
+#: its slop, which cost a flat 10.0 points per step on the measured iOS device (a 874-point
+#: viewport, so 1.1 percent) and about 87 device pixels on the conformance Android emulator (a
+#: 2400-pixel viewport, so 3.6 percent). Expressed against the viewport rather than in the driver's
+#: own units, which differ per backend, for the reason `scroll`'s `amount` is a fraction too: one
+#: absolute number cannot mean the same thing on a 874-point screen and a 2400-pixel one. Set above
+#: the larger of the two, since the constant belongs to each platform and may differ again on a
+#: third.
+_TRAVEL_SLACK_VIEWPORT_FRACTION = 0.05
+
+#: A step smaller than the loop's own floor, measured because `scroll`'s `amount` reaches below that
+#: floor (BE-0400) and because a short drag is where the overshoot this contract rejects appeared
+#: first: on the device the item measured, a traversal speed fast enough to fling a 17-point drag
+#: nine times over left a 44-point one exact, and a speed faster still left a 109-point one exact.
+#: Measuring only at or above the floor would let that boundary move back up unnoticed.
+_SUB_FLOOR_STEP_FRACTION = 0.05
 
 #: A generous scroll bound for the conformance screen — far more steps than reaching the bottom needs.
 SCROLL_MAX = 30
@@ -152,6 +181,65 @@ def _rows_in_viewport(driver: base.Driver) -> frozenset[int]:
         for i in range(SCROLL_ROW_COUNT)
         if (row := _resolve_target(els, {"id": f"{SCROLL_ROW_PREFIX}{i}"})) is not None
         and _center_in_viewport(row["frame"], viewport)
+    )
+
+
+def row_offsets(elements: list[base.Element], bounds: base.Frame, axis: int) -> dict[str, float]:
+    """Every unclipped scroll row one read can see, by identifier, at its leading edge on `axis`.
+
+    The rows carry unique identifiers and the list translates rigidly, so a row present in two reads
+    gives the region's travel between them directly — no per-backend notion of a scroll offset is
+    needed, and a lazy tree that drops rows on either side simply contributes fewer of them. Takes
+    the read rather than the driver, so a caller that already holds one does not pay a second full
+    snapshot, and so its endpoints and its offsets describe the same screen.
+
+    A row the region's bounds cut off is dropped, the same filter and for the same reason as
+    `_region_view`'s: a backend that clips an element to the visible area reports the clipped edge
+    *at* the bounds, so such a row reports the same leading edge before and after a step and would
+    contribute a travel of zero. At the overlap a step leaves, the shared rows are exactly the ones
+    at the edges, so admitting them would measure a correct gesture as falling far short.
+    """
+    return {
+        el["identifier"]: el["frame"][axis]
+        for el in elements
+        if el["identifier"] is not None
+        and el["identifier"].startswith(SCROLL_ROW_PREFIX)
+        and _unclipped(el["frame"], bounds, axis)
+    }
+
+
+def _measure_one_step(harness: ConformanceHarness, fraction: float) -> tuple[float, float, float]:
+    """One scroll step of `fraction` from the top of the scrollable screen.
+
+    Returns the requested travel, the realized travel, and the viewport's extent along the scroll
+    axis — the last because the allowance is stated against the viewport, and reseeding the screen a
+    second time to read it would cost a real device two more renders.
+
+    Reads the travel off `row_offsets` rather than any per-backend scroll offset. The screen is
+    re-seeded first, so every measurement starts from the top with a full screen of content below
+    the step.
+    """
+    driver = harness.scrollable_screen()
+    elements = driver.query()
+    viewport = _viewport(driver, elements)
+    axis = _AXIS["down"]
+    bounds: base.Frame = (0.0, 0.0, viewport[0], viewport[1])
+    before_view = _region_view(elements, None, viewport, axis)
+    before = row_offsets(elements, bounds, axis)
+    frm, dest = _step_endpoints(elements, "down", None, viewport, fraction)
+    driver.scroll(frm, dest)
+    # Through the loop's own catch-up, as the overlap check does, so a backend whose tree lags its
+    # gesture is measured on the settled screen rather than failed for having been read early. Its
+    # return is that settled read, so the travel comes off the very tree the catch-up judged.
+    after = row_offsets(_region_after_step(driver, before_view, None, viewport, axis), bounds, axis)
+    shared = before.keys() & after.keys()
+    assert shared, f"a step of {fraction} left no row in common, so its travel cannot be measured"
+    # Any shared row gives the travel, the list being rigid; the median keeps one mis-reported frame
+    # from deciding the case.
+    return (
+        abs(dest[axis] - frm[axis]),
+        statistics.median_high(before[i] - after[i] for i in shared),
+        viewport[axis],
     )
 
 
@@ -575,6 +663,53 @@ class DriverConformanceContract:
             _region_after_step(driver, before, None, viewport, axis), None, viewport, axis
         )
         assert before.in_view.keys() & after.in_view.keys()
+
+    def test_one_scroll_step_travels_the_distance_it_was_asked_for(
+        self, harness: ConformanceHarness
+    ) -> None:
+        # The property the overlap check above assumed and nothing measured (BE-0400): a step's
+        # realized travel is the travel its endpoints asked for. Until this landed, the iOS gesture
+        # traversed every drag at one fixed velocity and lifted with the momentum that velocity
+        # implies, so the content flung on past the endpoints — a step asking for 0.05 of the
+        # viewport moved 6.15 times that far, and none moved less than about 0.31 of a screen
+        # however little it asked for.
+        #
+        # Measured at three sizes, not one, because the defect was additive: a single large step read
+        # only 1.25 times too far, while the floor that number hides is what made `scroll`'s
+        # author-chosen `amount` and BE-0329's halving recovery unable to reach the small steps they
+        # name. `_MIN_STEP_FRACTION` bounds the loop's own halving but not `amount`, which reaches
+        # below it, so the smallest measured size is below the floor too — a backend honoring the
+        # three honors what the loop and an author can ask for between them.
+        #
+        # Every size is measured before any is judged, and a failure reports all three. The error
+        # this rejects has a shape — additive or proportional, over or under — and one row cannot
+        # show it, so a reader diagnosing a red run on a device they do not have would otherwise
+        # need a fresh run per step size to see the pattern.
+        measured = [
+            (fraction, *_measure_one_step(harness, fraction))
+            for fraction in (_STEP_FRACTION, _MIN_STEP_FRACTION, _SUB_FLOOR_STEP_FRACTION)
+        ]
+        # Every measurement reseeds the same screen, so they all report the same viewport.
+        slack = _TRAVEL_SLACK_VIEWPORT_FRACTION * measured[0][3]
+        # Two allowances, because two different errors are tolerated and neither is a fraction of the
+        # other. `_TRAVEL_SLACK_VIEWPORT_FRACTION` covers a fixed per-gesture loss — a pan
+        # recognizer's slop, the distance a finger travels before the content starts following it. It
+        # is a fraction of the viewport rather than an absolute distance for the reason `amount`
+        # itself is: the driver's units differ per backend (points on iOS, raw pixels on Android),
+        # so one absolute number would be generous on one and impossibly tight on another.
+        # `_TRAVEL_TOLERANCE` covers error that does scale: sub-pixel rounding, or a scale factor
+        # between the driver's units and the backend's own. Together they stay well inside the
+        # overshoot this check exists to reject, which ran to +133 points on a 524-point request and
+        # +170 on a 109-point one.
+        report = "\n".join(
+            f"  {fraction}: asked {requested:.1f}, travelled {realized:.1f}, "
+            f"off by {realized - requested:+.1f} (allowed ±{_TRAVEL_TOLERANCE * requested + slack:.1f})"
+            for fraction, requested, realized, _ in measured
+        )
+        assert all(
+            abs(realized - requested) <= _TRAVEL_TOLERANCE * requested + slack
+            for _, requested, realized, _ in measured
+        ), f"a scroll step did not travel what it asked for, at these step sizes:\n{report}"
 
     def test_a_read_postdates_a_content_moving_gesture(self, harness: ConformanceHarness) -> None:
         # The marked-read contract (BE-0332), observed: a read taken after a gesture that moves the

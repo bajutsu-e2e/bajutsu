@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Protocol
 
 from bajutsu import adb, simctl, stall_diagnostics
+from bajutsu.evidence import media
 
 _logger = logging.getLogger(__name__)
 
@@ -107,11 +108,21 @@ _VIDEO_FINALIZE_TIMEOUT = 120.0
 # anchor correction (BE-0348).
 _VIDEO_START_TIMEOUT = 5.0
 _VIDEO_START_TIMEOUT_ENV = "BAJUTSU_VIDEO_START_TIMEOUT"
+# How far *before* its own spawn a measured origin may sit before `_measured_start` stops trusting
+# it. Covers the ordinary sub-frame slop — a container rounds its duration up to a whole frame, and
+# the spawn instant is stamped just before a recorder that begins a beat later — without admitting a
+# nominal-frame-rate timeline, whose excess grows with the recording rather than staying inside one
+# frame. The far side of that window is `_video_start_timeout()` instead: an origin *after* the
+# spawn is the recorder's startup, which that ceiling already bounds.
+_ORIGIN_SLACK = 0.2
 # The shared tail of both confirmation-timeout warnings (iOS file-growth, Android device-side
-# process), so the two backends always describe the same uncorrected-anchor condition identically.
+# process), so the two backends always describe the same condition identically. It claims only what
+# the timeout establishes — that the *confirmation* is unavailable. The anchor can still be measured
+# from the finished recording's own duration, which is not known until `stop()`, so an operator
+# debugging a seek must not read this as "the anchor is wrong".
 _ANCHOR_UNCORRECTED_MSG = (
-    "this scenario's video anchor stays uncorrected, so its report seek offsets fall back to "
-    "the scenario's own start"
+    "this scenario's recording start could not be confirmed; its report seek offsets fall back to "
+    "the scenario's own start unless the finished recording can state its duration"
 )
 
 
@@ -210,14 +221,88 @@ class Interval:
     # one whose confirmation timed out — and only the second says the device's capture pipeline is
     # not producing. The recovery-rung choice reads it; nothing on the verdict path does.
     start_confirmed: bool | None = None
+    # The `time.monotonic()` instant the recorder was started, before any confirmation wait. Unlike
+    # `true_start` this is never in doubt, which is what makes it the bound `stop()` sanity-checks a
+    # measured duration against: no faithful recording can be longer than the span it was open for.
+    spawned_at: float | None = None
+    # The `time.monotonic()` instant this recording's *own* timeline begins, filled in by `stop()`
+    # as "the instant the recording ended, minus the finished file's duration". Every
+    # `true_start` above is a proxy — a first flushed byte, a device-side pid, a browser page that
+    # exists — and each fires at its own distance from the moment the recorder actually began
+    # producing frames, so a report anchored to one seeks off by that distance. This is the
+    # recorder's own answer instead of a proxy for it. None when the duration could not be read or
+    # is not a wall-clock measure, which leaves the proxy in charge.
+    measured_start: float | None = None
+    # Whether this recording runs until `stop()` *returns* rather than ending the moment the stop
+    # signal lands. A subprocess recorder stops at the signal and then spends its finalize (and, on
+    # Android, a pull off the device) writing a clip it already captured; the Playwright lane instead
+    # records right up to the context close that `stop()` performs. The two need different end
+    # instants, and using one for the other shifts `measured_start` by that whole tail.
+    stops_when_stop_returns: bool = False
     _proc: Proc = field(repr=False, default_factory=_NullProc)
     _stop_signal: int = signal.SIGTERM
     _stop_timeout: float = _STOP_TIMEOUT
     _transform: Callable[[Path], Path] | None = field(default=None, repr=False)
 
     def stop(self) -> Path:
+        before = time.monotonic()
         self._proc.stop(self._stop_signal, self._stop_timeout)
-        return self._transform(self.path) if self._transform is not None else self.path
+        ended_at = time.monotonic() if self.stops_when_stop_returns else before
+        path = self._transform(self.path) if self._transform is not None else self.path
+        if self.kind == "video":
+            self.measured_start = _measured_start(path, ended_at, self.spawned_at)
+        return path
+
+
+def _measured_start(path: Path, ended_at: float, spawned_at: float | None) -> float | None:
+    """Where `path`'s footage begins on the monotonic clock, or None when it cannot be measured.
+
+    A recording states its own duration, and `ended_at` is when it stopped, so the subtraction gives
+    the instant its first frame was captured — the origin a report's seek offsets are relative to
+    (the origin BE-0346 approximates with `true_start`).
+
+    The subtraction is only as good as its two inputs, and each has a way of being wrong that the
+    other cannot see:
+
+    - The duration may not be a *wall-clock* measure, which is a property of the recorder rather
+      than of this arithmetic: a container written at a nominal frame rate can state more seconds
+      than the recorder was ever open for. That pushes the origin *before* the spawn.
+    - `ended_at` may not be when the recording ended, because a recorder can stop itself. Android's
+      `screenrecord` does exactly that at its own `SCREENRECORD_TIME_LIMIT_S` ceiling, so a scenario
+      outlasting that ceiling stops signalling a recorder that quit minutes ago. That pushes the
+      origin *after* the first frame, by the whole gap — silently worse than the proxy it outranks.
+
+    `spawned_at` bounds both, because it is the one instant that needs no confirmation. A recording
+    opens on its first frame somewhere between that spawn and the ceiling the start confirmation
+    already allows a recorder for exactly that startup (`_video_start_timeout`); an origin outside
+    that window says one of the two inputs is not describing this recording, so it is discarded
+    rather than trusted. Debug rather than warning on every rejection: falling back to the
+    start-confirmation proxy is the behavior every run had before this, not an evidence gap this
+    function created.
+    """
+    duration = media.duration_seconds(path)
+    if duration is None:
+        _logger.debug("could not read %s's duration; its anchor stays on the start proxy", path)
+        return None
+    if spawned_at is None:
+        # No bound, no measurement: a provider that stamps no spawn leaves nothing to check the two
+        # inputs against, and an unchecked origin is exactly what the window below exists to refuse.
+        _logger.debug("%s has no spawn instant to bound its origin; it stays on the proxy", path)
+        return None
+    origin = ended_at - duration
+    # `_ORIGIN_SLACK` on the near side only: a sub-frame overshoot is ordinary rounding, while the
+    # far side is the recorder's real startup and already has a ceiling of its own.
+    if not (spawned_at - _ORIGIN_SLACK) <= origin <= (spawned_at + _video_start_timeout()):
+        _logger.debug(
+            "%s states %.3fs of footage ending at the stop, which puts its first frame %+.3fs from "
+            "the spawn — outside the window a recording can open in, so its anchor stays on the "
+            "start proxy",
+            path,
+            duration,
+            origin - spawned_at,
+        )
+        return None
+    return origin
 
 
 def adopt(interval: Interval, target: Path) -> Interval:
@@ -230,7 +315,9 @@ def adopt(interval: Interval, target: Path) -> Interval:
     result. The web lane finalizes in place instead; this is the device twin of that adopt-on-stop
     shape. Carries `interval`'s `true_start` and `start_confirmed` forward unchanged: the wrapped
     interval already settled when — and whether — it actually began, and neither answer moves just
-    because its file is later relocated.
+    because its file is later relocated — nor does `spawned_at`, the span bound `stop()` checks the
+    relocated file's duration against. `measured_start` is deliberately *not* carried: it is settled
+    by a `stop()`, and this wrapper's own stop is the one that sees the relocated file.
     """
 
     def relocate(_: Path) -> Path:
@@ -245,6 +332,7 @@ def adopt(interval: Interval, target: Path) -> Interval:
         provider=interval.provider,
         true_start=interval.true_start,
         start_confirmed=interval.start_confirmed,
+        spawned_at=interval.spawned_at,
         _transform=relocate,
     )
 
@@ -311,6 +399,7 @@ def start_video(
     opt-in side effect: a dead video pipeline is evidence about the device, not just about this clip.
     """
     baseline_size = _file_size(path, disclose=True) if confirm_started else 0
+    spawned_at = time.monotonic()
     proc = spawn(record_video_cmd(udid, str(path)), None)
     # Resolved per call, not bound as a parameter default: a default binds at import time and so
     # could never see `BAJUTSU_VIDEO_START_TIMEOUT` (BE-0348).
@@ -332,6 +421,7 @@ def start_video(
         path=path,
         true_start=true_start,
         start_confirmed=start_confirmed,
+        spawned_at=spawned_at,
         _proc=proc,
         _stop_signal=signal.SIGINT,
         _stop_timeout=_VIDEO_FINALIZE_TIMEOUT,
@@ -596,6 +686,7 @@ def start_screenrecord(
     # earlier attempt already has bytes.
     baseline_pids = frozenset(_screenrecord_pids(serial, run)) if confirm_started else frozenset()
     baseline_size = _screenrecord_baseline_size(serial, run, device_path) if confirm_started else 0
+    spawned_at = time.monotonic()
     proc = spawn(
         adb.screenrecord_cmd(
             serial, device_path, time_limit=time_limit, size=size, bit_rate=bit_rate
@@ -633,6 +724,7 @@ def start_screenrecord(
         provider=ADB_PROVIDER,
         true_start=true_start,
         start_confirmed=(true_start is not None) if confirm_started else None,
+        spawned_at=spawned_at,
         _proc=proc,
         _stop_signal=signal.SIGINT,
         _stop_timeout=_VIDEO_FINALIZE_TIMEOUT,

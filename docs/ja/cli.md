@@ -19,7 +19,7 @@
 
 ## `run`
 
-シナリオを **決定的に実行**します。合否は機械判定のみです。唯一の AI コンポーネントは**アラートガード**の視覚フォールバック（シナリオごとに既定 ON）で、ステップをブロックした OS プロンプトのうち、ネイティブの SpringBoard 経路（iOS XCUITest、モデル不使用）が名指しできないものを片付けるためだけに動作します。詳しくは [`systemAlertHandling`](scenarios.md#systemalerthandlingシステムアラートガード) を参照してください。
+シナリオを **決定的に実行**します。合否は機械判定のみで、[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) 以降は**どのフラグを付けてもモデルに到達しません**。**アラートガード**（シナリオごとに既定 ON）は、ステップをブロックした OS プロンプトをネイティブの SpringBoard 経路（iOS XCUITest、モデル不使用）で片付けます。その経路が名指しできないプロンプトには手を触れず、ブロックされたステップ自身の失敗理由に書き出します。詳しくは [`systemAlertHandling`](scenarios.md#systemalerthandlingシステムアラートガード) を参照してください。
 
 ```bash
 bajutsu run --target <name> [--scenario <file.yaml>] [options]
@@ -37,10 +37,9 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 | `--exclude` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオをスキップ |
 | `--udid` | `booted` | 対象 Simulator（カンマ区切り = `--workers` 用のデバイスプール） |
 | `--erase / --no-erase` | シナリオ › config › off | 各シナリオの `preconditions.erase`（シム全体を wipe）を上書き。省略時は各シナリオの値、次にターゲットの `erase` config、次に off の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。アプリはどちらでも毎回 fresh に再インストール（config `appPath` + `preconditions.reinstall`） |
-| `--system-alert-handling / --no-system-alert-handling` | シナリオ › config › ON | 各シナリオの `systemAlertHandling` を上書きします。iOS バックエンドから見えないシステムアラートを消すリアクティブなガードで、XCUITest 上ではネイティブに（モデル不使用、BE-0315）、ネイティブ経路が名指しできないものは視覚フォールバックで処理します。省略時は各シナリオの値、次にターゲットの `systemAlertHandling` config、次に ON の順で解決します（視覚フォールバックは設定した AI プロバイダが必要です。`ANTHROPIC_API_KEY`、Bedrock なら AWS 認証情報。ネイティブ経路は認証情報不要です。[recording](recording.md#システムアラートの自動対処)） |
+| `--system-alert-handling / --no-system-alert-handling` | シナリオ › config › ON | 各シナリオの `systemAlertHandling` を上書きします。iOS バックエンドから見えないシステムアラートを消すリアクティブなガードで、XCUITest 上ではネイティブに処理します（モデル不使用、BE-0315）。決定的な経路がどれも片付けられないアラートには何もしません。ガード対象の `wait` は見たものを自身のタイムアウトで必ず名指しし、wait の外のステップは、ネイティブ照会がアラートを列挙できたときだけ名指しします。ネイティブ照会を持たないバックエンドでは名指しする材料がないため、そのステップは従来どおり失敗します（BE-0402）。省略時は各シナリオの値、次にターゲットの `systemAlertHandling` config、次に ON の順で解決します。AI 認証情報は一切不要です（[recording](recording.md#システムアラートの自動対処)） |
 | `--ios-tipkit-handling / --no-ios-tipkit-handling` | シナリオ › config › OFF | 各シナリオの `iosTipKitHandling` を上書きします。操作をブロックしている Apple **TipKit** の tip を閉じます。フレームワークが所有する popover であり、同じ回避策をシナリオごとに手で書かずに済ませるためのガードです。ガードは tip を、閉じるための scrim（`PopoverDismissRegion`）とその tip 自身のコンテナ（`TipView`）の両方で判定します。`confirmationDialog` が同一の scrim を設置するため、そちらには手を触れないようにする必要があるからです。同じ理由で、tip 向けの `interrupts` エントリを手で書く場合は `TipView` を手がかりにします。iOS 専用（他のバックエンドでは何もしません）で、求められない限り **OFF** です。tip 自体がアサーションの対象になる場合があるからです。省略時は各シナリオの値、次にターゲットの `iosTipKitHandling` config、次に OFF の順で解決します。認証情報は不要です（[scenarios](scenarios.md)） |
 | `--alert-labels` | "" | ネイティブのアラート経路が押すボタンラベルをカンマ区切りで指定します。シナリオ自身の `systemAlertHandling.labels` の**後ろ**、ターゲット config の前に連結されます |
-| `--alert-vision-instruction` | "" | AI 視覚フォールバックだけが読む自由記述。シナリオ自身の `systemAlertHandling.visionInstruction` の下位、ターゲットの上位に位置します |
 | `--alert-poll-interval` | 未設定 | ネイティブのシステムアラート presence 照会の間隔（秒）。シナリオ自身の `pollInterval` の下位、ターゲットの上位に位置します |
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `bundleId`） |
@@ -58,34 +57,20 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 | `--runs-dir` | `runs` | run ツリーを書き出すディレクトリ。作業ディレクトリと出力先を分けられる。`serve` は、アクティブな config が別のツリー（Git チェックアウトやアップロードされたバンドル）からバインドされているとき、そのツリーで走らせつつ run を `serve` のストアに残すためにこれを使います（[BE-0073](../../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)） |
 | `--evidence-store` | "" (環境変数 `BAJUTSU_EVIDENCE_STORE` も可) | run の後に、run ツリー全体をこの URI のオブジェクトストレージへアップロードします。`s3://bucket/prefix`（AWS / R2 / MinIO）または `gs://bucket/prefix`（Google Cloud Storage）を指定します。リモートのレイアウトはローカルと同じ構造を prefix 配下に再現するので（`<prefix><runId>/…`）、アップロード先のパスによってクラウドのライフサイクルポリシーが切り替わります（main ブランチの証跡は保持し、feature ブランチの証跡は短期で失効させる、など）。**判定の後**に走るので、アップロードが失敗しても警告を出すだけで pass/fail には影響しません。`s3` または `gcs` の extra が必要です（[BE-0110](../../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)） |
 | `--config` | `bajutsu.config.yaml` | config ファイル |
-| `--project` | "" | [`project add`](#project) で登録したプロジェクトを名前で実行します。保存された config ソースを `--config` の spec に戻して実行する、CI や cron のステップが呼ぶヘッドレスなトリガーで、`POST /api/projects/<name>/run` の CLI 版です（[BE-0225](../../roadmaps/BE-0225-config-project-hub/BE-0225-config-project-hub.md)）。`--config` とは同時に指定できません |
+| `--label` | config 自身の名前 | この run の履歴エントリに、短い自由記述のラベルを付けます。2 つの config の run を、run 一覧・Replay・run 統計ダッシュボードで読み分けられるようになります（[BE-0404](../../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer-ja.md)）。ツールにとってラベルは不透明な値で、解析も config との照合も権限判定もしません。120 文字を超える値は、切り詰めずに拒否します |
 | `--config-offline` | off | Git ソースの `--config`（[configuration](configuration.md#git-リポジトリからの-configbe-0063)）向け。ローカルキャッシュだけを使い、ネットワークには一切触れません。ブランチはオフラインで解決できないので、pinned な `@<sha>` が必要です |
 | `--require-pinned-config` | off | Git ソースの `--config` 向け。コミット SHA を pin していなければ失敗します。ブランチや tag はゲート下で動きうるので、SHA だけを受け付けます |
 
 - 証跡は `FileSink(runs/<runId>, udid=..., log_predicate=...)` に書きます（[evidence](evidence.md#sink証跡の出力先)）。
 - `runId` は `YYYYMMDD-HHMMSS`。
 - 出力: `PASS|FAIL  runs/<runId>/manifest.json`。**終了コードは全シナリオ成功で 0、失敗で 1**。
-- run 内で唯一 AI を使うアラートガードの視覚フォールバックが実際に発火したときは、結果の後に消費トークン量を示す
-  `AI usage:` 行を **stderr** に出力します（stdout は機械可読の結果 1 行のままです）。AI を使わな
-  かった run では何も出力しません。
+- `AI usage:` 行は出力しません。`run` はどのフラグを付けてもトークンを消費しないため（BE-0402）、
+  使用量台帳を導入せず、報告もしません。`record`、`crawl`、`triage --ai` は従来どおり出力します。
 
 ```bash
 bajutsu run --target showcase-swiftui --udid <UDID> --backend ios --no-erase            # アプリのシナリオディレクトリ全体
 bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --no-erase   # 単一ファイル
 ```
-
-## `project`
-
-**config プロジェクトハブ**をヘッドレスに扱う CLI です。`serve` が HTTP で公開するのと同じストアを操作するので、ここで登録したプロジェクトは web のハブからも見え、その逆も成り立ちます（[BE-0225](../../roadmaps/BE-0225-config-project-hub/BE-0225-config-project-hub.md)）。プロジェクトは config ソースへの名前付きバインディングで、上の `run --project <name>` がそれを解決して実行します。ストアは `BAJUTSU_DATABASE_URL` が設定されていれば DB、なければ runs ディレクトリ（`--runs`、既定は `runs`）の隣に置く on-disk の JSON です。各コマンドはローカルでは単一の `default` org に解決します。
-
-```bash
-bajutsu project add <name> --config <source>   # プロジェクトを登録（または再バインド）。最初の 1 件がアクティブになる
-bajutsu project ls                              # プロジェクト一覧。アクティブなものは先頭の '*' で示す
-bajutsu project use <name>                      # 指定プロジェクトをアクティブなバインディングにする
-bajutsu project rm <name>                       # プロジェクトを登録解除する（その run はディスク上に残る）
-```
-
-`--config` はローカルパスと Git spec（`github:owner/repo@ref:path`）を受け付けます。[`run --config`](#run) と同じ形式です（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md)）。実行のタイミングは `run --project` を呼ぶ CI や cron の側が持ち、Bajutsu は持ちません。
 
 ## `doctor`
 

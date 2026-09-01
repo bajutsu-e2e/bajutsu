@@ -430,6 +430,13 @@ class PlaywrightDriver:
             path=path,
             provider=self.name,
             true_start=self._video_true_start,
+            # The recording context exists from the same instant the page does, so the stamp that
+            # serves as this lane's start proxy is also the span bound `Interval.stop()` measures
+            # the finished file's duration against.
+            spawned_at=self._video_true_start,
+            # Playwright keeps filming until the context closes, and closing it is what `stop()`
+            # does — so unlike a subprocess recorder, this recording ends when `stop()` returns.
+            stops_when_stop_returns=True,
             _proc=_VideoCapture(),
         )
 

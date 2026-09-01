@@ -68,7 +68,7 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "org": "default",  # single-tenant default org (BE-0015 multi-tenancy)
         "actor": None,  # no OAuth identity for this locally-built job
         "evidence_prefix": "",  # no per-run evidence prefix requested (BE-0110)
-        "project_id": None,  # no project hub wired for this locally-built job (BE-0225)
+        "label": None,  # no config bound for this locally-built job to derive one from (BE-0404)
         "env_overlay": {},  # no AI provider selected for this org, so no overlay (BE-0229)
         "batch": None,  # not a cloud-batch job (BE-0336 Unit 5)
     }
@@ -99,19 +99,19 @@ def test_job_spec_carries_the_evidence_prefix(tmp_path: Path) -> None:
     assert job_spec(job)["evidence_prefix"] == "main/abc1234/"
 
 
-def test_job_spec_carries_the_project_id(tmp_path: Path) -> None:
-    # The project resolved at enqueue travels so the worker's `_persist_run` stamps `runs.project_id`
-    # without a registry of its own (BE-0225 unit 3, unit 2 review carry-over).
+def test_job_spec_carries_the_run_label(tmp_path: Path) -> None:
+    # The label resolved at enqueue travels so the worker's `_persist_run` stamps `runs.label`
+    # without a bound config of its own (BE-0404 unit 2).
     state = srv.ServeState(runs_dir=tmp_path / "runs")
-    job = state.register(srv.Job(cmd=["run"], project_id="proj-1"))
-    assert job_spec(job)["project_id"] == "proj-1"
+    job = state.register(srv.Job(cmd=["run"], label="checkout"))
+    assert job_spec(job)["label"] == "checkout"
 
 
-def test_execute_job_spec_stamps_the_project_id_carried_in_the_spec(
+def test_execute_job_spec_stamps_the_label_carried_in_the_spec(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
-    # The worker has no project registry; the run must still be labeled with the project the control
-    # plane resolved at enqueue and shipped in the spec (BE-0225 unit 3).
+    # The worker holds no bound config; the run must still land in the partition the control plane
+    # resolved at enqueue and shipped in the spec (BE-0404 unit 2).
     from bajutsu.serve.server.db import SqlRepository
     from bajutsu.serve.server.models import Base
 
@@ -120,7 +120,6 @@ def test_execute_job_spec_stamps_the_project_id_carried_in_the_spec(
     Base.metadata.create_all(engine)
     repo = SqlRepository(engine)
     repo.ensure_org("acme", slug="acme", name="acme")
-    repo.create_project(_project_record("proj-1", "acme", "checkout"))
 
     spec = {
         "job_id": "1",
@@ -129,7 +128,7 @@ def test_execute_job_spec_stamps_the_project_id_carried_in_the_spec(
         "app_path": None,
         "build": None,
         "org": "acme",
-        "project_id": "proj-1",
+        "label": "checkout",
     }
     execute_job_spec(
         spec,
@@ -139,13 +138,7 @@ def test_execute_job_spec_stamps_the_project_id_carried_in_the_spec(
         repository=repo,
     )
     rec = repo.get_run("20260610-2")
-    assert rec is not None and rec.project_id == "proj-1"
-
-
-def _project_record(pid: str, org_id: str, name: str) -> Any:
-    from bajutsu.serve.server.db import ProjectRecord
-
-    return ProjectRecord(id=pid, org_id=org_id, name=name, source=None)
+    assert rec is not None and rec.label == "checkout"
 
 
 def test_start_run_carries_a_valid_evidence_prefix_end_to_end(tmp_path: Path) -> None:
@@ -392,7 +385,6 @@ def test_start_run_passes_safe_backfilled_flags_and_withholds_host_paths(tmp_pat
             "network": False,
             "zip": True,
             "alertLabels": "Allow,OK",
-            "alertVisionInstruction": "tap Allow",
             "alertPollInterval": 2.5,
             "logPredicate": "subsystem == 'x'",
             "logSubsystem": "com.example",
@@ -409,7 +401,9 @@ def test_start_run_passes_safe_backfilled_flags_and_withholds_host_paths(tmp_pat
     assert "--no-network" in cmd  # network=False forces the off side of the pair
     assert "--zip" in cmd
     assert cmd[cmd.index("--alert-labels") + 1] == "Allow,OK"
-    assert cmd[cmd.index("--alert-vision-instruction") + 1] == "tap Allow"
+    # `run` retired that flag with the vision fallback it steered (BE-0402); a body naming it is
+    # rejected outright (tests/serve/test_system_alert_handling_flag.py), never rendered.
+    assert "--alert-vision-instruction" not in cmd
     assert cmd[cmd.index("--alert-poll-interval") + 1] == "2.5"
     assert cmd[cmd.index("--log-predicate") + 1] == "subsystem == 'x'"
     assert cmd[cmd.index("--log-subsystem") + 1] == "com.example"

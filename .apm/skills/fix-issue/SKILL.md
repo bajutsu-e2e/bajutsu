@@ -160,7 +160,7 @@ output is always a self-contained, gate-green change with every review finding r
 ([BE-0230](../../../roadmaps/BE-0230-hands-free-implement-review-loop/BE-0230-hands-free-implement-review-loop.md)).
 Three things differ from a BE-item PR, all of them because the fix carries no roadmap item:
 
-- **No `Status` flip.** `implement-be` step 8 promotes its item to `Status: Implemented` in the same
+- **No `Status` flip.** `implement-be` step 8 records its item's new state in the same
   change; there is no roadmap file here, so that step has no counterpart. Touch no file under
   `roadmaps/`.
 - **A plain scoped title, with no `[BE-NNNN]` prefix** — the shape

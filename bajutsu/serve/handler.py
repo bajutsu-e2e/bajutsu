@@ -365,7 +365,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
             self._dispatch_registry("POST", path, body)
 
         def do_DELETE(self) -> None:
-            # DELETE surfaces: deregister a project (BE-0225) and delete a run/crawl-run (BE-0239).
+            # DELETE surfaces: delete a run / crawl-run (BE-0239) and retire an org (BE-0375).
             # Each mutates server state, so it runs behind the same auth gate as every route and the
             # same unconditional cross-origin block as do_POST (BE-0121) — a DELETE is as
             # CSRF-sensitive as a POST.
@@ -476,7 +476,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
         def _handle_artifact_upload(self, kind: ArtifactKind) -> None:
             """Stream one independently-uploaded artifact (BE-0268: `config` / `scenarios` /
             `binary`) to a temp file (bounded), then store it (`ops.bind_artifact`). Raw body, no
-            `?name=` — an artifact's provenance name lives on the *composition*'s project record,
+            `?name=` — an artifact's provenance name lives on the *composition*'s source record,
             not the artifact itself."""
             receiver = self._stream_bounded_body()
             if receiver is None:
@@ -671,7 +671,6 @@ _JS_MODULES = (
     "serve.panels.mjs",
     "serve.crawl.mjs",
     "serve.metrics.mjs",
-    "serve.projects.mjs",
     "serve.orgs.mjs",
     "serve.author.mjs",
 )

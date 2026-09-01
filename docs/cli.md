@@ -21,7 +21,7 @@ Related: [run-loop](run-loop.md) · [recording](recording.md) · [codegen](codeg
 
 ## `run`
 
-Runs a scenario **deterministically**; pass/fail is machine-only. The only AI component is the **alert guard**'s vision fallback (on by default per scenario), which fires only to clear an OS prompt that blocked a step and that the native SpringBoard path (iOS XCUITest, no model) can't name — see [`systemAlertHandling`](scenarios.md#systemalerthandling-the-system-alert-guard).
+Runs a scenario **deterministically**; pass/fail is machine-only, and since [BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) **no flag of `run`'s reaches a model at all**. Its **alert guard** (on by default per scenario) clears an OS prompt that blocked a step through the native SpringBoard path (iOS XCUITest, no model); a prompt that path can't name is left alone and named in the blocked step's own failure — see [`systemAlertHandling`](scenarios.md#systemalerthandling-the-system-alert-guard).
 
 ```bash
 bajutsu run --target <name> [--scenario <file.yaml>] [options]
@@ -41,10 +41,9 @@ specific files in one process, sharing a single warm runner.
 | `--exclude` | "" | comma list; skip scenarios carrying any of these tags |
 | `--udid` | `booted` | the target Simulator (comma list = a device pool for `--workers`) |
 | `--erase / --no-erase` | scenario › config › off | override every scenario's `preconditions.erase` (wipe the simulator first); omit and it resolves each scenario's value, then the target's `erase` config, then off ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). The app is reinstalled fresh either way (config `appPath` + `preconditions.reinstall`) |
-| `--system-alert-handling / --no-system-alert-handling` | scenario › config › on | override every scenario's `systemAlertHandling` — the reactive guard that dismisses system alerts the iOS backend cannot see, natively on XCUITest (no model, BE-0315) with vision as the fallback for what the native path can't name; omit and it resolves each scenario's value, then the target's `systemAlertHandling` config, then on (the vision fallback needs the configured AI provider — `ANTHROPIC_API_KEY`, or AWS credentials for Bedrock; the native path needs no credential; [recording](recording.md#dismissing-system-alerts-automatically)) |
+| `--system-alert-handling / --no-system-alert-handling` | scenario › config › on | override every scenario's `systemAlertHandling` — the reactive guard that dismisses system alerts the iOS backend cannot see, natively on XCUITest (no model, BE-0315). An alert no deterministic path can clear is left alone. A guarded `wait` names what the guard saw in its own timeout; a blocked step outside one names it when the native query enumerated the alert, and on a backend with no native query fails as it always did (BE-0402); omit and it resolves each scenario's value, then the target's `systemAlertHandling` config, then on. No AI credential is needed ([recording](recording.md#dismissing-system-alerts-automatically)) |
 | `--ios-tipkit-handling / --no-ios-tipkit-handling` | scenario › config › off | override every scenario's `iosTipKitHandling` — dismiss a blocking Apple **TipKit** tip, the framework-owned popover, so that no scenario has to hand-author the same recovery. The guard recognizes a tip by its dismiss scrim (`PopoverDismissRegion`) **and** its own container (`TipView`) together, because a `confirmationDialog` installs an identical scrim and must be left alone; an author who does write an `interrupts` entry for a tip keys it on `TipView` for the same reason. iOS only (inert on other backends) and **off** unless asked for, since a tip is sometimes the assertion's own subject; omit and it resolves each scenario's value, then the target's `iosTipKitHandling` config, then off. Needs no credential ([scenarios](scenarios.md)) |
 | `--alert-labels` | "" | comma-separated button labels for the native alert path, concatenated **after** a scenario's own `systemAlertHandling.labels` and before the target config's |
-| `--alert-vision-instruction` | "" | free text only the AI vision fallback reads, below a scenario's own `systemAlertHandling.visionInstruction` and above the target's |
 | `--alert-poll-interval` | unset | seconds between the native system-alert presence queries, below a scenario's own `pollInterval` and above the target's |
 | `--log-predicate` | "" | an NSPredicate narrowing the `deviceLog` stream (e.g. subsystem) |
 | `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
@@ -62,7 +61,7 @@ specific files in one process, sharing a single warm runner.
 | `--runs-dir` | `runs` | directory to write the run tree into. Lets a caller run from one working directory but persist the run elsewhere — `serve` uses it when the active config is bound from a different tree (a Git checkout or an uploaded bundle) to run from that tree while keeping the run in `serve`'s store ([BE-0073](../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)) |
 | `--evidence-store` | "" (also `BAJUTSU_EVIDENCE_STORE`) | after the run, upload the whole run tree to object storage at this URI — `s3://bucket/prefix` (AWS / R2 / MinIO) or `gs://bucket/prefix` (Google Cloud Storage). The remote layout mirrors the local one under the prefix (`<prefix><runId>/…`), so the upload path selects the cloud lifecycle policy (retain main-branch evidence, expire feature-branch evidence). Runs **after** the verdict, so an upload failure is reported as a warning and can't affect pass/fail. Needs the `s3` or `gcs` extra ([BE-0110](../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md)) |
 | `--config` | `bajutsu.config.yaml` | the config file |
-| `--project` | "" | run a project registered with [`project add`](#project) by name — resolves its stored config source back to a `--config` spec and runs it. The headless trigger a CI/cron step calls, the CLI mirror of `POST /api/projects/<name>/run` ([BE-0225](../roadmaps/BE-0225-config-project-hub/BE-0225-config-project-hub.md)). Mutually exclusive with `--config` |
+| `--label` | the config's own name | tag this run's history entry with a short free-text label, so the runs of two configs stay readable apart in the run list, Replay, and the run-stats dashboard ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)). Opaque to the tool: never parsed, never matched against config, never consulted by authorization. A value longer than 120 characters is refused rather than shortened |
 | `--config-offline` | off | for a Git `--config` ([configuration](configuration.md#config-from-a-git-repository-be-0063)): use the local cache and never touch the network — needs a pinned `@<sha>`, since a branch can't be resolved offline |
 | `--require-pinned-config` | off | for a Git `--config`: fail unless it pins a commit SHA — a branch or tag can move under a gate, so only a SHA is accepted |
 
@@ -70,33 +69,13 @@ specific files in one process, sharing a single warm runner.
   ([evidence](evidence.md#sinks-where-evidence-goes)).
 - `runId` is `YYYYMMDD-HHMMSS`.
 - Output: `PASS|FAIL  runs/<runId>/manifest.json`. **Exits 0 if every scenario passes, 1 on failure.**
-- When the alert guard's vision fallback fires (it is the run's only AI), an `AI usage:` line with the
-  token totals it consumed is printed to **stderr** after the result, leaving stdout the single
-  machine-readable result line. A run that used no AI prints nothing.
+- No `AI usage:` line: `run` spends no tokens under any flag (BE-0402), so it installs no usage
+  ledger and reports none. `record`, `crawl`, and `triage --ai` still do.
 
 ```bash
 bajutsu run --target showcase-swiftui --udid <UDID> --backend ios --no-erase            # the app's whole scenarios dir
 bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --no-erase   # one file
 ```
-
-## `project`
-
-The **config project hub** as a headless CLI — the same store `serve` exposes over HTTP, so a
-project registered here is visible in the web hub and vice versa ([BE-0225](../roadmaps/BE-0225-config-project-hub/BE-0225-config-project-hub.md)).
-A project is a named binding to a config source; `run --project <name>` (above) resolves and runs
-it. The store is the DB when `BAJUTSU_DATABASE_URL` is set, else the on-disk JSON beside the runs
-directory (`--runs`, default `runs`). Every command resolves to the single `default` org locally.
-
-```bash
-bajutsu project add <name> --config <source>   # register (or rebind) a project; first one becomes active
-bajutsu project ls                              # list projects; the active one is marked with a leading '*'
-bajutsu project use <name>                      # make a project the active binding
-bajutsu project rm <name>                       # deregister a project (its runs are retained on disk)
-```
-
-`--config` accepts a local path or a Git spec (`github:owner/repo@ref:path`), the same forms
-[`run --config`](#run) takes ([BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md)).
-The cadence lives in the CI/cron system that calls `run --project`, not in Bajutsu.
 
 ## `doctor`
 

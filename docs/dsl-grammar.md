@@ -147,11 +147,12 @@ Preconditions ::= {
 }
 
 # ── SystemAlertHandling (reactive system-alert guard; on by default) ───
-# Native SpringBoard query + tap on XCUITest (no model, reusing BE-0316); AI-vision fallback (BE-0315).
+# Native SpringBoard query + tap on XCUITest (no model, reusing BE-0316; BE-0315). An alert that path
+# cannot name is reported on the blocked step's own failure, never guessed at (BE-0402).
 SystemAlertHandling ::= boolean                                   # true = on with the default policy, false = off
                | { rules?: [<SystemAlertRule>],             # answer a named prompt by choice — native path
-                   labels?: [string],                       # ordered button labels — native path (+ a vision hint)
-                   visionInstruction?: string,              # free text — AI vision fallback only
+                   labels?: [string],                       # ordered button labels — native path
+                   visionInstruction?: string,              # free text; reaches no command — `run` rejects it
                    pollInterval?: number }                   # native poll cadence, seconds (default 1)
 SystemAlertRule ::= { prompt: notifications|tracking|paste, choice: grant|deny }  # unique prompt per list
 
@@ -220,9 +221,10 @@ Swipe ::=
   | { from: <Point>,  to: <Point> }                                                # coordinate form ┘
     # amount (selector form only): travel as a fraction of the screen, 0 < amount ≤ 1; omitted = a small default fraction (0.125)
 Drag ::= { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # element-anchored pointer drag (BE-0227), amount as in Swipe
-Scroll ::= { to: <Selector>, direction?: ("up"|"down"|"left"|"right"), within?: <Selector>, maxScrolls?: integer }
+Scroll ::= { to: <Selector>, direction?: ("up"|"down"|"left"|"right"), within?: <Selector>, amount?: number, maxScrolls?: integer }
     # scroll until `to`'s frame center is on-screen, else fail (BE-0326). direction = scroll direction (default "down"), the inverse of Swipe's finger direction.
     # within: the scrollable container to gesture inside (default: the whole screen). maxScrolls: step bound before failing (default 15, > 0).
+    # amount: one step's travel as a fraction of the viewport, 0 < amount ≤ 1; omitted = 0.6. Sets where the loop starts, not its recovery floor (BE-0400).
 Point ::= [ number, number ]
 
 Generate ::=
@@ -404,7 +406,7 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 | `Preconditions.launchEnv` | `{}` |
 | `SystemAlertHandling.rules` | `[]` (no named-prompt rules; `labels`/the built-in dismissive labels answer every prompt) |
 | `SystemAlertHandling.labels` | `[]` (no layer named a button; the built-in dismissive labels stand in) |
-| `SystemAlertHandling.visionInstruction` | unset (the fallback takes a hint derived from `labels`, else its own default) |
+| `SystemAlertHandling.visionInstruction` | unset — and no other value is usable: `run` refuses one (BE-0402) and `record` / `crawl` read the free text only from their own `--alert-vision-instruction` flag |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |
 | `MockResponse.status` | `200` |

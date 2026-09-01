@@ -147,15 +147,15 @@ def test_show_view_toggles_every_declared_view(tmp_path: Path) -> None:
 def test_the_orgs_view_gets_the_single_column_layout(tmp_path: Path) -> None:
     # The second thing only a browser showed: the page rendered, in a ~340px column with every row
     # truncated. A `main` view is a grid, and the single-card views name themselves in one rule to
-    # take the full width. The Orgs section is copied from the Projects section, so it needs that
-    # rule too — copying the markup without it is exactly the miss this pins.
+    # take the full width. Any single-card view added later needs that rule too — shipping the
+    # markup without it is exactly the miss this pins.
     css = _fetch(tmp_path, "/")  # serve.css is inlined into the index
     rule = next(
         line
         for line in css.splitlines()
         if "grid-template-columns:1fr}" in line and "#view-" in line
     )
-    assert "#view-orgs" in rule and "#view-projects" in rule
+    assert "#view-orgs" in rule and "#view-metrics" in rule
 
 
 def test_core_js_refreshes_the_orgs_page_on_entry(tmp_path: Path) -> None:

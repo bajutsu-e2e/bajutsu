@@ -55,8 +55,10 @@ means the same thing after the run that produced it exits
           "duration_s": 0.12,
           "assertion_results": [],
           "artifacts": [
-            { "name": "before.png", "kind": "screenshot", "provider": "driver" },
-            { "name": "after.png", "kind": "screenshot", "provider": "driver" }
+            { "name": "before.png", "kind": "screenshot", "provider": "driver",
+              "depicts": "xcuitest:before" },
+            { "name": "after.png", "kind": "screenshot", "provider": "driver",
+              "depicts": "xcuitest:after" }
           ]
         }
       ],
@@ -85,7 +87,8 @@ means the same thing after the run that produced it exits
   anchor — instead of forcing a re-run of the scenario
   ([BE-0348](../roadmaps/BE-0348-absolute-timestamp-recording/BE-0348-absolute-timestamp-recording.md)).
 - `video_anchor_s` (per scenario): the absolute wall-clock instant the scenario's video started,
-  taken from the recording's confirmed real start where the confirmation succeeded
+  measured from the finished recording's own duration where that duration is a wall-clock measure,
+  and otherwise from the recording's confirmed start signal
   ([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)). Every viewer subtracts it.
   A run recorded before `schemaVersion` 6 carries no anchor. Its `started_at` values are already
   video-relative, so a viewer reads the missing anchor as `0.0` and renders them unchanged.
@@ -116,7 +119,16 @@ means the same thing after the run that produced it exits
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It groups accumulated runs by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — it never enters
-  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `7` today.)
+  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `10` today.)
+- `target` (top, optional): the target the run ran, so "the Android target passes while the iOS
+  target fails" is computable from stored data ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)).
+  One run resolves one target, so it sits beside `backend` rather than on each scenario. `serve`
+  mirrors it onto the run row and ranks targets against each other from it. Omitted when the run
+  named no target. (`schemaVersion` is `10` or higher once this key can appear.)
+- `label` (top, optional): the run-history partition — the bound config's own name, or the operator's
+  `run --label` override. Opaque metadata: never parsed, never matched against config, and never an
+  input to `ok`. It is what keeps two configs' runs readable apart after a `serve` restart. Omitted
+  when the run carried no label. (`schemaVersion` is `10` or higher once this key can appear.)
 - `idb` (top, optional, legacy): older manifests may carry an `idb_companion` / client version
   block (BE-0005). It was retired with the idb backend (BE-0290) and is no longer written; an old
   manifest that still has it loads fine, since an unknown top-level key is ignored.
@@ -229,7 +241,12 @@ which a step re-reads after acting. Frame and pixels then describe the same mome
 exception: a non-mutating step (`assert`, `wait`) reuses the tree it settled on (BE-0259). That tree
 precedes the screenshot rather than following it. The serve editor's element picker resolves a
 step to the
-same image, for the same reason. In the detail, identifiers (`#home.title`) and literal constants (`“text”`,
+same image, for the same reason. Where the image and the tree describe *different* screens — a
+[`web` block](scenarios.md#web-entering-a-webviews-dom)'s native screenshot beside its WebView tree,
+or a stored run that has lost its `after.png` — the viewer shows both and draws no frames, and the
+tree button says why ([evidence](evidence.md#which-screen-an-artifact-shows-depicts)). The serve
+editor offers no image for such a step at all, since every click there would resolve to an element
+that was never at those pixels. In the detail, identifiers (`#home.title`) and literal constants (`“text”`,
 numbers) are rendered as subtly-styled inline tokens — visually distinct from the solid
 action/assert badges, so variables and constants are distinguishable at a glance. An `assert` step's
 checks become a **nested table**, one row per assertion split into `kind` / `target` / `comparison`
@@ -256,9 +273,9 @@ hidden for a report opened from disk). The CLI twin is [`bajutsu approve`](cli.m
 
 Failing rows have a red background. Clicking a step seeks the recording to that step **without
 auto-playing** (a paused video stays paused; a playing one keeps playing) — the seek target is the
-step's `started_at` minus `video_anchor_s` (the **steps** table's `at` column), anchored to the
-video's confirmed or best-known real start rather than the raw moment the scenario's step loop
-began, so the seek lands on what the row actually shows
+step's `started_at` minus `video_anchor_s` (the **steps** table's `at` column). That anchor is the
+recording's own measured origin, or its best-known real start where no measurement was possible —
+not the raw moment the scenario's step loop began — so the seek lands on what the row shows
 ([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)). One visible consequence: for
 a video-capturing Android or web scenario, that derived seconds-into-the-recording value can exceed
 the scenario's own `duration_s`, because the two measure different things on purpose — the video's
@@ -275,7 +292,7 @@ Device Log / App Trace remain separate tabs.
 ```python
 def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, provenance=None) -> Path  # all 4 formats; definitions = per-scenario dict, sources = raw YAML, source_name = scenario file name, description = file-level description; provenance = run-identity stamp (BE-0049)
 def write_html_and_junit(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, provenance=None) -> None  # the regenerable half (report.html + junit.xml + ctrf.json), leaving manifest.json untouched — used by re-render; provenance feeds the CTRF tool/environment fields
-def manifest_dict(run_id, results, *, source_name=None, provenance=None) -> dict  # the versioned render model (schemaVersion); the manifest source (for tests / inspection)
+def manifest_dict(run_id, results, *, source_name=None, provenance=None, target=None, label=None) -> dict  # the versioned render model (schemaVersion); the manifest source (for tests / inspection)
 def run_provenance(scenario_yaml, *, git_revision, config_source=None) -> dict  # the run-identity stamp: scenarioHash + toolVersion + optional gitRevision (BE-0049) + optional configSource (BE-0063)
 def ctrf_json(run_id, results, *, provenance=None) -> dict  # the CTRF projection of the result model (BE-0161); provenance feeds tool.version / environment.commit
 def junit_xml(results) -> str

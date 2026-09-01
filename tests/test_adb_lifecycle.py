@@ -16,7 +16,7 @@ import pytest
 from bajutsu import adb
 from bajutsu.adb_resident import ResidentChannel
 from bajutsu.config import AndroidConfig, Effective
-from bajutsu.drivers.adb import AdbDriver, HierarchyRead
+from bajutsu.drivers.adb import ActOutcome, AdbDriver, HierarchyRead
 from bajutsu.platform_lifecycle import AndroidEnvironment, ProvisionProfile, environment_for
 from bajutsu.platform_lifecycle.readiness import await_boot
 from bajutsu.scenario import Preconditions, Redact
@@ -501,7 +501,11 @@ class _FakeResident:
     def start(self):
         if self._error is not None:
             raise self._error
-        return ResidentChannel(self._fetch, self._clock, lambda _r: True)  # type: ignore[arg-type]
+        return ResidentChannel(
+            self._fetch,  # type: ignore[arg-type]
+            self._clock,  # type: ignore[arg-type]
+            lambda _r: ActOutcome(acted=True, published_mark=None),
+        )
 
     def stop(self) -> None:
         self.stopped = True
@@ -780,7 +784,9 @@ def test_android_environment_preinstalled_skip_is_about_the_app_not_the_resident
         def start(self):
             run(adb.install_cmd("S", "/built/server-debug.apk"))
             return ResidentChannel(
-                lambda _since: HierarchyRead("<hierarchy/>"), lambda: None, lambda _r: True
+                lambda _since: HierarchyRead("<hierarchy/>"),
+                lambda: None,
+                lambda _r: ActOutcome(acted=True, published_mark=None),
             )
 
     env = AndroidEnvironment(

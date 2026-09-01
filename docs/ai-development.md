@@ -64,6 +64,20 @@ Run that command deliberately and commit the result once coverage has risen. The
 the escape hatch for a drop you have decided to accept. It prints rises and drops separately, so
 you see an accepted drop before committing it.
 
+Run `make coverage-floors` on a tree that is up to date with `main`, never on one behind it. The
+command rewrites every floor it measures, not the one that prompted the rewrite alone. A tree
+behind `main` measures every other file as it stood when the branch left. Recording from such a
+tree writes two kinds of wrong number. A stale rewrite lowers a floor that rose on `main` after the
+branch left. The gate never catches a lowered floor: the per-file check blocks a coverage drop,
+nothing else. The same rewrite also restores a floor that another merged pull request has since
+lowered to accept a drop. Neither pull request fails its own gate, since each one measured the tree
+it had. The unreachable floor appears only in the merged result, and every contributor then hits it
+in the pre-push hook. Rebasing first keeps a snapshot and the code it measured together.
+`make preflight` does the fetch and the rebase before running the gate.
+
+Recovering from an unreachable floor on `main` takes the same command. Run `make coverage-floors`
+once on a fresh checkout of `main`, then commit the corrected snapshot.
+
 A file with fewer than ten statements carries no floor at all. One missed branch would move such a
 file's percentage by whole points, failing the gate on measurement noise rather than on a
 regression. Coverage can also differ slightly between environments — a different operating system,
@@ -87,8 +101,39 @@ make setup   # uv sync --group dev + wire the git hooks (run once on a fresh clo
 `core.hooksPath` is a per-clone local setting that clone/pull never carry over, so an existing
 clone won't have it — but you don't need to remember: `make check` (and `make hooks`) re-wires it
 every time, so the gate self-heals right before you push. Claude Code web sessions also get it
-automatically via [`.claude/hooks/session-start.sh`](../.claude/hooks/session-start.sh). In a real
-emergency you can bypass with `git push --no-verify`, but the next CI run will still gate the PR.
+automatically via [`.claude/hooks/session-start.sh`](../.claude/hooks/session-start.sh).
+
+**`git push --no-verify` is strictly forbidden, with no exception for emergencies.** Bypassing the
+hook does not save time — it only defers the same `make check` result from your terminal to CI,
+after the push has already reached a shared branch other sessions rebase against. If the hook fails
+on what looks like a false positive rather than a real regression — for example, `lint-skills`
+reddening from a concurrent session's worktree state under `.claude/worktrees/` — fix the underlying
+cause, or reproduce the check in a clean sibling worktree to confirm before pushing. Never use
+`--no-verify` to force a push through a failing gate.
+
+No mechanism inside git can enforce that rule by itself. `--no-verify` skips every hook
+unconditionally, at the point git parses the flag, before `.githooks/pre-push` or any other hook
+ever runs. A `push` git alias cannot close that gap either: git's own documentation states that
+"aliases that hide existing Git commands are ignored" (`git help config`), and testing it against
+this repo's own `push` confirms it — `git push` and `git push --no-verify` alike ignore the alias
+and run the built-in command unchanged. The only point left that ever sees the raw flag before git
+acts on it is command-name resolution itself, which only a real `git` wrapper controls.
+
+`scripts/install-no-verify-guard.sh` installs that wrapper: a `git()` shell function, appended to
+your shell rc, that refuses `--no-verify` on `push` inside any repository whose toplevel carries
+[`.githooks/no-verify-guard-marker`](../.githooks/no-verify-guard-marker) — this one included, and
+never elsewhere. `make setup` runs it automatically, best-effort, on a fresh checkout — the whole
+point is that protection starts the moment you begin developing, not after a separate step a
+session under time pressure can forget. `make git-guard-install` runs the same installer standalone,
+for a clone set up before this existed, after the installed block was deleted, or with a non-default
+rc file via `BAJUTSU_GUARD_RC_FILE`. Detection reads `$SHELL`, which names your *login* shell, not
+necessarily the one actually running — so pass `BAJUTSU_GUARD_RC_FILE` explicitly whenever the two
+differ (zsh started under a bash login shell, e.g.).
+
+Treat it as a personal convenience, not a repository-wide guarantee: removing the block, or calling
+`command git push --no-verify` directly, still gets through. CI's independent `make check` re-run
+before merge is what makes the rule hold regardless of what ran locally — this installer only saves
+the round trip to that gate.
 
 The same `core.hooksPath` also wires a tracked **commit-msg hook**
 ([`.githooks/commit-msg`](../.githooks/commit-msg), BE-0069): it blocks a commit whose subject isn't
@@ -218,6 +263,46 @@ git worktree remove ../bajutsu-<topic>
 
 Generated and scratch output — `runs/`, `tmp/`, `.venv/`, build artifacts — is gitignored on
 purpose; keep it out of commits so worktrees stay independent.
+
+### Two settings that must never be shared between worktrees
+
+`core.bare` and `core.worktree` describe *one* working tree, so git normally confines a value found
+in the shared `.git/config` to the main working tree and lets linked worktrees ignore it. Enabling
+`extensions.worktreeConfig` removes that exception: a shared value then governs every worktree, and
+[git-worktree(1)](https://git-scm.com/docs/git-worktree#_configuration_file) says `core.worktree`
+"should never be shared" and `core.bare` "should not be shared if the value is `core.bare=true`".
+
+A shared `core.worktree` misdirects every worktree at once, and it does so quietly (issue #1803):
+`--git-dir` still answers locally while the *working tree* every command reads is somebody else's.
+`git status` lists another branch's files, `git add` reports success and changes nothing, `git
+commit --amend` drops a file from the commit, and `git checkout -- <path>` writes into a concurrent
+session's directory. Clearing it then exposes a shared `core.bare = true`, which fails every
+invocation with `fatal: this operation must be run in a work tree` and takes `make check` down with
+it.
+
+`make hooks` — reached by `check`, `setup`, and `worktree` alike — therefore refuses to proceed when
+it finds `core.worktree`, or `core.bare` set to `true`, in the shared config with the extension on
+([`scripts/check_worktree_config.sh`](../scripts/check_worktree_config.sh)). It only reports: nothing
+in this repository's tooling writes either setting, and the right repair depends on whether the
+checkout is the main or a linked worktree, so the guard prints the remedy rather than guessing at
+it. From the affected worktree:
+
+```bash
+GIT_WORK_TREE=. git config --unset-all core.worktree   # only if it is in the shared config
+GIT_WORK_TREE=. git config --unset-all core.bare       # only if the shared value is true
+```
+
+Both details matter. The `GIT_WORK_TREE=.` prefix is not decoration: git resolves `core.worktree`
+during repository setup, before it runs the command you asked for, so once the setting names a
+worktree that has been removed, the repair command itself dies with `fatal: Invalid path` until
+something overrides it. And the repair has to clear the *shared* file — `git config --worktree
+core.bare false` fixes only the worktree in hand and leaves the shared value governing every other
+one, which is how the misconfiguration went unnoticed in the first place. (`--unset-all` rather than
+`--unset` because `--unset` refuses outright when the key carries more than one value; for a single
+value the two are the same.)
+
+A worktree that genuinely needs either setting — a bare main repository keeping `core.bare = true` —
+adds it back afterwards with `git config --worktree`, never to the shared file.
 
 The short form of this rule is in [`CLAUDE.md`](../CLAUDE.md).
 
