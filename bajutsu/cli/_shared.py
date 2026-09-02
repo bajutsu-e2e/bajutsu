@@ -14,9 +14,9 @@ from typing import TYPE_CHECKING, overload
 
 import typer
 
-from bajutsu.agents import ai_config, anthropic_client
-from bajutsu.ai import credential_gap
-from bajutsu.ai import disabled as ai_disabled
+from bajutsu.common.agents import ai_config, anthropic_client
+from bajutsu.common.ai import credential_gap
+from bajutsu.common.ai import disabled as ai_disabled
 from bajutsu.common.backends import ensure_web_runtime, select_actuator
 from bajutsu.common.runner.launch_server import start_launch_server
 from bajutsu.config import (
@@ -44,7 +44,7 @@ from bajutsu.github import GitHubAccessError
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from bajutsu.agents.alerts import ClaudeAlertLocator
+    from bajutsu.common.agents.alerts import ClaudeAlertLocator
     from bajutsu.common.orchestrator import AlertEvent
     from bajutsu.drivers import base
 
@@ -437,7 +437,7 @@ def _build_alert_locator(eff: Effective, redactor: Redactor) -> ClaudeAlertLocat
     Serves `_build_alert_guard` below, and through it the `crawl` / `record` path. `run` no longer
     reaches here at all: BE-0402 removed its alert guard's vision fallback.
     """
-    from bajutsu.agents.alerts import ClaudeAlertLocator
+    from bajutsu.common.agents.alerts import ClaudeAlertLocator
 
     # The credential is provider-specific: the key named by ai.keyEnv (default ANTHROPIC_API_KEY) for
     # Anthropic, a provider-prefixed model for Bedrock (AWS credentials authenticate there), and for
@@ -479,7 +479,7 @@ def _build_alert_guard(
     default).
     Returns None when the credential is missing, so the caller's guard simply no-ops.
     """
-    from bajutsu.agents.alerts import SystemAlertGuard
+    from bajutsu.common.agents.alerts import SystemAlertGuard
 
     locator = _build_alert_locator(eff, redactor)
     if locator is None:

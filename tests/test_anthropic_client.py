@@ -15,8 +15,8 @@ import sys
 
 import pytest
 
-from bajutsu.agents import ai_config as aic
-from bajutsu.agents import anthropic_client as ac
+from bajutsu.common.agents import ai_config as aic
+from bajutsu.common.agents import anthropic_client as ac
 
 
 def test_make_client_returns_injected_client() -> None:
@@ -113,7 +113,7 @@ def test_make_client_fails_closed_when_key_unset(monkeypatch: pytest.MonkeyPatch
 
 
 # The `ant` half of the Anthropic adapter's credential check (BE-0163), kept beside the token IO it
-# probes; the cross-provider dispatch that reaches it lives in `bajutsu.ai` (test_ai_backend.py).
+# probes; the cross-provider dispatch that reaches it lives in `bajutsu.common.ai` (test_ai_backend.py).
 
 
 def test_ant_credential_gap_missing_binary(monkeypatch: pytest.MonkeyPatch) -> None:
