@@ -155,7 +155,7 @@ class CodegenandroiduitestUITest {
   }
 
   // Match the local id whether or not the app namespaces it with a `<package>:id/` prefix —
-  // the reverse of the adb driver stripping that prefix (drivers/adb.py).
+  // the reverse of the adb driver stripping that prefix (common/drivers/adb.py).
   private fun byId(id: String) =
     By.res(Pattern.compile("(.*:id/)?" + Pattern.quote(id)))
 

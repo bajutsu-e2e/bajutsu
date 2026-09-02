@@ -7,7 +7,7 @@ otherwise create (BE-0349).
 
 from __future__ import annotations
 
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 
 # The default directional swipe travels a fraction of the screen, not a fixed coordinate count, so
 # it scrolls a consistent proportion of any device regardless of its coordinate unit — iOS reports

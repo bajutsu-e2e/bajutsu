@@ -16,18 +16,18 @@ from typing import Any
 
 import pytest
 
-import bajutsu.drivers.adb as adb_driver_mod
+import bajutsu.common.drivers.adb as adb_driver_mod
 from bajutsu import adb, stall_diagnostics
-from bajutsu.common.evidence import intervals
-from bajutsu.drivers import base
-from bajutsu.drivers.actuation import Actuation
-from bajutsu.drivers.adb import (
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.actuation import Actuation
+from bajutsu.common.drivers.adb import (
     AdbActUnsupported,
     AdbDriver,
     AdbResidentError,
     HierarchyRead,
     parse_hierarchy,
 )
+from bajutsu.common.evidence import intervals
 
 # A realistic dump: a Views native id (package-prefixed) with visible text only, a Compose testTag
 # (verbatim, dotted) that mirrors its state value into content-desc à la the showcase (SPEC §2.1)

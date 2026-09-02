@@ -27,14 +27,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast
 
 from bajutsu import simctl
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.actuation import Actuation, ActuationLog, Drained
+from bajutsu.common.drivers.dom import QUERY_JS, parse_dom
 from bajutsu.common.evidence import intervals
-from bajutsu.dom import QUERY_JS, parse_dom
-from bajutsu.drivers import base
-from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 
 if TYPE_CHECKING:
+    from bajutsu.common.drivers.web_network import WebNetworkCollector
     from bajutsu.common.scenario.models.mocks import Mock
-    from bajutsu.web_network import WebNetworkCollector
 
 
 def _rotate_point(p: base.Point, center: base.Point, radians: float) -> base.Point:
@@ -593,9 +593,9 @@ class PlaywrightDriver:
 
         Generalizes the `elementFromPoint` pattern already used by `select_option` below: walk the
         hit's ancestor chain looking for `el` — by its `data-testid` (the same attribute `QUERY_JS`,
-        `bajutsu/dom.py`, reads into `identifier`) when it has one, or, when it does not (an element
+        `bajutsu/common/drivers/dom.py`, reads into `identifier`) when it has one, or, when it does not (an element
         `QUERY_JS` matched by tag/role/`aria-label` instead), by matching bounding rects *and* the
-        same accessible name `el["label"]` carries (`bajutsu/dom.py`'s own `aria-label` /
+        same accessible name `el["label"]` carries (`bajutsu/common/drivers/dom.py`'s own `aria-label` /
         `textContent` precedence, truncated to the same 200 chars). The name check guards against the
         geometry-only ambiguity a rect match alone would have: a transparent click-blocking overlay
         sized to exactly cover a button shares its rect but, unlike the button itself, essentially
@@ -996,7 +996,7 @@ class PlaywrightDriver:
         Lets the run loop's `request` assertion + network evidence work on web (BE-0054). `mocks` are
         fulfilled in-process via `page.route`. Imported lazily to keep the page private.
         """
-        from bajutsu.web_network import WebNetworkCollector
+        from bajutsu.common.drivers.web_network import WebNetworkCollector
 
         return WebNetworkCollector(self._page, mocks)
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from bajutsu.common.drivers.actuation import Actuation
 from bajutsu.common.evidence import step_view
 from bajutsu.common.report.format import (
     _ACTION_META,
@@ -21,7 +22,6 @@ from bajutsu.common.report.richtext import (
     _assert_parts,
     _step_desc_parts,
 )
-from bajutsu.drivers.actuation import Actuation
 from bajutsu.orchestrator import RunResult
 
 # --- detail / row data (the merged Result table) ---

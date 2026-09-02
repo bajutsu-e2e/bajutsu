@@ -7,10 +7,10 @@ from dataclasses import replace
 from typing import Any
 
 from bajutsu.common.config import Effective, IosConfig, WebConfig
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import NullSink
 from bajutsu.common.scenario import Redact, Scenario
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
 from bajutsu.runner import Lease
 
 

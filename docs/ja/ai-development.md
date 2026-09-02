@@ -348,7 +348,7 @@ backend。[architecture](architecture.md) 参照）。ほとんどのタスク�
 
 | 面 | ファイル | 共有される理由 |
 |---|---|---|
-| Driver API | [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) | 全 backend と orchestrator が依存 |
+| Driver API | [`bajutsu/common/drivers/base.py`](../../bajutsu/common/drivers/base.py) | 全 backend と orchestrator が依存 |
 | シナリオスキーマ | [`bajutsu/scenario/models/scenario.py`](../../bajutsu/scenario/models/scenario.py) | ハブとなる成果物。codegen/runner/report が読む |
 | config の形 | [`bajutsu/common/config/`](../../bajutsu/common/config/) | 全コマンドが解決する per-target レイヤリング |
 
@@ -1073,7 +1073,7 @@ lint-roadmap ARGS="--fix"` は壊れた項目リンクを対象の現在のパ�
 prime directive は構成上そのまま保たれます。
 
 - **英語で書きます。** コード（とその docstring）は両言語にしません。両言語にするのは `docs/` 配下の散文ドキュメントだけです。
-- **公開面は Google style。** 公開 API（[`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) の `Driver`
+- **公開面は Google style。** 公開 API（[`bajutsu/common/drivers/base.py`](../../bajutsu/common/drivers/base.py) の `Driver`
   プロトコルと共有型、CLI、MCP ツール、シナリオスキーマ、runner / `assertions` / `network` の公開関数）は、
   1 行の要約に続けて `Args:` / `Returns:` / `Raises:`（必要なら `Yields:` / `Examples:`）を、**情報が増えるときだけ**
   付けます。生成リファレンスは非公開（`_` 始まり）メンバーを除外します。

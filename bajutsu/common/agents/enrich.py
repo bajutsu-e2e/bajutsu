@@ -10,8 +10,8 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from bajutsu.common.agents.protocols import EnrichmentAgent, EnrichmentProposal, StepContext
+from bajutsu.common.drivers import base
 from bajutsu.common.scenario import Scenario
-from bajutsu.drivers import base
 from bajutsu.orchestrator import BlockedHandler, Clock, RealClock
 from bajutsu.orchestrator.types import SelectionState
 from bajutsu.record import clear_blocking, execute

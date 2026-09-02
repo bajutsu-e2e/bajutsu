@@ -29,9 +29,9 @@ from bajutsu.common.config import (
     web_base_url,
     web_engine,
 )
+from bajutsu.common.drivers import base
 from bajutsu.common.scenario import load_scenario_file
 from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
-from bajutsu.drivers import base
 from bajutsu.platform_lifecycle.environments.xcuitest import (
     bundled_runner_toolchain_note,
     effective_device_type,

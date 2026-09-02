@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import FileSink, intervals
 from bajutsu.common.evidence.redaction import (
     CREDENTIAL_SHAPES,
@@ -19,8 +21,6 @@ from bajutsu.common.evidence.redaction import (
 )
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.scenario import Redact
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
 
 # Two values with no recognizable credential shape, so the pattern backstop cannot reach them and
 # only the rule under test can: whether they survive says exactly which default fired. The password

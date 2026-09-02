@@ -21,8 +21,8 @@ import pytest
 from _orch import FakeClock, _scenario
 from conftest import el
 
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
 
 

@@ -13,7 +13,7 @@ from collections.abc import Callable
 import pytest
 
 from bajutsu import simctl
-from bajutsu.drivers import base, xcuitest
+from bajutsu.common.drivers import base, xcuitest
 from bajutsu.runner.recovery import (
     CrashRecoveryBudget,
     RunCrashRecoveryBudget,

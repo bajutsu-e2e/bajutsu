@@ -45,7 +45,7 @@ public enum BajutsuWebView {
 
     // MARK: - JS
 
-    /// The same page-walk JavaScript the Playwright backend uses (bajutsu/dom.py QUERY_JS).
+    /// The same page-walk JavaScript the Playwright backend uses (bajutsu/common/drivers/dom.py QUERY_JS).
     static let queryJS = """
     (() => {
       const out = [];

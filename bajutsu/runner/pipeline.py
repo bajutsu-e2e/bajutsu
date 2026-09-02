@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from bajutsu.common.drivers import base
     from bajutsu.doctor import Score
-    from bajutsu.drivers import base
 
 from bajutsu import device_errors
 from bajutsu.backends import (
@@ -32,6 +32,7 @@ from bajutsu.common.assertions import (
 )
 from bajutsu.common.capability import capability_preflight
 from bajutsu.common.config import Effective
+from bajutsu.common.drivers.base import BackendCrashError
 from bajutsu.common.evidence import Artifact
 from bajutsu.common.evidence.network import NetworkExchange, _no_transitions
 from bajutsu.common.evidence.redaction import Redactor
@@ -43,7 +44,6 @@ from bajutsu.common.scenario import (
     dump_scenario_file,
     redact_totp_secrets,
 )
-from bajutsu.drivers.base import BackendCrashError
 from bajutsu.orchestrator import (
     AlertGuardConfig,
     Clock,
@@ -652,7 +652,7 @@ class _ScenarioRunner:
             gc_with_screen = self.golden_context
             if self.golden_context is not None and self.golden_context.screen is None:
                 try:
-                    from bajutsu.elements import screen_size_from_elements
+                    from bajutsu.common.drivers.elements import screen_size_from_elements
 
                     sw, sh = screen_size_from_elements(lz.driver.query())
                     gc_with_screen = GoldenContext(

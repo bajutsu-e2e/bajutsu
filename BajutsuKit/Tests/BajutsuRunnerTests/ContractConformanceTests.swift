@@ -6,7 +6,7 @@ import XCTest
 /// redesign of it. Each test here drives the *legacy* `Router` and decodes its real response
 /// bytes into the *generated* types, so a schema that drifts from shipped behaviour fails here
 /// rather than on a device. The request-side tests decode the exact JSON
-/// `bajutsu/drivers/xcuitest.py` sends today, which is the other half of the same contract.
+/// `bajutsu/common/drivers/xcuitest.py` sends today, which is the other half of the same contract.
 final class ContractConformanceTests: XCTestCase {
     private let decoder = JSONDecoder()
 
@@ -166,7 +166,7 @@ final class ContractConformanceTests: XCTestCase {
 
     // MARK: - Requests: the generated types must accept what the driver sends
 
-    /// Each literal below is the body `bajutsu/drivers/xcuitest.py` builds today. Decoding them
+    /// Each literal below is the body `bajutsu/common/drivers/xcuitest.py` builds today. Decoding them
     /// into the generated request types is what proves the schema did not tighten the contract
     /// under the shipping driver.
     func testGeneratedRequestTypesDecodeTheDriversBodies() throws {

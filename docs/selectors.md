@@ -6,7 +6,7 @@
 > specification to exactly one match. Every execution path (orchestrator / drivers /
 > assertions) depends on this module. Bajutsu's determinism logic is implemented here.
 >
-> Implementation: `bajutsu/drivers/base.py`.
+> Implementation: `bajutsu/common/drivers/base.py`.
 
 Related: [the determinism principles](concepts.md#3-determinism-first-four-concrete-mechanisms) · [the DSL in scenarios](scenarios.md#assertion-dsl) · [drivers](drivers.md)
 
@@ -70,7 +70,7 @@ Addresses an element. **All provided fields are AND-ed.**
 ### Authoring vs. runtime representation
 
 - The scenario-side [selector](glossary.md#scenario-authoring) is `scenario/models/selector.py`'s `Selector` (pydantic, with aliases like `idMatches`).
-- What reaches resolution is `drivers/base.py`'s `Selector` (TypedDict).
+- What reaches resolution is `common/drivers/base.py`'s `Selector` (TypedDict).
 - The conversion is `Selector.as_selector()` (drops `None`, turns it into a TypedDict).
 
 ## Resolution semantics
@@ -133,7 +133,7 @@ ambiguity count above. Otherwise, a dropped `other` would shift every later posi
 > the classification gap on the parent is not needed to set a date picker's value.
 
 ```python
-# drivers/base.py (excerpt)
+# common/drivers/base.py (excerpt)
 def resolve_unique(elements, sel):
     candidates = _collapse_identical_duplicates(find_all(elements, sel))
     if len(candidates) > 1 and "other" not in sel.get("traits", []):

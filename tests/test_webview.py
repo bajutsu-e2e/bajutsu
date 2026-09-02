@@ -9,8 +9,8 @@ from typing import Any
 
 import pytest
 
-from bajutsu.drivers import base
-from bajutsu.webview import WebViewBridge
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.webview import WebViewBridge
 
 
 def _fake_bridge_server(

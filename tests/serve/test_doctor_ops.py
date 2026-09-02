@@ -11,7 +11,7 @@ import pytest
 from _shared import project
 
 from bajutsu import simctl
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 from bajutsu.serve import operations as ops
 from bajutsu.serve.state import ServeState
 

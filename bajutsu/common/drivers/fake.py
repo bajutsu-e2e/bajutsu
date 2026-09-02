@@ -9,9 +9,9 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Sequence
 
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.actuation import Actuation, ActuationLog, Drained
 from bajutsu.common.evidence.network import NetworkExchange, ScreenTransition
-from bajutsu.drivers import base
-from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 
 # Hook that mutates state in response to an action: react(driver, kind, arg)
 React = Callable[["FakeDriver", str, object], None]

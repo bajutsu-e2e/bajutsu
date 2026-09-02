@@ -7,8 +7,8 @@ from pathlib import Path
 
 from bajutsu import backends
 from bajutsu.common.config import Effective
+from bajutsu.common.drivers import base
 from bajutsu.common.scenario import Preconditions
-from bajutsu.drivers import base
 from bajutsu.platform_lifecycle.environments.ios import _DeviceEnvironment
 
 

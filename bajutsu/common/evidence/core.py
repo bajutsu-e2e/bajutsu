@@ -16,11 +16,11 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Protocol
 
+from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.scenario import Redact
-from bajutsu.drivers import base
 
 if TYPE_CHECKING:
     # Imported for typing only — importing at runtime would cycle (orchestrator imports this module).

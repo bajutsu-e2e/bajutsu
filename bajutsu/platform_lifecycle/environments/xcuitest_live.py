@@ -23,16 +23,16 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from bajutsu.common.config import Effective, require_ios
-from bajutsu.common.scenario import Preconditions, Scenario
-from bajutsu.crawl import Reset
-from bajutsu.drivers import base
-from bajutsu.drivers.xcuitest_live import (
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.xcuitest_live import (
     WdTransportFn,
     WebDriverClient,
     WebDriverError,
     XcuitestLiveDriver,
     _raw_wd_transport,
 )
+from bajutsu.common.scenario import Preconditions, Scenario
+from bajutsu.crawl import Reset
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.platform_lifecycle.environments.ios import _DeviceEnvironment
 

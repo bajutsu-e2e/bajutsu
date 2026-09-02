@@ -40,11 +40,11 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from bajutsu import adb, stall_diagnostics
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.actuation import Actuation, ActuationLog, Drained
+from bajutsu.common.drivers.coordinate_tree import CoordinateTreeDriver, StableKey
+from bajutsu.common.drivers.elements import screen_size_from_elements
 from bajutsu.common.evidence import intervals
-from bajutsu.drivers import base
-from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
-from bajutsu.drivers.coordinate_tree import CoordinateTreeDriver, StableKey
-from bajutsu.elements import screen_size_from_elements
 
 RunFn = Callable[[list[str]], str]
 

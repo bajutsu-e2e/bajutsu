@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import (
     FileSink,
     capture,
@@ -19,8 +21,6 @@ from bajutsu.common.evidence.intervals import Interval
 from bajutsu.common.evidence.redaction import PLACEHOLDER, Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.scenario import Redact
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
 
 
 def _writer(run_dir: Path, redactor: Redactor | None = None) -> RunArtifactWriter:
@@ -447,8 +447,8 @@ def test_filesink_dispatches_adb_driver_intervals_end_to_end(
     # The real seam: FileSink + AdbDriver.driver_interval start BOTH kinds via adb (not the simctl
     # path), even with a udid set. The subprocess spawn is faked so no adb process runs; the video's
     # pull/rm still go through the driver's injected run.
+    from bajutsu.common.drivers.adb import AdbDriver
     from bajutsu.common.evidence import intervals
-    from bajutsu.drivers.adb import AdbDriver
 
     class _FakeProc:
         def stop(self, sig: int, timeout: float) -> None:

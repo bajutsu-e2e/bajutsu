@@ -13,8 +13,8 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from bajutsu.common.drivers import base
 from bajutsu.common.scenario import Selector
-from bajutsu.drivers import base
 
 if TYPE_CHECKING:
     from bajutsu.common.assertions.visual import VisualEvidence

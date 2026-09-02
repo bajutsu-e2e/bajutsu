@@ -10,9 +10,9 @@ from dataclasses import dataclass
 from typing import Literal
 
 from bajutsu import doctor
+from bajutsu.common.drivers import base
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.scenario.models import Selector, Step, Swipe, TypeText
-from bajutsu.drivers import base
 
 
 @dataclass(frozen=True)

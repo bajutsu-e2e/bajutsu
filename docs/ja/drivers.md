@@ -8,7 +8,7 @@
 > iOS ではアプリの起動（boot/launch）を `simctl` ラッパが担い、Android ではその双子である `adb`
 > ラッパが担います。
 >
-> 実装: `bajutsu/drivers/`（`base.py` / `xcuitest.py` / `adb.py` / `playwright.py` / `fake.py`）・
+> 実装: `bajutsu/common/drivers/`（`base.py` / `xcuitest.py` / `adb.py` / `playwright.py` / `fake.py`）・
 > `bajutsu/backends.py` ・ `bajutsu/simctl.py` ・ `bajutsu/adb.py`。
 
 関連: [selectors](selectors.md)（解決） · [concepts の安定度順ラダー](concepts.md#5-安定度順ラダーstability-ladder) · [run-loop](run-loop.md)
@@ -73,7 +73,7 @@ class Driver(Protocol):
 
 ## XCUITest（iOS）
 
-[BE-0290](../../roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) で idb を撤去して以来、**iOS の唯一の backend** です。**XCTest のオートメーションスナップショット**を、**実機上に常駐する runner**（`BajutsuKit`）を loopback HTTP で駆動して読み取り、アプリ側の統合なしに任意のアプリを bundle id で駆動します。実装: `drivers/xcuitest.py`。frame 中心の座標に解決するのではなく、能力モデルの豊かな端に位置します（semantic tap、ネイティブ条件待機、multi-touch、テキスト選択）。Xcode の `xcodebuild` が必要です。
+[BE-0290](../../roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md) で idb を撤去して以来、**iOS の唯一の backend** です。**XCTest のオートメーションスナップショット**を、**実機上に常駐する runner**（`BajutsuKit`）を loopback HTTP で駆動して読み取り、アプリ側の統合なしに任意のアプリを bundle id で駆動します。実装: `common/drivers/xcuitest.py`。frame 中心の座標に解決するのではなく、能力モデルの豊かな端に位置します（semantic tap、ネイティブ条件待機、multi-touch、テキスト選択）。Xcode の `xcodebuild` が必要です。
 
 - `query()`: XCTest のオートメーションスナップショットを読み取り、各要素を `Element` に写します。このスナップショットは**グループコンテナの内側まで降りる**ので、座標系 backend のフラットな frame ダンプと違い、**完全に展開された要素ツリー**を描き出します（`AXLabel`/`AXValue`/アクセシビリティ識別子 を `label`/`value`/`id` に写します）。
 - `query()` は、提示された **`SFSafariViewController`**（サインインページや利用規約のためにアプリが開くアプリ内ブラウザ）も読み取ります。読み取り元は、それを描いているプロセス `com.apple.SafariViewService` です。BE-0316 が SpringBoard のプロンプトを読むのと同じやり方です（[BE-0396](../../roadmaps/BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree-ja.md)）。アプリ自身のスナップショットは、このブラウザを iOS のバージョンによって違う形で報告します。iOS 18 までは部分木全体を写して返し、iOS 26 からはプロセス境界で止まり、その下を何も返しません。そこで写しの側を**刈り取り**、サービス自身のツリーを代わりに合流させます。こうしてどちらのバージョンでも欠けがなく、二重にも報告しない 1 つのツリーになります。**閉じるコントロール**は、バージョン間で識別子が食い違う唯一の chrome です（iOS 26 は `Close` を付け、iOS 18 は識別子を持たずラベル `Done` だけです）。runner はどちらでも iOS 26 の `Close` を**識別子として**報告するので、シナリオは `id: Close` という 1 つのセレクタで指せます。正規化するのは識別子だけで、ラベルはプラットフォームが読み上げるまま（iOS 18 では `Done`）なので、`label` を使ったセレクタは両バージョンをまたげません。ブラウザの要素は**frame の中心を座標でタップ**して操作します。`XCUIElement.tap()` はプロセス境界を越えてページ本体には届きますが、ブラウザ自身の chrome では黙って落とされるためです。iOS 18 にある無効状態の `ForwardButton` は iOS 26 に対応するコントロールがないので、シナリオはこれに依存できません。
@@ -87,7 +87,7 @@ class Driver(Protocol):
 
 ## adb（Android）
 
-ヘッドレスで座標ベースの、唯一の座標系バックエンドです。semantic tap を持たないため、抽象側で **id → frame 中心 → 座標 tap** に解決します。実装: `drivers/adb.py` ＋ `bajutsu/adb.py`（ロードマップ [BE-0007](../../roadmaps/BE-0007-android-backend/BE-0007-android-backend-ja.md)）。
+ヘッドレスで座標ベースの、唯一の座標系バックエンドです。semantic tap を持たないため、抽象側で **id → frame 中心 → 座標 tap** に解決します。実装: `common/drivers/adb.py` ＋ `bajutsu/adb.py`（ロードマップ [BE-0007](../../roadmaps/BE-0007-android-backend/BE-0007-android-backend-ja.md)）。
 
 - `query()`: ウィンドウの UI Automator XML を読み取り、純粋なパーサ（`parse_hierarchy`）が各 `<node>` を `Element` に写します。読み取りは、**常駐 UI Automator サーバ**がビルド済み（`make -C BajutsuAndroidUIAutomatorServer build`）のときはそのサーバ経由で行います。温めた 1 つの `UiAutomation` セッションが `adb forward` 越しに `GET /source` へ答えるので、1 回の読み取りは約 0.1〜0.3 秒で済み、呼び出しのたびに約 2.4 秒かかる `adb -s <serial> exec-out uiautomator dump /dev/tty` を都度起動せずに済みます（ロードマップ [BE-0245](../../roadmaps/BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md)）。常駐サーバの全画面ダンプはアクティブウィンドウへ絞り込むので、ダンプ経路と同じ `Element` を返します。サーバが未ビルドのとき、またはチャネルに失敗したときは `uiautomator dump` にフォールバックし、`BAJUTSU_ADB_RESIDENT`（`0`／`1`）でどちらの経路にも固定できます。
 - **セレクタの写像**: `resource-id` → `identifier`（`<package>:id/` 接頭辞を剥がしてローカル名にするので、`testTagsAsResourceId` で表出した Compose の `testTag` はそのまま、ネイティブの `android:id` は接頭辞が落ちます）、`text` → `label`（`content-desc` へフォールバック）、`content-desc` → `value`（アプリは状態値をここにミラーします。SPEC §2.1）、ウィジェットの `class`（と enabled / selected / checked の状態）→ `traits` です。
@@ -106,7 +106,7 @@ class Driver(Protocol):
   > [!NOTE]
   > この not-found 時のスクロール回復は adb 専用です。XCUITest／Playwright は対象が初期ビューポートにないと `tap` を即座に失敗させます。そのため、これに頼ると、同じシナリオでも fold より下の要素への `tap` が Android では通り、iOS／web では失敗する非対称が生じます。画面外の要素へ届く移植可能な方法は、明示的な **[`scroll` アクション](scenarios.md#scroll)**（BE-0326）です。iOS、Android、web で同じように対象を現す、決定論的で慣性のない 1 つの構文で、`scroll: { to: <selector> }` としてから対象を操作します。showcase フィクスチャがかつて使っていた手作業調整の `swipe` 連鎖を置き換えます。adb の自動スクロールは、not-found のケースに限った `tap` の下の安全網として残ります。移植可能な書き方そのものではありません。
   >
-  > これとは**別の、より狭い**安全網が、いまでは点のヒットテストができる全バックエンド（アプリ組み込みの WebView ブリッジ `WebContextDriver` を除きます。そのプロトコルは点のヒットテストを一切公開していません）を覆っています。`tap` / `double_tap` / `long_press` は、操作の前に、解決済みの対象が実際にその点で到達可能か（他の画面上の要素に覆われていないか）を確認します。各プラットフォームがもっとも自然に提供する手段（iOS はネイティブの `isHittable`、web は `document.elementFromPoint` によるヒットテスト、adb はドキュメント順による幾何学的な近似、`Driver.is_tappable` / [`topmost_at_point`](../../bajutsu/drivers/base.py)）を使います。この確認に失敗すると、オーケストレータが小さく回数を区切ったスクロールを試します。まず `down` 方向へ最大 3 回、それでも対象に到達できなければ `up` 方向へ最大 6 回まで試したうえで（`up` は `down` が残した分をまず巻き戻してからでないと自分の分の前進ができないため、上限を広げています）、操作をもう一度だけ再試行します。即座に失敗するわけではありません。詳細は [`selectors.md`](selectors.md#elementnottappable-解決はしたが到達できない対象)を参照してください。これは上記の明示的な `scroll` アクションの代替ではありません。対象が最初から画面外にあるとすでに知っている作者は、それでも自分で `scroll` を書きます。この仕組みが働くのは、作者が予期していなかった遮蔽（一時的なオーバーレイ、位置が定まりきっていないスティッキーヘッダーなど）に対してだけです。adb 自身の not-found フォールバックが、予期しない画面外の対象に対してすでに同じ役割を果たしているのと同じ考え方です。
+  > これとは**別の、より狭い**安全網が、いまでは点のヒットテストができる全バックエンド（アプリ組み込みの WebView ブリッジ `WebContextDriver` を除きます。そのプロトコルは点のヒットテストを一切公開していません）を覆っています。`tap` / `double_tap` / `long_press` は、操作の前に、解決済みの対象が実際にその点で到達可能か（他の画面上の要素に覆われていないか）を確認します。各プラットフォームがもっとも自然に提供する手段（iOS はネイティブの `isHittable`、web は `document.elementFromPoint` によるヒットテスト、adb はドキュメント順による幾何学的な近似、`Driver.is_tappable` / [`topmost_at_point`](../../bajutsu/common/drivers/base.py)）を使います。この確認に失敗すると、オーケストレータが小さく回数を区切ったスクロールを試します。まず `down` 方向へ最大 3 回、それでも対象に到達できなければ `up` 方向へ最大 6 回まで試したうえで（`up` は `down` が残した分をまず巻き戻してからでないと自分の分の前進ができないため、上限を広げています）、操作をもう一度だけ再試行します。即座に失敗するわけではありません。詳細は [`selectors.md`](selectors.md#elementnottappable-解決はしたが到達できない対象)を参照してください。これは上記の明示的な `scroll` アクションの代替ではありません。対象が最初から画面外にあるとすでに知っている作者は、それでも自分で `scroll` を書きます。この仕組みが働くのは、作者が予期していなかった遮蔽（一時的なオーバーレイ、位置が定まりきっていないスティッキーヘッダーなど）に対してだけです。adb 自身の not-found フォールバックが、予期しない画面外の対象に対してすでに同じ役割を果たしているのと同じ考え方です。
 - **マルチタッチ**（BE-0232）: `pinch` / `rotate` は 2 スロットの protocol-B `sendevent` スイープで駆動します（`pinch_contacts` / `rotate_contacts` が 2 接点の座標を計算し、`rotate` は両端点を結ぶ直線の弦を掃きます。円弧の線形近似で、web バックエンドの rotate と同じです）。rooted device でタッチスクリーンを検出できることが前提で、`_two_finger_gesture` はそれ以外では `UnsupportedAction` で明確に失敗します。下の double-tap 経路と異なり、単一タッチへのフォールバックはありません。`MULTI_TOUCH` は root の有無にかかわらず能力集合で静的に宣言するので、preflight は adb 上の `gestures_multitouch` を通します。root のチェックは能力集合ではなく実行時に課します。
 - `screenshot` は `adb exec-out screencap -p` の PNG バイト列（バイナリを崩さない stdout）を書き出します。
 - ライフサイクル（`AndroidEnvironment`、iOS の `simctl` シーケンスの双子）: 起動完了待ち（`getprop sys.boot_completed` を有界の期限まで polling する条件待機で、固定 sleep も、無期限にブロックする `adb wait-for-device` もありません）→ 必要に応じて APK インストール → `pm clear` によるクリーン状態（`erase` 相当）→ `am force-stop` → ランタイム権限の事前付与（`pm grant`、後述）→ `am start`（起動アクティビティはパッケージマネージャで解決し、launch env は intent extras として渡します）→ deeplink（`am start -a android.intent.action.VIEW`）。run の manifest は `backend: "adb"` を記録するので、選ばれた actuator が開示されます。
@@ -149,7 +149,7 @@ id 規約は、上の iOS と Android のものと並べて記します（Flutte
 
 ## Playwright（web）
 
-Playwright（Python）によるヘッドレス Chromium です。Mac も Simulator も要らず Linux で動くため、`make check` と同じツールチェーンに収まります。実装: `drivers/playwright.py`（ロードマップ [BE-0041](../../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。
+Playwright（Python）によるヘッドレス Chromium です。Mac も Simulator も要らず Linux で動くため、`make check` と同じツールチェーンに収まります。実装: `common/drivers/playwright.py`（ロードマップ [BE-0041](../../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。
 
 - `query()`: 1 本の `page.evaluate()` が、可視、操作可能、アクセシビリティ関連の DOM ノードを走査し、純粋なパーサ（`parse_dom`）が各ノードを `Element` に写像します。id 規約は iOS の accessibilityIdentifier の web 版です。`data-testid` → `Selector.id`、ARIA `role`（またはタグ）→ `traits`、accessible name / `aria-label` / テキスト → `label`、input の `value` → `value`。
 - `tap(sel)`: adb バックエンドと同様、`query()` のスナップショットに対し共有の `resolve_unique`/`find_all` で要素を**一意に**確定し、**frame 中心**を座標クリック（`page.mouse.click`）します。Playwright 自身の `get_by_test_id().click()` は**あえて使いません**。これによりセレクタの意味が他のどの backend ともバイト単位で一致します。
@@ -165,7 +165,7 @@ Playwright（Python）によるヘッドレス Chromium です。Mac も Simulat
 
 ## FakeDriver
 
-実機なしで orchestrator / runner / record をテストするためのインメモリ実装です。実装: `drivers/fake.py`。
+実機なしで orchestrator / runner / record をテストするためのインメモリ実装です。実装: `common/drivers/fake.py`。
 
 - `screen`（`Element` のリスト）を保持し、`query()` で返します。
 - `tap` / `long_press` は本物同様 `resolve_unique` を通します（曖昧 / 不在は `SelectorError`）。

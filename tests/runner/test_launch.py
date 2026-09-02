@@ -19,10 +19,10 @@ from _runner import _el, _ios_eff
 
 from bajutsu import simctl
 from bajutsu.common.config import Effective, XcuitestConfig, require_ios
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence.network import ScreenTransition
 from bajutsu.common.scenario import Preconditions
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
 from bajutsu.runner import (
     await_ready,
     launch_driver,
@@ -176,7 +176,7 @@ def test_launch_driver_tears_down_when_await_ready_raises(
 ) -> None:
     # BE-0342: env.start can leave a runner up before readiness finishes; if the probe then raises,
     # the driver never reaches the caller — launch_driver must tear that environment down itself.
-    from bajutsu.drivers import base as drivers_base
+    from bajutsu.common.drivers import base as drivers_base
 
     torn: list[object] = []
     driver = FakeDriver([_el("home.title", "H"), _el("ok", "OK")])
@@ -200,7 +200,7 @@ def test_launch_driver_tears_down_when_await_ready_raises(
 def test_launch_driver_does_not_tear_down_when_start_raises(tmp_path: Path) -> None:
     # The other half of the BE-0342 guard: with no driver produced there is nothing to tear down, and
     # the pool's failed-resume eviction is what cleans the warm resident up instead.
-    from bajutsu.drivers import base as drivers_base
+    from bajutsu.common.drivers import base as drivers_base
 
     torn: list[object] = []
 
@@ -256,8 +256,8 @@ def test_await_ready_uses_exponential_backoff(monkeypatch: pytest.MonkeyPatch) -
         sleeps.append(s)
         clock += s
 
-    monkeypatch.setattr("bajutsu.drivers.base.time.sleep", fake_sleep)
-    monkeypatch.setattr("bajutsu.drivers.base.time.monotonic", lambda: clock)
+    monkeypatch.setattr("bajutsu.common.drivers.base.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.common.drivers.base.time.monotonic", lambda: clock)
 
     query_count = 0
 
@@ -304,8 +304,8 @@ def test_await_ready_respects_timeout_on_sleep(monkeypatch: pytest.MonkeyPatch) 
         sleeps.append(s)
         clock += s
 
-    monkeypatch.setattr("bajutsu.drivers.base.time.sleep", fake_sleep)
-    monkeypatch.setattr("bajutsu.drivers.base.time.monotonic", lambda: clock)
+    monkeypatch.setattr("bajutsu.common.drivers.base.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.common.drivers.base.time.monotonic", lambda: clock)
 
     class NeverReadyDriver:
         name = "never"
@@ -329,8 +329,8 @@ def test_await_ready_caps_poll_init_to_poll_max(monkeypatch: pytest.MonkeyPatch)
         sleeps.append(s)
         clock += s
 
-    monkeypatch.setattr("bajutsu.drivers.base.time.sleep", fake_sleep)
-    monkeypatch.setattr("bajutsu.drivers.base.time.monotonic", lambda: clock)
+    monkeypatch.setattr("bajutsu.common.drivers.base.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.common.drivers.base.time.monotonic", lambda: clock)
 
     query_count = 0
 
@@ -373,8 +373,8 @@ def _install_bounded_clock(monkeypatch: pytest.MonkeyPatch) -> None:
         nonlocal clock
         clock += s
 
-    monkeypatch.setattr("bajutsu.drivers.base.time.sleep", fake_sleep)
-    monkeypatch.setattr("bajutsu.drivers.base.time.monotonic", lambda: clock)
+    monkeypatch.setattr("bajutsu.common.drivers.base.time.sleep", fake_sleep)
+    monkeypatch.setattr("bajutsu.common.drivers.base.time.monotonic", lambda: clock)
 
 
 def test_await_ready_waits_for_ready_selector(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from bajutsu.drivers.base import Element, Frame
+from bajutsu.common.drivers.base import Element, Frame
 
 # ---------------------------------------------------------------------------
 # Helpers — construct Element dicts inline (no fixtures)
@@ -315,8 +315,8 @@ class TestLoadGolden:
 
 class TestAssertGoldenTree:
     def test_passes_when_tree_matches_golden(self, tmp_path: Path) -> None:
+        from bajutsu.common.drivers.fake import FakeDriver
         from bajutsu.common.evidence.golden import assert_golden_tree, save_golden
-        from bajutsu.drivers.fake import FakeDriver
 
         screen_elements = [
             _el(identifier="ctrl.title", label="Controls"),
@@ -341,8 +341,8 @@ class TestAssertGoldenTree:
         assert result.ok
 
     def test_reports_mismatches(self, tmp_path: Path) -> None:
+        from bajutsu.common.drivers.fake import FakeDriver
         from bajutsu.common.evidence.golden import assert_golden_tree, save_golden
-        from bajutsu.drivers.fake import FakeDriver
 
         golden_elements = [
             _el(identifier="ctrl.title", label="Controls"),
@@ -380,8 +380,8 @@ class TestAssertGoldenTree:
     def test_raises_on_anchor_timeout(self, tmp_path: Path) -> None:
         import pytest
 
+        from bajutsu.common.drivers.fake import FakeDriver
         from bajutsu.common.evidence.golden import assert_golden_tree, save_golden
-        from bajutsu.drivers.fake import FakeDriver
 
         golden_path = tmp_path / "controls.json"
         save_golden([_el(identifier="ctrl.toggle")], ["ctrl.toggle"], golden_path)

@@ -45,9 +45,9 @@ from driver_conformance import OnDeviceConformanceHarness
 from xcuitest_lease import xcuitest_lease_launch
 
 from bajutsu.common.config import Effective, load_config, resolve
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.xcuitest import XcuitestRunnerCrashError
 from bajutsu.common.evidence import intervals
-from bajutsu.drivers import base
-from bajutsu.drivers.xcuitest import XcuitestRunnerCrashError
 
 pytestmark = pytest.mark.ondevice
 

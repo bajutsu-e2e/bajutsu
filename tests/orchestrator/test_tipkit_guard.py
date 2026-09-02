@@ -15,8 +15,8 @@ from __future__ import annotations
 from _orch import FakeClock, _scenario, _tap_ids
 from conftest import AlertingDriver, el
 
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
 from bajutsu.orchestrator.types import AlertGuardConfig
 

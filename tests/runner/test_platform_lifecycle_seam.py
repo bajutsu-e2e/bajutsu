@@ -14,9 +14,9 @@ import pytest
 from _runner import _eff, _ios_eff, _web_eff
 
 from bajutsu import simctl
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.scenario import Preconditions, Relaunch, Scenario
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
 from bajutsu.platform_lifecycle import (
     AndroidEnvironment,
     FakeEnvironment,
@@ -295,7 +295,7 @@ def test_device_teardown_terminates_the_app() -> None:
         calls.append(args)
         return ""
 
-    from bajutsu.drivers.fake import FakeDriver
+    from bajutsu.common.drivers.fake import FakeDriver
 
     XcuitestEnvironment("xcuitest", "UDID-1", env_run=fake_run).teardown(FakeDriver([]), _eff())
     assert ["xcrun", "simctl", "terminate", "UDID-1", "com.example.demo"] in calls
@@ -395,7 +395,7 @@ def test_device_crawl_reset_relaunches_the_app(monkeypatch: pytest.MonkeyPatch) 
         calls.append(args)
         return ""
 
-    from bajutsu.drivers.fake import FakeDriver
+    from bajutsu.common.drivers.fake import FakeDriver
 
     XcuitestEnvironment("xcuitest", "U-1", env_run=fake_run).crawl_reset(_eff())(FakeDriver([]))
     assert ["xcrun", "simctl", "terminate", "U-1", "com.example.demo"] in calls
@@ -603,7 +603,7 @@ def test_xcuitest_environment_teardown_stops_runner(monkeypatch: pytest.MonkeyPa
     xe = XcuitestEnvironment("xcuitest", "UDID-1", env_run=fake_run)
     xe._runner_proc = FakeProc()  # type: ignore[assignment]
 
-    from bajutsu.drivers.fake import FakeDriver
+    from bajutsu.common.drivers.fake import FakeDriver
 
     xe.teardown(FakeDriver([]), _eff())
     # The group gets SIGTERM, then SIGKILL even though the leader exited within the grace: the
@@ -751,7 +751,7 @@ def test_spawn_cold_discards_a_never_ready_runner(
     import tempfile
 
     from bajutsu.common.config import XcuitestConfig
-    from bajutsu.drivers.xcuitest import XcuitestChannelError
+    from bajutsu.common.drivers.xcuitest import XcuitestChannelError
 
     monkeypatch.setattr(
         "bajutsu.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 12345

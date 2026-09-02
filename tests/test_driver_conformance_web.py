@@ -39,8 +39,8 @@ from driver_conformance import (
     DriverConformanceContract,
 )
 
-from bajutsu.drivers import base
-from bajutsu.drivers.playwright import PlaywrightDriver
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.playwright import PlaywrightDriver
 
 # Skip cleanly when the web extra is absent (running this file directly on a bare env). `find_spec`
 # locates Playwright *without importing it*, so merely collecting this module never pulls the heavy

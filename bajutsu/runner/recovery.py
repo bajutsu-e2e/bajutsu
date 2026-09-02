@@ -39,7 +39,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from bajutsu import simctl
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 
 _logger = logging.getLogger(__name__)
 

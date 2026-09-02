@@ -46,6 +46,7 @@ from bajutsu.cli._shared import (
 )
 from bajutsu.common.ai import announce_ai
 from bajutsu.common.config import Effective, web_base_url
+from bajutsu.common.drivers import base
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.scenario import Preconditions
@@ -54,7 +55,6 @@ from bajutsu.crawl import report as crawl_report
 from bajutsu.crawl import repro as crawl_repro
 from bajutsu.crawl.guide import MODEL as _CRAWL_GUIDE_MODEL
 from bajutsu.crawl.guide import Report, make_guide
-from bajutsu.drivers import base
 from bajutsu.platform_lifecycle import CrawlEnvironment, environment_for
 from bajutsu.record import clear_blocking as clear_blocking_overlay
 from bajutsu.run_files import RunArtifactReader, runs_root

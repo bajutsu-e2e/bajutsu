@@ -21,8 +21,8 @@ from bajutsu.common.config.schema import (
     NotifyEndpoint,
     XcuitestConfig,
 )
+from bajutsu.common.drivers import base
 from bajutsu.common.scenario import AfterRule, Interrupt, Redact, Step, SystemAlertHandlingField
-from bajutsu.drivers import base
 
 
 @dataclass(frozen=True)

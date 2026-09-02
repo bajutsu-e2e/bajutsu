@@ -19,9 +19,9 @@ import logging
 import time
 from abc import ABC, abstractmethod
 
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 
-logger = logging.getLogger("bajutsu.drivers.coordinate_tree")
+logger = logging.getLogger("bajutsu.common.drivers.coordinate_tree")
 
 # The settle projection: identifier + frame per element, sorted — a screen's stable shape ignoring
 # volatile value/traits/label. Public because a subclass's own `_settle` reasons about it (adb keeps

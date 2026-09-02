@@ -19,16 +19,16 @@ from typing import Any
 import pytest
 
 from bajutsu.common.config import load_config, resolve
-from bajutsu.common.scenario import Preconditions, Relaunch
-from bajutsu.common.scenario.models.scenario import Scenario
-from bajutsu.drivers import base
-from bajutsu.drivers.xcuitest_live import (
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.xcuitest_live import (
     BACKSPACE_KEY,
     ELEMENT_KEY,
     WebDriverClient,
     WebDriverError,
     XcuitestLiveDriver,
 )
+from bajutsu.common.scenario import Preconditions, Relaunch
+from bajutsu.common.scenario.models.scenario import Scenario
 from bajutsu.platform_lifecycle.environments.xcuitest import XcuitestEnvironment
 from bajutsu.platform_lifecycle.environments.xcuitest_live import (
     XcuitestLiveEnvironment,

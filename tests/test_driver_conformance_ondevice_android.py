@@ -48,8 +48,8 @@ from driver_conformance import (
 
 from bajutsu import adb
 from bajutsu.common.config import Effective, load_config, require_android, resolve
+from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals
-from bajutsu.drivers import base
 from bajutsu.runner.launch import launch_driver
 
 pytestmark = pytest.mark.ondevice

@@ -12,9 +12,9 @@ from typing import Any
 
 import pytest
 
-from bajutsu.dom import QUERY_JS, _norm_role, _str_or_none, parse_dom
-from bajutsu.drivers import base
-from bajutsu.drivers.playwright import PlaywrightDriver, _Started
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.dom import QUERY_JS, _norm_role, _str_or_none, parse_dom
+from bajutsu.common.drivers.playwright import PlaywrightDriver, _Started
 
 
 def _rec(**kw: Any) -> dict[str, Any]:
@@ -369,7 +369,7 @@ def test_start_browser_launches_the_named_engine(
 ) -> None:
     # _start_browser(engine) reaches the engine via getattr(pw, engine), so firefox/webkit launch
     # the same way Chromium did — the one generalization Phase 1 needs.
-    from bajutsu.drivers.playwright import _start_browser
+    from bajutsu.common.drivers.playwright import _start_browser
 
     pw = _FakeSyncPw()
     _patch_playwright(monkeypatch, pw)
@@ -420,7 +420,7 @@ _IPHONE_13 = {
 def test_device_context_kwargs_desktop_is_empty() -> None:
     # "desktop" is a plain context — no emulation — so the mapping is empty and playwright.devices is
     # never consulted (the default path stays free).
-    from bajutsu.drivers.playwright import _device_context_kwargs
+    from bajutsu.common.drivers.playwright import _device_context_kwargs
 
     class _NoDevices:
         @property
@@ -432,7 +432,7 @@ def test_device_context_kwargs_desktop_is_empty() -> None:
 
 def test_device_context_kwargs_resolves_a_preset() -> None:
     # A preset name expands to its Playwright descriptor, ready to spread into new_context.
-    from bajutsu.drivers.playwright import _device_context_kwargs
+    from bajutsu.common.drivers.playwright import _device_context_kwargs
 
     pw = _FakeSyncPw()
     pw.devices["iPhone 13"] = dict(_IPHONE_13)
@@ -441,7 +441,7 @@ def test_device_context_kwargs_resolves_a_preset() -> None:
 
 def test_device_context_kwargs_unknown_preset_raises() -> None:
     # An unknown preset fails loudly (at driver start), not silently as the desktop layout.
-    from bajutsu.drivers.playwright import _device_context_kwargs
+    from bajutsu.common.drivers.playwright import _device_context_kwargs
 
     with pytest.raises(ValueError, match="unknown deviceMode"):
         _device_context_kwargs(_FakeSyncPw(), "iPhone 999")
@@ -961,7 +961,7 @@ def test_dialog_is_auto_dismissed_and_recorded() -> None:
 
 
 def test_web_is_alive_flags_each_crash_signal() -> None:
-    from bajutsu.drivers.playwright import web_is_alive
+    from bajutsu.common.drivers.playwright import web_is_alive
 
     drv, page = _driver([])
     els = parse_dom([_rec(identifier="home.title")])
@@ -1055,7 +1055,7 @@ def test_starter_context_carries_reduced_motion() -> None:
     # it (only when start(headless) is actually called), so this is safe in the fast suite.
     import re
 
-    from bajutsu.drivers import playwright as pw_module
+    from bajutsu.common.drivers import playwright as pw_module
 
     start_fn = pw_module._start_browser("chromium")
     src = inspect.getsource(start_fn)
@@ -1096,7 +1096,7 @@ def test_relaunch_stops_playwright_even_if_browser_close_fails(
     class _PwError(Exception):
         pass
 
-    monkeypatch.setattr(sys.modules["bajutsu.drivers.playwright"], "_PW_ERRORS", (_PwError,))
+    monkeypatch.setattr(sys.modules["bajutsu.common.drivers.playwright"], "_PW_ERRORS", (_PwError,))
 
     class _DeadBrowser(_FakeBrowser):
         def close(self) -> None:
@@ -1130,7 +1130,7 @@ def test_close_stops_playwright_even_if_browser_close_fails(
     class _PwError(Exception):
         pass
 
-    monkeypatch.setattr(sys.modules["bajutsu.drivers.playwright"], "_PW_ERRORS", (_PwError,))
+    monkeypatch.setattr(sys.modules["bajutsu.common.drivers.playwright"], "_PW_ERRORS", (_PwError,))
 
     class _DeadBrowser(_FakeBrowser):
         def close(self) -> None:
@@ -1199,9 +1199,9 @@ def test_wedge_surfaces_as_device_error_but_selection_errors_pass_through(
         pass
 
     # Playwright isn't installed in the gate env, so stand in its error types (the cached module
-    # global). Patch via sys.modules to keep this file's single `from bajutsu.drivers.playwright`
+    # global). Patch via sys.modules to keep this file's single `from bajutsu.common.drivers.playwright`
     # import style (no second `import … as` of the same module).
-    monkeypatch.setattr(sys.modules["bajutsu.drivers.playwright"], "_PW_ERRORS", (_PwError,))
+    monkeypatch.setattr(sys.modules["bajutsu.common.drivers.playwright"], "_PW_ERRORS", (_PwError,))
 
     class _WedgedPage(_FakePage):
         def evaluate(self, expression: str) -> Any:

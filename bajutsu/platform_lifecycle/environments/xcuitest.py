@@ -28,16 +28,16 @@ from typing import IO, Literal, cast
 
 from bajutsu import backends, device_os, simctl, stall_diagnostics
 from bajutsu.common.config import Effective, XcuitestConfig, require_ios
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.zorder import ZOrderResponder, ZOrderSource
 from bajutsu.common.scenario import Preconditions
 from bajutsu.device_os import DeviceOS
-from bajutsu.drivers import base
 from bajutsu.platform_lifecycle.environments._bundled_runner import (
     bundled_products_dir,
     bundled_runner_build_info,
     materialize,
 )
 from bajutsu.platform_lifecycle.environments.ios import _DeviceEnvironment
-from bajutsu.zorder import ZOrderResponder, ZOrderSource
 
 _logger = logging.getLogger(__name__)
 
@@ -480,7 +480,7 @@ def _spawn_cold_with_retry(
     unbounded re-prep the first cold bring-up already pays before this loop even starts. A lane's
     startup-timeout headroom should be set against that worst case.
     """
-    from bajutsu.drivers.xcuitest import XcuitestChannelError
+    from bajutsu.common.drivers.xcuitest import XcuitestChannelError
 
     deadline = clock() + timeout
     diagnostics: list[str] = []
@@ -1502,7 +1502,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         """
         if self._runner_proc is None or self._runner_proc.poll() is not None:
             return None
-        from bajutsu.drivers.xcuitest import XcuitestChannelError
+        from bajutsu.common.drivers.xcuitest import XcuitestChannelError
 
         driver = backends.make_driver(
             self._actuator,

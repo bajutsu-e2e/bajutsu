@@ -11,10 +11,10 @@ import pytest
 from _shared import project
 
 from bajutsu.common.config import Effective, IosConfig
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.scenario import Redact
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
 from bajutsu.serve import operations as ops
 from bajutsu.serve.state import ServeState
 

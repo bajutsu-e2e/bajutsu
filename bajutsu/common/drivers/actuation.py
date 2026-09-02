@@ -29,7 +29,7 @@ from collections import deque
 from dataclasses import dataclass, replace
 from typing import Protocol, runtime_checkable
 
-from bajutsu.drivers.base import Frame, Point
+from bajutsu.common.drivers.base import Frame, Point
 
 # The driver primitives a record may name. `str` rather than a Literal on purpose: the report
 # reconstructs these records from a manifest an older or newer version of the tool wrote (BE-0068
@@ -191,7 +191,7 @@ class ActuationReporter(Protocol):
     """A backend that reports the concrete actuations it performed.
 
     A narrow opt-in, like `ViewportProvider` / `ReadLagProvider` / `SettledReadProvider` in
-    `bajutsu/drivers/base.py`: a backend that does not implement it simply contributes no records and
+    `bajutsu/common/drivers/base.py`: a backend that does not implement it simply contributes no records and
     the run is otherwise unchanged. The orchestrator drains once per step, so each step's outcome
     carries exactly the actuations that step performed.
     """

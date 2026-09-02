@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from bajutsu.common.drivers import base
 from bajutsu.common.report.format import Part, _gnum
-from bajutsu.drivers import base
 
 # --- rich-text decomposition (selectors / matchers -> token parts) ---
 

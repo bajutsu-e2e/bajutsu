@@ -39,9 +39,9 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.actuation import Actuation, ActuationLog, Drained
 from bajutsu.common.evidence import intervals
-from bajutsu.drivers import base
-from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 
 # The W3C element-reference key: `findElements` returns each element as `{ELEMENT_KEY: "<id>"}`, and
 # every per-element request addresses it by that opaque id — the live counterpart of the runner's

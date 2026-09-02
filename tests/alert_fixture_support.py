@@ -29,8 +29,8 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.common.agents.alerts import AlertDecision, AlertLocator, SystemAlertGuard
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.screenshots import png_size
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "be0308"

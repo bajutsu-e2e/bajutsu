@@ -81,7 +81,7 @@ easy to blur, so here is the whole relationship in one place. The source of trut
 
 | Term | What it is |
 |---|---|
-| **driver** | The abstract `Driver` interface (a `Protocol` in `bajutsu/drivers/base.py`) — the single platform-specific seam. Every actuator implements it. |
+| **driver** | The abstract `Driver` interface (a `Protocol` in `bajutsu/common/drivers/base.py`) — the single platform-specific seam. Every actuator implements it. |
 | **backend** | The user-facing token accepted by `--backend` and config `backend:`. It is *either* a platform alias (`ios`) *or* a bare actuator name (`xcuitest`). "backend" is the umbrella word for the input token; it resolves to an actuator. |
 | **actuator** | The concrete engine that actually performs actions (tap / type / swipe / query) — what a driver implements. Selection resolves a backend token to one actuator, and the chosen actuator is fixed once at the start of a run and held for the whole run. |
 | **platform** | A coarse token naming a class of target — `ios` / `android` / `web` / `fake` — that expands to an ordered, most-stable-first list of actuators. |

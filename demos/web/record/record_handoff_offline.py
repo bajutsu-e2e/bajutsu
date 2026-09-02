@@ -23,9 +23,9 @@ the real browser); the mock advances to the verified screen and the loop finishe
 from __future__ import annotations
 
 from bajutsu.common.agents.protocols import Observation, Proposal
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.scenario import Assertion, Step, dump_scenarios
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
 from bajutsu.handoff import HandoffRequest, HandoffResponse
 from bajutsu.record import record
 

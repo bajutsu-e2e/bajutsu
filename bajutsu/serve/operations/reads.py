@@ -14,10 +14,10 @@ from bajutsu.analysis import stats as _stats
 from bajutsu.common.analytics import ledger as _usage_ledger
 from bajutsu.common.analytics import stats as _usage_stats
 from bajutsu.common.config import Config, load_config, resolve
+from bajutsu.common.drivers import base as driver_base
 from bajutsu.common.evidence import StepView, step_view
 from bajutsu.common.scenario import declared_name, load_scenario_file
 from bajutsu.common.scenario.models import STEP_ACTIONS, Scenario, Step
-from bajutsu.drivers import base as driver_base
 from bajutsu.serve import flakiness as _flakiness
 from bajutsu.serve import jobs
 from bajutsu.serve.artifacts import Artifact, ArtifactStore
@@ -1032,7 +1032,7 @@ def resolve_scenario_pick(  # noqa: PLR0911
     except (json.JSONDecodeError, OSError, AttributeError, TypeError):
         return {"error": "elements.json is corrupt or unreadable"}, 400
 
-    from bajutsu.elements import screen_size_from_elements
+    from bajutsu.common.drivers.elements import screen_size_from_elements
     from bajutsu.record_capture import resolve_capture
 
     sw, sh = screen_size_from_elements(elements)

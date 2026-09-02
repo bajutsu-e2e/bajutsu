@@ -6,18 +6,18 @@ from pathlib import Path
 
 from _report import _el, _failing, _passing
 
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import Artifact
 from bajutsu.common.evidence.network import NetworkExchange
 from bajutsu.common.report import html_report
 from bajutsu.common.scenario import Scenario
-from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import RunResult, run_scenario
 
 
 def test_html_report_shows_why_a_substituted_element_was_actuated() -> None:
     # The token is the whole point of recording a substitution: without it in the rendered row, a
     # reader has to diff the actuated target against the step's selector to notice one happened.
-    from bajutsu.drivers.actuation import Actuation
+    from bajutsu.common.drivers.actuation import Actuation
 
     result = _passing()
     result.steps[0].actuations.append(

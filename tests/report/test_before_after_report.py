@@ -13,12 +13,12 @@ import json
 from _report import _el
 
 from bajutsu.common.config import load_config, resolve
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.report import html_report, junit_xml, manifest_dict
 from bajutsu.common.report.ctrf import ctrf_json
 from bajutsu.common.report.html import scenario_render_inputs
 from bajutsu.common.report.load import results_from_manifest
 from bajutsu.common.scenario import Scenario
-from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import RunResult, run_scenario
 from bajutsu.runner.pipeline import with_lifecycle_phases
 

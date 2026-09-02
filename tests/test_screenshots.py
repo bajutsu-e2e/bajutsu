@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from conftest import ShotDriver
 
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.screenshots import fraction, png_size, screenshot_bytes
 
 

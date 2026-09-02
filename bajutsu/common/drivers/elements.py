@@ -8,7 +8,7 @@ Simulator). They live here, not in a periphery module, so the core does not depe
 
 from __future__ import annotations
 
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 
 
 def screen_size_from_elements(elements: list[base.Element]) -> tuple[float, float]:

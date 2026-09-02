@@ -523,7 +523,7 @@ def test_discards_evidence_once_a_crashed_attempt_recovers_and_passes(
     pytester.makeconftest("pytest_plugins = ['ondevice_evidence', 'backend_crash_recovery']\n")
     pytester.makepyfile(
         _IMPORTS
-        + "from bajutsu.drivers import base\n\n\n"
+        + "from bajutsu.common.drivers import base\n\n\n"
         + _FAKE_STARTERS
         + _EVIDENCE_FIXTURE
         + "pytestmark = pytest.mark.backend_crash_recovery\n"

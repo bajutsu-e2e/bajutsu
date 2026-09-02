@@ -26,7 +26,7 @@ split into two testable pieces:
   direction — instead of the silent under-trigger the old hand-kept positive list produced when a
   listed module became a package (``config``, BE-0252; ``platform_lifecycle``) or a run-path file
   went unlisted. A change confined to the periphery still fires nothing. The two per-backend
-  directories — ``bajutsu/drivers/`` and ``bajutsu/platform_lifecycle/environments/`` — follow the
+  directories — ``bajutsu/common/drivers/`` and ``bajutsu/platform_lifecycle/environments/`` — follow the
   same shape: swept by the shared core minus exactly the leaves each lane claims, so a lane fires
   only on the driver and environment its own backend imports, while no file is orphaned. A renamed or
   deleted path leaves its pattern matching nothing, so the tests check every literal path and
@@ -218,11 +218,11 @@ _PERIPHERY_EXCLUSIONS: tuple[tuple[str, str], ...] = (
 # that each stays claimed by at least one lane (none orphaned by this exclusion), and the per-lane
 # surface tests pin which lane(s).
 _LANE_CLAIMED: tuple[str, ...] = (
-    "bajutsu/drivers/adb.py",
-    "bajutsu/drivers/coordinate_tree.py",
-    "bajutsu/drivers/playwright.py",
-    "bajutsu/drivers/xcuitest.py",
-    "bajutsu/drivers/xcuitest_live.py",
+    "bajutsu/common/drivers/adb.py",
+    "bajutsu/common/drivers/coordinate_tree.py",
+    "bajutsu/common/drivers/playwright.py",
+    "bajutsu/common/drivers/xcuitest.py",
+    "bajutsu/common/drivers/xcuitest_live.py",
     "bajutsu/platform_lifecycle/environments/android.py",
     "bajutsu/platform_lifecycle/environments/web.py",
     "bajutsu/platform_lifecycle/environments/xcuitest.py",
@@ -282,10 +282,10 @@ _RUN_PATH = (
 # The per-backend leaves default to over-firing: anything the shared sweep does not carve out —
 # including a newly added driver or environment module — fires all three, and a lane fragment only
 # narrows a known leaf back to its own backend. An earlier revision allow-listed each driver by name,
-# which meant a new `drivers/<foo>.py` fired nothing and silently under-triggered every required check.
+# which meant a new `common/drivers/<foo>.py` fired nothing and silently under-triggered every required check.
 _LANE_PATHS: dict[str, str] = {
     "ios": (
-        r"|bajutsu/drivers/(?:xcuitest|xcuitest_live)\.py$"
+        r"|bajutsu/common/drivers/(?:xcuitest|xcuitest_live)\.py$"
         # The XCUITest lifecycle environments (cold spawn, the warm resident lease, the BE-0292
         # bundled runner) — the iOS half of the `platform_lifecycle/` carve-out above.
         r"|bajutsu/platform_lifecycle/environments/(?:xcuitest|xcuitest_live)\.py$"
@@ -327,8 +327,8 @@ _LANE_PATHS: dict[str, str] = {
         # Only the adb driver and the Python side of the resident UI Automator channel (BE-0245) this
         # lane exercises. coordinate_tree.py is adb.py's own read/settle core (BE-0254) — a change to
         # it can change adb's runtime behavior even though adb.py itself is untouched.
-        r"|bajutsu/drivers/adb\.py$"
-        r"|bajutsu/drivers/coordinate_tree\.py$"
+        r"|bajutsu/common/drivers/adb\.py$"
+        r"|bajutsu/common/drivers/coordinate_tree\.py$"
         r"|bajutsu/adb_resident\.py$"
         # The Android lifecycle environment (boot, install, the BE-0236 provision profile) — the
         # Android half of the `platform_lifecycle/` carve-out.
@@ -354,7 +354,7 @@ _LANE_PATHS: dict[str, str] = {
         r"|scripts/android_pool_e2e\.sh$"
     ),
     "web": (
-        r"|bajutsu/drivers/playwright\.py$"
+        r"|bajutsu/common/drivers/playwright\.py$"
         # The web lifecycle environment (browser launch, context teardown) — the web half of the
         # `platform_lifecycle/` carve-out.
         r"|bajutsu/platform_lifecycle/environments/web\.py$"

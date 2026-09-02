@@ -16,9 +16,9 @@ from pathlib import Path
 
 import pytest
 
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.scenario import Scroll, Step, load_scenarios
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator.actions._registry import _do_action, _step_label
 from bajutsu.orchestrator.actions.handlers import scroll
 from bajutsu.orchestrator.actions.handlers.scroll import (

@@ -20,15 +20,15 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 
 if TYPE_CHECKING:
     from bajutsu.common.config import Effective
+    from bajutsu.common.drivers.adb import ActFn, ClockFetch, HierarchyFetch
+    from bajutsu.common.drivers.zorder import ZOrderSource
     from bajutsu.common.scenario import Scenario
     from bajutsu.device_os import DeviceOS
-    from bajutsu.drivers.adb import ActFn, ClockFetch, HierarchyFetch
-    from bajutsu.zorder import ZOrderSource
 
 # Platform token -> its actuators, most-stable-first. `--backend` / config `backend` accept
 # either a platform token (these keys) or a bare actuator name (the values below).
@@ -171,17 +171,17 @@ def capabilities_for(actuator: str) -> frozenset[str]:
     if actuator == "playwright":
         # Lazy import (heavy optional dep) — only reached on a web run; reading the class constant
         # does not start a browser (only constructing PlaywrightDriver does).
-        from bajutsu.drivers.playwright import PlaywrightDriver
+        from bajutsu.common.drivers.playwright import PlaywrightDriver
 
         return PlaywrightDriver.CAPABILITIES
     if actuator == "xcuitest":
         # The iOS actuator's capabilities are readable without bringing its runner up: reading the
         # class constant constructs no driver and starts no runner.
-        from bajutsu.drivers.xcuitest import XcuitestDriver
+        from bajutsu.common.drivers.xcuitest import XcuitestDriver
 
         return XcuitestDriver.CAPABILITIES
     if actuator == "adb":
-        from bajutsu.drivers.adb import AdbDriver
+        from bajutsu.common.drivers.adb import AdbDriver
 
         return AdbDriver.CAPABILITIES
     if actuator in KNOWN_ACTUATORS:
@@ -226,7 +226,7 @@ def capabilities_for_run(
         from bajutsu.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint
 
         if is_webdriver_endpoint(udid_spec):
-            from bajutsu.drivers.xcuitest_live import XcuitestLiveDriver
+            from bajutsu.common.drivers.xcuitest_live import XcuitestLiveDriver
 
             return XcuitestLiveDriver.CAPABILITIES
         if xcuitest_targets_real_device(eff):
@@ -432,7 +432,7 @@ def make_driver(
     backend and every inline test double has to repeat.
     """
     if actuator == "adb":
-        from bajutsu.drivers.adb import AdbDriver
+        from bajutsu.common.drivers.adb import AdbDriver
 
         return AdbDriver(udid, fetch_hierarchy=fetch_hierarchy, fetch_clock=fetch_clock, act=act)
     if actuator == "fake":
@@ -442,7 +442,7 @@ def make_driver(
             raise ValueError(
                 "xcuitest backend requires a runner_port (the runner must be started first)"
             )
-        from bajutsu.drivers.xcuitest import XcuitestDriver
+        from bajutsu.common.drivers.xcuitest import XcuitestDriver
 
         return XcuitestDriver(
             host="127.0.0.1",
@@ -454,7 +454,7 @@ def make_driver(
         )
     if actuator == "playwright":
         # Lazy: keep Playwright (a heavy optional dep) off the default import path.
-        from bajutsu.drivers.playwright import PlaywrightDriver
+        from bajutsu.common.drivers.playwright import PlaywrightDriver
 
         if not base_url:
             raise ValueError("web backend requires base_url (set apps.<app>.baseUrl)")

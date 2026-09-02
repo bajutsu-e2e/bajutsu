@@ -11,8 +11,8 @@ from __future__ import annotations
 from _orch import FakeClock, _scenario
 from conftest import el
 
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.scenario import Scenario
-from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
 
 

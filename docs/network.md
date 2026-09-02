@@ -8,7 +8,7 @@
 > way, a `request` assertion checks the accumulated exchanges.
 >
 > Implementation: `bajutsu/common/evidence/network.py` (model + collector), `bajutsu/assertions/network.py`
-> (`request` eval), `bajutsu/web_network.py` (the Playwright-native collector and mocking, BE-0054),
+> (`request` eval), `bajutsu/common/drivers/web_network.py` (the Playwright-native collector and mocking, BE-0054),
 > and the in-app SDK (software development kit) — [`BajutsuKit`](../BajutsuKit/README.md) on iOS,
 > [`BajutsuAndroid`](../BajutsuAndroid/README.md) on Android. The web (Playwright) backend needs no
 > SDK: it observes the page's traffic natively.

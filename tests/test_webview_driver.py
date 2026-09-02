@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu.drivers import base
-from bajutsu.webview import WebContextDriver
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.webview import WebContextDriver
 
 
 class FakeBridge:

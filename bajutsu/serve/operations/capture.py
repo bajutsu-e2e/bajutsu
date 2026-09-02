@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from bajutsu.common.config import load_config
+from bajutsu.common.drivers import base
 from bajutsu.common.evidence.redaction import Redactor
-from bajutsu.drivers import base
 from bajutsu.serve.operations._common import (
     _default_driver_factory,
     _device_args,
@@ -67,7 +67,7 @@ def start_capture(
     try:
         elements = driver.query()
 
-        from bajutsu.elements import screen_size_from_elements
+        from bajutsu.common.drivers.elements import screen_size_from_elements
 
         screen_size = screen_size_from_elements(elements)
         namespaces: list[str] = list(target_cfg.id_namespaces)

@@ -383,7 +383,7 @@ High-traffic shared surfaces to coordinate on:
 
 | Surface | Files | Why it's shared |
 |---|---|---|
-| Driver API | [`bajutsu/drivers/base.py`](../bajutsu/drivers/base.py) | every backend + the orchestrator depend on it |
+| Driver API | [`bajutsu/common/drivers/base.py`](../bajutsu/common/drivers/base.py) | every backend + the orchestrator depend on it |
 | Scenario schema | [`bajutsu/scenario/models/scenario.py`](../bajutsu/scenario/models/scenario.py) | the hub artifact; codegen/runner/report all read it |
 | Config shape | [`bajutsu/common/config/`](../bajutsu/common/config/) | per-target layering every command resolves through |
 
@@ -1171,7 +1171,7 @@ adds no LLM, and never runs inside `run`, so the prime directives hold by constr
 - **English, like every code comment.** Code (and its docstrings) is not bilingual; only the prose
   docs under `docs/` are.
 - **Google style on the public surface.** The public API — the `Driver` protocol and shared types
-  in [`bajutsu/drivers/base.py`](../bajutsu/drivers/base.py), the CLI, the MCP tools, the scenario
+  in [`bajutsu/common/drivers/base.py`](../bajutsu/common/drivers/base.py), the CLI, the MCP tools, the scenario
   schema, and the public functions of the runner / `assertions` / `network` — uses a one-line
   summary followed by `Args:` / `Returns:` / `Raises:` (and `Yields:` / `Examples:`) **only where
   they add information**. The generated reference excludes private (`_`-prefixed) members.

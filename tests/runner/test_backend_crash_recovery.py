@@ -30,7 +30,7 @@ def test_recovers_a_transient_backend_crash(pytester: pytest.Pytester) -> None:
         textwrap.dedent(
             """
             import pytest
-            from bajutsu.drivers import base
+            from bajutsu.common.drivers import base
 
             pytestmark = pytest.mark.backend_crash_recovery
             _LAUNCHES = {"n": 0}
@@ -71,7 +71,7 @@ def test_recovers_a_crash_during_lease_bringup(pytester: pytest.Pytester) -> Non
         textwrap.dedent(
             """
             import pytest
-            from bajutsu.drivers import base
+            from bajutsu.common.drivers import base
 
             pytestmark = pytest.mark.backend_crash_recovery
             _LAUNCHES = {"n": 0}
@@ -113,7 +113,7 @@ def test_fails_loudly_when_every_attempt_crashes(
         textwrap.dedent(
             """
             import pytest
-            from bajutsu.drivers import base
+            from bajutsu.common.drivers import base
 
             pytestmark = pytest.mark.backend_crash_recovery
             _LAUNCHES = {"n": 0}
@@ -154,7 +154,7 @@ def test_does_not_retry_a_contract_violation(pytester: pytest.Pytester) -> None:
         textwrap.dedent(
             """
             import pytest
-            from bajutsu.drivers import base
+            from bajutsu.common.drivers import base
 
             pytestmark = pytest.mark.backend_crash_recovery
             _LAUNCHES = {"n": 0}
@@ -304,7 +304,7 @@ def test_still_retries_a_crash_that_is_also_a_host_fault(
         textwrap.dedent(
             """
             import pytest
-            from bajutsu.drivers import base
+            from bajutsu.common.drivers import base
 
             pytestmark = pytest.mark.backend_crash_recovery
             _LAUNCHES = {"n": 0}
@@ -394,7 +394,7 @@ def test_a_crash_does_not_cascade_to_later_tests(
         textwrap.dedent(
             """
             import pytest
-            from bajutsu.drivers import base
+            from bajutsu.common.drivers import base
 
             pytestmark = pytest.mark.backend_crash_recovery
             _LAUNCHES = {"n": 0}
@@ -442,7 +442,7 @@ def test_reports_and_counts_a_recovery(
         textwrap.dedent(
             """
             import pytest
-            from bajutsu.drivers import base
+            from bajutsu.common.drivers import base
 
             pytestmark = pytest.mark.backend_crash_recovery
             _LAUNCHES = {"n": 0}
@@ -495,7 +495,7 @@ def test_reports_an_exhausted_recovery(
         textwrap.dedent(
             """
             import pytest
-            from bajutsu.drivers import base
+            from bajutsu.common.drivers import base
 
             pytestmark = pytest.mark.backend_crash_recovery
 
@@ -545,7 +545,7 @@ def test_reports_a_budget_exhausted_recovery(
         textwrap.dedent(
             """
             import pytest
-            from bajutsu.drivers import base
+            from bajutsu.common.drivers import base
 
             pytestmark = pytest.mark.backend_crash_recovery
 
@@ -802,7 +802,7 @@ def test_a_failed_launch_does_not_move_the_generation() -> None:
     import pytest
     from backend_crash_recovery import LeaseHolder
 
-    from bajutsu.drivers import base
+    from bajutsu.common.drivers import base
 
     state = {"started": 0}
 
@@ -866,7 +866,7 @@ def test_a_failed_launch_leaves_no_leased_teardown() -> None:
     # existed. `launch_driver`'s own post-`env.start` guard lives in tests/runner/test_launch.py.
     from backend_crash_recovery import LeaseHolder
 
-    from bajutsu.drivers import base
+    from bajutsu.common.drivers import base
 
     state = {"started": 0, "torn": 0}
 

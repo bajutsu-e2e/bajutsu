@@ -8,11 +8,11 @@ from typing import cast
 
 from bajutsu import backends, simctl
 from bajutsu.common.config import Effective, require_web
+from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals
 from bajutsu.common.evidence.network import Collector
 from bajutsu.common.scenario import Preconditions, Scenario
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
-from bajutsu.drivers import base
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.platform_lifecycle import readiness
 from bajutsu.platform_lifecycle.relaunchers import _web_relauncher
@@ -82,7 +82,7 @@ class WebEnvironment:
         return []
 
     def hook_collector(self, driver: base.Driver, scenario: Scenario) -> Collector:
-        from bajutsu.drivers.playwright import PlaywrightDriver
+        from bajutsu.common.drivers.playwright import PlaywrightDriver
 
         # A fresh context per lease scopes the traffic; the cast names the web-only collector whose
         # `mocks` param the base Protocol widens to `list[object]`.
@@ -137,7 +137,7 @@ class WebEnvironment:
         return reset
 
     def crawl_aliveness(self) -> AliveCheck | None:
-        from bajutsu.drivers.playwright import PlaywrightDriver, web_is_alive
+        from bajutsu.common.drivers.playwright import PlaywrightDriver, web_is_alive
 
         # Each web worker owns its browser, so the health signal reads the worker's own driver — not
         # the primary — which is essential once `--workers` > 1 (BE-0077).
@@ -147,7 +147,7 @@ class WebEnvironment:
         return is_alive
 
     def crawl_recover(self) -> Recover | None:
-        from bajutsu.drivers.playwright import PlaywrightDriver
+        from bajutsu.common.drivers.playwright import PlaywrightDriver
 
         # A wedged browser (renderer crash, hung page, navigation timeout) surfaces as a DeviceError;
         # relaunch this worker's own browser so its lane heals and keeps crawling (BE-0077).
@@ -157,7 +157,7 @@ class WebEnvironment:
         return recover
 
     def crawl_dialog_clearer(self) -> ClearBlocking | None:
-        from bajutsu.drivers.playwright import PlaywrightDriver
+        from bajutsu.common.drivers.playwright import PlaywrightDriver
 
         # JS dialogs are auto-dismissed by the driver the moment they appear (they would otherwise
         # block the page); here we just report what was handled, for the screen map.

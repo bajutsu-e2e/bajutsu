@@ -18,9 +18,9 @@ import pytest
 
 from bajutsu.common.ai.base import MessageRequest, MessageResponse, ToolUseBlock
 from bajutsu.common.analytics import ledger as usage_ledger
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence.sink import RunArtifactWriter
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
 from scripts.build_roadmap_index import tracking_issue_url
 
 if TYPE_CHECKING:

@@ -14,11 +14,11 @@ import base64
 import webbrowser
 from pathlib import Path
 
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import FileSink
 from bajutsu.common.report import write_report
 from bajutsu.common.scenario import Scenario, dump_scenarios, scenario_dict
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
 
 # A 2x2 light-grey PNG — stands in for a real screenshot so the lightbox isn't broken.

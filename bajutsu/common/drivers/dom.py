@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from bajutsu.drivers import base
+from bajutsu.common.drivers import base
 
 QUERY_JS = """
 () => {

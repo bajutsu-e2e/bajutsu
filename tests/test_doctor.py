@@ -8,9 +8,9 @@ from collections.abc import Callable
 import pytest
 
 from bajutsu.common.config import load_config, resolve
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
 
 
 def _el(identifier: str | None, traits: list[str], label: str = "x") -> base.Element:
@@ -135,7 +135,7 @@ def test_render_mentions_grade() -> None:
 def test_web_traits_are_actionable() -> None:
     """Web-mapped traits (textField, textView, switch, slider, tab, cell) must all be
     recognized as actionable by doctor so it scores web pages correctly (BE-0024)."""
-    from bajutsu.dom import parse_dom
+    from bajutsu.common.drivers.dom import parse_dom
 
     web_elements = [
         {
@@ -215,7 +215,7 @@ def test_android_clickable_trait_is_actionable() -> None:
     crawl tap-candidate — so a tappable Android container is scored and crawled, scoped to
     clickability rather than the widget class (the twin of `test_web_traits_are_actionable`)."""
     from bajutsu import crawl
-    from bajutsu.drivers.adb import parse_hierarchy
+    from bajutsu.common.drivers.adb import parse_hierarchy
 
     # Two same-class `FrameLayout` wrappers with ids: only the clickable one gains the button trait.
     xml = (

@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 
 from bajutsu import simctl
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.scenario import Foreground, Push, Scenario, SetClipboard, SetLocation, Step
-from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import AlertGuardConfig, run_scenario
 
 # --- pure command builders ---

@@ -6,10 +6,10 @@ import pytest
 from conftest import ShotDriver
 
 from bajutsu.common.agents.protocols import Observation, Proposal
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.elements import shows_app_ui
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.scenario import Assertion, Selector, Step, dump_scenarios, load_scenarios
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
-from bajutsu.elements import shows_app_ui
 from bajutsu.handoff import HandoffRequest, HandoffResponse, HumanHandoffUnavailable
 from bajutsu.record import (
     _format_elapsed,
