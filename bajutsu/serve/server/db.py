@@ -74,8 +74,9 @@ class OrgRecord:
     (BE-0375); a row that predates the move, or one `ensure_org` created at sign-in, carries empty
     lists throughout.
     `membership_seeded_at` is the per-row cutover marker (set = the database owns this org's
-    membership), `deleted_at` the soft-delete marker. `config_source` is the flat `upload`-kind
-    record naming the last bundle this org uploaded (BE-0404 unit 1), None until it uploads one.
+    membership), `deleted_at` the soft-delete marker. `config_source` is the `{kind, locator}` record
+    naming the configuration this org last bound (BE-0404 unit 1, widened to every bind by BE-0393
+    unit 6), None until it binds one.
     """
 
     id: str
@@ -198,13 +199,12 @@ class Repository(Protocol):
         """
 
     def set_org_config_source(self, org_id: str, source: dict[str, Any]) -> bool:
-        """Remember *source* as the last bundle this org uploaded (BE-0404 unit 1). False when there
-        is no such live org.
+        """Remember *source* as the configuration this org last bound. False when there is no such
+        live org.
 
-        One record per org, overwritten by each upload bind — a second bind replaces the first
-        locator rather than accumulating a named list, which is the project layer returning under
-        another name. Only an upload bind writes it, so a later `git` or `file` bind leaves the
-        record standing: it names what this org can *recover*, not what it is serving.
+        One record per org, overwritten by each bind — a second bind replaces the first locator
+        rather than accumulating a named list, which is the project layer returning under another
+        name. Every bind writes it, not only an upload one; `Org.config_source` records why.
         """
 
     def set_org_membership(

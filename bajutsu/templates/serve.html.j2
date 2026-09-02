@@ -63,6 +63,11 @@
           wraps onto its own second row as a whole — never interleaved button-by-button. -#}
       <div class="cfgctrls">
         <span class="cfgname" id="cfgname" data-testid="nav.config-name"></span>
+        {#- Where the bound config came from (BE-0393 unit 7): what this member opened, what their
+            org last bound and this session inherited, or the deployment's own. Hidden on a local or
+            shared-token serve, like the org badge below: with one session and one binding there is
+            nothing to tell apart. -#}
+        <span class="cfgorigin" id="cfgorigin" data-testid="nav.config-origin" hidden></span>
         {#- Which tenant this session acts as (BE-0375). Every tab is silently scoped to it — runs,
             evidence, secrets, the run history — so an admin who administers several orgs can see
             which one their own work lands in. Hidden until the boot read names an identity: a local
@@ -647,6 +652,10 @@
 <div class="modal" id="fsmodal" data-testid="config.modal" hidden>
   <div class="fsbox">
     <div class="fshead"><span class="ttl">Open config</span><button class="fsclose" id="fsclose" data-testid="config.close">&#10005;</button></div>
+    {#- Say the reach of a bind where the bind is made (BE-0393 unit 7). It repoints this session
+        alone, but it also becomes what the org remembers, so a colleague's next session starts from
+        it. Shown only where that is true: a deployment with an org store and a signed-in member. -#}
+    <div class="inheritnote" id="inheritnote" data-testid="config.inherit-note" hidden>Binding here repoints <b>your session only</b> &mdash; a colleague's open session keeps what it has. It also becomes what your org remembers, so their <b>next</b> session starts from it.</div>
     <!-- From Git (BE-0063): materialize a repo subtree at a ref and bind its config. -->
     <div class="gitsrc">
       <label class="gitsrclbl" for="gitspec">From a Git repository</label>

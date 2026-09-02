@@ -33,13 +33,17 @@ class FakeScenarioStorage:
     def __init__(self, projects: dict[str, dict[str, str]]) -> None:
         self._projects = projects
 
-    def has_app(self, app: str) -> bool:
+    def has_app(self, app: str, *, session: str | None = None, org: str = "") -> bool:
         return app in self._projects
 
-    def list(self, app: str) -> list[dict[str, object]]:
+    def list(
+        self, app: str, *, session: str | None = None, org: str = ""
+    ) -> list[dict[str, object]]:
         return [{"file": ref, "path": ref} for ref in sorted(self._projects.get(app, {}))]
 
-    def read(self, app: str, ref: str | None) -> str | None:
+    def read(
+        self, app: str, ref: str | None, *, session: str | None = None, org: str = ""
+    ) -> str | None:
         return self._projects.get(app, {}).get(ref or "")
 
     def save(self, app: str, ref: str | None, text: str) -> str | None:
@@ -71,13 +75,17 @@ def test_list_read_save_delegate_to_storage() -> None:
 class PermissiveStorage:
     """A storage that would return for *any* ref — so a leak proves the scope didn't pre-reject."""
 
-    def has_app(self, app: str) -> bool:
+    def has_app(self, app: str, *, session: str | None = None, org: str = "") -> bool:
         return True
 
-    def list(self, app: str) -> list[dict[str, object]]:
+    def list(
+        self, app: str, *, session: str | None = None, org: str = ""
+    ) -> list[dict[str, object]]:
         return []
 
-    def read(self, app: str, ref: str | None) -> str | None:
+    def read(
+        self, app: str, ref: str | None, *, session: str | None = None, org: str = ""
+    ) -> str | None:
         return "LEAK"
 
     def save(self, app: str, ref: str | None, text: str) -> str | None:
@@ -154,7 +162,9 @@ def _tree_state(scenarios_dir: Path) -> ServeState:
 def test_local_tree_has_app_delegates_to_the_save_storage(tmp_path: Path) -> None:
     # has_app has no local-tree counterpart (there is no "list of apps" on disk to check): it
     # delegates to the injected ObjectScenarioStorage's own apps lookup, so the two never disagree.
-    save_storage = ObjectScenarioStorage(_PoisonObjectStore(), lambda: {"demo", "other"})
+    save_storage = ObjectScenarioStorage(
+        _PoisonObjectStore(), lambda _session, _org: {"demo", "other"}
+    )
     storage = LocalTreeScenarioStorage(_tree_state(tmp_path), save_storage)
     assert storage.has_app("demo") is True
     assert storage.has_app("ghost") is False
@@ -166,7 +176,7 @@ def test_local_tree_list_and_read_resolve_from_disk_not_object_storage(tmp_path:
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
-    save_storage = ObjectScenarioStorage(_PoisonObjectStore(), lambda: {"demo"})
+    save_storage = ObjectScenarioStorage(_PoisonObjectStore(), lambda _session, _org: {"demo"})
     storage = LocalTreeScenarioStorage(_tree_state(scn_dir), save_storage)
     listed = storage.list("demo")
     assert [s["file"] for s in listed] == ["smoke.yaml"]
@@ -182,7 +192,7 @@ def test_local_tree_list_and_read_are_empty_without_a_resolvable_dir() -> None:
     # No `scenarios_dir` override and no bound config: `_scenarios_dir_for` returns None, so there is
     # no local scope to delegate to (matching how the local backend behaves for the same state).
     state = ServeState(runs_dir=Path("runs"))
-    save_storage = ObjectScenarioStorage(_PoisonObjectStore(), lambda: {"demo"})
+    save_storage = ObjectScenarioStorage(_PoisonObjectStore(), lambda _session, _org: {"demo"})
     storage = LocalTreeScenarioStorage(state, save_storage)
     assert storage.list("demo") == []
     assert storage.read("demo", "smoke.yaml") is None
@@ -194,7 +204,7 @@ def test_local_tree_list_and_read_are_empty_when_the_resolved_dir_is_missing(
     # `_scenarios_dir_for` resolves to a real Path even before extraction has landed anything there
     # (or a target's `scenarios:` dir was never created) — distinct from the None case above.
     missing = tmp_path / "scenarios"  # deliberately never created
-    save_storage = ObjectScenarioStorage(_PoisonObjectStore(), lambda: {"demo"})
+    save_storage = ObjectScenarioStorage(_PoisonObjectStore(), lambda _session, _org: {"demo"})
     storage = LocalTreeScenarioStorage(_tree_state(missing), save_storage)
     assert storage.list("demo") == []
     assert storage.read("demo", "smoke.yaml") is None
@@ -209,7 +219,7 @@ def test_local_tree_list_filters_out_refs_read_would_reject(tmp_path: Path) -> N
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
     (scn_dir / "a\\..\\b.yaml").write_text("- name: x\n  steps: []\n", encoding="utf-8")
-    save_storage = ObjectScenarioStorage(_PoisonObjectStore(), lambda: {"demo"})
+    save_storage = ObjectScenarioStorage(_PoisonObjectStore(), lambda _session, _org: {"demo"})
     storage = LocalTreeScenarioStorage(_tree_state(scn_dir), save_storage)
     assert [s["file"] for s in storage.list("demo")] == ["smoke.yaml"]
 
@@ -220,7 +230,7 @@ def test_local_tree_read_degrades_instead_of_raising_on_a_bad_file(tmp_path: Pat
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "bad.yaml").write_bytes(b"\xff\xfe not utf-8")
-    save_storage = ObjectScenarioStorage(_PoisonObjectStore(), lambda: {"demo"})
+    save_storage = ObjectScenarioStorage(_PoisonObjectStore(), lambda _session, _org: {"demo"})
     storage = LocalTreeScenarioStorage(_tree_state(scn_dir), save_storage)
     assert storage.read("demo", "bad.yaml") is None
 
@@ -231,7 +241,7 @@ def test_local_tree_save_delegates_to_the_injected_object_storage(tmp_path: Path
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     object_store = FakeObjectStore()
-    save_storage = ObjectScenarioStorage(object_store, lambda: {"demo"})
+    save_storage = ObjectScenarioStorage(object_store, lambda _session, _org: {"demo"})
     storage = LocalTreeScenarioStorage(_tree_state(scn_dir), save_storage)
     assert storage.save("demo", "new.yaml", SCENARIO) == "new.yaml"
     assert object_store.objects["scenarios/demo/new.yaml"] == SCENARIO.encode()
@@ -243,7 +253,7 @@ def test_local_tree_storage_drives_the_scenario_store_seam(tmp_path: Path) -> No
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
-    save_storage = ObjectScenarioStorage(_PoisonObjectStore(), lambda: {"demo"})
+    save_storage = ObjectScenarioStorage(_PoisonObjectStore(), lambda _session, _org: {"demo"})
     storage = LocalTreeScenarioStorage(_tree_state(scn_dir), save_storage)
     scope = StorageScenarioStore(storage).scope("demo")
     assert scope is not None

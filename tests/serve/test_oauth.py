@@ -8,6 +8,7 @@ never makes a network call."""
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
     from sqlalchemy import Engine
 
 # An `orgs:` block that admits `alice` (explicit member) and anyone in the `acme-gh` GitHub org, and
-# names the Team whose members become editors. The sign-in gate reads this from `state.config`.
+# names the Team whose members become editors. The sign-in gate reads this from `state.binding.config`.
 _ORGS_YAML = """
 targets:
   demo: { bundleId: com.example.demo }
@@ -726,7 +727,9 @@ def test_oauth_callback_signs_in_from_the_database_when_the_config_cannot_load(
     state, _ = _db_state(
         serve_engine, tmp_path, FakeOAuthClient(login="carol", orgs=["acme-gh"], teams=[])
     )
-    state.config = tmp_path / "missing.yaml"  # never written -- load_serve_config_file -> None
+    state.binding = replace(
+        state.binding, config=tmp_path / "missing.yaml"
+    )  # never written -- load_serve_config_file -> None
     assert _role_after_login(state, "carol") == "viewer"
     assert state.repository is not None
     assert state.repository.user_org("carol") == "acme"
@@ -741,7 +744,7 @@ def test_oauth_callback_signs_in_from_the_database_when_no_config_is_bound(
     state, _ = _db_state(
         serve_engine, tmp_path, FakeOAuthClient(login="carol", orgs=["acme-gh"], teams=[])
     )
-    state.config = None
+    state.binding = replace(state.binding, config=None)
     assert _role_after_login(state, "carol") == "viewer"
     assert state.repository is not None
     assert state.repository.user_org("carol") == "acme"

@@ -165,13 +165,13 @@ def _locate_config_or_heal(dest: Path) -> tuple[Any, int]:
     return config_path, 200
 
 
-def _remember_org_config_source(state: ServeState, org: str, source: dict[str, Any]) -> None:
-    """Record *source* as the last bundle this org uploaded (BE-0404 unit 1).
+def remember_org_config_source(state: ServeState, org: str, source: dict[str, Any]) -> None:
+    """Record *source* as the configuration this org last bound (BE-0404 unit 1, BE-0393 unit 6).
 
-    The durable half of the recovery path: `restore_uploaded_config` reads this back on a replica
-    that never received the upload. Guarded like the other database reaches on this path — a flaky
-    backend must leave the bind itself standing, since the bytes are already in the object store and
-    the binding in this process is complete.
+    Called by every bind — the file browser, the Git picker, an uploaded bundle, and a composed
+    triple; `Org.config_source` records what the column means and why it covers all four. Guarded
+    like the other database reaches on this path: a flaky backend must leave the bind itself
+    standing, since the binding in this process is complete either way.
     """
     repo = state.repository
     if repo is None:
@@ -183,7 +183,13 @@ def _remember_org_config_source(state: ServeState, org: str, source: dict[str, A
 
 
 def bind_upload_config(
-    state: ServeState, zip_path: Path, filename: str, *, sha256: str, actor: str | None = None
+    state: ServeState,
+    zip_path: Path,
+    filename: str,
+    *,
+    sha256: str,
+    actor: str | None = None,
+    session: str | None = None,
 ) -> tuple[Any, int]:
     """Bind an uploaded zip bundle as the active config (BE-0073) — a third source in the "Open
     config" UI, alongside the file browser and the Git picker.
@@ -193,8 +199,8 @@ def bind_upload_config(
     computed while streaming the upload to *zip_path* (so the file is read once, not again to hash).
     We extract it into a serve-owned, sha256-keyed cache (`materialize_bundle`), persist the raw zip
     to the object store when one is configured (BE-0243, so another replica can fetch it later), then
-    bind it exactly like the Git source binds a checkout (`bind_git_config`): `state.config` points at
-    the bundle's config and `state.cwd` at the bundle root, so the config's relative
+    bind it exactly like the Git source binds a checkout (`bind_git_config`): the asking session's
+    binding points at the bundle's config with `cwd` at the bundle root, so the config's relative
     `appPath`/`scenarios`/`baselines` resolve against the extracted tree and the Replay / Record /
     Crawl tabs all run from it. Every target's path fields are confined to the bundle at bind
     (`Effective.rebased`), so an uploaded config can't point serve's scenario/build logic at host
@@ -231,14 +237,13 @@ def bind_upload_config(
         org=org,
         actor=actor,
     )
-    state.bind_upload(upload)
-    state.config_org = upload.org  # the bundle is this org's; its `orgs:` owns nothing (BE-0375)
+    state.bind_upload(upload, session)
     _record_audit(state, actor, org, "upload", upload.filename, {"sha256": sha256})
     source = {"kind": "upload", "filename": upload.filename, "sha256": sha256, "size": size}
     # The bind is the writer (BE-0404 unit 1): before this item the caller had to re-register the
     # returned record through the project registry this item deletes, so a record nobody persisted
     # would leave the recovery path with nothing to read.
-    _remember_org_config_source(state, org, source)
+    remember_org_config_source(state, org, source)
     return {
         "ok": True,
         "config": str(config_path),
@@ -248,7 +253,12 @@ def bind_upload_config(
 
 
 def upload_scenarios(
-    state: ServeState, zip_path: Path, *, target: str | None, actor: str | None = None
+    state: ServeState,
+    zip_path: Path,
+    *,
+    target: str | None,
+    actor: str | None = None,
+    session: str | None = None,
 ) -> tuple[Any, int]:
     """Add a ``.zip`` of one or more scenario files to *target*'s scenario scope (BE-0340).
 
@@ -266,9 +276,9 @@ def upload_scenarios(
     storage-accurate, since this loop's per-entry probe shares the same limitation."""
     target = target or None
     org = state.org_of(actor)
-    if target is not None and _target_forbidden(state, org, target):
+    if target is not None and _target_forbidden(state, org, target, session):
         return {"error": "forbidden"}, 403
-    scope = state.for_org(org).scenarios.scope(target)
+    scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
     if scope is None:
         return {"error": "path must be a *.yaml under the scenarios dir"}, 400
     try:
@@ -465,6 +475,7 @@ def _compose_and_bind(
     size: int,
     org: str,
     actor: str | None,
+    session: str | None = None,
     scenarios_filename: str | None = None,
 ) -> tuple[Upload, int] | tuple[dict[str, Any], int]:
     """Resolve a validated triple's legs, materialize the composition, and bind it as the active
@@ -542,8 +553,7 @@ def _compose_and_bind(
             shas, filename=filename, scenarios_filename=scenarios_filename
         ),
     )
-    state.bind_upload(upload)
-    state.config_org = upload.org  # the bundle is this org's; its `orgs:` owns nothing (BE-0375)
+    state.bind_upload(upload, session)
     return upload, 200
 
 
@@ -554,6 +564,7 @@ def _restore_composed_config(
     *,
     org: str,
     actor: str | None = None,
+    session: str | None = None,
 ) -> tuple[Any, int] | None:
     """Fetch-and-compose fallback for restoring a triple-bound `upload`-kind source (BE-0268) —
     the composed-triple sibling of `restore_uploaded_config`'s legacy single-sha path.
@@ -588,6 +599,7 @@ def _restore_composed_config(
         size=raw_size if isinstance(raw_size, int) else 0,
         org=org,
         actor=actor,
+        session=session,
     )
     if status != 200:
         return result, status
@@ -596,7 +608,11 @@ def _restore_composed_config(
 
 
 def bind_composition(
-    state: ServeState, artifacts: dict[str, Any], *, actor: str | None = None
+    state: ServeState,
+    artifacts: dict[str, Any],
+    *,
+    actor: str | None = None,
+    session: str | None = None,
 ) -> tuple[Any, int]:
     """Compose a `(config, scenarios, binary)` artifact triple and bind it as the active config
     (BE-0268) — the compose-picker sibling of `bind_upload_config`, driven by `POST /api/compose`.
@@ -631,6 +647,7 @@ def bind_composition(
         size=0,
         org=org,
         actor=actor,
+        session=session,
         scenarios_filename=scenarios_name,
     )
     if status != 200:
@@ -638,7 +655,7 @@ def bind_composition(
     assert isinstance(result, Upload)  # `status == 200` only ever pairs with a bound Upload
     _record_audit(state, actor, org, "compose", result.filename, {"artifacts": shas})
     source = {"kind": "upload", "artifacts": shas, "filename": result.filename}
-    _remember_org_config_source(state, org, source)
+    remember_org_config_source(state, org, source)
     return {
         "ok": True,
         "config": str(result.config),
@@ -647,16 +664,19 @@ def bind_composition(
     }, 200
 
 
-def compose_current(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+def compose_current(
+    state: ServeState, *, actor: str | None = None, session: str | None = None
+) -> tuple[Any, int]:
     """The active composed bind's per-leg shas and display names, for the compose picker's resume
     seed (`GET /api/compose/current`).
 
     Returns `{"artifacts": {}}` with HTTP 200 when nothing composed is bound (no config, a Git/fs
     bind, a legacy zip bind, or another org's bind) so the UI treats "nothing to inherit" as an
-    empty seed — never a 404. Does not materialize or rebind; it only reports what `state.upload`
+    empty seed — never a 404. Does not materialize or rebind; it only reports what the asking
+    session's binding
     already holds. The POST body of `/api/compose` stays a pure function of its request — this GET
     never fills omitted legs on the server."""
-    upload = state.upload
+    upload = state.binding_for(session, state.org_of(actor)).upload
     if upload is None or upload.artifact_shas is None:
         return {"artifacts": {}}, 200
     if upload.org != state.org_of(actor):
@@ -669,14 +689,27 @@ def compose_current(state: ServeState, *, actor: str | None = None) -> tuple[Any
     return {"artifacts": artifacts}, 200
 
 
-def restore_org_config(state: ServeState, *, org: str, actor: str | None = None) -> tuple[Any, int]:
+def restore_org_config(
+    state: ServeState, *, org: str, actor: str | None = None, session: str | None = None
+) -> tuple[Any, int]:
     """Rebind the last bundle *org* uploaded, from the record on its row (BE-0404 unit 1).
 
     The reason the org row holds a config-source record at all: a hosted replica that never received
-    the upload recovers it from the object store by the digests the record names. Only an upload
-    bind writes that record, so this restores the org's last *bundle* rather than whatever it bound
-    most recently — a `git` or `file` config is something the caller rebinds through
-    `POST /api/config` directly, needing no durable copy of its own.
+    the upload recovers it from the object store by the digests the record names.
+
+    Restores an `upload` record only. Since BE-0393 unit 6 every bind writes the record, so a later
+    `git` or `file` bind supersedes the bundle and this answers 404 — the bundle's bytes are still in
+    the object store, but what the org *last bound* is no longer them. That is the honest reading of
+    a one-record memory: this endpoint exists to recover bytes a replica may not hold, and a `git` or
+    `file` source needs no such recovery, being rebindable through `POST /api/config` directly. The
+    automatic per-session restore replays whichever kind the record names (`restore_org_binding`).
+
+    Restores into the asking session's own binding, like every other bind (BE-0393 unit 2). Before
+    that unit every bind replaced one process-global binding, so a restore that clobbered it was
+    self-healing — the next bind overwrote it. Now that normal binds land in session slots, a
+    restore that replaced the deployment's fallback would persist there until a restart, leaving
+    every other org's sessionless requests resolving against this org's bundle. A caller with no
+    session still replaces the fallback, which is what a replica warming itself up means.
     """
     repo = state.repository
     if repo is None:
@@ -685,14 +718,19 @@ def restore_org_config(state: ServeState, *, org: str, actor: str | None = None)
     source = record.config_source if record is not None else None
     if not isinstance(source, dict) or source.get("kind") != "upload":
         return {"error": "this org has no remembered uploaded config to restore"}, 404
-    restored = restore_uploaded_config(state, source, org=org, actor=actor)
+    restored = restore_uploaded_config(state, source, org=org, actor=actor, session=session)
     if restored is None:
         return {"error": "the remembered bundle is no longer resolvable; re-upload it"}, 409
     return restored
 
 
 def restore_uploaded_config(
-    state: ServeState, source: dict[str, Any], *, org: str, actor: str | None = None
+    state: ServeState,
+    source: dict[str, Any],
+    *,
+    org: str,
+    actor: str | None = None,
+    session: str | None = None,
 ) -> tuple[Any, int] | None:
     """Fetch-and-extract an `upload`-kind config source back into a live binding (BE-0243).
 
@@ -718,7 +756,9 @@ def restore_uploaded_config(
     path below never runs for it, and vice versa; the two locator shapes are mutually exclusive."""
     artifacts = source.get("artifacts")
     if isinstance(artifacts, dict):
-        return _restore_composed_config(state, source, artifacts, org=org, actor=actor)
+        return _restore_composed_config(
+            state, source, artifacts, org=org, actor=actor, session=session
+        )
     sha256 = source.get("sha256")
     if not isinstance(sha256, str) or not _SHA256_RE.fullmatch(sha256):
         return None
@@ -760,6 +800,5 @@ def restore_uploaded_config(
         org=org,
         actor=actor,
     )
-    state.bind_upload(upload)
-    state.config_org = upload.org  # the bundle is this org's; its `orgs:` owns nothing (BE-0375)
+    state.bind_upload(upload, session)
     return {"ok": True, "config": str(config_path)}, 200

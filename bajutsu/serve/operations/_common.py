@@ -36,21 +36,30 @@ def _device_args(body: dict[str, Any]) -> tuple[str, str, tuple[Any, int] | None
 
 
 def _resolve_org_or_forbid(
-    state: ServeState, target: str, actor: str | None
+    state: ServeState, target: str, actor: str | None, session: str | None
 ) -> tuple[str, tuple[Any, int] | None]:
     """The org resolution + cross-org guard shared by every start_* endpoint: resolve the actor's
     org and deny a target that belongs to another org (BE-0015; single-tenant never forbids).
-    Returns ``(org, None)`` when allowed, or ``(org, (error, 403))`` for the caller to return."""
+    Returns ``(org, None)`` when allowed, or ``(org, (error, 403))`` for the caller to return.
+
+    *session* is required rather than defaulted (BE-0393 unit 2): ownership is a property of the
+    binding the request is running against, so a guard that silently fell back to the deployment's
+    would answer from a partition the rest of the request is not using — and a defaulted parameter
+    is how the first eight callers came to omit it.
+    """
     org = state.org_of(actor)
-    if _target_forbidden(state, org, target):
+    if _target_forbidden(state, org, target, session):
         return org, ({"error": "forbidden"}, 403)
     return org, None
 
 
-def _session_effective(state: ServeState, config: Config, target: str) -> Effective:
-    """Effective config for a live capture/enrich session, rebased against `state.cwd` like the
-    CLI does for `run`/`record`; `confine=False` since bind already confined this config's paths."""
-    return resolve(config, target).rebased(state.cwd, confine=False)
+def _session_effective(
+    state: ServeState, config: Config, target: str, session: str | None = None, org: str = ""
+) -> Effective:
+    """Effective config for a live capture/enrich session, rebased against the requesting session's
+    bound `cwd` like the CLI does for `run`/`record`; `confine=False` since bind already confined this
+    config's paths."""
+    return resolve(config, target).rebased(state.binding_for(session, org).cwd, confine=False)
 
 
 def _close_quietly(driver: driver_base.Driver) -> None:

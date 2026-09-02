@@ -12,6 +12,7 @@ import hashlib
 import io
 import zipfile
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 from _shared import FakeObjectStore
@@ -93,11 +94,11 @@ def test_a_replica_restores_the_org_s_remembered_bundle(
         uploads_dir=tmp_path / "uploads2",  # a cold cache: the bytes must come from the store
         object_store=store,
     )
-    assert replica.config is None
+    assert replica.binding.config is None
     result, status = ops.restore_org_config(replica, org="acme", actor="kazu")
     assert status == 200
-    assert replica.config is not None
-    assert replica.config.read_text(encoding="utf-8") == _CONFIG
+    assert replica.binding.config is not None
+    assert replica.binding.config.read_text(encoding="utf-8") == _CONFIG
     assert result["ok"] is True
 
 
@@ -159,7 +160,7 @@ def test_the_comparison_ranks_only_the_targets_the_org_owns(
         encoding="utf-8",
     )
     state = _state(serve_engine, tmp_path, object_store=FakeObjectStore())
-    state.config = config
+    state.binding = replace(state.binding, config=config)
 
     assert [row.name for row in compare_targets(state, org="acme")] == ["acme-web"]
     assert [row.name for row in compare_targets(state, org="globex")] == ["globex-web"]

@@ -131,18 +131,23 @@ def _resolve_org_model(state: ServeState) -> _OrgModel:
     sign-in into a denial on a deployment whose database already knows exactly who its users are.
     A database-less deployment keeps reading the `orgs:` block exactly as before.
 
+    Reads the deployment's own binding, never a session's (BE-0393 unit 2): who may sign in is
+    decided by the configuration `serve` was started with. A configuration bound in a session is
+    content the deployment does not own, and letting it name members would hand a bind authority over
+    the roster — the same reason such a bind seeds no membership either (BE-0375).
+
     Raises:
         Exception: whatever the repository read failed with, so the caller answers with an error
             naming the database rather than an empty roster that reads as "you don't belong".
     """
     if state.repository is not None:
         return _OrgModel(orgs=orgs_from_db(state.repository), from_db=True)
-    parsed = load_serve_config_file(state.config)
+    parsed = load_serve_config_file(state.binding.config)
     return _OrgModel(
         orgs=parsed[1] if parsed is not None else {},
         from_db=False,
         parsed=parsed,
-        config=state.config,
+        config=state.binding.config,
     )
 
 
@@ -371,7 +376,7 @@ def _active_org(
     return preferred_org(eligible)
 
 
-def _target_forbidden(state: ServeState, org: str, target: str) -> bool:
+def _target_forbidden(state: ServeState, org: str, target: str, session: str | None = None) -> bool:
     """True when an actor resolved to *org* may not touch *target* because *org* does not own it
     (BE-0015 multi-tenancy). Org scoping applies only on a server backend with a system of record;
     local serve / token mode has no identity to scope to and ignores `orgs:` entirely. A target not
@@ -388,10 +393,10 @@ def _target_forbidden(state: ServeState, org: str, target: str) -> bool:
     """
     if state.repository is None:
         return False
-    parsed = load_serve_config_file(state.config)
+    parsed = load_serve_config_file(state.binding_for(session, org).config)
     if parsed is None or target not in parsed[0].targets:
         return False
-    return target not in state.targets_for(org)
+    return target not in state.targets_for(org, session)
 
 
 def _record_audit(
@@ -414,13 +419,15 @@ def _record_audit(
 # --- RBAC (BE-0015 7c-2): role-based access control over the mutating endpoints ---
 
 _ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}
-# Server-wide settings — including binding the active config, from the file browser, Git, or an
-# uploaded bundle (BE-0073): each repoints which config the whole server serves.
+# Server-wide settings — including binding a configuration, from the file browser, Git, or an
+# uploaded bundle (BE-0073). A bind repoints only the asking session since BE-0393 unit 2, so what
+# keeps it admin is not its reach but what it does: it materializes content the deployment does not
+# own and decides that content's build trust (BE-0121).
 _ADMIN_PATHS = frozenset(
     {
         "/api/config",
-        # Rebinding the org's remembered config (BE-0404 unit 1) repoints what the whole deployment
-        # serves, exactly like binding one — the same admin tier as `/api/config` itself.
+        # Rebinding the org's remembered config (BE-0404 unit 1) materializes a stored bundle,
+        # exactly like binding one — the same admin tier as `/api/config` itself.
         "/api/config/restore",
         "/api/upload",
         # The three independently-uploadable artifacts (BE-0268) repoint what a future composed
@@ -432,8 +439,8 @@ _ADMIN_PATHS = frozenset(
         "/api/artifacts/config",
         "/api/artifacts/scenarios",
         "/api/artifacts/binary",
-        # Composing a stored triple into the active config (BE-0268) repoints what the whole server
-        # serves, exactly like binding an uploaded bundle — the same admin tier as `/api/upload`.
+        # Composing a stored triple into a bound configuration (BE-0268) materializes uploaded
+        # content, exactly like binding a bundle — the same admin tier as `/api/upload`.
         "/api/compose",
         "/api/apikey",
         "/api/claudecodetoken",

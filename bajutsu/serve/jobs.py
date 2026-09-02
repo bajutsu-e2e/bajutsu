@@ -336,7 +336,10 @@ def _build_app(state: ServeState, job: Job) -> bool:
     a needed build fails — so the run isn't spawned against a missing binary."""
     if not job.build or not job.app_path:
         return True
-    cwd = job.cwd or state.cwd
+    # `job.cwd` is frozen at registration (BE-0393 unit 2), so this is the accepted job's own
+    # directory. The fallback is the worker path, where the job was rebuilt from a spec and resolves
+    # against the worker's own deployment binding.
+    cwd = job.cwd or state.binding.cwd
     if (cwd / job.app_path).exists():
         return True
     _log(job, f"app binary missing ({job.app_path}) — building: {job.build}")
@@ -597,7 +600,7 @@ def _run_job(state: ServeState, job: Job) -> None:
     stdin = subprocess.PIPE if "--handoff" in job.cmd else subprocess.DEVNULL
     proc = state.popen(
         job.cmd,
-        cwd=str(job.cwd or state.cwd),
+        cwd=str(job.cwd or state.binding.cwd),
         env=_spawn_env(job),
         stdin=stdin,
         stdout=subprocess.PIPE,
@@ -711,8 +714,8 @@ def _run_batch_job(state: ServeState, job: Job) -> None:
             verdict = provider.submit(
                 request,
                 # Same package root start_run_set relativized the config/scenario paths against (see
-                # ServeState.devicefarm_package_root), falling back to the job's own cwd then state.cwd.
-                work_dir=state.devicefarm_package_root or job.cwd or state.cwd,
+                # ServeState.devicefarm_package_root), falling back to the job's own cwd then state.binding.cwd.
+                work_dir=state.devicefarm_package_root or job.cwd or state.binding.cwd,
                 dest=Path(download_name),
                 checkpoint=_batch_checkpoint(state, job.id),
             )

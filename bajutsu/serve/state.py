@@ -10,15 +10,16 @@ stays in `jobs.py` — mutates a `Job`. The runtime dependency is one-directiona
 
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 import subprocess
 import threading
-from collections import Counter
+from collections import Counter, OrderedDict
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import InitVar, dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from bajutsu.serve.batch_provider import BatchRequest
@@ -93,8 +94,11 @@ class Job:
     # For a server-backend `run`: download the visual baselines into the workspace before running
     # (the cmd points `--baselines` at a workspace dir). False for local (the real dir is used).
     materialize_baselines: bool = False
-    # Working directory override for the spawned run/build (default: state.cwd, which already points
-    # at a Git checkout or an uploaded bundle when one is bound). None uses state.cwd.
+    # The working directory the spawned run/build gets, captured when the job is accepted so a rebind
+    # between registration and spawn cannot repoint an already-accepted run (BE-0393 unit 2). A
+    # dispatcher that resolved a session's binding stamps it in `_register_and_dispatch`;
+    # `ServeState._freeze_binding` fills in the deployment's for a caller that resolved none. None
+    # only on a worker-rebuilt job, which resolves its own workspace at spawn.
     cwd: Path | None = None
     # Provenance to record into the produced run's manifest.json after it finishes (the bound bundle's
     # filename + zip sha256 + size). None for a normal run. Set for a run off an uploaded bundle (BE-0073).
@@ -221,6 +225,11 @@ class CaptureSession:
     namespaces: list[str]
     redactor: Redactor | None
     actor: str | None = None
+    # The login session that started the capture (BE-0393 unit 2). The capture drives the config
+    # *that* session is bound to, so the authored scenario has to be saved into the same one — and
+    # holding the id rather than re-reading it at finish also freezes the destination against a
+    # rebind partway through, the same reason a job freezes its working directory at enqueue.
+    login_session: str | None = None
     steps: list[Step] = field(default_factory=list)
     screenshot_path: Path = field(default_factory=lambda: Path(os.devnull))
     prev_fingerprint: str = ""
@@ -446,10 +455,61 @@ class ProviderSettingsManager:
             store.save(PersistedProviderSettings(provider=provider, settings=slots))
 
 
+# How many (session, org) bindings one process keeps before evicting the least recently bound
+# (BE-0393 unit 2). A member holds one slot per org they act as, so this is thousands of concurrent
+# members on one process — far past what a serve deployment fans out to — while still bounding a
+# process that never sees those sessions end.
+MAX_SESSION_BINDINGS = 2048
+
+
+@dataclass(frozen=True)
+class ConfigBinding:
+    """The configuration `serve` is bound to, as one value (BE-0393 unit 1).
+
+    These six were six independent mutable attributes on `ServeState` that had to be written
+    together — and were: each binder set all of them, and a separate `release_upload` cleared three to
+    keep a stale bundle's directory from leaking into the next bind. Frozen and replaced whole, the
+    incomplete combinations are unrepresentable, and there is one thing to key by session rather
+    than six (unit 2).
+
+    Attributes:
+        config: The bound configuration file, or None until one is opened.
+        cwd: What the configuration's relative paths resolve against — its own directory for a local
+            file, the checkout root for a Git source, the extraction root for a bundle (BE-0242).
+        provenance: Git-source provenance (host/owner/repo/ref/sha) when the configuration came from
+            one, else None, so the UI can show which commit an opaque cache path was materialized
+            from.
+        upload: The bound uploaded bundle, or None when the configuration came from the file browser,
+            Git, or startup.
+        git_from_api: Whether this is a Git source bound at runtime through the API rather than
+            pre-configured by the operator. Such a source is untrusted: its `build:` is nulled unless
+            `allow_remote_build` opts in (BE-0121).
+        org: The org that bound this configuration through the API — an uploaded bundle, a composed
+            triple, or a Git source (BE-0375). None for the launch configuration, whose own `orgs:`
+            block then partitions targets as the operator wrote it.
+        origin: Which of the three answers `binding_for` gave, for the header to name (unit 7):
+            `session` for what the member bound themselves, `inherited` for the org's remembered
+            configuration restored into their slot, `deployment` for the one every sessionless
+            request reads. Never set by a binder — the two funnels that decide which slot a value
+            lands in stamp it, so it cannot disagree with where the value actually is.
+    """
+
+    config: Path | None = None
+    cwd: Path = field(default_factory=Path.cwd)
+    provenance: dict[str, str] | None = None
+    upload: Upload | None = None
+    git_from_api: bool = False
+    org: str | None = None
+    origin: Literal["deployment", "session", "inherited"] = "deployment"
+
+
 @dataclass
 class ServeState:
     runs_dir: Path
-    config: Path | None = None  # None until a config is opened from the UI
+    # Init-only: folded into `binding` by `__post_init__`, so `ServeState(config=…)` keeps working
+    # while there is no ambient `state.config` left to read (BE-0393 unit 1). Read the bound value
+    # through `binding` instead.
+    config: InitVar[Path | None] = None
     scenarios_dir: Path | None = None  # override; default is the selected app's configured dir
     root: Path = field(default_factory=Path.cwd)  # the file browser's browse ceiling
     # where `visual` baselines live (and where Approve promotes to); serve() defaults it to
@@ -465,9 +525,36 @@ class ServeState:
     themes_dir: Path | None = None
     # The `ui.default_theme` initial selection, read from the startup config; None follows the OS.
     default_theme: str | None = None
-    cwd: Path = field(default_factory=Path.cwd)
+    # Init-only, like `config` above: `ServeState(cwd=…)` seeds the binding's `cwd`, and readers go
+    # through `binding.cwd`.
+    cwd: InitVar[Path | None] = None
+    # Init-only seeds for the rest of the launch binding, so `serve()` and the tests can construct a
+    # Git-sourced or bundle-sourced state in one call as before.
+    config_provenance: InitVar[dict[str, str] | None] = None
+    upload: InitVar[Upload | None] = None
+    git_config_from_api: InitVar[bool] = False
+    config_org: InitVar[str | None] = None
+    # The deployment's own binding: the configuration `serve` started with (BE-0393 unit 1). Unit 2
+    # made it the **fallback** — a session with no binding of its own, and a caller with no session at
+    # all, read this one. Never read it directly from a request path; ask `binding_for`.
+    binding: ConfigBinding = field(init=False)
+    # A binding per login session and acting org (BE-0393 unit 2). A bind made in one session is
+    # visible to that session alone, so two members of one org can work at once and one switching
+    # configurations does not move the ground under another's run. The acting org joins the key
+    # because a session may change which org it acts as, and target ownership rides on the org: a
+    # binding that outlived an org change would hand one org's targets to a request acting as
+    # another. Ordered and capped so a process accumulating quiet sessions evicts the oldest binding
+    # rather than growing without limit.
+    bindings: OrderedDict[tuple[str, str], ConfigBinding] = field(init=False)
+    _bindings_lock: threading.Lock = field(init=False)
+    # The (session, org) pairs a restore has already been tried for (BE-0393 unit 6), whether it
+    # bound anything or not. A failed restore is not retried, so a repeatedly unreachable source does
+    # not re-fetch on every request; bounded and evicted like `bindings`, since a process that never
+    # sees its sessions end would otherwise remember every pair forever.
+    _restore_tried: OrderedDict[tuple[str, str], None] = field(init=False)
     # serve's launch directory, captured at construction (see __post_init__) before a config bind can
-    # repoint `cwd`. Runs off a Git/upload bind still land their tree here (BE-0063/BE-0073).
+    # repoint the binding's `cwd`. Runs off a Git/upload bind still land their tree here
+    # (BE-0063/BE-0073).
     base_cwd: Path = field(init=False)
     # Root the cloud-batch (Device Farm) test package is built from. Device Farm's
     # APPIUM_PYTHON_TEST_PACKAGE validation needs Bajutsu's own `tests/` and `pyproject.toml` at the
@@ -476,10 +563,6 @@ class ServeState:
     # serve() sets it to the source root when serving from a checkout; None falls back to `cwd` (the
     # in-process test model, where the config, scenarios, and source all sit in one tmp tree).
     devicefarm_package_root: Path | None = None
-    # The currently bound uploaded bundle (BE-0073), or None when the active config came from the
-    # file browser / Git / startup. Holds the extraction sandbox (removed when another config is
-    # bound) and the run provenance. Only one bundle is bound at a time.
-    upload: Upload | None = None
     # Policy for an uploaded bundle's launchServer command (and the latent mockServer.cmd, once it is
     # wired) (BE-0090): deny | reuse | sandbox. Default `sandbox` runs it in a throwaway container,
     # never on the serve host; it applies only to upload-sourced configs (a local/Git config is
@@ -490,21 +573,6 @@ class ServeState:
     # enumerated — disables the check; a loopback/named bind enforces its own names, closing the
     # DNS-rebinding path to endpoints like /api/apikey.
     allowed_hosts: frozenset[str] = frozenset()
-    # Whether the active config is a Git source bound at runtime via the API (BE-0121), rather than
-    # one the operator pre-configured at startup. An API-bound Git config is untrusted: its `build:`
-    # command is nulled like an uploaded bundle's (never run) unless `allow_remote_build` opts in.
-    git_config_from_api: bool = False
-    # Git-source provenance of the active config when it came from a Git source (host/owner/repo/ref/
-    # resolved sha, `config_source.source_provenance`), else None for a local file or uploaded bundle.
-    # Surfaced by `/api/config/content` so the UI can show *which* commit the opaque cache-path config
-    # was materialized from, not just the path. Set at startup (Git `--config`) and on an API bind.
-    config_provenance: dict[str, str] | None = None
-    # The org that bound the active configuration through the API — an uploaded bundle, a composed
-    # triple, or a Git source (BE-0375). None for the launch configuration, whose own `orgs:` block
-    # then partitions targets between orgs as an operator wrote it. An API-bound configuration's
-    # `orgs:` block decides nothing: it was bound *as* this org, and its content is not the
-    # deployment's, the same reason such a bind seeds no membership either.
-    config_org: str | None = None
     # Opt-in to run an API-bound Git config's `build:` command on the host (BE-0121). Off by default;
     # serve() sets it from --allow-remote-build / BAJUTSU_ALLOW_REMOTE_BUILD.
     allow_remote_build: bool = False
@@ -574,6 +642,11 @@ class ServeState:
     # backend sets a closure that builds object stores prefixed for the given org. `for_org` falls
     # back to the default stores when unset, so local behavior is unchanged.
     org_stores: Callable[[str], StoreBundle] | None = None
+    # Restores an org's remembered configuration into a session's empty slot (BE-0393 unit 6), by
+    # calling `rebind` itself. Injected rather than imported, like the store seams above, because the
+    # materialization lives in `operations` and `operations` imports this module. None — the default,
+    # and every deployment with no config memory — leaves `binding_for` answering with the fallback.
+    restore_binding: Callable[[str, str], None] | None = None
     capture: CaptureSession | None = None
     # Per-org AI provider settings (BE-0229), carved into `ProviderSettingsManager` (BE-0248): the
     # in-memory selection map, its durable local store, and the copy-on-read/copy-on-write methods
@@ -610,11 +683,35 @@ class ServeState:
     # registration/counting surface to it and exposes `jobs` as a read-through of its dict.
     job_registry: JobRegistry = field(init=False)
 
-    def __post_init__(self) -> None:
-        # serve's own launch directory, captured before any config bind repoints `cwd` at a Git
-        # checkout / uploaded bundle. A run off such a bind writes its tree into `base_cwd/runs_dir`
-        # (serve's store), not under the transient checkout/bundle (BE-0063/BE-0073).
-        self.base_cwd = self.cwd
+    def __post_init__(
+        self,
+        config: Path | None,
+        cwd: Path | None,
+        config_provenance: dict[str, str] | None,
+        upload: Upload | None,
+        git_config_from_api: bool,
+        config_org: str | None,
+    ) -> None:
+        # Fold the init-only seeds into the one binding value (BE-0393 unit 1). `cwd` defaults here
+        # rather than on the field so the launch binding and `base_cwd` below read the same launch
+        # directory even when the caller passed none.
+        launch_cwd = cwd if cwd is not None else Path.cwd()
+        self.binding = ConfigBinding(
+            config=config,
+            cwd=launch_cwd,
+            provenance=config_provenance,
+            upload=upload,
+            git_from_api=git_config_from_api,
+            org=config_org,
+        )
+        self.bindings = OrderedDict()
+        self._restore_tried = OrderedDict()
+        self._bindings_lock = threading.Lock()
+        # serve's own launch directory, captured before any config bind repoints the binding's `cwd`
+        # at a Git checkout / uploaded bundle. A run off such a bind writes its tree into
+        # `base_cwd/runs_dir` (serve's store), not under the transient checkout/bundle
+        # (BE-0063/BE-0073).
+        self.base_cwd = launch_cwd
         # Anchor a relative runs_dir / baselines_dir at serve's launch cwd (Path.cwd(), which serve
         # never changes) so each store, the run subprocess's `--runs-dir` / `--baselines`, and the
         # manifest reads in `jobs`/`triage` all resolve to one directory. Without this a subdir config
@@ -630,7 +727,11 @@ class ServeState:
         # default them to the local stores here (a server backend overwrites them afterwards).
         self.artifacts = LocalArtifactStore(self.runs_dir)
         # Resolve the dir lazily through a closure so a config opened from the UI later is reflected.
-        self.scenarios = LocalScenarioStore(lambda target: _scenarios_dir_for(self, target))
+        # The resolver takes the requesting session and org, which `scope` supplies per call — the
+        # closure itself is built once, with no handler in scope (BE-0393 unit 2).
+        self.scenarios = LocalScenarioStore(
+            lambda target, session, org: _scenarios_dir_for(self, target, session, org)
+        )
         self.baselines = LocalBaselineStore(self.baselines_dir)
         # The local secret store holds the value in this process's env; the name->env-var mapping is
         # resolved lazily so a config bound later (its `ai.keyEnv`, BE-0097) is reflected.
@@ -701,9 +802,130 @@ class ServeState:
             return active_key_env(self)
         return name
 
+    def rebind(self, session: str | None, org: str, binding: ConfigBinding) -> None:
+        """Make *binding* what *session*, acting as *org*, is bound to (BE-0393 unit 2).
+
+        A bind is visible to the session that made it and to no other, so two members of one org can
+        work at once and one switching configurations does not move the ground under another's run.
+        What a colleague's next session inherits is the org's remembered configuration, not this
+        slot.
+
+        A caller with no session — a shared-token or CI request — replaces the deployment's fallback
+        instead, which is the pre-unit-2 behavior and the only binding such a caller could mean.
+
+        The map is bounded: a process that accumulates quiet sessions evicts the least recently bound
+        slot rather than growing without limit. Eviction costs that session its own binding and
+        nothing else — the next request re-reads the fallback. Not *quite* as a session that never
+        bound anything does, since unit 6 restores into an empty slot on first use and an evicted
+        session has already used its one attempt; it stays on the fallback rather than restoring
+        again. Bounded, rare, and self-limiting, which is what best-effort buys.
+        """
+        # The origin is stamped here rather than passed in: this is where a value's slot is decided,
+        # so a binder cannot label one thing and land it somewhere else (unit 7).
+        if session is None:
+            self.binding = replace(binding, origin="deployment")
+            return
+        with self._bindings_lock:
+            self.bindings[session, org] = replace(binding, origin="session")
+            self.bindings.move_to_end((session, org))
+            while len(self.bindings) > MAX_SESSION_BINDINGS:
+                self.bindings.popitem(last=False)
+
+    def drop_revoked_bindings(self) -> int:
+        """Drop every binding whose session the store no longer knows; returns how many went.
+
+        A revoked session cannot *reach* its slot — the request adapters resolve an unknown cookie to
+        None, so such a request already reads the fallback — but the slot would sit until eviction
+        pushed it out. Retiring an org revokes its members' sessions (BE-0375), so this runs there.
+
+        Asks the store which sessions are still live rather than being handed the revoked ids: the
+        database-backed store revokes with a bulk delete and knows only how many rows went, so making
+        it report ids would widen the seam for a sweep that is cheap on the one path that needs it —
+        a rare admin action over a map bounded by `MAX_SESSION_BINDINGS` (BE-0393 unit 2).
+        """
+        with self._bindings_lock:
+            keys = list(self.bindings)
+        # Asked outside the lock: on a hosted deployment `valid_session` is a database round trip, and
+        # holding the lock across up to `MAX_SESSION_BINDINGS` of them would block every concurrent
+        # `binding_for`. A slot bound between the snapshot and the delete is still live, so membership
+        # is re-checked below rather than trusted from the snapshot.
+        dead = [key for key in keys if not self.auth.valid_session(key[0])]
+        with self._bindings_lock:
+            gone = [key for key in dead if key in self.bindings]
+            for key in gone:
+                del self.bindings[key]
+        return len(gone)
+
+    def binding_for(self, session: str | None, org: str) -> ConfigBinding:
+        """The configuration a request from *session*, acting as *org*, is bound to (BE-0393 unit 2).
+
+        The session's own binding when it has one; failing that, the org's remembered configuration
+        restored into the slot on this first use (unit 6); failing that, the deployment's fallback —
+        initially the configuration `serve` started with, whose `orgs:` block partitions its targets
+        between orgs exactly as an operator wrote it, and replaceable only by a bind that carries no
+        session. A caller with no session (a shared-token or CI request, which carries no login
+        cookie) reads the fallback and restores nothing: it is acting on the deployment, not inside a
+        member's session.
+
+        The restore happens here, on first need, rather than at sign-in, for two reasons the item
+        gives: sign-in must not wait on a network fetch of a Git source or a bundle, and the org a
+        session acts as can change without a sign-in. Keying it to "this session has no binding for
+        this org yet" covers both entry paths without naming either — and it does mean the request
+        that finds the empty slot pays for the fetch.
+
+        This is the only way a request path should reach the bound configuration. Reading
+        `state.binding` from one would restore the ambient default this unit exists to remove.
+        """
+        if session is None:
+            return self.binding
+        key = (session, org)
+        with self._bindings_lock:
+            bound = self.bindings.get(key)
+            if bound is not None:
+                return bound
+            restore = self.restore_binding
+            if restore is None or key in self._restore_tried:
+                return self.binding
+            self._restore_tried[key] = None
+            while len(self._restore_tried) > MAX_SESSION_BINDINGS:
+                self._restore_tried.popitem(last=False)
+        # Outside the lock: a restore fetches a Git subtree or a bundle's bytes, and holding the lock
+        # across that would stall every concurrent read. Marked as tried before releasing it, so two
+        # concurrent first requests fetch at most once between them.
+        try:
+            restore(session, org)
+        except Exception:
+            # Best-effort, and never fails the request that happened to be first (unit 6): a moved
+            # file, an unreachable repository, or an evicted bundle leaves the session with no
+            # binding of its own and the reason in the log — the same posture the org seeding at
+            # startup takes with a failed database read.
+            logging.getLogger(__name__).warning(
+                "could not restore org %s's remembered configuration for this session",
+                org,
+                exc_info=True,
+            )
+        with self._bindings_lock:
+            restored = self.bindings.get(key)
+            if restored is None:
+                return self.binding
+            # A restore binds through the ordinary binder, which stamps `session` on its way in, so
+            # the slot is relabelled here — the one place that knows the value arrived by
+            # inheritance rather than by the member's own choice. A bind the member makes *during*
+            # the fetch window is mislabelled `inherited` until their next bind: a label, and
+            # already inside the window where that bind loses to the restore anyway.
+            inherited = replace(restored, origin="inherited")
+            self.bindings[key] = inherited
+            return inherited
+
     def for_org(self, org: str) -> StoreBundle:
         """The storage seams scoped to *org*. A server backend prefixes each org's objects; local
-        serve has a single tenant, so this is just the default stores (BE-0015 multi-tenancy)."""
+        serve has a single tenant, so this is just the default stores (BE-0015 multi-tenancy).
+
+        Takes no session: every seam here is org-scoped. A scenarios dir *is* session-scoped, because
+        it is resolved against the bound configuration, but the seam that learns the session is the
+        scenario store's own `scope` — a request reaches that with a session in hand, while the store
+        itself is swapped in once per deployment (BE-0393 unit 2).
+        """
         if self.org_stores is not None:
             return self.org_stores(org)
         return StoreBundle(
@@ -725,7 +947,7 @@ class ServeState:
 
     def register(self, job: Job) -> Job:
         """Assign *job* its id + live-log bus and store it. Delegates to the registry (BE-0198)."""
-        return self.job_registry.register(job)
+        return self.job_registry.register(self._freeze_binding(job))
 
     def try_register(self, job: Job, *, device_budget: int = 0) -> Job | None:
         """Register *job* only if under the concurrency caps, forwarding this state's configured caps
@@ -733,67 +955,89 @@ class ServeState:
         is the per-target cloud-batch device cap (BE-0336 Unit 4); unlike the state-wide caps it is
         per-target, so the dispatcher resolves it from the request's config and passes it per call."""
         return self.job_registry.try_register(
-            job,
+            self._freeze_binding(job),
             max_concurrent=self.max_concurrent,
             max_concurrent_per_user=self.max_concurrent_per_user,
             max_concurrent_per_org=self.max_concurrent_per_org,
             max_concurrent_batch=device_budget,
         )
 
-    def bind_upload(self, upload: Upload) -> None:
-        """Make *upload* the active binding (BE-0073): release any previously bound bundle, then
-        point `config`/`cwd` at this one so runs/record/crawl resolve from the extracted tree."""
-        self.release_upload()
-        self.upload = upload
-        self.config = upload.config
-        self.cwd = upload.root
-        self.config_provenance = None  # a bundle is not a Git source — no commit provenance to show
-        self.git_config_from_api = (
-            False  # a bundle is governed by upload_exec, not the Git trust flag
+    def _freeze_binding(self, job: Job) -> Job:
+        """Capture the working directory *job* will spawn against, at registration (BE-0393 unit 2).
+
+        A job's `--config` is already on its command line, so the configuration a run parses is fixed
+        at dispatch. Its working directory was not: `Job.cwd` defaulted to None and no dispatcher set
+        it, so the spawn read the *live* binding at `popen` time — and a rebind between registration
+        and spawn, a window a device boot or an on-demand build can hold open, repointed a run that
+        had already been accepted. Frozen here, at the one point every dispatcher goes through, rather
+        than in each of them, so a sixth dispatcher cannot forget.
+
+        An explicit `job.cwd` is left alone: a worker rebuilds a job from its spec with no captured
+        directory and resolves its own workspace at spawn, which is that fallback's remaining use.
+        """
+        if job.cwd is None:
+            job.cwd = self.binding.cwd
+        return job
+
+    def bind_upload(self, upload: Upload, session: str | None) -> None:
+        """Make *upload* the active binding (BE-0073), replacing whatever was bound.
+
+        The whole binding is replaced rather than mutated field by field, so no reader can observe a
+        bundle paired with the previous source's `cwd` or provenance (BE-0393 unit 1). A bundle is not
+        a Git source, so it carries no commit provenance and is governed by `upload_exec` rather than
+        the Git trust flag. The owning org is read off the bundle rather than stamped by the caller
+        afterwards: every caller set it to exactly this, and a caller that forgot left the previous
+        owner's partition in place (BE-0375).
+
+        Bound for *session* alone (BE-0393 unit 2), so an upload does not repoint a colleague's run.
+        The org is the bundle's own, which is also the org half of the key: a bundle is uploaded *as*
+        an org, so no other org's slot could be the one it belongs in.
+        """
+        self.rebind(
+            session,
+            upload.org,
+            ConfigBinding(config=upload.config, cwd=upload.root, upload=upload, org=upload.org),
         )
 
-    def targets_for(self, org: str) -> list[str]:
-        """The targets *org* may reach under the bound configuration (BE-0015, BE-0375).
+    def targets_for(self, org: str, session: str | None = None) -> list[str]:
+        """The targets *org* may reach under the configuration *session* is bound to (BE-0015,
+        BE-0375, BE-0393 unit 2).
 
         The one place ownership is decided, so a fourth reader cannot answer it differently from the
         three that exist (the target list, the cross-org guard, and the per-org scenario store): a
         configuration bound through the API belongs to the org that bound it, and only the launch
         configuration's own `orgs:` block partitions targets between orgs. Empty when no
         configuration is bound or it cannot be read.
+
+        *session* is the request asking. Ownership is a property of the binding, so two sessions of
+        one org bound to different configurations see different targets — and a session with no
+        binding of its own sees the deployment's, whose `orgs:` block partitions as the operator
+        wrote it. A caller with no session in hand (boot, a shared-token request) passes None and
+        gets that same deployment-wide answer.
         """
-        parsed = load_serve_config_file(self.config)
+        binding = self.binding_for(session, org)
+        parsed = load_serve_config_file(binding.config)
         if parsed is None:
             return []
-        return targets_for_org(parsed[1], parsed[0].targets, org, bound_by=self.config_org)
-
-    def release_upload(self) -> None:
-        """Drop the currently bound bundle's binding, if any, and reset `cwd` to serve's launch
-        directory. Called whenever a new config is bound (from any source), so the file-browser/Git
-        sources don't inherit a stale bundle cwd. Unlike before BE-0243, this no longer removes
-        `upload.dir`: it is now a sha256-keyed entry in `uploads_dir`'s shared extraction cache (a
-        cache other binds, and other replicas via the object store, may still resolve to), not a
-        disposable per-bind sandbox — its lifetime is independent of any single bind, the same way
-        unbinding a Git-sourced config never sweeps that source's own checkout cache."""
-        self.upload = None
-        # The next bind sets this if it owns the config; clearing here means a bind that forgets to
-        # falls back to the `orgs:`-declared partition rather than inheriting the previous owner.
-        self.config_org = None
-        self.cwd = self.base_cwd
+        return targets_for_org(parsed[1], parsed[0].targets, org, bound_by=binding.org)
 
 
-def _scenarios_dir_for(state: ServeState, target: str | None) -> Path | None:
+def _scenarios_dir_for(
+    state: ServeState, target: str | None, session: str | None, org: str
+) -> Path | None:
     """The scenarios dir to list/save for *target*: the ``--scenarios`` override if set, else the
     target's configured dir.  None when neither is available.
 
-    A configured dir is **relative to the config's base** — `state.cwd` — so a Git-sourced config
+    A configured dir is **relative to the config's base** — the binding's `cwd` — so a Git-sourced
     (whose `cwd` is the checkout root) lists scenarios from the fetched tree, not serve's launch
     directory. A local config's `cwd` is its own directory too, so its scenarios resolve from beside
     the config file rather than from where serve was started (BE-0063, BE-0242)."""
     if state.scenarios_dir is not None:
         return state.scenarios_dir
-    if state.config is None or not target:
+    binding = state.binding_for(session, org)
+    if binding.config is None or not target:
         return None
-    configured = target_scenarios_dir(state.config, target)
+    configured = target_scenarios_dir(binding.config, target)
     if configured is None or configured.is_absolute():
         return configured
-    return state.cwd / configured
+    return binding.cwd / configured

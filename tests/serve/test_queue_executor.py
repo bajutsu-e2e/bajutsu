@@ -418,13 +418,17 @@ class FakeScenarioStorage:
     def __init__(self, projects: dict[str, dict[str, str]]) -> None:
         self._projects = projects
 
-    def has_app(self, app: str) -> bool:
+    def has_app(self, app: str, *, session: str | None = None, org: str = "") -> bool:
         return app in self._projects
 
-    def list(self, app: str) -> list[dict[str, object]]:
+    def list(
+        self, app: str, *, session: str | None = None, org: str = ""
+    ) -> list[dict[str, object]]:
         return [{"file": r, "path": r} for r in sorted(self._projects.get(app, {}))]
 
-    def read(self, app: str, ref: str | None) -> str | None:
+    def read(
+        self, app: str, ref: str | None, *, session: str | None = None, org: str = ""
+    ) -> str | None:
         return self._projects.get(app, {}).get(ref or "")
 
     def save(self, app: str, ref: str | None, text: str) -> str | None:

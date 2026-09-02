@@ -132,7 +132,7 @@ def test_backfilled_respond_human_route_delegates_to_ops(tmp_path: Path) -> None
 
 def test_stdlib_ctx_decodes_a_path_param_exactly_once() -> None:
     # The matcher binds the raw encoded segment "a%2520b"; the ctx unquotes it exactly once.
-    ctx = _StdlibCtx({"name": "a%2520b"}, {}, lambda _key: None, lambda: None)
+    ctx = _StdlibCtx({"name": "a%2520b"}, {}, lambda _key: None, lambda: None, lambda: None)
     assert ctx.path_param("name") == "a%20b"
 
 
@@ -140,7 +140,7 @@ def test_fastapi_ctx_returns_the_starlette_decoded_param_without_re_decoding() -
     # Starlette already decoded "a%2520b" down to "a%20b" once; the ctx must not unquote again (that
     # would give "a b"), so both backends deliver the same decoded value to a closure.
     request = Request({"type": "http", "path_params": {"name": "a%20b"}, "query_string": b""})
-    ctx = _FastapiCtx(request, {}, lambda: None)
+    ctx = _FastapiCtx(request, {}, lambda: None, lambda: None)
     assert ctx.path_param("name") == "a%20b"
 
 

@@ -22,7 +22,7 @@ def _store(tmp_path: Path) -> srv.ScenarioStore:
     scn_dir.mkdir()
     (scn_dir / "smoke.yaml").write_text(SCENARIO, encoding="utf-8")
     dirs = {"demo": scn_dir}
-    return srv.LocalScenarioStore(lambda app: dirs.get(app or ""))
+    return srv.LocalScenarioStore(lambda app, _session, _org: dirs.get(app or ""))
 
 
 def test_scope_is_none_for_app_without_dir(tmp_path: Path) -> None:
@@ -74,7 +74,9 @@ def test_save_creates_scenarios_dir_when_missing(tmp_path: Path) -> None:
     # A fresh project whose scenarios dir does not exist yet: save must create it (mirrors out_path),
     # not raise FileNotFoundError — save's contract allows creating a new file.
     target_dir = tmp_path / "fresh"
-    store = srv.LocalScenarioStore(lambda app: target_dir if app == "demo" else None)
+    store = srv.LocalScenarioStore(
+        lambda app, _session, _org: target_dir if app == "demo" else None
+    )
     scope = store.scope("demo")
     assert scope is not None
     saved = scope.save("smoke.yaml", SCENARIO)
@@ -106,7 +108,9 @@ def test_authored_makes_unique_yaml_and_creates_dir(tmp_path: Path) -> None:
     # A fresh app whose dir does not exist yet: authored() must create it and return an on-disk
     # *.yaml out path with no save (the local run host writes it directly).
     target_dir = tmp_path / "fresh"
-    store = srv.LocalScenarioStore(lambda app: target_dir if app == "demo" else None)
+    store = srv.LocalScenarioStore(
+        lambda app, _session, _org: target_dir if app == "demo" else None
+    )
     scope = store.scope("demo")
     assert scope is not None
     authored = scope.authored("login flow")
