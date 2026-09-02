@@ -83,7 +83,7 @@ def test_binding_a_bundle_states_its_owner_without_a_second_call(tmp_path: Path)
     state = _state(tmp_path, uploads_dir=uploads)
     up = _bundle(uploads, "u1", org="acme")
 
-    state.bind_upload(up)
+    state.bind_upload(up, None)
 
     assert state.binding == ConfigBinding(config=up.config, cwd=up.dir, upload=up, org="acme")
 
@@ -91,7 +91,7 @@ def test_binding_a_bundle_states_its_owner_without_a_second_call(tmp_path: Path)
 def test_a_file_bind_after_a_bundle_leaves_nothing_of_the_bundle(tmp_path: Path) -> None:
     uploads = tmp_path / "uploads"
     state = _state(tmp_path, uploads_dir=uploads)
-    state.bind_upload(_bundle(uploads, "u1", org="acme"))
+    state.bind_upload(_bundle(uploads, "u1", org="acme"), None)
     picked = tmp_path / "next.yaml"
     picked.write_text(_CONFIG, encoding="utf-8")
 
@@ -140,7 +140,7 @@ def test_a_registered_job_keeps_the_directory_it_was_accepted_against(tmp_path: 
 
     job = state.register(srv.Job(cmd=["bajutsu", "run"]))
     # The member switches to a bundle while the job sits in the queue.
-    state.bind_upload(_bundle(uploads, "u1"))
+    state.bind_upload(_bundle(uploads, "u1"), None)
 
     assert state.binding.cwd != at_enqueue  # the live binding did move
     assert job.cwd == at_enqueue  # the accepted job did not
@@ -337,3 +337,30 @@ def test_a_capture_remembers_the_session_that_started_it(tmp_path: Path) -> None
 
     assert status == 200
     assert state.capture is not None and state.capture.login_session == "s1"
+
+
+def test_restoring_an_orgs_remembered_bundle_lands_in_the_asking_session(tmp_path: Path) -> None:
+    """Before unit 2 every bind replaced one process-global binding, so a restore that clobbered it
+    was self-healing. Now that normal binds land in session slots, a restore that replaced the
+    deployment's fallback would persist there — leaving every other org's sessionless requests
+    resolving against this org's bundle until a restart."""
+    uploads = tmp_path / "uploads"
+    state = _state(tmp_path, uploads_dir=uploads)
+    fallback = state.binding.config
+    sha = "a" * 64
+    # The extraction cache entry the org's record names, already on this replica (BE-0393 unit 5).
+    (uploads / sha).mkdir(parents=True)
+    (uploads / sha / "bajutsu.config.yaml").write_text(_CONFIG, encoding="utf-8")
+
+    class _Repo:
+        def get_org(self, _org: str) -> object:
+            return type("Row", (), {"config_source": {"kind": "upload", "sha256": sha}})()
+
+    state.repository = _Repo()  # type: ignore[assignment]
+
+    payload, status = ops.restore_org_config(state, org="default", session="s1")
+
+    assert status == 200, payload
+    assert _bound(state, "s1") != fallback  # the asking session got it
+    assert state.binding.config == fallback  # the deployment's fallback is untouched
+    assert _bound(state, "s2") == fallback  # so another session still reads the launch config

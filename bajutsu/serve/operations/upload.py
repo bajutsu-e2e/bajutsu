@@ -689,7 +689,9 @@ def compose_current(
     return {"artifacts": artifacts}, 200
 
 
-def restore_org_config(state: ServeState, *, org: str, actor: str | None = None) -> tuple[Any, int]:
+def restore_org_config(
+    state: ServeState, *, org: str, actor: str | None = None, session: str | None = None
+) -> tuple[Any, int]:
     """Rebind the last bundle *org* uploaded, from the record on its row (BE-0404 unit 1).
 
     The reason the org row holds a config-source record at all: a hosted replica that never received
@@ -697,6 +699,13 @@ def restore_org_config(state: ServeState, *, org: str, actor: str | None = None)
     bind writes that record, so this restores the org's last *bundle* rather than whatever it bound
     most recently — a `git` or `file` config is something the caller rebinds through
     `POST /api/config` directly, needing no durable copy of its own.
+
+    Restores into the asking session's own binding, like every other bind (BE-0393 unit 2). Before
+    that unit every bind replaced one process-global binding, so a restore that clobbered it was
+    self-healing — the next bind overwrote it. Now that normal binds land in session slots, a
+    restore that replaced the deployment's fallback would persist there until a restart, leaving
+    every other org's sessionless requests resolving against this org's bundle. A caller with no
+    session still replaces the fallback, which is what a replica warming itself up means.
     """
     repo = state.repository
     if repo is None:
@@ -705,7 +714,7 @@ def restore_org_config(state: ServeState, *, org: str, actor: str | None = None)
     source = record.config_source if record is not None else None
     if not isinstance(source, dict) or source.get("kind") != "upload":
         return {"error": "this org has no remembered uploaded config to restore"}, 404
-    restored = restore_uploaded_config(state, source, org=org, actor=actor)
+    restored = restore_uploaded_config(state, source, org=org, actor=actor, session=session)
     if restored is None:
         return {"error": "the remembered bundle is no longer resolvable; re-upload it"}, 409
     return restored

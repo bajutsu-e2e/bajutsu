@@ -837,9 +837,9 @@ class ServeState:
     def binding_for(self, session: str | None, org: str) -> ConfigBinding:
         """The configuration a request from *session*, acting as *org*, is bound to (BE-0393 unit 2).
 
-        The session's own binding when it has one, else the deployment's fallback — the configuration
-        `serve` started with, whose `orgs:` block partitions its targets between orgs exactly as an
-        operator wrote it. A caller with no session (a shared-token or CI request, which carries no
+        The session's own binding when it has one, else the deployment's fallback — initially the
+        configuration `serve` started with, whose `orgs:` block partitions its targets between orgs
+        exactly as an operator wrote it, and replaceable only by a bind that carries no session. A caller with no session (a shared-token or CI request, which carries no
         login cookie) reads the fallback too: it is acting on the deployment, not inside a member's
         session.
 
@@ -913,7 +913,7 @@ class ServeState:
             job.cwd = self.binding.cwd
         return job
 
-    def bind_upload(self, upload: Upload, session: str | None = None) -> None:
+    def bind_upload(self, upload: Upload, session: str | None) -> None:
         """Make *upload* the active binding (BE-0073), replacing whatever was bound.
 
         The whole binding is replaced rather than mutated field by field, so no reader can observe a

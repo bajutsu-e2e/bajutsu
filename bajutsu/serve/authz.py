@@ -419,13 +419,15 @@ def _record_audit(
 # --- RBAC (BE-0015 7c-2): role-based access control over the mutating endpoints ---
 
 _ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}
-# Server-wide settings — including binding the active config, from the file browser, Git, or an
-# uploaded bundle (BE-0073): each repoints which config the whole server serves.
+# Server-wide settings — including binding a configuration, from the file browser, Git, or an
+# uploaded bundle (BE-0073). A bind repoints only the asking session since BE-0393 unit 2, so what
+# keeps it admin is not its reach but what it does: it materializes content the deployment does not
+# own and decides that content's build trust (BE-0121).
 _ADMIN_PATHS = frozenset(
     {
         "/api/config",
-        # Rebinding the org's remembered config (BE-0404 unit 1) repoints what the whole deployment
-        # serves, exactly like binding one — the same admin tier as `/api/config` itself.
+        # Rebinding the org's remembered config (BE-0404 unit 1) materializes a stored bundle,
+        # exactly like binding one — the same admin tier as `/api/config` itself.
         "/api/config/restore",
         "/api/upload",
         # The three independently-uploadable artifacts (BE-0268) repoint what a future composed
@@ -437,8 +439,8 @@ _ADMIN_PATHS = frozenset(
         "/api/artifacts/config",
         "/api/artifacts/scenarios",
         "/api/artifacts/binary",
-        # Composing a stored triple into the active config (BE-0268) repoints what the whole server
-        # serves, exactly like binding an uploaded bundle — the same admin tier as `/api/upload`.
+        # Composing a stored triple into a bound configuration (BE-0268) materializes uploaded
+        # content, exactly like binding a bundle — the same admin tier as `/api/upload`.
         "/api/compose",
         "/api/apikey",
         "/api/claudecodetoken",

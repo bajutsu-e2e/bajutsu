@@ -838,7 +838,7 @@ def test_bind_upload_points_config_and_cwd_at_the_bundle(tmp_path: Path) -> None
     uploads.mkdir()
     state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, uploads_dir=uploads)
     up = _bundle(uploads, "u1")
-    state.bind_upload(up)
+    state.bind_upload(up, None)
     assert state.binding.upload is up
     assert state.binding.config == up.config and state.binding.cwd == up.root
 
@@ -851,9 +851,9 @@ def test_bind_upload_replaces_the_previous_bundle(tmp_path: Path) -> None:
     uploads.mkdir()
     state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, uploads_dir=uploads)
     first = _bundle(uploads, "first")
-    state.bind_upload(first)
+    state.bind_upload(first, None)
     second = _bundle(uploads, "second")
-    state.bind_upload(second)
+    state.bind_upload(second, None)
     assert state.binding.upload is second and first.dir.exists()
     assert second.dir.exists()
 
@@ -869,7 +869,7 @@ def test_binding_another_source_keeps_the_extraction_cache(tmp_path: Path) -> No
         runs_dir=tmp_path / "runs", cwd=tmp_path, uploads_dir=uploads, root=tmp_path
     )
     up = _bundle(uploads, "u1")
-    state.bind_upload(up)
+    state.bind_upload(up, None)
 
     assert ops.bind_config(state, "next.config.yaml")[1] == 200
 

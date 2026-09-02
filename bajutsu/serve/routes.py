@@ -422,12 +422,14 @@ ROUTES: tuple[Route, ...] = (
         ),
     ),
     # Rebind the org's remembered config (BE-0404 unit 1) — the recovery path for a replica that
-    # never received the upload itself. Admin-gated like the other whole-deployment rebinds.
+    # never received the upload itself. Admin-gated like every bind: it materializes content the
+    # deployment does not own and decides that content's build trust, which is the reason the gate
+    # exists — not the pre-BE-0393 fact that a bind moved what the whole server served.
     Route(
         "POST",
         "/api/config/restore",
         lambda state, ctx: ops.restore_org_config(
-            state, org=state.org_of(ctx.actor()), actor=ctx.actor()
+            state, org=state.org_of(ctx.actor()), actor=ctx.actor(), session=ctx.session()
         ),
     ),
     Route(
