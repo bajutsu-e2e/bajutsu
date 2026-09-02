@@ -15,9 +15,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from bajutsu.agents.ai_config import AiConfig
-from bajutsu.agents.claude_backed import ClaudeBackedAgent
-from bajutsu.ai import (
+from bajutsu.common.agents.ai_config import AiConfig
+from bajutsu.common.agents.claude_backed import ClaudeBackedAgent
+from bajutsu.common.ai import (
     AiBackend,
     AnyTool,
     ContentPart,
@@ -29,7 +29,7 @@ from bajutsu.ai import (
     ToolDef,
     resolved_provider,
 )
-from bajutsu.ai.prompts import NEVER_JUDGE_BOUNDARY, render_elements
+from bajutsu.common.ai.prompts import NEVER_JUDGE_BOUNDARY, render_elements
 from bajutsu.common.analytics import usage
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.triage import (

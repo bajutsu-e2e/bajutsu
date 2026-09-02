@@ -7,7 +7,7 @@ blocks. No streaming and no multi-turn `tool_result` feedback — no current pat
 `record` loop drives many single-shot turns, not one turn with tool results fed back).
 
 These types are Bajutsu's own, deliberately *not* re-exports of any vendor SDK, so no call site
-depends on a provider's message / tool / image shape. An adapter (see `bajutsu.ai.anthropic`)
+depends on a provider's message / tool / image shape. An adapter (see `bajutsu.common.ai.anthropic`)
 translates them to and from a concrete provider.
 """
 

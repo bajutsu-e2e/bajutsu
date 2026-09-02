@@ -13,14 +13,14 @@ from __future__ import annotations
 
 from typing import Any, TypedDict, cast, get_args
 
-from bajutsu.agents.ai_config import (
+from bajutsu.common.agents.ai_config import (
     AiConfig,
     language_instruction,
     resolve_effort,
 )
-from bajutsu.agents.claude_backed import ClaudeBackedAgent
-from bajutsu.agents.protocols import HumanValueClass, Observation, Proposal
-from bajutsu.ai import (
+from bajutsu.common.agents.claude_backed import ClaudeBackedAgent
+from bajutsu.common.agents.protocols import HumanValueClass, Observation, Proposal
+from bajutsu.common.ai import (
     AiBackend,
     AnyTool,
     ContentPart,
@@ -33,7 +33,7 @@ from bajutsu.ai import (
     ToolDef,
     ToolUseBlock,
 )
-from bajutsu.ai.prompts import render_elements
+from bajutsu.common.ai.prompts import render_elements
 from bajutsu.common.analytics import usage
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.scenario import Assertion, Selector, Step

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu.agents import ai_config as aic
+from bajutsu.common.agents import ai_config as aic
 
 
 def test_resolve_provider_defaults_to_api_key(monkeypatch: pytest.MonkeyPatch) -> None:

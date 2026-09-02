@@ -8,9 +8,9 @@ from pathlib import Path
 
 from conftest import GUARD_LABEL, AlertingDriver, FakeBackend, FakeBlock, ShotDriver
 
-from bajutsu.agents.alerts import AlertDecision, ClaudeAlertLocator, SystemAlertGuard
-from bajutsu.agents.protocols import Proposal
-from bajutsu.ai.base import AnyTool, ImagePart, TextPart
+from bajutsu.common.agents.alerts import AlertDecision, ClaudeAlertLocator, SystemAlertGuard
+from bajutsu.common.agents.protocols import Proposal
+from bajutsu.common.ai.base import AnyTool, ImagePart, TextPart
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import FileSink

@@ -8,7 +8,7 @@ language knobs every Claude-backed agent shares; `anthropic_client` constructs t
 client; `availability` turns a credential gap into an actionable message for `serve`/`doctor`.
 `enrich` is the enrichment loop itself; `alerts` is the system-alert guard. All periphery — never on
 the verdict path, prime directive #1. No package-level re-export: every caller already names a
-specific module (`bajutsu.agents.claude`, `bajutsu.agents.ai_config`, …), the `crawl/guide.py` /
+specific module (`bajutsu.common.agents.claude`, `bajutsu.common.agents.ai_config`, …), the `crawl/guide.py` /
 `github/actions.py` pattern of importing a periphery submodule directly rather than through the
 package `__init__`.
 """

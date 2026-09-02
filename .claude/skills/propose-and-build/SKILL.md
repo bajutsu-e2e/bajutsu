@@ -127,7 +127,7 @@ does not restate those rules, it runs them:
   Keep the `BE-XXXX` placeholder — the real id is allocated on `main`
   by CI ([`roadmap-id`](../../../.github/workflows/roadmap-id.yml)), never guessed.
 - Self-review the staged diff against the CI review contract (`ideation` step 5) in its two roles
-  (BE-0347), on different models — `fable` for the review/plan pass, `sonnet` for the implement
+  (BE-0347), on different models — `opus` for the review/plan pass, `sonnet` for the implement
   pass, whose diff here is roadmap prose: a fresh Agent-tool subagent, blind to the authoring
   conversation, applies
   [`.github/claude-review-prompt.md`](../../../.github/claude-review-prompt.md) — the same

@@ -13,7 +13,7 @@ import time
 from collections.abc import Callable
 from typing import Literal
 
-from bajutsu.agents.protocols import Agent, HumanValueClass, Observation, Proposal
+from bajutsu.common.agents.protocols import Agent, HumanValueClass, Observation, Proposal
 from bajutsu.common.analytics import usage as _usage
 from bajutsu.crawl import screen_identity
 from bajutsu.drivers import base
