@@ -684,7 +684,7 @@ class ServeState:
         `secrets:` entry already *is* an environment-variable name (BE-0032), so it maps to itself —
         not through ``active_key_env``, which would overwrite the AI key's var. Imported lazily to
         avoid a cycle with the operations layer, which imports this module."""
-        from bajutsu.ai.claude_code import OAUTH_TOKEN_ENV
+        from bajutsu.common.ai.claude_code import OAUTH_TOKEN_ENV
         from bajutsu.common.config_source import GIT_CONFIG_TOKEN_ENV
         from bajutsu.serve.operations.config import (
             AI_API_KEY_SECRET,

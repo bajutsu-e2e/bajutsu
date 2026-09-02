@@ -83,8 +83,8 @@ def test_build_alert_guard_names_the_bedrock_model_gap(
 def test_credential_gap_message_for_provider_none_names_the_setting() -> None:
     # The message `record` / `crawl` / `triage --ai` print before exiting 2: the setting, and how to
     # re-enable an AI path — never "set $ANTHROPIC_API_KEY", which would not lift the switch.
-    from bajutsu.ai.disabled import DISABLED
     from bajutsu.cli._shared import _credential_gap_message
+    from bajutsu.common.ai.disabled import DISABLED
 
     eff = _eff("targets:\n  x:\n    bundleId: com.x\n    ai: { provider: none }\n")
     msg = _credential_gap_message(DISABLED, eff)

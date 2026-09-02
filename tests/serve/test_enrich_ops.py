@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 from _shared import project
 
-from bajutsu.agents.protocols import EnrichmentProposal, StepContext
+from bajutsu.common.agents.protocols import EnrichmentProposal, StepContext
 from bajutsu.common.config import Effective, IosConfig
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver

@@ -38,9 +38,9 @@ from real_model_triage_support import (
     triage_context,
 )
 
-from bajutsu.agents.claude_triage import ClaudeTriageAgent
-from bajutsu.ai import create_backend
-from bajutsu.ai.base import AiBackend
+from bajutsu.common.agents.claude_triage import ClaudeTriageAgent
+from bajutsu.common.ai import create_backend
+from bajutsu.common.ai.base import AiBackend
 from bajutsu.triage import Triage
 
 _TRIAGE_FIXTURE = FIXTURES_DIR / "triage.json"

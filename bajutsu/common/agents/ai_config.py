@@ -70,7 +70,7 @@ def resolve_provider(ai: AiConfig | None = None) -> str:
 
     The one place the config-first / env-fallback provider name is read and normalized (BE-0047).
     It does **not** validate the name against the registered adapters: that fail-closed check is the
-    registry's (`bajutsu.ai.registry`, BE-0104), which builds on this. So an unknown name is returned
+    registry's (`bajutsu.common.ai.registry`, BE-0104), which builds on this. So an unknown name is returned
     verbatim here and rejected there — the Anthropic-family call sites that use this directly
     (`make_client`, `resolve_model`) only ever run after the registry has already accepted the name.
     """

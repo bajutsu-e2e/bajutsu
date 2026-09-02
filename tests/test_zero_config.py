@@ -75,7 +75,7 @@ def _no_ai_setup(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda *a, **k: pytest.fail("a Claude-free path constructed an Anthropic client"),
     )
     monkeypatch.setattr(
-        "bajutsu.agents.factory.make_agent",
+        "bajutsu.common.agents.factory.make_agent",
         lambda *a, **k: pytest.fail("a Claude-free path constructed an authoring agent"),
     )
 

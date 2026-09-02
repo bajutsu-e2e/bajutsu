@@ -328,7 +328,7 @@ forbidden_modules = [
     "bajutsu.serve",
     "bajutsu.mcp",
     "bajutsu.codegen",
-    "bajutsu.agents",
+    "bajutsu.common.agents",
     "bajutsu.triage",
     "bajutsu.record",
     "bajutsu.record_capture",

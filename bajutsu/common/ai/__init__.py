@@ -18,8 +18,8 @@ An unknown provider fails closed only when a Tier-1 path first resolves it throu
 
 from __future__ import annotations
 
-from bajutsu.ai.banner import announce_ai
-from bajutsu.ai.base import (
+from bajutsu.common.ai.banner import announce_ai
+from bajutsu.common.ai.base import (
     AiBackend,
     AnyTool,
     ContentBlock,
@@ -35,7 +35,7 @@ from bajutsu.ai.base import (
     ToolDef,
     ToolUseBlock,
 )
-from bajutsu.ai.registry import (
+from bajutsu.common.ai.registry import (
     create_backend,
     credential_gap,
     known_providers,

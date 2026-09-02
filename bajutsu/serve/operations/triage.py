@@ -67,8 +67,8 @@ def start_triage(
     if ai:
         # Gate before dispatch so a missing credential is a clean 400, not a job that fails mid-stream.
         # The `--ai` path is opt-in and only an investigator; the run's verdict is already decided.
-        from bajutsu.agents import availability as ai_availability
-        from bajutsu.ai import credential_gap
+        from bajutsu.common.agents import availability as ai_availability
+        from bajutsu.common.ai import credential_gap
 
         config = load_config(cfg.read_text(encoding="utf-8"))
         ai_config = resolve(config, target).ai
