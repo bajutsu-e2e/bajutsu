@@ -270,8 +270,8 @@ does not need, and a trigger written against sign-in misses an org change within
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] 1. Group the binding's fields into one `ConfigBinding` value.
-- [ ] 2. Key the binding by session, settle the actorless readers, and capture a job's binding at enqueue.
+- [x] 1. Group the binding's fields into one `ConfigBinding` value.
+- [x] 2. Key the binding by session, settle the actorless readers, and capture a job's binding at enqueue.
 - [x] 3. Record a project on every bind as the acting org's remembered configuration. **Delivered
   by [BE-0404](../BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md) unit 1**, which
   collapses the requirement to one `orgs.config_source` column written by the bind itself — the

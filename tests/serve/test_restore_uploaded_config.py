@@ -271,7 +271,8 @@ def test_a_cached_bundle_is_restored_with_no_object_store(tmp_path: Path) -> Non
     result = restore_uploaded_config(state, {"sha256": sha256, "size": len(blob)}, org="default")
 
     assert result is not None and result[1] == 200
-    assert state.config is not None and state.config.name == "bajutsu.config.yaml"
+    bound = state.binding.config
+    assert bound is not None and bound.name == "bajutsu.config.yaml"
 
 
 def test_a_malformed_sha256_never_becomes_a_path_without_a_store_either(tmp_path: Path) -> None:

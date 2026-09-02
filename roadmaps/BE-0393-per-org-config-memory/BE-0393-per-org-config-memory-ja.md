@@ -285,8 +285,8 @@ config source」を org の行へ直接持たせる案です。それならユ�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 1. バインドのフィールドを1つの `ConfigBinding` の値にまとめる
-- [ ] 2. バインドをセッションで引く形にし、actor を持たない読み出しを決め、job の enqueue でバインドを取り込む
+- [x] 1. バインドのフィールドを1つの `ConfigBinding` の値にまとめる
+- [x] 2. バインドをセッションで引く形にし、actor を持たない読み出しを決め、job の enqueue でバインドを取り込む
 - [x] 3. すべてのバインドで、acting org が覚えている config としてプロジェクトを記録する。
   **[BE-0404](../BE-0404-collapse-project-layer/BE-0404-collapse-project-layer-ja.md) のユニット 1
   が実現しました。** この要件は `orgs.config_source` の 1 列に畳まれ、bind 自身がそこへ書きます。
