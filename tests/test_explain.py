@@ -1,4 +1,4 @@
-"""Tests for the capturePolicy `--explain` dry run (bajutsu/trace.py, BE-0028).
+"""Tests for the capturePolicy `--explain` dry run (bajutsu/analysis/trace.py, BE-0028).
 
 The dry run statically previews how a scenario's capturePolicy would fire before a run pays for
 it. Action-triggered rules are counted exactly (reusing the run loop's own matcher);
@@ -12,7 +12,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from bajutsu import trace
+from bajutsu.analysis import trace
 from bajutsu.cli import app
 from bajutsu.common.scenario import load_scenarios
 

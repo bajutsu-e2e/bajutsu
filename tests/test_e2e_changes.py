@@ -180,8 +180,8 @@ def test_new_unclassified_module_fires_every_lane() -> None:
 
 
 def test_only_listed_cli_commands_are_relevant() -> None:
-    assert is_relevant(["bajutsu/cli/commands/run.py"]) is True
-    assert is_relevant(["bajutsu/cli/commands/trace.py"]) is False
+    assert is_relevant(["bajutsu/run/cli.py"]) is True
+    assert is_relevant(["bajutsu/analysis/cli/trace.py"]) is False
 
 
 def test_conformance_suite_is_relevant_but_other_tests_are_not() -> None:
@@ -355,7 +355,7 @@ def test_android_lane_surface() -> None:
     assert is_relevant(["scripts/collect_android_diagnostics.sh"], "android") is True
     # The `uiautomator (codegen)` job (BE-0294) regenerates its test with `bajutsu codegen`, so the
     # codegen CLI command is android-relevant — the one CLI command besides `run` this lane drives.
-    assert is_relevant(["bajutsu/cli/commands/codegen.py"], "android") is True
+    assert is_relevant(["bajutsu/codegen/cli.py"], "android") is True
     # ...but not another lane's driver, app, or workflow.
     assert is_relevant(["bajutsu/common/drivers/playwright.py"], "android") is False
     assert is_relevant(["BajutsuKit/Sources/x.swift"], "android") is False
@@ -564,9 +564,9 @@ def test_periphery_exclusions_carry_a_reason() -> None:
 # web lane's `python -m bajutsu.common.provisioning.provision`, and the on-device conformance
 # harness. Their transitive `bajutsu` imports are the run path this check must keep fully classified.
 _RUN_ENTRYPOINTS = (
-    "bajutsu/cli/commands/run.py",
-    "bajutsu/cli/commands/codegen.py",
-    "bajutsu/cli/commands/record.py",
+    "bajutsu/run/cli.py",
+    "bajutsu/codegen/cli.py",
+    "bajutsu/record/cli.py",
     "bajutsu/cli/commands/doctor.py",
     "bajutsu/common/provisioning/provision.py",
     "tests/driver_conformance.py",
@@ -909,7 +909,7 @@ def test_pool_fires_on_the_parallel_run_surface() -> None:
         "bajutsu/common/runner/pipeline.py",
         "bajutsu/platform_lifecycle/environments/android.py",
         # `_resolve_lanes` — the comma `--udid` list turned into the pool, and the `--workers` cap.
-        "bajutsu/cli/commands/run.py",
+        "bajutsu/run/cli.py",
         "bajutsu/common/evidence/core.py",
         "bajutsu/common/evidence/sink.py",
         "scripts/assert_pool_isolation.py",

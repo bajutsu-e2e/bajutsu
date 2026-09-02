@@ -17,14 +17,14 @@ from pathlib import Path
 
 import typer
 
-from bajutsu.cli._shared import read_manifests
-from bajutsu.serve.flakiness import (
+from bajutsu.analysis.flakiness import (
     DEFAULT_RUN_LIMIT,
     FlakinessReport,
     rank_flakiness,
     records_from_manifests,
     render,
 )
+from bajutsu.cli._shared import read_manifests
 
 
 def flakiness(

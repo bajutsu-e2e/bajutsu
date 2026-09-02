@@ -8,7 +8,7 @@ computes no pass/fail and gates nothing — it reuses `audit --history`'s exact 
 
 from datetime import UTC, datetime, timedelta
 
-from bajutsu.serve.flakiness import FlakinessReport, rank_flakiness
+from bajutsu.analysis.flakiness import FlakinessReport, rank_flakiness
 from bajutsu.serve.server.db import RunRecord
 
 _EPOCH = datetime(2026, 7, 1, tzinfo=UTC)

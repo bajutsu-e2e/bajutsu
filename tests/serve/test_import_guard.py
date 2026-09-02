@@ -95,7 +95,7 @@ def test_worker_command_path_stays_lean() -> None:
     )
     code = (
         "import sys\n"
-        "import bajutsu.cli.commands.worker\n"
+        "import bajutsu.serve.cli.worker\n"
         f"forbidden = set({forbidden!r})\n"
         "leaked = sorted(m for m in sys.modules if m.split('.')[0] in forbidden)\n"
         "sys.stdout.write(','.join(leaked))\n"

@@ -89,8 +89,8 @@ from pathlib import Path
 # Two exclusion sets carve files out of that sweep:
 #
 # - `_PERIPHERY_EXCLUSIONS` — files under `bajutsu/` no E2E lane exercises (the analytics / analysis
-#   stacks, the MCP server, the AI adapters, the GitHub and cloud integrations, and the individual
-#   periphery modules of the mixed `agents` / `crawl` / `cli.commands` packages whose siblings do
+#   stacks, the MCP server, the AI adapters, the GitHub and cloud integrations, the triage feature,
+#   and the individual periphery modules of the mixed `agents` / `crawl` packages whose siblings do
 #   run). Each carries the reason it is out, so every deliberate "the E2E never runs this" decision
 #   reads as a decision in one place (BE-0333 Unit 3 folds the former ad-hoc parity tests in here).
 #   `test_periphery_exclusions_fire_no_lane` pins that none of them fire; the Unit 2 closure check
@@ -132,11 +132,11 @@ _PERIPHERY_EXCLUSIONS: tuple[tuple[str, str], ...] = (
         "run-completion notifications (serve / CI glue), never exercised by a run itself",
     ),
     (
-        "bajutsu/triage/heuristic.py",
-        "the AI triage command's core — an authoring / diagnosis path, not a run",
+        "bajutsu/triage/",
+        "the AI triage command + its M4 self-heal core — an authoring / diagnosis path, not a run",
     ),
     (
-        "bajutsu/trace.py",
+        "bajutsu/analysis/trace.py",
         "the `bajutsu trace` diagnostic — it inspects a past run, it is never part of one",
     ),
     # common/agents/: record imports the Agent / EnrichmentAgent *protocols*
@@ -187,30 +187,21 @@ _PERIPHERY_EXCLUSIONS: tuple[tuple[str, str], ...] = (
     ("bajutsu/crawl/repro.py", "crawl's repro-scenario emitter, an authoring path"),
     ("bajutsu/crawl/flows.py", "crawl's flow-analysis helpers, an authoring path"),
     ("bajutsu/crawl/tabs.py", "crawl's tab-tracking helpers, an authoring path"),
-    # cli/commands/: `run` / `codegen` / `record` / `doctor` are the four the lanes drive (swept in,
-    # `record` via `_LANE_CLAIMED`); the rest are serve / analysis / authoring commands no lane runs.
-    ("bajutsu/cli/commands/approve.py", "the baseline-approval command, an authoring path"),
-    ("bajutsu/cli/commands/audit.py", "the audit-report command, an analysis path"),
-    ("bajutsu/cli/commands/coverage.py", "the coverage-report command, an analysis path"),
-    ("bajutsu/cli/commands/crawl.py", "the crawl command, an authoring path"),
-    ("bajutsu/cli/commands/export.py", "the export command, a reporting path"),
-    ("bajutsu/cli/commands/flakiness.py", "the flakiness-report command, an analysis path"),
-    ("bajutsu/cli/commands/impact.py", "the impact-report command, an analysis path"),
+    # cli/commands/: only the feature-less commands live here now (BE-0257 follow-on feature
+    # colocation moved every other command beside its owning feature — `run`/`crawl`/`record`/
+    # `triage`/`mcp`/`codegen`/`serve`/`worker`/`approve`/`audit`/`coverage`/`impact`/`stats`/
+    # `flakiness`/`export`/`trace` are covered by their feature directory's own entry, above or in
+    # `_LANE_CLAIMED`). `doctor` is the one the lanes drive (swept in); `lint`/`report`/`schema` are
+    # static-check / reporting / tooling paths no lane runs.
     (
         "bajutsu/cli/commands/lint.py",
         "the scenario-lint command, a static-check path no run drives",
     ),
-    ("bajutsu/cli/commands/mcp.py", "the MCP-server command, a separate transport"),
     ("bajutsu/cli/commands/report.py", "the report command, a reporting path"),
     ("bajutsu/cli/commands/schema.py", "the schema-dump command, a tooling path"),
-    (
-        "bajutsu/cli/commands/serve.py",
-        "the serve launcher; the web lane exercises the served backend, not this command",
-    ),
-    ("bajutsu/cli/commands/stats.py", "the stats command, an analysis path"),
-    ("bajutsu/cli/commands/trace.py", "the trace command, a diagnostic path"),
-    ("bajutsu/cli/commands/triage.py", "the triage command, a diagnosis path"),
-    ("bajutsu/cli/commands/worker.py", "the serve-worker command, a serve runtime path"),
+    # crawl/cli.py: the crawl command itself, an authoring path (crawl's engine core — `core.py` /
+    # `serialize.py` — stays swept in, since record imports it).
+    ("bajutsu/crawl/cli.py", "the crawl command, an authoring path"),
 )
 
 # Per-backend leaves the shared core sweeps out and each lane fragment re-adds, so a leaf fires only
@@ -231,7 +222,7 @@ _LANE_CLAIMED: tuple[str, ...] = (
     "bajutsu/common/backend_cli/adb_resident.py",
     "bajutsu/serve/",
     "bajutsu/templates/",
-    "bajutsu/cli/commands/record.py",
+    "bajutsu/record/cli.py",
 )
 
 
@@ -289,7 +280,7 @@ _LANE_PATHS: dict[str, str] = {
         # The XCUITest lifecycle environments (cold spawn, the warm resident lease, the BE-0292
         # bundled runner) — the iOS half of the `platform_lifecycle/` carve-out above.
         r"|bajutsu/platform_lifecycle/environments/(?:xcuitest|xcuitest_live)\.py$"
-        r"|bajutsu/cli/commands/record\.py$"
+        r"|bajutsu/record/cli\.py$"
         r"|tests/test_driver_conformance_ondevice\.py$"
         r"|tests/test_fault_injection_ondevice\.py$"
         # The pool-isolation assertion the lane's two-device job gates on (BE-0298). Claimed per lane
@@ -363,7 +354,7 @@ _LANE_PATHS: dict[str, str] = {
         # real. Web-only: no other lane invokes it, and the lanes never run `scripts/install.sh`,
         # its other caller.
         r"|bajutsu/common/provisioning/provision\.py$"
-        r"|bajutsu/cli/commands/record\.py$"
+        r"|bajutsu/record/cli\.py$"
         # The serve-UI dogfood (BE-0058) drives the served SPA, so the serve backend and its templates
         # are web-CI-relevant whenever they change, not only when the harness itself does.
         r"|bajutsu/serve/"
@@ -392,7 +383,7 @@ _POOL_PATHS = (
     # `_resolve_lanes`: the `--udid` comma list resolved into the pool and `--workers` capped to its
     # size. The split itself lives here, so a change to it belongs on this surface even though the
     # shared `bajutsu/` sweep above already makes the module lane-relevant.
-    r"|bajutsu/cli/commands/run\.py$"
+    r"|bajutsu/run/cli\.py$"
     r"|bajutsu/common/evidence/core\.py$"
     r"|bajutsu/common/evidence/sink\.py$"
     r"|scripts/assert_pool_isolation\.py$"

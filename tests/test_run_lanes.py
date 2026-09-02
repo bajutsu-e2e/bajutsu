@@ -8,7 +8,17 @@ from pathlib import Path
 import pytest
 import typer
 
-from bajutsu.cli.commands.run import (
+from bajutsu.common.config import Effective, load_config, resolve
+from bajutsu.common.orchestrator import DEFAULT_ALERT_POLL_INTERVAL
+from bajutsu.common.orchestrator.types import match_alert_rule
+from bajutsu.common.scenario import (
+    Scenario,
+    SystemAlertHandling,
+    SystemAlertRule,
+    load_scenarios,
+)
+from bajutsu.common.scenario.system_alerts import UncoveredSystemAlertLocale, covered_languages
+from bajutsu.run.cli import (
     _alert_guard_factory,
     _apply_system_alert_handling,
     _expand_file,
@@ -22,16 +32,6 @@ from bajutsu.cli.commands.run import (
     _resolve_rules,
     _resolve_secrets,
 )
-from bajutsu.common.config import Effective, load_config, resolve
-from bajutsu.common.orchestrator import DEFAULT_ALERT_POLL_INTERVAL
-from bajutsu.common.orchestrator.types import match_alert_rule
-from bajutsu.common.scenario import (
-    Scenario,
-    SystemAlertHandling,
-    SystemAlertRule,
-    load_scenarios,
-)
-from bajutsu.common.scenario.system_alerts import UncoveredSystemAlertLocale, covered_languages
 
 
 def _resolve(udid: str) -> str:
