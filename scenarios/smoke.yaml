@@ -1,0 +1,21 @@
+# Smoke: the docs landing page renders and its two hero calls-to-action are present.
+# The homepage hides the nav sidebar and toc (index.md front matter `hide: [navigation, toc]`),
+# so the only links here are the header (English / 日本語 / GitHub / search), the two hero
+# buttons, and the "Learn more" body links — no `data-testid`, so we match by text.
+description: >-
+  Docs-site smoke — the landing page loads and shows its "Get started" and "GitHub"
+  hero buttons. The fastest check that the Playwright backend reaches the live site.
+scenarios:
+  - name: the landing page shows its hero calls-to-action
+    description: Wait for the "Get started" hero, then assert both hero buttons and a populated page.
+    steps:
+      # Condition wait (never a fixed sleep): poll until the hero button is on the page.
+      - wait: { for: { label: "Get started" }, timeout: 15 }
+    expect:
+      # The hero <a>Get started</a> — home-only, so the exact label resolves to one element.
+      - exists: { label: "Get started" }
+      # "GitHub" appears twice (header repo link + hero button); `exists` uses find_all (>= 1),
+      # so duplicates are fine here — only single-element assertions require uniqueness.
+      - exists: { labelMatches: "GitHub" }
+      # The page actually rendered its content, not a blank/error document.
+      - count: { sel: { traits: [link] }, atLeast: 5 }

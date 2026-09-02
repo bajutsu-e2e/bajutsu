@@ -116,6 +116,17 @@ def test_post_json_success_empty_body() -> None:
         assert body == {}
 
 
+def test_post_json_non_json_success_raises_transport_error() -> None:
+    """A 2xx carrying a proxy interstitial is a transport error, not a body: every caller already
+    handles `URLError`, whereas a `JSONDecodeError` killed the poll loop and a returned string would
+    reach code that reads the body as a mapping."""
+    with (
+        _server({"/x": (200, b"<html>login</html>")}) as (_httpd, base),
+        pytest.raises(URLError, match="non-JSON response"),
+    ):
+        _post_json(f"{base}/x", {})
+
+
 def test_post_json_sends_bearer_token() -> None:
     with _server({"/x": (200, {})}) as (httpd, base):
         _post_json(f"{base}/x", {}, token="secret")

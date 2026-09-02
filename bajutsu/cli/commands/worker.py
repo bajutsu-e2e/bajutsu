@@ -61,7 +61,16 @@ def _post_json(
     try:
         with urlopen(req, timeout=timeout) as r:  # noqa: S310
             raw = r.read()
-            return r.status, json.loads(raw) if raw else {}
+            if not raw:
+                return r.status, {}
+            try:
+                return r.status, json.loads(raw)
+            except json.JSONDecodeError as e:
+                # A 2xx that isn't JSON came from in front of the control plane, not from it — a proxy
+                # interstitial, or an SSO login page reached through the redirect `urlopen` follows.
+                # Raise it as the transport error every caller already handles: returning the text
+                # would hand a `str` to callers that read the body as a mapping.
+                raise URLError(f"non-JSON response from {url}: {raw[:200]!r}") from e
     except HTTPError as e:
         raw = e.read() if e.fp else b""
         if not raw:
@@ -166,7 +175,9 @@ def worker(
         # Say why a lease was refused instead of polling on in silence: a rejected credential or a
         # proxy blocking the request looks exactly like an empty queue otherwise.
         if code >= 400:
-            _logger.warning("lease refused with HTTP %s: %s", code, body)
+            # Truncated: a refusal never self-resolves, so this repeats every poll, and a WAF's
+            # error page is kilobytes of HTML — one refusal must stay one readable line.
+            _logger.warning("lease refused with HTTP %s: %.200s", code, body)
             time.sleep(poll_interval)
             continue
 
