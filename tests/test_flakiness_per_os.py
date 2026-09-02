@@ -11,8 +11,8 @@ aggregate joins durations against the same widened key.
 from __future__ import annotations
 
 from bajutsu.analysis.audit import longitudinal, render_longitudinal
+from bajutsu.analysis.flakiness import rank_flakiness, records_from_manifests, render
 from bajutsu.analysis.stats import aggregate_runs, target_metrics
-from bajutsu.serve.flakiness import rank_flakiness, records_from_manifests, render
 from bajutsu.serve.server.db import RunRecord
 
 _HASH = "sha256:c6b97d3d1"

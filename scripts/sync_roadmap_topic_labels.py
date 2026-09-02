@@ -88,9 +88,9 @@ PATH_TOPIC_PREFIX_RULES: tuple[tuple[str, str], ...] = (
     ("bajutsu/serve/", "serve-cli-features"),
     ("bajutsu/drivers/", "platform"),
     ("bajutsu/ai/", "ai-provider"),
-    # No trailing slash: `record` is a pair of top-level modules (`bajutsu/record.py`,
-    # `bajutsu/record_capture.py`), not a tree — one prefix rule covers both, and the CLI entry
-    # point `bajutsu/cli/commands/record.py` takes the exact rule below.
+    # No trailing slash: `record` is the `record/` feature package plus its sibling top-level
+    # `record_capture.py` — one prefix rule covers both, including `record/cli.py` (the CLI entry
+    # point, feature-colocated since BE-0257's follow-on) with no separate exact rule needed.
     ("bajutsu/record", "record"),
     ("BajutsuKit/", "platform"),
     ("assets/", "serve-cli-features"),
@@ -102,10 +102,7 @@ PATH_TOPIC_PREFIX_RULES: tuple[tuple[str, str], ...] = (
     ("scripts/", "contribution"),
 )
 # Whole-path (exact) rules, for tracked top-level files that aren't a tree.
-PATH_TOPIC_EXACT_RULES: tuple[tuple[str, str], ...] = (
-    ("Makefile", "contribution"),
-    ("bajutsu/cli/commands/record.py", "record"),
-)
+PATH_TOPIC_EXACT_RULES: tuple[tuple[str, str], ...] = (("Makefile", "contribution"),)
 # File-suffix rules, same contribution model — Swift sources are the iOS platform test-support
 # surface wherever they live.
 PATH_TOPIC_SUFFIX_RULES: tuple[tuple[str, str], ...] = ((".swift", "platform"),)

@@ -55,7 +55,7 @@ from bajutsu.drivers import base
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.platform_lifecycle import CrawlEnvironment, environment_for
-from bajutsu.record import clear_blocking as clear_blocking_overlay
+from bajutsu.record.loop import clear_blocking as clear_blocking_overlay
 from bajutsu.run_files import RunArtifactReader, runs_root
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import launch_driver

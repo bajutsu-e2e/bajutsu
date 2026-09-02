@@ -8,8 +8,8 @@ import pytest
 import typer
 
 from bajutsu.cli._shared import _refuse_out_in_checkout
-from bajutsu.cli.commands.record import _record_out_path, _secret_tokens
 from bajutsu.config import Effective, load_config, resolve
+from bajutsu.record.cli import _record_out_path, _secret_tokens
 
 
 def _eff(scenarios: str) -> Effective:

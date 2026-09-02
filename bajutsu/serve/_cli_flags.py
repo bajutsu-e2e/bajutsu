@@ -7,9 +7,9 @@ CLI as flags are added or changed — render every flag from the single source o
 here with no second edit, and a flag that was renamed/removed on the CLI is caught (``flag_args``
 raises on a name it can't find).
 
-The command's ``click`` object is built lazily and cached: importing a ``bajutsu.cli.commands``
-module pulls in the whole CLI (which imports ``bajutsu.serve``), so building at import time would be
-a cycle — every caller is well past both packages' import by the time it renders an argv.
+The command's ``click`` object is built lazily and cached: importing a feature's ``cli`` module
+pulls in the whole CLI (which imports ``bajutsu.serve``), so building at import time would be a
+cycle — every caller is well past both packages' import by the time it renders an argv.
 """
 
 from __future__ import annotations
@@ -22,8 +22,9 @@ from typing import Literal
 import typer
 from typer.core import TyperCommand, TyperOption
 
-# The commands serve spawns. Each is a `bajutsu.cli.commands.<name>` module whose command function
-# shares the name — a Literal so a typo at a call site is a type error, not a runtime import failure.
+# The commands serve spawns. Each is a `bajutsu.<name>.cli` module (feature-colocated, BE-0257
+# follow-on) whose command function shares the name — a Literal so a typo at a call site is a type
+# error, not a runtime import failure.
 Command = Literal["run", "record", "crawl", "triage"]
 # A flag value: a string/int/float for a value option, a tri-state bool for a flag pair, or None
 # to omit.
@@ -34,11 +35,11 @@ FlagValue = str | bool | int | float | None
 def _command(name: Command) -> TyperCommand:
     """The ``click`` command typer builds for ``bajutsu <name>`` — the flag metadata source.
 
-    Each ``bajutsu.cli.commands.<name>`` module exposes its command as a function of the same name.
-    Imported here (not at module top) to keep the CLI ↔ serve import cycle from firing during
-    package import; the result is cached, so the CLI is introspected once per command.
+    Each ``bajutsu.<name>.cli`` module exposes its command as a function of the same name. Imported
+    here (not at module top) to keep the CLI ↔ serve import cycle from firing during package
+    import; the result is cached, so the CLI is introspected once per command.
     """
-    fn = getattr(importlib.import_module(f"bajutsu.cli.commands.{name}"), name)
+    fn = getattr(importlib.import_module(f"bajutsu.{name}.cli"), name)
     app = typer.Typer(add_completion=False)
     app.command()(fn)
     cmd = typer.main.get_command(app)

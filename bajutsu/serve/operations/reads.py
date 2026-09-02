@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 
 from bajutsu import device_os, handoff
+from bajutsu.analysis import flakiness as _flakiness
 from bajutsu.analysis import stats as _stats
 from bajutsu.analytics import ledger as _usage_ledger
 from bajutsu.analytics import stats as _usage_stats
@@ -18,7 +19,6 @@ from bajutsu.drivers import base as driver_base
 from bajutsu.evidence import StepView, step_view
 from bajutsu.scenario import declared_name, load_scenario_file
 from bajutsu.scenario.models import STEP_ACTIONS, Scenario, Step
-from bajutsu.serve import flakiness as _flakiness
 from bajutsu.serve import jobs
 from bajutsu.serve.artifacts import Artifact, ArtifactStore
 from bajutsu.serve.authz import _record_audit, _target_forbidden

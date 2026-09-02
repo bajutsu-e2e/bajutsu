@@ -170,7 +170,7 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
     with the `"device release failed"` warning. The dispatch stub keeps this device-free (no simctl /
     adb on the Linux gate); the release path itself is exactly the code under test.
     """
-    from bajutsu.cli.commands import run as run_cmd
+    from bajutsu.run import cli as run_cmd
 
     class _RaisingReleaseProvider:
         def acquire(self, eff: Effective, requested_udid: str) -> dp.DeviceLease:

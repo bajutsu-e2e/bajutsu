@@ -17,14 +17,26 @@ from typer.testing import CliRunner
 
 from bajutsu.cli import app
 from bajutsu.cli._shared import _resolve_browser, _resolve_language
-from bajutsu.cli.commands.run import _apply_touch_markers
 from bajutsu.config import Effective, IosConfig, WebConfig, load_config, resolve
+from bajutsu.run.cli import _apply_touch_markers
 from bajutsu.scenario import Scenario
 from bajutsu.scenario.models.assertions import Assertion, VisualMatch
 from bajutsu.scenario.models.steps import Step
 from bajutsu.serve import _cli_flags as cli_flags
 
 runner = CliRunner()
+
+
+def test_cli_module_getattr_rejects_an_unknown_name() -> None:
+    # `bajutsu.cli.app` is built lazily (PEP 562, module `__getattr__`) so that reaching it from a
+    # feature module mid-import (e.g. `bajutsu.analysis.cli.audit` needing `bajutsu.cli._shared`)
+    # never recurses into a not-yet-registered command — see the module docstring. Any other name
+    # still fails the normal way: AttributeError, not a silent None.
+    import bajutsu.cli as cli_module
+
+    with pytest.raises(AttributeError, match="nonexistent_attr"):
+        cli_module.nonexistent_attr  # noqa: B018
+
 
 SCENARIO = """
 - name: demo
@@ -372,7 +384,7 @@ def test_record_writes_the_authored_scenario(
     # the surrounding command body (target/browser/out resolution, then the file write) is covered.
     # A dummy key clears the credential gate and --no-system-alert-handling skips the alert guard, so
     # no model client is ever built on this deterministic path.
-    import bajutsu.cli.commands.record as rec
+    import bajutsu.record.cli as rec
     from bajutsu.scenario import load_scenarios
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
@@ -425,7 +437,7 @@ def test_record_needs_human_handoff_exits_3(
 ) -> None:
     # BE-0179: a needs-human turn with no responder (the CI / non-interactive path) is a clean,
     # labeled non-zero exit — distinct from the credential/device exit 2 — never a hang or a guess.
-    import bajutsu.cli.commands.record as rec
+    import bajutsu.record.cli as rec
     from bajutsu.handoff import HumanHandoffUnavailable
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
@@ -475,7 +487,7 @@ def _fake_record_config(tmp_path: Path) -> Path:
 
 def test_record_device_error_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # A device failure while bringing the app up is reported and exits 2, not an uncaught traceback.
-    import bajutsu.cli.commands.record as rec
+    import bajutsu.record.cli as rec
     from bajutsu import simctl as _simctl
 
     def no_device(*_a: object, **_k: object) -> object:
@@ -523,12 +535,8 @@ def _stub_execution(
     monkeypatch.delenv(
         "GITHUB_ACTIONS", raising=False
     )  # keep github.emit a no-op (no summary write)
-    monkeypatch.setattr(
-        "bajutsu.cli.commands.run.device_pool", lambda *a, **k: (object(), lambda: None)
-    )
-    monkeypatch.setattr(
-        "bajutsu.cli.commands.run.run_and_report", lambda *a, **k: (results, manifest)
-    )
+    monkeypatch.setattr("bajutsu.run.cli.device_pool", lambda *a, **k: (object(), lambda: None))
+    monkeypatch.setattr("bajutsu.run.cli.run_and_report", lambda *a, **k: (results, manifest))
 
 
 def _manifest_at(tmp_path: Path) -> Path:
@@ -771,7 +779,7 @@ def test_unknown_browser_engine_exits_cleanly(tmp_path: Path, command: str) -> N
 
 def test_parse_browsers_dedupes_and_validates() -> None:
     # --browsers parses a comma list, trims/drops blanks, and de-dupes while keeping order (BE-0076).
-    from bajutsu.cli.commands.run import _parse_browsers
+    from bajutsu.run.cli import _parse_browsers
 
     assert _parse_browsers("chromium, firefox ,webkit") == ["chromium", "firefox", "webkit"]
     assert _parse_browsers("chromium,chromium") == ["chromium"]  # de-duped
@@ -781,7 +789,7 @@ def test_parse_browsers_dedupes_and_validates() -> None:
 def test_parse_browsers_rejects_unknown_engine() -> None:
     import typer
 
-    from bajutsu.cli.commands.run import _parse_browsers
+    from bajutsu.run.cli import _parse_browsers
 
     with pytest.raises(typer.Exit) as exc:
         _parse_browsers("chromium,safari")
@@ -1340,7 +1348,7 @@ def test_serve_themes_flag_absent_passes_none(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_serve_loopback_detection() -> None:
-    from bajutsu.cli.commands.serve import _is_loopback
+    from bajutsu.serve.cli.serve import _is_loopback
 
     assert _is_loopback("127.0.0.1")
     assert _is_loopback("127.0.0.2")  # the whole 127/8 block is loopback
@@ -1418,7 +1426,7 @@ def test_crawl_bedrock_does_not_require_anthropic_key(
     def _no_device(*_args: object, **_kwargs: object) -> object:
         raise _benv.DeviceError("device boundary reached (no Simulator in test)")
 
-    monkeypatch.setattr("bajutsu.cli.commands.crawl.launch_driver", _no_device)
+    monkeypatch.setattr("bajutsu.crawl.cli.launch_driver", _no_device)
     cfg, _ = _write(tmp_path)
     out = tmp_path / "crawlrun"
     r = runner.invoke(
@@ -1501,7 +1509,7 @@ def test_crawl_web_builds_one_browser_lane_per_worker(
         launched["n"] += 1
         return object(), None  # the engine is mocked, so no driver method is ever called
 
-    monkeypatch.setattr("bajutsu.cli.commands.crawl.launch_driver", fake_launch)
+    monkeypatch.setattr("bajutsu.crawl.cli.launch_driver", fake_launch)
 
     captured: dict[str, object] = {}
 
@@ -1786,10 +1794,8 @@ def test_run_hands_the_pipeline_a_live_cancellation_source(
 
     monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID")
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
-    monkeypatch.setattr(
-        "bajutsu.cli.commands.run.device_pool", lambda *a, **k: (object(), lambda: None)
-    )
-    monkeypatch.setattr("bajutsu.cli.commands.run.run_and_report", _pipeline)
+    monkeypatch.setattr("bajutsu.run.cli.device_pool", lambda *a, **k: (object(), lambda: None))
+    monkeypatch.setattr("bajutsu.run.cli.run_and_report", _pipeline)
     cfg, scn = _fake_run(tmp_path)
 
     r = runner.invoke(app, _run_argv(cfg, scn, tmp_path, "--no-system-alert-handling"))

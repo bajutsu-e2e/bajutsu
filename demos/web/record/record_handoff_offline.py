@@ -26,7 +26,7 @@ from bajutsu.agents.protocols import Observation, Proposal
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.handoff import HandoffRequest, HandoffResponse
-from bajutsu.record import record
+from bajutsu.record.loop import record
 from bajutsu.scenario import Assertion, Step, dump_scenarios
 
 

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import typer
 
-from bajutsu import trace as _trace
+from bajutsu.analysis import trace as _trace
 from bajutsu.run_files import DEFAULT_RUNS_DIR
 
 

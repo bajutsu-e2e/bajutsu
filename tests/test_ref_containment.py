@@ -112,8 +112,8 @@ def test_run_expand_file_rejects_escape(tmp_path: Path, capsys: pytest.CaptureFi
     # It reports the rejection as a clean `typer.Exit(2)`, and the message names only the ref.
     import typer
 
-    from bajutsu.cli.commands.run import _expand_file
     from bajutsu.config import Effective, WebConfig
+    from bajutsu.run.cli import _expand_file
     from bajutsu.scenario import Redact
 
     _write(tmp_path / "secret.yaml", "steps:\n  - tap: { id: TOPSECRET }\n")
@@ -142,8 +142,8 @@ def test_run_expand_file_rejects_escape(tmp_path: Path, capsys: pytest.CaptureFi
 
 
 def test_run_expand_file_in_root_component_loads(tmp_path: Path) -> None:
-    from bajutsu.cli.commands.run import _expand_file
     from bajutsu.config import Effective, WebConfig
+    from bajutsu.run.cli import _expand_file
     from bajutsu.scenario import Redact
 
     root = tmp_path / "suite"

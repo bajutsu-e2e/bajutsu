@@ -456,7 +456,7 @@ def test_baselines_defaults_to_none() -> None:
 
 def test_baselines_resolution_order() -> None:
     """_resolve_dir for baselines respects: --baselines flag > config > scenario-local default."""
-    from bajutsu.cli.commands.run import _resolve_dir
+    from bajutsu.run.cli import _resolve_dir
 
     eff_with = resolve(load_config("targets: { x: { bundleId: com.x, baselines: cfg/bl } }"), "x")
     eff_without = resolve(load_config("targets: { x: { bundleId: com.x } }"), "x")
@@ -493,7 +493,7 @@ def test_schemas_defaults_to_none() -> None:
 
 def test_schemas_resolution_order() -> None:
     """_resolve_dir for schemas respects: --schemas flag > config > scenario-local default."""
-    from bajutsu.cli.commands.run import _resolve_dir
+    from bajutsu.run.cli import _resolve_dir
 
     eff_with = resolve(load_config("targets: { x: { bundleId: com.x, schemas: cfg/sc } }"), "x")
     eff_without = resolve(load_config("targets: { x: { bundleId: com.x } }"), "x")
@@ -522,7 +522,7 @@ def test_goldens_defaults_to_none() -> None:
 
 def test_goldens_resolution_order() -> None:
     """_resolve_dir for goldens respects: --goldens flag > config > scenario-local default."""
-    from bajutsu.cli.commands.run import _resolve_dir
+    from bajutsu.run.cli import _resolve_dir
 
     eff_with = resolve(load_config("targets: { x: { bundleId: com.x, goldens: cfg/gl } }"), "x")
     eff_without = resolve(load_config("targets: { x: { bundleId: com.x } }"), "x")

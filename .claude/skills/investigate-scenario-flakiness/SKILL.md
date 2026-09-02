@@ -43,7 +43,7 @@ artifacts — does that assembly itself and hands over the finished directory.
 
 `bajutsu triage --flaky` has **no rule-based agent**: cross-run diagnosis reasons over the delta
 between passing and failing runs, so `--ai` is mandatory and the command exits 2 without it
-(`_flaky_triage` in [`bajutsu/cli/commands/triage.py`](../../../bajutsu/cli/commands/triage.py)).
+(`_flaky_triage` in [`bajutsu/triage/cli.py`](../../../bajutsu/triage/cli.py)).
 Step 3 therefore always spends `ANTHROPIC_API_KEY` credit. A caller opts into that cost explicitly;
 it is never incurred by default. With `use_ai` false the skill still returns the full ranking, which
 is what an unattended caller normally needs.
@@ -62,7 +62,7 @@ The command exits 2 on a missing runs directory or an unconfigured database. Tha
 of the inputs, not an empty result — report it and stop rather than continuing with nothing.
 
 Parse the JSON. Its shape is a `FlakinessReport`
-([`bajutsu/serve/flakiness.py`](../../../bajutsu/serve/flakiness.py)): a `scenarios` array plus a
+([`bajutsu/analysis/flakiness.py`](../../../bajutsu/analysis/flakiness.py)): a `scenarios` array plus a
 `skipped` count of runs that carried no fingerprint or no recorded verdict. Each scenario entry
 carries `name`, `scenario_hash`, `device_os`, `runs`, `passed`, `failed`, `flip_rate`,
 `classification`, `representative_pass_run_id`, and `representative_fail_run_id`.

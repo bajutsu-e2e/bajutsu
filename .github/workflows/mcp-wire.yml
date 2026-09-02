@@ -17,7 +17,6 @@ on:
   pull_request:
     paths:
       - "bajutsu/mcp/**"
-      - "bajutsu/cli/commands/mcp.py"
       - "tests/test_mcp_wire.py"
       - ".github/workflows/mcp-wire.yml"
 

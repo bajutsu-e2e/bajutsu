@@ -9,10 +9,10 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from bajutsu import triage
 from bajutsu.cli import app
-from bajutsu.cli.commands.triage import _rerun_command
-from bajutsu.triage import (
+from bajutsu.triage import heuristic as triage
+from bajutsu.triage.cli import _rerun_command
+from bajutsu.triage.heuristic import (
     FailedStep,
     Fix,
     HeuristicTriageAgent,
@@ -419,7 +419,7 @@ def test_cli_rerun_after_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         captured["cmd"] = cmd
         return 0
 
-    monkeypatch.setattr("bajutsu.cli.commands.triage.subprocess.call", fake_call)
+    monkeypatch.setattr("bajutsu.triage.cli.subprocess.call", fake_call)
     r = runner.invoke(
         app,
         [
@@ -937,7 +937,7 @@ def test_cross_run_payload_shape() -> None:
 
 
 def test_split_flaky_runs_classifies_by_scenario_verdict(tmp_path: Path) -> None:
-    from bajutsu.cli.commands.triage import _split_flaky_runs
+    from bajutsu.triage.cli import _split_flaky_runs
 
     hist = tmp_path / "hist"
     _write_flaky_run(hist / "r1", ok=True)
@@ -954,7 +954,7 @@ def test_split_flaky_runs_excludes_other_fingerprint(tmp_path: Path) -> None:
     # `--flaky` contrasts runs at ONE content fingerprint. A run recorded after the
     # scenario was edited (different scenarioHash) is a different test, not flaky evidence,
     # so it must be dropped rather than fed to the model as a contradictory contrast.
-    from bajutsu.cli.commands.triage import _split_flaky_runs
+    from bajutsu.triage.cli import _split_flaky_runs
 
     hist = tmp_path / "hist"
     _write_flaky_run(hist / "r1", ok=True)  # reference fingerprint sha-abc
@@ -971,7 +971,7 @@ def test_split_flaky_runs_reference_hash_from_first_stamped_run(tmp_path: Path) 
     # literal first match. If the first match predates provenance stamping (no scenarioHash),
     # locking `scenario_hash = None` would disable the guard for every later run, letting two
     # genuinely different fingerprints mix — the very bug the fingerprint filter prevents.
-    from bajutsu.cli.commands.triage import _split_flaky_runs
+    from bajutsu.triage.cli import _split_flaky_runs
 
     hist = tmp_path / "hist"
     _write_flaky_run(hist / "r1", ok=True, scenario_hash=None)  # pre-provenance: no stamp
@@ -984,7 +984,7 @@ def test_split_flaky_runs_reference_hash_from_first_stamped_run(tmp_path: Path) 
 
 
 def test_split_flaky_runs_no_match_returns_none(tmp_path: Path) -> None:
-    from bajutsu.cli.commands.triage import _split_flaky_runs
+    from bajutsu.triage.cli import _split_flaky_runs
 
     hist = tmp_path / "hist"
     _write_flaky_run(hist / "r1", ok=True)
@@ -1023,9 +1023,9 @@ def _stub_ai_cli(monkeypatch: pytest.MonkeyPatch, fix: Fix | None) -> None:
     monkeypatch.setattr(
         "bajutsu.agents.claude_triage.ClaudeCrossRunTriageAgent", _fake_cross_run_agent(fix)
     )
-    monkeypatch.setattr("bajutsu.cli.commands.triage._require_ai_credential", lambda eff: None)
-    monkeypatch.setattr("bajutsu.cli.commands.triage._install_usage_ledger", lambda eff, cmd: None)
-    monkeypatch.setattr("bajutsu.cli.commands.triage._warn_onscreen_secrets", lambda eff: None)
+    monkeypatch.setattr("bajutsu.triage.cli._require_ai_credential", lambda eff: None)
+    monkeypatch.setattr("bajutsu.triage.cli._install_usage_ledger", lambda eff, cmd: None)
+    monkeypatch.setattr("bajutsu.triage.cli._warn_onscreen_secrets", lambda eff: None)
 
 
 def test_cli_flaky_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

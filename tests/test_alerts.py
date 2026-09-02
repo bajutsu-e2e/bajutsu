@@ -15,7 +15,7 @@ from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import FileSink
 from bajutsu.orchestrator import AlertEvent, AlertGuardConfig, run_scenario
-from bajutsu.record import record as record_loop
+from bajutsu.record.loop import record as record_loop
 from bajutsu.scenario import Step, load_scenarios
 
 

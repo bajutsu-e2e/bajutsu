@@ -13,7 +13,7 @@ from bajutsu.agents.protocols import EnrichmentAgent, EnrichmentProposal, StepCo
 from bajutsu.drivers import base
 from bajutsu.orchestrator import BlockedHandler, Clock, RealClock
 from bajutsu.orchestrator.types import SelectionState
-from bajutsu.record import clear_blocking, execute
+from bajutsu.record.loop import clear_blocking, execute
 from bajutsu.scenario import Scenario
 from bajutsu.screenshots import screenshot_bytes
 

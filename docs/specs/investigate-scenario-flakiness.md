@@ -42,8 +42,8 @@
 ## 2. なぜつくるのか
 
 `bajutsu flakiness` と `bajutsu triage --flaky` は別々のCLIコマンドです。実装は
-[`bajutsu/cli/commands/flakiness.py`](../../bajutsu/cli/commands/flakiness.py) と
-[`bajutsu/cli/commands/triage.py`](../../bajutsu/cli/commands/triage.py) に分かれています。前者は
+[`bajutsu/analysis/cli/flakiness.py`](../../bajutsu/analysis/cli/flakiness.py) と
+[`bajutsu/triage/cli.py`](../../bajutsu/triage/cli.py) に分かれています。前者は
 シナリオの不安定さをランク付けするだけで、原因の仮説までは出しません。原因を知るには、ランキングの
 上位から対象のシナリオ名を控える必要があります。そのうえで、それぞれについて
 `bajutsu triage --flaky --scenario <name> --history <dir>` を打ち直します。
@@ -72,7 +72,7 @@
 | `use_ai` | trueのときだけ手順3のtriageを実行します。デフォルトはfalseで、ランキングだけを返します |
 
 `bajutsu triage --flaky` にはルールベースの診断系がなく、`--ai` を必須とします。実装は
-[`bajutsu/cli/commands/triage.py`](../../bajutsu/cli/commands/triage.py) の `_flaky_triage` です。
+[`bajutsu/triage/cli.py`](../../bajutsu/triage/cli.py) の `_flaky_triage` です。
 したがって手順3は常に `ANTHROPIC_API_KEY` を消費します。デフォルトで実行しないのはそのためで、
 費用を伴う手順を呼び出し元が明示的に選ぶ形にします。
 
