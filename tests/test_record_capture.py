@@ -7,6 +7,9 @@ from __future__ import annotations
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.elements import screen_size_from_elements
+from bajutsu.common.scenario import Redact, load_scenarios
+from bajutsu.common.scenario.models import Scenario, Selector
+from bajutsu.common.scenario.serialize import dump_scenario_file
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.record_capture import (
     hit_test,
@@ -16,9 +19,6 @@ from bajutsu.record_capture import (
     step_for_tap,
     step_for_type,
 )
-from bajutsu.scenario import Redact, load_scenarios
-from bajutsu.scenario.models import Scenario, Selector
-from bajutsu.scenario.serialize import dump_scenario_file
 
 
 def _el(

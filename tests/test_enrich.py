@@ -6,7 +6,7 @@ from bajutsu.common.agents.enrich import enrich
 from bajutsu.common.agents.protocols import EnrichmentProposal, StepContext
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
-from bajutsu.scenario import Assertion, Scenario, Step
+from bajutsu.common.scenario import Assertion, Scenario, Step
 
 
 class FakeEnrichmentAgent:

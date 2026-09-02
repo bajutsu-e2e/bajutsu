@@ -11,8 +11,8 @@ from typing import Literal
 
 from bajutsu import doctor
 from bajutsu.common.drivers import base
+from bajutsu.common.scenario.models import Selector, Step, Swipe, TypeText
 from bajutsu.evidence.redaction import Redactor
-from bajutsu.scenario.models import Selector, Step, Swipe, TypeText
 
 
 @dataclass(frozen=True)

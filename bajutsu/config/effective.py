@@ -14,6 +14,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from bajutsu.common.drivers import base
+from bajutsu.common.scenario import AfterRule, Interrupt, Redact, Step, SystemAlertHandlingField
 from bajutsu.config.schema import (
     DeviceProvider,
     LaunchServer,
@@ -22,7 +23,6 @@ from bajutsu.config.schema import (
     NotifyEndpoint,
     XcuitestConfig,
 )
-from bajutsu.scenario import AfterRule, Interrupt, Redact, Step, SystemAlertHandlingField
 
 
 @dataclass(frozen=True)

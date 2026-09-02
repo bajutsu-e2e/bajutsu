@@ -13,6 +13,7 @@ import json
 from _report import _el
 
 from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.scenario import Scenario
 from bajutsu.config import load_config, resolve
 from bajutsu.orchestrator import RunResult, run_scenario
 from bajutsu.report import html_report, junit_xml, manifest_dict
@@ -20,7 +21,6 @@ from bajutsu.report.ctrf import ctrf_json
 from bajutsu.report.html import scenario_render_inputs
 from bajutsu.report.load import results_from_manifest
 from bajutsu.runner.pipeline import with_lifecycle_phases
-from bajutsu.scenario import Scenario
 
 _SCREEN = [_el("a", "A", ["button"]), _el("c", "C", ["button"])]
 

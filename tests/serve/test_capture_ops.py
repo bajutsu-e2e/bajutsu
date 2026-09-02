@@ -12,9 +12,9 @@ from _shared import project
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.scenario import Redact
 from bajutsu.config import Effective, IosConfig
 from bajutsu.evidence.redaction import Redactor
-from bajutsu.scenario import Redact
 from bajutsu.serve import operations as ops
 from bajutsu.serve.state import ServeState
 
@@ -412,7 +412,7 @@ def test_finish_capture_tears_down_runner_when_save_fails(
     def boom(_scenarios: object) -> str:
         raise OSError("disk full")
 
-    monkeypatch.setattr("bajutsu.scenario.serialize.dump_scenario_file", boom)
+    monkeypatch.setattr("bajutsu.common.scenario.serialize.dump_scenario_file", boom)
     with pytest.raises(OSError, match="disk full"):
         ops.finish_capture(state, {"target": "demo"})
     assert torn == [True]  # runner torn down despite the save failure

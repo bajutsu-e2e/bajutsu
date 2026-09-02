@@ -23,6 +23,7 @@ from bajutsu.backends import (
 from bajutsu.backends import make_driver as _make_driver
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.webview import WebViewBridge
+from bajutsu.common.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 from bajutsu.config import Effective
 from bajutsu.evidence import FileSink
 from bajutsu.evidence.network import Collector, NetworkCollector, _no_transitions
@@ -44,7 +45,6 @@ from bajutsu.report import git_revision, run_provenance
 from bajutsu.runner.launch import launch_driver
 from bajutsu.runner.recovery import guarded_teardown
 from bajutsu.runner.types import Lease, LeaseFn
-from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 
 __all__ = ["device_control", "device_pool", "device_relauncher"]
 

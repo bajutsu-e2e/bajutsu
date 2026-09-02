@@ -25,9 +25,9 @@ from __future__ import annotations
 from bajutsu.common.agents.protocols import Observation, Proposal
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.scenario import Assertion, Step, dump_scenarios
 from bajutsu.handoff import HandoffRequest, HandoffResponse
 from bajutsu.record import record
-from bajutsu.scenario import Assertion, Step, dump_scenarios
 
 
 def _el(identifier: str, label: str, traits: list[str]) -> base.Element:

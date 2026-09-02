@@ -10,8 +10,8 @@ from threading import Thread
 from conftest import el
 
 from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.scenario import Scenario, Step
 from bajutsu.orchestrator import run_scenario
-from bajutsu.scenario import Scenario, Step
 
 
 class FakeClock:

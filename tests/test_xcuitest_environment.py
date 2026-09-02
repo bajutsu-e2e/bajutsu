@@ -24,6 +24,7 @@ import pytest
 from bajutsu import backends, simctl, stall_diagnostics
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.drivers.xcuitest import XcuitestChannelError
+from bajutsu.common.scenario import Preconditions
 from bajutsu.config import Effective, load_config, resolve
 from bajutsu.device_os import DeviceOS
 from bajutsu.platform_lifecycle.environments import xcuitest as xcuitest_env
@@ -49,7 +50,6 @@ from bajutsu.platform_lifecycle.environments.xcuitest import (
     _spawn_cold_with_retry,
     _Spawned,
 )
-from bajutsu.scenario import Preconditions
 
 _DEVICE_UDID = "00008030-000A1B2C3D4E"  # a physical-device id shape (not a simctl UUID)
 

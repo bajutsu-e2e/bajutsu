@@ -16,6 +16,7 @@ import pytest
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.scenario import Wait
 from bajutsu.orchestrator import AlertEvent, AlertGuardConfig
 from bajutsu.orchestrator.types import (
     DEFAULT_DISMISSIVE_LABELS,
@@ -23,7 +24,6 @@ from bajutsu.orchestrator.types import (
     match_alert_rule,
     pick_alert_label,
 )
-from bajutsu.scenario import Wait
 
 
 class _LogicalClock:
@@ -1202,8 +1202,8 @@ def test_a_blocked_tap_names_the_alert_in_the_step_s_own_failure() -> None:
     # BE-0402's promise for the *step* call site, which holds no mid-wait gate: a `tap` blocked by an
     # alert no rule or candidate label names would otherwise fail as a bare `element not found`, with
     # nothing to say a prompt was on screen at all.
+    from bajutsu.common.scenario import load_scenarios
     from bajutsu.orchestrator import run_scenario
-    from bajutsu.scenario import load_scenarios
 
     driver = _fake_with_alert(["Weird Button"])  # nothing on screen, and an unnamed prompt over it
     result = run_scenario(
@@ -1221,8 +1221,8 @@ def test_a_blocked_wait_names_the_alert_exactly_once() -> None:
     # A guarded `wait` passes through both call sites: the mid-wait gate appends the note to the
     # timeout it returns, and the end-of-step guard then re-probes the same still-unanswered alert.
     # The note states one observation, so it must be said once — not doubled by the second look.
+    from bajutsu.common.scenario import load_scenarios
     from bajutsu.orchestrator import run_scenario
-    from bajutsu.scenario import load_scenarios
 
     driver = _fake_with_alert(["Weird Button"])
     result = run_scenario(
@@ -1239,8 +1239,8 @@ def test_a_blocked_wait_names_the_alert_exactly_once() -> None:
 
 def test_a_blocked_expect_names_the_alert_in_the_scenario_s_own_failure() -> None:
     # The same promise for the `expect` phase, whose retry calls the guard directly too.
+    from bajutsu.common.scenario import load_scenarios
     from bajutsu.orchestrator import run_scenario
-    from bajutsu.scenario import load_scenarios
 
     driver = _fake_with_alert(["Weird Button"])
     result = run_scenario(
@@ -1262,8 +1262,8 @@ def test_a_blocked_expect_names_the_alert_in_the_scenario_s_own_failure() -> Non
 def test_a_step_failing_with_no_alert_up_keeps_its_own_bare_reason() -> None:
     # The note is not a blanket suffix on every failure: with no alert on screen there is nothing to
     # report, and a step that failed for its own reasons must not be made to look blocked.
+    from bajutsu.common.scenario import load_scenarios
     from bajutsu.orchestrator import run_scenario
-    from bajutsu.scenario import load_scenarios
 
     result = run_scenario(
         FakeDriver([]),

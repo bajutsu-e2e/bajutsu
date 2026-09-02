@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from bajutsu.common.drivers import base
-from bajutsu.scenario import (
+from bajutsu.common.scenario import (
     Selector,
 )
 

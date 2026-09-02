@@ -15,11 +15,11 @@ from pydantic import ValidationError
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.scenario import Interrupt, Scenario, dump_scenarios, load_scenarios
 from bajutsu.config import load_config, resolve
 from bajutsu.evidence import Artifact, intervals
 from bajutsu.orchestrator import AlertGuardConfig, run_scenario
 from bajutsu.orchestrator.waits import WaitTrace
-from bajutsu.scenario import Interrupt, Scenario, dump_scenarios, load_scenarios
 
 
 def _interrupt(condition: dict[str, object], steps: list[dict[str, object]]) -> Interrupt:

@@ -18,11 +18,7 @@ from bajutsu.cancellation import RunCancelled, cancelled_teardown_seconds, grace
 from bajutsu.capability_preflight import unsupported
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
-from bajutsu.config import load_config, resolve
-from bajutsu.orchestrator import run_scenario
-from bajutsu.orchestrator.evidence_rules import requested_intervals
-from bajutsu.runner.pipeline import with_lifecycle_phases
-from bajutsu.scenario import (
+from bajutsu.common.scenario import (
     AfterRule,
     Component,
     Scenario,
@@ -30,6 +26,10 @@ from bajutsu.scenario import (
     expand_components,
     load_scenarios,
 )
+from bajutsu.config import load_config, resolve
+from bajutsu.orchestrator import run_scenario
+from bajutsu.orchestrator.evidence_rules import requested_intervals
+from bajutsu.runner.pipeline import with_lifecycle_phases
 
 _SCREEN = [el("a"), el("b"), el("c"), el("gone", label="gone")]
 

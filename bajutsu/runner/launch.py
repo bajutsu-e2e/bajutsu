@@ -7,6 +7,7 @@ from pathlib import Path
 
 from bajutsu import simctl
 from bajutsu.common.drivers import base
+from bajutsu.common.scenario import Preconditions
 from bajutsu.config import Effective
 from bajutsu.evidence.network import TransitionSource, _no_transitions
 
@@ -19,7 +20,6 @@ from bajutsu.platform_lifecycle import (
     environment_for,
 )
 from bajutsu.runner.recovery import guarded_teardown
-from bajutsu.scenario import Preconditions
 
 __all__ = ["ReadinessResult", "await_ready", "launch_driver"]
 

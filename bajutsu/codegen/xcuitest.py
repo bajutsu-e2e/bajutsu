@@ -21,7 +21,6 @@ loudly with a `CodegenError` instead of a silent no-op stub (BE-0297).
 
 from __future__ import annotations
 
-from bajutsu.assertions import request_label
 from bajutsu.codegen.common import (
     AfterEmission,
     class_name,
@@ -34,8 +33,9 @@ from bajutsu.codegen.common import (
     permissions_setup_lines,
     render_test_file,
 )
+from bajutsu.common.assertions import request_label
 from bajutsu.common.drivers import base
-from bajutsu.scenario import AfterRule, Assertion, Gone, Scenario, Step, WaitRequest
+from bajutsu.common.scenario import AfterRule, Assertion, Gone, Scenario, Step, WaitRequest
 
 # XCUITest drives the UI on-device and has no network-interception surface, so a network `request`
 # assertion / `until: { request }` wait has no faithful translation — it stays a TODO, but a labeled

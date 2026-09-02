@@ -12,13 +12,13 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
-from bajutsu.assertions import AssertionResult
+from bajutsu.common.assertions import AssertionResult
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.actuation import Actuation, ActuationReporter, Drained
+from bajutsu.common.scenario import Relaunch
 from bajutsu.evidence import Artifact
 from bajutsu.evidence.network import NetworkExchange
 from bajutsu.mailbox import MailboxMessage
-from bajutsu.scenario import Relaunch
 
 # Returns the network exchanges observed so far (for `request` assertions / waits).
 NetworkSource = Callable[[], list[NetworkExchange]]
@@ -320,7 +320,7 @@ class ResolvedAlertRule:
     """One `systemAlertHandling.rules` entry with its prompt's labels resolved for a locale.
 
     `identifying_labels` is the prompt's full label pair (grant and deny), resolved from
-    `bajutsu.scenario.system_alerts` for the run's locale — matching requires both, since a single
+    `bajutsu.common.scenario.system_alerts` for the run's locale — matching requires both, since a single
     shared label (e.g. "Allow") cannot by itself tell two covered prompts apart. `tap_label` is the
     label the rule's `choice` names.
     """

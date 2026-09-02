@@ -7,7 +7,7 @@ from typing import Self, cast
 from pydantic import Field, model_validator
 
 from bajutsu.common.drivers import base
-from bajutsu.scenario.models._base import _Model
+from bajutsu.common.scenario.models._base import _Model
 
 
 class Selector(_Model):

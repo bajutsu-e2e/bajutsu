@@ -16,6 +16,7 @@ from _runner import _eff, _ios_eff, _web_eff
 from bajutsu import simctl
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.scenario import Preconditions, Relaunch, Scenario
 from bajutsu.platform_lifecycle import (
     AndroidEnvironment,
     FakeEnvironment,
@@ -23,7 +24,6 @@ from bajutsu.platform_lifecycle import (
     XcuitestEnvironment,
     environment_for,
 )
-from bajutsu.scenario import Preconditions, Relaunch, Scenario
 
 
 def _capture_group_signals(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, int]]:
@@ -231,7 +231,7 @@ def test_device_catalog_is_empty_for_web_and_read_for_devices() -> None:
 
 
 def test_web_hook_collector_wires_the_scenarios_mocks() -> None:
-    from bajutsu.scenario import Scenario
+    from bajutsu.common.scenario import Scenario
 
     class _Collector:
         def snapshot(self) -> list[object]:

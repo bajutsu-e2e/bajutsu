@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
 from bajutsu.common.drivers import base
-from bajutsu.scenario import Assertion, Scenario, Selector, Step
+from bajutsu.common.scenario import Assertion, Scenario, Selector, Step
 
 # How a human-supplied value (BE-0182) is resolved deterministically at run time: a `totp` / `email`
 # step (BE-0046) that produces a `${vars.*}`, or a declared `${secrets.*}`. The agent *proposes* one

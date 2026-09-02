@@ -7,11 +7,11 @@ from pathlib import Path
 from _report import _el, _failing, _passing
 
 from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.scenario import Scenario
 from bajutsu.evidence import Artifact
 from bajutsu.evidence.network import NetworkExchange
 from bajutsu.orchestrator import RunResult, run_scenario
 from bajutsu.report import html_report
-from bajutsu.scenario import Scenario
 
 
 def test_html_report_shows_why_a_substituted_element_was_actuated() -> None:

@@ -18,7 +18,7 @@ import urllib.parse
 from typing import Any
 
 from bajutsu.common.drivers import base
-from bajutsu.scenario import Redact
+from bajutsu.common.scenario import Redact
 
 PLACEHOLDER = "[REDACTED]"
 

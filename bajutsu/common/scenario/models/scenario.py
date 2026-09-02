@@ -11,13 +11,13 @@ from typing import Annotated, Any, Literal, Self
 from pydantic import AliasChoices, BeforeValidator, Field, field_validator, model_validator
 
 from bajutsu.common.drivers.base import PERMISSION_SERVICES
+from bajutsu.common.scenario.models._base import _Model
+from bajutsu.common.scenario.models.assertions import Assertion
+from bajutsu.common.scenario.models.evidence import CaptureRule, Network, Redact
+from bajutsu.common.scenario.models.mocks import Mock
+from bajutsu.common.scenario.models.steps import AfterRule, Interrupt, Step
+from bajutsu.common.scenario.system_alerts import SystemAlertChoice, SystemAlertPrompt
 from bajutsu.deprecations import reject_renamed_key
-from bajutsu.scenario.models._base import _Model
-from bajutsu.scenario.models.assertions import Assertion
-from bajutsu.scenario.models.evidence import CaptureRule, Network, Redact
-from bajutsu.scenario.models.mocks import Mock
-from bajutsu.scenario.models.steps import AfterRule, Interrupt, Step
-from bajutsu.scenario.system_alerts import SystemAlertChoice, SystemAlertPrompt
 
 # The grant/revoke actions a `permissions` entry may take (BE-0276); the service side of the
 # vocabulary (`PERMISSION_SERVICES`) lives in `drivers.base` since every backend's capability
@@ -68,7 +68,7 @@ class SystemAlertRule(_Model):
 
     `prompt` and `choice` reuse the vocabulary the proactive `handleSystemAlert` step already takes
     (its `prompt`/`choice` form) instead of a literal button label, so the same rule grants or denies
-    the prompt under any locale `bajutsu.scenario.system_alerts` covers. The reactive guard identifies
+    the prompt under any locale `bajutsu.common.scenario.system_alerts` covers. The reactive guard identifies
     which alert is on screen from this prompt's own two labels — not from an ordering trick over
     `labels`, which cannot record which answer belongs to which prompt (see `SystemAlertHandling`
     below).

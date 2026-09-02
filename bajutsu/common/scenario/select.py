@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bajutsu.scenario.models import Scenario
+from bajutsu.common.scenario.models import Scenario
 
 
 def select_scenarios(

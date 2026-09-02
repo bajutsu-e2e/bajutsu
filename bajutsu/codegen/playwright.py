@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import re
 
-from bajutsu.assertions import request_label
 from bajutsu.codegen.common import (
     AfterEmission,
     indent_lines,
@@ -31,9 +30,10 @@ from bajutsu.codegen.common import (
     permissions_setup_lines,
     render_test_file,
 )
+from bajutsu.common.assertions import request_label
 from bajutsu.common.drivers import base
-from bajutsu.scenario import AfterRule, Assertion, Gone, RequestMatch, Scenario, Step
-from bajutsu.scenario.models.assertions import CountMatch, TextMatch, Wait, WaitRequest
+from bajutsu.common.scenario import AfterRule, Assertion, Gone, RequestMatch, Scenario, Step
+from bajutsu.common.scenario.models.assertions import CountMatch, TextMatch, Wait, WaitRequest
 
 # Wheel-scroll distance (px) a directional swipe emits — intrinsic to the gesture (BE-0227). The
 # delta is the physical scroll direction: an `up` swipe pushes the surface up, so the page scrolls

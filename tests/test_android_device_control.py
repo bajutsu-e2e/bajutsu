@@ -23,8 +23,8 @@ import pytest
 from bajutsu import adb, capability_preflight, platform_lifecycle
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.adb import AdbDriver
+from bajutsu.common.scenario import Scenario, load_scenarios
 from bajutsu.orchestrator.types import DeviceControl
-from bajutsu.scenario import Scenario, load_scenarios
 
 _PKG = "com.bajutsu.showcase.android.compose"
 

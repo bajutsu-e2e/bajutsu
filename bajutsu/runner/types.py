@@ -10,11 +10,11 @@ from dataclasses import dataclass, field
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.webview import DomSource
+from bajutsu.common.scenario import Scenario
 from bajutsu.config import Effective
 from bajutsu.evidence import EvidenceSink
 from bajutsu.evidence.network import Collector
 from bajutsu.orchestrator import AlertGuardConfig, DeviceControl, RelaunchFn, SkippedCapture
-from bajutsu.scenario import Scenario
 
 # Builds the in-scenario relaunch function for a scenario (given its live driver).
 RelaunchFactory = Callable[[Effective, Scenario, base.Driver], RelaunchFn]

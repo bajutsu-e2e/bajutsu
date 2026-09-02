@@ -14,7 +14,7 @@ from typing import Any
 
 import yaml
 
-from bajutsu.scenario.edit import EditError, apply_enrichment, apply_selector
+from bajutsu.common.scenario.edit import EditError, apply_enrichment, apply_selector
 
 
 def apply_selector_edit(body: dict[str, Any]) -> tuple[Any, int]:

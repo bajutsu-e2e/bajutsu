@@ -16,9 +16,9 @@ from bajutsu.common.ai.base import (
 )
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.scenario import Redact, dump_scenarios, load_scenarios
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.record import record
-from bajutsu.scenario import Redact, dump_scenarios, load_scenarios
 
 
 def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.Element:

@@ -20,7 +20,7 @@ import pytest
 
 from bajutsu import capability_preflight
 from bajutsu.common.drivers import base
-from bajutsu.scenario import Scenario
+from bajutsu.common.scenario import Scenario
 
 _LEAN_IOS = (
     {

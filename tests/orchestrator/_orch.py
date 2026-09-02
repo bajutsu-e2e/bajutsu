@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from bajutsu.common.drivers.fake import FakeDriver
-from bajutsu.scenario import Scenario
+from bajutsu.common.scenario import Scenario
 
 
 class FakeClock:

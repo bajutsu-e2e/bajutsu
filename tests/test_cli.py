@@ -18,10 +18,10 @@ from typer.testing import CliRunner
 from bajutsu.cli import app
 from bajutsu.cli._shared import _resolve_browser, _resolve_language
 from bajutsu.cli.commands.run import _apply_touch_markers
+from bajutsu.common.scenario import Scenario
+from bajutsu.common.scenario.models.assertions import Assertion, VisualMatch
+from bajutsu.common.scenario.models.steps import Step
 from bajutsu.config import Effective, IosConfig, WebConfig, load_config, resolve
-from bajutsu.scenario import Scenario
-from bajutsu.scenario.models.assertions import Assertion, VisualMatch
-from bajutsu.scenario.models.steps import Step
 from bajutsu.serve import _cli_flags as cli_flags
 
 runner = CliRunner()
@@ -373,7 +373,7 @@ def test_record_writes_the_authored_scenario(
     # A dummy key clears the credential gate and --no-system-alert-handling skips the alert guard, so
     # no model client is ever built on this deterministic path.
     import bajutsu.cli.commands.record as rec
-    from bajutsu.scenario import load_scenarios
+    from bajutsu.common.scenario import load_scenarios
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     authored = load_scenarios("- name: authored\n  steps:\n    - tap: { id: home.title }\n")[0]
@@ -803,7 +803,7 @@ def test_doctor_web_target_requires_base_url() -> None:
     import typer
 
     from bajutsu.cli.commands.doctor import _current_screen
-    from bajutsu.scenario import Redact
+    from bajutsu.common.scenario import Redact
 
     eff = Effective(
         target="web",
@@ -831,7 +831,7 @@ def test_doctor_non_web_target_on_playwright_exits_cleanly() -> None:
     import typer
 
     from bajutsu.cli.commands.doctor import _current_screen
-    from bajutsu.scenario import Redact
+    from bajutsu.common.scenario import Redact
 
     eff = Effective(
         target="app",
@@ -858,7 +858,7 @@ def test_doctor_xcuitest_uses_a_short_lived_runner_for_screen_query(
 ) -> None:
     from bajutsu.cli.commands.doctor import _current_screen
     from bajutsu.common.drivers import base
-    from bajutsu.scenario import Redact
+    from bajutsu.common.scenario import Redact
 
     eff = Effective(
         target="app",
@@ -919,8 +919,8 @@ def test_xcuitest_runner_summary_reports_the_resolved_source(tmp_path: Path) -> 
     # BE-0292: doctor discloses which runner tier an xcuitest target would use, without acting on
     # it (no build run, no cache materialized) — pure config inspection.
     from bajutsu.cli.commands.doctor import xcuitest_runner_summary
+    from bajutsu.common.scenario import Redact
     from bajutsu.config import XcuitestConfig
-    from bajutsu.scenario import Redact
 
     runner = tmp_path / "Runner.xctestrun"
     runner.write_bytes(b"")
@@ -994,9 +994,9 @@ def test_xcuitest_runner_summary_warns_on_a_bundled_toolchain_mismatch(
     # BE-0292: a target with no testRunner resolves to the bundled runner, so doctor appends a
     # mismatch warning when the host Xcode major differs from the toolchain the bundle recorded.
     from bajutsu.cli.commands import doctor
+    from bajutsu.common.scenario import Redact
     from bajutsu.config import XcuitestConfig
     from bajutsu.platform_lifecycle.environments import xcuitest as xc
-    from bajutsu.scenario import Redact
 
     # A non-None products dir makes `runner_source` report the bundled tier for the first line; the
     # note's own tier check keys on the empty XcuitestConfig (no testRunner), not on this path.

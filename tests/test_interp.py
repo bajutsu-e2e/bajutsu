@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bajutsu.interp import find_tokens, interpolate
+from bajutsu.common.scenario.interp import find_tokens, interpolate
 
 
 def test_find_tokens_nested() -> None:

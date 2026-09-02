@@ -16,6 +16,7 @@ from bajutsu import simctl
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver, FakeNetworkCollector
 from bajutsu.common.drivers.webview import WebViewBridge
+from bajutsu.common.scenario import Relaunch, Scenario
 from bajutsu.config import Effective
 from bajutsu.evidence import FileSink
 from bajutsu.evidence.network import NetworkCollector, NetworkExchange, ScreenTransition
@@ -25,7 +26,6 @@ from bajutsu.runner import (
     device_pool,
     device_relauncher,
 )
-from bajutsu.scenario import Relaunch, Scenario
 
 
 def test_relauncher_relaunches_with_locale_and_overrides() -> None:

@@ -14,10 +14,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from bajutsu.common.drivers import base
-from bajutsu.scenario import Selector
+from bajutsu.common.scenario import Selector
 
 if TYPE_CHECKING:
-    from bajutsu.assertions.visual import VisualEvidence
+    from bajutsu.common.assertions.visual import VisualEvidence
 
 
 @functools.lru_cache(maxsize=128)

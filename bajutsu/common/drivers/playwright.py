@@ -34,7 +34,7 @@ from bajutsu.evidence import intervals
 
 if TYPE_CHECKING:
     from bajutsu.common.drivers.web_network import WebNetworkCollector
-    from bajutsu.scenario.models.mocks import Mock
+    from bajutsu.common.scenario.models.mocks import Mock
 
 
 def _rotate_point(p: base.Point, center: base.Point, radians: float) -> base.Point:

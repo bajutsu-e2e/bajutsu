@@ -8,8 +8,8 @@ from bajutsu.common.agents.claude_enrich import ClaudeEnrichmentAgent, _render_e
 from bajutsu.common.agents.protocols import StepContext
 from bajutsu.common.ai.base import ImagePart, NamedTool, TextPart
 from bajutsu.common.drivers import base
+from bajutsu.common.scenario import Redact, Scenario, Step
 from bajutsu.evidence.redaction import Redactor
-from bajutsu.scenario import Redact, Scenario, Step
 
 
 def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.Element:

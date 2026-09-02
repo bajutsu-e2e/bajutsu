@@ -26,6 +26,8 @@ from bajutsu.common.drivers.xcuitest_live import (
     WebDriverError,
     XcuitestLiveDriver,
 )
+from bajutsu.common.scenario import Preconditions, Relaunch
+from bajutsu.common.scenario.models.scenario import Scenario
 from bajutsu.config import load_config, resolve
 from bajutsu.platform_lifecycle.environments.xcuitest import XcuitestEnvironment
 from bajutsu.platform_lifecycle.environments.xcuitest_live import (
@@ -33,8 +35,6 @@ from bajutsu.platform_lifecycle.environments.xcuitest_live import (
     is_webdriver_endpoint,
 )
 from bajutsu.platform_lifecycle.factories import environment_for
-from bajutsu.scenario import Preconditions, Relaunch
-from bajutsu.scenario.models.scenario import Scenario
 
 _ENDPOINT = "http://grid.local:4723"
 

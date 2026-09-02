@@ -13,9 +13,9 @@ from pathlib import Path
 
 import yaml
 
-from bajutsu.scenario.expand import expand_components, expand_data, read_csv
-from bajutsu.scenario.load import load_component, load_scenario_file
-from bajutsu.scenario.models import Scenario
+from bajutsu.common.scenario.expand import expand_components, expand_data, read_csv
+from bajutsu.common.scenario.load import load_component, load_scenario_file
+from bajutsu.common.scenario.models import Scenario
 
 
 def contained_ref(root: Path, base: Path, ref: str) -> Path:

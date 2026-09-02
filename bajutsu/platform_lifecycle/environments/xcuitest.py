@@ -29,6 +29,7 @@ from typing import IO, Literal, cast
 from bajutsu import backends, device_os, simctl, stall_diagnostics
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.zorder import ZOrderResponder, ZOrderSource
+from bajutsu.common.scenario import Preconditions
 from bajutsu.config import Effective, XcuitestConfig, require_ios
 from bajutsu.device_os import DeviceOS
 from bajutsu.platform_lifecycle.environments._bundled_runner import (
@@ -37,7 +38,6 @@ from bajutsu.platform_lifecycle.environments._bundled_runner import (
     materialize,
 )
 from bajutsu.platform_lifecycle.environments.ios import _DeviceEnvironment
-from bajutsu.scenario import Preconditions
 
 _logger = logging.getLogger(__name__)
 

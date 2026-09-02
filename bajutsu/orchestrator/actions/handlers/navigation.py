@@ -8,8 +8,8 @@ gesture, so it lives on its own. Each backend's `back()` performs its platform-c
 from __future__ import annotations
 
 from bajutsu.common.drivers import base
+from bajutsu.common.scenario import Step
 from bajutsu.orchestrator.actions._registry import _handler
-from bajutsu.scenario import Step
 
 
 @_handler("back")

@@ -12,10 +12,10 @@ from typing import Any
 
 import pytest
 
-from bajutsu.assertions import evaluate_one
+from bajutsu.common.assertions import evaluate_one
 from bajutsu.common.drivers.web_network import WebNetworkCollector
-from bajutsu.scenario.models.assertions import Assertion, RequestMatch
-from bajutsu.scenario.models.mocks import Mock, MockResponse
+from bajutsu.common.scenario.models.assertions import Assertion, RequestMatch
+from bajutsu.common.scenario.models.mocks import Mock, MockResponse
 
 
 class _FakeResponse:

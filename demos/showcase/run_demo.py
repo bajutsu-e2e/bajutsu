@@ -12,8 +12,7 @@ from pathlib import Path
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
-from bajutsu.orchestrator import RunResult, run_scenario
-from bajutsu.scenario import (
+from bajutsu.common.scenario import (
     Component,
     Scenario,
     expand_components,
@@ -22,6 +21,7 @@ from bajutsu.scenario import (
     load_scenarios,
     select_scenarios,
 )
+from bajutsu.orchestrator import RunResult, run_scenario
 
 SCENARIOS = Path(__file__).parent / "scenarios"
 

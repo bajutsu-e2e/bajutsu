@@ -17,8 +17,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from bajutsu.scenario import AfterRule, Assertion, Scenario, Step
-from bajutsu.scenario.models.actions import bypass_hint
+from bajutsu.common.scenario import AfterRule, Assertion, Scenario, Step
+from bajutsu.common.scenario.models.actions import bypass_hint
 
 
 class CodegenError(ValueError):

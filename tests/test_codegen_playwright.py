@@ -8,7 +8,7 @@ from typer.testing import CliRunner
 
 from bajutsu.cli import app
 from bajutsu.codegen.playwright import describe_name_for, to_playwright
-from bajutsu.scenario import load_scenarios
+from bajutsu.common.scenario import load_scenarios
 
 BASE = "http://localhost:3000"
 runner = CliRunner()

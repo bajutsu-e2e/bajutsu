@@ -38,9 +38,9 @@ from bajutsu.common.ai.base import (
 )
 from bajutsu.common.ai.registry import Adapter, register
 from bajutsu.common.drivers import base as drivers_base
+from bajutsu.common.scenario import Redact
 from bajutsu.config import AiSettings
 from bajutsu.evidence.redaction import Redactor
-from bajutsu.scenario import Redact
 
 
 class RecordingBackend:

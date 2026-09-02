@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.scenario import load_scenarios
 from bajutsu.orchestrator import run_scenario
-from bajutsu.scenario import load_scenarios
 
 
 def _run(spec: str) -> tuple[bool, list[tuple[str, object]], str | None]:

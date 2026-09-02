@@ -8,10 +8,10 @@ from typing import Any
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.scenario import Redact, Scenario
 from bajutsu.config import Effective, IosConfig, WebConfig
 from bajutsu.evidence import NullSink
 from bajutsu.runner import Lease
-from bajutsu.scenario import Redact, Scenario
 
 
 def _eff() -> Effective:
