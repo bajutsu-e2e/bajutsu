@@ -135,6 +135,9 @@ def test_cap_releases_a_job_the_jobs_table_finished(
     )
     first = state.try_register(srv.Job(cmd=[], org="o"))
     assert first is not None
+    # No row yet: a job is registered before the executor enqueues it, so a missing row must read as
+    # still running — else every dispatch in that window slips past the cap instead of being capped.
+    assert state.try_register(srv.Job(cmd=[], org="o")) is None
     repo.enqueue_job(first.id, "o", {})
     assert state.try_register(srv.Job(cmd=[], org="o")) is None  # at the cap
     assert state.active_jobs() == 1
