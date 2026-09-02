@@ -657,3 +657,164 @@ def test_a_store_error_restoring_a_bundle_says_why(
         assert _bound(state, "s1") == state.binding.config
 
     assert any("could not fetch" in r.getMessage() for r in caplog.records)
+
+
+# --- what a member sees: the binding's origin, and a restore in the audit log (BE-0393 unit 7) ---
+
+
+def _origin(state: srv.ServeState, session: str | None, org: str = "default") -> str:
+    return state.binding_for(session, org).origin
+
+
+def test_the_launch_binding_says_it_is_the_deployments(tmp_path: Path) -> None:
+    # The three origins exist so a member can tell what they chose from what they were handed; the
+    # configuration `serve` started with is the one nobody in a session chose.
+    assert _origin(_state(tmp_path), None) == "deployment"
+
+
+def test_a_bind_reads_as_the_members_own(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    (tmp_path / "mine.yaml").write_text(_CONFIG, encoding="utf-8")
+
+    assert ops.bind_config(state, "mine.yaml", session="s1")[1] == 200
+
+    assert _origin(state, "s1") == "session"
+    # A colleague reading the deployment's is still told so, not told it is theirs.
+    assert _origin(state, "s2") == "deployment"
+
+
+def test_a_sessionless_bind_stays_the_deployments(tmp_path: Path) -> None:
+    """A shared-token or CI bind replaces the fallback, which is the deployment's binding however it
+    got there — labelling it `session` would tell every other request it was theirs."""
+    state = _state(tmp_path)
+    (tmp_path / "mine.yaml").write_text(_CONFIG, encoding="utf-8")
+
+    assert ops.bind_config(state, "mine.yaml", session="s1")[1] == 200
+    assert ops.bind_config(state, "mine.yaml", session=None)[1] == 200
+
+    assert _origin(state, None) == "deployment"
+    assert state.binding.origin == "deployment"
+    # And a value that already carries a session's label cannot make the fallback claim to be one:
+    # the slot decides the label, not what the caller hands over.
+    state.rebind(None, "default", state.binding_for("s1", "default"))
+    assert state.binding.origin == "deployment"
+
+
+def test_a_restored_binding_says_it_was_inherited(tmp_path: Path) -> None:
+    """The distinction the member most needs: this configuration is in front of them because their
+    org last bound it, not because they opened it. The restore runs through the ordinary binder,
+    which stamps `session` on the way in, so the relabelling has to survive that."""
+    remembered = tmp_path / "remembered.yaml"
+    remembered.write_text(_CONFIG, encoding="utf-8")
+    state, _repo = _with_memory(tmp_path, {"kind": "file", "locator": {"path": str(remembered)}})
+
+    assert _origin(state, "s1") == "inherited"
+    # And it stays inherited on the reads that follow, which never re-enter the restore.
+    assert _origin(state, "s1") == "inherited"
+
+
+def test_binding_over_an_inherited_configuration_makes_it_the_members_own(tmp_path: Path) -> None:
+    remembered = tmp_path / "remembered.yaml"
+    remembered.write_text(_CONFIG, encoding="utf-8")
+    state, _repo = _with_memory(tmp_path, {"kind": "file", "locator": {"path": str(remembered)}})
+    (tmp_path / "mine.yaml").write_text(_CONFIG, encoding="utf-8")
+
+    assert _origin(state, "s1") == "inherited"
+    assert ops.bind_config(state, "mine.yaml", session="s1")[1] == 200
+
+    assert _origin(state, "s1") == "session"
+
+
+def test_the_boot_read_names_the_origin(tmp_path: Path) -> None:
+    # The header reads it from here; without it the UI would have to guess from the path alone.
+    state = _state(tmp_path)
+    (tmp_path / "mine.yaml").write_text(_CONFIG, encoding="utf-8")
+    assert ops.bind_config(state, "mine.yaml", session="s1")[1] == 200
+
+    payload, status = config_ops.config_info(state, actor="alice", session="s1")
+
+    assert status == 200
+    assert payload["configOrigin"] == "session"
+    assert config_ops.config_info(state, actor="alice", session="s2")[0]["configOrigin"] == (
+        "deployment"
+    )
+
+
+class _AuditingRepo(_MemoryRepo):
+    """`_MemoryRepo` that also keeps the audit entries, which only unit 7 writes."""
+
+    def __init__(self, source: object) -> None:
+        super().__init__(source)
+        self.audits: list[dict[str, object]] = []
+
+    def record_audit(self, **entry: object) -> None:
+        self.audits.append(entry)
+
+
+def _auditing(tmp_path: Path, source: object) -> tuple[srv.ServeState, _AuditingRepo, str]:
+    """A state whose org remembers *source*, with a real session belonging to `alice`."""
+    state = _state(tmp_path)
+    repo = _AuditingRepo(source)
+    state.repository = repo  # type: ignore[assignment]
+    state.restore_binding = partial(config_ops.restore_org_binding, state)
+    return state, repo, state.auth.sessions.issue("alice")
+
+
+def test_a_restore_is_audited_like_the_bind_it_stands_in_for(tmp_path: Path) -> None:
+    """A restore puts a configuration in force without anyone asking for it, so the log that answers
+    "what was this org running against, and since when" has to carry it too."""
+    remembered = tmp_path / "remembered.yaml"
+    remembered.write_text(_CONFIG, encoding="utf-8")
+    source = {"kind": "file", "locator": {"path": str(remembered)}}
+    state, repo, sid = _auditing(tmp_path, source)
+
+    assert state.binding_for(sid, "default").config == remembered
+
+    assert [e["action"] for e in repo.audits] == ["config.restore"]
+    assert repo.audits[0]["actor_id"] == "alice"
+    assert repo.audits[0]["org_id"] == "default"
+    assert repo.audits[0]["detail"] == {"source": source}
+
+
+def test_a_restored_bundle_is_audited_too(tmp_path: Path) -> None:
+    # The bundle branch returns before the git/file tail, so it needs its own entry — and its own
+    # test, since a call written once at the bottom would silently never run for an upload.
+    uploads = tmp_path / "uploads"
+    sha = "b" * 64
+    (uploads / sha).mkdir(parents=True)
+    (uploads / sha / "bajutsu.config.yaml").write_text(_CONFIG, encoding="utf-8")
+    state, repo, sid = _auditing(tmp_path, {"kind": "upload", "sha256": sha})
+    state.uploads_dir = uploads
+
+    assert state.binding_for(sid, "default").upload is not None
+
+    assert [e["action"] for e in repo.audits] == ["config.restore"]
+
+
+def test_a_failed_restore_is_not_audited(tmp_path: Path) -> None:
+    # Nothing came into force, so an entry would claim a change that never happened.
+    state, repo, sid = _auditing(
+        tmp_path, {"kind": "file", "locator": {"path": str(tmp_path / "gone.yaml")}}
+    )
+
+    assert state.binding_for(sid, "default").config == state.binding.config
+    assert repo.audits == []
+
+
+def test_an_unresolvable_bundle_is_not_audited(tmp_path: Path) -> None:
+    state, repo, sid = _auditing(tmp_path, {"kind": "upload", "sha256": "c" * 64})
+
+    assert state.binding_for(sid, "default").config == state.binding.config
+    assert repo.audits == []
+
+
+def test_a_restore_for_a_session_with_no_identity_records_nothing(tmp_path: Path) -> None:
+    """A shared-token session has no actor to name, which is the same no-op every other action takes
+    without one — the restore must still happen, and must not raise on the way."""
+    remembered = tmp_path / "remembered.yaml"
+    remembered.write_text(_CONFIG, encoding="utf-8")
+    state, repo, _sid = _auditing(tmp_path, {"kind": "file", "locator": {"path": str(remembered)}})
+    anonymous = state.auth.sessions.issue()
+
+    assert state.binding_for(anonymous, "default").config == remembered
+    assert repo.audits == []

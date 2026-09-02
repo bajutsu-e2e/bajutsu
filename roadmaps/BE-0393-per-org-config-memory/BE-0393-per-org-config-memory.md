@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0393](BE-0393-per-org-config-memory.md) |
 | Author | [@paihu](https://github.com/paihu) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0393") |
-| Implementing PR | [#1844](https://github.com/bajutsu-e2e/bajutsu/pull/1844) (Unit 5), [#1863](https://github.com/bajutsu-e2e/bajutsu/pull/1863) (Units 1-2) |
+| Implementing PR | [#1844](https://github.com/bajutsu-e2e/bajutsu/pull/1844) (Unit 5), [#1863](https://github.com/bajutsu-e2e/bajutsu/pull/1863) (Units 1-2, 6-7) |
 | Topic | Configuration sourcing |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0225](../BE-0225-config-project-hub/BE-0225-config-project-hub.md), [BE-0229](../BE-0229-per-org-provider-settings-resolution/BE-0229-per-org-provider-settings-resolution.md), [BE-0243](../BE-0243-upload-bundle-durable-storage/BE-0243-upload-bundle-durable-storage.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md), [BE-0375](../BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md), [BE-0404](../BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md) |
 <!-- /BE-METADATA -->
@@ -281,7 +281,7 @@ does not need, and a trigger written against sign-in misses an org change within
   pointer left to persist, and no launch registration to drop.
 - [x] 5. Restore an uploaded bundle from the local cache with no object store configured.
 - [x] 6. Restore the org's remembered configuration into a session lazily on first use, best-effort.
-- [ ] 7. Show the session's binding and its origin, and audit a restore.
+- [x] 7. Show the session's binding and its origin, and audit a restore.
 
 ## References
 

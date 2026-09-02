@@ -17,9 +17,9 @@ import subprocess
 import threading
 from collections import Counter, OrderedDict
 from collections.abc import Callable
-from dataclasses import InitVar, dataclass, field
+from dataclasses import InitVar, dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from bajutsu.serve.batch_provider import BatchRequest
@@ -487,6 +487,11 @@ class ConfigBinding:
         org: The org that bound this configuration through the API — an uploaded bundle, a composed
             triple, or a Git source (BE-0375). None for the launch configuration, whose own `orgs:`
             block then partitions targets as the operator wrote it.
+        origin: Which of the three answers `binding_for` gave, for the header to name (unit 7):
+            `session` for what the member bound themselves, `inherited` for the org's remembered
+            configuration restored into their slot, `deployment` for the one every sessionless
+            request reads. Never set by a binder — the two funnels that decide which slot a value
+            lands in stamp it, so it cannot disagree with where the value actually is.
     """
 
     config: Path | None = None
@@ -495,6 +500,7 @@ class ConfigBinding:
     upload: Upload | None = None
     git_from_api: bool = False
     org: str | None = None
+    origin: Literal["deployment", "session", "inherited"] = "deployment"
 
 
 @dataclass
@@ -814,11 +820,13 @@ class ServeState:
         session has already used its one attempt; it stays on the fallback rather than restoring
         again. Bounded, rare, and self-limiting, which is what best-effort buys.
         """
+        # The origin is stamped here rather than passed in: this is where a value's slot is decided,
+        # so a binder cannot label one thing and land it somewhere else (unit 7).
         if session is None:
-            self.binding = binding
+            self.binding = replace(binding, origin="deployment")
             return
         with self._bindings_lock:
-            self.bindings[session, org] = binding
+            self.bindings[session, org] = replace(binding, origin="session")
             self.bindings.move_to_end((session, org))
             while len(self.bindings) > MAX_SESSION_BINDINGS:
                 self.bindings.popitem(last=False)
@@ -897,7 +905,17 @@ class ServeState:
                 exc_info=True,
             )
         with self._bindings_lock:
-            return self.bindings.get(key, self.binding)
+            restored = self.bindings.get(key)
+            if restored is None:
+                return self.binding
+            # A restore binds through the ordinary binder, which stamps `session` on its way in, so
+            # the slot is relabelled here — the one place that knows the value arrived by
+            # inheritance rather than by the member's own choice. A bind the member makes *during*
+            # the fetch window is mislabelled `inherited` until their next bind: a label, and
+            # already inside the window where that bind loses to the restore anyway.
+            inherited = replace(restored, origin="inherited")
+            self.bindings[key] = inherited
+            return inherited
 
     def for_org(self, org: str) -> StoreBundle:
         """The storage seams scoped to *org*. A server backend prefixes each org's objects; local

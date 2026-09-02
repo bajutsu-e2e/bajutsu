@@ -43,7 +43,7 @@ from bajutsu.platform_lifecycle.environments import (
     bundled_runner_build_info,
 )
 from bajutsu.serve import oplog
-from bajutsu.serve.authz import forbidden_for_role
+from bajutsu.serve.authz import _record_audit, forbidden_for_role
 from bajutsu.serve.helpers import (
     list_targets,
     load_serve_config_file,
@@ -255,6 +255,10 @@ def config_info(
         # in — the one org whose scope every other tab silently applies.
         "actor": actor,
         "org": state.org_of(actor) if actor else None,
+        # Where the bound configuration came from, so the header can tell "what I opened" apart from
+        # "what my org last bound" and from the deployment's own (BE-0393 unit 7). A member who sees
+        # a configuration they did not choose should be able to learn that without guessing.
+        "configOrigin": binding.origin,
         # The orgs this caller may switch between, so the header can offer the choice. Their own
         # memberships, disclosed to them alone — nothing they could not learn by switching, which is
         # why the full roster stays behind the admin-only `GET /api/orgs`. One entry (or none) means
@@ -1164,6 +1168,23 @@ def _restore_failed(org: str, reason: object) -> None:
     )
 
 
+def _audit_restore(state: ServeState, session: str, org: str, source: dict[str, Any]) -> None:
+    """Record a completed restore in the audit log, like the binds it stands in for (unit 7).
+
+    A restore binds on nobody's explicit request, so the actor is the member whose session the
+    binding landed in — the one the configuration is now in force for. A session with no identity
+    (shared-token) leaves `_record_audit` a no-op, the same as every other action taken without one.
+    """
+    _record_audit(
+        state,
+        state.auth.sessions.identity(session),
+        org,
+        "config.restore",
+        str(source.get("kind") or ""),
+        {"source": source},
+    )
+
+
 def restore_org_binding(state: ServeState, session: str, org: str) -> None:
     """Bind *org*'s remembered configuration into *session*'s empty slot (BE-0393 unit 6).
 
@@ -1190,6 +1211,8 @@ def restore_org_binding(state: ServeState, session: str, org: str) -> None:
             _restore_failed(org, "the remembered bundle is no longer resolvable")
         elif restored[1] != 200:
             _restore_failed(org, restored[0])
+        else:
+            _audit_restore(state, session, org, source)
         return
     spec = config_spec_from_record(source)
     if spec is None:
@@ -1206,6 +1229,8 @@ def restore_org_binding(state: ServeState, session: str, org: str) -> None:
     payload, status = binder(state, spec, session=session, org=org, remember=False)
     if status != 200:
         _restore_failed(org, payload)
+        return
+    _audit_restore(state, session, org, source)
 
 
 def _valid_slot(name: str, settings: ProviderSettings) -> bool:
