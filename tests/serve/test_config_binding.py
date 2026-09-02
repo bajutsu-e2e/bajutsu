@@ -538,8 +538,11 @@ def test_a_git_source_is_restored_through_the_ordinary_binder(
     )
 
     assert _bound(state, "s1") == checkout / "web.yaml"
-    # Restored as a runtime API bind, so its `build:` stays untrusted (BE-0121).
-    assert state.binding_for("s1", "default").git_from_api is True
+    restored = state.binding_for("s1", "default")
+    # Restored as a runtime API bind, so its `build:` stays untrusted (BE-0121) and the org that
+    # bound it owns every target it declares (BE-0375) — both stamped by the binder, not the record.
+    assert restored.git_from_api is True
+    assert restored.org == "default"
 
 
 def test_an_uploaded_bundle_is_restored_by_digest(tmp_path: Path) -> None:
@@ -607,10 +610,9 @@ def test_a_restore_for_a_non_default_org_stays_in_that_org(tmp_path: Path) -> No
     # The slot it landed in is acme's, not `default`'s.
     assert ("s1", "acme") in state.bindings
     assert ("s1", "default") not in state.bindings
-    # And the org that owns the restored configuration is acme, so `targets_for` answers as acme.
-    assert state.binding_for("s1", "acme").org != "default"
-    # Nothing was recorded against another org's row.
-    assert [org for org, _ in written] == ["acme"]
+    # A restore replays what the row already holds, so it writes nothing back — which is also what
+    # keeps a bind that raced this restore's fetch from being reverted.
+    assert written == []
 
 
 def test_a_refused_restore_says_why(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
@@ -624,3 +626,34 @@ def test_a_refused_restore_says_why(tmp_path: Path, caplog: pytest.LogCaptureFix
         assert _bound(state, "s1") == state.binding.config
 
     assert any("could not restore org" in r.getMessage() for r in caplog.records)
+
+
+def test_an_unresolvable_bundle_says_why(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    # The bundle path answers "no longer resolvable" with None rather than an error, so without this
+    # the reason an upload-remembering org stayed on the fallback would surface nowhere.
+    state, _repo = _with_memory(tmp_path, {"kind": "upload", "sha256": "c" * 64})
+
+    with caplog.at_level("WARNING"):
+        assert _bound(state, "s1") == state.binding.config
+
+    assert any("no longer resolvable" in r.getMessage() for r in caplog.records)
+
+
+def test_a_store_error_restoring_a_bundle_says_why(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Distinct from "no longer resolvable": the bytes may well exist, the store just could not be
+    # reached. A transient infrastructure failure must not read as an absent bundle.
+    from _shared import FakeObjectStore
+
+    class _Unreachable(FakeObjectStore):
+        def get_bytes(self, key: str) -> bytes | None:
+            raise ConnectionError("bucket unreachable")
+
+    state, _repo = _with_memory(tmp_path, {"kind": "upload", "sha256": "d" * 64})
+    state.object_store = _Unreachable()
+
+    with caplog.at_level("WARNING"):
+        assert _bound(state, "s1") == state.binding.config
+
+    assert any("could not fetch" in r.getMessage() for r in caplog.records)

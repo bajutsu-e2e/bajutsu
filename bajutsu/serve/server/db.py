@@ -199,15 +199,12 @@ class Repository(Protocol):
         """
 
     def set_org_config_source(self, org_id: str, source: dict[str, Any]) -> bool:
-        """Remember *source* as the configuration this org last bound (BE-0404 unit 1, widened to
-        every bind by BE-0393 unit 6). False when there is no such live org.
+        """Remember *source* as the configuration this org last bound. False when there is no such
+        live org.
 
         One record per org, overwritten by each bind — a second bind replaces the first locator
         rather than accumulating a named list, which is the project layer returning under another
-        name. Every bind writes it since BE-0393 unit 6, not only an upload one: the record names
-        what this org last bound, which is what a session with no binding of its own inherits. It
-        began narrower, naming only what an org could *recover* from durable storage, because that
-        was the recovery path BE-0404 unit 1 set out to preserve.
+        name. Every bind writes it, not only an upload one; `Org.config_source` records why.
         """
 
     def set_org_membership(

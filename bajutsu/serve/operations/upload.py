@@ -168,14 +168,9 @@ def _locate_config_or_heal(dest: Path) -> tuple[Any, int]:
 def remember_org_config_source(state: ServeState, org: str, source: dict[str, Any]) -> None:
     """Record *source* as the configuration this org last bound (BE-0404 unit 1, BE-0393 unit 6).
 
-    The durable half of two paths. It is what `restore_uploaded_config` reads back on a replica that
-    never received an upload, and what a session with no binding of its own inherits on its first
-    request. Every bind writes it — the file browser, the Git picker, an uploaded bundle, and a
-    composed triple — because the org's memory is what it last bound, not only what it could
-    re-fetch: BE-0393's Motivation names the Git spec and the file-browser pick alongside the upload
-    as the things a member redoes every session.
-
-    Guarded like the other database reaches on this path — a flaky backend must leave the bind itself
+    Called by every bind — the file browser, the Git picker, an uploaded bundle, and a composed
+    triple; `Org.config_source` records what the column means and why it covers all four. Guarded
+    like the other database reaches on this path: a flaky backend must leave the bind itself
     standing, since the binding in this process is complete either way.
     """
     repo = state.repository

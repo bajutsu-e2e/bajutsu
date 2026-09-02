@@ -731,6 +731,7 @@ def bind_config(
     actor: str | None = None,
     session: str | None = None,
     org: str | None = None,
+    remember: bool = True,
 ) -> tuple[Any, int]:
     """Bind a config.yml chosen in the UI's file browser.  The path is confined to ``--root``; we
     validate it loads and its path fields stay within ``--root`` too, then bind it for the asking
@@ -783,7 +784,8 @@ def bind_config(
     # The org remembers what it last bound, so a colleague's next session inherits it (BE-0393 unit
     # 6). A `file` locator is a host path, which only resolves on a deployment that has that host —
     # this endpoint is refused when hosted, so the single-replica case is the only one it reaches.
-    remember_org_config_source(state, org, config_source_record(None, str(target)))
+    if remember:
+        remember_org_config_source(state, org, config_source_record(None, str(target)))
     return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200
 
 
@@ -794,6 +796,7 @@ def bind_git_config(
     actor: str | None = None,
     session: str | None = None,
     org: str | None = None,
+    remember: bool = True,
 ) -> tuple[Any, int]:
     """Bind a config from a Git source chosen in the UI (the "from Git" picker, BE-0063).
 
@@ -854,7 +857,8 @@ def bind_git_config(
     # unit 6): restoring the org later should follow the branch they chose, which is what a moving
     # ref means. The record is built from the same `spec` this bind parsed, so what is stored is
     # exactly what was asked for.
-    remember_org_config_source(state, org, config_source_record(spec, spec_str))
+    if remember:
+        remember_org_config_source(state, org, config_source_record(spec, spec_str))
     return {
         "ok": True,
         "config": str(mat.config_path),
@@ -1147,6 +1151,19 @@ def launch_label(config: Path, provenance: dict[str, str] | None) -> str:
     return config.stem
 
 
+def _restore_failed(org: str, reason: object) -> None:
+    """Say why *org*'s remembered configuration did not come back (BE-0393 unit 6).
+
+    The restore's failures are values, not exceptions — a binder answers a moved file or an
+    unreachable repository with a 4xx, and the bundle path answers "no longer resolvable" with None.
+    The caller leaves the session on the fallback and does not retry, so this is the only place the
+    reason surfaces.
+    """
+    logging.getLogger(__name__).warning(
+        "could not restore org %s's remembered configuration: %s", org, reason
+    )
+
+
 def restore_org_binding(state: ServeState, session: str, org: str) -> None:
     """Bind *org*'s remembered configuration into *session*'s empty slot (BE-0393 unit 6).
 
@@ -1168,7 +1185,11 @@ def restore_org_binding(state: ServeState, session: str, org: str) -> None:
     if not isinstance(source, dict):
         return
     if source.get("kind") == "upload":
-        restore_uploaded_config(state, source, org=org, session=session)
+        restored = restore_uploaded_config(state, source, org=org, session=session)
+        if restored is None:
+            _restore_failed(org, "the remembered bundle is no longer resolvable")
+        elif restored[1] != 200:
+            _restore_failed(org, restored[0])
         return
     spec = config_spec_from_record(source)
     if spec is None:
@@ -1178,15 +1199,13 @@ def restore_org_binding(state: ServeState, session: str, org: str) -> None:
     # confinement, and the build-trust call each apply again rather than being trusted from the
     # record. The org is handed over explicitly — there is no actor here, and the binders' own
     # `org_of(None)` would answer `default`.
+    # `remember=False`: a restore replays a record the row already holds, so writing it back buys
+    # nothing — and a member who binds something new while this restore's fetch is in flight would
+    # see the restore's write land last and revert the org's memory to the source it superseded.
     binder = bind_git_config if source.get("kind") == "git" else bind_config
-    payload, status = binder(state, spec, session=session, org=org)
+    payload, status = binder(state, spec, session=session, org=org, remember=False)
     if status != 200:
-        # A moved file, an unreachable repository, or a source this deployment refuses. The caller
-        # leaves the session on the fallback and does not retry, so this log is the only place the
-        # reason surfaces — the binders report a refusal as a value, not an exception.
-        logging.getLogger(__name__).warning(
-            "could not restore org %s's remembered configuration: %s", org, payload
-        )
+        _restore_failed(org, payload)
 
 
 def _valid_slot(name: str, settings: ProviderSettings) -> bool:
