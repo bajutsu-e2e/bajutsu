@@ -1217,7 +1217,7 @@ Bajutsu のコメントは、すでに「何を」ではなく「なぜ」を書
 [「議論を繰り返さず参照する（コメントと docstring）」](#議論を繰り返さず参照するコメントと-docstring)
 のとおりです。結論を述べ、検討した代替案、スコープの判断、導出の残りを持つ `BE-NNNN` 項目や `docs/`
 ページを引用してそこまで削ります。正当に長いコメントもあります。
-[`bajutsu/cloud/devicefarm.py`](../../bajutsu/cloud/devicefarm.py) の Device Farm ブートストラップの
+[`bajutsu/common/cloud/devicefarm.py`](../../bajutsu/common/cloud/devicefarm.py) の Device Farm ブートストラップの
 ブロックはその例で、1つの論証ではなく、その行の保守に必要な運用上の事実を保持しています。削る前に、
 「議論を繰り返さず参照する（コメントと docstring）」の節が挙げる 3 つの形のどれに当たるかを確かめます。
 

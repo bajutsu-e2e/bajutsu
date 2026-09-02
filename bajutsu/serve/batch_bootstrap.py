@@ -19,7 +19,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
-from bajutsu.cloud.devicefarm import DeviceFarmClient, DeviceFarmError, HttpTransfer
+from bajutsu.common.cloud.devicefarm import DeviceFarmClient, DeviceFarmError, HttpTransfer
 from bajutsu.serve import batch_provider
 
 # Device Farm's control plane lives only in us-west-2; `DEVICEFARM_REGION` overrides it for a rare

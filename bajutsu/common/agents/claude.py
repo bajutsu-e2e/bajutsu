@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from typing import Any, TypedDict, cast, get_args
 
-from bajutsu.analytics import usage
 from bajutsu.common.agents.ai_config import (
     AiConfig,
     language_instruction,
@@ -35,6 +34,7 @@ from bajutsu.common.ai import (
     ToolUseBlock,
 )
 from bajutsu.common.ai.prompts import render_elements
+from bajutsu.common.analytics import usage
 from bajutsu.common.scenario import Assertion, Selector, Step
 from bajutsu.evidence.redaction import Redactor
 

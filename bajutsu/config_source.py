@@ -26,7 +26,7 @@ from email.message import Message
 from pathlib import Path
 from typing import Protocol
 
-from bajutsu.github.errors import GitHubAccessError
+from bajutsu.common.github.errors import GitHubAccessError
 
 DEFAULT_CONFIG = "bajutsu.config.yaml"
 
@@ -184,7 +184,7 @@ def _github_app_credential(spec: GitConfigSpec) -> str | None:
     """A GitHub App installation token when the App env is configured, else None (BE-0224).
 
     Opt-in and lazy: only an `BAJUTSU_GITHUB_APP_ID` gates the App path — the key is read (and
-    `bajutsu.github.app`, plus `cryptography`, imported) *only* when the id is set, so a stale
+    `bajutsu.common.github.app`, plus `cryptography`, imported) *only* when the id is set, so a stale
     `…_PRIVATE_KEY_FILE` left in the environment without an id never triggers App auth or a file read.
     With an id but no key, this falls through to `github_token()` rather than half-attempting the App.
     """
@@ -194,7 +194,7 @@ def _github_app_credential(spec: GitConfigSpec) -> str | None:
     private_key = _github_app_private_key()
     if not private_key:
         return None
-    from bajutsu.github.app import installation_token
+    from bajutsu.common.github.app import installation_token
 
     return installation_token(
         app_id,

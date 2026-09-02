@@ -1,4 +1,4 @@
-"""Tests for the AWS Device Farm batch submitter (BE-0235, `bajutsu.cloud.devicefarm`).
+"""Tests for the AWS Device Farm batch submitter (BE-0235, `bajutsu.common.cloud.devicefarm`).
 
 The submitter is CI-side glue, decoupled from the deterministic core: it packages Bajutsu +
 scenarios, renders a Device Farm custom-environment test spec that runs `bajutsu run --backend adb`,
@@ -22,7 +22,7 @@ from typing import Any
 import pytest
 import yaml
 
-from bajutsu.cloud.devicefarm import (
+from bajutsu.common.cloud.devicefarm import (
     _POLL_INITIAL_SECONDS,
     _POLL_INTERVAL_SECONDS,
     DeviceFarmError,

@@ -18,7 +18,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from bajutsu.analytics import usage
 from bajutsu.common.agents.ai_config import AiConfig, language_instruction
 from bajutsu.common.agents.claude_backed import ClaudeBackedAgent
 from bajutsu.common.ai import (
@@ -32,6 +31,7 @@ from bajutsu.common.ai import (
     ToolDef,
 )
 from bajutsu.common.ai.prompts import NEVER_JUDGE_BOUNDARY, render_elements
+from bajutsu.common.analytics import usage
 from bajutsu.crawl import core as crawl
 from bajutsu.crawl import tabs as crawl_tabs
 from bajutsu.drivers import base

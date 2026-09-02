@@ -10,7 +10,6 @@ import typer
 
 from bajutsu import device_errors
 from bajutsu import simctl as _simctl
-from bajutsu.analytics import usage as _usage
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _ai_redactor,
@@ -31,6 +30,7 @@ from bajutsu.cli.handoff import make_handoff
 from bajutsu.common.agents.claude import MODEL as _RECORD_MODEL
 from bajutsu.common.agents.factory import make_agent
 from bajutsu.common.ai import announce_ai
+from bajutsu.common.analytics import usage as _usage
 from bajutsu.common.scenario import Preconditions, dump_scenarios
 from bajutsu.config import WEB_ENGINES, Effective
 from bajutsu.handoff import HumanHandoffUnavailable

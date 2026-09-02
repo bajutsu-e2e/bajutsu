@@ -1324,7 +1324,7 @@ elsewhere. [*Cite an argument instead of repeating it*](#cite-an-argument-instea
 above is the rule: state the conclusion, cite the `BE-NNNN` item or `docs/` page that carries the
 alternatives considered, the scope decision, and the rest of the derivation, and trim to that.
 Some genuinely long comments still earn their length — the Device Farm bootstrap block in
-[`bajutsu/cloud/devicefarm.py`](../bajutsu/cloud/devicefarm.py) is one, holding operational facts a
+[`bajutsu/common/cloud/devicefarm.py`](../bajutsu/common/cloud/devicefarm.py) is one, holding operational facts a
 maintainer needs at that exact line rather than one argument to trim — so check the comment's
 shape (the three shapes in *Cite an argument instead of repeating it*) before cutting.
 
