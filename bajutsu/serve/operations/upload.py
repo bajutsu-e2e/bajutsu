@@ -700,10 +700,14 @@ def restore_org_config(
     """Rebind the last bundle *org* uploaded, from the record on its row (BE-0404 unit 1).
 
     The reason the org row holds a config-source record at all: a hosted replica that never received
-    the upload recovers it from the object store by the digests the record names. Only an upload
-    bind writes that record, so this restores the org's last *bundle* rather than whatever it bound
-    most recently — a `git` or `file` config is something the caller rebinds through
-    `POST /api/config` directly, needing no durable copy of its own.
+    the upload recovers it from the object store by the digests the record names.
+
+    Restores an `upload` record only. Since BE-0393 unit 6 every bind writes the record, so a later
+    `git` or `file` bind supersedes the bundle and this answers 404 — the bundle's bytes are still in
+    the object store, but what the org *last bound* is no longer them. That is the honest reading of
+    a one-record memory: this endpoint exists to recover bytes a replica may not hold, and a `git` or
+    `file` source needs no such recovery, being rebindable through `POST /api/config` directly. The
+    automatic per-session restore replays whichever kind the record names (`restore_org_binding`).
 
     Restores into the asking session's own binding, like every other bind (BE-0393 unit 2). Before
     that unit every bind replaced one process-global binding, so a restore that clobbered it was

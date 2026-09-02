@@ -199,8 +199,8 @@ class Repository(Protocol):
         """
 
     def set_org_config_source(self, org_id: str, source: dict[str, Any]) -> bool:
-        """Remember *source* as the last bundle this org uploaded (BE-0404 unit 1). False when there
-        is no such live org.
+        """Remember *source* as the configuration this org last bound (BE-0404 unit 1, widened to
+        every bind by BE-0393 unit 6). False when there is no such live org.
 
         One record per org, overwritten by each bind — a second bind replaces the first locator
         rather than accumulating a named list, which is the project layer returning under another

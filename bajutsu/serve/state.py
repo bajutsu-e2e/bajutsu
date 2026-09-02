@@ -809,8 +809,10 @@ class ServeState:
 
         The map is bounded: a process that accumulates quiet sessions evicts the least recently bound
         slot rather than growing without limit. Eviction costs that session its own binding and
-        nothing else — the next request re-reads the fallback, exactly as a session that never bound
-        anything does.
+        nothing else — the next request re-reads the fallback. Not *quite* as a session that never
+        bound anything does, since unit 6 restores into an empty slot on first use and an evicted
+        session has already used its one attempt; it stays on the fallback rather than restoring
+        again. Bounded, rare, and self-limiting, which is what best-effort buys.
         """
         if session is None:
             self.binding = binding

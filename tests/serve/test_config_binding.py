@@ -18,6 +18,7 @@ from _shared import fake_popen, project
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
 from bajutsu.serve import state as srv_state
+from bajutsu.serve.operations import config as config_ops
 from bajutsu.serve.state import ConfigBinding
 from bajutsu.serve.uploads import Upload
 
@@ -579,3 +580,47 @@ def test_the_no_retry_record_is_bounded_like_the_bindings(tmp_path: Path) -> Non
     # The evicted pair is tried once more, and still finds nothing to restore.
     state.binding_for("s0", "default")
     assert repo.reads == srv_state.MAX_SESSION_BINDINGS + 2
+
+
+def test_a_restore_for_a_non_default_org_stays_in_that_org(tmp_path: Path) -> None:
+    """The restore acts as an org it was handed, and the binders' own `org_of(None)` would answer
+    `default` — which would bind one org's configuration into another's slot and write its record
+    onto that org's row."""
+    remembered = tmp_path / "remembered.yaml"
+    remembered.write_text(_CONFIG, encoding="utf-8")
+    written: list[tuple[str, object]] = []
+
+    class _AcmeRepo(_MemoryRepo):
+        def user_org(self, _actor: str) -> str:
+            return "acme"
+
+        def set_org_config_source(self, org: str, source: object) -> bool:
+            written.append((org, source))
+            return True
+
+    state = _state(tmp_path)
+    repo = _AcmeRepo({"kind": "file", "locator": {"path": str(remembered)}})
+    state.repository = repo  # type: ignore[assignment]
+    state.restore_binding = partial(config_ops.restore_org_binding, state)
+
+    assert state.binding_for("s1", "acme").config == remembered
+    # The slot it landed in is acme's, not `default`'s.
+    assert ("s1", "acme") in state.bindings
+    assert ("s1", "default") not in state.bindings
+    # And the org that owns the restored configuration is acme, so `targets_for` answers as acme.
+    assert state.binding_for("s1", "acme").org != "default"
+    # Nothing was recorded against another org's row.
+    assert [org for org, _ in written] == ["acme"]
+
+
+def test_a_refused_restore_says_why(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    # The binders report a refusal as a value, not an exception, so without this the reason the
+    # session stayed on the fallback would never surface anywhere.
+    state, _repo = _with_memory(
+        tmp_path, {"kind": "file", "locator": {"path": str(tmp_path / "gone.yaml")}}
+    )
+
+    with caplog.at_level("WARNING"):
+        assert _bound(state, "s1") == state.binding.config
+
+    assert any("could not restore org" in r.getMessage() for r in caplog.records)

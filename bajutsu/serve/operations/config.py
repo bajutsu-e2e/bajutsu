@@ -725,7 +725,12 @@ def seed_orgs_from_bound_config(state: ServeState) -> None:
 
 
 def bind_config(
-    state: ServeState, raw: str, *, actor: str | None = None, session: str | None = None
+    state: ServeState,
+    raw: str,
+    *,
+    actor: str | None = None,
+    session: str | None = None,
+    org: str | None = None,
 ) -> tuple[Any, int]:
     """Bind a config.yml chosen in the UI's file browser.  The path is confined to ``--root``; we
     validate it loads and its path fields stay within ``--root`` too, then bind it for the asking
@@ -770,7 +775,10 @@ def bind_config(
     # narrower guard: it stops an in-`--root` config's own path *fields* from resolving outside the
     # directory its relative paths are defined against, regardless of who bound it — orthogonal to,
     # not a relaxation of, this build-trust call.
-    org = state.org_of(actor)
+    # *org* wins over the actor's when the caller already resolved it: a restore acts as an org it
+    # was handed, and `org_of(None)` would answer `default` — binding one org's configuration into
+    # another's slot, and writing its record onto that org's row (BE-0393 unit 6).
+    org = org if org is not None else state.org_of(actor)
     state.rebind(session, org, ConfigBinding(config=target, cwd=config_dir))
     # The org remembers what it last bound, so a colleague's next session inherits it (BE-0393 unit
     # 6). A `file` locator is a host path, which only resolves on a deployment that has that host —
@@ -780,7 +788,12 @@ def bind_config(
 
 
 def bind_git_config(
-    state: ServeState, spec_str: str, *, actor: str | None = None, session: str | None = None
+    state: ServeState,
+    spec_str: str,
+    *,
+    actor: str | None = None,
+    session: str | None = None,
+    org: str | None = None,
 ) -> tuple[Any, int]:
     """Bind a config from a Git source chosen in the UI (the "from Git" picker, BE-0063).
 
@@ -825,7 +838,7 @@ def bind_git_config(
     # (BE-0121). A Git-sourced config is bound *as* the acting org, and its content is not this
     # deployment's, so that org owns every target it declares and its `orgs:` block partitions
     # nothing (BE-0375).
-    org = state.org_of(actor)
+    org = org if org is not None else state.org_of(actor)  # see `bind_config`
     state.rebind(
         session,
         org,
@@ -839,7 +852,8 @@ def bind_git_config(
     )
     # Remembered under the ref the member asked for rather than the commit it resolved to (BE-0393
     # unit 6): restoring the org later should follow the branch they chose, which is what a moving
-    # ref means. `source_from_config` is the same parser `POST /api/config` fed to get here.
+    # ref means. The record is built from the same `spec` this bind parsed, so what is stored is
+    # exactly what was asked for.
     remember_org_config_source(state, org, config_source_record(spec, spec_str))
     return {
         "ok": True,
@@ -1162,12 +1176,17 @@ def restore_org_binding(state: ServeState, session: str, org: str) -> None:
     # Through the ordinary binders, so a restored configuration is screened exactly as the bind that
     # recorded it was: the file browser's `--root` confinement, the Git source's checkout
     # confinement, and the build-trust call each apply again rather than being trusted from the
-    # record. `actor=None` keeps the acting org the one asked for; the binder resolves nothing else
-    # from an actor here.
-    if source.get("kind") == "git":
-        bind_git_config(state, spec, session=session)
-    else:
-        bind_config(state, spec, session=session)
+    # record. The org is handed over explicitly — there is no actor here, and the binders' own
+    # `org_of(None)` would answer `default`.
+    binder = bind_git_config if source.get("kind") == "git" else bind_config
+    payload, status = binder(state, spec, session=session, org=org)
+    if status != 200:
+        # A moved file, an unreachable repository, or a source this deployment refuses. The caller
+        # leaves the session on the fallback and does not retry, so this log is the only place the
+        # reason surfaces — the binders report a refusal as a value, not an exception.
+        logging.getLogger(__name__).warning(
+            "could not restore org %s's remembered configuration: %s", org, payload
+        )
 
 
 def _valid_slot(name: str, settings: ProviderSettings) -> bool:
