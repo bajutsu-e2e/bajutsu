@@ -20,8 +20,8 @@ from pydantic import (
 )
 
 from bajutsu.common.deprecations import reject_renamed_key
+from bajutsu.common.scenario import AfterRule, Interrupt, Redact, Step, SystemAlertHandlingField
 from bajutsu.drivers import base
-from bajutsu.scenario import AfterRule, Interrupt, Redact, Step, SystemAlertHandlingField
 
 # Playwright rendering engines a web target can drive (BE-0076). Chromium is the default,
 # preserving today's single-engine behaviour; all three run headless on Linux.

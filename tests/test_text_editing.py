@@ -7,10 +7,10 @@ selection-state contract `copy` relies on — `copy` fails deterministically wit
 
 from __future__ import annotations
 
+from bajutsu.common.scenario import load_scenarios
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import run_scenario
-from bajutsu.scenario import load_scenarios
 
 
 def _field(identifier: str, value: str | None) -> base.Element:

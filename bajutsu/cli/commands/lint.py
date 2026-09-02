@@ -12,7 +12,7 @@ def lint(
 ) -> None:
     """Validate a scenario file without running it."""
     from bajutsu.common.lint import lint_text, provenance_coverage
-    from bajutsu.scenario import load_scenario_file
+    from bajutsu.common.scenario import load_scenario_file
 
     path = Path(scenario)
     if not path.exists():

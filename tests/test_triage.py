@@ -30,7 +30,7 @@ runner = CliRunner()
 def test_target_id_extracts_a_drag_targets_id() -> None:
     # `drag` is a selector-bearing action (BE-0227); a failing drag step must yield its `on` id so
     # triage can suggest disambiguation / a renameId self-heal, exactly as swipe/pinch/rotate do.
-    from bajutsu.scenario import load_scenarios
+    from bajutsu.common.scenario import load_scenarios
 
     step = load_scenarios(
         "- name: x\n  steps:\n    - drag: { on: { id: gest.divider }, direction: left }\n"

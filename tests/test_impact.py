@@ -18,7 +18,7 @@ from bajutsu.analysis.impact import (
     render,
     reverse_index,
 )
-from bajutsu.scenario import load_scenarios
+from bajutsu.common.scenario import load_scenarios
 
 
 def _index(yaml: str) -> ReverseIndex:

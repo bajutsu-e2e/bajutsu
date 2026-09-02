@@ -17,8 +17,8 @@ from typing import TYPE_CHECKING
 
 from bajutsu.common.devices import os as device_os
 from bajutsu.common.devices.os import DeviceOS
+from bajutsu.common.scenario import Assertion, Gone, Scenario, Step
 from bajutsu.drivers import base
-from bajutsu.scenario import Assertion, Gone, Scenario, Step
 
 if TYPE_CHECKING:
     from bajutsu.orchestrator import RunResult

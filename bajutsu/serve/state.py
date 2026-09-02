@@ -28,9 +28,9 @@ if TYPE_CHECKING:
 
 from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.run_meta.object_store import EvidenceTarget, ObjectStore
+from bajutsu.common.scenario.models import Step
 from bajutsu.drivers import base as driver_base
 from bajutsu.evidence.redaction import Redactor
-from bajutsu.scenario.models import Step
 from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
 from bajutsu.serve.baselines import BaselineStore, LocalBaselineStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor

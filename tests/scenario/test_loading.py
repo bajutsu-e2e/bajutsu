@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu.scenario import (
+from bajutsu.common.scenario import (
     Scenario,
     Step,
     apply_setups,
@@ -14,7 +14,7 @@ from bajutsu.scenario import (
     load_scenarios,
     redact_totp_secrets,
 )
-from bajutsu.scenario.models.scenario import SCHEMA_VERSION, SystemAlertHandling
+from bajutsu.common.scenario.models.scenario import SCHEMA_VERSION, SystemAlertHandling
 
 # A valid base32 TOTP seed used across the redaction tests below.
 _TOTP_SEED = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"

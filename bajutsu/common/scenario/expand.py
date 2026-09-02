@@ -10,8 +10,8 @@ import re
 from collections.abc import Callable
 from typing import Any, cast
 
-from bajutsu import interp
-from bajutsu.scenario.models import Component, Scenario, Step
+from bajutsu.common.scenario import interp
+from bajutsu.common.scenario.models import Component, Scenario, Step
 
 
 def _interp_steps(steps: list[Step], bindings: dict[str, str]) -> list[Step]:

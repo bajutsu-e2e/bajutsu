@@ -12,7 +12,7 @@ from typing import get_args
 import pytest
 
 from bajutsu.common.backend_cli import simctl
-from bajutsu.scenario import (
+from bajutsu.common.scenario import (
     SystemAlertChoice,
     SystemAlertPrompt,
     UncoveredSystemAlertLocale,

@@ -31,6 +31,7 @@ from bajutsu.common import stall_diagnostics
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.devices import os as device_os
 from bajutsu.common.devices.os import DeviceOS
+from bajutsu.common.scenario import Preconditions
 from bajutsu.config import Effective, XcuitestConfig, require_ios
 from bajutsu.drivers import base
 from bajutsu.platform_lifecycle.environments._bundled_runner import (
@@ -39,7 +40,6 @@ from bajutsu.platform_lifecycle.environments._bundled_runner import (
     materialize,
 )
 from bajutsu.platform_lifecycle.environments.ios import _DeviceEnvironment
-from bajutsu.scenario import Preconditions
 from bajutsu.zorder import ZOrderResponder, ZOrderSource
 
 _logger = logging.getLogger(__name__)

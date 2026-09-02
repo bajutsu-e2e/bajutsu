@@ -22,6 +22,7 @@ from bajutsu.common.backend_cli import adb as _adb
 from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.doctor import DoctorProbeError, probe_screen, render, score
+from bajutsu.common.scenario import load_scenario_file
 from bajutsu.config import (
     Effective,
     android_package,
@@ -36,7 +37,6 @@ from bajutsu.platform_lifecycle.environments.xcuitest import (
     effective_device_type,
     runner_source,
 )
-from bajutsu.scenario import load_scenario_file
 
 
 def check_scenarios(scenario_path: Path, capabilities: frozenset[str]) -> list[str]:

@@ -32,11 +32,11 @@ from bajutsu.common.ai import announce_ai
 from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.handoff import HumanHandoffUnavailable
+from bajutsu.common.scenario import Preconditions, dump_scenarios
 from bajutsu.config import WEB_ENGINES, Effective
 from bajutsu.platform_lifecycle import environment_for
 from bajutsu.record.loop import record as record_loop
 from bajutsu.runner import launch_driver
-from bajutsu.scenario import Preconditions, dump_scenarios
 
 
 def _secret_tokens(eff: Effective) -> list[tuple[str, str]]:

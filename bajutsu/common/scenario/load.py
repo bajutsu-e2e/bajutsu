@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from bajutsu.common import _yaml
-from bajutsu.scenario.models import Component, Scenario, ScenarioFile
-from bajutsu.scenario.models.scenario import SCHEMA_VERSION
+from bajutsu.common.scenario.models import Component, Scenario, ScenarioFile
+from bajutsu.common.scenario.models.scenario import SCHEMA_VERSION
 
 
 def _as_schema_int(value: object) -> int | None:

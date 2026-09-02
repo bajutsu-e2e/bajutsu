@@ -14,11 +14,11 @@ from bajutsu.analytics import ledger as _usage_ledger
 from bajutsu.analytics import stats as _usage_stats
 from bajutsu.common import handoff
 from bajutsu.common.devices import os as device_os
+from bajutsu.common.scenario import declared_name, load_scenario_file
+from bajutsu.common.scenario.models import STEP_ACTIONS, Scenario, Step
 from bajutsu.config import Config, load_config, resolve
 from bajutsu.drivers import base as driver_base
 from bajutsu.evidence import StepView, step_view
-from bajutsu.scenario import declared_name, load_scenario_file
-from bajutsu.scenario.models import STEP_ACTIONS, Scenario, Step
 from bajutsu.serve import flakiness as _flakiness
 from bajutsu.serve import jobs
 from bajutsu.serve.artifacts import Artifact, ArtifactStore
