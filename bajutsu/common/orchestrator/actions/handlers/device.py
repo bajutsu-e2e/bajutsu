@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from bajutsu.common.orchestrator.actions._registry import _handler, _need_control
 from bajutsu.common.orchestrator.types import DeviceControl, RelaunchFn
+from bajutsu.common.scenario import Step
 from bajutsu.drivers import base
-from bajutsu.scenario import Step
 
 
 @_handler("relaunch")

@@ -17,7 +17,7 @@ from bajutsu.common.mailbox import (
     read_messages,
     select,
 )
-from bajutsu.scenario import EmailExtract, EmailMatch
+from bajutsu.common.scenario import EmailExtract, EmailMatch
 
 
 def _msg(
@@ -158,9 +158,9 @@ from conftest import AlertingDriver, el  # noqa: E402
 
 from bajutsu.common.orchestrator import AlertGuardConfig, run_scenario  # noqa: E402
 from bajutsu.common.orchestrator.loop import _do_email  # noqa: E402
+from bajutsu.common.scenario import Scenario  # noqa: E402
 from bajutsu.drivers import base  # noqa: E402
 from bajutsu.drivers.fake import FakeDriver  # noqa: E402
-from bajutsu.scenario import Scenario  # noqa: E402
 
 
 class _FakeClock:
@@ -190,7 +190,7 @@ class _FakeMailbox:
 
 
 def _email_step(**kw: Any) -> Email:
-    from bajutsu.scenario import Email
+    from bajutsu.common.scenario import Email
 
     return Email.model_validate(kw)
 
@@ -293,7 +293,7 @@ def test_run_scenario_email_fetch_error_fails_the_step() -> None:
 
 import pytest  # noqa: E402
 
-from bajutsu.scenario import Email  # noqa: E402
+from bajutsu.common.scenario import Email  # noqa: E402
 
 
 def test_email_rejects_uncompilable_regex() -> None:

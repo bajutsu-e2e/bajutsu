@@ -25,10 +25,10 @@ from pathlib import Path
 from bajutsu.common.orchestrator import run_scenario
 from bajutsu.common.orchestrator.evidence_rules import requested_intervals
 from bajutsu.common.orchestrator.waits import WaitTrace
+from bajutsu.common.scenario import Scenario
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import Artifact, FileSink, intervals
-from bajutsu.scenario import Scenario
 
 BASELINE_BEFORE = ["screenshot.before", "elements.before"]
 BASELINE_AFTER = ["screenshot.after"]

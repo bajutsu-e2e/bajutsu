@@ -19,10 +19,7 @@ from bajutsu.common.cancellation import RunCancelled, cancelled_teardown_seconds
 from bajutsu.common.orchestrator import run_scenario
 from bajutsu.common.orchestrator.evidence_rules import requested_intervals
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
-from bajutsu.config import load_config, resolve
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
-from bajutsu.scenario import (
+from bajutsu.common.scenario import (
     AfterRule,
     Component,
     Scenario,
@@ -30,6 +27,9 @@ from bajutsu.scenario import (
     expand_components,
     load_scenarios,
 )
+from bajutsu.config import load_config, resolve
+from bajutsu.drivers import base
+from bajutsu.drivers.fake import FakeDriver
 
 _SCREEN = [el("a"), el("b"), el("c"), el("gone", label="gone")]
 

@@ -5,8 +5,8 @@ from __future__ import annotations
 from conftest import el
 
 from bajutsu.common.orchestrator import run_scenario
+from bajutsu.common.scenario import Scenario, Step
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.scenario import Scenario, Step
 
 
 class FakeClock:

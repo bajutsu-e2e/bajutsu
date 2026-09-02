@@ -18,6 +18,7 @@ from bajutsu.common.runner import (
     run_and_report,
     run_matrix_and_report,
 )
+from bajutsu.common.scenario import Scenario
 from bajutsu.config import Effective, XcuitestConfig
 from bajutsu.doctor import Score
 from bajutsu.drivers import base
@@ -25,7 +26,6 @@ from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import NullSink
 from bajutsu.evidence.network import NetworkExchange, ScreenTransition
 from bajutsu.report.format import video_seconds
-from bajutsu.scenario import Scenario
 
 
 def test_run_all() -> None:
@@ -1312,7 +1312,7 @@ def test_run_all_alert_guard_for_uncovered_locale_fails_the_scenario_not_the_run
     # run must turn that into one clean failed RunResult per scenario, not an uncaught exception that
     # would abort every remaining scenario too.
     from bajutsu.common.orchestrator import AlertGuardConfig
-    from bajutsu.scenario.system_alerts import UncoveredSystemAlertLocale
+    from bajutsu.common.scenario.system_alerts import UncoveredSystemAlertLocale
 
     scenarios = [
         Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]}),
@@ -1454,7 +1454,7 @@ def test_reroot_evidence_prefixes_paths_with_engine() -> None:
     # Each engine pass writes evidence under <engine>/<sid>/, but artifact/visual paths are recorded
     # relative to that pass's run_dir. The matrix assembles one report at the top run_dir, so the
     # paths must be re-rooted under the engine subtree or the report's links resolve wrong (BE-0076).
-    from bajutsu.assertions import AssertionResult, VisualEvidence
+    from bajutsu.common.assertions import AssertionResult, VisualEvidence
     from bajutsu.common.orchestrator import StepOutcome
     from bajutsu.common.runner.pipeline import _reroot_evidence
     from bajutsu.evidence import Artifact

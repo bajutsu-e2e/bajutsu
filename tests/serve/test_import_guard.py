@@ -157,7 +157,7 @@ def test_default_path_runs_with_anthropic_absent() -> None:
         "        return None\n"
         "sys.meta_path.insert(0, _Blocker())\n"
         "import bajutsu.cli\n"
-        "from bajutsu.assertions import evaluate\n"
+        "from bajutsu.common.assertions import evaluate\n"
         "assert evaluate([], []) == [], 'deterministic no-op assertion should return []'\n"
         "assert 'anthropic' not in sys.modules, 'anthropic must stay unimported'\n"
     )

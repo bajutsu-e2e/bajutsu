@@ -5,9 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 from bajutsu.common.orchestrator import RunResult, run_scenario
+from bajutsu.common.scenario import Scenario
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.scenario import Scenario
 
 
 def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.Element:

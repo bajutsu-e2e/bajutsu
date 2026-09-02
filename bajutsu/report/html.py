@@ -13,13 +13,13 @@ from typing import Any
 from jinja2 import Environment, FileSystemLoader
 
 from bajutsu.common.orchestrator import RunResult
+from bajutsu.common.scenario import Scenario, dump_scenarios, scenario_dict
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.report.ctrf import ctrf_json
 from bajutsu.report.format import _fmt_duration
 from bajutsu.report.manifest import _matrix, _run_backend, junit_xml, manifest_dict
 from bajutsu.report.panels import _scenario_data
-from bajutsu.scenario import Scenario, dump_scenarios, scenario_dict
 
 
 def scenario_render_inputs(

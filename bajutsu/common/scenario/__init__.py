@@ -3,25 +3,25 @@
 The package keeps the data shapes (`models`), parsing (`load`), compile-time expansion
 (`expand`), tag selection (`select`), and serialization (`serialize`) in separate modules so a
 change to one rarely touches the others (BE-0043). The full public API is re-exported here, so
-`from bajutsu.scenario import Scenario, load_scenarios, ...` keeps working unchanged.
+`from bajutsu.common.scenario import Scenario, load_scenarios, ...` keeps working unchanged.
 """
 
 from __future__ import annotations
 
-from bajutsu.scenario.expand import (
+from bajutsu.common.scenario.expand import (
     apply_setups,
     declared_name,
     expand_components,
     expand_data,
     read_csv,
 )
-from bajutsu.scenario.load import load_component, load_scenario_file, load_scenarios
-from bajutsu.scenario.load_expanded import (
+from bajutsu.common.scenario.load import load_component, load_scenario_file, load_scenarios
+from bajutsu.common.scenario.load_expanded import (
     contained_ref,
     load_expanded_scenarios,
     load_scenarios_dir,
 )
-from bajutsu.scenario.models import (
+from bajutsu.common.scenario.models import (
     ASSERTION_KINDS,
     STEP_ACTIONS,
     AfterRule,
@@ -96,8 +96,8 @@ from bajutsu.scenario.models import (
     WaitRequest,
     Web,
 )
-from bajutsu.scenario.select import select_scenarios
-from bajutsu.scenario.serialize import (
+from bajutsu.common.scenario.select import select_scenarios
+from bajutsu.common.scenario.serialize import (
     dump_block,
     dump_mocks,
     dump_scenario_file,
@@ -105,7 +105,7 @@ from bajutsu.scenario.serialize import (
     redact_totp_secrets,
     scenario_dict,
 )
-from bajutsu.scenario.system_alerts import (
+from bajutsu.common.scenario.system_alerts import (
     SystemAlertChoice,
     SystemAlertPrompt,
     UncoveredSystemAlertLocale,

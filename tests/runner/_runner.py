@@ -7,11 +7,11 @@ from dataclasses import replace
 from typing import Any
 
 from bajutsu.common.runner import Lease
+from bajutsu.common.scenario import Redact, Scenario
 from bajutsu.config import Effective, IosConfig, WebConfig
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import NullSink
-from bajutsu.scenario import Redact, Scenario
 
 
 def _eff() -> Effective:

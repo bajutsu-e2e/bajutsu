@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from bajutsu.scenario import Assertion, Step, expand_data, load_scenarios, read_csv
+from bajutsu.common.scenario import Assertion, Step, expand_data, load_scenarios, read_csv
 
 
 def _no_csv(_ref: str) -> list[dict[str, str]]:

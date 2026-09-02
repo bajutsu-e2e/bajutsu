@@ -19,8 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
-from bajutsu import interp
 from bajutsu.common.orchestrator import RunResult
+from bajutsu.common.scenario import interp
 from bajutsu.config import NotifyEndpoint
 
 logger = logging.getLogger(__name__)

@@ -13,8 +13,8 @@ from bajutsu.common.orchestrator.actions.handlers.generate import (
     _do_generate,
     generated_value,
 )
+from bajutsu.common.scenario import Step
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.scenario import Step
 
 # A fixed instant every datetime expectation below is derived from, so the assertions state the
 # arithmetic rather than re-reading the clock.

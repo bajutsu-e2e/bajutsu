@@ -6,9 +6,9 @@ import pytest
 
 from bajutsu.common.orchestrator.actions.handlers.totp import _do_totp
 from bajutsu.common.orchestrator.substitution import _interp_step
+from bajutsu.common.scenario import Step
 from bajutsu.common.totp import totp
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.scenario import Step
 
 _SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 

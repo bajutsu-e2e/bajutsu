@@ -8,13 +8,13 @@ from pathlib import Path
 
 import pytest
 
+from bajutsu.common.scenario import Redact
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import FileSink, capture, write_elements, write_raw_tree, write_screenshot
 from bajutsu.evidence.intervals import Interval
 from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
 from bajutsu.evidence.sink import RunArtifactWriter
-from bajutsu.scenario import Redact
 
 
 def _writer(run_dir: Path, redactor: Redactor | None = None) -> RunArtifactWriter:

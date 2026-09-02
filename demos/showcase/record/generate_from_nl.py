@@ -31,10 +31,10 @@ from pathlib import Path
 
 from bajutsu.common.agents.protocols import Observation, Proposal
 from bajutsu.common.orchestrator import RunResult, run_scenario
+from bajutsu.common.scenario import Assertion, Scenario, Step, dump_scenarios
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.record import record
-from bajutsu.scenario import Assertion, Scenario, Step, dump_scenarios
 
 DEFAULT_GOAL = "Tap Horse, tap Favorite, then check the favorite shows on"
 

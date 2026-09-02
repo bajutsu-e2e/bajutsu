@@ -11,11 +11,11 @@ from conftest import GUARD_LABEL, AlertingDriver, el
 
 from bajutsu.common.orchestrator import AlertGuardConfig, _wait, run_scenario
 from bajutsu.common.orchestrator.waits import _TRANSITION_QUIESCENCE
+from bajutsu.common.scenario import Wait
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import FileSink
 from bajutsu.evidence.network import ScreenTransition
-from bajutsu.scenario import Wait
 
 
 class _GuardStub(FakeDriver):
@@ -503,7 +503,7 @@ def test_wait_records_trace_on_timeout_for_diagnosis() -> None:
     present at the timeout — separating "nothing rendered" from "content rendered, awaited element
     absent"."""
     from bajutsu.common.orchestrator.waits import WaitTrace, _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     # The tree is empty until t=1s, then shows 2 elements — but never the awaited "target".
     def driver_for(clock: _LogicalClock) -> base.Driver:
@@ -534,7 +534,7 @@ def test_wait_trace_stays_empty_when_tree_never_renders() -> None:
     """A tree that never becomes non-empty leaves first_nonempty_s None — the "nothing rendered"
     hypothesis, distinct from "rendered but the awaited element was absent"."""
     from bajutsu.common.orchestrator.waits import WaitTrace, _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     class Empty:
         name = "empty"
@@ -556,7 +556,7 @@ def test_wait_floor_env_extends_the_ceiling(monkeypatch: pytest.MonkeyPatch) -> 
     """BAJUTSU_MIN_WAIT_TIMEOUT raises a wait's ceiling so a slow renderer has time to present,
     without editing the shared scenario (its `timeout: 5` is the same across every backend)."""
     from bajutsu.common.orchestrator import _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     # The sheet presents at t=8s — past the shared 5s ceiling, under a 15s floor.
     reveal_at = 8.0
@@ -581,7 +581,7 @@ def test_wait_floor_never_shrinks_a_larger_scenario_timeout(
 ) -> None:
     """The floor is a minimum, not an override: a scenario asking for more than the floor keeps it."""
     from bajutsu.common.orchestrator import _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     monkeypatch.setenv("BAJUTSU_MIN_WAIT_TIMEOUT", "3")
     # Element presents at t=8s: below the 3s floor but within the scenario's own 10s ceiling.
@@ -619,7 +619,7 @@ def test_wait_floor_clamps_a_negative_env_to_zero(monkeypatch: pytest.MonkeyPatc
 def test_wait_still_sleeps_when_query_is_fast() -> None:
     """When query() is fast, sleep remains at _POLL as before."""
     from bajutsu.common.orchestrator import _POLL, _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     sleeps: list[float] = []
 
@@ -684,7 +684,7 @@ def test_wait_for_guard_fires_mid_wait_and_records_the_alert() -> None:
     recorded so the report shows the step only passed on a recovery."""
     from bajutsu.common.orchestrator.types import AlertEvent
     from bajutsu.common.orchestrator.waits import _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     driver = _CollapsingDriver([el("ready", "R")])
     alerts: list[AlertEvent] = []
@@ -770,7 +770,7 @@ def test_wait_guard_debounces_a_transient_collapse() -> None:
     screen — only a short run of consecutive collapsed polls does. Since BE-0402 the cost of getting
     that wrong is a note blaming a block that was never there, so the debounce still guards it."""
     from bajutsu.common.orchestrator.waits import _AlertGuardGate, _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     class OneFrameCollapse(_GuardStub):
         name = "one-frame"
@@ -805,7 +805,7 @@ def test_wait_guard_reports_a_persistent_collapse_it_cannot_clear() -> None:
     fail silently: the wait times out on schedule and says the screen looked blocked, hedged, because
     the collapsed tree is a correlation and no query ever named a button behind it."""
     from bajutsu.common.orchestrator.waits import _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     class NeverClears(_GuardStub):
         name = "stuck"
@@ -828,7 +828,7 @@ def test_wait_guard_never_fires_while_app_ui_is_visible() -> None:
     """BE-0269 Unit 1: the deterministic pre-check (`shows_app_ui`) — not a blind timer — is the
     trigger, so a wait whose tree always shows app content never asks the guard to look."""
     from bajutsu.common.orchestrator.waits import _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     class AppVisible(_GuardStub):
         name = "app"
@@ -852,7 +852,7 @@ def test_wait_settled_guard_fires_on_a_collapsed_screen() -> None:
     whole timeout; the guard now fires mid-settle to clear it, then the screen settles normally."""
     from bajutsu.common.orchestrator.types import AlertEvent
     from bajutsu.common.orchestrator.waits import _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     driver = _CollapsingDriver([el("home", "Home")])
     alerts: list[AlertEvent] = []
@@ -874,7 +874,7 @@ def test_wait_settled_signal_guard_fires_on_a_collapsed_screen() -> None:
     instead of silently waiting out the whole window collapsed."""
     from bajutsu.common.orchestrator.types import AlertEvent
     from bajutsu.common.orchestrator.waits import _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     driver = _CollapsingDriver([el("home", "Home")])
     alerts: list[AlertEvent] = []
@@ -930,7 +930,7 @@ def test_wait_screen_changed_guard_fires_when_started_under_an_alert() -> None:
     the screen — so the wait completes instead of burning the whole timeout."""
     from bajutsu.common.orchestrator.types import AlertEvent
     from bajutsu.common.orchestrator.waits import _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     driver = _CollapsingDriver([el("home", "Home")])  # the `before` snapshot is the collapsed tree
     alerts: list[AlertEvent] = []
@@ -971,7 +971,7 @@ def test_wait_screen_changed_guard_fires_on_a_prompt_that_arrives_mid_wait() -> 
     """
     from bajutsu.common.orchestrator.types import AlertEvent
     from bajutsu.common.orchestrator.waits import _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     driver = _LateAlertDriver([el("home", "Home")], on_dismiss=lambda d: setattr(d, "screen", []))
     alerts: list[AlertEvent] = []
@@ -1011,7 +1011,7 @@ def test_wait_settled_guard_fires_on_a_prompt_that_arrives_mid_settle() -> None:
     """The tree-diff settle loop observes every poll too, not only its first read."""
     from bajutsu.common.orchestrator.types import AlertEvent
     from bajutsu.common.orchestrator.waits import _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     driver = _UnsettledUntilAnswered()
     alerts: list[AlertEvent] = []
@@ -1032,7 +1032,7 @@ def test_wait_settled_signal_guard_fires_on_a_prompt_that_arrives_mid_settle() -
     """And so does the signal-based settle path (BE-0310), inside its quiescence window."""
     from bajutsu.common.orchestrator.types import AlertEvent
     from bajutsu.common.orchestrator.waits import _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     driver = _UnsettledUntilAnswered()
     alerts: list[AlertEvent] = []
@@ -1061,7 +1061,7 @@ def test_wait_guard_does_not_extend_the_deadline() -> None:
     deadline — if the awaited element would only appear long after the deadline, the wait still
     times out on schedule rather than being kept alive by the intervention."""
     from bajutsu.common.orchestrator.waits import _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     class SlowReveal(AlertingDriver):
         name = "slow"
@@ -1088,7 +1088,7 @@ def test_wait_guard_fires_without_an_alerts_list() -> None:
     """BE-0269: a guarded wait called with no `alerts` list (a direct `_wait` call) still fires the
     guard and recovers — the recording is simply dropped, never a crash on a None list."""
     from bajutsu.common.orchestrator.waits import _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     driver = _CollapsingDriver([el("ready", "R")])
     clock = _LogicalClock()
@@ -1107,7 +1107,7 @@ def test_describe_wait_renders_each_condition() -> None:
     """describe_wait renders every wait shape in the live-progress wording — selectors as
     `key=value`, which differs from `_wait`'s timeout reason (a raw selector dict)."""
     from bajutsu.common.orchestrator.waits import describe_wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     def desc(data: dict[str, object]) -> str:
         return describe_wait(Wait.model_validate(data))
@@ -1126,7 +1126,7 @@ def test_wait_tick_fires_once_even_when_immediately_satisfied() -> None:
     """A wait that resolves on its first poll must still surface its condition once, so the common
     fast case is not invisible: the entry tick fires before the first condition check."""
     from bajutsu.common.orchestrator.waits import _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     driver = FakeDriver([el("ready", "R")])  # target already present
     seen: list[float] = []
@@ -1142,7 +1142,7 @@ def test_wait_ticks_count_down_across_a_long_wait() -> None:
     """While a wait is pending, ticks keep arriving (throttled, ~5s apart) with a shrinking
     remaining budget, so the run log shows the wait is still blocked and on what."""
     from bajutsu.common.orchestrator.waits import _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     clock = _LogicalClock()
     seen: list[float] = []
@@ -1164,7 +1164,7 @@ def test_wait_ticks_fire_for_every_non_for_branch() -> None:
     `for`: each branch keeps polling a never-satisfied condition to its deadline, so the entry tick
     plus in-loop ticks fire. Guards against a branch silently dropping `hb.tick`."""
     from bajutsu.common.orchestrator.waits import _wait
-    from bajutsu.scenario import Wait
+    from bajutsu.common.scenario import Wait
 
     class Churning(FakeDriver):  # a new tree every poll -> never settles -> loops to deadline
         name = "churning"

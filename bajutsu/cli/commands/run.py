@@ -16,7 +16,6 @@ import typer
 from pydantic import ValidationError
 
 from bajutsu import device_errors
-from bajutsu.assertions import GoldenContext
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _load_effective_with_source,
@@ -27,6 +26,7 @@ from bajutsu.cli._shared import (
     _with_headed,
     resolve_system_alert_handling_flag,
 )
+from bajutsu.common.assertions import GoldenContext
 from bajutsu.common.backends import select_actuator_for_scenario
 from bajutsu.common.cancellation import CancelSource, graceful_sigterm
 from bajutsu.common.orchestrator import (
@@ -39,15 +39,7 @@ from bajutsu.common.runner import device_pool, run_all, run_and_report, run_matr
 from bajutsu.common.runner.build import BuildError, build_if_missing
 from bajutsu.common.runner.device_provider import acquire_device
 from bajutsu.common.runner.types import AlertGuardFor
-from bajutsu.config import WEB_ENGINES, Effective, IosConfig
-from bajutsu.deprecations import warn_once
-from bajutsu.github import actions as github_actions
-from bajutsu.platform_lifecycle import ProvisionProfile, environment_for
-from bajutsu.report.archive import archive_run_dir
-from bajutsu.report.manifest import MAX_LABEL_LENGTH, _run_backend
-from bajutsu.run_files import DEFAULT_RUNS_DIR
-from bajutsu.run_id import new_run_id
-from bajutsu.scenario import (
+from bajutsu.common.scenario import (
     Scenario,
     SystemAlertHandling,
     SystemAlertHandlingField,
@@ -63,11 +55,19 @@ from bajutsu.scenario import (
     read_csv,
     select_scenarios,
 )
-from bajutsu.scenario.system_alerts import (
+from bajutsu.common.scenario.system_alerts import (
     UncoveredSystemAlertLocale,
     covered_languages,
     system_alert_label,
 )
+from bajutsu.config import WEB_ENGINES, Effective, IosConfig
+from bajutsu.deprecations import warn_once
+from bajutsu.github import actions as github_actions
+from bajutsu.platform_lifecycle import ProvisionProfile, environment_for
+from bajutsu.report.archive import archive_run_dir
+from bajutsu.report.manifest import MAX_LABEL_LENGTH, _run_backend
+from bajutsu.run_files import DEFAULT_RUNS_DIR
+from bajutsu.run_id import new_run_id
 
 
 def _parse_browsers(browsers: str) -> list[str]:

@@ -14,8 +14,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from functools import partial
 
-from bajutsu import assertions, interp
-from bajutsu.assertions import AssertionResult, EvalContext
+from bajutsu.common import assertions
+from bajutsu.common.assertions import AssertionResult, EvalContext
 from bajutsu.common.cancellation import (
     CANCELLED_FAILURE,
     CancelSource,
@@ -65,11 +65,7 @@ from bajutsu.common.orchestrator.waits import (
     _wait,
     describe_wait,
 )
-from bajutsu.drivers import base
-from bajutsu.drivers.actuation import Actuation
-from bajutsu.evidence import Artifact, EvidenceSink, NullSink, intervals
-from bajutsu.evidence.network import TransitionSource, _no_transitions
-from bajutsu.scenario import (
+from bajutsu.common.scenario import (
     AfterRule,
     Assertion,
     Email,
@@ -81,7 +77,12 @@ from bajutsu.scenario import (
     Selector,
     Step,
     UncoveredSystemAlertLocale,
+    interp,
 )
+from bajutsu.drivers import base
+from bajutsu.drivers.actuation import Actuation
+from bajutsu.evidence import Artifact, EvidenceSink, NullSink, intervals
+from bajutsu.evidence.network import TransitionSource, _no_transitions
 from bajutsu.webview import DomSource, WebContextDriver
 
 _logger = logging.getLogger(__name__)

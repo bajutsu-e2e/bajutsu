@@ -15,9 +15,9 @@ from __future__ import annotations
 import pytest
 
 from bajutsu.common.orchestrator import _action_of, run_scenario
+from bajutsu.common.scenario import load_scenarios
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.scenario import load_scenarios
 
 
 def _select(value: str) -> base.Element:

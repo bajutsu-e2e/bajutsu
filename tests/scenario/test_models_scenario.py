@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from bajutsu.scenario import (
+from bajutsu.common.scenario import (
     Scenario,
     SystemAlertHandling,
     dump_scenarios,

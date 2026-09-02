@@ -45,7 +45,7 @@ def test_base_loader_keeps_yaml_1_1_bools() -> None:
 def test_safe_dump_emits_plain_booleans() -> None:
     # The dump side shares the resolver: `yaml.safe_dump`'s `SafeDumper` re-resolves each scalar to
     # pick its style, so with bool resolution stripped the emitter fell back to `!!bool 'false'` in
-    # every recorded scenario (`bajutsu/scenario/serialize.py`). Every other serialize test
+    # every recorded scenario (`bajutsu/common/scenario/serialize.py`). Every other serialize test
     # round-trips through `load_scenarios`, which accepts `!!bool 'false'` too — nothing else pins
     # the emitted form.
     assert _yaml.safe_dump({"erase": False, "negate": True}) == "erase: false\nnegate: true\n"

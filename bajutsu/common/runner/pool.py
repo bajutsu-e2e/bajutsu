@@ -26,6 +26,7 @@ from bajutsu.common.orchestrator.evidence_rules import requested_intervals
 from bajutsu.common.runner.launch import launch_driver
 from bajutsu.common.runner.recovery import guarded_teardown
 from bajutsu.common.runner.types import Lease, LeaseFn
+from bajutsu.common.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.evidence import FileSink
@@ -43,7 +44,6 @@ from bajutsu.platform_lifecycle import (
     environment_for,
 )
 from bajutsu.report import git_revision, run_provenance
-from bajutsu.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 from bajutsu.webview import WebViewBridge
 
 __all__ = ["device_control", "device_pool", "device_relauncher"]

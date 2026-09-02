@@ -5,9 +5,9 @@ from __future__ import annotations
 import time
 
 from bajutsu.common.orchestrator.actions._registry import _handler
+from bajutsu.common.scenario import Step
 from bajutsu.common.totp import totp as _totp
 from bajutsu.drivers import base
-from bajutsu.scenario import Step
 
 
 @_handler("totp")

@@ -23,6 +23,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
+from bajutsu.common.scenario import Preconditions, Scenario
 from bajutsu.config import Effective, require_ios
 from bajutsu.crawl import Reset
 from bajutsu.drivers import base
@@ -34,7 +35,6 @@ from bajutsu.drivers.xcuitest_live import (
     _raw_wd_transport,
 )
 from bajutsu.platform_lifecycle.environments.ios import _DeviceEnvironment
-from bajutsu.scenario import Preconditions, Scenario
 
 
 def is_webdriver_endpoint(udid: str) -> bool:

@@ -24,12 +24,12 @@ from bajutsu.common.orchestrator import (
     _wait,
 )
 from bajutsu.common.orchestrator.types import SelectionState
+from bajutsu.common.scenario import Assertion, Scenario, Selector, Step
+from bajutsu.common.scenario.models.actions import bypass_hint
 from bajutsu.crawl import screen_identity
 from bajutsu.drivers import base
 from bajutsu.elements import shows_app_ui
 from bajutsu.handoff import Handoff, HandoffRequest, HumanHandoffUnavailable
-from bajutsu.scenario import Assertion, Scenario, Selector, Step
-from bajutsu.scenario.models.actions import bypass_hint
 from bajutsu.screenshots import screenshot_bytes
 
 _logger = logging.getLogger(__name__)

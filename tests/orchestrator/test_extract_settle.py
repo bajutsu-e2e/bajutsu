@@ -20,9 +20,9 @@ from _orch import FakeClock, _scenario
 from conftest import el
 
 from bajutsu.common.orchestrator import run_scenario
+from bajutsu.common.scenario import Scenario
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.scenario import Scenario
 
 _FLOOR = "BAJUTSU_MIN_WAIT_TIMEOUT"
 

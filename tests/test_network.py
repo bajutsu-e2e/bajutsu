@@ -14,8 +14,17 @@ from typing import Any
 
 import pytest
 
-from bajutsu.assertions import EvalContext, evaluate, evaluate_one
+from bajutsu.common.assertions import EvalContext, evaluate, evaluate_one
 from bajutsu.common.orchestrator import run_scenario
+from bajutsu.common.scenario import (
+    Assertion,
+    CountOp,
+    EventMatch,
+    RequestMatch,
+    ResponseSchemaMatch,
+    dump_mocks,
+    load_scenarios,
+)
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence import network
 from bajutsu.evidence.network import (
@@ -24,15 +33,6 @@ from bajutsu.evidence.network import (
     NetworkCollector,
     NetworkExchange,
     ScreenTransition,
-)
-from bajutsu.scenario import (
-    Assertion,
-    CountOp,
-    EventMatch,
-    RequestMatch,
-    ResponseSchemaMatch,
-    dump_mocks,
-    load_scenarios,
 )
 
 
@@ -160,7 +160,7 @@ def test_assign_requests_reports_match_candidacy() -> None:
     # `_assign_requests` already knows, per matcher, which exchanges it matches (its adjacency).
     # It returns that "matched at least one exchange" flag alongside the assignment so the caller
     # never has to re-scan every exchange to explain an unassigned matcher (the N+1 it removes).
-    from bajutsu.assertions.network import _assign_requests
+    from bajutsu.common.assertions.network import _assign_requests
 
     exs = [_ex("GET", "/a", 200), _ex("POST", "/b", 200)]
     reqs = [RequestMatch(method="GET"), RequestMatch(method="DELETE")]
@@ -328,7 +328,7 @@ def _rs(schema_path: str, **req: Any) -> Assertion:
 
 
 def test_response_schema_passes_for_conforming_body(tmp_path: Path) -> None:
-    from bajutsu.assertions import SchemaContext
+    from bajutsu.common.assertions import SchemaContext
 
     d = _schemas_dir(
         tmp_path,
@@ -346,7 +346,7 @@ def test_response_schema_passes_for_conforming_body(tmp_path: Path) -> None:
 
 
 def test_response_schema_fails_for_nonconforming_body(tmp_path: Path) -> None:
-    from bajutsu.assertions import SchemaContext
+    from bajutsu.common.assertions import SchemaContext
 
     d = _schemas_dir(
         tmp_path,
@@ -364,7 +364,7 @@ def test_response_schema_fails_for_nonconforming_body(tmp_path: Path) -> None:
 
 
 def test_response_schema_no_matching_exchange(tmp_path: Path) -> None:
-    from bajutsu.assertions import SchemaContext
+    from bajutsu.common.assertions import SchemaContext
 
     d = _schemas_dir(tmp_path, "x.json", {"type": "object"})
     r = evaluate_one(
@@ -377,7 +377,7 @@ def test_response_schema_no_matching_exchange(tmp_path: Path) -> None:
 
 
 def test_response_schema_missing_schema_file(tmp_path: Path) -> None:
-    from bajutsu.assertions import SchemaContext
+    from bajutsu.common.assertions import SchemaContext
 
     (tmp_path / "schemas").mkdir()
     exs = [_ex("GET", "/api/items", response_body="{}")]
@@ -391,7 +391,7 @@ def test_response_schema_missing_schema_file(tmp_path: Path) -> None:
 
 
 def test_response_schema_non_json_body(tmp_path: Path) -> None:
-    from bajutsu.assertions import SchemaContext
+    from bajutsu.common.assertions import SchemaContext
 
     d = _schemas_dir(tmp_path, "x.json", {"type": "object"})
     exs = [_ex("GET", "/api/items", response_body="not json")]
@@ -405,7 +405,7 @@ def test_response_schema_non_json_body(tmp_path: Path) -> None:
 
 
 def test_response_schema_malformed_schema_fails_cleanly(tmp_path: Path) -> None:
-    from bajutsu.assertions import SchemaContext
+    from bajutsu.common.assertions import SchemaContext
 
     # An unresolvable $ref must fail the assertion loudly, not crash the run.
     d = _schemas_dir(tmp_path, "bad.json", {"$ref": "#/definitions/missing"})
@@ -426,7 +426,7 @@ def test_response_schema_without_context_fails() -> None:
 
 
 def test_response_schema_rejects_path_traversal(tmp_path: Path) -> None:
-    from bajutsu.assertions import SchemaContext
+    from bajutsu.common.assertions import SchemaContext
 
     # a `..` escape (or an absolute path) must be rejected, not read outside the schemas dir
     d = _schemas_dir(tmp_path, "ok.json", {"type": "object"})

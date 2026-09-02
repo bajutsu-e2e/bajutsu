@@ -19,9 +19,9 @@ import yaml
 
 from bajutsu import simctl as _simctl
 from bajutsu.common.backends import KNOWN_ACTUATORS, PLATFORMS
+from bajutsu.common.scenario import load_scenario_file
 from bajutsu.config import Config, IosConfig, resolve
 from bajutsu.device_id import is_valid_device_id
-from bajutsu.scenario import load_scenario_file
 from bajutsu.serve.capabilities import required_capabilities
 from bajutsu.serve.orgs import OrgConfig, load_serve_config
 

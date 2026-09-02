@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu.scenario import (
+from bajutsu.common.scenario import (
     Scenario,
     Selector,
     Step,

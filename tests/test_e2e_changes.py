@@ -64,15 +64,15 @@ def test_run_path_top_level_modules_are_relevant() -> None:
     # protocols, crawl core, handoff). Under the BE-0333 inverted default these fire because the
     # shared core sweeps `bajutsu/` and none of them is a classified periphery exclusion.
     for module in (
-        "bajutsu/interp.py",
+        "bajutsu/common/scenario/interp.py",
         # assertions is a package (BE-0250); the whole package is on the run path, so every
         # module under it triggers — not just a single-file `assertions.py`.
-        "bajutsu/assertions/__init__.py",
-        "bajutsu/assertions/evaluate.py",
-        "bajutsu/assertions/visual.py",
-        "bajutsu/assertions/network.py",
-        "bajutsu/assertions/schema.py",
-        "bajutsu/assertions/_common.py",
+        "bajutsu/common/assertions/__init__.py",
+        "bajutsu/common/assertions/evaluate.py",
+        "bajutsu/common/assertions/visual.py",
+        "bajutsu/common/assertions/network.py",
+        "bajutsu/common/assertions/schema.py",
+        "bajutsu/common/assertions/_common.py",
         "bajutsu/elements.py",
         "bajutsu/evidence/visual.py",
         "bajutsu/evidence/golden.py",
@@ -232,8 +232,8 @@ def test_shared_run_path_is_relevant_on_every_lane() -> None:
     # the assertions package, and the shared deps.
     for lane in ("ios", "android", "web"):
         assert is_relevant(["bajutsu/common/runner/pipeline.py"], lane) is True, lane
-        assert is_relevant(["bajutsu/interp.py"], lane) is True, lane
-        assert is_relevant(["bajutsu/assertions/evaluate.py"], lane) is True, lane
+        assert is_relevant(["bajutsu/common/scenario/interp.py"], lane) is True, lane
+        assert is_relevant(["bajutsu/common/assertions/evaluate.py"], lane) is True, lane
         assert is_relevant(["tests/driver_conformance.py"], lane) is True, lane
         # The onboarding-gate assertion every lane's `doctor` step runs (BE-0304).
         assert is_relevant(["scripts/assert_doctor_env.py"], lane) is True, lane
@@ -640,15 +640,16 @@ def test_relative_imports_resolve_to_absolute() -> None:
     # The closure walk must follow `from . import x` / `from .mod import y` edges (the codebase has
     # none today, but Unit 2 exists to survive that drift). A `__init__.py` resolving a relative import
     # to `bajutsu.common.agents.__init__.factory` instead of `bajutsu.common.agents.factory` would silently drop the
-    # run-path file behind it — the exact miss this check guards against. `common/agents/` sits two
-    # packages below `bajutsu`, so reaching the top-level `runner` sibling takes three dots, not two.
+    # run-path file behind it — the exact miss this check guards against. `common/agents/` and
+    # `common/runner/` are both one package below `common`, so reaching the `runner` sibling takes
+    # two dots, not three.
     found = _imports_from_source(
         "bajutsu/common/agents/__init__.py",
-        "from . import protocols\nfrom .factory import make_agent\nfrom ...runner import pipeline\n",
+        "from . import protocols\nfrom .factory import make_agent\nfrom ..runner import pipeline\n",
     )
     assert "bajutsu.common.agents.protocols" in found
     assert "bajutsu.common.agents.factory" in found
-    assert "bajutsu.runner.pipeline" in found
+    assert "bajutsu.common.runner.pipeline" in found
     assert not any("__init__" in name for name in found), found
 
 
@@ -834,7 +835,7 @@ def test_changed_files_uses_merge_base_not_branch_tips(
 ) -> None:
     # The bug this fixes: `base` is the base-branch tip, and when it has advanced past the PR's fork
     # point a two-dot `git diff base head` reports every file main touched meanwhile — so an
-    # unrelated bajutsu/runner change on main would trip the filter on a roadmap-only PR. A
+    # unrelated bajutsu/common/runner change on main would trip the filter on a roadmap-only PR. A
     # three-dot (merge-base) diff yields only the PR's own changes.
     _init_repo(tmp_path, monkeypatch)
     _commit(tmp_path, "README.md", "seed")

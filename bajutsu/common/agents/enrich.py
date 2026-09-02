@@ -12,9 +12,9 @@ from collections.abc import Callable
 from bajutsu.common.agents.protocols import EnrichmentAgent, EnrichmentProposal, StepContext
 from bajutsu.common.orchestrator import BlockedHandler, Clock, RealClock
 from bajutsu.common.orchestrator.types import SelectionState
+from bajutsu.common.scenario import Scenario
 from bajutsu.drivers import base
 from bajutsu.record import clear_blocking, execute
-from bajutsu.scenario import Scenario
 from bajutsu.screenshots import screenshot_bytes
 
 Reporter = Callable[[str], None]

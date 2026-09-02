@@ -23,11 +23,11 @@ from typing import Any
 import pytest
 import yaml
 
+from bajutsu.common.scenario import load_scenario_file
+from bajutsu.common.scenario.models import Gone, Scenario, WaitRequest
+from bajutsu.common.scenario.models.evidence import Redact
 from bajutsu.evidence.network import NetworkExchange
 from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
-from bajutsu.scenario import load_scenario_file
-from bajutsu.scenario.models import Gone, Scenario, WaitRequest
-from bajutsu.scenario.models.evidence import Redact
 from demos.showcase.network.assert_network_evidence import (
     _BODY_SECRET,
     _HEADER_SECRET,

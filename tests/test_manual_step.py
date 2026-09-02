@@ -8,9 +8,9 @@ dispatch against the fake driver.
 from __future__ import annotations
 
 from bajutsu.common.orchestrator import run_scenario
+from bajutsu.common.scenario import load_scenarios
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.scenario import load_scenarios
 
 
 def _run(spec: str) -> tuple[bool, list[tuple[str, object]], str | None]:

@@ -18,13 +18,13 @@ from bajutsu.common.runner import (
     device_pool,
     device_relauncher,
 )
+from bajutsu.common.scenario import Relaunch, Scenario
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver, FakeNetworkCollector
 from bajutsu.evidence import FileSink
 from bajutsu.evidence.network import NetworkCollector, NetworkExchange, ScreenTransition
 from bajutsu.platform_lifecycle import ProvisionProfile
-from bajutsu.scenario import Relaunch, Scenario
 from bajutsu.webview import WebViewBridge
 
 
