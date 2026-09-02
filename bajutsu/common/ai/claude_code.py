@@ -25,8 +25,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from bajutsu.agents.ai_config import AiConfig, resolve_effort, resolve_model
-from bajutsu.ai.base import (
+from bajutsu.common.agents.ai_config import AiConfig, resolve_effort, resolve_model
+from bajutsu.common.ai.base import (
     AnyTool,
     ContentBlock,
     ImagePart,

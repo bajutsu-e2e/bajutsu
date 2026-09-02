@@ -1,12 +1,12 @@
 """Anthropic reference adapter for the vendor-neutral AI seam (BE-0104).
 
-The first adapter behind `bajutsu.ai.base.AiBackend`. It wraps the existing
+The first adapter behind `bajutsu.common.ai.base.AiBackend`. It wraps the existing
 `anthropic_client.make_client`, so the Anthropic API *and* Amazon Bedrock both stay covered by this
 one adapter (Bedrock is an Anthropic-SDK variant — BE-0053). It translates a neutral
 `MessageRequest` into an Anthropic Messages API call and the Anthropic reply back into neutral
 content blocks; behavior is unchanged from the pre-BE-0104 call sites (the model id is resolved by
 the caller with `resolve_model`). This adapter also owns the Anthropic-family `credential_gap`
-(BE-0047 / BE-0053 / BE-0163), which `bajutsu.ai.registry.credential_gap` dispatches to (BE-0246).
+(BE-0047 / BE-0053 / BE-0163), which `bajutsu.common.ai.registry.credential_gap` dispatches to (BE-0246).
 """
 
 from __future__ import annotations
@@ -15,9 +15,9 @@ import base64
 import os
 from typing import Any
 
-from bajutsu.agents.ai_config import BEDROCK_MODEL_ENV, AiConfig, resolve_provider
-from bajutsu.agents.anthropic_client import ant_credential_gap, key_env, make_client
-from bajutsu.ai.base import (
+from bajutsu.common.agents.ai_config import BEDROCK_MODEL_ENV, AiConfig, resolve_provider
+from bajutsu.common.agents.anthropic_client import ant_credential_gap, key_env, make_client
+from bajutsu.common.ai.base import (
     AnyTool,
     ContentBlock,
     ContentPart,
@@ -106,7 +106,7 @@ def credential_gap(ai: AiConfig | None = None) -> str | None:
     """What the Anthropic-family provider is missing to authenticate, or ``None`` when it can.
 
     The Anthropic adapter's half of the BE-0047 credential check, dispatched to per provider by
-    `bajutsu.ai.registry.credential_gap` (the single public entry point; `claude-code` has its own).
+    `bajutsu.common.ai.registry.credential_gap` (the single public entry point; `claude-code` has its own).
     The ``api-key`` provider needs the key named by ``ai.keyEnv`` (default ``ANTHROPIC_API_KEY``);
     Bedrock authenticates with the standard AWS credential chain (env / shared profile / instance or
     task role — resolved by the SDK, not checked here) and needs a provider-prefixed model id

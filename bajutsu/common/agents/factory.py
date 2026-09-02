@@ -11,10 +11,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from bajutsu.agents.protocols import Agent, EnrichmentAgent
+from bajutsu.common.agents.protocols import Agent, EnrichmentAgent
 
 if TYPE_CHECKING:
-    from bajutsu.agents.ai_config import AiConfig
+    from bajutsu.common.agents.ai_config import AiConfig
     from bajutsu.common.evidence.redaction import Redactor
 
 
@@ -28,7 +28,7 @@ def make_agent(
     Honors the resolved `ai` config (provider/model/endpoint/credential) and redacts its textual
     model inputs through `redactor` (BE-0047).
     """
-    from bajutsu.agents.claude import ClaudeAgent
+    from bajutsu.common.agents.claude import ClaudeAgent
 
     return ClaudeAgent(ai=ai, redactor=redactor)
 
@@ -39,6 +39,6 @@ def make_enrichment_agent(
     redactor: Redactor | None = None,
 ) -> EnrichmentAgent:
     """Construct the enrichment agent (BE-0014)."""
-    from bajutsu.agents.claude_enrich import ClaudeEnrichmentAgent
+    from bajutsu.common.agents.claude_enrich import ClaudeEnrichmentAgent
 
     return ClaudeEnrichmentAgent(ai=ai, redactor=redactor)

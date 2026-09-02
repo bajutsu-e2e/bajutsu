@@ -26,8 +26,8 @@ from typing import TYPE_CHECKING, Any
 
 from bajutsu import device_os
 from bajutsu import simctl as _simctl
-from bajutsu.agents.ai_config import PROVIDER_MANAGED_ENV
 from bajutsu.cancellation import GRACE_ENV, grace_seconds
+from bajutsu.common.agents.ai_config import PROVIDER_MANAGED_ENV
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.handoff import REQUEST_LINE_PREFIX as _HANDOFF_REQUEST_PREFIX

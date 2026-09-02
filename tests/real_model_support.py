@@ -20,9 +20,9 @@ from typing import Any
 import pytest
 
 from bajutsu import crawl
-from bajutsu.agents.protocols import Proposal
-from bajutsu.ai import credential_gap
-from bajutsu.ai.base import AiBackend, MessageRequest, MessageResponse, ToolUseBlock
+from bajutsu.common.agents.protocols import Proposal
+from bajutsu.common.ai import credential_gap
+from bajutsu.common.ai.base import AiBackend, MessageRequest, MessageResponse, ToolUseBlock
 from bajutsu.common.evidence.golden import load_golden
 from bajutsu.crawl import guide
 from bajutsu.drivers import base

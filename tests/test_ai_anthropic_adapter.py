@@ -13,8 +13,8 @@ import base64
 
 from conftest import FakeAnthropic, FakeBlock
 
-from bajutsu.ai.anthropic import AnthropicBackend
-from bajutsu.ai.base import (
+from bajutsu.common.ai.anthropic import AnthropicBackend
+from bajutsu.common.ai.base import (
     AnyTool,
     ImagePart,
     Message,

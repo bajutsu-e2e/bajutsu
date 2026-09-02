@@ -30,7 +30,6 @@ import typer
 
 from bajutsu import crawl as crawl_engine
 from bajutsu import device_errors
-from bajutsu.ai import announce_ai
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _ai_redactor,
@@ -45,6 +44,7 @@ from bajutsu.cli._shared import (
     _with_headed,
     resolve_system_alert_handling_flag,
 )
+from bajutsu.common.ai import announce_ai
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.config import Effective, web_base_url

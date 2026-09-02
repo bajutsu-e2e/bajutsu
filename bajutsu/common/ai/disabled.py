@@ -7,7 +7,7 @@ same behavior, but it lives nowhere a reviewer can read and a key exported for `
 re-enables the vision alert fallback for every `run` in the same shell.
 
 The adapter is deliberately inert, and the raise is what makes the setting fail closed rather than
-merely quiet: `bajutsu.ai.registry.create_backend` is the single construction seam every AI path
+merely quiet: `bajutsu.common.ai.registry.create_backend` is the single construction seam every AI path
 reaches, so a call site that skipped the credential check gets an exception instead of a silent round
 trip. The deterministic native alert path (BE-0315) is untouched — it needs no credential, so a `run`
 under this provider keeps clearing the prompts it can and only loses the vision fallback.
@@ -15,8 +15,8 @@ under this provider keeps clearing the prompts it can and only loses the vision 
 
 from __future__ import annotations
 
-from bajutsu.agents.ai_config import AiConfig
-from bajutsu.ai.base import AiBackend
+from bajutsu.common.agents.ai_config import AiConfig
+from bajutsu.common.ai.base import AiBackend
 
 # The credential-gap token this provider reports. Every consumer of `credential_gap` already fails
 # closed on a non-None value (BE-0047), so registering the provider gives each surface the right
