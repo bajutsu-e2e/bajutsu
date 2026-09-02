@@ -34,7 +34,7 @@ from pathlib import Path
 from cases import Case, load_cases
 from grade import CaseReport, Grade, OpResult, grade
 
-from bajutsu.scenario import Scenario, load_scenario_file
+from bajutsu.common.scenario import Scenario, load_scenario_file
 
 _ROOT = Path(__file__).resolve().parents[4]
 _DEFAULT_CONFIG = _ROOT / "demos" / "showcase" / "showcase.config.yaml"

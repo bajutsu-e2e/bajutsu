@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 import pytest
 
-from bajutsu.scenario import (
+from bajutsu.common.scenario import (
     Component,
     expand_components,
     load_component,

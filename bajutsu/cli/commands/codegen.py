@@ -8,7 +8,7 @@ import typer
 
 from bajutsu.cli._shared import DEFAULT_CONFIG, _load_effective
 from bajutsu.codegen import EMIT_TARGETS, CodegenError, generate_test
-from bajutsu.scenario import load_scenarios
+from bajutsu.common.scenario import load_scenarios
 
 
 def codegen(

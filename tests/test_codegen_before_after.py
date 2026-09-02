@@ -14,7 +14,7 @@ from bajutsu.codegen.common import CodegenError
 from bajutsu.codegen.playwright import to_playwright
 from bajutsu.codegen.uiautomator import to_uiautomator
 from bajutsu.codegen.xcuitest import to_xcuitest
-from bajutsu.scenario import Scenario, load_scenarios
+from bajutsu.common.scenario import Scenario, load_scenarios
 
 _LIFECYCLE = """
 - name: lifecycle

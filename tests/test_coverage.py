@@ -31,10 +31,10 @@ from bajutsu.analysis.coverage import (
     screen_refs,
 )
 from bajutsu.cli import app
+from bajutsu.common.scenario import load_scenarios
 from bajutsu.crawl import fingerprint as screen_fingerprint
 from bajutsu.drivers import base
 from bajutsu.evidence.network import NetworkExchange
-from bajutsu.scenario import load_scenarios
 
 runner = CliRunner()
 

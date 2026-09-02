@@ -19,9 +19,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel
 
-from bajutsu.drivers import base
-from bajutsu.evidence import step_view
-from bajutsu.scenario import (
+from bajutsu.common.scenario import (
     Assertion,
     Gone,
     Selector,
@@ -31,6 +29,8 @@ from bajutsu.scenario import (
     dump_scenarios,
     load_scenarios,
 )
+from bajutsu.drivers import base
+from bajutsu.evidence import step_view
 
 _ACT_TARGETS = (
     "tap",

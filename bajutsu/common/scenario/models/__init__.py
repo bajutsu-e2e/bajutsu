@@ -13,14 +13,14 @@ assertion, or evidence rule adds to one focused module instead of a single large
 - ``mocks``      — deterministic network stubs
 - ``scenario``   — preconditions, the scenario, its component, the scenario-file wrapper
 
-The full public API is re-exported here, so ``from bajutsu.scenario.models import X`` (and
-``from bajutsu.scenario import X``) keep working unchanged.
+The full public API is re-exported here, so ``from bajutsu.common.scenario.models import X`` (and
+``from bajutsu.common.scenario import X``) keep working unchanged.
 """
 
 from __future__ import annotations
 
-from bajutsu.scenario.models._base import Point
-from bajutsu.scenario.models.actions import (
+from bajutsu.common.scenario.models._base import Point
+from bajutsu.common.scenario.models.actions import (
     Background,
     ClearClipboard,
     ClearKeychain,
@@ -53,8 +53,8 @@ from bajutsu.scenario.models.actions import (
     TypeText,
     VarTarget,
 )
-from bajutsu.scenario.models.assertions import _ASSERTION_KINDS as ASSERTION_KINDS
-from bajutsu.scenario.models.assertions import (
+from bajutsu.common.scenario.models.assertions import _ASSERTION_KINDS as ASSERTION_KINDS
+from bajutsu.common.scenario.models.assertions import (
     Assertion,
     ClipboardMatch,
     CountMatch,
@@ -72,15 +72,15 @@ from bajutsu.scenario.models.assertions import (
     Wait,
     WaitRequest,
 )
-from bajutsu.scenario.models.evidence import (
+from bajutsu.common.scenario.models.evidence import (
     CaptureRule,
     Network,
     NetworkFilter,
     Redact,
     Trigger,
 )
-from bajutsu.scenario.models.mocks import Mock, MockResponse
-from bajutsu.scenario.models.scenario import (
+from bajutsu.common.scenario.models.mocks import Mock, MockResponse
+from bajutsu.common.scenario.models.scenario import (
     Component,
     Preconditions,
     Scenario,
@@ -89,9 +89,9 @@ from bajutsu.scenario.models.scenario import (
     SystemAlertHandlingField,
     SystemAlertRule,
 )
-from bajutsu.scenario.models.selector import Selector
-from bajutsu.scenario.models.steps import _STEP_ACTIONS as STEP_ACTIONS
-from bajutsu.scenario.models.steps import (
+from bajutsu.common.scenario.models.selector import Selector
+from bajutsu.common.scenario.models.steps import _STEP_ACTIONS as STEP_ACTIONS
+from bajutsu.common.scenario.models.steps import (
     AfterRule,
     Extract,
     ForEach,

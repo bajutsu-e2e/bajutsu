@@ -98,7 +98,7 @@ class Capability:
 
 
 # The permission vocabulary a scenario's `permissions` field may name (BE-0276); imported directly
-# by `bajutsu.scenario.models.scenario.Scenario`'s `permissions` field validator rather than
+# by `bajutsu.common.scenario.models.scenario.Scenario`'s `permissions` field validator rather than
 # duplicated there, since the scenario models already depend on this module.
 PERMISSION_SERVICES: tuple[str, ...] = (
     "location",

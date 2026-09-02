@@ -22,7 +22,7 @@ sys.path.insert(0, str(_HERE.parent))
 from generate_from_nl import author  # noqa: E402  (parent-dir offline demo)
 from grade import ExpectedOp, Grade, grade  # noqa: E402
 
-from bajutsu.scenario import Scenario, Step  # noqa: E402
+from bajutsu.common.scenario import Scenario, Step  # noqa: E402
 
 
 def _check(name: str, ok: bool, detail: str = "") -> bool:
