@@ -1,0 +1,19 @@
+# Search: typing a query into the header search box surfaces matching result links.
+# This exercises the `type` step and an async condition wait — the search index is fetched on
+# first interaction, so the wait polls until results render (never a fixed sleep). It is the
+# most network-sensitive scenario here; if the live search index is slow or unavailable it may
+# time out. Drop this file for a purely offline-robust suite (smoke + navigation).
+description: >-
+  Docs-site search — typing "selector" into the header search box surfaces a matching result
+  link. Exercises text entry plus an async condition wait on the search index.
+scenarios:
+  - name: header search surfaces matching results
+    description: Type a query into the search input, then assert a matching result link appears.
+    steps:
+      - wait: { for: { label: "Get started" }, timeout: 15 }
+      # The header search box is the page's lone text input; `into` focuses it before typing.
+      - type: { text: "selector", into: { traits: [textField] } }
+      # Poll until a live suggestion whose text mentions the query renders (index loads async).
+      - wait: { for: { labelMatches: "[Ss]elector" }, timeout: 15 }
+    expect:
+      - exists: { labelMatches: "[Ss]elector" }
