@@ -10,8 +10,8 @@ from __future__ import annotations
 from conftest import FakeBackend, FakeBlock, ShotDriver, el
 
 from bajutsu import crawl
-from bajutsu.agents.ai_config import AiConfig
-from bajutsu.ai.base import TextPart
+from bajutsu.common.agents.ai_config import AiConfig
+from bajutsu.common.ai.base import TextPart
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.crawl import tabs as crawl_tabs

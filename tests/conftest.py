@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from bajutsu.ai.base import MessageRequest, MessageResponse, ToolUseBlock
 from bajutsu.analytics import ledger as usage_ledger
+from bajutsu.common.ai.base import MessageRequest, MessageResponse, ToolUseBlock
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.evidence.sink import RunArtifactWriter

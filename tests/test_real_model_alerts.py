@@ -52,8 +52,8 @@ from alert_fixture_support import (
 )
 from real_model_support import requires_credential
 
-from bajutsu.agents.alerts import AlertDecision, ClaudeAlertLocator
-from bajutsu.ai import create_backend
+from bajutsu.common.agents.alerts import AlertDecision, ClaudeAlertLocator
+from bajutsu.common.ai import create_backend
 from bajutsu.common.drivers.elements import screen_size_from_elements
 
 _SCREEN = (402.0, 874.0)

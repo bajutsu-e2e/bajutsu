@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from conftest import FakeBackend, FakeBlock
 
-from bajutsu.agents.claude_enrich import ClaudeEnrichmentAgent, _render_enrichment
-from bajutsu.agents.protocols import StepContext
-from bajutsu.ai.base import ImagePart, NamedTool, TextPart
+from bajutsu.common.agents.claude_enrich import ClaudeEnrichmentAgent, _render_enrichment
+from bajutsu.common.agents.protocols import StepContext
+from bajutsu.common.ai.base import ImagePart, NamedTool, TextPart
 from bajutsu.common.drivers import base
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.scenario import Redact, Scenario, Step
@@ -65,7 +65,7 @@ def test_propose_assertions_returns_enrichment_proposal() -> None:
 
 def test_output_language_is_folded_into_the_enrichment_prompt() -> None:
     # BE-0188: enrichment's generated prose (the assertion `intent` / `note`) follows `ai.language`.
-    from bajutsu.agents.ai_config import AiConfig
+    from bajutsu.common.agents.ai_config import AiConfig
 
     block = FakeBlock(
         "propose_assertions",

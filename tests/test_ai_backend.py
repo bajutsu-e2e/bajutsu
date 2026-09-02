@@ -15,10 +15,10 @@ from typing import Any
 import pytest
 from conftest import FakeBlock
 
-from bajutsu.agents.ai_config import AiConfig
-from bajutsu.agents.claude import ClaudeAgent
-from bajutsu.agents.protocols import Observation
-from bajutsu.ai import (
+from bajutsu.common.agents.ai_config import AiConfig
+from bajutsu.common.agents.claude import ClaudeAgent
+from bajutsu.common.agents.protocols import Observation
+from bajutsu.common.ai import (
     base,
     create_backend,
     credential_gap,
@@ -26,7 +26,7 @@ from bajutsu.ai import (
     known_providers,
     selectable_providers,
 )
-from bajutsu.ai.base import (
+from bajutsu.common.ai.base import (
     AnyTool,
     Message,
     MessageRequest,
@@ -36,7 +36,7 @@ from bajutsu.ai.base import (
     ToolDef,
     ToolUseBlock,
 )
-from bajutsu.ai.registry import Adapter, register
+from bajutsu.common.ai.registry import Adapter, register
 from bajutsu.common.drivers import base as drivers_base
 from bajutsu.config import AiSettings
 from bajutsu.evidence.redaction import Redactor
@@ -63,7 +63,7 @@ class RecordingBackend:
 @pytest.fixture
 def fake_provider() -> Iterator[RecordingBackend]:
     """Register a fake provider `test-fake` for the test, then remove it (global registry)."""
-    from bajutsu.ai import registry
+    from bajutsu.common.ai import registry
 
     backend = RecordingBackend(FakeBlock("tap", {"id": "a"}))
     register("test-fake", Adapter(factory=lambda ai: backend, credential_gap=lambda ai: None))
@@ -99,7 +99,7 @@ def test_builtin_providers_are_registered() -> None:
 def test_builtins_survive_an_adapter_registered_first() -> None:
     # A third-party/test adapter registering before first use must not suppress the built-ins
     # (the guard keys on the built-in names, not on the registry being non-empty).
-    from bajutsu.ai import registry
+    from bajutsu.common.ai import registry
 
     saved = dict(registry._ADAPTERS)
     sentinel = Adapter(factory=lambda ai: object(), credential_gap=lambda ai: None)  # type: ignore[arg-type,return-value]
@@ -117,7 +117,7 @@ def test_builtins_survive_an_adapter_registered_first() -> None:
 
 
 def test_create_backend_defaults_to_the_anthropic_adapter() -> None:
-    from bajutsu.ai.anthropic import AnthropicBackend
+    from bajutsu.common.ai.anthropic import AnthropicBackend
 
     assert isinstance(create_backend(), AnthropicBackend)
     assert isinstance(create_backend(AiConfig(provider="bedrock")), AnthropicBackend)
@@ -127,8 +127,8 @@ def test_create_backend_defaults_to_the_anthropic_adapter() -> None:
 
 def test_claude_code_resolves_to_its_own_adapter() -> None:
     # `claude-code` (BE-0176) is a separate adapter, not another alias on the shared Anthropic one.
-    from bajutsu.ai.anthropic import AnthropicBackend
-    from bajutsu.ai.claude_code import ClaudeCodeBackend
+    from bajutsu.common.ai.anthropic import AnthropicBackend
+    from bajutsu.common.ai.claude_code import ClaudeCodeBackend
 
     backend = create_backend(AiConfig(provider="claude-code"))
     assert isinstance(backend, ClaudeCodeBackend)
@@ -163,7 +163,7 @@ def test_none_refuses_to_construct_a_backend(monkeypatch: Any) -> None:
 
 def test_none_announces_no_model() -> None:
     # No surface that discloses the provider may name a model that will never be used.
-    from bajutsu.ai.registry import announcement
+    from bajutsu.common.ai.registry import announcement
 
     assert announcement("claude-opus-4-8", AiConfig(provider="none")) == [
         "🤖 AI: disabled (ai.provider: none)"
@@ -174,7 +174,7 @@ def test_none_announces_no_model() -> None:
 
 
 def test_announcement_is_provider_specific() -> None:
-    from bajutsu.ai.registry import announcement
+    from bajutsu.common.ai.registry import announcement
 
     # The Anthropic SDK (default `api-key`) has no reasoning-effort knob, so its line names only the
     # provider and resolved model — one line, no effort, no auth disclosure.
@@ -189,7 +189,7 @@ def test_announcement_is_provider_specific() -> None:
 
 
 def test_announce_ai_pushes_each_line_to_the_report_sink() -> None:
-    from bajutsu.ai import announce_ai
+    from bajutsu.common.ai import announce_ai
 
     lines: list[str] = []
     announce_ai(lines.append, default_model="claude-opus-4-8", ai=AiConfig(provider="claude-code"))
@@ -197,7 +197,7 @@ def test_announce_ai_pushes_each_line_to_the_report_sink() -> None:
 
 
 def test_credential_gap_dispatches_to_the_resolved_provider(monkeypatch: Any) -> None:
-    from bajutsu.agents import anthropic_client
+    from bajutsu.common.agents import anthropic_client
 
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     # api-key without a key, and Bedrock without a model id, each report their own gap token.
@@ -210,7 +210,7 @@ def test_credential_gap_dispatches_to_the_resolved_provider(monkeypatch: Any) ->
     monkeypatch.setattr(shutil, "which", lambda _exe: None)
     assert credential_gap(AiConfig(provider="ant")) == anthropic_client.ANT_CLI_MISSING
     # `claude-code` (BE-0176) dispatches to its own adapter's gap: the `claude` binary is absent.
-    from bajutsu.ai import claude_code
+    from bajutsu.common.ai import claude_code
 
     monkeypatch.setattr(shutil, "which", lambda _exe: None)
     assert credential_gap(AiConfig(provider="claude-code")) == claude_code.CLI_MISSING
@@ -341,4 +341,4 @@ def test_redaction_happens_before_the_adapter(fake_provider: RecordingBackend) -
 def test_module_reexports_the_neutral_types() -> None:
     # The package surface is Bajutsu's own types, not a vendor SDK re-export.
     assert base.MessageRequest is MessageRequest
-    assert base.AiBackend.__module__ == "bajutsu.ai.base"
+    assert base.AiBackend.__module__ == "bajutsu.common.ai.base"
