@@ -1,6 +1,6 @@
 """Unit tests for the shared AI-path prompt fragments (BE-0246 Unit 5)."""
 
-from bajutsu.ai.prompts import NEVER_JUDGE_BOUNDARY, render_elements
+from bajutsu.common.ai.prompts import NEVER_JUDGE_BOUNDARY, render_elements
 
 
 def _el(

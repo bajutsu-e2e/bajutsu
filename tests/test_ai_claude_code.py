@@ -16,8 +16,8 @@ from typing import Any
 
 import pytest
 
-from bajutsu.ai import claude_code
-from bajutsu.ai.base import (
+from bajutsu.common.ai import claude_code
+from bajutsu.common.ai.base import (
     AnyTool,
     ImagePart,
     Message,

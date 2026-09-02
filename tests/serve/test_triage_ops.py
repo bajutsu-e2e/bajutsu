@@ -88,7 +88,7 @@ def test_start_triage_run_not_found(tmp_path: Path) -> None:
 
 
 def test_start_triage_ai_requires_a_credential(tmp_path: Path, monkeypatch: Any) -> None:
-    import bajutsu.ai as ai
+    import bajutsu.common.ai as ai
 
     monkeypatch.setattr(ai, "credential_gap", lambda _ai: "anthropic-key")
     state = _state(tmp_path)
@@ -171,7 +171,7 @@ def test_start_triage_ai_string_false_stays_heuristic(tmp_path: Path) -> None:
 
 
 def test_start_triage_ai_job_opts_in_with_target(tmp_path: Path, monkeypatch: Any) -> None:
-    import bajutsu.ai as ai
+    import bajutsu.common.ai as ai
 
     monkeypatch.setattr(ai, "credential_gap", lambda _ai: None)  # a credential is available
     captured: list[list[str]] = []
