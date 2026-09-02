@@ -11,6 +11,7 @@ the `postgres` marker, against a real Postgres service in the serve-db.yml lane 
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ from sqlalchemy import Engine
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
+from bajutsu.serve.commands import run_command
 from bajutsu.serve.server.executor import QueueExecutor
 from bajutsu.serve.server.worker_job import execute_job_spec, job_spec
 
@@ -654,3 +656,39 @@ def test_execute_job_spec_reconstructs_the_batch_request(tmp_path: Path) -> None
     assert captured["request"].provider == "fake"
     assert captured["request"].scenario == "smoke.yaml"
     assert captured["request"].platform == "android"
+
+
+def test_worker_runs_bajutsu_with_its_own_interpreter(tmp_path: Path) -> None:
+    # The control plane's `sys.executable` is an absolute path from *its* host; on the worker that
+    # path may exist without bajutsu installed, so the run died with "No module named bajutsu" while
+    # the worker still reported the job completed. A `-m bajutsu` argv runs the worker's interpreter.
+    project(tmp_path)
+    spawned: list[list[str]] = []
+
+    def popen(cmd: list[str], **kw: Any) -> FakeProc:
+        spawned.append(cmd)
+        return fake_popen(["PASS  runs/20260610-1/manifest.json\n"])(cmd, **kw)
+
+    # The tail comes from the real builder, so an interpreter flag added there later (`-u`) fails
+    # this test instead of silently taking the argv out of the rewrite's reach. The head is a path
+    # no interpreter can be — `/usr/local/bin/python3.13` is `sys.executable` on the control-plane
+    # image itself, which would pass whether or not the rewrite ran.
+    tail = run_command("scenarios/smoke.yaml", "docs", config="bajutsu.config.yaml")[1:]
+    spec = {"job_id": "1", "cmd": ["/control-plane-only/bin/python3.13", *tail], "udids": []}
+    execute_job_spec(spec, popen=popen, cwd=tmp_path, bus=srv.InMemoryLogBus())
+    assert spawned[0] == [sys.executable, *tail]
+
+
+def test_worker_keeps_a_non_bajutsu_argv_as_sent(tmp_path: Path) -> None:
+    # Only the `-m bajutsu` form is re-pointed: a target's `build:` command names its own executable
+    # and must reach the worker unchanged.
+    project(tmp_path)
+    spawned: list[list[str]] = []
+
+    def popen(cmd: list[str], **kw: Any) -> FakeProc:
+        spawned.append(cmd)
+        return fake_popen(["PASS  runs/20260610-1/manifest.json\n"])(cmd, **kw)
+
+    spec = {"job_id": "1", "cmd": ["/opt/tool/bajutsu", "run"], "udids": []}
+    execute_job_spec(spec, popen=popen, cwd=tmp_path, bus=srv.InMemoryLogBus())
+    assert spawned[0] == ["/opt/tool/bajutsu", "run"]

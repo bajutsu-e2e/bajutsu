@@ -243,7 +243,9 @@ def worker(
                 evidence_prefix=str(spec.get("evidence_prefix") or ""),
             )
 
-        typer.echo(f"  completed job {job_id}")
+        # Say which way it went: a run that died on its first line ("No module named bajutsu")
+        # otherwise looked exactly like a pass from this console.
+        typer.echo(f"  completed job {job_id} ({'ok' if result.get('ok') else 'FAILED'})")
 
 
 def _run_with_heartbeat(
