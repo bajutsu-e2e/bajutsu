@@ -13,11 +13,11 @@ from _orch import FakeClock, _scenario, _tap_ids
 from conftest import GUARD_LABEL, AlertingDriver, el
 from pydantic import ValidationError
 
+from bajutsu.common.evidence import Artifact, intervals
 from bajutsu.common.scenario import Interrupt, Scenario, dump_scenarios, load_scenarios
 from bajutsu.config import load_config, resolve
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence import Artifact, intervals
 from bajutsu.orchestrator import AlertGuardConfig, run_scenario
 from bajutsu.orchestrator.waits import WaitTrace
 

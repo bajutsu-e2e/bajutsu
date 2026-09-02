@@ -37,10 +37,10 @@ from bajutsu.common.ai.base import (
     ToolUseBlock,
 )
 from bajutsu.common.ai.registry import Adapter, register
+from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.scenario import Redact
 from bajutsu.config import AiSettings
 from bajutsu.drivers import base as drivers_base
-from bajutsu.evidence.redaction import Redactor
 
 
 class RecordingBackend:

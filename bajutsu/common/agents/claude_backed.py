@@ -14,7 +14,7 @@ from __future__ import annotations
 from bajutsu.common.agents.ai_config import AiConfig, resolve_model
 from bajutsu.common.ai import AiBackend, MessageResponse, create_backend, resolved_provider
 from bajutsu.common.analytics import usage
-from bajutsu.evidence.redaction import Redactor
+from bajutsu.common.evidence.redaction import Redactor
 
 
 class ClaudeBackedAgent:

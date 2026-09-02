@@ -13,12 +13,12 @@ import pytest
 from _runner import _eff, _el, _web_eff
 
 from bajutsu import simctl
+from bajutsu.common.evidence import FileSink
+from bajutsu.common.evidence.network import NetworkCollector, NetworkExchange, ScreenTransition
 from bajutsu.common.scenario import Relaunch, Scenario
 from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver, FakeNetworkCollector
-from bajutsu.evidence import FileSink
-from bajutsu.evidence.network import NetworkCollector, NetworkExchange, ScreenTransition
 from bajutsu.platform_lifecycle import ProvisionProfile
 from bajutsu.runner import (
     ReadinessResult,
@@ -1841,7 +1841,7 @@ def test_device_pool_web_lease_builds_a_page_hooked_collector(
     """`--network` on web: no up-front HTTP receiver; the lease hooks a collector to the live
     page and threads this scenario's mocks into it (BE-0054). The collector satisfies the
     `Collector` protocol and is stopped on release."""
-    from bajutsu.evidence.network import Collector
+    from bajutsu.common.evidence.network import Collector
 
     fakes: list[_FakeWeb] = []
 

@@ -314,8 +314,8 @@ source_modules = [
     "bajutsu.drivers.base",
     "bajutsu.drivers.actuation",
     "bajutsu.common.assertions",
-    "bajutsu.evidence",
-    "bajutsu.report",
+    "bajutsu.common.evidence",
+    "bajutsu.common.report",
     "bajutsu.config",
     "bajutsu.common.scenario",
     "bajutsu.preflight",
@@ -380,8 +380,8 @@ forbidden_modules = [
     "bajutsu.orchestrator",
     "bajutsu.runner",
     "bajutsu.common.assertions",
-    "bajutsu.evidence",
-    "bajutsu.report",
+    "bajutsu.common.evidence",
+    "bajutsu.common.report",
     "bajutsu.config",
     "bajutsu.preflight",
     "bajutsu.doctor",
@@ -391,11 +391,11 @@ forbidden_modules = [
 # network-exchange model every driver reports through — pre-dating BE-0257, when `network.py` was a
 # flat sibling module, not part of `bajutsu.evidence`. Packaging it under `evidence/` pulled this
 # one pre-existing edge under the forbidden entry above; scoping the exception to it (rather than
-# dropping `bajutsu.evidence` from `forbidden_modules`) keeps the contract meaningful for
+# dropping `bajutsu.common.evidence` from `forbidden_modules`) keeps the contract meaningful for
 # `evidence/core.py` / `intervals.py` / `visual.py` / `golden.py` / `redaction.py`, which the inner
 # contract must still never reach.
 ignore_imports = [
-    "bajutsu.drivers.base -> bajutsu.evidence.network",
+    "bajutsu.drivers.base -> bajutsu.common.evidence.network",
 ]
 
 # The redaction boundary (BE-0331): `run_root` derives the writable filesystem path of a run
@@ -415,5 +415,5 @@ protected_modules = [
     "bajutsu.run_root",
 ]
 allowed_importers = [
-    "bajutsu.evidence.sink",
+    "bajutsu.common.evidence.sink",
 ]

@@ -12,14 +12,14 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
+from bajutsu.common.evidence.redaction import Redactor
+from bajutsu.common.evidence.sink import RunArtifactWriter
+from bajutsu.common.report.ctrf import ctrf_json
+from bajutsu.common.report.format import _fmt_duration
+from bajutsu.common.report.manifest import _matrix, _run_backend, junit_xml, manifest_dict
+from bajutsu.common.report.panels import _scenario_data
 from bajutsu.common.scenario import Scenario, dump_scenarios, scenario_dict
-from bajutsu.evidence.redaction import Redactor
-from bajutsu.evidence.sink import RunArtifactWriter
 from bajutsu.orchestrator import RunResult
-from bajutsu.report.ctrf import ctrf_json
-from bajutsu.report.format import _fmt_duration
-from bajutsu.report.manifest import _matrix, _run_backend, junit_xml, manifest_dict
-from bajutsu.report.panels import _scenario_data
 
 
 def scenario_render_inputs(
@@ -33,7 +33,7 @@ def scenario_render_inputs(
     return [scenario_dict(s) for s in scenarios], [dump_scenarios([s]) for s in scenarios]
 
 
-_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
+_TEMPLATE_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
 
 
 def _matrix_view(results: list[RunResult]) -> dict[str, Any] | None:

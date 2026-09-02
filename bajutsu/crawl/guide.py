@@ -32,10 +32,10 @@ from bajutsu.common.ai import (
 )
 from bajutsu.common.ai.prompts import NEVER_JUDGE_BOUNDARY, render_elements
 from bajutsu.common.analytics import usage
+from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.crawl import core as crawl
 from bajutsu.crawl import tabs as crawl_tabs
 from bajutsu.drivers import base
-from bajutsu.evidence.redaction import Redactor
 from bajutsu.screenshots import screenshot_bytes
 
 MODEL = "claude-opus-4-8"

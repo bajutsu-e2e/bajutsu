@@ -14,7 +14,7 @@ import pytest
 from conftest import json_str
 
 from bajutsu import simctl, stall_diagnostics
-from bajutsu.evidence import intervals
+from bajutsu.common.evidence import intervals
 
 
 class FakeProc:

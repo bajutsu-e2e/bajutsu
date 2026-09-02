@@ -17,10 +17,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from bajutsu.evidence.redaction import Redactor
-from bajutsu.evidence.sink import RunArtifactWriter
-from bajutsu.report.archive import archive_run_dir
-from bajutsu.report.load import rerender_html
+from bajutsu.common.evidence.redaction import Redactor
+from bajutsu.common.evidence.sink import RunArtifactWriter
+from bajutsu.common.report.archive import archive_run_dir
+from bajutsu.common.report.load import rerender_html
 from bajutsu.serve.helpers import list_crawl_runs, list_runs, valid_run_id
 
 # Where a soft-deleted run's tree is parked, relative to ``runs_dir`` (BE-0239). A single hidden

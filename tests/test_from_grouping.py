@@ -6,7 +6,7 @@ consecutive values is labeled once (the emergent grouping BE-0044 specifies). No
 
 from __future__ import annotations
 
-from bajutsu.from_grouping import grouped_provenance
+from bajutsu.common.report.from_grouping import grouped_provenance
 
 
 def test_consecutive_equal_values_are_labeled_once() -> None:

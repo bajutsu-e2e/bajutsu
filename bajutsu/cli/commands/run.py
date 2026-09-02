@@ -30,6 +30,8 @@ from bajutsu.cli._shared import (
 )
 from bajutsu.common.assertions import GoldenContext
 from bajutsu.common.github import actions as github_actions
+from bajutsu.common.report.archive import archive_run_dir
+from bajutsu.common.report.manifest import MAX_LABEL_LENGTH, _run_backend
 from bajutsu.common.scenario import (
     Scenario,
     SystemAlertHandling,
@@ -60,8 +62,6 @@ from bajutsu.orchestrator import (
 )
 from bajutsu.orchestrator.types import ResolvedAlertRule
 from bajutsu.platform_lifecycle import ProvisionProfile, environment_for
-from bajutsu.report.archive import archive_run_dir
-from bajutsu.report.manifest import MAX_LABEL_LENGTH, _run_backend
 from bajutsu.run_files import DEFAULT_RUNS_DIR
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import device_pool, run_all, run_and_report, run_matrix_and_report

@@ -18,6 +18,7 @@ from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.common.agents import ai_config, anthropic_client
 from bajutsu.common.ai import credential_gap
 from bajutsu.common.ai import disabled as ai_disabled
+from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.github import GitHubAccessError
 from bajutsu.config import (
     WEB_ENGINES,
@@ -38,7 +39,6 @@ from bajutsu.config_source import (
     parse_config_spec,
     source_provenance,
 )
-from bajutsu.evidence.redaction import Redactor
 from bajutsu.runner.launch_server import start_launch_server
 
 if TYPE_CHECKING:

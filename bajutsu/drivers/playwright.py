@@ -27,10 +27,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast
 
 from bajutsu import simctl
+from bajutsu.common.evidence import intervals
 from bajutsu.dom import QUERY_JS, parse_dom
 from bajutsu.drivers import base
 from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
-from bajutsu.evidence import intervals
 
 if TYPE_CHECKING:
     from bajutsu.common.scenario.models.mocks import Mock

@@ -65,7 +65,6 @@ GRANDFATHERED = frozenset(
         "diagnostics.py",
         "dom.py",
         "elements.py",
-        "from_grouping.py",
         "handoff.py",
         "notify.py",
         "object_store.py",

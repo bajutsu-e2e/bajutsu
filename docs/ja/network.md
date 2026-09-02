@@ -7,7 +7,7 @@
 > Playwright がページの通信をネイティブに観測するため、アプリ側の報告は不要です。いずれの場合も、
 > `request` アサーションが蓄積された通信を照合します。
 >
-> 実装: `bajutsu/evidence/network.py`（モデルとコレクタ）、`bajutsu/assertions/network.py`（`request` の評価）、
+> 実装: `bajutsu/common/evidence/network.py`（モデルとコレクタ）、`bajutsu/assertions/network.py`（`request` の評価）、
 > `bajutsu/web_network.py`（Playwright ネイティブのコレクタとモック、BE-0054）、アプリ内 SDK（software
 > development kit、ソフトウェア開発キット） — iOS は [`BajutsuKit`](../../BajutsuKit/README.md)、Android は
 > [`BajutsuAndroid`](../../BajutsuAndroid/README.md)。Web（Playwright）バックエンドは SDK を必要とせず、

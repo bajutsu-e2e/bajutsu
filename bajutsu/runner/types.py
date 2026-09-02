@@ -8,11 +8,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from bajutsu.common.evidence import EvidenceSink
+from bajutsu.common.evidence.network import Collector
 from bajutsu.common.scenario import Scenario
 from bajutsu.config import Effective
 from bajutsu.drivers import base
-from bajutsu.evidence import EvidenceSink
-from bajutsu.evidence.network import Collector
 from bajutsu.orchestrator import AlertGuardConfig, DeviceControl, RelaunchFn, SkippedCapture
 from bajutsu.webview import DomSource
 

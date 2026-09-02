@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 from typing import Any, NoReturn
 
-from bajutsu.evidence.redaction import PLACEHOLDER as _PLACEHOLDER
+from bajutsu.common.evidence.redaction import PLACEHOLDER as _PLACEHOLDER
 
 # The literal secrets the SwiftUI showcase sends on the Log submit
 # (ios/swiftui/Sources/LogView.swift): the header bearer token and the body `password` field value.

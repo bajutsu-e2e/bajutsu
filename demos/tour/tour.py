@@ -39,6 +39,7 @@ sys.path.insert(0, str(HERE.parent / "record"))
 from generate_from_nl import DEFAULT_GOAL, author, make_app  # noqa: E402
 
 from bajutsu import triage as _triage  # noqa: E402
+from bajutsu.common.evidence import FileSink  # noqa: E402
 from bajutsu.common.scenario import (  # noqa: E402
     Redact,
     Scenario,
@@ -46,7 +47,6 @@ from bajutsu.common.scenario import (  # noqa: E402
     load_scenario_file,
 )
 from bajutsu.config import Effective, IosConfig  # noqa: E402
-from bajutsu.evidence import FileSink  # noqa: E402
 from bajutsu.runner import Lease, run_and_report  # noqa: E402
 
 RUNS = HERE / "runs"  # gitignored scratch (the repo's top-level runs/ is ignored)

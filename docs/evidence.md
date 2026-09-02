@@ -4,7 +4,7 @@
 
 [Evidence](glossary.md#evidence-capturepolicy-trace-triage) capture for a recurring action is expressed as a **repeatedly-firing rule** rather than a one-shot instruction. The rule ensures the same evidence is collected without AI on every subsequent run.
 
-Implementation: `bajutsu/evidence/core.py` (instant + Sinks) · `bajutsu/evidence/intervals.py` (interval: video / deviceLog / appTrace). Firing is decided on the orchestrator side ([run-loop](run-loop.md#evidence-rule-firing)).
+Implementation: `bajutsu/common/evidence/core.py` (instant + Sinks) · `bajutsu/common/evidence/intervals.py` (interval: video / deviceLog / appTrace). Firing is decided on the orchestrator side ([run-loop](run-loop.md#evidence-rule-firing)).
 
 Related: [the capture tokens in scenarios](scenarios.md#capture-token-grammar) · [reporting](reporting.md)
 
@@ -205,7 +205,7 @@ To capture just one step, attach `capture:` directly to the step.
 
 ## Interval evidence (video / deviceLog / appTrace)
 
-Implementation: `bajutsu/evidence/intervals.py`. These are **subprocess child processes** — `simctl` on iOS,
+Implementation: `bajutsu/common/evidence/intervals.py`. These are **subprocess child processes** — `simctl` on iOS,
 `adb` on Android — started before the action and stopped after the step settles. Process spawning is
 injectable (`Spawn`) and testable. Web has no subprocess: its intervals are Playwright-native and
 supplied by the driver (see below). (`appTrace` is an iOS interval too — a `log stream` over the
@@ -296,7 +296,7 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   the question itself. A finalized clip states its own duration, and `Interval.stop()` knows the
   instant it ended, so the subtraction gives the origin outright:
   `measured_start = ended_at - duration`. The duration comes from the container, with no external
-  tool: [`evidence/media.py`](../bajutsu/evidence/media.py) reads the movie header that `simctl` and
+  tool: [`evidence/media.py`](../bajutsu/common/evidence/media.py) reads the movie header that `simctl` and
   `screenrecord` write, and the Matroska segment that Playwright's recorder writes.
 
   Which instant "ended" names is the recorder's to say. A subprocess recorder stops when the signal

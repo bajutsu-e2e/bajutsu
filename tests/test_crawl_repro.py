@@ -9,11 +9,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from bajutsu.common.evidence.redaction import PLACEHOLDER
+from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.scenario.load import load_scenarios
 from bajutsu.crawl import Action, Crash, ScreenMap, screenmap_dict, screenmap_from_dict
 from bajutsu.crawl.repro import crash_scenario, write_repros
-from bajutsu.evidence.redaction import PLACEHOLDER
-from bajutsu.evidence.sink import RunArtifactWriter
 
 
 def _crash(*actions: Action) -> Crash:

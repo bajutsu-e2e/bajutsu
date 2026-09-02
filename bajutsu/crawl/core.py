@@ -34,9 +34,9 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from bajutsu import device_errors
+from bajutsu.common.evidence.redaction import PLACEHOLDER
 from bajutsu.drivers import base
 from bajutsu.elements import screen_size_from_elements, shows_app_ui
-from bajutsu.evidence.redaction import PLACEHOLDER
 
 _logger = logging.getLogger(__name__)
 

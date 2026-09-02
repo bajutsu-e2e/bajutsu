@@ -24,6 +24,8 @@ from bajutsu.cancellation import (
 )
 from bajutsu.common import assertions
 from bajutsu.common.assertions import AssertionResult, EvalContext
+from bajutsu.common.evidence import Artifact, EvidenceSink, NullSink, intervals
+from bajutsu.common.evidence.network import TransitionSource, _no_transitions
 from bajutsu.common.scenario import (
     AfterRule,
     Assertion,
@@ -40,8 +42,6 @@ from bajutsu.common.scenario import (
 )
 from bajutsu.drivers import base
 from bajutsu.drivers.actuation import Actuation
-from bajutsu.evidence import Artifact, EvidenceSink, NullSink, intervals
-from bajutsu.evidence.network import TransitionSource, _no_transitions
 from bajutsu.mailbox import extract_value, select
 from bajutsu.orchestrator.actions import _action_of, _do_action, _step_label
 from bajutsu.orchestrator.evidence_rules import (

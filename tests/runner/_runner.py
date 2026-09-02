@@ -6,11 +6,11 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
+from bajutsu.common.evidence import NullSink
 from bajutsu.common.scenario import Redact, Scenario
 from bajutsu.config import Effective, IosConfig, WebConfig
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence import NullSink
 from bajutsu.runner import Lease
 
 

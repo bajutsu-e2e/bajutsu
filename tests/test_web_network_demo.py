@@ -20,9 +20,9 @@ from typing import Any
 import pytest
 import yaml
 
+from bajutsu.common.evidence.redaction import PLACEHOLDER, Redactor
 from bajutsu.common.scenario import load_scenario_file
 from bajutsu.common.scenario.models.evidence import Redact
-from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
 from demos.web.network.assert_redaction import (
     _BODY_SECRET,
     _HEADER_SECRET,

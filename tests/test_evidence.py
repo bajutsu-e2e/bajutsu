@@ -8,13 +8,19 @@ from pathlib import Path
 
 import pytest
 
+from bajutsu.common.evidence import (
+    FileSink,
+    capture,
+    write_elements,
+    write_raw_tree,
+    write_screenshot,
+)
+from bajutsu.common.evidence.intervals import Interval
+from bajutsu.common.evidence.redaction import PLACEHOLDER, Redactor
+from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.scenario import Redact
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence import FileSink, capture, write_elements, write_raw_tree, write_screenshot
-from bajutsu.evidence.intervals import Interval
-from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
-from bajutsu.evidence.sink import RunArtifactWriter
 
 
 def _writer(run_dir: Path, redactor: Redactor | None = None) -> RunArtifactWriter:
@@ -357,7 +363,7 @@ def test_file_sink_wait_diagnostic_redacts_and_locks_down_the_dump(tmp_path: Pat
 
 
 def test_null_sink_wait_diagnostic_is_a_noop() -> None:
-    from bajutsu.evidence import NullSink
+    from bajutsu.common.evidence import NullSink
     from bajutsu.orchestrator.waits import WaitTrace
 
     assert NullSink().wait_diagnostic("s", trace=WaitTrace(), elements=[]) is None
@@ -408,7 +414,7 @@ def test_capture_writes_every_writing_kind_into_the_step_dir(tmp_path: Path) -> 
 def test_filesink_dispatches_intervals_to_web_provider(tmp_path: Path) -> None:
     # When a web interval provider is injected, the sink uses it (Playwright-native) instead of
     # the simctl starters, even though the web lane carries a (synthetic) udid.
-    from bajutsu.evidence import FileSink, intervals
+    from bajutsu.common.evidence import FileSink, intervals
 
     calls: list[tuple[str, str]] = []
 
@@ -428,7 +434,7 @@ def test_filesink_dispatches_intervals_to_web_provider(tmp_path: Path) -> None:
 
 
 def test_filesink_without_web_provider_uses_udid_gate(tmp_path: Path) -> None:
-    from bajutsu.evidence import FileSink
+    from bajutsu.common.evidence import FileSink
 
     # No udid and no web provider: intervals are skipped (the fake/headless path).
     sink = FileSink(tmp_path, udid=None)
@@ -441,8 +447,8 @@ def test_filesink_dispatches_adb_driver_intervals_end_to_end(
     # The real seam: FileSink + AdbDriver.driver_interval start BOTH kinds via adb (not the simctl
     # path), even with a udid set. The subprocess spawn is faked so no adb process runs; the video's
     # pull/rm still go through the driver's injected run.
+    from bajutsu.common.evidence import intervals
     from bajutsu.drivers.adb import AdbDriver
-    from bajutsu.evidence import intervals
 
     class _FakeProc:
         def stop(self, sig: int, timeout: float) -> None:
@@ -484,7 +490,7 @@ def test_filesink_confirms_ios_on_demand_video_start(
     # `_start_simctl_interval` -> `intervals.start_video(..., confirm_started=True)`. This is the
     # item's primary motivation (the on-demand path whose confirmation wait iOS's fix relies on),
     # so it must be exercised through the sink, not only by calling `start_video` directly.
-    from bajutsu.evidence import intervals
+    from bajutsu.common.evidence import intervals
 
     class _FakeProc:
         def __init__(self, argv: list[str], stdout_path: Path | None) -> None:
@@ -507,7 +513,7 @@ def test_filesink_reports_a_video_that_never_confirmed_it_started(
     # BE-0354: the wedge's earliest symptom, surfaced so the crash retry can pick the recovery rung
     # from it. A recording that starts normally must not report it, or every scenario would look
     # degraded.
-    from bajutsu.evidence import intervals
+    from bajutsu.common.evidence import intervals
 
     class _FakeProc:
         def __init__(self, argv: list[str], stdout_path: Path | None) -> None:
@@ -534,7 +540,7 @@ def test_filesink_adopts_a_prestarted_video_instead_of_starting_one(tmp_path: Pa
     # A device backend starts its video before launch; the sink must adopt that running interval for
     # the "video" kind (relocating it to the artifact path on stop) rather than ask the driver /
     # simctl to start a fresh one after launch — the other kinds still start on demand.
-    from bajutsu.evidence import FileSink, intervals
+    from bajutsu.common.evidence import FileSink, intervals
 
     temp = tmp_path / "_video_tmp" / "prestart-SER.mp4"
     temp.parent.mkdir(parents=True)

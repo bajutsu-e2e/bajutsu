@@ -56,7 +56,7 @@ somebody classifies it — a wasted job, the safe direction — instead of the s
 positive list produced. That default retires a whole class of miss: a top-level module split into a
 package (`bajutsu/config`, `bajutsu/platform_lifecycle` both drifted that way, skipping the fleet the
 lane exists to exercise), a new top-level module or CLI command, and files the run path imports but
-the list never named — `bajutsu/report/`, the manifest writer every run invokes, chief among them —
+the list never named — `bajutsu/common/report/`, the manifest writer every run invokes, chief among them —
 now all fire because a package and a module match the sweep alike.
 
 Several tests keep the classification honest. `test_run_path_closure_is_gated_or_excluded` walks the

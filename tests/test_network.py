@@ -15,6 +15,14 @@ from typing import Any
 import pytest
 
 from bajutsu.common.assertions import EvalContext, evaluate, evaluate_one
+from bajutsu.common.evidence import network
+from bajutsu.common.evidence.network import (
+    AppCommandReport,
+    InAppCapability,
+    NetworkCollector,
+    NetworkExchange,
+    ScreenTransition,
+)
 from bajutsu.common.scenario import (
     Assertion,
     CountOp,
@@ -25,14 +33,6 @@ from bajutsu.common.scenario import (
     load_scenarios,
 )
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence import network
-from bajutsu.evidence.network import (
-    AppCommandReport,
-    InAppCapability,
-    NetworkCollector,
-    NetworkExchange,
-    ScreenTransition,
-)
 from bajutsu.orchestrator import run_scenario
 
 

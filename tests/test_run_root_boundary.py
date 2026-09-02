@@ -1,6 +1,6 @@
 """The filesystem run root is named in one place (BE-0331 unit 3).
 
-The import contract in `pyproject.toml` keeps every module but `bajutsu.evidence.sink` from reaching
+The import contract in `pyproject.toml` keeps every module but `bajutsu.common.evidence.sink` from reaching
 `bajutsu.run_root`, the provider that derives a writable run directory. That leaves one way to reach
 a run directory without the provider: rebuild its path from the literal. This check closes it, so the
 two halves together state a property of the whole source tree rather than of a curated list of
@@ -17,7 +17,7 @@ import re
 from pathlib import Path
 
 import bajutsu
-from bajutsu.evidence import sink
+from bajutsu.common.evidence import sink
 from bajutsu.run_files import DEFAULT_RUNS_DIR
 
 _PACKAGE = Path(bajutsu.__file__).parent
@@ -64,11 +64,11 @@ def test_no_module_but_the_provider_derives_the_run_root_from_a_literal() -> Non
 
 def test_the_sink_does_not_re_export_the_write_provider() -> None:
     # The sink is the one module allowed to import the provider, so importing it under its public
-    # name would make the sink a second door to it: `from bajutsu.evidence.sink import
+    # name would make the sink a second door to it: `from bajutsu.common.evidence.sink import
     # run_dir_for_write` passes the import contract (the sink is an allowed importer) while handing
     # the caller the writable path derivation the boundary withholds.
     assert not hasattr(sink, "run_dir_for_write"), (
-        "bajutsu.evidence.sink re-exports the run-directory write provider — import it aliased "
+        "bajutsu.common.evidence.sink re-exports the run-directory write provider — import it aliased "
         "private (`as _run_dir_for_write`) so it cannot be imported back out (BE-0331)"
     )
 

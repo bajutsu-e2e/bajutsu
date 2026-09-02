@@ -2,20 +2,20 @@
 
 Split by stage (format -> manifest/richtext -> rows -> panels -> html) so a change to one
 stage rarely touches the others (BE-0043). Public API is re-exported here, so
-`from bajutsu.report import manifest_dict, junit_xml, html_report, write_report` is unchanged.
+`from bajutsu.common.report import manifest_dict, junit_xml, html_report, write_report` is unchanged.
 """
 
 from __future__ import annotations
 
-from bajutsu.report.ctrf import ctrf_json
-from bajutsu.report.html import (
+from bajutsu.common.report.ctrf import ctrf_json
+from bajutsu.common.report.html import (
     html_report,
     scenario_render_inputs,
     write_html_and_junit,
     write_report,
 )
-from bajutsu.report.load import load_run, rebake, rerender_html, results_from_manifest
-from bajutsu.report.manifest import git_revision, junit_xml, manifest_dict, run_provenance
+from bajutsu.common.report.load import load_run, rebake, rerender_html, results_from_manifest
+from bajutsu.common.report.manifest import git_revision, junit_xml, manifest_dict, run_provenance
 
 __all__ = [
     "ctrf_json",

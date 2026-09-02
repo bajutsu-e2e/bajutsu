@@ -9,11 +9,11 @@ import pytest
 from _orch import FakeClock, _scenario
 from conftest import GUARD_LABEL, AlertingDriver, el
 
+from bajutsu.common.evidence import FileSink
+from bajutsu.common.evidence.network import ScreenTransition
 from bajutsu.common.scenario import Wait
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence import FileSink
-from bajutsu.evidence.network import ScreenTransition
 from bajutsu.orchestrator import AlertGuardConfig, _wait, run_scenario
 from bajutsu.orchestrator.waits import _TRANSITION_QUIESCENCE
 
@@ -421,7 +421,7 @@ def test_run_scenario_writes_wait_diagnostic_on_first_wait_timeout(tmp_path: Pat
     and provenance the pool folded in, so the failure is decidable from artifacts."""
     import json
 
-    from bajutsu.evidence import FileSink
+    from bajutsu.common.evidence import FileSink
     from bajutsu.platform_lifecycle import ReadinessResult
 
     driver = FakeDriver([el("a", "A"), el("b", "B")])  # content present, but never the awaited row
@@ -448,7 +448,7 @@ def test_run_scenario_writes_wait_diagnostic_on_first_wait_timeout(tmp_path: Pat
 def test_no_wait_diagnostic_when_wait_succeeds_or_is_not_a_for_wait(tmp_path: Path) -> None:
     """The diagnostic fires only on a `for`-wait timeout: a satisfied wait and a timed-out `until`
     wait (which the trace does not record) both leave no waitDiagnostic artifact."""
-    from bajutsu.evidence import FileSink
+    from bajutsu.common.evidence import FileSink
 
     # A `for` wait that is immediately satisfied → no diagnostic.
     ok_sink = FileSink(tmp_path / "ok")
@@ -478,7 +478,7 @@ def test_no_wait_diagnostic_when_wait_succeeds_or_is_not_a_for_wait(tmp_path: Pa
 def test_wait_diagnostic_written_once_after_on_blocked_retry(tmp_path: Path) -> None:
     """When a first wait times out, on_blocked clears the block, and the retry times out too, exactly
     one diagnostic is written — from the retry's own (fresh) trace, not the first attempt's."""
-    from bajutsu.evidence import FileSink
+    from bajutsu.common.evidence import FileSink
     from bajutsu.orchestrator.types import AlertEvent
 
     sink = FileSink(tmp_path)

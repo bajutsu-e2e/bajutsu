@@ -5,11 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from bajutsu.drivers.actuation import Actuation
-from bajutsu.evidence import step_view
-from bajutsu.from_grouping import grouped_provenance
-from bajutsu.orchestrator import RunResult
-from bajutsu.report.format import (
+from bajutsu.common.evidence import step_view
+from bajutsu.common.report.format import (
     _ACTION_META,
     Part,
     _as_float,
@@ -19,10 +16,13 @@ from bajutsu.report.format import (
     _truncate,
     video_seconds,
 )
-from bajutsu.report.richtext import (
+from bajutsu.common.report.from_grouping import grouped_provenance
+from bajutsu.common.report.richtext import (
     _assert_parts,
     _step_desc_parts,
 )
+from bajutsu.drivers.actuation import Actuation
+from bajutsu.orchestrator import RunResult
 
 # --- detail / row data (the merged Result table) ---
 

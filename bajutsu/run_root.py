@@ -8,7 +8,7 @@ reviewing each new writer — is what covers a writer nobody has written yet.
 
 Two mechanical checks pin it down, both decidable from source rather than from a runtime path value:
 
-- an import contract (`lint-imports`) forbidding every module but `bajutsu.evidence.sink` from
+- an import contract (`lint-imports`) forbidding every module but `bajutsu.common.evidence.sink` from
   importing this one, so the property holds over the whole import graph;
 - a literal check failing a run-root path literal outside `bajutsu.run_files`, closing the remaining
   way to rebuild the path without importing the provider.

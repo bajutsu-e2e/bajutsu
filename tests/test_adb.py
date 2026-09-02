@@ -18,6 +18,7 @@ import pytest
 
 import bajutsu.drivers.adb as adb_driver_mod
 from bajutsu import adb, stall_diagnostics
+from bajutsu.common.evidence import intervals
 from bajutsu.drivers import base
 from bajutsu.drivers.actuation import Actuation
 from bajutsu.drivers.adb import (
@@ -27,7 +28,6 @@ from bajutsu.drivers.adb import (
     HierarchyRead,
     parse_hierarchy,
 )
-from bajutsu.evidence import intervals
 
 # A realistic dump: a Views native id (package-prefixed) with visible text only, a Compose testTag
 # (verbatim, dotted) that mirrors its state value into content-desc à la the showcase (SPEC §2.1)

@@ -18,9 +18,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from bajutsu.common.evidence.intervals import INTERVAL_KINDS
+from bajutsu.common.report.from_grouping import grouped_provenance
 from bajutsu.common.scenario import load_scenario_file
-from bajutsu.evidence.intervals import INTERVAL_KINDS
-from bajutsu.from_grouping import grouped_provenance
 
 if TYPE_CHECKING:
     from bajutsu.common.scenario import CaptureRule, Scenario, Step
