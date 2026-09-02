@@ -15,6 +15,7 @@ from _shared import project
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
+from bajutsu.serve import state as srv_state
 from bajutsu.serve.state import ConfigBinding
 from bajutsu.serve.uploads import Upload
 
@@ -160,3 +161,102 @@ def test_an_explicit_working_directory_is_left_alone(tmp_path: Path) -> None:
     elsewhere = tmp_path / "workspace"
     job = state.register(srv.Job(cmd=["bajutsu", "run"], cwd=elsewhere))
     assert job.cwd == elsewhere
+
+
+# --- a binding per session and acting org (BE-0393 unit 2) ---
+
+
+def _bound(state: srv.ServeState, session: str | None, org: str = "default") -> Path | None:
+    return state.binding_for(session, org).config
+
+
+def test_a_bind_is_visible_to_the_session_that_made_it_and_no_other(tmp_path: Path) -> None:
+    """Two members of one org must be able to work at once: one switching configurations cannot move
+    the ground under the other's run."""
+    state = _state(tmp_path)
+    mine = tmp_path / "mine.yaml"
+    mine.write_text(_CONFIG, encoding="utf-8")
+    launch = state.binding.config
+
+    assert ops.bind_config(state, "mine.yaml", session="s1")[1] == 200
+
+    assert _bound(state, "s1") == mine
+    # A colleague's session, and one that never bound anything, both keep the deployment's.
+    assert _bound(state, "s2") == launch
+    assert _bound(state, None) == launch
+    assert state.binding.config == launch
+
+
+def test_the_acting_org_is_half_the_key(tmp_path: Path) -> None:
+    # A session may change which org it acts as, and target ownership rides on the org — a binding
+    # made as one org must not answer as another.
+    state = _state(tmp_path)
+    mine = tmp_path / "mine.yaml"
+    mine.write_text(_CONFIG, encoding="utf-8")
+    state.rebind("s1", "acme", ConfigBinding(config=mine, cwd=tmp_path, org="acme"))
+
+    assert _bound(state, "s1", "acme") == mine
+    assert _bound(state, "s1", "other") == state.binding.config
+
+
+def test_a_session_with_no_binding_reads_the_deployments(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    assert _bound(state, "never-bound") == state.binding.config
+
+
+def test_a_caller_with_no_session_replaces_the_deployments_binding(tmp_path: Path) -> None:
+    # A shared-token or CI request carries no login cookie; the only binding it could mean is the
+    # deployment's, which is also the pre-unit-2 behavior.
+    state = _state(tmp_path)
+    mine = tmp_path / "mine.yaml"
+    mine.write_text(_CONFIG, encoding="utf-8")
+
+    assert ops.bind_config(state, "mine.yaml", session=None)[1] == 200
+
+    assert state.binding.config == mine
+    assert _bound(state, "any-session") == mine
+
+
+def test_the_map_evicts_the_least_recently_bound(tmp_path: Path) -> None:
+    # A process that accumulates quiet sessions must not grow without limit; eviction costs that
+    # session its own binding and nothing else.
+    state = _state(tmp_path)
+    cfg = tmp_path / "mine.yaml"
+    cfg.write_text(_CONFIG, encoding="utf-8")
+    for n in range(srv_state.MAX_SESSION_BINDINGS + 1):
+        state.rebind(f"s{n}", "default", ConfigBinding(config=cfg, cwd=tmp_path))
+
+    assert len(state.bindings) == srv_state.MAX_SESSION_BINDINGS
+    assert ("s0", "default") not in state.bindings  # the oldest went
+    assert _bound(state, "s0") == state.binding.config  # and reads the fallback again
+    assert _bound(state, "s1") == cfg
+
+
+def test_revoked_sessions_lose_their_slots(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    cfg = tmp_path / "mine.yaml"
+    cfg.write_text(_CONFIG, encoding="utf-8")
+    live = state.auth.issue_session(identity="kazu")
+    state.rebind(live, "default", ConfigBinding(config=cfg, cwd=tmp_path))
+    state.rebind("already-gone", "default", ConfigBinding(config=cfg, cwd=tmp_path))
+
+    dropped = state.drop_revoked_bindings()
+
+    assert dropped == 1
+    assert ("already-gone", "default") not in state.bindings
+    assert _bound(state, live) == cfg
+
+
+def test_target_ownership_follows_the_asking_sessions_binding(tmp_path: Path) -> None:
+    # `targets_for` is the one place ownership is decided, so it has to read the binding the asking
+    # session holds — not an ambient one a colleague may have just replaced.
+    owned = tmp_path / "owned.yaml"
+    owned.write_text(
+        "defaults: { backend: [ios] }\ntargets:\n  demo: { bundleId: com.example.demo }\n",
+        encoding="utf-8",
+    )
+    state = srv.ServeState(runs_dir=tmp_path / "runs", config=owned, cwd=tmp_path)
+    state.rebind("s1", "acme", ConfigBinding(config=owned, cwd=tmp_path, org="acme"))
+
+    assert state.targets_for("acme", "s1") == ["demo"]  # bound as acme, so acme owns it
+    assert state.targets_for("acme", "s2") == []  # another session sees the launch partition

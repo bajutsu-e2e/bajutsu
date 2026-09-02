@@ -714,11 +714,14 @@ def seed_orgs_from_bound_config(state: ServeState) -> None:
         )
 
 
-def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
+def bind_config(
+    state: ServeState, raw: str, *, actor: str | None = None, session: str | None = None
+) -> tuple[Any, int]:
     """Bind a config.yml chosen in the UI's file browser.  The path is confined to ``--root``; we
-    validate it loads and its path fields stay within ``--root`` too, then re-point ``state.binding.config``
-    at it **and** ``state.binding.cwd`` at its own directory so the config's relative paths resolve from
-    beside it, not serve's launch dir (BE-0242) — mirroring the Git/upload binds."""
+    validate it loads and its path fields stay within ``--root`` too, then bind it for the asking
+    session with `cwd` at the config's own directory, so its relative paths resolve from beside it
+    rather than from serve's launch dir (BE-0242) — mirroring the Git/upload binds. The bind is
+    visible to that session alone (BE-0393 unit 2); a colleague keeps whatever they had."""
     if state.hosted:
         # Defense in depth (BE-0108): the file browser is removed from the hosted UI, but a
         # hand-crafted path-bind must be refused too, or hiding it would be merely cosmetic.
@@ -757,12 +760,12 @@ def bind_config(state: ServeState, raw: str) -> tuple[Any, int]:
     # narrower guard: it stops an in-`--root` config's own path *fields* from resolving outside the
     # directory its relative paths are defined against, regardless of who bound it — orthogonal to,
     # not a relaxation of, this build-trust call.
-    state.binding = ConfigBinding(config=target, cwd=config_dir)
+    state.rebind(session, state.org_of(actor), ConfigBinding(config=target, cwd=config_dir))
     return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200
 
 
 def bind_git_config(
-    state: ServeState, spec_str: str, *, actor: str | None = None
+    state: ServeState, spec_str: str, *, actor: str | None = None, session: str | None = None
 ) -> tuple[Any, int]:
     """Bind a config from a Git source chosen in the UI (the "from Git" picker, BE-0063).
 
@@ -807,12 +810,17 @@ def bind_git_config(
     # (BE-0121). A Git-sourced config is bound *as* the acting org, and its content is not this
     # deployment's, so that org owns every target it declares and its `orgs:` block partitions
     # nothing (BE-0375).
-    state.binding = ConfigBinding(
-        config=mat.config_path,
-        cwd=mat.root,
-        provenance=provenance,
-        git_from_api=True,
-        org=state.org_of(actor),
+    org = state.org_of(actor)
+    state.rebind(
+        session,
+        org,
+        ConfigBinding(
+            config=mat.config_path,
+            cwd=mat.root,
+            provenance=provenance,
+            git_from_api=True,
+            org=org,
+        ),
     )
     return {
         "ok": True,

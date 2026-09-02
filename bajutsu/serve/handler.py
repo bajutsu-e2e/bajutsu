@@ -480,6 +480,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                         filename,
                         sha256=receiver.digest(),
                         actor=self._actor(),
+                        session=self._session_id(),
                     )
                 )
             except Exception as exc:

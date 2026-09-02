@@ -238,6 +238,9 @@ def delete_org(state: ServeState, slug: str, *, actor: str | None = None) -> tup
     # redeploy, and the restart dropped every session as a side effect; making it an in-process
     # admin action removes that incidental revocation, so this does it deliberately (BE-0375).
     revoked = state.auth.sessions.revoke_identities(members)
+    # Their configuration bindings go with the sessions that held them (BE-0393 unit 2): a revoked
+    # cookie already reads the fallback, so this reclaims the slots rather than closing a hole.
+    state.drop_revoked_bindings()
     _record_audit(
         state, actor, state.org_of(actor), "org.delete", slug, {"sessionsRevoked": revoked}
     )

@@ -345,9 +345,19 @@ ROUTES: tuple[Route, ...] = (
         # A `git` key selects the from-Git picker (BE-0063); `path` the local browser. Key presence
         # (not truthiness) routes, so an empty `git` still reaches the Git binder's 400.
         lambda state, ctx: (
-            ops.bind_git_config(state, str(ctx.body().get("git") or ""), actor=ctx.actor())
+            ops.bind_git_config(
+                state,
+                str(ctx.body().get("git") or ""),
+                actor=ctx.actor(),
+                session=ctx.session(),
+            )
             if "git" in ctx.body()
-            else ops.bind_config(state, str(ctx.body().get("path", "") or ""))
+            else ops.bind_config(
+                state,
+                str(ctx.body().get("path", "") or ""),
+                actor=ctx.actor(),
+                session=ctx.session(),
+            )
         ),
     ),
     Route(
@@ -387,7 +397,9 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "POST",
         "/api/compose",
-        lambda state, ctx: ops.bind_composition(state, ctx.body(), actor=ctx.actor()),
+        lambda state, ctx: ops.bind_composition(
+            state, ctx.body(), actor=ctx.actor(), session=ctx.session()
+        ),
     ),
     Route("POST", "/api/ant/login", lambda state, _ctx: ops.ant_login(state), local_only=True),
     Route(

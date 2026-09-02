@@ -378,6 +378,7 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
                     filename,
                     sha256=received.digest(),
                     actor=_actor(request),
+                    session=_session(request),
                 )
             )
         finally:

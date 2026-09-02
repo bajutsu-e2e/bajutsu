@@ -189,6 +189,7 @@ def bind_upload_config(
     *,
     sha256: str,
     actor: str | None = None,
+    session: str | None = None,
 ) -> tuple[Any, int]:
     """Bind an uploaded zip bundle as the active config (BE-0073) — a third source in the "Open
     config" UI, alongside the file browser and the Git picker.
@@ -236,7 +237,7 @@ def bind_upload_config(
         org=org,
         actor=actor,
     )
-    state.bind_upload(upload)
+    state.bind_upload(upload, session)
     _record_audit(state, actor, org, "upload", upload.filename, {"sha256": sha256})
     source = {"kind": "upload", "filename": upload.filename, "sha256": sha256, "size": size}
     # The bind is the writer (BE-0404 unit 1): before this item the caller had to re-register the
@@ -474,6 +475,7 @@ def _compose_and_bind(
     size: int,
     org: str,
     actor: str | None,
+    session: str | None = None,
     scenarios_filename: str | None = None,
 ) -> tuple[Upload, int] | tuple[dict[str, Any], int]:
     """Resolve a validated triple's legs, materialize the composition, and bind it as the active
@@ -551,7 +553,7 @@ def _compose_and_bind(
             shas, filename=filename, scenarios_filename=scenarios_filename
         ),
     )
-    state.bind_upload(upload)
+    state.bind_upload(upload, session)
     return upload, 200
 
 
@@ -562,6 +564,7 @@ def _restore_composed_config(
     *,
     org: str,
     actor: str | None = None,
+    session: str | None = None,
 ) -> tuple[Any, int] | None:
     """Fetch-and-compose fallback for restoring a triple-bound `upload`-kind source (BE-0268) —
     the composed-triple sibling of `restore_uploaded_config`'s legacy single-sha path.
@@ -596,6 +599,7 @@ def _restore_composed_config(
         size=raw_size if isinstance(raw_size, int) else 0,
         org=org,
         actor=actor,
+        session=session,
     )
     if status != 200:
         return result, status
@@ -604,7 +608,11 @@ def _restore_composed_config(
 
 
 def bind_composition(
-    state: ServeState, artifacts: dict[str, Any], *, actor: str | None = None
+    state: ServeState,
+    artifacts: dict[str, Any],
+    *,
+    actor: str | None = None,
+    session: str | None = None,
 ) -> tuple[Any, int]:
     """Compose a `(config, scenarios, binary)` artifact triple and bind it as the active config
     (BE-0268) — the compose-picker sibling of `bind_upload_config`, driven by `POST /api/compose`.
@@ -639,6 +647,7 @@ def bind_composition(
         size=0,
         org=org,
         actor=actor,
+        session=session,
         scenarios_filename=scenarios_name,
     )
     if status != 200:
@@ -702,7 +711,12 @@ def restore_org_config(state: ServeState, *, org: str, actor: str | None = None)
 
 
 def restore_uploaded_config(
-    state: ServeState, source: dict[str, Any], *, org: str, actor: str | None = None
+    state: ServeState,
+    source: dict[str, Any],
+    *,
+    org: str,
+    actor: str | None = None,
+    session: str | None = None,
 ) -> tuple[Any, int] | None:
     """Fetch-and-extract an `upload`-kind config source back into a live binding (BE-0243).
 
@@ -728,7 +742,9 @@ def restore_uploaded_config(
     path below never runs for it, and vice versa; the two locator shapes are mutually exclusive."""
     artifacts = source.get("artifacts")
     if isinstance(artifacts, dict):
-        return _restore_composed_config(state, source, artifacts, org=org, actor=actor)
+        return _restore_composed_config(
+            state, source, artifacts, org=org, actor=actor, session=session
+        )
     sha256 = source.get("sha256")
     if not isinstance(sha256, str) or not _SHA256_RE.fullmatch(sha256):
         return None
@@ -770,5 +786,5 @@ def restore_uploaded_config(
         org=org,
         actor=actor,
     )
-    state.bind_upload(upload)
+    state.bind_upload(upload, session)
     return {"ok": True, "config": str(config_path)}, 200

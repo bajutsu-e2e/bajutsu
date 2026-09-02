@@ -448,6 +448,13 @@ class ProviderSettingsManager:
             store.save(PersistedProviderSettings(provider=provider, settings=slots))
 
 
+# How many (session, org) bindings one process keeps before evicting the least recently bound
+# (BE-0393 unit 2). A member holds one slot per org they act as, so this is thousands of concurrent
+# members on one process — far past what a serve deployment fans out to — while still bounding a
+# process that never sees those sessions end.
+MAX_SESSION_BINDINGS = 2048
+
+
 @dataclass(frozen=True)
 class ConfigBinding:
     """The configuration `serve` is bound to, as one value (BE-0393 unit 1).
@@ -526,6 +533,7 @@ class ServeState:
     # another. Ordered and capped so a process accumulating quiet sessions evicts the oldest binding
     # rather than growing without limit.
     bindings: OrderedDict[tuple[str, str], ConfigBinding] = field(init=False)
+    _bindings_lock: threading.Lock = field(init=False)
     # serve's launch directory, captured at construction (see __post_init__) before a config bind can
     # repoint the binding's `cwd`. Runs off a Git/upload bind still land their tree here
     # (BE-0063/BE-0073).
@@ -674,6 +682,7 @@ class ServeState:
             org=config_org,
         )
         self.bindings = OrderedDict()
+        self._bindings_lock = threading.Lock()
         # serve's own launch directory, captured before any config bind repoints the binding's `cwd`
         # at a Git checkout / uploaded bundle. A run off such a bind writes its tree into
         # `base_cwd/runs_dir` (serve's store), not under the transient checkout/bundle
@@ -769,6 +778,49 @@ class ServeState:
             return active_key_env(self)
         return name
 
+    def rebind(self, session: str | None, org: str, binding: ConfigBinding) -> None:
+        """Make *binding* what *session*, acting as *org*, is bound to (BE-0393 unit 2).
+
+        A bind is visible to the session that made it and to no other, so two members of one org can
+        work at once and one switching configurations does not move the ground under another's run.
+        What a colleague's next session inherits is the org's remembered configuration, not this
+        slot.
+
+        A caller with no session — a shared-token or CI request — replaces the deployment's fallback
+        instead, which is the pre-unit-2 behavior and the only binding such a caller could mean.
+
+        The map is bounded: a process that accumulates quiet sessions evicts the least recently bound
+        slot rather than growing without limit. Eviction costs that session its own binding and
+        nothing else — the next request re-reads the fallback, exactly as a session that never bound
+        anything does.
+        """
+        if session is None:
+            self.binding = binding
+            return
+        with self._bindings_lock:
+            self.bindings[session, org] = binding
+            self.bindings.move_to_end((session, org))
+            while len(self.bindings) > MAX_SESSION_BINDINGS:
+                self.bindings.popitem(last=False)
+
+    def drop_revoked_bindings(self) -> int:
+        """Drop every binding whose session the store no longer knows; returns how many went.
+
+        A revoked session cannot *reach* its slot — the request adapters resolve an unknown cookie to
+        None, so such a request already reads the fallback — but the slot would sit until eviction
+        pushed it out. Retiring an org revokes its members' sessions (BE-0375), so this runs there.
+
+        Asks the store which sessions are still live rather than being handed the revoked ids: the
+        database-backed store revokes with a bulk delete and knows only how many rows went, so making
+        it report ids would widen the seam for a sweep that is cheap on the one path that needs it —
+        a rare admin action over a map bounded by `MAX_SESSION_BINDINGS` (BE-0393 unit 2).
+        """
+        with self._bindings_lock:
+            gone = [key for key in self.bindings if not self.auth.valid_session(key[0])]
+            for key in gone:
+                del self.bindings[key]
+        return len(gone)
+
     def binding_for(self, session: str | None, org: str) -> ConfigBinding:
         """The configuration a request from *session*, acting as *org*, is bound to (BE-0393 unit 2).
 
@@ -783,7 +835,8 @@ class ServeState:
         """
         if session is None:
             return self.binding
-        return self.bindings.get((session, org), self.binding)
+        with self._bindings_lock:
+            return self.bindings.get((session, org), self.binding)
 
     def for_org(self, org: str) -> StoreBundle:
         """The storage seams scoped to *org*. A server backend prefixes each org's objects; local
@@ -847,7 +900,7 @@ class ServeState:
             job.cwd = self.binding.cwd
         return job
 
-    def bind_upload(self, upload: Upload) -> None:
+    def bind_upload(self, upload: Upload, session: str | None = None) -> None:
         """Make *upload* the active binding (BE-0073), replacing whatever was bound.
 
         The whole binding is replaced rather than mutated field by field, so no reader can observe a
@@ -856,9 +909,15 @@ class ServeState:
         the Git trust flag. The owning org is read off the bundle rather than stamped by the caller
         afterwards: every caller set it to exactly this, and a caller that forgot left the previous
         owner's partition in place (BE-0375).
+
+        Bound for *session* alone (BE-0393 unit 2), so an upload does not repoint a colleague's run.
+        The org is the bundle's own, which is also the org half of the key: a bundle is uploaded *as*
+        an org, so no other org's slot could be the one it belongs in.
         """
-        self.binding = ConfigBinding(
-            config=upload.config, cwd=upload.root, upload=upload, org=upload.org
+        self.rebind(
+            session,
+            upload.org,
+            ConfigBinding(config=upload.config, cwd=upload.root, upload=upload, org=upload.org),
         )
 
     def targets_for(self, org: str, session: str | None = None) -> list[str]:
