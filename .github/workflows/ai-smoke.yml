@@ -3,7 +3,7 @@
 # real-model accuracy check (BE-0308).
 #
 # tests/test_ai_backend_live_smoke.py calls a real provider through Bajutsu's own adapter code
-# (`bajutsu.ai.anthropic.AnthropicBackend`) with a trivial forced-tool prompt and asserts only that
+# (`bajutsu.common.ai.anthropic.AnthropicBackend`) with a trivial forced-tool prompt and asserts only that
 # the reply lands as a populated, parseable neutral `MessageResponse` — a transport-and-schema check,
 # never a claim about what the model said. Every other adapter test drives a hand-written
 # `FakeAnthropic`, so nothing else re-observes the live API's actual shape. No LLM touches the `run` /

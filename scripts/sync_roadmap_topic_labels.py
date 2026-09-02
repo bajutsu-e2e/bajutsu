@@ -87,7 +87,7 @@ PATH_TOPIC_PREFIX_RULES: tuple[tuple[str, str], ...] = (
     ("bajutsu/mcp/", "mcp"),
     ("bajutsu/serve/", "serve-cli-features"),
     ("bajutsu/drivers/", "platform"),
-    ("bajutsu/ai/", "ai-provider"),
+    ("bajutsu/common/ai/", "ai-provider"),
     # No trailing slash: `record` is the `record/` feature package plus its sibling top-level
     # `record_capture.py` — one prefix rule covers both, including `record/cli.py` (the CLI entry
     # point, feature-colocated since BE-0257's follow-on) with no separate exact rule needed.

@@ -98,9 +98,12 @@ itself.
 If step 2 or 3 made a change this iteration, mirror the CI "Claude review" workflow locally before
 pushing whatever hasn't shipped yet, following [`ideation`](../ideation/SKILL.md) step 5's
 two-role procedure exactly — a review/plan pass that classifies findings and never edits, then an
-implement pass that applies its instructions (BE-0347) — on different models: `fable` for the
+implement pass that applies its instructions (BE-0347) — as separate, freshly-spawned Agent-tool
+subagents with non-overlapping instructions, judge-only and apply-only: `opus` for the
 review/plan pass, and for the implement pass `sonnet` when the fix stays within `roadmaps/` or
-`docs/`, `opus` when it touches product code. There are three differences from that procedure. First, give the
+`docs/`, `opus` when it touches product code. For a product-code fix the two land on the same
+model, so it is the separate cold spawn, not a model difference, that keeps the judge from
+patching its own finding. There are three differences from that procedure. First, give the
 review/plan pass a local `git diff` against the
 PR's remote branch instead of a fresh diff against `origin/main` — unlike `gh pr diff <PR>`, which
 only shows what GitHub's remote head already has, a local diff sees this iteration's not-yet-pushed

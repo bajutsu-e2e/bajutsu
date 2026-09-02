@@ -83,7 +83,7 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         # runner/pipeline.py and orchestrator/loop.py unconditional imports
         "bajutsu/evidence/core.py",
         # `bajutsu.evidence.core` executes `evidence/__init__.py` on import, same as
-        # `crawl/__init__.py` / `agents/__init__.py` below.
+        # `crawl/__init__.py` / `common/agents/__init__.py` below.
         "bajutsu/evidence/__init__.py",
         "bajutsu/evidence/redaction.py",
         "bajutsu/evidence/network.py",
@@ -91,13 +91,13 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         "bajutsu/mailbox.py",
         "bajutsu/evidence/intervals.py",
         # record.py unconditionally imports the Agent/EnrichmentAgent protocols from
-        # agents.protocols (record is an E2E verb), mirroring the old agent.py entry (now
-        # agent_protocols.py, packaged by BE-0257). Its sibling agents.factory (the old
+        # common.agents.protocols (record is an E2E verb), mirroring the old agent.py entry (now
+        # agent_protocols.py, packaged by BE-0257). Its sibling common.agents.factory (the old
         # agents.py / agent_factory.py) is deliberately excluded — see the parity test below.
-        "bajutsu/agents/protocols.py",
-        # `bajutsu.agents.protocols` executes `agents/__init__.py` on import, same as
+        "bajutsu/common/agents/protocols.py",
+        # `bajutsu.common.agents.protocols` executes `common/agents/__init__.py` on import, same as
         # `crawl/__init__.py` below.
-        "bajutsu/agents/__init__.py",
+        "bajutsu/common/agents/__init__.py",
         "bajutsu/crawl/core.py",
         # record imports `screen_identity` through the package re-export, so `__init__` is on the
         # on-device import path — and `__init__` unconditionally imports `serialize` too, putting it
@@ -120,7 +120,7 @@ def test_non_run_path_top_level_modules_are_not_relevant() -> None:
         "bajutsu/analysis/audit.py",
         "bajutsu/analysis/coverage.py",
         "bajutsu/analytics/stats.py",
-        "bajutsu/agents/alerts.py",
+        "bajutsu/common/agents/alerts.py",
         "bajutsu/github/actions.py",
         # The crawl engine core/serialize/__init__ trigger (above), but the periphery siblings in the
         # same package do not — the on-device run never imports them, so `crawl/**` must not be swept
@@ -266,14 +266,15 @@ def test_doctor_onboarding_gate_code_is_relevant_on_every_lane() -> None:
 
 def test_doctors_ai_availability_half_stays_excluded() -> None:
     # `cli/commands/doctor.py` also reports whether AI credentials are present, via
-    # `agents/availability` and the `credential_gap` lookup `bajutsu/ai/registry.py` backs. Those
+    # `common/agents/availability` and the `credential_gap` lookup `bajutsu/common/ai/registry.py`
+    # backs. Those
     # stay excluded on purpose: `assert_doctor_env.py` reads only the `environment:` section, which no
     # AI credential can move, and sweeping them in would drag the whole AI periphery onto the metered
     # lanes.
     for lane in ("ios", "android", "web"):
-        assert is_relevant(["bajutsu/agents/availability.py"], lane) is False, lane
-        assert is_relevant(["bajutsu/ai/registry.py"], lane) is False, lane
-        assert is_relevant(["bajutsu/ai/__init__.py"], lane) is False, lane
+        assert is_relevant(["bajutsu/common/agents/availability.py"], lane) is False, lane
+        assert is_relevant(["bajutsu/common/ai/registry.py"], lane) is False, lane
+        assert is_relevant(["bajutsu/common/ai/__init__.py"], lane) is False, lane
 
 
 def test_provision_is_web_only() -> None:
@@ -582,9 +583,9 @@ def _module_to_relpath(module: str) -> str | None:
 
 def _containing_package(relpath: str) -> list[str]:
     """The package a module or package-init file lives in, as dotted components. Dropping the last
-    component covers both: `bajutsu/agents/protocols.py` and `bajutsu/agents/__init__.py` alike sit in
-    `bajutsu.agents`, so a `from . import x` in either resolves to `bajutsu.agents.x` (a package init
-    that kept its `__init__` component would resolve to `bajutsu.agents.__init__.x` and drop the edge)."""
+    component covers both: `bajutsu/common/agents/protocols.py` and `bajutsu/common/agents/__init__.py` alike sit in
+    `bajutsu.common.agents`, so a `from . import x` in either resolves to `bajutsu.common.agents.x` (a package init
+    that kept its `__init__` component would resolve to `bajutsu.common.agents.__init__.x` and drop the edge)."""
     return relpath.removesuffix(".py").replace("/", ".").split(".")[:-1]
 
 
@@ -623,21 +624,30 @@ def test_containing_package_drops_module_and_init_alike() -> None:
     # The fix a package-init resolver depends on: both a module and its package `__init__` sit in the
     # same package, so a relative import in either resolves against that package — not against a
     # phantom `…__init__` component that would drop the edge from the closure walk.
-    assert _containing_package("bajutsu/agents/protocols.py") == ["bajutsu", "agents"]
-    assert _containing_package("bajutsu/agents/__init__.py") == ["bajutsu", "agents"]
+    assert _containing_package("bajutsu/common/agents/protocols.py") == [
+        "bajutsu",
+        "common",
+        "agents",
+    ]
+    assert _containing_package("bajutsu/common/agents/__init__.py") == [
+        "bajutsu",
+        "common",
+        "agents",
+    ]
 
 
 def test_relative_imports_resolve_to_absolute() -> None:
     # The closure walk must follow `from . import x` / `from .mod import y` edges (the codebase has
     # none today, but Unit 2 exists to survive that drift). A `__init__.py` resolving a relative import
-    # to `bajutsu.agents.__init__.factory` instead of `bajutsu.agents.factory` would silently drop the
-    # run-path file behind it — the exact miss this check guards against.
+    # to `bajutsu.common.agents.__init__.factory` instead of `bajutsu.common.agents.factory` would silently drop the
+    # run-path file behind it — the exact miss this check guards against. `common/agents/` sits two
+    # packages below `bajutsu`, so reaching the top-level `runner` sibling takes three dots, not two.
     found = _imports_from_source(
-        "bajutsu/agents/__init__.py",
-        "from . import protocols\nfrom .factory import make_agent\nfrom ..runner import pipeline\n",
+        "bajutsu/common/agents/__init__.py",
+        "from . import protocols\nfrom .factory import make_agent\nfrom ...runner import pipeline\n",
     )
-    assert "bajutsu.agents.protocols" in found
-    assert "bajutsu.agents.factory" in found
+    assert "bajutsu.common.agents.protocols" in found
+    assert "bajutsu.common.agents.factory" in found
     assert "bajutsu.runner.pipeline" in found
     assert not any("__init__" in name for name in found), found
 
@@ -668,7 +678,7 @@ def test_run_path_closure_is_gated_or_excluded() -> None:
     # neither — a per-backend leaf carved out of the shared sweep but re-claimed by no lane, or a
     # periphery module the run path newly imports that nobody has added to `_PERIPHERY_EXCLUSIONS` —
     # fails here, at `make check`, instead of surfacing months later as a mysteriously green required
-    # check. `record` reaching `agents/factory` (the agent factory) is the canonical acknowledged
+    # check. `record` reaching `common/agents/factory` (the agent factory) is the canonical acknowledged
     # crossing: it is covered because `factory.py` is a periphery entry, not because it is gated.
     closure = _run_path_closure()
     assert len(closure) > 100, (

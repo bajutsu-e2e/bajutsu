@@ -3,9 +3,13 @@
 BE-0243 adds durable, cross-replica resolution on top of the local extraction sandbox: when
 `state.object_store` is configured (the hosted `server` backend), the raw zip is persisted
 content-addressed by its sha256 so another replica can fetch-and-extract it instead of refusing an
-`upload`-kind bind. Local `serve` (no object store) is unchanged — the bundle stays exactly as
-ephemeral as BE-0073 shipped it. The record naming those bytes lives on the org row (BE-0404 unit
-1), written by the bind itself.
+`upload`-kind bind. BE-0393 unit 5 resolves a replica's own extraction cache before an object store
+is required, so a replica that already holds the extracted bundle rebinds it without a fetch. No
+shipping configuration reaches the no-store branch yet — `restore_org_config`, the only caller,
+needs a repository, and the one construction that assigns one also requires `BAJUTSU_SERVER_STORE`
+— so it is groundwork for the deployment shapes units 6 and 7 open, not a recovery an operator can
+perform today. The record naming those bytes lives on the org row (BE-0404 unit 1), written by the
+bind itself.
 """
 
 from __future__ import annotations
@@ -100,6 +104,40 @@ def _compositions_dir(state: ServeState) -> Path:
     """The local cache root for materialized artifact-triple compositions (BE-0268), nested under
     `state.uploads_dir` alongside the legacy bundle cache and the per-artifact cache above."""
     return state.uploads_dir / "compositions"
+
+
+def _org_compositions_dir(state: ServeState, org: str) -> Path:
+    """*org*'s slice of the composition cache — org-scoped like `_org_uploads_dir`, and written in
+    one place so the hit check and the compose path cannot drift apart (BE-0393)."""
+    return _compositions_dir(state) / org_prefix("", org)
+
+
+def _composed_cache_hit(state: ServeState, org: str, shas: dict[str, str]) -> bool:
+    """Whether *org* already holds this triple's composed tree locally (BE-0393).
+
+    Restoring carries no `scenarios` display name, so its composition id is the unsalted form
+    `_compose_and_bind` computes for the same triple — the two must agree, in id and in directory,
+    or a hit here would be a miss there. Asked before an object store is required, so a replica that
+    composed this triple once can rebind it with no store configured at all.
+    """
+    return (_org_compositions_dir(state, org) / _composition_id(shas)).exists()
+
+
+def _legs_cached(state: ServeState, org: str, shas: dict[str, str]) -> bool:
+    """Whether *org* holds every leg of this triple in its local artifact cache (BE-0393).
+
+    The composed tree may be cached under a *salted* id — a single-YAML `scenarios` artifact's
+    display name is part of the composition's identity — which the restore path cannot reconstruct,
+    since a stored record carries no such name. `_compose_and_bind` can still rebuild the tree from
+    these legs with no object store (`_fetch_artifact` resolves this same cache), so holding them all
+    is the second way a no-store deployment has something to restore from.
+    """
+    artifacts_dir = _artifacts_dir(state)
+    return all(
+        (local_artifact_dir(artifacts_dir, org, kind) / shas[kind]).exists()
+        for kind in ARTIFACT_KINDS
+        if kind in shas
+    )
 
 
 def _materialize_or_error(zip_path: Path, uploads_dir: Path, sha256: str) -> tuple[Any, int]:
@@ -463,7 +501,7 @@ def _compose_and_bind(
         if not zipfile.is_zipfile(fetched):
             salt = scenarios_filename
     composition_id = _composition_id(shas, extra=salt)
-    compositions_dir = _compositions_dir(state) / org_prefix("", org)
+    compositions_dir = _org_compositions_dir(state, org)
     if not (compositions_dir / composition_id).exists():
         # Only resolve each remaining leg (local cache hit or object-store fetch) when this exact
         # triple hasn't been composed on this replica before — `materialize_composition` itself
@@ -520,23 +558,28 @@ def _restore_composed_config(
     """Fetch-and-compose fallback for restoring a triple-bound `upload`-kind source (BE-0268) —
     the composed-triple sibling of `restore_uploaded_config`'s legacy single-sha path.
 
-    Returns ``None`` when there is nothing to restore from — no object store configured, or the
-    `config` leg (the triple's only always-required artifact) is missing or not a valid sha — so the
-    caller falls back to the existing `409`. Every leg in *artifacts* is untrusted (the org's stored
-    record, whose locator a client shaped at bind), so each present sha is validated with `_SHA256_RE`
-    before it is ever turned into a path or object-store key, the same reasoning
+    Returns ``None`` when there is nothing to restore from — the `config` leg (the triple's only
+    always-required artifact) is missing or not a valid sha, or this replica holds neither the
+    composed tree nor all of its legs and has no object store to fetch them from — so the caller
+    falls back to the existing `409`. Both local caches are resolved before an object store is
+    required (BE-0393): they survive a restart, so a replica that already composed this triple
+    rebinds it without a fetch. Every leg in *artifacts* is untrusted (the org's
+    stored record, whose locator a client shaped at bind), so each present sha is validated with
+    `_SHA256_RE` before it is ever turned into a path or object-store key, the same reasoning
     `restore_uploaded_config`'s legacy path already applies to its own single `sha256`."""
     config_sha = artifacts.get("config")
-    if (
-        state.object_store is None
-        or not isinstance(config_sha, str)
-        or not _SHA256_RE.fullmatch(config_sha)
-    ):
+    if not isinstance(config_sha, str) or not _SHA256_RE.fullmatch(config_sha):
         return None
     shas: dict[str, str] = {"config": config_sha}
     err = _collect_optional_shas(artifacts, shas)
     if err is not None:
         return err
+    if (
+        state.object_store is None
+        and not _composed_cache_hit(state, org, shas)
+        and not _legs_cached(state, org, shas)
+    ):
+        return None
     raw_size = source.get("size")
     result, status = _compose_and_bind(
         state,
@@ -653,14 +696,18 @@ def restore_uploaded_config(
 ) -> tuple[Any, int] | None:
     """Fetch-and-extract an `upload`-kind config source back into a live binding (BE-0243).
 
-    Returns ``None`` when there is nothing to restore from — no object store configured, or *source*
-    carries no usable `sha256` — so the caller falls back to its own "re-upload it" error. *source*
+    Returns ``None`` when there is nothing to restore from — *source* carries no usable `sha256`, or
+    its bundle is neither in this replica's extraction cache nor fetchable (no object store
+    configured) — so the caller falls back to its own "re-upload it" error. The cache is resolved
+    first (BE-0393): the extracted tree is keyed by content hash and survives a restart, so a replica
+    that still holds it rebinds without a fetch. *source*
     reached the org row from a client-shaped bind, so its
     `sha256` is untrusted: it must be a full lowercase hex digest (`_SHA256_RE`) before it is ever
     turned into a path (`uploads_dir / sha256`) or object-store key, the same way the Git source
     validates a resolved commit SHA before doing the same (`bajutsu/config_source.py`) — an
     unvalidated value could otherwise walk `materialize_bundle` outside the cache root (a `../`) or
-    step into a different, already-extracted cache entry. Otherwise resolves the org-scoped
+    step into a different, already-extracted cache entry — which is why the check stays ahead of the
+    cache lookup BE-0393 unit 5 moved in front of the object store. Otherwise resolves the org-scoped
     sha256-keyed local cache (`materialize_bundle`, reused as-is on a hit — the same replica already
     validated this exact content), fetching the raw zip from the object store on a miss. A validation
     failure on a *fetched* bundle is a real error (the bytes existed but were corrupt), not a
@@ -673,17 +720,16 @@ def restore_uploaded_config(
     if isinstance(artifacts, dict):
         return _restore_composed_config(state, source, artifacts, org=org, actor=actor)
     sha256 = source.get("sha256")
-    if (
-        state.object_store is None
-        or not isinstance(sha256, str)
-        or not _SHA256_RE.fullmatch(sha256)
-    ):
+    if not isinstance(sha256, str) or not _SHA256_RE.fullmatch(sha256):
         return None
     uploads_dir = _org_uploads_dir(state, org)
     dest = uploads_dir / sha256
     if not dest.exists():
+        store = state.object_store
+        if store is None:
+            return None
         try:
-            data = state.object_store.get_bytes(_upload_store_key(state, org, sha256))
+            data = store.get_bytes(_upload_store_key(state, org, sha256))
         except Exception as e:  # a transient store error (not "key absent") must not be folded
             # into the None/409 fallback — that would misreport a real infra failure as "nothing
             # to restore from".

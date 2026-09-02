@@ -104,7 +104,7 @@ from pathlib import Path
 #   XCUITest backend imports — the regression PR #1405 fixed.
 _PERIPHERY_EXCLUSIONS: tuple[tuple[str, str], ...] = (
     (
-        "bajutsu/ai/",
+        "bajutsu/common/ai/",
         "the AI provider adapters — no run / codegen / record path imports them for a run's verdict",
     ),
     (
@@ -135,37 +135,47 @@ _PERIPHERY_EXCLUSIONS: tuple[tuple[str, str], ...] = (
         "bajutsu/triage/",
         "the AI triage command + its M4 self-heal core — an authoring / diagnosis path, not a run",
     ),
-    # agents/: record imports the Agent / EnrichmentAgent *protocols* (`agents/protocols.py`, swept in
-    # below), but a run drives no live agent, so the concrete implementations stay out. The factory
-    # entry restates the former `test_agent_factory_is_not_relevant_by_parity` (BE-0333 Unit 3).
+    # common/agents/: record imports the Agent / EnrichmentAgent *protocols*
+    # (`common/agents/protocols.py`, swept in below), but a run drives no live agent, so the concrete
+    # implementations stay out. The factory entry restates the former
+    # `test_agent_factory_is_not_relevant_by_parity` (BE-0333 Unit 3).
     (
-        "bajutsu/agents/factory.py",
+        "bajutsu/common/agents/factory.py",
         "the agent factory record imports at authoring time; a run drives no live agent",
     ),
     (
-        "bajutsu/agents/ai_config.py",
+        "bajutsu/common/agents/ai_config.py",
         "AI model / credential configuration, an authoring-path concern",
     ),
-    ("bajutsu/agents/alerts.py", "serve-side alerting over a run's results, not part of the run"),
     (
-        "bajutsu/agents/anthropic_client.py",
+        "bajutsu/common/agents/alerts.py",
+        "serve-side alerting over a run's results, not part of the run",
+    ),
+    (
+        "bajutsu/common/agents/anthropic_client.py",
         "the Anthropic API client the live agents use; a run drives none",
     ),
     (
-        "bajutsu/agents/availability.py",
+        "bajutsu/common/agents/availability.py",
         "the AI-credential probe doctor's AI half reports; the E2E doctor gate reads only its environment section",
     ),
     (
-        "bajutsu/agents/claude.py",
+        "bajutsu/common/agents/claude.py",
         "a concrete Claude agent implementation, an authoring / record-proposal path",
     ),
-    ("bajutsu/agents/claude_backed.py", "a concrete Claude-backed agent base, authoring-path only"),
     (
-        "bajutsu/agents/claude_enrich.py",
+        "bajutsu/common/agents/claude_backed.py",
+        "a concrete Claude-backed agent base, authoring-path only",
+    ),
+    (
+        "bajutsu/common/agents/claude_enrich.py",
         "Claude-backed evidence enrichment, a post-run authoring path",
     ),
-    ("bajutsu/agents/claude_triage.py", "Claude-backed triage, a diagnosis path off the run"),
-    ("bajutsu/agents/enrich.py", "the enrichment-agent surface a run never invokes"),
+    (
+        "bajutsu/common/agents/claude_triage.py",
+        "Claude-backed triage, a diagnosis path off the run",
+    ),
+    ("bajutsu/common/agents/enrich.py", "the enrichment-agent surface a run never invokes"),
     # crawl/: record imports the crawl engine core (`core` / `serialize` / `__init__`, swept in); the
     # guide / report / repro / flows / tabs siblings are periphery the run never imports.
     ("bajutsu/crawl/guide.py", "crawl's human-facing guide output, an authoring path"),

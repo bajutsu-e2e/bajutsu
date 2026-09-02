@@ -179,7 +179,7 @@ and [`implement-be`](../../../.apm/skills/implement-be/SKILL.md) all run it rath
 as a standalone, directly-invocable skill; keep the two in sync if either one's cap, taxonomy, or
 dedup rule changes.
 
-**The review/plan pass.** Spawn a fresh Agent-tool subagent on `fable` that has **not** seen this
+**The review/plan pass.** Spawn a fresh Agent-tool subagent on `opus` that has **not** seen this
 ideation conversation —
 the CI reviewer also runs cold, with no memory of the authoring discussion, so a subagent that
 inherited this session's context would not reproduce that. Give it exactly two inputs: the contract
