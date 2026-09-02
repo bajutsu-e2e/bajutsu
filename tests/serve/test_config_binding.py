@@ -398,12 +398,10 @@ class _MemoryRepo:
 
 def _with_memory(tmp_path: Path, source: object) -> tuple[srv.ServeState, _MemoryRepo]:
     """A state whose org remembers *source*, with the lazy restore wired as `serve()` wires it."""
-    from bajutsu.serve.operations.config import restore_org_binding
-
     state = _state(tmp_path)
     repo = _MemoryRepo(source)
     state.repository = repo  # type: ignore[assignment]
-    state.restore_binding = partial(restore_org_binding, state)
+    state.restore_binding = partial(config_ops.restore_org_binding, state)
     return state, repo
 
 
@@ -511,8 +509,6 @@ def test_a_git_source_is_restored_through_the_ordinary_binder(
 ) -> None:
     """A restored configuration is screened exactly as the bind that recorded it was — it goes
     through the same binder rather than being trusted from the record."""
-    import bajutsu.serve.operations.config as config_ops
-
     checkout = tmp_path / "checkout"
     checkout.mkdir()
     (checkout / "web.yaml").write_text(_CONFIG, encoding="utf-8")
@@ -823,3 +819,60 @@ def test_a_restore_for_a_session_with_no_identity_records_nothing(tmp_path: Path
 
     assert state.binding_for(anonymous, "default").config == remembered
     assert repo.audits == []
+
+
+# --- two readers that still mixed the session's binding with the deployment's ---
+
+
+def test_the_run_picker_scopes_by_the_asking_sessions_suite(tmp_path: Path) -> None:
+    """The Coverage picker filters the history to a target's scenario names. Read from the
+    deployment's binding it finds none of a session-bound suite's scenarios and offers no run at
+    all — the member's own runs hidden from their own picker."""
+    from _shared import write_run
+
+    from bajutsu.serve.operations.reads import ALL_LABELS, runs_payload
+
+    scn_dir, cfg, runs = project(tmp_path)
+    mine = tmp_path / "mine"
+    mine.mkdir()
+    (mine / "own.yaml").write_text("- name: gamma\n  steps:\n    - tap: { id: x }\n", "utf-8")
+    bound = tmp_path / "mine.yaml"
+    bound.write_text(
+        f"defaults: {{ backend: [ios] }}\ntargets:\n  demo: {{ bundleId: com.x, scenarios: {mine} }}\n",
+        encoding="utf-8",
+    )
+    write_run(runs, "20260101-1", ok=True, scenarios=[("gamma", True)])
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path, root=tmp_path)
+    assert ops.bind_config(state, "mine.yaml", session="s1")[1] == 200
+
+    rows, status = runs_payload(state, session="s1", target="demo", label=ALL_LABELS)
+
+    assert status == 200
+    assert [r["id"] for r in rows] == ["20260101-1"]
+    # And a session that bound nothing still reads the deployment's suite, which has no `gamma`.
+    assert runs_payload(state, session="s2", target="demo", label=ALL_LABELS)[0] == []
+    assert scn_dir.exists()
+
+
+def test_the_usage_ledger_is_read_where_the_session_writes_it(tmp_path: Path) -> None:
+    """A dispatched job freezes the asking session's directory, so a relative `usageLedger` fills up
+    under that binding's root. Resolved against the deployment's, `/usage` reads an empty file while
+    the ledger fills — issue #1717, reopened for exactly the sessions this item exists for."""
+    from bajutsu.serve.operations.reads import _usage_ledger_paths
+
+    _scn, cfg, runs = project(tmp_path)
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    bound = checkout / "bajutsu.config.yaml"
+    bound.write_text(
+        "defaults: { backend: [ios] }\ntargets:\n"
+        "  demo: { bundleId: com.x, ai: { usageLedger: runs/usage.jsonl } }\n",
+        encoding="utf-8",
+    )
+    state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path, root=tmp_path)
+    assert ops.bind_config(state, "checkout/bajutsu.config.yaml", session="s1")[1] == 200
+
+    assert _usage_ledger_paths(state, None, "s1") == [checkout / "runs" / "usage.jsonl"]
+    # A session that bound nothing still reads the deployment's, so a single-tenant serve is
+    # unchanged.
+    assert _usage_ledger_paths(state, None, "s2") != [checkout / "runs" / "usage.jsonl"]

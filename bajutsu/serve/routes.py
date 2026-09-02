@@ -311,7 +311,7 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "GET",
         "/usage",
-        lambda state, ctx: ops.usage_html(state, actor=ctx.actor()),
+        lambda state, ctx: ops.usage_html(state, actor=ctx.actor(), session=ctx.session()),
         content_type=_HTML,
     ),
     # Unlike its three siblings the coverage map needs a target (and, for the evidence dimensions, a

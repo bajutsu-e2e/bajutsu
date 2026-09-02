@@ -132,7 +132,7 @@ RUN_WINDOW = 200
 
 
 def _target_scenario_names(
-    state: ServeState, org: str, target: str, session: str | None = None
+    state: ServeState, org: str, target: str, session: str | None
 ) -> set[str]:
     """Every scenario name declared in *target*'s suite, as the run picker's scoping key.
 
@@ -266,7 +266,7 @@ def runs_payload(
     # data-driven scenario is recorded under its per-row names, which `declared_name` maps back to
     # the one the suite declares.
     if target is not None:
-        names = _target_scenario_names(state, org, target)
+        names = _target_scenario_names(state, org, target, session)
         runs = [
             r
             for r in runs
@@ -468,7 +468,9 @@ def run_set_manifests(store: ArtifactStore, run_ids: Iterable[Any]) -> list[dict
     return manifests
 
 
-def usage_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:
+def usage_html(
+    state: ServeState, *, actor: str | None = None, session: str | None = None
+) -> tuple[str, int]:
     """The AI usage/cost dashboard (BE-0195) as a self-contained HTML page.
 
     Reads the same attributed ledgers the serve process's AI subprocesses append to and aggregates
@@ -480,7 +482,7 @@ def usage_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int
     apart from issue #1717).
     """
     events: list[_usage_ledger.UsageEvent] = []
-    for path in _usage_ledger_paths(state, actor):
+    for path in _usage_ledger_paths(state, actor, session):
         try:
             events.extend(_usage_ledger.read_events(path))
         except OSError:
@@ -490,16 +492,22 @@ def usage_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int
     return _usage_stats.render_html(_usage_stats.aggregate_usage(events)), 200
 
 
-def _usage_ledger_paths(state: ServeState, actor: str | None) -> list[Path]:
+def _usage_ledger_paths(state: ServeState, actor: str | None, session: str | None) -> list[Path]:
     """Every ledger file the dashboard reads — resolved as the AI subprocesses serve spawns do.
 
     AI work in serve runs as subprocesses that call `usage_ledger.configure_from_ai_config` with the
     *target-merged* `ai` block (`resolve`'s `Effective.ai`, so `targets.<name>.ai.usageLedger`
-    overrides `defaults.ai.usageLedger`), writing relative paths against their cwd — the deployment
-    binding's `cwd`,
-    the directory `jobs` spawns them in absent a per-job override. Resolving the read side any other
-    way is what left the dashboard reading an empty file while a per-target ledger filled up (issue
-    #1717).
+    overrides `defaults.ai.usageLedger`), writing relative paths against their cwd. Resolving the
+    read side any other way is what left the dashboard reading an empty file while a per-target
+    ledger filled up (issue #1717).
+
+    That cwd is the *asking session's* binding, which is what a job freezes when it is accepted
+    (BE-0393 unit 2). Reading the deployment's instead would reopen #1717 on exactly the sessions
+    that unit exists for: a member running against a bound bundle appends under the bundle root
+    while the dashboard looks under serve's launch directory. Which is also why the ledger *names*
+    come from the same binding — the config a run was dispatched with is the one that said where its
+    ledger goes. A session that bound nothing reads the deployment's, so a single-tenant `serve` is
+    unchanged.
 
     Every such subprocess names a target (`resolve` rejects an unknown one), so the set of files it
     can append to is the union over the targets — the dashboard is process-wide, not target-scoped,
@@ -513,28 +521,27 @@ def _usage_ledger_paths(state: ServeState, actor: str | None) -> list[Path]:
     empty `usageLedger` disables persistence, contributing no path.
 
     Two writers stay outside that union by construction, both pre-existing and neither this
-    dashboard's to reach: a job carrying its own `cwd` (a remote worker's workspace, which serve
-    cannot read at all), and a targetless `bajutsu triage --ai` launched beside serve, which resolves
-    no `ai` block of its own and so writes the built-in default rather than the configured ledger.
+    dashboard's to reach: a remote worker's job, whose workspace serve cannot read at all, and a
+    targetless `bajutsu triage --ai` launched beside serve, which resolves no `ai` block of its own
+    and so writes the built-in default rather than the configured ledger. A colleague's
+    session-bound ledger is outside it too, and deliberately: it is their tenant's spend, and this
+    view is not org-scoped within a file (see `usage_html`).
     """
-    loaded = load_serve_config_file(
-        # The deployment's own binding, not a session's: the ledger describes what this `serve`
-        # spent, which is one accounting for the process (BE-0393 unit 2).
-        state.binding.config
-    )  # cached parse; None when absent/unreadable
+    binding = state.binding_for(session, state.org_of(actor))
+    loaded = load_serve_config_file(binding.config)  # cached parse; None when absent/unreadable
     if loaded is None:
-        return _absolute_ledger_paths(state, [None])
+        return _absolute_ledger_paths(binding.cwd, [None])
     config = loaded[0]
     if not config.targets:
         defaults = config.defaults.ai
         ledger = defaults.usage_ledger if defaults is not None else None
-        return _absolute_ledger_paths(state, [ledger])
+        return _absolute_ledger_paths(binding.cwd, [ledger])
     # Org scoping applies only on a server backend with a system of record, mirroring
     # `list_targets_payload` — the one place target ownership is decided (BE-0015 multi-tenancy).
     names = (
         sorted(config.targets)
         if state.repository is None
-        else state.targets_for(state.org_of(actor))
+        else state.targets_for(state.org_of(actor), session)
     )
     configured: list[str | None] = []
     for target in sorted(names):
@@ -543,11 +550,14 @@ def _usage_ledger_paths(state: ServeState, actor: str | None) -> list[Path]:
         except (ValueError, KeyError):
             continue  # a target that won't resolve can't have run an AI path either
         configured.append(merged.usage_ledger if merged is not None else None)
-    return _absolute_ledger_paths(state, configured)
+    return _absolute_ledger_paths(binding.cwd, configured)
 
 
-def _absolute_ledger_paths(state: ServeState, configured: Iterable[str | None]) -> list[Path]:
+def _absolute_ledger_paths(base: Path, configured: Iterable[str | None]) -> list[Path]:
     """The distinct absolute ledger files *configured* names, dropping the disabled ones.
+
+    *base* is the directory a relative path resolves against — the binding's `cwd`, which is the one
+    the spawned subprocess ran in.
 
     Deduplication is on the resolved path, not the configured string: two targets naming the same
     file differently (`runs/usage.jsonl` vs `./runs/usage.jsonl`) must be read once, or every event
@@ -559,7 +569,7 @@ def _absolute_ledger_paths(state: ServeState, configured: Iterable[str | None]) 
         if path is None:  # persistence disabled for this target
             continue
         if not path.is_absolute():
-            path = state.binding.cwd / path
+            path = base / path
         try:
             key = path.resolve()
         except OSError:  # a symlink loop or an unreadable parent — dedupe on the unresolved path
