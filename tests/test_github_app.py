@@ -14,9 +14,9 @@ import pytest
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519, padding, rsa
 
+from bajutsu.common.config_source import GitConfigSpec
 from bajutsu.common.github import GitHubAccessError
 from bajutsu.common.github.app import _app_jwt, _fetch, installation_token
-from bajutsu.config_source import GitConfigSpec
 
 _SPEC = GitConfigSpec("github.com", "acme", "repo", None, None)
 

@@ -40,7 +40,7 @@ def test_launch_label_disambiguates_two_configs_from_one_repository() -> None:
     # one label — the collision an explicit project name used to resolve. The in-repo config path
     # is what keeps them apart, so the stamp is built the way `serve` actually builds it rather than
     # hand-shaped: a hand-built dict would pass against a stamp that carries no path at all.
-    from bajutsu.config_source import GitConfigSpec, Materialized, source_provenance
+    from bajutsu.common.config_source import GitConfigSpec, Materialized, source_provenance
 
     mat = Materialized(Path("/c/cfg.yaml"), Path("/c"), "deadbeef")
     web = source_provenance(
@@ -278,7 +278,11 @@ def test_an_unlabeled_run_stays_visible_on_the_database_path(
     repository = SqlRepository(engine)
     repository.ensure_org("default", slug="default", name="default")
     _scn, cfg, runs = project(tmp_path)
-    for run_id, label in (("r-old", None), ("r-mine", "bajutsu.config"), ("r-other", "other")):
+    for run_id, label in (
+        ("r-old", None),
+        ("r-mine", "bajutsu.config"),
+        ("r-other", "other"),
+    ):
         repository.record_run(
             RunRecord(
                 id=run_id,

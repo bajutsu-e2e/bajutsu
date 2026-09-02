@@ -22,8 +22,8 @@ from typing import Any
 import pytest
 
 from bajutsu import backends, simctl, stall_diagnostics
+from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.common.scenario import Preconditions
-from bajutsu.config import Effective, load_config, resolve
 from bajutsu.device_os import DeviceOS
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.drivers.xcuitest import XcuitestChannelError

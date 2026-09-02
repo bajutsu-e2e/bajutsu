@@ -59,7 +59,7 @@ the `run` / CI gate.
 
 ## Where you see it
 
-The classification is defined once (in `bajutsu/capabilities.py`) and consumed everywhere, so the
+The classification is defined once (in `bajutsu/common/capability/capabilities.py`) and consumed everywhere, so the
 surfaces can never disagree:
 
 - **`bajutsu --help`** groups every top-level command under *Claude-free (zero-config)* or *Uses

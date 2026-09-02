@@ -21,13 +21,13 @@ from bajutsu.backends import (
     select_actuator_for_scenario,
 )
 from bajutsu.backends import make_driver as _make_driver
+from bajutsu.common.config import Effective
 from bajutsu.common.evidence import FileSink
 from bajutsu.common.evidence.network import Collector, NetworkCollector, _no_transitions
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.report import git_revision, run_provenance
 from bajutsu.common.scenario import Scenario, dump_scenario_file, redact_totp_secrets
-from bajutsu.config import Effective
 from bajutsu.drivers import base
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.orchestrator.evidence_rules import requested_intervals

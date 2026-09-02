@@ -18,10 +18,10 @@ from typer.testing import CliRunner
 from bajutsu.cli import app
 from bajutsu.cli._shared import _resolve_browser, _resolve_language
 from bajutsu.cli.commands.run import _apply_touch_markers
+from bajutsu.common.config import Effective, IosConfig, WebConfig, load_config, resolve
 from bajutsu.common.scenario import Scenario
 from bajutsu.common.scenario.models.assertions import Assertion, VisualMatch
 from bajutsu.common.scenario.models.steps import Step
-from bajutsu.config import Effective, IosConfig, WebConfig, load_config, resolve
 from bajutsu.serve import _cli_flags as cli_flags
 
 runner = CliRunner()
@@ -248,7 +248,7 @@ def test_credential_gap_messages_for_ant_are_actionable() -> None:
     # The ant provider's fail-closed messages (BE-0163) name the fix, mirroring bedrock's.
     from bajutsu.cli._shared import _credential_gap_message
     from bajutsu.common.agents.anthropic_client import ANT_CLI_MISSING, ANT_CLI_UNAUTHENTICATED
-    from bajutsu.config import load_config, resolve
+    from bajutsu.common.config import load_config, resolve
 
     eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
     assert "ant auth login" in _credential_gap_message(ANT_CLI_MISSING, eff)
@@ -919,8 +919,8 @@ def test_xcuitest_runner_summary_reports_the_resolved_source(tmp_path: Path) -> 
     # BE-0292: doctor discloses which runner tier an xcuitest target would use, without acting on
     # it (no build run, no cache materialized) — pure config inspection.
     from bajutsu.cli.commands.doctor import xcuitest_runner_summary
+    from bajutsu.common.config import XcuitestConfig
     from bajutsu.common.scenario import Redact
-    from bajutsu.config import XcuitestConfig
 
     runner = tmp_path / "Runner.xctestrun"
     runner.write_bytes(b"")
@@ -994,8 +994,8 @@ def test_xcuitest_runner_summary_warns_on_a_bundled_toolchain_mismatch(
     # BE-0292: a target with no testRunner resolves to the bundled runner, so doctor appends a
     # mismatch warning when the host Xcode major differs from the toolchain the bundle recorded.
     from bajutsu.cli.commands import doctor
+    from bajutsu.common.config import XcuitestConfig
     from bajutsu.common.scenario import Redact
-    from bajutsu.config import XcuitestConfig
     from bajutsu.platform_lifecycle.environments import xcuitest as xc
 
     # A non-None products dir makes `runner_source` report the bundled tier for the first line; the
@@ -1218,7 +1218,7 @@ def test_serve_config_from_git_binds_checkout(
 ) -> None:
     # `serve --config github:…` materializes the checkout at startup and serves from its root, so
     # the config's relative paths resolve against the fetched tree (BE-0063).
-    import bajutsu.config_source as cs
+    import bajutsu.common.config_source as cs
     import bajutsu.serve as srv
 
     checkout = tmp_path / "co"

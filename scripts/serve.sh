@@ -48,7 +48,7 @@ serve_uses_xcuitest() {
 import sys
 
 from bajutsu.backends import resolve_actuators
-from bajutsu.config import load_config, resolve
+from bajutsu.common.config import load_config, resolve
 
 try:
     cfg = load_config(open(sys.argv[1], encoding="utf-8").read())

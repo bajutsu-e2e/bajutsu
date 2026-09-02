@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import Field, model_validator
 
 from bajutsu import _yaml
-from bajutsu.config import Config, _Model, parse_config_dict
+from bajutsu.common.config import Config, _Model, parse_config_dict
 
 if TYPE_CHECKING:  # keeps the default serve/CLI path free of `serve.server` (server/__init__.py)
     from bajutsu.serve.server.db import Repository

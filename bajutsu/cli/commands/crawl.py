@@ -45,10 +45,10 @@ from bajutsu.cli._shared import (
     resolve_system_alert_handling_flag,
 )
 from bajutsu.common.ai import announce_ai
+from bajutsu.common.config import Effective, web_base_url
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.scenario import Preconditions
-from bajutsu.config import Effective, web_base_url
 from bajutsu.crawl import flows as crawl_flows
 from bajutsu.crawl import report as crawl_report
 from bajutsu.crawl import repro as crawl_repro

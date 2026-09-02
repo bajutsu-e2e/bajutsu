@@ -372,7 +372,9 @@ def test_upload_rejects_config_path_outside_bundle(tmp_path: Path) -> None:
             "targets:\n  demo: { bundleId: com.example.demo, appPath: ../../../etc/passwd }\n",
         ):
             status, resp = _post_bytes(
-                port, "/api/upload?name=evil.zip", _zip_with({"bajutsu.config.yaml": cfg.encode()})
+                port,
+                "/api/upload?name=evil.zip",
+                _zip_with({"bajutsu.config.yaml": cfg.encode()}),
             )
             assert status == 400 and "invalid bundle" in resp["error"]
         assert _extracted_dirs(tmp_path) == []

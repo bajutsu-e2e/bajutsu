@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
-from bajutsu.config import NotifyEndpoint
+from bajutsu.common.config import NotifyEndpoint
 from bajutsu.notify import (
     FailureSummary,
     RunNotification,

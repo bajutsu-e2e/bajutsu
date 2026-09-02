@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bajutsu import requirements as req
+from bajutsu.common.provisioning import requirements as req
 
 
 def test_remedy_renders_each_install_method_as_a_command() -> None:

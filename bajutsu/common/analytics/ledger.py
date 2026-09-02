@@ -24,7 +24,7 @@ from threading import Lock
 from typing import Any
 
 from bajutsu.common.analytics.usage import TokenUsage, of
-from bajutsu.config import AiConfig
+from bajutsu.common.config import AiConfig
 from bajutsu.run_files import runs_root
 
 # Bump when the on-disk record shape changes incompatibly; readers key off it to stay

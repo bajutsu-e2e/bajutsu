@@ -14,8 +14,9 @@ import pkgutil
 
 import typer
 
-from bajutsu import capabilities, diagnostics
+from bajutsu import diagnostics
 from bajutsu.cli import commands
+from bajutsu.common.capability import capabilities
 from bajutsu.dotenv import load_dotenv
 
 # Rich help panels that split `bajutsu --help` on the Claude boundary (BE-0101), so the split is the

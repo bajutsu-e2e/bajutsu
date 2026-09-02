@@ -15,8 +15,8 @@ import pytest
 
 from bajutsu import adb
 from bajutsu.adb_resident import ResidentChannel
+from bajutsu.common.config import AndroidConfig, Effective
 from bajutsu.common.scenario import Preconditions, Redact
-from bajutsu.config import AndroidConfig, Effective
 from bajutsu.drivers.adb import ActOutcome, AdbDriver, HierarchyRead
 from bajutsu.platform_lifecycle import AndroidEnvironment, ProvisionProfile, environment_for
 from bajutsu.platform_lifecycle.readiness import await_boot

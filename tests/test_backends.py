@@ -19,8 +19,8 @@ from bajutsu.backends import (
     select_actuator_cost_first,
     select_actuator_for_scenario,
 )
+from bajutsu.common.config import DeviceProvider, Effective, IosConfig, WebConfig, XcuitestConfig
 from bajutsu.common.scenario import Redact, Scenario
-from bajutsu.config import DeviceProvider, Effective, IosConfig, WebConfig, XcuitestConfig
 from bajutsu.drivers import base
 from bajutsu.drivers.adb import HierarchyRead
 
@@ -546,7 +546,7 @@ def test_capabilities_for_run_is_a_noop_for_non_xcuitest_backends() -> None:
 def test_real_device_narrowing_makes_a_device_control_scenario_unsupported() -> None:
     # End-to-end with the preflight (BE-0082): a setLocation scenario runs on the Simulator but is
     # skipped up front on a real device, where simctl device control does not apply (BE-0238 Unit 3).
-    from bajutsu import capability_preflight
+    from bajutsu.common.capability import capability_preflight
 
     scenario = Scenario.model_validate(
         {"name": "loc", "steps": [{"setLocation": {"lat": 1.0, "lon": 2.0}}]}
@@ -616,7 +616,7 @@ def test_live_route_drops_text_selection_and_simctl_backed_caps() -> None:
 def test_live_route_narrowing_makes_a_copy_selection_scenario_unsupported() -> None:
     # End-to-end with the preflight (BE-0082): a `copy` scenario runs on the local Simulator but is
     # skipped up front on the live route, whose driver raises UnsupportedAction for select/copy.
-    from bajutsu import capability_preflight
+    from bajutsu.common.capability import capability_preflight
 
     scenario = Scenario.model_validate(
         {"name": "cp", "steps": [{"select": {"into": {"id": "field"}}}, {"copy": {}}]}

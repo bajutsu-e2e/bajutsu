@@ -28,7 +28,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from bajutsu.config import WebConfig, load_config, resolve
+from bajutsu.common.config import WebConfig, load_config, resolve
 from bajutsu.serve.uploads import extract_bundle, validate_bundle_config
 
 # Everything a single-file `scenarios` artifact's basename may NOT contain. The dropped filename is

@@ -175,7 +175,7 @@ def serve(
     cwd: Path | None = None
     config_provenance: dict[str, str] | None = None
     if config:
-        from bajutsu.config_source import materialize, parse_config_spec, source_provenance
+        from bajutsu.common.config_source import materialize, parse_config_spec, source_provenance
 
         spec = parse_config_spec(config)
         if spec is not None:

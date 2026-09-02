@@ -274,7 +274,7 @@ def test_attribution_entered_inside_a_worker_thread_is_recorded(tmp_path: Path) 
 
 
 def test_configure_from_ai_config_uses_the_configured_path(tmp_path: Path) -> None:
-    from bajutsu.config import AiConfig
+    from bajutsu.common.config import AiConfig
 
     path = tmp_path / "custom.jsonl"
     usage_ledger.configure_from_ai_config(AiConfig(usage_ledger=str(path)))
@@ -287,7 +287,7 @@ def test_configure_from_ai_config_uses_the_configured_path(tmp_path: Path) -> No
 
 
 def test_configure_from_ai_config_disables_on_empty_path() -> None:
-    from bajutsu.config import AiConfig
+    from bajutsu.common.config import AiConfig
 
     usage_ledger.configure_from_ai_config(AiConfig(usage_ledger=""))
     try:
@@ -298,7 +298,7 @@ def test_configure_from_ai_config_disables_on_empty_path() -> None:
 
 
 def test_configure_from_ai_config_overlays_config_pricing(tmp_path: Path) -> None:
-    from bajutsu.config import AiConfig
+    from bajutsu.common.config import AiConfig
 
     path = tmp_path / "usage.jsonl"
     ai = AiConfig(

@@ -11,11 +11,11 @@ import pytest
 from _runner import _eff, _el, _failing_lease, _fake_driver, _ios_eff, _lease
 from conftest import GUARD_LABEL, AlertingDriver
 
+from bajutsu.common.config import Effective, XcuitestConfig
 from bajutsu.common.evidence import NullSink
 from bajutsu.common.evidence.network import NetworkExchange, ScreenTransition
 from bajutsu.common.report.format import video_seconds
 from bajutsu.common.scenario import Scenario
-from bajutsu.config import Effective, XcuitestConfig
 from bajutsu.doctor import Score
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver

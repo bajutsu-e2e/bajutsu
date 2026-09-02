@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from bajutsu.doctor import Score
     from bajutsu.drivers import base
 
-from bajutsu import capability_preflight, device_errors
+from bajutsu import device_errors
 from bajutsu.backends import (
     capabilities_for_run,
     device_replacement_supported,
@@ -30,6 +30,8 @@ from bajutsu.common.assertions import (
     VisualContext,
     VisualEvidence,
 )
+from bajutsu.common.capability import capability_preflight
+from bajutsu.common.config import Effective
 from bajutsu.common.evidence import Artifact
 from bajutsu.common.evidence.network import NetworkExchange, _no_transitions
 from bajutsu.common.evidence.redaction import Redactor
@@ -41,7 +43,6 @@ from bajutsu.common.scenario import (
     dump_scenario_file,
     redact_totp_secrets,
 )
-from bajutsu.config import Effective
 from bajutsu.drivers.base import BackendCrashError
 from bajutsu.orchestrator import (
     AlertGuardConfig,

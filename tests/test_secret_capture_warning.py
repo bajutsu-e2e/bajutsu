@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from bajutsu.cli._shared import _warn_onscreen_secrets
-from bajutsu.config import load_config, resolve
+from bajutsu.common.config import load_config, resolve
 
 _WITH_SECRETS = """
 targets:

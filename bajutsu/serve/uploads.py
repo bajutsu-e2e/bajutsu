@@ -27,7 +27,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from bajutsu.config import load_config, resolve
+from bajutsu.common.config import load_config, resolve
 
 # Resource bounds (zip-bomb defense). Extraction aborts the moment one is crossed. Sized for a real
 # bundle — a config + a scenario tree + a built ``.app``/``.ipa`` (an app bundle holds many small

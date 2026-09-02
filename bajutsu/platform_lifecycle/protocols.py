@@ -104,10 +104,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 
+from bajutsu.common.config import Effective
 from bajutsu.common.evidence import intervals
 from bajutsu.common.evidence.network import Collector
 from bajutsu.common.scenario import Preconditions, Scenario
-from bajutsu.config import Effective
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
 from bajutsu.orchestrator import DeviceControl, RelaunchFn

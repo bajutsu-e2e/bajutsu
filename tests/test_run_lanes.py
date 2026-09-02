@@ -22,6 +22,7 @@ from bajutsu.cli.commands.run import (
     _resolve_rules,
     _resolve_secrets,
 )
+from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.common.scenario import (
     Scenario,
     SystemAlertHandling,
@@ -29,7 +30,6 @@ from bajutsu.common.scenario import (
     load_scenarios,
 )
 from bajutsu.common.scenario.system_alerts import UncoveredSystemAlertLocale, covered_languages
-from bajutsu.config import Effective, load_config, resolve
 from bajutsu.orchestrator import DEFAULT_ALERT_POLL_INTERVAL
 from bajutsu.orchestrator.types import match_alert_rule
 

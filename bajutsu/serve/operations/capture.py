@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from bajutsu.common.config import load_config
 from bajutsu.common.evidence.redaction import Redactor
-from bajutsu.config import load_config
 from bajutsu.drivers import base
 from bajutsu.serve.operations._common import (
     _default_driver_factory,

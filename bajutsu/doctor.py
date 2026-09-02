@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 from bajutsu import simctl
 from bajutsu.backends import make_driver
-from bajutsu.config import Effective, require_web, web_base_url
+from bajutsu.common.config import Effective, require_web, web_base_url
 from bajutsu.drivers import base
 
 # Traits that count as "actionable" (the denominator for id coverage).

@@ -444,7 +444,7 @@ def test_xcuitest_environment_start_launches_runner_and_creates_driver(
     monkeypatch: pytest.MonkeyPatch, tmp_path: object
 ) -> None:
 
-    from bajutsu.config import XcuitestConfig
+    from bajutsu.common.config import XcuitestConfig
 
     simctl_calls: list[list[str]] = []
 
@@ -523,7 +523,7 @@ def test_xcuitest_environment_applies_permissions_before_the_runner_launches(
 ) -> None:
     # BE-0276: xcuitest's simctl-backed pre-launch sequence applies `permissions` before the
     # xcodebuild runner process (and thus the app) ever starts.
-    from bajutsu.config import XcuitestConfig
+    from bajutsu.common.config import XcuitestConfig
 
     simctl_calls: list[list[str]] = []
 
@@ -750,7 +750,7 @@ def test_spawn_cold_discards_a_never_ready_runner(
     import signal
     import tempfile
 
-    from bajutsu.config import XcuitestConfig
+    from bajutsu.common.config import XcuitestConfig
     from bajutsu.drivers.xcuitest import XcuitestChannelError
 
     monkeypatch.setattr(
@@ -810,7 +810,7 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
     import tempfile
     from dataclasses import replace as dc_replace
 
-    from bajutsu.config import XcuitestConfig
+    from bajutsu.common.config import XcuitestConfig
 
     monkeypatch.setattr(
         "bajutsu.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 11111

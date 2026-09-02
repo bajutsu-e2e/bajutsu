@@ -1,4 +1,4 @@
-"""Acquiring a config from a Git source (bajutsu/config_source.py, BE-0063).
+"""Acquiring a config from a Git source (bajutsu/common/config_source.py, BE-0063).
 
 Spec parsing is pure; materialization talks to a Git host, so its tests inject a fake transport
 (the one external dependency) — no network, no `git` binary, no Simulator.
@@ -14,9 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu.common.github import GitHubAccessError
-from bajutsu.config import IosConfig
-from bajutsu.config_source import (
+from bajutsu.common.config import IosConfig
+from bajutsu.common.config_source import (
     GitConfigSpec,
     Materialized,
     _GitHubTransport,
@@ -187,7 +186,7 @@ def test_materialize_pinned_cache_hit_resolves_no_credential(
     def fail(spec):
         raise AssertionError("credential must not be resolved on a cache hit")
 
-    monkeypatch.setattr("bajutsu.config_source.resolve_github_credential", fail)
+    monkeypatch.setattr("bajutsu.common.config_source.resolve_github_credential", fail)
     spec = parse_config_spec(f"github:acme/repo@{sha}")
     assert spec is not None
     mat = materialize(spec, cache_root=tmp_path)

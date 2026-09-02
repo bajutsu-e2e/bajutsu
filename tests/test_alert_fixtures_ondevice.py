@@ -41,12 +41,12 @@ from alert_fixture_support import Control, save_fixture
 from xcuitest_lease import xcuitest_lease_launch
 
 from bajutsu import simctl
+from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.common.scenario.system_alerts import (
     SystemAlertChoice,
     SystemAlertPrompt,
     system_alert_label,
 )
-from bajutsu.config import Effective, load_config, resolve
 from bajutsu.drivers import base
 from bajutsu.drivers.xcuitest import XcuitestDriver
 from bajutsu.screenshots import screenshot_bytes

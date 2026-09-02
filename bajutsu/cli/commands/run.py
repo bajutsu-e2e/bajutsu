@@ -29,6 +29,7 @@ from bajutsu.cli._shared import (
     resolve_system_alert_handling_flag,
 )
 from bajutsu.common.assertions import GoldenContext
+from bajutsu.common.config import WEB_ENGINES, Effective, IosConfig
 from bajutsu.common.github import actions as github_actions
 from bajutsu.common.report.archive import archive_run_dir
 from bajutsu.common.report.manifest import MAX_LABEL_LENGTH, _run_backend
@@ -53,7 +54,6 @@ from bajutsu.common.scenario.system_alerts import (
     covered_languages,
     system_alert_label,
 )
-from bajutsu.config import WEB_ENGINES, Effective, IosConfig
 from bajutsu.deprecations import warn_once
 from bajutsu.orchestrator import (
     DEFAULT_ALERT_POLL_INTERVAL,

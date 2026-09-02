@@ -21,8 +21,8 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from bajutsu import capabilities
 from bajutsu.cli import app
+from bajutsu.common.capability import capabilities
 
 runner = CliRunner()
 

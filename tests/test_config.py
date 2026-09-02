@@ -7,8 +7,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from bajutsu.common.scenario import SystemAlertHandling
-from bajutsu.config import (
+from bajutsu.common.config import (
     AndroidConfig,
     Effective,
     IosConfig,
@@ -18,6 +17,7 @@ from bajutsu.config import (
     resolve,
     xcuitest_targets_real_device,
 )
+from bajutsu.common.scenario import SystemAlertHandling
 
 
 def _ios(eff: Effective) -> IosConfig:

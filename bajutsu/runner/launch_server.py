@@ -25,7 +25,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 
-from bajutsu.config import Effective, web_base_url
+from bajutsu.common.config import Effective, web_base_url
 
 _POLL_INTERVAL = 0.25  # seconds between readiness probes (the grain of the condition wait)
 

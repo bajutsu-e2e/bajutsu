@@ -228,7 +228,7 @@ _LANE_CLAIMED: tuple[str, ...] = (
     "bajutsu/platform_lifecycle/environments/xcuitest.py",
     "bajutsu/platform_lifecycle/environments/xcuitest_live.py",
     "bajutsu/adb_resident.py",
-    "bajutsu/provision.py",
+    "bajutsu/common/provisioning/provision.py",
     "bajutsu/serve/",
     "bajutsu/templates/",
     "bajutsu/cli/commands/record.py",
@@ -359,9 +359,10 @@ _LANE_PATHS: dict[str, str] = {
         # `platform_lifecycle/` carve-out.
         r"|bajutsu/platform_lifecycle/environments/web\.py$"
         # The real provisioner the `onboarding (doctor / provision)` job runs as `python -m
-        # bajutsu.provision --backend web` (BE-0304) to install Chromium for real. Web-only: no other
-        # lane invokes it, and the lanes never run `scripts/install.sh`, its other caller.
-        r"|bajutsu/provision\.py$"
+        # bajutsu.common.provisioning.provision --backend web` (BE-0304) to install Chromium for
+        # real. Web-only: no other lane invokes it, and the lanes never run `scripts/install.sh`,
+        # its other caller.
+        r"|bajutsu/common/provisioning/provision\.py$"
         r"|bajutsu/cli/commands/record\.py$"
         # The serve-UI dogfood (BE-0058) drives the served SPA, so the serve backend and its templates
         # are web-CI-relevant whenever they change, not only when the harness itself does.

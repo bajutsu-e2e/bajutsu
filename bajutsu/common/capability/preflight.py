@@ -15,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from bajutsu import requirements
+from bajutsu.common.provisioning import requirements
 
 Which = Callable[[str], str | None]
 Probe = Callable[[], bool]

@@ -18,9 +18,7 @@ from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.common.agents import ai_config, anthropic_client
 from bajutsu.common.ai import credential_gap
 from bajutsu.common.ai import disabled as ai_disabled
-from bajutsu.common.evidence.redaction import Redactor
-from bajutsu.common.github import GitHubAccessError
-from bajutsu.config import (
+from bajutsu.common.config import (
     WEB_ENGINES,
     AiConfig,
     Effective,
@@ -30,15 +28,17 @@ from bajutsu.config import (
     resolve,
     web_engine,
 )
-from bajutsu.config_source import (
+from bajutsu.common.config_source import (
     DEFAULT_CONFIG as DEFAULT_CONFIG,  # re-exported: the single owner is config_source (BE-0251)
 )
-from bajutsu.config_source import (
+from bajutsu.common.config_source import (
     is_full_sha,
     materialize,
     parse_config_spec,
     source_provenance,
 )
+from bajutsu.common.evidence.redaction import Redactor
+from bajutsu.common.github import GitHubAccessError
 from bajutsu.runner.launch_server import start_launch_server
 
 if TYPE_CHECKING:

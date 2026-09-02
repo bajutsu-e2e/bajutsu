@@ -9,10 +9,10 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 
 from bajutsu import simctl
+from bajutsu.common.config import Effective, require_ios
 from bajutsu.common.evidence import intervals
 from bajutsu.common.evidence.network import Collector
 from bajutsu.common.scenario import Scenario
-from bajutsu.config import Effective, require_ios
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
 from bajutsu.orchestrator import DeviceControl, RelaunchFn

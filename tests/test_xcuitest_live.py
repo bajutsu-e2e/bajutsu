@@ -18,9 +18,9 @@ from typing import Any
 
 import pytest
 
+from bajutsu.common.config import load_config, resolve
 from bajutsu.common.scenario import Preconditions, Relaunch
 from bajutsu.common.scenario.models.scenario import Scenario
-from bajutsu.config import load_config, resolve
 from bajutsu.drivers import base
 from bajutsu.drivers.xcuitest_live import (
     BACKSPACE_KEY,

@@ -10,7 +10,7 @@ from fastmcp import FastMCP
 
 from bajutsu import device_errors
 from bajutsu.backends import select_actuator
-from bajutsu.config import Effective, load_config, resolve
+from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
 
 

@@ -42,7 +42,7 @@ def test_api_bound_git_config_is_marked_untrusted(
     # Binding a Git config through /api/config marks it untrusted; binding a local config after
     # clears the flag, so the trust boundary tracks whichever source is currently active.
     import bajutsu.serve.operations.config as ops
-    from bajutsu.config_source import Materialized
+    from bajutsu.common.config_source import Materialized
 
     _, cfg, runs = project(tmp_path)
     checkout = tmp_path / "gitsrc"

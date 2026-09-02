@@ -18,9 +18,9 @@ import pytest
 from _runner import _el, _ios_eff
 
 from bajutsu import simctl
+from bajutsu.common.config import Effective, XcuitestConfig, require_ios
 from bajutsu.common.evidence.network import ScreenTransition
 from bajutsu.common.scenario import Preconditions
-from bajutsu.config import Effective, XcuitestConfig, require_ios
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.runner import (

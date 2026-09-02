@@ -32,7 +32,7 @@ from test_driver_conformance_ondevice import _OnDeviceHarness
 from xcuitest_lease import xcuitest_lease_launch
 
 from bajutsu import simctl
-from bajutsu.config import Effective, ios_bundle_id, load_config, resolve
+from bajutsu.common.config import Effective, ios_bundle_id, load_config, resolve
 
 # The loop's own step geometry, from where it is defined — so this case scrolls exactly as the
 # `scroll` action does rather than re-deriving endpoints that could drift from it.

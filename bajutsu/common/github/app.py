@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 from bajutsu.common.github.errors import GitHubAccessError
 
 if TYPE_CHECKING:
-    from bajutsu.config_source import GitConfigSpec
+    from bajutsu.common.config_source import GitConfigSpec
 
 _API = "https://api.github.com"
 # GitHub caps an App JWT's lifetime at 10 minutes; backdate `iat` 60s to tolerate clock skew.

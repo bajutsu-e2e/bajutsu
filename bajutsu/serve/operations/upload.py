@@ -63,7 +63,7 @@ _COMPOSED_KINDS: tuple[ArtifactKind, ...] = tuple(k for k in ARTIFACT_KINDS if k
 # locator a client shaped at bind, so it is untrusted and must be checked before it ever
 # reaches `uploads_dir / sha256` — an unchecked `../`-laden value would let a stored record walk
 # a materialize call outside the cache root (mirrors the Git source's own `_FULL_SHA_RE` guard on a
-# resolved commit SHA, `bajutsu/config_source.py`).
+# resolved commit SHA, `bajutsu/common/config_source.py`).
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -704,7 +704,7 @@ def restore_uploaded_config(
     reached the org row from a client-shaped bind, so its
     `sha256` is untrusted: it must be a full lowercase hex digest (`_SHA256_RE`) before it is ever
     turned into a path (`uploads_dir / sha256`) or object-store key, the same way the Git source
-    validates a resolved commit SHA before doing the same (`bajutsu/config_source.py`) — an
+    validates a resolved commit SHA before doing the same (`bajutsu/common/config_source.py`) — an
     unvalidated value could otherwise walk `materialize_bundle` outside the cache root (a `../`) or
     step into a different, already-extracted cache entry — which is why the check stays ahead of the
     cache lookup BE-0393 unit 5 moved in front of the object store. Otherwise resolves the org-scoped

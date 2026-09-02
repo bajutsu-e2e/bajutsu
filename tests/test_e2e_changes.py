@@ -254,10 +254,10 @@ def test_doctor_onboarding_gate_code_is_relevant_on_every_lane() -> None:
         for path in (
             "bajutsu/doctor.py",
             "bajutsu/cli/commands/doctor.py",
-            "bajutsu/preflight.py",
+            "bajutsu/common/capability/preflight.py",
             # `preflight.py` builds every `environment:` check's tool list and remedy strings from
             # this, so a change here moves the section the gate asserts on too.
-            "bajutsu/requirements.py",
+            "bajutsu/common/provisioning/requirements.py",
             # The platform-neutral DeviceError base (BE-0260) that both `run` and doctor catch.
             "bajutsu/device_errors.py",
         ):
@@ -278,12 +278,13 @@ def test_doctors_ai_availability_half_stays_excluded() -> None:
 
 
 def test_provision_is_web_only() -> None:
-    # The web lane's `onboarding (doctor / provision)` job runs `python -m bajutsu.provision
-    # --backend web` to install Chromium for real (BE-0304), so a provisioner change is web-relevant.
-    # No other lane invokes it: neither runs `scripts/install.sh`, its only other caller.
-    assert is_relevant(["bajutsu/provision.py"], "web") is True
-    assert is_relevant(["bajutsu/provision.py"], "ios") is False
-    assert is_relevant(["bajutsu/provision.py"], "android") is False
+    # The web lane's `onboarding (doctor / provision)` job runs
+    # `python -m bajutsu.common.provisioning.provision --backend web` to install Chromium for real
+    # (BE-0304), so a provisioner change is web-relevant. No other lane invokes it: neither runs
+    # `scripts/install.sh`, its only other caller.
+    assert is_relevant(["bajutsu/common/provisioning/provision.py"], "web") is True
+    assert is_relevant(["bajutsu/common/provisioning/provision.py"], "ios") is False
+    assert is_relevant(["bajutsu/common/provisioning/provision.py"], "android") is False
 
 
 def test_serve_analytics_modules_are_relevant_on_no_lane_except_web_serve() -> None:
@@ -449,16 +450,16 @@ def test_config_package_files_are_relevant() -> None:
     # resolution feeds every lane's run, so all three must fire.
     for lane in ("ios", "android", "web"):
         for path in (
-            "bajutsu/config/__init__.py",
-            "bajutsu/config/resolve.py",
-            "bajutsu/config/effective.py",
-            "bajutsu/config/schema.py",
-            "bajutsu/config/accessors.py",
+            "bajutsu/common/config/__init__.py",
+            "bajutsu/common/config/resolve.py",
+            "bajutsu/common/config/effective.py",
+            "bajutsu/common/config/schema.py",
+            "bajutsu/common/config/accessors.py",
         ):
             assert is_relevant([path], lane) is True, (lane, path)
     # `config_source.py` is a separate top-level module and still matches by name — the swept
-    # `bajutsu/config/` prefix must not be what carries it.
-    assert is_relevant(["bajutsu/config_source.py"]) is True
+    # `bajutsu/common/config/` prefix must not be what carries it.
+    assert is_relevant(["bajutsu/common/config_source.py"]) is True
 
 
 # --- Structural guards against a silent under-trigger ---------------------------------------------
@@ -560,14 +561,14 @@ def test_periphery_exclusions_carry_a_reason() -> None:
 # run-path file is either gated or explicitly excluded.
 
 # The files the three lanes actually execute — `bajutsu run` / `codegen` / `record` / `doctor`, the
-# web lane's `python -m bajutsu.provision`, and the on-device conformance harness. Their transitive
-# `bajutsu` imports are the run path this check must keep fully classified.
+# web lane's `python -m bajutsu.common.provisioning.provision`, and the on-device conformance
+# harness. Their transitive `bajutsu` imports are the run path this check must keep fully classified.
 _RUN_ENTRYPOINTS = (
     "bajutsu/cli/commands/run.py",
     "bajutsu/cli/commands/codegen.py",
     "bajutsu/cli/commands/record.py",
     "bajutsu/cli/commands/doctor.py",
-    "bajutsu/provision.py",
+    "bajutsu/common/provisioning/provision.py",
     "tests/driver_conformance.py",
 )
 

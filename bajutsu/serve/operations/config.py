@@ -30,8 +30,8 @@ from bajutsu.common.agents.ai_config import (
 from bajutsu.common.agents.anthropic_client import ANT_BINARY, ANT_CLI_MISSING, ANTHROPIC_KEY_ENV
 from bajutsu.common.ai import credential_gap, resolved_provider, selectable_providers
 from bajutsu.common.ai.registry import DISABLED_PROVIDER
-from bajutsu.config import load_config, resolve, xcuitest_pins_runner
-from bajutsu.config_source import materialize, parse_config_spec, source_provenance
+from bajutsu.common.config import load_config, resolve, xcuitest_pins_runner
+from bajutsu.common.config_source import materialize, parse_config_spec, source_provenance
 from bajutsu.platform_lifecycle.environments import (
     bundled_products_dir,
     bundled_runner_build_info,

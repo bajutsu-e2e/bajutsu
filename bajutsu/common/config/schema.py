@@ -503,7 +503,7 @@ class Config(_Model):
         # with no `platform` derives it from the backend, so existing iOS/web targets already pass.
         # The derivation lives in the sibling `resolve` module; imported lazily to avoid a
         # schema <-> resolve import cycle at module load.
-        from bajutsu.config.resolve import _PLATFORM_IDENTIFIER, _effective_platform
+        from bajutsu.common.config.resolve import _PLATFORM_IDENTIFIER, _effective_platform
 
         for name, t in self.targets.items():
             backend = t.backend or self.defaults.backend

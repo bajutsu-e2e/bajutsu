@@ -27,8 +27,8 @@ from pathlib import Path
 from typing import IO, Literal, cast
 
 from bajutsu import backends, device_os, simctl, stall_diagnostics
+from bajutsu.common.config import Effective, XcuitestConfig, require_ios
 from bajutsu.common.scenario import Preconditions
-from bajutsu.config import Effective, XcuitestConfig, require_ios
 from bajutsu.device_os import DeviceOS
 from bajutsu.drivers import base
 from bajutsu.platform_lifecycle.environments._bundled_runner import (

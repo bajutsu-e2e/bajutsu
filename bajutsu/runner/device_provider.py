@@ -18,7 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
-from bajutsu.config import Effective
+from bajutsu.common.config import Effective
 from bajutsu.platform_lifecycle import ProvisionProfile
 
 

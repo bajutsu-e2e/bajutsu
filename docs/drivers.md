@@ -92,7 +92,7 @@ resolution, and the **preflight capability check** (below).
 A backend's capability set is static, so a scenario that needs a capability the chosen actuator
 lacks is knowable before any device work. At run start — after the actuator is selected, before
 the first device is leased — the runner checks each scenario against the actuator's capabilities
-(`bajutsu/capability_preflight.py`) and fails an unsupported scenario immediately, with one
+(`bajutsu/common/capability/capability_preflight.py`) and fails an unsupported scenario immediately, with one
 aggregated `UnsupportedAction`-style reason, instead of booting a device and failing partway
 through (prime directive #2: fail fast and clearly). It is a pure function of (scenario, capability
 set) — no device, no clock — and per-scenario: only the offending scenarios fail, the rest run.

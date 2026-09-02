@@ -12,7 +12,7 @@ from bajutsu.cli._shared import (
     _select_actuator_or_exit,
     resolve_system_alert_handling_flag,
 )
-from bajutsu.config import Effective, load_config, resolve
+from bajutsu.common.config import Effective, load_config, resolve
 
 
 def _eff(spec: str = "targets:\n  x:\n    bundleId: com.x\n") -> Effective:
@@ -105,7 +105,7 @@ def test_resolve_system_alert_handling_flag_resolves_against_each_command_defaul
 def test_default_config_is_the_single_config_source_constant() -> None:
     # `_shared` re-exports the constant rather than owning a second copy, so a rename of the
     # default config filename lands once in `config_source` (BE-0251).
-    from bajutsu import config_source
     from bajutsu.cli import _shared
+    from bajutsu.common import config_source
 
     assert _shared.DEFAULT_CONFIG is config_source.DEFAULT_CONFIG

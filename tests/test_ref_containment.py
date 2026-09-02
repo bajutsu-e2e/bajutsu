@@ -113,8 +113,8 @@ def test_run_expand_file_rejects_escape(tmp_path: Path, capsys: pytest.CaptureFi
     import typer
 
     from bajutsu.cli.commands.run import _expand_file
+    from bajutsu.common.config import Effective, WebConfig
     from bajutsu.common.scenario import Redact
-    from bajutsu.config import Effective, WebConfig
 
     _write(tmp_path / "secret.yaml", "steps:\n  - tap: { id: TOPSECRET }\n")
     scenario = _write(
@@ -143,8 +143,8 @@ def test_run_expand_file_rejects_escape(tmp_path: Path, capsys: pytest.CaptureFi
 
 def test_run_expand_file_in_root_component_loads(tmp_path: Path) -> None:
     from bajutsu.cli.commands.run import _expand_file
+    from bajutsu.common.config import Effective, WebConfig
     from bajutsu.common.scenario import Redact
-    from bajutsu.config import Effective, WebConfig
 
     root = tmp_path / "suite"
     _write(root / "components" / "login.yaml", "steps:\n  - tap: { id: login }\n")

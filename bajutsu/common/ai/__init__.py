@@ -11,7 +11,7 @@ The seam's model call (`AiBackend.create_message`) never runs on the determinist
 (DESIGN §2 / §3.1) — it is reached only from Tier-1 authoring / investigation paths. `run` does not
 reach it under any flag: BE-0402 removed its reactive alert guard's vision fallback, the last path
 that could. The deterministic core does not import this seam at all: the layer-boundary gate
-(BE-0112) forbids it, so `bajutsu.config` accepts an `ai.provider` name without validating it here.
+(BE-0112) forbids it, so `bajutsu.common.config` accepts an `ai.provider` name without validating it here.
 An unknown provider fails closed only when a Tier-1 path first resolves it through the registry
 (`create_backend` / `credential_gap`, via `registry._provider_name`), not at config load.
 """

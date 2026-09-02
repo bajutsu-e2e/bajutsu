@@ -8,7 +8,7 @@ from typing import Any
 
 from bajutsu import adb, device_errors, doctor, simctl
 from bajutsu.backends import IMPLEMENTED, resolve_actuators
-from bajutsu.config import (
+from bajutsu.common.config import (
     Effective,
     android_package,
     ios_bundle_id,
@@ -80,7 +80,7 @@ def doctor_check(
         return {"error": f"no implemented backend among {backends_list}"}, 400
     actuator = implemented[0]
 
-    from bajutsu import preflight
+    from bajutsu.common.capability import preflight
 
     cfg_checks = preflight.config_checks(
         actuator,

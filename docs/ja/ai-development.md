@@ -350,7 +350,7 @@ backend。[architecture](architecture.md) 参照）。ほとんどのタスク�
 |---|---|---|
 | Driver API | [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) | 全 backend と orchestrator が依存 |
 | シナリオスキーマ | [`bajutsu/scenario/models/scenario.py`](../../bajutsu/scenario/models/scenario.py) | ハブとなる成果物。codegen/runner/report が読む |
-| config の形 | [`bajutsu/config/`](../../bajutsu/config/) | 全コマンドが解決する per-target レイヤリング |
+| config の形 | [`bajutsu/common/config/`](../../bajutsu/common/config/) | 全コマンドが解決する per-target レイヤリング |
 
 ## CI がブランチを正直に保つ
 

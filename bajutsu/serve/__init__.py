@@ -28,7 +28,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from bajutsu.config_source import _bajutsu_cache_root
+from bajutsu.common.config_source import _bajutsu_cache_root
 from bajutsu.object_store import EvidenceTarget
 from bajutsu.serve import gate, oplog
 from bajutsu.serve.artifacts import Artifact, ArtifactStore, LocalArtifactStore

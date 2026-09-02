@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu import capability_preflight
+from bajutsu.common.capability import capability_preflight
 from bajutsu.common.scenario import Scenario
 from bajutsu.drivers import base
 
