@@ -316,7 +316,7 @@ class ResidentChannel:
 
 # APK build outputs of `make -C BajutsuAndroidUIAutomatorServer build` (gitignored; the paths gradle
 # writes).
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _SERVER_APK = (
     _REPO_ROOT / "BajutsuAndroidUIAutomatorServer/server/build/outputs/apk/debug/server-debug.apk"
 )

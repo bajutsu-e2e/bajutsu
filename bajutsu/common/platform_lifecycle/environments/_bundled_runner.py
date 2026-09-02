@@ -23,7 +23,7 @@ import bajutsu
 # The packaged products directory: ``.xctestrun`` plus the test bundles beside it, populated by the
 # release build step (``make runner-bundle``) and force-included via pyproject ``artifacts``. Absent
 # in a plain source checkout and on a Linux wheel, so callers treat "no bundle" as a normal state.
-_BUNDLE_DIR = Path(__file__).resolve().parents[2] / "_xcuitest_runner"
+_BUNDLE_DIR = Path(__file__).resolve().parents[3] / "_xcuitest_runner"
 _RUNNER_NAME = "BajutsuRunner.xctestrun"
 # The toolchain metadata `make runner-bundle` records beside the products: the Xcode and Simulator
 # SDK versions the runner was built against, so `doctor` can warn when the host toolchain differs
