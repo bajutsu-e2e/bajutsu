@@ -219,8 +219,8 @@ max-statements = 80
 # backends.py installs the web extra via `uv`/`playwright` on PATH (S607); launch_server.py probes a
 # config-driven readiness URL (S310). Both are intentional; ignored at the file level so the lines
 # stay byte-identical to main (an inline noqa could re-surface a dismissed-on-main CodeQL finding).
-"bajutsu/backends.py" = ["S607"]
-"bajutsu/runner/launch_server.py" = ["S310"]
+"bajutsu/common/backends.py" = ["S607"]
+"bajutsu/common/runner/launch_server.py" = ["S310"]
 
 # Docstring rules (D) are NOT in the global `select` above; they are enforced only on the migrated
 # public surface, by `make lint-docstrings` (BE-0065 phase 5). Setting the convention here keeps the
@@ -309,8 +309,8 @@ include_external_packages = true
 name = "Deterministic core is independent of the periphery"
 type = "forbidden"
 source_modules = [
-    "bajutsu.orchestrator",
-    "bajutsu.runner",
+    "bajutsu.common.orchestrator",
+    "bajutsu.common.runner",
     "bajutsu.common.drivers.base",
     "bajutsu.common.drivers.actuation",
     "bajutsu.common.assertions",
@@ -350,7 +350,7 @@ type = "forbidden"
 source_modules = [
     "bajutsu.common.config",
     "bajutsu.common.drivers",
-    "bajutsu.runner",
+    "bajutsu.common.runner",
     "bajutsu.common.scenario",
 ]
 forbidden_modules = [
@@ -377,8 +377,8 @@ source_modules = [
     "bajutsu.common.drivers.actuation",
 ]
 forbidden_modules = [
-    "bajutsu.orchestrator",
-    "bajutsu.runner",
+    "bajutsu.common.orchestrator",
+    "bajutsu.common.runner",
     "bajutsu.common.assertions",
     "bajutsu.common.evidence",
     "bajutsu.common.report",

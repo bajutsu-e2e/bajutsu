@@ -13,7 +13,7 @@ import contextlib
 from dataclasses import dataclass
 
 from bajutsu import simctl
-from bajutsu.backends import make_driver
+from bajutsu.common.backends import make_driver
 from bajutsu.common.config import Effective, require_web, web_base_url
 from bajutsu.common.drivers import base
 

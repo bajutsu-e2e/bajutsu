@@ -10,6 +10,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from bajutsu.common.config import NotifyEndpoint
+from bajutsu.common.orchestrator import RunResult
 from bajutsu.notify import (
     FailureSummary,
     RunNotification,
@@ -22,7 +23,6 @@ from bajutsu.notify import (
     emit,
     emit_start,
 )
-from bajutsu.orchestrator import RunResult
 
 
 def _res(name: str, ok: bool, failure: str | None = None, duration: float = 1.0) -> RunResult:

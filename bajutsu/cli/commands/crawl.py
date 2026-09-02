@@ -49,6 +49,7 @@ from bajutsu.common.config import Effective, web_base_url
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
+from bajutsu.common.runner import launch_driver
 from bajutsu.common.scenario import Preconditions
 from bajutsu.crawl import flows as crawl_flows
 from bajutsu.crawl import report as crawl_report
@@ -59,7 +60,6 @@ from bajutsu.platform_lifecycle import CrawlEnvironment, environment_for
 from bajutsu.record import clear_blocking as clear_blocking_overlay
 from bajutsu.run_files import RunArtifactReader, runs_root
 from bajutsu.run_id import new_run_id
-from bajutsu.runner import launch_driver
 
 #: The screen map's artifact name inside a crawl's run directory.
 SCREENMAP_NAME = "screenmap.json"
@@ -239,7 +239,7 @@ def _wire_health(
         # known-present and the shared helper returns a real guard (never the no-op None branch).
         guard = _build_alert_guard(eff, redactor, alert_vision_instruction)
         if guard is not None:
-            from bajutsu.orchestrator import RealClock
+            from bajutsu.common.orchestrator import RealClock
 
             clock = RealClock()
 

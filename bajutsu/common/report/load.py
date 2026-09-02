@@ -24,9 +24,9 @@ from bajutsu.common.assertions import AssertionResult, VisualEvidence
 from bajutsu.common.drivers.actuation import Actuation
 from bajutsu.common.drivers.base import Frame, Point
 from bajutsu.common.evidence import Artifact
+from bajutsu.common.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
 from bajutsu.common.report.html import html_report, scenario_render_inputs, write_html_and_junit
 from bajutsu.common.scenario import load_scenario_file
-from bajutsu.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
 
 _logger = logging.getLogger("bajutsu.common.report.load")
 

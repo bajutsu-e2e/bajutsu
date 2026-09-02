@@ -82,7 +82,7 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 ## driver backend actuator platform
 
 この四語は、中核のなかで唯一プラットフォームに依存する継ぎ目を指します。中核そのものはプラットフォームに依存しません。混同
-しやすいので、関係をここで一箇所にまとめます。正とするのは `bajutsu/backends.py`（`PLATFORMS`、
+しやすいので、関係をここで一箇所にまとめます。正とするのは `bajutsu/common/backends.py`（`PLATFORMS`、
 `IMPLEMENTED`）であって、どのページの散文でもありません。
 
 | 語 | 意味 |

@@ -49,7 +49,7 @@ SERIAL ?= booted
 # the tree, not on a travelled distance, so the two hosts differ in render speed, not in what it
 # resolves against. The `gestures` swipe chain below still rests on unit 5's other half: the default
 # directional swipe travels a screen *fraction* (`_SWIPE_FRACTION`,
-# bajutsu/orchestrator/actions/handlers/gestures.py), so it covers the same proportion on either
+# bajutsu/common/orchestrator/actions/handlers/gestures.py), so it covers the same proportion on either
 # backend.
 #
 # The interrupt-handler flow `interrupts` joins the lane (BE-0314): a syntax demo whose `interrupts`
@@ -113,7 +113,7 @@ E2E_SCENARIOS := smoke firstlook navigation search data_driven relaunch system c
 
 # Raise the condition-wait ceiling for this lane only: the CI x86_64 software-rendered emulator
 # presents sheets/covers slower than the shared scenarios' 5s waits allow. A wait returns as soon as
-# it is satisfied, so this is a safe upper bound, not a fixed delay (bajutsu/orchestrator/waits.py).
+# it is satisfied, so this is a safe upper bound, not a fixed delay (bajutsu/common/orchestrator/waits.py).
 E2E_WAIT_FLOOR ?= 15
 
 # Quiet by default. Debug here writes a line per read, which measurably lengthened the lane, and the

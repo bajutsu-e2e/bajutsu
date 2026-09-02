@@ -286,7 +286,7 @@ def test_file_sink_wait_diagnostic_writes_provenance_stamped_artifact(tmp_path: 
     # BE-0231 Unit 1: a first-wait timeout writes a self-contained diagnostic — the element tree at
     # timeout, the readiness signal, the poll trace, and the provenance stamp — so a rerun-to-green
     # never discards the evidence needed to decide which cause fired.
-    from bajutsu.orchestrator.waits import WaitTrace
+    from bajutsu.common.orchestrator.waits import WaitTrace
     from bajutsu.platform_lifecycle import ReadinessResult
 
     driver = FakeDriver([_el("a", "A"), _el("b", "B")])
@@ -334,7 +334,7 @@ def test_file_sink_wait_diagnostic_survives_missing_readiness_and_provenance(
 ) -> None:
     # A backend/lane that never carried a readiness result (or a run outside git) still gets a
     # diagnostic — the missing pieces are recorded as null, never a crash on the failure path.
-    from bajutsu.orchestrator.waits import WaitTrace
+    from bajutsu.common.orchestrator.waits import WaitTrace
 
     sink = FileSink(tmp_path)
     art = sink.wait_diagnostic(
@@ -350,7 +350,7 @@ def test_file_sink_wait_diagnostic_survives_missing_readiness_and_provenance(
 def test_file_sink_wait_diagnostic_redacts_and_locks_down_the_dump(tmp_path: Path) -> None:
     # The element tree at timeout can hold on-screen secrets: the diagnostic must scrub configured
     # secret values and leave the file owner-only, like the other sensitive dumps (BE-0131).
-    from bajutsu.orchestrator.waits import WaitTrace
+    from bajutsu.common.orchestrator.waits import WaitTrace
 
     sink = FileSink(tmp_path, secrets=["hunter2"])
     path = tmp_path / "00-x/step0/wait-timeout.json"
@@ -364,7 +364,7 @@ def test_file_sink_wait_diagnostic_redacts_and_locks_down_the_dump(tmp_path: Pat
 
 def test_null_sink_wait_diagnostic_is_a_noop() -> None:
     from bajutsu.common.evidence import NullSink
-    from bajutsu.orchestrator.waits import WaitTrace
+    from bajutsu.common.orchestrator.waits import WaitTrace
 
     assert NullSink().wait_diagnostic("s", trace=WaitTrace(), elements=[]) is None
 

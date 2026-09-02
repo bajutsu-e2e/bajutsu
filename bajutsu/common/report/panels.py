@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from bajutsu.common.evidence import Artifact
+from bajutsu.common.orchestrator import RunResult
 from bajutsu.common.report.format import (
     _LOG_MAX_LINES,
     _artifact,
@@ -28,7 +29,6 @@ from bajutsu.common.report.rows import (
     _phase_rows,
     _preconditions_rows,
 )
-from bajutsu.orchestrator import RunResult
 
 # --- panel data (Result / Network / Device Log / App Trace) ---
 

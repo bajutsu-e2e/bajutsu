@@ -26,7 +26,6 @@ import typer
 
 from bajutsu import device_errors
 from bajutsu.analysis import audit as _audit
-from bajutsu.backends import select_actuator_for_scenario
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _load_effective,
@@ -34,11 +33,12 @@ from bajutsu.cli._shared import (
     _start_launch_server_or_exit,
     read_manifests,
 )
+from bajutsu.common.backends import select_actuator_for_scenario
+from bajutsu.common.runner import device_pool, run_all
 from bajutsu.common.scenario import Scenario, load_expanded_scenarios
 from bajutsu.platform_lifecycle import environment_for
 from bajutsu.run_files import runs_root
 from bajutsu.run_id import new_run_id
-from bajutsu.runner import device_pool, run_all
 
 
 def audit(

@@ -36,7 +36,7 @@ from bajutsu.common.config import Effective, ios_bundle_id, load_config, resolve
 
 # The loop's own step geometry, from where it is defined — so this case scrolls exactly as the
 # `scroll` action does rather than re-deriving endpoints that could drift from it.
-from bajutsu.orchestrator.actions.handlers.scroll import (
+from bajutsu.common.orchestrator.actions.handlers.scroll import (
     _STEP_FRACTION,
     _step_endpoints,
     _viewport,

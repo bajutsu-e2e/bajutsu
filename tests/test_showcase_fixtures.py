@@ -133,10 +133,10 @@ def test_showcase_live_config_routes_to_the_live_transport() -> None:
     # on — so the how-to's `bajutsu run … --config …/showcase.live…` invocation stays valid as the
     # schema evolves. The endpoint is a placeholder (no grid on the gate), so this only checks
     # resolution and the run-time capability narrowing, never a live run.
-    from bajutsu.backends import capabilities_for, capabilities_for_run
+    from bajutsu.common.backends import capabilities_for, capabilities_for_run
     from bajutsu.common.drivers import base
+    from bajutsu.common.runner.device_provider import acquire_device
     from bajutsu.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint
-    from bajutsu.runner.device_provider import acquire_device
 
     cfg = load_config(LIVE_CONFIG.read_text(encoding="utf-8"))
     eff = resolve(cfg, "showcase-swiftui-live")

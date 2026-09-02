@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 
 from bajutsu.common import config
-from bajutsu.runner import sandbox
+from bajutsu.common.runner import sandbox
 
 
 def _eff(ls_body: str, base: str = "http://127.0.0.1:3000/") -> config.Effective:

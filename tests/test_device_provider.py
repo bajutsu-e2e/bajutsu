@@ -1,4 +1,4 @@
-"""Tests for the device-provider seam and registry (bajutsu/runner/device_provider.py, BE-0236).
+"""Tests for the device-provider seam and registry (bajutsu/common/runner/device_provider.py, BE-0236).
 
 The `run` pipeline resolves where its devices come from through a `DeviceProvider` seam, keyed by a
 transport `kind` in a registry that mirrors the mailbox registry (BE-0186). These tests cover the
@@ -17,9 +17,9 @@ from typer.testing import CliRunner
 from bajutsu.cli import app
 from bajutsu.common.config import AndroidConfig, DeviceProvider, Effective
 from bajutsu.common.github import actions as github_actions
+from bajutsu.common.runner import device_provider as dp
 from bajutsu.common.scenario import Redact
 from bajutsu.platform_lifecycle import ProvisionProfile
-from bajutsu.runner import device_provider as dp
 
 
 def _eff(*, device_provider: DeviceProvider | None = None) -> Effective:
@@ -192,7 +192,7 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
 
         # Dispatch returns one passing scenario so `_finish` emits PASS and exits 0 before the
         # `finally` invokes the raising release — no device is touched.
-        from bajutsu.orchestrator.types import RunResult
+        from bajutsu.common.orchestrator.types import RunResult
 
         manifest = tmp_path / "runs" / "manifest.json"
         manifest.parent.mkdir(parents=True, exist_ok=True)

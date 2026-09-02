@@ -36,7 +36,7 @@ def _artifact_paths(manifests: list[dict[str, Any]], kind: str) -> Iterator[str]
     Each parsed ``manifest.json`` carries its own ``runId`` (`bajutsu.common.report.manifest.manifest_dict`)
     alongside its per-scenario ``artifacts`` (scenario-level, e.g. ``network``) and per-step
     ``steps[].artifacts`` (e.g. ``elements``) entries, whose ``name`` is relative to the *run* —
-    the writers (`bajutsu.runner.pipeline`, `bajutsu.common.evidence`) stamp it with the scenario's ``sid``
+    the writers (`bajutsu.common.runner.pipeline`, `bajutsu.common.evidence`) stamp it with the scenario's ``sid``
     (and, for a step artifact, the step id) at write time. Prefixing with the manifest's own
     ``runId`` gives the same path `bajutsu.analysis.coverage._evidence_files` globs for, with no store-side
     glob/list primitive needed.

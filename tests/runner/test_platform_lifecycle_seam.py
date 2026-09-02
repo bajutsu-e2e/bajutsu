@@ -107,7 +107,7 @@ def test_web_environment_navigates_then_returns_the_driver(monkeypatch: pytest.M
             return []
 
     web = _WebDriver()
-    monkeypatch.setattr("bajutsu.backends.make_driver", lambda *a, **k: web)
+    monkeypatch.setattr("bajutsu.common.backends.make_driver", lambda *a, **k: web)
     eff = _web_eff(base_url="https://app.test")
     driver = WebEnvironment("playwright").start(eff, Preconditions())
     assert driver is web
@@ -496,7 +496,7 @@ def test_xcuitest_environment_start_launches_runner_and_creates_driver(
         make_driver_calls.append({"args": a, "kwargs": k})
         return fake_driver
 
-    monkeypatch.setattr("bajutsu.backends.make_driver", mock_make_driver)
+    monkeypatch.setattr("bajutsu.common.backends.make_driver", mock_make_driver)
 
     import plistlib
     import tempfile
@@ -562,7 +562,7 @@ def test_xcuitest_environment_applies_permissions_before_the_runner_launches(
 
         def await_ready(self, **kw: object) -> None: ...
 
-    monkeypatch.setattr("bajutsu.backends.make_driver", lambda *a, **k: FakeXcuitestDriver())
+    monkeypatch.setattr("bajutsu.common.backends.make_driver", lambda *a, **k: FakeXcuitestDriver())
 
     import plistlib
     import tempfile
@@ -788,7 +788,7 @@ def test_spawn_cold_discards_a_never_ready_runner(
 
         def await_ready(self, **_kw: object) -> None: ...
 
-    monkeypatch.setattr("bajutsu.backends.make_driver", lambda *a, **k: _NeverReadyDriver())
+    monkeypatch.setattr("bajutsu.common.backends.make_driver", lambda *a, **k: _NeverReadyDriver())
 
     with tempfile.NamedTemporaryFile(suffix=".xctestrun") as f:
         plistlib.dump({"__xctestrun_metadata__": {"FormatVersion": 1}, "T": {}}, f)
@@ -841,7 +841,7 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
 
         def await_ready(self, **kw: object) -> None: ...
 
-    monkeypatch.setattr("bajutsu.backends.make_driver", lambda *a, **k: FakeDriver())
+    monkeypatch.setattr("bajutsu.common.backends.make_driver", lambda *a, **k: FakeDriver())
 
     import plistlib
 

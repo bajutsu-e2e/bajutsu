@@ -73,6 +73,9 @@ GRANDFATHERED = frozenset(
         "screenshots.py",
         "stall_diagnostics.py",
         "totp.py",
+        "web_network.py",
+        "webview.py",
+        "zorder.py",
     }
 )
 
@@ -142,13 +145,19 @@ def undocumented_packages(names: set[str], package: Path) -> list[str]:
 def undocumented_modules(names: set[str], package: Path) -> list[str]:
     """The top-level modules the table never mentions, minus the grandfathered ones.
 
+    ``common/`` is descended into for the same reason ``undocumented_packages`` descends into it:
+    it holds flat modules shared across features (``common/backends.py``, ``common/totp.py``, …),
+    and rule 3 would otherwise stop protecting every module that moves there.
+
     A dunder module (``__main__.py``) is a Python entry-point convention rather than a feature of
     the tool, so the table is not expected to describe one.
     """
+    candidates = [(p.name, p) for p in package.glob("*.py")]
+    candidates += [(f"common/{p.name}", p) for p in (package / "common").glob("*.py")]
     return sorted(
-        p.name
-        for p in package.glob("*.py")
-        if not p.name.startswith("__") and p.name not in names and p.name not in GRANDFATHERED
+        name
+        for name, p in candidates
+        if not p.name.startswith("__") and name not in names and name not in GRANDFATHERED
     )
 
 

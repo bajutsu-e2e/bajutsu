@@ -6,15 +6,15 @@ is involved. Execution stops at the first failure.
 Split by concern (BE-0043): `types` (results/protocols), `actions` (one-shot effects), `waits`
 (condition polling), `substitution` (${...} tokens), `evidence_rules` (capturePolicy / extract),
 and `loop` (the run loop itself). The public API — and the internals the test suite drives
-directly — are re-exported here, so `from bajutsu.orchestrator import ...` is unchanged.
+directly — are re-exported here, so `from bajutsu.common.orchestrator import ...` is unchanged.
 """
 
 from __future__ import annotations
 
-from bajutsu.orchestrator.actions import _action_of, _do_action
-from bajutsu.orchestrator.loop import run_scenario
-from bajutsu.orchestrator.substitution import _interp_asserts, _interp_step
-from bajutsu.orchestrator.types import (
+from bajutsu.common.orchestrator.actions import _action_of, _do_action
+from bajutsu.common.orchestrator.loop import run_scenario
+from bajutsu.common.orchestrator.substitution import _interp_asserts, _interp_step
+from bajutsu.common.orchestrator.types import (
     DEFAULT_ALERT_POLL_INTERVAL,
     AlertEvent,
     AlertGuardConfig,
@@ -33,7 +33,7 @@ from bajutsu.orchestrator.types import (
     push_interruption_policy,
     scenario_slug,
 )
-from bajutsu.orchestrator.waits import _POLL, _wait
+from bajutsu.common.orchestrator.waits import _POLL, _wait
 
 __all__ = [
     "DEFAULT_ALERT_POLL_INTERVAL",

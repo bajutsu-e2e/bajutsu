@@ -161,7 +161,7 @@ def test_record_preserves_selection_across_recording_turns() -> None:
 
 
 def test_record_capture_video_tags_the_first_step_for_a_scenario_wide_recording() -> None:
-    from bajutsu.orchestrator.evidence_rules import requested_intervals
+    from bajutsu.common.orchestrator.evidence_rules import requested_intervals
 
     driver = FakeDriver([_el("go", "Go")])
     agent = FakeAgent(
@@ -176,7 +176,7 @@ def test_record_capture_video_tags_the_first_step_for_a_scenario_wide_recording(
 
 
 def test_record_without_capture_video_requests_no_interval() -> None:
-    from bajutsu.orchestrator.evidence_rules import requested_intervals
+    from bajutsu.common.orchestrator.evidence_rules import requested_intervals
 
     driver = FakeDriver([_el("go", "Go")])
     agent = FakeAgent(
@@ -1200,7 +1200,7 @@ def test_execute_does_not_call_the_hook_when_the_wait_succeeds() -> None:
 
 def test_alert_guard_activity_is_reported() -> None:
     """When a system prompt collapses the tree, the guard's detection and dismissal are streamed."""
-    from bajutsu.orchestrator import AlertEvent
+    from bajutsu.common.orchestrator import AlertEvent
 
     app = _vel("App", ["application"])
     driver = FakeDriver([app])  # blocked: only the bare app window is visible

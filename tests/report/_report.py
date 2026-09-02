@@ -6,8 +6,8 @@ from typing import Any
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.orchestrator import RunResult, run_scenario
 from bajutsu.common.scenario import Scenario
-from bajutsu.orchestrator import RunResult, run_scenario
 
 
 def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.Element:

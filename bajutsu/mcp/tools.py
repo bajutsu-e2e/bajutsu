@@ -9,7 +9,7 @@ from pathlib import Path
 from fastmcp import FastMCP
 
 from bajutsu import device_errors
-from bajutsu.backends import select_actuator
+from bajutsu.common.backends import select_actuator
 from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
 

@@ -21,7 +21,7 @@ from bajutsu.common.scenario import Assertion, Gone, Scenario, Step
 from bajutsu.device_os import DeviceOS
 
 if TYPE_CHECKING:
-    from bajutsu.orchestrator import RunResult
+    from bajutsu.common.orchestrator import RunResult
 
 # `until` conditions that wait for no concrete element / event — best-effort settles, not a
 # condition the run can prove was met, so they are a determinism risk worth surfacing.

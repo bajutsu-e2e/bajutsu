@@ -10,9 +10,9 @@ flag, a device-control / device-state primitive), which replaces this marker wit
 from __future__ import annotations
 
 from bajutsu.common.drivers import base
+from bajutsu.common.orchestrator.actions._registry import _handler
 from bajutsu.common.scenario import Step
 from bajutsu.common.scenario.models.actions import bypass_hint
-from bajutsu.orchestrator.actions._registry import _handler
 
 
 @_handler("manual")

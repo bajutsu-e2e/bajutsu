@@ -95,7 +95,7 @@ def playwright_browser(engine: str) -> Tool:
     return Tool(engine, Playwright(engine))
 
 
-# Backend actuator (bajutsu.backends actuator names) -> what it needs. `xcuitest` (iOS, BE-0290 —
+# Backend actuator (bajutsu.common.backends actuator names) -> what it needs. `xcuitest` (iOS, BE-0290 —
 # the sole iOS backend) needs Xcode's `xcodebuild`. The web browser is engine-specific, so it is not
 # listed here (see `playwright_browser`). `adb` (Android, BE-0007) needs the platform-tools `adb`
 # binary; the emulator is only needed to *boot* an AVD, not to drive a running device, so it is not

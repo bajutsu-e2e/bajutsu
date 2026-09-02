@@ -34,7 +34,7 @@ from bajutsu.common.analytics import usage
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.elements import screen_size_from_elements
 from bajutsu.common.evidence.redaction import Redactor
-from bajutsu.orchestrator import AlertEvent
+from bajutsu.common.orchestrator import AlertEvent
 from bajutsu.screenshots import fraction, png_size, screenshot_bytes
 
 # Sonnet over Opus: this fires mid-wait (BE-0269), so its round-trip latency is on the run's

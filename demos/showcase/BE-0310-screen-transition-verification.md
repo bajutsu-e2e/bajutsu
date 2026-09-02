@@ -44,7 +44,7 @@ For **both** `showcase-swiftui` and `showcase-uikit`:
 
 BE-0310 added two `_logger.debug(...)` lines for exactly this confirmation:
 `bajutsu.platform_lifecycle.readiness` logs `"readiness satisfied by the screenChanged signal"`
-when the new rung decides readiness, and `bajutsu.orchestrator.waits` logs `"settled via the
+when the new rung decides readiness, and `bajutsu.common.orchestrator.waits` logs `"settled via the
 screen-transition signal (quiescence=...)"` when `settled` uses it. The CLI wires no `--verbose`
 flag today, so raise the level with a one-line wrapper instead of `bajutsu run` directly:
 

@@ -16,12 +16,6 @@ if TYPE_CHECKING:
     from bajutsu.doctor import Score
 
 from bajutsu import device_errors
-from bajutsu.backends import (
-    capabilities_for_run,
-    device_replacement_supported,
-    erase_precondition_supported,
-)
-from bajutsu.cancellation import CANCELLED_FAILURE, CancelSource, not_cancelled
 from bajutsu.common.assertions import (
     AssertionResult,
     EvalContext,
@@ -30,6 +24,12 @@ from bajutsu.common.assertions import (
     VisualContext,
     VisualEvidence,
 )
+from bajutsu.common.backends import (
+    capabilities_for_run,
+    device_replacement_supported,
+    erase_precondition_supported,
+)
+from bajutsu.common.cancellation import CANCELLED_FAILURE, CancelSource, not_cancelled
 from bajutsu.common.capability import capability_preflight
 from bajutsu.common.config import Effective
 from bajutsu.common.drivers.base import BackendCrashError
@@ -37,14 +37,7 @@ from bajutsu.common.evidence import Artifact
 from bajutsu.common.evidence.network import NetworkExchange, _no_transitions
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter, prepare_run_dir
-from bajutsu.common.report import git_revision, run_provenance, scenario_render_inputs, write_report
-from bajutsu.common.scenario import (
-    Scenario,
-    UncoveredSystemAlertLocale,
-    dump_scenario_file,
-    redact_totp_secrets,
-)
-from bajutsu.orchestrator import (
+from bajutsu.common.orchestrator import (
     AlertGuardConfig,
     Clock,
     MailboxReader,
@@ -54,16 +47,23 @@ from bajutsu.orchestrator import (
     run_scenario,
     scenario_slug,
 )
-from bajutsu.orchestrator.types import _no_network
-from bajutsu.runner.mailbox import build_mailbox_reader
-from bajutsu.runner.recovery import (
+from bajutsu.common.orchestrator.types import _no_network
+from bajutsu.common.report import git_revision, run_provenance, scenario_render_inputs, write_report
+from bajutsu.common.runner.mailbox import build_mailbox_reader
+from bajutsu.common.runner.recovery import (
     CrashRecoveryBudget,
     RunCrashRecoveryBudget,
     _default_crash_recovery_budget,
     _default_crash_retries,
     _default_run_crash_recovery_budget,
 )
-from bajutsu.runner.types import AlertGuardFor, Lease, LeaseFn
+from bajutsu.common.runner.types import AlertGuardFor, Lease, LeaseFn
+from bajutsu.common.scenario import (
+    Scenario,
+    UncoveredSystemAlertLocale,
+    dump_scenario_file,
+    redact_totp_secrets,
+)
 
 # Re-exported from `recovery` (BE-0334): the crash-retry count/budget bookkeeping now lives there so
 # the on-device conformance harness drives the same recovery and the two cannot drift. Kept importable

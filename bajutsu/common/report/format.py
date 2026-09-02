@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.common.evidence import Artifact
-from bajutsu.orchestrator import RunResult
+from bajutsu.common.orchestrator import RunResult
 
 # How many trailing log lines / body chars to embed inline (the full file is linked).
 _LOG_MAX_LINES = 2000

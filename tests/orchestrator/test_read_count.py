@@ -21,7 +21,7 @@ from bajutsu.common.drivers.fake import FakeDriver, React
 from bajutsu.common.evidence import Artifact, FileSink, NullSink
 from bajutsu.common.evidence.intervals import Interval
 from bajutsu.common.evidence.network import NetworkExchange
-from bajutsu.orchestrator import run_scenario
+from bajutsu.common.orchestrator import run_scenario
 
 
 class _CountingDriver(FakeDriver):

@@ -174,9 +174,9 @@ def _check_platform(v: str | None) -> str | None:
     """
     if v is None:
         return v
-    # Imported lazily so this schema module carries no top-level dependency on `bajutsu.backends`
+    # Imported lazily so this schema module carries no top-level dependency on `bajutsu.common.backends`
     # (only the sibling `resolve` module does); the token set is tiny and this validator runs once.
-    from bajutsu.backends import PLATFORMS
+    from bajutsu.common.backends import PLATFORMS
 
     if v not in PLATFORMS:
         raise ValueError(f"invalid platform {v!r}: use one of {', '.join(PLATFORMS)}")

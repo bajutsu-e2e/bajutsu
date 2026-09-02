@@ -8,8 +8,8 @@ from pathlib import Path
 from _report import _el, _passing
 
 from bajutsu.common.evidence import Artifact
+from bajutsu.common.orchestrator import RunResult, StepOutcome
 from bajutsu.common.report import html_report
-from bajutsu.orchestrator import RunResult, StepOutcome
 
 
 def test_screenshot_or_tree_button_opens_element_viewer_and_arrows_navigate() -> None:

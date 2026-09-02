@@ -46,7 +46,7 @@ from bajutsu import simctl
 from bajutsu.common.config import Effective, ios_bundle_id, load_config, resolve
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals
-from bajutsu.orchestrator.actions.handlers.scroll import (
+from bajutsu.common.orchestrator.actions.handlers.scroll import (
     _AXIS,
     _STEP_FRACTION,
     _step_endpoints,

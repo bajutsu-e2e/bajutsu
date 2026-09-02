@@ -23,7 +23,7 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from bajutsu.backends import resolve_actuators
+from bajutsu.common.backends import resolve_actuators
 from bajutsu.common.config import Config, load_config, resolve, web_engine
 from bajutsu.common.config_source import DEFAULT_CONFIG
 from bajutsu.common.provisioning import requirements

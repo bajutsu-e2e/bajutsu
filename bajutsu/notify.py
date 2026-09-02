@@ -20,8 +20,8 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from bajutsu.common.config import NotifyEndpoint
+from bajutsu.common.orchestrator import RunResult
 from bajutsu.common.scenario import interp
-from bajutsu.orchestrator import RunResult
 
 logger = logging.getLogger(__name__)
 

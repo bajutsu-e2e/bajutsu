@@ -244,7 +244,7 @@ def test_enrich_streams_progress_to_reporter() -> None:
 
 
 def test_enrich_uses_alert_guard_during_replay() -> None:
-    from bajutsu.orchestrator import AlertEvent
+    from bajutsu.common.orchestrator import AlertEvent
 
     app: base.Element = {
         "identifier": "App",

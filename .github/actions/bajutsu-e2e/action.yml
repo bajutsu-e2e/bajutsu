@@ -88,7 +88,7 @@ runs:
         # No --erase/--no-erase override: neither target this action runs against
         # (demos/showcase/showcase.config.yaml's showcase-swiftui/showcase-uikit) sets a target-level
         # `erase` default, so an explicit --no-erase here would be a no-op for every scenario's own
-        # lease — except a crash-triggered retry (bajutsu/runner/pipeline.py's forced-erase retry,
+        # lease — except a crash-triggered retry (bajutsu/common/runner/pipeline.py's forced-erase retry,
         # `force_erase_on_retry`), which *does* read the flag: an explicit --no-erase there means "the
         # operator asked to keep the device as-is," and this composite action is not that operator, so
         # passing it here would silently disable the device recovery this step exists to benefit from

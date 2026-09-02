@@ -16,8 +16,6 @@ import typer
 from pydantic import ValidationError
 
 from bajutsu import device_errors
-from bajutsu.backends import select_actuator_for_scenario
-from bajutsu.cancellation import CancelSource, graceful_sigterm
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _load_effective_with_source,
@@ -29,10 +27,18 @@ from bajutsu.cli._shared import (
     resolve_system_alert_handling_flag,
 )
 from bajutsu.common.assertions import GoldenContext
+from bajutsu.common.backends import select_actuator_for_scenario
+from bajutsu.common.cancellation import CancelSource, graceful_sigterm
 from bajutsu.common.config import WEB_ENGINES, Effective, IosConfig
 from bajutsu.common.github import actions as github_actions
+from bajutsu.common.orchestrator import DEFAULT_ALERT_POLL_INTERVAL, AlertGuardConfig, RunResult
+from bajutsu.common.orchestrator.types import ResolvedAlertRule
 from bajutsu.common.report.archive import archive_run_dir
 from bajutsu.common.report.manifest import MAX_LABEL_LENGTH, _run_backend
+from bajutsu.common.runner import device_pool, run_all, run_and_report, run_matrix_and_report
+from bajutsu.common.runner.build import BuildError, build_if_missing
+from bajutsu.common.runner.device_provider import acquire_device
+from bajutsu.common.runner.types import AlertGuardFor
 from bajutsu.common.scenario import (
     Scenario,
     SystemAlertHandling,
@@ -55,19 +61,9 @@ from bajutsu.common.scenario.system_alerts import (
     system_alert_label,
 )
 from bajutsu.deprecations import warn_once
-from bajutsu.orchestrator import (
-    DEFAULT_ALERT_POLL_INTERVAL,
-    AlertGuardConfig,
-    RunResult,
-)
-from bajutsu.orchestrator.types import ResolvedAlertRule
 from bajutsu.platform_lifecycle import ProvisionProfile, environment_for
 from bajutsu.run_files import DEFAULT_RUNS_DIR
 from bajutsu.run_id import new_run_id
-from bajutsu.runner import device_pool, run_all, run_and_report, run_matrix_and_report
-from bajutsu.runner.build import BuildError, build_if_missing
-from bajutsu.runner.device_provider import acquire_device
-from bajutsu.runner.types import AlertGuardFor
 
 
 def _parse_browsers(browsers: str) -> list[str]:
@@ -723,7 +719,7 @@ class _RunPlan:
     # cancelled run still writes its manifest and report instead of vanishing from the history.
     cancelled: CancelSource
     # Whether a backend-crash-triggered retry may force `preconditions.erase=True`
-    # (`bajutsu/runner/pipeline.py`'s forced-erase retry). `erase is not False` — True for the default
+    # (`bajutsu/common/runner/pipeline.py`'s forced-erase retry). `erase is not False` — True for the default
     # (unset) and explicit `--erase`, False only for an explicit `--no-erase` — captured here, ahead of
     # `_filter_scenarios` resolving every scenario's `preconditions.erase` to a concrete bool, since
     # that resolved value can no longer distinguish an explicit opt-out from "nobody asked".

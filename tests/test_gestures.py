@@ -12,8 +12,8 @@ import pytest
 from bajutsu.codegen import to_xcuitest
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.orchestrator import run_scenario
 from bajutsu.common.scenario import load_scenarios
-from bajutsu.orchestrator import run_scenario
 
 
 def _points(arg: object) -> tuple[base.Point, base.Point]:

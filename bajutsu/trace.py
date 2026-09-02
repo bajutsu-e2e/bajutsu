@@ -58,8 +58,8 @@ def _step_label(step: Step, index: int) -> str:
     """A short, stable identifier for a step in the report (its name, or action + primary id)."""
     if step.name:
         return f"#{index} {step.name}"
-    from bajutsu.orchestrator.actions._registry import _action_of
-    from bajutsu.orchestrator.evidence_rules import _primary_selector
+    from bajutsu.common.orchestrator.actions._registry import _action_of
+    from bajutsu.common.orchestrator.evidence_rules import _primary_selector
 
     primary = _primary_selector(step)
     # `first_id()` renders a candidate-list selector (BE-0221) as its primary id, not a raw list.
@@ -130,8 +130,8 @@ def _step_fires(rule: CaptureRule, step: Step) -> bool:
     Uses the run loop's own matcher with neutral runtime signals, so the count matches what a real
     run would record.
     """
-    from bajutsu.orchestrator.actions._registry import _action_of
-    from bajutsu.orchestrator.evidence_rules import _primary_selector, _rule_fires
+    from bajutsu.common.orchestrator.actions._registry import _action_of
+    from bajutsu.common.orchestrator.evidence_rules import _primary_selector, _rule_fires
 
     primary = _primary_selector(step)
     primary_id = primary.first_id() if primary is not None else None

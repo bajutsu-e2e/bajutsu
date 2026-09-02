@@ -1,4 +1,4 @@
-"""Tests for the pure mailbox logic behind the `email` step (bajutsu/mailbox.py, BE-0046).
+"""Tests for the pure mailbox logic behind the `email` step (bajutsu/common/mailbox.py, BE-0046).
 
 `email` polls a generic HTTP mailbox, waits for a matching message that arrived *after* the step
 started, and extracts a value by regex into `vars.*`. The matching, extraction, response-shape
@@ -10,8 +10,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from bajutsu.common.mailbox import (
+    MailboxMessage,
+    extract_value,
+    match_message,
+    read_messages,
+    select,
+)
 from bajutsu.common.scenario import EmailExtract, EmailMatch
-from bajutsu.mailbox import MailboxMessage, extract_value, match_message, read_messages, select
 
 
 def _msg(
@@ -152,9 +158,9 @@ from conftest import AlertingDriver, el  # noqa: E402
 
 from bajutsu.common.drivers import base  # noqa: E402
 from bajutsu.common.drivers.fake import FakeDriver  # noqa: E402
+from bajutsu.common.orchestrator import AlertGuardConfig, run_scenario  # noqa: E402
+from bajutsu.common.orchestrator.loop import _do_email  # noqa: E402
 from bajutsu.common.scenario import Scenario  # noqa: E402
-from bajutsu.orchestrator import AlertGuardConfig, run_scenario  # noqa: E402
-from bajutsu.orchestrator.loop import _do_email  # noqa: E402
 
 
 class _FakeClock:

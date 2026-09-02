@@ -17,8 +17,8 @@ from conftest import GUARD_LABEL, AlertingDriver, el
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.actuation import MAX_RECORDS, Actuation, ActuationLog
 from bajutsu.common.drivers.fake import FakeDriver
-from bajutsu.orchestrator import AlertGuardConfig, run_scenario
-from bajutsu.orchestrator.actions.handlers._gesture_math import _scroll_gesture
+from bajutsu.common.orchestrator import AlertGuardConfig, run_scenario
+from bajutsu.common.orchestrator.actions.handlers._gesture_math import _scroll_gesture
 
 _BUTTON = el("settings.open", frame=(20.0, 100.0, 80.0, 40.0))
 _TITLE = el("home.title", frame=(0.0, 0.0, 200.0, 60.0))

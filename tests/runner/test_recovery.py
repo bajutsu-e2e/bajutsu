@@ -14,7 +14,7 @@ import pytest
 
 from bajutsu import simctl
 from bajutsu.common.drivers import base, xcuitest
-from bajutsu.runner.recovery import (
+from bajutsu.common.runner.recovery import (
     CrashRecoveryBudget,
     RunCrashRecoveryBudget,
     _default_crash_recovery_budget,

@@ -25,7 +25,7 @@ from bajutsu.common.scenario import Redact
 if TYPE_CHECKING:
     # Imported for typing only — importing at runtime would cycle (orchestrator imports this module).
     # The writer reads these by attribute, so it needs no runtime import.
-    from bajutsu.orchestrator.waits import WaitTrace
+    from bajutsu.common.orchestrator.waits import WaitTrace
     from bajutsu.platform_lifecycle import ReadinessResult
 
 _logger = logging.getLogger(__name__)

@@ -248,7 +248,7 @@ def erase_precondition_supported(
     reviewed here alongside its capability narrowing instead of risking a caller elsewhere assuming
     `erase` is always safe.
 
-    `bajutsu/runner/pipeline.py`'s crash-triggered retry is the one caller today: forcing `erase`
+    `bajutsu/common/runner/pipeline.py`'s crash-triggered retry is the one caller today: forcing `erase`
     where this returns `False` would raise past its `except BackendCrashError` and abort the whole
     run instead of retrying the one scenario.
     """

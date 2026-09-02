@@ -6,7 +6,7 @@ from _orch import FakeClock, _scenario
 from conftest import el
 
 from bajutsu.common.drivers.fake import FakeDriver
-from bajutsu.orchestrator import run_scenario
+from bajutsu.common.orchestrator import run_scenario
 
 
 def test_extract_captures_value_into_vars() -> None:

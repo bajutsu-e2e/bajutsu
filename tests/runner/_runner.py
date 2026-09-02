@@ -10,8 +10,8 @@ from bajutsu.common.config import Effective, IosConfig, WebConfig
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import NullSink
+from bajutsu.common.runner import Lease
 from bajutsu.common.scenario import Redact, Scenario
-from bajutsu.runner import Lease
 
 
 def _eff() -> Effective:

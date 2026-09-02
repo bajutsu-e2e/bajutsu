@@ -23,6 +23,8 @@ from bajutsu.cli.commands.run import (
     _resolve_secrets,
 )
 from bajutsu.common.config import Effective, load_config, resolve
+from bajutsu.common.orchestrator import DEFAULT_ALERT_POLL_INTERVAL
+from bajutsu.common.orchestrator.types import match_alert_rule
 from bajutsu.common.scenario import (
     Scenario,
     SystemAlertHandling,
@@ -30,8 +32,6 @@ from bajutsu.common.scenario import (
     load_scenarios,
 )
 from bajutsu.common.scenario.system_alerts import UncoveredSystemAlertLocale, covered_languages
-from bajutsu.orchestrator import DEFAULT_ALERT_POLL_INTERVAL
-from bajutsu.orchestrator.types import match_alert_rule
 
 
 def _resolve(udid: str) -> str:
@@ -358,7 +358,7 @@ def test_alert_guard_factory_needs_no_credential_and_reaches_no_model(
     """
     from bajutsu.common.analytics import ledger as usage_ledger
     from bajutsu.common.drivers.fake import FakeDriver
-    from bajutsu.orchestrator import AlertGuardConfig
+    from bajutsu.common.orchestrator import AlertGuardConfig
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     monkeypatch.delenv("BAJUTSU_AI_PROVIDER", raising=False)

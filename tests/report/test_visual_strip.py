@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from bajutsu.common.orchestrator import RunResult
 from bajutsu.common.report import html_report
-from bajutsu.orchestrator import RunResult
 
 
 def test_sel_parts_renders_id_candidate_list() -> None:

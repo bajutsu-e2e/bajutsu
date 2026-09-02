@@ -24,8 +24,8 @@ from bajutsu import adb, platform_lifecycle
 from bajutsu.common.capability import capability_preflight
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.adb import AdbDriver
+from bajutsu.common.orchestrator.types import DeviceControl
 from bajutsu.common.scenario import Scenario, load_scenarios
-from bajutsu.orchestrator.types import DeviceControl
 
 _PKG = "com.bajutsu.showcase.android.compose"
 

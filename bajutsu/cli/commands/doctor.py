@@ -11,15 +11,15 @@ import typer
 from bajutsu import adb as _adb
 from bajutsu import device_errors
 from bajutsu import simctl as _simctl
-from bajutsu.backends import (
+from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
+from bajutsu.common.agents import availability as ai_availability
+from bajutsu.common.ai import credential_gap
+from bajutsu.common.backends import (
     capabilities_for_run,
     resolve_actuators,
     select_actuator,
     select_actuator_for_scenario,
 )
-from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
-from bajutsu.common.agents import availability as ai_availability
-from bajutsu.common.ai import credential_gap
 from bajutsu.common.capability import capability_preflight, preflight
 from bajutsu.common.config import (
     Effective,

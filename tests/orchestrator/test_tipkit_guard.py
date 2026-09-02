@@ -17,8 +17,8 @@ from conftest import AlertingDriver, el
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
-from bajutsu.orchestrator import run_scenario
-from bajutsu.orchestrator.types import AlertGuardConfig
+from bajutsu.common.orchestrator import run_scenario
+from bajutsu.common.orchestrator.types import AlertGuardConfig
 
 # Stand in for the two nodes a showing tip is recognized by: TipKit's dismiss region and the tip's
 # own container. The real identifiers live in the XCUITest driver; these are only what the fake was

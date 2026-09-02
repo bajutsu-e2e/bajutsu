@@ -26,7 +26,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Literal, cast
 
-from bajutsu import backends, device_os, simctl, stall_diagnostics
+from bajutsu import device_os, simctl, stall_diagnostics
+from bajutsu.common import backends
 from bajutsu.common.config import Effective, XcuitestConfig, require_ios
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.zorder import ZOrderResponder, ZOrderSource
@@ -1101,7 +1102,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         next time), but a config or `--udid` pinned to a permanently-vanished device mints a fresh,
         identically-named replacement on every run instead of converging on the one already created.
         That residue is also why the crash-retry rung is scoped to an unpinned run (see
-        `bajutsu/backends.py`'s `device_replacement_supported`).
+        `bajutsu/common/backends.py`'s `device_replacement_supported`).
         Cleared by `xcrun simctl delete unavailable`, by deleting the `bajutsu-recovered-*` devices —
         which the name below makes greppable — or by re-pointing the pinned config at the replacement.
 

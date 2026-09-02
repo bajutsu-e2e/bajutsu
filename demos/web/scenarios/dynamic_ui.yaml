@@ -7,7 +7,7 @@
 # specific reading to become `gone` (i.e. for the value to have changed at all). The final check is
 # an inline `assert` step immediately after that wait, not the scenario-level `expect` — `expect` runs
 # only after every step finishes and does its own single, unretried read (`_evaluate_expect` /
-# `_timeout_floor` in bajutsu/orchestrator/loop.py — 0 on this lane), which would race a further tick
+# `_timeout_floor` in bajutsu/common/orchestrator/loop.py — 0 on this lane), which would race a further tick
 # in the gap; the inline `assert` has no such gap to race. (BE-0245's wait-floor premise is
 # Android/adb-specific — a Compose-recomposition poll budget — so it has no web analog and is out of
 # scope here.)

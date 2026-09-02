@@ -46,7 +46,7 @@ from bajutsu import adb
 from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals
-from bajutsu.runner.launch import launch_driver
+from bajutsu.common.runner.launch import launch_driver
 
 pytestmark = pytest.mark.ondevice
 

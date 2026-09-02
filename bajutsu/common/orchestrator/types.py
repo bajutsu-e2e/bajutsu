@@ -17,8 +17,8 @@ from bajutsu.common.drivers import base
 from bajutsu.common.drivers.actuation import Actuation, ActuationReporter, Drained
 from bajutsu.common.evidence import Artifact
 from bajutsu.common.evidence.network import NetworkExchange
+from bajutsu.common.mailbox import MailboxMessage
 from bajutsu.common.scenario import Relaunch
-from bajutsu.mailbox import MailboxMessage
 
 # Returns the network exchanges observed so far (for `request` assertions / waits).
 NetworkSource = Callable[[], list[NetworkExchange]]

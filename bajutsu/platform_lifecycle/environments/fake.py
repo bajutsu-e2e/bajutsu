@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from bajutsu import backends
+from bajutsu.common import backends
 from bajutsu.common.config import Effective
 from bajutsu.common.drivers import base
 from bajutsu.common.scenario import Preconditions

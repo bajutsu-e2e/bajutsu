@@ -22,11 +22,8 @@ from bajutsu.common.config import Effective, XcuitestConfig, require_ios
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence.network import ScreenTransition
+from bajutsu.common.runner import await_ready, launch_driver
 from bajutsu.common.scenario import Preconditions
-from bajutsu.runner import (
-    await_ready,
-    launch_driver,
-)
 
 
 def _recording_run(calls: list[list[str]]) -> simctl.RunFn:
@@ -77,7 +74,7 @@ def _mock_runner_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
             return None
 
     ready = _ReadyFake([_el("home.title", "H"), _el("ok", "OK")])  # 2 elems -> ready immediately
-    monkeypatch.setattr("bajutsu.backends.make_driver", lambda *a, **k: ready)
+    monkeypatch.setattr("bajutsu.common.backends.make_driver", lambda *a, **k: ready)
 
 
 def _launch_recording(
@@ -191,7 +188,7 @@ def test_launch_driver_tears_down_when_await_ready_raises(
     def _boom(*args: object, **kwargs: object) -> object:
         raise drivers_base.BackendCrashError("died during readiness")
 
-    monkeypatch.setattr("bajutsu.runner.launch.await_ready", _boom)
+    monkeypatch.setattr("bajutsu.common.runner.launch.await_ready", _boom)
     with pytest.raises(drivers_base.BackendCrashError, match="died during readiness"):
         launch_driver("UDID-1", _xcuitest_eff(tmp_path), "xcuitest", environment=_Env())  # type: ignore[arg-type]
     assert torn == [driver]

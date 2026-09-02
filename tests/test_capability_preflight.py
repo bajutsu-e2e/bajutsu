@@ -551,8 +551,8 @@ def test_select_reason_includes_step_index() -> None:
 def test_doctor_scenario_check_detects_unsupported_capabilities(tmp_path: Path) -> None:
     # A selectOption scenario on xcuitest (no selectOption — a web-only capability) must surface the
     # unsupported capability. Tests the check_scenarios helper used by the CLI.
-    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
+    from bajutsu.common.backends import capabilities_for
 
     scn_file = tmp_path / "select.yaml"
     scn_file.write_text(
@@ -567,8 +567,8 @@ def test_doctor_scenario_check_detects_unsupported_capabilities(tmp_path: Path) 
 
 def test_doctor_scenario_check_no_issue_when_supported(tmp_path: Path) -> None:
     # A plain tap scenario on xcuitest — no unsupported capabilities.
-    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
+    from bajutsu.common.backends import capabilities_for
 
     scn_file = tmp_path / "tap.yaml"
     scn_file.write_text(
@@ -581,8 +581,8 @@ def test_doctor_scenario_check_no_issue_when_supported(tmp_path: Path) -> None:
 
 def test_doctor_scenario_check_multiple_scenarios(tmp_path: Path) -> None:
     # Multiple scenarios: only the one with selectOption should produce a reason.
-    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
+    from bajutsu.common.backends import capabilities_for
 
     scn_file = tmp_path / "mixed.yaml"
     scn_file.write_text(
@@ -601,8 +601,8 @@ def test_doctor_scenario_check_multiple_scenarios(tmp_path: Path) -> None:
 
 
 def test_doctor_scenario_check_missing_file(tmp_path: Path) -> None:
-    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
+    from bajutsu.common.backends import capabilities_for
 
     # A missing scenario file should raise (not silently skip).
     with pytest.raises(FileNotFoundError):

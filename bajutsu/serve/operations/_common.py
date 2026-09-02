@@ -64,7 +64,7 @@ def _default_driver_factory(eff: Effective, backends_list: list[str], udid: str)
     """Bring up a live driver for a capture/enrich session, cost-ordered like the run ladder;
     XCUITest needs a short-lived `xcodebuild` runner, so its teardown stops that runner explicitly
     instead of leaking the subprocess, while every other backend just gets an optional `close()`."""
-    from bajutsu import backends
+    from bajutsu.common import backends
 
     actuator = backends.select_actuator_cost_first(backends_list or ["fake"])
     if actuator == "xcuitest":

@@ -4,7 +4,7 @@
   targetSdk 28+ blocks plaintext HTTP by default, but that scenario exercises two cleartext hosts, both
   loopback aliases with no certificate to serve:
     - `10.0.2.2` — SHOWCASE_API_URL, the emulator's host-loopback alias to the throwaway net_stub.py.
-    - `127.0.0.1` — BAJUTSU_COLLECTOR (bajutsu/runner/pool.py), the on-device end of the `adb reverse`
+    - `127.0.0.1` — BAJUTSU_COLLECTOR (bajutsu/common/runner/pool.py), the on-device end of the `adb reverse`
       tunnel BajutsuNet's interceptor reports each exchange to (bajutsu/platform_lifecycle/
       environments/android.py `bridge_collector`).
   Cleartext stays permitted for only those two aliases; every other host keeps the platform default

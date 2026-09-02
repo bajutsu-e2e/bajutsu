@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from bajutsu import adb, simctl
 from bajutsu.common.drivers import base
-from bajutsu.orchestrator import DeviceControl
+from bajutsu.common.orchestrator import DeviceControl
 
 
 def device_control(

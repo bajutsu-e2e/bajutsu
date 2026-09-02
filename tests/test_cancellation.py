@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu.cancellation import (
+from bajutsu.common.cancellation import (
     DEFAULT_GRACE_SECONDS,
     GRACE_ENV,
     HANDLER_MARGIN_SECONDS,
@@ -92,7 +92,7 @@ def test_off_the_main_thread_the_handler_degrades_loudly(caplog: pytest.LogCaptu
 
     def install() -> None:
         with (
-            caplog.at_level(logging.WARNING, logger="bajutsu.cancellation"),
+            caplog.at_level(logging.WARNING, logger="bajutsu.common.cancellation"),
             graceful_sigterm() as c,
         ):
             seen.append(c)
@@ -127,7 +127,7 @@ def test_a_shutdown_that_never_finishes_dies_at_the_internal_deadline(tmp_path: 
         "\n".join(
             (
                 "import time",
-                "from bajutsu import cancellation",
+                "from bajutsu.common import cancellation",
                 # A deadline the test can wait out, in place of the shipped 10s margin.
                 "cancellation.HANDLER_MARGIN_SECONDS = 0.1",
                 "with cancellation.graceful_sigterm() as cancelled:",

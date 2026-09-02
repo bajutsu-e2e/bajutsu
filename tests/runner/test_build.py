@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu.runner.build import BuildError, build_if_missing
+from bajutsu.common.runner.build import BuildError, build_if_missing
 
 
 def test_build_runs_from_the_checkout_root_and_produces_the_binary(tmp_path: Path) -> None:

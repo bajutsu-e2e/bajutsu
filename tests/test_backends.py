@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from bajutsu.backends import (
+from bajutsu.common.backends import (
     _cost_ordered,
     capabilities_for_run,
     default_available,
@@ -190,7 +190,7 @@ def test_ios_resolves_to_xcuitest() -> None:
 
 
 def test_xcuitest_is_implemented_and_selectable() -> None:
-    from bajutsu.backends import IMPLEMENTED, KNOWN_ACTUATORS
+    from bajutsu.common.backends import IMPLEMENTED, KNOWN_ACTUATORS
 
     assert "xcuitest" in KNOWN_ACTUATORS
     assert "xcuitest" in IMPLEMENTED
@@ -244,7 +244,7 @@ def test_select_planned_backend_reports_not_implemented(monkeypatch: pytest.Monk
     # The "recognized but not implemented yet" path still guards a future planned actuator: with adb
     # dropped from IMPLEMENTED it is recognized (in PLATFORMS) yet has no driver, so the message
     # points at the platform-reach design in vision.md rather than a generic "no available actuator".
-    monkeypatch.setattr("bajutsu.backends.IMPLEMENTED", frozenset({"xcuitest", "fake"}))
+    monkeypatch.setattr("bajutsu.common.backends.IMPLEMENTED", frozenset({"xcuitest", "fake"}))
     with pytest.raises(RuntimeError, match="not implemented yet"):
         select_actuator(["android"])
 
@@ -256,9 +256,9 @@ def test_select_web_actuator_when_available() -> None:
 
 def test_playwright_availability_gated_on_package(monkeypatch: pytest.MonkeyPatch) -> None:
     # Availability is the python package (probed without importing it), not a PATH executable.
-    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: True)
+    monkeypatch.setattr("bajutsu.common.backends._playwright_available", lambda: True)
     assert default_available("playwright") is True
-    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: False)
+    monkeypatch.setattr("bajutsu.common.backends._playwright_available", lambda: False)
     assert default_available("playwright") is False
 
 
@@ -384,7 +384,7 @@ def test_make_driver_planned_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     # A recognized-but-unimplemented actuator raises NotImplementedError (distinct from an
     # outright-unknown token), so the message can point at vision.md's reach design. Every real
     # actuator now has a driver, so a synthetic "future" token in KNOWN_ACTUATORS stands in.
-    monkeypatch.setattr("bajutsu.backends.KNOWN_ACTUATORS", ("xcuitest", "future"))
+    monkeypatch.setattr("bajutsu.common.backends.KNOWN_ACTUATORS", ("xcuitest", "future"))
     with pytest.raises(NotImplementedError, match="not implemented yet"):
         make_driver("future", "U")
 
@@ -408,7 +408,7 @@ def test_ensure_web_runtime_installs_engine_when_package_present(
     # Web requested + Playwright present, but the engine binary may not be: install it (idempotent).
     # The package step is skipped (it's already importable); only `playwright install <engine>` runs.
     calls: list[list[str]] = []
-    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: True)
+    monkeypatch.setattr("bajutsu.common.backends._playwright_available", lambda: True)
     monkeypatch.setattr("subprocess.run", lambda cmd, **k: calls.append(cmd))
     ensure_web_runtime(["web"], "firefox")
     assert len(calls) == 1
@@ -418,7 +418,7 @@ def test_ensure_web_runtime_installs_engine_when_package_present(
 def test_ensure_web_runtime_installs_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     # Web requested + Playwright absent: install the package additively (uv pip), then the engine.
     calls: list[list[str]] = []
-    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: False)
+    monkeypatch.setattr("bajutsu.common.backends._playwright_available", lambda: False)
     monkeypatch.setattr("subprocess.run", lambda cmd, **k: calls.append(cmd))
     ensure_web_runtime(["web"])  # default engine
     assert calls[0][:3] == ["uv", "pip", "install"] and "playwright" in calls[0]
@@ -430,7 +430,7 @@ def test_ensure_web_runtime_installs_requested_engine_when_missing(
 ) -> None:
     # The requested engine (not chromium) is the one fetched after the package is added.
     calls: list[list[str]] = []
-    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: False)
+    monkeypatch.setattr("bajutsu.common.backends._playwright_available", lambda: False)
     monkeypatch.setattr("subprocess.run", lambda cmd, **k: calls.append(cmd))
     ensure_web_runtime(["web"], "webkit")
     assert calls[1][1:] == ["-m", "playwright", "install", "webkit"]
@@ -441,7 +441,7 @@ def test_ensure_web_runtime_reports_install_failure(monkeypatch: pytest.MonkeyPa
     # cleanly instead of crashing.
     import subprocess
 
-    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: False)
+    monkeypatch.setattr("bajutsu.common.backends._playwright_available", lambda: False)
 
     def boom(cmd: list[str], **k: object) -> None:
         raise subprocess.CalledProcessError(1, cmd)
@@ -454,7 +454,7 @@ def test_ensure_web_runtime_reports_install_failure(monkeypatch: pytest.MonkeyPa
 def test_capabilities_for_xcuitest_reads_the_driver_constant_without_a_device() -> None:
     # BE-0019: the richer iOS actuator's capabilities are readable before its runner is wired into
     # selection — reading the class constant constructs no driver and starts no runner.
-    from bajutsu.backends import capabilities_for
+    from bajutsu.common.backends import capabilities_for
     from bajutsu.common.drivers.xcuitest import XcuitestDriver
 
     caps = capabilities_for("xcuitest")
@@ -510,7 +510,7 @@ def test_capabilities_for_run_drops_simctl_backed_caps_on_a_real_ios_device() ->
 def test_capabilities_for_run_keeps_the_full_set_on_the_simulator() -> None:
     # The Simulator default (no deviceType, or explicit "simulator") keeps every static capability:
     # simctl reaches the Simulator, so DeviceControl / permissions still apply.
-    from bajutsu.backends import capabilities_for
+    from bajutsu.common.backends import capabilities_for
 
     for xcfg in (None, XcuitestConfig(testRunner="Runner.xctestrun", deviceType="simulator")):
         assert capabilities_for_run("xcuitest", _ios_eff(xcuitest=xcfg)) == capabilities_for(
@@ -521,7 +521,7 @@ def test_capabilities_for_run_keeps_the_full_set_on_the_simulator() -> None:
 def test_capabilities_for_run_is_a_noop_for_non_xcuitest_backends() -> None:
     # The narrowing is XCUITest-only; adb / web read their static set unchanged even when the
     # (unrelated) target config would look like a real device to a careless check.
-    from bajutsu.backends import capabilities_for
+    from bajutsu.common.backends import capabilities_for
 
     eff = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="device"))
     assert capabilities_for_run("adb", eff) == capabilities_for("adb")
@@ -655,13 +655,15 @@ def _multi_caps(actuator: str) -> frozenset[str]:
 @pytest.fixture
 def _multi(monkeypatch: pytest.MonkeyPatch) -> None:
     """Point the module's platform/cost/known tables at the synthetic two-actuator platform."""
-    monkeypatch.setattr("bajutsu.backends.PLATFORMS", _MULTI_PLATFORMS)
-    monkeypatch.setattr("bajutsu.backends.COST_ORDER", _MULTI_COST_ORDER)
+    monkeypatch.setattr("bajutsu.common.backends.PLATFORMS", _MULTI_PLATFORMS)
+    monkeypatch.setattr("bajutsu.common.backends.COST_ORDER", _MULTI_COST_ORDER)
     # KNOWN_ACTUATORS / IMPLEMENTED are derived at import, so selection (and its planned-vs-available
     # diagnostic) gates on the synthetic names.
-    monkeypatch.setattr("bajutsu.backends.KNOWN_ACTUATORS", ("rich", "lean", "playwright", "fake"))
     monkeypatch.setattr(
-        "bajutsu.backends.IMPLEMENTED", frozenset({"rich", "lean", "playwright", "fake"})
+        "bajutsu.common.backends.KNOWN_ACTUATORS", ("rich", "lean", "playwright", "fake")
+    )
+    monkeypatch.setattr(
+        "bajutsu.common.backends.IMPLEMENTED", frozenset({"rich", "lean", "playwright", "fake"})
     )
 
 

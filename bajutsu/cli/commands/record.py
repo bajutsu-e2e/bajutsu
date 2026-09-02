@@ -32,11 +32,11 @@ from bajutsu.common.agents.factory import make_agent
 from bajutsu.common.ai import announce_ai
 from bajutsu.common.analytics import usage as _usage
 from bajutsu.common.config import WEB_ENGINES, Effective
+from bajutsu.common.runner import launch_driver
 from bajutsu.common.scenario import Preconditions, dump_scenarios
 from bajutsu.handoff import HumanHandoffUnavailable
 from bajutsu.platform_lifecycle import environment_for
 from bajutsu.record import record as record_loop
-from bajutsu.runner import launch_driver
 
 
 def _secret_tokens(eff: Effective) -> list[tuple[str, str]]:

@@ -56,7 +56,7 @@ from typing import Protocol, runtime_checkable
 import pytest
 
 from bajutsu.common.drivers import base
-from bajutsu.orchestrator.actions.handlers.scroll import (
+from bajutsu.common.orchestrator.actions.handlers.scroll import (
     _AXIS,
     _MIN_STEP_FRACTION,
     _STEP_FRACTION,

@@ -558,7 +558,7 @@ def _run_argv(cfg: Path, scn: Path, tmp_path: Path, *extra: str) -> list[str]:
 def test_run_reports_pass_and_exits_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # The command body dispatches to the runner, then prints the machine-only verdict: all results
     # ok -> PASS on stdout and exit 0.
-    from bajutsu.orchestrator import RunResult
+    from bajutsu.common.orchestrator import RunResult
 
     manifest = _manifest_at(tmp_path)
     _stub_execution(monkeypatch, results=[RunResult("demo", True, [])], manifest=manifest)
@@ -570,7 +570,7 @@ def test_run_reports_pass_and_exits_zero(tmp_path: Path, monkeypatch: pytest.Mon
 
 def test_run_reports_fail_and_exits_one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # A single failing result flips the verdict: FAIL on stdout and exit 1 (no LLM on this path).
-    from bajutsu.orchestrator import RunResult
+    from bajutsu.common.orchestrator import RunResult
 
     manifest = _manifest_at(tmp_path)
     _stub_execution(
@@ -588,7 +588,7 @@ def test_run_zip_writes_artifact_after_the_verdict(
     # --zip packages the finished run into runs/<id>.zip strictly after the verdict, so it can't
     # affect pass/fail (BE-0060). The archive is a plain walk of the run dir, so a populated dir is
     # all it needs.
-    from bajutsu.orchestrator import RunResult
+    from bajutsu.common.orchestrator import RunResult
 
     manifest = _manifest_at(tmp_path)
     (manifest.parent / "report.html").write_text("<html></html>", encoding="utf-8")
@@ -614,7 +614,7 @@ def test_run_never_consults_an_ai_credential(
     is the same deterministic run in all three: the Claude-free claim holds by construction rather
     than by which variables the shell happens to export.
     """
-    from bajutsu.orchestrator import RunResult
+    from bajutsu.common.orchestrator import RunResult
 
     monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
     for name, value in (("BAJUTSU_AI_PROVIDER", provider), ("ANTHROPIC_API_KEY", key)):
@@ -1040,8 +1040,8 @@ def test_check_scenarios_flags_an_unsupported_construct(tmp_path: Path) -> None:
     # A selectOption (native <select>) needs the web-only selectOption capability, which xcuitest
     # lacks — check_scenarios reports it, purely, with no device: the capability set is a static
     # class constant.
-    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
+    from bajutsu.common.backends import capabilities_for
 
     scn = tmp_path / "select.yaml"
     scn.write_text(
@@ -1054,8 +1054,8 @@ def test_check_scenarios_flags_an_unsupported_construct(tmp_path: Path) -> None:
 
 
 def test_check_scenarios_passes_a_supported_scenario(tmp_path: Path) -> None:
-    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
+    from bajutsu.common.backends import capabilities_for
 
     scn = tmp_path / "ok.yaml"
     scn.write_text("- name: t\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
@@ -1064,8 +1064,8 @@ def test_check_scenarios_passes_a_supported_scenario(tmp_path: Path) -> None:
 
 
 def test_check_scenarios_missing_file_raises(tmp_path: Path) -> None:
-    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
+    from bajutsu.common.backends import capabilities_for
 
     with pytest.raises(FileNotFoundError):
         check_scenarios(tmp_path / "nope.yaml", capabilities_for("fake"))
@@ -1076,8 +1076,8 @@ def test_check_scenarios_narrows_on_a_real_ios_device(tmp_path: Path) -> None:
     # iOS device (xcuitest.deviceType: device) reports a setLocation scenario as unsupported — the
     # same simctl-backed capability the run preflight drops — instead of the stale "supported" the
     # static set gives. Guards doctor against the drift this item's motivation calls out.
-    from bajutsu.backends import capabilities_for_run
     from bajutsu.cli.commands.doctor import check_scenarios
+    from bajutsu.common.backends import capabilities_for_run
 
     scn = tmp_path / "loc.yaml"
     scn.write_text(
@@ -1773,7 +1773,7 @@ def test_run_hands_the_pipeline_a_live_cancellation_source(
     # pipeline was given reports it.
     import signal
 
-    from bajutsu.orchestrator import RunResult
+    from bajutsu.common.orchestrator import RunResult
 
     manifest = _manifest_at(tmp_path)
     seen: list[bool] = []

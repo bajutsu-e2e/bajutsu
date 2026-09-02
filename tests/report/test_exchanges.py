@@ -9,9 +9,9 @@ import pytest
 from _report import _passing
 
 from bajutsu.common.evidence import Artifact
+from bajutsu.common.orchestrator import RunResult, StepOutcome
 from bajutsu.common.report import html_report
 from bajutsu.common.report.format import _read_json
-from bajutsu.orchestrator import RunResult, StepOutcome
 
 
 def test_network_json_is_read_once_per_render(

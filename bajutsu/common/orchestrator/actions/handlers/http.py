@@ -4,8 +4,8 @@ optionally save the response body to vars.*."""
 from __future__ import annotations
 
 from bajutsu.common.drivers import base
+from bajutsu.common.orchestrator.actions._registry import _handler
 from bajutsu.common.scenario import HttpRequest, Step
-from bajutsu.orchestrator.actions._registry import _handler
 
 
 def _do_http(http: HttpRequest, bindings: dict[str, str] | None) -> None:

@@ -1,4 +1,4 @@
-"""Tests for the RFC 6238 TOTP generator (bajutsu/totp.py, BE-0046).
+"""Tests for the RFC 6238 TOTP generator (bajutsu/common/totp.py, BE-0046).
 
 Pure and device-free: the code is a deterministic function of the shared secret and the time, so
 it is checked against the RFC 6238 test vectors with no clock and no external service.
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu.totp import totp
+from bajutsu.common.totp import totp
 
 # RFC 6238 Appendix B uses the ASCII secret "12345678901234567890" (base32 below); its published
 # 8-digit codes truncate to these 6-digit codes at the listed Unix times.

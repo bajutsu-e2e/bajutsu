@@ -13,9 +13,9 @@ from typer.testing import CliRunner
 
 from bajutsu.cli import app
 from bajutsu.common.assertions import AssertionResult
+from bajutsu.common.orchestrator import RunResult, StepOutcome
 from bajutsu.common.report import rerender_html, write_report
 from bajutsu.common.scenario import dump_scenario_file, load_scenarios
-from bajutsu.orchestrator import RunResult, StepOutcome
 
 runner = CliRunner()
 

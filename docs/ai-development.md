@@ -1301,7 +1301,7 @@ Write it at a different level than the code. Two levels work; the third does not
 
 - **Precision** — sharpen the adjacent line with what the code leaves open: units, inclusive or
   exclusive bounds, what `None` means, where a magic number comes from. The house form is the
-  trailing one-liner ([`bajutsu/totp.py`](../bajutsu/totp.py)):
+  trailing one-liner ([`bajutsu/common/totp.py`](../bajutsu/common/totp.py)):
 
   ```python
   cleaned += "=" * (-len(cleaned) % 8)  # b32decode requires the padding authenticators omit

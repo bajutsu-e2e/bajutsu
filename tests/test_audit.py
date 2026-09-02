@@ -28,8 +28,8 @@ from bajutsu.analysis.audit import (
 )
 from bajutsu.cli import app
 from bajutsu.common.assertions import AssertionResult
+from bajutsu.common.orchestrator import RunResult, StepOutcome
 from bajutsu.common.scenario import load_expanded_scenarios, load_scenarios
-from bajutsu.orchestrator import RunResult, StepOutcome
 
 runner = CliRunner()
 

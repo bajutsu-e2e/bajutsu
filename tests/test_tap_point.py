@@ -16,8 +16,8 @@ from bajutsu.common.agents.claude import ClaudeAgent, proposal_from_call
 from bajutsu.common.agents.protocols import Observation
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.orchestrator import _action_of, run_scenario
 from bajutsu.common.scenario import Step, load_scenarios
-from bajutsu.orchestrator import _action_of, run_scenario
 
 
 def _app(w: float, h: float) -> base.Element:

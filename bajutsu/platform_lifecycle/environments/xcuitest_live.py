@@ -31,9 +31,9 @@ from bajutsu.common.drivers.xcuitest_live import (
     XcuitestLiveDriver,
     _raw_wd_transport,
 )
+from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.scenario import Preconditions, Scenario
 from bajutsu.crawl import Reset
-from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.platform_lifecycle.environments.ios import _DeviceEnvironment
 
 

@@ -5,8 +5,8 @@
 > The Tier 2 deterministic runner. Each step is **act → (wait) → verify**, and pass/fail comes
 > only from machine assertions. No AI is involved. It stops at the first failure.
 >
-> Implementation: `bajutsu/orchestrator/` (the loop body, package: `loop` / `waits` / `substitution` /
-> `evidence_rules` / `actions`) · `bajutsu/runner/` (real-device launch + report wiring, package:
+> Implementation: `bajutsu/common/orchestrator/` (the loop body, package: `loop` / `waits` / `substitution` /
+> `evidence_rules` / `actions`) · `bajutsu/common/runner/` (real-device launch + report wiring, package:
 > `pipeline` / `pool` / `launch`).
 
 Related: [scenarios](scenarios.md) · [selectors](selectors.md) · [evidence](evidence.md) · [reporting](reporting.md)
@@ -167,7 +167,7 @@ re-evaluated once. These become `report/`'s `manifest.json` / JUnit / HTML direc
 
 ## runner (the run pipeline)
 
-Implementation: `bajutsu/runner/`. Connects the orchestrator to a real device and wires through
+Implementation: `bajutsu/common/runner/`. Connects the orchestrator to a real device and wires through
 to the report.
 
 ### `launch_driver` (launch the app and return a ready driver)
@@ -280,7 +280,7 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > only for a scenario idempotent up to its crash point; one with a persistent side effect before the
 > crash (e.g. a server-side write), or one that depends on state a prior step in the same scenario
 > already set up, can fail, or pass against the wrong state, on replay. The decision logic lives in
-> `bajutsu/runner/recovery.py`, shared with the on-device driver conformance suite so a Simulator
+> `bajutsu/common/runner/recovery.py`, shared with the on-device driver conformance suite so a Simulator
 > infrastructure fault there recovers the same way instead of reddening the required check on an
 > unrelated PR (BE-0334).
 >

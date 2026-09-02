@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Any
 
 from bajutsu import adb, device_errors, doctor, simctl
-from bajutsu.backends import IMPLEMENTED, resolve_actuators
+from bajutsu.common.backends import IMPLEMENTED, resolve_actuators
 from bajutsu.common.config import (
     Effective,
     android_package,
