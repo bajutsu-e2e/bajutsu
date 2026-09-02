@@ -148,8 +148,11 @@ def _local_interpreter(cmd: list[str]) -> list[str]:
     The control plane builds the argv with its own ``sys.executable``, an absolute path that means
     nothing on the worker: a container's ``/usr/local/bin/python3.13`` also exists on a Mac worker —
     without bajutsu installed — so the run dies with ``No module named bajutsu`` while the worker
-    still reports the job completed. Only a ``-m bajutsu`` argv is rewritten; a batch job's or a
-    target's ``build:`` command must keep the executable it names.
+    still reports the job completed. Only the ``-m bajutsu`` form is rewritten; a spec whose argv
+    names some other executable keeps it. Every `cmd` the control plane queues today is built by
+    `run_command` / `record_command` / `crawl_command` / `triage_command`, so the guard is purely
+    defensive — it does not cover the batch or ``build:`` paths, which carry no argv through `cmd`
+    at all (`Job.batch` and `Job.build` are their own fields, spawned elsewhere).
     """
     if cmd[1:3] == ["-m", "bajutsu"]:
         return [sys.executable, *cmd[1:]]
