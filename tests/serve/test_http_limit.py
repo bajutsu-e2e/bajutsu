@@ -6,11 +6,16 @@ scarce device; over the cap, dispatch returns 429.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from _shared import _post, _serve, fake_popen, project
+from sqlalchemy import Engine
 
 from bajutsu import serve as srv
+from bajutsu.serve.server.db import SqlRepository
+from bajutsu.serve.server.db_executor import DbQueueExecutor
+from bajutsu.serve.server.models import Base
 
 
 def _running(state: srv.ServeState, n: int, start: int = 0) -> None:
@@ -109,3 +114,37 @@ def test_unlimited_when_cap_is_zero(tmp_path: Path) -> None:
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_cap_releases_a_job_the_jobs_table_finished(
+    tmp_path: Path, serve_engine: Callable[..., Engine]
+) -> None:
+    """A worker-run job that finished in the jobs table stops counting toward the cap.
+
+    Its control-plane `Job` stays "running" by design (BE-0015 W2), so without the jobs-table
+    reconciliation every remote run would hold its slot until serve restarts.
+    """
+    engine = serve_engine()
+    Base.metadata.create_all(engine)
+    repo = SqlRepository(engine)
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs",
+        executor=DbQueueExecutor(repo),
+        repository=repo,
+        max_concurrent=1,
+    )
+    first = state.try_register(srv.Job(cmd=[], org="o"))
+    assert first is not None
+    # No row yet: a job is registered before the executor enqueues it, so a missing row must read as
+    # still running — else every dispatch in that window slips past the cap instead of being capped.
+    assert state.try_register(srv.Job(cmd=[], org="o")) is None
+    repo.enqueue_job(first.id, "o", {})
+    assert state.try_register(srv.Job(cmd=[], org="o")) is None  # at the cap
+    assert state.active_jobs() == 1
+
+    leased = repo.lease_job("w")
+    assert leased is not None and leased.id == first.id
+    assert repo.fail_job(first.id, error="boom", worker_id="w")
+
+    assert state.active_jobs() == 0
+    assert state.try_register(srv.Job(cmd=[], org="o")) is not None

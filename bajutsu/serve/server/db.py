@@ -367,6 +367,16 @@ class Repository(Protocol):
         """Return the job's status, result, org_id, and current lease holder (``leased_by``), or None
         if it does not exist."""
 
+    def finished_job_ids(self, job_ids: Iterable[str]) -> set[str]:
+        """Which of *job_ids* have reached a terminal state (``done`` / ``failed``).
+
+        The control plane asks this on every dispatch and every metrics scrape to release the
+        concurrency-cap slots of jobs that finished on a worker, so it is one narrow read for the
+        whole set rather than a row per id: `spec` carries a run's materials (its scenario and config
+        text), which a `get_job` per id would ship every time — the same reason `metrics_snapshot`
+        selects the columns it needs. An id with no row is simply absent from the answer.
+        """
+
     def metrics_snapshot(self) -> JobMetrics:
         """A one-pass aggregate of the jobs table for the ``/metrics`` endpoint (BE-0169)."""
 
@@ -1119,6 +1129,21 @@ class SqlRepository:
                 "org_id": row.org_id,
                 "leased_by": row.leased_by,
             }
+
+    def finished_job_ids(self, job_ids: Iterable[str]) -> set[str]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        ids = list(job_ids)
+        if not ids:
+            return set()
+        stmt = select(JobRecord.id).where(
+            JobRecord.id.in_(ids), JobRecord.status.in_(("done", "failed"))
+        )
+        with Session(self._engine) as session:
+            return set(session.scalars(stmt))
 
     def save_batch_run_arn(self, job_id: str, run_arn: str) -> None:
         from sqlalchemy.orm import Session
