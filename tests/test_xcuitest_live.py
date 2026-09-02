@@ -19,6 +19,8 @@ from typing import Any
 import pytest
 
 from bajutsu.common.config import load_config, resolve
+from bajutsu.common.scenario import Preconditions, Relaunch
+from bajutsu.common.scenario.models.scenario import Scenario
 from bajutsu.drivers import base
 from bajutsu.drivers.xcuitest_live import (
     BACKSPACE_KEY,
@@ -33,8 +35,6 @@ from bajutsu.platform_lifecycle.environments.xcuitest_live import (
     is_webdriver_endpoint,
 )
 from bajutsu.platform_lifecycle.factories import environment_for
-from bajutsu.scenario import Preconditions, Relaunch
-from bajutsu.scenario.models.scenario import Scenario
 
 _ENDPOINT = "http://grid.local:4723"
 

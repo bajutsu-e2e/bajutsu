@@ -46,6 +46,7 @@ from bajutsu.cli._shared import (
 )
 from bajutsu.common.ai import announce_ai
 from bajutsu.common.config import Effective, web_base_url
+from bajutsu.common.scenario import Preconditions
 from bajutsu.crawl import flows as crawl_flows
 from bajutsu.crawl import report as crawl_report
 from bajutsu.crawl import repro as crawl_repro
@@ -59,7 +60,6 @@ from bajutsu.record import clear_blocking as clear_blocking_overlay
 from bajutsu.run_files import RunArtifactReader, runs_root
 from bajutsu.run_id import new_run_id
 from bajutsu.runner import launch_driver
-from bajutsu.scenario import Preconditions
 
 #: The screen map's artifact name inside a crawl's run directory.
 SCREENMAP_NAME = "screenmap.json"

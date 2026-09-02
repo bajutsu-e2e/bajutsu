@@ -18,9 +18,9 @@ from __future__ import annotations
 import yaml
 
 from bajutsu import _yaml
-from bajutsu.scenario.load import load_scenario_file
-from bajutsu.scenario.models import STEP_ACTIONS, Assertion, Scenario, Selector, Step
-from bajutsu.scenario.serialize import dump_block
+from bajutsu.common.scenario.load import load_scenario_file
+from bajutsu.common.scenario.models import STEP_ACTIONS, Assertion, Scenario, Selector, Step
+from bajutsu.common.scenario.serialize import dump_block
 
 # Where the resolved selector sits within each selector-bearing action's mapping: `None` means the
 # action field value *is* the selector (`tap`, `doubleTap`); a string names the sub-key that holds

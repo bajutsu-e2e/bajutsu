@@ -24,7 +24,7 @@ import typer
 
 from bajutsu.analysis import impact as _impact
 from bajutsu.cli._shared import DEFAULT_CONFIG, _load_effective
-from bajutsu.scenario import load_scenarios_dir
+from bajutsu.common.scenario import load_scenarios_dir
 
 # Git repository-location variables that would override `-C <repo>` and point git at the wrong tree.
 # They leak in when `bajutsu impact` is invoked from inside another git operation (a hook, a wrapper),

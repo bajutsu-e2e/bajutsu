@@ -19,7 +19,7 @@ from pathlib import Path
 
 from PIL import Image, ImageChops
 
-from bajutsu.scenario import ExcludeRegion
+from bajutsu.common.scenario import ExcludeRegion
 
 _Y_R, _Y_G, _Y_B = 0.29889531, 0.58662247, 0.11448223
 _I_R, _I_G, _I_B = 0.59597799, -0.27417610, -0.32180189

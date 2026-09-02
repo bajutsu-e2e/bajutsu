@@ -25,7 +25,7 @@ from bajutsu.common.config.effective import (
     WebConfig,
 )
 from bajutsu.common.config.schema import AiSettings, Config, Defaults, TargetConfig
-from bajutsu.scenario import Redact
+from bajutsu.common.scenario import Redact
 
 
 def _merge_redact(base: Redact, over: Redact) -> Redact:

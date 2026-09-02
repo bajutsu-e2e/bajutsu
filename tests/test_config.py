@@ -17,7 +17,7 @@ from bajutsu.common.config import (
     resolve,
     xcuitest_targets_real_device,
 )
-from bajutsu.scenario import SystemAlertHandling
+from bajutsu.common.scenario import SystemAlertHandling
 
 
 def _ios(eff: Effective) -> IosConfig:

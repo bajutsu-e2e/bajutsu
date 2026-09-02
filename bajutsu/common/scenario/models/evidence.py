@@ -6,7 +6,7 @@ from typing import Literal, Self
 
 from pydantic import Field, field_validator, model_validator
 
-from bajutsu.scenario.models._base import _exactly_one, _Model, _validate_capture
+from bajutsu.common.scenario.models._base import _exactly_one, _Model, _validate_capture
 
 
 class Trigger(_Model):

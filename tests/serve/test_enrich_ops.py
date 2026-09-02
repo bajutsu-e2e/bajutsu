@@ -13,9 +13,9 @@ from _shared import project
 
 from bajutsu.common.agents.protocols import EnrichmentProposal, StepContext
 from bajutsu.common.config import Effective, IosConfig
+from bajutsu.common.scenario import Assertion, Scenario
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.scenario import Assertion, Scenario
 from bajutsu.serve import operations as ops
 from bajutsu.serve.state import ServeState
 

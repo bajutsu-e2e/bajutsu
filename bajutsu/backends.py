@@ -25,9 +25,9 @@ from bajutsu.drivers.fake import FakeDriver
 
 if TYPE_CHECKING:
     from bajutsu.common.config import Effective
+    from bajutsu.common.scenario import Scenario
     from bajutsu.device_os import DeviceOS
     from bajutsu.drivers.adb import ActFn, ClockFetch, HierarchyFetch
-    from bajutsu.scenario import Scenario
     from bajutsu.zorder import ZOrderSource
 
 # Platform token -> its actuators, most-stable-first. `--backend` / config `backend` accept

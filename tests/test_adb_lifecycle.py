@@ -16,10 +16,10 @@ import pytest
 from bajutsu import adb
 from bajutsu.adb_resident import ResidentChannel
 from bajutsu.common.config import AndroidConfig, Effective
+from bajutsu.common.scenario import Preconditions, Redact
 from bajutsu.drivers.adb import ActOutcome, AdbDriver, HierarchyRead
 from bajutsu.platform_lifecycle import AndroidEnvironment, ProvisionProfile, environment_for
 from bajutsu.platform_lifecycle.readiness import await_boot
-from bajutsu.scenario import Preconditions, Redact
 
 
 def _recorder(calls: list[list[str]]) -> adb.RunFn:
@@ -944,7 +944,7 @@ def test_relauncher_invalidates_the_driver_settled_cache() -> None:
     # relaunch() replaces the screen via force_stop + launch on adb.Env directly, never through the
     # driver's own actuators — the one door AdbDriver._settled_key needs closed that `_act` cannot
     # close on its own (base.SettledCacheInvalidator, BE-0351).
-    from bajutsu.scenario import Relaunch, Scenario
+    from bajutsu.common.scenario import Relaunch, Scenario
 
     env = AndroidEnvironment("adb", "S", adb_run=_resolve_activity_run([]))
     driver = env.start(_eff(), Preconditions())

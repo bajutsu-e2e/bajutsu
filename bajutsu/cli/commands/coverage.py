@@ -20,7 +20,7 @@ import typer
 
 from bajutsu.analysis import coverage as _coverage
 from bajutsu.cli._shared import DEFAULT_CONFIG, _load_effective
-from bajutsu.scenario import load_scenarios_dir
+from bajutsu.common.scenario import load_scenarios_dir
 
 
 def _visited_screens(runs_dir: Path) -> frozenset[str]:

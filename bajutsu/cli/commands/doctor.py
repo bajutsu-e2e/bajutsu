@@ -29,6 +29,7 @@ from bajutsu.common.config import (
     web_base_url,
     web_engine,
 )
+from bajutsu.common.scenario import load_scenario_file
 from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
 from bajutsu.drivers import base
 from bajutsu.platform_lifecycle.environments.xcuitest import (
@@ -36,7 +37,6 @@ from bajutsu.platform_lifecycle.environments.xcuitest import (
     effective_device_type,
     runner_source,
 )
-from bajutsu.scenario import load_scenario_file
 
 
 def check_scenarios(scenario_path: Path, capabilities: frozenset[str]) -> list[str]:

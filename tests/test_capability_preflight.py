@@ -19,8 +19,8 @@ from pathlib import Path
 import pytest
 
 from bajutsu.common.capability import capability_preflight
+from bajutsu.common.scenario import Scenario
 from bajutsu.drivers import base
-from bajutsu.scenario import Scenario
 
 _LEAN_IOS = (
     {

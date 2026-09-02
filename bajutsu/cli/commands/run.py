@@ -16,7 +16,6 @@ import typer
 from pydantic import ValidationError
 
 from bajutsu import device_errors
-from bajutsu.assertions import GoldenContext
 from bajutsu.backends import select_actuator_for_scenario
 from bajutsu.cancellation import CancelSource, graceful_sigterm
 from bajutsu.cli._shared import (
@@ -29,7 +28,29 @@ from bajutsu.cli._shared import (
     _with_headed,
     resolve_system_alert_handling_flag,
 )
+from bajutsu.common.assertions import GoldenContext
 from bajutsu.common.config import WEB_ENGINES, Effective, IosConfig
+from bajutsu.common.scenario import (
+    Scenario,
+    SystemAlertHandling,
+    SystemAlertHandlingField,
+    SystemAlertRule,
+    apply_setups,
+    contained_ref,
+    dump_mocks,
+    expand_components,
+    expand_data,
+    load_component,
+    load_scenario_file,
+    load_scenarios,
+    read_csv,
+    select_scenarios,
+)
+from bajutsu.common.scenario.system_alerts import (
+    UncoveredSystemAlertLocale,
+    covered_languages,
+    system_alert_label,
+)
 from bajutsu.deprecations import warn_once
 from bajutsu.github import actions as github_actions
 from bajutsu.orchestrator import (
@@ -47,27 +68,6 @@ from bajutsu.runner import device_pool, run_all, run_and_report, run_matrix_and_
 from bajutsu.runner.build import BuildError, build_if_missing
 from bajutsu.runner.device_provider import acquire_device
 from bajutsu.runner.types import AlertGuardFor
-from bajutsu.scenario import (
-    Scenario,
-    SystemAlertHandling,
-    SystemAlertHandlingField,
-    SystemAlertRule,
-    apply_setups,
-    contained_ref,
-    dump_mocks,
-    expand_components,
-    expand_data,
-    load_component,
-    load_scenario_file,
-    load_scenarios,
-    read_csv,
-    select_scenarios,
-)
-from bajutsu.scenario.system_alerts import (
-    UncoveredSystemAlertLocale,
-    covered_languages,
-    system_alert_label,
-)
 
 
 def _parse_browsers(browsers: str) -> list[str]:

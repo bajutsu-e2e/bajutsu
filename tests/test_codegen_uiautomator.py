@@ -11,7 +11,7 @@ from bajutsu.cli import app
 from bajutsu.codegen import EMIT_TARGETS, CodegenError, generate_test
 from bajutsu.codegen.uiautomator import class_name_for, to_uiautomator
 from bajutsu.common.config import load_config, resolve
-from bajutsu.scenario import load_scenarios
+from bajutsu.common.scenario import load_scenarios
 
 PACKAGE = "com.example.app"
 runner = CliRunner()

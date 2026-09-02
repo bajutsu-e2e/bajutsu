@@ -23,15 +23,15 @@ from bajutsu.cli.commands.run import (
     _resolve_secrets,
 )
 from bajutsu.common.config import Effective, load_config, resolve
-from bajutsu.orchestrator import DEFAULT_ALERT_POLL_INTERVAL
-from bajutsu.orchestrator.types import match_alert_rule
-from bajutsu.scenario import (
+from bajutsu.common.scenario import (
     Scenario,
     SystemAlertHandling,
     SystemAlertRule,
     load_scenarios,
 )
-from bajutsu.scenario.system_alerts import UncoveredSystemAlertLocale, covered_languages
+from bajutsu.common.scenario.system_alerts import UncoveredSystemAlertLocale, covered_languages
+from bajutsu.orchestrator import DEFAULT_ALERT_POLL_INTERVAL
+from bajutsu.orchestrator.types import match_alert_rule
 
 
 def _resolve(udid: str) -> str:

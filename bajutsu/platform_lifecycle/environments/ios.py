@@ -10,6 +10,7 @@ from collections.abc import Callable, Mapping
 
 from bajutsu import simctl
 from bajutsu.common.config import Effective, require_ios
+from bajutsu.common.scenario import Scenario
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
 from bajutsu.evidence import intervals
@@ -18,7 +19,6 @@ from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.platform_lifecycle import readiness
 from bajutsu.platform_lifecycle.device_control import device_control
 from bajutsu.platform_lifecycle.relaunchers import device_relauncher
-from bajutsu.scenario import Scenario
 
 
 class _DeviceEnvironment:

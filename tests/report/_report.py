@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from bajutsu.common.scenario import Scenario
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import RunResult, run_scenario
-from bajutsu.scenario import Scenario
 
 
 def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.Element:
