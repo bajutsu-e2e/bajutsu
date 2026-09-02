@@ -598,7 +598,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   step size overshoots or creeps across; BE-0400 made the realized travel match what was
   requested — before it, the iOS gesture flung past every requested distance by up to 6× and no
   step travelled less than about a third of a screen, so `amount`'s smaller end was previously
-  undeliverable. What counts as showing it is BE-0329's subject: an element the loop watched move
+  undeliverable. What counts as showing that stillness is BE-0329's subject: an element the loop
+  watched move
   is still there, unclipped, has stopped, and is not chrome sitting outside the scrolling region (a
   collapsing app bar shifts once and then pins, which would otherwise stand for a list still scrolling
   behind it); or the region's bounds cut nothing off, so no frame can be hiding motion — a tree
