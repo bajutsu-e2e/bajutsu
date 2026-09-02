@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu.config_source import (
+from bajutsu.common.config_source import (
     config_source_record,
     config_spec_from_record,
     parse_config_spec,
