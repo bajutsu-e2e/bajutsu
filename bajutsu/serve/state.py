@@ -10,6 +10,7 @@ stays in `jobs.py` — mutates a `Job`. The runtime dependency is one-directiona
 
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 import subprocess
@@ -540,6 +541,11 @@ class ServeState:
     # rather than growing without limit.
     bindings: OrderedDict[tuple[str, str], ConfigBinding] = field(init=False)
     _bindings_lock: threading.Lock = field(init=False)
+    # The (session, org) pairs a restore has already been tried for (BE-0393 unit 6), whether it
+    # bound anything or not. A failed restore is not retried, so a repeatedly unreachable source does
+    # not re-fetch on every request; bounded and evicted like `bindings`, since a process that never
+    # sees its sessions end would otherwise remember every pair forever.
+    _restore_tried: OrderedDict[tuple[str, str], None] = field(init=False)
     # serve's launch directory, captured at construction (see __post_init__) before a config bind can
     # repoint the binding's `cwd`. Runs off a Git/upload bind still land their tree here
     # (BE-0063/BE-0073).
@@ -630,6 +636,11 @@ class ServeState:
     # backend sets a closure that builds object stores prefixed for the given org. `for_org` falls
     # back to the default stores when unset, so local behavior is unchanged.
     org_stores: Callable[[str], StoreBundle] | None = None
+    # Restores an org's remembered configuration into a session's empty slot (BE-0393 unit 6), by
+    # calling `rebind` itself. Injected rather than imported, like the store seams above, because the
+    # materialization lives in `operations` and `operations` imports this module. None — the default,
+    # and every deployment with no config memory — leaves `binding_for` answering with the fallback.
+    restore_binding: Callable[[str, str], None] | None = None
     capture: CaptureSession | None = None
     # Per-org AI provider settings (BE-0229), carved into `ProviderSettingsManager` (BE-0248): the
     # in-memory selection map, its durable local store, and the copy-on-read/copy-on-write methods
@@ -688,6 +699,7 @@ class ServeState:
             org=config_org,
         )
         self.bindings = OrderedDict()
+        self._restore_tried = OrderedDict()
         self._bindings_lock = threading.Lock()
         # serve's own launch directory, captured before any config bind repoints the binding's `cwd`
         # at a Git checkout / uploaded bundle. A run off such a bind writes its tree into
@@ -837,19 +849,53 @@ class ServeState:
     def binding_for(self, session: str | None, org: str) -> ConfigBinding:
         """The configuration a request from *session*, acting as *org*, is bound to (BE-0393 unit 2).
 
-        The session's own binding when it has one, else the deployment's fallback — initially the
-        configuration `serve` started with, whose `orgs:` block partitions its targets between orgs
-        exactly as an operator wrote it, and replaceable only by a bind that carries no session. A caller with no session (a shared-token or CI request, which carries no
-        login cookie) reads the fallback too: it is acting on the deployment, not inside a member's
-        session.
+        The session's own binding when it has one; failing that, the org's remembered configuration
+        restored into the slot on this first use (unit 6); failing that, the deployment's fallback —
+        initially the configuration `serve` started with, whose `orgs:` block partitions its targets
+        between orgs exactly as an operator wrote it, and replaceable only by a bind that carries no
+        session. A caller with no session (a shared-token or CI request, which carries no login
+        cookie) reads the fallback and restores nothing: it is acting on the deployment, not inside a
+        member's session.
+
+        The restore happens here, on first need, rather than at sign-in, for two reasons the item
+        gives: sign-in must not wait on a network fetch of a Git source or a bundle, and the org a
+        session acts as can change without a sign-in. Keying it to "this session has no binding for
+        this org yet" covers both entry paths without naming either — and it does mean the request
+        that finds the empty slot pays for the fetch.
 
         This is the only way a request path should reach the bound configuration. Reading
         `state.binding` from one would restore the ambient default this unit exists to remove.
         """
         if session is None:
             return self.binding
+        key = (session, org)
         with self._bindings_lock:
-            return self.bindings.get((session, org), self.binding)
+            bound = self.bindings.get(key)
+            if bound is not None:
+                return bound
+            restore = self.restore_binding
+            if restore is None or key in self._restore_tried:
+                return self.binding
+            self._restore_tried[key] = None
+            while len(self._restore_tried) > MAX_SESSION_BINDINGS:
+                self._restore_tried.popitem(last=False)
+        # Outside the lock: a restore fetches a Git subtree or a bundle's bytes, and holding the lock
+        # across that would stall every concurrent read. Marked as tried before releasing it, so two
+        # concurrent first requests fetch at most once between them.
+        try:
+            restore(session, org)
+        except Exception:
+            # Best-effort, and never fails the request that happened to be first (unit 6): a moved
+            # file, an unreachable repository, or an evicted bundle leaves the session with no
+            # binding of its own and the reason in the log — the same posture the org seeding at
+            # startup takes with a failed database read.
+            logging.getLogger(__name__).warning(
+                "could not restore org %s's remembered configuration for this session",
+                org,
+                exc_info=True,
+            )
+        with self._bindings_lock:
+            return self.bindings.get(key, self.binding)
 
     def for_org(self, org: str) -> StoreBundle:
         """The storage seams scoped to *org*. A server backend prefixes each org's objects; local

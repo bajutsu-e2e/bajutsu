@@ -165,13 +165,18 @@ def _locate_config_or_heal(dest: Path) -> tuple[Any, int]:
     return config_path, 200
 
 
-def _remember_org_config_source(state: ServeState, org: str, source: dict[str, Any]) -> None:
-    """Record *source* as the last bundle this org uploaded (BE-0404 unit 1).
+def remember_org_config_source(state: ServeState, org: str, source: dict[str, Any]) -> None:
+    """Record *source* as the configuration this org last bound (BE-0404 unit 1, BE-0393 unit 6).
 
-    The durable half of the recovery path: `restore_uploaded_config` reads this back on a replica
-    that never received the upload. Guarded like the other database reaches on this path — a flaky
-    backend must leave the bind itself standing, since the bytes are already in the object store and
-    the binding in this process is complete.
+    The durable half of two paths. It is what `restore_uploaded_config` reads back on a replica that
+    never received an upload, and what a session with no binding of its own inherits on its first
+    request. Every bind writes it — the file browser, the Git picker, an uploaded bundle, and a
+    composed triple — because the org's memory is what it last bound, not only what it could
+    re-fetch: BE-0393's Motivation names the Git spec and the file-browser pick alongside the upload
+    as the things a member redoes every session.
+
+    Guarded like the other database reaches on this path — a flaky backend must leave the bind itself
+    standing, since the binding in this process is complete either way.
     """
     repo = state.repository
     if repo is None:
@@ -243,7 +248,7 @@ def bind_upload_config(
     # The bind is the writer (BE-0404 unit 1): before this item the caller had to re-register the
     # returned record through the project registry this item deletes, so a record nobody persisted
     # would leave the recovery path with nothing to read.
-    _remember_org_config_source(state, org, source)
+    remember_org_config_source(state, org, source)
     return {
         "ok": True,
         "config": str(config_path),
@@ -655,7 +660,7 @@ def bind_composition(
     assert isinstance(result, Upload)  # `status == 200` only ever pairs with a bound Upload
     _record_audit(state, actor, org, "compose", result.filename, {"artifacts": shas})
     source = {"kind": "upload", "artifacts": shas, "filename": result.filename}
-    _remember_org_config_source(state, org, source)
+    remember_org_config_source(state, org, source)
     return {
         "ok": True,
         "config": str(result.config),

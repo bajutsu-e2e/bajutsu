@@ -31,7 +31,13 @@ from bajutsu.common.agents.anthropic_client import ANT_BINARY, ANT_CLI_MISSING, 
 from bajutsu.common.ai import credential_gap, resolved_provider, selectable_providers
 from bajutsu.common.ai.registry import DISABLED_PROVIDER
 from bajutsu.config import load_config, resolve, xcuitest_pins_runner
-from bajutsu.config_source import materialize, parse_config_spec, source_provenance
+from bajutsu.config_source import (
+    config_source_record,
+    config_spec_from_record,
+    materialize,
+    parse_config_spec,
+    source_provenance,
+)
 from bajutsu.platform_lifecycle.environments import (
     bundled_products_dir,
     bundled_runner_build_info,
@@ -43,6 +49,10 @@ from bajutsu.serve.helpers import (
     load_serve_config_file,
 )
 from bajutsu.serve.operations.orgs import NO_ORG_STORE_ERROR
+from bajutsu.serve.operations.upload import (
+    remember_org_config_source,
+    restore_uploaded_config,
+)
 from bajutsu.serve.orgs import (
     DEFAULT_ORG,
     orgs_declaring_membership,
@@ -760,7 +770,12 @@ def bind_config(
     # narrower guard: it stops an in-`--root` config's own path *fields* from resolving outside the
     # directory its relative paths are defined against, regardless of who bound it — orthogonal to,
     # not a relaxation of, this build-trust call.
-    state.rebind(session, state.org_of(actor), ConfigBinding(config=target, cwd=config_dir))
+    org = state.org_of(actor)
+    state.rebind(session, org, ConfigBinding(config=target, cwd=config_dir))
+    # The org remembers what it last bound, so a colleague's next session inherits it (BE-0393 unit
+    # 6). A `file` locator is a host path, which only resolves on a deployment that has that host —
+    # this endpoint is refused when hosted, so the single-replica case is the only one it reaches.
+    remember_org_config_source(state, org, config_source_record(None, str(target)))
     return {"ok": True, "config": str(target), "targets": list_targets(target)}, 200
 
 
@@ -822,6 +837,10 @@ def bind_git_config(
             org=org,
         ),
     )
+    # Remembered under the ref the member asked for rather than the commit it resolved to (BE-0393
+    # unit 6): restoring the org later should follow the branch they chose, which is what a moving
+    # ref means. `source_from_config` is the same parser `POST /api/config` fed to get here.
+    remember_org_config_source(state, org, config_source_record(spec, spec_str))
     return {
         "ok": True,
         "config": str(mat.config_path),
@@ -1112,6 +1131,43 @@ def launch_label(config: Path, provenance: dict[str, str] | None) -> str:
         path = provenance.get("path") or ""
         return f"{provenance['repo']}/{path}" if path else provenance["repo"]
     return config.stem
+
+
+def restore_org_binding(state: ServeState, session: str, org: str) -> None:
+    """Bind *org*'s remembered configuration into *session*'s empty slot (BE-0393 unit 6).
+
+    The seam `ServeState.binding_for` calls on a slot's first miss. Every bind records what the org
+    last bound (`remember_org_config_source`), so this replays it: a `git` or `file` record through
+    the same binder the member used, an `upload` record through the digest-addressed restore, which
+    resolves this replica's extraction cache before it asks an object store (unit 5).
+
+    Raises whatever the underlying bind raises; the caller treats a failure as "this session has no
+    binding" and does not retry it. Binding nothing — no repository, no record, a record naming a
+    source this deployment refuses — is likewise not an error: it simply leaves the fallback in
+    place.
+    """
+    repo = state.repository
+    if repo is None:
+        return
+    record = repo.get_org(org)
+    source = record.config_source if record is not None else None
+    if not isinstance(source, dict):
+        return
+    if source.get("kind") == "upload":
+        restore_uploaded_config(state, source, org=org, session=session)
+        return
+    spec = config_spec_from_record(source)
+    if spec is None:
+        return
+    # Through the ordinary binders, so a restored configuration is screened exactly as the bind that
+    # recorded it was: the file browser's `--root` confinement, the Git source's checkout
+    # confinement, and the build-trust call each apply again rather than being trusted from the
+    # record. `actor=None` keeps the acting org the one asked for; the binder resolves nothing else
+    # from an actor here.
+    if source.get("kind") == "git":
+        bind_git_config(state, spec, session=session)
+    else:
+        bind_config(state, spec, session=session)
 
 
 def _valid_slot(name: str, settings: ProviderSettings) -> bool:

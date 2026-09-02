@@ -9,8 +9,10 @@ last bind's owner — because a bind assigns a new value rather than editing fie
 from __future__ import annotations
 
 import dataclasses
+from functools import partial
 from pathlib import Path
 
+import pytest
 from _shared import fake_popen, project
 
 from bajutsu import serve as srv
@@ -364,3 +366,216 @@ def test_restoring_an_orgs_remembered_bundle_lands_in_the_asking_session(tmp_pat
     assert _bound(state, "s1") != fallback  # the asking session got it
     assert state.binding.config == fallback  # the deployment's fallback is untouched
     assert _bound(state, "s2") == fallback  # so another session still reads the launch config
+
+
+# --- restoring the org's remembered configuration, lazily (BE-0393 unit 6) ---
+
+
+class _OrgRow:
+    def __init__(self, source: object) -> None:
+        self.config_source = source
+
+
+class _MemoryRepo:
+    """Enough of the repository seam to hold one org's remembered configuration."""
+
+    def __init__(self, source: object) -> None:
+        self.source = source
+        self.reads = 0
+
+    def get_org(self, _org: str) -> object:
+        self.reads += 1
+        return _OrgRow(self.source)
+
+    def user_org(self, _actor: str) -> str:
+        return "default"
+
+    def set_org_config_source(self, _org: str, source: object) -> bool:
+        self.source = source
+        return True
+
+
+def _with_memory(tmp_path: Path, source: object) -> tuple[srv.ServeState, _MemoryRepo]:
+    """A state whose org remembers *source*, with the lazy restore wired as `serve()` wires it."""
+    from bajutsu.serve.operations.config import restore_org_binding
+
+    state = _state(tmp_path)
+    repo = _MemoryRepo(source)
+    state.repository = repo  # type: ignore[assignment]
+    state.restore_binding = partial(restore_org_binding, state)
+    return state, repo
+
+
+def test_a_session_inherits_what_its_org_last_bound(tmp_path: Path) -> None:
+    """A member who binds nothing starts against the org's configuration rather than the deployment's
+    — the whole point of the item: no re-upload, no re-pasted Git spec, no file-browser pick."""
+    remembered = tmp_path / "remembered.yaml"
+    remembered.write_text(_CONFIG, encoding="utf-8")
+    state, _repo = _with_memory(tmp_path, {"kind": "file", "locator": {"path": str(remembered)}})
+    fallback = state.binding.config
+
+    assert _bound(state, "s1") == remembered
+    assert state.binding.config == fallback  # the deployment's own binding is untouched
+
+
+def test_the_restore_happens_once_per_session_and_org(tmp_path: Path) -> None:
+    # Restored into the slot, so the second read is a lookup rather than a second materialization.
+    remembered = tmp_path / "remembered.yaml"
+    remembered.write_text(_CONFIG, encoding="utf-8")
+    state, repo = _with_memory(tmp_path, {"kind": "file", "locator": {"path": str(remembered)}})
+
+    assert _bound(state, "s1") == remembered
+    assert _bound(state, "s1") == remembered
+
+    assert repo.reads == 1
+
+
+def test_a_failed_restore_leaves_the_fallback_and_is_not_retried(tmp_path: Path) -> None:
+    """Best-effort: a moved file, an unreachable repository, or an evicted bundle must not fail the
+    request that happened to be first — and must not re-fetch on every request after it."""
+    state, repo = _with_memory(
+        tmp_path, {"kind": "file", "locator": {"path": str(tmp_path / "gone.yaml")}}
+    )
+    fallback = state.binding.config
+
+    assert _bound(state, "s1") == fallback
+    assert _bound(state, "s1") == fallback
+
+    assert repo.reads == 1
+
+
+def test_a_restore_that_raises_never_fails_the_request(tmp_path: Path) -> None:
+    class _Exploding(_MemoryRepo):
+        def get_org(self, _org: str) -> object:
+            self.reads += 1
+            raise RuntimeError("the database is unreachable")
+
+    from bajutsu.serve.operations.config import restore_org_binding
+
+    state = _state(tmp_path)
+    repo = _Exploding(None)
+    state.repository = repo  # type: ignore[assignment]
+    state.restore_binding = partial(restore_org_binding, state)
+
+    assert _bound(state, "s1") == state.binding.config
+    assert repo.reads == 1
+
+
+def test_a_session_that_bound_something_itself_is_not_overwritten(tmp_path: Path) -> None:
+    remembered = tmp_path / "remembered.yaml"
+    remembered.write_text(_CONFIG, encoding="utf-8")
+    mine = tmp_path / "mine.yaml"
+    mine.write_text(_CONFIG, encoding="utf-8")
+    state, repo = _with_memory(tmp_path, {"kind": "file", "locator": {"path": str(remembered)}})
+
+    assert ops.bind_config(state, "mine.yaml", session="s1")[1] == 200
+
+    assert _bound(state, "s1") == mine
+    # No restore was attempted: the slot was never empty when it was read.
+    assert repo.reads == 0
+
+
+def test_a_caller_with_no_session_restores_nothing(tmp_path: Path) -> None:
+    # A shared-token or CI request acts on the deployment; there is no slot for it to inherit into.
+    remembered = tmp_path / "remembered.yaml"
+    remembered.write_text(_CONFIG, encoding="utf-8")
+    state, repo = _with_memory(tmp_path, {"kind": "file", "locator": {"path": str(remembered)}})
+
+    assert _bound(state, None) == state.binding.config
+    assert repo.reads == 0
+
+
+def test_every_bind_records_what_the_org_last_bound(tmp_path: Path) -> None:
+    """The memory is what the org last bound, not only what it could re-fetch — BE-0393's Motivation
+    names the Git spec and the file-browser pick alongside the upload."""
+    recorded: list[object] = []
+
+    class _Recording(_MemoryRepo):
+        def set_org_config_source(self, _org: str, source: object) -> bool:
+            recorded.append(source)
+            return True
+
+    state = _state(tmp_path)
+    state.repository = _Recording(None)  # type: ignore[assignment]
+    picked = tmp_path / "picked.yaml"
+    picked.write_text(_CONFIG, encoding="utf-8")
+
+    assert ops.bind_config(state, "picked.yaml", session="s1")[1] == 200
+
+    assert recorded == [{"kind": "file", "locator": {"path": str(picked)}}]
+
+
+def test_a_git_source_is_restored_through_the_ordinary_binder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A restored configuration is screened exactly as the bind that recorded it was — it goes
+    through the same binder rather than being trusted from the record."""
+    import bajutsu.serve.operations.config as config_ops
+
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    (checkout / "web.yaml").write_text(_CONFIG, encoding="utf-8")
+
+    class _Mat:
+        root = checkout
+        config_path = checkout / "web.yaml"
+        sha = "deadbeef"
+
+    monkeypatch.setattr(config_ops, "materialize", lambda _spec: _Mat())
+    state, _repo = _with_memory(
+        tmp_path,
+        {
+            "kind": "git",
+            "locator": {
+                "host": "github.com",
+                "owner": "acme",
+                "repo": "shop",
+                "ref": "main",
+                "path": "web.yaml",
+            },
+        },
+    )
+
+    assert _bound(state, "s1") == checkout / "web.yaml"
+    # Restored as a runtime API bind, so its `build:` stays untrusted (BE-0121).
+    assert state.binding_for("s1", "default").git_from_api is True
+
+
+def test_an_uploaded_bundle_is_restored_by_digest(tmp_path: Path) -> None:
+    uploads = tmp_path / "uploads"
+    sha = "b" * 64
+    (uploads / sha).mkdir(parents=True)
+    (uploads / sha / "bajutsu.config.yaml").write_text(_CONFIG, encoding="utf-8")
+    state, _repo = _with_memory(tmp_path, {"kind": "upload", "sha256": sha})
+    state.uploads_dir = uploads
+
+    bound = state.binding_for("s1", "default")
+
+    assert bound.upload is not None and bound.config == uploads / sha / "bajutsu.config.yaml"
+
+
+def test_a_record_naming_no_spec_restores_nothing(tmp_path: Path) -> None:
+    state, repo = _with_memory(tmp_path, {"kind": "elsewhere", "locator": {"path": "/x.yaml"}})
+    assert _bound(state, "s1") == state.binding.config
+    assert repo.reads == 1
+
+
+def test_an_org_that_remembers_nothing_restores_nothing(tmp_path: Path) -> None:
+    state, repo = _with_memory(tmp_path, None)
+    assert _bound(state, "s1") == state.binding.config
+    assert repo.reads == 1
+
+
+def test_the_no_retry_record_is_bounded_like_the_bindings(tmp_path: Path) -> None:
+    # A process that never sees its sessions end must not remember every pair it declined to restore
+    # for, either. Eviction only costs that pair a second attempt.
+    state, repo = _with_memory(tmp_path, None)
+
+    for n in range(srv_state.MAX_SESSION_BINDINGS + 1):
+        state.binding_for(f"s{n}", "default")
+
+    assert len(state._restore_tried) == srv_state.MAX_SESSION_BINDINGS
+    assert repo.reads == srv_state.MAX_SESSION_BINDINGS + 1
+    # The evicted pair is tried once more, and still finds nothing to restore.
+    state.binding_for("s0", "default")
+    assert repo.reads == srv_state.MAX_SESSION_BINDINGS + 2

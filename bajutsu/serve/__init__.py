@@ -66,6 +66,7 @@ from bajutsu.serve.jobs import cancel_job, run_job
 from bajutsu.serve.launchagent import launchagent_plist
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.operations.config import (
+    restore_org_binding,
     restore_persisted_provider_settings,
     seed_orgs_from_bound_config,
 )
@@ -691,6 +692,10 @@ def serve(
     # its "this entry is no longer read" warning must reach the live log sink — and re-runs at every
     # config rebind; a no-op without a database or a loadable config.
     seed_orgs_from_bound_config(state)
+    # Wire the lazy restore (BE-0393 unit 6), so a session with no binding of its own inherits the
+    # configuration its org last bound on that session's first request. Nothing runs here: the seam
+    # fires on a slot miss, and stays inert on a deployment with no database to remember into.
+    state.restore_binding = partial(restore_org_binding, state)
     # Where the cloud-batch (Device Farm) package roots — see ServeState.devicefarm_package_root.
     state.devicefarm_package_root = bajutsu_source_root()
     # Fill the batch-provider registry from the environment (BE-0336): with DEVICEFARM_PROJECT_ARN set,

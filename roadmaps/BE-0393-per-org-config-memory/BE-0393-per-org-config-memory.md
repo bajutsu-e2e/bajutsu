@@ -280,7 +280,7 @@ does not need, and a trigger written against sign-in misses an org change within
   registration. **Delivered by the same unit**: with one config source per org there is no "active"
   pointer left to persist, and no launch registration to drop.
 - [x] 5. Restore an uploaded bundle from the local cache with no object store configured.
-- [ ] 6. Restore the org's remembered configuration into a session lazily on first use, best-effort.
+- [x] 6. Restore the org's remembered configuration into a session lazily on first use, best-effort.
 - [ ] 7. Show the session's binding and its origin, and audit a restore.
 
 ## References

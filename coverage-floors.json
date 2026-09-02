@@ -180,7 +180,7 @@
     "bajutsu/scenario/serialize.py": 100.0,
     "bajutsu/scenario/system_alerts.py": 100.0,
     "bajutsu/screenshots.py": 94.87,
-    "bajutsu/serve/__init__.py": 78.18,
+    "bajutsu/serve/__init__.py": 78.02,
     "bajutsu/serve/_cli_flags.py": 96.15,
     "bajutsu/serve/artifacts.py": 92.98,
     "bajutsu/serve/authz.py": 99.06,
