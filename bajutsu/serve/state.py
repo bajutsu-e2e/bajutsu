@@ -60,6 +60,13 @@ class Job:
     app_path: str | None = None  # built .app the run needs; built on demand if missing
     build: str | None = None  # shell command that builds app_path (None = no on-demand build)
     status: str = "running"  # running | done
+    # Whether this job has given up its concurrency-cap slot. Separate from `status` because a job
+    # that ran on a remote worker keeps `status == "running"` on the control plane by design
+    # (BE-0015 W2) — its terminal state lives in the jobs table, and `job_view` falls back to the
+    # bus for it — so without a second signal the cap counts a finished job until serve restarts.
+    # Set by `ServeState._release_finished` from the jobs table; an in-process job's `status`
+    # already answers this, so nothing sets it on the local path.
+    released: bool = False
     exit_code: int | None = None
     run_id: str | None = None  # the runs/<id> a `run` job produced, parsed from its output
     out_path: str | None = None  # the scenario a `record` job authored (so the UI can load it)
@@ -257,13 +264,38 @@ class JobRegistry:
     def active_jobs(self) -> int:
         """How many spawned jobs are still running (not yet finished)."""
         with self._lock:
-            return sum(1 for j in self.jobs.values() if j.status == "running")
+            return len(self._running())
 
     def in_flight_by_org(self) -> dict[str, int]:
         """Running jobs grouped by org, for the ``/metrics`` endpoint (BE-0169). Counted under the
         lock, like `active_jobs`, so a concurrent register/finish can't corrupt the snapshot."""
         with self._lock:
-            return dict(Counter(j.org for j in self.jobs.values() if j.status == "running"))
+            return dict(Counter(j.org for j in self._running()))
+
+    def _running(self) -> list[Job]:
+        """The jobs still holding a concurrency-cap slot — the one definition every count and cap
+        check reads, so a released job can't be running for one of them and finished for another.
+        Caller must hold ``self._lock``."""
+        return [j for j in self.jobs.values() if j.status == "running" and not j.released]
+
+    def release_finished(self, is_finished: Callable[[str], bool]) -> None:
+        """Release the cap slot of every job *is_finished* reports as finished elsewhere.
+
+        The registry observes only an in-process job's end (`run_job` sets its `status`). A job
+        dispatched to a remote worker finishes in the jobs table instead — on the worker's result,
+        or on a lease reclaim that no worker ever reports — and nothing writes that back to the
+        control plane's `Job` (BE-0015 W2), so its slot would be held until serve restarts. Called
+        before every count and cap check, with a probe of the system of record.
+
+        The probe runs outside the lock: it is a database read, and holding the registry lock across
+        it would block every dispatch on the database. A job registered mid-sweep is simply not
+        probed this round and stays counted, which errs toward the cap rather than past it.
+        """
+        with self._lock:
+            live = self._running()
+        for job in live:
+            if is_finished(job.id):
+                job.released = True
 
     def register(self, job: Job) -> Job:
         with self._lock:
@@ -287,7 +319,7 @@ class JobRegistry:
         so the cap bounds total in-flight device reservations on the provider, not a single target's
         slice. Each cap ``<= 0`` is unlimited; the batch cap applies only when ``job.batch`` is set."""
         with self._lock:
-            running = [j for j in self.jobs.values() if j.status == "running"]
+            running = self._running()
             if max_concurrent > 0 and len(running) >= max_concurrent:
                 return None
             if job.actor and max_concurrent_per_user > 0:
@@ -324,6 +356,20 @@ class JobRegistry:
         job.materials = dict(job.materials)
         self.jobs[job.id] = job
         return job
+
+
+def _finished_in_db(repository: Repository, job_id: str) -> bool:
+    """Whether the jobs table says *job_id* reached a terminal state (worker result, or a lease
+    reclaim that failed it past its attempt cap). An id with no row reads as still running: a job is
+    registered before it is enqueued, so a missing row is an insert that has not landed yet.
+
+    Reads the whole row via `get_job` rather than narrowing to `status` the way `metrics_snapshot`
+    does: the probe reaches only a single known id, and it is asked once per job (a released job is
+    never probed again), so the row-per-call cost stays proportional to what is actually in flight.
+    Only the status is read out of it — nothing from `spec` / `result` reaches a caller.
+    """
+    info = repository.get_job(job_id)
+    return info is not None and info["status"] in ("done", "failed")
 
 
 @dataclass
@@ -938,11 +984,13 @@ class ServeState:
 
     def active_jobs(self) -> int:
         """How many spawned jobs are still running (not yet finished). Delegates to the registry."""
+        self._release_finished()
         return self.job_registry.active_jobs()
 
     def in_flight_by_org(self) -> dict[str, int]:
         """Running jobs grouped by org, for the ``/metrics`` endpoint (BE-0169). Delegates to the
         registry."""
+        self._release_finished()
         return self.job_registry.in_flight_by_org()
 
     def register(self, job: Job) -> Job:
@@ -954,6 +1002,7 @@ class ServeState:
         to the registry, which counts and inserts atomically under one lock (BE-0051). *device_budget*
         is the per-target cloud-batch device cap (BE-0336 Unit 4); unlike the state-wide caps it is
         per-target, so the dispatcher resolves it from the request's config and passes it per call."""
+        self._release_finished()
         return self.job_registry.try_register(
             self._freeze_binding(job),
             max_concurrent=self.max_concurrent,
@@ -961,6 +1010,19 @@ class ServeState:
             max_concurrent_per_org=self.max_concurrent_per_org,
             max_concurrent_batch=device_budget,
         )
+
+    def _release_finished(self) -> None:
+        """Let the system of record release the cap slots of jobs that finished off this process.
+
+        A deployment that dispatches to remote workers (`DbQueueExecutor`) never learns a job's end
+        in process, so the jobs table is the only place its terminal status exists — see
+        `JobRegistry.release_finished`. A no-op without a repository: local serve runs every job
+        in-process and observes each one finish.
+        """
+        repository = self.repository
+        if repository is None:
+            return
+        self.job_registry.release_finished(lambda job_id: _finished_in_db(repository, job_id))
 
     def _freeze_binding(self, job: Job) -> Job:
         """Capture the working directory *job* will spawn against, at registration (BE-0393 unit 2).
