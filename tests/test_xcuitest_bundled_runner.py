@@ -22,7 +22,7 @@ import pytest
 
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import XcuitestConfig
-from bajutsu.platform_lifecycle.environments import _bundled_runner, xcuitest
+from bajutsu.common.platform_lifecycle.environments import _bundled_runner, xcuitest
 
 
 def _products(dir_: Path) -> Path:

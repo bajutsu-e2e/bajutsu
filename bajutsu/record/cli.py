@@ -33,9 +33,9 @@ from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.config import WEB_ENGINES, Effective
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.handoff import HumanHandoffUnavailable
+from bajutsu.common.platform_lifecycle import environment_for
 from bajutsu.common.runner import launch_driver
 from bajutsu.common.scenario import Preconditions, dump_scenarios
-from bajutsu.platform_lifecycle import environment_for
 from bajutsu.record.loop import record as record_loop
 
 

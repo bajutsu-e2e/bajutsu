@@ -135,8 +135,8 @@ def test_showcase_live_config_routes_to_the_live_transport() -> None:
     # resolution and the run-time capability narrowing, never a live run.
     from bajutsu.common.backends import capabilities_for, capabilities_for_run
     from bajutsu.common.drivers import base
+    from bajutsu.common.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint
     from bajutsu.common.runner.device_provider import acquire_device
-    from bajutsu.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint
 
     cfg = load_config(LIVE_CONFIG.read_text(encoding="utf-8"))
     eff = resolve(cfg, "showcase-swiftui-live")

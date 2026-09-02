@@ -49,6 +49,7 @@ from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
+from bajutsu.common.platform_lifecycle import CrawlEnvironment, environment_for
 from bajutsu.common.run_meta.files import RunArtifactReader, runs_root
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import launch_driver
@@ -58,7 +59,6 @@ from bajutsu.crawl import report as crawl_report
 from bajutsu.crawl import repro as crawl_repro
 from bajutsu.crawl.guide import MODEL as _CRAWL_GUIDE_MODEL
 from bajutsu.crawl.guide import Report, make_guide
-from bajutsu.platform_lifecycle import CrawlEnvironment, environment_for
 from bajutsu.record.loop import clear_blocking as clear_blocking_overlay
 
 #: The screen map's artifact name inside a crawl's run directory.

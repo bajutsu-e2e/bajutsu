@@ -359,8 +359,8 @@ def _plan_for_lane(tmp_path: Path, *, actuator: str = "xcuitest") -> object:
     """A `_CrawlPlan` filled with the few fields `_build_lane` reads, and inert values elsewhere."""
     from bajutsu.common.config import load_config, resolve
     from bajutsu.common.evidence.redaction import Redactor
+    from bajutsu.common.platform_lifecycle import environment_for
     from bajutsu.crawl.cli import _CrawlPlan
-    from bajutsu.platform_lifecycle import environment_for
 
     eff = resolve(load_config("targets:\n  s:\n    bundleId: com.x\n"), "s")
     return _CrawlPlan(

@@ -422,7 +422,7 @@ def test_run_scenario_writes_wait_diagnostic_on_first_wait_timeout(tmp_path: Pat
     import json
 
     from bajutsu.common.evidence import FileSink
-    from bajutsu.platform_lifecycle import ReadinessResult
+    from bajutsu.common.platform_lifecycle import ReadinessResult
 
     driver = FakeDriver([el("a", "A"), el("b", "B")])  # content present, but never the awaited row
     sink = FileSink(

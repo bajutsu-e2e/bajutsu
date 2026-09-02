@@ -8,8 +8,8 @@ from pathlib import Path
 from bajutsu.common import backends
 from bajutsu.common.config import Effective
 from bajutsu.common.drivers import base
+from bajutsu.common.platform_lifecycle.environments.ios import _DeviceEnvironment
 from bajutsu.common.scenario import Preconditions
-from bajutsu.platform_lifecycle.environments.ios import _DeviceEnvironment
 
 
 class FakeEnvironment(_DeviceEnvironment):

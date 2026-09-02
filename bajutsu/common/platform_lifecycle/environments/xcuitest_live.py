@@ -32,9 +32,9 @@ from bajutsu.common.drivers.xcuitest_live import (
     _raw_wd_transport,
 )
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
+from bajutsu.common.platform_lifecycle.environments.ios import _DeviceEnvironment
 from bajutsu.common.scenario import Preconditions, Scenario
 from bajutsu.crawl import Reset
-from bajutsu.platform_lifecycle.environments.ios import _DeviceEnvironment
 
 
 def is_webdriver_endpoint(udid: str) -> bool:

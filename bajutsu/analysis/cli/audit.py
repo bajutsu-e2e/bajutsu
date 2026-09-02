@@ -34,11 +34,11 @@ from bajutsu.cli._shared import (
 )
 from bajutsu.common.backends import select_actuator_for_scenario
 from bajutsu.common.devices import errors as device_errors
+from bajutsu.common.platform_lifecycle import environment_for
 from bajutsu.common.run_meta.files import runs_root
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import device_pool, run_all
 from bajutsu.common.scenario import Scenario, load_expanded_scenarios
-from bajutsu.platform_lifecycle import environment_for
 
 
 def audit(

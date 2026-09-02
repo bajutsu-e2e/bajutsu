@@ -17,7 +17,7 @@ from bajutsu.common.backend_cli import adb
 from bajutsu.common.doctor import namespace_of
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence.network import TransitionSource, _no_transitions
-from bajutsu.platform_lifecycle.protocols import ReadinessResult
+from bajutsu.common.platform_lifecycle.protocols import ReadinessResult
 
 _logger = logging.getLogger(__name__)
 

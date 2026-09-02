@@ -14,8 +14,8 @@ from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import Effective, require_ios
 from bajutsu.common.drivers import base
 from bajutsu.common.orchestrator import RelaunchFn
+from bajutsu.common.platform_lifecycle import readiness
 from bajutsu.common.scenario import Relaunch, Scenario
-from bajutsu.platform_lifecycle import readiness
 
 # Given a scenario + its launched driver, yields that scenario's `relaunch` function (defined here
 # rather than imported from runner.types to keep the environment seam free of a runner import cycle).

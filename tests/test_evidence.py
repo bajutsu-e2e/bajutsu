@@ -287,7 +287,7 @@ def test_file_sink_wait_diagnostic_writes_provenance_stamped_artifact(tmp_path: 
     # timeout, the readiness signal, the poll trace, and the provenance stamp — so a rerun-to-green
     # never discards the evidence needed to decide which cause fired.
     from bajutsu.common.orchestrator.waits import WaitTrace
-    from bajutsu.platform_lifecycle import ReadinessResult
+    from bajutsu.common.platform_lifecycle import ReadinessResult
 
     driver = FakeDriver([_el("a", "A"), _el("b", "B")])
     trace = WaitTrace(

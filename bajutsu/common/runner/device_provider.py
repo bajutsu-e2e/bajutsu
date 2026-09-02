@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from bajutsu.common.config import Effective
-from bajutsu.platform_lifecycle import ProvisionProfile
+from bajutsu.common.platform_lifecycle import ProvisionProfile
 
 
 @dataclass(frozen=True)

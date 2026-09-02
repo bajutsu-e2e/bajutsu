@@ -223,7 +223,9 @@ def capabilities_for_run(
         # advertised set and the environment actually chosen stay in lockstep — a capability the
         # WebDriver transport cannot drive can never be advertised here yet raise `UnsupportedAction`
         # at run time. Lazy import keeps this module clear of the platform-lifecycle layer at import.
-        from bajutsu.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint
+        from bajutsu.common.platform_lifecycle.environments.xcuitest_live import (
+            is_webdriver_endpoint,
+        )
 
         if is_webdriver_endpoint(udid_spec):
             from bajutsu.common.drivers.xcuitest_live import XcuitestLiveDriver
@@ -255,7 +257,7 @@ def erase_precondition_supported(
     if actuator != "xcuitest":
         return True
     from bajutsu.common.config import xcuitest_targets_real_device
-    from bajutsu.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint
+    from bajutsu.common.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint
 
     return not (is_webdriver_endpoint(udid_spec) or xcuitest_targets_real_device(eff))
 

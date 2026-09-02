@@ -414,17 +414,17 @@ def test_lifecycle_package_files_are_relevant() -> None:
     # lane; the per-backend leaves are pinned to their own lane below.
     for lane in ("ios", "android", "web"):
         for path in (
-            "bajutsu/platform_lifecycle/__init__.py",
-            "bajutsu/platform_lifecycle/factories.py",
-            "bajutsu/platform_lifecycle/protocols.py",
-            "bajutsu/platform_lifecycle/readiness.py",
-            "bajutsu/platform_lifecycle/device_control.py",
-            "bajutsu/platform_lifecycle/read_session.py",
-            "bajutsu/platform_lifecycle/relaunchers.py",
-            "bajutsu/platform_lifecycle/environments/__init__.py",
-            "bajutsu/platform_lifecycle/environments/ios.py",
-            "bajutsu/platform_lifecycle/environments/_bundled_runner.py",
-            "bajutsu/platform_lifecycle/environments/fake.py",
+            "bajutsu/common/platform_lifecycle/__init__.py",
+            "bajutsu/common/platform_lifecycle/factories.py",
+            "bajutsu/common/platform_lifecycle/protocols.py",
+            "bajutsu/common/platform_lifecycle/readiness.py",
+            "bajutsu/common/platform_lifecycle/device_control.py",
+            "bajutsu/common/platform_lifecycle/read_session.py",
+            "bajutsu/common/platform_lifecycle/relaunchers.py",
+            "bajutsu/common/platform_lifecycle/environments/__init__.py",
+            "bajutsu/common/platform_lifecycle/environments/ios.py",
+            "bajutsu/common/platform_lifecycle/environments/_bundled_runner.py",
+            "bajutsu/common/platform_lifecycle/environments/fake.py",
         ):
             assert is_relevant([path], lane) is True, (lane, path)
 
@@ -435,10 +435,10 @@ def test_lifecycle_environment_leaves_fire_only_their_own_lane() -> None:
     # never import it. Sweeping the package without this carve-out would trade the under-trigger for
     # an over-trigger on `environments/xcuitest.py`, the most-churned file in the package.
     owner = {
-        "bajutsu/platform_lifecycle/environments/xcuitest.py": "ios",
-        "bajutsu/platform_lifecycle/environments/xcuitest_live.py": "ios",
-        "bajutsu/platform_lifecycle/environments/android.py": "android",
-        "bajutsu/platform_lifecycle/environments/web.py": "web",
+        "bajutsu/common/platform_lifecycle/environments/xcuitest.py": "ios",
+        "bajutsu/common/platform_lifecycle/environments/xcuitest_live.py": "ios",
+        "bajutsu/common/platform_lifecycle/environments/android.py": "android",
+        "bajutsu/common/platform_lifecycle/environments/web.py": "web",
     }
     for path, own_lane in owner.items():
         for lane in ("ios", "android", "web"):
@@ -473,7 +473,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Directories split per backend: a file is either claimed by the lanes whose backend imports it, or
 # swept into the shared core. Neither may leave a file matching nothing on every lane.
-_PER_BACKEND_DIRS = ("bajutsu/common/drivers", "bajutsu/platform_lifecycle/environments")
+_PER_BACKEND_DIRS = ("bajutsu/common/drivers", "bajutsu/common/platform_lifecycle/environments")
 
 
 def test_no_per_backend_file_is_orphaned() -> None:
@@ -907,7 +907,7 @@ def test_pool_fires_on_the_parallel_run_surface() -> None:
     for path in (
         "bajutsu/common/runner/pool.py",
         "bajutsu/common/runner/pipeline.py",
-        "bajutsu/platform_lifecycle/environments/android.py",
+        "bajutsu/common/platform_lifecycle/environments/android.py",
         # `_resolve_lanes` — the comma `--udid` list turned into the pool, and the `--workers` cap.
         "bajutsu/run/cli.py",
         "bajutsu/common/evidence/core.py",

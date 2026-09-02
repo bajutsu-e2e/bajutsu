@@ -17,9 +17,9 @@ from bajutsu.common.backend_cli import adb
 from bajutsu.common.backend_cli.adb_resident import ResidentChannel
 from bajutsu.common.config import AndroidConfig, Effective
 from bajutsu.common.drivers.adb import ActOutcome, AdbDriver, HierarchyRead
+from bajutsu.common.platform_lifecycle import AndroidEnvironment, ProvisionProfile, environment_for
+from bajutsu.common.platform_lifecycle.readiness import await_boot
 from bajutsu.common.scenario import Preconditions, Redact
-from bajutsu.platform_lifecycle import AndroidEnvironment, ProvisionProfile, environment_for
-from bajutsu.platform_lifecycle.readiness import await_boot
 
 
 def _recorder(calls: list[list[str]]) -> adb.RunFn:

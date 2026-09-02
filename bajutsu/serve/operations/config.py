@@ -39,7 +39,7 @@ from bajutsu.common.config_source import (
     parse_config_spec,
     source_provenance,
 )
-from bajutsu.platform_lifecycle.environments import (
+from bajutsu.common.platform_lifecycle.environments import (
     bundled_products_dir,
     bundled_runner_build_info,
 )

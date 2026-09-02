@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 from bajutsu.common.backend_cli import simctl
-from bajutsu.platform_lifecycle.environments.android import AndroidEnvironment
-from bajutsu.platform_lifecycle.environments.fake import FakeEnvironment
-from bajutsu.platform_lifecycle.environments.web import WebEnvironment
-from bajutsu.platform_lifecycle.environments.xcuitest import XcuitestEnvironment
-from bajutsu.platform_lifecycle.environments.xcuitest_live import (
+from bajutsu.common.platform_lifecycle.environments.android import AndroidEnvironment
+from bajutsu.common.platform_lifecycle.environments.fake import FakeEnvironment
+from bajutsu.common.platform_lifecycle.environments.web import WebEnvironment
+from bajutsu.common.platform_lifecycle.environments.xcuitest import XcuitestEnvironment
+from bajutsu.common.platform_lifecycle.environments.xcuitest_live import (
     XcuitestLiveEnvironment,
     is_webdriver_endpoint,
 )
-from bajutsu.platform_lifecycle.protocols import Environment, ProvisionProfile
+from bajutsu.common.platform_lifecycle.protocols import Environment, ProvisionProfile
 
 
 def environment_for(

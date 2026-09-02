@@ -26,7 +26,7 @@ split into two testable pieces:
   direction — instead of the silent under-trigger the old hand-kept positive list produced when a
   listed module became a package (``config``, BE-0252; ``platform_lifecycle``) or a run-path file
   went unlisted. A change confined to the periphery still fires nothing. The two per-backend
-  directories — ``bajutsu/common/drivers/`` and ``bajutsu/platform_lifecycle/environments/`` — follow the
+  directories — ``bajutsu/common/drivers/`` and ``bajutsu/common/platform_lifecycle/environments/`` — follow the
   same shape: swept by the shared core minus exactly the leaves each lane claims, so a lane fires
   only on the driver and environment its own backend imports, while no file is orphaned. A renamed or
   deleted path leaves its pattern matching nothing, so the tests check every literal path and
@@ -214,10 +214,10 @@ _LANE_CLAIMED: tuple[str, ...] = (
     "bajutsu/common/drivers/playwright.py",
     "bajutsu/common/drivers/xcuitest.py",
     "bajutsu/common/drivers/xcuitest_live.py",
-    "bajutsu/platform_lifecycle/environments/android.py",
-    "bajutsu/platform_lifecycle/environments/web.py",
-    "bajutsu/platform_lifecycle/environments/xcuitest.py",
-    "bajutsu/platform_lifecycle/environments/xcuitest_live.py",
+    "bajutsu/common/platform_lifecycle/environments/android.py",
+    "bajutsu/common/platform_lifecycle/environments/web.py",
+    "bajutsu/common/platform_lifecycle/environments/xcuitest.py",
+    "bajutsu/common/platform_lifecycle/environments/xcuitest_live.py",
     "bajutsu/common/provisioning/provision.py",
     "bajutsu/common/backend_cli/adb_resident.py",
     "bajutsu/serve/",
@@ -279,7 +279,7 @@ _LANE_PATHS: dict[str, str] = {
         r"|bajutsu/common/drivers/(?:xcuitest|xcuitest_live)\.py$"
         # The XCUITest lifecycle environments (cold spawn, the warm resident lease, the BE-0292
         # bundled runner) — the iOS half of the `platform_lifecycle/` carve-out above.
-        r"|bajutsu/platform_lifecycle/environments/(?:xcuitest|xcuitest_live)\.py$"
+        r"|bajutsu/common/platform_lifecycle/environments/(?:xcuitest|xcuitest_live)\.py$"
         r"|bajutsu/record/cli\.py$"
         r"|tests/test_driver_conformance_ondevice\.py$"
         r"|tests/test_fault_injection_ondevice\.py$"
@@ -323,7 +323,7 @@ _LANE_PATHS: dict[str, str] = {
         r"|bajutsu/common/backend_cli/adb_resident\.py$"
         # The Android lifecycle environment (boot, install, the BE-0236 provision profile) — the
         # Android half of the `platform_lifecycle/` carve-out.
-        r"|bajutsu/platform_lifecycle/environments/android\.py$"
+        r"|bajutsu/common/platform_lifecycle/environments/android\.py$"
         r"|demos/showcase/android/"
         r"|demos/showcase/scenarios/"
         r"|demos/showcase/showcase\.config\.yaml$"
@@ -348,7 +348,7 @@ _LANE_PATHS: dict[str, str] = {
         r"|bajutsu/common/drivers/playwright\.py$"
         # The web lifecycle environment (browser launch, context teardown) — the web half of the
         # `platform_lifecycle/` carve-out.
-        r"|bajutsu/platform_lifecycle/environments/web\.py$"
+        r"|bajutsu/common/platform_lifecycle/environments/web\.py$"
         # The real provisioner the `onboarding (doctor / provision)` job runs as `python -m
         # bajutsu.common.provisioning.provision --backend web` (BE-0304) to install Chromium for
         # real. Web-only: no other lane invokes it, and the lanes never run `scripts/install.sh`,
@@ -379,7 +379,7 @@ _LANE_PATHS: dict[str, str] = {
 # above takes.
 _POOL_PATHS = (
     r"bajutsu/common/runner/"
-    r"|bajutsu/platform_lifecycle/"
+    r"|bajutsu/common/platform_lifecycle/"
     # `_resolve_lanes`: the `--udid` comma list resolved into the pool and `--workers` capped to its
     # size. The split itself lives here, so a change to it belongs on this surface even though the
     # shared `bajutsu/` sweep above already makes the module lane-relevant.

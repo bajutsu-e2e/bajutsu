@@ -9,7 +9,7 @@ serve operations layer's `server_settings` (BE-0318) — reads them from here ra
 the private `_bundled_runner` submodule.
 """
 
-from bajutsu.platform_lifecycle.environments._bundled_runner import (
+from bajutsu.common.platform_lifecycle.environments._bundled_runner import (
     bundled_products_dir,
     bundled_runner_build_info,
 )

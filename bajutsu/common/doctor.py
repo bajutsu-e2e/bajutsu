@@ -230,13 +230,13 @@ def probe_screen(
         # short-lived XCUITest runner up, scores the launched app's tree, and tears it down — outside
         # the runner-reuse pool, so it never regresses into a persistent per-run startup. Lazy import:
         # `platform_lifecycle` imports `namespace_of` from this module, so a top-level one would cycle.
-        from bajutsu.platform_lifecycle.read_session import ios_read_session
+        from bajutsu.common.platform_lifecycle.read_session import ios_read_session
 
         with ios_read_session(first, eff, simctl_run) as ios_driver:
             return ios_driver.query()
     # How the device handle resolves is the platform's, behind the Environment seam (BE-0256): the
     # Android family via adb, at the resolved udid. Lazy import for the same import-cycle reason.
-    from bajutsu.platform_lifecycle import environment_for
+    from bajutsu.common.platform_lifecycle import environment_for
 
     resolved = environment_for(actuator, first, simctl_run).resolve_device(first)
     return make_driver(actuator, resolved).query()

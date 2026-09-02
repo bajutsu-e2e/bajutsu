@@ -13,8 +13,8 @@ from backend_crash_recovery import LeaseLaunch, LeaseTeardown
 
 from bajutsu.common.config import Effective
 from bajutsu.common.drivers import base
+from bajutsu.common.platform_lifecycle import environment_for
 from bajutsu.common.runner.launch import launch_driver
-from bajutsu.platform_lifecycle import environment_for
 
 
 def xcuitest_lease_launch(udid: str, eff: Effective, *, extra_env: dict[str, str]) -> LeaseLaunch:

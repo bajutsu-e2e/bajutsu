@@ -281,7 +281,9 @@ def _patch_read_env(monkeypatch: pytest.MonkeyPatch, built: list[str], torn: lis
         built.append(udid)
         return _FakeReadEnv(udid, torn)
 
-    monkeypatch.setattr("bajutsu.platform_lifecycle.read_session.environment_for", fake_env_for)
+    monkeypatch.setattr(
+        "bajutsu.common.platform_lifecycle.read_session.environment_for", fake_env_for
+    )
 
 
 def test_probe_screen_xcuitest_uses_a_short_lived_runner(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -320,7 +322,7 @@ def test_probe_screen_takes_the_first_udid_of_a_comma_list(
         _recording_make_driver(made),
     )
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.environments.android.AndroidEnvironment.resolve_device",
+        "bajutsu.common.platform_lifecycle.environments.android.AndroidEnvironment.resolve_device",
         lambda self, udid: udid,
     )
     eff = resolve(load_config("targets: { demo: { bundleId: com.x, package: com.x } }"), "demo")

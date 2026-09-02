@@ -17,10 +17,10 @@ from contextlib import contextmanager
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import Effective
 from bajutsu.common.drivers import base
+from bajutsu.common.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint
+from bajutsu.common.platform_lifecycle.factories import environment_for
+from bajutsu.common.platform_lifecycle.protocols import RunEnvironment
 from bajutsu.common.scenario import Preconditions
-from bajutsu.platform_lifecycle.environments.xcuitest_live import is_webdriver_endpoint
-from bajutsu.platform_lifecycle.factories import environment_for
-from bajutsu.platform_lifecycle.protocols import RunEnvironment
 
 
 def open_ios_read_driver(

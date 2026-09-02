@@ -4,19 +4,19 @@ The `Environment` seam and its "not applicable" contract live in `protocols.py`;
 waits in `readiness.py`; the `DeviceControl` factories in `device_control.py`; the `relaunch`-step
 factories in `relaunchers.py`; one concrete implementer per module under `environments/`; and the
 `environment_for` factory in `factories.py`. This package root re-exports the public names, so every
-existing `from bajutsu.platform_lifecycle import …` / `from bajutsu import platform_lifecycle` import
+existing `from bajutsu.common.platform_lifecycle import …` / `from bajutsu import platform_lifecycle` import
 keeps working unchanged.
 """
 
 from __future__ import annotations
 
-from bajutsu.platform_lifecycle.device_control import android_device_control, device_control
-from bajutsu.platform_lifecycle.environments.android import AndroidEnvironment
-from bajutsu.platform_lifecycle.environments.fake import FakeEnvironment
-from bajutsu.platform_lifecycle.environments.web import WebEnvironment
-from bajutsu.platform_lifecycle.environments.xcuitest import XcuitestEnvironment
-from bajutsu.platform_lifecycle.factories import environment_for
-from bajutsu.platform_lifecycle.protocols import (
+from bajutsu.common.platform_lifecycle.device_control import android_device_control, device_control
+from bajutsu.common.platform_lifecycle.environments.android import AndroidEnvironment
+from bajutsu.common.platform_lifecycle.environments.fake import FakeEnvironment
+from bajutsu.common.platform_lifecycle.environments.web import WebEnvironment
+from bajutsu.common.platform_lifecycle.environments.xcuitest import XcuitestEnvironment
+from bajutsu.common.platform_lifecycle.factories import environment_for
+from bajutsu.common.platform_lifecycle.protocols import (
     CrawlEnvironment,
     Environment,
     ProvisionProfile,
@@ -25,11 +25,11 @@ from bajutsu.platform_lifecycle.protocols import (
 )
 
 # Only `await_ready` still needs the flat re-export path: `runner/launch.py` reaches it via
-# `from bajutsu.platform_lifecycle import await_ready`. `await_boot` is public-named now too; it and
+# `from bajutsu.common.platform_lifecycle import await_ready`. `await_boot` is public-named now too; it and
 # the still-private `_DeviceEnvironment` / `_web_relauncher` are reached only through their
 # submodules, so they stay there (BE-0256).
-from bajutsu.platform_lifecycle.readiness import await_ready
-from bajutsu.platform_lifecycle.relaunchers import device_relauncher
+from bajutsu.common.platform_lifecycle.readiness import await_ready
+from bajutsu.common.platform_lifecycle.relaunchers import device_relauncher
 
 __all__ = [
     "AndroidEnvironment",

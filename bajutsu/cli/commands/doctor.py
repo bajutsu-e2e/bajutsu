@@ -31,12 +31,12 @@ from bajutsu.common.config import (
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.doctor import DoctorProbeError, probe_screen, render, score
 from bajutsu.common.drivers import base
-from bajutsu.common.scenario import load_scenario_file
-from bajutsu.platform_lifecycle.environments.xcuitest import (
+from bajutsu.common.platform_lifecycle.environments.xcuitest import (
     bundled_runner_toolchain_note,
     effective_device_type,
     runner_source,
 )
+from bajutsu.common.scenario import load_scenario_file
 
 
 def check_scenarios(scenario_path: Path, capabilities: frozenset[str]) -> list[str]:

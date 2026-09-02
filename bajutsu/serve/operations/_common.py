@@ -77,7 +77,7 @@ def _default_driver_factory(eff: Effective, backends_list: list[str], udid: str)
 
     actuator = backends.select_actuator_cost_first(backends_list or ["fake"])
     if actuator == "xcuitest":
-        from bajutsu.platform_lifecycle.read_session import open_ios_read_driver
+        from bajutsu.common.platform_lifecycle.read_session import open_ios_read_driver
 
         driver, env = open_ios_read_driver(udid, eff)
         return driver, lambda: env.teardown(driver, eff)

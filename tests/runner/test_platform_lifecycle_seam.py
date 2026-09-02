@@ -16,14 +16,14 @@ from _runner import _eff, _ios_eff, _web_eff
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
-from bajutsu.common.scenario import Preconditions, Relaunch, Scenario
-from bajutsu.platform_lifecycle import (
+from bajutsu.common.platform_lifecycle import (
     AndroidEnvironment,
     FakeEnvironment,
     WebEnvironment,
     XcuitestEnvironment,
     environment_for,
 )
+from bajutsu.common.scenario import Preconditions, Relaunch, Scenario
 
 
 def _capture_group_signals(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, int]]:
@@ -49,7 +49,7 @@ def test_every_environment_satisfies_both_lease_surfaces() -> None:
     # BE-0197 splits the one Protocol into a run-lease surface and a crawl-lease surface so each
     # command declares only the methods it uses; every concrete environment still satisfies both
     # (and the combined `Environment`), which is what lets `environment_for` feed either consumer.
-    from bajutsu.platform_lifecycle import CrawlEnvironment, Environment, RunEnvironment
+    from bajutsu.common.platform_lifecycle import CrawlEnvironment, Environment, RunEnvironment
 
     for actuator in ("xcuitest", "playwright", "fake", "adb"):
         env = environment_for(actuator, "UDID")
@@ -126,7 +126,7 @@ def test_web_relaunch_forwards_id_namespaces_to_await_ready(
     def fake_await_ready(driver: object, *a: object, **kw: object) -> None:
         seen.update(kw)
 
-    monkeypatch.setattr("bajutsu.platform_lifecycle.readiness.await_ready", fake_await_ready)
+    monkeypatch.setattr("bajutsu.common.platform_lifecycle.readiness.await_ready", fake_await_ready)
 
     class _WebDriver(FakeDriver):
         name = "web"
@@ -369,7 +369,9 @@ def test_web_crawl_seams_drive_the_web_driver() -> None:
 def test_web_crawl_reset_makes_a_fresh_context(monkeypatch: pytest.MonkeyPatch) -> None:
     # The web "reset to a clean start" is a fresh BrowserContext (the erase equivalent), then a
     # readiness wait. (await_ready is stubbed so the test doesn't poll a fake driver.)
-    monkeypatch.setattr("bajutsu.platform_lifecycle.readiness.await_ready", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "bajutsu.common.platform_lifecycle.readiness.await_ready", lambda *a, **k: None
+    )
 
     class _WebDriver(FakeDriver):
         name = "web"
@@ -388,7 +390,9 @@ def test_web_crawl_reset_makes_a_fresh_context(monkeypatch: pytest.MonkeyPatch) 
 
 def test_device_crawl_reset_relaunches_the_app(monkeypatch: pytest.MonkeyPatch) -> None:
     # The device "reset" is a relaunch (terminate then launch), not a full erase — fast per visit.
-    monkeypatch.setattr("bajutsu.platform_lifecycle.readiness.await_ready", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "bajutsu.common.platform_lifecycle.readiness.await_ready", lambda *a, **k: None
+    )
     calls: list[list[str]] = []
 
     def fake_run(args: list[str], extra_env: object = None) -> str:
@@ -433,7 +437,7 @@ def test_xcuitest_environment_requires_test_runner_in_config(
     # has staged the bundle locally (`make runner-bundle`) would have `start()` spawn a real runner
     # instead of raising, making the gate depend on the ambient tree.
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.environments.xcuitest.bundled_products_dir", lambda: None
+        "bajutsu.common.platform_lifecycle.environments.xcuitest.bundled_products_dir", lambda: None
     )
     xe = XcuitestEnvironment("xcuitest", "UDID", env_run=lambda a, extra_env: "")
     with pytest.raises(simctl.DeviceError, match="testRunner"):
@@ -453,7 +457,7 @@ def test_xcuitest_environment_start_launches_runner_and_creates_driver(
         return ""
 
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 54321
+        "bajutsu.common.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 54321
     )
 
     popen_calls: list[dict[str, Any]] = []
@@ -532,7 +536,7 @@ def test_xcuitest_environment_applies_permissions_before_the_runner_launches(
         return ""
 
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 54321
+        "bajutsu.common.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 54321
     )
 
     popen_started_after_privacy: list[bool] = []
@@ -754,11 +758,11 @@ def test_spawn_cold_discards_a_never_ready_runner(
     from bajutsu.common.drivers.xcuitest import XcuitestChannelError
 
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 12345
+        "bajutsu.common.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 12345
     )
     # Shrink the cold-startup ceiling so a never-ready wait fails in one poll rather than 120s.
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.environments.xcuitest._RUNNER_STARTUP_TIMEOUT", 0.02
+        "bajutsu.common.platform_lifecycle.environments.xcuitest._RUNNER_STARTUP_TIMEOUT", 0.02
     )
     monkeypatch.delenv("BAJUTSU_XCUITEST_RUNNER_LOG", raising=False)
     signalled = _capture_group_signals(monkeypatch)
@@ -813,7 +817,7 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
     from bajutsu.common.config import XcuitestConfig
 
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 11111
+        "bajutsu.common.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 11111
     )
 
     popen_calls: list[dict[str, Any]] = []

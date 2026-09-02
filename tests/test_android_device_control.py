@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu import platform_lifecycle
+from bajutsu.common import platform_lifecycle
 from bajutsu.common.backend_cli import adb
 from bajutsu.common.capability import capability_preflight
 from bajutsu.common.drivers import base

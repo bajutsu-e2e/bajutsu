@@ -33,13 +33,13 @@ from bajutsu.common.devices import os as device_os
 from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.zorder import ZOrderResponder, ZOrderSource
-from bajutsu.common.scenario import Preconditions
-from bajutsu.platform_lifecycle.environments._bundled_runner import (
+from bajutsu.common.platform_lifecycle.environments._bundled_runner import (
     bundled_products_dir,
     bundled_runner_build_info,
     materialize,
 )
-from bajutsu.platform_lifecycle.environments.ios import _DeviceEnvironment
+from bajutsu.common.platform_lifecycle.environments.ios import _DeviceEnvironment
+from bajutsu.common.scenario import Preconditions
 
 _logger = logging.getLogger(__name__)
 

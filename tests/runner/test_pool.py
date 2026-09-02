@@ -19,9 +19,9 @@ from bajutsu.common.drivers.fake import FakeDriver, FakeNetworkCollector
 from bajutsu.common.drivers.webview import WebViewBridge
 from bajutsu.common.evidence import FileSink
 from bajutsu.common.evidence.network import NetworkCollector, NetworkExchange, ScreenTransition
+from bajutsu.common.platform_lifecycle import ProvisionProfile
 from bajutsu.common.runner import ReadinessResult, device_pool, device_relauncher
 from bajutsu.common.scenario import Relaunch, Scenario
-from bajutsu.platform_lifecycle import ProvisionProfile
 
 
 def test_relauncher_relaunches_with_locale_and_overrides() -> None:
@@ -413,7 +413,7 @@ def test_device_pool_reserves_a_bridgeable_port_only_where_the_device_mirrors_it
         "bajutsu.common.backends.make_driver", lambda actuator, udid: FakeDriver([])
     )
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.environments.fake.FakeEnvironment."
+        "bajutsu.common.platform_lifecycle.environments.fake.FakeEnvironment."
         "mirrors_collector_port_on_device",
         lambda self: mirrors,
     )

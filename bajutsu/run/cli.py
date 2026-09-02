@@ -34,6 +34,7 @@ from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.github import actions as github_actions
 from bajutsu.common.orchestrator import DEFAULT_ALERT_POLL_INTERVAL, AlertGuardConfig, RunResult
 from bajutsu.common.orchestrator.types import ResolvedAlertRule
+from bajutsu.common.platform_lifecycle import ProvisionProfile, environment_for
 from bajutsu.common.report.archive import archive_run_dir
 from bajutsu.common.report.manifest import MAX_LABEL_LENGTH, _run_backend
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
@@ -63,7 +64,6 @@ from bajutsu.common.scenario.system_alerts import (
     covered_languages,
     system_alert_label,
 )
-from bajutsu.platform_lifecycle import ProvisionProfile, environment_for
 
 
 def _parse_browsers(browsers: str) -> list[str]:

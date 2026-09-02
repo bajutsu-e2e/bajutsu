@@ -13,10 +13,10 @@ from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals
 from bajutsu.common.evidence.network import Collector
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
+from bajutsu.common.platform_lifecycle import readiness
+from bajutsu.common.platform_lifecycle.relaunchers import _web_relauncher
 from bajutsu.common.scenario import Preconditions, Scenario
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
-from bajutsu.platform_lifecycle import readiness
-from bajutsu.platform_lifecycle.relaunchers import _web_relauncher
 
 
 class WebEnvironment:

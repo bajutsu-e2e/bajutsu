@@ -30,21 +30,21 @@ from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.orchestrator.evidence_rules import requested_intervals
-from bajutsu.common.report import git_revision, run_provenance
-from bajutsu.common.runner.launch import launch_driver
-from bajutsu.common.runner.recovery import guarded_teardown
-from bajutsu.common.runner.types import Lease, LeaseFn
-from bajutsu.common.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 
 # `device_control` / `device_relauncher` live with the platform lifecycle now; re-exported so
 # `from bajutsu.common.runner import device_control, device_relauncher` keeps its import unchanged.
-from bajutsu.platform_lifecycle import (
+from bajutsu.common.platform_lifecycle import (
     ProvisionProfile,
     RunEnvironment,
     device_control,
     device_relauncher,
     environment_for,
 )
+from bajutsu.common.report import git_revision, run_provenance
+from bajutsu.common.runner.launch import launch_driver
+from bajutsu.common.runner.recovery import guarded_teardown
+from bajutsu.common.runner.types import Lease, LeaseFn
+from bajutsu.common.scenario import Scenario, dump_scenario_file, redact_totp_secrets
 
 __all__ = ["device_control", "device_pool", "device_relauncher"]
 

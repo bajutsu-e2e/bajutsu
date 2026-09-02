@@ -17,9 +17,9 @@ from typer.testing import CliRunner
 from bajutsu.cli import app
 from bajutsu.common.config import AndroidConfig, DeviceProvider, Effective
 from bajutsu.common.github import actions as github_actions
+from bajutsu.common.platform_lifecycle import ProvisionProfile
 from bajutsu.common.runner import device_provider as dp
 from bajutsu.common.scenario import Redact
-from bajutsu.platform_lifecycle import ProvisionProfile
 
 
 def _eff(*, device_provider: DeviceProvider | None = None) -> Effective:

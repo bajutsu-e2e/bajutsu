@@ -45,7 +45,7 @@ def _xcuitest_eff(tmp_path: Path, **ios_kwargs: object) -> Effective:
 def _mock_runner_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
     """Stub the `xcodebuild` runner spawn and its driver so a launch exercises only the simctl prep."""
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 54321
+        "bajutsu.common.platform_lifecycle.environments.xcuitest._allocate_port", lambda: 54321
     )
 
     class _FakePopen:
@@ -526,7 +526,7 @@ def test_await_ready_skips_the_settle_when_the_deadline_is_already_spent(
     _install_bounded_clock(monkeypatch)
     ticks = iter([0.0])
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.readiness.time.monotonic",
+        "bajutsu.common.platform_lifecycle.readiness.time.monotonic",
         lambda: next(ticks, 1e6),  # `start` reads 0.0; every later read is far past any deadline
     )
     ready = [_placed("stable.row.1", "Row 1", frame=(0.0, 168.0, 300.0, 40.0))]

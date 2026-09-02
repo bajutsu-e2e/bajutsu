@@ -924,7 +924,7 @@ def test_doctor_xcuitest_uses_a_short_lived_runner_for_screen_query(
         "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
     )
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.read_session.environment_for",
+        "bajutsu.common.platform_lifecycle.read_session.environment_for",
         lambda actuator, udid, env_run=None, **_k: _FakeEnv(udid),
     )
 
@@ -1013,8 +1013,8 @@ def test_xcuitest_runner_summary_warns_on_a_bundled_toolchain_mismatch(
     # mismatch warning when the host Xcode major differs from the toolchain the bundle recorded.
     from bajutsu.cli.commands import doctor
     from bajutsu.common.config import XcuitestConfig
+    from bajutsu.common.platform_lifecycle.environments import xcuitest as xc
     from bajutsu.common.scenario import Redact
-    from bajutsu.platform_lifecycle.environments import xcuitest as xc
 
     # A non-None products dir makes `runner_source` report the bundled tier for the first line; the
     # note's own tier check keys on the empty XcuitestConfig (no testRunner), not on this path.
