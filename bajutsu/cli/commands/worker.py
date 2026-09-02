@@ -44,22 +44,44 @@ DEFAULT_HEARTBEAT_INTERVAL = 30.0
 # connection can't hang the worker on a single file (evidence upload runs after heartbeats stop).
 _UPLOAD_HTTP_TIMEOUT = 60.0
 
+# Name the client instead of leaving urllib's default `Python-urllib/<x.y>`: a control plane behind
+# Cloudflare answers that signature with a 403 `error code: 1010` (Browser Integrity Check) before
+# the request ever reaches the auth gate, so a correctly-tokened worker leases nothing forever.
+_USER_AGENT = "bajutsu-worker"
+
 
 def _post_json(
     url: str, body: dict[str, Any], *, token: str | None = None, timeout: float | None = None
 ) -> tuple[int, Any]:
     data = json.dumps(body).encode()
-    headers: dict[str, str] = {"Content-Type": "application/json"}
+    headers: dict[str, str] = {"Content-Type": "application/json", "User-Agent": _USER_AGENT}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     req = Request(url, data=data, headers=headers)  # noqa: S310
     try:
         with urlopen(req, timeout=timeout) as r:  # noqa: S310
             raw = r.read()
-            return r.status, json.loads(raw) if raw else {}
+            if not raw:
+                return r.status, {}
+            try:
+                return r.status, json.loads(raw)
+            except json.JSONDecodeError as e:
+                # A 2xx that isn't JSON came from in front of the control plane, not from it — a proxy
+                # interstitial, or an SSO login page reached through the redirect `urlopen` follows.
+                # Raise it as the transport error every caller already handles: returning the text
+                # would hand a `str` to callers that read the body as a mapping.
+                raise URLError(f"non-JSON response from {url}: {raw[:200]!r}") from e
     except HTTPError as e:
         raw = e.read() if e.fp else b""
-        return e.code, json.loads(raw) if raw else {}
+        if not raw:
+            return e.code, {}
+        try:
+            return e.code, json.loads(raw)
+        except json.JSONDecodeError:
+            # An error page from something in front of the control plane (a proxy, Cloudflare) isn't
+            # JSON. Hand back its text with the status rather than raising a decode error that buries
+            # the status the caller needs to report.
+            return e.code, raw.decode(errors="replace")
 
 
 def _advertised_capabilities(platform: str, capabilities: str) -> list[str]:
@@ -147,6 +169,15 @@ def worker(
             )
         except (URLError, OSError) as e:
             _logger.warning("lease request failed: %s", e)
+            time.sleep(poll_interval)
+            continue
+
+        # Say why a lease was refused instead of polling on in silence: a rejected credential or a
+        # proxy blocking the request looks exactly like an empty queue otherwise.
+        if code >= 400:
+            # Truncated: a refusal never self-resolves, so this repeats every poll, and a WAF's
+            # error page is kilobytes of HTML — one refusal must stay one readable line.
+            _logger.warning("lease refused with HTTP %s: %.200s", code, body)
             time.sleep(poll_interval)
             continue
 
@@ -321,7 +352,7 @@ def _put_file(url: str, path: Path, content_type: str, *, timeout: float | None 
     (``http.client`` reads the open handle in blocks) with an explicit Content-Length, so a large run
     artifact like a video never loads wholly into memory.
     """
-    headers = {"Content-Length": str(path.stat().st_size)}
+    headers = {"Content-Length": str(path.stat().st_size), "User-Agent": _USER_AGENT}
     if content_type:
         headers["Content-Type"] = content_type
     with path.open("rb") as body:
@@ -332,7 +363,7 @@ def _put_file(url: str, path: Path, content_type: str, *, timeout: float | None 
 
 def _get_file(url: str, dest: Path, *, timeout: float | None = None) -> None:
     """Download a presigned GET *url* into *dest* (read into memory — baselines are small images)."""
-    req = Request(url, method="GET")  # noqa: S310
+    req = Request(url, method="GET", headers={"User-Agent": _USER_AGENT})  # noqa: S310
     with urlopen(req, timeout=timeout) as r:  # noqa: S310
         dest.write_bytes(r.read())
 
