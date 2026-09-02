@@ -33,11 +33,11 @@ from real_model_triage_support import (
 )
 from typer.testing import CliRunner
 
-from bajutsu.agents.ai_config import PROVIDER_ENV
-from bajutsu.agents.anthropic_client import ANTHROPIC_KEY_ENV
-from bajutsu.agents.claude_triage import ClaudeTriageAgent
-from bajutsu.ai import create_backend
 from bajutsu.cli import app
+from bajutsu.common.agents.ai_config import PROVIDER_ENV
+from bajutsu.common.agents.anthropic_client import ANTHROPIC_KEY_ENV
+from bajutsu.common.agents.claude_triage import ClaudeTriageAgent
+from bajutsu.common.ai import create_backend
 
 # --- Deterministic harness self-checks (no model; always run) -----------------------------------
 # Prove the context builder yields a screen carrying the correct id and the validity assertion

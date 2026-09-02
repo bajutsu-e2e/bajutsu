@@ -20,9 +20,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from bajutsu.agents.ai_config import AiConfig, language_instruction
-from bajutsu.agents.claude_backed import ClaudeBackedAgent
-from bajutsu.ai import (
+from bajutsu.common.agents.ai_config import AiConfig, language_instruction
+from bajutsu.common.agents.claude_backed import ClaudeBackedAgent
+from bajutsu.common.ai import (
     AiBackend,
     AnyTool,
     ImagePart,
@@ -32,7 +32,7 @@ from bajutsu.ai import (
     TextPart,
     ToolDef,
 )
-from bajutsu.ai.prompts import NEVER_JUDGE_BOUNDARY
+from bajutsu.common.ai.prompts import NEVER_JUDGE_BOUNDARY
 from bajutsu.drivers import base
 from bajutsu.screenshots import fraction, png_size
 

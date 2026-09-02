@@ -57,9 +57,9 @@ def start_enrich(
         return {"error": f"scenario '{name}' not found in file"}, 404
 
     if agent_factory is None:
-        from bajutsu.agents import availability as ai_availability
-        from bajutsu.agents.factory import make_enrichment_agent
-        from bajutsu.ai import credential_gap
+        from bajutsu.common.agents import availability as ai_availability
+        from bajutsu.common.agents.factory import make_enrichment_agent
+        from bajutsu.common.ai import credential_gap
 
         eff = resolve(config, target)
         gap = credential_gap(eff.ai)
@@ -85,7 +85,7 @@ def start_enrich(
     factory = driver_factory or _default_driver_factory
     driver, teardown = factory(_session_effective(state, config, target), backends_list, udid)
 
-    from bajutsu.agents.enrich import enrich
+    from bajutsu.common.agents.enrich import enrich
 
     try:
         proposal = enrich(driver, matched, agent, with_screenshot=False)

@@ -24,10 +24,10 @@ from __future__ import annotations
 import pytest
 from conftest import FakeAnthropic, FakeBlock
 
-from bajutsu.agents.ai_config import AiConfig, resolve_model
-from bajutsu.ai import create_backend, credential_gap
-from bajutsu.ai.anthropic import AnthropicBackend
-from bajutsu.ai.base import (
+from bajutsu.common.agents.ai_config import AiConfig, resolve_model
+from bajutsu.common.ai import create_backend, credential_gap
+from bajutsu.common.ai.anthropic import AnthropicBackend
+from bajutsu.common.ai.base import (
     Message,
     MessageRequest,
     MessageResponse,

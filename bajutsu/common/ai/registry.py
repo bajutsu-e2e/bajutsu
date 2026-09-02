@@ -8,7 +8,7 @@ API, Amazon Bedrock, and the Anthropic CLI `ant` — BE-0163); it registers no s
 **The adapter contract.** A provider adapter registers an `Adapter`: a ``factory`` that builds its
 `AiBackend` from the resolved `ai` config, and a ``credential_gap`` that reports what the provider
 needs to authenticate (BE-0047) — a token like ``"anthropic-key"`` / ``"bedrock-model"`` or
-``None`` when it can. A new adapter implements `bajutsu.ai.base.AiBackend`, then calls `register`
+``None`` when it can. A new adapter implements `bajutsu.common.ai.base.AiBackend`, then calls `register`
 with these two.
 """
 
@@ -17,8 +17,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from bajutsu.agents.ai_config import DEFAULT_PROVIDER, AiConfig, resolve_model, resolve_provider
-from bajutsu.ai.base import AiBackend
+from bajutsu.common.agents.ai_config import (
+    DEFAULT_PROVIDER,
+    AiConfig,
+    resolve_model,
+    resolve_provider,
+)
+from bajutsu.common.ai.base import AiBackend
 
 BackendFactory = Callable[[AiConfig | None], AiBackend]
 CredentialGap = Callable[[AiConfig | None], str | None]
@@ -50,7 +55,7 @@ class Adapter:
 
 
 # The kill-switch provider's name (BE-0394). Named here because the registry is what decides which
-# names are *selectable*; the adapter behind it lives in `bajutsu.ai.disabled`.
+# names are *selectable*; the adapter behind it lives in `bajutsu.common.ai.disabled`.
 DISABLED_PROVIDER = "none"
 
 _ADAPTERS: dict[str, Adapter] = {}
@@ -73,7 +78,7 @@ def _ensure_builtins() -> None:
         for name in ("api-key", "bedrock", "ant", "claude-code", DISABLED_PROVIDER)
     ):
         return
-    from bajutsu.ai import anthropic, claude_code, disabled
+    from bajutsu.common.ai import anthropic, claude_code, disabled
 
     adapter = Adapter(factory=anthropic.factory, credential_gap=anthropic.credential_gap)
     # The direct Anthropic API (`api-key`), Amazon Bedrock, and the Anthropic CLI (`ant`, BE-0163)

@@ -13,8 +13,8 @@ import time
 from collections.abc import Callable
 from typing import Literal
 
-from bajutsu.agents.protocols import Agent, HumanValueClass, Observation, Proposal
 from bajutsu.analytics import usage as _usage
+from bajutsu.common.agents.protocols import Agent, HumanValueClass, Observation, Proposal
 from bajutsu.common.scenario import Assertion, Scenario, Selector, Step
 from bajutsu.common.scenario.models.actions import bypass_hint
 from bajutsu.crawl import screen_identity

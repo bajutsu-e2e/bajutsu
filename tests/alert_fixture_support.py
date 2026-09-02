@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from bajutsu.agents.alerts import AlertDecision, AlertLocator, SystemAlertGuard
+from bajutsu.common.agents.alerts import AlertDecision, AlertLocator, SystemAlertGuard
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.screenshots import png_size

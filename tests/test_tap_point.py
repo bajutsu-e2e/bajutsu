@@ -11,9 +11,9 @@ from __future__ import annotations
 import pytest
 from conftest import FakeBackend, FakeBlock
 
-from bajutsu.agents.claude import ClaudeAgent, proposal_from_call
-from bajutsu.agents.protocols import Observation
 from bajutsu.codegen import to_xcuitest
+from bajutsu.common.agents.claude import ClaudeAgent, proposal_from_call
+from bajutsu.common.agents.protocols import Observation
 from bajutsu.common.scenario import Step, load_scenarios
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
