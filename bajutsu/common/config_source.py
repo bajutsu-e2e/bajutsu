@@ -249,6 +249,54 @@ class _GitHubTransport:
         return self._get(url, "application/vnd.github+json", spec)
 
 
+def config_source_record(spec: GitConfigSpec | None, config: str) -> dict[str, object]:
+    """The `{kind, locator}` record naming where a bound configuration came from (BE-0393 unit 6).
+
+    A Git source records the *spec* the caller asked for, not the commit it resolved to: an org that
+    bound a branch should come back to that branch, which is what a moving ref means. Anything else
+    is a local path. The reverse is `config_spec_from_record`; the two are a pair, because a record
+    that cannot be turned back into a `--config` value is a record nothing can restore from.
+    """
+    if spec is None:
+        return {"kind": "file", "locator": {"path": config}}
+    locator: dict[str, str] = {"host": spec.host, "owner": spec.owner, "repo": spec.repo}
+    if spec.ref:
+        locator["ref"] = spec.ref
+    if spec.path:
+        locator["path"] = spec.path
+    return {"kind": "git", "locator": locator}
+
+
+def config_spec_from_record(source: object) -> str | None:
+    """The `--config` value a stored record names, or None when it names none (BE-0393 unit 6).
+
+    None rather than an exception for every malformed shape, and for an `upload` record, whose bytes
+    have no spec form and are restored by digest instead: the caller is a best-effort restore that
+    must degrade to "this session has no binding" rather than fail the request that triggered it.
+    The record reaches the org row from a client-shaped bind, so nothing here trusts its contents.
+    """
+    if not isinstance(source, dict):
+        return None
+    locator = source.get("locator")
+    if not isinstance(locator, dict):
+        return None
+    if source.get("kind") == "file":
+        path = locator.get("path")
+        return str(path) if isinstance(path, str) and path else None
+    if source.get("kind") != "git":
+        return None
+    host, owner, repo = locator.get("host"), locator.get("owner"), locator.get("repo")
+    if not all(isinstance(v, str) and v for v in (host, owner, repo)):
+        return None
+    ref, path = locator.get("ref"), locator.get("path")
+    base = f"{owner}/{repo}"
+    if isinstance(ref, str) and ref:
+        base += f"@{ref}"
+    if isinstance(path, str) and path:
+        base += f":{path}"
+    return f"github:{base}" if host == "github.com" else f"git+https://{host}/{base}"
+
+
 def source_provenance(spec: GitConfigSpec, mat: Materialized) -> dict[str, str]:
     """The run-provenance stamp for a Git config source: repo + subtree + the ref asked for + the SHA.
 

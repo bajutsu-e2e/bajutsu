@@ -66,6 +66,7 @@ from bajutsu.serve.jobs import cancel_job, run_job
 from bajutsu.serve.launchagent import launchagent_plist
 from bajutsu.serve.logbus import InMemoryLogBus, LogBus
 from bajutsu.serve.operations.config import (
+    restore_org_binding,
     restore_persisted_provider_settings,
     seed_orgs_from_bound_config,
 )
@@ -513,8 +514,18 @@ def _build_server_state(
     # scenarios/baselines live under its own key prefix, and its scenario store only acknowledges
     # the targets that org owns. The scenario targets are read from the live config, so a config
     # opened later is reflected.
-    def _org_apps(org: str) -> list[str]:
-        return state.targets_for(org)
+    def _apps_for_org(org: str, session: str | None, _org: str) -> list[str]:
+        """`ScenarioStorage`'s (session, org) shape with the bundle's own org already bound.
+
+        The org the storage passes is the one the scope was asked for, which is the org this bundle
+        was built for — so it is ignored in favour of the bound one.
+        """
+        return _org_apps(session, org)
+
+    def _org_apps(session: str | None, org: str) -> list[str]:
+        # The target set follows the configuration the *asking session* is bound to (BE-0393 unit 2),
+        # so a target only that session's config declares is still a known app.
+        return state.targets_for(org, session)
 
     def make_bundle(org: str) -> StoreBundle:
         base = org_prefix(prefix, org)
@@ -541,7 +552,9 @@ def _build_server_state(
         # plane's disk by the time a request arrives, so `list`/`read` resolve it from there. The
         # object storage still backs `save` (the hosted web editor / a `record` job) — the one
         # purpose `LocalTreeScenarioStorage` holds it for.
-        object_scenarios = ObjectScenarioStorage(store, partial(_org_apps, org), prefix=base)
+        # `_org_apps` takes (session, org); the bundle is built per org, so the org is bound here and
+        # only the session is left for the storage to supply per call.
+        object_scenarios = ObjectScenarioStorage(store, partial(_apps_for_org, org), prefix=base)
         return StoreBundle(
             artifacts=ObjectStorageArtifactStore(store, prefix=artifact_prefix(base)),
             scenarios=StorageScenarioStore(LocalTreeScenarioStorage(state, object_scenarios)),
@@ -679,6 +692,10 @@ def serve(
     # its "this entry is no longer read" warning must reach the live log sink — and re-runs at every
     # config rebind; a no-op without a database or a loadable config.
     seed_orgs_from_bound_config(state)
+    # Wire the lazy restore (BE-0393 unit 6), so a session with no binding of its own inherits the
+    # configuration its org last bound on that session's first request. Nothing runs here: the seam
+    # fires on a slot miss, and stays inert on a deployment with no database to remember into.
+    state.restore_binding = partial(restore_org_binding, state)
     # Where the cloud-batch (Device Farm) package roots — see ServeState.devicefarm_package_root.
     state.devicefarm_package_root = bajutsu_source_root()
     # Fill the batch-provider registry from the environment (BE-0336): with DEVICEFARM_PROJECT_ARN set,

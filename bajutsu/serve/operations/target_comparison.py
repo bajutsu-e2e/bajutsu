@@ -22,7 +22,9 @@ from bajutsu.serve.operations.reads import RUN_WINDOW, run_set_manifests
 from bajutsu.serve.state import ServeState
 
 
-def compare_targets(state: ServeState, *, org: str) -> list[TargetMetrics]:
+def compare_targets(
+    state: ServeState, *, org: str, session: str | None = None
+) -> list[TargetMetrics]:
     """The per-target headline metrics for the targets *org* may run, in declaration order.
 
     The target list comes from the bound config rather than from the run history, so a target
@@ -41,11 +43,12 @@ def compare_targets(state: ServeState, *, org: str) -> list[TargetMetrics]:
     Returns:
         One `TargetMetrics` per target the org may run, ordered as the config declares them.
     """
-    if state.config is None:
+    binding = state.binding_for(session, org)
+    if binding.config is None:
         return []
-    declared = list_targets(state.config)
+    declared = list_targets(binding.config)
     if state.repository is not None:
-        owned = set(state.targets_for(org))
+        owned = set(state.targets_for(org, session))
         declared = [t for t in declared if t in owned]
     artifacts = state.for_org(org).artifacts
     rows = []
@@ -71,7 +74,9 @@ def _target_run_ids(state: ServeState, *, org: str, target: str) -> list[str]:
     return [str(r.get("id")) for r in listing if r.get("target") == target][:RUN_WINDOW]
 
 
-def target_metrics_view(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+def target_metrics_view(
+    state: ServeState, *, actor: str | None = None, session: str | None = None
+) -> tuple[Any, int]:
     """`GET /api/metrics/targets`: the cross-target comparison model as JSON (BE-0226 unit 2).
 
     One row per declared target — the headline pass-rate, flaky-rate, and duration percentiles the
@@ -81,4 +86,5 @@ def target_metrics_view(state: ServeState, *, actor: str | None = None) -> tuple
     an error. Read-only: it re-presents the deterministic verdicts `run` already decided, adding no
     LLM to the path, and sits alongside — not replacing — BE-0102's single-config `/stats` view.
     """
-    return [asdict(row) for row in compare_targets(state, org=state.org_of(actor))], 200
+    rows = compare_targets(state, org=state.org_of(actor), session=session)
+    return [asdict(row) for row in rows], 200

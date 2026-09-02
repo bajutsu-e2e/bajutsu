@@ -22,7 +22,7 @@ from bajutsu.serve.state import ServeState
 
 
 def audit_scenario(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None, session: str | None = None
 ) -> tuple[Any, int]:
     """Grade a scenario's static determinism for the editor / Replay panel.
 
@@ -42,9 +42,9 @@ def audit_scenario(
         target, path = body.get("target"), body.get("path")
         if not target or not path:
             return {"error": "yaml, or target and path, is required"}, 400
-        if state.config is None:
+        if state.binding_for(session, state.org_of(actor)).config is None:
             return {"error": "open a config first"}, 400
-        result, status = read_scenario(state, str(target), str(path), actor=actor)
+        result, status = read_scenario(state, str(target), str(path), actor=actor, session=session)
         if status != 200:
             return result, status
         text = str(result["yaml"])

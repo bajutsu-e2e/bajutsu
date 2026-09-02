@@ -516,6 +516,10 @@ async function loadConfig(){
   $('#fssrc').hidden=!fsSourceEnabled;
   setCfgName(c.hasConfig?c.config:'no config bound — open one →',c.hasConfig);
   setOrgBadge(c.actor,c.org,c.orgs);
+  setCfgOrigin(c.actor&&c.org?c.configOrigin:null,c.org);
+  // The bind modal says what a bind reaches only where the org actually remembers one: no org store
+  // means nothing is inherited, and a member who may not administer orgs may not bind either.
+  const note=$('#inheritnote');if(note)note.hidden=!(c.actor&&c.org&&capabilities.orgs&&capabilities.orgs.available);
   // Both capability consumers run from here, not from the entry module's boot, so each reads a
   // block that has arrived (#1721). The Author tab may already have initialised — it re-applies on
   // its own lazy init too, so whichever of the two happens first, the other still lands.
@@ -542,6 +546,23 @@ function setOrgBadge(actor,org,orgs){
     sw.innerHTML=choices.map(o=>`<option value="${esc(o)}"${o===org?' selected':''}>${esc(o)}</option>`).join('');
     sw.title=`signed in as ${actor} — acting as org "${org}"`;
   }
+}
+// Which of the three bindings this session is reading (BE-0393 unit 7): the one the member opened,
+// the one their org last bound and this session inherited on first use, or the deployment's own.
+// A member who did not choose the configuration in front of them should be able to see that, and
+// the org they would inherit from is named so an admin acting as several can tell them apart.
+const CFG_ORIGINS={
+  session:['yours','you opened this configuration in this session'],
+  inherited:['inherited','your org last bound this; it was restored into your session'],
+  deployment:['deployment','the configuration this deployment started with — nothing bound for you yet'],
+};
+function setCfgOrigin(origin,org){
+  const el=$('#cfgorigin');if(!el)return;
+  const known=CFG_ORIGINS[origin];
+  el.hidden=!known;
+  if(!known)return;
+  el.textContent=known[0];
+  el.title=origin==='inherited'?`org "${org}" last bound this; it was restored into your session`:known[1];
 }
 // Switching org repoints every tab at once (runs, evidence, secrets), so the page is
 // reloaded rather than each view refreshed: a partial update would leave already-rendered views

@@ -12,6 +12,7 @@ against an empty table so the first org can be created at all.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -190,7 +191,7 @@ def test_sign_in_survives_a_config_that_cannot_load(
     # roster to empty and deny every non-admin sign-in, on a deployment whose database already knew
     # exactly who they were.
     state = _state(serve_engine, tmp_path, oauth=_FakeOAuth("alice"))
-    state.config = tmp_path / "gone.yaml"  # never written
+    state.binding = replace(state.binding, config=tmp_path / "gone.yaml")  # never written
     _payload, status, sid = _sign_in(state)
     assert status == 200 and sid is not None
     assert state.repository is not None
@@ -349,7 +350,7 @@ def test_an_uploaded_bundle_belongs_to_the_org_that_bound_it(
     )
     assert status == 200
     # `acme` bound it, so `acme` owns its target — even though the file names `sansaninc`.
-    assert state.config_org == "acme"
+    assert state.binding.org == "acme"
     assert state.targets_for("acme") == ["docs"]
     assert [t["name"] for t in ops.list_targets_payload(state, actor="kazu")[0]] == ["docs"]
     # And nobody else does, including the org the file claims it for and the fallback.
@@ -385,7 +386,7 @@ def test_a_git_bound_config_belongs_to_the_org_that_bound_it(
         lambda spec, **kw: Materialized(git_config, checkout, "sha"),
     )
     assert ops.bind_git_config(state, "github:acme/repo@main", actor="kazu")[1] == 200
-    assert state.config_org == "acme"
+    assert state.binding.org == "acme"
     assert state.targets_for("acme") == ["docs"]
     assert state.targets_for("someone-else") == []
 
@@ -396,7 +397,7 @@ def test_the_launch_config_still_partitions_targets_by_its_orgs_block(
     # The operator's own launch configuration is unchanged: it is the multi-tenant deployment shape
     # BE-0015 defines, written by hand, so its `orgs:` block keeps deciding who owns what.
     state = _state(serve_engine, tmp_path)
-    assert state.config_org is None
+    assert state.binding.org is None
     assert state.targets_for("acme") == ["checkout"]
     assert state.targets_for("globex") == ["checkout"]  # both claim it (BE-0375 unit 4)
     assert state.targets_for("default") == ["spare"]  # the one neither claims
@@ -405,14 +406,14 @@ def test_the_launch_config_still_partitions_targets_by_its_orgs_block(
 def test_rebinding_the_launch_config_drops_the_previous_owner(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
-    # `release_upload` clears the owner so a bind that does not set one cannot inherit the last
+    # A bind replaces the whole binding, so a source that names no owner cannot inherit the last
     # bind's org — the same "a forgotten call must fail safe, not silently persist" shape the seed
-    # call sites were bitten by twice.
+    # call sites were bitten by twice, now unrepresentable rather than merely handled (BE-0393).
     state = _state(serve_engine, tmp_path, root=tmp_path)
-    state.config_org = "acme"
+    state.binding = replace(state.binding, org="acme")
     (tmp_path / "next.config.yaml").write_text(_COLLIDING_YAML, encoding="utf-8")
     assert ops.bind_config(state, "next.config.yaml")[1] == 200
-    assert state.config_org is None
+    assert state.binding.org is None
 
 
 # --- unit 5: the admin API ---------------------------------------------------------------------
@@ -635,8 +636,8 @@ def test_the_backfill_seeds_once_and_a_later_config_edit_cannot_undo_it(
 
     # An operator edits `orgs:` and rebinds. The row is already past cutover, so the edit does not
     # reach it — and the entry is reported so they learn the file no longer decides this.
-    assert state.config is not None
-    state.config.write_text(
+    assert state.binding.config is not None
+    state.binding.config.write_text(
         _COLLIDING_YAML.replace("members: [alice]", "members: [alice, mallory]"), encoding="utf-8"
     )
     with caplog.at_level(logging.WARNING):
@@ -656,8 +657,8 @@ def test_seeding_reports_nothing_for_an_entry_that_only_declares_targets(
     # after the cutover. Warning on a merely non-empty `orgs:` block would fire forever on a
     # correctly configured deployment, or push an operator to empty it and lose that ownership.
     state = _state(serve_engine, tmp_path)
-    assert state.config is not None
-    state.config.write_text(
+    assert state.binding.config is not None
+    state.binding.config.write_text(
         "targets:\n  checkout: { bundleId: com.x }\n"
         "orgs:\n  acme:\n    targets: [checkout]\n  globex:\n    targets: [checkout]\n",
         encoding="utf-8",
@@ -683,8 +684,8 @@ def test_a_targets_only_entry_is_left_unseeded_so_a_restored_roster_still_seeds(
     assert state.repository is not None
     assert orgs_from_db(state.repository) == {}
 
-    assert state.config is not None
-    state.config.write_text(
+    assert state.binding.config is not None
+    state.binding.config.write_text(
         "targets:\n  checkout: { bundleId: com.x }\n"
         "orgs:\n  acme:\n    members: [alice]\n    targets: [checkout]\n",
         encoding="utf-8",
@@ -701,8 +702,8 @@ def test_seeding_is_skipped_once_the_table_holds_any_org(
     # not add a tenant behind an admin's back, so a table holding any org at all stops the seed.
     state = _state(serve_engine, tmp_path)
     assert state.repository is not None
-    assert state.config is not None
-    state.config.write_text(
+    assert state.binding.config is not None
+    state.binding.config.write_text(
         _COLLIDING_YAML + "  initech:\n    members: [peter]\n", encoding="utf-8"
     )
     seed_orgs_from_bound_config(state)
@@ -852,8 +853,8 @@ def test_an_org_created_through_the_api_is_never_seeded_over(
     admin = _admin(state)
     ops.create_org(state, {"slug": "initech"}, actor=admin)
     ops.update_org_membership(state, "initech", {"members": ["peter"]}, actor=admin)
-    assert state.config is not None
-    state.config.write_text(
+    assert state.binding.config is not None
+    state.binding.config.write_text(
         _COLLIDING_YAML + "  initech:\n    members: [mallory]\n", encoding="utf-8"
     )
     seed_orgs_from_bound_config(state)
@@ -872,8 +873,8 @@ def test_a_membership_edit_on_an_unseeded_row_is_never_seeded_over(
     state.repository.ensure_org("legacy", slug="legacy", name="legacy")
     edit = ops.update_org_membership(state, "legacy", {"members": ["zoe"]}, actor=_admin(state))
     assert edit[1] == 200
-    assert state.config is not None
-    state.config.write_text(
+    assert state.binding.config is not None
+    state.binding.config.write_text(
         _COLLIDING_YAML + "  legacy:\n    members: [mallory]\n", encoding="utf-8"
     )
     seed_orgs_from_bound_config(state)

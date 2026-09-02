@@ -191,7 +191,7 @@ def test_start_capture_explicit_alias_backend_resolves(tmp_path: Path) -> None:
 
 def test_start_capture_rebases_app_path_against_state_cwd(tmp_path: Path) -> None:
     # A relative `appPath` is copied verbatim by `resolve()`; start_capture must rebase it against
-    # `state.cwd` (an uploaded bundle's root, a Git checkout root, or a local config's own directory,
+    # `state.binding.cwd` (an uploaded bundle's root, a Git checkout root, or a local config's own directory,
     # BE-0063/BE-0073/BE-0242) before handing the Effective to the driver factory — otherwise an
     # uploaded config's `appPath` resolves against wherever `bajutsu serve` happens to be running from
     # instead of the bundle, and iOS bring-up fails with "appPath not found".

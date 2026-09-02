@@ -244,7 +244,7 @@ class Effective:
         `../` reference to a sibling outside that directory is refused, not legitimate.
         `confine_to` overrides just the confinement boundary, decoupling it from the resolution base,
         for serve's local file-browser bind (`bind_config`): paths there still resolve against the
-        config file's own directory (`root`, matching `state.cwd`), but are confined to `--root`
+        config file's own directory (`root`, matching `state.binding.cwd`), but are confined to `--root`
         (`confine_to`) — the file-browser's own sandbox, not the narrower single directory the config
         happens to live in — so a config at `<root>/configs/x.yaml` may still reference a sibling tree
         like `<root>/scenarios` via `../scenarios`, exactly as the CLI's unconfined `--config` would

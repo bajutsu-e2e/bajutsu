@@ -37,14 +37,28 @@ _WORKSPACE_SCENARIOS = "scenarios"
 class ScenarioStorage(Protocol):
     """Per-project scenario storage the control plane reads and writes (a DB / object store)."""
 
-    def has_app(self, app: str) -> bool:
-        """Whether *app* is a known project."""
+    def has_app(self, app: str, *, session: str | None = None, org: str = "") -> bool:
+        """Whether *app* is a target this deployment can serve scenarios for.
 
-    def list(self, app: str) -> list[dict[str, Any]]:
-        """Every scenario in *app*, summarized for the UI."""
+        *session* and *org* name the request asking (BE-0393 unit 2): the target set comes from the
+        bound configuration, and which configuration that is depends on the session — a target only
+        the asking session's config declares must not read as unknown.
+        """
 
-    def read(self, app: str, ref: str | None) -> str | None:
-        """The YAML text of scenario *ref* in *app*, or None if absent."""
+    def list(self, app: str, *, session: str | None = None, org: str = "") -> list[dict[str, Any]]:
+        """Every scenario in *app*, summarized for the UI.
+
+        *session* and *org* name the request asking (BE-0393 unit 2). A storage-only backend ignores
+        them — its scenarios are addressed by name within the org's prefix — but one that reads from
+        the bound configuration's own tree needs them to resolve the same tree the rest of the request
+        does.
+        """
+
+    def read(
+        self, app: str, ref: str | None, *, session: str | None = None, org: str = ""
+    ) -> str | None:
+        """The YAML text of scenario *ref* in *app*, or None if absent. *session* / *org* as in
+        `list`."""
 
     def save(self, app: str, ref: str | None, text: str) -> str | None:
         """Persist *text* as scenario *ref* in *app*, returning the saved ref, or None if rejected."""
@@ -53,19 +67,23 @@ class ScenarioStorage(Protocol):
 class StorageScenarioScope:
     """Authoring operations for one project's scenarios, backed by `ScenarioStorage`."""
 
-    def __init__(self, storage: ScenarioStorage, app: str) -> None:
+    def __init__(
+        self, storage: ScenarioStorage, app: str, *, session: str | None = None, org: str = ""
+    ) -> None:
         self._storage = storage
         self._app = app
+        self._session = session
+        self._org = org
 
     def list(self) -> list[dict[str, Any]]:
-        return self._storage.list(self._app)
+        return self._storage.list(self._app, session=self._session, org=self._org)
 
     def read(self, ref: str | None) -> str | None:
         # A ref is a trust boundary (an object-store key / DB id) even with no filesystem here:
         # reject an obviously unsafe ref before it reaches the backing store.
         if not valid_scenario_ref(ref):
             return None
-        return self._storage.read(self._app, ref)
+        return self._storage.read(self._app, ref, session=self._session, org=self._org)
 
     def save(self, ref: str | None, text: str) -> str | None:
         if not valid_scenario_ref(ref):
@@ -80,7 +98,7 @@ class StorageScenarioScope:
         name = PurePosixPath(scenario.replace("\\", "/")).name
         if not valid_scenario_ref(name):
             return None
-        text = self._storage.read(self._app, name)
+        text = self._storage.read(self._app, name, session=self._session, org=self._org)
         if text is None:
             return None
         rel = f"{_WORKSPACE_SCENARIOS}/{name}"
@@ -90,7 +108,7 @@ class StorageScenarioScope:
         # No filesystem here: pick a safe ref, stamp it if taken (don't clobber), and tell the
         # worker to write to a workspace-relative path then persist it to storage as (app, ref).
         ref = scenario_out_name(name)
-        if self._storage.read(self._app, ref) is not None:
+        if self._storage.read(self._app, ref, session=self._session, org=self._org) is not None:
             # Microsecond precision so two records in the same second don't pick the same ref.
             stamp = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S-%f")
             ref = f"{ref[: -len('.yaml')]}-{stamp}.yaml"
@@ -103,10 +121,16 @@ class StorageScenarioStore:
     def __init__(self, storage: ScenarioStorage) -> None:
         self._storage = storage
 
-    def scope(self, app: str | None) -> StorageScenarioScope | None:
-        if not app or not self._storage.has_app(app):
+    def scope(
+        self, app: str | None, *, session: str | None = None, org: str = ""
+    ) -> StorageScenarioScope | None:
+        # The pair is carried to the scope rather than consumed here: whether it matters depends on
+        # the storage behind it. A purely object-storage backend addresses scenarios by name within
+        # the org's prefix and ignores it; the local-tree one reads from the bound configuration's own
+        # tree, which is per session (BE-0393 unit 2).
+        if not app or not self._storage.has_app(app, session=session, org=org):
             return None
-        return StorageScenarioScope(self._storage, app)
+        return StorageScenarioScope(self._storage, app, session=session, org=org)
 
 
 class ObjectScenarioStorage:
@@ -119,7 +143,11 @@ class ObjectScenarioStorage:
     injected (the `ObjectStore` slice), so a fake drives the gate."""
 
     def __init__(
-        self, store: ObjectStore, apps: Callable[[], Collection[str]], *, prefix: str = ""
+        self,
+        store: ObjectStore,
+        apps: Callable[[str | None, str], Collection[str]],
+        *,
+        prefix: str = "",
     ) -> None:
         self._store = store
         self._apps = apps
@@ -128,10 +156,18 @@ class ObjectScenarioStorage:
     def _dir(self, app: str) -> str:
         return f"{scenario_prefix(self._prefix)}{app}/"
 
-    def has_app(self, app: str) -> bool:
-        return app in self._apps()
+    def has_app(self, app: str, *, session: str | None = None, org: str = "") -> bool:
+        return app in self._apps(session, org)
 
-    def list(self, app: str) -> list[dict[str, Any]]:
+    def list(
+        self,
+        app: str,
+        *,
+        session: str | None = None,  # noqa: ARG002  # ScenarioStorage shape
+        org: str = "",  # noqa: ARG002  # ScenarioStorage shape
+    ) -> list[dict[str, Any]]:
+        # Addressed by name within the org's own object-store prefix, never by a path resolved from
+        # the bound configuration, so the asking session decides nothing here (BE-0393 unit 2).
         base = self._dir(app)
         out: list[dict[str, Any]] = []
         for key in sorted(self._store.list_keys(base)):
@@ -146,7 +182,15 @@ class ObjectScenarioStorage:
             out.append(summarize_scenario(name, name, text))
         return out
 
-    def read(self, app: str, ref: str | None) -> str | None:
+    def read(
+        self,
+        app: str,
+        ref: str | None,
+        *,
+        session: str | None = None,  # noqa: ARG002  # ScenarioStorage shape
+        org: str = "",  # noqa: ARG002  # ScenarioStorage shape
+    ) -> str | None:
+        # Keyed by name under the org's prefix, so the asking session decides nothing (see `list`).
         if not ref:
             return None
         data = self._store.get_bytes(f"{self._dir(app)}{ref}")
@@ -177,14 +221,18 @@ class LocalTreeScenarioStorage:
     more than the `ScenarioStorage` protocol it satisfies)."""
 
     def __init__(self, state: ServeState, save_storage: ScenarioStorage) -> None:
-        self._local = LocalScenarioStore(lambda app: _scenarios_dir_for(state, app))
+        # The read side resolves against the configuration the *requesting session* is bound to
+        # (BE-0393 unit 2); the local store's `scope` hands the resolver that session per call.
+        self._local = LocalScenarioStore(
+            lambda app, session, org: _scenarios_dir_for(state, app, session, org)
+        )
         self._save_storage = save_storage
 
-    def has_app(self, app: str) -> bool:
-        return self._save_storage.has_app(app)
+    def has_app(self, app: str, *, session: str | None = None, org: str = "") -> bool:
+        return self._save_storage.has_app(app, session=session, org=org)
 
-    def list(self, app: str) -> list[dict[str, Any]]:
-        scope = self._local.scope(app)
+    def list(self, app: str, *, session: str | None = None, org: str = "") -> list[dict[str, Any]]:
+        scope = self._local.scope(app, session=session, org=org)
         if scope is None:
             return []
         return [
@@ -202,8 +250,10 @@ class LocalTreeScenarioStorage:
             if valid_scenario_ref(s["file"])
         ]
 
-    def read(self, app: str, ref: str | None) -> str | None:
-        scope = self._local.scope(app)
+    def read(
+        self, app: str, ref: str | None, *, session: str | None = None, org: str = ""
+    ) -> str | None:
+        scope = self._local.scope(app, session=session, org=org)
         if scope is None:
             return None
         try:

@@ -7,6 +7,7 @@ and monkeypatched probes — device-free, running on the Linux gate.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -48,7 +49,7 @@ def test_local_exposes_host_paths_and_static_fields(
     assert payload["mode"] == "local"
     assert payload["version"] == bajutsu.__version__
     # Host paths are present on a local deployment.
-    assert payload["config"] == str(state.config)
+    assert payload["config"] == str(state.binding.config)
     assert payload["runsDir"] == str(state.runs_dir)
     assert payload["baselinesDir"] == str(state.baselines_dir)
     # Backends are the static implemented set, sorted for a stable display.
@@ -98,7 +99,7 @@ def test_config_source_provenance_is_surfaced(
     _no_bundle(monkeypatch)
     state = _state(tmp_path)
     prov = {"host": "github.com", "owner": "acme", "repo": "app", "ref": "main", "sha": "abc123"}
-    state.config_provenance = prov
+    state.binding = replace(state.binding, provenance=prov)
     payload, _ = ops.server_settings(state)
     assert payload["configSource"] == prov
 

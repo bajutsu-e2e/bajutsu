@@ -26,11 +26,12 @@ def start_capture(
     body: dict[str, Any],
     *,
     actor: str | None = None,
+    session: str | None = None,
     driver_factory: Any | None = None,
     redactor: Redactor | None = None,
 ) -> tuple[Any, int]:
     """Open a capture session: boot a live driver, take the initial screenshot + query."""
-    cfg = state.config
+    cfg = state.binding_for(session, state.org_of(actor)).config
     if cfg is None:
         return {"error": "open a config first"}, 400
     if not body.get("target"):
@@ -39,7 +40,7 @@ def start_capture(
         return {"error": "capture session already active"}, 409
 
     target = str(body["target"])
-    _org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    _org, forbidden = _resolve_org_or_forbid(state, target, actor, session)
     if forbidden:
         return forbidden
 
@@ -59,7 +60,8 @@ def start_capture(
         udid = "booted"
 
     factory = driver_factory or _default_driver_factory
-    driver, teardown = factory(_session_effective(state, config, target), backends_list, udid)
+    effective = _session_effective(state, config, target, session, state.org_of(actor))
+    driver, teardown = factory(effective, backends_list, udid)
     # From bring-up until the session owns `teardown`, a failed query/screenshot (a real failure mode
     # for a freshly-launched XCUITest runner) must still stop the runner — otherwise the `xcodebuild`
     # subprocess leaks, the very thing BE-0290 set out to prevent. Once the CaptureSession is stored,
@@ -89,6 +91,7 @@ def start_capture(
             namespaces=namespaces,
             redactor=redactor,
             actor=actor,
+            login_session=session,
             screenshot_path=shot_path,
             teardown=teardown,
         )
@@ -212,7 +215,7 @@ def finish_capture(
     if session is None:
         return {"error": "no active capture session"}, 400
 
-    org, forbidden = _resolve_org_or_forbid(state, session.target, actor)
+    org, forbidden = _resolve_org_or_forbid(state, session.target, actor, session.login_session)
     if forbidden:
         session.teardown()  # release the driver's runner even on the forbidden path (BE-0290)
         state.capture = None
@@ -222,7 +225,9 @@ def finish_capture(
     from bajutsu.common.scenario.serialize import dump_scenario_file
 
     scenario = Scenario(name="captured", steps=list(session.steps))
-    scope = state.for_org(org).scenarios.scope(session.target)
+    scope = state.for_org(org).scenarios.scope(
+        session.target, session=session.login_session, org=org
+    )
     saved: str | None = None
     # The serialize + save below does disk / object-storage I/O that can raise (disk full, storage
     # error, a serialization edge). Run the teardown and session drop in `finally` so a failed save

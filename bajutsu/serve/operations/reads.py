@@ -57,14 +57,18 @@ def run_file(store: ArtifactStore, rel: str) -> Artifact | None:
 
 
 def list_scenarios(
-    state: ServeState, target: str | None, *, actor: str | None = None
+    state: ServeState,
+    target: str | None,
+    *,
+    actor: str | None = None,
+    session: str | None = None,
 ) -> tuple[Any, int]:
     # Hide a target that belongs to another org (non-leaky: an empty list, not a 403) — BE-0015
     # multi-tenancy. The scenarios come from the actor's org-scoped store.
     org = state.org_of(actor)
-    if target is not None and _target_forbidden(state, org, target):
+    if target is not None and _target_forbidden(state, org, target, session):
         return [], 200
-    scope = state.for_org(org).scenarios.scope(target)
+    scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
     return (scope.list() if scope else []), 200
 
 
@@ -77,21 +81,24 @@ def _primary_backend(config: Config, name: str) -> str:
     return backends[0] if backends else ""
 
 
-def list_targets_payload(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+def list_targets_payload(
+    state: ServeState, *, actor: str | None = None, session: str | None = None
+) -> tuple[Any, int]:
     # Each target carries its primary backend, so the UI shows only that platform's device controls
     # (iOS controls, or the web headed toggle) without the user typing the backend by hand.
-    if state.config is None:
+    binding = state.binding_for(session, state.org_of(actor))
+    if binding.config is None:
         return [], 200
-    parsed = load_serve_config_file(state.config)
+    parsed = load_serve_config_file(binding.config)
     if parsed is None:
         return [], 200
     config = parsed[0]
     # Org scoping applies only on a server backend with a system of record; local serve / token mode
     # ignores `orgs:` and lists every target (BE-0015 multi-tenancy).
     if state.repository is None:
-        names = list_targets(state.config)
+        names = list_targets(binding.config)
     else:
-        names = sorted(state.targets_for(state.org_of(actor)))
+        names = sorted(state.targets_for(state.org_of(actor), session))
     return [{"name": n, "backend": _primary_backend(config, n)} for n in names], 200
 
 
@@ -125,15 +132,17 @@ def simulators_payload(state: ServeState) -> tuple[Any, int]:
 RUN_WINDOW = 200
 
 
-def _target_scenario_names(state: ServeState, org: str, target: str) -> set[str]:
+def _target_scenario_names(
+    state: ServeState, org: str, target: str, session: str | None
+) -> set[str]:
     """Every scenario name declared in *target*'s suite, as the run picker's scoping key.
 
     An empty set when the target is another org's (non-leaky, like `list_scenarios`) or has no
     scenarios dir — the caller then offers no run, rather than falling back to the whole history.
     """
-    if _target_forbidden(state, org, target):
+    if _target_forbidden(state, org, target, session):
         return set()
-    scope = state.for_org(org).scenarios.scope(target)
+    scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
     return {n for f in (scope.list() if scope else []) for n in f.get("names") or []}
 
 
@@ -142,7 +151,9 @@ def _target_scenario_names(state: ServeState, org: str, target: str) -> set[str]
 ALL_LABELS = "*"
 
 
-def effective_label(state: ServeState, requested: str | None) -> str | None:
+def effective_label(
+    state: ServeState, requested: str | None, session: str | None = None, org: str = ""
+) -> str | None:
     """The label partition to read, or None for the whole history (BE-0404 unit 4).
 
     Defaults to the bound configuration's own label, which is what makes restarting `serve` against
@@ -151,14 +162,19 @@ def effective_label(state: ServeState, requested: str | None) -> str | None:
     """
     if requested == ALL_LABELS:
         return None
+    binding = state.binding_for(session, org)
     label = requested or (
-        launch_label(state.config, state.config_provenance) if state.config else ""
+        launch_label(binding.config, binding.provenance) if binding.config else ""
     )
     return label or None
 
 
 def apply_label_filter(
-    state: ServeState, runs: list[dict[str, Any]], requested: str | None
+    state: ServeState,
+    runs: list[dict[str, Any]],
+    requested: str | None,
+    session: str | None = None,
+    org: str = "",
 ) -> list[dict[str, Any]]:
     """Narrow *runs* to `effective_label`'s partition — the in-Python half of the filter.
 
@@ -168,7 +184,7 @@ def apply_label_filter(
     rather than an empty page, so a reader is never left staring at nothing with no filter visible
     to clear.
     """
-    label = effective_label(state, requested)
+    label = effective_label(state, requested, session, org)
     if label is None:
         return runs
     matching = [r for r in runs if r.get("label") in (label, "", None)]
@@ -179,6 +195,7 @@ def runs_payload(
     state: ServeState,
     *,
     actor: str | None = None,
+    session: str | None = None,
     scenario: str | None = None,
     target: str | None = None,
     label: str | None = None,
@@ -212,7 +229,7 @@ def runs_payload(
     org = state.org_of(actor)
     scoped = scenario is not None or target is not None
     if state.repository is not None:
-        partition = effective_label(state, label)
+        partition = effective_label(state, label, session, org)
         limit = None if scoped else RUN_WINDOW
         runs = [
             r.summary
@@ -228,7 +245,7 @@ def runs_payload(
                 for r in state.repository.list_runs(org_id=org, target=ran_target, limit=limit)
             ]
     else:
-        runs = apply_label_filter(state, state.artifacts.list_runs(), label)
+        runs = apply_label_filter(state, state.artifacts.list_runs(), label, session, org)
         if ran_target is not None:
             # The artifact-store listing carries the manifest's own `target` stamp, so the same
             # partition is a post-filter here — the local stand-in, as the label filter is.
@@ -250,7 +267,7 @@ def runs_payload(
     # data-driven scenario is recorded under its per-row names, which `declared_name` maps back to
     # the one the suite declares.
     if target is not None:
-        names = _target_scenario_names(state, org, target)
+        names = _target_scenario_names(state, org, target, session)
         runs = [
             r
             for r in runs
@@ -297,7 +314,11 @@ def trashed_runs_payload(state: ServeState, *, actor: str | None = None) -> tupl
 
 
 def stats_html(
-    state: ServeState, *, actor: str | None = None, label: str | None = None
+    state: ServeState,
+    *,
+    actor: str | None = None,
+    label: str | None = None,
+    session: str | None = None,
 ) -> tuple[str, int]:
     """The aggregate run-stats dashboard (BE-0102) as a self-contained HTML page, org-scoped.
 
@@ -310,13 +331,19 @@ def stats_html(
     # live=True: this is the serve /stats view, so the day/backend/hotspot cells render as drilldown
     # deep links into the SPA's run history (BE-0241); the CLI --html export leaves them plain text.
     return (
-        _stats.render_html(_stats.aggregate_runs(_run_manifests(state, actor, label)), live=True),
+        _stats.render_html(
+            _stats.aggregate_runs(_run_manifests(state, actor, label, session)), live=True
+        ),
         200,
     )
 
 
 def flakiness_html(
-    state: ServeState, *, actor: str | None = None, label: str | None = None
+    state: ServeState,
+    *,
+    actor: str | None = None,
+    label: str | None = None,
+    session: str | None = None,
 ) -> tuple[str, int]:
     """The ranked flaky-scenario panel (BE-0220, Half 1) as a self-contained HTML page, org-scoped.
 
@@ -329,16 +356,16 @@ def flakiness_html(
     unit 4): a flakiness score computed across two configs' interleaved histories is the same defect
     the label exists to fix, so this reads the same partition the run list and `/stats` do.
     """
-    return _flakiness.render_html(_flakiness_report(state, actor, label)), 200
+    return _flakiness.render_html(_flakiness_report(state, actor, label, session)), 200
 
 
 def _flakiness_report(
-    state: ServeState, actor: str | None, label: str | None = None
+    state: ServeState, actor: str | None, label: str | None = None, session: str | None = None
 ) -> _flakiness.FlakinessReport:
     """Rank the actor's org run history — from the DB provenance stamp when wired, else manifests."""
     org = state.org_of(actor)
     if state.repository is not None:
-        partition = effective_label(state, label)
+        partition = effective_label(state, label, session, org)
         records = state.repository.list_runs(
             org_id=org, label=partition, limit=_flakiness.DEFAULT_RUN_LIMIT
         )
@@ -346,7 +373,7 @@ def _flakiness_report(
             records = state.repository.list_runs(org_id=org, limit=_flakiness.DEFAULT_RUN_LIMIT)
         _fill_device_runtime(state, org, records)
     else:
-        records = _flakiness.records_from_manifests(_run_manifests(state, actor, label))
+        records = _flakiness.records_from_manifests(_run_manifests(state, actor, label, session))
     return _flakiness.rank_flakiness(records)
 
 
@@ -385,7 +412,7 @@ def _fill_device_runtime(state: ServeState, org: str, records: list[RunRecord]) 
 
 
 def _run_manifests(
-    state: ServeState, actor: str | None, label: str | None = None
+    state: ServeState, actor: str | None, label: str | None = None, session: str | None = None
 ) -> list[dict[str, Any]]:
     """The newest runs' parsed `manifest.json` for the actor's org; unreadable/malformed ones skipped.
 
@@ -399,7 +426,7 @@ def _run_manifests(
     artifacts = state.for_org(org).artifacts
     rows: list[dict[str, Any]]
     if state.repository is not None:
-        partition = effective_label(state, label)
+        partition = effective_label(state, label, session, org)
         rows = [
             {"id": r.id}
             for r in state.repository.list_runs(org_id=org, label=partition, limit=RUN_WINDOW)
@@ -407,7 +434,7 @@ def _run_manifests(
         if not rows and partition is not None:
             rows = [{"id": r.id} for r in state.repository.list_runs(org_id=org, limit=RUN_WINDOW)]
     else:
-        rows = apply_label_filter(state, artifacts.list_runs(), label)[:RUN_WINDOW]
+        rows = apply_label_filter(state, artifacts.list_runs(), label, session, org)[:RUN_WINDOW]
     return run_set_manifests(artifacts, [r.get("id") for r in rows])
 
 
@@ -442,7 +469,9 @@ def run_set_manifests(store: ArtifactStore, run_ids: Iterable[Any]) -> list[dict
     return manifests
 
 
-def usage_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int]:
+def usage_html(
+    state: ServeState, *, actor: str | None = None, session: str | None = None
+) -> tuple[str, int]:
     """The AI usage/cost dashboard (BE-0195) as a self-contained HTML page.
 
     Reads the same attributed ledgers the serve process's AI subprocesses append to and aggregates
@@ -454,7 +483,7 @@ def usage_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int
     apart from issue #1717).
     """
     events: list[_usage_ledger.UsageEvent] = []
-    for path in _usage_ledger_paths(state, actor):
+    for path in _usage_ledger_paths(state, actor, session):
         try:
             events.extend(_usage_ledger.read_events(path))
         except OSError:
@@ -464,15 +493,22 @@ def usage_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int
     return _usage_stats.render_html(_usage_stats.aggregate_usage(events)), 200
 
 
-def _usage_ledger_paths(state: ServeState, actor: str | None) -> list[Path]:
+def _usage_ledger_paths(state: ServeState, actor: str | None, session: str | None) -> list[Path]:
     """Every ledger file the dashboard reads — resolved as the AI subprocesses serve spawns do.
 
     AI work in serve runs as subprocesses that call `usage_ledger.configure_from_ai_config` with the
     *target-merged* `ai` block (`resolve`'s `Effective.ai`, so `targets.<name>.ai.usageLedger`
-    overrides `defaults.ai.usageLedger`), writing relative paths against their cwd — `state.cwd`,
-    the directory `jobs` spawns them in absent a per-job override. Resolving the read side any other
-    way is what left the dashboard reading an empty file while a per-target ledger filled up (issue
-    #1717).
+    overrides `defaults.ai.usageLedger`), writing relative paths against their cwd. Resolving the
+    read side any other way is what left the dashboard reading an empty file while a per-target
+    ledger filled up (issue #1717).
+
+    That cwd is the *asking session's* binding, which is what a job freezes when it is accepted
+    (BE-0393 unit 2). Reading the deployment's instead would reopen #1717 on exactly the sessions
+    that unit exists for: a member running against a bound bundle appends under the bundle root
+    while the dashboard looks under serve's launch directory. Which is also why the ledger *names*
+    come from the same binding — the config a run was dispatched with is the one that said where its
+    ledger goes. A session that bound nothing reads the deployment's, so a single-tenant `serve` is
+    unchanged.
 
     Every such subprocess names a target (`resolve` rejects an unknown one), so the set of files it
     can append to is the union over the targets — the dashboard is process-wide, not target-scoped,
@@ -486,24 +522,27 @@ def _usage_ledger_paths(state: ServeState, actor: str | None) -> list[Path]:
     empty `usageLedger` disables persistence, contributing no path.
 
     Two writers stay outside that union by construction, both pre-existing and neither this
-    dashboard's to reach: a job carrying its own `cwd` (a remote worker's workspace, which serve
-    cannot read at all), and a targetless `bajutsu triage --ai` launched beside serve, which resolves
-    no `ai` block of its own and so writes the built-in default rather than the configured ledger.
+    dashboard's to reach: a remote worker's job, whose workspace serve cannot read at all, and a
+    targetless `bajutsu triage --ai` launched beside serve, which resolves no `ai` block of its own
+    and so writes the built-in default rather than the configured ledger. A colleague's
+    session-bound ledger is outside it too, and deliberately: it is their tenant's spend, and this
+    view is not org-scoped within a file (see `usage_html`).
     """
-    loaded = load_serve_config_file(state.config)  # cached parse; None when absent/unreadable
+    binding = state.binding_for(session, state.org_of(actor))
+    loaded = load_serve_config_file(binding.config)  # cached parse; None when absent/unreadable
     if loaded is None:
-        return _absolute_ledger_paths(state, [None])
+        return _absolute_ledger_paths(binding.cwd, [None])
     config = loaded[0]
     if not config.targets:
         defaults = config.defaults.ai
         ledger = defaults.usage_ledger if defaults is not None else None
-        return _absolute_ledger_paths(state, [ledger])
+        return _absolute_ledger_paths(binding.cwd, [ledger])
     # Org scoping applies only on a server backend with a system of record, mirroring
     # `list_targets_payload` — the one place target ownership is decided (BE-0015 multi-tenancy).
     names = (
         sorted(config.targets)
         if state.repository is None
-        else state.targets_for(state.org_of(actor))
+        else state.targets_for(state.org_of(actor), session)
     )
     configured: list[str | None] = []
     for target in sorted(names):
@@ -512,11 +551,14 @@ def _usage_ledger_paths(state: ServeState, actor: str | None) -> list[Path]:
         except (ValueError, KeyError):
             continue  # a target that won't resolve can't have run an AI path either
         configured.append(merged.usage_ledger if merged is not None else None)
-    return _absolute_ledger_paths(state, configured)
+    return _absolute_ledger_paths(binding.cwd, configured)
 
 
-def _absolute_ledger_paths(state: ServeState, configured: Iterable[str | None]) -> list[Path]:
+def _absolute_ledger_paths(base: Path, configured: Iterable[str | None]) -> list[Path]:
     """The distinct absolute ledger files *configured* names, dropping the disabled ones.
+
+    *base* is the directory a relative path resolves against — the binding's `cwd`, which is the one
+    the spawned subprocess ran in.
 
     Deduplication is on the resolved path, not the configured string: two targets naming the same
     file differently (`runs/usage.jsonl` vs `./runs/usage.jsonl`) must be read once, or every event
@@ -528,7 +570,7 @@ def _absolute_ledger_paths(state: ServeState, configured: Iterable[str | None]) 
         if path is None:  # persistence disabled for this target
             continue
         if not path.is_absolute():
-            path = state.cwd / path
+            path = base / path
         try:
             key = path.resolve()
         except OSError:  # a symlink loop or an unreadable parent — dedupe on the unresolved path
@@ -543,15 +585,16 @@ def read_scenario(
     path: str | None,
     *,
     actor: str | None = None,
+    session: str | None = None,
     run_id: str | None = None,
     scenario_name: str | None = None,
     structure: bool = False,
 ) -> tuple[Any, int]:
     # A scenario in another org's target reads as not-found (non-leaky) — BE-0015 multi-tenancy.
     org = state.org_of(actor)
-    if target is not None and _target_forbidden(state, org, target):
+    if target is not None and _target_forbidden(state, org, target, session):
         return {"error": "not found"}, 404
-    scope = state.for_org(org).scenarios.scope(target)
+    scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
     text = scope.read(path) if scope else None
     if text is None:
         return {"error": "not found"}, 404
@@ -845,7 +888,7 @@ def job_view(state: ServeState, job_id: str) -> tuple[Any, int]:
 
 
 def save_scenario(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None, session: str | None = None
 ) -> tuple[Any, int]:
     """Save an edited scenario back to its ``*.yaml`` (bounded to the target's scenarios dir).
 
@@ -861,11 +904,11 @@ def save_scenario(
     target = str(body.get("target") or "") or None
     org = state.org_of(actor)
     # Deny saving into another org's target (BE-0015 multi-tenancy); single-tenant never forbids.
-    if target is not None and _target_forbidden(state, org, target):
+    if target is not None and _target_forbidden(state, org, target, session):
         return {"error": "forbidden"}, 403
     # Resolve the scope and screen the ref before parsing: a non-saveable path is reported ahead of
     # a YAML error (the local store passes an absolute path inside its dir).
-    scope = state.for_org(org).scenarios.scope(target)
+    scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
     ref = body.get("path")
     ref = ref if isinstance(ref, str) else None
     if scope is None or not valid_scenario_ref(ref, allow_absolute=True):
@@ -970,10 +1013,14 @@ def respond_human(state: ServeState, job_id: str, body: dict[str, Any]) -> tuple
 # Each return is a distinct HTTP status from a validation guard — the early-return shape RET505
 # itself asks for (BE-0386).
 def resolve_scenario_pick(  # noqa: PLR0911
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState,
+    body: dict[str, Any],
+    *,
+    actor: str | None = None,
+    session: str | None = None,
 ) -> tuple[Any, int]:
     """Resolve a point against a step's stored elements.json — no live driver."""
-    cfg = state.config
+    cfg = state.binding_for(session, state.org_of(actor)).config
     if cfg is None:
         return {"error": "open a config first"}, 400
 
@@ -995,7 +1042,7 @@ def resolve_scenario_pick(  # noqa: PLR0911
     except (TypeError, ValueError):
         return {"error": "point must be [x, y] normalized"}, 400
 
-    _org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    _org, forbidden = _resolve_org_or_forbid(state, target, actor, session)
     if forbidden:
         return forbidden
 

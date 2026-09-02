@@ -4,6 +4,7 @@ already get (BE-0090). A local or startup-bound config stays operator-trusted.""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -20,20 +21,21 @@ def _state(tmp_path: Path) -> srv.ServeState:
 def test_governed_build_keeps_a_trusted_config_build(tmp_path: Path) -> None:
     # A local/startup config (neither an upload nor an API-bound Git config) is operator-trusted:
     # its build command is left intact.
-    assert _governed_build(_state(tmp_path), "make build") == "make build"
+    state = _state(tmp_path)
+    assert _governed_build(state, state.binding, "make build") == "make build"
 
 
 def test_governed_build_nulls_api_bound_git_build(tmp_path: Path) -> None:
     state = _state(tmp_path)
-    state.git_config_from_api = True
-    assert _governed_build(state, "make build") is None
+    state.binding = replace(state.binding, git_from_api=True)
+    assert _governed_build(state, state.binding, "make build") is None
 
 
 def test_governed_build_runs_api_bound_git_build_with_opt_in(tmp_path: Path) -> None:
     state = _state(tmp_path)
-    state.git_config_from_api = True
+    state.binding = replace(state.binding, git_from_api=True)
     state.allow_remote_build = True
-    assert _governed_build(state, "make build") == "make build"
+    assert _governed_build(state, state.binding, "make build") == "make build"
 
 
 def test_api_bound_git_config_is_marked_untrusted(
@@ -57,11 +59,11 @@ def test_api_bound_git_config_is_marked_untrusted(
     try:
         status, _ = _post(port, "/api/config", {"git": "github:acme/repo@main"})
         assert status == 200
-        assert state.git_config_from_api is True
+        assert state.binding.git_from_api is True
         # A local config bound afterwards is operator-trusted again.
         status, _ = _post(port, "/api/config", {"path": str(cfg)})
         assert status == 200
-        assert state.git_config_from_api is False
+        assert state.binding.git_from_api is False
     finally:
         server.shutdown()
         server.server_close()

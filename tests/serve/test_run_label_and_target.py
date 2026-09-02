@@ -58,10 +58,10 @@ def test_launch_label_disambiguates_two_configs_from_one_repository() -> None:
 def test_the_label_defaults_to_the_bound_config_and_the_body_overrides_it(tmp_path: Path) -> None:
     _scn, cfg, runs = project(tmp_path)
     state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
-    assert _run_label(state, {}) == ("bajutsu.config", None)
-    assert _run_label(state, {"label": "nightly"}) == ("nightly", None)
+    assert _run_label(state.binding, {}) == ("bajutsu.config", None)
+    assert _run_label(state.binding, {"label": "nightly"}) == ("nightly", None)
     # A blank override is not a label — fall back to the default rather than recording "".
-    assert _run_label(state, {"label": "   "}) == ("bajutsu.config", None)
+    assert _run_label(state.binding, {"label": "   "}) == ("bajutsu.config", None)
 
 
 def test_an_oversized_label_is_refused_rather_than_truncated(tmp_path: Path) -> None:
@@ -69,10 +69,10 @@ def test_an_oversized_label_is_refused_rather_than_truncated(tmp_path: Path) -> 
     # the history that no longer matches what they filter on.
     _scn, cfg, runs = project(tmp_path)
     state = srv.ServeState(config=cfg, runs_dir=runs, cwd=tmp_path)
-    label, err = _run_label(state, {"label": "x" * (MAX_LABEL_LENGTH + 1)})
+    label, err = _run_label(state.binding, {"label": "x" * (MAX_LABEL_LENGTH + 1)})
     assert label is None
     assert err is not None and err[1] == 400
-    label, err = _run_label(state, {"label": 7})
+    label, err = _run_label(state.binding, {"label": 7})
     assert label is None
     assert err is not None and err[1] == 400
 
@@ -86,14 +86,14 @@ def test_a_long_derived_default_is_trimmed_rather_than_failing_every_run(tmp_pat
     long_config = tmp_path / (("c" * (MAX_LABEL_LENGTH + 40)) + ".yaml")
     long_config.write_text("targets: {}\n", encoding="utf-8")
     state = srv.ServeState(config=long_config, runs_dir=runs, cwd=tmp_path)
-    label, err = _run_label(state, {})
+    label, err = _run_label(state.binding, {})
     assert err is None
     assert label is not None and len(label) == MAX_LABEL_LENGTH
 
 
 def test_a_deployment_with_no_bound_config_records_no_label(tmp_path: Path) -> None:
     state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path)
-    assert _run_label(state, {}) == (None, None)
+    assert _run_label(state.binding, {}) == (None, None)
 
 
 # --- unit 3: the target stamp ---

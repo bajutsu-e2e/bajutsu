@@ -32,7 +32,8 @@ def doctor_check(
     state: ServeState,
     body: dict[str, Any],
     *,
-    actor: str | None = None,  # noqa: ARG001  # uniform operation signature
+    actor: str | None = None,
+    session: str | None = None,
     screen_query: ScreenQuery | None = None,
 ) -> tuple[Any, int]:
     """Run doctor for a target: config validation, tool runnability, and the screen's convention score.
@@ -49,7 +50,7 @@ def doctor_check(
             device allow-lists (BE-0051) before selecting the actuator or reaching a driver.
         screen_query: overrides the live screen query for testing; defaults to the real one.
     """
-    cfg = state.config
+    cfg = state.binding_for(session, state.org_of(actor)).config
     if cfg is None:
         return {"error": "open a config first"}, 400
     if not body.get("target"):

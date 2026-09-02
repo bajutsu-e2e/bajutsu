@@ -20,11 +20,12 @@ def start_enrich(
     body: dict[str, Any],
     *,
     actor: str | None = None,
+    session: str | None = None,
     driver_factory: Any | None = None,
     agent_factory: Any | None = None,
 ) -> tuple[Any, int]:
     """Replay a scenario's steps and propose assertions via an enrichment agent."""
-    cfg = state.config
+    cfg = state.binding_for(session, state.org_of(actor)).config
     if cfg is None:
         return {"error": "open a config first"}, 400
     if not body.get("target"):
@@ -33,7 +34,7 @@ def start_enrich(
         return {"error": "scenario is required"}, 400
 
     target = str(body["target"])
-    org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    org, forbidden = _resolve_org_or_forbid(state, target, actor, session)
     if forbidden:
         return forbidden
 
@@ -42,7 +43,7 @@ def start_enrich(
     if target_cfg is None:
         return {"error": f"unknown target: {target}"}, 400
 
-    scope = state.for_org(org).scenarios.scope(target)
+    scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
     scenario_text = scope.read(str(body["scenario"])) if scope else None
     if scenario_text is None:
         return {"error": "scenario not found"}, 404
@@ -83,7 +84,8 @@ def start_enrich(
         udid = "booted"
 
     factory = driver_factory or _default_driver_factory
-    driver, teardown = factory(_session_effective(state, config, target), backends_list, udid)
+    effective = _session_effective(state, config, target, session, state.org_of(actor))
+    driver, teardown = factory(effective, backends_list, udid)
 
     from bajutsu.common.agents.enrich import enrich
 

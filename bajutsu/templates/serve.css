@@ -725,6 +725,11 @@ header .appversion .dirty{color:var(--acc);font-weight:700}
 /* Which org this session acts as (BE-0375), beside the config name it acts on. Reads as a quiet
    label rather than a control: it is a fact about the session, and nothing here changes it. */
 .orgbadge{font-size:.78rem;padding:.1rem .4rem;border:1px solid var(--line);border-radius:.5rem;color:var(--mut);white-space:nowrap}
+/* The bound config's origin (BE-0393 unit 7), read as an annotation on the config name beside
+   it rather than as a second badge competing with the org's — hence no border. */
+.cfgorigin{font-size:.72rem;color:var(--mut);white-space:nowrap;opacity:.85}
+/* What a bind reaches, stated in the modal that makes one. */
+.inheritnote{font-size:.8rem;color:var(--mut);padding:.5rem .8rem;border-bottom:1px solid var(--line)}
 /* That card fills its cell and scrolls its (shadow-DOM report) body, not the page. */
 .statscard{display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .statshost{flex:1;min-height:0;overflow:auto;margin-top:.6rem}

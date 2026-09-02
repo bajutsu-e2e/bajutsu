@@ -84,10 +84,12 @@ class _FastapiCtx:
         request: Request,
         body: dict[str, Any],
         actor: Callable[[], str | None],
+        session: Callable[[], str | None],
     ) -> None:
         self._request = request
         self._body = body
         self._actor = actor
+        self._session = session
 
     def path_param(self, name: str) -> str:
         return str(self._request.path_params[name])
@@ -100,6 +102,9 @@ class _FastapiCtx:
 
     def actor(self) -> str | None:
         return self._actor()
+
+    def session(self) -> str | None:
+        return self._session()
 
 
 def _serve_artifact(art: Any, request: Request, *, filename: str | None = None) -> Response:
@@ -135,6 +140,14 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
 
     def _actor(request: Request) -> str | None:
         return gate.actor_for(state.auth, request.cookies.get(_SESSION_COOKIE))
+
+    def _session(request: Request) -> str | None:
+        """This request's login-session id, or None for a shared-token caller (BE-0393 unit 2) — the
+        hosted twin of the stdlib handler's `_session_value`. A cookie naming a session the store no
+        longer knows resolves to None, so a revoked session reads the fallback binding rather than a
+        slot it can no longer own."""
+        sid = request.cookies.get(_SESSION_COOKIE)
+        return sid if sid is not None and state.auth.valid_session(sid) else None
 
     @app.middleware("http")
     async def _security_gate(request: Request, call_next: Any) -> Response:
@@ -365,6 +378,7 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
                     filename,
                     sha256=received.digest(),
                     actor=_actor(request),
+                    session=_session(request),
                 )
             )
         finally:
@@ -427,6 +441,7 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
                     received.path,
                     target=target,
                     actor=_actor(request),
+                    session=_session(request),
                 )
             )
         finally:
@@ -456,7 +471,7 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
                 if not isinstance(parsed, dict):
                     return _result(({"error": "expected a JSON object"}, 400))
                 body = parsed
-            ctx = _FastapiCtx(request, body, lambda: _actor(request))
+            ctx = _FastapiCtx(request, body, lambda: _actor(request), lambda: _session(request))
             # The `ops` call blocks (disk / network / subprocess), so run it off the event loop —
             # uniformly, so a route like the from-Git config bind or compose stays non-blocking
             # exactly as its hand-written predecessor did.

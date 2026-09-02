@@ -143,7 +143,7 @@ def test_http_open_config_binds_and_lists_apps(tmp_path: Path) -> None:
 
 
 def test_http_open_local_config_from_subdir_binds_config_dir(tmp_path: Path) -> None:
-    # Binding a local config that lives in a *subdirectory* of the browse root repoints state.cwd to
+    # Binding a local config that lives in a *subdirectory* of the browse root repoints state.binding.cwd to
     # that subdirectory, so the config's relative paths resolve from beside it, not from serve's launch
     # dir (BE-0242) — the local counterpart of the Git bind below. The config sits under a subdir (not
     # directly at the root) so the config dir genuinely differs from the launch dir.
@@ -167,8 +167,10 @@ def test_http_open_local_config_from_subdir_binds_config_dir(tmp_path: Path) -> 
     try:
         status, resp = _post(port, "/api/config", {"path": str(cfg)})
         assert status == 200 and resp["ok"] is True and resp["targets"] == ["demo"]
-        assert state.config == cfg
-        assert state.cwd == proj  # cwd repointed to the config's own directory, not the launch dir
+        assert state.binding.config == cfg
+        assert (
+            state.binding.cwd == proj
+        )  # cwd repointed to the config's own directory, not the launch dir
         # The relative `scenarios: scn` resolves against proj/, so the listing finds smoke.yaml.
         assert _get_json(port, "/api/scenarios?target=demo")[0]["names"] == ["s"]
     finally:
@@ -180,7 +182,7 @@ def test_http_open_config_from_git_binds_checkout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The "from Git" picker: a github: spec materializes a checkout, binds its config, and repoints
-    # state.cwd to the checkout root so build/scenarios resolve there (BE-0063).
+    # state.binding.cwd to the checkout root so build/scenarios resolve there (BE-0063).
     import bajutsu.serve.operations.config as ops  # bind_git_config resolves `materialize` here
     from bajutsu.common.config_source import Materialized
 
@@ -208,16 +210,18 @@ def test_http_open_config_from_git_binds_checkout(
         assert status == 200 and resp["ok"] is True
         assert resp["targets"] == ["fromgit"]  # targets come from the fetched config
         assert resp["source"]["sha"] == "deadbeefcafe"  # the resolved commit is surfaced
-        assert state.config == git_cfg  # config repointed to the checkout
-        assert state.cwd == checkout  # cwd repointed so the checkout's relative paths resolve
+        assert state.binding.config == git_cfg  # config repointed to the checkout
+        assert (
+            state.binding.cwd == checkout
+        )  # cwd repointed so the checkout's relative paths resolve
         # The relative `scenarios: e2e` resolves against the checkout, so the listing finds smoke.yaml.
         assert _get_json(port, "/api/scenarios?target=fromgit")[0]["names"] == ["s"]
         assert _get_json(port, "/api/config")["hasConfig"] is True
         # The bind stamps the resolved commit into state, and /api/config/content surfaces the raw
         # YAML plus that provenance (BE-0063) — so the UI can confirm which commit is actually bound,
         # not just the opaque cache path.
-        assert state.config_provenance is not None
-        assert state.config_provenance["sha"] == "deadbeefcafe"
+        assert state.binding.provenance is not None
+        assert state.binding.provenance["sha"] == "deadbeefcafe"
         content = _get_json(port, "/api/config/content")
         assert content["content"] == git_cfg.read_text(encoding="utf-8")
         assert content["provenance"]["sha"] == "deadbeefcafe"
@@ -257,7 +261,7 @@ def test_http_config_content_uses_restricted_loader_and_stays_json_safe(tmp_path
     # The parsed structure must use the project's restricted YAML loader (so an `on:` key stays the
     # string "on", not the bool True as YAML 1.1 would coerce it) and must be JSON-serializable — a
     # bare `date` from a timestamp would otherwise make the handler's json.dumps 500. config_content
-    # reads state.config directly (no schema re-validation), so a tricky file exercises both.
+    # reads state.binding.config directly (no schema re-validation), so a tricky file exercises both.
     _, _, runs = project(tmp_path)
     cfg = tmp_path / "tricky.yaml"
     cfg.write_text("on: 1\nreleased: 2020-01-02\ndefaults: { backend: [ios] }\n", encoding="utf-8")
@@ -308,7 +312,7 @@ def test_http_git_config_with_escaping_path_is_refused(
     try:
         status, resp = _post(port, "/api/config", {"git": "github:acme/repo@main"})
         assert status == 400 and "invalid config" in resp["error"]
-        assert state.config is None  # the escaping config was not bound
+        assert state.binding.config is None  # the escaping config was not bound
     finally:
         server.shutdown()
         server.server_close()
@@ -439,7 +443,7 @@ def test_http_hosted_refuses_path_bind_but_git_still_binds(
     try:
         status, resp = _post(port, "/api/config", {"path": "bajutsu.config.yaml"})
         assert status == 403 and "file browser is disabled" in resp["error"]
-        assert state.config is None  # the refused path bind changed nothing
+        assert state.binding.config is None  # the refused path bind changed nothing
         # The Git branch still binds — hosting keeps the two remote-usable sources.
         status, resp = _post(port, "/api/config", {"git": "github:acme/repo@main"})
         assert status == 200 and resp["ok"] is True and resp["targets"] == ["fromgit"]

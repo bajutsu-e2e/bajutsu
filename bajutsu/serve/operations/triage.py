@@ -14,7 +14,7 @@ from bajutsu.serve.state import Job, ServeState
 
 
 def start_triage(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None, session: str | None = None
 ) -> tuple[Any, int]:
     """Diagnose a failed run as a serve job — the "why did this fail?" the Replay/History view asks.
 
@@ -25,7 +25,8 @@ def start_triage(
     scenario-save path (``POST /api/scenario``). AI (``ai``) is opt-in and only an investigator; the
     deterministic heuristic agent is the default.
     """
-    cfg = state.config
+    binding = state.binding_for(session, state.org_of(actor))
+    cfg = binding.config
     if cfg is None:
         return {"error": "open a config first"}, 400
     run_id = str(body.get("runId") or "")
@@ -34,10 +35,10 @@ def start_triage(
     if not body.get("target") or not body.get("scenario"):
         return {"error": "target and scenario are required"}, 400
     target = str(body["target"])
-    org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    org, forbidden = _resolve_org_or_forbid(state, target, actor, session)
     if forbidden:
         return forbidden
-    scope = state.for_org(org).scenarios.scope(target)
+    scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
     if scope is None:
         return {"error": f"target '{target}' has no scenarios dir"}, 400
     # Resolve the client value to a trusted source path — never the raw string — so no client-controlled
@@ -54,8 +55,8 @@ def start_triage(
     if runnable.materials:
         return {"error": "triage in the web UI is not yet available on the server backend"}, 400
     # Resolve against base_cwd (serve's launch dir) so the run dir is absolute: the spawned triage
-    # runs with cwd=state.cwd, which a Git/upload config bind can repoint away from where runs live
-    # (BE-0063/BE-0073) — a relative runs_dir would then resolve against the wrong tree.
+    # runs with the session's bound cwd, which a Git/upload config bind can repoint away from where
+    # runs live (BE-0063/BE-0073) — a relative runs_dir would then resolve against the wrong tree.
     run_dir = (state.base_cwd / state.runs_dir / run_id).resolve()
     # A missing run is a client error, not a job that fails mid-stream (and would write triage.json
     # into a nonexistent dir). The manifest is what `triage` reads, so its absence is the check.
@@ -88,7 +89,7 @@ def start_triage(
         json_out=str(run_dir / "triage.json"),
         config=str(cfg),
     )
-    job, capped = _register_and_dispatch(state, Job(cmd=cmd, actor=actor, org=org))
+    job, capped = _register_and_dispatch(state, Job(cmd=cmd, actor=actor, org=org), binding=binding)
     if capped:
         return capped
     assert job is not None

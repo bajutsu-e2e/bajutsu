@@ -17,6 +17,7 @@ from _shared import FakeProc, fake_popen, project
 from bajutsu import serve as srv
 from bajutsu.common.backend_cli import simctl as simctl_mod
 from bajutsu.serve import jobs as srv_jobs
+from bajutsu.serve import operations as ops
 from bajutsu.serve import state as srv_state
 from bajutsu.serve.logbus import InMemoryLogBus
 from bajutsu.serve.uploads import Upload
@@ -837,9 +838,9 @@ def test_bind_upload_points_config_and_cwd_at_the_bundle(tmp_path: Path) -> None
     uploads.mkdir()
     state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, uploads_dir=uploads)
     up = _bundle(uploads, "u1")
-    state.bind_upload(up)
-    assert state.upload is up
-    assert state.config == up.config and state.cwd == up.root
+    state.bind_upload(up, None)
+    assert state.binding.upload is up
+    assert state.binding.config == up.config and state.binding.cwd == up.root
 
 
 def test_bind_upload_replaces_the_previous_bundle(tmp_path: Path) -> None:
@@ -850,25 +851,30 @@ def test_bind_upload_replaces_the_previous_bundle(tmp_path: Path) -> None:
     uploads.mkdir()
     state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, uploads_dir=uploads)
     first = _bundle(uploads, "first")
-    state.bind_upload(first)
+    state.bind_upload(first, None)
     second = _bundle(uploads, "second")
-    state.bind_upload(second)
-    assert state.upload is second and first.dir.exists()
+    state.bind_upload(second, None)
+    assert state.binding.upload is second and first.dir.exists()
     assert second.dir.exists()
 
 
-def test_release_upload_keeps_the_cache_and_resets_cwd(tmp_path: Path) -> None:
-    # Switching away from a bundle (any other config source) drops the *binding* and restores cwd to
-    # serve's launch dir, so the file-browser/Git sources don't inherit a stale bundle cwd — but the
-    # extraction cache dir itself persists (BE-0243), ready for reuse.
+def test_binding_another_source_keeps_the_extraction_cache(tmp_path: Path) -> None:
+    # Switching away from a bundle drops the *binding* — the bundle, its owner, and its cwd go with
+    # the replaced value — but the extraction cache dir itself persists (BE-0243), ready for reuse.
     uploads = tmp_path / "uploads"
     uploads.mkdir()
-    state = srv.ServeState(runs_dir=tmp_path / "runs", cwd=tmp_path, uploads_dir=uploads)
+    picked = tmp_path / "next.config.yaml"
+    picked.write_text("targets: {}\n", encoding="utf-8")
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs", cwd=tmp_path, uploads_dir=uploads, root=tmp_path
+    )
     up = _bundle(uploads, "u1")
-    state.bind_upload(up)
-    state.release_upload()
-    assert state.upload is None and up.dir.exists()
-    assert state.cwd == state.base_cwd == tmp_path
+    state.bind_upload(up, None)
+
+    assert ops.bind_config(state, "next.config.yaml")[1] == 200
+
+    assert state.binding.upload is None and up.dir.exists()
+    assert state.binding.cwd == picked.resolve().parent
 
 
 class _CapturingProvider:

@@ -193,6 +193,7 @@ def _aggregate(
     crawl: str,
     *,
     actor: str | None,
+    session: str | None,
 ) -> _Report:
     """Build the coverage map for *target*, folding in each dimension its inputs support.
 
@@ -202,23 +203,24 @@ def _aggregate(
             without the runs that say which of its screens were visited — plus the one the caller
             cannot: a target another org owns, which raises with a 403.
     """
-    if state.config is None:
+    org = state.org_of(actor)
+    binding = state.binding_for(session, org)
+    if binding.config is None:
         raise _CoverageError("open a config first")
     if not target:
         raise _CoverageError("target is required")
 
-    config = load_config(state.config.read_text(encoding="utf-8"))
+    config = load_config(binding.config.read_text(encoding="utf-8"))
     if target not in config.targets:
         raise _CoverageError(f"unknown target: {target}")
 
     # The static dimension reads the target's suite straight off the checkout, which is not org-scoped
     # — so without this guard an actor of one org could read another org's declared namespaces, its
     # referenced ids, and its gap list (BE-0015). Single-tenant serve never forbids.
-    org = state.org_of(actor)
-    if _target_forbidden(state, org, target):
+    if _target_forbidden(state, org, target, session):
         raise _CoverageError("forbidden", status=403)
 
-    scenarios_dir = _scenarios_dir_for(state, target)
+    scenarios_dir = _scenarios_dir_for(state, target, session, org)
     if scenarios_dir is None or not scenarios_dir.is_dir():
         raise _CoverageError(f"target '{target}' has no scenarios dir")
     try:
@@ -288,7 +290,7 @@ def _runs_from_query(raw: str | None) -> list[str]:
 
 
 def coverage_view(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None, session: str | None = None
 ) -> tuple[Any, int]:
     """Aggregate a target's E2E coverage map for the Web UI's Coverage view.
 
@@ -306,6 +308,7 @@ def coverage_view(
             _runs_from_body(body.get("runs")),
             str(body.get("crawl") or ""),
             actor=actor,
+            session=session,
         )
     except _CoverageError as e:
         return {"error": str(e)}, e.status
@@ -329,6 +332,7 @@ def coverage_html(
     crawl: str | None,
     *,
     actor: str | None = None,
+    session: str | None = None,
 ) -> tuple[str, int]:
     """The same coverage map as a linkable page — ``GET /coverage``, the route `/stats`,
     `/flakiness`, and `/usage` each already have (BE-0146).
@@ -339,7 +343,9 @@ def coverage_html(
     show raw.
     """
     try:
-        report = _aggregate(state, target or "", _runs_from_query(runs), crawl or "", actor=actor)
+        report = _aggregate(
+            state, target or "", _runs_from_query(runs), crawl or "", actor=actor, session=session
+        )
     except _CoverageError as e:
         return _error_page(str(e)), e.status
     return report.html(), 200
