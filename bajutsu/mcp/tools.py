@@ -8,10 +8,10 @@ from pathlib import Path
 
 from fastmcp import FastMCP
 
-from bajutsu import device_errors
 from bajutsu.common.backends import select_actuator
 from bajutsu.common.config import Effective, load_config, resolve
-from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
+from bajutsu.common.devices import errors as device_errors
+from bajutsu.common.doctor import DoctorProbeError, probe_screen, render, score
 
 
 def _load_effective(config_path: Path, target: str) -> Effective:

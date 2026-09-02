@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from _runner import _eff, _el, _web_eff
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import Effective
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver, FakeNetworkCollector

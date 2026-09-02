@@ -1,7 +1,7 @@
 """The filesystem run root is named in one place (BE-0331 unit 3).
 
 The import contract in `pyproject.toml` keeps every module but `bajutsu.common.evidence.sink` from reaching
-`bajutsu.run_root`, the provider that derives a writable run directory. That leaves one way to reach
+`bajutsu.common.run_meta.root`, the provider that derives a writable run directory. That leaves one way to reach
 a run directory without the provider: rebuild its path from the literal. This check closes it, so the
 two halves together state a property of the whole source tree rather than of a curated list of
 writers — a module that does not exist yet is covered the moment it does.
@@ -18,12 +18,12 @@ from pathlib import Path
 
 import bajutsu
 from bajutsu.common.evidence import sink
-from bajutsu.run_files import DEFAULT_RUNS_DIR
+from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 
 _PACKAGE = Path(bajutsu.__file__).parent
 # The one module allowed to name the root: it defines `DEFAULT_RUNS_DIR`, which every other module
 # imports instead of repeating the literal.
-_PROVIDER = _PACKAGE / "run_files.py"
+_PROVIDER = _PACKAGE / "common" / "run_meta" / "files.py"
 
 # Built from the constant, so renaming the default root moves the check with it rather than leaving
 # it hunting a stale word. Five shapes derive a filesystem path from the literal — `Path("runs")`
@@ -55,7 +55,7 @@ def test_no_module_but_the_provider_derives_the_run_root_from_a_literal() -> Non
         assert match is None, (
             f"{path.relative_to(_PACKAGE.parent)} derives the run root from the literal "
             f"{match.group(0)!r} (line {source[: match.start()].count('\n') + 1}); import "
-            f"DEFAULT_RUNS_DIR / runs_root() from bajutsu.run_files instead (BE-0331)"
+            f"DEFAULT_RUNS_DIR / runs_root() from bajutsu.common.run_meta.files instead (BE-0331)"
         )
     # A floor, so a rewrite that leaves the scan reaching no source fails here rather than passing
     # vacuously. Raise it freely; it only records that the check still has teeth.

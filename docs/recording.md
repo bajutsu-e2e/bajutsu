@@ -6,7 +6,7 @@
 > then writes out a **deterministic scenario**. AI is involved only here (at record time). The
 > resulting YAML is AI-independent and is owned by the user from that point forward.
 >
-> Implementation: `bajutsu/record.py` (the loop) · `bajutsu/agents/protocols.py` + `bajutsu/agents/factory.py`
+> Implementation: `bajutsu/record/loop.py` (the loop) · `bajutsu/agents/protocols.py` + `bajutsu/agents/factory.py`
 > (the abstraction + construction) · `bajutsu/agents/claude.py` (the SDK authoring agent) ·
 > `bajutsu/agents/alerts.py` (system-alert handling). The breadth-first explorer `bajutsu/crawl/` shares
 > the same agent.
@@ -108,7 +108,7 @@ The output is serialized to YAML via `dump_scenarios`
 
 Some flows are gated by something the AI cannot supply — a one-time password, a CAPTCHA, a biometric
 prompt. When a turn's outcome is "needs human" (`proposal.needs_human`), the loop pauses and hands
-control to a human through the transport-neutral `Handoff` contract (`handoff.py`): a request (why it
+control to a human through the transport-neutral `Handoff` contract (`common/handoff.py`): a request (why it
 paused, plus the current screen summary and screenshot) goes out, a response (a supplied value, or "I
 operated the device — re-observe", or cancel) comes back, and the loop resumes by re-observing the
 live screen. The human is only ever in the loop **while authoring**; the recorded scenario replays

@@ -10,12 +10,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
 
 if TYPE_CHECKING:
-    from bajutsu.doctor import Score
+    from bajutsu.common.doctor import Score
 
 import typer
 from pydantic import ValidationError
 
-from bajutsu import device_errors
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _load_effective_with_source,
@@ -30,11 +29,15 @@ from bajutsu.common.assertions import GoldenContext
 from bajutsu.common.backends import select_actuator_for_scenario
 from bajutsu.common.cancellation import CancelSource, graceful_sigterm
 from bajutsu.common.config import WEB_ENGINES, Effective, IosConfig
+from bajutsu.common.deprecations import warn_once
+from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.github import actions as github_actions
 from bajutsu.common.orchestrator import DEFAULT_ALERT_POLL_INTERVAL, AlertGuardConfig, RunResult
 from bajutsu.common.orchestrator.types import ResolvedAlertRule
 from bajutsu.common.report.archive import archive_run_dir
 from bajutsu.common.report.manifest import MAX_LABEL_LENGTH, _run_backend
+from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
+from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import device_pool, run_all, run_and_report, run_matrix_and_report
 from bajutsu.common.runner.build import BuildError, build_if_missing
 from bajutsu.common.runner.device_provider import acquire_device
@@ -60,10 +63,7 @@ from bajutsu.common.scenario.system_alerts import (
     covered_languages,
     system_alert_label,
 )
-from bajutsu.deprecations import warn_once
 from bajutsu.platform_lifecycle import ProvisionProfile, environment_for
-from bajutsu.run_files import DEFAULT_RUNS_DIR
-from bajutsu.run_id import new_run_id
 
 
 def _parse_browsers(browsers: str) -> list[str]:
@@ -733,7 +733,7 @@ def _print_score(score: Score) -> None:
     the AI-usage summary follow. Diagnostic only (prime directive 1): the grade never touches the run's
     exit code, which stays the assertions' machine-only verdict.
     """
-    from bajutsu.doctor import render
+    from bajutsu.common.doctor import render
 
     typer.echo("doctor (convention score):", err=True)
     typer.echo(render(score), err=True)
@@ -753,7 +753,7 @@ def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path]:
     )
     # Webhook: 'start' notification for endpoints that subscribe to it (BE-0099).
     if plan.eff.notify:
-        from bajutsu import notify
+        from bajutsu.run import notify
 
         notify.emit_start(
             run_id=plan.run_id,
@@ -921,7 +921,11 @@ def _upload_evidence(manifest: Path, evidence_store: str) -> None:
     object_store is imported lazily so the default path never loads the cloud SDKs. Any failure — a
     bad URI, a missing SDK, or missing/denied credentials — warns and never flips the exit code.
     """
-    from bajutsu.object_store import object_store_from_uri, parse_store_uri, upload_tree
+    from bajutsu.common.run_meta.object_store import (
+        object_store_from_uri,
+        parse_store_uri,
+        upload_tree,
+    )
 
     run_dir = manifest.parent
     try:
@@ -952,7 +956,7 @@ def _finish(plan: _RunPlan, results: list[RunResult], manifest: Path) -> None:
     github_actions.emit(results, manifest.parent / "report.html")  # annotations + summary in CI
     # Webhook: post-verdict notification (BE-0099).
     if plan.eff.notify:
-        from bajutsu import notify
+        from bajutsu.run import notify
 
         # Actuator selection is per scenario (BE-0240), so report the distinct actuators that
         # actually ran — joined when a run mixed idb and XCUITest — not the single pool pick; fall

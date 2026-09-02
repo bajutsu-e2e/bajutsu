@@ -7,7 +7,7 @@ import typer
 
 def schema() -> None:
     """Print the JSON Schema for scenario files (for editor integration)."""
-    from bajutsu.lint import scenario_json_schema
+    from bajutsu.common.lint import scenario_json_schema
 
     typer.echo(scenario_json_schema())
 

@@ -5,7 +5,7 @@ judge whether the system-alert guard's vision locator answers them correctly
 ([BE-0308](../../../roadmaps/BE-0308-alerts-guard-real-model-verification/BE-0308-alerts-guard-real-model-verification.md)).
 
 Each fixture is a pair: `<name>.png` is what the guard's own capture path would hand the model
-(`bajutsu.screenshots.screenshot_bytes`, downscale included), and `<name>.json` records the screen it
+(`bajutsu.common.screenshots.screenshot_bytes`, downscale included), and `<name>.json` records the screen it
 was captured against plus every button on the dialog, read from the device's accessibility tree
 rather than measured by eye.
 

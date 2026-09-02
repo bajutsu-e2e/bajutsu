@@ -4,7 +4,7 @@
 
 ツール本体はアプリ非依存です。アプリ固有の差分はすべて config に置くので、同じバイナリと同じドライバで複数のターゲットを実行できます。ターゲットを追加するときは `targets.<name>` を 1 つ加えるだけです。
 
-実装: `bajutsu/common/config/resolve.py`（解決） · `bajutsu/doctor.py`（規約充足度スコア）。config はリポジトリのルートには同梱されていません。`--config`（既定のファイル名は `bajutsu.config.yaml`）で渡します。デモにはすぐ動くものが同梱されています（例: [`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml)（iOS）、[`demos/web/demo.config.yaml`](../../demos/web/demo.config.yaml)（web））。
+実装: `bajutsu/common/config/resolve.py`（解決） · `bajutsu/common/doctor.py`（規約充足度スコア）。config はリポジトリのルートには同梱されていません。`--config`（既定のファイル名は `bajutsu.config.yaml`）で渡します。デモにはすぐ動くものが同梱されています（例: [`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml)（iOS）、[`demos/web/demo.config.yaml`](../../demos/web/demo.config.yaml)（web））。
 
 関連: [concepts のアプリ非依存](concepts.md#6-アプリ非依存差分は-config-に寄せる) · [drivers](drivers.md) · [scenarios](scenarios.md)
 
@@ -269,7 +269,7 @@ showcase の id カタログは [showcase](showcase.md)（全体は `demos/showc
 
 ## doctor（規約充足度スコア）
 
-実装: `bajutsu/doctor.py`。**AI 非依存で決定的**です。1 画面の `query()`（CLI は actuator で取得した現在画面）を解析してスコアを出します。
+実装: `bajutsu/common/doctor.py`。**AI 非依存で決定的**です。1 画面の `query()`（CLI は actuator で取得した現在画面）を解析してスコアを出します。
 
 > `doctor` はまず**実行可能ゲート**（`preflight.py`）を確認し、その後でスコアを出します。ゲートが確認する内容は、選んだバックエンドが必要とするものです。iOS（XCUITest）バックエンドなら `xcodebuild` / `xcrun`、および起動済みシミュレータ。web（Playwright）バックエンドなら Playwright パッケージとその Chromium ブラウザ（`uv sync --extra web` と `playwright install chromium`）です。続いて現在画面を採点します。web ターゲットでは新しいブラウザをターゲットの `baseUrl` に遷移させてそのページを採点し、iOS では起動済みシミュレータの画面を採点します。スコアの対象は、依然として現在表示されている画面だけです（入口や現在画面のみで、全画面は網羅しません）。
 

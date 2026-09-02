@@ -17,7 +17,8 @@ from typing import Any
 import pytest
 
 import bajutsu.common.drivers.adb as adb_driver_mod
-from bajutsu import adb, stall_diagnostics
+from bajutsu.common import stall_diagnostics
+from bajutsu.common.backend_cli import adb
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.actuation import Actuation
 from bajutsu.common.drivers.adb import (

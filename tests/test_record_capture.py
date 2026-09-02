@@ -11,7 +11,7 @@ from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.scenario import Redact, load_scenarios
 from bajutsu.common.scenario.models import Scenario, Selector
 from bajutsu.common.scenario.serialize import dump_scenario_file
-from bajutsu.record_capture import (
+from bajutsu.record.capture import (
     hit_test,
     resolve_capture,
     selector_for_element,

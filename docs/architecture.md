@@ -104,30 +104,38 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `common/config/` | Team defaults × per-target resolution (`Effective`) (package: `schema` / `effective` / `resolve` / `accessors`) | [configuration](configuration.md) |
 | `common/config_source.py` | Acquire a config (and its scenario tree) from a Git source at an immutable commit SHA into a content-addressed cache (BE-0063) — where a config comes from, distinct from `common/config/`'s schema and resolution | [configuration](configuration.md) |
 | `common/backends.py` | Backend availability check · actuator selection (platform-aware registry: `ios` / `android` / `web` / `fake`) · driver construction | [drivers](drivers.md#backend-selection-and-the-actuator) |
-| `simctl.py` | `simctl` wrapper (erase/boot/launch/openurl/io) | [drivers](drivers.md#environment-management-simctl) |
+| `common/devices/` | Device-identity helpers shared across backends (package): `os.py` (the parsed device OS — platform/major/minor — read from the `device_runtime` label, BE-0358), `id.py` (the device-id validator every backend's `--udid`/config path shares, guarding against argv option injection), `errors.py` (the platform-neutral `DeviceError` base `simctl`/`adb` subclass, BE-0260) | [drivers](drivers.md) |
+| `common/backend_cli/` | Backend command-line wrappers (package): `simctl.py` (`simctl` wrapper — erase/boot/launch/openurl/io), `adb.py` (the adb command-builder half of the Android backend — clean-state/launch/deeplink/input/screencap, the twin of `simctl`), `adb_resident.py` (the resident UI Automator server channel's Python side, BE-0245) | [drivers](drivers.md#environment-management-simctl) |
 | `platform_lifecycle/` | The `Environment` seam (BE-0009): one `RunEnvironment`/`CrawlEnvironment` Protocol per platform for per-run app bring-up, readiness, relaunch, device control, and teardown, so `common/runner/` and `cli/commands/crawl.py` drive iOS/Android/web through one interface instead of branching on the actuator name (package: `protocols` / `factories` / `readiness` / `relaunchers` / `device_control` / `read_session`, plus `environments/` — `ios` / `xcuitest` / `xcuitest_live` / `android` / `web` / `fake`) | — |
 | `common/capability/preflight.py` · `common/capability/capability_preflight.py` · `common/capability/capabilities.py` | Runnability gate, per backend (iOS: required CLIs + a booted Simulator; web: Playwright + its Chromium browser), plus a scenario step's declared-capability preflight and the capability set each backend actually supports | [configuration](configuration.md) |
 | `common/provisioning/requirements.py` | One declarative mapping: backend/capability → pip extra + external-tool probe + install method (BE-0164), shared by `preflight` and `provision` | — |
 | `common/provisioning/provision.py` | Config-aware environment installer (BE-0164): resolve a config's backends + AI provider, install only their extras/tools idempotently (`make install`, `python -m bajutsu.common.provisioning.provision`) | — |
 | `common/runner/` | config + scenarios → report; device pool + launch sequence; `device_provider` seam resolves where the run's devices come from — the built-in `local` pass-through, plus an `appium` provider driving a reserved iOS device end to end behind a live Appium/WebDriver endpoint (BE-0238); a further cloud-vendor kind (e.g. Firebase Device Streaming) stays a future addition; `recovery` holds the backend-crash retry-count/wall-clock-budget decision shared with the on-device driver conformance suite (BE-0334), plus the two predicates that classify a failure for it — `recovers_by_respawn` decides a retry, `is_host_fault` diagnoses a failure the host caused, and a wedged CoreSimulator answers the two differently (BE-0378), plus the guarded-teardown policy that the pool's teardown sites, `launch_driver`, and the on-device suites' lease discard all share (BE-0342); `mailbox` resolves the `email` step's transport by a registry keyed on `kind` (the shipped `http` JSON adapter; BE-0186), mirroring `common/ai/registry.py`'s shape (package: `pipeline` / `pool` / `launch` / `device_provider` / `recovery` / `mailbox`) | [run-loop](run-loop.md#runner-the-run-pipeline) |
-| `doctor.py` | Convention score (id coverage, etc.) | [configuration](configuration.md#doctor-the-convention-score) |
+| `common/run_meta/` | Run-metadata helpers shared across features (package): `files.py` (the runs-root name + path-free reads of a run directory — listing, manifests), `id.py` (run id generation/parsing), `root.py` (the run directory's write provider, BE-0331 — see the import contract below), `artifact_perms.py` (owner-only `0700`/`0600` permissions for a run's artifacts, BE-0131), `object_store.py` (a backend-agnostic `ObjectStore` — local/S3/GCS — for evidence upload and server storage, BE-0110/BE-0204) | [configuration](configuration.md) |
+| `run/notify.py` | Run-completion notifications (e.g. Slack), sent after `bajutsu run` finishes | — |
+| `common/doctor.py` | Convention score (id coverage, etc.) | [configuration](configuration.md#doctor-the-convention-score) |
 | `common/agents/` | AI / authoring-agent periphery (BE-0257), moved under `common/` (reorg successor to BE-0257): `protocols` + `factory` (the `Observation`/`Proposal`/`Agent` abstraction + construction of the one SDK-backed agent), `claude` (the authoring agent), `claude_backed` (shared base, BE-0246), `claude_enrich`, `claude_triage`, `ai_config` (provider/model/effort/language resolution), `anthropic_client` (SDK client construction), `availability` (credential-gap messaging), `enrich` (the enrichment loop), `alerts` (system-alert guard) | [recording](recording.md) |
 | `common/ai/` | Vendor-neutral AI backend seam (BE-0104), moved under `common/` (reorg successor to BE-0257): `AiBackend` protocol + normalized request/response types (`base`), provider registry (`registry`) covering the Anthropic API and Amazon Bedrock via the reference adapter over `common.agents.anthropic_client` (`anthropic`), the Anthropic CLI `ant` (also via the `anthropic` adapter, BE-0163), the Claude Code CLI (`claude_code`, BE-0176), and the `none` switch whose factory raises so no AI path can construct a backend (`disabled`, BE-0394) | [configuration](configuration.md#ai-provider-ai-be-0047) |
-| `record.py` | The record loop (observe → propose → execute → emit) | [recording](recording.md#the-record-loop) |
+| `record/` | The record loop (observe → propose → execute → emit) (package: `loop.py`, plus `capture.py` — proxy-actuation capture of tap/type/swipe into a scenario step) | [recording](recording.md#the-record-loop) |
 | `crawl/` | Autonomous breadth-first crawl → screen map: `core` engine + `serialize`, with `guide` / `tabs` / `report` / `repro` / `flows` | [recording](recording.md) |
 | `codegen/` | Scenario → native test generation: XCUITest (Swift), Playwright (TypeScript), UI Automator (Kotlin) | [codegen](codegen.md) |
 | `trace.py` | Text timeline over a saved run (the `trace` command) | [cli](cli.md) |
-| `triage.py` | M4 self-heal: rule-based `HeuristicTriageAgent` + structured fixes (`renameId`/`addIndex`/`raiseTimeout`), `--apply`/`--write`/`--rerun` | [cli](cli.md) |
+| `triage/` | M4 self-heal: rule-based `HeuristicTriageAgent` + structured fixes (`renameId`/`addIndex`/`raiseTimeout`), `--apply`/`--write`/`--rerun` (package: `heuristic.py`) | [cli](cli.md) |
 | `common/github/` | GitHub helpers: `actions` (CI, continuous integration, annotations + job summary), `app` (App installation token for the private-repo config source), `errors` (the shared access error) | [ci](ci.md) |
 | `common/analytics/` | Token/cost accounting, split by role (BE-0257): `usage` (process-global, in-memory, best-effort) / `ledger` (attributed, persistent AI usage/cost ledger, BE-0196) / `stats` (aggregates the ledger for the serve usage dashboard, BE-0195) | [web-ui](web-ui.md#usage--the-ai-token-usage-and-cost-dashboard) |
 | `common/cloud/` | Cloud device backends reached as batch submitters, off the deterministic `run`/CI verdict path (`devicefarm.py`, the first concrete provider) | [devicefarm](devicefarm.md) |
 | `serve/` | Local web UI (the `serve` command): author / run / reports / triage a failed run | [cli](cli.md) |
 | `mcp/` | MCP server: exposes `run`/`doctor` as tools + run evidence as resources | [cli](cli.md) |
-| `lint.py` | Scenario linter + JSON Schema generation (`lint` / `schema` commands) | [cli](cli.md) |
+| `common/lint.py` | Scenario linter + JSON Schema generation (`lint` / `schema` commands) | [cli](cli.md) |
 | `analysis/` · `serve/flakiness.py` | Read-only advisory analysis (BE-0257), no device/AI, never gates CI: `audit` (determinism/flakiness audit, BE-0049), `coverage` (scenario id-namespace coverage, BE-0050), `impact` (test impact analysis — affected steps from a diff, BE-0321), `stats` (the aggregate run-stats dashboard, BE-0102), plus cross-run flakiness ranking (`flakiness`, BE-0220) | [cli](cli.md) |
 | `cli/` | Typer-based CLI; one file per command in `cli/commands/` (`run`/`doctor`/`audit`/`coverage`/`impact`/`stats`/`flakiness`/`export`/`trace`/`report`/`triage`/`record`/`crawl`/`codegen`/`approve`/`serve`/`mcp`/`worker`/`lint`/`schema`) | [cli](cli.md) |
 | `dotenv.py` | Minimal `.env` loader (never overrides an existing var) | [cli](cli.md#environment-variables-env) |
-| `_yaml.py` | YAML loader that keeps `on`/`off`/`yes`/`no` as strings | [scenarios](scenarios.md#yaml-caveat) |
+| `common/screenshots.py` | Screenshot capture + pixel-coordinate helpers shared across the AI paths (`screenshot_bytes`, `png_size`, `fraction`, BE-0246) | [recording](recording.md) |
+| `common/handoff.py` | The human-in-the-loop handoff contract (Tier 1, BE-0179): the transport-neutral request/response `record` (terminal stdin) and `serve` (SSE) implement the same way | [recording](recording.md) |
+| `common/deprecations.py` | One-time deprecation notices (`warn_once`) and hard rejections for removed authoring/CLI spellings (`reject_renamed_key`) | — |
+| `common/diagnostics.py` | Process-wide logging configuration: what a run says about itself while it happens, and how loud | — |
+| `common/stall_diagnostics.py` | Bounded, best-effort state capture at the moment a backend stalls (BE-0361/BE-0367) | — |
+| `common/_yaml.py` | YAML loader that keeps `on`/`off`/`yes`/`no` as strings | [scenarios](scenarios.md#yaml-caveat) |
 
 ## Dependencies (layers)
 
@@ -221,13 +229,13 @@ declared:
 1. **Deterministic core** — the path that derives a verdict and evidence with no model and no
    periphery stack: `common/orchestrator/`, `common/runner/`, `common/drivers/base.py`, `assertions/`, `evidence/`,
    `report/`, `config/`, `scenario/`, `preflight.py` / `capability_preflight.py` /
-   `capabilities.py`, `doctor.py`, `lint.py`. It carries the prime directives.
+   `capabilities.py`, `common/doctor.py`, `common/lint.py`. It carries the prime directives.
 2. **Contract** — the stable surfaces a consumer depends on: the scenario schema (`scenario/`) and
    the `Driver` Protocol (`common/drivers/base.py`).
 3. **Periphery** — the consumers of the contract, each removable behind an optional extra:
    `serve/`, `mcp/`, the codegen emitters, the AI / agent paths (`agents/` — `protocols`, `ai_config`,
-   `anthropic_client`, `enrich`, `alerts`, … — plus `record.py`, `triage.py`, `crawl/guide.py`, …),
-   and the `github/actions.py` / `notify.py` helpers (the rest of `github/` — `app` / `errors` — is
+   `anthropic_client`, `enrich`, `alerts`, … — plus `record/`, `triage/`, `crawl/guide.py`, …),
+   and the `github/actions.py` / `run/notify.py` helpers (the rest of `github/` — `app` / `errors` — is
    core-safe, so `config_source` reaches it without pulling the periphery in).
 
 Three contracts are enforced:
@@ -236,7 +244,7 @@ Three contracts are enforced:
   #1 and #3 statically: the verdict/evidence path stays free of the serve, AI, and codegen stacks, and
   cannot silently grow a dependency on them. A pure element-tree helper a core module needs (e.g.
   `screen_size_from_elements`, `shows_app_ui`) lives in the core (`bajutsu/common/drivers/elements.py`), not in a
-  periphery module such as `record.py`; likewise the resolved `ai` block (`AiConfig`) lives in
+  periphery module such as `record/`; likewise the resolved `ai` block (`AiConfig`) lives in
   `config/`, so the core reads it without importing the AI client.
 - **The core must stay host-agnostic (BE-0129).** Multi-tenant hosting concerns — organizations,
   roles, tenancy — and the `db` (SQLAlchemy/Alembic/psycopg/cryptography) and `oauth` (Authlib)
@@ -464,7 +472,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   (pinch / rotate), parallel runs across N `BrowserContext` lanes, and a target-level `deviceMode`
   (desktop default, or a Playwright device preset for mobile emulation; BE-0228); `appTrace` stays
   iOS-only (`os_log`/simctl-based)
-- The **Android adb backend** (`common/drivers/adb.py` + `adb.py`): `tap`/`long_press`/`double_tap` send
+- The **Android adb backend** (`common/drivers/adb.py` + `common/backend_cli/adb.py`): `tap`/`long_press`/`double_tap` send
   the resolved element's identity to the resident server's `POST /act`, which re-resolves and
   injects device-side so the gesture lands on the bounds the device holds at inject time, falling
   back to a host-computed frame-center coordinate tap once retries exhaust or the channel has no
@@ -762,7 +770,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   gate (`preflight.py`: iOS needs the required CLIs + a booted Simulator; web needs Playwright + its
   Chromium browser)
 - The `trace` command (`trace.py`): a text timeline over a saved run (steps + network + appTrace)
-- M4 self-healing triage (`triage.py` + `agents/claude_triage.py`): assemble a failed run's context +
+- M4 self-healing triage (`triage/heuristic.py` + `agents/claude_triage.py`): assemble a failed run's context +
   a `TriageAgent` diagnosis (rule-based `HeuristicTriageAgent`, or `--ai` Claude with the failure
   screenshot). An agent can propose a structured fix (`renameId` / `addIndex` / `raiseTimeout`);
   `--apply`/`--write` patches the scenario source (diff-previewed, opt-in) and `--rerun` re-runs it
@@ -770,7 +778,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 #### The CLI, `serve`, and codegen
 
 - The CLI: `run` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` / `export` / `trace` / `report` / `triage` / `record` / `crawl` / `codegen` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard
-- The **parsed device OS** (`device_os.py`, BE-0358): the device's operating-system (OS) version as a small parsed fact — platform, major, minor — read from the `device_runtime` label a run already records per scenario. An absent or unrecognized label parses to "unknown" rather than to a guessed version. Both flakiness surfaces carry the parsed OS in their grouping key, so a scenario's verdict history is per OS version, and a reproducible cross-version difference no longer scores as flakiness. The XCUITest driver receives it as a `make_driver` keyword — not a `Driver` member, which every backend and every test double would then have to declare — so a driver-level report can name the OS it ran on. **Reading the OS is not a licence to branch on it**: this repository fixes a behavioural OS difference version-agnostically, and a per-OS branch must earn its place in its own roadmap item against that alternative
+- The **parsed device OS** (`common/devices/os.py`, BE-0358): the device's operating-system (OS) version as a small parsed fact — platform, major, minor — read from the `device_runtime` label a run already records per scenario. An absent or unrecognized label parses to "unknown" rather than to a guessed version. Both flakiness surfaces carry the parsed OS in their grouping key, so a scenario's verdict history is per OS version, and a reproducible cross-version difference no longer scores as flakiness. The XCUITest driver receives it as a `make_driver` keyword — not a `Driver` member, which every backend and every test double would then have to declare — so a driver-level report can name the OS it ran on. **Reading the OS is not a licence to branch on it**: this repository fixes a behavioural OS difference version-agnostically, and a per-OS branch must earn its place in its own roadmap item against that alternative
 - Read-only advisory analysis commands (no device, no AI, never gate CI — only a missing/unreadable input exits non-zero): a determinism/flakiness **audit** with static, repeat-and-diff, and longitudinal modes (`audit`, BE-0049); a scenario id-namespace **coverage** map (`coverage`, BE-0050); **test impact analysis** — the affected scenario steps a `git` diff selects, by inverting the coverage index (`impact`, BE-0321); the aggregate run-stats dashboard as CLI/HTML output (`stats`, BE-0102); cross-run **flakiness** ranking, from a runs directory or the `serve` database (`flakiness`, BE-0220); a finished run's **export** as a portable `.zip` (`export`, BE-0060); and **report** re-rendering (`report.html`/`junit.xml`/`ctrf.json`) from stored run data with no re-run (`report`, BE-0068)
 - The **run-history label and the target stamp** (BE-0404): a run records the config it ran (`runs.label`, from the config's own name or an explicit `run --label`) and the target it ran (`runs.target`, mirrored from the manifest), so restarting `serve` against a second config yields two readable histories instead of one interleaved list, and a per-target comparison is computable from stored data. The org row holds the one config source it last bound, which is how a hosted replica recovers an uploaded bundle it never received; a replica that still holds the extracted bundle resolves that cache before any object store is required, so it rebinds without a fetch ([BE-0393](../roadmaps/BE-0393-per-org-config-memory/BE-0393-per-org-config-memory.md) unit 5 — groundwork, since every deployment that keeps a config memory today also has a store). This replaced BE-0225's named **project** registry, whose table, endpoints, CLI commands, and web surfaces are gone
 - **Database-backed org lifecycle and membership** (BE-0375): once a database is wired, an org's `members` / `githubOrgs` / `githubTeams` / `editorTeams` live in the `orgs` table rather than in the config file's `orgs:` block — seeded from that block once per org at startup and at every config rebind, then owned by the database — so `serve` gains four admin-only `/api/orgs…` endpoints and an **Orgs** page that create, re-member, and soft-delete a tenant without a redeploy; sign-in resolves against the table alone there, so an unreadable config no longer denies every user and an unreadable database answers with a 5xx naming the store; a target's identity becomes `(org, target)`, so two orgs may each claim one name. Target ownership itself stays in configuration (prime directive 3), and a database-less deployment keeps reading `orgs:` unchanged

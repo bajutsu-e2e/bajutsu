@@ -1,4 +1,4 @@
-"""Tests for the shared device-id validator (`bajutsu.device_id`).
+"""Tests for the shared device-id validator (`bajutsu.common.devices.id`).
 
 `is_valid_device_id` is the single policy that adb (`checked_serial`) and serve (`valid_udid`)
 both reference. These pin the unified charset / first-character / length
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu.device_id import is_valid_device_id
+from bajutsu.common.devices.id import is_valid_device_id
 
 
 @pytest.mark.parametrize(

@@ -14,8 +14,8 @@ from bajutsu.common.drivers import base
 from bajutsu.common.orchestrator import BlockedHandler, Clock, RealClock
 from bajutsu.common.orchestrator.types import SelectionState
 from bajutsu.common.scenario import Scenario
-from bajutsu.record import clear_blocking, execute
-from bajutsu.screenshots import screenshot_bytes
+from bajutsu.common.screenshots import screenshot_bytes
+from bajutsu.record.loop import clear_blocking, execute
 
 Reporter = Callable[[str], None]
 

@@ -32,7 +32,7 @@ from bajutsu.common.ai import (
 from bajutsu.common.ai.prompts import NEVER_JUDGE_BOUNDARY, render_elements
 from bajutsu.common.analytics import usage
 from bajutsu.common.evidence.redaction import Redactor
-from bajutsu.triage import (
+from bajutsu.triage.heuristic import (
     FIX_KINDS,
     CrossRunTriageContext,
     Fix,

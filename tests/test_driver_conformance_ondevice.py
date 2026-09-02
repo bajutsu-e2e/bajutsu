@@ -42,7 +42,7 @@ from driver_conformance import (
 from ondevice_spec_path import SpecPathMemo, read_data_container
 from xcuitest_lease import xcuitest_lease_launch
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import Effective, ios_bundle_id, load_config, resolve
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals

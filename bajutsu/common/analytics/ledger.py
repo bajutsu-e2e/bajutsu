@@ -25,7 +25,7 @@ from typing import Any
 
 from bajutsu.common.analytics.usage import TokenUsage, of
 from bajutsu.common.config import AiConfig
-from bajutsu.run_files import runs_root
+from bajutsu.common.run_meta.files import runs_root
 
 # Bump when the on-disk record shape changes incompatibly; readers key off it to stay
 # forward-compatible (an older line is still parseable — see `UsageEvent.from_record`).

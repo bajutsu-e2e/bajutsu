@@ -16,7 +16,7 @@ from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import FileSink
 from bajutsu.common.orchestrator import AlertEvent, AlertGuardConfig, run_scenario
 from bajutsu.common.scenario import Step, load_scenarios
-from bajutsu.record import record as record_loop
+from bajutsu.record.loop import record as record_loop
 
 
 def _window(w: float = 402.0, h: float = 874.0) -> base.Element:

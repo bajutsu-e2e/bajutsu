@@ -11,7 +11,7 @@ from pathlib import Path
 
 from conftest import json_list
 
-from bajutsu import _yaml
+from bajutsu.common import _yaml
 from bajutsu.common.config import AndroidConfig, Config, IosConfig, load_config, resolve
 from bajutsu.common.scenario import load_scenarios
 

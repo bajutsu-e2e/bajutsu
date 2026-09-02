@@ -8,12 +8,11 @@ from pathlib import Path
 
 import typer
 
-from bajutsu import adb as _adb
-from bajutsu import device_errors
-from bajutsu import simctl as _simctl
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.common.agents import availability as ai_availability
 from bajutsu.common.ai import credential_gap
+from bajutsu.common.backend_cli import adb as _adb
+from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.backends import (
     capabilities_for_run,
     resolve_actuators,
@@ -29,9 +28,10 @@ from bajutsu.common.config import (
     web_base_url,
     web_engine,
 )
+from bajutsu.common.devices import errors as device_errors
+from bajutsu.common.doctor import DoctorProbeError, probe_screen, render, score
 from bajutsu.common.drivers import base
 from bajutsu.common.scenario import load_scenario_file
-from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
 from bajutsu.platform_lifecycle.environments.xcuitest import (
     bundled_runner_toolchain_note,
     effective_device_type,

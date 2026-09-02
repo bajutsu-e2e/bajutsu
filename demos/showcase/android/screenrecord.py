@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 from types import FrameType
 
-from bajutsu import adb
+from bajutsu.common.backend_cli import adb
 from bajutsu.common.evidence import intervals
 
 

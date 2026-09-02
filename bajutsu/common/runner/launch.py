@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import Effective
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence.network import TransitionSource, _no_transitions

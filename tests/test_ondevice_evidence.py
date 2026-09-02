@@ -16,7 +16,7 @@ from pathlib import Path
 import ondevice_evidence
 import pytest
 
-from bajutsu import adb
+from bajutsu.common.backend_cli import adb
 from bajutsu.common.evidence import intervals
 
 # The inner conftest registers the real plugin, the same way the real on-device suites' own

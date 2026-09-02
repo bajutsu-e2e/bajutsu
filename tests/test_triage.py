@@ -9,10 +9,10 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from bajutsu import triage
 from bajutsu.cli import app
 from bajutsu.cli.commands.triage import _rerun_command
-from bajutsu.triage import (
+from bajutsu.triage import heuristic as triage
+from bajutsu.triage.heuristic import (
     FailedStep,
     Fix,
     HeuristicTriageAgent,

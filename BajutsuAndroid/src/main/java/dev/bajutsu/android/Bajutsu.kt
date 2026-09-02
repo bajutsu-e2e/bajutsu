@@ -15,7 +15,7 @@ import androidx.core.content.ContextCompat
  * the *same* library, so it is not a per-app difference (`targets.<name>` config), just like BajutsuKit.
  */
 object Bajutsu {
-    /** Broadcast action bajutsu sends clipboard operations on. Must match `bajutsu/adb.py`. */
+    /** Broadcast action bajutsu sends clipboard operations on. Must match `bajutsu/common/backend_cli/adb.py`. */
     const val CLIPBOARD_ACTION: String = "dev.bajutsu.CLIPBOARD"
 
     /** Result code the receiver sets so a run can tell "handled" from "no receiver". Must match `adb.py`. */

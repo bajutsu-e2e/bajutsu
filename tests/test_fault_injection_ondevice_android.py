@@ -42,7 +42,7 @@ import fault_injection
 import ondevice_evidence
 import pytest
 
-from bajutsu import adb
+from bajutsu.common.backend_cli import adb
 from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals

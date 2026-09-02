@@ -35,7 +35,7 @@ from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.orchestrator import RunResult, run_scenario
 from bajutsu.common.scenario import Assertion, Scenario, Step, dump_scenarios
-from bajutsu.record import record
+from bajutsu.record.loop import record
 
 DEFAULT_GOAL = (
     "Get started, sign in with email a@b.com and password pw, "

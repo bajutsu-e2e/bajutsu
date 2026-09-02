@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 from _runner import _el, _ios_eff
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import Effective, XcuitestConfig, require_ios
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver

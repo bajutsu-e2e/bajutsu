@@ -6,7 +6,8 @@ import functools
 from collections.abc import Callable
 from typing import Any
 
-from bajutsu import adb, device_errors, doctor, simctl
+from bajutsu.common import doctor
+from bajutsu.common.backend_cli import adb, simctl
 from bajutsu.common.backends import IMPLEMENTED, resolve_actuators
 from bajutsu.common.config import (
     Effective,
@@ -17,6 +18,7 @@ from bajutsu.common.config import (
     web_base_url,
     web_engine,
 )
+from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
 from bajutsu.serve.operations._common import _device_args
 from bajutsu.serve.state import ServeState

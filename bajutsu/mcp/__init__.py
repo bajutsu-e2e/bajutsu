@@ -12,9 +12,9 @@ from pathlib import Path
 
 from fastmcp import FastMCP
 
+from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.mcp.resources import register_resources
 from bajutsu.mcp.tools import register_tools
-from bajutsu.run_files import DEFAULT_RUNS_DIR
 
 
 def create_server(config_path: Path, runs_dir: Path = Path(DEFAULT_RUNS_DIR)) -> FastMCP:

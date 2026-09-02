@@ -105,6 +105,36 @@ def test_undocumented_packages_skips_a_directory_without_modules(tmp_path: Path)
     assert lmm.undocumented_packages(set(), pkg) == []
 
 
+def test_undocumented_packages_checks_each_common_subpackage_individually(tmp_path: Path) -> None:
+    """A row for one `common/` subpackage must not excuse an undocumented sibling.
+
+    `common/` aggregates many otherwise-unrelated subpackages, so satisfying rule 2 by any single
+    row somewhere under it (the plain top-level check) would let the others go undocumented
+    silently — the gap this descent closes.
+    """
+    pkg = _package(tmp_path, "common/")
+    (pkg / "common" / "run_meta").mkdir()
+    (pkg / "common" / "run_meta" / "files.py").write_text("", encoding="utf-8")
+    (pkg / "common" / "devices").mkdir()
+    (pkg / "common" / "devices" / "os.py").write_text("", encoding="utf-8")
+
+    # "common/" alone (the plain top-level mention) does not reach either subpackage.
+    assert lmm.undocumented_packages({"common/"}, pkg) == ["common/devices/", "common/run_meta/"]
+    # Documenting one subpackage leaves the other as the sole gap.
+    assert lmm.undocumented_packages({"common/run_meta/"}, pkg) == ["common/devices/"]
+    # Documenting both closes the gap entirely.
+    assert lmm.undocumented_packages({"common/devices/", "common/run_meta/"}, pkg) == []
+
+
+def test_undocumented_packages_skips_the_common_descent_without_a_common_dir(
+    tmp_path: Path,
+) -> None:
+    """A tree with no `common/` package at all must not error or invent a phantom gap."""
+    pkg = _package(tmp_path, "drivers/")
+
+    assert lmm.undocumented_packages({"drivers/"}, pkg) == []
+
+
 def test_undocumented_modules_honours_the_allowlist(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

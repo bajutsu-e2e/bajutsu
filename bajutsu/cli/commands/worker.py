@@ -24,12 +24,12 @@ from urllib.request import Request, urlopen
 
 import typer
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 from bajutsu.common.backends import PLATFORMS
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
-from bajutsu.object_store import content_type_for
-from bajutsu.run_files import DEFAULT_RUNS_DIR
+from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
+from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import WORKER_CAPABILITIES_ENV, worker_capabilities
 from bajutsu.serve.server.worker_job import WorkerIO, execute_job_spec

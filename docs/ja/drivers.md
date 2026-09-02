@@ -9,7 +9,7 @@
 > ラッパが担います。
 >
 > 実装: `bajutsu/common/drivers/`（`base.py` / `xcuitest.py` / `adb.py` / `playwright.py` / `fake.py`）・
-> `bajutsu/common/backends.py` ・ `bajutsu/simctl.py` ・ `bajutsu/adb.py`。
+> `bajutsu/common/backends.py` ・ `bajutsu/common/backend_cli/simctl.py` ・ `bajutsu/common/backend_cli/adb.py`。
 
 関連: [selectors](selectors.md)（解決） · [concepts の安定度順ラダー](concepts.md#5-安定度順ラダーstability-ladder) · [run-loop](run-loop.md)
 
@@ -87,7 +87,7 @@ class Driver(Protocol):
 
 ## adb（Android）
 
-ヘッドレスで座標ベースの、唯一の座標系バックエンドです。semantic tap を持たないため、抽象側で **id → frame 中心 → 座標 tap** に解決します。実装: `common/drivers/adb.py` ＋ `bajutsu/adb.py`（ロードマップ [BE-0007](../../roadmaps/BE-0007-android-backend/BE-0007-android-backend-ja.md)）。
+ヘッドレスで座標ベースの、唯一の座標系バックエンドです。semantic tap を持たないため、抽象側で **id → frame 中心 → 座標 tap** に解決します。実装: `common/drivers/adb.py` ＋ `bajutsu/common/backend_cli/adb.py`（ロードマップ [BE-0007](../../roadmaps/BE-0007-android-backend/BE-0007-android-backend-ja.md)）。
 
 - `query()`: ウィンドウの UI Automator XML を読み取り、純粋なパーサ（`parse_hierarchy`）が各 `<node>` を `Element` に写します。読み取りは、**常駐 UI Automator サーバ**がビルド済み（`make -C BajutsuAndroidUIAutomatorServer build`）のときはそのサーバ経由で行います。温めた 1 つの `UiAutomation` セッションが `adb forward` 越しに `GET /source` へ答えるので、1 回の読み取りは約 0.1〜0.3 秒で済み、呼び出しのたびに約 2.4 秒かかる `adb -s <serial> exec-out uiautomator dump /dev/tty` を都度起動せずに済みます（ロードマップ [BE-0245](../../roadmaps/BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md)）。常駐サーバの全画面ダンプはアクティブウィンドウへ絞り込むので、ダンプ経路と同じ `Element` を返します。サーバが未ビルドのとき、またはチャネルに失敗したときは `uiautomator dump` にフォールバックし、`BAJUTSU_ADB_RESIDENT`（`0`／`1`）でどちらの経路にも固定できます。
 - **セレクタの写像**: `resource-id` → `identifier`（`<package>:id/` 接頭辞を剥がしてローカル名にするので、`testTagsAsResourceId` で表出した Compose の `testTag` はそのまま、ネイティブの `android:id` は接頭辞が落ちます）、`text` → `label`（`content-desc` へフォールバック）、`content-desc` → `value`（アプリは状態値をここにミラーします。SPEC §2.1）、ウィジェットの `class`（と enabled / selected / checked の状態）→ `traits` です。
@@ -212,7 +212,7 @@ def make_driver(actuator, udid, *, base_url=None, runner_port=None) -> Driver:  
 
 ## 環境管理（simctl）
 
-実装: `bajutsu/simctl.py`。コマンドビルダは純関数（単体テスト済み）で、実行は注入可能な `RunFn` 経由です。
+実装: `bajutsu/common/backend_cli/simctl.py`。コマンドビルダは純関数（単体テスト済み）で、実行は注入可能な `RunFn` 経由です。
 
 | メソッド | コマンド | 備考 |
 |---|---|---|

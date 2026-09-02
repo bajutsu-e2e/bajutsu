@@ -30,7 +30,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
-from bajutsu import adb, simctl, stall_diagnostics
+from bajutsu.common import stall_diagnostics
+from bajutsu.common.backend_cli import adb, simctl
 from bajutsu.common.evidence import media
 
 _logger = logging.getLogger(__name__)

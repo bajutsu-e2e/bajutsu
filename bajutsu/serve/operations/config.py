@@ -12,7 +12,8 @@ from typing import Any
 
 import yaml
 
-from bajutsu import __version__, _yaml
+from bajutsu import __version__
+from bajutsu.common import _yaml
 from bajutsu.common.agents import availability as ai_availability
 from bajutsu.common.agents.ai_config import (
     BEDROCK_MODEL_ENV,

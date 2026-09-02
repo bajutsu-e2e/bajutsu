@@ -5,7 +5,7 @@
 > [Tier 1](glossary.md#2-つの層) = AI ライブ操作です。自然言語のゴールから AI がアプリを探索しながら操作し、**決定的シナリオ**
 > を書き出します。AI が関与するのはここ（記録時）だけです。生成された YAML は AI 非依存で、以後はユーザーが管理します。
 >
-> 実装: `bajutsu/record.py`（ループ）、`bajutsu/agents/protocols.py` + `bajutsu/agents/factory.py`（抽象 + 構築）、
+> 実装: `bajutsu/record/loop.py`（ループ）、`bajutsu/agents/protocols.py` + `bajutsu/agents/factory.py`（抽象 + 構築）、
 > `bajutsu/agents/claude.py`（SDK オーサリングエージェント）、`bajutsu/agents/alerts.py`（システムアラート対処）。
 > 幅優先の探索 `bajutsu/crawl/` も同じエージェントを使います。
 
@@ -92,7 +92,7 @@ class Agent(Protocol):
 
 一部の flow は、AI が供給できない何か（ワンタイムパスワード、CAPTCHA、生体認証のプロンプト）で
 塞がれます。ターン結果が「人が必要」（`proposal.needs_human`）のとき、ループは一時停止し、転送方式に
-依存しない `Handoff` 契約（`handoff.py`）を通して人に制御を引き渡します。要求（なぜ止まったか、現在
+依存しない `Handoff` 契約（`common/handoff.py`）を通して人に制御を引き渡します。要求（なぜ止まったか、現在
 画面の要約とスクリーンショット）が出て行き、応答（供給された値、または「デバイスを操作した。観測し
 直せ」、または cancel）が返り、ループは実際の画面を観測し直して再開します。人がループに入るのは
 オーサリングの最中だけで、記録した scenario は決定的な `run` の経路に人を置かずに再生されます。

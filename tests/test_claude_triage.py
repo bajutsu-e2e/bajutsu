@@ -17,7 +17,7 @@ from bajutsu.common.ai.base import AnyTool, ImagePart, TextPart
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.scenario import Redact
-from bajutsu.triage import CrossRunTriageContext, FailedStep, RunEvidence, TriageContext
+from bajutsu.triage.heuristic import CrossRunTriageContext, FailedStep, RunEvidence, TriageContext
 
 
 def _el(identifier: str, label: str) -> base.Element:

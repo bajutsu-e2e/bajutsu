@@ -13,7 +13,8 @@ from typing import IO, Any
 import pytest
 from conftest import json_str
 
-from bajutsu import simctl, stall_diagnostics
+from bajutsu.common import stall_diagnostics
+from bajutsu.common.backend_cli import simctl
 from bajutsu.common.evidence import intervals
 
 
@@ -380,7 +381,7 @@ def test_start_device_log_lifecycle() -> None:
 
 
 def test_start_screenrecord_records_device_side_then_pulls_on_stop(tmp_path: Path) -> None:
-    from bajutsu import adb
+    from bajutsu.common.backend_cli import adb
 
     spawn_calls: list[tuple[list[str], Path | None]] = []
     run_calls: list[list[str]] = []
@@ -416,7 +417,7 @@ def test_start_screenrecord_records_device_side_then_pulls_on_stop(tmp_path: Pat
 
 
 def test_start_screenrecord_forwards_bound_and_size_options(tmp_path: Path) -> None:
-    from bajutsu import adb
+    from bajutsu.common.backend_cli import adb
 
     spawn_calls: list[list[str]] = []
 
@@ -464,7 +465,7 @@ def test_start_screenrecord_cleanup_failure_does_not_fail_stop(tmp_path: Path) -
 
 
 def test_screenrecord_pids_cmd_tolerates_no_match() -> None:
-    from bajutsu import adb
+    from bajutsu.common.backend_cli import adb
 
     # `|| true` keeps a no-match pgrep at exit 0 so the RunFn (check=True) doesn't raise; the poll
     # reads the device-side process's presence from stdout, not the exit code.
@@ -837,7 +838,7 @@ def test_start_screenrecord_pull_failure_surfaces(tmp_path: Path) -> None:
 
 
 def test_start_logcat_streams_to_file(tmp_path: Path) -> None:
-    from bajutsu import adb
+    from bajutsu.common.backend_cli import adb
 
     calls: list[tuple[list[str], Path | None]] = []
     proc = FakeProc()

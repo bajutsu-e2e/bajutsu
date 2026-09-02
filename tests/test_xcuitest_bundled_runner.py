@@ -20,7 +20,7 @@ from typing import Any
 
 import pytest
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import XcuitestConfig
 from bajutsu.platform_lifecycle.environments import _bundled_runner, xcuitest
 

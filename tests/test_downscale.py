@@ -16,7 +16,7 @@ import pytest
 from PIL import Image
 
 from bajutsu.common.evidence.visual import downscale_png
-from bajutsu.screenshots import MAX_IMAGE_LONG_EDGE, screenshot_bytes
+from bajutsu.common.screenshots import MAX_IMAGE_LONG_EDGE, screenshot_bytes
 
 
 def _png(width: int, height: int) -> bytes:

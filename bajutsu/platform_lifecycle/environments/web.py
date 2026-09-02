@@ -6,8 +6,8 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import cast
 
-from bajutsu import simctl
 from bajutsu.common import backends
+from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import Effective, require_web
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals

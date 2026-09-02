@@ -46,7 +46,7 @@ from driver_conformance import (
     OnDeviceConformanceHarness,
 )
 
-from bajutsu import adb
+from bajutsu.common.backend_cli import adb
 from bajutsu.common.config import Effective, load_config, require_android, resolve
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence import intervals

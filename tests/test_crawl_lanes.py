@@ -23,8 +23,8 @@ from bajutsu.common.config import Effective
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
+from bajutsu.common.run_meta.files import RunArtifactReader
 from bajutsu.crawl.core import AliveCheck, ClearBlocking, Recover, Reset
-from bajutsu.run_files import RunArtifactReader
 
 
 def _writer(run_dir: Path) -> RunArtifactWriter:

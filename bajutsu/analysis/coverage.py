@@ -22,12 +22,12 @@ from jinja2 import Environment, FileSystemLoader
 
 from bajutsu.analysis.audit import referenced_ids
 from bajutsu.common.assertions import match_request, request_label
+from bajutsu.common.doctor import namespace_of
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence.network import NetworkExchange
 from bajutsu.common.scenario import Assertion, RequestMatch, Scenario, Step, WaitRequest
 from bajutsu.common.scenario.interp import find_tokens
 from bajutsu.crawl import fingerprint
-from bajutsu.doctor import namespace_of
 
 
 @dataclass(frozen=True)

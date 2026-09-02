@@ -199,7 +199,7 @@ def test_reports_a_wedged_device_instead_of_retrying_it(
         textwrap.dedent(
             """
             import pytest
-            from bajutsu import simctl
+            from bajutsu.common.backend_cli import simctl
 
             pytestmark = pytest.mark.backend_crash_recovery
             _LAUNCHES = {"n": 0}

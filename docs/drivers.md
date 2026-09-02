@@ -9,7 +9,7 @@
 > on Android by the twin `adb` wrapper.
 >
 > Implementation: `bajutsu/common/drivers/` (`base.py` / `xcuitest.py` / `adb.py` / `playwright.py` / `fake.py`) ·
-> `bajutsu/common/backends.py` · `bajutsu/simctl.py` · `bajutsu/adb.py`.
+> `bajutsu/common/backends.py` · `bajutsu/common/backend_cli/simctl.py` · `bajutsu/common/backend_cli/adb.py`.
 
 Related: [selectors](selectors.md) (resolution) · [the stability ladder](concepts.md#5-the-stability-ladder) · [run-loop](run-loop.md)
 
@@ -176,7 +176,7 @@ than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
 
 Headless, coordinate-based — the only coordinate backend. With no semantic tap, the
 abstraction resolves **id → frame center → coordinate tap**. Implementation:
-`common/drivers/adb.py` + `bajutsu/adb.py` (roadmap
+`common/drivers/adb.py` + `bajutsu/common/backend_cli/adb.py` (roadmap
 [BE-0007](../roadmaps/BE-0007-android-backend/BE-0007-android-backend.md)).
 
 ### Reading the tree and resolving a selector
@@ -645,7 +645,7 @@ details.
 
 ## Environment management (simctl)
 
-Implementation: `bajutsu/simctl.py`. Command builders are pure functions (unit-tested); execution goes
+Implementation: `bajutsu/common/backend_cli/simctl.py`. Command builders are pure functions (unit-tested); execution goes
 through an injectable `RunFn`.
 
 | Method | Command | Notes |

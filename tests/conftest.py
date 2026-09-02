@@ -54,7 +54,7 @@ def _fresh_clone_resident_gate(monkeypatch: pytest.MonkeyPatch) -> None:
     while CI, which never builds the APKs, stayed green. The four tests that cover the gate itself
     set both signals explicitly, so their own monkeypatching still wins.
     """
-    import bajutsu.adb_resident as adb_resident
+    import bajutsu.common.backend_cli.adb_resident as adb_resident
 
     built = adb_resident.server_apks_built
     monkeypatch.delenv("BAJUTSU_ADB_RESIDENT", raising=False)

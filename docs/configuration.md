@@ -4,7 +4,7 @@
 
 The tool core is app-agnostic. All app-specific differences belong in config, allowing multiple apps to run with the same binary and the same drivers. Adding a target means adding one `targets.<name>` entry.
 
-Implementation: `bajutsu/common/config/resolve.py` (resolution) · `bajutsu/doctor.py` (convention score). No config ships in the repo root; pass one with `--config` (default filename `bajutsu.config.yaml`) — the demos ship ready-to-run configs, e.g. [`demos/showcase/showcase.config.yaml`](../demos/showcase/showcase.config.yaml) (iOS) and [`demos/web/demo.config.yaml`](../demos/web/demo.config.yaml) (web).
+Implementation: `bajutsu/common/config/resolve.py` (resolution) · `bajutsu/common/doctor.py` (convention score). No config ships in the repo root; pass one with `--config` (default filename `bajutsu.config.yaml`) — the demos ship ready-to-run configs, e.g. [`demos/showcase/showcase.config.yaml`](../demos/showcase/showcase.config.yaml) (iOS) and [`demos/web/demo.config.yaml`](../demos/web/demo.config.yaml) (web).
 
 Related: [app-agnostic in concepts](concepts.md#6-app-agnostic-push-differences-into-config) · [drivers](drivers.md) · [scenarios](scenarios.md)
 
@@ -553,7 +553,7 @@ The showcase's id catalog is in [showcase](showcase.md) (and, in full, `demos/sh
 
 ## doctor (the convention score)
 
-Implementation: `bajutsu/doctor.py`. **AI-independent and deterministic.** It analyzes one screen's
+Implementation: `bajutsu/common/doctor.py`. **AI-independent and deterministic.** It analyzes one screen's
 `query()` (the CLI uses the screen obtained via the actuator) and produces a score.
 
 > `doctor` runs a **runnability gate** first (`preflight.py`), then the score. The gate checks what

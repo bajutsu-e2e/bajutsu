@@ -13,7 +13,7 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 from bajutsu.common.backends import (
     default_available,
     resolve_evidence_providers,

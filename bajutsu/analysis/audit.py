@@ -15,10 +15,10 @@ from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
-from bajutsu import device_os
+from bajutsu.common.devices import os as device_os
+from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers import base
 from bajutsu.common.scenario import Assertion, Gone, Scenario, Step
-from bajutsu.device_os import DeviceOS
 
 if TYPE_CHECKING:
     from bajutsu.common.orchestrator import RunResult

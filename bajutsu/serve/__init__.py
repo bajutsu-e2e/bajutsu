@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.common.config_source import _bajutsu_cache_root
-from bajutsu.object_store import EvidenceTarget
+from bajutsu.common.run_meta.object_store import EvidenceTarget
 from bajutsu.serve import gate, oplog
 from bajutsu.serve.artifacts import Artifact, ArtifactStore, LocalArtifactStore
 from bajutsu.serve.batch_bootstrap import bajutsu_source_root, register_batch_providers

@@ -128,11 +128,11 @@ _PERIPHERY_EXCLUSIONS: tuple[tuple[str, str], ...] = (
         "the AWS Device Farm submitter — a hosted batch path, not the local on-device run",
     ),
     (
-        "bajutsu/notify.py",
+        "bajutsu/run/notify.py",
         "run-completion notifications (serve / CI glue), never exercised by a run itself",
     ),
     (
-        "bajutsu/triage.py",
+        "bajutsu/triage/heuristic.py",
         "the AI triage command's core — an authoring / diagnosis path, not a run",
     ),
     (
@@ -227,8 +227,8 @@ _LANE_CLAIMED: tuple[str, ...] = (
     "bajutsu/platform_lifecycle/environments/web.py",
     "bajutsu/platform_lifecycle/environments/xcuitest.py",
     "bajutsu/platform_lifecycle/environments/xcuitest_live.py",
-    "bajutsu/adb_resident.py",
     "bajutsu/common/provisioning/provision.py",
+    "bajutsu/common/backend_cli/adb_resident.py",
     "bajutsu/serve/",
     "bajutsu/templates/",
     "bajutsu/cli/commands/record.py",
@@ -329,7 +329,7 @@ _LANE_PATHS: dict[str, str] = {
         # it can change adb's runtime behavior even though adb.py itself is untouched.
         r"|bajutsu/common/drivers/adb\.py$"
         r"|bajutsu/common/drivers/coordinate_tree\.py$"
-        r"|bajutsu/adb_resident\.py$"
+        r"|bajutsu/common/backend_cli/adb_resident\.py$"
         # The Android lifecycle environment (boot, install, the BE-0236 provision profile) — the
         # Android half of the `platform_lifecycle/` carve-out.
         r"|bajutsu/platform_lifecycle/environments/android\.py$"

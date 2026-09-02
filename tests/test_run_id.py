@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from bajutsu.run_id import RUN_ID_FORMAT, new_run_id, parse_run_id_timestamp
+from bajutsu.common.run_meta.id import RUN_ID_FORMAT, new_run_id, parse_run_id_timestamp
 
 
 def test_format_constant_is_the_pinned_shape() -> None:

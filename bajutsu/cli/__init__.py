@@ -14,8 +14,8 @@ import pkgutil
 
 import typer
 
-from bajutsu import diagnostics
 from bajutsu.cli import commands
+from bajutsu.common import diagnostics
 from bajutsu.common.capability import capabilities
 from bajutsu.dotenv import load_dotenv
 

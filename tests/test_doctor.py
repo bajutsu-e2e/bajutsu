@@ -8,9 +8,9 @@ from collections.abc import Callable
 import pytest
 
 from bajutsu.common.config import load_config, resolve
+from bajutsu.common.doctor import DoctorProbeError, probe_screen, render, score
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
-from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
 
 
 def _el(identifier: str | None, traits: list[str], label: str = "x") -> base.Element:
@@ -316,7 +316,7 @@ def test_probe_screen_takes_the_first_udid_of_a_comma_list(
     # Android path reads through `make_driver` at the resolved udid.
     made: list[tuple[str, str]] = []
     monkeypatch.setattr(
-        "bajutsu.doctor.make_driver",
+        "bajutsu.common.doctor.make_driver",
         _recording_make_driver(made),
     )
     monkeypatch.setattr(

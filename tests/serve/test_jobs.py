@@ -15,7 +15,7 @@ import pytest
 from _shared import FakeProc, fake_popen, project
 
 from bajutsu import serve as srv
-from bajutsu import simctl as simctl_mod
+from bajutsu.common.backend_cli import simctl as simctl_mod
 from bajutsu.serve import jobs as srv_jobs
 from bajutsu.serve import state as srv_state
 from bajutsu.serve.logbus import InMemoryLogBus

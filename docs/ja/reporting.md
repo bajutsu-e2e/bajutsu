@@ -27,7 +27,7 @@ runs/<runId>/
     └── device.log    # deviceLog（区間）
 ```
 
-`runId` は `YYYYMMDD-HHMMSS` の形式で、`bajutsu/run_id.py`（[BE-0200](../../roadmaps/BE-0200-run-id-contract/BE-0200-run-id-contract-ja.md)）が一箇所で採番します。この形式は report、Web UI、その他すべての呼び出し元で共有する単一の契約です。`stepId` は `step.name` または `step<i>` です。
+`runId` は `YYYYMMDD-HHMMSS` の形式で、`bajutsu/common/run_meta/id.py`（[BE-0200](../../roadmaps/BE-0200-run-id-contract/BE-0200-run-id-contract-ja.md)）が一箇所で採番します。この形式は report、Web UI、その他すべての呼び出し元で共有する単一の契約です。`stepId` は `step.name` または `step<i>` です。
 
 ## manifest.json
 

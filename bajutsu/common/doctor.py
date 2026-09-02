@@ -12,7 +12,7 @@ from __future__ import annotations
 import contextlib
 from dataclasses import dataclass
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 from bajutsu.common.backends import make_driver
 from bajutsu.common.config import Effective, require_web, web_base_url
 from bajutsu.common.drivers import base

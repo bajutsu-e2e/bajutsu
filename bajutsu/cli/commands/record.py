@@ -8,8 +8,6 @@ from pathlib import Path
 
 import typer
 
-from bajutsu import device_errors
-from bajutsu import simctl as _simctl
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _ai_redactor,
@@ -31,12 +29,14 @@ from bajutsu.common.agents.claude import MODEL as _RECORD_MODEL
 from bajutsu.common.agents.factory import make_agent
 from bajutsu.common.ai import announce_ai
 from bajutsu.common.analytics import usage as _usage
+from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.config import WEB_ENGINES, Effective
+from bajutsu.common.devices import errors as device_errors
+from bajutsu.common.handoff import HumanHandoffUnavailable
 from bajutsu.common.runner import launch_driver
 from bajutsu.common.scenario import Preconditions, dump_scenarios
-from bajutsu.handoff import HumanHandoffUnavailable
 from bajutsu.platform_lifecycle import environment_for
-from bajutsu.record import record as record_loop
+from bajutsu.record.loop import record as record_loop
 
 
 def _secret_tokens(eff: Effective) -> list[tuple[str, str]]:

@@ -12,6 +12,7 @@ from _runner import _eff, _el, _failing_lease, _fake_driver, _ios_eff, _lease
 from conftest import GUARD_LABEL, AlertingDriver
 
 from bajutsu.common.config import Effective, XcuitestConfig
+from bajutsu.common.doctor import Score
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import NullSink
@@ -20,7 +21,6 @@ from bajutsu.common.orchestrator import RunResult
 from bajutsu.common.report.format import video_seconds
 from bajutsu.common.runner import Lease, run_all, run_and_report, run_matrix_and_report
 from bajutsu.common.scenario import Scenario
-from bajutsu.doctor import Score
 
 
 def test_run_all() -> None:
@@ -282,7 +282,7 @@ def test_run_all_degrades_to_a_bare_respawn_when_the_forced_erase_lease_itself_f
     # abort the whole run past `run_all` — losing every already-passed scenario's verdict, worse than
     # the bare in-place respawn this forced retry replaces. It must instead degrade to that bare
     # respawn, exactly like a scenario that never forced erase at all.
-    from bajutsu import simctl
+    from bajutsu.common.backend_cli import simctl
 
     state = {"n": 0}
     erase_seen: list[bool | None] = []
@@ -483,7 +483,7 @@ def test_run_all_still_propagates_a_device_error_from_a_bare_lease() -> None:
     # A `DeviceError` from a lease that never forced erase (attempt 1, or the degraded bare respawn
     # above once *it* also fails) is unrelated to this item's forced-erase retry, so it keeps its
     # pre-existing behavior: it is not swallowed, it propagates out of run_all.
-    from bajutsu import simctl
+    from bajutsu.common.backend_cli import simctl
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         raise simctl.DeviceError("appPath not found (test)")

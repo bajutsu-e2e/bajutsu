@@ -31,7 +31,7 @@ from PIL import Image, ImageChops
 from test_driver_conformance_ondevice import _OnDeviceHarness
 from xcuitest_lease import xcuitest_lease_launch
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import Effective, ios_bundle_id, load_config, resolve
 
 # The loop's own step geometry, from where it is defined — so this case scrolls exactly as the

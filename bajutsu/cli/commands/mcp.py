@@ -7,7 +7,7 @@ from pathlib import Path
 import typer
 
 from bajutsu.cli._shared import DEFAULT_CONFIG
-from bajutsu.run_files import DEFAULT_RUNS_DIR
+from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 
 _MCP_TRANSPORTS = ("stdio", "sse")
 

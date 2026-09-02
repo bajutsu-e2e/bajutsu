@@ -1,11 +1,11 @@
-"""Tests for the private YAML loader (bajutsu._yaml)."""
+"""Tests for the private YAML loader (bajutsu.common._yaml)."""
 
 from __future__ import annotations
 
 import yaml
 import yaml.resolver
 
-from bajutsu import _yaml
+from bajutsu.common import _yaml
 
 
 def test_true_false_still_resolve_to_bool() -> None:
@@ -31,7 +31,7 @@ def test_loader_owns_its_resolver_mapping() -> None:
 
 
 def test_base_loader_keeps_yaml_1_1_bools() -> None:
-    # Importing `bajutsu._yaml` (`tests/conftest.py` pulls in `bajutsu` for every test) must not
+    # Importing `bajutsu.common._yaml` (`tests/conftest.py` pulls in `bajutsu` for every test) must not
     # change what a plain `yaml.safe_load` elsewhere in the process returns — a leak here turns
     # `x is True` assertions into permanently-passing dead code.
     assert yaml.safe_load("a: true\nb: false\nc: on\nd: yes\n") == {

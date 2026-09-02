@@ -5,10 +5,10 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu import device_os
 from bajutsu.common import backends
+from bajutsu.common.devices import os as device_os
+from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers.xcuitest import XcuitestDriver
-from bajutsu.device_os import DeviceOS
 
 
 @pytest.mark.parametrize(

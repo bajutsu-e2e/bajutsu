@@ -18,7 +18,7 @@ from datetime import datetime
 from bajutsu import __version__
 from bajutsu.common.orchestrator import RunResult, StepOutcome
 from bajutsu.common.report.manifest import _details, _matrix
-from bajutsu.run_id import parse_run_id_timestamp
+from bajutsu.common.run_meta.id import parse_run_id_timestamp
 
 # The CTRF spec version this projection targets; the vendored test schema is pinned to it.
 SPEC_VERSION = "0.0.0"

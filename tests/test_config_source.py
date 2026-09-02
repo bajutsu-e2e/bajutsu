@@ -25,6 +25,7 @@ from bajutsu.common.config_source import (
     resolve_github_credential,
     source_provenance,
 )
+from bajutsu.common.github import GitHubAccessError
 
 # --- parse_config_spec ---
 
