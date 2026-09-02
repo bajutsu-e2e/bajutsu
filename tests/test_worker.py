@@ -9,6 +9,7 @@ client and the job executor — so one iteration runs without a live control pla
 from __future__ import annotations
 
 import json
+import logging
 import socketserver
 import threading
 import time
@@ -63,6 +64,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.server.last_request = {  # type: ignore[attr-defined]
             "path": self.path,
             "authorization": self.headers.get("Authorization"),
+            "user_agent": self.headers.get("User-Agent"),
             "body": json.loads(raw) if raw else None,
         }
         status, payload = self.server.routes[self.path]  # type: ignore[attr-defined]
@@ -71,7 +73,8 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
-        data = json.dumps(payload).encode()
+        # A bytes payload is written verbatim, so a route can answer with a proxy's non-JSON body.
+        data = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
@@ -117,6 +120,22 @@ def test_post_json_sends_bearer_token() -> None:
     with _server({"/x": (200, {})}) as (httpd, base):
         _post_json(f"{base}/x", {}, token="secret")
         assert httpd.last_request["authorization"] == "Bearer secret"  # type: ignore[attr-defined]
+
+
+def test_post_json_http_error_non_json_body() -> None:
+    """A proxy's error page comes back as text with its status, not a decode error hiding it."""
+    with _server({"/x": (403, b"error code: 1010")}) as (_httpd, base):
+        code, body = _post_json(f"{base}/x", {})
+        assert code == 403
+        assert body == "error code: 1010"
+
+
+def test_post_json_names_the_client_in_its_user_agent() -> None:
+    """Never urllib's default UA: a Cloudflare-fronted control plane answers `Python-urllib/*` with a
+    403 (`error code: 1010`) before the auth gate, so a correctly-tokened worker leases nothing."""
+    with _server({"/x": (200, {})}) as (httpd, base):
+        _post_json(f"{base}/x", {})
+        assert httpd.last_request["user_agent"] == "bajutsu-worker"  # type: ignore[attr-defined]
 
 
 def test_post_json_http_error_with_body() -> None:
@@ -316,6 +335,26 @@ def test_worker_idle_polls_when_no_job(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(time, "sleep", stop_sleep)
     with pytest.raises(_StopLoop):
         worker(server_url="http://cp", poll_interval=1, heartbeat_interval=1)
+
+
+def test_worker_reports_a_refused_lease(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A refused lease says so — a blocked or unauthenticated worker must not read as an idle queue."""
+    monkeypatch.setattr(worker_mod, "_post_json", lambda *a, **k: (403, "error code: 1010\n"))
+    sleeps = 0
+
+    def stop_sleep(_seconds: float) -> None:
+        nonlocal sleeps
+        sleeps += 1
+        if sleeps > 1:  # let the first refusal poll on, so the loop is shown to keep going
+            raise _StopLoop
+
+    monkeypatch.setattr(time, "sleep", stop_sleep)
+    with caplog.at_level(logging.WARNING, logger="bajutsu.worker"), pytest.raises(_StopLoop):
+        worker(server_url="http://cp", poll_interval=1, heartbeat_interval=1)
+    assert "403" in caplog.text
+    assert "1010" in caplog.text
 
 
 def test_worker_retries_after_lease_failure(monkeypatch: pytest.MonkeyPatch) -> None:
