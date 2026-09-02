@@ -1168,19 +1168,24 @@ def _restore_failed(org: str, reason: object) -> None:
     )
 
 
-def _audit_restore(state: ServeState, session: str, org: str, source: dict[str, Any]) -> None:
+def _audit_restore(
+    state: ServeState, session: str, org: str, target: str, source: dict[str, Any]
+) -> None:
     """Record a completed restore in the audit log, like the binds it stands in for (unit 7).
 
     A restore binds on nobody's explicit request, so the actor is the member whose session the
     binding landed in — the one the configuration is now in force for. A session with no identity
     (shared-token) leaves `_record_audit` a no-op, the same as every other action taken without one.
+
+    *target* names the configuration the way the upload and compose entries name theirs — a bundle's
+    filename, a Git spec, a path — so a log read by target is not three rows saying "git".
     """
     _record_audit(
         state,
         state.auth.sessions.identity(session),
         org,
         "config.restore",
-        str(source.get("kind") or ""),
+        target,
         {"source": source},
     )
 
@@ -1212,7 +1217,13 @@ def restore_org_binding(state: ServeState, session: str, org: str) -> None:
         elif restored[1] != 200:
             _restore_failed(org, restored[0])
         else:
-            _audit_restore(state, session, org, source)
+            _audit_restore(
+                state,
+                session,
+                org,
+                str(source.get("filename") or source.get("sha256") or ""),
+                source,
+            )
         return
     spec = config_spec_from_record(source)
     if spec is None:
@@ -1230,7 +1241,7 @@ def restore_org_binding(state: ServeState, session: str, org: str) -> None:
     if status != 200:
         _restore_failed(org, payload)
         return
-    _audit_restore(state, session, org, source)
+    _audit_restore(state, session, org, spec, source)
 
 
 def _valid_slot(name: str, settings: ProviderSettings) -> bool:

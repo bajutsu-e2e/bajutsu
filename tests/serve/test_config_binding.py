@@ -774,6 +774,9 @@ def test_a_restore_is_audited_like_the_bind_it_stands_in_for(tmp_path: Path) -> 
     assert repo.audits[0]["actor_id"] == "alice"
     assert repo.audits[0]["org_id"] == "default"
     assert repo.audits[0]["detail"] == {"source": source}
+    # Named the way the upload and compose entries name theirs, so a log read by target is not a
+    # column of rows all saying "file".
+    assert repo.audits[0]["target"] == str(remembered)
 
 
 def test_a_restored_bundle_is_audited_too(tmp_path: Path) -> None:
@@ -789,6 +792,8 @@ def test_a_restored_bundle_is_audited_too(tmp_path: Path) -> None:
     assert state.binding_for(sid, "default").upload is not None
 
     assert [e["action"] for e in repo.audits] == ["config.restore"]
+    # A legacy single-digest record carries no filename, so the digest is what identifies it.
+    assert repo.audits[0]["target"] == sha
 
 
 def test_a_failed_restore_is_not_audited(tmp_path: Path) -> None:
