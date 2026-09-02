@@ -93,10 +93,11 @@ class Job:
     # For a server-backend `run`: download the visual baselines into the workspace before running
     # (the cmd points `--baselines` at a workspace dir). False for local (the real dir is used).
     materialize_baselines: bool = False
-    # The working directory the spawned run/build gets, captured from the binding when the job is
-    # registered (`ServeState._freeze_binding`, BE-0393 unit 2) so a rebind between registration and
-    # spawn cannot repoint an already-accepted run. None only on a worker-rebuilt job, which resolves
-    # its own workspace at spawn.
+    # The working directory the spawned run/build gets, captured when the job is accepted so a rebind
+    # between registration and spawn cannot repoint an already-accepted run (BE-0393 unit 2). A
+    # dispatcher that resolved a session's binding stamps it in `_register_and_dispatch`;
+    # `ServeState._freeze_binding` fills in the deployment's for a caller that resolved none. None
+    # only on a worker-rebuilt job, which resolves its own workspace at spawn.
     cwd: Path | None = None
     # Provenance to record into the produced run's manifest.json after it finishes (the bound bundle's
     # filename + zip sha256 + size). None for a normal run. Set for a run off an uploaded bundle (BE-0073).
@@ -223,6 +224,11 @@ class CaptureSession:
     namespaces: list[str]
     redactor: Redactor | None
     actor: str | None = None
+    # The login session that started the capture (BE-0393 unit 2). The capture drives the config
+    # *that* session is bound to, so the authored scenario has to be saved into the same one — and
+    # holding the id rather than re-reading it at finish also freezes the destination against a
+    # rebind partway through, the same reason a job freezes its working directory at enqueue.
+    login_session: str | None = None
     steps: list[Step] = field(default_factory=list)
     screenshot_path: Path = field(default_factory=lambda: Path(os.devnull))
     prev_fingerprint: str = ""

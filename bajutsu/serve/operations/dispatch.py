@@ -232,7 +232,7 @@ def start_run(
     if not body.get("scenario") or not body.get("target"):
         return {"error": "scenario and target are required"}, 400
     target = str(body["target"])
-    org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    org, forbidden = _resolve_org_or_forbid(state, target, actor, session)
     if forbidden:
         return forbidden
     # Confine the scenario to the target's own scenarios dir: a serve client must not be able to run an
@@ -381,7 +381,7 @@ def start_run_set(  # noqa: PLR0911, PLR0912
     if not body.get("target"):
         return {"error": "target is required"}, 400
     target = str(body["target"])
-    org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    org, forbidden = _resolve_org_or_forbid(state, target, actor, session)
     if forbidden:
         return forbidden
     scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
@@ -506,7 +506,7 @@ def start_record(
     if not body.get("goal") or not body.get("target"):
         return {"error": "goal and target are required"}, 400
     target = str(body["target"])
-    org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    org, forbidden = _resolve_org_or_forbid(state, target, actor, session)
     if forbidden:
         return forbidden
     scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
@@ -579,7 +579,7 @@ def start_crawl(
     if not body.get("target"):
         return {"error": "target is required"}, 400
     target = str(body["target"])
-    org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    org, forbidden = _resolve_org_or_forbid(state, target, actor, session)
     if forbidden:
         return forbidden
     # Two ways to warm-start an existing run (both take its runId from the UI): resume one pruned

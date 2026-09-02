@@ -672,7 +672,8 @@ def compose_current(
 
     Returns `{"artifacts": {}}` with HTTP 200 when nothing composed is bound (no config, a Git/fs
     bind, a legacy zip bind, or another org's bind) so the UI treats "nothing to inherit" as an
-    empty seed — never a 404. Does not materialize or rebind; it only reports what `state.binding.upload`
+    empty seed — never a 404. Does not materialize or rebind; it only reports what the asking
+    session's binding
     already holds. The POST body of `/api/compose` stays a pure function of its request — this GET
     never fills omitted legs on the server."""
     upload = state.binding_for(session, state.org_of(actor)).upload

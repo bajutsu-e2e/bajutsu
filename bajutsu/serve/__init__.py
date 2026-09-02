@@ -513,8 +513,18 @@ def _build_server_state(
     # scenarios/baselines live under its own key prefix, and its scenario store only acknowledges
     # the targets that org owns. The scenario targets are read from the live config, so a config
     # opened later is reflected.
-    def _org_apps(org: str) -> list[str]:
-        return state.targets_for(org)
+    def _apps_for_org(org: str, session: str | None, _org: str) -> list[str]:
+        """`ScenarioStorage`'s (session, org) shape with the bundle's own org already bound.
+
+        The org the storage passes is the one the scope was asked for, which is the org this bundle
+        was built for — so it is ignored in favour of the bound one.
+        """
+        return _org_apps(session, org)
+
+    def _org_apps(session: str | None, org: str) -> list[str]:
+        # The target set follows the configuration the *asking session* is bound to (BE-0393 unit 2),
+        # so a target only that session's config declares is still a known app.
+        return state.targets_for(org, session)
 
     def make_bundle(org: str) -> StoreBundle:
         base = org_prefix(prefix, org)
@@ -541,7 +551,9 @@ def _build_server_state(
         # plane's disk by the time a request arrives, so `list`/`read` resolve it from there. The
         # object storage still backs `save` (the hosted web editor / a `record` job) — the one
         # purpose `LocalTreeScenarioStorage` holds it for.
-        object_scenarios = ObjectScenarioStorage(store, partial(_org_apps, org), prefix=base)
+        # `_org_apps` takes (session, org); the bundle is built per org, so the org is bound here and
+        # only the session is left for the storage to supply per call.
+        object_scenarios = ObjectScenarioStorage(store, partial(_apps_for_org, org), prefix=base)
         return StoreBundle(
             artifacts=ObjectStorageArtifactStore(store, prefix=artifact_prefix(base)),
             scenarios=StorageScenarioStore(LocalTreeScenarioStorage(state, object_scenarios)),

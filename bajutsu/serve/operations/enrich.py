@@ -34,7 +34,7 @@ def start_enrich(
         return {"error": "scenario is required"}, 400
 
     target = str(body["target"])
-    org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    org, forbidden = _resolve_org_or_forbid(state, target, actor, session)
     if forbidden:
         return forbidden
 

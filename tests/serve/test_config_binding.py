@@ -284,3 +284,56 @@ def test_a_dispatched_job_runs_against_the_session_that_asked(tmp_path: Path) ->
     other, status = ops.start_run(state, {"target": "demo", "scenario": "smoke.yaml"}, session="s2")
     assert status == 200, other
     assert state.jobs[other["jobId"]].cwd == state.binding.cwd
+
+
+def test_the_cross_org_guard_follows_the_asking_sessions_binding(tmp_path: Path) -> None:
+    """Target ownership is a property of the binding, so the guard has to read the one the rest of
+    the request is running against — otherwise it answers 403 from a partition the request is not
+    using."""
+    from bajutsu.serve.operations._common import _resolve_org_or_forbid
+
+    launch = tmp_path / "launch.yaml"
+    launch.write_text(
+        "defaults: { backend: [ios] }\n"
+        "targets:\n  web: { bundleId: com.example.web }\n"
+        "orgs:\n  other:\n    targets: [web]\n",
+        encoding="utf-8",
+    )
+    mine = tmp_path / "mine.yaml"
+    mine.write_text(
+        "defaults: { backend: [ios] }\ntargets:\n  web: { bundleId: com.example.web }\n",
+        encoding="utf-8",
+    )
+
+    class _Repo:
+        """Enough of the repository seam to switch the guard on; org scoping is off without one."""
+
+        def user_org(self, _actor: str) -> str:
+            return "acme"
+
+    state = srv.ServeState(runs_dir=tmp_path / "runs", config=launch, cwd=tmp_path)
+    state.repository = _Repo()  # type: ignore[assignment]
+    # The launch config awards `web` to `other`, so acme is forbidden it...
+    assert _resolve_org_or_forbid(state, "web", "kazu", None)[1] is not None
+    # ...until acme binds a config of its own, which it then owns outright (BE-0375).
+    state.rebind("s1", "acme", ConfigBinding(config=mine, cwd=tmp_path, org="acme"))
+    assert _resolve_org_or_forbid(state, "web", "kazu", "s1")[1] is None
+
+
+def test_a_capture_remembers_the_session_that_started_it(tmp_path: Path) -> None:
+    """The capture drives the config its own session is bound to, so the authored scenario has to
+    land in that config's scenarios dir. Holding the id rather than re-reading it at finish also
+    freezes the destination against a rebind partway through."""
+    from bajutsu.drivers.fake import FakeDriver
+
+    state = _state(tmp_path)
+
+    _payload, status = ops.start_capture(
+        state,
+        {"target": "demo"},
+        session="s1",
+        driver_factory=lambda _e, _b, _u: (FakeDriver([]), lambda: None),
+    )
+
+    assert status == 200
+    assert state.capture is not None and state.capture.login_session == "s1"

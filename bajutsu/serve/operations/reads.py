@@ -1031,7 +1031,7 @@ def resolve_scenario_pick(  # noqa: PLR0911
     except (TypeError, ValueError):
         return {"error": "point must be [x, y] normalized"}, 400
 
-    _org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    _org, forbidden = _resolve_org_or_forbid(state, target, actor, session)
     if forbidden:
         return forbidden
 

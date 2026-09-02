@@ -43,7 +43,7 @@ def generate_codegen(
         return {"error": f"unsupported emit: {emit} (one of {', '.join(EMIT_TARGETS)})"}, 400
 
     target = str(body["target"])
-    org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    org, forbidden = _resolve_org_or_forbid(state, target, actor, session)
     if forbidden:
         return forbidden
 

@@ -40,7 +40,7 @@ def start_capture(
         return {"error": "capture session already active"}, 409
 
     target = str(body["target"])
-    _org, forbidden = _resolve_org_or_forbid(state, target, actor)
+    _org, forbidden = _resolve_org_or_forbid(state, target, actor, session)
     if forbidden:
         return forbidden
 
@@ -91,6 +91,7 @@ def start_capture(
             namespaces=namespaces,
             redactor=redactor,
             actor=actor,
+            login_session=session,
             screenshot_path=shot_path,
             teardown=teardown,
         )
@@ -214,7 +215,7 @@ def finish_capture(
     if session is None:
         return {"error": "no active capture session"}, 400
 
-    org, forbidden = _resolve_org_or_forbid(state, session.target, actor)
+    org, forbidden = _resolve_org_or_forbid(state, session.target, actor, session.login_session)
     if forbidden:
         session.teardown()  # release the driver's runner even on the forbidden path (BE-0290)
         state.capture = None
@@ -224,7 +225,9 @@ def finish_capture(
     from bajutsu.scenario.serialize import dump_scenario_file
 
     scenario = Scenario(name="captured", steps=list(session.steps))
-    scope = state.for_org(org).scenarios.scope(session.target)
+    scope = state.for_org(org).scenarios.scope(
+        session.target, session=session.login_session, org=org
+    )
     saved: str | None = None
     # The serialize + save below does disk / object-storage I/O that can raise (disk full, storage
     # error, a serialization edge). Run the teardown and session drop in `finally` so a failed save
