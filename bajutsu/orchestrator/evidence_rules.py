@@ -6,8 +6,8 @@ from __future__ import annotations
 import fnmatch
 from collections.abc import Iterator, Mapping
 
+from bajutsu.common.scenario import CaptureRule, Extract, Scenario, Selector, Step
 from bajutsu.drivers import base
-from bajutsu.scenario import CaptureRule, Extract, Scenario, Selector, Step
 
 # Scenario-wide interval recordings, in canonical order. These are heavy, so they are opt-in
 # (BE-0028): recorded only when a scenario actually requests the kind (see requested_intervals).

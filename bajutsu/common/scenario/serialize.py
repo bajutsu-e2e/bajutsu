@@ -7,8 +7,9 @@ from typing import Any, cast
 
 from pydantic import BaseModel
 
-from bajutsu import _yaml, interp
-from bajutsu.scenario.models import Mock, Scenario
+from bajutsu import _yaml
+from bajutsu.common.scenario import interp
+from bajutsu.common.scenario.models import Mock, Scenario
 
 # Placeholder a literal `totp.secret` seed is masked with in an evidence snapshot (BE-0152).
 _TOTP_PLACEHOLDER = "<redacted>"

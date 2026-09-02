@@ -33,7 +33,7 @@ from bajutsu.drivers import base
 from bajutsu.drivers.actuation import Actuation, ActuationLog, Drained
 
 if TYPE_CHECKING:
-    from bajutsu.scenario.models.mocks import Mock
+    from bajutsu.common.scenario.models.mocks import Mock
     from bajutsu.web_network import WebNetworkCollector
 
 

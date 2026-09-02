@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 
 from bajutsu import simctl
+from bajutsu.common.scenario import Foreground, Push, Scenario, SetClipboard, SetLocation, Step
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import AlertGuardConfig, run_scenario
-from bajutsu.scenario import Foreground, Push, Scenario, SetClipboard, SetLocation, Step
 
 # --- pure command builders ---
 
@@ -210,7 +210,7 @@ def test_steps_dispatch_to_control() -> None:
 
 
 def test_background_dispatches_to_control() -> None:
-    from bajutsu.scenario import Background
+    from bajutsu.common.scenario import Background
 
     ctrl = _RecordingControl()
     scn = Scenario(name="s", steps=[Step(background=Background())])
@@ -220,7 +220,7 @@ def test_background_dispatches_to_control() -> None:
 
 
 def test_override_status_bar_dispatches_to_control() -> None:
-    from bajutsu.scenario import OverrideStatusBar
+    from bajutsu.common.scenario import OverrideStatusBar
 
     ctrl = _RecordingControl()
     scn = Scenario(
@@ -233,7 +233,7 @@ def test_override_status_bar_dispatches_to_control() -> None:
 
 
 def test_clear_status_bar_dispatches_to_control() -> None:
-    from bajutsu.scenario import ClearStatusBar
+    from bajutsu.common.scenario import ClearStatusBar
 
     ctrl = _RecordingControl()
     scn = Scenario(name="s", steps=[Step(clearStatusBar=ClearStatusBar())])

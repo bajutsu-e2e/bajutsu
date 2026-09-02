@@ -14,7 +14,7 @@ from pathlib import Path
 from _report import _json_obj
 from jsonschema import Draft7Validator
 
-from bajutsu.assertions import AssertionResult
+from bajutsu.common.assertions import AssertionResult
 from bajutsu.common.evidence import Artifact
 from bajutsu.common.report import ctrf_json
 from bajutsu.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
@@ -308,7 +308,7 @@ def test_report_command_regenerates_ctrf(tmp_path: Path) -> None:
 
     from bajutsu.cli import app
     from bajutsu.common.report import write_report
-    from bajutsu.scenario import dump_scenario_file, load_scenarios
+    from bajutsu.common.scenario import dump_scenario_file, load_scenarios
 
     scenarios = load_scenarios("- name: login\n  steps:\n    - tap: { id: a }\n")
     run_dir = tmp_path / "runs" / "20260704-101500"

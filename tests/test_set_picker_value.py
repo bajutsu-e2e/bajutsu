@@ -15,11 +15,11 @@ from __future__ import annotations
 import pytest
 
 from bajutsu.capability_preflight import unsupported
+from bajutsu.common.scenario import load_scenarios
 from bajutsu.drivers import base
 from bajutsu.drivers.adb import AdbDriver
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import _action_of, run_scenario
-from bajutsu.scenario import load_scenarios
 
 
 def _picked_values(driver: FakeDriver) -> list[str]:

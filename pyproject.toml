@@ -313,11 +313,11 @@ source_modules = [
     "bajutsu.runner",
     "bajutsu.drivers.base",
     "bajutsu.drivers.actuation",
-    "bajutsu.assertions",
+    "bajutsu.common.assertions",
     "bajutsu.common.evidence",
     "bajutsu.common.report",
     "bajutsu.config",
-    "bajutsu.scenario",
+    "bajutsu.common.scenario",
     "bajutsu.preflight",
     "bajutsu.capability_preflight",
     "bajutsu.capabilities",
@@ -351,7 +351,7 @@ source_modules = [
     "bajutsu.config",
     "bajutsu.drivers",
     "bajutsu.runner",
-    "bajutsu.scenario",
+    "bajutsu.common.scenario",
 ]
 forbidden_modules = [
     "sqlalchemy",
@@ -370,7 +370,7 @@ forbidden_modules = [
 name = "Scenario schema and Driver Protocol stay a portable inner contract"
 type = "forbidden"
 source_modules = [
-    "bajutsu.scenario",
+    "bajutsu.common.scenario",
     "bajutsu.drivers.base",
     # The actuation record is part of the same portable contract: a consumer implementing a `Driver`
     # gets the record type without pulling in the orchestrator / runner / report.
@@ -379,7 +379,7 @@ source_modules = [
 forbidden_modules = [
     "bajutsu.orchestrator",
     "bajutsu.runner",
-    "bajutsu.assertions",
+    "bajutsu.common.assertions",
     "bajutsu.common.evidence",
     "bajutsu.common.report",
     "bajutsu.config",

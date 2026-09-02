@@ -25,7 +25,7 @@ from typing import Any
 
 import yaml
 
-from bajutsu.scenario import load_scenario_file
+from bajutsu.common.scenario import load_scenario_file
 from bajutsu.serve.authz import _record_audit, _target_forbidden
 from bajutsu.serve.helpers import list_targets, valid_scenario_ref
 from bajutsu.serve.operations.composition import materialize_composition

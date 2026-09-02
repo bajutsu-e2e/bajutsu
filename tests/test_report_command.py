@@ -11,11 +11,11 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from bajutsu.assertions import AssertionResult
 from bajutsu.cli import app
+from bajutsu.common.assertions import AssertionResult
 from bajutsu.common.report import rerender_html, write_report
+from bajutsu.common.scenario import dump_scenario_file, load_scenarios
 from bajutsu.orchestrator import RunResult, StepOutcome
-from bajutsu.scenario import dump_scenario_file, load_scenarios
 
 runner = CliRunner()
 

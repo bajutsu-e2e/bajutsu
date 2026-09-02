@@ -20,10 +20,10 @@ from typing import TYPE_CHECKING, Any
 
 from bajutsu.common.evidence.intervals import INTERVAL_KINDS
 from bajutsu.common.report.from_grouping import grouped_provenance
-from bajutsu.scenario import load_scenario_file
+from bajutsu.common.scenario import load_scenario_file
 
 if TYPE_CHECKING:
-    from bajutsu.scenario import CaptureRule, Scenario, Step
+    from bajutsu.common.scenario import CaptureRule, Scenario, Step
 
 # Captures expensive enough to warn about on a broad rule: the scenario-wide interval
 # recordings plus the network collector. (screenshot / elements / actionLog are cheap instants.)

@@ -11,11 +11,11 @@ from collections.abc import Callable, Mapping
 from typing import cast
 
 from bajutsu import simctl
+from bajutsu.common.scenario import Relaunch, Scenario
 from bajutsu.config import Effective, require_ios
 from bajutsu.drivers import base
 from bajutsu.orchestrator import RelaunchFn
 from bajutsu.platform_lifecycle import readiness
-from bajutsu.scenario import Relaunch, Scenario
 
 # Given a scenario + its launched driver, yields that scenario's `relaunch` function (defined here
 # rather than imported from runner.types to keep the environment seam free of a runner import cycle).

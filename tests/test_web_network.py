@@ -12,9 +12,9 @@ from typing import Any
 
 import pytest
 
-from bajutsu.assertions import evaluate_one
-from bajutsu.scenario.models.assertions import Assertion, RequestMatch
-from bajutsu.scenario.models.mocks import Mock, MockResponse
+from bajutsu.common.assertions import evaluate_one
+from bajutsu.common.scenario.models.assertions import Assertion, RequestMatch
+from bajutsu.common.scenario.models.mocks import Mock, MockResponse
 from bajutsu.web_network import WebNetworkCollector
 
 

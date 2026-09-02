@@ -8,9 +8,10 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from bajutsu import assertions
 from bajutsu.cancellation import CancelSource, RunCancelled, not_cancelled
+from bajutsu.common import assertions
 from bajutsu.common.evidence.network import TransitionSource, _no_transitions
+from bajutsu.common.scenario import Gone, Wait, WaitRequest
 from bajutsu.drivers import base
 from bajutsu.elements import shows_app_ui
 from bajutsu.orchestrator.types import (
@@ -23,7 +24,6 @@ from bajutsu.orchestrator.types import (
     pick_alert_label,
     uncleared_prompt_note,
 )
-from bajutsu.scenario import Gone, Wait, WaitRequest
 
 _logger = logging.getLogger(__name__)
 

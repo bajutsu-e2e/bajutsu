@@ -11,11 +11,11 @@ import pytest
 from conftest import el
 from PIL import Image
 
-from bajutsu.assertions import EvalContext, VisualContext, evaluate, evaluate_one, passed
+from bajutsu.common.assertions import EvalContext, VisualContext, evaluate, evaluate_one, passed
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
+from bajutsu.common.scenario import Assertion
 from bajutsu.drivers import base
-from bajutsu.scenario import Assertion
 
 SCREEN: list[base.Element] = [
     el("home.title", "ホーム", ["staticText"]),
@@ -29,8 +29,8 @@ SCREEN: list[base.Element] = [
 
 
 def test_public_surface_reexported_from_package_root() -> None:
-    """The package split (BE-0250) keeps every public name importable from `bajutsu.assertions`."""
-    import bajutsu.assertions as pkg
+    """The package split (BE-0250) keeps every public name importable from `bajutsu.common.assertions`."""
+    import bajutsu.common.assertions as pkg
 
     for name in (
         "AssertionResult",
@@ -55,7 +55,7 @@ def test_submodules_import_without_a_cycle() -> None:
     import importlib
 
     for mod in ("_common", "network", "visual", "schema", "evaluate"):
-        assert importlib.import_module(f"bajutsu.assertions.{mod}") is not None
+        assert importlib.import_module(f"bajutsu.common.assertions.{mod}") is not None
 
 
 def _a(data: dict[str, object]) -> Assertion:
@@ -107,8 +107,8 @@ def test_not_found_fails_with_reason() -> None:
 def test_evaluator_registry_covers_every_kind_exactly() -> None:
     """The dispatch registry has one evaluator per assertion kind — no missing kind, no stray
     entry — so `evaluate_one`'s lookup can never fall through for a valid assertion (BE-0250)."""
-    from bajutsu.assertions.evaluate import _EVALUATORS
-    from bajutsu.scenario import ASSERTION_KINDS
+    from bajutsu.common.assertions.evaluate import _EVALUATORS
+    from bajutsu.common.scenario import ASSERTION_KINDS
 
     assert set(_EVALUATORS) == set(ASSERTION_KINDS)
 
@@ -120,7 +120,7 @@ def test_assertion_kinds_derived_from_model() -> None:
     """`ASSERTION_KINDS` is derived from the `Assertion` model — every field except the
     non-kind provenance `from_` — so a new kind is a single field edit, not also a parallel
     hand-maintained tuple (BE-0250 Unit 4)."""
-    from bajutsu.scenario import ASSERTION_KINDS
+    from bajutsu.common.scenario import ASSERTION_KINDS
 
     # Pin against the concrete kinds (declaration order): checks the derivation against an
     # independent list, not against a recomputation of its own formula.
@@ -170,7 +170,7 @@ def test_eval_context_delivers_each_field_to_its_kind(tmp_path: Path) -> None:
         "frame": [10.0, 20.0, 50.0, 30.0],
     }
     (golden_dir / "controls.json").write_text(json.dumps({"c.toggle": entry}), encoding="utf-8")
-    from bajutsu.assertions import GoldenContext
+    from bajutsu.common.assertions import GoldenContext
 
     ctx = EvalContext(golden=GoldenContext(goldens_dir=golden_dir), clipboard="COUPON123")
     screen = [el("c.toggle", "T", ["switch"], value="1", frame=(10.0, 20.0, 50.0, 30.0))]
@@ -240,7 +240,7 @@ def test_evaluate_and_passed() -> None:
 
 def test_compile_cache_reuses_compiled_pattern() -> None:
     """_compile caches compiled regex patterns in assertions module."""
-    from bajutsu.assertions._common import _compile
+    from bajutsu.common.assertions._common import _compile
 
     _compile.cache_clear()
     _compile("foo.*bar")
@@ -331,7 +331,7 @@ def _run_writer(tmp_path: Path) -> RunArtifactWriter:
 def test_visual_assertion_pass(tmp_path: Path) -> None:
     from PIL import Image
 
-    from bajutsu.assertions import VisualContext
+    from bajutsu.common.assertions import VisualContext
 
     baselines = tmp_path / "baselines"
     baselines.mkdir()
@@ -364,7 +364,7 @@ def test_visual_assertion_pass(tmp_path: Path) -> None:
 def test_visual_assertion_fail(tmp_path: Path) -> None:
     from PIL import Image
 
-    from bajutsu.assertions import VisualContext
+    from bajutsu.common.assertions import VisualContext
 
     baselines = tmp_path / "baselines"
     baselines.mkdir()
@@ -391,7 +391,7 @@ def test_visual_assertion_fail(tmp_path: Path) -> None:
 
 
 def test_visual_assertion_missing_baseline(tmp_path: Path) -> None:
-    from bajutsu.assertions import VisualContext
+    from bajutsu.common.assertions import VisualContext
 
     vc = VisualContext(
         screenshot_path=tmp_path / "00-home" / "visual-actual.png",
@@ -421,7 +421,7 @@ def test_visual_pixelmatch_fields_with_resolved_exact_fails(tmp_path: Path) -> N
     """Explicit pixelmatch fields + resolved engine exact → clean failure."""
     from PIL import Image
 
-    from bajutsu.assertions import VisualContext
+    from bajutsu.common.assertions import VisualContext
 
     baselines = tmp_path / "baselines"
     baselines.mkdir()
@@ -450,7 +450,7 @@ def test_visual_evidence_records_engine(tmp_path: Path) -> None:
     """VisualEvidence.engine reflects the resolved compare engine."""
     from PIL import Image
 
-    from bajutsu.assertions import VisualContext
+    from bajutsu.common.assertions import VisualContext
 
     baselines = tmp_path / "baselines"
     baselines.mkdir()
@@ -476,7 +476,7 @@ def test_visual_evidence_records_engine(tmp_path: Path) -> None:
 def test_visual_evidence_records_pixelmatch(tmp_path: Path) -> None:
     from PIL import Image
 
-    from bajutsu.assertions import VisualContext
+    from bajutsu.common.assertions import VisualContext
 
     baselines = tmp_path / "baselines"
     baselines.mkdir()
@@ -505,7 +505,7 @@ def test_visual_context_default_compare_fallback(tmp_path: Path) -> None:
     """When the assertion has no compare, VisualContext.default_compare is used."""
     from PIL import Image
 
-    from bajutsu.assertions import VisualContext
+    from bajutsu.common.assertions import VisualContext
 
     baselines = tmp_path / "baselines"
     baselines.mkdir()
@@ -550,7 +550,7 @@ def _framed_screen() -> list[base.Element]:
 
 
 def _vc(tmp_path: Path, screenshot: Path) -> VisualContext:
-    from bajutsu.assertions import VisualContext
+    from bajutsu.common.assertions import VisualContext
 
     return VisualContext(
         screenshot_path=screenshot,
@@ -897,7 +897,7 @@ def test_prepare_visual_comparison_whole_screen_is_a_passthrough(tmp_path: Path)
     """No element / no selector mask: preprocessing leaves the whole screenshot as the actual."""
     from PIL import Image
 
-    from bajutsu.assertions.visual import _prepare_visual_comparison
+    from bajutsu.common.assertions.visual import _prepare_visual_comparison
 
     shot = tmp_path / "shot.png"
     Image.new("RGBA", (100, 100), (255, 0, 0, 255)).save(shot)
@@ -906,7 +906,7 @@ def test_prepare_visual_comparison_whole_screen_is_a_passthrough(tmp_path: Path)
     prepared = _prepare_visual_comparison(_vc(tmp_path, shot), a, _framed_screen(), "home.png")
 
     # A whole-screen comparison: no crop, no scale, the actual is the untouched screenshot.
-    from bajutsu.assertions.visual import _Prepared
+    from bajutsu.common.assertions.visual import _Prepared
 
     assert isinstance(prepared, _Prepared)
     assert prepared.crop is None
@@ -919,7 +919,7 @@ def test_prepare_visual_comparison_crops_to_the_element(tmp_path: Path) -> None:
     """An element-scoped comparison writes the crop and reports it as the actual (40x30 card)."""
     from PIL import Image
 
-    from bajutsu.assertions.visual import _prepare_visual_comparison, _Prepared
+    from bajutsu.common.assertions.visual import _prepare_visual_comparison, _Prepared
 
     actual = Image.new("RGBA", (100, 100), (255, 0, 0, 255))
     _paint(actual, (10, 10, 40, 30), (0, 255, 0, 255))
@@ -943,8 +943,8 @@ def test_prepare_visual_comparison_element_not_found_returns_result(tmp_path: Pa
     """An unresolvable element scope short-circuits to a failing AssertionResult, not a crop."""
     from PIL import Image
 
-    from bajutsu.assertions import AssertionResult
-    from bajutsu.assertions.visual import _prepare_visual_comparison
+    from bajutsu.common.assertions import AssertionResult
+    from bajutsu.common.assertions.visual import _prepare_visual_comparison
 
     shot = tmp_path / "shot.png"
     Image.new("RGBA", (100, 100), (255, 0, 0, 255)).save(shot)
@@ -962,9 +962,9 @@ def test_resolve_masks_selector_and_rectangle(tmp_path: Path) -> None:
     """Selector masks resolve to pixel rectangles (with provenance); plain rectangles pass through."""
     from PIL import Image
 
-    from bajutsu.assertions import AssertionResult
-    from bajutsu.assertions.visual import _resolve_masks
-    from bajutsu.scenario import ExcludeRegion
+    from bajutsu.common.assertions import AssertionResult
+    from bajutsu.common.assertions.visual import _resolve_masks
+    from bajutsu.common.scenario import ExcludeRegion
 
     shot = tmp_path / "shot.png"
     Image.new("RGBA", (100, 100), (0, 255, 0, 255)).save(shot)
@@ -994,8 +994,8 @@ def test_resolve_masks_selector_and_rectangle(tmp_path: Path) -> None:
 
 def test_resolve_masks_ambiguous_selector_returns_result(tmp_path: Path) -> None:
     """An ambiguous mask selector fails the assertion rather than masking the first match."""
-    from bajutsu.assertions import AssertionResult
-    from bajutsu.assertions.visual import _resolve_masks
+    from bajutsu.common.assertions import AssertionResult
+    from bajutsu.common.assertions.visual import _resolve_masks
 
     a = _a(
         {"visual": {"baseline": "home.png", "exclude": [{"selector": {"traits": ["staticText"]}}]}}
@@ -1012,8 +1012,8 @@ def test_resolve_masks_ambiguous_selector_returns_result(tmp_path: Path) -> None
 
 def test_resolve_masks_translates_into_crop_local_coordinates(tmp_path: Path) -> None:
     """When element-scoped, masks are shifted into the crop's local coordinate space."""
-    from bajutsu.assertions.visual import _resolve_masks
-    from bajutsu.scenario import ExcludeRegion
+    from bajutsu.common.assertions.visual import _resolve_masks
+    from bajutsu.common.scenario import ExcludeRegion
 
     a = _a({"visual": {"baseline": "card.png", "exclude": [{"selector": {"id": "badge"}}]}}).visual
     assert a is not None
@@ -1029,7 +1029,7 @@ def test_resolve_baselines_copies_the_baseline_and_prepares_the_diff_path(tmp_pa
     """Baseline I/O: the baseline is copied into the run dir and the diff path is prepared."""
     from PIL import Image
 
-    from bajutsu.assertions.visual import _resolve_baselines
+    from bajutsu.common.assertions.visual import _resolve_baselines
 
     baselines = tmp_path / "baselines"
     baselines.mkdir()
@@ -1067,7 +1067,7 @@ def test_golden_model_rejects_empty_path() -> None:
 def test_golden_assertion_pass(tmp_path: Path) -> None:
     import json
 
-    from bajutsu.assertions import GoldenContext
+    from bajutsu.common.assertions import GoldenContext
 
     golden_dir = tmp_path / "goldens"
     golden_dir.mkdir()
@@ -1096,7 +1096,7 @@ def test_golden_assertion_pass(tmp_path: Path) -> None:
 def test_golden_assertion_mismatch_fails(tmp_path: Path) -> None:
     import json
 
-    from bajutsu.assertions import GoldenContext
+    from bajutsu.common.assertions import GoldenContext
 
     golden_dir = tmp_path / "goldens"
     golden_dir.mkdir()
@@ -1125,7 +1125,7 @@ def test_golden_assertion_mismatch_fails(tmp_path: Path) -> None:
 def test_golden_assertion_missing_element_fails(tmp_path: Path) -> None:
     import json
 
-    from bajutsu.assertions import GoldenContext
+    from bajutsu.common.assertions import GoldenContext
 
     golden_dir = tmp_path / "goldens"
     golden_dir.mkdir()
@@ -1153,7 +1153,7 @@ def test_golden_assertion_no_context_fails() -> None:
 
 
 def test_golden_assertion_file_not_found_fails(tmp_path: Path) -> None:
-    from bajutsu.assertions import GoldenContext
+    from bajutsu.common.assertions import GoldenContext
 
     gc = GoldenContext(goldens_dir=tmp_path)
     result = evaluate_one(
@@ -1163,7 +1163,7 @@ def test_golden_assertion_file_not_found_fails(tmp_path: Path) -> None:
 
 
 def test_golden_path_traversal_rejected(tmp_path: Path) -> None:
-    from bajutsu.assertions import GoldenContext
+    from bajutsu.common.assertions import GoldenContext
 
     gc = GoldenContext(goldens_dir=tmp_path)
     result = evaluate_one(
@@ -1177,7 +1177,7 @@ def test_golden_via_evaluate(tmp_path: Path) -> None:
     """Golden assertions work through the batch evaluate() path too."""
     import json
 
-    from bajutsu.assertions import GoldenContext
+    from bajutsu.common.assertions import GoldenContext
 
     golden_dir = tmp_path / "goldens"
     golden_dir.mkdir()

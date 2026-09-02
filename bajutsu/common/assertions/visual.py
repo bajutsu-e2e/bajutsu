@@ -10,15 +10,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from bajutsu.assertions._common import AssertionResult, _resolve_one, sel_str
+from bajutsu.common.assertions._common import AssertionResult, _resolve_one, sel_str
 from bajutsu.common.evidence.sink import RunArtifactWriter
-from bajutsu.drivers import base
-from bajutsu.scenario import (
+from bajutsu.common.scenario import (
     ExcludeRegion,
     Selector,
     SelectorRegion,
     VisualMatch,
 )
+from bajutsu.drivers import base
 
 
 @dataclass(frozen=True)

@@ -9,13 +9,13 @@ from typing import cast
 from bajutsu import backends, simctl
 from bajutsu.common.evidence import intervals
 from bajutsu.common.evidence.network import Collector
+from bajutsu.common.scenario import Preconditions, Scenario
 from bajutsu.config import Effective, require_web
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
 from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.platform_lifecycle import readiness
 from bajutsu.platform_lifecycle.relaunchers import _web_relauncher
-from bajutsu.scenario import Preconditions, Scenario
 
 
 class WebEnvironment:

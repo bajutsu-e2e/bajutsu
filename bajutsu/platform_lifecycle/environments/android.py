@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from bajutsu import adb, backends
 from bajutsu.common.evidence import intervals
 from bajutsu.common.evidence.network import Collector
+from bajutsu.common.scenario import Preconditions, Relaunch, Scenario
 from bajutsu.config import Effective, require_android
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 from bajutsu.drivers import base
@@ -20,7 +21,6 @@ from bajutsu.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.platform_lifecycle import readiness
 from bajutsu.platform_lifecycle.device_control import android_device_control
 from bajutsu.platform_lifecycle.protocols import ProvisionProfile
-from bajutsu.scenario import Preconditions, Relaunch, Scenario
 
 if TYPE_CHECKING:
     from bajutsu.adb_resident import ResidentChannel

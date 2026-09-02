@@ -20,13 +20,13 @@ from typing import Any, cast
 
 import yaml
 
-from bajutsu.assertions import AssertionResult, VisualEvidence
+from bajutsu.common.assertions import AssertionResult, VisualEvidence
 from bajutsu.common.evidence import Artifact
 from bajutsu.common.report.html import html_report, scenario_render_inputs, write_html_and_junit
+from bajutsu.common.scenario import load_scenario_file
 from bajutsu.drivers.actuation import Actuation
 from bajutsu.drivers.base import Frame, Point
 from bajutsu.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
-from bajutsu.scenario import load_scenario_file
 
 _logger = logging.getLogger("bajutsu.common.report.load")
 

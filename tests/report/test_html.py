@@ -9,9 +9,9 @@ from _report import _el, _failing, _passing
 from bajutsu.common.evidence import Artifact
 from bajutsu.common.evidence.network import NetworkExchange
 from bajutsu.common.report import html_report
+from bajutsu.common.scenario import Scenario
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.orchestrator import RunResult, run_scenario
-from bajutsu.scenario import Scenario
 
 
 def test_html_report_shows_why_a_substituted_element_was_actuated() -> None:

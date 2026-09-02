@@ -19,10 +19,10 @@ from bajutsu.backends import (
     select_actuator_cost_first,
     select_actuator_for_scenario,
 )
+from bajutsu.common.scenario import Redact, Scenario
 from bajutsu.config import DeviceProvider, Effective, IosConfig, WebConfig, XcuitestConfig
 from bajutsu.drivers import base
 from bajutsu.drivers.adb import HierarchyRead
-from bajutsu.scenario import Redact, Scenario
 
 # A synthetic two-actuator platform (a "lean" actuator with no native network plus a "rich" one that
 # has it), so the same-platform evidence fallback can be exercised even though every real platform is

@@ -15,24 +15,23 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from bajutsu.assertions._common import (
+from bajutsu.common.assertions._common import (
     AssertionResult,
     _compile,
     _resolve_one,
     sel_str,
 )
-from bajutsu.assertions.network import (
+from bajutsu.common.assertions.network import (
     _assign_requests,
     _request_assignment_result,
     count_matching,
     match_request,
     request_label,
 )
-from bajutsu.assertions.schema import SchemaContext, _eval_response_schema
-from bajutsu.assertions.visual import VisualContext, _eval_visual
+from bajutsu.common.assertions.schema import SchemaContext, _eval_response_schema
+from bajutsu.common.assertions.visual import VisualContext, _eval_visual
 from bajutsu.common.evidence.network import NetworkExchange
-from bajutsu.drivers import base
-from bajutsu.scenario import (
+from bajutsu.common.scenario import (
     ASSERTION_KINDS,
     Assertion,
     ClipboardMatch,
@@ -45,6 +44,7 @@ from bajutsu.scenario import (
     Selector,
     TextMatch,
 )
+from bajutsu.drivers import base
 
 
 @dataclass(frozen=True)

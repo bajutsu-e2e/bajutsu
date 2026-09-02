@@ -32,9 +32,9 @@ from bajutsu.analysis.coverage import (
 )
 from bajutsu.cli import app
 from bajutsu.common.evidence.network import NetworkExchange
+from bajutsu.common.scenario import load_scenarios
 from bajutsu.crawl import fingerprint as screen_fingerprint
 from bajutsu.drivers import base
-from bajutsu.scenario import load_scenarios
 
 runner = CliRunner()
 

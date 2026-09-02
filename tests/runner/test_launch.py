@@ -19,6 +19,7 @@ from _runner import _el, _ios_eff
 
 from bajutsu import simctl
 from bajutsu.common.evidence.network import ScreenTransition
+from bajutsu.common.scenario import Preconditions
 from bajutsu.config import Effective, XcuitestConfig, require_ios
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
@@ -26,7 +27,6 @@ from bajutsu.runner import (
     await_ready,
     launch_driver,
 )
-from bajutsu.scenario import Preconditions
 
 
 def _recording_run(calls: list[list[str]]) -> simctl.RunFn:

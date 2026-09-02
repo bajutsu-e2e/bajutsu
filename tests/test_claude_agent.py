@@ -15,10 +15,10 @@ from bajutsu.common.ai.base import (
     ToolUseBlock,
 )
 from bajutsu.common.evidence.redaction import Redactor
+from bajutsu.common.scenario import Redact, dump_scenarios, load_scenarios
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.record import record
-from bajutsu.scenario import Redact, dump_scenarios, load_scenarios
 
 
 def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.Element:

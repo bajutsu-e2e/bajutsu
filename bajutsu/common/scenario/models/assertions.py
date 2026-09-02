@@ -10,8 +10,8 @@ from typing import Any, Literal, Self
 
 from pydantic import Field, model_validator
 
-from bajutsu.scenario.models._base import _exactly_one, _Model
-from bajutsu.scenario.models.selector import Selector
+from bajutsu.common.scenario.models._base import _exactly_one, _Model
+from bajutsu.common.scenario.models.selector import Selector
 
 
 class _EndpointMatch(_Model):

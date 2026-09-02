@@ -14,9 +14,9 @@ scenarios. A path that can't be faithfully replayed (it taps a normalized coordi
 from __future__ import annotations
 
 from bajutsu.common.evidence.sink import RunArtifactWriter
+from bajutsu.common.scenario.serialize import dump_scenario_file
 from bajutsu.crawl.core import ScreenMap
 from bajutsu.crawl.repro import scenario_from_actions
-from bajutsu.scenario.serialize import dump_scenario_file
 
 
 def write_flows(writer: RunArtifactWriter, screen_map: ScreenMap) -> list[str]:

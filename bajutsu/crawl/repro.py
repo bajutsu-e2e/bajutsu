@@ -19,10 +19,10 @@ from collections.abc import Sequence
 
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
+from bajutsu.common.scenario.models import Scenario, Selector, Step, TypeText
+from bajutsu.common.scenario.serialize import dump_scenario_file
 from bajutsu.crawl.core import Action, Crash, ScreenMap, value_for_field
 from bajutsu.drivers import base
-from bajutsu.scenario.models import Scenario, Selector, Step, TypeText
-from bajutsu.scenario.serialize import dump_scenario_file
 
 
 def _selector(action: Action) -> Selector | None:

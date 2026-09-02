@@ -18,9 +18,9 @@ from bajutsu.common.evidence import (
 from bajutsu.common.evidence.intervals import Interval
 from bajutsu.common.evidence.redaction import PLACEHOLDER, Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
+from bajutsu.common.scenario import Redact
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
-from bajutsu.scenario import Redact
 
 
 def _writer(run_dir: Path, redactor: Redactor | None = None) -> RunArtifactWriter:

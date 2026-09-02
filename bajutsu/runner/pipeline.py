@@ -16,7 +16,13 @@ if TYPE_CHECKING:
     from bajutsu.drivers import base
 
 from bajutsu import capability_preflight, device_errors
-from bajutsu.assertions import (
+from bajutsu.backends import (
+    capabilities_for_run,
+    device_replacement_supported,
+    erase_precondition_supported,
+)
+from bajutsu.cancellation import CANCELLED_FAILURE, CancelSource, not_cancelled
+from bajutsu.common.assertions import (
     AssertionResult,
     EvalContext,
     GoldenContext,
@@ -24,17 +30,17 @@ from bajutsu.assertions import (
     VisualContext,
     VisualEvidence,
 )
-from bajutsu.backends import (
-    capabilities_for_run,
-    device_replacement_supported,
-    erase_precondition_supported,
-)
-from bajutsu.cancellation import CANCELLED_FAILURE, CancelSource, not_cancelled
 from bajutsu.common.evidence import Artifact
 from bajutsu.common.evidence.network import NetworkExchange, _no_transitions
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter, prepare_run_dir
 from bajutsu.common.report import git_revision, run_provenance, scenario_render_inputs, write_report
+from bajutsu.common.scenario import (
+    Scenario,
+    UncoveredSystemAlertLocale,
+    dump_scenario_file,
+    redact_totp_secrets,
+)
 from bajutsu.config import Effective
 from bajutsu.drivers.base import BackendCrashError
 from bajutsu.orchestrator import (
@@ -57,12 +63,6 @@ from bajutsu.runner.recovery import (
     _default_run_crash_recovery_budget,
 )
 from bajutsu.runner.types import AlertGuardFor, Lease, LeaseFn
-from bajutsu.scenario import (
-    Scenario,
-    UncoveredSystemAlertLocale,
-    dump_scenario_file,
-    redact_totp_secrets,
-)
 
 # Re-exported from `recovery` (BE-0334): the crash-retry count/budget bookkeeping now lives there so
 # the on-device conformance harness drives the same recovery and the two cannot drift. Kept importable

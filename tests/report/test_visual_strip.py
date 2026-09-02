@@ -33,7 +33,7 @@ def test_assert_parts_visual() -> None:
 
 
 def test_html_visual_assertion_strip(tmp_path: Path) -> None:
-    from bajutsu.assertions import AssertionResult, VisualEvidence
+    from bajutsu.common.assertions import AssertionResult, VisualEvidence
 
     ev = VisualEvidence(
         baseline_name="home.png",
@@ -65,7 +65,7 @@ def test_html_visual_assertion_strip(tmp_path: Path) -> None:
 
 
 def test_html_visual_pass_has_comparator_without_diff_mode(tmp_path: Path) -> None:
-    from bajutsu.assertions import AssertionResult, VisualEvidence
+    from bajutsu.common.assertions import AssertionResult, VisualEvidence
 
     # A passing visual check: baseline ≈ actual, no diff image → comparator but no Diff/Approve.
     ev = VisualEvidence(
@@ -95,7 +95,7 @@ def test_assert_parts_visual_element_scoped() -> None:
 
 
 def test_html_visual_strip_shows_element_and_mask_provenance(tmp_path: Path) -> None:
-    from bajutsu.assertions import AssertionResult, VisualEvidence
+    from bajutsu.common.assertions import AssertionResult, VisualEvidence
 
     ev = VisualEvidence(
         baseline_name="card.png",
@@ -115,7 +115,7 @@ def test_html_visual_strip_shows_element_and_mask_provenance(tmp_path: Path) -> 
 
 
 def test_html_visual_missing_baseline_no_approve_is_offered() -> None:
-    from bajutsu.assertions import AssertionResult, VisualEvidence
+    from bajutsu.common.assertions import AssertionResult, VisualEvidence
 
     ev = VisualEvidence(baseline_name="home.png", actual="00-s1/visual-actual.png", missing=True)
     ar = AssertionResult(False, "visual", "visual ≈ home.png", "baseline not found", visual=ev)

@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from bajutsu.scenario import EmailExtract, EmailMatch
+from bajutsu.common.scenario import EmailExtract, EmailMatch
 
 
 @dataclass(frozen=True)
