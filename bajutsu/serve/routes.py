@@ -225,6 +225,7 @@ ROUTES: tuple[Route, ...] = (
         lambda state, ctx: ops.runs_payload(
             state,
             actor=ctx.actor(),
+            session=ctx.session(),
             scenario=ctx.query("scenario"),
             target=ctx.query("target"),
             label=ctx.query("label"),
@@ -294,13 +295,17 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "GET",
         "/stats",
-        lambda state, ctx: ops.stats_html(state, actor=ctx.actor(), label=ctx.query("label")),
+        lambda state, ctx: ops.stats_html(
+            state, actor=ctx.actor(), session=ctx.session(), label=ctx.query("label")
+        ),
         content_type=_HTML,
     ),
     Route(
         "GET",
         "/flakiness",
-        lambda state, ctx: ops.flakiness_html(state, actor=ctx.actor(), label=ctx.query("label")),
+        lambda state, ctx: ops.flakiness_html(
+            state, actor=ctx.actor(), session=ctx.session(), label=ctx.query("label")
+        ),
         content_type=_HTML,
     ),
     Route(

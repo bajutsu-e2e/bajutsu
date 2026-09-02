@@ -44,7 +44,7 @@ def audit_scenario(
             return {"error": "yaml, or target and path, is required"}, 400
         if state.binding_for(session, state.org_of(actor)).config is None:
             return {"error": "open a config first"}, 400
-        result, status = read_scenario(state, str(target), str(path), actor=actor)
+        result, status = read_scenario(state, str(target), str(path), actor=actor, session=session)
         if status != 200:
             return result, status
         text = str(result["yaml"])

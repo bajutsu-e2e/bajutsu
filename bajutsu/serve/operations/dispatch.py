@@ -178,19 +178,28 @@ def _device_budget(config_budget: int | None, request_budget: int | None) -> int
 
 
 def _register_and_dispatch(
-    state: ServeState, job: Job, *, device_budget: int = 0
+    state: ServeState, job: Job, *, binding: ConfigBinding | None = None, device_budget: int = 0
 ) -> tuple[Job | None, tuple[Any, int] | None]:
     """Register *job* under the concurrency cap and dispatch it, the tail shared by every start_*
     endpoint. Returns ``(job, None)`` once dispatched, or ``(None, (error, 429))`` when the cap is
     hit. The atomic count+create in `try_register` is what keeps concurrent dispatches under the cap.
     *device_budget* is the per-target cloud-batch device cap (BE-0336 Unit 4), 0 for the local run
-    paths that reserve no cloud device."""
+    paths that reserve no cloud device.
+
+    *binding* is the configuration the caller resolved for its own session, whose `cwd` the job is
+    frozen against (BE-0393 unit 2). Passing it here rather than in each dispatcher keeps the freeze
+    at the one tail they all funnel through, and passing it *at all* is what makes the job's working
+    directory agree with the `--config` already on its command line: both then come from the session
+    that asked. Omitted only by a caller with no session binding of its own, which falls through to
+    the deployment's in `try_register`."""
     # Resolve the requesting org's AI provider selection into this job's env overlay (BE-0229), so
     # the spawn uses that org's provider/model/effort without the serve process mutating its shared
     # os.environ. Empty when no provider is selected (the zero-config path). Travels in the job spec,
     # so a remote worker needs no settings of its own. Done here — the single tail every start_*
     # endpoint (run / record / crawl / triage) funnels through — so every AI-capable job is covered.
     job.env_overlay = resolve_provider_env(state, job.org)
+    if binding is not None:
+        job.cwd = binding.cwd
     registered = state.try_register(job, device_budget=device_budget)
     if registered is None:
         oplog.log_event(
@@ -339,6 +348,7 @@ def start_run(
             # verdict and a manifest to preserve.
             graceful_cancel=True,
         ),
+        binding=binding,
     )
     if capped:
         return capped
@@ -466,6 +476,7 @@ def start_run_set(  # noqa: PLR0911, PLR0912
         job, capped = _register_and_dispatch(
             state,
             Job(batch=request, actor=actor, org=org, label=label),
+            binding=binding,
             device_budget=device_budget,
         )
         if capped:
@@ -546,6 +557,7 @@ def start_record(
             org=org,
             capabilities=target_capabilities(cfg, str(body["target"])),
         ),
+        binding=binding,
     )
     if capped:
         return capped
@@ -631,6 +643,7 @@ def start_crawl(
             org=org,
             capabilities=target_capabilities(cfg, target),
         ),
+        binding=binding,
     )
     if capped:
         return capped

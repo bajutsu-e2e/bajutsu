@@ -770,10 +770,10 @@ def bind_git_config(
     """Bind a config from a Git source chosen in the UI (the "from Git" picker, BE-0063).
 
     *spec_str* is a `github:owner/repo@ref:path` (or `git+https://…`) string. We materialize the
-    repo subtree at the ref into the content-addressed cache, validate the config loads, then point
-    `state.binding.config` at the checkout's config **and** `state.binding.cwd` at the checkout root — so the config's
-    relative `scenarios` / `appPath` / `build` resolve against the fetched tree, not serve's launch
-    directory. This does not widen the file browser, which stays confined to `--root`; the checkout is
+    repo subtree at the ref into the content-addressed cache, validate the config loads, then bind it
+    for the asking session, with `cwd` at the checkout root — so the config's relative `scenarios` /
+    `appPath` / `build` resolve against the fetched tree, not serve's launch directory. The bind is
+    visible to that session alone (BE-0393 unit 2). This does not widen the file browser, which stays confined to `--root`; the checkout is
     a Bajutsu-managed cache (`materialize` refuses tar path-traversal on extraction), and each target's
     path fields are **confined to the checkout root** at bind (`Effective.rebased`) so a fetched config
     can't point serve's scenario/build logic at host paths outside the tree (BE-0063)."""

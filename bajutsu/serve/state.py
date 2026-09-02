@@ -816,7 +816,14 @@ class ServeState:
         a rare admin action over a map bounded by `MAX_SESSION_BINDINGS` (BE-0393 unit 2).
         """
         with self._bindings_lock:
-            gone = [key for key in self.bindings if not self.auth.valid_session(key[0])]
+            keys = list(self.bindings)
+        # Asked outside the lock: on a hosted deployment `valid_session` is a database round trip, and
+        # holding the lock across up to `MAX_SESSION_BINDINGS` of them would block every concurrent
+        # `binding_for`. A slot bound between the snapshot and the delete is still live, so membership
+        # is re-checked below rather than trusted from the snapshot.
+        dead = [key for key in keys if not self.auth.valid_session(key[0])]
+        with self._bindings_lock:
+            gone = [key for key in dead if key in self.bindings]
             for key in gone:
                 del self.bindings[key]
         return len(gone)
@@ -949,7 +956,7 @@ def _scenarios_dir_for(
     """The scenarios dir to list/save for *target*: the ``--scenarios`` override if set, else the
     target's configured dir.  None when neither is available.
 
-    A configured dir is **relative to the config's base** — `state.cwd` — so a Git-sourced config
+    A configured dir is **relative to the config's base** — the binding's `cwd` — so a Git-sourced
     (whose `cwd` is the checkout root) lists scenarios from the fetched tree, not serve's launch
     directory. A local config's `cwd` is its own directory too, so its scenarios resolve from beside
     the config file rather than from where serve was started (BE-0063, BE-0242)."""

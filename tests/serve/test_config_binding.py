@@ -11,7 +11,7 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
-from _shared import project
+from _shared import fake_popen, project
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
@@ -260,3 +260,27 @@ def test_target_ownership_follows_the_asking_sessions_binding(tmp_path: Path) ->
 
     assert state.targets_for("acme", "s1") == ["demo"]  # bound as acme, so acme owns it
     assert state.targets_for("acme", "s2") == []  # another session sees the launch partition
+
+
+def test_a_dispatched_job_runs_against_the_session_that_asked(tmp_path: Path) -> None:
+    """The job's `--config` comes from the asking session's binding, so its working directory has to
+    come from the same one — otherwise a session-bound bundle's relative `appPath` and `scenarios`
+    resolve against the deployment's tree instead of the bundle's."""
+    uploads = tmp_path / "uploads"
+    state = _state(
+        tmp_path, uploads_dir=uploads, popen=fake_popen(["PASS  runs/1/manifest.json\n"])
+    )
+    bundle = _bundle(uploads, "u1")
+    state.bind_upload(bundle, "s1")
+
+    payload, status = ops.start_run(
+        state, {"target": "demo", "scenario": "smoke.yaml"}, session="s1"
+    )
+
+    assert status == 200, payload
+    job = state.jobs[payload["jobId"]]
+    assert job.cwd == bundle.dir
+    # A session that bound nothing keeps dispatching against the deployment's own binding.
+    other, status = ops.start_run(state, {"target": "demo", "scenario": "smoke.yaml"}, session="s2")
+    assert status == 200, other
+    assert state.jobs[other["jobId"]].cwd == state.binding.cwd

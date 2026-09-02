@@ -199,8 +199,8 @@ def bind_upload_config(
     computed while streaming the upload to *zip_path* (so the file is read once, not again to hash).
     We extract it into a serve-owned, sha256-keyed cache (`materialize_bundle`), persist the raw zip
     to the object store when one is configured (BE-0243, so another replica can fetch it later), then
-    bind it exactly like the Git source binds a checkout (`bind_git_config`): `state.binding.config` points at
-    the bundle's config and `state.binding.cwd` at the bundle root, so the config's relative
+    bind it exactly like the Git source binds a checkout (`bind_git_config`): the asking session's
+    binding points at the bundle's config with `cwd` at the bundle root, so the config's relative
     `appPath`/`scenarios`/`baselines` resolve against the extracted tree and the Replay / Record /
     Crawl tabs all run from it. Every target's path fields are confined to the bundle at bind
     (`Effective.rebased`), so an uploaded config can't point serve's scenario/build logic at host

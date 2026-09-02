@@ -169,7 +169,11 @@ def effective_label(
 
 
 def apply_label_filter(
-    state: ServeState, runs: list[dict[str, Any]], requested: str | None
+    state: ServeState,
+    runs: list[dict[str, Any]],
+    requested: str | None,
+    session: str | None = None,
+    org: str = "",
 ) -> list[dict[str, Any]]:
     """Narrow *runs* to `effective_label`'s partition — the in-Python half of the filter.
 
@@ -179,7 +183,7 @@ def apply_label_filter(
     rather than an empty page, so a reader is never left staring at nothing with no filter visible
     to clear.
     """
-    label = effective_label(state, requested)
+    label = effective_label(state, requested, session, org)
     if label is None:
         return runs
     matching = [r for r in runs if r.get("label") in (label, "", None)]
@@ -190,6 +194,7 @@ def runs_payload(
     state: ServeState,
     *,
     actor: str | None = None,
+    session: str | None = None,
     scenario: str | None = None,
     target: str | None = None,
     label: str | None = None,
@@ -223,7 +228,7 @@ def runs_payload(
     org = state.org_of(actor)
     scoped = scenario is not None or target is not None
     if state.repository is not None:
-        partition = effective_label(state, label)
+        partition = effective_label(state, label, session, org)
         limit = None if scoped else RUN_WINDOW
         runs = [
             r.summary
@@ -239,7 +244,7 @@ def runs_payload(
                 for r in state.repository.list_runs(org_id=org, target=ran_target, limit=limit)
             ]
     else:
-        runs = apply_label_filter(state, state.artifacts.list_runs(), label)
+        runs = apply_label_filter(state, state.artifacts.list_runs(), label, session, org)
         if ran_target is not None:
             # The artifact-store listing carries the manifest's own `target` stamp, so the same
             # partition is a post-filter here — the local stand-in, as the label filter is.
@@ -308,7 +313,11 @@ def trashed_runs_payload(state: ServeState, *, actor: str | None = None) -> tupl
 
 
 def stats_html(
-    state: ServeState, *, actor: str | None = None, label: str | None = None
+    state: ServeState,
+    *,
+    actor: str | None = None,
+    label: str | None = None,
+    session: str | None = None,
 ) -> tuple[str, int]:
     """The aggregate run-stats dashboard (BE-0102) as a self-contained HTML page, org-scoped.
 
@@ -321,13 +330,19 @@ def stats_html(
     # live=True: this is the serve /stats view, so the day/backend/hotspot cells render as drilldown
     # deep links into the SPA's run history (BE-0241); the CLI --html export leaves them plain text.
     return (
-        _stats.render_html(_stats.aggregate_runs(_run_manifests(state, actor, label)), live=True),
+        _stats.render_html(
+            _stats.aggregate_runs(_run_manifests(state, actor, label, session)), live=True
+        ),
         200,
     )
 
 
 def flakiness_html(
-    state: ServeState, *, actor: str | None = None, label: str | None = None
+    state: ServeState,
+    *,
+    actor: str | None = None,
+    label: str | None = None,
+    session: str | None = None,
 ) -> tuple[str, int]:
     """The ranked flaky-scenario panel (BE-0220, Half 1) as a self-contained HTML page, org-scoped.
 
@@ -340,16 +355,16 @@ def flakiness_html(
     unit 4): a flakiness score computed across two configs' interleaved histories is the same defect
     the label exists to fix, so this reads the same partition the run list and `/stats` do.
     """
-    return _flakiness.render_html(_flakiness_report(state, actor, label)), 200
+    return _flakiness.render_html(_flakiness_report(state, actor, label, session)), 200
 
 
 def _flakiness_report(
-    state: ServeState, actor: str | None, label: str | None = None
+    state: ServeState, actor: str | None, label: str | None = None, session: str | None = None
 ) -> _flakiness.FlakinessReport:
     """Rank the actor's org run history — from the DB provenance stamp when wired, else manifests."""
     org = state.org_of(actor)
     if state.repository is not None:
-        partition = effective_label(state, label)
+        partition = effective_label(state, label, session, org)
         records = state.repository.list_runs(
             org_id=org, label=partition, limit=_flakiness.DEFAULT_RUN_LIMIT
         )
@@ -357,7 +372,7 @@ def _flakiness_report(
             records = state.repository.list_runs(org_id=org, limit=_flakiness.DEFAULT_RUN_LIMIT)
         _fill_device_runtime(state, org, records)
     else:
-        records = _flakiness.records_from_manifests(_run_manifests(state, actor, label))
+        records = _flakiness.records_from_manifests(_run_manifests(state, actor, label, session))
     return _flakiness.rank_flakiness(records)
 
 
@@ -396,7 +411,7 @@ def _fill_device_runtime(state: ServeState, org: str, records: list[RunRecord]) 
 
 
 def _run_manifests(
-    state: ServeState, actor: str | None, label: str | None = None
+    state: ServeState, actor: str | None, label: str | None = None, session: str | None = None
 ) -> list[dict[str, Any]]:
     """The newest runs' parsed `manifest.json` for the actor's org; unreadable/malformed ones skipped.
 
@@ -410,7 +425,7 @@ def _run_manifests(
     artifacts = state.for_org(org).artifacts
     rows: list[dict[str, Any]]
     if state.repository is not None:
-        partition = effective_label(state, label)
+        partition = effective_label(state, label, session, org)
         rows = [
             {"id": r.id}
             for r in state.repository.list_runs(org_id=org, label=partition, limit=RUN_WINDOW)
@@ -418,7 +433,7 @@ def _run_manifests(
         if not rows and partition is not None:
             rows = [{"id": r.id} for r in state.repository.list_runs(org_id=org, limit=RUN_WINDOW)]
     else:
-        rows = apply_label_filter(state, artifacts.list_runs(), label)[:RUN_WINDOW]
+        rows = apply_label_filter(state, artifacts.list_runs(), label, session, org)[:RUN_WINDOW]
     return run_set_manifests(artifacts, [r.get("id") for r in rows])
 
 
@@ -475,9 +490,7 @@ def usage_html(state: ServeState, *, actor: str | None = None) -> tuple[str, int
     return _usage_stats.render_html(_usage_stats.aggregate_usage(events)), 200
 
 
-def _usage_ledger_paths(
-    state: ServeState, actor: str | None, session: str | None = None
-) -> list[Path]:
+def _usage_ledger_paths(state: ServeState, actor: str | None) -> list[Path]:
     """Every ledger file the dashboard reads — resolved as the AI subprocesses serve spawns do.
 
     AI work in serve runs as subprocesses that call `usage_ledger.configure_from_ai_config` with the
@@ -521,7 +534,7 @@ def _usage_ledger_paths(
     names = (
         sorted(config.targets)
         if state.repository is None
-        else state.targets_for(state.org_of(actor), session)
+        else state.targets_for(state.org_of(actor))
     )
     configured: list[str | None] = []
     for target in sorted(names):

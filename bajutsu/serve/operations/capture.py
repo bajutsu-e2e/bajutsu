@@ -60,7 +60,8 @@ def start_capture(
         udid = "booted"
 
     factory = driver_factory or _default_driver_factory
-    driver, teardown = factory(_session_effective(state, config, target), backends_list, udid)
+    effective = _session_effective(state, config, target, session, state.org_of(actor))
+    driver, teardown = factory(effective, backends_list, udid)
     # From bring-up until the session owns `teardown`, a failed query/screenshot (a real failure mode
     # for a freshly-launched XCUITest runner) must still stop the runner — otherwise the `xcodebuild`
     # subprocess leaks, the very thing BE-0290 set out to prevent. Once the CaptureSession is stored,
