@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from bajutsu.scenario.load import load_scenarios
+from bajutsu.common.scenario.load import load_scenarios
 
 ROOT = Path(__file__).resolve().parent.parent
 TOUCH_SWIFT = ROOT / "BajutsuKit/Sources/BajutsuKit/BajutsuTouch.swift"

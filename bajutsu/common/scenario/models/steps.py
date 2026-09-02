@@ -11,13 +11,13 @@ from typing import Literal, Self
 
 from pydantic import Field, field_validator, model_validator
 
-from bajutsu.scenario.models._base import (
+from bajutsu.common.scenario.models._base import (
     _CONTROL_FLOW_ACTIONS,
     _exactly_one,
     _Model,
     _validate_capture,
 )
-from bajutsu.scenario.models.actions import (
+from bajutsu.common.scenario.models.actions import (
     Back,
     Background,
     Clear,
@@ -50,8 +50,8 @@ from bajutsu.scenario.models.actions import (
     Totp,
     TypeText,
 )
-from bajutsu.scenario.models.assertions import Assertion, Wait
-from bajutsu.scenario.models.selector import Selector
+from bajutsu.common.scenario.models.assertions import Assertion, Wait
+from bajutsu.common.scenario.models.selector import Selector
 
 
 class Use(_Model):

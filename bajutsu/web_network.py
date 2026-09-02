@@ -20,12 +20,12 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
-from bajutsu.assertions import match_request
+from bajutsu.common.assertions import match_request
 from bajutsu.evidence.network import NetworkExchange, ScreenTransition
 
 if TYPE_CHECKING:
-    from bajutsu.scenario.models.assertions import RequestMatch
-    from bajutsu.scenario.models.mocks import Mock
+    from bajutsu.common.scenario.models.assertions import RequestMatch
+    from bajutsu.common.scenario.models.mocks import Mock
 
 _logger = logging.getLogger(__name__)
 

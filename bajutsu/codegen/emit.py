@@ -12,8 +12,8 @@ from bajutsu.codegen.playwright import describe_name_for, to_playwright
 from bajutsu.codegen.uiautomator import class_name_for as uiautomator_class_name_for
 from bajutsu.codegen.uiautomator import to_uiautomator
 from bajutsu.codegen.xcuitest import class_name_for, to_xcuitest
+from bajutsu.common.scenario import Scenario
 from bajutsu.config import Effective, android_package, web_base_url
-from bajutsu.scenario import Scenario
 
 # `CodegenError` now lives in `common` (the shared walk raises it too, BE-0297); re-exported here so
 # `bajutsu.codegen.emit.CodegenError` — the path both transports import — is unchanged.

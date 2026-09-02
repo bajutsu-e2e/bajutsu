@@ -56,8 +56,8 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator, Set
 from dataclasses import dataclass
 
+from bajutsu.common.scenario import Assertion, Scenario, Step
 from bajutsu.drivers import base
-from bajutsu.scenario import Assertion, Scenario, Step
 
 
 # A construct the capability set can gate: the capability it needs, a human label, and a

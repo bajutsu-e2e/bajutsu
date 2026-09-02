@@ -13,9 +13,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, field_validator, model_validator
 
-from bajutsu.scenario.models._base import Point, _exactly_one, _Model
-from bajutsu.scenario.models.selector import Selector
-from bajutsu.scenario.system_alerts import (
+from bajutsu.common.scenario.models._base import Point, _exactly_one, _Model
+from bajutsu.common.scenario.models.selector import Selector
+from bajutsu.common.scenario.system_alerts import (
     SystemAlertChoice,
     SystemAlertPrompt,
     system_alert_label,

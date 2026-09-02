@@ -28,7 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from bajutsu.scenario import Assertion, Scenario, Selector, Step
+from bajutsu.common.scenario import Assertion, Scenario, Selector, Step
 
 
 class Grade(StrEnum):

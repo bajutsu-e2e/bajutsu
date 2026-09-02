@@ -218,8 +218,8 @@ def finish_capture(
         state.capture = None
         return forbidden
 
-    from bajutsu.scenario.models import Scenario
-    from bajutsu.scenario.serialize import dump_scenario_file
+    from bajutsu.common.scenario.models import Scenario
+    from bajutsu.common.scenario.serialize import dump_scenario_file
 
     scenario = Scenario(name="captured", steps=list(session.steps))
     scope = state.for_org(org).scenarios.scope(session.target)

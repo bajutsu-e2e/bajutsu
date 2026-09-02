@@ -21,7 +21,7 @@ from dataclasses import dataclass
 
 from bajutsu.analysis.audit import scenario_matchable_ids, step_matchable_ids
 from bajutsu.analysis.coverage import referenced_requests, step_requests
-from bajutsu.scenario import STEP_ACTIONS, RequestMatch, Scenario, Step
+from bajutsu.common.scenario import STEP_ACTIONS, RequestMatch, Scenario, Step
 
 # The YAML key each action field serializes to, so a step's label reads as its author wrote it
 # (`assert_` → `assert`). Derived from the model, like `STEP_ACTIONS`, so a new action needs no edit.

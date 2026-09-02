@@ -270,7 +270,7 @@ def _ai_effective(config: str, target_name: str) -> Effective:
     """
     if target_name:
         return _load_effective(config, target_name)
-    from bajutsu.scenario import Redact
+    from bajutsu.common.scenario import Redact
 
     return Effective(
         target="",

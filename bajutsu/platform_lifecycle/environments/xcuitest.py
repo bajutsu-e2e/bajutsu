@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import IO, Literal, cast
 
 from bajutsu import backends, device_os, simctl, stall_diagnostics
+from bajutsu.common.scenario import Preconditions
 from bajutsu.config import Effective, XcuitestConfig, require_ios
 from bajutsu.device_os import DeviceOS
 from bajutsu.drivers import base
@@ -36,7 +37,6 @@ from bajutsu.platform_lifecycle.environments._bundled_runner import (
     materialize,
 )
 from bajutsu.platform_lifecycle.environments.ios import _DeviceEnvironment
-from bajutsu.scenario import Preconditions
 from bajutsu.zorder import ZOrderResponder, ZOrderSource
 
 _logger = logging.getLogger(__name__)

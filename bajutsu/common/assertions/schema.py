@@ -11,10 +11,10 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from bajutsu.assertions._common import AssertionResult
-from bajutsu.assertions.network import match_request, request_label
+from bajutsu.common.assertions._common import AssertionResult
+from bajutsu.common.assertions.network import match_request, request_label
+from bajutsu.common.scenario import ResponseSchemaMatch
 from bajutsu.evidence.network import NetworkExchange
-from bajutsu.scenario import ResponseSchemaMatch
 
 
 @dataclass(frozen=True)
