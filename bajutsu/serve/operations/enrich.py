@@ -20,11 +20,12 @@ def start_enrich(
     body: dict[str, Any],
     *,
     actor: str | None = None,
+    session: str | None = None,
     driver_factory: Any | None = None,
     agent_factory: Any | None = None,
 ) -> tuple[Any, int]:
     """Replay a scenario's steps and propose assertions via an enrichment agent."""
-    cfg = state.binding.config
+    cfg = state.binding_for(session, state.org_of(actor)).config
     if cfg is None:
         return {"error": "open a config first"}, 400
     if not body.get("target"):
@@ -42,7 +43,7 @@ def start_enrich(
     if target_cfg is None:
         return {"error": f"unknown target: {target}"}, 400
 
-    scope = state.for_org(org).scenarios.scope(target)
+    scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
     scenario_text = scope.read(str(body["scenario"])) if scope else None
     if scenario_text is None:
         return {"error": "scenario not found"}, 404

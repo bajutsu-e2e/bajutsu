@@ -111,9 +111,12 @@ def active_key_env(state: ServeState) -> str:
     Falls back to ``ANTHROPIC_API_KEY`` when no config is bound, the config has no ``keyEnv``,
     or the name fails validation (not an identifier, or a known system variable).
     """
-    if state.binding.config is not None:
+    # The deployment's own binding, not a session's: this names the environment variable the serve
+    # *process* holds the key in, which is one variable for the whole process (BE-0393 unit 2).
+    launch = state.binding
+    if launch.config is not None:
         try:
-            cfg = load_config(state.binding.config.read_text(encoding="utf-8"))
+            cfg = load_config(launch.config.read_text(encoding="utf-8"))
             ai_settings = cfg.defaults.ai if cfg.defaults else None
             if ai_settings and ai_settings.key_env and _valid_key_env_name(ai_settings.key_env):
                 return ai_settings.key_env
@@ -208,7 +211,9 @@ def serve_capabilities(state: ServeState, actor: str | None = None) -> dict[str,
     }
 
 
-def config_info(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+def config_info(
+    state: ServeState, *, actor: str | None = None, session: str | None = None
+) -> tuple[Any, int]:
     """The boot read every tab starts from: what config is bound, what this deployment offers, and
     who the caller is (BE-0375).
 
@@ -218,10 +223,11 @@ def config_info(state: ServeState, *, actor: str | None = None) -> tuple[Any, in
     shared-token session), where `org_of` would answer `default` for everyone and a header badge
     saying so would be noise rather than information.
     """
+    binding = state.binding_for(session, state.org_of(actor))
     sources = config_sources(state)
     return {
-        "config": str(state.binding.config) if state.binding.config else None,
-        "hasConfig": state.binding.config is not None,
+        "config": str(binding.config) if binding.config else None,
+        "hasConfig": binding.config is not None,
         # The file browser's browse ceiling — only meaningful to the fs source, so it is withheld
         # when that source is not offered (hosted), where the absolute host path is dead information
         # and needless exposure (BE-0108).
@@ -267,7 +273,9 @@ def _json_safe(value: Any) -> Any:
     return str(value)
 
 
-def config_content(state: ServeState) -> tuple[Any, int]:
+def config_content(
+    state: ServeState, *, actor: str | None = None, session: str | None = None
+) -> tuple[Any, int]:
     """The raw text of the active config plus its source, so the UI can confirm *what* is bound.
 
     The path in `config_info` is enough for a local file, but a Git-sourced config resolves to an
@@ -278,10 +286,11 @@ def config_content(state: ServeState) -> tuple[Any, int]:
     The text is verbatim: any ``${secrets.*}`` placeholders are shown as written, never resolved, so
     this discloses nothing beyond the file already committed to Git or uploaded in the bundle.
     """
-    if state.binding.config is None:
+    binding = state.binding_for(session, state.org_of(actor))
+    if binding.config is None:
         return {"error": "no config bound"}, 404
     try:
-        content = state.binding.config.read_text(encoding="utf-8")
+        content = binding.config.read_text(encoding="utf-8")
     except OSError as e:
         # The bound path was validated at bind time; a read failure here means it moved/was removed
         # under us (a transient checkout, a deleted file) — report it rather than 500 with a traceback.
@@ -297,14 +306,14 @@ def config_content(state: ServeState) -> tuple[Any, int]:
     except yaml.YAMLError:
         parsed = None
     return {
-        "config": str(state.binding.config),
+        "config": str(binding.config),
         "content": content,
         "parsed": parsed,
-        "provenance": state.binding.provenance,  # None for a local file / uploaded bundle
+        "provenance": binding.provenance,  # None for a local file / uploaded bundle
     }, 200
 
 
-def _config_overrides_ios_runner(state: ServeState) -> bool:
+def _config_overrides_ios_runner(binding: ConfigBinding) -> bool:
     """Whether the bound config names an explicit ``xcuitest.testRunner`` on any iOS target (BE-0318).
 
     A config can carry several iOS targets; the server-wide readiness line reports "overridden" when
@@ -316,10 +325,10 @@ def _config_overrides_ios_runner(state: ServeState) -> bool:
     runner on another (the row is the tab's sharpest signal), so a per-target failure is logged and
     skipped rather than collapsing the whole answer to ``False``.
     """
-    if state.binding.config is None:
+    if binding.config is None:
         return False
     try:
-        cfg = load_config(state.binding.config.read_text(encoding="utf-8"))
+        cfg = load_config(binding.config.read_text(encoding="utf-8"))
     except Exception:
         logging.getLogger(__name__).debug(
             "cannot load config to check the xcuitest.testRunner override", exc_info=True
@@ -338,7 +347,7 @@ def _config_overrides_ios_runner(state: ServeState) -> bool:
     return False
 
 
-def _ios_runner_status(state: ServeState) -> dict[str, Any]:
+def _ios_runner_status(binding: ConfigBinding) -> dict[str, Any]:
     """The bundled iOS XCUITest runner's deployment state, for the Server settings tab (BE-0318).
 
     Answers "will an iOS Simulator run that names no runner find one, and what was it built against?"
@@ -354,11 +363,13 @@ def _ios_runner_status(state: ServeState) -> dict[str, Any]:
     return {
         "bundled": bundled_products_dir() is not None,
         "buildInfo": bundled_runner_build_info(),
-        "override": _config_overrides_ios_runner(state),
+        "override": _config_overrides_ios_runner(binding),
     }
 
 
-def server_settings(state: ServeState) -> tuple[Any, int]:
+def server_settings(
+    state: ServeState, *, actor: str | None = None, session: str | None = None
+) -> tuple[Any, int]:
     """The running server's resolved configuration, read-only, for the Server settings tab (BE-0318).
 
     A Tier-1, AI-free view assembled from the already-resolved ``ServeState`` plus one filesystem
@@ -375,15 +386,16 @@ def server_settings(state: ServeState) -> tuple[Any, int]:
     config's Git source, and the iOS runner state) are shown either way; the endpoint reports presence
     and configuration only, never a secret's plaintext.
     """
+    binding = state.binding_for(session, state.org_of(actor))
     payload: dict[str, Any] = {
         # The one deployment-posture field the UI displays; the host-path redaction below keys off
         # `state.hosted` directly, so a second boolean here would only be a redundant encoding of it.
         "mode": "hosted" if state.hosted else "local",
         "version": __version__,
-        "hasConfig": state.binding.config is not None,
+        "hasConfig": binding.config is not None,
         # The config's Git source (host/owner/repo/ref/sha), or None for a local file / uploaded
         # bundle — the "where the bound config came from" the version row's commit deliberately isn't.
-        "configSource": state.binding.provenance,
+        "configSource": binding.provenance,
         # The backends this build has a driver for (fake / playwright / xcuitest / adb) — a static
         # server-wide fact, sorted for a stable display; not a per-backend availability probe (the
         # tab makes exactly one filesystem probe, the iOS runner below).
@@ -396,11 +408,11 @@ def server_settings(state: ServeState) -> tuple[Any, int]:
             "perUser": state.max_concurrent_per_user,
             "perOrg": state.max_concurrent_per_org,
         },
-        "iosRunner": _ios_runner_status(state),
+        "iosRunner": _ios_runner_status(binding),
     }
     if not state.hosted:
         # Host filesystem paths: meaningful only on a local deployment (BE-0108), so withheld hosted.
-        payload["config"] = str(state.binding.config) if state.binding.config else None
+        payload["config"] = str(binding.config) if binding.config else None
         payload["runsDir"] = str(state.runs_dir)
         payload["baselinesDir"] = str(state.baselines_dir)
     return payload, 200
@@ -660,6 +672,8 @@ def seed_orgs_from_bound_config(state: ServeState) -> None:
     """
     if state.repository is None:
         return
+    # The deployment's own binding: org membership is seeded from the configuration `serve` was
+    # started with, never from one a member bound in a session (BE-0375, BE-0393 unit 2).
     parsed = load_serve_config_file(state.binding.config)
     if parsed is None:
         return
@@ -869,7 +883,9 @@ def set_git_credential(state: ServeState, value: str, actor: str | None) -> tupl
     return {"ok": True, "set": False}, 200
 
 
-def declared_secret_names(state: ServeState) -> list[str]:
+def declared_secret_names(
+    state: ServeState, *, actor: str | None = None, session: str | None = None
+) -> list[str]:
     """The scenario secret env-var names the bound config declares, union across targets (BE-0274).
 
     A config's ``secrets:`` list (per-target, merged over defaults) names the environment variables
@@ -881,10 +897,11 @@ def declared_secret_names(state: ServeState) -> list[str]:
     Claude Code OAuth token, or the Git credential. No config bound, an empty ``secrets:``, or a
     config that fails to load yields an empty list (the panel then shows nothing to configure); a
     load failure is logged at debug, matching ``active_key_env``."""
-    if state.binding.config is None:
+    binding = state.binding_for(session, state.org_of(actor))
+    if binding.config is None:
         return []
     try:
-        cfg = load_config(state.binding.config.read_text(encoding="utf-8"))
+        cfg = load_config(binding.config.read_text(encoding="utf-8"))
         names: dict[str, None] = {}
         for target in cfg.targets:
             for name in resolve(cfg, target).secrets:
@@ -898,7 +915,9 @@ def declared_secret_names(state: ServeState) -> list[str]:
         return []
 
 
-def scenario_secrets_info(state: ServeState, actor: str | None) -> tuple[Any, int]:
+def scenario_secrets_info(
+    state: ServeState, actor: str | None, session: str | None = None
+) -> tuple[Any, int]:
     """The scenario secrets the bound config declares, each with whether it is set and a masked
     preview — never the plaintext (BE-0274).
 
@@ -907,14 +926,14 @@ def scenario_secrets_info(state: ServeState, actor: str | None) -> tuple[Any, in
     ever, for any role. An empty list when no config is bound or it declares no `secrets:`."""
     bundle = state.for_org(state.org_of(actor))
     out = []
-    for name in declared_secret_names(state):
+    for name in declared_secret_names(state, actor=actor, session=session):
         masked = bundle.secrets.describe(name)
         out.append({"name": name, "set": masked is not None, "masked": masked})
     return out, 200
 
 
 def set_scenario_secret(
-    state: ServeState, body: dict[str, Any], actor: str | None
+    state: ServeState, body: dict[str, Any], actor: str | None, session: str | None = None
 ) -> tuple[Any, int]:
     """Set or replace a scenario-declared secret (an empty *value* clears it), through the write-once
     secret store (BE-0274). The response redacts what was stored — never the plaintext.
@@ -930,7 +949,7 @@ def set_scenario_secret(
     credentials there is no whitespace guard — a scenario secret (a login password, say) may
     legitimately contain spaces."""
     name = str(body.get("name", "") or "")
-    if name not in declared_secret_names(state):
+    if name not in declared_secret_names(state, actor=actor, session=session):
         return {"error": f"{name!r} is not a secret declared by the bound config"}, 400
     value = str(body.get("value", "") or "")
     masked = state.for_org(state.org_of(actor)).secrets.set(name, value, updated_by=actor)

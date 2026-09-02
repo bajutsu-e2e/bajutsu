@@ -80,8 +80,18 @@ class ScenarioScope(Protocol):
 class ScenarioStore(Protocol):
     """Maps an app to its scenario scope."""
 
-    def scope(self, app: str | None) -> ScenarioScope | None:
-        """The scope for *app*, or None when the app has no scenarios dir."""
+    def scope(
+        self, app: str | None, *, session: str | None = None, org: str = ""
+    ) -> ScenarioScope | None:
+        """The scope for *app*, or None when the app has no scenarios dir.
+
+        *session* and *org* name the request asking (BE-0393 unit 2). A scenarios dir is resolved
+        against the bound configuration, and a binding is per session and acting org, so the store's
+        own resolution is where the request hands that pair in — the store is built once per
+        deployment, with no handler in scope. Both default to "no session", which reads the
+        deployment's fallback binding: the answer for a shared-token caller and for the boot-time
+        readers that have no request at all.
+        """
 
 
 class LocalScenarioScope:
@@ -135,12 +145,16 @@ class LocalScenarioStore:
     """Resolves an app to its on-disk scenarios dir, then scopes operations to it.
 
     The dir is resolved through a callable rather than captured, so a config opened from the UI
-    after construction is reflected (the resolver reads the live serve state).
+    after construction is reflected (the resolver reads the live serve state). The resolver takes the
+    requesting session and acting org along with the app, because which configuration is bound is a
+    per-session question (BE-0393 unit 2).
     """
 
-    def __init__(self, resolve_dir: Callable[[str | None], Path | None]) -> None:
+    def __init__(self, resolve_dir: Callable[[str | None, str | None, str], Path | None]) -> None:
         self._resolve_dir = resolve_dir
 
-    def scope(self, app: str | None) -> ScenarioScope | None:
-        scn_dir = self._resolve_dir(app)
+    def scope(
+        self, app: str | None, *, session: str | None = None, org: str = ""
+    ) -> ScenarioScope | None:
+        scn_dir = self._resolve_dir(app, session, org)
         return LocalScenarioScope(scn_dir) if scn_dir is not None else None

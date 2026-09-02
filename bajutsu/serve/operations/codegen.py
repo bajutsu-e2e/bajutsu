@@ -17,7 +17,7 @@ from bajutsu.serve.state import ServeState
 
 
 def generate_codegen(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None, session: str | None = None
 ) -> tuple[Any, int]:
     """Generate a native test from a scenario and return its source and derived filename.
 
@@ -31,7 +31,7 @@ def generate_codegen(
         options offered track the target's backend, so an iOS target rejects ``playwright``
         rather than emitting a broken test (honest about limits, mirroring ``--emit``).
     """
-    cfg = state.binding.config
+    cfg = state.binding_for(session, state.org_of(actor)).config
     if cfg is None:
         return {"error": "open a config first"}, 400
     if not body.get("target"):
@@ -53,7 +53,7 @@ def generate_codegen(
 
     # Confine the scenario to the target's own scenarios dir: a serve client resolves through the
     # org-scoped store, never a raw host path (BE-0051 / BE-0015).
-    scope = state.for_org(org).scenarios.scope(target)
+    scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
     scenario_text = scope.read(str(body["scenario"])) if scope else None
     if scenario_text is None:
         return {"error": "scenario not found"}, 404

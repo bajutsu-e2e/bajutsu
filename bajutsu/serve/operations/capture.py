@@ -26,11 +26,12 @@ def start_capture(
     body: dict[str, Any],
     *,
     actor: str | None = None,
+    session: str | None = None,
     driver_factory: Any | None = None,
     redactor: Redactor | None = None,
 ) -> tuple[Any, int]:
     """Open a capture session: boot a live driver, take the initial screenshot + query."""
-    cfg = state.binding.config
+    cfg = state.binding_for(session, state.org_of(actor)).config
     if cfg is None:
         return {"error": "open a config first"}, 400
     if not body.get("target"):

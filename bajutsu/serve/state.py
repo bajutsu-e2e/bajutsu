@@ -14,7 +14,7 @@ import os
 import secrets
 import subprocess
 import threading
-from collections import Counter
+from collections import Counter, OrderedDict
 from collections.abc import Callable
 from dataclasses import InitVar, dataclass, field
 from pathlib import Path
@@ -514,10 +514,18 @@ class ServeState:
     upload: InitVar[Upload | None] = None
     git_config_from_api: InitVar[bool] = False
     config_org: InitVar[str | None] = None
-    # The configuration this deployment is bound to (BE-0393 unit 1), replaced whole by a bind. Unit
-    # 2 keys a binding by session and acting org on top of this one, which then becomes the fallback
-    # a session with nothing of its own reads.
+    # The deployment's own binding: the configuration `serve` started with (BE-0393 unit 1). Unit 2
+    # made it the **fallback** — a session with no binding of its own, and a caller with no session at
+    # all, read this one. Never read it directly from a request path; ask `binding_for`.
     binding: ConfigBinding = field(init=False)
+    # A binding per login session and acting org (BE-0393 unit 2). A bind made in one session is
+    # visible to that session alone, so two members of one org can work at once and one switching
+    # configurations does not move the ground under another's run. The acting org joins the key
+    # because a session may change which org it acts as, and target ownership rides on the org: a
+    # binding that outlived an org change would hand one org's targets to a request acting as
+    # another. Ordered and capped so a process accumulating quiet sessions evicts the oldest binding
+    # rather than growing without limit.
+    bindings: OrderedDict[tuple[str, str], ConfigBinding] = field(init=False)
     # serve's launch directory, captured at construction (see __post_init__) before a config bind can
     # repoint the binding's `cwd`. Runs off a Git/upload bind still land their tree here
     # (BE-0063/BE-0073).
@@ -665,6 +673,7 @@ class ServeState:
             git_from_api=git_config_from_api,
             org=config_org,
         )
+        self.bindings = OrderedDict()
         # serve's own launch directory, captured before any config bind repoints the binding's `cwd`
         # at a Git checkout / uploaded bundle. A run off such a bind writes its tree into
         # `base_cwd/runs_dir` (serve's store), not under the transient checkout/bundle
@@ -685,7 +694,11 @@ class ServeState:
         # default them to the local stores here (a server backend overwrites them afterwards).
         self.artifacts = LocalArtifactStore(self.runs_dir)
         # Resolve the dir lazily through a closure so a config opened from the UI later is reflected.
-        self.scenarios = LocalScenarioStore(lambda target: _scenarios_dir_for(self, target))
+        # The resolver takes the requesting session and org, which `scope` supplies per call — the
+        # closure itself is built once, with no handler in scope (BE-0393 unit 2).
+        self.scenarios = LocalScenarioStore(
+            lambda target, session, org: _scenarios_dir_for(self, target, session, org)
+        )
         self.baselines = LocalBaselineStore(self.baselines_dir)
         # The local secret store holds the value in this process's env; the name->env-var mapping is
         # resolved lazily so a config bound later (its `ai.keyEnv`, BE-0097) is reflected.
@@ -756,9 +769,31 @@ class ServeState:
             return active_key_env(self)
         return name
 
+    def binding_for(self, session: str | None, org: str) -> ConfigBinding:
+        """The configuration a request from *session*, acting as *org*, is bound to (BE-0393 unit 2).
+
+        The session's own binding when it has one, else the deployment's fallback — the configuration
+        `serve` started with, whose `orgs:` block partitions its targets between orgs exactly as an
+        operator wrote it. A caller with no session (a shared-token or CI request, which carries no
+        login cookie) reads the fallback too: it is acting on the deployment, not inside a member's
+        session.
+
+        This is the only way a request path should reach the bound configuration. Reading
+        `state.binding` from one would restore the ambient default this unit exists to remove.
+        """
+        if session is None:
+            return self.binding
+        return self.bindings.get((session, org), self.binding)
+
     def for_org(self, org: str) -> StoreBundle:
         """The storage seams scoped to *org*. A server backend prefixes each org's objects; local
-        serve has a single tenant, so this is just the default stores (BE-0015 multi-tenancy)."""
+        serve has a single tenant, so this is just the default stores (BE-0015 multi-tenancy).
+
+        Takes no session: every seam here is org-scoped. A scenarios dir *is* session-scoped, because
+        it is resolved against the bound configuration, but the seam that learns the session is the
+        scenario store's own `scope` — a request reaches that with a session in hand, while the store
+        itself is swapped in once per deployment (BE-0393 unit 2).
+        """
         if self.org_stores is not None:
             return self.org_stores(org)
         return StoreBundle(
@@ -826,22 +861,32 @@ class ServeState:
             config=upload.config, cwd=upload.root, upload=upload, org=upload.org
         )
 
-    def targets_for(self, org: str) -> list[str]:
-        """The targets *org* may reach under the bound configuration (BE-0015, BE-0375).
+    def targets_for(self, org: str, session: str | None = None) -> list[str]:
+        """The targets *org* may reach under the configuration *session* is bound to (BE-0015,
+        BE-0375, BE-0393 unit 2).
 
         The one place ownership is decided, so a fourth reader cannot answer it differently from the
         three that exist (the target list, the cross-org guard, and the per-org scenario store): a
         configuration bound through the API belongs to the org that bound it, and only the launch
         configuration's own `orgs:` block partitions targets between orgs. Empty when no
         configuration is bound or it cannot be read.
+
+        *session* is the request asking. Ownership is a property of the binding, so two sessions of
+        one org bound to different configurations see different targets — and a session with no
+        binding of its own sees the deployment's, whose `orgs:` block partitions as the operator
+        wrote it. A caller with no session in hand (boot, a shared-token request) passes None and
+        gets that same deployment-wide answer.
         """
-        parsed = load_serve_config_file(self.binding.config)
+        binding = self.binding_for(session, org)
+        parsed = load_serve_config_file(binding.config)
         if parsed is None:
             return []
-        return targets_for_org(parsed[1], parsed[0].targets, org, bound_by=self.binding.org)
+        return targets_for_org(parsed[1], parsed[0].targets, org, bound_by=binding.org)
 
 
-def _scenarios_dir_for(state: ServeState, target: str | None) -> Path | None:
+def _scenarios_dir_for(
+    state: ServeState, target: str | None, session: str | None, org: str
+) -> Path | None:
     """The scenarios dir to list/save for *target*: the ``--scenarios`` override if set, else the
     target's configured dir.  None when neither is available.
 
@@ -851,7 +896,7 @@ def _scenarios_dir_for(state: ServeState, target: str | None) -> Path | None:
     the config file rather than from where serve was started (BE-0063, BE-0242)."""
     if state.scenarios_dir is not None:
         return state.scenarios_dir
-    binding = state.binding
+    binding = state.binding_for(session, org)
     if binding.config is None or not target:
         return None
     configured = target_scenarios_dir(binding.config, target)

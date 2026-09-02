@@ -103,7 +103,16 @@ class StorageScenarioStore:
     def __init__(self, storage: ScenarioStorage) -> None:
         self._storage = storage
 
-    def scope(self, app: str | None) -> StorageScenarioScope | None:
+    def scope(
+        self,
+        app: str | None,
+        *,
+        session: str | None = None,  # noqa: ARG002  # ScenarioStore shape
+        org: str = "",  # noqa: ARG002  # ScenarioStore shape
+    ) -> StorageScenarioScope | None:
+        # Storage-backed scenarios are addressed by app name within the org's own prefix, never by a
+        # path resolved from the bound configuration, so the requesting session decides nothing here.
+        # The parameters exist to satisfy the seam its local sibling needs (BE-0393 unit 2).
         if not app or not self._storage.has_app(app):
             return None
         return StorageScenarioScope(self._storage, app)
@@ -177,7 +186,11 @@ class LocalTreeScenarioStorage:
     more than the `ScenarioStorage` protocol it satisfies)."""
 
     def __init__(self, state: ServeState, save_storage: ScenarioStorage) -> None:
-        self._local = LocalScenarioStore(lambda app: _scenarios_dir_for(state, app))
+        # The read side resolves against the configuration the *requesting session* is bound to
+        # (BE-0393 unit 2); the local store's `scope` hands the resolver that session per call.
+        self._local = LocalScenarioStore(
+            lambda app, session, org: _scenarios_dir_for(state, app, session, org)
+        )
         self._save_storage = save_storage
 
     def has_app(self, app: str) -> bool:

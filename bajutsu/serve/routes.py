@@ -66,6 +66,15 @@ class RequestCtx(Protocol):
         """The GitHub login bound to this request's session, or None."""
         ...
 
+    def session(self) -> str | None:
+        """This request's opaque login-session id, or None for a shared-token / anonymous caller.
+
+        The scope a member's own configuration binding lives in (BE-0393 unit 2): an operation that
+        reads the bound configuration resolves it through `state.binding_for(session, org)`, so a
+        bind made in one session is invisible to every other.
+        """
+        ...
+
 
 # A uniform route's adapter: extract this route's arguments from the request and call its `ops`
 # function, returning the `(payload, status)` pair the backend writes as JSON (or text).
@@ -152,20 +161,38 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "GET",
         "/api/scenarios",
-        lambda state, ctx: ops.list_scenarios(state, ctx.query("target"), actor=ctx.actor()),
+        lambda state, ctx: ops.list_scenarios(
+            state, ctx.query("target"), actor=ctx.actor(), session=ctx.session()
+        ),
     ),
     Route(
-        "GET", "/api/targets", lambda state, ctx: ops.list_targets_payload(state, actor=ctx.actor())
+        "GET",
+        "/api/targets",
+        lambda state, ctx: ops.list_targets_payload(
+            state, actor=ctx.actor(), session=ctx.session()
+        ),
     ),
     # Running-tool identity (BE-0272): version is open; the Git checkout detail is admin-gated
     # (see `authz.required_role`) because a branch name can encode an in-progress topic.
     Route("GET", "/api/version", lambda _state, _ctx: ops.server_version()),
     Route("GET", "/api/version/checkout", lambda _state, _ctx: ops.server_checkout()),
-    Route("GET", "/api/config", lambda state, ctx: ops.config_info(state, actor=ctx.actor())),
-    Route("GET", "/api/config/content", lambda state, _ctx: ops.config_content(state)),
+    Route(
+        "GET",
+        "/api/config",
+        lambda state, ctx: ops.config_info(state, actor=ctx.actor(), session=ctx.session()),
+    ),
+    Route(
+        "GET",
+        "/api/config/content",
+        lambda state, ctx: ops.config_content(state, actor=ctx.actor(), session=ctx.session()),
+    ),
     # The running server's resolved configuration + the bundled iOS runner state (BE-0318). Read-only
     # and open like /api/config; the operation withholds host paths when hosted (BE-0108).
-    Route("GET", "/api/server", lambda state, _ctx: ops.server_settings(state)),
+    Route(
+        "GET",
+        "/api/server",
+        lambda state, ctx: ops.server_settings(state, actor=ctx.actor(), session=ctx.session()),
+    ),
     Route("GET", "/api/fs", lambda state, ctx: ops.browse_fs(state, ctx.query("dir"))),
     Route("GET", "/api/apikey", lambda state, ctx: ops.api_key_info(state, ctx.actor())),
     Route(
@@ -178,7 +205,11 @@ ROUTES: tuple[Route, ...] = (
     ),
     # The scenario secrets the bound config declares (BE-0274): describe-only (masked, no value),
     # so — like the three credential reads above — it carries no role gate.
-    Route("GET", "/api/secrets", lambda state, ctx: ops.scenario_secrets_info(state, ctx.actor())),
+    Route(
+        "GET",
+        "/api/secrets",
+        lambda state, ctx: ops.scenario_secrets_info(state, ctx.actor(), ctx.session()),
+    ),
     Route("GET", "/api/provider", lambda state, ctx: ops.provider_info(state, ctx.actor())),
     Route("GET", "/api/themecontract", lambda state, _ctx: ops.get_theme_contract(state)),
     Route(
@@ -206,7 +237,7 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "GET",
         "/api/metrics/targets",
-        lambda state, ctx: ops.target_metrics_view(state, actor=ctx.actor()),
+        lambda state, ctx: ops.target_metrics_view(state, actor=ctx.actor(), session=ctx.session()),
     ),
     Route(
         "GET",
@@ -231,7 +262,7 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "GET",
         "/api/compose/current",
-        lambda state, ctx: ops.compose_current(state, actor=ctx.actor()),
+        lambda state, ctx: ops.compose_current(state, actor=ctx.actor(), session=ctx.session()),
     ),
     Route(
         "GET",
@@ -241,6 +272,7 @@ ROUTES: tuple[Route, ...] = (
             ctx.query("target"),
             ctx.query("path"),
             actor=ctx.actor(),
+            session=ctx.session(),
             run_id=ctx.query("runId"),
             scenario_name=ctx.query("scenario"),
             structure=ctx.query("structure") == "1",
@@ -284,7 +316,12 @@ ROUTES: tuple[Route, ...] = (
         "GET",
         "/coverage",
         lambda state, ctx: ops.coverage_html(
-            state, ctx.query("target"), ctx.query("runs"), ctx.query("crawl"), actor=ctx.actor()
+            state,
+            ctx.query("target"),
+            ctx.query("runs"),
+            ctx.query("crawl"),
+            actor=ctx.actor(),
+            session=ctx.session(),
         ),
         content_type=_HTML,
     ),
@@ -342,7 +379,7 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "POST",
         "/api/secrets",
-        lambda state, ctx: ops.set_scenario_secret(state, ctx.body(), ctx.actor()),
+        lambda state, ctx: ops.set_scenario_secret(state, ctx.body(), ctx.actor(), ctx.session()),
     ),
     Route(
         "POST", "/api/theme", lambda state, ctx: ops.upload_theme(state, ctx.body(), ctx.actor())
@@ -354,12 +391,18 @@ ROUTES: tuple[Route, ...] = (
     ),
     Route("POST", "/api/ant/login", lambda state, _ctx: ops.ant_login(state), local_only=True),
     Route(
-        "POST", "/api/run", lambda state, ctx: ops.start_run(state, ctx.body(), actor=ctx.actor())
+        "POST",
+        "/api/run",
+        lambda state, ctx: ops.start_run(
+            state, ctx.body(), actor=ctx.actor(), session=ctx.session()
+        ),
     ),
     Route(
         "POST",
         "/api/run-set",
-        lambda state, ctx: ops.start_run_set(state, ctx.body(), actor=ctx.actor()),
+        lambda state, ctx: ops.start_run_set(
+            state, ctx.body(), actor=ctx.actor(), session=ctx.session()
+        ),
     ),
     # Rebind the org's remembered config (BE-0404 unit 1) — the recovery path for a replica that
     # never received the upload itself. Admin-gated like the other whole-deployment rebinds.
@@ -398,22 +441,30 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "POST",
         "/api/record",
-        lambda state, ctx: ops.start_record(state, ctx.body(), actor=ctx.actor()),
+        lambda state, ctx: ops.start_record(
+            state, ctx.body(), actor=ctx.actor(), session=ctx.session()
+        ),
     ),
     Route(
         "POST",
         "/api/crawl",
-        lambda state, ctx: ops.start_crawl(state, ctx.body(), actor=ctx.actor()),
+        lambda state, ctx: ops.start_crawl(
+            state, ctx.body(), actor=ctx.actor(), session=ctx.session()
+        ),
     ),
     Route(
         "POST",
         "/api/triage",
-        lambda state, ctx: ops.start_triage(state, ctx.body(), actor=ctx.actor()),
+        lambda state, ctx: ops.start_triage(
+            state, ctx.body(), actor=ctx.actor(), session=ctx.session()
+        ),
     ),
     Route(
         "POST",
         "/api/scenario",
-        lambda state, ctx: ops.save_scenario(state, ctx.body(), actor=ctx.actor()),
+        lambda state, ctx: ops.save_scenario(
+            state, ctx.body(), actor=ctx.actor(), session=ctx.session()
+        ),
     ),
     Route("POST", "/api/lint", lambda _state, ctx: ops.lint_scenario(ctx.body())),
     Route(
@@ -429,12 +480,16 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "POST",
         "/api/audit",
-        lambda state, ctx: ops.audit_scenario(state, ctx.body(), actor=ctx.actor()),
+        lambda state, ctx: ops.audit_scenario(
+            state, ctx.body(), actor=ctx.actor(), session=ctx.session()
+        ),
     ),
     Route(
         "POST",
         "/api/codegen",
-        lambda state, ctx: ops.generate_codegen(state, ctx.body(), actor=ctx.actor()),
+        lambda state, ctx: ops.generate_codegen(
+            state, ctx.body(), actor=ctx.actor(), session=ctx.session()
+        ),
     ),
     Route(
         "POST",
@@ -444,27 +499,37 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "POST",
         "/api/scenario/resolve",
-        lambda state, ctx: ops.resolve_scenario_pick(state, ctx.body(), actor=ctx.actor()),
+        lambda state, ctx: ops.resolve_scenario_pick(
+            state, ctx.body(), actor=ctx.actor(), session=ctx.session()
+        ),
     ),
     Route(
         "POST",
         "/api/enrich",
-        lambda state, ctx: ops.start_enrich(state, ctx.body(), actor=ctx.actor()),
+        lambda state, ctx: ops.start_enrich(
+            state, ctx.body(), actor=ctx.actor(), session=ctx.session()
+        ),
     ),
     Route(
         "POST",
         "/api/doctor",
-        lambda state, ctx: ops.doctor_check(state, ctx.body(), actor=ctx.actor()),
+        lambda state, ctx: ops.doctor_check(
+            state, ctx.body(), actor=ctx.actor(), session=ctx.session()
+        ),
     ),
     Route(
         "POST",
         "/api/coverage",
-        lambda state, ctx: ops.coverage_view(state, ctx.body(), actor=ctx.actor()),
+        lambda state, ctx: ops.coverage_view(
+            state, ctx.body(), actor=ctx.actor(), session=ctx.session()
+        ),
     ),
     Route(
         "POST",
         "/api/capture/start",
-        lambda state, ctx: ops.start_capture(state, ctx.body(), actor=ctx.actor()),
+        lambda state, ctx: ops.start_capture(
+            state, ctx.body(), actor=ctx.actor(), session=ctx.session()
+        ),
         local_only=True,
     ),
     Route(

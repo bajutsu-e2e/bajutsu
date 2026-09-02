@@ -55,8 +55,8 @@ _OAUTH_STATE_COOKIE = (
 
 class _StdlibCtx:
     """Adapt one stdlib request to the backend-neutral `RequestCtx` the route registry expects
-    (BE-0253): path parameters from the matcher, the query and session actor via the handler's
-    own `_qs`/`_actor`, and the already-parsed JSON body ({} for a GET)."""
+    (BE-0253): path parameters from the matcher, the query, session actor, and session id via the
+    handler's own `_qs`/`_actor`/`_session_value`, and the already-parsed JSON body ({} for a GET)."""
 
     def __init__(
         self,
@@ -64,11 +64,13 @@ class _StdlibCtx:
         body: dict[str, Any],
         qs: Callable[[str], str | None],
         actor: Callable[[], str | None],
+        session: Callable[[], str | None],
     ) -> None:
         self._params = params
         self._body = body
         self._qs = qs
         self._actor = actor
+        self._session = session
 
     def path_param(self, name: str) -> str:
         # The matcher runs on the raw (still percent-encoded) request path, so decode here to honor
@@ -85,6 +87,9 @@ class _StdlibCtx:
 
     def actor(self) -> str | None:
         return self._actor()
+
+    def session(self) -> str | None:
+        return self._session()
 
 
 # C901 and PLR0915 fold each nested function's count into the function enclosing it, so this score
@@ -171,6 +176,15 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
             the shared `gate.is_authorized` / `gate.actor_for` policy (BE-0253)."""
             morsel = SimpleCookie(self.headers.get("Cookie", "")).get(_SESSION_COOKIE)
             return morsel.value if morsel is not None else None
+
+        def _session_id(self) -> str | None:
+            """The session id a request path may key its own state by (BE-0393 unit 2), or None for a
+            shared-token caller. Validated against the session store, unlike the raw cookie read
+            above, which the gate hands to policy that validates it itself: a cookie naming a session
+            the store no longer knows must read the fallback binding rather than a slot it can no
+            longer own."""
+            sid = self._session_value()
+            return sid if sid is not None and state.auth.valid_session(sid) else None
 
         def _authorized(self) -> bool:
             return gate.is_authorized(
@@ -275,7 +289,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
             if route.handle is None:
                 self._json({"error": "not found"}, 404)
                 return
-            ctx = _StdlibCtx(params, body, self._qs, self._actor)
+            ctx = _StdlibCtx(params, body, self._qs, self._actor, self._session_id)
             payload, code = route.handle(state, ctx)
             if route.content_type is not None:
                 self._text(payload, code, route.content_type)
@@ -517,7 +531,13 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                 # must be flushed before `upload_scenarios` reads it back as a zip.
                 receiver.digest()
                 self._json(
-                    *ops.upload_scenarios(state, receiver.path, target=target, actor=self._actor())
+                    *ops.upload_scenarios(
+                        state,
+                        receiver.path,
+                        target=target,
+                        actor=self._actor(),
+                        session=self._session_id(),
+                    )
                 )
             except Exception as exc:
                 self._respond_uncaught(exc)

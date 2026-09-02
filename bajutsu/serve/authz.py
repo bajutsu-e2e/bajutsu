@@ -131,6 +131,11 @@ def _resolve_org_model(state: ServeState) -> _OrgModel:
     sign-in into a denial on a deployment whose database already knows exactly who its users are.
     A database-less deployment keeps reading the `orgs:` block exactly as before.
 
+    Reads the deployment's own binding, never a session's (BE-0393 unit 2): who may sign in is
+    decided by the configuration `serve` was started with. A configuration bound in a session is
+    content the deployment does not own, and letting it name members would hand a bind authority over
+    the roster — the same reason such a bind seeds no membership either (BE-0375).
+
     Raises:
         Exception: whatever the repository read failed with, so the caller answers with an error
             naming the database rather than an empty roster that reads as "you don't belong".
@@ -371,7 +376,7 @@ def _active_org(
     return preferred_org(eligible)
 
 
-def _target_forbidden(state: ServeState, org: str, target: str) -> bool:
+def _target_forbidden(state: ServeState, org: str, target: str, session: str | None = None) -> bool:
     """True when an actor resolved to *org* may not touch *target* because *org* does not own it
     (BE-0015 multi-tenancy). Org scoping applies only on a server backend with a system of record;
     local serve / token mode has no identity to scope to and ignores `orgs:` entirely. A target not
@@ -388,10 +393,10 @@ def _target_forbidden(state: ServeState, org: str, target: str) -> bool:
     """
     if state.repository is None:
         return False
-    parsed = load_serve_config_file(state.binding.config)
+    parsed = load_serve_config_file(state.binding_for(session, org).config)
     if parsed is None or target not in parsed[0].targets:
         return False
-    return target not in state.targets_for(org)
+    return target not in state.targets_for(org, session)
 
 
 def _record_audit(

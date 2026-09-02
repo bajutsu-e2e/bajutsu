@@ -183,7 +183,12 @@ def _remember_org_config_source(state: ServeState, org: str, source: dict[str, A
 
 
 def bind_upload_config(
-    state: ServeState, zip_path: Path, filename: str, *, sha256: str, actor: str | None = None
+    state: ServeState,
+    zip_path: Path,
+    filename: str,
+    *,
+    sha256: str,
+    actor: str | None = None,
 ) -> tuple[Any, int]:
     """Bind an uploaded zip bundle as the active config (BE-0073) — a third source in the "Open
     config" UI, alongside the file browser and the Git picker.
@@ -247,7 +252,12 @@ def bind_upload_config(
 
 
 def upload_scenarios(
-    state: ServeState, zip_path: Path, *, target: str | None, actor: str | None = None
+    state: ServeState,
+    zip_path: Path,
+    *,
+    target: str | None,
+    actor: str | None = None,
+    session: str | None = None,
 ) -> tuple[Any, int]:
     """Add a ``.zip`` of one or more scenario files to *target*'s scenario scope (BE-0340).
 
@@ -265,9 +275,9 @@ def upload_scenarios(
     storage-accurate, since this loop's per-entry probe shares the same limitation."""
     target = target or None
     org = state.org_of(actor)
-    if target is not None and _target_forbidden(state, org, target):
+    if target is not None and _target_forbidden(state, org, target, session):
         return {"error": "forbidden"}, 403
-    scope = state.for_org(org).scenarios.scope(target)
+    scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
     if scope is None:
         return {"error": "path must be a *.yaml under the scenarios dir"}, 400
     try:
@@ -645,7 +655,9 @@ def bind_composition(
     }, 200
 
 
-def compose_current(state: ServeState, *, actor: str | None = None) -> tuple[Any, int]:
+def compose_current(
+    state: ServeState, *, actor: str | None = None, session: str | None = None
+) -> tuple[Any, int]:
     """The active composed bind's per-leg shas and display names, for the compose picker's resume
     seed (`GET /api/compose/current`).
 
@@ -654,7 +666,7 @@ def compose_current(state: ServeState, *, actor: str | None = None) -> tuple[Any
     empty seed — never a 404. Does not materialize or rebind; it only reports what `state.binding.upload`
     already holds. The POST body of `/api/compose` stays a pure function of its request — this GET
     never fills omitted legs on the server."""
-    upload = state.binding.upload
+    upload = state.binding_for(session, state.org_of(actor)).upload
     if upload is None or upload.artifact_shas is None:
         return {"artifacts": {}}, 200
     if upload.org != state.org_of(actor):

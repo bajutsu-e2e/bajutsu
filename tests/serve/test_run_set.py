@@ -385,7 +385,7 @@ def test_fan_out_rejects_scenarios_that_travel_as_materials(tmp_path: Path) -> N
             )
 
     class _MaterialsStore:
-        def scope(self, app):
+        def scope(self, app, *, session=None, org=""):
             return _MaterialsScope()
 
     executor = _RecordingExecutor()

@@ -336,6 +336,9 @@ def _build_app(state: ServeState, job: Job) -> bool:
     a needed build fails — so the run isn't spawned against a missing binary."""
     if not job.build or not job.app_path:
         return True
+    # `job.cwd` is frozen at registration (BE-0393 unit 2), so this is the accepted job's own
+    # directory. The fallback is the worker path, where the job was rebuilt from a spec and resolves
+    # against the worker's own deployment binding.
     cwd = job.cwd or state.binding.cwd
     if (cwd / job.app_path).exists():
         return True

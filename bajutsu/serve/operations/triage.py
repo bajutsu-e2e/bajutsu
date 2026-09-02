@@ -14,7 +14,7 @@ from bajutsu.serve.state import Job, ServeState
 
 
 def start_triage(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None
+    state: ServeState, body: dict[str, Any], *, actor: str | None = None, session: str | None = None
 ) -> tuple[Any, int]:
     """Diagnose a failed run as a serve job — the "why did this fail?" the Replay/History view asks.
 
@@ -25,7 +25,7 @@ def start_triage(
     scenario-save path (``POST /api/scenario``). AI (``ai``) is opt-in and only an investigator; the
     deterministic heuristic agent is the default.
     """
-    cfg = state.binding.config
+    cfg = state.binding_for(session, state.org_of(actor)).config
     if cfg is None:
         return {"error": "open a config first"}, 400
     run_id = str(body.get("runId") or "")
@@ -37,7 +37,7 @@ def start_triage(
     org, forbidden = _resolve_org_or_forbid(state, target, actor)
     if forbidden:
         return forbidden
-    scope = state.for_org(org).scenarios.scope(target)
+    scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
     if scope is None:
         return {"error": f"target '{target}' has no scenarios dir"}, 400
     # Resolve the client value to a trusted source path — never the raw string — so no client-controlled
