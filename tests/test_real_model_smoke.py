@@ -29,9 +29,9 @@ from real_model_support import (
     showcase_screen,
 )
 
-from bajutsu.agents.claude import ClaudeAgent
-from bajutsu.agents.protocols import Observation
-from bajutsu.ai import create_backend
+from bajutsu.common.agents.claude import ClaudeAgent
+from bajutsu.common.agents.protocols import Observation
+from bajutsu.common.ai import create_backend
 from bajutsu.crawl.guide import ClaudeActionProposer
 
 # --- Deterministic harness self-checks (no model; always run) -----------------------------------

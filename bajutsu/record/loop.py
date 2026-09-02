@@ -13,8 +13,8 @@ import time
 from collections.abc import Callable
 from typing import Literal
 
-from bajutsu.agents.protocols import Agent, HumanValueClass, Observation, Proposal
 from bajutsu.analytics import usage as _usage
+from bajutsu.common.agents.protocols import Agent, HumanValueClass, Observation, Proposal
 from bajutsu.common.handoff import Handoff, HandoffRequest, HumanHandoffUnavailable
 from bajutsu.common.screenshots import screenshot_bytes
 from bajutsu.crawl import screen_identity

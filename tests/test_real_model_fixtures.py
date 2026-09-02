@@ -40,10 +40,10 @@ from real_model_support import (
     showcase_screen,
 )
 
-from bajutsu.agents.claude import ClaudeAgent
-from bajutsu.agents.protocols import Observation, Proposal
-from bajutsu.ai import create_backend
-from bajutsu.ai.base import AiBackend, MessageResponse, ToolUseBlock
+from bajutsu.common.agents.claude import ClaudeAgent
+from bajutsu.common.agents.protocols import Observation, Proposal
+from bajutsu.common.ai import create_backend
+from bajutsu.common.ai.base import AiBackend, MessageResponse, ToolUseBlock
 from bajutsu.crawl import guide
 from bajutsu.crawl.guide import ClaudeActionProposer
 

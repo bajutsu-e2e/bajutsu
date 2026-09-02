@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from conftest import ShotDriver
 
-from bajutsu.agents.protocols import Observation, Proposal
+from bajutsu.common.agents.protocols import Observation, Proposal
 from bajutsu.common.handoff import HandoffRequest, HandoffResponse, HumanHandoffUnavailable
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver

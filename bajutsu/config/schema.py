@@ -149,7 +149,7 @@ class AiSettings(_Model):
 
     # A registered provider name (BE-0104); anthropic is the default. The name is *not* validated
     # here: the deterministic core must not import the AI provider stack (BE-0112), and the registry
-    # that owns the valid names lives in the periphery (`bajutsu.ai`). An unknown name fails closed
+    # that owns the valid names lives in the periphery (`bajutsu.common.ai`). An unknown name fails closed
     # in that registry the first time an AI path resolves the provider, not at config load.
     provider: str | None = None
     model: str | None = None  # override the path's default model

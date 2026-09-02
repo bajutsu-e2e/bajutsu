@@ -9,8 +9,6 @@ from pathlib import Path
 import typer
 
 from bajutsu import capability_preflight, preflight
-from bajutsu.agents import availability as ai_availability
-from bajutsu.ai import credential_gap
 from bajutsu.backends import (
     capabilities_for_run,
     resolve_actuators,
@@ -18,6 +16,8 @@ from bajutsu.backends import (
     select_actuator_for_scenario,
 )
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
+from bajutsu.common.agents import availability as ai_availability
+from bajutsu.common.ai import credential_gap
 from bajutsu.common.backend_cli import adb as _adb
 from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.devices import errors as device_errors

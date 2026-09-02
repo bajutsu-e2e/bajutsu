@@ -1,6 +1,6 @@
 """Shared support for the system-alert guard's real-model verification (BE-0308).
 
-The guard (`bajutsu/agents/alerts.py`) exists to stop a live AI operation from acting blindly into
+The guard (`bajutsu/common/agents/alerts.py`) exists to stop a live AI operation from acting blindly into
 an unexpected system dialog. Every other test of it hands it a `AlertDecision` its own author typed,
 so it proves the *plumbing* and nothing about the guard's safety claim: that a real vision call,
 looking at a real alert, lands on the correct dismiss control rather than on a destructive button
@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from bajutsu.agents.alerts import AlertDecision, AlertLocator, SystemAlertGuard
+from bajutsu.common.agents.alerts import AlertDecision, AlertLocator, SystemAlertGuard
 from bajutsu.common.screenshots import png_size
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver

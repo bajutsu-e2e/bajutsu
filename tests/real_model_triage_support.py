@@ -26,7 +26,7 @@ from real_model_support import requires_credential as requires_credential
 from real_model_support import save_fixture as save_fixture
 from real_model_support import showcase_screen as showcase_screen
 
-from bajutsu.agents.claude_triage import _CATEGORIES, NO_DIAGNOSIS_SUMMARY
+from bajutsu.common.agents.claude_triage import _CATEGORIES, NO_DIAGNOSIS_SUMMARY
 from bajutsu.triage.heuristic import FIX_KINDS, FailedStep, Triage, TriageContext
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "be0296"

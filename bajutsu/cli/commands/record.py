@@ -8,9 +8,6 @@ from pathlib import Path
 
 import typer
 
-from bajutsu.agents.claude import MODEL as _RECORD_MODEL
-from bajutsu.agents.factory import make_agent
-from bajutsu.ai import announce_ai
 from bajutsu.analytics import usage as _usage
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
@@ -29,6 +26,9 @@ from bajutsu.cli._shared import (
     resolve_system_alert_handling_flag,
 )
 from bajutsu.cli.handoff import make_handoff
+from bajutsu.common.agents.claude import MODEL as _RECORD_MODEL
+from bajutsu.common.agents.factory import make_agent
+from bajutsu.common.ai import announce_ai
 from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.handoff import HumanHandoffUnavailable

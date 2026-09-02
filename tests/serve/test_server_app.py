@@ -18,7 +18,7 @@ from _shared import SCENARIO, FakeObjectStore, fake_popen, project, write_run
 from fastapi.testclient import TestClient
 
 from bajutsu import serve as srv
-from bajutsu.agents.ai_config import BEDROCK_MODEL_ENV, PROVIDER_ENV
+from bajutsu.common.agents.ai_config import BEDROCK_MODEL_ENV, PROVIDER_ENV
 from bajutsu.serve import operations as ops
 from bajutsu.serve.operations.config import seed_orgs_from_bound_config
 from bajutsu.serve.server.app import make_app

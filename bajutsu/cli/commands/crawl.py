@@ -29,7 +29,6 @@ from pathlib import Path
 import typer
 
 from bajutsu import crawl as crawl_engine
-from bajutsu.ai import announce_ai
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
     _ai_redactor,
@@ -44,6 +43,7 @@ from bajutsu.cli._shared import (
     _with_headed,
     resolve_system_alert_handling_flag,
 )
+from bajutsu.common.ai import announce_ai
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.run_meta.files import RunArtifactReader, runs_root
 from bajutsu.common.run_meta.id import new_run_id
