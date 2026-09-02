@@ -20,6 +20,7 @@ from bajutsu.backends import (
 from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
 from bajutsu.common.agents import availability as ai_availability
 from bajutsu.common.ai import credential_gap
+from bajutsu.common.scenario import load_scenario_file
 from bajutsu.config import (
     Effective,
     android_package,
@@ -35,7 +36,6 @@ from bajutsu.platform_lifecycle.environments.xcuitest import (
     effective_device_type,
     runner_source,
 )
-from bajutsu.scenario import load_scenario_file
 
 
 def check_scenarios(scenario_path: Path, capabilities: frozenset[str]) -> list[str]:

@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu.scenario import load_expanded_scenarios, load_scenarios_dir
+from bajutsu.common.scenario import load_expanded_scenarios, load_scenarios_dir
 
 
 def _write(path: Path, text: str) -> Path:
@@ -112,9 +112,9 @@ def test_run_expand_file_rejects_escape(tmp_path: Path, capsys: pytest.CaptureFi
     # It reports the rejection as a clean `typer.Exit(2)`, and the message names only the ref.
     import typer
 
+    from bajutsu.common.scenario import Redact
     from bajutsu.config import Effective, WebConfig
     from bajutsu.run.cli import _expand_file
-    from bajutsu.scenario import Redact
 
     _write(tmp_path / "secret.yaml", "steps:\n  - tap: { id: TOPSECRET }\n")
     scenario = _write(
@@ -142,9 +142,9 @@ def test_run_expand_file_rejects_escape(tmp_path: Path, capsys: pytest.CaptureFi
 
 
 def test_run_expand_file_in_root_component_loads(tmp_path: Path) -> None:
+    from bajutsu.common.scenario import Redact
     from bajutsu.config import Effective, WebConfig
     from bajutsu.run.cli import _expand_file
-    from bajutsu.scenario import Redact
 
     root = tmp_path / "suite"
     _write(root / "components" / "login.yaml", "steps:\n  - tap: { id: login }\n")

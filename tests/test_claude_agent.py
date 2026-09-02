@@ -14,11 +14,11 @@ from bajutsu.common.ai.base import (
     TextPart,
     ToolUseBlock,
 )
+from bajutsu.common.scenario import Redact, dump_scenarios, load_scenarios
 from bajutsu.drivers import base
 from bajutsu.drivers.fake import FakeDriver
 from bajutsu.evidence.redaction import Redactor
 from bajutsu.record.loop import record
-from bajutsu.scenario import Redact, dump_scenarios, load_scenarios
 
 
 def _el(identifier: str, label: str, traits: list[str] | None = None) -> base.Element:

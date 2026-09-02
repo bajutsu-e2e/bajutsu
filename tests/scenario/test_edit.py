@@ -13,8 +13,8 @@ from typing import Any
 
 import pytest
 
-from bajutsu.scenario import load_scenario_file, load_scenarios
-from bajutsu.scenario.edit import EditError, apply_enrichment, apply_selector
+from bajutsu.common.scenario import load_scenario_file, load_scenarios
+from bajutsu.common.scenario.edit import EditError, apply_enrichment, apply_selector
 
 
 def _step_action(text: str, scenario: str, index: int) -> tuple[str, dict[str, Any]]:

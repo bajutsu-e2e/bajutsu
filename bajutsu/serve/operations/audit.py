@@ -16,7 +16,7 @@ from typing import Any
 import yaml
 
 from bajutsu.analysis import audit as _audit
-from bajutsu.scenario import load_scenario_file
+from bajutsu.common.scenario import load_scenario_file
 from bajutsu.serve.operations.reads import read_scenario
 from bajutsu.serve.state import ServeState
 

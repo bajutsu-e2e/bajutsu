@@ -7,8 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from bajutsu import interp
-from bajutsu.scenario import Assertion, Step
+from bajutsu.common.scenario import Assertion, Step, interp
 
 
 def _interp_step(step: Step, bindings: Mapping[str, str]) -> Step:

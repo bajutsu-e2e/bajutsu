@@ -8,9 +8,9 @@ broad `request` matcher from stealing the only exchange a more specific one need
 
 from __future__ import annotations
 
-from bajutsu.assertions._common import AssertionResult, _compile
+from bajutsu.common.assertions._common import AssertionResult, _compile
+from bajutsu.common.scenario import RequestMatch
 from bajutsu.evidence.network import NetworkExchange
-from bajutsu.scenario import RequestMatch
 
 
 def match_request(ex: NetworkExchange, req: RequestMatch) -> bool:

@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 
 from bajutsu.analysis import trace
 from bajutsu.cli import app
-from bajutsu.scenario import load_scenarios
+from bajutsu.common.scenario import load_scenarios
 
 runner = CliRunner()
 

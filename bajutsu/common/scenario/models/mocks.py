@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from pydantic import Field
 
-from bajutsu.scenario.models._base import _Model
-from bajutsu.scenario.models.assertions import RequestMatch
+from bajutsu.common.scenario.models._base import _Model
+from bajutsu.common.scenario.models.assertions import RequestMatch
 
 
 class MockResponse(_Model):

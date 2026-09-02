@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu.assertions import AssertionResult, VisualEvidence
+from bajutsu.common.assertions import AssertionResult, VisualEvidence
 from bajutsu.drivers.actuation import Actuation
 from bajutsu.evidence import Artifact
 from bajutsu.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome

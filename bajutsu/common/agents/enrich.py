@@ -10,11 +10,11 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from bajutsu.common.agents.protocols import EnrichmentAgent, EnrichmentProposal, StepContext
+from bajutsu.common.scenario import Scenario
 from bajutsu.drivers import base
 from bajutsu.orchestrator import BlockedHandler, Clock, RealClock
 from bajutsu.orchestrator.types import SelectionState
 from bajutsu.record.loop import clear_blocking, execute
-from bajutsu.scenario import Scenario
 from bajutsu.screenshots import screenshot_bytes
 
 Reporter = Callable[[str], None]
