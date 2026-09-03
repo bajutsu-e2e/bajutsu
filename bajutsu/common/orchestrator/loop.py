@@ -1467,7 +1467,16 @@ class _StepRunner:
                 # consume the failure and leave the alert — the case the alert guard exists for —
                 # unhandled. Each still fires at most once per step, so a step's retries stay bounded
                 # at one per guard, and each is skipped once the step passes.
-                guard_done = False
+                #
+                # A failed `handleSystemAlert` step is the one case the alert guard skips outright
+                # (BE-0406): `wait_for_system_alert` already drove this exact guard, reserved against
+                # this step's own selector, for the step's whole timeout — a second, unreserved probe
+                # here adds no coverage the mid-wait one lacked, and could tap the step's own alert
+                # through the guard's looser fallback policy. That would both decide, on the step's
+                # behalf, the very prompt it was placed to answer, and discard the specific reason
+                # (no alert / an unmatched alert / an ambiguous one) for the generic timeout a doomed
+                # retry against an now-cleared screen produces instead.
+                guard_done = kind == "handle_system_alert"
                 # The dismiss can refuse loudly: `AmbiguousSelector` on two dismiss regions, or
                 # `ElementNotTappable` when something covers the scrim itself — which is exactly the
                 # tip-plus-system-alert case below. `ElementNotTappable` is not a `SelectorError`

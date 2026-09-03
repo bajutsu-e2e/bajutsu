@@ -530,7 +530,14 @@ Log:
   buttons the selector did not match, and carries the guard's own note for a prompt nothing could
   clear. `docs/scenarios.md` and `docs/architecture.md` record the move, with both `docs/ja/`
   mirrors; the rest of Unit 5 waits on the later units. Paths throughout are the post-reorg
-  `bajutsu/common/…` ones, not the `bajutsu/…` ones this proposal was written against.
+  `bajutsu/common/…` ones, not the `bajutsu/…` ones this proposal was written against. One further
+  deviation from the unit's own text: the end-of-step alert guard now skips a failed
+  `handleSystemAlert` step outright, rather than staying "unchanged". `wait_for_system_alert`
+  already drives that same guard, reserved against the step's own selector, for the step's whole
+  timeout — a second, unreserved probe added no coverage and could tap the step's own alert through
+  the guard's looser fallback policy, both deciding the prompt on the step's behalf and overwriting
+  its specific failure reason with the generic one a doomed retry against the now-cleared screen
+  produces.
 
 ## References
 

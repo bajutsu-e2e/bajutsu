@@ -322,6 +322,42 @@ def test_the_guard_clears_a_declared_interruption_while_the_step_waits() -> None
     assert ("handle_system_alert", ({"label": "Allow"}, 0.0)) in driver.actions
 
 
+def test_the_end_of_step_guard_leaves_a_failed_steps_own_alert_alone() -> None:
+    # A failed `handleSystemAlert` step is the one case the end-of-step guard skips outright
+    # (BE-0406). `wait_for_system_alert` already drove this same guard, reserved against the step's
+    # own selector, for the step's whole timeout; a second, unreserved probe here could tap the
+    # step's own alert through the guard's looser fallback policy — deciding, on the step's behalf,
+    # the very prompt it was placed to answer, and overwriting its specific reason with the generic
+    # one a doomed retry against the now-cleared screen produces.
+    from bajutsu.common.orchestrator import run_scenario
+
+    driver = FakeDriver([])
+    # "Allow" and "Allow Once" both satisfy `labelMatches: "Allow.*"`, so the step's own tap stays
+    # ambiguous for its whole timeout; "Don't Allow" is one of the guard's default dismissive labels
+    # and would resolve uniquely if the end-of-step guard were allowed to probe unreserved.
+    driver.system_alert_buttons = [_button("Allow"), _button("Allow Once"), _button("Don't Allow")]
+
+    result = run_scenario(
+        driver,
+        load_scenarios(
+            "- name: t\n"
+            "  steps:\n"
+            "    - handleSystemAlert: { sel: { labelMatches: 'Allow.*' }, timeout: 0.3 }\n"
+        )[0],
+        alert_guard=AlertGuardConfig(),
+    )
+
+    assert not result.ok
+    reason = result.steps[0].reason or ""
+    # The step's own specific diagnosis survives — the guard never got a chance to overwrite it
+    # with a doomed retry's generic "no system alert appeared".
+    assert "is ambiguous and stayed ambiguous" in reason
+    assert "no system alert appeared" not in reason
+    # Nothing was tapped on the step's behalf, and nothing was recorded as dismissed.
+    assert result.steps[0].alerts == []
+    assert not [a for a in driver.actions if a[0] == "tap"]
+
+
 def test_the_run_loop_hands_the_step_the_scenarios_guard() -> None:
     # The wiring, end to end: `_run_step_body` passes `alert_guard`/`alerts` for this step kind as it
     # already did for `wait`, so a run — not only a direct call — clears the interruption mid-step
