@@ -148,6 +148,9 @@ order* in *Detailed design*). Do not start the checklist below before then.
   compared against the 200–350 millisecond estimate above.
 - [ ] If the tap-synthesis floor remains material after the above, evaluate disabling
   `waitForQuiescenceIncludingAnimationsIdle:` as a follow-up.
+- [ ] Once the `roadmap-id` workflow allocates the four ids on `main`, backfill a reciprocal
+  `Related` link with the driver-internal-tuning, device-side protocol, and Android executor items
+  (see the same box on the driver-internal-tuning item).
 
 ## References
 

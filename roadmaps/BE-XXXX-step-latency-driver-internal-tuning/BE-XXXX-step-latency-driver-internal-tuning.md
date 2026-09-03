@@ -159,8 +159,8 @@ and a rerun of the tracer.
 ### Group 3 — Android driver internals
 
 16. **Confirm, then remove, the `POSTDATE_BUDGET_MS` wait that a settled screen can never satisfy.**
-    Highest-priority unit in this group — the investigation's measurement traces roughly 2.2 seconds
-    of the 2204-millisecond `POST /act` average to this single fixed budget, more than any other item
+    Highest-priority unit in this group — the investigation traces most of the 2204-millisecond
+    `POST /act` average to this single fixed 2000-millisecond budget, more than any other item
     in this proposal. `respondAct` waits, before injecting a tap, for an accessibility event that
     postdates the `since` mark the host captured immediately before sending the request
     ([`ResidentServerTest.kt:184-188,642`](../../BajutsuAndroidUIAutomatorServer/server/src/androidTest/java/dev/bajutsu/android/server/ResidentServerTest.kt),
@@ -252,7 +252,8 @@ and a rerun of the tracer.
 - [x] Measure the baseline and build the yardstick — real-device tracing of both backends
   (2026-09-03), recorded in [`misc/step-performance/`](misc/step-performance/README.md)
   in this item's own directory.
-- [ ] Group 1, units 1–6 — evidence-capture dedup and the BE-0310 settle-window read (common).
+- [ ] Group 1, units 1–6 — evidence-capture dedup and dropping the read during the BE-0310 settle
+  window (common).
 - [ ] Group 2, units 7–15 — iOS driver internals.
 - [ ] Group 3, unit 16 — confirm the `POSTDATE_BUDGET_MS` mechanism against resident-server logs,
   then implement the fix.
@@ -260,6 +261,11 @@ and a rerun of the tracer.
   swipe variant (unit 24).
 - [ ] Rerun [`trace_run.py`](misc/step-performance/trace_run.py) against
   `controls.yaml` after each group lands, and record the resulting per-step wall-clock here.
+- [ ] Once the `roadmap-id` workflow allocates the four ids on `main`, backfill reciprocal `Related`
+  links between this item and the device-side protocol, iOS executor, and Android executor items,
+  and replace each "companion item" mention with a link, in both languages — a new item may not
+  cross-reference another new item by `BE-XXXX` before allocation, so none of the four can carry
+  this on merge.
 
 ## References
 

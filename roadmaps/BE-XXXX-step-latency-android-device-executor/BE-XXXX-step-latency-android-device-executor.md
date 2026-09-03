@@ -29,8 +29,8 @@ and does not have to newly acquire.
 
 Every condition wait on Android today polls the resident server over HTTP, and `settledDump` confirms
 a settle by taking two tree dumps and comparing them — an approach that costs a full read twice, even
-when nothing changed between them. A companion driver-internal-tuning item already traces roughly 2.2
-seconds of the measured 2204-millisecond `POST /act` average to a fixed
+when nothing changed between them. A companion driver-internal-tuning item already traces most of the
+measured 2204-millisecond `POST /act` average to a fixed 2000-millisecond
 `POSTDATE_BUDGET_MS` wait that a settled screen can never satisfy before the budget runs out,
 pending confirmation from the server's own logs. That same observation — that the server already has
 the accessibility-event stream needed to know a settle happened, without polling for it — is the
@@ -119,6 +119,9 @@ iOS executor's port is.
 - [ ] Capture screenshots with `UiAutomation.takeScreenshot()`, returned with the step result.
 - [ ] Trace a real tap step against this executor and record the resulting per-step wall-clock here,
   compared against the 150–300 millisecond estimate above.
+- [ ] Once the `roadmap-id` workflow allocates the four ids on `main`, backfill a reciprocal
+  `Related` link with the driver-internal-tuning, device-side protocol, and iOS executor items (see
+  the same box on the driver-internal-tuning item).
 
 ## References
 

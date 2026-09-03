@@ -135,18 +135,12 @@ def _install_transport_wrappers() -> None:
         return _timed("transport", lambda method, path, body=None: f"{method} {path}")(transport)
 
     xcuitest._raw_http_transport = factory  # noqa: SLF001
-    adb_resident.fetch_source = _timed("transport", lambda *a, **k: "GET /source")(
-        adb_resident.fetch_source
-    )
-    adb_resident.act = _timed("transport", lambda *a, **k: "POST /act")(adb_resident.act)
-    adb_resident.fetch_clock = _timed("transport", lambda *a, **k: "GET /clock")(
-        adb_resident.fetch_clock
-    )
-    # The three reassignments above never reach a production run: `ResidentServer.__init__` takes
+    # Patching the `adb_resident` module functions would not work: `ResidentServer.__init__` takes
     # `fetch`/`clock`/`act_probe` as keyword-only defaults bound to `fetch_source`/`fetch_clock`/`act`
-    # at class-definition (import) time, before this function runs, and every real caller (`_begin_
-    # resident`) takes those defaults rather than passing the module functions explicitly. Wrap the
-    # `ResidentChannel` `start()` actually returns instead, so the timed calls are the ones a run uses.
+    # at class-definition (import) time, before this function runs, and every real caller
+    # (`_begin_resident`) takes those defaults rather than passing the module functions explicitly.
+    # Wrap the `ResidentChannel` `start()` actually returns instead, so the timed calls are the ones
+    # a run uses.
     original_start = adb_resident.ResidentServer.start
 
     def start(self: Any) -> Any:
@@ -183,10 +177,14 @@ def _install_step_wrapper() -> None:
     runner = loop._StepRunner  # noqa: SLF001  # the per-step entry point
     original = runner._run_one  # noqa: SLF001
 
+    seq = [0]  # per-step index, kept unique when scenarios run on concurrent pipeline threads
+
     def run_one(self: Any, step: Any, active_driver: Any) -> Any:
         stack: list[str] = getattr(_LOCAL, "stack", None) or []
         _LOCAL.stack = stack
-        key = f"{len(_STEPS)}:{_step_kind(step)}"
+        with _LOCK:
+            key = f"{seq[0]}:{_step_kind(step)}"
+            seq[0] += 1
         stack.append(key)
         t0 = time.perf_counter()
         try:
