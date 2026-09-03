@@ -181,7 +181,86 @@ flowchart TB
 集計）、`evidence/`、`devices/`、`provisioning/`、`github/`、`cloud/` です。それぞれの役割は
 [アーキテクチャのモジュール一覧表](architecture.md#モジュール一覧と役割)に 1 行ずつあります。
 
-### 2.3 ツリーを読まずにファイルを探す
+### 2.3 パッケージの完全な一覧
+
+上の図はディレクトリを役割ごとにまとめたものです。以下の表は、その一つひとつを
+`make repo-map ARGS="--code"` が報告するファイル数・行数・中身とともに列挙します。図の枠には
+収まらなかった、より細かい目録です。
+
+**コマンド層** — ユーザー向けの機能ごとに 1 ディレクトリ、それぞれ自分の `cli.py` を持ちます。
+
+| パッケージ | ファイル数・行数 | 中身 |
+|---|---|---|
+| `cli/` | 4 ファイル、786 行 | Typer アプリの組み立て：`_shared`、`dotenv`、`handoff` |
+| `cli/commands/` | 5 ファイル、448 行 | どの機能にも属さないコマンド：`doctor`、`lint`、`report`、`schema` |
+| `run/` | 3 ファイル、1,701 行 | `cli`（`run` コマンド本体）、`notify` |
+| `record/` | 4 ファイル、1,318 行 | `capture`、`cli`、`loop` |
+| `crawl/` | 9 ファイル、3,109 行 | `cli`、`core`、`flows`、`guide`、`report`、`repro`、`serialize`、`tabs` |
+| `triage/` | 3 ファイル、1,203 行 | `cli`、`heuristic` |
+| `codegen/` | 7 ファイル、2,623 行 | `cli`、`common`、`xcuitest`、`playwright`、`uiautomator` |
+| `mcp/` | 4 ファイル、327 行 | `cli`、`resources`、`tools` |
+| `analysis/` | 7 ファイル、2,543 行 | `audit`、`coverage`、`flakiness`、`impact`、`stats`、`trace` |
+| `analysis/cli/` | 8 ファイル、870 行 | レポートごとに 1 つの Typer コマンド |
+| `serve/` | 28 ファイル、8,457 行 | web UI 自身の最上位モジュール（`state`、`routes`、`handler`、`executor`、`jobs` など）。`cli/`・`operations/`・`server/` は以下で別立てします |
+| `serve/cli/` | 4 ファイル、873 行 | `serve`、`worker`、`approve` |
+| `serve/operations/` | 27 ファイル、6,997 行 | web UI の操作ごとに 1 モジュール：`capture`、`codegen`、`coverage`、`doctor`、`enrich`、`evidence`、`lint`、`metrics`、`runs`、`triage`、`upload` など |
+| `serve/server/` | 17 ファイル、3,691 行 | ホスティング（マルチテナント）版の backend：`app`、`db`、`executor`、`models`、`oauth`、`artifacts`、`baselines`、`sessions`、`secrets` |
+
+**実行コア** — デバイスプール、ステップループ、プラットフォームごとのアプリ起動です。
+
+| パッケージ | ファイル数・行数 | 中身 |
+|---|---|---|
+| `common/runner/` | 11 ファイル、3,122 行 | `pipeline`、`pool`、`launch`、`device_provider`、`recovery`、`mailbox`、`build`、`types` |
+| `common/orchestrator/` | 6 ファイル、3,534 行 | `loop`、`waits`、`substitution`、`evidence_rules`、`types` |
+| `common/orchestrator/actions/` | 2 ファイル、139 行 | アクションのハンドラレジストリ（`_registry`） |
+| `common/orchestrator/actions/handlers/` | 10 ファイル、1,254 行 | `gestures`、`scroll`、`device`、`navigation`、`http`、`generate`、`totp`、`manual` |
+| `common/platform_lifecycle/` | 7 ファイル、968 行 | `protocols`、`factories`、`readiness`、`relaunchers`、`device_control`、`read_session` |
+| `common/platform_lifecycle/environments/` | 8 ファイル、3,115 行 | `ios`、`xcuitest`、`xcuitest_live`、`android`、`web`、`fake` |
+
+**プラットフォーム接続面** — `Driver` プロトコルと、その背後の各 backend です。
+
+| パッケージ | ファイル数・行数 | 中身 |
+|---|---|---|
+| `common/drivers/` | 14 ファイル、7,198 行 | `base`、`actuation`、`coordinate_tree`、`fake`、`xcuitest`、`adb`、`playwright`、`xcuitest_live`、`elements`、`dom`、`web_network`、`webview`、`zorder` |
+| `common/backend_cli/` | 4 ファイル、2,428 行 | `simctl`、`adb`、`adb_resident` |
+| `common/devices/` | 4 ファイル、181 行 | `errors`、`id`、`os` |
+| `common/capability/` | 4 ファイル、548 行 | `capabilities`、`capability_preflight`、`preflight` |
+
+**契約層** — シナリオスキーマと、解決済み設定の形です。
+
+| パッケージ | ファイル数・行数 | 中身 |
+|---|---|---|
+| `common/scenario/` | 9 ファイル、1,232 行 | `load`、`load_expanded`、`expand`、`select`、`serialize`、`edit`、`interp`、`system_alerts` |
+| `common/scenario/models/` | 9 ファイル、1,942 行 | `scenario`、`steps`、`actions`、`assertions`、`selector`、`evidence`、`mocks`、`_base` |
+| `common/config/` | 5 ファイル、1,234 行 | `schema`、`effective`、`resolve`、`accessors` |
+
+**出力層** — 合否、採取した証跡、描画されたレポートです。
+
+| パッケージ | ファイル数・行数 | 中身 |
+|---|---|---|
+| `common/assertions/` | 6 ファイル、1,225 行 | `evaluate`、`network`、`visual`、`schema`、`_common` |
+| `common/evidence/` | 9 ファイル、3,440 行 | `core`、`golden`、`intervals`、`media`、`network`、`redaction`、`sink`、`visual` |
+| `common/report/` | 11 ファイル、2,176 行 | `manifest`、`ctrf`、`format`、`rows`、`panels`、`html`、`richtext`、`archive`、`load`、`from_grouping` |
+
+**周辺層** — モデルに届く経路です。
+
+| パッケージ | ファイル数・行数 | 中身 |
+|---|---|---|
+| `common/agents/` | 12 ファイル、2,386 行 | `protocols`、`factory`、`claude`、`claude_backed`、`claude_enrich`、`claude_triage`、`ai_config`、`anthropic_client`、`availability`、`enrich`、`alerts` |
+| `common/ai/` | 8 ファイル、1,072 行 | `base`、`registry`、`anthropic`、`claude_code`、`disabled`、`prompts`、`banner` |
+
+**`common/` 配下の共有ユーティリティ** — 他のどの群にも属さない、目的を 1 つに絞ったヘルパです。
+
+| パッケージ | ファイル数・行数 | 中身 |
+|---|---|---|
+| `common/`（直下のファイル） | 14 ファイル、2,652 行 | `backends`、`doctor`、`lint`、`mailbox`、`totp`、`cancellation`、`config_source`、`deprecations`、`diagnostics`、`handoff`、`screenshots`、`stall_diagnostics`、`_yaml` |
+| `common/analytics/` | 4 ファイル、862 行 | `ledger`、`stats`、`usage` |
+| `common/run_meta/` | 6 ファイル、602 行 | `files`、`id`、`root`、`artifact_perms`、`object_store` |
+| `common/provisioning/` | 3 ファイル、364 行 | `provision`、`requirements` |
+| `common/cloud/` | 2 ファイル、678 行 | `devicefarm` |
+| `common/github/` | 4 ファイル、232 行 | `actions`、`app`、`errors` |
+
+### 2.4 ツリーを読まずにファイルを探す
 
 3 つのコマンドが、実行のたびに最新の地図を出力します。コミットされた索引が古びる余地はありません。
 
@@ -302,7 +381,105 @@ AndroidConfig` の判別可能な共用型で、新しいプラットフォー�
 
 ---
 
-## 4. レイヤと、ゲートが強制する境界
+## 4. シナリオ DSL：シナリオファイルの見た目
+
+シナリオはただの YAML です。第 3 節の `Scenario`・`Step`・`Assertion` モデルに対して `extra="forbid"`
+で検証されるので、キーの綴りを間違えると読み込みで失敗します。黙って何も起きない、ということは
+ありません。この節では実在する 1 本のシナリオを最初から最後まで読み、そこで使われている語彙を
+表にまとめます。正式な文法の全体は [DSL 文法](dsl-grammar.md)にあります。実例つきのオーサリング
+ガイドは [シナリオ](scenarios.md)と[クックブック](cookbook.md)です。
+
+### 4.1 1 本のシナリオを最初から最後まで読む
+
+[`scenarios/smoke.yaml`](https://github.com/bajutsu-e2e/bajutsu/blob/main/scenarios/smoke.yaml)は、
+このドキュメントサイト自身のランディングページが描画されることを確認する、手を加えていない
+シナリオです。
+
+```yaml
+description: >-
+  Docs-site smoke — the landing page loads and shows its "Get started" and "GitHub"
+  hero buttons. The fastest check that the Playwright backend reaches the live site.
+scenarios:
+  - name: the landing page shows its hero calls-to-action
+    description: Wait for the "Get started" hero, then assert both hero buttons and a populated page.
+    steps:
+      - wait: { for: { label: "Get started" }, timeout: 15 }
+    expect:
+      - exists: { label: "Get started" }
+      - exists: { labelMatches: "GitHub" }
+      - count: { sel: { traits: [link] }, atLeast: 5 }
+```
+
+どのシナリオにも共通する部分が 3 つあります。`steps` はステップループ（第 6 節）が実行する順序
+付きの並びです。ここでは `wait` ステップが 1 つあり、固定時間の sleep ではなく、そのヒーロー
+ボタンが現れるまでポーリングします（第二原則）。`expect` はシナリオ末尾のアサーション
+ブロックで、最後のステップのあとに 1 回だけ検査されます。ここでは独立した 3 つのチェックがあり、
+すべてが通らなければなりません。`{ label: … }`・`{ labelMatches: … }`・`{ traits: […] }` という
+オブジェクトは `Selector`（第 3 節）です。`tap` や `type` ステップの対象が取るのと同じ形です。
+
+### 4.2 39 種のステップ
+
+`Step` は必ず 39 のアクション欄のうち 1 つを持ちます（`common/scenario/models/steps.py`）。慣習
+ではなく pydantic のバリデーションによる強制です。そのうち `wait` と `assert` の 2 つはステップ
+ループが直接ポーリングする条件で、残りはアクションレジストリ（第 7.5 節）を通して実行されます。
+
+| 分類 | 欄 | すること |
+|---|---|---|
+| ジェスチャー | `tap`、`tapPoint`、`doubleTap`、`longPress`、`swipe`、`drag`、`scroll`、`pinch`、`rotate`、`back` | タッチとナビゲーションの入力です。 |
+| テキストと選択 | `type`、`select`、`clear`、`delete`、`copy`、`selectOption`、`setPickerValue` | テキストの入力・選択・コピーです。`copy` は事前の `select` を必要とします（第 7.5 節）。 |
+| 条件 | `wait`、`assert` | 条件やアサーションブロックをポーリングします。固定時間の sleep は使いません。 |
+| アプリとデバイスのライフサイクル | `relaunch`、`setLocation`、`push`、`clearKeychain`、`clearClipboard`、`setClipboard`、`background`、`foreground`、`overrideStatusBar`、`clearStatusBar`、`handleSystemAlert` | アプリのライフサイクルと、その周りのシミュレートされたデバイスを操作します。 |
+| データと値 | `http`、`totp`、`generate`、`email` | 値を作るか取得します。HTTP 呼び出し、時刻ベースのワンタイムパスワード（TOTP）コード、乱数、メールボックスの検索です。 |
+| 合成と制御構文 | `use`、`web`、`manual`、`if`、`forEach` | コンポーネントを展開する、ブロックを WebView に絞る、人手の引き継ぎを記録する、分岐・繰り返しをします。 |
+
+### 4.3 14 種のアサーション
+
+`Assertion`（`common/scenario/models/assertions.py`）は必ず 14 の欄のうち 1 つを持ち、
+`assertions/evaluate.py`（第 7.6 節）が評価します。例外を投げずに失敗した結果を返す全域関数です。
+
+| 分類 | 欄 | 検査すること |
+|---|---|---|
+| 要素の状態と内容 | `exists`、`value`、`label`、`count`、`enabled`、`disabled`、`selected` | 要素の存在、テキスト、件数、トグル状態です。 |
+| ネットワーク | `request`、`event`、`requestSequence`、`responseSchema` | 観測した HTTP 通信です。単一の通信、順序つきの並び、スキーマに対する応答本文のいずれかです。 |
+| 画面の比較 | `visual`、`golden` | スクリーンショットを基準画像と、要素ツリーを記録済みのツリーと比較します。 |
+| クリップボード | `clipboard` | デバイスのクリップボードの現在のテキストです。 |
+
+### 4.4 制御構文・合成・データ
+
+| 構文 | 欄 | すること |
+|---|---|---|
+| 条件分岐 | `if` ステップ（`condition`、`then`、`else`） | `Assertion` で分岐します。`expect` と同じ方法で評価されます。 |
+| 繰り返し | `forEach` ステップ（`sel`、`as`、`steps`） | `Selector` が一致した要素ごとに `steps` を 1 回ずつ繰り返します。 |
+| コンポーネント | `use` ステップ、別立てのコンポーネントファイル | 名前付きでパラメータ化されたステップの並びをコンパイル時に展開します。run が始まる前に解決済みです（`expand.py`、第 7.1 節）。ステップループが `use` ステップを目にすることはありません。 |
+| WebView のスコープ | `web` ステップ（`within`、`steps`） | `within` の `Selector` で届く WebView に、入れ子のステップの並びを絞ります。 |
+| 割り込みハンドラ | シナリオ直下の `interrupts:` | 許可ダイアログやアプリ更新のプロンプトのような、run の途中で予測できない位置に現れうる割り込み画面を片付けます。囲むシナリオの `vars.*` を共有します。 |
+| セットアップ・ティアダウンのフェーズ | シナリオ直下の `before:` / `after:` | `steps` の前と、判定が出たあとに走るステップです。本体のステップの並びとは別に報告されます。 |
+| データ駆動の行 | `data:` / `dataFile:` | インラインの並びまたは CSV ファイルの行ごとに 1 つのシナリオを実体化し、`${row.*}` に代入します。 |
+
+### 4.5 補間：`${namespace.key}`
+
+シナリオが行うすべての代入は、1 つのプリミティブ（`common/scenario/interp.py`）が支えています。
+呼び出し側が渡す、平坦な `bindings` マップをキーにします。
+
+| 名前空間 | 出どころ | 解決される時点 |
+|---|---|---|
+| `params.*` | コンポーネントの `with:` ブロック | コンポーネント展開の時点。run が始まる前です。 |
+| `row.*` | データ駆動シナリオの `data:` / `dataFile:` の行 | データ展開の時点。run が始まる前です。 |
+| `secrets.*` | ターゲット設定の解決済みシークレット値 | run 時点。`Effective` 設定（第 3 節）からです。 |
+| `vars.*` | `extract` ステップが捕捉した値 | run 時点。ステップループの実行中です。run の途中で変わる唯一の名前空間です。 |
+
+### 4.6 証跡の採取：`capturePolicy`
+
+シナリオの `capturePolicy`（`common/scenario/models/evidence.py`）は、単発の指示ではなく、
+ステップループが繰り返し発火する規則を挙げます。だから 2 回目の run でも、AI を挟まずに同じ
+証跡が集まります。各規則の `on` トリガーは `action`（id が一致するステップが実行された）・
+`event: screenChanged`・`result: error` のうちちょうど 1 つです。`capture` の並びは、トリガーが
+発火したときに採取する成果物の種類を挙げます。仕組みの全体は[証跡](evidence.md)にあります。
+`capturePolicy` の有無にかかわらずどのステップにも付く、基準の `capture` 保証も含みます。
+
+---
+
+## 5. レイヤと、ゲートが強制する境界
 
 パッケージは 3 つのレイヤに仕分けられ、その仕分けをゲートが検査します。`make lint-imports` が
 `pyproject.toml` に宣言したレイヤに対して
@@ -322,7 +499,7 @@ AndroidConfig` の判別可能な共用型で、新しいプラットフォー�
 
 ---
 
-## 5. シナリオを実行すると何が起きるか
+## 6. シナリオを実行すると何が起きるか
 
 `bajutsu run` は、Tier 2 の他の経路もなぞる代表的なコマンドです。1 度追いかければ、runner と
 orchestrator とドライバ層と reporter をまとめて理解できます。
@@ -381,7 +558,7 @@ sequenceDiagram
    コレクタを束ねたものです。プラットフォーム固有の起動処理は `common/platform_lifecycle/` が
    1 つの `RunEnvironment` プロトコルの裏で行います。そのためプールは actuator の名前で分岐しません。
 5. **シナリオを実行します。** `common/orchestrator/loop.py` がステップの並びを実行します。1 ステップの
-   詳細は 5.1 で扱います。
+   詳細は 6.1 で扱います。
 6. **合否を決めます。** `common/assertions/evaluate.py` がすべてのアサーションを評価します。この関数は
    全域関数です。例外を投げずに失敗した `AssertionResult` を返すので、1 つのアサーションが run 全体を
    中断させることはありません。
@@ -389,7 +566,7 @@ sequenceDiagram
    Common Test Report Format（CTRF）の JSON、単体で開ける HTML ページにします。manifest が唯一の
    正本で、残りの 3 つはそこから導かれます。
 
-### 5.1 1 ステップの内側
+### 6.1 1 ステップの内側
 
 どのステップも、act、wait、verify という同じ 3 拍を踏みます。orchestrator はその拍の周りで証跡を
 採取し、拍と拍のあいだで画面が邪魔されていないかを見張ります。
@@ -435,9 +612,9 @@ flowchart TB
 
 ---
 
-## 6. レイヤごとのクラス
+## 7. レイヤごとのクラス
 
-### 6.1 シナリオモデル
+### 7.1 シナリオモデル
 
 [`common/scenario/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/scenario) は、
 作成時のスキーマを `models/` に置き、その周りにテキストを実行可能なオブジェクトへ変える処理を
@@ -459,7 +636,7 @@ flowchart TB
 そのため orchestrator が見るステップの並びにマクロは残りません。実行ループがシナリオの途中で
 コンポーネントを解決する必要は生じません。
 
-### 6.2 ドライバ層
+### 7.2 ドライバ層
 
 [`common/drivers/base.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/drivers/base.py)
 は決定性の核であり、通して読む価値のある唯一のファイルです。`Driver` プロトコルに加えて、すべての
@@ -561,7 +738,7 @@ driver)` で届きます。呼び出し箇所のための型付けの傘であ�
 デバイスなしで動かせます。決定的なゲートが Linux 上で数秒で終わり、Simulator を必要としないのは
 このためです。
 
-### 6.3 環境層
+### 7.3 環境層
 
 [`common/platform_lifecycle/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/platform_lifecycle)
 は、ドライバがあえて答えない問いを引き受けます。アプリはどうやってデバイスに載り、操作できる状態に
@@ -575,7 +752,7 @@ runner が知りたい問いにも答えます。そのプラットフォーム�
 プロトコルの裏にあるので、`runner/pool.py` と `crawl/cli.py` は actuator の名前で分岐せず、iOS と
 Android と web を 1 つのインターフェースで動かせます。
 
-### 6.4 runner
+### 7.4 runner
 
 [`common/runner/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/runner) は、
 設定とシナリオの並びをレポートに変えます。
@@ -600,7 +777,7 @@ Android と web を 1 つのインターフェースで動かせます。
 したデバイスでシナリオを再実行します。上限を使い切るとシナリオははっきり失敗します。本当にクラッシュを
 誘発するシナリオが見えなくなることはありません。
 
-### 6.5 orchestrator
+### 7.5 orchestrator
 
 [`common/orchestrator/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/orchestrator)
 がステップループを持ちます。`loop.py` はコアで最大のファイルです。構造を押さえておくと読み進め
@@ -630,7 +807,7 @@ Android と web を 1 つのインターフェースで動かせます。
 持ちます。`copy` は有効な選択を必要とし、`select` は選択を確立し、他のアクションは選択を無効に
 します。おかげでハンドラは backend をまたいで状態を持たずに済みます。
 
-### 6.6 アサーションの評価
+### 7.6 アサーションの評価
 
 [`common/assertions/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/assertions)
 は合否だけを持ち、他は持ちません。`evaluate.py` は種類ごとの評価関数を `@_evaluator("kind")`
@@ -645,7 +822,7 @@ Android と web を 1 つのインターフェースで動かせます。
 狭めた文脈を受け取ります。ステップの途中には、視覚比較が読むべき新しいスクリーンショットが存在
 しないからです。
 
-### 6.7 証跡（evidence）
+### 7.7 証跡（evidence）
 
 [`common/evidence/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/evidence) は、
 run が何を残すのかに答えます。
@@ -667,7 +844,7 @@ run が何を残すのかに答えます。
 トリガーを挙げ、ループが毎ステップで一致した規則を発火します。そのため 2 回目の実行でも、AI を
 挟まずに同じ証跡が集まります。
 
-### 6.8 レポート
+### 7.8 レポート
 
 [`common/report/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/report) は
 `RunResult` の並びを 4 通りに描画します。`manifest.py` が `manifest.json` と JUnit XML を、
@@ -678,7 +855,7 @@ manifest を読みます。
 
 ---
 
-## 7. Tier 1 の経路：作成と調査
+## 8. Tier 1 の経路：作成と調査
 
 モデルに届く経路は 3 つあります。どれもモデルを狭いプロトコルの背後に閉じ込めるので、決定的コアが
 モデルを目にすることはありません。
@@ -770,7 +947,7 @@ Bedrock を、`claude_code.py` が Claude Code のコマンドラインインタ
 
 ---
 
-## 8. codegen、serve、mcp、analysis
+## 9. codegen、serve、mcp、analysis
 
 **`codegen/`** は通過したシナリオをネイティブテストに変えます。
 [`common.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/codegen/common.py) が
@@ -798,7 +975,9 @@ Bedrock を、`claude_code.py` が Claude Code のコマンドラインインタ
 
 ---
 
-## 9. 何かを追加するときの入口
+## 10. 機能の追加・修正：開発と動作確認のルーチン
+
+### 10.1 変更の種類ごとの出発点
 
 上の構造を、よくある変更の出発点に翻訳したのが次の表です。
 
@@ -815,9 +994,96 @@ Bedrock を、`claude_code.py` が Claude Code のコマンドラインインタ
 ゲートがそれを機械的に検査します。そして振る舞いを足す変更には、それがなければ落ちるテストが必要
 です。決定的なテストスイートが退行を防ぐ網だからです。
 
+### 10.2 開発のルーチン
+
+![開発ルーチンのフロー図。ブランチまたは worktree の作成から始まり、1 つのレイヤの内側で変更を実装し、テストを足すか更新し、速い検査（format、lint、typecheck、test）に進みます。make check が通るかどうかの分岐があり、通らなければ実装に戻り、通れば適合スイート・実機・make docs によるスイート外の確認に進みます。続いて make preflight が main へリベースしてゲートを再実行し、push すると pre-push フックが make check を再実行して red なら拒否し、プルリクエストを開き、CI が同じゲートを再実行します。push から点線で伸びる警告が、git push --no-verify は例外なく禁止であることを示します。CI が red なら実装に戻ります。](assets/diagrams/code-structure-routine-ja.svg)
+
+<details>
+<summary>Mermaid のソース</summary>
+
+<!-- mermaid-svg: assets/diagrams/code-structure-routine-ja.svg -->
+```mermaid
+flowchart TB
+    branch(["ブランチまたは worktree<br/>claude/&lt;topic&gt;"])
+    implement["1 つのレイヤの内側で<br/>変更を実装"]
+    test["テストを足す・更新する"]
+    fast["速い検査<br/>format · lint · typecheck · test"]
+    gate{"make check<br/>green か？"}
+    verify["スイートの外側で確認<br/>適合スイート・実機・make docs"]
+    preflight["make preflight<br/>fetch + rebase + ゲート"]
+    push["push<br/>pre-push フックが make check を再実行"]
+    noverify(["git push --no-verify<br/>例外なく禁止"])
+    pr["プルリクエストを開く"]
+    ci{"CI"}
+    done(["マージ"])
+
+    branch --> implement --> test --> fast --> gate
+    gate -->|いいえ| implement
+    gate -->|はい| verify --> preflight --> push --> pr --> ci
+    push -.->|してはならない| noverify
+    ci -->|red| implement
+    ci -->|green・レビュー済み| done
+
+    classDef det fill:#bfdbfe,stroke:#2563eb,color:#1f2937;
+    classDef warn fill:#fecaca,stroke:#dc2626,color:#1f2937;
+    class gate,ci det
+    class noverify warn
+```
+
+</details>
+
+1. **セッションを隔離します。** `main` から `claude/<topic>` としてブランチを切ります（人間の
+   場合は `<user>/<topic>`）。`make worktree TOPIC=<topic>` が、ブランチと worktree を 1 コマンド
+   で作るので、2 つのセッションが同じチェックアウトを共有することはありません。Claude Code は
+   自分専用の worktree を `.claude/worktrees/` の下に持ちます。
+2. **変更を実装します。** 第 5 節の表が指すレイヤの内側にとどめます。境界をまたぐ変更（決定的
+   コアが周辺層を import する、など）は、誰かが気付くのを待たず `make lint-imports` がその場で
+   落とします。
+3. **テストを足すか更新します。** 決定的なテストスイート（`tests/`）が退行を防ぐ網です。それが
+   なければ落ちるテストのない変更は、まだ完了していません。
+   [`tests/driver_conformance.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/tests/driver_conformance.py)は、
+   すべての backend が共有する唯一の仕様です。`Driver` プロトコル向けの技術適合性キット
+   （technology compatibility kit、TCK）で、新しい backend は `ConformanceHarness` を 1 度実装
+   すれば、自分でテストを書かずにスイート全体を受け継ぎます。
+4. **反復作業中は速い検査を走らせます。** 毎回フルのゲートを走らせるのではなく、`make format`・
+   `make lint`・`make typecheck`・`make test` はそれぞれ 1 つのことだけを検査し、すぐに終わり
+   ます。`make check` はこれらに加えて、より重い構造的な検査（import のレイヤ、docstring、
+   ロードマップ、シークレットの走査）を CI と同じ順序で走らせます。「ローカルで green」が
+   「CI でも green」を予言する、という前提が成り立つのはこのためです。
+5. **テストスイートの外側でも手を動かして確認します。** ドライバ・backend・図に触れた変更には、
+   下の 10.3 節が何のコマンドを使うかを示します。
+6. **push の前にリベースします。** `make preflight` が `origin/main` を fetch し、その上に
+   リベースし、ゲートを走らせ、「完了の定義」のリマインダーを表示します。pre-push フックが
+   結局は強制する内容を、先回りしてやっておく形です。コンフリクトや red な検査が、push まで
+   持ち越されずその場で見つかります。
+7. **push してから、プルリクエスト（PR）を開きます。** 追跡対象の pre-push フックは、
+   push のたびに `make check` を走らせ、red なら拒否します。`git push --no-verify` は例外なく
+   禁止です。それはローカルで捕まえるはずの red な結果を、共有 PR に持ち越すだけだからです。
+   セッションと人間のどちらが PR を開くか、Draft で開くか Ready for review で開くかは、
+   作業の種類によります。[`CLAUDE.md`](../../CLAUDE.md) の「Who opens the PR depends on the
+   work」と「PRs created by Claude Code always start as Draft」を参照してください。並行開発の
+   全体像（リベースの規律、git 側の防御、worktree による隔離）は
+   [AI 開発](ai-development.md)にあります。
+
+### 10.3 触った対象ごとの動作確認
+
+| 触った対象 | 速い検査 | より深い確認 |
+|---|---|---|
+| シナリオスキーマ、ステップのアクション、アサーション | `make test`（デバイス不要の `FakeDriver` ベースのユニットテスト） | `tests/orchestrator/` と `tests/scenario/` がステップループとモデルを覆います。end-to-end の例が要るなら `scenarios/` にシナリオを 1 本足します。 |
+| ドライバまたは backend | `uv run pytest tests/test_driver_conformance.py`（共有の適合契約。速いゲート上では `FakeDriver` に対して走ります） | 実機での確認：iOS なら `make -C demos/showcase run-swiftui`（先に `make deps` が必要、macOS と Simulator が要ります）。web トラックなら `uv run bajutsu run --backend web --target web --config demos/web/demo.config.yaml`（Mac は不要です）。 |
+| 設定スキーマまたは解決処理 | `make test` | 実際の設定に対して `uv run bajutsu doctor --target <name> --config <path>` を走らせ、変更が生む解決済み `Effective` を確かめます。 |
+| CLI コマンド | `make test` | フィクスチャ設定に対してコマンドを手で走らせます。`capability/capabilities.py` 自身のテストが、登録済みのコマンドすべてが分類されていることを確かめます。 |
+| ドキュメント（図を含む） | `make lint-roadmap`、textlint（`tools/textlint/`） | `make docs`（`mkdocs build --strict`）。mermaid フェンスを変えたときは `make docs-diagrams` でチェックイン済みの SVG を再レンダリングします。このページ自身の図が従っている慣例です。 |
+
+カバレッジは変更のあとではなく、変更と並行して棘を締めます。`make lint-pr` は、計測カバレッジが
+総合フロアより 2 ポイント以上上振れしたときに知らせます。`make coverage-floors` は、あるファイルの
+カバレッジが実際に上がったときに、ファイルごとのフロアのスナップショット
+（`coverage-floors.json`）を引き上げます。低下をごまかす手段ではなく、上昇を記録するための、
+意図的でレビュー可能な手順です。
+
 ---
 
-## 10. さらに読む
+## 11. さらに読む
 
 - [アーキテクチャ](architecture.md)：モジュール一覧表、依存レイヤ、設計が述べる機能の実装状況を
   扱います。

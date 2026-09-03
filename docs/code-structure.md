@@ -182,7 +182,86 @@ flowchart TB
 `evidence/`, `devices/`, `provisioning/`, `github/`, and `cloud/`. The
 [module table in architecture.md](architecture.md#module-list-and-roles) describes each in one row.
 
-### 2.3 Finding a file without reading the tree
+### 2.3 Every package, in one table
+
+The diagram above groups directories by role; the tables below list every one of them, with the
+file and line counts `make repo-map ARGS="--code"` reports and the modules each holds — a fuller
+inventory than the diagram's boxes have room for, grouped the same way.
+
+**Commands** — one directory per user-facing feature, plus its own `cli.py`.
+
+| Package | Files, lines | Holds |
+|---|---|---|
+| `cli/` | 4, 786 | Typer app assembly: `_shared`, `dotenv`, `handoff` |
+| `cli/commands/` | 5, 448 | Commands with no owning feature: `doctor`, `lint`, `report`, `schema` |
+| `run/` | 3, 1,701 | `cli` (the `run` command), `notify` |
+| `record/` | 4, 1,318 | `capture`, `cli`, `loop` |
+| `crawl/` | 9, 3,109 | `cli`, `core`, `flows`, `guide`, `report`, `repro`, `serialize`, `tabs` |
+| `triage/` | 3, 1,203 | `cli`, `heuristic` |
+| `codegen/` | 7, 2,623 | `cli`, `common`, `xcuitest`, `playwright`, `uiautomator` |
+| `mcp/` | 4, 327 | `cli`, `resources`, `tools` |
+| `analysis/` | 7, 2,543 | `audit`, `coverage`, `flakiness`, `impact`, `stats`, `trace` |
+| `analysis/cli/` | 8, 870 | One Typer command per report |
+| `serve/` | 28, 8,457 | The local web UI's own top-level modules (`state`, `routes`, `handler`, `executor`, `jobs`, …); `cli/`, `operations/`, and `server/` break out below |
+| `serve/cli/` | 4, 873 | `serve`, `worker`, `approve` |
+| `serve/operations/` | 27, 6,997 | One module per web-UI operation: `capture`, `codegen`, `coverage`, `doctor`, `enrich`, `evidence`, `lint`, `metrics`, `runs`, `triage`, `upload`, … |
+| `serve/server/` | 17, 3,691 | The hosted (multi-tenant) backend: `app`, `db`, `executor`, `models`, `oauth`, `artifacts`, `baselines`, `sessions`, `secrets` |
+
+**Execution core** — the device pool, the step loop, and per-platform app bring-up.
+
+| Package | Files, lines | Holds |
+|---|---|---|
+| `common/runner/` | 11, 3,122 | `pipeline`, `pool`, `launch`, `device_provider`, `recovery`, `mailbox`, `build`, `types` |
+| `common/orchestrator/` | 6, 3,534 | `loop`, `waits`, `substitution`, `evidence_rules`, `types` |
+| `common/orchestrator/actions/` | 2, 139 | The action-handler registry (`_registry`) |
+| `common/orchestrator/actions/handlers/` | 10, 1,254 | `gestures`, `scroll`, `device`, `navigation`, `http`, `generate`, `totp`, `manual` |
+| `common/platform_lifecycle/` | 7, 968 | `protocols`, `factories`, `readiness`, `relaunchers`, `device_control`, `read_session` |
+| `common/platform_lifecycle/environments/` | 8, 3,115 | `ios`, `xcuitest`, `xcuitest_live`, `android`, `web`, `fake` |
+
+**Platform seam** — the `Driver` protocol and every backend behind it.
+
+| Package | Files, lines | Holds |
+|---|---|---|
+| `common/drivers/` | 14, 7,198 | `base`, `actuation`, `coordinate_tree`, `fake`, `xcuitest`, `adb`, `playwright`, `xcuitest_live`, `elements`, `dom`, `web_network`, `webview`, `zorder` |
+| `common/backend_cli/` | 4, 2,428 | `simctl`, `adb`, `adb_resident` |
+| `common/devices/` | 4, 181 | `errors`, `id`, `os` |
+| `common/capability/` | 4, 548 | `capabilities`, `capability_preflight`, `preflight` |
+
+**Contract** — the scenario schema and the resolved-config shape.
+
+| Package | Files, lines | Holds |
+|---|---|---|
+| `common/scenario/` | 9, 1,232 | `load`, `load_expanded`, `expand`, `select`, `serialize`, `edit`, `interp`, `system_alerts` |
+| `common/scenario/models/` | 9, 1,942 | `scenario`, `steps`, `actions`, `assertions`, `selector`, `evidence`, `mocks`, `_base` |
+| `common/config/` | 5, 1,234 | `schema`, `effective`, `resolve`, `accessors` |
+
+**Output** — the verdict, the captured evidence, and the rendered report.
+
+| Package | Files, lines | Holds |
+|---|---|---|
+| `common/assertions/` | 6, 1,225 | `evaluate`, `network`, `visual`, `schema`, `_common` |
+| `common/evidence/` | 9, 3,440 | `core`, `golden`, `intervals`, `media`, `network`, `redaction`, `sink`, `visual` |
+| `common/report/` | 11, 2,176 | `manifest`, `ctrf`, `format`, `rows`, `panels`, `html`, `richtext`, `archive`, `load`, `from_grouping` |
+
+**Periphery** — the paths that reach a model.
+
+| Package | Files, lines | Holds |
+|---|---|---|
+| `common/agents/` | 12, 2,386 | `protocols`, `factory`, `claude`, `claude_backed`, `claude_enrich`, `claude_triage`, `ai_config`, `anthropic_client`, `availability`, `enrich`, `alerts` |
+| `common/ai/` | 8, 1,072 | `base`, `registry`, `anthropic`, `claude_code`, `disabled`, `prompts`, `banner` |
+
+**Shared utilities under `common/`** — single-purpose helpers no other group owns.
+
+| Package | Files, lines | Holds |
+|---|---|---|
+| `common/` (flat files) | 14, 2,652 | `backends`, `doctor`, `lint`, `mailbox`, `totp`, `cancellation`, `config_source`, `deprecations`, `diagnostics`, `handoff`, `screenshots`, `stall_diagnostics`, `_yaml` |
+| `common/analytics/` | 4, 862 | `ledger`, `stats`, `usage` |
+| `common/run_meta/` | 6, 602 | `files`, `id`, `root`, `artifact_perms`, `object_store` |
+| `common/provisioning/` | 3, 364 | `provision`, `requirements` |
+| `common/cloud/` | 2, 678 | `devicefarm` |
+| `common/github/` | 4, 232 | `actions`, `app`, `errors` |
+
+### 2.4 Finding a file without reading the tree
 
 Three commands print a fresh map on every run, so no committed index goes stale.
 
@@ -303,7 +382,105 @@ and every artifact captured along the way. The reporter renders a list of them a
 
 ---
 
-## 4. Layers, and the boundary the gate enforces
+## 4. The scenario DSL: what a scenario file looks like
+
+A scenario is plain YAML, validated against the `Scenario` / `Step` / `Assertion` models from
+section 3 with `extra="forbid"`, so a typo in a key fails the load rather than passing unnoticed.
+This section reads one real scenario end to end, then tables the vocabulary it draws from. The full,
+normative grammar lives in [DSL grammar](dsl-grammar.md); the authoring guide with worked recipes is
+[scenarios](scenarios.md) and [cookbook](cookbook.md).
+
+### 4.1 One scenario, read end to end
+
+[`scenarios/smoke.yaml`](https://github.com/bajutsu-e2e/bajutsu/blob/main/scenarios/smoke.yaml),
+unedited, checks that this documentation site's own landing page renders:
+
+```yaml
+description: >-
+  Docs-site smoke — the landing page loads and shows its "Get started" and "GitHub"
+  hero buttons. The fastest check that the Playwright backend reaches the live site.
+scenarios:
+  - name: the landing page shows its hero calls-to-action
+    description: Wait for the "Get started" hero, then assert both hero buttons and a populated page.
+    steps:
+      - wait: { for: { label: "Get started" }, timeout: 15 }
+    expect:
+      - exists: { label: "Get started" }
+      - exists: { labelMatches: "GitHub" }
+      - count: { sel: { traits: [link] }, atLeast: 5 }
+```
+
+Three parts recur in every scenario. `steps` is the ordered list the step loop (section 6) executes
+— here, one `wait` step polls for the hero button instead of sleeping a fixed duration (prime
+directive 2). `expect` is the scenario-level assertion block, checked once after the last step —
+here, three independent checks, every one of which must pass. A `{ label: … }` /
+`{ labelMatches: … }` / `{ traits: […] }` object is a `Selector` (section 3), the same shape a
+`tap` or `type` step's target takes.
+
+### 4.2 The 39 step kinds
+
+Every `Step` carries exactly one of 39 action fields (`common/scenario/models/steps.py`), enforced
+by pydantic validation, not by convention. Two of them — `wait` and `assert` — are conditions the
+step loop polls directly; the rest dispatch through the action registry (section 7.5).
+
+| Group | Fields | What they do |
+|---|---|---|
+| Gestures | `tap`, `tapPoint`, `doubleTap`, `longPress`, `swipe`, `drag`, `scroll`, `pinch`, `rotate`, `back` | Touch and navigation input. |
+| Text and selection | `type`, `select`, `clear`, `delete`, `copy`, `selectOption`, `setPickerValue` | Enter, select, and copy text — `copy` requires a prior `select` (section 7.5). |
+| Conditions | `wait`, `assert` | Poll a condition or an assertion block; never a fixed sleep. |
+| App and device lifecycle | `relaunch`, `setLocation`, `push`, `clearKeychain`, `clearClipboard`, `setClipboard`, `background`, `foreground`, `overrideStatusBar`, `clearStatusBar`, `handleSystemAlert` | Drive the app's lifecycle and the simulated device around it. |
+| Data and values | `http`, `totp`, `generate`, `email` | Produce or fetch a value: an HTTP call, a time-based one-time password (TOTP) code, a random value, a mailbox lookup. |
+| Composition and control flow | `use`, `web`, `manual`, `if`, `forEach` | Expand a component, scope a block to a WebView, mark a human takeover, or branch and loop. |
+
+### 4.3 The 14 assertion kinds
+
+Every `Assertion` (`common/scenario/models/assertions.py`) carries one of 14 fields, evaluated by
+`assertions/evaluate.py` (section 7.6) — a total function that returns a failing result rather than
+raising.
+
+| Group | Fields | Checks |
+|---|---|---|
+| Element state and content | `exists`, `value`, `label`, `count`, `enabled`, `disabled`, `selected` | An element's presence, text, count, or toggled state. |
+| Network | `request`, `event`, `requestSequence`, `responseSchema` | Observed HTTP traffic — one exchange, an ordered sequence, or a response body against a schema. |
+| Screen comparison | `visual`, `golden` | A screenshot against a baseline image, or an element tree against a recorded one. |
+| Clipboard | `clipboard` | The device clipboard's current text. |
+
+### 4.4 Control flow, composition, and data
+
+| Construct | Field(s) | What it does |
+|---|---|---|
+| Conditional | `if` step (`condition`, `then`, `else`) | Branches on an `Assertion`, evaluated the same way `expect` is. |
+| Loop | `forEach` step (`sel`, `as`, `steps`) | Repeats `steps` once per element a `Selector` matches. |
+| Component | `use` step, plus a separate component file | Expands a named, parameterized step list at compile time, resolved before the run ever starts (`expand.py`, section 7.1) — the step loop never sees a `use` step. |
+| WebView scope | `web` step (`within`, `steps`) | Scopes a nested step list to a WebView reached through the `Selector` in `within`. |
+| Interrupt handler | `interrupts:` (scenario-level) | Clears an interstitial screen — a permission dialog, an app-update prompt — that can appear at an unpredictable point mid-run, sharing the enclosing scenario's `vars.*`. |
+| Setup / teardown phase | `before:` / `after:` (scenario-level) | Steps run ahead of `steps` and after the verdict exists, reported apart from the main step list. |
+| Data-driven rows | `data:` / `dataFile:` | Instantiates one scenario per row of an inline list or a CSV file, substituting `${row.*}`. |
+
+### 4.5 Interpolation: `${namespace.key}`
+
+One primitive (`common/scenario/interp.py`) backs every substitution a scenario can make, keyed by a
+flat `bindings` map the caller supplies.
+
+| Namespace | Source | Resolved |
+|---|---|---|
+| `params.*` | A component's `with:` block | At component-expansion time, before the run starts. |
+| `row.*` | A data-driven scenario's `data:` / `dataFile:` row | At data-expansion time, before the run starts. |
+| `secrets.*` | The target config's resolved secret values | At run time, from the `Effective` config (section 3). |
+| `vars.*` | An `extract` step's captured value | At run time, as the step loop executes — the one namespace that changes mid-run. |
+
+### 4.6 Evidence capture: `capturePolicy`
+
+A scenario's `capturePolicy` (`common/scenario/models/evidence.py`) names rules the step loop fires
+repeatedly, rather than a one-shot instruction, so a second run collects the same evidence with no
+AI involved. Each rule's `on` trigger is exactly one of `action` (an id-matched step just ran),
+`event: screenChanged`, or `result: error`; its `capture` list names the artifact kinds to collect
+when the trigger fires. [Evidence](evidence.md) covers the full mechanism, including the baseline
+`capture` guarantee every step gets regardless of `capturePolicy`.
+
+---
+
+## 5. Layers, and the boundary the gate enforces
 
 The packages sort into three layers, and the gate checks the sort. `make lint-imports` runs
 [import-linter](https://import-linter.readthedocs.io/) against layers declared in `pyproject.toml`,
@@ -323,7 +500,7 @@ set.
 
 ---
 
-## 5. What happens when a scenario runs
+## 6. What happens when a scenario runs
 
 `bajutsu run` is the command every other Tier 2 path resembles. Following it once explains the
 runner, the orchestrator, the driver layer, and the reporter together.
@@ -381,7 +558,7 @@ The numbered walk below names the file behind each arrow.
    bundles the live driver with that device's evidence sink, relaunch function, device control, and
    network collector. `common/platform_lifecycle/` performs the platform-specific bring-up behind
    one `RunEnvironment` protocol, so the pool never branches on the backend name.
-5. **Run the scenario.** `common/orchestrator/loop.py` executes the step list. Section 5.1 covers
+5. **Run the scenario.** `common/orchestrator/loop.py` executes the step list. Section 6.1 covers
    one step in detail.
 6. **Decide the verdict.** `common/assertions/evaluate.py` evaluates every assertion. The function
    is total: it returns a failing `AssertionResult` rather than raising, so one bad assertion never
@@ -390,7 +567,7 @@ The numbered walk below names the file behind each arrow.
    XML, Common Test Report Format (CTRF) JSON, and a self-contained HTML page. The manifest is the single source of truth the
    other three derive from.
 
-### 5.1 One step, from the inside
+### 6.1 One step, from the inside
 
 Each step follows the same three beats: act, then wait, then verify. The orchestrator captures
 evidence around the beats and guards the screen against interruptions between them.
@@ -436,9 +613,9 @@ ambiguous selector fails immediately rather than acting on whichever element mat
 
 ---
 
-## 6. The classes, layer by layer
+## 7. The classes, layer by layer
 
-### 6.1 The scenario model
+### 7.1 The scenario model
 
 [`common/scenario/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/scenario) holds
 the authoring schema in `models/` and the pipeline that turns text into runnable objects around it.
@@ -459,7 +636,7 @@ The split between compile time and run time matters. `expand.py` runs once, befo
 touched, so the step list the orchestrator sees holds no macros. The run loop therefore never needs
 to resolve a component mid-scenario.
 
-### 6.2 The driver layer
+### 7.2 The driver layer
 
 [`common/drivers/base.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/drivers/base.py)
 is the determinism core, and it is the one file worth reading in full. Beyond the `Driver` protocol
@@ -562,7 +739,7 @@ implements `await_ready`/`health_ready`), so none of them satisfies a structural
 without a device, which is why the deterministic gate runs on Linux in seconds and needs no
 Simulator.
 
-### 6.3 The environment layer
+### 7.3 The environment layer
 
 [`common/platform_lifecycle/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/platform_lifecycle)
 answers a question the driver deliberately does not: how does the app get onto a device and become
@@ -575,7 +752,7 @@ whether it observes network traffic through the driver, and whether its resident
 between scenarios. Because the answers live behind the protocol, `runner/pool.py` and `crawl/cli.py`
 drive iOS, Android, and web through one interface rather than branching on the actuator name.
 
-### 6.4 The runner
+### 7.4 The runner
 
 [`common/runner/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/runner) turns a
 config plus a scenario list into a report.
@@ -600,7 +777,7 @@ a test result, so `recovery.py` retries the scenario on a freshly leased device 
 and a bounded wall-clock budget. Once the budget runs out the scenario fails loudly, which keeps a
 genuinely crash-inducing scenario visible.
 
-### 6.5 The orchestrator
+### 7.5 The orchestrator
 
 [`common/orchestrator/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/orchestrator)
 holds the step loop. `loop.py` is the largest file in the core, and its structure repays a moment.
@@ -629,7 +806,7 @@ with an `@_handler(kind)` decorator. The dispatcher also owns the text-selection
 place: `copy` requires an active selection, `select` establishes one, and every other action
 invalidates it, which keeps the handlers stateless across backends.
 
-### 6.6 Assertion evaluation
+### 7.6 Assertion evaluation
 
 [`common/assertions/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/assertions)
 holds the verdict, and holds nothing else. `evaluate.py` keeps one evaluator per kind behind an
@@ -644,7 +821,7 @@ for a visual comparison, the schema directory, the golden directory, and the cli
 `assert` deliberately receives a narrowed context, since no fresh screenshot exists mid-step for a
 visual comparison to read.
 
-### 6.7 Evidence
+### 7.7 Evidence
 
 [`common/evidence/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/evidence)
 answers what a run leaves behind.
@@ -666,7 +843,7 @@ Evidence capture is expressed as a rule that fires repeatedly, not as a one-shot
 scenario's `capturePolicy` names triggers, and the loop fires the matching rules at every step, so a
 second run collects the same evidence with no AI involved.
 
-### 6.8 Reporting
+### 7.8 Reporting
 
 [`common/report/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu/common/report) renders
 the `RunResult` list four ways. `manifest.py` writes `manifest.json` and the JUnit XML; `ctrf.py`
@@ -677,7 +854,7 @@ HTML.
 
 ---
 
-## 7. The Tier 1 paths: authoring and investigation
+## 8. The Tier 1 paths: authoring and investigation
 
 Three commands reach a model, and each keeps the model behind a narrow protocol so the deterministic
 core never sees it.
@@ -769,7 +946,7 @@ through `anthropic.py`, the Claude Code command-line interface through `claude_c
 
 ---
 
-## 8. codegen, serve, mcp, and analysis
+## 9. codegen, serve, mcp, and analysis
 
 **`codegen/`** turns a passing scenario into a native test.
 [`common.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/codegen/common.py) declares
@@ -797,7 +974,9 @@ timeline).
 
 ---
 
-## 9. Where to add something new
+## 10. Adding or changing a feature: the development and verification routine
+
+### 10.1 Where to start, by kind of change
 
 The map below turns the structure above into a starting point for the most common changes.
 
@@ -814,9 +993,93 @@ Two rules hold across every row. A change on the verdict path must not reach an 
 gate checks the rule mechanically. A change that adds behavior needs a test that would fail without
 it, since the deterministic suite is the regression net.
 
+### 10.2 The development routine
+
+![Flowchart of the development routine. A branch or worktree leads to implementing the change inside one layer, then adding or updating a test, then the fast checks (format, lint, typecheck, test). A gate decision asks whether make check passes; no loops back to implementing, yes proceeds to verifying beyond the suite (the conformance suite, an on-device pass, or make docs), then make preflight rebases onto main and re-runs the gate, then a push whose pre-push hook re-runs make check and refuses a red one, then opening the pull request, then CI re-running the same gate. A dotted warning line from push notes that git push --no-verify is forbidden without exception. A red CI result loops back to implementing.](assets/diagrams/code-structure-routine.svg)
+
+<details>
+<summary>Mermaid source</summary>
+
+<!-- mermaid-svg: assets/diagrams/code-structure-routine.svg -->
+```mermaid
+flowchart TB
+    branch(["Branch or worktree<br/>claude/&lt;topic&gt;"])
+    implement["Implement the change<br/>inside one layer"]
+    test["Add or update a test"]
+    fast["Fast checks<br/>format · lint · typecheck · test"]
+    gate{"make check<br/>green?"}
+    verify["Verify beyond the suite<br/>conformance suite · on-device · make docs"]
+    preflight["make preflight<br/>fetch + rebase + the gate"]
+    push["Push<br/>pre-push hook re-runs make check"]
+    noverify(["git push --no-verify<br/>forbidden, no exceptions"])
+    pr["Open the pull request"]
+    ci{"CI"}
+    done(["Merged"])
+
+    branch --> implement --> test --> fast --> gate
+    gate -->|no| implement
+    gate -->|yes| verify --> preflight --> push --> pr --> ci
+    push -.->|never| noverify
+    ci -->|red| implement
+    ci -->|green + reviewed| done
+
+    classDef det fill:#bfdbfe,stroke:#2563eb,color:#1f2937;
+    classDef warn fill:#fecaca,stroke:#dc2626,color:#1f2937;
+    class gate,ci det
+    class noverify warn
+```
+
+</details>
+
+1. **Isolate the session.** Branch off `main` as `claude/<topic>` (a human contributor:
+   `<user>/<topic>`); `make worktree TOPIC=<topic>` builds the branch and its worktree in one
+   step, so two sessions never share a checkout. Claude Code keeps its own worktrees under
+   `.claude/worktrees/`.
+2. **Implement the change**, staying inside the layer section 5's table points to — a change that
+   reaches across the boundary (the deterministic core importing the periphery, say) fails
+   `make lint-imports` immediately rather than merging unnoticed.
+3. **Add or update a test alongside it.** The deterministic suite (`tests/`) is the regression net;
+   a change with no test that would fail without it is not yet done.
+   [`tests/driver_conformance.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/tests/driver_conformance.py)
+   is the one spec every backend's tests share — a technology compatibility kit (TCK) for the
+   `Driver` protocol — so a new backend implements `ConformanceHarness` once and inherits the whole
+   suite rather than writing its own.
+4. **Run the fast checks while iterating**, rather than the full gate on every save: `make format`,
+   `make lint`, `make typecheck`, and `make test` each check one thing and finish quickly.
+   `make check` runs all of them plus the slower structural checks (import layering, docstrings,
+   the roadmap, secret scanning) in the same order CI does — "green locally" is meant to predict
+   "green in CI".
+5. **Verify manually beyond the test suite** for anything that touches a driver, a backend, or a
+   diagram — section 10.3 below says which command, by what changed.
+6. **Rebase before pushing.** `make preflight` fetches `origin/main`, rebases onto it, runs the
+   gate, and prints a "definition of done" reminder — the do-it-early version of what the pre-push
+   hook enforces anyway, so a conflict or a red check surfaces before it costs a round trip.
+7. **Push, then open a pull request (PR).** The tracked pre-push hook runs `make check` before
+   every push and refuses a red one; `git push --no-verify` is forbidden, without exception, since
+   it only moves the same red result onto the shared PR instead of catching it locally. Whether the
+   session or a human opens the PR, and whether it opens Draft or Ready for review, depends on the
+   kind of work — see [`CLAUDE.md`](../CLAUDE.md)'s "Who opens the PR depends on the work" and "PRs
+   created by Claude Code always start as Draft". The full parallel-development picture (rebase
+   discipline, git defenses, worktree isolation) is [AI development](ai-development.md).
+
+### 10.3 Verification, by what you touched
+
+| What you touched | Fast check | Fuller verification |
+|---|---|---|
+| The scenario schema, a step action, or an assertion | `make test` (`FakeDriver`-backed unit tests, no device needed) | `tests/orchestrator/` and `tests/scenario/` cover the step loop and the model; add a scenario under `scenarios/` for an end-to-end example if the change needs one. |
+| A driver or a backend | `uv run pytest tests/test_driver_conformance.py` — the shared conformance contract, run against `FakeDriver` on the fast gate | An on-device pass: `make -C demos/showcase run-swiftui` (needs `make deps` first, macOS and a Simulator) for iOS; `uv run bajutsu run --backend web --target web --config demos/web/demo.config.yaml` for the web track, which needs no Mac. |
+| Config schema or resolution | `make test` | `uv run bajutsu doctor --target <name> --config <path>` against a real config, to see the resolved `Effective` the change produces. |
+| A CLI command | `make test` | Run the command by hand against a fixture config; `capability/capabilities.py`'s own test asserts every registered command is classified. |
+| Documentation, including a diagram | `make lint-roadmap`, textlint (`tools/textlint/`) | `make docs` (`mkdocs build --strict`); a changed mermaid fence needs `make docs-diagrams` to re-render its checked-in SVG, the convention this page's own diagrams follow. |
+
+Coverage ratchets alongside the change, not after it: `make lint-pr` flags when measured coverage
+drifts more than two points above the total floor, and `make coverage-floors` raises the per-file
+snapshot (`coverage-floors.json`) once a file's coverage has genuinely risen — the deliberate,
+reviewable way to record a gain, never a way to paper over a drop.
+
 ---
 
-## 10. Further reading
+## 11. Further reading
 
 - [Architecture](architecture.md) — the module table, the dependency layers, and the implementation
   status of everything the design describes.
