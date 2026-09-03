@@ -1,10 +1,10 @@
-**English** · [日本語](ja/code-structure.md)
+**English** · [日本語](ja/developer-guide.md)
 
-# Code structure: files, classes, and the path a run takes
+# Developer guide: code structure, the scenario DSL, and the development routine
 
-> A reading guide to the source tree. Where each file sits, which classes live in it, how those
-> classes combine into the features Bajutsu advertises, and what each class does while a scenario
-> runs.
+> A guide to the source tree and how to work in it: where each file sits, which classes live in it,
+> how the scenario DSL (domain-specific language) and its `Selector` fields work, what happens
+> inside each class while a scenario runs, and the routine for developing and verifying a change.
 
 Related: [architecture](architecture.md) · [concepts](concepts.md) · [run loop](run-loop.md) ·
 [drivers](drivers.md) · [glossary](glossary.md)
@@ -39,12 +39,12 @@ the verdict from machine-checkable assertions, with no model anywhere on the pat
 is the hub between the two: Tier 1 writes it, humans own and edit it afterwards, and Tier 2 consumes
 it.
 
-![Conceptual diagram. A natural-language goal enters Tier 1, where the record and crawl commands drive an agent that writes a scenario YAML file. Humans edit that file directly. Tier 2 reads the same file: the runner leases a device, the orchestrator executes each step through one Driver interface, the assertion evaluator produces the verdict, and the reporter writes the run artifacts. The Driver interface is the single platform seam, behind which sit the XCUITest, adb, Playwright, and fake backends. On failure the triage command reads the run artifacts and proposes edits back to the scenario.](assets/diagrams/code-structure-concept.svg)
+![Conceptual diagram. A natural-language goal enters Tier 1, where the record and crawl commands drive an agent that writes a scenario YAML file. Humans edit that file directly. Tier 2 reads the same file: the runner leases a device, the orchestrator executes each step through one Driver interface, the assertion evaluator produces the verdict, and the reporter writes the run artifacts. The Driver interface is the single platform seam, behind which sit the XCUITest, adb, Playwright, and fake backends. On failure the triage command reads the run artifacts and proposes edits back to the scenario.](assets/diagrams/developer-guide-concept.svg)
 
 <details>
 <summary>Mermaid source</summary>
 
-<!-- mermaid-svg: assets/diagrams/code-structure-concept.svg -->
+<!-- mermaid-svg: assets/diagrams/developer-guide-concept.svg -->
 ```mermaid
 flowchart TB
     goal(["Natural-language goal"])
@@ -119,12 +119,12 @@ The package splits into a shared `common/` core and one directory per user-facin
 directory holds that command's own logic plus its `cli.py`, which registers the Typer command. The
 map below groups the directories by the job they do rather than alphabetically.
 
-![Package map. The command layer holds cli, run, record, crawl, triage, codegen, mcp, serve, and analysis. Below it, the execution core holds common/runner, common/orchestrator, and common/platform_lifecycle. Below that, the platform seam holds common/drivers, common/backend_cli, and common/backends. To the side, the contract layer holds common/scenario and common/config, and the output layer holds common/assertions, common/evidence, and common/report. A separate periphery column holds common/agents and common/ai, which the command layer reaches but the execution core never does.](assets/diagrams/code-structure-packages.svg)
+![Package map. The command layer holds cli, run, record, crawl, triage, codegen, mcp, serve, and analysis. Below it, the execution core holds common/runner, common/orchestrator, and common/platform_lifecycle. Below that, the platform seam holds common/drivers, common/backend_cli, and common/backends. To the side, the contract layer holds common/scenario and common/config, and the output layer holds common/assertions, common/evidence, and common/report. A separate periphery column holds common/agents and common/ai, which the command layer reaches but the execution core never does.](assets/diagrams/developer-guide-packages.svg)
 
 <details>
 <summary>Mermaid source</summary>
 
-<!-- mermaid-svg: assets/diagrams/code-structure-packages.svg -->
+<!-- mermaid-svg: assets/diagrams/developer-guide-packages.svg -->
 ```mermaid
 flowchart TB
     subgraph cmd["Commands · one directory each, plus its cli.py"]
@@ -278,12 +278,12 @@ make repo-map ARGS="--headings docs/x.md" # one file's headings and their spans
 Four types carry the load. Most of the remaining classes exist to produce one of the four, consume
 one, or move one across a boundary. Learning the four first makes every later class legible.
 
-![Class diagram of the four contracts. Scenario holds a name, preconditions, before, steps, expect, after, and capturePolicy, and aggregates Step, which in turn holds Assertion and Selector. Driver is a protocol with query, tap, type_text, swipe, wait_for, screenshot, and capabilities, and it returns Element values and accepts runtime Selector values. Effective is the resolved configuration for one target, holding a target name, a platform_config discriminated union, a backend list, and run defaults. RunResult holds a scenario name, an ok flag, StepOutcome values, the trailing assertion results, and artifacts, and the reporter renders it.](assets/diagrams/code-structure-contracts.svg)
+![Class diagram of the four contracts. Scenario holds a name, preconditions, before, steps, expect, after, and capturePolicy, and aggregates Step, which in turn holds Assertion and Selector. Driver is a protocol with query, tap, type_text, swipe, wait_for, screenshot, and capabilities, and it returns Element values and accepts runtime Selector values. Effective is the resolved configuration for one target, holding a target name, a platform_config discriminated union, a backend list, and run defaults. RunResult holds a scenario name, an ok flag, StepOutcome values, the trailing assertion results, and artifacts, and the reporter renders it.](assets/diagrams/developer-guide-contracts.svg)
 
 <details>
 <summary>Mermaid source</summary>
 
-<!-- mermaid-svg: assets/diagrams/code-structure-contracts.svg -->
+<!-- mermaid-svg: assets/diagrams/developer-guide-contracts.svg -->
 ```mermaid
 classDiagram
     class Scenario {
@@ -544,12 +544,12 @@ set.
 `bajutsu run` is the command every other Tier 2 path resembles. Following it once explains the
 runner, the orchestrator, the driver layer, and the reporter together.
 
-![Sequence diagram of one run. The CLI resolves the config and loads the scenarios, then asks the runner pipeline to run them all. The pipeline asks the device pool for a lease; the pool asks the platform environment to boot the device and launch the app, and returns a Lease bundling a live Driver with the evidence sink and the network collector. The pipeline hands the scenario to the orchestrator, which loops per step: it captures a pre-step baseline, dispatches the action to the driver, waits for a condition, evaluates assertions, and captures post-step evidence. After the last step the orchestrator evaluates the trailing expect block and returns a RunResult. The pipeline releases the lease and the reporter writes manifest.json, JUnit XML, CTRF JSON, and the HTML report.](assets/diagrams/code-structure-run-sequence.svg)
+![Sequence diagram of one run. The CLI resolves the config and loads the scenarios, then asks the runner pipeline to run them all. The pipeline asks the device pool for a lease; the pool asks the platform environment to boot the device and launch the app, and returns a Lease bundling a live Driver with the evidence sink and the network collector. The pipeline hands the scenario to the orchestrator, which loops per step: it captures a pre-step baseline, dispatches the action to the driver, waits for a condition, evaluates assertions, and captures post-step evidence. After the last step the orchestrator evaluates the trailing expect block and returns a RunResult. The pipeline releases the lease and the reporter writes manifest.json, JUnit XML, CTRF JSON, and the HTML report.](assets/diagrams/developer-guide-run-sequence.svg)
 
 <details>
 <summary>Mermaid source</summary>
 
-<!-- mermaid-svg: assets/diagrams/code-structure-run-sequence.svg -->
+<!-- mermaid-svg: assets/diagrams/developer-guide-run-sequence.svg -->
 ```mermaid
 sequenceDiagram
     autonumber
@@ -611,12 +611,12 @@ The numbered walk below names the file behind each arrow.
 Each step follows the same three beats: act, then wait, then verify. The orchestrator captures
 evidence around the beats and guards the screen against interruptions between them.
 
-![Flowchart of one step. The loop interpolates the step's variable references, captures a pre-step screenshot and element tree, then branches on the step kind. A wait step polls its condition; an assert step polls its assertions; every other kind dispatches to a registered one-shot action handler. Any of the three can fail. On failure the alert guard checks for a blocking system dialog, and if it clears one the step retries once. Success or exhausted retry both lead to capturing post-step evidence, recording a StepOutcome, and moving to the next step. A failure stops the scenario at the first failing step.](assets/diagrams/code-structure-step-loop.svg)
+![Flowchart of one step. The loop interpolates the step's variable references, captures a pre-step screenshot and element tree, then branches on the step kind. A wait step polls its condition; an assert step polls its assertions; every other kind dispatches to a registered one-shot action handler. Any of the three can fail. On failure the alert guard checks for a blocking system dialog, and if it clears one the step retries once. Success or exhausted retry both lead to capturing post-step evidence, recording a StepOutcome, and moving to the next step. A failure stops the scenario at the first failing step.](assets/diagrams/developer-guide-step-loop.svg)
 
 <details>
 <summary>Mermaid source</summary>
 
-<!-- mermaid-svg: assets/diagrams/code-structure-step-loop.svg -->
+<!-- mermaid-svg: assets/diagrams/developer-guide-step-loop.svg -->
 ```mermaid
 flowchart TB
     start(["next step"]) --> interp["interpolate ${params}, ${vars}, ${secrets}"]
@@ -681,12 +681,12 @@ to resolve a component mid-scenario.
 is the determinism core, and it is the one file worth reading in full. Beyond the `Driver` protocol
 it holds the resolution functions every backend shares.
 
-![Class diagram of the driver layer. The Driver protocol declares query, tap, type_text, swipe, wait_for, screenshot, and capabilities. XcuitestDriver, AdbDriver, PlaywrightDriver, XcuitestLiveDriver, and FakeDriver all satisfy it. AdbDriver additionally inherits the shared CoordinateTreeDriver base, which supplies retry, settle, and resolve behavior for coordinate backends. Alongside the main protocol sit narrow optional protocols such as EvidenceProvider and ViewportProvider, each satisfied structurally by the backends that support the behavior. BackendLifecycle is drawn separately: it is a typing umbrella over five lifecycle hooks split disjointly across backends, reached through an explicit cast rather than an isinstance check, so PlaywrightDriver and XcuitestDriver each implement only their own subset of its hooks.](assets/diagrams/code-structure-driver-classes.svg)
+![Class diagram of the driver layer. The Driver protocol declares query, tap, type_text, swipe, wait_for, screenshot, and capabilities. XcuitestDriver, AdbDriver, PlaywrightDriver, XcuitestLiveDriver, and FakeDriver all satisfy it. AdbDriver additionally inherits the shared CoordinateTreeDriver base, which supplies retry, settle, and resolve behavior for coordinate backends. Alongside the main protocol sit narrow optional protocols such as EvidenceProvider and ViewportProvider, each satisfied structurally by the backends that support the behavior. BackendLifecycle is drawn separately: it is a typing umbrella over five lifecycle hooks split disjointly across backends, reached through an explicit cast rather than an isinstance check, so PlaywrightDriver and XcuitestDriver each implement only their own subset of its hooks.](assets/diagrams/developer-guide-driver-classes.svg)
 
 <details>
 <summary>Mermaid source</summary>
 
-<!-- mermaid-svg: assets/diagrams/code-structure-driver-classes.svg -->
+<!-- mermaid-svg: assets/diagrams/developer-guide-driver-classes.svg -->
 ```mermaid
 classDiagram
     class Driver {
@@ -898,12 +898,12 @@ HTML.
 Three commands reach a model, and each keeps the model behind a narrow protocol so the deterministic
 core never sees it.
 
-![Class diagram of the Tier 1 paths. The Agent protocol declares next_action, taking an Observation and returning a Proposal, and plan, taking a goal. ClaudeAgent implements it on top of ClaudeBackedAgent, which in turn talks to the AiBackend protocol. AiBackend has three adapters: AnthropicBackend for the API and Bedrock, ClaudeCodeBackend for the Claude Code CLI, and a disabled backend whose factory raises. The record loop drives the Agent. The crawl engine drives an ActionProposer, implemented deterministically or by ClaudeActionProposer. The triage command drives a TriageAgent, implemented by the rule-based HeuristicTriageAgent or by ClaudeTriageAgent, and both produce a Triage verdict holding a summary, a category, plain-text suggestions, and at most one structured Fix.](assets/diagrams/code-structure-tier1.svg)
+![Class diagram of the Tier 1 paths. The Agent protocol declares next_action, taking an Observation and returning a Proposal, and plan, taking a goal. ClaudeAgent implements it on top of ClaudeBackedAgent, which in turn talks to the AiBackend protocol. AiBackend has three adapters: AnthropicBackend for the API and Bedrock, ClaudeCodeBackend for the Claude Code CLI, and a disabled backend whose factory raises. The record loop drives the Agent. The crawl engine drives an ActionProposer, implemented deterministically or by ClaudeActionProposer. The triage command drives a TriageAgent, implemented by the rule-based HeuristicTriageAgent or by ClaudeTriageAgent, and both produce a Triage verdict holding a summary, a category, plain-text suggestions, and at most one structured Fix.](assets/diagrams/developer-guide-tier1.svg)
 
 <details>
 <summary>Mermaid source</summary>
 
-<!-- mermaid-svg: assets/diagrams/code-structure-tier1.svg -->
+<!-- mermaid-svg: assets/diagrams/developer-guide-tier1.svg -->
 ```mermaid
 classDiagram
     class Agent {
@@ -1034,12 +1034,12 @@ it, since the deterministic suite is the regression net.
 
 ### 10.2 The development routine
 
-![Flowchart of the development routine. A branch or worktree leads to implementing the change inside one layer, then adding or updating a test, then the fast checks (format, lint, typecheck, test). A gate decision asks whether make check passes; no loops back to implementing, yes proceeds to verifying beyond the suite (the conformance suite, an on-device pass, or make docs), then make preflight rebases onto main and re-runs the gate, then a push whose pre-push hook re-runs make check and refuses a red one, then opening the pull request, then CI re-running the same gate. A dotted warning line from push notes that git push --no-verify is forbidden without exception. A red CI result loops back to implementing.](assets/diagrams/code-structure-routine.svg)
+![Flowchart of the development routine. A branch or worktree leads to implementing the change inside one layer, then adding or updating a test, then the fast checks (format, lint, typecheck, test). A gate decision asks whether make check passes; no loops back to implementing, yes proceeds to verifying beyond the suite (the conformance suite, an on-device pass, or make docs), then make preflight rebases onto main and re-runs the gate, then a push whose pre-push hook re-runs make check and refuses a red one, then opening the pull request, then CI re-running the same gate. A dotted warning line from push notes that git push --no-verify is forbidden without exception. A red CI result loops back to implementing.](assets/diagrams/developer-guide-routine.svg)
 
 <details>
 <summary>Mermaid source</summary>
 
-<!-- mermaid-svg: assets/diagrams/code-structure-routine.svg -->
+<!-- mermaid-svg: assets/diagrams/developer-guide-routine.svg -->
 ```mermaid
 flowchart LR
     branch(["Branch or worktree<br/>claude/&lt;topic&gt;"])

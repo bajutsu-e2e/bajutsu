@@ -38,7 +38,7 @@ view of the same system — is in [architecture](architecture.md).
 | 1 | [concepts](concepts.md) | Design philosophy & core principles (determinism, two tiers, stability ladder, the AI boundary) |
 | 2 | [glossary](glossary.md) | Term-by-term reference for the domain vocabulary; disambiguates the near-synonym clusters (driver / backend / actuator / platform · target / app / device · scenario vs. test · trace vs. triage) |
 | 3 | [architecture](architecture.md) | Module layout, dependencies, and the **implementation status** (implemented / unwired) |
-| 4 | [code-structure](code-structure.md) | A reading guide to the source tree: file layout, the four contracts, the classes in each layer, and the path a run takes through them |
+| 4 | [developer-guide](developer-guide.md) | A guide to the source tree and how to work in it: file layout, the four contracts, the scenario DSL and selectors, the classes in each layer, and the development and verification routine |
 | 5 | [scenarios](scenarios.md) | Scenario YAML grammar (steps / waits / assertions / capture tokens) = the authoring reference |
 | 6 | [dsl-grammar](dsl-grammar.md) | The **formal grammar** of the scenario DSL (domain-specific language) — EBNF + every validation constraint — the normative spec behind [scenarios](scenarios.md) |
 | 7 | [selectors](selectors.md) | Selector model and deterministic resolution (0/1/2+ matches); how assertions evaluate = the determinism core |

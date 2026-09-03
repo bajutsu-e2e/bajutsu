@@ -1,9 +1,10 @@
-[English](../code-structure.md) · **日本語**
+[English](../developer-guide.md) · **日本語**
 
-# コード構造：ファイル配置、クラス、実行の流れ
+# 開発者ガイド：コード構造、シナリオ DSL、開発のルーチン
 
-> ソースツリーを読むための案内です。どのファイルがどこにあり、そこにどのクラスが住み、それらの
-> クラスがどう組み合わさって Bajutsu の機能になり、シナリオの実行中に各クラスが何をするのかを
+> ソースツリーを読み、そこで実際に手を動かすためのガイドです。どのファイルがどこにあり、そこに
+> どのクラスが住み、シナリオ DSL（ドメイン固有言語）と `Selector` の各欄がどう働き、シナリオの
+> 実行中に各クラスが何をするのか、そして変更を開発し動作確認するルーチンはどうなっているのかを
 > 順に説明します。
 
 関連: [アーキテクチャ](architecture.md) · [中核概念](concepts.md) · [実行ループ](run-loop.md) ·
@@ -37,12 +38,12 @@ Bajutsu は、混ざり合わない 2 つの層に分かれています。Tier 1
 アサーションだけから合否を出します。判定の経路にモデルは 1 つも登場しません。2 つの層をつなぐ
 ハブがシナリオファイルです。Tier 1 が書き、以後は人間が所有して編集し、Tier 2 が読みます。
 
-![概念図。自然言語のゴールは Tier 1 に入り、record と crawl のコマンドがエージェントを動かしてシナリオ YAML を書き出します。人間は同じファイルを直接編集します。Tier 2 は同じファイルを読み、runner がデバイスを確保し、orchestrator が 1 つの Driver インターフェースを通して各ステップを実行し、アサーション評価が合否を出し、reporter が実行成果物を書き出します。Driver インターフェースが唯一のプラットフォーム接続面であり、その背後に XCUITest、adb、Playwright、fake の各 backend が並びます。失敗すると triage が実行成果物を読み、シナリオへの修正案を返します。](assets/diagrams/code-structure-concept-ja.svg)
+![概念図。自然言語のゴールは Tier 1 に入り、record と crawl のコマンドがエージェントを動かしてシナリオ YAML を書き出します。人間は同じファイルを直接編集します。Tier 2 は同じファイルを読み、runner がデバイスを確保し、orchestrator が 1 つの Driver インターフェースを通して各ステップを実行し、アサーション評価が合否を出し、reporter が実行成果物を書き出します。Driver インターフェースが唯一のプラットフォーム接続面であり、その背後に XCUITest、adb、Playwright、fake の各 backend が並びます。失敗すると triage が実行成果物を読み、シナリオへの修正案を返します。](assets/diagrams/developer-guide-concept-ja.svg)
 
 <details>
 <summary>Mermaid のソース</summary>
 
-<!-- mermaid-svg: assets/diagrams/code-structure-concept-ja.svg -->
+<!-- mermaid-svg: assets/diagrams/developer-guide-concept-ja.svg -->
 ```mermaid
 flowchart TB
     goal(["自然言語のゴール"])
@@ -118,12 +119,12 @@ flowchart TB
 分かれます。コマンドのディレクトリには、そのコマンド自身のロジックと、Typer にコマンドを登録する
 `cli.py` が入ります。次の図は、アルファベット順ではなく役割ごとにディレクトリをまとめたものです。
 
-![パッケージ地図。コマンド層に cli、run、record、crawl、triage、codegen、mcp、serve、analysis が並びます。その下の実行コアに common/runner、common/orchestrator、common/platform_lifecycle が並びます。さらに下のプラットフォーム接続面に common/drivers、common/backend_cli、common/backends が並びます。横には契約層として common/scenario と common/config が、出力層として common/assertions、common/evidence、common/report が並びます。別の列に周辺層として common/agents と common/ai があり、コマンド層からは到達しますが実行コアからは到達しません。](assets/diagrams/code-structure-packages-ja.svg)
+![パッケージ地図。コマンド層に cli、run、record、crawl、triage、codegen、mcp、serve、analysis が並びます。その下の実行コアに common/runner、common/orchestrator、common/platform_lifecycle が並びます。さらに下のプラットフォーム接続面に common/drivers、common/backend_cli、common/backends が並びます。横には契約層として common/scenario と common/config が、出力層として common/assertions、common/evidence、common/report が並びます。別の列に周辺層として common/agents と common/ai があり、コマンド層からは到達しますが実行コアからは到達しません。](assets/diagrams/developer-guide-packages-ja.svg)
 
 <details>
 <summary>Mermaid のソース</summary>
 
-<!-- mermaid-svg: assets/diagrams/code-structure-packages-ja.svg -->
+<!-- mermaid-svg: assets/diagrams/developer-guide-packages-ja.svg -->
 ```mermaid
 flowchart TB
     subgraph cmd["コマンド層 · 1 コマンド 1 ディレクトリ + cli.py"]
@@ -277,12 +278,12 @@ make repo-map ARGS="--headings docs/x.md" # 1 ファイルの見出しと行範�
 負荷を受け止めているのは 4 つの型です。残りのクラスのほとんどは、4 つのどれかを作るか、使うか、
 境界をまたいで運ぶために存在します。先に 4 つを覚えると、あとのクラスがすべて読めるようになります。
 
-![4 つの契約のクラス図。Scenario は name、preconditions、before、steps、expect、after、capturePolicy を持ち、Step を集約します。Step はさらに Assertion と Selector を持ちます。Driver はプロトコルで、query、tap、type_text、swipe、wait_for、screenshot、capabilities を宣言し、Element を返し、実行時 Selector を受け取ります。Effective は 1 ターゲット分の解決済み設定で、ターゲット名、判別可能な共用型 platform_config、backend の並び、run の既定値を保持します。RunResult はシナリオ名、成否のフラグ、StepOutcome の並び、末尾のアサーション結果、成果物を持ち、reporter がこれを描画します。](assets/diagrams/code-structure-contracts-ja.svg)
+![4 つの契約のクラス図。Scenario は name、preconditions、before、steps、expect、after、capturePolicy を持ち、Step を集約します。Step はさらに Assertion と Selector を持ちます。Driver はプロトコルで、query、tap、type_text、swipe、wait_for、screenshot、capabilities を宣言し、Element を返し、実行時 Selector を受け取ります。Effective は 1 ターゲット分の解決済み設定で、ターゲット名、判別可能な共用型 platform_config、backend の並び、run の既定値を保持します。RunResult はシナリオ名、成否のフラグ、StepOutcome の並び、末尾のアサーション結果、成果物を持ち、reporter がこれを描画します。](assets/diagrams/developer-guide-contracts-ja.svg)
 
 <details>
 <summary>Mermaid のソース</summary>
 
-<!-- mermaid-svg: assets/diagrams/code-structure-contracts-ja.svg -->
+<!-- mermaid-svg: assets/diagrams/developer-guide-contracts-ja.svg -->
 ```mermaid
 classDiagram
     class Scenario {
@@ -544,12 +545,12 @@ scenarios:
 `bajutsu run` は、Tier 2 の他の経路もなぞる代表的なコマンドです。1 度追いかければ、runner と
 orchestrator とドライバ層と reporter をまとめて理解できます。
 
-![1 回の run のシーケンス図。CLI が設定を解決してシナリオを読み込み、runner のパイプラインに実行を依頼します。パイプラインはデバイスプールにリース（確保）を求め、プールはプラットフォーム環境にデバイスの起動とアプリの起動を依頼し、生きた Driver に証跡シンクとネットワークコレクタを束ねた Lease を返します。パイプラインはシナリオを orchestrator に渡し、orchestrator はステップごとに、操作前の基準を採取し、アクションをドライバへ送り、条件を待ち、アサーションを評価し、操作後の証跡を採取します。最後のステップのあと、orchestrator は末尾の expect を評価して RunResult を返します。パイプラインはリースを解放し、reporter が manifest.json、JUnit XML、CTRF JSON、HTML レポートを書き出します。](assets/diagrams/code-structure-run-sequence-ja.svg)
+![1 回の run のシーケンス図。CLI が設定を解決してシナリオを読み込み、runner のパイプラインに実行を依頼します。パイプラインはデバイスプールにリース（確保）を求め、プールはプラットフォーム環境にデバイスの起動とアプリの起動を依頼し、生きた Driver に証跡シンクとネットワークコレクタを束ねた Lease を返します。パイプラインはシナリオを orchestrator に渡し、orchestrator はステップごとに、操作前の基準を採取し、アクションをドライバへ送り、条件を待ち、アサーションを評価し、操作後の証跡を採取します。最後のステップのあと、orchestrator は末尾の expect を評価して RunResult を返します。パイプラインはリースを解放し、reporter が manifest.json、JUnit XML、CTRF JSON、HTML レポートを書き出します。](assets/diagrams/developer-guide-run-sequence-ja.svg)
 
 <details>
 <summary>Mermaid のソース</summary>
 
-<!-- mermaid-svg: assets/diagrams/code-structure-run-sequence-ja.svg -->
+<!-- mermaid-svg: assets/diagrams/developer-guide-run-sequence-ja.svg -->
 ```mermaid
 sequenceDiagram
     autonumber
@@ -611,12 +612,12 @@ sequenceDiagram
 どのステップも、act、wait、verify という同じ 3 拍を踏みます。orchestrator はその拍の周りで証跡を
 採取し、拍と拍のあいだで画面が邪魔されていないかを見張ります。
 
-![1 ステップのフロー図。ループはステップ内の変数参照を展開し、操作前のスクリーンショットと要素ツリーを採取し、ステップの種類で分岐します。wait ステップは条件をポーリングし、assert ステップはアサーションをポーリングし、それ以外の種類は登録済みの単発アクションハンドラに委譲します。3 つのいずれも失敗しえます。失敗すると alert guard がブロッカーになるシステムダイアログを探し、片付けられた場合はステップを 1 回だけ再試行します。成功しても再試行を使い切っても、操作後の証跡を採取して StepOutcome を記録し、次のステップに進みます。失敗した場合は最初の失敗でシナリオを止めます。](assets/diagrams/code-structure-step-loop-ja.svg)
+![1 ステップのフロー図。ループはステップ内の変数参照を展開し、操作前のスクリーンショットと要素ツリーを採取し、ステップの種類で分岐します。wait ステップは条件をポーリングし、assert ステップはアサーションをポーリングし、それ以外の種類は登録済みの単発アクションハンドラに委譲します。3 つのいずれも失敗しえます。失敗すると alert guard がブロッカーになるシステムダイアログを探し、片付けられた場合はステップを 1 回だけ再試行します。成功しても再試行を使い切っても、操作後の証跡を採取して StepOutcome を記録し、次のステップに進みます。失敗した場合は最初の失敗でシナリオを止めます。](assets/diagrams/developer-guide-step-loop-ja.svg)
 
 <details>
 <summary>Mermaid のソース</summary>
 
-<!-- mermaid-svg: assets/diagrams/code-structure-step-loop-ja.svg -->
+<!-- mermaid-svg: assets/diagrams/developer-guide-step-loop-ja.svg -->
 ```mermaid
 flowchart TB
     start(["次のステップ"]) --> interp["${params} ${vars} ${secrets} を展開"]
@@ -682,12 +683,12 @@ flowchart TB
 は決定性の核であり、通して読む価値のある唯一のファイルです。`Driver` プロトコルに加えて、すべての
 backend が共有する解決の関数が入っています。
 
-![ドライバ層のクラス図。Driver プロトコルが query、tap、type_text、swipe、wait_for、screenshot、capabilities を宣言します。XcuitestDriver、AdbDriver、PlaywrightDriver、XcuitestLiveDriver、FakeDriver がこれを満たします。AdbDriver はさらに共有の基底クラス CoordinateTreeDriver を継承し、座標系 backend 向けの再試行、収束待ち、解決の処理を受け取ります。主プロトコルの隣には、EvidenceProvider や ViewportProvider のような狭い任意プロトコルが並び、その振る舞いを支える backend だけが構造的に満たします。BackendLifecycle は別扱いです。5 つのライフサイクルフックを backend 間で互いに素に分担する型付けの傘であり、isinstance ではなく明示的な cast で届くため、PlaywrightDriver と XcuitestDriver はそれぞれ自分の担当分のフックだけを実装します。](assets/diagrams/code-structure-driver-classes-ja.svg)
+![ドライバ層のクラス図。Driver プロトコルが query、tap、type_text、swipe、wait_for、screenshot、capabilities を宣言します。XcuitestDriver、AdbDriver、PlaywrightDriver、XcuitestLiveDriver、FakeDriver がこれを満たします。AdbDriver はさらに共有の基底クラス CoordinateTreeDriver を継承し、座標系 backend 向けの再試行、収束待ち、解決の処理を受け取ります。主プロトコルの隣には、EvidenceProvider や ViewportProvider のような狭い任意プロトコルが並び、その振る舞いを支える backend だけが構造的に満たします。BackendLifecycle は別扱いです。5 つのライフサイクルフックを backend 間で互いに素に分担する型付けの傘であり、isinstance ではなく明示的な cast で届くため、PlaywrightDriver と XcuitestDriver はそれぞれ自分の担当分のフックだけを実装します。](assets/diagrams/developer-guide-driver-classes-ja.svg)
 
 <details>
 <summary>Mermaid のソース</summary>
 
-<!-- mermaid-svg: assets/diagrams/code-structure-driver-classes-ja.svg -->
+<!-- mermaid-svg: assets/diagrams/developer-guide-driver-classes-ja.svg -->
 ```mermaid
 classDiagram
     class Driver {
@@ -900,12 +901,12 @@ manifest を読みます。
 モデルに届く経路は 3 つあります。どれもモデルを狭いプロトコルの背後に閉じ込めるので、決定的コアが
 モデルを目にすることはありません。
 
-![Tier 1 の経路のクラス図。Agent プロトコルは、Observation を受け取って Proposal を返す next_action と、ゴールを受け取る plan を宣言します。ClaudeAgent が ClaudeBackedAgent の上でこれを実装し、ClaudeBackedAgent は AiBackend プロトコルと会話します。AiBackend の実装は 3 つで、API と Bedrock 向けの AnthropicBackend、Claude Code CLI 向けの ClaudeCodeBackend、そして生成時に例外を送出する無効化 backend です。record のループが Agent を動かします。crawl のエンジンは ActionProposer を動かし、決定的な実装と ClaudeActionProposer のいずれかが応えます。triage コマンドは TriageAgent を動かし、規則ベースの HeuristicTriageAgent か ClaudeTriageAgent が応え、どちらも summary・category・平文の suggestions・高々 1 件の構造化された Fix を持つ Triage の判定を返します。](assets/diagrams/code-structure-tier1-ja.svg)
+![Tier 1 の経路のクラス図。Agent プロトコルは、Observation を受け取って Proposal を返す next_action と、ゴールを受け取る plan を宣言します。ClaudeAgent が ClaudeBackedAgent の上でこれを実装し、ClaudeBackedAgent は AiBackend プロトコルと会話します。AiBackend の実装は 3 つで、API と Bedrock 向けの AnthropicBackend、Claude Code CLI 向けの ClaudeCodeBackend、そして生成時に例外を送出する無効化 backend です。record のループが Agent を動かします。crawl のエンジンは ActionProposer を動かし、決定的な実装と ClaudeActionProposer のいずれかが応えます。triage コマンドは TriageAgent を動かし、規則ベースの HeuristicTriageAgent か ClaudeTriageAgent が応え、どちらも summary・category・平文の suggestions・高々 1 件の構造化された Fix を持つ Triage の判定を返します。](assets/diagrams/developer-guide-tier1-ja.svg)
 
 <details>
 <summary>Mermaid のソース</summary>
 
-<!-- mermaid-svg: assets/diagrams/code-structure-tier1-ja.svg -->
+<!-- mermaid-svg: assets/diagrams/developer-guide-tier1-ja.svg -->
 ```mermaid
 classDiagram
     class Agent {
@@ -1036,12 +1037,12 @@ Bedrock を、`claude_code.py` が Claude Code のコマンドラインインタ
 
 ### 10.2 開発のルーチン
 
-![開発ルーチンのフロー図。ブランチまたは worktree の作成から始まり、1 つのレイヤの内側で変更を実装し、テストを足すか更新し、速い検査（format、lint、typecheck、test）に進みます。make check が通るかどうかの分岐があり、通らなければ実装に戻り、通れば適合スイート・実機・make docs によるスイート外の確認に進みます。続いて make preflight が main へリベースしてゲートを再実行し、push すると pre-push フックが make check を再実行して red なら拒否し、プルリクエストを開き、CI が同じゲートを再実行します。push から点線で伸びる警告が、git push --no-verify は例外なく禁止であることを示します。CI が red なら実装に戻ります。](assets/diagrams/code-structure-routine-ja.svg)
+![開発ルーチンのフロー図。ブランチまたは worktree の作成から始まり、1 つのレイヤの内側で変更を実装し、テストを足すか更新し、速い検査（format、lint、typecheck、test）に進みます。make check が通るかどうかの分岐があり、通らなければ実装に戻り、通れば適合スイート・実機・make docs によるスイート外の確認に進みます。続いて make preflight が main へリベースしてゲートを再実行し、push すると pre-push フックが make check を再実行して red なら拒否し、プルリクエストを開き、CI が同じゲートを再実行します。push から点線で伸びる警告が、git push --no-verify は例外なく禁止であることを示します。CI が red なら実装に戻ります。](assets/diagrams/developer-guide-routine-ja.svg)
 
 <details>
 <summary>Mermaid のソース</summary>
 
-<!-- mermaid-svg: assets/diagrams/code-structure-routine-ja.svg -->
+<!-- mermaid-svg: assets/diagrams/developer-guide-routine-ja.svg -->
 ```mermaid
 flowchart LR
     branch(["ブランチまたは worktree<br/>claude/&lt;topic&gt;"])

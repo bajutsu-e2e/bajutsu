@@ -103,7 +103,7 @@ plugins:
             Concepts: コンセプト
             Glossary: 用語集
             Architecture: アーキテクチャ
-            Code structure: コード構造
+            Developer guide: 開発者ガイド
             Vision: ビジョン
             Run loop: 実行ループ
             Authoring scenarios: シナリオの作成
@@ -171,7 +171,7 @@ nav:
       - Concepts: concepts.md
       - Glossary: glossary.md
       - Architecture: architecture.md
-      - Code structure: code-structure.md
+      - Developer guide: developer-guide.md
       - Vision: vision.md
       - Run loop: run-loop.md
   - Authoring scenarios:

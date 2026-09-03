@@ -36,7 +36,7 @@ swipe / wait）し、**機械チェック可能なアサーション**で結果�
 | 1 | [concepts](concepts.md) | 設計思想と中核原則（決定性、2 層、安定度順ラダー、AI の関与境界） |
 | 2 | [glossary](glossary.md) | ドメイン用語の一語ずつのリファレンス。混同しやすい語のかたまり（driver / backend / actuator / platform、target / app / device、scenario と test、trace と triage）を切り分けます |
 | 3 | [architecture](architecture.md) | モジュール構成、依存関係、**実装状況（実装済み / 未配線）** |
-| 4 | [code-structure](code-structure.md) | ソースツリーを読むための案内。ファイル配置、4 つの契約、レイヤごとのクラス、そして 1 回の run がそこを通る流れを扱います |
+| 4 | [developer-guide](developer-guide.md) | ソースツリーを読み、そこで手を動かすための案内。ファイル配置、4 つの契約、シナリオ DSL とセレクタ、レイヤごとのクラス、そして開発・動作確認のルーチンを扱います |
 | 5 | [scenarios](scenarios.md) | シナリオ YAML の文法（ステップ / 待機 / アサーション / 証跡トークン）= オーサリングリファレンス |
 | 6 | [dsl-grammar](dsl-grammar.md) | シナリオ DSL（ドメイン固有言語）の **形式文法**（EBNF と全検証制約）。[scenarios](scenarios.md) の背後にある規範仕様です |
 | 7 | [selectors](selectors.md) | セレクタモデルと決定的解決（0/1/2+ 件）、アサーション評価の仕組み = 決定性の核 |
