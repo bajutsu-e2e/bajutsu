@@ -403,7 +403,7 @@ make -C BajutsuAndroidUIAutomatorServer build  # 常駐サーバーの APK
 
 ```bash
 SIM=$(xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)
-uv run python investigations/step-performance/trace_run.py --out /tmp/ios-trace.json -- \
+uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/investigations/step-performance/trace_run.py --out /tmp/ios-trace.json -- \
   run --target showcase-swiftui --udid "$SIM" --backend ios \
   --exclude xcuitest,systemalert,visual,android,browser \
   --config demos/showcase/showcase.config.yaml \
@@ -416,7 +416,7 @@ uv run python investigations/step-performance/trace_run.py --out /tmp/ios-trace.
 ### 7.3 Android の実測
 
 ```bash
-uv run python investigations/step-performance/trace_run.py --out /tmp/android-trace.json -- \
+uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/investigations/step-performance/trace_run.py --out /tmp/android-trace.json -- \
   run --target showcase-compose --udid booted --backend android \
   --config demos/showcase/showcase.config.yaml \
   --scenario demos/showcase/scenarios/controls.yaml
@@ -471,8 +471,8 @@ Android 側は `POST /act` の 1 行だけ、推定 600〜900 ms に対して実
 `screenshot`、`drain_interruptions` です。値は上の表と同じ、2026-09-03 の実測値です。
 
 ```bash
-uv run python investigations/step-performance/bench_orchestrator.py --model ios --steps 5
-uv run python investigations/step-performance/bench_orchestrator.py --model android_resident --steps 5
+uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/investigations/step-performance/bench_orchestrator.py --model ios --steps 5
+uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/investigations/step-performance/bench_orchestrator.py --model android_resident --steps 5
 ```
 
 証拠の取得（`screenshot.after` と `elements`）とアラートガードを両方有効にした `tap` シナリオ、つまり
@@ -506,6 +506,13 @@ Android が 3.25〜3.32 秒でした（[結論の要約](#結論の要約)）。
   iOS は `POST /scroll` 1 回が 3.1〜3.5 秒、Android は swipe そのものが 2.7 秒に加えて
   `GET /source` が `POSTDATE_BUDGET_MS` を使い切っています。この資料は tap の内訳しか立てていないため、
   `scroll` 単体の内訳分析は対象外のままです。
+- `scroll` の重さは `scroll` ステップ単体にとどまらない可能性があります。
+  [第 3.1 節](#31-両バックエンドに共通orchestrator)の表にあるとおり、`tap` の対象が画面外で不可視のときは、
+  `tap` の内部でも scroll 復旧を挟みます。この復旧が実際にどれだけ発生しているかは未確認ですが、
+  発生していれば `scroll` の高速化は `scroll` ステップ自体だけでなく、この復旧を経由する `tap` ステップの
+  短縮にもつながると考えられます。段階 B の対策候補としての `scroll`（[第 4.3 節](#43-androidの段階-b)の
+  項目 9 は Android 分のみで、iOS 分はまだ挙げていません）は、この波及効果を踏まえて優先度を見直す余地が
+  あります。
 - `docs/drivers.md` の iOS の記述 2 点（条件待ちとスクリーンショットの経路）が実装と一致していません。
   修正は `record-issue` で Issue にするのが適切です。
 - 段階 C は `Driver` インタフェースに「ステップの列を実行する」経路を足します。

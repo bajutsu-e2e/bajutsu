@@ -26,7 +26,7 @@ from bajutsu.common.scenario import Scenario
 
 # Modeled per-call latencies (seconds). `ios` and `android_resident` are `driver:*` means measured
 # with `trace_run.py` on 2026-09-03 (iPhone 17 Pro Simulator, iOS 26.5 / Pixel-class emulator,
-# `bajutsu-api34-arm64`, API 34 — see investigations/step-performance/README.md §7.4) against
+# `bajutsu-api34-arm64`, API 34 — see roadmaps/BE-XXXX-step-latency-driver-internal-tuning/investigations/step-performance/README.md §7.4) against
 # `demos/showcase/scenarios/controls.yaml`; unmeasured methods keep their original estimate.
 MODELS: dict[str, dict[str, float]] = {
     "zero": {},
