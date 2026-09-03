@@ -185,6 +185,21 @@ Bajutsu は認証情報を**管理しません**。各 SDK の標準クレデン
 
 `serve` 構成では、これらの認証情報が必要なのは **Server のみ**です。Worker は presigned URL 経由でアップロードするため、クラウド SDK も認証情報も不要です。エフェメラルなコンテナにシークレットを配布する必要がなくなります。
 
+GCS の signed URL には、署名用の秘密鍵が要ります。ところが Workload Identity Federation
+で解決した ADC の認証情報は、アクセストークンしか持ちません。Kubernetes サービスアカウント
+(KSA) が Google サービスアカウント (GSA) に成りすます KSA→GSA 連携も、この経路の一種です。
+秘密鍵を持たないため、ローカルでの署名はエラーになります。
+
+`object_store_from_uri` は、秘密鍵の有無を一律の経路で吸収します。まず ADC を `cloud-platform`
+スコープで一度だけ解決します。次に、その認証情報が持つ `service_account_email` と
+`access_token` を `generate_signed_url` に渡します。渡された `generate_signed_url` は、
+ローカルの秘密鍵ではなく IAM の `signBlob` API を呼んで署名します。この経路は、サービス
+アカウントのキーファイルを使う場合にも同じように働きます。
+
+IAM 経由の署名には、運用上の前提が1つ増えます。署名する GSA 自身に、IAM の権限を1つ追加する
+必要があります。付与する権限は `roles/iam.serviceAccountTokenCreator`(または同等の
+`iam.serviceAccounts.signBlob` 権限)です。
+
 ## 検討した代替案
 
 ### A. 設定ファイルベースのストレージ指定

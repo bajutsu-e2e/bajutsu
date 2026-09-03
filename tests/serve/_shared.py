@@ -140,15 +140,30 @@ class FakeGCSBucket:
 class FakeGCSClient:
     """A `google.cloud.storage.Client` stand-in whose `bucket()` hands back a `FakeGCSBucket`, so
     `object_store_from_uri`'s ``gs://`` branch builds a real `GCSObjectStore` without a network call
-    or real GCP credentials (BE-0204)."""
+    or real GCP credentials (BE-0204). Accepts and ignores ``credentials=`` like the real client."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        pass
 
     def bucket(self, name: str) -> FakeGCSBucket:
         return FakeGCSBucket()
 
 
+class _FakeADCCredentials:
+    """Stand-in for what `google.auth.default()` returns — enough for `GCSObjectStore` to hold
+    without ever refreshing or signing for real."""
+
+
 def patch_gcs_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Patches `google.cloud.storage.Client` to `FakeGCSClient`, so a `gs://` URI resolves through
-    the real `object_store_from_uri` without a network call or real GCP credentials (BE-0204)."""
+    """Patches `google.cloud.storage.Client` to `FakeGCSClient` and `google.auth.default` to a fake
+    credential, so a `gs://` URI resolves through the real `object_store_from_uri` without a network
+    call or real GCP credentials (BE-0204)."""
+    import google.auth
     from google.cloud import storage
 
     monkeypatch.setattr(storage, "Client", FakeGCSClient)
+    monkeypatch.setattr(
+        google.auth,
+        "default",
+        lambda **kwargs: (_FakeADCCredentials(), "fake-project"),
+    )
