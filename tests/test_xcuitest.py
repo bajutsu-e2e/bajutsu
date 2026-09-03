@@ -1438,19 +1438,20 @@ def test_handle_system_alert_index_disambiguates_multiple_matches() -> None:
     assert sent == [("POST", "/systemAlert/tap", {"handle": "h-b"})]
 
 
-def test_handle_system_alert_no_alert_within_timeout_fails() -> None:
-    transport, sent = _alert_transport([])  # the prompt never appears
-    with pytest.raises(base.ElementNotFound, match="no system alert appeared"):
+def test_handle_system_alert_with_no_alert_showing_fails() -> None:
+    transport, sent = _alert_transport([])  # nothing is up
+    with pytest.raises(base.ElementNotFound, match="no system alert is showing"):
         _driver(transport).handle_system_alert({"label": "Allow"}, timeout=0.0)
     assert sent == []
 
 
-def test_handle_system_alert_waits_for_a_prompt_that_appears_on_a_later_poll() -> None:
-    # Empty first, then the prompt — the condition wait rides the interval (no-op sleep) rather than
-    # failing on the first empty read.
+def test_handle_system_alert_does_not_wait_for_a_prompt_that_appears_later() -> None:
+    # Empty first, then the prompt. The driver stops at the first read and fails (BE-0406): waiting
+    # the prompt in belongs to the orchestrator, where the reactive guard can act between reads.
     transport, sent = _alert_transport([], [_el_wire("h-allow", label="Allow", traits=["button"])])
-    _driver(transport).handle_system_alert({"label": "Allow"}, timeout=5.0)
-    assert sent == [("POST", "/systemAlert/tap", {"handle": "h-allow"})]
+    with pytest.raises(base.ElementNotFound, match="no system alert is showing"):
+        _driver(transport).handle_system_alert({"label": "Allow"}, timeout=5.0)
+    assert sent == []
 
 
 def test_handle_system_alert_present_but_no_label_match_fails() -> None:

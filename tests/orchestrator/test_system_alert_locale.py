@@ -39,7 +39,7 @@ def test_the_prompt_form_taps_the_label_the_locale_renders() -> None:
     result = run_scenario(driver, _grant_scenario(), clock=FakeClock(), locale="ja_JP")
 
     assert result.ok, result.failure
-    assert driver.actions == [("handle_system_alert", ({"label": "許可"}, 5.0))]
+    assert driver.actions == [("handle_system_alert", ({"label": "許可"}, 0.0))]
 
 
 def test_the_same_scenario_taps_the_english_label_under_en_us() -> None:
@@ -56,7 +56,7 @@ def test_the_same_scenario_taps_the_english_label_under_en_us() -> None:
     )
 
     assert result.ok, result.failure
-    assert driver.actions == [("handle_system_alert", ({"label": "Don’t Allow"}, 5.0))]
+    assert driver.actions == [("handle_system_alert", ({"label": "Don’t Allow"}, 0.0))]
 
 
 def test_a_sel_form_is_unaffected_by_the_locale() -> None:
@@ -70,7 +70,7 @@ def test_a_sel_form_is_unaffected_by_the_locale() -> None:
     )
 
     assert result.ok, result.failure
-    assert driver.actions == [("handle_system_alert", ({"label": "Allow"}, 5.0))]
+    assert driver.actions == [("handle_system_alert", ({"label": "Allow"}, 0.0))]
 
 
 def test_a_nested_step_is_resolved_too() -> None:
@@ -102,7 +102,7 @@ def test_a_nested_step_is_resolved_too() -> None:
     )
 
     assert result.ok, result.failure
-    assert driver.actions == [("handle_system_alert", ({"label": "許可"}, 5.0))]
+    assert driver.actions == [("handle_system_alert", ({"label": "許可"}, 0.0))]
 
 
 def test_a_foreach_body_is_resolved_too() -> None:
@@ -135,7 +135,7 @@ def test_a_foreach_body_is_resolved_too() -> None:
     )
 
     assert result.ok, result.failure
-    assert driver.actions == [("handle_system_alert", ({"label": "許可"}, 5.0))]
+    assert driver.actions == [("handle_system_alert", ({"label": "許可"}, 0.0))]
 
 
 def test_an_uncovered_language_fails_the_step_instead_of_guessing() -> None:

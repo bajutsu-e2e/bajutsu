@@ -9,6 +9,8 @@ from bajutsu.common.drivers.elements import screen_size_from_elements
 from bajutsu.common.orchestrator.actions._registry import _handler
 from bajutsu.common.orchestrator.actions.handlers._gesture_math import _scroll_gesture
 from bajutsu.common.orchestrator.actions.handlers.scroll import scroll_until_tappable
+from bajutsu.common.orchestrator.types import RealClock
+from bajutsu.common.orchestrator.waits import wait_for_system_alert
 from bajutsu.common.scenario import Step
 
 # The recovery scroll's step bound: small, well under `scroll`'s own default of 15, for the first
@@ -255,6 +257,25 @@ def _do_rotate(driver: base.Driver, step: Step, _r: object, _c: object, _b: obje
     driver.rotate(step.rotate.sel.as_selector(), step.rotate.radians)
 
 
+def handle_system_alert_selector(step: Step) -> base.Selector:
+    """The button selector a `handleSystemAlert` step names, for whoever runs its wait.
+
+    Raises:
+        base.UnsupportedAction: the step carries the `prompt`/`choice` form, which is resolved
+            against the run's locale before dispatch (BE-0320). Reaching here means a caller ran the
+            step without that resolution (`record`'s replay), and the label it needs is unknowable
+            from the step alone — fail loudly rather than skip a tap.
+    """
+    assert step.handle_system_alert is not None
+    sel = step.handle_system_alert.sel
+    if sel is None:
+        raise base.UnsupportedAction(
+            "handleSystemAlert prompt/choice needs the run's locale to resolve its button label; "
+            "this caller does not supply one — name the button with sel.label instead (BE-0320)"
+        )
+    return sel.as_selector()
+
+
 @_handler("handle_system_alert")
 def _do_handle_system_alert(
     driver: base.Driver, step: Step, _r: object, _c: object, _b: object
@@ -262,14 +283,17 @@ def _do_handle_system_alert(
     # Tap an iOS SpringBoard permission prompt deterministically (BE-0316). Preflight has already
     # rejected the step on any backend without HANDLE_SYSTEM_ALERT; the driver raises UnsupportedAction
     # as the mid-run backstop, so no extra capability guard is needed here (mirrors select_option).
+    #
+    # This is the registry's entry point, which `record`'s replay dispatches through. The run loop
+    # does not come here: it runs the same wait from `_run_step_body` so the step can be given the
+    # scenario's reactive guard (BE-0406), which the handler signature carries no room for. The wait
+    # itself is the one below either way, so both paths keep the same condition-wait semantics.
     assert step.handle_system_alert is not None
-    hsa = step.handle_system_alert
-    if hsa.sel is None:
-        # The `prompt`/`choice` form is resolved against the run's locale before dispatch (BE-0320).
-        # Reaching here means a caller ran the step without that resolution (`record`'s replay), and
-        # the label it needs is unknowable from the step alone — fail loudly rather than skip a tap.
-        raise base.UnsupportedAction(
-            "handleSystemAlert prompt/choice needs the run's locale to resolve its button label; "
-            "this caller does not supply one — name the button with sel.label instead (BE-0320)"
-        )
-    driver.handle_system_alert(hsa.sel.as_selector(), hsa.timeout)
+    ok, reason = wait_for_system_alert(
+        driver,
+        handle_system_alert_selector(step),
+        step.handle_system_alert.timeout,
+        RealClock(),
+    )
+    if not ok:
+        raise base.ElementNotFound(reason)

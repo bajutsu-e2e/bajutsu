@@ -161,11 +161,6 @@ _RECOVERY_TIMEOUT_SECONDS = 60
 # second bounds the wasted wait to about a second past the moment the death becomes observable.
 _LIVENESS_POLL_SECONDS = 1.0
 
-# How often `handle_system_alert` re-queries SpringBoard while waiting for the permission prompt to
-# appear (BE-0316). A fixed inter-poll interval bounded by the step's own `timeout` — a condition
-# wait, not a fixed up-front sleep: the loop returns the instant the alert's buttons are present.
-_SYSTEM_ALERT_POLL_SECONDS = 0.2
-
 # iOS reports every frame and coordinate in points, so that is the space stamped on this backend's
 # actuation records.
 _UNIT = "point"
@@ -1094,24 +1089,22 @@ class XcuitestDriver:
             element=el,
         )
 
-    def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
-        # Tap a SpringBoard permission-prompt button deterministically (BE-0316). The alert is
-        # out-of-process, so the runner queries a second, on-demand `XCUIApplication` for
-        # `com.apple.springboard` and mints a handle per alert button, exactly as it does for the
-        # app's own tree. Resolution stays Python-side in `resolve_unique`, so the same zero /
-        # ambiguous / index discipline every selector follows decides which button is tapped — no
-        # screenshot, no vision model. Poll the query to a deadline: the prompt only appears once the
-        # app makes the request, so a condition wait (no fixed sleep) waits it in without a bound guess.
-        deadline = time.monotonic() + timeout
-        while True:
-            buttons, handles = self._parse_elements(
-                self._transport("POST", "/systemAlert/query", {})
-            )
-            if buttons:
-                break
-            if time.monotonic() >= deadline:
-                raise base.ElementNotFound(f"no system alert appeared within {timeout}s: {sel!r}")
-            self._sleep(_SYSTEM_ALERT_POLL_SECONDS)
+    def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:  # noqa: ARG002  # Driver shape
+        # Query the alert once and tap the button `sel` names (BE-0316). The alert is out-of-process,
+        # so the runner queries a second, on-demand `XCUIApplication` for `com.apple.springboard` and
+        # mints a handle per alert button, exactly as it does for the app's own tree. Resolution
+        # stays Python-side in `resolve_unique`, so the same zero / ambiguous / index discipline
+        # every selector follows decides which button is tapped — no screenshot, no vision model.
+        #
+        # Waiting for the prompt to appear is no longer done here (BE-0406). It is a condition wait,
+        # and the orchestrator owns those: `wait_for_system_alert` polls to the step's deadline and
+        # drives the reactive guard between reads, which this loop could not — an alert the scenario
+        # had declared held the screen for the whole call and the step failed for a prompt it never
+        # saw. `timeout` stays on the signature so every backend keeps one shape; every caller now
+        # passes zero.
+        buttons, handles = self._parse_elements(self._transport("POST", "/systemAlert/query", {}))
+        if not buttons:
+            raise base.ElementNotFound(f"no system alert is showing: {sel!r}")
         el = base.resolve_unique(buttons, sel)
         # Handle-based like every other actuation here, and out of the app's own coordinate space, so
         # no point. `target` is usually unset: a SpringBoard button is addressed by visible label and
@@ -1136,9 +1129,9 @@ class XcuitestDriver:
         """The current SpringBoard alert's button labels, or [] when none is up (BE-0315).
 
         A single, non-blocking read reusing BE-0316's `/systemAlert/query` (the same route
-        `handle_system_alert` polls) — the reactive guard reads it to decide whether a prompt is
-        showing and which button its policy should tap. Unlabeled buttons are dropped: the policy
-        resolves by visible label.
+        `handle_system_alert` resolves against) — the reactive guard reads it to decide whether a
+        prompt is showing and which button its policy should tap. Unlabeled buttons are dropped:
+        the policy resolves by visible label.
         """
         buttons, _ = self._parse_elements(self._transport("POST", "/systemAlert/query", {}))
         return [label for b in buttons if (label := b["label"])]

@@ -30,7 +30,12 @@ from bajutsu.common.drivers.webview import DomSource, WebContextDriver
 from bajutsu.common.evidence import Artifact, EvidenceSink, NullSink, intervals
 from bajutsu.common.evidence.network import TransitionSource, _no_transitions
 from bajutsu.common.mailbox import extract_value, select
-from bajutsu.common.orchestrator.actions import _action_of, _do_action, _step_label
+from bajutsu.common.orchestrator.actions import (
+    _action_of,
+    _do_action,
+    _step_label,
+    handle_system_alert_selector,
+)
 from bajutsu.common.orchestrator.evidence_rules import (
     _collect_captures,
     _extract_stable_key,
@@ -69,6 +74,7 @@ from bajutsu.common.orchestrator.waits import (
     _timeout_floor,
     _wait,
     describe_wait,
+    wait_for_system_alert,
 )
 from bajutsu.common.scenario import (
     AfterRule,
@@ -389,12 +395,13 @@ def _run_step_body(
 
     The caller is responsible for interpolation (``_interp_step``) before
     calling this function. ``wait_trace``, when given for a wait step, records the poll timeline so a
-    timeout is diagnosable from artifacts (BE-0231 Unit 1). ``alert_guard``/``alerts``, when given for
-    a wait step, are passed through to ``_wait``'s mid-wait alert guard (BE-0269); other step kinds
-    ignore them. ``on_interrupt_poll``, when given for a wait step, is passed to ``_wait`` so a
-    scenario's ``interrupts`` handlers can clear an interstitial screen mid-wait (BE-0314).
-    ``cancelled`` reaches the three step kinds that poll — ``wait``, ``assert``, and ``email`` — so
-    each notices a cancelled run within one polling tick (BE-0370)."""
+    timeout is diagnosable from artifacts (BE-0231 Unit 1). ``alert_guard``/``alerts``, when given
+    for a ``wait`` or ``handleSystemAlert`` step, drive the alert guard while that step's own wait
+    runs (BE-0269, BE-0406); other step kinds ignore them. ``on_interrupt_poll``, when given for a
+    wait step, is passed to ``_wait`` so a scenario's ``interrupts`` handlers can clear an
+    interstitial screen mid-wait (BE-0314). ``cancelled`` reaches the four step kinds that poll —
+    ``wait``, ``handleSystemAlert``, ``assert``, and ``email`` — so each notices a cancelled run
+    within one polling tick (BE-0370)."""
     try:
         if kind == "wait":
             assert step.wait is not None
@@ -412,6 +419,28 @@ def _run_step_body(
                 cancelled=cancelled,
             )
             return ok, reason, [], tree
+        if kind == "handle_system_alert":
+            assert step.handle_system_alert is not None
+            # Handled here rather than through `_do_action` for the same reason `wait` is: the wait
+            # needs the clock and the scenario's alert guard, and the action-handler signature
+            # carries neither (BE-0406).
+            ok, reason = wait_for_system_alert(
+                driver,
+                handle_system_alert_selector(step),
+                step.handle_system_alert.timeout,
+                clock,
+                alert_guard=alert_guard,
+                alerts=alerts,
+                cancelled=cancelled,
+            )
+            if ok and selection is not None:
+                # `_do_action` invalidates the live selection after every action but `select` and
+                # `copy` (BE-0265), and this branch bypasses it. The step actuates the device, so a
+                # `copy` after it must fail for want of a selection rather than copy whatever the
+                # tap left — and only on a tap that landed, matching `_do_action`, which skips the
+                # invalidation when its handler raises.
+                selection.invalidate()
+            return ok, reason, [], None
         if kind == "email":
             assert step.email is not None
             ok, reason = _do_email(step.email, clock, mailbox, bindings, cancelled)
@@ -1438,7 +1467,16 @@ class _StepRunner:
                 # consume the failure and leave the alert — the case the alert guard exists for —
                 # unhandled. Each still fires at most once per step, so a step's retries stay bounded
                 # at one per guard, and each is skipped once the step passes.
-                guard_done = False
+                #
+                # A failed `handleSystemAlert` step is the one case the alert guard skips outright
+                # (BE-0406): `wait_for_system_alert` already drove this exact guard, reserved against
+                # this step's own selector, for the step's whole timeout — a second, unreserved probe
+                # here adds no coverage the mid-wait one lacked, and could tap the step's own alert
+                # through the guard's looser fallback policy. That would both decide, on the step's
+                # behalf, the very prompt it was placed to answer, and discard the specific reason
+                # (no alert / an unmatched alert / an ambiguous one) for the generic timeout a doomed
+                # retry against an now-cleared screen produces instead.
+                guard_done = kind == "handle_system_alert"
                 # The dismiss can refuse loudly: `AmbiguousSelector` on two dismiss regions, or
                 # `ElementNotTappable` when something covers the scrim itself — which is exactly the
                 # tip-plus-system-alert case below. `ElementNotTappable` is not a `SelectorError`

@@ -107,13 +107,16 @@ def test_orchestrator_dispatches_handle_system_alert() -> None:
     )[0]
     result = run_scenario(driver, scenario)
     assert result.ok, result.failure
-    assert ("handle_system_alert", ({"label": "Allow"}, 5.0)) in driver.actions
+    assert ("handle_system_alert", ({"label": "Allow"}, 0.0)) in driver.actions
 
 
 def test_handle_system_alert_fails_the_step_when_no_prompt_appears() -> None:
     driver = FakeDriver(screen=[])  # no system_alert_buttons seeded → the prompt never appears
+    # A zero timeout, so this reads once and gives up. Since BE-0406 the wait is the orchestrator's
+    # and runs on the run's own clock, so a real `timeout: 5` here would spend five real seconds in
+    # the fast gate to reach the same verdict.
     scenario = load_scenarios(
-        "- name: a\n  steps:\n    - handleSystemAlert: { sel: { label: Allow }, timeout: 5 }\n"
+        "- name: a\n  steps:\n    - handleSystemAlert: { sel: { label: Allow }, timeout: 0 }\n"
     )[0]
     result = run_scenario(driver, scenario)
     assert not result.ok  # fails loudly, never a silent pass (prime directive 2)

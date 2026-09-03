@@ -13,9 +13,10 @@ import pkgutil
 
 from bajutsu.common.orchestrator.actions import handlers
 from bajutsu.common.orchestrator.actions._registry import _action_of, _do_action, _step_label
+from bajutsu.common.orchestrator.actions.handlers.gestures import handle_system_alert_selector
 
 # Import every handler module so its `@_handler` registrations run.
 for _mod in pkgutil.iter_modules(handlers.__path__):
     importlib.import_module(f"{handlers.__name__}.{_mod.name}")
 
-__all__ = ["_action_of", "_do_action", "_step_label"]
+__all__ = ["_action_of", "_do_action", "_step_label", "handle_system_alert_selector"]
