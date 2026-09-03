@@ -169,12 +169,12 @@ class GCSObjectStore:
     The bucket is injected (like `S3ObjectStore`'s client) so a fake drives the gate. Signed URLs use
     V4 signing, which GCS supports for both GET and PUT.
 
-    *credentials* drives signing: `object_store_from_uri` always passes ADC, because a Workload
+    *credentials* drives signing when the bucket's own credentials can't sign locally: a Workload
     Identity Federation credential (KSA→GSA impersonation) carries an access token but no private
-    key, so local V4 signing raises — the SDK must instead call the IAM ``signBlob`` API via
-    ``service_account_email``/``access_token`` passed to `generate_signed_url`, which works for a
-    key-file credential too. Left `None`, as every test here does, signing falls back to whatever the
-    bucket itself was built with."""
+    key, so local V4 signing raises. For that shape only, the SDK is told to call the IAM
+    ``signBlob`` API via ``service_account_email``/``access_token`` passed to
+    `generate_signed_url` instead. Left `None`, or given a credential that can already sign
+    locally, signing falls back to whatever the bucket itself was built with."""
 
     def __init__(
         self, bucket: Any, *, presign_ttl: int = _PRESIGN_TTL, credentials: Any = None
@@ -184,16 +184,27 @@ class GCSObjectStore:
         self._credentials = credentials
 
     def _signing_kwargs(self) -> dict[str, Any]:
+        # Passing service_account_email/access_token to generate_signed_url isn't a fallback —
+        # it's an override that makes the SDK sign via the IAM signBlob API unconditionally,
+        # skipping local signing even when the credential could do it. So this only takes that
+        # path for a credential that actually needs it: a key-file or already-impersonated
+        # credential implements google.auth.credentials.Signing and should keep signing locally
+        # (no per-URL IAM round trip, no new serviceAccountTokenCreator grant on a deployment
+        # that works today); a credential with no service_account_email (e.g. `gcloud auth
+        # application-default login`) has nothing to sign as, so it's left to the SDK's own
+        # local-signing attempt and its own error rather than an AttributeError from here.
         if self._credentials is None:
+            return {}
+        from google.auth.credentials import Signing
+
+        email = getattr(self._credentials, "service_account_email", None)
+        if email is None or isinstance(self._credentials, Signing):
             return {}
         if not self._credentials.valid:
             from google.auth.transport.requests import Request
 
             self._credentials.refresh(Request())
-        return {
-            "service_account_email": self._credentials.service_account_email,
-            "access_token": self._credentials.token,
-        }
+        return {"service_account_email": email, "access_token": self._credentials.token}
 
     def exists(self, key: str) -> bool:
         return bool(self._bucket.blob(key).exists())

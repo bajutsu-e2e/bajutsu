@@ -232,18 +232,19 @@ In the `serve` topology, only the **server** needs these credentials — the wor
 via presigned URLs and requires no cloud SDK or credentials at all. This keeps the worker
 lightweight and avoids distributing secrets to ephemeral containers.
 
-A GCS signed URL still needs a private key to sign with. A Workload Identity Federation
-credential carries no private key, merely an access token. This doc shorthands a Kubernetes
-service account as a KSA, and a Google service account as a GSA. Workload Identity Federation
-lets a KSA impersonate a GSA.
+A GCS signed URL needs a private key to sign with. A Workload Identity Federation credential
+carries an access token, never a private key. A Kubernetes service account is a KSA in this
+shorthand, and a Google service account a GSA. Workload Identity Federation is how a KSA
+impersonates a GSA.
 
-`object_store_from_uri` handles both cases the same way. It resolves ADC once, with the
-`cloud-platform` scope. It then passes that credential's `service_account_email` and
-`access_token` into `generate_signed_url`. The SDK signs via the IAM `signBlob` API instead of a
-local key. A real service-account key file takes this same path.
+`object_store_from_uri` resolves ADC once, with the `cloud-platform` scope. It hands that
+credential to `GCSObjectStore`. Signing then branches on what the credential can do. A key-file
+credential, or an already-impersonated one, can sign locally — that path stays untouched. A
+KSA → GSA credential can't sign locally. It signs instead through the IAM `signBlob` API, using
+its own `service_account_email` and `access_token`.
 
-This adds one operational step. The GSA must hold `roles/iam.serviceAccountTokenCreator` on
-itself. That role grants the `iam.serviceAccounts.signBlob` permission that signing needs.
+The IAM path alone adds an operational step. Its GSA must hold
+`roles/iam.serviceAccountTokenCreator` on itself. That role grants `iam.serviceAccounts.signBlob`.
 
 ## Alternatives considered
 

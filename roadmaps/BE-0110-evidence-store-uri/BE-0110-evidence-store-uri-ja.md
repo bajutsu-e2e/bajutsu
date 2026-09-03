@@ -190,15 +190,15 @@ GCS の signed URL には、署名用の秘密鍵が要ります。ところが 
 (KSA) が Google サービスアカウント (GSA) に成りすます KSA→GSA 連携も、この経路の一種です。
 秘密鍵を持たないため、ローカルでの署名はエラーになります。
 
-`object_store_from_uri` は、秘密鍵の有無を一律の経路で吸収します。まず ADC を `cloud-platform`
-スコープで一度だけ解決します。次に、その認証情報が持つ `service_account_email` と
-`access_token` を `generate_signed_url` に渡します。渡された `generate_signed_url` は、
-ローカルの秘密鍵ではなく IAM の `signBlob` API を呼んで署名します。この経路は、サービス
-アカウントのキーファイルを使う場合にも同じように働きます。
+`object_store_from_uri` は、ADC を `cloud-platform` スコープで一度だけ解決し、その認証情報を
+`GCSObjectStore` に渡します。署名するとき、経路は認証情報がローカルで署名できるかどうかで
+分かれます。キーファイルや、なりすまし済みの認証情報は、ローカルでの署名をそのまま使います。
+KSA→GSA の認証情報はローカルで署名できないため、その `service_account_email` と
+`access_token` を使い、IAM の `signBlob` API 経由で署名します。
 
-IAM 経由の署名には、運用上の前提が1つ増えます。署名する GSA 自身に、IAM の権限を1つ追加する
-必要があります。付与する権限は `roles/iam.serviceAccountTokenCreator`(または同等の
-`iam.serviceAccounts.signBlob` 権限)です。
+運用上の前提が1つ増えるのは、IAM 経由で署名する場合だけです。署名する GSA 自身に、IAM の
+権限を1つ追加する必要があります。付与する権限は `roles/iam.serviceAccountTokenCreator`
+(または同等の `iam.serviceAccounts.signBlob` 権限)です。
 
 ## 検討した代替案
 
