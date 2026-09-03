@@ -110,6 +110,12 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
             self.send_header("Content-Type", "application/json")
             if cookie is not None:
                 self.send_header("Set-Cookie", cookie)
+            # A 204/304 carries no body whatever the headers say (RFC 9110 6.4.1) — a client that
+            # frames it as zero-length would read this payload as the next response. Kept in lockstep
+            # with the FastAPI backend's `_result`, which must drop it or h11 refuses the write.
+            if code in (204, 304):
+                self.end_headers()
+                return
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)

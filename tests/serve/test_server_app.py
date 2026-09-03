@@ -798,6 +798,31 @@ def test_bearer_narrows_to_worker_paths_once_oauth_configured_fastapi(tmp_path: 
     assert worker.status_code != 401  # the gate admitted it; the route may still 200/400 downstream
 
 
+def test_empty_lease_204_carries_no_body(tmp_path: Path) -> None:
+    """A 204 must be framed as zero-length: h11 fixes the framing at content-length 0 for that
+    status, so a body would make uvicorn raise `LocalProtocolError: Too much data for declared
+    Content-Length` — which the empty-queue lease did on every idle worker poll. TestClient runs
+    over httpx's ASGITransport (no h11 in the loop), so this asserts the framing invariant itself
+    rather than reproducing the crash."""
+    from sqlalchemy import create_engine
+
+    from bajutsu.serve.server.db import SqlRepository
+    from bajutsu.serve.server.db_executor import DbQueueExecutor
+    from bajutsu.serve.server.models import Base
+
+    # A file DB (not in-memory) so the endpoint's threadpool worker shares it (as above).
+    engine = create_engine(f"sqlite:///{tmp_path / 'lease.db'}")
+    Base.metadata.create_all(engine)
+    repo = SqlRepository(engine)
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs", executor=DbQueueExecutor(repo), repository=repo
+    )
+    resp = TestClient(make_app(state)).post("/api/worker/lease", json={"worker_id": "w1"})
+    assert resp.status_code == 204  # nothing queued
+    assert resp.content == b""
+    assert "content-length" not in resp.headers
+
+
 def test_metrics_route_serves_prometheus_text(tmp_path: Path) -> None:
     # Parity with the stdlib handler: the FastAPI shell serves the same rendered metrics behind the
     # same auth gate (BE-0169). A token makes /metrics require a credential like every other route.

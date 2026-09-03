@@ -67,8 +67,14 @@ _OAUTH_LOGIN = "/api/oauth/login"
 _OAUTH_CALLBACK = "/api/oauth/callback"
 
 
-def _result(payload_status: tuple[Any, int]) -> JSONResponse:
+def _result(payload_status: tuple[Any, int]) -> Response:
     payload, status = payload_status
+    # A 204/304 is framed as content-length 0 no matter what we declare (RFC 9110 6.4.1, and h11's
+    # `_body_framing` enforces it), so sending the payload anyway makes uvicorn raise
+    # `LocalProtocolError: Too much data for declared Content-Length` — which the worker lease's
+    # empty-queue 204 did on every idle poll. Drop the body instead of the connection.
+    if status in (204, 304):
+        return Response(status_code=status)
     return JSONResponse(payload, status_code=status)
 
 
@@ -359,7 +365,7 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
         return result
 
     @app.post("/api/upload")
-    async def upload(request: Request) -> JSONResponse:
+    async def upload(request: Request) -> Response:
         """Stream a raw-body zip upload to a temp file (bounded), then bind it as the active config
         (BE-0073) — the FastAPI mirror of the stdlib handler's `_handle_upload`, sharing its bound +
         hash logic via `BoundedZipReceiver` so the two backends can't drift again. Raw body (`?name=`
@@ -384,7 +390,7 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
         finally:
             received.cleanup()
 
-    async def _artifact_upload(kind: ArtifactKind, request: Request) -> JSONResponse:
+    async def _artifact_upload(kind: ArtifactKind, request: Request) -> Response:
         """Stream one independently-uploaded artifact (BE-0268: `config` / `scenarios` / `binary`)
         to a temp file (bounded), then store it (`ops.bind_artifact`) — the FastAPI mirror of the
         stdlib handler's `_handle_artifact_upload`."""
@@ -406,19 +412,19 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
             received.cleanup()
 
     @app.post("/api/artifacts/config")
-    async def upload_config_artifact(request: Request) -> JSONResponse:
+    async def upload_config_artifact(request: Request) -> Response:
         return await _artifact_upload("config", request)
 
     @app.post("/api/artifacts/scenarios")
-    async def upload_scenarios_artifact(request: Request) -> JSONResponse:
+    async def upload_scenarios_artifact(request: Request) -> Response:
         return await _artifact_upload("scenarios", request)
 
     @app.post("/api/artifacts/binary")
-    async def upload_binary_artifact(request: Request) -> JSONResponse:
+    async def upload_binary_artifact(request: Request) -> Response:
         return await _artifact_upload("binary", request)
 
     @app.post("/api/scenarios/upload")
-    async def scenarios_upload(request: Request) -> JSONResponse:
+    async def scenarios_upload(request: Request) -> Response:
         """Stream a raw-body `.zip` of scenario files to a temp file (bounded), then add them to the
         target's scenario scope (BE-0340: `ops.upload_scenarios`) — the FastAPI mirror of the stdlib
         handler's `_handle_scenarios_upload`. Raw body (`?target=` selects the scope), not the
