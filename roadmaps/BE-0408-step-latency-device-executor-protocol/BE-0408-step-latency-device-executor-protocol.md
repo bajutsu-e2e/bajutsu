@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-step-latency-device-executor-protocol-ja.md)
+**English** · [日本語](BE-0408-step-latency-device-executor-protocol-ja.md)
 
-# BE-XXXX — Add a device-side step-execution protocol as the foundation for on-device step loops
+# BE-0408 — Add a device-side step-execution protocol as the foundation for on-device step loops
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-step-latency-device-executor-protocol.md) |
+| Proposal | [BE-0408](BE-0408-step-latency-device-executor-protocol.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0408") |
 | Topic | Platform support |
 | Related | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md) |
 <!-- /BE-METADATA -->

@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-step-latency-driver-internal-tuning-ja.md)
+**English** · [日本語](BE-0409-step-latency-driver-internal-tuning-ja.md)
 
-# BE-XXXX — Cut step latency by deduplicating evidence reads and tuning driver internals (iOS and Android)
+# BE-0409 — Cut step latency by deduplicating evidence reads and tuning driver internals (iOS and Android)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-step-latency-driver-internal-tuning.md) |
+| Proposal | [BE-0409](BE-0409-step-latency-driver-internal-tuning.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0409") |
 | Topic | Platform support |
 | Related | [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md), [BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md), [BE-0341](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture.md), [BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md) |
 <!-- /BE-METADATA -->
@@ -264,7 +264,7 @@ and a rerun of the tracer.
 - [ ] Once the `roadmap-id` workflow allocates the four ids on `main`, backfill reciprocal `Related`
   links between this item and the device-side protocol, iOS executor, and Android executor items,
   and replace each "companion item" mention with a link, in both languages — a new item may not
-  cross-reference another new item by `BE-XXXX` before allocation, so none of the four can carry
+  cross-reference another new item by `BE-0409` before allocation, so none of the four can carry
   this on merge.
 
 ## References

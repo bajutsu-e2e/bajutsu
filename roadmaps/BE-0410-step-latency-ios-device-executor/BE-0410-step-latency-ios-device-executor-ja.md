@@ -1,14 +1,14 @@
-[English](BE-XXXX-step-latency-ios-device-executor.md) · **日本語**
+[English](BE-0410-step-latency-ios-device-executor.md) · **日本語**
 
-# BE-XXXX — XCTest ランナー内の iOS 端末側ステップ実行機
+# BE-0410 — XCTest ランナー内の iOS 端末側ステップ実行機
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-step-latency-ios-device-executor-ja.md) |
+| 提案 | [BE-0410](BE-0410-step-latency-ios-device-executor-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0410") |
 | トピック | Platform support |
 | 関連 | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)、[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)、[BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree-ja.md) |
 <!-- /BE-METADATA -->

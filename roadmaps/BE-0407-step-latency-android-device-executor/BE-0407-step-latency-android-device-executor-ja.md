@@ -1,14 +1,14 @@
-[English](BE-XXXX-step-latency-android-device-executor.md) · **日本語**
+[English](BE-0407-step-latency-android-device-executor.md) · **日本語**
 
-# BE-XXXX — 常駐 instrumentation サーバー内の Android 端末側ステップ実行機
+# BE-0407 — 常駐 instrumentation サーバー内の Android 端末側ステップ実行機
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-step-latency-android-device-executor-ja.md) |
+| 提案 | [BE-0407](BE-0407-step-latency-android-device-executor-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0407") |
 | トピック | Platform support |
 | 関連 | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)、[BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)、[BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance-ja.md) |
 <!-- /BE-METADATA -->
