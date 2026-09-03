@@ -7,7 +7,7 @@ pipeline's `ThreadPoolExecutor` workers); a run that forks worker processes is n
 
 Usage (from the repo root, with the same arguments `bajutsu run` takes):
 
-    uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/investigations/step-performance/trace_run.py --out trace.json -- \\
+    uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/misc/step-performance/trace_run.py --out trace.json -- \\
         run --target showcase-swiftui --udid <UDID> --backend ios --config demos/showcase/showcase.config.yaml
 
 The summary is printed on exit; `--out` also writes every timed call as JSON for a finer cut.

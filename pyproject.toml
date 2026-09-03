@@ -212,9 +212,9 @@ max-statements = 80
 # Dev helper scripts print progress (T20) and invoke git/uv via PATH (S607).
 "scripts/**" = ["T20", "S607"]
 # Investigation notebooks and one-off measurement harnesses (not shipped, not type-checked).
-# Each investigation lives under its own roadmap item once triaged (`roadmaps/BE-NNNN-*/investigations/**`);
+# `misc/` is the generic home for a roadmap item's supporting material (`roadmaps/BE-NNNN-*/misc/**`);
 # the glob matches through the BE directory so it survives the roadmap-id workflow's BE-XXXX -> BE-NNNN rename.
-"roadmaps/**/investigations/**" = ["ANN", "ARG", "T20", "S"]
+"roadmaps/**/misc/**" = ["ANN", "ARG", "T20", "S"]
 # `_Loader` subclasses SafeLoader (it only tweaks on/off/yes/no resolving), so its `yaml.load`
 # is safe. Ignore S506 at the file level rather than inline, so the line stays byte-identical to
 # main — where CodeQL already dismissed the same py/unsafe-deserialization finding as a false

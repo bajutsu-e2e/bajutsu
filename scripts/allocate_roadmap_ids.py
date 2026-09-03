@@ -89,9 +89,9 @@ def rename_item(item_dir: Path, old_token: str, new_token: str) -> Path:
     ``old_token`` is the ``BE-XXXX`` placeholder. Rewriting every occurrence inside the item's *own*
     files is safe because those files refer to the item by its id. Walks the item's full subtree
     (``rglob``, not a single-level scan), renaming any nested file *or directory* whose own name
-    carries the token, so an item that carries a nested directory — e.g. an investigation moved under
-    its BE item — is renamed and rewritten too, not just its two top-level canonical files. A file
-    that fails to decode as UTF-8 (a binary artifact, e.g. a screenshot under an investigation) is
+    carries the token, so an item that carries a nested directory — e.g. a ``misc/`` subdirectory of
+    supporting material — is renamed and rewritten too, not just its two top-level canonical files. A
+    file that fails to decode as UTF-8 (a binary artifact, e.g. a screenshot under ``misc/``) is
     renamed like any other but left unrewritten, since it carries no id text to replace.
     """
     slug = item_dir.name[len(old_token) + 1 :]
@@ -111,7 +111,7 @@ def rename_item(item_dir: Path, old_token: str, new_token: str) -> Path:
             try:
                 text = f.read_text(encoding="utf-8")
             except UnicodeDecodeError:
-                continue  # a binary artifact (e.g. a screenshot under investigations/) carries no id
+                continue  # a binary artifact (e.g. a screenshot under misc/) carries no id
             new_text = text.replace(old_token, new_token)
             if new_text != text:
                 f.write_text(new_text, encoding="utf-8")

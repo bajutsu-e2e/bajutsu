@@ -403,7 +403,7 @@ make -C BajutsuAndroidUIAutomatorServer build  # 常駐サーバーの APK
 
 ```bash
 SIM=$(xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)
-uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/investigations/step-performance/trace_run.py --out /tmp/ios-trace.json -- \
+uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/misc/step-performance/trace_run.py --out /tmp/ios-trace.json -- \
   run --target showcase-swiftui --udid "$SIM" --backend ios \
   --exclude xcuitest,systemalert,visual,android,browser \
   --config demos/showcase/showcase.config.yaml \
@@ -416,7 +416,7 @@ uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/investigation
 ### 7.3 Android の実測
 
 ```bash
-uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/investigations/step-performance/trace_run.py --out /tmp/android-trace.json -- \
+uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/misc/step-performance/trace_run.py --out /tmp/android-trace.json -- \
   run --target showcase-compose --udid booted --backend android \
   --config demos/showcase/showcase.config.yaml \
   --scenario demos/showcase/scenarios/controls.yaml
@@ -471,8 +471,8 @@ Android 側は `POST /act` の 1 行だけ、推定 600〜900 ms に対して実
 `screenshot`、`drain_interruptions` です。値は上の表と同じ、2026-09-03 の実測値です。
 
 ```bash
-uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/investigations/step-performance/bench_orchestrator.py --model ios --steps 5
-uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/investigations/step-performance/bench_orchestrator.py --model android_resident --steps 5
+uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/misc/step-performance/bench_orchestrator.py --model ios --steps 5
+uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/misc/step-performance/bench_orchestrator.py --model android_resident --steps 5
 ```
 
 証拠の取得（`screenshot.after` と `elements`）とアラートガードを両方有効にした `tap` シナリオ、つまり

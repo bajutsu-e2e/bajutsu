@@ -15,7 +15,7 @@
 
 ## はじめに
 
-この項目自身のディレクトリ配下、[`investigations/step-performance/`](investigations/step-performance/README.md)
+この項目自身のディレクトリ配下、[`misc/step-performance/`](misc/step-performance/README.md)
 に記録した実機測定は、両バックエンドの `tap` ステップ 1 回を end-to-end で計測しました。
 iOS シミュレータで 0.95〜1.07 秒、Android エミュレータの常駐サーバー経路で 3.25〜3.32 秒です。
 目標の 250〜500 ミリ秒に対して、大きく上回っています。この時間のほとんどはタップ自体の
@@ -64,15 +64,23 @@ Android の常駐サーバーは、`POST /act` の大半を、`POSTDATE_BUDGET_M
 除去にとどまります。
 条件待ちをポーリングから固定の `sleep` に変えるものはなく、セレクタの解決方法を変えるものも
 ありません。この変更が実測どおりに効いたかどうかは、後から読む人が自分で確かめられます。
-[`trace_run.py`](investigations/step-performance/trace_run.py) を同じシナリオに対して
+[`trace_run.py`](misc/step-performance/trace_run.py) を同じシナリオに対して
 再実行し、iOS の `tap` ステップがこの項目の目標である 0.3〜0.6 秒の帯に、Android が
 0.6〜1.2 秒の帯に収まることを確認すればよく、これは調査が今日の基準値 0.95〜1.07 秒と
 3.25〜3.32 秒を測ったのと同じ手順です。
 
 ## 詳細設計
 
+**実装の順番。** この項目は、関連する 4 項目の厳密な順番のうち最初です。この項目、
+端末側プロトコルの項目、iOS 実行機の項目、Android 実行機の項目の順に進みます。後続の
+どの項目も、直前の項目が出荷されるまで着手してはいけません。プロトコルの項目は、この
+項目が出荷し実測した基準値に対して設計するものであり、まだ動いている数値を対象には
+設計できないためです。また、この項目は、後続の項目が自分の成果を確認するために使う
+トレーサー（[`trace_run.py`](misc/step-performance/trace_run.py)）を実証する役割も
+兼ねています。この項目にはこの順番の中で先行する項目がなく、ただちに着手できます。
+
 作業は、両バックエンド共通、iOS 専用、Android 専用という独立した 3 つのグループに
-分かれています。それぞれが、[`trace_run.py`](investigations/step-performance/trace_run.py)
+分かれています。それぞれが、[`trace_run.py`](misc/step-performance/trace_run.py)
 がすでに確立した共通の物差しに対して、単独の Pull Request として出荷できます。以下のどの
 作業単位も、`Driver` プロトコルやシナリオの YAML 形式、条件待ちが何をポーリングするかを
 変更しません。それぞれが、冗長な呼び出しの削除か、固定コストの内部処理の並べ替えであり、
@@ -242,8 +250,8 @@ driver conformance suite
   対策を段階分けしたのと同じ理由で却下します。内部調整の作業単位はリスクが低く、
   小さな独立した Pull Request として出荷でき、後の実行機の項目が自分の効果を示す
   ためにも依存する測定ツール——
-  [`trace_run.py`](investigations/step-performance/trace_run.py) と
-  [`bench_orchestrator.py`](investigations/step-performance/bench_orchestrator.py)
+  [`trace_run.py`](misc/step-performance/trace_run.py) と
+  [`bench_orchestrator.py`](misc/step-performance/bench_orchestrator.py)
   ——を実証する役割も果たします。
 - **Android の `POSTDATE_BUDGET_MS`（作業単位 16）は、サーバーログでの確認が
   先に要るため、別の項目に切り出す。** 検討しましたが、現時点では見送ります。
@@ -265,9 +273,11 @@ driver conformance suite
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
+**順番の状態：先行する項目はなく、ただちに着手できます**（詳細設計の「実装の順番」を参照）。
+
 - [x] 基準値の測定と物差しの構築——両バックエンドの実機トレース（2026-09-03）を、
   この項目自身のディレクトリ配下の
-  [`investigations/step-performance/`](investigations/step-performance/README.md)
+  [`misc/step-performance/`](misc/step-performance/README.md)
   に記録済みです。
 - [ ] グループ 1、作業単位 1〜6——証拠取得の重複排除と、BE-0310 の静止待ち中の
   読み取り停止（共通）。
@@ -277,7 +287,7 @@ driver conformance suite
 - [ ] グループ 3、作業単位 17〜24——残る Android ドライバ内部の削減（`/act` の
   swipe 版を含む、作業単位 24）。
 - [ ] 各グループの出荷後に、`controls.yaml` に対して
-  [`trace_run.py`](investigations/step-performance/trace_run.py) を再実行し、
+  [`trace_run.py`](misc/step-performance/trace_run.py) を再実行し、
   結果のステップごとの壁時計をここに記録する。
 
 ## 参考
@@ -289,7 +299,7 @@ driver conformance suite
 [BE-0310 — アクセシビリティの画面遷移通知による readiness 判定の精度向上](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)、
 [BE-0341 — ステップの動作前にレポート証跡を取得する](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture-ja.md)、
 [BE-0396 — SFSafariViewController の要素ツリーをそれを描くプロセスから読む](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree-ja.md)、
-[`investigations/step-performance/README.md`](investigations/step-performance/README.md)——
+[`misc/step-performance/README.md`](misc/step-performance/README.md)——
 この項目が要約している測定の全文、
 [`bajutsu/common/orchestrator/loop.py`](../../bajutsu/common/orchestrator/loop.py)、
 [`bajutsu/common/drivers/xcuitest.py`](../../bajutsu/common/drivers/xcuitest.py)、

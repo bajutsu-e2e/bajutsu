@@ -16,7 +16,7 @@
 ## Introduction
 
 A real-device measurement pass, recorded under
-[`investigations/step-performance/`](investigations/step-performance/README.md) in this item's own
+[`misc/step-performance/`](misc/step-performance/README.md) in this item's own
 directory, timed a single `tap` step end to end on both backends: 0.95–1.07 seconds on the iOS
 Simulator, 3.25–3.32 seconds on the Android emulator's resident-server path, against a 250–500
 millisecond target. Almost none of that time is the tap itself — it is redundant host-device round
@@ -60,16 +60,23 @@ None of this touches the determinism contract. Every cut below removes a redunda
 write, or a fixed wait that a settled screen can never satisfy — no condition wait moves from
 polling to a fixed `sleep`, and no selector resolution changes. A reader can check that the change
 landed the way the investigation measured it: rerun
-[`trace_run.py`](investigations/step-performance/trace_run.py) against the same scenario and confirm
+[`trace_run.py`](misc/step-performance/trace_run.py) against the same scenario and confirm
 the iOS tap step lands in the 0.3–0.6 second band and the Android tap step in the 0.6–1.2 second band
 this item targets, the same way the investigation measured today's 0.95–1.07 and 3.25–3.32 second
 baselines.
 
 ## Detailed design
 
+**Implementation order.** This item is the first of four related items in a strict order: this item,
+then the device-side protocol item, then the iOS executor item, then the Android executor item. Each
+later item must not begin until its predecessor has shipped — the protocol item is designed against
+this item's shipped, measured baseline, not a moving target, and this item is also what proves out the
+tracer ([`trace_run.py`](misc/step-performance/trace_run.py)) the later items depend on to verify
+their own results. This item has no predecessor in the sequence and can begin immediately.
+
 The work is phased in three independent groups — common to both backends, iOS-only, and
 Android-only — each shippable as its own pull request against the shared yardstick
-[`trace_run.py`](investigations/step-performance/trace_run.py) already establishes. None of the units
+[`trace_run.py`](misc/step-performance/trace_run.py) already establishes. None of the units
 below changes the `Driver` protocol, a scenario's YAML shape, or what a condition wait polls for; each
 is a redundant call removed or a fixed-cost internal reordered, verified against the driver
 conformance suite ([BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md))
@@ -219,8 +226,8 @@ and a rerun of the tracer.
 - **Skip straight to the executor instead of tuning the current boundary.** Rejected for the same
   reason [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) phased its own fix:
   the internal-tuning units are lower-risk, ship as small independent pull requests, and prove out the
-  measurement tooling — [`trace_run.py`](investigations/step-performance/trace_run.py) and
-  [`bench_orchestrator.py`](investigations/step-performance/bench_orchestrator.py) — that a later
+  measurement tooling — [`trace_run.py`](misc/step-performance/trace_run.py) and
+  [`bench_orchestrator.py`](misc/step-performance/bench_orchestrator.py) — that a later
   executor item will also depend on to show its own win.
 - **Split the Android `POSTDATE_BUDGET_MS` unit (16) into its own item, since it needs server-log
   confirmation first.** Considered and rejected for now: it shares this item's driver/runner surface,
@@ -239,8 +246,11 @@ and a rerun of the tracer.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
+**Sequence status: no predecessor — this item can begin immediately** (see *Implementation order* in
+*Detailed design*).
+
 - [x] Measure the baseline and build the yardstick — real-device tracing of both backends
-  (2026-09-03), recorded in [`investigations/step-performance/`](investigations/step-performance/README.md)
+  (2026-09-03), recorded in [`misc/step-performance/`](misc/step-performance/README.md)
   in this item's own directory.
 - [ ] Group 1, units 1–6 — evidence-capture dedup and the BE-0310 settle-window read (common).
 - [ ] Group 2, units 7–15 — iOS driver internals.
@@ -248,7 +258,7 @@ and a rerun of the tracer.
   then implement the fix.
 - [ ] Group 3, units 17–24 — the remaining Android driver-internal reductions, including the `/act`
   swipe variant (unit 24).
-- [ ] Rerun [`trace_run.py`](investigations/step-performance/trace_run.py) against
+- [ ] Rerun [`trace_run.py`](misc/step-performance/trace_run.py) against
   `controls.yaml` after each group lands, and record the resulting per-step wall-clock here.
 
 ## References
@@ -260,7 +270,7 @@ and a rerun of the tracer.
 [BE-0310 — iOS accessibility screen-change readiness](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md),
 [BE-0341 — Pre-action evidence capture](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture.md),
 [BE-0396 — iOS SFSafariViewController tree](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md),
-[`investigations/step-performance/README.md`](investigations/step-performance/README.md) — the full
+[`misc/step-performance/README.md`](misc/step-performance/README.md) — the full
 measurement writeup this item summarizes,
 [`bajutsu/common/orchestrator/loop.py`](../../bajutsu/common/orchestrator/loop.py),
 [`bajutsu/common/drivers/xcuitest.py`](../../bajutsu/common/drivers/xcuitest.py),

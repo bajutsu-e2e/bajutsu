@@ -51,6 +51,15 @@ collapsed a multi-round-trip element read into a single snapshot.
 
 ## Detailed design
 
+**Implementation order.** This item is the second of four related items in a strict order: the
+driver-internal-tuning item, then this item, then the iOS executor item, then the Android executor
+item. **Work on this item must not begin until the driver-internal-tuning item is complete** — this
+item's design is meant to pick up from that item's shipped, measured baseline, and starting protocol
+design against a baseline that is still moving risks designing around numbers that change under it.
+Once this item ships, the iOS executor item must not begin until this item is complete either, for the
+same reason: an executor built against a still-moving protocol design would need rework whenever the
+protocol changed under it.
+
 ### What moves, and what does not
 
 Python keeps three responsibilities no protocol change should move off the host:
@@ -138,6 +147,9 @@ its platform.
 > Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
+
+**Sequence status: blocked on the driver-internal-tuning item's completion** (see *Implementation
+order* in *Detailed design*). Do not start the checklist below before then.
 
 - [ ] Write the wire format for stage 1 (`POST /wait`) and agree it across both platform items before
   either begins implementing.

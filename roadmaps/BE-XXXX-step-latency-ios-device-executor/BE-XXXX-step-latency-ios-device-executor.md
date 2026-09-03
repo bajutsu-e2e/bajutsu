@@ -40,6 +40,16 @@ result to today's iOS baseline of 0.95–1.07 seconds.
 
 ## Detailed design
 
+**Implementation order.** This item is the third of four related items in a strict order: the
+driver-internal-tuning item, the device-side protocol item, then this item, then the Android executor
+item. **Work on this item must not begin until the device-side protocol item is complete** — this
+item implements that item's protocol and selector-semantics contract, and starting against a
+still-changing design would need rework whenever that design changed under it. Once this item ships,
+the Android executor item must not begin until this item is complete either: sequencing the two
+platform executors lets the selector-semantics port (`resolve_unique` to Swift here, to Kotlin there)
+happen once, in this item, before it is repeated for the other platform, so a gap this item's port
+surfaces does not have to be independently rediscovered by both at once.
+
 ### Why the runner process, not BajutsuKit
 
 The executor runs inside the XCTest runner process, not the in-app SDK (BajutsuKit), for three
@@ -119,6 +129,9 @@ practice, not a change made preemptively.
 > Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
+
+**Sequence status: blocked on the device-side protocol item's completion** (see *Implementation
+order* in *Detailed design*). Do not start the checklist below before then.
 
 - [ ] Port `resolve_unique` selector semantics to Swift, verified against the driver conformance suite
   ([BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md)) once the

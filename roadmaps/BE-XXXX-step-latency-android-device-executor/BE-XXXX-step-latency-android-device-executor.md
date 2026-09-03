@@ -45,6 +45,14 @@ reader can confirm this by tracing a real tap step against the built executor.
 
 ## Detailed design
 
+**Implementation order.** This item is the fourth and last of four related items in a strict order:
+the driver-internal-tuning item, the device-side protocol item, the iOS executor item, then this item.
+**Work on this item must not begin until the iOS executor item is complete** — sequencing the two
+platform executors lets the selector-semantics port (`resolve_unique` to Swift there, to Kotlin here)
+happen once, in the iOS executor item, before it is repeated here, so a gap that item's port surfaces
+does not have to be independently rediscovered in both platforms at once. This item has no successor
+in the sequence.
+
 The resident server already has what an executor needs — it is an instrumentation with a live
 `UiAutomation` session and an accessibility-event listener, both already exercised for the existing
 `nativeZ` node walk. Four changes turn it into a step executor:
@@ -95,6 +103,9 @@ iOS executor's port is.
 > Keep this current as work proceeds. The checklist mirrors the MECE work breakdown in
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
+
+**Sequence status: blocked on the iOS executor item's completion** (see *Implementation order* in
+*Detailed design*). Do not start the checklist below before then.
 
 - [ ] Port `resolve_unique` selector semantics, including the derived-label fallback, to Kotlin,
   verified against the driver conformance suite
