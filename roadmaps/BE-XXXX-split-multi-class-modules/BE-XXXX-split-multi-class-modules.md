@@ -51,10 +51,13 @@ directory of the same name. Five rules apply.
 
 1. **One file per class.** `foo.py` becomes `foo/`. The package's `__init__.py` carries the
    original module's docstring, then imports and re-exports every public class in the original
-   declaration order (and the original `__all__`, if the file had one). Each class moves to
-   `snake_case(ClassName).py`. A private class such as `_Model` moves to `_model.py`, keeping its
-   leading underscore in the filename. The rule applies the same way to every kind of `class`: a
-   Pydantic model, a `TypedDict`, a `Protocol`, an `Exception`, or a plain `dataclass`.
+   declaration order, declaring every re-exported name in an `__all__`. The `__all__` is written
+   whether or not the original file had one: `F` is in ruff's `select` (`pyproject.toml`) with no
+   `__init__.py` per-file-ignore, so an import that exists only to re-export raises `F401` and
+   fails `make lint` otherwise. Each class moves to `snake_case(ClassName).py`. A private class
+   such as `_Model` moves to `_model.py`, keeping its leading underscore in the filename. The rule
+   applies the same way to every kind of `class`: a Pydantic model, a `TypedDict`, a `Protocol`, an
+   `Exception`, or a plain `dataclass`.
 2. **Top-level functions stay together, in one file.** This item's scope is classes, not
    functions. A file's top-level functions move as a group into `_functions.py` inside the new
    package. They do not scatter into `__init__.py`, and they do not split one function per file.
@@ -66,12 +69,21 @@ directory of the same name. Five rules apply.
 3. **Explicit intra-package imports.** A class that subclasses or references another class from the
    same original file now imports it explicitly, with a relative import
    (`from ._model import _Model`). The two classes no longer share a module scope.
-4. **Shared module-level code moves to `__init__.py`.** Some code depends on more than one class, or
-   belongs to none of them individually. One example is
+4. **Module-level code with no single owner moves to `__init__.py`; code with one owner stays in
+   that owner's file.** Code genuinely used by more than one split-off class has nowhere else to
+   go. One example is
+   [`serve/server/models.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/serve/server/models.py)'s
+   `_JSON`, a SQLAlchemy column-type variant that six different ORM model classes pass to
+   `mapped_column`.
+
+   Code tied to exactly one class or function stays in that owner's own file, even at module
+   level. Moving it breaks the reference in one case, or, when a moved function rebinds it with
+   `global`, stops updating it without an error: `global` cannot reach a name in another module.
    [`assertions.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/scenario/models/assertions.py)'s
-   `_ASSERTION_KINDS`: a constant the module derives from every assertion class's fields, computed
-   after the module declares every assertion class. Code like this stays in `__init__.py` rather
-   than attaching to one class's file.
+   `_ASSERTION_KINDS` is the first shape: `Assertion.model_fields` derives it and
+   `Assertion._one_kind` is its sole reader, so it stays with `Assertion`. `drivers/playwright.py`'s
+   `_PW_ERRORS` is the second: `_playwright_error_types` rebinds it with `global` to memoize an
+   optional import, so the memo stays wherever rule 2 sends that function — `_functions.py`.
 5. **A new circular import gets the existing lazy-import treatment.**
    `bajutsu/common/config/schema.py`'s `Config` model already imports `bajutsu.common.config.resolve`
    inside a method body, not at module load, to avoid a cycle. The split resolves any circular
@@ -90,6 +102,20 @@ files. `DeviceError` and `Env` both name a class in `bajutsu/common/backend_cli/
 test files would collide on the same `test_device_error.py` name. A source file with no dedicated
 unit-test file — covered by an integration test alone — gets no new test file. The scope here is
 splitting what exists, not adding coverage that does not.
+
+A test that patches by module path gets re-pointed in the same commit as its source file.
+`tests/` calls `monkeypatch.setattr("bajutsu.<module>.<name>", ...)` in about a hundred places.
+Patching a name that `__init__.py` merely re-exports rebinds the re-export, not the binding the
+caller resolves. That break stays quiet in some cases and raises in others.
+
+`bajutsu.run.notify._RETRY_DELAY` (four call sites, batch 2) is a quiet case. `_deliver` moves to
+`_functions.py` with its own binding under rule 2. The patch stops applying, and the retry test
+sleeps for real instead of exercising the patched value.
+`bajutsu.common.drivers.playwright._PW_ERRORS` and `bajutsu.common.drivers.xcuitest.XcuitestDriver`
+(batch 7) fail the same quiet way.
+
+`bajutsu.common.drivers.base.time.sleep` and `.time.monotonic` (ten call sites, batch 7) raise
+`AttributeError` instead, once `base/__init__.py` no longer imports `time` itself.
 
 ### Three existing mechanisms keyed on today's file paths
 
