@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from _shared import patch_gcs_client
+from _shared import FakeGCSClient, last_google_auth_default_kwargs, patch_gcs_client
 from botocore.exceptions import ClientError
 
 from bajutsu.common.run_meta.object_store import GCSObjectStore
@@ -256,6 +256,19 @@ def test_object_store_from_env_builds_a_gcs_store_from_a_gs_uri(
     store, prefix = result
     assert isinstance(store, GCSObjectStore)
     assert prefix == "tenant/"
+    # cloud-platform is a superset of storage.Client's own devstorage scopes *and* covers the IAM
+    # signBlob call GCSObjectStore's signing makes, so one requested scope must serve both.
+    assert last_google_auth_default_kwargs["scopes"] == [
+        "https://www.googleapis.com/auth/cloud-platform"
+    ]
+    # the same credential object must back both the client and signing, or a scope mismatch can
+    # silently reopen (storage.Client's with_scopes_if_required may otherwise swap in a copy).
+    assert FakeGCSClient.last_init_kwargs is not None
+    assert FakeGCSClient.last_init_kwargs["credentials"] is store._credentials
+    # google.auth.default() resolved no project here (the fake models a Workload Identity
+    # Federation credential) — storage.Client must never see project=None, since that opts it
+    # into its anonymous no-project mode rather than falling back to its own resolution.
+    assert "project" not in FakeGCSClient.last_init_kwargs
 
 
 def test_object_store_from_env_names_the_install_command_when_the_sdk_is_missing(

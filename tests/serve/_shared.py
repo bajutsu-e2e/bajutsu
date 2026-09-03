@@ -140,15 +140,41 @@ class FakeGCSBucket:
 class FakeGCSClient:
     """A `google.cloud.storage.Client` stand-in whose `bucket()` hands back a `FakeGCSBucket`, so
     `object_store_from_uri`'s ``gs://`` branch builds a real `GCSObjectStore` without a network call
-    or real GCP credentials (BE-0204)."""
+    or real GCP credentials (BE-0204). Records its constructor kwargs so a test can assert what
+    `object_store_from_uri` passed (e.g. that a falsy project was omitted, not forwarded as None)."""
+
+    last_init_kwargs: dict[str, object] | None = None
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        FakeGCSClient.last_init_kwargs = kwargs
 
     def bucket(self, name: str) -> FakeGCSBucket:
         return FakeGCSBucket()
 
 
+class _FakeADCCredentials:
+    """Stand-in for what `google.auth.default()` returns — enough for `GCSObjectStore` to hold
+    without ever refreshing or signing for real."""
+
+
+# Kwargs the `google.auth.default` stub below was last called with — a test reads this to assert
+# `object_store_from_uri` requested the `cloud-platform` scope `signBlob` needs.
+last_google_auth_default_kwargs: dict[str, object] = {}
+
+
 def patch_gcs_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Patches `google.cloud.storage.Client` to `FakeGCSClient`, so a `gs://` URI resolves through
-    the real `object_store_from_uri` without a network call or real GCP credentials (BE-0204)."""
+    """Patches `google.cloud.storage.Client` to `FakeGCSClient` and `google.auth.default` to a fake
+    credential, so a `gs://` URI resolves through the real `object_store_from_uri` without a network
+    call or real GCP credentials (BE-0204). The fake credential resolves no project — the shape a
+    Workload Identity Federation credential typically takes — so a test can assert that a falsy
+    project is left out of the `storage.Client(...)` call rather than passed through as `None`."""
+    import google.auth
     from google.cloud import storage
 
+    def fake_default(**kwargs: object) -> tuple[_FakeADCCredentials, str | None]:
+        last_google_auth_default_kwargs.clear()
+        last_google_auth_default_kwargs.update(kwargs)
+        return _FakeADCCredentials(), None
+
     monkeypatch.setattr(storage, "Client", FakeGCSClient)
+    monkeypatch.setattr(google.auth, "default", fake_default)

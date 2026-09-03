@@ -44,11 +44,19 @@ class _FakeBlob:
         self._store.pop(f"__ct__{self.name}", None)
 
     def generate_signed_url(
-        self, *, version: str, expiration: timedelta, method: str, content_type: str = ""
+        self,
+        *,
+        version: str,
+        expiration: timedelta,
+        method: str,
+        content_type: str = "",
+        service_account_email: str = "",
+        access_token: str = "",
     ) -> str:
         secs = int(expiration.total_seconds())
         ct = f"&ct={content_type}" if content_type else ""
-        return f"https://signed.gcs/{self.name}?v={version}&m={method}&exp={secs}{ct}"
+        sa = f"&sa={service_account_email}&tok={access_token}" if service_account_email else ""
+        return f"https://signed.gcs/{self.name}?v={version}&m={method}&exp={secs}{ct}{sa}"
 
 
 class _FakeBucket:
@@ -96,6 +104,72 @@ def test_presigned_urls_sign_get_and_put() -> None:
     assert store.presigned_url("k") == "https://signed.gcs/k?v=v4&m=GET&exp=60"
     put = store.presigned_put_url("k", content_type="image/png", ttl=120)
     assert put == "https://signed.gcs/k?v=v4&m=PUT&exp=120&ct=image/png"
+
+
+class _FakeWIFCredentials:
+    """Stand-in for a Workload Identity Federation credential (KSA→GSA impersonation): it has an
+    access token but no private key, so signing must go through IAM `signBlob` — the SDK does that
+    when `generate_signed_url` is called with `service_account_email`/`access_token`."""
+
+    def __init__(self) -> None:
+        self.valid = False
+        self.service_account_email: str | None = "gsa@project.iam.gserviceaccount.com"
+        self.token = ""
+        self.refresh_count = 0
+
+    def refresh(self, request: Any) -> None:
+        self.refresh_count += 1
+        self.valid = True
+        self.token = "fresh-token"
+
+
+def test_presigned_url_signs_via_iam_when_credentials_injected() -> None:
+    creds = _FakeWIFCredentials()
+    store = GCSObjectStore(_FakeBucket({"k": b"x"}), presign_ttl=60, credentials=creds)
+    url = store.presigned_url("k")
+    assert url == (
+        "https://signed.gcs/k?v=v4&m=GET&exp=60"
+        "&sa=gsa@project.iam.gserviceaccount.com&tok=fresh-token"
+    )
+    assert creds.valid is True  # refreshed lazily before signing, not eagerly at construction
+    assert creds.refresh_count == 1
+    store.presigned_url("k")  # a still-valid token isn't refreshed again
+    assert creds.refresh_count == 1
+
+
+def test_presigned_url_signs_locally_when_credential_can_sign_itself() -> None:
+    from google.auth.credentials import Signing
+
+    class _FakeSigningCredentials(_FakeWIFCredentials, Signing):
+        """Stand-in for a key-file or already-impersonated credential: it implements
+        `google.auth.credentials.Signing`, so `_signing_kwargs` must leave it alone and let the
+        SDK sign locally instead of routing through the IAM `signBlob` API."""
+
+        def sign_bytes(self, message: bytes) -> bytes:
+            raise NotImplementedError  # never called — generate_signed_url is faked below
+
+        @property
+        def signer_email(self) -> str | None:
+            return self.service_account_email
+
+        @property
+        def signer(self) -> Any:
+            raise NotImplementedError
+
+    creds = _FakeSigningCredentials()
+    store = GCSObjectStore(_FakeBucket({"k": b"x"}), presign_ttl=60, credentials=creds)
+    assert store.presigned_url("k") == "https://signed.gcs/k?v=v4&m=GET&exp=60"
+    assert creds.refresh_count == 0  # never refreshed — local signing needs no fresh token here
+
+
+def test_presigned_url_signs_locally_when_credential_has_no_service_account_email() -> None:
+    creds = _FakeWIFCredentials()
+    creds.service_account_email = None
+    store = GCSObjectStore(_FakeBucket({"k": b"x"}), presign_ttl=60, credentials=creds)
+    # user ADC (`gcloud auth application-default login`) has no service account to sign as —
+    # left alone, so the SDK raises its own error instead of an AttributeError from here.
+    assert store.presigned_url("k") == "https://signed.gcs/k?v=v4&m=GET&exp=60"
+    assert creds.refresh_count == 0
 
 
 def test_list_keys_filters_by_prefix() -> None:

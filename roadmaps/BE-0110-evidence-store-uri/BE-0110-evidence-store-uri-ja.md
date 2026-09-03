@@ -9,7 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0110") |
-| 実装 PR | [#531](https://github.com/bajutsu-e2e/bajutsu/pull/531), [#636](https://github.com/bajutsu-e2e/bajutsu/pull/636), [#638](https://github.com/bajutsu-e2e/bajutsu/pull/638) |
+| 実装 PR | [#531](https://github.com/bajutsu-e2e/bajutsu/pull/531), [#636](https://github.com/bajutsu-e2e/bajutsu/pull/636), [#638](https://github.com/bajutsu-e2e/bajutsu/pull/638), [#1874](https://github.com/bajutsu-e2e/bajutsu/pull/1874) |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md) |
 <!-- /BE-METADATA -->
@@ -184,6 +184,21 @@ Bajutsu は認証情報を**管理しません**。各 SDK の標準クレデン
 - **GCS**: `google-cloud-storage` の ADC（環境変数、`GOOGLE_APPLICATION_CREDENTIALS`、Workload Identity Federation、メタデータサーバー）
 
 `serve` 構成では、これらの認証情報が必要なのは **Server のみ**です。Worker は presigned URL 経由でアップロードするため、クラウド SDK も認証情報も不要です。エフェメラルなコンテナにシークレットを配布する必要がなくなります。
+
+GCS の signed URL には、署名用の秘密鍵が要ります。ところが Workload Identity Federation
+で解決した ADC の認証情報は、アクセストークンしか持ちません。Kubernetes サービスアカウント
+(KSA) が Google サービスアカウント (GSA) に成りすます KSA→GSA 連携も、この経路の一種です。
+秘密鍵を持たないため、ローカルでの署名はエラーになります。
+
+`object_store_from_uri` は、ADC を `cloud-platform` スコープで一度だけ解決し、その認証情報を
+`GCSObjectStore` に渡します。署名するとき、経路は認証情報がローカルで署名できるかどうかで
+分かれます。キーファイルや、なりすまし済みの認証情報は、ローカルでの署名をそのまま使います。
+KSA→GSA の認証情報はローカルで署名できないため、その `service_account_email` と
+`access_token` を使い、IAM の `signBlob` API 経由で署名します。
+
+運用上の前提が1つ増えるのは、IAM 経由で署名する場合だけです。署名する GSA 自身に、IAM の
+権限を1つ追加する必要があります。付与する権限は `roles/iam.serviceAccountTokenCreator`
+(または同等の `iam.serviceAccounts.signBlob` 権限)です。
 
 ## 検討した代替案
 

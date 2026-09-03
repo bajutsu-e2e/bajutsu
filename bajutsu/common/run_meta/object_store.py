@@ -167,11 +167,44 @@ class GCSObjectStore:
     """`ObjectStore` over one Google Cloud Storage bucket via an injected `storage.Bucket`.
 
     The bucket is injected (like `S3ObjectStore`'s client) so a fake drives the gate. Signed URLs use
-    V4 signing, which GCS supports for both GET and PUT."""
+    V4 signing, which GCS supports for both GET and PUT.
 
-    def __init__(self, bucket: Any, *, presign_ttl: int = _PRESIGN_TTL) -> None:
+    *credentials* drives signing when the bucket's own credentials can't sign locally: a Workload
+    Identity Federation credential (KSA→GSA impersonation) carries an access token but no private
+    key, so local V4 signing raises. For that shape only, the SDK is told to call the IAM
+    ``signBlob`` API via ``service_account_email``/``access_token`` passed to
+    `generate_signed_url` instead. Left `None`, or given a credential that can already sign
+    locally, signing falls back to whatever the bucket itself was built with."""
+
+    def __init__(
+        self, bucket: Any, *, presign_ttl: int = _PRESIGN_TTL, credentials: Any = None
+    ) -> None:
         self._bucket = bucket
         self._ttl = presign_ttl
+        self._credentials = credentials
+
+    def _signing_kwargs(self) -> dict[str, Any]:
+        # Passing service_account_email/access_token to generate_signed_url isn't a fallback —
+        # it's an override that makes the SDK sign via the IAM signBlob API unconditionally,
+        # skipping local signing even when the credential could do it. So this only takes that
+        # path for a credential that actually needs it: a key-file or already-impersonated
+        # credential implements google.auth.credentials.Signing and should keep signing locally
+        # (no per-URL IAM round trip, no new serviceAccountTokenCreator grant on a deployment
+        # that works today); a credential with no service_account_email (e.g. `gcloud auth
+        # application-default login`) has nothing to sign as, so it's left to the SDK's own
+        # local-signing attempt and its own error rather than an AttributeError from here.
+        if self._credentials is None:
+            return {}
+        from google.auth.credentials import Signing
+
+        email = getattr(self._credentials, "service_account_email", None)
+        if email is None or isinstance(self._credentials, Signing):
+            return {}
+        if not self._credentials.valid:
+            from google.auth.transport.requests import Request
+
+            self._credentials.refresh(Request())
+        return {"service_account_email": email, "access_token": self._credentials.token}
 
     def exists(self, key: str) -> bool:
         return bool(self._bucket.blob(key).exists())
@@ -193,12 +226,16 @@ class GCSObjectStore:
 
     def presigned_url(self, key: str) -> str:
         url: str = self._bucket.blob(key).generate_signed_url(
-            version="v4", expiration=timedelta(seconds=self._ttl), method="GET"
+            version="v4",
+            expiration=timedelta(seconds=self._ttl),
+            method="GET",
+            **self._signing_kwargs(),
         )
         return url
 
     def presigned_put_url(self, key: str, *, content_type: str = "", ttl: int = _PUT_TTL) -> str:
         kw = {"content_type": content_type} if content_type else {}
+        kw.update(self._signing_kwargs())
         url: str = self._bucket.blob(key).generate_signed_url(
             version="v4", expiration=timedelta(seconds=ttl), method="PUT", **kw
         )
@@ -292,12 +329,28 @@ def object_store_from_uri(uri: StoreURI) -> ObjectStore:
         )
         return S3ObjectStore(client, uri.bucket)
     try:
+        import google.auth
         from google.cloud import storage
     except ImportError as e:
         raise ImportError(
             "the gs:// store needs google-cloud-storage — install it with `uv sync --extra gcs`"
         ) from e
-    return GCSObjectStore(storage.Client().bucket(uri.bucket))
+    # ADC is resolved once here (not left to storage.Client()'s own default) so the same credentials
+    # object backs both the client and signing — required when it's a Workload Identity Federation
+    # credential (KSA→GSA impersonation) with no private key, per GCSObjectStore's docstring.
+    # cloud-platform is requested explicitly: it's a superset of storage.Client's own devstorage
+    # scopes *and* covers the IAM signBlob call that signing makes, so one scope serves both call
+    # sites — and passing it up front keeps storage.Client's with_scopes_if_required from silently
+    # swapping in a devstorage-only copy that then can't authorize signBlob.
+    credentials, project = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    )
+    # storage.Client distinguishes an omitted project (falls back to its own resolution: the
+    # credential, then env/gcloud/metadata) from an explicit project=None (opts into its
+    # anonymous no-project mode) — so a falsy project from google.auth.default() must be left
+    # out entirely, never forwarded as None.
+    client = storage.Client(credentials=credentials, **({"project": project} if project else {}))
+    return GCSObjectStore(client.bucket(uri.bucket), credentials=credentials)
 
 
 @dataclasses.dataclass(frozen=True)

@@ -9,7 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0110") |
-| Implementing PR | [#531](https://github.com/bajutsu-e2e/bajutsu/pull/531), [#636](https://github.com/bajutsu-e2e/bajutsu/pull/636), [#638](https://github.com/bajutsu-e2e/bajutsu/pull/638) |
+| Implementing PR | [#531](https://github.com/bajutsu-e2e/bajutsu/pull/531), [#636](https://github.com/bajutsu-e2e/bajutsu/pull/636), [#638](https://github.com/bajutsu-e2e/bajutsu/pull/638), [#1874](https://github.com/bajutsu-e2e/bajutsu/pull/1874) |
 | Topic | Hosting the web UI |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
 <!-- /BE-METADATA -->
@@ -231,6 +231,20 @@ Bajutsu does **not** manage credentials. It delegates to the standard credential
 In the `serve` topology, only the **server** needs these credentials — the worker uploads
 via presigned URLs and requires no cloud SDK or credentials at all. This keeps the worker
 lightweight and avoids distributing secrets to ephemeral containers.
+
+A GCS signed URL needs a private key to sign with. A Workload Identity Federation credential
+carries an access token, never a private key. A Kubernetes service account is a KSA in this
+shorthand, and a Google service account a GSA. Workload Identity Federation is how a KSA
+impersonates a GSA.
+
+`object_store_from_uri` resolves ADC once, with the `cloud-platform` scope. It hands that
+credential to `GCSObjectStore`. Signing then branches on what the credential can do. A key-file
+credential, or an already-impersonated one, can sign locally — that path stays untouched. A
+KSA → GSA credential can't sign locally. It signs instead through the IAM `signBlob` API, using
+its own `service_account_email` and `access_token`.
+
+The IAM path alone adds an operational step. Its GSA must hold
+`roles/iam.serviceAccountTokenCreator` on itself. That role grants `iam.serviceAccounts.signBlob`.
 
 ## Alternatives considered
 
