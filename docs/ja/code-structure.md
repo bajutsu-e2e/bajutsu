@@ -1043,7 +1043,7 @@ Bedrock を、`claude_code.py` が Claude Code のコマンドラインインタ
 
 <!-- mermaid-svg: assets/diagrams/code-structure-routine-ja.svg -->
 ```mermaid
-flowchart TB
+flowchart LR
     branch(["ブランチまたは worktree<br/>claude/&lt;topic&gt;"])
     implement["1 つのレイヤの内側で<br/>変更を実装"]
     test["テストを足す・更新する"]

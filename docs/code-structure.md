@@ -1041,7 +1041,7 @@ it, since the deterministic suite is the regression net.
 
 <!-- mermaid-svg: assets/diagrams/code-structure-routine.svg -->
 ```mermaid
-flowchart TB
+flowchart LR
     branch(["Branch or worktree<br/>claude/&lt;topic&gt;"])
     implement["Implement the change<br/>inside one layer"]
     test["Add or update a test"]
