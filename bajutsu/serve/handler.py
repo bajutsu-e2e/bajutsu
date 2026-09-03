@@ -104,15 +104,20 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                 self.send_header(name, value)
             super().end_headers()
 
-        def _json(self, payload: Any, code: int = 200, cookie: str | None = None) -> None:
-            body = json.dumps(payload).encode("utf-8")
+        def _send_body(
+            self, body: bytes, code: int, content_type: str, cookie: str | None = None
+        ) -> None:
+            """Write one framed response — the single place `_json` and `_text` both emit from.
+
+            A 204/304 carries no body whatever the headers say (RFC 9110 6.4.1) — a client that
+            frames it as zero-length would read this payload as the head of the next response.
+            Kept in lockstep with the FastAPI backend's `_result`, which must drop it or h11
+            refuses the write.
+            """
             self.send_response(code)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", content_type)
             if cookie is not None:
                 self.send_header("Set-Cookie", cookie)
-            # A 204/304 carries no body whatever the headers say (RFC 9110 6.4.1) — a client that
-            # frames it as zero-length would read this payload as the next response. Kept in lockstep
-            # with the FastAPI backend's `_result`, which must drop it or h11 refuses the write.
             if code in (204, 304):
                 self.end_headers()
                 return
@@ -120,15 +125,13 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
             self.end_headers()
             self.wfile.write(body)
 
+        def _json(self, payload: Any, code: int = 200, cookie: str | None = None) -> None:
+            self._send_body(json.dumps(payload).encode("utf-8"), code, "application/json", cookie)
+
         def _text(self, text: str, code: int, content_type: str) -> None:
             """Write a text body with an explicit content type — the shared shape behind the
             non-JSON GET routes (/stats HTML, /metrics Prometheus)."""
-            body = text.encode("utf-8")
-            self.send_response(code)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self._send_body(text.encode("utf-8"), code, content_type)
 
         def _respond_uncaught(self, exc: Exception) -> None:
             """Turn an uncaught dispatch exception into a JSON 500 (BE-0264) instead of the empty-body

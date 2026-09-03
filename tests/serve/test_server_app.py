@@ -823,6 +823,19 @@ def test_empty_lease_204_carries_no_body(tmp_path: Path) -> None:
     assert "content-length" not in resp.headers
 
 
+def test_bodyless_statuses_drop_the_payload_whatever_the_route_type() -> None:
+    """`_result` is the one place a bodyless status is framed, and `_register` routes 204/304 into
+    it even for a `content_type` route (`/metrics`, `/stats`) — a conditional GET on those is where
+    a 304 would come from, and building its `Response` with a body would raise the same h11
+    `LocalProtocolError` the empty lease did."""
+    from bajutsu.serve.server.app import _result
+
+    for code in (204, 304):
+        resp = _result(({"ignored": True}, code))
+        assert resp.status_code == code
+        assert resp.body == b""
+
+
 def test_metrics_route_serves_prometheus_text(tmp_path: Path) -> None:
     # Parity with the stdlib handler: the FastAPI shell serves the same rendered metrics behind the
     # same auth gate (BE-0169). A token makes /metrics require a credential like every other route.

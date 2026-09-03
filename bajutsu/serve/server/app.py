@@ -482,7 +482,10 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
             # uniformly, so a route like the from-Git config bind or compose stays non-blocking
             # exactly as its hand-written predecessor did.
             payload, code = await run_in_threadpool(handle, state, ctx)
-            if route.content_type is not None:
+            # A bodyless status goes through `_result` whatever the route's content type, so the
+            # framing guard there covers this fork too (a conditional GET on /metrics or /stats is
+            # where a 304 would come from, and those are the content_type routes).
+            if route.content_type is not None and code not in (204, 304):
                 return Response(payload, status_code=code, media_type=route.content_type)
             return _result((payload, code))
 
