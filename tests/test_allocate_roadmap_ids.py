@@ -104,6 +104,71 @@ def test_allocate_renames_placeholder_end_to_end(
     assert "BE-XXXX" not in allocated.read_text(encoding="utf-8")
 
 
+def test_allocate_renames_placeholder_with_nested_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An item that carries a nested subdirectory (e.g. a misc/ subdirectory of supporting material moved under its BE item)
+    is renamed and rewritten too, not just its two top-level canonical files."""
+    roadmap = tmp_path / "roadmaps"
+    item = _make_item(roadmap, "BE-XXXX-with-notes")
+    nested = item / "misc" / "topic"
+    nested.mkdir(parents=True)
+    (nested / "README.md").write_text("notes for BE-XXXX-with-notes\n", encoding="utf-8")
+    # A nested file whose own *name* carries the token exercises the rename step, not just the
+    # text-rewrite step — reverting `f.with_name(renamed)` to the old `new_dir / renamed` would
+    # flatten this file into the item's root instead of renaming it in place.
+    (nested / "BE-XXXX-notes.md").write_text("see BE-XXXX-with-notes\n", encoding="utf-8")
+    _git_init(tmp_path, monkeypatch)
+
+    assert ari.main() == 0
+
+    allocated_dir = roadmap / "BE-0001-with-notes"
+    nested_readme = allocated_dir / "misc" / "topic" / "README.md"
+    assert nested_readme.is_file()
+    assert nested_readme.read_text(encoding="utf-8") == "notes for BE-0001-with-notes\n"
+    nested_named = allocated_dir / "misc" / "topic" / "BE-0001-notes.md"
+    assert nested_named.is_file()
+    assert nested_named.read_text(encoding="utf-8") == "see BE-0001-with-notes\n"
+
+
+def test_allocate_renames_nested_directory_carrying_the_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A nested *directory* (not just a file) whose own name carries the token is renamed too —
+    otherwise it would keep the placeholder in its path forever, and the dangling-reference lint
+    would never catch it (a directory named ``BE-XXXX-*`` is exempted as a placeholder's own
+    self-reference)."""
+    roadmap = tmp_path / "roadmaps"
+    item = _make_item(roadmap, "BE-XXXX-with-notes")
+    (item / "misc" / "BE-XXXX-notes").mkdir(parents=True)
+    (item / "misc" / "BE-XXXX-notes" / "README.md").write_text("notes\n", encoding="utf-8")
+    _git_init(tmp_path, monkeypatch)
+
+    assert ari.main() == 0
+
+    allocated = roadmap / "BE-0001-with-notes" / "misc" / "BE-0001-notes" / "README.md"
+    assert allocated.is_file()
+
+
+def test_allocate_skips_binary_file_text_rewrite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A binary artifact under a nested directory (e.g. a screenshot) is renamed like any other
+    file but is not decoded as UTF-8 for the token rewrite — it carries no id text to replace, and
+    decoding it would crash the allocator."""
+    roadmap = tmp_path / "roadmaps"
+    item = _make_item(roadmap, "BE-XXXX-with-notes")
+    nested = item / "misc" / "topic"
+    nested.mkdir(parents=True)
+    (nested / "shot.png").write_bytes(b"\x89PNG\r\n\x1a\n\xff\xfe\x00\x01")
+    _git_init(tmp_path, monkeypatch)
+
+    assert ari.main() == 0
+
+    allocated_dir = roadmap / "BE-0001-with-notes"
+    assert (allocated_dir / "misc" / "topic" / "shot.png").is_file()
+
+
 def test_placeholder_dirs_orders_by_slug(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Every item lives directly under roadmaps/ (BE-0159), so allocation order is a pure function of
     # the directory name (the slug) — the flat scan yields the placeholders sorted by name.

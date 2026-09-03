@@ -87,20 +87,34 @@ def rename_item(item_dir: Path, old_token: str, new_token: str) -> Path:
     the token inside the item's own files; return the new directory.
 
     ``old_token`` is the ``BE-XXXX`` placeholder. Rewriting every occurrence inside the item's *own*
-    files is safe because those files refer to the item by its id.
+    files is safe because those files refer to the item by its id. Walks the item's full subtree
+    (``rglob``, not a single-level scan), renaming any nested file *or directory* whose own name
+    carries the token, so an item that carries a nested directory — e.g. a ``misc/`` subdirectory of
+    supporting material — is renamed and rewritten too, not just its two top-level canonical files. A
+    file that fails to decode as UTF-8 (a binary artifact, e.g. a screenshot under ``misc/``) is
+    renamed like any other but left unrewritten, since it carries no id text to replace.
     """
     slug = item_dir.name[len(old_token) + 1 :]
     new_dir = item_dir.parent / f"{new_token}-{slug}"
     if new_dir.exists():
         raise SystemExit(f"refusing to assign {new_token}: {new_dir} already exists")
     git_mv(item_dir, new_dir)
-    for f in sorted(new_dir.iterdir()):
-        renamed = f.name.replace(old_token, new_token)
-        if renamed != f.name:
-            git_mv(f, new_dir / renamed)
-    for f in sorted(new_dir.iterdir()):
-        text = f.read_text(encoding="utf-8")
-        f.write_text(text.replace(old_token, new_token), encoding="utf-8")
+    # Rename any nested file *or directory* whose own name carries the placeholder, deepest path
+    # first: `git mv` moves a directory's whole subtree in one call, so renaming a directory before
+    # the entries below it would invalidate the paths already collected for those entries.
+    entries = sorted(new_dir.rglob("*"), key=lambda p: len(p.parts), reverse=True)
+    for f in entries:
+        if old_token in f.name:
+            git_mv(f, f.with_name(f.name.replace(old_token, new_token)))
+    for f in sorted(new_dir.rglob("*")):
+        if f.is_file():
+            try:
+                text = f.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue  # a binary artifact (e.g. a screenshot under misc/) carries no id
+            new_text = text.replace(old_token, new_token)
+            if new_text != text:
+                f.write_text(new_text, encoding="utf-8")
     return new_dir
 
 
