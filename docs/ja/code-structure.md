@@ -465,7 +465,7 @@ flowchart TB
 は決定性の核であり、通して読む価値のある唯一のファイルです。`Driver` プロトコルに加えて、すべての
 backend が共有する解決の関数が入っています。
 
-![ドライバ層のクラス図。Driver プロトコルが query、tap、type_text、swipe、wait_for、screenshot、capabilities を宣言します。XcuitestDriver、AdbDriver、PlaywrightDriver、XcuitestLiveDriver、FakeDriver がこれを満たします。AdbDriver はさらに共有の基底クラス CoordinateTreeDriver を継承し、座標系 backend 向けの再試行、収束待ち、解決の処理を受け取ります。主プロトコルの隣には、狭い任意プロトコルとして EvidenceProvider、ViewportProvider、BackendLifecycle が並びます。backend は、そのプラットフォームが実際に支えられる場合にだけ狭いプロトコルを実装します。](assets/diagrams/code-structure-driver-classes-ja.svg)
+![ドライバ層のクラス図。Driver プロトコルが query、tap、type_text、swipe、wait_for、screenshot、capabilities を宣言します。XcuitestDriver、AdbDriver、PlaywrightDriver、XcuitestLiveDriver、FakeDriver がこれを満たします。AdbDriver はさらに共有の基底クラス CoordinateTreeDriver を継承し、座標系 backend 向けの再試行、収束待ち、解決の処理を受け取ります。主プロトコルの隣には、EvidenceProvider や ViewportProvider のような狭い任意プロトコルが並び、その振る舞いを支える backend だけが構造的に満たします。BackendLifecycle は別扱いです。5 つのライフサイクルフックを backend 間で互いに素に分担する型付けの傘であり、isinstance ではなく明示的な cast で届くため、PlaywrightDriver と XcuitestDriver はそれぞれ自分の担当分のフックだけを実装します。](assets/diagrams/code-structure-driver-classes-ja.svg)
 
 <details>
 <summary>Mermaid のソース</summary>
@@ -529,27 +529,33 @@ classDiagram
     Driver <|.. FakeDriver
     CoordinateTreeDriver <|-- AdbDriver
     PlaywrightDriver ..|> EvidenceProvider
-    PlaywrightDriver ..|> BackendLifecycle
     XcuitestDriver ..|> ViewportProvider
     AdbDriver ..|> ViewportProvider
+    BackendLifecycle ..> PlaywrightDriver : cast(), 5 つ中 3 つのフック
+    BackendLifecycle ..> XcuitestDriver : cast(), 5 つ中 2 つのフック
 ```
 
 </details>
 
 **`resolve_unique(elements, sel)`** が第二原則を単独で背負っています。`query()` の 1 スナップ
 ショットを、ちょうど 1 つの要素まで絞り込みます。一致がなければ `ElementNotFound`、内容の異なる
-一致が 2 件以上あれば `AmbiguousSelector` を送出します。この関数が位置で勝者を決めることはありま
-せん。最初に一致した要素を操作する振る舞いこそ、この設計全体が防ごうとしている不安定さだからです。
-規則を弱めずに角を落とす工夫が 2 つあります。報告内容がまったく同じ候補は 1 つにまとめます。作成者が
-区別できる材料がないためです。また、分類済みの兄弟要素と同じラベルを持つ汎用の `other` 特性の
-包みは、候補から落とします。
+一致が 2 件以上あれば `AmbiguousSelector` を送出します。この関数が**自分の判断で**位置で勝者を
+決めることはありません。最初に一致した要素を操作する振る舞いこそ、この設計全体が防ごうとしている
+不安定さだからです。作成者が明示した `index` だけが例外で、内容の異なる複数候補のうち n 番目を選べ
+ます。[セレクタ](selectors.md)が定める、あくまで最後の手段です。規則を弱めずに角を落とす工夫が
+2 つあります。報告内容がまったく同じ候補は 1 つにまとめます。作成者が区別できる材料がないためです。
+また、分類済みの兄弟要素と同じラベルを持つ汎用の `other` 特性の包みは、候補から落とします。
 
 **狭い任意プロトコル**が、プラットフォーム間の能力差を引き受けます。すべての backend が空実装を
 並べる巨大なインターフェースを置く代わりに、`base.py` は小さなプロトコルを宣言します。
 `EvidenceProvider`、`ViewportProvider`、`ReadLagProvider`、`ReadOrderProvider`、
-`SettledReadProvider`、`RawSourceProvider`、`BackendLifecycle` です。呼び出し側は実行時に所属を
-確かめます。backend は、そのプラットフォームが実際に支える振る舞いに限って狭いプロトコルを
-実装します。
+`SettledReadProvider`、`RawSourceProvider`、`SettledCacheInvalidator` です。呼び出し側は実行時に
+所属を確かめます。backend は、そのプラットフォームが実際に支える振る舞いに限って狭いプロトコルを
+実装します。`BackendLifecycle` はあえての例外です。5 つのフックを実装側の backend が互いに素な
+部分集合として分担するので（`PlaywrightDriver` は `navigate`・`close`・`reset_context` を、
+`XcuitestDriver` は `await_ready`・`health_ready` を実装します）、どの backend も構造的な
+`isinstance` を満たしません。`platform_lifecycle` の環境は各フックに `cast(BackendLifecycle,
+driver)` で届きます。呼び出し箇所のための型付けの傘であって、適合の対象ではありません。
 
 **`FakeDriver`** には独立した説明が要ります。インメモリの backend があるおかげで、orchestrator 全体を
 デバイスなしで動かせます。決定的なゲートが Linux 上で数秒で終わり、Simulator を必要としないのは
@@ -677,7 +683,7 @@ manifest を読みます。
 モデルに届く経路は 3 つあります。どれもモデルを狭いプロトコルの背後に閉じ込めるので、決定的コアが
 モデルを目にすることはありません。
 
-![Tier 1 の経路のクラス図。Agent プロトコルは、Observation を受け取って Proposal を返す next_action と、ゴールを受け取る plan を宣言します。ClaudeAgent が ClaudeBackedAgent の上でこれを実装し、ClaudeBackedAgent は AiBackend プロトコルと会話します。AiBackend の実装は 3 つで、API と Bedrock 向けの AnthropicBackend、Claude Code CLI 向けの ClaudeCodeBackend、そして生成時に例外を送出する無効化 backend です。record のループが Agent を動かします。crawl のエンジンは ActionProposer を動かし、決定的な実装と ClaudeActionProposer のいずれかが応えます。triage コマンドは TriageAgent を動かし、規則ベースの HeuristicTriageAgent か ClaudeTriageAgent が応え、どちらも構造化された Fix を含む Triage を返します。](assets/diagrams/code-structure-tier1-ja.svg)
+![Tier 1 の経路のクラス図。Agent プロトコルは、Observation を受け取って Proposal を返す next_action と、ゴールを受け取る plan を宣言します。ClaudeAgent が ClaudeBackedAgent の上でこれを実装し、ClaudeBackedAgent は AiBackend プロトコルと会話します。AiBackend の実装は 3 つで、API と Bedrock 向けの AnthropicBackend、Claude Code CLI 向けの ClaudeCodeBackend、そして生成時に例外を送出する無効化 backend です。record のループが Agent を動かします。crawl のエンジンは ActionProposer を動かし、決定的な実装と ClaudeActionProposer のいずれかが応えます。triage コマンドは TriageAgent を動かし、規則ベースの HeuristicTriageAgent か ClaudeTriageAgent が応え、どちらも summary・category・平文の suggestions・高々 1 件の構造化された Fix を持つ Triage の判定を返します。](assets/diagrams/code-structure-tier1-ja.svg)
 
 <details>
 <summary>Mermaid のソース</summary>
@@ -713,8 +719,10 @@ classDiagram
         +triage(TriageContext) Triage
     }
     class Triage {
-        +str cause
-        +list~Fix~ fixes
+        +str summary
+        +str category
+        +list~str~ suggestions
+        +Fix fix
     }
 
     Agent <|.. ClaudeAgent

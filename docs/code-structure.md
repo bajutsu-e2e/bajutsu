@@ -465,7 +465,7 @@ to resolve a component mid-scenario.
 is the determinism core, and it is the one file worth reading in full. Beyond the `Driver` protocol
 it holds the resolution functions every backend shares.
 
-![Class diagram of the driver layer. The Driver protocol declares query, tap, type_text, swipe, wait_for, screenshot, and capabilities. XcuitestDriver, AdbDriver, PlaywrightDriver, XcuitestLiveDriver, and FakeDriver all satisfy it. AdbDriver additionally inherits the shared CoordinateTreeDriver base, which supplies retry, settle, and resolve behavior for coordinate backends. Alongside the main protocol sit three narrow optional protocols: EvidenceProvider, ViewportProvider, and BackendLifecycle. A backend implements a narrow protocol purely when its platform supports the behavior.](assets/diagrams/code-structure-driver-classes.svg)
+![Class diagram of the driver layer. The Driver protocol declares query, tap, type_text, swipe, wait_for, screenshot, and capabilities. XcuitestDriver, AdbDriver, PlaywrightDriver, XcuitestLiveDriver, and FakeDriver all satisfy it. AdbDriver additionally inherits the shared CoordinateTreeDriver base, which supplies retry, settle, and resolve behavior for coordinate backends. Alongside the main protocol sit narrow optional protocols such as EvidenceProvider and ViewportProvider, each satisfied structurally by the backends that support the behavior. BackendLifecycle is drawn separately: it is a typing umbrella over five lifecycle hooks split disjointly across backends, reached through an explicit cast rather than an isinstance check, so PlaywrightDriver and XcuitestDriver each implement only their own subset of its hooks.](assets/diagrams/code-structure-driver-classes.svg)
 
 <details>
 <summary>Mermaid source</summary>
@@ -529,26 +529,34 @@ classDiagram
     Driver <|.. FakeDriver
     CoordinateTreeDriver <|-- AdbDriver
     PlaywrightDriver ..|> EvidenceProvider
-    PlaywrightDriver ..|> BackendLifecycle
     XcuitestDriver ..|> ViewportProvider
     AdbDriver ..|> ViewportProvider
+    BackendLifecycle ..> PlaywrightDriver : cast(), 3 of 5 hooks
+    BackendLifecycle ..> XcuitestDriver : cast(), 2 of 5 hooks
 ```
 
 </details>
 
 **`resolve_unique(elements, sel)`** carries prime directive 2 on its own. It narrows one `query()`
 snapshot to exactly one element. Nothing matched raises `ElementNotFound`; two content-distinct
-matches raise `AmbiguousSelector`. The function never picks a winner by position, because acting on
-whichever element matched first is the flakiness the whole design exists to prevent. Two refinements
-soften the rule without weakening it: candidates reporting identical content collapse to one, since
-nothing distinguishes them for an author to disambiguate on, and a generic `other`-trait wrapper
-drops out when a classified sibling shares its label.
+matches raise `AmbiguousSelector`. The function never picks a winner by position *on its own*,
+because acting on whichever element matched first is the flakiness the whole design exists to
+prevent; only an author's explicit `index` selects the nth of several content-distinct candidates,
+the documented last resort ([selectors](selectors.md)). Two refinements soften the rule without
+weakening it: candidates reporting identical content collapse to one, since nothing distinguishes
+them for an author to disambiguate on, and a generic `other`-trait wrapper drops out when a
+classified sibling shares its label.
 
 **Narrow optional protocols** carry the capability differences between platforms. Rather than one
 fat interface every backend must stub out, `base.py` declares small protocols — `EvidenceProvider`,
 `ViewportProvider`, `ReadLagProvider`, `ReadOrderProvider`, `SettledReadProvider`,
-`RawSourceProvider`, `BackendLifecycle` — and a caller checks membership at runtime. A backend
-implements a narrow protocol purely when its platform genuinely supports the behavior.
+`RawSourceProvider`, `SettledCacheInvalidator` — and a caller checks membership at runtime. A
+backend implements a narrow protocol purely when its platform genuinely supports the behavior.
+`BackendLifecycle` is the deliberate exception: the concrete drivers own disjoint subsets of its
+five hooks (`PlaywrightDriver` implements `navigate`/`close`/`reset_context`; `XcuitestDriver`
+implements `await_ready`/`health_ready`), so none of them satisfies a structural `isinstance`. The
+`platform_lifecycle` environments reach each hook through `cast(BackendLifecycle, driver)` instead
+— a typing umbrella over the call sites, not a conformance target.
 
 **`FakeDriver`** deserves its own note. The in-memory backend lets the entire orchestrator run
 without a device, which is why the deterministic gate runs on Linux in seconds and needs no
@@ -674,7 +682,7 @@ HTML.
 Three commands reach a model, and each keeps the model behind a narrow protocol so the deterministic
 core never sees it.
 
-![Class diagram of the Tier 1 paths. The Agent protocol declares next_action, taking an Observation and returning a Proposal, and plan, taking a goal. ClaudeAgent implements it on top of ClaudeBackedAgent, which in turn talks to the AiBackend protocol. AiBackend has three adapters: AnthropicBackend for the API and Bedrock, ClaudeCodeBackend for the Claude Code CLI, and a disabled backend whose factory raises. The record loop drives the Agent. The crawl engine drives an ActionProposer, implemented deterministically or by ClaudeActionProposer. The triage command drives a TriageAgent, implemented by the rule-based HeuristicTriageAgent or by ClaudeTriageAgent, and both produce Triage values holding structured Fix suggestions.](assets/diagrams/code-structure-tier1.svg)
+![Class diagram of the Tier 1 paths. The Agent protocol declares next_action, taking an Observation and returning a Proposal, and plan, taking a goal. ClaudeAgent implements it on top of ClaudeBackedAgent, which in turn talks to the AiBackend protocol. AiBackend has three adapters: AnthropicBackend for the API and Bedrock, ClaudeCodeBackend for the Claude Code CLI, and a disabled backend whose factory raises. The record loop drives the Agent. The crawl engine drives an ActionProposer, implemented deterministically or by ClaudeActionProposer. The triage command drives a TriageAgent, implemented by the rule-based HeuristicTriageAgent or by ClaudeTriageAgent, and both produce a Triage verdict holding a summary, a category, plain-text suggestions, and at most one structured Fix.](assets/diagrams/code-structure-tier1.svg)
 
 <details>
 <summary>Mermaid source</summary>
@@ -710,8 +718,10 @@ classDiagram
         +triage(TriageContext) Triage
     }
     class Triage {
-        +str cause
-        +list~Fix~ fixes
+        +str summary
+        +str category
+        +list~str~ suggestions
+        +Fix fix
     }
 
     Agent <|.. ClaudeAgent
