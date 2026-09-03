@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-split-multi-class-modules-ja.md)
+**English** · [日本語](BE-0411-split-multi-class-modules-ja.md)
 
-# BE-XXXX — Split bajutsu's multi-class modules into one class per file
+# BE-0411 — Split bajutsu's multi-class modules into one class per file
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-split-multi-class-modules.md) |
+| Proposal | [BE-0411](BE-0411-split-multi-class-modules.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0411") |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
