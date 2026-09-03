@@ -263,6 +263,33 @@ def test_lease_returns_none_when_queue_is_empty(serve_engine: Callable[..., Engi
     assert _repo(serve_engine).lease_job("worker-1") is None
 
 
+def test_max_job_id_is_zero_when_the_table_is_empty(serve_engine: Callable[..., Engine]) -> None:
+    assert _repo(serve_engine).max_job_id() == 0
+
+
+def test_max_job_id_returns_the_highest_numeric_id(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
+    repo.enqueue_job("2", org_id="o1", spec={})
+    repo.enqueue_job("10", org_id="o1", spec={})
+    repo.enqueue_job("3", org_id="o1", spec={})
+    assert repo.max_job_id() == 10
+
+
+def test_max_job_id_ignores_non_numeric_ids(serve_engine: Callable[..., Engine]) -> None:
+    repo = _repo(serve_engine)
+    repo.enqueue_job("abc", org_id="o1", spec={})
+    assert repo.max_job_id() == 0
+
+
+def test_max_job_id_returns_zero_when_the_jobs_table_does_not_exist_yet(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    # ServeState can be constructed before this database's migration that creates `jobs` has run —
+    # seeding must not crash startup, just fall back to the pre-seeding behaviour (start at 0).
+    engine = serve_engine()  # deliberately skip Base.metadata.create_all
+    assert SqlRepository(engine).max_job_id() == 0
+
+
 def test_lease_takes_oldest_first(serve_engine: Callable[..., Engine]) -> None:
     repo = _repo(serve_engine)
     repo.enqueue_job("j1", org_id="o1", spec={"n": 1})

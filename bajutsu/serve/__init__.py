@@ -509,6 +509,13 @@ def _build_server_state(
         ),
         startup_warnings=tuple(startup_warnings),
     )
+    if repo is not None:
+        # A restart otherwise reissues job ids from "1" while the DB-backed `jobs` table keeps
+        # every id the previous process handed out, so the first dispatch after restart collides
+        # on a primary key already taken. Only the control plane mints ids (a worker's ServeState
+        # builds its `Job` straight from the leased spec, bypassing the registry entirely), so this
+        # is the only construction site that needs the seed.
+        state.job_registry.seed_seq(repo.max_job_id())
 
     # Build the object-storage seams per org (BE-0015 multi-tenancy): each org's artifacts/
     # scenarios/baselines live under its own key prefix, and its scenario store only acknowledges

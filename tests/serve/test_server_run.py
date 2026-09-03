@@ -165,6 +165,53 @@ def test_build_state_server_wires_the_repository_when_a_database_url_is_set(
     assert isinstance(state.repository, SqlRepository)
 
 
+def test_build_state_server_seeds_the_job_id_counter_past_a_restart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A process restart calls `_build_state` again against the same database. Without seeding the
+    # id counter from the highest existing row, the fresh JobRegistry starts back at "1" — already
+    # taken by the previous process's job — and the first post-restart dispatch fails with a
+    # duplicate primary-key error on the `jobs` table.
+    from cryptography.fernet import Fernet
+
+    from bajutsu.serve.server.db import engine_from_url
+    from bajutsu.serve.server.models import Base
+
+    monkeypatch.setenv("BAJUTSU_SERVER_STORE", "s3://bkt")
+    monkeypatch.setenv("BAJUTSU_S3_REGION", "auto")
+    monkeypatch.setenv("BAJUTSU_REDIS_URL", "redis://localhost:6379")
+    db_url = f"sqlite:///{tmp_path / 'serve.db'}"
+    monkeypatch.setenv("BAJUTSU_DATABASE_URL", db_url)
+    monkeypatch.setenv("BAJUTSU_SECRETS_KEY", Fernet.generate_key().decode("ascii"))
+    engine = engine_from_url(db_url)
+    Base.metadata.create_all(engine)  # migrations already applied, in the real deployment
+
+    _scn, cfg, runs = project(tmp_path)
+
+    def _build() -> srv.ServeState:
+        return srv._build_state(
+            runs_dir=runs,
+            config=cfg,
+            scenarios_dir=None,
+            root=tmp_path,
+            baselines_dir=None,
+            max_concurrent=4,
+            token=None,
+            backend="server",
+        )
+
+    before_restart = _build()
+    assert before_restart.repository is not None
+    job = before_restart.job_registry.register(srv.Job(cmd=["bajutsu", "run"]))
+    before_restart.repository.enqueue_job(job.id, org_id="", spec={})
+
+    after_restart = _build()
+    assert after_restart.repository is not None
+    new_job = after_restart.job_registry.register(srv.Job(cmd=["bajutsu", "run"]))
+    assert new_job.id != job.id
+    after_restart.repository.enqueue_job(new_job.id, org_id="", spec={})  # no duplicate-key error
+
+
 def test_build_state_server_requires_a_secrets_key_with_a_database(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

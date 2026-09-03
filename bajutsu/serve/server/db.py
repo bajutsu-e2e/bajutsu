@@ -307,6 +307,15 @@ class Repository(Protocol):
     ) -> None:
         """Insert a job with status ``queued`` and its required-capability routing key (BE-0166)."""
 
+    def max_job_id(self) -> int:
+        """The highest numeric job id persisted so far, or 0 if the table is empty.
+
+        `JobRegistry` assigns ids from an in-process counter that restarts at 0 on every process
+        restart, while the ``jobs`` table survives it — so a fresh process reissues ids already
+        taken and its first insert hits a duplicate-key error. The control plane seeds its counter
+        from this at startup so a restart resumes past every id already on disk.
+        """
+
     def register_worker(self, worker_id: str, capabilities: Iterable[str]) -> None:
         """Record what *worker_id* can serve and that it is live now (BE-0166 routing).
 
@@ -927,6 +936,30 @@ class SqlRepository:
                 JobRecord(id=job_id, org_id=org_id, spec=spec, capabilities=list(capabilities))
             )
             session.commit()
+
+    def max_job_id(self) -> int:
+        # Pulls every job id into Python to find the max — fine for a once-per-boot startup query,
+        # but would need SQL-side MAX(CAST(id AS INTEGER)) if `jobs` ever grows large enough for
+        # that to matter (it has no retention sweep of its own today).
+        from sqlalchemy import inspect, select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        # Called once from server-backend startup, before this process is guaranteed the migration
+        # that creates `jobs` has run against this database yet — the id counter then simply starts
+        # at 0, same as before this seeding existed. Checking existence directly (rather than
+        # catching the query's error) means a database that's merely unreachable at boot still
+        # raises here instead of silently seeding 0 and reintroducing the same duplicate-key
+        # collision once it comes back — `has_table` itself raises when the connection fails.
+        if not inspect(self._engine).has_table(JobRecord.__tablename__):
+            return 0
+        with Session(self._engine) as session:
+            ids = session.scalars(select(JobRecord.id)).all()
+        # `id` is a str column (non-numeric ids existed before BE-0166 routing); skip any that
+        # aren't a plain int rather than letting one bad row crash the whole startup seed.
+        numeric = [int(i) for i in ids if i.isdigit()]
+        return max(numeric, default=0)
 
     def register_worker(self, worker_id: str, capabilities: Iterable[str]) -> None:
         from sqlalchemy.exc import IntegrityError

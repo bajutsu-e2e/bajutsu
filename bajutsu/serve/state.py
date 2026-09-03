@@ -264,6 +264,20 @@ class JobRegistry:
     _seq: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
+    def seed_seq(self, floor: int) -> None:
+        """Fast-forward the id counter past *floor* (a persisted store's highest existing id).
+
+        A restart otherwise reissues ids from 1 while a DB-backed ``jobs`` table keeps every id the
+        previous process handed out, so the first dispatch after restart collides on a primary key
+        already taken.
+
+        Fixes a single control-plane process restarting, not two replicas racing this seed
+        concurrently — both would read the same floor and hand out the same next id. A DB-side
+        sequence/identity column or UUID ids would remove that case too.
+        """
+        with self._lock:
+            self._seq = max(self._seq, floor)
+
     def active_jobs(self) -> int:
         """How many spawned jobs are still running (not yet finished)."""
         self._release_finished()
