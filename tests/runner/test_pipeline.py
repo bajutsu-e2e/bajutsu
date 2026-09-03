@@ -1919,4 +1919,4 @@ def test_the_run_resolves_a_system_alert_prompt_against_the_scenario_locale() ->
     results = run_all(_eff(), [scenario], lease)
 
     assert [r.ok for r in results] == [True], results[0].failure
-    assert driver.actions == [("handle_system_alert", ({"label": "許可"}, 5.0))]
+    assert driver.actions == [("handle_system_alert", ({"label": "許可"}, 0.0))]

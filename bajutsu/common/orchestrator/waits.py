@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from bajutsu.common import assertions
@@ -21,6 +21,7 @@ from bajutsu.common.orchestrator.types import (
     _no_network,
     alert_block_note,
     pick_alert_label,
+    selector_names_button,
     uncleared_prompt_note,
 )
 from bajutsu.common.scenario import Gone, Wait, WaitRequest
@@ -247,6 +248,9 @@ class _AlertGuardGate:
     clock: Clock
     guard: AlertGuardConfig
     alerts: list[AlertEvent]
+    # The selector a `handleSystemAlert` step running this gate is itself waiting on (BE-0406), so
+    # the guard leaves that step's own prompt alone. None for a `wait` step, which names no prompt.
+    reserved: base.Selector | None = None
     _native: bool = field(init=False)
     _last_native: float | None = None
     _collapsed_polls: int = 0
@@ -255,6 +259,12 @@ class _AlertGuardGate:
     # this the proxy would overwrite the probe's own button-naming note with its hedged one on every
     # tick in between — reporting less than the guard actually knows.
     _native_unhandled: bool = False
+    # Whether the most recent native probe found the alert the waiting step itself named. Latched
+    # for the same reason as `_native_unhandled` above: the probe runs once per `poll_interval`
+    # while the collapsed-tree proxy samples every `_POLL`, and that alert covers the app, so
+    # without this the proxy would spend the polls in between recording a hedged "something is
+    # blocking the screen" note against a prompt the step is about to answer.
+    _native_reserved: bool = False
     # What this gate last saw blocking the screen and could not clear (BE-0402), for `_wait` to
     # append to a timeout it is about to report. Empty whenever the latest poll showed no block.
     blocked_note: str = ""
@@ -288,9 +298,10 @@ class _AlertGuardGate:
         probed_absent = False
         if self._last_native is None or now - self._last_native >= self.guard.poll_interval:
             self._last_native = now
-            state, event, buttons = self.guard.probe_native(self.driver)
+            state, event, buttons = self.guard.probe_native(self.driver, self.reserved)
             probed_absent = state == "absent"
             self._native_unhandled = state == "unhandled"
+            self._native_reserved = state == "reserved"
             if state != "unhandled" and not self._tree_gave_up:
                 # Nothing the native query names is blocking, so any note it left is stale. The proxy
                 # below may still set its hedged one for a surface the query cannot enumerate. An
@@ -311,7 +322,8 @@ class _AlertGuardGate:
                 self._collapsed_polls = 0
                 self.blocked_note = alert_block_note(buttons)
                 return
-            # "absent": no *SpringBoard* alert — fall through to the collapsed-tree proxy below.
+            # "absent" falls through to the in-tree dismiss and the collapsed-tree proxy below;
+            # "reserved" falls through too, but its own latch stops it short of the proxy.
         if self.guard.labels and probed_absent:
             # Only once the scenario has named its own candidate labels: an author who configured
             # `systemAlertHandling.labels` has opted into exactly the narrow surface
@@ -334,6 +346,13 @@ class _AlertGuardGate:
                 self._collapsed_polls = 0
                 self.blocked_note = ""
                 return
+        if self._native_reserved:
+            # The last probe found the alert the `handleSystemAlert` step driving this gate is
+            # itself waiting on, and that step taps it on its own next read (BE-0406). Nothing here
+            # acts, and the proxy below must not run either: the alert covers the app, so the proxy
+            # would record a block against a prompt that is about to be answered.
+            self._collapsed_polls = 0
+            return
         if self._native_unhandled:
             # The last probe named an alert nothing will clear, and the proxy can only say less about
             # the same block. Keep the specific note until a probe reports the screen unblocked.
@@ -561,6 +580,155 @@ class _AlertGuardGate:
             if recorded is event:
                 del self.alerts[i]
                 return
+
+
+# The `handleSystemAlert` step's own read of the alert's buttons, on its own wall clock (BE-0406).
+# The cadence the XCUITest driver's polling loop paid before that wait moved here, so the step
+# notices its target prompt no slower than it did — and deliberately independent of the guard's
+# `poll_interval`, which paces a cross-process probe a scenario may widen on purpose
+# (`pollInterval: 5`, to keep stacked prompts up across one probe). Coupling the two would put that
+# widened gap between the step and its own prompt.
+_SYSTEM_ALERT_POLL = 0.2
+
+# What the step's own tap passes the driver: query once and tap if the button is there, else fail
+# fast. The waiting is this loop's job, not the driver's.
+_STEP_TAP_TIMEOUT = 0.0
+
+
+def wait_for_system_alert(
+    driver: base.Driver,
+    sel: base.Selector,
+    timeout: float,
+    clock: Clock,
+    *,
+    alert_guard: AlertGuardConfig | None = None,
+    alerts: list[AlertEvent] | None = None,
+    cancelled: CancelSource = not_cancelled,
+) -> tuple[bool, str]:
+    """Wait for the system alert `sel` names and tap it, clearing declared interruptions meanwhile.
+
+    The `handleSystemAlert` step's wait, which BE-0406 moved out of the XCUITest driver so the
+    reactive guard can act while it runs. Before, the driver polled SpringBoard to its own deadline
+    and nothing else could intervene inside that call, so a prompt the scenario had already declared
+    — iOS's save-password alert, raised into the app's own process and invisible to this query —
+    held the screen for the step's whole timeout, and the step failed naming the permission prompt
+    it never saw rather than the alert that was actually up.
+
+    Each poll reads the step's own target first and only then hands the tree to the guard. That
+    order is what keeps the two from answering the same prompt when a scenario holds a `rules` entry
+    for it with the opposite choice; the gate closes the rest of that window itself, since it is
+    given `sel` and declines an alert `sel` names (`probe_native`'s `"reserved"`).
+
+    Args:
+        timeout: The step's own deadline. Zero reads once and gives up, so a caller that already
+            knows a prompt is up pays no poll.
+        alert_guard: The scenario's reactive guard, when the run has one. Without it this is a plain
+            condition wait — the shape `record`'s replay gets.
+        alerts: The step's outcome list, which the guard appends each prompt it dismissed to.
+        cancelled: Consulted once per poll, right where the deadline is, so a cancelled run is
+            noticed within one tick instead of actuating the device for the rest of the timeout
+            (BE-0370). It raises rather than returning a verdict: the prompt neither appeared nor
+            timed out, and the scenario is over either way.
+
+    Raises:
+        base.UnsupportedAction: the backend does not advertise `HANDLE_SYSTEM_ALERT`.
+        RunCancelled: the run was cancelled while this step was waiting.
+
+    Returns:
+        `(ok, reason)`. The reason names what the step actually saw: no alert at all, an alert whose
+        buttons `sel` did not name, one offering `sel`'s label twice, or — through the guard's own
+        note — a prompt that held the screen and nothing could clear.
+    """
+    if base.Capability.HANDLE_SYSTEM_ALERT not in driver.capabilities():
+        # Preflight rejects the step before any device work; this is the mid-run backstop, and it
+        # has to stay immediate. Polling a backend that can never see a system alert would spend
+        # the step's whole timeout to arrive at the same refusal. The driver's own message names
+        # the backend, so ask it first and only fall back to a generic refusal — a driver that
+        # returns here would otherwise pass a step nothing answered.
+        driver.handle_system_alert(sel, _STEP_TAP_TIMEOUT)
+        raise base.UnsupportedAction(
+            f"handleSystemAlert needs a backend advertising HANDLE_SYSTEM_ALERT: {sel!r}"
+        )
+    deadline = clock.now() + timeout
+    gate = (
+        _AlertGuardGate(
+            driver=driver,
+            clock=clock,
+            guard=alert_guard,
+            alerts=alerts if alerts is not None else [],
+            reserved=sel,
+        )
+        if alert_guard is not None
+        else None
+    )
+    last_read: float | None = None
+    # The buttons the step's *latest* read saw, for the timeout to name — reassigned on every read,
+    # including an empty one. Keeping the last non-empty list instead would report an alert the
+    # guard has since cleared as still on screen, turning "no alert appeared at all" into "an alert
+    # was up that your selector missed": the very distinction this reason exists to draw.
+    seen: list[str] = []
+    # Whether the latest read found `sel`'s label on the alert more than once. Reported separately
+    # because it is a different fault from a selector that matched nothing — the author named a
+    # button the alert really offers, twice — and because the wait polls on rather than failing at
+    # once, so nothing else would ever say so (determinism first: never tap whichever matched first).
+    ambiguous = False
+    while True:
+        t0 = clock.now()
+        if last_read is None or t0 - last_read >= _SYSTEM_ALERT_POLL:
+            last_read = t0
+            seen = driver.system_alert_labels()
+            ambiguous = False
+            # Decided from the labels already in hand: `handle_system_alert` issues its own
+            # cross-process query, so tapping speculatively would double this step's query rate for
+            # the whole time an interruption the step is not waiting for holds the screen.
+            if selector_names_button(sel, seen):
+                try:
+                    driver.handle_system_alert(sel, _STEP_TAP_TIMEOUT)
+                except base.ElementNotFound:
+                    # The alert closed itself between this read and the tap. Not the step's verdict:
+                    # keep polling to the deadline, so a benign race costs one poll rather than the
+                    # step (`probe_native`'s own treatment of the same window).
+                    pass
+                except base.AmbiguousSelector:
+                    # The other half of that race: the alert is still up and now offers `sel`'s
+                    # label twice. Declines rather than tapping whichever matched first, and polls
+                    # on — a duplicate that a redraw resolves costs one poll, and one that does not
+                    # is named in the timeout below.
+                    ambiguous = True
+                else:
+                    return True, ""
+        if gate is not None:
+            gate.observe(driver.query())
+        if cancelled():
+            raise RunCancelled
+        if clock.now() >= deadline:
+            return False, _with_block_note(
+                _alert_timeout_reason(sel, timeout, seen, ambiguous), gate
+            )
+        _adaptive_sleep(clock, t0)
+
+
+def _alert_timeout_reason(
+    sel: base.Selector, timeout: float, seen: Sequence[str], ambiguous: bool
+) -> str:
+    """What the `handleSystemAlert` step saw, for the timeout it is about to report (BE-0406).
+
+    `seen` is the step's latest read of the alert's buttons, so an empty one means no alert was up
+    at the deadline rather than that none ever was — the guard's own note, appended by the caller,
+    is what names a prompt that came and went or one nothing could clear.
+    """
+    if not seen:
+        return f"no system alert appeared within {timeout}s: {sel!r}"
+    offered = ", ".join(seen)
+    if ambiguous:
+        return (
+            f"system alert button {sel!r} is ambiguous and stayed ambiguous for {timeout}s "
+            f"(the alert on screen offered: {offered}) — add index to pick one"
+        )
+    return (
+        f"no system alert button matching {sel!r} appeared within {timeout}s "
+        f"(the alert on screen offered: {offered})"
+    )
 
 
 # Genuinely long: the wait state machine on the deterministic run path. Splitting it carries real

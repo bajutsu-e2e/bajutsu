@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0406](BE-0406-system-alert-declared-prompts.md) |
 | Author | [@akiramatsuda](https://github.com/akiramatsuda) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0406") |
 | Topic | Platform support |
 | Related | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0369](../BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules.md), [BE-0399](../BE-0399-ios-system-alert-interruption-policy/BE-0399-ios-system-alert-interruption-policy.md), [BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md), [BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) |
@@ -494,7 +494,7 @@ the gap Unit 2b closes to bring the two surfaces to the same standard.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — move the `handleSystemAlert` wait into the orchestrator, driving one gate per step
+- [x] Unit 1 — move the `handleSystemAlert` wait into the orchestrator, driving one gate per step
       at `_POLL`, with the step's own read throttled to `_SYSTEM_ALERT_POLL_SECONDS` independent of
       the guard's `pollInterval`, and fail with a reason that names the alert that held the screen.
 - [ ] Unit 2a — remove `labels` and `--alert-labels`; re-key the native probe and both in-tree
@@ -513,6 +513,23 @@ the gap Unit 2b closes to bring the two surfaces to the same standard.
       and add the regression scenario to the `ios-e2e` lane.
 - [ ] Unit 5 — update `docs/scenarios.md`, `docs/architecture.md`, and both `docs/ja/` mirrors,
       including the interruption monitor's now-consequential decline.
+
+Log:
+
+- Unit 1. `Driver.handle_system_alert` stops waiting: the XCUITest implementation resolves
+  the step's selector against a single `/systemAlert/query` read, and `timeout` stays on the
+  signature (every caller now passes zero) so no other backend moves. The wait becomes
+  `wait_for_system_alert` in `bajutsu/common/orchestrator/waits.py`, which polls to the step's own
+  deadline at `_POLL`, reads the step's target on its own 0.2s throttle, and hands each poll's tree
+  to one `_AlertGuardGate`. `_run_step_body` runs it for `kind == "handle_system_alert"` with the
+  scenario's guard, alongside `wait`; the action-handler registry keeps its own entry, without a
+  guard, for `record`'s replay. `probe_native` gains a `"reserved"` answer so the guard declines an
+  alert the waiting step's selector names, which is what stops the two from deciding the same
+  prompt in opposite directions. The timeout now distinguishes no alert at all from one whose
+  buttons the selector did not match, and carries the guard's own note for a prompt nothing could
+  clear. `docs/scenarios.md` and `docs/architecture.md` record the move, with both `docs/ja/`
+  mirrors; the rest of Unit 5 waits on the later units. Paths throughout are the post-reorg
+  `bajutsu/common/…` ones, not the `bajutsu/…` ones this proposal was written against.
 
 ## References
 

@@ -258,8 +258,10 @@ class FakeDriver:
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
         # Resolve `sel` over the seeded alert buttons with the same discipline the real backend uses
         # (BE-0316): zero → ElementNotFound, ambiguous → AmbiguousSelector, `index` picks the nth.
+        # One query and no wait, like the real backend since BE-0406 moved that wait to the
+        # orchestrator, so a test driving the step here exercises the shape a run actually takes.
         if not self.system_alert_buttons:
-            raise base.ElementNotFound(f"no system alert appeared within {timeout}s: {sel!r}")
+            raise base.ElementNotFound(f"no system alert is showing: {sel!r}")
         button = base.resolve_unique(self.system_alert_buttons, sel)
         # Handle-based like the real backend, and out of the app's own coordinate space, so no point.
         self._actuations.record(
