@@ -195,7 +195,7 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
                 return _hardened(JSONResponse({"error": "forbidden"}, status_code=403))
         try:
             response = await call_next(request)
-        except Exception:
+        except Exception as exc:
             # Log here, through oplog, so the traceback carries the request's correlation ids and
             # lands as one structured `exc_info` field. Answer the 500 ourselves rather than
             # re-raising: with no handler registered for a bare `Exception`, Starlette's own
@@ -205,7 +205,13 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
             # so it bypasses oplog entirely. Swallowing it here keeps the traceback logged exactly
             # once, in the one structured shape.
             _logger.exception("unhandled exception in %s %s", request.method, request.url.path)
-            return _hardened(JSONResponse({"error": "internal server error"}, status_code=500))
+            # Same body as the stdlib handler's `_respond_uncaught` (BE-0264): the exception's own
+            # message is the actionable diagnostic (e.g. "xcuitest backend requires a
+            # runner_port"), and the shared SPA renders it as-is, so answering the two backends
+            # differently here would silently reintroduce the opaque error BE-0264 removed.
+            return _hardened(
+                JSONResponse({"error": str(exc) or exc.__class__.__name__}, status_code=500)
+            )
         return _hardened(response)
 
     def _hardened(response: Response) -> Response:

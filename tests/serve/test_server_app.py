@@ -937,7 +937,7 @@ def test_unhandled_route_exception_is_logged_once_and_answered_with_json_500(
     with caplog.at_level(logging.ERROR, logger="bajutsu.serve.server.app"):
         resp = client.get("/api/_boom")
     assert resp.status_code == 500
-    assert resp.json() == {"error": "internal server error"}
+    assert resp.json() == {"error": "boom"}  # mirrors the stdlib handler's `_respond_uncaught`
     (record,) = [r for r in caplog.records if r.name == "bajutsu.serve.server.app"]
     assert record.exc_info is not None
     assert record.exc_info[0] is RuntimeError

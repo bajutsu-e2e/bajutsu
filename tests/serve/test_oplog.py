@@ -246,6 +246,30 @@ def test_stack_info_is_a_structured_field_not_a_multiline_dump() -> None:
     assert "Stack (most recent call last)" in str(record["stack_info"])
 
 
+# 1. Structured schema — the text channel holds the same one-record-per-line contract.
+def test_text_format_exc_info_stays_on_one_line() -> None:
+    stream = io.StringIO()
+    logger = _emit(stream, fmt="text")
+    try:
+        _raise_boom()
+    except ValueError:
+        logger.exception("it broke")
+    lines = stream.getvalue().splitlines()
+    assert len(lines) == 1  # the traceback did not spill onto extra lines
+    assert "it broke" in lines[0]
+    assert "ValueError: boom" in lines[0]
+    assert "Traceback" in lines[0]
+
+
+def test_text_format_stack_info_stays_on_one_line() -> None:
+    stream = io.StringIO()
+    logger = _emit(stream, fmt="text")
+    logger.info("checkpoint", stack_info=True)
+    lines = stream.getvalue().splitlines()
+    assert len(lines) == 1
+    assert "Stack (most recent call last)" in lines[0]
+
+
 def test_text_format_is_human_readable_not_json() -> None:
     stream = io.StringIO()
     logger = _emit(stream, fmt="text")
