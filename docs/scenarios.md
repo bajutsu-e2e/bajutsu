@@ -304,9 +304,10 @@ To dismiss the prompt rather than accept it, target the dismissive button
   That wait is the runner's, not the backend's, so `systemAlertHandling` clears an interruption
   *during* the step instead of only after it has already spent its timeout and failed. This is what
   the step needs when another prompt lands first — iOS's save-password alert, which the app's own
-  process raises and the SpringBoard query cannot see, covers the screen and stops the prompt this
-  step waits for from ever being raised. Without the guard running here, the step spent its whole
-  timeout and failed naming the permission prompt it never saw. The guard leaves this step's own
+  process raises and the SpringBoard query cannot see, covers the screen, so iOS never raises the
+  prompt this step waits for. Before this move, no guard could run inside the driver's own wait, so
+  the step spent its whole timeout and failed naming a permission prompt it never saw. The guard
+  leaves this step's own
   prompt alone, so a scenario may hold a `rules` entry for it with the opposite choice and the step
   still decides it.
 - **Zero or many both fail.** No prompt within `timeout` fails the step; more than one button
