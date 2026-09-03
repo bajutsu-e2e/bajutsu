@@ -926,7 +926,10 @@ def test_unhandled_route_exception_is_logged_once_and_answered_with_json_500(
 ) -> None:
     """An exception raised deep in the ASGI stack is logged once, with a traceback, and answered
     with our own JSON 500 — not re-raised, which would let uvicorn's own (unstructured) ASGI
-    exception logger log the same traceback a second time (BE-0055 follow-up)."""
+    exception logger log the same traceback a second time (BE-0055 follow-up). The client-visible
+    body is deliberately generic rather than mirroring the stdlib handler's `_respond_uncaught`
+    (BE-0264): this backend is the multi-tenant hosted control plane (BE-0055), so the exception's
+    own message stays server-side, in the structured log, instead of reaching the client."""
     app = make_app(_state(tmp_path))
 
     @app.get("/api/_boom")
@@ -937,7 +940,8 @@ def test_unhandled_route_exception_is_logged_once_and_answered_with_json_500(
     with caplog.at_level(logging.ERROR, logger="bajutsu.serve.server.app"):
         resp = client.get("/api/_boom")
     assert resp.status_code == 500
-    assert resp.json() == {"error": "boom"}  # mirrors the stdlib handler's `_respond_uncaught`
+    assert resp.json() == {"error": "internal server error"}
+    assert "boom" not in resp.text  # the exception message must not reach the client
     (record,) = [r for r in caplog.records if r.name == "bajutsu.serve.server.app"]
     assert record.exc_info is not None
     assert record.exc_info[0] is RuntimeError
