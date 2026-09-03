@@ -190,10 +190,10 @@ GCS の signed URL には、署名用の秘密鍵が要ります。ところが 
 (KSA) が Google サービスアカウント (GSA) に成りすます KSA→GSA 連携も、この経路の一種です。
 秘密鍵を持たないため、ローカルでの署名はエラーになります。
 
-`object_store_from_uri` は、秘密鍵の有無を一律の経路で吸収します。まず ADC を `cloud-platform`
-スコープで一度だけ解決します。次に、その認証情報が持つ `service_account_email` と
-`access_token` を `generate_signed_url` に渡します。渡された `generate_signed_url` は、
-ローカルの秘密鍵ではなく IAM の `signBlob` API を呼んで署名します。この経路は、サービス
+`object_store_from_uri` は、秘密鍵の有無にかかわらず同じ経路で署名します。まず ADC を
+`cloud-platform` スコープで一度だけ解決します。次に、その認証情報が持つ `service_account_email`
+と `access_token` を `generate_signed_url` に渡します。これらを受け取った `generate_signed_url`
+は、ローカルの秘密鍵ではなく IAM の `signBlob` API を呼んで署名します。この経路は、サービス
 アカウントのキーファイルを使う場合にも同じように働きます。
 
 IAM 経由の署名には、運用上の前提が1つ増えます。署名する GSA 自身に、IAM の権限を1つ追加する
