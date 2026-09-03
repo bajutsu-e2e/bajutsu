@@ -515,6 +515,11 @@ def _resolve_sim(*, listing: str) -> str:
         "line to run its own UDID-extraction pipeline against a synthetic `simctl` listing."
     )
     pipeline = m.group(1).replace("xcrun simctl list devices booted", "cat", 1)
+    assert pipeline != m.group(1), (
+        "demos/showcase/Makefile's `SIM ?=` no longer runs `xcrun simctl list devices booted` — "
+        "this pin substitutes `cat` for that command to stay hermetic, and without the "
+        "substitution it would probe the host's live Simulator state, not `listing`."
+    )
     out = subprocess.run(
         ["sh", "-c", pipeline], input=listing, capture_output=True, text=True, check=True
     )
