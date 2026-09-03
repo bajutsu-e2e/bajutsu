@@ -5,7 +5,7 @@ wrapped around them — the part a CI lane actually keys on:
 
 - the **exit-code contract** (BE-0024): a target carrying the wrong field for its backend is a
   config error and exits 2, while a scenario the backend cannot run is a capability failure and
-  exits 1 — reported *after* the environment section, so the user sees both problems at once.
+  exits 1 — a verdict raised *after* the environment section, so both problems surface at once.
 - the **informational disclosures** doctor prints without touching a device: the per-scenario
   actuator split (BE-0240) and the xcuitest runner tier (BE-0292).
 - the **booted-device counter**, which asks `adb` on Android and `simctl` on iOS.
@@ -128,7 +128,8 @@ def test_an_unrunnable_scenario_exits_1_and_names_every_reason(
     assert "capability preflight:" in r.stdout
     assert "✘ [theme]" in r.stdout
     assert "selectOption" in r.stdout
-    # Reported after the environment section, not instead of it.
+    # Printed before the environment section; only the exit-1 verdict is deferred until after it,
+    # so one invocation reports both classes of problem.
     assert r.stdout.index("capability preflight:") < r.stdout.index("environment:")
     assert "✓ device attached" in r.stdout
 
@@ -214,6 +215,9 @@ def test_ios_counts_booted_simulators(tmp_path: Path, monkeypatch: pytest.Monkey
     _forbid_probe(monkeypatch)
     seen = _counted(monkeypatch)
     monkeypatch.setattr("bajutsu.cli.commands.doctor.select_actuator", lambda _b: "xcuitest")
+    # No `xcuitest:` block resolves to the bundled tier, whose mismatch note probes the host
+    # toolchain — an external dependency this test is not about.
+    monkeypatch.setattr("bajutsu.cli.commands.doctor._host_toolchain", lambda: (None, None))
     monkeypatch.setattr("bajutsu.common.backend_cli.simctl.booted_udids", lambda: ["UDID-1"])
     monkeypatch.setattr(
         "bajutsu.common.backend_cli.adb.booted_serials", lambda: pytest.fail("iOS must not ask adb")
