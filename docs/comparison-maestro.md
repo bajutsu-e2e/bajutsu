@@ -345,6 +345,117 @@ parallel hosted devices, merge blocking, and Slack notifications on Monday can b
 This table is the honest counterweight to everything above. Maestro has four years of production
 use behind it. Bajutsu is three months old, has five stars, and needs a clone to install.
 
+## Maintaining a suite with a coding agent
+
+Everything above compares the tools as products. A team evaluating them for the long haul asks a
+narrower question. **Which tool is better to maintain a suite in, when a coding agent is available
+to both sides?**
+
+The answer splits, because "maintenance" names two different jobs.
+
+- **Resisting decay** — keeping a green suite honest across months of application change.
+- **Repair throughput** — getting one broken scenario passing again today.
+
+Bajutsu wins the first, and an agent cannot close that gap. Maestro wins the second once an agent
+is in the loop, and the margin is not small.
+
+### What an agent cannot recover
+
+**A suite that goes green while checking the wrong thing.** The worst decay is not a red test. It is
+a test that keeps passing against a different element. A UI change can add a second control with
+the same label. Maestro's `firstOrNull` then taps the first one forever. The report stays green, so
+an agent investigating has no material to work from. Bajutsu raises `AmbiguousSelector` in the same
+situation, and the decay becomes a visible maintenance task. That is run-time behavior, and no
+external tool reconstructs it.
+
+**A flip absorbed before it was ever recorded.** Maestro Cloud's smart retries re-run a red flow with
+no author involvement. The trigger is that the flow passed last time on the same device model. A
+pass on the re-run is a pass. The documentation records step-level `retry` attempts in
+`commands.json`, one entry per attempt. It says nothing about recording a flow-level Cloud retry
+anywhere in the report. An agent mining JUnit XML afterwards sees a run that was green from the
+start. What was never observed cannot be analyzed. Bajutsu has no retry construct, so a flip stays
+in the history. Its key is the scenario fingerprint, the name, and the device operating-system
+version.
+
+**A repair vocabulary that cannot weaken an assertion.** Hand a general agent a red flow and the
+shortest path to green is deleting the assertion or adding `optional: true`. Nothing in Maestro
+stops that. Bajutsu's `triage` fixes are constrained by construction (BE-0023):
+
+- Three fix kinds — `renameId`, `addIndex`, `raiseTimeout` — and no assertion-weakening kind at all.
+- A `find` that must match the source exactly, and a visible no-op when it no longer does.
+- A dry run by default, `--write` to apply, and `--rerun` to verify against the deterministic runner.
+
+The honest limit is that an agent editing the YAML directly bypasses the channel. The difference is
+that a constrained channel exists at all.
+
+**A scenario a tool can read statically.** Maestro's standard maintenance pattern is the Page Object
+Model. It centralizes selectors in a JavaScript `output` object. A human reads it and an agent reads
+it, but a tool cannot resolve it. Nothing answers "which tests break if I rename this id"
+mechanically once `${output.login.email}` sits in the way. Bajutsu has no scripting layer, so
+`impact`, `coverage`, and `audit` read every scenario statically. `audit` is the preventive half. It
+grades each selector stable, moderate, or fragile before anything breaks. Maestro has no static
+analysis command at all. A flow is validated when it runs, or when the MCP `run` tool is called.
+
+Two smaller properties sit on the same axis. `from:` records the natural-language phrase each step
+was recorded from, so a maintainer recovers the step's intent from the file itself. Maestro's `label`
+is display text. And `schema: 1` makes an older Bajutsu refuse a newer scenario rather than misread
+it.
+
+### What an agent closes
+
+| Job | Why the gap closes |
+|---|---|
+| Diagnosing one failure | Maestro writes `manifest.json` with a `$schema`, `commands.json` with one entry per attempt, `screen-hierarchy/` JSON, a failure screenshot, and device logs. Its own documentation says an agent on the MCP server can investigate failures from that report. Claude reading it matches `triage` |
+| Ranking flakiness | Keep every run's JUnit XML and an agent aggregates a ranking. The catch is the population: an absorbed flip is missing from it |
+| Impact analysis | Bajutsu's `impact` is a literal string match that reports its own blind spots as `incomplete`. An agent reading the diff semantically can do better |
+| Mapping coverage | Mechanical repeatability drops, but an agent reaches comparable quality |
+
+### Where an agent makes Maestro stronger
+
+**The agent's working loop.** Maestro's MCP server exposes nine tools. Four of them matter here:
+
+- `inspect_screen` returns the element tree as compact JSON.
+- `run` executes inline YAML on the spot.
+- `cheat_sheet` feeds the agent the scenario grammar.
+- The embedded Maestro Viewer shows the device.
+
+An agent closes "look at the screen, write a fix, run it, check it" in one loop. Bajutsu exposes two
+tools plus evidence resources, with no inline run and no element-tree read. For agent-driven
+maintenance this is Bajutsu's widest gap.
+
+**A watch mode.** `maestro test -c` re-runs on save. Bajutsu's `run` has no equivalent flag.
+
+**What the agent already knows.** Four years of public examples back Maestro's YAML, so a model
+writes it accurately from memory. Bajutsu is three months old, and its examples live in this
+repository alone. The counter works: feed the agent `bajutsu schema`, `bajutsu lint`, and the formal
+grammar in [dsl-grammar](dsl-grammar.md). It spends context in every session.
+
+**A way to fix it today.** When an id disappears, a Maestro author reaches for `below: "Email"` and
+moves on. Bajutsu has no positional selector, so the scenario waits on an application change. The
+positional selector is itself future debt, but same-day repair is a real maintenance capability.
+
+**Selector centralization.** The Page Object Model puts every id in one file, so a bulk rename edits
+one place. Bajutsu interpolates four namespaces and nothing else: `params`, `row`, `secrets`, and
+`vars`. No project-wide selector dictionary exists. Twenty scenarios naming one id are twenty edits.
+An agent makes them in seconds, which is not the same as the tool helping.
+
+### The verdict on maintenance
+
+| Axis | Advantage | Can an agent close it |
+|---|---|---|
+| A green suite stays honest | Bajutsu | No |
+| A flip survives into the record | Bajutsu | No |
+| A repair cannot weaken an assertion | Bajutsu | No, while the channel is used |
+| Static analysis supports a maintenance decision | Bajutsu | No |
+| Diagnosing one failure | Even | Yes |
+| Flakiness, impact, and coverage | Close to even | Yes |
+| The agent's working loop | Maestro | Yes, by building it into Bajutsu |
+| Same-day repair throughput | Maestro | Partly |
+
+In one sentence: Bajutsu keeps a suite trustworthy over time. Maestro with an agent gets a broken
+scenario passing again quickly. Adding an agent does not grow the first advantage on Maestro's side.
+The second can be built on Bajutsu's.
+
 ## Where Bajutsu is stronger
 
 **Determinism is enforced, not encouraged.** `AmbiguousSelector`, the absence of any retry
@@ -425,10 +536,12 @@ six lines of JavaScript instead.
 | Wants coverage, impact, and flakiness analysis in CI | Bajutsu |
 | Plans to graduate flows into native tests later | Bajutsu |
 | Needs its documentation mirrored in two languages | Bajutsu |
+| Hands day-to-day scenario repair to a coding agent | Maestro |
+| Needs a green suite to stay trustworthy for years | Bajutsu |
 
 ## Gaps worth closing
 
-The comparison surfaces six gaps. Each one is concrete, bounded, and unclaimed by any roadmap item.
+The comparison surfaces nine gaps. Each one is concrete, bounded, and unclaimed by any roadmap item.
 Each would remove a reason to choose Maestro without touching a prime directive.
 
 1. **Relational selectors.** `above`, `below`, `leftOf`, and `rightOf`, resolved against the element
@@ -443,5 +556,13 @@ Each would remove a reason to choose Maestro without touching a prime directive.
    step severs the radio.
 6. **A published package.** Until `pip install bajutsu` works, every evaluation starts with a clone
    and a toolchain.
+7. **MCP tools for an agent's working loop.** An element-tree read, an inline-YAML run, and a
+   cheat sheet for the scenario grammar. All three expose functionality that already exists, and
+   together they are the widest maintenance gap above.
+8. **A selector-dictionary namespace.** A `${ids.login.email}` defined in config or in its own file.
+   It buys the Page Object Model's benefit with no scripting layer, so static analysis keeps working.
+9. **A watch mode.** `run --watch`, re-running a scenario on save.
 
-The first five are authoring features. The sixth decides whether anyone reaches the first five.
+Items 1 to 5 are authoring features, and the first of them rises in priority under the maintenance
+lens above. Items 7 to 9 are maintenance features, aimed squarely at a team that hands repair to an
+agent. Item 6 decides whether anyone reaches any of them.
