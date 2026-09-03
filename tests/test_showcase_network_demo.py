@@ -512,7 +512,7 @@ def test_the_network_jobs_artifact_uploads_the_makefile_runs_dir() -> None:
 
 
 def _resolve_sim(*, listing: str) -> str:
-    """Runs the Makefile's own extraction pipeline, so a drift here can't go unnoticed."""
+    """Runs the Makefile's own pipeline under the host's sed, pinning its logic, not its portability."""
     makefile = (_SHOWCASE / "Makefile").read_text(encoding="utf-8")
     m = _SIM_RE.search(makefile)
     assert m is not None, (
