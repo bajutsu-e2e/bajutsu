@@ -417,7 +417,46 @@ here, three independent checks, every one of which must pass. A `{ label: … }`
 `{ labelMatches: … }` / `{ traits: […] }` object is a `Selector` (section 3), the same shape a
 `tap` or `type` step's target takes.
 
-### 4.2 The 39 step kinds
+### 4.2 Selecting the element: the `Selector`
+
+Almost every step and assertion targets one element on screen, and every target is a `Selector` —
+the same type introduced as one of the four contracts in section 3. This subsection is the
+authoring view: which fields exist, and which to reach for first. The runtime side — how a
+`Selector` narrows a `query()` snapshot to exactly one element, and what happens when it doesn't —
+is section 7.2's `resolve_unique`; the full reference is [selectors](selectors.md).
+
+Every provided field combines with AND, with two exceptions: `within` is a separate, spatial
+filter applied after the rest, and `index` is a last resort applied only once every other field has
+narrowed the candidates as far as it can.
+
+| Field | Matches | Role |
+|---|---|---|
+| `id` | The exact accessibility identifier. Accepts a list, matched as an OR — one candidate per platform's native spelling of the same id — for example `[stable.refresh, stable_refresh]` for an Android View, whose `android:id` cannot hold a dot. | First choice: stable, non-localized, data-derived. |
+| `idMatches` | A glob pattern over the identifier (or a list of globs, matched as an OR). | For a deliberate multi-match: a `count` assertion, or a `forEach` step's `sel`. |
+| `label` | The exact accessibility label. | Auxiliary; disambiguation only, since a label can be localized. |
+| `labelMatches` | A substring or regex over the label. | Auxiliary, for the same reason. |
+| `traits` | A subset test against the element's normalized traits (table below). | Auxiliary — narrows by type, for example `traits: [button]`. |
+| `value` | The exact accessibility value. | Auxiliary. |
+| `within` | Elements whose frame sits inside a container the nested `Selector` resolves to. The accessibility tree Bajutsu reads is flat, so "parent" is geometric rather than structural, and `within` may nest. | Disambiguation, when two candidates share every other field. |
+| `index` | The nth of several content-distinct candidates (a negative value counts from the end). | Last resort — flaky, since it depends on paint order. |
+
+`traits` draws from a small, backend-normalized vocabulary (`common/drivers/base.py`'s `Trait`
+class):
+
+| Trait | Marks |
+|---|---|
+| `button` | A tappable button. |
+| `link` | A hyperlink. |
+| `notEnabled` | The element is disabled — backs the `disabled` / `enabled` assertions. |
+| `selected` | The element is selected or toggled — backs the `selected` assertion. |
+| `other` | A generic, unclassified element; the resolution algorithm treats it specially (section 7.2). |
+| `secureTextField` | The platform itself marks the field secret, so redaction masks its value with no configuration. |
+
+An author who reaches for `index` before `id`, `label`, or `traits` has the ordering backwards:
+`id` survives a redesign that only moves the element on screen, while `index` breaks the moment the
+screen gains or loses a sibling.
+
+### 4.3 The 39 step kinds
 
 Every `Step` carries exactly one of 39 action fields (`common/scenario/models/steps.py`), enforced
 by pydantic validation, not by convention. Two of them — `wait` and `assert` — are conditions the
@@ -432,7 +471,7 @@ step loop polls directly; the rest dispatch through the action registry (section
 | Data and values | `http`, `totp`, `generate`, `email` | Produce or fetch a value: an HTTP call, a time-based one-time password (TOTP) code, a random value, a mailbox lookup. |
 | Composition and control flow | `use`, `web`, `manual`, `if`, `forEach` | Expand a component, scope a block to a WebView, mark a human takeover, or branch and loop. |
 
-### 4.3 The 14 assertion kinds
+### 4.4 The 14 assertion kinds
 
 Every `Assertion` (`common/scenario/models/assertions.py`) carries one of 14 fields, evaluated by
 `assertions/evaluate.py` (section 7.6) — a total function that returns a failing result rather than
@@ -445,7 +484,7 @@ raising.
 | Screen comparison | `visual`, `golden` | A screenshot against a baseline image, or an element tree against a recorded one. |
 | Clipboard | `clipboard` | The device clipboard's current text. |
 
-### 4.4 Control flow, composition, and data
+### 4.5 Control flow, composition, and data
 
 | Construct | Field(s) | What it does |
 |---|---|---|
@@ -457,7 +496,7 @@ raising.
 | Setup / teardown phase | `before:` / `after:` (scenario-level) | Steps run ahead of `steps` and after the verdict exists, reported apart from the main step list. |
 | Data-driven rows | `data:` / `dataFile:` | Instantiates one scenario per row of an inline list or a CSV file, substituting `${row.*}`. |
 
-### 4.5 Interpolation: `${namespace.key}`
+### 4.6 Interpolation: `${namespace.key}`
 
 One primitive (`common/scenario/interp.py`) backs every substitution a scenario can make, keyed by a
 flat `bindings` map the caller supplies.
@@ -469,7 +508,7 @@ flat `bindings` map the caller supplies.
 | `secrets.*` | The target config's resolved secret values | At run time, from the `Effective` config (section 3). |
 | `vars.*` | An `extract` step's captured value | At run time, as the step loop executes — the one namespace that changes mid-run. |
 
-### 4.6 Evidence capture: `capturePolicy`
+### 4.7 Evidence capture: `capturePolicy`
 
 A scenario's `capturePolicy` (`common/scenario/models/evidence.py`) names rules the step loop fires
 repeatedly, rather than a one-shot instruction, so a second run collects the same evidence with no
