@@ -527,6 +527,12 @@ def _resolve_sim(*, listing: str) -> str:
         "this pin substitutes `cat` for that command to stay hermetic, and without the "
         "substitution it would probe the host's live Simulator state, not `listing`."
     )
+    assert "xcrun" not in pipeline and "simctl" not in pipeline, (
+        "demos/showcase/Makefile's `SIM ?=` still reaches for xcrun/simctl after the one "
+        f"substitution above ({pipeline!r}) — `str.replace` with count=1 leaves any later "
+        "invocation in place, and on macOS that surviving command reads the host's live "
+        "Simulator state with nothing on stderr for the guard below to catch."
+    )
     assert "$" not in pipeline, (
         f"demos/showcase/Makefile's `SIM ?=` pipeline now contains `$` ({pipeline!r}) — make "
         "expands `$$` and `$(…)` inside `$(shell …)` before /bin/sh sees them, so running this "
