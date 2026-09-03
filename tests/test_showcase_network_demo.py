@@ -61,7 +61,7 @@ _NET_ARTIFACT = "ios-e2e-network-run"
 _NET_RUNS_RE = re.compile(r"^NET_RUNS\s*\?=\s*\$\(ROOT\)/(\S+)\s*$", re.MULTILINE)
 
 # `SIM ?= $(shell …)` — the `simctl` pipeline that resolves the booted Simulator's UDID.
-_SIM_RE = re.compile(r"^SIM \?= \$\(shell (.+)\)$", re.MULTILINE)
+_SIM_RE = re.compile(r"^SIM\s*\?=\s*\$\(shell (.+)\)\s*$", re.MULTILINE)
 
 # The target the lane drives, and so the one whose `redact` policy applies to its evidence.
 _TARGET = "showcase-swiftui"
