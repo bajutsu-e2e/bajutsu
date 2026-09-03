@@ -4,15 +4,18 @@ The control plane exposes `/api/worker/lease` and `/api/worker/result` so `bajut
 lease jobs and return results over HTTP instead of Redis/RQ. Both endpoints are operator-token
 authenticated. Tests exercise the operations layer directly (no HTTP server) against an in-memory
 SQLite database in the gate and, behind the `postgres` marker, against a real Postgres service in the
-serve-db.yml lane (BE-0309)."""
+serve-db.yml lane (BE-0309) — except the last one, which drives the stdlib handler over a real
+socket because the empty-lease 204's wire framing is what it asserts."""
 
 from __future__ import annotations
 
+import http.client
+import json
 from collections.abc import Callable
 from pathlib import Path
 
-from _shared import FakeObjectStore
-from sqlalchemy import Engine
+from _shared import FakeObjectStore, _serve
+from sqlalchemy import Engine, create_engine
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
@@ -199,3 +202,36 @@ def test_worker_lease_then_result_round_trip(
     assert result_code == 200
     info = repo.get_job("j1")
     assert info is not None and info["status"] == "done"
+
+
+def test_worker_lease_204_is_written_without_a_body(tmp_path: Path) -> None:
+    """A 204 is framed as zero-length regardless of its headers (RFC 9110 6.4.1), so the empty-queue
+    lease must write no body and declare no length — a client that trusts the framing would
+    otherwise read the payload as the head of the next response. Lockstep with the FastAPI
+    backend, where the same body made uvicorn raise h11's `Too much data for declared
+    Content-Length` on every idle worker poll."""
+    # A file DB (not in-memory): ThreadingHTTPServer answers on another thread, which SQLite's
+    # per-thread connection would otherwise hand an empty database.
+    engine = create_engine(f"sqlite:///{tmp_path / 'lease.db'}")
+    Base.metadata.create_all(engine)
+    repo = SqlRepository(engine)
+    state = srv.ServeState(
+        runs_dir=tmp_path / "runs", executor=DbQueueExecutor(repo), repository=repo
+    )
+    server, port = _serve(state)
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn.request(
+            "POST",
+            "/api/worker/lease",
+            body=json.dumps({"worker_id": "w1"}),
+            headers={"Content-Type": "application/json"},
+        )
+        resp = conn.getresponse()
+        assert resp.status == 204  # nothing queued
+        assert resp.getheader("Content-Length") is None
+        assert resp.read() == b""
+        conn.close()
+    finally:
+        server.shutdown()
+        server.server_close()
