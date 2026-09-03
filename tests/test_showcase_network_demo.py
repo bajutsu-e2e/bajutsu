@@ -527,6 +527,11 @@ def _resolve_sim(*, listing: str) -> str:
         "this pin substitutes `cat` for that command to stay hermetic, and without the "
         "substitution it would probe the host's live Simulator state, not `listing`."
     )
+    assert "$" not in pipeline, (
+        f"demos/showcase/Makefile's `SIM ?=` pipeline now contains `$` ({pipeline!r}) — make "
+        "expands `$$` and `$(…)` inside `$(shell …)` before /bin/sh sees them, so running this "
+        "text verbatim would pin a command the target never runs."
+    )
     out = subprocess.run(
         ["sh", "-c", pipeline], input=listing, capture_output=True, text=True, check=True
     )
@@ -553,3 +558,13 @@ def test_sim_resolves_a_plain_booted_devices_udid() -> None:
 
 def test_sim_resolves_nothing_when_no_device_is_booted() -> None:
     assert _resolve_sim(listing="") == ""
+
+
+def test_sim_resolves_only_the_first_udid_when_several_devices_are_booted() -> None:
+    # `head -1` is what keeps SIM a single word: two UDIDs would expand `--udid $(SIM)` into two
+    # argv entries, and the second would reach `bajutsu run` as a stray positional.
+    listing = (
+        "    iPhone 17 Pro (3E830C79-34E8-4E77-91AD-AC62B71B33D2) (Booted)\n"
+        "    iPhone 17 (7B1C4D2E-9F80-4A31-B6C5-0E2D3F4A5B69) (Booted)\n"
+    )
+    assert _resolve_sim(listing=listing) == "3E830C79-34E8-4E77-91AD-AC62B71B33D2"
