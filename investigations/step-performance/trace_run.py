@@ -142,6 +142,22 @@ def _install_transport_wrappers() -> None:
     adb_resident.fetch_clock = _timed("transport", lambda *a, **k: "GET /clock")(
         adb_resident.fetch_clock
     )
+    # The three reassignments above never reach a production run: `ResidentServer.__init__` takes
+    # `fetch`/`clock`/`act_probe` as keyword-only defaults bound to `fetch_source`/`fetch_clock`/`act`
+    # at class-definition (import) time, before this function runs, and every real caller (`_begin_
+    # resident`) takes those defaults rather than passing the module functions explicitly. Wrap the
+    # `ResidentChannel` `start()` actually returns instead, so the timed calls are the ones a run uses.
+    original_start = adb_resident.ResidentServer.start
+
+    def start(self: Any) -> Any:
+        channel = original_start(self)
+        return adb_resident.ResidentChannel(
+            fetch=_timed("transport", lambda *a, **k: "GET /source")(channel.fetch),
+            clock=_timed("transport", lambda *a, **k: "GET /clock")(channel.clock),
+            act=_timed("transport", lambda *a, **k: "POST /act")(channel.act),
+        )
+
+    adb_resident.ResidentServer.start = start  # type: ignore[method-assign]
 
 
 def _install_evidence_wrappers() -> None:

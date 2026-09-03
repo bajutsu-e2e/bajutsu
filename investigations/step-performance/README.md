@@ -358,26 +358,72 @@ uv run python investigations/step-performance/trace_run.py --out /tmp/android-tr
 
 次の表の「実測」の列を埋めてください。この資料の推定と大きく違う行が、優先順位を変えます。
 
+実測は 2026-09-03 に、Apple M5 の Mac（macOS 26.5.2）上で行いました。
+対象は `demos/showcase/scenarios/controls.yaml`（tap、wait、scroll、assert を含む 8 ステップ）です。
+iOS はシミュレータ（iPhone 17 Pro、iOS 26.5）で、Android はエミュレータ（`bajutsu-api34-arm64`、API 34、
+arm64-v8a）で測りました。どちらも起動済みの状態からの実測です。この実測は実機ではなく、シミュレータや
+エミュレータで測った値です。シナリオも 1 回しか回していません（`POST /act` は 3 回、
+`GET /elements` 系は 15〜26 回のサンプル数）。以上を割り引いて読んでください。
+
 | 項目 | 読む行 | 推定 | 実測 |
 |---|---|---|---|
-| iOS `/elements` 1 回 | `transport:GET /elements` の平均 | 45〜120 ms | |
-| iOS `/tap` 1 回 | `transport:POST /tap` の平均 | 300〜650 ms | |
-| iOS `/screenshot` 1 回 | `transport:GET /screenshot` の平均 | 150〜400 ms | |
-| iOS `/interruptionPolicy/drain` | 同 | 2〜5 ms | |
-| iOS `wait until: settled` 1 ステップ | `per step` の該当行 | 0.3〜0.6 秒 | |
-| Android `GET /source` 1 回 | `transport:GET /source` の平均 | 100〜300 ms | |
-| Android `POST /act` 1 回 | 同 | 600〜900 ms | |
-| Android screencap 1 回 | `subprocess:adb exec-out screencap` の平均 | 200〜600 ms | |
-| Android シナリオ固定費 | ステップ外の `subprocess` 合計 | 10〜20 秒 | |
+| iOS `/elements` 1 回 | `transport:GET /elements` の平均 | 45〜120 ms | 63 ms（18 回） |
+| iOS `/tap` 1 回 | `transport:POST /tap` の平均 | 300〜650 ms | 690 ms（3 回） |
+| iOS `/screenshot` 1 回 | `transport:GET /screenshot` の平均 | 150〜400 ms | 90 ms（17 回） |
+| iOS `/interruptionPolicy/drain` | 同 | 2〜5 ms | 1.2 ms（9 回） |
+| iOS `wait until: settled` 1 ステップ | `per step` の該当行 | 0.3〜0.6 秒 | 0.24 秒（2 回） |
+| Android `GET /source` 1 回 | `transport:GET /source` の平均 | 100〜300 ms | 263 ms（26 回） |
+| Android `POST /act` 1 回 | 同 | 600〜900 ms | **2204 ms（3 回）** |
+| Android screencap 1 回 | `subprocess:adb exec-out screencap` の平均 | 200〜600 ms | 103 ms（17 回） |
+| Android シナリオ固定費 | ステップ外の `subprocess` 合計 | 10〜20 秒 | 1.5 秒（起動済みエミュレータ、パッケージ再インストールのみ） |
+
+iOS 側は、`/tap` がやや推定の上限寄りになった以外、ほぼ推定の範囲に収まりました。
+`/screenshot` と `wait until: settled` はむしろ推定より速く、iPhone 17 Pro シミュレータの実測は
+第 4 節と第 5 節の見立てを覆すものではありません。
+
+Android 側は 1 行だけ推定と大きく外れました。常駐サーバーの `POST /act`（タップ 1 回の装置側実行）が
+2.2 秒と、推定 600〜900 ms の 2.4〜3.7 倍でした。`GET /source` は推定の上限に近い程度で、screencap は
+むしろ推定より速く測れました。したがって Android の遅さは、読み取りではなく actuation 側に集中しています。
+第 8 節は、常駐サーバー側の `waitForIdle` が、アクセシビリティイベントが止まらない画面で最大 10 秒
+待つことを未検証のリスクとして挙げていました。この待ちが、`/act` の応答を遅くしている一因である
+可能性があります。`controls.yaml`
+の対象要素がタップ後にアニメーションを伴う場合、その待ちが `/act` 1 回の中に畳み込まれるためです。段階 C
+でステップの列を端末側実行機に移しても、この待ちの実体そのもの（アクセシビリティイベントが静止するまでの
+時間）は残ります。段階 C 前に、`waitForIdle` の待ち方（イベント駆動化、または上限の見直し）を Android 側の
+優先課題として扱う根拠になります。
+
+シナリオ固定費は、推定 10〜20 秒に対して実測 1.5 秒でした。ただし今回の実測はエミュレータが起動済みで、
+APK も一度導入済みの状態からの再インストールです。エミュレータのコールドブートや初回のパッケージ導入を
+含む固定費は、この実測に含まれていません。
+
+なお、Android の実測にあたって `trace_run.py` 自身の不備を見つけて直しました。`ResidentServer.__init__`
+は `fetch`、`clock`、`act_probe` をキーワード専用引数のデフォルト値として受け取ります。
+このデフォルト値は、`adb_resident` モジュールがインポートされた時点で
+`fetch_source`、`fetch_clock`、`act` に束縛されます。一方、`trace_run.py` はその後で
+`adb_resident.fetch_source = wrapped` のようにモジュール属性を差し替えていました。
+実際の呼び出し側（`_begin_resident`）は常駐サーバーが返す `ResidentChannel` のデフォルト値を
+そのまま使います。そのため束縛済みのデフォルト値は上書きされず、`transport:GET /source` と
+`transport:POST /act` の行は、実行のたびに現れないまま計測されていました。
+[`trace_run.py`](trace_run.py) は `ResidentServer.start` が返す `ResidentChannel` を
+直接ラップするよう修正済みで、この節の実測値は修正後のトレーサーによるものです。
 
 ### 7.5 推定の再投影
 
-`bench_orchestrator.py` の `MODELS` に実測値を入れて再実行すると、
-ステップ種別ごとの end-to-end を、往復回数から投影し直せます。
+`bench_orchestrator.py` の `MODELS` に実測値を入れれば、ステップ種別ごとの end-to-end を
+往復回数から再投影できます。差し替え対象は `ios` と `android_resident` の `query`、`tap`、
+`screenshot`、`drain_interruptions` です。値は上の表と同じ、2026-09-03 の実測値です。
 
 ```bash
-uv run python investigations/step-performance/bench_orchestrator.py --model ios --steps 20
+uv run python investigations/step-performance/bench_orchestrator.py --model ios --steps 5
+uv run python investigations/step-performance/bench_orchestrator.py --model android_resident --steps 5
 ```
+
+証拠の取得（`screenshot.after` と `elements`）とアラートガードを両方有効にした `tap` シナリオ、つまり
+本番のデフォルトに近い設定で試しました。1 ステップあたり iOS が 1040 ms、Android が 2968 ms でした
+（`--steps 5` の平均）。目標の 250〜500 ms に対して、iOS は 2.1〜4.2 倍、Android は 5.9〜11.9 倍の
+短縮が必要という計算になります。この幅は、結論の要約が示した「iOS は 2〜4 倍、Android は 5〜10 倍」と
+ほぼ一致します。Android の `POST /act` が特に遅いという 1 点を除けば、投影の土台は Linux 上の推定と
+同じ精度で成り立っています。第 7.4 節の実測は、段階 A、B、C の設計判断そのものを変えるものではありません。
 
 ### 7.6 トレーサーの制限
 
@@ -385,6 +431,9 @@ uv run python investigations/step-performance/bench_orchestrator.py --model ios 
 - ドライバ内部の sleep（stale の 0.5 秒など）は、その driver 呼び出しの時間に含まれます。
 - `subprocess.run` と `subprocess.check_output` を包みます。`Popen` を直接使う interval capture（video、logcat）は数えません。
 - 現在のトレーサーは `driver` の分類に fake driver も含めます。fake backend で自己検証するためです。
+- Android の常駐サーバー呼び出しを `transport` として計測するには、`ResidentServer.start` が返す
+  `ResidentChannel` をラップする必要があります。モジュール関数の差し替えだけではデフォルト値に届きません。
+  経緯は[第 7.4 節](#74-埋めるべき数値)に書きました。
 
 ## 8. 未確認の事項とリスク
 

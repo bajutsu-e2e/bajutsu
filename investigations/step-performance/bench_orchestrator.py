@@ -24,27 +24,30 @@ from bajutsu.common.orchestrator.loop import run_scenario
 from bajutsu.common.orchestrator.types import AlertGuardConfig, RealClock
 from bajutsu.common.scenario import Scenario
 
-# Modeled per-call latencies (seconds). Assumptions, to be replaced by Mac-side measurements.
+# Modeled per-call latencies (seconds). `ios` and `android_resident` are `driver:*` means measured
+# with `trace_run.py` on 2026-09-03 (iPhone 17 Pro Simulator, iOS 26.5 / Pixel-class emulator,
+# `bajutsu-api34-arm64`, API 34 — see investigations/step-performance/README.md §7.4) against
+# `demos/showcase/scenarios/controls.yaml`; unmeasured methods keep their original estimate.
 MODELS: dict[str, dict[str, float]] = {
     "zero": {},
     "ios": {
-        "query": 0.25,  # app.snapshot() + JSON over HTTP for a mid-size tree
-        "tap": 0.15,  # handle resolve + hittable check + XCUI tap
+        "query": 0.067,  # measured: transport GET /elements mean 62.7ms, driver:query 67.3ms
+        "tap": 0.749,  # measured: driver:tap mean (transport POST /tap 690.2ms + resolve/settle)
         "type_text": 0.30,
-        "screenshot": 0.12,
+        "screenshot": 0.090,  # measured: transport GET /screenshot mean
         "system_alert_labels": 0.15,  # SpringBoard snapshot
         "is_tappable": 0.10,
-        "drain_interruptions": 0.01,
+        "drain_interruptions": 0.001,  # measured: transport POST /interruptionPolicy/drain mean
         "drain_actuations": 0.0,
         "dismiss_blocking_tip": 0.0,
         "swipe": 0.30,
         "long_press": 0.5,
     },
     "android_resident": {
-        "query": 0.20,
-        "tap": 0.15,
+        "query": 0.263,  # measured: transport GET /source mean 262.9ms, driver:query 263.3ms
+        "tap": 2.401,  # measured: driver:tap mean, almost entirely transport POST /act (2203.5ms)
         "type_text": 0.30,
-        "screenshot": 0.40,
+        "screenshot": 0.104,  # measured: subprocess adb exec-out screencap mean
         "system_alert_labels": 0.0,
         "is_tappable": 0.0,
         "drain_interruptions": 0.0,
