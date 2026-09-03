@@ -10,6 +10,11 @@ or secret drift breaks the fast gate rather than only the metered macOS lane.
 
 The web twin is `tests/test_web_network_demo.py`; this file is its iOS counterpart, over the
 BajutsuKit → loopback POST → collector transport instead of the browser's.
+
+One pin below is out of this lane's scope: `demos/showcase/Makefile`'s `SIM ?=` UDID extraction
+lives here only because this is the repo's existing harness for pinning `Makefile` text against
+`make check`, not because it belongs to BE-0282 — it guards every iOS lane's `--udid`, not just
+this one's.
 """
 
 from __future__ import annotations
@@ -503,7 +508,7 @@ def test_the_network_jobs_artifact_uploads_the_makefile_runs_dir() -> None:
     )
 
 
-# --- SIM ?= $(shell …): a wrong UDID breaks every e2e-*/run-*/doctor/vrt target in this file -------
+# --- demos/showcase/Makefile's SIM ?=: a wrong UDID breaks its e2e-*/run-*/doctor/vrt targets -----
 
 
 def _resolve_sim(*, listing: str) -> str:
