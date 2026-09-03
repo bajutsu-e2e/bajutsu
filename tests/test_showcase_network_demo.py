@@ -552,7 +552,9 @@ def _resolve_sim(*, listing: str) -> str:
         "non-zero without tripping `check=True`, and this pin would otherwise read the empty "
         "output as a correct no-booted-device result."
     )
-    return out.stdout.strip()
+    # `$(shell …)`'s own value semantics, not Python's: make strips trailing newlines and turns
+    # every remaining one into a single space, so a multi-line pipeline yields a multi-*word* SIM.
+    return out.stdout.rstrip("\n").replace("\n", " ")
 
 
 def test_sim_resolves_the_udid_next_to_booted_not_a_renamed_devices_udid() -> None:
