@@ -214,6 +214,38 @@ def test_log_event_sets_the_event_field() -> None:
     assert record["msg"] == "dispatched a run"
 
 
+def _raise_boom() -> None:
+    raise ValueError("boom")
+
+
+# 1. Structured schema — a traceback stays inside the one-line JSON record.
+def test_exc_info_is_a_structured_field_not_a_multiline_dump() -> None:
+    stream = io.StringIO()
+    logger = _emit(stream)
+    try:
+        _raise_boom()
+    except ValueError:
+        logger.exception("it broke")
+    lines = stream.getvalue().splitlines()
+    assert len(lines) == 1  # the traceback did not spill onto extra lines
+    (record,) = _lines(stream)
+    assert record["msg"] == "it broke"
+    exc_info = str(record["exc_info"])
+    assert "ValueError: boom" in exc_info
+    assert "Traceback" in exc_info
+
+
+# 1. Structured schema — `stack_info=True` (no exception) also stays inside the one-line record.
+def test_stack_info_is_a_structured_field_not_a_multiline_dump() -> None:
+    stream = io.StringIO()
+    logger = _emit(stream)
+    logger.info("checkpoint", stack_info=True)
+    lines = stream.getvalue().splitlines()
+    assert len(lines) == 1
+    (record,) = _lines(stream)
+    assert "Stack (most recent call last)" in str(record["stack_info"])
+
+
 def test_text_format_is_human_readable_not_json() -> None:
     stream = io.StringIO()
     logger = _emit(stream, fmt="text")

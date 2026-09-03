@@ -169,10 +169,15 @@ def _mask_values(static: Redactor, text: str) -> str:
 
 
 class _JsonFormatter(logging.Formatter):
-    """Single-line JSON: ``ts, level, logger, event?, msg, <correlation ids?>, <extras?>``.
+    """Single-line JSON: ``ts, level, logger, event?, msg, <correlation ids?>, <extras?>, exc_info?``.
 
     Value-masking is applied to the whole serialized line, so a known secret value is scrubbed
     wherever it lands, including inside a non-string field stringified by ``json.dumps``.
+
+    A traceback (``exc_info=True`` / ``logger.exception``) is rendered into its own ``exc_info``
+    field rather than appended as raw text: ``json.dumps`` escapes its newlines, so the record
+    stays exactly one line — the multi-line stdlib default would otherwise split a JSON stream
+    across several unparseable lines.
     """
 
     def __init__(self, static: Redactor) -> None:
@@ -196,6 +201,10 @@ class _JsonFormatter(logging.Formatter):
         line.update(
             _extras(record)
         )  # caller-attached fields keep their (deterministic) insert order
+        if record.exc_info:
+            line["exc_info"] = self.formatException(record.exc_info)
+        if record.stack_info:
+            line["stack_info"] = self.formatStack(record.stack_info)
         return _mask_values(self._static, json.dumps(line, ensure_ascii=False, default=str))
 
 
