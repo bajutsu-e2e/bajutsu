@@ -1,112 +1,131 @@
-# ステップ実行の高速化：調査報告と Mac 側への引き継ぎ
+# Speeding Up Step Execution: Investigation Report
 
-> 対象は iOS（XCUITest）と Android（adb と常駐 UIAutomator サーバー）です。Web は対象外です。
-> 目標は、証拠の取得まで含めた end-to-end で 1 ステップ 250〜500 ms です。
-> 調査は Linux 上の Claude Code セッションで始めました。Simulator と emulator がなかったため、
-> 当初はコード読解とロードマップ項目の実測値から積み上げた推定でした。
-> 2026-09-03 に、Mac 上のシミュレータとエミュレータで実測し、HTTP 境界で観測できる数値
-> （`/tap`、`/elements`、`screenshot` などの往復 1 回ごとの平均と、ステップ 1 回の壁時計）を
-> 第 1〜6 節の推定と置き換えました。HTTP 境界の内側の内訳（属性の読み方や XCUI の解決回数など）は
-> 直接観測しておらず、引き続き「est」を付けた推定です。実測の手順とサンプル数の制約は
-> [第 7 節](#7-mac-側で続けるための手順)にあります。
+> The scope is iOS (XCUITest) and Android (adb plus the resident UIAutomator server). Web is out of
+> scope. The target is 250–500 ms per step end to end, evidence capture included.
+> The investigation began in a Claude Code session on Linux. With no Simulator or emulator available
+> there, the early figures were estimates built up from code reading and measured figures already
+> recorded in roadmap items. On 2026-09-03, real measurements on a Mac's Simulator and emulator —
+> figures observable at the HTTP boundary (the round-trip average for `/tap`, `/elements`,
+> `screenshot`, and similar calls, and the wall-clock time of a single step) — replaced the estimates
+> in Sections 1–6. The breakdown inside the HTTP boundary (how many times an attribute is read, how
+> many XCUI resolutions happen, and so on) was not observed directly and remains an estimate, tagged
+> "est".
 
-## 結論の要約
+## Conclusion Summary
 
-実測は、`controls.yaml` の tap ステップを、iPhone 17 Pro シミュレータと
-`bajutsu-api34-arm64` エミュレータでそれぞれ 3 回測ったものです。
-現状の 1 ステップは、iOS が 0.95〜1.07 秒、Android の常駐サーバー経路が 3.25〜3.32 秒でした。
-Android の `uiautomator dump` 経路は今回測っておらず、
-推定 8〜12 秒（est）のままです。目標の 250〜500 ms に対して、iOS は 1.9〜4.3 倍、
-Android は 6.5〜13.3 倍の短縮が必要です。
+The measurements timed `controls.yaml`'s tap step, three runs each on an iPhone 17 Pro Simulator and
+a `bajutsu-api34-arm64` emulator. A single step today takes 0.95–1.07 seconds on iOS and 3.25–3.32
+seconds on Android's resident-server path. Android's `uiautomator dump` path was not measured this
+time and stays at its estimated 8–12 seconds (est). Against the 250–500 ms target, iOS needs a
+1.9–4.3× cut and Android a 6.5–13.3× cut.
 
-ステップの時間は、ほとんどが「ホストと端末の往復」と「証拠の取得」で消えています。
-orchestrator 自身の計算は 1 ステップあたり 1 ms 未満で、ボトルネックではありません。
-実測では、`tap` 1 ステップの往復は iOS が 5 回、Android が 7 回でした
-（シナリオ最初のステップだけ、事前証拠の読み取りが 1 回加わります）。
-内訳は、スクリーンショット 2 枚とタップ本体がどちらも共通です。
-木の読み取り回数は iOS が 1 回、Android が 4 回でした。
-Android には `drain_interruptions` に相当する HTTP 往復もありません。
-タップの意味的な仕事はそのうち 1 回だけです。
+Almost all of a step's time goes to two things: host-device round trips and evidence capture. The
+orchestrator's own computation is under 1 ms per step and is not the bottleneck. The measurement
+found a `tap` step round-trips the device five times on iOS and seven times on Android (the
+scenario's first step adds one more round trip, for the pre-action evidence read). Two screenshots
+and the tap itself are common to both. The tree-read count is one on iOS and four on Android; Android
+also has no HTTP round trip equivalent to `drain_interruptions`. Only one of those round trips does
+the tap's actual semantic work.
 
-短縮の道筋は 3 段階に分かれます。段階の番号は独立した達成条件ではなく、下にいくほど
-大きな設計変更を要する順です。
+The path to a faster step splits into three stages. The stage letters are not independent milestones —
+each one down the list needs a larger design change than the one before it.
 
-| 段階 | 内容 | 期待できる 1 ステップの時間 | 設計の変更 |
+| Stage | What it does | Expected time per step | Design change |
 |---|---|---|---|
-| A | 証拠と読み取りの重複を消す（`before.png`、`elements.json` の二重書き、ステップ後の再読み取り） | iOS 0.4〜0.9 秒、Android 1.2〜2 秒（est） | なし（orchestrator 内） |
-| B | 通信と端末側の無駄を消す（keep-alive、属性読みの一括化、dump の二重実行の解消） | iOS 0.3〜0.6 秒、Android 0.6〜1.2 秒（est） | ドライバとランナーの内部 |
-| C | ステップのループを端末側の実行機に移す（waits と assert を端末側で評価する） | iOS 0.2〜0.35 秒、Android 0.15〜0.3 秒（est） | プロトコルの追加 |
+| A | Remove redundant evidence and reads (`before.png` and `elements.json` written twice, a re-read after the step) | iOS 0.4–0.9 s, Android 1.2–2 s (est) | None (inside the orchestrator) |
+| B | Remove waste in communication and on-device work (keep-alive, batched attribute reads, removing the double dump) | iOS 0.3–0.6 s, Android 0.6–1.2 s (est) | Inside the driver and runner |
+| C | Move the step loop to a device-side executor (evaluate waits and asserts on the device) | iOS 0.2–0.35 s, Android 0.15–0.3 s (est) | Adds a protocol |
 
-この表の、段階 A と B が請け負う個々の削減量は実測していません。Linux 上の推定のまま
-残しています。ただし Android には、この表の見積もりに入っていなかった実測の発見が 1 つあります。
-`POST /act`（タップの装置側実行）が 2.2 秒かかり、そのほとんどが常駐サーバーの
-`POSTDATE_BUDGET_MS`（2000 ミリ秒）という固定の待ちだと考えられます。
-詳細は[第 3.3 節](#33-android)と[第 4.3 節](#43-androidの段階-b)に書きました。
-この待ちが実際に外せるなら、段階 B だけで Android も目標に近づく可能性があり、
-段階 A と B の Android 列は実測後に見直しが要ります。
+The individual savings stages A and B are each responsible for, in this table, were not measured —
+they stay as Linux-side estimates. Android does carry one measured finding this table's estimate did
+not account for: `POST /act` (the device-side execution of a tap) takes 2.2 seconds, and most of that
+is likely a fixed wait in the resident server, `POSTDATE_BUDGET_MS` (2000 ms). Details are in
+[Section 3.3](#33-android) and [Section 4.3](#43-android-stage-b). If this wait can actually be
+removed, stage B alone could bring Android close to the target too — the Android column for stages A
+and B needs revisiting once that is measured.
 
-段階 A と B だけでは、この `POST /act` の発見を差し引いても、iOS は目標に届きません。
-XCUITest の固定費（snapshot 約 35 ms とタップ合成 100〜300 ms）を除いても足りず、
-ポーリングのたびにホストの往復を払う構造が残るからです。
-iOS が目標に届くのは段階 C です。
-「Swift でシナリオをそのまま実行する」案は、この段階 C にあたります。
-ただし実行機を置く場所は、アプリ内の SDK（ソフトウェア開発キット、BajutsuKit）ではなく XCTest ランナー内を勧めます。
-理由は[第 5 節](#5-目標に届く設計案フェーズ-c)に述べます。
+Stages A and B alone do not bring iOS to the target, even net of the `POST /act` finding. Removing
+XCUITest's fixed costs (a roughly 35 ms snapshot and 100–300 ms of tap synthesis) still is not
+enough, because the structure that pays a host round trip on every poll remains. iOS reaches the
+target only at stage C. The proposal to "run the scenario directly in Swift" is that stage C. The
+recommendation is to place the executor inside the XCTest runner, not the in-app software development
+kit (SDK, BajutsuKit) — the reasons are in [Section 5](#5-a-design-that-reaches-the-target-phase-c).
 
-## 1. 調査の方法と、この環境でわかること
+## 1. Investigation Method and What This Environment Could Determine
 
-この環境で実測できたのは次の 2 つです。
+This environment could measure two things directly:
 
-- orchestrator 自身のオーバーヘッドと、ステップ種別ごとのドライバ呼び出し回数です。
-  `bench_orchestrator.py` が fake driver 上で計測します。
-- 実行時トレーサー `trace_run.py` の動作確認です。fake backend の run で、ステップごとの内訳を出力できました。
+- The orchestrator's own overhead and the driver call count per step kind, measured by
+  `bench_orchestrator.py` against a fake driver.
+- That the runtime tracer, `trace_run.py`, works: a run against the fake backend produced a
+  per-step breakdown.
 
-ドライバ側は 3 つの読解報告に基づきます。報告は英語で、`reports/` に置きました。
+The driver side rests on three code-reading reports, written in English and kept under `reports/`:
 
-- [`reports/orchestrator.md`](reports/orchestrator.md)：ステップ 1 つの共通の骨格と、ステップ種別ごとの呼び出し列です。
-- [`reports/ios.md`](reports/ios.md)：Python ドライバ、Swift の HTTP サーバー、XCUITest の要素プロバイダ、BajutsuKit の現状です。
-- [`reports/android.md`](reports/android.md)：adb ドライバ、常駐サーバーの Kotlin 側、settle と catch-up の仕組みです。
+- [`reports/orchestrator.md`](reports/orchestrator.md): the skeleton common to every step, and the
+  call sequence per step kind.
+- [`reports/ios.md`](reports/ios.md): the Python driver, the Swift HTTP server, the XCUITest element
+  provider, and BajutsuKit's current state.
+- [`reports/android.md`](reports/android.md): the adb driver, the resident server's Kotlin side, and
+  its settle and catch-up machinery.
 
-推定値には「est」と書き添えてあります。
-ロードマップ項目に記録済みの実測値は、出典の BE 番号を添えてあります。
+Every estimate is tagged "est". A measured figure already recorded in a roadmap item carries its
+source BE number.
 
-## 2. この環境での実測結果
+The 2026-09-03 measurements ran on an Apple M5 Mac (macOS 26.5.2), against
+`demos/showcase/scenarios/controls.yaml` (eight steps: tap, wait, scroll, assert), on an iOS Simulator
+(iPhone 17 Pro, iOS 26.5) and an Android emulator (`bajutsu-api34-arm64`, API 34, arm64-v8a), both
+already booted. These are Simulator and emulator figures, not real-device ones, and the scenario ran
+only once — `POST /act` carries three samples, and the `GET /elements` family 15–26. Read every
+figure in Sections 1–6 with that sample size in mind. [`trace_run.py`](trace_run.py) reproduces them
+against the same targets.
 
-### 2.1 orchestrator のオーバーヘッドと往復回数
+## 2. Measurement Results in This Environment
 
-`bench_orchestrator.py` は、300 要素の画面を持つ fake driver に対して各ステップ種別を 20 回実行します。
-ドライバの遅延を 0 にした計測（`--model zero`）の結果を示します。
+### 2.1 Orchestrator Overhead and Round-Trip Counts
 
-| ステップ種別 | sink | 1 ステップの壁時計 | 1 ステップの driver 呼び出し |
+`bench_orchestrator.py` runs each step kind 20 times against a fake driver holding a 300-element
+screen. The table below is the result with driver latency set to zero (`--model zero`).
+
+| Step kind | Sink | Wall-clock per step | Driver calls per step |
 |---|---|---|---|
-| `tap` | NullSink | 0.4 ms | tap 1、drain_actuations 1、drain_interruptions 1 |
-| `tap` | FileSink | 11.7 ms | 上に加えて screenshot 2、query 1.05 |
-| `tap` と `wait for` の対 | FileSink | 12.1 ms | screenshot 2、query 1.02、tap 0.5 |
+| `tap` | NullSink | 0.4 ms | tap 1, drain_actuations 1, drain_interruptions 1 |
+| `tap` | FileSink | 11.7 ms | the above, plus screenshot 2, query 1.05 |
+| `tap` and `wait for` pair | FileSink | 12.1 ms | screenshot 2, query 1.02, tap 0.5 |
 | `wait until: settled` | NullSink | 100.6 ms | query 3 |
-| `wait until: settled` | FileSink（guard あり） | 113.5 ms | query 3.05、screenshot 2、system_alert_labels 1 |
-| `assert` | FileSink | 10.5 ms | query 1.05、screenshot 2 |
-| `type`（`into` あり） | FileSink | 11.3 ms | tap 1、type_text 1、screenshot 2、query 1.05 |
+| `wait until: settled` | FileSink (with guard) | 113.5 ms | query 3.05, screenshot 2, system_alert_labels 1 |
+| `assert` | FileSink | 10.5 ms | query 1.05, screenshot 2 |
+| `type` (with `into`) | FileSink | 11.3 ms | tap 1, type_text 1, screenshot 2, query 1.05 |
 
-この表から 4 つのことが読めます。
+Four things follow from this table:
 
-- orchestrator の計算コストは 1 ms 未満です。FileSink の 11 ms は、300 要素の `elements.json` を 2 回書く CPU と I/O です。
-- 通常の run（FileSink）では、どのステップも**スクリーンショットを 2 枚**撮ります。
-  `before.png` は BE-0341 の事前証拠で、`after.png` はステップの必須証拠です。
-- `wait until: settled` の木差分経路は、条件が即座に成立しても最低 100 ms かかります。
-  `_SETTLE_POLLS = 2` と `_POLL = 0.05` の積です（`bajutsu/common/orchestrator/waits.py:31-32`）。
-  読み取りも最低 3 回です。
-- `drain_interruptions` は毎ステップ呼ばれます。iOS ではこれが HTTP 往復です（`bajutsu/common/drivers/xcuitest.py:1170-1176`）。
+- The orchestrator's own computational cost is under 1 ms. FileSink's 11 ms is the CPU and I/O of
+  writing a 300-element `elements.json` twice.
+- In a normal run (FileSink), every step kind takes **two screenshots**. `before.png` is
+  [BE-0341](../../../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture.md)'s
+  pre-action evidence, and `after.png` is the step's mandatory evidence.
+- `wait until: settled`'s tree-diff path takes at least 100 ms even when the condition is already
+  satisfied — the product of `_SETTLE_POLLS = 2` and `_POLL = 0.05`
+  ([`bajutsu/common/orchestrator/waits.py:31-32`](../../../../bajutsu/common/orchestrator/waits.py)).
+  It reads at least three times.
+- `drain_interruptions` runs on every step. On iOS, this is an HTTP round trip
+  ([`bajutsu/common/drivers/xcuitest.py:1170-1176`](../../../../bajutsu/common/drivers/xcuitest.py)).
 
-同じシナリオを、Mac で測った実測モデル（[第 7.4 節](#74-埋めるべき数値)、query、tap、screenshot の
-往復 1 回ごとの平均）で投影し直せます。iOS のモデル（query 67 ms、tap 749 ms、screenshot 90 ms）を使うと、
-`tap` 1 ステップは FileSink で約 1040 ms です。`wait until: settled` は約 601 ms になります。
-Android のモデル（query 263 ms、tap 2401 ms、screenshot 104 ms）を使うと、`tap` は約 2968 ms です。
-`wait until: settled` は約 1098 ms になります。手順は[第 7.5 節](#75-推定の再投影)にあります。
+The same scenario can be reprojected against the per-call averages measured on the Mac (query, tap,
+and screenshot round trips). Using the iOS model (query 67 ms, tap 749 ms, screenshot 90 ms), a `tap`
+step with FileSink comes to roughly 1040 ms, and `wait until: settled` to roughly 601 ms. Using the
+Android model (query 263 ms, tap 2401 ms, screenshot 104 ms), `tap` comes to roughly 2968 ms and
+`wait until: settled` to roughly 1098 ms. This reprojection lines up closely with the wall-clock the
+tracer measured directly for a real tap step — iOS 0.95–1.07 s, Android 3.25–3.32 s (see
+[Conclusion Summary](#conclusion-summary)) — which confirms the round-trip-count model itself, aside
+from `POST /act`'s outsized cost. `bench_orchestrator.py`'s `MODELS` dict carries these per-call
+averages; passing `--model ios` or `--model android_resident` reruns this reprojection.
 
-### 2.2 トレーサーの動作確認
+### 2.2 Tracer Verification
 
-`trace_run.py` は製品コードを変更せずに、driver 呼び出し、HTTP 往復、subprocess、証拠取得の所要時間を
-ステップに紐づけて記録します。fake backend での出力例を示します。
+`trace_run.py` records how long every driver call, HTTP round trip, subprocess call, and evidence
+capture takes, attributed to the step in flight, without modifying product code. Here is a sample
+output against the fake backend:
 
 ```text
 == per step (seconds) ==
@@ -115,411 +134,342 @@ step                      wall  driver   evid.  subproc  driver-call counts
 1:assert                 0.002   0.000   0.002    0.000  screenshot=2, query=1, drain_interruptions=1
 ```
 
-空の画面に対する `wait until: settled` が 1 秒のタイムアウトまでに 22 回 query した様子が見えます。
-iOS ではこの 1 回ごとに snapshot と HTTP 往復が乗ります。
+Against an empty screen, `wait until: settled` queried 22 times before its one-second timeout. On
+iOS, every one of those queries carries a snapshot and an HTTP round trip.
 
-## 3. 現状の 1 ステップの内訳
+## 3. Breakdown of a Single Step Today
 
-### 3.1 両バックエンドに共通の骨格（orchestrator）
+### 3.1 The Skeleton Common to Both Backends (Orchestrator)
 
-`_handle_action`（`bajutsu/common/orchestrator/loop.py:1249-1730`）が、どのステップにも次の順で処理を行います。
+`_handle_action`
+([`bajutsu/common/orchestrator/loop.py:1249-1730`](../../../../bajutsu/common/orchestrator/loop.py))
+processes every step kind in the same order:
 
-| 順 | 処理 | 端末への往復 | 場所 |
+| Order | Step | Round trip to the device | Location |
 |---|---|---|---|
-| 1 | 事前証拠 `before.png` と `elements.before` | screenshot 1 回。初回ステップだけ、sink 内部で隠れた query が 1 回 | `loop.py:1274-1329`、`evidence/core.py:170` |
-| 2 | `screenChanged` ポリシー用の事前 query | ポリシーがある場合のみ 1 回 | `loop.py:1366-1376` |
-| 3 | interrupt guard の事前 query | `interrupts` を宣言した場合のみ 1 回 | `loop.py:1404-1412` |
-| 4 | 本体（tap、wait、assert） | 種別による（下の表） | `loop.py:368-473` |
-| 5 | `drain_actuations` と `drain_interruptions` | iOS は HTTP 1 回。Android はメモリ内 | `loop.py:1576-1581` |
-| 6 | 必須の `after.png` | screenshot 1 回 | `loop.py:1601` |
-| 7 | ステップ後の木の読み取り（`elements.json` 用） | 変化を起こすステップは query 1 回。assert と wait は自分の読み取りを流用（BE-0259） | `loop.py:1640-1727` |
+| 1 | Pre-action evidence, `before.png` and `elements.before` | One screenshot. The first step in a scenario also pays one hidden query inside the sink | `loop.py:1274-1329`, `evidence/core.py:170` |
+| 2 | Pre-action query for the `screenChanged` policy | One, only if that policy is set | `loop.py:1366-1376` |
+| 3 | Pre-action query for the interrupt guard | One, only if `interrupts` is declared | `loop.py:1404-1412` |
+| 4 | The step's body (tap, wait, assert) | Depends on kind (table below) | `loop.py:368-473` |
+| 5 | `drain_actuations` and `drain_interruptions` | iOS: one HTTP call. Android: in memory | `loop.py:1576-1581` |
+| 6 | Mandatory `after.png` | One screenshot | `loop.py:1601` |
+| 7 | Post-step tree read (for `elements.json`) | One query for a mutating step; `assert` and `wait` reuse their own read ([BE-0259](../../../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md)) | `loop.py:1640-1727` |
 
-本体の往復は種別で異なります。
+The body's round trips vary by kind:
 
-| 種別 | 最低の往復 | 備考 |
+| Kind | Minimum round trips | Notes |
 |---|---|---|
-| `tap` | 1（ドライバ内部で iOS は 2 HTTP、Android は 3 HTTP と 4 dump） | 不可視なら scroll 復旧で query と is_tappable と scroll を反復 |
-| `type`（`into`） | tap 1 と type_text 1 | |
-| `wait for` | 条件が成立するまで 50 ms ごとに query | guard があれば 1 秒ごとに `system_alert_labels` を追加 |
-| `wait until: settled`（木差分） | query 3 | 100 ms の下限 |
-| `wait until: settled`（BE-0310 遷移シグナル） | 遷移後 0.3 秒の静止を待つ間、50 ms ごとに query | 読み取りは guard のためだけに使われる（`waits.py:1042-1061`） |
+| `tap` | 1 (inside the driver: iOS is 2 HTTP calls; Android is 3 HTTP calls and 4 dumps) | If off-screen, scroll recovery repeats query, is_tappable, and scroll |
+| `type` (with `into`) | tap 1, type_text 1 | |
+| `wait for` | A query every 50 ms until the condition is met | A guard adds `system_alert_labels` every second |
+| `wait until: settled` (tree diff) | query 3 | 100 ms floor |
+| `wait until: settled` (BE-0310 transition signal) | A query every 50 ms during the 0.3-second post-transition quiet period | The read serves only the guard ([`waits.py:1042-1061`](../../../../bajutsu/common/orchestrator/waits.py)) |
 | `assert` | query 1 | |
 
-証拠の書き込みは同期です。`elements.json` は事前と事後で同じファイルに 2 回書かれ、
-毎回、秘匿処理、JSON 整形、正規表現の走査を通ります（`evidence/sink.py:161-210`）。
+Evidence is written synchronously. `elements.json` is written twice, before and after, to the same
+file, and each write goes through secret redaction, JSON formatting, and a regex scan
+([`evidence/sink.py:161-210`](../../../../bajutsu/common/evidence/sink.py)).
 
 ### 3.2 iOS
 
-タップ 1 ステップの内訳です。実測は iPhone 17 Pro シミュレータ、`controls.yaml`（2026-09-03）です。
-HTTP 境界の内側（属性を読む回数など）は直接観測しておらず、[`reports/ios.md`](reports/ios.md) の
-読解による推定（est）のままです。
+A tap step's breakdown, measured on an iPhone 17 Pro Simulator against `controls.yaml`
+(2026-09-03). What happens inside the HTTP boundary (how many times an attribute is read, for
+example) was not observed directly and stays an estimate (est) drawn from reading
+[`reports/ios.md`](reports/ios.md).
 
-| 局面 | 実測または推定 | 原因 | 場所 |
+| Phase | Measured or estimated | Cause | Location |
 |---|---|---|---|
-| `before.png` | 90 ms（実測、`GET /screenshot` 平均、17 回） | `app.screenshot().pngRepresentation` をフル解像度 PNG で送る。runner の直列キューを占有する | `XcuitestElementProvider.swift:330`、`APIHandler.swift:27-51` |
-| `/elements` | 63 ms（実測、`GET /elements` 平均、18 回） | `app.snapshot()` 約 34 ms（BE-0105 実測）に加え、毎回 `safariViewService.state` の XPC（プロセス間通信）と、BajutsuKit 連携アプリでは `/zorder` の第 2 往復 | `XcuitestElementProvider.swift:49-50`、`drivers/zorder.py:36-106` |
-| タップ本体 | 690 ms（実測、`POST /tap` 平均、3 回） | 位置パスから生きた要素を復元した後、属性を 1 つずつ読む。`exists`、identifier、label、type、enabled、selected、frame ×2、isHittable で約 11 回の XCUI 解決（この内訳は est）。その後にタップ合成 | `XcuitestElementProvider.swift:127-151、410-430` |
-| `drain_interruptions` | 1.2 ms（実測、9 回） | 毎回新規 TCP 接続 | `xcuitest.py:591、1170` |
-| `after.png` | 90 ms（実測、`before.png` と同じ呼び出し） | 上と同じ | |
-| 事後の query | 63 ms（実測、`/elements` と同じ呼び出し） | `elements.json` のため | |
-| 合計 | 0.95〜1.07 秒（実測、tap ステップの壁時計、3 回） | | |
+| `before.png` | 90 ms (measured, `GET /screenshot` mean, 17 calls) | Sends `app.screenshot().pngRepresentation` as a full-resolution PNG, occupying the runner's serial queue | `XcuitestElementProvider.swift:330`, `APIHandler.swift:27-51` |
+| `/elements` | 63 ms (measured, `GET /elements` mean, 18 calls) | `app.snapshot()` at roughly 34 ms (measured in BE-0105), plus a `safariViewService.state` cross-process call (XPC) every time, and — for a BajutsuKit-linked app — a second round trip for `/zorder` | `XcuitestElementProvider.swift:49-50`, `drivers/zorder.py:36-106` |
+| Tap itself | 690 ms (measured, `POST /tap` mean, 3 calls) | After resolving a live element from its position path, reads its attributes one at a time — `exists`, identifier, label, type, enabled, selected, frame ×2, isHittable, roughly 11 XCUI resolutions (this breakdown is est) — then synthesizes the tap | `XcuitestElementProvider.swift:127-151, 410-430` |
+| `drain_interruptions` | 1.2 ms (measured, 9 calls) | A fresh TCP connection every time | `xcuitest.py:591, 1170` |
+| `after.png` | 90 ms (measured, same call as `before.png`) | Same as above | |
+| Post-step query | 63 ms (measured, same call as `/elements`) | For `elements.json` | |
+| Total | 0.95–1.07 s (measured, tap-step wall-clock, 3 runs) | | |
 
-局面ごとの実測値を単純に足すと約 997 ms で、壁時計の実測（0.95〜1.07 秒）とほぼ一致します。
-差の数十 ms は、[第 2.1 節](#21-orchestrator-のオーバーヘッドと往復回数)で見た orchestrator の
-計算コストと証拠の書き込みです。
+Simply summing the per-phase figures gives roughly 997 ms, close to the measured wall-clock
+(0.95–1.07 s). The remaining tens of milliseconds are the orchestrator's own computation and evidence
+writes, seen in [Section 2.1](#21-orchestrator-overhead-and-round-trip-counts).
 
-加えて、次の固定費があります。
+There are also these fixed costs:
 
-- stale 再試行の固定 sleep です。初回 0.5 秒、2 回目 1.0 秒です（`xcuitest.py:141-149`）。
-  runner はアクチュエーション中のあらゆる例外を `stale` に写像するため、アニメーション中の一時的な失敗でも 0.5 秒を払います。
-- 文字入力は `app.typeText` で 1 文字あたり約 50 ms（est）です。
-- `system_alert_labels` は SpringBoard の snapshot で 100〜500 ms（est）です。guard 付きの wait 中は 1 秒ごとに走ります。
-- 4 シナリオごとに runner を再起動します（`_MAX_WARM_REUSES = 3`、`environments/xcuitest.py:272`）。冷起動は 15〜40 秒（est）です。
+- A fixed sleep on stale retries: 0.5 s on the first retry, 1.0 s on the second
+  ([`xcuitest.py:141-149`](../../../../bajutsu/common/drivers/xcuitest.py)). The runner maps every
+  exception during actuation to `stale`, so even a transient failure mid-animation pays 0.5 s.
+- Text entry via `app.typeText` costs roughly 50 ms per character (est).
+- `system_alert_labels` is a SpringBoard snapshot, 100–500 ms (est); it runs every second during a
+  guarded wait.
+- The runner restarts every four scenarios (`_MAX_WARM_REUSES = 3`,
+  `environments/xcuitest.py:272`). A cold start is 15–40 seconds (est).
 
-`wait_for` は runner 側の条件待ちではなく、ホストの 50 ms ポーリングです。
-`docs/drivers.md` には「runner のネイティブな条件待ちを使う」とあります。
-「screenshot は `simctl io screenshot`」ともあります。どちらも現在の実装と一致していません。
+`wait_for` is a host-side 50 ms poll, not a condition wait inside the runner. `docs/drivers.md` says
+to "use the runner's native condition wait" and that "screenshot uses `simctl io screenshot`" —
+neither matches the current implementation.
 
 ### 3.3 Android
 
-常駐サーバー経路のタップ 1 ステップの内訳です。実測は `bajutsu-api34-arm64` エミュレータ、
-`controls.yaml`（2026-09-03）です。旧版はこの内訳を `_settle`、「読み取り 1 回の端末側」、
-「`/clock` と `/act`」に分けて見積もっていました。実測できるのは HTTP 境界の `POST /act` だけで、
-その内側は 1 回の応答にまとまっています。内側の内訳は [`reports/android.md`](reports/android.md) の
-読解による推定（est）のままです。
+A tap step's breakdown on the resident-server path, measured on a `bajutsu-api34-arm64` emulator
+against `controls.yaml` (2026-09-03). An earlier version of this report estimated this breakdown by
+splitting it into `_settle`, "one device-side read", and "`/clock` and `/act`". What can actually be
+measured is only `POST /act`, at the HTTP boundary — its interior is a single response, whose
+breakdown stays an estimate (est) drawn from reading
+[`reports/android.md`](reports/android.md).
 
-| 局面 | 実測または推定 | 原因 | 場所 |
+| Phase | Measured or estimated | Cause | Location |
 |---|---|---|---|
-| `before.png` | 103 ms（実測、screencap 平均、17 回） | `adb exec-out screencap -p` の subprocess | `backend_cli/adb.py:975-990` |
-| `POST /act`（要素の解決、タップ、公開待ちを含む） | 2204 ms（実測、平均、3 回） | 内側は `_settle` 相当の読み取りとタップ合成の est。ただし大部分の原因は下の段落に書いた `POSTDATE_BUDGET_MS` だと考えられる | `ResidentServerTest.kt:171-229、625` |
-| `after.png` | 103 ms（実測、`before.png` と同じ呼び出し） | 上と同じ | |
-| 事後の query（`GET /source`） | 45〜670 ms（実測、ばらつきが大きい） | 直前の読み取りマークをすでに追い越した「素通り」の読み取りは 45 ms 前後。タップ直後で `?since=` が待ちに入る読み取りは 500〜670 ms | `adb_resident.py:105-146` |
-| 合計 | 3.25〜3.32 秒（実測、tap ステップの壁時計、3 回） | | |
+| `before.png` | 103 ms (measured, screencap mean, 17 calls) | A subprocess call to `adb exec-out screencap -p` | `backend_cli/adb.py:975-990` |
+| `POST /act` (element resolution, tap, and publish wait) | 2204 ms (measured, mean, 3 calls) | Its interior is an est of `_settle`-equivalent reads and tap synthesis, but most of the cause is likely the `POSTDATE_BUDGET_MS` wait discussed below | `ResidentServerTest.kt:171-229, 625` |
+| `after.png` | 103 ms (measured, same call as `before.png`) | Same as above | |
+| Post-step query (`GET /source`) | 45–670 ms (measured, wide spread) | A "pass-through" read that has already overtaken the prior read mark returns in roughly 45 ms; a read right after a tap, where `?since=` still has to wait, takes 500–670 ms | `adb_resident.py:105-146` |
+| Total | 3.25–3.32 s (measured, tap-step wall-clock, 3 runs) | | |
 
-局面ごとの実測値を単純に足すと約 2.5〜2.9 秒で、壁時計の実測（3.25〜3.32 秒）に対して
-数百 ms 少なくなります。この差は、`POST /act` の直前に取る `GET /clock`（実測 2 ms 未満、3 回）や
-証拠の書き込みなど、表に立てていない小さな呼び出しの積み上げです。
+Simply summing the per-phase figures gives roughly 2.5–2.9 s, a few hundred milliseconds under the
+measured wall-clock (3.25–3.32 s). That gap is the `GET /clock` call taken right before `POST /act`
+(measured under 2 ms, 3 calls), evidence writes, and other small calls this table does not list.
 
-`POST /act` がほぼ毎回同じ 2.2 秒だったことは、可変の待ちではなく固定の予算を使い切っている
-兆候です。常駐サーバーの `respondAct`（`ResidentServerTest.kt:184-188`）は、タップを注入する前に待ちます。
-待つのは、ホストが送った `since` マークをアクセシビリティイベントが追い越すまでです。
-この予算が `POSTDATE_BUDGET_MS`（2000 ミリ秒、`ResidentServerTest.kt:642`）です。
-この `since` は、ホスト側の `_capture_mark()`（`drivers/adb.py:812-831`）が取った値です。
-取るのは、この `POST /act` を送る直前、端末クロックの「今」です（`drivers/adb.py:1299`）。
-画面がすでに静止していれば、このタップ自身の注入が起こすイベントより早く届くイベントはありません。
-そのためこの待ちは注入前に満たされる見込みがなく、2 秒の予算を使い切って次に進みます。
-`controls.yaml` のタップ対象は、タップの直前は静止した画面です。実測の約 2.2 秒の
-大部分はこの待ちに帰着すると考えられますが、常駐サーバーのログでは確認していません。
-対策の候補として、確認が要る前提のまま[第 4.3 節](#43-androidの段階-b)に最優先で載せました。
+`POST /act` landing at nearly the same 2.2 seconds almost every time is a sign of a fixed budget being
+used up, not a variable wait. The resident server's `respondAct`
+(`ResidentServerTest.kt:184-188`) waits, before injecting the tap, for an accessibility event to
+overtake the `since` mark the host sent. That budget is `POSTDATE_BUDGET_MS` (2000 ms,
+`ResidentServerTest.kt:642`). This `since` value comes from the host's `_capture_mark()`
+(`drivers/adb.py:812-831`), taken as the device clock's "now" right before sending this `POST /act`
+(`drivers/adb.py:1299`). If the screen is already still, no event arrives sooner than the one this
+tap's own injection produces — so this wait has no way to be satisfied before injection, and it burns
+the full two-second budget before moving on. `controls.yaml`'s tap targets are all on a screen that is
+already still right before the tap, so most of the measured roughly 2.2 seconds is likely attributable
+to this wait — though this has not been confirmed against the resident server's own logs. It is listed
+as the top priority in [Section 4.3](#43-android-stage-b), as a candidate fix that still needs that
+confirmation.
 
-`GET /source` の実測の広い幅（45〜670 ms）も同じ `POSTDATE_BUDGET_MS` で説明できます。
-`respondSource`（`ResidentServerTest.kt:353-366`）は `since` が来ていれば同じ 2 秒の予算を使い、
-すでにマークを追い越していれば即座に返します。第 2 節で観測した `scroll` ステップでは、
-この読み取りが 2 回とも 2 秒の予算いっぱいまで伸び、`scroll` 1 ステップの壁時計は 7.1 秒でした。
-`scroll` 自体の内訳はこの資料の対象外ですが、[第 8 節](#8-未確認の事項とリスク)に追記しました。
+The wide spread in the measured `GET /source` figures (45–670 ms) has the same
+`POSTDATE_BUDGET_MS` explanation. `respondSource`
+(`ResidentServerTest.kt:353-366`) uses the same two-second budget when a `since` is present and
+returns immediately once the mark is already overtaken. In the `scroll` step observed in Section 2,
+both of these reads stretched to the full two-second budget, and the `scroll` step's wall-clock came
+to 7.1 seconds. `scroll`'s own breakdown is out of scope for this report, but a note on it is added in
+[Section 7](#7-open-questions-and-risks).
 
-読み取りのたびに新規 TCP 接続を張り、サーバーは `Connection: close` で返します（`adb_resident.py:125`、`ResidentServerTest.kt:544`）。
-ホスト側では同じ XML を 2 回パースします（`adb_resident.py:78-102`、`drivers/adb.py:404-437`）。
-シナリオごとの固定費もあります。常駐サーバーの APK（Android アプリケーションパッケージ）を毎回入れ直します。
-その後に instrumentation を起動し直します（`adb_resident.py:383-399`）。実測は 1.5 秒でしたが、
-これはエミュレータが起動済みで APK も導入済みの状態からの再インストールです。エミュレータの
-コールドブートや初回のパッケージ導入を含む固定費は、推定 6〜12 秒（est）のままです。
+Every read opens a fresh TCP connection, and the server answers with `Connection: close`
+(`adb_resident.py:125`, `ResidentServerTest.kt:544`). The host parses the same XML twice
+(`adb_resident.py:78-102`, `drivers/adb.py:404-437`). There is also a fixed per-scenario cost: the
+resident server's Android Application Package (APK) is reinstalled every time, and instrumentation is
+restarted after that (`adb_resident.py:383-399`). The measured figure was 1.5 seconds, but that is a
+reinstall onto an emulator that was already booted with the package already present — the fixed cost
+of an emulator cold boot or a first-time package install stays at an estimated 6–12 seconds (est).
 
-`uiautomator dump` 経路は 1 読み取り 2.3〜2.5 秒（BE-0234 実測）です。
-サーバー APK が未ビルドか、チャネルが故障すると、黙ってこの経路に落ちます。
+The `uiautomator dump` path is 2.3–2.5 seconds per read (measured in BE-0234). If the server APK is
+not built, or the channel fails, the driver silently falls back to this path.
 
-## 4. ボトルネックの順位と対策
+## 4. Bottleneck Ranking and Countermeasures
 
-期待値は 1 ステップあたりの短縮です。「決定性」の列は、prime directive（固定 sleep の禁止、判定の決定性、アプリ非依存）への影響です。
+The expected values are the cut per step. The "Determinism" column notes the effect on the prime
+directives (no fixed sleep, deterministic judgment, app-agnosticism).
 
-### 4.1 両バックエンドに共通（段階 A）
+### 4.1 Common to Both Backends (Stage A)
 
-期待値の iOS と Android の数値は、断りがなければ実測（[第 3.2 節](#32-ios)と
-[第 3.3 節](#33-android)）を根拠にしています。
+Unless noted otherwise, the iOS and Android expected values rest on the measured figures in
+[Section 3.2](#32-ios) and [Section 3.3](#33-android).
 
-| 順位 | 対策 | 期待値 | 決定性 | 変更箇所 |
+| Rank | Countermeasure | Expected value | Determinism | Where to change |
 |---|---|---|---|---|
-| 1 | `before.png` を廃止するか、直前ステップの `after.png` を流用する。間にアクチュエーションがないので画面は同じ | iOS 90 ms、Android 103 ms | 影響なし。証拠のみ | `loop.py:1274-1329` |
-| 2 | `after.png` を臨界パスから外す。取得は非同期スレッド、書き込みも非同期にする。JPEG か縮小も検討 | iOS 90 ms、Android 103 ms | 影響なし | `loop.py:1601`、`evidence/core.py:174-186` |
-| 3 | `elements.json` を事後の 1 回だけ書く。事後の query はポリシーで要求された場合のみ発行する | iOS 63 ms、Android 45〜670 ms（実測でばらつきが大きい。第 3.3 節） | 影響なし | `loop.py:1712-1727`、`evidence_rules.py:190-194` |
-| 4 | 初回ステップの sink 内部の隠れた query を消す | シナリオごとに 1 読み取り | 影響なし | `evidence/core.py:170` |
-| 5 | BE-0310 の遷移シグナル経路で、静止待ちの間の query を止める。guard か interrupt があるときだけ読む | iOS 200〜300 ms（est、settled 1 回あたり） | 影響なし。判定はシグナルのまま | `waits.py:1042-1061` |
-| 6 | `drain_interruptions` を `/tap` や `/elements` の応答に同乗させる | iOS 1.2 ms | 影響なし | `xcuitest.py:1170`、`APIHandler.swift` |
+| 1 | Drop `before.png`, or reuse the previous step's `after.png`. Nothing actuates between them, so the screen is the same | iOS 90 ms, Android 103 ms | No effect. Evidence only | `loop.py:1274-1329` |
+| 2 | Move `after.png` off the critical path. Capture on an async thread and write asynchronously too; consider JPEG or a smaller size | iOS 90 ms, Android 103 ms | No effect | `loop.py:1601`, `evidence/core.py:174-186` |
+| 3 | Write `elements.json` once, after the step. Issue the post-step query only when a policy actually requires it | iOS 63 ms, Android 45–670 ms (measured, a wide spread — see Section 3.3) | No effect | `loop.py:1712-1727`, `evidence_rules.py:190-194` |
+| 4 | Remove the hidden query inside the sink on the first step | One read per scenario | No effect | `evidence/core.py:170` |
+| 5 | Stop the read during the settle wait on the BE-0310 transition-signal path. Read only when a guard or an interrupt is present | iOS 200–300 ms (est, per settle) | No effect. The judgment stays the signal | `waits.py:1042-1061` |
+| 6 | Carry `drain_interruptions` on the `/tap` or `/elements` response instead of its own round trip | iOS 1.2 ms | No effect | `xcuitest.py:1170`, `APIHandler.swift` |
 
-### 4.2 iOS（段階 B）
+### 4.2 iOS (Stage B)
 
-ここから先は `POST /tap`（実測 690 ms）の内側を狙う対策です。内側の呼び出し回数と時間は
-HTTP 境界の外なので直接測っておらず、期待値は [`reports/ios.md`](reports/ios.md) の読解による
-推定（est）のままです。
+From here on, the target is the inside of `POST /tap` (measured at 690 ms). The call count and time
+inside it are outside the HTTP boundary, not measured directly, and the expected values stay an
+estimate (est) drawn from reading [`reports/ios.md`](reports/ios.md).
 
-| 順位 | 対策 | 期待値 | 決定性 | 変更箇所 |
+| Rank | Countermeasure | Expected value | Determinism | Where to change |
 |---|---|---|---|---|
-| 1 | タップ時の属性読みを `el.snapshot()` 1 回にまとめる。`app.frame` はキャッシュする | 150〜300 ms | 影響なし | `XcuitestElementProvider.swift:410-430、122-125` |
-| 2 | さらに進めて、記録済みの frame の中心を `app.coordinate` でタップする。identity 検証は stale が疑われるときだけ行う | 追加で 50〜150 ms | 要検討。座標タップは BE-0396 が Safari ですでに採用 | 同上 |
-| 3 | `safariViewService.state` の確認を、snapshot にリモートビューの境界ノードがあるときだけにする | query 1 回あたり 5〜50 ms | 影響なし | `XcuitestElementProvider.swift:50` |
-| 4 | `/zorder` を遅延評価にする。セレクタの z 順の曖昧さ解消が必要なときだけ呼ぶ | query 1 回あたり 5〜30 ms | 影響なし | `xcuitest.py:744-768` |
-| 5 | HTTP keep-alive を両側で有効にする | 往復 1 回あたり 1〜3 ms | 影響なし | `xcuitest.py:591`、`HTTPServer.swift:326` |
-| 6 | stale の初回は sleep せずに即再問い合わせする | 0.5 秒（発生時） | 影響なし。再問い合わせ自体が待ち | `xcuitest.py:146、848-853` |
-| 7 | SpringBoard の probe は `alerts.firstMatch.exists` を先に見る。ボタンの列挙は存在時だけ | 100〜400 ms（probe 1 回あたり） | 影響なし | `XcuitestElementProvider.swift:302-320` |
-| 8 | `BAJUTSU_XCUITEST_MAX_WARM_REUSES` を上げる。再インストールは digest 一致時に省く | シナリオごとに 4〜10 秒 | 影響なし | `environments/xcuitest.py:259-306` |
-| 9 | 文字入力は `simctl pbcopy` と `typeKey("v", .command)` に置き換える | 1 文字あたり 40 ms | 要検討。ペースト非対応の入力欄がある | `simctl.py:842-878` |
+| 1 | Batch the tap-path attribute reads into one `el.snapshot()` call. Cache `app.frame` | 150–300 ms | No effect | `XcuitestElementProvider.swift:410-430, 122-125` |
+| 2 | Go further: tap the recorded frame's center with `app.coordinate`. Verify identity only when staleness is suspected | Another 50–150 ms | Needs review. [BE-0396](../../../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md) already takes the coordinate-tap route for Safari | Same as above |
+| 3 | Check `safariViewService.state` only when the snapshot has a remote-view boundary node | 5–50 ms per query | No effect | `XcuitestElementProvider.swift:50` |
+| 4 | Make `/zorder` lazy. Call it only when resolving a selector's z-order ambiguity actually requires it | 5–30 ms per query | No effect | `xcuitest.py:744-768` |
+| 5 | Enable HTTP keep-alive on both ends | 1–3 ms per round trip | No effect | `xcuitest.py:591`, `HTTPServer.swift:326` |
+| 6 | Re-query immediately on the first stale retry instead of sleeping first | 0.5 s (when it happens) | No effect. The re-query is itself a wait | `xcuitest.py:146, 848-853` |
+| 7 | Have the SpringBoard probe check `alerts.firstMatch.exists` first. Enumerate buttons only when one exists | 100–400 ms per probe | No effect | `XcuitestElementProvider.swift:302-320` |
+| 8 | Raise `BAJUTSU_XCUITEST_MAX_WARM_REUSES`. Skip reinstall when the digest matches | 4–10 s per scenario | No effect | `environments/xcuitest.py:259-306` |
+| 9 | Replace character-by-character text entry with `simctl pbcopy` and `typeKey("v", .command)` | 40 ms per character | Needs review. Some input fields do not accept paste | `simctl.py:842-878` |
 
-### 4.3 Android（段階 B）
+### 4.3 Android (Stage B)
 
-第 3.3 節の実測で、`POSTDATE_BUDGET_MS` の待ちが最優先候補として浮かび上がりました。
-順位はこれを反映して並べ替えてあります。1 番以外の期待値は、旧版のまま
-[`reports/android.md`](reports/android.md) の読解による推定（est）です。
+The measurement in Section 3.3 surfaced the `POSTDATE_BUDGET_MS` wait as the top-priority candidate,
+and the ranking below reflects that. Every expected value but the first is unchanged from the earlier
+version, an estimate (est) drawn from reading [`reports/android.md`](reports/android.md).
 
-| 順位 | 対策 | 期待値 | 決定性 | 変更箇所 |
+| Rank | Countermeasure | Expected value | Determinism | Where to change |
 |---|---|---|---|---|
-| 1 | `respondAct` が注入前に待つ `since` の `POSTDATE_BUDGET_MS`（2000 ms）を、画面がすでに静止しているとわかる場合は待たずに進める。`VIEW_CLICKED` のみでレイアウトイベントがなければ即答する、などイベント種別での判定を想定 | タップ 1 回あたり最大で実測の 2.2 秒近く（要検証。第 3.3 節の推論はサーバーのログで未確認） | 要検討。まずサーバーのログでこの待ちが実際に使い切られていることを確認してから、read-lag barrier（`_READ_LAG_S`）の安全性への影響を見直す | `ResidentServerTest.kt:184-188、353-366、625、642`、`drivers/adb.py:536、1299` |
-| 2 | `settledDump` の 2 回目の dump を、1 回目の前後で a11y イベントが来ていないときは省く。`ReadMark` がすでに知っている | 100〜200 ms（est、読み取り 1 回あたり） | 影響なし。判定条件は同じ | `ResidentServerTest.kt:482-490、558-587` |
-| 3 | `nativeZ` の全ノード走査を、アプリがオプトインしたときだけにする | 20〜100 ms（est、読み取り 1 回あたり） | 影響なし | `ResidentServerTest.kt:427-457` |
-| 4 | `/act` の応答に、端末側で settle 済みの木を同乗させ、ホストの `_settle` が最初の読み取りを省けるようにする | 400〜600 ms（est） | 影響なし。端末側で 2 回一致した木 | `drivers/adb.py:1015-1031、1341`、`ResidentServerTest.kt:516-524` |
-| 5 | スクリーンショットを `UiAutomation.takeScreenshot()` で常駐サーバーから返す。subprocess を消す | 実測 103 ms（1 枚あたり） | 影響なし | `backend_cli/adb.py:975-990` |
-| 6 | keep-alive。サーバーの `Connection: close` をやめ、同じソケットで `handle` を回す | 30〜150 ms（est） | 影響なし | `adb_resident.py:125、183、269`、`ResidentServerTest.kt:83、544` |
-| 7 | 常駐サーバーを run 全体で使い回す。APK の再インストールは署名とバージョンの一致時に省く | シナリオごとに 6〜12 秒（est。第 3.3 節の実測 1.5 秒は起動済みエミュレータでの再インストール分） | 影響なし | `adb_resident.py:395-399`、`environments/android.py:367` |
-| 8 | XML の二重パースをやめる | 10〜40 ms（est、読み取り 1 回あたり） | 影響なし | `adb_resident.py:78-102`、`drivers/adb.py:404-437` |
-| 9 | `/act` に `swipe` を追加し、パンにも公開確認を与える | 実測の `scroll` は 1 ステップ 7.1 秒（第 3.3 節、`GET /source` が 2 回とも `POSTDATE_BUDGET_MS` を使い切ったため） | 影響なし | `drivers/adb.py:1477-1552` |
+| 1 | Skip the `POSTDATE_BUDGET_MS` (2000 ms) wait `respondAct` pays on `since` before injecting, when the screen is already known to be still. One approach: answer immediately when only `VIEW_CLICKED` is expected with no layout event | Up to nearly the measured 2.2 seconds per tap (needs verification — the reasoning in Section 3.3 is not yet confirmed by the server's own logs) | Needs review. First confirm from the server's logs that this wait is really being used up, then revisit its effect on the read-lag barrier's (`_READ_LAG_S`) safety | `ResidentServerTest.kt:184-188, 353-366, 625, 642`, `drivers/adb.py:536, 1299` |
+| 2 | Skip `settledDump`'s second dump when no accessibility (a11y) event arrived around the first one — `ReadMark` already knows | 100–200 ms (est, per read) | No effect. The judgment condition is unchanged | `ResidentServerTest.kt:482-490, 558-587` |
+| 3 | Walk every `nativeZ` node only when the app opts in | 20–100 ms (est, per read) | No effect | `ResidentServerTest.kt:427-457` |
+| 4 | Carry the device-settled tree in `/act`'s own response, so the host's `_settle` can skip its first read | 400–600 ms (est) | No effect. The tree already matched twice on-device | `drivers/adb.py:1015-1031, 1341`, `ResidentServerTest.kt:516-524` |
+| 5 | Return screenshots from the resident server via `UiAutomation.takeScreenshot()`. Remove the subprocess call | Measured 103 ms per shot | No effect | `backend_cli/adb.py:975-990` |
+| 6 | Keep-alive: stop the server's `Connection: close` and reuse the same socket across `handle` calls | 30–150 ms (est) | No effect | `adb_resident.py:125, 183, 269`, `ResidentServerTest.kt:83, 544` |
+| 7 | Reuse the resident server across the whole run. Skip reinstall when the signature and version already match | 6–12 s per scenario (est — the 1.5 s measured in Section 3.3 was a reinstall onto an already-booted emulator) | No effect | `adb_resident.py:395-399`, `environments/android.py:367` |
+| 8 | Stop parsing the XML twice | 10–40 ms (est, per read) | No effect | `adb_resident.py:78-102`, `drivers/adb.py:404-437` |
+| 9 | Add `swipe` to `/act`, giving a pan the same publish confirmation a tap gets | The measured `scroll` step is 7.1 s (Section 3.3 — both `GET /source` calls burned the full `POSTDATE_BUDGET_MS`) | No effect | `drivers/adb.py:1477-1552` |
 
-## 5. 目標に届く設計案（フェーズ C）
+## 5. A Design That Reaches the Target (Phase C)
 
-段階 C はまだ存在しないため、この節の数値はすべて推定（est）です。実測で置き換えられるのは、
-実装してからです。
+Stage C does not exist yet, so every figure in this section is an estimate (est). Only building it
+lets those figures be replaced with measured ones.
 
-### 5.1 判定の境界
+### 5.1 The Boundary of Judgment
 
-prime directive 1 は「AI は判定しない」であって、「ホストが判定する」ではありません。
-端末側の実行機が決定的にセレクタを解決し、条件待ちと assert を評価することは、この原則に反しません。
-Python は次の 3 つを担い続けます。
+Prime directive 1 is "an AI does not judge," not "the host must judge." A device-side executor
+deterministically resolving a selector and evaluating a condition wait or an assert does not violate
+that directive. Python keeps three responsibilities:
 
-- シナリオを展開し、端末側で実行できるステップの列に変換して送ります。
-- 端末側から返る証拠（要素の木、座標、スクリーンショット、読み取りの時刻）を受け取り、`manifest.json` と HTML レポートに書きます。
-- pass/fail を確定します。端末側の評価結果は入力であり、最終の verdict はホストが同じ決定的規則で確認します。
+- Expand the scenario and send it as a sequence of steps the device side can execute.
+- Receive the evidence the device side returns (the element tree, coordinates, screenshots, and read
+  timestamps) and write `manifest.json` and the HTML report.
+- Decide pass/fail. A device-side evaluation is an input; the host confirms the final verdict against
+  the same deterministic rules.
 
-端末側に移すのは次のものです。
+What moves to the device side:
 
-- セレクタ解決です。
-- `wait for`、`until: gone`、`until: settled` です。
-- `assert` のうち画面に閉じた種類（`exists`、`label`、`value`、`count`、`enabled`）です。
-- `tap`、`type`、`swipe`、`scroll` です。
+- Selector resolution.
+- `wait for`, `until: gone`, and `until: settled`.
+- The `assert` kinds closed to the screen (`exists`, `label`, `value`, `count`, `enabled`).
+- `tap`, `type`, `swipe`, and `scroll`.
 
-`http`、`email`、`generate`、`visual`、`golden`、`request` 系の assert はホストに残します。
+The `http`, `email`, `generate`, `visual`, `golden`, and `request` families of `assert` stay on the
+host.
 
-### 5.2 iOS：XCTest ランナー内のステップ実行機
+### 5.2 iOS: A Step Executor Inside the XCTest Runner
 
-「Swift でシナリオをそのまま実行する」を、XCTest ランナーのプロセス内で行います。
-アプリ内（BajutsuKit）ではありません。理由は 3 つです。
+"Run the scenario directly in Swift" happens inside the XCTest runner's own process, not inside the
+app (BajutsuKit). Three reasons:
 
-- BajutsuKit には、イベント注入、キーボード入力、frame 付きの accessibility 木、スクリーンショットのいずれもありません
-  （[`reports/ios.md`](reports/ios.md) 第 5 節）。`BajutsuTouch` は観測用の swizzle で、合成はしません。
-- SpringBoard の権限ダイアログ、システムキーボード、`SFSafariViewService` の中身は、アプリ内からは触れません。
-- プロセス境界があるからこそ、アプリのクラッシュを観測できます。
+- BajutsuKit has none of event injection, keyboard input, a frame-bearing accessibility tree, or a
+  screenshot capability ([`reports/ios.md`](reports/ios.md), Section 5). `BajutsuTouch` is an
+  observation-only swizzle; it does not synthesize input.
+- SpringBoard's permission dialogs, the system keyboard, and `SFSafariViewService` content are
+  unreachable from inside the app.
+- The process boundary is exactly what lets a crash in the app be observed.
 
-ランナー内の実行機は、現在の `APIHandler` の上に `POST /scenario`（ステップの列）を足す形で作れます。
-実行機は次の 4 つをネイティブに行います。
+An executor inside the runner can be built by adding `POST /scenario` (a step sequence) on top of the
+current `APIHandler`. The executor does four things natively:
 
-1. `app.snapshot()` を 1 回取り、セレクタをランナー内で解決します。現在の Python 側の `resolve_unique` を Swift に移植します。
-2. タップは、解決した要素の frame 中心に `app.coordinate` で行います。属性の再読は行いません。
-3. 条件待ちは、snapshot のループ（30〜40 ms 周期）で行います。BajutsuKit の画面遷移シグナル（BE-0310）は、
-   現在 Python の collector にだけ届きます。ランナーにも届くようにして、`settled` の判定に直接使います。
-4. スクリーンショットと要素の木は、ステップの結果と一緒に非同期で返します（chunked transfer で 1 ステップごとに送ります）。
+1. Takes one `app.snapshot()` and resolves the selector inside the runner — porting the current
+   Python-side `resolve_unique` to Swift.
+2. Taps by `app.coordinate`, at the resolved element's frame center. It does not re-read attributes.
+3. Evaluates condition waits with a snapshot loop (a 30–40 ms cadence). BajutsuKit's screen-transition
+   signal (BE-0310) currently reaches only the Python-side collector; extending it to reach the runner
+   too lets `settled` use it as its condition directly.
+4. Returns screenshots and the element tree asynchronously alongside the step's result (sent per step
+   over chunked transfer).
 
-タップ 1 ステップの推定は、snapshot 35 ms、座標タップ 100〜200 ms、settle 判定 35〜70 ms で、合計 200〜350 ms です。
-スクリーンショットは臨界パスの外です。
+A tap step is estimated at 35 ms for the snapshot, 100–200 ms for the coordinate tap, and 35–70 ms for
+the settle judgment — 200–350 ms total. The screenshot is off the critical path.
 
-XCUITest は、イベントの前後でアプリの静止（quiescence）を待ちます。
-このタップ合成の 100〜200 ms が残る場合は、WebDriverAgent と同じ private API の利用が選択肢になります。
-`XCUIApplicationProcess` の `waitForQuiescenceIncludingAnimationsIdle:` を無効にする方法です。
-テストバンドル内の変更なのでアプリには影響しませんが、Xcode の更新で壊れうる点は受け入れる必要があります。
+XCUITest waits for the app to reach quiescence around each event. If this 100–200 ms of tap synthesis
+remains, using the same private API WebDriverAgent uses becomes an option: disabling
+`XCUIApplicationProcess`'s `waitForQuiescenceIncludingAnimationsIdle:`. It is a change inside the test
+bundle, so it does not affect the app — but it depends on a private API an Xcode update could break.
 
-### 5.3 Android：instrumentation サーバー内のステップ実行機
+### 5.3 Android: A Step Executor Inside the Instrumentation Server
 
-常駐サーバーはすでに instrumentation として動き、`UiAutomation` と a11y イベントのリスナーを持っています
-（[`reports/android.md`](reports/android.md) 第 6 節）。実行機に必要なのは次の 4 つです。
+The resident server already runs as an instrumentation, with a `UiAutomation` session and an
+accessibility-event listener ([`reports/android.md`](reports/android.md), Section 6). An executor
+needs four more things:
 
-1. 木の読み取りを `dumpWindowHierarchy` の XML から、`AccessibilityNodeInfo` の直接走査に置き換えます。
-   `nativeZ` のためにすでに同じ走査をしています。
-2. `wait` と `settled` を、`TYPE_WINDOW_CONTENT_CHANGED` と `WINDOWS_CHANGED` のイベント駆動にします。
-   2 回の dump が一致するまで待つ現在の方式を、イベントの静止で置き換えます。
-3. タップとパンは `UiAutomation.injectInputEvent` で行い、公開確認もイベント種別で判定します。
-4. スクリーンショットは `UiAutomation.takeScreenshot()` で取り、結果と一緒に返します。
+1. Replace the tree read, currently `dumpWindowHierarchy`'s XML, with a direct
+   `AccessibilityNodeInfo` walk — the same walk `nativeZ` already does.
+2. Make `wait` and `settled` event-driven, on `TYPE_WINDOW_CONTENT_CHANGED` and `WINDOWS_CHANGED`.
+   Replace the current approach — wait until two dumps match — with quiescence from the events.
+3. Inject taps and pans with `UiAutomation.injectInputEvent`, and judge publish confirmation by event
+   kind too.
+4. Take screenshots with `UiAutomation.takeScreenshot()` and return them with the result.
 
-タップ 1 ステップの推定は、木の走査 20〜50 ms、注入 50 ms、イベントによる settle 数十 ms で、合計 150〜300 ms です。
+A tap step is estimated at 20–50 ms for the tree walk, 50 ms for injection, and a few tens of
+milliseconds for the event-driven settle — 150–300 ms total.
 
-### 5.4 プロトコルの案と段階的な導入
+### 5.4 A Protocol Proposal and Its Staged Rollout
 
-一度にすべてを移す必要はありません。次の順で導入すると、各段階が単独で効きます。
+There is no need to move everything at once. Rolling it out in the following order lets each stage
+land on its own:
 
-1. `wait for` と `until: gone` を端末側にします（`POST /wait` にセレクタとタイムアウト）。50 ms ポーリングの往復が消えます。
-2. `settled` を端末側にします。iOS は遷移シグナルの直接受信、Android は a11y イベントです。
-3. `assert` の画面に閉じた種類を端末側にします。
-4. ステップの列をまとめて送る `POST /scenario` にします。ここで 1 ステップ 1 往復以下になります。
+1. Move `wait for` and `until: gone` to the device side (`POST /wait`, carrying the selector and
+   timeout). This removes the 50 ms polling round trips.
+2. Move `settled` to the device side. iOS receives the transition signal directly; Android uses a11y
+   events.
+3. Move the `assert` kinds closed to the screen to the device side.
+4. Bundle the step sequence into one `POST /scenario`. This is where a step costs one round trip or
+   fewer.
 
-セレクタの意味論は、`bajutsu/common/drivers/base.py` の `find_all` と `resolve_unique` が定義しています。
-移植する対象は、`within`、`idMatches`、`labelMatches`、trait の派生です。
-Android の `_derived_label`（`drivers/adb.py:251-282`）も含みます。
-Swift と Kotlin に移植し、既存の driver conformance suite（BE-0114）で同値性を検査します。
-曖昧なセレクタは端末側でも同じ文言で失敗させます。
+`find_all` and `resolve_unique` in `bajutsu/common/drivers/base.py` define selector semantics today.
+What needs porting is `within`, `idMatches`, `labelMatches`, and the trait derivations, plus Android's
+`_derived_label` (`drivers/adb.py:251-282`). Port them to Swift and Kotlin, and check equivalence
+against the existing driver conformance suite (BE-0114). An ambiguous selector should fail with the
+same wording on the device side too.
 
-### 5.5 アプリ内実行機を採らない判断
+### 5.5 Why Not an In-App Executor
 
-アプリ内で完結する実行機は、往復を最小にできる点で魅力があります。
-それでも採らないのは、上に挙げた 3 つの理由に加えて、アプリ非依存という原則（prime directive 3）に反するからです。
-アプリごとに SDK の組み込みが必須になり、SDK のないアプリでは動きません。
-アプリ内 SDK の役割は、画面遷移シグナルのような「観測の補助」に留めるのが妥当です。
+An executor that lives entirely inside the app is appealing for minimizing round trips. Beyond the
+three reasons already given, it is not the choice made here because it violates the app-agnostic
+principle (prime directive 3): every app under test would need the SDK built in, and an app without
+it would not work at all. An in-app SDK's role is better kept to an observation aid — like the
+screen-transition signal — not an actuator.
 
-## 6. 実装の順序の提案
+## 6. Proposed Implementation Order
 
-| 段階 | 内容 | 目安 | BE 項目の候補 |
+| Stage | Scope | Rough time | Candidate BE items |
 |---|---|---|---|
-| 0 | Mac で実測し、この資料の推定を実測値に置き換える | 完了（この資料に反映済み） | なし |
-| A | 第 4.1 節の 1〜6 | 1〜2 週 | 証拠取得の非同期化と重複排除（1 件） |
-| B-Android-1 | 第 4.3 節の 1（`POSTDATE_BUDGET_MS` の待ち） | 数日。まずサーバーのログで機構を確認する | Android タップの待ち時間の見直し（1 件） |
-| B-iOS | 第 4.2 節の 1、3、4、5、6 | 1〜2 週 | XCUITest タップ経路の属性読み一括化（1 件）、keep-alive（両 OS で 1 件） |
-| B-Android-2 | 第 4.3 節の 2、3、4、5、6、7 | 2〜3 週 | 常駐サーバーの読み取り最適化（1 件）、サーバー経由のスクリーンショットと再利用（1 件） |
-| C | 第 5.4 節の 1〜4 | 4〜8 週 | 端末側ステップ実行機（プロトコル 1 件、iOS 1 件、Android 1 件） |
+| 0 | Measure on a Mac and replace this report's estimates with measured figures | Done (reflected in this report) | None |
+| A | Section 4.1, items 1–6 | 1–2 weeks | Async and dedup evidence capture (1 item) |
+| B-Android-1 | Section 4.3, item 1 (the `POSTDATE_BUDGET_MS` wait) | A few days. First confirm the mechanism from the server's logs | Revisit Android tap wait time (1 item) |
+| B-iOS | Section 4.2, items 1, 3, 4, 5, 6 | 1–2 weeks | Batch the XCUITest tap-path attribute reads (1 item), keep-alive (1 item, both OSes) |
+| B-Android-2 | Section 4.3, items 2, 3, 4, 5, 6, 7 | 2–3 weeks | Optimize resident-server reads (1 item), server-side screenshots and reuse (1 item) |
+| C | Section 5.4, items 1–4 | 4–8 weeks | Device-side step executor (protocol: 1 item, iOS: 1 item, Android: 1 item) |
 
-段階 A は他の段階と独立で、最初に効きます。
-B-Android-1 は、第 3.3 節の実測でタップ 1 回あたり 2.2 秒という Android 最大の単一要因とわかりました。
-他の B 段階より先に、単独の小さな変更として着手する価値があります。ただし表の「決定性」欄に書いたとおり、
-実装より前にサーバーのログでこの待ちが本当に使い切られていることを確認する必要があります。
-段階 C の 1（`wait` の端末側化）は、段階 B と並行して始められます。
+Stage A is independent of the other stages and is the first to pay off.
+B-Android-1 turned out, per Section 3.3's measurement, to be the single largest factor in Android's
+cost, at 2.2 seconds per tap. It is worth starting as its own small, independent change ahead of the
+other B stages — but, per the "Determinism" column in the table, the wait needs to be confirmed as
+actually being used up, from the server's logs, before it is implemented. Stage C's item 1 (moving
+`wait` to the device side) can start alongside stage B.
 
-## 7. Mac 側で続けるための手順
+## 7. Open Questions and Risks
 
-### 7.1 前提
+- iOS's tap synthesis (including XCUITest's quiescence wait) has not been measured — this is the
+  number that sets stage C's floor. What could be measured was `POST /tap`'s total (690 ms); its
+  interior split between resolution and tap synthesis has not been separated.
+- `app.snapshot()` waits for the app to settle. It runs longer than 34 ms during an animation, and a
+  device-side executor's `settled` floor is bound by animation length in the same way.
+- Android's `waitForIdle` waits up to 10 seconds on a screen where a11y events never stop. An
+  event-driven design needs to set that cap explicitly.
+- The `POSTDATE_BUDGET_MS` reasoning in [Section 3.3](#33-android) and
+  [Section 4.3](#43-android-stage-b) was built from code reading and a correlation with the
+  measurement, not confirmed against the resident server's own logs. Before implementing the fix, that
+  confirmation — that the wait really is being used up — needs to happen first.
+- `scroll` turned out, by measurement, to be a step far heavier than tap: 7.1 seconds on iOS and 7.1
+  seconds on Android. On iOS, a single `POST /scroll` call takes 3.1–3.5 s. On Android, the swipe
+  itself takes 2.7 s, and `GET /source` also burns its `POSTDATE_BUDGET_MS`. This report breaks down
+  tap alone, so `scroll`'s own breakdown stays out of scope.
+- `scroll`'s cost may not be confined to the `scroll` step alone. As the table in
+  [Section 3.1](#31-the-skeleton-common-to-both-backends-orchestrator) shows, when a `tap` target is
+  off-screen, `tap` itself falls back to scroll recovery internally. How often that recovery actually
+  fires is unconfirmed, but if it fires, speeding up `scroll` would cut not only the `scroll` step but
+  also any `tap` step that goes through this recovery. `scroll`'s stage B candidate (item 9 in
+  [Section 4.3](#43-android-stage-b) covers only the Android side; iOS has none listed yet) may be
+  worth reprioritizing with that knock-on effect in mind.
+- `docs/drivers.md`'s description of iOS gets two points wrong: the condition-wait path and the
+  screenshot path. Neither matches the implementation. Filing this as an Issue via `record-issue` is
+  the right fix.
+- Stage C adds a "run a step sequence" path to the `Driver` interface. Because this is a cross-cutting
+  change, it needs the design agreed as a BE item before work starts.
 
-```bash
-make deps                                  # 初回のみ
-make -C demos/showcase swiftui-build runner-build
-make -C demos/showcase/android compose-build   # Android を測る場合
-make -C BajutsuAndroidUIAutomatorServer build  # 常駐サーバーの APK
-```
+## Appendix
 
-### 7.2 iOS の実測
-
-`demos/showcase/Makefile` の `run-swiftui` と同じ引数を、トレーサー経由で渡します。
-
-```bash
-SIM=$(xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)
-uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/misc/step-performance/trace_run.py --out /tmp/ios-trace.json -- \
-  run --target showcase-swiftui --udid "$SIM" --backend ios \
-  --exclude xcuitest,systemalert,visual,android,browser \
-  --config demos/showcase/showcase.config.yaml \
-  --scenario demos/showcase/scenarios/controls.yaml
-```
-
-終了時に、ステップごとの内訳と、呼び出しごとの回数と平均が表示されます。
-`--out` の JSON には、1 呼び出しずつの記録が入っています。
-
-### 7.3 Android の実測
-
-```bash
-uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/misc/step-performance/trace_run.py --out /tmp/android-trace.json -- \
-  run --target showcase-compose --udid booted --backend android \
-  --config demos/showcase/showcase.config.yaml \
-  --scenario demos/showcase/scenarios/controls.yaml
-```
-
-常駐サーバー経路に乗っているかは、`transport:GET /source` の行が出るかで判ります。
-`subprocess:adb exec-out uiautomator` が出ていれば dump 経路です。
-
-### 7.4 埋めるべき数値
-
-次の表の「実測」の列を埋めてください。この資料の推定と大きく違う行が、優先順位を変えます。
-
-実測は 2026-09-03 に、Apple M5 の Mac（macOS 26.5.2）上で行いました。
-対象は `demos/showcase/scenarios/controls.yaml`（tap、wait、scroll、assert を含む 8 ステップ）です。
-iOS はシミュレータ（iPhone 17 Pro、iOS 26.5）で、Android はエミュレータ（`bajutsu-api34-arm64`、API 34、
-arm64-v8a）で測りました。どちらも起動済みの状態からの実測です。この実測は実機ではなく、シミュレータや
-エミュレータで測った値です。シナリオも 1 回しか回していません（`POST /act` は 3 回、
-`GET /elements` 系は 15〜26 回のサンプル数）。以上を割り引いて読んでください。
-
-| 項目 | 読む行 | 推定 | 実測 |
-|---|---|---|---|
-| iOS `/elements` 1 回 | `transport:GET /elements` の平均 | 45〜120 ms | 63 ms（18 回） |
-| iOS `/tap` 1 回 | `transport:POST /tap` の平均 | 300〜650 ms | 690 ms（3 回） |
-| iOS `/screenshot` 1 回 | `transport:GET /screenshot` の平均 | 150〜400 ms | 90 ms（17 回） |
-| iOS `/interruptionPolicy/drain` | 同 | 2〜5 ms | 1.2 ms（9 回） |
-| iOS `wait until: settled` 1 ステップ | `per step` の該当行 | 0.3〜0.6 秒 | 0.24 秒（2 回） |
-| Android `GET /source` 1 回 | `transport:GET /source` の平均 | 100〜300 ms | 263 ms（26 回） |
-| Android `POST /act` 1 回 | 同 | 600〜900 ms | **2204 ms（3 回）** |
-| Android screencap 1 回 | `subprocess:adb exec-out screencap` の平均 | 200〜600 ms | 103 ms（17 回） |
-| Android シナリオ固定費 | ステップ外の `subprocess` 合計 | 10〜20 秒 | 1.5 秒（起動済みエミュレータ、パッケージ再インストールのみ） |
-
-iOS 側は、`/tap` がやや推定の上限寄りになった以外、ほぼ推定の範囲に収まりました。
-Android 側は `POST /act` の 1 行だけ、推定 600〜900 ms に対して実測 2.2 秒と大きく外れています。
-この値が第 1〜6 節の推定を差し替える根拠になった経緯と、原因の推論は
-[第 3.3 節](#33-android)に書きました。表の残りの行と `GET /source` の広い幅も同じ節にあります。
-
-なお、Android の実測にあたって `trace_run.py` 自身の不備を見つけて直しました。`ResidentServer.__init__`
-は `fetch`、`clock`、`act_probe` をキーワード専用引数のデフォルト値として受け取ります。
-このデフォルト値は、`adb_resident` モジュールがインポートされた時点で
-`fetch_source`、`fetch_clock`、`act` に束縛されます。一方、`trace_run.py` はその後で
-`adb_resident.fetch_source = wrapped` のようにモジュール属性を差し替えていました。
-実際の呼び出し側（`_begin_resident`）は常駐サーバーが返す `ResidentChannel` のデフォルト値を
-そのまま使います。そのため束縛済みのデフォルト値は上書きされず、`transport:GET /source` と
-`transport:POST /act` の行は、実行のたびに現れないまま計測されていました。
-[`trace_run.py`](trace_run.py) は `ResidentServer.start` が返す `ResidentChannel` を
-直接ラップするよう修正済みで、この節の実測値は修正後のトレーサーによるものです。
-
-### 7.5 推定の再投影
-
-`bench_orchestrator.py` の `MODELS` に実測値を入れれば、ステップ種別ごとの end-to-end を
-往復回数から再投影できます。差し替え対象は `ios` と `android_resident` の `query`、`tap`、
-`screenshot`、`drain_interruptions` です。値は上の表と同じ、2026-09-03 の実測値です。
-
-```bash
-uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/misc/step-performance/bench_orchestrator.py --model ios --steps 5
-uv run python roadmaps/BE-XXXX-step-latency-driver-internal-tuning/misc/step-performance/bench_orchestrator.py --model android_resident --steps 5
-```
-
-証拠の取得（`screenshot.after` と `elements`）とアラートガードを両方有効にした `tap` シナリオ、つまり
-本番のデフォルトに近い設定で試しました。1 ステップあたり iOS が 1040 ms、Android が 2968 ms でした
-（`--steps 5` の平均）。`trace_run.py` が直接測った tap ステップの壁時計は、iOS が 0.95〜1.07 秒、
-Android が 3.25〜3.32 秒でした（[結論の要約](#結論の要約)）。両者はほぼ同じ水準です。往復回数から積み上げた
-再投影と、実際のシナリオを流した直接計測が近い値になったことがわかります。`POST /act` が特に遅いという
-1 点を除けば、この資料の往復回数モデルそのものが妥当だったことを裏づけます。
-
-### 7.6 トレーサーの制限
-
-- 1 プロセス内のスレッドだけを追います。run が別プロセスを fork する構成は追えません。
-- ドライバ内部の sleep（stale の 0.5 秒など）は、その driver 呼び出しの時間に含まれます。
-- `subprocess.run` と `subprocess.check_output` を包みます。`Popen` を直接使う interval capture（video、logcat）は数えません。
-- 現在のトレーサーは `driver` の分類に fake driver も含めます。fake backend で自己検証するためです。
-- Android の常駐サーバー呼び出しを `transport` として計測するには、`ResidentServer.start` が返す
-  `ResidentChannel` をラップする必要があります。モジュール関数の差し替えだけではデフォルト値に届きません。
-  経緯は[第 7.4 節](#74-埋めるべき数値)に書きました。
-
-## 8. 未確認の事項とリスク
-
-- iOS のタップ合成（XCUITest の quiescence 待ちを含む）の時間は未実測です。段階 C の下限を決める数値です。
-  実測できたのは `POST /tap` の合計（690 ms）までで、その内側の解決とタップ合成の内訳は分けていません。
-- `app.snapshot()` はアプリが静止するまで待ちます。アニメーション中は 34 ms より大きく伸びます。
-  端末側実行機でも、`settled` の下限はアニメーションの長さに縛られます。
-- Android の `waitForIdle` は、a11y イベントが止まらない画面で最大 10 秒待ちます。イベント駆動化の設計時に上限を決める必要があります。
-- [第 3.3 節](#33-android)と[第 4.3 節](#43-androidの段階-b)に書いた `POSTDATE_BUDGET_MS` の推論は、
-  コード読解と実測の一致から組み立てたもので、常駐サーバーのログでは確認していません。
-  対策より先に、ログでこの待ちが使い切られていることを確かめる必要があります。
-- `scroll` は 1 ステップが iOS で 7.1 秒、Android で 7.1 秒と、tap よりはるかに重いことが実測でわかりました。
-  iOS は `POST /scroll` 1 回が 3.1〜3.5 秒、Android は swipe そのものが 2.7 秒に加えて
-  `GET /source` が `POSTDATE_BUDGET_MS` を使い切っています。この資料は tap の内訳しか立てていないため、
-  `scroll` 単体の内訳分析は対象外のままです。
-- `scroll` の重さは `scroll` ステップ単体にとどまらない可能性があります。
-  [第 3.1 節](#31-両バックエンドに共通orchestrator)の表にあるとおり、`tap` の対象が画面外で不可視のときは、
-  `tap` の内部でも scroll 復旧を挟みます。この復旧が実際にどれだけ発生しているかは未確認ですが、
-  発生していれば `scroll` の高速化は `scroll` ステップ自体だけでなく、この復旧を経由する `tap` ステップの
-  短縮にもつながると考えられます。段階 B の対策候補としての `scroll`（[第 4.3 節](#43-androidの段階-b)の
-  項目 9 は Android 分のみで、iOS 分はまだ挙げていません）は、この波及効果を踏まえて優先度を見直す余地が
-  あります。
-- `docs/drivers.md` の iOS の記述 2 点（条件待ちとスクリーンショットの経路）が実装と一致していません。
-  修正は `record-issue` で Issue にするのが適切です。
-- 段階 C は `Driver` インタフェースに「ステップの列を実行する」経路を足します。
-  横断的な変更なので、着手前に BE 項目として設計を合意する必要があります。
-
-## 付録
-
-- [`bench_orchestrator.py`](bench_orchestrator.py)：fake driver 上のオーケストレータ計測です。
-- [`trace_run.py`](trace_run.py)：実行時トレーサーです。
-- [`reports/orchestrator.md`](reports/orchestrator.md)、[`reports/ios.md`](reports/ios.md)、[`reports/android.md`](reports/android.md)：読解報告（英語）です。
+- [`bench_orchestrator.py`](bench_orchestrator.py): the orchestrator measurement against a fake
+  driver.
+- [`trace_run.py`](trace_run.py): the runtime tracer.
+- [`reports/orchestrator.md`](reports/orchestrator.md), [`reports/ios.md`](reports/ios.md),
+  [`reports/android.md`](reports/android.md): the code-reading reports (English).
