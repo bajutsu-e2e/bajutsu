@@ -137,7 +137,11 @@ runner-build-device:
 # the SwiftUI app renders; the SwiftUI lane keeps it. Backend preflight cannot stand in for the tag —
 # it rejects a backend that lacks a capability, not an app that lacks a screen.
 # Prereqs: a booted simulator, `make runner-build`.
-SIM ?= $(shell xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)
+# Extracts the UDID from the parenthesized group immediately before "(Booted)" rather than the
+# first 36-char hex-ish run on the line: a device whose display name was rewritten to include a
+# UDID-shaped substring (e.g. by a recovery process, "iPhone 17 Pro (bajutsu-recovered-<hex>)
+# (<real-UDID>) (Booted)") would otherwise match inside that renamed segment instead of the UDID.
+SIM ?= $(shell xcrun simctl list devices booted | sed -nE 's/.*\(([0-9A-F-]{36})\) \(Booted\).*/\1/p' | head -1)
 
 # `--touch-markers` draws each touch the app receives into the video and the step screenshots, the
 # iOS counterpart of the `show_touches` / `pointer_location` settings android/Makefile turns on for
