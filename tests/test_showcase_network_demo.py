@@ -533,11 +533,15 @@ def _resolve_sim(*, listing: str) -> str:
         "invocation in place, and on macOS that surviving command reads the host's live "
         "Simulator state with nothing on stderr for the guard below to catch."
     )
-    assert "$" not in pipeline, (
-        f"demos/showcase/Makefile's `SIM ?=` pipeline now contains `$` ({pipeline!r}) — make "
-        "expands `$$` and `$(…)` inside `$(shell …)` before /bin/sh sees them, so running this "
-        "text verbatim would pin a command the target never runs."
+    # Only a real make expansion is unemulatable: make resolves `$(…)`/`${…}` inside `$(shell …)`
+    # itself, but hands `$$` to /bin/sh as a literal `$` — so unescape rather than refuse, or a
+    # `sed` anchored with `$$` (the natural narrowing of this matcher) would fail the gate.
+    assert "$" not in re.sub(r"\$\$", "", pipeline), (
+        f"demos/showcase/Makefile's `SIM ?=` pipeline now contains a make expansion ({pipeline!r}) "
+        "— make resolves `$(…)`/`${…}` before /bin/sh sees them, so running this text verbatim "
+        "would pin a command the target never runs."
     )
+    pipeline = pipeline.replace("$$", "$")
     out = subprocess.run(
         ["sh", "-c", pipeline], input=listing, capture_output=True, text=True, check=True
     )
@@ -569,7 +573,10 @@ def test_sim_resolves_a_plain_booted_devices_udid() -> None:
 
 
 def test_sim_resolves_nothing_when_no_device_is_booted() -> None:
-    assert _resolve_sim(listing="") == ""
+    # The real stdin, not "": `simctl list devices booted` still prints `== Devices ==` and a
+    # section line per runtime when nothing is booted, so this is the only case that hands the
+    # matcher lines it has to decline. An empty stdin exercises no line of it at all.
+    assert _resolve_sim(listing="== Devices ==\n-- iOS 26.0 --\n") == ""
 
 
 def test_sim_resolves_only_the_first_udid_when_several_devices_are_booted() -> None:
