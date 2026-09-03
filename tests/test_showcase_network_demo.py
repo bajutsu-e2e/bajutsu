@@ -567,8 +567,8 @@ def test_sim_resolves_nothing_when_no_device_is_booted() -> None:
 
 
 def test_sim_resolves_only_the_first_udid_when_several_devices_are_booted() -> None:
-    # `head -1` is what keeps SIM a single word: two UDIDs would expand `--udid $(SIM)` into two
-    # argv entries, and the second would reach `bajutsu run` as a stray positional.
+    # `head -1` is what keeps SIM a single word: `xcrun simctl erase $(SIM)` (Makefile:370, 413)
+    # takes several device specifiers, so a second UDID there would erase an unintended Simulator.
     listing = (
         "    iPhone 17 Pro (3E830C79-34E8-4E77-91AD-AC62B71B33D2) (Booted)\n"
         "    iPhone 17 (7B1C4D2E-9F80-4A31-B6C5-0E2D3F4A5B69) (Booted)\n"
