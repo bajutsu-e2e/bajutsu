@@ -275,7 +275,8 @@ class JobRegistry:
         concurrently — both would read the same floor and hand out the same next id. A DB-side
         sequence/identity column or UUID ids would remove that case too.
         """
-        self._seq = max(self._seq, floor)
+        with self._lock:
+            self._seq = max(self._seq, floor)
 
     def active_jobs(self) -> int:
         """How many spawned jobs are still running (not yet finished)."""
