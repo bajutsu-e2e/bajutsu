@@ -10,12 +10,21 @@ or secret drift breaks the fast gate rather than only the metered macOS lane.
 
 The web twin is `tests/test_web_network_demo.py`; this file is its iOS counterpart, over the
 BajutsuKit → loopback POST → collector transport instead of the browser's.
+
+One pin below is out of this lane's scope: `demos/showcase/Makefile`'s `SIM ?=` UDID extraction
+feeds every iOS lane's `$(SIM)` when it is run locally — `--udid`, `xcodebuild -destination`, and
+the `xcrun simctl erase` in the save-password recipes — not just this one's, and belongs to no BE
+item. It sits here for want of a better home — not because this file is the repo's `Makefile`-text
+harness: `scripts/e2e_changes.py`'s `showcase_makefile_text` already reads this same Makefile for
+`tests/test_e2e_changes.py`. The default is local-only; every CI lane overrides it with `SIM=` from
+`.github/actions/boot-simulator`.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -51,6 +60,9 @@ _NET_ARTIFACT = "ios-e2e-network-run"
 # `NET_RUNS ?= $(ROOT)/tmp/showcase-network-runs` — the throwaway run directory the lane's
 # `--runs-dir` writes to, read as a path relative to the repository root (`ROOT`).
 _NET_RUNS_RE = re.compile(r"^NET_RUNS\s*\?=\s*\$\(ROOT\)/(\S+)\s*$", re.MULTILINE)
+
+# `SIM ?= $(shell …)` — the `simctl` pipeline that resolves the booted Simulator's UDID.
+_SIM_RE = re.compile(r"^SIM\s*\?=\s*\$\(shell (.+)\)\s*$", re.MULTILINE)
 
 # The target the lane drives, and so the one whose `redact` policy applies to its evidence.
 _TARGET = "showcase-swiftui"
@@ -497,3 +509,85 @@ def test_the_network_jobs_artifact_uploads_the_makefile_runs_dir() -> None:
         f"the `network` job's e2e-network step overrides NET_RUNS ({runs!r}); the upload path above "
         "is pinned against the Makefile default, which the override would bypass."
     )
+
+
+# --- demos/showcase/Makefile's SIM ?=: a wrong UDID breaks its e2e-*/run-*/doctor/vrt targets -----
+
+
+def _resolve_sim(*, listing: str) -> str:
+    """Runs the Makefile's own pipeline under the host's sed, pinning its logic, not its portability."""
+    makefile = (_SHOWCASE / "Makefile").read_text(encoding="utf-8")
+    m = _SIM_RE.search(makefile)
+    assert m is not None, (
+        "demos/showcase/Makefile no longer declares `SIM ?= $(shell …)` — this pin reads that "
+        "line to run its own UDID-extraction pipeline against a synthetic `simctl` listing."
+    )
+    pipeline = m.group(1).replace("xcrun simctl list devices booted", "cat", 1)
+    assert pipeline != m.group(1), (
+        "demos/showcase/Makefile's `SIM ?=` no longer runs `xcrun simctl list devices booted` — "
+        "this pin substitutes `cat` for that command to stay hermetic, and without the "
+        "substitution it would probe the host's live Simulator state, not `listing`."
+    )
+    assert "xcrun" not in pipeline and "simctl" not in pipeline, (
+        "demos/showcase/Makefile's `SIM ?=` still reaches for xcrun/simctl after the one "
+        f"substitution above ({pipeline!r}) — `str.replace` with count=1 leaves any later "
+        "invocation in place, and on macOS that surviving command reads the host's live "
+        "Simulator state with nothing on stderr for the guard below to catch."
+    )
+    # Only a real make expansion is unemulatable: make resolves `$(…)`/`${…}` inside `$(shell …)`
+    # itself, but hands `$$` to /bin/sh as a literal `$` — so unescape rather than refuse, or a
+    # `sed` anchored with `$$` (the natural narrowing of this matcher) would fail the gate.
+    assert "$" not in re.sub(r"\$\$", "", pipeline), (
+        f"demos/showcase/Makefile's `SIM ?=` pipeline now contains a make expansion ({pipeline!r}) "
+        "— make resolves `$(…)`/`${…}` before /bin/sh sees them, so running this text verbatim "
+        "would pin a command the target never runs."
+    )
+    pipeline = pipeline.replace("$$", "$")
+    out = subprocess.run(
+        ["sh", "-c", pipeline], input=listing, capture_output=True, text=True, check=True
+    )
+    assert not out.stderr, (
+        f"demos/showcase/Makefile's `SIM ?=` pipeline wrote to stderr ({out.stderr!r}) — the "
+        "pipeline's exit status is `head`'s, so a `sed` that rejects the extracted script exits "
+        "non-zero without tripping `check=True`, and this pin would otherwise read the empty "
+        "output as a correct no-booted-device result."
+    )
+    # `$(shell …)`'s own value semantics, not Python's: make strips trailing newlines and turns
+    # every remaining one into a single space, so a multi-line pipeline yields a multi-*word* SIM.
+    return out.stdout.rstrip("\n").replace("\n", " ")
+
+
+def test_sim_resolves_the_udid_next_to_booted_not_a_renamed_devices_udid() -> None:
+    # Bajutsu's own wedge recovery mints `<device type> (bajutsu-recovered-<old udid>)` devices
+    # (bajutsu/common/platform_lifecycle/environments/xcuitest.py), so a booted device's *name* can
+    # carry a UDID-shaped run ahead of its real UDID. A regex that greedily matches the first
+    # UDID-shaped run on the line — the bug this pin guards against — would resolve the renamed
+    # segment instead.
+    listing = (
+        "    iPhone 17 Pro (bajutsu-recovered-EF96D951-DA9B-450D-9E50-1800C468374F)"
+        " (3E830C79-34E8-4E77-91AD-AC62B71B33D2) (Booted)\n"
+    )
+    assert _resolve_sim(listing=listing) == "3E830C79-34E8-4E77-91AD-AC62B71B33D2"
+
+
+def test_sim_resolves_a_plain_booted_devices_udid() -> None:
+    listing = "    iPhone 17 Pro (3E830C79-34E8-4E77-91AD-AC62B71B33D2) (Booted)\n"
+    assert _resolve_sim(listing=listing) == "3E830C79-34E8-4E77-91AD-AC62B71B33D2"
+
+
+def test_sim_resolves_nothing_when_no_device_is_booted() -> None:
+    # The real stdin, not "": `simctl list devices booted` still prints `== Devices ==` and a
+    # section line per runtime when nothing is booted, so this is the only case that hands the
+    # matcher lines it has to decline. An empty stdin exercises no line of it at all.
+    assert _resolve_sim(listing="== Devices ==\n-- iOS 26.0 --\n") == ""
+
+
+def test_sim_resolves_only_the_first_udid_when_several_devices_are_booted() -> None:
+    # `head -1` is what keeps SIM a single word: the `e2e-savepassword` and
+    # `e2e-savepassword-native` recipes run `xcrun simctl erase $(SIM)`, which accepts several
+    # device specifiers, so a second UDID there would erase an unintended Simulator.
+    listing = (
+        "    iPhone 17 Pro (3E830C79-34E8-4E77-91AD-AC62B71B33D2) (Booted)\n"
+        "    iPhone 17 (7B1C4D2E-9F80-4A31-B6C5-0E2D3F4A5B69) (Booted)\n"
+    )
+    assert _resolve_sim(listing=listing) == "3E830C79-34E8-4E77-91AD-AC62B71B33D2"
