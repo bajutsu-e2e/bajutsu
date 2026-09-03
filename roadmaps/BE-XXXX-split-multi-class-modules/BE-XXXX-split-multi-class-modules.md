@@ -39,8 +39,8 @@ one adding it.
 Splitting to one class per file removes both costs at once. A filename search or a file-tree click
 reaches a class directly. An edit to one class loads that class's file alone. A reader can check
 that this landed without reading anything else. `LongPress` sits somewhere inside `actions.py`
-today. After the split, opening it resolves straight to `actions/long_press.py` from the file
-tree. It needs no intermediate search.
+today. After the split, the file tree leads straight to `actions/long_press.py`, with no
+intermediate search.
 
 ## Detailed design
 
