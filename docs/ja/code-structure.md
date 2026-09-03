@@ -198,7 +198,7 @@ make repo-map ARGS="--headings docs/x.md" # 1 ファイルの見出しと行範�
 負荷を受け止めているのは 4 つの型です。残りのクラスのほとんどは、4 つのどれかを作るか、使うか、
 境界をまたいで運ぶために存在します。先に 4 つを覚えると、あとのクラスがすべて読めるようになります。
 
-![4 つの契約のクラス図。Scenario は name、preconditions、before、steps、expect、after、capturePolicy を持ち、Step を集約します。Step はさらに Assertion と Selector を持ちます。Driver はプロトコルで、query、tap、type_text、swipe、wait_for、screenshot、capabilities を宣言し、Element を返し、実行時 Selector を受け取ります。Effective は 1 ターゲット分の解決済み設定で、app、backend、ios、web、android、run の既定値を保持します。RunResult はシナリオ名、成否のフラグ、StepOutcome の並び、アサーション結果、成果物を持ち、reporter がこれを描画します。](assets/diagrams/code-structure-contracts-ja.svg)
+![4 つの契約のクラス図。Scenario は name、preconditions、before、steps、expect、after、capturePolicy を持ち、Step を集約します。Step はさらに Assertion と Selector を持ちます。Driver はプロトコルで、query、tap、type_text、swipe、wait_for、screenshot、capabilities を宣言し、Element を返し、実行時 Selector を受け取ります。Effective は 1 ターゲット分の解決済み設定で、ターゲット名、判別可能な共用型 platform_config、backend の並び、run の既定値を保持します。RunResult はシナリオ名、成否のフラグ、StepOutcome の並び、末尾のアサーション結果、成果物を持ち、reporter がこれを描画します。](assets/diagrams/code-structure-contracts-ja.svg)
 
 <details>
 <summary>Mermaid のソース</summary>
@@ -251,19 +251,19 @@ classDiagram
     }
     class Effective {
         <<frozen dataclass>>
-        +str app
-        +str backend
-        +IosConfig ios
-        +WebConfig web
-        +AndroidConfig android
-        +RunDefaults run
+        +str target
+        +PlatformConfig platform_config
+        +list~str~ backend
+        +str device
+        +list~str~ capture
+        +RunDefaults run_defaults
     }
     class RunResult {
         <<dataclass>>
         +str scenario
         +bool ok
         +list~StepOutcome~ steps
-        +list~AssertionResult~ expect
+        +list~AssertionResult~ expect_results
         +list~Artifact~ artifacts
     }
 
@@ -290,8 +290,11 @@ classDiagram
 
 **`Effective`**（[`common/config/effective.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/config/effective.py)）は
 1 ターゲット分の解決済み設定です。チーム既定値の上にそのターゲットのブロックを重ね、下流が書き換え
-られないよう凍結してあります。アプリ固有の差分はすべてここに集まります。だからツール本体はアプリに
-依存せずに済みます。
+られないよう凍結してあります。プラットフォーム固有のつまみは、プラットフォームごとの欄を並べる
+のではなく、`platform_config: PlatformConfig` という 1 つの欄に絞ります。`IosConfig | WebConfig |
+AndroidConfig` の判別可能な共用型で、新しいプラットフォームを足すときは共用型にメンバーを 1 つ
+加えるだけで済み、読み手が無視し続けなければならない兄弟欄が増えることはありません。アプリ固有の
+差分はすべてここに集まります。だからツール本体はアプリに依存せずに済みます。
 
 **`RunResult`**（[`common/orchestrator/types.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/orchestrator/types.py)）は
 1 シナリオの結果です。判定、ステップごとの `StepOutcome`、末尾のアサーション結果、途中で採取した

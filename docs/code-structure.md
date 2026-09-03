@@ -199,7 +199,7 @@ make repo-map ARGS="--headings docs/x.md" # one file's headings and their spans
 Four types carry the load. Most of the remaining classes exist to produce one of the four, consume
 one, or move one across a boundary. Learning the four first makes every later class legible.
 
-![Class diagram of the four contracts. Scenario holds a name, preconditions, before, steps, expect, after, and capturePolicy, and aggregates Step, which in turn holds Assertion and Selector. Driver is a protocol with query, tap, type_text, swipe, wait_for, screenshot, and capabilities, and it returns Element values and accepts runtime Selector values. Effective is the resolved configuration for one target, holding app, backend, ios, web, android, and run defaults. RunResult holds a scenario name, an ok flag, StepOutcome values, assertion results, and artifacts, and the reporter renders it.](assets/diagrams/code-structure-contracts.svg)
+![Class diagram of the four contracts. Scenario holds a name, preconditions, before, steps, expect, after, and capturePolicy, and aggregates Step, which in turn holds Assertion and Selector. Driver is a protocol with query, tap, type_text, swipe, wait_for, screenshot, and capabilities, and it returns Element values and accepts runtime Selector values. Effective is the resolved configuration for one target, holding a target name, a platform_config discriminated union, a backend list, and run defaults. RunResult holds a scenario name, an ok flag, StepOutcome values, the trailing assertion results, and artifacts, and the reporter renders it.](assets/diagrams/code-structure-contracts.svg)
 
 <details>
 <summary>Mermaid source</summary>
@@ -252,19 +252,19 @@ classDiagram
     }
     class Effective {
         <<frozen dataclass>>
-        +str app
-        +str backend
-        +IosConfig ios
-        +WebConfig web
-        +AndroidConfig android
-        +RunDefaults run
+        +str target
+        +PlatformConfig platform_config
+        +list~str~ backend
+        +str device
+        +list~str~ capture
+        +RunDefaults run_defaults
     }
     class RunResult {
         <<dataclass>>
         +str scenario
         +bool ok
         +list~StepOutcome~ steps
-        +list~AssertionResult~ expect
+        +list~AssertionResult~ expect_results
         +list~Artifact~ artifacts
     }
 
@@ -291,8 +291,11 @@ one through `as_selector()`.
 
 **`Effective`** ([`common/config/effective.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/config/effective.py))
 is one target's fully resolved configuration: the team defaults overlaid by that target's own block,
-frozen so nothing downstream rewrites it. Every app-specific difference lives here, which keeps the
-tool itself app-agnostic.
+frozen so nothing downstream rewrites it. The platform-specific knobs narrow behind a single
+`platform_config: PlatformConfig` field — a discriminated union of `IosConfig | WebConfig |
+AndroidConfig` — rather than one optional field per platform, so a new platform adds a union member
+instead of a new sibling field every reader must learn to ignore. Every app-specific difference
+lives here, which keeps the tool itself app-agnostic.
 
 **`RunResult`** ([`common/orchestrator/types.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/orchestrator/types.py))
 is one scenario's outcome: the verdict, one `StepOutcome` per step, the trailing assertion results,
