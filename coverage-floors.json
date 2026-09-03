@@ -79,7 +79,7 @@
     "bajutsu/common/drivers/playwright.py": 92.3,
     "bajutsu/common/drivers/web_network.py": 88.88,
     "bajutsu/common/drivers/webview.py": 84.05,
-    "bajutsu/common/drivers/xcuitest.py": 93.82,
+    "bajutsu/common/drivers/xcuitest.py": 93.72,
     "bajutsu/common/drivers/xcuitest_live.py": 87.94,
     "bajutsu/common/drivers/zorder.py": 100.0,
     "bajutsu/common/evidence/core.py": 93.93,

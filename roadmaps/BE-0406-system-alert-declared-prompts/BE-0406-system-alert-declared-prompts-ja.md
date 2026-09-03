@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0406](BE-0406-system-alert-declared-prompts-ja.md) |
 | 提案者 | [@akiramatsuda](https://github.com/akiramatsuda) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0406") |
 | トピック | Platform support |
 | 関連 | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md), [BE-0369](../BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice-ja.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules-ja.md), [BE-0399](../BE-0399-ios-system-alert-interruption-policy/BE-0399-ios-system-alert-interruption-policy-ja.md), [BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md), [BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) |
@@ -490,7 +490,7 @@ BE-0402 は `probe_native` が返す `"unhandled"` にも用途を与えてい�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 単位 1 — `handleSystemAlert` の待機を orchestrator へ移す。ステップにつき 1 つのゲートを
+- [x] 単位 1 — `handleSystemAlert` の待機を orchestrator へ移す。ステップにつき 1 つのゲートを
       `_POLL` で駆動し、ステップ自身の読み取りはガードの `pollInterval` とは独立に
       `_SYSTEM_ALERT_POLL_SECONDS` へ絞る。画面を占めていたアラートを名指しする理由で失敗させる。
 - [ ] 単位 2a — `labels` と `--alert-labels` を削除する。ネイティブの probe と 2 つのツリー内
@@ -508,6 +508,24 @@ BE-0402 は `probe_native` が返す `"unhandled"` にも用途を与えてい�
       落とし、回帰用のシナリオを `ios-e2e` のレーンに加える。
 - [ ] 単位 5 — `docs/scenarios.md`、`docs/architecture.md`、両方の `docs/ja/` の写しを更新する。
       割り込み監視の辞退がいまや結果を伴うことも含める。
+
+ログ：
+
+- 単位 1。`Driver.handle_system_alert` が待機をやめました。XCUITest の実装は
+  `/systemAlert/query` の 1 回の読み取りに対してステップのセレクタを解決します。`timeout` は
+  シグネチャに残し（呼び出し側はすべて 0 を渡します）、他のバックエンドには手を触れていません。
+  待機は `bajutsu/common/orchestrator/waits.py` の `wait_for_system_alert` になりました。
+  ステップ自身の期限まで `_POLL` でポーリングし、ステップの対象は 0.2 秒の間隔で読み、
+  各ポーリングのツリーを 1 つの `_AlertGuardGate` に渡します。`_run_step_body` は
+  `kind == "handle_system_alert"` のときに、`wait` と並んでシナリオのガードを与えて実行します。
+  アクションハンドラの登録はガードなしのまま残し、`record` のリプレイが使います。
+  `probe_native` は `"reserved"` という答えを持つようになり、待機中のステップのセレクタが
+  名指しするアラートをガードが辞退します。これが、同じプロンプトに 2 者が反対の答えを出すことを
+  止めます。タイムアウトは、アラートが何も出なかった場合と、出たもののセレクタがボタンに
+  一致しなかった場合とを区別し、何も片付けられなかったプロンプトについてはガード自身の注記も
+  運びます。`docs/scenarios.md` と `docs/architecture.md`、および両方の `docs/ja/` の写しに
+  待機の移動を記録しました。単位 5 の残りは後続の単位を待ちます。本文中のパスは、この提案が
+  書かれた当時の `bajutsu/…` ではなく、再編後の `bajutsu/common/…` です。
 
 ## 参考
 

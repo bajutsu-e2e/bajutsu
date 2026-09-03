@@ -299,9 +299,32 @@ To dismiss the prompt rather than accept it, target the dismissive button
   ([BE-0320](../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)).
 - **`timeout` is required**, exactly as for `wait`: a condition wait for the prompt needs an explicit
   bound. The step waits the prompt in, then taps — no fixed sleep.
-- **Fail-fast on zero or many.** No prompt within `timeout` fails the step; more than one button
-  matching the label fails as ambiguous **unless** `index` selects the nth — the same rule every
-  [selector](selectors.md) follows, applied to the alert's buttons.
+- **The reactive guard runs while the step waits**
+  ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md)).
+  That wait is the runner's, not the backend's, so `systemAlertHandling` clears an interruption
+  *during* the step instead of only after it has already spent its timeout and failed. This is what
+  the step needs when another prompt lands first — iOS's save-password alert, which the app's own
+  process raises and the SpringBoard query cannot see, covers the screen and stops the prompt this
+  step waits for from ever being raised. Without the guard running here, the step spent its whole
+  timeout and failed naming the permission prompt it never saw. The guard leaves this step's own
+  prompt alone, so a scenario may hold a `rules` entry for it with the opposite choice and the step
+  still decides it.
+- **Zero or many both fail.** No prompt within `timeout` fails the step; more than one button
+  matching the label is ambiguous and is never tapped **unless** `index` selects the nth — the same
+  rule every [selector](selectors.md) follows, applied to the alert's buttons. An ambiguity is
+  polled through rather than failed on at once, because a redraw can resolve one; a duplicate still
+  there at the deadline fails the step and says so. The timeout **names what the step saw** —
+  nothing on screen, an alert whose buttons the selector did not name, or one naming its label
+  twice:
+
+  ```text
+  no system alert appeared within 5.0s: {'label': 'Allow'}
+  no system alert button matching {'label': 'Allow'} appeared within 5.0s (the alert on screen offered: Save Password, Not Now)
+  system alert button {'label': 'Allow'} is ambiguous and stayed ambiguous for 5.0s (the alert on screen offered: Allow, Allow) — add index to pick one
+  ```
+
+  Where the guard met a prompt nothing could clear, its own note rides along as it does on a
+  blocked `wait`.
 - **iOS (XCUITest) only.** Only that backend declares the capability, so a scenario naming
   `handleSystemAlert` against the Android or web backend fails **preflight**, before any device work.
   Android surfaces a system dialog in its ordinary element tree, so a plain `tap` reaches it there;

@@ -700,7 +700,13 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   prompts `permissions` cannot pre-answer (notification authorization, ATT, and the cross-process
   paste consent — BE-0369), the step also takes
   `prompt` + `choice` in place of `sel` and the run resolves the label the pinned locale renders
-  (BE-0320)
+  (BE-0320). The step's *wait* for that prompt is the orchestrator's, not the driver's (BE-0406):
+  the driver queries SpringBoard once and taps, and `wait_for_system_alert` polls to the step's own
+  deadline, reading the step's target first and then driving the reactive guard below on the same
+  poll. Keeping the wait here is what lets the guard clear an interruption while the step waits —
+  inside the driver's own loop nothing else could act, so a declared prompt held the screen for the
+  step's whole timeout. The guard is given the step's selector and declines an alert it names, so
+  the two never answer the same prompt
 - DSL `systemAlertHandling` (BE-0315), the reactive counterpart: an alert guard that fires only when
   a step or `wait` is blocked, polling `handleSystemAlert`'s SpringBoard query on its own interval
   (default 1s, decoupled from the wait's poll cadence) and dismissing by a deterministic

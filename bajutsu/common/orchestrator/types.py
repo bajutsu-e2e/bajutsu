@@ -265,8 +265,10 @@ DEFAULT_DISMISSIVE_LABELS: tuple[str, ...] = (
 
 # What a native probe found: "incapable" (backend has no native path), "absent" (no alert — a
 # deterministic fact), "dismissed" (a policy-named button was tapped), "unhandled" (an alert is up
-# but no candidate label resolves, so nothing clears it and the caller reports it instead).
-NativeAlertState = Literal["incapable", "absent", "dismissed", "unhandled"]
+# but no candidate label resolves, so nothing clears it and the caller reports it instead),
+# "reserved" (an alert is up and a waiting `handleSystemAlert` step named it, so this probe leaves
+# it for the step's own tap — BE-0406).
+NativeAlertState = Literal["incapable", "absent", "dismissed", "unhandled", "reserved"]
 
 # The notes a blocked step or wait appends to its own failure reason when the guard saw something it
 # could not clear (BE-0402). Without it, a `tap` or `wait` stuck behind an
@@ -313,6 +315,41 @@ def pick_alert_label(candidates: Sequence[str], buttons: Sequence[str]) -> str |
         if present.count(label) == 1:
             return label
     return None
+
+
+def _alert_button(label: str) -> base.Element:
+    """One alert button as an element, so a selector can be matched against a bare label list.
+
+    The native presence query reports labels, not elements; a button on it carries no identifier
+    (SpringBoard names them by visible text alone) and no frame this side ever reads.
+    """
+    return {
+        "identifier": None,
+        "label": label,
+        "traits": [base.Trait.BUTTON],
+        "value": None,
+        "frame": (0.0, 0.0, 0.0, 0.0),
+        "nativeZ": None,
+    }
+
+
+def selector_names_button(sel: base.Selector, buttons: Sequence[str]) -> bool:
+    """Whether a waiting `handleSystemAlert` step's selector names a button this alert offers.
+
+    The reservation the reactive guard honors (BE-0406): a scenario may hold a `rules` entry for the
+    very prompt a step is placed to answer, and with the opposite choice, so whichever party read
+    the alert first would decide it. Matched through `base.matches` rather than a private label
+    comparison, so `label` / `labelMatches` / `value` / `traits` mean here what they mean in every
+    other selector. An `id` selector reserves nothing, which is the honest answer: no button on
+    this surface carries one.
+
+    `base.matches` ignores `index` and `within` by contract, so a selector carrying either reserves
+    an alert its own `resolve_unique` may then reject. Erring that way is deliberate: the cost is
+    that the step spends its timeout on an alert it could not have tapped anyway, where the
+    opposite error would let the guard answer, with the opposite choice, the prompt the step exists
+    to decide.
+    """
+    return any(base.matches(_alert_button(label), sel) for label in buttons)
 
 
 @dataclass(frozen=True)
@@ -371,7 +408,7 @@ class AlertGuardConfig:
     blocked_note: str = field(default="", init=False)
 
     def probe_native(
-        self, driver: base.Driver
+        self, driver: base.Driver, reserved: base.Selector | None = None
     ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
         """Query and, where possible, clear a system alert natively; report what happened.
 
@@ -390,12 +427,20 @@ class AlertGuardConfig:
         be discarded here. Returned rather than re-queried at that moment, since a second
         cross-process query costs another round trip on the runner's single main thread and reopens
         the time-of-check/time-of-use window the dismiss-race branches below exist to close.
+
+        Args:
+            reserved: A waiting `handleSystemAlert` step's own selector, when one is running
+                (BE-0406). An alert it names is left untouched — see `selector_names_button`.
         """
         if base.Capability.HANDLE_SYSTEM_ALERT not in driver.capabilities():
             return "incapable", None, []
         buttons = driver.system_alert_labels()
         if not buttons:
             return "absent", None, []
+        if reserved is not None and selector_names_button(reserved, buttons):
+            # The step is waiting on this very alert and taps it on its own next read. Not
+            # "absent": an alert *is* up, and "absent" is the one answer licensing an in-tree tap.
+            return "reserved", None, list(buttons)
         label = match_alert_rule(self.rules, buttons) or pick_alert_label(
             self.labels or DEFAULT_DISMISSIVE_LABELS, buttons
         )

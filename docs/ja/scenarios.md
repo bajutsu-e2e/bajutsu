@@ -222,7 +222,16 @@ BE-0401 は下記のキーをエイリアスなしで削除しました。書い
 - **`sel` は label 系のみです。** SpringBoard のアラートボタンは、アプリが割り当てた identifier も trait も value も持たず、見えているテキストしか持ちません。そのため `sel` は `label` / `labelMatches` / `index` を受け付け、`id` / `idMatches` / `traits` / `value` / `within` はパース時に拒否します。
 - **run が一致させるべき label は、ターゲットの [`locale`](configuration.md#設定の階層defaults--targets) が描画するものです。** プロンプトを所有しているのは SpringBoard なので、以前は Simulator がたまたま持っていたシステム言語で描画されていました。つまり `label: "Allow"` が通るのは英語の環境だけで、日本語の環境では失敗しました。現在は、アプリを起動する前に Simulator 自身のシステム言語をその `locale` に固定するため、CI でも、同僚の Mac でも、コントリビューターの Simulator でも、`label` / `labelMatches` は同じように解決します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。
 - **`timeout` は必須です。** `wait` とまったく同じで、プロンプトを待つ条件待機には明示的な上限が要ります。ステップはプロンプトを待ち込んでから tap します。固定の sleep はありません。
-- **0 件・複数件は即座に失敗します。** `timeout` 以内にプロンプトが現れなければステップは失敗します。label に一致するボタンが複数あるときは、`index` が n 番目を選ぶ場合を除いて曖昧として失敗します。あらゆる[セレクタ](selectors.md)が従う規則を、アラートのボタンに当てはめたものです。
+- **待っているあいだもリアクティブなガードが動きます**（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。この待機を持っているのはバックエンドではなくランナー自身です。そのため `systemAlertHandling` は、ステップがタイムアウトして失敗したあとではなく、ステップの最中に割り込みを片付けます。これが効くのは、別のプロンプトが先に画面を取ってしまった場面です。iOS のパスワード保存アラートはアプリ自身のプロセスから出るので SpringBoard の照会からは見えず、画面を覆ったまま、このステップが待っているプロンプトを iOS に出させません。ここでガードが動かなければ、ステップは `timeout` を使い切り、一度も見ていない権限プロンプトを名指しして失敗します。ガードはこのステップ自身のプロンプトには手を触れないので、シナリオが同じプロンプトに反対の `choice` を持つ `rules` を書いていても、決めるのはステップのほうです。
+- **0 件のときと複数件のときは、どちらも失敗します。** `timeout` 以内にプロンプトが現れなければステップは失敗します。label に一致するボタンを複数見つけたときは曖昧と見なし、`index` で n 番目を選んだ場合を除いてタップしません。あらゆる[セレクタ](selectors.md)が従う規則を、アラートのボタンに当てはめたものです。曖昧さは即座の失敗にはせず、期限までポーリングします。再描画で解消することがあるからです。期限の時点でも重複が残っていれば、ステップはその旨を述べて失敗します。タイムアウトは**ステップが実際に見たもの**を名指しします。何も出ていなかったのか、セレクタの名指ししないアラートだったのか、label を 2 つ持つアラートだったのかを、次のように書き分けます。
+
+  ```text
+  no system alert appeared within 5.0s: {'label': 'Allow'}
+  no system alert button matching {'label': 'Allow'} appeared within 5.0s (the alert on screen offered: Save Password, Not Now)
+  system alert button {'label': 'Allow'} is ambiguous and stayed ambiguous for 5.0s (the alert on screen offered: Allow, Allow) — add index to pick one
+  ```
+
+  ガードが片付けられないプロンプトに出会っていれば、ブロックされた `wait` と同じように、ガード自身の注記も添えられます。
 - **iOS（XCUITest）専用です。** この能力を宣言するのは iOS バックエンドだけなので、Android や web バックエンドに対して `handleSystemAlert` を指定したシナリオは、デバイスを操作する前の **preflight** で失敗します。Android はシステムダイアログを通常の要素ツリーに出すため、そこでは素の `tap` で届きます。web バックエンドには OS レベルのプロンプト自体がありません。
 
 `handleSystemAlert` と、隣り合う 2 つのアラート系フィールドのどちらを選ぶかの目安を次に示します。
