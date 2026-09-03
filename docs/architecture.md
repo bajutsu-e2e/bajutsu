@@ -5,7 +5,7 @@
 > Which module does what, where it depends, and **which features described in
 > the design ([`DESIGN.md`](../DESIGN.md)) are not yet wired up** in the current code.
 
-Related: [concepts](concepts.md) · the per-feature pages (linked below)
+Related: [concepts](concepts.md) · [developer guide](developer-guide.md) (the class-level reading guide) · the per-feature pages (linked below)
 
 ---
 

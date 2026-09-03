@@ -264,7 +264,7 @@ branch = true
 # flag is absent, so the gate and the floor-drift advisory (scripts/coverage_drift.py) read one
 # declarative source instead of a value scraped from a shell recipe that a later edit could
 # silently change. Raise it as measured coverage rises; scripts/coverage_drift.py says when.
-fail_under = 89
+fail_under = 93
 
 [tool.mypy]
 python_version = "3.13"
