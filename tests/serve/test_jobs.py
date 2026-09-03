@@ -735,6 +735,21 @@ def test_job_registry_assigns_monotonic_ids_and_the_log_bus() -> None:
     assert reg.jobs["1"] is first
 
 
+def test_job_registry_seed_seq_fast_forwards_past_a_persisted_floor() -> None:
+    # A restart otherwise reissues "1" while the DB-backed jobs table still holds it (duplicate
+    # primary key on the first post-restart dispatch) — seed_seq is how ServeState avoids that.
+    reg = srv_state.JobRegistry(logbus=InMemoryLogBus())
+    reg.seed_seq(5)
+    assert reg.register(srv.Job(cmd=["x"])).id == "6"
+
+
+def test_job_registry_seed_seq_never_moves_the_counter_backwards() -> None:
+    reg = srv_state.JobRegistry(logbus=InMemoryLogBus())
+    reg.register(srv.Job(cmd=["x"]))  # seq is now 1
+    reg.seed_seq(0)
+    assert reg.register(srv.Job(cmd=["y"])).id == "2"
+
+
 def test_job_registry_rejects_an_already_registered_job() -> None:
     # Registering a job that already has an id would orphan its earlier entry — guard against it.
     reg = srv_state.JobRegistry(logbus=InMemoryLogBus())
