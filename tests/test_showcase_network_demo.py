@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -51,6 +52,9 @@ _NET_ARTIFACT = "ios-e2e-network-run"
 # `NET_RUNS ?= $(ROOT)/tmp/showcase-network-runs` — the throwaway run directory the lane's
 # `--runs-dir` writes to, read as a path relative to the repository root (`ROOT`).
 _NET_RUNS_RE = re.compile(r"^NET_RUNS\s*\?=\s*\$\(ROOT\)/(\S+)\s*$", re.MULTILINE)
+
+# `SIM ?= $(shell …)` — the `simctl` pipeline that resolves the booted Simulator's UDID.
+_SIM_RE = re.compile(r"^SIM \?= \$\(shell (.+)\)$", re.MULTILINE)
 
 # The target the lane drives, and so the one whose `redact` policy applies to its evidence.
 _TARGET = "showcase-swiftui"
@@ -497,3 +501,43 @@ def test_the_network_jobs_artifact_uploads_the_makefile_runs_dir() -> None:
         f"the `network` job's e2e-network step overrides NET_RUNS ({runs!r}); the upload path above "
         "is pinned against the Makefile default, which the override would bypass."
     )
+
+
+# --- SIM ?= $(shell …): a wrong UDID breaks every e2e-*/run-*/doctor/vrt target in this file -------
+
+
+def _resolve_sim(*, listing: str) -> str:
+    """Runs the Makefile's own extraction pipeline, so a drift here can't go unnoticed."""
+    makefile = (_SHOWCASE / "Makefile").read_text(encoding="utf-8")
+    m = _SIM_RE.search(makefile)
+    assert m is not None, (
+        "demos/showcase/Makefile no longer declares `SIM ?= $(shell …)` — this pin reads that "
+        "line to run its own UDID-extraction pipeline against a synthetic `simctl` listing."
+    )
+    pipeline = m.group(1).replace("xcrun simctl list devices booted", "cat", 1)
+    out = subprocess.run(
+        ["sh", "-c", pipeline], input=listing, capture_output=True, text=True, check=True
+    )
+    return out.stdout.strip()
+
+
+def test_sim_resolves_the_udid_next_to_booted_not_a_renamed_devices_udid() -> None:
+    # Bajutsu's own wedge recovery mints `<device type> (bajutsu-recovered-<old udid>)` devices
+    # (bajutsu/common/platform_lifecycle/environments/xcuitest.py), so a booted device's *name* can
+    # carry a UDID-shaped run ahead of its real UDID. A regex that greedily matches the first
+    # UDID-shaped run on the line — the bug this pin guards against — would resolve the renamed
+    # segment instead.
+    listing = (
+        "    iPhone 17 Pro (bajutsu-recovered-EF96D951-DA9B-450D-9E50-1800C468374F)"
+        " (3E830C79-34E8-4E77-91AD-AC62B71B33D2) (Booted)\n"
+    )
+    assert _resolve_sim(listing=listing) == "3E830C79-34E8-4E77-91AD-AC62B71B33D2"
+
+
+def test_sim_resolves_a_plain_booted_devices_udid() -> None:
+    listing = "    iPhone 17 Pro (3E830C79-34E8-4E77-91AD-AC62B71B33D2) (Booted)\n"
+    assert _resolve_sim(listing=listing) == "3E830C79-34E8-4E77-91AD-AC62B71B33D2"
+
+
+def test_sim_resolves_nothing_when_no_device_is_booted() -> None:
+    assert _resolve_sim(listing="") == ""
