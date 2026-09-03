@@ -535,6 +535,12 @@ def _resolve_sim(*, listing: str) -> str:
     out = subprocess.run(
         ["sh", "-c", pipeline], input=listing, capture_output=True, text=True, check=True
     )
+    assert not out.stderr, (
+        f"demos/showcase/Makefile's `SIM ?=` pipeline wrote to stderr ({out.stderr!r}) — the "
+        "pipeline's exit status is `head`'s, so a `sed` that rejects the extracted script exits "
+        "non-zero without tripping `check=True`, and this pin would otherwise read the empty "
+        "output as a correct no-booted-device result."
+    )
     return out.stdout.strip()
 
 
