@@ -261,11 +261,11 @@ and a rerun of the tracer.
   swipe variant (unit 24).
 - [ ] Rerun [`trace_run.py`](misc/step-performance/trace_run.py) against
   `controls.yaml` after each group lands, and record the resulting per-step wall-clock here.
-- [ ] Once the `roadmap-id` workflow allocates the four ids on `main`, backfill reciprocal `Related`
-  links between this item and the device-side protocol, iOS executor, and Android executor items,
-  and replace each "companion item" mention with a link, in both languages — a new item may not
-  cross-reference another new item by `BE-0407` before allocation, so none of the four can carry
-  this on merge.
+- [x] Backfill reciprocal `Related` links between this item and the device-side protocol, iOS
+  executor, and Android executor items, in both languages — done after the `roadmap-id` workflow
+  allocated the four ids on `main`, since a new item may not cross-reference another new item by
+  `BE-XXXX` before allocation, so none of the four could carry this on merge.
+- [ ] Replace each "companion item" mention with a link to the now-numbered item, in both languages.
 
 ## References
 

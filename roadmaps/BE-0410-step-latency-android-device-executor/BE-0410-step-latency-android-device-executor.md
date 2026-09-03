@@ -119,7 +119,7 @@ iOS executor's port is.
 - [ ] Capture screenshots with `UiAutomation.takeScreenshot()`, returned with the step result.
 - [ ] Trace a real tap step against this executor and record the resulting per-step wall-clock here,
   compared against the 150–300 millisecond estimate above.
-- [ ] Once the `roadmap-id` workflow allocates the four ids on `main`, backfill a reciprocal
+- [x] Once the `roadmap-id` workflow allocates the four ids on `main`, backfill a reciprocal
   `Related` link with the driver-internal-tuning, device-side protocol, and iOS executor items (see
   the same box on the driver-internal-tuning item).
 
