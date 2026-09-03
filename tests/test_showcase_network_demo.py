@@ -12,9 +12,11 @@ The web twin is `tests/test_web_network_demo.py`; this file is its iOS counterpa
 BajutsuKit → loopback POST → collector transport instead of the browser's.
 
 One pin below is out of this lane's scope: `demos/showcase/Makefile`'s `SIM ?=` UDID extraction
-lives here only because this is the repo's existing harness for pinning `Makefile` text against
-`make check`, not because it belongs to BE-0282 — it guards every iOS lane's `--udid`, not just
-this one's.
+guards every iOS lane's `--udid` when it is run locally, not just this one's, and belongs to no BE
+item. It sits here for want of a better home — not because this file is the repo's `Makefile`-text
+harness: `scripts/e2e_changes.py`'s `showcase_makefile_text` already reads this same Makefile for
+`tests/test_e2e_changes.py`. The default is local-only; every CI lane overrides it with `SIM=` from
+`.github/actions/boot-simulator`.
 """
 
 from __future__ import annotations
