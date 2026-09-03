@@ -104,6 +104,7 @@ plugins:
             Glossary: 用語集
             Architecture: アーキテクチャ
             Vision: ビジョン
+            Comparison with Maestro: Maestro との比較
             Run loop: 実行ループ
             Authoring scenarios: シナリオの作成
             Scenarios: シナリオ
@@ -171,6 +172,7 @@ nav:
       - Glossary: glossary.md
       - Architecture: architecture.md
       - Vision: vision.md
+      - Comparison with Maestro: comparison-maestro.md
       - Run loop: run-loop.md
   - Authoring scenarios:
       - Scenarios: scenarios.md
