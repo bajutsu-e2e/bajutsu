@@ -9,12 +9,12 @@ deterministic gate stays unchanged.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from fastmcp import FastMCP
+from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 
-from bajutsu.mcp.resources import register_resources
-from bajutsu.mcp.tools import register_tools
-from bajutsu.run_files import DEFAULT_RUNS_DIR
+if TYPE_CHECKING:
+    from fastmcp import FastMCP
 
 
 def create_server(config_path: Path, runs_dir: Path = Path(DEFAULT_RUNS_DIR)) -> FastMCP:
@@ -30,6 +30,15 @@ def create_server(config_path: Path, runs_dir: Path = Path(DEFAULT_RUNS_DIR)) ->
         A ``FastMCP`` instance with ``bajutsu_doctor``, ``bajutsu_run``, and all
         run-evidence resources already registered.
     """
+    # Deferred: `bajutsu.mcp` is now a package `bajutsu.mcp.cli` lives inside, so merely
+    # importing the CLI command (done unconditionally for every feature, to build the Typer
+    # app) would otherwise import this module and force the optional `fastmcp` dependency —
+    # breaking the same "extras stay off the default import path" guarantee `ai`/`web` rely on.
+    from fastmcp import FastMCP
+
+    from bajutsu.mcp.resources import register_resources
+    from bajutsu.mcp.tools import register_tools
+
     mcp = FastMCP("bajutsu")
     register_tools(mcp, config_path)
     register_resources(mcp, runs_dir)

@@ -8,10 +8,10 @@ from typing import Any
 import pytest
 from _report import _passing
 
-from bajutsu.evidence import Artifact
-from bajutsu.orchestrator import RunResult, StepOutcome
-from bajutsu.report import html_report
-from bajutsu.report.format import _read_json
+from bajutsu.common.evidence import Artifact
+from bajutsu.common.orchestrator import RunResult, StepOutcome
+from bajutsu.common.report import html_report
+from bajutsu.common.report.format import _read_json
 
 
 def test_network_json_is_read_once_per_render(
@@ -32,7 +32,7 @@ def test_network_json_is_read_once_per_render(
         expect_results=[],
         artifacts=[Artifact(f"{sid}/network.json", "network", "collector")],
     )
-    from bajutsu.report import panels
+    from bajutsu.common.report import panels
 
     reads: list[str] = []
     real = _read_json

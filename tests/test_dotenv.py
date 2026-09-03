@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bajutsu.dotenv import load_dotenv, parse_dotenv
+from bajutsu.cli.dotenv import load_dotenv, parse_dotenv
 
 
 def test_parse_basic_pairs() -> None:

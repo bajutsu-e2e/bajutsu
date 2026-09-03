@@ -47,7 +47,7 @@ swizzle が、showcase の両ツールキットで実際に遷移を報告する
 BE-0310 は、まさにこの確認のために `_logger.debug(...)` を2行足しました。新しい段が readiness を決めたとき、
 `bajutsu.platform_lifecycle.readiness` はログを1行残します。その内容は
 `"readiness satisfied by the screenChanged signal"` です。`settled` がこのシグナルを使ったとき、
-`bajutsu.orchestrator.waits` も同様にログを1行残します。その内容は `"settled via the screen-transition
+`bajutsu.common.orchestrator.waits` も同様にログを1行残します。その内容は `"settled via the screen-transition
 signal (quiescence=...)"` です。CLI には今のところ `--verbose` フラグがありません。`bajutsu run` を直接呼ぶ
 代わりに、次のような1行ラッパーでログレベルを引き上げてください。
 

@@ -10,9 +10,9 @@ from typing import Any
 
 from conftest import FAKE_USAGE_PER_CALL, FakeBackend, FakeUsage
 
-from bajutsu.analytics import usage
 from bajutsu.common.agents.claude_backed import ClaudeBackedAgent
 from bajutsu.common.ai.base import MessageResponse
+from bajutsu.common.analytics import usage
 
 
 class _Probe(ClaudeBackedAgent):

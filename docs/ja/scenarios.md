@@ -1036,7 +1036,7 @@ steps:
 
 ## YAML の注意点
 
-PyYAML（YAML 1.1）は `on`/`off`/`yes`/`no` を真偽値に解決します。`capturePolicy` のトリガーキー `on:` が `True` になるのを防ぐため、Bajutsu の YAML ローダ（`_yaml.py`）は **`true`/`false` だけを真偽値**として扱い、`on`/`off`/`yes`/`no` は文字列のまま読みます。
+PyYAML（YAML 1.1）は `on`/`off`/`yes`/`no` を真偽値に解決します。`capturePolicy` のトリガーキー `on:` が `True` になるのを防ぐため、Bajutsu の YAML ローダ（`common/_yaml.py`）は **`true`/`false` だけを真偽値**として扱い、`on`/`off`/`yes`/`no` は文字列のまま読みます。
 
 ## `from`（来歴）
 

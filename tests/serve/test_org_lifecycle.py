@@ -364,7 +364,7 @@ def test_a_git_bound_config_belongs_to_the_org_that_bound_it(
 ) -> None:
     # Same rule for a Git source: an arbitrary repository and ref is no more the deployment's own
     # content than an uploaded zip, and BE-0121 already says so of the same file's `build:`.
-    from bajutsu.config_source import Materialized
+    from bajutsu.common.config_source import Materialized
 
     state = _state(serve_engine, tmp_path)
     assert state.repository is not None
@@ -773,7 +773,7 @@ def test_binding_a_config_from_the_file_browser_does_not_seed(
 def test_binding_a_git_config_does_not_seed(
     serve_engine: Callable[..., Engine], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from bajutsu.config_source import Materialized
+    from bajutsu.common.config_source import Materialized
 
     state = _unconverted(serve_engine, tmp_path)
     assert state.repository is not None

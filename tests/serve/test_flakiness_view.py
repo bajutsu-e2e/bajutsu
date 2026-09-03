@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from bajutsu.serve.flakiness import (
+from bajutsu.analysis.flakiness import (
     rank_flakiness,
     records_from_manifests,
     render,

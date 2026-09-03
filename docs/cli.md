@@ -2,7 +2,7 @@
 
 # CLI reference
 
-> Implementation: `bajutsu/cli/` (Typer; one file per command under `cli/commands/`). The entry point is `bajutsu = "bajutsu.cli:app"` in
+> Implementation: `bajutsu/cli/` (Typer; each command lives beside its owning feature, e.g. `run/cli.py`, `record/cli.py` — `cli/commands/` holds only the feature-less `doctor`/`lint`/`schema`/`report`). The entry point is `bajutsu = "bajutsu.cli:app"` in
 > `pyproject.toml`. Every command in this CLI (command-line interface) selects one [app](glossary.md#target-app-device) with `--target <name>` and points at config with
 > `--config` (default `bajutsu.config.yaml`). App-specific differences live in config
 > ([configuration](configuration.md)).
@@ -1040,6 +1040,6 @@ evidence they acted on, so a lane failure can be diagnosed from its log rather t
 secret-redacting sink on the root logger (BE-0055), so the CLI leaves its logging alone rather than
 adding a second, unredacted one beside it.
 
-Implementation: [`bajutsu/diagnostics.py`](../bajutsu/diagnostics.py). The Android e2e lane leaves it
+Implementation: [`bajutsu/common/diagnostics.py`](../bajutsu/common/diagnostics.py). The Android e2e lane leaves it
 at `WARNING` — a line per read lengthens the lane — and exposes `E2E_LOG_LEVEL` to raise it for one
 run: `make -C demos/showcase/android e2e E2E_LOG_LEVEL=DEBUG`.

@@ -1,7 +1,7 @@
 """Host-side screen recording for the uiautomator codegen lane's connectedAndroidTest.
 
 That lane runs the generated test through Gradle's `connectedAndroidTest` with no bajutsu runtime at
-test time, so it cannot call `bajutsu.evidence.intervals.start_screenrecord` the way `bajutsu run`
+test time, so it cannot call `bajutsu.common.evidence.intervals.start_screenrecord` the way `bajutsu run`
 does. This script is the CI twin: it calls the same function directly instead of reimplementing its
 start/stop/pull lifecycle in shell, so the finalize sequence (SIGINT, the device-side pgrep-stdout
 poll, the pull, the device-side cleanup) lives in one place rather than two that can drift apart
@@ -18,8 +18,8 @@ import sys
 from pathlib import Path
 from types import FrameType
 
-from bajutsu import adb
-from bajutsu.evidence import intervals
+from bajutsu.common.backend_cli import adb
+from bajutsu.common.evidence import intervals
 
 
 def main() -> None:

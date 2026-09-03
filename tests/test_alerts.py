@@ -11,12 +11,12 @@ from conftest import GUARD_LABEL, AlertingDriver, FakeBackend, FakeBlock, ShotDr
 from bajutsu.common.agents.alerts import AlertDecision, ClaudeAlertLocator, SystemAlertGuard
 from bajutsu.common.agents.protocols import Proposal
 from bajutsu.common.ai.base import AnyTool, ImagePart, TextPart
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.evidence import FileSink
+from bajutsu.common.orchestrator import AlertEvent, AlertGuardConfig, run_scenario
 from bajutsu.common.scenario import Step, load_scenarios
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence import FileSink
-from bajutsu.orchestrator import AlertEvent, AlertGuardConfig, run_scenario
-from bajutsu.record import record as record_loop
+from bajutsu.record.loop import record as record_loop
 
 
 def _window(w: float = 402.0, h: float = 874.0) -> base.Element:
@@ -127,8 +127,8 @@ def test_locator_absent_decision() -> None:
 def test_locator_redacts_instruction_before_send() -> None:
     # BE-0047: the (possibly user-supplied) --alert-vision-instruction is redacted before it reaches the
     # model. The screenshot beside it is sent as-is — images cannot be pixel-masked.
+    from bajutsu.common.evidence.redaction import Redactor
     from bajutsu.common.scenario import Redact
-    from bajutsu.evidence.redaction import Redactor
 
     backend = _resolve_alert({"present": False})
     redactor = Redactor(Redact(), values=["sk-secret-token"])

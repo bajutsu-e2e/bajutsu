@@ -13,9 +13,9 @@ from typing import Any
 import pytest
 
 from bajutsu.common.assertions import evaluate_one
+from bajutsu.common.drivers.web_network import WebNetworkCollector
 from bajutsu.common.scenario.models.assertions import Assertion, RequestMatch
 from bajutsu.common.scenario.models.mocks import Mock, MockResponse
-from bajutsu.web_network import WebNetworkCollector
 
 
 class _FakeResponse:
@@ -112,7 +112,7 @@ def test_late_requestfinished_after_target_closed_is_dropped(
     # A `requestfinished` can fire while the page navigates or after the context/browser closes;
     # `response()` then raises a Playwright error (TargetClosedError). The handler must swallow it
     # and record nothing, rather than let it surface as an unhandled error on Playwright's event loop.
-    monkeypatch.setattr("bajutsu.drivers.playwright._PW_ERRORS", (_FakePwError,))
+    monkeypatch.setattr("bajutsu.common.drivers.playwright._PW_ERRORS", (_FakePwError,))
     page = _FakePage()
     collector = WebNetworkCollector(page)
 
@@ -127,7 +127,7 @@ def test_late_requestfinished_after_target_closed_is_dropped(
 def test_non_playwright_error_in_on_finished_propagates(monkeypatch: Any) -> None:
     # Only Playwright's own error family is treated as a benign teardown; a genuine bug must fail
     # loudly (prime directive 2) rather than be silently dropped from the collector.
-    monkeypatch.setattr("bajutsu.drivers.playwright._PW_ERRORS", (_FakePwError,))
+    monkeypatch.setattr("bajutsu.common.drivers.playwright._PW_ERRORS", (_FakePwError,))
     page = _FakePage()
     WebNetworkCollector(page)
 

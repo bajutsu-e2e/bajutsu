@@ -10,11 +10,11 @@ from pathlib import Path
 import pytest
 from _shared import project
 
+from bajutsu.common.config import Effective, IosConfig
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.scenario import Redact
-from bajutsu.config import Effective, IosConfig
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence.redaction import Redactor
 from bajutsu.serve import operations as ops
 from bajutsu.serve.state import ServeState
 
@@ -125,7 +125,7 @@ def _ios_state(tmp_path: Path) -> ServeState:
 
 def _tuple_factory(seen: list[str]) -> object:
     """A recording factory that resolves the backends list the way the default factory does."""
-    from bajutsu import backends
+    from bajutsu.common import backends
 
     def factory(_eff: object, backends_list: list[str], _udid: str) -> tuple[FakeDriver, object]:
         seen.append(backends.select_actuator_cost_first(backends_list, available=lambda a: True))

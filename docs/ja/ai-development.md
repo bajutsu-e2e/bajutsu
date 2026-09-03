@@ -348,9 +348,9 @@ backend。[architecture](architecture.md) 参照）。ほとんどのタスク�
 
 | 面 | ファイル | 共有される理由 |
 |---|---|---|
-| Driver API | [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) | 全 backend と orchestrator が依存 |
+| Driver API | [`bajutsu/common/drivers/base.py`](../../bajutsu/common/drivers/base.py) | 全 backend と orchestrator が依存 |
 | シナリオスキーマ | [`bajutsu/scenario/models/scenario.py`](../../bajutsu/scenario/models/scenario.py) | ハブとなる成果物。codegen/runner/report が読む |
-| config の形 | [`bajutsu/config/`](../../bajutsu/config/) | 全コマンドが解決する per-target レイヤリング |
+| config の形 | [`bajutsu/common/config/`](../../bajutsu/common/config/) | 全コマンドが解決する per-target レイヤリング |
 
 ## CI がブランチを正直に保つ
 
@@ -1073,7 +1073,7 @@ lint-roadmap ARGS="--fix"` は壊れた項目リンクを対象の現在のパ�
 prime directive は構成上そのまま保たれます。
 
 - **英語で書きます。** コード（とその docstring）は両言語にしません。両言語にするのは `docs/` 配下の散文ドキュメントだけです。
-- **公開面は Google style。** 公開 API（[`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py) の `Driver`
+- **公開面は Google style。** 公開 API（[`bajutsu/common/drivers/base.py`](../../bajutsu/common/drivers/base.py) の `Driver`
   プロトコルと共有型、CLI、MCP ツール、シナリオスキーマ、runner / `assertions` / `network` の公開関数）は、
   1 行の要約に続けて `Args:` / `Returns:` / `Raises:`（必要なら `Yields:` / `Examples:`）を、**情報が増えるときだけ**
   付けます。生成リファレンスは非公開（`_` 始まり）メンバーを除外します。
@@ -1195,7 +1195,7 @@ Bajutsu のコメントは、すでに「何を」ではなく「なぜ」を書
 
 - **精密化**：単位、境界が端点を含むのかどうか、`None` の意味、マジックナンバーの由来など、コードが
   開いたままにしている点を、直後の行に対して確定させます。定番の形は行末の 1 行コメントです
-  （[`bajutsu/totp.py`](../../bajutsu/totp.py)）。
+  （[`bajutsu/common/totp.py`](../../bajutsu/common/totp.py)）。
 
   ```python
   cleaned += "=" * (-len(cleaned) % 8)  # b32decode requires the padding authenticators omit
@@ -1217,7 +1217,7 @@ Bajutsu のコメントは、すでに「何を」ではなく「なぜ」を書
 [「議論を繰り返さず参照する（コメントと docstring）」](#議論を繰り返さず参照するコメントと-docstring)
 のとおりです。結論を述べ、検討した代替案、スコープの判断、導出の残りを持つ `BE-NNNN` 項目や `docs/`
 ページを引用してそこまで削ります。正当に長いコメントもあります。
-[`bajutsu/cloud/devicefarm.py`](../../bajutsu/cloud/devicefarm.py) の Device Farm ブートストラップの
+[`bajutsu/common/cloud/devicefarm.py`](../../bajutsu/common/cloud/devicefarm.py) の Device Farm ブートストラップの
 ブロックはその例で、1つの論証ではなく、その行の保守に必要な運用上の事実を保持しています。削る前に、
 「議論を繰り返さず参照する（コメントと docstring）」の節が挙げる 3 つの形のどれに当たるかを確かめます。
 

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bajutsu.github import actions
-from bajutsu.orchestrator import RunResult
+from bajutsu.common.github import actions
+from bajutsu.common.orchestrator import RunResult
 
 
 def _res(name: str, ok: bool, failure: str | None = None) -> RunResult:

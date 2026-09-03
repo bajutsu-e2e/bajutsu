@@ -5,7 +5,7 @@
 > One run executes one or more scenarios (`list[RunResult]`). Bajutsu writes their results in four
 > formats. `manifest.json` is the **single source of truth** for the report and for CI (continuous integration).
 >
-> Implementation: `bajutsu/report/` (a package, split by stage: `format` → `manifest` / `richtext` → `rows` / `panels` → `html`).
+> Implementation: `bajutsu/common/report/` (a package, split by stage: `format` → `manifest` / `richtext` → `rows` / `panels` → `html`).
 
 Related: [the run results in run-loop](run-loop.md#run-results-data-structures) · [evidence](evidence.md)
 
@@ -27,7 +27,7 @@ runs/<runId>/
     └── device.log    # deviceLog (interval)
 ```
 
-The CLI assigns `runId` as `YYYYMMDD-HHMMSS`. `bajutsu/run_id.py`
+The CLI assigns `runId` as `YYYYMMDD-HHMMSS`. `bajutsu/common/run_meta/id.py`
 ([BE-0200](../roadmaps/BE-0200-run-id-contract/BE-0200-run-id-contract.md)) mints it once, so every
 call site shares one format. `stepId` is `step.name` or `step<i>`.
 

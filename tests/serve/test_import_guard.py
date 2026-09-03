@@ -17,7 +17,7 @@ import sys
 
 # Top-level packages that only an opt-in backend may import — never the default path: the
 # (future) server backend, plus the web backend's Playwright (a heavy dep loaded only when a
-# browser is actually started; see bajutsu/drivers/playwright.py).
+# browser is actually started; see bajutsu/common/drivers/playwright.py).
 FORBIDDEN = sorted(
     {
         "redis",
@@ -95,7 +95,7 @@ def test_worker_command_path_stays_lean() -> None:
     )
     code = (
         "import sys\n"
-        "import bajutsu.cli.commands.worker\n"
+        "import bajutsu.serve.cli.worker\n"
         f"forbidden = set({forbidden!r})\n"
         "leaked = sorted(m for m in sys.modules if m.split('.')[0] in forbidden)\n"
         "sys.stdout.write(','.join(leaked))\n"
@@ -123,7 +123,7 @@ def test_default_path_does_not_import_anthropic() -> None:
         "import sys\n"
         "import bajutsu.cli\n"
         "import bajutsu.serve\n"
-        "import bajutsu.runner.pipeline\n"
+        "import bajutsu.common.runner.pipeline\n"
         "leaked = sorted(m for m in sys.modules if m.split('.')[0] == 'anthropic')\n"
         "sys.stdout.write(','.join(leaked))\n"
         "sys.exit(1 if leaked else 0)\n"

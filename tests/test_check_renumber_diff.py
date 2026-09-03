@@ -28,9 +28,12 @@ def test_paths_outside_roadmaps_are_reported() -> None:
     paths = [
         "roadmaps/README.md",
         "scripts/allocate_roadmap_ids.py",
-        "bajutsu/runner/pool.py",
+        "bajutsu/common/runner/pool.py",
     ]
-    assert disallowed_paths(paths) == ["scripts/allocate_roadmap_ids.py", "bajutsu/runner/pool.py"]
+    assert disallowed_paths(paths) == [
+        "scripts/allocate_roadmap_ids.py",
+        "bajutsu/common/runner/pool.py",
+    ]
 
 
 def test_empty_diff_is_allowed() -> None:

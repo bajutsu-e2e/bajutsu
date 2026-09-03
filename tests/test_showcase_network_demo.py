@@ -23,11 +23,11 @@ from typing import Any
 import pytest
 import yaml
 
+from bajutsu.common.evidence.network import NetworkExchange
+from bajutsu.common.evidence.redaction import PLACEHOLDER, Redactor
 from bajutsu.common.scenario import load_scenario_file
 from bajutsu.common.scenario.models import Gone, Scenario, WaitRequest
 from bajutsu.common.scenario.models.evidence import Redact
-from bajutsu.evidence.network import NetworkExchange
-from bajutsu.evidence.redaction import PLACEHOLDER, Redactor
 from demos.showcase.network.assert_network_evidence import (
     _BODY_SECRET,
     _HEADER_SECRET,
@@ -225,8 +225,8 @@ def test_an_unmocked_exchange_is_persisted_with_mocked_explicitly_false(tmp_path
     # *those* kwargs (an `exclude_defaults=True` added to shrink evidence, say) fails here instead of
     # only reddening the non-gating macOS lane. Local imports match `tests/runner/test_pipeline.py`'s
     # own `_write_network` tests.
-    from bajutsu.evidence.sink import RunArtifactWriter
-    from bajutsu.runner.pipeline import _write_network
+    from bajutsu.common.evidence.sink import RunArtifactWriter
+    from bajutsu.common.runner.pipeline import _write_network
 
     exchange = NetworkExchange(
         method="GET", url="https://example.com/horses", path=_LIVE_PATH, status=404

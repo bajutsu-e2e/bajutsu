@@ -5,9 +5,9 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from bajutsu.analytics import ledger as usage_ledger
-from bajutsu.analytics import usage
-from bajutsu.analytics.ledger import (
+from bajutsu.common.analytics import ledger as usage_ledger
+from bajutsu.common.analytics import usage
+from bajutsu.common.analytics.ledger import (
     LEDGER_SCHEMA_VERSION,
     JsonlLedger,
     Pricing,
@@ -18,7 +18,7 @@ from bajutsu.analytics.ledger import (
     pricing_table_from_config,
     read_events,
 )
-from bajutsu.analytics.usage import TokenUsage
+from bajutsu.common.analytics.usage import TokenUsage
 
 
 def test_event_round_trips_through_a_versioned_record() -> None:
@@ -274,7 +274,7 @@ def test_attribution_entered_inside_a_worker_thread_is_recorded(tmp_path: Path) 
 
 
 def test_configure_from_ai_config_uses_the_configured_path(tmp_path: Path) -> None:
-    from bajutsu.config import AiConfig
+    from bajutsu.common.config import AiConfig
 
     path = tmp_path / "custom.jsonl"
     usage_ledger.configure_from_ai_config(AiConfig(usage_ledger=str(path)))
@@ -287,7 +287,7 @@ def test_configure_from_ai_config_uses_the_configured_path(tmp_path: Path) -> No
 
 
 def test_configure_from_ai_config_disables_on_empty_path() -> None:
-    from bajutsu.config import AiConfig
+    from bajutsu.common.config import AiConfig
 
     usage_ledger.configure_from_ai_config(AiConfig(usage_ledger=""))
     try:
@@ -298,7 +298,7 @@ def test_configure_from_ai_config_disables_on_empty_path() -> None:
 
 
 def test_configure_from_ai_config_overlays_config_pricing(tmp_path: Path) -> None:
-    from bajutsu.config import AiConfig
+    from bajutsu.common.config import AiConfig
 
     path = tmp_path / "usage.jsonl"
     ai = AiConfig(

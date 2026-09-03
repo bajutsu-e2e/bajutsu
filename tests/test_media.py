@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu.evidence import media
+from bajutsu.common.evidence import media
 
 # --- ISO base media (mp4) builders ---
 

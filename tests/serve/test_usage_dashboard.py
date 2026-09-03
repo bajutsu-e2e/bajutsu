@@ -1,6 +1,6 @@
 """The `/usage` AI usage/cost dashboard endpoint (BE-0195).
 
-Renders the self-contained dashboard from the attributed usage ledger `bajutsu.analytics.ledger` writes.
+Renders the self-contained dashboard from the attributed usage ledger `bajutsu.common.analytics.ledger` writes.
 Read-only and deterministic — no Mac, no LLM. The ledger is written through the real `JsonlLedger`
 (not a stub) and read back through the operation, so the test exercises the true round trip.
 """
@@ -12,8 +12,8 @@ from pathlib import Path
 from _shared import _get, _serve
 
 from bajutsu import serve as srv
-from bajutsu.analytics.ledger import JsonlLedger, UsageEvent
-from bajutsu.analytics.usage import TokenUsage
+from bajutsu.common.analytics.ledger import JsonlLedger, UsageEvent
+from bajutsu.common.analytics.usage import TokenUsage
 from bajutsu.serve import operations as ops
 
 

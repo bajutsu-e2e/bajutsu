@@ -8,20 +8,19 @@ from pathlib import Path
 
 import typer
 
-from bajutsu import adb as _adb
-from bajutsu import capability_preflight, device_errors, preflight
-from bajutsu import simctl as _simctl
-from bajutsu.backends import (
+from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
+from bajutsu.common.agents import availability as ai_availability
+from bajutsu.common.ai import credential_gap
+from bajutsu.common.backend_cli import adb as _adb
+from bajutsu.common.backend_cli import simctl as _simctl
+from bajutsu.common.backends import (
     capabilities_for_run,
     resolve_actuators,
     select_actuator,
     select_actuator_for_scenario,
 )
-from bajutsu.cli._shared import DEFAULT_CONFIG, _backends, _load_effective
-from bajutsu.common.agents import availability as ai_availability
-from bajutsu.common.ai import credential_gap
-from bajutsu.common.scenario import load_scenario_file
-from bajutsu.config import (
+from bajutsu.common.capability import capability_preflight, preflight
+from bajutsu.common.config import (
     Effective,
     android_package,
     ios_bundle_id,
@@ -29,13 +28,15 @@ from bajutsu.config import (
     web_base_url,
     web_engine,
 )
-from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
-from bajutsu.drivers import base
-from bajutsu.platform_lifecycle.environments.xcuitest import (
+from bajutsu.common.devices import errors as device_errors
+from bajutsu.common.doctor import DoctorProbeError, probe_screen, render, score
+from bajutsu.common.drivers import base
+from bajutsu.common.platform_lifecycle.environments.xcuitest import (
     bundled_runner_toolchain_note,
     effective_device_type,
     runner_source,
 )
+from bajutsu.common.scenario import load_scenario_file
 
 
 def check_scenarios(scenario_path: Path, capabilities: frozenset[str]) -> list[str]:

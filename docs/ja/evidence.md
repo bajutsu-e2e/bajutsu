@@ -4,7 +4,7 @@
 
 繰り返し発生する動作の[証跡](glossary.md#証跡-capturepolicy-trace-triage)は、単発の指示ではなく **繰り返し発火するルール**として表現します。こうすると、2 回目以降も AI なしで同じ証跡が集まります。
 
-実装: `bajutsu/evidence/core.py`（瞬時 + Sink）、`bajutsu/evidence/intervals.py`（区間: video / deviceLog / appTrace）。発火判定は orchestrator 側（[run-loop](run-loop.md#証跡ルールの発火)）で行います。
+実装: `bajutsu/common/evidence/core.py`（瞬時 + Sink）、`bajutsu/common/evidence/intervals.py`（区間: video / deviceLog / appTrace）。発火判定は orchestrator 側（[run-loop](run-loop.md#証跡ルールの発火)）で行います。
 
 関連: [scenarios の capture トークン](scenarios.md#capture-トークン文法) · [reporting](reporting.md)
 
@@ -127,7 +127,7 @@ capturePolicy:
 
 ## 区間証跡（video / deviceLog / appTrace）
 
-実装: `bajutsu/evidence/intervals.py`。これらは **子プロセス**であり（iOS は `simctl`、Android は `adb`）、操作前に開始し、ステップが落ち着いてから停止します。プロセス起動は注入可能（`Spawn`）で、テストできます。
+実装: `bajutsu/common/evidence/intervals.py`。これらは **子プロセス**であり（iOS は `simctl`、Android は `adb`）、操作前に開始し、ステップが落ち着いてから停止します。プロセス起動は注入可能（`Spawn`）で、テストできます。
 
 web は子プロセスを使いません。区間証跡は Playwright ネイティブで、driver が供給します（後述）。`appTrace` も video / deviceLog と同じ区間系です（ペアリングの仕組みは前掲の注を参照）。
 
@@ -159,7 +159,7 @@ web は子プロセスを使いません。区間証跡は Playwright ネイテ�
 - **確認済みの開始時刻が、レポートのステップ/通信ログのタイムスタンプを、単に録画を要求した瞬間ではなく動画の実際の開始に合わせて補正します。** `start_video`（iOS）と`start_screenrecord`（Android）は、本番の呼び出し箇所で`confirm_started=True`を渡されると、録画プロセスを起動したあとに実在の信号をポーリングします。iOSは出力ファイルの最初の書き込みバイトを、Androidはデバイス側のプロセスが現れることを確認します（後者はより弱い保証です。プロセスが存在しても、そのエンコーダーがすでにフレームを出力しているとは限りませんが、それでも実在の信号であり、当て推量よりは早い時点を示します）。確認できた`time.monotonic()`の値は`Interval.true_start`に記録されます。`intervals.adopt`は、事前録画されたインターバルを移すときも`true_start`をそのまま引き継ぐため、`adopt`が動く前に確認済みだったAndroidの値が失われることはありません。web アクチュエータはポーリングせず、録画対象のページが生成された直後に`true_start`を記録します。`record_video_dir`はコンテキスト配下のページに対する録画を有効にするだけで、動画そのものはページが生成されるまで存在しないため、記録するタイミングは`new_context()`ではなく`new_page()`の直後です。ポーリングが一度も確認できなかった場合は`true_start`が`None`のままとなり、基準時刻は`scenario_start`に戻ります。当て推量の数値が入ることはありません。
 
   このポーリングをどれだけ続けられるかが、ここで唯一調整できる値です。`simctl`と`adb`の起動のばらつきは、開発機よりも負荷の高い継続的インテグレーション（CI）のマシンで目に見えて大きくなります。ポーリングが諦めると、そのシナリオは補正を丸ごと失います。そのため上限を上書きできます。`BAJUTSU_VIDEO_START_TIMEOUT`（秒）が、コンパイル時のデフォルト値である5秒を置き換えます。[`.github/workflows/ios-e2e.yml`](../../.github/workflows/ios-e2e.yml)はiOSのレーンでこの値を引き上げ、すでに同じ仕組みを持つ3つの`BAJUTSU_XCUITEST_*`のタイムアウトと並べています。ポーリングは録画を確認できた瞬間に返るので、値を大きくしても正常な経路では何のコストもかかりません。
-- **確定した録画そのものが原点を示し、その測定値が上の開始確認より優先されます。** `true_start`はいずれも**代理の信号**です。最初に書き出されたバイト、現れたデバイス側のプロセス、生成済みのブラウザページのいずれも、録画が最初のフレームを収めた瞬間からそれぞれ固有の距離だけ離れて届きます。レポートのシークは、その距離のぶんだけずれます。録画そのものが、この問いに答えられます。確定したクリップは自分の長さを申告し、`Interval.stop()`は録画が終わった瞬間を知っています。したがって、引き算がそのまま原点になります（`measured_start = ended_at - duration`）。長さは外部ツールを使わずコンテナから読みます。[`evidence/media.py`](../../bajutsu/evidence/media.py)が、`simctl`と`screenrecord`が書くムービーヘッダと、Playwright のレコーダーが書く Matroska のセグメントを読みます。
+- **確定した録画そのものが原点を示し、その測定値が上の開始確認より優先されます。** `true_start`はいずれも**代理の信号**です。最初に書き出されたバイト、現れたデバイス側のプロセス、生成済みのブラウザページのいずれも、録画が最初のフレームを収めた瞬間からそれぞれ固有の距離だけ離れて届きます。レポートのシークは、その距離のぶんだけずれます。録画そのものが、この問いに答えられます。確定したクリップは自分の長さを申告し、`Interval.stop()`は録画が終わった瞬間を知っています。したがって、引き算がそのまま原点になります（`measured_start = ended_at - duration`）。長さは外部ツールを使わずコンテナから読みます。[`evidence/media.py`](../../bajutsu/common/evidence/media.py)が、`simctl`と`screenrecord`が書くムービーヘッダと、Playwright のレコーダーが書く Matroska のセグメントを読みます。
 
   「録画が終わった瞬間」がどちらを指すかは、レコーダーごとに違います。子プロセスによる録画は停止シグナルが届いた時点で終わり、そのあとの確定処理（Android ではデバイスからの pull も含みます）は、すでに収め終えた映像を書き出しているだけです。Playwright は`stop()`が行うコンテキストのクローズまで撮り続けます。どちらの形かは`Interval.stops_when_stop_returns`で宣言します。`run_scenario`は`finish_scenario_intervals`のあとで`video_start_offset`を求めます。`measured_start`があればその値を、なければ`true_start`を使い、結果を`RunResult.video_anchor_s`として記録します。
 
@@ -402,4 +402,4 @@ run ディレクトリへの書き込みは、すべて1つのシンクを通り
 
 ## ファイルパーミッション
 
-マスキングは漏えいした証跡が明かす内容を減らしますが、ベストエフォートの denylist なので、証跡を誰が読めるかも同じく重要です。ランナーは各 run ディレクトリを所有者のみ（`0700`）で作成し、機微な内容を含み得るファイル（`network.json`、コピーした `scenario.yaml`、要素ダンプ（`elements.json`）、スクリーンショット）を、ホストの `umask` に依存せず所有者のみ（`0600`）で書き込みます（[BE-0131](../../roadmaps/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions-ja.md)）。それ以外の証跡も `0700` の run ディレクトリ配下に置かれるため、共有ホスト（CI ランナーなど）の別のローカルアカウントからは既定で読めません。実装: `artifact_perms.py`。
+マスキングは漏えいした証跡が明かす内容を減らしますが、ベストエフォートの denylist なので、証跡を誰が読めるかも同じく重要です。ランナーは各 run ディレクトリを所有者のみ（`0700`）で作成し、機微な内容を含み得るファイル（`network.json`、コピーした `scenario.yaml`、要素ダンプ（`elements.json`）、スクリーンショット）を、ホストの `umask` に依存せず所有者のみ（`0600`）で書き込みます（[BE-0131](../../roadmaps/BE-0131-run-artifact-permissions/BE-0131-run-artifact-permissions-ja.md)）。それ以外の証跡も `0700` の run ディレクトリ配下に置かれるため、共有ホスト（CI ランナーなど）の別のローカルアカウントからは既定で読めません。実装: `bajutsu/common/run_meta/artifact_perms.py`。

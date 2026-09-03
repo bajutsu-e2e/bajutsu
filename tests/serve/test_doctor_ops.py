@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 from _shared import project
 
-from bajutsu import simctl
-from bajutsu.drivers import base
+from bajutsu.common.backend_cli import simctl
+from bajutsu.common.drivers import base
 from bajutsu.serve import operations as ops
 from bajutsu.serve.state import ServeState
 
@@ -132,7 +132,7 @@ def test_current_screen_maps_probe_error_to_value_error(tmp_path: Path) -> None:
     # a valid one and null the baseUrl to reach the probe's defensive backstop (BE-0199).
     import dataclasses
 
-    from bajutsu.config import WebConfig, load_config, resolve
+    from bajutsu.common.config import WebConfig, load_config, resolve
     from bajutsu.serve.operations.doctor import _current_screen
 
     eff = dataclasses.replace(

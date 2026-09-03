@@ -1,4 +1,4 @@
-"""Tests for the device-provider seam and registry (bajutsu/runner/device_provider.py, BE-0236).
+"""Tests for the device-provider seam and registry (bajutsu/common/runner/device_provider.py, BE-0236).
 
 The `run` pipeline resolves where its devices come from through a `DeviceProvider` seam, keyed by a
 transport `kind` in a registry that mirrors the mailbox registry (BE-0186). These tests cover the
@@ -15,11 +15,11 @@ import pytest
 from typer.testing import CliRunner
 
 from bajutsu.cli import app
+from bajutsu.common.config import AndroidConfig, DeviceProvider, Effective
+from bajutsu.common.github import actions as github_actions
+from bajutsu.common.platform_lifecycle import ProvisionProfile
+from bajutsu.common.runner import device_provider as dp
 from bajutsu.common.scenario import Redact
-from bajutsu.config import AndroidConfig, DeviceProvider, Effective
-from bajutsu.github import actions as github_actions
-from bajutsu.platform_lifecycle import ProvisionProfile
-from bajutsu.runner import device_provider as dp
 
 
 def _eff(*, device_provider: DeviceProvider | None = None) -> Effective:
@@ -170,7 +170,7 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
     with the `"device release failed"` warning. The dispatch stub keeps this device-free (no simctl /
     adb on the Linux gate); the release path itself is exactly the code under test.
     """
-    from bajutsu.cli.commands import run as run_cmd
+    from bajutsu.run import cli as run_cmd
 
     class _RaisingReleaseProvider:
         def acquire(self, eff: Effective, requested_udid: str) -> dp.DeviceLease:
@@ -188,11 +188,13 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
         # absent on the Linux gate, so an unstubbed call raises FileNotFoundError and the run would
         # exit 1 for the wrong reason. Stub it (as the zero-config run test does) so no simctl/adb
         # touches the gate; the release path — the code under test — is untouched.
-        monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda _udid, run=None: "FAKE-UDID")
+        monkeypatch.setattr(
+            "bajutsu.common.backend_cli.simctl.resolve_udid", lambda _udid, run=None: "FAKE-UDID"
+        )
 
         # Dispatch returns one passing scenario so `_finish` emits PASS and exits 0 before the
         # `finally` invokes the raising release — no device is touched.
-        from bajutsu.orchestrator.types import RunResult
+        from bajutsu.common.orchestrator.types import RunResult
 
         manifest = tmp_path / "runs" / "manifest.json"
         manifest.parent.mkdir(parents=True, exist_ok=True)

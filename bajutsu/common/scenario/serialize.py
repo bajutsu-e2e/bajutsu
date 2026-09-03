@@ -7,7 +7,7 @@ from typing import Any, cast
 
 from pydantic import BaseModel
 
-from bajutsu import _yaml
+from bajutsu.common import _yaml
 from bajutsu.common.scenario import interp
 from bajutsu.common.scenario.models import Mock, Scenario
 

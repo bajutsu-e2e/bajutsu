@@ -114,7 +114,7 @@ def test_register_batch_providers_raises_when_client_factory_fails(
 ) -> None:
     # `register_batch_providers` propagates a client-factory failure (missing boto3, bad credentials)
     # so the serve() caller can catch it and keep the process running rather than dying at boot.
-    from bajutsu.cloud.devicefarm import DeviceFarmError
+    from bajutsu.common.cloud.devicefarm import DeviceFarmError
 
     monkeypatch.setattr(
         batch_bootstrap,

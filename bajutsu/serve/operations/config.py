@@ -12,8 +12,8 @@ from typing import Any
 
 import yaml
 
-from bajutsu import __version__, _yaml
-from bajutsu.backends import IMPLEMENTED
+from bajutsu import __version__
+from bajutsu.common import _yaml
 from bajutsu.common.agents import availability as ai_availability
 from bajutsu.common.agents.ai_config import (
     BEDROCK_MODEL_ENV,
@@ -30,15 +30,16 @@ from bajutsu.common.agents.ai_config import (
 from bajutsu.common.agents.anthropic_client import ANT_BINARY, ANT_CLI_MISSING, ANTHROPIC_KEY_ENV
 from bajutsu.common.ai import credential_gap, resolved_provider, selectable_providers
 from bajutsu.common.ai.registry import DISABLED_PROVIDER
-from bajutsu.config import load_config, resolve, xcuitest_pins_runner
-from bajutsu.config_source import (
+from bajutsu.common.backends import IMPLEMENTED
+from bajutsu.common.config import load_config, resolve, xcuitest_pins_runner
+from bajutsu.common.config_source import (
     config_source_record,
     config_spec_from_record,
     materialize,
     parse_config_spec,
     source_provenance,
 )
-from bajutsu.platform_lifecycle.environments import (
+from bajutsu.common.platform_lifecycle.environments import (
     bundled_products_dir,
     bundled_runner_build_info,
 )

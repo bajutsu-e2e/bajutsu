@@ -7,8 +7,8 @@ from pathlib import Path
 
 from _report import _failing, _json_obj, _json_str, _passing, _scenarios
 
-from bajutsu.orchestrator import AlertEvent, RunResult, StepOutcome
-from bajutsu.report import junit_xml, manifest_dict, write_report
+from bajutsu.common.orchestrator import AlertEvent, RunResult, StepOutcome
+from bajutsu.common.report import junit_xml, manifest_dict, write_report
 
 
 def test_manifest_structure() -> None:
@@ -49,7 +49,7 @@ def test_manifest_joins_distinct_backends_across_scenarios() -> None:
 
 
 def test_run_provenance_hashes_the_scenario_deterministically() -> None:
-    from bajutsu.report.manifest import run_provenance
+    from bajutsu.common.report.manifest import run_provenance
 
     yaml = "- name: s\n  steps:\n    - tap: { id: a }\n"
     p1 = run_provenance(yaml, git_revision=None)
@@ -62,13 +62,13 @@ def test_run_provenance_hashes_the_scenario_deterministically() -> None:
 
 def test_run_provenance_records_the_tool_version() -> None:
     from bajutsu import __version__
-    from bajutsu.report.manifest import run_provenance
+    from bajutsu.common.report.manifest import run_provenance
 
     assert run_provenance("x", git_revision=None)["toolVersion"] == __version__
 
 
 def test_run_provenance_includes_git_revision_only_when_known() -> None:
-    from bajutsu.report.manifest import run_provenance
+    from bajutsu.common.report.manifest import run_provenance
 
     assert run_provenance("x", git_revision="abc123")["gitRevision"] == "abc123"
     # an unresolvable revision (not a git checkout) omits the key rather than recording null
@@ -76,7 +76,7 @@ def test_run_provenance_includes_git_revision_only_when_known() -> None:
 
 
 def test_manifest_records_provenance_block() -> None:
-    from bajutsu.report.manifest import run_provenance
+    from bajutsu.common.report.manifest import run_provenance
 
     prov = run_provenance("- name: s\n  steps: []\n", git_revision="deadbeef")
     m = manifest_dict("run1", [_passing()], provenance=prov)
@@ -91,7 +91,7 @@ def test_manifest_omits_provenance_when_absent() -> None:
 def test_run_provenance_records_the_git_config_source() -> None:
     # A run whose config came from a Git source records which commit it executed (BE-0063), so the
     # manifest states the exact repo@sha behind a branch-based run.
-    from bajutsu.report.manifest import run_provenance
+    from bajutsu.common.report.manifest import run_provenance
 
     src = {"host": "github.com", "owner": "acme", "repo": "tests", "ref": "main", "sha": "deadbeef"}
     prov = run_provenance("x", git_revision=None, config_source=src)
@@ -99,7 +99,7 @@ def test_run_provenance_records_the_git_config_source() -> None:
 
 
 def test_run_provenance_omits_config_source_for_a_local_config() -> None:
-    from bajutsu.report.manifest import run_provenance
+    from bajutsu.common.report.manifest import run_provenance
 
     assert "configSource" not in run_provenance("x", git_revision=None)
 

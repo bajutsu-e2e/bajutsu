@@ -15,9 +15,9 @@ from _report import _json_obj
 from jsonschema import Draft7Validator
 
 from bajutsu.common.assertions import AssertionResult
-from bajutsu.evidence import Artifact
-from bajutsu.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
-from bajutsu.report import ctrf_json
+from bajutsu.common.evidence import Artifact
+from bajutsu.common.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
+from bajutsu.common.report import ctrf_json
 
 _SCHEMA = json.loads((Path(__file__).parent / "ctrf.schema.json").read_text(encoding="utf-8"))
 
@@ -296,7 +296,7 @@ def test_device_field_partial_and_absent() -> None:
 
 
 def test_write_report_emits_valid_ctrf_json(tmp_path: Path) -> None:
-    from bajutsu.report import write_report
+    from bajutsu.common.report import write_report
 
     run_dir = tmp_path / "20260704-101500"
     write_report(run_dir, run_dir.name, [_passing()])
@@ -307,8 +307,8 @@ def test_report_command_regenerates_ctrf(tmp_path: Path) -> None:
     from typer.testing import CliRunner
 
     from bajutsu.cli import app
+    from bajutsu.common.report import write_report
     from bajutsu.common.scenario import dump_scenario_file, load_scenarios
-    from bajutsu.report import write_report
 
     scenarios = load_scenarios("- name: login\n  steps:\n    - tap: { id: a }\n")
     run_dir = tmp_path / "runs" / "20260704-101500"

@@ -127,11 +127,11 @@ def test_path_topic_labels_exact_and_suffix_rules() -> None:
 
 
 def test_path_topic_labels_maps_the_record_modules() -> None:
-    # The record feature is a pair of top-level modules plus a CLI command; touching any of them
-    # lands topic:record so a reviewer can filter record work off the PR list.
-    assert labels.path_topic_labels("bajutsu/record.py") == {"topic:record"}
-    assert labels.path_topic_labels("bajutsu/record_capture.py") == {"topic:record"}
-    assert labels.path_topic_labels("bajutsu/cli/commands/record.py") == {"topic:record"}
+    # The record feature is a package (loop + capture + CLI); touching any of them lands
+    # topic:record so a reviewer can filter record work off the PR list.
+    assert labels.path_topic_labels("bajutsu/record/loop.py") == {"topic:record"}
+    assert labels.path_topic_labels("bajutsu/record/capture.py") == {"topic:record"}
+    assert labels.path_topic_labels("bajutsu/record/cli.py") == {"topic:record"}
 
 
 def test_path_topic_rules_reference_only_real_topic_keys() -> None:

@@ -1,4 +1,4 @@
-"""Tests for the mailbox provider registry (bajutsu/runner/mailbox.py, BE-0186).
+"""Tests for the mailbox provider registry (bajutsu/common/runner/mailbox.py, BE-0186).
 
 The `email` step reads its inbox through a `MailboxReader` seam; BE-0186 turns the single hardcoded
 HTTP path into a registry keyed by transport `kind` (`http`, later `imap`), mirroring the AI
@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import pytest
 
-from bajutsu.config import Mailbox
-from bajutsu.mailbox import MailboxMessage
-from bajutsu.orchestrator import MailboxReader
-from bajutsu.runner import mailbox as mb
+from bajutsu.common.config import Mailbox
+from bajutsu.common.mailbox import MailboxMessage
+from bajutsu.common.orchestrator import MailboxReader
+from bajutsu.common.runner import mailbox as mb
 
 
 def test_none_config_yields_no_reader() -> None:

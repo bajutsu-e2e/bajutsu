@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastmcp import FastMCP
 
-from bajutsu.trace import latest_run
+from bajutsu.analysis.trace import latest_run
 
 
 def _run_base(runs_dir: Path, run_id: str) -> Path:

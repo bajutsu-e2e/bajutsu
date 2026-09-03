@@ -14,7 +14,7 @@ import pytest
 from backend_crash_recovery import LeaseHolder
 from ondevice_spec_path import SpecPathMemo, read_data_container
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 
 _UDID = "2A6DC5A9-CE8C-4BC5-959D-F98D5F4BD9AA"
 _BUNDLE = "com.bajutsu.showcase.ios.swiftui"

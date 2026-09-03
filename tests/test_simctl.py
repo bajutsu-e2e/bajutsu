@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 
 # A real `xcrun simctl list devices available -j` payload, captured once from a macOS host and
 # committed so the parsers are checked against the shape Xcode actually emits — not only against the
@@ -833,7 +833,7 @@ def _timing_out(args: list[str], extra_env: Mapping[str, str] | None = None) -> 
 def test_a_probe_folds_a_timeout_into_its_fallback(caplog: pytest.LogCaptureFixture) -> None:
     # BE-0344's recovery ladder decides on what a probe observed, so a probe must not raise; the
     # log is what keeps the wedge from passing silently.
-    caplog.set_level(logging.WARNING, logger="bajutsu.simctl")
+    caplog.set_level(logging.WARNING, logger="bajutsu.common.backend_cli.simctl")
 
     assert simctl.resolve_udid("booted", run=_timing_out) == "booted"
     assert simctl.booted_udids(run=_timing_out) == []

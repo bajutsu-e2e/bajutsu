@@ -184,7 +184,7 @@ def test_http_open_config_from_git_binds_checkout(
     # The "from Git" picker: a github: spec materializes a checkout, binds its config, and repoints
     # state.binding.cwd to the checkout root so build/scenarios resolve there (BE-0063).
     import bajutsu.serve.operations.config as ops  # bind_git_config resolves `materialize` here
-    from bajutsu.config_source import Materialized
+    from bajutsu.common.config_source import Materialized
 
     _, _, runs = project(tmp_path)
     checkout = tmp_path / "gitsrc"
@@ -294,7 +294,7 @@ def test_http_git_config_with_escaping_path_is_refused(
     # A fetched config whose path field climbs out of the checkout is rejected at bind, so serve's
     # (unconfined) scenario/build resolution never sees a host path outside the tree (BE-0063/BE-0051).
     import bajutsu.serve.operations.config as ops  # bind_git_config resolves `materialize` here
-    from bajutsu.config_source import Materialized
+    from bajutsu.common.config_source import Materialized
 
     _, _, runs = project(tmp_path)
     checkout = tmp_path / "gitsrc"
@@ -428,7 +428,7 @@ def test_http_hosted_refuses_path_bind_but_git_still_binds(
     # Server-side enforcement (defense in depth): when hosted, the path branch of POST /api/config is
     # refused even by a hand-crafted request, while the Git branch is unaffected (BE-0108).
     import bajutsu.serve.operations.config as ops
-    from bajutsu.config_source import Materialized
+    from bajutsu.common.config_source import Materialized
 
     _, _, runs = project(tmp_path)
     checkout = tmp_path / "gitsrc"

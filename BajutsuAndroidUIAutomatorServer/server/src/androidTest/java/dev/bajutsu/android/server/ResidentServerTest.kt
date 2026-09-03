@@ -593,19 +593,19 @@ class ResidentServerTest {
 
         // The response header GET /source stamps with the read mark (BE-0332 Unit 3): the device-clock
         // time of the newest accessibility event observed as of the served dump. Kept in sync with the
-        // host side (`bajutsu/adb_resident.py` `_READ_MARK_HEADER`).
+        // host side (`bajutsu/common/backend_cli/adb_resident.py` `_READ_MARK_HEADER`).
         const val READ_MARK_HEADER = "X-Bajutsu-Read-Mark"
 
         // The response header GET /source stamps with each opted-in view's own `View.getZ()`
         // (BE-0355 Unit 3). Carried in a header for the same reason the read mark is: the XML body
         // stays byte-identical to `uiautomator dump`'s, so `parse_hierarchy` is unchanged. Kept in
-        // sync with the host side (`bajutsu/adb_resident.py` `_NATIVE_Z_HEADER`).
+        // sync with the host side (`bajutsu/common/backend_cli/adb_resident.py` `_NATIVE_Z_HEADER`).
         const val NATIVE_Z_HEADER = "X-Bajutsu-Native-Z"
 
         // The response header POST /act stamps when an accessibility event postdated the injection it
         // just made (BE-0339 Unit 5): the device-clock time of that event. Its *absence* is the answer
         // when none came, which is also what an older server returns — see `publishHeader`. Kept in
-        // sync with the host side (`bajutsu/adb_resident.py` `_ACT_PUBLISH_HEADER`).
+        // sync with the host side (`bajutsu/common/backend_cli/adb_resident.py` `_ACT_PUBLISH_HEADER`).
         const val ACT_PUBLISH_HEADER = "X-Bajutsu-Act-Publish"
 
         // How long POST /act waits for its own gesture to publish before answering unconfirmed.
@@ -627,7 +627,7 @@ class ResidentServerTest {
         // The extra-data key an opted-in view advertises. This server is app-independent by design
         // (see settings.gradle.kts), so it names the key rather than depending on the app-side
         // library that answers it — kept in sync with `BajutsuAndroid`'s `BajutsuZOrder` and with
-        // `bajutsu/drivers/adb.py`.
+        // `bajutsu/common/drivers/adb.py`.
         const val NATIVE_Z_KEY = "dev.bajutsu.EXTRA_DATA_NATIVE_Z"
 
         // Past this the reading is dropped rather than truncated (see `nativeZHeader`).
@@ -677,7 +677,7 @@ class ResidentServerTest {
 
         // SystemUI owns the status/navigation-bar windows that dumpWindowHierarchy's full tree carries
         // and the platform `uiautomator dump` (active window only) omits. The host drops these before
-        // it counts matches (`bajutsu/adb_resident.py` narrow_to_active_window, keyed off this same
+        // it counts matches (`bajutsu/common/backend_cli/adb_resident.py` narrow_to_active_window, keyed off this same
         // package name) — matchingBounds below must drop them too, or a count taken over the full dump
         // disagrees with one taken over the host's narrowed copy.
         val SYSTEM_DECOR_PACKAGES = setOf("com.android.systemui")

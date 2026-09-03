@@ -13,8 +13,8 @@ from pathlib import Path
 import typer
 
 from bajutsu.cli._shared import resolve_run_dir
-from bajutsu.report import rebake
-from bajutsu.run_files import DEFAULT_RUNS_DIR
+from bajutsu.common.report import rebake
+from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 
 
 def report(

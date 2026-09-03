@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 
-from bajutsu import simctl
+from bajutsu.common.backend_cli import simctl
 from bajutsu.serve import capabilities as cap
 
 

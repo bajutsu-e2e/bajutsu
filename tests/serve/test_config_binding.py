@@ -327,7 +327,7 @@ def test_a_capture_remembers_the_session_that_started_it(tmp_path: Path) -> None
     """The capture drives the config its own session is bound to, so the authored scenario has to
     land in that config's scenarios dir. Holding the id rather than re-reading it at finish also
     freezes the destination against a rebind partway through."""
-    from bajutsu.drivers.fake import FakeDriver
+    from bajutsu.common.drivers.fake import FakeDriver
 
     state = _state(tmp_path)
 

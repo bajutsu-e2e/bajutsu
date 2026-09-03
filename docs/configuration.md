@@ -4,7 +4,7 @@
 
 The tool core is app-agnostic. All app-specific differences belong in config, allowing multiple apps to run with the same binary and the same drivers. Adding a target means adding one `targets.<name>` entry.
 
-Implementation: `bajutsu/config/resolve.py` (resolution) · `bajutsu/doctor.py` (convention score). No config ships in the repo root; pass one with `--config` (default filename `bajutsu.config.yaml`) — the demos ship ready-to-run configs, e.g. [`demos/showcase/showcase.config.yaml`](../demos/showcase/showcase.config.yaml) (iOS) and [`demos/web/demo.config.yaml`](../demos/web/demo.config.yaml) (web).
+Implementation: `bajutsu/common/config/resolve.py` (resolution) · `bajutsu/common/doctor.py` (convention score). No config ships in the repo root; pass one with `--config` (default filename `bajutsu.config.yaml`) — the demos ship ready-to-run configs, e.g. [`demos/showcase/showcase.config.yaml`](../demos/showcase/showcase.config.yaml) (iOS) and [`demos/web/demo.config.yaml`](../demos/web/demo.config.yaml) (web).
 
 Related: [app-agnostic in concepts](concepts.md#6-app-agnostic-push-differences-into-config) · [drivers](drivers.md) · [scenarios](scenarios.md)
 
@@ -62,7 +62,7 @@ An undefined target raises `KeyError` (the CLI exits with code 2). The platform-
 flat `Effective` attributes: `Effective.platform_config` narrows to one of three mutually exclusive
 sub-configs (`IosConfig` / `WebConfig` / `AndroidConfig`) keyed by the resolved `platform`
 ([BE-0126](../roadmaps/BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md)).
-Read them through `bajutsu/config/accessors.py`'s narrowing helpers — `require_ios` / `require_web` /
+Read them through `bajutsu/common/config/accessors.py`'s narrowing helpers — `require_ios` / `require_web` /
 `require_android` for code already committed to one platform, or the "soft" `ios_bundle_id` /
 `web_base_url` / `web_engine` / `android_package` for code that reads a value defensively across
 platforms — rather than `effective.bundle_id` directly, which does not exist.
@@ -553,7 +553,7 @@ The showcase's id catalog is in [showcase](showcase.md) (and, in full, `demos/sh
 
 ## doctor (the convention score)
 
-Implementation: `bajutsu/doctor.py`. **AI-independent and deterministic.** It analyzes one screen's
+Implementation: `bajutsu/common/doctor.py`. **AI-independent and deterministic.** It analyzes one screen's
 `query()` (the CLI uses the screen obtained via the actuator) and produces a score.
 
 > `doctor` runs a **runnability gate** first (`preflight.py`), then the score. The gate checks what

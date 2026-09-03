@@ -19,7 +19,8 @@ Two modes:
   ``✗`` — the fail side no injected-fake test can prove, since a fake only ever reacts to a hand-fed
   boolean.
 
-The ``✗`` this looks for is U+2717, the environment gate's failure marker (bajutsu/preflight.py).
+The ``✗`` this looks for is U+2717, the environment gate's failure marker
+(bajutsu/common/capability/preflight.py).
 It is deliberately distinct from the ``✘`` (U+2718) `capability preflight` uses, and the parser
 scopes to the ``environment:`` section anyway, so a capability or scenario failure elsewhere in
 doctor's output is never misread as an environment failure.
@@ -31,8 +32,8 @@ import argparse
 import subprocess
 import sys
 
-# The environment gate's failure marker (bajutsu/preflight.render). NOT the ✘ (U+2718) that
-# `capability preflight` uses — kept separate so the two can never be confused.
+# The environment gate's failure marker (bajutsu/common/capability/preflight.render). NOT the
+# ✘ (U+2718) that `capability preflight` uses — kept separate so the two can never be confused.
 _FAILURE_MARK = "✗"
 
 # doctor prints the section under a bare `environment:` header at column 0, then one indented

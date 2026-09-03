@@ -358,7 +358,7 @@ final class TransportParityTests: XCTestCase {
     /// A deliberate wire difference, pinned so it is not mistaken for a regression: the generated
     /// serializer appends `charset=utf-8` to every JSON reply, where `Router` sent a bare
     /// `application/json`. It is safe because the driver never reads the header — `_decode` in
-    /// `bajutsu/drivers/xcuitest.py` takes only the status code and the body — and `/screenshot`,
+    /// `bajutsu/common/drivers/xcuitest.py` takes only the status code and the body — and `/screenshot`,
     /// the one reply whose type the driver does branch on by path, is unaffected.
     func testJSONRepliesGainACharsetParameter() throws {
         XCTAssertEqual(try wire("GET", "/health").contentType, "application/json; charset=utf-8")

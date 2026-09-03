@@ -341,7 +341,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 
 ## 3. 字句レイヤ（YAML）
 
-シナリオファイルは YAML で、Bajutsu のローダ（`_yaml.py`）が読みます。YAML 1.1 から **意図的に 1 点だけ逸脱**しています。
+シナリオファイルは YAML で、Bajutsu のローダ（`common/_yaml.py`）が読みます。YAML 1.1 から **意図的に 1 点だけ逸脱**しています。
 
 - **boolean は `true` / `false` のみです。** `on` / `off` / `yes` / `no` は **文字列**のまま扱います。これにより `capturePolicy` のトリガキー `on:` が（boolean の `True` ではなく）キーのまま保たれ、`on` のような id/label 値も壊れません（[scenarios](scenarios.md#yaml-の注意点)）。
 

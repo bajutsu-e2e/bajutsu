@@ -50,7 +50,7 @@ def _write_run(
     network: list[dict[str, Any]],
     elements: list[dict[str, Any]],
 ) -> None:
-    """A run's evidence at the real layout (`bajutsu.runner.pipeline`/`bajutsu.evidence`):
+    """A run's evidence at the real layout (`bajutsu.common.runner.pipeline`/`bajutsu.common.evidence`):
     `<sid>/network.json` (scenario-level) and `<sid>/<step_id>/elements.json` (per-step), plus the
     `manifest.json` `coverage_view`'s seam-routed readers derive those paths from (BE-0258)."""
     step_id = f"{sid}/step0"

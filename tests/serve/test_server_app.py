@@ -344,7 +344,7 @@ def test_upload_urls_route_signs_put_urls(tmp_path: Path) -> None:
         def presigned_put_url(self, key: str, *, content_type: str = "", ttl: int = 3600) -> str:
             return f"https://signed.example/{key}"
 
-    from bajutsu.object_store import EvidenceTarget
+    from bajutsu.common.run_meta.object_store import EvidenceTarget
 
     state = _state(tmp_path)
     state.evidence = EvidenceTarget(store=_FakeStore(), base_prefix="evidence/")

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from bajutsu.common.config import load_config, resolve
 from bajutsu.common.scenario import load_scenario_file
-from bajutsu.config import load_config, resolve
 from bajutsu.serve.operations._common import (
     _default_driver_factory,
     _device_args,

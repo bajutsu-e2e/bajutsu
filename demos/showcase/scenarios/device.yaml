@@ -10,7 +10,8 @@
 #
 # `push` is deliberately *not* here: the iOS Simulator delivers a push (simctl), but the Android
 # emulator has no faithful equivalent, so adb does not advertise `deviceControl.push` and preflight
-# (bajutsu/capability_preflight.py) rejects any scenario carrying a `push` step on the adb backend.
+# (bajutsu/common/capability/capability_preflight.py) rejects any scenario carrying a `push` step
+# on the adb backend.
 # The push flow therefore lives in the iOS-only push.yaml, keeping this scenario runnable on both.
 #   bajutsu run --scenario device.yaml --target showcase-swiftui ...
 #   bajutsu run --scenario device.yaml --target showcase-compose --backend android ...

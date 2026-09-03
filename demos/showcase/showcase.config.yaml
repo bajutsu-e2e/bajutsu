@@ -176,7 +176,7 @@ targets:
     # (BE-0314) is declared here as the only guard on that path.
     #
     # This is not entirely free — a non-`wait` step without a fresh tree pays one extra
-    # `driver.query()` for the guard check (bajutsu/orchestrator/loop.py) — but a `wait` step rides
+    # `driver.query()` for the guard check (bajutsu/common/orchestrator/loop.py) — but a `wait` step rides
     # the guard on its own polling reads at zero extra cost. e2e-fallback (BAJUTSU_ADB_RESIDENT=0,
     # the ~2.4s-per-read dump path, docs/drivers.md) runs only golden.yaml, whose sole step is such a
     # `wait`, so that lane's own screen-read counter (BE-0234) measures 0 extra reads with this block

@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from bajutsu.config import Effective, resolve
-from bajutsu.config.schema import Config
-from bajutsu.drivers import base as driver_base
+from bajutsu.common.config import Effective, resolve
+from bajutsu.common.config.schema import Config
+from bajutsu.common.drivers import base as driver_base
 from bajutsu.serve.authz import _target_forbidden
 from bajutsu.serve.helpers import (
     valid_backend,
@@ -73,11 +73,11 @@ def _default_driver_factory(eff: Effective, backends_list: list[str], udid: str)
     """Bring up a live driver for a capture/enrich session, cost-ordered like the run ladder;
     XCUITest needs a short-lived `xcodebuild` runner, so its teardown stops that runner explicitly
     instead of leaking the subprocess, while every other backend just gets an optional `close()`."""
-    from bajutsu import backends
+    from bajutsu.common import backends
 
     actuator = backends.select_actuator_cost_first(backends_list or ["fake"])
     if actuator == "xcuitest":
-        from bajutsu.platform_lifecycle.read_session import open_ios_read_driver
+        from bajutsu.common.platform_lifecycle.read_session import open_ios_read_driver
 
         driver, env = open_ios_read_driver(udid, eff)
         return driver, lambda: env.teardown(driver, eff)

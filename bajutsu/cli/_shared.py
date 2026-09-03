@@ -14,11 +14,11 @@ from typing import TYPE_CHECKING, overload
 
 import typer
 
-from bajutsu.backends import ensure_web_runtime, select_actuator
 from bajutsu.common.agents import ai_config, anthropic_client
 from bajutsu.common.ai import credential_gap
 from bajutsu.common.ai import disabled as ai_disabled
-from bajutsu.config import (
+from bajutsu.common.backends import ensure_web_runtime, select_actuator
+from bajutsu.common.config import (
     WEB_ENGINES,
     AiConfig,
     Effective,
@@ -28,25 +28,25 @@ from bajutsu.config import (
     resolve,
     web_engine,
 )
-from bajutsu.config_source import (
+from bajutsu.common.config_source import (
     DEFAULT_CONFIG as DEFAULT_CONFIG,  # re-exported: the single owner is config_source (BE-0251)
 )
-from bajutsu.config_source import (
+from bajutsu.common.config_source import (
     is_full_sha,
     materialize,
     parse_config_spec,
     source_provenance,
 )
-from bajutsu.evidence.redaction import Redactor
-from bajutsu.github import GitHubAccessError
-from bajutsu.runner.launch_server import start_launch_server
+from bajutsu.common.evidence.redaction import Redactor
+from bajutsu.common.github import GitHubAccessError
+from bajutsu.common.runner.launch_server import start_launch_server
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from bajutsu.common.agents.alerts import ClaudeAlertLocator
-    from bajutsu.drivers import base
-    from bajutsu.orchestrator import AlertEvent
+    from bajutsu.common.drivers import base
+    from bajutsu.common.orchestrator import AlertEvent
 
 
 @overload
@@ -168,7 +168,7 @@ def _install_usage_ledger(eff: Effective, command: str, *, scenario: str | None 
     spent on. Reporting only — never on the deterministic verdict path. `run` does not use this and
     installs no ledger: since BE-0402 nothing in it reaches a model, so it has nothing to attribute.
     """
-    from bajutsu.analytics import ledger as usage_ledger
+    from bajutsu.common.analytics import ledger as usage_ledger
 
     usage_ledger.configure_from_ai_config(eff.ai)
     usage_ledger.bind_command(command, scenario=scenario)

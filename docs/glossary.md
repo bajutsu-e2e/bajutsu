@@ -77,11 +77,11 @@ The split is the top-level constraint of the project — see
 
 These four name the one platform-specific seam of an otherwise platform-neutral core. They are
 easy to blur, so here is the whole relationship in one place. The source of truth is
-`bajutsu/backends.py` (`PLATFORMS`, `IMPLEMENTED`), not the prose on any page.
+`bajutsu/common/backends.py` (`PLATFORMS`, `IMPLEMENTED`), not the prose on any page.
 
 | Term | What it is |
 |---|---|
-| **driver** | The abstract `Driver` interface (a `Protocol` in `bajutsu/drivers/base.py`) — the single platform-specific seam. Every actuator implements it. |
+| **driver** | The abstract `Driver` interface (a `Protocol` in `bajutsu/common/drivers/base.py`) — the single platform-specific seam. Every actuator implements it. |
 | **backend** | The user-facing token accepted by `--backend` and config `backend:`. It is *either* a platform alias (`ios`) *or* a bare actuator name (`xcuitest`). "backend" is the umbrella word for the input token; it resolves to an actuator. |
 | **actuator** | The concrete engine that actually performs actions (tap / type / swipe / query) — what a driver implements. Selection resolves a backend token to one actuator, and the chosen actuator is fixed once at the start of a run and held for the whole run. |
 | **platform** | A coarse token naming a class of target — `ios` / `android` / `web` / `fake` — that expands to an ordered, most-stable-first list of actuators. |
@@ -112,7 +112,7 @@ is why BE-0057 renamed the config concept from `app` to `target`.
 
 | Term | What it is |
 |---|---|
-| **target** | One config entry under `targets.<name>` describing an app to test: its per-platform identifier (iOS `bundleId`, web `baseUrl`, Android `package`), plus `backend`, `device`, `appPath`, and so on. A *config unit*. Defined by `TargetConfig` in `bajutsu/config/schema.py`. |
+| **target** | One config entry under `targets.<name>` describing an app to test: its per-platform identifier (iOS `bundleId`, web `baseUrl`, Android `package`), plus `backend`, `device`, `appPath`, and so on. A *config unit*. Defined by `TargetConfig` in `bajutsu/common/config/schema.py`. |
 | **app** | The application under test itself — the software the target points at and that gets installed on a device. |
 | **device** | The concrete runtime instance the target is driven on — a Simulator / emulator / browser context, named by `device` (e.g. `iPhone 15`) and addressed at runtime by `udid`. |
 
@@ -139,7 +139,7 @@ never stand where an authorization-bearing value is read.
 **evidence** — Artifacts captured during a run, each tagged with the provider that produced it.
 Two shapes: **instant** (screenshot / element hierarchy, captured per step) and **interval**
 (video / device log / app trace, captured across a scenario). See [evidence](evidence.md);
-defined in `bajutsu/evidence/core.py`.
+defined in `bajutsu/common/evidence/core.py`.
 
 **capturePolicy / CaptureRule / "rule"** — Three names for one concept, reconciled here:
 
@@ -157,7 +157,7 @@ Distinct from a step's inline `capture:`, which is a *one-shot* capture at that 
   app trace), or with `--explain` previews how a scenario's `capturePolicy` would fire. It is
   deterministic and observational — no AI, no verdict. Engine in `bajutsu/trace.py`.
 - **`triage`** (CLI verb) is *AI diagnosing a failed run* and proposing a minimal fix. It is a
-  Tier-1, advisory activity — it never gates CI. Engine in `bajutsu/triage.py`.
+  Tier-1, advisory activity — it never gates CI. Engine in `bajutsu/triage/heuristic.py`.
 
 > `trace` is overloaded: besides the verb, **`appTrace`** is an interval evidence kind
 > (os_signpost / os_log intervals). Both senses are observational; neither decides pass/fail.

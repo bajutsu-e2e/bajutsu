@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu import provision, requirements
-from bajutsu.config import load_config
-from bajutsu.requirements import Brew, Extra, Playwright, Tool
+from bajutsu.common.config import load_config
+from bajutsu.common.provisioning import provision, requirements
+from bajutsu.common.provisioning.requirements import Brew, Extra, Playwright, Tool
 
 # --- plan(): resolve exactly what a config's backends + AI provider need ---------------------
 
@@ -62,7 +62,7 @@ def test_plan_without_ai_config_omits_the_ai_extra() -> None:
 def test_plan_with_no_targets_installs_no_backend() -> None:
     # Backends come from targets.*; a config that declares no target references no backend, so a
     # bare `make install` at a repo with no config installs nothing beyond the base (BE-0164).
-    from bajutsu.config import Config
+    from bajutsu.common.config import Config
 
     assert provision.plan(Config()).is_empty
     assert provision.plan(load_config("defaults:\n  backend: [web]\n")).is_empty

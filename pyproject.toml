@@ -59,7 +59,7 @@ oauth = ["authlib>=1.3", "httpx>=0.27"]
 # responseSchema assertion is evaluated — never on the default path.
 schema = ["jsonschema>=4.0"]
 # GitHub App installation-token auth for the private-repo config source (BE-0224): `cryptography`
-# signs the RS256 App JWT. Imported lazily (`bajutsu.github.app`), only when App credentials are
+# signs the RS256 App JWT. Imported lazily (`bajutsu.common.github.app`), only when App credentials are
 # configured — a personal-access-token deployment never loads it, never on the default path.
 githubapp = ["cryptography>=50.0.0"]
 # Evidence upload to object storage via a single URI (BE-0110). The SDK is imported lazily, only
@@ -215,12 +215,12 @@ max-statements = 80
 # is safe. Ignore S506 at the file level rather than inline, so the line stays byte-identical to
 # main — where CodeQL already dismissed the same py/unsafe-deserialization finding as a false
 # positive (an inline change re-surfaces it as a new PR alert).
-"bajutsu/_yaml.py" = ["S506"]
+"bajutsu/common/_yaml.py" = ["S506"]
 # backends.py installs the web extra via `uv`/`playwright` on PATH (S607); launch_server.py probes a
 # config-driven readiness URL (S310). Both are intentional; ignored at the file level so the lines
 # stay byte-identical to main (an inline noqa could re-surface a dismissed-on-main CodeQL finding).
-"bajutsu/backends.py" = ["S607"]
-"bajutsu/runner/launch_server.py" = ["S310"]
+"bajutsu/common/backends.py" = ["S607"]
+"bajutsu/common/runner/launch_server.py" = ["S310"]
 
 # Docstring rules (D) are NOT in the global `select` above; they are enforced only on the migrated
 # public surface, by `make lint-docstrings` (BE-0065 phase 5). Setting the convention here keeps the
@@ -309,20 +309,20 @@ include_external_packages = true
 name = "Deterministic core is independent of the periphery"
 type = "forbidden"
 source_modules = [
-    "bajutsu.orchestrator",
-    "bajutsu.runner",
-    "bajutsu.drivers.base",
-    "bajutsu.drivers.actuation",
+    "bajutsu.common.orchestrator",
+    "bajutsu.common.runner",
+    "bajutsu.common.drivers.base",
+    "bajutsu.common.drivers.actuation",
     "bajutsu.common.assertions",
-    "bajutsu.evidence",
-    "bajutsu.report",
-    "bajutsu.config",
+    "bajutsu.common.evidence",
+    "bajutsu.common.report",
+    "bajutsu.common.config",
     "bajutsu.common.scenario",
-    "bajutsu.preflight",
-    "bajutsu.capability_preflight",
-    "bajutsu.capabilities",
-    "bajutsu.doctor",
-    "bajutsu.lint",
+    "bajutsu.common.capability.preflight",
+    "bajutsu.common.capability.capability_preflight",
+    "bajutsu.common.capability.capabilities",
+    "bajutsu.common.doctor",
+    "bajutsu.common.lint",
 ]
 forbidden_modules = [
     "bajutsu.serve",
@@ -331,11 +331,10 @@ forbidden_modules = [
     "bajutsu.common.agents",
     "bajutsu.triage",
     "bajutsu.record",
-    "bajutsu.record_capture",
-    "bajutsu.screenshots",
+    "bajutsu.common.screenshots",
     "bajutsu.crawl.guide",
-    "bajutsu.github.actions",
-    "bajutsu.notify",
+    "bajutsu.common.github.actions",
+    "bajutsu.run",
 ]
 
 # The deterministic core must also stay free of the hosting-only third-party extras (BE-0129): the
@@ -343,14 +342,14 @@ forbidden_modules = [
 # `bajutsu/serve/` alone. The periphery contract above already keeps the core off `bajutsu.serve`;
 # this forbids a core module from reaching the extras *directly*, which the internal layer graph
 # can't express — so `include_external_packages` lets import-linter see the external import. The
-# whole `bajutsu.drivers` package is covered here, beyond the `bajutsu.drivers.base` above.
+# whole `bajutsu.common.drivers` package is covered here, beyond the `bajutsu.common.drivers.base` above.
 [[tool.importlinter.contracts]]
 name = "Deterministic core stays free of the db/oauth hosting extras"
 type = "forbidden"
 source_modules = [
-    "bajutsu.config",
-    "bajutsu.drivers",
-    "bajutsu.runner",
+    "bajutsu.common.config",
+    "bajutsu.common.drivers",
+    "bajutsu.common.runner",
     "bajutsu.common.scenario",
 ]
 forbidden_modules = [
@@ -371,31 +370,31 @@ name = "Scenario schema and Driver Protocol stay a portable inner contract"
 type = "forbidden"
 source_modules = [
     "bajutsu.common.scenario",
-    "bajutsu.drivers.base",
+    "bajutsu.common.drivers.base",
     # The actuation record is part of the same portable contract: a consumer implementing a `Driver`
     # gets the record type without pulling in the orchestrator / runner / report.
-    "bajutsu.drivers.actuation",
+    "bajutsu.common.drivers.actuation",
 ]
 forbidden_modules = [
-    "bajutsu.orchestrator",
-    "bajutsu.runner",
+    "bajutsu.common.orchestrator",
+    "bajutsu.common.runner",
     "bajutsu.common.assertions",
-    "bajutsu.evidence",
-    "bajutsu.report",
-    "bajutsu.config",
-    "bajutsu.preflight",
-    "bajutsu.doctor",
-    "bajutsu.lint",
+    "bajutsu.common.evidence",
+    "bajutsu.common.report",
+    "bajutsu.common.config",
+    "bajutsu.common.capability.preflight",
+    "bajutsu.common.doctor",
+    "bajutsu.common.lint",
 ]
-# `drivers/base.py`'s `Collector` Protocol reference is a TYPE_CHECKING-only dependency on the
+# `common/drivers/base.py`'s `Collector` Protocol reference is a TYPE_CHECKING-only dependency on the
 # network-exchange model every driver reports through — pre-dating BE-0257, when `network.py` was a
 # flat sibling module, not part of `bajutsu.evidence`. Packaging it under `evidence/` pulled this
 # one pre-existing edge under the forbidden entry above; scoping the exception to it (rather than
-# dropping `bajutsu.evidence` from `forbidden_modules`) keeps the contract meaningful for
+# dropping `bajutsu.common.evidence` from `forbidden_modules`) keeps the contract meaningful for
 # `evidence/core.py` / `intervals.py` / `visual.py` / `golden.py` / `redaction.py`, which the inner
 # contract must still never reach.
 ignore_imports = [
-    "bajutsu.drivers.base -> bajutsu.evidence.network",
+    "bajutsu.common.drivers.base -> bajutsu.common.evidence.network",
 ]
 
 # The redaction boundary (BE-0331): `run_root` derives the writable filesystem path of a run
@@ -406,14 +405,14 @@ ignore_imports = [
 # that does not exist is already forbidden the moment it does. A `forbidden` contract cannot say it:
 # with `source_modules = ["bajutsu"]` it silently passes (the forbidden module is a descendant of
 # the source package), and listing today's writers instead would reintroduce exactly the
-# on-its-honor gap this item removes. Reading (`bajutsu.run_files`, which returns content and never
-# a path) and the runs root's *name* stay unrestricted: neither confers a writable handle.
+# on-its-honor gap this item removes. Reading (`bajutsu.common.run_meta.files`, which returns content
+# and never a path) and the runs root's *name* stay unrestricted: neither confers a writable handle.
 [[tool.importlinter.contracts]]
 name = "Only the artifact sink can derive a writable run directory"
 type = "protected"
 protected_modules = [
-    "bajutsu.run_root",
+    "bajutsu.common.run_meta.root",
 ]
 allowed_importers = [
-    "bajutsu.evidence.sink",
+    "bajutsu.common.evidence.sink",
 ]

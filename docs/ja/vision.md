@@ -67,8 +67,8 @@ flowchart LR
 iOS / Android backend にそのまま乗り、新しい actuator を必要としません（BE-0008）。
 
 **抽象はすでにプラットフォームの境界に沿った形をしています。** プラットフォーム固有なのは 3 つの継ぎ目だけです。
-UI を駆動する **actuator**（`drivers/xcuitest.py`、`drivers/adb.py` など）、boot / erase / launch を
-担う **environment manager**（iOS の `simctl.py`、Android の対応物）、そして **安定 id の規約**
+UI を駆動する **actuator**（`common/drivers/xcuitest.py`、`common/drivers/adb.py` など）、boot / erase / launch を
+担う **environment manager**（iOS の `common/backend_cli/simctl.py`、Android の対応物）、そして **安定 id の規約**
 （iOS の `accessibilityIdentifier`、Android の `resource-id`、web の `data-testid` —
 [concepts §4](concepts.md#4-安定セレクタaccessibilityidentifier-優先)）です。それ以外
 （シナリオ DSL、セレクタ解決、機械アサーション、orchestrator、証跡、レポータ）は一切プラットフォームを

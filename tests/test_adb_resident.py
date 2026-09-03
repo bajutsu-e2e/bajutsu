@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu import adb, adb_resident
-from bajutsu.drivers.adb import (
+from bajutsu.common.backend_cli import adb, adb_resident
+from bajutsu.common.drivers.adb import (
     ActOutcome,
     ActRequest,
     AdbActUncertain,

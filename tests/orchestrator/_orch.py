@@ -5,8 +5,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.scenario import Scenario
-from bajutsu.drivers.fake import FakeDriver
 
 
 class FakeClock:

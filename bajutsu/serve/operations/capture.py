@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from bajutsu.config import load_config
-from bajutsu.drivers import base
-from bajutsu.evidence.redaction import Redactor
+from bajutsu.common.config import load_config
+from bajutsu.common.drivers import base
+from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.serve.operations._common import (
     _default_driver_factory,
     _device_args,
@@ -18,7 +18,7 @@ from bajutsu.serve.state import CaptureSession, ServeState
 if TYPE_CHECKING:
     # Only for annotations — resolve_capture (and CaptureResult) are imported lazily at call sites
     # to keep this module's import light, so the type stays out of the runtime import graph.
-    from bajutsu.record_capture import CaptureResult
+    from bajutsu.record.capture import CaptureResult
 
 
 def start_capture(
@@ -69,7 +69,7 @@ def start_capture(
     try:
         elements = driver.query()
 
-        from bajutsu.elements import screen_size_from_elements
+        from bajutsu.common.drivers.elements import screen_size_from_elements
 
         screen_size = screen_size_from_elements(elements)
         namespaces: list[str] = list(target_cfg.id_namespaces)
@@ -133,7 +133,7 @@ def _resolve_point(
     except (TypeError, ValueError):
         return None, ({"error": "point values must be numeric"}, 400)
 
-    from bajutsu.record_capture import resolve_capture
+    from bajutsu.record.capture import resolve_capture
 
     sw, sh = session.screen_size
     result = resolve_capture(session.elements, (nx * sw, ny * sh), session.namespaces)
@@ -172,7 +172,7 @@ def mark_capture(
     if (feedback := _feedback_payload(result)) is not None:
         return feedback
 
-    from bajutsu.record_capture import step_for_tap, step_for_type
+    from bajutsu.record.capture import step_for_tap, step_for_type
 
     sel = result.selector
     raw = sel.as_selector()

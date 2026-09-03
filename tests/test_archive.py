@@ -11,7 +11,7 @@ import io
 import zipfile
 from pathlib import Path
 
-from bajutsu.report.archive import archive_run_dir, zip_tree
+from bajutsu.common.report.archive import archive_run_dir, zip_tree
 
 
 def _names(blob: bytes) -> list[str]:

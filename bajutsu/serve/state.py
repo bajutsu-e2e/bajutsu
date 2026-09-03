@@ -27,11 +27,11 @@ if TYPE_CHECKING:
     from bajutsu.serve.server.db import Repository
     from bajutsu.serve.server.oauth import OAuthClient
 
-from bajutsu import simctl as _simctl
+from bajutsu.common.backend_cli import simctl as _simctl
+from bajutsu.common.drivers import base as driver_base
+from bajutsu.common.evidence.redaction import Redactor
+from bajutsu.common.run_meta.object_store import EvidenceTarget, ObjectStore
 from bajutsu.common.scenario.models import Step
-from bajutsu.drivers import base as driver_base
-from bajutsu.evidence.redaction import Redactor
-from bajutsu.object_store import EvidenceTarget, ObjectStore
 from bajutsu.serve.artifacts import ArtifactStore, LocalArtifactStore
 from bajutsu.serve.baselines import BaselineStore, LocalBaselineStore
 from bajutsu.serve.executor import LocalExecutor, RunExecutor
@@ -832,7 +832,7 @@ class ServeState:
         not through ``active_key_env``, which would overwrite the AI key's var. Imported lazily to
         avoid a cycle with the operations layer, which imports this module."""
         from bajutsu.common.ai.claude_code import OAUTH_TOKEN_ENV
-        from bajutsu.config_source import GIT_CONFIG_TOKEN_ENV
+        from bajutsu.common.config_source import GIT_CONFIG_TOKEN_ENV
         from bajutsu.serve.operations.config import (
             AI_API_KEY_SECRET,
             AI_CLAUDE_CODE_TOKEN_SECRET,

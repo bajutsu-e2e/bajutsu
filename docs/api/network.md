@@ -2,4 +2,4 @@
 
 The observed-request model the `request` / `event` / `requestSequence` assertions match against.
 
-::: bajutsu.evidence.network
+::: bajutsu.common.evidence.network

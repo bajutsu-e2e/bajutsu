@@ -17,14 +17,26 @@ from typer.testing import CliRunner
 
 from bajutsu.cli import app
 from bajutsu.cli._shared import _resolve_browser, _resolve_language
-from bajutsu.cli.commands.run import _apply_touch_markers
+from bajutsu.common.config import Effective, IosConfig, WebConfig, load_config, resolve
 from bajutsu.common.scenario import Scenario
 from bajutsu.common.scenario.models.assertions import Assertion, VisualMatch
 from bajutsu.common.scenario.models.steps import Step
-from bajutsu.config import Effective, IosConfig, WebConfig, load_config, resolve
+from bajutsu.run.cli import _apply_touch_markers
 from bajutsu.serve import _cli_flags as cli_flags
 
 runner = CliRunner()
+
+
+def test_cli_module_getattr_rejects_an_unknown_name() -> None:
+    # `bajutsu.cli.app` is built lazily (PEP 562, module `__getattr__`) so that reaching it from a
+    # feature module mid-import (e.g. `bajutsu.analysis.cli.audit` needing `bajutsu.cli._shared`)
+    # never recurses into a not-yet-registered command — see the module docstring. Any other name
+    # still fails the normal way: AttributeError, not a silent None.
+    import bajutsu.cli as cli_module
+
+    with pytest.raises(AttributeError, match="nonexistent_attr"):
+        cli_module.nonexistent_attr  # noqa: B018
+
 
 SCENARIO = """
 - name: demo
@@ -248,7 +260,7 @@ def test_credential_gap_messages_for_ant_are_actionable() -> None:
     # The ant provider's fail-closed messages (BE-0163) name the fix, mirroring bedrock's.
     from bajutsu.cli._shared import _credential_gap_message
     from bajutsu.common.agents.anthropic_client import ANT_CLI_MISSING, ANT_CLI_UNAUTHENTICATED
-    from bajutsu.config import load_config, resolve
+    from bajutsu.common.config import load_config, resolve
 
     eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
     assert "ant auth login" in _credential_gap_message(ANT_CLI_MISSING, eff)
@@ -372,12 +384,14 @@ def test_record_writes_the_authored_scenario(
     # the surrounding command body (target/browser/out resolution, then the file write) is covered.
     # A dummy key clears the credential gate and --no-system-alert-handling skips the alert guard, so
     # no model client is ever built on this deterministic path.
-    import bajutsu.cli.commands.record as rec
+    import bajutsu.record.cli as rec
     from bajutsu.common.scenario import load_scenarios
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     authored = load_scenarios("- name: authored\n  steps:\n    - tap: { id: home.title }\n")[0]
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID")
+    monkeypatch.setattr(
+        "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
+    )
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
     monkeypatch.setattr(rec, "launch_driver", lambda *a, **k: (object(), None))
     monkeypatch.setattr(
@@ -425,11 +439,13 @@ def test_record_needs_human_handoff_exits_3(
 ) -> None:
     # BE-0179: a needs-human turn with no responder (the CI / non-interactive path) is a clean,
     # labeled non-zero exit — distinct from the credential/device exit 2 — never a hang or a guess.
-    import bajutsu.cli.commands.record as rec
-    from bajutsu.handoff import HumanHandoffUnavailable
+    import bajutsu.record.cli as rec
+    from bajutsu.common.handoff import HumanHandoffUnavailable
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID")
+    monkeypatch.setattr(
+        "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
+    )
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
     monkeypatch.setattr(rec, "launch_driver", lambda *a, **k: (object(), None))
     monkeypatch.setattr(
@@ -475,14 +491,16 @@ def _fake_record_config(tmp_path: Path) -> Path:
 
 def test_record_device_error_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # A device failure while bringing the app up is reported and exits 2, not an uncaught traceback.
-    import bajutsu.cli.commands.record as rec
-    from bajutsu import simctl as _simctl
+    import bajutsu.record.cli as rec
+    from bajutsu.common.backend_cli import simctl as _simctl
 
     def no_device(*_a: object, **_k: object) -> object:
         raise _simctl.DeviceError("no booted simulator")
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")  # clear the credential gate
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID")
+    monkeypatch.setattr(
+        "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
+    )
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
     monkeypatch.setattr(
         "bajutsu.cli._shared.start_launch_server", lambda *a, **k: (lambda: None, None)
@@ -519,16 +537,14 @@ def _stub_execution(
     test off `simctl` (udid resolution) and off the GitHub-Actions summary side effect, so it passes
     identically on the Linux gate and locally.
     """
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID")
+    monkeypatch.setattr(
+        "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
+    )
     monkeypatch.delenv(
         "GITHUB_ACTIONS", raising=False
     )  # keep github.emit a no-op (no summary write)
-    monkeypatch.setattr(
-        "bajutsu.cli.commands.run.device_pool", lambda *a, **k: (object(), lambda: None)
-    )
-    monkeypatch.setattr(
-        "bajutsu.cli.commands.run.run_and_report", lambda *a, **k: (results, manifest)
-    )
+    monkeypatch.setattr("bajutsu.run.cli.device_pool", lambda *a, **k: (object(), lambda: None))
+    monkeypatch.setattr("bajutsu.run.cli.run_and_report", lambda *a, **k: (results, manifest))
 
 
 def _manifest_at(tmp_path: Path) -> Path:
@@ -558,7 +574,7 @@ def _run_argv(cfg: Path, scn: Path, tmp_path: Path, *extra: str) -> list[str]:
 def test_run_reports_pass_and_exits_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # The command body dispatches to the runner, then prints the machine-only verdict: all results
     # ok -> PASS on stdout and exit 0.
-    from bajutsu.orchestrator import RunResult
+    from bajutsu.common.orchestrator import RunResult
 
     manifest = _manifest_at(tmp_path)
     _stub_execution(monkeypatch, results=[RunResult("demo", True, [])], manifest=manifest)
@@ -570,7 +586,7 @@ def test_run_reports_pass_and_exits_zero(tmp_path: Path, monkeypatch: pytest.Mon
 
 def test_run_reports_fail_and_exits_one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # A single failing result flips the verdict: FAIL on stdout and exit 1 (no LLM on this path).
-    from bajutsu.orchestrator import RunResult
+    from bajutsu.common.orchestrator import RunResult
 
     manifest = _manifest_at(tmp_path)
     _stub_execution(
@@ -588,7 +604,7 @@ def test_run_zip_writes_artifact_after_the_verdict(
     # --zip packages the finished run into runs/<id>.zip strictly after the verdict, so it can't
     # affect pass/fail (BE-0060). The archive is a plain walk of the run dir, so a populated dir is
     # all it needs.
-    from bajutsu.orchestrator import RunResult
+    from bajutsu.common.orchestrator import RunResult
 
     manifest = _manifest_at(tmp_path)
     (manifest.parent / "report.html").write_text("<html></html>", encoding="utf-8")
@@ -614,7 +630,7 @@ def test_run_never_consults_an_ai_credential(
     is the same deterministic run in all three: the Claude-free claim holds by construction rather
     than by which variables the shell happens to export.
     """
-    from bajutsu.orchestrator import RunResult
+    from bajutsu.common.orchestrator import RunResult
 
     monkeypatch.setattr("bajutsu.cli.load_dotenv", lambda *a, **k: None)
     for name, value in (("BAJUTSU_AI_PROVIDER", provider), ("ANTHROPIC_API_KEY", key)):
@@ -771,7 +787,7 @@ def test_unknown_browser_engine_exits_cleanly(tmp_path: Path, command: str) -> N
 
 def test_parse_browsers_dedupes_and_validates() -> None:
     # --browsers parses a comma list, trims/drops blanks, and de-dupes while keeping order (BE-0076).
-    from bajutsu.cli.commands.run import _parse_browsers
+    from bajutsu.run.cli import _parse_browsers
 
     assert _parse_browsers("chromium, firefox ,webkit") == ["chromium", "firefox", "webkit"]
     assert _parse_browsers("chromium,chromium") == ["chromium"]  # de-duped
@@ -781,7 +797,7 @@ def test_parse_browsers_dedupes_and_validates() -> None:
 def test_parse_browsers_rejects_unknown_engine() -> None:
     import typer
 
-    from bajutsu.cli.commands.run import _parse_browsers
+    from bajutsu.run.cli import _parse_browsers
 
     with pytest.raises(typer.Exit) as exc:
         _parse_browsers("chromium,safari")
@@ -857,8 +873,8 @@ def test_doctor_xcuitest_uses_a_short_lived_runner_for_screen_query(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from bajutsu.cli.commands.doctor import _current_screen
+    from bajutsu.common.drivers import base
     from bajutsu.common.scenario import Redact
-    from bajutsu.drivers import base
 
     eff = Effective(
         target="app",
@@ -904,9 +920,11 @@ def test_doctor_xcuitest_uses_a_short_lived_runner_for_screen_query(
     # Earlier iOS read the tree with no runner; now (BE-0290) the shared probe brings a
     # short-lived XCUITest runner up. `_current_screen` is a thin adapter over doctor.probe_screen
     # (BE-0199), which resolves the udid then builds that runner via the read-session seam.
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID")
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.read_session.environment_for",
+        "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
+    )
+    monkeypatch.setattr(
+        "bajutsu.common.platform_lifecycle.read_session.environment_for",
         lambda actuator, udid, env_run=None, **_k: _FakeEnv(udid),
     )
 
@@ -919,8 +937,8 @@ def test_xcuitest_runner_summary_reports_the_resolved_source(tmp_path: Path) -> 
     # BE-0292: doctor discloses which runner tier an xcuitest target would use, without acting on
     # it (no build run, no cache materialized) — pure config inspection.
     from bajutsu.cli.commands.doctor import xcuitest_runner_summary
+    from bajutsu.common.config import XcuitestConfig
     from bajutsu.common.scenario import Redact
-    from bajutsu.config import XcuitestConfig
 
     runner = tmp_path / "Runner.xctestrun"
     runner.write_bytes(b"")
@@ -994,9 +1012,9 @@ def test_xcuitest_runner_summary_warns_on_a_bundled_toolchain_mismatch(
     # BE-0292: a target with no testRunner resolves to the bundled runner, so doctor appends a
     # mismatch warning when the host Xcode major differs from the toolchain the bundle recorded.
     from bajutsu.cli.commands import doctor
+    from bajutsu.common.config import XcuitestConfig
+    from bajutsu.common.platform_lifecycle.environments import xcuitest as xc
     from bajutsu.common.scenario import Redact
-    from bajutsu.config import XcuitestConfig
-    from bajutsu.platform_lifecycle.environments import xcuitest as xc
 
     # A non-None products dir makes `runner_source` report the bundled tier for the first line; the
     # note's own tier check keys on the empty XcuitestConfig (no testRunner), not on this path.
@@ -1031,7 +1049,9 @@ def test_current_screen_fake_backend_queries_the_driver(monkeypatch: pytest.Monk
     # backend needs no device, so resolving the udid is the only thing to stub away.
     from bajutsu.cli.commands.doctor import _current_screen
 
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID")
+    monkeypatch.setattr(
+        "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
+    )
     eff = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
     assert _current_screen("fake", "booted", eff) == []  # the fake's screen starts empty
 
@@ -1040,8 +1060,8 @@ def test_check_scenarios_flags_an_unsupported_construct(tmp_path: Path) -> None:
     # A selectOption (native <select>) needs the web-only selectOption capability, which xcuitest
     # lacks — check_scenarios reports it, purely, with no device: the capability set is a static
     # class constant.
-    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
+    from bajutsu.common.backends import capabilities_for
 
     scn = tmp_path / "select.yaml"
     scn.write_text(
@@ -1054,8 +1074,8 @@ def test_check_scenarios_flags_an_unsupported_construct(tmp_path: Path) -> None:
 
 
 def test_check_scenarios_passes_a_supported_scenario(tmp_path: Path) -> None:
-    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
+    from bajutsu.common.backends import capabilities_for
 
     scn = tmp_path / "ok.yaml"
     scn.write_text("- name: t\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
@@ -1064,8 +1084,8 @@ def test_check_scenarios_passes_a_supported_scenario(tmp_path: Path) -> None:
 
 
 def test_check_scenarios_missing_file_raises(tmp_path: Path) -> None:
-    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
+    from bajutsu.common.backends import capabilities_for
 
     with pytest.raises(FileNotFoundError):
         check_scenarios(tmp_path / "nope.yaml", capabilities_for("fake"))
@@ -1076,8 +1096,8 @@ def test_check_scenarios_narrows_on_a_real_ios_device(tmp_path: Path) -> None:
     # iOS device (xcuitest.deviceType: device) reports a setLocation scenario as unsupported — the
     # same simctl-backed capability the run preflight drops — instead of the stale "supported" the
     # static set gives. Guards doctor against the drift this item's motivation calls out.
-    from bajutsu.backends import capabilities_for_run
     from bajutsu.cli.commands.doctor import check_scenarios
+    from bajutsu.common.backends import capabilities_for_run
 
     scn = tmp_path / "loc.yaml"
     scn.write_text(
@@ -1128,7 +1148,9 @@ def test_doctor_fake_backend_scores_the_current_screen(
 ) -> None:
     # The full doctor path on the fake backend: environment gates pass with no tools, then it scores
     # the (empty) fake screen — Blocked, exit 1 — device-free.
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID")
+    monkeypatch.setattr(
+        "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
+    )
     cfg, _ = _write(tmp_path)
     cfg.write_text(
         "defaults: { backend: [fake] }\n"
@@ -1148,7 +1170,7 @@ def test_doctor_reports_unreachable_screen_instead_of_crashing(
     # Environment gates pass (tools installed) but the live screen faults — e.g. a web target whose
     # app server is down, so navigating the baseUrl raises DeviceError. doctor must surface it as a
     # fixable error and exit 1, not propagate a stack trace.
-    from bajutsu import simctl
+    from bajutsu.common.backend_cli import simctl
 
     # `_current_screen` is replaced wholesale below, so the real udid resolution it would do never
     # runs — no `resolve_udid` stub needed.
@@ -1218,7 +1240,7 @@ def test_serve_config_from_git_binds_checkout(
 ) -> None:
     # `serve --config github:…` materializes the checkout at startup and serves from its root, so
     # the config's relative paths resolve against the fetched tree (BE-0063).
-    import bajutsu.config_source as cs
+    import bajutsu.common.config_source as cs
     import bajutsu.serve as srv
 
     checkout = tmp_path / "co"
@@ -1340,7 +1362,7 @@ def test_serve_themes_flag_absent_passes_none(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_serve_loopback_detection() -> None:
-    from bajutsu.cli.commands.serve import _is_loopback
+    from bajutsu.serve.cli.serve import _is_loopback
 
     assert _is_loopback("127.0.0.1")
     assert _is_loopback("127.0.0.2")  # the whole 127/8 block is loopback
@@ -1408,17 +1430,19 @@ def test_crawl_bedrock_does_not_require_anthropic_key(
     # The Bedrock fix end-to-end: with the provider set to bedrock + a model id, the crawl passes
     # the credential gate without ANTHROPIC_API_KEY. The device boundary is mocked so the test needs
     # no Simulator — reaching it (the DeviceError below) proves the gate didn't block the crawl.
-    import bajutsu.simctl as _benv
+    import bajutsu.common.backend_cli.simctl as _benv
 
     _no_dotenv(monkeypatch)
     monkeypatch.setenv("BAJUTSU_AI_PROVIDER", "bedrock")
     monkeypatch.setenv("BAJUTSU_BEDROCK_MODEL", "global.anthropic.claude-opus-4-6-v1")
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "booted")
+    monkeypatch.setattr(
+        "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "booted"
+    )
 
     def _no_device(*_args: object, **_kwargs: object) -> object:
         raise _benv.DeviceError("device boundary reached (no Simulator in test)")
 
-    monkeypatch.setattr("bajutsu.cli.commands.crawl.launch_driver", _no_device)
+    monkeypatch.setattr("bajutsu.crawl.cli.launch_driver", _no_device)
     cfg, _ = _write(tmp_path)
     out = tmp_path / "crawlrun"
     r = runner.invoke(
@@ -1501,7 +1525,7 @@ def test_crawl_web_builds_one_browser_lane_per_worker(
         launched["n"] += 1
         return object(), None  # the engine is mocked, so no driver method is ever called
 
-    monkeypatch.setattr("bajutsu.cli.commands.crawl.launch_driver", fake_launch)
+    monkeypatch.setattr("bajutsu.crawl.cli.launch_driver", fake_launch)
 
     captured: dict[str, object] = {}
 
@@ -1773,7 +1797,7 @@ def test_run_hands_the_pipeline_a_live_cancellation_source(
     # pipeline was given reports it.
     import signal
 
-    from bajutsu.orchestrator import RunResult
+    from bajutsu.common.orchestrator import RunResult
 
     manifest = _manifest_at(tmp_path)
     seen: list[bool] = []
@@ -1784,12 +1808,12 @@ def test_run_hands_the_pipeline_a_live_cancellation_source(
         seen.append(cancelled())
         return [RunResult("demo", False, [], failure="cancelled")], manifest
 
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID")
-    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     monkeypatch.setattr(
-        "bajutsu.cli.commands.run.device_pool", lambda *a, **k: (object(), lambda: None)
+        "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
     )
-    monkeypatch.setattr("bajutsu.cli.commands.run.run_and_report", _pipeline)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.setattr("bajutsu.run.cli.device_pool", lambda *a, **k: (object(), lambda: None))
+    monkeypatch.setattr("bajutsu.run.cli.run_and_report", _pipeline)
     cfg, scn = _fake_run(tmp_path)
 
     r = runner.invoke(app, _run_argv(cfg, scn, tmp_path, "--no-system-alert-handling"))

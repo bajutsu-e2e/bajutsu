@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-import bajutsu.cli.commands.audit as audit_command
+import bajutsu.analysis.cli.audit as audit_command
 from bajutsu.analysis import audit as analysis_audit
 from bajutsu.analysis.audit import (
     AuditReport,
@@ -28,8 +28,8 @@ from bajutsu.analysis.audit import (
 )
 from bajutsu.cli import app
 from bajutsu.common.assertions import AssertionResult
+from bajutsu.common.orchestrator import RunResult, StepOutcome
 from bajutsu.common.scenario import load_expanded_scenarios, load_scenarios
-from bajutsu.orchestrator import RunResult, StepOutcome
 
 runner = CliRunner()
 

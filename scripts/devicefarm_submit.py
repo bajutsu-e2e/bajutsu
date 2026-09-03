@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """AWS Device Farm batch submitter CLI (BE-0235; iOS support BE-0238).
 
-A thin command-line wrapper over the submitter core in `bajutsu.cloud.devicefarm` (moved there by
+A thin command-line wrapper over the submitter core in `bajutsu.common.cloud.devicefarm` (moved there by
 BE-0336 so the core is coverage-measured and reusable by serve's fan-out). This file keeps only the
 argparse glue and the two real-IO adapters that fill the core's `DeviceFarmClient` / `Transfer`
 seams — the real boto3 client and the presigned-URL transfer — which do live network/AWS I/O and so
@@ -19,7 +19,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
-from bajutsu.cloud.devicefarm import (
+from bajutsu.common.cloud.devicefarm import (
     APP_UPLOAD_TYPE,
     REQUIREMENTS_TXT,
     DeviceFarmClient,

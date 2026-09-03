@@ -13,11 +13,11 @@ from pathlib import Path
 import pytest
 
 from bajutsu.common.assertions import AssertionResult, VisualEvidence
-from bajutsu.drivers.actuation import Actuation
-from bajutsu.evidence import Artifact
-from bajutsu.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
-from bajutsu.report.load import load_run, results_from_manifest
-from bajutsu.report.manifest import manifest_dict
+from bajutsu.common.drivers.actuation import Actuation
+from bajutsu.common.evidence import Artifact
+from bajutsu.common.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
+from bajutsu.common.report.load import load_run, results_from_manifest
+from bajutsu.common.report.manifest import manifest_dict
 
 
 def _result() -> RunResult:

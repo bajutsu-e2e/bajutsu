@@ -21,8 +21,8 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from bajutsu import capabilities
 from bajutsu.cli import app
+from bajutsu.common.capability import capabilities
 
 runner = CliRunner()
 
@@ -32,7 +32,7 @@ _FORBIDDEN_AT_IMPORT = ("anthropic",)
 
 
 def test_importing_the_cli_pulls_in_no_ai_sdk() -> None:
-    """A clean child interpreter: `import bajutsu.cli` must not load an AI SDK.
+    """A clean child interpreter: building `bajutsu.cli.app` must not load an AI SDK.
 
     Runs in a subprocess so an SDK another test already imported into this session can't mask a
     real top-level import. The env is stripped of AI credentials too, so nothing is read at import.
@@ -42,7 +42,8 @@ def test_importing_the_cli_pulls_in_no_ai_sdk() -> None:
         "for v in ('ANTHROPIC_API_KEY','BAJUTSU_AI_PROVIDER','BAJUTSU_BEDROCK_MODEL'):\n"
         "    os.environ.pop(v, None)\n"
         "import sys\n"
-        "import bajutsu.cli  # runs the command scan — every commands/<name>.py is imported\n"
+        "from bajutsu.cli import app  # lazily built (PEP 562): registers every command\n"
+        "assert app is not None\n"
         f"forbidden = set({_FORBIDDEN_AT_IMPORT!r})\n"
         "leaked = sorted(m for m in sys.modules if m.split('.')[0] in forbidden)\n"
         "sys.stdout.write(','.join(leaked))\n"
@@ -116,15 +117,15 @@ def test_run_alert_guard_needs_no_credential_at_all(
     sentinel `Exit` from the (stubbed) execution seam proves the run reached execution *after* doing
     all its setup Claude-free.
     """
-    monkeypatch.setattr("bajutsu.simctl.resolve_udid", lambda _udid, run=None: "FAKE-UDID")
     monkeypatch.setattr(
-        "bajutsu.cli.commands.run.device_pool", lambda *a, **k: (object(), lambda: None)
+        "bajutsu.common.backend_cli.simctl.resolve_udid", lambda _udid, run=None: "FAKE-UDID"
     )
+    monkeypatch.setattr("bajutsu.run.cli.device_pool", lambda *a, **k: (object(), lambda: None))
 
     def _reached_execution(*_a: object, **_k: object) -> object:
         raise typer.Exit(7)
 
-    monkeypatch.setattr("bajutsu.cli.commands.run.run_and_report", _reached_execution)
+    monkeypatch.setattr("bajutsu.run.cli.run_and_report", _reached_execution)
 
     cfg, scn = _fake_config(tmp_path)
     result = runner.invoke(

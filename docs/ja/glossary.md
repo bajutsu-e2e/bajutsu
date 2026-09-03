@@ -82,12 +82,12 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 ## driver backend actuator platform
 
 この四語は、中核のなかで唯一プラットフォームに依存する継ぎ目を指します。中核そのものはプラットフォームに依存しません。混同
-しやすいので、関係をここで一箇所にまとめます。正とするのは `bajutsu/backends.py`（`PLATFORMS`、
+しやすいので、関係をここで一箇所にまとめます。正とするのは `bajutsu/common/backends.py`（`PLATFORMS`、
 `IMPLEMENTED`）であって、どのページの散文でもありません。
 
 | 語 | 意味 |
 |---|---|
-| **driver** | 抽象的な `Driver` インターフェース（`bajutsu/drivers/base.py` の `Protocol`）です。唯一のプラットフォーム依存の継ぎ目で、どの actuator もこれを実装します。 |
+| **driver** | 抽象的な `Driver` インターフェース（`bajutsu/common/drivers/base.py` の `Protocol`）です。唯一のプラットフォーム依存の継ぎ目で、どの actuator もこれを実装します。 |
 | **backend** | `--backend` と config の `backend:` が受け付けるユーザー向けのトークンです。platform の別名（`ios`）か、actuator の名前そのもの（`xcuitest`）のどちらかです。「backend」は入力トークンの総称で、解決されて actuator になります。 |
 | **actuator** | 実際に操作（tap / type / swipe / query）を担う具体的なエンジンで、driver が実装するものです。backend のトークンは一つの actuator に解決され、run の開始時に確定して以後は固定されます。 |
 | **platform** | 対象の種類を表す粗いトークン（`ios` / `android` / `web` / `fake`）で、安定度順（最も安定するものが先）の actuator のリストに展開されます。 |
@@ -118,7 +118,7 @@ AND で結合されるフィールドの集合（`id`、`idMatches`、`label`、
 
 | 語 | 意味 |
 |---|---|
-| **target（ターゲット）** | `targets.<name>` の下にある、テスト対象のアプリを記述する config エントリ一つです。プラットフォームごとの識別子（iOS の `bundleId`、web の `baseUrl`、Android の `package`）に加え、`backend`・`device`・`appPath` などを持ちます。config の単位です。定義は `bajutsu/config/schema.py` の `TargetConfig` です。 |
+| **target（ターゲット）** | `targets.<name>` の下にある、テスト対象のアプリを記述する config エントリ一つです。プラットフォームごとの識別子（iOS の `bundleId`、web の `baseUrl`、Android の `package`）に加え、`backend`・`device`・`appPath` などを持ちます。config の単位です。定義は `bajutsu/common/config/schema.py` の `TargetConfig` です。 |
 | **app（アプリ）** | テスト対象のアプリケーションそのものです。target が指し示し、device にインストールされるソフトウェアです。 |
 | **device（デバイス）** | target を駆動する具体的な実行時インスタンスです。Simulator、emulator、ブラウザコンテキストで、`device`（たとえば `iPhone 15`）で名付け、実行時には `udid` で指します。 |
 
@@ -145,7 +145,7 @@ config ならリポジトリ名とリポジトリ内のパスになります。�
 **evidence（証跡）**：run の最中に取得する成果物で、どのプロバイダが生成したかのタグが付きます。二つの
 形があります。**instant（瞬間）** はスクリーンショットや要素階層で、ステップごとに取得します。
 **interval（区間）** は動画、デバイスログ、アプリトレースで、シナリオをまたいで取得します。
-[evidence](evidence.md) を参照してください。定義は `bajutsu/evidence/core.py` にあります。
+[evidence](evidence.md) を参照してください。定義は `bajutsu/common/evidence/core.py` にあります。
 
 **capturePolicy・CaptureRule・「ルール」**：同じ概念の三つの呼び名を、ここで整理します。
 
@@ -164,7 +164,7 @@ config ならリポジトリ名とリポジトリ内のパスになります。�
   どう発火するかを事前にプレビューします。決定的で観測用であり、AI も合否判定もありません。エンジンは
   `bajutsu/trace.py` です。
 - **`triage`**（CLI の動詞）は、**失敗した run を AI が診断し**、最小限の修正を提案します。Tier 1 の助言
-  的な作業であり、CI をゲートすることはありません。エンジンは `bajutsu/triage.py` です。
+  的な作業であり、CI をゲートすることはありません。エンジンは `bajutsu/triage/heuristic.py` です。
 
 > `trace` は多義的です。動詞のほかに、**`appTrace`** という区間の証跡の種類（os_signpost / os_log の
 > 区間）があります。どちらの意味も観測用で、合否は決めません。

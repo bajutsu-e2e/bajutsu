@@ -23,8 +23,10 @@ from urllib.error import HTTPError, URLError
 import pytest
 import typer
 
-from bajutsu.cli.commands import worker as worker_mod
-from bajutsu.cli.commands.worker import (
+from bajutsu.serve import InMemoryLogBus
+from bajutsu.serve.capabilities import WORKER_CAPABILITIES_ENV
+from bajutsu.serve.cli import worker as worker_mod
+from bajutsu.serve.cli.worker import (
     PresignedWorkerIO,
     _advertised_capabilities,
     _download_baselines,
@@ -35,8 +37,6 @@ from bajutsu.cli.commands.worker import (
     _write_console_log,
     worker,
 )
-from bajutsu.serve import InMemoryLogBus
-from bajutsu.serve.capabilities import WORKER_CAPABILITIES_ENV
 
 
 def _port(server: socketserver.BaseServer) -> int:

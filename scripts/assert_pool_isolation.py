@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Assert the device pool's isolation invariant against a real concurrent-device run (BE-0298).
 
-`bajutsu/runner/pool.py`'s `device_pool` claims that under `--workers N` each worker leases its own
+`bajutsu/common/runner/pool.py`'s `device_pool` claims that under `--workers N` each worker leases its own
 device and writes evidence under its own `run_dir/<sid>` subdirectory of the one shared run
 directory, sharing no mock port or index with any other worker's scenario — the no-shared-state
 invariant DESIGN.md §3.3 states. `tests/runner/test_pool.py` proves that claim only of the pool's own
@@ -44,7 +44,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 # Where a platform that starts recording before the app launches stages that video — reserved at the
-# run directory's top level by `bajutsu/runner/pool.py`, and left behind once the finished recording
+# run directory's top level by `bajutsu/common/runner/pool.py`, and left behind once the finished recording
 # has been moved into the scenario's own evidence dir. It belongs to no worker (Android and web
 # reserve it per lease under the one shared name), so the orphan-directory check below must not read
 # it as evidence written outside every worker's dir.

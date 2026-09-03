@@ -5,7 +5,7 @@
 > 1 回の run は、1 つ以上のシナリオ（`list[RunResult]`）を実行します。その結果を 4 つの形式で
 > 書き出します。`manifest.json` が、レポートと CI（継続的インテグレーション）の **唯一の情報源**です。
 >
-> 実装: `bajutsu/report/`（パッケージ。段階で分割: `format` → `manifest` / `richtext` → `rows` / `panels` → `html`）。
+> 実装: `bajutsu/common/report/`（パッケージ。段階で分割: `format` → `manifest` / `richtext` → `rows` / `panels` → `html`）。
 
 関連: [run-loop の実行結果](run-loop.md#実行結果データ構造) · [evidence](evidence.md)
 
@@ -27,7 +27,7 @@ runs/<runId>/
     └── device.log    # deviceLog（区間）
 ```
 
-`runId` は `YYYYMMDD-HHMMSS` の形式で、`bajutsu/run_id.py`（[BE-0200](../../roadmaps/BE-0200-run-id-contract/BE-0200-run-id-contract-ja.md)）が一箇所で採番します。この形式は report、Web UI、その他すべての呼び出し元で共有する単一の契約です。`stepId` は `step.name` または `step<i>` です。
+`runId` は `YYYYMMDD-HHMMSS` の形式で、`bajutsu/common/run_meta/id.py`（[BE-0200](../../roadmaps/BE-0200-run-id-contract/BE-0200-run-id-contract-ja.md)）が一箇所で採番します。この形式は report、Web UI、その他すべての呼び出し元で共有する単一の契約です。`stepId` は `step.name` または `step<i>` です。
 
 ## manifest.json
 

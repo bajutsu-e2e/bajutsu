@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bajutsu.orchestrator import RunResult
-from bajutsu.report import html_report
+from bajutsu.common.orchestrator import RunResult
+from bajutsu.common.report import html_report
 
 
 def test_sel_parts_renders_id_candidate_list() -> None:
     # A candidate-list id/idMatches (BE-0221) renders as `#a | b`, not a raw Python list repr.
-    from bajutsu.report.richtext import _sel_parts
+    from bajutsu.common.report.richtext import _sel_parts
 
     id_parts = _sel_parts({"id": ["stable.refresh", "stable_refresh"]})
     assert ("id", "#stable.refresh | stable_refresh") in id_parts
@@ -21,7 +21,7 @@ def test_sel_parts_renders_id_candidate_list() -> None:
 
 
 def test_assert_parts_visual() -> None:
-    from bajutsu.report.richtext import _assert_parts
+    from bajutsu.common.report.richtext import _assert_parts
 
     kind, target, comp = _assert_parts(
         {"visual": {"baseline": "home.png", "threshold": 0.5, "exclude": [{"x": 0}, {"x": 1}]}}
@@ -85,7 +85,7 @@ def test_html_visual_pass_has_comparator_without_diff_mode(tmp_path: Path) -> No
 
 
 def test_assert_parts_visual_element_scoped() -> None:
-    from bajutsu.report.richtext import _assert_parts
+    from bajutsu.common.report.richtext import _assert_parts
 
     kind, _target, comp = _assert_parts(
         {"visual": {"baseline": "card.png", "element": {"id": "summary-card"}}}

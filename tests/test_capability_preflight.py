@@ -18,9 +18,9 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu import capability_preflight
+from bajutsu.common.capability import capability_preflight
+from bajutsu.common.drivers import base
 from bajutsu.common.scenario import Scenario
-from bajutsu.drivers import base
 
 _LEAN_IOS = (
     {
@@ -106,7 +106,7 @@ def test_adb_does_not_advertise_network_yet_request_runs() -> None:
     # BE-0283: adb captures via the app-side collector (BajutsuNet + `adb reverse`), so it must NOT
     # advertise the `network` token — that means *native* driver observation — yet a `request`
     # assertion must still preflight-clean on the real adb capability set.
-    from bajutsu.drivers.adb import AdbDriver
+    from bajutsu.common.drivers.adb import AdbDriver
 
     assert base.Capability.NETWORK not in AdbDriver.CAPABILITIES
     sc = _sc(
@@ -551,8 +551,8 @@ def test_select_reason_includes_step_index() -> None:
 def test_doctor_scenario_check_detects_unsupported_capabilities(tmp_path: Path) -> None:
     # A selectOption scenario on xcuitest (no selectOption — a web-only capability) must surface the
     # unsupported capability. Tests the check_scenarios helper used by the CLI.
-    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
+    from bajutsu.common.backends import capabilities_for
 
     scn_file = tmp_path / "select.yaml"
     scn_file.write_text(
@@ -567,8 +567,8 @@ def test_doctor_scenario_check_detects_unsupported_capabilities(tmp_path: Path) 
 
 def test_doctor_scenario_check_no_issue_when_supported(tmp_path: Path) -> None:
     # A plain tap scenario on xcuitest — no unsupported capabilities.
-    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
+    from bajutsu.common.backends import capabilities_for
 
     scn_file = tmp_path / "tap.yaml"
     scn_file.write_text(
@@ -581,8 +581,8 @@ def test_doctor_scenario_check_no_issue_when_supported(tmp_path: Path) -> None:
 
 def test_doctor_scenario_check_multiple_scenarios(tmp_path: Path) -> None:
     # Multiple scenarios: only the one with selectOption should produce a reason.
-    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
+    from bajutsu.common.backends import capabilities_for
 
     scn_file = tmp_path / "mixed.yaml"
     scn_file.write_text(
@@ -601,8 +601,8 @@ def test_doctor_scenario_check_multiple_scenarios(tmp_path: Path) -> None:
 
 
 def test_doctor_scenario_check_missing_file(tmp_path: Path) -> None:
-    from bajutsu.backends import capabilities_for
     from bajutsu.cli.commands.doctor import check_scenarios
+    from bajutsu.common.backends import capabilities_for
 
     # A missing scenario file should raise (not silently skip).
     with pytest.raises(FileNotFoundError):
@@ -652,9 +652,9 @@ def test_handle_system_alert_requires_the_capability() -> None:
 
 
 def test_handle_system_alert_passes_on_xcuitest_but_fails_on_android_and_web() -> None:
-    from bajutsu.drivers.adb import AdbDriver
-    from bajutsu.drivers.playwright import PlaywrightDriver
-    from bajutsu.drivers.xcuitest import XcuitestDriver
+    from bajutsu.common.drivers.adb import AdbDriver
+    from bajutsu.common.drivers.playwright import PlaywrightDriver
+    from bajutsu.common.drivers.xcuitest import XcuitestDriver
 
     sc = _sc(steps=[{"handleSystemAlert": {"sel": {"label": "Allow"}, "timeout": 5}}])
     assert base.Capability.HANDLE_SYSTEM_ALERT in XcuitestDriver.CAPABILITIES

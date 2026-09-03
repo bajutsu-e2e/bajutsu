@@ -320,7 +320,7 @@ jobs:
       - name: Provision the web backend for real (BE-0304 provision case)
         # The real installer, not the hand-rolled `playwright install` every other job runs, so its
         # own command-construction code (BE-0164) is the thing that actually executes at least once.
-        run: uv run --no-sync python -m bajutsu.provision --backend web
+        run: uv run --no-sync python -m bajutsu.common.provisioning.provision --backend web
 
       # The provisioned case: after the real installer ran, doctor's environment gate must report no
       # ✗. `--expect ok` runs `doctor --environment-only`, so — unlike the earlier inline check — it

@@ -18,7 +18,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from bajutsu.analytics import usage
 from bajutsu.common.agents.ai_config import AiConfig, language_instruction
 from bajutsu.common.agents.claude_backed import ClaudeBackedAgent
 from bajutsu.common.ai import (
@@ -32,11 +31,12 @@ from bajutsu.common.ai import (
     ToolDef,
 )
 from bajutsu.common.ai.prompts import NEVER_JUDGE_BOUNDARY, render_elements
+from bajutsu.common.analytics import usage
+from bajutsu.common.drivers import base
+from bajutsu.common.evidence.redaction import Redactor
+from bajutsu.common.screenshots import screenshot_bytes
 from bajutsu.crawl import core as crawl
 from bajutsu.crawl import tabs as crawl_tabs
-from bajutsu.drivers import base
-from bajutsu.evidence.redaction import Redactor
-from bajutsu.screenshots import screenshot_bytes
 
 MODEL = "claude-opus-4-8"
 

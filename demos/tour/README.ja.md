@@ -18,7 +18,7 @@ make -C demos tour                   # または直接:
 2. **改変（Modify）**：期待する Favorite の状態を誤った値に変える → 決定論的なチェックが **FAIL**（LLM
    ではなく機械的なアサーションが捕捉）→ 戻す → 再び **PASS**。
 3. **診断（Diagnose）**：セレクタを解決できないように改名する（テストの足元でセレクタがずれた状況）→
-   実行が **FAIL** → [`triage`](../../bajutsu/triage.py) が失敗した実行を読み、診断します: カテゴリ
+   実行が **FAIL** → [`triage`](../../bajutsu/triage/heuristic.py) が失敗した実行を読み、診断します: カテゴリ
    （`selector`）に加え、捕捉した要素ツリーから引いた *「`stable.row.3` のことでは？」* という
    修正案 → セレクタを戻す → **PASS**。
 
@@ -29,14 +29,14 @@ make -C demos tour                   # または直接:
 ## Mac が無い場合は？ 同じ物語を仮想デバイスで（セットアップ不要）
 
 まったく同じ 著作 → run → 改変 → 診断 のライフサイクルが、メモリ上の
-[`FakeDriver`](../../bajutsu/drivers/fake.py) に対しても動きます。Simulator も Xcode も APIキーも要らず、
+[`FakeDriver`](../../bajutsu/common/drivers/fake.py) に対しても動きます。Simulator も Xcode も APIキーも要らず、
 Linux/CI で数秒です。
 
 ```bash
 uv run python demos/tour/tour.py
 ```
 
-こちらは加えて**著作**も見せます: 自然言語の目標が、本物の [`record`](../../bajutsu/record.py) ループで
+こちらは加えて**著作**も見せます: 自然言語の目標が、本物の [`record`](../../bajutsu/record/loop.py) ループで
 シナリオになります（Claude の代役 [`KeywordAgent`](../record/generate_from_nl.py) を使うのでキー不要）。
 この代役の頭脳を除けば、すべて本番のコードパスです。実際の実行が使うのと同じオーケストレータ、アサーション
 エンジン、レポート出力、ヒューリスティック triage を通ります。`demos/tour/runs/` の下に開ける本物の

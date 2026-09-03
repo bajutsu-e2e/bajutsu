@@ -161,7 +161,7 @@ resolves which backends its `targets.*` actually use plus whether an AI provider
 installs only those pip extras and external tools (the XCUITest runner built via Xcode's
 `xcodebuild` for iOS, Playwright's browser for web, the `anthropic` SDK when AI is configured) — idempotently, so it is
 safe to re-run. With no config in the working directory it installs nothing beyond the base. The
-requirements it draws from live in one mapping ([`bajutsu/requirements.py`](bajutsu/requirements.py)),
+requirements it draws from live in one mapping ([`bajutsu/common/provisioning/requirements.py`](bajutsu/common/provisioning/requirements.py)),
 shared with `doctor`'s pre-flight so the two never drift.
 
 Installing from PyPI instead? The base package is AI-free: `pip install bajutsu` gets the

@@ -54,13 +54,13 @@ def test_empty_diff_is_not_relevant() -> None:
 
 
 def test_run_path_subpackage_is_relevant() -> None:
-    assert is_relevant(["bajutsu/runner/pipeline.py"]) is True
+    assert is_relevant(["bajutsu/common/runner/pipeline.py"]) is True
 
 
 def test_run_path_top_level_modules_are_relevant() -> None:
     # The run / codegen / record surface: the run loop, assertions, the element model, the driver
     # helpers, the visual/golden dimensions, codegen, the run-pipeline's direct dependencies
-    # (evidence, redaction, artifact_perms, mailbox), and record.py's direct imports (the agent
+    # (evidence, redaction, artifact_perms, mailbox), and record/loop.py's direct imports (the agent
     # protocols, crawl core, handoff). Under the BE-0333 inverted default these fire because the
     # shared core sweeps `bajutsu/` and none of them is a classified periphery exclusion.
     for module in (
@@ -73,24 +73,24 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         "bajutsu/common/assertions/network.py",
         "bajutsu/common/assertions/schema.py",
         "bajutsu/common/assertions/_common.py",
-        "bajutsu/elements.py",
-        "bajutsu/evidence/visual.py",
-        "bajutsu/evidence/golden.py",
+        "bajutsu/common/evidence/visual.py",
+        "bajutsu/common/evidence/golden.py",
+        "bajutsu/common/drivers/elements.py",
         "bajutsu/codegen/emit.py",
-        "bajutsu/record.py",
-        "bajutsu/adb.py",
-        "bajutsu/simctl.py",
+        "bajutsu/record/loop.py",
+        "bajutsu/common/backend_cli/adb.py",
+        "bajutsu/common/backend_cli/simctl.py",
         # runner/pipeline.py and orchestrator/loop.py unconditional imports
-        "bajutsu/evidence/core.py",
-        # `bajutsu.evidence.core` executes `evidence/__init__.py` on import, same as
+        "bajutsu/common/evidence/core.py",
+        # `bajutsu.common.evidence.core` executes `evidence/__init__.py` on import, same as
         # `crawl/__init__.py` / `common/agents/__init__.py` below.
-        "bajutsu/evidence/__init__.py",
-        "bajutsu/evidence/redaction.py",
-        "bajutsu/evidence/network.py",
-        "bajutsu/artifact_perms.py",
-        "bajutsu/mailbox.py",
-        "bajutsu/evidence/intervals.py",
-        # record.py unconditionally imports the Agent/EnrichmentAgent protocols from
+        "bajutsu/common/evidence/__init__.py",
+        "bajutsu/common/evidence/redaction.py",
+        "bajutsu/common/evidence/network.py",
+        "bajutsu/common/run_meta/artifact_perms.py",
+        "bajutsu/common/evidence/intervals.py",
+        "bajutsu/common/mailbox.py",
+        # record/loop.py unconditionally imports the Agent/EnrichmentAgent protocols from
         # common.agents.protocols (record is an E2E verb), mirroring the old agent.py entry (now
         # agent_protocols.py, packaged by BE-0257). Its sibling common.agents.factory (the old
         # agents.py / agent_factory.py) is deliberately excluded — see the parity test below.
@@ -104,7 +104,7 @@ def test_run_path_top_level_modules_are_relevant() -> None:
         # on that path as well (the periphery siblings are not — see the parity test below).
         "bajutsu/crawl/__init__.py",
         "bajutsu/crawl/serialize.py",
-        "bajutsu/handoff.py",
+        "bajutsu/common/handoff.py",
     ):
         assert is_relevant([module]) is True, module
 
@@ -119,9 +119,9 @@ def test_non_run_path_top_level_modules_are_not_relevant() -> None:
         "bajutsu/analysis/stats.py",
         "bajutsu/analysis/audit.py",
         "bajutsu/analysis/coverage.py",
-        "bajutsu/analytics/stats.py",
+        "bajutsu/common/analytics/stats.py",
         "bajutsu/common/agents/alerts.py",
-        "bajutsu/github/actions.py",
+        "bajutsu/common/github/actions.py",
         # The crawl engine core/serialize/__init__ trigger (above), but the periphery siblings in the
         # same package do not — the on-device run never imports them, so `crawl/**` must not be swept
         # wholesale. All five are pinned so the boundary is fully covered, not just sampled.
@@ -135,16 +135,16 @@ def test_non_run_path_top_level_modules_are_not_relevant() -> None:
 
 
 def test_report_package_is_relevant_on_every_lane() -> None:
-    # The headline miss BE-0333 fixes: `bajutsu/report/` holds the manifest writer every run invokes
+    # The headline miss BE-0333 fixes: `bajutsu/common/report/` holds the manifest writer every run invokes
     # through `runner/pipeline.py`, yet the old positive list never swept the package, so a change to
     # it fired no lane and the required aggregators reported green without exercising it. The inverted
     # default sweeps the whole package in; the HTML renderer no lane asserts on rides along as a
     # cheap over-fire rather than being carved out file by file.
     for lane in ("ios", "android", "web"):
         for path in (
-            "bajutsu/report/manifest.py",
-            "bajutsu/report/__init__.py",
-            "bajutsu/report/html.py",
+            "bajutsu/common/report/manifest.py",
+            "bajutsu/common/report/__init__.py",
+            "bajutsu/common/report/html.py",
         ):
             assert is_relevant([path], lane) is True, (lane, path)
     # ...but the MCP server stays a classified periphery subpackage the E2E never exercises.
@@ -157,10 +157,10 @@ def test_previously_missed_run_path_modules_now_fire() -> None:
     # deprecation shims, the object store, record capture, or the grouping helper), so a change to it
     # must re-run the lanes; the inverted default sweeps each in.
     for module in (
-        "bajutsu/deprecations.py",
-        "bajutsu/object_store.py",
-        "bajutsu/record_capture.py",
-        "bajutsu/from_grouping.py",
+        "bajutsu/common/report/from_grouping.py",
+        "bajutsu/common/deprecations.py",
+        "bajutsu/common/run_meta/object_store.py",
+        "bajutsu/record/capture.py",
     ):
         assert is_relevant([module]) is True, module
 
@@ -172,7 +172,7 @@ def test_new_unclassified_module_fires_every_lane() -> None:
     # in a swept subpackage, and a brand-new CLI command all over-fire until classified.
     for path in (
         "bajutsu/brand_new_module.py",
-        "bajutsu/runner/brand_new.py",
+        "bajutsu/common/runner/brand_new.py",
         "bajutsu/cli/commands/brand_new.py",
     ):
         for lane in ("ios", "android", "web"):
@@ -180,8 +180,8 @@ def test_new_unclassified_module_fires_every_lane() -> None:
 
 
 def test_only_listed_cli_commands_are_relevant() -> None:
-    assert is_relevant(["bajutsu/cli/commands/run.py"]) is True
-    assert is_relevant(["bajutsu/cli/commands/trace.py"]) is False
+    assert is_relevant(["bajutsu/run/cli.py"]) is True
+    assert is_relevant(["bajutsu/analysis/cli/trace.py"]) is False
 
 
 def test_conformance_suite_is_relevant_but_other_tests_are_not() -> None:
@@ -231,7 +231,7 @@ def test_shared_run_path_is_relevant_on_every_lane() -> None:
     # change to it re-runs all three. Sample the subpackage sweep, a top-level allow-listed module,
     # the assertions package, and the shared deps.
     for lane in ("ios", "android", "web"):
-        assert is_relevant(["bajutsu/runner/pipeline.py"], lane) is True, lane
+        assert is_relevant(["bajutsu/common/runner/pipeline.py"], lane) is True, lane
         assert is_relevant(["bajutsu/common/scenario/interp.py"], lane) is True, lane
         assert is_relevant(["bajutsu/common/assertions/evaluate.py"], lane) is True, lane
         assert is_relevant(["tests/driver_conformance.py"], lane) is True, lane
@@ -252,14 +252,14 @@ def test_doctor_onboarding_gate_code_is_relevant_on_every_lane() -> None:
     # skipped every lane that exercises it — the gate could regress with all three lanes green.
     for lane in ("ios", "android", "web"):
         for path in (
-            "bajutsu/doctor.py",
+            "bajutsu/common/doctor.py",
             "bajutsu/cli/commands/doctor.py",
-            "bajutsu/preflight.py",
+            "bajutsu/common/capability/preflight.py",
             # `preflight.py` builds every `environment:` check's tool list and remedy strings from
             # this, so a change here moves the section the gate asserts on too.
-            "bajutsu/requirements.py",
+            "bajutsu/common/provisioning/requirements.py",
             # The platform-neutral DeviceError base (BE-0260) that both `run` and doctor catch.
-            "bajutsu/device_errors.py",
+            "bajutsu/common/devices/errors.py",
         ):
             assert is_relevant([path], lane) is True, (lane, path)
 
@@ -278,12 +278,13 @@ def test_doctors_ai_availability_half_stays_excluded() -> None:
 
 
 def test_provision_is_web_only() -> None:
-    # The web lane's `onboarding (doctor / provision)` job runs `python -m bajutsu.provision
-    # --backend web` to install Chromium for real (BE-0304), so a provisioner change is web-relevant.
-    # No other lane invokes it: neither runs `scripts/install.sh`, its only other caller.
-    assert is_relevant(["bajutsu/provision.py"], "web") is True
-    assert is_relevant(["bajutsu/provision.py"], "ios") is False
-    assert is_relevant(["bajutsu/provision.py"], "android") is False
+    # The web lane's `onboarding (doctor / provision)` job runs
+    # `python -m bajutsu.common.provisioning.provision --backend web` to install Chromium for real
+    # (BE-0304), so a provisioner change is web-relevant. No other lane invokes it: neither runs
+    # `scripts/install.sh`, its only other caller.
+    assert is_relevant(["bajutsu/common/provisioning/provision.py"], "web") is True
+    assert is_relevant(["bajutsu/common/provisioning/provision.py"], "ios") is False
+    assert is_relevant(["bajutsu/common/provisioning/provision.py"], "android") is False
 
 
 def test_serve_analytics_modules_are_relevant_on_no_lane_except_web_serve() -> None:
@@ -302,8 +303,8 @@ def test_serve_analytics_modules_are_relevant_on_no_lane_except_web_serve() -> N
 def test_ios_lane_surface() -> None:
     # iOS (the default lane) drives only the XCUITest driver modules, BajutsuKit, its own showcase
     # apps, its own conformance harness, and its own workflow file.
-    assert is_relevant(["bajutsu/drivers/xcuitest.py"]) is True
-    assert is_relevant(["bajutsu/drivers/xcuitest_live.py"]) is True
+    assert is_relevant(["bajutsu/common/drivers/xcuitest.py"]) is True
+    assert is_relevant(["bajutsu/common/drivers/xcuitest_live.py"]) is True
     assert is_relevant(["BajutsuKit/Sources/x.swift"]) is True
     assert is_relevant(["demos/showcase/ios/swiftui/App.swift"]) is True
     assert is_relevant(["tests/test_driver_conformance_ondevice.py"]) is True
@@ -322,11 +323,11 @@ def test_ios_lane_surface() -> None:
     assert is_relevant(["demos/showcase/network/assert_network_evidence.py"], "android") is False
     assert is_relevant(["demos/showcase/network/assert_network_evidence.py"], "web") is False
     # ...but not another lane's driver, app SDK, or workflow — the regression this fixes: a bare
-    # `bajutsu/drivers/` sweep previously fired the metered macOS jobs on an adb-only or
+    # `bajutsu/common/drivers/` sweep previously fired the metered macOS jobs on an adb-only or
     # playwright-only change that XCUITest never imports.
-    assert is_relevant(["bajutsu/drivers/adb.py"]) is False
-    assert is_relevant(["bajutsu/drivers/coordinate_tree.py"]) is False
-    assert is_relevant(["bajutsu/drivers/playwright.py"]) is False
+    assert is_relevant(["bajutsu/common/drivers/adb.py"]) is False
+    assert is_relevant(["bajutsu/common/drivers/coordinate_tree.py"]) is False
+    assert is_relevant(["bajutsu/common/drivers/playwright.py"]) is False
     assert is_relevant(["BajutsuAndroid/src/Clipboard.kt"]) is False
     assert is_relevant([".github/workflows/web-e2e.yml"]) is False
 
@@ -334,8 +335,8 @@ def test_ios_lane_surface() -> None:
 def test_android_lane_surface() -> None:
     # Android drives only the adb driver (+ the resident channel), its own showcase and app SDKs, its
     # own conformance harness, and its own workflow file.
-    assert is_relevant(["bajutsu/drivers/adb.py"], "android") is True
-    assert is_relevant(["bajutsu/adb_resident.py"], "android") is True
+    assert is_relevant(["bajutsu/common/drivers/adb.py"], "android") is True
+    assert is_relevant(["bajutsu/common/backend_cli/adb_resident.py"], "android") is True
     assert is_relevant(["demos/showcase/android/Makefile"], "android") is True
     assert is_relevant(["BajutsuAndroid/src/Clipboard.kt"], "android") is True
     assert is_relevant(["BajutsuAndroidUIAutomatorServer/src/Server.kt"], "android") is True
@@ -354,29 +355,29 @@ def test_android_lane_surface() -> None:
     assert is_relevant(["scripts/collect_android_diagnostics.sh"], "android") is True
     # The `uiautomator (codegen)` job (BE-0294) regenerates its test with `bajutsu codegen`, so the
     # codegen CLI command is android-relevant — the one CLI command besides `run` this lane drives.
-    assert is_relevant(["bajutsu/cli/commands/codegen.py"], "android") is True
+    assert is_relevant(["bajutsu/codegen/cli.py"], "android") is True
     # ...but not another lane's driver, app, or workflow.
-    assert is_relevant(["bajutsu/drivers/playwright.py"], "android") is False
+    assert is_relevant(["bajutsu/common/drivers/playwright.py"], "android") is False
     assert is_relevant(["BajutsuKit/Sources/x.swift"], "android") is False
     assert is_relevant([".github/workflows/web-e2e.yml"], "android") is False
 
 
 def test_android_lane_catches_the_adb_drivers_own_dependencies() -> None:
-    # adb.py imports `bajutsu.drivers.base` (the Driver Protocol / selector resolution every driver
-    # subclasses) and `bajutsu.drivers.coordinate_tree` (the read/settle core, BE-0254) — a change
+    # adb.py imports `bajutsu.common.drivers.base` (the Driver Protocol / selector resolution every driver
+    # subclasses) and `bajutsu.common.drivers.coordinate_tree` (the read/settle core, BE-0254) — a change
     # to either can change adb's runtime behavior, so both must trigger the
-    # Android lane even though its fragment narrows the rest of `bajutsu/drivers/` to `adb.py` alone.
-    assert is_relevant(["bajutsu/drivers/base.py"], "android") is True
-    assert is_relevant(["bajutsu/drivers/coordinate_tree.py"], "android") is True
+    # Android lane even though its fragment narrows the rest of `bajutsu/common/drivers/` to `adb.py` alone.
+    assert is_relevant(["bajutsu/common/drivers/base.py"], "android") is True
+    assert is_relevant(["bajutsu/common/drivers/coordinate_tree.py"], "android") is True
     # base.py is universal — every lane's driver imports it, so it triggers on every lane too.
     for lane in ("ios", "android", "web"):
-        assert is_relevant(["bajutsu/drivers/base.py"], lane) is True, lane
+        assert is_relevant(["bajutsu/common/drivers/base.py"], lane) is True, lane
 
 
 def test_web_lane_surface() -> None:
     # The web lane drives only the Playwright driver, the serve backend + templates (the serve-UI
     # dogfood), the web + serve-ui demos, its own conformance harness, and its own workflow file.
-    assert is_relevant(["bajutsu/drivers/playwright.py"], "web") is True
+    assert is_relevant(["bajutsu/common/drivers/playwright.py"], "web") is True
     assert is_relevant(["bajutsu/serve/app.py"], "web") is True
     assert is_relevant(["bajutsu/templates/report.html"], "web") is True
     assert is_relevant(["demos/serve-ui/scenario.yaml"], "web") is True
@@ -384,16 +385,16 @@ def test_web_lane_surface() -> None:
     assert is_relevant(["tests/test_driver_conformance_web.py"], "web") is True
     assert is_relevant([".github/workflows/web-e2e.yml"], "web") is True
     # ...but not the Android app SDK, the iOS showcase, another lane's driver, or another lane's
-    # workflow — the regression this fixes: a bare `bajutsu/drivers/` sweep previously fired the
+    # workflow — the regression this fixes: a bare `bajutsu/common/drivers/` sweep previously fired the
     # Playwright jobs on an XCUITest-only or adb-only change that `playwright.py` never imports.
     assert is_relevant(["BajutsuAndroid/src/Clipboard.kt"], "web") is False
     assert is_relevant(["demos/showcase/ios/swiftui/App.swift"], "web") is False
     assert is_relevant([".github/workflows/android-e2e.yml"], "web") is False
     assert is_relevant([".github/actions/setup-android-toolchain/action.yml"], "web") is False
-    assert is_relevant(["bajutsu/drivers/xcuitest.py"], "web") is False
-    assert is_relevant(["bajutsu/drivers/xcuitest_live.py"], "web") is False
-    assert is_relevant(["bajutsu/drivers/adb.py"], "web") is False
-    assert is_relevant(["bajutsu/drivers/coordinate_tree.py"], "web") is False
+    assert is_relevant(["bajutsu/common/drivers/xcuitest.py"], "web") is False
+    assert is_relevant(["bajutsu/common/drivers/xcuitest_live.py"], "web") is False
+    assert is_relevant(["bajutsu/common/drivers/adb.py"], "web") is False
+    assert is_relevant(["bajutsu/common/drivers/coordinate_tree.py"], "web") is False
 
 
 # --- Package sweeps that a module→package split used to silently break ----------------------------
@@ -413,31 +414,31 @@ def test_lifecycle_package_files_are_relevant() -> None:
     # lane; the per-backend leaves are pinned to their own lane below.
     for lane in ("ios", "android", "web"):
         for path in (
-            "bajutsu/platform_lifecycle/__init__.py",
-            "bajutsu/platform_lifecycle/factories.py",
-            "bajutsu/platform_lifecycle/protocols.py",
-            "bajutsu/platform_lifecycle/readiness.py",
-            "bajutsu/platform_lifecycle/device_control.py",
-            "bajutsu/platform_lifecycle/read_session.py",
-            "bajutsu/platform_lifecycle/relaunchers.py",
-            "bajutsu/platform_lifecycle/environments/__init__.py",
-            "bajutsu/platform_lifecycle/environments/ios.py",
-            "bajutsu/platform_lifecycle/environments/_bundled_runner.py",
-            "bajutsu/platform_lifecycle/environments/fake.py",
+            "bajutsu/common/platform_lifecycle/__init__.py",
+            "bajutsu/common/platform_lifecycle/factories.py",
+            "bajutsu/common/platform_lifecycle/protocols.py",
+            "bajutsu/common/platform_lifecycle/readiness.py",
+            "bajutsu/common/platform_lifecycle/device_control.py",
+            "bajutsu/common/platform_lifecycle/read_session.py",
+            "bajutsu/common/platform_lifecycle/relaunchers.py",
+            "bajutsu/common/platform_lifecycle/environments/__init__.py",
+            "bajutsu/common/platform_lifecycle/environments/ios.py",
+            "bajutsu/common/platform_lifecycle/environments/_bundled_runner.py",
+            "bajutsu/common/platform_lifecycle/environments/fake.py",
         ):
             assert is_relevant([path], lane) is True, (lane, path)
 
 
 def test_lifecycle_environment_leaves_fire_only_their_own_lane() -> None:
-    # The four per-backend `Environment` leaves follow the `bajutsu/drivers/` contract one layer up:
+    # The four per-backend `Environment` leaves follow the `bajutsu/common/drivers/` contract one layer up:
     # an XCUITest-only lifecycle change must not burn the Android KVM or web Playwright jobs, which
     # never import it. Sweeping the package without this carve-out would trade the under-trigger for
     # an over-trigger on `environments/xcuitest.py`, the most-churned file in the package.
     owner = {
-        "bajutsu/platform_lifecycle/environments/xcuitest.py": "ios",
-        "bajutsu/platform_lifecycle/environments/xcuitest_live.py": "ios",
-        "bajutsu/platform_lifecycle/environments/android.py": "android",
-        "bajutsu/platform_lifecycle/environments/web.py": "web",
+        "bajutsu/common/platform_lifecycle/environments/xcuitest.py": "ios",
+        "bajutsu/common/platform_lifecycle/environments/xcuitest_live.py": "ios",
+        "bajutsu/common/platform_lifecycle/environments/android.py": "android",
+        "bajutsu/common/platform_lifecycle/environments/web.py": "web",
     }
     for path, own_lane in owner.items():
         for lane in ("ios", "android", "web"):
@@ -449,16 +450,16 @@ def test_config_package_files_are_relevant() -> None:
     # resolution feeds every lane's run, so all three must fire.
     for lane in ("ios", "android", "web"):
         for path in (
-            "bajutsu/config/__init__.py",
-            "bajutsu/config/resolve.py",
-            "bajutsu/config/effective.py",
-            "bajutsu/config/schema.py",
-            "bajutsu/config/accessors.py",
+            "bajutsu/common/config/__init__.py",
+            "bajutsu/common/config/resolve.py",
+            "bajutsu/common/config/effective.py",
+            "bajutsu/common/config/schema.py",
+            "bajutsu/common/config/accessors.py",
         ):
             assert is_relevant([path], lane) is True, (lane, path)
     # `config_source.py` is a separate top-level module and still matches by name — the swept
-    # `bajutsu/config/` prefix must not be what carries it.
-    assert is_relevant(["bajutsu/config_source.py"]) is True
+    # `bajutsu/common/config/` prefix must not be what carries it.
+    assert is_relevant(["bajutsu/common/config_source.py"]) is True
 
 
 # --- Structural guards against a silent under-trigger ---------------------------------------------
@@ -472,7 +473,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Directories split per backend: a file is either claimed by the lanes whose backend imports it, or
 # swept into the shared core. Neither may leave a file matching nothing on every lane.
-_PER_BACKEND_DIRS = ("bajutsu/drivers", "bajutsu/platform_lifecycle/environments")
+_PER_BACKEND_DIRS = ("bajutsu/common/drivers", "bajutsu/common/platform_lifecycle/environments")
 
 
 def test_no_per_backend_file_is_orphaned() -> None:
@@ -560,14 +561,14 @@ def test_periphery_exclusions_carry_a_reason() -> None:
 # run-path file is either gated or explicitly excluded.
 
 # The files the three lanes actually execute — `bajutsu run` / `codegen` / `record` / `doctor`, the
-# web lane's `python -m bajutsu.provision`, and the on-device conformance harness. Their transitive
-# `bajutsu` imports are the run path this check must keep fully classified.
+# web lane's `python -m bajutsu.common.provisioning.provision`, and the on-device conformance
+# harness. Their transitive `bajutsu` imports are the run path this check must keep fully classified.
 _RUN_ENTRYPOINTS = (
-    "bajutsu/cli/commands/run.py",
-    "bajutsu/cli/commands/codegen.py",
-    "bajutsu/cli/commands/record.py",
+    "bajutsu/run/cli.py",
+    "bajutsu/codegen/cli.py",
+    "bajutsu/record/cli.py",
     "bajutsu/cli/commands/doctor.py",
-    "bajutsu/provision.py",
+    "bajutsu/common/provisioning/provision.py",
     "tests/driver_conformance.py",
 )
 
@@ -640,15 +641,16 @@ def test_relative_imports_resolve_to_absolute() -> None:
     # The closure walk must follow `from . import x` / `from .mod import y` edges (the codebase has
     # none today, but Unit 2 exists to survive that drift). A `__init__.py` resolving a relative import
     # to `bajutsu.common.agents.__init__.factory` instead of `bajutsu.common.agents.factory` would silently drop the
-    # run-path file behind it — the exact miss this check guards against. `common/agents/` sits two
-    # packages below `bajutsu`, so reaching the top-level `runner` sibling takes three dots, not two.
+    # run-path file behind it — the exact miss this check guards against. `common/agents/` and
+    # `common/runner/` are both one package below `common`, so reaching the `runner` sibling takes
+    # two dots, not three.
     found = _imports_from_source(
         "bajutsu/common/agents/__init__.py",
-        "from . import protocols\nfrom .factory import make_agent\nfrom ...runner import pipeline\n",
+        "from . import protocols\nfrom .factory import make_agent\nfrom ..runner import pipeline\n",
     )
     assert "bajutsu.common.agents.protocols" in found
     assert "bajutsu.common.agents.factory" in found
-    assert "bajutsu.runner.pipeline" in found
+    assert "bajutsu.common.runner.pipeline" in found
     assert not any("__init__" in name for name in found), found
 
 
@@ -762,7 +764,7 @@ def test_main_respects_the_e2e_lane_env(tmp_path: Path, monkeypatch: pytest.Monk
     _init_repo(tmp_path, monkeypatch)
     _commit(tmp_path, "README.md", "seed")
     _git(tmp_path, "branch", "pr")
-    main_tip = _commit(tmp_path, "bajutsu/runner/pipeline.py", "unrelated on main")
+    main_tip = _commit(tmp_path, "bajutsu/common/runner/pipeline.py", "unrelated on main")
     _git(tmp_path, "checkout", "-q", "pr")
     pr_tip = _commit(tmp_path, "BajutsuAndroid/src/Clipboard.kt", "android app SDK only")
 
@@ -787,7 +789,7 @@ def test_main_raises_on_a_misconfigured_e2e_lane(
     _init_repo(tmp_path, monkeypatch)
     _commit(tmp_path, "README.md", "seed")
     _git(tmp_path, "branch", "pr")
-    main_tip = _commit(tmp_path, "bajutsu/runner/pipeline.py", "unrelated on main")
+    main_tip = _commit(tmp_path, "bajutsu/common/runner/pipeline.py", "unrelated on main")
     _git(tmp_path, "checkout", "-q", "pr")
     pr_tip = _commit(tmp_path, "roadmaps/proposals/BE-XXXX-foo/BE-XXXX-foo.md", "roadmap only")
 
@@ -834,14 +836,16 @@ def test_changed_files_uses_merge_base_not_branch_tips(
 ) -> None:
     # The bug this fixes: `base` is the base-branch tip, and when it has advanced past the PR's fork
     # point a two-dot `git diff base head` reports every file main touched meanwhile — so an
-    # unrelated bajutsu/runner change on main would trip the filter on a roadmap-only PR. A
+    # unrelated bajutsu/common/runner change on main would trip the filter on a roadmap-only PR. A
     # three-dot (merge-base) diff yields only the PR's own changes.
     _init_repo(tmp_path, monkeypatch)
     _commit(tmp_path, "README.md", "seed")
     _git(tmp_path, "branch", "pr")
 
     # main advances with an on-device-relevant file the PR never touches.
-    main_tip = _commit(tmp_path, "bajutsu/runner/pipeline.py", "unrelated run-path change on main")
+    main_tip = _commit(
+        tmp_path, "bajutsu/common/runner/pipeline.py", "unrelated run-path change on main"
+    )
 
     # The PR branch, forked before that, changes only a roadmap file.
     _git(tmp_path, "checkout", "-q", "pr")
@@ -876,7 +880,7 @@ def test_main_emits_false_for_a_roadmap_only_pr(
     _init_repo(tmp_path, monkeypatch)
     _commit(tmp_path, "README.md", "seed")
     _git(tmp_path, "branch", "pr")
-    main_tip = _commit(tmp_path, "bajutsu/runner/pipeline.py", "unrelated on main")
+    main_tip = _commit(tmp_path, "bajutsu/common/runner/pipeline.py", "unrelated on main")
     _git(tmp_path, "checkout", "-q", "pr")
     pr_tip = _commit(tmp_path, "roadmaps/proposals/BE-XXXX-foo/BE-XXXX-foo.md", "roadmap only")
 
@@ -901,13 +905,13 @@ def test_main_emits_false_for_a_roadmap_only_pr(
 
 def test_pool_fires_on_the_parallel_run_surface() -> None:
     for path in (
-        "bajutsu/runner/pool.py",
-        "bajutsu/runner/pipeline.py",
-        "bajutsu/platform_lifecycle/environments/android.py",
+        "bajutsu/common/runner/pool.py",
+        "bajutsu/common/runner/pipeline.py",
+        "bajutsu/common/platform_lifecycle/environments/android.py",
         # `_resolve_lanes` — the comma `--udid` list turned into the pool, and the `--workers` cap.
-        "bajutsu/cli/commands/run.py",
-        "bajutsu/evidence/core.py",
-        "bajutsu/evidence/sink.py",
+        "bajutsu/run/cli.py",
+        "bajutsu/common/evidence/core.py",
+        "bajutsu/common/evidence/sink.py",
         "scripts/assert_pool_isolation.py",
         "scripts/android_pool_e2e.sh",
         # Mints the first emulator; the script boots the second beside it.
@@ -921,7 +925,7 @@ def test_pool_does_not_fire_on_a_relevant_change_off_that_surface() -> None:
     # The whole point of the narrower key: an ordinary driver or scenario change fires the lane's
     # single-device jobs (`is_relevant` stays true) without paying for two booted emulators.
     for path in (
-        "bajutsu/drivers/adb.py",
+        "bajutsu/common/drivers/adb.py",
         "demos/showcase/scenarios/smoke.yaml",
         "demos/showcase/android/compose/build.gradle.kts",
     ):
@@ -1009,7 +1013,7 @@ def test_pool_raises_on_an_unknown_lane() -> None:
     # Same reasoning as `is_relevant`: E2E_LANE is a hard-coded literal, so a typo must fail the
     # `changes` job rather than silently substitute another lane's filter.
     with pytest.raises(ValueError, match="Unknown E2E lane"):
-        touches_pool(["bajutsu/runner/pool.py"], "andorid")
+        touches_pool(["bajutsu/common/runner/pool.py"], "andorid")
 
 
 # --- Change classification (BE-0322) -------------------------------------------------------------
@@ -1052,10 +1056,14 @@ def test_classify_change_shared_when_a_relevant_non_scenario_path_changes() -> N
     # Shared driver / runner / app / workflow code can affect any scenario, so any relevant path
     # outside the scenario files fires the whole lane — even alongside a scenario-only edit.
     assert classify_change(["bajutsu/runner/pipeline.py"]) == "shared"
+    assert classify_change(["bajutsu/common/drivers/xcuitest.py"]) == "shared"
+    assert classify_change(["bajutsu/common/runner/pipeline.py"]) == "shared"
     assert classify_change(["bajutsu/drivers/xcuitest.py"]) == "shared"
     assert classify_change([".github/workflows/ios-e2e.yml"]) == "shared"
     assert (
-        classify_change(["demos/showcase/scenarios/smoke.yaml", "bajutsu/runner/pipeline.py"])
+        classify_change(
+            ["demos/showcase/scenarios/smoke.yaml", "bajutsu/common/runner/pipeline.py"]
+        )
         == "shared"
     )
 
@@ -1587,7 +1595,7 @@ def test_main_narrows_a_scenario_only_ios_change_to_the_affected_jobs(
     _init_repo(tmp_path, monkeypatch)
     _commit(tmp_path, "README.md", "seed")
     _git(tmp_path, "branch", "pr")
-    main_tip = _commit(tmp_path, "bajutsu/runner/pipeline.py", "unrelated on main")
+    main_tip = _commit(tmp_path, "bajutsu/common/runner/pipeline.py", "unrelated on main")
     _git(tmp_path, "checkout", "-q", "pr")
     pr_tip = _commit(tmp_path, "demos/showcase/scenarios/gestures_multitouch.yaml", "gesture edit")
 

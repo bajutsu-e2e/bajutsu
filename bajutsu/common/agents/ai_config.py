@@ -20,7 +20,7 @@ import os
 # AiConfig lives in `config` (the resolved `ai` block belongs with the rest of the config, and the
 # deterministic core must read it without importing this AI stack, BE-0112). Re-exported here so the
 # AI paths import the config type alongside the resolvers that read it from one module.
-from bajutsu.config import AiConfig as AiConfig
+from bajutsu.common.config import AiConfig as AiConfig
 
 PROVIDER_ENV = "BAJUTSU_AI_PROVIDER"
 MODEL_ENV = "BAJUTSU_AI_MODEL"  # provider-agnostic model override (config `ai.model` wins over it)

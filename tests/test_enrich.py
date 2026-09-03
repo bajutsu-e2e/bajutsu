@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from bajutsu.common.agents.enrich import enrich
 from bajutsu.common.agents.protocols import EnrichmentProposal, StepContext
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.scenario import Assertion, Scenario, Step
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
 
 
 class FakeEnrichmentAgent:
@@ -244,7 +244,7 @@ def test_enrich_streams_progress_to_reporter() -> None:
 
 
 def test_enrich_uses_alert_guard_during_replay() -> None:
-    from bajutsu.orchestrator import AlertEvent
+    from bajutsu.common.orchestrator import AlertEvent
 
     app: base.Element = {
         "identifier": "App",

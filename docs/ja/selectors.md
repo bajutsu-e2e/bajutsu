@@ -4,7 +4,7 @@
 
 > 「どの要素を操作または検証するか」をどう指定し、どう一意に確定するかを説明します。Bajutsu の決定性はこのモジュールに集約されています。すべての実行系（orchestrator / drivers / assertions）がここに依存します。
 >
-> 実装: `bajutsu/drivers/base.py`。
+> 実装: `bajutsu/common/drivers/base.py`。
 
 関連: [concepts の決定性原則](concepts.md#3-決定性ファースト4-つの具体策) · [scenarios の DSL](scenarios.md#アサーション-dsl) · [drivers](drivers.md)
 
@@ -60,7 +60,7 @@ class Element(TypedDict):
 ### オーサリング表現と実行時表現
 
 - シナリオ YAML 側の[セレクタ](glossary.md#シナリオのオーサリング)は `scenario/models/selector.py` の `Selector`（pydantic、`idMatches` 等の alias を持つ）です。
-- 解決に渡るのは `drivers/base.py` の `Selector`（TypedDict）です。
+- 解決に渡るのは `common/drivers/base.py` の `Selector`（TypedDict）です。
 - 変換は `Selector.as_selector()` で行います（`None` を除いて TypedDict 化）。
 
 ## 解決セマンティクス
@@ -94,7 +94,7 @@ class Element(TypedDict):
 > **トレードオフ**：iOS では `other` が、このドライバが名前を付けていない実在のコントロールも含みます。`checkBox`、`radioButton`、`popUpButton`、`stepper`、`datePicker` などは、汎用ラッパーと同じく `typeName` の `default:` 節に落ちます（`BajutsuKit/Runner/Sources/XcuitestElementProvider.swift`）。そうしたコントロールが、同じ label を持つ分類済みの兄弟要素と衝突すると、`AmbiguousSelector` を送出せず分類済みの側を黙って残します。影響するのは同一セレクタでの衝突だけであり、分類済みの兄弟要素がなく単独で解決される未分類コントロールには影響しません。`UIDatePicker` は、この隙間が実質的な損失にならない例です。`other` のコンテナの下にあるホイールはそれぞれ `pickerWheel` に分類されるため、[`setPickerValue`](scenarios.md#setpickervalue) はホイールを直接指定できます。日付ピッカーの値を設定するために、親要素の分類を埋める必要はありません。
 
 ```python
-# drivers/base.py（抜粋）
+# common/drivers/base.py（抜粋）
 def resolve_unique(elements, sel):
     candidates = _collapse_identical_duplicates(find_all(elements, sel))
     if len(candidates) > 1 and "other" not in sel.get("traits", []):

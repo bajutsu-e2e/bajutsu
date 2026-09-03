@@ -6,9 +6,10 @@ import functools
 from collections.abc import Callable
 from typing import Any
 
-from bajutsu import adb, device_errors, doctor, simctl
-from bajutsu.backends import IMPLEMENTED, resolve_actuators
-from bajutsu.config import (
+from bajutsu.common import doctor
+from bajutsu.common.backend_cli import adb, simctl
+from bajutsu.common.backends import IMPLEMENTED, resolve_actuators
+from bajutsu.common.config import (
     Effective,
     android_package,
     ios_bundle_id,
@@ -17,7 +18,8 @@ from bajutsu.config import (
     web_base_url,
     web_engine,
 )
-from bajutsu.drivers import base
+from bajutsu.common.devices import errors as device_errors
+from bajutsu.common.drivers import base
 from bajutsu.serve.operations._common import _device_args
 from bajutsu.serve.state import ServeState
 
@@ -81,7 +83,7 @@ def doctor_check(
         return {"error": f"no implemented backend among {backends_list}"}, 400
     actuator = implemented[0]
 
-    from bajutsu import preflight
+    from bajutsu.common.capability import preflight
 
     cfg_checks = preflight.config_checks(
         actuator,

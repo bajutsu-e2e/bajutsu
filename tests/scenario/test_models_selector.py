@@ -5,10 +5,10 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from bajutsu.common.drivers import base
 from bajutsu.common.scenario import (
     Selector,
 )
-from bajutsu.drivers import base
 
 
 def test_selector_alias_and_as_selector() -> None:

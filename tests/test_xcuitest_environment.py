@@ -21,14 +21,14 @@ from typing import Any
 
 import pytest
 
-from bajutsu import backends, simctl, stall_diagnostics
-from bajutsu.common.scenario import Preconditions
-from bajutsu.config import Effective, load_config, resolve
-from bajutsu.device_os import DeviceOS
-from bajutsu.drivers.fake import FakeDriver
-from bajutsu.drivers.xcuitest import XcuitestChannelError
-from bajutsu.platform_lifecycle.environments import xcuitest as xcuitest_env
-from bajutsu.platform_lifecycle.environments.xcuitest import (
+from bajutsu.common import backends, stall_diagnostics
+from bajutsu.common.backend_cli import simctl
+from bajutsu.common.config import Effective, load_config, resolve
+from bajutsu.common.devices.os import DeviceOS
+from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.drivers.xcuitest import XcuitestChannelError
+from bajutsu.common.platform_lifecycle.environments import xcuitest as xcuitest_env
+from bajutsu.common.platform_lifecycle.environments.xcuitest import (
     _MAX_WARM_REUSES,
     _MAX_WARM_REUSES_ENV,
     _RECOVERY_TIMEOUT,
@@ -50,6 +50,7 @@ from bajutsu.platform_lifecycle.environments.xcuitest import (
     _spawn_cold_with_retry,
     _Spawned,
 )
+from bajutsu.common.scenario import Preconditions
 
 _DEVICE_UDID = "00008030-000A1B2C3D4E"  # a physical-device id shape (not a simctl UUID)
 
@@ -219,9 +220,9 @@ def test_appium_lease_endpoint_routes_to_the_live_environment() -> None:
     # spec and returns the live WebDriver environment, which drives the reserved device off the simctl
     # / xcodebuild path — so the endpoint reaches the WebDriver session, never the udid machinery
     # (BE-0238).
-    from bajutsu.platform_lifecycle.environments.xcuitest_live import XcuitestLiveEnvironment
-    from bajutsu.platform_lifecycle.factories import environment_for
-    from bajutsu.runner import device_provider as dp
+    from bajutsu.common.platform_lifecycle.environments.xcuitest_live import XcuitestLiveEnvironment
+    from bajutsu.common.platform_lifecycle.factories import environment_for
+    from bajutsu.common.runner import device_provider as dp
 
     cfg = load_config(
         "targets:\n  s:\n    bundleId: com.x\n    xcuitest:\n      deviceType: device\n"
@@ -807,7 +808,7 @@ def test_respawn_uses_the_tighter_readiness_ceiling(
     # Patch the module-level name `_spawn_cold` resolves against (string target, so no second
     # `import` of a module this file already imports names from).
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.environments.xcuitest._spawn_cold_with_retry", spy
+        "bajutsu.common.platform_lifecycle.environments.xcuitest._spawn_cold_with_retry", spy
     )
 
     XcuitestEnvironment("xcuitest", "UDID", env_run=run, respawn=False).start(eff, Preconditions())
@@ -836,7 +837,7 @@ def test_in_place_respawn_uses_the_tighter_readiness_ceiling(
         return original(*args, **kwargs)
 
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.environments.xcuitest._spawn_cold_with_retry", spy
+        "bajutsu.common.platform_lifecycle.environments.xcuitest._spawn_cold_with_retry", spy
     )
 
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)  # respawn=False: a first bring-up
@@ -867,7 +868,7 @@ def test_erase_forced_cold_spawn_keeps_the_full_ceiling(
         return original(*args, **kwargs)
 
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.environments.xcuitest._spawn_cold_with_retry", spy
+        "bajutsu.common.platform_lifecycle.environments.xcuitest._spawn_cold_with_retry", spy
     )
 
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
@@ -943,7 +944,7 @@ def test_a_discard_terminates_the_xctrunner_app_too(
     # automation session, and the ~5 cold spawns an ios-e2e job makes can stack up that many of them.
     # Its id comes off the .xctestrun, so an explicit testRunner is terminated like the bundled one.
     _, simctl_calls, run = _fake_toolchain(monkeypatch)
-    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.runner.uitests.xctrunner")
+    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.common.runner.uitests.xctrunner")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(_sim_eff(test_runner=str(runner)), Preconditions())
     simctl_calls.clear()
@@ -953,7 +954,7 @@ def test_a_discard_terminates_the_xctrunner_app_too(
         "simctl",
         "terminate",
         "UDID",
-        "com.bajutsu.runner.uitests.xctrunner",
+        "com.bajutsu.common.runner.uitests.xctrunner",
     ] in simctl_calls
     assert [
         "xcrun",
@@ -971,7 +972,7 @@ def test_a_hung_terminate_is_not_absorbed_by_a_discard(
     # running. A `terminate` that never returns is the opposite case — a wedged CoreSimulator — and
     # absorbing it here would leave the discard path exactly as silent as it was before BE-0363.
     _, _, run = _fake_toolchain(monkeypatch)
-    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.runner.uitests.xctrunner")
+    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.common.runner.uitests.xctrunner")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     env.start(_sim_eff(test_runner=str(runner)), Preconditions())
 
@@ -1033,7 +1034,7 @@ def test_end_lease_leaves_the_xctrunner_app_running(
     # reuse this environment exists to provide, turning every lease back into a cold spawn. Only a
     # discard — which has already given the runner up — reaches it.
     _, simctl_calls, run = _fake_toolchain(monkeypatch)
-    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.runner.uitests.xctrunner")
+    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.common.runner.uitests.xctrunner")
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
     eff = _sim_eff(test_runner=str(runner))
     driver = env.start(eff, Preconditions())
@@ -1076,7 +1077,7 @@ def test_a_real_device_discard_never_terminates_through_simctl(
     monkeypatch.setattr(subprocess, "Popen", lambda *_a, **_k: _FakeProc())
     monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _FakeDriver())
     _patch_group_signals(monkeypatch)
-    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.runner.uitests.xctrunner")
+    runner = _write_runner(tmp_path, host_bundle_id="com.bajutsu.common.runner.uitests.xctrunner")
     env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=_run)
     env.start(_device_eff(test_runner=str(runner)), Preconditions())
     env._discard_runner(warn_on_crash=False, keep_log=True)
@@ -1307,7 +1308,7 @@ def test_runner_output_is_captured_by_default_and_is_ephemeral(
     _, _, run = _fake_toolchain(monkeypatch)
     monkeypatch.delenv("BAJUTSU_XCUITEST_RUNNER_LOG", raising=False)
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.environments.xcuitest._DEFAULT_RUNNER_LOG_DIR",
+        "bajutsu.common.platform_lifecycle.environments.xcuitest._DEFAULT_RUNNER_LOG_DIR",
         tmp_path / "default-logs",
     )
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
@@ -1346,7 +1347,7 @@ def test_a_kept_default_capture_is_logged_at_the_moment_it_is_kept(
     _, _, run = _fake_toolchain(monkeypatch)
     monkeypatch.delenv("BAJUTSU_XCUITEST_RUNNER_LOG", raising=False)
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.environments.xcuitest._DEFAULT_RUNNER_LOG_DIR",
+        "bajutsu.common.platform_lifecycle.environments.xcuitest._DEFAULT_RUNNER_LOG_DIR",
         tmp_path / "default-logs",
     )
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
@@ -1385,7 +1386,7 @@ def test_a_repeatable_cold_spawn_failure_fails_loudly_and_keeps_the_logs(
     # ready, process dead) fails fast on both attempts and raises loudly — no 120s dead-wait, no
     # misleading "mid-run crash" warning (its reason is in the error), and both attempts' captured
     # logs are kept on disk as evidence past the 20-line tail (BE-0319 units 1/3/4).
-    module = "bajutsu.platform_lifecycle.environments.xcuitest"
+    module = "bajutsu.common.platform_lifecycle.environments.xcuitest"
     monkeypatch.setattr(f"{module}._RUNNER_STARTUP_TIMEOUT", 0.05)
     monkeypatch.setattr(f"{module}._DEFAULT_RUNNER_LOG_DIR", tmp_path / "logs")
     monkeypatch.delenv("BAJUTSU_XCUITEST_RUNNER_LOG", raising=False)

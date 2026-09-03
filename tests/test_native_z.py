@@ -20,14 +20,14 @@ from unittest import mock
 
 import pytest
 
-from bajutsu.adb_resident import _parse_native_z
-from bajutsu.dom import parse_dom
-from bajutsu.drivers import base
-from bajutsu.drivers.adb import parse_hierarchy, parse_hierarchy_with_identities
-from bajutsu.drivers.fake import FakeDriver
-from bajutsu.drivers.xcuitest import XcuitestDriver, _Reply
-from bajutsu.evidence.golden import compare_element, load_golden, save_golden
-from bajutsu.zorder import ZOrderResponder
+from bajutsu.common.backend_cli.adb_resident import _parse_native_z
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.adb import parse_hierarchy, parse_hierarchy_with_identities
+from bajutsu.common.drivers.dom import parse_dom
+from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.drivers.xcuitest import XcuitestDriver, _Reply
+from bajutsu.common.drivers.zorder import ZOrderResponder
+from bajutsu.common.evidence.golden import compare_element, load_golden, save_golden
 
 _HIERARCHY = (
     '<?xml version="1.0" encoding="UTF-8"?>'

@@ -1,7 +1,7 @@
 """Visual-assertion image preprocessing.
 
 The coordinate math, cropping, masking, and Pillow file I/O a `visual` assertion needs before it
-hands off to `bajutsu.evidence.visual`'s pixel-compare engine. Frames are in element points; the screenshot
+hands off to `bajutsu.common.evidence.visual`'s pixel-compare engine. Frames are in element points; the screenshot
 is in device pixels, so everything here resolves selectors and scales frames into pixel space.
 """
 
@@ -11,14 +11,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from bajutsu.common.assertions._common import AssertionResult, _resolve_one, sel_str
+from bajutsu.common.drivers import base
+from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.scenario import (
     ExcludeRegion,
     Selector,
     SelectorRegion,
     VisualMatch,
 )
-from bajutsu.drivers import base
-from bajutsu.evidence.sink import RunArtifactWriter
 
 
 @dataclass(frozen=True)
@@ -84,7 +84,7 @@ def _visual_scale(
     resolved frame maps onto the actual image. Returns None when there are no elements to size the
     screen from — the caller then can't resolve any selector to a frame.
     """
-    from bajutsu.elements import screen_size_from_elements
+    from bajutsu.common.drivers.elements import screen_size_from_elements
 
     sw, sh = screen_size_from_elements(elements)
     if sw <= 0 or sh <= 0:
@@ -273,7 +273,7 @@ def _eval_visual(
         )
 
     try:
-        from bajutsu.evidence.visual import compare_images
+        from bajutsu.common.evidence.visual import compare_images
     except ImportError:
         return AssertionResult(
             False, "visual", detail, "visual assertions need the 'visual' extra (Pillow)"

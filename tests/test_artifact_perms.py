@@ -7,7 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from bajutsu.artifact_perms import ARTIFACT_FILE_MODE, RUN_DIR_MODE, make_run_dir, restrict_file
+from bajutsu.common.run_meta.artifact_perms import (
+    ARTIFACT_FILE_MODE,
+    RUN_DIR_MODE,
+    make_run_dir,
+    restrict_file,
+)
 
 
 def _mode(path: Path) -> int:

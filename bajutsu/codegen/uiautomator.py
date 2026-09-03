@@ -4,7 +4,7 @@ A passing scenario is the deterministic source of truth; emitting a UI Automator
 team run the same flow in their existing Android instrumentation CI — no bajutsu runtime, no
 adb driver of ours, and no AI at test time. The mapping is purely structural (no AI).
 
-UI Automator is the closer twin of the adb backend (`drivers/adb.py`): both take a
+UI Automator is the closer twin of the adb backend (`common/drivers/adb.py`): both take a
 cross-process, black-box view of the app through `resource-id` / `text` / `content-desc`, so the
 emitter is the faithful *reverse* of the driver's own read of the tree — `resource-id` (with the
 `<package>:id/` prefix the driver strips) → `By.res`, `text` → `By.text`, `content-desc` →
@@ -38,11 +38,11 @@ from bajutsu.codegen.common import (
     render_test_file,
 )
 from bajutsu.common.assertions import request_label
+from bajutsu.common.drivers import base
 from bajutsu.common.scenario import AfterRule, Assertion, Gone, Scenario, Step, WaitRequest
 from bajutsu.common.scenario.models.assertions import CountMatch, TextMatch, Wait
-from bajutsu.drivers import base
 
-# The adb backend has no network-interception surface (drivers/adb.py CAPABILITIES), so a network
+# The adb backend has no network-interception surface (common/drivers/adb.py CAPABILITIES), so a network
 # `request` assertion / `until: { request }` wait has no faithful translation — a labeled TODO
 # naming the endpoint, like the device-control steps, not a bare "unsupported".
 _NO_NETWORK = network_unsupported("the adb backend")
@@ -628,7 +628,7 @@ class _UiAutomatorGen:
             "",
             "  // Match the local id whether or not the app namespaces it with a `<package>:id/`"
             + " prefix —",
-            "  // the reverse of the adb driver stripping that prefix (drivers/adb.py).",
+            "  // the reverse of the adb driver stripping that prefix (common/drivers/adb.py).",
             "  private fun byId(id: String) =",
             f'    By.res(Pattern.compile("{_ID_PREFIX}" + Pattern.quote(id)))',
             "",

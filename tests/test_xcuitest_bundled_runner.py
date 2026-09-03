@@ -20,9 +20,9 @@ from typing import Any
 
 import pytest
 
-from bajutsu import simctl
-from bajutsu.config import XcuitestConfig
-from bajutsu.platform_lifecycle.environments import _bundled_runner, xcuitest
+from bajutsu.common.backend_cli import simctl
+from bajutsu.common.config import XcuitestConfig
+from bajutsu.common.platform_lifecycle.environments import _bundled_runner, xcuitest
 
 
 def _products(dir_: Path) -> Path:

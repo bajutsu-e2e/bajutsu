@@ -20,7 +20,8 @@ from typing import Any
 import pytest
 import yaml
 
-from bajutsu import artifact_perms, stall_diagnostics
+from bajutsu.common import stall_diagnostics
+from bajutsu.common.run_meta import artifact_perms
 
 
 def _capture_dir(root: Path, index: int, reason: str) -> Path:
@@ -173,7 +174,7 @@ def test_a_declined_capture_is_logged_loudly_enough_to_be_seen(
     _record_runs(monkeypatch)
     for _ in range(stall_diagnostics._MAX_CAPTURES_PER_REASON):
         stall_diagnostics.capture("runner-crash", stall_diagnostics.simulator_probes("UDID"))
-    with caplog.at_level("WARNING", logger="bajutsu.stall_diagnostics"):
+    with caplog.at_level("WARNING", logger="bajutsu.common.stall_diagnostics"):
         stall_diagnostics.capture("runner-crash", stall_diagnostics.simulator_probes("UDID"))
     assert any("NOT capturing" in record.message for record in caplog.records)
 
@@ -404,14 +405,14 @@ def test_an_unwritable_summary_warns_once(
         return real_open(self, *args, **kwargs)
 
     monkeypatch.setattr(Path, "open", _open)
-    with caplog.at_level("WARNING", logger="bajutsu.stall_diagnostics"):
+    with caplog.at_level("WARNING", logger="bajutsu.common.stall_diagnostics"):
         stall_diagnostics.capture("runner-crash", stall_diagnostics.simulator_probes("UDID"))
     unwritable = [r for r in caplog.records if "cannot write" in r.message]
     assert len(unwritable) == 1
     # And `reset()` must forget the warning too, or a long-lived process — the `bajutsu serve` case the
     # module's own budget comment calls out — goes permanently silent after its first unwritable summary.
     stall_diagnostics.reset()
-    with caplog.at_level("WARNING", logger="bajutsu.stall_diagnostics"):
+    with caplog.at_level("WARNING", logger="bajutsu.common.stall_diagnostics"):
         stall_diagnostics.capture("runner-crash", stall_diagnostics.simulator_probes("UDID"))
     assert len([r for r in caplog.records if "cannot write" in r.message]) == 2
 

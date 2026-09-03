@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from bajutsu import trace
+from bajutsu.analysis import trace
 
 
 def _write_run(runs: Path, run_id: str, *, ok: bool = True) -> Path:

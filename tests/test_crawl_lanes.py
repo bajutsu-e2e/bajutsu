@@ -12,19 +12,19 @@ import pytest
 import typer
 
 from bajutsu import crawl as crawl_engine
-from bajutsu.cli.commands.crawl import (
+from bajutsu.common.config import Effective
+from bajutsu.common.drivers import base
+from bajutsu.common.evidence.redaction import Redactor
+from bajutsu.common.evidence.sink import RunArtifactWriter
+from bajutsu.common.run_meta.files import RunArtifactReader
+from bajutsu.crawl.cli import (
     _make_callbacks,
     _plan_lanes,
     _resolve_warm_start,
     _wire_health,
     _write_screenmap,
 )
-from bajutsu.config import Effective
 from bajutsu.crawl.core import AliveCheck, ClearBlocking, Recover, Reset
-from bajutsu.drivers import base
-from bajutsu.evidence.redaction import Redactor
-from bajutsu.evidence.sink import RunArtifactWriter
-from bajutsu.run_files import RunArtifactReader
 
 
 def _writer(run_dir: Path) -> RunArtifactWriter:
@@ -260,7 +260,7 @@ class _HealthEnv:
 
 
 def _eff() -> object:
-    from bajutsu.config import load_config, resolve
+    from bajutsu.common.config import load_config, resolve
 
     return resolve(load_config("targets:\n  x:\n    bundleId: com.x\n"), "x")
 
@@ -357,10 +357,10 @@ def test_wire_health_no_credential_leaves_clear_blocking_unwired(
 
 def _plan_for_lane(tmp_path: Path, *, actuator: str = "xcuitest") -> object:
     """A `_CrawlPlan` filled with the few fields `_build_lane` reads, and inert values elsewhere."""
-    from bajutsu.cli.commands.crawl import _CrawlPlan
-    from bajutsu.config import load_config, resolve
-    from bajutsu.evidence.redaction import Redactor
-    from bajutsu.platform_lifecycle import environment_for
+    from bajutsu.common.config import load_config, resolve
+    from bajutsu.common.evidence.redaction import Redactor
+    from bajutsu.common.platform_lifecycle import environment_for
+    from bajutsu.crawl.cli import _CrawlPlan
 
     eff = resolve(load_config("targets:\n  s:\n    bundleId: com.x\n"), "s")
     return _CrawlPlan(
@@ -393,7 +393,7 @@ def test_build_lane_gives_the_launch_and_the_reset_one_environment(
     # would reset whichever device that udid still names, which stops being the device that came up as
     # soon as the launch had to replace a vanished Simulator (the pool's own re-keying has the same
     # cause). The reset would still succeed — against the wrong device — so nothing else notices.
-    from bajutsu.cli.commands import crawl as crawl_cmd
+    from bajutsu.crawl import cli as crawl_cmd
 
     built: list[object] = []
     reset_from: list[object] = []

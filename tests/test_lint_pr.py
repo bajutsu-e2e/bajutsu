@@ -75,7 +75,7 @@ def test_bad_commit_subjects_returns_only_the_bad_ones_in_order() -> None:
 
 
 def test_behavior_without_test_true_when_core_python_changed_but_no_tests() -> None:
-    paths = ["bajutsu/runner.py", "bajutsu/drivers/base.py"]
+    paths = ["bajutsu/runner.py", "bajutsu/common/drivers/base.py"]
     assert behavior_without_test(paths) is True
 
 

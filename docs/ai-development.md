@@ -383,9 +383,9 @@ High-traffic shared surfaces to coordinate on:
 
 | Surface | Files | Why it's shared |
 |---|---|---|
-| Driver API | [`bajutsu/drivers/base.py`](../bajutsu/drivers/base.py) | every backend + the orchestrator depend on it |
+| Driver API | [`bajutsu/common/drivers/base.py`](../bajutsu/common/drivers/base.py) | every backend + the orchestrator depend on it |
 | Scenario schema | [`bajutsu/scenario/models/scenario.py`](../bajutsu/scenario/models/scenario.py) | the hub artifact; codegen/runner/report all read it |
-| Config shape | [`bajutsu/config/`](../bajutsu/config/) | per-target layering every command resolves through |
+| Config shape | [`bajutsu/common/config/`](../bajutsu/common/config/) | per-target layering every command resolves through |
 
 ## CI keeps the branches honest
 
@@ -1171,7 +1171,7 @@ adds no LLM, and never runs inside `run`, so the prime directives hold by constr
 - **English, like every code comment.** Code (and its docstrings) is not bilingual; only the prose
   docs under `docs/` are.
 - **Google style on the public surface.** The public API — the `Driver` protocol and shared types
-  in [`bajutsu/drivers/base.py`](../bajutsu/drivers/base.py), the CLI, the MCP tools, the scenario
+  in [`bajutsu/common/drivers/base.py`](../bajutsu/common/drivers/base.py), the CLI, the MCP tools, the scenario
   schema, and the public functions of the runner / `assertions` / `network` — uses a one-line
   summary followed by `Args:` / `Returns:` / `Raises:` (and `Yields:` / `Examples:`) **only where
   they add information**. The generated reference excludes private (`_`-prefixed) members.
@@ -1301,7 +1301,7 @@ Write it at a different level than the code. Two levels work; the third does not
 
 - **Precision** — sharpen the adjacent line with what the code leaves open: units, inclusive or
   exclusive bounds, what `None` means, where a magic number comes from. The house form is the
-  trailing one-liner ([`bajutsu/totp.py`](../bajutsu/totp.py)):
+  trailing one-liner ([`bajutsu/common/totp.py`](../bajutsu/common/totp.py)):
 
   ```python
   cleaned += "=" * (-len(cleaned) % 8)  # b32decode requires the padding authenticators omit
@@ -1324,7 +1324,7 @@ elsewhere. [*Cite an argument instead of repeating it*](#cite-an-argument-instea
 above is the rule: state the conclusion, cite the `BE-NNNN` item or `docs/` page that carries the
 alternatives considered, the scope decision, and the rest of the derivation, and trim to that.
 Some genuinely long comments still earn their length — the Device Farm bootstrap block in
-[`bajutsu/cloud/devicefarm.py`](../bajutsu/cloud/devicefarm.py) is one, holding operational facts a
+[`bajutsu/common/cloud/devicefarm.py`](../bajutsu/common/cloud/devicefarm.py) is one, holding operational facts a
 maintainer needs at that exact line rather than one argument to trim — so check the comment's
 shape (the three shapes in *Cite an argument instead of repeating it*) before cutting.
 

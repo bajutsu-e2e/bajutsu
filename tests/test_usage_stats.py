@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from bajutsu.analytics.ledger import UsageEvent
-from bajutsu.analytics.stats import aggregate_usage, render_html
-from bajutsu.analytics.usage import TokenUsage
+from bajutsu.common.analytics.ledger import UsageEvent
+from bajutsu.common.analytics.stats import aggregate_usage, render_html
+from bajutsu.common.analytics.usage import TokenUsage
 
 
 def _event(

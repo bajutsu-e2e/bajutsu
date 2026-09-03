@@ -346,7 +346,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 
 ## 3. The lexical layer (YAML)
 
-A scenario file is YAML, parsed by Bajutsu's loader (`_yaml.py`), with **one deliberate
+A scenario file is YAML, parsed by Bajutsu's loader (`common/_yaml.py`), with **one deliberate
 deviation** from YAML 1.1:
 
 - **Only `true` / `false` are booleans.** `on` / `off` / `yes` / `no` stay **strings**. This deviation keeps

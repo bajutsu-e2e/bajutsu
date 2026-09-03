@@ -2,7 +2,7 @@
 
 # CLI リファレンス
 
-> 実装: `bajutsu/cli/`（Typer。コマンドごとに `cli/commands/` の 1 ファイル）。エントリポイントは `pyproject.toml` の `bajutsu = "bajutsu.cli:app"`。
+> 実装: `bajutsu/cli/`（Typer。各コマンドは所属する機能のディレクトリに置かれます。例：`run/cli.py`、`record/cli.py` — `cli/commands/` には機能を持たない `doctor`/`lint`/`schema`/`report` のみが残ります）。エントリポイントは `pyproject.toml` の `bajutsu = "bajutsu.cli:app"`。
 > この CLI（コマンドラインインターフェース）のすべてのコマンドは `--target <name>` で 1 [アプリ](glossary.md#target-app-device)を選び、
 > `--config`（既定 `bajutsu.config.yaml`）で設定を指します。アプリ固有の差分は config 側にあります（[configuration](configuration.md)）。
 
@@ -799,6 +799,6 @@ BAJUTSU_LOG_LEVEL=DEBUG uv run bajutsu run --scenario …
 伏せるシンクを持っています（BE-0055）。その横に伏せない出力をもう 1 つ足さないよう、CLI は `serve` の
 ログ設定に手を触れません。
 
-実装は [`bajutsu/diagnostics.py`](../../bajutsu/diagnostics.py) です。Android の e2e レーンは既定を
+実装は [`bajutsu/common/diagnostics.py`](../../bajutsu/common/diagnostics.py) です。Android の e2e レーンは既定を
 `WARNING` にしています。読み取りごとに 1 行出るとレーンが目に見えて長くなるためです。1 回だけ上げる
 には `make -C demos/showcase/android e2e E2E_LOG_LEVEL=DEBUG` を使います。

@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from bajutsu.backends import (
+from bajutsu.common.backends import (
     _cost_ordered,
     capabilities_for_run,
     default_available,
@@ -19,10 +19,10 @@ from bajutsu.backends import (
     select_actuator_cost_first,
     select_actuator_for_scenario,
 )
+from bajutsu.common.config import DeviceProvider, Effective, IosConfig, WebConfig, XcuitestConfig
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.adb import HierarchyRead
 from bajutsu.common.scenario import Redact, Scenario
-from bajutsu.config import DeviceProvider, Effective, IosConfig, WebConfig, XcuitestConfig
-from bajutsu.drivers import base
-from bajutsu.drivers.adb import HierarchyRead
 
 # A synthetic two-actuator platform (a "lean" actuator with no native network plus a "rich" one that
 # has it), so the same-platform evidence fallback can be exercised even though every real platform is
@@ -108,9 +108,9 @@ def test_resolve_skips_an_unavailable_provider() -> None:
 
 
 def test_network_seeded_fake_is_a_readonly_evidence_provider() -> None:
-    from bajutsu.drivers.base import EvidenceProvider
-    from bajutsu.drivers.fake import FakeDriver
-    from bajutsu.evidence.network import Collector, NetworkExchange
+    from bajutsu.common.drivers.base import EvidenceProvider
+    from bajutsu.common.drivers.fake import FakeDriver
+    from bajutsu.common.evidence.network import Collector, NetworkExchange
 
     ex = NetworkExchange(method="GET", path="/items", status=200)
     fake = FakeDriver(exchanges=[ex])
@@ -122,7 +122,7 @@ def test_network_seeded_fake_is_a_readonly_evidence_provider() -> None:
 
 
 def test_plain_fake_advertises_no_network() -> None:
-    from bajutsu.drivers.fake import FakeDriver
+    from bajutsu.common.drivers.fake import FakeDriver
 
     assert base.Capability.NETWORK not in FakeDriver().capabilities()
 
@@ -134,7 +134,7 @@ def test_backend_lifecycle_is_runtime_checkable() -> None:
     # BackendLifecycle is a typing umbrella over the full hook set — no single real driver owns the
     # whole set (see the Protocol docstring). @runtime_checkable still lets isinstance verify the
     # structural "has every hook" shape: a class with all of them passes, one missing any does not.
-    from bajutsu.drivers.base import BackendLifecycle
+    from bajutsu.common.drivers.base import BackendLifecycle
 
     class FullLifecycle:
         def navigate(self) -> None: ...
@@ -154,7 +154,7 @@ def test_backend_lifecycle_is_runtime_checkable() -> None:
 def test_playwright_driver_provides_web_lifecycle() -> None:
     # The three web-only lifecycle calls in platform_lifecycle.py resolve to these concrete methods,
     # so the cast(BackendLifecycle, driver) sites there are backed by real implementations.
-    from bajutsu.drivers.playwright import PlaywrightDriver
+    from bajutsu.common.drivers.playwright import PlaywrightDriver
 
     for name in ("navigate", "close", "reset_context"):
         assert callable(getattr(PlaywrightDriver, name))
@@ -162,7 +162,7 @@ def test_playwright_driver_provides_web_lifecycle() -> None:
 
 def test_xcuitest_driver_provides_await_ready() -> None:
     # The xcuitest-only await_ready call resolves to this concrete method.
-    from bajutsu.drivers.xcuitest import XcuitestDriver
+    from bajutsu.common.drivers.xcuitest import XcuitestDriver
 
     assert callable(XcuitestDriver.await_ready)
 
@@ -190,7 +190,7 @@ def test_ios_resolves_to_xcuitest() -> None:
 
 
 def test_xcuitest_is_implemented_and_selectable() -> None:
-    from bajutsu.backends import IMPLEMENTED, KNOWN_ACTUATORS
+    from bajutsu.common.backends import IMPLEMENTED, KNOWN_ACTUATORS
 
     assert "xcuitest" in KNOWN_ACTUATORS
     assert "xcuitest" in IMPLEMENTED
@@ -244,7 +244,7 @@ def test_select_planned_backend_reports_not_implemented(monkeypatch: pytest.Monk
     # The "recognized but not implemented yet" path still guards a future planned actuator: with adb
     # dropped from IMPLEMENTED it is recognized (in PLATFORMS) yet has no driver, so the message
     # points at the platform-reach design in vision.md rather than a generic "no available actuator".
-    monkeypatch.setattr("bajutsu.backends.IMPLEMENTED", frozenset({"xcuitest", "fake"}))
+    monkeypatch.setattr("bajutsu.common.backends.IMPLEMENTED", frozenset({"xcuitest", "fake"}))
     with pytest.raises(RuntimeError, match="not implemented yet"):
         select_actuator(["android"])
 
@@ -256,9 +256,9 @@ def test_select_web_actuator_when_available() -> None:
 
 def test_playwright_availability_gated_on_package(monkeypatch: pytest.MonkeyPatch) -> None:
     # Availability is the python package (probed without importing it), not a PATH executable.
-    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: True)
+    monkeypatch.setattr("bajutsu.common.backends._playwright_available", lambda: True)
     assert default_available("playwright") is True
-    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: False)
+    monkeypatch.setattr("bajutsu.common.backends._playwright_available", lambda: False)
     assert default_available("playwright") is False
 
 
@@ -297,7 +297,7 @@ def test_make_driver_playwright_requires_base_url() -> None:
 def test_make_driver_forwards_browser_engine(monkeypatch: pytest.MonkeyPatch) -> None:
     # make_driver passes `browser=` straight to PlaywrightDriver, so the web environment's
     # eff.browser reaches the launch (BE-0076). Recorded via a stand-in driver — no real browser.
-    import bajutsu.drivers.playwright as pw_mod
+    import bajutsu.common.drivers.playwright as pw_mod
 
     captured: dict[str, object] = {}
 
@@ -312,7 +312,7 @@ def test_make_driver_forwards_browser_engine(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_make_driver_browser_defaults_to_chromium(monkeypatch: pytest.MonkeyPatch) -> None:
-    import bajutsu.drivers.playwright as pw_mod
+    import bajutsu.common.drivers.playwright as pw_mod
 
     captured: dict[str, object] = {}
 
@@ -326,7 +326,7 @@ def test_make_driver_browser_defaults_to_chromium(monkeypatch: pytest.MonkeyPatc
 
 
 def test_make_driver_xcuitest() -> None:
-    from bajutsu.drivers.xcuitest import XcuitestDriver
+    from bajutsu.common.drivers.xcuitest import XcuitestDriver
 
     driver = make_driver("xcuitest", "UDID-1", runner_port=9999)
     assert isinstance(driver, XcuitestDriver)
@@ -349,7 +349,7 @@ def test_make_driver_forwards_the_xcuitest_diagnostics_hook(
 
     # Patched by name so this file keeps one import form for the driver module — `make_driver` imports
     # `XcuitestDriver` from it at call time, so the module attribute is what it reads.
-    monkeypatch.setattr("bajutsu.drivers.xcuitest.XcuitestDriver", _Recorder)
+    monkeypatch.setattr("bajutsu.common.drivers.xcuitest.XcuitestDriver", _Recorder)
     fired: list[bool] = []
     make_driver(
         "xcuitest",
@@ -371,7 +371,7 @@ def test_make_driver_xcuitest_requires_runner_port() -> None:
 
 
 def test_make_driver_adb() -> None:
-    from bajutsu.drivers.adb import AdbDriver
+    from bajutsu.common.drivers.adb import AdbDriver
 
     driver = make_driver("adb", "emulator-5554")
     assert isinstance(driver, AdbDriver)
@@ -384,7 +384,7 @@ def test_make_driver_planned_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     # A recognized-but-unimplemented actuator raises NotImplementedError (distinct from an
     # outright-unknown token), so the message can point at vision.md's reach design. Every real
     # actuator now has a driver, so a synthetic "future" token in KNOWN_ACTUATORS stands in.
-    monkeypatch.setattr("bajutsu.backends.KNOWN_ACTUATORS", ("xcuitest", "future"))
+    monkeypatch.setattr("bajutsu.common.backends.KNOWN_ACTUATORS", ("xcuitest", "future"))
     with pytest.raises(NotImplementedError, match="not implemented yet"):
         make_driver("future", "U")
 
@@ -408,7 +408,7 @@ def test_ensure_web_runtime_installs_engine_when_package_present(
     # Web requested + Playwright present, but the engine binary may not be: install it (idempotent).
     # The package step is skipped (it's already importable); only `playwright install <engine>` runs.
     calls: list[list[str]] = []
-    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: True)
+    monkeypatch.setattr("bajutsu.common.backends._playwright_available", lambda: True)
     monkeypatch.setattr("subprocess.run", lambda cmd, **k: calls.append(cmd))
     ensure_web_runtime(["web"], "firefox")
     assert len(calls) == 1
@@ -418,7 +418,7 @@ def test_ensure_web_runtime_installs_engine_when_package_present(
 def test_ensure_web_runtime_installs_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     # Web requested + Playwright absent: install the package additively (uv pip), then the engine.
     calls: list[list[str]] = []
-    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: False)
+    monkeypatch.setattr("bajutsu.common.backends._playwright_available", lambda: False)
     monkeypatch.setattr("subprocess.run", lambda cmd, **k: calls.append(cmd))
     ensure_web_runtime(["web"])  # default engine
     assert calls[0][:3] == ["uv", "pip", "install"] and "playwright" in calls[0]
@@ -430,7 +430,7 @@ def test_ensure_web_runtime_installs_requested_engine_when_missing(
 ) -> None:
     # The requested engine (not chromium) is the one fetched after the package is added.
     calls: list[list[str]] = []
-    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: False)
+    monkeypatch.setattr("bajutsu.common.backends._playwright_available", lambda: False)
     monkeypatch.setattr("subprocess.run", lambda cmd, **k: calls.append(cmd))
     ensure_web_runtime(["web"], "webkit")
     assert calls[1][1:] == ["-m", "playwright", "install", "webkit"]
@@ -441,7 +441,7 @@ def test_ensure_web_runtime_reports_install_failure(monkeypatch: pytest.MonkeyPa
     # cleanly instead of crashing.
     import subprocess
 
-    monkeypatch.setattr("bajutsu.backends._playwright_available", lambda: False)
+    monkeypatch.setattr("bajutsu.common.backends._playwright_available", lambda: False)
 
     def boom(cmd: list[str], **k: object) -> None:
         raise subprocess.CalledProcessError(1, cmd)
@@ -454,8 +454,8 @@ def test_ensure_web_runtime_reports_install_failure(monkeypatch: pytest.MonkeyPa
 def test_capabilities_for_xcuitest_reads_the_driver_constant_without_a_device() -> None:
     # BE-0019: the richer iOS actuator's capabilities are readable before its runner is wired into
     # selection — reading the class constant constructs no driver and starts no runner.
-    from bajutsu.backends import capabilities_for
-    from bajutsu.drivers.xcuitest import XcuitestDriver
+    from bajutsu.common.backends import capabilities_for
+    from bajutsu.common.drivers.xcuitest import XcuitestDriver
 
     caps = capabilities_for("xcuitest")
     assert caps == XcuitestDriver.CAPABILITIES
@@ -510,7 +510,7 @@ def test_capabilities_for_run_drops_simctl_backed_caps_on_a_real_ios_device() ->
 def test_capabilities_for_run_keeps_the_full_set_on_the_simulator() -> None:
     # The Simulator default (no deviceType, or explicit "simulator") keeps every static capability:
     # simctl reaches the Simulator, so DeviceControl / permissions still apply.
-    from bajutsu.backends import capabilities_for
+    from bajutsu.common.backends import capabilities_for
 
     for xcfg in (None, XcuitestConfig(testRunner="Runner.xctestrun", deviceType="simulator")):
         assert capabilities_for_run("xcuitest", _ios_eff(xcuitest=xcfg)) == capabilities_for(
@@ -521,7 +521,7 @@ def test_capabilities_for_run_keeps_the_full_set_on_the_simulator() -> None:
 def test_capabilities_for_run_is_a_noop_for_non_xcuitest_backends() -> None:
     # The narrowing is XCUITest-only; adb / web read their static set unchanged even when the
     # (unrelated) target config would look like a real device to a careless check.
-    from bajutsu.backends import capabilities_for
+    from bajutsu.common.backends import capabilities_for
 
     eff = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="device"))
     assert capabilities_for_run("adb", eff) == capabilities_for("adb")
@@ -546,7 +546,7 @@ def test_capabilities_for_run_is_a_noop_for_non_xcuitest_backends() -> None:
 def test_real_device_narrowing_makes_a_device_control_scenario_unsupported() -> None:
     # End-to-end with the preflight (BE-0082): a setLocation scenario runs on the Simulator but is
     # skipped up front on a real device, where simctl device control does not apply (BE-0238 Unit 3).
-    from bajutsu import capability_preflight
+    from bajutsu.common.capability import capability_preflight
 
     scenario = Scenario.model_validate(
         {"name": "loc", "steps": [{"setLocation": {"lat": 1.0, "lon": 2.0}}]}
@@ -570,7 +570,7 @@ def test_capabilities_for_run_narrows_to_the_live_driver_set_on_a_webdriver_endp
     # The live route drives Appium's XCUITest `mobile:` commands, not simctl and not the native text
     # selection the local runner does — so preflight must advertise exactly what the live driver drives
     # (its own CAPABILITIES), the single source of truth, rather than the local XCUITest set.
-    from bajutsu.drivers.xcuitest_live import XcuitestLiveDriver
+    from bajutsu.common.drivers.xcuitest_live import XcuitestLiveDriver
 
     caps = capabilities_for_run("xcuitest", _ios_eff(), _LIVE_ENDPOINT)
     assert caps == XcuitestLiveDriver.CAPABILITIES
@@ -583,7 +583,7 @@ def test_capabilities_for_run_narrows_on_a_url_udid_regardless_of_the_provider()
     # udid spec. If the local case failed to narrow, a `--udid https://…` run under it would advertise
     # the full local set and a select/copy scenario would fail late mid-run instead of being skipped up
     # front — the exact divergence this slice closes (BE-0238).
-    from bajutsu.drivers.xcuitest_live import XcuitestLiveDriver
+    from bajutsu.common.drivers.xcuitest_live import XcuitestLiveDriver
 
     local = capabilities_for_run("xcuitest", _ios_eff(device_provider=None), _LIVE_ENDPOINT)
     appium = capabilities_for_run(
@@ -616,7 +616,7 @@ def test_live_route_drops_text_selection_and_simctl_backed_caps() -> None:
 def test_live_route_narrowing_makes_a_copy_selection_scenario_unsupported() -> None:
     # End-to-end with the preflight (BE-0082): a `copy` scenario runs on the local Simulator but is
     # skipped up front on the live route, whose driver raises UnsupportedAction for select/copy.
-    from bajutsu import capability_preflight
+    from bajutsu.common.capability import capability_preflight
 
     scenario = Scenario.model_validate(
         {"name": "cp", "steps": [{"select": {"into": {"id": "field"}}}, {"copy": {}}]}
@@ -655,13 +655,15 @@ def _multi_caps(actuator: str) -> frozenset[str]:
 @pytest.fixture
 def _multi(monkeypatch: pytest.MonkeyPatch) -> None:
     """Point the module's platform/cost/known tables at the synthetic two-actuator platform."""
-    monkeypatch.setattr("bajutsu.backends.PLATFORMS", _MULTI_PLATFORMS)
-    monkeypatch.setattr("bajutsu.backends.COST_ORDER", _MULTI_COST_ORDER)
+    monkeypatch.setattr("bajutsu.common.backends.PLATFORMS", _MULTI_PLATFORMS)
+    monkeypatch.setattr("bajutsu.common.backends.COST_ORDER", _MULTI_COST_ORDER)
     # KNOWN_ACTUATORS / IMPLEMENTED are derived at import, so selection (and its planned-vs-available
     # diagnostic) gates on the synthetic names.
-    monkeypatch.setattr("bajutsu.backends.KNOWN_ACTUATORS", ("rich", "lean", "playwright", "fake"))
     monkeypatch.setattr(
-        "bajutsu.backends.IMPLEMENTED", frozenset({"rich", "lean", "playwright", "fake"})
+        "bajutsu.common.backends.KNOWN_ACTUATORS", ("rich", "lean", "playwright", "fake")
+    )
+    monkeypatch.setattr(
+        "bajutsu.common.backends.IMPLEMENTED", frozenset({"rich", "lean", "playwright", "fake"})
     )
 
 

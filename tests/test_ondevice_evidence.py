@@ -16,8 +16,8 @@ from pathlib import Path
 import ondevice_evidence
 import pytest
 
-from bajutsu import adb
-from bajutsu.evidence import intervals
+from bajutsu.common.backend_cli import adb
+from bajutsu.common.evidence import intervals
 
 # The inner conftest registers the real plugin, the same way the real on-device suites' own
 # conftest.py does, so its `pytest_runtest_makereport` hook tags each item's stash.
@@ -523,7 +523,7 @@ def test_discards_evidence_once_a_crashed_attempt_recovers_and_passes(
     pytester.makeconftest("pytest_plugins = ['ondevice_evidence', 'backend_crash_recovery']\n")
     pytester.makepyfile(
         _IMPORTS
-        + "from bajutsu.drivers import base\n\n\n"
+        + "from bajutsu.common.drivers import base\n\n\n"
         + _FAKE_STARTERS
         + _EVIDENCE_FIXTURE
         + "pytestmark = pytest.mark.backend_crash_recovery\n"

@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from conftest import FakeObjectStore
 
-from bajutsu.object_store import (
+from bajutsu.common.run_meta.object_store import (
     S3ObjectStore,
     StoreURI,
     evidence_target_from_uri,

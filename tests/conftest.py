@@ -16,11 +16,11 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from bajutsu.analytics import ledger as usage_ledger
 from bajutsu.common.ai.base import MessageRequest, MessageResponse, ToolUseBlock
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence.sink import RunArtifactWriter
+from bajutsu.common.analytics import ledger as usage_ledger
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.evidence.sink import RunArtifactWriter
 from scripts.build_roadmap_index import tracking_issue_url
 
 if TYPE_CHECKING:
@@ -54,7 +54,7 @@ def _fresh_clone_resident_gate(monkeypatch: pytest.MonkeyPatch) -> None:
     while CI, which never builds the APKs, stayed green. The four tests that cover the gate itself
     set both signals explicitly, so their own monkeypatching still wins.
     """
-    import bajutsu.adb_resident as adb_resident
+    import bajutsu.common.backend_cli.adb_resident as adb_resident
 
     built = adb_resident.server_apks_built
     monkeypatch.delenv("BAJUTSU_ADB_RESIDENT", raising=False)
@@ -408,7 +408,7 @@ def run_sink(tmp_path: Path) -> RunArtifactWriter:
     Unconfigured is the interesting default: the two element-level defaults and the pattern backstop
     run anyway, so a test that seeds no `redact:` still exercises the masking a real `crawl` gets.
     """
-    from bajutsu.evidence.redaction import Redactor
+    from bajutsu.common.evidence.redaction import Redactor
 
     return RunArtifactWriter(tmp_path, Redactor(None))
 

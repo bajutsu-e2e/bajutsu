@@ -617,7 +617,7 @@ def test_execute_job_spec_reconstructs_the_batch_request(tmp_path: Path) -> None
     # The worker rebuilds `Job.batch` from the spec and routes to the batch seam — so a cloud-batch
     # job dispatched through the DB queue runs on a cloud device instead of degrading to a local
     # subprocess on the hosted backend (BE-0336 Unit 5).
-    from bajutsu.cloud.devicefarm import verdict_from_manifest
+    from bajutsu.common.cloud.devicefarm import verdict_from_manifest
     from bajutsu.serve import batch_provider as bp
 
     captured: dict[str, Any] = {}

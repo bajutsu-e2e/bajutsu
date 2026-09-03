@@ -9,16 +9,17 @@ from typing import Any
 
 import yaml
 
-from bajutsu import device_os, handoff
+from bajutsu.analysis import flakiness as _flakiness
 from bajutsu.analysis import stats as _stats
-from bajutsu.analytics import ledger as _usage_ledger
-from bajutsu.analytics import stats as _usage_stats
+from bajutsu.common import handoff
+from bajutsu.common.analytics import ledger as _usage_ledger
+from bajutsu.common.analytics import stats as _usage_stats
+from bajutsu.common.config import Config, load_config, resolve
+from bajutsu.common.devices import os as device_os
+from bajutsu.common.drivers import base as driver_base
+from bajutsu.common.evidence import StepView, step_view
 from bajutsu.common.scenario import declared_name, load_scenario_file
 from bajutsu.common.scenario.models import STEP_ACTIONS, Scenario, Step
-from bajutsu.config import Config, load_config, resolve
-from bajutsu.drivers import base as driver_base
-from bajutsu.evidence import StepView, step_view
-from bajutsu.serve import flakiness as _flakiness
 from bajutsu.serve import jobs
 from bajutsu.serve.artifacts import Artifact, ArtifactStore
 from bajutsu.serve.authz import _record_audit, _target_forbidden
@@ -445,7 +446,7 @@ def run_set_manifests(store: ArtifactStore, run_ids: Iterable[Any]) -> list[dict
     only over the active config's org run history. An id that is not a single safe segment is
     rejected before it becomes a path (serve's containment model, BE-0015), and an unreadable or
     malformed manifest is skipped — the aggregator never fails on one bad run. Each manifest already
-    carries its own `runId` (`bajutsu.report.manifest.manifest_dict`), so a caller that needs to
+    carries its own `runId` (`bajutsu.common.report.manifest.manifest_dict`), so a caller that needs to
     rebuild a run-relative path (e.g. `coverage_view`'s seam-routed evidence readers, BE-0258) reads
     it back from there rather than needing the id threaded through separately.
     """
@@ -1079,8 +1080,8 @@ def resolve_scenario_pick(  # noqa: PLR0911
     except (json.JSONDecodeError, OSError, AttributeError, TypeError):
         return {"error": "elements.json is corrupt or unreadable"}, 400
 
-    from bajutsu.elements import screen_size_from_elements
-    from bajutsu.record_capture import resolve_capture
+    from bajutsu.common.drivers.elements import screen_size_from_elements
+    from bajutsu.record.capture import resolve_capture
 
     sw, sh = screen_size_from_elements(elements)
     px, py = nx * sw, ny * sh

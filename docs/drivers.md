@@ -8,8 +8,8 @@
 > the `backend` list; on iOS, launching the app (boot/launch) is handled by a `simctl` wrapper, and
 > on Android by the twin `adb` wrapper.
 >
-> Implementation: `bajutsu/drivers/` (`base.py` / `xcuitest.py` / `adb.py` / `playwright.py` / `fake.py`) ·
-> `bajutsu/backends.py` · `bajutsu/simctl.py` · `bajutsu/adb.py`.
+> Implementation: `bajutsu/common/drivers/` (`base.py` / `xcuitest.py` / `adb.py` / `playwright.py` / `fake.py`) ·
+> `bajutsu/common/backends.py` · `bajutsu/common/backend_cli/simctl.py` · `bajutsu/common/backend_cli/adb.py`.
 
 Related: [selectors](selectors.md) (resolution) · [the stability ladder](concepts.md#5-the-stability-ladder) · [run-loop](run-loop.md)
 
@@ -92,7 +92,7 @@ resolution, and the **preflight capability check** (below).
 A backend's capability set is static, so a scenario that needs a capability the chosen actuator
 lacks is knowable before any device work. At run start — after the actuator is selected, before
 the first device is leased — the runner checks each scenario against the actuator's capabilities
-(`bajutsu/capability_preflight.py`) and fails an unsupported scenario immediately, with one
+(`bajutsu/common/capability/capability_preflight.py`) and fails an unsupported scenario immediately, with one
 aggregated `UnsupportedAction`-style reason, instead of booting a device and failing partway
 through (prime directive #2: fail fast and clearly). It is a pure function of (scenario, capability
 set) — no device, no clock — and per-scenario: only the offending scenarios fail, the rest run.
@@ -126,7 +126,7 @@ step named individually — rather than the family being all-or-nothing.
 The **sole iOS backend** since [BE-0290](../roadmaps/BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md)
 retired idb. It reads the **XCTest automation snapshot** through a **resident on-device runner**
 (`BajutsuKit`) driven over a loopback HTTP channel, and drives an arbitrary app by bundle id with no
-app-side integration. Implementation: `drivers/xcuitest.py`. It sits at the rich end of the
+app-side integration. Implementation: `common/drivers/xcuitest.py`. It sits at the rich end of the
 capability model — semantic tap, native condition waiting, multi-touch, and text selection — rather
 than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
 
@@ -176,7 +176,7 @@ than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
 
 Headless, coordinate-based — the only coordinate backend. With no semantic tap, the
 abstraction resolves **id → frame center → coordinate tap**. Implementation:
-`drivers/adb.py` + `bajutsu/adb.py` (roadmap
+`common/drivers/adb.py` + `bajutsu/common/backend_cli/adb.py` (roadmap
 [BE-0007](../roadmaps/BE-0007-android-backend/BE-0007-android-backend.md)).
 
 ### Reading the tree and resolving a selector
@@ -348,7 +348,7 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   > at its own point — not covered by another on-screen element — using the idiomatic signal each
   > platform offers (iOS: native `isHittable`; web: a `document.elementFromPoint` hit-test; adb: a
   > document-order geometric proxy, `Driver.is_tappable` /
-  > [`topmost_at_point`](../bajutsu/drivers/base.py)). When the check fails, the orchestrator takes
+  > [`topmost_at_point`](../bajutsu/common/drivers/base.py)). When the check fails, the orchestrator takes
   > a small, bounded scroll — up to three `down` steps, then, only if `down` never clears it, up to
   > six `up` steps (widened, since `up` must first retrace the ground `down` already covered before
   > it can make any net progress of its own) — and retries the action once, rather than failing
@@ -495,7 +495,7 @@ Out of scope (see the roadmap item for the reasoning):
 ## Playwright (web)
 
 Headless Chromium via Playwright (Python). Runs on Linux with **no Mac and no Simulator**, so it
-fits the same toolchain as `make check`. Implementation: `drivers/playwright.py` (roadmap
+fits the same toolchain as `make check`. Implementation: `common/drivers/playwright.py` (roadmap
 [BE-0041](../roadmaps/BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)).
 
 - `query()`: one `page.evaluate()` walks the visible / interactive / a11y-relevant DOM nodes and a
@@ -565,7 +565,7 @@ fits the same toolchain as `make check`. Implementation: `drivers/playwright.py`
 ## FakeDriver
 
 An in-memory implementation for testing the orchestrator / runner / record without a device.
-Implementation: `drivers/fake.py`.
+Implementation: `common/drivers/fake.py`.
 
 - Holds a `screen` (a list of `Element`) and returns it from `query()`.
 - `tap` / `long_press` go through `resolve_unique` like the real thing (ambiguous / not-found =
@@ -582,7 +582,7 @@ FakeDriver(screen=[...], react=react)
 
 ## Backend selection and the actuator
 
-Implementation: `bajutsu/backends.py`.
+Implementation: `bajutsu/common/backends.py`.
 
 ```python
 PLATFORMS = {                              # a platform token expands to its actuators (stability order)
@@ -645,7 +645,7 @@ details.
 
 ## Environment management (simctl)
 
-Implementation: `bajutsu/simctl.py`. Command builders are pure functions (unit-tested); execution goes
+Implementation: `bajutsu/common/backend_cli/simctl.py`. Command builders are pure functions (unit-tested); execution goes
 through an injectable `RunFn`.
 
 | Method | Command | Notes |

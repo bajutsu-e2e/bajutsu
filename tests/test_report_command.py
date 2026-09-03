@@ -13,9 +13,9 @@ from typer.testing import CliRunner
 
 from bajutsu.cli import app
 from bajutsu.common.assertions import AssertionResult
+from bajutsu.common.orchestrator import RunResult, StepOutcome
+from bajutsu.common.report import rerender_html, write_report
 from bajutsu.common.scenario import dump_scenario_file, load_scenarios
-from bajutsu.orchestrator import RunResult, StepOutcome
-from bajutsu.report import rerender_html, write_report
 
 runner = CliRunner()
 
@@ -25,7 +25,7 @@ SCENARIO = "- name: smoke\n  steps:\n    - tap: { id: home.start }\n  expect:\n 
 def _bake(run_dir: Path) -> None:
     """Bake a run dir the way the pipeline does: results + manifest + scenario.yaml + report.html."""
     scenarios = load_scenarios(SCENARIO)
-    from bajutsu.report import scenario_render_inputs
+    from bajutsu.common.report import scenario_render_inputs
 
     definitions, sources = scenario_render_inputs(scenarios)
     results = [

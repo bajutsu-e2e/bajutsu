@@ -7,10 +7,10 @@ from collections.abc import Callable
 
 import pytest
 
-from bajutsu.config import load_config, resolve
-from bajutsu.doctor import DoctorProbeError, probe_screen, render, score
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
+from bajutsu.common.config import load_config, resolve
+from bajutsu.common.doctor import DoctorProbeError, probe_screen, render, score
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
 
 
 def _el(identifier: str | None, traits: list[str], label: str = "x") -> base.Element:
@@ -135,7 +135,7 @@ def test_render_mentions_grade() -> None:
 def test_web_traits_are_actionable() -> None:
     """Web-mapped traits (textField, textView, switch, slider, tab, cell) must all be
     recognized as actionable by doctor so it scores web pages correctly (BE-0024)."""
-    from bajutsu.dom import parse_dom
+    from bajutsu.common.drivers.dom import parse_dom
 
     web_elements = [
         {
@@ -215,7 +215,7 @@ def test_android_clickable_trait_is_actionable() -> None:
     crawl tap-candidate — so a tappable Android container is scored and crawled, scoped to
     clickability rather than the widget class (the twin of `test_web_traits_are_actionable`)."""
     from bajutsu import crawl
-    from bajutsu.drivers.adb import parse_hierarchy
+    from bajutsu.common.drivers.adb import parse_hierarchy
 
     # Two same-class `FrameLayout` wrappers with ids: only the clickable one gains the button trait.
     xml = (
@@ -281,7 +281,9 @@ def _patch_read_env(monkeypatch: pytest.MonkeyPatch, built: list[str], torn: lis
         built.append(udid)
         return _FakeReadEnv(udid, torn)
 
-    monkeypatch.setattr("bajutsu.platform_lifecycle.read_session.environment_for", fake_env_for)
+    monkeypatch.setattr(
+        "bajutsu.common.platform_lifecycle.read_session.environment_for", fake_env_for
+    )
 
 
 def test_probe_screen_xcuitest_uses_a_short_lived_runner(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -316,11 +318,11 @@ def test_probe_screen_takes_the_first_udid_of_a_comma_list(
     # Android path reads through `make_driver` at the resolved udid.
     made: list[tuple[str, str]] = []
     monkeypatch.setattr(
-        "bajutsu.doctor.make_driver",
+        "bajutsu.common.doctor.make_driver",
         _recording_make_driver(made),
     )
     monkeypatch.setattr(
-        "bajutsu.platform_lifecycle.environments.android.AndroidEnvironment.resolve_device",
+        "bajutsu.common.platform_lifecycle.environments.android.AndroidEnvironment.resolve_device",
         lambda self, udid: udid,
     )
     eff = resolve(load_config("targets: { demo: { bundleId: com.x, package: com.x } }"), "demo")
@@ -334,7 +336,7 @@ def test_probe_screen_web_without_base_url_raises_probe_error() -> None:
     # target, so we resolve a valid one and null the baseUrl to exercise the defensive backstop.
     import dataclasses
 
-    from bajutsu.config import WebConfig
+    from bajutsu.common.config import WebConfig
 
     eff = dataclasses.replace(
         resolve(load_config("targets: { web: { baseUrl: 'http://x' } }"), "web"),

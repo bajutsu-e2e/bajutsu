@@ -9,9 +9,9 @@ from threading import Thread
 
 from conftest import el
 
+from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.orchestrator import run_scenario
 from bajutsu.common.scenario import Scenario, Step
-from bajutsu.drivers.fake import FakeDriver
-from bajutsu.orchestrator import run_scenario
 
 
 class FakeClock:
@@ -202,12 +202,12 @@ def test_clear_clipboard_requires_device_control() -> None:
 
 
 def test_keychain_reset_cmd() -> None:
-    from bajutsu.simctl import keychain_reset_cmd
+    from bajutsu.common.backend_cli.simctl import keychain_reset_cmd
 
     assert keychain_reset_cmd("U") == ["xcrun", "simctl", "keychain", "U", "reset"]
 
 
 def test_pbcopy_cmd() -> None:
-    from bajutsu.simctl import pbcopy_cmd
+    from bajutsu.common.backend_cli.simctl import pbcopy_cmd
 
     assert pbcopy_cmd("U") == ["xcrun", "simctl", "pbcopy", "U"]

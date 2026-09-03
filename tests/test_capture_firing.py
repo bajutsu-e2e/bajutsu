@@ -22,13 +22,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.evidence import Artifact, FileSink, intervals
+from bajutsu.common.orchestrator import run_scenario
+from bajutsu.common.orchestrator.evidence_rules import requested_intervals
+from bajutsu.common.orchestrator.waits import WaitTrace
 from bajutsu.common.scenario import Scenario
-from bajutsu.drivers import base
-from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence import Artifact, FileSink, intervals
-from bajutsu.orchestrator import run_scenario
-from bajutsu.orchestrator.evidence_rules import requested_intervals
-from bajutsu.orchestrator.waits import WaitTrace
 
 BASELINE_BEFORE = ["screenshot.before", "elements.before"]
 BASELINE_AFTER = ["screenshot.after"]

@@ -14,7 +14,7 @@ import pytest
 from _shared import project
 
 import bajutsu
-from bajutsu.backends import IMPLEMENTED
+from bajutsu.common.backends import IMPLEMENTED
 from bajutsu.serve import operations as ops
 from bajutsu.serve.operations import config as config_ops
 from bajutsu.serve.state import ServeState

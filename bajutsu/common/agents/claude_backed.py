@@ -11,10 +11,10 @@ neutral `AiBackend` seam (BE-0104) changed the shape it wrapped and BE-0249 remo
 
 from __future__ import annotations
 
-from bajutsu.analytics import usage
 from bajutsu.common.agents.ai_config import AiConfig, resolve_model
 from bajutsu.common.ai import AiBackend, MessageResponse, create_backend, resolved_provider
-from bajutsu.evidence.redaction import Redactor
+from bajutsu.common.analytics import usage
+from bajutsu.common.evidence.redaction import Redactor
 
 
 class ClaudeBackedAgent:

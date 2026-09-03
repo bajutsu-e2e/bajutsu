@@ -38,7 +38,7 @@ final class HTTPServer {
     // A reply is written to a peer that is waiting for it, so only a peer that stopped reading — yet
     // left the connection open — stalls a send. The driver's own windows are 15s for a read and 30s
     // for an actuation (`_SOCKET_TIMEOUT_SECONDS` / `_ACTUATION_TIMEOUT_SECONDS` in
-    // `bajutsu/drivers/xcuitest.py`), so this matches the wider of the two rather than exceeding it.
+    // `bajutsu/common/drivers/xcuitest.py`), so this matches the wider of the two rather than exceeding it.
     // That is enough because the only reply large enough to approach the bound is a screenshot's
     // PNG, which travels the 15s read path; an actuation's reply is a few bytes of JSON.
     static let defaultSendTimeout: TimeInterval = 30

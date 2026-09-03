@@ -6,7 +6,7 @@ Runs under pytest or directly (no dependencies).
 
 from __future__ import annotations
 
-from bajutsu.drivers.base import (
+from bajutsu.common.drivers.base import (
     AmbiguousSelector,
     Element,
     ElementNotFound,
@@ -164,7 +164,7 @@ def test_within_nests() -> None:
 
 def test_compile_cache_reuses_compiled_pattern() -> None:
     """_compile caches compiled regex patterns so repeated calls skip re.compile."""
-    from bajutsu.drivers.base import _compile
+    from bajutsu.common.drivers.base import _compile
 
     _compile.cache_clear()
     _compile("foo.*bar")
@@ -186,7 +186,7 @@ def test_label_matches_uses_regex() -> None:
 
 def test_find_all_id_only_uses_index() -> None:
     """find_all with an id-only selector uses a cached index for O(1) lookup."""
-    from bajutsu.drivers.base import _id_index
+    from bajutsu.common.drivers.base import _id_index
 
     screen: list[Element] = [
         el("a", "A", ["button"]),
@@ -205,7 +205,7 @@ def test_find_all_id_only_uses_index() -> None:
 
 def test_find_all_id_index_invalidates_on_new_list() -> None:
     """The id index cache invalidates when a new element list is passed."""
-    from bajutsu.drivers.base import _id_index
+    from bajutsu.common.drivers.base import _id_index
 
     screen1: list[Element] = [el("a", "A")]
     screen2: list[Element] = [el("b", "B")]
@@ -306,7 +306,7 @@ def test_duplicates_with_differently_ordered_traits_still_collapse() -> None:
 
 
 def test_id_candidates_normalizes_scalar_and_list() -> None:
-    from bajutsu.drivers.base import id_candidates
+    from bajutsu.common.drivers.base import id_candidates
 
     assert id_candidates("x") == ["x"]
     assert id_candidates(["x", "y"]) == ["x", "y"]

@@ -6,18 +6,18 @@ from pathlib import Path
 
 from _report import _el, _failing, _passing
 
+from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.evidence import Artifact
+from bajutsu.common.evidence.network import NetworkExchange
+from bajutsu.common.orchestrator import RunResult, run_scenario
+from bajutsu.common.report import html_report
 from bajutsu.common.scenario import Scenario
-from bajutsu.drivers.fake import FakeDriver
-from bajutsu.evidence import Artifact
-from bajutsu.evidence.network import NetworkExchange
-from bajutsu.orchestrator import RunResult, run_scenario
-from bajutsu.report import html_report
 
 
 def test_html_report_shows_why_a_substituted_element_was_actuated() -> None:
     # The token is the whole point of recording a substitution: without it in the rendered row, a
     # reader has to diff the actuated target against the step's selector to notice one happened.
-    from bajutsu.drivers.actuation import Actuation
+    from bajutsu.common.drivers.actuation import Actuation
 
     result = _passing()
     result.steps[0].actuations.append(
@@ -141,7 +141,7 @@ def test_expectations_request_kind_rendered() -> None:
 
 
 def test_fmt_duration_compact() -> None:
-    from bajutsu.report.format import _fmt_duration
+    from bajutsu.common.report.format import _fmt_duration
 
     assert _fmt_duration(0.0) == "0.0s"
     assert _fmt_duration(0.84) == "0.8s"
@@ -155,7 +155,7 @@ def test_video_seconds_subtracts_the_anchor_and_clamps_at_zero() -> None:
     # fractionally before the scenario's own anchor, per the function's own docstring — clamps to
     # `0.0` rather than seeking to a negative offset (which no player could honor). A pre-BE-0348
     # manifest supplies a `0.0` anchor and gets its already-relative value back unchanged.
-    from bajutsu.report.format import video_seconds
+    from bajutsu.common.report.format import video_seconds
 
     anchor = 1_700_000_000.0
     assert video_seconds(anchor + 2.5, video_anchor_s=anchor) == 2.5

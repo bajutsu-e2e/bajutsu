@@ -30,6 +30,8 @@ from bajutsu.common.assertions.network import (
 )
 from bajutsu.common.assertions.schema import SchemaContext, _eval_response_schema
 from bajutsu.common.assertions.visual import VisualContext, _eval_visual
+from bajutsu.common.drivers import base
+from bajutsu.common.evidence.network import NetworkExchange
 from bajutsu.common.scenario import (
     ASSERTION_KINDS,
     Assertion,
@@ -43,8 +45,6 @@ from bajutsu.common.scenario import (
     Selector,
     TextMatch,
 )
-from bajutsu.drivers import base
-from bajutsu.evidence.network import NetworkExchange
 
 
 @dataclass(frozen=True)
@@ -329,13 +329,13 @@ def _eval_golden(
         )
     if not golden_file.is_file():
         return AssertionResult(False, "golden", detail, f"golden not found: {m.path}")
-    from bajutsu.evidence.golden import compare_golden, load_golden
+    from bajutsu.common.evidence.golden import compare_golden, load_golden
 
     golden = load_golden(golden_file)
     if ctx.screen is not None:
         screen = ctx.screen
     else:
-        from bajutsu.elements import screen_size_from_elements
+        from bajutsu.common.drivers.elements import screen_size_from_elements
 
         sw, sh = screen_size_from_elements(elements)
         screen = (0.0, 0.0, sw, sh)

@@ -2,9 +2,9 @@
 
 `conformance (adb)`, `fault-injection (adb)`, and their iOS twins drive their backend straight from
 pytest (`launch_driver`, never `bajutsu run`), so none of them inherits the scenario pipeline's
-evidence capture (`bajutsu/evidence/core.py`'s `capture:`-driven `FileSink`) — a failure in any of
+evidence capture (`bajutsu/common/evidence/core.py`'s `capture:`-driven `FileSink`) — a failure in any of
 them has no video or device log to diagnose it, unlike every scenario-driven CI job. This module
-wires the same interval primitives the pipeline itself uses (`bajutsu.evidence.intervals`) directly
+wires the same interval primitives the pipeline itself uses (`bajutsu.common.evidence.intervals`) directly
 around each test, the way `demos/showcase/android/screenrecord.py` already does for the codegen
 lane's `connectedAndroidTest` — no bajutsu runtime there either, so no scenario/YAML `capture:`
 machinery to hook into. `capture()` itself is backend-agnostic: the caller supplies `start_video`/
@@ -50,8 +50,8 @@ from typing import Protocol
 
 import pytest
 
-from bajutsu import adb
-from bajutsu.evidence import intervals
+from bajutsu.common.backend_cli import adb
+from bajutsu.common.evidence import intervals
 
 _logger = logging.getLogger(__name__)
 
