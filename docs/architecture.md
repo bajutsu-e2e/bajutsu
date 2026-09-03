@@ -607,7 +607,12 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 - DSL `scroll` action (BE-0326): scroll a region — the whole screen, or a `within` container — until
   a target selector's frame center lands inside the viewport, or fail deterministically at a
   `maxScrolls` bound (default 15) or once two consecutive reads *show* the region standing still
-  (end-of-content). What counts as showing it is BE-0329's subject: an element the loop watched move
+  (end-of-content). Each step travels a default fraction of the viewport, overridable per step with
+  an optional `amount` (0 < amount ≤ 1, the same unit `swipe`/`drag` take) for a screen the default
+  step size overshoots or creeps across; BE-0400 made the realized travel match what was
+  requested — before it, the iOS gesture flung past every requested distance by up to 6× and no
+  step travelled less than about a third of a screen, so `amount`'s smaller end was previously
+  undeliverable. What counts as showing it is BE-0329's subject: an element the loop watched move
   is still there, unclipped, has stopped, and is not chrome sitting outside the scrolling region (a
   collapsing app bar shifts once and then pins, which would otherwise stand for a list still scrolling
   behind it); or the region's bounds cut nothing off, so no frame can be hiding motion — a tree
