@@ -58,7 +58,7 @@ import logging
 logging.basicConfig(level=logging.DEBUG, format='%(name)s: %(message)s')
 from bajutsu.cli import main
 main()
-" run --target showcase-swiftui --udid "$(xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)" \
+" run --target showcase-swiftui --udid "$(xcrun simctl list devices booted | sed -nE 's/.*\(([0-9A-F-]{36})\) \(Booted\).*/\1/p' | head -1)" \
   --backend ios --config demos/showcase/showcase.config.yaml \
   --scenario demos/showcase/scenarios/navigation.yaml demos/showcase/scenarios/modals.yaml demos/showcase/scenarios/tabs.yaml
 ```
