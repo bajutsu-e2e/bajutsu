@@ -24,6 +24,7 @@ response headers.
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
@@ -65,6 +66,8 @@ _STREAM_DONE: Any = object()
 _LOGIN_PATH = "/api/login"
 _OAUTH_LOGIN = "/api/oauth/login"
 _OAUTH_CALLBACK = "/api/oauth/callback"
+
+_logger = logging.getLogger(__name__)
 
 
 def _result(payload_status: tuple[Any, int]) -> Response:
@@ -190,7 +193,26 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
                 and ops.forbidden_for_role(state, login, method, path)
             ):
                 return _hardened(JSONResponse({"error": "forbidden"}, status_code=403))
-        return _hardened(await call_next(request))
+        try:
+            response = await call_next(request)
+        except Exception:
+            # Log here, through oplog, so the traceback carries the request's correlation ids and
+            # lands as one structured `exc_info` field. Answer the 500 ourselves rather than
+            # re-raising: with no handler registered for a bare `Exception`, Starlette's own
+            # `ServerErrorMiddleware` sends no response before re-raising, and the exception
+            # re-reaches uvicorn's ASGI-exception logger — a *second*, unstructured, multi-line
+            # dump on a logger ("uvicorn.error") that a `propagate=False` ancestor keeps off root,
+            # so it bypasses oplog entirely. Swallowing it here keeps the traceback logged exactly
+            # once, in the one structured shape.
+            _logger.exception("unhandled exception in %s %s", request.method, request.url.path)
+            # Deliberately *not* the stdlib handler's `_respond_uncaught` body (BE-0264), which
+            # echoes the exception's own message: that backend is a local, single-tenant CLI run,
+            # while this one is the hosted control plane, explicitly multi-tenant (BE-0055) — an
+            # uncaught exception here is more likely to carry another tenant's data or config.
+            # CodeQL's py/stack-trace-exposure flagged exactly this divergence; the full message
+            # and traceback still reach oplog above, only the client-visible body is generic.
+            return _hardened(JSONResponse({"error": "internal server error"}, status_code=500))
+        return _hardened(response)
 
     def _hardened(response: Response) -> Response:
         # The shared hardening headers on every response (BE-0051); defined once in `gate` so both

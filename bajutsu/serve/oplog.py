@@ -169,10 +169,15 @@ def _mask_values(static: Redactor, text: str) -> str:
 
 
 class _JsonFormatter(logging.Formatter):
-    """Single-line JSON: ``ts, level, logger, event?, msg, <correlation ids?>, <extras?>``.
+    """Single-line JSON: ``ts, level, logger, event?, msg, <correlation ids?>, <extras?>, exc_info?``.
 
     Value-masking is applied to the whole serialized line, so a known secret value is scrubbed
     wherever it lands, including inside a non-string field stringified by ``json.dumps``.
+
+    A traceback (``exc_info=True`` / ``logger.exception``) is rendered into its own ``exc_info``
+    field rather than appended as raw text: ``json.dumps`` escapes its newlines, so the record
+    stays exactly one line — the multi-line stdlib default would otherwise split a JSON stream
+    across several unparseable lines.
     """
 
     def __init__(self, static: Redactor) -> None:
@@ -196,18 +201,38 @@ class _JsonFormatter(logging.Formatter):
         line.update(
             _extras(record)
         )  # caller-attached fields keep their (deterministic) insert order
+        if record.exc_info:
+            line["exc_info"] = self.formatException(record.exc_info)
+        if record.stack_info:
+            line["stack_info"] = self.formatStack(record.stack_info)
         return _mask_values(self._static, json.dumps(line, ensure_ascii=False, default=str))
 
 
 class _TextFormatter(logging.Formatter):
-    """Human-readable single line for the CLI, value-masked like the JSON channel."""
+    """Human-readable single line for the CLI, value-masked like the JSON channel.
+
+    A traceback is appended to the *same* line with its newlines escaped, matching the JSON
+    channel's one-record-per-line contract — the stdlib default (bare `super().format`) instead
+    appends the exception/stack text after a real ``\\n``, spanning as many lines as the traceback
+    has frames.
+    """
 
     def __init__(self, static: Redactor) -> None:
         super().__init__("%(asctime)s %(levelname)s %(name)s %(message)s")
         self._static = static
 
     def format(self, record: logging.LogRecord) -> str:
-        return _mask_values(self._static, super().format(record))
+        exc_info, stack_info = record.exc_info, record.stack_info
+        record.exc_info = record.stack_info = None
+        try:
+            line = super().format(record)
+        finally:
+            record.exc_info, record.stack_info = exc_info, stack_info
+        if exc_info:
+            line += " exc=" + self.formatException(exc_info).replace("\n", "\\n")
+        if stack_info:
+            line += " stack=" + self.formatStack(stack_info).replace("\n", "\\n")
+        return _mask_values(self._static, line)
 
 
 def make_handler(

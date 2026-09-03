@@ -10,6 +10,7 @@ logic itself is covered once, through the stdlib suite, since both backends call
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -918,3 +919,29 @@ def test_doctor_endpoint_returns_checks(tmp_path: Path) -> None:
     assert body["target"] == "demo"
     assert body["backend"] == "fake"
     assert isinstance(body["checks"], list)
+
+
+def test_unhandled_route_exception_is_logged_once_and_answered_with_json_500(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An exception raised deep in the ASGI stack is logged once, with a traceback, and answered
+    with our own JSON 500 — not re-raised, which would let uvicorn's own (unstructured) ASGI
+    exception logger log the same traceback a second time (BE-0055 follow-up). The client-visible
+    body is deliberately generic rather than mirroring the stdlib handler's `_respond_uncaught`
+    (BE-0264): this backend is the multi-tenant hosted control plane (BE-0055), so the exception's
+    own message stays server-side, in the structured log, instead of reaching the client."""
+    app = make_app(_state(tmp_path))
+
+    @app.get("/api/_boom")
+    def _boom() -> None:
+        raise RuntimeError("boom")
+
+    client = TestClient(app, raise_server_exceptions=False)
+    with caplog.at_level(logging.ERROR, logger="bajutsu.serve.server.app"):
+        resp = client.get("/api/_boom")
+    assert resp.status_code == 500
+    assert resp.json() == {"error": "internal server error"}
+    assert "boom" not in resp.text  # the exception message must not reach the client
+    (record,) = [r for r in caplog.records if r.name == "bajutsu.serve.server.app"]
+    assert record.exc_info is not None
+    assert record.exc_info[0] is RuntimeError
