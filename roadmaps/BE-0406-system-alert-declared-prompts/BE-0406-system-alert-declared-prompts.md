@@ -9,6 +9,7 @@
 | Author | [@akiramatsuda](https://github.com/akiramatsuda) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0406") |
+| Implementing PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871) (unit 1) |
 | Topic | Platform support |
 | Related | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0369](../BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules.md), [BE-0399](../BE-0399-ios-system-alert-interruption-policy/BE-0399-ios-system-alert-interruption-policy.md), [BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md), [BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) |
 <!-- /BE-METADATA -->
@@ -516,7 +517,7 @@ the gap Unit 2b closes to bring the two surfaces to the same standard.
 
 Log:
 
-- Unit 1. `Driver.handle_system_alert` stops waiting: the XCUITest implementation resolves
+- [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871) — Unit 1. `Driver.handle_system_alert` stops waiting: the XCUITest implementation resolves
   the step's selector against a single `/systemAlert/query` read, and `timeout` stays on the
   signature (every caller now passes zero) so no other backend moves. The wait becomes
   `wait_for_system_alert` in `bajutsu/common/orchestrator/waits.py`, which polls to the step's own
