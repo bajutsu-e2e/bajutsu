@@ -102,13 +102,16 @@ def test_content_type_never_consults_the_host_mime_database(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # `mimetypes.guess_type` answers from the OS tables (/etc/mime.types and friends), which differ
-    # between a full distro and a slim container. Blowing it up proves the helper never asks.
+    # between a full distro and a slim container. Blowing it up proves the helper never calls the
+    # module-level lookup — but not that the `MimeTypes` instance it *does* call was built clean, so
+    # `.deb` (a distro/Apache table knows it; the stdlib map does not) checks that too.
     def _boom(*_: object, **__: object) -> None:
         raise AssertionError("content_type_for must not use the host mimetypes database")
 
     monkeypatch.setattr(mimetypes, "guess_type", _boom)
     assert content_type_for("junit.xml") == "application/xml"
     assert content_type_for("after.png") == "image/png"
+    assert content_type_for("pkg.deb") == "application/octet-stream"
 
 
 def test_symlinks_are_skipped(tmp_path: Path) -> None:
