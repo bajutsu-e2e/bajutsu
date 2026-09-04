@@ -1,14 +1,14 @@
-[English](BE-XXXX-video-start-confirmation-signal.md) · **日本語**
+[English](BE-0412-video-start-confirmation-signal.md) · **日本語**
 
-# BE-XXXX — 録画の開始は、伸びないファイルではなくレコーダー自身の信号で確認する
+# BE-0412 — 録画の開始は、伸びないファイルではなくレコーダー自身の信号で確認する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-video-start-confirmation-signal-ja.md) |
+| 提案 | [BE-0412](BE-0412-video-start-confirmation-signal-ja.md) |
 | 提案者 | [@akiramatsuda](https://github.com/akiramatsuda) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0412") |
 | 実装 PR | [#1901](https://github.com/bajutsu-e2e/bajutsu/pull/1901) |
 | トピック | Verification & coverage |
 | 関連 | [BE-0346](../BE-0346-video-timing-sync/BE-0346-video-timing-sync-ja.md) · [BE-0348](../BE-0348-absolute-timestamp-recording/BE-0348-absolute-timestamp-recording-ja.md) · [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics-ja.md) · [BE-0367](../BE-0367-android-ci-emulator-diagnostics/BE-0367-android-ci-emulator-diagnostics-ja.md) |
