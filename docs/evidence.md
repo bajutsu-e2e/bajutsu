@@ -271,10 +271,11 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 - **A confirmed start time corrects the report's step/network timestamps to the video's real
   origin, not the moment recording was merely requested.** `start_video` (iOS) and
   `start_screenrecord` (Android), passed `confirm_started=True` at their production call sites,
-  poll a real signal after spawning — iOS the output file's first written byte, Android the
-  device-side process appearing (a weaker guarantee: a process existing is not proof its encoder is
-  yet emitting frames, but still real and earlier than a guess) — and store the confirmed
-  `time.monotonic()` instant on `Interval.true_start`. `intervals.adopt` carries `true_start`
+  wait on a real signal after spawning — iOS the `Recording started` line `simctl io recordVideo`
+  writes to its own stderr once the first frame has been processed, Android the device-side process
+  appearing (a weaker guarantee: a process existing is not proof its encoder is yet emitting frames,
+  but still real and earlier than a guess) — and store the confirmed `time.monotonic()` instant on
+  `Interval.true_start`. `intervals.adopt` carries `true_start`
   forward unchanged when it relocates a prestarted interval, so Android's confirmation (made before
   `adopt` even runs) is not lost. The web actuator stamps `true_start` right after the recording
   page is created, with no poll: `record_video_dir` enables recording for the pages in a context,
@@ -282,15 +283,21 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   than `new_context()`. A poll that never confirms leaves `true_start` at `None`, so the anchor
   falls back to `scenario_start` — never a guessed number.
 
-  How long that poll may run is the one knob here. Startup jitter in `simctl` and `adb` is
-  measurably worse on a loaded continuous-integration (CI) machine than on a developer's, and a poll
-  that gives up costs the whole scenario its correction. So the ceiling takes an override:
-  `BAJUTSU_VIDEO_START_TIMEOUT` (seconds) replaces the 5-second compiled default, and
-  [`.github/workflows/ios-e2e.yml`](../.github/workflows/ios-e2e.yml) raises it for the iOS lane
-  alongside the three `BAJUTSU_XCUITEST_*` timeouts that already work this way. Raising it costs
-  nothing on the healthy path, because the poll returns the moment the recording confirms.
+  Waiting on the recorder's own announcement rather than on its output file is load-bearing on iOS,
+  and was learned the hard way. `simctl io recordVideo` does not write progressively: the mp4 stays
+  at zero bytes for the whole recording and is written in one piece at finalize. An earlier
+  confirmation polled that file for growth, so it could never succeed — it spent its entire ceiling
+  on every scenario, green runs included, and the iOS lane had raised that ceiling to 20 seconds on
+  the belief that overshooting was free. `simctl`'s own `--help` names the stderr line as the signal
+  to wait on, and it arrives in about 0.15 seconds.
+
+  How long that wait may run is still a knob, because startup jitter in `simctl` and `adb` is worse
+  on a loaded continuous-integration (CI) machine than on a developer's, and a wait that gives up
+  costs the whole scenario its correction. `BAJUTSU_VIDEO_START_TIMEOUT` (seconds) replaces the
+  5-second compiled default, the same treatment the three `BAJUTSU_XCUITEST_*` timeouts get. No lane
+  overrides it today.
 - **The finished recording places its own origin, and outranks the confirmation above.** Every
-  `true_start` is a *proxy*: a first flushed byte, a device-side process that has
+  `true_start` is a *proxy*: a recorder's own start line, a device-side process that has
   appeared, a browser page that exists. Each signal arrives at its own distance from the frame the
   recorder opens on, so a report anchored to one seeks off by that distance. The recording answers
   the question itself. A finalized clip states its own duration, and `Interval.stop()` knows the
@@ -317,10 +324,12 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   origin *after* the first frame by that whole gap.
 
   `Interval.spawned_at` bounds both, because it is the one instant that needs no confirmation. A
-  recording opens on its first frame somewhere between that spawn and the ceiling
-  `BAJUTSU_VIDEO_START_TIMEOUT` already allows a recorder for exactly that startup. An origin
-  outside that window says one of the two inputs is not describing this recording, so it is
-  discarded and that recording keeps the `true_start` anchor.
+  recording opens on its first frame somewhere between that spawn and `_ORIGIN_STARTUP_CEILING`,
+  which is a claim about how long a recorder can take to open rather than about how patient a lane
+  chose to be — deliberately not `BAJUTSU_VIDEO_START_TIMEOUT`, whose 20-second iOS value had
+  silently widened this window to admit origins no recording can have. An origin outside the window
+  says one of the two inputs is not describing this recording, so it is discarded and that recording
+  keeps the `true_start` anchor.
 
 - **The recorded timestamps are absolute; a viewer derives the video-relative offset when it
   renders.** `run_scenario` reads the wall clock once, beside its `time.monotonic()` stamp, giving

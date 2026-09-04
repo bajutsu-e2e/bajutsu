@@ -23,6 +23,7 @@ import re
 import shutil
 import signal
 import subprocess
+import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -101,22 +102,36 @@ def app_trace_cmd(udid: str, subsystem: str) -> list[str]:
 # already in progress". So video gets a generous finalize window; the kill stays only as a last resort.
 _STOP_TIMEOUT = 10.0
 _VIDEO_FINALIZE_TIMEOUT = 120.0
-# How long `confirm_started` polls for a video's first written byte / device-side process before
-# giving up. Generous versus reported simctl/adb startup jitter, small versus the finalize timeouts
-# above — the report's video-sync correction just goes uncorrected for this scenario on timeout.
-# Overridable per lane, like the CI-sensitive xcuitest timeouts it sits beside: a loaded macOS CI
-# runner is measurably slower than a local one, and a timeout there costs the whole scenario its
-# anchor correction (BE-0348).
+# How long `confirm_started` waits for a recording's start signal — simctl's `Recording started` on
+# stderr, or the Android device-side process appearing — before giving up. Generous versus reported
+# simctl/adb startup jitter, small versus the finalize timeouts above; the report's video-sync
+# correction just goes uncorrected for this scenario on timeout. Overridable per lane, like the
+# CI-sensitive xcuitest timeouts it sits beside (BE-0348).
 _VIDEO_START_TIMEOUT = 5.0
 _VIDEO_START_TIMEOUT_ENV = "BAJUTSU_VIDEO_START_TIMEOUT"
+# The line `simctl io recordVideo` writes to stderr once its first frame has been processed. Its own
+# `--help` names this as the signal to wait on, and it is the *only* one it offers: the mp4 stays
+# zero bytes for the whole recording and is written whole at finalize, so a file-growth probe — what
+# stood here before — could never confirm a start and spent its entire ceiling on every scenario.
+_RECORDING_STARTED = "Recording started"
+# Cadence and read size for that stderr wait. Both are host-local reads on an unlinked temp file, so
+# the poll is effectively free and the cadence is set by how precisely `true_start` should be
+# resolved rather than by what the probe costs.
+_STDERR_POLL = 0.05
+_STDERR_READ_SIZE = 65536
 # How far *before* its own spawn a measured origin may sit before `_measured_start` stops trusting
 # it. Covers the ordinary sub-frame slop — a container rounds its duration up to a whole frame, and
 # the spawn instant is stamped just before a recorder that begins a beat later — without admitting a
 # nominal-frame-rate timeline, whose excess grows with the recording rather than staying inside one
-# frame. The far side of that window is `_video_start_timeout()` instead: an origin *after* the
-# spawn is the recorder's startup, which that ceiling already bounds.
+# frame.
 _ORIGIN_SLACK = 0.2
-# The shared tail of both confirmation-timeout warnings (iOS file-growth, Android device-side
+# The far side of that same window: how long after its spawn a recorder may plausibly have opened
+# its first frame. This is a claim about the *recorder* — measured at 0.15s for `simctl io
+# recordVideo` on Xcode 26.6 — not about how patient a lane chose to be, so it is deliberately not
+# `_video_start_timeout()`. Tying the two let `BAJUTSU_VIDEO_START_TIMEOUT: "20"` silently widen the
+# iOS lane's origin acceptance to twenty seconds, admitting origins no recording can actually have.
+_ORIGIN_STARTUP_CEILING = 5.0
+# The shared tail of both confirmation-timeout warnings (iOS start signal, Android device-side
 # process), so the two backends always describe the same condition identically. It claims only what
 # the timeout establishes — that the *confirmation* is unavailable. The anchor can still be measured
 # from the finished recording's own duration, which is not known until `stop()`, so an operator
@@ -152,6 +167,8 @@ class Proc(Protocol):
 
     def stop(self, sig: int, timeout: float) -> None: ...
 
+    def await_stderr(self, needle: str, timeout: float) -> float | None: ...
+
 
 # spawn(argv, stdout_path) -> a running process (stdout written to the file if given)
 Spawn = Callable[[list[str], "Path | None"], Proc]
@@ -160,16 +177,45 @@ Spawn = Callable[[list[str], "Path | None"], Proc]
 class _SubprocessProc:
     def __init__(self, argv: list[str], stdout_path: Path | None) -> None:
         self._file = stdout_path.open("wb") if stdout_path is not None else None
+        # A temporary file rather than a pipe: nobody drains a recorder's stderr for the minutes it
+        # runs, and a full pipe buffer would block the child mid-recording. The file is unlinked on
+        # creation, so it needs no cleanup beyond the close in `stop()`.
+        self._err = tempfile.TemporaryFile()  # noqa: SIM115  # closed in stop(), not a with-block
         try:
             self._proc = subprocess.Popen(
                 argv,
                 stdout=self._file if self._file is not None else subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=self._err,
             )
         except BaseException:
+            self._err.close()
             if self._file is not None:
                 self._file.close()
             raise
+
+    def await_stderr(self, needle: str, timeout: float) -> float | None:
+        """Wait for `needle` on the child's stderr; the instant it appeared, or None on timeout.
+
+        Reads with `os.pread` so the child's own write offset is never disturbed, and carries one
+        needle-width tail between reads so a match straddling two reads is still seen. A condition
+        wait to a bounded deadline (prime directive 2), and always at least one read: a child that
+        answered before the first poll must not be failed by a zero-length timeout.
+        """
+        deadline = time.monotonic() + timeout
+        target = needle.encode()
+        offset = 0
+        tail = b""
+        while True:
+            chunk = os.pread(self._err.fileno(), _STDERR_READ_SIZE, offset)
+            if chunk:
+                offset += len(chunk)
+                window = tail + chunk
+                if target in window:
+                    return time.monotonic()
+                tail = window[1 - len(target) :] if len(target) > 1 else b""
+            if time.monotonic() >= deadline:
+                return None
+            time.sleep(_STDERR_POLL)
 
     def stop(self, sig: int, timeout: float) -> None:
         self._proc.send_signal(sig)
@@ -178,6 +224,7 @@ class _SubprocessProc:
         except subprocess.TimeoutExpired:
             self._proc.kill()
             self._proc.wait()
+        self._err.close()
         if self._file is not None:
             self._file.close()
 
@@ -197,6 +244,9 @@ class _NullProc:
     def stop(self, sig: int, timeout: float) -> None:  # noqa: ARG002  # Proc shape
         return None
 
+    def await_stderr(self, needle: str, timeout: float) -> float | None:  # noqa: ARG002  # Proc shape
+        return None
+
 
 @dataclass
 class Interval:
@@ -211,11 +261,12 @@ class Interval:
     provider: str = PROVIDER
     # The time.monotonic() instant the capture was confirmed to have begun, for the runner to anchor
     # step/network report timestamps to instead of the moment the process was merely spawned. The
-    # confirmation strength differs by provider: iOS confirms the video's first written byte (data is
-    # flowing); Android confirms only that the device-side process exists yet (a weaker signal, but
-    # still real and much earlier than a guess — the app hasn't launched at that point either). None
-    # when no confirmation was attempted or it never succeeded — callers must treat that as "no
-    # better information than before", not as zero.
+    # confirmation strength differs by provider: iOS takes simctl at its word when it reports its
+    # first frame processed (`Recording started` on stderr, the signal its own `--help` names);
+    # Android confirms only that the device-side process exists yet (a weaker signal, but still real
+    # and much earlier than a guess — the app hasn't launched at that point either). None when no
+    # confirmation was attempted or it never succeeded — callers must treat that as "no better
+    # information than before", not as zero.
     true_start: float | None = None
     # Whether a requested start confirmation succeeded, or None when none was requested (BE-0354).
     # `true_start` alone cannot answer that — it is None both for a capture nobody confirmed and for
@@ -228,8 +279,8 @@ class Interval:
     spawned_at: float | None = None
     # The `time.monotonic()` instant this recording's *own* timeline begins, filled in by `stop()`
     # as "the instant the recording ended, minus the finished file's duration". Every
-    # `true_start` above is a proxy — a first flushed byte, a device-side pid, a browser page that
-    # exists — and each fires at its own distance from the moment the recorder actually began
+    # `true_start` above is a proxy — a recorder's own start line, a device-side pid, a browser page
+    # that exists — and each fires at its own distance from the moment the recorder actually began
     # producing frames, so a report anchored to one seeks off by that distance. This is the
     # recorder's own answer instead of a proxy for it. None when the duration could not be read or
     # is not a wall-clock measure, which leaves the proxy in charge.
@@ -274,10 +325,9 @@ def _measured_start(path: Path, ended_at: float, spawned_at: float | None) -> fl
       origin *after* the first frame, by the whole gap — silently worse than the proxy it outranks.
 
     `spawned_at` bounds both, because it is the one instant that needs no confirmation. A recording
-    opens on its first frame somewhere between that spawn and the ceiling the start confirmation
-    already allows a recorder for exactly that startup (`_video_start_timeout`); an origin outside
-    that window says one of the two inputs is not describing this recording, so it is discarded
-    rather than trusted. Debug rather than warning on every rejection: falling back to the
+    opens on its first frame somewhere between that spawn and `_ORIGIN_STARTUP_CEILING`; an origin
+    outside that window says one of the two inputs is not describing this recording, so it is
+    discarded rather than trusted. Debug rather than warning on every rejection: falling back to the
     start-confirmation proxy is the behavior every run had before this, not an evidence gap this
     function created.
     """
@@ -292,8 +342,8 @@ def _measured_start(path: Path, ended_at: float, spawned_at: float | None) -> fl
         return None
     origin = ended_at - duration
     # `_ORIGIN_SLACK` on the near side only: a sub-frame overshoot is ordinary rounding, while the
-    # far side is the recorder's real startup and already has a ceiling of its own.
-    if not (spawned_at - _ORIGIN_SLACK) <= origin <= (spawned_at + _video_start_timeout()):
+    # far side is the recorder's real startup and has a ceiling of its own.
+    if not (spawned_at - _ORIGIN_SLACK) <= origin <= (spawned_at + _ORIGIN_STARTUP_CEILING):
         _logger.debug(
             "%s states %.3fs of footage ending at the stop, which puts its first frame %+.3fs from "
             "the spawn — outside the window a recording can open in, so its anchor stays on the "
@@ -338,55 +388,6 @@ def adopt(interval: Interval, target: Path) -> Interval:
     )
 
 
-def _file_size(path: Path, *, disclose: bool = False) -> int:
-    """`path`'s size, or 0 if it doesn't exist yet (the common case: nothing has written to it).
-
-    `disclose` warns when the size can't be read for some *other* reason: a 0 from such a failure
-    reads as "no leftover bytes", so it silently disables the stale-retry guard the pre-spawn
-    baseline exists for. Only the baseline call sets it — a per-poll warning would be noise.
-    """
-    try:
-        return path.stat().st_size
-    except FileNotFoundError:
-        return 0
-    except OSError as exc:
-        if disclose:
-            _logger.warning(
-                "could not size %s before spawning recordVideo (%s); a finalized earlier "
-                "attempt's leftover bytes may now confirm a start that never happened",
-                path,
-                exc,
-            )
-        return 0
-
-
-def _await_video_file_growing(
-    path: Path, baseline_size: int, timeout: float = _VIDEO_START_TIMEOUT, poll: float = 0.05
-) -> float | None:
-    """Wait until `path` grows past `baseline_size`, confirming `recordVideo` is producing frames.
-
-    `simctl io recordVideo` writes progressively to `path`, but has real startup latency before the
-    first byte lands — a returned `Popen` proves only that the process was spawned, not that it is
-    recording yet. `baseline_size` (the file's size *before* this spawn) guards a crash-retry that
-    reuses the same scenario id and thus the same target path: without it, a leftover file from a
-    finalized earlier attempt already has bytes, and the very first poll would "confirm" a start
-    that never happened. Poll to a bounded deadline (a condition wait, not a fixed sleep); give up
-    and warn rather than hang or guess a start time.
-    """
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if _file_size(path) > baseline_size:
-            return time.monotonic()
-        time.sleep(poll)
-    _logger.warning(
-        "recordVideo produced no new bytes in %s within %ss; %s",
-        path,
-        timeout,
-        _ANCHOR_UNCORRECTED_MSG,
-    )
-    return None
-
-
 def start_video(
     udid: str, path: Path, spawn: Spawn = spawn, *, confirm_started: bool = False
 ) -> Interval:
@@ -394,28 +395,34 @@ def start_video(
 
     The stop gives `recordVideo` the generous `_VIDEO_FINALIZE_TIMEOUT` to write and mux the clip: a
     premature kill would truncate the mp4 (no `moov` atom) and wedge the simulator's recording session.
-    `confirm_started`, when set, polls for the recording to write past its pre-spawn size so the
-    returned `Interval.true_start` reflects when it actually began rather than when the process was
-    spawned. A confirmation that gives up also triggers the BE-0361 stall capture, which is a bounded,
-    opt-in side effect: a dead video pipeline is evidence about the device, not just about this clip.
+    `confirm_started`, when set, waits for simctl's own `Recording started` line on stderr, so the
+    returned `Interval.true_start` reflects when the first frame was processed rather than when the
+    process was spawned. A confirmation that gives up also triggers the BE-0361 stall capture, which
+    is a bounded, opt-in side effect: a dead video pipeline is evidence about the device, not just
+    about this clip.
     """
-    baseline_size = _file_size(path, disclose=True) if confirm_started else 0
     spawned_at = time.monotonic()
     proc = spawn(record_video_cmd(udid, str(path)), None)
     # Resolved per call, not bound as a parameter default: a default binds at import time and so
     # could never see `BAJUTSU_VIDEO_START_TIMEOUT` (BE-0348).
     true_start = (
-        _await_video_file_growing(path, baseline_size, _video_start_timeout())
-        if confirm_started
-        else None
+        proc.await_stderr(_RECORDING_STARTED, _video_start_timeout()) if confirm_started else None
     )
     start_confirmed = (true_start is not None) if confirm_started else None
     if start_confirmed is False:
-        # A recording that produces no byte says the Simulator's video pipeline is degraded *now*,
-        # which is the same stall the runner channel dies of — so capture the state while it is still
-        # there (BE-0361 unit 2). Keyed on the tri-state the `Interval` already models rather than
-        # re-deriving it, and fired here rather than inside the poll because the udid the capture
-        # screenshots is a parameter of this function. Opt-in and bounded; unset, it does nothing.
+        _logger.warning(
+            "recordVideo did not report %r for %s within %ss; %s",
+            _RECORDING_STARTED,
+            path,
+            _video_start_timeout(),
+            _ANCHOR_UNCORRECTED_MSG,
+        )
+        # A recording that never reports its first frame says the Simulator's video pipeline is
+        # degraded *now*, which is the same stall the runner channel dies of — so capture the state
+        # while it is still there (BE-0361 unit 2). Keyed on the tri-state the `Interval` already
+        # models rather than re-deriving it, and fired here rather than inside the wait because the
+        # udid the capture screenshots is a parameter of this function. Opt-in and bounded; unset,
+        # it does nothing.
         stall_diagnostics.capture("video-no-bytes", stall_diagnostics.simulator_probes(udid))
     return Interval(
         kind="video",
@@ -559,7 +566,7 @@ def _screenrecord_baseline_size(serial: str, run: adb.RunFn, device_path: str) -
         size = adb.parse_file_size(run(adb.file_size_cmd(serial, device_path)))
     except (subprocess.CalledProcessError, OSError) as exc:
         # A 0 from a failed probe reads as "no leftover bytes", silently disabling the stale-retry
-        # guard the baseline exists for — the same reason the iOS `_file_size` baseline discloses.
+        # guard the baseline exists for, so the failure is disclosed rather than swallowed.
         _logger.warning(
             "could not size %s on %s before spawning screenrecord (%s); a finalized earlier "
             "attempt's leftover bytes may now confirm growth that never happened",
@@ -593,7 +600,8 @@ def _await_screenrecord_growing(
 ) -> bool:
     """Wait until the device-side recording grows past `baseline_size`, confirming it emits frames.
 
-    The Android half of the iOS `_await_video_file_growing` check (BE-0367). `screenrecord`'s
+    The Android-only growth check (BE-0367); iOS has no twin, because `simctl io recordVideo` leaves
+    its mp4 at zero bytes until finalize and answers the same question on stderr. `screenrecord`'s
     process existing — all `_await_screenrecord_started` can see — is not proof the encoder is
     producing: a wedged renderer leaves the process alive and the file empty, and that is the
     difference between a slow run and a stalled one. Poll to a bounded deadline (a condition wait,

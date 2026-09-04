@@ -425,6 +425,11 @@ class PlaywrightDriver:
                 # with no child process to wait on; the signature matches the intervals.Proc protocol.
                 driver._finalize_video(path)
 
+            def await_stderr(self, needle: str, timeout: float) -> float | None:  # noqa: ARG002  # Driver shape
+                # No child process, so no stderr to wait on: this lane stamps `true_start` from
+                # `new_page()` instead of confirming a recorder's own start line.
+                return None
+
         return intervals.Interval(
             kind="video",
             path=path,
@@ -492,6 +497,11 @@ class PlaywrightDriver:
                     with contextlib.suppress(Exception):
                         remove("pageerror", on_pageerror)
                 sink.close()
+
+            def await_stderr(self, needle: str, timeout: float) -> float | None:  # noqa: ARG002  # Driver shape
+                # No child process, so no stderr to wait on: this lane stamps `true_start` from
+                # `new_page()` instead of confirming a recorder's own start line.
+                return None
 
         return intervals.Interval(
             kind="deviceLog", path=path, provider=self.name, _proc=_ConsoleCapture()
