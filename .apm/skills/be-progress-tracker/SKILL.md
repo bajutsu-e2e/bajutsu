@@ -42,18 +42,61 @@ formatting of decisions the caller already made, not new judgment, so the cheape
 the right default; a caller can still upshift for an item whose overview is unusually hard to
 summarize.
 
-## What the status page holds
+## The template (verbatim, every call)
 
-Three sections, in this fixed order:
+The page is exactly this shape — four headers, in this order, nothing added and nothing renamed.
+Copy the structure below literally; the only thing that changes between calls is the content
+inside each placeholder.
 
-1. **Overview** — the item's id, title, `Status`, and a short plain-language summary of what it
-   proposes and why. Read from the roadmap item's own files
-   (`roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md`) once they exist; before allocation, read from
-   whatever draft the calling workflow has produced so far.
-2. **Progress** — a checklist mirroring the calling workflow's own step list (e.g. `implement-be`'s
-   numbered steps, or `ideation`'s), each marked done, in progress, or pending.
-3. **Work log** — short timestamped entries, newest first, one line per checkpoint. Never rewrite
-   or delete a past entry; only append.
+```markdown
+# {ID} — {Title}
+
+**Status:** {Status} · **Workflow:** {calling workflow name} · **Last updated:** {timestamp}
+
+## Overview
+
+{One paragraph, 1-3 sentences, plain language. No sub-headers, no bullets.}
+
+## Progress
+
+- [x] 1. {step title, copied verbatim from the calling workflow's own step list}
+- [ ] 2. {step title} — in progress
+- [ ] 3. {step title}
+
+## Work log
+
+- `{timestamp}` — {one sentence, ending in a period.}
+- `{timestamp}` — {earlier entry, unchanged from the last call}
+```
+
+Field rules, all mandatory:
+
+- **`{ID}`** — the BE id (`BE-0123`) or the `BE-XXXX` placeholder, verbatim. **`{Title}`** — the
+  roadmap item's own title once it exists, else the calling workflow's current working title.
+- **Meta line** — a single line, exactly the three fields above in that order, joined by ` · `,
+  nothing else ever added to it.
+  - `Status` — the roadmap item's own `Status:` field, copied verbatim, once
+    `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md` exists; before allocation, literally
+    `Proposal (pre-allocation)`.
+  - `Workflow` — the name of the workflow making *this* call (`implement-be`, `ideation`, …), not
+    the skill that ends up shipping the item — this field changes mid-page when
+    `propose-and-build` hands off between the two.
+  - `{timestamp}` — always `YYYY-MM-DD HH:MM UTC`, from `date -u +"%Y-%m-%d %H:%M UTC"`. Never a
+    relative time ("5 min ago"), never a different format, never the local timezone.
+- **Overview** — rewritten in full from the current source (the roadmap file, or the calling
+  workflow's draft) each call; it is a snapshot, not an append log. Read from
+  `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md` once it exists; before allocation, read from
+  whatever draft the calling workflow has produced so far.
+- **Progress** — one line per step of the calling workflow's own step list (e.g. `implement-be`'s
+  numbered steps, or `ideation`'s), numbered to match that list, with the step's title copied
+  verbatim — never paraphrased or shortened. Exactly three line shapes, no other suffix or
+  annotation is ever added:
+  - done: `- [x] {n}. {title}`
+  - in progress: `- [ ] {n}. {title} — in progress`
+  - pending: `- [ ] {n}. {title}`
+- **Work log** — newest entry first (prepend, don't append at the bottom). One line per checkpoint,
+  each shaped exactly `- \`{timestamp}\` — {one sentence}.` — a single sentence, past tense, ending
+  in a period, no line breaks inside it. Never rewrite or delete a past entry.
 
 ## How to update
 
@@ -61,13 +104,18 @@ Three sections, in this fixed order:
   Overview; seed Progress with every step of the calling workflow, ticking only the ones already
   done; start the Work log with one entry.
 - **Every later call carries no memory of the earlier ones** — each checkpoint runs as its own
-  subagent, so it knows only what this call was handed, not what an earlier checkpoint wrote. Read the existing page first and carry its Progress ticks and Work log forward verbatim,
-  advancing Progress and appending exactly one new Work log line on top of them. Rebuilding the page
-  from this call's input alone would silently drop every earlier entry — that is the one failure
-  this step exists to prevent. When the existing page can't be read, say so in the page itself
-  rather than quietly starting a fresh log.
+  subagent, so it knows only what this call was handed, not what an earlier checkpoint wrote. Read
+  the existing page first and carry its Progress ticks and Work log forward verbatim, advancing
+  Progress and prepending exactly one new Work log line above them. Rebuilding the page from this
+  call's input alone would silently drop every earlier entry — that is the one failure this step
+  exists to prevent. When the existing page can't be read, say so as a Work log line — for example
+  `- \`{timestamp}\` — Could not read the existing page; entries before this point may be
+  missing.` — rather than quietly starting a fresh log.
 - **Never invent status.** If the calling workflow hasn't reported a step as done, leave it pending
   — don't infer it from what "usually" happens next.
+- **Never add a section, a field, or a line shape not in the template above.** If a call has
+  information that doesn't fit an Overview/Progress/Work-log line, drop it rather than growing the
+  template — a caller with a real recurring need should change this skill, not the one call.
 
 ## Output
 

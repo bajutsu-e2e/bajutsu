@@ -19,7 +19,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:dd85d815dfe90179e507c8576e2eb5a2a38c8acd197b66be751956ff8f48a70a
+  content_hash: sha256:b74504a657a456ebf5a33b11aa91b9e8f308705572ace0e53ab612461aed85bd
 - kind: project-relative
   target: claude
   value: .claude/skills/claude-review
@@ -163,7 +163,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:a4a6cac2a25da3ceb5d3751472df6cf5c8c87380f6dd6512cd7841f2db71768b
+  content_hash: sha256:c4f20fe99469579aeb9cb4e93a0032ba2da46b3bba4fdc2db6d6fd51203b2cf4
 - kind: project-relative
   target: claude
   value: .claude/skills/implement-be/references/pr-followup-loop.md
@@ -404,7 +404,7 @@ local_deployed_files:
 - .claude/skills/task-select
 - .claude/skills/task-select/SKILL.md
 local_deployed_file_hashes:
-  .claude/skills/be-progress-tracker/SKILL.md: sha256:dd85d815dfe90179e507c8576e2eb5a2a38c8acd197b66be751956ff8f48a70a
+  .claude/skills/be-progress-tracker/SKILL.md: sha256:b74504a657a456ebf5a33b11aa91b9e8f308705572ace0e53ab612461aed85bd
   .claude/skills/claude-review/SKILL.md: sha256:8fe654fc63e8dfb6fb62d123dcf585a6a74c41ce4be221dc5f4351adbc989829
   .claude/skills/cleanup/SKILL.md: sha256:23ba7b078cec388b2a16b3029e554cebdd6410b0dd7b703802ce194e6553f5ca
   .claude/skills/document-writing/SKILL.md: sha256:22616d0f3a666bf494849d2820ff2a3bda140f0ca92ba31a528d1e47ccd3aa0f
@@ -412,7 +412,7 @@ local_deployed_file_hashes:
   .claude/skills/fix-issue/SKILL.md: sha256:e313f73c60b2811be0843ecfdec9e95805aca1da2a23cd165ef377d507903957
   .claude/skills/git-sync/SKILL.md: sha256:f9c2eb3a39c02a4a415294e9874c7dca8feb1654ffc5950d1705f84fe68970ea
   .claude/skills/ideation/SKILL.md: sha256:e26203e33b360304f7cff096ac3ac91571de0920370bb788465ad5f026d81d7a
-  .claude/skills/implement-be/SKILL.md: sha256:a4a6cac2a25da3ceb5d3751472df6cf5c8c87380f6dd6512cd7841f2db71768b
+  .claude/skills/implement-be/SKILL.md: sha256:c4f20fe99469579aeb9cb4e93a0032ba2da46b3bba4fdc2db6d6fd51203b2cf4
   .claude/skills/implement-be/references/pr-followup-loop.md: sha256:ec348d5744e26d9641bfbb015a2811da6cdfaef90280beabf618fdfe4c2516d6
   .claude/skills/implement-be/references/self-review.md: sha256:aa4e17fc6c9ccba60837409dd0dd0c3085b9f3324ca1dc1b81fb7ca30d870ea1
   .claude/skills/investigate-ci-failure/SKILL.md: sha256:e28b872f930723eaa11dffe61d9d0016f479c8815539b2ae7e1eeb54b5b78a95
