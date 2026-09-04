@@ -303,11 +303,9 @@ def test_pre_step_capture_precedes_a_mutating_action(tmp_path: Path) -> None:
 
 def test_pre_step_capture_precedes_a_non_mutating_step(tmp_path: Path) -> None:
     """The report's screenshot for an `assert`/`wait` step is taken before it reads the tree to
-    evaluate itself — not just before a mutating action. `capture()`'s own token order always
-    writes the screenshot before it (if needed) queries the tree for `elements.json`
-    (`screenshot.before` precedes `elements` in the pre-step call), and the whole call runs before
-    `_run_step_body`, so the first screenshot logged precedes the first tree query logged either
-    way — whether that query came from the capture's own fallback or the assertion's own read.
+    evaluate itself — not just before a mutating action. The pre-step baseline call (screenshot
+    only, BE-0407 Units 3-4) runs before `_run_step_body`, so the first screenshot logged precedes
+    the first tree query logged either way — the assertion's/wait's own read.
     """
     driver = _QueryLoggingDriver([el("home.title", "ホーム")])
     run_scenario(
@@ -393,11 +391,13 @@ def test_a_step_that_fails_before_it_acts_keeps_a_matched_pre_action_pair(
     tmp_path: Path,
 ) -> None:
     """A step that fails resolving `handleSystemAlert`'s label against an uncovered locale returns
-    before it acts. The pre-step baseline runs *ahead* of locale resolution, so the step still
-    records evidence — `before.png` and the tree read at that same moment — and records no
-    `after.png`, since nothing acted and no later capture fills one in. That keeps the one path
-    without a post-action screenshot internally consistent: the viewers show `before.png`, matching
-    the tree they draw element frames from (review follow-up)."""
+    before it ever reaches the post-step capture, the only place a leaf step ordinarily gets a tree
+    (BE-0407 Units 3-4 dropped it from the pre-step baseline). This is the one path that writes its
+    own tree explicitly, right where it returns, so the step still records evidence — `before.png`
+    and a matching `elements.json` — and records no `after.png`, since nothing acted and no later
+    capture fills one in. That keeps the one path without a post-action screenshot internally
+    consistent: the viewers show `before.png`, matching the tree they draw element frames from
+    (review follow-up)."""
     driver = FakeDriver([el("a", "A", ["button"])])
     run_dir = tmp_path / "run1"
     result = run_scenario(
@@ -562,15 +562,14 @@ class _FakeBridge:
         pass
 
 
-def test_pre_step_capture_queries_the_web_driver_for_a_blocks_first_nested_step(
+def test_pre_step_capture_takes_no_tree_for_a_blocks_first_nested_step_without_screen_changed(
     tmp_path: Path,
 ) -> None:
-    """The pre-step baseline for a `web` block's first nested step queries the *web* driver, not
-    the native one, since `prev_after` is reset to `None` around the whole block (BE-0234 Unit 2)
-    and the sink call always targets the native driver otherwise (BE-0341) — proven by content:
-    the DOM-only element must appear in the written elements.json. The post-step capture reads the
-    web tree too, so both of the step's `elements` entries describe the DOM, never the native
-    screen the sink call targets."""
+    """A `web` block's first nested step pays no pre-step query at all when nothing would consume
+    it (BE-0407 Units 3-4): with no `screenChanged` policy, `before` stays `None` regardless of
+    `prev_after`, so seeding it here would be pure waste. The step still ends with exactly one
+    `elements` entry — the post-step capture's — holding the DOM tree, never the native screen the
+    sink call's screenshot targets."""
     native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
     dom_elements: list[base.Element] = [
         el("confirm", "Confirm", ["button"], frame=(10.0, 10.0, 100.0, 20.0))
@@ -602,23 +601,20 @@ def test_pre_step_capture_queries_the_web_driver_for_a_blocks_first_nested_step(
     els_artifact = next(a for a in leaf_outcome.artifacts if a.kind == "elements")
     written = json.loads((run_dir / els_artifact.name).read_text(encoding="utf-8"))
     assert any(e["identifier"] == "confirm" for e in written)  # the DOM tree, not the native one
-    # Two `elements` entries, both naming the one fixed filename: the pre-step baseline's
-    # pre-action write and the post-step capture that replaces it with the post-action tree.
-    assert sum(1 for a in leaf_outcome.artifacts if a.kind == "elements") == 2
+    assert sum(1 for a in leaf_outcome.artifacts if a.kind == "elements") == 1
     names = {a.name for a in leaf_outcome.artifacts}
     assert any(name.endswith("before.png") for name in names)
     assert any(name.endswith("after.png") for name in names)
 
 
-def test_pre_step_capture_downgrades_to_screenshot_only_when_web_query_fails(
+def test_pre_step_screen_changed_seed_recovers_when_the_first_web_query_fails(
     tmp_path: Path,
 ) -> None:
-    """A `web` block's first nested step still gets its native `screenshot.before` when the bridge
-    query fails: only `elements` needs the web driver, so the pre-step baseline drops just that
-    token rather than the whole capture (BE-0341 review follow-up). The bridge recovers in time for
-    the post-step capture, modeling a transient hiccup rather than a permanently dead bridge — so
-    the step ends with exactly one `elements` entry, the post-action one, instead of the usual
-    two."""
+    """With a `screenChanged` policy, a `web` block's first nested step still tries to seed
+    `prev_after` from the web driver — and a failed attempt must not crash the step (BE-0341 review
+    follow-up): `before`'s own computation reads fresh again on its own, so a transient bridge
+    hiccup here costs a retry, not a failure. The bridge recovers in time for that retry, modeling a
+    transient failure rather than a permanently dead bridge."""
 
     class _FlakyBridge(_FakeBridge):
         def __init__(self, dom_elements: list[base.Element]) -> None:
@@ -639,6 +635,9 @@ def test_pre_step_capture_downgrades_to_screenshot_only_when_web_query_fails(
         _scenario(
             {
                 "name": "x",
+                "capturePolicy": [
+                    {"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}
+                ],
                 "steps": [
                     {
                         "web": {
@@ -689,10 +688,11 @@ def test_a_web_block_step_resolves_to_an_unpaired_screenshot_and_tree(tmp_path: 
     assert result.ok, result.failure
     leaf = next(s for s in result.steps if s.action == "type")
     depicts = {(a.kind, a.depicts) for a in leaf.artifacts if a.kind in ("screenshot", "elements")}
+    # No `screenChanged` policy, so the pre-step baseline takes no tree at all here (BE-0407 Units
+    # 3-4): only the post-step `elements` entry exists, still from the WebView.
     assert depicts == {
         ("screenshot", "fake:before"),
         ("screenshot", "fake:after"),
-        ("elements", "webview:before"),
         ("elements", "webview:after"),
     }
     view = step_view((a.kind, a.name, a.depicts) for a in leaf.artifacts)

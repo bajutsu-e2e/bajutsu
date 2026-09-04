@@ -123,8 +123,8 @@ def test_a_writing_sink_pays_one_read_per_step_not_two(tmp_path: Path) -> None:
     # counted *and* seeds `prev_after` — which the next step's pre-step baseline then reuses instead
     # of reading again. Leaving it to the sink would cost two uncounted reads per step (~2.4s each on
     # adb) and keep `prev_after` unset for the whole scenario, defeating BE-0234 Unit 2's reuse.
-    # Two steps therefore cost three reads: step0's baseline (nothing to reuse yet) plus one
-    # post-step read each.
+    # The pre-step baseline itself requests no tree at all (BE-0407 Units 3-4), so two steps cost
+    # exactly one post-step read each — two, not the three a pre-step tree write would add.
     driver = _CountingDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
     result = run_scenario(
         driver,
@@ -133,24 +133,19 @@ def test_a_writing_sink_pays_one_read_per_step_not_two(tmp_path: Path) -> None:
         sink=FileSink(tmp_path / "run1"),
     )
     assert result.ok
-    assert driver.queries == 3
+    assert driver.queries == 2
 
 
 def test_a_writing_sink_adds_no_read_to_the_before_reuse(tmp_path: Path) -> None:
     # The `before` reuse measured under `_KindsSink` has to hold on the path a real run takes. That
     # sink is a `NullSink`, which the always-on `elements` write structurally exempts from the
     # post-step read (`loop.py`'s `not isinstance(self.cfg.sink, NullSink)`), so every count in this
-    # file is taken on the exempt branch; a `FileSink` takes the writing one. Four reads, and which
-    # four is the point: step0's pre-step baseline, the initial `before`, then one post-step read
-    # per step. The screenChanged policy already forces that post-step read, so writing `elements`
-    # consumes it rather than adding a second — step1 pays one read, not two, and reuses both its
-    # baseline and its `before` from step0's `after`.
-    #
-    # The first two are one pre-action screen read twice: the baseline's `elements` write issues its
-    # own `query()` inside `evidence.capture` (it is handed `elements=None` with no `prev_after` to
-    # reuse yet), and the `before` comparison then reads the same unacted-on screen. That pair
-    # predates this change — the merge base counts the same 4 here — so it is BE-0341's to remove,
-    # not this test's to hide.
+    # file is taken on the exempt branch; a `FileSink` takes the writing one. Three reads, and which
+    # three is the point: step0's own `before` (screenChanged wants one and `prev_after` has nothing
+    # to reuse yet, since the pre-step baseline requests no tree of its own — BE-0407 Units 3-4),
+    # then one post-step read per step. The screenChanged policy already forces that post-step read,
+    # so writing `elements` consumes it rather than adding a second — step1 pays one read, not two,
+    # and reuses both its baseline and its `before` from step0's `after`.
     driver = _CountingDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
     result = run_scenario(
         driver,
@@ -167,14 +162,15 @@ def test_a_writing_sink_adds_no_read_to_the_before_reuse(tmp_path: Path) -> None
         sink=FileSink(tmp_path / "run1"),
     )
     assert result.ok
-    assert driver.queries == 4
+    assert driver.queries == 3
 
 
 def test_a_writing_sink_reuses_the_asserts_evaluated_tree(tmp_path: Path) -> None:
     # BE-0259's seed reuse, likewise measured on the writing branch: the `assert` already queried a
     # tree to evaluate itself, and the always-on `elements` write consumes that seed instead of
-    # re-reading. One step therefore costs its pre-step baseline plus the assert's own query — 2,
-    # where a post-step capture that re-read for the write would take 3.
+    # re-reading. The pre-step baseline requests no tree of its own (BE-0407 Units 3-4), so the
+    # step costs only the assert's own query — 1, where a post-step capture that re-read for the
+    # write would take 2.
     driver = _CountingDriver([el("field", "Name", value="Ada")])
     result = run_scenario(
         driver,
@@ -193,7 +189,7 @@ def test_a_writing_sink_reuses_the_asserts_evaluated_tree(tmp_path: Path) -> Non
         sink=FileSink(tmp_path / "run1"),
     )
     assert result.ok, result.failure
-    assert driver.queries == 2
+    assert driver.queries == 1
 
 
 def test_pre_step_baseline_skips_the_web_query_under_a_null_sink() -> None:

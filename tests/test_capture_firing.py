@@ -1,11 +1,13 @@
 """Tests for evidence firing in the run loop.
 
-Every step captures two instant baselines: a pre-step one (screenshot.before + elements.before, taken
-before the step acts, BE-0341) and a post-step one that always records screenshot.after + elements,
-so both halves of the pair exist for every step whatever the scenario asked for.
-`elements.json` has one fixed filename, so the post-step write replaces the pre-action tree: the
-tree a step records describes the screen its action produced, the same moment `after.png` shows and
-the moment a viewer draws element frames for.
+Every step captures two instant baselines: a pre-step one (`screenshot.before`, taken before the
+step acts, BE-0341) and a post-step one that always records `screenshot.after` + `elements`, so
+both halves of the pair exist for every step whatever the scenario asked for. The pre-step baseline
+requests no tree of its own (BE-0407 Units 3-4): the post-step call always re-reads and rewrites
+`elements.json` unconditionally, to the one fixed filename, so a tree captured pre-action would be
+serialized, redacted, and scrubbed only to be overwritten a moment later — the tree a step records
+describes the screen its action produced, the same moment `after.png` shows and the moment a viewer
+draws element frames for.
 capturePolicy / inline `capture` add extra instant kinds onto the post-step call — never
 `screenshot.before`, which the pre-step baseline already wrote (filtered out as redundant). Interval
 kinds (video / deviceLog / appTrace) are heavy and opt-in (BE-0028): recorded once for the whole
@@ -30,7 +32,7 @@ from bajutsu.common.orchestrator.evidence_rules import requested_intervals
 from bajutsu.common.orchestrator.waits import WaitTrace
 from bajutsu.common.scenario import Scenario
 
-BASELINE_BEFORE = ["screenshot.before", "elements.before"]
+BASELINE_BEFORE = ["screenshot.before"]
 BASELINE_AFTER = ["screenshot.after"]
 BASELINE_TREE = ["elements"]
 
@@ -605,6 +607,6 @@ def test_file_sink_writes_baseline_elements(tmp_path: Path) -> None:
         _scn({"name": "x", "steps": [{"tap": {"id": "a"}}]}),
         sink=FileSink(tmp_path / "run1"),
     )
-    # The baseline writes the element tree for the step even with no capturePolicy,
+    # The post-step baseline writes the element tree for the step even with no capturePolicy,
     # nested under the scenario's dir (slug of "x").
     assert (tmp_path / "run1" / "x" / "step0" / "elements.json").exists()
