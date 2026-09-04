@@ -18,13 +18,14 @@ public struct InterruptionRule: Sendable, Equatable {
 /// Which button to press on an out-of-process alert that interrupts an XCUITest interaction.
 ///
 /// This is a *mechanism*, not a policy: every label in it is resolved on the Python side from the
-/// scenario's `systemAlertHandling` (its `rules`, its ordered `labels` candidates, or the
-/// built-in dismissive defaults) and pushed here before the run. What lives in Swift is only the
-/// matching discipline, and it is the same one Python applies — `match_alert_rule` then
-/// `pick_alert_label`: a rule wins when every one of its identifying labels is on the alert exactly
-/// once; otherwise the first candidate present exactly once wins. "Exactly once", not merely
-/// present, so an alert with two identically labelled buttons never resolves to whichever matched
-/// first (determinism first).
+/// scenario's own `systemAlertHandling.rules`, and the built-in dismissive candidates stand in for
+/// whatever no rule names; both are pushed here before the run. Only the rules this surface can
+/// actually meet are sent — an alert raised inside the application's own process never interrupts
+/// an XCUITest interaction, so its rules are dropped rather than matched here (BE-0406). What lives
+/// in Swift is only the matching discipline: a rule wins when every one of its identifying labels is
+/// on the alert exactly once; otherwise the first candidate present exactly once wins. "Exactly
+/// once", not merely present, so an alert with two identically labelled buttons never resolves to
+/// whichever matched first (determinism first).
 ///
 /// It exists because XCUITest resolves an interrupting alert *before* it synthesizes any element
 /// interaction, and with no monitor registered it falls back to its own default handler, which taps

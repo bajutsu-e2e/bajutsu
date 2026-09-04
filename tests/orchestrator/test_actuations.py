@@ -12,7 +12,7 @@ independently of the driver.
 from __future__ import annotations
 
 from _orch import FakeClock, _scenario
-from conftest import GUARD_LABEL, AlertingDriver, el
+from conftest import AlertingDriver, el, guard_rule
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.actuation import MAX_RECORDS, Actuation, ActuationLog
@@ -143,7 +143,7 @@ def test_a_step_retried_after_an_alert_carries_both_attempts_in_order() -> None:
     steps = _run(
         [{"tap": {"id": "blocked.button"}}],
         driver,
-        alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]),
+        alert_guard=AlertGuardConfig(rules=[guard_rule()]),
     )
 
     # Everything that really reached the device during this step, in order: the tap that failed, the
@@ -164,9 +164,10 @@ def test_the_expect_phase_guard_records_onto_the_scenario_result() -> None:
             d.screen = [el("verified", frame=(0.0, 0.0, 5.0, 5.0))]
 
     # The in-tree dismiss is the guard path that actuates the app's own screen: an identifier-less
-    # button the scenario's own `labels` named, tapped through `Driver.tap` (BE-0315). It is the one
-    # guard path that still logs a gesture now the vision fallback is gone (BE-0402); the native
-    # path taps out of the app's coordinate space by handle, so it records no in-app actuation.
+    # button an in-tree rule of the scenario's own identifies, tapped through `Driver.tap` (BE-0315,
+    # BE-0406). It is the one guard path that still logs a gesture now the vision fallback is gone
+    # (BE-0402); the native path taps out of the app's coordinate space by handle, so it records no
+    # in-app actuation.
     prompt = el(None, "OK", ["button"], frame=(10.0, 10.0, 30.0, 30.0))
     driver = FakeDriver([prompt], react=react)
 
@@ -180,7 +181,7 @@ def test_the_expect_phase_guard_records_onto_the_scenario_result() -> None:
             }
         ),
         clock=FakeClock(),
-        alert_guard=AlertGuardConfig(labels=["OK"]),
+        alert_guard=AlertGuardConfig(rules=[guard_rule("OK")]),
     )
 
     assert result.ok

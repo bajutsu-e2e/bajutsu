@@ -147,14 +147,16 @@ Preconditions ::= {
 }
 
 # ── SystemAlertHandling (reactive system-alert guard; on by default) ───
-# Native SpringBoard query + tap on XCUITest (no model, reusing BE-0316; BE-0315). An alert that path
-# cannot name is reported on the blocked step's own failure, never guessed at (BE-0402).
-SystemAlertHandling ::= boolean                                   # true = on with the default policy, false = off
-               | { rules?: [<SystemAlertRule>],             # answer a named prompt by choice — native path
-                   labels?: [string],                       # ordered button labels — native path
+# Native SpringBoard query + tap on XCUITest (no model, reusing BE-0316; BE-0315), plus an in-tree
+# tap for a prompt that query cannot see. An alert no rule identifies is reported on the blocked
+# step's own failure, never guessed at (BE-0402, BE-0406).
+SystemAlertHandling ::= boolean                                   # true = on with no rules, false = off
+               | { rules?: [<SystemAlertRule>],             # the guard's whole declaration (BE-0406)
                    visionInstruction?: string,              # free text; reaches no command — `run` rejects it
                    pollInterval?: number }                   # native poll cadence, seconds (default 1)
-SystemAlertRule ::= { prompt: notifications|tracking|paste, choice: grant|deny }  # unique prompt per list
+SystemAlertRule ::= { prompt: notifications|tracking|paste|savePassword, choice: grant|deny }  # unique prompt per list
+                # savePassword is guard-only: iOS raises it in-process, so the in-tree dismissal
+                # alone answers it and the handleSystemAlert step below rejects it (BE-0406)
 
 Permissions ::= map(PermissionService, PermissionAction)    # applied before the app launches
 PermissionService ::= "location" | "camera" | "microphone" | "contacts"
@@ -187,7 +189,7 @@ Action    ::=
   | { pinch:       { sel: <Selector>, scale: number } }    # scale > 0  (>1 in, <1 out)
   | { rotate:      { sel: <Selector>, radians: number } }  # >0 clockwise
   | { handleSystemAlert: { sel: <Selector>, timeout: number } }  # tap an iOS SpringBoard permission prompt (iOS/XCUITest only); sel accepts only label/labelMatches/index
-  | { handleSystemAlert: { prompt: notifications|tracking|paste, choice: grant|deny, timeout: number } }  # same step, label resolved from the run's locale (BE-0320)
+  | { handleSystemAlert: { prompt: notifications|tracking|paste, choice: grant|deny, timeout: number } }  # same step, label resolved from the run's locale (BE-0320); savePassword is not nameable here (BE-0406)
   | { wait:        <Wait> }
   | { assert:      list(<Assertion>) }
   | { relaunch:    { env?: map(string,string), args?: list(string) } }
@@ -397,15 +399,14 @@ Omitted optional keys take these values (so a minimal scenario is just `name` + 
 |---|---|
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `before` / `after` | `[]` |
 | `Scenario.preconditions` | `{}` (i.e. `erase` unset — off unless the target config says otherwise — and `reinstall: clean`) |
-| `Scenario.systemAlertHandling` | unset (alert guard on; dismiss the prompt) |
+| `Scenario.systemAlertHandling` | unset (alert guard on, with no rules — so it answers no prompt of its own) |
 | `Scenario.iosTipKitHandling` | unset (off — a tip is sometimes the assertion; iOS only) |
 | `Scenario.permissions` | `{}` (no pre-launch permission state applied) |
 | `Preconditions.erase` | unset — inherits the target config's `erase`, else off (BE-0177) |
 | `Preconditions.reinstall` | `clean` |
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |
-| `SystemAlertHandling.rules` | `[]` (no named-prompt rules; `labels`/the built-in dismissive labels answer every prompt) |
-| `SystemAlertHandling.labels` | `[]` (no layer named a button; the built-in dismissive labels stand in) |
+| `SystemAlertHandling.rules` | `[]` (no prompt is declared, so the guard answers none; an alert it meets is named on the blocked step's failure) |
 | `SystemAlertHandling.visionInstruction` | unset — and no other value is usable: `run` refuses one (BE-0402) and `record` / `crawl` read the free text only from their own `--alert-vision-instruction` flag |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |

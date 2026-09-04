@@ -106,17 +106,22 @@ from bajutsu.common.scenario.serialize import (
     scenario_dict,
 )
 from bajutsu.common.scenario.system_alerts import (
+    AlertSurfaces,
+    ResolvedAlertShape,
     SystemAlertChoice,
     SystemAlertPrompt,
     UncoveredSystemAlertLocale,
+    alert_surfaces,
     covered_languages,
     system_alert_label,
+    system_alert_shapes,
 )
 
 __all__ = [
     "ASSERTION_KINDS",
     "STEP_ACTIONS",
     "AfterRule",
+    "AlertSurfaces",
     "Assertion",
     "Background",
     "CaptureRule",
@@ -160,6 +165,7 @@ __all__ = [
     "Redact",
     "Relaunch",
     "RequestMatch",
+    "ResolvedAlertShape",
     "ResponseSchemaMatch",
     "Rotate",
     "Scenario",
@@ -190,6 +196,7 @@ __all__ = [
     "Wait",
     "WaitRequest",
     "Web",
+    "alert_surfaces",
     "apply_setups",
     "contained_ref",
     "covered_languages",
@@ -210,4 +217,5 @@ __all__ = [
     "scenario_dict",
     "select_scenarios",
     "system_alert_label",
+    "system_alert_shapes",
 ]

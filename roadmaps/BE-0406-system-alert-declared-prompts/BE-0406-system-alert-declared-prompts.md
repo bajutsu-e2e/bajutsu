@@ -498,7 +498,7 @@ the gap Unit 2b closes to bring the two surfaces to the same standard.
 - [x] Unit 1 — move the `handleSystemAlert` wait into the orchestrator, driving one gate per step
       at `_POLL`, with the step's own read throttled to `_SYSTEM_ALERT_POLL_SECONDS` independent of
       the guard's `pollInterval`, and fail with a reason that names the alert that held the screen.
-- [ ] Unit 2a — remove `labels` and `--alert-labels`; re-key the native probe and both in-tree
+- [x] Unit 2a — remove `labels` and `--alert-labels`; re-key the native probe and both in-tree
       dismissals to `rules` alone; reject a scenario that still writes `labels`.
 - [ ] Unit 2b — remove `DEFAULT_DISMISSIVE_LABELS` and the Swift-side candidate matching it fed; add
       `governs` to `InterruptionPolicy`/`set_interruption_policy`/`InterruptionPolicyRequest` so a
@@ -507,7 +507,7 @@ the gap Unit 2b closes to bring the two surfaces to the same standard.
       benign race; extend the drain endpoint and the `Driver.drain_interruptions` protocol to carry
       them; add the second `expect`-phase drain the alert-guard retry is currently missing; and fail
       the step or `expect` that met one.
-- [ ] Unit 3 — key a prompt's language entry to a list of shapes with an optional exclusion-label
+- [x] Unit 3 — key a prompt's language entry to a list of shapes with an optional exclusion-label
       set, add `savePassword` with its three shapes and the per-prompt surface record, and reject it
       in a `handleSystemAlert` step.
 - [ ] Unit 4 — migrate both save-password demos to `rules`, drop the browser demo's workaround wait,

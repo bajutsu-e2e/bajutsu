@@ -154,7 +154,7 @@ def test_select_returns_none_when_no_eligible_match() -> None:
 
 # --- handler + end-to-end (injected reader + fake clock; no network) ---
 
-from conftest import AlertingDriver, el  # noqa: E402
+from conftest import AlertingDriver, el, guard_rule  # noqa: E402
 
 from bajutsu.common.drivers import base  # noqa: E402
 from bajutsu.common.drivers.fake import FakeDriver  # noqa: E402
@@ -356,7 +356,7 @@ def test_on_blocked_retry_preserves_the_mailbox() -> None:
         clock=_FakeClock(),
         bindings={},
         mailbox=mailbox,
-        alert_guard=AlertGuardConfig(labels=["Allow"]),
+        alert_guard=AlertGuardConfig(rules=[guard_rule("Allow")]),
     )
     assert result.ok, result.failure
     assert "no mailbox configured" not in (result.steps[0].reason or "")

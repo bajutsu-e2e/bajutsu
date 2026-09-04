@@ -494,7 +494,7 @@ BE-0402 は `probe_native` が返す `"unhandled"` にも用途を与えてい�
 - [x] 単位 1 — `handleSystemAlert` の待機を orchestrator へ移す。ステップにつき 1 つのゲートを
       `_POLL` で駆動し、ステップ自身の読み取りはガードの `pollInterval` とは独立に
       `_SYSTEM_ALERT_POLL_SECONDS` へ絞る。画面を占めていたアラートを名指しする理由で失敗させる。
-- [ ] 単位 2a — `labels` と `--alert-labels` を削除する。ネイティブの probe と 2 つのツリー内
+- [x] 単位 2a — `labels` と `--alert-labels` を削除する。ネイティブの probe と 2 つのツリー内
       消去を `rules` だけへ付け替える。`labels` を書いたままのシナリオは拒否する。
 - [ ] 単位 2b — `DEFAULT_DISMISSIVE_LABELS` と、それが監視へ渡していた Swift 側の照合を削除する。
       `InterruptionPolicy` / `set_interruption_policy` / `InterruptionPolicyRequest` に `governs`
@@ -503,7 +503,7 @@ BE-0402 は `probe_native` が返す `"unhandled"` にも用途を与えてい�
       負けた一致済みボタンは除く。drain エンドポイントと `Driver.drain_interruptions` プロトコルを
       それぞれ拡張して運ぶ。`expect` の alert-guard retry に今は欠けている 2 度目の drain を加える。
       遭遇した step または `expect` を失敗させる。
-- [ ] 単位 3 — プロンプトの言語エントリを、除外ラベルの集合を持ちうる形のリストに対応づける。3 つの形と
+- [x] 単位 3 — プロンプトの言語エントリを、除外ラベルの集合を持ちうる形のリストに対応づける。3 つの形と
       プロンプトごとの面の記録とともに `savePassword` を加え、`handleSystemAlert` ステップでは拒否する。
 - [ ] 単位 4 — 「パスワードを保存」の 2 つのデモを `rules` へ移し、ブラウザ側のデモから迂回策の待機を
       落とし、回帰用のシナリオを `ios-e2e` のレーンに加える。

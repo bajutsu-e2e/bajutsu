@@ -89,16 +89,18 @@ def test_system_alert_handling_off_round_trips_as_the_bare_boolean() -> None:
 @pytest.mark.parametrize(
     ("policy", "replacement"),
     [
-        ({"instruction": ["Allow"]}, "labels"),
+        ({"instruction": ["Allow"]}, "rules"),
         ({"instruction": "tap Allow"}, "visionInstruction"),
         ({"enabled": False}, "systemAlertHandling: false"),
+        ({"labels": ["Allow"]}, "rules"),
     ],
 )
 def test_system_alert_handling_removed_keys_name_their_replacement(
     policy: dict[str, object], replacement: str
 ) -> None:
-    # BE-0401 removed `instruction` and `enabled` with no alias, so the load error is the whole
-    # migration path an author gets — `extra="forbid"`'s generic message would name no replacement.
+    # BE-0401 removed `instruction` and `enabled` and BE-0406 removed `labels`, each with no alias,
+    # so the load error is the whole migration path an author gets — `extra="forbid"`'s generic
+    # message would name no replacement.
     with pytest.raises(ValidationError) as exc:
         Scenario.model_validate(
             {"name": "x", "systemAlertHandling": policy, "steps": [{"tap": {"id": "a"}}]}
@@ -122,35 +124,37 @@ def test_renamed_alert_keys_fail_naming_the_canonical_key(old: str) -> None:
     # them, so each now fails to load pointing at `systemAlertHandling`.
     with pytest.raises(ValidationError) as exc:
         Scenario.model_validate(
-            {"name": "x", old: {"labels": ["Allow"]}, "steps": [{"tap": {"id": "a"}}]}
+            {
+                "name": "x",
+                old: {"rules": [{"prompt": "notifications", "choice": "grant"}]},
+                "steps": [{"tap": {"id": "a"}}],
+            }
         )
     assert "systemAlertHandling" in str(exc.value)
 
 
-def test_system_alert_handling_labels_accept_an_ordered_list() -> None:
-    # BE-0401: `labels` is the native path's ordered candidate list; it round-trips.
+def test_system_alert_handling_rules_round_trip() -> None:
+    # BE-0406: `rules` is the guard's whole declaration, so it is what a dump has to carry back.
     s = Scenario.model_validate(
         {
             "name": "x",
-            "systemAlertHandling": {"labels": ["Allow", "OK"]},
+            "systemAlertHandling": {"rules": [{"prompt": "savePassword", "choice": "deny"}]},
             "steps": [{"tap": {"id": "a"}}],
         }
     )
     assert isinstance(s.system_alert_handling, SystemAlertHandling)
-    assert s.system_alert_handling.labels == ["Allow", "OK"]
     rt = load_scenarios(dump_scenarios([s]))[0]
     assert isinstance(rt.system_alert_handling, SystemAlertHandling)
-    assert rt.system_alert_handling.labels == ["Allow", "OK"]
+    assert [(r.prompt, r.choice) for r in rt.system_alert_handling.rules] == [
+        ("savePassword", "deny")
+    ]
 
 
-@pytest.mark.parametrize(
-    "policy",
-    [{"labels": []}, {"labels": ["Allow", "  "]}, {"visionInstruction": "  "}],
-)
+@pytest.mark.parametrize("policy", [{"visionInstruction": "  "}])
 def test_system_alert_handling_rejects_empty_values(policy: dict[str, object]) -> None:
-    # BE-0401: each of these used to normalize away silently and fall through to the default
-    # dismissive policy — answering the opposite of what the author wrote. Fail instead, the same
-    # reason an ambiguous selector fails rather than tapping its first match.
+    # BE-0401: this used to normalize away silently and fall through to the default dismissive
+    # policy — answering the opposite of what the author wrote. Fail instead, the same reason an
+    # ambiguous selector fails rather than tapping its first match.
     with pytest.raises(ValidationError):
         Scenario.model_validate(
             {"name": "x", "systemAlertHandling": policy, "steps": [{"tap": {"id": "a"}}]}
@@ -212,22 +216,27 @@ def test_system_alert_handling_rules_parse_and_round_trip() -> None:
     ]
 
 
-def test_system_alert_handling_rules_and_labels_compose() -> None:
-    # rules and labels are not exclusive: labels stay the catch-all for whatever prompt no rule
-    # names, since a prompt name is the more specific declaration.
+def test_system_alert_handling_rules_carry_prompts_of_different_reach() -> None:
+    # BE-0406: a prompt no answer path shares with another is still an ordinary entry here. The
+    # schema records what the author declared; which path can act on each is resolved later, from
+    # `alert_surfaces`, so a scenario can rule on a SpringBoard prompt and an in-app one at once.
     s = Scenario.model_validate(
         {
             "name": "x",
             "systemAlertHandling": {
-                "rules": [{"prompt": "notifications", "choice": "grant"}],
-                "labels": ["Not Now"],
+                "rules": [
+                    {"prompt": "notifications", "choice": "grant"},
+                    {"prompt": "savePassword", "choice": "deny"},
+                ],
             },
             "steps": [{"tap": {"id": "a"}}],
         }
     )
     assert isinstance(s.system_alert_handling, SystemAlertHandling)
-    assert s.system_alert_handling.labels == ["Not Now"]
-    assert len(s.system_alert_handling.rules) == 1
+    assert [(r.prompt, r.choice) for r in s.system_alert_handling.rules] == [
+        ("notifications", "grant"),
+        ("savePassword", "deny"),
+    ]
 
 
 def test_system_alert_handling_rules_rejects_duplicate_prompt() -> None:

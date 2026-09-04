@@ -7,9 +7,9 @@
 #     reads the prompt's buttons and taps "Allow" by an accessibility query, with no screenshot, no
 #     model, and no ANTHROPIC_API_KEY — so this grant is deterministic on iOS (prime directive 1). It
 #     is the *reactive* native counterpart to permission_system_alert.yaml's *proactive*
-#     `handleSystemAlert`. The grant MUST be written as `labels`, the key the native path reads: a
-#     `visionInstruction` steers the vision fallback alone, so the native tap would fall through to
-#     the default dismissive labels and tap "Don't Allow" — inverting the grant (BE-0401).
+#     `handleSystemAlert`. The grant MUST be written as a `rules` entry, the only declaration the
+#     native path reads (BE-0406): a `visionInstruction` steers the vision fallback alone, so the
+#     native tap would find no rule identifying the prompt and leave it alone — never granting it.
 #   - Android (adb): showcase-compose's config `grantPermissions: [POST_NOTIFICATIONS]` pre-grants at
 #     lease time (`pm grant` after `pm clear`, before launch), so the RequestPermission contract
 #     short-circuits to granted with no dialog. No prompt appears, so the guard never fires — the flow
@@ -23,7 +23,8 @@
 # is tagged `ai` and both run on the required XCUITest gate.
 - name: grant notification permission
   tags: [permission, system]
-  systemAlertHandling: { labels: ["Allow"] }   # iOS: native tap on "Allow" to grant; Android: no-op (pre-granted)
+  # iOS: native tap on the notification prompt's grant button; Android: no-op (pre-granted).
+  systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:

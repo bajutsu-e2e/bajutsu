@@ -245,13 +245,13 @@ DEFAULT_ALERT_POLL_INTERVAL = 1.0
 # blocking the mid-wait poll.
 _NATIVE_TAP_TIMEOUT = 0.0
 
-# Default dismissive button labels the native path taps when a scenario names none (BE-0315), in
-# preference order: least-destructive first — the notification prompt's "Don't Allow" (straight and
-# curly apostrophe, since iOS renders U+2019), App Tracking Transparency's "Ask App Not to Track",
-# then generic dismissive labels. A prompt whose dismissive button is none of these resolves to no
-# candidate, and `run` then leaves it alone and names it in the blocked step's own failure reason
-# (BE-0402). Keep this in step with the vision locator's own dismissive-button policy prose
-# (`agents/alerts.py` `LOCATOR_SYSTEM`), which `record` / `crawl` still run, so the two paths agree.
+# The fallback the runner's interruption monitor is handed for an alert no rule identifies, and
+# since BE-0406 its only reader is `push_interruption_policy` — no Python path consults it, because
+# the guard now answers a declared prompt or nothing at all. In preference order, least-destructive
+# first: the notification prompt's "Don't Allow" (straight and curly apostrophe, since iOS renders
+# U+2019), App Tracking Transparency's "Ask App Not to Track", then generic dismissive labels. Keep
+# this in step with the vision locator's own dismissive-button policy prose (`agents/alerts.py`
+# `LOCATOR_SYSTEM`), which `record` / `crawl` still run, so the two paths agree.
 DEFAULT_DISMISSIVE_LABELS: tuple[str, ...] = (
     "Don't Allow",
     "Don’t Allow",
@@ -265,7 +265,7 @@ DEFAULT_DISMISSIVE_LABELS: tuple[str, ...] = (
 
 # What a native probe found: "incapable" (backend has no native path), "absent" (no alert — a
 # deterministic fact), "dismissed" (a policy-named button was tapped), "unhandled" (an alert is up
-# but no candidate label resolves, so nothing clears it and the caller reports it instead),
+# but no rule identifies it, so nothing clears it and the caller reports it instead),
 # "reserved" (an alert is up and a waiting `handleSystemAlert` step named it, so this probe leaves
 # it for the step's own tap — BE-0406).
 NativeAlertState = Literal["incapable", "absent", "dismissed", "unhandled", "reserved"]
@@ -281,7 +281,7 @@ _UNCLEARED_PROMPT_NOTE = "a system prompt the guard could not clear is still up"
 def alert_block_note(buttons: Sequence[str]) -> str:
     """What the guard saw blocking the screen, for a failure reason to name (BE-0402).
 
-    *buttons* are the labels a native probe read off an alert no rule or candidate label names —
+    *buttons* are the labels a native probe read off an alert no rule identifies —
     `probe_native`'s `"unhandled"` answer, and only that. Empty means the block was inferred from
     the collapsed-tree proxy rather than enumerated — a surface `springboard.alerts` cannot see, or
     a backend with no native query at all — so the note hedges rather than naming buttons nobody
@@ -296,25 +296,12 @@ def alert_block_note(buttons: Sequence[str]) -> str:
 def uncleared_prompt_note(label: str) -> str:
     """The in-tree dismiss's own give-up: a prompt it named and could not clear (BE-0402).
 
-    Deliberately not `alert_block_note`: "unhandled" would tell the author no candidate label
-    resolved, when their label resolved and only the tap failed — it did not take, or never became
-    deliverable — sending them to add a label they already wrote instead of to the stuck prompt.
+    Deliberately not `alert_block_note`: "unhandled" would tell the author no rule identified the
+    alert, when their rule did identify it and only the tap failed — it did not take, or never
+    became deliverable — sending them to write a rule they already have instead of to the stuck
+    prompt.
     """
     return f"{_UNCLEARED_PROMPT_NOTE} (button: {label})"
-
-
-def pick_alert_label(candidates: Sequence[str], buttons: Sequence[str]) -> str | None:
-    """The first candidate label present on the alert exactly once, or None (BE-0315).
-
-    Exactly once — not merely present — so an alert with two identically labeled buttons never
-    resolves to "whichever matched first" (determinism first, mirroring `resolve_unique`). None means
-    no candidate resolves uniquely, so the caller reports the alert rather than tapping one of them.
-    """
-    present = list(buttons)
-    for label in candidates:
-        if present.count(label) == 1:
-            return label
-    return None
 
 
 def _alert_button(label: str) -> base.Element:
@@ -354,28 +341,47 @@ def selector_names_button(sel: base.Selector, buttons: Sequence[str]) -> bool:
 
 @dataclass(frozen=True)
 class ResolvedAlertRule:
-    """One `systemAlertHandling.rules` entry with its prompt's labels resolved for a locale.
+    """One shape of one `systemAlertHandling.rules` entry, resolved for a locale.
 
-    `identifying_labels` is the prompt's full label pair (grant and deny), resolved from
-    `bajutsu.common.scenario.system_alerts` for the run's locale — matching requires both, since a single
-    shared label (e.g. "Allow") cannot by itself tell two covered prompts apart. `tap_label` is the
-    label the rule's `choice` names.
+    `identifying_labels` are the labels that together name this shape, resolved from
+    `bajutsu.common.scenario.system_alerts` for the run's locale — matching requires all of them,
+    since a single shared label (e.g. "Allow") cannot by itself tell two covered prompts apart.
+    `tap_label` is the label the rule's `choice` names. One scenario rule resolves to several of
+    these when its prompt renders differently by context or iOS version (BE-0406).
+
+    `excluded_labels` rules the shape *out* where its identifying labels alone would also fit another
+    alert — iOS 26.5's in-app save sheet is "Save" and "Not Now", the same pair the credit-card update
+    sheet offers, and only "Never for This Card" tells them apart. An exclusion rather than a demand
+    that the shape's labels *be* the alert's whole button set, because the in-tree paths this reaches
+    match over every identifier-less labelled button in the poll's tree rather than one alert's, so
+    there is no button set there to compare against.
+
+    `native` and `in_tree` carry the prompt's `AlertSurfaces` record. They are not symmetric in what
+    they gate: `in_tree` arms the two in-tree dismissals, and `native` decides only whether the rule
+    may be pushed to the runner's interruption monitor. `probe_native` filters on neither, matching
+    every rule — a prompt the SpringBoard query cannot see offers that query no buttons to match
+    against, so no filter is needed for it to be unreachable there.
     """
 
     identifying_labels: frozenset[str]
     tap_label: str
+    excluded_labels: frozenset[str] = frozenset()
+    native: bool = True
+    in_tree: bool = False
 
 
 def match_alert_rule(rules: Sequence[ResolvedAlertRule], buttons: Sequence[str]) -> str | None:
-    """The tap label of the first rule whose prompt is uniquely identified on `buttons`.
+    """The tap label of the first rule whose shape is uniquely identified on `buttons`.
 
-    A rule matches when each of its prompt's two labels is present on the alert exactly once — the
-    full pair, not only the label it taps, since a single shared label cannot by itself distinguish
-    one covered prompt from another. None means no rule's prompt is identified, so the caller falls
-    through to the ordered `labels` candidates.
+    A rule matches when each of its identifying labels is present exactly once — the full set, not
+    only the label it taps, since a single shared label cannot by itself distinguish one covered
+    prompt from another — and no excluded label is present at all. None means no rule's prompt is
+    identified, so the caller leaves the alert alone and reports it (BE-0406).
     """
     present = list(buttons)
     for rule in rules:
+        if any(label in present for label in rule.excluded_labels):
+            continue
         if all(present.count(label) == 1 for label in rule.identifying_labels):
             return rule.tap_label
     return None
@@ -390,14 +396,12 @@ class AlertGuardConfig:
     backend advertising `HANDLE_SYSTEM_ALERT`, or through the in-tree dismiss for an app-owned prompt
     that query cannot see. Every path here is deterministic: BE-0402 removed the AI-vision fallback
     from `run`, so where neither path can act the guard does nothing and records `blocked_note` for
-    the blocked step to report. `rules` are checked first — each answers one named prompt regardless
-    of which label it shares with another; `labels` are the ordered candidate button labels the
-    native path falls back to for whatever no rule identifies (empty → the built-in dismissive
-    default); `poll_interval` is the native presence-query cadence the mid-wait gate polls on,
-    decoupled from the wait's own condition poll.
+    the blocked step to report. `rules` are the whole policy (BE-0406) — each answers one named
+    prompt regardless of which label it shares with another, and an alert no rule identifies is left
+    alone rather than answered by a guessed button. `poll_interval` is the native presence-query
+    cadence the mid-wait gate polls on, decoupled from the wait's own condition poll.
     """
 
-    labels: list[str] = field(default_factory=list)
     rules: list[ResolvedAlertRule] = field(default_factory=list)
     poll_interval: float = DEFAULT_ALERT_POLL_INTERVAL
     # What the most recent `__call__` saw blocking the screen and could not clear, for the end-of-step
@@ -407,19 +411,30 @@ class AlertGuardConfig:
     # in sequence, so no note crosses a scenario or a worker boundary.
     blocked_note: str = field(default="", init=False)
 
+    @property
+    def tree_rules(self) -> list[ResolvedAlertRule]:
+        """The rules the in-tree dismissal may act on: those whose prompt that path can reach.
+
+        Arming on *any* rule would widen the tree match past what the author asked for — a scenario
+        declaring `notifications` alone would arm one for a prompt that only ever appears in
+        SpringBoard, and an application screen happening to show identifier-less "Allow" and
+        "Don't Allow" buttons would be tapped (BE-0406).
+        """
+        return [rule for rule in self.rules if rule.in_tree]
+
     def probe_native(
         self, driver: base.Driver, reserved: base.Selector | None = None
     ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
         """Query and, where possible, clear a system alert natively; report what happened.
 
         Reads BE-0316's SpringBoard query (`system_alert_labels`) to learn the alert's buttons, picks
-        a policy-named one — a `rules` match first, then the ordered `labels` candidates —
-        and taps it through BE-0316's `handle_system_alert`. The returned `AlertEvent` is set only for
+        the button a `rules` entry names for the prompt it identifies, and taps it through BE-0316's
+        `handle_system_alert`. The returned `AlertEvent` is set only for
         `"dismissed"`. `"absent"` is a deterministic no-*SpringBoard*-alert fact — but the native query
         only sees `springboard.alerts`, so a non-enumerable surface (an action sheet, a WKWebView
         dialog) reads as `"absent"` too, and only the mid-wait gate's debounced collapsed-tree proxy
-        can notice it. `"unhandled"` means an alert is up but no rule or candidate label resolves, so
-        nothing here can clear it.
+        can notice it. `"unhandled"` means an alert is up but no rule identifies it, so nothing here
+        can clear it.
 
         The third member carries the buttons this query actually read, empty unless an alert was
         seen. `"unhandled"` is the state that needs them: BE-0402 left that alert on screen, so the
@@ -441,9 +456,7 @@ class AlertGuardConfig:
             # The step is waiting on this very alert and taps it on its own next read. Not
             # "absent": an alert *is* up, and "absent" is the one answer licensing an in-tree tap.
             return "reserved", None, list(buttons)
-        label = match_alert_rule(self.rules, buttons) or pick_alert_label(
-            self.labels or DEFAULT_DISMISSIVE_LABELS, buttons
-        )
+        label = match_alert_rule(self.rules, buttons)
         if label is None:
             return "unhandled", None, list(buttons)
         try:
@@ -458,8 +471,8 @@ class AlertGuardConfig:
             # offering the label twice. Reporting "absent" would say no system alert is showing,
             # which is the one thing licensing an in-tree tap (`_observe_native`'s `probed_absent`) —
             # and that tap, made under a live alert, is what XCUITest answers with its own default
-            # button. "unhandled" is what this already is by definition: an alert is up but no
-            # candidate resolves, so it licenses nothing and is reported instead.
+            # button. "unhandled" is what this already is by definition: an alert is up but no rule
+            # resolves, so it licenses nothing and is reported instead.
             return "unhandled", None, list(buttons)
         return "dismissed", AlertEvent(label=label), list(buttons)
 
@@ -475,13 +488,13 @@ class AlertGuardConfig:
         One-shot, so it carries none of the mid-wait version's per-showing bookkeeping (retap delay,
         tap ceiling, decline bound): the caller runs it once per failed step, not per poll, so there
         is no stream to pace. It matches the same narrow surface — an identifier-less labelled button
-        whose label the scenario's own `labels` named, resolving uniquely — so it stays off the
-        default dismissive vocabulary a real screen can legitimately show.
+        on an alert one of the scenario's own in-tree-capable rules identifies, resolving uniquely.
 
         Returns the `AlertEvent` for the button it tapped, or None when nothing matched, the match was
         ambiguous, or the tap lost a race with the prompt closing itself.
         """
-        if not self.labels:
+        rules = self.tree_rules
+        if not rules:
             return None
         elements = driver.query()
         buttons = [
@@ -489,7 +502,7 @@ class AlertGuardConfig:
             for el in elements
             if el["label"] and not el["identifier"] and base.Trait.BUTTON in el["traits"]
         ]
-        label = pick_alert_label(self.labels, buttons)
+        label = match_alert_rule(rules, buttons)
         if label is None:
             return None
         # The same uniqueness pre-check the mid-wait path applies: a bare `{"label": label}` selector
@@ -522,7 +535,7 @@ class AlertGuardConfig:
             if tree_event is not None:
                 self.blocked_note = ""
                 return tree_event
-        # "unhandled": an alert is up that no rule or candidate label names. BE-0402 leaves it alone
+        # "unhandled": an alert is up that no rule identifies. BE-0402 leaves it alone
         # rather than asking a model where to tap, so the step keeps failing — but on its own timeout
         # with the alert named, not as an unexplained missing element. "incapable" and a bare
         # "absent" clear the note instead: neither is evidence of anything blocking the screen.
@@ -539,18 +552,37 @@ def push_interruption_policy(driver: base.Driver, guard: AlertGuardConfig | None
     decision here: the backend applies `rules` then `candidates` by the same discipline
     `probe_native` does, and answers nothing else.
 
+    A rule the monitor can never meet is dropped rather than pushed: this surface exists for an
+    alert in another process interrupting an XCUITest interaction, and one raised into the
+    application's own process never reaches it. Dropping it is not merely tidy — the Swift side
+    matches a rule by subset, so pushing an in-tree-only shape would re-open there the collision an
+    `excluded_labels` set closes here (BE-0406).
+
     An absent guard (`systemAlertHandling: false`) pushes an empty policy rather than skipping the
     call, so a scenario that switched the guard off does not inherit the previous scenario's policy
     from the resident runner. A backend that does not implement `InterruptionPolicyTarget` is simply
     never asked.
+
+    Raises:
+        ValueError: a rule this surface *can* meet carries an exclusion set. No such shape exists
+            today — by construction, since every excluded shape is in-tree-only and dropped above —
+            and one added later must fail loudly here rather than reach the monitor with its
+            exclusion silently discarded, which is the subset-match collision this drop avoids.
     """
     if not isinstance(driver, base.InterruptionPolicyTarget):
         return
     rules: list[tuple[frozenset[str], str]] = []
     candidates: list[str] = []
     if guard is not None:
-        rules = [(rule.identifying_labels, rule.tap_label) for rule in guard.rules]
-        candidates = list(guard.labels or DEFAULT_DISMISSIVE_LABELS)
+        reachable = [rule for rule in guard.rules if rule.native]
+        excluding = [rule.tap_label for rule in reachable if rule.excluded_labels]
+        if excluding:
+            raise ValueError(
+                "interruption policy cannot carry an exclusion set; rules tapping "
+                f"{', '.join(sorted(excluding))} would be matched by subset on the runner"
+            )
+        rules = [(rule.identifying_labels, rule.tap_label) for rule in reachable]
+        candidates = list(DEFAULT_DISMISSIVE_LABELS)
     driver.set_interruption_policy(rules, candidates)
 
 

@@ -346,10 +346,10 @@ class SystemAlertGuard:
   passed as `on_blocked`. On a backend that declares `HANDLE_SYSTEM_ALERT` (XCUITest), the guard
   prefers a deterministic native path: it reads the same SpringBoard query
   [`handleSystemAlert`](scenarios.md#handlesystemalert-the-deterministic-system-alert-step) (BE-0316)
-  uses, taps the first policy-named button by label through `resolve_unique`, and needs no model
+  uses, taps the button a scenario's rule names through `resolve_unique`, and needs no model
   call. Where nothing deterministic can act — a backend without the capability (adb, Playwright), an
-  alert no policy label names, or a surface the query cannot enumerate whose button the scenario's
-  own `labels` do not name either (those it does name, the in-tree path taps) — the guard does
+  alert no rule identifies, or a surface the query cannot enumerate that no rule identifies either
+  (the ones a rule does identify, the in-tree path taps) — the guard does
   nothing ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)),
   and what it saw rides the failure instead: a guarded `wait` always carries the note, and a blocked
   step outside a wait carries it only where the native query enumerated the alert — with no native
@@ -359,12 +359,12 @@ class SystemAlertGuard:
   (`for`/`gone`/`settled`/`screenChanged`), the native path is additionally polled on its own
   interval (default 1s, decoupled from the wait's own condition poll), so a blocked wait can recover
   before its own timeout elapses instead of only at the end-of-step retry (BE-0269). A scenario sets
-  `systemAlertHandling: false` to opt out, or `{ labels: ["Allow"] }` to name a candidate label the
-  native path resolves deterministically
-  ([BE-0401](../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md));
+  `systemAlertHandling: false` to opt out, or `{ rules: [{ prompt: notifications, choice: grant }] }`
+  to name a prompt the guard answers by its own choice — `rules` is the guard's whole declaration
+  ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md));
   `{ visionInstruction: … }` reaches no path under `run` and is refused before any scenario starts.
   `--system-alert-handling`/`--no-system-alert-handling` overrides every scenario, and
-  `--alert-labels` and `--alert-poll-interval` supply those two keys for one run.
+  `--alert-poll-interval` supplies that one key for a single run. `rules` has no flag of its own.
 - `record --system-alert-handling`: on by default (authoring has no scenario yet). Clears prompts
   that interrupt authoring so the agent always sees a clean screen. **A dismissal is an environment
   operation, not a recorded step** (replay handles it via each scenario's `systemAlertHandling`).

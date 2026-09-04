@@ -74,6 +74,7 @@ from bajutsu.common.orchestrator.waits import (
     _timeout_floor,
     _wait,
     describe_wait,
+    settle_after_alert_dismiss,
     wait_for_system_alert,
 )
 from bajutsu.common.scenario import (
@@ -752,13 +753,19 @@ def run_scenario(
                     event = alert_guard(driver)
                     if event is None and alert_guard.blocked_note:
                         # The guard saw a prompt it could not clear (BE-0402 leaves an alert no rule
-                        # or candidate label names alone rather than guessing where to tap). Name it
-                        # on the `expect` failure below, which would otherwise report only the
-                        # assertion that never held.
+                        # identifies alone rather than guessing where to tap). Name it on the
+                        # `expect` failure below, which would otherwise report only the assertion
+                        # that never held.
                         expect_block_note = alert_guard.blocked_note
                     if event is not None:
                         expect_alerts.append(event)
                         expect_actuations.extend(drain_actuations(driver).records)
+                        # The prompt has been tapped, not yet cleared: let the sheet finish leaving
+                        # and the screen it covered finish rendering, so the retry below judges the
+                        # assertions against a still tree rather than one mid-animation (BE-0406).
+                        settle_after_alert_dismiss(
+                            driver, clock, transitions=transitions, cancelled=cancelled
+                        )
                         if ctx.visual is not None:
                             ctx.visual.capture_actual(driver)
                         # Re-read the clipboard too: clearing the block may have let the app update the
@@ -1536,6 +1543,15 @@ class _StepRunner:
                         reason = f"{reason} \u2014 {note}"
                     if event is not None:
                         outcome.alerts.append(event)
+                        # Same reason as the `expect` site: the retry below actuates, and a sheet
+                        # still animating away is a screen the step would fail against for a reason
+                        # that is not its own (BE-0406).
+                        settle_after_alert_dismiss(
+                            active_driver,
+                            self.cfg.clock,
+                            transitions=self.cfg.transitions,
+                            cancelled=self.cfg.cancelled,
+                        )
                         wait_trace = WaitTrace() if wait_trace is not None else None
                         # The retry is the end-of-step "one more shot": it does not re-arm the
                         # mid-wait guard (no alert_guard passed), so one dismissed prompt buys one

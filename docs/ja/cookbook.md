@@ -85,16 +85,18 @@ uv run bajutsu run --scenario <path-to-file> --target showcase-swiftui --backend
 アラート**です。iOS バックエンドはこれを直接タップできません。`systemAlertHandling` は、そのタップだけを
 リアクティブなアラートガードに任せます。ガードは決定論的なネイティブ経路で、スクリーンショットも
 モデルへの往復も使わずにプロンプトを見張り、「Allow」をタップします。その前後のアサーションはすべて
-機械チェックのままです。許可は `labels: ["Allow"]` で書きます。ネイティブ経路が解決するのはこのキー
-だけです。`visionInstruction` が操作していたのは vision フォールバックで、シナリオからはどのコマンドにも
-届かなくなりました。そのため `run` は、既定の無害な label 群にフォールバックして許可を拒否に反転させる
-のではなく、この設定自体を拒否します
+機械チェックのままです。書くのは、想定するプロンプトと、そこで下す選択です。ガードの宣言は `rules` が
+すべてです（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。
+実行時にプロンプトと固定したロケールからボタンを解決するので、このファイルは日本語のシミュレータでも
+正しいままです。`visionInstruction` が操作していたのは vision フォールバックで、シナリオからはどの
+コマンドにも届かなくなりました。そのため `run` は、操作できない設定のまま実行するのではなく、この設定
+自体を拒否します
 （[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。
 
 ```yaml
 - name: grant notification permission
   tags: [permission, system]
-  systemAlertHandling: { labels: ["Allow"] }
+  systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:
