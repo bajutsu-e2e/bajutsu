@@ -48,7 +48,11 @@ Alongside the steps below, keep [`be-progress-tracker`](../../../.apm/skills/be-
 current: at minimum after step 4 (the item exists, even still as `BE-XXXX`), step 5 (the self-review
 pass comes back clean), and step 6 (`make check` is green). Invoke it through the Agent tool with
 `model: "haiku"` passed explicitly, since a subagent call does not inherit that skill's own
-frontmatter model. It only turns decisions this workflow already made into a glanceable status page — never
+frontmatter model. Never hand over a roadmap-item path at these checkpoints: the item's real id is
+allocated only when a human merges the proposal PR (BE-0089), which happens after this workflow's
+own steps are done, so `roadmaps/BE-XXXX-<slug>/…` never exists on `main` during any checkpoint this
+workflow makes — the tracker's roadmap-link button stays dropped for the whole proposal phase by
+design, not by omission. It only turns decisions this workflow already made into a glanceable status page — never
 let it gate or slow this workflow down; skip a checkpoint rather than block on it.
 
 ### 1. Ground yourself in the existing roadmap

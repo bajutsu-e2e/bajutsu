@@ -57,13 +57,19 @@ Field rules, all mandatory:
 - **`{ID}`** — the BE id (`BE-0123`) or the `BE-XXXX` placeholder, verbatim, always plain text in
   the `<h1>`. **`{Title}`** — the roadmap item's own title once it exists, else the calling
   workflow's current working title.
+- **Escape every placeholder's text as HTML** before it goes into the template — `&` → `&amp;`,
+  `<` → `&lt;`, `>` → `&gt;` — in the title, the Overview, every step title, and every work-log
+  sentence. Real values carry both characters (`Platform-aware backend registry & selection`,
+  `roadmaps/BE-NNNN-<slug>/`), and unescaped the browser silently swallows them instead of
+  showing them.
 - **Roadmap-link button** — once the calling workflow has handed over the roadmap item's
   repo-relative path, include the `<a class="link-btn" href="https://github.com/bajutsu-e2e/bajutsu/blob/main/{that path}">Roadmap item ↗</a>`
   button verbatim, right after the status badge — it needs its own border/hover styling to read as
   clickable, unlike the badge next to it. Before allocation — no path handed over yet — drop the
   button entirely rather than pointing it at a path that doesn't exist on `main` yet.
 - **Meta line** — the badge, the roadmap-link button when present, then exactly the two remaining
-  fields in that order, joined by ` · `, nothing else ever added to it.
+  fields in that order. The ` · ` separators sit inside the last two `<span>`s, exactly as the
+  template shows; no separator goes between the badge and the button. Nothing else is ever added.
   - `Status` — the roadmap item's own `Status:` field, copied verbatim, once
     `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md` exists; before allocation, literally
     `Proposal (pre-allocation)`. Its badge gets exactly one of three classes, chosen only by the
@@ -130,7 +136,9 @@ to the calling workflow so it can reuse it next time. Pick the `favicon` on the 
 it stable across every redeploy of the same item, per the Artifact tool's own rule; only a hard
 pivot in what the item is — which shouldn't happen mid-implementation — would justify changing it.
 The `<title>` tag in the template already supplies the Artifact's title each redeploy, so no
-separate `title` param is needed.
+separate `title` param is needed. The title is the one field exempt from that stability rule: it
+renders `{ID} — {Title}`, so it changes once — when the `BE-XXXX` placeholder is replaced by the
+allocated id — and never again.
 
 ## Non-goals
 

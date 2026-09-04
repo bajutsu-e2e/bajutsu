@@ -19,7 +19,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:07eca74836863cefd31001dfabd500a6c8c388798f74ea7c8ae78a5f02b1053e
+  content_hash: sha256:c036e3fd096a6cc43e8bba77e7f42939913146946f3da926d0c70ee057705d5b
 - kind: project-relative
   target: claude
   value: .claude/skills/be-progress-tracker/references/template.html
@@ -154,7 +154,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:e26203e33b360304f7cff096ac3ac91571de0920370bb788465ad5f026d81d7a
+  content_hash: sha256:068188214b46628ed9abef6b83c023e7ff764fa74d054bc4badcaa9adf540907
 - kind: project-relative
   target: claude
   value: .claude/skills/implement-be
@@ -172,7 +172,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:b69a2fc304b849e61ef46a5999078e4a39f07eb2694bd87ce4b31523c4644f1b
+  content_hash: sha256:ce56d86f0e0dd779130d5238cc66d62b60e98bfe1c9d5461f693efbb66f59218
 - kind: project-relative
   target: claude
   value: .claude/skills/implement-be/references/pr-followup-loop.md
@@ -316,7 +316,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:983a71b843ecee80a247d22d71bc2b6bf4c3e347ef4ee035af28591b57c9ec2c
+  content_hash: sha256:3c59eeb1803cc51cea0541c37f40077ae0fb41a32581a369ed0293e60674f1b6
 - kind: project-relative
   target: claude
   value: .claude/skills/record-issue
@@ -414,7 +414,7 @@ local_deployed_files:
 - .claude/skills/task-select
 - .claude/skills/task-select/SKILL.md
 local_deployed_file_hashes:
-  .claude/skills/be-progress-tracker/SKILL.md: sha256:07eca74836863cefd31001dfabd500a6c8c388798f74ea7c8ae78a5f02b1053e
+  .claude/skills/be-progress-tracker/SKILL.md: sha256:c036e3fd096a6cc43e8bba77e7f42939913146946f3da926d0c70ee057705d5b
   .claude/skills/be-progress-tracker/references/template.html: sha256:ffc9e64aeb0ae0ee4b4945b113d7a12329756a246860cd5f4002d017b7bf7a9e
   .claude/skills/claude-review/SKILL.md: sha256:8fe654fc63e8dfb6fb62d123dcf585a6a74c41ce4be221dc5f4351adbc989829
   .claude/skills/cleanup/SKILL.md: sha256:23ba7b078cec388b2a16b3029e554cebdd6410b0dd7b703802ce194e6553f5ca
@@ -422,8 +422,8 @@ local_deployed_file_hashes:
   .claude/skills/english-document-writing/SKILL.md: sha256:00fcaa5bf91eb3a05a58bd4f729ad43e42bf010ee7bead75db4fdfe741060afa
   .claude/skills/fix-issue/SKILL.md: sha256:e313f73c60b2811be0843ecfdec9e95805aca1da2a23cd165ef377d507903957
   .claude/skills/git-sync/SKILL.md: sha256:f9c2eb3a39c02a4a415294e9874c7dca8feb1654ffc5950d1705f84fe68970ea
-  .claude/skills/ideation/SKILL.md: sha256:e26203e33b360304f7cff096ac3ac91571de0920370bb788465ad5f026d81d7a
-  .claude/skills/implement-be/SKILL.md: sha256:b69a2fc304b849e61ef46a5999078e4a39f07eb2694bd87ce4b31523c4644f1b
+  .claude/skills/ideation/SKILL.md: sha256:068188214b46628ed9abef6b83c023e7ff764fa74d054bc4badcaa9adf540907
+  .claude/skills/implement-be/SKILL.md: sha256:ce56d86f0e0dd779130d5238cc66d62b60e98bfe1c9d5461f693efbb66f59218
   .claude/skills/implement-be/references/pr-followup-loop.md: sha256:ec348d5744e26d9641bfbb015a2811da6cdfaef90280beabf618fdfe4c2516d6
   .claude/skills/implement-be/references/self-review.md: sha256:aa4e17fc6c9ccba60837409dd0dd0c3085b9f3324ca1dc1b81fb7ca30d870ea1
   .claude/skills/investigate-ci-failure/SKILL.md: sha256:e28b872f930723eaa11dffe61d9d0016f479c8815539b2ae7e1eeb54b5b78a95
@@ -434,7 +434,7 @@ local_deployed_file_hashes:
   .claude/skills/japanese-document-writing/references/expression.md: sha256:a9868652cdd9fcf00a2604b1536b0876795709b779523acd9b0522b979ffa9ae
   .claude/skills/japanese-document-writing/references/formatting.md: sha256:5c4d212825292359f062a55d4e5993d65b5fd0cdd00a8f28dc742cd747e84103
   .claude/skills/pr-followup/SKILL.md: sha256:1042ed7af20b0bc949d1fc4873d37d04a57e0fac6b1eed466fdffd60af201b92
-  .claude/skills/propose-and-build/SKILL.md: sha256:983a71b843ecee80a247d22d71bc2b6bf4c3e347ef4ee035af28591b57c9ec2c
+  .claude/skills/propose-and-build/SKILL.md: sha256:3c59eeb1803cc51cea0541c37f40077ae0fb41a32581a369ed0293e60674f1b6
   .claude/skills/record-issue/SKILL.md: sha256:11faa3c2956527a035e5a41f5b485c6e47ce5c00de48fb8aaf946b0a2083f45e
   .claude/skills/roadmap-filter/SKILL.md: sha256:482a131cd01ae6b25804c2d94a85acf87781254d668ea67ee3f3564a840b1c5c
   .claude/skills/task-select/SKILL.md: sha256:4fc35b7c1966344be8722032d0273273db8e9096155755071c32834030139e92
