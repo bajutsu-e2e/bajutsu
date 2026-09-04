@@ -20,7 +20,7 @@ from sqlalchemy import Engine, create_engine
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
 from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
-from bajutsu.serve.server.db import SqlRepository
+from bajutsu.serve.server.db import RunRecord, SqlRepository
 from bajutsu.serve.server.db_executor import DbQueueExecutor
 from bajutsu.serve.server.models import Base
 from bajutsu.serve.server.object_store import artifact_prefix, org_prefix
@@ -189,8 +189,10 @@ def test_worker_result_reads_the_manifest_from_the_orgs_object_prefix(
 ) -> None:
     """The hosted shape, where the bug was seen: the manifest the worker uploaded lives under the
     org's artifact prefix, so the recorded summary must be the real one (scenario names, verdict),
-    not the thin fallback a read against the bare default store would produce. Re-posting the same
-    result records the same row rather than a duplicate, so a worker retry is harmless."""
+    not the thin fallback a read against the bare default store would produce. A worker that holds
+    its own `BAJUTSU_DATABASE_URL` has already written a row from its local manifest by then, so the
+    control plane's `record_run` must land on top of it rather than duplicate it; a retried result
+    POST is refused as stale before it can reach the persist at all."""
     state, repo = _state_with_db(serve_engine, tmp_path)
     manifest = {
         "runId": "20260904-051448",
@@ -208,6 +210,19 @@ def test_worker_result_reads_the_manifest_from_the_orgs_object_prefix(
     )
     repo.enqueue_job("j1", org_id="acme", spec={"cmd": [], "label": "showcase"})
     repo.lease_job("w1")
+    # The row a DB-holding worker wrote before posting its result, thin because its own upload had
+    # not finished when it read the manifest — the control plane's write must replace it in place.
+    repo.record_run(
+        RunRecord(
+            id="20260904-051448",
+            org_id="acme",
+            status="done",
+            created_by=None,
+            ok=True,
+            summary={"id": "20260904-051448", "ok": True, "report": False, "scenarios": []},
+            label="showcase",
+        )
+    )
     body = {
         "job_id": "j1",
         "worker_id": "w1",
@@ -215,7 +230,8 @@ def test_worker_result_reads_the_manifest_from_the_orgs_object_prefix(
     }
     _payload, code = ops.worker_result(state, body)
     assert code == 200
-    ops.worker_result(state, body)  # a retried POST upserts the same row
+    _retry, retry_code = ops.worker_result(state, body)  # a retried POST is refused as stale
+    assert retry_code == 409
     recorded = repo.list_runs(org_id="acme")
     assert [r.id for r in recorded] == ["20260904-051448"]
     assert recorded[0].summary["scenarios"] == ["smoke.yaml"]
