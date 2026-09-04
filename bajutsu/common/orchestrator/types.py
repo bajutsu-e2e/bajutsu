@@ -123,6 +123,18 @@ class AlertEvent:
 
 
 @dataclass
+class UndeclaredInterruption:
+    """An alert that interrupted an XCUITest interaction and matched no `rules` entry.
+
+    XCUITest answers it with the alert's own default button regardless — nothing here changes that
+    tap, and it is never reported as an `AlertEvent`, since nothing was answered on the scenario's
+    behalf. Recording it is what lets the step or `expect` that met it fail by name instead of
+    reading as an unrelated pass or an unexplained assertion mismatch (BE-0406 Unit 2b)."""
+
+    buttons: list[str] = field(default_factory=list)
+
+
+@dataclass
 class StepOutcome:
     index: int
     action: str
@@ -245,24 +257,6 @@ DEFAULT_ALERT_POLL_INTERVAL = 1.0
 # blocking the mid-wait poll.
 _NATIVE_TAP_TIMEOUT = 0.0
 
-# The fallback the runner's interruption monitor is handed for an alert no rule identifies, and
-# since BE-0406 its only reader is `push_interruption_policy` — no Python path consults it, because
-# the guard now answers a declared prompt or nothing at all. In preference order, least-destructive
-# first: the notification prompt's "Don't Allow" (straight and curly apostrophe, since iOS renders
-# U+2019), App Tracking Transparency's "Ask App Not to Track", then generic dismissive labels. Keep
-# this in step with the vision locator's own dismissive-button policy prose (`agents/alerts.py`
-# `LOCATOR_SYSTEM`), which `record` / `crawl` still run, so the two paths agree.
-DEFAULT_DISMISSIVE_LABELS: tuple[str, ...] = (
-    "Don't Allow",
-    "Don’t Allow",
-    "Ask App Not to Track",
-    "Not Now",
-    "No Thanks",
-    "Cancel",
-    "Close",
-    "Dismiss",
-)
-
 # What a native probe found: "incapable" (backend has no native path), "absent" (no alert — a
 # deterministic fact), "dismissed" (a policy-named button was tapped), "unhandled" (an alert is up
 # but no rule identifies it, so nothing clears it and the caller reports it instead),
@@ -302,6 +296,26 @@ def uncleared_prompt_note(label: str) -> str:
     prompt.
     """
     return f"{_UNCLEARED_PROMPT_NOTE} (button: {label})"
+
+
+_UNDECLARED_INTERRUPTION_NOTE = "an undeclared system alert interrupted the run"
+
+
+def undeclared_interruption_note(events: Sequence[UndeclaredInterruption]) -> str:
+    """What one or more alerts offered that interrupted the run and matched no `rules` entry.
+
+    XCUITest answers such an alert with its own default button regardless of anything in this
+    codebase — a monitor that merely declines cannot replace that handler, since XCUITest re-invokes
+    a monitor that leaves the alert up on every following interaction (BE-0399). What this note
+    changes is that the step or `expect` that met the interruption fails, naming the buttons, instead
+    of continuing as if nothing had answered on the scenario's behalf (BE-0406 Unit 2b).
+
+    Takes every event drained this poll, not just the first: a step or `expect` can meet more than
+    one undeclared alert (a permission prompt and a save-password prompt inside one long wait), and
+    naming only the first would cost the author a whole extra run to learn about the second.
+    """
+    groups = "; ".join(", ".join(event.buttons) for event in events)
+    return f"{_UNDECLARED_INTERRUPTION_NOTE} (buttons: {groups})"
 
 
 def _alert_button(label: str) -> base.Element:
@@ -556,9 +570,9 @@ def push_interruption_policy(driver: base.Driver, guard: AlertGuardConfig | None
     XCUITest resolves such an alert *before* it synthesizes the interaction, and with nothing
     installed answers with the alert's own default button — granting a permission the scenario may
     have refused, with nothing in the report. Pushing the guard's already-resolved labels keeps that
-    decision here: the backend applies `rules` first, then the built-in dismissive `candidates` for
-    whatever no rule identifies — a fallback `probe_native` itself no longer has (BE-0406), and the
-    asymmetry Unit 2b closes.
+    decision here: the backend applies `rules`, and an alert none of them identifies is declined and
+    reported rather than guessed at — a fallback `probe_native` itself no longer has either
+    (BE-0406).
 
     A rule the monitor can never meet is dropped rather than pushed: this surface exists for an
     alert in another process interrupting an XCUITest interaction, and one raised into the
@@ -566,10 +580,13 @@ def push_interruption_policy(driver: base.Driver, guard: AlertGuardConfig | None
     matches a rule by subset, so pushing an in-tree-only shape would re-open there the collision an
     `excluded_labels` set closes here (BE-0406).
 
-    An absent guard (`systemAlertHandling: false`) pushes an empty policy rather than skipping the
-    call, so a scenario that switched the guard off does not inherit the previous scenario's policy
-    from the resident runner. A backend that does not implement `InterruptionPolicyTarget` is simply
-    never asked.
+    `governs` is true for any scenario whose guard is on, independent of whether any rule survived
+    the drop above: a real declaration filtered down to nothing this surface can act on is not the
+    same as no declaration at all, and only the latter should still leave a declined alert
+    unreported. An absent guard (`systemAlertHandling: false`) pushes an empty, non-governing policy
+    rather than skipping the call, so a scenario that switched the guard off does not inherit the
+    previous scenario's policy from the resident runner. A backend that does not implement
+    `InterruptionPolicyTarget` is simply never asked.
 
     Raises:
         ValueError: a rule this surface *can* meet carries an exclusion set. No such shape exists
@@ -580,7 +597,6 @@ def push_interruption_policy(driver: base.Driver, guard: AlertGuardConfig | None
     if not isinstance(driver, base.InterruptionPolicyTarget):
         return
     rules: list[tuple[frozenset[str], str]] = []
-    candidates: list[str] = []
     if guard is not None:
         reachable = [rule for rule in guard.rules if rule.native]
         excluding = [rule.tap_label for rule in reachable if rule.excluded_labels]
@@ -590,20 +606,33 @@ def push_interruption_policy(driver: base.Driver, guard: AlertGuardConfig | None
                 f"{', '.join(sorted(excluding))} would be matched by subset on the runner"
             )
         rules = [(rule.identifying_labels, rule.tap_label) for rule in reachable]
-        candidates = list(DEFAULT_DISMISSIVE_LABELS)
-    driver.set_interruption_policy(rules, candidates)
+    driver.set_interruption_policy(rules, guard is not None)
 
 
-def drain_interruptions(driver: base.Driver) -> list[AlertEvent]:
-    """The prompts the backend answered at interruption time since the last drain.
+@dataclass(frozen=True)
+class DrainedInterruptionEvents:
+    """One drain's worth of interruption-time answers, translated to orchestrator-level records."""
 
-    Reported as ordinary `AlertEvent`s so a dismissal that happened inside the backend's own
-    interruption handling is not missing from the run's report — the silence this mechanism exists
-    to end. A backend without the opt-in contributes nothing.
+    alerts: list[AlertEvent]
+    undeclared: list[UndeclaredInterruption]
+
+
+def drain_interruptions(driver: base.Driver) -> DrainedInterruptionEvents:
+    """The prompts the backend answered and declined at interruption time since the last drain.
+
+    A tapped label is reported as an ordinary `AlertEvent` so a dismissal that happened inside the
+    backend's own interruption handling is not missing from the run's report. A declined alert is
+    reported as an `UndeclaredInterruption` instead — nothing answered it on the scenario's behalf,
+    so it is not a dismissal, but its buttons are what lets a caller fail by name rather than let the
+    interruption pass in silence (BE-0406 Unit 2b). A backend without the opt-in contributes nothing.
     """
     if not isinstance(driver, base.InterruptionPolicyTarget):
-        return []
-    return [AlertEvent(label=label) for label in driver.drain_interruptions()]
+        return DrainedInterruptionEvents(alerts=[], undeclared=[])
+    drained = driver.drain_interruptions()
+    return DrainedInterruptionEvents(
+        alerts=[AlertEvent(label=label) for label in drained.tapped],
+        undeclared=[UndeclaredInterruption(buttons=buttons) for buttons in drained.declined],
+    )
 
 
 def drain_actuations(driver: base.Driver) -> Drained:

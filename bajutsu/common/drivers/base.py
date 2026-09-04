@@ -231,6 +231,21 @@ class Selector(TypedDict, total=False):
     index: int  # nth of multiple matches (last resort; flaky)
 
 
+@dataclass(frozen=True)
+class DrainedInterruptions:
+    """One drain's worth of what the interruption monitor did: what it tapped, and what it declined.
+
+    `declined` is the button lists of alerts the policy governed but no rule identified — a monitor
+    that declines still has to answer XCUITest's alert (its own default button, unchanged), so this
+    is not a second dismissal outcome, only a record of what the tap was never asked to be. Reported
+    so the caller can fail the step/expect that met one, naming what was on screen, rather than
+    letting the run continue as if nothing had answered on the scenario's behalf (BE-0406 Unit 2b).
+    """
+
+    tapped: list[str]
+    declined: list[list[str]]
+
+
 @runtime_checkable
 class InterruptionPolicyTarget(Protocol):
     """A backend that answers an alert interrupting one of its *own* interactions, by our policy.
@@ -242,19 +257,22 @@ class InterruptionPolicyTarget(Protocol):
     opposite of the least-destructive policy the guard applies, and invisible to the run's report.
 
     `set_interruption_policy` hands over the labels `AlertGuardConfig` has already resolved (a rule's
-    identifying label set with the label it taps, then the ordered fallback candidates), so the
-    decision stays in the orchestrator and the backend only applies it. `drain_interruptions` takes
-    back what it answered, so such a dismissal reaches the report as an `AlertEvent` rather than
-    happening silently.
+    identifying label set with the label it taps) and whether the guard governs this scenario at all,
+    so the decision stays in the orchestrator and the backend only applies it. `drain_interruptions`
+    takes back what it answered and what it declined, so a dismissal reaches the report as an
+    `AlertEvent` and an undeclared interruption can fail the step/expect that met it, rather than
+    either happening silently (BE-0406).
     """
 
     def set_interruption_policy(
-        self, rules: Sequence[tuple[frozenset[str], str]], candidates: Sequence[str]
+        self, rules: Sequence[tuple[frozenset[str], str]], governs: bool
     ) -> None:
         """Hand the backend the buttons it may press on an interrupting alert."""
+        ...
 
-    def drain_interruptions(self) -> list[str]:
-        """The labels the backend answered since the last call, oldest first."""
+    def drain_interruptions(self) -> DrainedInterruptions:
+        """What the backend answered and declined since the last call, oldest first in each."""
+        ...
 
 
 @runtime_checkable

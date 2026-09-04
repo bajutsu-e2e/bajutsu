@@ -68,6 +68,51 @@ def test_web_step_taps_dom_element() -> None:
     assert bridge.tapped[0][1] == (150.0, 120.0)
 
 
+def test_web_step_within_resolution_undeclared_interruption_still_fails_the_step() -> None:
+    # `base.resolve_unique(active_driver.query(), host_sel)` resolves `within` on the *native*
+    # driver before the block ever switches to the WebView one — the same native-only surface an
+    # interruption can reach, even though the tap that follows on the DOM driver succeeds (BE-0406
+    # Unit 2b).
+    native_screen = [el("checkout.webview", "WebView", frame=(0.0, 0.0, 400.0, 800.0))]
+    dom_elements: list[base.Element] = [
+        {
+            "identifier": "place-order",
+            "label": "Place Order",
+            "traits": ["button"],
+            "value": None,
+            "frame": (50.0, 100.0, 200.0, 40.0),
+            "nativeZ": None,
+        },
+    ]
+    bridge = FakeBridge(dom_elements)
+    driver = FakeDriver(native_screen)
+    driver.interruptions_declined_to_drain = [["Save", "Not Now"]]
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "web tap",
+                "steps": [
+                    {
+                        "web": {
+                            "within": {"id": "checkout.webview"},
+                            "steps": [{"tap": {"id": "place-order"}}],
+                        },
+                    },
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        webview_bridge=bridge,
+    )
+    assert result.ok is False
+    assert len(bridge.tapped) == 1  # the DOM tap itself still succeeded
+    assert result.failure is not None
+    assert "undeclared system alert" in result.failure
+    assert "Save" in result.failure
+    assert "Not Now" in result.failure
+
+
 def test_web_step_assert_inside_web_context() -> None:
     native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
     dom_elements: list[base.Element] = [

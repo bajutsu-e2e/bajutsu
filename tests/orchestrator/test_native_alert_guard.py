@@ -18,11 +18,7 @@ from conftest import guard_rule
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.orchestrator import AlertEvent, AlertGuardConfig
-from bajutsu.common.orchestrator.types import (
-    DEFAULT_DISMISSIVE_LABELS,
-    ResolvedAlertRule,
-    match_alert_rule,
-)
+from bajutsu.common.orchestrator.types import ResolvedAlertRule, match_alert_rule
 from bajutsu.common.scenario import Wait
 
 
@@ -164,15 +160,12 @@ def test_probe_native_dismisses_a_named_button() -> None:
     assert ("handle_system_alert", ({"label": "Allow"}, 0.0)) in driver.actions
 
 
-def test_probe_native_does_not_fall_back_to_the_dismissive_defaults() -> None:
-    # BE-0406 made `rules` the whole policy, so a scenario declaring none gets no dismissal at all.
-    # The notifications prompt's "Don't Allow" is a `DEFAULT_DISMISSIVE_LABELS` entry and used to be
-    # tapped on that alone — a button chosen by generic English vocabulary rather than by a rule
-    # naming the prompt. The list survives only as what `push_interruption_policy` hands the backend;
-    # here the alert is left up and reported instead.
+def test_probe_native_does_not_fall_back_to_dismissive_defaults() -> None:
+    # BE-0406 made `rules` the whole policy, so a scenario declaring none gets no dismissal at all —
+    # not even for a button as ordinary as "Don't Allow", which the removed built-in fallback used
+    # to tap on generic English vocabulary alone, rather than on a rule naming the prompt.
     guard = AlertGuardConfig()  # no rules → nothing this guard may answer
     driver = _fake_with_alert(["Don't Allow", "Allow"])
-    assert "Don't Allow" in DEFAULT_DISMISSIVE_LABELS  # the label the old fallback would have taken
     assert guard.probe_native(driver) == ("unhandled", None, ["Don't Allow", "Allow"])
     assert driver.actions == []  # and nothing was tapped on the way to that answer
 
@@ -835,16 +828,16 @@ def test_dismiss_from_tree_never_fires_on_a_non_native_backend() -> None:
     assert driver.actions == []
 
 
-def test_dismiss_from_tree_never_fires_on_default_dismissive_labels_alone() -> None:
-    # `DEFAULT_DISMISSIVE_LABELS` is generic English UI vocabulary ("Cancel", "Close", …) a real app
-    # screen can legitimately show, and since BE-0406 it is not a policy this guard resolves from at
-    # all. The fast in-tree path must stay off unless the scenario declared a rule of its own; a
-    # ruleless guard falls back to the collapsed-tree report, same as before this path existed.
+def test_dismiss_from_tree_never_fires_on_generic_dismissive_vocabulary_alone() -> None:
+    # "Cancel" is generic English UI vocabulary a real app screen can legitimately show, and since
+    # BE-0406 no built-in list of such words is a policy this guard resolves from at all. The fast
+    # in-tree path must stay off unless the scenario declared a rule of its own; a ruleless guard
+    # falls back to the collapsed-tree report, same as before this path existed.
     from bajutsu.common.orchestrator.waits import _wait
 
     target = _button("R")
     target["identifier"] = "ready"
-    cancel_button = _button("Cancel")  # identifier-less; a DEFAULT_DISMISSIVE_LABELS entry
+    cancel_button = _button("Cancel")  # identifier-less; no rule names it
 
     def react(d: FakeDriver, kind: str, arg: object) -> None:
         if kind == "tap" and arg == {"label": "Cancel"}:
@@ -1113,9 +1106,10 @@ def test_dismiss_from_tree_waits_out_the_retap_delay_at_a_short_poll_interval() 
 
 def test_push_interruption_policy_hands_the_backend_the_guard_s_own_rules() -> None:
     # The decision stays here: what the backend receives is the scenario's own resolved rules, plus
-    # the dismissive defaults as the fallback candidates it may fall back on. Without this the
-    # backend answers an alert that interrupts one of its own interactions with the alert's *default*
-    # button, which is the opposite of the least-destructive policy and reaches no report.
+    # `governs=True`, so the runner reports (rather than guesses at) any alert none of them identify.
+    # Without this the backend answers an alert that interrupts one of its own interactions with the
+    # alert's *default* button, which is the opposite of the least-destructive policy and reaches no
+    # report.
     from bajutsu.common.orchestrator import push_interruption_policy
 
     driver = FakeDriver([])
@@ -1123,23 +1117,19 @@ def test_push_interruption_policy_hands_the_backend_the_guard_s_own_rules() -> N
         identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Don't Allow"
     )
     push_interruption_policy(driver, AlertGuardConfig(rules=[rule]))
-    assert driver.interruption_policy == (
-        [({"Allow", "Don't Allow"}, "Don't Allow")],
-        list(DEFAULT_DISMISSIVE_LABELS),
-    )
+    assert driver.interruption_policy == ([({"Allow", "Don't Allow"}, "Don't Allow")], True)
 
 
-def test_push_interruption_policy_still_pushes_the_dismissive_defaults_without_rules() -> None:
-    # A scenario that declares no rules of its own still gets a policy, and it is the
-    # least-destructive list — not an empty one, which would leave the backend's own default handler
-    # in charge. This is the one surface `DEFAULT_DISMISSIVE_LABELS` is still consulted on since
-    # BE-0406 took it off `probe_native`: an alert interrupting the backend's own interaction is
-    # answered inside XCUITest, where no rule of ours can be evaluated.
+def test_push_interruption_policy_still_governs_without_rules() -> None:
+    # A scenario that declares no rules of its own still governs — a guard being on at all is what
+    # decides whether a declined alert gets reported, independent of whether any rule survived the
+    # in-tree-only drop below (BE-0406 Unit 2b): a real declaration filtered down to nothing this
+    # surface can act on is not the same as no declaration at all.
     from bajutsu.common.orchestrator import push_interruption_policy
 
     driver = FakeDriver([])
     push_interruption_policy(driver, AlertGuardConfig())
-    assert driver.interruption_policy == ([], list(DEFAULT_DISMISSIVE_LABELS))
+    assert driver.interruption_policy == ([], True)
 
 
 def test_push_interruption_policy_omits_a_rule_the_backend_can_never_meet() -> None:
@@ -1177,12 +1167,14 @@ def test_push_interruption_policy_refuses_a_reachable_rule_carrying_an_exclusion
 
 def test_push_interruption_policy_clears_it_when_the_scenario_disables_the_guard() -> None:
     # `systemAlertHandling: false` must not inherit the previous scenario's policy from the resident
-    # runner, so the push happens with an empty policy rather than being skipped.
+    # runner, so the push happens with an empty, non-governing policy rather than being skipped. Not
+    # governing is what keeps this the one case that still leaves a declined alert unreported —
+    # declaring nothing is the author's own choice, not an omission this mechanism exists to catch.
     from bajutsu.common.orchestrator import push_interruption_policy
 
     driver = FakeDriver([])
     push_interruption_policy(driver, None)
-    assert driver.interruption_policy == ([], [])
+    assert driver.interruption_policy == ([], False)
 
 
 def test_drain_interruptions_reports_what_the_backend_answered_as_alert_events() -> None:
@@ -1193,11 +1185,32 @@ def test_drain_interruptions_reports_what_the_backend_answered_as_alert_events()
 
     driver = FakeDriver([])
     driver.interruptions_to_drain = ["Don't Allow", "Not Now"]
-    assert drain_interruptions(driver) == [
-        AlertEvent(label="Don't Allow"),
-        AlertEvent(label="Not Now"),
+    drained = drain_interruptions(driver)
+    assert drained.alerts == [AlertEvent(label="Don't Allow"), AlertEvent(label="Not Now")]
+    assert drained.undeclared == []
+    again = drain_interruptions(driver)
+    assert again.alerts == []  # drained, not repeated onto the next step
+
+
+def test_drain_interruptions_reports_what_the_backend_declined_as_undeclared_interruptions() -> (
+    None
+):
+    # A declined alert is not a dismissal — nothing answered it on the scenario's behalf — so it is
+    # reported through the separate `undeclared` list, buttons intact, for the caller to fail by name
+    # rather than let the interruption pass in silence (BE-0406 Unit 2b).
+    from bajutsu.common.orchestrator import drain_interruptions
+    from bajutsu.common.orchestrator.types import UndeclaredInterruption
+
+    driver = FakeDriver([])
+    driver.interruptions_declined_to_drain = [["Save", "Not Now"], ["Allow", "Don't Allow"]]
+    drained = drain_interruptions(driver)
+    assert drained.alerts == []
+    assert drained.undeclared == [
+        UndeclaredInterruption(buttons=["Save", "Not Now"]),
+        UndeclaredInterruption(buttons=["Allow", "Don't Allow"]),
     ]
-    assert drain_interruptions(driver) == []  # drained, not repeated onto the next step
+    again = drain_interruptions(driver)
+    assert again.undeclared == []  # drained, not repeated
 
 
 def test_a_gone_wait_is_guarded_so_an_in_app_prompt_can_be_cleared() -> None:
@@ -1245,7 +1258,9 @@ def test_the_interruption_policy_is_skipped_on_a_backend_without_the_opt_in() ->
 
     driver = cast("base.Driver", _NoOptIn())
     push_interruption_policy(driver, AlertGuardConfig())
-    assert drain_interruptions(driver) == []
+    drained = drain_interruptions(driver)
+    assert drained.alerts == []
+    assert drained.undeclared == []
 
 
 # --- the end-of-step / expect guard's own in-tree dismissal --------------------------------------

@@ -1495,11 +1495,12 @@ def test_system_alert_labels_returns_empty_when_no_alert_is_up() -> None:
 # --- the interruption policy: which button the runner presses on an interrupting alert -----------
 
 
-def test_set_interruption_policy_sends_the_rules_and_candidates() -> None:
+def test_set_interruption_policy_sends_the_rules_and_governs() -> None:
     # The runner's monitor answers an alert that interrupts one of its own interactions. The labels
     # are resolved here, not there, so this is the whole of what the runner is told. A rule's
     # identifying labels go out sorted: the set is order-free, and a stable body keeps a replayed
-    # request comparable.
+    # request comparable. `governs` travels alongside the rules rather than being inferred from them,
+    # since a real declaration can filter down to an empty rule list (BE-0406 Unit 2b).
     sent: list[tuple[str, str, Any]] = []
 
     def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
@@ -1507,7 +1508,7 @@ def test_set_interruption_policy_sends_the_rules_and_candidates() -> None:
         return _Reply(status="ok")
 
     _driver(transport).set_interruption_policy(
-        [(frozenset({"Allow", "Don't Allow"}), "Don't Allow")], ["Not Now", "Cancel"]
+        [(frozenset({"Allow", "Don't Allow"}), "Don't Allow")], True
     )
     assert sent == [
         (
@@ -1515,34 +1516,46 @@ def test_set_interruption_policy_sends_the_rules_and_candidates() -> None:
             "/interruptionPolicy",
             {
                 "rules": [{"identify": ["Allow", "Don't Allow"], "tap": "Don't Allow"}],
-                "candidates": ["Not Now", "Cancel"],
+                "governs": True,
             },
         )
     ]
 
 
-def test_drain_interruptions_reads_the_labels_the_monitor_tapped() -> None:
+def test_drain_interruptions_reads_the_labels_the_monitor_tapped_and_declined() -> None:
     def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         assert (method, path) == ("POST", "/interruptionPolicy/drain")
-        return _Reply(status="ok", raw=json.dumps({"labels": ["Don't Allow"]}).encode())
+        return _Reply(
+            status="ok",
+            raw=json.dumps(
+                {"labels": ["Don't Allow"], "unmatched": [["Save", "Not Now"]]}
+            ).encode(),
+        )
 
-    assert _driver(transport).drain_interruptions() == ["Don't Allow"]
+    drained = _driver(transport).drain_interruptions()
+    assert drained.tapped == ["Don't Allow"]
+    assert drained.declined == [["Save", "Not Now"]]
 
 
 def test_drain_interruptions_is_empty_when_the_runner_answered_nothing() -> None:
     # The common case by far — nothing interrupted this step — so it must cost the caller no special
     # handling and never fabricate an event.
     def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
-        return _Reply(status="ok", raw=json.dumps({"labels": []}).encode())
+        return _Reply(status="ok", raw=json.dumps({"labels": [], "unmatched": []}).encode())
 
-    assert _driver(transport).drain_interruptions() == []
+    drained = _driver(transport).drain_interruptions()
+    assert drained.tapped == []
+    assert drained.declined == []
 
 
 def test_drain_interruptions_is_empty_when_the_reply_carried_no_body() -> None:
-    # A body-less reply is what a caught proxy-in-flux request decodes to. Reporting no dismissals is
-    # the safe reading: inventing one would put an `AlertEvent` in the report for a prompt nobody
-    # answered, and the next drain picks up anything that was really tapped.
-    assert _driver(lambda m, p, b: _Reply(status="ok")).drain_interruptions() == []
+    # A body-less reply is what a caught proxy-in-flux request decodes to. Reporting nothing tapped
+    # or declined is the safe reading: inventing one would put an `AlertEvent` or an
+    # `UndeclaredInterruption` in the report for a prompt nobody answered, and the next drain picks
+    # up anything that really happened.
+    drained = _driver(lambda m, p, b: _Reply(status="ok")).drain_interruptions()
+    assert drained.tapped == []
+    assert drained.declined == []
 
 
 # --- dismiss_blocking_tip: the TipKit guard's driver half ---
@@ -1770,4 +1783,4 @@ def test_set_interruption_policy_raises_when_the_runner_did_not_store_it() -> No
         return _Reply(status="error")
 
     with pytest.raises(XcuitestChannelError, match="interruption policy"):
-        _driver(transport).set_interruption_policy([], ["Not Now"])
+        _driver(transport).set_interruption_policy([], True)

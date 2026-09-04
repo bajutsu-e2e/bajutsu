@@ -63,7 +63,8 @@ final class Router {
         case ("POST", "/interruptionPolicy"):
             return handleSetInterruptionPolicy(request)
         case ("POST", "/interruptionPolicy/drain"):
-            return .json(200, ["labels": InterruptionPolicyStore.shared.drain()])
+            let drained = InterruptionPolicyStore.shared.drain()
+            return .json(200, ["labels": drained.tapped, "unmatched": drained.declined])
         case ("POST", "/systemAlert/query"):
             return handleSystemAlertQuery()
         case ("POST", "/systemAlert/tap"):
@@ -83,15 +84,21 @@ final class Router {
               let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
             return .error(400, "missing or invalid JSON body")
         }
+        // `governs` decides whether a declined alert gets reported at all (BE-0406 Unit 2b), so a
+        // missing or mistyped value is rejected rather than defaulting to `false` — silently
+        // reinstating, for this legacy transport alone, the unrecorded grant the field exists to
+        // close. The generated `APIHandler` path already enforces this via `openapi.yaml`'s
+        // `required: [rules, governs]`; this mirrors that here.
+        guard let governs = json["governs"] as? Bool else {
+            return .error(400, "missing or invalid \"governs\"")
+        }
         let rules: [InterruptionRule] = (json["rules"] as? [[String: Any]] ?? []).compactMap {
             guard let identify = $0["identify"] as? [String], let tap = $0["tap"] as? String else {
                 return nil
             }
             return InterruptionRule(identify: identify, tap: tap)
         }
-        InterruptionPolicyStore.shared.setPolicy(
-            InterruptionPolicy(rules: rules, candidates: json["candidates"] as? [String] ?? [])
-        )
+        InterruptionPolicyStore.shared.setPolicy(InterruptionPolicy(rules: rules, governs: governs))
         return .json(200, ["status": "ok"])
     }
 

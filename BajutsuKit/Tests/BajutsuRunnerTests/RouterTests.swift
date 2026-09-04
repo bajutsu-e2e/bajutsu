@@ -695,6 +695,27 @@ final class RouterTests: XCTestCase {
         XCTAssertEqual(response.statusCode, 400)
     }
 
+    // MARK: - /interruptionPolicy
+
+    func testSetInterruptionPolicyMissingGovernsReturns400() throws {
+        // `governs` decides whether a declined alert gets reported at all (BE-0406 Unit 2b), so a
+        // missing value is rejected rather than silently defaulting to `false` — which would
+        // reinstate, for this legacy transport alone, the unrecorded grant the field exists to close.
+        let body = try JSONSerialization.data(withJSONObject: ["rules": [[String: Any]]()])
+        let response = makeRouter().handle(
+            HTTPRequest(method: "POST", path: "/interruptionPolicy", body: body)
+        )
+        XCTAssertEqual(response.statusCode, 400)
+    }
+
+    func testSetInterruptionPolicyInvalidGovernsTypeReturns400() throws {
+        let body = try JSONSerialization.data(withJSONObject: ["rules": [[String: Any]](), "governs": "yes"])
+        let response = makeRouter().handle(
+            HTTPRequest(method: "POST", path: "/interruptionPolicy", body: body)
+        )
+        XCTAssertEqual(response.statusCode, 400)
+    }
+
     // MARK: - unknown route
 
     func testUnknownRouteReturns404() {

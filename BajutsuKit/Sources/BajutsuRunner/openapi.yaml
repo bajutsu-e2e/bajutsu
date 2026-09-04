@@ -319,9 +319,11 @@ paths:
         taps the alert's *default* button — granting a permission the scenario may have refused, and
         reporting nothing. This hands the runner's monitor the labels to press instead. Every label
         is resolved on the driver side from the scenario's `systemAlertHandling`; the runner only
-        applies them, by the same rule the driver would (a rule whose identifying labels are each on
-        the alert exactly once, else the first candidate present exactly once). An empty policy makes
-        the monitor decline, which restores XCUITest's own handling.
+        applies them, by the rule the driver would (a rule whose identifying labels are each on the
+        alert exactly once). `governs` is true for any scenario whose guard is on, independent of
+        whether any rule survived the driver's own filtering — a policy with no rules can still
+        govern. An alert no rule identifies is always declined; a declined alert a governing policy
+        covers is recorded for the next drain, rather than answered by guessing.
       requestBody:
         required: true
         content:
@@ -340,10 +342,12 @@ paths:
   /interruptionPolicy/drain:
     post:
       operationId: drainInterruptions
-      summary: Take the labels the interruption monitor has tapped since the last drain.
+      summary: Take what the interruption monitor tapped and declined since the last drain.
       description: >-
-        The driver folds these into the run's `AlertEvent`s, so a prompt answered at interruption
-        time is not silently missing from the report.
+        The driver folds `labels` into the run's `AlertEvent`s, so a prompt answered at
+        interruption time is not silently missing from the report. `unmatched` folds into
+        `UndeclaredInterruption`s instead, so a governing policy's own decline can fail the step or
+        `expect` that met it, naming the buttons, rather than passing in silence (BE-0406 Unit 2b).
       requestBody:
         required: false
         content:
@@ -352,7 +356,7 @@ paths:
               $ref: "#/components/schemas/EmptyRequest"
       responses:
         "200":
-          description: The labels tapped since the last drain, oldest first.
+          description: The labels tapped and the button lists declined since the last drain, oldest first.
           content:
             application/json:
               schema:
@@ -452,7 +456,7 @@ components:
           type: string
     InterruptionPolicyRequest:
       type: object
-      required: [rules, candidates]
+      required: [rules, governs]
       properties:
         rules:
           type: array
@@ -460,13 +464,12 @@ components:
             Ordered; the first rule whose `identify` labels are each on the alert exactly once wins.
           items:
             $ref: "#/components/schemas/InterruptionRule"
-        candidates:
-          type: array
+        governs:
+          type: boolean
           description: >-
-            Ordered fallback labels for an alert no rule identifies; the first present exactly once
-            is tapped.
-          items:
-            type: string
+            Whether the scenario's guard is on at all, independent of whether any rule survived the
+            driver's own filtering. Decides whether a decline gets recorded for the next drain
+            (BE-0406 Unit 2b).
     InterruptionRule:
       type: object
       required: [identify, tap]
@@ -481,13 +484,22 @@ components:
           description: The label to press once this rule's prompt is identified.
     InterruptionsReply:
       type: object
-      required: [labels]
+      required: [labels, unmatched]
       properties:
         labels:
           type: array
           description: Labels the monitor tapped since the last drain, oldest first.
           items:
             type: string
+        unmatched:
+          type: array
+          description: >-
+            One button list per alert the monitor declined since the last drain (`governs` was true
+            and no rule identified it), oldest first (BE-0406 Unit 2b).
+          items:
+            type: array
+            items:
+              type: string
     EmptyRequest:
       type: object
       description: >-
