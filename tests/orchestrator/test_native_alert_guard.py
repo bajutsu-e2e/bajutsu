@@ -199,6 +199,24 @@ def test_probe_native_leaves_an_alert_no_rule_identifies_alone() -> None:
     assert driver.actions == []
 
 
+def test_probe_native_never_matches_a_rule_the_surface_cannot_reach() -> None:
+    # An in-tree-only rule's identifying labels are ordinary vocabulary a real SpringBoard alert
+    # could coincidentally offer — savePassword's 26.5 shape is just "Save" / "Not Now" — so this
+    # surface must filter on `native` rather than trust that no SpringBoard alert ever matches.
+    # Without the filter this alert would be answered through `handle_system_alert` for a prompt
+    # that path can never actually reach (BE-0406 review finding).
+    in_tree_only = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    guard = AlertGuardConfig(rules=[in_tree_only])
+    driver = _fake_with_alert(["Save", "Not Now"])
+    assert guard.probe_native(driver) == ("unhandled", None, ["Save", "Not Now"])
+    assert driver.actions == []
+
+
 def test_probe_native_unhandled_when_no_candidate_resolves() -> None:
     # The buttons come back with the state (BE-0402): nothing will clear this alert, so they are all
     # a blocked step or wait has left to name what stopped it.

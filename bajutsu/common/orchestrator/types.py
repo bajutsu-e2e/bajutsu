@@ -356,11 +356,13 @@ class ResolvedAlertRule:
     match over every identifier-less labelled button in the poll's tree rather than one alert's, so
     there is no button set there to compare against.
 
-    `native` and `in_tree` carry the prompt's `AlertSurfaces` record. They are not symmetric in what
-    they gate: `in_tree` arms the two in-tree dismissals, and `native` decides only whether the rule
-    may be pushed to the runner's interruption monitor. `probe_native` filters on neither, matching
-    every rule — a prompt the SpringBoard query cannot see offers that query no buttons to match
-    against, so no filter is needed for it to be unreachable there.
+    `native` and `in_tree` carry the prompt's `AlertSurfaces` record, and each gates a different
+    matching site: `in_tree` arms the two in-tree dismissals, and `native` gates both `probe_native`'s
+    own match and whether the rule may be pushed to the runner's interruption monitor. Filtering
+    `probe_native` on it is not merely tidy — an in-tree-only shape's identifying labels are ordinary
+    vocabulary a real SpringBoard alert could coincidentally offer (the 26.5 save sheet's shape is
+    just "Save" / "Not Now"), so without the filter a SpringBoard alert satisfying that pair would be
+    answered through `handle_system_alert` for a prompt that surface can never actually reach.
     """
 
     identifying_labels: frozenset[str]
@@ -456,7 +458,12 @@ class AlertGuardConfig:
             # The step is waiting on this very alert and taps it on its own next read. Not
             # "absent": an alert *is* up, and "absent" is the one answer licensing an in-tree tap.
             return "reserved", None, list(buttons)
-        label = match_alert_rule(self.rules, buttons)
+        # Filtered to `native`, not the full `self.rules`: an in-tree-only shape's identifying
+        # labels are ordinary vocabulary a real SpringBoard alert could coincidentally offer (the
+        # 26.5 save sheet's shape is just "Save" / "Not Now"), and matching it here would answer
+        # through `handle_system_alert` a prompt that surface can never actually reach — the same
+        # undeclared-screen tap this proposal removes everywhere else (BE-0406).
+        label = match_alert_rule([rule for rule in self.rules if rule.native], buttons)
         if label is None:
             return "unhandled", None, list(buttons)
         try:
@@ -549,8 +556,9 @@ def push_interruption_policy(driver: base.Driver, guard: AlertGuardConfig | None
     XCUITest resolves such an alert *before* it synthesizes the interaction, and with nothing
     installed answers with the alert's own default button — granting a permission the scenario may
     have refused, with nothing in the report. Pushing the guard's already-resolved labels keeps that
-    decision here: the backend applies `rules` then `candidates` by the same discipline
-    `probe_native` does, and answers nothing else.
+    decision here: the backend applies `rules` first, then the built-in dismissive `candidates` for
+    whatever no rule identifies — a fallback `probe_native` itself no longer has (BE-0406), and the
+    asymmetry Unit 2b closes.
 
     A rule the monitor can never meet is dropped rather than pushed: this surface exists for an
     alert in another process interrupting an XCUITest interaction, and one raised into the
