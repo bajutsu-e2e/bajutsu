@@ -95,7 +95,7 @@ Field rules, all mandatory:
   - in progress: `- [ ] {n}. {title} — in progress`
   - pending: `- [ ] {n}. {title}`
 - **Work log** — newest entry first (prepend, don't append at the bottom). One line per checkpoint,
-  each shaped exactly `- \`{timestamp}\` — {one sentence}.` — a single sentence, past tense, ending
+  each shaped exactly ``- `{timestamp}` — {one sentence}.`` — a single sentence, past tense, ending
   in a period, no line breaks inside it. Never rewrite or delete a past entry.
 
 ## How to update
@@ -109,8 +109,8 @@ Field rules, all mandatory:
   Progress and prepending exactly one new Work log line above them. Rebuilding the page from this
   call's input alone would silently drop every earlier entry — that is the one failure this step
   exists to prevent. When the existing page can't be read, say so as a Work log line — for example
-  `- \`{timestamp}\` — Could not read the existing page; entries before this point may be
-  missing.` — rather than quietly starting a fresh log.
+  ``- `{timestamp}` — Could not read the existing page; entries before this point may be
+  missing.`` — rather than quietly starting a fresh log.
 - **Never invent status.** If the calling workflow hasn't reported a step as done, leave it pending
   — don't infer it from what "usually" happens next.
 - **Never add a section, a field, or a line shape not in the template above.** If a call has
