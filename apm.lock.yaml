@@ -19,7 +19,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:342417070f6255ac54274f1290bde5b8dbc3dee70831cbdb5937bdaff77da1cb
+  content_hash: sha256:091cbed92bbc02170b9da26ce29160d69f0734ba9e761057c5fe97964e877c62
 - kind: project-relative
   target: claude
   value: .claude/skills/claude-review
@@ -404,7 +404,7 @@ local_deployed_files:
 - .claude/skills/task-select
 - .claude/skills/task-select/SKILL.md
 local_deployed_file_hashes:
-  .claude/skills/be-progress-tracker/SKILL.md: sha256:342417070f6255ac54274f1290bde5b8dbc3dee70831cbdb5937bdaff77da1cb
+  .claude/skills/be-progress-tracker/SKILL.md: sha256:091cbed92bbc02170b9da26ce29160d69f0734ba9e761057c5fe97964e877c62
   .claude/skills/claude-review/SKILL.md: sha256:8fe654fc63e8dfb6fb62d123dcf585a6a74c41ce4be221dc5f4351adbc989829
   .claude/skills/cleanup/SKILL.md: sha256:23ba7b078cec388b2a16b3029e554cebdd6410b0dd7b703802ce194e6553f5ca
   .claude/skills/document-writing/SKILL.md: sha256:22616d0f3a666bf494849d2820ff2a3bda140f0ca92ba31a528d1e47ccd3aa0f
