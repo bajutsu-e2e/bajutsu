@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0406") |
-| Implementing PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871) (unit 1), [#1894](https://github.com/bajutsu-e2e/bajutsu/pull/1894) (units 2a, 3) |
+| Implementing PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871) (unit 1), [#1894](https://github.com/bajutsu-e2e/bajutsu/pull/1894) (units 2a, 3), [#1903](https://github.com/bajutsu-e2e/bajutsu/pull/1903) (unit 2b, unit 5) |
 | Topic | Platform support |
 | Related | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0369](../BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules.md), [BE-0399](../BE-0399-ios-system-alert-interruption-policy/BE-0399-ios-system-alert-interruption-policy.md), [BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md), [BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) |
 <!-- /BE-METADATA -->
@@ -557,7 +557,8 @@ Log:
   and outside this item's design, the guard's two one-shot dismissal sites let the uncovered screen
   settle before the retry — a bounded, best-effort condition wait, so a step no longer fails against
   a tree still animating the sheet away.
-- Unit 2b, plus the remaining piece of Unit 5. Unit 2b removes `DEFAULT_DISMISSIVE_LABELS` from
+- [#1903](https://github.com/bajutsu-e2e/bajutsu/pull/1903) — Unit 2b, plus the remaining piece
+  of Unit 5. Unit 2b removes `DEFAULT_DISMISSIVE_LABELS` from
   `bajutsu/common/orchestrator/types.py`, and `push_interruption_policy` sends `governs` (true for any
   scenario whose guard is on, independent of whether a rule survived the in-tree-only drop) in place
   of the removed candidate list. `Driver.set_interruption_policy` takes `governs` instead of

@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0406") |
-| 実装 PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871)（単位 1）、[#1894](https://github.com/bajutsu-e2e/bajutsu/pull/1894)（単位 2a、3） |
+| 実装 PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871)（単位 1）、[#1894](https://github.com/bajutsu-e2e/bajutsu/pull/1894)（単位 2a、3）、[#1903](https://github.com/bajutsu-e2e/bajutsu/pull/1903)（単位 2b、単位 5） |
 | トピック | Platform support |
 | 関連 | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md), [BE-0369](../BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice-ja.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules-ja.md), [BE-0399](../BE-0399-ios-system-alert-interruption-policy/BE-0399-ios-system-alert-interruption-policy-ja.md), [BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md), [BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) |
 <!-- /BE-METADATA -->
@@ -553,7 +553,8 @@ BE-0402 は `probe_native` が返す `"unhandled"` にも用途を与えてい�
   この項目の設計にはない変更として、ガードが 1 回限りの dismiss を行う 2 か所で、再試行の前に
   現れた画面が動かなくなるまで待つようにしました。上限付きでベストエフォートの条件待ちなので、
   アニメーション途中のツリーを相手にステップが失敗することはなくなります。
-- 単位 2b と、単位 5 の残りです。`bajutsu/common/orchestrator/types.py` から
+- [#1903](https://github.com/bajutsu-e2e/bajutsu/pull/1903) — 単位 2b と、単位 5 の残りです。
+  `bajutsu/common/orchestrator/types.py` から
   `DEFAULT_DISMISSIVE_LABELS` を削除しました。`push_interruption_policy` は、削除した候補一覧の
   代わりに `governs` を送ります。ガードが有効なシナリオでは、ツリー内専用の drop で rule が
   1 つも残らなくても true になります。`Driver.set_interruption_policy` は `candidates` の代わりに
