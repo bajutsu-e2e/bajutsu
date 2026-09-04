@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0406") |
-| 実装 PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871)（単位 1） |
+| 実装 PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871)（単位 1）、[#1894](https://github.com/bajutsu-e2e/bajutsu/pull/1894)（単位 2a、3） |
 | トピック | Platform support |
 | 関連 | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md), [BE-0369](../BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice-ja.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules-ja.md), [BE-0399](../BE-0399-ios-system-alert-interruption-policy/BE-0399-ios-system-alert-interruption-policy-ja.md), [BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md), [BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) |
 <!-- /BE-METADATA -->
@@ -534,6 +534,25 @@ BE-0402 は `probe_native` が返す `"unhandled"` にも用途を与えてい�
   方針が、ステップ自身のアラートをタップしてしまう恐れがありました。これでは、そのプロンプトを
   ステップの代わりに決めてしまいます。しかも画面が片付いたあとの再試行が生む一般的な理由で、この
   単位が用意した具体的な失敗理由を上書きしてしまいます。
+- [#1894](https://github.com/bajutsu-e2e/bajutsu/pull/1894) — 単位 2a と単位 3 をまとめて実装
+  しました。2a がツリー内経路に付け替える照合は、単位 3 が面の記録とツリー内で扱える唯一の
+  プロンプトを用意するまで、武装できる rule を 1 つも持ちません。分けて出せば、その間だけ
+  「パスワードを保存」のデモが自分のアラートを消せなくなります。`labels`、`--alert-labels`、
+  `alertLabels`、`pick_alert_label` を削除しました。`probe_native` は `rules` だけを照合し、
+  2 つのツリー内消去は新しい `AlertGuardConfig.tree_rules` で武装します。`_LABELS` はプロンプトと
+  言語を、除外ラベルの集合を持ちうる形のリストへ対応づけ、`_SURFACES` は 3 つの応答面のどれに届く
+  かをプロンプトごとに記録します。`savePassword` のラベルは iOS 18.6 と 26.5 の両ランタイムの
+  `WebUI.framework` から転記しました。`handleSystemAlert` は `step` の面を持たないプロンプトを
+  拒否し、`push_interruption_policy` はその面が決して出会えない rule を落とし、subset 照合が黙って
+  捨ててしまう除外集合を持つ rule は明示的に失敗させます。デモ 4 本を `rules` へ移しましたが、
+  これは単位 4 の前倒しではなく、`labels` の削除がそのまま強制した結果です。単位の本文からの逸脱が
+  3 つあります。`_warn_target_rules_reach` は `inner_layers` 引数を失いました。フラグが rule を
+  運べなくなり、ターゲットより内側の層はシナリオだけになったからです。`push_interruption_policy`
+  は組み込みの dismiss ラベル群を無条件に push するようになり、`labels` でそれを絞っていた
+  シナリオがランナーへ送る範囲は、単位 2b がこの一覧を消すまで広がります。そして著者の依頼により、
+  この項目の設計にはない変更として、ガードが 1 回限りの dismiss を行う 2 か所で、再試行の前に
+  現れた画面が動かなくなるまで待つようにしました。上限付きでベストエフォートの条件待ちなので、
+  アニメーション途中のツリーを相手にステップが失敗することはなくなります。
 
 ## 参考
 

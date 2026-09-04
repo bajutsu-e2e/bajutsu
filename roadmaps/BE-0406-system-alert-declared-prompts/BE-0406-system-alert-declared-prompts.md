@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0406") |
-| Implementing PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871) (unit 1) |
+| Implementing PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871) (unit 1), [#1894](https://github.com/bajutsu-e2e/bajutsu/pull/1894) (units 2a, 3) |
 | Topic | Platform support |
 | Related | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0369](../BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules.md), [BE-0399](../BE-0399-ios-system-alert-interruption-policy/BE-0399-ios-system-alert-interruption-policy.md), [BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md), [BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) |
 <!-- /BE-METADATA -->
@@ -538,6 +538,25 @@ Log:
   the guard's looser fallback policy, both deciding the prompt on the step's behalf and overwriting
   its specific failure reason with the generic one a doomed retry against the now-cleared screen
   produces.
+- [#1894](https://github.com/bajutsu-e2e/bajutsu/pull/1894) — Units 2a and 3, landed together
+  because 2a's in-tree re-keying has nothing to arm on until 3 supplies the surface record and the
+  one in-tree-capable prompt; splitting them would have left the save-password demos unable to clear
+  their own alert in between. `labels`, `--alert-labels`, `alertLabels` and `pick_alert_label` are
+  gone; `probe_native` matches `rules` alone, and both in-tree dismissals arm on the new
+  `AlertGuardConfig.tree_rules`. `_LABELS` maps a prompt and language to a list of shapes with an
+  optional exclusion set, and `_SURFACES` records which of the three answer paths each prompt
+  reaches; `savePassword`'s labels are transcribed from `WebUI.framework` under both an 18.6 and a
+  26.5 runtime. `handleSystemAlert` rejects a prompt whose `step` surface is false, and
+  `push_interruption_policy` drops a rule that surface can never meet and refuses one carrying an
+  exclusion its subset match would silently discard. Four demos migrate to `rules`, which removing
+  `labels` forced rather than Unit 4 scheduling it. Three deviations from the units' own text:
+  `_warn_target_rules_reach` loses its `inner_layers` parameter, since no flag can carry a rule any
+  more and the scenario is the only inner layer left; `push_interruption_policy` now pushes the
+  built-in dismissive candidates unconditionally, widening what a scenario that used to narrow them
+  with `labels` sends to the runner until Unit 2b removes that list; and, at the author's request
+  and outside this item's design, the guard's two one-shot dismissal sites let the uncovered screen
+  settle before the retry — a bounded, best-effort condition wait, so a step no longer fails against
+  a tree still animating the sheet away.
 
 ## References
 
