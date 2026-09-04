@@ -77,14 +77,15 @@ compiler plugin.
 
 `BajutsuAccessibilityCompose.kt` lives in its own subpackage, `dev.bajutsu.identifier.compose`. That
 sits one level under the Views file's `dev.bajutsu.identifier`. A consumer using Views alone then
-never imports a Compose symbol. The two toolkits stay separable in the compiler's eyes, not one
-dependency alone.
+never imports a Compose symbol. The two toolkits now stay separable in the compiler's eyes, not in
+code review alone. That split solves a compile-time problem.
 
-That separation is what lets `IdentifierTool` ship `consumerProguardFiles("consumer-rules.pro")`.
-It names the classes the Compose subpackage references. `compileOnly` is not transitive. A
-consumer using Views alone never puts Compose on its own classpath. Without that rule, R8
-minification would fail that build over `androidx.compose.ui`'s missing classes. A consumer using
-Views alone sees no build-size change after adding the dependency.
+A consumer using Views alone still faces a second, independent problem at minify time.
+`compileOnly` is not transitive, so that consumer never puts Compose on its own classpath. R8
+minification would still fail that build over `androidx.compose.ui`'s missing classes. `IdentifierTool`
+ships `consumerProguardFiles("consumer-rules.pro")` for that reason. The file names the classes the
+Compose subpackage references. A consumer using Views alone sees no build-size change after adding
+the dependency.
 
 ### No dependency on BajutsuAndroid
 
@@ -185,8 +186,11 @@ They cover:
 
 Two other docs gain the same cross-reference: [`docs/architecture.md`](../../docs/architecture.md)
 and [`docs/drivers.md`](../../docs/drivers.md). Each already mentions the showcase's
-`Accessibility.kt` files. Each gains a mention of IdentifierTool next to it. A reader following the
-adb id convention then also reaches the library. Today that reader reaches the showcase's own copy
+`Accessibility.kt` files. Each gains a mention of IdentifierTool next to it. A third turns up during
+implementation: [`docs/developer-guide.md`](../../docs/developer-guide.md). Its top-level directory
+table already lists `BajutsuAndroid/`. IdentifierTool joins it there too.
+A reader following the adb id convention then also reaches the library. Today that reader reaches
+the showcase's own copy
 alone.
 
 ### Work breakdown (MECE: mutually exclusive, collectively exhaustive)
@@ -206,7 +210,8 @@ alone.
    `BajutsuZOrder.report` explicitly, as shown above. Keep `aid`, `stateValue`, `selectedState`, and
    `enableTestTagsAsResourceId` as local names; none of the 122 existing call sites change.
 6. Write `IdentifierTool/README.md` and `README.ja.md`, in the shape described above.
-7. Update the `docs/architecture.md` and `docs/drivers.md` cross-references to name IdentifierTool.
+7. Update the cross-references in `docs/architecture.md`, `docs/drivers.md`, and
+   `docs/developer-guide.md` to name IdentifierTool.
 8. Verify the change two ways. First, build both flavors of both showcase modules, using
    `demos/showcase/android`'s existing Gradle tasks. Second, run the `android-e2e.yml` CI lane
    against the migrated showcase. That lane alone provides the coverage this moved logic needs.
@@ -236,8 +241,9 @@ alone.
 - [x] Unit 5 — the showcase's `Accessibility.kt` files delegate to IdentifierTool, gated as before.
       The names stay the same, so the 122 existing call sites don't change
 - [x] Unit 6 — `IdentifierTool/README.md` and `README.ja.md` written.
-- [x] Unit 7 — `docs/architecture.md`, `docs/drivers.md`, and `docs/developer-guide.md` gained a
-      cross-reference to IdentifierTool, in English and in their `docs/ja/` mirrors.
+- [x] Unit 7 — three docs gained an IdentifierTool cross-reference. They are
+      `docs/architecture.md`, `docs/drivers.md`, and `docs/developer-guide.md`, plus their
+      `docs/ja/` mirrors
 - [x] Unit 8 — the change verified by building both flavors of both showcase modules and running the
       `android-e2e.yml` emulator lane against the migrated showcase
 

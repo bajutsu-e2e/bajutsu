@@ -16,7 +16,8 @@ android {
         minSdk = 26
         // A Views-only consumer never puts androidx.compose.ui on its classpath (the dependency
         // below is compileOnly), so its R8 pass would otherwise fail on the Compose helpers'
-        // "missing classes" — this keep file tells R8 those references are expected to be absent.
+        // "missing classes" — this consumer rules file tells R8 those references are expected to
+        // be absent.
         consumerProguardFiles("consumer-rules.pro")
     }
 
