@@ -1,16 +1,16 @@
-[English](BE-0410-step-latency-ios-device-executor.md) · **日本語**
+[English](BE-0409-step-latency-ios-device-executor.md) · **日本語**
 
-# BE-0410 — XCTest ランナー内の iOS 端末側ステップ実行機
+# BE-0409 — XCTest ランナー内の iOS 端末側ステップ実行機
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-0410](BE-0410-step-latency-ios-device-executor-ja.md) |
+| 提案 | [BE-0409](BE-0409-step-latency-ios-device-executor-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0410") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0409") |
 | トピック | Platform support |
-| 関連 | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)、[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)、[BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree-ja.md) |
+| 関連 | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)、[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)、[BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree-ja.md)、[BE-0407](../BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning-ja.md)、[BE-0408](../BE-0408-step-latency-device-executor-protocol/BE-0408-step-latency-device-executor-protocol-ja.md)、[BE-0410](../BE-0410-step-latency-android-device-executor/BE-0410-step-latency-android-device-executor-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -164,7 +164,7 @@ WebDriverAgent がすでに採っている private API の経路が選択肢に�
   ミリ秒という見積もりと比較した結果のステップごとの壁時計をここに記録する。
 - [ ] 上記を行ってもなおタップ合成の下限が無視できない場合は、
   `waitForQuiescenceIncludingAnimationsIdle:` の無効化をフォローアップとして検討する。
-- [ ] `roadmap-id` ワークフローが `main` 上で 4 項目の ID を採番したら、ドライバ内部
+- [x] `roadmap-id` ワークフローが `main` 上で 4 項目の ID を採番したら、ドライバ内部
   調整、端末側プロトコル、Android 実行機の各項目との間で `関連` の相互リンクを補う
   （ドライバ内部調整の項目にある同じチェック項目を参照）。
 

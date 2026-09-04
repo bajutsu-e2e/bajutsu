@@ -10,7 +10,7 @@
 | 状態 | **提案** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0408") |
 | トピック | Platform support |
-| 関連 | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md) |
+| 関連 | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)、[BE-0407](../BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning-ja.md)、[BE-0409](../BE-0409-step-latency-ios-device-executor/BE-0409-step-latency-ios-device-executor-ja.md)、[BE-0410](../BE-0410-step-latency-android-device-executor/BE-0410-step-latency-android-device-executor-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -180,7 +180,7 @@ prime directive 1 が求める決定的な判定そのものです。端末側�
   を、端末側のリゾルバができた時点でそれに対して実行できるフィクスチャ集合で拡張する。
 - [ ] 段階 2〜4（`settled`、画面に閉じた `assert`、`POST /scenario`）の通信形式を、
   段階 1 とプラットフォーム項目の実装から得られる知見をもとに定義する。
-- [ ] `roadmap-id` ワークフローが `main` 上で 4 項目の ID を採番したら、ドライバ内部
+- [x] `roadmap-id` ワークフローが `main` 上で 4 項目の ID を採番したら、ドライバ内部
   調整、iOS 実行機、Android 実行機の各項目との間で `関連` の相互リンクを補う
   （ドライバ内部調整の項目にある同じチェック項目を参照）。
 

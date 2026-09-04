@@ -1,16 +1,16 @@
-**English** · [日本語](BE-0409-step-latency-driver-internal-tuning-ja.md)
+**English** · [日本語](BE-0407-step-latency-driver-internal-tuning-ja.md)
 
-# BE-0409 — Cut step latency by deduplicating evidence reads and tuning driver internals (iOS and Android)
+# BE-0407 — Cut step latency by deduplicating evidence reads and tuning driver internals (iOS and Android)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-0409](BE-0409-step-latency-driver-internal-tuning.md) |
+| Proposal | [BE-0407](BE-0407-step-latency-driver-internal-tuning.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0409") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0407") |
 | Topic | Platform support |
-| Related | [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md), [BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md), [BE-0341](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture.md), [BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md) |
+| Related | [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md), [BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md), [BE-0341](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture.md), [BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md), [BE-0408](../BE-0408-step-latency-device-executor-protocol/BE-0408-step-latency-device-executor-protocol.md), [BE-0409](../BE-0409-step-latency-ios-device-executor/BE-0409-step-latency-ios-device-executor.md), [BE-0410](../BE-0410-step-latency-android-device-executor/BE-0410-step-latency-android-device-executor.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -261,11 +261,11 @@ and a rerun of the tracer.
   swipe variant (unit 24).
 - [ ] Rerun [`trace_run.py`](misc/step-performance/trace_run.py) against
   `controls.yaml` after each group lands, and record the resulting per-step wall-clock here.
-- [ ] Once the `roadmap-id` workflow allocates the four ids on `main`, backfill reciprocal `Related`
-  links between this item and the device-side protocol, iOS executor, and Android executor items,
-  and replace each "companion item" mention with a link, in both languages — a new item may not
-  cross-reference another new item by `BE-0409` before allocation, so none of the four can carry
-  this on merge.
+- [x] Backfill reciprocal `Related` links between this item and the device-side protocol, iOS
+  executor, and Android executor items, in both languages — done after the `roadmap-id` workflow
+  allocated the four ids on `main`, since a new item may not cross-reference another new item by
+  `BE-XXXX` before allocation, so none of the four could carry this on merge.
+- [ ] Replace each "companion item" mention with a link to the now-numbered item, in both languages.
 
 ## References
 

@@ -1,16 +1,16 @@
-**English** · [日本語](BE-0407-step-latency-android-device-executor-ja.md)
+**English** · [日本語](BE-0410-step-latency-android-device-executor-ja.md)
 
-# BE-0407 — Android on-device step executor inside the instrumentation server
+# BE-0410 — Android on-device step executor inside the instrumentation server
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-0407](BE-0407-step-latency-android-device-executor.md) |
+| Proposal | [BE-0410](BE-0410-step-latency-android-device-executor.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0407") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0410") |
 | Topic | Platform support |
-| Related | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md) |
+| Related | [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0210](../BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md), [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md), [BE-0407](../BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning.md), [BE-0408](../BE-0408-step-latency-device-executor-protocol/BE-0408-step-latency-device-executor-protocol.md), [BE-0409](../BE-0409-step-latency-ios-device-executor/BE-0409-step-latency-ios-device-executor.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -119,7 +119,7 @@ iOS executor's port is.
 - [ ] Capture screenshots with `UiAutomation.takeScreenshot()`, returned with the step result.
 - [ ] Trace a real tap step against this executor and record the resulting per-step wall-clock here,
   compared against the 150–300 millisecond estimate above.
-- [ ] Once the `roadmap-id` workflow allocates the four ids on `main`, backfill a reciprocal
+- [x] Once the `roadmap-id` workflow allocates the four ids on `main`, backfill a reciprocal
   `Related` link with the driver-internal-tuning, device-side protocol, and iOS executor items (see
   the same box on the driver-internal-tuning item).
 
