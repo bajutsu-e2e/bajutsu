@@ -8,13 +8,13 @@ from pathlib import Path
 
 import pytest
 from _orch import FakeClock, _scenario
-from conftest import el
+from conftest import el, guard_rule
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import Artifact, FileSink, step_view
 from bajutsu.common.evidence.intervals import Interval
-from bajutsu.common.orchestrator import RunResult, run_scenario
+from bajutsu.common.orchestrator import AlertGuardConfig, RunResult, run_scenario
 from bajutsu.common.orchestrator.waits import WaitTrace
 from bajutsu.common.report.format import video_seconds
 from bajutsu.common.scenario import Interrupt, Relaunch
@@ -440,6 +440,81 @@ def test_screenshot_reuse_crosses_a_web_blocks_boundary(tmp_path: Path) -> None:
     step_b_before = run_dir / next(a.name for a in tap_b.artifacts if a.name.endswith("before.png"))
     assert web_before.read_bytes() == step0_after.read_bytes()
     assert step_b_before.read_bytes() == web_after.read_bytes()
+
+
+def test_screenshot_reuse_is_disabled_for_a_handle_system_alert_step(tmp_path: Path) -> None:
+    """A `handleSystemAlert` step always gets a fresh `before.png` (review follow-up): it exists to
+    watch for exactly the kind of surprise arrival the reuse premise cannot rule out, so pairing it
+    with a byte-copy of the previous step's screen would be the mismatch the exclusion prevents."""
+    driver = _ScreenshottingDriver([el("go", "Go", ["button"])])
+    driver.system_alert_buttons = [el(None, "Allow", ["button"])]
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {"tap": {"id": "go"}},
+                    {"handleSystemAlert": {"sel": {"label": "Allow"}, "timeout": 5}},
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+    )
+    assert result.ok, result.failure
+    # Every step's `before.png` is a fresh shot: 4 calls for 2 steps, not the 3 reuse would cost.
+    assert driver.screenshot_calls == 4
+    alert_step = next(s for s in result.steps if s.action == "handle_system_alert")
+    step0_after = run_dir / "x" / "step0" / "after.png"
+    alert_before = run_dir / next(
+        a.name for a in alert_step.artifacts if a.name.endswith("before.png")
+    )
+    assert alert_before.read_bytes() != step0_after.read_bytes()
+
+
+def test_screenshot_reuse_is_disabled_when_the_scenario_declares_interrupts(
+    tmp_path: Path,
+) -> None:
+    """Every step in a scenario declaring `interrupts` gets a fresh `before.png` (review
+    follow-up), not only the step an interrupt actually fires on: an interstitial the condition
+    does not match yet can still have appeared, and the scenario is already paying extra per-step
+    cost for exactly this risk."""
+    driver = _ScreenshottingDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}]}),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        interrupts=[
+            Interrupt.model_validate(
+                {"condition": {"exists": {"id": "never.matches"}}, "steps": [{"tap": {"id": "a"}}]}
+            )
+        ],
+    )
+    assert result.ok, result.failure
+    # 4 fresh shots for 2 steps, not the 3 reuse would cost.
+    assert driver.screenshot_calls == 4
+
+
+def test_screenshot_reuse_is_disabled_under_an_alert_guard(tmp_path: Path) -> None:
+    """A configured `alert_guard` (target-config level, independent of a scenario's own
+    `interrupts`) gets the same fresh-`before.png` treatment (review follow-up): a system alert it
+    exists to catch can arrive between any two steps, the same asynchronous risk `interrupts`
+    covers at the scenario level."""
+    driver = _ScreenshottingDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}]}),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        alert_guard=AlertGuardConfig(rules=[guard_rule()]),
+    )
+    assert result.ok, result.failure
+    assert driver.screenshot_calls == 4
 
 
 def test_final_capture_does_not_duplicate_a_rule_fired_after_png(tmp_path: Path) -> None:

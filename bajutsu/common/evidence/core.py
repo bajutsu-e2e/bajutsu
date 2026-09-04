@@ -395,6 +395,11 @@ class EvidenceSink(Protocol):
     interval artifacts (video / deviceLog / appTrace) for the whole scenario.
     """
 
+    # `reuse_before_screenshot`, an already-written `"screenshot"`-kind `Artifact` (typically the
+    # previous step's `after.png`), is a hint that its bytes may stand in for a fresh
+    # `screenshot.before` capture (BE-0407 Unit 1). A conforming implementation is always free to
+    # ignore it — `NullSink` does — and must fall back to a fresh capture for a `kind` other than
+    # `"screenshot"` or `None`.
     def capture(
         self,
         driver: base.Driver,
@@ -404,16 +409,7 @@ class EvidenceSink(Protocol):
         elements: list[base.Element] | None = None,
         elements_source: str | None = None,
         reuse_before_screenshot: Artifact | None = None,
-    ) -> list[Artifact]:
-        """Capture `kinds` under `step_id`; return their artifact records.
-
-        `reuse_before_screenshot`, an already-written `"screenshot"`-kind `Artifact` (typically the
-        previous step's `after.png`), is a hint that its bytes may stand in for a fresh
-        `screenshot.before` capture (BE-0407 Unit 1). A conforming implementation is always free to
-        ignore it — `NullSink` does — and must fall back to a fresh capture for a `kind` other than
-        `"screenshot"` or `None`.
-        """
-        ...
+    ) -> list[Artifact]: ...
 
     def wait_diagnostic(
         self,

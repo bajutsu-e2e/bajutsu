@@ -1341,16 +1341,22 @@ class _StepRunner:
         # Reuse the previous step's `after.png` bytes instead of a fresh screenshot (BE-0407 Unit
         # 1): nothing *bajutsu* has actuated since, so ordinarily the two are the same pixels. That
         # premise is not proof against an interstitial that appeared asynchronously between the two
-        # steps — the exact risk `interrupts` exists to catch (`before_is_fresh`'s own comment
-        # below) — so a recovery step (its whole purpose is to face such a screen), a
-        # `handleSystemAlert` step (watching for exactly this kind of surprise arrival), and any
-        # scenario declaring `interrupts` at all (already paying extra per-step cost for the same
-        # risk) always get a fresh shot instead of one that could predate the very screen they
-        # exist to show. `capture()` falls back to a real `driver.screenshot()` when this is `None`
-        # — also true on the scenario's first step, or the first after a `NullSink` skipped a write.
+        # steps — the exact risk `interrupts` (scenario-level) and `alert_guard` (target-config
+        # level) both exist to catch (`before_is_fresh`'s own comment below) — so a recovery step
+        # (its whole purpose is to face such a screen), a `handleSystemAlert` step (watching for
+        # exactly this kind of surprise arrival), and any scenario declaring `interrupts` or running
+        # under an `alert_guard` at all (already paying extra per-step cost for the same risk)
+        # always get a fresh shot instead of one that could predate the very screen they exist to
+        # show. `capture()` falls back to a real `driver.screenshot()` when this is `None` — also
+        # true on the scenario's first step, or the first after a `NullSink` skipped a write.
         reuse_before_screenshot = (
             None
-            if (self.state.running_recovery or kind == "handle_system_alert" or self.cfg.interrupts)
+            if (
+                self.state.running_recovery
+                or kind == "handle_system_alert"
+                or self.cfg.interrupts
+                or self.cfg.alert_guard is not None
+            )
             else self.state.prev_after_screenshot
         )
         outcome.artifacts.extend(
