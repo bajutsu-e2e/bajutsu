@@ -41,8 +41,9 @@ Alongside the steps below, keep [`be-progress-tracker`](../be-progress-tracker/S
 current, invoking it through the Agent tool with `model: "haiku"` passed explicitly — a subagent
 call does not inherit that skill's own frontmatter model. Check in at minimum after step 1 (the item's overview
 is now known), step 5 (the plan is confirmed), **once per unit of the step 5 plan as you finish
-it** — step 6 is never a single checkpoint for the whole step; see step 6 below — step 7 (the
-review pass comes back clean), step 9 (the gate is green), step 10 (the PR is open), and each step 12
+it** — step 6 is one checkpoint for the whole step only when that plan came out as a single unit;
+see step 6 below — step 7 (the review pass comes back clean), step 9 (the gate is green), step 10
+(the PR is open), and each step 12
 follow-up iteration. It only turns decisions this workflow already made into a glanceable status
 page for the human watching the session — never let it gate or slow this workflow down; skip a
 checkpoint rather than block on it. **Without an Agent tool** (a subagent running this skill has
