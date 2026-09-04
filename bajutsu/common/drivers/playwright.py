@@ -499,8 +499,8 @@ class PlaywrightDriver:
                 sink.close()
 
             def await_stderr(self, needle: str, timeout: float) -> float | None:  # noqa: ARG002  # Driver shape
-                # No child process, so no stderr to wait on: this lane stamps `true_start` from
-                # `new_page()` instead of confirming a recorder's own start line.
+                # No child process, so no stderr to wait on — and unlike the video capture, this
+                # interval carries no `true_start` at all: a console stream has no recorder start.
                 return None
 
         return intervals.Interval(

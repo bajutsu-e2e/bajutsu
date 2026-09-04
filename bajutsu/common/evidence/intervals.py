@@ -580,10 +580,11 @@ def _screenrecord_baseline_size(serial: str, run: adb.RunFn, device_path: str) -
 
 # How often the growth check asks the device for the recording's size. Deliberately coarser than
 # either sibling poll, because this one is the only poll of the three that is both *device-side* and
-# *purely diagnostic*. The iOS twin polls at 0.05s, but it reads a host file — a `stat` that costs
-# nothing. `_await_screenrecord_started` also round-trips to the device, but at 0.2s because its
-# answer *is* the video anchor, so its resolution is the measurement. This check answers only yes or
-# no, and it sits on the critical path: `AndroidEnvironment` prestarts the recording immediately
+# *purely diagnostic*. The iOS twin (`_STDERR_POLL`) also polls at 0.05s, but it `pread`s the
+# child's captured stderr on the host — a read that costs nothing.
+# `_await_screenrecord_started` also round-trips to the device, but at 0.2s because its answer *is*
+# the video anchor, so its resolution is the measurement. This check answers only yes or no, and it
+# sits on the critical path: `AndroidEnvironment` prestarts the recording immediately
 # before it launches the app, so every probe here is an `adb shell` round trip and a device-side
 # shell spawn competing with a cold start on a two-core emulator. One second resolves "is it
 # producing?" just as well as a fifth of one, at a fifth of the traffic.

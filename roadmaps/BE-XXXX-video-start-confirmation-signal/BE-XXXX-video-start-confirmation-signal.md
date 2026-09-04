@@ -9,6 +9,7 @@
 | Author | [@akiramatsuda](https://github.com/akiramatsuda) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | [#1901](https://github.com/bajutsu-e2e/bajutsu/pull/1901) |
 | Topic | Verification & coverage |
 | Related | [BE-0346](../BE-0346-video-timing-sync/BE-0346-video-timing-sync.md) · [BE-0348](../BE-0348-absolute-timestamp-recording/BE-0348-absolute-timestamp-recording.md) · [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md) · [BE-0367](../BE-0367-android-ci-emulator-diagnostics/BE-0367-android-ci-emulator-diagnostics.md) |
 <!-- /BE-METADATA -->

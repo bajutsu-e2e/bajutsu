@@ -317,7 +317,9 @@ def test_await_stderr_reads_once_even_at_a_zero_length_deadline() -> None:
     # wait always reads once before it checks the deadline (the one-read floor its siblings keep).
     proc = intervals.spawn(["sh", "-c", "printf 'Recording started\n' >&2; sleep 30"], None)
     try:
-        time.sleep(0.2)  # let the child flush before the ceiling is even consulted
+        # A condition wait, not a fixed sleep: block until the line really is on stderr, then
+        # prove a zero-second ceiling still reads it (each call rescans from offset 0).
+        assert proc.await_stderr(intervals._RECORDING_STARTED, 5.0) is not None
         assert isinstance(proc.await_stderr(intervals._RECORDING_STARTED, 0.0), float)
     finally:
         proc.stop(signal.SIGKILL, 5.0)
@@ -682,8 +684,9 @@ def test_the_growth_poll_stays_cheap_on_the_launch_path(monkeypatch: pytest.Monk
     # This poll sits on the critical path — `AndroidEnvironment` prestarts the recording immediately
     # before it launches the app — and every probe is an `adb shell` round trip plus a device-side
     # shell spawn, competing with a cold start on a two-core emulator. So it must stay coarser than
-    # its two siblings: the iOS twin reads a host file for free, and the pid confirmation's answer is
-    # the video anchor, so its resolution is the measurement. This one answers only yes or no.
+    # its two siblings: the iOS twin `pread`s captured stderr on the host for free, and the pid
+    # confirmation's answer is the video anchor, so its resolution is the measurement. This one
+    # answers only yes or no.
     assert intervals._SCREENRECORD_GROWTH_POLL > 0.2
     # And a full stall — the worst case, the only one that pays more than a single probe — must stay
     # in single digits rather than the ~25 round trips a 0.2s cadence would spend. Driven on a fake
