@@ -359,6 +359,41 @@ def test_every_step_records_both_screenshots(tmp_path: Path) -> None:
     )
 
 
+class _ScreenshottingDriver(FakeDriver):
+    """A driver whose `screenshot` actually writes bytes, unlike `FakeDriver` (which only records
+    the call) — needed to exercise BE-0407 Unit 1's byte-for-byte reuse end to end."""
+
+    def __init__(self, screen: list[base.Element]) -> None:
+        super().__init__(screen)
+        self.screenshot_calls = 0
+
+    def screenshot(self, path: str) -> None:
+        super().screenshot(path)
+        self.screenshot_calls += 1
+        Path(path).write_bytes(f"shot{self.screenshot_calls}".encode())
+
+
+def test_a_steps_before_png_reuses_the_previous_steps_after_png_bytes(tmp_path: Path) -> None:
+    """Nothing acts between one step's `after.png` and the next step's `before.png`, so the second
+    is a byte-for-byte copy of the first rather than a fresh capture (BE-0407 Unit 1): three real
+    screenshots for two steps, not the four a fresh `before.png` each time would cost."""
+    driver = _ScreenshottingDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}]}),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+    )
+    assert result.ok
+    assert (
+        driver.screenshot_calls == 3
+    )  # step0's before + step0/step1's after; step1's before reused
+    step0_after = run_dir / "x" / "step0" / "after.png"
+    step1_before = run_dir / "x" / "step1" / "before.png"
+    assert step1_before.read_bytes() == step0_after.read_bytes()
+
+
 def test_final_capture_does_not_duplicate_a_rule_fired_after_png(tmp_path: Path) -> None:
     """When a `capturePolicy` rule already fires `screenshot.after` post-step on the scenario's
     last (and only) leaf step — e.g. a `result: error` safety net on a failing final step — the
@@ -426,6 +461,85 @@ def test_a_step_that_fails_before_it_acts_keeps_a_matched_pre_action_pair(
     assert any(name.endswith("before.png") for name in step0_names)
     assert any(name.endswith("elements.json") for name in step0_names)
     assert not any(name.endswith("after.png") for name in step0_names)
+
+
+def test_a_step_that_fails_before_it_acts_skips_the_tree_when_the_fallback_query_fails(
+    tmp_path: Path,
+) -> None:
+    """The same uncovered-locale failure, but on the scenario's first step and with a driver that
+    cannot be queried at all: the fallback query in the exception handler (BE-0407 Units 3-4) must
+    not let that exception escape and crash the step — it logs and moves on, leaving `before.png`
+    as the step's only evidence rather than a broken run."""
+
+    class _UnqueryableDriver(FakeDriver):
+        def query(self) -> list[base.Element]:
+            raise ConnectionError("device unreachable")
+
+    driver = _UnqueryableDriver([el("a", "A", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "handleSystemAlert": {
+                            "prompt": "notifications",
+                            "choice": "grant",
+                            "timeout": 5,
+                        }
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        locale="de_DE",
+    )
+    assert not result.ok
+    assert result.failure is not None and "language 'de'" in result.failure
+    step0_names = {a.name for a in result.steps[0].artifacts}
+    assert any(name.endswith("before.png") for name in step0_names)
+    assert not any(name.endswith("elements.json") for name in step0_names)
+    assert not any(name.endswith("after.png") for name in step0_names)
+
+
+def test_a_step_that_fails_before_it_acts_reuses_the_previous_steps_tree(
+    tmp_path: Path,
+) -> None:
+    """When a *later* step hits the uncovered-locale failure, the exception handler's tree write
+    (BE-0407 Units 3-4) reuses `prev_after` from the step before it rather than querying again —
+    the same "nothing acted in between" reuse the ordinary pre-step baseline already relies on."""
+    driver = FakeDriver([el("a", "A", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {"tap": {"id": "a"}},
+                    {
+                        "handleSystemAlert": {
+                            "prompt": "notifications",
+                            "choice": "grant",
+                            "timeout": 5,
+                        }
+                    },
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        locale="de_DE",
+    )
+    assert not result.ok
+    assert result.failure is not None and "language 'de'" in result.failure
+    assert len(result.steps) == 2
+    step1_names = {a.name for a in result.steps[1].artifacts}
+    assert any(name.endswith("before.png") for name in step1_names)
+    assert any(name.endswith("elements.json") for name in step1_names)
 
 
 def test_a_step_nested_in_an_if_gets_the_evidence_pair_its_container_does_not(
@@ -867,6 +981,7 @@ class _VideoSink:
         *,
         elements: list[base.Element] | None = None,
         elements_source: str | None = None,
+        reuse_before_screenshot: str | None = None,
     ) -> list[Artifact]:
         return []
 

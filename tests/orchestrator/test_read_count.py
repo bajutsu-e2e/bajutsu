@@ -60,6 +60,7 @@ class _KindsSink(NullSink):
         *,
         elements: list[base.Element] | None = None,
         elements_source: str | None = None,
+        reuse_before_screenshot: str | None = None,
     ) -> list[Artifact]:
         self.kinds_by_step[step_id] = kinds
         return []

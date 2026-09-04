@@ -394,6 +394,56 @@ def test_write_elements_is_owner_only(tmp_path: Path) -> None:
     assert stat.S_IMODE((tmp_path / name).stat().st_mode) == 0o600
 
 
+def test_reuse_screenshot_copies_bytes_from_an_existing_artifact(tmp_path: Path) -> None:
+    # BE-0407 Unit 1: the previous step's `after.png` becomes this step's `before.png`, byte for
+    # byte, with no driver call at all.
+    writer = _writer(tmp_path)
+    writer.write_bytes("step0/after.png", b"\x89PNG\r\n pixels")
+    from bajutsu.common.evidence import reuse_screenshot
+
+    name = reuse_screenshot(writer, "step0/after.png", "step1")
+    assert name == "step1/before.png"
+    assert (tmp_path / "step1" / "before.png").read_bytes() == b"\x89PNG\r\n pixels"
+
+
+def test_capture_reuses_a_before_screenshot_instead_of_a_fresh_one(tmp_path: Path) -> None:
+    writer = _writer(tmp_path)
+    driver = _WritingDriver([_el("a", "A")])
+    capture(driver, writer, "step0", ["screenshot.after"])
+    written = capture(
+        driver,
+        writer,
+        "step1",
+        ["screenshot.before"],
+        reuse_before_screenshot="step0/after.png",
+    )
+    assert [(a.name, a.kind) for a in written] == [("step1/before.png", "screenshot")]
+    assert (tmp_path / "step1" / "before.png").read_bytes() == b"\x89PNG\r\n"
+    # One driver call — step0's `after.png` — not two: step1's `before.png` is a local copy.
+    assert [a for a in driver.actions if a[0] == "screenshot"] == [
+        ("screenshot", str(tmp_path / "step0" / "after.png"))
+    ]
+
+
+def test_capture_falls_back_to_a_fresh_screenshot_when_the_reuse_source_is_missing(
+    tmp_path: Path,
+) -> None:
+    # The manifest can name a screenshot the store no longer holds — the same gap `step_view`'s own
+    # `exists` check anticipates — so a missing source costs a fresh capture, not a failed step.
+    writer = _writer(tmp_path)
+    driver = _WritingDriver([_el("a", "A")])
+    written = capture(
+        driver,
+        writer,
+        "step1",
+        ["screenshot.before"],
+        reuse_before_screenshot="step0/after.png",  # never written
+    )
+    assert [(a.name, a.kind) for a in written] == [("step1/before.png", "screenshot")]
+    assert (tmp_path / "step1" / "before.png").read_bytes() == b"\x89PNG\r\n"
+    assert [a[0] for a in driver.actions] == ["screenshot"]  # the fallback capture ran
+
+
 def test_capture_no_writing_kinds_leaves_dir_uncreated(tmp_path: Path) -> None:
     """capture() creates the step dir only when it actually writes a file; a kind it
     does not handle here (e.g. an interval kind) must leave the dir untouched, as before."""

@@ -115,6 +115,14 @@ class RunArtifactWriter:
         self.unmasked.append(name)
         return self._replace(name, lambda tmp: tmp.write_bytes(data))
 
+    def read_bytes(self, name: str) -> bytes:
+        """Read back an artifact this run already wrote, for a caller that reuses its bytes.
+
+        Used to reuse a screenshot across steps (BE-0407 Unit 1) instead of a fresh capture — the
+        two names then describe the identical pixels.
+        """
+        return self._resolve(name).read_bytes()
+
     def reserve(self, name: str) -> Path:
         """A path for content an external recorder writes itself (simctl, screenrecord, logcat).
 

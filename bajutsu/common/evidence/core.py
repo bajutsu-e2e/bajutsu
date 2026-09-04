@@ -185,6 +185,20 @@ def write_screenshot(
     return name
 
 
+def reuse_screenshot(
+    writer: RunArtifactWriter, source_name: str, prefix: str, filename: str = "before.png"
+) -> str:
+    """Write `<prefix>/<filename>` by copying an already-written screenshot's bytes.
+
+    Valid only when nothing has actuated the device since `source_name` was captured (BE-0407 Unit
+    1): the previous step's `after.png` and this step's `before.png` then describe the identical
+    screen, so a local copy stands in for a fresh `driver.screenshot()` call.
+    """
+    name = f"{prefix}/{filename}"
+    writer.write_bytes(name, writer.read_bytes(source_name))
+    return name
+
+
 def write_raw_tree(driver: base.Driver, writer: RunArtifactWriter, prefix: str) -> list[str]:
     """Write the device's own reply behind the driver's last read (`rawTree` capture kind), if it has any.
 
@@ -292,6 +306,7 @@ def capture(
     *,
     elements: list[base.Element] | None = None,
     elements_source: str | None = None,
+    reuse_before_screenshot: str | None = None,
 ) -> list[Artifact]:
     """Capture the requested instant kinds under `<prefix>/`; return their artifact records.
 
@@ -303,6 +318,11 @@ def capture(
     cannot screenshot, so the pixels come from the native driver while the tree comes from the
     WebView — and recording each artifact's own source is what lets `step_view` refuse to pair them.
     It defaults to the capture driver's own name.
+
+    `reuse_before_screenshot` names an already-written screenshot artifact whose bytes describe the
+    identical screen a `screenshot.before` token would otherwise capture fresh (BE-0407 Unit 1) — the
+    previous step's `after.png`, when nothing actuated the device in between. Ignored by every other
+    token.
     """
     out: list[Artifact] = []
     tree_source = elements_source or driver.name
@@ -334,14 +354,19 @@ def capture(
                 )
             )
         elif kind == "screenshot":
-            out.append(
-                Artifact(
-                    write_screenshot(driver, writer, prefix, f"{modifier or 'after'}.png"),
-                    "screenshot",
-                    "driver",
-                    _depicts(driver.name, modifier),
-                )
-            )
+            filename = f"{modifier or 'after'}.png"
+            name = None
+            if modifier == "before" and reuse_before_screenshot is not None:
+                try:
+                    name = reuse_screenshot(writer, reuse_before_screenshot, prefix, filename)
+                except OSError:
+                    # The manifest named a screenshot the store no longer holds (the same gap
+                    # `step_view`'s own `exists` check already anticipates) — fall through to a
+                    # fresh capture rather than losing this step's `before.png` outright.
+                    name = None
+            if name is None:
+                name = write_screenshot(driver, writer, prefix, filename)
+            out.append(Artifact(name, "screenshot", "driver", _depicts(driver.name, modifier)))
         # actionLog lives in the manifest; video / deviceLog / appTrace are intervals.
     return out
 
@@ -361,6 +386,7 @@ class EvidenceSink(Protocol):
         *,
         elements: list[base.Element] | None = None,
         elements_source: str | None = None,
+        reuse_before_screenshot: str | None = None,
     ) -> list[Artifact]: ...
     def wait_diagnostic(
         self,
@@ -388,6 +414,7 @@ class NullSink:
         *,
         elements: list[base.Element] | None = None,  # noqa: ARG002
         elements_source: str | None = None,  # noqa: ARG002
+        reuse_before_screenshot: str | None = None,  # noqa: ARG002
     ) -> list[Artifact]:
         return []
 
@@ -472,6 +499,7 @@ class FileSink:
         *,
         elements: list[base.Element] | None = None,
         elements_source: str | None = None,
+        reuse_before_screenshot: str | None = None,
     ) -> list[Artifact]:
         return capture(
             driver,
@@ -480,6 +508,7 @@ class FileSink:
             kinds,
             elements=elements,
             elements_source=elements_source,
+            reuse_before_screenshot=reuse_before_screenshot,
         )
 
     def wait_diagnostic(

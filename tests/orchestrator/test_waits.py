@@ -257,6 +257,43 @@ def test_wait_settled_signal_reads_the_device_only_once_with_no_gate_or_interrup
     assert driver.queries == 2
 
 
+def test_wait_settled_signal_interrupt_ends_the_settle_with_no_gate_registered() -> None:
+    """An `on_interrupt_poll` alone (no system-alert guard) must still be consulted on the signal
+    path (BE-0314) — and BE-0407 Unit 5's `watched` gate must cover that case too, not just a
+    guard's."""
+    driver = FakeDriver([el("a", "A")])
+    clock = FakeClock()
+    fresh = [(ScreenTransition(kind="screenChanged"), 0.0)]
+    w = Wait.model_validate({"until": "settled", "timeout": 2.0})
+    ok, reason, _tree = _wait(
+        driver, w, clock, transitions=lambda: fresh, on_interrupt_poll=lambda _els: True
+    )
+    assert not ok and reason == "interrupt recovery failed"
+
+
+def test_wait_settled_signal_polls_the_device_each_tick_for_an_interrupt_with_no_gate() -> None:
+    """The same interrupt-only (no gate) signal wait, but one that never fires: the per-tick poll
+    still has to run so the interrupt is actually re-checked every cycle, unlike the no-consumer
+    fast path Unit 5 adds."""
+    driver = FakeDriver([el("a", "A")])
+    clock = FakeClock()
+    fresh = [(ScreenTransition(kind="screenChanged"), 0.0)]
+    w = Wait.model_validate({"until": "settled", "timeout": 2.0})
+    polls = 0
+
+    def on_interrupt_poll(_els: list[base.Element]) -> bool:
+        nonlocal polls
+        polls += 1
+        return False
+
+    ok, reason, _tree = _wait(
+        driver, w, clock, transitions=lambda: fresh, on_interrupt_poll=on_interrupt_poll
+    )
+    assert ok and reason == ""
+    assert clock.now() >= _TRANSITION_QUIESCENCE
+    assert polls > 0  # the interrupt was actually re-checked, not skipped like the fast path
+
+
 def test_wait_settled_signal_restarts_the_window_on_a_new_transition() -> None:
     """A fresh transition arriving mid-wait pushes settlement out further: the debounce is 'no
     further transition for the quiescence window since the LATEST one', not a fixed timer

@@ -1055,6 +1055,13 @@ class StepLoopState:
     # is skipped. It holds only a tree we actually read; a step that took no read leaves it None so
     # the next `before` reads fresh, and a `web` block resets it (the tree is a different driver's).
     prev_after: list[base.Element] | None = None
+    # The previous step's `after.png` artifact name, reused as this step's `before.png` (BE-0407
+    # Unit 1) instead of a fresh `driver.screenshot()`: nothing actuates between the two, so they are
+    # the identical pixels. Set only when the shutter actually wrote a file (a `NullSink` writes
+    # nothing, so this stays `None` under it). Unlike `prev_after`, a `web` block does *not* reset
+    # this: the shutter always targets the native driver, so the screen it captures is the same one
+    # throughout, web block or not.
+    prev_after_screenshot: str | None = None
     total_reads: int = 0  # runner-issued screen reads, the BE-0234 read-count yardstick (Unit 1)
     # True while an interrupt's own recovery steps run (BE-0314). Those steps go through the step loop
     # too, so without this an interrupt whose recovery targets the very screen its `condition` matches
@@ -1237,7 +1244,10 @@ class _StepRunner:
                         bridge=self.cfg.webview_bridge, webview_id=host_id
                     )
                     # The inner steps run on a different driver, so its trees must not seed a
-                    # native step's `before`: reset around the block on both sides (BE-0234).
+                    # native step's `before`: reset around the block on both sides (BE-0234). The
+                    # screenshot reuse marker (BE-0407 Unit 1) is unaffected — the shutter always
+                    # targets the native driver, web block or not, so the previous leaf step's
+                    # `after.png` still describes the same screen this one is about to act on.
                     self.state.prev_after = None
                     failure = self.exec_steps(step.web.steps, web_driver)
                     self.state.prev_after = None
@@ -1313,7 +1323,16 @@ class _StepRunner:
         # pre-action read while the `elements.json` beside it describes the post-action one. Post-step
         # the two land together, where `capture()`'s own stable sort pairs them on the same read.
         outcome.artifacts.extend(
-            self.cfg.sink.capture(self.cfg.driver, step_id, pre_kinds)
+            self.cfg.sink.capture(
+                self.cfg.driver,
+                step_id,
+                pre_kinds,
+                # Reuse the previous step's `after.png` bytes instead of a fresh screenshot (BE-0407
+                # Unit 1): nothing has actuated the device since, so the two are the same pixels.
+                # `None` on the scenario's first step (or the first after a `NullSink` skipped the
+                # write), where `capture()` falls back to a real `driver.screenshot()` as before.
+                reuse_before_screenshot=self.state.prev_after_screenshot,
+            )
         )
         # Interpolate ${...} tokens, then turn a `handleSystemAlert` naming a prompt and a
         # choice into the concrete button label this run's locale renders (BE-0320). Resolving
@@ -1622,9 +1641,12 @@ class _StepRunner:
         # mid-transition with pixels a moment later. Dropping the seed here would swap that for the
         # opposite skew and a full tree read per `assert`/`wait` step, so the reuse stays and the
         # guarantee is stated for what it is: the shutter leads every consumer downstream of it.
-        outcome.artifacts.extend(
-            self.cfg.sink.capture(self.cfg.driver, step_id, ["screenshot.after"])
-        )
+        after_shot = self.cfg.sink.capture(self.cfg.driver, step_id, ["screenshot.after"])
+        outcome.artifacts.extend(after_shot)
+        # Remembered for the *next* step's pre-step baseline to reuse as its `before.png` (BE-0407
+        # Unit 1) instead of a fresh screenshot — `None` when nothing was actually written (a
+        # `NullSink`), so a step with no evidence never looks like it has a file to reuse.
+        self.state.prev_after_screenshot = after_shot[0].name if after_shot else None
 
         # The post-step read is lazy (BE-0234 Unit 2): `.get()` reads (once) only where a
         # consumer needs the tree, so a step with no consumer under a NullSink never reads. A
