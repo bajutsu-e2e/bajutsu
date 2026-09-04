@@ -8,6 +8,7 @@ exact install command when its SDK is missing.
 
 from __future__ import annotations
 
+import mimetypes
 import sys
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from conftest import FakeObjectStore
 from bajutsu.common.run_meta.object_store import (
     S3ObjectStore,
     StoreURI,
+    content_type_for,
     evidence_target_from_uri,
     object_store_from_uri,
     upload_tree,
@@ -73,6 +75,40 @@ def test_infers_content_type_from_extension(tmp_path: Path) -> None:
     assert store.uploads["20260702-143000/00-login/step-1/after.png"][1] == "image/png"
     assert store.uploads["20260702-143000/manifest.json"][1] == "application/json"
     assert store.uploads["20260702-143000/report.html"][1] == "text/html"
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("junit.xml", "application/xml"),
+        ("console.log", "text/plain"),
+        ("login.yaml", "application/yaml"),
+        ("login.yml", "application/yaml"),
+        ("after.png", "image/png"),
+        ("manifest.json", "application/json"),
+        ("report.html", "text/html"),
+        ("capture.webm", "video/webm"),
+        ("nothing.unknown", "application/octet-stream"),
+    ],
+)
+def test_content_type_is_pinned_per_extension(name: str, expected: str) -> None:
+    # The control plane signs this value into a presigned PUT URL and a worker on another machine
+    # sends it back as Content-Type — a host-dependent answer is a 403 SignatureDoesNotMatch, not a
+    # cosmetic drift. Pinning every extension the run tree produces is what makes the two agree.
+    assert content_type_for(name) == expected
+
+
+def test_content_type_never_consults_the_host_mime_database(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `mimetypes.guess_type` answers from the OS tables (/etc/mime.types and friends), which differ
+    # between a full distro and a slim container. Blowing it up proves the helper never asks.
+    def _boom(*_: object, **__: object) -> None:
+        raise AssertionError("content_type_for must not use the host mimetypes database")
+
+    monkeypatch.setattr(mimetypes, "guess_type", _boom)
+    assert content_type_for("junit.xml") == "application/xml"
+    assert content_type_for("after.png") == "image/png"
 
 
 def test_symlinks_are_skipped(tmp_path: Path) -> None:

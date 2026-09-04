@@ -15,12 +15,12 @@ in the injected client, so the same store serves either — what BE-0016 Tier B 
 from __future__ import annotations
 
 import json
-import mimetypes
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Any
 
 from bajutsu.common.report.archive import zip_tree
+from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve.artifacts import Artifact
 from bajutsu.serve.helpers import crawl_run_summary, valid_run_id
 from bajutsu.serve.server.object_store import ObjectStore
@@ -57,8 +57,7 @@ class ObjectStorageArtifactStore:
         key = self._key(rel)
         if key is None or not self._store.exists(key):
             return None
-        ctype = mimetypes.guess_type(rel)[0] or "application/octet-stream"
-        return Artifact(content_type=ctype, redirect=self._store.presigned_url(key))
+        return Artifact(content_type=content_type_for(rel), redirect=self._store.presigned_url(key))
 
     def open_bytes(self, rel: str) -> bytes | None:
         key = self._key(rel)

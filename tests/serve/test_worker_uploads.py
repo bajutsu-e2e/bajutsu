@@ -198,9 +198,12 @@ def test_scenario_url_key_under_org_scenario_prefix(tmp_path: Path) -> None:
         state, {"job_id": "j1", "worker_id": "w1", "app": "demo", "ref": "login.yaml"}
     )
     assert status == 200
-    # Assert the key (the real contract); the signed-in Content-Type is `content_type_for(ref)`,
-    # whose value for `.yaml` depends on the runtime's mimetypes DB, so don't pin it here.
-    assert payload["url"].startswith("https://signed.example/put/acme/scenarios/demo/login.yaml")
+    # The key, plus the Content-Type bound into the signature: the worker derives that value again
+    # on its own host and a mismatch is a 403 SignatureDoesNotMatch, so it must not drift.
+    assert (
+        payload["url"]
+        == "https://signed.example/put/acme/scenarios/demo/login.yaml?ct=application/yaml"
+    )
 
 
 def test_scenario_url_rejects_an_unsafe_ref(tmp_path: Path) -> None:

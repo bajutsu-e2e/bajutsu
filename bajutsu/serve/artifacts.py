@@ -10,7 +10,6 @@ guarantee by never touching the filesystem at all.
 
 from __future__ import annotations
 
-import mimetypes
 import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -21,6 +20,7 @@ from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.report.archive import archive_run_dir
 from bajutsu.common.report.load import rerender_html
+from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve.helpers import list_crawl_runs, list_runs, valid_run_id
 
 # Where a soft-deleted run's tree is parked, relative to ``runs_dir`` (BE-0239). A single hidden
@@ -138,8 +138,7 @@ class LocalArtifactStore:
         target = self._confined(rel)
         if target is None:
             return None
-        ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
-        return Artifact(content_type=ctype, body=target.read_bytes())
+        return Artifact(content_type=content_type_for(target.name), body=target.read_bytes())
 
     def render_report(self, run_id: str) -> Artifact | None:
         # Render from the stored model (manifest.json + scenario.yaml) with the current template, so
