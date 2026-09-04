@@ -19,13 +19,21 @@ from bajutsu.common.evidence import intervals
 
 
 class FakeProc:
-    def __init__(self) -> None:
+    """A spawned child stand-in; `confirms` decides whether its stderr ever reports the start."""
+
+    def __init__(self, *, confirms: bool = True) -> None:
         self.stopped_with: int | None = None
         self.stopped_timeout: float | None = None
+        self.awaited: list[tuple[str, float]] = []
+        self._confirms = confirms
 
     def stop(self, sig: int, timeout: float) -> None:
         self.stopped_with = sig
         self.stopped_timeout = timeout
+
+    def await_stderr(self, needle: str, timeout: float) -> float | None:
+        self.awaited.append((needle, timeout))
+        return time.monotonic() if self._confirms else None
 
 
 class FakeDevice:
@@ -117,18 +125,16 @@ def test_start_video_confirm_started_false_by_default_leaves_true_start_none() -
     assert interval.true_start is None  # no poll attempted; every existing caller is unaffected
 
 
-def test_start_video_confirm_started_sets_true_start_once_file_grows(tmp_path: Path) -> None:
-    # recordVideo writes progressively to its output path; spawn writing the first byte proves the
-    # confirmation is a real condition wait on that write, not a fixed sleep — it returns on the
-    # very first poll, with no monkeypatched clock needed.
-    path = tmp_path / "v.mp4"
-
-    def spawn(argv: list[str], out: Path | None) -> FakeProc:
-        path.write_bytes(b"clip")  # simulates recordVideo's first written byte
-        return FakeProc()
-
-    interval = intervals.start_video("UDID", path, spawn=spawn, confirm_started=True)
+def test_start_video_confirm_started_waits_for_simctls_own_start_line(tmp_path: Path) -> None:
+    # The confirmation asks the recorder rather than its output file: `simctl io recordVideo` leaves
+    # the mp4 at zero bytes until finalize and announces its first processed frame on stderr, the
+    # signal its own `--help` names. The wait must be for that line, at the lane's ceiling.
+    proc = FakeProc()
+    interval = intervals.start_video(
+        "UDID", tmp_path / "v.mp4", spawn=lambda argv, out: proc, confirm_started=True
+    )
     assert isinstance(interval.true_start, float)
+    assert proc.awaited == [(intervals._RECORDING_STARTED, intervals._video_start_timeout())]
 
 
 def test_video_start_timeout_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -146,7 +152,7 @@ def test_video_start_timeout_env_override(monkeypatch: pytest.MonkeyPatch) -> No
 def test_video_start_timeout_rejects_non_finite_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     # `float()` parses "inf"/"-inf"/"nan" successfully, so the plain `except ValueError` fallback
     # does not catch them. Left unguarded, "inf" would make `deadline = time.monotonic() + timeout`
-    # unreachable in `_await_video_file_growing`/`_await_screenrecord_started` — an unbounded wait,
+    # unreachable in `await_stderr`/`_await_screenrecord_started` — an unbounded wait,
     # which prime directive 2 (determinism first) forbids outright — and "nan" would silently produce
     # a 0-second timeout via `max(0.0, nan) == 0.0` (every comparison against nan is False) rather
     # than falling back to the compiled default like any other malformed value.
@@ -169,14 +175,11 @@ def test_confirming_starters_resolve_the_timeout_per_call(
     def record(timeout: float) -> None:
         seen.append(timeout)
 
-    monkeypatch.setattr(
-        intervals,
-        "_await_video_file_growing",
-        lambda path, baseline, timeout: record(timeout),
-    )
+    video_proc = FakeProc()
     intervals.start_video(
-        "UDID", tmp_path / "v.mp4", spawn=lambda a, o: FakeProc(), confirm_started=True
+        "UDID", tmp_path / "v.mp4", spawn=lambda a, o: video_proc, confirm_started=True
     )
+    record(video_proc.awaited[0][1])
 
     monkeypatch.setattr(
         intervals,
@@ -204,15 +207,14 @@ def test_start_video_separates_an_unconfirmed_start_from_an_unattempted_one(
     )
     assert unattempted.start_confirmed is None
 
-    # The confirmation's own polling is covered below; here it is stubbed to its give-up answer so the
-    # case costs no wall time.
-    monkeypatch.setattr(intervals, "_await_video_file_growing", lambda *_a, **_k: None)
     stalled = intervals.start_video(
-        "UDID", tmp_path / "b.mp4", spawn=lambda argv, out: FakeProc(), confirm_started=True
+        "UDID",
+        tmp_path / "b.mp4",
+        spawn=lambda argv, out: FakeProc(confirms=False),
+        confirm_started=True,
     )
     assert stalled.start_confirmed is False
 
-    monkeypatch.setattr(intervals, "_await_video_file_growing", lambda *_a, **_k: 12.0)
     confirmed = intervals.start_video(
         "UDID", tmp_path / "c.mp4", spawn=lambda argv, out: FakeProc(), confirm_started=True
     )
@@ -233,16 +235,17 @@ def test_a_recording_that_never_produces_bytes_captures_the_stall(
         stall_diagnostics, "capture", lambda reason, probes: captured.append((reason, probes))
     )
 
-    monkeypatch.setattr(intervals, "_await_video_file_growing", lambda *_a, **_k: 12.0)
     intervals.start_video(
         "UDID", tmp_path / "ok.mp4", spawn=lambda argv, out: FakeProc(), confirm_started=True
     )
     intervals.start_video("UDID", tmp_path / "unattempted.mp4", spawn=lambda argv, out: FakeProc())
     assert captured == []
 
-    monkeypatch.setattr(intervals, "_await_video_file_growing", lambda *_a, **_k: None)
     intervals.start_video(
-        "UDID", tmp_path / "stalled.mp4", spawn=lambda argv, out: FakeProc(), confirm_started=True
+        "UDID",
+        tmp_path / "stalled.mp4",
+        spawn=lambda argv, out: FakeProc(confirms=False),
+        confirm_started=True,
     )
     assert captured == [("video-no-bytes", "UDID")]
 
@@ -254,87 +257,72 @@ def test_adopt_carries_the_start_confirmation_onto_the_relocated_capture(tmp_pat
     assert intervals.adopt(running, tmp_path / "final.mp4").start_confirmed is False
 
 
-def test_await_video_file_growing_ignores_bytes_left_by_a_stale_retry(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_start_video_warns_when_the_recorder_never_reports_its_start(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    # A crash-retry reuses the same scenario id and thus the same target path (BE-0049): a finalized
-    # earlier attempt's mp4 can already sit at `path` when this attempt spawns. Without a pre-spawn
-    # baseline, the very first poll would misread those leftover bytes as this attempt's own first
-    # frame — confirming a start that never happened. The size must grow *past* what was already
-    # there (the baseline `start_video` captures before spawning), not just be non-zero.
-    monkeypatch.setattr(time, "sleep", lambda _s: None)
-    path = tmp_path / "v.mp4"
-    path.write_bytes(b"leftover from a finalized earlier attempt")
-    baseline = intervals._file_size(path)
-    # This attempt's recordVideo never actually writes (e.g. the target already exists) — the file
-    # stays exactly at the baseline size throughout the poll.
-    result = intervals._await_video_file_growing(path, baseline, timeout=0.01, poll=0.001)
-    assert result is None
-
-
-def test_await_video_file_growing_confirms_growth_past_a_nonzero_baseline(tmp_path: Path) -> None:
-    path = tmp_path / "v.mp4"
-    path.write_bytes(b"old")
-    baseline = intervals._file_size(path)
-    path.write_bytes(b"old + new frame")
-    result = intervals._await_video_file_growing(path, baseline)
-    assert isinstance(result, float)
-
-
-def test_file_size_missing_file_stays_silent(caplog: pytest.LogCaptureFixture) -> None:
-    # The common case (recordVideo hasn't written anything yet) must not warn even when disclose
-    # is requested — only a genuine "can't tell" failure should.
+    # A recorder that never announces its first frame must not hang the caller — the wait gives up at
+    # the deadline and leaves `true_start` unconfirmed, with a warning so a scenario whose video never
+    # started is diagnosable rather than silently mistimed.
     with caplog.at_level("WARNING"):
-        result = intervals._file_size(Path("/nonexistent/never-written.mp4"), disclose=True)
-    assert result == 0
-    assert not caplog.records
-
-
-def test_file_size_disclose_warns_on_a_non_missing_error(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    # A 0 from a failure that is not "the file doesn't exist yet" (a permission error, EIO, an
-    # unreadable run dir) reads exactly like "no leftover bytes" and would silently defeat the
-    # stale-retry guard the pre-spawn baseline exists for — so, unlike the missing-file case, this
-    # must warn.
-    def raising_stat(self: Path) -> None:
-        raise PermissionError("denied")
-
-    monkeypatch.setattr(Path, "stat", raising_stat)
-    with caplog.at_level("WARNING"):
-        result = intervals._file_size(Path("/some/path.mp4"), disclose=True)
-    assert result == 0
-    assert any("could not size" in r.message for r in caplog.records)
-
-
-def test_file_size_without_disclose_stays_silent_on_error(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    # The per-poll caller (inside _await_video_file_growing) must never warn on every failed poll —
-    # only the one-time baseline call opts into disclosure.
-    def raising_stat(self: Path) -> None:
-        raise PermissionError("denied")
-
-    monkeypatch.setattr(Path, "stat", raising_stat)
-    with caplog.at_level("WARNING"):
-        result = intervals._file_size(Path("/some/path.mp4"))
-    assert result == 0
-    assert not caplog.records
-
-
-def test_await_video_file_growing_warns_on_timeout(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    # A file that never grows (recordVideo never wrote a frame) must not hang the caller — the poll
-    # gives up at the deadline and leaves true_start unconfirmed, with a warning so a scenario whose
-    # video never started is diagnosable rather than silently mistimed.
-    monkeypatch.setattr(time, "sleep", lambda _s: None)
-    with caplog.at_level("WARNING"):
-        result = intervals._await_video_file_growing(
-            tmp_path / "never-written.mp4", 0, timeout=0.01, poll=0.001
+        interval = intervals.start_video(
+            "UDID",
+            tmp_path / "never-started.mp4",
+            spawn=lambda argv, out: FakeProc(confirms=False),
+            confirm_started=True,
         )
-    assert result is None
-    assert any("produced no new bytes" in r.message for r in caplog.records)
+    assert interval.true_start is None
+    assert any("did not report" in r.message for r in caplog.records)
+
+
+def test_the_default_proc_answers_the_stderr_wait_with_no_confirmation() -> None:
+    # An `Interval` constructed without a running child (the default `_NullProc`) must still satisfy
+    # the `Proc` shape the confirmation calls through, and answer that nothing confirmed a start.
+    interval = intervals.Interval(kind="video", path=Path("/tmp/v.mp4"))
+    assert interval._proc.await_stderr(intervals._RECORDING_STARTED, 0.0) is None
+
+
+def test_await_stderr_returns_the_instant_the_line_appears(tmp_path: Path) -> None:
+    # The real `Proc`, not a fake: a child that prints the line proves the wait is a condition wait on
+    # that output rather than a fixed sleep — it returns on the first read, well inside the ceiling.
+    proc = intervals.spawn(["sh", "-c", "printf 'Recording started\n' >&2; sleep 30"], None)
+    try:
+        started = proc.await_stderr(intervals._RECORDING_STARTED, 5.0)
+        assert isinstance(started, float)
+    finally:
+        proc.stop(signal.SIGKILL, 5.0)
+
+
+def test_await_stderr_gives_up_at_the_deadline_on_a_silent_child(tmp_path: Path) -> None:
+    proc = intervals.spawn(["sh", "-c", "sleep 30"], None)
+    try:
+        assert proc.await_stderr(intervals._RECORDING_STARTED, 0.15) is None
+    finally:
+        proc.stop(signal.SIGKILL, 5.0)
+
+
+def test_await_stderr_sees_a_line_split_across_two_reads(tmp_path: Path) -> None:
+    # stderr arrives in whatever chunks the child flushes, so the needle can straddle two reads. The
+    # wait carries one needle-width tail between reads for exactly this case.
+    proc = intervals.spawn(
+        ["sh", "-c", "printf 'Recording st' >&2; sleep 0.3; printf 'arted\n' >&2; sleep 30"], None
+    )
+    try:
+        assert isinstance(proc.await_stderr(intervals._RECORDING_STARTED, 5.0), float)
+    finally:
+        proc.stop(signal.SIGKILL, 5.0)
+
+
+def test_await_stderr_reads_once_even_at_a_zero_length_deadline() -> None:
+    # A child that answered before the first poll must not be failed by a zero-second ceiling: the
+    # wait always reads once before it checks the deadline (the one-read floor its siblings keep).
+    proc = intervals.spawn(["sh", "-c", "printf 'Recording started\n' >&2; sleep 30"], None)
+    try:
+        # A condition wait, not a fixed sleep: block until the line really is on stderr, then
+        # prove a zero-second ceiling still reads it (each call rescans from offset 0).
+        assert proc.await_stderr(intervals._RECORDING_STARTED, 5.0) is not None
+        assert isinstance(proc.await_stderr(intervals._RECORDING_STARTED, 0.0), float)
+    finally:
+        proc.stop(signal.SIGKILL, 5.0)
 
 
 def test_adopt_finalizes_then_relocates_to_target(tmp_path: Path) -> None:
@@ -696,8 +684,9 @@ def test_the_growth_poll_stays_cheap_on_the_launch_path(monkeypatch: pytest.Monk
     # This poll sits on the critical path — `AndroidEnvironment` prestarts the recording immediately
     # before it launches the app — and every probe is an `adb shell` round trip plus a device-side
     # shell spawn, competing with a cold start on a two-core emulator. So it must stay coarser than
-    # its two siblings: the iOS twin reads a host file for free, and the pid confirmation's answer is
-    # the video anchor, so its resolution is the measurement. This one answers only yes or no.
+    # its two siblings: the iOS twin `pread`s captured stderr on the host for free, and the pid
+    # confirmation's answer is the video anchor, so its resolution is the measurement. This one
+    # answers only yes or no.
     assert intervals._SCREENRECORD_GROWTH_POLL > 0.2
     # And a full stall — the worst case, the only one that pays more than a single probe — must stay
     # in single digits rather than the ~25 round trips a 0.2s cadence would spend. Driven on a fake
@@ -1024,6 +1013,26 @@ def test_a_duration_longer_than_the_recording_was_open_for_is_not_a_measurement(
     assert any("outside the window a recording can open in" in r.message for r in caplog.records)
 
 
+def test_a_lane_wide_start_ceiling_does_not_widen_the_measured_origin_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The window's far side is `_ORIGIN_STARTUP_CEILING` — a claim about how long a *recorder* can
+    # take to open its first frame — deliberately not `_video_start_timeout()`, which says only how
+    # patient a lane chose to be. While the two were one value, the iOS lane's 20s override silently
+    # admitted origins twenty seconds past the spawn, which no recording can actually have.
+    monkeypatch.setenv(intervals._VIDEO_START_TIMEOUT_ENV, "600")
+    path = tmp_path / "v.mp4"
+    interval = intervals.start_video("UDID", path, spawn=lambda argv, out: FakeProc())
+    # A clip far shorter than the span it was open for puts its origin long after the spawn.
+    path.write_bytes(_mp4_bytes(0.5))
+    assert interval.spawned_at is not None
+    interval.spawned_at -= intervals._ORIGIN_STARTUP_CEILING + 10.0
+    with caplog.at_level("DEBUG"):
+        interval.stop()
+    assert interval.measured_start is None
+    assert any("outside the window a recording can open in" in r.message for r in caplog.records)
+
+
 def test_an_unreadable_recording_leaves_the_origin_to_the_start_proxy(tmp_path: Path) -> None:
     # A dropped pull or a truncated finalize must degrade to the behavior every run had before this,
     # never to a guessed origin.
@@ -1057,6 +1066,9 @@ def test_the_end_instant_follows_where_the_recording_actually_stops(tmp_path: Pa
             begin = time.monotonic()
             time.sleep(close_seconds)
             slept = time.monotonic() - begin
+
+        def await_stderr(self, needle: str, timeout: float) -> float | None:
+            return None
 
     def measured(*, stops_when_stop_returns: bool) -> float:
         path = tmp_path / f"v-{stops_when_stop_returns}.mp4"

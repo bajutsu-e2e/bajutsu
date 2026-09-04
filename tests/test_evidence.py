@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import stat
+import time
 from pathlib import Path
 
 import pytest
@@ -551,10 +552,13 @@ def test_filesink_confirms_ios_on_demand_video_start(
 
     class _FakeProc:
         def __init__(self, argv: list[str], stdout_path: Path | None) -> None:
-            Path(argv[-1]).write_bytes(b"clip")  # simulate recordVideo's first written byte
+            return None
 
         def stop(self, sig: int, timeout: float) -> None:
             return None
+
+        def await_stderr(self, needle: str, timeout: float) -> float | None:
+            return time.monotonic()  # simctl announced its first processed frame
 
     monkeypatch.setattr(intervals, "_SubprocessProc", _FakeProc)
 
@@ -574,21 +578,23 @@ def test_filesink_reports_a_video_that_never_confirmed_it_started(
 
     class _FakeProc:
         def __init__(self, argv: list[str], stdout_path: Path | None) -> None:
-            if writes["v"]:
-                Path(argv[-1]).write_bytes(b"clip")
+            return None
 
         def stop(self, sig: int, timeout: float) -> None:
             return None
 
-    writes = {"v": True}
+        def await_stderr(self, needle: str, timeout: float) -> float | None:
+            return time.monotonic() if announces["v"] else None
+
+    announces = {"v": True}
     monkeypatch.setattr(intervals, "_SubprocessProc", _FakeProc)
     stalls: list[bool] = []
     sink = FileSink(tmp_path, udid="UDID", on_video_start_stall=lambda: stalls.append(True))
     sink.start_scenario_intervals("00-s", ["video"])
     assert stalls == []
 
-    writes["v"] = False  # recordVideo never writes a byte: the capture pipeline is not producing
-    monkeypatch.setattr(intervals, "_await_video_file_growing", lambda *_a, **_k: None)
+    # recordVideo never announces its first frame: the capture pipeline is not producing.
+    announces["v"] = False
     sink.start_scenario_intervals("01-s", ["video"])
     assert stalls == [True]
 
@@ -606,6 +612,9 @@ def test_filesink_adopts_a_prestarted_video_instead_of_starting_one(tmp_path: Pa
     class _Proc:
         def stop(self, sig: int, timeout: float) -> None:
             pass
+
+        def await_stderr(self, needle: str, timeout: float) -> float | None:
+            return None
 
     prestarted = intervals.start_video("SER", temp, spawn=lambda argv, out: _Proc())
 

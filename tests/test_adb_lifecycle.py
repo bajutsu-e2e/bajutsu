@@ -380,6 +380,9 @@ def test_android_environment_starts_screenrecord_before_launching_the_app(tmp_pa
         def stop(self, sig: int, timeout: float) -> None:
             pass
 
+        def await_stderr(self, needle: str, timeout: float) -> float | None:
+            return None
+
     def spawn(argv: list[str], stdout_path: object) -> _Proc:
         nonlocal spawned
         spawned = True
@@ -421,6 +424,9 @@ def test_android_environment_stops_the_prestarted_video_when_launch_fails(tmp_pa
     class _Proc:
         def stop(self, sig: int, timeout: float) -> None:
             stopped.append(sig)
+
+        def await_stderr(self, needle: str, timeout: float) -> float | None:
+            return None
 
     def spawn(argv: list[str], out: object) -> _Proc:
         nonlocal spawned
