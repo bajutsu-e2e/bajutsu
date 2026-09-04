@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0407](BE-0407-step-latency-driver-internal-tuning-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0407") |
 | トピック | Platform support |
 | 関連 | [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query-ja.md)、[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)、[BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance-ja.md)、[BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md)、[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)、[BE-0341](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture-ja.md)、[BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree-ja.md)、[BE-0408](../BE-0408-step-latency-device-executor-protocol/BE-0408-step-latency-device-executor-protocol-ja.md)、[BE-0409](../BE-0409-step-latency-ios-device-executor/BE-0409-step-latency-ios-device-executor-ja.md)、[BE-0410](../BE-0410-step-latency-android-device-executor/BE-0410-step-latency-android-device-executor-ja.md) |
@@ -279,8 +279,18 @@ driver conformance suite
   この項目自身のディレクトリ配下の
   [`misc/step-performance/`](misc/step-performance/README.md)
   に記録済みです。
-- [ ] グループ 1、作業単位 1〜6——証拠取得の重複排除と、BE-0310 の静止待ち中の
-  読み取り停止（共通）。
+- [x] グループ 1、作業単位 1、3、4、5——前のステップの `after.png` をこのステップの
+  `before.png` として再利用します（作業単位 1）。ステップが動作する前に `elements.json` を
+  書き込むのをやめます（作業単位 3〜4）。ガードや割り込みハンドラが登録されていないときは、
+  BE-0310 の静止待ち区間中にデバイスをポーリングしません（作業単位 5）。
+- [ ] グループ 1、作業単位 2——`after.png` と `elements.json` の書き込みをクリティカルパスの
+  外へ移します（非同期化）。見送りました：エラーの伝播とキャンセルの扱い、そしてシナリオの
+  レポートを生成する前に保留中の書き込みを待ち合わせる仕組みに、独立した設計検討が要ります。
+  詳細は本項目のログを参照してください。
+- [ ] グループ 1、作業単位 6——iOS の `drain_interruptions` を `/tap` または `/elements` の
+  レスポンスへ畳み込みます。見送りました：`BajutsuKit` 側の XCUITest ワイヤーフォーマット変更
+  が必要で、検証には Simulator での実行が要ります。上記のグループ 1 の各作業単位とは切り離し、
+  焦点を絞った別の作業として進めます。
 - [ ] グループ 2、作業単位 7〜15——iOS ドライバ内部。
 - [ ] グループ 3、作業単位 16——`POSTDATE_BUDGET_MS` の機構を常駐サーバーのログで
   確認し、対策を実装する。
