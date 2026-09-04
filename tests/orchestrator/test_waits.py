@@ -230,6 +230,33 @@ def test_wait_settled_signal_waits_out_the_quiescence_window() -> None:
     assert clock.now() >= _TRANSITION_QUIESCENCE
 
 
+def test_wait_settled_signal_reads_the_device_only_once_with_no_gate_or_interrupt() -> None:
+    """With neither a system-alert guard nor a scenario `interrupts` handler, nothing consumes a
+    mid-window tree, so the signal path must not poll the device on every tick while it waits out
+    the quiescence window (BE-0407 Unit 5) — it queries once, up front (`_wait_settled`'s own
+    pre-check) and once more for the settled tree it hands back, regardless of how long the window
+    is relative to `_POLL`."""
+
+    class _CountingDriver(FakeDriver):
+        def __init__(self, screen: list[base.Element]) -> None:
+            super().__init__(screen)
+            self.queries = 0
+
+        def query(self) -> list[base.Element]:
+            self.queries += 1
+            return super().query()
+
+    driver = _CountingDriver([el("a", "A")])
+    clock = FakeClock()
+    fresh = [(ScreenTransition(kind="screenChanged"), 0.0)]
+    w = Wait.model_validate({"until": "settled", "timeout": 2.0})
+    ok, reason, _tree = _wait(driver, w, clock, transitions=lambda: fresh)
+    assert ok and reason == ""
+    assert clock.now() >= _TRANSITION_QUIESCENCE
+    # Without this fix, a 0.3s quiescence window polled every 0.05s would cost ~6 extra reads.
+    assert driver.queries == 2
+
+
 def test_wait_settled_signal_restarts_the_window_on_a_new_transition() -> None:
     """A fresh transition arriving mid-wait pushes settlement out further: the debounce is 'no
     further transition for the quiescence window since the LATEST one', not a fixed timer

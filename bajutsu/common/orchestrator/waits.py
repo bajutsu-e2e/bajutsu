@@ -1031,33 +1031,48 @@ def _wait_settled_by_signal(
     A `True` from `on_interrupt_poll` ends the settle immediately (BE-0314), same as the tree-diff
     fallback above — the signal path is still a settle loop over `driver.query()`, so a scenario's
     `interrupts` handlers apply here too, not only when no transition signal is available.
+
+    With neither a `gate` nor an `on_interrupt_poll` registered, nothing consumes a mid-window read
+    (BE-0407 Unit 5): the window is a positive "no new transition," decided from `transitions()`
+    alone, so this skips the device round trip on every tick and queries exactly once, right when a
+    caller finally needs the settled tree — at quiescence, or at the deadline.
     """
     # Diagnostic only (BE-0310 Unit 5): confirms the signal path actually decided settled on a real
     # device, so on-device verification needs no extra instrumentation to observe it.
     _logger.debug(
         "settled via the screen-transition signal (quiescence=%ss)", _TRANSITION_QUIESCENCE
     )
-    current = driver.query()
-    if gate is not None:
-        gate.observe(current)
+    watched = gate is not None or on_interrupt_poll is not None
+    current: list[base.Element] | None = None
+
+    def settled_tree() -> list[base.Element]:
+        return current if current is not None else driver.query()
+
+    if watched:
+        current = driver.query()
+        if gate is not None:
+            gate.observe(current)
     while clock.now() - last < _TRANSITION_QUIESCENCE:
         if clock.now() >= deadline:
-            return True, "", current
+            return True, "", settled_tree()
         # Below the deadline return for the same reason as the tree-diff path above: that return is a
         # pass, and a settle already finished must not become a cancelled failure.
         if cancelled():
             raise RunCancelled
-        if on_interrupt_poll is not None and on_interrupt_poll(current):
-            return False, "interrupt recovery failed", current
+        if watched:
+            assert current is not None  # queried above, or on every prior tick of this branch
+            if on_interrupt_poll is not None and on_interrupt_poll(current):
+                return False, "interrupt recovery failed", current
         t0 = clock.now()
         last = transitions()[-1][1]
-        current = driver.query()
-        if gate is not None:
-            gate.observe(current)
+        if watched:
+            current = driver.query()
+            if gate is not None:
+                gate.observe(current)
         if hb is not None:
             hb.tick(clock.now())
         _adaptive_sleep(clock, t0)
-    return True, "", current
+    return True, "", settled_tree()
 
 
 # How long a post-dismiss settle may spend before its caller proceeds anyway. Its own budget, not an
