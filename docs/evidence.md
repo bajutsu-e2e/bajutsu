@@ -222,7 +222,8 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 > `capture` list — narrowing that list costs a step neither of its two screenshots. When nothing has
 > actuated the device since the previous step's `after.png`, `before.png` is a byte-for-byte copy of
 > it rather than a fresh capture — except on an interrupt's recovery step, a `handleSystemAlert`
-> step, or any step in a scenario declaring `interrupts`. On exactly those, an asynchronous
+> step, any step in a scenario declaring `interrupts`, or any step running under
+> `systemAlertHandling` (on by default). On exactly those, an asynchronous
 > interstitial could have arrived between the two steps, so they always shoot fresh instead.
 > `elements.json` has a single filename, so the post-action write is
 > the tree a run keeps: it describes the screen the action produced, which is the screen `after.png`
