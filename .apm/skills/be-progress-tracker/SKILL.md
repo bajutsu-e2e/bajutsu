@@ -46,84 +46,11 @@ summarize.
 
 ## The template (verbatim, every call)
 
-The page is exactly this shape — four headers, in this order, nothing added and nothing renamed.
-Copy the structure below literally, `<style>` block included; the only things that change between
-calls are the placeholder content, the one status class, and whether the roadmap-link button is
-present, all noted in the field rules.
-
-```html
-<title>{ID} — {Title}</title>
-<style>
-  :root{
-    --bg:#fafafa; --fg:#18181b; --muted:#71717a; --border:#e4e4e7; --accent:#4f46e5;
-    --done-bg:#dcfce7; --done-fg:#15803d;
-    --progress-bg:#fef3c7; --progress-fg:#b45309;
-    --neutral-bg:#e0e7ff; --neutral-fg:#3730a3;
-    --mark-done:#16a34a; --mark-progress:#d97706; --mark-pending:#a1a1aa;
-  }
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){
-      --bg:#18181b; --fg:#f4f4f5; --muted:#a1a1aa; --border:#3f3f46; --accent:#a5b4fc;
-      --done-bg:#14532d; --done-fg:#86efac;
-      --progress-bg:#78350f; --progress-fg:#fcd34d;
-      --neutral-bg:#312e81; --neutral-fg:#c7d2fe;
-      --mark-done:#4ade80; --mark-progress:#fbbf24; --mark-pending:#71717a;
-    }
-  }
-  :root[data-theme="dark"]{
-    --bg:#18181b; --fg:#f4f4f5; --muted:#a1a1aa; --border:#3f3f46; --accent:#a5b4fc;
-    --done-bg:#14532d; --done-fg:#86efac;
-    --progress-bg:#78350f; --progress-fg:#fcd34d;
-    --neutral-bg:#312e81; --neutral-fg:#c7d2fe;
-    --mark-done:#4ade80; --mark-progress:#fbbf24; --mark-pending:#71717a;
-  }
-  body{background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.5;padding:24px 28px;max-width:760px;margin:0 auto;}
-  h1{font-size:1.4em;margin:0 0 10px;}
-  h2{font-size:1.05em;margin:28px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border);}
-  .meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:0.9em;color:var(--muted);}
-  .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:0.85em;font-weight:600;}
-  .badge.done{background:var(--done-bg);color:var(--done-fg);}
-  .badge.progress{background:var(--progress-bg);color:var(--progress-fg);}
-  .badge.neutral{background:var(--neutral-bg);color:var(--neutral-fg);}
-  .link-btn{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:999px;border:1px solid var(--accent);color:var(--accent);text-decoration:none;font-size:0.85em;font-weight:600;}
-  .link-btn:hover{background:var(--accent);color:var(--bg);}
-  .progress-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px;}
-  .progress-list li{display:flex;gap:8px;}
-  .progress-list .mark{flex:none;}
-  .progress-list .done .mark{color:var(--mark-done);}
-  .progress-list .active{color:var(--fg);font-weight:600;}
-  .progress-list .active .mark{color:var(--mark-progress);}
-  .progress-list .pending{color:var(--muted);}
-  .progress-list .pending .mark{color:var(--mark-pending);}
-  .worklog{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px;}
-  .worklog li{font-size:0.92em;}
-  .worklog time{color:var(--muted);font-family:ui-monospace,monospace;margin-right:8px;}
-</style>
-
-<h1>{ID} — {Title}</h1>
-<div class="meta">
-  <span class="badge {status-class}">{Status}</span>
-  <a class="link-btn" href="{roadmap GitHub URL}">Roadmap item ↗</a>
-  <span>· {calling workflow name}</span>
-  <span>· updated {timestamp}</span>
-</div>
-
-<h2>Overview</h2>
-<p>{One paragraph, 1-3 sentences, plain language. No sub-headers, no bullets.}</p>
-
-<h2>Progress</h2>
-<ul class="progress-list">
-  <li class="done"><span class="mark">✓</span> 1. {step title, copied verbatim from the calling workflow's own step list}</li>
-  <li class="active"><span class="mark">▶</span> 2. {step title} — in progress</li>
-  <li class="pending"><span class="mark">○</span> 3. {step title}</li>
-</ul>
-
-<h2>Work log</h2>
-<ul class="worklog">
-  <li><time>{timestamp}</time>{one sentence, ending in a period.}</li>
-  <li><time>{timestamp}</time>{earlier entry, unchanged from the last call}</li>
-</ul>
-```
+**Read [`references/template.html`](references/template.html) now and copy it verbatim** as the
+Artifact's source file. It is exactly this shape — four headers, in this order, nothing added and
+nothing renamed, `<style>` block included; the only things that change between calls are the
+placeholder content, the one status class, and whether the roadmap-link button is present, all
+noted in the field rules below.
 
 Field rules, all mandatory:
 
@@ -190,8 +117,8 @@ Field rules, all mandatory:
 ## Output
 
 The page is an HTML Artifact, published and later redeployed with the Artifact tool. Load
-`artifact-design` before the first write. The template above is already the whole design — a
-color-coded status badge and progress marks so the human watching the session can scan state at a
+`artifact-design` before the first write. `references/template.html` is already the whole design —
+a color-coded status badge and progress marks so the human watching the session can scan state at a
 glance; fill its placeholders and don't add anything beyond them. It is still a live dashboard, not
 a polished deliverable: color and decoration exist to speed up scanning, not to grow the page.
 
@@ -217,6 +144,8 @@ separate `title` param is needed.
 
 ## References
 
+- [`references/template.html`](references/template.html) — the Artifact template, copied verbatim
+  every call; see "The template" above.
 - [`implement-be`](../implement-be/SKILL.md), [`ideation`](../ideation/SKILL.md),
   [`propose-and-build`](../propose-and-build/SKILL.md) — the workflows that call this one at
   their own step boundaries; `propose-and-build` inherits the checkpoints of the two it delegates
