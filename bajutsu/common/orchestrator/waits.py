@@ -1045,13 +1045,18 @@ def _wait_settled_by_signal(
     watched = gate is not None or on_interrupt_poll is not None
     current: list[base.Element] | None = None
 
+    def observed() -> list[base.Element]:
+        """One poll: read the tree and let the alert gate see it."""
+        tree = driver.query()
+        if gate is not None:
+            gate.observe(tree)
+        return tree
+
     def settled_tree() -> list[base.Element]:
         return current if current is not None else driver.query()
 
     if watched:
-        current = driver.query()
-        if gate is not None:
-            gate.observe(current)
+        current = observed()
     while clock.now() - last < _TRANSITION_QUIESCENCE:
         if clock.now() >= deadline:
             return True, "", settled_tree()
@@ -1059,16 +1064,12 @@ def _wait_settled_by_signal(
         # pass, and a settle already finished must not become a cancelled failure.
         if cancelled():
             raise RunCancelled
-        if watched:
-            assert current is not None  # queried above, or on every prior tick of this branch
-            if on_interrupt_poll is not None and on_interrupt_poll(current):
-                return False, "interrupt recovery failed", current
+        if current is not None and on_interrupt_poll is not None and on_interrupt_poll(current):
+            return False, "interrupt recovery failed", current
         t0 = clock.now()
         last = transitions()[-1][1]
         if watched:
-            current = driver.query()
-            if gate is not None:
-                gate.observe(current)
+            current = observed()
         if hb is not None:
             hb.tick(clock.now())
         _adaptive_sleep(clock, t0)

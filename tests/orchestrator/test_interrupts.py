@@ -40,7 +40,7 @@ class _RecordingSink:
         *,
         elements: list[base.Element] | None = None,
         elements_source: str | None = None,
-        reuse_before_screenshot: str | None = None,
+        reuse_before_screenshot: Artifact | None = None,
     ) -> list[Artifact]:
         if kinds:
             self.calls.append((step_id, kinds))

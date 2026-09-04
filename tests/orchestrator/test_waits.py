@@ -246,15 +246,19 @@ def test_wait_settled_signal_reads_the_device_only_once_with_no_gate_or_interrup
             self.queries += 1
             return super().query()
 
-    driver = _CountingDriver([el("a", "A")])
+    screen = [el("a", "A")]
+    driver = _CountingDriver(screen)
     clock = FakeClock()
     fresh = [(ScreenTransition(kind="screenChanged"), 0.0)]
     w = Wait.model_validate({"until": "settled", "timeout": 2.0})
-    ok, reason, _tree = _wait(driver, w, clock, transitions=lambda: fresh)
+    ok, reason, tree = _wait(driver, w, clock, transitions=lambda: fresh)
     assert ok and reason == ""
     assert clock.now() >= _TRANSITION_QUIESCENCE
     # Without this fix, a 0.3s quiescence window polled every 0.05s would cost ~6 extra reads.
     assert driver.queries == 2
+    # The lazy final query (`settled_tree()`) must still hand back a real tree, not an accidental
+    # `[]` or a stale one from before the window closed.
+    assert tree == screen
 
 
 def test_wait_settled_signal_interrupt_ends_the_settle_with_no_gate_registered() -> None:
@@ -272,26 +276,26 @@ def test_wait_settled_signal_interrupt_ends_the_settle_with_no_gate_registered()
 
 
 def test_wait_settled_signal_polls_the_device_each_tick_for_an_interrupt_with_no_gate() -> None:
-    """The same interrupt-only (no gate) signal wait, but one that never fires: the per-tick poll
-    still has to run so the interrupt is actually re-checked every cycle, unlike the no-consumer
-    fast path Unit 5 adds."""
-    driver = FakeDriver([el("a", "A")])
+    """The same interrupt-only (no gate) signal wait, but an overlay that appears only on a later
+    poll: proves the per-tick re-query actually happens, not just that `on_interrupt_poll` gets
+    called at all with a tree fixed at entry. A mutant that stops re-querying `current` inside the
+    loop would keep feeding the overlay-free entry tree forever and never notice."""
+    base_screen = [el("a", "A")]
+    overlay_screen = [el("a", "A"), el("overlay", "Overlay")]
+    # frame 0: `_wait_settled`'s own pre-check query. frame 1: the signal path's entry query (still
+    # no overlay). frame 2+: per-tick queries inside the settle loop — the overlay finally appears.
+    driver = _ScriptedScreens([base_screen, base_screen, overlay_screen])
     clock = FakeClock()
     fresh = [(ScreenTransition(kind="screenChanged"), 0.0)]
     w = Wait.model_validate({"until": "settled", "timeout": 2.0})
-    polls = 0
 
-    def on_interrupt_poll(_els: list[base.Element]) -> bool:
-        nonlocal polls
-        polls += 1
-        return False
+    def on_interrupt_poll(els: list[base.Element]) -> bool:
+        return any(e["identifier"] == "overlay" for e in els)
 
     ok, reason, _tree = _wait(
         driver, w, clock, transitions=lambda: fresh, on_interrupt_poll=on_interrupt_poll
     )
-    assert ok and reason == ""
-    assert clock.now() >= _TRANSITION_QUIESCENCE
-    assert polls > 0  # the interrupt was actually re-checked, not skipped like the fast path
+    assert not ok and reason == "interrupt recovery failed"
 
 
 def test_wait_settled_signal_restarts_the_window_on_a_new_transition() -> None:
@@ -321,7 +325,8 @@ def test_wait_settled_signal_hits_the_deadline_while_still_awaiting_quiescence()
     """A transition that keeps arriving (quiescence never elapses) must not hang the wait: it
     proceeds best-effort once the step's own deadline passes, exactly like the tree-diff
     fallback's own timeout behavior — the deadline still bounds the signal path."""
-    driver = FakeDriver([el("a", "A")])
+    screen = [el("a", "A")]
+    driver = FakeDriver(screen)
     clock = FakeClock()
 
     def transitions() -> list[tuple[ScreenTransition, float]]:
@@ -331,9 +336,12 @@ def test_wait_settled_signal_hits_the_deadline_while_still_awaiting_quiescence()
     w = Wait.model_validate(
         {"until": "settled", "timeout": 0.1}
     )  # shorter than the quiescence window
-    ok, reason, _tree = _wait(driver, w, clock, transitions=transitions)
+    ok, reason, tree = _wait(driver, w, clock, transitions=transitions)
     assert ok and reason == ""  # best-effort: proceeds, never fails the step
     assert clock.now() >= 0.1  # gave up at the deadline, not before
+    # `settled_tree()`'s deadline exit must still hand back a real tree, queried fresh since no
+    # gate/interrupt kept `current` warm on this branch.
+    assert tree == screen
 
 
 def test_wait_settled_falls_back_to_tree_diff_when_no_transitions_reported() -> None:

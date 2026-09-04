@@ -60,7 +60,7 @@ class _KindsSink(NullSink):
         *,
         elements: list[base.Element] | None = None,
         elements_source: str | None = None,
-        reuse_before_screenshot: str | None = None,
+        reuse_before_screenshot: Artifact | None = None,
     ) -> list[Artifact]:
         self.kinds_by_step[step_id] = kinds
         return []
@@ -195,10 +195,10 @@ def test_a_writing_sink_reuses_the_asserts_evaluated_tree(tmp_path: Path) -> Non
 
 def test_pre_step_baseline_skips_the_web_query_under_a_null_sink() -> None:
     # A `web` block's first nested step must not force a bridge query for a baseline `NullSink`
-    # discards (review follow-up on BE-0341): under the default sink (`NullSink`, `sink=None`),
-    # the only bridge read left is the pre-existing, unrelated post-step read every web-block step
-    # already pays (BE-0234 Unit 2, `screen.get()` for a web `active_driver`) — one call for one
-    # step, not two.
+    # discards (review follow-up on BE-0341): with no `screenChanged` policy, `before` stays `None`
+    # regardless of the sink, so neither the pre-step seed nor its `before` fallback ever queries
+    # (BE-0407 Units 3-4) — the only bridge read left is the pre-existing, unrelated post-step read
+    # every web-block step already pays (BE-0234 Unit 2, `screen.get()` for a web `active_driver`).
     class _CountingBridge:
         def __init__(self) -> None:
             self.calls = 0

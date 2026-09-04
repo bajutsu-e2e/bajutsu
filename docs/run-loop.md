@@ -119,8 +119,8 @@ Decides whether each `capturePolicy` rule fires for this step ([evidence](eviden
 - `_collect_captures`: leads with `elements`, then gathers the inline `step.capture` + the fired
   rules' captures + the config's `defaults.capture` baseline (applied unconditionally, unlike the
   other two) and dedupes. Leading with `elements` is what gives every step the post-action tree
-  whatever the three sources asked for; `elements.json` has a single filename, so that read replaces
-  the pre-action tree the pre-step baseline wrote.
+  whatever the three sources asked for; the pre-step baseline writes no tree of its own (BE-0407),
+  so this read is the step's only one, into `elements.json`'s single filename.
 - The other half of the pair — `after.png` — is not on this list. `_handle_action` shoots it itself,
   immediately after the step's action, ahead of every consumer that could otherwise read the tree
   first (a `screenChanged` comparison, a `for`-wait timeout diagnostic, `extract`). It then drops

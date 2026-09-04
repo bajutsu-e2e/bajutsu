@@ -386,12 +386,60 @@ def test_a_steps_before_png_reuses_the_previous_steps_after_png_bytes(tmp_path: 
         sink=FileSink(run_dir),
     )
     assert result.ok
-    assert (
-        driver.screenshot_calls == 3
-    )  # step0's before + step0/step1's after; step1's before reused
+    # step0's before + step0/step1's after; step1's before is reused, not shot.
+    assert driver.screenshot_calls == 3
     step0_after = run_dir / "x" / "step0" / "after.png"
     step1_before = run_dir / "x" / "step1" / "before.png"
     assert step1_before.read_bytes() == step0_after.read_bytes()
+
+
+def test_screenshot_reuse_crosses_a_web_blocks_boundary(tmp_path: Path) -> None:
+    """The screenshot reuse marker (BE-0407 Unit 1) does *not* reset around a `web` block, unlike
+    the tree's `prev_after` (BE-0234): the shutter always targets the native driver, so it is the
+    same screen throughout, web block or not. A native step, the web block's own nested step, and
+    the native step after it all chain as byte-identical copies — one screenshot per step's
+    `after.png`, and none of the three `before.png`s shot fresh."""
+    native_screen = [
+        el("a", "A", ["button"], frame=(0.0, 0.0, 400.0, 50.0)),
+        el("app.webview", frame=(0.0, 50.0, 400.0, 700.0)),
+        el("b", "B", ["button"], frame=(0.0, 750.0, 400.0, 50.0)),
+    ]
+    driver = _ScreenshottingDriver(native_screen)
+    bridge = _FakeBridge([el("confirm", "Confirm", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {"tap": {"id": "a"}},
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"tap": {"id": "confirm"}}],
+                        }
+                    },
+                    {"tap": {"id": "b"}},
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        webview_bridge=bridge,
+    )
+    assert result.ok, result.failure
+    # One shot per step's `after.png` (3), plus the very first `before.png` (no prior step to
+    # reuse from) — 4 total, not the 6 a fresh `before.png` every step would cost.
+    assert driver.screenshot_calls == 4
+    web_leaf = next(s for s in result.steps if s.action == "tap" and s.index != 0)
+    tap_b = next(s for s in result.steps if s.action == "tap" and s.index > web_leaf.index)
+    step0_after = run_dir / "x" / "step0" / "after.png"
+    web_before = run_dir / next(a.name for a in web_leaf.artifacts if a.name.endswith("before.png"))
+    web_after = run_dir / next(a.name for a in web_leaf.artifacts if a.name.endswith("after.png"))
+    step_b_before = run_dir / next(a.name for a in tap_b.artifacts if a.name.endswith("before.png"))
+    assert web_before.read_bytes() == step0_after.read_bytes()
+    assert step_b_before.read_bytes() == web_after.read_bytes()
 
 
 def test_final_capture_does_not_duplicate_a_rule_fired_after_png(tmp_path: Path) -> None:
@@ -505,13 +553,75 @@ def test_a_step_that_fails_before_it_acts_skips_the_tree_when_the_fallback_query
     assert not any(name.endswith("after.png") for name in step0_names)
 
 
-def test_a_step_that_fails_before_it_acts_reuses_the_previous_steps_tree(
+def test_a_step_that_fails_before_it_acts_never_writes_a_stale_cached_tree(
     tmp_path: Path,
 ) -> None:
-    """When a *later* step hits the uncovered-locale failure, the exception handler's tree write
-    (BE-0407 Units 3-4) reuses `prev_after` from the step before it rather than querying again —
-    the same "nothing acted in between" reuse the ordinary pre-step baseline already relies on."""
-    driver = FakeDriver([el("a", "A", ["button"])])
+    """A *later* step's failed fresh query must not fall back to a stale `prev_after` left by the
+    step before it: the screenshot gate already shot this step's `before.png` fresh (it is always
+    a `handleSystemAlert` step reaching here), so pairing it with step0's older tree would be the
+    exact mismatch the always-fresh policy exists to avoid (review follow-up)."""
+
+    class _QueryFailsOnceQueried(FakeDriver):
+        def __init__(self, screen: list[base.Element]) -> None:
+            super().__init__(screen)
+            self.queried = False
+
+        def query(self) -> list[base.Element]:
+            if self.queried:
+                raise ConnectionError("device unreachable")
+            self.queried = True
+            return super().query()
+
+    driver = _QueryFailsOnceQueried([el("a", "A", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {"tap": {"id": "a"}},
+                    {
+                        "handleSystemAlert": {
+                            "prompt": "notifications",
+                            "choice": "grant",
+                            "timeout": 5,
+                        }
+                    },
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        locale="de_DE",
+    )
+    assert not result.ok
+    assert result.failure is not None and "language 'de'" in result.failure
+    assert len(result.steps) == 2
+    step1_names = {a.name for a in result.steps[1].artifacts}
+    assert any(name.endswith("before.png") for name in step1_names)
+    assert not any(name.endswith("elements.json") for name in step1_names)
+
+
+def test_a_step_that_fails_before_it_acts_queries_fresh_even_with_a_cached_tree(
+    tmp_path: Path,
+) -> None:
+    """This exception fires only for a `handleSystemAlert` step, which the screenshot-reuse gate
+    (BE-0407 Unit 1) always shoots fresh for — so the tree the exception handler writes must be
+    just as fresh, never a carried-over `prev_after`, or a viewer could pair the fresh screenshot
+    with an older tree that predates an interstitial the screenshot already shows. A query happens
+    here even though the previous step already left a perfectly good `prev_after` behind."""
+
+    class _CountingDriver(FakeDriver):
+        def __init__(self, screen: list[base.Element]) -> None:
+            super().__init__(screen)
+            self.queries = 0
+
+        def query(self) -> list[base.Element]:
+            self.queries += 1
+            return super().query()
+
+    driver = _CountingDriver([el("a", "A", ["button"])])
     run_dir = tmp_path / "run1"
     result = run_scenario(
         driver,
@@ -540,6 +650,9 @@ def test_a_step_that_fails_before_it_acts_reuses_the_previous_steps_tree(
     step1_names = {a.name for a in result.steps[1].artifacts}
     assert any(name.endswith("before.png") for name in step1_names)
     assert any(name.endswith("elements.json") for name in step1_names)
+    # step0's post-step write (1) + step1's exception-handler query (1), not zero — a stale
+    # `prev_after` from step0 must not be reused here.
+    assert driver.queries == 2
 
 
 def test_a_step_nested_in_an_if_gets_the_evidence_pair_its_container_does_not(
@@ -981,7 +1094,7 @@ class _VideoSink:
         *,
         elements: list[base.Element] | None = None,
         elements_source: str | None = None,
-        reuse_before_screenshot: str | None = None,
+        reuse_before_screenshot: Artifact | None = None,
     ) -> list[Artifact]:
         return []
 

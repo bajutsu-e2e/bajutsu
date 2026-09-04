@@ -11,6 +11,7 @@ import pytest
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import (
+    Artifact,
     FileSink,
     capture,
     write_elements,
@@ -403,19 +404,23 @@ def test_reuse_screenshot_copies_bytes_from_an_existing_artifact(tmp_path: Path)
 
     name = reuse_screenshot(writer, "step0/after.png", "step1")
     assert name == "step1/before.png"
-    assert (tmp_path / "step1" / "before.png").read_bytes() == b"\x89PNG\r\n pixels"
+    dest = tmp_path / "step1" / "before.png"
+    assert dest.read_bytes() == b"\x89PNG\r\n pixels"
+    # A screenshot can capture on-screen secrets, so the copy must land owner-only (0600) too, like
+    # a freshly-captured one (BE-0131).
+    assert stat.S_IMODE(dest.stat().st_mode) == 0o600
 
 
 def test_capture_reuses_a_before_screenshot_instead_of_a_fresh_one(tmp_path: Path) -> None:
     writer = _writer(tmp_path)
     driver = _WritingDriver([_el("a", "A")])
-    capture(driver, writer, "step0", ["screenshot.after"])
+    [prev_after] = capture(driver, writer, "step0", ["screenshot.after"])
     written = capture(
         driver,
         writer,
         "step1",
         ["screenshot.before"],
-        reuse_before_screenshot="step0/after.png",
+        reuse_before_screenshot=prev_after,
     )
     assert [(a.name, a.kind) for a in written] == [("step1/before.png", "screenshot")]
     assert (tmp_path / "step1" / "before.png").read_bytes() == b"\x89PNG\r\n"
@@ -437,7 +442,9 @@ def test_capture_falls_back_to_a_fresh_screenshot_when_the_reuse_source_is_missi
         writer,
         "step1",
         ["screenshot.before"],
-        reuse_before_screenshot="step0/after.png",  # never written
+        reuse_before_screenshot=Artifact(
+            "step0/after.png", "screenshot", "driver"
+        ),  # never written
     )
     assert [(a.name, a.kind) for a in written] == [("step1/before.png", "screenshot")]
     assert (tmp_path / "step1" / "before.png").read_bytes() == b"\x89PNG\r\n"

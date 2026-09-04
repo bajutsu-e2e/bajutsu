@@ -1055,13 +1055,16 @@ class StepLoopState:
     # is skipped. It holds only a tree we actually read; a step that took no read leaves it None so
     # the next `before` reads fresh, and a `web` block resets it (the tree is a different driver's).
     prev_after: list[base.Element] | None = None
-    # The previous step's `after.png` artifact name, reused as this step's `before.png` (BE-0407
-    # Unit 1) instead of a fresh `driver.screenshot()`: nothing actuates between the two, so they are
-    # the identical pixels. Set only when the shutter actually wrote a file (a `NullSink` writes
-    # nothing, so this stays `None` under it). Unlike `prev_after`, a `web` block does *not* reset
-    # this: the shutter always targets the native driver, so the screen it captures is the same one
+    # The previous step's `after.png` artifact, reused as this step's `before.png` (BE-0407 Unit 1)
+    # instead of a fresh `driver.screenshot()`: nothing actuates between the two, so they are the
+    # identical pixels. Set only when the shutter actually wrote a screenshot (a `NullSink` writes
+    # nothing, so this stays `None` under it); `_handle_action` additionally forces it to `None` for
+    # a recovery step, a `handleSystemAlert` step, or any scenario declaring `interrupts` — the
+    # cases where an asynchronous interstitial could have arrived since, which the "nothing
+    # actuated" premise does not rule out. Unlike `prev_after`, a `web` block does *not* reset this:
+    # the shutter always targets the native driver, so the screen it captures is the same one
     # throughout, web block or not.
-    prev_after_screenshot: str | None = None
+    prev_after_screenshot: Artifact | None = None
     total_reads: int = 0  # runner-issued screen reads, the BE-0234 read-count yardstick (Unit 1)
     # True while an interrupt's own recovery steps run (BE-0314). Those steps go through the step loop
     # too, so without this an interrupt whose recovery targets the very screen its `condition` matches
@@ -1260,6 +1263,22 @@ class _StepRunner:
         self.state.outcomes.append(outcome)
         return None if ok else f"step {idx} ({kind}): {reason}"
 
+    def _seed_prev_after(
+        self, active_driver: base.Driver, step_id: str, *, why: str, level: int
+    ) -> bool:
+        """Query `active_driver` into `self.state.prev_after`; return whether it succeeded.
+
+        Best-effort: a connection/capability failure is logged at `level` and swallowed rather than
+        raised, since every call site has a fallback for a `prev_after` that stays `None`.
+        """
+        try:
+            self.state.prev_after = active_driver.query()
+        except (ConnectionError, base.UnsupportedAction, OSError) as exc:
+            _logger.log(level, "%s: %s (query failed: %s)", step_id, why, exc)
+            return False
+        self.state.total_reads += 1
+        return True
+
     # Genuinely long: the per-action dispatch on the deterministic run path. Splitting it carries
     # real behavioral risk, so it belongs to BE-0386's ratchet steps rather than the PR that sets
     # the ceiling.
@@ -1286,52 +1305,60 @@ class _StepRunner:
         # never on the step's own resolved fields, so a step that fails resolving them still gets it
         # — the run loop's report contract guarantees a pre-step baseline for every leaf step, a
         # failure at this point notwithstanding.
-        pre_kinds = ["screenshot.before"]
         pre_query_was_fresh = False
         # A `web` block's first nested step resets `prev_after` to `None` around the whole block
         # (BE-0234 Unit 2), so there is nothing to reuse for the `screenChanged` `before` below. A
         # fresh, correctly-targeted `active_driver.query()` here is worth its cost only when
         # `wants_screen_changed` will actually consume it — every later nested step, and every
         # native step, reuses `prev_after` from the previous step's post-step write for free, and
-        # neither the interrupt guard nor anything else downstream reads this seed on its own
-        # (both only look at `before`, which stays `None` without a screenChanged policy). `NullSink`
-        # ignores the tree outright, so skip the query under it too — a sink that reads nothing must
-        # pay nothing even for a `web` block's first step.
+        # neither the interrupt guard nor anything else downstream reads this seed on its own (both
+        # only look at `before`, which stays `None` without a screenChanged policy). Not gated on
+        # `NullSink`: unlike the elements write BE-0407 dropped, the `before` fallback just below
+        # queries regardless of what the sink captures, so skipping this seed under `NullSink` would
+        # not save a read — it would only move it to that fallback and lose this one's retry.
         if (
             self.cfg.wants_screen_changed
             and self.state.prev_after is None
             and active_driver is not self.cfg.driver
-            and not isinstance(self.cfg.sink, NullSink)
         ):
-            try:
-                self.state.prev_after = active_driver.query()
-                self.state.total_reads += 1
-                pre_query_was_fresh = True
-            except (ConnectionError, base.UnsupportedAction, OSError) as exc:
-                # Best-effort: a web context that can't be read yet must not crash the step before it
-                # even gets to attempt its own action — that failure surfaces normally through
-                # `_run_step_body` instead. The `before` computation below reads fresh again on its
-                # own when `prev_after` is still unset, so this failure loses nothing but the seed.
-                _logger.debug(
-                    "%s: pre-step screenChanged seed skipped, web driver query failed: %s",
-                    step_id,
-                    exc,
-                )
+            # On success this overlaps with the `before` fallback below, which reads the identical
+            # unacted-on screen when `prev_after` is still unset — but on a *transient* web-bridge
+            # failure it is what turns that into one retry instead of the fallback's query being the
+            # only attempt: this failure is swallowed and logged, and the fallback below tries the
+            # same read again. A persistently broken bridge still raises there, uncaught, exactly as
+            # it would with no seed at all — this only ever buys one extra try.
+            pre_query_was_fresh = self._seed_prev_after(
+                active_driver,
+                step_id,
+                why="pre-step screenChanged seed skipped, web driver query failed",
+                level=logging.DEBUG,
+            )
         # An inline `rawTree` request stays on the post-step capture below, never on this baseline:
         # `write_raw_tree` persists the driver's *last* read, and the post-step call's always-on
         # `elements` token re-reads the tree on every step, so a dump taken here would describe the
         # pre-action read while the `elements.json` beside it describes the post-action one. Post-step
         # the two land together, where `capture()`'s own stable sort pairs them on the same read.
+        # Reuse the previous step's `after.png` bytes instead of a fresh screenshot (BE-0407 Unit
+        # 1): nothing *bajutsu* has actuated since, so ordinarily the two are the same pixels. That
+        # premise is not proof against an interstitial that appeared asynchronously between the two
+        # steps — the exact risk `interrupts` exists to catch (`before_is_fresh`'s own comment
+        # below) — so a recovery step (its whole purpose is to face such a screen), a
+        # `handleSystemAlert` step (watching for exactly this kind of surprise arrival), and any
+        # scenario declaring `interrupts` at all (already paying extra per-step cost for the same
+        # risk) always get a fresh shot instead of one that could predate the very screen they
+        # exist to show. `capture()` falls back to a real `driver.screenshot()` when this is `None`
+        # — also true on the scenario's first step, or the first after a `NullSink` skipped a write.
+        reuse_before_screenshot = (
+            None
+            if (self.state.running_recovery or kind == "handle_system_alert" or self.cfg.interrupts)
+            else self.state.prev_after_screenshot
+        )
         outcome.artifacts.extend(
             self.cfg.sink.capture(
                 self.cfg.driver,
                 step_id,
-                pre_kinds,
-                # Reuse the previous step's `after.png` bytes instead of a fresh screenshot (BE-0407
-                # Unit 1): nothing has actuated the device since, so the two are the same pixels.
-                # `None` on the scenario's first step (or the first after a `NullSink` skipped the
-                # write), where `capture()` falls back to a real `driver.screenshot()` as before.
-                reuse_before_screenshot=self.state.prev_after_screenshot,
+                ["screenshot.before"],
+                reuse_before_screenshot=reuse_before_screenshot,
             )
         )
         # Interpolate ${...} tokens, then turn a `handleSystemAlert` naming a prompt and a
@@ -1357,30 +1384,37 @@ class _StepRunner:
             # still write a tree itself (BE-0407 Unit 3 dropped it from the baseline above, on the
             # assumption that the post-step call always overwrites it). `elements.before`, matching
             # the baseline's own `screenshot.before`, so a viewer pairs the two rather than treating
-            # this as a mismatched `web`-block pair. `prev_after` already holds a fresh tree except
-            # on the scenario's very first step (or one after a read-free step); a sink that reads
-            # nothing must still pay nothing, mirroring the baseline's own `NullSink` guard.
-            if not isinstance(self.cfg.sink, NullSink):
-                if self.state.prev_after is None:
-                    try:
-                        self.state.prev_after = active_driver.query()
-                        self.state.total_reads += 1
-                    except (ConnectionError, base.UnsupportedAction, OSError) as query_exc:
-                        _logger.debug(
-                            "%s: pre-failure elements capture skipped, query failed: %s",
-                            step_id,
-                            query_exc,
-                        )
-                if self.state.prev_after is not None:
-                    outcome.artifacts.extend(
-                        self.cfg.sink.capture(
-                            self.cfg.driver,
-                            step_id,
-                            ["elements.before"],
-                            elements=self.state.prev_after,
-                            elements_source=active_driver.name,
-                        )
+            # this as a mismatched `web`-block pair. This exception fires only for a
+            # `handleSystemAlert` step (only it resolves a locale-dependent label), which the
+            # screenshot gate above always shoots fresh for — so the tree here is always queried
+            # fresh too, never a carried-over `prev_after`, or a viewer could pair a just-captured
+            # screenshot with an older tree that predates an interstitial the screenshot already
+            # shows. A sink that reads nothing must still pay nothing, so this whole write is
+            # skipped under a `NullSink`.
+            # Unlike the pre-step seed above, nothing downstream re-reads for this path — the
+            # post-step capture never runs — so a failed query here is the step's tree, lost for
+            # good rather than merely deferred. Warn, matching the wait-timeout diagnostic's own
+            # "disclose the lost evidence loudly" a few hundred lines down. `not isinstance(...,
+            # NullSink)` short-circuits `_seed_prev_after` itself, so a sink that reads nothing
+            # still pays nothing; gating on the call's own success, not just on `prev_after` being
+            # set, matters because `_seed_prev_after` leaves a stale value in place when the query
+            # fails, and writing that stale tree next to this step's fresh screenshot is the exact
+            # mismatch this whole block exists to avoid.
+            if not isinstance(self.cfg.sink, NullSink) and self._seed_prev_after(
+                active_driver,
+                step_id,
+                why="step failed before acting and its element tree could not be captured",
+                level=logging.WARNING,
+            ):
+                outcome.artifacts.extend(
+                    self.cfg.sink.capture(
+                        self.cfg.driver,
+                        step_id,
+                        ["elements.before"],
+                        elements=self.state.prev_after,
+                        elements_source=active_driver.name,
                     )
+                )
             self.state.outcomes.append(outcome)
             # The step keeps `before.png` (the pre-step baseline) and the tree just written above,
             # both describing the same pre-action screen. Nothing acted, so there is no post-action
@@ -1645,8 +1679,12 @@ class _StepRunner:
         outcome.artifacts.extend(after_shot)
         # Remembered for the *next* step's pre-step baseline to reuse as its `before.png` (BE-0407
         # Unit 1) instead of a fresh screenshot — `None` when nothing was actually written (a
-        # `NullSink`), so a step with no evidence never looks like it has a file to reuse.
-        self.state.prev_after_screenshot = after_shot[0].name if after_shot else None
+        # `NullSink`), so a step with no evidence never looks like it has a file to reuse. Selected
+        # by `kind`, not position, so a sink returning something other than one screenshot for this
+        # request could never feed the wrong artifact into the next step's reuse.
+        self.state.prev_after_screenshot = next(
+            (a for a in after_shot if a.kind == "screenshot"), None
+        )
 
         # The post-step read is lazy (BE-0234 Unit 2): `.get()` reads (once) only where a
         # consumer needs the tree, so a step with no consumer under a NullSink never reads. A

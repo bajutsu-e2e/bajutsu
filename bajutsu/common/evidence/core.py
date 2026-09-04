@@ -190,12 +190,15 @@ def reuse_screenshot(
 ) -> str:
     """Write `<prefix>/<filename>` by copying an already-written screenshot's bytes.
 
-    Valid only when nothing has actuated the device since `source_name` was captured (BE-0407 Unit
-    1): the previous step's `after.png` and this step's `before.png` then describe the identical
-    screen, so a local copy stands in for a fresh `driver.screenshot()` call.
+    Valid only when the screen has not changed since `source_name` was captured (BE-0407 Unit 1) —
+    a stronger claim than "nothing *bajutsu* has actuated since": the caller is the one place that
+    knows whether an asynchronous interstitial could have arrived in between, the same distinction
+    `loop.py`'s `prev_after` tree reuse already draws. When it holds, the previous step's `after.png`
+    and this step's `before.png` describe the identical screen, so a local copy stands in for a
+    fresh `driver.screenshot()` call.
     """
     name = f"{prefix}/{filename}"
-    writer.write_bytes(name, writer.read_bytes(source_name))
+    writer.copy_bytes(source_name, name)
     return name
 
 
@@ -306,7 +309,7 @@ def capture(
     *,
     elements: list[base.Element] | None = None,
     elements_source: str | None = None,
-    reuse_before_screenshot: str | None = None,
+    reuse_before_screenshot: Artifact | None = None,
 ) -> list[Artifact]:
     """Capture the requested instant kinds under `<prefix>/`; return their artifact records.
 
@@ -319,10 +322,13 @@ def capture(
     WebView — and recording each artifact's own source is what lets `step_view` refuse to pair them.
     It defaults to the capture driver's own name.
 
-    `reuse_before_screenshot` names an already-written screenshot artifact whose bytes describe the
-    identical screen a `screenshot.before` token would otherwise capture fresh (BE-0407 Unit 1) — the
-    previous step's `after.png`, when nothing actuated the device in between. Ignored by every other
-    token.
+    `reuse_before_screenshot`, when its own `kind` is `"screenshot"`, names an already-written
+    artifact whose bytes describe the identical screen a `screenshot.before` token would otherwise
+    capture fresh (BE-0407 Unit 1) — ordinarily the previous step's `after.png`. The caller is the
+    one place that knows whether the screen has genuinely not changed since (an asynchronous
+    interstitial is not ruled out just because nothing *bajutsu* has actuated); pass `None` wherever
+    that is not established. Ignored by every token but `screenshot.before`, and falls back to a
+    fresh capture on any other `kind` or when the artifact's own bytes are no longer on disk.
     """
     out: list[Artifact] = []
     tree_source = elements_source or driver.name
@@ -355,15 +361,26 @@ def capture(
             )
         elif kind == "screenshot":
             filename = f"{modifier or 'after'}.png"
-            name = None
-            if modifier == "before" and reuse_before_screenshot is not None:
+            name: str | None = None
+            if (
+                modifier == "before"
+                and reuse_before_screenshot is not None
+                and reuse_before_screenshot.kind == "screenshot"
+            ):
                 try:
-                    name = reuse_screenshot(writer, reuse_before_screenshot, prefix, filename)
-                except OSError:
-                    # The manifest named a screenshot the store no longer holds (the same gap
-                    # `step_view`'s own `exists` check already anticipates) — fall through to a
-                    # fresh capture rather than losing this step's `before.png` outright.
-                    name = None
+                    name = reuse_screenshot(writer, reuse_before_screenshot.name, prefix, filename)
+                except OSError as exc:
+                    # `reuse_before_screenshot` names a file this same writer wrote moments ago
+                    # (BE-0407 Unit 1), not a historical manifest entry — unlike `step_view`'s own
+                    # `exists` check, this is not an expected gap, so it is worth a loud warning even
+                    # though the fallback below still gets the step a `before.png`.
+                    _logger.warning(
+                        "screenshot reuse failed for %s (source %s), falling back to a fresh "
+                        "capture: %s",
+                        f"{prefix}/{filename}",
+                        reuse_before_screenshot.name,
+                        exc,
+                    )
             if name is None:
                 name = write_screenshot(driver, writer, prefix, filename)
             out.append(Artifact(name, "screenshot", "driver", _depicts(driver.name, modifier)))
@@ -386,8 +403,18 @@ class EvidenceSink(Protocol):
         *,
         elements: list[base.Element] | None = None,
         elements_source: str | None = None,
-        reuse_before_screenshot: str | None = None,
-    ) -> list[Artifact]: ...
+        reuse_before_screenshot: Artifact | None = None,
+    ) -> list[Artifact]:
+        """Capture `kinds` under `step_id`; return their artifact records.
+
+        `reuse_before_screenshot`, an already-written `"screenshot"`-kind `Artifact` (typically the
+        previous step's `after.png`), is a hint that its bytes may stand in for a fresh
+        `screenshot.before` capture (BE-0407 Unit 1). A conforming implementation is always free to
+        ignore it — `NullSink` does — and must fall back to a fresh capture for a `kind` other than
+        `"screenshot"` or `None`.
+        """
+        ...
+
     def wait_diagnostic(
         self,
         step_id: str,
@@ -414,7 +441,7 @@ class NullSink:
         *,
         elements: list[base.Element] | None = None,  # noqa: ARG002
         elements_source: str | None = None,  # noqa: ARG002
-        reuse_before_screenshot: str | None = None,  # noqa: ARG002
+        reuse_before_screenshot: Artifact | None = None,  # noqa: ARG002
     ) -> list[Artifact]:
         return []
 
@@ -499,7 +526,7 @@ class FileSink:
         *,
         elements: list[base.Element] | None = None,
         elements_source: str | None = None,
-        reuse_before_screenshot: str | None = None,
+        reuse_before_screenshot: Artifact | None = None,
     ) -> list[Artifact]:
         return capture(
             driver,

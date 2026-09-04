@@ -175,10 +175,10 @@ def _collect_captures(
     guarantee applied to every step regardless of trigger, unlike the other two sources.
 
     `elements` leads the list because every step records the post-action tree whether or not
-    anything asked, the counterpart to the pre-step baseline's tree (BE-0341). It has one fixed
-    filename, so this second write replaces that pre-action tree rather than adding a file: after
-    any step that acts, the recorded tree describes the screen the action produced — the screen the
-    step's `after.png` shows, which viewers draw element frames onto.
+    anything asked — the pre-step baseline writes no tree of its own (BE-0407), so this is the
+    step's only one, into `elements.json`'s one fixed filename: after any step that acts, the
+    recorded tree describes the screen the action produced — the screen the step's `after.png`
+    shows, which viewers draw element frames onto.
 
     The screenshot half of that pair is *not* here. `_handle_action` shoots it directly, right after
     the step's action and ahead of anything that could read the tree, so the image is never the older

@@ -89,8 +89,8 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 - `_collect_captures`: 先頭に `elements` を置いたうえで、インライン `step.capture`、発火したルールの
   capture、config の `defaults.capture`（他の2つと異なり常に適用される最低保証）を集めて重複排除します。
   先頭の `elements` があるため、3つの取得元が何を要求したかによらず、どのステップにも動作後のツリーが
-  残ります。`elements.json` のファイル名は 1 つなので、この取得は、ステップ前の baseline が書いた動作前の
-  ツリーを置き換えます。
+  残ります。ステップ前の baseline はツリーを取得しません（BE-0407）。そのためこの取得がそのステップの
+  唯一のツリー取得であり、`elements.json` という 1 つのファイル名に書き込まれます。
 - 対になるもう一方の `after.png` は、この一覧にはありません。`_handle_action` が、ステップの動作の直後に
   自分で撮ります。ここでツリーを読みうる処理（`screenChanged` の比較、`for` wait のタイムアウト診断、
   `extract`）よりも先に撮るためです。そのうえで、上記の一覧から `screenshot.after` を取り除きます。

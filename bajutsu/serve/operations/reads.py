@@ -803,8 +803,8 @@ def _artifact_names(
     Resolved by `step_view`, so the editor's element picker, the HTML report, and the triage context
     resolve one step to one image: the post-action `after.png` when the run recorded one, else the
     pre-step baseline's `before.png`. Both consumers share that one image because only one tree
-    survives the step: the post-step `elements` write replaces the baseline's pre-action tree, so no
-    pre-action pair is left for the picker to resolve against. The picker writes its resolved
+    survives the step: the pre-step baseline records no tree at all (BE-0407), so only the post-step
+    `elements` write is ever there for the picker to resolve against. The picker writes its resolved
     selector back into the same step, so a step that navigates offers the screen it reached rather
     than the one it targets — `docs/web-ui.md` (Author → Edit) sends an author to a live session for
     that case.
