@@ -218,6 +218,9 @@ def test_worker_result_reads_the_manifest_from_the_orgs_object_prefix(
     repo.lease_job("w1")
     # The row a DB-holding worker wrote before posting its result, thin because its own upload had
     # not finished when it read the manifest — the control plane's write must replace it in place.
+    # The org row is seeded first because `runs.org_id` is a real foreign key on Postgres, and this
+    # seed bypasses the `ensure_org` the persist path itself does.
+    repo.ensure_org("acme", slug="acme", name="acme")
     repo.record_run(
         RunRecord(
             id="20260904-051448",
