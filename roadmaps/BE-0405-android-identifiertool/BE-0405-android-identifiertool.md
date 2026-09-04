@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0405") |
+| Implementing PR | [#1904](https://github.com/bajutsu-e2e/bajutsu/pull/1904) |
 | Topic | Platform support |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), [BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture.md), [BE-0355](../BE-0355-native-z-position/BE-0355-native-z-position.md) |
 <!-- /BE-METADATA -->
@@ -249,7 +250,7 @@ alone.
 
 Log:
 
-- 2026-09-04 — All eight units landed together. `scripts/e2e_changes.py`'s android-lane filter did
+- 2026-09-04 — All eight units landed together (PR #1904). `scripts/e2e_changes.py`'s android-lane filter did
   not cover `IdentifierTool/`. A change confined to it would have fired no E2E lane at all. The work
   breakdown implied this consequence without naming it. Added a filter entry for it, with a matching
   `tests/test_e2e_changes.py` assertion. Also added a `scripts/sync_roadmap_topic_labels.py` rule: a

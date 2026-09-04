@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0405") |
+| 実装 PR | [#1904](https://github.com/bajutsu-e2e/bajutsu/pull/1904) |
 | トピック | Platform support |
 | 関連 | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md), [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee-ja.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md), [BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture-ja.md), [BE-0355](../BE-0355-native-z-position/BE-0355-native-z-position-ja.md) |
 <!-- /BE-METADATA -->
@@ -154,7 +155,7 @@ Viewsを使う消費側は、自前の`ids.xml`を書き続けることになり
 
 ログ：
 
-- 2026-09-04 — 8つの単位をまとめて着地させました。作業分解が暗に含んでいたものの列挙していなかった帰結が
+- 2026-09-04 — 8つの単位をまとめて着地させました（PR #1904）。作業分解が暗に含んでいたものの列挙していなかった帰結が
   2つあります。1つ目です。`scripts/e2e_changes.py` の android レーンのパスフィルタは、
   新しいトップレベルディレクトリ `IdentifierTool/` を対象にしていませんでした。そのため、
   そこだけを触った変更は、どの E2E レーンも起動しないままでした。このフィルタに `IdentifierTool/` を追加しました。
