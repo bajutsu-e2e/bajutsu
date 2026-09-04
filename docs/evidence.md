@@ -216,14 +216,18 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 > or a `capturePolicy` rule (e.g. a `result: error` rule that captures `video`). A scenario that
 > requests none records none, keeping the common case cheap; the lightweight instant baseline
 > (`screenshot` + `elements`) is always captured, so a failure still leaves evidence (DESIGN §10).
-> Every step captures evidence on **both** sides of its action: `before.png` and `elements.json`
-> before it acts, showing the screen it is about to act on, and `after.png` and a post-action
-> `elements` write once it has, showing what the action left behind. Neither side depends on the
-> `capture` list — narrowing that list costs a step neither of its two screenshots nor its tree.
-> `elements.json` has a single filename, so the post-action write replaces the pre-action tree: the
-> tree a run keeps describes the screen the action produced, which is the screen `after.png` shows
-> and the one every viewer draws element frames from. On a non-mutating step (`assert`, `wait`) that
-> tree is the one the step itself settled on, reused rather than re-read
+> Every step captures a screenshot on **both** sides of its action, but a tree only after it:
+> `before.png` shows the screen it is about to act on, and `after.png` plus an `elements` write
+> once it has acted show what the action left behind (BE-0407). Neither screenshot depends on the
+> `capture` list — narrowing that list costs a step neither of its two screenshots. When nothing has
+> actuated the device since the previous step's `after.png`, `before.png` is a byte-for-byte copy of
+> it rather than a fresh capture — except on an interrupt's recovery step, a `handleSystemAlert`
+> step, or any step in a scenario declaring `interrupts`, which always shoot fresh instead, since an
+> asynchronous interstitial could have arrived between the two steps on exactly those. `elements.json`
+> has a single filename, so the post-action write is
+> the tree a run keeps: it describes the screen the action produced, which is the screen `after.png`
+> shows and the one every viewer draws element frames from. On a non-mutating step (`assert`,
+> `wait`) that tree is the one the step itself settled on, reused rather than re-read
 > ([BE-0259](../roadmaps/BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md)), so there it
 > comes from a moment just before the screenshot rather than just after.
 > Preview what a scenario would record with `bajutsu trace --explain` (see [cli](cli.md#trace)).

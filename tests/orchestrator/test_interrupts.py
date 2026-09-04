@@ -40,6 +40,7 @@ class _RecordingSink:
         *,
         elements: list[base.Element] | None = None,
         elements_source: str | None = None,
+        reuse_before_screenshot: Artifact | None = None,
     ) -> list[Artifact]:
         if kinds:
             self.calls.append((step_id, kinds))
@@ -383,7 +384,7 @@ def test_cleared_interstitial_is_not_misattributed_as_the_steps_screen_change() 
     # baseline, the post-action shutter, and the tree read that pairs with it (BE-0341).
     step0 = [kinds for sid, kinds in sink.calls if sid == "x/step0"]
     assert step0 == [
-        ["screenshot.before", "elements.before"],
+        ["screenshot.before"],
         ["screenshot.after"],
         ["elements"],
     ]
