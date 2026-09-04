@@ -21,7 +21,7 @@ import mimetypes
 import os
 from collections.abc import Iterable
 from datetime import timedelta
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Literal, Protocol
 
 _PRESIGN_TTL = 900  # seconds a signed GET URL stays valid (15 min)
@@ -30,6 +30,18 @@ _PUT_TTL = (
 )
 # S3/R2 error codes that mean "no such object" — treated as absent; anything else is surfaced.
 _NOT_FOUND = frozenset({"404", "NoSuchKey", "NotFound"})
+
+# Built from the stdlib defaults only — `MimeTypes()` never reads the OS `knownfiles`, unlike the
+# module-level `mimetypes.guess_type`. See `content_type_for` for why that matters.
+_MIME = mimetypes.MimeTypes()
+# The extensions a run tree uploads where the OS database disagrees with the stdlib map, or where
+# neither has an answer. Everything else (.png/.html/.json/.txt/.md/.mp4/.webm/.zip/…) agrees.
+_CONTENT_TYPES = {
+    ".xml": "application/xml",  # stdlib says text/xml; RFC 7303 prefers this, as do the OS tables
+    ".log": "text/plain",
+    ".yaml": "application/yaml",
+    ".yml": "application/yaml",
+}
 
 
 class ObjectStore(Protocol):
@@ -402,8 +414,20 @@ class UploadSummary:
 
 
 def content_type_for(name: str) -> str:
-    """The MIME type inferred from *name*'s extension, defaulting to ``application/octet-stream``."""
-    guessed, _ = mimetypes.guess_type(name)
+    """The MIME type inferred from *name*'s extension, defaulting to ``application/octet-stream``.
+
+    The value must be **identical on every host**: the control plane signs it into a presigned PUT
+    URL and a worker on another machine sends it back as ``Content-Type``, so a difference is a
+    403 ``SignatureDoesNotMatch`` rather than a cosmetic one. That rules out the module-level
+    `mimetypes.guess_type`, whose answer depends on the OS MIME database (``/etc/mime.types`` and
+    friends override the stdlib map: ``.xml`` reads ``application/xml`` on a full distro and
+    ``text/xml`` in a slim container). `_MIME` is built from the stdlib defaults alone, and
+    `_CONTENT_TYPES` pins the extensions where hosts disagree or the stdlib has no answer.
+    """
+    suffix = PurePosixPath(name).suffix.lower()
+    if suffix in _CONTENT_TYPES:
+        return _CONTENT_TYPES[suffix]
+    guessed, _ = _MIME.guess_type(name)
     return guessed or "application/octet-stream"
 
 
