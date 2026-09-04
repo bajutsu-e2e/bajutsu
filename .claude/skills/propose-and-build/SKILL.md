@@ -110,7 +110,11 @@ Everything happens on **one branch**, `claude/<topic>`, cut off the latest `orig
 
 This skill defines no [`be-progress-tracker`](../../../.apm/skills/be-progress-tracker/SKILL.md) checkpoints of
 its own — it inherits the ones `ideation` and `implement-be` already define at the steps Phase A
-and Phase B delegate to, keyed on the same `BE-XXXX` placeholder throughout. Dispatch each of them
+and Phase B delegate to, keyed on the same `BE-XXXX` placeholder throughout. Because the id stays
+`BE-XXXX` for this skill's entire run — it is allocated only on merge — none of those inherited
+checkpoints ever hand the tracker a roadmap path, in either phase: `implement-be`'s own checkpoint
+contract hands one over only once the id is allocated, which never happens before this workflow's
+single PR merges. Dispatch each of them
 through the Agent tool with `model: "haiku"` passed explicitly, since a subagent call does not
 inherit that skill's own frontmatter model. Treat a failed or skipped checkpoint as advisory only.
 

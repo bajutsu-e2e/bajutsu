@@ -44,7 +44,12 @@ is now known), step 5 (the plan is confirmed), **once per unit of the step 5 pla
 it** — step 6 is one checkpoint for the whole step only when that plan came out as a single unit;
 see step 6 below — step 7 (the review pass comes back clean), step 9 (the gate is green), step 10
 (the PR is open), and each step 12
-follow-up iteration. It only turns decisions this workflow already made into a glanceable status
+follow-up iteration. Every checkpoint hands over the item's own repo-relative roadmap path
+(`roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md`) once that id is allocated and the file exists on
+`main` — true from step 1 on for a standalone run of this workflow, since it only ever targets an
+already-numbered item, unlike `ideation`'s pre-allocation checkpoints. (`propose-and-build`'s
+Phase B reuses these checkpoint boundaries against a still-`BE-XXXX` item; per its own note, it
+carries no roadmap path either, for the same reason.) It only turns decisions this workflow already made into a glanceable status
 page for the human watching the session — never let it gate or slow this workflow down; skip a
 checkpoint rather than block on it. **Without an Agent tool** (a subagent running this skill has
 none) that dispatch is impossible: invoke the skill inline if the checkpoint is cheap, otherwise
