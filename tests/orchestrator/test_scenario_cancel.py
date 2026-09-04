@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import pytest
 from _orch import FakeClock, _scenario
-from conftest import AlertingDriver, el
+from conftest import AlertingDriver, el, guard_rule
 
 from bajutsu.common.cancellation import CANCELLED_FAILURE
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence.network import ScreenTransition
 from bajutsu.common.orchestrator import run_scenario
 from bajutsu.common.orchestrator.types import AlertGuardConfig
+from bajutsu.common.orchestrator.waits import _DISMISS_SETTLE_TIMEOUT
 
 
 class _CancelAfter:
@@ -272,32 +273,52 @@ def test_cancel_inside_the_alert_guard_retry_does_not_burn_its_timeout() -> None
     to "never cancelled" — so omitting it fails nothing loudly, it just makes a `/cancel` invisible for
     the whole of a retried wait, doubling how long a cancelled run holds on.
 
-    The cancel is armed by the guard firing rather than by a read count: the first wait has to time out
-    *uncancelled* for the retry to exist at all, and counting reads to land after that would encode the
-    poll cadence. So the observable is the clock — one timeout's worth of waiting, not two.
+    Reaching that retry at all takes two pieces of staging. The alert stays invisible until the first
+    wait's own 10s timeout has passed, so the *mid-wait* gate — which polls the same SpringBoard query
+    throughout — finds nothing and the alert is left for the end-of-step guard, the only one this test
+    is about. And the cancel is armed one settle-budget past the dismiss rather than at it: BE-0406
+    put `settle_after_alert_dismiss` between the dismissal and the retry, and it honors `cancelled`
+    too, so a cancel armed at the dismiss would be raised out of the settle with the retry never
+    running. Clearing the screen on dismiss is what makes the settle's own duration predictable: a
+    tree with no identifiers is one its diff can never call stable, so it always spends its whole
+    budget.
+
+    The observable is then the clock — one timeout's worth of waiting plus a settle, not two
+    timeouts.
     """
     clock = FakeClock()
     fired = False
+    armed_at: float | None = None
+    # Past the first wait's own timeout, so the mid-wait gate's every poll reports no alert.
+    alert_visible_from = 10.0
 
     def on_dismiss(d: AlertingDriver) -> None:
         # The end-of-step dismiss cleared the prompt. Clear the screen so the retry is a genuine
         # re-wait, and arm the cancel for that retry alone.
-        nonlocal fired
+        nonlocal fired, armed_at
         d.screen = []
         fired = True
+        armed_at = clock.now() + _DISMISS_SETTLE_TIMEOUT
 
-    driver = AlertingDriver(
-        [el("blocker", "Allow", ["button"])], label="Allow", on_dismiss=on_dismiss
-    )
+    class LateAlert(AlertingDriver):
+        def system_alert_labels(self) -> list[str]:
+            if clock.now() < alert_visible_from:
+                return []
+            return super().system_alert_labels()
+
+    driver = LateAlert([el("blocker", "Allow", ["button"])], label="Allow", on_dismiss=on_dismiss)
     result = run_scenario(
         driver,
         _scenario({"name": "x", "steps": [{"wait": {"for": {"id": "never"}, "timeout": 10.0}}]}),
         clock=clock,
-        cancelled=lambda: fired,
-        alert_guard=AlertGuardConfig(labels=["Allow"]),
+        cancelled=lambda: armed_at is not None and clock.now() >= armed_at,
+        alert_guard=AlertGuardConfig(rules=[guard_rule("Allow")]),
     )
     assert not result.ok
     assert fired, "the alert guard never fired, so the retry path was never exercised"
+    assert clock.now() >= alert_visible_from, (
+        "the end-of-step guard, not the mid-wait one, must fire"
+    )
     assert clock.now() < 15.0, (
         f"the retry burned its own full timeout too ({clock.now()}s of a 10s wait) — "
         "the cancel source never reached it"

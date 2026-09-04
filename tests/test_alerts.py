@@ -6,7 +6,7 @@ import json
 import struct
 from pathlib import Path
 
-from conftest import GUARD_LABEL, AlertingDriver, FakeBackend, FakeBlock, ShotDriver
+from conftest import GUARD_LABEL, AlertingDriver, FakeBackend, FakeBlock, ShotDriver, guard_rule
 
 from bajutsu.common.agents.alerts import AlertDecision, ClaudeAlertLocator, SystemAlertGuard
 from bajutsu.common.agents.protocols import Proposal
@@ -160,12 +160,56 @@ def test_on_blocked_retries_step_after_recovery() -> None:
     result = run_scenario(
         driver,
         load_scenarios(_TAP_GO)[0],
-        alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]),
+        alert_guard=AlertGuardConfig(rules=[guard_rule()]),
     )
     assert result.ok is True
     assert ("tap", {"id": "go"}) in driver.actions
     # The dismissal is recorded on the retried step's outcome (for the report).
     assert result.steps[0].alerts == [AlertEvent(label=GUARD_LABEL)]
+
+
+def test_the_end_of_step_retry_waits_for_the_uncovered_screen_to_settle() -> None:
+    """BE-0406: a prompt that was tapped is not yet a prompt that is gone.
+
+    The retry actuates, so running it against a tree still animating the sheet away lets the step
+    fail for a reason that is not its own. This driver renders the target only on the third read
+    after the dismissal — a screen that is still moving — so the retry passes only if something
+    waited for it to hold still first.
+    """
+    target: base.Element = {
+        "identifier": "go",
+        "label": "Go",
+        "traits": ["button"],
+        "value": None,
+        "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
+    }
+    other: base.Element = {**target, "identifier": "mid", "label": "Mid"}
+
+    class SlowReveal(AlertingDriver):
+        """Two more frames of motion after the dismissal, then the target."""
+
+        def __init__(self) -> None:
+            super().__init__(on_dismiss=lambda d: setattr(d, "reads_left", 2))
+            self.reads_left = -1
+
+        def query(self) -> list[base.Element]:
+            if self.reads_left > 0:
+                self.reads_left -= 1
+                # A different tree each read, so no pair of reads can count as settled yet.
+                return [{**other, "label": f"Mid {self.reads_left}"}]
+            if self.reads_left == 0:
+                self.screen = [target]
+            return super().query()
+
+    driver = SlowReveal()
+    result = run_scenario(
+        driver,
+        load_scenarios(_TAP_GO)[0],
+        alert_guard=AlertGuardConfig(rules=[guard_rule()]),
+    )
+    assert result.ok is True
+    assert ("tap", {"id": "go"}) in driver.actions
 
 
 def test_end_of_step_alert_guard_retry_preserves_correct_before_after_evidence(
@@ -199,7 +243,7 @@ def test_end_of_step_alert_guard_retry_preserves_correct_before_after_evidence(
     result = run_scenario(
         driver,
         load_scenarios(yaml)[0],
-        alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]),
+        alert_guard=AlertGuardConfig(rules=[guard_rule()]),
         sink=FileSink(run_dir),
     )
     assert result.ok is True, result.failure
@@ -240,7 +284,7 @@ def test_end_of_step_alert_guard_retry_on_the_last_step_still_gets_a_final_captu
     result = run_scenario(
         driver,
         load_scenarios(_TAP_GO)[0],
-        alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]),
+        alert_guard=AlertGuardConfig(rules=[guard_rule()]),
         sink=FileSink(run_dir),
     )
     assert result.ok is True, result.failure
@@ -288,7 +332,7 @@ def test_on_blocked_retries_expect_after_recovery() -> None:
         "  expect:\n    - exists: { id: later }\n"
     )
     result = run_scenario(
-        driver, load_scenarios(yaml)[0], alert_guard=AlertGuardConfig(labels=["Allow"])
+        driver, load_scenarios(yaml)[0], alert_guard=AlertGuardConfig(rules=[guard_rule("Allow")])
     )
     assert result.ok is True
     # The expect-phase dismissal is recorded on the run result (not on any step).

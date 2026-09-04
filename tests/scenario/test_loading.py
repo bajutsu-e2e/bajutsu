@@ -342,12 +342,13 @@ def test_redact_totp_secrets_reaches_nested_steps() -> None:
     ],
     ids=["rules-only", "pollInterval-only", "visionInstruction-only", "empty"],
 )
-def test_redact_totp_secrets_round_trips_a_policy_that_names_no_button(
+def test_redact_totp_secrets_round_trips_every_policy_shape(
     policy: dict[str, object],
 ) -> None:
-    # Re-validating a model's own dump must not be able to fail. `systemAlertHandling.labels`
-    # rejects `[]` (BE-0401) while `[]` is also its default, so a policy steering the guard by
-    # anything but button labels used to die here — on the `run` path, after the steps had passed.
+    # Re-validating a model's own dump must not be able to fail. A field whose validator rejects its
+    # own default is how that used to happen — `systemAlertHandling.labels` rejected `[]` while `[]`
+    # was also its default (BE-0401), so a policy steering the guard by anything else died here, on
+    # the `run` path, after the steps had passed. `labels` is gone (BE-0406); the invariant is not.
     scn = Scenario.model_validate({"name": "a", "steps": [], "systemAlertHandling": policy})
     assert redact_totp_secrets(scn).model_dump() == scn.model_dump()
 
@@ -358,12 +359,15 @@ def test_redact_totp_secrets_preserves_an_explicit_system_alert_policy() -> None
         {
             "name": "a",
             "steps": [{"totp": {"secret": _TOTP_SEED, "into": {"var": "code"}}}],
-            "systemAlertHandling": {"labels": ["Allow", "OK"], "pollInterval": 0.5},
+            "systemAlertHandling": {
+                "rules": [{"prompt": "notifications", "choice": "grant"}],
+                "pollInterval": 0.5,
+            },
         }
     )
     policy = redact_totp_secrets(scn).system_alert_handling
     assert isinstance(policy, SystemAlertHandling)
-    assert policy.labels == ["Allow", "OK"]
+    assert [(r.prompt, r.choice) for r in policy.rules] == [("notifications", "grant")]
     assert policy.poll_interval == 0.5
 
 

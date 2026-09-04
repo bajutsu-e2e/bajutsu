@@ -79,13 +79,16 @@ showcase は **BajutsuKit** をリンクしているので、アプリが行う�
 ### 4. システムアラート：SpringBoard のプロンプトを突破する
 
 iOS バックエンドのアクセシビリティ照会は前面アプリしか見えないため、iOS のシステムプロンプト（権限ダイアログ）は
-実行を静かにブロックします。**Dismiss alerts** を有効（既定。`ANTHROPIC_API_KEY` が必要）にして
-[`permission.yaml`](scenarios/permission.yaml) を実行すると、Permissions タブが通知／位置情報のプロンプト
-を出し、それがステップをブロックしたときにガードがスクリーンショットを撮り、Claude vision にどこが閉じる
-ボタンかを尋ね、タップして、ステップを再試行します。レポートの手順テーブルには、アラートのラベルを伴う
-**「system alert dismissed」**の行が出ます。ここが `run` で AI が補助する唯一の箇所であり、しかも
-*デバイスを操作する*だけで、判定には決して関与しません。シナリオは
-`systemAlertHandling: { labels: ["Allow"] }` で、閉じる代わりに許可することもできます。
+実行を静かにブロックします。**Dismiss alerts** を有効（既定）にして
+[`permission.yaml`](scenarios/permission.yaml) を実行すると、Permissions タブが通知のプロンプトを出し、
+反応型のアラートガードが SpringBoard へのアクセシビリティ照会とタップで応答します。スクリーンショットも
+モデルの往復も `ANTHROPIC_API_KEY` も要りません。ガードは全経路が決定的です。レポートの手順テーブルには、
+タップしたボタンのラベルを伴う**「system alert dismissed」**の行が出ます。
+
+どのプロンプトを想定し、そこで何と答えるかは、シナリオ自身の宣言です。
+`systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` なら通知のプロンプトを許可し、
+`choice: deny` なら拒否します。どの rule も特定できないアラートには手を触れず、止まったステップの失敗理由で
+そのボタンを名指しします。
 
 ### 5. 動画とデバイスログ
 

@@ -125,7 +125,7 @@ def _run_alert_flags(
     value, err = _system_alert_handling_flag(body)
     if err:
         return None, err
-    return value, _reject_run_vision_instruction(body)
+    return value, _reject_run_vision_instruction(body) or _reject_run_alert_labels(body)
 
 
 def _reject_run_vision_instruction(body: dict[str, Any]) -> tuple[Any, int] | None:
@@ -143,8 +143,23 @@ def _reject_run_vision_instruction(body: dict[str, Any]) -> tuple[Any, int] | No
         return None
     return {
         "error": "'alertVisionInstruction' is not supported by run (BE-0402); "
-        "name the buttons with 'alertLabels', or write the scenario's own "
-        "systemAlertHandling.rules"
+        "write the scenario's own systemAlertHandling.rules instead"
+    }, 400
+
+
+def _reject_run_alert_labels(body: dict[str, Any]) -> tuple[Any, int] | None:
+    """Refuse an `alertLabels` on a `run` request, or None when the body carries none.
+
+    BE-0406 retired the flag this key rendered, along with the `labels` schema key itself. Dropped
+    silently, a request naming the buttons it expects tapped would run with no policy at all and
+    leave every prompt to whatever XCUITest answers by default — the same inversion of intent the
+    refusal above exists to prevent, and the same treatment the scenario layer gives `labels`.
+    """
+    if "alertLabels" not in body:
+        return None
+    return {
+        "error": "'alertLabels' is not supported by run (BE-0406); name the prompts you expect "
+        "with the scenario's own systemAlertHandling.rules instead"
     }, 400
 
 
@@ -304,7 +319,6 @@ def start_run(
         browsers=str(body.get("browsers") or ""),
         network=_bool_flag(body, "network"),
         zip_run=_bool_flag(body, "zip"),
-        alert_labels=str(body.get("alertLabels") or ""),
         alert_poll_interval=_float(body.get("alertPollInterval")),
         log_predicate=str(body.get("logPredicate") or ""),
         log_subsystem=str(body.get("logSubsystem") or ""),

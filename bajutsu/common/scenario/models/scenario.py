@@ -68,10 +68,15 @@ class SystemAlertRule(_Model):
 
     `prompt` and `choice` reuse the vocabulary the proactive `handleSystemAlert` step already takes
     (its `prompt`/`choice` form) instead of a literal button label, so the same rule grants or denies
-    the prompt under any locale `bajutsu.common.scenario.system_alerts` covers. The reactive guard identifies
-    which alert is on screen from this prompt's own two labels — not from an ordering trick over
-    `labels`, which cannot record which answer belongs to which prompt (see `SystemAlertHandling`
-    below).
+    the prompt under any locale `bajutsu.common.scenario.system_alerts` covers. The reactive guard
+    identifies which alert is on screen from that prompt's own identifying labels, which is why
+    BE-0406 made this the guard's only declaration: a button label names a button, never the alert
+    it sits on, so it could never say which prompt an author actually expected.
+
+    A prompt not every answer path can reach is still declarable here — `savePassword` is answered by
+    the in-tree dismissal alone, since iOS raises it into the application's own process where the
+    SpringBoard query never sees it. `system_alerts.alert_surfaces` records which paths each prompt
+    reaches, and `run` reads it when it resolves these rules.
     """
 
     prompt: SystemAlertPrompt
@@ -85,42 +90,33 @@ class SystemAlertHandling(_Model):
     app-scoped accessibility tree cannot see or tap, fired reactively when a step (or `expect`) is
     blocked or a guarded wait finds an alert. The guard is ON by default. On the iOS XCUITest backend
     it clears the prompt deterministically and natively (BE-0315), reusing BE-0316's SpringBoard query
-    + tap — no screenshot and no model round trip; where the native path cannot act it falls back to
-    the vision guard (a screenshot the locator reads). This is the *reactive* counterpart to the
+    + tap — no screenshot and no model round trip. Where no path can act the guard does nothing and
+    the blocked step reports what it saw (BE-0402). This is the *reactive* counterpart to the
     *proactive* `handleSystemAlert` step (BE-0316): the step taps a named button at an author-chosen
     point, this guard clears prompts automatically wherever they surface.
 
-    Each key reaches exactly one of those two paths (BE-0401): `rules` and `labels` steer the native
-    path, `visionInstruction` steers the fallback. On-disk forms — the bare boolean carries on and
+    `rules` is the whole declaration (BE-0406): a scenario names the prompts it expects and the
+    choice to make on each, and every answer path — the native SpringBoard tap and the in-tree
+    dismissal alike — matches against those alone. On-disk forms — the bare boolean carries on and
     off, so a mapping always means on:
         systemAlertHandling: false                       — disable the guard for this scenario
         systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] } — answer a named
                                                              prompt by its own choice, regardless of
                                                              which label it shares with another
-        systemAlertHandling: { labels: ["Allow", "OK"] } — tap the first of these labels present on
-                                                             the alert
-        systemAlertHandling: { visionInstruction: "tap Allow" } — free text only the vision fallback
-                                                             reads
-    Within the native path a rule names a prompt and a label names a button, so `rules` is consulted
-    first; an alert whose prompt no rule names falls through to `labels`, and to the built-in
-    dismissive labels when no layer supplies any.
+    An alert no rule identifies is left alone rather than answered by a guessed button, which is why
+    the ordered `labels` list BE-0401 introduced is gone: it said which words the author would accept
+    seeing tapped, never which alert they expected, so it licensed a tap on a screen no scenario had
+    described.
     """
 
-    # Ordered answers to specific covered prompts, by name rather than by button text. The
-    # guard identifies the alert on screen from a rule's own prompt (its resolved label pair), so
-    # ordering only matters for two rules whose pairs could both match the same alert — none of the
-    # prompts `system_alerts.py` covers today can. Checked before `labels` below, since a prompt name
-    # is the more specific declaration; an alert no rule identifies falls through to it.
+    # Ordered answers to specific covered prompts, by name rather than by button text. The guard
+    # identifies the alert on screen from a rule's own prompt (its resolved identifying labels), so
+    # ordering only matters for two rules whose shapes could both match the same alert — none of the
+    # prompts `system_alerts.py` covers today can.
     rules: list[SystemAlertRule] = Field(default_factory=list)
-    # The ordered candidate button labels the native path taps instead of the default dismissive one,
-    # taking the first that is present on the alert (via BE-0316's `handle_system_alert`). Empty means
-    # no layer named a button, which is what the built-in dismissive labels stand in for — they never
-    # extend a supplied list, so a scenario naming its buttons and meeting an alert carrying none of
-    # them drops to the vision fallback rather than tapping a button the author never named.
-    labels: list[str] = Field(default_factory=list)
     # Free text only the AI vision fallback reads ("tap Allow"), for an alert the native path cannot
     # name — including every alert on a backend with no native path at all. The native path compares
-    # labels exactly, so it never reads this; `labels` above is what steers it (BE-0401).
+    # labels exactly, so it never reads this; `rules` above is what steers it (BE-0406).
     vision_instruction: str | None = Field(default=None, alias="visionInstruction")
     # How often (seconds) the reactive guard polls the native system-alert presence query while a
     # wait is pending, on its own wall clock decoupled from the wait's condition poll (BE-0315). A
@@ -132,16 +128,24 @@ class SystemAlertHandling(_Model):
     @classmethod
     def _reject_removed_keys(cls, data: Any) -> Any:
         # `extra="forbid"` already rejects each of these, but with Pydantic's generic "extra fields
-        # not permitted", which names no replacement. BE-0401 removed them with no alias, so the
-        # error is the whole migration path an author gets — name the key that replaces each.
+        # not permitted", which names no replacement. Each was removed with no alias, so the error is
+        # the whole migration path an author gets — name the key that replaces each.
         if not isinstance(data, dict):
             return data
-        if "instruction" in data:
-            replacement = "labels" if isinstance(data["instruction"], list) else "visionInstruction"
+        if "labels" in data:
             raise ValueError(
-                "systemAlertHandling.instruction was removed (BE-0401); use "
-                f"'{replacement}' instead — 'labels' is the ordered button labels the native "
-                "path taps, 'visionInstruction' the free text only the vision fallback reads"
+                "systemAlertHandling.labels was removed (BE-0406): a button label named a button, "
+                "never the alert it sat on. Declare the prompt instead — rules: "
+                "[{ prompt: notifications, choice: grant }]. A prompt the label table does not "
+                "cover has no rule form: either add it to "
+                "bajutsu/common/scenario/system_alerts.py, or let the guard leave that alert alone "
+                "and name it in the blocked step's own failure reason"
+            )
+        if "instruction" in data:
+            raise ValueError(
+                "systemAlertHandling.instruction was removed (BE-0401); use 'rules' instead for a "
+                "prompt the guard should answer, or 'visionInstruction' for the free text only the "
+                "vision fallback reads"
             )
         if "enabled" in data:
             raise ValueError(
@@ -149,19 +153,6 @@ class SystemAlertHandling(_Model):
                 "(`systemAlertHandling: false` to disable, a mapping to configure the policy)"
             )
         return data
-
-    @field_validator("labels")
-    @classmethod
-    def _non_empty_labels(cls, v: list[str]) -> list[str]:
-        # An empty list, or an empty entry among real ones, would fall through to the layers above and
-        # then to the default dismissive policy — so a typo answers the opposite of what the author
-        # wrote. Fail instead, the same reason an ambiguous selector fails rather than tapping its
-        # first match.
-        if not v:
-            raise ValueError("systemAlertHandling.labels must name at least one button label")
-        if any(not s.strip() for s in v):
-            raise ValueError("systemAlertHandling.labels must not contain an empty label")
-        return v
 
     @field_validator("vision_instruction")
     @classmethod

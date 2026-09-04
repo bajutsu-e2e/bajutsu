@@ -9,6 +9,7 @@ after it has already spent its timeout. Exercised against `FakeDriver`, which ad
 from __future__ import annotations
 
 import pytest
+from conftest import guard_rule
 
 from bajutsu.common.cancellation import RunCancelled
 from bajutsu.common.drivers import base
@@ -120,7 +121,7 @@ def test_the_step_reads_the_alert_at_its_own_cadence_not_the_guards() -> None:
         return original()
 
     driver.system_alert_labels = appear_after_half_a_second  # type: ignore[method-assign]
-    guard = AlertGuardConfig(labels=["Not Now"], poll_interval=5.0)
+    guard = AlertGuardConfig(rules=[guard_rule("Not Now")], poll_interval=5.0)
 
     ok, reason = wait_for_system_alert(
         driver, {"label": "Allow"}, 30.0, clock, alert_guard=guard, alerts=[]
@@ -310,7 +311,7 @@ def test_the_guard_clears_a_declared_interruption_while_the_step_waits() -> None
     # prompt it never saw. Now the guard clears the sheet from the tree mid-wait and the prompt the
     # step is waiting for lands.
     driver = FakeDriver([_button("Not Now")], react=_clear_the_sheet)
-    guard = AlertGuardConfig(labels=["Not Now"], poll_interval=0.1)
+    guard = AlertGuardConfig(rules=[guard_rule("Not Now")], poll_interval=0.1)
     alerts: list[AlertEvent] = []
 
     ok, reason = wait_for_system_alert(
@@ -371,7 +372,7 @@ def test_the_run_loop_hands_the_step_the_scenarios_guard() -> None:
         load_scenarios(
             "- name: t\n  steps:\n    - handleSystemAlert: { sel: { label: Allow }, timeout: 5 }\n"
         )[0],
-        alert_guard=AlertGuardConfig(labels=["Not Now"], poll_interval=0.1),
+        alert_guard=AlertGuardConfig(rules=[guard_rule("Not Now")], poll_interval=0.1),
     )
 
     assert result.ok, result.failure

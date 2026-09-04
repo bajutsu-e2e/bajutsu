@@ -84,16 +84,18 @@ A runtime permission prompt (notifications, location, …) is an **out-of-proces
 part of the app's own UI — the iOS backend can't tap it directly. `systemAlertHandling` hands that one
 tap to the reactive alert guard, which watches for the prompt and taps "Allow" through a deterministic
 native accessibility query, with no screenshot and no model call, while every assertion around it
-stays machine-checked. Name the button with `labels: ["Allow"]`: that is the key the native path
-resolves. `visionInstruction` steered the vision fallback and now reaches no command from a
-scenario, so `run` refuses it rather than falling through to the default dismissive labels and
-denying the prompt
+stays machine-checked. Name the prompt you expect and the choice to make on it — `rules` is the
+guard's whole declaration
+([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md)),
+and the run resolves the button from the prompt and the pinned locale, so the file stays correct on a
+Japanese Simulator too. `visionInstruction` steered the vision fallback and now reaches no command
+from a scenario, so `run` refuses it outright rather than running with a policy it cannot act on
 ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)).
 
 ```yaml
 - name: grant notification permission
   tags: [permission, system]
-  systemAlertHandling: { labels: ["Allow"] }
+  systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
   steps:

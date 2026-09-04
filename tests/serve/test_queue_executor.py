@@ -386,7 +386,6 @@ def test_start_run_passes_safe_backfilled_flags_and_withholds_host_paths(tmp_pat
             "browsers": "chromium,firefox",
             "network": False,
             "zip": True,
-            "alertLabels": "Allow,OK",
             "alertPollInterval": 2.5,
             "logPredicate": "subsystem == 'x'",
             "logSubsystem": "com.example",
@@ -402,10 +401,11 @@ def test_start_run_passes_safe_backfilled_flags_and_withholds_host_paths(tmp_pat
     assert cmd[cmd.index("--browsers") + 1] == "chromium,firefox"
     assert "--no-network" in cmd  # network=False forces the off side of the pair
     assert "--zip" in cmd
-    assert cmd[cmd.index("--alert-labels") + 1] == "Allow,OK"
-    # `run` retired that flag with the vision fallback it steered (BE-0402); a body naming it is
-    # rejected outright (tests/serve/test_system_alert_handling_flag.py), never rendered.
+    # `run` retired both alert knobs with the fallbacks they steered — the vision instruction with
+    # BE-0402, the button labels with BE-0406 — so a body naming either is rejected outright
+    # (tests/serve/test_system_alert_handling_flag.py), never rendered.
     assert "--alert-vision-instruction" not in cmd
+    assert "--alert-labels" not in cmd
     assert cmd[cmd.index("--alert-poll-interval") + 1] == "2.5"
     assert cmd[cmd.index("--log-predicate") + 1] == "subsystem == 'x'"
     assert cmd[cmd.index("--log-subsystem") + 1] == "com.example"

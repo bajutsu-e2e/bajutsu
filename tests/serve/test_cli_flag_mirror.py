@@ -47,7 +47,6 @@ def test_run_flag_surface_is_fully_classified() -> None:
         "network",
         "log_predicate",
         "log_subsystem",
-        "alert_labels",
         "alert_poll_interval",
         "zip_run",
         "config_offline",

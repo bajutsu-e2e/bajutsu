@@ -18,6 +18,7 @@ from bajutsu.common.scenario.models.selector import Selector
 from bajutsu.common.scenario.system_alerts import (
     SystemAlertChoice,
     SystemAlertPrompt,
+    alert_surfaces,
     system_alert_label,
 )
 
@@ -85,6 +86,10 @@ class HandleSystemAlert(_Model):
     worth reaching for because the literal text is easy to get subtly wrong: English's own deny
     button spells its apostrophe typographically, not as the ASCII character a hand-typed label
     carries. Every other alert keeps naming its button through `sel`, unchanged.
+
+    Not every covered prompt is nameable here. This step reads the SpringBoard query alone, so a
+    prompt iOS raises into the application's own process — `savePassword` — is rejected below and
+    declared as a `systemAlertHandling` rule instead (BE-0406).
     """
 
     sel: Selector | None = None
@@ -102,6 +107,17 @@ class HandleSystemAlert(_Model):
             raise ValueError(
                 "handleSystemAlert names its button either by sel or by prompt + choice, "
                 "never both and never neither (§6.2)"
+            )
+        if self.prompt is not None and not alert_surfaces(self.prompt)["step"]:
+            # This step resolves its selector against the SpringBoard query alone, so a prompt that
+            # query can never see would poll an empty button list until the step's deadline — the
+            # very failure BE-0406 exists to remove. Reject it here, naming the declaration that
+            # does reach it, rather than accepting a step that could only ever time out.
+            raise ValueError(
+                f"handleSystemAlert cannot answer the {self.prompt} prompt: iOS raises it inside "
+                "the application's own process, where this step's SpringBoard query never sees it. "
+                f"Declare it reactively instead — "
+                f"systemAlertHandling: {{ rules: [{{ prompt: {self.prompt}, choice: … }}] }}"
             )
         return self
 

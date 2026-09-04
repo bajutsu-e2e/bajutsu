@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 from _orch import FakeClock, _scenario
-from conftest import GUARD_LABEL, AlertingDriver, el
+from conftest import GUARD_LABEL, AlertingDriver, el, guard_rule
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
@@ -488,7 +488,7 @@ def test_wait_diagnostic_written_once_after_on_blocked_retry(tmp_path: Path) -> 
         _scenario({"name": "x", "steps": [{"wait": {"for": {"id": "never"}, "timeout": 0.2}}]}),
         clock=FakeClock(),
         sink=sink,
-        alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]),
+        alert_guard=AlertGuardConfig(rules=[guard_rule()]),
     )
     assert not result.ok
     assert driver.dismissals == 1  # the guard cleared a prompt once, then the wait was retried
@@ -691,7 +691,7 @@ def test_wait_for_guard_fires_mid_wait_and_records_the_alert() -> None:
     clock = _LogicalClock()
     w = Wait.model_validate({"for": {"id": "ready"}, "timeout": 30.0})
     ok, reason, tree = _wait(
-        driver, w, clock, alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]), alerts=alerts
+        driver, w, clock, alert_guard=AlertGuardConfig(rules=[guard_rule()]), alerts=alerts
     )
     assert ok and reason == ""
     assert tree == [el("ready", "R")]
@@ -744,7 +744,7 @@ def test_mid_wait_alert_guard_dismiss_preserves_correct_before_after_evidence(
                 ],
             }
         ),
-        alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]),
+        alert_guard=AlertGuardConfig(rules=[guard_rule()]),
         clock=FakeClock(),
         sink=FileSink(run_dir),
     )
@@ -859,7 +859,7 @@ def test_wait_settled_guard_fires_on_a_collapsed_screen() -> None:
     clock = _LogicalClock()
     w = Wait.model_validate({"until": "settled", "timeout": 30.0})
     ok, _reason, tree = _wait(
-        driver, w, clock, alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]), alerts=alerts
+        driver, w, clock, alert_guard=AlertGuardConfig(rules=[guard_rule()]), alerts=alerts
     )
     assert ok  # a settle never fails the step
     assert driver.dismissals == 1
@@ -885,7 +885,7 @@ def test_wait_settled_signal_guard_fires_on_a_collapsed_screen() -> None:
         driver,
         w,
         clock,
-        alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]),
+        alert_guard=AlertGuardConfig(rules=[guard_rule()]),
         alerts=alerts,
         transitions=lambda: fresh,
     )
@@ -937,7 +937,7 @@ def test_wait_screen_changed_guard_fires_when_started_under_an_alert() -> None:
     clock = _LogicalClock()
     w = Wait.model_validate({"until": "screenChanged", "timeout": 30.0})
     ok, reason, _tree = _wait(
-        driver, w, clock, alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]), alerts=alerts
+        driver, w, clock, alert_guard=AlertGuardConfig(rules=[guard_rule()]), alerts=alerts
     )
     assert ok and reason == ""
     assert driver.dismissals == 1
@@ -978,7 +978,7 @@ def test_wait_screen_changed_guard_fires_on_a_prompt_that_arrives_mid_wait() -> 
     clock = _LogicalClock()
     w = Wait.model_validate({"until": "screenChanged", "timeout": 30.0})
     ok, reason, _tree = _wait(
-        driver, w, clock, alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]), alerts=alerts
+        driver, w, clock, alert_guard=AlertGuardConfig(rules=[guard_rule()]), alerts=alerts
     )
     assert ok and reason == ""  # answering the prompt is itself the screen change
     assert driver.dismissals == 1
@@ -1020,7 +1020,7 @@ def test_wait_settled_guard_fires_on_a_prompt_that_arrives_mid_settle() -> None:
         driver,
         w,
         _LogicalClock(),
-        alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]),
+        alert_guard=AlertGuardConfig(rules=[guard_rule()]),
         alerts=alerts,
     )
     assert ok  # a settle never fails the step
@@ -1046,7 +1046,7 @@ def test_wait_settled_signal_guard_fires_on_a_prompt_that_arrives_mid_settle() -
         on_tick=lambda _remaining: ticks.append(0.0),
         # Below the quiescence window, so the native probe gets a second turn inside it — the
         # default one-second cadence would put every probe after the settle had already returned.
-        alert_guard=AlertGuardConfig(labels=[GUARD_LABEL], poll_interval=0.05),
+        alert_guard=AlertGuardConfig(rules=[guard_rule()], poll_interval=0.05),
         alerts=alerts,
         transitions=lambda: fresh,
     )
@@ -1077,7 +1077,7 @@ def test_wait_guard_does_not_extend_the_deadline() -> None:
     w = Wait.model_validate({"for": {"id": "ready"}, "timeout": 1.0})
     # The guard dismisses its prompt at once, but the element is still 10s out.
     ok, reason, _tree = _wait(
-        SlowReveal(clock), w, clock, alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]), alerts=[]
+        SlowReveal(clock), w, clock, alert_guard=AlertGuardConfig(rules=[guard_rule()]), alerts=[]
     )
     assert not ok
     assert "timeout" in reason
@@ -1094,7 +1094,7 @@ def test_wait_guard_fires_without_an_alerts_list() -> None:
     clock = _LogicalClock()
     w = Wait.model_validate({"for": {"id": "ready"}, "timeout": 30.0})
     ok, _reason, _tree = _wait(
-        driver, w, clock, alert_guard=AlertGuardConfig(labels=[GUARD_LABEL])
+        driver, w, clock, alert_guard=AlertGuardConfig(rules=[guard_rule()])
     )  # no alerts list
     assert ok
     assert driver.dismissals == 1

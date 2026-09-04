@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from _runner import _eff, _el, _failing_lease, _fake_driver, _ios_eff, _lease
-from conftest import GUARD_LABEL, AlertingDriver
+from conftest import AlertingDriver, guard_rule
 
 from bajutsu.common.config import Effective, XcuitestConfig
 from bajutsu.common.doctor import Score
@@ -1282,7 +1282,7 @@ def test_run_all_alert_guard_for_selects_per_scenario() -> None:
 
     def alert_guard_for(s: Scenario) -> AlertGuardConfig | None:
         # `false` is the whole off form since BE-0401; a mapping (or an absent key) means on.
-        return None if s.system_alert_handling is False else AlertGuardConfig(labels=[GUARD_LABEL])
+        return None if s.system_alert_handling is False else AlertGuardConfig(rules=[guard_rule()])
 
     # Answering the prompt reveals the tap's target, so the guarded scenario recovers and passes.
     def lease(eff: Effective, scenario: Scenario) -> Lease:

@@ -20,7 +20,7 @@ from bajutsu.common.orchestrator.types import (
     NetworkSource,
     _no_network,
     alert_block_note,
-    pick_alert_label,
+    match_alert_rule,
     selector_names_button,
     uncleared_prompt_note,
 )
@@ -199,7 +199,7 @@ def _with_block_note(reason: str, gate: _AlertGuardGate | None) -> str:
 
     Read only at the moment a timeout is reported, and only from the gate's latest observation, so a
     prompt that appeared and resolved mid-wait leaves nothing behind. Without it a `wait` stuck
-    behind a prompt no rule or candidate label names reports only the element that never appeared.
+    behind a prompt no rule identifies reports only the element that never appeared.
     """
     if gate is None or not gate.blocked_note:
         return reason
@@ -235,8 +235,8 @@ class _AlertGuardGate:
 
     Where the backend lacks the capability — or an alert is up but no policy label resolves, or the
     native query reports no SpringBoard alert yet a non-SpringBoard surface (an action sheet, a
-    WKWebView JS dialog) it cannot enumerate is blocking and the scenario's own `labels` do not
-    name its button (the one such surface `_dismiss_from_tree` below still taps) — nothing here can
+    WKWebView JS dialog) it cannot enumerate is blocking and no in-tree-capable rule of the
+    scenario's identifies it (the one such surface `_dismiss_from_tree` below still taps) — nothing here can
     clear it. BE-0402 removed the AI-vision fallback that used to answer those cases from `run`, so
     the gate records what it saw in `blocked_note` and the wait polls on to its own deadline, where
     `_wait` appends the note to the timeout it reports. The note is the gate's *latest* observation,
@@ -324,13 +324,12 @@ class _AlertGuardGate:
                 return
             # "absent" falls through to the in-tree dismiss and the collapsed-tree proxy below;
             # "reserved" falls through too, but its own latch stops it short of the proxy.
-        if self.guard.labels and probed_absent:
-            # Only once the scenario has named its own candidate labels: an author who configured
-            # `systemAlertHandling.labels` has opted into exactly the narrow surface
-            # `_dismiss_from_tree` matches against, so the fast in-tree path is safe to try here. It
-            # stays off the *default* dismissive labels (`Cancel`, `Close`, …) and off every
-            # non-native backend, where those are ordinary English UI vocabulary a real screen can
-            # legitimately show (see `_dismiss_from_tree`'s docstring).
+        if self.guard.tree_rules and probed_absent:
+            # Only once the scenario holds a rule for a prompt this path can actually reach: an
+            # author who declared one has named the alert they expect, which is what makes the fast
+            # in-tree path safe to try here. A rule for a SpringBoard-only prompt arms nothing, so a
+            # scenario declaring `notifications` alone never gets an application screen's own
+            # identifier-less "Allow" tapped (see `_dismiss_from_tree`'s docstring).
             #
             # And only on a poll whose own native probe just reported no SpringBoard alert. This tap
             # goes through `Driver.tap`, which resolves an element, and XCUITest answers whatever
@@ -395,13 +394,13 @@ class _AlertGuardGate:
         the wait already fetched — an app-attached sheet such as iOS's Save Password prompt, whose
         `label`ed buttons appear right in the poll's own `elements`.
 
-        Only ever called (see `_observe_native`) when `self.guard.labels` is non-empty and the
+        Only ever called (see `_observe_native`) when `self.guard.tree_rules` is non-empty and the
         backend is native-capable: `identifier is None` is not by itself a reliable "system-owned"
         signal (a backend or an unlabeled-by-design app screen can carry legitimate identifier-less
-        buttons, per `shows_app_ui`'s own docstring), so this stays off the generic
-        `DEFAULT_DISMISSIVE_LABELS` — ordinary English UI vocabulary ("Cancel", "Close") a real
-        screen can legitimately show — and acts only on the scenario author's own explicit
-        `systemAlertHandling.labels`, the narrow surface this path exists to speed up.
+        buttons, per `shows_app_ui`'s own docstring), so this acts only on an alert one of the
+        scenario's own rules identifies by its full label set (BE-0406). Matching a prompt rather
+        than a word is what keeps ordinary UI vocabulary — "Cancel", "Close", and, for iOS 26.5's
+        in-app save sheet, "Save" — from licensing a tap on a screen no scenario described.
 
         Paces its taps on a label rather than tapping every match: unlike the native probe
         (rate-limited to `poll_interval`) and the collapsed-tree proxy (debounced),
@@ -430,13 +429,12 @@ class _AlertGuardGate:
         obstruction still degrades to the wait's own timeout instead of hammering the device for
         its entire remainder.
         """
-        candidates = self.guard.labels
         buttons = [
             el["label"]
             for el in elements
             if el["label"] and not el["identifier"] and base.Trait.BUTTON in el["traits"]
         ]
-        label = pick_alert_label(candidates, buttons)
+        label = match_alert_rule(self.guard.tree_rules, buttons)
         if label is None:
             # The tree stopped matching: the showing ended, so its recorded event stands as the real
             # dismissal it was — only the reference is dropped, so a later give-up cannot withdraw it.
@@ -1060,3 +1058,45 @@ def _wait_settled_by_signal(
             hb.tick(clock.now())
         _adaptive_sleep(clock, t0)
     return True, "", current
+
+
+# How long a post-dismiss settle may spend before its caller proceeds anyway. Its own budget, not an
+# alias of `_TREE_RETAP_DELAY` above: the two happen to agree on the horizon at which any real
+# dismiss animation is over, but they pace different things, and tuning the in-tree re-tap cadence
+# must not silently shorten this. It is a cap, not a cost — the common case returns after two
+# unchanged polls (~0.1s). Two screens spend it in full: one that never holds still, and one
+# carrying no identifiers at all, which `_wait_settled`'s tree-diff branch can never call stable
+# (an unlabelled build, a page with no test ids). There it degrades to a bounded delay that buys
+# only the animation window, which is still the right outcome for the retry that follows.
+_DISMISS_SETTLE_TIMEOUT = 1.0
+
+
+def settle_after_alert_dismiss(
+    driver: base.Driver,
+    clock: Clock,
+    *,
+    transitions: TransitionSource = _no_transitions,
+    cancelled: CancelSource = not_cancelled,
+) -> None:
+    """Let the screen the guard just uncovered stop moving before the caller acts on it.
+
+    The alert guard's two one-shot call sites — the end-of-step dismiss and the `expect` retry —
+    re-run the step body (or re-evaluate the assertions) the moment a dismissal comes back, and a
+    prompt that has been *tapped* is not yet a prompt that is *gone*: iOS is still animating the
+    sheet away, and the screen it covered is still rendering. The retry then reads a tree in motion
+    and can fail for that reason alone, which reads as the step failing on its own merits.
+
+    Best-effort throughout, so it never turns into a verdict of its own: it is a condition wait on
+    the tree holding still (never a fixed sleep), and reaching `_DISMISS_SETTLE_TIMEOUT` simply
+    returns, leaving the retry to decide. Cancellation still propagates, as it does out of every
+    other wait (BE-0370) — a cancelled run has nothing left to settle for.
+    """
+    start = clock.now()
+    _wait_settled(
+        driver,
+        start + _DISMISS_SETTLE_TIMEOUT,
+        clock,
+        transitions=transitions,
+        start=start,
+        cancelled=cancelled,
+    )

@@ -326,6 +326,17 @@ def test_handle_system_alert_parses_the_prompt_and_choice_form() -> None:
     assert step.handle_system_alert.choice == "grant"
 
 
+def test_handle_system_alert_rejects_a_prompt_this_step_can_never_see() -> None:
+    # BE-0406: this step resolves its selector against the SpringBoard query alone, and iOS raises
+    # the save-password prompt inside the application's own process — so a step naming it would poll
+    # an empty button list until its deadline and then report a prompt that never appeared. Rejected
+    # at parse time instead, naming the declaration that does reach it.
+    with pytest.raises(ValidationError, match="systemAlertHandling"):
+        Step.model_validate(
+            {"handleSystemAlert": {"prompt": "savePassword", "choice": "deny", "timeout": 5}}
+        )
+
+
 def test_handle_system_alert_resolves_the_prompt_form_against_a_locale() -> None:
     step = Step.model_validate(
         {"handleSystemAlert": {"prompt": "notifications", "choice": "deny", "timeout": 5}}

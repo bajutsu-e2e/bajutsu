@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 from _orch import FakeClock, _scenario, _tap_ids
-from conftest import GUARD_LABEL, AlertingDriver, el
+from conftest import AlertingDriver, el, guard_rule
 from pydantic import ValidationError
 
 from bajutsu.common.config import load_config, resolve
@@ -333,7 +333,7 @@ def test_recovery_failure_mid_wait_skips_the_end_of_step_alert_guard() -> None:
         driver,
         _scenario({"name": "d", "steps": [{"wait": {"for": {"id": "home.title"}, "timeout": 5}}]}),
         clock=FakeClock(),
-        alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]),
+        alert_guard=AlertGuardConfig(rules=[guard_rule()]),
         interrupts=[
             _interrupt({"exists": {"id": "ov.close"}}, [{"tap": {"id": "does.not.exist"}}])
         ],

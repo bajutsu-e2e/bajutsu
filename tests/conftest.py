@@ -21,6 +21,7 @@ from bajutsu.common.analytics import ledger as usage_ledger
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence.sink import RunArtifactWriter
+from bajutsu.common.orchestrator.types import ResolvedAlertRule
 from scripts.build_roadmap_index import tracking_issue_url
 
 if TYPE_CHECKING:
@@ -77,9 +78,31 @@ class ShotDriver(FakeDriver):
         self.actions.append(("screenshot", path))
 
 
-# The dismissive button `AlertingDriver` shows by default; every candidate-label test that does not
-# care which button it is names this one.
+# The dismissive button `AlertingDriver` shows by default; every guard test that does not care which
+# button it is names this one.
 GUARD_LABEL = "Not Now"
+
+
+def guard_rule(
+    label: str = GUARD_LABEL,
+    *,
+    identifying: tuple[str, ...] | None = None,
+    native: bool = True,
+    in_tree: bool = True,
+) -> ResolvedAlertRule:
+    """The rule a guard test declares so that `label` may be tapped.
+
+    BE-0406 made `rules` the guard's only declaration, so a test that used to hand it a candidate
+    label names a resolved rule instead. Identified by the label it taps alone, which is exactly what
+    `AlertingDriver`'s single-button prompt offers; both answer surfaces are armed by default, since
+    most tests care which path acted rather than which one was permitted to.
+    """
+    return ResolvedAlertRule(
+        identifying_labels=frozenset(identifying or (label,)),
+        tap_label=label,
+        native=native,
+        in_tree=in_tree,
+    )
 
 
 class AlertingDriver(FakeDriver):

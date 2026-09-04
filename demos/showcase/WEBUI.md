@@ -82,13 +82,16 @@ screens but not pixel-identically, so each keeps its own baseline set.
 ### 4. System alerts — punching through a SpringBoard prompt
 
 The iOS backend's accessibility query only sees the foreground app, so an iOS system prompt (a permission
-dialog) silently blocks a run. With **Dismiss alerts** enabled (the default; needs
-`ANTHROPIC_API_KEY`), run [`permission.yaml`](scenarios/permission.yaml): the Permissions tab
-raises the notification / location prompts, and when one blocks a step the guard screenshots it,
-asks Claude vision where the dismiss button is, taps it, and the step retries. The report's steps
-table shows a **"system alert dismissed"** row with the alert's label. This is the one place AI
-assists a `run` — and it only *acts on the device*, never on the verdict. A scenario can set
-`systemAlertHandling: { labels: ["Allow"] }` to grant instead of dismiss.
+dialog) silently blocks a run. With **Dismiss alerts** enabled (the default), run
+[`permission.yaml`](scenarios/permission.yaml). The Permissions tab raises the notification prompt.
+The reactive alert guard answers it with a SpringBoard accessibility query and a tap. No screenshot,
+no model round trip, no `ANTHROPIC_API_KEY`. The report's steps table then shows a
+**"system alert dismissed"** row carrying the button's label.
+
+The scenario declares which prompt to expect and what to answer on it. Writing
+`systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` grants it. Writing
+`choice: deny` refuses it instead. An alert no rule identifies is left alone. The blocked step's own
+failure reason names the buttons it offered.
 
 ### 5. Video and device logs
 

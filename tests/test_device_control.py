@@ -339,7 +339,7 @@ def test_clipboard_assertion_read_failure_fails_cleanly() -> None:
 def test_clipboard_expect_retry_rereads_after_on_blocked() -> None:
     # When on_blocked clears a block and the app then updates the pasteboard, the expect retry must
     # compare against the fresh clipboard, not the stale pre-block value.
-    from conftest import GUARD_LABEL, AlertingDriver, el
+    from conftest import AlertingDriver, el, guard_rule
 
     ctrl = _RecordingControl()
     ctrl.clipboard_value = "STALE"
@@ -359,7 +359,7 @@ def test_clipboard_expect_retry_rereads_after_on_blocked() -> None:
         ),
         scn,
         control=ctrl,
-        alert_guard=AlertGuardConfig(labels=[GUARD_LABEL]),
+        alert_guard=AlertGuardConfig(rules=[guard_rule()]),
     )
     assert result.ok  # first read STALE failed, the guard fired, re-read COUPON123 passed
 

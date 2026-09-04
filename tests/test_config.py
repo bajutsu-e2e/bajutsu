@@ -1106,12 +1106,13 @@ def test_target_system_alert_handling_bool_carries_off() -> None:
 def test_target_system_alert_handling_object_form() -> None:
     cfg = load_config(
         "targets:\n  s:\n    bundleId: com.x\n"
-        "    systemAlertHandling: { labels: [Allow], visionInstruction: tap Allow }\n"
+        "    systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }],"
+        " visionInstruction: tap Allow }\n"
     )
     eff = resolve(cfg, "s")
     policy = eff.run_defaults.system_alert_handling
     assert isinstance(policy, SystemAlertHandling)  # a mapping is always on
-    assert policy.labels == ["Allow"]
+    assert [(r.prompt, r.choice) for r in policy.rules] == [("notifications", "grant")]
     assert policy.vision_instruction == "tap Allow"
 
 

@@ -145,14 +145,16 @@ Preconditions ::= {
 }
 
 # ── SystemAlertHandling（リアクティブなシステムアラートガード; 既定 ON）─
-# XCUITest ではネイティブの SpringBoard 照会 + tap（モデルなし、BE-0316 を再利用。BE-0315）。
-# その経路が名指しできないアラートは、推測せずブロックされたステップの失敗理由に書き出す（BE-0402）。
-SystemAlertHandling ::= boolean                              # true=既定の方針で ON、false=OFF
-               | { rules?: [<SystemAlertRule>],             # 名指ししたプロンプトに choice で答える。ネイティブ経路
-                   labels?: [string],                       # 順序付きのボタンラベル。ネイティブ経路
+# XCUITest ではネイティブの SpringBoard 照会 + tap（モデルなし、BE-0316 を再利用。BE-0315）に加え、
+# その照会に映らないプロンプト向けのツリー内タップ。どの規則も同定しないアラートは、
+# 推測せずブロックされたステップの失敗理由に書き出す（BE-0402、BE-0406）。
+SystemAlertHandling ::= boolean                              # true=規則なしで ON、false=OFF
+               | { rules?: [<SystemAlertRule>],             # ガードの宣言のすべて（BE-0406）
                    visionInstruction?: string,              # 自由記述。どのコマンドにも届かない。run は拒否する
                    pollInterval?: number }                   # ネイティブのポーリング間隔・秒（既定 1）
-SystemAlertRule ::= { prompt: notifications|tracking|paste, choice: grant|deny }  # 1リストにつきプロンプトは一意
+SystemAlertRule ::= { prompt: notifications|tracking|paste|savePassword, choice: grant|deny }  # 1リストにつきプロンプトは一意
+                # savePassword はガード専用。iOS がプロセス内に出すため、ツリー内タップだけが答えられる。
+                # 後述の handleSystemAlert ステップはこれを拒否する（BE-0406）
 
 Permissions ::= map(PermissionService, PermissionAction)    # アプリの起動前に適用する
 PermissionService ::= "location" | "camera" | "microphone" | "contacts"
@@ -185,7 +187,7 @@ Action    ::=
   | { pinch:       { sel: <Selector>, scale: number } }    # scale > 0  （>1 拡大, <1 縮小）
   | { rotate:      { sel: <Selector>, radians: number } }  # >0 時計回り
   | { handleSystemAlert: { sel: <Selector>, timeout: number } }  # iOS SpringBoard の権限プロンプトを tap（iOS/XCUITest 専用）。sel は label/labelMatches/index のみ
-  | { handleSystemAlert: { prompt: notifications|tracking|paste, choice: grant|deny, timeout: number } }  # 同じステップ。label は run の locale から解決する（BE-0320）
+  | { handleSystemAlert: { prompt: notifications|tracking|paste, choice: grant|deny, timeout: number } }  # 同じステップ。label は run の locale から解決する（BE-0320）。savePassword はここでは名指しできない（BE-0406）
   | { wait:        <Wait> }
   | { assert:      list(<Assertion>) }
   | { relaunch:    { env?: map(string,string), args?: list(string) } }
@@ -385,15 +387,14 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 |---|---|
 | `Scenario.tags` / `expect` / `capturePolicy` / `mocks` / `interrupts` / `before` / `after` | `[]` |
 | `Scenario.preconditions` | `{}`（= `erase` は未設定 — target config が指定しない限りオフ、`reinstall: clean`） |
-| `Scenario.systemAlertHandling` | 未指定（アラートガード ON; プロンプトを dismiss） |
+| `Scenario.systemAlertHandling` | 未指定（アラートガード ON。ただし規則が無いので、自分からはどのプロンプトにも答えない） |
 | `Scenario.iosTipKitHandling` | 未指定（OFF — tip 自体が検証対象になる場合があるため。iOS のみ） |
 | `Scenario.permissions` | `{}`（起動前の権限状態を適用しない） |
 | `Preconditions.erase` | 未設定 — target config の `erase` を継承し、それもなければオフ（BE-0177） |
 | `Preconditions.reinstall` | `clean` |
 | `Preconditions.launchArgs` | `[]` |
 | `Preconditions.launchEnv` | `{}` |
-| `SystemAlertHandling.rules` | `[]`（名指しした規則なし。`labels`／組み込みの否定的ラベルがすべてのプロンプトに答える） |
-| `SystemAlertHandling.labels` | `[]`（どの層もボタンを名指ししない。組み込みの否定的ラベルが代わりに使われる） |
+| `SystemAlertHandling.rules` | `[]`（プロンプトの宣言が無いのでガードは何にも答えない。出会ったアラートはブロックされたステップの失敗理由に書き出される） |
 | `SystemAlertHandling.visionInstruction` | 未設定。ほかの値は使えません。`run` は拒否し（BE-0402）、`record` / `crawl` は自由記述を自身の `--alert-vision-instruction` フラグからのみ読みます |
 | `TypeText.submit` | `false` |
 | `Exists.negate` | `false` |

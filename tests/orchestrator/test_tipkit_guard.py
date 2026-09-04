@@ -13,7 +13,7 @@ rather than `ElementNotTappable`, and a plain `is_tappable` occlusion model woul
 from __future__ import annotations
 
 from _orch import FakeClock, _scenario, _tap_ids
-from conftest import AlertingDriver, el
+from conftest import AlertingDriver, el, guard_rule
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
@@ -152,7 +152,7 @@ def test_a_tip_and_a_system_alert_are_both_recovered_in_one_step() -> None:
             {"name": "e", "iosTipKitHandling": True, "steps": [{"tap": {"id": "stable.refresh"}}]}
         ),
         clock=FakeClock(),
-        alert_guard=AlertGuardConfig(labels=["Allow"]),
+        alert_guard=AlertGuardConfig(rules=[guard_rule("Allow")]),
     )
     assert result.ok, result.failure
     assert driver.dismissals == 1, (

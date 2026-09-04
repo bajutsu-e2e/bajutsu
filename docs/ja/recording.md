@@ -328,12 +328,12 @@ class SystemAlertGuard:
   （[BE-0315](../../roadmaps/BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)）
   を構築し `on_blocked` として渡します。`HANDLE_SYSTEM_ALERT` を宣言するバックエンド（XCUITest）では、
   決定的なネイティブ経路を優先します。[`handleSystemAlert`](scenarios.md#handlesystemalert決定的なシステムアラートステップ)
-  （BE-0316）と同じ SpringBoard 照会を読み、ポリシーが名指しした最初のボタンを `resolve_unique` 経由でラベルで
+  （BE-0316）と同じ SpringBoard 照会を読み、シナリオの規則が名指ししたボタンを `resolve_unique` 経由でラベルで
   タップし、モデル呼び出しは不要です。決定的な経路がどれも対処できない場合、ガードは何もしません
   （[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。
-  能力を持たないバックエンド（adb、Playwright）、どのポリシーラベルも名指ししないアラート、照会が列挙できず
-  シナリオ自身の `labels` もそのボタンを名指ししていない画面がこれにあたります（`labels` が名指しする
-  ボタンは、ツリー内のタップが片付けます）。見たものは失敗に乗ります。ガード対象の `wait` は必ず注記を
+  能力を持たないバックエンド（adb、Playwright）、どの規則も同定しないアラート、照会が列挙できず、しかも
+  どの規則も同定しない画面がこれにあたります（規則が同定するものは、ツリー内のタップが
+  片付けます）。見たものは失敗に乗ります。ガード対象の `wait` は必ず注記を
   運び、wait の外のステップは、ネイティブ照会がアラートを列挙できたときだけ運びます。ネイティブ照会が
   なければ名指しする材料がないため、そのステップは従来どおり失敗します。
   ステップ失敗時にはガードがプロンプトを片付け、**そのステップを 1 回だけ再試行**します
@@ -341,11 +341,12 @@ class SystemAlertGuard:
   （`for`/`gone`/`settled`/`screenChanged`）では、ネイティブ経路はさらに独自の間隔（既定 1 秒。wait 自体の
   条件ポーリングとは切り離しています）でポーリングされるため、wait 自体のタイムアウトを待たず、末尾の
   再試行より前に回復できます（BE-0269）。シナリオ側では `systemAlertHandling: false` で無効化、
-  `{ labels: ["Allow"] }` でネイティブ経路が決定的に解決する候補ラベルを指定できます
-  （[BE-0401](../../roadmaps/BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md)）。
+  `{ rules: [{ prompt: notifications, choice: grant }] }` でガードが答えるプロンプトとその選択を
+  指定できます。`rules` がガードの宣言のすべてです
+  （[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。
   `{ visionInstruction: … }` は `run` ではどの経路にも届かないため、どのシナリオも実行する前に拒否されます。
-  `--system-alert-handling`/`--no-system-alert-handling` は全シナリオを上書きし、`--alert-labels` と
-  `--alert-poll-interval` はその 2 つのキーをその 1 回の run に与えます。
+  `--system-alert-handling`/`--no-system-alert-handling` は全シナリオを上書きし、
+  `--alert-poll-interval` はそのキーをその 1 回の run に与えます。`rules` に専用のフラグはありません。
 - `record --system-alert-handling`: 既定で ON です（オーサリング時はまだシナリオが無いため）。割り込むプロンプトを片付け、
   エージェントに常にクリーンな画面を見せます。**dismissal は環境操作であって記録ステップではありません**
   （リプレイ側は各シナリオの `systemAlertHandling` で対処します）。
