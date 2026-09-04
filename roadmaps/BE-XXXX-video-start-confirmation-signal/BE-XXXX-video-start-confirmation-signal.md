@@ -83,8 +83,8 @@ minutes it runs and a full pipe buffer would block the child mid-recording; the 
 reads so a match straddling two reads is still seen. It always reads once before consulting the
 deadline. `start_video` waits on `Recording started` instead of polling the file, and
 `_await_video_file_growing` and `_file_size` are deleted. The tri-state `Interval.start_confirmed`,
-the pre-scenario `on_video_start_stall` report, and the BE-0354 replacement-device rung that reads it
-all keep their present semantics and timing — the only change is that the signal is now true.
+the pre-scenario `on_video_start_stall` report, and the BE-0354 replacement-device rung that reads
+it — all keep their present semantics and timing; the only change is that the signal is now true.
 
 **Unit 3 — Retire the lane override and correct the prose it rested on.**
 [`ios-e2e.yml`](../../.github/workflows/ios-e2e.yml) drops `BAJUTSU_VIDEO_START_TIMEOUT: "20"`; a

@@ -284,7 +284,7 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   falls back to `scenario_start` — never a guessed number.
 
   Waiting on the recorder's own announcement rather than on its output file is load-bearing on iOS,
-  and was learned the hard way. `simctl io recordVideo` does not write progressively: the mp4 stays
+  a lesson learned the hard way. `simctl io recordVideo` does not write progressively: the mp4 stays
   at zero bytes for the whole recording and is written in one piece at finalize. An earlier
   confirmation polled that file for growth, so it could never succeed — it spent its entire ceiling
   on every scenario, green runs included, and the iOS lane had raised that ceiling to 20 seconds on
