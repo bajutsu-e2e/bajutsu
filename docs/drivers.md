@@ -199,7 +199,11 @@ abstraction resolves **id → frame center → coordinate tap**. Implementation:
   syntax cannot reproduce the SPEC id verbatim (Android Views: `android:id` allows neither `.` nor
   `-`, so `stable.refresh` surfaces as `stable_refresh`), the scenario carries **both** id forms in
   one selector — `id: [stable.refresh, stable_refresh]` — and the match is an OR over the candidates
-  (BE-0221); see [scenarios](scenarios.md#selectors-addressing-an-element).
+  (BE-0221); see [scenarios](scenarios.md#selectors-addressing-an-element). The app-side plumbing
+  behind both forms — setting `testTagsAsResourceId` inside every modal window, declaring the
+  `android:id` a Views lookup needs — ships as a standalone library,
+  [`IdentifierTool`](../IdentifierTool/README.md) (BE-0405), which the showcase itself consumes and
+  which carries no dependency on `BajutsuAndroid`.
 - `tap(sel)`: `_resolve` confirms uniqueness (**retries not-found, fails ambiguity fast** — a
   mid-transition dump is a transient null-root that is retried, and a 2+ match fails immediately).
   `tap`, `long_press`, and `double_tap` then send the resolved element's identity — its raw

@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0405](BE-0405-android-identifiertool-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0405") |
 | トピック | Platform support |
 | 関連 | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md), [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee-ja.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md), [BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture-ja.md), [BE-0355](../BE-0355-native-z-position/BE-0355-native-z-position-ja.md) |
@@ -130,7 +130,33 @@ Viewsを使う消費側は、自前の`ids.xml`を書き続けることになり
 
 ## 進捗
 
-- [ ] 未着手。
+- [x] 単位1 — `IdentifierTool/` を新しい Gradle ライブラリモジュールとして作成しました。`BajutsuAndroid`
+      の `build.gradle.kts` の形に倣い、それへの依存は持ちません
+- [x] 単位2 — `BajutsuAccessibility.kt` を追加しました。`View.accessibilityId(name)` と
+      `View.accessibilityStateValue(value)` を、Views の showcase から無条件（ゲートなし）で移植しました
+- [x] 単位3 — `BajutsuAccessibilityCompose.kt` を追加しました。`Modifier.accessibilityId(id)`、
+      `Modifier.accessibilityStateValue(value)`、`Modifier.enableAccessibilityIds()` を、Compose の
+      showcase から無条件で移植しました
+- [x] 単位4 — `demos/showcase/android/settings.gradle.kts` を更新し、IdentifierTool をパスで取り込みました
+- [x] 単位5 — showcase の `Accessibility.kt` は、`BuildConfig.ACCESSIBLE` のゲートを保ったまま
+      IdentifierTool へ委譲します。`aid`、`stateValue`、`selectedState`、`enableTestTagsAsResourceId`
+      の名前は維持しました。既存の122箇所の呼び出しはどれも変わりません
+- [x] 単位6 — `IdentifierTool/README.md` と `README.ja.md` を書きました
+- [x] 単位7 — `docs/architecture.md` と `docs/drivers.md`（および `docs/ja/` の対訳）に、IdentifierTool
+      への相互参照を追加しました
+- [x] 単位8 — showcase の両モジュール・両フレーバーをビルドし、移行後の showcase に対して
+      `android-e2e.yml` のエミュレータレーンを走らせて変更を検証しました
+
+ログ：
+
+- 2026-09-04 — 8つの単位をまとめて着地させました。作業分解が暗に含んでいたものの列挙していなかった帰結が
+  1つあります。`scripts/e2e_changes.py` の android レーンのパスフィルタは `bajutsu/` と、すでに列挙済みの
+  `BajutsuAndroid/` / `BajutsuAndroidUIAutomatorServer/` しか対象にしていませんでした。そのため、新しい
+  トップレベルディレクトリ `IdentifierTool/` だけを触った変更は、どの E2E レーンも起動しないままでした。
+  このフィルタに `IdentifierTool/` を追加し（`tests/test_e2e_changes.py` に対応するアサーションも追加）、
+  `scripts/sync_roadmap_topic_labels.py` のパス対トピック規則にも追加しました。これにより、
+  `BajutsuKit/` を触る PR がすでに得ている `topic:platform` ラベルを、IdentifierTool を触る PR も得られる
+  ようになりました。
 
 ## 参考
 

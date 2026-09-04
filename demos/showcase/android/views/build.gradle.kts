@@ -53,6 +53,7 @@ android {
 
 dependencies {
     implementation(project(":bajutsu-android")) // clipboard + network test support (BE-0233 / BE-0283)
+    implementation(project(":identifier-tool")) // resource-id / content-desc tagging (BE-0405)
     implementation("com.squareup.okhttp3:okhttp:4.12.0") // Net.kt uses OkHttp so BajutsuNet can observe it
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")

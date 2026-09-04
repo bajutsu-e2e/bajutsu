@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0405](BE-0405-android-identifiertool.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0405") |
 | Topic | Platform support |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), [BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture.md), [BE-0355](../BE-0355-native-z-position/BE-0355-native-z-position.md) |
@@ -210,7 +210,29 @@ alone.
 
 ## Progress
 
-- [ ] Not started.
+- [x] Unit 1 — `IdentifierTool/` created as a new Gradle library module, mirroring `BajutsuAndroid`'s
+      `build.gradle.kts` shape with no dependency on it
+- [x] Unit 2 — `BajutsuAccessibility.kt` with `View.accessibilityId(name)` and
+      `View.accessibilityStateValue(value)`, ported from the Views showcase, ungated
+- [x] Unit 3 — `BajutsuAccessibilityCompose.kt` with `Modifier.accessibilityId(id)`,
+      `Modifier.accessibilityStateValue(value)`, and `Modifier.enableAccessibilityIds()`, ported from
+      the Compose showcase, ungated
+- [x] Unit 4 — `demos/showcase/android/settings.gradle.kts` updated to include IdentifierTool by path
+- [x] Unit 5 — the showcase's `Accessibility.kt` files delegate to IdentifierTool, gated as before.
+      The names stay the same, so the 122 existing call sites don't change
+- [x] Unit 6 — `IdentifierTool/README.md` and `README.ja.md` written
+- [x] Unit 7 — `docs/architecture.md` and `docs/drivers.md` gained a cross-reference to
+      IdentifierTool. So did their `docs/ja/` mirrors
+- [x] Unit 8 — the change verified by building both flavors of both showcase modules and running the
+      `android-e2e.yml` emulator lane against the migrated showcase
+
+Log:
+
+- 2026-09-04 — All eight units landed together. `scripts/e2e_changes.py`'s android-lane filter did
+  not cover `IdentifierTool/`. A change confined to it would have fired no E2E lane at all. The work
+  breakdown implied this consequence without naming it. Added a filter entry for it, with a matching
+  `tests/test_e2e_changes.py` assertion. Also added a `scripts/sync_roadmap_topic_labels.py` rule: a
+  PR touching `IdentifierTool/` now earns `topic:platform`, matching `BajutsuKit/`.
 
 ## References
 

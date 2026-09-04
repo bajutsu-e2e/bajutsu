@@ -329,6 +329,7 @@ _LANE_PATHS: dict[str, str] = {
         r"|demos/showcase/showcase\.config\.yaml$"
         r"|BajutsuAndroid/"  # the app-side clipboard SDK the showcase APKs build in (BE-0233)
         r"|BajutsuAndroidUIAutomatorServer/"  # the resident server this lane builds + exercises (BE-0245)
+        r"|IdentifierTool/"  # the app-side identifier-tagging library the showcase APKs build in (BE-0405)
         r"|tests/test_driver_conformance_ondevice_android\.py$"
         r"|tests/test_fault_injection_ondevice_android\.py$"
         # The pool-isolation assertion this lane's two-device job gates on — see the iOS fragment.

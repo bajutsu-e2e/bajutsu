@@ -93,7 +93,8 @@
 # running scripts/e2e_changes.py with E2E_LANE=android (the positive-list of adb-relevant paths — the
 # adb driver + resident channel, the run pipeline and scenario loader, the `bajutsu run` and (for the
 # codegen lane, BE-0294) `bajutsu codegen` CLI entries,
-# the Android showcase and shared scenarios, the app-side SDKs BajutsuAndroid/BajutsuAndroidUIAutomatorServer,
+# the Android showcase and shared scenarios, the app-side SDKs
+# BajutsuAndroid/BajutsuAndroidUIAutomatorServer/IdentifierTool,
 # the config, and this workflow — unit-tested in tests/test_e2e_changes.py). A new adb-relevant path
 # defaults to NOT triggering — add it to that module's `android` fragment.
 name: Android E2E (emulator)

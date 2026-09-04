@@ -329,6 +329,7 @@ def test_ios_lane_surface() -> None:
     assert is_relevant(["bajutsu/common/drivers/coordinate_tree.py"]) is False
     assert is_relevant(["bajutsu/common/drivers/playwright.py"]) is False
     assert is_relevant(["BajutsuAndroid/src/Clipboard.kt"]) is False
+    assert is_relevant(["IdentifierTool/src/Accessibility.kt"]) is False
     assert is_relevant([".github/workflows/web-e2e.yml"]) is False
 
 
@@ -340,6 +341,10 @@ def test_android_lane_surface() -> None:
     assert is_relevant(["demos/showcase/android/Makefile"], "android") is True
     assert is_relevant(["BajutsuAndroid/src/Clipboard.kt"], "android") is True
     assert is_relevant(["BajutsuAndroidUIAutomatorServer/src/Server.kt"], "android") is True
+    # The identifier-tagging library (BE-0405): a standalone top-level Gradle module the shared
+    # `bajutsu/` sweep never reaches, so without its own fragment entry a change confined to it would
+    # fire no lane at all — the one shape that under-fires rather than over-fires.
+    assert is_relevant(["IdentifierTool/src/Accessibility.kt"], "android") is True
     assert is_relevant(["tests/test_driver_conformance_ondevice_android.py"], "android") is True
     assert is_relevant([".github/workflows/android-e2e.yml"], "android") is True
     # The composite action every job in the workflow calls for its Gradle/JDK/cache setup — a change
@@ -388,6 +393,7 @@ def test_web_lane_surface() -> None:
     # workflow — the regression this fixes: a bare `bajutsu/common/drivers/` sweep previously fired the
     # Playwright jobs on an XCUITest-only or adb-only change that `playwright.py` never imports.
     assert is_relevant(["BajutsuAndroid/src/Clipboard.kt"], "web") is False
+    assert is_relevant(["IdentifierTool/src/Accessibility.kt"], "web") is False
     assert is_relevant(["demos/showcase/ios/swiftui/App.swift"], "web") is False
     assert is_relevant([".github/workflows/android-e2e.yml"], "web") is False
     assert is_relevant([".github/actions/setup-android-toolchain/action.yml"], "web") is False
