@@ -373,8 +373,13 @@ class Repository(Protocol):
         `complete_job`)."""
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
-        """Return the job's status, result, org_id, and current lease holder (``leased_by``), or None
-        if it does not exist."""
+        """Return the job's status, result, org_id, current lease holder (``leased_by``), and
+        ``spec``, or None if it does not exist.
+
+        The spec rides along because a worker's result carries no `actor` / `label` of its own:
+        `worker_result` records the finished run under the identity and run-history partition the
+        control plane resolved at enqueue. The row is loaded whole either way, so it costs a dict
+        copy — unlike a per-id `get_job` in a loop, which `finished_job_ids` exists to avoid."""
 
     def finished_job_ids(self, job_ids: Iterable[str]) -> set[str]:
         """Which of *job_ids* have reached a terminal state (``done`` / ``failed``).
@@ -1161,6 +1166,7 @@ class SqlRepository:
                 "result": dict(row.result),
                 "org_id": row.org_id,
                 "leased_by": row.leased_by,
+                "spec": dict(row.spec),
             }
 
     def finished_job_ids(self, job_ids: Iterable[str]) -> set[str]:

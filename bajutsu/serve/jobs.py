@@ -431,20 +431,42 @@ def _record_provenance(state: ServeState, job: Job) -> None:
 
 
 def _persist_run(state: ServeState, job: Job) -> None:
-    """Record a finished `run` into the system of record so the history list survives independently
-    of the artifact store and is org-scoped (BE-0015), stamped with the run-history label the job
-    was enqueued under (BE-0404 unit 2). A no-op only for a job that produced no run id
-    (record/crawl, or a build/boot failure), and for a deployment with no repository (local /
-    stdlib serve keeps no history table). With one, the run is recorded under its actor's org (the
-    single `default` org for a token/CI run or an unknown user) so it shows in that org's history.
+    """Record the run this job produced into the system of record (see `persist_run`).
 
-    Persistence must never break job finalization: this runs inside `run_job`'s `finally`, just
-    before the live-log stream is closed, so any error (a missing org/user row, an FK violation on
-    Postgres, a flaky DB) is caught and logged rather than stranding the stream."""
+    A no-op for a job that produced no run id (record/crawl, or a build/boot failure)."""
     if job.run_id is None:
         return
-    run_id = job.run_id
-    org = job.org
+    persist_run(
+        state,
+        run_id=job.run_id,
+        org=job.org,
+        actor=job.actor,
+        label=job.label,
+        ok=job.exit_code == 0 and not job.cancelled,
+    )
+
+
+def persist_run(
+    state: ServeState, *, run_id: str, org: str, actor: str | None, label: str | None, ok: bool
+) -> None:
+    """Record a finished `run` into the system of record so the history list survives independently
+    of the artifact store and is org-scoped (BE-0015), stamped with the run-history label the job
+    was enqueued under (BE-0404 unit 2). A no-op for a deployment with no repository (local /
+    stdlib serve keeps no history table). With one, the run is recorded under the job's org (the
+    single `default` org for a token/CI run or an unknown user) so it shows in that org's history.
+
+    Called from two places, because either side of a hosted deployment may be the one holding a
+    database: `run_job`'s `finally` for a run that executed in this process, and `worker_result` for
+    one a remote worker ran — a worker holds no database credentials in the documented deployment,
+    so the control plane is the only side that can record it. A worker that *does* have
+    `BAJUTSU_DATABASE_URL` writes the same row from the same job spec, and `record_run` is a
+    full-row upsert, so the second write is idempotent rather than a duplicate — the control plane's
+    lands last (the worker records inside `run_job`, before it posts the result), reading the
+    manifest from the org's object prefix rather than the worker's local disk.
+
+    Persistence must never break job finalization: on the local path this runs inside `run_job`'s
+    `finally`, just before the live-log stream is closed, so any error (a missing org/user row, an
+    FK violation on Postgres, a flaky DB) is caught and logged rather than stranding the stream."""
     if state.repository is None:
         return  # local / stdlib serve: no system of record to write into
     repo = state.repository
@@ -453,21 +475,20 @@ def _persist_run(state: ServeState, job: Job) -> None:
         # so the default serve path never pulls server.db in (the import guard stays green).
         from bajutsu.serve.server.db import RunRecord
 
-        ok = job.exit_code == 0 and not job.cancelled
         # The run's org was decided at job creation (and travels to a worker in the spec). Attribute
         # `created_by` only to a user that actually exists, so the foreign key can't fail (a token /
         # CI run has no actor; an OAuth run's user was upserted at login).
         repo.ensure_org(org, slug=org, name=org)
-        created_by = job.actor if job.actor and repo.user_org(job.actor) is not None else None
+        created_by = actor if actor and repo.user_org(actor) is not None else None
         # Read + parse the manifest once and feed both the summary and the provenance stamp: a hosted
         # `open_bytes` can be an object-storage round trip, so a second read per run would double the
         # cost `_run_summary` was written to avoid.
-        manifest = _read_manifest(state, run_id)
+        manifest = _read_manifest(state, run_id, org)
         scenario_hash, tool_version, git_revision = _run_provenance(manifest)
         # The enqueue-time label wins: it is the only source for a cloud-batch run, whose manifest
         # comes back from the device cloud without one. The manifest is the fallback for a job built
         # outside the enqueue path.
-        label = job.label or _run_str(manifest, "label")
+        label = label or _run_str(manifest, "label")
         target = _run_str(manifest, "target")
         repo.record_run(
             RunRecord(
@@ -503,12 +524,16 @@ def _run_str(manifest: dict[str, Any] | None, key: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def _read_manifest(state: ServeState, run_id: str) -> dict[str, Any] | None:
+def _read_manifest(state: ServeState, run_id: str, org: str) -> dict[str, Any] | None:
     """Parse a run's `manifest.json` once, or None if it's missing, unreadable, or not a JSON object
-    (a corrupted/partial write left a bare list/string/`null`). `_persist_run` reads it a single time
+    (a corrupted/partial write left a bare list/string/`null`). `persist_run` reads it a single time
     and hands the parsed value to both the summary and the provenance stamp, since a hosted
-    `open_bytes` can be a real object-storage round trip."""
-    raw = state.artifacts.open_bytes(f"{run_id}/manifest.json")
+    `open_bytes` can be a real object-storage round trip.
+
+    Read through the *org*'s artifact store, not the bare default: on the control plane recording a
+    worker's run, the manifest lives under that org's prefix, where the worker uploaded it. Local
+    serve has one tenant, so `for_org` hands back the same store either way."""
+    raw = state.for_org(org).artifacts.open_bytes(f"{run_id}/manifest.json")
     if raw is None:
         return None
     try:
