@@ -106,7 +106,7 @@ flowchart TB
 | [`bajutsu/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu) | Python のロジックコア。324 ファイル、およそ 78,000 行。このページが説明する対象です。 |
 | [`tests/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/tests) | 決定的なテストスイート。381 ファイル、およそ 125,000 行。対象のコードより大きい規模です。 |
 | [`BajutsuKit/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/BajutsuKit) | Swift のテスト支援パッケージ。常駐 XCUITest ランナー、アプリ内コレクタ、WebView と z 順のチャネルが入ります。 |
-| `BajutsuAndroid/` · `BajutsuAndroidUIAutomatorServer/` | Kotlin 側の対応物。アプリ内フックと常駐 UI Automator サーバです。 |
+| `BajutsuAndroid/` · `BajutsuAndroidUIAutomatorServer/` · `IdentifierTool/` | Kotlin 側の対応物。アプリ内フック、常駐 UI Automator サーバ、識別子付与ライブラリです。 |
 | [`demos/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/demos) | 実行できる例。プラットフォームをまたいで 5 回実装した showcase のフィクスチャを含みます。 |
 | [`scenarios/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/scenarios) | リポジトリ自身のフィクスチャに対して実行するシナリオ YAML です。 |
 | [`docs/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/docs) · `docs/ja/` | このドキュメント。英語と、その日本語ミラーです。 |

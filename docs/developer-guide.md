@@ -106,7 +106,7 @@ Three properties of the picture explain most of the code's shape.
 | [`bajutsu/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/bajutsu) | The Python logic core: 324 files, roughly 78,000 lines. Everything the rest of this page describes. |
 | [`tests/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/tests) | The deterministic test suite: 381 files, roughly 125,000 lines. Larger than the code it covers. |
 | [`BajutsuKit/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/BajutsuKit) | The Swift test-support package: the resident XCUITest runner, the in-app collector, the WebView and z-order channels. |
-| `BajutsuAndroid/` · `BajutsuAndroidUIAutomatorServer/` | The Kotlin counterparts: the in-app hooks and the resident UI Automator server. |
+| `BajutsuAndroid/` · `BajutsuAndroidUIAutomatorServer/` · `IdentifierTool/` | The Kotlin counterparts: the in-app hooks, the resident UI Automator server, and the identifier-tagging library. |
 | [`demos/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/demos) | Runnable examples, including the showcase fixture built five times across platforms. |
 | [`scenarios/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/scenarios) | Scenario YAML files the repository runs against its own fixtures. |
 | [`docs/`](https://github.com/bajutsu-e2e/bajutsu/tree/main/docs) · `docs/ja/` | This documentation, English and its Japanese mirror. |

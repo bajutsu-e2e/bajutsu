@@ -501,7 +501,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   either as an OR — an explicit scenario-side convention, not a driver-side `.`↔`_` rewrite (BE-0221).
   The identifier-tagging plumbing behind both id forms — Compose's `testTagsAsResourceId`, the Views
   `android:id` lookup — ships as its own library, [`IdentifierTool`](../IdentifierTool/README.md)
-  (BE-0405), with no dependency on `BajutsuAndroid`
+  (BE-0405), with no dependency on `BajutsuAndroid`.
 - **Flutter apps, driven by the existing XCUITest / adb backends unchanged** (BE-0008): Flutter adds
   no new backend — `Semantics(identifier: …)` (Flutter 3.19+) surfaces into the same OS accessibility
   tree XCUITest and adb already read, so the platform-neutral `id` selector resolves and actuates

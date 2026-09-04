@@ -14,9 +14,9 @@ import dev.bajutsu.identifier.accessibilityStateValue
 
 /**
  * Assign the view its stable id from res/values/ids.xml in the a11y build; no-op otherwise. `name`
- * is the SPEC §5 id with '.'/'-' mapped to '_' (an android:id name allows neither); an undeclared
- * name resolves to 0 and is skipped, which is how data-derived rows beyond the pre-declared fixture
- * range stay id-less.
+ * is the SPEC §5 id with '.'/'-' mapped to '_' (an android:id name allows neither). See
+ * IdentifierTool's `accessibilityId` for how an undeclared name behaves — that is how data-derived
+ * rows beyond the pre-declared fixture range stay id-less.
  */
 fun <T : View> T.aid(name: String): T {
     if (BuildConfig.ACCESSIBLE) {

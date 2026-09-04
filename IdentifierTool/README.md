@@ -7,10 +7,10 @@ bajutsu a stable `resource-id` or `content-desc`, covering the plumbing Android 
 Compose helper (`testTag` + `testTagsAsResourceId`) and a Views helper
 (`resources.getIdentifier` against a declared `android:id`).
 
-It has **no dependency on [`BajutsuAndroid`](../BajutsuAndroid)** (BE-0233's clipboard / network-
-capture library), and `BajutsuAndroid` has none on it. An app wanting identifiers alone adds one
-dependency; that dependency never pulls in `BajutsuAndroid`'s clipboard receiver or network
-interceptor, and the two never share a release.
+It has **no dependency on [`BajutsuAndroid`](../BajutsuAndroid)** (BE-0233's clipboard /
+network-capture library), and `BajutsuAndroid` has none on it. An app wanting identifiers alone
+adds one dependency; that dependency never pulls in `BajutsuAndroid`'s clipboard receiver or
+network interceptor, and the two never share a release.
 
 ## Why in-app support
 
@@ -38,7 +38,9 @@ project(":identifier-tool").projectDir = file("../../../IdentifierTool")
 
 then depend on it: `implementation(project(":identifier-tool"))`.
 
-Call the helpers that match your UI toolkit:
+Call the helpers that match your UI toolkit. The Views half lives in `dev.bajutsu.identifier`,
+Compose in `dev.bajutsu.identifier.compose`. A Views-only consumer then never imports a symbol it
+has no Compose classpath to resolve:
 
 ```kotlin
 // Views
@@ -51,9 +53,9 @@ view.accessibilityStateValue("loading")
 
 ```kotlin
 // Compose
-import dev.bajutsu.identifier.accessibilityId
-import dev.bajutsu.identifier.accessibilityStateValue
-import dev.bajutsu.identifier.enableAccessibilityIds
+import dev.bajutsu.identifier.compose.accessibilityId
+import dev.bajutsu.identifier.compose.accessibilityStateValue
+import dev.bajutsu.identifier.compose.enableAccessibilityIds
 
 Modifier
     .enableAccessibilityIds() // at the content root, and again inside every modal window

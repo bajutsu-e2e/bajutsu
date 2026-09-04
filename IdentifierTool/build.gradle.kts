@@ -14,6 +14,10 @@ android {
 
     defaultConfig {
         minSdk = 26
+        // A Views-only consumer never puts androidx.compose.ui on its classpath (the dependency
+        // below is compileOnly), so its R8 pass would otherwise fail on the Compose helpers'
+        // "missing classes" — this keep file tells R8 those references are expected to be absent.
+        consumerProguardFiles("consumer-rules.pro")
     }
 
     compileOptions {
@@ -28,6 +32,9 @@ android {
 dependencies {
     // The Compose helpers are plain extension functions, not @Composable ones, so this needs no
     // Compose compiler plugin. compileOnly keeps a Views-only consumer's build free of Compose
-    // entirely, and lets a Compose consumer bring its own version via its own BOM.
-    compileOnly("androidx.compose.ui:ui:1.7.3")
+    // entirely, and lets a Compose consumer bring its own version via its own BOM. Pinned to what
+    // the showcase's own compose-bom:2024.09.02 resolves androidx.compose.ui:ui to — compiling
+    // against a newer Compose than a real consumer's runtime classpath would risk a
+    // NoSuchMethodError the fast gate cannot catch (there is no Kotlin compile step in it).
+    compileOnly("androidx.compose.ui:ui:1.7.2")
 }

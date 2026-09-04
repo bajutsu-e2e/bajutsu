@@ -3,9 +3,9 @@ package com.bajutsu.showcase.compose
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import dev.bajutsu.identifier.accessibilityId
-import dev.bajutsu.identifier.accessibilityStateValue
-import dev.bajutsu.identifier.enableAccessibilityIds
+import dev.bajutsu.identifier.compose.accessibilityId
+import dev.bajutsu.identifier.compose.accessibilityStateValue
+import dev.bajutsu.identifier.compose.enableAccessibilityIds
 
 // SPEC §8: the single place identifiers (and state-mirroring values) enter the tree. Every helper is
 // gated on BuildConfig.ACCESSIBLE, so the `noax` flavor compiles to a tree with no ids and no mirrored
@@ -14,20 +14,18 @@ import dev.bajutsu.identifier.enableAccessibilityIds
 // delegates to IdentifierTool (BE-0405), which ships no gate of its own.
 
 /**
- * Attach a stable testTag in the a11y build; no-op otherwise. The testTag surfaces as UI Automator's
- * `resource-id` because the content root sets `testTagsAsResourceId = true` (BE-0007's Compose id
- * convention). testTag accepts any string, so the SPEC §5 dotted ids (e.g. `stable.refresh`) reproduce
- * verbatim — the shared `scenarios/` set drives this app unchanged.
+ * Attach a stable testTag in the a11y build; no-op otherwise. See IdentifierTool's
+ * `accessibilityId` for how this reaches UI Automator's `resource-id`; the SPEC §5 dotted ids
+ * (e.g. `stable.refresh`) reproduce verbatim, so the shared `scenarios/` set drives this app
+ * unchanged.
  */
 fun Modifier.aid(id: String): Modifier =
     if (BuildConfig.ACCESSIBLE) this.accessibilityId(id) else this
 
 /**
- * Mirror state into `contentDescription` in the a11y build so assertions can read it; no-op otherwise.
- * `contentDescription` is chosen over `stateDescription` because a `uiautomator dump` exposes the former
- * as `content-desc` but has no attribute for the latter — the Views twin mirrors to `content-desc` for
- * the same reason (SPEC §2.1). The exact BE-0007 selector field this maps to (`label` vs `value`) is a
- * driver decision; what matters here is that the mirrored value is present in the dump at all.
+ * Mirror state into `contentDescription` in the a11y build so assertions can read it; no-op
+ * otherwise. See IdentifierTool's `accessibilityStateValue` for why `contentDescription` — the
+ * Views twin mirrors to `content-desc` for the same reason (SPEC §2.1).
  */
 fun Modifier.stateValue(value: String): Modifier =
     if (BuildConfig.ACCESSIBLE) this.accessibilityStateValue(value) else this
@@ -40,10 +38,9 @@ fun Modifier.selectedState(isSelected: Boolean): Modifier =
     if (isSelected) this.semantics { selected = true } else this
 
 /**
- * Enable `testTagsAsResourceId` so every `aid(...)` testTag surfaces as a UI Automator `resource-id`
- * (BE-0007's Compose id convention), a11y flavor only. Applied at the content root AND inside each
- * modal window (ModalBottomSheet, Dialog): those host their own semantics tree, so the root flag does
- * not reach them and their testTags would otherwise dump with an empty resource-id.
+ * Enable `testTagsAsResourceId` so every `aid(...)` testTag surfaces as a UI Automator `resource-id`,
+ * a11y flavor only. See IdentifierTool's `enableAccessibilityIds` for why this must also be applied
+ * inside each modal window (ModalBottomSheet, Dialog).
  */
 fun Modifier.enableTestTagsAsResourceId(): Modifier =
     if (BuildConfig.ACCESSIBLE) this.enableAccessibilityIds() else this

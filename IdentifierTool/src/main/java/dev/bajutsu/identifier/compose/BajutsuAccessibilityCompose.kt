@@ -1,4 +1,4 @@
-package dev.bajutsu.identifier
+package dev.bajutsu.identifier.compose
 
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -9,8 +9,10 @@ import androidx.compose.ui.semantics.testTagsAsResourceId
 
 // The Compose half of IdentifierTool (BE-0405), ported from the showcase's own `aid` / `stateValue` /
 // `enableTestTagsAsResourceId` with the BuildConfig.ACCESSIBLE gate dropped — see
-// BajutsuAccessibility.kt and IdentifierTool/README.md for why. Plain extension functions, not
-// @Composable ones, so this file needs no Compose compiler plugin.
+// ../BajutsuAccessibility.kt and IdentifierTool/README.md for why. Plain extension functions, not
+// @Composable ones, so this file needs no Compose compiler plugin. Its own subpackage, separate from
+// the Views half: a Views-only consumer that imports from `dev.bajutsu.identifier` never resolves a
+// `Modifier` overload it has no Compose classpath for.
 
 /**
  * Attach a stable testTag, surfaced by UI Automator as `resource-id` wherever the enclosing tree has

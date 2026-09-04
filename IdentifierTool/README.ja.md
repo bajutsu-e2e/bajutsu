@@ -2,10 +2,10 @@
 
 [English](README.md) · 日本語
 
-Android 上の [bajutsu](../) 向けの、アプリ内識別子付与ライブラリです。安定した `resource-id` や
-`content-desc` を bajutsu に渡すための、単独の Android ライブラリです。Android が隠している2つの
-仕込みをまとめます。Compose 向けの仕込みは `testTag` と `testTagsAsResourceId` です。Views 向けの
-仕込みは、宣言済みの `android:id` に対する `resources.getIdentifier` です。
+Android 上の [bajutsu](../) 向けに、安定した `resource-id` や `content-desc` を渡すための、
+アプリ内識別子付与ライブラリです。Android が隠している2つの仕込みをまとめます。Compose 向けの
+仕込みは `testTag` と `testTagsAsResourceId` です。Views 向けの仕込みは、宣言済みの `android:id`
+に対する `resources.getIdentifier` です。
 
 [`BajutsuAndroid`](../BajutsuAndroid)（BE-0233 のクリップボード／ネットワーク捕捉ライブラリ）への
 **依存を持ちません**。`BajutsuAndroid` 側にもこちらへの依存はありません。識別子だけを求めるアプリは
@@ -40,7 +40,9 @@ project(":identifier-tool").projectDir = file("../../../IdentifierTool")
 
 そのうえで依存を宣言します。`implementation(project(":identifier-tool"))`。
 
-UI ツールキットに合わせて、対応するヘルパを呼びます。
+UI ツールキットに合わせて、対応するヘルパを呼びます。Views 側は `dev.bajutsu.identifier`、
+Compose 側は `dev.bajutsu.identifier.compose` と、パッケージを分けています。Views のみを使う
+アプリが、Compose の classpath を持たないシンボルを import してしまわないためです。
 
 ```kotlin
 // Views
@@ -53,9 +55,9 @@ view.accessibilityStateValue("loading")
 
 ```kotlin
 // Compose
-import dev.bajutsu.identifier.accessibilityId
-import dev.bajutsu.identifier.accessibilityStateValue
-import dev.bajutsu.identifier.enableAccessibilityIds
+import dev.bajutsu.identifier.compose.accessibilityId
+import dev.bajutsu.identifier.compose.accessibilityStateValue
+import dev.bajutsu.identifier.compose.enableAccessibilityIds
 
 Modifier
     .enableAccessibilityIds() // コンテンツのルートと、モーダルウィンドウの内側それぞれで
@@ -83,7 +85,7 @@ UI Automator の `resource-id` フィールドは、リソースのエントリ�
 ## 提供しないもの
 
 IdentifierTool はクリップボードやネットワーク捕捉のコードを一切持たず、`View.accessibilityId` は
-z 順も報告しません。両方欲しいアプリは、[`BajutsuAndroid`](../BajutsuAndroid) を別の依存として
+z 順も報告しません。それらも必要なアプリは、[`BajutsuAndroid`](../BajutsuAndroid) を別の依存として
 追加し、呼び出し自体は自分で組み合わせます。showcase 自身の
 [`Accessibility.kt`](../demos/showcase/android/views/src/main/java/com/bajutsu/showcase/views/Accessibility.kt)
 がその形を示しています。
