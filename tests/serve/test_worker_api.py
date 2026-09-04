@@ -19,9 +19,12 @@ from sqlalchemy import Engine, create_engine
 
 from bajutsu import serve as srv
 from bajutsu.serve import operations as ops
+from bajutsu.serve.server.artifacts import ObjectStorageArtifactStore
 from bajutsu.serve.server.db import SqlRepository
 from bajutsu.serve.server.db_executor import DbQueueExecutor
 from bajutsu.serve.server.models import Base
+from bajutsu.serve.server.object_store import artifact_prefix, org_prefix
+from bajutsu.serve.state import StoreBundle
 
 
 def _state_with_db(
@@ -137,6 +140,125 @@ def test_worker_result_marks_job_done(serve_engine: Callable[..., Engine], tmp_p
     assert info is not None
     assert info["status"] == "done"
     assert info["result"] == result
+
+
+def test_worker_result_records_the_run_in_the_orgs_history(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    """A run a remote worker executed shows in the org's History, under the actor and label the
+    control plane resolved at enqueue. The documented worker holds no database, so the control plane
+    is the only side that can record it — without this the History list stayed empty."""
+    state, repo = _state_with_db(serve_engine, tmp_path)
+    repo.enqueue_job(
+        "j1", org_id="default", spec={"cmd": [], "actor": "octocat", "label": "showcase"}
+    )
+    repo.lease_job("w1")
+    result = {"ok": True, "runId": "20260904-051448"}
+    _payload, code = ops.worker_result(state, {"job_id": "j1", "worker_id": "w1", "result": result})
+    assert code == 200
+    runs, runs_code = ops.runs_payload(state)
+    assert runs_code == 200
+    assert [r["id"] for r in runs] == ["20260904-051448"]
+    assert [(r.id, r.label, r.ok) for r in repo.list_runs(org_id="default")] == [
+        ("20260904-051448", "showcase", True)
+    ]
+
+
+def test_worker_result_records_a_failed_run_too(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    """A failing run is history as much as a passing one — the History list is where a red run is
+    investigated from, so the failure path must record it too."""
+    state, repo = _state_with_db(serve_engine, tmp_path)
+    repo.enqueue_job("j1", org_id="default", spec={"cmd": []})
+    repo.lease_job("w1")
+    _payload, code = ops.worker_result(
+        state,
+        {
+            "job_id": "j1",
+            "worker_id": "w1",
+            "result": {"ok": False, "runId": "20260904-052114", "error": "assertion failed"},
+        },
+    )
+    assert code == 200
+    assert [(r.id, r.ok) for r in repo.list_runs(org_id="default")] == [("20260904-052114", False)]
+
+
+def test_worker_result_reads_the_manifest_from_the_orgs_object_prefix(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    """The hosted shape, where the bug was seen: the manifest the worker uploaded lives under the
+    org's artifact prefix, so the recorded summary must be the real one (scenario names, verdict),
+    not the thin fallback a read against the bare default store would produce. Re-posting the same
+    result records the same row rather than a duplicate, so a worker retry is harmless."""
+    state, repo = _state_with_db(serve_engine, tmp_path)
+    manifest = {
+        "runId": "20260904-051448",
+        "ok": True,
+        "target": "showcase",
+        "scenarios": [{"scenario": "smoke.yaml", "ok": True}],
+    }
+    key = f"{artifact_prefix(org_prefix('tenant/', 'acme'))}20260904-051448/manifest.json"
+    store = FakeObjectStore({key: json.dumps(manifest).encode()})
+    state.org_stores = lambda org: StoreBundle(
+        ObjectStorageArtifactStore(store, prefix=artifact_prefix(org_prefix("tenant/", org))),
+        state.scenarios,
+        state.baselines,
+        state.secrets,
+    )
+    repo.enqueue_job("j1", org_id="acme", spec={"cmd": [], "label": "showcase"})
+    repo.lease_job("w1")
+    body = {
+        "job_id": "j1",
+        "worker_id": "w1",
+        "result": {"ok": True, "runId": "20260904-051448"},
+    }
+    _payload, code = ops.worker_result(state, body)
+    assert code == 200
+    ops.worker_result(state, body)  # a retried POST upserts the same row
+    recorded = repo.list_runs(org_id="acme")
+    assert [r.id for r in recorded] == ["20260904-051448"]
+    assert recorded[0].summary["scenarios"] == ["smoke.yaml"]
+    assert recorded[0].summary["report"] is True
+    assert recorded[0].target == "showcase"
+
+
+def test_worker_result_records_a_run_whose_manifest_is_unreadable(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    """A run whose uploaded `manifest.json` is corrupt still lands in the history, with a thin
+    summary: an unreadable manifest must not make the run itself vanish from the list."""
+    state, repo = _state_with_db(serve_engine, tmp_path)
+    run_dir = tmp_path / "runs" / "20260904-051448"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text("{truncated", encoding="utf-8")
+    repo.enqueue_job("j1", org_id="default", spec={"cmd": []})
+    repo.lease_job("w1")
+    ops.worker_result(
+        state,
+        {"job_id": "j1", "worker_id": "w1", "result": {"ok": True, "runId": "20260904-051448"}},
+    )
+    recorded = repo.list_runs(org_id="default")
+    assert [r.id for r in recorded] == ["20260904-051448"]
+    assert recorded[0].summary["report"] is False
+
+
+def test_worker_result_records_nothing_for_a_job_with_no_run(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    """A `record` job, and a run that died before minting a run id, produce no history row — and a
+    worker-supplied run id that is not a safe single segment is refused, since it becomes both a
+    database id and a storage key."""
+    state, repo = _state_with_db(serve_engine, tmp_path)
+    repo.enqueue_job("j1", org_id="default", spec={"cmd": []})
+    repo.lease_job("w1")
+    ops.worker_result(state, {"job_id": "j1", "worker_id": "w1", "result": {"ok": True}})
+    repo.enqueue_job("j2", org_id="default", spec={"cmd": []})
+    repo.lease_job("w1")
+    ops.worker_result(
+        state, {"job_id": "j2", "worker_id": "w1", "result": {"ok": True, "runId": "../escape"}}
+    )
+    assert repo.list_runs(org_id="default") == []
 
 
 def test_worker_result_rejects_missing_job(

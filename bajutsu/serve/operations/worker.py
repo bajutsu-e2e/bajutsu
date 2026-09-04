@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from bajutsu.serve.helpers import valid_run_id
+from bajutsu.serve.jobs import persist_run
 from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.server.object_store import baseline_prefix, org_prefix
 from bajutsu.serve.state import ServeState
@@ -102,7 +104,8 @@ def worker_result(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, An
     info = state.repository.get_job(job_id)
     if info is None:
         return {"error": f"job {job_id} not found"}, 404
-    if result.get("ok") is False or "error" in result:
+    failed = result.get("ok") is False or "error" in result
+    if failed:
         applied = state.repository.fail_job(
             job_id, error=result.get("error", "unknown"), worker_id=worker_id
         )
@@ -112,5 +115,36 @@ def worker_result(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, An
         # The lease was reclaimed (and maybe re-leased) or the job already finished — this is a stale
         # worker's result, so drop it rather than clobber the winning run, and leave its log stream be.
         return {"error": "job is no longer leased by this worker; result ignored"}, 409
+    _persist_worker_run(state, info, result, ok=not failed)
     state.logbus.close(job_id, json.dumps(result))
     return {"ok": True}, 200
+
+
+def _persist_worker_run(
+    state: ServeState, info: dict[str, Any], result: dict[str, Any], *, ok: bool
+) -> None:
+    """Record the run a worker just finished into the system of record (BE-0015 history list).
+
+    The run executed on the worker, but the database is the control plane's: the documented worker
+    holds no `BAJUTSU_DATABASE_URL` (docs/self-hosting.md) and its install closure omits the `db`
+    extra, so a run's history row had no writer at all and the History list stayed empty on a hosted
+    deployment. The identity and label come from the job's own spec, resolved at enqueue — never from
+    the worker's payload — and the run id is re-validated because it is worker-supplied and becomes
+    both a database id and a storage key. A no-op for a job that produced no run (record/crawl, or a
+    build failure).
+    """
+    run_id = result.get("runId")
+    if not isinstance(run_id, str) or not valid_run_id(run_id):
+        return
+    spec = info.get("spec")
+    spec = spec if isinstance(spec, dict) else {}
+    actor = spec.get("actor")
+    label = spec.get("label")
+    persist_run(
+        state,
+        run_id=run_id,
+        org=info.get("org_id") or DEFAULT_ORG,
+        actor=actor if isinstance(actor, str) else None,
+        label=label if isinstance(label, str) else None,
+        ok=ok,
+    )
