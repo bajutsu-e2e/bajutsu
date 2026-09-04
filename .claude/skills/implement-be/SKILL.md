@@ -40,8 +40,10 @@ and you must stop and flag — not silently work around — anything that brushe
 Alongside the steps below, keep [`be-progress-tracker`](../../../.apm/skills/be-progress-tracker/SKILL.md)
 current, invoking it through the Agent tool with `model: "haiku"` passed explicitly — a subagent
 call does not inherit that skill's own frontmatter model. Check in at minimum after step 1 (the item's overview
-is now known), step 5 (the plan is confirmed), step 6 (code is written), step 7 (the review pass
-comes back clean), step 9 (the gate is green), step 10 (the PR is open), and each step 12
+is now known), step 5 (the plan is confirmed), **once per unit of the step 5 plan as you finish
+it** — step 6 is one checkpoint for the whole step only when that plan came out as a single unit;
+see step 6 below — step 7 (the review pass comes back clean), step 9 (the gate is green), step 10
+(the PR is open), and each step 12
 follow-up iteration. It only turns decisions this workflow already made into a glanceable status
 page for the human watching the session — never let it gate or slow this workflow down; skip a
 checkpoint rather than block on it. **Without an Agent tool** (a subagent running this skill has
@@ -207,6 +209,13 @@ go-ahead on a concrete plan first**. The plan should name:
 - any tension with the prime directives, and how you've reshaped the design to fit (the
   way `ideation` reshapes a conflicting idea rather than dropping it).
 
+**Break the plan into a numbered list of concrete, independently-completable units** — one per
+file, driver method, config knob, or test slice, whatever the item's own shape suggests. This
+numbering is not decoration: step 6 checks in with `be-progress-tracker` once per unit, strictly,
+so a plan left as one paragraph or one merged bullet produces one useless checkpoint instead of a
+real progress trail. Size units so each is a checkpoint worth seeing — neither "the whole feature"
+nor "renamed one variable".
+
 Only implement once the user is happy with the plan.
 
 **If no human is in the turn** — steps 10–12 run unattended, and a session can be launched that way
@@ -236,6 +245,14 @@ Build to the Detailed design, matching the codebase's grain:
   now asserting something false, rather than trusting the item to have enumerated them. Write the Japanese side under the
   [`japanese-document-writing`](../../../.apm/skills/japanese-document-writing/SKILL.md) skill — natural Japanese, not
   a literal rendering of the English.
+
+**Check in with `be-progress-tracker` after finishing each unit of the step 5 plan — strictly, one
+unit at a time, not one checkpoint for the whole step.** This is the granularity the plan exists
+to set up: as soon as a unit's files are written (tests included, if that unit's test is part of
+it), dispatch the tracker with that unit's one-sentence work-log line before moving to the next
+unit. Treat skipping this the same as skipping a step-boundary checkpoint elsewhere in this
+skill — never blocking, but not optional either; only an item whose plan came out as a single unit
+collapses back to one checkpoint for the step.
 
 ### 7. Review and refine the diff
 
