@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0407") |
+| 実装 PR | [#1897](https://github.com/bajutsu-e2e/bajutsu/pull/1897)（グループ 1、作業単位 1、3〜5） |
 | トピック | Platform support |
 | 関連 | [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query-ja.md)、[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)、[BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance-ja.md)、[BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md)、[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)、[BE-0341](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture-ja.md)、[BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree-ja.md)、[BE-0408](../BE-0408-step-latency-device-executor-protocol/BE-0408-step-latency-device-executor-protocol-ja.md)、[BE-0409](../BE-0409-step-latency-ios-device-executor/BE-0409-step-latency-ios-device-executor-ja.md)、[BE-0410](../BE-0410-step-latency-android-device-executor/BE-0410-step-latency-android-device-executor-ja.md) |
 <!-- /BE-METADATA -->
@@ -304,6 +305,18 @@ driver conformance suite
   できないため、`roadmap-id` ワークフローが `main` 上で 4 項目の ID を採番したあとに
   実施しています。
 - [ ] 「関連項目」と書いている各箇所を、採番済みの項目へのリンクに置き換える（両言語とも）。
+
+ログ：
+
+- [#1897](https://github.com/bajutsu-e2e/bajutsu/pull/1897) — グループ 1、作業単位 1、3〜5。ステップ前の
+  baseline が書いていた `elements.json` の書き込みをやめました。動作後の取得が結局は書き直すためです。
+  唯一この動作後の取得へ到達しない経路（`handleSystemAlert` のロケールが未対応で失敗するステップ）では、
+  代わりにツリーを明示的に書き込みます。ガードや `interrupts` ハンドラが登録されていないときは、
+  BE-0310 の静止待ち区間中にデバイスをポーリングするのをやめました。前のステップから何も操作していなけ
+  れば、前のステップの `after.png` を次のステップの `before.png` として再利用するようにしました。回復
+  ステップ、`handleSystemAlert` ステップ、`interrupts` を宣言したシナリオのどのステップでも、非同期の
+  割り込み画面が現れている可能性があります。この場合は常に新たに撮影します。作業単位 2（証跡書き込みの
+  非同期化）と 6（iOS の `drain_interruptions` の畳み込み）は、後続の PR に残しています。
 
 ## 参考
 
