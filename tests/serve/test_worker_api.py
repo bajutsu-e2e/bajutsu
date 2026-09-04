@@ -149,6 +149,12 @@ def test_worker_result_records_the_run_in_the_orgs_history(
     control plane resolved at enqueue. The documented worker holds no database, so the control plane
     is the only side that can record it — without this the History list stayed empty."""
     state, repo = _state_with_db(serve_engine, tmp_path)
+    # The actor must exist for `created_by` to be attributable — a run started by a signed-in user,
+    # not the token/CI shape the other tests cover.
+    repo.ensure_org("default", slug="default", name="default")
+    repo.upsert_user(
+        "octocat", org_id="default", github_login="octocat", email="octocat@example.com"
+    )
     repo.enqueue_job(
         "j1", org_id="default", spec={"cmd": [], "actor": "octocat", "label": "showcase"}
     )
@@ -159,8 +165,8 @@ def test_worker_result_records_the_run_in_the_orgs_history(
     runs, runs_code = ops.runs_payload(state)
     assert runs_code == 200
     assert [r["id"] for r in runs] == ["20260904-051448"]
-    assert [(r.id, r.label, r.ok) for r in repo.list_runs(org_id="default")] == [
-        ("20260904-051448", "showcase", True)
+    assert [(r.id, r.created_by, r.label, r.ok) for r in repo.list_runs(org_id="default")] == [
+        ("20260904-051448", "octocat", "showcase", True)
     ]
 
 
