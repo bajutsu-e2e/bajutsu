@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0406](BE-0406-system-alert-declared-prompts-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0406") |
 | 実装 PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871)（単位 1）、[#1894](https://github.com/bajutsu-e2e/bajutsu/pull/1894)（単位 2a、3）、[#1903](https://github.com/bajutsu-e2e/bajutsu/pull/1903)（単位 2b、単位 5） |
 | トピック | Platform support |
@@ -505,7 +505,7 @@ BE-0402 は `probe_native` が返す `"unhandled"` にも用途を与えてい�
       遭遇した step または `expect` を失敗させる。
 - [x] 単位 3 — プロンプトの言語エントリを、除外ラベルの集合を持ちうる形のリストに対応づける。3 つの形と
       プロンプトごとの面の記録とともに `savePassword` を加え、`handleSystemAlert` ステップでは拒否する。
-- [ ] 単位 4 — 「パスワードを保存」の 2 つのデモを `rules` へ移し、ブラウザ側のデモから迂回策の待機を
+- [x] 単位 4 — 「パスワードを保存」の 2 つのデモを `rules` へ移し、ブラウザ側のデモから迂回策の待機を
       落とし、回帰用のシナリオを `ios-e2e` のレーンに加える。
 - [x] 単位 5 — `docs/scenarios.md`、`docs/architecture.md`、両方の `docs/ja/` の写しを更新する。
       割り込み監視の辞退がいまや結果を伴うことも含める。

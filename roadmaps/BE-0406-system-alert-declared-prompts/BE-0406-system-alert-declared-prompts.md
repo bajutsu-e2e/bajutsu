@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0406](BE-0406-system-alert-declared-prompts.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0406") |
 | Implementing PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871) (unit 1), [#1894](https://github.com/bajutsu-e2e/bajutsu/pull/1894) (units 2a, 3), [#1903](https://github.com/bajutsu-e2e/bajutsu/pull/1903) (unit 2b, unit 5) |
 | Topic | Platform support |
@@ -510,7 +510,7 @@ the gap Unit 2b closes to bring the two surfaces to the same standard.
 - [x] Unit 3 — key a prompt's language entry to a list of shapes with an optional exclusion-label
       set, add `savePassword` with its three shapes and the per-prompt surface record, and reject it
       in a `handleSystemAlert` step.
-- [ ] Unit 4 — migrate both save-password demos to `rules`, drop the browser demo's workaround wait,
+- [x] Unit 4 — migrate both save-password demos to `rules`, drop the browser demo's workaround wait,
       and add the regression scenario to the `ios-e2e` lane.
 - [x] Unit 5 — update `docs/scenarios.md`, `docs/architecture.md`, and both `docs/ja/` mirrors,
       including the interruption monitor's now-consequential decline.
