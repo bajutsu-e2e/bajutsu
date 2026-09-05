@@ -220,10 +220,13 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 > `before.png` shows the screen it is about to act on, and `after.png` plus an `elements` write
 > once it has acted show what the action left behind (BE-0407). Neither screenshot depends on the
 > `capture` list — narrowing that list costs a step neither of its two screenshots. When nothing has
-> actuated the device since the previous step's `after.png`, `before.png` is a byte-for-byte copy of
-> it rather than a fresh capture — except on an interrupt's recovery step, a `handleSystemAlert`
-> step, or any step in a scenario declaring `interrupts`. On exactly those, an asynchronous
-> interstitial could have arrived between the two steps, so they always shoot fresh instead.
+> actuated the device since the previous step's `after.png`, `before.png` can be a byte-for-byte
+> copy of it rather than a fresh capture. Four cases skip the copy and always shoot fresh, because
+> an asynchronous interstitial could have arrived between the two steps: an interrupt's recovery
+> step, a `handleSystemAlert` step, any step in a scenario declaring `interrupts`, and any step
+> running under `systemAlertHandling`. That last case is on by default, so a stock `run` shoots
+> fresh on every step — the copy reaches a step only where a scenario or the target config turns
+> the guard off.
 > `elements.json` has a single filename, so the post-action write is
 > the tree a run keeps: it describes the screen the action produced, which is the screen `after.png`
 > shows and the one every viewer draws element frames from. On a non-mutating step (`assert`,
