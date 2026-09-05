@@ -459,12 +459,23 @@ Log:
   never displaced anything: it carries precisely that teardown, so it carries the same gap, and the
   mirrors make its screen taller too.
 
-  Both skips are gone. `conformance (adb)` ran green twice on the emulator (22 passed, 4 skipped),
-  with `test_a_tap_lands_on_the_element_the_selector_named` passing rather than skipped, and the
-  suite fell from roughly eleven minutes to four now that no test spends its thirty-second readiness
+  Both skips are gone. `conformance (adb)` ran green three times on a local Apple-silicon emulator
+  (22 passed, 4 skipped) — twice before this review round, once more after its layout fix — with
+  `test_a_tap_lands_on_the_element_the_selector_named` passing rather than skipped, and the suite
+  fell from roughly eleven minutes to four now that no test spends its thirty-second readiness
   budget. `conformance (xcuitest)` ran green on a dedicated iOS 26.5 Simulator (25 passed, 2
   skipped) with the same case passing — the real-Simulator result the reverted attempt never
   obtained, since every push there superseded the last before one landed.
+
+  A local Apple-silicon emulator is not the environment this defect lives in, and a review pass
+  caught exactly that gap: the case being un-skipped had itself seen a publish lag over five seconds
+  on a real `conformance (adb)` run before (the 2026-08-22 entry above), and its `wait_until` budget
+  is `timeout=5.0` on both waits — a slow x86_64 publish could land under that budget as a wrong-
+  element failure rather than a timing artifact. This PR's own `conformance (adb)` check, on CI's
+  x86_64 emulator, settled the question directly rather than by argument: it passed
+  ([run 33982379516](https://github.com/bajutsu-e2e/bajutsu/actions/runs/33982379516)), 22 passed
+  and 4 skipped, `test_a_tap_lands_on_the_element_the_selector_named` among the 22, with no read-lag
+  or publish warning anywhere near it in the job's log.
 
   Unit 6 stayed open on its second half while the repeated Android-lane dispatch that samples the
   flake's residual rate was in flight. That
