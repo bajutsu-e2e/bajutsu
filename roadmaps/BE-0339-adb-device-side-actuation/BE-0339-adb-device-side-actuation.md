@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0339](BE-0339-adb-device-side-actuation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0339") |
 | Implementing PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455) (Units 1–3: the directional-gesture anchor, `POST /act`, and identity-addressed actuation), [#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702) (Unit 4 and Unit 6's fast-gate conformance coverage; a Unit 5 attempt reverted after review, Unit 6's on-device realization deferred after real-device evidence it wasn't safe to ship), [#1820](https://github.com/bajutsu-e2e/bajutsu/pull/1820) (Unit 5, on the device-side publish confirmation its first attempt assumed), [#1914](https://github.com/bajutsu-e2e/bajutsu/pull/1914) (Unit 6, the on-device realization of the tap-identity case on both lanes) |
 | Topic | Driver & backend architecture |
@@ -242,7 +242,7 @@ languages. The identity keeps the decision on the host and sends only its result
       a frame, not a center.
 - [x] Unit 4 — the coordinate path kept as a declared, logged degraded mode.
 - [x] Unit 5 — the read-lag barrier narrowed to the reads that still need it.
-- [ ] Unit 6 — deterministic and conformance coverage, and a repeated Android-lane run.
+- [x] Unit 6 — deterministic and conformance coverage, and a repeated Android-lane run.
 
 Log:
 
@@ -466,13 +466,26 @@ Log:
   skipped) with the same case passing — the real-Simulator result the reverted attempt never
   obtained, since every push there superseded the last before one landed.
 
-  Unit 6 stays open on its second half, and `Status` stays In progress with it. The repeated
-  Android-lane dispatch that samples the flake's residual rate — the `gestures` scenario run fifteen
-  times on one dispatch, from branch `claude/be-0339-flake-sample` — is
-  [in flight](https://github.com/bajutsu-e2e/bajutsu/actions/runs/33980999223). The emulator this
-  entry reports on cannot stand in for it: the *Verification* section above records that the flake
-  does not reproduce on Apple silicon at all. The box is ticked, and the item moves to Implemented,
-  once that dispatch's residual rate is recorded here.
+  Unit 6 stayed open on its second half while the repeated Android-lane dispatch that samples the
+  flake's residual rate was in flight. That
+  [dispatch](https://github.com/bajutsu-e2e/bajutsu/actions/runs/33980999223) has now completed: the
+  `smoke (adb)` job ran the `gestures` scenario fifteen times in a single dispatch, on the CI x86_64
+  emulator — the environment the *Motivation* section's failing run and the roughly-one-in-three
+  failure rate both belong to, which the Apple-silicon emulator the earlier local runs used cannot
+  stand in for. All fifteen runs passed:
+
+  ```
+  BE0339-SAMPLE 1 PASS   BE0339-SAMPLE 6 PASS    BE0339-SAMPLE 11 PASS
+  BE0339-SAMPLE 2 PASS   BE0339-SAMPLE 7 PASS    BE0339-SAMPLE 12 PASS
+  BE0339-SAMPLE 3 PASS   BE0339-SAMPLE 8 PASS    BE0339-SAMPLE 13 PASS
+  BE0339-SAMPLE 4 PASS   BE0339-SAMPLE 9 PASS    BE0339-SAMPLE 14 PASS
+  BE0339-SAMPLE 5 PASS   BE0339-SAMPLE 10 PASS   BE0339-SAMPLE 15 PASS
+  ```
+
+  Fifteen consecutive passes does not prove the failure rate is now exactly zero, but it is strong
+  evidence against the class of defect this item set out to close: against a still-roughly-one-in-
+  three rate, fifteen consecutive passes has under a 1-in-400 chance of happening by luck. Unit 6 is
+  ticked, and the item moves to Implemented.
 
 ## References
 

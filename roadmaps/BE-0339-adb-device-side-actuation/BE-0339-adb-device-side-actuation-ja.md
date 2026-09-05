@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0339](BE-0339-adb-device-side-actuation-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0339") |
 | 実装 PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455)（作業単位 1〜3、方向付きジェスチャのアンカー、`POST /act`、同一性で指すアクチュエーション）、[#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702)（作業単位 4 と作業単位 6 の高速ゲート分の適合性カバレッジ。作業単位 5 はレビュー後に差し戻し、作業単位 6 の実機側の実現は実機での検証結果を受けて保留）、[#1820](https://github.com/bajutsu-e2e/bajutsu/pull/1820)（作業単位 5。最初の実装が仮定していた、デバイス側での publish の確認とともに）、[#1914](https://github.com/bajutsu-e2e/bajutsu/pull/1914)（作業単位 6。タップの同一性のケースを両レーンの実機で実現） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
@@ -241,7 +241,7 @@ instrumentation セッションです。階層をダンプするそのセッシ�
       フレームだからです。
 - [x] 作業単位 4 — 座標の経路を、明示され記録される縮退モードとして残す。
 - [x] 作業単位 5 — 読み取り遅延のバリアを、今も必要とする読み取りだけへ絞る。
-- [ ] 作業単位 6 — 決定的スイートと適合性スイートの被覆、および Android レーンの繰り返し実行。
+- [x] 作業単位 6 — 決定的スイートと適合性スイートの被覆、および Android レーンの繰り返し実行。
 
 ログ:
 
@@ -467,13 +467,26 @@ instrumentation セッションです。階層をダンプするそのセッシ�
   グリーンになりました（25 件成功、2 件スキップ）。同じケースがそこでも成功しています。差し戻された
   実装が一度も得られなかった、実機のシミュレータでの結果です。
 
-  作業単位 6 は、後半が残っているため未完了のままにします。状態も実装中のままです。flake の残存率を
-  測る Android レーンの繰り返しディスパッチは、いま走っています。ブランチ
-  `claude/be-0339-flake-sample` から、`gestures` シナリオを 1 回のディスパッチで 15 回実行しています
-  （実行 [33980999223](https://github.com/bajutsu-e2e/bajutsu/actions/runs/33980999223)）。ローカルの
-  エミュレータでは、この測定の代わりになりません。前掲の**検証**が記録しているとおり、この flake は
-  Apple シリコンで再現しないからです。その結果をこのログに記録した時点で、作業単位 6 のチェックが付き、
-  状態も実装済みへ移ります。
+  作業単位 6 は、flake の残存率を測る Android レーンの繰り返しディスパッチが走っているあいだ、後半を
+  未完了のままにしていました。その
+  [ディスパッチ](https://github.com/bajutsu-e2e/bajutsu/actions/runs/33980999223)が完了しました。
+  `smoke (adb)` ジョブが、CI の x86_64 エミュレータ上で `gestures` シナリオを 1 回のディスパッチで
+  15 回実行しています。*動機*が引用した失敗した実行や、おおよそ 3 回に 1 回という失敗率も、この
+  同じ環境に属します。ローカルで使った Apple シリコンのエミュレータでは、この測定の代わりになりません。
+  15 回はすべて成功しました。
+
+  ```
+  BE0339-SAMPLE 1 PASS   BE0339-SAMPLE 6 PASS    BE0339-SAMPLE 11 PASS
+  BE0339-SAMPLE 2 PASS   BE0339-SAMPLE 7 PASS    BE0339-SAMPLE 12 PASS
+  BE0339-SAMPLE 3 PASS   BE0339-SAMPLE 8 PASS    BE0339-SAMPLE 13 PASS
+  BE0339-SAMPLE 4 PASS   BE0339-SAMPLE 9 PASS    BE0339-SAMPLE 14 PASS
+  BE0339-SAMPLE 5 PASS   BE0339-SAMPLE 10 PASS   BE0339-SAMPLE 15 PASS
+  ```
+
+  15 回連続の成功は、失敗率がいま正確にゼロだと証明するものではありません。ただし、本項目が閉じよう
+  としてきた欠陥の系統に対する強い反証にはなります。失敗率がいまも 3 回に 1 回のままだとすれば、
+  15 回連続で成功する確率は 400 分の 1 を下回るからです。作業単位 6 のチェックが付き、状態は実装済みへ
+  移ります。
 
 ## 参考
 
