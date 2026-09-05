@@ -439,7 +439,7 @@ Log:
   degradation that reverted it was never about the mirrors. Reproduced on a local
   `bajutsu-api34-arm64` emulator — the same three re-seeding timeouts the 2026-08-22 entry
   records — where the failure message names its own cause: the readiness dump carries the marker,
-  the field, all four mirror elements, and fifty `key_pos_*` keyboard nodes — and is missing only
+  the field, all four mirror elements, and 50 `key_pos_*` keyboard nodes — and is missing only
   the id the harness had just seeded. `MainActivity` declares no `windowSoftInputMode`, so the software
   keyboard a text-editing test raises *overlays* the screen rather than resizing it, and nothing on
   Android dismisses it afterwards; `ConformanceScreen`'s column was centered, so the seeded
