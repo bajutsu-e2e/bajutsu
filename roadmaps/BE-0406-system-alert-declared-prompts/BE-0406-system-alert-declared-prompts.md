@@ -612,10 +612,10 @@ Log:
   `ios-e2e` CI lane, since neither save-password demo was ever on that lane — it selects scenarios
   by explicit path and serves no browser fixture, so the item's text describing the lane had gone
   stale by the time this unit landed. That target now runs both save-password scenarios in
-  sequence, each behind its own device erase. Also filled a gap the new scenario's addition
-  exposed in `tests/test_showcase_fixtures.py`'s exclusion-tag guard, which was missing `browser.yaml`,
-  `tabs.yaml`, and both save-password demos already. A self-reviewed diff (BE-0347's two-role procedure) found
-  and fixed a timing margin too tight against the pre-step page load and typing, and three stale
+  sequence, each behind its own device erase. Also filled a pre-existing gap the new scenario
+  surfaced in `tests/test_showcase_fixtures.py`'s exclusion-tag guard, which had never covered
+  `browser.yaml`, `tabs.yaml`, or either save-password demo. Self-review (BE-0347's two-role procedure)
+  found and fixed a timing margin too tight against the pre-step page load and typing, and three stale
   comments; re-verified on a real iOS Simulator afterward, with both save-password scenarios passing
   against a freshly erased device. `make check` (7,214 tests) is green, closing the item.
 
