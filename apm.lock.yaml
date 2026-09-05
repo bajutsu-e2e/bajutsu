@@ -217,7 +217,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:3bd13c2aa3a2c837bf9eeb6a3fcfc0c76e18a4b48e91c2ebd3ebac63aeab65a0
+  content_hash: sha256:d98d30dc7ebbdac8de43b81e9c211e893b5caa8f0f6f353f51719ca2628a3f7c
 - kind: project-relative
   target: claude
   value: .claude/skills/investigate-scenario-flakiness
@@ -427,7 +427,7 @@ local_deployed_file_hashes:
   .claude/skills/implement-be/references/pr-followup-loop.md: sha256:ec348d5744e26d9641bfbb015a2811da6cdfaef90280beabf618fdfe4c2516d6
   .claude/skills/implement-be/references/self-review.md: sha256:aa4e17fc6c9ccba60837409dd0dd0c3085b9f3324ca1dc1b81fb7ca30d870ea1
   .claude/skills/investigate-ci-failure/SKILL.md: sha256:e28b872f930723eaa11dffe61d9d0016f479c8815539b2ae7e1eeb54b5b78a95
-  .claude/skills/investigate-ci-failure/references/known-ci-failure-patterns.md: sha256:3bd13c2aa3a2c837bf9eeb6a3fcfc0c76e18a4b48e91c2ebd3ebac63aeab65a0
+  .claude/skills/investigate-ci-failure/references/known-ci-failure-patterns.md: sha256:d98d30dc7ebbdac8de43b81e9c211e893b5caa8f0f6f353f51719ca2628a3f7c
   .claude/skills/investigate-scenario-flakiness/SKILL.md: sha256:7bc61965a17fad81ed516248e966ac64980d0d6a34039477d27dc0320a2f9810
   .claude/skills/japanese-document-writing/SKILL.md: sha256:c5a47c20deca8a59009ab6549adead673f4c90c0830d3c6a23c12a8f07dd50b9
   .claude/skills/japanese-document-writing/references/argument.md: sha256:34a642cd51b155203f6be2342db2b6ae5a96a7a40ee7c400001560f16d89a3cf
