@@ -130,16 +130,17 @@ final class APIHandler: APIProtocol {
         // actuation path with no element handle.
         if let point = request.point, point.count == 2 {
             let result = await caughtActuation { self.provider.tapPoint(x: point[0], y: point[1]) }
-            return .ok(.init(body: .json(actuationReply(result))))
+            return .ok(.init(body: .json(withDrain(actuationReply(result)))))
         }
         guard let handle = request.handle else {
             return .badRequest(.init(body: .json(.init(status: .error, message: "missing handle or point"))))
         }
         let taps = max(request.taps ?? 1, 1)
         let duration = max(request.duration ?? 0, 0)
-        return .ok(.init(body: .json(await actOnHandle(store, handle) { snapshot in
+        let reply = await actOnHandle(store, handle) { snapshot in
             self.provider.tap(backingElement: snapshot.backingElement, taps: taps, duration: duration)
-        })))
+        }
+        return .ok(.init(body: .json(withDrain(reply))))
     }
 
     /// A pure query, unlike `tap`: it reuses the same handle-resolution outcomes but reports
@@ -307,6 +308,29 @@ final class APIHandler: APIProtocol {
         case .notHittable: return .init(status: .not_hyphen_hittable)
         case .valueNotFound: return .init(status: .value_hyphen_not_hyphen_found)
         }
+    }
+
+    /// Fold the interruption monitor's drain into *reply* (BE-0407 Unit 6) — `tap` alone calls this,
+    /// so a step whose last driver call was a tap skips the separate `/interruptionPolicy/drain`
+    /// round trip its own drain otherwise costs. Every other actuation (`isHittable`, `gesture`,
+    /// `setPickerValue`, …) keeps `actuationReply`'s plain reply undrained, and the driver still
+    /// drains explicitly wherever a step's last call was not a tap. Checked unconditional on the
+    /// tap's own outcome, matching the standalone endpoint: an interruption can land mid-actuation
+    /// regardless of whether the tap itself lands.
+    ///
+    /// Always attaches both fields, empty arrays included, even though the reply schema marks them
+    /// optional: their *presence* is itself the driver's signal that this runner folds a drain into
+    /// `/tap` at all (BE-0407 Unit 6), so a present-but-empty pair must read differently from an
+    /// absent one — a runner predating this fold. `APIHandlerParityTests` accounts for the resulting,
+    /// deliberate difference from the legacy `Router`, which never gains these fields at all.
+    private func withDrain(
+        _ reply: Components.Schemas.ActuationReply
+    ) -> Components.Schemas.ActuationReply {
+        let drained = InterruptionPolicyStore.shared.drain()
+        var reply = reply
+        reply.labels = drained.tapped
+        reply.unmatched = drained.declined
+        return reply
     }
 
     /// Resolve *handle* against *store* and, only on a live match, run *work* against its element.

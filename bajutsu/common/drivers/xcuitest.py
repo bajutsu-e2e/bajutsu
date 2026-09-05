@@ -29,6 +29,8 @@ from __future__ import annotations
 import http.client
 import json
 import logging
+import select
+import socket
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -250,6 +252,47 @@ def _decode(path: str, status_code: int, body: bytes) -> _Reply:
     width, height = data.get("width"), data.get("height")
     size = (float(width), float(height)) if width is not None and height is not None else None
     return _Reply(status=str(status), elements=elements, size=size, raw=body)
+
+
+def _parse_drain_fold(raw: bytes | None) -> base.DrainedInterruptions:
+    """Read `labels`/`unmatched` off a reply body, empty when either is absent or unparseable.
+
+    For the standalone `/interruptionPolicy/drain` reply, whose schema requires both fields, so
+    "absent" only ever means a body-less or malformed reply — never a meaningful distinction from
+    "present but empty". `_parse_tap_drain_fold` is the sibling reader for a `/tap` reply, where that
+    distinction *is* meaningful (BE-0407 Unit 6) and is not safe to collapse the same way.
+    """
+    if not raw:
+        return base.DrainedInterruptions(tapped=[], declined=[])
+    body = json.loads(raw)
+    labels = body.get("labels")
+    unmatched = body.get("unmatched")
+    tapped = [str(label) for label in labels] if isinstance(labels, list) else []
+    declined = (
+        [[str(button) for button in group] for group in unmatched if isinstance(group, list)]
+        if isinstance(unmatched, list)
+        else []
+    )
+    return base.DrainedInterruptions(tapped=tapped, declined=declined)
+
+
+def _parse_tap_drain_fold(raw: bytes | None) -> base.DrainedInterruptions | None:
+    """The optional drain fold folded into a `/tap` reply (BE-0407 Unit 6), or `None` when absent.
+
+    Unlike the standalone drain endpoint, `/tap`'s `labels`/`unmatched` are optional in its schema —
+    always present on a runner that supports Unit 6 (`withDrain` folds every tap's own drain in,
+    empty arrays included), and always absent on one that predates it, such as a pinned older
+    `testRunner` build (`targets.<name>.xcuitest.testRunner`). Absence, not a merely empty pair, is
+    therefore what says "this runner never drained anything for this tap" — trusting an empty pair as
+    if it meant the same thing would let a pre-Unit-6 runner's real interruptions go unreported the
+    caller believes it already asked for.
+    """
+    if not raw:
+        return None
+    body = json.loads(raw)
+    if "labels" not in body and "unmatched" not in body:
+        return None
+    return _parse_drain_fold(raw)
 
 
 class _TransportFailure(Exception):
@@ -573,41 +616,91 @@ def _with_crash_recovery(
     return transport
 
 
+def _is_stale(conn: http.client.HTTPConnection) -> bool:
+    """Whether *conn*'s socket has already been closed by the peer since the last call (BE-0407 Unit 11).
+
+    The runner's own idle timeout (`HTTPServer.swift`'s `SO_RCVTIMEO`) can close a kept-alive
+    connection between two calls with nothing on this side to notice until the next attempt to use
+    it — and by then, whether that attempt's write actually reached the runner first is genuinely
+    ambiguous (TCP can accept a write into the local send buffer before the peer's earlier close is
+    detected), which is exactly the ambiguity a POST must never guess through (double-actuation
+    risk). A zero-timeout `select` plus a non-consuming peek answers the question *before* any byte
+    of the next request is sent, so the ordinary idle-close case reconnects cleanly — indistinguishable
+    from the very first call — rather than surfacing as an ambiguous send/receive failure to sort out
+    after the fact.
+    """
+    sock = conn.sock
+    if sock is None:
+        return True
+    try:
+        readable, _, _ = select.select([sock], [], [], 0)
+        return bool(readable) and sock.recv(1, socket.MSG_PEEK) == b""
+    except OSError:
+        return True
+
+
 def _raw_http_transport(host: str, port: int) -> TransportFn:
     """One HTTP attempt to the runner's loopback server, tagging failures for the retry seam (BE-0207).
 
-    A failure while *connecting* means the request never reached the runner (`delivered` stays
-    `False`); once the socket is open, any later failure — a partial send or a response-side timeout —
-    may have reached the runner (`delivered` is `True`). `_with_retry` and the BE-0287 crash-recovery
-    use that split to decide what is safe to re-issue, so the flip is deliberately conservative: a
-    write whose bytes may have started reaching the runner is never re-sent (a double-actuation risk),
-    it fails loudly instead.
+    A failure before the socket is confirmed open (a fresh `connect()`, or `_is_stale`'s check that a
+    reused one still is) means the request never reached the runner (`delivered` stays `False`); any
+    later failure — a partial send or a response-side timeout — may have reached the runner
+    (`delivered` is `True`). `_with_retry` and the BE-0287 crash-recovery use that split to decide
+    what is safe to re-issue, so the flip is deliberately conservative: a write whose bytes may have
+    started reaching the runner is never re-sent (a double-actuation risk), it fails loudly instead.
+
+    The connection itself is kept open and reused across calls (BE-0407 Unit 11) rather than a fresh
+    one paid for every call: `holder` carries it (or `None`, before the first call and again after any
+    failure discards it) across this closure's calls, since the driver issues them one at a time and
+    holds no other reference to the socket. `HTTPServer.swift` answers in kind, keeping its own end of
+    the connection open. A discard-and-reconnect on the next call is `_with_retry`'s job, unchanged;
+    this only changes when a connection is *opened* — never how a failure once open is handled.
     """
+    holder: dict[str, http.client.HTTPConnection | None] = {"conn": None}
 
     def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         # One `app.snapshot()` per `/elements` (BE-0105), so the bounded read window still covers a
         # cold first snapshot; a write gets the longer actuation window (`_timeout_for`) since it
         # can't be retried after delivery — both still fail a wedged runner in a reasonable window.
-        conn = http.client.HTTPConnection(host, port, timeout=_timeout_for(method))
+        timeout = _timeout_for(method)
+        conn = holder["conn"]
+        if conn is not None and _is_stale(conn):
+            conn.close()
+            conn = None
+            holder["conn"] = None
         delivered = False
+        succeeded = False
         try:  # pragma: no cover - exercised on-device against the real runner, not on the gate
-            conn.connect()  # split from send: a connect failure is safe to re-issue, a send failure isn't
-            delivered = (
-                True  # the socket is open; a later send/read failure may have reached the runner
-            )
+            if conn is None:
+                conn = http.client.HTTPConnection(host, port, timeout=timeout)
+                conn.connect()  # split from send: a connect failure is safe to re-issue, a send failure isn't
+                holder["conn"] = conn
+            else:
+                # A reused connection keeps whatever timeout its last call set otherwise — a read
+                # reusing a connection an actuation last used must not inherit the longer window.
+                assert conn.sock is not None
+                conn.sock.settimeout(timeout)
+            delivered = True  # the socket is confirmed open; a later send/read failure may have reached the runner
             payload = json.dumps(body).encode() if body is not None else None
             headers = {"Content-Type": "application/json"} if payload is not None else {}
             conn.request(method, path, body=payload, headers=headers)
             resp = conn.getresponse()
-            return _decode(path, resp.status, resp.read())
+            reply = _decode(path, resp.status, resp.read())
         except OSError as exc:  # pragma: no cover - see above
             # A socket timeout on an open connection is the hang BE-0354 keys on; a refused connect
             # or a reset mid-response is the runner going away, which recovery still rides out.
             raise _TransportFailure(
                 str(exc), delivered=delivered, hung=delivered and isinstance(exc, TimeoutError)
             ) from exc
+        else:
+            succeeded = True
+            return reply
         finally:
-            conn.close()
+            # A connection any failure touched — an `OSError` above, or a non-`OSError` decode failure
+            # from a response `_is_stale` could not have caught — is never reused; `succeeded` is the
+            # single source of truth for that, so nothing here depends on which exception type fired.
+            if not succeeded:
+                holder["conn"] = None
 
     return transport
 
@@ -645,6 +738,26 @@ def _http_transport(
         on_stall=on_stall,
     )
     return wrapped, raw
+
+
+@dataclass
+class _DrainCarry:
+    """Mutable holder for a driver's `/tap`-fold accumulator (BE-0407 Unit 6).
+
+    A plain object the `_tracking_transport` closure captures, rather than `self` directly: closing
+    over `self` there would make `XcuitestDriver` hold a reference to a closure that in turn
+    references `XcuitestDriver` — a cycle only the cyclic garbage collector breaks, deferring a
+    superseded driver's cleanup (and the connection Unit 11 now keeps open behind it) to whenever
+    that collector next runs, rather than the moment its last caller-side reference drops. Holding
+    the carry here instead keeps the closure's only capture a value with no path back to the driver,
+    so plain reference counting reclaims a driver — and closes its socket — as soon as the caller
+    that replaced it drops its own reference.
+    """
+
+    drained: base.DrainedInterruptions = field(
+        default_factory=lambda: base.DrainedInterruptions(tapped=[], declined=[])
+    )
+    is_current: bool = False
 
 
 class XcuitestDriver:
@@ -710,6 +823,50 @@ class XcuitestDriver:
             self._transport, self._probe_transport = _http_transport(
                 host, port, runner_alive=runner_alive, on_stall=on_stall
             )
+        # Every `/tap` reply's own folded drain (BE-0407 Unit 6) that `drain_interruptions()` has not
+        # yet reported, accumulated rather than replaced: the runner drains its store as part of
+        # answering *every* `/tap` (`withDrain`, BajutsuKit), so two taps between one caller's drains
+        # each contribute genuinely new, non-overlapping data, and neither may be dropped in favor of
+        # the other. `carry.is_current` is the separate question of whether this carry is *still the
+        # complete answer* — true only while the most recent driver call was that very tap; any other
+        # call since (a query, a stale-retry's re-resolution, another actuation) may itself have let
+        # something new interrupt, so `drain_interruptions()` must ask the wire and merge it with
+        # what is already carried rather than trusting the carry alone. Tracked by wrapping
+        # `self._transport` below rather than at each of `tap` / `double_tap` / `long_press` /
+        # `tap_point`'s call sites, so every path to `/tap` — present and future — is covered by one
+        # rule instead of several copies that could drift apart.
+        self._drain_carry = _DrainCarry()
+        _channel_transport = self._transport
+        carry = (
+            self._drain_carry
+        )  # captured below instead of `self` — see `_DrainCarry`'s docstring
+
+        def _tracking_transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+            reply = _channel_transport(method, path, body)
+            if path != "/tap":
+                # This call may itself have let something new interrupt, or (the stale-retry
+                # re-resolution case) run *between* the tap the carry describes and its own retry, so
+                # the carry can no longer stand alone as the complete answer — but it is not
+                # discarded: `drain_interruptions()` still merges it with a fresh wire drain.
+                carry.is_current = False
+                return reply
+            # `withDrain` (BajutsuKit) folds the runner's own drain into *every* `/tap` reply,
+            # whatever its actuation status — a stale or not-hittable tap still ran the fold, since
+            # an interruption can land mid-actuation regardless of whether the tap itself lands.
+            # `None` (as opposed to a present-but-empty fold) means a runner that predates Unit 6 —
+            # nothing to carry, and the wire must still be asked for this tap's own window too.
+            fold = _parse_tap_drain_fold(reply.raw)
+            if fold is None:
+                carry.is_current = False
+                return reply
+            carry.drained = base.DrainedInterruptions(
+                tapped=carry.drained.tapped + fold.tapped,
+                declined=carry.drained.declined + fold.declined,
+            )
+            carry.is_current = True
+            return reply
+
+        self._transport = _tracking_transport
         # Injectable so the stale re-resolution backoff (BE-0289) adds no wall time under test.
         self._sleep = sleep
         # The device screen size (BE-0326), fetched once from the runner; fixed for a run.
@@ -728,17 +885,28 @@ class XcuitestDriver:
 
     # --- the channel ---
 
-    def _query_with_handles(self) -> tuple[list[base.Element], dict[int, str]]:
+    def _query_with_handles(
+        self, *, apply_native_z: bool = True
+    ) -> tuple[list[base.Element], dict[int, str]]:
         """A snapshot plus a map from each element's object identity to its handle.
 
         Keyed by `id()` of the returned dicts: `resolve_unique` returns one of these very objects, so
         the resolved element's handle is an O(1) identity lookup — the element is acted on by the
         exact handle the runner minted for it, never re-resolved on the runner side.
+
+        Args:
+            apply_native_z: Whether to pay the `/zorder` round trip (BE-0407 Unit 10). `nativeZ` is
+                diagnostic only — nothing in selector resolution reads it (`resolve_unique`'s
+                `_collapse_identical_duplicates` deliberately omits it) — so a caller that only
+                resolves a handle to act on and discards the rest of the tree gains nothing from it.
+                `False` for those internal resolutions; `True` (the default) for `query()`, whose
+                result reaches evidence and the serve read API.
         """
         reply = self._transport("GET", "/elements", None)
         self._raw_bytes = reply.raw
         elements, handles = self._parse_elements(reply)
-        self._apply_native_z(elements)
+        if apply_native_z:
+            self._apply_native_z(elements)
         return elements, handles
 
     def _apply_native_z(self, elements: list[base.Element]) -> None:
@@ -797,7 +965,7 @@ class XcuitestDriver:
             AmbiguousSelector: Several elements matched, with no `index` to disambiguate. Both are
                 raised before any actuation request is sent.
         """
-        elements, handles = self._query_with_handles()
+        elements, handles = self._query_with_handles(apply_native_z=False)
         el = base.resolve_unique(elements, sel)
         return handles[id(el)], el
 
@@ -848,7 +1016,13 @@ class XcuitestDriver:
             if reply.status == _STALE:
                 if attempt == _STALE_MAX_ATTEMPTS:
                     raise base.ElementNotFound(f"element vanished (stale handle): {sel!r}")
-                self._sleep(_STALE_BACKOFF_BASE_SECONDS * 2 ** (attempt - 1))
+                if attempt > 1:
+                    # The first retry re-queries at once (BE-0407 Unit 12): the re-query below is
+                    # itself a wait, on a screen that may already have settled by the time the
+                    # `stale` reply came back, so a fixed sleep first only adds wall time. A second
+                    # stale in a row is different — the same re-query just failed to catch up once
+                    # already — so backoff still applies from here on.
+                    self._sleep(_STALE_BACKOFF_BASE_SECONDS * 2 ** (attempt - 1))
                 request["handle"], element = self._resolve_handle(sel)
                 continue
             if reply.status == _NOT_FOUND:
@@ -920,7 +1094,7 @@ class XcuitestDriver:
         Raises:
             ElementNotTappable: Chained from *refused*, so the original refusal stays the cause.
         """
-        elements, handles = self._query_with_handles()
+        elements, handles = self._query_with_handles(apply_native_z=False)
         # Re-resolved from a fresh tree rather than reusing the refused element: the refusal may have
         # been the first sign of a screen still settling, and a candidate list read off a stale
         # snapshot could offer an element that has since moved out of the container.
@@ -1175,20 +1349,26 @@ class XcuitestDriver:
             raise XcuitestChannelError(f"setting the interruption policy failed ({reply.status})")
 
     def drain_interruptions(self) -> base.DrainedInterruptions:
-        """What the runner's interruption monitor tapped and declined since the last drain."""
+        """What the runner's interruption monitor tapped and declined since the last drain.
+
+        Whatever this driver's own `/tap` replies have already carried (`self._drain_carry`,
+        BE-0407 Unit 6, accumulated by `_tracking_transport` in `__init__`) is never dropped, only
+        ever reported and cleared here — the round trip below is skipped entirely exactly when the
+        carry is still current (the most recent driver call was that very tap, so nothing could have
+        interrupted since that the fold does not already cover); otherwise the wire is asked too, and
+        the two are merged, since the carry may hold something from an earlier tap that a later query
+        or retry made "no longer provably current" without making it any less real.
+        """
+        carry = self._drain_carry
+        carried, carry.drained = carry.drained, base.DrainedInterruptions(tapped=[], declined=[])
+        if carry.is_current:
+            carry.is_current = False
+            return carried
         reply = self._transport("POST", "/interruptionPolicy/drain", {})
-        if reply.raw is None:
-            return base.DrainedInterruptions(tapped=[], declined=[])
-        body = json.loads(reply.raw)
-        labels = body.get("labels")
-        unmatched = body.get("unmatched")
-        tapped = [str(label) for label in labels] if isinstance(labels, list) else []
-        declined = (
-            [[str(button) for button in group] for group in unmatched if isinstance(group, list)]
-            if isinstance(unmatched, list)
-            else []
+        fresh = _parse_drain_fold(reply.raw)
+        return base.DrainedInterruptions(
+            tapped=carried.tapped + fresh.tapped, declined=carried.declined + fresh.declined
         )
-        return base.DrainedInterruptions(tapped=tapped, declined=declined)
 
     def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
         """Dismiss a showing TipKit tip via its dismiss region; False when no tip is up.
@@ -1214,7 +1394,7 @@ class XcuitestDriver:
         sel: base.Selector = {"id": _TIPKIT_DISMISS_REGION}
         if tree is not None and not _tip_is_up(tree):
             return False
-        elements, handles = self._query_with_handles()
+        elements, handles = self._query_with_handles(apply_native_z=False)
         # Re-checked against the fresh tree either way: with no hint this is the only check, and with
         # one the tip may have closed itself in between (a plain False, not an error).
         if not _tip_is_up(elements):

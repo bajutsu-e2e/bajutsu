@@ -49,6 +49,16 @@ final class APIHandlerParityTests: XCTestCase {
         )
     }
 
+    /// `/tap`'s generated reply, minus the interruption-drain fold (BE-0407 Unit 6) that `Router`
+    /// never gains — a deliberate difference the wire-shape parity below is not testing for.
+    /// `TapDrainFoldTests` is where that fold itself is pinned.
+    private func withoutDrainFold(_ payload: [String: Any]) -> [String: Any] {
+        var payload = payload
+        payload["labels"] = nil
+        payload["unmatched"] = nil
+        return payload
+    }
+
     private func elementProvider(_ snapshots: [ElementSnapshot]) -> FakeElementProvider {
         let provider = FakeElementProvider()
         provider.elementsToReturn = snapshots
@@ -148,7 +158,7 @@ final class APIHandlerParityTests: XCTestCase {
             let legacyJSON = try XCTUnwrap(
                 JSONSerialization.jsonObject(with: response.body) as? [String: Any]
             )
-            assertSame(legacyJSON, try generated(payload), "/tap (\(result))")
+            assertSame(legacyJSON, withoutDrainFold(try generated(payload)), "/tap (\(result))")
         }
     }
 
@@ -160,7 +170,7 @@ final class APIHandlerParityTests: XCTestCase {
         }
         assertSame(
             try legacy("POST", "/tap", body: ["point": [12.5, 34]], provider: FakeElementProvider()),
-            try generated(payload), "/tap (coordinate)"
+            withoutDrainFold(try generated(payload)), "/tap (coordinate)"
         )
         XCTAssertEqual(provider.tapPointCalls.count, 1, "the coordinate path must still reach the provider")
     }

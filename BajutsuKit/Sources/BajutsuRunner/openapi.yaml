@@ -445,6 +445,28 @@ components:
             infrastructure errors. `not-hittable` means the element is live but unreachable at
             its own point right now. `value-not-found` means the element resolved and was acted
             on, but never took the requested value — a picker wheel with no such row (BE-0356).
+        labels:
+          type: array
+          description: >-
+            What the interruption monitor tapped since the last drain, folded into `tap`'s own
+            reply (BE-0407 Unit 6) so a step that just tapped skips the separate
+            `/interruptionPolicy/drain` round trip that call otherwise costs. Present on `tap`
+            whenever this runner supports the fold — empty arrays included, when nothing was
+            tapped or declined — and absent only on every other actuation and on a runner too old
+            to carry it at all; a driver on this contract must tell those two "absent" cases apart
+            from a present-but-empty pair, which is this tap's own complete, current answer rather
+            than a reason to ask the wire.
+          items:
+            type: string
+        unmatched:
+          type: array
+          description: >-
+            One button list per alert the monitor declined since the last drain, folded in for
+            the same reason as `labels` above and present under the same condition.
+          items:
+            type: array
+            items:
+              type: string
     ErrorReply:
       type: object
       required: [status, message]

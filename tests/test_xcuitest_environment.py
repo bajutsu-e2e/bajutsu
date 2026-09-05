@@ -1299,6 +1299,55 @@ def test_warm_resume_reapplies_the_per_scenario_reset(
     assert "openurl" in verbs  # the deeplink was opened
 
 
+def test_warm_resume_skips_reinstall_under_overwrite_when_the_bundle_is_unchanged(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # BE-0407 Unit 14: `reinstall: overwrite` keeps the app's data container, so reinstalling a
+    # byte-identical bundle buys nothing but the install's own cost. `reinstall: clean` (the
+    # default, covered above) is unaffected — it always uninstalls first, which always requires a
+    # fresh install after it regardless of the bundle's digest.
+    popen_argvs, simctl_calls, run = _fake_toolchain(monkeypatch)
+    app = tmp_path / "App.app"
+    app.mkdir()
+    (app / "App").write_bytes(b"binary")
+    cfg = (
+        f"targets:\n  s:\n    bundleId: com.x\n    appPath: {app}\n"
+        f"    xcuitest:\n      testRunner: {_write_runner(tmp_path)}\n"
+    )
+    eff = resolve(load_config(cfg), "s")
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(eff, Preconditions(reinstall="overwrite"))  # cold spawn
+    simctl_calls.clear()
+    env.start(eff, Preconditions(reinstall="overwrite"))  # warm resume, same bundle
+    assert len(popen_argvs) == 1  # no respawn — the runner was reused
+    verbs = [c[2] for c in simctl_calls if len(c) >= 3 and c[:2] == ["xcrun", "simctl"]]
+    assert "install" not in verbs  # the digest matched what this environment already put there
+    assert "terminate" in verbs and "launch" in verbs  # the app still restarts every scenario
+
+
+def test_warm_resume_reinstalls_under_overwrite_when_the_bundle_changed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    popen_argvs, simctl_calls, run = _fake_toolchain(monkeypatch)
+    app = tmp_path / "App.app"
+    app.mkdir()
+    (app / "App").write_bytes(b"binary")
+    cfg = (
+        f"targets:\n  s:\n    bundleId: com.x\n    appPath: {app}\n"
+        f"    xcuitest:\n      testRunner: {_write_runner(tmp_path)}\n"
+    )
+    eff = resolve(load_config(cfg), "s")
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(eff, Preconditions(reinstall="overwrite"))  # cold spawn
+    (app / "Added.bundle").mkdir()
+    (app / "Added.bundle" / "payload").write_bytes(b"x")  # a rebuilt bundle: the digest shifts
+    simctl_calls.clear()
+    env.start(eff, Preconditions(reinstall="overwrite"))  # warm resume, changed bundle
+    assert len(popen_argvs) == 1  # no respawn — the runner was reused
+    verbs = [c[2] for c in simctl_calls if len(c) >= 3 and c[:2] == ["xcrun", "simctl"]]
+    assert "install" in verbs  # the rebuilt bundle was reinstalled
+
+
 def test_runner_output_is_captured_by_default_and_is_ephemeral(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -200,6 +200,84 @@ final class HTTPServerResilienceTests: XCTestCase {
         }
     }
 
+    // MARK: - Keep-alive (BE-0407 Unit 11)
+
+    /// Two requests over one connection the driver never reconnects for — the point of the whole
+    /// unit. Pipelined (both written before either is read) rather than round-tripped one at a time,
+    /// since the server itself still answers them strictly in order; pipelining only proves the
+    /// second request did not have to wait for a fresh TCP handshake to arrive.
+    func testTwoRequestsAreServedOverOneKeptAliveConnection() throws {
+        var seenPaths: [String] = []
+        let server = HTTPServer(receiveTimeout: 0.3, sendTimeout: 3) { request in
+            seenPaths.append(request.path)
+            return .json(200, ["status": "ok", "path": request.path])
+        }
+        let port = try server.start()
+        defer { server.stop() }
+
+        let fd = try Self.connect(port: port)
+        defer { close(fd) }
+        Self.write(fd, "GET /a HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+        Self.write(fd, "GET /b HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+
+        // Blocks until the server's own receive timeout ends the (now idle) connection, so this
+        // reads both replies without the test racing the server's reply timing.
+        let combined = Self.readAll(fd)
+        XCTAssertEqual(seenPaths, ["/a", "/b"], "one connection served both requests, in order")
+        XCTAssertEqual(
+            combined.components(separatedBy: "HTTP/1.1 200 OK").count - 1, 2,
+            "both replies arrived over the connection this test never reconnected"
+        )
+        XCTAssertTrue(
+            combined.contains("Connection: keep-alive"),
+            "a reply that keeps the connection open must say so"
+        )
+    }
+
+    /// A malformed request arriving as the *second* one on an otherwise-good connection must still
+    /// end it — the loop must not keep trying to resynchronize against whatever garbage follows.
+    func testAMalformedSecondRequestStillClosesTheConnection() throws {
+        let server = HTTPServer(receiveTimeout: 1, sendTimeout: 3) { _ in
+            .json(200, ["status": "ok"])
+        }
+        let port = try server.start()
+        defer { server.stop() }
+
+        let fd = try Self.connect(port: port)
+        defer { close(fd) }
+        Self.write(fd, "GET /a HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+        Self.write(fd, "POST /b HTTP/1.1\r\nContent-Length: -1\r\n\r\n")
+
+        let combined = Self.readAll(fd)
+        XCTAssertTrue(combined.contains("HTTP/1.1 200 OK"), "the first, well-formed request still lands")
+        guard let badReplyStart = combined.range(of: "HTTP/1.1 400 ") else {
+            return XCTFail("the second, malformed request must be answered 400")
+        }
+        XCTAssertTrue(
+            combined[badReplyStart.lowerBound...].contains("Connection: close"),
+            "the 400 must be the connection's last reply, not an invitation to keep sending"
+        )
+    }
+
+    /// An idle keep-alive connection — nothing sent since the last reply — ends quietly on the
+    /// receive timeout: `readRequest`'s `.connectionEnded`, not a spurious 400 for a request that
+    /// was never sent.
+    func testAnIdleKeptAliveConnectionEndsWithoutAMalformedRequestReply() throws {
+        let server = HTTPServer(receiveTimeout: 0.3, sendTimeout: 3) { _ in .json(200, ["status": "ok"]) }
+        let port = try server.start()
+        defer { server.stop() }
+
+        let fd = try Self.connect(port: port)
+        defer { close(fd) }
+        Self.write(fd, "GET /a HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+
+        let combined = Self.readAll(fd)  // blocks until the idle timeout closes the connection
+        XCTAssertEqual(
+            combined.components(separatedBy: "HTTP/1.1").count - 1, 1,
+            "exactly the one reply — no 400 fabricated for a second request that was never sent"
+        )
+    }
+
     // MARK: - Raw socket helpers
 
     private enum SocketFailure: Error { case create, connect }

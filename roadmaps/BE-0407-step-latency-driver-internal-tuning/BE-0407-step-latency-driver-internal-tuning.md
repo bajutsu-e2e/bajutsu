@@ -260,16 +260,63 @@ and a rerun of the tracer.
 - [ ] Group 1, unit 2 — move `after.png` and the `elements.json` write off the critical path
   (async). Deferred: needs its own design pass for error propagation and cancellation, and for
   joining pending writes before a scenario's report is generated — see the item's own Log.
-- [ ] Group 1, unit 6 — fold iOS's `drain_interruptions` into the `/tap` or `/elements` response.
-  Deferred: an XCUITest wire-format change in `BajutsuKit`, needing a Simulator run to verify —
-  a separate, focused pass from the Group 1 units above.
-- [ ] Group 2, units 7–15 — iOS driver internals.
+- [x] Group 1, unit 6 — fold iOS's `drain_interruptions` into `/tap`'s own reply. Scoped to `/tap`
+  alone (the higher-frequency of the "`/tap` or `/elements`" the design named) rather than every
+  actuation: the driver accumulates whatever a tap's own fold already carried and merges it with
+  an explicit `/interruptionPolicy/drain` whenever any other driver call happened in between (a
+  query, a stale-retry's re-resolution), so nothing a tap's fold captured is ever silently
+  dropped even when the fast path can't be taken.
+- [x] Group 2, unit 7 — batch the tap-path attribute reads into one `el.snapshot()` call; cache
+  `app.frame` for the life of a resident lease (guarded against caching a transient `.zero` read).
+- [ ] Group 2, unit 8 — generalize BE-0396's coordinate tap beyond Safari. Attempted, then
+  reverted after review: `el.isHittable` checks XCUITest's own hit point for the element (which
+  honours a custom `accessibilityActivationPoint` and can differ from the frame's geometric
+  center under partial occlusion), while a coordinate tap always lands on that geometric center —
+  a silent mis-tap on an element whose real hit point was clear. Needs a design that reconciles
+  the two points before it can land.
+- [x] Group 2, unit 9 — skip the `safariViewService.state` XPC probe unless the app's own
+  snapshot shows a browser remote-view boundary node.
+- [x] Group 2, unit 10 — make `/zorder` lazy. Deviation from the literal design: `nativeZ` is
+  diagnostic only and is never read for selector-ambiguity resolution
+  (`resolve_unique`'s `_collapse_identical_duplicates` deliberately excludes it), so "only when a
+  selector is ambiguous" never fires as written against today's code. Implemented as "skip on the
+  internal handle-resolution queries that discard the tree immediately; keep on the public
+  `query()` path evidence and `serve` actually consume" instead — the intent the stale text was
+  reaching for.
+- [x] Group 2, unit 11 — HTTP keep-alive on both ends. One persistent connection reused across a
+  driver's whole lease, discarded and reconnected only when a proactive liveness check (a
+  zero-timeout `select` plus a non-consuming peek) finds it already closed, or an actual failure
+  says so; `HTTPServer.swift` loops per connection until the peer goes idle or sends something
+  malformed.
+- [x] Group 2, unit 12 — re-query immediately on the first stale-handle retry; the second retry
+  keeps its 1.0s backoff.
+- [x] Group 2, unit 13 — check `alerts.firstMatch.exists` before enumerating SpringBoard alert
+  buttons.
+- [ ] Group 2, unit 14 — half shipped. Skipping reinstall when the app bundle's digest is
+  unchanged landed, scoped to `reinstall: overwrite` (never `clean`, whose uninstall-then-install
+  is a deliberate data wipe the digest check must not skip). Raising
+  `BAJUTSU_XCUITEST_MAX_WARM_REUSES` above 3 did not: that default is BE-0291's own empirical
+  finding for when the resident runner starts crashing, and nothing in this pass measured a
+  device that tolerates more reuses to justify moving it.
+- [ ] Group 2, unit 15 — type text via `simctl pbcopy` and a paste keystroke. Attempted, then
+  reverted after an on-device run of `text_editing.yaml`:
+  `app.typeKey("v", modifierFlags: .command)` triggers iOS's cross-app "Allow Paste" consent
+  alert on every paste ("\"BajutsuRunnerUITests-Runner\" would like to paste from \"Showcase
+  SwiftUI\" — Do you want to allow this?"), which blocks the runner's main thread indefinitely —
+  no button its interruption monitor is registered to answer — timing out `POST /type` and
+  crashing the runner. Needs a way to suppress or auto-answer that alert, or confirmation it does
+  not fire on some other iOS version, before this can land.
 - [ ] Group 3, unit 16 — confirm the `POSTDATE_BUDGET_MS` mechanism against resident-server logs,
   then implement the fix.
 - [ ] Group 3, units 17–24 — the remaining Android driver-internal reductions, including the `/act`
   swipe variant (unit 24).
-- [ ] Rerun [`trace_run.py`](misc/step-performance/trace_run.py) against
-  `controls.yaml` after each group lands, and record the resulting per-step wall-clock here.
+- [ ] Rerun [`trace_run.py`](misc/step-performance/trace_run.py) against `controls.yaml` after
+  each group lands, and record the resulting per-step wall-clock here. iOS, after Group 1 unit 6
+  and the shipped half of Group 2 (2026-09-06, iPhone 17 Pro Simulator, `controls.yaml`): `POST
+  /tap` mean 690ms → 446ms across 3 taps, and only 6 of 9 `drain_interruptions` calls reached the
+  wire (the rest answered from a tap's own fold). Real, measured progress against the baseline,
+  short of the unit's own 0.3–0.6s per-tap target now that units 8 and 15 are deferred. Android
+  (Group 3) not yet remeasured.
 - [x] Backfill reciprocal `Related` links between this item and the device-side protocol, iOS
   executor, and Android executor items, in both languages — done after the `roadmap-id` workflow
   allocated the four ids on `main`, since a new item may not cross-reference another new item by
@@ -287,6 +334,24 @@ Log:
   except on a recovery step, a `handleSystemAlert` step, or any scenario declaring `interrupts` — an
   asynchronous interstitial could have arrived on exactly those, so they always shoot fresh instead. Units
   2 (async evidence writes) and 6 (iOS `drain_interruptions` fold) remain for a follow-up PR.
+- Group 1 unit 6, Group 2 units 7, 9, 10, 11, 12, 13, and half of unit 14 (the digest-skip half).
+  Folded the interruption drain into `/tap`'s own reply and had the driver accumulate what a
+  tap's fold already carried, merging it with an explicit drain whenever another call intervened.
+  Batched the tap-path attribute reads into one `el.snapshot()` call and cached `app.frame` for a
+  lease's life. Made the `safariViewService.state` XPC probe and the `/zorder` round trip
+  conditional (the latter's trigger reshaped — see the Progress note on unit 10's stale premise).
+  Reused one persistent HTTP connection per lease on both ends, backed by a proactive
+  before-reuse staleness check rather than a guess from a failure's exception type. Dropped the
+  fixed sleep before the first stale-handle retry, and the enumerate-first path in the SpringBoard
+  alert probe. Skipped app reinstall on warm resume when the bundle's digest is unchanged, scoped
+  to `reinstall: overwrite`. Verified end to end on an iPhone 17 Pro Simulator across `smoke`,
+  `controls`, `alert`, `text_editing`, and `permission_system_alert`; `trace_run.py` against
+  `controls.yaml` showed `POST /tap`'s mean drop from the baseline's 690ms to 446ms and 6 of 9
+  `drain_interruptions` calls answered from a tap's own fold rather than the wire. Units 8
+  (generalized coordinate tap) and 15 (paste-based text entry) were attempted and reverted after
+  review and on-device verification found each unsafe as designed — see the Progress notes on
+  both. Unit 14's `MAX_WARM_REUSES` half, unit 16, units 17–24, and the two Group 1 units already
+  deferred remain for later PRs.
 
 ## References
 

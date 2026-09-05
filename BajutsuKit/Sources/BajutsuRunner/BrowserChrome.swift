@@ -59,6 +59,14 @@ public func normalizeBrowserChrome(
     }
 }
 
+/// Whether the browser's remote-view boundary node appears anywhere in *root* — cheap, since the
+/// whole tree already sits in memory from one `app.snapshot()` (BE-0105), unlike the cross-process
+/// `safariViewService.state` probe this exists to gate before it is paid (BE-0407 Unit 9).
+public func containsBrowserViewBoundary(in root: SnapshotNode) -> Bool {
+    firstNode(in: root, at: []) { ($0.nodeIdentifier ?? "").hasPrefix(BrowserChrome.browserViewIDPrefix) }
+        != nil
+}
+
 /// The path of the top bar's sole unidentified button, or nil when there is nothing to repair.
 ///
 /// Structural, not textual: the dismiss control is the one button directly under the top bar that

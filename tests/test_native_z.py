@@ -244,6 +244,25 @@ def test_xcuitest_leaves_a_repeated_identifier_unmeasured() -> None:
     assert [el["nativeZ"] for el in driver.query()] == [None, None]
 
 
+def test_xcuitest_skips_the_zorder_round_trip_when_resolving_a_tap_target() -> None:
+    # BE-0407 Unit 10: `tap` only needs the resolved element's handle, discarding the rest of the
+    # tree immediately — nativeZ is diagnostic only (nothing in resolve_unique reads it), so paying
+    # the responder's own HTTP round trip for a value nobody will see is pure waste.
+    zorder = _FakeZOrder({"ok": 1.0})
+    driver = _xcuitest_driver(zorder, [_runner_item("ok", "h1")])
+    driver.tap({"id": "ok"})
+    assert zorder.calls == 0
+
+
+def test_xcuitest_pays_the_zorder_round_trip_on_the_public_query() -> None:
+    # query() is what evidence capture and the serve read API consume, so its result must carry a
+    # real reading when one exists.
+    zorder = _FakeZOrder({"ok": 1.0})
+    driver = _xcuitest_driver(zorder, [_runner_item("ok", "h1")])
+    driver.query()
+    assert zorder.calls == 1
+
+
 def test_zorder_responder_drops_an_identifier_the_app_repeated() -> None:
     payload = {
         "elements": [
