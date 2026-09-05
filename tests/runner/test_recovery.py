@@ -13,6 +13,7 @@ from collections.abc import Callable
 import pytest
 
 from bajutsu.common.backend_cli import simctl
+from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base, xcuitest
 from bajutsu.common.runner.recovery import (
     CrashRecoveryBudget,
@@ -76,6 +77,13 @@ def test_a_wedged_device_and_a_crash_are_both_host_faults() -> None:
     assert is_host_fault(simctl.DeviceTimeout("get_app_container timed out after 60s"))
     assert is_host_fault(base.BackendCrashError("runner died"))
     assert is_host_fault(xcuitest.XcuitestRunnerCrashError("channel timed out", method="tap"))
+
+
+def test_a_wedge_is_diagnosed_by_its_neutral_type_not_the_ios_one() -> None:
+    # BE-0374: the predicate names `device_errors.DeviceTimeout`, so the backend that adopts that base
+    # next is covered here with no edit. A bare neutral timeout is not a simctl error at all, so this
+    # fails the moment the predicate goes back to naming the iOS type.
+    assert is_host_fault(device_errors.DeviceTimeout("device operation timed out after 60s"))
 
 
 def test_contract_violations_are_not_host_faults() -> None:
@@ -204,16 +212,45 @@ def test_run_budget_never_blocks_the_first_crash() -> None:
 
 def test_run_budget_given_up_only_after_mark_given_up_not_on_exhaustion_alone() -> None:
     # `exhausted()` trips on cumulative time alone — including time billed by a recovery that
-    # ultimately succeeded — but `given_up()` must stay False until a caller explicitly reports (via
+    # ultimately succeeded — but the latch must stay unset until a caller explicitly reports (via
     # `mark_given_up`) that a scenario's own crash-retry loop actually failed because this budget was
     # the binding constraint. A device that recovered slowly, but did recover, must not latch out every
     # later scenario.
     budget = RunCrashRecoveryBudget(budget=100.0)
     budget.add_recovery_time(100.0)  # exhausts the budget via a recovery that succeeded
     assert budget.exhausted() is True
-    assert budget.given_up() is False  # nothing has failed yet — no false-positive latch
-    budget.mark_given_up()
-    assert budget.given_up() is True
+    assert budget.given_up_cause() is None  # nothing has failed yet — no false-positive latch
+    budget.mark_given_up("the run-level crash-recovery budget of 100s is exhausted")
+    assert budget.given_up_cause() == "the run-level crash-recovery budget of 100s is exhausted"
+
+
+def test_the_latch_carries_a_cause_that_is_not_the_budget() -> None:
+    # BE-0374 gives the latch a second cause: a device preparation that timed out. It must be
+    # recordable on a budget that was never configured at all — the default — since a wedged host is
+    # not a budget concern and reporting one would format a `None` into the failure message.
+    budget = RunCrashRecoveryBudget(budget=None)
+    budget.mark_given_up("an earlier scenario's device preparation timed out")
+    assert budget.given_up_cause() == "an earlier scenario's device preparation timed out"
+    assert budget.exhausted() is False  # an unbounded budget still never exhausts
+
+
+def test_the_latch_is_write_once() -> None:
+    # `run_all`'s `workers > 1` path can run several scenarios' crash-retry loops concurrently, so two
+    # could abandon recovery for different reasons within the same window. The first cause to actually
+    # establish the latch is the one every later scenario should read back — not whichever call
+    # happened to land last, which would make the reported cause depend on scheduling.
+    budget = RunCrashRecoveryBudget(budget=None)
+    budget.mark_given_up("an earlier scenario's device preparation timed out")
+    budget.mark_given_up("the run-level crash-recovery budget of 100s is exhausted")
+    assert budget.given_up_cause() == "an earlier scenario's device preparation timed out"
+
+
+def test_mark_given_up_rejects_an_empty_cause() -> None:
+    # The cause is read verbatim into an operator-facing failure message; an empty one would silently
+    # latch the run with no explanation of why.
+    budget = RunCrashRecoveryBudget(budget=None)
+    with pytest.raises(ValueError, match="non-empty"):
+        budget.mark_given_up("")
 
 
 def test_run_crash_recovery_budget_default_reads_the_environment(

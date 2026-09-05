@@ -663,7 +663,13 @@ through an injectable `RunFn`.
 > (`bootstatus`, `boot`, `erase`, `install`), a short one for everything else. A call that never returns, the observable symptom of a
 > wedged CoreSimulator, therefore raises `simctl.DeviceTimeout` naming the command and the deadline
 > it exceeded, instead of hanging until CI cancels the whole job with no cause. `DeviceTimeout`
-> subclasses `DeviceError`, so a handler that already converts a device fault needs no change. Where
+> subclasses `DeviceError`, so a handler that already converts a device fault needs no change. It
+> also subclasses the platform-neutral `device_errors.DeviceTimeout`
+> ([BE-0374](../roadmaps/BE-0374-device-timeout-crash-retry-policy/BE-0374-device-timeout-crash-retry-policy.md)),
+> a *second* base rather than a replacement, so the backend-agnostic run pipeline can act on a wedged
+> host — failing the scenario instead of retrying onto it — without importing an iOS backend module
+> to name the fault. The adb surface passes no deadline to any command yet, so it has no timeout type
+> to place beneath that base; bounding it is a separate item's work. Where
 > it lands differs by caller: the best-effort probes (`device_booted`, `device_available`,
 > `device_catalog`, and the rest) fold it into their documented fallback and log it, so the recovery
 > ladder still decides on what it observed; every other call raises, including the idempotent

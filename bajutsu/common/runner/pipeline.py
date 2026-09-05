@@ -316,29 +316,34 @@ class _ScenarioRunner:
                 sid=sid,
                 failure=f"unsupported on backend '{actuator}': {'; '.join(reasons)}",
             )
-        # Once an earlier scenario has actually failed *because* the run-level crash-recovery budget
-        # was the binding constraint, every later scenario must fail this fast — checked here, before
-        # the first lease of this scenario is even attempted, not only inside the crash-retry loop's
-        # own `except` below. Without this, a device that has already demonstrated it cannot recover
-        # still gets one full cold-spawn attempt per remaining scenario (each paying up to a full
-        # readiness ceiling plus its own device-recovery ladder) before the job's own CI
-        # `timeout-minutes` cancels it — the same undiagnosable-cancellation outcome this budget
-        # exists to turn into a loud, fast failure, just moved one scenario later.
+        # Once an earlier scenario has established that recovery is not going to work on this host,
+        # every later scenario must fail this fast — checked here, before the first lease of this
+        # scenario is even attempted, not only inside the crash-retry loop's own `except` below.
+        # Without this, a device that has already demonstrated it cannot recover still gets one full
+        # cold-spawn attempt per remaining scenario (each paying up to a full readiness ceiling plus
+        # its own device-recovery ladder) before the job's own CI `timeout-minutes` cancels it — the
+        # same undiagnosable-cancellation outcome the run-level budget exists to turn into a loud,
+        # fast failure, just moved one scenario later.
         #
-        # Deliberately `given_up()`, not the weaker `exhausted()`: the accumulated total bills
-        # recovery time whether the scenario that spent it ultimately passed or failed, so a single
+        # Deliberately the latch, not the weaker `exhausted()`: the accumulated total bills recovery
+        # time whether the scenario that spent it ultimately passed or failed, so a single
         # slow-but-successful recovery (a device replacement that takes a while and then works) can
         # cross the budget on its own — that says the device took a while, not that it is broken.
         # Latching on bare `exhausted()` would fail every remaining scenario on a device that had
-        # just proven it *can* recover. `given_up()` only turns true once a scenario's own loop has
-        # actually ended in failure for this reason (set below, at that exact failure), which is the
-        # real evidence the device itself is not recovering — a cheap threadsafe read either way, so
-        # this costs nothing on the common, unbounded-budget path.
-        if self.run_crash_budget.given_up():
+        # just proven it *can* recover. The latch is only set once a scenario's own loop has actually
+        # ended in failure for a reason that says otherwise (both set below, at those exact
+        # failures), which is the real evidence — a cheap threadsafe read either way, so this costs
+        # nothing on the common, unbounded-budget path.
+        #
+        # Read as a cause rather than a bool because the two causes are not interchangeable to an
+        # operator, and because a run latched by a timeout may have no budget at all: formatting an
+        # unset one here raised a `TypeError` out of `run_one` and discarded the run's verdicts
+        # (BE-0374).
+        if (given_up_cause := self.run_crash_budget.given_up_cause()) is not None:
             if self.progress is not None:
                 self.progress(
                     f"✘ scenario {i + 1}/{self.total}: {s.name} "
-                    "(run-level crash-recovery budget already exhausted)"
+                    f"(crash recovery abandoned: {given_up_cause})"
                 )
             return RunResult(
                 scenario=s.name,
@@ -347,9 +352,8 @@ class _ScenarioRunner:
                 backend=actuator or "",
                 sid=sid,
                 failure=(
-                    "backend crash recovery skipped: an earlier scenario already exhausted the "
-                    f"run-level crash-recovery budget of {self.run_crash_budget.budget:g}s, so "
-                    "this scenario was never leased"
+                    f"backend crash recovery skipped: {given_up_cause}, so this scenario was never "
+                    "leased"
                 ),
             )
         # Backend-crash recovery: a mid-scenario runner/host crash (base.BackendCrashError) is
@@ -387,6 +391,11 @@ class _ScenarioRunner:
         # Whether a cancel request is what stopped this scenario's crash recovery (BE-0370), reported
         # in the failure below so the report says why recovery ended rather than blaming a budget.
         cancelled_recovery = False
+        # The device-preparation timeout that stopped this scenario's crash recovery, if one did
+        # (BE-0374). Kept rather than just flagged: it names the command and the deadline it
+        # exceeded, which is what tells an operator reading the report that the host was wedged
+        # rather than that a scenario failed for unexplained reasons.
+        device_timeout: device_errors.DeviceTimeout | None = None
         # Local to this call, never shared: `run_crash_budget` bills only the seconds *this*
         # scenario's own loop actually spends recovering (started at its first crash, in the
         # `finally` below), not wall-clock elapsed since some earlier scenario's crash — see
@@ -464,8 +473,25 @@ class _ScenarioRunner:
                         # degrades through the same branch and for the same reason: creating a device
                         # can fail on a host with no runtimes left, and losing every passed scenario's
                         # verdict over that is worse than retrying onto the device this run has. The
-                        # degradation is logged because the fault is otherwise dropped here: a hung
-                        # device (`simctl.DeviceTimeout`) would leave no trace at all of the wedge.
+                        # degradation is logged because the fault is otherwise dropped here.
+                        #
+                        # A *timeout* on this forced-erase lease is the one fault that reasoning does
+                        # not cover — see BE-0374's Motivation for the argument (a refusal is evidence
+                        # about one operation; a timeout is evidence the service behind every
+                        # operation stopped answering) and its Alternatives considered for why this
+                        # stays scoped to the forced-erase lease alone. Fail this one scenario instead
+                        # of degrading, keeping every verdict already earned.
+                        if isinstance(exc, device_errors.DeviceTimeout) and forced_erase:
+                            device_timeout = exc
+                            _logger.warning(
+                                "scenario %s: forced-erase prep timed out (%s); "
+                                "failing the scenario and latching the run",
+                                s.name,
+                                exc,
+                            )
+                            # Leaves the retry loop, so the `finally` below still bills this
+                            # scenario's own recovery time and the failure block still reports it.
+                            break
                         if not forced_erase:
                             raise
                         _logger.warning(
@@ -567,10 +593,34 @@ class _ScenarioRunner:
             if recovery_started is not None:
                 self.run_crash_budget.add_recovery_time(self._now() - recovery_started)
         # Recovery is over and the scenario never passed: the crash is not a one-off, so surface it as
-        # an honest failure — distinguishing "ran out of attempts" from either budget running out.
+        # an honest failure — distinguishing "ran out of attempts" from either budget running out, and
+        # a host that stopped answering from a backend that crashed.
         if self.progress is not None:
-            self.progress(f"✘ scenario {i + 1}/{self.total}: {s.name} (backend crashed mid-run)")
-        if cancelled_recovery:
+            reason = (
+                "device preparation timed out"
+                if device_timeout is not None
+                else "backend crashed mid-run"
+            )
+            self.progress(f"✘ scenario {i + 1}/{self.total}: {s.name} ({reason})")
+        if device_timeout is not None:
+            # Tested before the budget branches because it is the decisive cause: the retry loop
+            # stopped on the timeout itself, not on a cap being reached, so no cap is what this
+            # scenario failed for. The latch is set unconditionally, unlike the budget path just
+            # below, which qualifies it on the budget having been the binding constraint: a budget is
+            # a measurement a slow-but-successful recovery can also trip, whereas a device command
+            # that never returned is a direct observation that the service stopped answering. A
+            # wedged host belongs to the host, not to the scenario that happened to meet it, so
+            # establishing it once here is what keeps every later scenario from spending its own
+            # deadline rediscovering it.
+            self.run_crash_budget.mark_given_up(
+                "an earlier scenario's device preparation timed out"
+            )
+            failure = (
+                "the device preparation for a backend-crash retry timed out, so this scenario was "
+                f"failed rather than retried onto a wedged host ({attempt} attempt(s) into this "
+                f"scenario; recovering from: {last_crash}): {device_timeout}"
+            )
+        elif cancelled_recovery:
             # Led by the exact `CANCELLED_FAILURE` spelling, so a consumer that groups cancelled
             # scenarios still recognizes this one, and followed by the crash that was being recovered
             # from, which is evidence no other exit path can supply.
@@ -582,8 +632,12 @@ class _ScenarioRunner:
             # This scenario failed *because* the run-level budget was the binding constraint — the
             # real evidence (unlike bare `exhausted()`) that the device is not recovering, so every
             # later scenario's own pre-lease check above now fails fast instead of each paying its
-            # own first attempt against the same device.
-            self.run_crash_budget.mark_given_up()
+            # own first attempt against the same device. `run_budget_spent` implies `exhausted()`
+            # answered True, which it can only do on a budget that is set, so `:g` has a number here.
+            self.run_crash_budget.mark_given_up(
+                "an earlier scenario exhausted the run-level crash-recovery budget of "
+                f"{self.run_crash_budget.budget:g}s"
+            )
             failure = (
                 "backend crashed mid-run and the run-level crash-recovery budget of "
                 f"{self.run_crash_budget.budget:g}s is exhausted ({attempt} attempt(s) into this "

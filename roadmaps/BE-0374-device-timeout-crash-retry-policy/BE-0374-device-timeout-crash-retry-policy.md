@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0374](BE-0374-device-timeout-crash-retry-policy.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0374") |
+| Implementing PR | [#1910](https://github.com/bajutsu-e2e/bajutsu/pull/1910) |
 | Topic | Platform support |
 | Related | [BE-0363](../BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md), [BE-0260](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation.md) |
 <!-- /BE-METADATA -->
@@ -253,16 +254,31 @@ the timeout named as the cause — the case that formats a `None` budget today.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — add `device_errors.DeviceTimeout`, and give `simctl.DeviceTimeout` that neutral type
+- [x] Unit 1 — add `device_errors.DeviceTimeout`, and give `simctl.DeviceTimeout` that neutral type
       as a second base beside `simctl.DeviceError`, leaving every existing handler and
       `bajutsu/adb.py` unchanged.
-- [ ] Unit 2 — split `run_one`'s forced-erase-prep handler so a `device_errors.DeviceTimeout` fails
+- [x] Unit 2 — split `run_one`'s forced-erase-prep handler so a `device_errors.DeviceTimeout` fails
       the scenario with a named failure and its own progress wording instead of degrading to a bare
       respawn, while every other device fault still degrades. The split covers the escalated
       replacement-device lease (BE-0354), which reaches the same handler.
-- [ ] Unit 3 — latch the run from that branch through `mark_given_up()`, and give the latch a cause
+- [x] Unit 3 — latch the run from that branch through `mark_given_up()`, and give the latch a cause
       so a latched scenario reports the timeout rather than formatting an unset budget, which raises
       a `TypeError` out of `run_all` today.
+
+Log:
+
+- [#1910](https://github.com/bajutsu-e2e/bajutsu/pull/1910) — all three units in one change. Added `device_errors.DeviceTimeout` and gave
+  `simctl.DeviceTimeout` that neutral type as a second base, leaving every handler BE-0363
+  audited matching unchanged and `bajutsu/common/backend_cli/adb.py` untouched; `recovery`'s
+  `is_host_fault` now names the neutral type, as its own docstring had promised this item would.
+  Split `run_one`'s forced-erase-prep handler so a timeout leaves the retry loop and fails the
+  scenario — through the same `finally` that bills recovery time — with a failure naming the
+  command and deadline the exception carries and its own progress wording, while every other
+  device fault still degrades; the escalated replacement-device lease (BE-0354) is covered by
+  the same branch and pinned by its own test. Gave the run-level latch a cause
+  (`mark_given_up(cause)` / `given_up_cause()` replacing the bare `given_up()` predicate), which
+  removes the `TypeError` an unset `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` used to raise out of
+  `run_all` when a latched scenario formatted a `None` budget.
 
 ## References
 
