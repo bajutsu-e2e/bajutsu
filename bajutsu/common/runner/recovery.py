@@ -38,7 +38,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from bajutsu.common.backend_cli import simctl
+from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
 
 _logger = logging.getLogger(__name__)
@@ -54,9 +54,11 @@ def guarded_teardown(teardown: Callable[[], None], *, mid_run: bool, what: str) 
     before it ever reaches this function, the same way `reset_context`/`relaunch` already do, so an
     ordinary dead browser never lands in the branch below either — and
     `XcuitestLiveEnvironment.teardown()` suppresses its own already-expired-session `WebDriverError`
-    the same way, since that class subclasses `RuntimeError`, not `OSError`. A `simctl.DeviceTimeout`
-    joins them (BE-0363): a `simctl terminate` that exceeded its deadline says the device is wedged,
-    which is a fact about the host and not about this run's wiring, and it reaches here from the two
+    the same way, since that class subclasses `RuntimeError`, not `OSError`. A
+    `device_errors.DeviceTimeout` joins them (BE-0363, widened to the platform-neutral type by
+    BE-0374 so an adb timeout is covered the day the adb surface gets one, with no edit here): a
+    device operation that exceeded its deadline says the device is wedged, which is a fact about the
+    host and not about this run's wiring, and it reaches here from the two
     environment teardowns that deliberately let a timeout through (`_terminate_app_under_test` /
     `_terminate_runner_app`, and `IosEnvironment.teardown`'s own `Env.terminate`). Treating it as a
     defect below would let a run whose every scenario passed end with no verdicts at all, since
@@ -82,7 +84,7 @@ def guarded_teardown(teardown: Callable[[], None], *, mid_run: bool, what: str) 
     """
     try:
         teardown()
-    except (subprocess.CalledProcessError, OSError, simctl.DeviceTimeout) as exc:
+    except (subprocess.CalledProcessError, OSError, device_errors.DeviceTimeout) as exc:
         _logger.warning("%s failed: %s", what, exc)
     except Exception:
         if mid_run:
@@ -150,10 +152,10 @@ def recovers_by_respawn(exc: BaseException) -> bool:
     mis-resolved selector (`SelectorError`), a refused actuator (`UnsupportedAction`), and a failed
     contract assertion are *not* infrastructure and must keep failing immediately.
 
-    Narrower than `is_host_fault` on purpose (BE-0378): a `simctl.DeviceTimeout` is the host's fault
-    but not a respawn's to fix, since a respawn rebuilds the device out of the same `simctl` calls
-    that just stalled — far too heavy an answer to a stall that outlives one deadline and not the
-    next. Read this to decide a retry; read `is_host_fault` to report one.
+    Narrower than `is_host_fault` on purpose (BE-0378): a `device_errors.DeviceTimeout` is the host's
+    fault but not a respawn's to fix, since a respawn rebuilds the device out of the same `simctl`
+    calls that just stalled — far too heavy an answer to a stall that outlives one deadline and not
+    the next. Read this to decide a retry; read `is_host_fault` to report one.
     """
     return isinstance(exc, base.BackendCrashError)
 
@@ -162,16 +164,15 @@ def is_host_fault(exc: BaseException) -> bool:
     """Whether `exc` says something about the host rather than about the code under test.
 
     The diagnosis, never the retry decision (BE-0378) — call `recovers_by_respawn` for that. It
-    covers everything a respawn recovers, plus the wedged CoreSimulator BE-0363 named: a
-    `simctl.DeviceTimeout` is raised by a subprocess deadline, never by an assertion, so it can no
-    more be a verdict about the app than a runner crash can. A lane that reports it as such shows a
+    covers everything a respawn recovers, plus the wedged device BE-0363 named on the iOS side: a
+    `DeviceTimeout` is raised by a subprocess deadline, never by an assertion, so it can no more be
+    a verdict about the app than a runner crash can. A lane that reports it as such shows a
     degrading host as a rising wedge count rather than as a conformance failure somebody re-ran.
 
-    Names `simctl.DeviceTimeout` rather than a platform-neutral type because none exists yet;
-    BE-0374 proposes `device_errors.DeviceTimeout` as a second base for the iOS type, and this
-    predicate names that instead once it lands, covering every backend that adopts it.
+    Names the platform-neutral `device_errors.DeviceTimeout` rather than the iOS type, so every
+    backend that later adopts that base is covered here with no edit (BE-0374).
     """
-    return isinstance(exc, base.BackendCrashError | simctl.DeviceTimeout)
+    return isinstance(exc, base.BackendCrashError | device_errors.DeviceTimeout)
 
 
 @dataclass(frozen=True)
@@ -287,11 +288,15 @@ class RunCrashRecoveryBudget:
     `exhausted()` alone is a weaker signal than it looks: the accumulated total bills recovery time
     regardless of outcome (`add_recovery_time` runs whether the scenario that just recovered went on
     to pass or ultimately failed), so it can cross the budget from a single recovery that *succeeded*
-    — a device that took a long time to come back but is now healthy. `given_up()`/`mark_given_up()`
-    track the stronger signal a caller needs before refusing every later scenario a first attempt: a
-    scenario's own crash-retry loop has actually ended in failure *because* this budget, specifically,
-    was the binding constraint. Only that — not mere exhaustion — is real evidence the device itself
-    is not going to recover.
+    — a device that took a long time to come back but is now healthy.
+    `given_up_cause()`/`mark_given_up()` track the stronger signal a caller needs before refusing
+    every later scenario a first attempt: recovery has actually been abandoned for this run, either
+    because a scenario's own crash-retry loop ended in failure *because* this budget, specifically,
+    was the binding constraint, or because a device preparation timed out (BE-0374). Only that — not
+    mere exhaustion — is real evidence the device itself is not going to recover.
+
+    The latch outgrew this class's name once a timeout could set it, and it keeps living here anyway
+    rather than moving to a second object — see BE-0374's *Alternatives considered* for why.
     """
 
     def __init__(self, budget: float | None) -> None:
@@ -300,7 +305,7 @@ class RunCrashRecoveryBudget:
         # invert the never-block-the-first-crash rule `exhausted()` documents below.
         self.budget = budget if budget is None or budget > 0 else None
         self._spent = 0.0
-        self._given_up = False
+        self._given_up_cause: str | None = None
         self._lock = threading.Lock()
 
     def exhausted(self) -> bool:
@@ -311,28 +316,47 @@ class RunCrashRecoveryBudget:
         real ceiling) — the run's very first crash always sees `_spent == 0.0`, so it is never blocked
         by this check alone. Says nothing about whether the device can still recover — see the class
         docstring — so a caller deciding whether to skip a *future* scenario's first attempt should
-        read `given_up()` instead.
+        read `given_up_cause()` instead.
         """
         with self._lock:
             return self.budget is not None and self._spent >= self.budget
 
-    def given_up(self) -> bool:
-        """Whether some earlier scenario's crash-retry loop actually failed because this budget was spent.
+    def given_up_cause(self) -> str | None:
+        """Why crash recovery was abandoned for this run, or None while it has not been.
 
         The signal that later scenarios should stop paying their own first attempt against the same
-        device, unlike bare `exhausted()`, which a successful-but-slow recovery can also trip.
+        device, unlike bare `exhausted()`, which a successful-but-slow recovery can also trip. It
+        answers with the *cause* rather than a bare yes, because a latch has two of them and the
+        difference is visible to an operator: this budget being the binding constraint, or a device
+        preparation that timed out on a wedged host (BE-0374). Reporting the budget for a run that
+        never had one was not merely misleading but a defect — `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` is
+        unset by default, so formatting `budget` into the message raised a `TypeError` out of
+        `run_one` and discarded every verdict the run had earned.
         """
         with self._lock:
-            return self._given_up
+            return self._given_up_cause
 
-    def mark_given_up(self) -> None:
-        """Record that a scenario's crash-retry loop ended in failure because this budget was spent.
+    def mark_given_up(self, cause: str) -> None:
+        """Record that crash recovery has been abandoned for this run, and why — once.
 
-        Called once, from the one place `run_one` already determines that (its `run_budget_spent`
-        failure branch), never on a recovery that succeeded.
+        `cause` is the phrase `given_up_cause`'s consumers read back into a failure message, so it
+        reads as the middle of one ("... skipped: <cause>, so this scenario was never leased") and
+        must be a non-empty phrase rather than a full sentence of its own. Called from the two places
+        `run_one` determines it: the `run_budget_spent` failure branch, and a device preparation that
+        timed out. Never on a recovery that succeeded.
+
+        The first call wins; a later one is a no-op. `run_all`'s `workers > 1` path can run several
+        scenarios' crash-retry loops concurrently, so two could abandon recovery for different
+        reasons within the same window — write-once keeps the reported cause the one that actually
+        established the latch, rather than whichever call happened to land last.
         """
+        if not cause:
+            raise ValueError(
+                "a latch cause must be a non-empty phrase — it is read into a failure message"
+            )
         with self._lock:
-            self._given_up = True
+            if self._given_up_cause is None:
+                self._given_up_cause = cause
 
     def add_recovery_time(self, seconds: float) -> None:
         """Bill `seconds` of actual recovery time against the shared run-level total.

@@ -253,7 +253,12 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > the binding constraint, `run_one` latches on it at the very top of every later scenario — before
 > that scenario's own first lease is even attempted, not only inside the crash-retry loop's own
 > `except` clause — so a device that has already proven it cannot recover does not still cost every
-> remaining scenario one full cold-spawn attempt apiece on the way to the same cancellation. On the XCUITest
+> remaining scenario one full cold-spawn attempt apiece on the way to the same cancellation. That
+> latch has a second cause, which needs no such qualification: a device preparation that *timed out*
+> (BE-0374, below). A budget is a measurement a slow-but-successful recovery can also trip, whereas a
+> device command that never returned is a direct observation that the service stopped answering, so it
+> latches on its own. The latch carries whichever cause set it, and a later scenario's failure reports
+> that cause rather than a budget the run may never have had. On the XCUITest
 > backend specifically, a cold respawn's own bring-up can now also pay a device recovery — a reboot or
 > replacement of a Simulator that stopped honouring automation — that neither budget can
 > preempt. `CrashRecoveryBudget.on_crash` is consulted only between crashes, not during a bring-up
@@ -276,7 +281,18 @@ The CLI's `run` calls this `run_and_report` ([cli](cli.md#run)).
 > If the forced-erase lease itself fails with a device-level fault (`simctl.DeviceError`/
 > `adb.DeviceError`, a sibling type to `BackendCrashError` rather than a subclass of it), the retry
 > degrades to the bare in-place respawn instead of letting that fault escape this loop and abort the
-> whole run past `run_all`. Because the replayed app's data is wiped by default, the retry is safe
+> whole run past `run_all` — *unless* that fault is a **timeout** (`device_errors.DeviceTimeout`, of
+> which `simctl.DeviceTimeout` is the iOS case), which fails the scenario instead (BE-0374). The
+> degradation answers a device that refused, whose refusal is evidence about one operation; a device
+> that never answered has produced no evidence about the operation at all, only that the service
+> behind every operation stopped serving, so retrying onto it assumes exactly what the timeout
+> disproved. The scenario alone fails, with the failure naming the command and the deadline it
+> exceeded, and every verdict the run has already earned survives — which is what the degradation was
+> written to protect in the first place. The same branch then latches the run (see the run-level
+> budget above), because a wedged host belongs to the host rather than to the scenario that met it,
+> so no later scenario spends its own deadline rediscovering it.
+>
+> Because the replayed app's data is wiped by default, the retry is safe
 > only for a scenario idempotent up to its crash point; one with a persistent side effect before the
 > crash (e.g. a server-side write), or one that depends on state a prior step in the same scenario
 > already set up, can fail, or pass against the wrong state, on replay. The decision logic lives in

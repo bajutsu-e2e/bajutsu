@@ -24,3 +24,21 @@ def test_generic_handler_catches_either_backend() -> None:
     for err in (simctl.DeviceError("ios fault"), adb.DeviceError("android fault")):
         with pytest.raises(device_errors.DeviceError):
             raise err
+
+
+def test_the_ios_timeout_keeps_every_type_it_had_and_gains_the_neutral_one() -> None:
+    # BE-0374 adds `device_errors.DeviceTimeout` as a *second* base, never as a replacement: every
+    # handler written against the iOS types — including the deliberate suppressions BE-0363 audited
+    # one by one — must keep matching, or a wedge changes route somewhere nobody looked.
+    exc = simctl.DeviceTimeout("device operation timed out after 60s: xcrun simctl shutdown X")
+    assert isinstance(exc, simctl.DeviceError)
+    assert isinstance(exc, device_errors.DeviceError)
+    assert isinstance(exc, device_errors.DeviceTimeout)
+
+
+def test_a_device_that_refused_is_not_a_timeout() -> None:
+    # The distinction the pipeline branches on: a refusal is evidence about one operation, a timeout
+    # is evidence the service behind every operation stopped answering. A backend with no timeout
+    # type of its own yet (adb) must never be mistaken for the latter.
+    assert not isinstance(simctl.DeviceError("erase refused"), device_errors.DeviceTimeout)
+    assert not isinstance(adb.DeviceError("android fault"), device_errors.DeviceTimeout)

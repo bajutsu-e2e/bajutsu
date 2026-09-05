@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0374](BE-0374-device-timeout-crash-retry-policy-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0374") |
+| 実装 PR | TBD |
 | トピック | Platform support |
 | 関連 | [BE-0363](../BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout-ja.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md), [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md), [BE-0260](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation-ja.md) |
 <!-- /BE-METADATA -->
@@ -238,14 +239,29 @@ XCUITest の環境がデバイスをコールドに準備せず、暖まった�
 > 作業の進行に合わせて最新の状態に保ってください。チェックリストは*詳細設計*の MECE な作業分解を
 > 反映し（作業単位ごとに1つ）、ログには何がいつ変わったかを古い順に記録し、PR へリンクします。
 
-- [ ] 単位1 — `device_errors.DeviceTimeout` を加える。`simctl.DeviceTimeout` に、`simctl.DeviceError`
+- [x] 単位1 — `device_errors.DeviceTimeout` を加える。`simctl.DeviceTimeout` に、`simctl.DeviceError`
       と並ぶ第2の基底としてその中立な型を与える。既存の処理と `bajutsu/adb.py` は変えない。
-- [ ] 単位2 — `run_one` で erase を強制した準備を捕まえる処理を分ける。`device_errors.DeviceTimeout`
+- [x] 単位2 — `run_one` で erase を強制した準備を捕まえる処理を分ける。`device_errors.DeviceTimeout`
       は降格せず、名前のついた失敗と専用の進捗の文面でシナリオを終わらせ、それ以外のデバイス障害は
       今日どおり降格させる。同じ処理に届く BE-0354 の交換用デバイスのリースも対象に含める。
-- [ ] 単位3 — その分岐から `mark_given_up()` で実行に印を立てる。印に原因を持たせ、未設定の予算を
+- [x] 単位3 — その分岐から `mark_given_up()` で実行に印を立てる。印に原因を持たせ、未設定の予算を
       整形して `TypeError` を投げる代わりに、印の立った実行のシナリオがタイムアウトを報告するように
       する。
+
+ログ：
+
+- TBD — 3つの作業単位を1つの変更で実装しました。`device_errors.DeviceTimeout` を加え、
+  `simctl.DeviceTimeout` に第2の基底としてその中立な型を与えました。BE-0363 が個別に検討した
+  処理はすべてそのまま一致し続け、`bajutsu/common/backend_cli/adb.py` は変えていません。
+  `recovery` の `is_host_fault` は中立な型を名指すようになりました。その docstring 自身が、
+  本項目でそうすると約束していたものです。`run_one` で erase を強制した準備を捕まえる処理を
+  分け、タイムアウトは再試行ループを抜けてシナリオを失敗させるようにしました。復旧時間を計上する
+  同じ `finally` を通るので計上は変わりません。失敗の文面には、例外が持つコマンドと期限が入り、
+  進捗の表示にも専用の文面を用意しました。それ以外のデバイス障害は今日どおり降格します。
+  BE-0354 の交換用デバイスのリースも同じ分岐が扱い、専用のテストで固定しました。実行全体の印には
+  原因を持たせ、`given_up()` という真偽値の述語を `mark_given_up(cause)` と `given_up_cause()` に
+  置き換えました。これにより、印の立った実行のシナリオが未設定の予算を整形して `run_all` の外へ
+  `TypeError` を投げる不具合がなくなりました。
 
 ## 参考
 

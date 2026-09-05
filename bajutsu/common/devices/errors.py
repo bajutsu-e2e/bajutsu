@@ -5,6 +5,10 @@ whatever backend raised it, so the base type lives in this leaf module rather th
 `simctl` backend. The iOS (`simctl.DeviceError`) and Android (`adb.DeviceError`) errors subclass it
 as siblings, so a generic `except DeviceError` handler need not import an iOS backend module just to
 name the exception it catches — keeping `bajutsu` backend-agnostic (platform is a backend).
+
+`DeviceTimeout` sits under that base for the same reason one step down (BE-0374): the run pipeline
+treats a device that never answered differently from one that answered by refusing, so it needs a
+neutral name for the first.
 """
 
 from __future__ import annotations
@@ -16,4 +20,17 @@ class DeviceError(RuntimeError):
     Carries a clean, actionable message (a bad udid/serial, an app that isn't installed, a wedged
     simulator or browser) — the CLI surfaces it and exits 2, instead of dumping a Python traceback.
     Each backend subclasses it for platform-specific detail; a generic handler catches this base.
+    """
+
+
+class DeviceTimeout(DeviceError):
+    """A device operation exceeded its deadline rather than failing — the host stopped answering.
+
+    What every backend raises when a device command ran out its own deadline: the iOS
+    `simctl.DeviceTimeout` today (BE-0363), and whichever type a later item gives the adb surface
+    once its commands carry deadlines too. The distinction from a plain `DeviceError` is what a
+    caller learns from the fault — a device that refused an operation produced evidence about that
+    one operation, while a device that never answered produced evidence that the service behind
+    every operation stopped serving — so the run pipeline branches on it without importing an iOS
+    backend module to name it (BE-0374).
     """

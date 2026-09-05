@@ -11,6 +11,7 @@ import pytest
 from _runner import _eff, _el, _failing_lease, _fake_driver, _ios_eff, _lease
 from conftest import AlertingDriver, guard_rule
 
+from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import Effective, XcuitestConfig
 from bajutsu.common.doctor import Score
 from bajutsu.common.drivers import base
@@ -282,8 +283,6 @@ def test_run_all_degrades_to_a_bare_respawn_when_the_forced_erase_lease_itself_f
     # abort the whole run past `run_all` — losing every already-passed scenario's verdict, worse than
     # the bare in-place respawn this forced retry replaces. It must instead degrade to that bare
     # respawn, exactly like a scenario that never forced erase at all.
-    from bajutsu.common.backend_cli import simctl
-
     state = {"n": 0}
     erase_seen: list[bool | None] = []
 
@@ -483,14 +482,168 @@ def test_run_all_still_propagates_a_device_error_from_a_bare_lease() -> None:
     # A `DeviceError` from a lease that never forced erase (attempt 1, or the degraded bare respawn
     # above once *it* also fails) is unrelated to this item's forced-erase retry, so it keeps its
     # pre-existing behavior: it is not swallowed, it propagates out of run_all.
-    from bajutsu.common.backend_cli import simctl
-
     def lease(eff: Effective, scenario: Scenario) -> Lease:
         raise simctl.DeviceError("appPath not found (test)")
 
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
     with pytest.raises(simctl.DeviceError):
         run_all(_ios_eff(), scenarios, lease, actuator="xcuitest")
+
+
+def test_a_timeout_on_a_non_forced_erase_lease_still_propagates() -> None:
+    # BE-0374 scopes the timeout split to the forced-erase (and BE-0354-escalated) lease alone — see
+    # its "Alternatives considered" on why the ordinary lease path is a separate question. A
+    # `DeviceTimeout` on the scenario's very first lease, which never forces erase, must therefore
+    # keep the pre-existing fail-loud-and-abort-the-run behavior rather than failing just this
+    # scenario and latching the run for every scenario after it.
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        raise simctl.DeviceTimeout("device operation timed out after 60s: xcrun simctl boot ABC")
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    with pytest.raises(simctl.DeviceTimeout):
+        run_all(_ios_eff(), scenarios, lease, actuator="xcuitest")
+
+
+# --- a device preparation that timed out is not a device that refused (BE-0374) --- #
+#
+# The degradation just above rests on a claim about a device that *answered*: its refusal is evidence
+# about one operation, so the scenario deserves the bare respawn it would have had before the forced
+# erase existed. A device that never answered gave no evidence about the operation at all — only that
+# the service behind every operation stopped serving — so the same treatment assumes exactly what the
+# timeout disproved. These pin the split, and the run-level latch that follows from it.
+
+
+def test_a_timed_out_forced_erase_prep_fails_the_scenario_instead_of_degrading() -> None:
+    # The forced-erase retry's own lease times out rather than failing. Degrading would lease again
+    # *without* the forced erase, which is one of the conditions that put the attempt on the
+    # warm-resident reuse path — itself full of the very `simctl` calls that just stalled. So it
+    # resolves one of two ways and both are worse than failing here: a second timeout no handler
+    # catches (the run aborts, every earned verdict lost), or a verdict published from a host that had
+    # just failed to answer `shutdown`. No third lease may be attempted.
+    state = {"n": 0}
+    erase_seen: list[bool | None] = []
+    messages: list[str] = []
+    crash = base.BackendCrashError("runner crashed during the readiness gate (test)")
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        erase_seen.append(scenario.preconditions.erase)
+        if state["n"] == 1:
+            raise crash
+        raise simctl.DeviceTimeout(
+            "device operation timed out after 60s: xcrun simctl shutdown ABC"
+            " (this host's CoreSimulator may be wedged)"
+        )
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(
+        _ios_eff(), scenarios, lease, actuator="xcuitest", crash_retries=2, progress=messages.append
+    )
+    assert not results[0].ok
+    assert erase_seen == [None, True]  # the degraded bare respawn was never leased
+    failure = results[0].failure or ""
+    assert "timed out" in failure
+    assert "xcrun simctl shutdown ABC" in failure  # the command and deadline reach the operator
+    assert "60s" in failure
+    assert str(crash) in failure  # the crash the retry was recovering from is not dropped
+    assert "device preparation timed out" in messages[-1]  # the timeout's own progress wording
+
+
+def test_an_ordinary_device_fault_still_degrades_after_the_timeout_split() -> None:
+    # The other half of the split, asserted from this item's side: a device that answered by refusing
+    # keeps the bare respawn the degradation was written for. Nothing about the refusal case changed,
+    # so a split that swept it up too would be a regression this item never argued for.
+    state = {"n": 0}
+    erase_seen: list[bool | None] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        erase_seen.append(scenario.preconditions.erase)
+        if state["n"] == 1:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        if state["n"] == 2:
+            raise simctl.DeviceError("Unable to erase in current state: Booted")
+        return _lease(eff, scenario)
+
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
+    results = run_all(_ios_eff(), scenarios, lease, actuator="xcuitest", crash_retries=2)
+    assert results[0].ok
+    assert erase_seen == [None, True, None]  # degraded to the bare respawn, exactly as before
+
+
+def test_a_timed_out_replacement_device_lease_fails_the_scenario_too() -> None:
+    # BE-0354's escalated rung reaches this same handler with the forced erase still on it, so the
+    # split governs it as well. A `simctl create`/`clone` that never returns is the same wedge as a
+    # `shutdown` that never returns and earns the same treatment — pinned here rather than inferred
+    # from the forced-erase case generalising. A second scenario asserts the third of the item's three
+    # things at once for this rung too: the run-level latch, not just the scenario's own failure.
+    state = {"n": 0}
+    erase_seen: list[bool | None] = []
+    replacements: list[int] = []
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        n = state["n"]
+        erase_seen.append(scenario.preconditions.erase)
+        if n == 3:  # the attempt after the escalation was requested
+            raise simctl.DeviceTimeout("device operation timed out after 120s: xcrun simctl clone")
+        if n > 3:  # scenario "b" must never be leased at all
+            raise AssertionError("scenario b was leased despite the run-level latch")
+        return Lease(
+            driver=_crashing_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+            video_start_stalled=lambda: False,
+            request_device_replacement=lambda n=n: replacements.append(n),  # type: ignore[misc]
+        )
+
+    scenarios = [
+        Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]}),
+        Scenario.model_validate({"name": "b", "steps": [{"tap": {"id": "ok"}}]}),
+    ]
+    results = run_all(_replaceable_eff(), scenarios, lease, actuator="xcuitest", crash_retries=3)
+    assert replacements == [2]  # the forced-erase retry crashed again and escalated
+    assert not results[0].ok and not results[1].ok
+    assert erase_seen == [None, True, True]  # no fourth, degraded lease
+    assert "timed out" in (results[0].failure or "")
+    assert "never leased" in (results[1].failure or "")  # the escalated timeout latches the run too
+
+
+def test_a_timed_out_preparation_latches_the_run_with_no_budget_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A wedged CoreSimulator is a property of the host, not of the scenario that met it, so every
+    # later scenario must fail before its own first lease rather than spend its own deadline
+    # rediscovering the wedge. `BAJUTSU_RUN_CRASH_RECOVERY_BUDGET` is unset here — the default — which
+    # is also the case that used to format a `None` budget with `:g` and raise a `TypeError` out of
+    # `run_one`, aborting `run_all` and discarding every verdict the run had earned. Cleared explicitly
+    # rather than merely assumed, so a lane that exports this variable does not silently stop
+    # exercising the unset-budget path this test exists to pin.
+    monkeypatch.delenv("BAJUTSU_RUN_CRASH_RECOVERY_BUDGET", raising=False)
+    state = {"n": 0}
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        if state["n"] == 1:
+            raise base.BackendCrashError("runner crashed during the readiness gate (test)")
+        raise simctl.DeviceTimeout(
+            "device operation timed out after 60s: xcrun simctl shutdown ABC"
+        )
+
+    scenarios = [
+        Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]}),
+        Scenario.model_validate({"name": "b", "steps": [{"tap": {"id": "ok"}}]}),
+    ]
+    results = run_all(_ios_eff(), scenarios, lease, actuator="xcuitest", crash_retries=2)
+    assert not results[0].ok and not results[1].ok
+    assert state["n"] == 2  # scenario b was never leased at all
+    assert "timed out" in (results[1].failure or "")
+    assert "never leased" in (results[1].failure or "")
+    # The latch names the wedge, not a budget this run never had.
+    assert "budget" not in (results[1].failure or "")
 
 
 def test_run_all_skips_forced_erase_when_scenario_declares_reinstall_overwrite() -> None:
@@ -912,9 +1065,9 @@ def test_run_all_run_crash_recovery_budget_does_not_fail_a_scenario_after_a_slow
     # The exact false-positive a bare `exhausted()` latch would cause: scenario "a" crashes once, and
     # its respawn succeeds after spending the *whole* budget (a device replacement that took a while
     # and then worked) — the device has just proven it recovers, not that it is broken. Scenario "b",
-    # which never crashes at all, must still run and pass normally: `given_up()` only latches once a
-    # scenario's own loop has actually *failed* because of the run-level budget, which never happens
-    # here.
+    # which never crashes at all, must still run and pass normally: `given_up_cause()` only latches
+    # once a scenario's own loop has actually *failed* because of the run-level budget, which never
+    # happens here.
     clock = _AdvancingClock()
     calls = 0
 
