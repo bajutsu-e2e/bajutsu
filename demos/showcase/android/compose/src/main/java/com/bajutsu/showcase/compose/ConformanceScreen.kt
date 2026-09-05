@@ -152,7 +152,7 @@ fun ConformanceScreen(identifiers: List<String>) {
 }
 
 // One tap-mirror pair (BE-0339 Unit 6): a tap target and, below it, a separate element carrying that
-// target's tap count as its mirrored value. Half the height of a seeded box above, which has to host a
+// target's tap count as its mirrored value. Half the height of a seeded box below, which has to host a
 // two-finger pinch/rotate; these are only ever tapped.
 @Composable
 private fun TapMirror(targetId: String, valueId: String, taps: Int, onTap: () -> Unit) {

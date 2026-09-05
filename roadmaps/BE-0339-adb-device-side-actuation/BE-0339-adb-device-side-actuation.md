@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0339](BE-0339-adb-device-side-actuation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Implemented** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0339") |
 | Implementing PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455) (Units 1–3: the directional-gesture anchor, `POST /act`, and identity-addressed actuation), [#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702) (Unit 4 and Unit 6's fast-gate conformance coverage; a Unit 5 attempt reverted after review, Unit 6's on-device realization deferred after real-device evidence it wasn't safe to ship), [#1820](https://github.com/bajutsu-e2e/bajutsu/pull/1820) (Unit 5, on the device-side publish confirmation its first attempt assumed), [#1914](https://github.com/bajutsu-e2e/bajutsu/pull/1914) (Unit 6, the on-device realization of the tap-identity case on both lanes) |
 | Topic | Driver & backend architecture |
@@ -242,7 +242,7 @@ languages. The identity keeps the decision on the host and sends only its result
       a frame, not a center.
 - [x] Unit 4 — the coordinate path kept as a declared, logged degraded mode.
 - [x] Unit 5 — the read-lag barrier narrowed to the reads that still need it.
-- [x] Unit 6 — deterministic and conformance coverage, and a repeated Android-lane run.
+- [ ] Unit 6 — deterministic and conformance coverage, and a repeated Android-lane run.
 
 Log:
 
@@ -465,6 +465,14 @@ Log:
   budget. `conformance (xcuitest)` ran green on a dedicated iOS 26.5 Simulator (25 passed, 2
   skipped) with the same case passing — the real-Simulator result the reverted attempt never
   obtained, since every push there superseded the last before one landed.
+
+  Unit 6 stays open on its second half, and `Status` stays In progress with it. The repeated
+  Android-lane dispatch that samples the flake's residual rate — the `gestures` scenario run fifteen
+  times on one dispatch, from branch `claude/be-0339-flake-sample` — is
+  [in flight](https://github.com/bajutsu-e2e/bajutsu/actions/runs/33980999223). The emulator this
+  entry reports on cannot stand in for it: the *Verification* section above records that the flake
+  does not reproduce on Apple silicon at all. The box is ticked, and the item moves to Implemented,
+  once that dispatch's residual rate is recorded here.
 
 ## References
 
