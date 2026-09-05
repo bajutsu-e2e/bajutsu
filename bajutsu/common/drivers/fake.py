@@ -74,10 +74,11 @@ class FakeDriver:
         # this to stand in for the out-of-process prompt the real backend queries on-device.
         self.system_alert_buttons: list[base.Element] = []
         # What `push_interruption_policy` last handed this backend, and what the runner-side
-        # interruption monitor should report having answered — both inert here, so a test can
-        # drive the orchestrator side of that exchange without a Simulator.
-        self.interruption_policy: tuple[list[tuple[set[str], str]], list[str]] | None = None
+        # interruption monitor should report having tapped and declined — both inert here, so a
+        # test can drive the orchestrator side of that exchange without a Simulator.
+        self.interruption_policy: tuple[list[tuple[set[str], str]], bool] | None = None
         self.interruptions_to_drain: list[str] = []
+        self.interruptions_declined_to_drain: list[list[str]] = []
         # The rows each seeded picker wheel offers `set_picker_value` (BE-0356), keyed by `id()` of
         # the `Element` object in `screen` rather than by its identifier: a multi-component picker's
         # sibling wheels (a year wheel beside a month wheel) carry no identifier of their own — they
@@ -273,18 +274,19 @@ class FakeDriver:
         return [label for b in self.system_alert_buttons if (label := b["label"])]
 
     def set_interruption_policy(
-        self, rules: Sequence[tuple[frozenset[str], str]], candidates: Sequence[str]
+        self, rules: Sequence[tuple[frozenset[str], str]], governs: bool
     ) -> None:
         """Record the policy the orchestrator pushed, so a test can assert what the backend was told."""
-        self.interruption_policy = (
-            [(set(identify), tap) for identify, tap in rules],
-            list(candidates),
-        )
+        self.interruption_policy = ([(set(identify), tap) for identify, tap in rules], governs)
 
-    def drain_interruptions(self) -> list[str]:
-        """Hand back (and clear) whatever `interruptions_to_drain` was seeded with."""
-        drained, self.interruptions_to_drain = list(self.interruptions_to_drain), []
-        return drained
+    def drain_interruptions(self) -> base.DrainedInterruptions:
+        """Hand back (and clear) whatever `interruptions_to_drain`/`_declined_to_drain` was seeded with."""
+        tapped, self.interruptions_to_drain = list(self.interruptions_to_drain), []
+        declined, self.interruptions_declined_to_drain = (
+            list(self.interruptions_declined_to_drain),
+            [],
+        )
+        return base.DrainedInterruptions(tapped=tapped, declined=declined)
 
     def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
         # Mirrors the real driver: a tip is the region *and* the container together, absence is

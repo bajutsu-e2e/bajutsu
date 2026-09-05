@@ -80,6 +80,36 @@ def test_if_without_else_skips() -> None:
     assert driver.actions == []
 
 
+def test_if_condition_check_undeclared_interruption_still_fails_the_step() -> None:
+    # `_run_if`'s own condition query — evaluated before any nested step, including on the taken
+    # `else`-less path above where nothing else ever queries the driver — can be interrupted too
+    # (BE-0406 Unit 2b).
+    driver = FakeDriver([el("flag", "F", value="off")])
+    driver.interruptions_declined_to_drain = [["Save", "Not Now"]]
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "if no else",
+                "steps": [
+                    {
+                        "if": {
+                            "condition": {"exists": {"id": "nonexistent"}},
+                            "then": [{"tap": {"id": "missing"}}],
+                        }
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+    )
+    assert result.ok is False
+    assert result.failure is not None
+    assert "undeclared system alert" in result.failure
+    assert "Save" in result.failure
+    assert "Not Now" in result.failure
+
+
 def test_if_condition_is_interpolated() -> None:
     """${vars.*} tokens in if conditions are substituted."""
     driver = FakeDriver([el("x", "X", value="hello"), el("ok", "OK", ["button"])])
@@ -154,6 +184,37 @@ def test_foreach_empty_succeeds() -> None:
     )
     assert result.ok, result.failure
     assert driver.actions == []
+
+
+def test_foreach_selector_query_undeclared_interruption_still_fails_the_step() -> None:
+    # `_run_for_each`'s own selector query, evaluated before any nested step — including on the
+    # zero-match path above where the body never runs at all — can be interrupted too (BE-0406
+    # Unit 2b).
+    driver = FakeDriver([el("other", "X")])
+    driver.interruptions_declined_to_drain = [["Save", "Not Now"]]
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "forEach empty",
+                "steps": [
+                    {
+                        "forEach": {
+                            "sel": {"idMatches": "item.*"},
+                            "as": "x",
+                            "steps": [{"tap": {"id": "${vars.x}"}}],
+                        }
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+    )
+    assert result.ok is False
+    assert result.failure is not None
+    assert "undeclared system alert" in result.failure
+    assert "Save" in result.failure
+    assert "Not Now" in result.failure
 
 
 def test_foreach_no_identifier_fails() -> None:

@@ -277,7 +277,7 @@ final class TransportParityTests: XCTestCase {
         // hand the next prompt back to XCUITest's own default handler.
         let policy: [String: Any] = [
             "rules": [["identify": ["Allow", "Don't Allow"], "tap": "Don't Allow"]],
-            "candidates": ["Not Now"],
+            "governs": true,
         ]
         try assertSame(
             try wire("POST", "/interruptionPolicy", json: policy),
@@ -295,16 +295,35 @@ final class TransportParityTests: XCTestCase {
         // The drain is the only way a prompt answered at interruption time reaches the report, so an
         // empty drain and a lost one look alike from the driver — this pins that what the monitor
         // records comes back, once, and that a second drain is empty.
-        InterruptionPolicyStore.shared.setPolicy(InterruptionPolicy(candidates: ["Not Now"]))
+        InterruptionPolicyStore.shared.setPolicy(InterruptionPolicy(governs: true))
         InterruptionPolicyStore.shared.record("Not Now")
         let reply = try wire("POST", "/interruptionPolicy/drain", json: [:])
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: reply.body) as? [String: Any])
         XCTAssertEqual(json["labels"] as? [String], ["Not Now"])
+        XCTAssertEqual(json["unmatched"] as? [[String]], [])
         let second = try wire("POST", "/interruptionPolicy/drain", json: [:])
         let secondJSON = try XCTUnwrap(
             JSONSerialization.jsonObject(with: second.body) as? [String: Any]
         )
         XCTAssertEqual(secondJSON["labels"] as? [String], [])
+    }
+
+    func testInterruptionPolicyDrainReportsWhatTheMonitorDeclined() throws {
+        // A decline is not a dismissal — nothing answered it — so it comes back through the separate
+        // `unmatched` field, one button list per declined alert, letting the driver fail the step or
+        // `expect` that met it by name instead of continuing as if nothing had happened (BE-0406
+        // Unit 2b).
+        InterruptionPolicyStore.shared.setPolicy(InterruptionPolicy(governs: true))
+        InterruptionPolicyStore.shared.recordDeclined(["Save", "Not Now"])
+        let reply = try wire("POST", "/interruptionPolicy/drain", json: [:])
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: reply.body) as? [String: Any])
+        XCTAssertEqual(json["labels"] as? [String], [])
+        XCTAssertEqual(json["unmatched"] as? [[String]], [["Save", "Not Now"]])
+        let second = try wire("POST", "/interruptionPolicy/drain", json: [:])
+        let secondJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: second.body) as? [String: Any]
+        )
+        XCTAssertEqual(secondJSON["unmatched"] as? [[String]], [])
     }
 
     func testScreenshotServesRawPNGOverTheWire() throws {

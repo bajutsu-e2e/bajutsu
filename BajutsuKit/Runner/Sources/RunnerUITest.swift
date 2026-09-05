@@ -39,16 +39,31 @@ final class RunnerUITest: XCTestCase {
         // alert: XCUITest verifies the interruption cleared, and a monitor that returns `true` while
         // the alert is still up is re-invoked on the very next interaction — in a resident runner
         // that serves queries continuously, an unbounded loop that takes the runner down with it
-        // (measured). Declining (`false`) when the policy names no button on this alert is therefore
-        // the only safe fallback: it hands the alert back to XCUITest's default handler, which is
-        // what happened before this monitor existed and does clear it.
+        // (measured). Declining (`false`) when no rule identifies this alert is therefore the only
+        // safe fallback: it hands the alert back to XCUITest's default handler, which is what
+        // happened before this monitor existed and does clear it. Since BE-0406 Unit 2b, a decline
+        // the policy `governs` is recorded before it happens, so the step or `expect` that met it
+        // can fail by name instead of continuing as if nothing had answered on the scenario's
+        // behalf.
         _ = addUIInterruptionMonitor(withDescription: "bajutsu: the scenario's policy answers system alerts") { alert in
             let policy = InterruptionPolicyStore.shared.policy
-            guard !policy.isEmpty else { return false }
+            guard policy.governs else { return false }
             let buttons = alert.buttons
             let labels = (0..<buttons.count).map { buttons.element(boundBy: $0).label }
-            guard let label = policy.label(for: labels),
-                  let ordinal = labels.firstIndex(of: label) else { return false }
+            guard let label = policy.label(for: labels) else {
+                // A `labels` carrying no real button text is the same benign race `button.exists`
+                // guards below: the alert lost the race with its own dismissal between XCUITest
+                // flagging the interruption and this query — `buttons.count` can already reflect
+                // the vanished alert while each individual `.label` resolves to `""`, so this
+                // checks every element rather than the array's emptiness alone. Recording it would
+                // fail an otherwise-passing step over nothing, naming no buttons at all (BE-0406
+                // Unit 2b).
+                if labels.contains(where: { !$0.isEmpty }) {
+                    InterruptionPolicyStore.shared.recordDeclined(labels)
+                }
+                return false
+            }
+            guard let ordinal = labels.firstIndex(of: label) else { return false }
             let button = buttons.element(boundBy: ordinal)
             guard button.exists else { return false }
             button.tap()

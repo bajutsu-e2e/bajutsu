@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0406") |
-| 実装 PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871)（単位 1）、[#1894](https://github.com/bajutsu-e2e/bajutsu/pull/1894)（単位 2a、3） |
+| 実装 PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871)（単位 1）、[#1894](https://github.com/bajutsu-e2e/bajutsu/pull/1894)（単位 2a、3）、[#1903](https://github.com/bajutsu-e2e/bajutsu/pull/1903)（単位 2b、単位 5） |
 | トピック | Platform support |
 | 関連 | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md), [BE-0369](../BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice-ja.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules-ja.md), [BE-0399](../BE-0399-ios-system-alert-interruption-policy/BE-0399-ios-system-alert-interruption-policy-ja.md), [BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md), [BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) |
 <!-- /BE-METADATA -->
@@ -496,7 +496,7 @@ BE-0402 は `probe_native` が返す `"unhandled"` にも用途を与えてい�
       `_SYSTEM_ALERT_POLL_SECONDS` へ絞る。画面を占めていたアラートを名指しする理由で失敗させる。
 - [x] 単位 2a — `labels` と `--alert-labels` を削除する。ネイティブの probe と 2 つのツリー内
       消去を `rules` だけへ付け替える。`labels` を書いたままのシナリオは拒否する。
-- [ ] 単位 2b — `DEFAULT_DISMISSIVE_LABELS` と、それが監視へ渡していた Swift 側の照合を削除する。
+- [x] 単位 2b — `DEFAULT_DISMISSIVE_LABELS` と、それが監視へ渡していた Swift 側の照合を削除する。
       `InterruptionPolicy` / `set_interruption_policy` / `InterruptionPolicyRequest` に `governs`
       を加え、ルールがすべてツリー内専用のシナリオでも方針が governs であり続けるようにする。
       割り込み監視が辞退したアラートを記録する。ただし governs しない方針自身の辞退と、無害な競走に
@@ -507,7 +507,7 @@ BE-0402 は `probe_native` が返す `"unhandled"` にも用途を与えてい�
       プロンプトごとの面の記録とともに `savePassword` を加え、`handleSystemAlert` ステップでは拒否する。
 - [ ] 単位 4 — 「パスワードを保存」の 2 つのデモを `rules` へ移し、ブラウザ側のデモから迂回策の待機を
       落とし、回帰用のシナリオを `ios-e2e` のレーンに加える。
-- [ ] 単位 5 — `docs/scenarios.md`、`docs/architecture.md`、両方の `docs/ja/` の写しを更新する。
+- [x] 単位 5 — `docs/scenarios.md`、`docs/architecture.md`、両方の `docs/ja/` の写しを更新する。
       割り込み監視の辞退がいまや結果を伴うことも含める。
 
 ログ：
@@ -553,6 +553,52 @@ BE-0402 は `probe_native` が返す `"unhandled"` にも用途を与えてい�
   この項目の設計にはない変更として、ガードが 1 回限りの dismiss を行う 2 か所で、再試行の前に
   現れた画面が動かなくなるまで待つようにしました。上限付きでベストエフォートの条件待ちなので、
   アニメーション途中のツリーを相手にステップが失敗することはなくなります。
+- [#1903](https://github.com/bajutsu-e2e/bajutsu/pull/1903) — 単位 2b と、単位 5 の残りです。
+  `bajutsu/common/orchestrator/types.py` から
+  `DEFAULT_DISMISSIVE_LABELS` を削除しました。`push_interruption_policy` は、削除した候補一覧の
+  代わりに `governs` を送ります。ガードが有効なシナリオでは、ツリー内専用の drop で rule が
+  1 つも残らなくても true になります。`Driver.set_interruption_policy` は `candidates` の代わりに
+  `governs` を受け取ります。`Driver.drain_interruptions` は `DrainedInterruptions(tapped, declined)`
+  の組を返すようになりました。orchestrator 側のラッパーは `declined` を、`AlertEvent` ではなく
+  `UndeclaredInterruption` の記録へ変えます。
+  `declined` が空でなくなった drain 箇所は、どこも無条件に失敗するようになりました。ステップの
+  drain、`expect` フェーズ自身の drain（ガードの probe が何かを片付けたかどうかに関わらず対象にする
+  よう、レビューで見つかった漏れを塞ぎました）、再試行のあとの 2 度目の drain（コメントがすでに
+  欠落として指摘していたものです）、そして未対応の locale で `handleSystemAlert` に遭遇した際に
+  `_handle_action` が取る早期リターンの 4 か所です。最後のものは、actuation の同じ取りこぼしを
+  すでに自分のコメントが指摘していました。この失敗はどれも、ステップや `expect` がすでに持っている
+  理由へ `undeclared_interruption_note` を追記するのであって、置き換えるのではありません。
+  ドレインした記録もすべて名指しし、最初の 1 件だけにはしません。
+  Swift 側では、`InterruptionPolicy` から `candidates`/`isEmpty` を削り `governs` を加えました。
+  `InterruptionPolicyStore` は、監視が辞退する前に追記する 2 本目のドレインリストを持ちます。
+  ただし、アラートのボタン一覧のラベルがすべて空文字列のときは追記しません。これは、数行下で
+  `button.exists` がすでにガードしている、アラートが自分で閉じてしまう競走と同じ徴候です。
+  `openapi.yaml`、生成される `APIHandler`、レガシーの `Router` は、いずれも新しい
+  `governs`/`unmatched` の配線形状を運びます。レガシー経路もいまは、`governs` が欠けているか
+  型違いのときに `false` へ既定せず、そのまま拒否します。
+  3 巡目は、`if`/`forEach`/`web` の各ステップハンドラを、drain を取りこぼす 3 件目のパターンとして
+  見つけました。どれもネストしたステップへ入る前にドライバへ問い合わせており、`_handle_action`
+  自身の早期リターンと同じ形です。そこで 4 か所とも、1 つの `_drain_step_interruptions` ヘルパーを
+  共有するようにしました。同じ巡では、空ラベルによる競走のガードも見直しました。`buttons.count`
+  が 0 でなくても、個々の `.label` はすでに空文字列に解決していることがあるからです。一覧そのものが
+  空かどうかではなく、中身をすべて点検するようにしました。
+  さらに、diff を読み返すだけでは見つからなかった設計上の欠落も見つかりました。`handleSystemAlert`
+  ステップ自身が使うプロンプトは、シナリオの `systemAlertHandling.rules` に含まれるとは限りません。
+  宣言しない選択を認めるために、ステップという形があるからです。そのため、先行する操作の割り込みが
+  同じプロンプトと先に出会い、一致する規則がなく、このステップが答えようとしていたアラートのせいで
+  無関係なステップが失敗することがありえました。`_reserve_declared_alert` はこれを閉じます。
+  `prompt`/`choice` 形のステップが待っている間だけ、シナリオ自身の規則に加えてそのステップの対象を
+  1 つ追加で送ります。ステップが答え終わる、失敗する、あるいは待機自体が例外で終わるいずれの場合も
+  元へ戻します。これは、この項目自身が動機として挙げているシナリオそのものです。ただし `sel` 形の
+  ステップには予約すべき識別ラベルの集合がないため、今日の振る舞いのままです。
+  セルフレビュー（BE-0347 の二役の作法、3 巡。レビュー自身の上限です）が、ここまでの内容をすべて
+  見つけて直しました。`swift build` と `swift test --filter BajutsuRunnerTests`（172 件。
+  `InterruptionPolicy.label(for:)` への直接のテストを新たに含みます）が通り、Python 側のテスト一式
+  （7,177 件）もすべて通ります。
+  `docs/architecture.md` と `docs/scenarios.md`（両方の `docs/ja/` の写しを含む）からは、
+  割り込み監視の説明にあった組み込みの dismiss 候補一覧が消えました。方針が有効な状態での辞退は、
+  それに遭遇したステップまたは `expect` を失敗させると記録し、予約の仕組みも記録しています。
+  単位 5 に残っていたのはこの作業だけだったので、単位 5 も完了します。
 
 ## 参考
 

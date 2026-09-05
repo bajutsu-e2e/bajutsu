@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0406") |
-| Implementing PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871) (unit 1), [#1894](https://github.com/bajutsu-e2e/bajutsu/pull/1894) (units 2a, 3) |
+| Implementing PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871) (unit 1), [#1894](https://github.com/bajutsu-e2e/bajutsu/pull/1894) (units 2a, 3), [#1903](https://github.com/bajutsu-e2e/bajutsu/pull/1903) (unit 2b, unit 5) |
 | Topic | Platform support |
 | Related | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0369](../BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules.md), [BE-0399](../BE-0399-ios-system-alert-interruption-policy/BE-0399-ios-system-alert-interruption-policy.md), [BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md), [BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) |
 <!-- /BE-METADATA -->
@@ -500,7 +500,7 @@ the gap Unit 2b closes to bring the two surfaces to the same standard.
       the guard's `pollInterval`, and fail with a reason that names the alert that held the screen.
 - [x] Unit 2a — remove `labels` and `--alert-labels`; re-key the native probe and both in-tree
       dismissals to `rules` alone; reject a scenario that still writes `labels`.
-- [ ] Unit 2b — remove `DEFAULT_DISMISSIVE_LABELS` and the Swift-side candidate matching it fed; add
+- [x] Unit 2b — remove `DEFAULT_DISMISSIVE_LABELS` and the Swift-side candidate matching it fed; add
       `governs` to `InterruptionPolicy`/`set_interruption_policy`/`InterruptionPolicyRequest` so a
       scenario whose rules are all in-tree-only still governs; record the interruption monitor's
       declined alerts, except a non-governing policy's own decline and a matched button lost to a
@@ -512,7 +512,7 @@ the gap Unit 2b closes to bring the two surfaces to the same standard.
       in a `handleSystemAlert` step.
 - [ ] Unit 4 — migrate both save-password demos to `rules`, drop the browser demo's workaround wait,
       and add the regression scenario to the `ios-e2e` lane.
-- [ ] Unit 5 — update `docs/scenarios.md`, `docs/architecture.md`, and both `docs/ja/` mirrors,
+- [x] Unit 5 — update `docs/scenarios.md`, `docs/architecture.md`, and both `docs/ja/` mirrors,
       including the interruption monitor's now-consequential decline.
 
 Log:
@@ -557,6 +557,48 @@ Log:
   and outside this item's design, the guard's two one-shot dismissal sites let the uncovered screen
   settle before the retry — a bounded, best-effort condition wait, so a step no longer fails against
   a tree still animating the sheet away.
+- [#1903](https://github.com/bajutsu-e2e/bajutsu/pull/1903) — Unit 2b, plus the remaining piece
+  of Unit 5. Unit 2b removes `DEFAULT_DISMISSIVE_LABELS` from
+  `bajutsu/common/orchestrator/types.py`, and `push_interruption_policy` sends `governs` (true for any
+  scenario whose guard is on, independent of whether a rule survived the in-tree-only drop) in place
+  of the removed candidate list. `Driver.set_interruption_policy` takes `governs` instead of
+  `candidates`; `Driver.drain_interruptions` returns a `DrainedInterruptions(tapped, declined)` pair,
+  and the orchestrator wrapper turns `declined` into `UndeclaredInterruption` records rather than
+  `AlertEvent`s. Every drain site fails unconditionally once `declined` is non-empty — the step-outcome
+  drain, the `expect` phase's own drain (now covering the guard's probe regardless of whether it
+  clears anything, not just the branch where it does, closing a gap the review pass found), the second
+  `expect`-phase drain after the alert-guard retry that a standing comment already flagged as missing,
+  and the one immediate return `_handle_action` takes for an uncovered `handleSystemAlert` locale, whose own
+  comment already named the same stranding risk for actuations. Every failure this produces appends
+  `undeclared_interruption_note` to whatever reason the step or `expect` already carried, rather than
+  replacing it, and names every drained record, not just the first. On the Swift side, `InterruptionPolicy`
+  drops `candidates`/`isEmpty` for `governs`, and `InterruptionPolicyStore` keeps a second drained list
+  the monitor appends to before declining — skipped when every label in the alert's button set is empty,
+  the signature of the same alert-closed-itself race `button.exists` already guards below;
+  `openapi.yaml`, the generated `APIHandler`, and the legacy `Router` all carry the new
+  `governs`/`unmatched` wire shape, with the legacy path now rejecting a missing or mistyped `governs`
+  outright rather than defaulting it to `false`. A third round found the `if`/`forEach`/`web` step
+  handlers as a third instance of the drain-skipping class: each queries the driver before any nested
+  step runs, the same way `_handle_action`'s own immediate return did, so all four now share one
+  `_drain_step_interruptions` helper rather than four copies of the check. That round also refined the
+  empty-label race guard to check every label in the alert's button set, rather than the list's own
+  emptiness alone (`buttons.count` can be non-zero while each individual `.label` has already resolved to
+  `""`), and raised a design gap the first two rounds could not have found by re-reading the diff
+  alone: a `handleSystemAlert` step's own prompt is not necessarily among the scenario's
+  `systemAlertHandling.rules` — the step form exists for the case where an author chooses not
+  to declare it there — so an earlier action's own interruption could meet that same prompt first, find
+  no rule, and fail an unrelated step for an alert this one was about to answer. `_reserve_declared_alert`
+  closes it: while a `prompt`/`choice`-form step's own wait runs, the orchestrator pushes one
+  more rule for that step's target alongside the scenario's own, restored once the step returns, fails,
+  or the wait raises — covering the case the item's own motivating scenario describes, though a
+  `sel`-form step (no identifying label set to reserve) keeps today's behavior. A self-reviewed diff
+  (BE-0347's two-role procedure, three rounds, the review's own cap) found and fixed every finding
+  above; `swift build` and `swift test --filter BajutsuRunnerTests` (172 tests, including new direct
+  coverage of `InterruptionPolicy.label(for:)`) both pass, and the full Python suite (7,177 tests) is
+  green. `docs/architecture.md` and `docs/scenarios.md` (with both `docs/ja/` mirrors) drop the
+  built-in dismissive-candidate list from their account of the interruption monitor, record that a
+  governing policy's decline now fails the step or `expect` that met it, and record the reservation —
+  the last piece of Unit 5 still outstanding, so that unit is complete too.
 
 ## References
 

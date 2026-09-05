@@ -71,17 +71,20 @@ final class APIHandler: APIProtocol {
         InterruptionPolicyStore.shared.setPolicy(
             InterruptionPolicy(
                 rules: body.rules.map { InterruptionRule(identify: $0.identify, tap: $0.tap) },
-                candidates: body.candidates
+                governs: body.governs
             )
         )
         return .ok(.init(body: .json(.init(status: .ok))))
     }
 
-    /// Hands back the labels the monitor tapped since the last drain, so the driver can report them.
+    /// Hands back what the monitor tapped and declined since the last drain, so the driver can
+    /// report them — a tapped label as an `AlertEvent`, a declined button list as an
+    /// `UndeclaredInterruption` (BE-0406 Unit 2b).
     func drainInterruptions(
         _ input: Operations.drainInterruptions.Input
     ) async throws -> Operations.drainInterruptions.Output {
-        .ok(.init(body: .json(.init(labels: InterruptionPolicyStore.shared.drain()))))
+        let drained = InterruptionPolicyStore.shared.drain()
+        return .ok(.init(body: .json(.init(labels: drained.tapped, unmatched: drained.declined))))
     }
 
     // MARK: - Reads

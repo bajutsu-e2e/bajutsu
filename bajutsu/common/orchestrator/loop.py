@@ -58,14 +58,18 @@ from bajutsu.common.orchestrator.types import (
     ProgressFn,
     RealClock,
     RelaunchFn,
+    ResolvedAlertRule,
     RunResult,
     SelectionState,
     StepOutcome,
+    UndeclaredInterruption,
     WallClock,
     _no_network,
     drain_actuations,
     drain_interruptions,
+    push_interruption_policy,
     scenario_slug,
+    undeclared_interruption_note,
 )
 from bajutsu.common.orchestrator.waits import (
     WaitTick,
@@ -90,6 +94,7 @@ from bajutsu.common.scenario import (
     Step,
     UncoveredSystemAlertLocale,
     interp,
+    system_alert_shapes,
 )
 
 _logger = logging.getLogger(__name__)
@@ -664,6 +669,10 @@ def run_scenario(
     after_counter = _StepCounter()
     expect_results: list[AssertionResult] = []
     expect_alerts: list[AlertEvent] = []
+    # An alert that interrupted one of `expect`'s own queries and matched no `rules` entry — filled by
+    # every drain this phase runs, and failing the phase outright once anything lands here (BE-0406
+    # Unit 2b), unlike `expect_alerts` above which never fails anything on its own.
+    expect_undeclared: list[UndeclaredInterruption] = []
     # The guard's expect-phase dismissing tap: the one actuation that happens outside the step loop, so
     # it is drained here rather than left in the driver's log with no step to carry it (see BE-0315's
     # `expect_alerts` beside it).
@@ -743,12 +752,16 @@ def run_scenario(
                 expect_results = _evaluate_expect(
                     driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
                 )
-                # A prompt the backend answered while it was interrupting one of `expect`'s own
-                # queries. Outside the failure branch below: an `expect` that passed *because* the
-                # interruption was answered still has a dismissal to report, and nothing else drains
-                # this phase — the step loop's drain has already run, and the next scenario's
-                # `setPolicy` clears the buffer outright.
-                expect_alerts.extend(drain_interruptions(driver))
+                # A prompt the backend answered or declined while it was interrupting one of
+                # `expect`'s own queries. Outside the failure branch below: an `expect` that passed
+                # *because* the interruption was answered still has a dismissal to report, and a
+                # declined one fails the phase outright regardless of what the assertions found. The
+                # step loop's own drain has already run and does not cover this phase's queries, and
+                # the next scenario's `setPolicy` clears the buffer outright, so this is the only
+                # chance to read what happened here.
+                expect_drained = drain_interruptions(driver)
+                expect_alerts.extend(expect_drained.alerts)
+                expect_undeclared.extend(expect_drained.undeclared)
                 if not assertions.passed(expect_results) and alert_guard is not None:
                     event = alert_guard(driver)
                     if event is None and alert_guard.blocked_note:
@@ -774,10 +787,25 @@ def run_scenario(
                         expect_results = _evaluate_expect(
                             driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
                         )  # retry once
+                    # The guard's own probe just now, and the retry's queries when one ran, can
+                    # each be interrupted too, and nothing else drains this phase again afterwards
+                    # (BE-0406 Unit 2b). Outside the `event is not None` branch above so a probe
+                    # that declined without clearing anything (`event is None`) is still covered.
+                    retry_drained = drain_interruptions(driver)
+                    expect_alerts.extend(retry_drained.alerts)
+                    expect_undeclared.extend(retry_drained.undeclared)
                 if not assertions.passed(expect_results):
                     failure = "expect: " + _fail_reason(expect_results)
                     if expect_block_note:
                         failure += f" \u2014 {expect_block_note}"
+                if expect_undeclared:
+                    # Overrides whatever `failure` above holds, even None when `expect` otherwise
+                    # passed: an interruption no rule named is evidence the scenario's assumptions
+                    # were wrong regardless of what the assertions checked afterward (BE-0406 Unit
+                    # 2b). Appended to an existing failure rather than replacing it, so the
+                    # assertion mismatch's own detail is not lost alongside the alert that caused it.
+                    note = undeclared_interruption_note(expect_undeclared)
+                    failure = f"{failure} \u2014 {note}" if failure else "expect: " + note
         except RunCancelled:
             # A cancelled run is a failed run, not a silent gap: the scenario the cancel interrupted
             # (or one whose first boundary was already past it) fails with the one spelling
@@ -1174,6 +1202,88 @@ class _StepRunner:
             return self._handle_web(step, active_driver, idx, kind, outcome, start)
         return self._handle_action(step, active_driver, idx, kind, outcome, start)
 
+    def _drain_step_interruptions(self, driver: base.Driver, outcome: StepOutcome) -> None:
+        """Drain what interrupted this step, and fail it unconditionally on an undeclared one.
+
+        Shared by every step-handling exit point — `_handle_if`, `_handle_for_each`, `_handle_web`,
+        and `_handle_action` alike — each of which queries the driver (a condition check, a
+        selector resolution, an action) before any nested step runs, so each can be interrupted the
+        same way. One place to call from is what keeps a step kind added later from needing its own
+        copy of this check (BE-0406 Unit 2b).
+        """
+        drained = drain_interruptions(driver)
+        outcome.alerts.extend(drained.alerts)
+        if drained.undeclared:
+            # Overrides `outcome.ok` unconditionally, even for a step that otherwise passed: an
+            # interruption no rule named is evidence the scenario's assumptions were wrong
+            # regardless of what the step itself checked. Appended to whatever reason the step
+            # already carries rather than replacing it, so that reason is not lost alongside the
+            # alert that caused it.
+            outcome.ok = False
+            note = undeclared_interruption_note(drained.undeclared)
+            outcome.reason = f"{outcome.reason} \u2014 {note}" if outcome.reason else note
+
+    def _reserve_declared_alert(
+        self, driver: base.Driver, step: Step
+    ) -> tuple[bool, list[AlertEvent], list[UndeclaredInterruption]]:
+        """Push the interruption monitor the button a waiting `handleSystemAlert` step will tap.
+
+        Without this, the monitor knows only `systemAlertHandling.rules` \u2014 so a scenario that
+        answers a SpringBoard prompt through a `handleSystemAlert` step alone, never declaring it
+        as a rule too, can still meet it here first: an *earlier* action's own interruption reaches
+        the monitor before this step's poll ever runs, finds no rule for a prompt only this step
+        declares, and fails as undeclared \u2014 even though this very step is a few lines away from
+        answering it correctly (BE-0406 Unit 2b review finding). Reserving it for the step's own
+        duration, the same way the reactive guard's native probe already reserves it
+        (`probe_native`'s `"reserved"` answer), closes that gap.
+
+        Only the `prompt`/`choice` form carries the full identifying label set the monitor's exact
+        matching needs; a `sel`-form step names one button, not the alert's whole shape, so it keeps
+        today's behavior. Returns whether it pushed and whatever this push's own drain-before-push
+        (below) found, so the caller knows whether to restore afterward and can fold that catch into
+        the step's own outcome \u2014 a plain `wait`/other step kind, a `sel`-form `handleSystemAlert`, a
+        disabled guard, a backend without the opt-in, or a shape this surface cannot safely reserve
+        (below) all return `(False, [], [])` and push nothing.
+        """
+        guard = self.cfg.alert_guard
+        hsa = step.handle_system_alert
+        if (
+            guard is None
+            or hsa is None
+            or hsa.prompt is None
+            or hsa.choice is None
+            or self.cfg.locale is None
+            or not isinstance(driver, base.InterruptionPolicyTarget)
+        ):
+            return False, [], []
+        # Resolvable without raising: the caller reaches this method only once
+        # `_resolve_system_alert` has already resolved this same prompt/choice/locale triple for
+        # `interp_step`, so the locale is known-covered.
+        shape = system_alert_shapes(hsa.prompt, hsa.choice, self.cfg.locale)[0]
+        if shape.excluded_labels:
+            # `push_interruption_policy` refuses outright to push a native-reachable rule that
+            # carries an exclusion set (the wire format has no room for one, and a silently dropped
+            # exclusion would be matched by subset on the runner) \u2014 unreachable today because no
+            # step-capable prompt's shape carries one (`_SURFACES` marks every prompt with an
+            # exclusion `step: False`), but if one ever does, this reservation must not be the thing
+            # that raises past this step's own try/finally and aborts every scenario after it
+            # (BE-0406 Unit 2b review finding). Skipping the reservation is the honest answer: a
+            # shape needing an exclusion to tell it apart from another alert cannot be reserved
+            # without that exclusion, and the monitor cannot express one.
+            return False, [], []
+        reservation = ResolvedAlertRule(
+            identifying_labels=shape.identifying_labels, tap_label=shape.tap_label
+        )
+        # `setPolicy` clears the monitor's pending drain along with the policy it installs
+        # (`InterruptionPolicyStore.setPolicy`), so an interruption the pre-step baseline capture,
+        # `before` query, or `guard.clear_before_act` met just before this call \u2014 none of them
+        # reserved yet \u2014 would otherwise be wiped here, unread, by the very push meant to start
+        # covering this step (BE-0406 Unit 2b review finding). Draining first keeps that record;
+        # the caller folds it into the step's own outcome once it is safe to (see the call site).
+        drained = drain_interruptions(driver)
+        push_interruption_policy(driver, replace(guard, rules=[*guard.rules, reservation]))
+        return True, drained.alerts, drained.undeclared
+
     def _handle_if(
         self,
         step: Step,
@@ -1184,17 +1294,17 @@ class _StepRunner:
         start: float,
     ) -> str | None:
         assert step.if_ is not None
-        ok, reason = _run_if(
+        outcome.ok, outcome.reason = _run_if(
             active_driver,
             step.if_,
             self.cfg.network,
             self.state.bindings,
             self.exec_steps,
         )
-        outcome.ok, outcome.reason = ok, reason
         outcome.duration_s = self.cfg.clock.now() - start
+        self._drain_step_interruptions(active_driver, outcome)
         self.state.outcomes.append(outcome)
-        return None if ok else f"step {idx} ({kind}): {reason}"
+        return None if outcome.ok else f"step {idx} ({kind}): {outcome.reason}"
 
     def _handle_for_each(
         self,
@@ -1206,13 +1316,13 @@ class _StepRunner:
         start: float,
     ) -> str | None:
         assert step.for_each is not None
-        ok, reason = _run_for_each(
+        outcome.ok, outcome.reason = _run_for_each(
             active_driver, step.for_each, self.state.bindings, self.exec_steps
         )
-        outcome.ok, outcome.reason = ok, reason
         outcome.duration_s = self.cfg.clock.now() - start
+        self._drain_step_interruptions(active_driver, outcome)
         self.state.outcomes.append(outcome)
-        return None if ok else f"step {idx} ({kind}): {reason}"
+        return None if outcome.ok else f"step {idx} ({kind}): {outcome.reason}"
 
     def _handle_web(
         self,
@@ -1260,8 +1370,12 @@ class _StepRunner:
             ok, reason = False, str(e)
         outcome.ok, outcome.reason = ok, reason
         outcome.duration_s = self.cfg.clock.now() - start
+        # `active_driver`, not the inner `web_driver`: the query this drains is the `within`
+        # resolution above, on the native driver, before the block ever switches context — the same
+        # native-only surface `_handle_action`'s own drain covers (BE-0406 Unit 2b).
+        self._drain_step_interruptions(active_driver, outcome)
         self.state.outcomes.append(outcome)
-        return None if ok else f"step {idx} ({kind}): {reason}"
+        return None if outcome.ok else f"step {idx} ({kind}): {outcome.reason}"
 
     def _seed_prev_after(
         self, active_driver: base.Driver, step_id: str, *, why: str, level: int
@@ -1386,6 +1500,11 @@ class _StepRunner:
             # outcome, silently and only for this failure.
             drained = drain_actuations(active_driver)
             outcome.actuations, outcome.dropped_actuations = drained.records, drained.dropped
+            # Drained for the same reason, one step further: the pre-step baseline capture just
+            # above is itself an XCUITest query that can be interrupted, and this early return is
+            # the only path out of the step that would otherwise leave the decline unread until
+            # the next scenario's `setPolicy` wipes it (BE-0406 Unit 2b).
+            self._drain_step_interruptions(active_driver, outcome)
             # This return skips the post-step capture entirely, so it is the one path that must
             # still write a tree itself (BE-0407 Unit 3 dropped it from the baseline above, on the
             # assumption that the post-step call always overwrites it). `elements.before`, matching
@@ -1426,7 +1545,7 @@ class _StepRunner:
             # both describing the same pre-action screen. Nothing acted, so there is no post-action
             # state to record — adding an `after.png` later would pair pixels from then with a tree
             # from now.
-            return f"step {idx} ({kind}): {exc}"
+            return f"step {idx} ({kind}): {outcome.reason}"
         # `before` is needed only for a `screenChanged` policy. Reuse the previous step's
         # post-step tree when we have one (same device state — nothing actuated in between), so
         # the read drops to (near) zero across the scenario; only the first step, or a step after
@@ -1502,6 +1621,11 @@ class _StepRunner:
                 assert self.cfg.progress is not None
                 self.cfg.progress(f"{_prefix}: waiting {_desc} ({remaining:.0f}s left)")
 
+        # Populated only when the reservation below actually pushes (a `prompt`/`choice`
+        # `handleSystemAlert` step, guard on) — stays empty for the pre-act short-circuit branch,
+        # so the merge below is a no-op there.
+        reserved_alerts: list[AlertEvent] = []
+        reserved_undeclared: list[UndeclaredInterruption] = []
         if guard is not None and guard.failure is not None:
             # The pre-act clear already decided the outcome (a recovery step failed): skip the
             # step's own action rather than poke a screen the failed recovery left broken —
@@ -1511,119 +1635,88 @@ class _StepRunner:
             ok, reason, snapshot = False, guard.failure, None
             results: list[AssertionResult] = []
         else:
-            ok, reason, results, snapshot = _run_step_body(
-                active_driver,
-                interp_step,
-                kind,
-                self.cfg.clock,
-                self.cfg.network,
-                self.cfg.relaunch,
-                self.state.bindings,
-                self.cfg.control,
-                self.cfg.mailbox,
-                self.cfg.ctx,
-                wait_trace=wait_trace,
-                selection=self.state.selection,
-                alert_guard=self.cfg.alert_guard,
-                alerts=outcome.alerts,
-                on_wait_tick=wait_tick,
-                transitions=self.cfg.transitions,
-                on_interrupt_poll=tip_poll,
-                cancelled=self.cfg.cancelled,
+            # Push the interruption monitor this step's own declared alert for the
+            # duration of its own wait, restored below whether it passes, fails, or
+            # raises — see `_reserve_declared_alert` for why (BE-0406 Unit 2b).
+            reservation_pushed, pushed_alerts, pushed_undeclared = self._reserve_declared_alert(
+                active_driver, step
             )
-            if guard is not None and guard.failure is not None:
-                # A mid-wait recovery failure is a decided outcome — fail on it now rather than
-                # firing the end-of-step alert-guard dismiss/retry against the screen the failed
-                # recovery left, symmetric with the pre-act short-circuit above.
-                ok, reason = False, guard.failure
-            else:
-                # The two end-of-step guards are checked in sequence, not as one `elif` ladder: a
-                # tip and a system alert can both be up, so a tip dismissed by the first must not
-                # consume the failure and leave the alert — the case the alert guard exists for —
-                # unhandled. Each still fires at most once per step, so a step's retries stay bounded
-                # at one per guard, and each is skipped once the step passes.
-                #
-                # A failed `handleSystemAlert` step is the one case the alert guard skips outright
-                # (BE-0406): `wait_for_system_alert` already drove this exact guard, reserved against
-                # this step's own selector, for the step's whole timeout — a second, unreserved probe
-                # here adds no coverage the mid-wait one lacked, and could tap the step's own alert
-                # through the guard's looser fallback policy. That would both decide, on the step's
-                # behalf, the very prompt it was placed to answer, and discard the specific reason
-                # (no alert / an unmatched alert / an ambiguous one) for the generic timeout a doomed
-                # retry against an now-cleared screen produces instead.
-                guard_done = kind == "handle_system_alert"
-                # The dismiss can refuse loudly: `AmbiguousSelector` on two dismiss regions, or
-                # `ElementNotTappable` when something covers the scrim itself — which is exactly the
-                # tip-plus-system-alert case below. `ElementNotTappable` is not a `SelectorError`
-                # (`_run_step_body`'s own net lists it separately), so both must be named here.
-                # Unlike the mid-wait call, which raises inside that net, this one sits outside every
-                # `try`: an escape would unwind past `run_scenario` and abort the *whole run*,
-                # discarding the verdicts of every scenario that already passed. Convert it to this
-                # step's failure, which is what a refused actuation means everywhere else.
-                tip_cleared = False
-                if not ok:
-                    try:
-                        tip_cleared = _dismiss_blocking_tip(active_driver, self.cfg.scenario)
-                    except (base.SelectorError, base.ElementNotTappable) as exc:
-                        ok, reason = False, str(exc)
-                        # Skip the alert guard too: the driver refused to act on this screen, so
-                        # poking it again would be reacting to a state nothing has resolved.
-                        guard_done = True
-                if tip_cleared:
-                    # A TipKit tip hides what it covers from the tree, so the step it blocked failed
-                    # as `ElementNotFound` as readily as `ElementNotTappable` — either way the target
-                    # was unreachable for a reason this one dismiss just cleared, so it gets one more
-                    # shot. Reached only when a tip was actually dismissed, so a step that failed for
-                    # any other reason still fails on its first attempt, with no retry to mask it.
-                    wait_trace = WaitTrace() if wait_trace is not None else None
-                    ok, reason, results, snapshot = _run_step_body(
-                        active_driver,
-                        interp_step,
-                        kind,
-                        self.cfg.clock,
-                        self.cfg.network,
-                        self.cfg.relaunch,
-                        self.state.bindings,
-                        self.cfg.control,
-                        self.cfg.mailbox,
-                        self.cfg.ctx,
-                        wait_trace=wait_trace,
-                        selection=self.state.selection,
-                        on_wait_tick=wait_tick,
-                        transitions=self.cfg.transitions,
-                        on_interrupt_poll=tip_poll,
-                        cancelled=self.cfg.cancelled,
-                    )
-                # Re-read `guard.failure`: the tip retry above runs a whole step body, whose own
-                # mid-wait interrupt recovery can newly fail — and that is a decided outcome, so it
-                # must not be followed by an alert dismiss against the screen it left.
+            reserved_alerts.extend(pushed_alerts)
+            reserved_undeclared.extend(pushed_undeclared)
+            # `setPolicy` clears the monitor's pending drain along with the policy it installs
+            # (`InterruptionPolicyStore.setPolicy`) — harmless once per scenario, but the
+            # reservation makes the restore below a *second* push inside this one step, which
+            # would otherwise wipe whatever the reservation's own window recorded before the
+            # step-end drain a few lines down ever reads it (BE-0406 Unit 2b review finding).
+            # Captured here in the `finally`, before that restore, and merged into `outcome` after
+            # `outcome.ok`/`outcome.reason` are (re)assigned below — merging any earlier would be
+            # silently discarded by that assignment.
+            try:
+                ok, reason, results, snapshot = _run_step_body(
+                    active_driver,
+                    interp_step,
+                    kind,
+                    self.cfg.clock,
+                    self.cfg.network,
+                    self.cfg.relaunch,
+                    self.state.bindings,
+                    self.cfg.control,
+                    self.cfg.mailbox,
+                    self.cfg.ctx,
+                    wait_trace=wait_trace,
+                    selection=self.state.selection,
+                    alert_guard=self.cfg.alert_guard,
+                    alerts=outcome.alerts,
+                    on_wait_tick=wait_tick,
+                    transitions=self.cfg.transitions,
+                    on_interrupt_poll=tip_poll,
+                    cancelled=self.cfg.cancelled,
+                )
                 if guard is not None and guard.failure is not None:
+                    # A mid-wait recovery failure is a decided outcome — fail on it now rather than
+                    # firing the end-of-step alert-guard dismiss/retry against the screen the failed
+                    # recovery left, symmetric with the pre-act short-circuit above.
                     ok, reason = False, guard.failure
-                elif not ok and not guard_done and self.cfg.alert_guard is not None:
-                    event = self.cfg.alert_guard(active_driver)
-                    note = self.cfg.alert_guard.blocked_note
-                    if event is None and note and note not in reason:
-                        # Same as the `expect` site: an alert the guard will not guess at still
-                        # explains the failure, so the step says so instead of failing as a bare
-                        # `element not found` (BE-0402). `not in reason` because a guarded `wait`
-                        # already carried the note out of `_wait`: this guard re-probes the same
-                        # still-unanswered alert, so appending unconditionally would say it twice.
-                        reason = f"{reason} \u2014 {note}"
-                    if event is not None:
-                        outcome.alerts.append(event)
-                        # Same reason as the `expect` site: the retry below actuates, and a sheet
-                        # still animating away is a screen the step would fail against for a reason
-                        # that is not its own (BE-0406).
-                        settle_after_alert_dismiss(
-                            active_driver,
-                            self.cfg.clock,
-                            transitions=self.cfg.transitions,
-                            cancelled=self.cfg.cancelled,
-                        )
+                else:
+                    # The two end-of-step guards are checked in sequence, not as one `elif` ladder: a
+                    # tip and a system alert can both be up, so a tip dismissed by the first must not
+                    # consume the failure and leave the alert — the case the alert guard exists for —
+                    # unhandled. Each still fires at most once per step, so a step's retries stay bounded
+                    # at one per guard, and each is skipped once the step passes.
+                    #
+                    # A failed `handleSystemAlert` step is the one case the alert guard skips outright
+                    # (BE-0406): `wait_for_system_alert` already drove this exact guard, reserved against
+                    # this step's own selector, for the step's whole timeout — a second, unreserved probe
+                    # here adds no coverage the mid-wait one lacked, and could tap the step's own alert
+                    # through the guard's looser fallback policy. That would both decide, on the step's
+                    # behalf, the very prompt it was placed to answer, and discard the specific reason
+                    # (no alert / an unmatched alert / an ambiguous one) for the generic timeout a doomed
+                    # retry against an now-cleared screen produces instead.
+                    guard_done = kind == "handle_system_alert"
+                    # The dismiss can refuse loudly: `AmbiguousSelector` on two dismiss regions, or
+                    # `ElementNotTappable` when something covers the scrim itself — which is exactly the
+                    # tip-plus-system-alert case below. `ElementNotTappable` is not a `SelectorError`
+                    # (`_run_step_body`'s own net lists it separately), so both must be named here.
+                    # Unlike the mid-wait call, which raises inside that net, this one sits outside every
+                    # `try`: an escape would unwind past `run_scenario` and abort the *whole run*,
+                    # discarding the verdicts of every scenario that already passed. Convert it to this
+                    # step's failure, which is what a refused actuation means everywhere else.
+                    tip_cleared = False
+                    if not ok:
+                        try:
+                            tip_cleared = _dismiss_blocking_tip(active_driver, self.cfg.scenario)
+                        except (base.SelectorError, base.ElementNotTappable) as exc:
+                            ok, reason = False, str(exc)
+                            # Skip the alert guard too: the driver refused to act on this screen, so
+                            # poking it again would be reacting to a state nothing has resolved.
+                            guard_done = True
+                    if tip_cleared:
+                        # A TipKit tip hides what it covers from the tree, so the step it blocked failed
+                        # as `ElementNotFound` as readily as `ElementNotTappable` — either way the target
+                        # was unreachable for a reason this one dismiss just cleared, so it gets one more
+                        # shot. Reached only when a tip was actually dismissed, so a step that failed for
+                        # any other reason still fails on its first attempt, with no retry to mask it.
                         wait_trace = WaitTrace() if wait_trace is not None else None
-                        # The retry is the end-of-step "one more shot": it does not re-arm the
-                        # mid-wait guard (no alert_guard passed), so one dismissed prompt buys one
-                        # extra attempt and no more.
                         ok, reason, results, snapshot = _run_step_body(
                             active_driver,
                             interp_step,
@@ -1642,15 +1735,78 @@ class _StepRunner:
                             on_interrupt_poll=tip_poll,
                             cancelled=self.cfg.cancelled,
                         )
-            # A failure inside an interrupt's own recovery `steps` fails the step loudly, rather
-            # than being swallowed while the run continues against a screen the recovery left
-            # broken (determinism first). It overrides a step that otherwise passed — this is the
-            # wait path's version of the pre-act short-circuit above (guard.failure can newly
-            # become True during `_run_step_body`'s `on_interrupt_poll` calls).
-            if guard is not None and guard.failure is not None:
-                ok, reason = False, guard.failure
+                    # Re-read `guard.failure`: the tip retry above runs a whole step body, whose own
+                    # mid-wait interrupt recovery can newly fail — and that is a decided outcome, so it
+                    # must not be followed by an alert dismiss against the screen it left.
+                    if guard is not None and guard.failure is not None:
+                        ok, reason = False, guard.failure
+                    elif not ok and not guard_done and self.cfg.alert_guard is not None:
+                        event = self.cfg.alert_guard(active_driver)
+                        note = self.cfg.alert_guard.blocked_note
+                        if event is None and note and note not in reason:
+                            # Same as the `expect` site: an alert the guard will not guess at still
+                            # explains the failure, so the step says so instead of failing as a bare
+                            # `element not found` (BE-0402). `not in reason` because a guarded `wait`
+                            # already carried the note out of `_wait`: this guard re-probes the same
+                            # still-unanswered alert, so appending unconditionally would say it twice.
+                            reason = f"{reason} \u2014 {note}"
+                        if event is not None:
+                            outcome.alerts.append(event)
+                            # Same reason as the `expect` site: the retry below actuates, and a sheet
+                            # still animating away is a screen the step would fail against for a reason
+                            # that is not its own (BE-0406).
+                            settle_after_alert_dismiss(
+                                active_driver,
+                                self.cfg.clock,
+                                transitions=self.cfg.transitions,
+                                cancelled=self.cfg.cancelled,
+                            )
+                            wait_trace = WaitTrace() if wait_trace is not None else None
+                            # The retry is the end-of-step "one more shot": it does not re-arm the
+                            # mid-wait guard (no alert_guard passed), so one dismissed prompt buys one
+                            # extra attempt and no more.
+                            ok, reason, results, snapshot = _run_step_body(
+                                active_driver,
+                                interp_step,
+                                kind,
+                                self.cfg.clock,
+                                self.cfg.network,
+                                self.cfg.relaunch,
+                                self.state.bindings,
+                                self.cfg.control,
+                                self.cfg.mailbox,
+                                self.cfg.ctx,
+                                wait_trace=wait_trace,
+                                selection=self.state.selection,
+                                on_wait_tick=wait_tick,
+                                transitions=self.cfg.transitions,
+                                on_interrupt_poll=tip_poll,
+                                cancelled=self.cfg.cancelled,
+                            )
+                # A failure inside an interrupt's own recovery `steps` fails the step loudly, rather
+                # than being swallowed while the run continues against a screen the recovery left
+                # broken (determinism first). It overrides a step that otherwise passed — this is the
+                # wait path's version of the pre-act short-circuit above (guard.failure can newly
+                # become True during `_run_step_body`'s `on_interrupt_poll` calls).
+                if guard is not None and guard.failure is not None:
+                    ok, reason = False, guard.failure
+            finally:
+                if reservation_pushed:
+                    # Extends rather than replaces: `pushed_alerts`/`pushed_undeclared` above are
+                    # whatever the reservation's own push-time drain already caught, and this drain
+                    # covers everything since — both windows belong to this one step.
+                    drained_reservation = drain_interruptions(active_driver)
+                    reserved_alerts.extend(drained_reservation.alerts)
+                    reserved_undeclared.extend(drained_reservation.undeclared)
+                    push_interruption_policy(active_driver, self.cfg.alert_guard)
         outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
         outcome.duration_s = self.cfg.clock.now() - start
+        if reserved_alerts or reserved_undeclared:
+            outcome.alerts.extend(reserved_alerts)
+            if reserved_undeclared:
+                outcome.ok = False
+                note = undeclared_interruption_note(reserved_undeclared)
+                outcome.reason = f"{outcome.reason} \u2014 {note}" if outcome.reason else note
         # What the driver actually did to the screen during this step. Drained once, after the body has
         # finished, rather than per attempt: when the alert guard dismissed a prompt and retried, both
         # attempts really happened to the device and belong on this step in the order they occurred —
@@ -1659,10 +1815,10 @@ class _StepRunner:
         # actuates the native driver during such a step, so nothing is stranded.
         drained = drain_actuations(active_driver)
         outcome.actuations, outcome.dropped_actuations = drained.records, drained.dropped
-        # A prompt the backend answered while it was interrupting one of this step's own
+        # A prompt the backend answered or declined while it was interrupting one of this step's own
         # interactions. Drained beside the actuations, and for the same reason: it really happened to
         # the device during this step, so it belongs on this step's outcome rather than nowhere.
-        outcome.alerts.extend(drain_interruptions(active_driver))
+        self._drain_step_interruptions(active_driver, outcome)
 
         # The post-action shutter, taken here rather than down with the rest of the post-step
         # capture. Every step records `after.png` (the capture call below drops `screenshot.after`

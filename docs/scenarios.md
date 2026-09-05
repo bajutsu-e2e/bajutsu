@@ -174,12 +174,12 @@ Which button an interrupting alert receives is your policy's decision too. XCUIT
 alert before the interaction it interrupts, and left alone answers it with the alert's own *default*
 button — granting a permission your `rules` may have refused, with nothing in the run's report. The
 runner therefore installs an interruption monitor that presses the button your `rules` name, by the
-same discipline the native path applies, and the dismissal is reported as
-an ordinary alert event. Beneath those rules it keeps a built-in least-destructive list ("Not Now" /
-"Don't Allow" / "Cancel"). That list survives on this one surface alone, because XCUITest is about
-to tap the alert regardless. The choice here is between a refusal and a grant, never between a tap
-and leaving the screen alone. A rule this monitor can never meet is dropped rather than pushed:
-`savePassword` never interrupts an interaction from another process.
+same discipline the native path applies, and the dismissal is reported as an ordinary alert event. A
+rule this monitor can never meet is dropped rather than pushed: `savePassword` never interrupts an
+interaction from another process. An alert none of your rules identifies is still left to XCUITest's
+own default handler — nothing here can change that tap — but the step or `expect` it interrupted
+fails, naming the buttons it offered, rather than the run continuing as if nothing had answered on
+your behalf.
 (real file: [`demos/showcase/scenarios/save_password_browser.yaml`](../demos/showcase/scenarios/save_password_browser.yaml))
 
 A rule names a prompt, and the guard taps only once it has identified that prompt on screen: every
@@ -406,12 +406,11 @@ Two limits are worth knowing before reaching for it:
 - **The Simulator only.** The pin is a `simctl` operation, so a target on `xcuitest.deviceType:
   device` runs against whatever system language the physical device carries — the intent form would
   resolve a label nothing guarantees is on screen. Name the button with `sel.label` there.
-- **The interruption monitor's built-in labels are still English.** A `rules` entry resolves its
-  labels for the pinned language, so the guard itself carries no English assumption. The one list
-  that does is the least-destructive fallback pushed to XCUITest's interruption monitor (`Don't
-  Allow`, `Not Now`, `Cancel`, …), which is literal English text. Under a non-English `locale` it
-  matches nothing, and an alert interrupting an interaction falls back to XCUITest's own default
-  button — so write a rule for any prompt a run must decide itself.
+- **The interruption monitor carries no English assumption either.** A `rules` entry resolves its
+  labels for the pinned language before it reaches the monitor, and there is no built-in fallback
+  list behind it any more — an alert none of your rules identifies is always declined, in every
+  `locale`, and the step or `expect` it interrupted fails naming its buttons rather than guessing at
+  one. Write a rule for any prompt a run must decide itself.
 
 (real files:
 [`demos/showcase/scenarios/permission_system_alert.yaml`](../demos/showcase/scenarios/permission_system_alert.yaml),

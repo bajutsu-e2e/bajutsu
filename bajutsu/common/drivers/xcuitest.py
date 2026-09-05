@@ -1137,7 +1137,7 @@ class XcuitestDriver:
         return [label for b in buttons if (label := b["label"])]
 
     def set_interruption_policy(
-        self, rules: Sequence[tuple[frozenset[str], str]], candidates: Sequence[str]
+        self, rules: Sequence[tuple[frozenset[str], str]], governs: bool
     ) -> None:
         """Push the button policy the runner's interruption monitor applies.
 
@@ -1145,10 +1145,14 @@ class XcuitestDriver:
         and with no monitor registered answers with the alert's own default button — granting a
         permission the scenario may have refused, with nothing in the report. The rules pushed here
         are the ones `AlertGuardConfig` already resolved from the scenario's own `rules`, so the
-        choice stays on this side and the runner only applies it — matching a rule first, then the
-        built-in dismissive candidates for whatever no rule identifies. `push_interruption_policy`
-        sends only the rules this surface can actually meet: an alert raised inside the application's
-        own process never interrupts an XCUITest interaction, so its rules are dropped (BE-0406).
+        choice stays on this side and the runner only applies it. `push_interruption_policy` sends
+        only the rules this surface can actually meet: an alert raised inside the application's own
+        process never interrupts an XCUITest interaction, so its rules are dropped (BE-0406).
+
+        `governs` is true for any scenario whose `systemAlertHandling` is on, independent of whether
+        any rule survived that drop — a real declaration filtered down to nothing this surface can
+        act on is not the same as no declaration at all, and only the latter should keep the silent
+        grant an absent monitor gives (BE-0406 Unit 2b).
 
         A rule's identifying labels are sent as a sorted list so the request is byte-stable across
         runs — the set is order-free, and a stable body keeps a replayed request comparable.
@@ -1158,7 +1162,7 @@ class XcuitestDriver:
             "/interruptionPolicy",
             {
                 "rules": [{"identify": sorted(identify), "tap": tap} for identify, tap in rules],
-                "candidates": list(candidates),
+                "governs": governs,
             },
         )
         if reply.status != _OK:
@@ -1170,13 +1174,21 @@ class XcuitestDriver:
             # every other write here.
             raise XcuitestChannelError(f"setting the interruption policy failed ({reply.status})")
 
-    def drain_interruptions(self) -> list[str]:
-        """The labels the runner's interruption monitor tapped since the last drain."""
+    def drain_interruptions(self) -> base.DrainedInterruptions:
+        """What the runner's interruption monitor tapped and declined since the last drain."""
         reply = self._transport("POST", "/interruptionPolicy/drain", {})
         if reply.raw is None:
-            return []
-        labels = json.loads(reply.raw).get("labels")
-        return [str(label) for label in labels] if isinstance(labels, list) else []
+            return base.DrainedInterruptions(tapped=[], declined=[])
+        body = json.loads(reply.raw)
+        labels = body.get("labels")
+        unmatched = body.get("unmatched")
+        tapped = [str(label) for label in labels] if isinstance(labels, list) else []
+        declined = (
+            [[str(button) for button in group] for group in unmatched if isinstance(group, list)]
+            if isinstance(unmatched, list)
+            else []
+        )
+        return base.DrainedInterruptions(tapped=tapped, declined=declined)
 
     def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
         """Dismiss a showing TipKit tip via its dismiss region; False when no tip is up.

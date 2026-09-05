@@ -741,13 +741,22 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   intervenes on an alert that interrupts an in-flight interaction *before* this guard ever polls, and
   left alone answers with the alert's own default button — silently overriding a scenario's policy
   with nothing in the report. The runner therefore installs an interruption monitor that presses the
-  same rule-named button the reactive guard would, beneath it a built-in least-destructive candidate
-  list — the one surface where that list survives BE-0406, since XCUITest is about to tap the alert
-  either way — and records what it pressed as an ordinary
-  `AlertEvent`; the orchestrator resolves each rule's labels and pushes them once per scenario
-  over `POST /interruptionPolicy`, dropping a rule this surface can never meet (an in-process prompt
-  never interrupts another process's interaction). A prompt the policy names no button on is left to
-  XCUITest's own default handler, unchanged (BE-0399). On by default, `false` disables it per scenario
+  same rule-named button the reactive guard would, and records what it pressed as an ordinary
+  `AlertEvent`; the orchestrator resolves each rule's labels and pushes them, alongside whether the
+  guard governs the scenario at all, once per scenario over `POST /interruptionPolicy`, dropping a
+  rule this surface can never meet (an in-process prompt never interrupts another process's
+  interaction). A `handleSystemAlert` step's own prompt/choice form is not necessarily among those
+  rules — the step exists precisely for a prompt an author chooses not to declare in
+  `systemAlertHandling` — so while that one step waits the orchestrator pushes one
+  more rule for the step's own target alongside the scenario's, and restores the scenario's own
+  policy once the step returns, fails, or the wait raises. Without it, an earlier action's own
+  interruption could meet that same prompt first, find no matching rule, and fail a step for an
+  alert this one was about to answer. A prompt the policy names no button on is still left
+  to XCUITest's own default
+  handler, unchanged (BE-0399) — nothing here can stop that tap — but since BE-0406 a governing
+  policy records the buttons it declined before doing so, and the step or `expect` that met the
+  interruption fails, naming them, rather than the run continuing as if nothing had answered on the
+  scenario's behalf. On by default, `false` disables it per scenario
 - DSL `iosTipKitHandling` (BE-0389), an opt-in guard for a blocking Apple TipKit tip: TipKit's
   presentation marks the content it covers accessibility-hidden rather than merely occluding it, so a
   blocked tap can fail as `ElementNotFound`, not only `ElementNotTappable`. The XCUITest backend alone

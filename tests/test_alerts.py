@@ -339,6 +339,123 @@ def test_on_blocked_retries_expect_after_recovery() -> None:
     assert result.expect_alerts == [AlertEvent(label="Allow")]
 
 
+# --- undeclared interruptions (BE-0406 Unit 2b) ---
+
+
+def test_undeclared_interruption_fails_a_step_that_otherwise_passed() -> None:
+    # XCUITest answers an alert that interrupted this step's own interaction with its own default
+    # button regardless of anything here — nothing changes that tap — but the step that met it must
+    # fail by name, naming the buttons, rather than read as an ordinary pass.
+    target: base.Element = {
+        "identifier": "go",
+        "label": "Go",
+        "traits": ["button"],
+        "value": None,
+        "frame": (0.0, 0.0, 10.0, 10.0),
+        "nativeZ": None,
+    }
+    driver = FakeDriver([target])
+    driver.interruptions_declined_to_drain = [["Allow", "Don't Allow"]]
+
+    result = run_scenario(driver, load_scenarios(_TAP_GO)[0])
+    assert ("tap", {"id": "go"}) in driver.actions  # the tap itself succeeded
+    assert result.ok is False
+    assert result.steps[0].ok is False
+    assert "undeclared system alert" in result.steps[0].reason
+    assert "Allow" in result.steps[0].reason
+    assert "Don't Allow" in result.steps[0].reason
+
+
+def test_undeclared_interruptions_are_appended_to_a_step_s_own_failure_and_all_named() -> None:
+    # A step that already failed for its own reason keeps that reason: the alert note is appended,
+    # not substituted, so a wait's own timeout detail is not lost alongside the alert that caused it.
+    # And every interruption drained this poll is named, not only the first, so an author does not
+    # pay a whole extra run to learn about the second one.
+    driver = FakeDriver([])  # "go" never appears, so the tap fails to resolve
+    driver.interruptions_declined_to_drain = [["Allow", "Don't Allow"], ["Save", "Not Now"]]
+
+    result = run_scenario(driver, load_scenarios(_TAP_GO)[0])
+    assert result.ok is False
+    reason = result.steps[0].reason
+    assert "一致なし" in reason  # the original "no match" detail survives
+    assert "undeclared system alert" in reason
+    assert "Allow" in reason
+    assert "Don't Allow" in reason
+    assert "Save" in reason
+    assert "Not Now" in reason
+
+
+_EXPECT_ONLY = "- name: e\n  steps: []\n  expect:\n    - exists: { id: here }\n"
+
+
+def test_undeclared_interruption_fails_expect_that_otherwise_passed() -> None:
+    driver = FakeDriver([_el("here")])
+    driver.interruptions_declined_to_drain = [["Save", "Not Now"]]
+
+    result = run_scenario(driver, load_scenarios(_EXPECT_ONLY)[0])
+    assert result.expect_results and all(r.ok for r in result.expect_results)  # the assertion held
+    assert result.ok is False
+    assert result.failure is not None
+    assert "undeclared system alert" in result.failure
+    assert "Save" in result.failure
+    assert "Not Now" in result.failure
+
+
+def test_undeclared_interruption_during_a_declining_probe_still_fails_expect() -> None:
+    # The guard's own probe (`system_alert_labels`, inside `probe_native`) can be interrupted too,
+    # even on a poll where the guard clears nothing (`event is None`) — the case the retry-drain
+    # used to miss, because it lived inside the "the guard cleared something" branch alone
+    # (BE-0406 Unit 2b). The original assertion detail must also survive alongside the alert note,
+    # appended rather than replaced.
+    class _DeclinesDuringProbe(FakeDriver):
+        def system_alert_labels(self) -> list[str]:
+            self.interruptions_declined_to_drain = [["Save", "Not Now"]]
+            return super().system_alert_labels()
+
+    driver = _DeclinesDuringProbe([_el("here")])
+    yaml = "- name: e\n  steps: []\n  expect:\n    - exists: { id: later }\n"
+    result = run_scenario(driver, load_scenarios(yaml)[0], alert_guard=AlertGuardConfig())
+    assert result.ok is False
+    assert result.failure is not None
+    assert (
+        "expected present but was absent" in result.failure
+    )  # the original assertion detail survives
+    assert "undeclared system alert" in result.failure
+    assert "Save" in result.failure
+    assert "Not Now" in result.failure
+
+
+def test_undeclared_interruption_during_the_expect_retry_still_fails_it() -> None:
+    # The retry's own queries can be interrupted too, distinct from the matched dismissal that
+    # triggered the retry in the first place. Without the second expect-phase drain this seeds, an
+    # interruption here would go unreported — nothing else drains this phase after the retry.
+    here, later = _el("here"), _el("later")
+
+    def on_dismiss(d: AlertingDriver) -> None:
+        d.screen.append(later)
+        d.interruptions_declined_to_drain = [["Save", "Not Now"]]
+
+    driver = AlertingDriver([here], label="Allow", on_dismiss=on_dismiss)
+
+    yaml = (
+        "- name: e\n"
+        "  steps:\n    - wait: { for: { id: here }, timeout: 1 }\n"
+        "  expect:\n    - exists: { id: later }\n"
+    )
+    result = run_scenario(
+        driver, load_scenarios(yaml)[0], alert_guard=AlertGuardConfig(rules=[guard_rule("Allow")])
+    )
+    assert result.expect_results and all(r.ok for r in result.expect_results)  # the assertion held
+    assert result.expect_alerts == [
+        AlertEvent(label="Allow")
+    ]  # the matched dismissal still reports
+    assert result.ok is False
+    assert result.failure is not None
+    assert "undeclared system alert" in result.failure
+    assert "Save" in result.failure
+    assert "Not Now" in result.failure
+
+
 # --- record loop + alert guard ---
 
 
