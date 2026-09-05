@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0407") |
-| Implementing PR | [#1897](https://github.com/bajutsu-e2e/bajutsu/pull/1897) (Group 1, units 1, 3-5) |
+| Implementing PR | [#1897](https://github.com/bajutsu-e2e/bajutsu/pull/1897) (Group 1, units 1, 3-5), [#1912](https://github.com/bajutsu-e2e/bajutsu/pull/1912) (Group 1 unit 6, Group 2 units 7, 9, 10, 11, 12, 13, and half of 14) |
 | Topic | Platform support |
 | Related | [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md), [BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md), [BE-0341](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture.md), [BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md), [BE-0408](../BE-0408-step-latency-device-executor-protocol/BE-0408-step-latency-device-executor-protocol.md), [BE-0409](../BE-0409-step-latency-ios-device-executor/BE-0409-step-latency-ios-device-executor.md), [BE-0410](../BE-0410-step-latency-android-device-executor/BE-0410-step-latency-android-device-executor.md) |
 <!-- /BE-METADATA -->
@@ -334,7 +334,7 @@ Log:
   except on a recovery step, a `handleSystemAlert` step, or any scenario declaring `interrupts` — an
   asynchronous interstitial could have arrived on exactly those, so they always shoot fresh instead. Units
   2 (async evidence writes) and 6 (iOS `drain_interruptions` fold) remain for a follow-up PR.
-- Group 1 unit 6, Group 2 units 7, 9, 10, 11, 12, 13, and half of unit 14 (the digest-skip half).
+- [#1912](https://github.com/bajutsu-e2e/bajutsu/pull/1912) — Group 1 unit 6, Group 2 units 7, 9, 10, 11, 12, 13, and half of unit 14 (the digest-skip half).
   Folded the interruption drain into `/tap`'s own reply and had the driver accumulate what a
   tap's fold already carried, merging it with an explicit drain whenever another call intervened.
   Batched the tap-path attribute reads into one `el.snapshot()` call and cached `app.frame` for a

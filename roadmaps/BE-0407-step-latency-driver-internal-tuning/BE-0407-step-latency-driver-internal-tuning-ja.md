@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0407") |
-| 実装 PR | [#1897](https://github.com/bajutsu-e2e/bajutsu/pull/1897)（グループ 1、作業単位 1、3〜5） |
+| 実装 PR | [#1897](https://github.com/bajutsu-e2e/bajutsu/pull/1897)（グループ 1、作業単位 1、3〜5）、[#1912](https://github.com/bajutsu-e2e/bajutsu/pull/1912)（グループ 1 の作業単位 6、グループ 2 の作業単位 7、9、10、11、12、13、そして 14 の半分） |
 | トピック | Platform support |
 | 関連 | [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query-ja.md)、[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)、[BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance-ja.md)、[BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md)、[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)、[BE-0341](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture-ja.md)、[BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree-ja.md)、[BE-0408](../BE-0408-step-latency-device-executor-protocol/BE-0408-step-latency-device-executor-protocol-ja.md)、[BE-0409](../BE-0409-step-latency-ios-device-executor/BE-0409-step-latency-ios-device-executor-ja.md)、[BE-0410](../BE-0410-step-latency-android-device-executor/BE-0410-step-latency-android-device-executor-ja.md) |
 <!-- /BE-METADATA -->
@@ -368,7 +368,7 @@ driver conformance suite
   ステップ、`handleSystemAlert` ステップ、`interrupts` を宣言したシナリオのどのステップでも、非同期の
   割り込み画面が現れている可能性があります。この場合は常に新たに撮影します。作業単位 2（証跡書き込みの
   非同期化）と 6（iOS の `drain_interruptions` の畳み込み）は、後続の PR に残しています。
-- グループ 1 の作業単位 6 と、グループ 2 の作業単位 7、9、10、11、12、13です。作業単位 14 は
+- [#1912](https://github.com/bajutsu-e2e/bajutsu/pull/1912) — グループ 1 の作業単位 6 と、グループ 2 の作業単位 7、9、10、11、12、13です。作業単位 14 は
   半分（digest スキップのほう）だけです。割り込みの drain を `/tap` 自身の応答へ畳み込み、
   ドライバが tap の畳み込みをすでに運んできた内容として蓄積するようにしました。その間に
   別の呼び出しが挟まったときは、明示的な drain と合流させます。タップ経路の属性読みを
