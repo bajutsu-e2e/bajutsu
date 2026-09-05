@@ -46,6 +46,12 @@ def test_dedicated_lane_scenarios_carry_their_exclusion_tag() -> None:
         ("picker_wheel.yaml", "swiftui"),
         ("permission_system_alert.yaml", "systemalert"),
         ("paste_system_alert.yaml", "systemalert"),
+        ("browser.yaml", "browser"),
+        ("save_password_browser.yaml", "systemalert"),
+        ("save_password_browser.yaml", "browser"),
+        ("save_password_interrupts_step.yaml", "systemalert"),
+        ("save_password_interrupts_step.yaml", "browser"),
+        ("save_password_native.yaml", "systemalert"),
     ):
         for s in load_scenarios((SCENARIO_DIR / name).read_text(encoding="utf-8")):
             assert tag in s.tags, f"{name}: {s.name!r} is missing the `{tag}` tag"

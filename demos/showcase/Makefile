@@ -351,13 +351,23 @@ e2e-browser: swiftui-build uikit-build runner-build
 		--target showcase-uikit --udid $(SIM) --backend ios --config $(CONFIG)
 
 # The save-password lane: iOS's *real* "Save Password" alert, raised by signing in to a page the
-# in-app browser loads, with the SpringBoard notification request stacked on top of it. Its own
-# target rather than a line in `e2e-browser` because it needs notification authorization still
-# `notDetermined` — hence the `erase` — and leaves the device decided once it has run.
+# in-app browser loads. Its own target rather than a line in `e2e-browser` because it needs
+# notification authorization still `notDetermined` — hence the `erase` — and leaves the device
+# decided once it has run.
 # Serves the same fixture directory `e2e-browser` does (login.html lives beside index.html).
+#
+# Two scenarios, run in sequence against the same fixture server and the two orderings of the same
+# pair of prompts: save_password_browser.yaml stacks the notification request *over* the save alert
+# and lets the guard answer both, while save_password_interrupts_step.yaml raises it *after* the
+# save alert and has a `handleSystemAlert` step answer it through the interruption (BE-0406). Each
+# gets its own erase, because the first leaves notification authorization `denied` and the second
+# needs it `notDetermined` — the same reason this target erases at all.
+SAVEPASSWORD_SCENARIOS := save_password_browser.yaml save_password_interrupts_step.yaml
 e2e-savepassword: swiftui-build uikit-build runner-build
-	@grep -q "http://localhost:$(BROWSER_PORT)/" $(HERE)/scenarios/save_password_browser.yaml || \
-	  { echo "BROWSER_PORT=$(BROWSER_PORT) does not match SHOWCASE_BROWSER_URL in scenarios/save_password_browser.yaml" >&2; exit 1; }
+	@for s in $(SAVEPASSWORD_SCENARIOS); do \
+	  grep -q "http://localhost:$(BROWSER_PORT)/" $(HERE)/scenarios/$$s || \
+	    { echo "BROWSER_PORT=$(BROWSER_PORT) does not match SHOWCASE_BROWSER_URL in scenarios/$$s" >&2; exit 1; }; \
+	done
 	python3 -m http.server --directory $(HERE)/browser $(BROWSER_PORT) >/dev/null 2>&1 & srv=$$!; \
 	trap 'kill $$srv 2>/dev/null' EXIT; \
 	ready=0; for i in $$(seq 1 100); do \
@@ -366,11 +376,13 @@ e2e-savepassword: swiftui-build uikit-build runner-build
 	done; \
 	if [ "$$ready" -ne 1 ]; then \
 	  echo "port $(BROWSER_PORT) never served the sign-in page (already held by another server?)" >&2; exit 1; fi; \
-	xcrun simctl shutdown $(SIM) >/dev/null 2>&1 || true; \
-	xcrun simctl erase $(SIM); \
-	xcrun simctl bootstatus $(SIM) -b >/dev/null; \
-	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/save_password_browser.yaml \
-		--target showcase-swiftui --udid $(SIM) --backend ios --config $(CONFIG)
+	for s in $(SAVEPASSWORD_SCENARIOS); do \
+	  xcrun simctl shutdown $(SIM) >/dev/null 2>&1 || true; \
+	  xcrun simctl erase $(SIM) || exit 1; \
+	  xcrun simctl bootstatus $(SIM) -b >/dev/null || exit 1; \
+	  (cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/$$s \
+		--target showcase-swiftui --udid $(SIM) --backend ios --config $(CONFIG)) || exit 1; \
+	done
 
 # The *native* save-password lane: iOS's own "Save Password" alert raised from the app's own
 # `.username` / `.password` fields, rather than from a page the in-app browser loaded. Unlike the

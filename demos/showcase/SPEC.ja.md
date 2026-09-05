@@ -231,11 +231,18 @@ Log から到達するモーダル（5 つの提示様式）：
 からです。このアラートは**アプリのツリー**（`app.alerts`、ボタンはラベル付きで識別子なし）に現れ、
 `springboard.alerts` には決して現れません。したがってガードのツリー内消去だけが片付けられます。隣に
 出る通知の要求は別プロセスの SpringBoard のアラートで、ネイティブ経路でしか答えられません。
-`save_password_browser.yaml` が駆動します（`make -C demos/showcase e2e-savepassword`）。
+`save_password_browser.yaml` と `save_password_interrupts_step.yaml` が駆動します。`make -C
+demos/showcase e2e-savepassword` は 2 本を順に、それぞれ消去した直後の端末に対して走らせます。
 - `SHOWCASE_NOTIF_AFTER_BROWSER` — アプリ内ブラウザが開いてから通知の要求を上げるまでの秒数です。
-  タップなしで 2 つ目のプロンプトを到達させます。設定するのはこのシナリオだけです。システムアラートが
-  出ている最中の要素タップは割り込み監視が先に答えるので、シナリオがタップで重なった状態へ持ち込む
+  タップなしで 2 つ目のプロンプトを到達させます。設定するのはこの 2 本だけです。システムアラートが
+  出ている最中の要素タップは割り込み監視が先に答えるので、シナリオがタップでどちらの順序へも持ち込む
   ことはできないからです
+- 順序を決めるのはこの秒数で、2 本は逆の順序を取ります。`save_password_browser.yaml` は短く設定するので、
+  通知の要求が先に着地し、保存アラートがその下に重なり、ガードが両方に答えます。
+  `save_password_interrupts_step.yaml` はサインインより長く設定するので、保存アラートが単独で画面を
+  占有します。実測では、その上に SpringBoard の認可アラートが上がることはありません。割り込みを覆う
+  `wait` ステップを置かない `handleSystemAlert` ステップが、ガードが保存アラートを下から取り除いた
+  あとでプロンプトに答えます（BE-0406）
 
 **Sign In**（`SHOWCASE_SIGNIN`、SwiftUI のみ） — iOS が同じアラートを出すもう 1 つの経路です。ブラウザ
 のページではなく、アプリ自身の `.username` / `.password` のフィールドから出します。`SHOWCASE_GESTURES`

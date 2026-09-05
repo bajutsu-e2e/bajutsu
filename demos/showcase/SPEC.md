@@ -234,12 +234,20 @@ credential, and it needs no associated domain, entitlement, or HTTPS — iOS off
 own origin exactly as Safari does. The alert reaches the *app's* tree (`app.alerts`, its buttons
 labelled and identifier-less) while `springboard.alerts` never sees it, so only the guard's in-tree
 dismissal can clear it; the notification request beside it is a SpringBoard alert in another process,
-answerable only through the native path. Driven by `save_password_browser.yaml` (`make -C
-demos/showcase e2e-savepassword`):
+answerable only through the native path. Driven by `save_password_browser.yaml` and
+`save_password_interrupts_step.yaml`, which `make -C demos/showcase e2e-savepassword` runs in
+sequence, each against a freshly erased device:
 - `SHOWCASE_NOTIF_AFTER_BROWSER` — seconds after the in-app browser opens before the notification
-  request is raised, so the second prompt arrives without a tap. Only that scenario sets it: a
-  scenario cannot tap its way into the stacked state, because an element tap made while a system
+  request is raised, so the second prompt arrives without a tap. Only those two scenarios set it: a
+  scenario cannot tap its way into either ordering, because an element tap made while a system
   alert is showing is answered by the interruption monitor first
+- The delay is what picks the ordering, and the two scenarios take opposite ones.
+  `save_password_browser.yaml` sets it short, so the notification request lands *first* and the save
+  alert stacks under it, and the guard answers both. `save_password_interrupts_step.yaml` sets it
+  long enough to outlast the sign-in, so the save alert holds the screen alone — measured, iOS
+  raises no SpringBoard authorization alert over it — and a `handleSystemAlert` step placed with no
+  `wait` step covering the interruption answers the prompt once the guard has cleared the save alert
+  from under it (BE-0406)
 
 **Sign In** (`SHOWCASE_SIGNIN`, SwiftUI only) — the *other* route iOS raises the same alert from: the
 app's own `.username` / `.password` fields rather than a page in the browser. A launch-env swap like
