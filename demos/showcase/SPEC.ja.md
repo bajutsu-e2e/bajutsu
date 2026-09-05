@@ -241,8 +241,8 @@ demos/showcase e2e-savepassword` は 2 本を順に、それぞれ消去した�
   通知の要求が先に着地し、保存アラートがその下に重なり、ガードが両方に答えます。
   `save_password_interrupts_step.yaml` はサインインより長く設定するので、保存アラートが単独で画面を
   占有します。実測では、その上に SpringBoard の認可アラートが上がることはありません。割り込みを覆う
-  `wait` ステップを置かない `handleSystemAlert` ステップが、ガードが保存アラートを下から取り除いた
-  あとでプロンプトに答えます（BE-0406）
+  `wait` ステップを置かない `handleSystemAlert` ステップが、ガードが保存アラートを片付けたあとで
+  iOS が上げるプロンプトに答えます（BE-0406）
 
 **Sign In**（`SHOWCASE_SIGNIN`、SwiftUI のみ） — iOS が同じアラートを出すもう 1 つの経路です。ブラウザ
 のページではなく、アプリ自身の `.username` / `.password` のフィールドから出します。`SHOWCASE_GESTURES`

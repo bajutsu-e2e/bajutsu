@@ -246,8 +246,8 @@ sequence, each against a freshly erased device:
   alert stacks under it, and the guard answers both. `save_password_interrupts_step.yaml` sets it
   long enough to outlast the sign-in, so the save alert holds the screen alone — measured, iOS
   raises no SpringBoard authorization alert over it — and a `handleSystemAlert` step placed with no
-  `wait` step covering the interruption answers the prompt once the guard has cleared the save alert
-  from under it (BE-0406)
+  `wait` step covering the interruption answers the prompt, which iOS raises only once the guard has
+  cleared the save alert (BE-0406)
 
 **Sign In** (`SHOWCASE_SIGNIN`, SwiftUI only) — the *other* route iOS raises the same alert from: the
 app's own `.username` / `.password` fields rather than a page in the browser. A launch-env swap like
