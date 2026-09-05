@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0374") |
-| Implementing PR | TBD |
+| Implementing PR | [#1910](https://github.com/bajutsu-e2e/bajutsu/pull/1910) |
 | Topic | Platform support |
 | Related | [BE-0363](../BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md), [BE-0260](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation.md) |
 <!-- /BE-METADATA -->
@@ -267,7 +267,7 @@ the timeout named as the cause — the case that formats a `None` budget today.
 
 Log:
 
-- TBD — all three units in one change. Added `device_errors.DeviceTimeout` and gave
+- [#1910](https://github.com/bajutsu-e2e/bajutsu/pull/1910) — all three units in one change. Added `device_errors.DeviceTimeout` and gave
   `simctl.DeviceTimeout` that neutral type as a second base, leaving every handler BE-0363
   audited matching unchanged and `bajutsu/common/backend_cli/adb.py` untouched; `recovery`'s
   `is_host_fault` now names the neutral type, as its own docstring had promised this item would.

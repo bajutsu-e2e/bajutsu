@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0374") |
-| 実装 PR | TBD |
+| 実装 PR | [#1910](https://github.com/bajutsu-e2e/bajutsu/pull/1910) |
 | トピック | Platform support |
 | 関連 | [BE-0363](../BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout-ja.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md), [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md), [BE-0260](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation-ja.md) |
 <!-- /BE-METADATA -->
@@ -250,7 +250,7 @@ XCUITest の環境がデバイスをコールドに準備せず、暖まった�
 
 ログ：
 
-- TBD — 3つの作業単位を1つの変更で実装しました。`device_errors.DeviceTimeout` を加え、
+- [#1910](https://github.com/bajutsu-e2e/bajutsu/pull/1910) — 3つの作業単位を1つの変更で実装しました。`device_errors.DeviceTimeout` を加え、
   `simctl.DeviceTimeout` に第2の基底としてその中立な型を与えました。BE-0363 が個別に検討した
   処理はすべてそのまま一致し続け、`bajutsu/common/backend_cli/adb.py` は変えていません。
   `recovery` の `is_host_fault` は中立な型を名指すようになりました。その docstring 自身が、
