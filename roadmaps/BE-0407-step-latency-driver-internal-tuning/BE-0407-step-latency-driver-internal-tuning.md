@@ -264,7 +264,7 @@ and a rerun of the tracer.
   alone (the higher-frequency of the "`/tap` or `/elements`" the design named) rather than every
   actuation: the driver accumulates whatever a tap's own fold already carried and merges it with
   an explicit `/interruptionPolicy/drain` whenever any other driver call happened in between (a
-  query, a stale-retry's re-resolution), so nothing a tap's fold captured is ever silently
+  alone — the higher-frequency of the pair the design named, "`/tap` or `/elements`" — rather than every
   dropped even when the fast path can't be taken.
 - [x] Group 2, unit 7 — batch the tap-path attribute reads into one `el.snapshot()` call; cache
   `app.frame` for the life of a resident lease (guarded against caching a transient `.zero` read).
@@ -315,7 +315,7 @@ and a rerun of the tracer.
   and the shipped half of Group 2 (2026-09-06, iPhone 17 Pro Simulator, `controls.yaml`): `POST
   /tap` mean 690ms → 446ms across 3 taps, and only 6 of 9 `drain_interruptions` calls reached the
   wire (the rest answered from a tap's own fold). Real, measured progress against the baseline,
-  short of the unit's own 0.3–0.6s per-tap target now that units 8 and 15 are deferred. Android
+  short of this item's own 0.3–0.6s per-tap target now that units 8 and 15 are deferred. Android
   (Group 3) not yet remeasured.
 - [x] Backfill reciprocal `Related` links between this item and the device-side protocol, iOS
   executor, and Android executor items, in both languages — done after the `roadmap-id` workflow
