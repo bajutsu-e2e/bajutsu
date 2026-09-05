@@ -628,6 +628,13 @@ def _is_stale(conn: http.client.HTTPConnection) -> bool:
     of the next request is sent, so the ordinary idle-close case reconnects cleanly — indistinguishable
     from the very first call — rather than surfacing as an ambiguous send/receive failure to sort out
     after the fact.
+
+    The peek narrows the window rather than closing it: `SO_RCVTIMEO` can still fire between this
+    check and the `conn.request(...)` that follows it, in which case the write lands on a socket the
+    runner has already torn down. `delivered` is `True` by then, so a `GET` is simply re-issued on a
+    fresh connection by `_with_retry`, while a `POST` is refused by `_is_retry_eligible` and fails
+    loudly (delivery is genuinely unknown, so re-sending it would be the same double-actuation risk
+    above) rather than getting the clean reconnect this check gives the common case.
     """
     sock = conn.sock
     if sock is None:
@@ -699,8 +706,13 @@ def _raw_http_transport(host: str, port: int) -> TransportFn:
             # A connection any failure touched — an `OSError` above, or a non-`OSError` decode failure
             # from a response `_is_stale` could not have caught — is never reused; `succeeded` is the
             # single source of truth for that, so nothing here depends on which exception type fired.
+            # Closed, not merely dropped: the `_TransportFailure` raised above keeps this frame — and
+            # so this socket, and the runner connection slot behind it — alive for as long as the
+            # crash-recovery layer holds the error it becomes.
             if not succeeded:
                 holder["conn"] = None
+                if conn is not None:
+                    conn.close()
 
     return transport
 

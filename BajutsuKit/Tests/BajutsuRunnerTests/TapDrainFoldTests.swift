@@ -11,6 +11,14 @@ final class TapDrainFoldTests: XCTestCase {
         traits: ["button"], frame: (0, 0, 10, 10), backingElement: NSObject()
     )
 
+    override func setUp() {
+        super.setUp()
+        // `InterruptionPolicyStore.shared` is process-wide and every `/tap` here drains it, so what
+        // some earlier test (in this class or any other) left behind must not decide what this one
+        // sees. Reset up front rather than per-test, so a new test cannot forget.
+        _ = InterruptionPolicyStore.shared.drain()
+    }
+
     private func firstHandle(_ handler: APIHandler) async throws -> String {
         let out = try await handler.queryElements(.init())
         guard case .ok(let ok) = out, case .json(let payload) = ok.body,
