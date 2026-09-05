@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0406") |
-| Implementing PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871) (unit 1), [#1894](https://github.com/bajutsu-e2e/bajutsu/pull/1894) (units 2a, 3), [#1903](https://github.com/bajutsu-e2e/bajutsu/pull/1903) (unit 2b, unit 5) |
+| Implementing PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871) (unit 1), [#1894](https://github.com/bajutsu-e2e/bajutsu/pull/1894) (units 2a, 3), [#1903](https://github.com/bajutsu-e2e/bajutsu/pull/1903) (unit 2b, unit 5), [#1908](https://github.com/bajutsu-e2e/bajutsu/pull/1908) (unit 4) |
 | Topic | Platform support |
 | Related | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0369](../BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules.md), [BE-0399](../BE-0399-ios-system-alert-interruption-policy/BE-0399-ios-system-alert-interruption-policy.md), [BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation.md), [BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md) |
 <!-- /BE-METADATA -->
@@ -599,6 +599,23 @@ Log:
   built-in dismissive-candidate list from their account of the interruption monitor, record that a
   governing policy's decline now fails the step or `expect` that met it, and record the reservation —
   the last piece of Unit 5 still outstanding, so that unit is complete too.
+- [#1908](https://github.com/bajutsu-e2e/bajutsu/pull/1908) — Unit 4, the last unit. Dropped
+  `save_password_browser.yaml`'s `wait: { until: { gone: { label: "Not Now" } } }`, the workaround
+  wait that existed only to give the reactive guard a step to run inside; the following `wait: {
+  for: { id: Close } }` gives it the same window, since it stays false for as long as the alert is
+  modal over the browser. Added `save_password_interrupts_step.yaml`, the regression scenario this
+  item was written from: a `handleSystemAlert` step for the notification prompt with no `wait` step
+  covering the interruption, while the save-password alert holds the screen alone. One deviation
+  from the unit's own text: it joins `make -C demos/showcase e2e-savepassword` rather than the
+  `ios-e2e` CI lane, since neither save-password demo was ever on that lane — it selects scenarios
+  by explicit path and serves no browser fixture, so the item's text describing the lane had gone
+  stale by the time this unit landed. That target now runs both save-password scenarios in
+  sequence, each behind its own device erase. Also filled a gap the new scenario's addition
+  exposed in `tests/test_showcase_fixtures.py`'s exclusion-tag guard, which was missing `browser.yaml`
+  and both save-password demos already. A self-reviewed diff (BE-0347's two-role procedure) found
+  and fixed a timing margin too tight against the pre-step page load and typing, and three stale
+  comments; re-verified on a real iOS Simulator afterward, with both save-password scenarios passing
+  against a freshly erased device. `make check` (7,214 tests) is green, closing the item.
 
 ## References
 

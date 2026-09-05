@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0406") |
-| 実装 PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871)（単位 1）、[#1894](https://github.com/bajutsu-e2e/bajutsu/pull/1894)（単位 2a、3）、[#1903](https://github.com/bajutsu-e2e/bajutsu/pull/1903)（単位 2b、単位 5） |
+| 実装 PR | [#1871](https://github.com/bajutsu-e2e/bajutsu/pull/1871)（単位 1）、[#1894](https://github.com/bajutsu-e2e/bajutsu/pull/1894)（単位 2a、3）、[#1903](https://github.com/bajutsu-e2e/bajutsu/pull/1903)（単位 2b、単位 5）、[#1908](https://github.com/bajutsu-e2e/bajutsu/pull/1908)（単位 4） |
 | トピック | Platform support |
 | 関連 | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md), [BE-0369](../BE-0369-ios-paste-consent-prompt-choice/BE-0369-ios-paste-consent-prompt-choice-ja.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules-ja.md), [BE-0399](../BE-0399-ios-system-alert-interruption-policy/BE-0399-ios-system-alert-interruption-policy-ja.md), [BE-0401](../BE-0401-system-alert-handling-dsl-consolidation/BE-0401-system-alert-handling-dsl-consolidation-ja.md), [BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md) |
 <!-- /BE-METADATA -->
@@ -599,6 +599,26 @@ BE-0402 は `probe_native` が返す `"unhandled"` にも用途を与えてい�
   割り込み監視の説明にあった組み込みの dismiss 候補一覧が消えました。方針が有効な状態での辞退は、
   それに遭遇したステップまたは `expect` を失敗させると記録し、予約の仕組みも記録しています。
   単位 5 に残っていたのはこの作業だけだったので、単位 5 も完了します。
+- [#1908](https://github.com/bajutsu-e2e/bajutsu/pull/1908) — 最後の単位 4 です。
+  `save_password_browser.yaml` から `wait: { until: { gone: { label: "Not Now" } } }` を削除しました。
+  反応的なガードにステップを1つ与えるためだけに存在していた迂回策です。続く
+  `wait: { for: { id: Close } }` が同じ窓を与えます。アラートがブラウザの上にモーダルで出ている間は
+  この条件が偽のままだからです。この項目の動機となった回帰シナリオ
+  `save_password_interrupts_step.yaml` も追加しました。割り込みを覆う `wait` ステップを置かずに
+  通知プロンプト向けの `handleSystemAlert` ステップを置き、パスワード保存アラートが画面を単独で
+  占有している状況を作ります。単位の原文からの逸脱が1つあります。新シナリオが加わる先を
+  `ios-e2e` の CI レーンではなく `make -C demos/showcase e2e-savepassword` にしたことです。
+  「パスワードを保存」の 2 つのデモはそもそもそのレーンに乗ったことがなく、レーンは明示的な
+  パスでシナリオを選ぶうえブラウザのフィクスチャも用意しないため、原文のレーンに関する記述は
+  この単位が着地する時点で古びていました。この `make` ターゲットは、いまや 2 本の
+  「パスワードを保存」シナリオを順に走らせ、それぞれ端末を消去してからにします。加えて、
+  新シナリオの追加が明らかにした `tests/test_showcase_fixtures.py` の除外タグ保証の抜けも
+  埋めました。`browser.yaml` と 2 本の「パスワードを保存」デモがもともと漏れていました。
+  自己レビューした差分（BE-0347 の二役の手順）が、ステップ前のページ読み込みと入力に対して
+  タイミングの余裕が狭すぎる点と、古びたコメント 3 箇所を見つけて直しました。その後、実機の
+  iOS Simulator で再検証し、消去し直した端末に対して 2 本の「パスワードを保存」シナリオが
+  どちらも通ることを確認しました。`make check`（7,214 件のテスト）も通り、この項目を
+  完了させます。
 
 ## 参考
 
