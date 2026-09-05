@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0339](BE-0339-adb-device-side-actuation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0339") |
 | Implementing PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455) (Units 1–3: the directional-gesture anchor, `POST /act`, and identity-addressed actuation), [#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702) (Unit 4 and Unit 6's fast-gate conformance coverage; a Unit 5 attempt reverted after review, Unit 6's on-device realization deferred after real-device evidence it wasn't safe to ship), [#1820](https://github.com/bajutsu-e2e/bajutsu/pull/1820) (Unit 5, on the device-side publish confirmation its first attempt assumed) |
 | Topic | Driver & backend architecture |
@@ -242,7 +242,7 @@ languages. The identity keeps the decision on the host and sends only its result
       a frame, not a center.
 - [x] Unit 4 — the coordinate path kept as a declared, logged degraded mode.
 - [x] Unit 5 — the read-lag barrier narrowed to the reads that still need it.
-- [ ] Unit 6 — deterministic and conformance coverage, and a repeated Android-lane run.
+- [x] Unit 6 — deterministic and conformance coverage, and a repeated Android-lane run.
 
 Log:
 
@@ -432,6 +432,38 @@ Log:
 
   Unit 6 is untouched by this: its on-device conformance realization, and the repeated Android-lane
   dispatch that samples the flake's residual rate, are still what it owes.
+
+- 2026-09-06 — Unit 6, on the device the two reverted attempts never had. The tap-mirror pair is
+  back on both conformance screens and the case runs on both on-device lanes, because the
+  degradation that reverted it was never about the mirrors. Reproduced on a local
+  `bajutsu-api34-arm64` emulator — the same three re-seeding timeouts the 2026-08-22 entry
+  records — where the failure message names its own cause: the readiness dump carries the marker,
+  the field, all four mirror elements, and fifty `key_pos_*` keyboard nodes — and is missing only
+  the id the harness had just seeded. `MainActivity` declares no `windowSoftInputMode`, so the software
+  keyboard a text-editing test raises *overlays* the screen rather than resizing it, and nothing on
+  Android dismisses it afterwards; `ConformanceScreen`'s column was centered, so the seeded
+  elements — which come last — sat underneath it. Four extra elements were only what pushed them
+  there, which is why the co-located shape degraded as well, and why the `verticalScroll` attempt
+  did not help: scrolling does not bring a covered element into the dump.
+
+  The fix is the column laid out from the top rather than centered, so the whole screen stays above
+  the keyboard whatever it is holding. A screen-boundary teardown — the Compose twin of
+  `ConformanceView`'s `.onChange(of: identifiers)` (BE-0280) — was written first and discarded on
+  measurement rather than on taste: on the device, clearing focus and hiding the keyboard controller
+  dismisses the IME after a bare tap on the field but not once the field has been typed into, so it
+  would have left this contract depending on Compose's focus plumbing where the layout depends on
+  nothing. It also cost two runs to learn that a teardown keyed on `identifiers` never fires between
+  two tests that both seed the empty screen, which is exactly the boundary the text-editing tests
+  hand over across. `ConformanceView` is top-aligned for the same reason, even though its keyboard
+  never displaced anything: it carries precisely that teardown, so it carries the same gap, and the
+  mirrors make its screen taller too.
+
+  Both skips are gone. `conformance (adb)` ran green twice on the emulator (22 passed, 4 skipped),
+  with `test_a_tap_lands_on_the_element_the_selector_named` passing rather than skipped, and the
+  suite fell from roughly eleven minutes to four now that no test spends its thirty-second readiness
+  budget. `conformance (xcuitest)` ran green on a dedicated iOS 26.5 Simulator (25 passed, 2
+  skipped) with the same case passing — the real-Simulator result the reverted attempt never
+  obtained, since every push there superseded the last before one landed.
 
 ## References
 

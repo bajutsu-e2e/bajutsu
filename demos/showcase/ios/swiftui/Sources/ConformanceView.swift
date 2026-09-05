@@ -29,6 +29,18 @@ struct ConformanceView: View {
     /// `.secureTextField`, which is the iOS source for the normalized secure trait the contract pins.
     static let secureFieldID = "conformance.secureField"
 
+    /// The two always-present tap targets the "a tap lands on the element the selector named"
+    /// contract case acts on (BE-0339 Unit 6) — mirrors the Compose `CONFORMANCE_TAP_MIRROR_*` and
+    /// the web `_TAP_MIRROR_HTML`. Each target is a *pair*: a static tap target, plus a separate
+    /// element mirroring its tap count, the same split `LogScreen.kt` uses for `log.longpress` /
+    /// `log.longpress.value`. Splitting them is not cosmetic — a `value` that changes as a *result*
+    /// of the tap would churn the semantics of the very element the actuator resolves and injects
+    /// against, which is the conflict this case exists to catch on the adb backend.
+    static let tapMirrorAID = "conformance.tapMirror.a"
+    static let tapMirrorAValueID = "conformance.tapMirror.a.value"
+    static let tapMirrorBID = "conformance.tapMirror.b"
+    static let tapMirrorBValueID = "conformance.tapMirror.b.value"
+
     /// The sentinel identifier the scroll conformance test seeds (BE-0326): when it is the whole
     /// seeded set, render the fixed scrollable list below instead of the per-identifier buttons, so
     /// the `scroll` action's re-query loop is driven against XCUITest's real query / scroll code.
@@ -46,6 +58,10 @@ struct ConformanceView: View {
     /// Backs the masked field. Never typed into by the contract — the field exists so `query()` can
     /// report its trait — so it stays empty.
     @State private var secureFieldText = ""
+
+    /// Tap counts behind the two mirror pairs above, each surfaced on its own separate element.
+    @State private var tapsA = 0
+    @State private var tapsB = 0
 
     /// Focus on the editable field, so a screen reseed can resign it and dismiss any transient iOS UI
     /// the previous text-editing test left up (BE-0280) — see the `onChange` teardown below.
@@ -124,6 +140,26 @@ struct ConformanceView: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 280, height: 44)
                 .accessibilityID(Self.secureFieldID)
+            // The two tap-mirror pairs (BE-0339 Unit 6). Half the height of a seeded button below:
+            // those must host a two-finger pinch/rotate, these are only ever tapped. The button
+            // titles are static — a title derived from the count would move the churn back onto the
+            // element the contract resolves and taps, which is exactly what the split avoids.
+            Button("tap mirror a") { tapsA += 1 }
+                .frame(width: 280, height: 48)
+                .background(Color.gray.opacity(0.25))
+                .contentShape(Rectangle())
+                .accessibilityID(Self.tapMirrorAID)
+            Text("\(tapsA)")
+                .accessibilityID(Self.tapMirrorAValueID)
+                .accessibilityStateValue("\(tapsA)")
+            Button("tap mirror b") { tapsB += 1 }
+                .frame(width: 280, height: 48)
+                .background(Color.gray.opacity(0.25))
+                .contentShape(Rectangle())
+                .accessibilityID(Self.tapMirrorBID)
+            Text("\(tapsB)")
+                .accessibilityID(Self.tapMirrorBValueID)
+                .accessibilityStateValue("\(tapsB)")
             ForEach(Array(identifiers.enumerated()), id: \.offset) { _, identifier in
                 // A generous, opaque hit area: the conformance contract pinches/rotates one of these
                 // (the MULTI_TOUCH case), and XCUITest's two-finger gestures need real room between
@@ -136,5 +172,11 @@ struct ConformanceView: View {
                     .accessibilityID(identifier)
             }
         }
+        // Top-aligned, not centered, for the reason the Compose twin is: the seeded elements come
+        // last, and a keyboard raised by a text-editing test can still be up on the next screen —
+        // the `.onChange` teardown above cannot fire between two screens seeded identically, and
+        // both text-editing cases seed the empty one. Centered, the seeded element drifts toward the
+        // keyboard as this screen grows; from the top it does not (BE-0339 Unit 6).
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 }
