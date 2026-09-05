@@ -115,6 +115,20 @@ class RunArtifactWriter:
         self.unmasked.append(name)
         return self._replace(name, lambda tmp: tmp.write_bytes(data))
 
+    def copy_bytes(self, source_name: str, dest_name: str) -> Path:
+        """Copy an already-written artifact's bytes to a new name, without exposing them to the
+        caller — the module's byte content never leaves this boundary (see the module docstring).
+
+        Used to reuse a screenshot across steps (BE-0407 Unit 1) instead of a fresh capture: the two
+        names then describe the identical pixels, at the cost of a local copy. Recorded in
+        `unmasked` like `write_bytes`, since the source was already recorded there when it was
+        first written.
+        """
+        self.unmasked.append(dest_name)
+        return self._replace(
+            dest_name, lambda tmp: tmp.write_bytes(self._resolve(source_name).read_bytes())
+        )
+
     def reserve(self, name: str) -> Path:
         """A path for content an external recorder writes itself (simctl, screenrecord, logcat).
 

@@ -18,11 +18,13 @@ from bajutsu.common.orchestrator.types import (
     AlertGuardConfig,
     Clock,
     NetworkSource,
+    UndeclaredInterruption,
     _no_network,
     alert_block_note,
     match_alert_rule,
     selector_names_button,
     uncleared_prompt_note,
+    undeclared_interruption_note,
 )
 from bajutsu.common.scenario import Gone, Wait, WaitRequest
 
@@ -695,6 +697,39 @@ def wait_for_system_alert(
                     ambiguous = True
                 else:
                     return True, ""
+            elif isinstance(driver, base.InterruptionPolicyTarget):
+                # `sel`'s alert is not the one this read just saw — but a governing policy's
+                # monitor may have already answered it between two polls, or even before this
+                # wait's first one: XCUITest can resolve an out-of-process alert on any query,
+                # including `gate.observe` below and this step's own pre-act reads, and
+                # `_reserve_declared_alert` pushes a rule for this exact selector so the monitor
+                # recognizes it (BE-0406 Unit 2b review finding). Without this check, `seen` empty
+                # here reads as "no alert ever appeared" when the alert was in fact answered
+                # correctly, just not by this loop's own tap — the very silence Unit 2b exists to
+                # end, reintroduced by the mechanism meant to close it. A backend without the
+                # opt-in, or one nothing has pushed a policy to, drains nothing and falls through
+                # unchanged.
+                drained = driver.drain_interruptions()
+                matched = [label for label in drained.tapped if selector_names_button(sel, [label])]
+                if alerts is not None:
+                    # A tapped label that is not `sel`'s own is some other declared rule's alert,
+                    # resolved by the monitor while this step happened to be polling — draining it
+                    # here consumes it from the store, so it must be recorded now or the report
+                    # loses it entirely (the end-of-step drain will find nothing left to read).
+                    unrelated = [label for label in drained.tapped if label not in matched]
+                    alerts.extend(AlertEvent(label=label) for label in unrelated)
+                if matched:
+                    if alerts is not None:
+                        alerts.append(AlertEvent(label=matched[0]))
+                    return True, ""
+                if drained.declined:
+                    # Some other alert interrupted a query during this same wait and nothing
+                    # declared it — not this step's own prompt, but still a fact the run must not
+                    # swallow (BE-0406 Unit 2b): the step fails naming it, the same way any other
+                    # drain site does.
+                    return False, undeclared_interruption_note(
+                        [UndeclaredInterruption(buttons=buttons) for buttons in drained.declined]
+                    )
         if gate is not None:
             gate.observe(driver.query())
         if cancelled():
@@ -1031,33 +1066,49 @@ def _wait_settled_by_signal(
     A `True` from `on_interrupt_poll` ends the settle immediately (BE-0314), same as the tree-diff
     fallback above — the signal path is still a settle loop over `driver.query()`, so a scenario's
     `interrupts` handlers apply here too, not only when no transition signal is available.
+
+    With neither a `gate` nor an `on_interrupt_poll` registered, nothing consumes a mid-window read
+    (BE-0407 Unit 5): the window is a positive "no new transition," decided from `transitions()`
+    alone, so this skips the device round trip on every tick and queries exactly once, right when a
+    caller finally needs the settled tree — at quiescence, or at the deadline.
     """
     # Diagnostic only (BE-0310 Unit 5): confirms the signal path actually decided settled on a real
     # device, so on-device verification needs no extra instrumentation to observe it.
     _logger.debug(
         "settled via the screen-transition signal (quiescence=%ss)", _TRANSITION_QUIESCENCE
     )
-    current = driver.query()
-    if gate is not None:
-        gate.observe(current)
+    watched = gate is not None or on_interrupt_poll is not None
+    current: list[base.Element] | None = None
+
+    def observed() -> list[base.Element]:
+        """One poll: read the tree and let the alert gate see it."""
+        tree = driver.query()
+        if gate is not None:
+            gate.observe(tree)
+        return tree
+
+    def settled_tree() -> list[base.Element]:
+        return current if current is not None else driver.query()
+
+    if watched:
+        current = observed()
     while clock.now() - last < _TRANSITION_QUIESCENCE:
         if clock.now() >= deadline:
-            return True, "", current
+            return True, "", settled_tree()
         # Below the deadline return for the same reason as the tree-diff path above: that return is a
         # pass, and a settle already finished must not become a cancelled failure.
         if cancelled():
             raise RunCancelled
-        if on_interrupt_poll is not None and on_interrupt_poll(current):
+        if current is not None and on_interrupt_poll is not None and on_interrupt_poll(current):
             return False, "interrupt recovery failed", current
         t0 = clock.now()
         last = transitions()[-1][1]
-        current = driver.query()
-        if gate is not None:
-            gate.observe(current)
+        if watched:
+            current = observed()
         if hb is not None:
             hb.tick(clock.now())
         _adaptive_sleep(clock, t0)
-    return True, "", current
+    return True, "", settled_tree()
 
 
 # How long a post-dismiss settle may spend before its caller proceeds anyway. Its own budget, not an

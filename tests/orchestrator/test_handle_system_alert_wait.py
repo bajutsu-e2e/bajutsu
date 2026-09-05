@@ -257,6 +257,64 @@ def test_a_cancelled_run_ends_the_wait_within_one_poll() -> None:
     assert clock.now() < 1.0
 
 
+# --- the interruption monitor may already have answered this step's own reservation ------------
+
+
+def test_the_wait_recognizes_an_alert_the_monitor_already_tapped() -> None:
+    # `_reserve_declared_alert` (BE-0406 Unit 2b) pushes this step's own selector to the runner's
+    # interruption monitor before the wait starts, so the monitor can answer it between two of this
+    # loop's own polls — or even before the first one, since `gate.observe` below issues a query on
+    # every tick. `system_alert_labels` staying empty throughout means the step's own poll never
+    # sees the alert; without checking the drain, that would read as "no alert ever appeared" even
+    # though it was answered correctly, just not by this loop's own tap (review finding).
+    driver = FakeDriver([])
+    driver.interruptions_to_drain = ["Allow"]
+    alerts: list[AlertEvent] = []
+
+    ok, reason = wait_for_system_alert(
+        driver, {"label": "Allow"}, 5.0, _LogicalClock(), alerts=alerts
+    )
+
+    assert ok, reason
+    assert alerts == [AlertEvent(label="Allow")]
+    # Nothing here calls `handle_system_alert` itself — the monitor answered it, not this loop.
+    assert not [a for a in driver.actions if a[0] == "handle_system_alert"]
+
+
+def test_the_wait_records_but_does_not_finish_on_a_monitor_tap_for_a_different_alert() -> None:
+    # A tap the drain reports that does not name `sel`'s own label is some other declared rule's
+    # alert, resolved by the monitor while this step happened to be polling for its own — not this
+    # step's own success, but still a dismissal the report must not lose: this poll's own drain call
+    # consumes it from the store, so the end-of-step drain will find nothing left to read.
+    driver = FakeDriver([])
+    driver.interruptions_to_drain = ["Not Now"]
+    alerts: list[AlertEvent] = []
+
+    ok, reason = wait_for_system_alert(
+        driver, {"label": "Allow"}, 0.5, _LogicalClock(), alerts=alerts
+    )
+
+    assert not ok
+    assert "no system alert appeared" in reason  # sel's own prompt never appeared
+    assert alerts == [AlertEvent(label="Not Now")]
+    assert not [a for a in driver.actions if a[0] == "handle_system_alert"]
+
+
+def test_the_wait_fails_on_an_undeclared_interruption_the_monitor_declined_mid_wait() -> None:
+    # A different alert interrupted a query during this same wait and no rule identified it — the
+    # monitor declined it, and that is a fact the run must not swallow (BE-0406 Unit 2b), even
+    # though it has nothing to do with the prompt this step itself is waiting for.
+    driver = FakeDriver([])
+    driver.interruptions_declined_to_drain = [["Save", "Not Now"]]
+
+    ok, reason = wait_for_system_alert(driver, {"label": "Allow"}, 5.0, _LogicalClock(), alerts=[])
+
+    assert not ok
+    assert "undeclared system alert" in reason
+    assert "Save" in reason
+    assert "Not Now" in reason
+
+
 # --- the step and the guard do not compete for the same prompt ---------------------------------
 
 

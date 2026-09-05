@@ -8,13 +8,13 @@ from pathlib import Path
 
 import pytest
 from _orch import FakeClock, _scenario
-from conftest import el
+from conftest import el, guard_rule
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import Artifact, FileSink, step_view
 from bajutsu.common.evidence.intervals import Interval
-from bajutsu.common.orchestrator import RunResult, run_scenario
+from bajutsu.common.orchestrator import AlertGuardConfig, RunResult, run_scenario
 from bajutsu.common.orchestrator.waits import WaitTrace
 from bajutsu.common.report.format import video_seconds
 from bajutsu.common.scenario import Interrupt, Relaunch
@@ -303,11 +303,9 @@ def test_pre_step_capture_precedes_a_mutating_action(tmp_path: Path) -> None:
 
 def test_pre_step_capture_precedes_a_non_mutating_step(tmp_path: Path) -> None:
     """The report's screenshot for an `assert`/`wait` step is taken before it reads the tree to
-    evaluate itself — not just before a mutating action. `capture()`'s own token order always
-    writes the screenshot before it (if needed) queries the tree for `elements.json`
-    (`screenshot.before` precedes `elements` in the pre-step call), and the whole call runs before
-    `_run_step_body`, so the first screenshot logged precedes the first tree query logged either
-    way — whether that query came from the capture's own fallback or the assertion's own read.
+    evaluate itself — not just before a mutating action. The pre-step baseline call (screenshot
+    only, BE-0407 Units 3-4) runs before `_run_step_body`, so the first screenshot logged precedes
+    the first tree query logged either way — the assertion's/wait's own read.
     """
     driver = _QueryLoggingDriver([el("home.title", "ホーム")])
     run_scenario(
@@ -361,6 +359,164 @@ def test_every_step_records_both_screenshots(tmp_path: Path) -> None:
     )
 
 
+class _ScreenshottingDriver(FakeDriver):
+    """A driver whose `screenshot` actually writes bytes, unlike `FakeDriver` (which only records
+    the call) — needed to exercise BE-0407 Unit 1's byte-for-byte reuse end to end."""
+
+    def __init__(self, screen: list[base.Element]) -> None:
+        super().__init__(screen)
+        self.screenshot_calls = 0
+
+    def screenshot(self, path: str) -> None:
+        super().screenshot(path)
+        self.screenshot_calls += 1
+        Path(path).write_bytes(f"shot{self.screenshot_calls}".encode())
+
+
+def test_a_steps_before_png_reuses_the_previous_steps_after_png_bytes(tmp_path: Path) -> None:
+    """Nothing acts between one step's `after.png` and the next step's `before.png`, so the second
+    is a byte-for-byte copy of the first rather than a fresh capture (BE-0407 Unit 1): three real
+    screenshots for two steps, not the four a fresh `before.png` each time would cost."""
+    driver = _ScreenshottingDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}]}),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+    )
+    assert result.ok
+    # step0's before + step0/step1's after; step1's before is reused, not shot.
+    assert driver.screenshot_calls == 3
+    step0_after = run_dir / "x" / "step0" / "after.png"
+    step1_before = run_dir / "x" / "step1" / "before.png"
+    assert step1_before.read_bytes() == step0_after.read_bytes()
+
+
+def test_screenshot_reuse_crosses_a_web_blocks_boundary(tmp_path: Path) -> None:
+    """The screenshot reuse marker (BE-0407 Unit 1) does *not* reset around a `web` block, unlike
+    the tree's `prev_after` (BE-0234): the shutter always targets the native driver, so it is the
+    same screen throughout, web block or not. A native step, the web block's own nested step, and
+    the native step after it all chain as byte-identical copies — one screenshot per step's
+    `after.png`, and none of the three `before.png`s shot fresh."""
+    native_screen = [
+        el("a", "A", ["button"], frame=(0.0, 0.0, 400.0, 50.0)),
+        el("app.webview", frame=(0.0, 50.0, 400.0, 700.0)),
+        el("b", "B", ["button"], frame=(0.0, 750.0, 400.0, 50.0)),
+    ]
+    driver = _ScreenshottingDriver(native_screen)
+    bridge = _FakeBridge([el("confirm", "Confirm", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {"tap": {"id": "a"}},
+                    {
+                        "web": {
+                            "within": {"id": "app.webview"},
+                            "steps": [{"tap": {"id": "confirm"}}],
+                        }
+                    },
+                    {"tap": {"id": "b"}},
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        webview_bridge=bridge,
+    )
+    assert result.ok, result.failure
+    # One shot per step's `after.png` (3), plus the very first `before.png` (no prior step to
+    # reuse from) — 4 total, not the 6 a fresh `before.png` every step would cost.
+    assert driver.screenshot_calls == 4
+    web_leaf = next(s for s in result.steps if s.action == "tap" and s.index != 0)
+    tap_b = next(s for s in result.steps if s.action == "tap" and s.index > web_leaf.index)
+    step0_after = run_dir / "x" / "step0" / "after.png"
+    web_before = run_dir / next(a.name for a in web_leaf.artifacts if a.name.endswith("before.png"))
+    web_after = run_dir / next(a.name for a in web_leaf.artifacts if a.name.endswith("after.png"))
+    step_b_before = run_dir / next(a.name for a in tap_b.artifacts if a.name.endswith("before.png"))
+    assert web_before.read_bytes() == step0_after.read_bytes()
+    assert step_b_before.read_bytes() == web_after.read_bytes()
+
+
+def test_screenshot_reuse_is_disabled_for_a_handle_system_alert_step(tmp_path: Path) -> None:
+    """A `handleSystemAlert` step always gets a fresh `before.png` (review follow-up): it exists to
+    watch for exactly the kind of surprise arrival the reuse premise cannot rule out, so pairing it
+    with a byte-copy of the previous step's screen would be the mismatch the exclusion prevents."""
+    driver = _ScreenshottingDriver([el("go", "Go", ["button"])])
+    driver.system_alert_buttons = [el(None, "Allow", ["button"])]
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {"tap": {"id": "go"}},
+                    {"handleSystemAlert": {"sel": {"label": "Allow"}, "timeout": 5}},
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+    )
+    assert result.ok, result.failure
+    # Every step's `before.png` is a fresh shot: 4 calls for 2 steps, not the 3 reuse would cost.
+    assert driver.screenshot_calls == 4
+    alert_step = next(s for s in result.steps if s.action == "handle_system_alert")
+    step0_after = run_dir / "x" / "step0" / "after.png"
+    alert_before = run_dir / next(
+        a.name for a in alert_step.artifacts if a.name.endswith("before.png")
+    )
+    assert alert_before.read_bytes() != step0_after.read_bytes()
+
+
+def test_screenshot_reuse_is_disabled_when_the_scenario_declares_interrupts(
+    tmp_path: Path,
+) -> None:
+    """Every step in a scenario declaring `interrupts` gets a fresh `before.png` (review
+    follow-up), not only the step an interrupt actually fires on: an interstitial the condition
+    does not match yet can still have appeared, and the scenario is already paying extra per-step
+    cost for exactly this risk."""
+    driver = _ScreenshottingDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}]}),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        interrupts=[
+            Interrupt.model_validate(
+                {"condition": {"exists": {"id": "never.matches"}}, "steps": [{"tap": {"id": "a"}}]}
+            )
+        ],
+    )
+    assert result.ok, result.failure
+    # 4 fresh shots for 2 steps, not the 3 reuse would cost.
+    assert driver.screenshot_calls == 4
+
+
+def test_screenshot_reuse_is_disabled_under_an_alert_guard(tmp_path: Path) -> None:
+    """A configured `alert_guard` (target-config level, independent of a scenario's own
+    `interrupts`) gets the same fresh-`before.png` treatment (review follow-up): a system alert it
+    exists to catch can arrive between any two steps, the same asynchronous risk `interrupts`
+    covers at the scenario level."""
+    driver = _ScreenshottingDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario({"name": "x", "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}]}),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        alert_guard=AlertGuardConfig(rules=[guard_rule()]),
+    )
+    assert result.ok, result.failure
+    assert driver.screenshot_calls == 4
+
+
 def test_final_capture_does_not_duplicate_a_rule_fired_after_png(tmp_path: Path) -> None:
     """When a `capturePolicy` rule already fires `screenshot.after` post-step on the scenario's
     last (and only) leaf step — e.g. a `result: error` safety net on a failing final step — the
@@ -393,11 +549,13 @@ def test_a_step_that_fails_before_it_acts_keeps_a_matched_pre_action_pair(
     tmp_path: Path,
 ) -> None:
     """A step that fails resolving `handleSystemAlert`'s label against an uncovered locale returns
-    before it acts. The pre-step baseline runs *ahead* of locale resolution, so the step still
-    records evidence — `before.png` and the tree read at that same moment — and records no
-    `after.png`, since nothing acted and no later capture fills one in. That keeps the one path
-    without a post-action screenshot internally consistent: the viewers show `before.png`, matching
-    the tree they draw element frames from (review follow-up)."""
+    before it ever reaches the post-step capture, the only place a leaf step ordinarily gets a tree
+    (BE-0407 Units 3-4 dropped it from the pre-step baseline). This is the one path that writes its
+    own tree explicitly, right where it returns, so the step still records evidence — `before.png`
+    and a matching `elements.json` — and records no `after.png`, since nothing acted and no later
+    capture fills one in. That keeps the one path without a post-action screenshot internally
+    consistent: the viewers show `before.png`, matching the tree they draw element frames from
+    (review follow-up)."""
     driver = FakeDriver([el("a", "A", ["button"])])
     run_dir = tmp_path / "run1"
     result = run_scenario(
@@ -426,6 +584,150 @@ def test_a_step_that_fails_before_it_acts_keeps_a_matched_pre_action_pair(
     assert any(name.endswith("before.png") for name in step0_names)
     assert any(name.endswith("elements.json") for name in step0_names)
     assert not any(name.endswith("after.png") for name in step0_names)
+
+
+def test_a_step_that_fails_before_it_acts_skips_the_tree_when_the_fallback_query_fails(
+    tmp_path: Path,
+) -> None:
+    """The same uncovered-locale failure, but on the scenario's first step and with a driver that
+    cannot be queried at all: the fallback query in the exception handler (BE-0407 Units 3-4) must
+    not let that exception escape and crash the step — it logs and moves on, leaving `before.png`
+    as the step's only evidence rather than a broken run."""
+
+    class _UnqueryableDriver(FakeDriver):
+        def query(self) -> list[base.Element]:
+            raise ConnectionError("device unreachable")
+
+    driver = _UnqueryableDriver([el("a", "A", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "handleSystemAlert": {
+                            "prompt": "notifications",
+                            "choice": "grant",
+                            "timeout": 5,
+                        }
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        locale="de_DE",
+    )
+    assert not result.ok
+    assert result.failure is not None and "language 'de'" in result.failure
+    step0_names = {a.name for a in result.steps[0].artifacts}
+    assert any(name.endswith("before.png") for name in step0_names)
+    assert not any(name.endswith("elements.json") for name in step0_names)
+    assert not any(name.endswith("after.png") for name in step0_names)
+
+
+def test_a_step_that_fails_before_it_acts_never_writes_a_stale_cached_tree(
+    tmp_path: Path,
+) -> None:
+    """A *later* step's failed fresh query must not fall back to a stale `prev_after` left by the
+    step before it: the screenshot gate already shot this step's `before.png` fresh (it is always
+    a `handleSystemAlert` step reaching here), so pairing it with step0's older tree would be the
+    exact mismatch the always-fresh policy exists to avoid (review follow-up)."""
+
+    class _QueryFailsOnceQueried(FakeDriver):
+        def __init__(self, screen: list[base.Element]) -> None:
+            super().__init__(screen)
+            self.queried = False
+
+        def query(self) -> list[base.Element]:
+            if self.queried:
+                raise ConnectionError("device unreachable")
+            self.queried = True
+            return super().query()
+
+    driver = _QueryFailsOnceQueried([el("a", "A", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {"tap": {"id": "a"}},
+                    {
+                        "handleSystemAlert": {
+                            "prompt": "notifications",
+                            "choice": "grant",
+                            "timeout": 5,
+                        }
+                    },
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        locale="de_DE",
+    )
+    assert not result.ok
+    assert result.failure is not None and "language 'de'" in result.failure
+    assert len(result.steps) == 2
+    step1_names = {a.name for a in result.steps[1].artifacts}
+    assert any(name.endswith("before.png") for name in step1_names)
+    assert not any(name.endswith("elements.json") for name in step1_names)
+
+
+def test_a_step_that_fails_before_it_acts_queries_fresh_even_with_a_cached_tree(
+    tmp_path: Path,
+) -> None:
+    """This exception fires only for a `handleSystemAlert` step, which the screenshot-reuse gate
+    (BE-0407 Unit 1) always shoots fresh for — so the tree the exception handler writes must be
+    just as fresh, never a carried-over `prev_after`, or a viewer could pair the fresh screenshot
+    with an older tree that predates an interstitial the screenshot already shows. A query happens
+    here even though the previous step already left a perfectly good `prev_after` behind."""
+
+    class _CountingDriver(FakeDriver):
+        def __init__(self, screen: list[base.Element]) -> None:
+            super().__init__(screen)
+            self.queries = 0
+
+        def query(self) -> list[base.Element]:
+            self.queries += 1
+            return super().query()
+
+    driver = _CountingDriver([el("a", "A", ["button"])])
+    run_dir = tmp_path / "run1"
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "x",
+                "steps": [
+                    {"tap": {"id": "a"}},
+                    {
+                        "handleSystemAlert": {
+                            "prompt": "notifications",
+                            "choice": "grant",
+                            "timeout": 5,
+                        }
+                    },
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        sink=FileSink(run_dir),
+        locale="de_DE",
+    )
+    assert not result.ok
+    assert result.failure is not None and "language 'de'" in result.failure
+    assert len(result.steps) == 2
+    step1_names = {a.name for a in result.steps[1].artifacts}
+    assert any(name.endswith("before.png") for name in step1_names)
+    assert any(name.endswith("elements.json") for name in step1_names)
+    # step0's post-step write (1) + step1's exception-handler query (1), not zero — a stale
+    # `prev_after` from step0 must not be reused here.
+    assert driver.queries == 2
 
 
 def test_a_step_nested_in_an_if_gets_the_evidence_pair_its_container_does_not(
@@ -562,15 +864,14 @@ class _FakeBridge:
         pass
 
 
-def test_pre_step_capture_queries_the_web_driver_for_a_blocks_first_nested_step(
+def test_pre_step_capture_takes_no_tree_for_a_blocks_first_nested_step_without_screen_changed(
     tmp_path: Path,
 ) -> None:
-    """The pre-step baseline for a `web` block's first nested step queries the *web* driver, not
-    the native one, since `prev_after` is reset to `None` around the whole block (BE-0234 Unit 2)
-    and the sink call always targets the native driver otherwise (BE-0341) — proven by content:
-    the DOM-only element must appear in the written elements.json. The post-step capture reads the
-    web tree too, so both of the step's `elements` entries describe the DOM, never the native
-    screen the sink call targets."""
+    """A `web` block's first nested step pays no pre-step query at all when nothing would consume
+    it (BE-0407 Units 3-4): with no `screenChanged` policy, `before` stays `None` regardless of
+    `prev_after`, so seeding it here would be pure waste. The step still ends with exactly one
+    `elements` entry — the post-step capture's — holding the DOM tree, never the native screen the
+    sink call's screenshot targets."""
     native_screen = [el("app.webview", frame=(0.0, 0.0, 400.0, 800.0))]
     dom_elements: list[base.Element] = [
         el("confirm", "Confirm", ["button"], frame=(10.0, 10.0, 100.0, 20.0))
@@ -602,23 +903,20 @@ def test_pre_step_capture_queries_the_web_driver_for_a_blocks_first_nested_step(
     els_artifact = next(a for a in leaf_outcome.artifacts if a.kind == "elements")
     written = json.loads((run_dir / els_artifact.name).read_text(encoding="utf-8"))
     assert any(e["identifier"] == "confirm" for e in written)  # the DOM tree, not the native one
-    # Two `elements` entries, both naming the one fixed filename: the pre-step baseline's
-    # pre-action write and the post-step capture that replaces it with the post-action tree.
-    assert sum(1 for a in leaf_outcome.artifacts if a.kind == "elements") == 2
+    assert sum(1 for a in leaf_outcome.artifacts if a.kind == "elements") == 1
     names = {a.name for a in leaf_outcome.artifacts}
     assert any(name.endswith("before.png") for name in names)
     assert any(name.endswith("after.png") for name in names)
 
 
-def test_pre_step_capture_downgrades_to_screenshot_only_when_web_query_fails(
+def test_pre_step_screen_changed_seed_recovers_when_the_first_web_query_fails(
     tmp_path: Path,
 ) -> None:
-    """A `web` block's first nested step still gets its native `screenshot.before` when the bridge
-    query fails: only `elements` needs the web driver, so the pre-step baseline drops just that
-    token rather than the whole capture (BE-0341 review follow-up). The bridge recovers in time for
-    the post-step capture, modeling a transient hiccup rather than a permanently dead bridge — so
-    the step ends with exactly one `elements` entry, the post-action one, instead of the usual
-    two."""
+    """With a `screenChanged` policy, a `web` block's first nested step still tries to seed
+    `prev_after` from the web driver — and a failed attempt must not crash the step (BE-0341 review
+    follow-up): `before`'s own computation reads fresh again on its own, so a transient bridge
+    hiccup here costs a retry, not a failure. The bridge recovers in time for that retry, modeling a
+    transient failure rather than a permanently dead bridge."""
 
     class _FlakyBridge(_FakeBridge):
         def __init__(self, dom_elements: list[base.Element]) -> None:
@@ -639,6 +937,9 @@ def test_pre_step_capture_downgrades_to_screenshot_only_when_web_query_fails(
         _scenario(
             {
                 "name": "x",
+                "capturePolicy": [
+                    {"on": {"event": "screenChanged"}, "capture": ["screenshot.before"]}
+                ],
                 "steps": [
                     {
                         "web": {
@@ -689,10 +990,11 @@ def test_a_web_block_step_resolves_to_an_unpaired_screenshot_and_tree(tmp_path: 
     assert result.ok, result.failure
     leaf = next(s for s in result.steps if s.action == "type")
     depicts = {(a.kind, a.depicts) for a in leaf.artifacts if a.kind in ("screenshot", "elements")}
+    # No `screenChanged` policy, so the pre-step baseline takes no tree at all here (BE-0407 Units
+    # 3-4): only the post-step `elements` entry exists, still from the WebView.
     assert depicts == {
         ("screenshot", "fake:before"),
         ("screenshot", "fake:after"),
-        ("elements", "webview:before"),
         ("elements", "webview:after"),
     }
     view = step_view((a.kind, a.name, a.depicts) for a in leaf.artifacts)
@@ -867,6 +1169,7 @@ class _VideoSink:
         *,
         elements: list[base.Element] | None = None,
         elements_source: str | None = None,
+        reuse_before_screenshot: Artifact | None = None,
     ) -> list[Artifact]:
         return []
 

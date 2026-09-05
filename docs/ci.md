@@ -146,9 +146,11 @@ per backend, because the two share no command — a Simulator answers to `simctl
 `vm_stat`, an emulator answers to `adb` and a Linux host to `top` — so each backend contributes its
 own set of probes to one shared capture, which owns everything else: the opt-in gate, a wall-clock
 budget per capture, a budget of two captures per trigger, and the summary each probe's outcome is
-written to. The budget is per *trigger* because the video warning fires on every scenario of these
-runners, green runs included, so the video warnings would spend a shared budget before the crash
-that the capture exists to explain ever arrived. Unset — which it is everywhere but these two
+written to. The budget is per *trigger* so that one frequent trigger cannot
+spend a shared budget before the crash the capture exists to explain ever arrives. The video trigger
+was that frequent one: it fired on every scenario of these runners, green runs included, because the
+confirmation it fired from watched the wrong signal. It no longer does, but a crash-looping run
+still has more than one trigger competing, so the split stays. Unset — which it is everywhere but these two
 lanes — the hook does nothing at all.
 
 #### The iOS lane

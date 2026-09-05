@@ -9,13 +9,14 @@ step rather than tapping something guessed.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from unittest.mock import patch
 
 from _orch import FakeClock, _scenario
 from conftest import el
 
 from bajutsu.common.drivers.fake import FakeDriver
-from bajutsu.common.orchestrator import AlertGuardConfig, run_scenario
-from bajutsu.common.scenario import Scenario
+from bajutsu.common.orchestrator import AlertEvent, AlertGuardConfig, run_scenario
+from bajutsu.common.scenario import ResolvedAlertShape, Scenario
 
 
 def _fake_with_alert(*labels: str) -> FakeDriver:
@@ -111,6 +112,77 @@ def test_the_reservation_is_restored_even_when_the_step_times_out() -> None:
     restored_rules, restored_governs = driver.policy_pushes[1]
     assert restored_governs is True
     assert restored_rules == []
+
+
+def test_a_decline_recorded_before_the_reservation_push_is_not_silently_lost() -> None:
+    # `setPolicy` clears the monitor's pending drain along with the policy it installs
+    # (`InterruptionPolicyStore.setPolicy`) — so a decline an earlier, unreserved query already met
+    # (the pre-step baseline capture, `before`, or `guard.clear_before_act`, all read before this
+    # step's own reservation exists) would otherwise be wiped here, unread, by the very push meant
+    # to start covering this step (BE-0406 Unit 2b review finding). The step still taps its own
+    # prompt correctly; the unrelated, already-lost decline still fails it, exactly as any other
+    # drain site would.
+    driver = _fake_with_alert("許可", "許可しない")
+    driver.interruptions_declined_to_drain = [["Save", "Not Now"]]
+
+    result = run_scenario(
+        driver, _grant_scenario(), clock=FakeClock(), locale="ja_JP", alert_guard=AlertGuardConfig()
+    )
+
+    assert not result.ok
+    assert result.failure is not None
+    assert "undeclared system alert" in result.failure
+    assert "Save" in result.failure
+    assert "Not Now" in result.failure
+    # The step's own prompt was still answered correctly — the undeclared decline is reported
+    # independently of that, not instead of it.
+    assert driver.actions == [("handle_system_alert", ({"label": "許可"}, 0.0))]
+
+
+def test_a_tap_recorded_before_the_reservation_push_is_folded_in_without_failing_the_step() -> None:
+    # The mirror image of the decline case above: a *tap* an earlier, unreserved query already
+    # caught is a dismissal that happened correctly on the scenario's behalf (some other declared
+    # rule answered it) — it belongs on this step's own outcome, but unlike an undeclared decline it
+    # is not itself a failure.
+    driver = _fake_with_alert("許可", "許可しない")
+    driver.interruptions_to_drain = ["Not Now"]
+
+    result = run_scenario(
+        driver, _grant_scenario(), clock=FakeClock(), locale="ja_JP", alert_guard=AlertGuardConfig()
+    )
+
+    assert result.ok, result.failure
+    assert result.steps[0].alerts == [AlertEvent(label="Not Now")]
+
+
+def test_an_excluded_shape_is_never_reserved() -> None:
+    # `push_interruption_policy` refuses a native-reachable rule that carries an exclusion set
+    # outright (the wire format has no room for one) — unreachable today because no step-capable
+    # prompt's shape carries one, but `_reserve_declared_alert` must never be the thing that finds
+    # out the hard way, by raising past this step's own try/finally and aborting the whole run
+    # (BE-0406 Unit 2b review finding). Patched in rather than a real prompt, since none exists.
+    driver = _fake_with_alert("Allow")
+
+    with patch(
+        "bajutsu.common.orchestrator.loop.system_alert_shapes",
+        return_value=(
+            ResolvedAlertShape(
+                identifying_labels=frozenset({"Allow"}),
+                tap_label="Allow",
+                excluded_labels=frozenset({"Never"}),
+            ),
+        ),
+    ):
+        result = run_scenario(
+            driver,
+            _grant_scenario(),
+            clock=FakeClock(),
+            locale="en_US",
+            alert_guard=AlertGuardConfig(),
+        )
+
+    assert result.ok, result.failure
+    assert driver.interruption_policy is None  # never touched: no reservation was pushed
 
 
 def test_the_same_scenario_taps_the_english_label_under_en_us() -> None:

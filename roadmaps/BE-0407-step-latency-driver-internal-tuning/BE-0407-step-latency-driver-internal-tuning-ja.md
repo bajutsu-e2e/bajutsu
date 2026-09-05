@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0407](BE-0407-step-latency-driver-internal-tuning-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0407") |
+| 実装 PR | [#1897](https://github.com/bajutsu-e2e/bajutsu/pull/1897)（グループ 1、作業単位 1、3〜5） |
 | トピック | Platform support |
 | 関連 | [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query-ja.md)、[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)、[BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance-ja.md)、[BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md)、[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)、[BE-0341](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture-ja.md)、[BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree-ja.md)、[BE-0408](../BE-0408-step-latency-device-executor-protocol/BE-0408-step-latency-device-executor-protocol-ja.md)、[BE-0409](../BE-0409-step-latency-ios-device-executor/BE-0409-step-latency-ios-device-executor-ja.md)、[BE-0410](../BE-0410-step-latency-android-device-executor/BE-0410-step-latency-android-device-executor-ja.md) |
 <!-- /BE-METADATA -->
@@ -279,8 +280,18 @@ driver conformance suite
   この項目自身のディレクトリ配下の
   [`misc/step-performance/`](misc/step-performance/README.md)
   に記録済みです。
-- [ ] グループ 1、作業単位 1〜6——証拠取得の重複排除と、BE-0310 の静止待ち中の
-  読み取り停止（共通）。
+- [x] グループ 1、作業単位 1、3、4、5——前のステップの `after.png` をこのステップの
+  `before.png` として再利用します（作業単位 1）。ステップが動作する前に `elements.json` を
+  書き込むのをやめます（作業単位 3〜4）。ガードや割り込みハンドラが登録されていないときは、
+  BE-0310 の静止待ち区間中にデバイスをポーリングしません（作業単位 5）。
+- [ ] グループ 1、作業単位 2——`after.png` と `elements.json` の書き込みをクリティカルパスの
+  外へ移します（非同期化）。見送りました：エラーの伝播とキャンセルの扱い、そしてシナリオの
+  レポートを生成する前に保留中の書き込みを待ち合わせる仕組みに、独立した設計検討が要ります。
+  詳細は本項目のログを参照してください。
+- [ ] グループ 1、作業単位 6——iOS の `drain_interruptions` を `/tap` または `/elements` の
+  レスポンスへ畳み込みます。見送りました：`BajutsuKit` 側の XCUITest ワイヤーフォーマット変更
+  が必要で、検証には Simulator での実行が要ります。上記のグループ 1 の各作業単位とは切り離し、
+  焦点を絞った別の作業として進めます。
 - [ ] グループ 2、作業単位 7〜15——iOS ドライバ内部。
 - [ ] グループ 3、作業単位 16——`POSTDATE_BUDGET_MS` の機構を常駐サーバーのログで
   確認し、対策を実装する。
@@ -294,6 +305,18 @@ driver conformance suite
   できないため、`roadmap-id` ワークフローが `main` 上で 4 項目の ID を採番したあとに
   実施しています。
 - [ ] 「関連項目」と書いている各箇所を、採番済みの項目へのリンクに置き換える（両言語とも）。
+
+ログ：
+
+- [#1897](https://github.com/bajutsu-e2e/bajutsu/pull/1897) — グループ 1、作業単位 1、3〜5。ステップ前の
+  baseline が書いていた `elements.json` の書き込みをやめました。動作後の取得が結局は書き直すためです。
+  唯一この動作後の取得へ到達しない経路（`handleSystemAlert` のロケールが未対応で失敗するステップ）では、
+  代わりにツリーを明示的に書き込みます。ガードや `interrupts` ハンドラが登録されていないときは、
+  BE-0310 の静止待ち区間中にデバイスをポーリングするのをやめました。前のステップから何も操作していなけ
+  れば、前のステップの `after.png` を次のステップの `before.png` として再利用するようにしました。回復
+  ステップ、`handleSystemAlert` ステップ、`interrupts` を宣言したシナリオのどのステップでも、非同期の
+  割り込み画面が現れている可能性があります。この場合は常に新たに撮影します。作業単位 2（証跡書き込みの
+  非同期化）と 6（iOS の `drain_interruptions` の畳み込み）は、後続の PR に残しています。
 
 ## 参考
 

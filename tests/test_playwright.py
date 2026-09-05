@@ -1351,6 +1351,20 @@ def test_driver_interval_video_carries_true_start(tmp_path: Any) -> None:
     assert isinstance(interval.true_start, float)
 
 
+def test_web_intervals_answer_the_stderr_wait_with_no_confirmation(tmp_path: Any) -> None:
+    # Both web captures satisfy `intervals.Proc` without a child process behind them, so the
+    # recorder-start wait has nothing to listen to and says so. This lane stamps `true_start` from
+    # `new_page()` instead, which the test above pins.
+    src = tmp_path / "raw.webm"
+    src.write_bytes(b"vid")
+    drv, _ = _video_driver(tmp_path / "vtmp", src)
+    video = drv.driver_interval("video", tmp_path / "out" / "scenario.mp4")
+    console = drv.driver_interval("deviceLog", tmp_path / "console.log")
+    assert video is not None and console is not None
+    assert video._proc.await_stderr("Recording started", 0.0) is None
+    assert console._proc.await_stderr("Recording started", 0.0) is None
+
+
 def test_driver_interval_video_none_without_recording(tmp_path: Any) -> None:
     # No record_video_dir on this lane (video not requested): no video interval.
     drv, _ = _driver([])
