@@ -93,6 +93,7 @@ PATH_TOPIC_PREFIX_RULES: tuple[tuple[str, str], ...] = (
     # a plain prefix, with no separate exact rule needed.
     ("bajutsu/record", "record"),
     ("BajutsuKit/", "platform"),
+    ("IdentifierTool/", "platform"),
     ("assets/", "serve-cli-features"),
     ("overrides/", "serve-cli-features"),
     ("deploy/", "hosting"),

@@ -27,3 +27,9 @@ include(":compose", ":views")
 // receiver; any other app would include it the same way (or publish it as an aar).
 include(":bajutsu-android")
 project(":bajutsu-android").projectDir = file("../../../BajutsuAndroid")
+
+// The identifier-tagging library (BE-0405), living at the repo root beside BajutsuAndroid and
+// BajutsuKit. Included by path the same way; it has no dependency on bajutsu-android and
+// bajutsu-android has none on it.
+include(":identifier-tool")
+project(":identifier-tool").projectDir = file("../../../IdentifierTool")

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The library ships no components: it is a set of extension functions with no runtime registration
+     of its own. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

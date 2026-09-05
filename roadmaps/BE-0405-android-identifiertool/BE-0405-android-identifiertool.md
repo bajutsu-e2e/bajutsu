@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0405](BE-0405-android-identifiertool.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0405") |
+| Implementing PR | [#1904](https://github.com/bajutsu-e2e/bajutsu/pull/1904) |
 | Topic | Platform support |
 | Related | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md), [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), [BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture.md), [BE-0355](../BE-0355-native-z-position/BE-0355-native-z-position.md) |
 <!-- /BE-METADATA -->
@@ -73,7 +74,19 @@ A consumer using a single toolkit still adds one dependency, not two. The two fi
 module. The toolkits stay separable in code review this way, without forcing two artifacts on any
 consumer. `IdentifierTool`'s functions are plain extension functions, not `@Composable` functions.
 `build.gradle.kts` needs `androidx.compose.ui` as `compileOnly` for that reason. It needs no Compose
-compiler plugin. A consumer using Views alone sees no build-size change after adding the dependency.
+compiler plugin.
+
+`BajutsuAccessibilityCompose.kt` lives in its own subpackage, `dev.bajutsu.identifier.compose`. That
+sits one level under the Views file's `dev.bajutsu.identifier`. A consumer using Views alone then
+never imports a Compose symbol. The two toolkits now stay separable in the compiler's eyes, not in
+code review alone. That split solves a compile-time problem.
+
+A consumer using Views alone still faces a second, independent problem at minify time.
+`compileOnly` is not transitive, so that consumer never puts Compose on its own classpath. R8
+minification would still fail that build over `androidx.compose.ui`'s missing classes. `IdentifierTool`
+ships `consumerProguardFiles("consumer-rules.pro")` for that reason. The file names the classes the
+Compose subpackage references. A consumer using Views alone sees no build-size change after adding
+the dependency.
 
 ### No dependency on BajutsuAndroid
 
@@ -115,8 +128,11 @@ a result.
 A library could still express that gate two ways. Both cost more than they are worth:
 
 - **Reflection.** Look up a field name assumed present on the consumer. R8 can strip that field.
-  IdentifierTool has no way to ship a keep rule on the consumer's behalf. What breaks becomes a
-  missing identifier, with no warning raised, not a build error.
+  IdentifierTool ships a `consumerProguardFiles` rule for its own known dependency (Compose). That is
+  a different problem. It still has no way to ship a *keep* rule for a field on a class it cannot
+  name ahead of time. That class is the consumer's own generated `BuildConfig`, under the
+  consumer's own package.
+  What breaks becomes a missing identifier, with no warning raised, not a build error.
 - **A matching Gradle flavor.** Give IdentifierTool its own product flavor. Ask every consumer to
   add a flavor of the same name. That turns the goal, one dependency and two calls, into something
   else. It becomes a mandatory build-file change for every adopting app.
@@ -171,8 +187,11 @@ They cover:
 
 Two other docs gain the same cross-reference: [`docs/architecture.md`](../../docs/architecture.md)
 and [`docs/drivers.md`](../../docs/drivers.md). Each already mentions the showcase's
-`Accessibility.kt` files. Each gains a mention of IdentifierTool next to it. A reader following the
-adb id convention then also reaches the library. Today that reader reaches the showcase's own copy
+`Accessibility.kt` files. Each gains a mention of IdentifierTool next to it. A third turns up during
+implementation: [`docs/developer-guide.md`](../../docs/developer-guide.md). Its top-level directory
+table already lists `BajutsuAndroid/`. IdentifierTool joins it there too.
+A reader following the adb id convention then also reaches the library. Today that reader reaches
+the showcase's own copy
 alone.
 
 ### Work breakdown (MECE: mutually exclusive, collectively exhaustive)
@@ -192,7 +211,8 @@ alone.
    `BajutsuZOrder.report` explicitly, as shown above. Keep `aid`, `stateValue`, `selectedState`, and
    `enableTestTagsAsResourceId` as local names; none of the 122 existing call sites change.
 6. Write `IdentifierTool/README.md` and `README.ja.md`, in the shape described above.
-7. Update the `docs/architecture.md` and `docs/drivers.md` cross-references to name IdentifierTool.
+7. Update the cross-references in `docs/architecture.md`, `docs/drivers.md`, and
+   `docs/developer-guide.md` to name IdentifierTool.
 8. Verify the change two ways. First, build both flavors of both showcase modules, using
    `demos/showcase/android`'s existing Gradle tasks. Second, run the `android-e2e.yml` CI lane
    against the migrated showcase. That lane alone provides the coverage this moved logic needs.
@@ -204,13 +224,46 @@ alone.
 | Add the helpers to `BajutsuAndroid` instead of a new module | This was the original design in an earlier draft of this item. `BajutsuAndroid`'s Views half already depends on `BajutsuZOrder.report`, so the two capabilities looked related enough to share a module. But bundling identifiers with clipboard and network capture forces one release train on three unrelated capabilities, and a consumer wanting only identifiers still links the clipboard receiver's code. A separate module removes both costs, at the price of one more directory and one more Gradle include for the showcase to wire up. |
 | Keep `BajutsuZOrder.report` wired into `View.accessibilityId`, and let IdentifierTool depend on `BajutsuAndroid` for it | This preserves the showcase's one-call convenience, but it reintroduces exactly the dependency this item removes: any consumer of IdentifierTool would transitively pull in `BajutsuAndroid`'s clipboard receiver. Composing the two calls at the showcase's own call site costs one extra line, once, and keeps the two libraries independent. |
 | Move `BajutsuZOrder` itself into IdentifierTool | `BajutsuZOrder` is a general position-reporting capability, not an identifier-tagging one; the showcase's own code already calls it from places `accessibilityId` does not reach. Moving it would not remove a dependency — it would only relocate where the coupling lives, and it would pull an unrelated capability out of `BajutsuAndroid` for no gain. |
-| Let the library read a same-named `BuildConfig.ACCESSIBLE` field on the consumer, through reflection | A library artifact does not know a consumer's package name ahead of time. R8 can also strip the field a reflective lookup depends on. IdentifierTool has no keep rule it can ship on the consumer's behalf. What breaks becomes a missing identifier, with no warning raised, not a build error. |
+| Let the library read a same-named `BuildConfig.ACCESSIBLE` field on the consumer, through reflection | A library artifact does not know a consumer's package name ahead of time. R8 can also strip the field a reflective lookup depends on. IdentifierTool ships a `consumerProguardFiles` rule for its own known dependency (Compose), but that is a different problem from *keeping* a field on a class it cannot name ahead of time — the consumer's own generated `BuildConfig`. What breaks becomes a missing identifier, with no warning raised, not a build error. |
 | Give IdentifierTool its own product flavor dimension, matched by name on every consumer | Gradle's variant-aware dependency resolution can match a library's flavor to a consumer's flavor of the same name, so this is technically realizable. But it asks every consumer to add a flavor dimension with the library's exact name and values, merely to get the off switch. That is a heavier ask than the wrapper function this item ships instead. |
 | Port `selectedState` into IdentifierTool alongside `accessibilityId` and `accessibilityStateValue` | `selectedState` is `Modifier.semantics { selected = true }`, with no Android-specific plumbing behind it, unlike `testTagsAsResourceId` or `resources.getIdentifier`. A consuming app loses nothing by writing those three words itself. |
 
 ## Progress
 
-- [ ] Not started.
+- [x] Unit 1 — `IdentifierTool/` created as a new Gradle library module, mirroring `BajutsuAndroid`'s
+      `build.gradle.kts` shape with no dependency on it
+- [x] Unit 2 — `BajutsuAccessibility.kt` with `View.accessibilityId(name)` and
+      `View.accessibilityStateValue(value)`, ported from the Views showcase, ungated
+- [x] Unit 3 — `BajutsuAccessibilityCompose.kt` with `Modifier.accessibilityId(id)`,
+      `Modifier.accessibilityStateValue(value)`, and `Modifier.enableAccessibilityIds()`, ported from
+      the Compose showcase, ungated, in its own subpackage `dev.bajutsu.identifier.compose` with a
+      `consumerProguardFiles` rule (see the Log)
+- [x] Unit 4 — `demos/showcase/android/settings.gradle.kts` updated to include IdentifierTool by path
+- [x] Unit 5 — the showcase's `Accessibility.kt` files delegate to IdentifierTool, gated as before.
+      The names stay the same, so the 122 existing call sites don't change
+- [x] Unit 6 — `IdentifierTool/README.md` and `README.ja.md` written.
+- [x] Unit 7 — three docs gained an IdentifierTool cross-reference. They are
+      `docs/architecture.md`, `docs/drivers.md`, and `docs/developer-guide.md`, plus their
+      `docs/ja/` mirrors
+- [x] Unit 8 — the change verified by building both flavors of both showcase modules and running the
+      `android-e2e.yml` emulator lane against the migrated showcase
+
+Log:
+
+- 2026-09-04 — All eight units landed together (PR #1904). `scripts/e2e_changes.py`'s android-lane filter did
+  not cover `IdentifierTool/`. A change confined to it would have fired no E2E lane at all. The work
+  breakdown implied this consequence without naming it. Added a filter entry for it, with a matching
+  `tests/test_e2e_changes.py` assertion. Also added a `scripts/sync_roadmap_topic_labels.py` rule: a
+  PR touching `IdentifierTool/` now earns `topic:platform`, matching `BajutsuKit/`. A second
+  consequence surfaced during self-review: `compileOnly` alone does not stop R8 from failing the minified build
+  of a consumer using Views alone over the Compose file's own class references. Split that file
+  into `dev.bajutsu.identifier.compose` and added `consumerProguardFiles("consumer-rules.pro")`,
+  scoped to the two subpackages Compose touches rather than a blanket `androidx.compose.ui.**`.
+
+- 2026-09-05 (PR #1904) — Added `IdentifierTool/sample/`. This minimal standalone app depends on
+  IdentifierTool alone. The user asked for this beyond the item's original work breakdown. The
+  sample has its own Gradle root, unlike `demos/showcase/android`. No CI job builds it. Neither the
+  fast gate nor the E2E lanes touch this Gradle root.
 
 ## References
 

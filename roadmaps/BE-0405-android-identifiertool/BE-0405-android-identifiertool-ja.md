@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0405](BE-0405-android-identifiertool-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0405") |
+| 実装 PR | [#1904](https://github.com/bajutsu-e2e/bajutsu/pull/1904) |
 | トピック | Platform support |
 | 関連 | [BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md), [BE-0221](../BE-0221-android-scenario-portability-guarantee/BE-0221-android-scenario-portability-guarantee-ja.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md), [BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture-ja.md), [BE-0355](../BE-0355-native-z-position/BE-0355-native-z-position-ja.md) |
 <!-- /BE-METADATA -->
@@ -42,7 +43,11 @@ IdentifierToolは、新しいトップレベルディレクトリ`IdentifierTool
 
 移植する関数はすべて、`BuildConfig.ACCESSIBLE`のチェックを取り除きます。理由は後述の「ゲーティングはライブラリの外に置く」を参照してください。Compose版ショーケースの`selectedState`は移植しません。理由は「検討した代替案」を参照してください。
 
-片方のツールキットしか使わない消費側も、依存関係は1つで済みます。2つのファイルは1つのモジュールに収めます。こうすれば、ツールキットごとにコードレビュー上は分けて読めます。消費側にアーティファクトを2つ管理させることもありません。IdentifierToolの関数は、ただの拡張関数です。`@Composable`関数ではありません。`build.gradle.kts`が`androidx.compose.ui`を必要とするのはそのためで、`compileOnly`として追加します。Compose compilerプラグインは要りません。Viewsだけを使う消費側のビルドは、この依存関係を追加しても変わりません。
+片方のツールキットしか使わない消費側も、依存関係は1つで済みます。2つのファイルは1つのモジュールに収めます。こうすれば、ツールキットごとにコードレビュー上は分けて読めます。消費側にアーティファクトを2つ管理させることもありません。IdentifierToolの関数は、ただの拡張関数です。`@Composable`関数ではありません。`build.gradle.kts`が`androidx.compose.ui`を必要とするのはそのためで、`compileOnly`として追加します。Compose compilerプラグインは要りません。
+
+`BajutsuAccessibilityCompose.kt`は、独自のサブパッケージ`dev.bajutsu.identifier.compose`に置きます。Viewsファイルの`dev.bajutsu.identifier`より1段下です。こうすることで、Viewsだけを使う消費側は、Composeの型を import することがありません。この分離は、コンパイル時の問題を解決します。
+
+Viewsだけを使う消費側は、圧縮時にもう1つ別の問題を抱えます。`compileOnly`は推移的でないため、その消費側は自分のクラスパスにComposeを一切持ちません。それでも、R8の圧縮を有効にしたビルドは`androidx.compose.ui`の「missing classes」で失敗してしまいます。そのためIdentifierToolは、`consumerProguardFiles("consumer-rules.pro")`を出荷します。このファイルは、Composeのサブパッケージが参照するクラスを列挙しています。このルールを取り込んでも、Viewsだけを使う消費側のビルドサイズは変わりません。
 
 ### BajutsuAndroidへの依存を持たない
 
@@ -71,7 +76,7 @@ fun <T : View> T.aid(name: String): T {
 
 ライブラリ側にそのゲートを持たせる方法は、2通りあります。どちらも見合うコストではありません。
 
-- **リフレクション。** 消費側に存在すると想定したフィールド名を参照します。R8は、そのフィールドを削れます。IdentifierToolには、消費側の代わりに出しようのないkeepルールがありません。失敗のしかたは、ビルドエラーではなく識別子が黙って欠落するという形になります。
+- **リフレクション。** 消費側に存在すると想定したフィールド名を参照します。R8は、そのフィールドを削れます。IdentifierToolは、自身が把握している依存（Compose）向けの`consumerProguardFiles`ルールなら出荷できます。ですがこれは別の問題です。あらかじめ名前を知りえないクラス上のフィールド、つまり消費側自身が生成する`BuildConfig`に対して、keepルールを出荷する手立てはありません。失敗のしかたは、ビルドエラーではなく識別子が黙って欠落するという形になります。
 - **同名のGradle flavor。** IdentifierTool自身にproduct flavorを用意します。消費側には、同じ名前のflavorを追加してもらいます。これは「依存関係を1つ追加して関数を2つ呼ぶ」という目標を、別のものへ変えてしまいます。導入するすべてのアプリにとって必須の、ビルドファイル変更になってしまいます。
 
 判断を呼び出し側に委ねれば、どちらのコストも避けられます。消費アプリは、無条件の関数を短いチェックで包むだけです。そのチェックは、自分で選べます。
@@ -104,7 +109,7 @@ Viewsを使う消費側は、自前の`ids.xml`を書き続けることになり
 - IdentifierToolがクリップボードやネットワークキャプチャのコードを一切含まないこと
 - それらを求める消費側は、`BajutsuAndroid`を別途追加すること
 
-他に2つのドキュメントにも、同じ相互参照を加えます。対象は[`docs/architecture.md`](../../docs/architecture.md)と[`docs/drivers.md`](../../docs/drivers.md)です。どちらも今、ショーケースの`Accessibility.kt`ファイルに触れています。その隣に、IdentifierToolの名前も加えます。これにより、adbのid規約をたどる読み手は、ライブラリ本体にもたどり着けます。今のところその読み手は、ショーケース自身のコピーにしかたどり着けません。
+他に2つのドキュメントにも、同じ相互参照を加えます。対象は[`docs/architecture.md`](../../docs/architecture.md)と[`docs/drivers.md`](../../docs/drivers.md)です。どちらも今、ショーケースの`Accessibility.kt`ファイルに触れています。その隣に、IdentifierToolの名前も加えます。3つ目の[`docs/developer-guide.md`](../../docs/developer-guide.md)は、実装の過程で見つかりました。そのリポジトリ最上位のディレクトリ表には、すでに`BajutsuAndroid/`が載っており、その隣にIdentifierToolを加える必要があります。これにより、adbのid規約をたどる読み手は、ライブラリ本体にもたどり着けます。今のところその読み手は、ショーケース自身のコピーにしかたどり着けません。
 
 ### 作業の分解（MECE：相互排他かつ全体網羅）
 
@@ -114,7 +119,7 @@ Viewsを使う消費側は、自前の`ids.xml`を書き続けることになり
 4. `demos/showcase/android/settings.gradle.kts`を更新し、IdentifierToolをパス経由で含めます。`BajutsuAndroid`もすでに同じ形で含まれています。
 5. ショーケースの2つの`Accessibility.kt`ファイルを書き換えます。既存の`BuildConfig.ACCESSIBLE`チェックの内側から、IdentifierToolの関数へ委譲するようにします。Views側のファイルは、上記のとおり`BajutsuZOrder.report`も明示的に組み合わせます。`aid`、`stateValue`、`selectedState`、`enableTestTagsAsResourceId`はローカルな名前として残し、既存122箇所の呼び出しを変えません。
 6. `IdentifierTool/README.md`と`README.ja.md`を、前述の形で書きます。
-7. `docs/architecture.md`と`docs/drivers.md`の相互参照を更新し、IdentifierToolに言及します。
+7. `docs/architecture.md`、`docs/drivers.md`、`docs/developer-guide.md`の相互参照を更新し、IdentifierToolに言及します。
 8. 次の2通りで検証します。1つ目は、ショーケースの2モジュールそれぞれの両フレーバーがビルドできることの確認です。`demos/showcase/android`の既存Gradleタスクを使います。2つ目は、`android-e2e.yml`のCIレーンが、移行後のショーケースに対して通過することの確認です。このレーンは移した実装にとって唯一のカバレッジです。
 
 ## 検討した代替案
@@ -124,13 +129,53 @@ Viewsを使う消費側は、自前の`ids.xml`を書き続けることになり
 | 新しいモジュールではなく`BajutsuAndroid`にヘルパーを追加する | この項目の以前の草案は、この設計を採っていました。`BajutsuAndroid`のViews側はすでに`BajutsuZOrder.report`に依存しており、2つの機能は同じモジュールに収まるほど近く見えました。しかし識別子をクリップボードやネットワークキャプチャと束ねると、3つの無関係な機能が1つのリリースサイクルを共有することになります。識別子だけを求める消費側も、クリップボード受信部のコードをリンクすることになります。モジュールを分ければ、どちらのコストも消えます。代わりに、ショーケース側でディレクトリとGradleのincludeが1つずつ増えます。 |
 | `BajutsuZOrder.report`を`View.accessibilityId`に組み込んだまま残し、IdentifierToolが`BajutsuAndroid`に依存する | ショーケースの「1回の呼び出しで済む」という利便性は保てます。しかしこれは、この項目が取り除こうとしている依存をそのまま戻してしまいます。IdentifierToolの消費側は、誰であっても`BajutsuAndroid`のクリップボード受信部を推移的に引き込むことになります。2つの呼び出しをショーケース自身の呼び出し箇所で組み合わせれば、コストは1行増えるだけで済み、2つのライブラリは独立を保てます。 |
 | `BajutsuZOrder`自体をIdentifierToolへ移す | `BajutsuZOrder`は識別子付けとは別の、一般的な位置報告機能です。ショーケース自身のコードも、`accessibilityId`が届かない箇所からこれを呼んでいます。移しても依存は消えず、結合の置き場所が変わるだけです。しかも`BajutsuAndroid`から無関係な機能を1つ抜くだけで、得るものがありません。 |
-| ライブラリが、消費側にある同名の`BuildConfig.ACCESSIBLE`フィールドをリフレクション経由で読む | ライブラリのアーティファクトは、消費側のパッケージ名をあらかじめ把握していません。加えて、R8は、ライブラリが消費側の代わりに出しようのないkeepルールなしに、リフレクション参照先のフィールドを削ってしまえます。失敗のしかたはビルドエラーではなく、識別子が黙って欠落するという形になります。 |
+| ライブラリが、消費側にある同名の`BuildConfig.ACCESSIBLE`フィールドをリフレクション経由で読む | ライブラリのアーティファクトは、消費側のパッケージ名をあらかじめ把握していません。IdentifierToolは、自身が把握している依存（Compose）向けの`consumerProguardFiles`ルールなら出荷できますが、あらかじめ名前を知りえないクラス（消費側自身が生成する`BuildConfig`）に対して*keep*する手立てはありません。R8はそのフィールドを削ってしまえるので、失敗のしかたはビルドエラーではなく、識別子が黙って欠落するという形になります。 |
 | IdentifierTool自身にproduct flavorの次元を持たせ、消費側の同名flavorと突き合わせる | Gradleのvariant対応の依存解決は、同名のflavor同士を実際に突き合わせられるため、技術的には実現可能です。ただし、オフスイッチを得るためだけに、ライブラリと厳密に同じ名前・同じ値のflavor次元を消費側全員に追加させることになり、この項目が代わりに用意するラッパー関数より重い要求になります。 |
 | `selectedState`も`accessibilityId`・`accessibilityStateValue`と一緒にIdentifierToolへ移植する | `selectedState`は`Modifier.semantics { selected = true }`そのものであり、`testTagsAsResourceId`や`resources.getIdentifier`と違ってAndroid特有の仕組みを何も抱えていません。消費アプリがこの3語を自分で書いても失うものはありません。 |
 
 ## 進捗
 
-- [ ] 未着手。
+- [x] 単位1 — `IdentifierTool/` を新しい Gradle ライブラリモジュールとして作成しました。`BajutsuAndroid`
+      の `build.gradle.kts` の形に倣い、それへの依存は持ちません
+- [x] 単位2 — `BajutsuAccessibility.kt` を追加しました。`View.accessibilityId(name)` と
+      `View.accessibilityStateValue(value)` を、Views の showcase から無条件（ゲートなし）で移植しました
+- [x] 単位3 — `BajutsuAccessibilityCompose.kt` を追加しました。`Modifier.accessibilityId(id)`、
+      `Modifier.accessibilityStateValue(value)`、`Modifier.enableAccessibilityIds()` を、Compose の
+      showcase から無条件で移植しました。独自サブパッケージ `dev.bajutsu.identifier.compose` に置き、
+      `consumerProguardFiles` ルールを持ちます（詳細はログを参照）
+- [x] 単位4 — `demos/showcase/android/settings.gradle.kts` を更新し、IdentifierTool をパスで取り込みました
+- [x] 単位5 — showcase の `Accessibility.kt` は、`BuildConfig.ACCESSIBLE` のゲートを保ったまま
+      IdentifierTool へ委譲します。`aid`、`stateValue`、`selectedState`、`enableTestTagsAsResourceId`
+      の名前は維持しました。既存の122箇所の呼び出しはどれも変わりません
+- [x] 単位6 — `IdentifierTool/README.md` と `README.ja.md` を書きました
+- [x] 単位7 — `docs/architecture.md`、`docs/drivers.md`、`docs/developer-guide.md`に、英語・
+      `docs/ja/` の対訳ともIdentifierToolへの相互参照を追加しました
+- [x] 単位8 — showcase の両モジュール・両フレーバーをビルドし、移行後の showcase に対して
+      `android-e2e.yml` のエミュレータレーンを走らせて変更を検証しました
+
+ログ：
+
+- 2026-09-04 — 8つの単位をまとめて着地させました（PR #1904）。作業分解が暗に含んでいたものの列挙していなかった帰結が
+  2つあります。1つ目です。`scripts/e2e_changes.py` の android レーンのパスフィルタは、
+  新しいトップレベルディレクトリ `IdentifierTool/` を対象にしていませんでした。そのため、
+  そこだけを触った変更は、どの E2E レーンも起動しないままでした。このフィルタに `IdentifierTool/` を追加しました。
+  `tests/test_e2e_changes.py` に対応するアサーションも追加しています。
+  `scripts/sync_roadmap_topic_labels.py` のパスとトピックの対応規則にも追加しました。これにより、
+  `BajutsuKit/` を触る PR がすでに得ている `topic:platform` ラベルを、
+  IdentifierTool を触る PR も得られるようになりました。
+
+  2つ目です。セルフレビューの過程で見つかりました。`compileOnly` だけでは、Views だけを使う
+  消費側の圧縮ビルドを R8 が失敗させることを防げません。原因は Compose ファイル自身のクラス
+  参照です。このファイルを `dev.bajutsu.identifier.compose` へ分離し、
+  `consumerProguardFiles("consumer-rules.pro")` を追加しました。ルールの対象は、Compose が
+  実際に触る2つのサブパッケージに絞り、`androidx.compose.ui.**`
+  への一括指定は避けています。
+
+- 2026-09-05（PR #1904）— `IdentifierTool/sample/` を追加しました。IdentifierTool だけに依存する
+  最小限の単独アプリで、この項目の元々の作業分解を超えて追加を求められたものです。独自の
+  Gradle ルートを持ち、`demos/showcase/android` と違って IdentifierTool 以外への依存を
+  持ちません。この Gradle ルートをビルドする CI ジョブはなく、fast ゲートと E2E レーンの
+  どちらも、ここには触れません。
 
 ## 参考
 
