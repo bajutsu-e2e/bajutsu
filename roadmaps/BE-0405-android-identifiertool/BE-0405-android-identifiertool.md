@@ -260,6 +260,11 @@ Log:
   into `dev.bajutsu.identifier.compose` and added `consumerProguardFiles("consumer-rules.pro")`,
   scoped to the two subpackages Compose touches rather than a blanket `androidx.compose.ui.**`.
 
+- 2026-09-05 (PR #1904) — Added `IdentifierTool/sample/`. This minimal standalone app depends on
+  IdentifierTool alone. The user asked for this beyond the item's original work breakdown. The
+  sample has its own Gradle root, unlike `demos/showcase/android`. No CI job builds it. Neither the
+  fast gate nor the E2E lanes touch this Gradle root.
+
 ## References
 
 - [`BajutsuAndroid/README.md`](../../BajutsuAndroid/README.md)

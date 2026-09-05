@@ -171,6 +171,12 @@ Viewsを使う消費側は、自前の`ids.xml`を書き続けることになり
   実際に触る2つのサブパッケージに絞り、`androidx.compose.ui.**`
   への一括指定は避けています。
 
+- 2026-09-05（PR #1904）— `IdentifierTool/sample/` を追加しました。IdentifierTool だけに依存する
+  最小限の単独アプリで、この項目の元々の作業分解を超えて追加を求められたものです。独自の
+  Gradle ルートを持ち、`demos/showcase/android` と違って IdentifierTool 以外への依存を
+  持ちません。この Gradle ルートをビルドする CI ジョブはなく、fast ゲートと E2E レーンの
+  どちらも、ここには触れません。
+
 ## 参考
 
 - [`BajutsuAndroid/README.md`](../../BajutsuAndroid/README.md)

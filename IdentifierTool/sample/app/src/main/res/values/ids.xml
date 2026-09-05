@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Declared ahead of time, per IdentifierTool/README.md's Views caveat: View.accessibilityId
+     resolves a name through resources.getIdentifier, which needs a real android:id entry to
+     resolve against — an undeclared name resolves to 0 and is silently skipped. -->
+<resources>
+    <item name="refresh_button" type="id" />
+    <item name="status_label" type="id" />
+</resources>

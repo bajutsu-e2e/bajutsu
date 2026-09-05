@@ -39,6 +39,8 @@ project(":identifier-tool").projectDir = file("../../../IdentifierTool")
 ```
 
 そのうえで依存を宣言します。`implementation(project(":identifier-tool"))`。
+[`sample/`](sample/README.md) は、この形をそのまま使った最小限の単独アプリです。他の
+bajutsu ライブラリは一切組み合わせていません。
 
 UI ツールキットに合わせて、対応するヘルパを呼びます。Views 側は `dev.bajutsu.identifier`、
 Compose 側は `dev.bajutsu.identifier.compose` と、パッケージを分けています。Views のみを使う

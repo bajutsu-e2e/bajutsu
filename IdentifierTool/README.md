@@ -36,7 +36,8 @@ include(":identifier-tool")
 project(":identifier-tool").projectDir = file("../../../IdentifierTool")
 ```
 
-then depend on it: `implementation(project(":identifier-tool"))`.
+then depend on it: `implementation(project(":identifier-tool"))`. [`sample/`](sample/README.md)
+is a minimal, standalone app built this way, with no other bajutsu library alongside it.
 
 Call the helpers that match your UI toolkit. The Views half lives in `dev.bajutsu.identifier`,
 Compose in `dev.bajutsu.identifier.compose`. A Views-only consumer then never imports a symbol it
