@@ -511,7 +511,9 @@ the gap Unit 2b closes to bring the two surfaces to the same standard.
       set, add `savePassword` with its three shapes and the per-prompt surface record, and reject it
       in a `handleSystemAlert` step.
 - [x] Unit 4 — migrate both save-password demos to `rules`, drop the browser demo's workaround wait,
-      and add the regression scenario to the `ios-e2e` lane.
+      and add the regression scenario to the `make -C demos/showcase e2e-savepassword` target —
+      not the `ios-e2e` lane the unit's design text names, since neither save-password demo runs
+      on a CI lane.
 - [x] Unit 5 — update `docs/scenarios.md`, `docs/architecture.md`, and both `docs/ja/` mirrors,
       including the interruption monitor's now-consequential decline.
 
