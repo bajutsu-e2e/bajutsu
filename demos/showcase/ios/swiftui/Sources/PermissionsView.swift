@@ -88,11 +88,12 @@ struct PermissionsView: View {
     }
 
     // Raises the notification request on a delay once the in-app browser is up, when the run asked
-    // for it (`SHOWCASE_NOTIF_AFTER_BROWSER`). This is how the save-password alert iOS raises for a
-    // browser sign-in comes to be stacked *under* a SpringBoard alert: the scenario cannot tap its
-    // way into that state, since an element tap made while a system alert is showing fails by
-    // design, so the second prompt has to arrive on the app's own schedule. No default: every other
-    // scenario opens the browser with nothing behind it.
+    // for it (`SHOWCASE_NOTIF_AFTER_BROWSER`). The delay is what picks which of the pair lands
+    // first: the save-password alert iOS raises for a browser sign-in stacked *under* a SpringBoard
+    // alert, or holding the screen alone with a handleSystemAlert step waiting behind it (BE-0406).
+    // Neither ordering can be tapped into, since an element tap made while a system alert is
+    // showing fails by design, so the second prompt has to arrive on the app's own schedule. No
+    // default: every other scenario opens the browser with nothing behind it.
     private func armNotificationRequest() {
         guard let delay = model.notifyAfterBrowser else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { requestNotifications() }

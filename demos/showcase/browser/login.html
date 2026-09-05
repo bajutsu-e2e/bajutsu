@@ -12,8 +12,9 @@
   </head>
   <body>
     <!--
-      The sign-in page demos/showcase/scenarios/save_password_browser.yaml loads in
-      SFSafariViewController, served by `make -C demos/showcase e2e-browser` beside index.html.
+      The sign-in page demos/showcase/scenarios/save_password_browser.yaml and
+      save_password_interrupts_step.yaml both load in SFSafariViewController, served by
+      `make -C demos/showcase e2e-savepassword` beside index.html.
 
       Submitting it makes iOS raise its *real* "Save Password" alert — the whole point of this
       fixture. No associated domain, entitlement, or HTTPS is involved: iOS offers to save a
@@ -38,10 +39,14 @@
     </form>
     <script>
       // Hold the submission back briefly. The save alert appears when the form is submitted, and
-      // the scenario needs it to arrive *after* the SpringBoard notification request the app raises
-      // on its own timer — that ordering is what puts the save alert underneath a system alert,
-      // which is the state the run is there to exercise. A scenario cannot arrange it by tapping,
-      // because an element tap made while a system alert is showing fails by design.
+      // this delay places its arrival relative to the SpringBoard notification request the app
+      // raises on its own timer (`SHOWCASE_NOTIF_AFTER_BROWSER`) — which of the two scenarios drives
+      // this page decides which ordering results. save_password_browser.yaml arms that request
+      // early, so it lands first and the save alert stacks underneath it;
+      // save_password_interrupts_step.yaml arms it late enough that the save alert lands alone,
+      // holding the screen with no system alert over it yet. Neither scenario can arrange its
+      // ordering by tapping, because an element tap made while a system alert is showing fails by
+      // design.
       //
       // The run never waits on this delay: every wait in the scenario is a condition wait, and this
       // only shifts when the condition becomes true.
