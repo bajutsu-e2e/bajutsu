@@ -10,7 +10,9 @@ the element it resolved, addressed by that element's per-snapshot handle.
 from __future__ import annotations
 
 import json
+import socket
 import time
+import weakref
 from collections.abc import Mapping
 from typing import Any
 
@@ -31,6 +33,7 @@ from bajutsu.common.drivers.xcuitest import (
     _decode,
     _HealthWait,
     _is_retry_eligible,
+    _is_stale,
     _raw_http_transport,
     _Reply,
     _timeout_for,
@@ -179,6 +182,23 @@ def test_a_stale_retry_records_both_attempts_and_ends_on_the_actuated_element() 
     # Without the accepted stamp the two would be indistinguishable and the report would show one tap
     # as two — the refused attempt has to say it was refused.
     assert (first.accepted, second.accepted) == (False, True)
+
+
+def test_the_first_stale_retry_re_queries_at_once_but_the_second_still_backs_off() -> None:
+    # BE-0407 Unit 12: the re-query is itself a wait, so a fixed sleep before the *first* retry only
+    # adds wall time on a screen that may already have settled. A second stale in a row means that
+    # re-query just failed to catch up once already, so backoff still applies from there on.
+    sleeps: list[float] = []
+    replies = ["stale", "stale", "ok"]
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_el_wire("h-ok", "ok", "OK"))
+        return _Reply(status=replies.pop(0))
+
+    driver = XcuitestDriver(transport=transport, sleep=sleeps.append)
+    driver.tap({"id": "ok"})
+    assert sleeps == [1.0]  # only the second retry's backoff, none before the first
 
 
 def test_a_coordinate_primitive_records_the_points_it_sent() -> None:
@@ -453,6 +473,29 @@ def test_tap_raises_element_not_tappable_when_runner_reports_not_hittable() -> N
 
     with pytest.raises(base.ElementNotTappable, match="not hittable"):
         _driver(transport).tap({"id": "ok"})
+
+
+def test_a_not_hittable_taps_fold_survives_its_own_internal_redirect_lookup() -> None:
+    # `tap`'s own not-hittable path re-queries `/elements` internally (`_tap_sole_reachable_descendant`)
+    # before re-raising — a second driver call *inside the same `tap()` call* that must not cost the
+    # not-hittable `/tap` reply's own carried fold (BE-0407 Unit 6): it is real data the runner will
+    # never hand back again once its store is drained, so it is merged into the eventual drain rather
+    # than lost to the redirect lookup clearing "is this still current".
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_el_wire("h-ok", "ok", "OK", traits=["button"]))
+        if path == "/tap":
+            return _Reply(
+                status="not-hittable",
+                raw=json.dumps({"labels": ["Not Now"], "unmatched": []}).encode(),
+            )
+        assert path == "/interruptionPolicy/drain"
+        return _Reply(status="ok", raw=json.dumps({"labels": [], "unmatched": []}).encode())
+
+    driver = _driver(transport)
+    with pytest.raises(base.ElementNotTappable):
+        driver.tap({"id": "ok"})
+    assert driver.drain_interruptions().tapped == ["Not Now"]
 
 
 # The measured iOS 18.6 shape around the showcase Stepper: the container's accessibility element is
@@ -809,13 +852,75 @@ def test_actuation_write_gets_a_longer_bounded_timeout_than_reads() -> None:
     assert _ACTUATION_TIMEOUT_SECONDS <= 60  # still bounded
 
 
+class _FakeSocket:
+    """A `.sock`-shaped stand-in `_is_stale` never actually inspects in these tests.
+
+    `select.select` and `MSG_PEEK` are patched out instead of given a real socket to satisfy, so this
+    only needs to exist as an object `assert conn.sock is not None` and `.settimeout` can address.
+    """
+
+    def __init__(self) -> None:
+        self.timeouts: list[float | None] = []
+
+    def settimeout(self, timeout: float | None) -> None:
+        self.timeouts.append(timeout)
+
+
+def _not_stale(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`_is_stale` always reports a reused connection alive — the common case every reuse test but
+    the staleness ones themselves wants, so `select.select` need not simulate a real socket."""
+    monkeypatch.setattr(
+        "bajutsu.common.drivers.xcuitest.select.select", lambda *a, **k: ([], [], [])
+    )
+
+
+def test_is_stale_reports_a_connection_with_no_socket_as_stale() -> None:
+    class _Conn:
+        sock = None
+
+    assert _is_stale(_Conn()) is True  # type: ignore[arg-type]
+
+
+def test_is_stale_reports_a_freshly_connected_socket_as_alive() -> None:
+    # A real connected pair, not a fake told what to say: this is what proves the
+    # `select` + non-consuming peek combination `_is_stale` relies on genuinely reads OS socket
+    # state, not just that a mock returns whatever it was configured to.
+    a, b = socket.socketpair()
+    try:
+
+        class _Conn:
+            sock = a
+
+        assert _is_stale(_Conn()) is False  # type: ignore[arg-type]
+    finally:
+        a.close()
+        b.close()
+
+
+def test_is_stale_reports_a_peer_closed_socket_as_stale() -> None:
+    a, b = socket.socketpair()
+    try:
+        b.close()  # the peer end closes — `a` now sees a clean EOF on any read
+
+        class _Conn:
+            sock = a
+
+        assert _is_stale(_Conn()) is True  # type: ignore[arg-type]
+    finally:
+        a.close()
+
+
 def test_raw_transport_applies_the_per_method_socket_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # The single-attempt transport must open each connection with the timeout for that method's
-    # idempotency class: reads tight, actuation writes longer. Faked at the http.client boundary
-    # (allowed: it is a real network call) so the wiring is verified without a Simulator.
-    seen: list[tuple[str, float | None]] = []
+    # The single-attempt transport must bound each call with the timeout for that method's
+    # idempotency class: reads tight, actuation writes longer. The connection itself is now kept
+    # open and reused (BE-0407 Unit 11), so only the *first* call constructs one (with its own
+    # timeout); a later call reusing it must reset the timeout via `sock.settimeout` instead. Faked
+    # at the http.client boundary (allowed: it is a real network call) so the wiring is verified
+    # without a Simulator.
+    _not_stale(monkeypatch)
+    constructed: list[float | None] = []
 
     class _FakeResponse:
         status = 200
@@ -825,13 +930,14 @@ def test_raw_transport_applies_the_per_method_socket_timeout(
 
     class _FakeConn:
         def __init__(self, host: str, port: int, timeout: float | None = None) -> None:
-            self._timeout = timeout
+            constructed.append(timeout)
+            self.sock: _FakeSocket | None = None
 
         def connect(self) -> None:
-            pass
+            self.sock = _FakeSocket()
 
         def request(self, method: str, path: str, body: Any = None, headers: Any = None) -> None:
-            seen.append((method, self._timeout))
+            pass
 
         def getresponse(self) -> _FakeResponse:
             return _FakeResponse()
@@ -843,7 +949,46 @@ def test_raw_transport_applies_the_per_method_socket_timeout(
     transport = _raw_http_transport("127.0.0.1", 1234)
     transport("GET", "/elements", None)
     transport("POST", "/gesture", {"kind": "pinch"})
-    assert seen == [("GET", _SOCKET_TIMEOUT_SECONDS), ("POST", _ACTUATION_TIMEOUT_SECONDS)]
+    # One connection, built with the first call's timeout — the second's own timeout, applied to the
+    # reused connection instead of a fresh construction, is pinned by the dedicated test below.
+    assert constructed == [_SOCKET_TIMEOUT_SECONDS]
+
+
+def test_raw_transport_resets_the_timeout_on_a_reused_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _not_stale(monkeypatch)
+    sockets: list[_FakeSocket] = []
+
+    class _FakeConn:
+        def __init__(self, host: str, port: int, timeout: float | None = None) -> None:
+            self.sock: _FakeSocket | None = None
+
+        def connect(self) -> None:
+            self.sock = _FakeSocket()
+            sockets.append(self.sock)
+
+        def request(self, method: str, path: str, body: Any = None, headers: Any = None) -> None:
+            pass
+
+        def getresponse(self) -> Any:
+            class _R:
+                status = 200
+
+                def read(self) -> bytes:
+                    return b'{"status":"ok"}'
+
+            return _R()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("bajutsu.common.drivers.xcuitest.http.client.HTTPConnection", _FakeConn)
+    transport = _raw_http_transport("127.0.0.1", 1234)
+    transport("GET", "/elements", None)
+    transport("POST", "/gesture", {"kind": "pinch"})
+    assert len(sockets) == 1  # one connection, reused for the second call
+    assert sockets[0].timeouts == [_ACTUATION_TIMEOUT_SECONDS]  # the reuse's own timeout, reset
 
 
 def test_raw_transport_splits_delivery_on_connect_versus_send(
@@ -881,6 +1026,177 @@ def test_raw_transport_splits_delivery_on_connect_versus_send(
     assert (
         send_exc.value.delivered is True
     )  # bytes may have started reaching the runner → do not re-issue
+
+
+def test_raw_transport_reuses_one_connection_across_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    # BE-0407 Unit 11: only the first call pays a TCP handshake; later calls reuse the same
+    # connection object rather than opening a fresh one each time.
+    _not_stale(monkeypatch)
+    constructed = 0
+
+    class _FakeConn:
+        def __init__(self, host: str, port: int, timeout: float | None = None) -> None:
+            nonlocal constructed
+            constructed += 1
+            self.sock: _FakeSocket | None = None
+
+        def connect(self) -> None:
+            self.sock = _FakeSocket()
+
+        def request(self, method: str, path: str, body: Any = None, headers: Any = None) -> None:
+            pass
+
+        def getresponse(self) -> Any:
+            class _R:
+                status = 200
+
+                def read(self) -> bytes:
+                    return b'{"status":"ok"}'
+
+            return _R()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("bajutsu.common.drivers.xcuitest.http.client.HTTPConnection", _FakeConn)
+    transport = _raw_http_transport("127.0.0.1", 1234)
+    for _ in range(3):
+        transport("GET", "/elements", None)
+    assert constructed == 1
+
+
+def test_raw_transport_reconnects_when_the_reused_connection_is_already_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The runner's own idle timeout (HTTPServer.swift) can close a kept-alive connection between
+    # calls. `_is_stale` must catch this *before* the next call ever tries to send anything, so the
+    # reconnect is a clean, ordinary one rather than an ambiguous send/receive failure to sort out
+    # after the fact (BE-0407 Unit 11).
+    constructed = 0
+
+    class _FakeConn:
+        def __init__(self, host: str, port: int, timeout: float | None = None) -> None:
+            nonlocal constructed
+            constructed += 1
+            self.sock: _FakeSocket | None = None
+
+        def connect(self) -> None:
+            self.sock = _FakeSocket()
+
+        def request(self, method: str, path: str, body: Any = None, headers: Any = None) -> None:
+            pass
+
+        def getresponse(self) -> Any:
+            class _R:
+                status = 200
+
+                def read(self) -> bytes:
+                    return b'{"status":"ok"}'
+
+            return _R()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("bajutsu.common.drivers.xcuitest.http.client.HTTPConnection", _FakeConn)
+    # `_is_stale` itself is exercised directly in its own unit tests below; here it only needs to
+    # report the reused connection dead, without simulating a real socket's `fileno()`. It is never
+    # consulted on the very first call (there is nothing yet to reuse), so unconditionally `True` is
+    # unambiguous: only the second call below can possibly see it.
+    monkeypatch.setattr("bajutsu.common.drivers.xcuitest._is_stale", lambda _conn: True)
+    transport = _raw_http_transport("127.0.0.1", 1234)
+    transport("GET", "/elements", None)
+    transport("GET", "/elements", None)
+    assert constructed == 2  # the second call found the first connection dead and reconnected
+
+
+def test_raw_transport_discards_a_connection_a_non_os_error_failure_touched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `_decode` raising on a malformed body is not an `OSError`, so it never reaches the
+    # `except OSError` branch — but the connection it happened on must still never be reused
+    # (BE-0407 Unit 11), or the next call inherits a connection already mid-desync.
+    _not_stale(monkeypatch)
+    constructed = 0
+
+    class _FakeConn:
+        def __init__(self, host: str, port: int, timeout: float | None = None) -> None:
+            nonlocal constructed
+            constructed += 1
+            self.sock: _FakeSocket | None = None
+
+        def connect(self) -> None:
+            self.sock = _FakeSocket()
+
+        def request(self, method: str, path: str, body: Any = None, headers: Any = None) -> None:
+            pass
+
+        def getresponse(self) -> Any:
+            class _R:
+                status = 200
+
+                def __init__(self, ok: bool) -> None:
+                    self._ok = ok
+
+                def read(self) -> bytes:
+                    return b'{"status":"ok"}' if self._ok else b"not json"
+
+            # Only the very first response is malformed — a fake that always failed could not tell
+            # "discarded and reconnected" apart from "still failing regardless of the connection".
+            return _R(constructed > 1)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("bajutsu.common.drivers.xcuitest.http.client.HTTPConnection", _FakeConn)
+    transport = _raw_http_transport("127.0.0.1", 1234)
+    with pytest.raises(XcuitestChannelError):
+        transport("GET", "/elements", None)
+    transport("GET", "/elements", None)
+    assert constructed == 2  # the poisoned connection was discarded, not handed to the next call
+
+
+def test_raw_transport_treats_a_reused_connections_timeout_as_delivered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A live-but-slow reused connection is a different failure from a dead one: `_is_stale` found it
+    # alive, so the wait genuinely ran on an open connection — the same ambiguity a fresh
+    # connection's post-connect timeout carries, never safe to re-issue a write over.
+    _not_stale(monkeypatch)
+    calls = {"n": 0}
+
+    class _FakeConn:
+        def __init__(self, host: str, port: int, timeout: float | None = None) -> None:
+            self.sock: _FakeSocket | None = None
+
+        def connect(self) -> None:
+            self.sock = _FakeSocket()
+
+        def request(self, method: str, path: str, body: Any = None, headers: Any = None) -> None:
+            pass
+
+        def getresponse(self) -> Any:
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise TimeoutError("timed out")
+
+            class _R:
+                status = 200
+
+                def read(self) -> bytes:
+                    return b'{"status":"ok"}'
+
+            return _R()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("bajutsu.common.drivers.xcuitest.http.client.HTTPConnection", _FakeConn)
+    transport = _raw_http_transport("127.0.0.1", 1234)
+    transport("GET", "/elements", None)  # establishes the connection later calls reuse
+    with pytest.raises(_TransportFailure) as exc:
+        transport("POST", "/tap", {"handle": "h1"})
+    assert exc.value.delivered is True  # not safe to re-issue: it may have reached the runner
 
 
 # --- transient-transport retry policy (BE-0207) --- #
@@ -1556,6 +1872,130 @@ def test_drain_interruptions_is_empty_when_the_reply_carried_no_body() -> None:
     drained = _driver(lambda m, p, b: _Reply(status="ok")).drain_interruptions()
     assert drained.tapped == []
     assert drained.declined == []
+
+
+def test_the_drain_fold_tracker_does_not_keep_the_driver_alive_via_a_reference_cycle() -> None:
+    # BE-0407 Unit 6's tracking transport must capture `_drain_carry`, not `self` — closing over
+    # `self` would make the driver keep a closure that in turn references the driver back, a cycle
+    # only the cyclic collector breaks. That would defer a superseded driver's cleanup — and, with
+    # Unit 11's kept-alive connection behind it, its open socket — to whenever that collector next
+    # runs rather than to the moment its last reference drops. Plain reference counting collecting
+    # the driver immediately, with no `gc.collect()` needed, is what proves there is no such cycle.
+    driver = _driver(lambda m, p, b: _Reply(status="ok"))
+    weak = weakref.ref(driver)
+    del driver
+    assert weak() is None
+
+
+def test_drain_interruptions_uses_the_immediately_preceding_taps_own_fold_with_no_extra_call() -> (
+    None
+):
+    # BE-0407 Unit 6: the runner already folded its drain into `/tap`'s own reply, so a drain right
+    # after a tap must answer from that fold rather than costing a second round trip.
+    calls: list[str] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        calls.append(path)
+        if path == "/elements":
+            return _elements(_el_wire("h-ok", "ok", "OK"))
+        assert path == "/tap"
+        return _Reply(
+            status="ok", raw=json.dumps({"labels": ["Not Now"], "unmatched": []}).encode()
+        )
+
+    driver = _driver(transport)
+    driver.tap({"id": "ok"})
+    drained = driver.drain_interruptions()
+    assert drained.tapped == ["Not Now"]
+    assert "/interruptionPolicy/drain" not in calls  # answered from the tap's own fold
+
+
+def test_drain_interruptions_merges_the_carried_fold_with_the_wire_after_something_else_happened() -> (
+    None
+):
+    # A query in between (a wait's poll, an assertion) means the runner may have drained *again* by
+    # the time this call is made, so the wire must still be asked — but what the earlier tap already
+    # carried is real and must not be dropped for it: the two are merged (BE-0407 Unit 6).
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_el_wire("h-ok", "ok", "OK"))
+        if path == "/tap":
+            return _Reply(
+                status="ok", raw=json.dumps({"labels": ["Not Now"], "unmatched": []}).encode()
+            )
+        assert path == "/interruptionPolicy/drain"
+        return _Reply(status="ok", raw=json.dumps({"labels": ["Allow"], "unmatched": []}).encode())
+
+    driver = _driver(transport)
+    driver.tap({"id": "ok"})
+    driver.query()  # something else happened — the carry alone can no longer be trusted complete
+    drained = driver.drain_interruptions()  # must hit the wire AND keep the earlier tap's carry
+    assert drained.tapped == ["Not Now", "Allow"]
+
+
+def test_drain_interruptions_uses_an_uneventful_taps_present_but_empty_fold() -> None:
+    # A tap the runner drained and found nothing for still carries `labels`/`unmatched` — present,
+    # just empty (BE-0407 Unit 6) — which is what lets this be trusted as the complete, current
+    # answer without asking the wire at all.
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_el_wire("h-ok", "ok", "OK"))
+        assert path == "/tap"
+        return _Reply(status="ok", raw=json.dumps({"labels": [], "unmatched": []}).encode())
+
+    calls: list[str] = []
+
+    def counting(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        calls.append(path)
+        return transport(method, path, body)
+
+    driver = _driver(counting)
+    driver.tap({"id": "ok"})
+    drained = driver.drain_interruptions()
+    assert (drained.tapped, drained.declined) == ([], [])
+    assert "/interruptionPolicy/drain" not in calls
+
+
+def test_drain_interruptions_falls_back_when_the_runner_predates_the_tap_fold() -> None:
+    # BE-0407 Unit 6 is optional: a `/tap` reply carrying neither `labels` nor `unmatched` at all —
+    # as a runner predating it always does (e.g. a pinned older `testRunner` build) — must not be
+    # mistaken for "drained and found nothing"; that would silently lose whatever such a runner's
+    # monitor actually tapped or declined, with nothing left to recover it from.
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_el_wire("h-ok", "ok", "OK"))
+        if path == "/tap":
+            return _Reply(status="ok")  # no labels/unmatched at all
+        assert path == "/interruptionPolicy/drain"
+        return _Reply(
+            status="ok", raw=json.dumps({"labels": ["Not Now"], "unmatched": []}).encode()
+        )
+
+    driver = _driver(transport)
+    driver.tap({"id": "ok"})
+    drained = driver.drain_interruptions()  # must still ask the wire
+    assert drained.tapped == ["Not Now"]
+
+
+def test_drain_interruptions_falls_back_after_a_failed_tap_status_too() -> None:
+    # `withDrain` folds the drain into every `/tap` status, not only `ok` — a stale or not-hittable
+    # tap still ran it, since an interruption can land mid-actuation regardless of the outcome.
+    # `long_press` raises straight out of `_actuate` on `not-hittable` with no further transport
+    # call, unlike `tap`'s own not-hittable path (which re-queries for a reachable descendant) — the
+    # clean case for pinning that even a failed `/tap` reply's fold is used.
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_el_wire("h-ok", "ok", "OK"))
+        assert path == "/tap"
+        return _Reply(
+            status="not-hittable",
+            raw=json.dumps({"labels": ["Not Now"], "unmatched": []}).encode(),
+        )
+
+    driver = _driver(transport)
+    with pytest.raises(base.ElementNotTappable):
+        driver.long_press({"id": "ok"}, 0.7)
+    assert driver.drain_interruptions().tapped == ["Not Now"]
 
 
 # --- dismiss_blocking_tip: the TipKit guard's driver half ---

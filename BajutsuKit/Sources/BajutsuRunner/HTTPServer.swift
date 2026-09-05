@@ -29,11 +29,15 @@ struct HTTPResponse {
 typealias RequestHandler = (HTTPRequest) -> HTTPResponse
 
 final class HTTPServer {
-    // A request's bytes follow its connect over loopback within microseconds, so a read that stalls
-    // this long is a peer that died or never sent one — never a merely slow one. Unbounded, such a
-    // read holds one of the eight connection slots below for the life of the process, and enough of
-    // them starve `/health`, which the driver then reads as a dead runner (BE-0287's whole point is
-    // that `/health` stays answerable).
+    // Bounds two different reads (BE-0407 Unit 11 repurposed this timeout for the second): a
+    // request's own bytes, which follow its connect over loopback within microseconds, so a read
+    // that stalls this long on the *first* byte of a connection is a peer that died or never sent
+    // one; and, on a connection already serving requests, the idle gap between one reply and the
+    // next request the same kept-alive driver sends — routine now that a connection outlives a
+    // single request, so this window is also this server's own keep-alive idle bound, not only a
+    // dead-peer detector. Unbounded, either kind of stall holds one of the eight connection slots
+    // below for the life of the process, and enough of them starve `/health`, which the driver then
+    // reads as a dead runner (BE-0287's whole point is that `/health` stays answerable).
     static let defaultReceiveTimeout: TimeInterval = 10
     // A reply is written to a peer that is waiting for it, so only a peer that stopped reading — yet
     // left the connection open — stalls a send. The driver's own windows are 15s for a read and 30s
@@ -229,13 +233,28 @@ final class HTTPServer {
         setsockopt(fd, SOL_SOCKET, option, &window, socklen_t(MemoryLayout<timeval>.size))
     }
 
+    /// One accepted connection, kept open across requests (BE-0407 Unit 11) rather than closed after
+    /// one: the Python driver opens exactly one persistent connection per lease and reuses it for
+    /// every call, so serving several requests here saves the TCP handshake — and this file's own
+    /// `SO_RCVTIMEO` (`receiveTimeout`, `configureConnection`) already bounds the idle wait between
+    /// them, so a driver that genuinely goes away for that long ends the loop exactly as it would
+    /// have ended a single-request connection.
     private func handleConnection(_ fd: Int32) {
-        guard let request = readRequest(fd) else {
-            writeResponse(fd, .error(400, "bad request"))
-            return
+        while true {
+            switch readRequest(fd) {
+            case .connectionEnded:
+                // Nothing arrived since the last request (or ever, on a fresh connection) — a clean
+                // keep-alive close or an idle timeout, not a malformed request there was never
+                // anything to answer.
+                return
+            case .malformed:
+                writeResponse(fd, .error(400, "bad request"), keepAlive: false)
+                return
+            case .request(let request):
+                let response = handler(request)
+                writeResponse(fd, response, keepAlive: true)
+            }
         }
-        let response = handler(request)
-        writeResponse(fd, response)
     }
 
     // MARK: - HTTP parsing
@@ -243,16 +262,27 @@ final class HTTPServer {
     private let maxHeaderSize = 8192
     private let maxBodySize = 65536
 
-    private func readRequest(_ fd: Int32) -> HTTPRequest? {
+    /// `readRequest`'s result, distinguishing a genuinely empty read (the peer closed this
+    /// keep-alive connection between requests, or went idle) from a read that saw some bytes but
+    /// never formed a valid request — only the latter is a 400 (BE-0407 Unit 11): the former closed
+    /// the connection the ordinary way and has nothing to be told it did wrong.
+    private enum ReadOutcome {
+        case request(HTTPRequest)
+        case connectionEnded
+        case malformed
+    }
+
+    private func readRequest(_ fd: Int32) -> ReadOutcome {
         var headerBuf = Data()
         var singleByte = [UInt8](repeating: 0, count: 1)
         var terminated = false
 
         while headerBuf.count < maxHeaderSize {
             // `recv` now returns -1 with `EAGAIN` once the receive timeout elapses, which lands here
-            // with the same verdict as a peer that closed: the request never fully arrived.
+            // with the same verdict as a peer that closed: no more of a request arrived. Empty so
+            // far, this is the ordinary end of a keep-alive connection, not a malformed request.
             let n = recv(fd, &singleByte, 1, 0)
-            if n <= 0 { return nil }
+            if n <= 0 { return headerBuf.isEmpty ? .connectionEnded : .malformed }
             headerBuf.append(singleByte[0])
             if headerBuf.count >= 4,
                headerBuf.suffix(4) == Data([0x0D, 0x0A, 0x0D, 0x0A]) {
@@ -263,13 +293,13 @@ final class HTTPServer {
         // Reaching the cap without the blank-line terminator means the header was truncated or
         // oversized. Parsing it anyway would act on a request line the client never finished sending,
         // so report it as unparseable and let the caller answer 400.
-        guard terminated else { return nil }
+        guard terminated else { return .malformed }
 
-        guard let headerString = String(data: headerBuf, encoding: .utf8) else { return nil }
+        guard let headerString = String(data: headerBuf, encoding: .utf8) else { return .malformed }
         let lines = headerString.components(separatedBy: "\r\n")
-        guard let requestLine = lines.first else { return nil }
+        guard let requestLine = lines.first else { return .malformed }
         let parts = requestLine.split(separator: " ", maxSplits: 2)
-        guard parts.count >= 2 else { return nil }
+        guard parts.count >= 2 else { return .malformed }
 
         let method = String(parts[0])
         let path = String(parts[1])
@@ -281,7 +311,9 @@ final class HTTPServer {
         var contentLength = 0
         for line in lines.dropFirst() where line.lowercased().hasPrefix("content-length:") {
             let value = line.dropFirst("content-length:".count).trimmingCharacters(in: .whitespaces)
-            guard let declared = Int(value), declared >= 0, declared <= maxBodySize else { return nil }
+            guard let declared = Int(value), declared >= 0, declared <= maxBodySize else {
+                return .malformed
+            }
             contentLength = declared
         }
 
@@ -303,14 +335,14 @@ final class HTTPServer {
             // `/copy` read no body at all — they would actuate the device on a truncated request.
             // The receive timeout above makes the short read reachable from a peer that merely
             // stalls, not only from one that closed, which is what makes the guard load-bearing.
-            guard totalRead == contentLength else { return nil }
+            guard totalRead == contentLength else { return .malformed }
             body = bodyBuf
         }
 
-        return HTTPRequest(method: method, path: path, body: body)
+        return .request(HTTPRequest(method: method, path: path, body: body))
     }
 
-    private func writeResponse(_ fd: Int32, _ response: HTTPResponse) {
+    private func writeResponse(_ fd: Int32, _ response: HTTPResponse, keepAlive: Bool) {
         let statusText: String
         switch response.statusCode {
         case 200: statusText = "OK"
@@ -323,7 +355,7 @@ final class HTTPServer {
         var header = "HTTP/1.1 \(response.statusCode) \(statusText)\r\n"
         header += "Content-Type: \(response.contentType)\r\n"
         header += "Content-Length: \(response.body.count)\r\n"
-        header += "Connection: close\r\n"
+        header += "Connection: \(keepAlive ? "keep-alive" : "close")\r\n"
         header += "\r\n"
 
         sendAll(fd, Data(header.utf8))

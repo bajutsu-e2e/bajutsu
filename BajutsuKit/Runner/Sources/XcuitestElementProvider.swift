@@ -37,6 +37,23 @@ final class XcuitestElementProvider: ElementProviding {
 
     private static let safariViewServiceID = "com.apple.SafariViewService"
 
+    // The application window's frame, in points, read once and cached (BE-0407 Unit 7). The runner
+    // never rotates the device and the window fills the screen for the whole resident lease — see
+    // `screenSize()`'s own rationale — so this is stable for as long as this provider exists, and
+    // re-reading it live on every `tap` / `isHittable` bought nothing but a repeated round trip.
+    // Guarded against caching `.zero`, though: `app.frame` reads `.zero` while the app is not yet
+    // (or no longer) foreground, and this provider outlives a warm resume's own terminate + launch
+    // — locking in a `.zero` seen at the wrong moment would poison `screenSize()` and permanently
+    // defeat the `isHittable` guard below for the rest of the lease, where a live read self-corrects
+    // on the very next call. Read live until a genuine frame is observed once, then fixed forever.
+    private var _appFrame: CGRect?
+    private var appFrame: CGRect {
+        if let cached = _appFrame { return cached }
+        let frame = app.frame
+        if frame != .zero { _appFrame = frame }
+        return frame
+    }
+
     init(app: XCUIApplication) {
         self.app = app
     }
@@ -47,8 +64,14 @@ final class XcuitestElementProvider: ElementProviding {
         // actuator. A snapshot failure yields an empty screen rather than a crash — the run fails
         // loudly downstream when nothing resolves.
         guard let root = try? app.snapshot() else { return [] }
-        guard safariViewService.state == .runningForeground else {
-            return flattenSnapshot(root: SnapshotNodeAdapter(root))
+        let rootNode = SnapshotNodeAdapter(root)
+        // `safariViewService.state` is a cross-process (XPC) query, paid even when the app under
+        // test never opens a browser. The app's own snapshot already answers, for free, whether a
+        // browser boundary is even on screen right now (BE-0407 Unit 9) — only when one is does the
+        // XPC probe below get a chance to matter.
+        guard containsBrowserViewBoundary(in: rootNode), safariViewService.state == .runningForeground
+        else {
+            return flattenSnapshot(root: rootNode)
         }
         // A presented `SFSafariViewController` is drawn by another process, and the app's own
         // snapshot reports it differently per iOS version: through iOS 18 it mirrors the whole
@@ -56,7 +79,7 @@ final class XcuitestElementProvider: ElementProviding {
         // below it. Reading the browser from the service that owns it makes the two versions agree —
         // one tree, complete on both — and the mirror is pruned so the versions that do carry it
         // don't report every browser element twice, which would read as an ambiguous selector.
-        let appElements = flattenSnapshot(root: SnapshotNodeAdapter(root)) {
+        let appElements = flattenSnapshot(root: rootNode) {
             ($0.nodeIdentifier ?? "").hasPrefix(BrowserChrome.browserViewIDPrefix)
         }
         guard let browserRoot = try? safariViewService.snapshot() else {
@@ -64,7 +87,7 @@ final class XcuitestElementProvider: ElementProviding {
             // tree in hand, report the app's own walk whole: on the iOS versions that do mirror the
             // browser, returning the pruned walk would hand back a screen the browser was cut out
             // of, and a scenario would time out on elements the app was still carrying.
-            return flattenSnapshot(root: SnapshotNodeAdapter(root))
+            return flattenSnapshot(root: rootNode)
         }
         // The two versions also name the browser's own chrome differently in one place, which
         // `normalizeBrowserChrome` repairs so a scenario's selector travels between them (BE-0396).
@@ -103,9 +126,8 @@ final class XcuitestElementProvider: ElementProviding {
         // The application window's frame in points — the coordinate space the snapshot frames use — so
         // an on-screen element's frame center falls within it (BE-0326). The window fills the screen
         // and its frame is stable regardless of a scroll view's buffered off-screen children, unlike
-        // the element tree's extent. (`XCUIScreen` has no frame/bounds; `app.frame` is the window.)
-        let frame = app.frame
-        return (Double(frame.width), Double(frame.height))
+        // the element tree's extent. (`XCUIScreen` has no frame/bounds; `appFrame` is the window.)
+        (Double(appFrame.width), Double(appFrame.height))
     }
 
     // `isHittable` reads `false` both for "covered" and for "offscreen" (Apple's own docs say so) —
@@ -115,13 +137,13 @@ final class XcuitestElementProvider: ElementProviding {
     // point-based question (`_point_hits`, playwright.py) rather than a frame-overlap test:
     // `intersects` would still guard a target straddling the fold whose center has already scrolled
     // off, reaching `isHittable` for a question this check does not ask, and reading differently
-    // from web for the identical screen. `app.frame` is the stable window/screen bounds
+    // from web for the identical screen. `appFrame` is the stable window/screen bounds
     // `screenSize()` above already uses for the same viewport-vs-content-extent distinction. A
     // single shared predicate, not one copy per caller, so `tap` and `isHittable(backingElement:)` —
     // which the recovery loop requires to agree — cannot drift apart on this question.
     private func centerIsOnScreen(_ el: XCUIElement) -> Bool {
         let f = el.frame
-        return app.frame.contains(CGPoint(x: f.midX, y: f.midY))
+        return appFrame.contains(CGPoint(x: f.midX, y: f.midY))
     }
 
     func tap(backingElement: AnyObject, taps: Int, duration: TimeInterval) -> TapResult {
@@ -136,7 +158,17 @@ final class XcuitestElementProvider: ElementProviding {
         // dismiss — whereas the coordinate tap the element's frame yields lands on both. The frame
         // is read live here, not from the snapshot, so a browser still animating in is tapped where
         // it now is; the coordinate space is the app's own, which the guard above already tests
-        // against `app.frame`.
+        // against `appFrame`.
+        //
+        // BE-0407 Unit 8 proposed generalizing this route to every element, on the premise that
+        // `liveElement(for:)`'s own verification above made the coordinate substitution free of
+        // staleness risk. Two review rounds found that premise incomplete: `el.isHittable` above
+        // checks XCUITest's own hit point for the element (which honours a custom
+        // `accessibilityActivationPoint` and can differ from the frame's geometric center under
+        // partial occlusion), while a coordinate tap always lands on that geometric center — a
+        // silent `.ok` for a tap that actually landed on whatever covers the center, on an element
+        // whose real hit point was clear. Reverted to the Safari-only route pending a design that
+        // reconciles the two points, rather than risking a silent mis-tap on every element.
         let target: Tappable = backing.root == .safariViewService
             ? coordinate(Double(el.frame.midX), Double(el.frame.midY))
             : el
@@ -250,6 +282,16 @@ final class XcuitestElementProvider: ElementProviding {
     }
 
     func typeText(_ text: String) -> TapResult {
+        // BE-0407 Unit 15 proposed pasting via the system pasteboard instead of per-character
+        // synthesis. An on-device run of `text_editing.yaml` (the scenario pairing `type` with
+        // `copy`/`clipboard`) showed why not: `app.typeKey("v", modifierFlags: .command)` triggers
+        // iOS's cross-app "Allow Paste" consent alert on *every* paste — "\"BajutsuRunnerUITests-
+        // Runner\" would like to paste from \"Showcase SwiftUI\" — Do you want to allow this?" — which
+        // blocks the main thread indefinitely with no button this runner's own interruption
+        // monitor is registered to dismiss, timing out `POST /type` and crashing the runner. Reverted
+        // to plain per-character synthesis; a paste route would need either a way to suppress or
+        // auto-answer that consent alert, or confirmation it does not fire on some other iOS version,
+        // before it can land.
         app.typeText(text)
         return .ok
     }
@@ -301,9 +343,14 @@ final class XcuitestElementProvider: ElementProviding {
 
     func querySystemAlertButtons() -> [ElementSnapshot] {
         // Read the buttons of whatever SpringBoard alert is up, in order; empty when no alert is
-        // present (`count` == 0), which the Python driver polls against the step's timeout. A
-        // permission prompt has a couple of buttons, so reading each one's label/frame directly
-        // (rather than one whole-tree snapshot) is cheap, and the ordinal is the tappable backing.
+        // present, which the Python driver polls against the step's timeout. `alerts.buttons.count`
+        // alone is already a full SpringBoard query, paid on every poll regardless of whether one is
+        // up — the overwhelmingly common case. `firstMatch.exists` answers the same "is one up at
+        // all" question and short-circuits on the first match rather than counting every button
+        // (BE-0407 Unit 13), so it never runs the enumeration below for nothing. A permission prompt
+        // has a couple of buttons, so reading each one's label/frame directly (rather than one
+        // whole-tree snapshot) is cheap, and the ordinal is the tappable backing.
+        guard springboard.alerts.firstMatch.exists else { return [] }
         let buttons = springboard.alerts.buttons
         let count = buttons.count
         return (0..<count).map { i in
@@ -353,8 +400,13 @@ final class XcuitestElementProvider: ElementProviding {
     private func liveElement(for backing: PositionPathBacking) -> XCUIElement? {
         let root = application(for: backing.root)
         let el = element(at: backing.path, from: root)
-        if el.exists, attributesMatch(
-            recorded: backing.recorded, current: recordedAttributes(of: el, includingValue: false)
+        // One `el.snapshot()` (BE-0407 Unit 7) stands in for the `exists` check and every attribute
+        // this compares against `backing.recorded`: a snapshot throws exactly where `exists` would
+        // read false, and its properties are already in hand rather than each its own round trip —
+        // the ~7 XCUITest round trips this resolution used to cost on every normal-path actuation.
+        if let snapshot = try? el.snapshot(), attributesMatch(
+            recorded: backing.recorded,
+            current: recordedAttributes(of: snapshot, includingValue: false)
         ) {
             return el
         }
@@ -392,21 +444,23 @@ final class XcuitestElementProvider: ElementProviding {
         return candidates[index]
     }
 
-    /// Read the identity fields shared by flat-query and position-path resolution.
+    /// Read the identity fields for the flat-query recovery path (`uniquelyIdentifiedElement`) — the
+    /// rare case, reached only once the position path has already missed.
     ///
-    /// `value` is read for the flat-query group check alone (`resolvableMatchingIndex`), which needs the
-    /// same fields the host's `_collapse_identical_duplicates` keys on; the recorded-against-live
-    /// identity match ignores it. It is therefore read only where it is asked for: `liveElement(for:)`
-    /// calls this on the position-path element on every actuation that resolves normally, and one more
-    /// XCUITest round-trip on that path would buy nothing — the per-interaction cost this class's
-    /// one-`snapshot()` design (BE-0105) exists to keep down. `includingValue` carries no default on
-    /// purpose, so each caller states its choice and the compiler asks a new one: a candidate list
-    /// built without it reports `value` as `nil` throughout, which reads to `resolvableMatchingIndex`
-    /// as every candidate agreeing, collapsing the ambiguity the field was added to preserve. Unlike
-    /// `identifier` and `label`, `value` is read straight off the optional rather than through
-    /// `nonEmpty`: the host's key keeps an absent value and an empty one apart (the reply omits the key
-    /// entirely for `nil`, so Python sees `None` against `""`), and `flattenSnapshot` records it
-    /// unnormalized as well. Normalizing here alone would collapse a pair those two keep apart.
+    /// Always called with `includingValue: true` there: `resolvableMatchingIndex`'s group check needs
+    /// `value` alongside identifier/label/traits/frame, the same fields the host's
+    /// `_collapse_identical_duplicates` keys on. `includingValue` carries no default on purpose, so a
+    /// caller states its choice and the compiler asks a new one rather than silently reporting `value`
+    /// as `nil` throughout — which `resolvableMatchingIndex` would read as every candidate agreeing,
+    /// collapsing the ambiguity the field exists to preserve. Unlike `identifier` and `label`, `value`
+    /// is read straight off the optional rather than through `nonEmpty`: the host's key keeps an
+    /// absent value and an empty one apart (the reply omits the key entirely for `nil`, so Python sees
+    /// `None` against `""`), and `flattenSnapshot` records it unnormalized as well. Normalizing here
+    /// alone would collapse a pair those two keep apart.
+    ///
+    /// Each property here is its own XCUITest round trip on a live `XCUIElement` — acceptable on this
+    /// path since it runs only on a position-path miss, unlike the overload below that the common,
+    /// normal-path resolution uses instead.
     private func recordedAttributes(
         of el: XCUIElement, includingValue: Bool
     ) -> RecordedAttributes {
@@ -418,6 +472,30 @@ final class XcuitestElementProvider: ElementProviding {
                 elementType: el.elementType, isEnabled: el.isEnabled, isSelected: el.isSelected
             ),
             frame: frameTuple(el.frame)
+        )
+    }
+
+    /// The same identity fields, off an already-fetched `el.snapshot()` (BE-0407 Unit 7) rather than a
+    /// live `XCUIElement` — every field below is already in hand, at the cost of the one round trip
+    /// the snapshot itself paid, rather than one round trip per property. `liveElement(for:)` calls
+    /// this with `includingValue: false` on every actuation that resolves normally: the
+    /// recorded-against-live identity check deliberately excludes `value` (a slider or text field
+    /// legitimately changes value between the snapshot and the tap), so there is nothing for a caller
+    /// on this path to ask for — unlike the flat-query recovery overload above, this one is never
+    /// called with `true`.
+    private func recordedAttributes(
+        of snapshot: any XCUIElementSnapshot, includingValue: Bool
+    ) -> RecordedAttributes {
+        RecordedAttributes(
+            identifier: nonEmpty(snapshot.identifier),
+            label: nonEmpty(snapshot.label),
+            value: includingValue ? snapshot.value as? String : nil,
+            traits: traitTokens(
+                elementType: snapshot.elementType,
+                isEnabled: snapshot.isEnabled,
+                isSelected: snapshot.isSelected
+            ),
+            frame: frameTuple(snapshot.frame)
         )
     }
 

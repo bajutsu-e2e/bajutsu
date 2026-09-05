@@ -93,6 +93,7 @@ final class TransportParityTests: XCTestCase {
     /// `testJSONRepliesGainACharsetParameter` records.
     private func assertSame(
         _ live: Reply, _ legacy: Reply, _ what: String,
+        ignoringKeys: Set<String> = [],
         file: StaticString = #filePath, line: UInt = #line
     ) throws {
         XCTAssertEqual(live.statusCode, legacy.statusCode, "\(what): status code", file: file, line: line)
@@ -100,11 +101,17 @@ final class TransportParityTests: XCTestCase {
             mediaType(live.contentType), mediaType(legacy.contentType),
             "\(what): content type", file: file, line: line
         )
-        XCTAssertEqual(
-            try JSONSerialization.jsonObject(with: live.body) as? NSDictionary,
-            try JSONSerialization.jsonObject(with: legacy.body) as? NSDictionary,
-            "\(what): reply body", file: file, line: line
-        )
+        let liveBody = try JSONSerialization.jsonObject(
+            with: live.body, options: [.mutableContainers]
+        ) as? NSMutableDictionary
+        let legacyBody = try JSONSerialization.jsonObject(
+            with: legacy.body, options: [.mutableContainers]
+        ) as? NSMutableDictionary
+        for key in ignoringKeys {
+            liveBody?.removeObject(forKey: key)
+            legacyBody?.removeObject(forKey: key)
+        }
+        XCTAssertEqual(liveBody, legacyBody, "\(what): reply body", file: file, line: line)
     }
 
     private func mediaType(_ header: String?) -> String? {
@@ -173,7 +180,10 @@ final class TransportParityTests: XCTestCase {
             try assertSame(
                 try wire("POST", "/tap", json: ["handle": handle.live, "taps": 2, "duration": 0.5]),
                 try reference("POST", "/tap", json: ["handle": handle.legacy, "taps": 2, "duration": 0.5]),
-                "/tap (\(result))"
+                "/tap (\(result))",
+                // `/tap`'s interruption-drain fold (BE-0407 Unit 6) is a deliberate difference from
+                // the legacy `Router`, which never gains it — pinned separately in `TapDrainFoldTests`.
+                ignoringKeys: ["labels", "unmatched"]
             )
             try assertSame(
                 try wire("POST", "/isHittable", json: ["handle": handle.live]),
@@ -207,7 +217,8 @@ final class TransportParityTests: XCTestCase {
         try assertSame(
             try wire("POST", "/tap", json: ["point": [12.5, 34]]),
             try reference("POST", "/tap", json: ["point": [12.5, 34]]),
-            "/tap (coordinate)"
+            "/tap (coordinate)",
+            ignoringKeys: ["labels", "unmatched"]
         )
         XCTAssertEqual(provider.tapPointCalls.count, 1, "the coordinate path must reach the provider")
         try assertSame(

@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0407") |
-| 実装 PR | [#1897](https://github.com/bajutsu-e2e/bajutsu/pull/1897)（グループ 1、作業単位 1、3〜5） |
+| 実装 PR | [#1897](https://github.com/bajutsu-e2e/bajutsu/pull/1897)（グループ 1、作業単位 1、3〜5）、[#1912](https://github.com/bajutsu-e2e/bajutsu/pull/1912)（グループ 1 の作業単位 6、グループ 2 の作業単位 7、9、10、11、12、13、そして 14 の半分） |
 | トピック | Platform support |
 | 関連 | [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query-ja.md)、[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)、[BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance-ja.md)、[BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md)、[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)、[BE-0341](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture-ja.md)、[BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree-ja.md)、[BE-0408](../BE-0408-step-latency-device-executor-protocol/BE-0408-step-latency-device-executor-protocol-ja.md)、[BE-0409](../BE-0409-step-latency-ios-device-executor/BE-0409-step-latency-ios-device-executor-ja.md)、[BE-0410](../BE-0410-step-latency-android-device-executor/BE-0410-step-latency-android-device-executor-ja.md) |
 <!-- /BE-METADATA -->
@@ -288,18 +288,69 @@ driver conformance suite
   外へ移します（非同期化）。見送りました：エラーの伝播とキャンセルの扱い、そしてシナリオの
   レポートを生成する前に保留中の書き込みを待ち合わせる仕組みに、独立した設計検討が要ります。
   詳細は本項目のログを参照してください。
-- [ ] グループ 1、作業単位 6——iOS の `drain_interruptions` を `/tap` または `/elements` の
-  レスポンスへ畳み込みます。見送りました：`BajutsuKit` 側の XCUITest ワイヤーフォーマット変更
-  が必要で、検証には Simulator での実行が要ります。上記のグループ 1 の各作業単位とは切り離し、
-  焦点を絞った別の作業として進めます。
-- [ ] グループ 2、作業単位 7〜15——iOS ドライバ内部。
+- [x] グループ 1、作業単位 6——iOS の `drain_interruptions` を `/tap` 自身の応答へ畳み込みます。
+  詳細設計が挙げていた「`/tap` または `/elements`」のうち、頻度の高い前者だけに絞りました。
+  ドライバは tap の応答がすでに運んできた内容を蓄積します。その間に別の呼び出し（query や
+  stale リトライの再解決など）が挟まった場合は、明示的な `/interruptionPolicy/drain` と
+  合流させます。速い経路が取れないときでも、tap の応答が捉えた内容は黙って失われません。
+- [x] グループ 2、作業単位 7——タップ経路の属性読みを `el.snapshot()` 1 回にまとめます。
+  `app.frame` は常駐リースの生存期間中キャッシュします（一時的な `.zero` の読み取りを
+  キャッシュしないよう保護しています）。
+- [ ] グループ 2、作業単位 8——BE-0396 の座標タップを Safari 以外にも一般化する。着手した
+  うえでレビューを受けて差し戻しました。`el.isHittable` は XCUITest 自身が計算するヒット
+  ポイントを確認します。このヒットポイントはカスタムの `accessibilityActivationPoint` を
+  尊重し、部分的な遮蔽下では frame の幾何学的中心とは異なる点になりえます。座標タップは
+  一方で、常にその幾何学的中心に着地します。実際のヒットポイントが空いている要素でも、
+  サイレントな誤タップを起こしかねません。2 つの点を整合させる設計ができるまでは着手を
+  見送ります。
+- [x] グループ 2、作業単位 9——`safariViewService.state` の XPC プローブを条件付きに
+  します。アプリ自身のスナップショットにブラウザのリモートビュー境界ノードが現れている
+  ときだけ行います。
+- [x] グループ 2、作業単位 10——`/zorder` を遅延評価にします。詳細設計の記述からの逸脱：
+  `nativeZ` は診断専用の値で、セレクタの曖昧性解決には一切使われていません
+  （`resolve_unique` の `_collapse_identical_duplicates` はこのキーを意図的に除外して
+  います）。そのため「セレクタが曖昧なときだけ」という条件は、現在のコードに対しては
+  文字どおりには発火しません。代わりに「木を即座に破棄する内部専用の解決クエリでは
+  省略し、証拠取得や `serve` が実際に消費する公開の `query()` 経路では維持する」という
+  形で実装しました。古い記述が本来意図していたことは、これだと判断しています。
+- [x] グループ 2、作業単位 11——チャネルの両端で HTTP keep-alive を有効にします。1 つの
+  永続接続をドライバのリース全体で使い回します。能動的な生存確認（ゼロタイムアウトの `select` と、消費しない peek）がすでに閉じられていると判定したとき、または実際の
+  失敗が起きたときだけ、破棄して再接続します。`HTTPServer.swift` は、相手がアイドルに
+  なるか不正な入力を送ってくるまで、1 接続あたりループし続けます。
+- [x] グループ 2、作業単位 12——stale ハンドルへの初回リトライでは即座に再問い合わせします。
+  2 回目のリトライは 1.0 秒のバックオフを維持します。
+- [x] グループ 2、作業単位 13——SpringBoard のアラートボタンを列挙する前に
+  `alerts.firstMatch.exists` を確認します。
+- [ ] グループ 2、作業単位 14——半分だけ出荷しました。アプリバンドルの digest が
+  変わっていなければ再インストールを省くほうは着地しました。`reinstall: overwrite`
+  に限定しています。`clean` は、アンインストールしてから再インストールするという
+  意図的なデータ消去なので、digest チェックがこれを省いてはいけません。
+  `BAJUTSU_XCUITEST_MAX_WARM_REUSES` を 3 より上げるほうは見送りました。この
+  デフォルト値は、常駐ランナーがクラッシュし始める境目として BE-0291 が実測で決めた
+  ものです。今回はそれより多く再利用に耐える端末を測定しておらず、動かす根拠が
+  ありません。
+- [ ] グループ 2、作業単位 15——文字入力を `simctl pbcopy` とペーストのキー入力に
+  置き換える。着手したうえで、`text_editing.yaml` の実機実行後に差し戻しました。
+  `app.typeKey("v", modifierFlags: .command)` は、ペーストのたびに iOS のクロスアプリ
+  ペースト許可アラート（「"BajutsuRunnerUITests-Runner" would like to paste from
+  "Showcase SwiftUI" — Do you want to allow this」の文言）を誘発します。このアラートは
+  ランナーのメインスレッドを無期限にブロックし——割り込みモニターが応答するボタンは
+  登録されていません——`POST /type` をタイムアウトさせてランナーをクラッシュさせます。
+  このアラートを抑制するか自動応答する方法、あるいは別の iOS バージョンでは発火しない
+  ことの確認のいずれかが着地の前提です。
 - [ ] グループ 3、作業単位 16——`POSTDATE_BUDGET_MS` の機構を常駐サーバーのログで
   確認し、対策を実装する。
 - [ ] グループ 3、作業単位 17〜24——残る Android ドライバ内部の削減（`/act` の
   swipe 版を含む、作業単位 24）。
 - [ ] 各グループの出荷後に、`controls.yaml` に対して
-  [`trace_run.py`](misc/step-performance/trace_run.py) を再実行し、
-  結果のステップごとの壁時計をここに記録する。
+  [`trace_run.py`](misc/step-performance/trace_run.py) を再実行し、結果のステップごとの
+  壁時計をここに記録する。iOS 側は、グループ 1 の作業単位 6 と、出荷したグループ 2 の
+  分について実施済み（2026-09-06、iPhone 17 Pro Simulator、`controls.yaml`）：
+  `POST /tap` の平均は基準値の 690 ミリ秒から 446 ミリ秒へ、タップ 3 回の計測で下がり、
+  `drain_interruptions` の呼び出し 9 回のうち 6 回だけがワイヤに到達しました（残りは
+  tap 自身の畳み込みから回答）。基準値に対する実測の前進ではありますが、作業単位 8 と
+  15 を見送った現状では、この項目自身が掲げる tap 1 回あたり 0.3〜0.6 秒という目標には
+  届いていません。Android（グループ 3）は未計測のままです。
 - [x] この項目と端末側プロトコル、iOS 実行機、Android 実行機の各項目との間で `関連` の
   相互リンクを補いました（両言語とも）。採番前は新規項目どうしを `BE-XXXX` で相互参照
   できないため、`roadmap-id` ワークフローが `main` 上で 4 項目の ID を採番したあとに
@@ -317,6 +368,27 @@ driver conformance suite
   ステップ、`handleSystemAlert` ステップ、`interrupts` を宣言したシナリオのどのステップでも、非同期の
   割り込み画面が現れている可能性があります。この場合は常に新たに撮影します。作業単位 2（証跡書き込みの
   非同期化）と 6（iOS の `drain_interruptions` の畳み込み）は、後続の PR に残しています。
+- [#1912](https://github.com/bajutsu-e2e/bajutsu/pull/1912) — グループ 1 の作業単位 6 と、グループ 2 の作業単位 7、9、10、11、12、13です。作業単位 14 は
+  半分（digest スキップのほう）だけです。割り込みの drain を `/tap` 自身の応答へ畳み込み、
+  ドライバが tap の畳み込みをすでに運んできた内容として蓄積するようにしました。その間に
+  別の呼び出しが挟まったときは、明示的な drain と合流させます。タップ経路の属性読みを
+  `el.snapshot()` 1 回にまとめ、`app.frame` をリースの生存期間中キャッシュしました。
+  `safariViewService.state` の XPC プローブと `/zorder` の往復を条件付きにしました
+  （後者は発火条件を作り直しています。詳細は作業単位 10 に関する進捗の注記を参照）。
+  1 つの永続 HTTP 接続をリースごとに両端で使い回すようにし、失敗の例外種別から推測する
+  のではなく、再利用前の能動的な生存確認で
+  裏付けました。stale ハンドルへの初回リトライ前の固定 sleep と、SpringBoard アラート
+  プローブの列挙優先の経路を取り除きました。アプリバンドルの digest が変わっていなければ、
+  warm resume 時の再インストールを省くようにしました（`reinstall: overwrite` に限定）。
+  iPhone 17 Pro Simulator 上で `smoke`、`controls`、`alert`、`text_editing`、
+  `permission_system_alert` を通しで実行して検証済みです。`controls.yaml` に対する
+  `trace_run.py` の実行では、`POST /tap` の平均が基準値の 690 ミリ秒から 446 ミリ秒へ下がり、
+  `drain_interruptions` の呼び出し 9 回のうち 6 回が tap 自身の畳み込みから回答し、ワイヤへは
+  到達しませんでした。作業単位 8（座標タップの一般化）と 15（ペースト経由の文字入力）は
+  着手したうえで、レビューと実機検証の両方で設計として安全でないと判明し差し戻しました。
+  詳細はどちらも進捗の注記を参照してください。作業単位 14 の `MAX_WARM_REUSES` のほう、
+  作業単位 16、作業単位 17〜24、そしてすでに見送っているグループ 1 の 2 つの作業単位は、
+  後続の PR に残しています。
 
 ## 参考
 

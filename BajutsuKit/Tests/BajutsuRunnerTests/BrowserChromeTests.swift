@@ -138,4 +138,34 @@ final class BrowserChromeTests: XCTestCase {
 
         XCTAssertTrue(dismissControls(normalized(tree)).isEmpty)
     }
+
+    // MARK: - containsBrowserViewBoundary (BE-0407 Unit 9)
+
+    func testFindsTheBoundaryNodeOnBothTreeShapes() {
+        for tree in [iOS18Tree(), iOS26Tree()] {
+            XCTAssertTrue(containsBrowserViewBoundary(in: tree))
+        }
+    }
+
+    func testReportsAbsentWhenTheAppNeverOpenedABrowser() {
+        let tree = FakeNode(children: [
+            FakeNode(id: "SomeScreen", children: [button(id: "ok", label: "OK")]),
+        ])
+
+        XCTAssertFalse(containsBrowserViewBoundary(in: tree))
+    }
+
+    func testMatchesTheBoundaryByPrefixEvenWithQueryStateAppended() {
+        // The identifier encodes live state (`?IsPageLoaded=…&WebViewProcessID=…`), so an exact
+        // match would never fire — only the prefix is stable across a page load.
+        let tree = FakeNode(children: [
+            FakeNode(id: "BrowserView?IsPageLoaded=false&WebViewProcessID=1234"),
+        ])
+
+        XCTAssertTrue(containsBrowserViewBoundary(in: tree))
+    }
+
+    func testAnEmptyTreeReportsNoBoundary() {
+        XCTAssertFalse(containsBrowserViewBoundary(in: FakeNode()))
+    }
 }

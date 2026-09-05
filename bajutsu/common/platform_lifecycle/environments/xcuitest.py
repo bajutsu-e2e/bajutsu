@@ -34,6 +34,7 @@ from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.zorder import ZOrderResponder, ZOrderSource
 from bajutsu.common.platform_lifecycle.environments._bundled_runner import (
+    _products_digest,
     bundled_products_dir,
     bundled_runner_build_info,
     materialize,
@@ -619,6 +620,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # and compared before a warm reuse — a scenario running under a different locale must not be
         # served by a runner whose SpringBoard is still rendering the previous one.
         self._pinned_locale: str | None = None
+        # The digest of the app bundle last installed on this device (BE-0407 Unit 14), or None
+        # when nothing tracked is known to be there — a fresh environment, right after an erase, or
+        # right after an explicit uninstall. Compared before a `reinstall: overwrite` install to skip
+        # a no-op reinstall of an unchanged binary; `reinstall: clean` never reads it; it always
+        # uninstalls first, which already requires a fresh install regardless of digest.
+        self._installed_app_digest: str | None = None
         # How many times the current runner has been reused warm (BE-0287): reset on a cold spawn,
         # incremented on each warm resume, and capped by `_max_warm_reuses()` so the runner is
         # respawned cold before it accumulates enough app.launch() cycles to crash mid-scenario.
@@ -1126,6 +1133,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self._udid = replacement
         self._replaced_from = old
         self._pinned_locale = None  # a fresh device: nothing has pinned its SpringBoard yet
+        self._installed_app_digest = None  # a fresh device: nothing is installed on it yet
         # Cleared, not set: `create_device` falls back to an unpinned create when the pinned runtime
         # is gone, so what it got is not necessarily what was asked for. `_finish_repair`'s prep
         # re-reads both from the replacement itself.
@@ -1327,6 +1335,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 if pre.erase:
                     e.shutdown()
                     e.erase()
+                    # The device just lost every app it had; nothing tracked survives to compare
+                    # against (BE-0407 Unit 14).
+                    self._installed_app_digest = None
                 e.boot()
                 # Both the cold bring-up and the ladder's re-preparation pass through here, so this
                 # one wait covers every caller that boots and then installs onto the device.
@@ -1338,13 +1349,25 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     self._device_type_id, self._device_runtime_id = resolved or (None, None)
                 self._pin_system_locale(e, pre.resolved_locale(eff.locale))
             if ios.app_path:
-                if not Path(ios.app_path).exists():
+                app_path = Path(ios.app_path)
+                if not app_path.exists():
                     raise simctl.DeviceError(
                         f"appPath not found: {ios.app_path} (build the app first)"
                     )
                 if pre.reinstall == "clean" and not pre.erase:
                     e.uninstall(ios.bundle_id)
-                e.install(ios.app_path)
+                    # The uninstall above always requires a fresh install right after it, whatever
+                    # was tracked before — nothing survives to compare against.
+                    self._installed_app_digest = None
+                # `reinstall: overwrite` keeps the app's data container (BE-0407 Unit 14): if the
+                # bundle put there is byte-identical to what this environment already installed,
+                # `install` would rewrite the same binary over itself for nothing. `reinstall: clean`
+                # never reads this — it always installs fresh right after the uninstall above, so
+                # computing a digest for it would only pay a tree hash that buys nothing.
+                digest = _products_digest(app_path) if pre.reinstall == "overwrite" else None
+                if digest is None or digest != self._installed_app_digest:
+                    e.install(ios.app_path)
+                    self._installed_app_digest = digest
             # Set permission state after install (a fresh install/erase resets TCC grants) but
             # before the app launches, so a prompt never blocks it (BE-0276).
             if permissions:
