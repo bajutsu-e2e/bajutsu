@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0339") |
-| 実装 PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455)（作業単位 1〜3、方向付きジェスチャのアンカー、`POST /act`、同一性で指すアクチュエーション）、[#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702)（作業単位 4 と作業単位 6 の高速ゲート分の適合性カバレッジ。作業単位 5 はレビュー後に差し戻し、作業単位 6 の実機側の実現は実機での検証結果を受けて保留）、[#1820](https://github.com/bajutsu-e2e/bajutsu/pull/1820)（作業単位 5。最初の実装が仮定していた、デバイス側での publish の確認とともに） |
+| 実装 PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455)（作業単位 1〜3、方向付きジェスチャのアンカー、`POST /act`、同一性で指すアクチュエーション）、[#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702)（作業単位 4 と作業単位 6 の高速ゲート分の適合性カバレッジ。作業単位 5 はレビュー後に差し戻し、作業単位 6 の実機側の実現は実機での検証結果を受けて保留）、[#1820](https://github.com/bajutsu-e2e/bajutsu/pull/1820)（作業単位 5。最初の実装が仮定していた、デバイス側での publish の確認とともに）、[#1914](https://github.com/bajutsu-e2e/bajutsu/pull/1914)（作業単位 6。タップの同一性のケースを両レーンの実機で実現） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0332](../BE-0332-read-lag-barrier/BE-0332-read-lag-barrier-ja.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve-ja.md), [BE-0312](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle-ja.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md) |
 <!-- /BE-METADATA -->
@@ -433,7 +433,8 @@ instrumentation セッションです。階層をダンプするそのセッシ�
   作業単位 6 はこの変更の影響を受けません。実機の適合性ケースの実現と、flake の残存率を測る Android
   レーンの繰り返しディスパッチが、依然としてそこに残っています。
 
-- 2026-09-06 — 作業単位 6 です。2 度の差し戻しに欠けていた、実機のある環境で進めました。タップ
+- 2026-09-06 — 作業単位 6（[#1914](https://github.com/bajutsu-e2e/bajutsu/pull/1914)）です。2 度の
+  差し戻しに欠けていた、実機のある環境で進めました。タップ
   ミラーの対は 2 つの適合性画面に戻り、ケースは実機の両レーンで走ります。差し戻しの原因になった劣化が、
   そもそもミラーのせいではなかったからです。まずローカルの `bajutsu-api34-arm64` エミュレータで
   再現しました。2026-08-22 の項目が記録したのと同じ、3 件の再シードのタイムアウトです。失敗の
