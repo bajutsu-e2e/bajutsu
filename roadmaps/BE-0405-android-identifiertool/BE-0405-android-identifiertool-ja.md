@@ -46,8 +46,8 @@ IdentifierToolは、新しいトップレベルディレクトリ`IdentifierTool
 片方のツールキットしか使わない消費側も、依存関係は1つで済みます。2つのファイルは1つのモジュールに収めます。こうすれば、ツールキットごとにコードレビュー上は分けて読めます。消費側にアーティファクトを2つ管理させることもありません。IdentifierToolの関数は、ただの拡張関数です。`@Composable`関数ではありません。`build.gradle.kts`が`androidx.compose.ui`を必要とするのはそのためで、`compileOnly`として追加します。Compose compilerプラグインは要りません。
 
 `BajutsuAccessibilityCompose.kt`は、独自のサブパッケージ`dev.bajutsu.identifier.compose`に置きます。Viewsファイルの`dev.bajutsu.identifier`より1段下です。こうすることで、Viewsだけを使う消費側は、Composeの型を import することがありません。この分離は、コンパイル時の問題を解決します。
+
 Viewsだけを使う消費側は、圧縮時にもう1つ別の問題を抱えます。`compileOnly`は推移的でないため、その消費側は自分のクラスパスにComposeを一切持ちません。それでも、R8の圧縮を有効にしたビルドは`androidx.compose.ui`の「missing classes」で失敗してしまいます。そのためIdentifierToolは、`consumerProguardFiles("consumer-rules.pro")`を出荷します。このファイルは、Composeのサブパッケージが参照するクラスを列挙しています。このルールを取り込んでも、Viewsだけを使う消費側のビルドサイズは変わりません。
-Viewsだけを使う消費側は、圧縮時にもう1つ別の問題を抱えます。`compileOnly`は推移的でないため、その消費側は自分のクラスパスにComposeを一切持ちません。それでも、R8の圧縮を有効にしたビルドは`androidx.compose.ui`の「missing classes」で失敗してしまいます。そのためIdentifierToolは、`consumerProguardFiles("consumer-rules.pro")`を出荷します。このファイルは、Composeのサブパッケージが参照するクラスを列挙しています。Viewsだけを使う消費側のビルドは、この依存関係を追加しても変わりません。
 
 ### BajutsuAndroidへの依存を持たない
 
