@@ -38,6 +38,18 @@ const val CONFORMANCE_FIELD_ID = "conformance.field"
 // only hides the glyphs and would leave the node indistinguishable from a plain field.
 const val CONFORMANCE_SECURE_FIELD_ID = "conformance.secureField"
 
+// The two always-present tap targets the "a tap lands on the element the selector named" contract
+// case acts on (BE-0339 Unit 6) — mirrors the iOS ConformanceView.tapMirror*ID and the web
+// _TAP_MIRROR_HTML. Each target is a *pair*: a static tap target, plus a separate element mirroring
+// its tap count. The split is the same one LogScreen.kt already uses for log.longpress /
+// log.longpress.value, and for the same reason the adb driver makes load-bearing — the target's
+// identity is what `_device_act` resolves and re-resolves against, so a count that changes as a
+// *result* of the tap must not sit on the tapped element itself.
+const val CONFORMANCE_TAP_MIRROR_A_ID = "conformance.tapMirror.a"
+const val CONFORMANCE_TAP_MIRROR_A_VALUE_ID = "conformance.tapMirror.a.value"
+const val CONFORMANCE_TAP_MIRROR_B_ID = "conformance.tapMirror.b"
+const val CONFORMANCE_TAP_MIRROR_B_VALUE_ID = "conformance.tapMirror.b.value"
+
 // The sentinel the scroll conformance test seeds (BE-0326): when it is the whole seeded set, render
 // the fixed scrollable list below instead of the per-identifier buttons, so the `scroll` action's
 // re-query loop is driven against the adb driver's real query / scroll code. Mirrors the iOS
@@ -68,7 +80,14 @@ fun ConformanceScreen(identifiers: List<String>) {
             .fillMaxSize()
             .enableTestTagsAsResourceId(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+        // Top-aligned, not centered: the seeded elements come last, and the software keyboard a
+        // text-editing test raises stays up into the next screen (MainActivity declares no
+        // windowSoftInputMode, and no Compose-side teardown dismisses it once the field has been
+        // typed into). Everything on this screen must therefore fit above the raised keyboard — a
+        // covered node is dropped from the dump, so the harness's readiness probe would never see
+        // the id it had just seeded. The contract seeds at most two elements, which fits; more or
+        // taller ones would bring that failure back (BE-0339 Unit 6).
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         // A positive readiness check: the harness waits on this marker to confirm the app is actually
         // in conformance mode, rather than inferring it from the absence of ids — which a transient,
@@ -104,6 +123,11 @@ fun ConformanceScreen(identifiers: List<String>) {
                 .aid(CONFORMANCE_SECURE_FIELD_ID)
                 .semantics { password() },
         )
+        // The two tap-mirror pairs (BE-0339 Unit 6).
+        var tapsA by remember { mutableStateOf(0) }
+        var tapsB by remember { mutableStateOf(0) }
+        TapMirror(CONFORMANCE_TAP_MIRROR_A_ID, CONFORMANCE_TAP_MIRROR_A_VALUE_ID, tapsA) { tapsA++ }
+        TapMirror(CONFORMANCE_TAP_MIRROR_B_ID, CONFORMANCE_TAP_MIRROR_B_VALUE_ID, tapsB) { tapsB++ }
         // Duplicates are the point (the ambiguous-selector case), so the children are keyed by
         // position (Column's default), never by identifier — keying by id would collapse repeats.
         identifiers.forEach { identifier ->
@@ -125,6 +149,27 @@ fun ConformanceScreen(identifiers: List<String>) {
             }
         }
     }
+}
+
+// One tap-mirror pair (BE-0339 Unit 6): a tap target and, below it, a separate element carrying that
+// target's tap count as its mirrored value. Half the height of a seeded box below, which has to host a
+// two-finger pinch/rotate; these are only ever tapped.
+@Composable
+private fun TapMirror(targetId: String, valueId: String, taps: Int, onTap: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(width = 280.dp, height = 48.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .aid(targetId)
+            .clickable(onClick = onTap),
+        contentAlignment = Alignment.Center,
+    ) {
+        // The label is the identifier, never the count: the count is what the tap changes, and
+        // rendering it here would churn this element's own semantics under the very resolve-then-
+        // inject the contract is checking.
+        Text(targetId)
+    }
+    Text(taps.toString(), Modifier.aid(valueId).stateValue(taps.toString()))
 }
 
 // BE-0326: the scroll conformance screen, the Compose twin of the iOS ConformanceView.scrollBody. A

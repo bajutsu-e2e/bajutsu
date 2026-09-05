@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0339](BE-0339-adb-device-side-actuation.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0339") |
-| Implementing PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455) (Units 1–3: the directional-gesture anchor, `POST /act`, and identity-addressed actuation), [#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702) (Unit 4 and Unit 6's fast-gate conformance coverage; a Unit 5 attempt reverted after review, Unit 6's on-device realization deferred after real-device evidence it wasn't safe to ship), [#1820](https://github.com/bajutsu-e2e/bajutsu/pull/1820) (Unit 5, on the device-side publish confirmation its first attempt assumed) |
+| Implementing PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455) (Units 1–3: the directional-gesture anchor, `POST /act`, and identity-addressed actuation), [#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702) (Unit 4 and Unit 6's fast-gate conformance coverage; a Unit 5 attempt reverted after review, Unit 6's on-device realization deferred after real-device evidence it wasn't safe to ship), [#1820](https://github.com/bajutsu-e2e/bajutsu/pull/1820) (Unit 5, on the device-side publish confirmation its first attempt assumed), [#1914](https://github.com/bajutsu-e2e/bajutsu/pull/1914) (Unit 6, the on-device realization of the tap-identity case on both lanes) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0332](../BE-0332-read-lag-barrier/BE-0332-read-lag-barrier.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve.md), [BE-0312](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci.md) |
 <!-- /BE-METADATA -->
@@ -242,7 +242,7 @@ languages. The identity keeps the decision on the host and sends only its result
       a frame, not a center.
 - [x] Unit 4 — the coordinate path kept as a declared, logged degraded mode.
 - [x] Unit 5 — the read-lag barrier narrowed to the reads that still need it.
-- [ ] Unit 6 — deterministic and conformance coverage, and a repeated Android-lane run.
+- [x] Unit 6 — deterministic and conformance coverage, and a repeated Android-lane run.
 
 Log:
 
@@ -432,6 +432,71 @@ Log:
 
   Unit 6 is untouched by this: its on-device conformance realization, and the repeated Android-lane
   dispatch that samples the flake's residual rate, are still what it owes.
+
+- 2026-09-06 — Unit 6 ([#1914](https://github.com/bajutsu-e2e/bajutsu/pull/1914)), on the device the
+  two reverted attempts never had. The tap-mirror pair is
+  back on both conformance screens and the case runs on both on-device lanes, because the
+  degradation that reverted it was never about the mirrors. Reproduced on a local
+  `bajutsu-api34-arm64` emulator — the same three re-seeding timeouts the 2026-08-22 entry
+  records — where the failure message names its own cause: the readiness dump carries the marker,
+  the field, all four mirror elements, and fifty `key_pos_*` keyboard nodes — and is missing only
+  the id the harness had just seeded. `MainActivity` declares no `windowSoftInputMode`, so the software
+  keyboard a text-editing test raises *overlays* the screen rather than resizing it, and nothing on
+  Android dismisses it afterwards; `ConformanceScreen`'s column was centered, so the seeded
+  elements — which come last — sat underneath it. Four extra elements were only what pushed them
+  there, which is why the co-located shape degraded as well, and why the `verticalScroll` attempt
+  did not help: scrolling does not bring a covered element into the dump.
+
+  The fix is the column laid out from the top rather than centered, so the whole screen stays above
+  the keyboard whatever it is holding. A screen-boundary teardown — the Compose twin of
+  `ConformanceView`'s `.onChange(of: identifiers)` (BE-0280) — was written first and discarded on
+  measurement rather than on taste: on the device, clearing focus and hiding the keyboard controller
+  dismisses the IME after a bare tap on the field but not once the field has been typed into, so it
+  would have left this contract depending on Compose's focus plumbing where the layout depends on
+  nothing. It also cost two runs to learn that a teardown keyed on `identifiers` never fires between
+  two tests that both seed the empty screen, which is exactly the boundary the text-editing tests
+  hand over across. `ConformanceView` is top-aligned for the same reason, even though its keyboard
+  never displaced anything: it carries precisely that teardown, so it carries the same gap, and the
+  mirrors make its screen taller too.
+
+  Both skips are gone. `conformance (adb)` ran green three times on a local Apple-silicon emulator
+  (22 passed, 4 skipped) — twice before this review round, once more after its layout fix — with
+  `test_a_tap_lands_on_the_element_the_selector_named` passing rather than skipped, and the suite
+  fell from roughly eleven minutes to four now that no test spends its thirty-second readiness
+  budget. `conformance (xcuitest)` ran green on a dedicated iOS 26.5 Simulator (25 passed, 2
+  skipped) with the same case passing — the real-Simulator result the reverted attempt never
+  obtained, since every push there superseded the last before one landed.
+
+  A local Apple-silicon emulator is not the environment this defect lives in, and a review pass
+  caught exactly that gap: the case being un-skipped had itself seen a publish lag over five seconds
+  on a real `conformance (adb)` run before (the 2026-08-22 entry above), and its `wait_until` budget
+  is `timeout=5.0` on both waits — a slow x86_64 publish could land under that budget as a wrong-
+  element failure rather than a timing artifact. This PR's own `conformance (adb)` check, on CI's
+  x86_64 emulator, settled the question directly rather than by argument: it passed
+  ([run 33982379516](https://github.com/bajutsu-e2e/bajutsu/actions/runs/33982379516)), 22 passed
+  and 4 skipped, `test_a_tap_lands_on_the_element_the_selector_named` among the 22, with no read-lag
+  or publish warning anywhere near it in the job's log.
+
+  Unit 6 stayed open on its second half while the repeated Android-lane dispatch that samples the
+  flake's residual rate was in flight. That
+  [dispatch](https://github.com/bajutsu-e2e/bajutsu/actions/runs/33980999223) has now completed: the
+  `smoke (adb)` job ran the `gestures` scenario fifteen times in a single dispatch, on the CI x86_64
+  emulator — the environment the *Motivation* section's failing run and the roughly-one-in-three
+  failure rate both belong to, which the Apple-silicon emulator the earlier local runs used cannot
+  stand in for. All fifteen runs passed:
+
+  ```
+  BE0339-SAMPLE 1 PASS   BE0339-SAMPLE 6 PASS    BE0339-SAMPLE 11 PASS
+  BE0339-SAMPLE 2 PASS   BE0339-SAMPLE 7 PASS    BE0339-SAMPLE 12 PASS
+  BE0339-SAMPLE 3 PASS   BE0339-SAMPLE 8 PASS    BE0339-SAMPLE 13 PASS
+  BE0339-SAMPLE 4 PASS   BE0339-SAMPLE 9 PASS    BE0339-SAMPLE 14 PASS
+  BE0339-SAMPLE 5 PASS   BE0339-SAMPLE 10 PASS   BE0339-SAMPLE 15 PASS
+  ```
+
+  Fifteen consecutive passes does not prove the failure rate is now exactly zero, but it is strong
+  evidence against the class of defect this item set out to close: against a still-roughly-one-in-
+  three rate, fifteen consecutive passes has under a 1-in-400 chance of happening by luck. Unit 6 is
+  ticked, and the item moves to Implemented.
 
 ## References
 

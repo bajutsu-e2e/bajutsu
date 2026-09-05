@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0339](BE-0339-adb-device-side-actuation-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0339") |
-| 実装 PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455)（作業単位 1〜3、方向付きジェスチャのアンカー、`POST /act`、同一性で指すアクチュエーション）、[#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702)（作業単位 4 と作業単位 6 の高速ゲート分の適合性カバレッジ。作業単位 5 はレビュー後に差し戻し、作業単位 6 の実機側の実現は実機での検証結果を受けて保留）、[#1820](https://github.com/bajutsu-e2e/bajutsu/pull/1820)（作業単位 5。最初の実装が仮定していた、デバイス側での publish の確認とともに） |
+| 実装 PR | [#1455](https://github.com/bajutsu-e2e/bajutsu/pull/1455)（作業単位 1〜3、方向付きジェスチャのアンカー、`POST /act`、同一性で指すアクチュエーション）、[#1702](https://github.com/bajutsu-e2e/bajutsu/pull/1702)（作業単位 4 と作業単位 6 の高速ゲート分の適合性カバレッジ。作業単位 5 はレビュー後に差し戻し、作業単位 6 の実機側の実現は実機での検証結果を受けて保留）、[#1820](https://github.com/bajutsu-e2e/bajutsu/pull/1820)（作業単位 5。最初の実装が仮定していた、デバイス側での publish の確認とともに）、[#1914](https://github.com/bajutsu-e2e/bajutsu/pull/1914)（作業単位 6。タップの同一性のケースを両レーンの実機で実現） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0332](../BE-0332-read-lag-barrier/BE-0332-read-lag-barrier-ja.md), [BE-0245](../BE-0245-adb-resident-uiautomator-server/BE-0245-adb-resident-uiautomator-server-ja.md), [BE-0289](../BE-0289-xcuitest-stale-handle-reresolve/BE-0289-xcuitest-stale-handle-reresolve-ja.md), [BE-0312](../BE-0312-xcuitest-content-addressed-snapshot-handle/BE-0312-xcuitest-content-addressed-snapshot-handle-ja.md), [BE-0208](../BE-0208-android-emulator-e2e-ci/BE-0208-android-emulator-e2e-ci-ja.md) |
 <!-- /BE-METADATA -->
@@ -241,7 +241,7 @@ instrumentation セッションです。階層をダンプするそのセッシ�
       フレームだからです。
 - [x] 作業単位 4 — 座標の経路を、明示され記録される縮退モードとして残す。
 - [x] 作業単位 5 — 読み取り遅延のバリアを、今も必要とする読み取りだけへ絞る。
-- [ ] 作業単位 6 — 決定的スイートと適合性スイートの被覆、および Android レーンの繰り返し実行。
+- [x] 作業単位 6 — 決定的スイートと適合性スイートの被覆、および Android レーンの繰り返し実行。
 
 ログ:
 
@@ -432,6 +432,72 @@ instrumentation セッションです。階層をダンプするそのセッシ�
 
   作業単位 6 はこの変更の影響を受けません。実機の適合性ケースの実現と、flake の残存率を測る Android
   レーンの繰り返しディスパッチが、依然としてそこに残っています。
+
+- 2026-09-06 — 作業単位 6（[#1914](https://github.com/bajutsu-e2e/bajutsu/pull/1914)）です。2 度の
+  差し戻しに欠けていた、実機のある環境で進めました。タップ
+  ミラーの対は 2 つの適合性画面に戻り、ケースは実機の両レーンで走ります。差し戻しの原因になった劣化が、
+  そもそもミラーのせいではなかったからです。まずローカルの `bajutsu-api34-arm64` エミュレータで
+  再現しました。2026-08-22 の項目が記録したのと同じ、3 件の再シードのタイムアウトです。失敗の
+  メッセージ自身が、原因を名指ししていました。準備完了を待つダンプには、マーカーとフィールドと
+  4 つのミラー要素が載っています。`key_pos_*` のキーボードのノードも 50 個ほど並んでいます。欠けて
+  いたのは、ハーネスが直前にシードした識別子だけでした。`MainActivity` は `windowSoftInputMode` を宣言して
+  いないので、テキスト編集のテストが上げたソフトキーボードは、画面をリサイズせずに**覆います**。
+  そしてそのあと、Android では誰もキーボードを閉じません。`ConformanceScreen` の Column は上下中央に
+  置かれていたため、最後に並ぶシード済みの要素がキーボードの下に入りました。要素が 4 つ増えたことは、
+  シード済みの要素をそこまで押し下げた原因にすぎません。同居させた形でも劣化したのはそのためであり、
+  `verticalScroll` を試しても効かなかったのもそのためです。スクロールは、覆われた要素をダンプに
+  現しません。
+
+  修正は、Column を中央揃えではなく上詰めにすることです。キーボードが何を抱えていても、画面全体が
+  その上に収まります。先に書いたのは、画面の境界でのティアダウンです。BE-0280 が iOS に入れた
+  `ConformanceView` の `.onChange(of: identifiers)` の Compose 版です。ただし、好みではなく計測に
+  よって捨てました。
+  実機で測ると、フォーカスを外してキーボードコントローラを隠す処理は、フィールドをタップしただけの
+  ときは IME を閉じますが、フィールドに文字を入力したあとでは閉じません。それでは、この契約が Compose
+  のフォーカス処理に依存し続けます。レイアウトなら何にも依存しません。`identifiers` をキーにした
+  ティアダウンが、空の画面をシードする 2 つのテストのあいだでは一度も発火しないと知るのにも、実行 2 回を
+  費やしました。そこはまさに、テキスト編集のテストが次へ引き継ぐ境界です。`ConformanceView` も同じ
+  理由で上詰めにしました。iOS のキーボードは画面を押しのけませんが、まさにそのティアダウンを備えて
+  いる以上、同じ穴も抱えています。ミラーの分だけ画面が高くなるのも同じです。
+
+  2 つのスキップ指定はどちらも消えました。`conformance (adb)` はローカルの Apple シリコンの
+  エミュレータで 3 回グリーンになりました（22 件成功、4 件スキップ）。このレビューの前に 2 回、
+  レイアウトの修正後にもう 1 回です。`test_a_tap_lands_on_the_element_the_selector_named` は、
+  スキップではなく成功しています。どのテストも 30 秒の準備完了の予算を使い切らなくなり、所要時間は
+  11 分程度から 4 分に下がりました。`conformance (xcuitest)` も、専用の iOS 26.5 シミュレータで
+  グリーンになりました（25 件成功、2 件スキップ）。同じケースがそこでも成功しています。差し戻された
+  実装が一度も得られなかった、実機のシミュレータでの結果です。
+
+  ローカルの Apple シリコンのエミュレータは、この欠陥が実際に住む環境ではありません。レビューの
+  指摘が、まさにその穴を突きました。スキップを外したこのケース自身が、以前実機の `conformance
+  (adb)` の実行で 5 秒を超える publish の遅延を見せたことがあり（前掲の 2026-08-22 のログ）、
+  `wait_until` の予算はどちらの待ちも `timeout=5.0` です。x86_64 での publish が遅ければ、その予算の
+  内側に収まりながらも、要素違いの失敗として現れかねません。この PR 自身の `conformance (adb)`
+  チェックは、CI の x86_64 エミュレータの上で、論より証拠でこの疑問に答えました。
+  実際に通っています（[実行 33982379516](https://github.com/bajutsu-e2e/bajutsu/actions/runs/33982379516)）。
+  22 件成功、4 件スキップで、`test_a_tap_lands_on_the_element_the_selector_named` もその 22 件に
+  含まれます。ジョブのログには、その近くに read lag も publish の警告も出ていません。
+
+  作業単位 6 は、flake の残存率を測る Android レーンの繰り返しディスパッチが走っているあいだ、後半を
+  未完了のままにしていました。その
+  [ディスパッチ](https://github.com/bajutsu-e2e/bajutsu/actions/runs/33980999223)が完了しました。
+  `smoke (adb)` ジョブが、CI の x86_64 エミュレータ上で `gestures` シナリオを 1 回のディスパッチで
+  15 回実行しています。*動機*が引用した失敗した実行や、おおよそ 3 回に 1 回という失敗率も、この
+  同じ環境に属します。ローカルで使った Apple シリコンのエミュレータでは、この測定の代わりになりません。
+  15 回はすべて成功しました。
+
+  ```
+  BE0339-SAMPLE 1 PASS   BE0339-SAMPLE 6 PASS    BE0339-SAMPLE 11 PASS
+  BE0339-SAMPLE 2 PASS   BE0339-SAMPLE 7 PASS    BE0339-SAMPLE 12 PASS
+  BE0339-SAMPLE 3 PASS   BE0339-SAMPLE 8 PASS    BE0339-SAMPLE 13 PASS
+  BE0339-SAMPLE 4 PASS   BE0339-SAMPLE 9 PASS    BE0339-SAMPLE 14 PASS
+  BE0339-SAMPLE 5 PASS   BE0339-SAMPLE 10 PASS   BE0339-SAMPLE 15 PASS
+  ```
+
+  15 回連続の成功は、失敗率がいま正確にゼロだと証明するものではありません。ただし、本項目が閉じよう
+  としてきた欠陥の系統に対する強い反証にはなります。失敗率がいまも 3 回に 1 回のままだとすれば、
+  15 回連続で成功する確率は 400 分の 1 を下回るからです。作業単位 6 のチェックが付き、状態は実装済みへ
+  移ります。
 
 ## 参考
 
