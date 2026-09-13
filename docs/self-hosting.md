@@ -490,11 +490,6 @@ job authenticate with the **OpenID Connect (OIDC) token its CI platform already 
 exchanges that once for a short-lived **machine session**. The pipeline stores no secret at all, and
 the deployment learns *which repository* acted rather than only that "the token" did.
 
-> **Status.** This release ships the exchange and the roster it checks against. What a machine
-> session may *do* is the item's unit 3, which is not in yet — until it lands, a minted machine
-> session is **refused on every endpoint**. Configure this now if you want the credential path
-> ready; a pipeline cannot use it to publish an artifact or dispatch a run yet.
-
 **On the CI side there is nothing to register** — no GitHub App, no OAuth app, no identity provider.
 A GitHub Actions job declares one permission and asks for a token:
 
@@ -583,18 +578,55 @@ Three hazards worth reading before you list a repository:
   such a repository by `environment` so no token is ever minted from a run an outside contributor
   influenced.
 
-Finally, a machine session is **revocable in principle** where a GitHub-issued token is not:
-every session a repository mints carries the identity `repo:<owner>/<repo>`, which is what a
-revocation would act on, and the granularity is per repository rather than per job — so revoking
-would end that repository's concurrent pipelines too.
+**An allowlist of endpoints governs a machine session, never a role.** A pipeline is not a person,
+and no viewer / editor / admin rank describes one. Four of the endpoints below are admin today.
+Granting a machine that *rank* would carry config rebinding and the secret reads with it. Naming
+endpoints keeps a pipeline's reach to what a pipeline needs:
 
-> **Not yet wired.** Retiring an org revokes its *members'* sessions, not the machine sessions
-> bound to it, and there is no endpoint that revokes a repository's sessions on their own. Both
-> are BE-0414 unit 3. Until then a machine session lives out its `BAJUTSU_OIDC_SESSION_TTL`
-> whatever the operator does. That costs nothing today, since unit 3's endpoint allowlist is absent and
-> every machine session is refused on every endpoint — but the TTL is still the only bound on such
-> a session's life, so keep it short, and treat removing an `allowedRepositories` entry as
-> stopping *new* sessions rather than ending live ones.
+| A machine session may | and is refused |
+|---|---|
+| `GET /api/artifacts/exists` — probe for a build it already published | `POST /api/config`, `POST /api/compose` — rebinding the org's active configuration |
+| `POST /api/artifacts/config`, `.../scenarios`, `.../binary` — publish the three artifact kinds | `GET /api/config/content` — a config body may embed secrets |
+| `POST /api/run` — dispatch a run | `POST /api/apikey`, `POST /api/claudecodetoken` — operator secrets |
+| `GET /api/runs` and `GET /api/jobs/<id>` — watch what it dispatched | `/api/orgs*` — who may sign in and write |
+
+The right-hand column is **not** a list `serve` keeps. The allowlist denies by default. An endpoint
+stays shut to a machine by never appearing on the left, and a route added next year stays shut until
+someone opens it on purpose.
+
+**The org travels with the session.** The exchange settles which tenant a pipeline acts as. Every
+allowlisted call reads that answer rather than deriving its own. A run a machine dispatches lands in
+that org, and the runs and jobs it reads are that org's alone. A job belonging to another org
+answers 404, which a job id that never existed answers too — a "forbidden" would confirm the id.
+
+**An audit entry names the repository, not a user.** The user table holds no row for a pipeline, and
+`actor_id` is a foreign key into that table. The column stays null, and the repository goes into the
+entry's detail payload. A synthetic user filling that column would join the roster `/api/orgs`
+discloses. `serve` audits the probe beside the uploads, so a pipeline that finds its build already
+stored still leaves a trace.
+
+**Ending a machine session.** A GitHub-issued token runs until it expires, whatever you do. A
+machine session is one `serve` minted, and `serve` can revoke it:
+
+```bash
+curl -X POST "$BAJUTSU_URL/api/orgs/acme/machine-sessions/revoke" \
+  -H 'Content-Type: application/json' -d '{"repository": "acme/app"}'
+```
+
+An admin action, like the rest of `/api/orgs/…`. Omitting `repository` ends every machine session in
+the org, the reach you want when the roster itself is what went wrong. Retiring an org ends its
+machine sessions too.
+
+Two bounds shape what a revocation reaches:
+
+- **One org at a time.** A repository listed by more than one org keeps the sessions it minted for
+  the others. One org's admin cannot end another org's pipelines.
+- **Per repository, not per job.** Every session a repository mints carries the identity
+  `repo:<owner>/<repo>`, and a revocation ends that repository's concurrent pipelines together.
+
+Removing an `allowedRepositories` entry stops *new* sessions and leaves live ones running, because
+configuration binds at the exchange. Revoking is the second half of that operator duty. Rename,
+transfer, or delete a listed repository, and you remove the entry **and** revoke what it minted.
 
 ### Operator secrets (the Claude API key)
 
