@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0414](BE-0414-ci-oidc-machine-identity.md) |
 | Author | [@paihu](https://github.com/paihu) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0414") |
 | Implementing PR | [#1986](https://github.com/bajutsu-e2e/bajutsu/pull/1986) (units 1-2) |
 | Topic | Hosting the web UI |
@@ -475,14 +475,14 @@ serve configuration.
 - [x] Unit 2 — `allowedRepositories` on `OrgConfig`, checked against the discrete claims for the org
       the exchange request names, with the optional per-entry `environment` / `ref` /
       `job_workflow_ref` narrowing and an `environment` bound refusing an absent claim.
-- [ ] Unit 3 — The machine session (identity `repo:<owner>/<repo>`, revocable) and its endpoint
+- [x] Unit 3 — The machine session (identity `repo:<owner>/<repo>`, revocable) and its endpoint
       allowlist in `bajutsu/serve/gate.py`, added to `gate.is_open`'s POST arm and enforced
       unconditionally regardless of the database, the verified org carried on the machine session
       rather than read through `org_of` (run reads included), `_record_audit` writing null for a
       machine principal with the repository recorded in the audit entry's detail payload, a
       revocation path for a repository's outstanding sessions, and org retirement widened to revoke
       the machine sessions bound to the retired org.
-- [ ] Unit 4 — Tests for each seam, including the cross-replica `jti` replay test, the DB-less
+- [x] Unit 4 — Tests for each seam, including the cross-replica `jti` replay test, the DB-less
       exchange refusal, and the import-guard check for `joserfc`, and the self-hosting documentation.
 
 Log:

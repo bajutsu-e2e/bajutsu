@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0414](BE-0414-ci-oidc-machine-identity-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0414") |
 | 実装 PR | [#1986](https://github.com/bajutsu-e2e/bajutsu/pull/1986)（単位1〜2） |
 | トピック | Web UI のホスティング |
@@ -506,14 +506,14 @@ nullを許すforeign keyです（`bajutsu/serve/server/models/audit_log.py`）�
 - [x] 単位2 — `OrgConfig`への`allowedRepositories`。交換のリクエストが名指したorgについて、個別の
       クレームで照合します。任意で項目ごとの`environment`/`ref`/`job_workflow_ref`により絞り込みます
       （`environment`はクレームがない場合も拒否）。
-- [ ] 単位3 — 機械セッション（身元は`repo:<owner>/<repo>`で取り消し可能）と、
+- [x] 単位3 — 機械セッション（身元は`repo:<owner>/<repo>`で取り消し可能）と、
       `bajutsu/serve/gate.py`におけるそのエンドポイント許可リスト。`gate.is_open`のPOSTの分岐への
       追加を含み、データベースの有無にかかわらず適用します。検証済みのorgを`org_of`ではなく
       機械セッションに載せて運ぶしくみ（runの読み取りを含む）。機械の主体に対して`_record_audit`が
       nullを書くこと、および監査エントリのdetailペイロードへのリポジトリ名の記録。あるリポジトリの
       発行済みセッションを取り消す経路。廃止するorgに紐づく機械セッションも取り消すよう、orgの廃止を
       広げること。
-- [ ] 単位4 — レプリカをまたぐ`jti`再送テスト・データベースを持たないデプロイでの交換拒否・
+- [x] 単位4 — レプリカをまたぐ`jti`再送テスト・データベースを持たないデプロイでの交換拒否・
       import guardの`joserfc`チェックを含む各接続点のテストと、self-hostingのドキュメント。
 
 ログ：
