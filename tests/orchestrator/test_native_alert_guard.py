@@ -2929,6 +2929,59 @@ def test_the_end_of_step_guard_clears_a_stuck_tree_note_when_a_wider_nested_shap
     assert guard.blocked_note == ""
 
 
+def test_the_end_of_step_guard_does_not_retap_a_nested_shape_that_renders_a_label_late() -> None:
+    # `_widest_first` only decides which rule matches first when *both* already match; it cannot
+    # make a not-yet-rendered label match. `savePassword`'s narrower shape N (`{"Save Password",
+    # "Not Now"}`) and wider shape W (`{"Save Password", "Never for This Website", "Not Now"}`,
+    # N subset of W) both tap "Not Now": round 0 catches only N's own two labels (W's third has not
+    # rendered yet) and taps it -- successfully, unlike the sibling test above. Round 1 renders the
+    # third label, so `matching_alert_rule` now resolves W over the same, still-showing screen. A
+    # one-directional subset test (`candidate <= dismissed`, not the reverse) does not exclude W --
+    # dismissed names only N's narrower shape, and W is not a subset of it -- so W matches afresh and
+    # `dismiss_from_tree_once` taps the sheet `exclude` was supposed to keep this call off of a
+    # second time (BE-0418 review finding). A containment check in *either* direction closes it.
+    class _NestedShapeLandsThenRendersWider(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([_button("Save Password"), _button("Not Now")])
+
+    driver = _NestedShapeLandsThenRendersWider()
+    narrower = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save Password", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    wider = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save Password", "Never for This Website", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:
+            # Round 0's own tap on N never actually mutates `screen` (the fake models no removal),
+            # and the sheet finishes rendering its third label in the meantime.
+            driver.screen = [
+                _button("Save Password"),
+                _button("Not Now"),
+                _button("Never for This Website"),
+            ]
+        elif settle_calls == 2:
+            # Round 0's tap genuinely closes the sheet; this settle is what finally shows it.
+            driver.screen = []
+
+    guard = AlertGuardConfig(rules=[narrower, wider])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared and alerts == [AlertEvent(label="Not Now")]  # tapped once, not twice
+    assert sum(1 for action in driver.actions if action[0] == "tap") == 1
+    assert guard.blocked_note == ""
+
+
 def test_the_end_of_step_guard_does_not_retap_a_fading_alert_when_another_one_joins_it() -> None:
     # The native dedup keys on the matched rule's own shape, not the raw buttons read: that read
     # (`system_alert_labels()`) enumerates every alert SpringBoard currently holds, so a still-

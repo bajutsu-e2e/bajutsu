@@ -39,11 +39,14 @@ def alert_block_note(buttons: Sequence[str]) -> str:
     *buttons* are the labels blocking the screen that this call has not already answered —
     `probe_native`'s `"unhandled"` answer, or the leftover buttons a `"dismissed"`,
     `already_dismissed`, `"unhandled"`, or raced-`"absent"` round (`subtract_labels`) finds beyond
-    every shape this call has already answered (`AlertGuardConfig.__call__`, BE-0418) — a fresh
-    dismissal computes it too, since the alert it just tapped is never the only thing `buttons`
-    enumerates. `_AlertGuardGate._observe_native`'s own raced-`"absent"` branch
-    (`waits/_alert_guard_gate.py`) passes a leftover too, credited per *read* — every rule
-    `matching_alert_rule` resolves on it — rather than per shape this call already tapped.
+    the shapes that round accounted for (`AlertGuardConfig.__call__`, BE-0418) — a fresh dismissal
+    computes it too, since the alert it just tapped is never the only thing `buttons` enumerates.
+    Three of those four credit per *read* — every rule `identified_alert_rules` resolves on it, not
+    only the shapes this call has tapped — so a second, *declared* prompt co-present on the same
+    read is subtracted too rather than named as one no rule identifies; `already_dismissed` alone
+    credits the tapped shapes only, since every rule identified there is already one of them.
+    `_AlertGuardGate._observe_native`'s `"unhandled"` and raced-`"absent"` branches
+    (`waits/_alert_guard_gate.py`) pass a leftover credited that same per-read way.
     Not-yet-answered is weaker than "no rule accounts for it": a label two rules both name can
     collide (the built-in `notifications` and `tracking` both grant `"Allow"`) and land here
     un-subtracted even though a rule does identify it, once a per-label collision keeps

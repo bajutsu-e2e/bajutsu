@@ -65,10 +65,12 @@ def _widest_first(rules: Iterable[ResolvedAlertRule]) -> list[ResolvedAlertRule]
     declaring the same prompt resolve to the same shapes, so the scenario's copy of a shape stays
     ahead of the target's copy of it.
 
-    `_resolve_alert_rule`'s subset test only excludes a candidate whose shape is contained *in* an
-    already-dismissed one, not the reverse, so whether a nested-shape prompt's narrower sibling can
-    survive that exclusion and re-tap depends on which shape `matching_alert_rule` — itself
-    first-match-in-list-order — happens to try first. Reordering the nested pair, rather than
+    `_resolve_alert_rule`'s own containment test excludes a candidate nesting with an
+    already-dismissed shape either way (review finding), so which of a nested pair gets dismissed
+    first no longer decides whether the other can re-tap — but it still decides *which* rule the
+    dismissal is recorded under, and BE-0177 needs that to be the same rule the mid-wait gate's own
+    `_dismiss_from_tree` resolves for the identical screen, not whichever one a scenario happened to
+    list first. Reordering the nested pair, rather than
     sorting every rule by raw label count, is what a plain width sort cannot do for BE-0177's own
     precedence — a stable sort only preserves scenario-before-target precedence *among same-shape
     rules* (review finding: sorting by width promoted a wider target rule ahead of a narrower
@@ -89,9 +91,9 @@ def _widest_first(rules: Iterable[ResolvedAlertRule]) -> list[ResolvedAlertRule]
     for rule in rules:
         for i, placed in enumerate(result):
             if placed.identifying_labels < rule.identifying_labels:
-                # `placed` is a proper subset of `rule` — the wider shape must be tried first, so
-                # `_resolve_alert_rule`'s subset test excludes the narrower one once the wider one
-                # is dismissed rather than the reverse.
+                # `placed` is a proper subset of `rule` — the wider shape is tried first whenever
+                # both already match, so a scenario declaring the pair in either order still
+                # resolves the same rule the mid-wait gate's own `tree_dedup_rules` copy would.
                 result.insert(i, rule)
                 break
         else:
@@ -108,25 +110,36 @@ def _resolve_alert_rule(
     `dismiss_from_tree_once`, and `AlertGuardConfig.__call__` (BE-0418) must all agree on bit for
     bit — shared by the native and tree paths alike, since both face the same lingering-fade race.
 
-    The plain match, unless its shape is one `dismissed` already names *or a subset of one* — a
-    lingering fade of an already-answered alert, read with a subset of the buttons the dismissing
-    round itself matched on — in which case the search retries among the rules whose shape is not a
-    subset of any dismissed shape, so a real, not-yet-answered alert enumerable alongside that fade
-    (the stacked case this loop exists to clear) is still found rather than declined along with the
-    fade. The subset test, not equality, is what keeps a `savePassword`-style policy safe: `choice:
-    deny` there resolves to three rules, two of whose shapes nest (the web-form shape naming "Save
-    Password", "Never for This Website", and "Not Now"; the iOS 18.6 in-app shape naming only "Save
-    Password" and "Not Now" — the 26.5 shape, "Save" and "Not Now", nests with neither, sharing
-    only "Not Now" with the widest), both tapping the same button, and a fade that still enumerates
-    the wider shape's buttons would otherwise match the narrower sibling and tap it a second time.
-    `__call__` calls this again, over the same `buttons` a dismissing round just read, to learn
-    which shape it tapped without either probe growing a return member only one caller needs.
+    The plain match, unless its shape nests with one `dismissed` already names — a lingering fade
+    of an already-answered alert, read with a subset of the buttons the dismissing round itself
+    matched on, *or* the same alert now rendering a label it had not yet drawn when a narrower
+    reading of it was dismissed — in which case the search retries among the rules whose shape does
+    not nest with any dismissed shape, so a real, not-yet-answered alert enumerable alongside that
+    fade (the stacked case this loop exists to clear) is still found rather than declined along with
+    the fade. Containment either way, not equality, is what keeps a `savePassword`-style policy
+    safe: `choice: deny` there resolves to three rules, two of whose shapes nest (the web-form shape
+    naming "Save Password", "Never for This Website", and "Not Now"; the iOS 18.6 in-app shape
+    naming only "Save Password" and "Not Now" — the 26.5 shape, "Save" and "Not Now", nests with
+    neither, sharing only "Not Now" with the widest), both tapping the same button. A fade that
+    still enumerates the wider shape's buttons would otherwise match the narrower sibling and tap it
+    a second time, the case a one-directional test alone still closes — but a shape that renders its
+    widest label a frame late reaches the opposite order: the narrower reading matches and is
+    dismissed first, and only a *reverse* containment check keeps the same alert's now-fully-rendered
+    wider reading from matching afresh and re-tapping it a round later (review finding). `__call__`
+    calls this again, over the same `buttons` a dismissing round just read, to learn which shape it
+    tapped without either probe growing a return member only one caller needs.
     """
+
+    def _nests_with_a_dismissed_shape(candidate: ResolvedAlertRule) -> bool:
+        return any(
+            candidate.identifying_labels <= shape or shape <= candidate.identifying_labels
+            for shape in dismissed
+        )
+
     rule = matching_alert_rule(rules, buttons)
-    if rule is not None and any(rule.identifying_labels <= shape for shape in dismissed):
+    if rule is not None and _nests_with_a_dismissed_shape(rule):
         rule = matching_alert_rule(
-            [r for r in rules if not any(r.identifying_labels <= shape for shape in dismissed)],
-            buttons,
+            [r for r in rules if not _nests_with_a_dismissed_shape(r)], buttons
         )
     return rule
 
