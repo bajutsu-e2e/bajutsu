@@ -5,9 +5,10 @@ mints a short-lived machine session, and every later call in the pipeline is an 
 request. Offline throughout — the issuer's keys are generated in-process and injected through
 `JwksCache`'s `fetch` seam, so no test reaches the network.
 
-What a machine session may *do* is BE-0414 unit 3's endpoint allowlist. Until it lands a machine
-principal is refused everywhere, which these tests lock in both backends: the exchange is testable
-on its own, and nothing it mints can reach an endpoint the allowlist has not yet opened.
+What a machine session may *do* is BE-0414 unit 3's endpoint allowlist, covered in the last two
+sections: the pipeline's own sequence is open and everything else is refused by not being named,
+the verified org travels with the session rather than through `org_of`, and an operator can end a
+repository's outstanding sessions without retiring its org.
 """
 
 from __future__ import annotations
@@ -405,9 +406,9 @@ def test_a_machine_session_reaches_its_allowlist_and_nothing_else(tmp_path: Path
     server, port = _serve(state)
     try:
         assert _get(port, "/api/runs", cookie=sid)[0] == 200
-        assert _get(port, "/api/artifacts/exists?kind=binary&sha256=" + "a" * 64, cookie=sid)[0] == (
-            200
-        )
+        assert _get(port, "/api/artifacts/exists?kind=binary&sha256=" + "a" * 64, cookie=sid)[
+            0
+        ] == (200)
         for path in ("/api/config", "/api/orgs", "/api/config/content", "/api/compose/current"):
             code, _headers, _body = _get(port, path, cookie=sid)
             assert code == 403, path
@@ -720,3 +721,230 @@ def test_the_fastapi_gate_derives_identity_from_the_same_read_too(tmp_path: Path
 
     assert reads.count("principal") == 1, reads
     assert "identity" not in reads, reads
+
+
+# --- unit 3: the org travels with the session ---------------------------------------------------
+
+
+def _machine(state: ServeState, key: RSAKey, org: str, **claims: Any) -> str:
+    """A live machine session for *org*, minted the way a pipeline's own exchange mints one."""
+    _payload, status, sid = ops.oidc_exchange(state, _token(key, **claims), org)
+    assert status == 200 and sid is not None
+    return sid
+
+
+def _audit_rows(state: ServeState) -> list[Any]:
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+
+    from bajutsu.serve.server.models import AuditLog
+
+    # Read straight off the engine: the audit table has no read seam on the `Repository` protocol,
+    # so this reaches past it into the SQL implementation the tests wire.
+    repository: Any = state.repository
+    assert repository is not None
+    with Session(repository._engine) as session:
+        return list(session.scalars(select(AuditLog).order_by(AuditLog.at)))
+
+
+def _admin(state: ServeState) -> str:
+    """An admin with a real `users` row, so the audit entry its actions write satisfies the
+    `audit_log.actor_id` foreign key."""
+    assert state.repository is not None
+    state.repository.upsert_user(
+        "alice", org_id="acme", github_login="alice", email="alice@x", role="admin"
+    )
+    return "alice"
+
+
+def test_a_machine_upload_lands_in_its_own_org_never_default(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    """`org_of` reads a persisted user row, and a pipeline has none — so without the org travelling
+    on the session every allowlisted call would resolve `default`, whatever `allowedRepositories`
+    said. A cross-tenant hole on exactly the routes the allowlist opens first."""
+    key = _key()
+    state = _state(serve_engine, tmp_path, key)
+    source = tmp_path / "app.zip"
+    source.write_bytes(b"binary")
+    payload, status = ops.bind_artifact(
+        state,
+        "binary",
+        source,
+        sha256="b" * 64,
+        actor="repo:acme/app",
+        machine_org="acme",
+    )
+    assert status == 200 and payload["ok"] is True
+    # Stored under `acme`, so the probe finds it there and not in the fallback tenant.
+    assert ops.artifact_exists(state, "binary", "b" * 64, machine_org="acme")[0] == {"exists": True}
+    assert ops.artifact_exists(state, "binary", "b" * 64, machine_org="globex")[0] == (
+        {"exists": False}
+    )
+    assert ops.artifact_exists(state, "binary", "b" * 64, actor=None)[0] == {"exists": False}
+
+
+def test_the_audit_entry_names_the_repository_with_no_user_row_behind_it(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    """`actor_id` is a foreign key to `users.id` and a machine has no row, so the entry is kept with
+    a null actor and the repository recorded in its detail — "which pipeline did this" stays
+    answerable without a synthetic user in the roster `/api/orgs` discloses."""
+    key = _key()
+    state = _state(serve_engine, tmp_path, key)
+    source = tmp_path / "app.zip"
+    source.write_bytes(b"binary")
+    ops.bind_artifact(
+        state, "binary", source, sha256="c" * 64, actor="repo:acme/app", machine_org="acme"
+    )
+    ops.artifact_exists(state, "binary", "c" * 64, actor="repo:acme/app", machine_org="acme")
+
+    rows = _audit_rows(state)
+    # The probe audits too, so a pipeline that finds its build already stored still leaves a trace.
+    assert [row.action for row in rows] == ["artifact:binary", "artifact:binary:exists"]
+    for row in rows:
+        assert row.org_id == "acme"
+        assert row.actor_id is None, "a login with no users row must never reach the foreign key"
+        assert row.detail["repository"] == "acme/app"
+
+
+def test_a_human_audit_entry_is_unchanged(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    """The machine branch is keyed on the reserved identity form, so a person's entry still carries
+    their login in `actor_id` and gains no `repository` key."""
+    key = _key()
+    state = _state(serve_engine, tmp_path, key)
+    actor = _admin(state)
+    source = tmp_path / "app.zip"
+    source.write_bytes(b"binary")
+    ops.bind_artifact(state, "binary", source, sha256="d" * 64, actor=actor)
+
+    (row,) = _audit_rows(state)
+    assert row.actor_id == actor and "repository" not in row.detail
+
+
+def test_a_job_belonging_to_another_org_reads_as_missing(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    """404 rather than 403: a job id is opaque, so "forbidden" would confirm that this particular
+    id exists — the one thing the refusal is there to withhold."""
+    from bajutsu.serve.state import Job
+
+    key = _key()
+    state = _state(serve_engine, tmp_path, key)
+    job = state.job_registry.register(Job(org="acme"))
+
+    assert ops.job_view(state, job.id, machine_org="acme")[1] == 200
+    payload, status = ops.job_view(state, job.id, machine_org="globex")
+    assert status == 404 and payload == {"error": "no such job"}
+    # Indistinguishable from a job that never existed at all.
+    assert ops.job_view(state, "nope", machine_org="acme") == (payload, status)
+
+
+def test_a_machine_reads_its_own_orgs_runs(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    """The run history is org-scoped, and the machine's org is the one the exchange verified."""
+    key = _key()
+    state = _state(serve_engine, tmp_path, key)
+    assert state.repository is not None
+    from bajutsu.serve.server.db import RunRecord
+
+    for org, run_id in (("acme", "r-acme"), ("globex", "r-globex")):
+        state.repository.ensure_org(org, slug=org, name=org)
+        state.repository.record_run(
+            RunRecord(id=run_id, org_id=org, status="done", ok=True, summary={"id": run_id})
+        )
+
+    payload, status = ops.runs_payload(state, machine_org="acme")
+    assert status == 200
+    assert [run["id"] for run in payload] == ["r-acme"]
+    assert [run["id"] for run in ops.runs_payload(state, machine_org="globex")[0]] == ["r-globex"]
+
+
+# --- unit 3: revoking a machine session ---------------------------------------------------------
+
+
+def test_revoking_one_orgs_machine_sessions_leaves_anothers_alone(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    """`shared/ci` is listed by two orgs, so both mint sessions under the identity
+    `repo:shared/ci`. Revoking on identity alone would let one org's admin end the other's running
+    pipelines, which is why the store's revocation is scoped by org."""
+    key = _key()
+    state = _state(serve_engine, tmp_path, key)
+    admin = _admin(state)
+    globex = _machine(state, key, "globex", repository="shared/ci", jti="a")
+    shared = _machine(state, key, "shared", repository="shared/ci", jti="b")
+
+    payload, status = ops.revoke_machine_sessions(
+        state, "globex", {"repository": "shared/ci"}, actor=admin
+    )
+    assert status == 200 and payload["sessionsRevoked"] == 1
+    assert state.auth.valid_session(globex) is False
+    assert state.auth.valid_session(shared) is True, "another org's pipelines must survive"
+
+
+def test_revoking_without_a_repository_ends_every_machine_session_in_the_org(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    """The reach an admin wants when the roster itself is what went wrong."""
+    key = _key()
+    state = _state(serve_engine, tmp_path, key)
+    admin = _admin(state)
+    app = _machine(state, key, "acme", jti="a")
+    web = _machine(state, key, "acme", repository="acme/web", environment="production", jti="b")
+    human = state.auth.issue_session(admin)
+
+    payload, status = ops.revoke_machine_sessions(state, "acme", {}, actor=admin)
+    assert status == 200 and payload["sessionsRevoked"] == 2
+    assert not state.auth.valid_session(app) and not state.auth.valid_session(web)
+    assert state.auth.valid_session(human), "a person's session is not a machine's"
+
+
+def test_retiring_an_org_revokes_the_machine_sessions_bound_to_it(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    """`revoke_identities` is driven by the `users` table and a pipeline has no row in it, so a
+    retired org's machine sessions would otherwise keep acting as that tenant until they expired —
+    the exact leak BE-0375 added that revocation to close."""
+    key = _key()
+    state = _state(serve_engine, tmp_path, key)
+    assert state.repository is not None
+    admin = _admin(state)
+    machine = _machine(state, key, "acme")
+
+    payload, status = ops.delete_org(state, "acme", actor=admin)
+    assert status == 200 and payload["sessionsRevoked"] >= 1
+    assert state.auth.valid_session(machine) is False
+
+
+def test_the_revocation_endpoint_refuses_an_unknown_org_and_a_malformed_body(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    key = _key()
+    state = _state(serve_engine, tmp_path, key)
+    admin = _admin(state)
+    assert ops.revoke_machine_sessions(state, "nope", {}, actor=admin)[1] == 404
+    assert ops.revoke_machine_sessions(state, "acme", {"repository": " "}, actor=admin)[1] == 400
+    assert ops.revoke_machine_sessions(state, "acme", {"repository": 7}, actor=admin)[1] == 400
+
+
+def test_the_revocation_endpoint_is_admin_gated_and_closed_to_a_machine(tmp_path: Path) -> None:
+    """It lives under `/api/orgs/` so it inherits that prefix's admin gate, and the machine
+    allowlist does not name it — a pipeline cannot revoke anybody's sessions, its own included."""
+    from bajutsu.serve import authz
+
+    path = "/api/orgs/acme/machine-sessions/revoke"
+    assert authz.required_role("POST", path) == "admin"
+
+    key = _key()
+    state = _state(_threaded(tmp_path), tmp_path, key)
+    sid = _machine(state, key, "acme")
+    server, port = _serve(state)
+    try:
+        assert _post(port, path, {}, cookie=sid)[0] == 403
+    finally:
+        server.shutdown()
+        server.server_close()

@@ -146,3 +146,60 @@ def test_actor_for_returns_the_session_identity() -> None:
     assert gate.actor_for(auth, auth.issue_session()) is None
     assert gate.actor_for(auth, "not-a-session") is None
     assert gate.actor_for(auth, None) is None
+
+
+# --- the machine allowlist (BE-0414 unit 3) -----------------------------------------------------
+
+
+def test_the_machine_allowlist_is_exactly_the_pipelines_own_sequence() -> None:
+    """Probe for a build, publish the three artifact kinds, dispatch a run, then watch it."""
+    for method, path in (
+        ("GET", "/api/artifacts/exists"),
+        ("POST", "/api/artifacts/config"),
+        ("POST", "/api/artifacts/scenarios"),
+        ("POST", "/api/artifacts/binary"),
+        ("POST", "/api/run"),
+        ("GET", "/api/runs"),
+        ("GET", "/api/jobs/j-1"),
+    ):
+        assert gate.forbidden_for_machine(method, path, org="acme") is False, (method, path)
+
+
+def test_the_machine_allowlist_denies_by_default() -> None:
+    """Refusing by saying nothing, not by remembering: a route added later is closed to a machine
+    until someone opens it deliberately."""
+    for method, path in (
+        ("POST", "/api/compose"),  # rebinding the org's active configuration
+        ("POST", "/api/config"),
+        ("GET", "/api/config/content"),  # a config body may embed secrets
+        ("POST", "/api/apikey"),  # operator secrets
+        ("POST", "/api/claudecodetoken"),
+        ("GET", "/api/orgs"),  # who may sign in and write
+        ("POST", "/api/orgs/acme/machine-sessions/revoke"),
+        ("POST", "/api/upload"),
+        ("GET", "/api/route-invented-next-year"),
+    ):
+        assert gate.forbidden_for_machine(method, path, org="acme") is True, (method, path)
+
+
+def test_the_machine_allowlist_is_method_specific() -> None:
+    """A path on the list opens for the verb it was listed with and no other."""
+    assert gate.forbidden_for_machine("POST", "/api/runs", org="acme") is True
+    assert gate.forbidden_for_machine("GET", "/api/run", org="acme") is True
+    assert gate.forbidden_for_machine("DELETE", "/api/jobs/j-1", org="acme") is True
+
+
+def test_the_machine_job_poll_matches_one_segment_only() -> None:
+    """`/api/jobs/{id}` and not its `/events` stream, which each backend serves with its own
+    streaming plumbing — a pipeline learns the same outcome by polling."""
+    assert gate.forbidden_for_machine("GET", "/api/jobs/j-1", org="acme") is False
+    assert gate.forbidden_for_machine("GET", "/api/jobs/j-1/events", org="acme") is True
+    assert gate.forbidden_for_machine("GET", "/api/jobs/", org="acme") is True
+    assert gate.forbidden_for_machine("GET", "/api/jobs", org="acme") is True
+
+
+def test_a_machine_principal_with_no_org_is_refused_everywhere() -> None:
+    """The exchange is the only thing that ever sets an org, and every allowlisted operation scopes
+    itself by it — so admitting one without it would act as the `default` tenant."""
+    for method, path in (("GET", "/api/runs"), ("POST", "/api/run"), ("GET", "/api/jobs/j-1")):
+        assert gate.forbidden_for_machine(method, path, org=None) is True, (method, path)
