@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-cli-repl-inspect-actuate-ja.md)
+**English** · [日本語](BE-0423-cli-repl-inspect-actuate-ja.md)
 
-# BE-XXXX — Interactive REPL for element-tree inspection and id-based actuation
+# BE-0423 — Interactive REPL for element-tree inspection and id-based actuation
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-cli-repl-inspect-actuate.md) |
+| Proposal | [BE-0423](BE-0423-cli-repl-inspect-actuate.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0423") |
 | Topic | Authoring experience |
 <!-- /BE-METADATA -->
 
