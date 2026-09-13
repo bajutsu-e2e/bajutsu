@@ -15,7 +15,35 @@ PrincipalKind = Literal["human", "machine"]
 HUMAN: PrincipalKind = "human"
 MACHINE: PrincipalKind = "machine"
 
+#: The reserved prefix a machine session's identity carries. A GitHub login cannot contain `/`, and
+#: the repository that follows always does, so the form can never collide with a person's.
+_MACHINE_PREFIX = "repo:"
+
 _logger = logging.getLogger(__name__)
+
+
+def machine_identity(repository: str) -> str:
+    """The session identity a pipeline acting for *repository* is minted with (BE-0414).
+
+    Minting and reading the form live together so they cannot drift apart — the identity has to be
+    non-None at all for the session to be revocable, since `revoke_identities` works by identity and
+    never touches a session carrying none.
+    """
+    return f"{_MACHINE_PREFIX}{repository}"
+
+
+def machine_repository(identity: str | None) -> str | None:
+    """The repository behind a machine *identity*, or None for a human or token caller.
+
+    Reading the identity's shape is right *here* and wrong in the request gate. Which gate governs a
+    session is a security decision, and it reads the kind the store recorded
+    (`Principal.kind`) — never a string convention a future identity format could break. This answers
+    a different question: having already established what the caller is, how should the audit trail
+    name it? A mis-read there writes a slightly wrong log line rather than admitting anyone.
+    """
+    if identity is None or not identity.startswith(_MACHINE_PREFIX):
+        return None
+    return identity[len(_MACHINE_PREFIX) :] or None
 
 
 @dataclass(frozen=True)

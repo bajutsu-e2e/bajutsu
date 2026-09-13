@@ -8,7 +8,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from .principal import HUMAN, Principal, PrincipalKind
+from .principal import HUMAN, MACHINE, Principal, PrincipalKind
 
 
 @dataclass(frozen=True)
@@ -79,6 +79,19 @@ class InMemorySessionStore:
         with self._lock:
             doomed = [
                 sid for sid, entry in self._sessions.items() if entry.principal.identity in wanted
+            ]
+            for sid in doomed:
+                del self._sessions[sid]
+        return len(doomed)
+
+    def revoke_machine_sessions(self, org: str, *, identity: str | None = None) -> int:
+        with self._lock:
+            doomed = [
+                sid
+                for sid, entry in self._sessions.items()
+                if entry.principal.kind == MACHINE
+                and entry.principal.org == org
+                and (identity is None or entry.principal.identity == identity)
             ]
             for sid in doomed:
                 del self._sessions[sid]

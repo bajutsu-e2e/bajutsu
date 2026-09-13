@@ -200,6 +200,7 @@ def runs_payload(
     target: str | None = None,
     label: str | None = None,
     ran_target: str | None = None,
+    machine_org: str | None = None,
 ) -> tuple[Any, int]:
     """The run history for the actor's org, newest first.
 
@@ -212,7 +213,7 @@ def runs_payload(
     # Opportunistically purge trash past the retention window before listing (BE-0239) — the lazy
     # sweep, on the history read rather than a background daemon (SqlSessionStore's expiry-on-read
     # precedent). A no-op when retention is disabled; scoped to the actor's org.
-    sweep_expired_trash(state, actor=actor)
+    sweep_expired_trash(state, actor=actor, machine_org=machine_org)
     # With a system of record (server backend), the history is the actor's org's recorded runs —
     # durable and org-scoped (BE-0015 7c-4). The stored summary mirrors the artifact entry, so the
     # UI shape is identical. Without one (local / stdlib serve), list straight from the artifact
@@ -226,7 +227,7 @@ def runs_payload(
     # push into the query and the window stays on — which keeps the most-hit read of all (the
     # default history list) bounded, and keeps the comparison's drill-down reading the same
     # newest-N window of one target the ranking row beside it was computed over.
-    org = state.org_of(actor)
+    org = state.org_for(actor, machine_org)
     scoped = scenario is not None or target is not None
     if state.repository is not None:
         partition = effective_label(state, label, session, org)
@@ -872,9 +873,17 @@ def _valid_step_id(step_id: str) -> bool:
     return ".." not in parts
 
 
-def job_view(state: ServeState, job_id: str) -> tuple[Any, int]:
+def job_view(
+    state: ServeState, job_id: str, *, actor: str | None = None, machine_org: str | None = None
+) -> tuple[Any, int]:
+    """One job's live view — its status, and the log buffer while it is still running.
+
+    Scoped to the caller's org (BE-0414 unit 3). A job carries the org it was dispatched for, and a
+    caller from another one is answered **404, not 403**: a job id is opaque, so "forbidden" would
+    confirm that this particular id exists, which is the one thing the refusal is there to withhold.
+    """
     job = state.jobs.get(job_id)
-    if job is None:
+    if job is None or job.org != state.org_for(actor, machine_org):
         return {"error": "no such job"}, 404
     view = job.view()
     # Locally the job ran in-process, so its own view (with the log buffer) is authoritative. On the

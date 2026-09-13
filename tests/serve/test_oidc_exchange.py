@@ -395,19 +395,44 @@ def test_the_exchange_sets_a_session_cookie_over_http(tmp_path: Path) -> None:
         server.server_close()
 
 
-def test_a_machine_session_reaches_no_endpoint_yet(tmp_path: Path) -> None:
-    """Until unit 3's allowlist lands. Without this the session would fall into the *role* gate,
-    which reads an identity with no user row as a viewer — handing a pipeline read access to the
-    `default` org through `org_of`."""
+def test_a_machine_session_reaches_its_allowlist_and_nothing_else(tmp_path: Path) -> None:
+    """The allowlist is the whole of what governs a machine principal (BE-0414 unit 3): the
+    pipeline's own sequence is open, and everything else is refused by not being named."""
     key = _key()
     state = _state(_threaded(tmp_path), tmp_path, key)
     _payload, status, sid = ops.oidc_exchange(state, _token(key), "acme")
     assert status == 200 and sid is not None
     server, port = _serve(state)
     try:
-        for path in ("/api/runs", "/api/config", "/api/orgs"):
+        assert _get(port, "/api/runs", cookie=sid)[0] == 200
+        assert _get(port, "/api/artifacts/exists?kind=binary&sha256=" + "a" * 64, cookie=sid)[0] == (
+            200
+        )
+        for path in ("/api/config", "/api/orgs", "/api/config/content", "/api/compose/current"):
             code, _headers, _body = _get(port, path, cookie=sid)
             assert code == 403, path
+        # The operator-secret and config-rebinding writes, the four the allowlist most deliberately
+        # withholds: granting the admin *rank* instead would have carried every one of them.
+        for path in ("/api/config", "/api/compose", "/api/apikey", "/api/claudecodetoken"):
+            code, _headers, _body = _post(port, path, {}, cookie=sid)
+            assert code == 403, path
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_a_machine_principal_carrying_no_org_is_refused_outright(tmp_path: Path) -> None:
+    """Only the exchange ever sets an org, so a machine principal without one is a session row this
+    version does not understand (`kind_from_stored`). Every allowlisted operation scopes itself by
+    that org, so admitting one with none would act as the `default` tenant."""
+    key = _key()
+    state = _state(_threaded(tmp_path), tmp_path, key)
+    # What an unrecognized `kind` column reads back as: machine, and carrying no org.
+    sid = state.auth.issue_session("repo:acme/app", org=None, kind=MACHINE)
+    server, port = _serve(state)
+    try:
+        # On the allowlist, and still refused — the org check runs ahead of the path check.
+        assert _get(port, "/api/runs", cookie=sid)[0] == 403
     finally:
         server.shutdown()
         server.server_close()
@@ -427,7 +452,7 @@ def test_a_human_session_is_untouched_by_the_machine_gate(tmp_path: Path) -> Non
         server.server_close()
 
 
-def test_both_backends_refuse_a_machine_session_identically(tmp_path: Path) -> None:
+def test_both_backends_gate_a_machine_session_identically(tmp_path: Path) -> None:
     """`gate.py` owns the policy so the stdlib handler and the FastAPI app cannot diverge on it —
     the divergence BE-0253 exists to prevent, on a security-relevant branch."""
     from fastapi.testclient import TestClient
@@ -440,7 +465,9 @@ def test_both_backends_refuse_a_machine_session_identically(tmp_path: Path) -> N
     assert status == 200 and sid is not None
     client = TestClient(make_app(state))
     client.cookies.set("bajutsu_session", sid)
-    assert client.get("/api/runs").status_code == 403
+    assert client.get("/api/runs").status_code == 200
+    assert client.get("/api/config").status_code == 403
+    assert client.post("/api/compose", json={}).status_code == 403
     # And the exchange itself is reachable on this backend too, with no prior credential — from a
     # client carrying *no* cookie, or the 403 would be the machine gate's rather than the token's.
     assert (
@@ -494,18 +521,18 @@ def test_a_machine_session_posting_a_body_is_refused_and_the_connection_stays_us
     tmp_path: Path,
 ) -> None:
     """The stdlib gate drains a refused request's body before replying, or the unread bytes
-    corrupt the next request on a keep-alive connection — the request shape unit 3's allowlist
-    opens up, and one no GET can reach."""
+    corrupt the next request on a keep-alive connection — a request shape no GET can reach."""
     key = _key()
     state = _state(_threaded(tmp_path), tmp_path, key)
     _payload, status, sid = ops.oidc_exchange(state, _token(key), "acme")
     assert status == 200 and sid is not None
     server, port = _serve(state)
     try:
-        code, _headers, _body = _post(port, "/api/run", {"scenario": "x" * 5000}, cookie=sid)
+        # Refused by the allowlist rather than by a role, and carrying a body worth draining.
+        code, _headers, _body = _post(port, "/api/compose", {"config": "x" * 5000}, cookie=sid)
         assert code == 403
         # The next request on a fresh connection must still be answered correctly.
-        assert _get(port, "/api/runs", cookie=sid)[0] == 403
+        assert _get(port, "/api/runs", cookie=sid)[0] == 200
     finally:
         server.shutdown()
         server.server_close()

@@ -80,12 +80,14 @@ class _StdlibCtx:
         qs: Callable[[str], str | None],
         actor: Callable[[], str | None],
         session: Callable[[], str | None],
+        machine_org: Callable[[], str | None],
     ) -> None:
         self._params = params
         self._body = body
         self._qs = qs
         self._actor = actor
         self._session = session
+        self._machine_org = machine_org
 
     def path_param(self, name: str) -> str:
         # The matcher runs on the raw (still percent-encoded) request path, so decode here to honor
@@ -106,12 +108,20 @@ class _StdlibCtx:
     def session(self) -> str | None:
         return self._session()
 
+    def machine_org(self) -> str | None:
+        return self._machine_org()
+
 
 # C901 and PLR0915 fold each nested function's count into the function enclosing it, so this score
 # measures the handler methods defined below, not branching here. Ruff bounds each of those on its
 # own, so the exemption loses no signal (BE-0386).
 def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C901
     class Handler(BaseHTTPRequestHandler):
+        # The tenant a machine principal acts as, resolved by `_gate` from the session the exchange
+        # minted and read back by `_StdlibCtx.machine_org` (BE-0414 unit 3). None for every other
+        # caller shape, whose org comes from their persisted user row instead.
+        _machine_org: str | None = None
+
         def end_headers(self) -> None:
             # The shared hardening headers on every response (BE-0051); defined once in `gate` so
             # both backends emit the identical set (BE-0253).
@@ -224,6 +234,10 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
             the index page and the frontend ES-module routes (so the login UI and its JS can load,
             BE-0247) and the login endpoint itself. Sends 401 and returns False when a required
             credential is missing."""
+            # Cleared on every request, not just the ones that reach the machine branch: one handler
+            # instance serves a whole keep-alive connection, so a value left behind here would leak
+            # one request's tenant into the next request on the same socket.
+            self._machine_org = None
             if not self._host_ok():
                 # DNS-rebinding defense (BE-0121): a Host that names no bound interface is refused
                 # ahead of everything else, so a rebound hostname reaches no endpoint at all
@@ -250,12 +264,21 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                 # is neither machine nor human is served as the shared-token shape — full access.
                 principal = gate.principal_for(state.auth, self._session_value())
                 is_machine = principal is not None and principal.kind == MACHINE
-                if is_machine and gate.forbidden_for_machine(self.command, path):
+                if is_machine and gate.forbidden_for_machine(
+                    self.command, path, org=principal.org if principal is not None else None
+                ):
                     length = int(self.headers.get("Content-Length") or 0)
                     if length:
                         self.rfile.read(length)
                     self._json({"error": "forbidden"}, 403)
                     return False
+                if is_machine and principal is not None:
+                    # The tenant the exchange resolved, carried to this request's operation. It has
+                    # to come from here rather than `state.org_of`, which reads the actor's persisted
+                    # user row: a machine has none, so every allowlisted call would resolve `default`
+                    # — a cross-tenant hole on exactly the routes just opened. Reusing the principal
+                    # already read above also keeps this off a second session lookup.
+                    self._machine_org = principal.org
                 # For an OAuth session (an identity) with a database wired, enforce the user's role
                 # on mutating endpoints (BE-0015 7c-2). A token/Bearer request has no identity and
                 # stays full-access (the operator credential). A machine principal never reaches
@@ -332,7 +355,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
             if route.handle is None:
                 self._json({"error": "not found"}, 404)
                 return
-            ctx = _StdlibCtx(params, body, self._qs, self._actor, self._session_id)
+            ctx = _StdlibCtx(
+                params, body, self._qs, self._actor, self._session_id, lambda: self._machine_org
+            )
             payload, code = route.handle(state, ctx)
             if route.content_type is not None:
                 self._text(payload, code, route.content_type)
@@ -553,6 +578,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                         receiver.path,
                         sha256=receiver.digest(),
                         actor=self._actor(),
+                        machine_org=self._machine_org,
                     )
                 )
             except Exception as exc:

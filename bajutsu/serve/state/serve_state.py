@@ -305,6 +305,17 @@ class ServeState:
             return _DEFAULT_ORG
         return self.repository.user_org(actor) or _DEFAULT_ORG
 
+    def org_for(self, actor: str | None, machine_org: str | None = None) -> str:
+        """The org a request acts as: *machine_org* when one is given, else *actor*'s own.
+
+        The one place the two caller shapes converge (BE-0414 unit 3). A machine principal's tenant
+        was resolved at the OIDC exchange and travels on its session, because `org_of` above reads a
+        persisted user row and a machine has none — left to it, every endpoint the machine allowlist
+        opens would resolve `default` whatever `allowedRepositories` said. Every one of those
+        endpoints therefore resolves its org through here instead.
+        """
+        return machine_org or self.org_of(actor)
+
     def eligible_orgs(self, actor: str | None) -> dict[str, str]:
         """Every org *actor* may act as, each mapped to the role they hold there.
 

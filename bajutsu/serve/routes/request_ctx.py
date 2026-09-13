@@ -41,3 +41,14 @@ class RequestCtx(Protocol):
         bind made in one session is invisible to every other.
         """
         ...
+
+    def machine_org(self) -> str | None:
+        """The tenant a machine principal acts as, or None for every other caller (BE-0414 unit 3).
+
+        A machine session's org is resolved once, at the OIDC exchange, and carried on the session
+        record. It cannot be recovered from the actor the way a human's can: `state.org_of` reads a
+        persisted user row, and a machine has none, so it would answer `default` for a pipeline
+        belonging to any tenant. An operation the machine allowlist opens therefore takes the org
+        from here and only falls back to `org_of` when this is None.
+        """
+        ...

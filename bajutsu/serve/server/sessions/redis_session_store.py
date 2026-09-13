@@ -86,6 +86,26 @@ class RedisSessionStore:
             self._redis.delete(*doomed)
         return len(doomed)
 
+    def revoke_machine_sessions(self, org: str, *, identity: str | None = None) -> int:
+        # The same full scan `revoke_identities` pays, and for the same reason: the org and kind
+        # live in the key's value, not in an index. Both callers are rare admin actions.
+        doomed = []
+        for key in self._redis.scan_iter(f"{_SESSION}*"):
+            name = key.decode() if isinstance(key, bytes) else str(key)
+            raw = self._redis.get(name)
+            if raw is None:
+                continue
+            principal = _principal(_decode(raw))
+            if (
+                principal.kind == MACHINE
+                and principal.org == org
+                and (identity is None or principal.identity == identity)
+            ):
+                doomed.append(name)
+        if doomed:
+            self._redis.delete(*doomed)
+        return len(doomed)
+
 
 def _decode(raw: object) -> str:
     return raw.decode() if isinstance(raw, bytes) else str(raw)

@@ -58,3 +58,22 @@ class SessionStore(Protocol):
         until it expires. Sessions carrying no identity (a shared-token login) are never touched —
         they belong to no org.
         """
+
+    def revoke_machine_sessions(self, org: str, *, identity: str | None = None) -> int:
+        """Drop *org*'s live machine sessions, or only those bound to *identity*; returns how many.
+
+        Scoped by org rather than by identity alone (BE-0414 unit 3), which `revoke_identities`
+        above cannot be. A machine identity is `repo:<owner>/<repo>` and carries no tenant, but one
+        repository may be listed by several orgs — a shared pipeline repository testing apps owned
+        by different teams. Revoking on identity alone would let one org's admin end another org's
+        running pipelines.
+
+        Both callers need that scoping: an admin revoking one repository's outstanding sessions
+        after removing its `allowedRepositories` entry, and org retirement, which reaches machine
+        sessions no user roster can name — `revoke_identities` is driven by the `users` table, and a
+        pipeline has no row in it, so a retired org's machine sessions would otherwise keep acting
+        as that tenant until they expired.
+
+        A human session is never touched, whatever its org: the kind the store recorded decides,
+        not the shape of an identity string.
+        """

@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from bajutsu.serve.sessions import HUMAN, Principal, PrincipalKind
+from bajutsu.serve.sessions import HUMAN, MACHINE, Principal, PrincipalKind
 
 from ._shared import _DEFAULT_TTL
 
@@ -106,5 +106,22 @@ class SqlSessionStore:
             result = session.execute(
                 delete(SessionRecord).where(SessionRecord.identity.in_(wanted))
             )
+            session.commit()
+            return int(getattr(result, "rowcount", 0) or 0)
+
+    def revoke_machine_sessions(self, org: str, *, identity: str | None = None) -> int:
+        from sqlalchemy import delete
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import SessionRecord
+
+        where = [SessionRecord.kind == MACHINE, SessionRecord.org == org]
+        if identity is not None:
+            where.append(SessionRecord.identity == identity)
+        # Deleted, not expired in place, for the same reason `revoke_identities` deletes: the reads
+        # above fetch the row before checking its expiry, so a row left behind comes back if a clock
+        # moves.
+        with Session(self._engine) as session:
+            result = session.execute(delete(SessionRecord).where(*where))
             session.commit()
             return int(getattr(result, "rowcount", 0) or 0)

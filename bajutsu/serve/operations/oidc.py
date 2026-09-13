@@ -25,7 +25,7 @@ from typing import Any
 from bajutsu.serve import oplog
 from bajutsu.serve.oidc import JwksCache, OidcError, verify
 from bajutsu.serve.orgs import orgs_from_db
-from bajutsu.serve.sessions import MACHINE
+from bajutsu.serve.sessions import MACHINE, machine_identity
 from bajutsu.serve.state import ServeState
 
 _logger = logging.getLogger(__name__)
@@ -99,10 +99,10 @@ def oidc_exchange(state: ServeState, token: str, org: str) -> tuple[Any, int, st
         # born dead. Refuse rather than answer 200 with a cookie that 401s on the pipeline's next
         # call: the same clock judges both, so if one says expired the other cannot disagree.
         return _refuse("the token expires too soon to mint a session from", org=org)
-    identity = f"repo:{workload.repository}"
     # A reserved form no GitHub login can collide with — a login cannot contain `/`. It has to be
     # non-None at all for the session to be revocable: `revoke_identities` works by identity, and
     # never touches a session carrying none.
+    identity = machine_identity(workload.repository)
     sid = state.auth.issue_session(identity, expires_at=expires_at, org=org, kind=MACHINE)
     oplog.log_event(
         _logger,
