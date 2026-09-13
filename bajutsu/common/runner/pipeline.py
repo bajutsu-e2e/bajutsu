@@ -44,11 +44,13 @@ from bajutsu.common.orchestrator import (
     MailboxReader,
     ProgressFn,
     RunResult,
+    SkippedCapture,
     push_interruption_policy,
     run_scenario,
     sanitize_source_stem,
     scenario_slug,
 )
+from bajutsu.common.orchestrator.evidence_rules import requested_intervals
 from bajutsu.common.orchestrator.types import _no_network
 from bajutsu.common.report import (
     ScenarioPlanSource,
@@ -84,6 +86,11 @@ __all__ = [
 ]
 
 _logger = logging.getLogger(__name__)
+
+# Subdirectory of a scenario's own evidence directory holding the backend's crash evidence — its
+# captured output, and the host crash report for a process that faulted (BE-0421). Named once here
+# because the failed scenario's failure string points at it as well as writing into it.
+_CRASH_DIAGNOSTICS_DIR = "crash-diagnostics"
 
 
 def _evidence_sid(i: int, s: Scenario) -> str:
@@ -405,15 +412,24 @@ class _ScenarioRunner:
                     f"✘ scenario {i + 1}/{self.total}: {s.name} "
                     f"(crash recovery abandoned: {given_up_cause})"
                 )
+            never_leased_failure = f"backend crash recovery skipped: {given_up_cause}, so this scenario was never leased"
             return RunResult(
                 scenario=s.name,
                 ok=False,
                 steps=[],
                 backend=actuator or "",
                 sid=sid,
-                failure=(
-                    f"backend crash recovery skipped: {given_up_cause}, so this scenario was never "
-                    "leased"
+                failure=never_leased_failure,
+                # No device was ever leased, so no recording was ever attempted — disclose why the
+                # report's video player is empty instead of leaving it looking like a plain miss
+                # (BE-0020's channel, reused here rather than left to a bare "no recording"). Only
+                # when the scenario actually asked for video (BE-0028's opt-in): `SkippedCapture` means
+                # "requested but unavailable", so a scenario with no capturePolicy/`capture` naming
+                # video must stay silent here the same way `requested_intervals` itself does.
+                skipped_captures=(
+                    [SkippedCapture(kind="video", reason=never_leased_failure)]
+                    if "video" in requested_intervals(s, self.eff.capture)
+                    else []
                 ),
             )
         # Backend-crash recovery: a mid-scenario runner/host crash (base.BackendCrashError) is
@@ -440,6 +456,17 @@ class _ScenarioRunner:
                 failure=str(exc),
             )
         last_crash: BackendCrashError | None = None
+        # The newest crash whose own `partial_artifacts` is non-empty — kept apart from `last_crash`
+        # because the *last* crash is not necessarily the one that recorded anything: a later attempt
+        # can crash during lease bring-up, before `run_scenario` (and its interval finalize) is even
+        # entered, leaving that attempt's own `partial_artifacts` at its `None` default while an
+        # earlier attempt's recording still sits on disk.
+        partial_artifacts: list[Any] = []
+        # The lease the most recent mid-run crash ran on (BE-0421). Kept separately from `lz`, which is
+        # reset to None per attempt: a loop that ends on a lease-time crash, or on a forced-erase
+        # prep that timed out, leaves `lz` empty while the environment behind an *earlier* attempt
+        # still holds the crash evidence this scenario failed for.
+        crashed_lz: Lease | None = None
         # The count + wall-clock retry decision; Unit 2 of BE-0334 wires the conformance harness onto
         # the same helper so the two recovery paths cannot drift. The wall-clock deadline it holds is set at the
         # *first* crash (so the first respawn is never blocked — a genuine one-off is still ridden
@@ -599,6 +626,10 @@ class _ScenarioRunner:
                     return self._run_on_lease(lz, handler, i, s, sid)
                 except BackendCrashError as crash:
                     last_crash = crash
+                    if crash.partial_artifacts:
+                        partial_artifacts = crash.partial_artifacts
+                    if lz is not None:
+                        crashed_lz = lz
                     if recovery_started is None:
                         recovery_started = self._now()
                     run_exhausted = self.run_crash_budget.exhausted()
@@ -732,6 +763,25 @@ class _ScenarioRunner:
                 f"backend crashed mid-run and did not recover across "
                 f"{budget.total_attempts} attempts: {last_crash}"
             )
+        # Every branch above (the `if`/`elif` chain and this trailing `else`) is reached only after a
+        # crash: the `except BackendCrashError` above is the sole path that leaves the loop without
+        # returning (`break`) or that lets it run out of attempts, and it sets `last_crash` — which
+        # the type-checker cannot see from here.
+        assert last_crash is not None
+        if crashed_lz is not None:
+            failure += self._write_crash_artifacts(crashed_lz, s, sid)
+        # `partial_artifacts` names the newest attempt that actually finalized a recording before
+        # crashing (not necessarily the last attempt — a later one can crash during lease bring-up,
+        # before `run_scenario`'s own finalize ever runs). Only the video is attached: it is what the
+        # report's always-visible media area surfaces, whereas a missing `deviceLog`/`appTrace`
+        # simply omits its own tab and has no confusing empty state to fix. A recovered
+        # `deviceLog`/`appTrace` is dropped here rather than attached — out of scope.
+        recovered = next((a for a in partial_artifacts if a.kind == "video"), None)
+        # `SkippedCapture` means "requested but unavailable" (BE-0020) — gate it on the scenario
+        # having actually asked for video (BE-0028's opt-in) the same way `requested_intervals`
+        # itself does, so an ordinary crashed scenario that never enabled video stays silent here
+        # instead of claiming a recording went missing that was never going to exist.
+        wanted_video = "video" in requested_intervals(s, self.eff.capture)
         return RunResult(
             scenario=s.name,
             ok=False,
@@ -739,7 +789,50 @@ class _ScenarioRunner:
             backend=actuator or "",
             sid=sid,
             failure=failure,
+            artifacts=[recovered] if recovered is not None else [],
+            # Disclose the gap only when video was requested and no recording survived the crash —
+            # otherwise either the video attached above already answers "where is the recording", or
+            # this scenario was never going to have one, and a skip entry would falsely claim it was.
+            skipped_captures=(
+                [SkippedCapture(kind="video", reason=failure)]
+                if wanted_video and recovered is None
+                else []
+            ),
         )
+
+    def _write_crash_artifacts(self, lz: Lease, s: Scenario, sid: str) -> str:
+        """Copy the crashed backend's own evidence into this scenario's directory (BE-0421).
+
+        Called once, where the retry loop has already given up: a scenario that recovered passes, and a
+        passing scenario needs no crash report. Returns the trailer to append to the failure string, so
+        a contributor reading why the scenario failed is pointed at the evidence instead of having to
+        already know it exists — empty when there was nothing to copy.
+
+        Every write goes through `RunArtifactWriter.write_text` rather than `write_bytes`, so content
+        this pipeline did not author still crosses the free-text scrub (BE-0331). A failed write is
+        logged and nothing more: a diagnostic artifact must never turn an already-decided failure into
+        a different, unrelated one.
+        """
+        writer = self._artifacts()
+        if writer is None:
+            return ""
+        directory: Path | None = None
+        for name, content in lz.crash_artifacts():
+            try:
+                # The directory comes from the write itself rather than being composed a second time,
+                # so the failure string names the file that actually landed.
+                written = writer.write_text(
+                    f"{sid}/{_CRASH_DIAGNOSTICS_DIR}/{name}", content.decode(errors="replace")
+                )
+            except OSError as exc:
+                _logger.warning(
+                    "scenario %s: writing the crash artifact %s failed (%s)", s.name, name, exc
+                )
+            else:
+                directory = written.parent
+        if directory is None:
+            return ""
+        return f"; the backend's own crash evidence is in {directory}"
 
     def _run_on_lease(
         self, lz: Lease, handler: AlertGuardConfig | None, i: int, s: Scenario, sid: str

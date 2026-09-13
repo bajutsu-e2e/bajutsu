@@ -638,6 +638,13 @@ def run_scenario(
     deliberately left to finish — a scenario whose every step passed gets its real verdict rather
     than a cancellation label, and that block is bounded by the wait floor (zero on every lane that
     doesn't raise it).
+
+    Unlike every other exception this catches, `base.BackendCrashError` is never turned into a
+    `failure` here — it propagates, so the run pipeline's own crash-retry loop can see it. The
+    interval finalize still runs first (this function's own `finally`), so a recording that was in
+    flight when the backend died may already be finalized on disk; that result is attached to the
+    exception itself (`crash.partial_artifacts`) before it propagates, so the pipeline's
+    exhausted-retry `RunResult` can still show a video that *was* captured on the doomed attempt.
     """
     clock = clock or RealClock()
     sink = sink or NullSink()
@@ -721,113 +728,124 @@ def run_scenario(
 
     try:
         try:
-            if scenario.before:
-                # A precondition for the scenario, not a step within it: its failure skips `steps`
-                # and `expect` outright, the way an unsatisfiable `preconditions` already fails a
-                # scenario before this function is reached at all.
-                reason = run_phase(list(scenario.before), before_outcomes, "before", cancelled)
-                if reason is not None:
-                    failure = "before: " + reason
-            if failure is None:
-                failure = run_phase(scenario.steps, outcomes, "", cancelled)
-            if failure is None and scenario.expect:
-                expect = _interp_asserts(scenario.expect, live_bindings)
-                clip = _clipboard_for(expect, control)
-                _capture_visual_actual(
-                    ctx, driver, channel=channel, hide_markers=hide_markers, cancelled=cancelled
-                )
-                expect_results = _evaluate_expect(
-                    driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
-                )
-                # A prompt the backend answered or declined while it was interrupting one of
-                # `expect`'s own queries. Outside the failure branch below: an `expect` that passed
-                # *because* the interruption was answered still has a dismissal to report, and a
-                # declined one fails the phase outright regardless of what the assertions found. The
-                # step loop's own drain has already run and does not cover this phase's queries, and
-                # the next scenario's `setPolicy` clears the buffer outright, so this is the only
-                # chance to read what happened here.
-                expect_drained = drain_interruptions(driver)
-                expect_alerts.extend(expect_drained.alerts)
-                expect_undeclared.extend(expect_drained.undeclared)
-                if not assertions.passed(expect_results) and alert_guard is not None:
-                    # The guard's own call settles the screen after every round it dismisses
-                    # something in (BE-0418), the last one included, so nothing here settles again
-                    # before the retry below reads the screen.
-                    cleared = alert_guard(
-                        driver,
-                        expect_alerts,
-                        settle=lambda: settle_after_alert_dismiss(
-                            driver, clock, transitions=transitions, cancelled=cancelled
-                        ),
+            try:
+                if scenario.before:
+                    # A precondition for the scenario, not a step within it: its failure skips `steps`
+                    # and `expect` outright, the way an unsatisfiable `preconditions` already fails a
+                    # scenario before this function is reached at all.
+                    reason = run_phase(list(scenario.before), before_outcomes, "before", cancelled)
+                    if reason is not None:
+                        failure = "before: " + reason
+                if failure is None:
+                    failure = run_phase(scenario.steps, outcomes, "", cancelled)
+                if failure is None and scenario.expect:
+                    expect = _interp_asserts(scenario.expect, live_bindings)
+                    clip = _clipboard_for(expect, control)
+                    _capture_visual_actual(
+                        ctx, driver, channel=channel, hide_markers=hide_markers, cancelled=cancelled
                     )
-                    # A prompt the guard could not fully clear (BE-0402 leaves an alert no rule
-                    # identifies alone rather than guessing where to tap), named on the `expect`
-                    # failure below, which would otherwise report only the assertion that never held.
-                    # Taken whether or not the call cleared anything: a multi-round call can clear a
-                    # stacked alert while leaving a second one unhandled, so both facts hold at once.
-                    expect_block_note = alert_guard.blocked_note
-                    if cleared:
-                        expect_actuations.extend(drain_actuations(driver).records)
-                        _capture_visual_actual(
-                            ctx,
+                    expect_results = _evaluate_expect(
+                        driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
+                    )
+                    # A prompt the backend answered or declined while it was interrupting one of
+                    # `expect`'s own queries. Outside the failure branch below: an `expect` that passed
+                    # *because* the interruption was answered still has a dismissal to report, and a
+                    # declined one fails the phase outright regardless of what the assertions found. The
+                    # step loop's own drain has already run and does not cover this phase's queries, and
+                    # the next scenario's `setPolicy` clears the buffer outright, so this is the only
+                    # chance to read what happened here.
+                    expect_drained = drain_interruptions(driver)
+                    expect_alerts.extend(expect_drained.alerts)
+                    expect_undeclared.extend(expect_drained.undeclared)
+                    if not assertions.passed(expect_results) and alert_guard is not None:
+                        # The guard's own call settles the screen after every round it dismisses
+                        # something in (BE-0418), the last one included, so nothing here settles again
+                        # before the retry below reads the screen.
+                        cleared = alert_guard(
                             driver,
-                            channel=channel,
-                            hide_markers=hide_markers,
-                            cancelled=cancelled,
+                            expect_alerts,
+                            settle=lambda: settle_after_alert_dismiss(
+                                driver, clock, transitions=transitions, cancelled=cancelled
+                            ),
                         )
-                        # Re-read the clipboard too: clearing the block may have let the app update the
-                        # pasteboard, so the retry must compare against the fresh value, not the stale one.
-                        clip = _clipboard_for(expect, control)
-                        expect_results = _evaluate_expect(
-                            driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
-                        )  # retry once
-                    # The guard's own rounds just now, and the retry's queries when one ran, can
-                    # each be interrupted too, and nothing else drains this phase again afterwards
-                    # (BE-0406 Unit 2b). Outside the `if cleared` branch above so a call that cleared
-                    # nothing is still covered.
-                    retry_drained = drain_interruptions(driver)
-                    expect_alerts.extend(retry_drained.alerts)
-                    expect_undeclared.extend(retry_drained.undeclared)
-                if not assertions.passed(expect_results):
-                    failure = "expect: " + _fail_reason(expect_results)
-                    if expect_block_note:
-                        failure += f" \u2014 {expect_block_note}"
-                if expect_undeclared:
-                    # Overrides whatever `failure` above holds, even None when `expect` otherwise
-                    # passed: an interruption no rule named is evidence the scenario's assumptions
-                    # were wrong regardless of what the assertions checked afterward (BE-0406 Unit
-                    # 2b). Appended to an existing failure rather than replacing it, so the
-                    # assertion mismatch's own detail is not lost alongside the alert that caused it.
-                    note = undeclared_interruption_note(expect_undeclared)
-                    failure = f"{failure} \u2014 {note}" if failure else "expect: " + note
-        except ControlChannelError as exc:
-            # A command that could not be shown to have taken effect fails the scenario rather than
-            # letting it proceed on an app state bajutsu never established (BE-0365). It lands as an
-            # ordinary failure, so the verdict stays machine-checkable and the cause is in the report.
-            failure = f"control channel: {exc}"
-        except RunCancelled:
-            # A cancelled run is a failed run, not a silent gap: the scenario the cancel interrupted
-            # (or one whose first boundary was already past it) fails with the one spelling
-            # downstream reads, and the `finally` below still finalizes its intervals — so the
-            # report and the manifest are written exactly as they are for any other failure
-            # (BE-0370).
-            failure = CANCELLED_FAILURE
-        if scenario.after:
-            # Reached on every path out of `steps`/`expect`, the cancelled one included — the same
-            # reason the `finally` below finalizes unconditionally.
-            failure, after_verdict = _dispatch_after(
-                list(scenario.after),
-                failure,
-                lambda steps, src: run_phase(steps, after_outcomes, "after", src, after_counter),
-                clock,
-                cancelled,
-            )
-    finally:
-        artifacts = sink.finish_scenario_intervals(sid, recordings)
-        # After the finalize, not before it: stopping the recording is what lets its own duration
-        # place its origin, which is a measurement rather than the start-confirmation proxy a
-        # scenario-start resolution would have to settle for (the correction BE-0346 introduced).
-        video_start_offset = _resolve_video_start_offset(video_interval, scenario_start)
+                        # A prompt the guard could not fully clear (BE-0402 leaves an alert no rule
+                        # identifies alone rather than guessing where to tap), named on the `expect`
+                        # failure below, which would otherwise report only the assertion that never held.
+                        # Taken whether or not the call cleared anything: a multi-round call can clear a
+                        # stacked alert while leaving a second one unhandled, so both facts hold at once.
+                        expect_block_note = alert_guard.blocked_note
+                        if cleared:
+                            expect_actuations.extend(drain_actuations(driver).records)
+                            _capture_visual_actual(
+                                ctx,
+                                driver,
+                                channel=channel,
+                                hide_markers=hide_markers,
+                                cancelled=cancelled,
+                            )
+                            # Re-read the clipboard too: clearing the block may have let the app update the
+                            # pasteboard, so the retry must compare against the fresh value, not the stale one.
+                            clip = _clipboard_for(expect, control)
+                            expect_results = _evaluate_expect(
+                                driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
+                            )  # retry once
+                        # The guard's own rounds just now, and the retry's queries when one ran, can
+                        # each be interrupted too, and nothing else drains this phase again afterwards
+                        # (BE-0406 Unit 2b). Outside the `if cleared` branch above so a call that cleared
+                        # nothing is still covered.
+                        retry_drained = drain_interruptions(driver)
+                        expect_alerts.extend(retry_drained.alerts)
+                        expect_undeclared.extend(retry_drained.undeclared)
+                    if not assertions.passed(expect_results):
+                        failure = "expect: " + _fail_reason(expect_results)
+                        if expect_block_note:
+                            failure += f" \u2014 {expect_block_note}"
+                    if expect_undeclared:
+                        # Overrides whatever `failure` above holds, even None when `expect` otherwise
+                        # passed: an interruption no rule named is evidence the scenario's assumptions
+                        # were wrong regardless of what the assertions checked afterward (BE-0406 Unit
+                        # 2b). Appended to an existing failure rather than replacing it, so the
+                        # assertion mismatch's own detail is not lost alongside the alert that caused it.
+                        note = undeclared_interruption_note(expect_undeclared)
+                        failure = f"{failure} \u2014 {note}" if failure else "expect: " + note
+            except ControlChannelError as exc:
+                # A command that could not be shown to have taken effect fails the scenario rather than
+                # letting it proceed on an app state bajutsu never established (BE-0365). It lands as an
+                # ordinary failure, so the verdict stays machine-checkable and the cause is in the report.
+                failure = f"control channel: {exc}"
+            except RunCancelled:
+                # A cancelled run is a failed run, not a silent gap: the scenario the cancel interrupted
+                # (or one whose first boundary was already past it) fails with the one spelling
+                # downstream reads, and the `finally` below still finalizes its intervals — so the
+                # report and the manifest are written exactly as they are for any other failure
+                # (BE-0370).
+                failure = CANCELLED_FAILURE
+            if scenario.after:
+                # Reached on every path out of `steps`/`expect`, the cancelled one included — the same
+                # reason the `finally` below finalizes unconditionally.
+                failure, after_verdict = _dispatch_after(
+                    list(scenario.after),
+                    failure,
+                    lambda steps, src: run_phase(
+                        steps, after_outcomes, "after", src, after_counter
+                    ),
+                    clock,
+                    cancelled,
+                )
+        finally:
+            artifacts = sink.finish_scenario_intervals(sid, recordings)
+            # After the finalize, not before it: stopping the recording is what lets its own duration
+            # place its origin, which is a measurement rather than the start-confirmation proxy a
+            # scenario-start resolution would have to settle for (the correction BE-0346 introduced).
+            video_start_offset = _resolve_video_start_offset(video_interval, scenario_start)
+    except base.BackendCrashError as crash:
+        # The `finally` above already ran, so a recording that was in flight when the backend
+        # died is already finalized on disk and named in `artifacts` — attach it to the crash
+        # itself before it propagates. The pipeline's exhausted-retry `RunResult` never reaches
+        # the `return` below, so this is the only way a video that *was* captured on a doomed
+        # attempt still reaches the report instead of a bare "video unavailable" disclosure.
+        crash.partial_artifacts = artifacts
+        raise
 
     return RunResult(
         scenario=scenario.name,

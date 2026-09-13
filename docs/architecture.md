@@ -246,7 +246,7 @@ Three contracts are enforced:
   periphery module such as `record/`; likewise the resolved `ai` block (`AiConfig`) lives in
   `config/`, so the core reads it without importing the AI client.
 - **The core must stay host-agnostic (BE-0129).** Multi-tenant hosting concerns — organizations,
-  roles, tenancy — and the `db` (SQLAlchemy/Alembic/psycopg/cryptography) and `oauth` (Authlib)
+  roles, tenancy — and the `db` (SQLAlchemy/Alembic/psycopg/cryptography) and `oauth` (Authlib, joserfc)
   extras belong to `bajutsu/serve/` alone. The org model (`OrgConfig`, `org_for_*`,
   `targets_for_org`, `load_serve_config`) lives in `bajutsu/serve/orgs.py`, not `config/`; `Config`
   carries no `orgs` field, and the core loader drops a top-level `orgs:` before validation so a run
@@ -855,7 +855,16 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   left to XCUITest's own default handler, unchanged (BE-0399) — nothing here can stop that tap —
   but since BE-0406 a governing policy records the buttons it declined before doing so, and the
   step or `expect` that met the interruption fails, naming them, rather than the run continuing as
-  if nothing had answered on the scenario's behalf. On by default, `false` disables it per scenario.
+  if nothing had answered on the scenario's behalf. A foreground notification banner reaches that same monitor but takes a branch of
+  its own, ahead of the policy (BE-0416): a banner carries no button a rule could identify — its one
+  tappable region opens the notification's app — so the monitor swipes it upward by its own measured
+  frame, confirms the clearance before claiming the interruption, and records it as an `AlertEvent`
+  under a `notificationBanner` kind, since the text beside it is the notification's rather than a
+  button's. The branch sits ahead of the `governs` check because neither alert outcome fits a
+  banner: a governing policy recorded it as an undeclared interruption and failed an otherwise
+  passing step, while an ungoverned one left XCUITest to wait the banner out, measured at ~9s per
+  interrupted interaction against ~0.6s undisturbed. `systemAlertHandling` itself is on by default,
+  and `false` disables it per scenario — the banner branch above runs either way.
   The mid-wait gate's own reach changed alongside the one-shot call above (BE-0418). Its
   `probed_absent` narrowed from `state == "absent"` alone to `state == "absent" and not buttons`:
   that state now also answers the time-of-check/time-of-use race — a matched rule's own tap racing

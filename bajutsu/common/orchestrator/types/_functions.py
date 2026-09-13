@@ -270,19 +270,27 @@ def push_interruption_policy(driver: base.Driver, guard: AlertGuardConfig | None
 
 
 def drain_interruptions(driver: base.Driver) -> DrainedInterruptionEvents:
-    """The prompts the backend answered and declined at interruption time since the last drain.
+    """The prompts the backend answered, declined and swiped away at interruption time since the last drain.
 
     A tapped label is reported as an ordinary `AlertEvent` so a dismissal that happened inside the
     backend's own interruption handling is not missing from the run's report. A declined alert is
     reported as an `UndeclaredInterruption` instead — nothing answered it on the scenario's behalf,
     so it is not a dismissal, but its buttons are what lets a caller fail by name rather than let the
     interruption pass in silence (BE-0406 Unit 2b). A backend without the opt-in contributes nothing.
+
+    A swiped-away notification banner is a dismissal like the first, so it joins `alerts` rather than
+    `undeclared` — under its own kind, since nothing was tapped and the label is the notification's
+    text (BE-0416). It is deliberately *not* an undeclared interruption: no scenario could have
+    declared it, because a banner offers no button for a rule to identify, so failing the step over
+    one would fail every run a notification happened to land in.
     """
     if not isinstance(driver, base.InterruptionPolicyTarget):
         return DrainedInterruptionEvents(alerts=[], undeclared=[])
     drained = driver.drain_interruptions()
+    tapped = [AlertEvent(label=label) for label in drained.tapped]
+    swiped = [AlertEvent(label=text, kind="notificationBanner") for text in drained.banners]
     return DrainedInterruptionEvents(
-        alerts=[AlertEvent(label=label) for label in drained.tapped],
+        alerts=tapped + swiped,
         undeclared=[UndeclaredInterruption(buttons=buttons) for buttons in drained.declined],
     )
 
@@ -298,10 +306,31 @@ def drain_actuations(driver: base.Driver) -> Drained:
     return Drained(records=[], dropped=0)
 
 
+# The budget both evidence-dir slugs share (BE-0420). Counted in characters, not bytes: a
+# fullwidth/Japanese scenario name should not be cut shorter than an equally long ASCII one just
+# because its characters encode to more bytes.
+_MAX_SLUG_CHARS = 60
+
+
+def _cap_chars(slug: str) -> str:
+    """Cut `slug` to `_MAX_SLUG_CHARS` characters (BE-0420).
+
+    Python string slicing is always at a codepoint boundary, so this can never split a character
+    the way a byte-oriented cut could.
+    """
+    return slug[:_MAX_SLUG_CHARS]
+
+
 def scenario_slug(name: str) -> str:
-    """A filesystem-safe id derived from a scenario name (for its evidence dir)."""
+    """A filesystem-safe id derived from a scenario name (for its evidence dir).
+
+    Capped at `_MAX_SLUG_CHARS` (BE-0420). `rstrip` drops a hyphen the cut can leave dangling. Two
+    long names can now collide here; `_evidence_sid` still tells them apart by its own `NN-`
+    prefix, and BE-0420's *Not doing* accepts the collision for the two callers that build a bare
+    slug without one.
+    """
     slug = re.sub(r"[^0-9a-zA-Z]+", "-", name).strip("-").lower()
-    return slug or "scenario"
+    return _cap_chars(slug).rstrip("-") or "scenario"
 
 
 def sanitize_source_stem(stem: str) -> str:
@@ -311,5 +340,10 @@ def sanitize_source_stem(stem: str) -> str:
     characters are ordinary in this codebase's own scenario names), so a plain stem like
     `login_flow` or `決済フロー` passes through unchanged; only a character unsafe in an unescaped
     HTML attribute / URL path segment (`#`, `?`, `/`, whitespace, …) is replaced.
+
+    Capped at `_MAX_SLUG_CHARS` (BE-0420), which keeps a long file name from producing an evidence
+    directory the filesystem refuses. No fallback is needed for an empty result: `re.sub` cannot
+    turn a non-empty `stem` into an empty string, and slicing a non-empty string to a positive
+    length always keeps at least its first character.
     """
-    return re.sub(r"[^\w.-]", "_", stem)
+    return _cap_chars(re.sub(r"[^\w.-]", "_", stem))
