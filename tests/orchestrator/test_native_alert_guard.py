@@ -2980,18 +2980,22 @@ def test_the_end_of_step_guard_never_retaps_a_label_it_already_cleared_from_the_
     assert sum(1 for action in driver.actions if action[0] == "tap") == 1
 
 
-def test_the_end_of_step_guard_does_not_report_a_revealed_app_screen_as_a_lingering_tree_prompt() -> (
+def test_the_end_of_step_guard_reports_a_revealed_screen_sharing_a_dismissed_shapes_labels() -> (
     None
 ):
     # The other half of the test above, and the one a bare label-containment check cannot tell
     # apart from it: `savePassword`'s 26.5 shape names only ordinary UI vocabulary ("Save",
     # "Not Now"), so once the sheet genuinely closes, an underlying app screen (an edit form, say)
     # whose own ordinary buttons happen to carry those same two labels reads back identically to
-    # the sheet's own labels lingering past `settle`. The old check ("this shape's labels are still
-    # somewhere in the tree") could not distinguish the two and wrongly reported a give-up note for
-    # a prompt that actually cleared on round 0 (review finding) — comparing the whole tree's own
-    # identity against the pre-tap read, the way `_AlertGuardGate._dismiss_from_tree` already does
-    # for the mid-wait path, is what tells them apart.
+    # the sheet's own labels lingering past `settle`. Comparing the whole tree's own identity
+    # against the pre-tap read once distinguished the two, mirroring `_AlertGuardGate.
+    # _dismiss_from_tree`'s own guard for the mid-wait path -- but that same requirement also ruled
+    # out the guard's own motivating case, a sheet that accepts a tap without closing and
+    # re-presents with a validation error, which changes the tree by construction (BE-0418 review
+    # finding). Dropped in favor of the label-containment check alone: unlike the mid-wait gate,
+    # this one-shot call never taps again regardless of which read it takes here (`exclude` already
+    # forbids it), so the misreport this test pins is the accepted cost of naming the genuinely
+    # still-stuck case the sibling test above exists for, rather than a second, unlicensed tap.
     class _RevealsAFormWithTheSameButtonLabels(FakeDriver):
         def __init__(self) -> None:
             super().__init__([_button("Save"), _button("Not Now")])
@@ -3025,10 +3029,48 @@ def test_the_end_of_step_guard_does_not_report_a_revealed_app_screen_as_a_linger
     guard = AlertGuardConfig(rules=[sheet])
     cleared, alerts = _call(driver, guard)
     assert cleared and alerts == [AlertEvent(label="Not Now")]
-    # The sheet genuinely cleared on round 0 — unlike the test above, where the same labels really
-    # are the sheet's own fade outlasting the bound, nothing here is left to report.
-    assert guard.blocked_note == ""
+    # The sheet genuinely cleared on round 0, unlike the test above where the same labels really are
+    # the sheet's own fade outlasting the bound -- but the two are indistinguishable from a bare
+    # label check, and the misreport costs nothing this call would otherwise act on (BE-0418 review
+    # finding): `exclude` already withholds this shape regardless of the note.
+    assert guard.blocked_note == uncleared_prompt_note("Not Now")
     assert sum(1 for action in driver.actions if action[0] == "tap") == 1
+
+
+def test_the_end_of_step_guard_names_a_sheet_that_re_presents_with_a_validation_error() -> None:
+    # The motivating case the two tests above's own tree-identity check ruled out (BE-0418 review
+    # finding): a sheet that accepts a tap without closing and re-presents itself with a validation
+    # error changes the tree by construction (the new error row, at minimum), so requiring the whole
+    # tree signature to match the pre-tap read never held for it -- the call fell through to a bare
+    # `""` instead of naming the sheet `exclude` will never let it tap again. Dropping that
+    # requirement in favor of the label-containment check alone is what lets this case through.
+    class _ReRaisesWithAnErrorRow(FakeDriver):
+        def tap(self, sel: base.Selector) -> None:
+            super().tap(sel)
+            self.screen = [
+                _button("Save"),
+                _button("Not Now"),
+                {
+                    "identifier": None,
+                    "label": "Incorrect password",
+                    "traits": [],
+                    "value": None,
+                    "frame": (0, 0, 10, 10),
+                    "nativeZ": None,
+                },
+            ]
+
+    driver = _ReRaisesWithAnErrorRow([_button("Save"), _button("Not Now")])
+    sheet = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    guard = AlertGuardConfig(rules=[sheet])
+    cleared, alerts = _call(driver, guard)
+    assert cleared and alerts == [AlertEvent(label="Not Now")]
+    assert guard.blocked_note == uncleared_prompt_note("Not Now")
 
 
 def test_dismiss_from_tree_once_does_not_promote_a_shadowed_choice_for_the_same_alert() -> None:

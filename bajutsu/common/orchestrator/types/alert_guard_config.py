@@ -874,18 +874,21 @@ class AlertGuardConfig:
                     # tree read, is the in-tree twin of `probe_native`'s "already_dismissed": the
                     # sheet's own fade outlasted `settle`, so settle again and give a sheet stacked
                     # underneath it another round to be presented, rather than ending the call on a
-                    # lingering fade this loop exists to see past. But that inference only holds
-                    # while the surrounding tree is otherwise unchanged since the tap: a shape's
-                    # labels being enumerable ANYWHERE in the tree (`tree_buttons`, not one sheet's
-                    # own set) matches just as well when the sheet genuinely closed and revealed an
-                    # app screen whose own ordinary buttons happen to carry the same labels
-                    # (`savePassword`'s 26.5 shape, "Save" / "Not Now", is exactly this — the
-                    # mid-wait gate's `_dismiss_from_tree` already guards the identical ambiguity
-                    # with its own `tree_signature` comparison, BE-0418 review finding).
-                    if (
-                        tree_dismiss_signature is not None
-                        and tree_read_signature == tree_dismiss_signature
-                        and any(shape <= set(tree_buttons) for shape in dismissed_tree_shapes)
+                    # lingering fade this loop exists to see past. Not gated on the tree being
+                    # otherwise unchanged since the tap: a sheet that accepts a tap without closing —
+                    # a validation error re-presenting it, say — changes the tree by construction (at
+                    # minimum, the new error row), so requiring an unchanged signature ruled out
+                    # exactly the case this branch exists to catch (BE-0418 review finding). The false
+                    # positive an unchanged-signature requirement would have protected against — the
+                    # sheet genuinely closed and revealed an app screen whose own ordinary buttons
+                    # happen to carry the same labels (`savePassword`'s 26.5 shape, "Save" / "Not
+                    # Now", is exactly this) — costs only an imprecise note here, unlike the mid-wait
+                    # gate's own identical ambiguity: `exclude` already keeps this call from tapping
+                    # the dismissed shape again regardless of which read this branch takes, so
+                    # misreading a revealed screen as still-stuck never risks the second, unlicensed
+                    # tap it would there.
+                    if tree_dismiss_signature is not None and any(
+                        shape <= set(tree_buttons) for shape in dismissed_tree_shapes
                     ):
                         # The tree twin of the native diagnosis above (BE-0418 review finding):
                         # `dismiss_from_tree_once` reported a tap as landed, but a sheet that
@@ -918,15 +921,13 @@ class AlertGuardConfig:
                     # Otherwise this round's tree read may simply have caught a still-animating
                     # screen mid-transition rather than a genuinely clear one, so a tree diagnosis
                     # is left as an earlier round's read left it rather than erased on this round's
-                    # own account — unless the signature comparison above is what ruled the
-                    # lingering-fade branch out, in which case the tree genuinely changed since the
-                    # tap and there is nothing left to diagnose (the labels the `any()` above found
-                    # belong to whatever the tap actually revealed, not to the shape that was
-                    # tapped — genuinely revealed, or a genuine re-presentation of the same prompt,
-                    # are the same evidence from here and are left the same way rather than risk
-                    # tapping the former a second, unlicensed time, BE-0418 review finding). Not
-                    # `_leftover_note`: `buttons` is `[]` here too, inside `if not buttons:` above, so
-                    # that call would only ever reduce to its own fallback (BE-0418 review finding).
+                    # own account. Reaching here at all means no shape this call has already
+                    # dismissed is enumerable anywhere in this read either — the `any()` above ruled
+                    # that out regardless of whether the screen changed since the tap — so there is
+                    # nothing inherited from an earlier dismiss left to diagnose (BE-0418 review
+                    # finding). Not `_leftover_note`: `buttons` is `[]` here too, inside
+                    # `if not buttons:` above, so that call would only ever reduce to its own
+                    # fallback (BE-0418 review finding).
                     note = ""
                     break
                 # A non-empty read here is the time-of-check/time-of-use race, not a genuinely
@@ -1045,17 +1046,21 @@ class AlertGuardConfig:
         # have a fresh query here only reproduce that same false (BE-0418 review finding) — `None`
         # (the shape came from a tap `dismiss_from_tree_once` recorded but no *later* read has yet
         # tested, per that branch's own `if not isinstance(tree_result, AlertEvent)` guard above)
-        # still runs the check, the same as any round strictly before the final one.
+        # still runs the check, the same as any round strictly before the final one. Not gated on
+        # this fresh read's own signature matching `tree_dismiss_signature`, for the identical reason
+        # the lingering-fade branch above dropped that requirement (BE-0418 review finding): a sheet
+        # that changed shape without closing — a validation error re-presenting it, say — would
+        # otherwise never be named here either, and this check never taps regardless of the read it
+        # takes, so a revealed screen's ordinary buttons happening to share the dismissed shape's
+        # labels costs only an imprecise note, not a second tap.
         if (
             not note
             and (tree_read_round is None or tree_read_round < round_index)
             and tree_dismiss_shape is not None
             and tree_dismiss_label is not None
         ):
-            _, final_tree_buttons, final_tree_signature = _read_tree(driver)
-            if final_tree_signature == tree_dismiss_signature and tree_dismiss_shape <= set(
-                final_tree_buttons
-            ):
+            _, final_tree_buttons, _ = _read_tree(driver)
+            if tree_dismiss_shape <= set(final_tree_buttons):
                 note = uncleared_prompt_note(tree_dismiss_label)
         self.blocked_note = note
         return cleared

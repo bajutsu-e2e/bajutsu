@@ -823,11 +823,14 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   falling silent, and one that raced away only after cleanly tapping a *different* alert names the
   rule that actually raced, not the unrelated one it already tapped (BE-0418 review finding). An
   in-tree sheet the
-  call tapped carries it too, once the bound is spent with the sheet still enumerable and the rest
-  of the tree unchanged since the tap — an app screen the closing sheet revealed can carry the very
-  same button labels, so tree identity, not those labels alone, is what tells a sheet that never
-  closed from one that did. `exclude` already keeps this call from tapping it again, so nothing
-  later would otherwise report a sheet that accepted the tap without actually closing. The tree
+  call tapped carries it too, once the bound is spent with the sheet still enumerable — on the
+  shape's own labels alone, not the rest of the tree's own identity: a sheet that accepts a tap
+  without closing can re-present itself with a validation error, which changes the tree by
+  construction, so requiring the tree to read back unchanged would rule out exactly that case. An
+  app screen the closing sheet revealed can coincidentally carry the same button labels and get
+  misnamed as the sheet that never closed, but `exclude` already keeps this call from tapping either
+  one again regardless of which read it takes, so the misreport costs only an imprecise note, never
+  a second tap. The tree
   note survives a later round that finds nothing to match, or one that goes on to dismiss an
   unrelated alert on either surface — native or
   in-tree — rather than either round erasing a real, still-open diagnosis. A native leftover note is
