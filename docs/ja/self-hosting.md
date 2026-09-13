@@ -589,11 +589,13 @@ job の id と見分けがつきません。「権限がない」と返せば、
 セッションは `serve` 自身が発行したものなので、`serve` から失効させられます。
 
 ```bash
-curl -X POST "$BAJUTSU_URL/api/orgs/acme/machine-sessions/revoke" \
+# -b: 管理者自身のサインイン済み Cookie です。ほかの /api/orgs の呼び出しと同じです。
+curl -X POST "$BAJUTSU_URL/api/orgs/acme/machine-sessions/revoke" -b cookies.txt \
   -H 'Content-Type: application/json' -d '{"repository": "acme/app"}'
 ```
 
-`/api/orgs/…` の他と同じく、admin の操作です。`repository` を省くと、その org のマシンセッションがすべて
+`/api/orgs/…` の他と同じく、admin の操作です。パイプラインのセッションではなく、管理者のセッションが
+要ります。リポジトリ名は名簿と同じ綴りで構いません。大文字と小文字は両側で畳んで比べます。`repository` を省くと、その org のマシンセッションがすべて
 終わります。名簿そのものに問題があったときに欲しい範囲です。org を退役させたときも、その org のマシン
 セッションは終わります。
 

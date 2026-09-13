@@ -156,7 +156,7 @@ ROUTES: tuple[Route, ...] = (
         "GET",
         "/api/jobs/{job_id}",
         lambda state, ctx: ops.job_view(
-            state, ctx.path_param("job_id"), actor=ctx.actor(), machine_org=ctx.machine_org()
+            state, ctx.path_param("job_id"), machine_org=ctx.machine_org()
         ),
     ),
     # --- GET: text responses (content_type) ---

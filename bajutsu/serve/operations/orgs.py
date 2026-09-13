@@ -338,8 +338,20 @@ def revoke_machine_sessions(
     revoked = state.auth.sessions.revoke_machine_sessions(
         slug, identity=None if repository is None else machine_identity(repository)
     )
-    # A machine session takes no per-session binding slot (it resolves configuration through the
-    # sessionless `binding_for` path), so unlike `delete_org` there is nothing to reclaim here.
+    # Logged whether or not it matched. Zero is a legitimate answer — the sessions may already have
+    # expired — but it is also what a mistyped repository returns, and an operator reaching for this
+    # endpoint is acting on a name that has just changed. The deployment's log is where the two can
+    # be told apart afterwards.
+    oplog.log_event(
+        _logger,
+        "org.machineSessions.revoke",
+        f"revoked {revoked} machine session(s) for org {slug!r}",
+        org=slug,
+        repository=repository or "",
+    )
+    # No `drop_revoked_bindings` to match `delete_org`'s: a machine session takes no per-session
+    # binding slot, because both backends resolve one to None before it reaches `binding_for`
+    # (BE-0414 unit 3). There is nothing to reclaim.
     _record_audit(
         state,
         actor,

@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from bajutsu.serve.sessions import HUMAN, MACHINE, Principal, PrincipalKind
+from bajutsu.serve.sessions import HUMAN, Principal, PrincipalKind
 
 from ._shared import _DEFAULT_TTL
 
@@ -115,7 +115,15 @@ class SqlSessionStore:
 
         from bajutsu.serve.server.models import SessionRecord
 
-        where = [SessionRecord.kind == MACHINE, SessionRecord.org == org]
+        # "Not NULL and not human", mirroring `kind_from_stored`'s own rule rather than restating
+        # the positive literal. The read side governs an unrecognized kind — a row written by a
+        # newer version mid-rolling-deploy — as a *machine*, so matching `== MACHINE` here would
+        # leave exactly those rows admitted by the gate and untouched by every revocation.
+        where = [
+            SessionRecord.kind.isnot(None),
+            SessionRecord.kind != HUMAN,
+            SessionRecord.org == org,
+        ]
         if identity is not None:
             where.append(SessionRecord.identity == identity)
         # Deleted, not expired in place, for the same reason `revoke_identities` deletes: the reads

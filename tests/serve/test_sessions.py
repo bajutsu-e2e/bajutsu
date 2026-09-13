@@ -422,6 +422,20 @@ def test_every_store_revokes_a_repositorys_sessions_within_one_org_only(
         assert store.valid(there), type(store)
 
 
+def test_every_store_revokes_a_row_whose_kind_this_version_does_not_know(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    """`kind_from_stored` governs an unrecognized kind — a row a newer version wrote during a
+    rolling deploy — as a machine. A revocation matching the literal `"machine"` would leave
+    exactly those rows admitted by the gate and untouched by every revocation."""
+    store = _sql_store(serve_engine)
+    sid = store.issue("repo:acme/app", org="acme", kind="machine-v2")  # type: ignore[arg-type]
+    principal = store.principal(sid)
+    assert principal is not None and principal.kind == MACHINE, "the gate reads it as a machine"
+    assert store.revoke_machine_sessions("acme") == 1
+    assert not store.valid(sid)
+
+
 def test_every_store_revokes_a_whole_orgs_machine_sessions(
     serve_engine: Callable[..., Engine],
 ) -> None:
@@ -459,5 +473,15 @@ def test_the_machine_identity_form_round_trips_and_rejects_a_login() -> None:
     login cannot contain `/`, so nothing a person signs in as is ever read as a repository."""
     assert machine_identity("acme/app") == "repo:acme/app"
     assert machine_repository(machine_identity("acme/app")) == "acme/app"
-    for identity in (None, "", "alice", "repository:acme/app", "repo:"):
+    for identity in (None, "", "alice", "repository:acme/app"):
         assert machine_repository(identity) is None, identity
+    # The prefix alone settles that the caller is a machine. A bare `repo:` answering None would
+    # send `_record_audit` down the human branch and write it into a foreign key.
+    assert machine_repository("repo:") == ""
+
+
+def test_the_machine_identity_folds_case_like_the_roster_does() -> None:
+    """`AllowedRepository.admits` matches the roster case-insensitively, and revocation compares
+    identities exactly. Minting from the raw claim would leave an admin who types the casing their
+    own roster uses revoking nothing, which looks identical to having nothing left to revoke."""
+    assert machine_identity("Acme/App") == machine_identity("acme/app")

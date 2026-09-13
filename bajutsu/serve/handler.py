@@ -216,7 +216,15 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
             shared-token caller. Validated against the session store, unlike the raw cookie read
             above, which the gate hands to policy that validates it itself: a cookie naming a session
             the store no longer knows must read the fallback binding rather than a slot it can no
-            longer own."""
+            longer own.
+
+            None for a machine principal too (BE-0414 unit 3), which validates like any session but
+            owns no member slot: BE-0393 sized that map for members, and its restore is a Git or
+            bundle fetch paid once per session. One session per CI job would pay that fetch per job
+            and evict members' slots, so a machine reads the deployment's fallback instead — the
+            sessionless path `binding_for` already documents for a CI request."""
+            if self._machine_org is not None:
+                return None
             sid = self._session_value()
             return sid if sid is not None and state.auth.valid_session(sid) else None
 

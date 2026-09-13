@@ -61,6 +61,19 @@ def oidc_exchange(state: ServeState, token: str, org: str) -> tuple[Any, int, st
         # No expected audience configured, so the caller shape is off entirely. The route is not
         # even open in that case (`gate.is_open`); this is the second lock on the same door.
         return {"error": "oidc not configured"}, 404, None
+    if state.auth.token is None:
+        # Both backends skip the request gate entirely when no shared token is configured, so
+        # nothing would run the machine allowlist — and, worse, nothing would carry the org this
+        # exchange just verified. `org_of` reads a persisted user row a pipeline has none of, so
+        # every later call would answer 200 while quietly acting as the `default` tenant. Refuse
+        # instead of minting a session whose whole point cannot be enforced.
+        oplog.log_event(
+            _logger,
+            "oidc.denied",
+            "the OIDC exchange needs a configured token, or the request gate never runs",
+            level=logging.WARNING,
+        )
+        return {"error": "oidc exchange needs an authenticated deployment"}, 400, None
     if state.repository is None:
         # The replay cache is a table in the shared system of record, because a hosted control
         # plane is several replicas and a per-process cache would fall to a replay against the

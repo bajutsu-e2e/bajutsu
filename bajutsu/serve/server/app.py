@@ -181,7 +181,14 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
         """This request's login-session id, or None for a shared-token caller (BE-0393 unit 2) — the
         hosted twin of the stdlib handler's `_session_value`. A cookie naming a session the store no
         longer knows resolves to None, so a revoked session reads the fallback binding rather than a
-        slot it can no longer own."""
+        slot it can no longer own.
+
+        None for a machine principal too (BE-0414 unit 3), which validates like any session but owns
+        no member slot: BE-0393 sized that map for members, and its restore is a Git or bundle fetch
+        paid once per session. One session per CI job would pay that fetch per job and evict
+        members' slots, so a machine reads the deployment's fallback instead."""
+        if _machine_org(request) is not None:
+            return None
         sid = request.cookies.get(_SESSION_COOKIE)
         return sid if sid is not None and state.auth.valid_session(sid) else None
 

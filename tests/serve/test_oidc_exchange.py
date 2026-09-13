@@ -840,6 +840,10 @@ def test_a_job_belonging_to_another_org_reads_as_missing(
     assert status == 404 and payload == {"error": "no such job"}
     # Indistinguishable from a job that never existed at all.
     assert ops.job_view(state, "nope", machine_org="acme") == (payload, status)
+    # A person is unscoped here, as before: their org is read from a row `set_active_org` rewrites,
+    # while a job's org is frozen at dispatch, so scoping them would 404 a member on their own
+    # in-flight run merely because they switched org.
+    assert ops.job_view(state, job.id)[1] == 200
 
 
 def test_a_machine_reads_its_own_orgs_runs(
@@ -948,3 +952,60 @@ def test_the_revocation_endpoint_is_admin_gated_and_closed_to_a_machine(tmp_path
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_a_deployment_with_no_token_refuses_the_exchange(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    """Both backends skip the request gate with no token configured, so nothing would run the
+    allowlist or carry the verified org — every later call would answer 200 while quietly acting as
+    the `default` tenant. Refused outright, like an unconfigured audience or a missing database."""
+    key = _key()
+    state = _state(serve_engine, tmp_path, key)
+    state.auth.token = None
+    payload, status, sid = ops.oidc_exchange(state, _token(key), "acme")
+    assert status == 400 and sid is None
+    assert "authenticated deployment" in payload["error"]
+
+
+def test_a_machine_session_takes_no_per_session_binding_slot(tmp_path: Path) -> None:
+    """BE-0393 sized the slot map for members, and a restore is a Git or bundle fetch paid once per
+    session. One session per CI job would pay that fetch per job and evict members' slots, so both
+    backends resolve a machine's session to None before it reaches `binding_for`."""
+    from fastapi.testclient import TestClient
+
+    from bajutsu.serve.server.app import make_app
+
+    key = _key()
+    state = _state(_threaded(tmp_path), tmp_path, key)
+    sid = _machine(state, key, "acme")
+
+    client = TestClient(make_app(state))
+    client.cookies.set("bajutsu_session", sid)
+    assert client.get("/api/runs").status_code == 200
+
+    server, port = _serve(state)
+    try:
+        assert _get(port, "/api/runs", cookie=sid)[0] == 200
+    finally:
+        server.shutdown()
+        server.server_close()
+    # The slot map stayed empty on both backends: a machine reads the deployment's fallback.
+    assert state.bindings == {}
+
+
+def test_revoking_matches_the_roster_casing(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    """The roster admits `Acme/App` and `acme/app` alike, so an admin who types the casing their own
+    roster uses must not revoke nothing — a silent no-op on the very duty this endpoint serves."""
+    key = _key()
+    state = _state(serve_engine, tmp_path, key)
+    admin = _admin(state)
+    sid = _machine(state, key, "acme")
+
+    payload, status = ops.revoke_machine_sessions(
+        state, "acme", {"repository": "Acme/App"}, actor=admin
+    )
+    assert status == 200 and payload["sessionsRevoked"] == 1
+    assert state.auth.valid_session(sid) is False

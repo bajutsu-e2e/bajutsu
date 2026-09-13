@@ -314,7 +314,10 @@ class ServeState:
         opens would resolve `default` whatever `allowedRepositories` said. Every one of those
         endpoints therefore resolves its org through here instead.
         """
-        return machine_org or self.org_of(actor)
+        # `is not None`, not falsiness: `gate.forbidden_for_machine` refuses a machine principal
+        # whose org is None, so an empty string must never reach here as "no machine org" and
+        # resolve to `default` — the one outcome both guards exist to prevent.
+        return self.org_of(actor) if machine_org is None else machine_org
 
     def eligible_orgs(self, actor: str | None) -> dict[str, str]:
         """Every org *actor* may act as, each mapped to the role they hold there.

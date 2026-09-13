@@ -873,17 +873,21 @@ def _valid_step_id(step_id: str) -> bool:
     return ".." not in parts
 
 
-def job_view(
-    state: ServeState, job_id: str, *, actor: str | None = None, machine_org: str | None = None
-) -> tuple[Any, int]:
+def job_view(state: ServeState, job_id: str, *, machine_org: str | None = None) -> tuple[Any, int]:
     """One job's live view — its status, and the log buffer while it is still running.
 
-    Scoped to the caller's org (BE-0414 unit 3). A job carries the org it was dispatched for, and a
-    caller from another one is answered **404, not 403**: a job id is opaque, so "forbidden" would
-    confirm that this particular id exists, which is the one thing the refusal is there to withhold.
+    A **machine** principal reads only its own org's jobs (BE-0414 unit 3), and one belonging to
+    another org is answered **404, not 403**: a job id is opaque, so "forbidden" would confirm that
+    this particular id exists, the one thing the refusal is there to withhold.
+
+    The check is deliberately narrowed to a machine rather than applied to every caller. A person's
+    org is read from their user row, which `set_active_org` rewrites, while a job's org is frozen at
+    dispatch — so scoping a human here would 404 a member on a run they started seconds earlier,
+    merely because they switched org while it was in flight. The job routes are uniformly unscoped
+    for people today; narrowing that is its own change, tracked separately.
     """
     job = state.jobs.get(job_id)
-    if job is None or job.org != state.org_for(actor, machine_org):
+    if job is None or (machine_org is not None and job.org != machine_org):
         return {"error": "no such job"}, 404
     view = job.view()
     # Locally the job ran in-process, so its own view (with the log buffer) is authoritative. On the

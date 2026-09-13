@@ -609,11 +609,13 @@ stored still leaves a trace.
 machine session is one `serve` minted, and `serve` can revoke it:
 
 ```bash
-curl -X POST "$BAJUTSU_URL/api/orgs/acme/machine-sessions/revoke" \
+# -b: the admin's own signed-in session cookie, as for every other /api/orgs call.
+curl -X POST "$BAJUTSU_URL/api/orgs/acme/machine-sessions/revoke" -b cookies.txt \
   -H 'Content-Type: application/json' -d '{"repository": "acme/app"}'
 ```
 
-An admin action, like the rest of `/api/orgs/…`. Omitting `repository` ends every machine session in
+An admin action, like the rest of `/api/orgs/…`, so it needs an admin's session rather than the
+pipeline's.  Match the repository the way your roster spells it: casing is folded on both sides. Omitting `repository` ends every machine session in
 the org, the reach you want when the roster itself is what went wrong. Retiring an org ends its
 machine sessions too.
 

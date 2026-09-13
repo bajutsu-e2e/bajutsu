@@ -28,8 +28,14 @@ def machine_identity(repository: str) -> str:
     Minting and reading the form live together so they cannot drift apart — the identity has to be
     non-None at all for the session to be revocable, since `revoke_identities` works by identity and
     never touches a session carrying none.
+
+    Case-folded, because `AllowedRepository.admits` matches the roster case-insensitively: GitHub
+    will not let `Acme/App` and `acme/app` both exist, so an entry written in either casing admits
+    the same repository. Revocation compares identities by exact equality, so minting from the raw
+    claim would leave an admin who types the casing their own roster uses revoking nothing — and a
+    revocation that matches nothing looks identical to one that had nothing left to match.
     """
-    return f"{_MACHINE_PREFIX}{repository}"
+    return f"{_MACHINE_PREFIX}{repository.lower()}"
 
 
 def machine_repository(identity: str | None) -> str | None:
@@ -43,7 +49,10 @@ def machine_repository(identity: str | None) -> str | None:
     """
     if identity is None or not identity.startswith(_MACHINE_PREFIX):
         return None
-    return identity[len(_MACHINE_PREFIX) :] or None
+    # The prefix alone settles that the caller is a machine. Returning None for a bare `repo:` would
+    # answer "not a machine" for one that is, and `_record_audit` reads that answer as "write the
+    # identity into `actor_id`" — a foreign key no pipeline has a row behind.
+    return identity[len(_MACHINE_PREFIX) :]
 
 
 @dataclass(frozen=True)
@@ -93,11 +102,10 @@ def kind_from_stored(value: object) -> PrincipalKind:
     — a value from a newer version, a corrupted one — reads as *machine*, the kind the gate governs
     more narrowly, so an unrecognized session is refused rather than handed a human's role gate.
 
-    That "more narrowly" is true while `gate.forbidden_for_machine` refuses every endpoint. When
-    BE-0414 unit 3 replaces it with an allowlist scoped by `Principal.org`, a machine principal
-    carrying no org must be refused outright there rather than falling back to any default org —
-    an unrecognized row reaches that branch with `org=None`, and the exchange is the only thing
-    that ever sets one.
+    "More narrowly" holds because `gate.forbidden_for_machine` refuses a machine principal outright
+    when it carries no org, and an unrecognized row reaches that branch with `org=None` — only the
+    exchange ever sets one. A revocation matches the same way, by "not human", so a row a newer
+    version wrote is both governed and revoked as the machine the gate already treats it as.
     """
     if value is None or value == HUMAN:
         return HUMAN
