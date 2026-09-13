@@ -1152,6 +1152,55 @@ def test_wait_guard_does_not_call_a_co_present_declared_prompt_unhandled_on_a_ra
     assert gate.blocked_note == ""
 
 
+def test_wait_guard_keeps_the_collapsed_tree_proxys_hedged_note_through_a_leftover_free_race() -> (
+    None
+):
+    # The one case the `raced` branch's own clear-guard (`not raced`, alongside `"unhandled"` and
+    # `_tree_gave_up`) protects that no existing test reaches: a race whose own read leaves nothing
+    # over (`leftover` empty) and that was not already latched `_native_unhandled`. Neither the
+    # `if leftover:` branch nor the `elif self._native_unhandled:` branch below fires then, so the
+    # only thing standing between this poll and an erased note is line 158's own guard declining to
+    # clear it in the first place -- the collapsed-tree proxy's hedged `alert_block_note([])`, for a
+    # non-SpringBoard surface the native query cannot enumerate, must survive a race that says
+    # nothing about whether *that* surface cleared (BE-0418 review finding).
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, alert_block_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _CollapsedThenRacesAway(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    driver = _CollapsedThenRacesAway([])
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}),
+                tap_label="Allow",
+                native=True,
+                in_tree=False,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+    # Three collapsed polls (no SpringBoard alert, no app UI either) debounce into the proxy's own
+    # hedged note -- the native probe answers "absent" over an empty read each time, so none of
+    # these polls touch the `raced` branch under test.
+    for _ in range(3):
+        gate.observe([])
+    assert gate.blocked_note == alert_block_note([])
+    # A fresh native probe (the clock has moved a full `poll_interval`) now races over a read that
+    # is nothing but the declared rule's own shape -- `leftover` is empty and `_native_unhandled` is
+    # still False, so this is the one case only line 158's guard protects.
+    clock.sleep(guard.poll_interval)
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+    ]
+    gate.observe([])
+    assert gate.blocked_note == alert_block_note([])
+
+
 def test_wait_guard_reports_nothing_when_a_race_leaves_no_leftover() -> None:
     # The other half of the fresh-diagnosis fix above: a race whose own read holds nothing beyond
     # the raced rule's own shape has no leftover to report, so this poll must not manufacture a note
