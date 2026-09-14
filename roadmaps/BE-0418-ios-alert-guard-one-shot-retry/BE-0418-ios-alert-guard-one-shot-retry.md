@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0418](BE-0418-ios-alert-guard-one-shot-retry.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0418") |
+| Implementing PR | [#1979](https://github.com/bajutsu-e2e/bajutsu/pull/1979) |
 | Topic | Platform support |
 | Related | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0399](../BE-0399-ios-system-alert-interruption-policy/BE-0399-ios-system-alert-interruption-policy.md), [BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md), [BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md) |
 <!-- /BE-METADATA -->
@@ -228,11 +229,48 @@ larger proposal. It would need to revisit BE-0402's own reasoning first.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Not yet started.
+- [x] Unit 1 — loop `AlertGuardConfig.__call__` until the screen clears or a bound is reached
+- [x] Unit 2 — give the in-tree tap the same landing-race retry the mid-wait path already has
+- [x] Unit 3 — change `__call__`'s contract to report every alert it clears
+- [x] Unit 4 — tests
+- [x] Unit 5 — documentation
 
 Log:
 
-None yet.
+- [#1979](https://github.com/bajutsu-e2e/bajutsu/pull/1979) implemented all five units.
+  `AlertGuardConfig.__call__` loops up to `_GUARD_CALL_MAX_ROUNDS` (3), appending every dismissed
+  `AlertEvent` into a caller-supplied list and returning whether anything cleared;
+  `dismiss_from_tree_once` gained a `NotTappable` outcome, an `exclude` parameter, and a `(result,
+  buttons, signature)` return for the round-bounded landing-race retry; both call sites
+  (`loop/_step_runner.py`, `loop/_functions.py`) moved to the new `(driver, alerts, *, settle) ->
+  bool` contract, gating their note-append on the note alone rather than on whether the call
+  cleared anything. `docs/architecture.md` and its Japanese mirror describe the new multi-round
+  behavior. Live review on the PR surfaced several further correctness gaps in the dedup itself,
+  fixed in the same PR: `probe_native` gained a sixth state, `already_dismissed`, declining a
+  repeat tap on an already-answered alert before it reaches the device, rather than tapping and
+  discarding the duplicate event; the dedup keys on a matched rule's `identifying_labels` instead
+  of the raw buttons a probe reads, since that read enumerates the whole surface and moves the
+  moment a different alert joins it; `_resolve_alert_rule` retries among the shapes not yet
+  answered when the plain match lands on one already answered, so a stacked alert behind the fade
+  is still found on both the native and tree paths, and treats a narrower rendering of an
+  already-answered shape as answered too, since a policy's own rules for one prompt can nest
+  (`savePassword`'s three shapes are one such case). A round that exhausts the bound with the only
+  thing still on screen being the alert this call already tapped now reports it via
+  `uncleared_prompt_note`, rather than the note going silently empty. The fast suite covers the
+  stacked-alert, landing-race, permanently-obstructed, settle-on-exhaustion, nested-shape, and
+  lingering-tree-exclusion cases the design and the live review both call for.
+
+  Coverage floors moved on five files across the PR's rounds, accepted via `make
+  coverage-floors` as each round landed. Three dropped by 0.01-0.03 points each, every one traced
+  via `coverage.json`'s own `missing_lines`/`missing_branches` to a pre-existing, unrelated gap
+  becoming a marginally larger share of a slightly smaller file rather than new untested logic:
+  `loop/_functions.py` (97.41 → 97.38), `loop/_step_runner.py` (98.29 → 98.28, the original
+  multi-round loop), and `waits/_functions.py` (97.9 → 97.88, relocating `_tree_signature` to the
+  shared `drivers/elements.py` as the public `tree_signature`). The other two rose over the same
+  span rather than dropping: `waits/_alert_guard_gate.py` (97.07 → 97.36) and `types/_functions.py`
+  (97.46 → 97.75), a later round's shared-helper extraction (`identified_alert_rules`,
+  `subtract_labels`) and its regression tests fully covering branches an earlier round had briefly
+  left untested.
 
 ## References
 

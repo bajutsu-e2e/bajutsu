@@ -655,26 +655,23 @@ class _StepRunner:
                     if guard is not None and guard.failure is not None:
                         ok, reason = False, guard.failure
                     elif not ok and not guard_done and self.cfg.alert_guard is not None:
-                        event = self.cfg.alert_guard(active_driver)
-                        note = self.cfg.alert_guard.blocked_note
-                        if event is None and note and note not in reason:
-                            # Same as the `expect` site: an alert the guard will not guess at still
-                            # explains the failure, so the step says so instead of failing as a bare
-                            # `element not found` (BE-0402). `not in reason` because a guarded `wait`
-                            # already carried the note out of `_wait`: this guard re-probes the same
-                            # still-unanswered alert, so appending unconditionally would say it twice.
-                            reason = f"{reason} \u2014 {note}"
-                        if event is not None:
-                            outcome.alerts.append(event)
-                            # Same reason as the `expect` site: the retry below actuates, and a sheet
-                            # still animating away is a screen the step would fail against for a reason
-                            # that is not its own (BE-0406).
-                            settle_after_alert_dismiss(
+                        # The guard's own call settles the screen after every round it dismisses
+                        # something in (BE-0418), the last one included, so nothing here settles
+                        # again before the retry below reads the screen.
+                        cleared = self.cfg.alert_guard(
+                            active_driver,
+                            outcome.alerts,
+                            settle=lambda: settle_after_alert_dismiss(
                                 active_driver,
                                 self.cfg.clock,
                                 transitions=self.cfg.transitions,
                                 cancelled=self.cfg.cancelled,
-                            )
+                            ),
+                        )
+                        # Read here, appended only after the retry below, which reassigns `reason`
+                        # outright and would otherwise discard it.
+                        note = self.cfg.alert_guard.blocked_note
+                        if cleared:
                             wait_trace = WaitTrace() if wait_trace is not None else None
                             # The retry is the end-of-step "one more shot": it does not re-arm the
                             # mid-wait guard (no alert_guard passed), so one dismissed prompt buys one
@@ -697,6 +694,18 @@ class _StepRunner:
                                 on_interrupt_poll=tip_poll,
                                 cancelled=self.cfg.cancelled,
                             )
+                        if not ok and note and note not in reason:
+                            # Same as the `expect` site: an alert the guard could not fully clear
+                            # still explains the failure, so the step says so instead of failing as a
+                            # bare `element not found` (BE-0402). Gated on the note alone, not on
+                            # `cleared`: a multi-round call can clear a stacked alert while leaving a
+                            # second one unhandled, so the two are no longer mutually exclusive the
+                            # way a single-shot dismiss made them (BE-0418). `not ok` so a step the
+                            # retry actually passed carries no stray failure note. `not in reason`
+                            # because a guarded `wait` already carried the note out of `_wait`: this
+                            # guard re-probes the same still-unanswered alert, so appending
+                            # unconditionally would say it twice.
+                            reason = f"{reason} \u2014 {note}"
                 # A failure inside an interrupt's own recovery `steps` fails the step loudly, rather
                 # than being swallowed while the run continues against a screen the recovery left
                 # broken (determinism first). It overrides a step that otherwise passed — this is the

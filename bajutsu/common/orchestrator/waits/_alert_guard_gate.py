@@ -5,13 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.elements import shows_app_ui
+from bajutsu.common.drivers.elements import shows_app_ui, tree_signature
 from bajutsu.common.orchestrator.types import (
     AlertEvent,
     AlertGuardConfig,
     Clock,
     alert_block_note,
+    identified_alert_rules,
     match_alert_rule,
+    subtract_labels,
     uncleared_prompt_note,
 )
 
@@ -124,10 +126,36 @@ class _AlertGuardGate:
         if self._last_native is None or now - self._last_native >= self.guard.poll_interval:
             self._last_native = now
             state, event, buttons = self.guard.probe_native(self.driver, self.reserved)
-            probed_absent = state == "absent"
-            self._native_unhandled = state == "unhandled"
+            # `dismissed` is never passed here, unlike `AlertGuardConfig.__call__`'s own loop
+            # (BE-0418) -- this poll never accumulates state across calls, so `_resolve_alert_rule`'s
+            # subset-based retry (the only path that can return `None`) never runs, and
+            # `probe_native` can never report "already_dismissed" from this call site. Asserted
+            # rather than left to fall through: every branch below still tests the five states that
+            # predate BE-0418's sixth by equality, not a `match` or `assert_never`, so a later change
+            # threading real `dismissed` state through this poll -- this gate faces the identical
+            # lingering-fade race `__call__` already handles -- would otherwise have the new state
+            # silently read as "nothing is blocking" here (review finding).
+            assert state != "already_dismissed"
+            # Only a genuinely empty read licenses the in-tree tap below: since BE-0418 the
+            # time-of-check/time-of-use race answers "absent" over a *non-empty* read, and a live
+            # SpringBoard alert is what XCUITest answers with its own default button before
+            # synthesizing any interaction (BE-0399) — the same gate `AlertGuardConfig.__call__`
+            # applies with its own `if not buttons` before reaching `dismiss_from_tree_once`.
+            probed_absent = state == "absent" and not buttons
+            # A raced `"absent"` over a non-empty read is no more evidence the *other* buttons that
+            # read enumerated went away than it is licence to tap the tree, so it must not drop this
+            # latch either: once this goes False the collapsed-tree proxy below erases the note on
+            # the very next `_POLL` tick, long before the next native probe is due (BE-0418).
+            self._native_unhandled = state == "unhandled" or (
+                state == "absent" and bool(buttons) and self._native_unhandled
+            )
             self._native_reserved = state == "reserved"
-            if state != "unhandled" and not self._tree_gave_up:
+            # A race-`"absent"` over a non-empty read is no more evidence the surface is clear than
+            # it is licence to tap the tree, so it must not erase a note either (BE-0418): the one
+            # alert this round tried to tap raced away, which says nothing about a *different*
+            # button the same read enumerated, e.g. one an earlier round already named "unhandled".
+            raced = state == "absent" and bool(buttons)
+            if state != "unhandled" and not raced and not self._tree_gave_up:
                 # Nothing the native query names is blocking, so any note it left is stale. The proxy
                 # below may still set its hedged one for a surface the query cannot enumerate. An
                 # in-tree give-up standing is the exception: `springboard.alerts` never saw that
@@ -140,15 +168,88 @@ class _AlertGuardGate:
                 self._collapsed_polls = 0
                 return
             if state == "unhandled":
-                # An alert is up but no policy label resolves — an unknown button, or a query that
-                # could not name it. Nothing here can clear it (BE-0402 removed the vision fallback),
-                # so record the buttons the probe read and let the wait run to its own deadline: a
-                # timeout naming the alert beats a guessed tap (prime directive 2).
+                # `probe_native` reaches "unhandled" two ways: a genuinely unidentified alert, and
+                # a matched rule whose tap found the label twice (`AmbiguousSelector`, "the other
+                # half of that race"). Only the first is a prompt no rule identifies. Re-resolving
+                # tells them apart: a rule did identify the second, and only the tap failed to take,
+                # which is `uncleared_prompt_note`'s own case, not the hedged "unhandled" form
+                # (BE-0418 review finding; see `uncleared_prompt_note`'s docstring).
+                #
+                # But `buttons` here is the whole SpringBoard enumeration, not the ambiguous rule's
+                # own shape, and `AmbiguousSelector` fires only after a rule already matched -- so a
+                # co-present button no rule identifies can sit alongside it in the same read. Every
+                # shape a rule identifies, not only the ambiguous one's own, and the same
+                # `identified_alert_rules` / `subtract_labels` pair the `raced` branch below shares
+                # with `_leftover_note` (`types/_functions.py`): a button nothing accounts for still
+                # outranks the ambiguous rule's own diagnosis, since something else is demonstrably
+                # unhandled either way (BE-0418 review finding).
                 self._collapsed_polls = 0
-                self.blocked_note = alert_block_note(buttons)
+                if not self._tree_gave_up:
+                    # The same exception the clear-guard above and the `raced` branch below both
+                    # make: an in-tree give-up names a prompt a rule *did* identify and a tap
+                    # failed to clear, and nothing re-arms that note once a live SpringBoard alert
+                    # stops `probed_absent` from holding (BE-0418 review finding).
+                    identified = identified_alert_rules(self.guard.native_rules, buttons)
+                    leftover = subtract_labels(
+                        buttons, (rule.identifying_labels for rule in identified)
+                    )
+                    self.blocked_note = (
+                        alert_block_note(leftover)
+                        if leftover or not identified
+                        else uncleared_prompt_note(identified[0].tap_label)
+                    )
                 return
-            # "absent" falls through to the in-tree dismiss and the collapsed-tree proxy below;
-            # "reserved" falls through too, but its own latch stops it short of the proxy.
+            if raced:
+                # The same deference "unhandled" gets, just above: a live, enumerated surface is not
+                # something the collapsed-tree proxy below can say more about, and letting this poll
+                # fall into it would replace the note this branch's own clear-guard preserved with the
+                # proxy's hedged one — or erase it outright, since the app tree an out-of-process
+                # SpringBoard alert covers still `shows_app_ui` (BE-0418 review finding).
+                #
+                # Preserving an existing note is not the same as producing one: a co-present button
+                # no rule identifies, enumerated by this very read alongside the raced rule's own
+                # shape, would otherwise go unreported for a whole `poll_interval` (BE-0418 review
+                # finding).
+                #
+                # Every shape a rule identifies on this read, not only the one that raced: a
+                # second, *declared* prompt co-present with it is one the next probe answers, so
+                # naming it here would report an alert a rule does identify as unhandled. Shared
+                # with `matching_alert_rule` (`types/_functions.py`) via `identified_alert_rules`,
+                # rather than a hand-rolled copy of its accept test, so this can never credit a
+                # shape a probe itself would refuse -- or refuse one a probe would credit (BE-0418
+                # review finding).
+                # Shares `subtract_labels` with `AlertGuardConfig.__call__`'s own `_leftover_note`
+                # (`types/_functions.py`) rather than a second, hand-rolled removal loop -- the
+                # credit test above admits a shape only when each of its labels appears exactly
+                # once, so multiplicity is defensive rather than load-bearing here, but the
+                # subtraction itself stays a single, shared spelling (BE-0418 review finding).
+                leftover = subtract_labels(
+                    buttons,
+                    (
+                        rule.identifying_labels
+                        for rule in identified_alert_rules(self.guard.native_rules, buttons)
+                    ),
+                )
+                if leftover:
+                    self._native_unhandled = True
+                    if not self._tree_gave_up:
+                        # The same exception the clear-guard above and the `elif` below both make:
+                        # an in-tree give-up names a prompt a rule *did* identify and a tap failed
+                        # to clear, and the hedged "unhandled" note would tell the author the
+                        # opposite (`uncleared_prompt_note`'s own docstring, BE-0418 review finding).
+                        self.blocked_note = alert_block_note(leftover)
+                elif self._native_unhandled and not self._tree_gave_up:
+                    # Nothing but the raced rule's own shape is on the surface, and this read is the
+                    # whole SpringBoard enumeration -- so an earlier probe's "unhandled" note names a
+                    # button this very read proves gone. The proxy's hedged note, for a surface the
+                    # query cannot enumerate, is a different story and is preserved above (BE-0418
+                    # review finding).
+                    self._native_unhandled = False
+                    self.blocked_note = ""
+                self._collapsed_polls = 0
+                return
+            # Only a genuinely empty "absent" falls through to the in-tree dismiss below; "reserved"
+            # falls through to the collapsed-tree proxy, but its own latch stops it short of it.
         if self.guard.tree_rules and probed_absent:
             # Only once the scenario holds a rule for a prompt this path can actually reach: an
             # author who declared one has named the alert they expect, which is what makes the fast
@@ -263,7 +364,11 @@ class _AlertGuardGate:
             for el in elements
             if el["label"] and not el["identifier"] and base.Trait.BUTTON in el["traits"]
         ]
-        label = match_alert_rule(self.guard.tree_rules, buttons)
+        # The one shared ordering every in-tree, dedup-aware match reads from (BE-0418 review
+        # finding): matching over anything else here would let this gate and `dismiss_from_tree_once`
+        # — declared twins over the same screen — pick differently, so which button a scenario gets
+        # would depend on whether a `wait` happened to be running when the sheet appeared.
+        label = match_alert_rule(self.guard.tree_dedup_rules, buttons)
         if label is None:
             # The tree stopped matching: the showing ended, so its recorded event stands as the real
             # dismissal it was — only the reference is dropped, so a later give-up cannot withdraw it.
@@ -285,9 +390,7 @@ class _AlertGuardGate:
             assert self._tree_tapped_at is not None  # set with `_tree_dismiss_pending`, never apart
             if self.clock.now() - self._tree_tapped_at < _TREE_RETAP_DELAY:
                 return None
-            from ._functions import _tree_signature
-
-            if _tree_signature(elements) != self._tree_signature:
+            if tree_signature(elements) != self._tree_signature:
                 # The screen moved, so the tap *did* land. This label still matching is then a
                 # different element — most likely an app-authored button of the same name the sheet
                 # was covering — and re-tapping it would actuate the app, not a prompt. Decline for
@@ -380,9 +483,7 @@ class _AlertGuardGate:
         first_tap = label != self._tree_dismiss_pending
         self._tree_dismiss_pending = label
         self._tree_tapped_at = self.clock.now()
-        from ._functions import _tree_signature
-
-        self._tree_signature = _tree_signature(elements)
+        self._tree_signature = tree_signature(elements)
         self._tree_taps += 1
         self._tree_not_tappable_label = None
         self._tree_not_tappable_since = None

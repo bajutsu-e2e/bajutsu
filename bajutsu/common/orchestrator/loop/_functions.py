@@ -758,22 +758,24 @@ def run_scenario(
                     expect_alerts.extend(expect_drained.alerts)
                     expect_undeclared.extend(expect_drained.undeclared)
                     if not assertions.passed(expect_results) and alert_guard is not None:
-                        event = alert_guard(driver)
-                        if event is None and alert_guard.blocked_note:
-                            # The guard saw a prompt it could not clear (BE-0402 leaves an alert no rule
-                            # identifies alone rather than guessing where to tap). Name it on the
-                            # `expect` failure below, which would otherwise report only the assertion
-                            # that never held.
-                            expect_block_note = alert_guard.blocked_note
-                        if event is not None:
-                            expect_alerts.append(event)
-                            expect_actuations.extend(drain_actuations(driver).records)
-                            # The prompt has been tapped, not yet cleared: let the sheet finish leaving
-                            # and the screen it covered finish rendering, so the retry below judges the
-                            # assertions against a still tree rather than one mid-animation (BE-0406).
-                            settle_after_alert_dismiss(
+                        # The guard's own call settles the screen after every round it dismisses
+                        # something in (BE-0418), the last one included, so nothing here settles again
+                        # before the retry below reads the screen.
+                        cleared = alert_guard(
+                            driver,
+                            expect_alerts,
+                            settle=lambda: settle_after_alert_dismiss(
                                 driver, clock, transitions=transitions, cancelled=cancelled
-                            )
+                            ),
+                        )
+                        # A prompt the guard could not fully clear (BE-0402 leaves an alert no rule
+                        # identifies alone rather than guessing where to tap), named on the `expect`
+                        # failure below, which would otherwise report only the assertion that never held.
+                        # Taken whether or not the call cleared anything: a multi-round call can clear a
+                        # stacked alert while leaving a second one unhandled, so both facts hold at once.
+                        expect_block_note = alert_guard.blocked_note
+                        if cleared:
+                            expect_actuations.extend(drain_actuations(driver).records)
                             _capture_visual_actual(
                                 ctx,
                                 driver,
@@ -787,10 +789,10 @@ def run_scenario(
                             expect_results = _evaluate_expect(
                                 driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
                             )  # retry once
-                        # The guard's own probe just now, and the retry's queries when one ran, can
+                        # The guard's own rounds just now, and the retry's queries when one ran, can
                         # each be interrupted too, and nothing else drains this phase again afterwards
-                        # (BE-0406 Unit 2b). Outside the `event is not None` branch above so a probe
-                        # that declined without clearing anything (`event is None`) is still covered.
+                        # (BE-0406 Unit 2b). Outside the `if cleared` branch above so a call that cleared
+                        # nothing is still covered.
                         retry_drained = drain_interruptions(driver)
                         expect_alerts.extend(retry_drained.alerts)
                         expect_undeclared.extend(retry_drained.undeclared)

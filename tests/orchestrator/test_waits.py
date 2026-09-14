@@ -871,6 +871,570 @@ def test_wait_guard_debounces_a_transient_collapse() -> None:
     assert ok and reason == ""
 
 
+def test_wait_guard_asserts_probe_native_never_reports_already_dismissed() -> None:
+    # BE-0418 added a sixth `NativeAlertState` member, but this poll never passes `dismissed` --
+    # unlike `AlertGuardConfig.__call__`'s own round loop -- so `_resolve_alert_rule`'s subset-based
+    # retry (the only path that can return `None`) never runs, and `probe_native` can never actually
+    # report "already_dismissed" here. The rest of `_observe_native` still tests the five states
+    # that predate it by equality, not a `match` or `assert_never`, so a state reaching here it does
+    # not recognize would otherwise read silently as "nothing is blocking" (review finding) --
+    # asserted instead, so a future change that starts threading real `dismissed` state through this
+    # poll fails loudly the moment it does, rather than corrupting `blocked_note` silently.
+    from bajutsu.common.orchestrator.types import AlertEvent, NativeAlertState
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _AlwaysAlreadyDismissed(AlertGuardConfig):
+        def probe_native(
+            self,
+            driver: base.Driver,
+            reserved: base.Selector | None = None,
+            *,
+            dismissed: frozenset[frozenset[str]] = frozenset(),
+        ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
+            return "already_dismissed", None, []
+
+    gate = _AlertGuardGate(
+        driver=FakeDriver([]), clock=_LogicalClock(), guard=_AlwaysAlreadyDismissed(), alerts=[]
+    )
+    with pytest.raises(AssertionError):
+        gate.observe([])
+
+
+def test_wait_guard_matches_in_tree_shapes_the_same_way_dismiss_from_tree_once_does() -> None:
+    # The mid-wait gate's own `_dismiss_from_tree` and the one-shot `dismiss_from_tree_once` are
+    # declared twins over the same screen (BE-0418 review finding): both must resolve two
+    # differently-shaped in-tree rules the same way, or which button a scenario gets would depend
+    # on whether a `wait` happened to be running when the sheet appeared. `narrow` is declared
+    # first -- the plain, declaration-order match dismiss_from_tree_once no longer makes -- but
+    # `wide`'s own shape is also fully present, so widest-first still picks `wide` here too.
+    from bajutsu.common.orchestrator.types import AlertEvent, ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    narrow = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save"}), tap_label="Save", native=False, in_tree=True
+    )
+    wide = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    guard = AlertGuardConfig(rules=[narrow, wide])
+    driver = FakeDriver([el(None, "Save", ["button"]), el(None, "Not Now", ["button"])])
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe(driver.query())
+    assert gate.alerts == [AlertEvent(label="Not Now")]
+
+
+def test_wait_guard_never_taps_the_tree_while_a_native_alert_races() -> None:
+    # Twin of `AlertGuardConfig.__call__`'s own `if not buttons` gate (BE-0418 review finding):
+    # `probe_native`'s time-of-check/time-of-use race answers "absent" over a *non-empty* button
+    # read, and this poll reaches the tree through the same `Driver.tap` that call reasons about --
+    # so licensing the tap on `state == "absent"` alone risks it landing under a live SpringBoard
+    # alert, which XCUITest answers with its own default button before synthesizing the interaction
+    # (BE-0399). Before the fix, `probed_absent` ignored the non-empty `buttons` this probe reports
+    # and tapped the tree sheet anyway.
+    from bajutsu.common.orchestrator.types import AlertEvent, NativeAlertState, ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesAway(AlertGuardConfig):
+        def probe_native(
+            self,
+            driver: base.Driver,
+            reserved: base.Selector | None = None,
+            *,
+            dismissed: frozenset[frozenset[str]] = frozenset(),
+        ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
+            return "absent", None, ["Allow", "Don't Allow"]
+
+    tree_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save"}), tap_label="Save", native=False, in_tree=True
+    )
+    driver = FakeDriver([el(None, "Save", ["button"])])
+    guard = _RacesAway(rules=[tree_rule])
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe(driver.query())
+    assert gate.alerts == []
+    assert not any(action[0] == "tap" for action in driver.actions)
+
+
+def test_wait_guard_names_an_ambiguous_matched_alert_uncleared_not_unhandled() -> None:
+    # `probe_native` reaches "unhandled" two ways: a genuinely unidentified alert, and a matched
+    # rule whose tap found the label twice (`AmbiguousSelector`, "the other half of that race").
+    # This poll used to treat both as "no rule identifies it", telling the author no rule named
+    # their prompt when one did -- exactly what `uncleared_prompt_note`'s docstring says must not
+    # happen (BE-0418 review finding). Re-resolving with `matching_alert_rule` tells them apart.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, uncleared_prompt_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _AmbiguousEveryPoll(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.AmbiguousSelector("the alert offers this label twice")
+
+    driver = _AmbiguousEveryPoll([])
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+    ]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+            )
+        ]
+    )
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe([])
+    assert gate.blocked_note == uncleared_prompt_note("Allow")
+
+
+def test_wait_guard_reports_a_co_present_alert_no_rule_identifies_on_an_ambiguous_match() -> None:
+    # `AmbiguousSelector` fires only after a rule has already matched, and `buttons` here is the
+    # whole SpringBoard enumeration, not that rule's own shape -- so a co-present button no rule
+    # identifies can sit alongside it on the very same read. This branch used to report only the
+    # ambiguous rule's own diagnosis (`uncleared_prompt_note`), silently dropping "Weird Button"
+    # for a whole `poll_interval` -- the exact BE-0402 disclosure this branch exists to make, and
+    # the same shape the `raced` branch just below already handles via `identified_alert_rules`
+    # (BE-0418 review finding).
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _AmbiguousEveryPoll(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.AmbiguousSelector("the alert offers this label twice")
+
+    driver = _AmbiguousEveryPoll([])
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+        el(None, "Weird Button", ["button"]),
+    ]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+            )
+        ]
+    )
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe([])
+    assert "Weird Button" in gate.blocked_note
+    assert "Allow" not in gate.blocked_note and "Don't Allow" not in gate.blocked_note
+
+
+def test_wait_guard_keeps_an_unhandled_note_when_a_matched_alert_races() -> None:
+    # Twin of the `AlertGuardConfig.__call__` TOCTOU fix, for this poll's own note-clear
+    # (BE-0418 review finding): `"absent"` carries two meanings here too -- a genuinely empty
+    # enumeration, and a matched rule's own tap racing away over a *non-empty* read that says
+    # nothing about a *different* button the same read enumerated. Poll 1 finds only a button no
+    # rule identifies ("Weird Button") and names it; poll 2's own matched rule ("OK"/"Cancel")
+    # races away, but "Weird Button" is still right there in that very same read -- the note must
+    # survive, not be wiped by a race that never proved the surface clear. Poll 2's own element list
+    # is a non-empty app tree, not `[]`: an empty list is the one input where the collapsed-tree
+    # proxy's own `shows_app_ui` is false *and* its debounce has not yet fired, so it is the one
+    # input that cannot expose the proxy silently erasing or overwriting the note on its own, past
+    # the earlier `raced` guard (BE-0418 review finding) -- a real device's app tree stays visible
+    # under an out-of-process SpringBoard alert (`shows_app_ui` is true), which is exactly what the
+    # native probe exists to see past. Poll 3 -- no `clock.sleep` before it, so `poll_interval`
+    # has not elapsed and the native probe does not run again -- pins the same guarantee one tick
+    # further out: `_native_unhandled` is the only thing standing between this tick and the proxy
+    # until the next native probe is due, so a race must not drop that latch either, only the
+    # explicit clear a few lines above it (BE-0418 review finding).
+    from bajutsu.common.orchestrator.types import AlertEvent, NativeAlertState, ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _MatchedAlertRacesPastAnUnhandledOne(AlertGuardConfig):
+        polls: int = 0
+
+        def probe_native(
+            self,
+            driver: base.Driver,
+            reserved: base.Selector | None = None,
+            *,
+            dismissed: frozenset[frozenset[str]] = frozenset(),
+        ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
+            self.polls += 1
+            if self.polls == 1:
+                return "unhandled", None, ["Weird Button"]
+            return "absent", None, ["OK", "Cancel", "Weird Button"]
+
+    # A rule for the raced shape makes the branch's own subtraction real: without one,
+    # `matching_alert_rule` finds nothing to subtract and the whole read -- "OK" and "Cancel"
+    # included -- becomes "leftover", so the note under test would be a freshly re-derived
+    # superset rather than the preserved one this test means to pin (BE-0418 review finding).
+    guard = _MatchedAlertRacesPastAnUnhandledOne(
+        rules=[ResolvedAlertRule(identifying_labels=frozenset({"OK", "Cancel"}), tap_label="OK")]
+    )
+    driver = FakeDriver([])
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+    gate.observe([])
+    assert "Weird Button" in gate.blocked_note
+    clock.sleep(guard.poll_interval)
+    gate.observe([el("home", "Home", ["button"])])
+    assert "Weird Button" in gate.blocked_note
+    assert "OK" not in gate.blocked_note and "Cancel" not in gate.blocked_note
+    gate.observe([el("home", "Home", ["button"])])  # same poll_interval window: no native re-probe
+    assert "Weird Button" in gate.blocked_note
+
+
+def test_wait_guard_reports_a_co_present_alert_no_rule_identifies_on_a_race() -> None:
+    # Preserving an existing note is not the same as producing one (BE-0418 review finding): the
+    # `raced` branch above stops this poll from clearing or overwriting `blocked_note`, but the very
+    # first poll has no earlier note to preserve. A co-present button no rule identifies, enumerated
+    # by the very same read as the rule that raced away, must still be reported -- mirroring
+    # `AlertGuardConfig.__call__`'s own race branch, which subtracts only the raced rule's own
+    # labels from the read rather than the whole surface.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesAway(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    driver = _RacesAway([])
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+        el(None, "Weird Button", ["button"]),
+    ]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}),
+                tap_label="Allow",
+                native=True,
+                in_tree=False,
+            )
+        ]
+    )
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe([])
+    assert "Weird Button" in gate.blocked_note
+    assert "Allow" not in gate.blocked_note and "Don't Allow" not in gate.blocked_note
+
+
+def test_wait_guard_does_not_call_a_co_present_declared_prompt_unhandled_on_a_race() -> None:
+    # The leftover computation above must subtract every rule a *declared* shape identifies on this
+    # read, not only the one that raced: `matching_alert_rule` returns just its own first match, so
+    # a second, different declared prompt stacked alongside the raced one would otherwise survive
+    # into `leftover` and be reported as an alert no rule identifies -- the exact misdiagnosis
+    # `uncleared_prompt_note`'s docstring says must not happen, since a rule does identify it and the
+    # very next native probe would dismiss it (BE-0418 review finding). "notifications" races away;
+    # "paste" is a second, disjoint prompt fully present on the very same read.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesAway(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    driver = _RacesAway([])
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+        el(None, "Allow Paste", ["button"]),
+        el(None, "Don't Allow Paste", ["button"]),
+    ]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+            ),
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow Paste", "Don't Allow Paste"}),
+                tap_label="Allow Paste",
+            ),
+        ]
+    )
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe([])
+    assert gate.blocked_note == ""
+
+
+def test_wait_guard_keeps_the_collapsed_tree_proxys_hedged_note_through_a_leftover_free_race() -> (
+    None
+):
+    # The one case the `raced` branch's own clear-guard (`not raced`, alongside `"unhandled"` and
+    # `_tree_gave_up`) protects that no existing test reaches: a race whose own read leaves nothing
+    # over (`leftover` empty) and that was not already latched `_native_unhandled`. Neither the
+    # `if leftover:` branch nor the `elif self._native_unhandled:` branch below fires then, so the
+    # only thing standing between this poll and an erased note is line 158's own guard declining to
+    # clear it in the first place -- the collapsed-tree proxy's hedged `alert_block_note([])`, for a
+    # non-SpringBoard surface the native query cannot enumerate, must survive a race that says
+    # nothing about whether *that* surface cleared (BE-0418 review finding).
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, alert_block_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _CollapsedThenRacesAway(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    driver = _CollapsedThenRacesAway([])
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}),
+                tap_label="Allow",
+                native=True,
+                in_tree=False,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+    # Three collapsed polls (no SpringBoard alert, no app UI either) debounce into the proxy's own
+    # hedged note -- the native probe answers "absent" over an empty read each time, so none of
+    # these polls touch the `raced` branch under test.
+    for _ in range(3):
+        gate.observe([])
+    assert gate.blocked_note == alert_block_note([])
+    # A fresh native probe (the clock has moved a full `poll_interval`) now races over a read that
+    # is nothing but the declared rule's own shape -- `leftover` is empty and `_native_unhandled` is
+    # still False, so this is the one case only line 158's guard protects.
+    clock.sleep(guard.poll_interval)
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+    ]
+    gate.observe([])
+    assert gate.blocked_note == alert_block_note([])
+
+
+def test_wait_guard_reports_nothing_when_a_race_leaves_no_leftover() -> None:
+    # The other half of the fresh-diagnosis fix above: a race whose own read holds nothing beyond
+    # the raced rule's own shape has no leftover to report, so this poll must not manufacture a note
+    # out of the very buttons it just subtracted.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesAway(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    driver = _RacesAway([])
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+    ]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}),
+                tap_label="Allow",
+                native=True,
+                in_tree=False,
+            )
+        ]
+    )
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe([])
+    assert gate.blocked_note == ""
+
+
+def test_wait_guard_does_not_double_count_a_label_two_declared_rules_share() -> None:
+    # Coverage for the multiplicity loop's own "already removed" path: two declared rules can share
+    # one label (the built-in `notifications` and `tracking` both grant "Allow"), so once the first
+    # shape's own processing consumes that occurrence, the second shape's identical label is already
+    # gone from `leftover` -- not a distinct button to remove a second time.
+    from bajutsu.common.orchestrator.types import AlertEvent, NativeAlertState, ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesWithTwoRulesSharingAllow(AlertGuardConfig):
+        def probe_native(
+            self,
+            driver: base.Driver,
+            reserved: base.Selector | None = None,
+            *,
+            dismissed: frozenset[frozenset[str]] = frozenset(),
+        ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
+            return "absent", None, ["Allow", "Don't Allow", "Ask App Not to Track"]
+
+    guard = _RacesWithTwoRulesSharingAllow(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+            ),
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Ask App Not to Track"}), tap_label="Allow"
+            ),
+        ]
+    )
+    driver = FakeDriver([])
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe([])
+    assert gate.blocked_note == ""
+
+
+def test_wait_guard_does_not_subtract_a_native_rule_an_excluded_label_rules_out() -> None:
+    # The second half of the same fix: a rule `matching_alert_rule` would refuse (an excluded label
+    # is present) must not have its labels subtracted here either -- the exact reason
+    # `_native_round_worth_another_try` grew its own `excluded_labels` check (BE-0418 review
+    # finding). Stubbed the same way, for the same reason.
+    from bajutsu.common.orchestrator.types import AlertEvent, NativeAlertState, ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesWithAnExcludedRulePresent(AlertGuardConfig):
+        def probe_native(
+            self,
+            driver: base.Driver,
+            reserved: base.Selector | None = None,
+            *,
+            dismissed: frozenset[frozenset[str]] = frozenset(),
+        ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
+            return "absent", None, ["Save", "Not Now", "Never for This Card"]
+
+    guard = _RacesWithAnExcludedRulePresent(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Save", "Not Now"}),
+                tap_label="Save",
+                excluded_labels=frozenset({"Never for This Card"}),
+            )
+        ]
+    )
+    driver = FakeDriver([])
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe([])
+    assert "Save" in gate.blocked_note
+    assert "Not Now" in gate.blocked_note
+    assert "Never for This Card" in gate.blocked_note
+
+
+def test_wait_guard_clears_a_stale_unhandled_note_when_a_leftover_free_race_disproves_it() -> None:
+    # `buttons` here is the whole SpringBoard enumeration, not one alert's own set: a race whose
+    # own read holds nothing but the raced rule's own shape is positive evidence that any *other*
+    # button an earlier probe named is gone (BE-0418 review finding). Poll 1 names "Weird Button"
+    # as unhandled; poll 2's own matched rule ("Allow"/"Don't Allow") races away, but this read no
+    # longer holds "Weird Button" at all -- the stale note must clear, not survive on the strength
+    # of the earlier `raced` preservation guard, which exists for evidence the current read does
+    # *not* disprove.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesAwayOnNotifications(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    driver = _RacesAwayOnNotifications([])
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+    gate.observe([])
+    assert "Weird Button" in gate.blocked_note
+    clock.sleep(guard.poll_interval)
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+    ]
+    gate.observe([el("home", "Home", ["button"])])
+    assert gate.blocked_note == ""
+
+
+def test_wait_guard_keeps_an_in_tree_give_up_note_through_a_race_with_a_leftover() -> None:
+    # `_tree_gave_up` is the exception the clear-guard above and the sibling `elif` below both make
+    # (BE-0418 review finding): an in-tree give-up names a prompt a rule *did* identify and a tap
+    # failed to clear, so a *different*, co-present alert racing away must not replace that note
+    # with the hedged "unhandled" form just because this branch also found a genuine leftover.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, uncleared_prompt_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesAway(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    driver = _RacesAway([])
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+        el(None, "Weird Button", ["button"]),
+    ]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+            )
+        ]
+    )
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate._tree_gave_up = True
+    gate.blocked_note = uncleared_prompt_note("Not Now")
+    gate.observe([])
+    assert gate.blocked_note == uncleared_prompt_note("Not Now")
+
+
+def test_wait_guard_keeps_an_in_tree_give_up_note_through_an_unhandled_native_alert() -> None:
+    # The `"unhandled"` branch's own note-set is the one write in `_observe_native` that used to
+    # have no `_tree_gave_up` exception, even though the clear-guard above it and both branches
+    # this PR adds around it all make one (BE-0418 review finding). A guarded `wait` on a screen
+    # holding a `savePassword` sheet spends its tap budget and gives up on the tree side; a later,
+    # unrelated native alert no rule identifies must not overwrite that tree note with the hedged
+    # "unhandled" form -- nothing else ever restores it once a live SpringBoard alert blocks
+    # `probed_absent` from holding again.
+    from bajutsu.common.orchestrator.types import uncleared_prompt_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    driver = FakeDriver([])
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    guard = AlertGuardConfig()
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate._tree_gave_up = True
+    gate.blocked_note = uncleared_prompt_note("Not Now")
+    gate.observe([])
+    assert gate.blocked_note == uncleared_prompt_note("Not Now")
+
+
+def test_wait_guard_does_not_credit_a_rule_matching_alert_rule_would_refuse() -> None:
+    # The leftover computation above must match `matching_alert_rule`'s own terms exactly, not a
+    # bare subset test (BE-0418 review finding): a shape whose labels are present but not
+    # *uniquely* is a prompt no later probe resolves either (the per-label uniqueness collision
+    # `AlertGuardConfig.__call__`'s own "unhandled" branch documents for the built-in `notifications`
+    # / `tracking` pair), so its buttons must stay in the leftover rather than being credited away.
+    # Stubbed via `probe_native`, the same isolation this file's other race tests already use, since
+    # a real read reaching this exact collision would answer "unhandled" before ever racing.
+    from bajutsu.common.orchestrator.types import (
+        AlertEvent,
+        NativeAlertState,
+        ResolvedAlertRule,
+        alert_block_note,
+    )
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesOnPasteAlongsideACollidingNotifications(AlertGuardConfig):
+        def probe_native(
+            self,
+            driver: base.Driver,
+            reserved: base.Selector | None = None,
+            *,
+            dismissed: frozenset[frozenset[str]] = frozenset(),
+        ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
+            return "absent", None, ["Allow", "Don't Allow", "Allow", "Don't Allow", "Allow Paste"]
+
+    guard = _RacesOnPasteAlongsideACollidingNotifications(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+            ),
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow Paste"}), tap_label="Allow Paste"
+            ),
+        ]
+    )
+    driver = FakeDriver([])
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe([])
+    # "Allow"/"Don't Allow" collide (each appears twice) and stay in the leftover uncredited;
+    # "Allow Paste" is uniquely identified and correctly excluded from it.
+    assert gate.blocked_note == alert_block_note(["Allow", "Don't Allow", "Allow", "Don't Allow"])
+
+
 def test_wait_guard_reports_a_persistent_collapse_it_cannot_clear() -> None:
     """BE-0402: on a backend with no native path, a persistently collapsed screen is not something
     the guard will act on — it neither guesses nor calls a model. What it does instead is refuse to

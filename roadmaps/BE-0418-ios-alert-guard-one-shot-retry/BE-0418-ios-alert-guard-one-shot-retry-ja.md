@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0418](BE-0418-ios-alert-guard-one-shot-retry-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0418") |
+| 実装 PR | [#1979](https://github.com/bajutsu-e2e/bajutsu/pull/1979) |
 | トピック | Platform support |
 | 関連 | [BE-0269](../BE-0269-ios-alert-guard-early-wait-intervention/BE-0269-ios-alert-guard-early-wait-intervention-ja.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md), [BE-0399](../BE-0399-ios-system-alert-interruption-policy/BE-0399-ios-system-alert-interruption-policy-ja.md), [BE-0402](../BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md), [BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md) |
 <!-- /BE-METADATA -->
@@ -239,11 +240,49 @@ docstring には、シートの登場アニメーションが終わるまでボ�
 > （MECE）を映し、作業単位ごとに 1 つの箱を用意します。ログには変更内容と日付を古い順に記録し、
 > 関連する PR へリンクします。
 
-- [ ] 未着手です。
+- [x] ユニット 1 — 画面が晴れるか上限に達するまで `AlertGuardConfig.__call__` をループさせる
+- [x] ユニット 2 — ツリー内タップでも、`wait` 中のガードと同じ着地レースを取りこぼさないようにする
+- [x] ユニット 3 — `__call__` の契約を、解消したアラートをすべて報告する形に変える
+- [x] ユニット 4 — テスト
+- [x] ユニット 5 — ドキュメント
 
 ログ：
 
-まだありません。
+- [#1979](https://github.com/bajutsu-e2e/bajutsu/pull/1979) で 5 つのユニットをすべて実装しました。
+  `AlertGuardConfig.__call__` は `_GUARD_CALL_MAX_ROUNDS`（3）まで内部でループし、解消した 
+  `AlertEvent` を呼び出し側が渡すリストへ追記し、1 件以上片付けたかどうかを真偽値で返します。
+  `dismiss_from_tree_once` には `NotTappable` という帰結、`exclude` 引数、そして 
+  `(result, buttons, signature)` という返り値を追加し、着地レースに対する有界の再試行を実装しました。2 か所の
+  呼び出し元（`loop/_step_runner.py`、`loop/_functions.py`）はどちらも新しい 
+  `(driver, alerts, *, settle) -> bool` という契約に移行し、注記の追記条件を、呼び出しが何かを片付
+  けたかどうかではなく注記そのものの有無だけに揃えました。`docs/architecture.md` とその日本語版には、
+  この複数ラウンドの挙動を追記しました。この PR に対するライブレビューでは、この重複排除の仕組み自
+  体にさらにいくつかの正しさの問題が見つかり、同じ PR で修正しました。`probe_native` には 6 つ目の
+  状態 `already_dismissed` を追加し、すでに答えたアラートへの再タップは、実機に届いて重複したイベン
+  トを破棄するのではなく、届く前に見送るようにしました。重複排除の判定キーは、照会が読んだ生のボタ
+  ン一覧ではなく、一致した規則の `identifying_labels` にしました。ボタン一覧は画面全体を数え上げた
+  ものなので、別のアラートが加わった瞬間に変わってしまうためです。`_resolve_alert_rule` は、単純な
+  一致がすでに答えた形に戻ってしまった場合、まだ答えていない形の中を探し直すようにし、フェードの奥
+  に控えるアラートをネイティブ側とツリー側の両方で見つけられるようにしました。また、すでに答えた形
+  に包まれるより狭い形についても、同じアラートへの一致として扱います。1 つのプロンプトに対する規則
+  同士の形が入れ子になることがあるためで、`savePassword` の 3 つの形はその一例です。ラウンド上限を
+  使い切った時点で画面に残っているのが、この呼び出しがすでにタップしたアラートだけだった場合は、注
+  記を黙って空にするのではなく `uncleared_prompt_note` で報告するようにしました。高速なテストスイー
+  トは、設計とライブレビューの双方が挙げているスタック済みアラート・着地レース・恒久的に塞がれたプ
+  ロンプト・ラウンド上限を使い切るケース・入れ子になった形・ツリー側の除外が残り続けるケースを網羅
+  しています。
+
+  この PR の各ラウンドを通じて、5 つのファイルの記録済みカバレッジ下限が動きました。各ラウンドの完了
+  時に `make coverage-floors` で受け入れています。3 つは 0.01〜0.03 ポイントずつ下がりました。いずれ
+  も、新たに追加した未検証のロジックではありません。既存の無関係な未カバー行が、リファクタリング後の
+  わずかに小さくなったファイルの中で占める割合が増えたことに起因すると、`coverage.json` 自身の記録で
+  確認しています。対象は `loop/_functions.py`(97.41 → 97.38)です。`loop/_step_runner.py`(98.29 →
+  98.28、元の複数ラウンド化)も同様です。もう 1 つは `waits/_functions.py`(97.9 → 97.88)です。
+  `_tree_signature` を共有モジュール `drivers/elements.py` へ公開関数 `tree_signature` として移した
+  変更に伴うものです。残る 2 つは同じ期間でむしろ上がりました。`waits/_alert_guard_gate.py`(97.07 →
+  97.36)と `types/_functions.py`(97.46 → 97.75)です。後のラウンドで共有ヘルパー
+  `identified_alert_rules` と `subtract_labels` を切り出し、その回帰テストを加えました。前のラウンド
+  では一時的に未検証のままだった分岐が、これですべてカバーされました。
 
 ## 参考
 

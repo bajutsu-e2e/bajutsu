@@ -488,7 +488,7 @@ def test_alert_guard_factory_needs_no_credential_and_reaches_no_model(
 
         # A backend with no native capability: nothing left to try, so the guard reports nothing and
         # leaves no note — an absent alert is not a blocked screen.
-        assert guard(FakeDriver([])) is None
+        assert guard(FakeDriver([]), [], settle=lambda: None) is False
         assert guard.blocked_note == ""
 
         # The native path is untouched — it needs no credential, so it still taps the prompt the
