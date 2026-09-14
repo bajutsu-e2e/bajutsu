@@ -117,10 +117,17 @@ class _StdlibCtx:
 # own, so the exemption loses no signal (BE-0386).
 def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C901
     class Handler(BaseHTTPRequestHandler):
-        # The tenant a machine principal acts as, resolved by `_gate` from the session the exchange
-        # minted and read back by `_StdlibCtx.machine_org` (BE-0414 unit 3). None for every other
-        # caller shape, whose org comes from their persisted user row instead.
+        # The tenant a machine principal acts as, and the identity it acts under, both resolved by
+        # `_gate` from the session the exchange minted (BE-0414 unit 3). None for every other caller
+        # shape, whose org comes from their persisted user row instead.
+        #
+        # The identity is carried for the same reason the org is: the gate reads the principal once,
+        # but `_actor` would read the store a *second* time, and a machine session at the end of its
+        # short time-to-live can be admitted by the first read and answer None to the second. The
+        # org would still carry the tenant, so the write would land while `_record_audit`'s
+        # `not actor` early return dropped its entry — a pipeline's upload with no trace of it.
         _machine_org: str | None = None
+        _machine_actor: str | None = None
 
         def end_headers(self) -> None:
             # The shared hardening headers on every response (BE-0051); defined once in `gate` so
@@ -246,6 +253,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
             # instance serves a whole keep-alive connection, so a value left behind here would leak
             # one request's tenant into the next request on the same socket.
             self._machine_org = None
+            self._machine_actor = None
             if not self._host_ok():
                 # DNS-rebinding defense (BE-0121): a Host that names no bound interface is refused
                 # ahead of everything else, so a rebound hostname reaches no endpoint at all
@@ -287,6 +295,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                     # — a cross-tenant hole on exactly the routes just opened. Reusing the principal
                     # already read above also keeps this off a second session lookup.
                     self._machine_org = principal.org
+                    self._machine_actor = principal.identity
                 # For an OAuth session (an identity) with a database wired, enforce the user's role
                 # on mutating endpoints (BE-0015 7c-2). A token/Bearer request has no identity and
                 # stays full-access (the operator credential). A machine principal never reaches
@@ -317,6 +326,10 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
             return next(iter(parse_qs(urlparse(self.path).query).get(key) or []), None)
 
         def _actor(self) -> str | None:
+            # The gate's own read for a machine principal, rather than a second one that a session
+            # expiring mid-request would answer None to (BE-0414 unit 3).
+            if self._machine_actor is not None:
+                return self._machine_actor
             return gate.actor_for(state.auth, self._session_value())
 
         def do_GET(self) -> None:

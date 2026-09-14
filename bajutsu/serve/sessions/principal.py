@@ -38,6 +38,20 @@ def machine_identity(repository: str) -> str:
     return f"{_MACHINE_PREFIX}{repository.lower()}"
 
 
+def same_machine_identity(stored: str | None, wanted: str) -> bool:
+    """Whether a stored machine identity names the same repository as *wanted* (BE-0414 unit 3).
+
+    Case-insensitive, because `machine_identity` folds case and a stored value that differs only in
+    casing is the same principal by definition. Two kinds of row need that: one minted before the
+    folding landed (BE-0414 units 1-2 interpolated the GitHub `repository` claim raw, which keeps
+    the owner's own casing), and one an older replica is still minting during a rolling deploy.
+    Comparing exactly would leave those admitted by the gate and matched by no revocation, reporting
+    `sessionsRevoked: 0` — indistinguishable from having nothing left to revoke, which is the silent
+    no-op the folding exists to prevent.
+    """
+    return stored is not None and stored.lower() == wanted.lower()
+
+
 def machine_repository(identity: str | None) -> str | None:
     """The repository behind a machine *identity*, or None for a human or token caller.
 

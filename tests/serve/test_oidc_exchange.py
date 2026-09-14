@@ -1009,3 +1009,51 @@ def test_revoking_matches_the_roster_casing(
     )
     assert status == 200 and payload["sessionsRevoked"] == 1
     assert state.auth.valid_session(sid) is False
+
+
+def test_an_allowlisted_read_is_audited_even_if_the_session_expires_mid_request(
+    tmp_path: Path,
+) -> None:
+    """The gate reads the principal once and admits the request, but `ctx.actor()` would read the
+    store a *second* time. A machine session at the end of its short time-to-live can pass the first
+    read and answer None to the second — and `machine_org`, captured at the gate, still carries the
+    tenant, so the call would succeed while `_record_audit`'s `not actor` early return dropped its
+    entry. A pipeline's request with no trace of it. Both backends carry the gate's own identity."""
+    from fastapi.testclient import TestClient
+
+    from bajutsu.serve.server.app import make_app
+
+    key = _key()
+    state = _state(_threaded(tmp_path), tmp_path, key)
+    sid = _machine(state, key, "acme")
+    inner = state.auth.sessions
+
+    class _ExpiringBetweenTheTwoReads:
+        """Live to `principal` (the gate's read), gone to `identity` (the operation's)."""
+
+        def __getattr__(self, name: str) -> Any:
+            if name == "identity":
+                return lambda _sid: None
+            return getattr(inner, name)
+
+    state.auth.sessions = _ExpiringBetweenTheTwoReads()
+    probe = "/api/artifacts/exists?kind=binary&sha256=" + "e" * 64
+
+    client = TestClient(make_app(state))
+    client.cookies.set("bajutsu_session", sid)
+    assert client.get(probe).status_code == 200
+
+    server, port = _serve(state)
+    try:
+        assert _get(port, probe, cookie=sid)[0] == 200
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    # One row per backend, each naming the repository the gate read rather than dropping the entry.
+    rows = _audit_rows(state)
+    assert len(rows) == 2, "both backends must audit the probe"
+    for row in rows:
+        assert row.org_id == "acme"
+        assert row.actor_id is None
+        assert row.detail["repository"] == "acme/app"

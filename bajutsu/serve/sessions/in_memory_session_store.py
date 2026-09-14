@@ -8,7 +8,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from .principal import HUMAN, MACHINE, Principal, PrincipalKind
+from .principal import HUMAN, MACHINE, Principal, PrincipalKind, same_machine_identity
 
 
 @dataclass(frozen=True)
@@ -91,7 +91,7 @@ class InMemorySessionStore:
                 for sid, entry in self._sessions.items()
                 if entry.principal.kind == MACHINE
                 and entry.principal.org == org
-                and (identity is None or entry.principal.identity == identity)
+                and (identity is None or same_machine_identity(entry.principal.identity, identity))
             ]
             for sid in doomed:
                 del self._sessions[sid]

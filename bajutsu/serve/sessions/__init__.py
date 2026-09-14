@@ -17,6 +17,7 @@ from .principal import (
     kind_from_stored,
     machine_identity,
     machine_repository,
+    same_machine_identity,
 )
 from .session_store import SessionStore
 
@@ -30,4 +31,5 @@ __all__ = [
     "kind_from_stored",
     "machine_identity",
     "machine_repository",
+    "same_machine_identity",
 ]

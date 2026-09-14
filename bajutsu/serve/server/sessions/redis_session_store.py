@@ -8,7 +8,13 @@ import secrets
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 
-from bajutsu.serve.sessions import HUMAN, MACHINE, Principal, PrincipalKind
+from bajutsu.serve.sessions import (
+    HUMAN,
+    MACHINE,
+    Principal,
+    PrincipalKind,
+    same_machine_identity,
+)
 
 from ._shared import _DEFAULT_TTL
 from .redis_like import RedisLike
@@ -77,7 +83,7 @@ class RedisSessionStore:
             lambda principal: (
                 principal.kind == MACHINE
                 and principal.org == org
-                and (identity is None or principal.identity == identity)
+                and (identity is None or same_machine_identity(principal.identity, identity))
             )
         )
 

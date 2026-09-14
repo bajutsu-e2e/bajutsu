@@ -110,7 +110,7 @@ class SqlSessionStore:
             return int(getattr(result, "rowcount", 0) or 0)
 
     def revoke_machine_sessions(self, org: str, *, identity: str | None = None) -> int:
-        from sqlalchemy import delete
+        from sqlalchemy import delete, func
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import SessionRecord
@@ -125,7 +125,11 @@ class SqlSessionStore:
             SessionRecord.org == org,
         ]
         if identity is not None:
-            where.append(SessionRecord.identity == identity)
+            # Case-insensitive, matching `same_machine_identity`: a row minted before the folding
+            # landed (units 1-2 interpolated the `repository` claim raw) keeps the owner's own
+            # casing, and comparing exactly would leave it admitted by the gate and revoked by
+            # nothing.
+            where.append(func.lower(SessionRecord.identity) == identity.lower())
         # Deleted, not expired in place, for the same reason `revoke_identities` deletes: the reads
         # above fetch the row before checking its expiry, so a row left behind comes back if a clock
         # moves.

@@ -485,3 +485,29 @@ def test_the_machine_identity_folds_case_like_the_roster_does() -> None:
     identities exactly. Minting from the raw claim would leave an admin who types the casing their
     own roster uses revoking nothing, which looks identical to having nothing left to revoke."""
     assert machine_identity("Acme/App") == machine_identity("acme/app")
+
+
+def test_every_store_revokes_a_session_minted_before_the_case_folding(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    """BE-0414 units 1-2 interpolated the GitHub `repository` claim raw, so a session minted before
+    the folding landed — or by an older replica mid-rolling-deploy — carries the owner's own casing.
+    Comparing exactly would leave it admitted by the gate and matched by no revocation, reporting
+    `sessionsRevoked: 0`: indistinguishable from having nothing left to revoke."""
+    for store in _stores(serve_engine):
+        legacy = store.issue("repo:Acme/App", org="acme", kind=MACHINE)  # the pre-folding form
+        assert store.revoke_machine_sessions("acme", identity=machine_identity("Acme/App")) == 1, (
+            type(store)
+        )
+        assert not store.valid(legacy), type(store)
+
+
+def test_every_store_still_revokes_only_the_named_repository(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    """Folding case must not widen the match to a different repository in the same org."""
+    for store in _stores(serve_engine):
+        app = store.issue(machine_identity("acme/app"), org="acme", kind=MACHINE)
+        web = store.issue(machine_identity("acme/web"), org="acme", kind=MACHINE)
+        assert store.revoke_machine_sessions("acme", identity=machine_identity("acme/app")) == 1
+        assert not store.valid(app) and store.valid(web), type(store)
