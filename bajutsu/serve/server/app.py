@@ -164,13 +164,14 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
         )
 
     def _actor(request: Request) -> str | None:
-        # The gate's own read for a machine principal, rather than a second one that a session
-        # expiring mid-request would answer None to (BE-0414 unit 3). The org would still carry the
-        # tenant, so the write would land while `_record_audit`'s `not actor` early return dropped
-        # its entry — a pipeline's upload with no trace of it.
-        machine_actor = getattr(request.state, "machine_actor", None)
-        if isinstance(machine_actor, str) and machine_actor:
-            return machine_actor
+        # The gate's own read, rather than a second one a session revoked or expired mid-request
+        # would answer None to (BE-0414 unit 3). Carried for every caller shape, not only a machine:
+        # a person answering None to that second read also resolves `org_of(None)`, so the write
+        # would land in `default` rather than their own tenant. None here means the gate saw no
+        # identity either — a shared-token caller — so the fall-through answers the same thing.
+        gate_actor = getattr(request.state, "gate_actor", None)
+        if isinstance(gate_actor, str) and gate_actor:
+            return gate_actor
         return gate.actor_for(state.auth, request.cookies.get(_SESSION_COOKIE))
 
     def _machine_org(request: Request) -> str | None:
@@ -244,9 +245,11 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
                 method, path, org=principal.org if principal is not None else None
             ):
                 return _hardened(JSONResponse({"error": "forbidden"}, status_code=403))
+            if principal is not None:
+                # The identity the gate admitted this request on, for every caller shape.
+                request.state.gate_actor = principal.identity
             if is_machine and principal is not None:
                 request.state.machine_org = principal.org
-                request.state.machine_actor = principal.identity
             # Enforce the user's role on mutating endpoints for an OAuth session (an identity)
             # when a database is wired (BE-0015 7c-2); token/Bearer has no identity and stays
             # full-access. A machine principal never reaches that gate — the allowlist above is

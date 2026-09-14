@@ -66,7 +66,12 @@ def machine_repository(identity: str | None) -> str | None:
     # The prefix alone settles that the caller is a machine. Returning None for a bare `repo:` would
     # answer "not a machine" for one that is, and `_record_audit` reads that answer as "write the
     # identity into `actor_id`" — a foreign key no pipeline has a row behind.
-    return identity[len(_MACHINE_PREFIX) :]
+    #
+    # Folded, like `machine_identity` mints it, so the audit trail names one repository one way. A
+    # session minted before the folding landed carries the claim's own casing, and an operator
+    # filtering audit rows by repository would otherwise see that one repository's history split in
+    # two — the same split the folding exists to close on the revocation side.
+    return identity[len(_MACHINE_PREFIX) :].lower()
 
 
 @dataclass(frozen=True)

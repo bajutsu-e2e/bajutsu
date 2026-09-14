@@ -1057,3 +1057,48 @@ def test_an_allowlisted_read_is_audited_even_if_the_session_expires_mid_request(
         assert row.org_id == "acme"
         assert row.actor_id is None
         assert row.detail["repository"] == "acme/app"
+
+
+def test_a_human_revoked_mid_request_does_not_land_in_the_default_org(tmp_path: Path) -> None:
+    """The same two-read window, on the caller shape where it costs more. A person revoked between
+    the gate's read and the operation's resolves `org_of(None)` — `default`, not their own tenant —
+    so the write lands in the wrong org *and* drops its audit row. Org retirement revoking an
+    in-flight request is the realistic trigger, not a time-to-live expiring."""
+    from fastapi.testclient import TestClient
+
+    from bajutsu.serve.server.app import make_app
+
+    key = _key()
+    state = _state(_threaded(tmp_path), tmp_path, key)
+    assert state.repository is not None
+    state.repository.upsert_user(
+        "alice", org_id="acme", github_login="alice", email="alice@x", role="admin"
+    )
+    sid = state.auth.issue_session("alice")
+    inner = state.auth.sessions
+
+    class _RevokedBetweenTheTwoReads:
+        def __getattr__(self, name: str) -> Any:
+            if name == "identity":
+                return lambda _sid: None
+            return getattr(inner, name)
+
+    state.auth.sessions = _RevokedBetweenTheTwoReads()
+    probe = "/api/artifacts/exists?kind=binary&sha256=" + "f" * 64
+
+    client = TestClient(make_app(state))
+    client.cookies.set("bajutsu_session", sid)
+    assert client.get(probe).status_code == 200
+
+    server, port = _serve(state)
+    try:
+        assert _get(port, probe, cookie=sid)[0] == 200
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    rows = _audit_rows(state)
+    assert len(rows) == 2, "both backends must audit the probe"
+    for row in rows:
+        assert row.org_id == "acme", "the caller's own tenant, never the default org"
+        assert row.actor_id == "alice"
