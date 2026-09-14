@@ -44,6 +44,38 @@ _LOGIN_PATH = "/api/login"
 OIDC_EXCHANGE_PATH = "/api/oidc/exchange"
 _WORKER_PREFIX = "/api/worker/"
 
+# Every endpoint a machine principal may reach (BE-0414 unit 3), as `(method, path)` pairs — the
+# pipeline's whole sequence: probe for a build, publish the three artifact kinds, dispatch a run,
+# then watch it. `GET /api/runs` and the job poll below are how it learns the outcome; both are
+# scoped to the machine's own org at the operation, since the gate admits a path and never a tenant.
+_MACHINE_PATHS = frozenset(
+    {
+        ("POST", "/api/artifacts/config"),
+        ("POST", "/api/artifacts/scenarios"),
+        ("POST", "/api/artifacts/binary"),
+        ("GET", "/api/artifacts/exists"),
+        ("POST", "/api/run"),
+        ("GET", "/api/runs"),
+    }
+)
+
+
+def _is_machine_job_route(path: str) -> bool:
+    """Whether *path* is the job poll a machine may read (BE-0414 unit 3).
+
+    Matched by shape because the job id is in the path, the same way `_is_worker_route` matches the
+    upload-URL route. `/api/jobs/{id}` only — not its `/events` stream, which each backend serves
+    off the uniform route table with its own streaming plumbing; a pipeline learns the same outcome
+    by polling, so opening a second, differently-shaped path buys nothing.
+
+    Admitting the path is not admitting the job: `job_view` refuses one belonging to another org.
+    """
+    return (
+        path.startswith("/api/jobs/")
+        and "/" not in path[len("/api/jobs/") :]
+        and len(path) > len("/api/jobs/")
+    )
+
 
 def _is_worker_route(path: str) -> bool:
     """Whether *path* is a control-plane route a worker authenticates to with the shared token
@@ -166,18 +198,32 @@ def principal_for(auth: SessionManager, session_value: str | None) -> Principal 
     return auth.sessions.principal(session_value) if session_value else None
 
 
-def forbidden_for_machine(method: str, path: str) -> bool:  # noqa: ARG001 - see below
-    """Whether a machine principal is refused this request. Today: every request, always.
+def forbidden_for_machine(method: str, path: str, *, org: str | None) -> bool:
+    """Whether a machine principal acting as *org* is refused this request (BE-0414 unit 3).
 
-    BE-0414 unit 1 mints the machine session; unit 3 is what gives it an endpoint allowlist —
-    publishing the three artifact kinds, the exists-probe, dispatching a run and reading its org's
-    runs — and the *rank* gate is no substitute in the meantime. `forbidden_for_role` would read a
-    machine identity as a user with no row and default it to viewer, handing a pipeline read access
-    to the `default` org through `org_of`. So until that allowlist lands, a machine session is
-    refused everywhere the gate runs at all: the exchange is testable end to end and nothing it
-    mints can reach a thing. "Where the gate runs" is the caveat — both backends skip it entirely
-    with no shared token configured, but that is the deployment already serving every endpoint
-    unauthenticated, so a machine session is not what grants access there. Unit 3 replaces this
-    body with the allowlist; both backends already route through here.
+    An allowlist, not a rank. A pipeline is not a person, so no viewer / editor / admin describes
+    it: four of the endpoints below are admin today, and granting a machine that *rank* would carry
+    config rebinding and the operator-secret reads along with it. Naming endpoints keeps its reach
+    to publishing an artifact and starting a run — the whole of what a pipeline needs — while
+    `required_role` goes on deciding what a human needs. Neither gate widens the other.
+
+    Default deny: anything not named here is refused, so a route added later is closed to a machine
+    until someone opens it deliberately. That is why this is an allowlist rather than a list of
+    refusals — `POST /api/compose` and `GET /api/config/content` are refused by saying nothing about
+    them, not by being remembered.
+
+    Refused outright when *org* is None. The exchange is the only thing that ever sets one, so a
+    machine principal without it is a session row this version does not understand
+    (`sessions.principal.kind_from_stored`) — and every allowlisted operation scopes itself by that
+    org, so admitting one with none would fall back to the `default` tenant.
+
+    Unconditional of the database on purpose: `forbidden_for_role` returns *allowed* when no
+    repository is wired ("DB-less = full access"), and an allowlist conditioned the same way would
+    inherit that fail-open. No machine principal can exist without a database — the exchange
+    refuses one — so this is belt-and-braces rather than a live path.
     """
-    return True
+    if org is None:
+        return True
+    return (method, path) not in _MACHINE_PATHS and not (
+        method == "GET" and _is_machine_job_route(path)
+    )

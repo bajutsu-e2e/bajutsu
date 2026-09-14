@@ -100,11 +100,13 @@ class _FastapiCtx:
         body: dict[str, Any],
         actor: Callable[[], str | None],
         session: Callable[[], str | None],
+        machine_org: Callable[[], str | None],
     ) -> None:
         self._request = request
         self._body = body
         self._actor = actor
         self._session = session
+        self._machine_org = machine_org
 
     def path_param(self, name: str) -> str:
         return str(self._request.path_params[name])
@@ -120,6 +122,9 @@ class _FastapiCtx:
 
     def session(self) -> str | None:
         return self._session()
+
+    def machine_org(self) -> str | None:
+        return self._machine_org()
 
 
 def _serve_artifact(art: Any, request: Request, *, filename: str | None = None) -> Response:
@@ -159,13 +164,39 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
         )
 
     def _actor(request: Request) -> str | None:
+        # The gate's own read, rather than a second one a session revoked or expired mid-request
+        # would answer None to (BE-0414 unit 3). Carried for every caller shape, not only a machine:
+        # a person answering None to that second read also resolves `org_of(None)`, so the write
+        # would land in `default` rather than their own tenant. None here means the gate saw no
+        # identity either — a shared-token caller — so the fall-through answers the same thing.
+        gate_actor = getattr(request.state, "gate_actor", None)
+        if isinstance(gate_actor, str) and gate_actor:
+            return gate_actor
         return gate.actor_for(state.auth, request.cookies.get(_SESSION_COOKIE))
+
+    def _machine_org(request: Request) -> str | None:
+        """The tenant a machine principal acts as (BE-0414 unit 3), stashed by `_security_gate`.
+
+        Read off the request rather than looked up again: `state.org_of` reads the actor's persisted
+        user row, which a machine has none of, so every allowlisted call would otherwise resolve
+        `default` — a cross-tenant hole on exactly the routes the allowlist opens. The gate has
+        already read the principal, so reusing its answer also avoids a second session lookup.
+        """
+        org = getattr(request.state, "machine_org", None)
+        return org if isinstance(org, str) else None
 
     def _session(request: Request) -> str | None:
         """This request's login-session id, or None for a shared-token caller (BE-0393 unit 2) — the
         hosted twin of the stdlib handler's `_session_value`. A cookie naming a session the store no
         longer knows resolves to None, so a revoked session reads the fallback binding rather than a
-        slot it can no longer own."""
+        slot it can no longer own.
+
+        None for a machine principal too (BE-0414 unit 3), which validates like any session but owns
+        no member slot: BE-0393 sized that map for members, and its restore is a Git or bundle fetch
+        paid once per session. One session per CI job would pay that fetch per job and evict
+        members' slots, so a machine reads the deployment's fallback instead."""
+        if _machine_org(request) is not None:
+            return None
         sid = request.cookies.get(_SESSION_COOKIE)
         return sid if sid is not None and state.auth.valid_session(sid) else None
 
@@ -210,8 +241,15 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
             # neither machine nor human is served as the shared-token shape — full access.
             principal = gate.principal_for(state.auth, request.cookies.get(_SESSION_COOKIE))
             is_machine = principal is not None and principal.kind == MACHINE
-            if is_machine and gate.forbidden_for_machine(method, path):
+            if is_machine and gate.forbidden_for_machine(
+                method, path, org=principal.org if principal is not None else None
+            ):
                 return _hardened(JSONResponse({"error": "forbidden"}, status_code=403))
+            if principal is not None:
+                # The identity the gate admitted this request on, for every caller shape.
+                request.state.gate_actor = principal.identity
+            if is_machine and principal is not None:
+                request.state.machine_org = principal.org
             # Enforce the user's role on mutating endpoints for an OAuth session (an identity)
             # when a database is wired (BE-0015 7c-2); token/Bearer has no identity and stays
             # full-access. A machine principal never reaches that gate — the allowlist above is
@@ -478,6 +516,7 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
                     received.path,
                     sha256=received.digest(),
                     actor=_actor(request),
+                    machine_org=_machine_org(request),
                 )
             )
         finally:
@@ -549,7 +588,13 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
                 if not isinstance(parsed, dict):
                     return _result(({"error": "expected a JSON object"}, 400))
                 body = parsed
-            ctx = _FastapiCtx(request, body, lambda: _actor(request), lambda: _session(request))
+            ctx = _FastapiCtx(
+                request,
+                body,
+                lambda: _actor(request),
+                lambda: _session(request),
+                lambda: _machine_org(request),
+            )
             # The `ops` call blocks (disk / network / subprocess), so run it off the event loop —
             # uniformly, so a route like the from-Git config bind or compose stays non-blocking
             # exactly as its hand-written predecessor did.

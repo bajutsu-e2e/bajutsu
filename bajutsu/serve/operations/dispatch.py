@@ -243,16 +243,21 @@ def _register_and_dispatch(
 
 
 def start_run(
-    state: ServeState, body: dict[str, Any], *, actor: str | None = None, session: str | None = None
+    state: ServeState,
+    body: dict[str, Any],
+    *,
+    actor: str | None = None,
+    session: str | None = None,
+    machine_org: str | None = None,
 ) -> tuple[Any, int]:
-    binding = state.binding_for(session, state.org_of(actor))
+    binding = state.binding_for(session, state.org_for(actor, machine_org))
     cfg = binding.config
     if cfg is None:
         return {"error": "open a config first"}, 400
     if not body.get("scenario") or not body.get("target"):
         return {"error": "scenario and target are required"}, 400
     target = str(body["target"])
-    org, forbidden = _resolve_org_or_forbid(state, target, actor, session)
+    org, forbidden = _resolve_org_or_forbid(state, target, actor, session, machine_org)
     if forbidden:
         return forbidden
     # Confine the scenario to the target's own scenarios dir: a serve client must not be able to run an

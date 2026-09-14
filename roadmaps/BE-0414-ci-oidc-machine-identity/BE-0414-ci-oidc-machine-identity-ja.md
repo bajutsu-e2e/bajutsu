@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0414](BE-0414-ci-oidc-machine-identity-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0414") |
-| 実装 PR | [#1986](https://github.com/bajutsu-e2e/bajutsu/pull/1986)（単位1〜2） |
+| 実装 PR | [#1986](https://github.com/bajutsu-e2e/bajutsu/pull/1986)（単位1〜2）、[#2004](https://github.com/bajutsu-e2e/bajutsu/pull/2004)（単位3〜4） |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)、[BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)、[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) |
 <!-- /BE-METADATA -->
@@ -506,14 +506,14 @@ nullを許すforeign keyです（`bajutsu/serve/server/models/audit_log.py`）�
 - [x] 単位2 — `OrgConfig`への`allowedRepositories`。交換のリクエストが名指したorgについて、個別の
       クレームで照合します。任意で項目ごとの`environment`/`ref`/`job_workflow_ref`により絞り込みます
       （`environment`はクレームがない場合も拒否）。
-- [ ] 単位3 — 機械セッション（身元は`repo:<owner>/<repo>`で取り消し可能）と、
+- [x] 単位3 — 機械セッション（身元は`repo:<owner>/<repo>`で取り消し可能）と、
       `bajutsu/serve/gate.py`におけるそのエンドポイント許可リスト。`gate.is_open`のPOSTの分岐への
       追加を含み、データベースの有無にかかわらず適用します。検証済みのorgを`org_of`ではなく
       機械セッションに載せて運ぶしくみ（runの読み取りを含む）。機械の主体に対して`_record_audit`が
       nullを書くこと、および監査エントリのdetailペイロードへのリポジトリ名の記録。あるリポジトリの
       発行済みセッションを取り消す経路。廃止するorgに紐づく機械セッションも取り消すよう、orgの廃止を
       広げること。
-- [ ] 単位4 — レプリカをまたぐ`jti`再送テスト・データベースを持たないデプロイでの交換拒否・
+- [x] 単位4 — レプリカをまたぐ`jti`再送テスト・データベースを持たないデプロイでの交換拒否・
       import guardの`joserfc`チェックを含む各接続点のテストと、self-hostingのドキュメント。
 
 ログ：
@@ -545,6 +545,28 @@ nullを許すforeign keyです（`bajutsu/serve/server/models/audit_log.py`）�
   マシンセッションは当面すべてのendpointで拒否されます。単位3が置き換える接続点は
   `gate.forbidden_for_machine`の1箇所だけです。それまでこの全面拒否が、マシンセッションがロール
   ゲートのviewerというデフォルト値に落ちるのを防ぎます。
+
+- [#2004](https://github.com/bajutsu-e2e/bajutsu/pull/2004) — 単位3と単位4です。
+  `gate.forbidden_for_machine`の「すべて拒否する」実装を、既定で拒否する endpoint の許可リストに
+  置き換えました。許可するのは、有無を問う呼び出し、3種のアーティファクトの publish、
+  `POST /api/run`、そして結果を見るための`GET /api/runs`と`GET /api/jobs/{id}`です。orgを持たない
+  機械の主体は拒否します。データベースの有無にかかわらず効きます。検証済みのorgは機械セッションに
+  載って運ばれ、`ServeState.org_for`を通って許可リストのすべての操作に届きます。`org_of`は永続化
+  されたユーザーの行を読むので、行を持たないパイプラインではどのテナントでも`default`になって
+  しまうからです。設定の解決にはセッションを渡さない`binding_for`の経路を使うので、CIのジョブは
+  メンバー用のスロットを取りません。`_record_audit`は機械のエントリを残しつつ`actor_id`にnullを
+  書き、リポジトリはdetailに記録します。`artifact_exists`にも監査の記録を足しました。
+  `SessionStore.revoke_machine_sessions`を3つの実装すべてに追加しました。orgで絞ります。1つの
+  リポジトリが複数のorgに列挙されうるからです。呼び出し元は2つで、管理者向けの
+  `POST /api/orgs/{slug}/machine-sessions/revoke`と、org の退役です。後者は`revoke_identities`
+  では届きませんでした。共有トークンを設定していないデプロイでは交換を拒否します。その場合、
+  どちらのバックエンドもリクエストのゲートを丸ごと飛ばすからです。`machine_identity`は大文字と
+  小文字を畳みます。名簿側の照合が畳んで比べるので、失効が黙って何にも一致しない事態を防ぎます。
+  `job_view`のorgの確認は、すべての呼び出し元ではなく機械の主体に適用します。job の経路は今のところ
+  人に対して一様に絞られておらず、ここだけ絞ると、orgを切り替えたメンバーが自分の実行中のrunを
+  見られなくなるからです。`docs/self-hosting.md`と日本語版にも記載しました。この単位の文章が述べる
+  ジョブ単位のアーティファクトの三つ組は、姉妹提案であるジョブ単位のバイナリ上書きを待ちます。
+  許可リスト自体はそれなしで成立します。
 
 ## 参考
 

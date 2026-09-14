@@ -97,6 +97,7 @@ ROUTES: tuple[Route, ...] = (
             target=ctx.query("target"),
             label=ctx.query("label"),
             ran_target=ctx.query("ranTarget"),
+            machine_org=ctx.machine_org(),
         ),
     ),
     # The org roster an admin administers (BE-0375). Admin-gated in `authz.required_role`, which
@@ -124,7 +125,11 @@ ROUTES: tuple[Route, ...] = (
         "GET",
         "/api/artifacts/exists",
         lambda state, ctx: ops.artifact_exists(
-            state, ctx.query("kind"), ctx.query("sha256"), actor=ctx.actor()
+            state,
+            ctx.query("kind"),
+            ctx.query("sha256"),
+            actor=ctx.actor(),
+            machine_org=ctx.machine_org(),
         ),
     ),
     Route(
@@ -150,7 +155,9 @@ ROUTES: tuple[Route, ...] = (
     Route(
         "GET",
         "/api/jobs/{job_id}",
-        lambda state, ctx: ops.job_view(state, ctx.path_param("job_id")),
+        lambda state, ctx: ops.job_view(
+            state, ctx.path_param("job_id"), machine_org=ctx.machine_org()
+        ),
     ),
     # --- GET: text responses (content_type) ---
     Route(
@@ -282,7 +289,11 @@ ROUTES: tuple[Route, ...] = (
         "POST",
         "/api/run",
         lambda state, ctx: ops.start_run(
-            state, ctx.body(), actor=ctx.actor(), session=ctx.session()
+            state,
+            ctx.body(),
+            actor=ctx.actor(),
+            session=ctx.session(),
+            machine_org=ctx.machine_org(),
         ),
     ),
     Route(
@@ -325,6 +336,16 @@ ROUTES: tuple[Route, ...] = (
         "POST",
         "/api/orgs/{slug}/membership",
         lambda state, ctx: ops.update_org_membership(
+            state, ctx.path_param("slug"), ctx.body(), actor=ctx.actor()
+        ),
+    ),
+    # Ending an org's outstanding machine sessions (BE-0414 unit 3). Under `/api/orgs/…` so it
+    # inherits that prefix's admin gate, beside the membership write whose `allowedRepositories`
+    # edits are what create the need for it.
+    Route(
+        "POST",
+        "/api/orgs/{slug}/machine-sessions/revoke",
+        lambda state, ctx: ops.revoke_machine_sessions(
             state, ctx.path_param("slug"), ctx.body(), actor=ctx.actor()
         ),
     ),

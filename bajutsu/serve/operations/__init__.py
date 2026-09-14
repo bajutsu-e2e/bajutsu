@@ -76,6 +76,7 @@ from bajutsu.serve.operations.orgs import (
     create_org,
     delete_org,
     list_orgs_view,
+    revoke_machine_sessions,
     set_active_org,
     update_org_membership,
 )
@@ -220,6 +221,7 @@ __all__ = [
     "restore_org_config",
     "restore_run",
     "restore_uploaded_config",
+    "revoke_machine_sessions",
     "role_allows",
     "role_for",
     "run_file",

@@ -27,6 +27,7 @@ from bajutsu.serve.orgs import (
     orgs_from_db,
     preferred_org,
 )
+from bajutsu.serve.sessions import machine_repository
 from bajutsu.serve.state import ServeState
 
 if TYPE_CHECKING:  # keeps the default serve/CLI path free of `serve.server` (server/__init__.py)
@@ -404,15 +405,22 @@ def _record_audit(
 ) -> None:
     """Append an audit entry (who did what, when) when a database is wired and the actor is known.
     A no-op otherwise — local, no database, or a shared-token request with no identity (BE-0015 7c-1).
-    *org* is the actor's org, resolved once by the caller."""
+    *org* is the actor's org, resolved once by the caller.
+
+    A machine principal (BE-0414 unit 3) keeps its entry but writes a null `actor_id`: that column is
+    a foreign key to `users.id`, and a pipeline has no user row — minting a synthetic one would put
+    the machine in the roster `/api/orgs` discloses and give it a role column besides. The repository
+    goes into *detail* instead, so "which pipeline did this" is still answerable.
+    """
     if state.repository is None or not actor:
         return
+    repository = machine_repository(actor)
     state.repository.record_audit(
         org_id=org,
-        actor_id=actor,
+        actor_id=None if repository is not None else actor,
         action=action,
         target=target,
-        detail=detail,
+        detail=detail if repository is None else {**detail, "repository": repository},
     )
 
 

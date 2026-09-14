@@ -20,6 +20,7 @@ from pydantic import ValidationError
 from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.orgs import DEFAULT_ORG, AllowedRepository
+from bajutsu.serve.sessions import machine_identity
 from bajutsu.serve.state import ServeState
 
 _logger = logging.getLogger(__name__)
@@ -293,6 +294,10 @@ def delete_org(state: ServeState, slug: str, *, actor: str | None = None) -> tup
     # redeploy, and the restart dropped every session as a side effect; making it an in-process
     # admin action removes that incidental revocation, so this does it deliberately (BE-0375).
     revoked = state.auth.sessions.revoke_identities(members)
+    # The roster above is the `users` table, and a machine principal has no row in it (BE-0414 unit
+    # 3), so its sessions survive that call entirely — and would go on acting as the retired tenant
+    # until they expired, the exact leak BE-0375 added this revocation to close. Revoke them by org.
+    revoked += state.auth.sessions.revoke_machine_sessions(slug)
     # Their configuration bindings go with the sessions that held them (BE-0393 unit 2): a revoked
     # cookie already reads the fallback, so this reclaims the slots rather than closing a hole.
     state.drop_revoked_bindings()
@@ -300,6 +305,62 @@ def delete_org(state: ServeState, slug: str, *, actor: str | None = None) -> tup
         state, actor, state.org_of(actor), "org.delete", slug, {"sessionsRevoked": revoked}
     )
     return {"ok": True, "slug": slug, "sessionsRevoked": revoked}, 200
+
+
+def revoke_machine_sessions(
+    state: ServeState, slug: str, body: dict[str, Any], *, actor: str | None = None
+) -> tuple[Any, int]:
+    """End *slug*'s live machine sessions, or only those of ``{repository}`` (BE-0414 unit 3).
+
+    The operator action behind the duty that comes with `allowedRepositories`. A repository name is
+    mutable — deleting, renaming, or transferring one frees it for whoever claims it next — and
+    configuration binds only at the exchange, so removing an entry stops the *next* session and
+    leaves the outstanding ones acting as this org until they expire. This is how an admin ends
+    them now.
+
+    Scoped to this org, never to the identity alone: one repository may be listed by several orgs, a
+    shared pipeline repository testing apps owned by different teams, and one org's admin must not
+    be able to end another's running pipelines. Within the org the granularity is per repository
+    rather than per job — every session a repository mints shares one identity — so a revocation
+    ends that repository's concurrent pipelines too.
+
+    Omitting ``repository`` revokes every machine session in the org, which is the reach an admin
+    wants when the roster itself is what went wrong.
+    """
+    if state.repository is None:
+        return _NO_ORG_STORE
+    if state.repository.get_org(slug) is None:
+        return {"error": f"no org named {slug!r}"}, 404
+    raw = body.get("repository")
+    if raw is not None and (not isinstance(raw, str) or not raw.strip()):
+        return {"error": "repository must be a non-empty string"}, 400
+    repository = raw.strip() if isinstance(raw, str) else None
+    revoked = state.auth.sessions.revoke_machine_sessions(
+        slug, identity=None if repository is None else machine_identity(repository)
+    )
+    # Logged whether or not it matched. Zero is a legitimate answer — the sessions may already have
+    # expired — but it is also what a mistyped repository returns, and an operator reaching for this
+    # endpoint is acting on a name that has just changed. The deployment's log is where the two can
+    # be told apart afterwards.
+    oplog.log_event(
+        _logger,
+        "org.machineSessions.revoke",
+        f"revoked {revoked} machine session(s) for org {slug!r}",
+        org=slug,
+        repository=repository or "",
+    )
+    # No `drop_revoked_bindings` to match `delete_org`'s: a machine session takes no per-session
+    # binding slot, because both backends resolve one to None before it reaches `binding_for`
+    # (BE-0414 unit 3). There is nothing to reclaim.
+    _record_audit(
+        state,
+        actor,
+        state.org_of(actor),
+        "org.machineSessions.revoke",
+        slug,
+        {"repository": repository, "sessionsRevoked": revoked},
+    )
+    return {"ok": True, "slug": slug, "repository": repository, "sessionsRevoked": revoked}, 200
 
 
 def set_active_org(

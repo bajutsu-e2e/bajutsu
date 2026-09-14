@@ -296,7 +296,13 @@ def upload_scenarios(
 
 
 def bind_artifact(
-    state: ServeState, kind: ArtifactKind, src_path: Path, *, sha256: str, actor: str | None = None
+    state: ServeState,
+    kind: ArtifactKind,
+    src_path: Path,
+    *,
+    sha256: str,
+    actor: str | None = None,
+    machine_org: str | None = None,
 ) -> tuple[Any, int]:
     """Store one independently-uploaded artifact (BE-0268): persist it to the object store when one
     is configured (mirrors `bind_upload_config`'s own store write) and cache it locally
@@ -307,7 +313,7 @@ def bind_artifact(
     takes a triple, composed lazily by `restore_uploaded_config` (BE-0268 widens the `upload`
     source locator from one bundle sha to `{"config", "scenarios", "binary"}` shas)."""
     size = src_path.stat().st_size
-    org = state.org_of(actor)
+    org = state.org_for(actor, machine_org)
     if state.object_store is not None:
         key = artifact_store_key(state.object_store_prefix, org, kind, sha256)
         try:
@@ -324,7 +330,12 @@ def bind_artifact(
 
 
 def artifact_exists(
-    state: ServeState, kind: str | None, sha256: str | None, *, actor: str | None = None
+    state: ServeState,
+    kind: str | None,
+    sha256: str | None,
+    *,
+    actor: str | None = None,
+    machine_org: str | None = None,
 ) -> tuple[Any, int]:
     """Whether a *kind*/*sha256* artifact is already stored for this actor's org (BE-0268) — lets a
     client skip re-uploading bytes it already sent, whether or not an object store is configured.
@@ -334,7 +345,7 @@ def artifact_exists(
         return {"error": f"unknown artifact kind: {kind!r}"}, 400
     if not valid_sha256(sha256):
         return {"error": "sha256 must be a full lowercase hex digest"}, 400
-    org = state.org_of(actor)
+    org = state.org_for(actor, machine_org)
     if state.object_store is not None:
         try:
             exists = state.object_store.exists(
@@ -353,6 +364,11 @@ def artifact_exists(
             exists = sha256 in {entry.name for entry in cache_dir.iterdir()}
         except OSError:  # cache dir not created yet ⇒ nothing stored for this kind/org
             exists = False
+    # A read, and the only org-resolving artifact route that recorded nothing. A pipeline's probe is
+    # the first call in its sequence, so without this the audit trail for a CI run starts at the
+    # upload and never shows the job that probed, found the build already stored, and skipped it
+    # (BE-0414 unit 3).
+    _record_audit(state, actor, org, f"artifact:{kind}:exists", str(sha256), {"exists": exists})
     return {"exists": exists}, 200
 
 

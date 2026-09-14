@@ -34,6 +34,10 @@ EVENTS: frozenset[str] = frozenset(
         # run of them is how an operator sees a misconfigured `aud` or an unlisted repository.
         "oidc.exchange",
         "oidc.denied",
+        # An admin ended an org's machine sessions (BE-0414 unit 3). Recorded whether or not it
+        # matched: zero is a legitimate answer, but it is also what a mistyped repository returns,
+        # and an operator reaching for that endpoint is acting on a name that has just changed.
+        "org.machineSessions.revoke",
         # An org's membership is seeded from `orgs:` once and then owned by the database (BE-0375);
         # this reports a config entry whose membership fields are consequently no longer read. It
         # fires at a config rebind as well as at boot, so it can't ride on `server.startup_warning`.

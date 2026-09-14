@@ -5,10 +5,16 @@ from __future__ import annotations
 import json
 import math
 import secrets
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 
-from bajutsu.serve.sessions import HUMAN, MACHINE, Principal, PrincipalKind
+from bajutsu.serve.sessions import (
+    HUMAN,
+    MACHINE,
+    Principal,
+    PrincipalKind,
+    same_machine_identity,
+)
 
 from ._shared import _DEFAULT_TTL
 from .redis_like import RedisLike
@@ -70,17 +76,33 @@ class RedisSessionStore:
         wanted = set(identities)
         if not wanted:
             return 0
-        # The identity is the key's *value*, so there is no index to look it up by — every live
-        # session key has to be read. Acceptable because revocation is a rare admin action (retiring
-        # an org), and the alternative is leaving this store unable to revoke at all, which is the
-        # hole BE-0375 closed for the two stores a deployment actually runs.
+        return self._revoke(lambda principal: principal.identity in wanted)
+
+    def revoke_machine_sessions(self, org: str, *, identity: str | None = None) -> int:
+        return self._revoke(
+            lambda principal: (
+                principal.kind == MACHINE
+                and principal.org == org
+                and (identity is None or same_machine_identity(principal.identity, identity))
+            )
+        )
+
+    def _revoke(self, doomed_by: Callable[[Principal], bool]) -> int:
+        """Delete every live session whose principal *doomed_by* selects; returns how many.
+
+        A full scan, because what both callers match on — the identity, the org, the kind — lives in
+        the key's *value*, and there is no index to look a value up by. Acceptable because
+        revocation is a rare admin action (retiring an org, ending a repository's pipelines), and
+        the alternative is leaving this store unable to revoke at all, which is the hole BE-0375
+        closed for the two stores a deployment actually runs.
+        """
         doomed = []
         for key in self._redis.scan_iter(f"{_SESSION}*"):
             name = key.decode() if isinstance(key, bytes) else str(key)
             raw = self._redis.get(name)
             if raw is None:
-                continue
-            if _principal(_decode(raw)).identity in wanted:
+                continue  # expired between the scan and the read
+            if doomed_by(_principal(_decode(raw))):
                 doomed.append(name)
         if doomed:
             self._redis.delete(*doomed)
