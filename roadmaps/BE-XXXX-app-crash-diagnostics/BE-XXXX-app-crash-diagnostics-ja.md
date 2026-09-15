@@ -419,6 +419,24 @@ Simulator 上のアプリの `.ips` レポートは、そのヘッダに実行�
 （[`android_environment.py:326`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py)）、
 そこでの `e.launch` は Unit 5 がすでに名指す3か所の起動箇所のうちの1つだからです。
 
+`_DeviceEnvironment.crawl_reset()`
+（[`ios.py:124`](../../bajutsu/common/platform_lifecycle/environments/ios.py)）は、まったく
+同じ形——`e.terminate(bundle_id)` に続けて `e.launch(...)`——を持つ、iOS の3つ目の起動箇所
+です。`relauncher()` をまったく経由せず、`crawl` 自身の `reset` 呼び出し可能オブジェクトが、
+フロンティアを再訪するたびにこれを走らせます
+（[`cli.py:300`](../../bajutsu/crawl/cli.py)）。手を入れなければ、`relauncher()` の
+オーバーライドがいましがた閉じたのと同じ古びが、この経路で再び開いてしまいます。クロールは
+1回の実行で複数のクラッシュを記録するため（`current_fp = None; continue`、
+[`_functions.py:668-669`](../../bajutsu/crawl/core/_functions.py)）、2件目のクラッシュの
+掃引は自身の `crawl_reset` より前にまで遡り、1件目のクラッシュの `.ips` レポートをそのまま
+受け入れてしまいます。誤ったクラッシュのレポートを、レポートを正しく紐づけることこそが
+存在意義のディレクトリへ持ち込むことになります。`XcuitestEnvironment` は `crawl_reset()`
+もオーバーライドします。`relauncher()` のオーバーライドと同じ形です。`_DeviceEnvironment`
+の実装を呼んでから、その隣で `app_launched_at` を記録します。`AndroidEnvironment` には、
+ここでも対応するオーバーライドは要りません。自前の `crawl_reset()` の `e.launch`
+（[`android_environment.py:410`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py)）
+が、Unit 5 がすでに名指す3か所のうちの3つ目だからです。
+
 新しく `app_crash_artifacts() -> list[tuple[str, bytes]]` を `RunEnvironment` プロトコル
 （[`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py)）
 に、`take_crash_snapshot()` の隣に加えます。ただし、それよりも素直な形です。
@@ -777,7 +795,10 @@ fake backend の実行が収集する内容は変わりません。
       新しい `XcuitestEnvironment.relauncher()` オーバーライドが `device_relauncher` の
       `RelaunchFn` を包み、`relaunch` ステップ自身の起動のあとにこれを記録し直します
       （`_DeviceEnvironment` が継承する `relauncher()` には、それを更新すべき環境がその場に
-      ない、まさにその呼び出し箇所）。掃引自身の照合パターンのために
+      ない、まさにその呼び出し箇所）。対応する `XcuitestEnvironment.crawl_reset()`
+      オーバーライドも同じ形でこれを3回目記録し直します。`crawl` 自身のフロンティア再訪ごとの
+      relaunch のあとで、`_DeviceEnvironment` が継承する `crawl_reset()` にも、それを更新
+      すべき環境がその場にない、もう1つの呼び出し箇所です。掃引自身の照合パターンのために
       `Path(ios.app_path) / "Info.plist"` から `CFBundleExecutable` を読みます
       （`ios.bundle_id` はこの名前ではない）。`app_crash_artifacts()` の、名前と `udid` に
       よる `.ips` 掃引（`XCUIApplication` には PID を読む手段がない）。`ReportCrash` の
@@ -858,8 +879,10 @@ fake backend の実行が収集する内容は変わりません。
 - [ ] Unit 13 — テスト。両バックエンドで、ふつうの `ElementNotFound` や `wait`・`assert` の
       失敗、そして `app.state` の答えに関わらず `deviceType: device` に対して
       `app_crash_signal()` が `None` を返すこと（誤検知しないこと）。`relaunch` ステップ
-      自身の起動を過ぎて `XcuitestEnvironment.app_launched_at` が進むこと、relaunch 後の
-      クラッシュに対する `.ips` 掃引がその後の起動のレポートだけを見つけること。失敗した
+      自身の起動を過ぎて、また `crawl` が駆動する `crawl_reset()` 自身の起動を過ぎても
+      `XcuitestEnvironment.app_launched_at` が進むこと、クロール2件目のクラッシュに対する
+      `.ips` 掃引が、1件目のクラッシュではなくその2件目自身のリセットのレポートだけを
+      見つけること。失敗した
       `relaunch` ステップ自身が `app_crash_signal()` をまったく確認しないこと、それを包む
       `if`・`forEach` の outcome も、終了させられたアプリに対して失敗する
       `after: on: fail` のステップも同様であること。3段の入れ子のふつうの（`relaunch`
@@ -923,6 +946,9 @@ fake backend の実行が収集する内容は変わりません。
 - [`bajutsu/common/platform_lifecycle/relaunchers.py`](../../bajutsu/common/platform_lifecycle/relaunchers.py) —
   `device_relauncher`。`relaunch` ステップの実際の iOS 起動経路であり、`_resume_warm` の
   リースをまたぐ経路とは別物
+- [`bajutsu/common/platform_lifecycle/environments/ios.py`](../../bajutsu/common/platform_lifecycle/environments/ios.py) —
+  `_DeviceEnvironment.crawl_reset()`。`app_launched_at` を最新に保つため、`relauncher()` と
+  並んで `XcuitestEnvironment` がオーバーライドする、iOS の3つ目の起動箇所
 - [`bajutsu/crawl/core/_functions.py`](../../bajutsu/crawl/core/_functions.py) —
   `record_crash` のロック外クラッシュ確認。本項目のクロール側の収集呼び出しが加わる場所
 - [`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py) — `_build_lane`。本項目の収集が

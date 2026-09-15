@@ -368,6 +368,22 @@ matching override: it already overrides `relauncher()` itself
 ([`android_environment.py:326`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py)),
 and its `e.launch` there is one of the three sites Unit 5 already names.
 
+`_DeviceEnvironment.crawl_reset()`
+([`ios.py:124`](../../bajutsu/common/platform_lifecycle/environments/ios.py)) is a third iOS launch
+site with the identical shape — `e.terminate(bundle_id)` then `e.launch(...)` — that `crawl`'s own
+`reset` callable runs on every frontier revisit
+([`cli.py:300`](../../bajutsu/crawl/cli.py)), not through `relauncher()` at all. Left unpatched, the
+same staleness the `relauncher()` override just closed reopens on this path: a crawl records several
+crashes per run (`current_fp = None; continue`,
+[`_functions.py:668-669`](../../bajutsu/crawl/core/_functions.py)), so the second crash's sweep would
+reach back before its own `crawl_reset` and accept the *first* crash's `.ips` report instead — the
+wrong crash, in a directory whose whole purpose is attributing the report correctly.
+`XcuitestEnvironment` overrides `crawl_reset()` too, the same shape as the `relauncher()` override:
+call `_DeviceEnvironment`'s version, then record `app_launched_at` next to it. `AndroidEnvironment`
+needs no matching override here either — its own `crawl_reset()`'s `e.launch`
+([`android_environment.py:410`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py))
+is the third of the three sites Unit 5 already names.
+
 A new `app_crash_artifacts() -> list[tuple[str, bytes]]` joins the `RunEnvironment` protocol
 ([`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py)),
 next to `take_crash_snapshot()`, but plainer: `take_crash_snapshot()` returns a *thunk*, because a
@@ -675,7 +691,10 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 - [ ] Unit 3 — iOS: `XcuitestEnvironment.app_launched_at`, recorded at the cold launch; a new
       `XcuitestEnvironment.relauncher()` override wrapping `device_relauncher`'s `RelaunchFn` to
       record it again after a `relaunch` step's own launch, the one call site `_DeviceEnvironment`'s
-      inherited `relauncher()` has no environment in scope to update; reading `CFBundleExecutable`
+      inherited `relauncher()` has no environment in scope to update; a matching
+      `XcuitestEnvironment.crawl_reset()` override recording it a third time after `crawl`'s own
+      per-frontier-revisit relaunch, the one other call site `_DeviceEnvironment`'s inherited
+      `crawl_reset()` also has no environment in scope to update; reading `CFBundleExecutable`
       from `Path(ios.app_path) / "Info.plist"` for the sweep's own match pattern (`ios.bundle_id` is
       not this name); `app_crash_artifacts()`'s name-and-`udid`-matched `.ips` sweep (no PID accessor
       exists on `XCUIApplication`), with a bounded wait for `ReportCrash`'s asynchronous write,
@@ -751,8 +770,9 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 - [ ] Unit 13 — Tests: `app_crash_signal()` answering `None` on an ordinary `ElementNotFound` (no
       false positive on a missing selector), on a `wait`/`assert` failure, and on `deviceType: device`
       regardless of `app.state`, for both backends; `XcuitestEnvironment.app_launched_at` advancing
-      past a `relaunch` step's own launch, and the `.ips` sweep after a post-relaunch crash finding
-      only the report from that later launch; a failing `relaunch` step never probing
+      past a `relaunch` step's own launch and past a `crawl`-driven `crawl_reset()`'s own launch, and
+      the `.ips` sweep after a second crawl crash finding only the report from that crash's own reset,
+      not the first crash's; a failing `relaunch` step never probing
       `app_crash_signal()`, and neither does its wrapping `if`/`forEach` outcome nor a dispatched
       `after: on: fail` step that also fails against the terminated app; an ordinary (non-`relaunch`,
       non-crash) failure three levels deep still probing once per settling outcome, pinning that the
@@ -809,6 +829,9 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 - [`bajutsu/common/platform_lifecycle/relaunchers.py`](../../bajutsu/common/platform_lifecycle/relaunchers.py) —
   `device_relauncher`, the `relaunch` step's actual iOS launch path, distinct from
   `_resume_warm`'s cross-lease one
+- [`bajutsu/common/platform_lifecycle/environments/ios.py`](../../bajutsu/common/platform_lifecycle/environments/ios.py) —
+  `_DeviceEnvironment.crawl_reset()`, the third iOS launch site `XcuitestEnvironment` overrides to
+  keep `app_launched_at` current, alongside `relauncher()`
 - [`bajutsu/crawl/core/_functions.py`](../../bajutsu/crawl/core/_functions.py) — `record_crash`'s
   off-lock crash check, the join point for this item's crawl-side capture call
 - [`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py) — `_build_lane`, the per-lane environment this
