@@ -603,9 +603,18 @@ room to catch up that the write needs.
 `AndroidEnvironment`
 ([`bajutsu/common/platform_lifecycle/environments/android/android_environment.py`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py))
 gains the same `app_launched_at` tracking as the iOS environment, recorded at each of its three launch
-call sites (`e.launch(package, launch_env)`). It reads from the device's own clock (`adb shell date`)
-at launch time rather than the host's, so a launch marker compared only against later device-clock
-reads never needs host/device clock reconciliation. It captures two layers, matching this item's own
+call sites (`e.launch(package, launch_env)`). It reads from the device's own clock (`adb shell date
++%s`, an epoch integer) at launch time rather than the host's, so a launch marker compared only
+against later device-clock reads never needs host/device clock reconciliation — this is the value
+the exit-info poll above and the tombstone mtime comparison below both consume directly, since both
+compare against an epoch already. `logcat -t` cannot consume that same epoch value, though: `adb
+logcat -t` is overloaded, and an integer argument is read as a *line count* (\"the most recent N
+lines\"), not a time bound — only a quoted `'MM-DD hh:mm:ss.mmm'` string is read as one. So each
+launch site also records a second rendering of the same moment, `adb shell date '+%m-%d
+%H:%M:%S.000'`, stashed alongside `app_launched_at` for `logcat -t` alone to consume; threading the
+epoch straight through would silently return the whole ring buffer with no time bound at all, since
+the process bound below is by package alone and would then let an earlier scenario's crash on the
+*same* package through as this scenario's own. It captures two layers, matching this item's own
 scoping decision to capture both — but not through the same call, and not at the same time. `logcat`
 is safe to read the moment the crash is confirmed, mid-scenario, inside `_finish_outcome`
 (*Detecting the event*): it needs no elevated access and touches no channel a later step still needs.
@@ -619,8 +628,9 @@ independently wrapped so that a failure in one never drops the other:
    device — [`scripts/collect_android_diagnostics.sh`](../../scripts/collect_android_diagnostics.sh)
    dumps it whole (`-b main,system,crash,events,radio`) at the end of every failed CI job, so clearing
    it per launch would destroy evidence that end-of-job sweep still needs. Nothing here clears it: a
-   later `adb logcat -b crash -d -t "<launch marker>"` dump uses the device-relative launch marker
-   already recorded above as `logcat`'s own time filter, so it holds only content from the launch this
+   later `adb logcat -b crash -d -t "<MM-DD hh:mm:ss.mmm launch marker>"` dump uses the
+   `logcat`-formatted rendering recorded above — not the epoch `app_launched_at` — as `logcat`'s own
+   time filter, so it holds only content from the launch this
    scenario is running — never a stale crash the same package left behind on an earlier run sharing
    the device — while leaving everything before that marker intact for the end-of-job sweep to still
    find. The dump is parsed two ways: a `FATAL EXCEPTION` block for a managed-code (Java/Kotlin)
@@ -664,7 +674,10 @@ independently wrapped so that a failure in one never drops the other:
    `AndroidEnvironment.start()` rebuilds the resident server and the
    reverse tunnel from scratch on every lease regardless (`_begin_resident`, `bridge_collector`), a
    routine "no warm resident kept" teardown-and-rebuild this design already relies on, so the next
-   lease on this device is unaffected by what this layer leaves broken. It then pulls the most recent
+   lease on this device is unaffected by what this layer leaves broken. `adb root` is followed by
+   `adb wait-for-device` before anything else is run against the device — the same gate
+   `collect_android_diagnostics.sh:99-103` puts between its own `adb root` and its `adb pull`, without
+   which everything below races `adbd`'s restart. It then pulls the most recent
    `/data/tombstones/tombstone_NN` whose modification time is at or after the launch marker above,
    compared as device-relative timestamps, so no clock reconciliation is needed here either. Reading
    the marker this late carries none of the iOS `.ips`/`logcat` mis-attribution risk a teardown
@@ -993,13 +1006,17 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       check (its newest entry only, at or after `launched_at()`), polled the same short, bounded way
       as the iOS `.ips` sweep rather than read once, since `ApplicationExitInfo` is recorded only
       after `system_server` reaps the death.
-- [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at` (device clock) at each launch site; a
-      new `self._package` field, stashed in `start()` alongside it (`android.package`, from the same
+- [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at` (device clock, `adb shell date +%s`, an
+      epoch value) at each launch site, alongside a second rendering of the same moment for `logcat
+      -t` alone (`adb shell date '+%m-%d %H:%M:%S.000'`) — `logcat -t` reads an integer argument as a
+      line count, not a time bound, so the epoch value cannot be threaded straight through; a
+      new `self._package` field, stashed in `start()` alongside both (`android.package`, from the same
       `android = require_android(eff)` the launch marker already reads) — `app_crash_artifacts()`
       takes no arguments, so this is the only way it reaches the value its own `logcat` process bound
       needs;
       `app_crash_artifacts()`'s always-attempted `logcat` extraction (managed *and* native crash
-      formats) using a `-t "<launch marker>"` time filter rather than clearing the crash buffer, so
+      formats) using the `logcat`-formatted marker as a `-t` time filter rather than clearing the
+      crash buffer, so
       `scripts/collect_android_diagnostics.sh`'s own end-of-job sweep still sees everything earlier —
       bounded to `self._package` (a managed block's `Process: <package>` line,
       a native block's `>>> <process> <<<` header), since the buffer is device-global across processes
