@@ -1005,6 +1005,16 @@ step's own already-empty default. The crash is still fully reported: `outcome.re
 `outcome.app_crashed` (a plain `bool`, no serialization hazard) still round-trip, and the redacted
 copy under `{sid}/app-crash/` this section already writes is the durable copy a report reader follows
 — the in-memory bytes on the outcome exist only to reach that write, never to reach the manifest.
+`_kw`'s own docstring-comment at [`load.py:34-41`](../../bajutsu/common/report/load.py) currently names
+`wall_offset_s` as "the one deliberate exception" the round-trip guarantee doesn't cover — a claim this
+item's own second exclusion makes stale the moment it lands, and the comment exists specifically to warn
+a future contributor away from "fixing" an exclusion that looks like an oversight. Left unstated, the
+same risk that comment was written to prevent recurs on `app_crash_artifacts` itself: a contributor who
+notices it not surviving the round trip, reads "the *one* deliberate exception", and removes the
+`_scenario_dict` pop as a bug fix reopens the `manifest.json` `TypeError` this section exists to avoid —
+and `test_round_trip_through_manifest_is_lossless`'s own fixture leaves the field at its default, so
+that test would not catch the regression either. Naming `app_crash_artifacts` alongside `wall_offset_s`
+in that same comment is part of this item's own scope, not a follow-up.
 
 ### Extending `crawl`'s own crash recording
 
@@ -1388,8 +1398,12 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       `logcat` layer already on the outcome; `bajutsu/common/report/manifest.py`'s `_scenario_dict`
       popping `app_crash_artifacts` from every outcome dict in `steps` / `before_outcomes` /
       `after_outcomes`, alongside its existing `wall_offset_s` pop, so the raw `bytes` this unit adds
-      to `StepOutcome` never reaches `json.dumps` — `report/load.py` needs no matching change, since
-      `_kw`'s existing missing-field handling already reconstructs the field at its default.
+      to `StepOutcome` never reaches `json.dumps` — `report/load.py` needs no matching change to
+      `_kw` itself, since its existing missing-field handling already reconstructs the field at its
+      default; `load.py:34-41`'s own comment updated in the same change, naming `app_crash_artifacts`
+      alongside `wall_offset_s` as a second deliberate round-trip exception, since it currently reads
+      "the *one* deliberate exception" and would otherwise invite a later contributor to "fix" this
+      item's own pop as an oversight.
 - [ ] Unit 9 — `TracingDriver`: add `base.AppCrashSignal` to `_PROTOCOLS` so `--trace-driver` installs
       it as a real attribute only on a wrapped driver that implements it.
 - [ ] Unit 10 — `crawl`'s own integration: `_build_lane`'s per-lane `app_crash_artifacts` (never

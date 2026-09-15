@@ -1181,7 +1181,19 @@ outcome 自身の `app_crash_artifacts`——確認の時点ですでに収集�
 危うさのない、ただの `bool` です）はそのまま往復し、この節がすでに `{sid}/app-crash/` の下へ
 書き込んでいるマスキング済みのコピーこそが、レポートの読み手がたどる恒久的なコピーです。
 outcome 上のメモリ内の bytes は、その書き込みに届くためだけに存在し、マニフェストに届く
-ためのものではありません。
+ためのものではありません。`_kw` 自身のドキュメントコメント
+（[`load.py:34-41`](../../bajutsu/common/report/load.py)）は現在、`wall_offset_s` を
+往復保証の対象外となる「唯一の意図的な例外」と名指しています。この主張は、本項目自身の
+2つ目の除外が着地した瞬間に古びてしまいます。そのコメントはまさに、見落としに見える
+除外を将来の寄稿者が「直して」しまわないよう警告するために存在します。ここで述べて
+おかなければ、そのコメントが防ごうとしていたのと同じ危険が `app_crash_artifacts` 自身の
+上で繰り返されます。往復しないことに気づいた寄稿者が「*唯一の*意図的な例外」を読み、
+`_scenario_dict` の pop を不具合修正として取り除いてしまえば、この節がそもそも避けようと
+している `manifest.json` の `TypeError` を再び開いてしまいます。しかも
+`test_round_trip_through_manifest_is_lossless` 自身のフィクスチャはこのフィールドを既定値
+のままにしているため、この回帰をそのテストは捉えられません。`app_crash_artifacts` を
+`wall_offset_s` と並べて同じコメントへ書き加えることは、本項目自身の作業範囲であり、
+あとまわしの作業ではありません。
 
 ### `crawl` 自身のクラッシュ記録を拡張する
 
@@ -1630,9 +1642,12 @@ fake backend の実行が収集する内容は変わりません。
       `bajutsu/common/report/manifest.py` の `_scenario_dict` が、既存の `wall_offset_s` の
       pop の隣で、`steps`・`before_outcomes`・`after_outcomes` それぞれの outcome の辞書から
       `app_crash_artifacts` を pop し、本ユニットが `StepOutcome` に加える生の `bytes` が
-      `json.dumps` に届かないようにします。`report/load.py` は、`_kw` の既存の
-      欠落フィールド処理がすでにその項目を既定値で組み立て直すため、対応する変更は
-      要りません。
+      `json.dumps` に届かないようにします。`report/load.py` は、`_kw` 自身への変更は
+      要りません。既存の欠落フィールド処理がすでにその項目を既定値で組み立て直すため
+      です。ただし `load.py:34-41` 自身のコメントは同じ変更の中で更新し、
+      `app_crash_artifacts` を `wall_offset_s` と並べて、2つ目の意図的な往復の例外として
+      名指します。このコメントは現在「*唯一の*意図的な例外」と読めるため、そのままでは
+      本項目自身のこの pop を、あとから見落としとして「直させて」しまいかねません。
 - [ ] Unit 9 — `TracingDriver`：`base.AppCrashSignal` を `_PROTOCOLS` へ加え、
       `--trace-driver` がそれを実装したドライバに対してだけ実属性として設置するようにします。
 - [ ] Unit 10 — `crawl` 自身の統合。`_build_lane` のレーンごとの `app_crash_artifacts`
