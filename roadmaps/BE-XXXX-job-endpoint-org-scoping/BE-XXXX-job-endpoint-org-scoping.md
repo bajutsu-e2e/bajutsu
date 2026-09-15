@@ -93,9 +93,9 @@ enumerating caller learns which ids are live either way, and the shared counter 
 cross-tenant volume — a caller's own ids jumping from 41 to 58 discloses how many jobs other
 tenants dispatched in between. 404 is chosen because it costs nothing, matches what each of the
 four already returns for an id that names no job, and matches the answer `job_view` adopted for a
-machine principal under BE-0414. Making job ids unguessable is a separate defect with its own fix,
-and this item deliberately does not wait on it: an enumerable id is only reachable at all because
-the tenant check is missing, which is what this item restores.
+machine principal under BE-0414. Nothing here argues for making job ids unguessable: an id is not a
+credential, and a design whose safety rested on keeping one secret would be the defect rather than
+the fix. The tenant check is the whole of what is missing.
 
 ### Unit 1 — The three uniform operations
 
@@ -176,6 +176,7 @@ job until the caller switches back.
 | Answer 403 rather than 404 | More honest about why the request failed, and it discloses that the id names a real job in another tenant. The id is the only thing the caller holds, so confirming it is exactly the leak worth avoiding. `job_view` already chose 404 under BE-0414; matching it keeps one answer across the four. |
 | Check the org inside `ServeState.jobs` / `JobRegistry` instead of per operation | Appealing, because one guard would cover every caller at once. The registry already knows about orgs — `in_flight_by_org` aggregates by one for `/metrics` — but it is keyed by id and the runner, the worker-result path, and the metrics reader all consult it without an actor, so an org-aware lookup there would need an optional actor threaded through every one of them and would silently change what those internal callers see. Serve enforces tenancy per operation everywhere else; this follows that. |
 | Re-check the org on every frame of the live stream | Would end a stream whose caller switched org mid-stream. It costs an org resolution per frame, and the switch already takes effect on the caller's next request everywhere else — a stream that died halfway through would be a stricter rule than the rest of the interface applies, not a safer one. |
+| Make job ids unguessable instead of adding the tenant check | An opaque id would stop the walk described in Motivation, and it would be the wrong repair. An id is an addressing handle, not a credential; substituting secrecy for authorization leaves the endpoints still willing to serve any caller who obtains one, through a log, a shared link, or a browser history. A configuration whose safety depends on callers not guessing an identifier is the thing worth fixing. Sequential ids are named in Motivation to show that no secrecy bounds the exposure today, not to propose adding some. |
 | Leave the two reads and scope only the writes | Cancelling and answering a handoff are the destructive pair, so the writes matter more. Reading another tenant's job view and its live log still discloses scenario names, step progress, and log output, which is the confidentiality half of the same boundary. Splitting them would leave the item half-done for no saving. |
 
 ## Progress
