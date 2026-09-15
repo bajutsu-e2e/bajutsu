@@ -33,7 +33,10 @@ the platform offers.
 This item covers `bajutsu run` first, on the iOS (XCUITest) and Android (adb) backends — iOS scoped to
 the Simulator: on a real device, the gaps in evidence named under *iOS: `app.state`* leave
 `app_crash_signal()` answering `None`, the same "cannot confirm" answer a backend with no signal at all
-gives. It extends the same underlying capture to `bajutsu crawl`'s existing detection of the same
+gives. Android is scoped the same way to API 30 and above: `ApplicationExitInfo`, the corroborating
+signal *Android: `logcat`'s crash buffer first…* depends on, does not exist below that level, so
+`app_crash_signal()` answers `None` there too rather than polling a signal that can never confirm
+anything. It extends the same underlying capture to `bajutsu crawl`'s existing detection of the same
 event. The web (Playwright) backend and its own signals for it are left to a follow-up item, noted
 under *Alternatives considered*.
 
@@ -579,8 +582,15 @@ It also matches a launch that never completed, or a termination this item has no
 for: Android has no jetsam-style OS kill under normal test conditions, but an ordinary process exit
 answers `pidof` identically to a crash. `adb shell dumpsys activity exit-info <package>` reports the
 platform's own `ApplicationExitInfo` history for the package, each entry timestamped, distinguishing a
-`CRASH` or `CRASH_NATIVE` reason from `ANR`, `LOW_MEMORY`, or `USER_REQUESTED`. It is available from
-API 30 onward, so it is available on the API 34 AVD this repository's CI already boots. The history
+`CRASH` or `CRASH_NATIVE` reason from `ANR`, `LOW_MEMORY`, or `USER_REQUESTED`. It is available only
+from API 30 onward, so it is available on the API 34 AVD this repository's CI already boots — but
+nothing in this codebase tracks a device's API level today, so `AdbDriver` gains an
+`api_level: int | None = None` keyword the same way `package` is threaded — read once via `adb shell
+getprop ro.build.version.sdk` in `AndroidEnvironment.start()` and stashed alongside `self._package`.
+`app_crash_signal()` folds `api_level is None or api_level < 30` into the same up-front check as
+`package is None`, failing closed the same named way rather than polling a signal that cannot exist
+yet on an older device or emulator image — this item's own *Introduction* names the same scope for
+Android's exit-info corroboration that it already names for iOS's Simulator-only scope. The history
 persists across process lifetimes, though, so its most recent entry alone is not reliable: an earlier
 scenario's crash on the same package can still be the newest entry `dumpsys` reports if the current
 one exited for an unrelated reason with no `ApplicationExitInfo` recorded yet. `AdbDriver` gains a
@@ -593,8 +603,10 @@ later still for a native crash, after `crash_dump` finishes — so the newest en
 one from before this launch on the very read meant to confirm a fresh crash. `app_crash_signal()`
 therefore polls the exit-info history the same short, bounded way `_app_crash_reports` already polls
 `DiagnosticReports` on iOS: up to a few seconds, re-reading until its *newest* entry reports
-`CRASH`/`CRASH_NATIVE` *and* that entry's own timestamp is at or after `launched_at()` — ruling out a
-stale entry from before this launch — or the bound expires. Either the bound expiring or the newest
+`CRASH`/`CRASH_NATIVE` *and* that entry's own `timestamp=` field — a formatted local datetime, never
+an epoch, so it is parsed before the comparison rather than compared as a raw string or number — is
+at or after `launched_at()` — ruling out a stale entry from before this launch — or the bound
+expires. Either the bound expiring or the newest
 entry never meeting both conditions answers `None`, the same "cannot confirm" answer a backend with no
 signal at all gives. This is the corroboration `app.state`'s
 `notRunning` gets for free from the Simulator's own constraints above; Android's own platform-reported,
@@ -607,8 +619,10 @@ gains the same `app_launched_at` tracking as the iOS environment, recorded at ea
 call sites (`e.launch(package, launch_env)`). It reads from the device's own clock (`adb shell date
 +%s`, an epoch integer) at launch time rather than the host's, so a launch marker compared only
 against later device-clock reads never needs host/device clock reconciliation — this is the value
-the exit-info poll above and the tombstone mtime comparison below both consume directly, since both
-compare against an epoch already. `logcat -t` cannot consume that same epoch value, though: `adb
+the tombstone mtime comparison below consumes directly, since it compares against an epoch already.
+The exit-info poll above cannot: `dumpsys activity exit-info` renders each entry's own `timestamp=`
+as a formatted local datetime, never an epoch, so the poll parses that field before comparing it
+against `launched_at()`. `logcat -t` cannot consume the epoch value either, though: `adb
 logcat -t` is overloaded, and an integer argument is read as a *line count* (\"the most recent N
 lines\"), not a time bound — only a quoted `'MM-DD hh:mm:ss.mmm'` string is read as one. So each
 launch site also records a second rendering of the same moment, `adb shell date '+%m-%d
@@ -997,14 +1011,22 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       for `ReportCrash`'s asynchronous write,
       wrapped so any failure resolves to `[]`.
 - [ ] Unit 4 — Android: a `package` keyword threaded through `backends.make_driver` into
-      `AdbDriver.__init__`, the same way `fetch_clock` and `act` already are; `app_crash_signal()` checking
-      `package is None` or an unset/`None`-answering `launched_at` first, resolving to `None`
+      `AdbDriver.__init__`, the same way `fetch_clock` and `act` already are; an `api_level: int |
+      None = None` keyword threaded the same way, read once via `adb shell getprop
+      ro.build.version.sdk` in `AndroidEnvironment.start()` and stashed alongside `self._package`,
+      since nothing in this codebase tracks it today; `app_crash_signal()` checking
+      `package is None`, an unset/`None`-answering `launched_at`, or `api_level is None or api_level <
+      30` first, resolving to `None`
       immediately — `dumpsys activity exit-info` with no package reports every package on the
-      device, so a silent `None` default would confirm another process's crash; a `launched_at`
+      device, so a silent `None` default would confirm another process's crash, and
+      `ApplicationExitInfo` itself does not exist before API 30, so polling for it on an older device
+      or emulator image would time out on every crash instead of failing closed the same up-front way;
+      a `launched_at`
       injected callable
       reading `AndroidEnvironment.app_launched_at`; `AdbDriver.app_crash_signal()` via `adb shell
       pidof <package>` corroborated by a time-bound `adb shell dumpsys activity exit-info <package>`
-      check (its newest entry only, at or after `launched_at()`), polled the same short, bounded way
+      check (its newest entry only, its `timestamp=` field parsed and compared at or after
+      `launched_at()`), polled the same short, bounded way
       as the iOS `.ips` sweep rather than read once, since `ApplicationExitInfo` is recorded only
       after `system_server` reaps the death.
 - [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at` (device clock, `adb shell date +%s`, an

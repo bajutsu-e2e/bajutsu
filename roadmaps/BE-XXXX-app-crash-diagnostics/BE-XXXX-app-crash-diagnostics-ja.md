@@ -34,9 +34,12 @@ OS 自身のレポートを手で探しに行くことになります。
 本項目はまず `bajutsu run` を、iOS（XCUITest）と Android（adb）の両バックエンドで対象にします。
 iOS は Simulator に限ります。実機自身が抱える証跡の欠落（「iOS：`app.state`」を参照）ゆえに、
 実機では `app_crash_signal()` が `None` を返します。シグナルをまったく持たないバックエンドが
-返すのと同じ「確認できない」という答えです。同じ収集ロジックを、`bajutsu crawl` がすでに持つ
-同種の検知にも拡張します。web（Playwright）バックエンドとその独自シグナルは、後続の項目に
-委ねます。理由は「検討した代替案」に記します。
+返すのと同じ「確認できない」という答えです。Android も同じ形で API 30 以上に限ります。
+「Android：`logcat` のクラッシュ用バッファをまず読み……」が頼る裏付けのシグナル
+`ApplicationExitInfo` は、それより前の API レベルには存在しないため、確認できないシグナルを
+ポーリングし続けるのではなく、そこでも `app_crash_signal()` が `None` を返します。同じ収集
+ロジックを、`bajutsu crawl` がすでに持つ同種の検知にも拡張します。web（Playwright）バックエンド
+とその独自シグナルは、後続の項目に委ねます。理由は「検討した代替案」に記します。
 
 ## 動機
 
@@ -668,8 +671,16 @@ OS による強制終了はありませんが、ふつうのプロセス終了�
 に返させます。`adb shell dumpsys activity exit-info <package>` は、そのパッケージの
 `ApplicationExitInfo` の履歴を、各項目にタイムスタンプを付けて報告し、`CRASH` や
 `CRASH_NATIVE` を `ANR`・`LOW_MEMORY`・`USER_REQUESTED` から区別できます。これは API 30
-以降で利用でき、このリポジトリの CI がすでに起動している API 34 の AVD でも利用できます。
-ただし、この履歴はプロセスの生存期間をまたいで残るため、直近の1件だけでは信頼できません。
+以降でしか利用できず、このリポジトリの CI がすでに起動している API 34 の AVD では利用でき
+ますが、このコードベースは今日、端末の API レベルをどこでも追跡していません。そこで
+`AdbDriver` は `package` と同じ方法で通す `api_level: int | None = None` キーワードを加え、
+`AndroidEnvironment.start()` の中で `adb shell getprop ro.build.version.sdk` を一度読み、
+`self._package` の隣に保存します。`app_crash_signal()` は `api_level is None or api_level <
+30` を `package is None` と同じ事前確認へ折り込み、まだ存在しないシグナルをポーリングし
+続けるのではなく、同じ名前のついた形でフェイルクローズします。本項目自身の「はじめに」
+は、iOS の Simulator 限定の範囲をすでに名指しているのと同じように、Android のこの
+exit-info の裏付けについても同じ範囲を名指します。ただし、この履歴はプロセスの生存期間を
+またいで残るため、直近の1件だけでは信頼できません。
 今回の終了が無関係な理由で `ApplicationExitInfo` をまだ記録していない場合、`dumpsys` の
 返す最新の項目が、以前のシナリオのクラッシュのままということがあり得ます。`AdbDriver`
 に `launched_at: Callable[[], float | None] | None = None` というコンストラクタ引数を
@@ -683,9 +694,11 @@ OS による強制終了はありませんが、ふつうのプロセス終了�
 より前の古いものにとどまり得ます。そこで `app_crash_signal()` は、iOS の
 `_app_crash_reports` がすでに `DiagnosticReports` をポーリングしているのと同じ短い
 上限つきの方法で、この履歴をポーリングします。数秒を上限に、その*最新*の項目が
-`CRASH` か `CRASH_NATIVE` を報告し、*かつ*その項目自身のタイムスタンプが
-`launched_at()` 以降であるまで読み直します(今回の起動より前の古い項目を除外するため
-です)。上限に達するまでのあいだです。上限に達しても、または最新の項目が両方の条件を
+`CRASH` か `CRASH_NATIVE` を報告し、*かつ*その項目自身の `timestamp=` フィールド
+——整形済みのローカル日時であり、エポックではないため、生の文字列や数値として比較する
+のではなく、比較の前に解析します——が
+`launched_at()` 以降であるまで読み直します（今回の起動より前の古い項目を除外するため
+です）。上限に達するまでのあいだです。上限に達しても、または最新の項目が両方の条件を
 満たさなければ、`None` を返します。シグナルをまったく持たないバックエンドが返すのと
 同じ、「確認できない」という答えです。これは、`app.state` の `notRunning` が Simulator
 自身の制約から無償で得ている裏付けに相当します。Android では、プラットフォーム自身が
@@ -698,8 +711,10 @@ OS による強制終了はありませんが、ふつうのプロセス終了�
 （`e.launch(package, launch_env)`）それぞれの直後に加えます。ホストの時計ではなく、
 端末自身の時計（`adb shell date +%s`、エポック整数）から起動時刻を読みます。起動の目印を、
 あとで端末自身の時計による読み取りとだけ比較するのであれば、ホストと端末の時計を
-すり合わせる必要はありません——この値は、上の exit-info ポーリングと下の tombstone の
-更新時刻比較がどちらもそのままエポックとして消費します。ただし `logcat -t` はこの同じ
+すり合わせる必要はありません——この値は、下の tombstone の更新時刻比較がそのままエポック
+として消費します。上の exit-info ポーリングはそうはいきません。`dumpsys activity
+exit-info` の各項目自身の `timestamp=` は整形済みのローカル日時として出力され、エポックでは
+ないため、ポーリングは比較の前にそのフィールドを解析します。`logcat -t` はこの同じ
 エポック値を消費できません。`adb logcat -t` はオーバーロードされており、整数の引数は
 「もっとも新しい N 行」という*行数*として読まれ、時刻の境界としては読まれません。
 `'MM-DD hh:mm:ss.mmm'` という引用符付きの文字列だけが時刻として読まれます。そこで各起動
@@ -1163,14 +1178,22 @@ fake backend の実行が収集する内容は変わりません。
       `ReportCrash` の非同期な書き込みに対する上限つきの待機を含み、失敗はすべて `[]` へ
       解決するよう包みます。
 - [ ] Unit 4 — Android：`backends.make_driver` から `AdbDriver.__init__` へ、`fetch_clock` と
-      `act` と同じ方法で通す `package` キーワード。`app_crash_signal()` は `package is None` か、
-      `launched_at` が未設定または `None` を返す場合を最初に確認し、その場で `None` へ
+      `act` と同じ方法で通す `package` キーワード。同じ方法で通す `api_level: int | None =
+      None` キーワードも加えます。`AndroidEnvironment.start()` の中で `adb shell getprop
+      ro.build.version.sdk` を一度読み、`self._package` の隣に保存します。このコードベースは
+      今日、端末の API レベルをどこでも追跡していないためです。`app_crash_signal()` は
+      `package is None` か、`launched_at` が未設定または `None` を返す場合か、
+      `api_level is None or api_level < 30` を最初に確認し、その場で `None` へ
       解決します。パッケージなしの `dumpsys activity exit-info` は端末上のあらゆる
       パッケージを報告してしまうため、黙った `None` の既定値は別のプロセスのクラッシュを
-      確定させかねません。`AndroidEnvironment.app_launched_at` を読む、
+      確定させかねません。`ApplicationExitInfo` 自体が API 30 より前には存在しないため、
+      古い端末やエミュレータイメージでポーリングすれば、同じ名前のついた形でフェイル
+      クローズするのではなく、あらゆるクラッシュでタイムアウトするだけになります。
+      `AndroidEnvironment.app_launched_at` を読む、
       注入された `launched_at` コールバック。`adb shell pidof <package>` による
       `AdbDriver.app_crash_signal()` を、時刻で絞り込んだ `adb shell dumpsys activity
-      exit-info <package>`（最新の項目のみ、`launched_at()` 以降）で裏付けます。iOS の
+      exit-info <package>`（最新の項目のみ。その `timestamp=` フィールドを解析してから
+      `launched_at()` 以降かどうかを比較します）で裏付けます。iOS の
       `.ips` 掃引と同じ短い上限つきの方法でポーリングします。一度だけ読むのではありません。
       `ApplicationExitInfo` は `system_server` がその死を回収したあとにしか記録されない
       からです。
