@@ -429,27 +429,45 @@ BE-0291 の*リースをまたぐ*ウォーム再利用の経路です。`Xcuite
 ことを確認する手段もありません。`launch_driver` は `await_ready` を呼び、その
 `ReadinessResult` を、例外を送出せずそのまま持ち越します
 （[`launch.py:99`](../../bajutsu/common/runner/launch.py)）。これは上で見た `relaunch`
-自身のクロージャと同じです。不適切な `launchEnv` でアプリが終了してしまうターゲットや、
+自身のクロージャと同じです。ただし、実際に `readiness.ready is False` に到達するのは、
 `readyWhen`・名前空間シグナルが、すでに消えてしまったプロセスに対していつまでも解決
-しないターゲットは、起動そのものが確認できていないまま、この最初の失敗ステップの
-確認に到達します——これはまさにこの項目が取り除こうとしている誤診断そのものが、
-逆向きに起きているケースです。`Lease`
+しないターゲットだけです。どちらも宣言しないターゲットは、`await_ready` のもっとも弱い
+最終手段——素朴な `len(elements) >= 2` という要素数だけの判定
+（[`readiness.py:151-152`](../../bajutsu/common/platform_lifecycle/readiness.py)）——へ
+落ち込みます。この判定自身のドキュメント文字列が、コールドブートが遅いときに
+SpringBoard のアイコンだけでこの条件を満たしてしまい、アプリ自身がフォアグラウンドへ
+来る前に成立し得ることをすでに述べています。したがって、不適切な `launchEnv` でアプリが
+終了してしまうターゲットは、`ready=True, signal="count"` のまま起動そのものが確認
+できていないケースになり得ます——ターゲットのアプリ自身が実際に描画されたという証拠には
+なりません。`Lease`
 （[`bajutsu/common/runner/types.py:44`](../../bajutsu/common/runner/types.py)）に
-`readiness: ReadinessResult | None = None` フィールドを加え、`launch_driver` 自身の
-`readiness` の戻り値がすでに届いている呼び出し箇所
-（[`pool.py:463`](../../bajutsu/common/runner/pool.py)）で `sink=FileSink(...)` と
-並べて設定します——この値自体は今日すでにそこで計算されていますが、その `FileSink`
-コンストラクタ呼び出しの先には残りません。`run_scenario` にも同じ形の
+`readiness: ReadinessResult | None = None` フィールドを加え、`Lease(...)` の
+コンストラクタ（[`pool.py:563`](../../bajutsu/common/runner/pool.py)）で `sink=sink` と
+並べて設定します。値は同じクロージャの手前で `launch_driver` がすでに返しており
+（`pool.py:408`）、今日は `FileSink` の起動待ちタイムアウト診断にしか届いていません
+——足りないのは `Lease` 側の写しであって、値の最初の取得ではありません。`run_scenario`
+にも同じ形の
 `readiness: ReadinessResult | None = None` 引数を加え、`relaunch=lz.relaunch` が
 すでにそうしているのと同じように `lz.readiness` から注入します
 （[`pipeline.py:898`](../../bajutsu/common/runner/pipeline.py)）。この値は `StepLoopState`
 が組み立てられる瞬間に、シナリオスコープのラッチオブジェクト（下の Unit 7）へ3つ目の
-フィールドとして渡り、`readiness is None or readiness.ready is False` のとき未確認と
-判定されます。`_finish_outcome` はこれを、失敗した `relaunch` と同じ扱いにします——
+フィールドとして渡り、`readiness is None or not readiness.ready or readiness.signal ==
+"count"` のとき未確認と判定されます——素朴な要素数判定は SpringBoard とアプリ自身を
+見分けられないため、その判定による `ready` という答えもまた、アプリがフォアグラウンドへ
+来た証拠にはならず、この項目が取り除こうとしている誤診断そのものが逆向きに起きている
+ケースを塞ぎます。`_finish_outcome` はこれを、失敗した `relaunch` と同じ扱いにします——
 このシナリオの以降のすべての確認を飛ばします。起動の完了をこの項目が確認できない場合、
 シナリオは失敗した `relaunch` の後とまったく同じ「アプリの状態がもうわからない」という
 状況に置かれるからであり、そこですでに受け入れているシナリオ全体を対象とした一括抑制が、
-ここでもいちばん単純で安全な選択だからです。それ以外の場面での `notRunning` という答えは、直前まで動いていたアプリが今は動いて
+ここでもいちばん単純で安全な選択だからです。`ReadinessResult` は自身のドキュメント
+文字列で「Pure diagnosis: it never enters a verdict（判定材料でしかなく、それ自体が
+判定を下すことはない。prime directive 1）」と述べています
+（[`protocols/readiness_result.py:15-16`](../../bajutsu/common/platform_lifecycle/protocols/readiness_result.py)、
+`signal` については `:27` に同じ記述があります）。これはこのフラグより前のすべての
+利用者について真であり、いずれも起動待ちタイムアウトの診断表示に使うだけでした。この
+項目は、この値から振る舞いを決める初めての利用者になるため、`Lease.readiness` を加える
+同じ変更でこのドキュメント文字列も更新し、不変条件が古びる前に、この新しい用途を
+書き加えます。それ以外の場面での `notRunning` という答えは、直前まで動いていたアプリが今は動いて
 いないことを意味し、この Simulator という環境には、それ以外にそうなる経路がありません。
 
 新しいルートを
@@ -1371,14 +1389,25 @@ fake backend の実行が収集する内容は変わりません。
       あらゆる確認を抑えます。抑える範囲は `relaunch` ステップ自身の outcome だけには
       とどまらず、それを包む `if`・`forEach` の outcome や、発火する `after: on: error`
       の後片付けも含みます。もう1つは起動未確認フラグであり、新しい
-      `readiness: ReadinessResult | None = None` 引数（`launch_driver` 自身の `readiness`
-      の戻り値がすでに届いている呼び出し箇所、`pool.py:463`、で `sink=FileSink(...)`
-      と並べて設定する新しい `Lease.readiness` フィールドから注入）から構築時に一度だけ
-      立ち、`readiness is None or readiness.ready is False` のとき真になります。意図的
+      `readiness: ReadinessResult | None = None` 引数（`Lease(...)` のコンストラクタ、
+      `pool.py:563`、で `sink=sink` と並べて設定する新しい `Lease.readiness` フィールドから
+      注入。値は同じクロージャの手前で `launch_driver` がすでに返しており、`pool.py:408`、
+      今日は `FileSink` の起動待ちタイムアウト診断にしか届いていません——足りないのは
+      `Lease` 側の写しであって、値の最初の取得ではありません）から構築時に一度だけ
+      立ち、`readiness is None or not readiness.ready or readiness.signal == "count"` のとき
+      真になります——素朴な要素数判定（`readiness.py:151-152`）は SpringBoard とアプリ自身を
+      見分けられないため、その判定による `ready` という答えもまた、アプリがフォアグラウンドへ
+      来た証拠にはなりません。意図的
       終了フラグとまったく同じ無条件の形で、このシナリオのあらゆる確認を抑えます——シナリオの
       最初に失敗するステップには、アプリが動作していると確認する手前のステップが存在せず、
       フォアグラウンドへ一度も到達しなかったアプリが、そのままでは確定したクラッシュとして
-      読まれてしまうという抜け穴を塞ぎます。もう1つは確定済みクラッシュのラッチであり、`_finish_outcome`
+      読まれてしまうという抜け穴を塞ぎます。この Unit では `ReadinessResult` 自身の
+      ドキュメント文字列（`protocols/readiness_result.py:15-16`、`:27`）も更新します。現在は
+      「Pure diagnosis: it never enters a verdict（判定材料でしかなく、それ自体が判定を
+      下すことはない。prime directive 1）」と述べており、このフラグより前のすべての利用者に
+      ついては真でした（いずれも起動待ちタイムアウトの診断表示に使うだけでした）。この
+      フラグは振る舞いを決める初めての利用者になるため、不変条件が古びる前に、この新しい
+      用途をドキュメント文字列へ書き加えます。もう1つは確定済みクラッシュのラッチであり、`_finish_outcome`
       が `AppCrashedError` を送出し捕まえた最初の時点で立ち、同じ伝播の中であとに続く
       outcome が、そのすでにわかっているシグナルを自身の `outcome.reason` へ折り込む
       だけにする——`app_crash_signal()` の確認を relaunch・起動未確認・確定済みクラッシュの
