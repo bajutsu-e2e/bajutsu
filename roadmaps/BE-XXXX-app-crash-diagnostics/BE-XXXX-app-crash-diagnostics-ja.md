@@ -421,9 +421,35 @@ BE-0291 の*リースをまたぐ*ウォーム再利用の経路です。`Xcuite
 `relaunch` ではない通常の結果であるため、どちらのラッチも飛ばす理由がなく、
 `_finish_outcome` は他の失敗と同じようにそれを確認します。それ以外の
 確認は、ステップがすでに失敗した後、しかも同じシナリオの手前のすべてのステップで
-アプリが動作していると確認できた*あと*にしか走りません。したがって、`relaunch` 以外の
-ステップの下で起動が完了しなかったケースは、この事後確認が出会う場面ではありません。
-それ以外の場面での `notRunning` という答えは、直前まで動いていたアプリが今は動いて
+アプリが動作していると確認できた*あと*にしか走りません。ただし、これだけでは起動が
+完了しなかったケースを完全には除外できません。シナリオの最初に失敗するステップ——
+`before` の最初のステップ、`before` が宣言されていなければ `steps` の最初のステップ
+——には手前のステップが存在せず、アプリが動作していると確認する機会自体がありません。
+`env.start` からそのステップまでのあいだに、アプリが実際にフォアグラウンドへ到達した
+ことを確認する手段もありません。`launch_driver` は `await_ready` を呼び、その
+`ReadinessResult` を、例外を送出せずそのまま持ち越します
+（[`launch.py:99`](../../bajutsu/common/runner/launch.py)）。これは上で見た `relaunch`
+自身のクロージャと同じです。不適切な `launchEnv` でアプリが終了してしまうターゲットや、
+`readyWhen`・名前空間シグナルが、すでに消えてしまったプロセスに対していつまでも解決
+しないターゲットは、起動そのものが確認できていないまま、この最初の失敗ステップの
+確認に到達します——これはまさにこの項目が取り除こうとしている誤診断そのものが、
+逆向きに起きているケースです。`Lease`
+（[`bajutsu/common/runner/types.py:44`](../../bajutsu/common/runner/types.py)）に
+`readiness: ReadinessResult | None = None` フィールドを加え、`launch_driver` 自身の
+`readiness` の戻り値がすでに届いている呼び出し箇所
+（[`pool.py:463`](../../bajutsu/common/runner/pool.py)）で `sink=FileSink(...)` と
+並べて設定します——この値自体は今日すでにそこで計算されていますが、その `FileSink`
+コンストラクタ呼び出しの先には残りません。`run_scenario` にも同じ形の
+`readiness: ReadinessResult | None = None` 引数を加え、`relaunch=lz.relaunch` が
+すでにそうしているのと同じように `lz.readiness` から注入します
+（[`pipeline.py:898`](../../bajutsu/common/runner/pipeline.py)）。この値は `StepLoopState`
+が組み立てられる瞬間に、シナリオスコープのラッチオブジェクト（下の Unit 7）へ3つ目の
+フィールドとして渡り、`readiness is None or readiness.ready is False` のとき未確認と
+判定されます。`_finish_outcome` はこれを、失敗した `relaunch` と同じ扱いにします——
+このシナリオの以降のすべての確認を飛ばします。起動の完了をこの項目が確認できない場合、
+シナリオは失敗した `relaunch` の後とまったく同じ「アプリの状態がもうわからない」という
+状況に置かれるからであり、そこですでに受け入れているシナリオ全体を対象とした一括抑制が、
+ここでもいちばん単純で安全な選択だからです。それ以外の場面での `notRunning` という答えは、直前まで動いていたアプリが今は動いて
 いないことを意味し、この Simulator という環境には、それ以外にそうなる経路がありません。
 
 新しいルートを
@@ -1235,11 +1261,11 @@ fake backend の実行が収集する内容は変わりません。
       `self._bundle_id` がすでに読んでいるのと同じ `ios` からです）。`app_crash_artifacts()`
       は引数を取らないため、これが値へ届く唯一の経路です。掃引自身の照合パターンのために
       `Path(self._app_path) / "Info.plist"` から `CFBundleExecutable` を読みます
-      （`ios.bundle_id` はこの名前ではない）。`app_crash_artifacts()` の、名前と `udid` に
+      （`ios.bundle_id` はこの名前ではありません）。`app_crash_artifacts()` の、名前と `udid` に
       よる `.ips` 掃引。候補となる各レポートをパスでもヘッダでもなく*ペイロード*まで
       読んで確認します
       （レポートのファイル名にもヘッダにも udid は現れず、`XCUIApplication` には PID を
-      読む手段もない）。
+      読む手段もありません）。
       `ReportCrash` の非同期な書き込みに対する上限つきの待機を含み、失敗はすべて `[]` へ
       解決するよう包みます。
 - [ ] Unit 4 — Android：`backends.make_driver` から `AdbDriver.__init__` へ、`fetch_clock` と
@@ -1339,16 +1365,24 @@ fake backend の実行が収集する内容は変わりません。
       （`run_scenario` が1回だけ作り、`live_bindings` と同じ方法であらゆる `run_phase`
       呼び出しに共有し、凍結された `_LoopConfig` ではなく `bindings` の隣、
       `StepLoopState` に置くことで `before`・本体ステップ・発火するあらゆる `after` の
-      規則をまたいで生き残る）が、2つのラッチを
+      規則をまたいで生き残る）が、3つのラッチを
       運びます。1つは意図的終了フラグであり、`outcome.action == "relaunch"` かつ
       `outcome.ok is False` を見た瞬間（確認より前に）立ち、それ以降の同じシナリオの
       あらゆる確認を抑えます。抑える範囲は `relaunch` ステップ自身の outcome だけには
       とどまらず、それを包む `if`・`forEach` の outcome や、発火する `after: on: error`
-      の後片付けも含みます。もう1つは確定済みクラッシュのラッチであり、`_finish_outcome`
+      の後片付けも含みます。もう1つは起動未確認フラグであり、新しい
+      `readiness: ReadinessResult | None = None` 引数（`launch_driver` 自身の `readiness`
+      の戻り値がすでに届いている呼び出し箇所、`pool.py:463`、で `sink=FileSink(...)`
+      と並べて設定する新しい `Lease.readiness` フィールドから注入）から構築時に一度だけ
+      立ち、`readiness is None or readiness.ready is False` のとき真になります。意図的
+      終了フラグとまったく同じ無条件の形で、このシナリオのあらゆる確認を抑えます——シナリオの
+      最初に失敗するステップには、アプリが動作していると確認する手前のステップが存在せず、
+      フォアグラウンドへ一度も到達しなかったアプリが、そのままでは確定したクラッシュとして
+      読まれてしまうという抜け穴を塞ぎます。もう1つは確定済みクラッシュのラッチであり、`_finish_outcome`
       が `AppCrashedError` を送出し捕まえた最初の時点で立ち、同じ伝播の中であとに続く
       outcome が、そのすでにわかっているシグナルを自身の `outcome.reason` へ折り込む
-      だけにする——`app_crash_signal()` の確認を relaunch と確定済みクラッシュのケースに
-      限って抑えるものであり、クラッシュを伴わないふつうの失敗は確定する outcome ごとに
+      だけにする——`app_crash_signal()` の確認を relaunch・起動未確認・確定済みクラッシュの
+      ケースに限って抑えるものであり、クラッシュを伴わないふつうの失敗は確定する outcome ごとに
       1回の確認を払い続けます。その1点で `AppCrashedError` を送出し捕まえます——理由つきの
       独自の `# noqa: TRY301`（Unit 1）を持ちます——そのメッセージを
       `outcome.reason` へ折り込み、新しい `StepOutcome.app_crashed` フィールドと確定済み

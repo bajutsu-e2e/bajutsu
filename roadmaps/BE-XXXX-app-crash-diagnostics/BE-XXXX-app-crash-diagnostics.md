@@ -368,9 +368,30 @@ exemption exists for. A crash during the new launch is not lost, only attributed
 fails the very next step that touches the app, an ordinary (non-`relaunch`) outcome neither latch has
 any reason to skip, so `_finish_outcome` probes it exactly as it would any other failure. Every other
 check also runs only once a step has already failed, *after* the app was observed running through every
-earlier step of the same scenario, so a launch that never completed under a non-`relaunch` step is not a
-case it meets. A `notRunning` answer anywhere else means the app that was running a moment ago is not
-running now, on a host with no other way for that to happen.
+earlier step of the same scenario. A launch that never completed is not fully excluded by that: a
+scenario's very first failing step — the first of `before`, or of `steps` when no `before` is declared —
+has no earlier step to have observed the app running, and nothing between `env.start` and that step
+confirms the app ever reached the foreground. `launch_driver` calls `await_ready` and carries its
+`ReadinessResult` straight through without raising
+([`launch.py:99`](../../bajutsu/common/runner/launch.py)), the same as `relaunch`'s own closure above: a
+target whose app exits on a bad `launchEnv`, or whose `readyWhen`/namespace signal never resolves against
+a process that already went away, reaches this probe on its first failing step with the launch itself
+unconfirmed — the exact misdiagnosis this item exists to remove, inverted. `Lease`
+([`bajutsu/common/runner/types.py:44`](../../bajutsu/common/runner/types.py)) gains a
+`readiness: ReadinessResult | None = None` field, set alongside `sink=FileSink(...)` at the same call site
+`launch_driver`'s own `readiness` return value already reaches today
+([`pool.py:463`](../../bajutsu/common/runner/pool.py)) — the value is already computed there, only not
+kept past that one `FileSink` constructor call. `run_scenario` gains a matching
+`readiness: ReadinessResult | None = None` parameter, threaded from `lz.readiness` the same way
+`relaunch=lz.relaunch` already is
+([`pipeline.py:898`](../../bajutsu/common/runner/pipeline.py)), and seeds the scenario-scoped latch object
+(Unit 7, below) with a third field the moment `StepLoopState` is built: unconfirmed when `readiness is
+None or readiness.ready is False`. `_finish_outcome` treats that the same way it treats a failed
+`relaunch` — skipping this probe and every later one in the same scenario — since a launch this item
+cannot confirm ever completed leaves the scenario in exactly the same "app state is now unknown" position
+a failed `relaunch` does, and the same scenario-wide suppression already accepted there is the simpler,
+safer choice here too. A `notRunning` answer anywhere else means the app that was running a moment ago is
+not running now, on a host with no other way for that to happen.
 
 A new route joins
 [`BajutsuKit/Sources/BajutsuRunner/openapi.yaml`](../../BajutsuKit/Sources/BajutsuRunner/openapi.yaml),
@@ -1152,15 +1173,22 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       kind's true final outcome; a scenario-scoped object (`run_scenario` creates it once and shares
       it with every `run_phase` call the same way it already shares `live_bindings`, carried on
       `StepLoopState` next to `bindings`, not on the frozen `_LoopConfig`, so it survives `before`,
-      the main steps, and every dispatched `after` rule) carrying two latches: a deliberate-termination flag, set the moment
+      the main steps, and every dispatched `after` rule) carrying three latches: a deliberate-termination flag, set the moment
       `outcome.action == "relaunch"` and `outcome.ok is False` (before any probe), that suppresses
       every later probe in the scenario — the failing `relaunch`'s own wrapping `if`/`forEach`
       outcomes and any `after: on: error` cleanup step included, not only the `relaunch` step's own
-      outcome; and a confirmed-crash latch, set the first time `_finish_outcome` raises and catches
+      outcome; an unconfirmed-launch flag seeded once at construction from a new `readiness:
+      ReadinessResult | None = None` parameter (threaded from a new `Lease.readiness` field, set
+      alongside `sink=FileSink(...)` at the same call site `launch_driver`'s own `readiness` return
+      value already reaches, `pool.py:463`), true when `readiness is None or readiness.ready is
+      False`, that suppresses every probe in the scenario the same unconditional way the
+      deliberate-termination flag does — closing the gap where a scenario's first failing step has no
+      earlier step to have observed the app running, so an app that never reached the foreground would
+      otherwise read as a confirmed crash on that first probe; and a confirmed-crash latch, set the first time `_finish_outcome` raises and catches
       `AppCrashedError`, so a later outcome in the same propagation folds the known signal into its
       own `outcome.reason` without probing again — bounding `app_crash_signal()` calls for the
-      relaunch and confirmed-crash cases specifically, not for an ordinary failure, which still pays
-      one probe per settling outcome; raising and catching `AppCrashedError` in that one place —
+      relaunch, unconfirmed-launch, and confirmed-crash cases specifically, not for an ordinary
+      failure, which still pays one probe per settling outcome; raising and catching `AppCrashedError` in that one place —
       carrying its own `# noqa: TRY301` with a suppression reason (Unit 1) — to fold
       its message into `outcome.reason` and set the new `StepOutcome.app_crashed` field and the
       confirmed-crash latch; in the same catch, when `self.cfg.capture_app_crash` is set, calling it
