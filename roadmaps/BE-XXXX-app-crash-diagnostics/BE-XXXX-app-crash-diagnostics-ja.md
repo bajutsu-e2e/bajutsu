@@ -467,8 +467,10 @@ Simulator 上のアプリの `.ips` レポートは、実行ファイルのフ�
 そこにクラッシュしたプロセスが動いていた Simulator 自身が現れます。`Lease`
 （[`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py)）はすでに、
 リースしたデバイス自身の `udid` を記録しています。そこで、BE-0421 自身の
-`_crash_reports(spawned_at, pid)` の姉妹にあたる新しい `_app_crash_reports(launched_at, udid)`
-を同じモジュールに加え、`_reports_since` が返す候補（これは `list[Path]` を返し、レポート自身の
+`XcuitestEnvironment._crash_reports(spawned_at, pid)`（自身の既知のプロセス向けに
+`"xcodebuild-*.ips"` を決め打ちしているため `pattern` 引数を要りません）の姉妹にあたる
+新しい `_app_crash_reports(pattern, launched_at, udid)`
+を加え、`_reports_since` が返す候補（これは `list[Path]` を返し、レポート自身の
 ファイル名に udid は現れません)を1件ずつ読み、その*実行ファイル*のパスがペイロードの中でその
 同じ `udid` を名指しているものだけを、`_reported_pid` による確認の代わりに受け入れます。ヘッダ
 自身が持つ `bundleID` フィールド（`XcuitestEnvironment` がすでに `self._bundle_id` として
@@ -1162,15 +1164,17 @@ fake backend の実行が収集する内容は変わりません。
       を一度も呼ばないだけで足ります（Unit 10）。それぞれ独立して失敗を `[]` へ解決する
       よう包みます。
 - [ ] Unit 6 — `RunEnvironment.app_crash_artifacts()` と `RunEnvironment.app_crash_tombstone()`
-      のプロトコルの形（どちらも `list[tuple[str, bytes]]` を返します）。`WebEnvironment`・
-      `XcuitestEnvironment`・`_DeviceEnvironment`（`FakeEnvironment` が継承）に、両方へ
-      加える1行の `return []`。`take_crash_snapshot()` がこの3クラスすべてにすでに持つ
-      no-op 宣言と同じ形ですが、Android だけはどちらの対応する no-op も持ちません。
-      `AndroidEnvironment` は `app_crash_artifacts()`（Unit 5 の `logcat` の層）と
+      のプロトコルの形（どちらも `list[tuple[str, bytes]]` を返します）。`WebEnvironment`と
+      `_DeviceEnvironment`（`FakeEnvironment` が継承）に、`app_crash_artifacts()` の1行の
+      `return []`、この2クラスに `app_crash_tombstone()` の1行の `return []`。
+      `take_crash_snapshot()` が `WebEnvironment`・`AndroidEnvironment`・`_DeviceEnvironment`
+      にすでに持つ no-op 宣言と同じ形です。`AndroidEnvironment` はどちらのメソッドにも
+      no-op を持ちません。`app_crash_artifacts()`（Unit 5 の `logcat` の層）と
       `app_crash_tombstone()`（Unit 5 の tombstone の層）の両方を本物の収集で
-      オーバーライドしており no-op ではないからです。`XcuitestEnvironment` が
-      `app_crash_artifacts()` だけを自前の本物の収集（Unit 3）でオーバーライドするのと
-      同じ理由です。`Lease.app_crash_artifacts` と `Lease.app_crash_tombstone` の両方を、
+      オーバーライドしているからです。`XcuitestEnvironment` も `app_crash_artifacts()` には
+      no-op を持ちません。それだけを自前の本物の収集（Unit 3）でオーバーライドし、
+      `app_crash_tombstone()` は `_DeviceEnvironment` の no-op をそのまま継承します。
+      `Lease.app_crash_artifacts` と `Lease.app_crash_tombstone` の両方を、
       `pool.py` の `lease()` クロージャを通して `crash_artifacts` の隣へ配線します。
       このさきへ通るのは `Lease.app_crash_artifacts` だけです。`Lease.relaunch` がすでに
       `relaunch` へ通っているのと同じ方法で `_LoopConfig.capture_app_crash` へ通し、

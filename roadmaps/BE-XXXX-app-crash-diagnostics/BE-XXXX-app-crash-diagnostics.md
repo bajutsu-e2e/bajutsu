@@ -406,9 +406,11 @@ more stable but with no install path; the pid — and this item's own udid — l
 (`.../CoreSimulator/Devices/<udid>/data/Containers/Bundle/Application/…`),
 which names the specific Simulator the crashed process ran on. `Lease`
 ([`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py)) already records the leased
-device's own `udid`, so a new `_app_crash_reports(launched_at, udid)` — a sibling of BE-0421's own
-`_crash_reports(spawned_at, pid)`, in the same module — reads each candidate `_reports_since`
-returns (it answers `list[Path]`, and a report's own filename carries no udid) and accepts it only
+device's own `udid`, so a new `_app_crash_reports(pattern, launched_at, udid)` — a sibling of
+BE-0421's own `XcuitestEnvironment._crash_reports(spawned_at, pid)`, which needs no `pattern`
+argument only because it hardcodes `"xcodebuild-*.ips"` for its own known process — reads each
+candidate `_reports_since` returns (it answers `list[Path]`, and a report's own filename carries no
+udid) and accepts it only
 when the *executable* path in the report's own payload names that same `udid`, in place of
 `_reported_pid`'s check. The header's own `bundleID` field, which `XcuitestEnvironment` already holds
 as `self._bundle_id`, is a cheaper and more stable narrowing worth reading alongside the payload check
@@ -996,13 +998,15 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       layer off its own long-lived lane, since it simply never calls `app_crash_tombstone()` (Unit 10);
       each layer independently wrapped so any failure resolves to `[]`.
 - [ ] Unit 6 — `RunEnvironment.app_crash_artifacts()` and `RunEnvironment.app_crash_tombstone()`
-      protocol shapes (each returning `list[tuple[str, bytes]]`); a one-line `return []` for both on
-      each of `WebEnvironment`, `XcuitestEnvironment`, and `_DeviceEnvironment` (inherited by
-      `FakeEnvironment`), the same no-op shape `take_crash_snapshot()` already declares on all three —
-      Android has no counterpart no-op for either, since `AndroidEnvironment` overrides both
+      protocol shapes (each returning `list[tuple[str, bytes]]`); a one-line `app_crash_artifacts()`
+      `return []` on `WebEnvironment` and `_DeviceEnvironment` (inherited by `FakeEnvironment`), and a
+      one-line `app_crash_tombstone()` `return []` on those two — the same no-op shape
+      `take_crash_snapshot()` already declares on `WebEnvironment`, `AndroidEnvironment`, and
+      `_DeviceEnvironment`. Neither method gets a no-op on `AndroidEnvironment`, which overrides both
       `app_crash_artifacts()` (Unit 5's `logcat` layer) and `app_crash_tombstone()` (Unit 5's tombstone
-      layer) with real captures, the same way `XcuitestEnvironment` overrides `app_crash_artifacts()`
-      alone with its own real capture (Unit 3); `Lease.app_crash_artifacts` and `Lease.app_crash_tombstone`
+      layer) with real captures; `app_crash_artifacts()` gets none on `XcuitestEnvironment` either,
+      which overrides it alone with its own real capture (Unit 3) and inherits `_DeviceEnvironment`'s
+      `app_crash_tombstone()` no-op; `Lease.app_crash_artifacts` and `Lease.app_crash_tombstone`
       both wired through `pool.py`'s `lease()` closure alongside `crash_artifacts`. Only
       `Lease.app_crash_artifacts` threads any further, into `_LoopConfig.capture_app_crash` the same way
       `Lease.relaunch` already threads into `relaunch` (`pipeline.py:898`) — called from inside the step
