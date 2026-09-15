@@ -194,10 +194,20 @@ A nested step's failure reaches `_finish_outcome` more than once by construction
 handler that first observed it. `_run_if` and `_run_for_each` both run their body through
 `self.exec_steps` — the same re-entrant loop an interrupt's own recovery uses — so a crash three
 levels deep, an action inside a `forEach` inside an `if`, settles three wrapping outcomes in turn: the
-action's own, the `forEach`'s, and the `if`'s, each a separate call to `_finish_outcome`. `_run_recovery`
-(`_step_runner.py:70`) adds one more for every `after` step it runs through the same `exec_steps`
-against an app that is already gone — including a cleanup step that runs *because* an earlier
-`relaunch` failed, against the app that `relaunch` itself just terminated. Keying the `relaunch`
+action's own, the `forEach`'s, and the `if`'s, each a separate call to `_finish_outcome`. The `after`
+phase adds one more for every cleanup step it runs against an app that is already gone — including a
+step that runs *because* an earlier `relaunch` failed, against the app that `relaunch` itself just
+terminated — dispatched through `_dispatch_after`'s own `run_phase(steps, after_outcomes, "after", …)`
+call ([`_functions.py:824-828`](../../bajutsu/common/orchestrator/loop/_functions.py)), a route
+separate from the main steps' own loop, building its own fresh `StepLoopState`
+(`_functions.py:994`) — not through `_run_recovery`
+([`_step_runner.py:70`](../../bajutsu/common/orchestrator/loop/_step_runner.py)), which is BE-0314's
+own re-entrant path for an *interrupt's* recovery steps (`self.state.running_recovery = True` around
+the same `exec_steps`, `_interrupt_guard.py:70`), not the `after` phase. `_run_recovery` is a third,
+distinct probe multiplier this paragraph has to account for on its own terms: an interrupt whose
+recovery steps run against an app that is already gone settles one outcome per recovery step, each an
+ordinary (non-`relaunch`) failure neither latch bounds — the same cost the next paragraph already
+prices in for depth and `after` rules, just from a third source. Keying the `relaunch`
 exemption to `outcome.action` alone misses exactly that case: a failing `relaunch`'s own outcome skips
 the probe, but the `forEach`/`if` outcomes wrapping it, and every `after: on: fail` step dispatched
 afterward, carry a different `outcome.action` and would each probe fresh, reading `app.state`'s honest
@@ -230,13 +240,36 @@ scenario nests and how many `after` rules it dispatches on failure — figures u
 practice — and it only runs on a step that has already failed, unlike the proactive per-step polling
 *Alternatives considered* rules out below for adding cost to every green run.
 
+This reactive shape has one structural blind spot worth naming rather than discovering later: a crash
+caused by a scenario's own *last* step, where that step's own actuation still reports `ok=True` — a
+`tap` the runner delivered before the app died, an `assert` that read a tree captured a moment earlier
+— is never probed. Nothing runs after it to fail and reach `_finish_outcome`, and scenario-level
+`expect` does not close the gap either: `_evaluate_expect` produces `AssertionResult`s, not
+`StepOutcome`s, so it never reaches `_finish_outcome`
+([`_functions.py:742-752`](../../bajutsu/common/orchestrator/loop/_functions.py)). Closing it would
+mean an unconditional end-of-scenario probe — the every-green-run cost this reactive design exists to
+avoid — so this item accepts the gap by construction rather than widen the trigger, and instead
+requires a scenario written to *exercise* this signal to end with a step after the crash-triggering
+one (Unit 11's showcase scenarios each do: tap the crash trigger, then take one more step against the
+now-dead app, so it is that later step — not the tap itself — that fails and gets probed). A scenario
+whose last step is the crash trigger stays green by this design's own construction.
+
 `_finish_outcome` calls `active_driver.app_crash_signal()` only when neither latch is set. A
 non-`None` answer raises `base.AppCrashedError(signal)` immediately and catches it in the same
 expression, folding its message into `outcome.reason` and setting both `outcome.app_crashed` and the
 confirmed-crash latch to `True` — never letting the exception itself propagate past this one point.
-`active_driver` is already whichever driver actuated this step: the native driver, or the
-`WebContextDriver` inside a `web` block. `isinstance` answers `False` for the latter, so the check is
-a no-op there, matching this item's `web`-backend scope from the Introduction.
+`active_driver` is already whichever driver actuated this step, and a `web` block's inner steps and its
+own wrapping outcome answer differently: `_handle_web` runs `step.web.steps` on a `WebContextDriver` it
+constructs for the block (`self.exec_steps(step.web.steps, web_driver)`), so *those* inner steps'
+`_finish_outcome` calls (through `_handle_action`) see `active_driver = web_driver`, and `isinstance`
+answers `False` there — a genuine no-op, matching this item's `web`-backend scope from the
+Introduction. `_handle_web`'s own wrapping outcome is a separate, fifth call to `_finish_outcome`,
+deliberately passed the block's `active_driver` parameter instead
+([`_step_runner.py:287-290`](../../bajutsu/common/orchestrator/loop/_step_runner.py), "not the inner
+`web_driver`") — the *native* driver that was active before the block switched context. So a native
+host crash that surfaces as the wrapping `web` step's own failure (an inner step failing because the
+native host died out from under the `WebView` bridge) is not a no-op: `_finish_outcome` probes the
+native driver exactly as it would for any other failing step.
 
 ### iOS: `app.state`, not the element tree
 
@@ -762,8 +795,10 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       `crashes/crash-NNN.yaml` repro.
 - [ ] Unit 11 — Showcase fixtures: a "force a crash" affordance gated behind a launch-env flag (not a
       build configuration) on iOS (SwiftUI) and Android (Compose), one scenario per platform
-      exercising it via `preconditions.launchEnv`, wired as a non-gating per-PR signal in
-      `ios-e2e.yml` / `android-e2e.yml`.
+      exercising it via `preconditions.launchEnv` — each scenario takes one step after the crash
+      trigger (against the now-dead app), not ending on the trigger itself, since a scenario whose last
+      step is the crash trigger never fails by this item's own reactive-check design (see *Detecting
+      the event*) — wired as a non-gating per-PR signal in `ios-e2e.yml` / `android-e2e.yml`.
 - [ ] Unit 12 — Docs: `docs/evidence.md` (+ `docs/ja/`) gains this artifact kind; `docs/ci.md`
       (+ `docs/ja/`) notes the showcase signal lane; `docs/architecture.md` (+ `docs/ja/`)
       cross-references the no-retry app-crash path against the existing backend-crash retry section.
@@ -774,9 +809,11 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       the `.ips` sweep after a second crawl crash finding only the report from that crash's own reset,
       not the first crash's; a failing `relaunch` step never probing
       `app_crash_signal()`, and neither does its wrapping `if`/`forEach` outcome nor a dispatched
-      `after: on: fail` step that also fails against the terminated app; an ordinary (non-`relaunch`,
-      non-crash) failure three levels deep still probing once per settling outcome, pinning that the
-      latch does not bound this case; the iOS `.ips` sweep and the Android `logcat`/tombstone capture
+      `after: on: fail` step that also fails against the terminated app; an interrupt recovery step
+      (BE-0314's `_run_recovery`, distinct from the `after` phase) that also fails against a
+      terminated app probing once per recovery step, neither latch bounding it either; an ordinary
+      (non-`relaunch`, non-crash) failure three levels deep still probing once per settling outcome,
+      pinning that the latch does not bound this case; the iOS `.ips` sweep and the Android `logcat`/tombstone capture
       against stubbed directories and stubbed `adb` output, including the Android exit-info
       corroboration; a `_step_runner.py` test asserting the in-band failure, the new `app_crashed`
       field, and the confirmed-crash latch holding across a nested `if`/`forEach` failure; a
@@ -785,7 +822,13 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       loop trigger; a stubbed-`await_ready`-timeout test asserting a `relaunch` step whose new launch
       never becomes ready still reports `ok=True` (so the exemption's own premise holds) and that the
       crash is instead caught, `app_crashed=True`, on the very next step against the dead app; a
-      web/fake-backend test asserting `isinstance` answers `False` and nothing changes.
+      web/fake-backend test asserting `isinstance` answers `False` and nothing changes (the standalone
+      Playwright/fake target, not a `web` block on the XCUITest or adb backend); a `_handle_web` test on
+      the XCUITest/adb backends asserting the opposite for that block: a failing inner web step's own
+      outcome (`active_driver = web_driver`) never probes, but the wrapping `web` step's own outcome
+      (`active_driver` = the native driver) does; a scenario whose *last* step crashes the app but still
+      reports `ok=True` staying green with no `app_crashed` outcome and no `app-crash/` artifact,
+      pinning the documented blind spot rather than leaving it to be rediscovered as a bug.
 
 ## References
 

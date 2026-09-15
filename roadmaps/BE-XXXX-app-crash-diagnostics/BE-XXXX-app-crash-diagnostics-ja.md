@@ -210,11 +210,22 @@ append 自体もこの中で行うため、あとから加わるステップの�
 自身の本体を `self.exec_steps`（割り込みの回復処理も再入する、同じループ）を通じて
 走らせます。したがって、`if` の中の `forEach` の中のアクションという3段の入れ子で
 クラッシュが起きると、アクション自身、`forEach`、`if` という3つの外側の outcome が
-順に確定し、それぞれが独立して `_finish_outcome` を呼びます。`_run_recovery`
-（`_step_runner.py:70`）も、同じ `exec_steps` を通じて走る `after` のステップごとに、
-すでに落ちたアプリに対してもう1回ずつ加わります。`after: on: fail` の後片付けが、
+順に確定し、それぞれが独立して `_finish_outcome` を呼びます。`after` フェーズも、
+すでに落ちたアプリに対して走るあとかたづけステップごとに、もう1回ずつ加わります。
 直前の `relaunch` の失敗が*原因で*走り、その `relaunch` 自身が終了させたばかりの
-アプリに対して確認してしまう場合も含まれます。除外を `outcome.action` だけに
+アプリに対して確認してしまうステップも含まれます。この dispatch は `_dispatch_after`
+自身の `run_phase(steps, after_outcomes, "after", …)` 呼び出し
+（[`_functions.py:824-828`](../../bajutsu/common/orchestrator/loop/_functions.py)）を
+通ります。本体ステップのループとは別の経路であり、自前の新しい `StepLoopState` を
+組み立てます（`_functions.py:994`）。`_run_recovery`
+（[`_step_runner.py:70`](../../bajutsu/common/orchestrator/loop/_step_runner.py)）を
+通るのではありません。こちらは BE-0314 の*割り込み*の回復ステップのための再入経路
+です（同じ `exec_steps` を囲む `self.state.running_recovery = True`、
+`_interrupt_guard.py:70`）。`after` フェーズではありません。`_run_recovery` は、この
+段落が別途勘定に入れる必要のある、3つ目の独立した確認の倍加要因です。すでに落ちた
+アプリに対して走る割り込みの回復ステップは、確定する outcome ごとに1回の確認を
+払います。これはどちらのラッチも抑えない、ふつうの（`relaunch` でない）失敗です。
+除外を `outcome.action` だけに
 結びつけると、まさにこのケースを見逃します。失敗した `relaunch` 自身の outcome は
 確認を飛ばしますが、それを包む `forEach`・`if` の outcome や、その後に発火する
 `after: on: fail` のステップは、それぞれ別の `outcome.action` を持つため、いずれも
@@ -256,15 +267,43 @@ outcome は、`app_crash_signal()` をもう一度呼ぶことなく、そのす
 失敗したステップに対してしか走りません。後述の「検討した代替案」がグリーンな実行
 すべてにコストを足すとして却下する、事前のステップごとのポーリングとは違います。
 
+この反応的な形には、あとで見つかるより先に名指しておくべき、構造上の死角が1つ
+あります。シナリオ自身の*最後の*ステップが原因のクラッシュで、そのステップ自身の
+操作がそれでも `ok=True` を報告する場合です。アプリが落ちる前にランナーが届けた
+`tap`、少し前に捉えたツリーを読んだ `assert` などです。これより後に走るものがない
+ため、失敗して `_finish_outcome` に届くステップが存在しません。シナリオレベルの
+`expect` もこの隙間を閉じません。`_evaluate_expect` が生成するのは `StepOutcome`
+ではなく `AssertionResult` であるため、`_finish_outcome` にはそもそも届きません
+（[`_functions.py:742-752`](../../bajutsu/common/orchestrator/loop/_functions.py)）。
+これを閉じるには、シナリオ終了時の無条件の確認が要ります。まさにこの反応的な設計が
+避けようとしているグリーンな実行すべてへのコストです。したがって本項目は、確認の
+トリガーを広げるのではなく、この隙間を設計上の前提として受け入れます。かわりに、
+この信号を*実際に検証する*シナリオには、クラッシュを引き起こすステップの後にもう
+1ステップを置くことを求めます（Unit 11 の showcase シナリオはどちらもそうしています。
+クラッシュのトリガーをタップしたあと、死んだアプリに対してもう1ステップを進め、
+タップ自身ではなく、その後のステップの方が失敗して確認される仕組みです）。最後の
+ステップがクラッシュのトリガーであるシナリオは、この設計自身の構造によりグリーンの
+ままです。
+
 `_finish_outcome` が `active_driver.app_crash_signal()` を呼ぶのは、どちらのラッチも
 立っていないときだけです。`None` でない答えは、その場で `base.AppCrashedError(signal)`
 を送出し、同じ式の中で捕まえ、そのメッセージを `outcome.reason` へ折り込み、
 `outcome.app_crashed` と確定済みクラッシュのラッチの両方を `True` にします。この1点
 より先へ伝播することはありません。`active_driver` は、そのステップを実際に操作した
-ドライバです。ネイティブのドライバであることも、`web` ブロックの中では
-`WebContextDriver` であることもあります。後者に対しては `isinstance` が `False` を
-返すため、確認は no-op になります。「はじめに」で述べた本項目の web バックエンドに
-対する範囲と一致します。
+ドライバです。`web` ブロックの内側のステップと、そのブロック自身を包む outcome とでは
+答えが異なります。`_handle_web` はそのブロック用に組み立てた `WebContextDriver` の上で
+`step.web.steps` を走らせるため（`self.exec_steps(step.web.steps, web_driver)`）、その
+内側のステップ自身の `_finish_outcome` 呼び出し（`_handle_action` 経由）は
+`active_driver = web_driver` を見ます。ここでは `isinstance` が `False` を返し、確認は
+本物の no-op になります。「はじめに」で述べた本項目の web バックエンドに対する範囲と
+一致します。`_handle_web` 自身を包む outcome は、`_finish_outcome` への5つ目の別の
+呼び出しであり、意図的にブロック自身の `active_driver` 引数を渡します
+（[`_step_runner.py:287-290`](../../bajutsu/common/orchestrator/loop/_step_runner.py)、
+「内側の `web_driver` ではない」）。ブロックがコンテキストを切り替える前に有効だった、
+*ネイティブの*ドライバです。したがって、ネイティブホストのクラッシュが包む `web`
+ステップ自身の失敗として表面化した場合（`WebView` ブリッジの足元でネイティブホストが
+落ちたために内側のステップが失敗する場合）は no-op ではありません。`_finish_outcome`
+は、他のあらゆる失敗ステップとまったく同じように、ネイティブのドライバを確認します。
 
 ### iOS：要素ツリーではなく `app.state` を使う
 
@@ -870,8 +909,11 @@ fake backend の実行が収集する内容は変わりません。
       再現ファイルの隣に書き込みます。
 - [ ] Unit 11 — showcase の準備。ビルド構成ではなく起動時環境変数のフラグで隠す
       「強制的にクラッシュさせる」操作を iOS（SwiftUI）と Android（Compose）それぞれに用意し、
-      `preconditions.launchEnv` を通じてそれを起動する各プラットフォーム1本のシナリオ、
-      `ios-e2e.yml` / `android-e2e.yml` へのゲートしない PR ごとのシグナルとしての配線。
+      `preconditions.launchEnv` を通じてそれを起動する各プラットフォーム1本のシナリオ——
+      クラッシュのトリガーで終わらせず、死んだアプリに対してもう1ステップを置きます。
+      最後のステップがクラッシュのトリガーであるシナリオは、本項目自身の反応的な確認
+      設計（「検知の方式」を参照）によりそもそも失敗しないからです——を、
+      `ios-e2e.yml` / `android-e2e.yml` へのゲートしない PR ごとのシグナルとして配線します。
 - [ ] Unit 12 — ドキュメント。`docs/evidence.md`（および `docs/ja/`）にこの証跡の種類を追加します。
       `docs/ci.md`（および `docs/ja/`）に showcase のシグナルレーンを追記します。
       `docs/architecture.md`（および `docs/ja/`）に、既存のバックエンドクラッシュのリトライ
@@ -885,7 +927,10 @@ fake backend の実行が収集する内容は変わりません。
       見つけること。失敗した
       `relaunch` ステップ自身が `app_crash_signal()` をまったく確認しないこと、それを包む
       `if`・`forEach` の outcome も、終了させられたアプリに対して失敗する
-      `after: on: fail` のステップも同様であること。3段の入れ子のふつうの（`relaunch`
+      `after: on: fail` のステップも同様であること。割り込みの回復ステップ
+      （`after` フェーズとは別物の、BE-0314 の `_run_recovery`）が終了させられた
+      アプリに対して失敗する場合も、回復ステップごとに1回確認し、どちらのラッチも
+      それを抑えないこと。3段の入れ子のふつうの（`relaunch`
       でも確定済みクラッシュでもない）失敗が、確定する outcome ごとに1回の確認を払い
       続け、ラッチがこのケースを抑えないことを固定するテスト。スタブしたディレクトリと
       スタブした `adb` の出力に対する、iOS の `.ips` 掃引と Android の `logcat`・
@@ -899,7 +944,14 @@ fake backend の実行が収集する内容は変わりません。
       ready にならなかった `relaunch` ステップ自身は `ok=True` を報告すること(除外自身の
       前提が成り立つことの検証)、そしてそのクラッシュは死んだアプリに対する次のステップで
       `app_crashed=True` として捕まることを検証するテスト。web backend・fake backend で
-      `isinstance` が `False` を返し、何も変わらないことを検証するテスト。
+      `isinstance` が `False` を返し、何も変わらないことを検証するテスト
+      （web ブロックではなく、単体の Playwright/fake ターゲット）。XCUITest/adb
+      バックエンドでの `_handle_web` のテスト。内側の web ステップ自身の失敗
+      （`active_driver = web_driver`）はまったく確認しないが、それを包む `web`
+      ステップ自身の失敗（`active_driver` はネイティブのドライバ）は確認すること。
+      シナリオの*最後の*ステップがクラッシュしても `ok=True` を報告する場合、
+      `app_crashed` outcome も `app-crash/` 証跡も持たずにグリーンのまま終わること
+      ——文書化した死角をバグとして再発見される前に固定するテスト。
 
 ## 参考
 
@@ -917,27 +969,27 @@ fake backend の実行が収集する内容は変わりません。
   仕組み
 - [BE-0066](../BE-0066-web-crawl/BE-0066-web-crawl-ja.md) — web（Playwright）バックエンド。
   この事象に対する独自のシグナル（レンダラーの `crash` イベントや、未捕捉の `pageerror`）は、
-  後続の項目に委ねる
+  後続の項目に委ねます
 - [`bajutsu/common/drivers/base/backend_crash_error.py`](../../bajutsu/common/drivers/base/backend_crash_error.py) —
   `BackendCrashError`。本項目の `AppCrashedError` が基底クラスを共有しない、隣接する不具合
 - [`bajutsu/common/drivers/base/interruption_policy_target.py`](../../bajutsu/common/drivers/base/interruption_policy_target.py) —
   本項目の `AppCrashSignal` が踏襲する、狭い opt-in のケイパビリティプロトコルという形
 - [`bajutsu/common/drivers/tracing.py`](../../bajutsu/common/drivers/tracing.py) —
-  `TracingDriver`。本項目の `AppCrashSignal` が加わる `_PROTOCOLS` タプルを持つ
+  `TracingDriver`。本項目の `AppCrashSignal` が加わる `_PROTOCOLS` タプルを持ちます
 - [`bajutsu/common/orchestrator/loop/_step_runner.py`](../../bajutsu/common/orchestrator/loop/_step_runner.py) —
   ステップごとのループ。その4つのステップ種別ハンドラが共有する新しい `_finish_outcome`
-  ヘルパーに、本項目の唯一の事後確認が置かれる
+  ヘルパーに、本項目の唯一の事後確認が置かれます
 - [`bajutsu/common/orchestrator/loop/_functions.py`](../../bajutsu/common/orchestrator/loop/_functions.py) —
   `run_scenario` の `run_phase` クロージャが `live_bindings` を `before`・本体ステップ・
   あらゆる `after` の規則をまたいで共有している前例。本項目のフェーズをまたぐクラッシュ
-  ラッチが踏襲する
+  ラッチが踏襲します
 - [`bajutsu/common/orchestrator/loop/step_loop_state.py`](../../bajutsu/common/orchestrator/loop/step_loop_state.py) —
   `StepLoopState`。ラッチが `bindings` の隣に置かれる場所。`bindings` はすでに、
   フェーズごとに新しく組み立てられる `StepLoopState` へ、シナリオスコープの可変
   オブジェクトを運び込んでいるフィールド
 - [`bajutsu/common/runner/pipeline.py`](../../bajutsu/common/runner/pipeline.py) —
   `_run_on_lease`。まだリースを保持したまま `result` の `before_outcomes` / `steps` /
-  `after_outcomes` を `app_crashed` で走査する。この新しい `_write_app_crash_artifacts`
+  `after_outcomes` を `app_crashed` で走査します。この新しい `_write_app_crash_artifacts`
   が真似る `_write_crash_artifacts`（BE-0421）
 - [`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py) —
   `Lease.crash_artifacts`。`Lease.app_crash_artifacts` が踏襲する前例
@@ -954,7 +1006,7 @@ fake backend の実行が収集する内容は変わりません。
 - [`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py) — `_build_lane`。本項目の収集が
   読むレーンごとの環境
 - [`bajutsu/crawl/repro.py`](../../bajutsu/crawl/repro.py) — `write_repros`。すでに
-  `screen_map.crashes` を歩き、収集した証跡を書き込む `crash-NNN` の番号づけを所有する
+  `screen_map.crashes` を歩き、収集した証跡を書き込む `crash-NNN` の番号づけを所有します
 - [`bajutsu/crawl/serialize.py`](../../bajutsu/crawl/serialize.py) — `screenmap_dict` /
   `screenmap_from_dict`。`Crash` の新しい `artifacts` フィールドをあえて除く JSON の往復
 - [`bajutsu/common/platform_lifecycle/readiness.py`](../../bajutsu/common/platform_lifecycle/readiness.py) —
@@ -966,16 +1018,16 @@ fake backend の実行が収集する内容は変わりません。
   無関係である理由
 - [`bajutsu/common/evidence/sink.py`](../../bajutsu/common/evidence/sink.py) —
   `write_text`（マスキングする）と `write_bytes`（シンクの検査できない内容向けで、
-  マスキングしない）の違い。本項目の証跡は、先にテキストへデコードすることでこれに従う
+  マスキングしない）の違い。本項目の証跡は、先にテキストへデコードすることでこれに従います
 - [`scripts/collect_android_diagnostics.sh`](../../scripts/collect_android_diagnostics.sh) —
   ジョブ終了時の Android 診断掃引。本項目の `logcat` フィルタリングが従う前例であり、
-  自身の `adb wait-for-device` が `adb root` の壊す対象を名指ししている
+  自身の `adb wait-for-device` が `adb root` の壊す対象を名指ししています
 - [`bajutsu/common/backend_cli/adb_resident/resident_server.py`](../../bajutsu/common/backend_cli/adb_resident/resident_server.py) —
   `AdbDriver` 自身の読み取りチャネル。tombstone 取得の `adb root` にまるごと終わらされ、
-  再起動はしない
+  再起動はしません
 - [`bajutsu/common/backend_cli/adb/_functions.py`](../../bajutsu/common/backend_cli/adb/_functions.py) —
   `instrument_cmd`。その `-w` フラグこそが、tombstone 取得の `adb root` が実際に終わらせるもの
 - [`bajutsu/common/backends.py`](../../bajutsu/common/backends.py) — `make_driver`。既存の
-  `device_os` キーワードが、本項目の `package` キーワードの先例になっている
+  `device_os` キーワードが、本項目の `package` キーワードの先例になっています
 - [`docs/ci.md`](../../docs/ci.md#the-ios-lane) — `fault-injection (xcuitest)`。本項目の
   showcase シナリオが従う、ゲートしない・失敗の形を検証するという配置
