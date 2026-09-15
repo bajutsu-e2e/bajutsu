@@ -511,7 +511,12 @@ a failure in one layer never drops the other:
    the device — while leaving everything before that marker intact for the end-of-job sweep to still
    find. The dump is parsed two ways: a `FATAL EXCEPTION` block for a managed-code (Java/Kotlin)
    crash, and, when none is found, the native crash buffer's own `Fatal signal <n>` header line for an
-   NDK crash — the two formats `logcat`'s crash buffer actually carries. Whichever matches is
+   NDK crash — the two formats `logcat`'s crash buffer actually carries. Both are bounded to the app
+   under test's own process, not to the time window alone, since the buffer is device-global across
+   processes as well as across launches: a managed block is accepted only when its own
+   `Process: <package>` line names the target's `android.package`, and a native block only when its
+   `>>> <process> <<<` header does, so a system service or another app crashing in the same window is
+   never written as this scenario's evidence. Whichever matches is
    extracted and written as `logcat-crash.txt`. This is the one artifact guaranteed available on any
    AVD or real device the adb backend can already reach.
 2. **A tombstone pull**, best-effort and gated on root access, run last, after the `logcat` layer
@@ -772,7 +777,10 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 - [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at` (device clock) at each launch site;
       `app_crash_artifacts()`'s always-attempted `logcat` extraction (managed *and* native crash
       formats) using a `-t "<launch marker>"` time filter rather than clearing the crash buffer, so
-      `scripts/collect_android_diagnostics.sh`'s own end-of-job sweep still sees everything earlier;
+      `scripts/collect_android_diagnostics.sh`'s own end-of-job sweep still sees everything earlier —
+      and bounded to the target's own `android.package` (a managed block's `Process: <package>` line,
+      a native block's `>>> <process> <<<` header), since the buffer is device-global across processes
+      too, not only across launches;
       the best-effort, root-gated tombstone pull, run last, accepting that `adb root` kills the
       resident server's `am instrument -w` session and BE-0283's `adb reverse` tunnel outright — not
       re-establishing either, since nothing later in this lease needs them and the pool rebuilds both
@@ -855,7 +863,10 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       (non-`relaunch`, non-crash) failure three levels deep still probing once per settling outcome,
       pinning that the latch does not bound this case; the iOS `.ips` sweep and the Android `logcat`/tombstone capture
       against stubbed directories and stubbed `adb` output, including the Android exit-info
-      corroboration; a `_step_runner.py` test asserting the in-band failure, the new `app_crashed`
+      corroboration; a `logcat` dump within the launch marker's own time window but carrying only a
+      different package's `FATAL EXCEPTION`/`>>> <process> <<<` block extracting nothing, pinning that
+      the process bound is real and not only the time one; a `_step_runner.py` test asserting the
+      in-band failure, the new `app_crashed`
       field, and the confirmed-crash latch holding across a nested `if`/`forEach` failure; a
       `pipeline.py` test asserting the `app-crash/` directory with redacted text content, the scan
       finding a crash in `before_outcomes`/`after_outcomes` as well as `steps`, and no crash-retry
