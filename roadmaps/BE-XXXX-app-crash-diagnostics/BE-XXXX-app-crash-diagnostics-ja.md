@@ -1400,7 +1400,7 @@ fake backend の実行が収集する内容は変わりません。
       検索するのではありません）。
 - [ ] Unit 8 — `pipeline.py`：`_run_on_lease` が `run_scenario` の直後、まだ同じリースを
       保持したまま `(*result.before_outcomes, *result.steps, *result.after_outcomes)` を
-      `app_crashed` で走査します（`result.steps[-1]` ではない）。`_write_crash_artifacts`
+      `app_crashed` で走査します（`result.steps[-1]` ではありません）。`_write_crash_artifacts`
       （BE-0421、`pipeline.py:803`）を真似た新しい
       `_write_app_crash_artifacts(lz, outcome, s, sid)`
       が、見つけた outcome 自身の `app_crash_artifacts`（Unit 7 が確認の時点ですでに収集
@@ -1452,7 +1452,7 @@ fake backend の実行が収集する内容は変わりません。
       失敗、そして `app.state` の答えに関わらず `deviceType: device` に対して
       `app_crash_signal()` が `None` を返すこと（誤検知しないこと）。`package=None` または
       未設定の `launched_at` で組み立てた `AdbDriver` が即座に `None` を返し、`pidof` にも
-      `exit-info` にもまったく届かないこと（別のプロセスのクラッシュを確定させない）。
+      `exit-info` にもまったく届かないこと（別のプロセスのクラッシュを確定させません）。
       クラッシュしたステップのあとに `after: on: error` の `relaunch` が続くシナリオでも、
       確定したクラッシュ自身の `.ips`/`logcat` レポートがそのまま添付されること——あと
       かたづけ自身の `relauncher()` の再記録のあとに生きたまま読み直せば得られたはずの
