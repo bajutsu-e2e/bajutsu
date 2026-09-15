@@ -616,9 +616,14 @@ later still for a native crash, after `crash_dump` finishes — so the newest en
 one from before this launch on the very read meant to confirm a fresh crash. `app_crash_signal()`
 therefore polls the exit-info history the same short, bounded way `_app_crash_reports` already polls
 `DiagnosticReports` on iOS: up to a few seconds, re-reading until its *newest* entry reports
-`CRASH`/`CRASH_NATIVE` *and* that entry's own `timestamp=` field — a formatted local datetime, never
-an epoch, so it is parsed before the comparison rather than compared as a raw string or number — is
-at or after `launched_at()` — ruling out a stale entry from before this launch — or the bound
+`CRASH`/`CRASH_NATIVE` *and* that entry's own `timestamp=` field — `ApplicationExitInfo`'s wall-clock
+rendering in the *device's* own timezone, never an epoch and carrying no offset — is at or after this
+launch. The comparison is made against a third device-clock rendering of the launch moment
+(`adb shell date '+%Y-%m-%d %H:%M:%S'`, recorded at each launch site alongside the other two), not
+against the epoch `launched_at()`: resolving a bare `timestamp=` on the host would run it through the
+*host's* timezone, so a UTC emulator driven from a host in any other zone would place every fresh
+crash hours before the marker and answer `None` on every real crash — ruling out a stale entry from
+before this launch — or the bound
 expires. Either the bound expiring or the newest
 entry never meeting both conditions answers `None`, the same "cannot confirm" answer a backend with no
 signal at all gives. This is the corroboration `app.state`'s
@@ -633,11 +638,20 @@ call sites (`e.launch(package, launch_env)`). It reads from the device's own clo
 +%s`, an epoch integer) at launch time rather than the host's, so a launch marker compared only
 against later device-clock reads never needs host/device clock reconciliation — this is the value
 the tombstone mtime comparison below consumes directly, since it compares against an epoch already.
-The exit-info poll above cannot: `dumpsys activity exit-info` renders each entry's own `timestamp=`
-as a formatted local datetime, never an epoch, so the poll parses that field before comparing it
-against `launched_at()`. `logcat -t` cannot consume the epoch value either, though: `adb
+Neither of the other two consumers can use that same epoch value, and for two different reasons that
+both trace back to the same rule: never resolve a device-side rendering into an epoch on the host,
+since that conversion runs through the *host's* timezone, not the device's, and a UTC emulator driven
+from a host in any other zone would then place every fresh timestamp hours away from the marker —
+silently reintroducing the exact host/device clock reconciliation this design otherwise avoids
+entirely. `dumpsys activity exit-info`'s `timestamp=` field is `ApplicationExitInfo`'s own wall-clock
+rendering in the device's timezone, carrying no offset, so the exit-info poll above compares it
+against a third device-clock rendering of the launch moment (`adb shell date '+%Y-%m-%d %H:%M:%S'`),
+recorded at each launch site alongside the other two — never against the epoch `launched_at()`.
+`logcat -t` cannot consume the epoch value either, but for the more mundane reason that `adb
 logcat -t` is overloaded, and an integer argument is read as a *line count* (\"the most recent N
-lines\"), not a time bound — only a quoted `'MM-DD hh:mm:ss.mmm'` string is read as one. So each
+lines\"), not a time bound — only a quoted `'MM-DD hh:mm:ss.mmm'` string is read as one, a different
+rendering from exit-info's (`logcat`'s carries no year; exit-info's does, so neither substitutes for
+the other). So each
 launch site also records a second rendering of the same moment, `adb shell date '+%m-%d
 %H:%M:%S.000'`, stashed alongside `app_launched_at` for `logcat -t` alone to consume; threading the
 epoch straight through would silently return the whole ring buffer with no time bound at all, since
@@ -1043,14 +1057,21 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       injected callable
       reading `AndroidEnvironment.app_launched_at`; `AdbDriver.app_crash_signal()` via `adb shell
       pidof <package>` corroborated by a time-bound `adb shell dumpsys activity exit-info <package>`
-      check (its newest entry only, its `timestamp=` field parsed and compared at or after
-      `launched_at()`), polled the same short, bounded way
+      check (its newest entry only, its `timestamp=` field — a device-timezone wall-clock rendering,
+      never an epoch — compared against a third device-clock rendering of the launch moment,
+      `adb shell date '+%Y-%m-%d %H:%M:%S'`, never against the epoch `launched_at()`: resolving
+      `timestamp=` into an epoch on the host would run the conversion through the host's own
+      timezone, reintroducing the clock reconciliation this design otherwise avoids), polled the same
+      short, bounded way
       as the iOS `.ips` sweep rather than read once, since `ApplicationExitInfo` is recorded only
       after `system_server` reaps the death.
 - [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at` (device clock, `adb shell date +%s`, an
-      epoch value) at each launch site, alongside a second rendering of the same moment for `logcat
+      epoch value) at each launch site, alongside a second rendering for the exit-info poll alone
+      (`adb shell date '+%Y-%m-%d %H:%M:%S'`, Unit 4) and a third for `logcat
       -t` alone (`adb shell date '+%m-%d %H:%M:%S.000'`) — `logcat -t` reads an integer argument as a
-      line count, not a time bound, so the epoch value cannot be threaded straight through; a
+      line count, not a time bound, so the epoch value cannot be threaded straight through, and
+      `dumpsys activity exit-info`'s own `timestamp=` is a different rendering still (device-timezone,
+      carrying a year `logcat`'s format omits), so neither substitutes for the other; a
       new `self._package` field, stashed in `start()` alongside both (`android.package`, from the same
       `android = require_android(eff)` the launch marker already reads) — `app_crash_artifacts()`
       takes no arguments, so this is the only way it reaches the value its own `logcat` process bound
