@@ -518,8 +518,23 @@ Simulator 上のアプリの `.ips` レポートは、実行ファイルのフ�
 
 `XcuitestEnvironment`
 （[`bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py)）
-は、対象アプリをすでに起動しており、自身の `udid` もすでに知っています。ここに
-`app_launched_at` というタイムスタンプを、その起動の直後に記録するよう拡張します。ただし、
+は、自身の `udid` をすでに知っています。ここに
+`app_launched_at` というタイムスタンプを加えます。ただしコールド起動そのものには、
+目印を隣に記録できる Python 側の `e.launch(...)` 呼び出しがありません。`_spawn_cold` は
+アプリをインストールして `xcodebuild` を起動するだけで、アプリ自身の起動はランナーの
+*内側*で、ランナー自身の `XCUIApplication.launch()` によって行われます——このコードベース
+自身のコメントがそう明言しており（`xcuitest_environment.py:322-324`）、その周りの
+Python 側の呼び出しは `_prepare_simulator`・`_launch_params`・`_spawn_cold_with_retry`
+だけです。目印を `_spawn_cold_with_retry` が返ったあとに記録すれば、それが指す起動よりも
+遅れてしまいます。自身のコールド起動の最中にクラッシュしたアプリ——ランナー自身の
+`/health` はまだ答えるため、spawn 自体は成功します——は、spawn 呼び出しが返ってから
+初めて記録される目印よりも前の mtime を持つ `.ips` を残し、`_reports_since` の
+`mtime >= since` がそれを拒みます。まさに本項目が取り除こうとしている「レポートは
+存在するのに `bajutsu` が見つけられない」という結果そのものです。そこで
+`app_launched_at` は `_spawn_cold` の中、`_spawn_cold_with_retry` の呼び出しの*直前*に
+記録します。これが2つの選択肢のうち安全な方です。早めに記録した目印は過剰に収集する
+だけで済み（`udid` と実行ファイル名の確認がすでに絞り込みます）、遅く記録した目印と
+違って、捕まえるべきクラッシュを取り逃すことはありません。ただし、
 `relaunch` ステップ自身の起動——この節がたった今 `_resume_warm` と区別したもの——は
 `device_relauncher` のクロージャを通じて走り、`(udid, run, extra_env)` を閉じ込めるだけで、
 目印を更新すべき `XcuitestEnvironment` がその場にありません。放っておけば、
@@ -1153,8 +1168,13 @@ fake backend の実行が収集する内容は変わりません。
       `device_os` と同じ方法で `make_driver` から通し、`deviceType: device` では
       `app_crash_signal()` がその場で `None` を返すようにします。本項目は Simulator だけを
       対象にします。
-- [ ] Unit 3 — iOS：コールド起動の直後に記録する `XcuitestEnvironment.app_launched_at`。
-      新しい `XcuitestEnvironment.relauncher()` オーバーライドが `device_relauncher` の
+- [ ] Unit 3 — iOS：`_spawn_cold` の中、`xcodebuild` の spawn の*直前*に記録する
+      `XcuitestEnvironment.app_launched_at`。コールド起動を実際に行うのはランナー自身
+      （`XCUIApplication.launch()`、`xcuitest_environment.py:323`）であり、この環境では
+      ないため、目印を隣に記録できる Python 側の起動呼び出しがありません。
+      `_spawn_cold_with_retry` が戻ったあとに記録すれば、それが指す起動よりも
+      すでに遅れており、まさにその起動の最中にクラッシュしたアプリの `.ips` を拒んで
+      しまいます。新しい `XcuitestEnvironment.relauncher()` オーバーライドが `device_relauncher` の
       `RelaunchFn` を包み、`relaunch` ステップ自身の起動のあとにこれを記録し直します
       （`_DeviceEnvironment` が継承する `relauncher()` には、それを更新すべき環境がその場に
       ない、まさにその呼び出し箇所）。対応する `XcuitestEnvironment.crawl_reset()`

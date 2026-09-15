@@ -452,8 +452,21 @@ accidental, unexplained miss.
 
 `XcuitestEnvironment`
 ([`bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py))
-already launches the target app, and already knows its own `udid`. It gains an `app_launched_at`
-timestamp, recorded next to that launch — but a `relaunch` step's own launch, the one this section just
+already knows its own `udid`. It gains an `app_launched_at`
+timestamp. The cold launch itself, though, has no Python-side `e.launch(...)` call to stamp the marker
+next to: `_spawn_cold` installs the app and spawns `xcodebuild`, and the app itself is launched
+*inside* the runner, by the runner's own `XCUIApplication.launch()` — this codebase's own comment says
+so outright (`xcuitest_environment.py:322-324`), and the only calls on the Python side around it are
+`_prepare_simulator`, `_launch_params`, and `_spawn_cold_with_retry`. Stamping the marker *after*
+`_spawn_cold_with_retry` returns would leave it later than the launch it names: an app that crashes
+during its own cold launch — the runner's own `/health` still answers, so the spawn itself succeeds —
+would leave a `.ips` whose mtime precedes a marker stamped only once the spawn call returns, and
+`_reports_since`'s `mtime >= since` would reject it, exactly the "the report exists but `bajutsu` did
+not find it" outcome this item exists to remove. `app_launched_at` is therefore recorded in
+`_spawn_cold`, immediately *before* the `_spawn_cold_with_retry` call — the safer of the two available
+moments, since a marker stamped too early can only over-collect (widen the window the `udid` and
+executable-name checks already narrow), never miss the crash it exists to catch, unlike one stamped
+too late. A `relaunch` step's own launch, the one this section just
 distinguished from `_resume_warm`'s, runs through `device_relauncher`'s closure over
 `(udid, run, extra_env)`, with no `XcuitestEnvironment` in scope to update the marker on. Left alone,
 `app_launched_at` would stay frozen at the lease's original cold launch, so a crash following a
@@ -461,7 +474,7 @@ mid-scenario `relaunch` would sweep `DiagnosticReports` with a `since` reaching 
 relaunch — wide enough to attach a `.ips` from a crash that `relaunch` itself already superseded.
 `XcuitestEnvironment` overrides `relauncher()` — `_DeviceEnvironment`'s own implementation, unchanged
 otherwise — to wrap the `RelaunchFn` `device_relauncher` returns: call it, then record
-`app_launched_at` the same way the cold-launch site already does. `AndroidEnvironment` needs no
+`app_launched_at` the same way `_spawn_cold` already does. `AndroidEnvironment` needs no
 matching override: it already overrides `relauncher()` itself
 ([`android_environment.py:326`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py)),
 and its `e.launch` there is one of the three sites Unit 5 already names.
@@ -989,7 +1002,12 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       `is_real_device` constructor argument, threaded from `make_driver` the same way `device_os`
       already is, that makes `app_crash_signal()` answer `None` outright on `deviceType: device` —
       this item scopes to the Simulator only.
-- [ ] Unit 3 — iOS: `XcuitestEnvironment.app_launched_at`, recorded at the cold launch; a new
+- [ ] Unit 3 — iOS: `XcuitestEnvironment.app_launched_at`, recorded in `_spawn_cold` immediately
+      *before* the `xcodebuild` spawn — the cold launch is performed by the runner itself
+      (`XCUIApplication.launch()`, `xcuitest_environment.py:323`), not by this environment, so there
+      is no Python-side launch call to record beside, and a marker stamped once
+      `_spawn_cold_with_retry` has returned would already be later than the launch it names and
+      would reject the `.ips` of an app that crashed during that very launch; a new
       `XcuitestEnvironment.relauncher()` override wrapping `device_relauncher`'s `RelaunchFn` to
       record it again after a `relaunch` step's own launch, the one call site `_DeviceEnvironment`'s
       inherited `relauncher()` has no environment in scope to update; a matching
