@@ -32,8 +32,11 @@ OS 自身のレポートを手で探しに行くことになります。
 もっとも近い代替物を保持します。
 
 本項目はまず `bajutsu run` を、iOS（XCUITest）と Android（adb）の両バックエンドで対象にします。
-同じ収集ロジックを、`bajutsu crawl` がすでに持つ同種の検知にも拡張します。web（Playwright）
-バックエンドとその独自シグナルは、後続の項目に委ねます。理由は「検討した代替案」に記します。
+iOS は Simulator に限ります。実機自身が抱える証跡の欠落（「iOS：`app.state`」を参照）ゆえに、
+実機では `app_crash_signal()` が `None` を返します。シグナルをまったく持たないバックエンドが
+返すのと同じ「確認できない」という答えです。同じ収集ロジックを、`bajutsu crawl` がすでに持つ
+同種の検知にも拡張します。web（Playwright）バックエンドとその独自シグナルは、後続の項目に
+委ねます。理由は「検討した代替案」に記します。
 
 ## 動機
 
@@ -520,9 +523,9 @@ adb にとって同じ役割の積極的な確認を与えます。
    イメージに対しては、すでに日常的な操作ですが、`adbd` を再起動します
    （[`scripts/collect_android_diagnostics.sh:98-102`](../../scripts/collect_android_diagnostics.sh)
    はすでに `adb root` の直後に自身の `adb wait-for-device` を置いており、その理由を
-   「adbd restarting as root」と述べています）。その再起動は、レジデントサーバ自身の
-   `am instrument -w` セッションを、単なる `adb forward` の対応づけ以上に、まるごと
-   終わらせます（`instrument_cmd` の `-w` は「インストルメンテーションを装着したまま
+   「adbd restarting as root」と述べています）。その再起動は、単なる `adb forward` の
+   対応づけだけでなく、レジデントサーバ自身の `am instrument -w` セッションそのものを
+   まるごと終わらせます（`instrument_cmd` の `-w` は「インストルメンテーションを装着したまま
    にし……`UiAutomation` のセッションを温存する」ためのフラグです、
    [`adb/_functions.py:604-616`](../../bajutsu/common/backend_cli/adb/_functions.py)）。
    BE-0283 のネットワークコレクタの `adb reverse` トンネル
@@ -814,9 +817,9 @@ fake backend の実行が収集する内容は変わりません。
       規則をまたいで生き残る）が、2つのラッチを
       運びます。1つは意図的終了フラグであり、`outcome.action == "relaunch"` かつ
       `outcome.ok is False` を見た瞬間（確認より前に）立ち、それ以降の同じシナリオの
-      あらゆる確認を抑える——失敗した `relaunch` を包む `if`・`forEach` の outcome や、
-      発火する `after: on: fail` の後片付けも含め、`relaunch` ステップ自身の outcome
-      だけにはとどまりません。もう1つは確定済みクラッシュのラッチであり、`_finish_outcome`
+      あらゆる確認を抑えます。抑える範囲は `relaunch` ステップ自身の outcome だけには
+      とどまらず、それを包む `if`・`forEach` の outcome や、発火する `after: on: fail`
+      の後片付けも含みます。もう1つは確定済みクラッシュのラッチであり、`_finish_outcome`
       が `AppCrashedError` を送出し捕まえた最初の時点で立ち、同じ伝播の中であとに続く
       outcome が、そのすでにわかっているシグナルを自身の `outcome.reason` へ折り込む
       だけにする——`app_crash_signal()` の確認を relaunch と確定済みクラッシュのケースに

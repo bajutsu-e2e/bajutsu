@@ -30,10 +30,12 @@ step gets a distinct failure message that names the event. Its run directory gai
 subdirectory next to its other evidence, holding the platform's own report or the closest counterpart
 the platform offers.
 
-This item covers `bajutsu run` first, on the iOS (XCUITest) and Android (adb) backends. It extends the
-same underlying capture to `bajutsu crawl`'s existing detection of the same event. The web
-(Playwright) backend and its own signals for it are left to a follow-up item, noted under
-*Alternatives considered*.
+This item covers `bajutsu run` first, on the iOS (XCUITest) and Android (adb) backends — iOS scoped to
+the Simulator, where a real device's own gaps in evidence (see *iOS: `app.state`*) leave
+`app_crash_signal()` answering `None`, the same "cannot confirm" answer a backend with no signal at all
+gives. It extends the same underlying capture to `bajutsu crawl`'s existing detection of the same
+event. The web (Playwright) backend and its own signals for it are left to a follow-up item, noted
+under *Alternatives considered*.
 
 ## Motivation
 
