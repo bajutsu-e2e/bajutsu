@@ -408,17 +408,20 @@ every target declaring no `readyWhen` lands on `count` at every launch — this 
 with no `readyWhen`, each carrying a full scenario suite). Latching this flag for the rest of the
 scenario the unconditional way the `relaunch` flag does would therefore disable the item outright for
 that whole class of targets, not just protect their first step. `_finish_outcome` instead clears the flag
-the moment it sees a settled, *ordinary* outcome with `outcome.ok is True` — never an `if`/`forEach`
+the moment it sees a settled outcome whose own success required the app to answer — never an `if`/`forEach`
 wrapping outcome, whose own success proves nothing: `_run_if` takes the empty `else` branch and settles
 `ok=True` the instant its condition fails to match
 ([`_functions.py:922-926`](../../bajutsu/common/orchestrator/loop/_functions.py)), `_run_for_each`
 settles the same way over zero matched elements, and neither raises when the app behind that query is
 dead — `driver.query()` still answers something (SpringBoard's own tree, on iOS) — so a target that
 never foregrounded and opens with exactly such a step would clear the flag *because* the app is dead, on
-the very target class the flag exists to protect. A genuine actuating step, or a `wait`/`assert` that
+the very target class the flag exists to protect. The same holds for a kind that never reaches the app
+at all — `http`, `generate`, `totp`, `email`, `push` — so the clear is keyed positively rather than by
+exclusion: only a genuine actuating step, or a `wait`/`assert` that
 matched, is the missing positive observation the scenario's first step lacked, so the protection holds
 for a first failing step without silencing every later one on a target whose readiness rung just happens
-to be the weak one — and without a no-op `if`/`forEach` masquerading as that same observation. Until
+to be the weak one — and without a no-op `if`/`forEach`, or a step that never touches the app in the
+first place, masquerading as that same observation. Until
 that first success, `_finish_outcome` treats an unconfirmed launch the same way it
 treats a failed `relaunch` — skipping the probe — since a launch this item cannot yet confirm leaves the
 scenario in exactly the same "app state is not yet known" position a failed `relaunch` leaves it in for
@@ -755,9 +758,9 @@ stamped once it returns is already stamped after a startup crash has happened �
 own `logcat -t` block and `exit-info` entry, both before the marker, the same "report exists but
 `bajutsu` did not find it" outcome `_spawn_cold`'s own reasoning above already avoids for iOS (a marker
 stamped too early can only widen the window `start()`'s own `force_stop`/`pm clear` already narrowed,
-never miss the crash it exists to catch). Unit 11's Android fixture — an uncaught exception on the main
-thread, reached through `preconditions.launchEnv` — is exactly the crash a marker stamped after
-`e.launch` would miss. It reads from the device's own clock at launch time
+never miss the crash it exists to catch). Unit 11's Android fixture taps its trigger mid-scenario, so
+it does not exercise this ordering — the case at stake is a startup crash, an app that dies before
+`am start -W` returns, which Unit 13 pins directly. It reads from the device's own clock at launch time
 rather than the host's, so a launch marker compared only against later device-clock reads never needs
 host/device clock reconciliation — `app_launched_at` itself is the epoch field of that read (`adb
 shell date +%s`), the value the tombstone mtime comparison below consumes directly, since it compares
@@ -1335,10 +1338,12 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       app that never reached the foreground would otherwise read as a confirmed crash on that first
       probe, *without* the unconditional, rest-of-scenario suppression the deliberate-termination flag
       uses, which would silence every later probe for that whole class of targets: `_finish_outcome`
-      instead clears this flag the moment it sees a settled, *ordinary* outcome with `outcome.ok is
-      True` — excluding `if`/`forEach`, whose own wrapping outcome settles `ok=True` on an empty
-      `else`/zero matched elements without the app behind the query ever answering, so a dead app's own
-      SpringBoard-only tree would otherwise clear the flag for the exact reason it should not — the
+      instead clears this flag the moment it sees a settled outcome whose own success required the app
+      to answer — keyed positively, not by excluding `if`/`forEach` alone: that wrapping outcome
+      settles `ok=True` on an empty `else`/zero matched elements without the app behind the query ever
+      answering, so a dead app's own SpringBoard-only tree would otherwise clear the flag for the exact
+      reason it should not, and the same holds for a step kind that never reaches the app at all
+      (`http`, `generate`, `totp`, `email`, `push`) — the
       positive observation only a genuinely successful actuating/`wait`/`assert` step supplies; this same Unit also updates `ReadinessResult`'s own docstring
       (`protocols/readiness_result.py:15-16`, `:27`), which currently reads "Pure diagnosis: it never
       enters a verdict (prime directive 1)" — true of every consumer before this flag, which only ever
@@ -1457,7 +1462,11 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       `logcat` dump sequence each answering empty/no-match on the first read and a matching entry only
       on a later one within the bound, confirming `app_crash_signal()` and `app_crash_artifacts()`
       both poll rather than trust a single read, and the bound itself expiring on an entry that never
-      arrives; a `_step_runner.py` test asserting the
+      arrives; a stubbed startup-crash sequence — a `logcat`/exit-info entry timestamped between a
+      pre-`e.launch` marker and where a post-`e.launch` marker would have landed — confirming the
+      Android marker is stamped *before* `e.launch`, not after: this is the one case Unit 11's own
+      tap-triggered fixture cannot exercise on real hardware, so it needs its own coverage here or the
+      before/after decision ships untested on either lane; a `_step_runner.py` test asserting the
       in-band failure, the new `app_crashed`
       field, and the confirmed-crash latch holding across a nested `if`/`forEach` failure — and, on
       that same nested crash with a failing `after: on: error` step dispatched afterward, that
