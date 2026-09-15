@@ -405,10 +405,18 @@ every target declaring no `readyWhen` lands on `count` at every launch — this 
 with no `readyWhen`, each carrying a full scenario suite). Latching this flag for the rest of the
 scenario the unconditional way the `relaunch` flag does would therefore disable the item outright for
 that whole class of targets, not just protect their first step. `_finish_outcome` instead clears the flag
-the moment it sees *any* settled outcome with `outcome.ok is True` — a step that actually succeeded is
-exactly the missing positive observation the scenario's first step lacked, so the protection holds for a
-first failing step without silencing every later one on a target whose readiness rung just happens to be
-the weak one. Until that first success, `_finish_outcome` treats an unconfirmed launch the same way it
+the moment it sees a settled, *ordinary* outcome with `outcome.ok is True` — never an `if`/`forEach`
+wrapping outcome, whose own success proves nothing: `_run_if` takes the empty `else` branch and settles
+`ok=True` the instant its condition fails to match
+([`_functions.py:922-926`](../../bajutsu/common/orchestrator/loop/_functions.py)), `_run_for_each`
+settles the same way over zero matched elements, and neither raises when the app behind that query is
+dead — `driver.query()` still answers something (SpringBoard's own tree, on iOS) — so a target that
+never foregrounded and opens with exactly such a step would clear the flag *because* the app is dead, on
+the very target class the flag exists to protect. A genuine actuating step, or a `wait`/`assert` that
+matched, is the missing positive observation the scenario's first step lacked, so the protection holds
+for a first failing step without silencing every later one on a target whose readiness rung just happens
+to be the weak one — and without a no-op `if`/`forEach` masquerading as that same observation. Until
+that first success, `_finish_outcome` treats an unconfirmed launch the same way it
 treats a failed `relaunch` — skipping the probe — since a launch this item cannot yet confirm leaves the
 scenario in exactly the same "app state is not yet known" position a failed `relaunch` leaves it in for
 the rest of the scenario. `ReadinessResult` documents itself as "Pure diagnosis: it never enters a
@@ -716,8 +724,18 @@ unconfirmed probe costs, not the multi-second poll Android's signal actually tak
 
 `AndroidEnvironment`
 ([`bajutsu/common/platform_lifecycle/environments/android/android_environment.py`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py))
-gains the same `app_launched_at` tracking as the iOS environment, recorded at each of its three launch
-call sites (`e.launch(package, launch_env)`). It reads from the device's own clock at launch time
+gains the same `app_launched_at` tracking as the iOS environment, recorded immediately *before* each of
+its three launch
+call sites (`e.launch(package, launch_env)`), never after: `e.launch` is `am start -W`, whose `-W` flag
+waits for the launch to complete
+([`adb/_functions.py:634-637`](../../bajutsu/common/backend_cli/adb/_functions.py)), so a marker
+stamped once it returns is already stamped after a startup crash has happened — rejecting that crash's
+own `logcat -t` block and `exit-info` entry, both before the marker, the same "report exists but
+`bajutsu` did not find it" outcome `_spawn_cold`'s own reasoning above already avoids for iOS (a marker
+stamped too early can only widen the window `start()`'s own `force_stop`/`pm clear` already narrowed,
+never miss the crash it exists to catch). Unit 11's Android fixture — an uncaught exception on the main
+thread, reached through `preconditions.launchEnv` — is exactly the crash a marker stamped after
+`e.launch` would miss. It reads from the device's own clock at launch time
 rather than the host's, so a launch marker compared only against later device-clock reads never needs
 host/device clock reconciliation — `app_launched_at` itself is the epoch field of that read (`adb
 shell date +%s`), the value the tombstone mtime comparison below consumes directly, since it compares
@@ -1188,7 +1206,10 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       immediately rather than re-polling — safe with no explicit reset since
       `AndroidEnvironment.has_reusable_resident()` answers `False` unconditionally, so a fresh
       `AdbDriver` is built per lease on this backend (BE-0291's cross-lease reuse is XCUITest-only).
-- [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at` at each launch site, from **one**
+- [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at`, recorded immediately *before* each launch
+      site's `e.launch(...)` call, never after — `e.launch` is `am start -W`, which waits for the
+      launch to complete, so a marker stamped once it returns has already missed a startup crash — from
+      **one**
       combined `adb shell "date '+%s|%Y-%m-%d %H:%M:%S|%m-%d %H:%M:%S.000'"` read — the format quoted
       for the *device* shell, which would otherwise read the `|` as a pipe and word-split the rest —
       whose three
@@ -1270,8 +1291,11 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       app that never reached the foreground would otherwise read as a confirmed crash on that first
       probe, *without* the unconditional, rest-of-scenario suppression the deliberate-termination flag
       uses, which would silence every later probe for that whole class of targets: `_finish_outcome`
-      instead clears this flag the moment it sees any settled outcome with `outcome.ok is True`, the
-      positive observation a genuinely successful step supplies; this same Unit also updates `ReadinessResult`'s own docstring
+      instead clears this flag the moment it sees a settled, *ordinary* outcome with `outcome.ok is
+      True` — excluding `if`/`forEach`, whose own wrapping outcome settles `ok=True` on an empty
+      `else`/zero matched elements without the app behind the query ever answering, so a dead app's own
+      SpringBoard-only tree would otherwise clear the flag for the exact reason it should not — the
+      positive observation only a genuinely successful actuating/`wait`/`assert` step supplies; this same Unit also updates `ReadinessResult`'s own docstring
       (`protocols/readiness_result.py:15-16`, `:27`), which currently reads "Pure diagnosis: it never
       enters a verdict (prime directive 1)" — true of every consumer before this flag, which only ever
       displayed the value on a wait-timeout diagnostic — to name this new use before the invariant goes
