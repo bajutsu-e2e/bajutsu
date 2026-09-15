@@ -401,7 +401,7 @@ simpler, safer choice here too. `ReadinessResult` documents itself as "Pure diag
 verdict (prime directive 1)"
 ([`protocols/readiness_result.py:15-16`](../../bajutsu/common/platform_lifecycle/protocols/readiness_result.py),
 repeated on `signal` at `:27`) — true of every consumer before this one, which only ever displayed it on
-a wait-timeout diagnostic. This item makes it the first consumer that decides behaviour from it rather
+a wait-timeout diagnostic. This item makes it the first consumer that decides behavior from it rather
 than wording a message, so the same change that adds `Lease.readiness` also updates that docstring to
 name this new use, before the invariant goes stale. A `notRunning` answer anywhere else means the app
 that was running a moment ago is not running now, on a host with no other way for that to happen.
@@ -1022,7 +1022,8 @@ Both new scenarios are *expected* to fail. The CI wrapper around them asserts th
 new app-crash classification, and that `app-crash/` holds the expected file — the same way
 `fault-injection (xcuitest)` already asserts a diagnosed failure shape rather than a green run
 ([`docs/ci.md`](../../docs/ci.md#the-ios-lane)). They land as a non-gating per-PR signal in
-`ios-e2e.yml` / `android-e2e.yml`, next to `fault-injection (xcuitest)` and `network (adb)`. Newly
+`ios-e2e.yml` / `android-e2e.yml`, next to `actuation (xcuitest)` and `golden (adb)` — both deliberately
+excluded from their lanes' required aggregators. Newly
 wired on-device coverage earns its stability there first, before any promotion into the required `E2E`
 check — the same path every other new signal in those lanes has taken.
 
@@ -1428,5 +1429,6 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 - [`bajutsu/common/backends.py`](../../bajutsu/common/backends.py) — `make_driver`, whose existing
   `fetch_clock`/`act` keywords on the adb branch are the precedent this item's `package` keyword
   follows
-- [`docs/ci.md`](../../docs/ci.md#the-ios-lane) — `fault-injection (xcuitest)`, whose non-gating,
-  failure-shape-asserting placement this item's showcase scenarios follow
+- [`docs/ci.md`](../../docs/ci.md#the-ios-lane) — `actuation (xcuitest)` and `golden (adb)`, whose
+  non-gating placement this item's showcase scenarios follow; `fault-injection (xcuitest)`, whose
+  failure-shape-asserting behavior (not its own, now-required gating) this item's CI wrapper follows

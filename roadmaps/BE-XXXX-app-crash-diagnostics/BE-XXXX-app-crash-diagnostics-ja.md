@@ -1201,7 +1201,8 @@ iOS では `fatalError()` を、Android では main スレッドで未捕捉の�
 保持していることを検証します。`fault-injection (xcuitest)` がすでに、グリーンな実行ではなく
 診断済みの失敗の形を検証しているのと同じ方式です
 （[`docs/ci.md`](../../docs/ci.md#the-ios-lane)）。`ios-e2e.yml` / `android-e2e.yml` の中で、
-`fault-injection (xcuitest)` や `network (adb)` の隣に、ゲートしない PR ごとのシグナルとして
+`actuation (xcuitest)` や `golden (adb)`——どちらも両レーンの必須アグリゲータから意図的に
+除外されています——の隣に、ゲートしない PR ごとのシグナルとして
 配置します。オンデバイスで新しく配線されたカバレッジは、必須の `E2E` チェックへ昇格する前に、
 まずそこで安定性を得ます。両レーンの他のあらゆる新しいシグナルが辿ってきたのと同じ道です。
 
@@ -1660,5 +1661,7 @@ fake backend の実行が収集する内容は変わりません。
 - [`bajutsu/common/backends.py`](../../bajutsu/common/backends.py) — `make_driver`。adb 分岐が
   既存の `fetch_clock`・`act` キーワードを通している形が、本項目の `package` キーワードの
   先例になっています
-- [`docs/ci.md`](../../docs/ci.md#the-ios-lane) — `fault-injection (xcuitest)`。本項目の
-  showcase シナリオが従う、ゲートしない・失敗の形を検証するという配置
+- [`docs/ci.md`](../../docs/ci.md#the-ios-lane) — `actuation (xcuitest)` と `golden (adb)`。本項目の
+  showcase シナリオが従う、ゲートしないという配置。`fault-injection (xcuitest)` は、本項目の
+  CI ラッパーが従う失敗の形を検証するという振る舞いの方であり、その配置（今日ではすでに
+  必須アグリゲータの一部です）ではありません
