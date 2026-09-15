@@ -257,7 +257,12 @@ whose last step is the crash trigger stays green by this design's own constructi
 `_finish_outcome` calls `active_driver.app_crash_signal()` only when neither latch is set. A
 non-`None` answer raises `base.AppCrashedError(signal)` immediately and catches it in the same
 expression, folding its message into `outcome.reason` and setting both `outcome.app_crashed` and the
-confirmed-crash latch to `True` — never letting the exception itself propagate past this one point.
+confirmed-crash latch to `True`. In the same catch, when `self.cfg.capture_app_crash` is not `None`, it
+also calls that callable synchronously and stores the result on a new
+`outcome.app_crash_artifacts: tuple[tuple[str, bytes], ...]` field — capturing right here, at
+confirmation, rather than later once the scenario finishes, is what keeps a subsequent teardown step
+from moving the evidence out from under the sweep (see *iOS: matching the `.ips` report* and *Wiring
+the capture*). Never letting the exception itself propagate past this one point.
 `active_driver` is already whichever driver actuated this step, and a `web` block's inner steps and its
 own wrapping outcome answer differently: `_handle_web` runs `step.web.steps` on a `WebContextDriver` it
 constructs for the block (`self.exec_steps(step.web.steps, web_driver)`), so *those* inner steps'
@@ -439,10 +444,17 @@ A new `app_crash_artifacts() -> list[tuple[str, bytes]]` joins the `RunEnvironme
 next to `take_crash_snapshot()`, but plainer: `take_crash_snapshot()` returns a *thunk*, because a
 backend crash is captured where it is first observed and then deferred until the pool releases the
 lease, so a concurrent worker's next launch on the same warm environment cannot overwrite the frozen
-match criteria first. This item's capture has no such race to defer past — `pipeline.py` calls it
-directly (see *Wiring the capture*), still holding this same scenario's own lease, well before that
-lease is ever released — so `app_crash_artifacts()` reads `app_launched_at` live and returns the
-finished list directly, no thunk needed. `RunEnvironment` is a structural protocol no concrete class
+match criteria first. This item's capture has a narrower version of the same problem, from inside the
+*same* scenario rather than a concurrent one: a crash confirmed mid-scenario can still be followed by
+an `after` rule as ordinary as a teardown `relaunch`, which re-stamps `app_launched_at` through this
+same section's own `relauncher()` override before the scenario's `RunResult` is even assembled. Reading
+the marker live at any point *after* that — including `pipeline.py`'s own post-return scan, an earlier
+draft of this item's chosen call site — would sweep with a `since` the teardown already advanced past
+the crash. `app_crash_artifacts()` is therefore called synchronously inside `_finish_outcome`, the
+moment the crash is confirmed and strictly before any later step in the same scenario runs (see
+*Detecting the event*), and its result is carried on the `StepOutcome` rather than re-read later — no
+thunk, since nothing here is deferred past a point where the marker could move; the call itself simply
+moves earlier, to where the reactive check already is. `RunEnvironment` is a structural protocol no concrete class
 subclasses, so `take_crash_snapshot()` has no inherited default either: `WebEnvironment`,
 `AndroidEnvironment`, and `_DeviceEnvironment` (which `FakeEnvironment` inherits) each already declare
 their own one-line `return` for it. `app_crash_artifacts()` follows the same shape, minus Android:
@@ -603,21 +615,32 @@ running for the whole scenario stops and attaches the same way too. `AppCrashedE
 triggers on an escaping `BackendCrashError` — never sees it. The scenario fails once, the same way any
 other terminal step failure already does, with no special-casing needed to keep it from retrying.
 
-The evidence copy stays outside that in-band path, though, for the same reason BE-0421's own copy
-does: `_step_runner`'s sink
+The evidence *capture* stays in-band, inside `_finish_outcome` (see *Detecting the event*), but the
+evidence *copy* to disk stays outside it, for the same reason BE-0421's own copy does: `_step_runner`'s
+sink
 ([`bajutsu/common/orchestrator/loop/_loop_config.py`](../../bajutsu/common/orchestrator/loop/_loop_config.py))
 is an `EvidenceSink`, whose whole surface is `capture` / `wait_diagnostic` / the interval start/finish
 pair — no arbitrary named write — and it is scoped to the running scenario, not to the crash evidence
 that needs the run-scoped `RunArtifactWriter` and the `sid` `pipeline.py` already holds. `Lease`
 ([`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py)) gains
 `app_crash_artifacts: Callable[[], list[tuple[str, bytes]]]`, defaulted through a module-level no-op
-the same way `crash_artifacts` already is, and wired in `pool.py`'s `lease()` closure alongside it —
-reading the environment's method directly, with no snapshot-and-thunk indirection, since (unlike a
-backend crash) nothing tears this environment down or hands it to a new lease before this call.
+the same way `crash_artifacts` already is, and wired in `pool.py`'s `lease()` closure alongside it,
+reading the environment's method directly.
+
+That callable reaches the step loop the same way `relaunch` already does: `pipeline.py:898` passes
+`relaunch=lz.relaunch` into `run_scenario`, which threads it into `_LoopConfig.relaunch`; this item adds
+a matching `capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None` field, threaded from
+`lz.app_crash_artifacts` the same way. `_finish_outcome` calls it, not `pipeline.py` — an earlier draft
+of this item had `pipeline.py` call `lz.app_crash_artifacts()` itself, from a post-return scan once
+`run_scenario` had already returned, which reads `app_launched_at` live at a point the scenario's own
+`after` phase (which runs *inside* `run_scenario`, before it returns) has already had the chance to
+move past — see *iOS: matching the `.ips` report* for the teardown-`relaunch` failure this produces.
+Calling it inside `_finish_outcome` instead closes that: the sweep runs at the exact moment the crash
+is confirmed, strictly before any later step in the same scenario — teardown included — can touch the
+marker, and its result travels on the `StepOutcome` rather than being re-read later.
 
 `pipeline.py`'s `_run_on_lease` reads `result` for a crashed outcome right after `run_scenario`
-returns, still holding the same lease it leased, before its own `finally` ever releases it — closing
-the race an earlier draft of this item left open by reading artifacts after release. It scans
+returns, still holding the same lease it leased, before its own `finally` ever releases it. It scans
 `(*result.before_outcomes, *result.steps, *result.after_outcomes)` for `app_crashed` rather than
 reading `result.steps[-1]`: a nested crash settles its wrapping `if`/`forEach` outcomes *after* the
 crashed one (`_step_runner.py:220`, `:238`), so the crashed outcome is not always last, and
@@ -625,7 +648,8 @@ crashed one (`_step_runner.py:220`, `:238`), so the crashed outcome is not alway
 phase's own list (`_functions.py:851`), and it is `[]` outright when a `before` step fails
 (`_functions.py:732-740` skips the main steps in that case). When the scan finds one, a new
 `_write_app_crash_artifacts(lz, s, sid)` mirrors `_write_crash_artifacts` (BE-0421,
-`pipeline.py:803`) almost exactly: it calls `lz.app_crash_artifacts()`, writes each `(name, content)`
+`pipeline.py:803`) almost exactly: it reads the found outcome's own `app_crash_artifacts` — already
+captured at confirmation time, not re-swept here — writes each `(name, content)`
 pair through `writer.write_text(f"{sid}/app-crash/{name}", content.decode(errors="replace"))` — the
 redacting text path, not `write_bytes`, for the same reason BE-0421's own copy uses it: a crash report
 is text a crashing app can echo a secret into — and appends a trailer naming the directory to
@@ -783,7 +807,7 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 | Android: a rooted tombstone pull only, no `logcat` fallback | Rejected: a real device, a user build, or an emulator image that refuses `adb root` would then capture nothing at all. `logcat`'s crash buffer needs no elevated access and already carries a complete stack trace for the common managed-code case. |
 | A new scenario assertion (for example, `assert: appCrashed: false`) | Rejected: the event already ends the scenario through the step's own action/query failure. There is no later point in the scenario where an assertion could still run to check for it. The showcase's own test scenario instead asserts the failure's *shape* from outside the run, the way `fault-injection (xcuitest)` already does. |
 | Gate the capture behind an opt-in `capturePolicy` rule, matching `video` / `deviceLog` | Rejected for the reason BE-0421 gave for its own artifact: the capture runs once, only on a scenario already ending in failure. Its cost is one bounded sweep or log read, not a standing per-step overhead worth gating behind an explicit ask. |
-| Freeze the match criteria and defer the sweep with a `take_crash_snapshot()`-style thunk, the way BE-0421 defers a backend crash's own capture | Rejected: that indirection exists only to survive a concurrent worker reusing the same warm, pooled environment before the pool releases the lease. This event's own capture runs synchronously while `pipeline.py` still holds the very lease the crash happened on, well before any release or reuse — there is no such race to defer past. |
+| Freeze the match criteria and defer the sweep with a `take_crash_snapshot()`-style thunk, the way BE-0421 defers a backend crash's own capture | Rejected: BE-0421's thunk exists to survive a concurrent worker reusing the same warm, pooled environment before the pool releases the lease. This item's own race is narrower and same-scenario — a teardown `relaunch` in the same scenario's `after` phase can re-stamp `app_launched_at` before `run_scenario` returns — and closing it needs the opposite move: calling `app_crash_artifacts()` *earlier*, synchronously inside `_finish_outcome` at confirmation, not deferring it past a point the marker could already have moved. |
 
 ## Progress
 
@@ -847,14 +871,16 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       long-lived environment has no next lease to rebuild on; each layer independently wrapped so any
       failure resolves to `[]`.
 - [ ] Unit 6 — `RunEnvironment.app_crash_artifacts()` protocol shape (returning
-      `list[tuple[str, bytes]]`, read live with no snapshot-and-thunk indirection, since nothing
-      tears the environment down before this scenario's own lease releases); a one-line `return []`
+      `list[tuple[str, bytes]]`); a one-line `return []`
       on each of `WebEnvironment` and `_DeviceEnvironment` (inherited by `FakeEnvironment`), the same
       no-op shape `take_crash_snapshot()` already declares on all three, minus Android — Android has
       no counterpart no-op here, since `AndroidEnvironment` overrides `app_crash_artifacts()` with the
       real capture (Unit 5), not a no-op, the same way `XcuitestEnvironment` overrides it with its own
       real capture (Unit 3); `Lease.app_crash_artifacts` wired through `pool.py`'s `lease()` closure
-      alongside `crash_artifacts`.
+      alongside `crash_artifacts`, then threaded into `_LoopConfig.capture_app_crash` the same way
+      `Lease.relaunch` already threads into `relaunch` (`pipeline.py:898`) — called from inside the
+      step loop, not from `pipeline.py`, so the sweep runs before a same-scenario teardown step can
+      move `app_launched_at` (see Unit 7 and *iOS: matching the `.ips` report*).
 - [ ] Unit 7 — `run_scenario` / `_step_runner.py`: the new `_finish_outcome` helper, called at all
       five `self.state.outcomes.append(outcome)` call sites — `_handle_if` / `_handle_for_each` /
       `_handle_web` once each, `_handle_action` twice (its own end and its
@@ -872,15 +898,20 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       relaunch and confirmed-crash cases specifically, not for an ordinary failure, which still pays
       one probe per settling outcome; raising and catching `AppCrashedError` in that one place to fold
       its message into `outcome.reason` and set the new `StepOutcome.app_crashed` field and the
-      confirmed-crash latch; a fast-suite assertion that no `self.state.outcomes.append` survives
+      confirmed-crash latch; in the same catch, when `self.cfg.capture_app_crash` is set, calling it
+      synchronously and storing the result on a new `StepOutcome.app_crash_artifacts` field — at
+      confirmation time, not later, so a subsequent teardown step in the same scenario cannot move
+      `app_launched_at` out from under the sweep; a fast-suite assertion that no `self.state.outcomes.append` survives
       outside `_finish_outcome`.
 - [ ] Unit 8 — `pipeline.py`: `_run_on_lease` scanning
       `(*result.before_outcomes, *result.steps, *result.after_outcomes)` for an `app_crashed`
       outcome right after `run_scenario` returns, still holding the same lease, before its own
       `finally` releases it; the new `_write_app_crash_artifacts(lz, s, sid)` mirroring
       `_write_crash_artifacts` (BE-0421,
-      `pipeline.py:803`), writing each artifact through the redacting `writer.write_text` path under
-      `{sid}/app-crash/` and appending a directory-naming trailer to `result.failure`.
+      `pipeline.py:803`), reading the found outcome's own `app_crash_artifacts` (captured at
+      confirmation time by Unit 7, not re-swept here) and writing each through the redacting
+      `writer.write_text` path under
+      `{sid}/app-crash/`, appending a directory-naming trailer to `result.failure`.
 - [ ] Unit 9 — `TracingDriver`: add `base.AppCrashSignal` to `_PROTOCOLS` so `--trace-driver` installs
       it as a real attribute only on a wrapped driver that implements it.
 - [ ] Unit 10 — `crawl`'s own integration: `_build_lane`'s per-lane `app_crash_artifacts`, threaded
@@ -911,7 +942,12 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       false positive on a missing selector), on a `wait`/`assert` failure, and on `deviceType: device`
       regardless of `app.state`, for both backends; an `AdbDriver` built with `package=None` or an
       unset `launched_at` answering `None` immediately, never reaching `pidof` or `exit-info`, so it
-      cannot confirm another process's crash as this app's; `XcuitestEnvironment.app_launched_at` advancing
+      cannot confirm another process's crash as this app's; a scenario whose crashed step is followed
+      by an `after: on: fail` `relaunch` still attaching the confirmed crash's own `.ips`/`logcat`
+      report — not the empty result a live re-read after the teardown's own `relauncher()` re-stamp
+      would produce — pinning that `app_crash_artifacts()` is captured once, at confirmation inside
+      `_finish_outcome`, and carried on the outcome rather than re-swept from `pipeline.py`;
+      `XcuitestEnvironment.app_launched_at` advancing
       past a `relaunch` step's own launch, past a `crawl`-driven `crawl_reset()`'s own launch, and past
       a `_resume_warm` cross-lease reuse's own launch, and the `.ips` sweep after each finding only the
       report from that most recent launch, never an earlier scenario's or crash's; a crawl-lane

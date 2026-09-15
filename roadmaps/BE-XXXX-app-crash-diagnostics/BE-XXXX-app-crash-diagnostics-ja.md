@@ -289,7 +289,13 @@ outcome は、`app_crash_signal()` をもう一度呼ぶことなく、そのす
 `_finish_outcome` が `active_driver.app_crash_signal()` を呼ぶのは、どちらのラッチも
 立っていないときだけです。`None` でない答えは、その場で `base.AppCrashedError(signal)`
 を送出し、同じ式の中で捕まえ、そのメッセージを `outcome.reason` へ折り込み、
-`outcome.app_crashed` と確定済みクラッシュのラッチの両方を `True` にします。この1点
+`outcome.app_crashed` と確定済みクラッシュのラッチの両方を `True` にします。同じ
+catch の中で、`self.cfg.capture_app_crash` が設定されていれば、その呼び出し可能
+オブジェクトもその場で同期的に呼び、結果を新しい
+`outcome.app_crash_artifacts: tuple[tuple[str, bytes], ...]` フィールドに保存します。
+シナリオが終わったあとではなく、まさにこの確認の瞬間に収集することが、あとに続く
+あとかたづけステップが証跡を足元からすり替えてしまうのを防ぎます（「iOS：`.ips`
+レポートの照合」と「収集をつなぐ」を参照）。この1点
 より先へ伝播することはありません。`active_driver` は、そのステップを実際に操作した
 ドライバです。`web` ブロックの内側のステップと、そのブロック自身を包む outcome とでは
 答えが異なります。`_handle_web` はそのブロック用に組み立てた `WebContextDriver` の上で
@@ -519,11 +525,19 @@ X 上でシナリオ1がコールド起動し（目印 = T0）、そのアプリ
 `take_crash_snapshot()` が返すのは*サンク*です。バックエンドクラッシュは最初に観測された
 時点で捕捉し、プールがリースを解放するまで確定を遅らせます。そうしなければ、同じ温まった
 環境を再利用する別のワーカーの次の起動が、凍結したはずの照合条件を先に上書きしてしまいます。
-本項目の収集には、そうして遅らせるべき競合がありません。`pipeline.py` がこれを直接呼び出す
-時点で（後述の「収集をつなぐ」を参照）、この同じシナリオ自身のリースをまだ保持しており、
-そのリースが解放されるよりずっと前だからです。したがって `app_crash_artifacts()` は
-`app_launched_at` をその場で生きたまま読み、完成したリストをそのまま返します。サンクは
-要りません。`RunEnvironment` は、どの具象クラスも継承しない構造的プロトコルであるため、
+本項目の収集には、これよりも狭い、同じ形の問題があります。並行するワーカーからではなく、
+*同じ*シナリオの内側からやってきます。シナリオの途中で確定したクラッシュのあとに、
+あとかたづけの `relaunch` のようなふつうの `after` 規則が続くことがあり、それは
+まさにこの節自身の `relauncher()` オーバーライドを通じて、シナリオの `RunResult` が
+組み立てられるよりも前に `app_launched_at` を記録し直してしまいます。そのあと——
+`pipeline.py` 自身の戻ったあとの走査、本項目の初期の草案が選んでいた呼び出し箇所を
+含みます——のどの時点で目印を生きたまま読んでも、あとかたづけがすでにクラッシュより
+先へ進めてしまった `since` で掃引することになります。そこで `app_crash_artifacts()` は
+`_finish_outcome` の内側で、クラッシュが確定したその瞬間、同じシナリオの後続のどの
+ステップよりも確実に前に、同期的に呼び出します（「検知の方式」を参照）。その結果は
+`StepOutcome` に載せて運び、あとで読み直すことはありません。サンクは要りません。何かを
+目印が動きうる時点より先へ遅らせているわけではなく、呼び出しそのものを、事後確認が
+すでにある場所へ早めているだけだからです。`RunEnvironment` は、どの具象クラスも継承しない構造的プロトコルであるため、
 `take_crash_snapshot()` にも継承された既定値はありません。`WebEnvironment`・
 `AndroidEnvironment`・`_DeviceEnvironment`（`FakeEnvironment` がこれを継承します）は、
 すでにそれぞれ自前の1行の `return` を宣言しています。`app_crash_artifacts()` も同じ形を
@@ -712,8 +726,9 @@ OS による強制終了はありませんが、ふつうのプロセス終了�
 シナリオは、他のあらゆる終端ステップ失敗と同じように、リトライを止めるための特別扱いを
 何も要らずに一度だけ失敗します。
 
-ただし、証跡のコピーはその経路の内側にとどめません。BE-0421 自身のコピーが経路の外に
-あるのと同じ理由からです。`_step_runner` のシンク
+証跡の*収集*は経路の内側にとどまります（`_finish_outcome` の中、「検知の方式」を参照）。
+ただし、証跡のディスクへの*コピー*はその経路の外に置きます。BE-0421 自身のコピーが経路の
+外にあるのと同じ理由からです。`_step_runner` のシンク
 （[`bajutsu/common/orchestrator/loop/_loop_config.py`](../../bajutsu/common/orchestrator/loop/_loop_config.py)）
 は `EvidenceSink` であり、その表面全体は `capture` / `wait_diagnostic` / インターバルの
 開始・終了の組だけです。任意の名前での書き込みを持ちません。しかも実行中のシナリオに
@@ -722,9 +737,22 @@ OS による強制終了はありませんが、ふつうのプロセス終了�
 （[`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py)）に
 `app_crash_artifacts: Callable[[], list[tuple[str, bytes]]]` を加え、`crash_artifacts`
 がすでにそうしているのと同じように、モジュールレベルの no-op を既定値にして `pool.py`
-の `lease()` クロージャでその隣に配線します。環境のメソッドを直接読み、スナップショットと
-サンクによる間接参照を挟みません。バックエンドクラッシュと違い、この呼び出しより前に、
-この環境が解体されたり別のリースへ渡されたりすることがないからです。
+の `lease()` クロージャでその隣に配線し、環境のメソッドを直接読みます。
+
+その呼び出し可能オブジェクトがステップループへ届く経路は、`relaunch` がすでに使っている
+のと同じです。`pipeline.py:898` は `relaunch=lz.relaunch` を `run_scenario` へ渡し、
+それが `_LoopConfig.relaunch` へ通ります。本項目はこれと対になる
+`capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None` フィールドを加え、
+`lz.app_crash_artifacts` から同じ方法で通します。これを呼ぶのは `_finish_outcome` で
+あり、`pipeline.py` ではありません。本項目の初期の草案では `pipeline.py` が
+`lz.app_crash_artifacts()` を、`run_scenario` がすでに戻ったあとの走査から自身で
+呼んでいました。それは、シナリオ自身の `after` フェーズ（`run_scenario` の内側で、
+戻る前に走ります）がすでに目印を動かしてしまえる時点で `app_launched_at` を生きたまま
+読むことになります——あとかたづけの `relaunch` がこれをどう壊すかは「iOS：`.ips`
+レポートの照合」を参照してください。代わりに `_finish_outcome` の内側で呼べば、これを
+閉じます。掃引はクラッシュが確定したまさにその瞬間に走り、同じシナリオの後続のどの
+ステップ——あとかたづけを含みます——よりも確実に前に終わり、その結果は `StepOutcome`
+に載って運ばれ、あとで読み直されることはありません。
 
 `pipeline.py` の `_run_on_lease` は、`run_scenario` が返った直後、自身の `finally` が
 リースを解放するよりも前、まだそのリースを保持したまま
@@ -735,11 +763,11 @@ OS による強制終了はありませんが、ふつうのプロセス終了�
 とは限りません。また `result.steps` だけでは `before` と `after` の両フェーズを
 まるごと見落とします。`RunResult.steps` は本体フェーズ自身のリストにすぎず
 （`_functions.py:851`）、`before` のステップが失敗すると本体ステップの実行自体が
-スキップされるため（`_functions.py:732-740`）、`[]` のままになります。本項目の初期の
-草案が、解放後に証跡を読むことで残していた競合は、これで閉じます。走査が見つけた
+スキップされるため（`_functions.py:732-740`）、`[]` のままになります。走査が見つけた
 とき、新しい `_write_app_crash_artifacts(lz, s, sid)` が
-`_write_crash_artifacts`（BE-0421、`pipeline.py:803`）をほぼそのまま真似ます。
-`lz.app_crash_artifacts()` を呼び、返ってきた `(name, content)` の組をそれぞれ
+`_write_crash_artifacts`（BE-0421、`pipeline.py:803`）をほぼそのまま真似ます。見つけた
+outcome 自身の `app_crash_artifacts`——確認の時点ですでに収集済みで、ここで再び掃引する
+のではありません——を読み、返ってきた `(name, content)` の組をそれぞれ
 `writer.write_text(f"{sid}/app-crash/{name}", content.decode(errors="replace"))` という、
 マスキングを行うテキスト側の経路で書き込みます。`write_bytes` ではありません。BE-0421
 自身のコピーがそちらを使う理由と同じです。クラッシュレポートはテキストであり、
@@ -929,7 +957,7 @@ fake backend の実行が収集する内容は変わりません。
 | Android で root 権限に依存する tombstone 取得だけを使い、`logcat` へのフォールバックを持たない | tombstone の取得だけに頼り、`logcat` の抽出は実装しない | 却下しました。実機、user ビルド、`adb root` を拒むエミュレータイメージでは、何も取得できなくなってしまうためです。`logcat` のクラッシュバッファは昇格した権限を必要とせず、よくあるマネージドコードのクラッシュについてすでに完全なスタックトレースを運びます。 |
 | 新しいシナリオアサーション（例：`assert: appCrashed: false`）を追加する | シナリオ作者が明示的に「アプリがクラッシュしていないこと」を検証できるようにする | 却下しました。この事象は、ステップ自身のアクションかクエリの失敗によって、すでにシナリオを終わらせているためです。それを確認するアサーションが後から走れる時点は、シナリオの中に残っていません。showcase 自身のテスト用シナリオは、代わりに、失敗の*形*を run の外側から検証します。`fault-injection (xcuitest)` がすでに採っている方式と同じです。 |
 | `video`・`deviceLog` と同様、`capturePolicy` の opt-in ルールの背後に収集を隠す | 明示的な指定がない限り収集を行わない | 却下しました。BE-0421 が自身の証跡について挙げた理由と同じです。この収集は、すでに失敗が確定したシナリオに対して一度だけ走ります。コストは、範囲の定まった掃引かログの読み取り1回であり、明示的な要求の背後へ隠すべき定常的なステップごとの負荷ではありません。 |
-| BE-0421 がバックエンドクラッシュ自身の収集を遅らせているのと同じ形で、照合条件を凍結し `take_crash_snapshot()` 風のサンクで掃引を遅延させる | 収集をその場で実行せず、リース解放のタイミングまで遅らせる | 却下しました。その間接参照が存在するのは、プールがリースを解放するより前に、同じ温まったプールされた環境を別のワーカーが再利用してしまう事態を切り抜けるためだけです。本項目自身の収集は、クラッシュの起きたまさにそのリースを `pipeline.py` がまだ保持したまま同期的に走ります。解放や再利用よりずっと前であり、遅らせるべき競合がそもそもありません。 |
+| BE-0421 がバックエンドクラッシュ自身の収集を遅らせているのと同じ形で、照合条件を凍結し `take_crash_snapshot()` 風のサンクで掃引を遅延させる | 収集をその場で実行せず、リース解放のタイミングまで遅らせる | 却下しました。BE-0421 のサンクが存在するのは、プールがリースを解放するより前に、同じ温まったプールされた環境を別のワーカーが再利用してしまう事態を切り抜けるためです。本項目自身の競合はこれより狭く、同じシナリオの内側で起きます。`after` フェーズのあとかたづけ `relaunch` が、`run_scenario` の戻る前に `app_launched_at` を記録し直してしまいかねません。これを閉じるには逆向きの手当てが要ります。`app_crash_artifacts()` を確認の時点で `_finish_outcome` の内側から同期的に、より*早く*呼ぶことであり、目印がすでに動きうる時点より先へ遅らせることではありません。 |
 
 ## 進捗
 
@@ -998,14 +1026,17 @@ fake backend の実行が収集する内容は変わりません。
       コンストラクタ時フラグによってです。クロールのレーンは組み立て直す次のリースを
       持たないからです。それぞれ独立して失敗を `[]` へ解決するよう包みます。
 - [ ] Unit 6 — `RunEnvironment.app_crash_artifacts()` のプロトコルの形（`list[tuple[str,
-      bytes]]` を返し、この環境の解放前にスナップショットとサンクによる間接参照なしでその場
-      で読みます）。`WebEnvironment` と `_DeviceEnvironment`(`FakeEnvironment` が継承)に加える
+      bytes]]` を返します）。`WebEnvironment` と `_DeviceEnvironment`(`FakeEnvironment` が継承)に加える
       1行の `return []`。`take_crash_snapshot()` がこの3クラスすべてにすでに持つ no-op 宣言と
       同じ形ですが、Android だけは対応する no-op を持ちません。`AndroidEnvironment` は
       `app_crash_artifacts()` を本物の収集(Unit 5)でオーバーライドしており no-op ではないから
       です。`XcuitestEnvironment` が自前の本物の収集(Unit 3)でオーバーライドするのと同じ
       理由です。`pool.py` の `lease()` クロージャを通した、`crash_artifacts` の隣への
-      `Lease.app_crash_artifacts` の配線。
+      `Lease.app_crash_artifacts` の配線、そして `Lease.relaunch` がすでに `relaunch`
+      へ通っているのと同じ方法での `_LoopConfig.capture_app_crash` への配線——`pipeline.py`
+      からではなくステップループの内側から呼ぶことで、同じシナリオのあとかたづけが
+      `app_launched_at` を動かすより前に掃引を終わらせます（Unit 7、「iOS：`.ips` レポートの
+      照合」を参照）。
 - [ ] Unit 7 — `run_scenario` / `_step_runner.py`：新しい `_finish_outcome` ヘルパーを、
       `self.state.outcomes.append(outcome)` の5つの呼び出し箇所すべて（`_handle_if` /
       `_handle_for_each` / `_handle_web` はそれぞれ1回、`_handle_action` は自身の終端と
@@ -1026,13 +1057,19 @@ fake backend の実行が収集する内容は変わりません。
       限って抑えるものであり、クラッシュを伴わないふつうの失敗は確定する outcome ごとに
       1回の確認を払い続けます。その1点で `AppCrashedError` を送出し捕まえ、そのメッセージを
       `outcome.reason` へ折り込み、新しい `StepOutcome.app_crashed` フィールドと確定済み
-      クラッシュのラッチを立てます。`_finish_outcome` の外に `self.state.outcomes.append`
+      クラッシュのラッチを立てます。同じ catch の中で、`self.cfg.capture_app_crash` が
+      設定されていれば同期的に呼び、結果を新しい `StepOutcome.app_crash_artifacts`
+      フィールドに保存します——あとではなく確認のその瞬間にです。同じシナリオの
+      あとかたづけステップが `app_launched_at` を掃引の足元から動かせないようにする
+      ためです。`_finish_outcome` の外に `self.state.outcomes.append`
       が残っていないことを検証する高速スイートのテストを加えます。
 - [ ] Unit 8 — `pipeline.py`：`_run_on_lease` が `run_scenario` の直後、まだ同じリースを
       保持したまま `(*result.before_outcomes, *result.steps, *result.after_outcomes)` を
       `app_crashed` で走査します（`result.steps[-1]` ではない）。`_write_crash_artifacts`
       （BE-0421、`pipeline.py:803`）を真似た新しい `_write_app_crash_artifacts(lz, s, sid)`
-      が、各証跡をマスキングを行う `writer.write_text` の経路で書き込み、ディレクトリを
+      が、見つけた outcome 自身の `app_crash_artifacts`（Unit 7 が確認の時点ですでに収集
+      済みで、ここで再び掃引するのではありません）を読み、各証跡をマスキングを行う
+      `writer.write_text` の経路で書き込み、ディレクトリを
       名指しする一節を `result.failure` へ追記します。
 - [ ] Unit 9 — `TracingDriver`：`base.AppCrashSignal` を `_PROTOCOLS` へ加え、
       `--trace-driver` がそれを実装したドライバに対してだけ実属性として設置するようにします。
@@ -1068,6 +1105,12 @@ fake backend の実行が収集する内容は変わりません。
       `app_crash_signal()` が `None` を返すこと（誤検知しないこと）。`package=None` または
       未設定の `launched_at` で組み立てた `AdbDriver` が即座に `None` を返し、`pidof` にも
       `exit-info` にもまったく届かないこと（別のプロセスのクラッシュを確定させない）。
+      クラッシュしたステップのあとに `after: on: fail` の `relaunch` が続くシナリオでも、
+      確定したクラッシュ自身の `.ips`/`logcat` レポートがそのまま添付されること——あと
+      かたづけ自身の `relauncher()` の再記録のあとに生きたまま読み直せば得られたはずの
+      空の結果ではないことです。`app_crash_artifacts()` が `_finish_outcome` の内側、
+      確認の時点で一度だけ収集され、`pipeline.py` から再び掃引されるのではなく outcome
+      に載って運ばれることを固定します。
       `relaunch` ステップ
       自身の起動を過ぎて、`crawl` が駆動する `crawl_reset()` 自身の起動を過ぎて、また
       `_resume_warm` のクロスリース再利用自身の起動を過ぎても
