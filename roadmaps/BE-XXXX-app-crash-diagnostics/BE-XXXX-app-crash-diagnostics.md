@@ -174,7 +174,7 @@ install and launch calls already use.
 
 `AndroidEnvironment`
 ([`bajutsu/common/platform_lifecycle/environments/android/android_environment.py`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py))
-implements `app_crash_artifacts()` in two layers, matching this item's own wall-through decision to
+implements `app_crash_artifacts()` in two layers, matching this item's own scoping decision to
 capture both:
 
 1. **`logcat`'s `crash` buffer**, always attempted, needing no elevated access. `adb logcat -b crash
