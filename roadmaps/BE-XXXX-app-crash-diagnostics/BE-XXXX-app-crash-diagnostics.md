@@ -206,20 +206,19 @@ mirroring `/systemAlert/query`'s shape (BE-0316): a request body, a JSON reply c
 generated `APIHandler`
 ([`BajutsuKit/Sources/BajutsuRunner/APIHandler.swift`](../../BajutsuKit/Sources/BajutsuRunner/APIHandler.swift))
 gains the matching method. Its provider implementation asks the runner's own `XCUIApplication` for
-`.state` and `.processIdentifier`. `RunnerServer.swift`, not `Router.swift`, is what actually serves a
-request today: it constructs an `APIHandler` and registers its generated routes. `Router.swift` is
-kept only for parity tests and answers nothing in a real run. A route added only to `Router.swift`, as
-an earlier draft of this item specified, would leave `XcuitestDriver`'s request 404ing against the
-real server.
+`.state`. `RunnerServer.swift`, not `Router.swift`, is what actually serves a request today: it
+constructs an `APIHandler` and registers its generated routes. `Router.swift` is kept only for parity
+tests and answers nothing in a real run. A route added only to `Router.swift`, as an earlier draft of
+this item specified, would leave `XcuitestDriver`'s request 404ing against the real server.
 
 `XcuitestDriver`
 ([`bajutsu/common/drivers/xcuitest/xcuitest_driver.py`](../../bajutsu/common/drivers/xcuitest/xcuitest_driver.py))
 implements `app_crash_signal()` by calling that route once. A `notRunning` answer becomes the signal
-string, carrying the process ID the same reply reports. Every other state answers `None`. A channel
-error reaching this call is not swallowed into `None`: it is the existing `XcuitestRunnerCrashError`,
-a `BackendCrashError`, and this item leaves it to propagate unchanged, straight into the recovery path
-that already owns it. A route failing right after the step's own selector failure is ordinary
-contention, not evidence the channel is unrelated to this step.
+string. Every other state answers `None`. A channel error reaching this call is not swallowed into
+`None`: it is the existing `XcuitestRunnerCrashError`, a `BackendCrashError`, and this item leaves it
+to propagate unchanged, straight into the recovery path that already owns it. A route failing right
+after the step's own selector failure is ordinary contention, not evidence the channel is unrelated to
+this step.
 
 ### iOS: matching the `.ips` report, adapting BE-0421's own technique
 
@@ -228,34 +227,39 @@ is, like this item, still a proposal (`Status: Proposal`), not yet landed. It wo
 the right `.ips` file among everything macOS wrote to `~/Library/Logs/DiagnosticReports` for the
 runner's own `xcodebuild` process. The match is by name and time, narrowed by PID when the report's
 own header parses. Its lookup is deferred, because `ReportCrash` writes and symbolicates the file
-asynchronously, after the faulting process is already gone. This item adopts the same three-part
-match — name, PID, time — for the app under test's own binary in place of `xcodebuild`, rather than
-assuming BE-0421's methods already exist to call. Whichever of the two items lands first should give
-the other a shared `RunEnvironment` method to call, instead of a second, independent sweep.
+asynchronously, after the faulting process is already gone. This item adopts the same name-and-time
+match for the app under test's own binary in place of `xcodebuild`, rather than assuming BE-0421's
+methods already exist to call. Whichever of the two items lands first should give the other a shared
+`RunEnvironment` method to call, instead of a second, independent sweep.
+
+Narrowing by PID is not available here the way it is for BE-0421's own report: XCTest's public
+`XCUIApplication` surface has no PID accessor, and nothing in `BajutsuKit/` reads one today. This
+item narrows by the Simulator's UDID instead. A Simulator app's `.ips` report carries the executable's
+full install path in its header (`.../CoreSimulator/Devices/<udid>/data/Containers/Bundle/Application/…`),
+which names the specific Simulator the crashed process ran on. `Lease`
+([`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py)) already records the leased
+device's own `udid`, so the sweep accepts a report only when its path names that same `udid` —
+disambiguating two Simulators running the identical target binary in the same window, the case a CI
+host running two lanes in parallel (`--workers 2`) can produce, without needing a PID at all.
 
 `XcuitestEnvironment`
 ([`bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py))
-already launches, and relaunches, the target app. It gains an `app_launched_at` timestamp and an
-`app_launched_pid` — `XCUIApplication.processIdentifier`, read at launch, the same call the new
-runner route above reads reactively — recorded next to each launch. The name-plus-time match alone is
-not enough to tell one Simulator's crash report from another's. `DiagnosticReports` is a single
-directory shared by every Simulator running on the same Mac. A CI host running two lanes in parallel
-(`--workers 2`) can have two Simulators running the identical target binary in the same window. The
-PID recorded at launch narrows the match to the one process that actually crashed — the same
-disambiguation BE-0421 already uses for the runner's own report.
+already launches, and relaunches, the target app; it also already knows its own `udid`. It gains an
+`app_launched_at` timestamp, recorded next to each launch.
 
 A new `app_crash_artifacts(signal: str) -> list[tuple[str, str]]` joins the `RunEnvironment` protocol
 ([`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py)).
 It defaults to `[]`, the same way `request_device_replacement()` (BE-0354) already establishes a
 no-op default for a method most environments do not need. It runs synchronously, inside the reactive
 check in `_step_runner.py` described above, while the lease that owns this environment is still
-checked out — well before `pipeline.py` ever releases it. The match criteria it reads
-(`app_launched_at`, `app_launched_pid`) are therefore read live, and cannot be overwritten by another
-worker's later launch on a reused environment.
+checked out — well before `pipeline.py` ever releases it. The match criterion it reads
+(`app_launched_at`) is therefore read live, and cannot be overwritten by another worker's later launch
+on a reused environment.
 
 `ReportCrash` may not have finished writing the report the instant the app dies. The sweep polls
 `~/Library/Logs/DiagnosticReports` for up to a few seconds for a report matching the target's
-executable name and PID, modified at or after `app_launched_at`. That poll is a short, bounded wait
+executable name and this environment's own `udid`, modified at or after `app_launched_at`. That poll
+is a short, bounded wait
 inside this one method, not a retry of the scenario: the scenario still fails once, immediately,
 regardless of whether the sweep finds anything. The sweep, and everything it does, stays wrapped in
 one `try`/`except Exception` for its whole body, not only its final write. A failure in the directory
@@ -282,14 +286,21 @@ An empty `pidof` answer, where the app should still hold a process, is necessary
 It also matches a launch that never completed, or a termination this item has no scenario-level cause
 for: Android has no jetsam-style OS kill under normal test conditions, but an ordinary process exit
 answers `pidof` identically to a crash. `adb shell dumpsys activity exit-info <package>` reports the
-platform's own `ApplicationExitInfo` reason for the process's most recent exit, distinguishing `CRASH`
-or `CRASH_NATIVE` from `ANR`, `LOW_MEMORY`, or `USER_REQUESTED`. It is available from API 30 onward, so
-it is available on the API 34 AVD this repository's CI already boots. `app_crash_signal()` reads it
-once, right after `pidof` answers empty, and confirms the event only on `CRASH`/`CRASH_NATIVE`. It
-answers `None` on any other reason — the same "cannot confirm" answer a backend with no signal at all
-gives. This is the corroboration `app.state`'s `notRunning` gets for free from the Simulator's own
-constraints above; Android's own platform-reported exit reason gives adb the equivalent positive
-confirmation.
+platform's own `ApplicationExitInfo` history for the package, each entry timestamped, distinguishing a
+`CRASH` or `CRASH_NATIVE` reason from `ANR`, `LOW_MEMORY`, or `USER_REQUESTED`. It is available from
+API 30 onward, so it is available on the API 34 AVD this repository's CI already boots. The history
+persists across process lifetimes, though, so its most recent entry alone is not reliable: an earlier
+scenario's crash on the same package can still be the newest entry `dumpsys` reports if the current
+one exited for an unrelated reason with no `ApplicationExitInfo` recorded yet. `AdbDriver` gains a
+`launched_at: Callable[[], float | None] | None = None` constructor argument, an injected callable
+reading `AndroidEnvironment.app_launched_at` live, the same seam `fetch_clock` already uses for a
+per-call read rather than a value frozen at construction. `app_crash_signal()` reads the exit-info
+history once, right after `pidof` answers empty, and confirms the event only when its *newest* entry
+reports `CRASH`/`CRASH_NATIVE` *and* that entry's own timestamp is at or after `launched_at()` — ruling
+out a stale entry from before this launch. Either condition failing answers `None`, the same "cannot
+confirm" answer a backend with no signal at all gives. This is the corroboration `app.state`'s
+`notRunning` gets for free from the Simulator's own constraints above; Android's own platform-reported,
+time-bound exit reason gives adb the equivalent positive confirmation.
 
 `AndroidEnvironment`
 ([`bajutsu/common/platform_lifecycle/environments/android/android_environment.py`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py))
@@ -351,32 +362,49 @@ other terminal step failure already does, with no special-casing needed to keep 
 
 ### Extending `crawl`'s own crash recording
 
-`bajutsu/crawl/core/_coordinator.py`'s `record_crash` already appends a `Crash` when `is_app_alive`
-reports a collapse, while holding the coordinator's own lock, and calls the crawl's `on_event`
-callback before releasing that lock. `crawl()`
-([`bajutsu/crawl/core/_functions.py`](../../bajutsu/crawl/core/_functions.py)) itself holds no
-environment or artifact writer. It takes only injected callables — `driver`, `reset`, `is_alive`,
-`recover`, `on_event`, and the rest — which is what keeps the crawl core off `platform_lifecycle` and
-lets the same loop drive every backend. Reaching into it for an environment reference, as an earlier
-draft of this item proposed, would give every backend and every fake in the fast test suite one to
-grow.
+`crawl()` ([`bajutsu/crawl/core/_functions.py`](../../bajutsu/crawl/core/_functions.py)) itself holds
+no environment. It takes only injected callables — `driver`, `reset`, `is_alive`, `recover`,
+`on_event`, and the rest — which is what keeps the crawl core off `platform_lifecycle` and lets the
+same loop drive every backend. Reaching into it for an environment reference, as an earlier draft of
+this item proposed, would give every backend and every fake in the fast test suite one to grow — and
+`is_alive` gives no signal to key that reference off in the first place: both `ios.py` and
+`android_environment.py` answer `crawl_aliveness()` with `None`, "the engine reads the accessibility
+tree for device crash detection" (their own comment), so `crawl()` runs with no `is_alive` callback at
+all on either backend this item covers. There is a single `CrawlEnvironment` in scope in
+[`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py) (`plan.environment`), but it is built with an
+empty `udid` (`environment_for(actuator, "")`) purely to wire the health seams above — not the device
+the crash actually happened on. A crawl runs one environment per lane instead, built in `_build_lane`
+alongside that lane's own `driver`/`reset`, one per `--udid` (BE-0064): reaching for `plan.environment`
+from a multi-lane crawl would capture the wrong device's diagnostics, or none.
 
-The capture instead reaches `crawl` through `on_event`, already wired by
-[`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py), where the environment and the run's artifact
-writer both already live. `on_event` fires synchronously, still inside `record_crash`'s own lock,
-right after the new `Crash` is appended. `len(screen_map.crashes)` at that moment is therefore a
-stable, race-free index for the crash that just happened, even under `crawl`'s own multi-worker
-`extra_workers`: no two `record_crash` calls can be inside that lock at once. The CLI's existing
-`on_event` function reads that index and, on a newly seen crash, calls
-`environment.app_crash_artifacts(signal)` — a signal string it derives itself, from whatever
-`is_alive` reported, since `is_alive`'s own return is a bare `bool` — reusing the identical capture
-this item adds for `run`, not a second implementation. The result is written under
-`crashes/crash-NNN/app-crash/`, `NNN` the same zero-padded, one-based index
-`bajutsu/crawl/repro.py` already uses for that crash's own `crashes/crash-NNN.yaml` repro. That path
-is a sibling of the repro file, not a same-named top-level directory, so the two are found together
-and sort together. A crawl's own detection stays the UI-tree heuristic it already uses: `crawl` has no
-scenario step to hang a reactive check off, unlike `run`. The capture is shared between the two entry
-points; the detection is not.
+The capture is therefore threaded the same way `driver` and `reset` already are: `_build_lane` gains
+a third return value, that lane's own `env.app_crash_artifacts`, carried alongside its driver and
+reset through `WorkerFactory` (`bajutsu/crawl/core/_functions.py`) for every extra lane and through
+`crawl()`'s own primary-lane parameters for the first one. `record_crash`'s call site
+(`bajutsu/crawl/core/_functions.py:667`) already computes the crash signal off the coordinator's lock
+— "pure deterministic reads, off-lock", its own comment says — right before calling
+`coord.record_crash(path)`. This item's capture call joins it there, in the same off-lock window, on
+that worker's own lane-scoped `app_crash_artifacts`, with a fixed generic signal
+(`"crawl"`) rather than a driver-reported one, since neither backend's `is_alive` supplies anything
+richer. Capturing here matters for concurrency, not only correctness: `record_crash` holds the
+coordinator's `self._cond` for its whole body, and that same lock also serializes `on_event`
+(`_coordinator.py`'s `_emit`) and every other worker's own `record_crash` / `record_edge` calls — a
+multi-second `.ips` poll or tombstone pull run *inside* that lock would stall every other crawl lane
+for its duration. Run first and handed in already resolved, the capture costs the lock nothing beyond
+an ordinary list append.
+
+`Crash` ([`bajutsu/crawl/core/crash.py`](../../bajutsu/crawl/core/crash.py)) gains an
+`artifacts: tuple[tuple[str, str], ...] = ()` field, and `record_crash` takes and stores it alongside
+`path`. `bajutsu/crawl/cli.py`'s `_finish`
+([`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py)) already walks `screen_map.crashes` in order to
+write each one's `crashes/crash-NNN.yaml` repro (`bajutsu/crawl/repro.py`), `NNN` that crash's own
+zero-padded, one-based index in the list. It gains one more step there, writing any non-empty
+`artifacts` under `crashes/crash-NNN/app-crash/` — a sibling of the repro file, not a same-named
+top-level directory, so the two are found together and sort together, and written by the one place
+that already owns both the artifact writer and the finished, ordered crash list, rather than needing
+`on_event` to do it mid-crawl. A crawl's own detection stays the UI-tree heuristic it already uses:
+`crawl` has no scenario step to hang a reactive check off, unlike `run`. The capture is shared between
+the two entry points; the detection is not.
 
 ### Proving the capture on a real crash, not only a stubbed one
 
@@ -426,15 +454,18 @@ changes what a web or fake-backend run captures.
 - [ ] Unit 1 — `base.AppCrashedError` (new file); the `base.AppCrashSignal` capability protocol
       (`app_crash_signal() -> str | None`), separate from the `Driver` protocol.
 - [ ] Unit 2 — iOS: a new `openapi.yaml` route and generated `APIHandler` method reading
-      `XCUIApplication.state` and `.processIdentifier`, served through `RunnerServer` (not
-      `Router.swift`); `XcuitestDriver.app_crash_signal()` implementing `AppCrashSignal`, classifying
-      `notRunning` as the signal and letting a channel error propagate as `XcuitestRunnerCrashError`.
-- [ ] Unit 3 — iOS: `XcuitestEnvironment.app_launched_at` / `app_launched_pid`, recorded at each app
-      launch/relaunch; `app_crash_artifacts()`'s name-PID-time `.ips` sweep, with a bounded wait for
-      `ReportCrash`'s asynchronous write, wrapped so any failure resolves to `[]`.
+      `XCUIApplication.state`, served through `RunnerServer` (not `Router.swift`);
+      `XcuitestDriver.app_crash_signal()` implementing `AppCrashSignal`, classifying `notRunning` as
+      the signal and letting a channel error propagate as `XcuitestRunnerCrashError`.
+- [ ] Unit 3 — iOS: `XcuitestEnvironment.app_launched_at`, recorded at each app launch/relaunch;
+      `app_crash_artifacts()`'s name-and-`udid`-matched `.ips` sweep (no PID accessor exists on
+      `XCUIApplication`), with a bounded wait for `ReportCrash`'s asynchronous write, wrapped so any
+      failure resolves to `[]`.
 - [ ] Unit 4 — Android: a `package` keyword threaded through `backends.make_driver` into
-      `AdbDriver.__init__`, the same way `device_os` already is; `AdbDriver.app_crash_signal()` via
-      `adb shell pidof <package>` corroborated by `adb shell dumpsys activity exit-info <package>`.
+      `AdbDriver.__init__`, the same way `device_os` already is; a `launched_at` injected callable
+      reading `AndroidEnvironment.app_launched_at`; `AdbDriver.app_crash_signal()` via `adb shell
+      pidof <package>` corroborated by a time-bound `adb shell dumpsys activity exit-info <package>`
+      check (its newest entry only, at or after `launched_at()`).
 - [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at` (device clock) at each launch site,
       clearing the `logcat` crash buffer right after; `app_crash_artifacts()`'s always-attempted
       `logcat` extraction (managed *and* native crash formats) plus the best-effort, root-gated
@@ -450,8 +481,10 @@ changes what a web or fake-backend run captures.
       `sink.write_text(f"app-crash/{name}", text)`.
 - [ ] Unit 8 — `TracingDriver`: add `base.AppCrashSignal` to `_PROTOCOLS` so `--trace-driver` installs
       it as a real attribute only on a wrapped driver that implements it.
-- [ ] Unit 9 — `crawl`'s own integration: `cli.py`'s existing `on_event` callback capturing
-      `environment.app_crash_artifacts()` on a newly seen crash, written under
+- [ ] Unit 9 — `crawl`'s own integration: `_build_lane`'s per-lane `app_crash_artifacts`, threaded
+      through `WorkerFactory` and `crawl()`'s primary-lane parameters the same way `driver`/`reset`
+      already are; the capture call joining `record_crash`'s existing off-lock crash check; `Crash`'s
+      new `artifacts` field; `cli.py`'s `_finish` writing non-empty artifacts under
       `crashes/crash-NNN/app-crash/` alongside that crash's own `crashes/crash-NNN.yaml` repro.
 - [ ] Unit 10 — Showcase fixtures: a debug-only "force a crash" affordance on iOS (SwiftUI) and
       Android (Compose), one scenario per platform exercising it, wired as a non-gating per-PR signal
@@ -493,10 +526,10 @@ changes what a web or fake-backend run captures.
   `run_scenario`, threading the new `app_crash_artifacts` callable down to the step loop
 - [`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py) —
   the protocol `app_crash_artifacts()` joins
-- [`bajutsu/crawl/core/_coordinator.py`](../../bajutsu/crawl/core/_coordinator.py) — `record_crash`,
-  whose lock-held `on_event` call is what makes this item's crawl-side crash index race-free
-- [`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py) — the existing `on_event` callback this item's
-  crawl-side capture is added to, where the environment and artifact writer already live
+- [`bajutsu/crawl/core/_functions.py`](../../bajutsu/crawl/core/_functions.py) — `record_crash`'s
+  off-lock crash check, the join point for this item's crawl-side capture call
+- [`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py) — `_build_lane` (the per-lane environment this
+  item's capture reads) and `_finish` (where the captured artifacts are written)
 - [`bajutsu/common/evidence/sink.py`](../../bajutsu/common/evidence/sink.py) — `write_text` (redacting)
   versus `write_bytes` (unmasked, for content the sink cannot inspect), the distinction this item's
   artifacts follow by decoding to text first

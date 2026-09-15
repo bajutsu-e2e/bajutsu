@@ -219,7 +219,7 @@ XCUITest は、対象アプリのプロセス状態を `XCUIApplication.state` �
 状態を運ぶ JSON を返します。生成された `APIHandler`
 （[`BajutsuKit/Sources/BajutsuRunner/APIHandler.swift`](../../BajutsuKit/Sources/BajutsuRunner/APIHandler.swift)）
 に対応するメソッドが加わり、そのプロバイダ実装がランナー自身の `XCUIApplication` に
-`.state` と `.processIdentifier` を問い合わせます。今日、実際にリクエストを処理している
+`.state` を問い合わせます。今日、実際にリクエストを処理している
 のは `Router.swift` ではなく `RunnerServer.swift` です。`APIHandler` を組み立て、その
 生成済みルートを登録しているのは後者です。`Router.swift` はパリティテストのためだけに
 残っており、実際の実行では何も答えません。本項目の初期の草案が指定したように、ルートを
@@ -229,8 +229,8 @@ XCUITest は、対象アプリのプロセス状態を `XCUIApplication.state` �
 `XcuitestDriver`
 （[`bajutsu/common/drivers/xcuitest/xcuitest_driver.py`](../../bajutsu/common/drivers/xcuitest/xcuitest_driver.py)）
 は、このルートを1回呼ぶことで `app_crash_signal()` を実装します。`notRunning` という
-答えがシグナルの文字列になり、同じ応答が運ぶプロセス ID も一緒に運びます。それ以外の
-状態はすべて `None` を返します。この呼び出しに届いたチャンネルエラーは `None` へ
+答えがそのままシグナルの文字列になります。それ以外の状態はすべて `None` を返します。
+この呼び出しに届いたチャンネルエラーは `None` へ
 握りつぶしません。それは既存の `XcuitestRunnerCrashError` であり `BackendCrashError` の
 一種です。本項目は、これをすでに受け持つ回復経路へそのまま伝播させます。ステップ自身の
 セレクタ失敗の直後にルートが失敗するのは、ふつうの競合であり、チャンネルがこのステップと
@@ -244,23 +244,27 @@ XCUITest は、対象アプリのプロセス状態を `XCUIApplication.state` �
 正しい `.ips` ファイルを見つける課題を、すでに検討ずみです。その照合は名前と時刻による
 もので、レポート自身のヘッダが解析できれば PID で絞り込み、`ReportCrash` が異常終了した
 プロセスの消滅後に非同期でシンボル化するため、その完了を待ってから探します。本項目は、
-BE-0421 のメソッドがすでに存在すると仮定するのではなく、名前・PID・時刻という同じ3点の
-照合を、テスト対象アプリ自身のバイナリに対して `xcodebuild` の代わりに採用します。どちら
-かが先に着地した時点で、もう一方はその `RunEnvironment` のメソッドを共有し、独立した
-2つ目の掃引を持たないようにするべきです。
+BE-0421 のメソッドがすでに存在すると仮定するのではなく、同じ名前・時刻による照合を、
+テスト対象アプリ自身のバイナリに対して `xcodebuild` の代わりに採用します。どちらかが
+先に着地した時点で、もう一方はその `RunEnvironment` のメソッドを共有し、独立した2つ目の
+掃引を持たないようにするべきです。
+
+PID による絞り込みは、BE-0421 自身のレポートに対してと同じようには使えません。XCTest が
+公開する `XCUIApplication` の表面には PID を読む手段がなく、`BajutsuKit/` の中にも今日
+それを読む箇所はありません。本項目は代わりに Simulator の UDID で絞り込みます。
+Simulator 上のアプリの `.ips` レポートは、そのヘッダに実行ファイルのフルパス
+（`.../CoreSimulator/Devices/<udid>/data/Containers/Bundle/Application/…`）を運んでおり、
+そこにクラッシュしたプロセスが動いていた Simulator 自身が現れます。`Lease`
+（[`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py)）はすでに、
+リースしたデバイス自身の `udid` を記録しています。掃引は、レポートのパスがその同じ
+`udid` を名指ししているときにだけそれを受け入れます。これにより、同一の対象バイナリを
+動かす Simulator が並列実行の CI ホスト（`--workers 2`）で2台、同じ時間帯に存在する
+場合でも、PID を使わずに区別できます。
 
 `XcuitestEnvironment`
 （[`bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py)）
-は、対象アプリをすでに起動し、再起動もしています。ここに `app_launched_at` という
-タイムスタンプと、`app_launched_pid`（`XCUIApplication.processIdentifier` を起動時に
-読んだもので、前述の新しいランナーのルートが事後確認で読むのと同じ呼び出しです）を、
-各起動の直後に記録するよう拡張します。名前と時刻だけの照合では、ある Simulator の
-クラッシュレポートを別の Simulator のものと区別するには不十分です。`DiagnosticReports`
-は、同じ Mac 上で動くすべての Simulator が共有する単一のディレクトリです。並列実行の
-CI ホスト（`--workers 2`）では、同一の対象バイナリを動かす Simulator が2台、同じ時間帯に
-存在し得ます。起動時に記録した PID が、実際にクラッシュしたそのプロセス1つへ照合を
-絞り込みます。BE-0421 がランナー自身のレポートに対してすでに使っている絞り込みと
-同じです。
+は、対象アプリをすでに起動し、再起動もしており、自身の `udid` もすでに知っています。
+ここに `app_launched_at` というタイムスタンプを、各起動の直後に記録するよう拡張します。
 
 新しく `app_crash_artifacts(signal: str) -> list[tuple[str, str]]` を `RunEnvironment`
 プロトコル
@@ -269,15 +273,16 @@ CI ホスト（`--workers 2`）では、同一の対象バイナリを動かす 
 `request_device_replacement()`（BE-0354）がすでに確立している no-op の既定値と同じ形です。
 このメソッドは、後述する `_step_runner.py` の事後確認の内側で同期的に実行されます。
 この環境を保持するリースがまだチェックアウトされたままの状態で、`pipeline.py` がそれを
-解放するよりずっと前です。したがって、このメソッドが読む照合の条件（`app_launched_at`、
-`app_launched_pid`）はその場で生きたまま読まれ、環境を再利用する別のワーカーの、後の
-起動によって上書きされることがありません。
+解放するよりずっと前です。したがって、このメソッドが読む照合の条件（`app_launched_at`）は
+その場で生きたまま読まれ、環境を再利用する別のワーカーの、後の起動によって上書きされる
+ことがありません。
 
 `ReportCrash` は、アプリが落ちたその瞬間にはまだレポートを書き終えていないことがあります。
-掃引は `~/Library/Logs/DiagnosticReports` を、対象の実行ファイル名と PID に一致し、
-更新時刻が `app_launched_at` 以降であるレポートを求めて、数秒を上限にポーリングします。
-これはこの1つのメソッドの中だけの、短く上限のある待機であり、シナリオそのもののリトライ
-ではありません。シナリオは、掃引の結果にかかわらず一度だけ、すぐに失敗します。この掃引と、その中の処理はすべて、最後の書き込みだけでなく本体全体を
+掃引は `~/Library/Logs/DiagnosticReports` を、対象の実行ファイル名とこの環境自身の
+`udid` に一致し、更新時刻が `app_launched_at` 以降であるレポートを求めて、数秒を上限に
+ポーリングします。これはこの1つのメソッドの中だけの、短く上限のある待機であり、
+シナリオそのもののリトライではありません。シナリオは、掃引の結果にかかわらず一度だけ、
+すぐに失敗します。この掃引と、その中の処理はすべて、最後の書き込みだけでなく本体全体を
 1つの `try`/`except Exception` で包みます。ディレクトリの走査や読み取りの失敗は、
 レポートが見つからない場合と同じく、アプリ自身のクラッシュという判定を変える力を
 持ちません。したがって同じように空リストへ解決します。macOS 以外のホストも、同じく
@@ -304,16 +309,24 @@ None = None` というキーワードを加え、`device_os`（BE-0358）をす�
 ではあっても十分条件ではありません。起動が完了しなかった場合や、本項目がシナリオレベル
 の原因を持たない終了とも一致します。Android には、通常のテスト条件下で jetsam のような
 OS による強制終了はありませんが、ふつうのプロセス終了もクラッシュと同じ答えを `pidof`
-に返させます。`adb shell dumpsys activity exit-info <package>` は、プロセスの直近の
-終了について、プラットフォーム自身が記録した `ApplicationExitInfo` の理由を報告します。
-`CRASH` や `CRASH_NATIVE` を、`ANR`・`LOW_MEMORY`・`USER_REQUESTED` から区別できます。
-これは API 30 以降で利用でき、このリポジトリの CI がすでに起動している API 34 の AVD
-でも利用できます。`app_crash_signal()` は、`pidof` が空を返した直後に一度だけこれを
-読み、`CRASH` か `CRASH_NATIVE` のときにだけ事象を確定します。それ以外の理由では
-`None` を返します。シグナルをまったく持たないバックエンドが返すのと同じ、「確認
-できない」という答えです。これは、`app.state` の `notRunning` が Simulator 自身の
-制約から無償で得ている裏付けに相当します。Android では、プラットフォーム自身の
-報告する終了理由が、adb にとって同じ役割の積極的な確認を与えます。
+に返させます。`adb shell dumpsys activity exit-info <package>` は、そのパッケージの
+`ApplicationExitInfo` の履歴を、各項目にタイムスタンプを付けて報告し、`CRASH` や
+`CRASH_NATIVE` を `ANR`・`LOW_MEMORY`・`USER_REQUESTED` から区別できます。これは API 30
+以降で利用でき、このリポジトリの CI がすでに起動している API 34 の AVD でも利用できます。
+ただし、この履歴はプロセスの生存期間をまたいで残るため、直近の1件だけでは信頼できません。
+今回の終了が無関係な理由で `ApplicationExitInfo` をまだ記録していない場合、`dumpsys` の
+返す最新の項目が、以前のシナリオのクラッシュのままということがあり得ます。`AdbDriver`
+に `launched_at: Callable[[], float | None] | None = None` というコンストラクタ引数を
+加えます。これは `AndroidEnvironment.app_launched_at` をその場で読む注入されたコール
+バックであり、`fetch_clock` がすでに使っている、構築時に固定せず呼び出しのたびに読む
+のと同じ仕組みです。`app_crash_signal()` は、`pidof` が空を返した直後に一度だけこの
+履歴を読み、その*最新*の項目が `CRASH` か `CRASH_NATIVE` を報告し、*かつ*その項目
+自身のタイムスタンプが `launched_at()` 以降であるときにだけ事象を確定します。今回の
+起動より前の古い項目を除外するためです。どちらかが成り立たなければ `None` を返します。
+シグナルをまったく持たないバックエンドが返すのと同じ、「確認できない」という答えです。
+これは、`app.state` の `notRunning` が Simulator 自身の制約から無償で得ている裏付けに
+相当します。Android では、プラットフォーム自身が報告する、時刻で絞り込んだ終了理由が、
+adb にとって同じ役割の積極的な確認を与えます。
 
 `AndroidEnvironment`
 （[`bajutsu/common/platform_lifecycle/environments/android/android_environment.py`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py)）
@@ -389,36 +402,59 @@ OS による強制終了はありませんが、ふつうのプロセス終了�
 
 ### `crawl` 自身のクラッシュ記録を拡張する
 
-`bajutsu/crawl/core/_coordinator.py` の `record_crash` は、`is_app_alive` が崩壊を
-報告したときに、コーディネータ自身のロックを保持したまま、すでに `Crash` を追加し、
-そのロックを解放する前にクロールの `on_event` コールバックを呼びます。`crawl()`
-（[`bajutsu/crawl/core/_functions.py`](../../bajutsu/crawl/core/_functions.py)）自身は、
-環境も証跡の書き込み先も持ちません。受け取るのは注入されたコールバックだけです。
-`driver`、`reset`、`is_alive`、`recover`、`on_event`、その他です。これが、クロール
-のコアを `platform_lifecycle` から切り離し、同じループであらゆるバックエンドを
-駆動できるようにしています。本項目の初期の草案が提案したように、そこへ環境への
-参照を持ち込めば、あらゆるバックエンドと、高速なテストスイートのあらゆる fake が
-それを1つ持つ必要に迫られます。
+`crawl()`（[`bajutsu/crawl/core/_functions.py`](../../bajutsu/crawl/core/_functions.py)）
+自身は環境を持ちません。受け取るのは注入されたコールバックだけです。`driver`、
+`reset`、`is_alive`、`recover`、`on_event`、その他です。これが、クロールのコアを
+`platform_lifecycle` から切り離し、同じループであらゆるバックエンドを駆動できる
+ようにしています。本項目の初期の草案が提案したように、そこへ環境への参照を持ち
+込めば、あらゆるバックエンドと、高速なテストスイートのあらゆる fake がそれを1つ
+持つ必要に迫られます。そもそも `is_alive` には、その参照を紐づけるべきシグナルが
+ありません。`ios.py` と `android_environment.py` はどちらも `crawl_aliveness()` に
+`None` を返しており、そのコメントいわく「デバイスのクラッシュ検知にはエンジンが
+アクセシビリティツリーを読む」ためです。つまり本項目が対象とする両バックエンドで
+は、`crawl()` に `is_alive` コールバックがそもそも渡りません。
+[`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py) には `CrawlEnvironment` が1つ
+（`plan.environment`）スコープ内にありますが、これは前述の健全性確認の配線だけの
+ために空の `udid`（`environment_for(actuator, "")`）で構築されており、実際に
+クラッシュが起きたデバイスではありません。クロールはレーンごとに1つの環境を
+持ちます。`--udid` ごとに（BE-0064）、その `driver`・`reset` と一緒に `_build_lane`
+で組み立てられます。複数レーンのクロールで `plan.environment` を使えば、誤った
+デバイスの診断情報を集めるか、何も集められません。
 
-代わりに、収集は `on_event` を通じて `crawl` へ届きます。すでに
-[`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py) が配線しており、環境と実行の
-証跡書き込み先の両方がそこにすでに存在します。`on_event` は同期的に発火し、しかも
-`record_crash` 自身のロックの内側で、新しい `Crash` が追加された直後に呼ばれます。
-したがって、その瞬間の `len(screen_map.crashes)` は、`crawl` 自身のマルチワーカー
-（`extra_workers`）のもとでも安定した、競合のないその事象の番号です。同じロックの
-内側に2つの `record_crash` 呼び出しが同時に入ることはありません。CLI の既存の
-`on_event` 関数はその番号を読み、新しく見つかったクラッシュに対して
-`environment.app_crash_artifacts(signal)` を呼びます。シグナルの文字列は、
-`is_alive` の答え（それ自身は素の `bool` です）から CLI 自身が組み立てます。
-本項目が `run` 向けに加えるのと同一の収集ロジックを再利用し、2つ目の実装は
-作りません。結果は `crashes/crash-NNN/app-crash/` の下に書き込みます。`NNN` は
-[`bajutsu/crawl/repro.py`](../../bajutsu/crawl/repro.py) がそのクラッシュ自身の
-`crashes/crash-NNN.yaml` という再現シナリオにすでに使っている、同じ0埋めの
-1始まりの番号です。このパスは再現ファイルの隣にあり、同じ名前を持つ最上位の
-ディレクトリではないため、2つは並んで見つかり、並んでソートされます。クロール
-自身の検知は、すでに使っている UI ツリーのヒューリスティックのままです。
-`crawl` には、`run` と違って、事後確認をぶら下げるシナリオステップがありません。
-2つの入口のあいだで共有されるのは収集であり、検知は共有しません。
+そこで収集は、`driver` や `reset` とすでに同じ方法で配線します。`_build_lane` が
+3つ目の戻り値として、そのレーン自身の `env.app_crash_artifacts` を返すようにし、
+各追加レーンでは `WorkerFactory`（`bajutsu/crawl/core/_functions.py`）を通じて、
+最初のレーンでは `crawl()` 自身の主レーン向けパラメータを通じて、driver・reset と
+一緒に運びます。`record_crash` の呼び出し箇所（`bajutsu/crawl/core/_functions.py:667`）
+は、すでにコーディネータのロックの外でクラッシュシグナルを計算しています。その
+コメント自身の言葉で「純粋に決定的な読み取りであり、ロックの外」です。
+`coord.record_crash(path)` を呼ぶ直前です。本項目の収集呼び出しは、その同じ
+ロック外の窓の中で、そのワーカー自身のレーンに紐づく `app_crash_artifacts` に対して
+加わります。どちらのバックエンドの `is_alive` もそれ以上豊かな情報を渡さないため、
+シグナルはドライバ由来のものではなく、固定の汎用文字列（`"crawl"`）にします。
+ここで収集する理由は、正しさだけでなく並行性のためでもあります。`record_crash` は
+本体全体にわたって、コーディネータの `self._cond` を保持し続けます。その同じロックは
+`on_event`（`_coordinator.py` の `_emit`）と、他のあらゆるワーカー自身の
+`record_crash` / `record_edge` 呼び出しも直列化します。数秒かかる `.ips` のポーリング
+や tombstone 取得を、そのロックの*内側*で走らせれば、その間、他のあらゆるクロール
+レーンを止めてしまいます。先に走らせ、すでに解決済みの結果を渡せば、収集がロックに
+費やすコストはふつうのリスト追加と変わりません。
+
+`Crash`（[`bajutsu/crawl/core/crash.py`](../../bajutsu/crawl/core/crash.py)）に
+`artifacts: tuple[tuple[str, str], ...] = ()` というフィールドを加え、`record_crash`
+はそれを `path` と一緒に受け取って保持します。`bajutsu/crawl/cli.py` の `_finish`
+（[`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py)）はすでに `screen_map.crashes`
+を順に歩き、それぞれの `crashes/crash-NNN.yaml` 再現シナリオ
+（`bajutsu/crawl/repro.py`）を書き出しています。`NNN` は、そのリストの中でのその
+クラッシュ自身の、0埋めで1始まりの番号です。ここに、空でない `artifacts` を
+`crashes/crash-NNN/app-crash/` の下へ書き込むという、もう1つの手順を加えます。
+このパスは再現ファイルの隣にあり、同じ名前を持つ最上位のディレクトリではないため、
+2つは並んで見つかり、並んでソートされます。書き込みは、証跡の書き込み先と、確定
+した順序つきのクラッシュ一覧の両方をすでに持つ、まさにその場所で行われ、クロールの
+途中で `on_event` に行わせる必要がありません。クロール自身の検知は、すでに使って
+いる UI ツリーのヒューリスティックのままです。`crawl` には、`run` と違って、事後
+確認をぶら下げるシナリオステップがありません。2つの入口のあいだで共有されるのは
+収集であり、検知は共有しません。
 
 ### 実機での本物のクラッシュで、スタブだけでなく証明する
 
@@ -456,8 +492,8 @@ fake backend の実行が収集する内容は変わりません。
 |---|---|---|
 | 既存の `BackendCrashError` 回復ループでリトライする | クラッシュ検知をバックエンドクラッシュと同じ扱いにし、リースを破棄してリトライする | 壁打ちで却下しました。この事象は、一時的なインフラの不調ではなく、アプリ自身の不具合である可能性が高いためです。再起動してのリトライは、再び失敗する見込みが高いシナリオにクラッシュ回復の予算を費やし、本物の不具合を flakiness として吸収してしまう危険があります（BE-0049）。 |
 | 毎ステップの前に `app.state`・プロセスの生存を事前にポーリングする | 各ステップの実行前に、アプリがまだ動作しているかを確認する | 壁打ちで却下しました。構造上まれな失敗モードを捉えるためだけに、グリーンな実行を含むあらゆるシナリオのあらゆるステップへドライバの往復を1回追加してしまうためです。事後確認の設計でも、その事象が起きたまさにそのステップで捕まえられます。そのステップ自身のアクションかクエリが、すでに失敗しているからです。 |
-| `AppCrashedError` を `run_scenario` の外へ送出し、`pipeline.py` に `BackendCrashError` を真似た専用の `except` 節を設ける | レビューで却下しました。バックエンドがクラッシュしたシナリオと違い、アプリがクラッシュしたシナリオでは、ドライバもバックエンドプロセスも、動作中のビデオ録画も残ります。落ちているのはアプリだけです。別経路の例外は、`run_scenario` 自身の組み立てが他のあらゆる終端失敗に対してすでに生み出している、ステップ・証跡・`after: on: fail` の発火を、ゼロから作り直す終端 `RunResult` で捨ててしまいます。 |
-| `app_crash_signal()` を `Driver` プロトコルの必須メンバーにする | レビューで却下しました。`Driver` は `@runtime_checkable` であり、あらゆる実装（`XcuitestDriver`、`AdbDriver`、`PlaywrightDriver`、`XcuitestLiveDriver`、fake backend、`WebContextDriver` のような狭いラッパー）がスタブを持つ必要に迫られます。本項目が確認するつもりのないバックエンドも例外ではありません。このコードベースがすでに `InterruptionPolicyTarget` や `SettledReadProvider` に使っている、狭い opt-in のケイパビリティプロトコルであれば、必要とする2つのバックエンドだけに届きます。 |
+| `AppCrashedError` を `run_scenario` の外へ送出し、`pipeline.py` に `BackendCrashError` を真似た専用の `except` 節を設ける | バックエンドクラッシュと同じ扱いで、リトライループへ入れる | レビューで却下しました。バックエンドがクラッシュしたシナリオと違い、アプリがクラッシュしたシナリオでは、ドライバもバックエンドプロセスも、動作中のビデオ録画も残ります。落ちているのはアプリだけです。別経路の例外は、`run_scenario` 自身の組み立てが他のあらゆる終端失敗に対してすでに生み出している、ステップ・証跡・`after: on: fail` の発火を、ゼロから作り直す終端 `RunResult` で捨ててしまいます。 |
+| `app_crash_signal()` を `Driver` プロトコルの必須メンバーにする | 個別の opt-in プロトコルではなく、`Driver` 自身にメソッドを1つ加える | レビューで却下しました。`Driver` は `@runtime_checkable` であり、あらゆる実装（`XcuitestDriver`、`AdbDriver`、`PlaywrightDriver`、`XcuitestLiveDriver`、fake backend、`WebContextDriver` のような狭いラッパー）がスタブを持つ必要に迫られます。本項目が確認するつもりのないバックエンドも例外ではありません。このコードベースがすでに `InterruptionPolicyTarget` や `SettledReadProvider` に使っている、狭い opt-in のケイパビリティプロトコルであれば、必要とする2つのバックエンドだけに届きます。 |
 | Android で `logcat` のクラッシュバッファだけを使い、tombstone は取得しない | ネイティブクラッシュの取得を諦め、常に取得できる `logcat` だけに頼る | 却下しました。ネイティブ（NDK）クラッシュの完全なバックトレースを失い、`logcat` 自身が出力する簡略化された要約しか残らないためです。常に取得できる基盤としては残し、tombstone の取得はそれを置き換えるのではなく、端末が許す場合により豊かな詳細を上乗せします。 |
 | Android で root 権限に依存する tombstone 取得だけを使い、`logcat` へのフォールバックを持たない | tombstone の取得だけに頼り、`logcat` の抽出は実装しない | 却下しました。実機、user ビルド、`adb root` を拒むエミュレータイメージでは、何も取得できなくなってしまうためです。`logcat` のクラッシュバッファは昇格した権限を必要とせず、よくあるマネージドコードのクラッシュについてすでに完全なスタックトレースを運びます。 |
 | 新しいシナリオアサーション（例：`assert: appCrashed: false`）を追加する | シナリオ作者が明示的に「アプリがクラッシュしていないこと」を検証できるようにする | 却下しました。この事象は、ステップ自身のアクションかクエリの失敗によって、すでにシナリオを終わらせているためです。それを確認するアサーションが後から走れる時点は、シナリオの中に残っていません。showcase 自身のテスト用シナリオは、代わりに、失敗の*形*を run の外側から検証します。`fault-injection (xcuitest)` がすでに採っている方式と同じです。 |
@@ -472,19 +508,20 @@ fake backend の実行が収集する内容は変わりません。
 - [ ] Unit 1 — `base.AppCrashedError`（新規ファイル）。`Driver` プロトコルとは別に設ける、
       `base.AppCrashSignal` というケイパビリティプロトコル（`app_crash_signal() -> str |
       None`）。
-- [ ] Unit 2 — iOS：`XCUIApplication.state` と `.processIdentifier` を読む新しい
-      `openapi.yaml` のルートと、生成された `APIHandler` のメソッド。`Router.swift` ではなく
-      `RunnerServer` から配信する。`XcuitestDriver.app_crash_signal()` が `AppCrashSignal`
-      を実装し、`notRunning` をシグナルとして分類し、チャンネルエラーは
-      `XcuitestRunnerCrashError` としてそのまま伝播させる。
-- [ ] Unit 3 — iOS：各アプリ起動・再起動の直後に記録する `XcuitestEnvironment.app_launched_at`
-      と `app_launched_pid`。`app_crash_artifacts()` の名前・PID・時刻による `.ips` 掃引。
-      `ReportCrash` の非同期な書き込みに対する上限つきの待機を含み、失敗はすべて `[]` へ
-      解決するよう包む。
+- [ ] Unit 2 — iOS：`XCUIApplication.state` を読む新しい `openapi.yaml` のルートと、
+      生成された `APIHandler` のメソッド。`Router.swift` ではなく `RunnerServer` から
+      配信する。`XcuitestDriver.app_crash_signal()` が `AppCrashSignal` を実装し、
+      `notRunning` をシグナルとして分類し、チャンネルエラーは `XcuitestRunnerCrashError`
+      としてそのまま伝播させる。
+- [ ] Unit 3 — iOS：各アプリ起動・再起動の直後に記録する `XcuitestEnvironment.app_launched_at`。
+      `app_crash_artifacts()` の、名前と `udid` による `.ips` 掃引（`XCUIApplication` には
+      PID を読む手段がない）。`ReportCrash` の非同期な書き込みに対する上限つきの待機を含み、
+      失敗はすべて `[]` へ解決するよう包む。
 - [ ] Unit 4 — Android：`backends.make_driver` から `AdbDriver.__init__` へ、`device_os` と
-      同じ方法で通す `package` キーワード。`adb shell pidof <package>` による
-      `AdbDriver.app_crash_signal()` を `adb shell dumpsys activity exit-info <package>`
-      で裏付ける。
+      同じ方法で通す `package` キーワード。`AndroidEnvironment.app_launched_at` を読む、
+      注入された `launched_at` コールバック。`adb shell pidof <package>` による
+      `AdbDriver.app_crash_signal()` を、時刻で絞り込んだ `adb shell dumpsys activity
+      exit-info <package>`（最新の項目のみ、`launched_at()` 以降）で裏付ける。
 - [ ] Unit 5 — Android：各起動の箇所での `AndroidEnvironment.app_launched_at`（端末自身の
       時計）と、その直後の `logcat` クラッシュバッファのクリア。`app_crash_artifacts()` の
       常に試みる `logcat` 抽出（マネージドコードとネイティブの両形式）と、ベストエフォート
@@ -500,8 +537,10 @@ fake backend の実行が収集する内容は変わりません。
       `sink.write_text(f"app-crash/{name}", text)` で行う。
 - [ ] Unit 8 — `TracingDriver`：`base.AppCrashSignal` を `_PROTOCOLS` へ加え、
       `--trace-driver` がそれを実装したドライバに対してだけ実属性として設置するようにする。
-- [ ] Unit 9 — `crawl` 自身の統合。`cli.py` の既存の `on_event` コールバックが、新しく
-      見つかったクラッシュに対して `environment.app_crash_artifacts()` を呼び、そのクラッシュ
+- [ ] Unit 9 — `crawl` 自身の統合。`_build_lane` のレーンごとの `app_crash_artifacts` を、
+      `driver`・`reset` と同じ方法で `WorkerFactory` と `crawl()` の主レーン向けパラメータへ
+      通す。収集呼び出しを `record_crash` の既存のロック外クラッシュ確認へ加える。`Crash` の
+      新しい `artifacts` フィールド。`cli.py` の `_finish` が、空でない証跡をそのクラッシュ
       自身の `crashes/crash-NNN.yaml` 再現ファイルの隣にある `crashes/crash-NNN/app-crash/`
       へ書き込む。
 - [ ] Unit 10 — showcase の準備。iOS（SwiftUI）と Android（Compose）それぞれのデバッグ専用
@@ -547,11 +586,10 @@ fake backend の実行が収集する内容は変わりません。
   `run_scenario`。新しい `app_crash_artifacts` コールバックをステップループまで通す
 - [`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py) —
   `app_crash_artifacts()` が加わるプロトコル
-- [`bajutsu/crawl/core/_coordinator.py`](../../bajutsu/crawl/core/_coordinator.py) —
-  `record_crash`。そのロックを保持したままの `on_event` 呼び出しが、本項目のクロール側の
-  クラッシュ番号を競合なく保つ
-- [`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py) — 既存の `on_event` コールバック。
-  本項目のクロール側の収集はここに加わり、環境と証跡の書き込み先はすでにここにある
+- [`bajutsu/crawl/core/_functions.py`](../../bajutsu/crawl/core/_functions.py) —
+  `record_crash` のロック外クラッシュ確認。本項目のクロール側の収集呼び出しが加わる場所
+- [`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py) — `_build_lane`（本項目の収集が
+  読むレーンごとの環境）と `_finish`（収集した証跡を書き込む場所）
 - [`bajutsu/common/evidence/sink.py`](../../bajutsu/common/evidence/sink.py) —
   `write_text`（マスキングする）と `write_bytes`（シンクの検査できない内容向けで、
   マスキングしない）の違い。本項目の証跡は、先にテキストへデコードすることでこれに従う
