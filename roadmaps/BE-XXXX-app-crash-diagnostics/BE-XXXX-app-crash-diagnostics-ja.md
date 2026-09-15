@@ -476,6 +476,23 @@ Simulator 上のアプリの `.ips` レポートは、そのヘッダに実行�
 （[`android_environment.py:410`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py)）
 が、Unit 5 がすでに名指す3か所のうちの3つ目だからです。
 
+`_resume_warm`（BE-0291 の*リースをまたぐ*ウォーム再利用の起動、
+`xcuitest_environment.py:855-856`）は、iOS の4つ目の起動箇所です。同じ長命の
+`XcuitestEnvironment` インスタンスの上で走ります。`start()` はランナーが再利用可能な
+たびにここへ戻り（`:297`）、`XcuitestEnvironment` は `has_reusable_resident()` を
+オーバーライドしているため、BE-0291 はこの環境をリースをまたいで保持します。この
+経路では何も `app_launched_at` を記録し直しません。放っておけば、これまで閉じてきた
+のと同じ古びが、両方の目印が同時に壊れるぶんだけさらに悪い形で戻ってきます。デバイス
+X 上でシナリオ1がコールド起動し（目印 = T0）、そのアプリがクラッシュして
+`Showcase-…ips` を残します。シナリオ2〜5は同じデバイス上でウォーム再開しますが、
+目印はまだ T0 のままです。シナリオ5のアプリがクラッシュし、`since = T0` で
+`DiagnosticReports` を掃引すると、シナリオ1のレポートは実行ファイル名のパターンにも
+（同じアプリ）、`udid` の確認にも（同じ Simulator）一致してしまい、
+`_app_crash_reports` はそれを受け入れます。シナリオ5の `app-crash/` には、シナリオ1の
+クラッシュが入ってしまいます。他の2つと同じ形の直し方です。`_resume_warm` の中で、
+自身の `e.launch` の隣で `app_launched_at` を記録し直します。目印は、アプリが実際に
+走っている、そのときどきの起動を追いかけ続けます。
+
 新しく `app_crash_artifacts() -> list[tuple[str, bytes]]` を `RunEnvironment` プロトコル
 （[`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py)）
 に、`take_crash_snapshot()` の隣に加えます。ただし、それよりも素直な形です。
@@ -605,6 +622,25 @@ adb にとって同じ役割の積極的な確認を与えます。
    しないネイティブフレームの詳細だけであり、このシナリオより後のあらゆるシナリオは、
    もともとそうであったのと変わらず新しいレジデントサーバを得ます。
 
+   この「この時点より後にはどちらのチャネルも必要とするものがない」という正当化は、
+   `run` の1シナリオごとのリースに限った話です。リースは毎回まっさらに解体・再構築
+   されます（`pool.py`）。`crawl` はこれに当てはまりません。「`crawl` 自身のクラッシュ
+   記録を拡張する」節は、この同じ `env.app_crash_artifacts` をクロールのループへその
+   まま通しますが、クロールのレーンは自身の巡回全体を通じて*1つ*の環境しか持ちません
+   （`_build_lane`、[`cli.py:294-300`](../../bajutsu/crawl/cli.py)）。フロンティアの
+   途中でクラッシュが着地しても巡回は終わっていません
+   （`current_fp = None; continue`、
+   [`_functions.py:668-669`](../../bajutsu/crawl/core/_functions.py)）。したがって、
+   最初に確定した Android のクラッシュで tombstone を取得すれば、同じレーンのそれ以降の
+   あらゆる確認が壊れ、しかもクロール自身が終わるまでレジデントサーバや reverse
+   トンネルを組み立て直すものが何も残りません。この層はそこで `run` エントリポイント
+   だけにゲートします。`AndroidEnvironment` はコンストラクタ時のフラグを持ちます
+   （`environment_for` を通じて渡し、`_build_lane` のクロールレーン構築だけがこれを
+   立てます）。`app_crash_artifacts()` は root 権限に依存する取得を試みる前にこれを
+   確認し、立っていれば `logcat` の層の結果だけへそのまま進みます。`adb root` も、
+   セッションを終わらせることもありません。`crawl` 自身の Android 収集は `logcat`
+   だけになり、`run` は両方の層を持ち続けます。
+
 ### 失敗したシナリオの run ディレクトリへ収集をつなぐ
 
 事後確認は経路の内側で動作し、他のあらゆる終端失敗がすでに通る同じステップループの
@@ -729,7 +765,10 @@ adb にとって同じ役割の積極的な確認を与えます。
 同じ名前を持つ最上位のディレクトリではないため、2つは並んで見つかり、並んで
 ソートされます。クロール自身の検知は、すでに使っているUI ツリーのヒューリスティック
 のままです。`crawl` には、`run` と違って、事後確認をぶら下げるシナリオステップが
-ありません。2つの入口のあいだで共有されるのは収集であり、検知は共有しません。
+ありません。2つの入口のあいだで共有されるのは、iOS では収集です。Android では
+`logcat` の層だけが共有され、root 権限に依存する tombstone の取得は `run` 限定です
+（「Android：まず `logcat` のクラッシュバッファ、次に……」を参照）。検知はどちらの
+場合も共有しません。
 
 `Crash` は、[`serialize.py`](../../bajutsu/crawl/serialize.py) が JSON へ往復させる型でも
 あります。`screenmap_dict` が `screen_map.crashes` を書き出し(`:131-134`)、
@@ -837,7 +876,12 @@ fake backend の実行が収集する内容は変わりません。
       ない、まさにその呼び出し箇所）。対応する `XcuitestEnvironment.crawl_reset()`
       オーバーライドも同じ形でこれを3回目記録し直します。`crawl` 自身のフロンティア再訪ごとの
       relaunch のあとで、`_DeviceEnvironment` が継承する `crawl_reset()` にも、それを更新
-      すべき環境がその場にない、もう1つの呼び出し箇所です。掃引自身の照合パターンのために
+      すべき環境がその場にない、もう1つの呼び出し箇所です。`_resume_warm`
+      （BE-0291 のリースをまたぐウォーム再利用の起動、`xcuitest_environment.py:855-856`。
+      `start()` が再利用可能なたびに戻る、同じ長命の `XcuitestEnvironment` インスタンスの
+      上で走ります）自身の中でも、その `e.launch` の隣で4回目記録し直します。そうしなければ、
+      ウォーム再利用されたリースのクラッシュが、目印がたまたま古いタイムスタンプを共有する
+      どこか前のリースの `.ips` レポートと一致してしまいかねません。掃引自身の照合パターンのために
       `Path(ios.app_path) / "Info.plist"` から `CFBundleExecutable` を読みます
       （`ios.bundle_id` はこの名前ではない）。`app_crash_artifacts()` の、名前と `udid` に
       よる `.ips` 掃引（`XCUIApplication` には PID を読む手段がない）。`ReportCrash` の
@@ -855,8 +899,10 @@ fake backend の実行が収集する内容は変わりません。
       依存する tombstone 取得は最後に走り、`adb root` がレジデントサーバの `am instrument -w`
       セッションと BE-0283 の `adb reverse` トンネルをまるごと終わらせることを受け入れます。
       再確立はしません。このリースのこれ以降の処理はどちらのチャネルも必要とせず、プールが
-      次のリースで両方を一から組み立て直すからです。それぞれ独立して失敗を `[]` へ解決する
-      よう包みます。
+      次のリースで両方を一から組み立て直すからです。ただし、この層は `run` エントリ
+      ポイント限定でゲートします。`environment_for` を通じて渡す、`AndroidEnvironment` の
+      コンストラクタ時フラグによってです。クロールのレーンは組み立て直す次のリースを
+      持たないからです。それぞれ独立して失敗を `[]` へ解決するよう包みます。
 - [ ] Unit 6 — `RunEnvironment.app_crash_artifacts()` のプロトコルの形（`list[tuple[str,
       bytes]]` を返し、この環境の解放前にスナップショットとサンクによる間接参照なしでその場
       で読みます）。`WebEnvironment` と `_DeviceEnvironment`(`FakeEnvironment` が継承)に加える
@@ -898,7 +944,8 @@ fake backend の実行が収集する内容は変わりません。
       `--trace-driver` がそれを実装したドライバに対してだけ実属性として設置するようにします。
 - [ ] Unit 10 — `crawl` 自身の統合。`_build_lane` のレーンごとの `app_crash_artifacts` を、
       `driver`・`reset` と同じ方法で `WorkerFactory` と `crawl()` の主レーン向けパラメータへ
-      通します。収集呼び出しを `record_crash` の既存のロック外クラッシュ確認へ加えます。
+      通します。`_build_lane` の `environment_for` 呼び出しに新しいクロールレーンフラグを
+      渡し、Android の tombstone 取得の層を巡回全体で止めておきます（Unit 5）。収集呼び出しを `record_crash` の既存のロック外クラッシュ確認へ加えます。
       ドライバが事象を積極的に確認したとき（`isinstance`/`app_crash_signal()`）にだけ収集する
       ようゲートし、UI ツリーの誤検知が全タイムアウト分の掃引を払わないようにします。`Crash` の
       新しい `artifacts` フィールド(生の `bytes` には JSON 表現がないため `serialize.py` の
@@ -921,10 +968,13 @@ fake backend の実行が収集する内容は変わりません。
 - [ ] Unit 13 — テスト。両バックエンドで、ふつうの `ElementNotFound` や `wait`・`assert` の
       失敗、そして `app.state` の答えに関わらず `deviceType: device` に対して
       `app_crash_signal()` が `None` を返すこと（誤検知しないこと）。`relaunch` ステップ
-      自身の起動を過ぎて、また `crawl` が駆動する `crawl_reset()` 自身の起動を過ぎても
-      `XcuitestEnvironment.app_launched_at` が進むこと、クロール2件目のクラッシュに対する
-      `.ips` 掃引が、1件目のクラッシュではなくその2件目自身のリセットのレポートだけを
-      見つけること。失敗した
+      自身の起動を過ぎて、`crawl` が駆動する `crawl_reset()` 自身の起動を過ぎて、また
+      `_resume_warm` のクロスリース再利用自身の起動を過ぎても
+      `XcuitestEnvironment.app_launched_at` が進むこと、それぞれの `.ips` 掃引が、
+      もっとも新しいその起動のレポートだけを見つけ、以前のシナリオやクラッシュのもの
+      ではないこと。クロールレーンの `AndroidEnvironment` は、クラッシュを確定しても
+      root 権限に依存する tombstone 取得をまったく試みないこと（`logcat` の層は走る）。
+      `run` でリースされた方は引き続き試みること。失敗した
       `relaunch` ステップ自身が `app_crash_signal()` をまったく確認しないこと、それを包む
       `if`・`forEach` の outcome も、終了させられたアプリに対して失敗する
       `after: on: fail` のステップも同様であること。割り込みの回復ステップ
@@ -1001,6 +1051,12 @@ fake backend の実行が収集する内容は変わりません。
 - [`bajutsu/common/platform_lifecycle/environments/ios.py`](../../bajutsu/common/platform_lifecycle/environments/ios.py) —
   `_DeviceEnvironment.crawl_reset()`。`app_launched_at` を最新に保つため、`relauncher()` と
   並んで `XcuitestEnvironment` がオーバーライドする、iOS の3つ目の起動箇所
+- [`bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py) —
+  `_resume_warm`。BE-0291 の、iOS の4つ目の起動箇所。リースをまたぐ同じ長命の環境の上で走り、
+  本項目はここでも `app_launched_at` を記録します
+- [`bajutsu/common/platform_lifecycle/factories.py`](../../bajutsu/common/platform_lifecycle/factories.py) —
+  `environment_for`。`run` のプールと `crawl` の `_build_lane` がどちらも呼ぶ共有ファクトリ。
+  新しいクロールレーンフラグを通し、Android の tombstone 取得を `run` 限定にゲートします
 - [`bajutsu/crawl/core/_functions.py`](../../bajutsu/crawl/core/_functions.py) —
   `record_crash` のロック外クラッシュ確認。本項目のクロール側の収集呼び出しが加わる場所
 - [`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py) — `_build_lane`。本項目の収集が

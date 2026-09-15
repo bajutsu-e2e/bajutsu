@@ -528,6 +528,21 @@ a failure in one layer never drops the other:
    native-frame detail a managed-code crash never needed in the first place, and every scenario after
    this one gets a resident server exactly as fresh as it would have anyway.
 
+   That "nothing after this point needs either channel" justification is specific to `run`'s
+   per-scenario lease, where the environment is torn down and rebuilt fresh on every lease regardless
+   (`pool.py`). `crawl` does not fit it: *Extending `crawl`'s own crash recording* threads this same
+   `env.app_crash_artifacts` into the crawl loop, but a crawl lane holds *one* environment for its
+   entire walk (`_build_lane`, [`cli.py:294-300`](../../bajutsu/crawl/cli.py)) — the walk has not ended
+   when a crash lands mid-frontier (`current_fp = None; continue`,
+   [`_functions.py:668-669`](../../bajutsu/crawl/core/_functions.py)), so a tombstone pull on the first
+   confirmed Android crash would break every later query on that same lane, with nothing left to rebuild
+   the resident server or reverse tunnel until the crawl itself ends. This layer is therefore gated to
+   the `run` entry point only: `AndroidEnvironment` gains a constructor-time flag (threaded through
+   `environment_for`, set only by `_build_lane`'s crawl-lane construction) that `app_crash_artifacts()`
+   checks before attempting the root-gated pull, skipping straight to the `logcat` layer's result — no
+   `adb root`, no killed session — when set. `crawl`'s own Android capture is `logcat`-only; `run`'s
+   keeps both layers.
+
 ### Wiring the capture into a failed scenario's run directory
 
 The reactive check runs in-band, inside the same step loop every other terminal failure already goes
@@ -629,8 +644,9 @@ worth the most since there is no repro to run instead, does not lose its artifac
 repro. It writes any non-empty `artifacts` under `crashes/crash-NNN/app-crash/` — a sibling of the
 repro file, not a same-named top-level directory, so the two are found together and sort together. A
 crawl's own detection stays the UI-tree heuristic it already uses: `crawl` has no scenario step to
-hang a reactive check off, unlike `run`. The capture is shared between
-the two entry points; the detection is not.
+hang a reactive check off, unlike `run`. The capture is shared between the two entry points on iOS;
+on Android it is shared for the `logcat` layer only — the root-gated tombstone pull is `run`-only (see
+*Android: `logcat`'s crash buffer...*) — and the detection is not shared either way.
 
 `Crash` is also the type [`serialize.py`](../../bajutsu/crawl/serialize.py) round-trips through JSON —
 `screenmap_dict` dumps `screen_map.crashes` (`:131-134`) and `screenmap_from_dict` rebuilds it
@@ -727,7 +743,12 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       inherited `relauncher()` has no environment in scope to update; a matching
       `XcuitestEnvironment.crawl_reset()` override recording it a third time after `crawl`'s own
       per-frontier-revisit relaunch, the one other call site `_DeviceEnvironment`'s inherited
-      `crawl_reset()` also has no environment in scope to update; reading `CFBundleExecutable`
+      `crawl_reset()` also has no environment in scope to update; a fourth record inside
+      `_resume_warm` itself (BE-0291's cross-lease warm-reuse launch,
+      `xcuitest_environment.py:855-856`, on the same long-lived `XcuitestEnvironment` `start()`
+      returns through) next to its own `e.launch`, since a warm-reused lease's crash would otherwise
+      match whichever earlier lease's `.ips` report happened to share the marker's stale timestamp;
+      reading `CFBundleExecutable`
       from `Path(ios.app_path) / "Info.plist"` for the sweep's own match pattern (`ios.bundle_id` is
       not this name); `app_crash_artifacts()`'s name-and-`udid`-matched `.ips` sweep (no PID accessor
       exists on `XCUIApplication`), with a bounded wait for `ReportCrash`'s asynchronous write,
@@ -744,8 +765,10 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       the best-effort, root-gated tombstone pull, run last, accepting that `adb root` kills the
       resident server's `am instrument -w` session and BE-0283's `adb reverse` tunnel outright — not
       re-establishing either, since nothing later in this lease needs them and the pool rebuilds both
-      fresh on the next lease regardless — each layer independently wrapped so any failure resolves
-      to `[]`.
+      fresh on the next lease regardless — gated to the `run` entry point only via a constructor-time
+      `AndroidEnvironment` flag threaded through `environment_for`, since a crawl lane's one
+      long-lived environment has no next lease to rebuild on; each layer independently wrapped so any
+      failure resolves to `[]`.
 - [ ] Unit 6 — `RunEnvironment.app_crash_artifacts()` protocol shape (returning
       `list[tuple[str, bytes]]`, read live with no snapshot-and-thunk indirection, since nothing
       tears the environment down before this scenario's own lease releases); a one-line `return []`
@@ -785,7 +808,9 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       it as a real attribute only on a wrapped driver that implements it.
 - [ ] Unit 10 — `crawl`'s own integration: `_build_lane`'s per-lane `app_crash_artifacts`, threaded
       through `WorkerFactory` and `crawl()`'s primary-lane parameters the same way `driver`/`reset`
-      already are; the capture call joining `record_crash`'s existing off-lock crash check, gated on
+      already are; `_build_lane`'s `environment_for` call passing the new crawl-lane flag so Android's
+      tombstone-pull layer stays off for the whole walk (Unit 5); the capture call joining
+      `record_crash`'s existing off-lock crash check, gated on
       the driver positively confirming the event (`isinstance`/`app_crash_signal()`) so a UI-tree
       false positive does not pay a full-timeout sweep; `Crash`'s new `artifacts` field, deliberately
       left out of `serialize.py`'s `screenmap_dict`/`screenmap_from_dict` round trip (raw `bytes` has
@@ -805,9 +830,12 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 - [ ] Unit 13 — Tests: `app_crash_signal()` answering `None` on an ordinary `ElementNotFound` (no
       false positive on a missing selector), on a `wait`/`assert` failure, and on `deviceType: device`
       regardless of `app.state`, for both backends; `XcuitestEnvironment.app_launched_at` advancing
-      past a `relaunch` step's own launch and past a `crawl`-driven `crawl_reset()`'s own launch, and
-      the `.ips` sweep after a second crawl crash finding only the report from that crash's own reset,
-      not the first crash's; a failing `relaunch` step never probing
+      past a `relaunch` step's own launch, past a `crawl`-driven `crawl_reset()`'s own launch, and past
+      a `_resume_warm` cross-lease reuse's own launch, and the `.ips` sweep after each finding only the
+      report from that most recent launch, never an earlier scenario's or crash's; a crawl-lane
+      `AndroidEnvironment` never attempting the root-gated tombstone pull regardless of a confirmed
+      crash (the `logcat` layer still runs), while a `run`-leased one still attempts it; a failing
+      `relaunch` step never probing
       `app_crash_signal()`, and neither does its wrapping `if`/`forEach` outcome nor a dispatched
       `after: on: fail` step that also fails against the terminated app; an interrupt recovery step
       (BE-0314's `_run_recovery`, distinct from the `after` phase) that also fails against a
@@ -875,6 +903,12 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 - [`bajutsu/common/platform_lifecycle/environments/ios.py`](../../bajutsu/common/platform_lifecycle/environments/ios.py) —
   `_DeviceEnvironment.crawl_reset()`, the third iOS launch site `XcuitestEnvironment` overrides to
   keep `app_launched_at` current, alongside `relauncher()`
+- [`bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py) —
+  `_resume_warm`, BE-0291's fourth iOS launch site, on the same long-lived environment across leases,
+  and the one this item records `app_launched_at` in too
+- [`bajutsu/common/platform_lifecycle/factories.py`](../../bajutsu/common/platform_lifecycle/factories.py) —
+  `environment_for`, the shared factory `run`'s pool and `crawl`'s `_build_lane` both call; the seam
+  the new crawl-lane flag threads through to gate Android's tombstone pull to `run` only
 - [`bajutsu/crawl/core/_functions.py`](../../bajutsu/crawl/core/_functions.py) — `record_crash`'s
   off-lock crash check, the join point for this item's crawl-side capture call
 - [`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py) — `_build_lane`, the per-lane environment this
