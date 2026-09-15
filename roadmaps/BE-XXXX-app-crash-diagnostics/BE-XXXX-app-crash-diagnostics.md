@@ -528,9 +528,10 @@ bytes]]`, called only from `pipeline.py`'s post-return scan, never from `_finish
 because Android alone splits its capture across two call sites with different timing constraints — no
 other backend needs a second method, but `pool.py`'s `lease()` closure still reads it off every leased
 environment the same unconditional way it reads `app_crash_artifacts()`, so a structural protocol
-member needs a declaration everywhere, not only where the real work happens. `WebEnvironment`,
-`XcuitestEnvironment`, and `_DeviceEnvironment` (`FakeEnvironment`'s base) each gain a matching
-one-line `return []` alongside their `app_crash_artifacts()` no-op or override; only `AndroidEnvironment`
+member needs a declaration everywhere, not only where the real work happens. `WebEnvironment` and
+`_DeviceEnvironment` (the base `FakeEnvironment` and `XcuitestEnvironment` both inherit) each gain a
+matching one-line `return []` alongside their `app_crash_artifacts()` no-op or override, with
+`XcuitestEnvironment` inheriting that no-op rather than repeating it; only `AndroidEnvironment`
 overrides it with the tombstone pull itself.
 
 `ReportCrash` may not have finished writing the report the instant the app dies. `_app_crash_reports`

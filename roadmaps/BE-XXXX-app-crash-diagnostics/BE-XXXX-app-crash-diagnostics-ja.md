@@ -472,7 +472,7 @@ Simulator 上のアプリの `.ips` レポートは、実行ファイルのフ�
 （[`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py)）はすでに、
 リースしたデバイス自身の `udid` を記録しています。そこで、BE-0421 自身の
 `XcuitestEnvironment._crash_reports(spawned_at, pid)`（自身の既知のプロセス向けに
-`"xcodebuild-*.ips"` を決め打ちしているため `pattern` 引数を要りません）の姉妹にあたる
+`"xcodebuild-*.ips"` を決め打ちしているため `pattern` 引数を必要としません）の姉妹にあたる
 新しい `_app_crash_reports(pattern, launched_at, udid)`
 を加え、`_reports_since` が返す候補（これは `list[Path]` を返し、レポート自身の
 ファイル名に udid は現れません)を1件ずつ読み、その*実行ファイル*のパスがペイロードの中でその
@@ -609,9 +609,10 @@ Android だけが収集を2つの呼び出し箇所へ分け、それぞれ異�
 要りませんが、`pool.py` の `lease()` クロージャは `app_crash_artifacts()` と同じ
 無条件の形で、リースしたあらゆる環境からこのメソッドも読みます。構造的プロトコルの
 メンバーは、実体のある処理を持つ場所だけでなく、あらゆる場所で宣言が要ります。
-`WebEnvironment`・`XcuitestEnvironment`・`_DeviceEnvironment`（`FakeEnvironment` の
-基底）は、それぞれ `app_crash_artifacts()` の no-op またはオーバーライドの隣に、
-同じ1行の `return []` を新たに持ちます。tombstone の取得そのものでこれを
+`WebEnvironment` と `_DeviceEnvironment`（`FakeEnvironment` と `XcuitestEnvironment` がどちらも
+継承する基底）は、それぞれ `app_crash_artifacts()` の no-op またはオーバーライドの隣に、
+同じ1行の `return []` を新たに持ちます。`XcuitestEnvironment` はこれを繰り返さず、
+その no-op をそのまま継承します。tombstone の取得そのものでこれを
 オーバーライドするのは `AndroidEnvironment` だけです。
 
 `ReportCrash` は、アプリが落ちたその瞬間にはまだレポートを書き終えていないことがあります。
@@ -827,7 +828,7 @@ OS による強制終了はありませんが、ふつうのプロセス終了�
 例外として `run_scenario` の外へ出ないため、エスケープした `BackendCrashError` に対して
 だけ発火する `pipeline.py` 既存のクラッシュリトライループは、これを一度も見ません。
 シナリオは、他のあらゆる終端ステップ失敗と同じように、リトライを止めるための特別扱いを
-何も要らずに一度だけ失敗します。
+何も必要とせずに一度だけ失敗します。
 
 証跡の*収集*は経路の内側にとどまります（`_finish_outcome` の中、「検知の方式」を参照）。
 ただし、証跡のディスクへの*コピー*はその経路の外に置きます。BE-0421 自身のコピーが経路の
@@ -1201,7 +1202,7 @@ fake backend の実行が収集する内容は変わりません。
       `adb root` をシナリオの途中で発火させれば、「Android：`logcat` のクラッシュ用
       バッファをまず読み、root 権限があるときだけ tombstone を取得する」節が述べる、
       エスケープする `BackendCrashError` の危うさを招くからです。`crawl` は、この層を
-      自身の長寿命レーンから外すのに別立てのフラグを要りません。`app_crash_tombstone()`
+      自身の長寿命レーンから外すのに別立てのフラグを必要としません。`app_crash_tombstone()`
       を一度も呼ばないだけで足ります（Unit 10）。それぞれ独立して失敗を `[]` へ解決する
       よう包みます。
 - [ ] Unit 6 — `RunEnvironment.app_crash_artifacts()` と `RunEnvironment.app_crash_tombstone()`
