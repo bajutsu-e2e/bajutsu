@@ -371,8 +371,10 @@ install path in its header (`.../CoreSimulator/Devices/<udid>/data/Containers/Bu
 which names the specific Simulator the crashed process ran on. `Lease`
 ([`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py)) already records the leased
 device's own `udid`, so a new `_app_crash_reports(launched_at, udid)` — a sibling of BE-0421's own
-`_crash_reports(spawned_at, pid)`, in the same module — accepts a report from `_reports_since` only
-when its path names that same `udid`, in place of `_reported_pid`'s check. That disambiguates two
+`_crash_reports(spawned_at, pid)`, in the same module — reads each candidate `_reports_since`
+returns (it answers `list[Path]`, and a report's own filename carries no udid) and accepts it only
+when the *executable* path in the report's own header names that same `udid`, in place of
+`_reported_pid`'s check. That disambiguates two
 Simulators running the identical target binary in the same window, the case a CI host running two
 lanes in parallel (`--workers 2`) can produce, without needing a PID at all.
 
@@ -474,6 +476,21 @@ keyword, threaded into `AdbDriver.__init__` the same way it already threads `dev
 plain constructor argument rather than a `Driver` member. `Driver` is `@runtime_checkable`, with no
 shared base class, so a data member there would be a declaration every backend and every inline test
 double has to repeat.
+
+`package` defaults to `None` at that same boundary, and `None` does not fail closed here the way
+`ios.app_path is None` does on the iOS side (*iOS: matching the `.ips` report*): `dumpsys activity
+exit-info` with no package argument is not an error — it reports `ApplicationExitInfo` for *every*
+package on the device — so an `AdbDriver` built with `package=None` would run `pidof` with no argument
+(empty output) and then read a device-wide exit-info history whose newest entry is some other
+process's `CRASH`, confirming a crash the app under test never had. Every scenario-run `AdbDriver` is
+built inside `AndroidEnvironment.start()`, where the package is always in scope, so this is unreachable
+on the `run` path as designed — but `make_driver` has other callers that pass neither `package` nor
+`launched_at` ([`bajutsu/serve/operations/_common.py:92`](../../bajutsu/serve/operations/_common.py),
+[`bajutsu/common/doctor/_functions.py:194,210`](../../bajutsu/common/doctor/_functions.py)), and a
+silent `None` default is what would let one of those later inherit the unsafe answer.
+`app_crash_signal()` therefore checks `package is None` (and `launched_at is None`, or a
+`launched_at()` that itself answers `None`) first, before either `adb` call, resolving to `None`
+immediately — the same up-front, named case `ios.app_path is None` already is.
 
 An empty `pidof` answer, where the app should still hold a process, is necessary but not sufficient.
 It also matches a launch that never completed, or a termination this item has no scenario-level cause
@@ -686,7 +703,9 @@ and not the other. `write_repros` also `continue`s past a crash whose path canno
 replayed, writing no `.yaml` for it (a `tap_point` action has no selector to address) — the artifact
 write sits *before* that `continue`, so a non-replayable crash, the kind whose platform report is
 worth the most since there is no repro to run instead, does not lose its artifacts along with its
-repro. It writes any non-empty `artifacts` under `crashes/crash-NNN/app-crash/` — a sibling of the
+repro. It writes any non-empty `artifacts` under `crashes/crash-NNN/app-crash/`, through the same
+redacting `writer.write_text(…, content.decode(errors="replace"))` path `run`'s own copy uses and
+`write_repros` already uses for the repro `.yaml` beside it — the directory is a sibling of the
 repro file, not a same-named top-level directory, so the two are found together and sort together. A
 crawl's own detection stays the UI-tree heuristic it already uses: `crawl` has no scenario step to
 hang a reactive check off, unlike `run`. The capture is shared between the two entry points on iOS;
@@ -795,11 +814,17 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       match whichever earlier lease's `.ips` report happened to share the marker's stale timestamp;
       reading `CFBundleExecutable`
       from `Path(ios.app_path) / "Info.plist"` for the sweep's own match pattern (`ios.bundle_id` is
-      not this name); `app_crash_artifacts()`'s name-and-`udid`-matched `.ips` sweep (no PID accessor
-      exists on `XCUIApplication`), with a bounded wait for `ReportCrash`'s asynchronous write,
+      not this name); `app_crash_artifacts()`'s name-and-`udid`-matched `.ips` sweep, reading and
+      parsing each candidate report's own header for the udid rather than its path (no udid appears
+      in a report's filename, and no PID accessor exists on `XCUIApplication`), with a bounded wait
+      for `ReportCrash`'s asynchronous write,
       wrapped so any failure resolves to `[]`.
 - [ ] Unit 4 — Android: a `package` keyword threaded through `backends.make_driver` into
-      `AdbDriver.__init__`, the same way `device_os` already is; a `launched_at` injected callable
+      `AdbDriver.__init__`, the same way `device_os` already is; `app_crash_signal()` checking
+      `package is None` or an unset/`None`-answering `launched_at` first, resolving to `None`
+      immediately — `dumpsys activity exit-info` with no package reports every package on the
+      device, so a silent `None` default would confirm another process's crash; a `launched_at`
+      injected callable
       reading `AndroidEnvironment.app_launched_at`; `AdbDriver.app_crash_signal()` via `adb shell
       pidof <package>` corroborated by a time-bound `adb shell dumpsys activity exit-info <package>`
       check (its newest entry only, at or after `launched_at()`), polled the same short, bounded way
@@ -869,7 +894,8 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       propagating `XcuitestRunnerCrashError`, and this call sits outside `_walk`'s own `try`; `Crash`'s new `artifacts` field, deliberately
       left out of `serialize.py`'s `screenmap_dict`/`screenmap_from_dict` round trip (raw `bytes` has
       no JSON encoding; a carried-forward `Crash` reload always gets `artifacts=()`);
-      `repro.py`'s `write_repros` writing non-empty artifacts under `crashes/crash-NNN/app-crash/`
+      `repro.py`'s `write_repros` writing non-empty artifacts through the same redacting
+      `writer.write_text` path `run`'s own copy uses, under `crashes/crash-NNN/app-crash/`
       before its own `continue` on a non-replayable crash, alongside that crash's own
       `crashes/crash-NNN.yaml` repro.
 - [ ] Unit 11 — Showcase fixtures: a "force a crash" affordance gated behind a launch-env flag (not a
@@ -883,7 +909,9 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       cross-references the no-retry app-crash path against the existing backend-crash retry section.
 - [ ] Unit 13 — Tests: `app_crash_signal()` answering `None` on an ordinary `ElementNotFound` (no
       false positive on a missing selector), on a `wait`/`assert` failure, and on `deviceType: device`
-      regardless of `app.state`, for both backends; `XcuitestEnvironment.app_launched_at` advancing
+      regardless of `app.state`, for both backends; an `AdbDriver` built with `package=None` or an
+      unset `launched_at` answering `None` immediately, never reaching `pidof` or `exit-info`, so it
+      cannot confirm another process's crash as this app's; `XcuitestEnvironment.app_launched_at` advancing
       past a `relaunch` step's own launch, past a `crawl`-driven `crawl_reset()`'s own launch, and past
       a `_resume_warm` cross-lease reuse's own launch, and the `.ips` sweep after each finding only the
       report from that most recent launch, never an earlier scenario's or crash's; a crawl-lane
@@ -894,7 +922,8 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       no `appPath` configured resolving `app_crash_artifacts()` to `[]` up front, never reaching the
       `Info.plist` read at all; `write_repros` writing `crashes/crash-NNN/app-crash/` for a crash whose
       path cannot be faithfully replayed — pinning that the artifact write sits before that loop's own
-      `continue` — under the same `NNN` the skipped repro would have carried; a failing `relaunch` step never probing
+      `continue`, and that it lands redacted, through `write_text`, not `write_bytes` — under the same
+      `NNN` the skipped repro would have carried; a failing `relaunch` step never probing
       `app_crash_signal()`, and neither does its wrapping `if`/`forEach` outcome nor a dispatched
       `after: on: fail` step that also fails against the terminated app; an interrupt recovery step
       (BE-0314's `_run_recovery`, distinct from the `after` phase) that also fails against a
@@ -928,8 +957,7 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 
 - [BE-0421](../BE-0421-xcuitest-crash-report-scenario-artifact/BE-0421-xcuitest-crash-report-scenario-artifact.md)
   (Implemented, [#1999](https://github.com/bajutsu-e2e/bajutsu/pull/1999)) — the runner's own
-  crash-report capture this item complements and reuses directly: `_reports_since()` and
-  `_reported_pid()` in
+  crash-report capture this item complements and reuses directly: `_reports_since()` in
   [`xcuitest/_functions.py`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/_functions.py),
   and `pipeline.py`'s `_write_crash_artifacts()` (`_CRASH_DIAGNOSTICS_DIR`), the sibling this item's
   own `_write_app_crash_artifacts()` mirrors

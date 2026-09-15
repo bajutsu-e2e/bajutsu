@@ -424,8 +424,9 @@ Simulator 上のアプリの `.ips` レポートは、そのヘッダに実行�
 （[`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py)）はすでに、
 リースしたデバイス自身の `udid` を記録しています。そこで、BE-0421 自身の
 `_crash_reports(spawned_at, pid)` の姉妹にあたる新しい `_app_crash_reports(launched_at, udid)`
-を同じモジュールに加え、`_reported_pid` による確認の代わりに、`_reports_since` が返す
-レポートのうち、パスがその同じ `udid` を名指ししているものだけを受け入れます。これにより、
+を同じモジュールに加え、`_reports_since` が返す候補（これは `list[Path]` を返し、レポート自身の
+ファイル名に udid は現れません)を1件ずつ読み、その*実行ファイル*のパスがヘッダの中でその同じ
+`udid` を名指しているものだけを、`_reported_pid` による確認の代わりに受け入れます。これにより、
 同一の対象バイナリを動かす Simulator が並列実行の CI ホスト（`--workers 2`）で2台、同じ
 時間帯に存在する場合でも、PID を使わずに区別できます。
 
@@ -560,6 +561,24 @@ None = None` というキーワードを加え、`device_os`（BE-0358）をす�
 クラスを持たないため、そこにデータメンバーを置けば、あらゆるバックエンドとあらゆる
 インラインのテストダブルが、同じ宣言を繰り返すことになります。そこで、素の
 コンストラクタ引数として渡すほうを選びます。
+
+`package` は同じ境界で `None` を既定値とします。iOS 側の `ios.app_path is None`
+（「iOS：`.ips` レポートの照合」）とは違い、ここでの `None` はフェイルクローズしません。
+`dumpsys activity exit-info` はパッケージ引数なしでもエラーにはなりません。端末上の
+*あらゆる*パッケージの `ApplicationExitInfo` を報告するだけです。したがって
+`package=None` で組み立てられた `AdbDriver` は、引数なしの `pidof`（出力は空)を走らせた
+あと、端末全体の exit-info 履歴を読み、その最新の項目がたまたま別のプロセスの `CRASH`
+だったとしても、テスト対象アプリが一度も経験していないクラッシュを確定させてしまいます。
+シナリオを実行するすべての `AdbDriver` は `AndroidEnvironment.start()` の中で組み立てられ、
+そこでは常にパッケージがスコープ内にあるため、設計上 `run` の経路ではこの `None` に
+届きません。しかし `make_driver` には `package` も `launched_at` も渡さない他の呼び出し元が
+あり（[`bajutsu/serve/operations/_common.py:92`](../../bajutsu/serve/operations/_common.py)、
+[`bajutsu/common/doctor/_functions.py:194,210`](../../bajutsu/common/doctor/_functions.py)）、
+黙った `None` の既定値は、そのうちの1つがのちにこの安全でない答えを黙って受け継ぐ経路その
+ものです。そこで `app_crash_signal()` は、`adb` の呼び出しに入る前にまず `package is None`
+（および `launched_at is None`、あるいは `launched_at()` 自身が `None` を返す場合)を確認し、
+その場で `None` へ即座に解決します。`ios.app_path is None` がすでに持つのと同じ、名前のついた
+事前確認です。
 
 空の `pidof` という答えは、アプリがまだプロセスを保持しているはずの場面では、必要条件
 ではあっても十分条件ではありません。起動が完了しなかった場合や、本項目がシナリオレベル
@@ -818,7 +837,9 @@ OS による強制終了はありませんが、ふつうのプロセス終了�
 `continue` で飛ばし、`.yaml` を書き出しません。証跡の書き込みはその `continue` より
 *前*に置きます。そうしなければ、再現できないクラッシュ——再現シナリオの代わりが
 ないぶん、プラットフォームのレポートがもっとも価値を持つ種類のクラッシュ——が、
-自身の再現ファイルと一緒に証跡まで失ってしまいます。空でない `artifacts` は
+自身の再現ファイルと一緒に証跡まで失ってしまいます。空でない `artifacts` は、`run` 自身の
+コピーが使うのと同じマスキングを行う `writer.write_text(…, content.decode(errors="replace"))`
+経路——その隣の再現 `.yaml` に `write_repros` がすでに使っている経路でもあります——を通じて
 `crashes/crash-NNN/app-crash/` の下へ書き込みます。このパスは再現ファイルの隣にあり、
 同じ名前を持つ最上位のディレクトリではないため、2つは並んで見つかり、並んで
 ソートされます。クロール自身の検知は、すでに使っているUI ツリーのヒューリスティック
@@ -942,10 +963,16 @@ fake backend の実行が収集する内容は変わりません。
       どこか前のリースの `.ips` レポートと一致してしまいかねません。掃引自身の照合パターンのために
       `Path(ios.app_path) / "Info.plist"` から `CFBundleExecutable` を読みます
       （`ios.bundle_id` はこの名前ではない）。`app_crash_artifacts()` の、名前と `udid` に
-      よる `.ips` 掃引（`XCUIApplication` には PID を読む手段がない）。`ReportCrash` の
-      非同期な書き込みに対する上限つきの待機を含み、失敗はすべて `[]` へ解決するよう包みます。
+      よる `.ips` 掃引。候補となる各レポートをパスではなくヘッダの中身まで読んで確認します
+      （レポートのファイル名に udid は現れず、`XCUIApplication` には PID を読む手段もない）。
+      `ReportCrash` の非同期な書き込みに対する上限つきの待機を含み、失敗はすべて `[]` へ
+      解決するよう包みます。
 - [ ] Unit 4 — Android：`backends.make_driver` から `AdbDriver.__init__` へ、`device_os` と
-      同じ方法で通す `package` キーワード。`AndroidEnvironment.app_launched_at` を読む、
+      同じ方法で通す `package` キーワード。`app_crash_signal()` は `package is None` か、
+      `launched_at` が未設定または `None` を返す場合を最初に確認し、その場で `None` へ
+      解決します。パッケージなしの `dumpsys activity exit-info` は端末上のあらゆる
+      パッケージを報告してしまうため、黙った `None` の既定値は別のプロセスのクラッシュを
+      確定させかねません。`AndroidEnvironment.app_launched_at` を読む、
       注入された `launched_at` コールバック。`adb shell pidof <package>` による
       `AdbDriver.app_crash_signal()` を、時刻で絞り込んだ `adb shell dumpsys activity
       exit-info <package>`（最新の項目のみ、`launched_at()` 以降）で裏付けます。iOS の
@@ -1021,6 +1048,7 @@ fake backend の実行が収集する内容は変わりません。
       新しい `artifacts` フィールド(生の `bytes` には JSON 表現がないため `serialize.py` の
       `screenmap_dict`/`screenmap_from_dict` の往復からはあえて除き、引き継がれる `Crash` は
       常に `artifacts=()` で組み立て直されます)。`repro.py` の `write_repros` が、空でない証跡を、
+      `run` 自身のコピーが使うのと同じマスキングを行う `writer.write_text` 経路を通じて、
       再現できないクラッシュをスキップする自身の `continue` より前で
       `crashes/crash-NNN/app-crash/` へ、そのクラッシュ自身の `crashes/crash-NNN.yaml`
       再現ファイルの隣に書き込みます。
@@ -1037,7 +1065,10 @@ fake backend の実行が収集する内容は変わりません。
       節と、この項目のリトライなしの経路を相互参照させます。
 - [ ] Unit 13 — テスト。両バックエンドで、ふつうの `ElementNotFound` や `wait`・`assert` の
       失敗、そして `app.state` の答えに関わらず `deviceType: device` に対して
-      `app_crash_signal()` が `None` を返すこと（誤検知しないこと）。`relaunch` ステップ
+      `app_crash_signal()` が `None` を返すこと（誤検知しないこと）。`package=None` または
+      未設定の `launched_at` で組み立てた `AdbDriver` が即座に `None` を返し、`pidof` にも
+      `exit-info` にもまったく届かないこと（別のプロセスのクラッシュを確定させない）。
+      `relaunch` ステップ
       自身の起動を過ぎて、`crawl` が駆動する `crawl_reset()` 自身の起動を過ぎて、また
       `_resume_warm` のクロスリース再利用自身の起動を過ぎても
       `XcuitestEnvironment.app_launched_at` が進むこと、それぞれの `.ips` 掃引が、
@@ -1050,7 +1081,8 @@ fake backend の実行が収集する内容は変わりません。
       `app_crash_artifacts()` がその場で `[]` へ解決し、`Info.plist` の読み取りにまったく
       届かないこと。再現できないクラッシュに対して `write_repros` が
       `crashes/crash-NNN/app-crash/` を書き込むこと——証跡の書き込みがループ自身の
-      `continue` より前にあることを固定します——スキップされた再現ファイルが持つはずだった
+      `continue` より前にあることと、`write_bytes` ではなく `write_text` を通してマスキング
+      済みで書き込まれることの両方を固定します——スキップされた再現ファイルが持つはずだった
       その同じ `NNN` の下にです。失敗した
       `relaunch` ステップ自身が `app_crash_signal()` をまったく確認しないこと、それを包む
       `if`・`forEach` の outcome も、終了させられたアプリに対して失敗する
@@ -1094,7 +1126,7 @@ fake backend の実行が収集する内容は変わりません。
   （実装済み、PR [#1999](https://github.com/bajutsu-e2e/bajutsu/pull/1999)） —
   本項目が補完し、直接再利用するランナー自身のクラッシュレポート収集。再利用先は
   [`xcuitest/_functions.py`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/_functions.py)
-  の `_reports_since()`・`_reported_pid()` と、`pipeline.py` の
+  の `_reports_since()` と、`pipeline.py` の
   `_write_crash_artifacts()`（`_CRASH_DIAGNOSTICS_DIR`）
 - [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md) —
   本項目の `crawl` 統合が土台とする、クロールの `Crash` レコードと `is_app_alive` の
