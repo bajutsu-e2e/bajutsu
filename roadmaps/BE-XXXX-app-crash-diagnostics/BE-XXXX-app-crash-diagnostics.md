@@ -381,8 +381,9 @@ report's filename names the process that crashed (`Showcase-2026-…ips`), never
 BE-0421 passes the literal `"xcodebuild-*.ips"` for its own known process. `XcuitestEnvironment`
 holds `ios.bundle_id` (`self._bundle_id`, `com.example.Showcase`), which is not that name and never
 matches a report's filename. This item instead reads `CFBundleExecutable` from the installed app's
-own `Info.plist`, at `Path(ios.app_path) / "Info.plist"`, once at launch time — the one plist key
-every iOS bundle is required to declare — and builds the sweep's pattern from it, the same way
+own `Info.plist`, at `Path(ios.app_path) / "Info.plist"`, inside `app_crash_artifacts()` itself —
+the one plist key every iOS bundle is required to declare — and builds the sweep's pattern from it,
+the same way
 `ios.app_path` already names the bundle `e.install` installs from. `ios.app_path` is itself optional
 (`str | None`, [`target_config.py:107`](../../bajutsu/common/config/schema/target_config.py)) — a
 `deviceType: simulator` target naming only `bundle_id`, against a Simulator that already has the app
@@ -486,13 +487,20 @@ scenario's crash on the same package can still be the newest entry `dumpsys` rep
 one exited for an unrelated reason with no `ApplicationExitInfo` recorded yet. `AdbDriver` gains a
 `launched_at: Callable[[], float | None] | None = None` constructor argument, an injected callable
 reading `AndroidEnvironment.app_launched_at` live, the same seam `fetch_clock` already uses for a
-per-call read rather than a value frozen at construction. `app_crash_signal()` reads the exit-info
-history once, right after `pidof` answers empty, and confirms the event only when its *newest* entry
-reports `CRASH`/`CRASH_NATIVE` *and* that entry's own timestamp is at or after `launched_at()` — ruling
-out a stale entry from before this launch. Either condition failing answers `None`, the same "cannot
-confirm" answer a backend with no signal at all gives. This is the corroboration `app.state`'s
+per-call read rather than a value frozen at construction. A single exit-info read right after `pidof`
+answers empty races the very crash it corroborates: `pidof` reports empty the instant the process
+dies, while `system_server` records the matching `ApplicationExitInfo` only after it reaps the death —
+later still for a native crash, after `crash_dump` finishes — so the newest entry can still be a stale
+one from before this launch on the very read meant to confirm a fresh crash. `app_crash_signal()`
+therefore polls the exit-info history the same short, bounded way `_app_crash_reports` already polls
+`DiagnosticReports` on iOS: up to a few seconds, re-reading until its *newest* entry reports
+`CRASH`/`CRASH_NATIVE` *and* that entry's own timestamp is at or after `launched_at()` — ruling out a
+stale entry from before this launch — or the bound expires. Either the bound expiring or the newest
+entry never meeting both conditions answers `None`, the same "cannot confirm" answer a backend with no
+signal at all gives. This is the corroboration `app.state`'s
 `notRunning` gets for free from the Simulator's own constraints above; Android's own platform-reported,
-time-bound exit reason gives adb the equivalent positive confirmation.
+time-bound exit reason gives adb the equivalent positive confirmation, once the read is given the same
+room to catch up that the write needs.
 
 `AndroidEnvironment`
 ([`bajutsu/common/platform_lifecycle/environments/android/android_environment.py`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py))
@@ -519,7 +527,12 @@ a failure in one layer never drops the other:
    processes as well as across launches: a managed block is accepted only when its own
    `Process: <package>` line names the target's `android.package`, and a native block only when its
    `>>> <process> <<<` header does, so a system service or another app crashing in the same window is
-   never written as this scenario's evidence. Whichever matches is
+   never written as this scenario's evidence. A single dump taken immediately can still come up
+   empty for a native crash: `crash_dump` writes the `>>> <process> <<<` block after the death
+   `pidof` already reported the detection gate off of, the same asynchrony `app_crash_signal()`'s
+   own exit-info poll above exists to close. `app_crash_artifacts()` therefore re-dumps the same
+   short, bounded way — up to a few seconds — until a match appears or the bound expires, rather than
+   trusting the first `-d` snapshot. Whichever matches is
    extracted and written as `logcat-crash.txt`. This is the one artifact guaranteed available on any
    AVD or real device the adb backend can already reach.
 2. **A tombstone pull**, best-effort and gated on root access, run last, after the `logcat` layer
@@ -789,14 +802,18 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       `AdbDriver.__init__`, the same way `device_os` already is; a `launched_at` injected callable
       reading `AndroidEnvironment.app_launched_at`; `AdbDriver.app_crash_signal()` via `adb shell
       pidof <package>` corroborated by a time-bound `adb shell dumpsys activity exit-info <package>`
-      check (its newest entry only, at or after `launched_at()`).
+      check (its newest entry only, at or after `launched_at()`), polled the same short, bounded way
+      as the iOS `.ips` sweep rather than read once, since `ApplicationExitInfo` is recorded only
+      after `system_server` reaps the death.
 - [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at` (device clock) at each launch site;
       `app_crash_artifacts()`'s always-attempted `logcat` extraction (managed *and* native crash
       formats) using a `-t "<launch marker>"` time filter rather than clearing the crash buffer, so
       `scripts/collect_android_diagnostics.sh`'s own end-of-job sweep still sees everything earlier —
-      and bounded to the target's own `android.package` (a managed block's `Process: <package>` line,
+      bounded to the target's own `android.package` (a managed block's `Process: <package>` line,
       a native block's `>>> <process> <<<` header), since the buffer is device-global across processes
-      too, not only across launches;
+      too, not only across launches — and, for the same reason as the exit-info poll, re-dumped the
+      same short, bounded way rather than trusted on a single `-d` snapshot, since `crash_dump` writes
+      a native block after the death `pidof` already reported;
       the best-effort, root-gated tombstone pull, run last, accepting that `adb root` kills the
       resident server's `am instrument -w` session and BE-0283's `adb reverse` tunnel outright — not
       re-establishing either, since nothing later in this lease needs them and the pool rebuilds both
@@ -887,7 +904,11 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       against stubbed directories and stubbed `adb` output, including the Android exit-info
       corroboration; a `logcat` dump within the launch marker's own time window but carrying only a
       different package's `FATAL EXCEPTION`/`>>> <process> <<<` block extracting nothing, pinning that
-      the process bound is real and not only the time one; a `_step_runner.py` test asserting the
+      the process bound is real and not only the time one; a stubbed exit-info sequence and a stubbed
+      `logcat` dump sequence each answering empty/no-match on the first read and a matching entry only
+      on a later one within the bound, confirming `app_crash_signal()` and `app_crash_artifacts()`
+      both poll rather than trust a single read, and the bound itself expiring on an entry that never
+      arrives; a `_step_runner.py` test asserting the
       in-band failure, the new `app_crashed`
       field, and the confirmed-crash latch holding across a nested `if`/`forEach` failure; a
       `pipeline.py` test asserting the `app-crash/` directory with redacted text content, the scan

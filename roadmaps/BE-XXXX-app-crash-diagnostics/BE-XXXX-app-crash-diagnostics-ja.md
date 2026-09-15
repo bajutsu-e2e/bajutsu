@@ -435,8 +435,8 @@ Simulator 上のアプリの `.ips` レポートは、そのヘッダに実行�
 `"xcodebuild-*.ips"` を渡しています。`XcuitestEnvironment` が保持する `ios.bundle_id`
 （`self._bundle_id`、`com.example.Showcase`）はその名前ではなく、レポートのファイル名と
 一致することはありません。本項目は代わりに、インストール済みアプリ自身の `Info.plist`
-（`Path(ios.app_path) / "Info.plist"`）から `CFBundleExecutable` を、各起動時に一度
-読み取ります。あらゆる iOS バンドルが宣言を義務づけられているこの1つのプロパティリスト
+（`Path(ios.app_path) / "Info.plist"`）から `CFBundleExecutable` を、`app_crash_artifacts()`
+自身の中で読み取ります。あらゆる iOS バンドルが宣言を義務づけられているこの1つのプロパティリスト
 キーから、掃引のパターンを組み立てます。`e.install` がインストール元とする、その同じ
 `ios.app_path` がすでに名指すバンドルからの読み取りです。`ios.app_path` 自体は任意です
 （`str | None`、
@@ -575,14 +575,22 @@ OS による強制終了はありませんが、ふつうのプロセス終了�
 に `launched_at: Callable[[], float | None] | None = None` というコンストラクタ引数を
 加えます。これは `AndroidEnvironment.app_launched_at` をその場で読む注入されたコール
 バックであり、`fetch_clock` がすでに使っている、構築時に固定せず呼び出しのたびに読む
-のと同じ仕組みです。`app_crash_signal()` は、`pidof` が空を返した直後に一度だけこの
-履歴を読み、その*最新*の項目が `CRASH` か `CRASH_NATIVE` を報告し、*かつ*その項目
-自身のタイムスタンプが `launched_at()` 以降であるときにだけ事象を確定します。今回の
-起動より前の古い項目を除外するためです。どちらかが成り立たなければ `None` を返します。
-シグナルをまったく持たないバックエンドが返すのと同じ、「確認できない」という答えです。
-これは、`app.state` の `notRunning` が Simulator 自身の制約から無償で得ている裏付けに
-相当します。Android では、プラットフォーム自身が報告する、時刻で絞り込んだ終了理由が、
-adb にとって同じ役割の積極的な確認を与えます。
+のと同じ仕組みです。`pidof` が空を返した直後に一度だけこの履歴を読むと、まさに裏付け
+ようとしているそのクラッシュと競合します。プロセスが落ちた瞬間に `pidof` は空を返し
+ますが、`system_server` が対応する `ApplicationExitInfo` を記録するのは、その死を
+回収したあとです。ネイティブクラッシュならさらに遅く、`crash_dump` が完了したあとです。
+したがって、新しいクラッシュを確定させるはずのその読み取りでも、最新の項目がこの起動
+より前の古いものにとどまり得ます。そこで `app_crash_signal()` は、iOS の
+`_app_crash_reports` がすでに `DiagnosticReports` をポーリングしているのと同じ短い
+上限つきの方法で、この履歴をポーリングします。数秒を上限に、その*最新*の項目が
+`CRASH` か `CRASH_NATIVE` を報告し、*かつ*その項目自身のタイムスタンプが
+`launched_at()` 以降であるまで読み直します(今回の起動より前の古い項目を除外するため
+です)。上限に達するまでのあいだです。上限に達しても、または最新の項目が両方の条件を
+満たさなければ、`None` を返します。シグナルをまったく持たないバックエンドが返すのと
+同じ、「確認できない」という答えです。これは、`app.state` の `notRunning` が Simulator
+自身の制約から無償で得ている裏付けに相当します。Android では、プラットフォーム自身が
+報告する、時刻で絞り込んだ終了理由が、adb にとって同じ役割の積極的な確認を与えます。
+読み取り側に、書き込み側が必要とするのと同じだけの追いつく猶予を与えれば、ですが。
 
 `AndroidEnvironment`
 （[`bajutsu/common/platform_lifecycle/environments/android/android_environment.py`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py)）
@@ -614,9 +622,15 @@ adb にとって同じ役割の積極的な確認を与えます。
    `Process: <package>` 行が対象の `android.package` を名指すときにだけ受け入れ、
    ネイティブのブロックは、自身の `>>> <process> <<<` という見出しが名指すときに
    だけ受け入れます。同じ時間帯にシステムサービスや別のアプリがクラッシュしても、
-   このシナリオ自身の証跡としては書き込みません。一致したほうを抽出し、
-   `logcat-crash.txt` として書き出します。これは、この adb バックエンドが到達
-   できるどの AVD や実機でも保証される唯一の証跡です。
+   このシナリオ自身の証跡としては書き込みません。その場で取った1回のダンプは、
+   ネイティブクラッシュに対してはそれでも空になり得ます。`crash_dump` が
+   `>>> <process> <<<` ブロックを書き込むのは、確認ゲートがそもそも検知の根拠にした、
+   `pidof` がすでに報告した死のあとです。`app_crash_signal()` 自身の exit-info
+   ポーリングが閉じようとしているのと同じ非同期性です。そこで `app_crash_artifacts()`
+   も、最初の `-d` スナップショットを信用するのではなく、同じ短い上限つきの方法
+   ——数秒を上限に——一致するかその上限に達するまでダンプを取り直します。一致した
+   ほうを抽出し、`logcat-crash.txt` として書き出します。これは、この adb バック
+   エンドが到達できるどの AVD や実機でも保証される唯一の証跡です。
 2. **tombstone の取得**は、ベストエフォートで root 権限に依存し、上の `logcat` の層より
    あとに、最後に走ります。`adb root` は、このバックエンドが対象とするエミュレータ
    イメージに対しては、すでに日常的な操作ですが、`adbd` を再起動します
@@ -934,7 +948,10 @@ fake backend の実行が収集する内容は変わりません。
       同じ方法で通す `package` キーワード。`AndroidEnvironment.app_launched_at` を読む、
       注入された `launched_at` コールバック。`adb shell pidof <package>` による
       `AdbDriver.app_crash_signal()` を、時刻で絞り込んだ `adb shell dumpsys activity
-      exit-info <package>`（最新の項目のみ、`launched_at()` 以降）で裏付けます。
+      exit-info <package>`（最新の項目のみ、`launched_at()` 以降）で裏付けます。iOS の
+      `.ips` 掃引と同じ短い上限つきの方法でポーリングします。一度だけ読むのではありません。
+      `ApplicationExitInfo` は `system_server` がその死を回収したあとにしか記録されない
+      からです。
 - [ ] Unit 5 — Android：各起動の箇所での `AndroidEnvironment.app_launched_at`（端末自身の
       時計）。`app_crash_artifacts()` の、常に試みる `logcat` 抽出（マネージドコードと
       ネイティブの両形式）は、クラッシュバッファをクリアする代わりに `-t "<起動の目印>"`
@@ -942,7 +959,10 @@ fake backend の実行が収集する内容は変わりません。
       掃引がそれ以前の内容を引き続き見られるようにします。対象自身の `android.package`
       にも絞り込みます（マネージドのブロックなら `Process: <package>` 行、ネイティブなら
       `>>> <process> <<<` 見出し）。このバッファは起動だけでなくプロセスもまたいで端末全体で
-      共有されるからです。ベストエフォートで root 権限に
+      共有されるからです。exit-info のポーリングと同じ理由で、その場の1回の `-d` スナップ
+      ショットを信用せず、同じ短い上限つきの方法で取り直します。`crash_dump` が、
+      `pidof` がすでに報告した死のあとにネイティブのブロックを書き込むからです。
+      ベストエフォートで root 権限に
       依存する tombstone 取得は最後に走り、`adb root` がレジデントサーバの `am instrument -w`
       セッションと BE-0283 の `adb reverse` トンネルをまるごと終わらせることを受け入れます。
       再確立はしません。このリースのこれ以降の処理はどちらのチャネルも必要とせず、プールが
@@ -1044,7 +1064,12 @@ fake backend の実行が収集する内容は変わりません。
       tombstone 収集（Android の exit-info による裏付けを含みます）。起動の目印の時間窓には
       収まるものの、別のパッケージの `FATAL EXCEPTION`/`>>> <process> <<<` ブロックしか
       運ばない `logcat` ダンプが何も抽出しないこと。プロセスによる絞り込みが実在し、
-      時刻によるものだけではないことを固定します。事後確認が経路の内側に
+      時刻によるものだけではないことを固定します。スタブした exit-info の連続と、
+      スタブした `logcat` ダンプの連続を用意し、どちらも1回目の読み取りでは空/不一致を
+      返し、上限内の後続の読み取りで初めて一致する項目を返すようにして、
+      `app_crash_signal()` と `app_crash_artifacts()` の両方が1回きりの読み取りを
+      信用せずポーリングすること、そして一致する項目が一度も現れない場合は上限自体が
+      満了することを確認します。事後確認が経路の内側に
       とどまること、`app_crashed` フィールドを立てること、入れ子になった `if`・`forEach`
       の失敗をまたいで確定済みクラッシュのラッチが保たれることを検証する
       `_step_runner.py` のテスト。`app-crash/` がマスキング済みのテキストを保持すること、
