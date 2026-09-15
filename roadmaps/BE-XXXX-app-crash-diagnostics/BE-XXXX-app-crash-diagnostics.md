@@ -184,8 +184,10 @@ shared post-step step, for the same reason. This item adds one more shared step,
 other three handlers, two for `_handle_action` — in place of the bare `append`. It does the append
 itself, so a step kind added later still needs no wiring here, the same property
 `_drain_step_interruptions` already gives the interruption check it shares across the same four
-handlers. A fast-suite assertion that no `self.state.outcomes.append` survives outside
-`_finish_outcome` keeps a sixth call site, added later, from reopening the same gap silently.
+handlers. A fast-suite test that drives a failing step of every kind through the loop and asserts each
+settled outcome passed through `_finish_outcome` — a behavioural pin, not a grep of `_step_runner.py`
+for the literal `self.state.outcomes.append` — keeps a sixth settle point, added later, from reopening
+the same gap silently, including one spelled `insert` / `extend` / `+=` or reached through a local alias.
 `_finish_outcome` checks `isinstance(active_driver, base.AppCrashSignal)` and `outcome.ok is False`,
 together, right before that append — plus a scenario-level exemption, described next, for the one
 action that deliberately terminates the app itself.
@@ -307,7 +309,9 @@ does deliberately terminate the app on either device type —
 warm-reuse path. `XcuitestEnvironment.relauncher()` does override `_DeviceEnvironment`'s implementation
 (see *iOS: matching the `.ips` report*, for the unrelated reason of re-stamping `app_launched_at`), but
 that override only wraps the `RelaunchFn` `device_relauncher` already returns — it never calls
-`_resume_warm`, which stays a separate, cross-lease code path this step never touches either way. So
+`_resume_warm`, which stays a separate, cross-lease code path this step never touches. `_resume_warm`
+is not exempt from this section's own `app_launched_at` concern, though — it is a fourth launch site in
+its own right, with its own re-stamping fix, described below. So
 `_finish_outcome` skips the probe, and suppresses every later one this same scenario would otherwise
 make (see *Detecting the event*), once a `relaunch` step itself fails. That guard matters less than it
 looks, though: `relaunch`'s own closure calls `readiness.await_ready(...)`
@@ -372,14 +376,21 @@ binary, rather than writing a second sweep over the same directory: a fix to one
 Narrowing by PID is not available here the way it is for BE-0421's own report: XCTest's public
 `XCUIApplication` surface has no PID accessor, and nothing in `BajutsuKit/` reads one today. This item
 narrows by the Simulator's UDID instead. A Simulator app's `.ips` report carries the executable's full
-install path in its header (`.../CoreSimulator/Devices/<udid>/data/Containers/Bundle/Application/…`),
+install path in its *payload* — the second of the file's two JSON documents, not its one-line header
+([`_reported_pid`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/_functions.py)'s own
+docstring: the header carries `app_name`/`bundleID`/`timestamp`/`os_version`/`incident_id`, cheaper and
+more stable but with no install path; the pid — and this item's own udid — live in the payload, which
+`_reported_pid` already parses for exactly that reason)
+(`.../CoreSimulator/Devices/<udid>/data/Containers/Bundle/Application/…`),
 which names the specific Simulator the crashed process ran on. `Lease`
 ([`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py)) already records the leased
 device's own `udid`, so a new `_app_crash_reports(launched_at, udid)` — a sibling of BE-0421's own
 `_crash_reports(spawned_at, pid)`, in the same module — reads each candidate `_reports_since`
 returns (it answers `list[Path]`, and a report's own filename carries no udid) and accepts it only
-when the *executable* path in the report's own header names that same `udid`, in place of
-`_reported_pid`'s check. That disambiguates two
+when the *executable* path in the report's own payload names that same `udid`, in place of
+`_reported_pid`'s check. The header's own `bundleID` field, which `XcuitestEnvironment` already holds
+as `self._bundle_id`, is a cheaper and more stable narrowing worth reading alongside the payload check
+rather than instead of it. That disambiguates two
 Simulators running the identical target binary in the same window, the case a CI host running two
 lanes in parallel (`--workers 2`) can produce, without needing a PID at all.
 
@@ -438,6 +449,21 @@ once per frontier revisit. `AndroidEnvironment`
 needs no matching override here either — its own `crawl_reset()`'s `e.launch`
 ([`android_environment.py:410`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py))
 is the third of the three sites Unit 5 already names.
+
+`_resume_warm` (BE-0291's *cross-lease* warm-reuse launch,
+[`xcuitest_environment.py:855-856`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py))
+is a fourth iOS launch site, on the same long-lived `XcuitestEnvironment` instance across leases:
+`start()` returns through it whenever the runner is reusable (`:297`), and `XcuitestEnvironment`
+overrides `has_reusable_resident()` so BE-0291 keeps that environment across leases rather than tearing
+it down. Nothing on this path re-stamps `app_launched_at` either. Left alone, the same staleness the
+other two overrides close reopens here, worse: both disambiguators fail together. Scenario 1
+cold-launches on device X (marker = T0) and its app crashes, leaving `Showcase-…ips`. Scenarios 2–5
+resume warm on the same device, marker still T0. Scenario 5's app crashes and sweeps `DiagnosticReports`
+with `since = T0`: scenario 1's report matches the executable-name pattern (same app) *and* the `udid`
+check (same Simulator), so `_app_crash_reports` accepts it — scenario 5's `app-crash/` gets scenario 1's
+crash. The fix is the same shape as the other two: `XcuitestEnvironment` records `app_launched_at`
+inside `_resume_warm` itself, next to its own `e.launch`, so the marker tracks whichever launch the app
+is actually running under.
 
 A new `app_crash_artifacts() -> list[tuple[str, bytes]]` joins the `RunEnvironment` protocol
 ([`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py)),
@@ -839,8 +865,9 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       reading `CFBundleExecutable`
       from `Path(ios.app_path) / "Info.plist"` for the sweep's own match pattern (`ios.bundle_id` is
       not this name); `app_crash_artifacts()`'s name-and-`udid`-matched `.ips` sweep, reading and
-      parsing each candidate report's own header for the udid rather than its path (no udid appears
-      in a report's filename, and no PID accessor exists on `XCUIApplication`), with a bounded wait
+      parsing each candidate report's own *payload* for the udid rather than its path or its header
+      (no udid appears in a report's filename or its header, and no PID accessor exists on
+      `XCUIApplication`), with a bounded wait
       for `ReportCrash`'s asynchronous write,
       wrapped so any failure resolves to `[]`.
 - [ ] Unit 4 — Android: a `package` keyword threaded through `backends.make_driver` into
@@ -901,8 +928,9 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       confirmed-crash latch; in the same catch, when `self.cfg.capture_app_crash` is set, calling it
       synchronously and storing the result on a new `StepOutcome.app_crash_artifacts` field — at
       confirmation time, not later, so a subsequent teardown step in the same scenario cannot move
-      `app_launched_at` out from under the sweep; a fast-suite assertion that no `self.state.outcomes.append` survives
-      outside `_finish_outcome`.
+      `app_launched_at` out from under the sweep; a fast-suite test driving a failing step of every
+      kind through the loop and asserting each settled outcome passed through `_finish_outcome` — a
+      behavioural pin, not a source-text grep for `self.state.outcomes.append`.
 - [ ] Unit 8 — `pipeline.py`: `_run_on_lease` scanning
       `(*result.before_outcomes, *result.steps, *result.after_outcomes)` for an `app_crashed`
       outcome right after `run_scenario` returns, still holding the same lease, before its own

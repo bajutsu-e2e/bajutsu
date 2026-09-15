@@ -198,10 +198,13 @@ tip の解除やアラートガードの再試行が終わったあとにあり�
 outcome)` です。他の3つのハンドラは1回ずつ、`_handle_action` は2回、計5箇所です。
 append 自体もこの中で行うため、あとから加わるステップの種類がここへの配線を必要と
 しない点は変わりません。`_drain_step_interruptions` がすでに同じ4つのハンドラへ
-割り込みの確認について与えているのと同じ性質です。あとから加わる6つ目の呼び出し
-箇所が同じ抜け穴を静かに開け直さないよう、`_finish_outcome` の外に
-`self.state.outcomes.append` が残っていないことを検証する高速スイートのテストも
-加えます。`_finish_outcome` は、その append の直前で
+割り込みの確認について与えているのと同じ性質です。あとから加わる6つ目の確定箇所が
+同じ抜け穴を静かに開け直さないよう、高速スイートに1つテストを加えます。あらゆる種類の
+失敗するステップをループへ実際に通し、確定するあらゆる outcome が `_finish_outcome`
+を通ったことを確認する、振る舞いベースの固定です。`_step_runner.py` の中で
+`self.state.outcomes.append` という文字列そのものを検索するテストではありません。
+`insert`・`extend`・`+=` という綴りや、ローカルな別名経由でも見逃しません。
+`_finish_outcome` は、その append の直前で
 `isinstance(active_driver, base.AppCrashSignal)` と `outcome.ok is False` の両方を
 確認します。加えて、アプリ自身を意図的に終了させる、たった1つのアクションのための
 シナリオスコープの除外があります。次の段落で説明します。
@@ -348,8 +351,10 @@ BE-0291 の*リースをまたぐ*ウォーム再利用の経路です。`Xcuite
 `_DeviceEnvironment` の実装をオーバーライドしています（「iOS：`.ips` レポートの照合」を
 参照してください。理由はこれとは無関係で、`app_launched_at` を再記録するためです）が、
 そのオーバーライドが包むのは `device_relauncher` がすでに返す `RelaunchFn` だけであり、
-`_resume_warm` を一切呼びません。`_resume_warm` は、この経路とは無関係な、リースをまたぐ
-別経路のままです。そこで `_finish_outcome` は、`relaunch` ステップ自身が失敗した時点で
+`_resume_warm` を一切呼びません。`_resume_warm` は、この経路とは別の、リースをまたぐ
+別経路のままです。ただし、`_resume_warm` はこの節自身の `app_launched_at` に関する
+懸念から除外されるわけではありません。`_resume_warm` それ自身が4つ目の起動箇所であり、
+再記録の手当ても別に必要です。後述します。そこで `_finish_outcome` は、`relaunch` ステップ自身が失敗した時点で
 確認を飛ばし、このシナリオがそれ以降に行うはずだった確認もすべて抑えます（「検知の方式」
 を参照）。ただし、この防御が実際に見た目ほど効いているわけではありません。`relaunch` の
 クロージャ自身は、`readiness.await_ready(...)`
@@ -424,15 +429,24 @@ BE-0291 の*リースをまたぐ*ウォーム再利用の経路です。`Xcuite
 PID による絞り込みは、BE-0421 自身のレポートに対してと同じようには使えません。XCTest が
 公開する `XCUIApplication` の表面には PID を読む手段がなく、`BajutsuKit/` の中にも今日
 それを読む箇所はありません。本項目は代わりに Simulator の UDID で絞り込みます。
-Simulator 上のアプリの `.ips` レポートは、そのヘッダに実行ファイルのフルパス
-（`.../CoreSimulator/Devices/<udid>/data/Containers/Bundle/Application/…`）を運んでおり、
+Simulator 上のアプリの `.ips` レポートは、実行ファイルのフルパスを*ペイロード*——
+このファイルが持つ2つの JSON ドキュメントのうち2つ目であり、1行だけのヘッダでは
+ありません（[`_reported_pid`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/_functions.py)
+自身のドキュメント文字列のとおり、ヘッダが運ぶのは `app_name`・`bundleID`・
+`timestamp`・`os_version`・`incident_id` などであり、安価で安定していますが
+インストールパスは持ちません。PID も、本項目の udid も、ペイロードにあり、
+`_reported_pid` がまさにその理由でペイロードを解析しています）——に運んでおり
+（`.../CoreSimulator/Devices/<udid>/data/Containers/Bundle/Application/…`）、
 そこにクラッシュしたプロセスが動いていた Simulator 自身が現れます。`Lease`
 （[`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py)）はすでに、
 リースしたデバイス自身の `udid` を記録しています。そこで、BE-0421 自身の
 `_crash_reports(spawned_at, pid)` の姉妹にあたる新しい `_app_crash_reports(launched_at, udid)`
 を同じモジュールに加え、`_reports_since` が返す候補（これは `list[Path]` を返し、レポート自身の
-ファイル名に udid は現れません)を1件ずつ読み、その*実行ファイル*のパスがヘッダの中でその同じ
-`udid` を名指しているものだけを、`_reported_pid` による確認の代わりに受け入れます。これにより、
+ファイル名に udid は現れません)を1件ずつ読み、その*実行ファイル*のパスがペイロードの中でその
+同じ `udid` を名指しているものだけを、`_reported_pid` による確認の代わりに受け入れます。ヘッダ
+自身が持つ `bundleID` フィールド（`XcuitestEnvironment` がすでに `self._bundle_id` として
+保持しています）は、より安価で安定した絞り込みであり、ペイロードの確認を置き換えるのではなく
+併用する価値があります。これにより、
 同一の対象バイナリを動かす Simulator が並列実行の CI ホスト（`--workers 2`）で2台、同じ
 時間帯に存在する場合でも、PID を使わずに区別できます。
 
@@ -991,8 +1005,10 @@ fake backend の実行が収集する内容は変わりません。
       どこか前のリースの `.ips` レポートと一致してしまいかねません。掃引自身の照合パターンのために
       `Path(ios.app_path) / "Info.plist"` から `CFBundleExecutable` を読みます
       （`ios.bundle_id` はこの名前ではない）。`app_crash_artifacts()` の、名前と `udid` に
-      よる `.ips` 掃引。候補となる各レポートをパスではなくヘッダの中身まで読んで確認します
-      （レポートのファイル名に udid は現れず、`XCUIApplication` には PID を読む手段もない）。
+      よる `.ips` 掃引。候補となる各レポートをパスでもヘッダでもなく*ペイロード*まで
+      読んで確認します
+      （レポートのファイル名にもヘッダにも udid は現れず、`XCUIApplication` には PID を
+      読む手段もない）。
       `ReportCrash` の非同期な書き込みに対する上限つきの待機を含み、失敗はすべて `[]` へ
       解決するよう包みます。
 - [ ] Unit 4 — Android：`backends.make_driver` から `AdbDriver.__init__` へ、`device_os` と
@@ -1061,8 +1077,10 @@ fake backend の実行が収集する内容は変わりません。
       設定されていれば同期的に呼び、結果を新しい `StepOutcome.app_crash_artifacts`
       フィールドに保存します——あとではなく確認のその瞬間にです。同じシナリオの
       あとかたづけステップが `app_launched_at` を掃引の足元から動かせないようにする
-      ためです。`_finish_outcome` の外に `self.state.outcomes.append`
-      が残っていないことを検証する高速スイートのテストを加えます。
+      ためです。あらゆる種類の失敗するステップをループへ実際に通し、確定するあらゆる
+      outcome が `_finish_outcome` を通ったことを確認する、振る舞いベースの高速
+      スイートのテストを加えます（`self.state.outcomes.append` という文字列を
+      検索するのではありません）。
 - [ ] Unit 8 — `pipeline.py`：`_run_on_lease` が `run_scenario` の直後、まだ同じリースを
       保持したまま `(*result.before_outcomes, *result.steps, *result.after_outcomes)` を
       `app_crashed` で走査します（`result.steps[-1]` ではない）。`_write_crash_artifacts`
