@@ -155,22 +155,32 @@ joins that tuple, the same way `InterruptionPolicyTarget` already does: wrapping
 `XcuitestLiveDriver`, `WebContextDriver` — simply does not, and every other capability the proxy
 tracks is unaffected either way.
 
-The check itself sits at one place: `bajutsu/common/orchestrator/loop/_step_runner.py`'s per-step
-loop, right after it assigns the step's final `outcome.ok`
-(`outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results`). Every step's outcome
-already converges there, once its own tip-dismiss and alert-guard retries are done. That point sees
-every step kind's terminal failure alike: an action's `ElementNotFound`, a failed `wait`, a failed
-`assert`, a failed `handleSystemAlert`. The three retries above it return a `bool`/reason tuple rather
-than raising. A check placed any earlier — inside `_run_step_body`'s own exception net, as an earlier
-draft of this item placed it — would see only the action-exception case and miss the other three.
+`bajutsu/common/orchestrator/loop/_step_runner.py` dispatches every step to one of four handlers by
+kind — `_handle_if`, `_handle_for_each`, `_handle_web`, or `_handle_action` (the last one covers
+`wait`, `assert`, `handleSystemAlert`, and every actuating step) — and each one settles its own
+`outcome.ok` differently. `_handle_action`'s own `outcome.ok, outcome.reason,
+outcome.assertion_results = ok, reason, results` line, once its tip-dismiss and alert-guard retries
+are done, is not the step's last word either: an undeclared interruption or a failed `extract` can
+still flip `outcome.ok` to `False` afterward, inside the same handler. A check keyed to that one line
+alone — the shape an earlier draft of this item used — sees `_handle_action`'s own terminal failures
+late, and never sees `_handle_if`'s or `_handle_for_each`'s condition-query failure or
+`_handle_web`'s `within`-selector failure at all, since neither reaches that line.
 
-When `outcome.ok` is `False` here and `isinstance(active_driver, base.AppCrashSignal)` holds, the loop
-calls `active_driver.app_crash_signal()`. A non-`None` answer raises `base.AppCrashedError(signal)`
-immediately and catches it in the same expression, folding its message into `outcome.reason` — never
-letting it propagate past this one point. `active_driver` is already whichever driver actuated this
-step: the native driver, or the `WebContextDriver` inside a `web` block. `isinstance` answers `False`
-for the latter, so the check is a no-op there, matching this item's `web`-backend scope from the
-Introduction.
+What every handler *does* share is `self.state.outcomes.append(outcome)`, the last thing each one
+does with `outcome` before returning — after every other mutation, `_handle_action`'s included. This
+item adds one more shared step, `self._finish_outcome(active_driver, outcome)`, called in that same
+place by all four handlers in place of the bare `append`. It does the append itself, so a step kind
+added later still needs no wiring here, the same property `_drain_step_interruptions` already gives
+the interruption check it shares across the same four handlers. `_finish_outcome` checks
+`isinstance(active_driver, base.AppCrashSignal)` and `outcome.ok is False`, together, right before
+that append.
+
+When both hold, `_finish_outcome` calls `active_driver.app_crash_signal()`. A non-`None` answer raises
+`base.AppCrashedError(signal)` immediately and catches it in the same expression, folding its message
+into `outcome.reason` — never letting it propagate past this one point. `active_driver` is already
+whichever driver actuated this step: the native driver, or the `WebContextDriver` inside a `web`
+block. `isinstance` answers `False` for the latter, so the check is a no-op there, matching this
+item's `web`-backend scope from the Introduction.
 
 ### iOS: `app.state`, not the element tree
 
@@ -433,9 +443,11 @@ changes what a web or fake-backend run captures.
       bytes) and no-op defaults; `Lease.app_crash_artifacts` wired through `pool.py`'s `lease()`
       closure.
 - [ ] Unit 7 — `run_scenario` / `_step_runner.py`: the new optional `app_crash_artifacts` callable,
-      threaded from `_run_on_lease`'s lease the same way `relaunch` already is; the reactive check at
-      the post-retry `outcome.ok` convergence point, covering every step kind; the artifact write
-      through `sink.write_text(f"app-crash/{name}", text)`.
+      threaded from `_run_on_lease`'s lease the same way `relaunch` already is; the new
+      `_finish_outcome` helper, called by `_handle_if` / `_handle_for_each` / `_handle_web` /
+      `_handle_action` in place of their own `self.state.outcomes.append(outcome)`, covering every
+      step kind's true final outcome; the artifact write through
+      `sink.write_text(f"app-crash/{name}", text)`.
 - [ ] Unit 8 — `TracingDriver`: add `base.AppCrashSignal` to `_PROTOCOLS` so `--trace-driver` installs
       it as a real attribute only on a wrapped driver that implements it.
 - [ ] Unit 9 — `crawl`'s own integration: `cli.py`'s existing `on_event` callback capturing
@@ -475,7 +487,8 @@ changes what a web or fake-backend run captures.
 - [`bajutsu/common/drivers/tracing.py`](../../bajutsu/common/drivers/tracing.py) — `TracingDriver`,
   whose `_PROTOCOLS` tuple this item's `AppCrashSignal` joins
 - [`bajutsu/common/orchestrator/loop/_step_runner.py`](../../bajutsu/common/orchestrator/loop/_step_runner.py) —
-  the per-step loop whose post-retry `outcome.ok` convergence point is this item's one reactive check
+  the per-step loop, whose four step-kind handlers share the new `_finish_outcome` helper this
+  item's one reactive check lives in
 - [`bajutsu/common/orchestrator/loop/_functions.py`](../../bajutsu/common/orchestrator/loop/_functions.py) —
   `run_scenario`, threading the new `app_crash_artifacts` callable down to the step loop
 - [`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py) —

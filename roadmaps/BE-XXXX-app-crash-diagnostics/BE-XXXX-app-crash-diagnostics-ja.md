@@ -161,20 +161,33 @@ WebDriver 経由で操作します。加えて、テスト用の fake backend �
 `XcuitestLiveDriver`・`WebContextDriver` をラップしても設置されません。プロキシが追跡する
 他のケイパビリティは、どちらの場合でも影響を受けません。
 
-確認そのものは1か所にあります。`bajutsu/common/orchestrator/loop/_step_runner.py` の
-ステップごとのループで、そのステップの最終的な `outcome.ok` を確定させた直後です
-（`outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results`）。
-どのステップの結果も、tip の解除やアラートガードの再試行が終わったあと、必ずこの1点へ
-収束します。この地点は、あらゆる種類のステップの終端失敗を等しく見ます。アクションの
-`ElementNotFound`、失敗した `wait`、失敗した `assert`、失敗した `handleSystemAlert` の
-どれもです。これより上にある3つの再試行は、例外を送出せず `bool` と理由の組を返します。
-確認をもっと手前、`_run_step_body` 自身の例外の受け皿の中に置いていた初期の草案では、
-アクション例外のケースしか見えず、残り3つを取りこぼしていました。
+`bajutsu/common/orchestrator/loop/_step_runner.py` は、どのステップも種類ごとに4つの
+ハンドラのどれかへ振り分けます。`_handle_if`、`_handle_for_each`、`_handle_web`、そして
+`_handle_action` です。最後の1つが `wait`・`assert`・`handleSystemAlert`・あらゆるアクション
+ステップを引き受けます。4つはそれぞれ異なる形で自分の `outcome.ok` を確定させます。
+`_handle_action` 自身の
+`outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results` という行は、
+tip の解除やアラートガードの再試行が終わったあとにありますが、それでもそのステップの
+最後の言葉ではありません。宣言されていない割り込みや、失敗した `extract` が、同じ
+ハンドラの内側でそのあとも `outcome.ok` を `False` へ反転させ得ます。この1行だけに
+確認をつなぐ設計は、本項目の初期の草案が採った形ですが、`_handle_action` 自身の終端失敗
+すら遅れて見るうえ、`_handle_if` や `_handle_for_each` の条件クエリの失敗、
+`_handle_web` の `within` セレクタの失敗にはまったく届きません。どちらもこの行を
+通らないからです。
 
-この地点で `outcome.ok` が `False` であり、かつ `isinstance(active_driver,
-base.AppCrashSignal)` が成り立つとき、ループは `active_driver.app_crash_signal()` を
-呼びます。`None` でない答えは、その場で `base.AppCrashedError(signal)` を送出し、同じ式の
-中で捕まえ、そのメッセージを `outcome.reason` へ折り込みます。この1点より先へ伝播すること
+4つのハンドラが実際に共有しているのは、`self.state.outcomes.append(outcome)` です。
+これは、返る直前に `outcome` へ加える最後の操作であり、`_handle_action` を含め、他の
+あらゆる変更のあとに来ます。本項目は、この同じ場所で、4つのハンドラすべてが素の
+`append` の代わりに呼ぶ共有のステップを1つ加えます。`self._finish_outcome(active_driver,
+outcome)` です。append 自体もこの中で行うため、あとから加わるステップの種類がここへの
+配線を必要としない点は変わりません。`_drain_step_interruptions` がすでに同じ4つの
+ハンドラへ割り込みの確認について与えているのと同じ性質です。`_finish_outcome` は、
+その append の直前で、`isinstance(active_driver, base.AppCrashSignal)` と
+`outcome.ok is False` の両方を確認します。
+
+両方が成り立つとき、`_finish_outcome` は `active_driver.app_crash_signal()` を呼びます。
+`None` でない答えは、その場で `base.AppCrashedError(signal)` を送出し、同じ式の中で
+捕まえ、そのメッセージを `outcome.reason` へ折り込みます。この1点より先へ伝播すること
 はありません。`active_driver` は、そのステップを実際に操作したドライバです。ネイティブの
 ドライバであることも、`web` ブロックの中では `WebContextDriver` であることもあります。
 後者に対しては `isinstance` が `False` を返すため、確認は no-op になります。「はじめに」で
@@ -480,9 +493,11 @@ fake backend の実行が収集する内容は変わりません。
       デコード済みのテキストを返す）と no-op のデフォルト値。`pool.py` の `lease()`
       クロージャを通した `Lease.app_crash_artifacts` の配線。
 - [ ] Unit 7 — `run_scenario` / `_step_runner.py`：`relaunch` と同じ方法で `_run_on_lease`
-      のリースから通す、新しい任意の `app_crash_artifacts` コールバック。事後確認の
-      呼び出し箇所を、あらゆる種類のステップを覆う `outcome.ok` の収束点に置く。証跡の
-      書き込みは `sink.write_text(f"app-crash/{name}", text)` で行う。
+      のリースから通す、新しい任意の `app_crash_artifacts` コールバック。新しい
+      `_finish_outcome` ヘルパーを、`_handle_if` / `_handle_for_each` / `_handle_web` /
+      `_handle_action` が自身の `self.state.outcomes.append(outcome)` の代わりに呼ぶよう
+      にし、あらゆる種類のステップの本当の最終結果を覆う。証跡の書き込みは
+      `sink.write_text(f"app-crash/{name}", text)` で行う。
 - [ ] Unit 8 — `TracingDriver`：`base.AppCrashSignal` を `_PROTOCOLS` へ加え、
       `--trace-driver` がそれを実装したドライバに対してだけ実属性として設置するようにする。
 - [ ] Unit 9 — `crawl` 自身の統合。`cli.py` の既存の `on_event` コールバックが、新しく
@@ -526,7 +541,8 @@ fake backend の実行が収集する内容は変わりません。
 - [`bajutsu/common/drivers/tracing.py`](../../bajutsu/common/drivers/tracing.py) —
   `TracingDriver`。本項目の `AppCrashSignal` が加わる `_PROTOCOLS` タプルを持つ
 - [`bajutsu/common/orchestrator/loop/_step_runner.py`](../../bajutsu/common/orchestrator/loop/_step_runner.py) —
-  ステップごとのループ。その `outcome.ok` の収束点が、本項目の唯一の事後確認である
+  ステップごとのループ。その4つのステップ種別ハンドラが共有する新しい `_finish_outcome`
+  ヘルパーに、本項目の唯一の事後確認が置かれる
 - [`bajutsu/common/orchestrator/loop/_functions.py`](../../bajutsu/common/orchestrator/loop/_functions.py) —
   `run_scenario`。新しい `app_crash_artifacts` コールバックをステップループまで通す
 - [`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py) —
