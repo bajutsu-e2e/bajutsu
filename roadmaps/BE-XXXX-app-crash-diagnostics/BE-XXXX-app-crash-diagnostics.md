@@ -211,7 +211,7 @@ recovery steps run against an app that is already gone settles one outcome per r
 ordinary (non-`relaunch`) failure neither latch bounds — the same cost the next paragraph already
 prices in for depth and `after` rules, just from a third source. Keying the `relaunch`
 exemption to `outcome.action` alone misses exactly that case: a failing `relaunch`'s own outcome skips
-the probe, but the `forEach`/`if` outcomes wrapping it, and every `after: on: fail` step dispatched
+the probe, but the `forEach`/`if` outcomes wrapping it, and every `after: on: error` step dispatched
 afterward, carry a different `outcome.action` and would each probe fresh, reading `app.state`'s honest
 `notRunning` as a fresh confirmed crash. The exemption therefore has to be a property of the
 *scenario*, not of one outcome: the same mutable object `run_scenario` creates once and hands to every
@@ -245,16 +245,38 @@ practice — and it only runs on a step that has already failed, unlike the proa
 This reactive shape has one structural blind spot worth naming rather than discovering later: a crash
 caused by a scenario's own *last* step, where that step's own actuation still reports `ok=True` — a
 `tap` the runner delivered before the app died, an `assert` that read a tree captured a moment earlier
-— is never probed. Nothing runs after it to fail and reach `_finish_outcome`, and scenario-level
-`expect` does not close the gap either: `_evaluate_expect` produces `AssertionResult`s, not
-`StepOutcome`s, so it never reaches `_finish_outcome`
-([`_functions.py:742-752`](../../bajutsu/common/orchestrator/loop/_functions.py)). Closing it would
-mean an unconditional end-of-scenario probe — the every-green-run cost this reactive design exists to
-avoid — so this item accepts the gap by construction rather than widen the trigger, and instead
-requires a scenario written to *exercise* this signal to end with a step after the crash-triggering
-one (Unit 11's showcase scenarios each do: tap the crash trigger, then take one more step against the
-now-dead app, so it is that later step — not the tap itself — that fails and gets probed). A scenario
-whose last step is the crash trigger stays green by this design's own construction.
+— is never probed by that step's own outcome. Whether the scenario still ends up classified, or ends up
+green with the gap this item accepts, depends on what runs after it. Nothing that follows is guaranteed
+to fail and reach `_finish_outcome`: `scenario.after` is reached "on every path out of `steps`/`expect`"
+([`_functions.py:821`](../../bajutsu/common/orchestrator/loop/_functions.py)), the cancelled one
+included, so it is only present when the scenario declares one, and `scenario.expect` runs only when
+one is declared *and* `failure is None`. A scenario declaring neither behaves exactly as this item
+intends: nothing runs after the crash-causing step, so it stays green with no `app_crashed` outcome and
+no `app-crash/` artifact — closing the gap for every such scenario would mean an unconditional
+end-of-scenario probe, the every-green-run cost this reactive design exists to avoid, so this item
+accepts it by construction rather than widen the trigger. The other two shapes do not land on that same
+"stays green" outcome, though, and are worth naming on their own:
+
+- A scenario-level `expect` still runs after the last step, even against the now-dead app:
+  `_evaluate_expect` produces `AssertionResult`s, not `StepOutcome`s, so it never reaches
+  `_finish_outcome`
+  ([`_functions.py:741-752`](../../bajutsu/common/orchestrator/loop/_functions.py)). The scenario goes
+  **red, but unclassified** — an ordinary `expect:` failure with no `app_crashed` outcome and no
+  `app-crash/` artifact — rather than green. This is a second, distinct blind spot this item also
+  accepts by construction, not a variant of the first: a contributor reading the failure sees an
+  assertion mismatch, not a crash.
+- An `after` rule whose trigger is not the failure one (`on: always` or `on: success`) still dispatches
+  and still actuates against the now-dead app. That teardown step's own outcome *does* reach
+  `_finish_outcome` through the ordinary `run_phase` call `_dispatch_after` makes, so this shape is
+  classified after all, with `app_crashed` set and `app-crash/` written — the crash is caught one step
+  later than the triggering one, not missed.
+
+A scenario written to *exercise* this signal therefore ends with a step after the crash-triggering one,
+rather than relying on `expect` or an unrelated `after` rule to surface it (Unit 11's showcase scenarios
+each do this: tap the crash trigger, then take one more step against the now-dead app, so it is that
+later step — not the tap itself — that fails and gets probed). Only a scenario whose crash-causing step
+is genuinely its last one, with no `expect` and no non-failure `after` rule to run afterward, stays
+green by this design's own construction.
 
 `_finish_outcome` calls `active_driver.app_crash_signal()` only when neither latch is set. A
 non-`None` answer raises `base.AppCrashedError(signal)` immediately and catches it in the same
@@ -490,6 +512,17 @@ capture this section and the next describe. Every leased environment needs one o
 `pool.py`'s `lease()` reads the method off every leased environment, on every lease, not only a
 crashed one.
 
+A second, narrower method joins the same protocol for the reason *Android: `logcat`'s crash buffer
+first, a root-gated tombstone pull second* gives in full: `app_crash_tombstone() -> list[tuple[str,
+bytes]]`, called only from `pipeline.py`'s post-return scan, never from `_finish_outcome`. It exists
+because Android alone splits its capture across two call sites with different timing constraints — no
+other backend needs a second method, but `pool.py`'s `lease()` closure still reads it off every leased
+environment the same unconditional way it reads `app_crash_artifacts()`, so a structural protocol
+member needs a declaration everywhere, not only where the real work happens. `WebEnvironment`,
+`XcuitestEnvironment`, and `_DeviceEnvironment` (`FakeEnvironment`'s base) each gain a matching
+one-line `return []` alongside their `app_crash_artifacts()` no-op or override; only `AndroidEnvironment`
+overrides it with the tombstone pull itself.
+
 `ReportCrash` may not have finished writing the report the instant the app dies. `_app_crash_reports`
 polls `~/Library/Logs/DiagnosticReports` for up to a few seconds for a report matching the target's
 executable name and this environment's own `udid`, modified at or after `app_launched_at`. That poll
@@ -562,9 +595,14 @@ room to catch up that the write needs.
 gains the same `app_launched_at` tracking as the iOS environment, recorded at each of its three launch
 call sites (`e.launch(package, launch_env)`). It reads from the device's own clock (`adb shell date`)
 at launch time rather than the host's, so a launch marker compared only against later device-clock
-reads never needs host/device clock reconciliation. It implements `app_crash_artifacts()` in two
-layers, matching this item's own scoping decision to capture both, each independently wrapped so that
-a failure in one layer never drops the other:
+reads never needs host/device clock reconciliation. It captures two layers, matching this item's own
+scoping decision to capture both — but not through the same call, and not at the same time. `logcat`
+is safe to read the moment the crash is confirmed, mid-scenario, inside `_finish_outcome`
+(*Detecting the event*): it needs no elevated access and touches no channel a later step still needs.
+The tombstone pull does need one, and firing it that early would be actively harmful (see below), so it
+stays on the original post-return path instead — `app_crash_artifacts()` returns the `logcat` layer
+alone; a second, separate `app_crash_tombstone()` returns the tombstone layer, called later. Each is
+independently wrapped so that a failure in one never drops the other:
 
 1. **`logcat`'s `crash` buffer**, always attempted, needing no elevated access. `logcat -b crash` is a
    device-global ring buffer that persists across launches and across scenarios sharing the same
@@ -601,15 +639,28 @@ a failure in one layer never drops the other:
    BE-0283's network-collector `adb reverse` tunnel
    (`android_environment.py:298-306`) the same way. Re-forwarding a port onto a session that no longer
    exists would not recover it — restarting the resident server itself is the only fix, a heavier
-   operation this layer does not attempt. Nothing after this point in `_run_on_lease` needs either
-   channel, though: the scenario has already ended, and everything left before `lz.release()` — the
-   network snapshot write, the progress line — reads from `lz.collector`'s own already-captured data,
-   never back through the driver. `AndroidEnvironment.start()` rebuilds the resident server and the
+   operation this layer does not attempt. Firing it mid-scenario, from inside `_finish_outcome`
+   alongside the `logcat` layer, would be actively harmful, not merely wasteful: the wrapping
+   `if`/`forEach` outcomes still settling, a scenario-level `expect` (`_functions.py:741-752`), and
+   every `after` rule the scenario dispatches (`_functions.py:821-831`) all still actuate and
+   screenshot through that same resident server, and a channel error there raises `BackendCrashError`,
+   which `run_scenario` deliberately re-raises rather than folding into a failure
+   (`_functions.py:839-846`) — straight into `pipeline.py`'s crash-retry loop, discarding the very
+   `RunResult`, `app_crashed` and `app_crash_artifacts` included, this item exists to produce. So
+   `app_crash_tombstone()` is a second, separate method, called only from `pipeline.py`'s post-return
+   scan (*Wiring the capture*) — genuinely after the scenario has ended this time, not merely believed
+   to have: everything left before `lz.release()` — the network snapshot write, the progress line —
+   reads from `lz.collector`'s own already-captured data, never back through the driver.
+   `AndroidEnvironment.start()` rebuilds the resident server and the
    reverse tunnel from scratch on every lease regardless (`_begin_resident`, `bridge_collector`), a
    routine "no warm resident kept" teardown-and-rebuild this design already relies on, so the next
    lease on this device is unaffected by what this layer leaves broken. It then pulls the most recent
    `/data/tombstones/tombstone_NN` whose modification time is at or after the launch marker above,
-   compared as device-relative timestamps, so no clock reconciliation is needed here either. A real
+   compared as device-relative timestamps, so no clock reconciliation is needed here either. Reading
+   the marker this late carries none of the iOS `.ips`/`logcat` mis-attribution risk a teardown
+   `relaunch` raises elsewhere in this item (*iOS: matching the `.ips` report*): a teardown only moves
+   `app_launched_at` *forward*, so the worst this bound can do is miss a tombstone that was already
+   there, never attach an older one under the wrong name. A real
    device, a user build, or a refused `adb root` all resolve to skipping this layer silently. The event
    is still reported and `logcat-crash.txt` still lands; a device that refuses root loses only the
    native-frame detail a managed-code crash never needed in the first place, and every scenario after
@@ -617,24 +668,23 @@ a failure in one layer never drops the other:
 
    That "nothing after this point needs either channel" justification is specific to `run`'s
    per-scenario lease, where the environment is torn down and rebuilt fresh on every lease regardless
-   (`pool.py`). `crawl` does not fit it: *Extending `crawl`'s own crash recording* threads this same
-   `env.app_crash_artifacts` into the crawl loop, but a crawl lane holds *one* environment for its
+   (`pool.py`). `crawl` does not fit it: *Extending `crawl`'s own crash recording* threads
+   `env.app_crash_artifacts` (the `logcat` layer only — `crawl` never calls `app_crash_tombstone()`
+   at all) into the crawl loop, but a crawl lane holds *one* environment for its
    entire walk (`_build_lane`, [`cli.py:294-300`](../../bajutsu/crawl/cli.py)) — the walk has not ended
    when a crash lands mid-frontier (`current_fp = None; continue`,
    [`_functions.py:668-669`](../../bajutsu/crawl/core/_functions.py)), so a tombstone pull on the first
    confirmed Android crash would break every later query on that same lane, with nothing left to rebuild
-   the resident server or reverse tunnel until the crawl itself ends. This layer is therefore gated to
-   the `run` entry point only: `AndroidEnvironment` gains a constructor-time flag (threaded through
-   `environment_for`, set only by `_build_lane`'s crawl-lane construction) that `app_crash_artifacts()`
-   checks before attempting the root-gated pull, skipping straight to the `logcat` layer's result — no
-   `adb root`, no killed session — when set. `crawl`'s own Android capture is `logcat`-only; `run`'s
-   keeps both layers.
+   the resident server or reverse tunnel until the crawl itself ends. `crawl`'s own Android capture is
+   `logcat`-only by construction, then, simply by never being wired to `app_crash_tombstone()`; the
+   `run`-only crawl-lane flag this item's earlier draft threaded through `environment_for` is no longer
+   needed for this purpose — gating by which method `crawl` calls is enough on its own.
 
 ### Wiring the capture into a failed scenario's run directory
 
 The reactive check runs in-band, inside the same step loop every other terminal failure already goes
 through. `run_scenario`'s ordinary `RunResult` assembly therefore runs unchanged after it. The failing
-step's own screenshot, the steps already completed, and any scenario-level `after: on: fail` rule all
+step's own screenshot, the steps already completed, and any scenario-level `after: on: error` rule all
 land exactly as they would for an `ElementNotFound` failing the same step. The video recording already
 running for the whole scenario stops and attaches the same way too. `AppCrashedError` never escapes
 `run_scenario` as a raised exception, so `pipeline.py`'s existing crash-retry loop — which only
@@ -648,10 +698,14 @@ sink
 is an `EvidenceSink`, whose whole surface is `capture` / `wait_diagnostic` / the interval start/finish
 pair — no arbitrary named write — and it is scoped to the running scenario, not to the crash evidence
 that needs the run-scoped `RunArtifactWriter` and the `sid` `pipeline.py` already holds. `Lease`
-([`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py)) gains
-`app_crash_artifacts: Callable[[], list[tuple[str, bytes]]]`, defaulted through a module-level no-op
-the same way `crash_artifacts` already is, and wired in `pool.py`'s `lease()` closure alongside it,
-reading the environment's method directly.
+([`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py)) gains two matching
+callables, `app_crash_artifacts: Callable[[], list[tuple[str, bytes]]]` and `app_crash_tombstone:
+Callable[[], list[tuple[str, bytes]]]`, each defaulted through its own module-level no-op the same way
+`crash_artifacts` already is, and both wired in `pool.py`'s `lease()` closure alongside it, reading the
+environment's two methods directly. Only the first travels any further than `pipeline.py` itself —
+`lz.app_crash_tombstone` is called directly from `_run_on_lease`'s own post-return scan (see below), not
+threaded into the step loop at all, since firing it there is exactly the timing this item's Android
+section rules out.
 
 That callable reaches the step loop the same way `relaunch` already does: `pipeline.py:898` passes
 `relaunch=lz.relaunch` into `run_scenario`, which threads it into `_LoopConfig.relaunch`; this item adds
@@ -673,16 +727,29 @@ crashed one (`_step_runner.py:220`, `:238`), so the crashed outcome is not alway
 `result.steps` alone omits the `before` and `after` phases entirely — `RunResult.steps` is the main
 phase's own list (`_functions.py:851`), and it is `[]` outright when a `before` step fails
 (`_functions.py:732-740` skips the main steps in that case). When the scan finds one, a new
-`_write_app_crash_artifacts(lz, s, sid)` mirrors `_write_crash_artifacts` (BE-0421,
-`pipeline.py:803`) almost exactly: it reads the found outcome's own `app_crash_artifacts` — already
-captured at confirmation time, not re-swept here — writes each `(name, content)`
-pair through `writer.write_text(f"{sid}/app-crash/{name}", content.decode(errors="replace"))` — the
-redacting text path, not `write_bytes`, for the same reason BE-0421's own copy uses it: a crash report
-is text a crashing app can echo a secret into — and appends a trailer naming the directory to
+`_write_app_crash_artifacts(lz, outcome, s, sid)` mirrors `_write_crash_artifacts` (BE-0421,
+`pipeline.py:803`) almost exactly, with one extra parameter its sibling does not need: the sibling
+reads every artifact off `lz.crash_artifacts()` directly, but this one starts from the found
+`outcome`'s own `app_crash_artifacts` — already captured at confirmation time, not re-swept here —
+so the scan's own found outcome has to reach it as an argument, not stay implicit. It then, on
+Android only, extends that list
+with one more call, `lz.app_crash_tombstone()`, made right here for the first time: this is the one
+piece of evidence this item does *not* capture inside `_finish_outcome`, for the reason *Android:
+`logcat`'s crash buffer first, a root-gated tombstone pull second* gives — the pull needs `adb root`,
+and firing that mid-scenario risks losing the whole `RunResult` to an escaping `BackendCrashError`.
+Calling it here instead is genuinely safe: `run_scenario` has already returned, so nothing later in
+the same scenario can still be actuating through the resident server this call is about to restart.
+The combined list — `logcat` first, the tombstone entry appended after, empty on iOS/web/fake since
+their `app_crash_tombstone()` is a no-op — is what gets written: each `(name, content)` pair through
+`writer.write_text(f"{sid}/app-crash/{name}", content.decode(errors="replace"))` — the redacting text
+path, not `write_bytes`, for the same reason BE-0421's own copy uses it: a crash report is text a
+crashing app can echo a secret into — and a trailer naming the directory is appended to
 `result.failure`, the same shape `_write_crash_artifacts` returns for `pipeline.py` to append. A write
-problem is logged, never raised, matching that same posture: a diagnostic capture must never turn an
-already-decided failure into a different one. This is a plain post-return check, not a new `except`
-branch — the scenario's own retry behavior above is already settled by the time it runs.
+problem, or a failure inside `app_crash_tombstone()` itself, is logged, never raised, matching that
+same posture: a diagnostic capture must never turn an already-decided failure into a different one, and
+a lost tombstone must never cost the `logcat` layer already on the outcome. This is a plain post-return
+check, not a new `except` branch — the scenario's own retry behavior above is already settled by the
+time it runs.
 
 ### Extending `crawl`'s own crash recording
 
@@ -813,10 +880,10 @@ These are two separate seams, and neither backend needs meaningful work on eithe
 does not implement `AppCrashSignal`, so the reactive check's `isinstance` probe answers `False` and
 skips it, the same way it would for any other driver that never declares the protocol. `WebEnvironment`
 ([`bajutsu/common/platform_lifecycle/environments/web.py`](../../bajutsu/common/platform_lifecycle/environments/web.py))
-declares its own `app_crash_artifacts()` returning `[]` — a one-line addition alongside the identical
-declaration it already carries for `take_crash_snapshot()`, since `RunEnvironment` is a structural
-protocol no concrete class subclasses and so has no inheritable default either method could fall
-through to. `FakeEnvironment`
+declares its own `app_crash_artifacts()` and `app_crash_tombstone()`, both returning `[]` — two
+one-line additions alongside the identical declaration it already carries for `take_crash_snapshot()`,
+since `RunEnvironment` is a structural protocol no concrete class subclasses and so has no inheritable
+default any of the three methods could fall through to. `FakeEnvironment`
 ([`bajutsu/common/platform_lifecycle/environments/fake.py`](../../bajutsu/common/platform_lifecycle/environments/fake.py))
 inherits the same no-op from `_DeviceEnvironment`, and the fake test driver behaves the same way on
 the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backend run captures.
@@ -827,13 +894,14 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 |---|---|
 | Retry through the existing `BackendCrashError` recovery loop | Rejected during scoping: this event is a likely defect in the app itself, not a transient infrastructure blip. Respawning and retrying would spend the crash-recovery budget on a scenario likely to fail again, and risks absorbing a real regression as flakiness (BE-0049) instead of failing loudly. |
 | Poll `app.state` / process liveness proactively, before every step | Rejected during scoping: it adds one driver round-trip to every step of every scenario, green runs included, to catch a failure mode that is rare by construction. The reactive design still catches the event at the exact step it happened, since that step's own action or query is already failing. |
-| Raise `AppCrashedError` out of `run_scenario`, with a dedicated `except` branch in `pipeline.py` mirroring `BackendCrashError`'s | Rejected on review. An app crash leaves the driver, the backend process, and the running video recording all intact, unlike a backend crash — only the app is gone. A side-channel exception would build its own terminal `RunResult` from scratch, discarding the steps, artifacts, and `after: on: fail` dispatch `run_scenario` already produces for every other terminal failure. |
+| Raise `AppCrashedError` out of `run_scenario`, with a dedicated `except` branch in `pipeline.py` mirroring `BackendCrashError`'s | Rejected on review. An app crash leaves the driver, the backend process, and the running video recording all intact, unlike a backend crash — only the app is gone. A side-channel exception would build its own terminal `RunResult` from scratch, discarding the steps, artifacts, and `after: on: error` dispatch `run_scenario` already produces for every other terminal failure. |
 | Add `app_crash_signal()` as a required member of the `Driver` protocol | Rejected on review. `Driver` is `@runtime_checkable`, so every implementer would need a stub: `XcuitestDriver`, `AdbDriver`, `PlaywrightDriver`, `XcuitestLiveDriver`, the fake backend, and narrower wrappers like `WebContextDriver`, including backends this item never intends to check. A narrow, opt-in capability protocol, the shape this codebase already uses for `InterruptionPolicyTarget` and `SettledReadProvider`, reaches only the two backends that need it. |
 | Android: `logcat`'s crash buffer only, no tombstone pull | Rejected: it loses the native (NDK) crash's full backtrace, keeping only the abridged summary `logcat` itself prints. Kept as the always-available baseline; the tombstone pull layers richer detail on top where the device allows it, rather than replacing it. |
 | Android: a rooted tombstone pull only, no `logcat` fallback | Rejected: a real device, a user build, or an emulator image that refuses `adb root` would then capture nothing at all. `logcat`'s crash buffer needs no elevated access and already carries a complete stack trace for the common managed-code case. |
 | A new scenario assertion (for example, `assert: appCrashed: false`) | Rejected: the event already ends the scenario through the step's own action/query failure. There is no later point in the scenario where an assertion could still run to check for it. The showcase's own test scenario instead asserts the failure's *shape* from outside the run, the way `fault-injection (xcuitest)` already does. |
 | Gate the capture behind an opt-in `capturePolicy` rule, matching `video` / `deviceLog` | Rejected for the reason BE-0421 gave for its own artifact: the capture runs once, only on a scenario already ending in failure. Its cost is one bounded sweep or log read, not a standing per-step overhead worth gating behind an explicit ask. |
 | Freeze the match criteria and defer the sweep with a `take_crash_snapshot()`-style thunk, the way BE-0421 defers a backend crash's own capture | Rejected: BE-0421's thunk exists to survive a concurrent worker reusing the same warm, pooled environment before the pool releases the lease. This item's own race is narrower and same-scenario — a teardown `relaunch` in the same scenario's `after` phase can re-stamp `app_launched_at` before `run_scenario` returns — and closing it needs the opposite move: calling `app_crash_artifacts()` *earlier*, synchronously inside `_finish_outcome` at confirmation, not deferring it past a point the marker could already have moved. |
+| Android: capture the tombstone layer at confirmation time too, the same call as `logcat`, instead of splitting it into a second `app_crash_tombstone()` method | Rejected: an earlier draft of this item did exactly this, and it regresses the very race the confirmation-time move above exists to close. `adb root` restarts `adbd`, killing the resident server's `am instrument -w` session mid-scenario; any wrapping `if`/`forEach` outcome, `expect`, or `after` rule still to come in that same scenario then raises `BackendCrashError` against a dead channel, which `run_scenario` deliberately re-raises rather than folds into a failure — discarding the whole `RunResult`, `app_crashed` and the `logcat` layer already captured included. The tombstone pull's own risk is asymmetric in a way `logcat`'s is not: a teardown `relaunch` only moves `app_launched_at` *forward*, so reading it from `pipeline.py`'s genuine post-return scan risks a miss, never the wrong-attribution risk that drove `logcat`/`.ips` earlier in the first place — so only the tombstone layer benefits from staying on the original post-return timing. |
 
 ## Progress
 
@@ -890,24 +958,29 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       too, not only across launches — and, for the same reason as the exit-info poll, re-dumped the
       same short, bounded way rather than trusted on a single `-d` snapshot, since `crash_dump` writes
       a native block after the death `pidof` already reported;
-      the best-effort, root-gated tombstone pull, run last, accepting that `adb root` kills the
-      resident server's `am instrument -w` session and BE-0283's `adb reverse` tunnel outright — not
-      re-establishing either, since nothing later in this lease needs them and the pool rebuilds both
-      fresh on the next lease regardless — gated to the `run` entry point only via a constructor-time
-      `AndroidEnvironment` flag threaded through `environment_for`, since a crawl lane's one
-      long-lived environment has no next lease to rebuild on; each layer independently wrapped so any
-      failure resolves to `[]`.
-- [ ] Unit 6 — `RunEnvironment.app_crash_artifacts()` protocol shape (returning
-      `list[tuple[str, bytes]]`); a one-line `return []`
-      on each of `WebEnvironment` and `_DeviceEnvironment` (inherited by `FakeEnvironment`), the same
-      no-op shape `take_crash_snapshot()` already declares on all three, minus Android — Android has
-      no counterpart no-op here, since `AndroidEnvironment` overrides `app_crash_artifacts()` with the
-      real capture (Unit 5), not a no-op, the same way `XcuitestEnvironment` overrides it with its own
-      real capture (Unit 3); `Lease.app_crash_artifacts` wired through `pool.py`'s `lease()` closure
-      alongside `crash_artifacts`, then threaded into `_LoopConfig.capture_app_crash` the same way
-      `Lease.relaunch` already threads into `relaunch` (`pipeline.py:898`) — called from inside the
-      step loop, not from `pipeline.py`, so the sweep runs before a same-scenario teardown step can
-      move `app_launched_at` (see Unit 7 and *iOS: matching the `.ips` report*).
+      a separate `app_crash_tombstone()` method for the best-effort, root-gated tombstone pull,
+      accepting that `adb root` kills the resident server's `am instrument -w` session and BE-0283's
+      `adb reverse` tunnel outright — not re-establishing either, since nothing later in this lease
+      needs them and the pool rebuilds both fresh on the next lease regardless — kept out of
+      `app_crash_artifacts()` and off the `_finish_outcome` call site entirely, since firing `adb root`
+      mid-scenario risks the escaping `BackendCrashError` *Android: `logcat`'s crash buffer first, a
+      root-gated tombstone pull second* describes; `crawl` needs no constructor-time flag to keep this
+      layer off its own long-lived lane, since it simply never calls `app_crash_tombstone()` (Unit 10);
+      each layer independently wrapped so any failure resolves to `[]`.
+- [ ] Unit 6 — `RunEnvironment.app_crash_artifacts()` and `RunEnvironment.app_crash_tombstone()`
+      protocol shapes (each returning `list[tuple[str, bytes]]`); a one-line `return []` for both on
+      each of `WebEnvironment`, `XcuitestEnvironment`, and `_DeviceEnvironment` (inherited by
+      `FakeEnvironment`), the same no-op shape `take_crash_snapshot()` already declares on all three —
+      Android has no counterpart no-op for either, since `AndroidEnvironment` overrides both
+      `app_crash_artifacts()` (Unit 5's `logcat` layer) and `app_crash_tombstone()` (Unit 5's tombstone
+      layer) with real captures, the same way `XcuitestEnvironment` overrides `app_crash_artifacts()`
+      alone with its own real capture (Unit 3); `Lease.app_crash_artifacts` and `Lease.app_crash_tombstone`
+      both wired through `pool.py`'s `lease()` closure alongside `crash_artifacts`. Only
+      `Lease.app_crash_artifacts` threads any further, into `_LoopConfig.capture_app_crash` the same way
+      `Lease.relaunch` already threads into `relaunch` (`pipeline.py:898`) — called from inside the step
+      loop, not from `pipeline.py`, so the sweep runs before a same-scenario teardown step can move
+      `app_launched_at` (see Unit 7 and *iOS: matching the `.ips` report*). `lz.app_crash_tombstone`
+      itself is called directly by `pipeline.py` (Unit 8), never threaded into `_LoopConfig` at all.
 - [ ] Unit 7 — `run_scenario` / `_step_runner.py`: the new `_finish_outcome` helper, called at all
       five `self.state.outcomes.append(outcome)` call sites — `_handle_if` / `_handle_for_each` /
       `_handle_web` once each, `_handle_action` twice (its own end and its
@@ -918,7 +991,7 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       the main steps, and every dispatched `after` rule) carrying two latches: a deliberate-termination flag, set the moment
       `outcome.action == "relaunch"` and `outcome.ok is False` (before any probe), that suppresses
       every later probe in the scenario — the failing `relaunch`'s own wrapping `if`/`forEach`
-      outcomes and any `after: on: fail` cleanup step included, not only the `relaunch` step's own
+      outcomes and any `after: on: error` cleanup step included, not only the `relaunch` step's own
       outcome; and a confirmed-crash latch, set the first time `_finish_outcome` raises and catches
       `AppCrashedError`, so a later outcome in the same propagation folds the known signal into its
       own `outcome.reason` without probing again — bounding `app_crash_signal()` calls for the
@@ -934,18 +1007,22 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 - [ ] Unit 8 — `pipeline.py`: `_run_on_lease` scanning
       `(*result.before_outcomes, *result.steps, *result.after_outcomes)` for an `app_crashed`
       outcome right after `run_scenario` returns, still holding the same lease, before its own
-      `finally` releases it; the new `_write_app_crash_artifacts(lz, s, sid)` mirroring
+      `finally` releases it; the new `_write_app_crash_artifacts(lz, outcome, s, sid)` mirroring
       `_write_crash_artifacts` (BE-0421,
-      `pipeline.py:803`), reading the found outcome's own `app_crash_artifacts` (captured at
-      confirmation time by Unit 7, not re-swept here) and writing each through the redacting
-      `writer.write_text` path under
-      `{sid}/app-crash/`, appending a directory-naming trailer to `result.failure`.
+      `pipeline.py:803`), starting from the found outcome's own `app_crash_artifacts` (captured at
+      confirmation time by Unit 7, not re-swept here) and, on Android only, extending it with
+      `lz.app_crash_tombstone()` — called here, genuinely post-return, for the first time — before
+      writing the combined list through the redacting `writer.write_text` path under `{sid}/app-crash/`,
+      appending a directory-naming trailer to `result.failure`; a failure inside
+      `lz.app_crash_tombstone()` itself logged, never raised, so a lost tombstone never costs the
+      `logcat` layer already on the outcome.
 - [ ] Unit 9 — `TracingDriver`: add `base.AppCrashSignal` to `_PROTOCOLS` so `--trace-driver` installs
       it as a real attribute only on a wrapped driver that implements it.
-- [ ] Unit 10 — `crawl`'s own integration: `_build_lane`'s per-lane `app_crash_artifacts`, threaded
-      through `WorkerFactory` and `crawl()`'s primary-lane parameters the same way `driver`/`reset`
-      already are; `_build_lane`'s `environment_for` call passing the new crawl-lane flag so Android's
-      tombstone-pull layer stays off for the whole walk (Unit 5); the capture call joining
+- [ ] Unit 10 — `crawl`'s own integration: `_build_lane`'s per-lane `app_crash_artifacts` (never
+      `app_crash_tombstone` — `crawl` simply does not thread that second callable anywhere, which is
+      what keeps Android's tombstone-pull layer off for the whole walk (Unit 5), with no separate flag
+      needed), threaded through `WorkerFactory` and `crawl()`'s primary-lane parameters the same way
+      `driver`/`reset` already are; the capture call joining
       `record_crash`'s existing off-lock crash check, gated on
       the driver positively confirming the event (`isinstance`/`app_crash_signal()`) so a UI-tree
       false positive does not pay a full-timeout sweep, wrapped in its own
@@ -971,16 +1048,24 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       regardless of `app.state`, for both backends; an `AdbDriver` built with `package=None` or an
       unset `launched_at` answering `None` immediately, never reaching `pidof` or `exit-info`, so it
       cannot confirm another process's crash as this app's; a scenario whose crashed step is followed
-      by an `after: on: fail` `relaunch` still attaching the confirmed crash's own `.ips`/`logcat`
+      by an `after: on: error` `relaunch` still attaching the confirmed crash's own `.ips`/`logcat`
       report — not the empty result a live re-read after the teardown's own `relauncher()` re-stamp
       would produce — pinning that `app_crash_artifacts()` is captured once, at confirmation inside
       `_finish_outcome`, and carried on the outcome rather than re-swept from `pipeline.py`;
       `XcuitestEnvironment.app_launched_at` advancing
       past a `relaunch` step's own launch, past a `crawl`-driven `crawl_reset()`'s own launch, and past
       a `_resume_warm` cross-lease reuse's own launch, and the `.ips` sweep after each finding only the
-      report from that most recent launch, never an earlier scenario's or crash's; a crawl-lane
-      `AndroidEnvironment` never attempting the root-gated tombstone pull regardless of a confirmed
-      crash (the `logcat` layer still runs), while a `run`-leased one still attempts it; a
+      report from that most recent launch, never an earlier scenario's or crash's; a fake
+      `AndroidEnvironment.app_crash_tombstone()` never invoked from `_finish_outcome` or anywhere else
+      inside the step loop — a source-level assertion that `_LoopConfig`/`StepLoopState` carries no
+      reference to it at all, only to `app_crash_artifacts` — pinning that the tombstone layer's call
+      site stays exclusively in `pipeline.py`'s post-return scan; that scan's own
+      `_write_app_crash_artifacts` calling `lz.app_crash_tombstone()` exactly once per crashed
+      `RunResult` and writing the merged `logcat`-plus-tombstone list, never the outcome's
+      `app_crash_artifacts` alone; a crawl lane's own `AndroidEnvironment` never attempting the
+      root-gated tombstone pull regardless of a confirmed crash (the `logcat` layer still runs), simply
+      because `crawl` never calls `app_crash_tombstone()` at all, while a `run`-leased one, driven
+      through `pipeline.py`'s post-return scan, still attempts it; a
       `BackendCrashError` raised by `d.app_crash_signal()` inside `crawl`'s own gate never escaping —
       the `Crash` is still recorded, with no `artifacts`, and the walk continues; a target with
       no `appPath` configured resolving `app_crash_artifacts()` to `[]` up front, never reaching the
@@ -989,7 +1074,7 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       `continue`, and that it lands redacted, through `write_text`, not `write_bytes` — under the same
       `NNN` the skipped repro would have carried; a failing `relaunch` step never probing
       `app_crash_signal()`, and neither does its wrapping `if`/`forEach` outcome nor a dispatched
-      `after: on: fail` step that also fails against the terminated app; an interrupt recovery step
+      `after: on: error` step that also fails against the terminated app; an interrupt recovery step
       (BE-0314's `_run_recovery`, distinct from the `after` phase) that also fails against a
       terminated app probing once per recovery step, neither latch bounding it either; an ordinary
       (non-`relaunch`, non-crash) failure three levels deep still probing once per settling outcome,
@@ -1014,8 +1099,15 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       the XCUITest/adb backends asserting the opposite for that block: a failing inner web step's own
       outcome (`active_driver = web_driver`) never probes, but the wrapping `web` step's own outcome
       (`active_driver` = the native driver) does; a scenario whose *last* step crashes the app but still
-      reports `ok=True` staying green with no `app_crashed` outcome and no `app-crash/` artifact,
-      pinning the documented blind spot rather than leaving it to be rediscovered as a bug.
+      reports `ok=True`, declaring neither `expect` nor a non-failure `after` rule, staying green with
+      no `app_crashed` outcome and no `app-crash/` artifact, pinning the documented blind spot rather
+      than leaving it to be rediscovered as a bug; the same shape but with a scenario-level `expect`
+      declared, pinning that it instead fails red on the `expect:` assertion mismatch — unclassified,
+      no `app_crashed`, no `app-crash/` — a distinct blind spot from the green one, not a variant of it;
+      and the same shape again but with an `on: always` `after` rule that also fails against the
+      now-dead app, pinning that this one *is* classified, `app_crashed=True` and `app-crash/` written,
+      since that teardown step's own outcome reaches `_finish_outcome` through the ordinary
+      `_dispatch_after`/`run_phase` path.
 
 ## References
 
@@ -1054,7 +1146,7 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 - [`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py) — `Lease.crash_artifacts`,
   the precedent `Lease.app_crash_artifacts` follows
 - [`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py) —
-  the protocol `app_crash_artifacts()` joins
+  the protocol `app_crash_artifacts()` and `app_crash_tombstone()` join
 - [`bajutsu/common/platform_lifecycle/relaunchers.py`](../../bajutsu/common/platform_lifecycle/relaunchers.py) —
   `device_relauncher`, the `relaunch` step's actual iOS launch path, distinct from
   `_resume_warm`'s cross-lease one
@@ -1064,9 +1156,6 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 - [`bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py) —
   `_resume_warm`, BE-0291's fourth iOS launch site, on the same long-lived environment across leases,
   and the one this item records `app_launched_at` in too
-- [`bajutsu/common/platform_lifecycle/factories.py`](../../bajutsu/common/platform_lifecycle/factories.py) —
-  `environment_for`, the shared factory `run`'s pool and `crawl`'s `_build_lane` both call; the seam
-  the new crawl-lane flag threads through to gate Android's tombstone pull to `run` only
 - [`bajutsu/crawl/core/_functions.py`](../../bajutsu/crawl/core/_functions.py) — `record_crash`'s
   off-lock crash check, the join point for this item's crawl-side capture call
 - [`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py) — `_build_lane`, the per-lane environment this
