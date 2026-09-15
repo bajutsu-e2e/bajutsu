@@ -417,11 +417,15 @@ dead — `driver.query()` still answers something (SpringBoard's own tree, on iO
 never foregrounded and opens with exactly such a step would clear the flag *because* the app is dead, on
 the very target class the flag exists to protect. The same holds for a kind that never reaches the app
 at all — `http`, `generate`, `totp`, `email`, `push` — so the clear is keyed positively rather than by
-exclusion: only a genuine actuating step, or a `wait`/`assert` that
-matched, is the missing positive observation the scenario's first step lacked, so the protection holds
+exclusion: only a genuine actuating step *other than `relaunch`*, or a `wait`/`assert` that matched, is
+the missing positive observation the scenario's first step lacked. `relaunch` is excluded for the reason
+this section gives above: its closure discards `await_ready`'s result and `await_ready` never raises, so
+its `ok=True` says nothing about the app — and a settled `relaunch` re-*sets* the flag rather than
+clearing it, having just put the app back into the same unconfirmed state a launch it cannot verify
+leaves it in. So the protection holds
 for a first failing step without silencing every later one on a target whose readiness rung just happens
-to be the weak one — and without a no-op `if`/`forEach`, or a step that never touches the app in the
-first place, masquerading as that same observation. Until
+to be the weak one — and without a no-op `if`/`forEach`, a step that never touches the app, or an
+unverifiable `relaunch` masquerading as that same observation. Until
 that first success, `_finish_outcome` treats an unconfirmed launch the same way it
 treats a failed `relaunch` — skipping the probe — since a launch this item cannot yet confirm leaves the
 scenario in exactly the same "app state is not yet known" position a failed `relaunch` leaves it in for
@@ -1343,8 +1347,13 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       settles `ok=True` on an empty `else`/zero matched elements without the app behind the query ever
       answering, so a dead app's own SpringBoard-only tree would otherwise clear the flag for the exact
       reason it should not, and the same holds for a step kind that never reaches the app at all
-      (`http`, `generate`, `totp`, `email`, `push`) — the
-      positive observation only a genuinely successful actuating/`wait`/`assert` step supplies; this same Unit also updates `ReadinessResult`'s own docstring
+      (`http`, `generate`, `totp`, `email`, `push`), and for `relaunch` specifically: dispatched through
+      the ordinary `_handle_action` path, so by a bare "actuating step" rule it would clear the flag,
+      but its closure discards `await_ready`'s `ReadinessResult` and `await_ready` never raises, so a
+      settled `relaunch`'s `ok=True` says nothing about the app — this Unit excludes it explicitly and
+      instead *re-sets* the flag on a settled `relaunch`, since it just put the app back into the same
+      unconfirmed state — the
+      positive observation only a genuinely successful actuating (other than `relaunch`)/`wait`/`assert` step supplies; this same Unit also updates `ReadinessResult`'s own docstring
       (`protocols/readiness_result.py:15-16`, `:27`), which currently reads "Pure diagnosis: it never
       enters a verdict (prime directive 1)" — true of every consumer before this flag, which only ever
       displayed the value on a wait-timeout diagnostic — to name this new use before the invariant goes
@@ -1412,7 +1421,16 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 - [ ] Unit 12 — Docs: `docs/evidence.md` (+ `docs/ja/`) gains this artifact kind; `docs/ci.md`
       (+ `docs/ja/`) notes the showcase signal lane; `docs/architecture.md` (+ `docs/ja/`)
       cross-references the no-retry app-crash path against the existing backend-crash retry section.
-- [ ] Unit 13 — Tests: `app_crash_signal()` answering `None` on an ordinary `ElementNotFound` (no
+- [ ] Unit 13 — Tests: three pins for the unconfirmed-launch flag, the third latch Unit 7 adds — the
+      most stateful new logic this item introduces, and otherwise ships with no coverage distinguishing
+      "the app never foregrounded, so do not confirm" from "confirm on the very first failing step" (the
+      misdiagnosis the flag exists to remove) from the opposite failure (the flag latching for a whole
+      scenario and disabling the item for a `count`-rung target class). A scenario whose first step
+      fails, leased with `readiness.signal == "count"`, asserting no probe runs and `app_crashed` stays
+      unset; the same shape leased with `readiness.signal == "readyWhen"`, asserting the probe *does*
+      run; and a clear-path test asserting a non-matching `if` and an `http` step both leave the flag
+      set while a successful `tap` clears it, and a settled `relaunch` re-sets it. `app_crash_signal()`
+      answering `None` on an ordinary `ElementNotFound` (no
       false positive on a missing selector), on a `wait`/`assert` failure, and on `deviceType: device`
       regardless of `app.state`, for both backends; an `AdbDriver` built with `package=None` or an
       unset `launched_at` answering `None` immediately, never reaching `pidof` or `exit-info`, so it
