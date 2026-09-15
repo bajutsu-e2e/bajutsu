@@ -779,8 +779,8 @@ compares it against a second device-clock rendering of the same launch moment
 (`'+%Y-%m-%d %H:%M:%S'`) — the rendering half of the `launched_at()` tuple `AdbDriver` receives,
 never the epoch half.
 `logcat -t` cannot consume the epoch value either, but for the more mundane reason that `adb
-logcat -t` is overloaded, and an integer argument is read as a *line count* (\"the most recent N
-lines\"), not a time bound — only a quoted `'MM-DD hh:mm:ss.mmm'` string is read as one, a different
+logcat -t` is overloaded, and an integer argument is read as a *line count* ("the most recent N
+lines"), not a time bound — only a quoted `'MM-DD hh:mm:ss.mmm'` string is read as one, a different
 rendering from exit-info's (`logcat`'s carries no year; exit-info's does, so neither substitutes for
 the other). So each
 launch site takes **one** `adb shell "date '+%s|%Y-%m-%d %H:%M:%S|%m-%d %H:%M:%S.000'"` read — the
@@ -1571,7 +1571,9 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
   whose existing `wall_offset_s` pop is the precedent this item's own `app_crash_artifacts` exclusion
   follows
 - [`bajutsu/common/report/load.py`](../../bajutsu/common/report/load.py) — `_kw`'s missing-field
-  handling, already documented as `wall_offset_s`'s own reconstruction path and unchanged by this item
+  handling, already documented as `wall_offset_s`'s own reconstruction path — `_kw` itself needs no
+  change, but its `load.py:34-41` comment gains `app_crash_artifacts` as a second deliberate
+  round-trip exception (Unit 8)
 - [`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py) —
   the protocol `app_crash_artifacts()` and `app_crash_tombstone()` join
 - [`bajutsu/common/platform_lifecycle/relaunchers.py`](../../bajutsu/common/platform_lifecycle/relaunchers.py) —

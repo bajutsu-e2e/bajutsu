@@ -1843,8 +1843,9 @@ fake backend の実行が収集する内容は変わりません。
   `_scenario_dict`。既存の `wall_offset_s` の pop が、本項目自身の `app_crash_artifacts` 除外の
   踏襲する前例
 - [`bajutsu/common/report/load.py`](../../bajutsu/common/report/load.py) — `_kw` の欠落
-  フィールド処理。すでに `wall_offset_s` 自身の組み立て直し経路として文書化されており、
-  本項目では変更しません
+  フィールド処理。すでに `wall_offset_s` 自身の組み立て直し経路として文書化されています。
+  `_kw` 自体は変更不要ですが、`load.py:34-41` のコメントには `app_crash_artifacts` が
+  2つ目の意図的な往復の例外として加わります（Unit 8）
 - [`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py) —
   `app_crash_artifacts()` と `app_crash_tombstone()` が加わるプロトコル
 - [`bajutsu/common/platform_lifecycle/relaunchers.py`](../../bajutsu/common/platform_lifecycle/relaunchers.py) —
