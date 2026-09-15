@@ -411,8 +411,8 @@ BE-0291 の*リースをまたぐ*ウォーム再利用の経路です。`Xcuite
 これを代わりに失敗として扱いはしません。`e.terminate` は自身の `CalledProcessError` を
 丸ごと握りつぶし（[`env.py:176`](../../bajutsu/common/backend_cli/simctl/env.py)）、
 まれに `e.launch` 自身が `CalledProcessError` を送出するデバイス・ツール側の失敗が
-起きても、`_run_step_body` の例外捕捉はそれを名指ししていません。そのステップの
-`outcome.ok = False` になる代わりに `run_scenario` 全体から抜け出してしまうため、
+起きても、`_run_step_body` の例外捕捉はそれを名指ししていません。その例外は、そのステップの
+`outcome.ok` を `False` にする代わりに `run_scenario` 全体から抜け出してしまうため、
 `_finish_outcome` にすら届きません。`relaunch` ステップ自身の結果が実際に `ok=False`
 になる経路は、今日ではアラートガード・待機中回復失敗の経路（「検知の方式」のネストした
 失敗についての段落を参照）だけです。これはアプリの健全性とは本当に無関係であり、まさに

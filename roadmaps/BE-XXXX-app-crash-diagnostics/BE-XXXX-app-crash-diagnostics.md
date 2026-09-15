@@ -650,9 +650,9 @@ one exited for an unrelated reason with no `ApplicationExitInfo` recorded yet. `
 `launched_at: Callable[[], tuple[float, str] | None] | None = None` constructor argument, an
 injected callable reading `AndroidEnvironment`'s launch marker — the epoch *and* the
 `'%Y-%m-%d %H:%M:%S'` device-clock rendering beside it — live, the same seam `fetch_clock` already
-uses for a per-call read rather than a value frozen at construction. A single exit-info read right
-after `pidof`
-answers empty races the very crash it corroborates: `pidof` reports empty the instant the process
+uses for a per-call read rather than a value frozen at construction. A single exit-info read, taken
+the moment `pidof` answers empty, races the very crash it corroborates: `pidof` reports empty the
+instant the process
 dies, while `system_server` records the matching `ApplicationExitInfo` only after it reaps the death —
 later still for a native crash, after `crash_dump` finishes — so the newest entry can still be a stale
 one from before this launch on the very read meant to confirm a fresh crash. `app_crash_signal()`
@@ -702,7 +702,7 @@ instants and leave the `logcat` one (stamped last) filtering out a crash that la
 The third field is stashed alongside `app_launched_at` for `logcat -t` alone to consume; threading the
 epoch straight through would silently return the whole ring buffer with no time bound at all, since
 the process bound below is by package alone and would then let an earlier scenario's crash on the
-*same* package through as this scenario's own. It captures two layers, matching this item's own
+*same* package through as this scenario's own. This item's Android capture takes two layers, matching its own
 scoping decision to capture both — but not through the same call, and not at the same time. `logcat`
 is safe to read the moment the crash is confirmed, mid-scenario, inside `_finish_outcome`
 (*Detecting the event*): it needs no elevated access and touches no channel a later step still needs.
