@@ -202,8 +202,14 @@ afterward, carry a different `outcome.action` and would each probe fresh, readin
 `notRunning` as a fresh confirmed crash. The exemption therefore has to be a property of the
 *scenario*, not of one outcome: the same mutable object `run_scenario` creates once and hands to every
 `run_phase` call through its closure, the same way it already shares `live_bindings` across phases
-(`_functions.py:690`, `:699`), landed on `_LoopConfig` next to `mailbox` and `progress` — themselves
-already mutable objects behind an otherwise-invariant field. `_finish_outcome` sets it the moment it
+(`_functions.py:690`, `:699`) — carried on `StepLoopState` next to `bindings`, not on `_LoopConfig`.
+`_LoopConfig` is `@dataclass(frozen=True)`, documented as "the run-invariant inputs the step loop reads
+but never mutates"; `mailbox` and `progress` are callables the loop only invokes, never state it
+writes through, so they set no precedent for one. `StepLoopState` already is that precedent:
+`_run_steps` builds a fresh one per phase, but hands each the same `bindings` object `run_scenario`
+created once, which is exactly the scenario-scoped sharing this latch needs, at the cost of one more
+parameter alongside `bindings` rather than a new field on a class documented never to hold one.
+`_finish_outcome` sets it the moment it
 sees `outcome.action == "relaunch"` and `outcome.ok is False`, before ever calling
 `app_crash_signal()`, and checks it first on every later call: once set, no later outcome in the same
 scenario probes at all, wrapping outcomes and `after`-phase steps included, and none is misread as a
@@ -255,9 +261,12 @@ the web backend out to a follow-up item:
 confirm" answer a backend with no signal at all gives — rather than misreading a real-device OS kill,
 or a `deviceType: device` target's own gap in evidence, as a confirmed app crash. One scenario step
 does deliberately terminate the app on either device type —
-`relaunch`, whose iOS path is `e.terminate(bundle_id)` then `e.launch(...)`
-([`xcuitest_environment.py:855-856`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py)) —
-so `_finish_outcome` skips the probe, and suppresses every later one this same scenario would
+`relaunch`, whose iOS path is `device_relauncher`'s `e.terminate(bundle_id)` then `e.launch(...)`
+([`relaunchers.py:64`, `:78`](../../bajutsu/common/platform_lifecycle/relaunchers.py)) — not
+`_resume_warm`'s identical-looking pair at `xcuitest_environment.py:855-856`, BE-0291's *cross-lease*
+warm-reuse path, which `XcuitestEnvironment.relauncher()` never calls, since the class inherits
+`_DeviceEnvironment.relauncher()` unchanged and never overrides it — so `_finish_outcome` skips the
+probe, and suppresses every later one this same scenario would
 otherwise make (see *Detecting the event*), once a `relaunch` step itself fails: a relaunch whose own
 launch half fails is that step's own failure, not a crash, and its failure message already says so
 without this item's help. Every other check also runs only once a step has already
@@ -325,8 +334,19 @@ every iOS bundle is required to declare — and builds the sweep's pattern from 
 
 `XcuitestEnvironment`
 ([`bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py))
-already launches, and relaunches, the target app; it also already knows its own `udid`. It gains an
-`app_launched_at` timestamp, recorded next to each launch.
+already launches the target app, and already knows its own `udid`. It gains an `app_launched_at`
+timestamp, recorded next to that launch — but a `relaunch` step's own launch, the one this section just
+distinguished from `_resume_warm`'s, runs through `device_relauncher`'s closure over
+`(udid, run, extra_env)`, with no `XcuitestEnvironment` in scope to update the marker on. Left alone,
+`app_launched_at` would stay frozen at the lease's original cold launch, so a crash following a
+mid-scenario `relaunch` would sweep `DiagnosticReports` with a `since` reaching back before the
+relaunch — wide enough to attach a `.ips` from a crash that `relaunch` itself already superseded.
+`XcuitestEnvironment` overrides `relauncher()` — `_DeviceEnvironment`'s own implementation, unchanged
+otherwise — to wrap the `RelaunchFn` `device_relauncher` returns: call it, then record
+`app_launched_at` the same way the cold-launch site already does. `AndroidEnvironment` needs no
+matching override: it already overrides `relauncher()` itself
+([`android_environment.py:326`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py)),
+and its `e.launch` there is one of the three sites Unit 5 already names.
 
 A new `app_crash_artifacts() -> list[tuple[str, bytes]]` joins the `RunEnvironment` protocol
 ([`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py)),
@@ -545,10 +565,20 @@ the two entry points; the detection is not.
 A unit test can stub `~/Library/Logs/DiagnosticReports`, or a fake `logcat`/tombstone pull. Neither
 proves the underlying platform mechanism this item depends on — `ReportCrash`'s own `.ips` write, or
 `logcat`'s `crash` buffer — still behaves the way the design above assumes, on a real Simulator or
-emulator. The showcase apps ([`demos/showcase/`](../../demos/showcase)) gain a debug-only "force a
-crash" affordance: a button gated behind the same debug-build convention
-[`ConformanceView.swift`](../../demos/showcase/ios/swiftui/Sources/ConformanceView.swift) already uses
-for its own on-device diagnostics, calling `fatalError()` on iOS and throwing an uncaught exception on
+emulator. The showcase apps ([`demos/showcase/`](../../demos/showcase)) gain a "force a crash"
+affordance gated behind a launch-env flag, not a debug build: there is no `#if DEBUG` anywhere in the
+showcase iOS sources, and the closest existing precedent,
+[`ConformanceView.swift`](../../demos/showcase/ios/swiftui/Sources/ConformanceView.swift), is itself
+reached only when the `SHOWCASE_CONFORMANCE` launch env is set
+([`AppModel.swift:92`](../../demos/showcase/ios/swiftui/Sources/AppModel.swift),
+[`RootView.swift:7`](../../demos/showcase/ios/swiftui/Sources/RootView.swift)) — BE-0114's
+driver-conformance screen, not on-device diagnostics. Gating behind a build configuration instead
+would put the affordance's very existence at the mercy of whichever configuration the iOS lane's own
+`build (app + runner)` job compiles: a Release build would compile it out, and the new
+expected-to-fail scenario would then fail on a missing selector rather than on a crash — the exact
+misdiagnosis this item exists to remove. A launch-env flag needs no build-configuration assumption and
+rides the scenario schema's own `preconditions.launchEnv`, the same seam `SHOWCASE_CONFORMANCE`
+already rides. The affordance calls `fatalError()` on iOS and throws an uncaught exception on
 Android's main thread. One new scenario per platform taps it.
 
 Both new scenarios are *expected* to fail. The CI wrapper around them asserts the failure carries the
@@ -603,11 +633,14 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       `is_real_device` constructor argument, threaded from `make_driver` the same way `device_os`
       already is, that makes `app_crash_signal()` answer `None` outright on `deviceType: device` —
       this item scopes to the Simulator only.
-- [ ] Unit 3 — iOS: `XcuitestEnvironment.app_launched_at`, recorded at each app launch/relaunch;
-      reading `CFBundleExecutable` from `Path(ios.app_path) / "Info.plist"` for the sweep's own
-      match pattern (`ios.bundle_id` is not this name); `app_crash_artifacts()`'s name-and-`udid`-
-      matched `.ips` sweep (no PID accessor exists on `XCUIApplication`), with a bounded wait for
-      `ReportCrash`'s asynchronous write, wrapped so any failure resolves to `[]`.
+- [ ] Unit 3 — iOS: `XcuitestEnvironment.app_launched_at`, recorded at the cold launch; a new
+      `XcuitestEnvironment.relauncher()` override wrapping `device_relauncher`'s `RelaunchFn` to
+      record it again after a `relaunch` step's own launch, the one call site `_DeviceEnvironment`'s
+      inherited `relauncher()` has no environment in scope to update; reading `CFBundleExecutable`
+      from `Path(ios.app_path) / "Info.plist"` for the sweep's own match pattern (`ios.bundle_id` is
+      not this name); `app_crash_artifacts()`'s name-and-`udid`-matched `.ips` sweep (no PID accessor
+      exists on `XCUIApplication`), with a bounded wait for `ReportCrash`'s asynchronous write,
+      wrapped so any failure resolves to `[]`.
 - [ ] Unit 4 — Android: a `package` keyword threaded through `backends.make_driver` into
       `AdbDriver.__init__`, the same way `device_os` already is; a `launched_at` injected callable
       reading `AndroidEnvironment.app_launched_at`; `AdbDriver.app_crash_signal()` via `adb shell
@@ -634,9 +667,9 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       `_handle_web` once each, `_handle_action` twice (its own end and its
       `UncoveredSystemAlertLocale` early return) — in place of the bare append, covering every step
       kind's true final outcome; a scenario-scoped object (`run_scenario` creates it once and shares
-      it with every `run_phase` call the same way it already shares `live_bindings`, landed on
-      `_LoopConfig`, not `StepLoopState`, so it survives `before`, the main steps, and every
-      dispatched `after` rule) carrying two latches: a deliberate-termination flag, set the moment
+      it with every `run_phase` call the same way it already shares `live_bindings`, carried on
+      `StepLoopState` next to `bindings`, not on the frozen `_LoopConfig`, so it survives `before`,
+      the main steps, and every dispatched `after` rule) carrying two latches: a deliberate-termination flag, set the moment
       `outcome.action == "relaunch"` and `outcome.ok is False` (before any probe), that suppresses
       every later probe in the scenario — the failing `relaunch`'s own wrapping `if`/`forEach`
       outcomes and any `after: on: fail` cleanup step included, not only the `relaunch` step's own
@@ -665,15 +698,18 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       `repro.py`'s `write_repros` writing non-empty artifacts under `crashes/crash-NNN/app-crash/`
       before its own `continue` on a non-replayable crash, alongside that crash's own
       `crashes/crash-NNN.yaml` repro.
-- [ ] Unit 11 — Showcase fixtures: a debug-only "force a crash" affordance on iOS (SwiftUI) and
-      Android (Compose), one scenario per platform exercising it, wired as a non-gating per-PR signal
-      in `ios-e2e.yml` / `android-e2e.yml`.
+- [ ] Unit 11 — Showcase fixtures: a "force a crash" affordance gated behind a launch-env flag (not a
+      build configuration) on iOS (SwiftUI) and Android (Compose), one scenario per platform
+      exercising it via `preconditions.launchEnv`, wired as a non-gating per-PR signal in
+      `ios-e2e.yml` / `android-e2e.yml`.
 - [ ] Unit 12 — Docs: `docs/evidence.md` (+ `docs/ja/`) gains this artifact kind; `docs/ci.md`
       (+ `docs/ja/`) notes the showcase signal lane; `docs/architecture.md` (+ `docs/ja/`)
       cross-references the no-retry app-crash path against the existing backend-crash retry section.
 - [ ] Unit 13 — Tests: `app_crash_signal()` answering `None` on an ordinary `ElementNotFound` (no
       false positive on a missing selector), on a `wait`/`assert` failure, and on `deviceType: device`
-      regardless of `app.state`, for both backends; a failing `relaunch` step never probing
+      regardless of `app.state`, for both backends; `XcuitestEnvironment.app_launched_at` advancing
+      past a `relaunch` step's own launch, and the `.ips` sweep after a post-relaunch crash finding
+      only the report from that later launch; a failing `relaunch` step never probing
       `app_crash_signal()`, and neither does its wrapping `if`/`forEach` outcome nor a dispatched
       `after: on: fail` step that also fails against the terminated app; an ordinary (non-`relaunch`,
       non-crash) failure three levels deep still probing once per settling outcome, pinning that the
@@ -714,8 +750,9 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 - [`bajutsu/common/orchestrator/loop/_functions.py`](../../bajutsu/common/orchestrator/loop/_functions.py) —
   `run_scenario`'s `run_phase` closure sharing `live_bindings` across `before` / the main steps /
   every `after` rule, the precedent this item's cross-phase crash latch follows
-- [`bajutsu/common/orchestrator/loop/_loop_config.py`](../../bajutsu/common/orchestrator/loop/_loop_config.py) —
-  `_LoopConfig`, where the latch lands next to `mailbox` and `progress`
+- [`bajutsu/common/orchestrator/loop/step_loop_state.py`](../../bajutsu/common/orchestrator/loop/step_loop_state.py) —
+  `StepLoopState`, where the latch lands next to `bindings` — the field that already carries a
+  scenario-scoped mutable object into a freshly built `StepLoopState` each phase
 - [`bajutsu/common/runner/pipeline.py`](../../bajutsu/common/runner/pipeline.py) — `_run_on_lease`,
   scanning `result`'s `before_outcomes` / `steps` / `after_outcomes` for `app_crashed` while still
   holding the lease, and `_write_crash_artifacts` (BE-0421), the sibling the new
@@ -724,6 +761,9 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
   the precedent `Lease.app_crash_artifacts` follows
 - [`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py) —
   the protocol `app_crash_artifacts()` joins
+- [`bajutsu/common/platform_lifecycle/relaunchers.py`](../../bajutsu/common/platform_lifecycle/relaunchers.py) —
+  `device_relauncher`, the `relaunch` step's actual iOS launch path, distinct from
+  `_resume_warm`'s cross-lease one
 - [`bajutsu/crawl/core/_functions.py`](../../bajutsu/crawl/core/_functions.py) — `record_crash`'s
   off-lock crash check, the join point for this item's crawl-side capture call
 - [`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py) — `_build_lane`, the per-lane environment this
