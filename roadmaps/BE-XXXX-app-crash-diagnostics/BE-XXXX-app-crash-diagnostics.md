@@ -613,9 +613,11 @@ Android's exit-info corroboration that it already names for iOS's Simulator-only
 persists across process lifetimes, though, so its most recent entry alone is not reliable: an earlier
 scenario's crash on the same package can still be the newest entry `dumpsys` reports if the current
 one exited for an unrelated reason with no `ApplicationExitInfo` recorded yet. `AdbDriver` gains a
-`launched_at: Callable[[], float | None] | None = None` constructor argument, an injected callable
-reading `AndroidEnvironment.app_launched_at` live, the same seam `fetch_clock` already uses for a
-per-call read rather than a value frozen at construction. A single exit-info read right after `pidof`
+`launched_at: Callable[[], tuple[float, str] | None] | None = None` constructor argument, an
+injected callable reading `AndroidEnvironment`'s launch marker — the epoch *and* the
+`'%Y-%m-%d %H:%M:%S'` device-clock rendering beside it — live, the same seam `fetch_clock` already
+uses for a per-call read rather than a value frozen at construction. A single exit-info read right
+after `pidof`
 answers empty races the very crash it corroborates: `pidof` reports empty the instant the process
 dies, while `system_server` records the matching `ApplicationExitInfo` only after it reaps the death —
 later still for a native crash, after `crash_dump` finishes — so the newest entry can still be a stale
@@ -624,9 +626,9 @@ therefore polls the exit-info history the same short, bounded way `_app_crash_re
 `DiagnosticReports` on iOS: up to a few seconds, re-reading until its *newest* entry reports
 `CRASH`/`CRASH_NATIVE` *and* that entry's own `timestamp=` field — `ApplicationExitInfo`'s wall-clock
 rendering in the *device's* own timezone, never an epoch and carrying no offset — is at or after this
-launch. The comparison is made against a third device-clock rendering of the launch moment
-(`adb shell date '+%Y-%m-%d %H:%M:%S'`, recorded at each launch site alongside the other two), not
-against the epoch `launched_at()`: resolving a bare `timestamp=` on the host would run it through the
+launch. The comparison is made against the rendering half of `launched_at()` — the tuple's second
+element, the `'%Y-%m-%d %H:%M:%S'` device-clock rendering recorded alongside the epoch at each launch
+site — never against the epoch half: resolving a bare `timestamp=` on the host would run it through the
 *host's* timezone, so a UTC emulator driven from a host in any other zone would place every fresh
 crash hours before the marker and answer `None` on every real crash. The poll ends either when such
 an entry appears — ruling out a stale one from before this launch — or when the bound expires; both
@@ -652,7 +654,8 @@ away from the marker — silently reintroducing the exact host/device clock reco
 otherwise avoids entirely. `dumpsys activity exit-info`'s `timestamp=` field is `ApplicationExitInfo`'s
 own wall-clock rendering in the device's timezone, carrying no offset, so the exit-info poll above
 compares it against a second device-clock rendering of the same launch moment
-(`'+%Y-%m-%d %H:%M:%S'`) — never against the epoch `launched_at()`.
+(`'+%Y-%m-%d %H:%M:%S'`) — the rendering half of the `launched_at()` tuple `AdbDriver` receives,
+never the epoch half.
 `logcat -t` cannot consume the epoch value either, but for the more mundane reason that `adb
 logcat -t` is overloaded, and an integer argument is read as a *line count* (\"the most recent N
 lines\"), not a time bound — only a quoted `'MM-DD hh:mm:ss.mmm'` string is read as one, a different
@@ -1075,13 +1078,15 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       device, so a silent `None` default would confirm another process's crash, and
       `ApplicationExitInfo` itself does not exist before API 30, so polling for it on an older device
       or emulator image would time out on every crash instead of failing closed the same up-front way;
-      a `launched_at`
+      a `launched_at: Callable[[], tuple[float, str] | None] | None = None`
       injected callable
-      reading `AndroidEnvironment.app_launched_at`; `AdbDriver.app_crash_signal()` via `adb shell
+      reading `AndroidEnvironment`'s launch marker live — both the epoch and the exit-info rendering
+      Unit 5's combined read produces, not the epoch alone, since the exit-info comparison below needs
+      the rendering and a `float` cannot carry it; `AdbDriver.app_crash_signal()` via `adb shell
       pidof <package>` corroborated by a time-bound `adb shell dumpsys activity exit-info <package>`
       check (its newest entry only, its `timestamp=` field — a device-timezone wall-clock rendering,
-      never an epoch — compared against the second field of Unit 5's own combined launch-moment read,
-      never against the epoch `launched_at()`: resolving
+      never an epoch — compared against the rendering half of `launched_at()`,
+      never the epoch half: resolving
       `timestamp=` into an epoch on the host would run the conversion through the host's own
       timezone, reintroducing the clock reconciliation this design otherwise avoids), polled the same
       short, bounded way
