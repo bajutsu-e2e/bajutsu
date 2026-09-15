@@ -644,6 +644,21 @@ silent `None` default is what would let one of those later inherit the unsafe an
 `launched_at()` that itself answers `None`) first, before either `adb` call, resolving to `None`
 immediately — the same up-front, named case `ios.app_path is None` already is.
 
+An empty `pidof` reply never actually reaches Python as an empty string: `AdbDriver`'s default `RunFn`
+is `adb.real_run`
+([`adb/_functions.py:111-112`](../../bajutsu/common/backend_cli/adb/_functions.py)), a bare
+`subprocess.run(..., check=True)`, and toybox `pidof` exits 1 on no match — the routine, expected
+outcome this whole probe exists to observe. `app_crash_signal()` therefore wraps the `pidof` call in
+`except subprocess.CalledProcessError as exc`, matching this repository's own precedent for a device
+command whose failure is expected rather than exceptional
+(`AdbDriver._rooted()`'s `except (subprocess.CalledProcessError, OSError)` around `adb shell id -u`,
+[`adb_driver.py:1234-1235`](../../bajutsu/common/drivers/adb/adb_driver.py)): an exit with empty
+`stdout` reads as "no process", exactly like an empty `real_run` return would have; any other
+`CalledProcessError`, or an `OSError` from `adb` itself misbehaving, resolves to `None` — the same
+"cannot confirm" answer this section already gives `package is None` and a too-old `api_level`, rather
+than escaping as an unhandled fault on the first real crash the probe is meant to catch. The same wrapping
+covers the `dumpsys activity exit-info` call below, for a transport hiccup mid-poll.
+
 An empty `pidof` answer, where the app should still hold a process, is necessary but not sufficient.
 It also matches a launch that never completed, or a termination this item has no scenario-level cause
 for: Android has no jetsam-style OS kill under normal test conditions, but an ordinary process exit
@@ -970,9 +985,15 @@ recorded on the UI-tree heuristic alone — only the artifact sweep is gated, so
 records a `Crash` with no `artifacts` rather than paying a full-timeout poll on what might be a
 covering alert.
 
-That `d.app_crash_signal()` call is wrapped in its own `except base.BackendCrashError: pass`, treating
+That `d.app_crash_signal()` call is wrapped in its own `except (base.BackendCrashError, OSError,
+subprocess.CalledProcessError): pass`, treating
 a channel error the same as an unconfirmed answer — `crawl` records the `Crash` and keeps walking, no
-`artifacts`. *iOS: `app.state`* deliberately leaves a channel error unswallowed for `run`, letting it
+`artifacts`. The wider catch here is a second, caller-side guard alongside *Android:
+`logcat`'s crash buffer first...*'s own fix to `app_crash_signal()` itself, not a substitute for it:
+`AdbDriver`'s `RunFn` is `subprocess.run(..., check=True)`
+([`adb/_functions.py:111`](../../bajutsu/common/backend_cli/adb/_functions.py)), so a bare `except
+base.BackendCrashError` alone would still miss a `pidof` / `exit-info` failure that reached this call
+site unswallowed — nothing under `backend_cli/adb/` raises `BackendCrashError` at all. *iOS: `app.state`* deliberately leaves a channel error unswallowed for `run`, letting it
 propagate as `XcuitestRunnerCrashError` into the recovery path `pipeline.py` already owns; `crawl` has
 no such path — nothing under `bajutsu/crawl/` handles `BackendCrashError` — and this call sits outside
 `_walk`'s own `try` (`_functions.py:597-655`, scoped to `action.perform`/`_observe`), in the "pure
@@ -1141,6 +1162,12 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       device, so a silent `None` default would confirm another process's crash, and
       `ApplicationExitInfo` itself does not exist before API 30, so polling for it on an older device
       or emulator image would time out on every crash instead of failing closed the same up-front way;
+      both the `pidof` and `dumpsys activity exit-info` calls wrapped in `except
+      (subprocess.CalledProcessError, OSError)`, the same shape as `AdbDriver._rooted()`'s existing
+      guard around `adb shell id -u` (`adb_driver.py:1234-1235`) — `real_run`'s default `RunFn` is
+      `check=True`, and toybox `pidof` exits 1 on no match rather than returning empty stdout, so an
+      unguarded call would raise on the routine, expected case this probe exists to observe; a
+      `pidof` exit with empty `stdout` reads as "no process", any other failure resolves to `None`;
       a `launched_at: Callable[[], tuple[float, str] | None] | None = None`
       injected callable
       reading `AndroidEnvironment`'s launch marker live — both the epoch and the exit-info rendering
@@ -1291,8 +1318,12 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       `record_crash`'s existing off-lock crash check, gated on
       the driver positively confirming the event (`isinstance`/`app_crash_signal()`) so a UI-tree
       false positive does not pay a full-timeout sweep, wrapped in its own
-      `except base.BackendCrashError: pass` — unlike `run`, `crawl` owns no recovery path for a
-      propagating `XcuitestRunnerCrashError`, and this call sits outside `_walk`'s own `try`; `Crash`'s new `artifacts` field, deliberately
+      `except (base.BackendCrashError, OSError, subprocess.CalledProcessError): pass` — unlike `run`,
+      `crawl` owns no recovery path for a
+      propagating `XcuitestRunnerCrashError`, and this call sits outside `_walk`'s own `try`; the wider
+      catch is a second guard alongside Unit 4's own fix to `app_crash_signal()`, since nothing under
+      `backend_cli/adb/` raises `BackendCrashError` and its `RunFn` is `subprocess.run(...,
+      check=True)`; `Crash`'s new `artifacts` field, deliberately
       left out of `serialize.py`'s `screenmap_dict`/`screenmap_from_dict` round trip (raw `bytes` has
       no JSON encoding; a carried-forward `Crash` reload always gets `artifacts=()`);
       `repro.py`'s `write_repros` writing non-empty artifacts through the same redacting

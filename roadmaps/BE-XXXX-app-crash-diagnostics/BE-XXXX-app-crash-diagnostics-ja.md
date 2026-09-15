@@ -749,6 +749,24 @@ None = None` というキーワードを加え、`fetch_clock` と `act` をす�
 その場で `None` へ即座に解決します。`ios.app_path is None` がすでに持つのと同じ、名前のついた
 事前確認です。
 
+空の `pidof` の応答は、実際には空の文字列として Python まで届きません。`AdbDriver` の既定の
+`RunFn` は `adb.real_run`
+（[`adb/_functions.py:111-112`](../../bajutsu/common/backend_cli/adb/_functions.py)）——ただの
+`subprocess.run(..., check=True)`——であり、toybox の `pidof` は一致がないとき、この確認
+そのものが観測しようとしているまさにその、ふだんの想定どおりの結果として終了コード 1 を
+返します。そこで `app_crash_signal()` は `pidof` の呼び出しを `except
+subprocess.CalledProcessError as exc` で包みます。これは、期待どおりの失敗を例外的なもの
+としてではなく扱う、このリポジトリ自身の先例と同じ形です（`AdbDriver._rooted()` が
+`adb shell id -u` を包む `except (subprocess.CalledProcessError, OSError)`、
+[`adb_driver.py:1234-1235`](../../bajutsu/common/drivers/adb/adb_driver.py)）。`stdout` が
+空のまま終了すれば、空の `real_run` の戻り値がそうだったのとまったく同じ「プロセスなし」
+として読みます。それ以外の `CalledProcessError`、あるいは `adb` 自身の不調による
+`OSError` は `None` へ解決します。この節がすでに `package is None` や古すぎる `api_level`
+に与えているのと同じ「確認できない」という答えであり、この確認がまさに捉えようとしている
+本物のクラッシュの最初の1回で、処理されない不具合として抜け出してしまうことはありません。
+同じ包み方を、下の `dumpsys activity exit-info` の呼び出しにも、ポーリング中の伝送の不調に
+対して適用します。
+
 空の `pidof` という答えは、アプリがまだプロセスを保持しているはずの場面では、必要条件
 ではあっても十分条件ではありません。起動が完了しなかった場合や、本項目がシナリオレベル
 の原因を持たない終了とも一致します。Android には、通常のテスト条件下で jetsam のような
@@ -1136,8 +1154,16 @@ outcome 上のメモリ内の bytes は、その書き込みに届くためだ�
 だけです。したがって未確認のクラッシュは、全タイムアウト分のポーリングを払う代わりに、
 `artifacts` を持たない `Crash` を記録します。
 
-この `d.app_crash_signal()` 呼び出しは、自前の `except base.BackendCrashError: pass` で
-包みます。チャンネルエラーを未確認の答えと同じ扱いにします。`crawl` は `Crash` を記録して
+この `d.app_crash_signal()` 呼び出しは、自前の `except (base.BackendCrashError, OSError,
+subprocess.CalledProcessError): pass` で
+包みます。チャンネルエラーを未確認の答えと同じ扱いにします。ここでの広い捕捉は、
+「Android：`logcat` のクラッシュバッファを先に……」が `app_crash_signal()` 自身に施す
+修正の代わりではなく、それに並ぶ2つ目の、呼び出し側のガードです。`AdbDriver` の
+`RunFn` は `subprocess.run(..., check=True)`
+（[`adb/_functions.py:111`](../../bajutsu/common/backend_cli/adb/_functions.py)）であり、
+`backend_cli/adb/` の下には `BackendCrashError` を送出する場所がどこにもないため、
+`except base.BackendCrashError` だけでは、この呼び出し箇所まで握りつぶされずに届いた
+`pidof`・`exit-info` の失敗をなお見逃してしまいます。`crawl` は `Crash` を記録して
 歩き続け、`artifacts` は持ちません。「iOS：`app.state`」は `run` に対して、チャンネル
 エラーをあえて `None` へ握りつぶさず、`pipeline.py` がすでに持つ回復経路へ
 `XcuitestRunnerCrashError` としてそのまま伝播させると決めています。しかし `crawl` には
@@ -1335,6 +1361,14 @@ fake backend の実行が収集する内容は変わりません。
       確定させかねません。`ApplicationExitInfo` 自体が API 30 より前には存在しないため、
       古い端末やエミュレータイメージでポーリングすれば、同じ名前のついた形でフェイル
       クローズするのではなく、あらゆるクラッシュでタイムアウトするだけになります。
+      `pidof` と `dumpsys activity exit-info` の両方の呼び出しを `except
+      (subprocess.CalledProcessError, OSError)` で包みます。`AdbDriver._rooted()` が
+      `adb shell id -u` の周りにすでに持つのと同じ形です（`adb_driver.py:1234-1235`）。
+      `real_run` の既定の `RunFn` は `check=True` であり、toybox の `pidof` は一致が
+      ないとき、この確認がまさに観測しようとしているふだんの想定どおりのケースで、
+      空の `stdout` を返す代わりに終了コード 1 を返すためです。`stdout` が空のまま
+      終了する `pidof` は「プロセスなし」として読み、それ以外の失敗は `None` へ解決
+      します。
       `launched_at: Callable[[], tuple[float, str] | None] | None = None` という注入された
       コールバック。`AndroidEnvironment` の起動の目印を、エポックだけでなく Unit 5 自身の
       組み合わせ読み取りが作る exit-info 用の表記も含めてその場で読みます。下の
@@ -1506,9 +1540,12 @@ fake backend の実行が収集する内容は変わりません。
       通します。収集呼び出しを `record_crash` の既存のロック外クラッシュ確認へ加えます。
       ドライバが事象を積極的に確認したとき（`isinstance`/`app_crash_signal()`）にだけ収集する
       ようゲートし、UI ツリーの誤検知が全タイムアウト分の掃引を払わないようにします。自前の
-      `except base.BackendCrashError: pass` で包み、`run` と違って `crawl` には伝播した
+      `except (base.BackendCrashError, OSError, subprocess.CalledProcessError): pass` で包み、
+      `run` と違って `crawl` には伝播した
       `XcuitestRunnerCrashError` を受け持つ回復経路がなく、この呼び出しは `_walk` 自身の
-      `try` の外にあります。`Crash` の
+      `try` の外にあります。この広い捕捉は Unit 4 自身の `app_crash_signal()` への修正に
+      並ぶ2つ目のガードです。`backend_cli/adb/` の下には `BackendCrashError` を送出する
+      場所がなく、その `RunFn` は `subprocess.run(..., check=True)` だからです。`Crash` の
       新しい `artifacts` フィールド(生の `bytes` には JSON 表現がないため `serialize.py` の
       `screenmap_dict`/`screenmap_from_dict` の往復からはあえて除き、引き継がれる `Crash` は
       常に `artifacts=()` で組み立て直されます)。`repro.py` の `write_repros` が、空でない証跡を、
