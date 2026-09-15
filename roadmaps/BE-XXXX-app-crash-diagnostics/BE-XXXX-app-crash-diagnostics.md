@@ -264,16 +264,34 @@ does deliberately terminate the app on either device type —
 `relaunch`, whose iOS path is `device_relauncher`'s `e.terminate(bundle_id)` then `e.launch(...)`
 ([`relaunchers.py:64`, `:78`](../../bajutsu/common/platform_lifecycle/relaunchers.py)) — not
 `_resume_warm`'s identical-looking pair at `xcuitest_environment.py:855-856`, BE-0291's *cross-lease*
-warm-reuse path, which `XcuitestEnvironment.relauncher()` never calls, since the class inherits
-`_DeviceEnvironment.relauncher()` unchanged and never overrides it — so `_finish_outcome` skips the
-probe, and suppresses every later one this same scenario would
-otherwise make (see *Detecting the event*), once a `relaunch` step itself fails: a relaunch whose own
-launch half fails is that step's own failure, not a crash, and its failure message already says so
-without this item's help. Every other check also runs only once a step has already
-failed, *after* the app was observed running through every earlier step of the same scenario, so a
-launch that never completed under a non-`relaunch` step is not a case it meets. A `notRunning` answer
-anywhere else means the app that was running a moment ago is not running now, on a host with no other
-way for that to happen.
+warm-reuse path. `XcuitestEnvironment.relauncher()` does override `_DeviceEnvironment`'s implementation
+(see *iOS: matching the `.ips` report*, for the unrelated reason of re-stamping `app_launched_at`), but
+that override only wraps the `RelaunchFn` `device_relauncher` already returns — it never calls
+`_resume_warm`, which stays a separate, cross-lease code path this step never touches either way. So
+`_finish_outcome` skips the probe, and suppresses every later one this same scenario would otherwise
+make (see *Detecting the event*), once a `relaunch` step itself fails. That guard matters less than it
+looks, though: `relaunch`'s own closure calls `readiness.await_ready(...)`
+([`relaunchers.py:79`](../../bajutsu/common/platform_lifecycle/relaunchers.py)) purely for its side
+effect and discards the `ReadinessResult` it returns, and `await_ready` itself never raises — a timed-out
+wait returns `ReadinessResult(False, "timeout", …)` just like a successful one returns `True`
+([`readiness.py:170`](../../bajutsu/common/platform_lifecycle/readiness.py)). So a `fatalError()` during
+the *new* launch — the exact case Unit 11's showcase affordance exists to trigger — never fails the
+`relaunch` step at all: `await_ready` times out silently, the closure returns, and the step reports
+`ok=True`. Nor does the surrounding tooling turn that into a failure on its behalf: `e.terminate` swallows
+its own `CalledProcessError` outright
+([`env.py:176`](../../bajutsu/common/backend_cli/simctl/env.py)), and on the rare device/tooling failure
+where `e.launch`'s own `CalledProcessError` does raise, `_run_step_body`'s exception net does not name it
+— it escapes `run_scenario` entirely rather than becoming this step's `outcome.ok = False`, so
+`_finish_outcome` is never reached for it either. The only way a `relaunch` step's own outcome actually
+carries `ok=False` today is the alert-guard/mid-wait-recovery-failure path (*Detecting the event*'s
+nested-failure paragraph above) — genuinely unrelated to the app's own health, exactly the case the
+exemption exists for. A crash during the new launch is not lost, only attributed one step later: it
+fails the very next step that touches the app, an ordinary (non-`relaunch`) outcome neither latch has
+any reason to skip, so `_finish_outcome` probes it exactly as it would any other failure. Every other
+check also runs only once a step has already failed, *after* the app was observed running through every
+earlier step of the same scenario, so a launch that never completed under a non-`relaunch` step is not a
+case it meets. A `notRunning` answer anywhere else means the app that was running a moment ago is not
+running now, on a host with no other way for that to happen.
 
 A new route joins
 [`BajutsuKit/Sources/BajutsuRunner/openapi.yaml`](../../BajutsuKit/Sources/BajutsuRunner/openapi.yaml),
@@ -359,9 +377,12 @@ lease is ever released — so `app_crash_artifacts()` reads `app_launched_at` li
 finished list directly, no thunk needed. `RunEnvironment` is a structural protocol no concrete class
 subclasses, so `take_crash_snapshot()` has no inherited default either: `WebEnvironment`,
 `AndroidEnvironment`, and `_DeviceEnvironment` (which `FakeEnvironment` inherits) each already declare
-their own one-line `return` for it. `app_crash_artifacts()` follows the same shape: those same three
-classes each gain their own `return []`, since `pool.py`'s `lease()` reads the method off every leased
-environment, on every lease, not only a crashed one.
+their own one-line `return` for it. `app_crash_artifacts()` follows the same shape, minus Android:
+`WebEnvironment` and `_DeviceEnvironment` (which `FakeEnvironment` inherits) each gain their own
+`return []`, while `XcuitestEnvironment` and `AndroidEnvironment` each override it with the real
+capture this section and the next describe. Every leased environment needs one of the two, since
+`pool.py`'s `lease()` reads the method off every leased environment, on every lease, not only a
+crashed one.
 
 `ReportCrash` may not have finished writing the report the instant the app dies. `_app_crash_reports`
 polls `~/Library/Logs/DiagnosticReports` for up to a few seconds for a report matching the target's
@@ -560,6 +581,22 @@ crawl's own detection stays the UI-tree heuristic it already uses: `crawl` has n
 hang a reactive check off, unlike `run`. The capture is shared between
 the two entry points; the detection is not.
 
+`Crash` is also the type [`serialize.py`](../../bajutsu/crawl/serialize.py) round-trips through JSON —
+`screenmap_dict` dumps `screen_map.crashes` (`:131-134`) and `screenmap_from_dict` rebuilds it
+(`:92-98`) — and raw `bytes` has no JSON encoding, so `artifacts` is deliberately left out of both
+directions rather than base64-widening every other field's dump. `on_event`'s own `_write_screenmap`
+call (`cli.py:186`) fires that dump live, after every recorded crash, well before `write_repros` ever
+runs — `write_repros` walks the finished `screen_map.crashes` exactly once, at the very end of a
+normally-completed crawl (`cli.py:405`) — so `artifacts` is already an in-memory-only field on its own
+terms: nothing durably persists it before that one closing call, dump or no dump. Omitting it from the
+dump costs a `--resume`/`--continue-crawl` reload nothing a normally-completed prior crawl already
+wrote to disk (`write_repros` ran, so the bytes are on disk under that prior run's own
+`crashes/crash-NNN/app-crash/`) and nothing an interrupted one could have kept either way (the process
+died before `write_repros` reached it, so the bytes never reached disk in the first place, the same
+loss a `--resume` already accepts for that prior crawl's own unwritten report). `screenmap_from_dict`
+rebuilds every carried-forward `Crash` with `artifacts=()`, the dataclass default, exactly as it
+already does for `actions` on a map saved before crashes carried that field.
+
 ### Proving the capture on a real crash, not only a stubbed one
 
 A unit test can stub `~/Library/Logs/DiagnosticReports`, or a fake `logcat`/tombstone pull. Neither
@@ -658,10 +695,12 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 - [ ] Unit 6 — `RunEnvironment.app_crash_artifacts()` protocol shape (returning
       `list[tuple[str, bytes]]`, read live with no snapshot-and-thunk indirection, since nothing
       tears the environment down before this scenario's own lease releases); a one-line `return []`
-      on each of `WebEnvironment`, `AndroidEnvironment`, and `_DeviceEnvironment` (inherited by
-      `FakeEnvironment`), mirroring `take_crash_snapshot()`'s own three no-op declarations, since the
-      protocol itself has no inheritable default; `Lease.app_crash_artifacts` wired through
-      `pool.py`'s `lease()` closure alongside `crash_artifacts`.
+      on each of `WebEnvironment` and `_DeviceEnvironment` (inherited by `FakeEnvironment`), the same
+      no-op shape `take_crash_snapshot()` already declares on all three, minus Android — Android has
+      no counterpart no-op here, since `AndroidEnvironment` overrides `app_crash_artifacts()` with the
+      real capture (Unit 5), not a no-op, the same way `XcuitestEnvironment` overrides it with its own
+      real capture (Unit 3); `Lease.app_crash_artifacts` wired through `pool.py`'s `lease()` closure
+      alongside `crash_artifacts`.
 - [ ] Unit 7 — `run_scenario` / `_step_runner.py`: the new `_finish_outcome` helper, called at all
       five `self.state.outcomes.append(outcome)` call sites — `_handle_if` / `_handle_for_each` /
       `_handle_web` once each, `_handle_action` twice (its own end and its
@@ -694,7 +733,9 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       through `WorkerFactory` and `crawl()`'s primary-lane parameters the same way `driver`/`reset`
       already are; the capture call joining `record_crash`'s existing off-lock crash check, gated on
       the driver positively confirming the event (`isinstance`/`app_crash_signal()`) so a UI-tree
-      false positive does not pay a full-timeout sweep; `Crash`'s new `artifacts` field;
+      false positive does not pay a full-timeout sweep; `Crash`'s new `artifacts` field, deliberately
+      left out of `serialize.py`'s `screenmap_dict`/`screenmap_from_dict` round trip (raw `bytes` has
+      no JSON encoding; a carried-forward `Crash` reload always gets `artifacts=()`);
       `repro.py`'s `write_repros` writing non-empty artifacts under `crashes/crash-NNN/app-crash/`
       before its own `continue` on a non-replayable crash, alongside that crash's own
       `crashes/crash-NNN.yaml` repro.
@@ -719,8 +760,10 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       field, and the confirmed-crash latch holding across a nested `if`/`forEach` failure; a
       `pipeline.py` test asserting the `app-crash/` directory with redacted text content, the scan
       finding a crash in `before_outcomes`/`after_outcomes` as well as `steps`, and no crash-retry
-      loop trigger; a web/fake-backend test asserting `isinstance` answers `False` and nothing
-      changes.
+      loop trigger; a stubbed-`await_ready`-timeout test asserting a `relaunch` step whose new launch
+      never becomes ready still reports `ok=True` (so the exemption's own premise holds) and that the
+      crash is instead caught, `app_crashed=True`, on the very next step against the dead app; a
+      web/fake-backend test asserting `isinstance` answers `False` and nothing changes.
 
 ## References
 
@@ -770,6 +813,15 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
   item's capture reads
 - [`bajutsu/crawl/repro.py`](../../bajutsu/crawl/repro.py) — `write_repros`, which already walks
   `screen_map.crashes` and owns the `crash-NNN` numbering the captured artifacts are written under
+- [`bajutsu/crawl/serialize.py`](../../bajutsu/crawl/serialize.py) — `screenmap_dict` /
+  `screenmap_from_dict`, the JSON round trip `Crash`'s new `artifacts` field is deliberately left out
+  of
+- [`bajutsu/common/platform_lifecycle/readiness.py`](../../bajutsu/common/platform_lifecycle/readiness.py) —
+  `await_ready`, whose timeout returns rather than raises — why a `relaunch` step's own readiness wait
+  never fails that step
+- [`bajutsu/common/backend_cli/simctl/env.py`](../../bajutsu/common/backend_cli/simctl/env.py) —
+  `Env.terminate`/`Env.launch`, whose own `CalledProcessError` handling is why the relaunch exemption's
+  `outcome.ok is False` case is the alert-guard path, not an app-health one
 - [`bajutsu/common/evidence/sink.py`](../../bajutsu/common/evidence/sink.py) — `write_text` (redacting)
   versus `write_bytes` (unmasked, for content the sink cannot inspect), the distinction this item's
   artifacts follow by decoding to text first

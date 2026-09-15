@@ -295,13 +295,35 @@ OS による強制終了や、`deviceType: device` ターゲット自身が抱�
 `device_relauncher` の `e.terminate(bundle_id)` に続けて `e.launch(...)` を呼ぶという
 ものです（[`relaunchers.py:64`、`:78`](../../bajutsu/common/platform_lifecycle/relaunchers.py)）。
 `xcuitest_environment.py:855-856` の見た目の似た組ではありません。あちらは `_resume_warm`、
-BE-0291 の*リースをまたぐ*ウォーム再利用の経路であり、`XcuitestEnvironment.relauncher()`
-はそちらを一切呼びません。このクラスは `_DeviceEnvironment.relauncher()` をそのまま継承し、
-オーバーライドしないからです。そこで `_finish_outcome` は、`relaunch` ステップ自身が
-失敗した時点で確認を飛ばし、この
-シナリオがそれ以降に行うはずだった確認もすべて抑えます（「検知の方式」を参照）。
-`relaunch` の起動側が失敗するのは、そのステップ自身の失敗であってクラッシュではなく、
-その失敗メッセージ自体がすでにそう述べているからです。それ以外の
+BE-0291 の*リースをまたぐ*ウォーム再利用の経路です。`XcuitestEnvironment.relauncher()` は
+`_DeviceEnvironment` の実装をオーバーライドしています（「iOS：`.ips` レポートの照合」を
+参照してください。理由はこれとは無関係で、`app_launched_at` を再記録するためです）が、
+そのオーバーライドが包むのは `device_relauncher` がすでに返す `RelaunchFn` だけであり、
+`_resume_warm` を一切呼びません。`_resume_warm` は、この経路とは無関係な、リースをまたぐ
+別経路のままです。そこで `_finish_outcome` は、`relaunch` ステップ自身が失敗した時点で
+確認を飛ばし、このシナリオがそれ以降に行うはずだった確認もすべて抑えます（「検知の方式」
+を参照）。ただし、この防御が実際に見た目ほど効いているわけではありません。`relaunch` の
+クロージャ自身は、`readiness.await_ready(...)`
+（[`relaunchers.py:79`](../../bajutsu/common/platform_lifecycle/relaunchers.py)）を
+副作用のためだけに呼び、返ってくる `ReadinessResult` を握りつぶします。しかも
+`await_ready` 自体は例外を送出しません。タイムアウトした待機も、成功した待機と同じく
+`ReadinessResult(False, "timeout", …)` を返すだけです
+（[`readiness.py:170`](../../bajutsu/common/platform_lifecycle/readiness.py)）。したがって、
+新しい起動中に発生する `fatalError()`——Unit 11 の showcase 用の仕掛けがまさに引き起こす
+ケースです——は、`relaunch` ステップを失敗させません。`await_ready` は静かにタイムアウト
+し、クロージャはそのまま返り、ステップは `ok=True` を報告します。周辺のツール群も
+これを代わりに失敗として扱いはしません。`e.terminate` は自身の `CalledProcessError` を
+丸ごと握りつぶし（[`env.py:176`](../../bajutsu/common/backend_cli/simctl/env.py)）、
+まれに `e.launch` 自身が `CalledProcessError` を送出するデバイス・ツール側の失敗が
+起きても、`_run_step_body` の例外捕捉はそれを名指ししていません。そのステップの
+`outcome.ok = False` になる代わりに `run_scenario` 全体から抜け出してしまうため、
+`_finish_outcome` にすら届きません。`relaunch` ステップ自身の結果が実際に `ok=False`
+になる経路は、今日ではアラートガード・待機中回復失敗の経路（「検知の方式」のネストした
+失敗についての段落を参照）だけです。これはアプリの健全性とは本当に無関係であり、まさに
+この除外が存在する理由そのものです。新しい起動中のクラッシュが失われるわけではなく、
+1ステップ遅れて帰属先が変わるだけです。アプリに触れる次のステップで失敗し、その結果は
+`relaunch` ではない通常の結果であるため、どちらのラッチも飛ばす理由がなく、
+`_finish_outcome` は他の失敗と同じようにそれを確認します。それ以外の
 確認は、ステップがすでに失敗した後、しかも同じシナリオの手前のすべてのステップで
 アプリが動作していると確認できた*あと*にしか走りません。したがって、`relaunch` 以外の
 ステップの下で起動が完了しなかったケースは、この事後確認が出会う場面ではありません。
@@ -408,9 +430,12 @@ Simulator 上のアプリの `.ips` レポートは、そのヘッダに実行�
 `take_crash_snapshot()` にも継承された既定値はありません。`WebEnvironment`・
 `AndroidEnvironment`・`_DeviceEnvironment`（`FakeEnvironment` がこれを継承します）は、
 すでにそれぞれ自前の1行の `return` を宣言しています。`app_crash_artifacts()` も同じ形を
-踏襲します。`pool.py` の `lease()` がこのメソッドをリースしたあらゆる環境から、クラッシュ
-したときだけでなくあらゆるリースのたびに読むため、この3つのクラスがそれぞれ自前の
-`return []` を新たに持ちます。
+踏襲しますが、Android だけは違います。`WebEnvironment` と `_DeviceEnvironment`
+（`FakeEnvironment` がこれを継承します）はそれぞれ自前の `return []` を新たに持ちますが、
+`XcuitestEnvironment` と `AndroidEnvironment` は、この節と次の節が説明する本物の収集で
+それぞれオーバーライドします。`pool.py` の `lease()` がこのメソッドをリースしたあらゆる
+環境から、クラッシュしたときだけでなくあらゆるリースのたびに読むため、リースされる
+環境はすべて、このどちらか一方を持つ必要があります。
 
 `ReportCrash` は、アプリが落ちたその瞬間にはまだレポートを書き終えていないことがあります。
 `_app_crash_reports` は `~/Library/Logs/DiagnosticReports` を、対象の実行ファイル名と
@@ -646,6 +671,26 @@ adb にとって同じ役割の積極的な確認を与えます。
 のままです。`crawl` には、`run` と違って、事後確認をぶら下げるシナリオステップが
 ありません。2つの入口のあいだで共有されるのは収集であり、検知は共有しません。
 
+`Crash` は、[`serialize.py`](../../bajutsu/crawl/serialize.py) が JSON へ往復させる型でも
+あります。`screenmap_dict` が `screen_map.crashes` を書き出し(`:131-134`)、
+`screenmap_from_dict` がそれを組み立て直します(`:92-98`)。生の `bytes` には JSON 表現が
+ないため、他のすべてのフィールドの書き出しを base64 で膨らませるのではなく、`artifacts`
+をあえてどちらの方向からも除きます。`on_event` 自身の `_write_screenmap` 呼び出し
+(`cli.py:186`)は、クラッシュを記録するたびにその書き出しをその場で実行します。
+`write_repros` はこれよりずっとあとに、一度だけ走ります。完走したクロールの終わりで、
+確定した `screen_map.crashes` を一度だけ歩きます(`cli.py:405`)。つまり `artifacts` は、
+書き出しのあるなしにかかわらず、そもそもこの一度きりの呼び出しより前には何も永続化
+されないインメモリだけのフィールドです。書き出しから除いても、正常に完走した先行
+クロールがすでに失うものはありません(`write_repros` が走ったので、そのバイト列は
+その先行クロールの `crashes/crash-NNN/app-crash/` の下にすでにディスクへ書かれて
+います)。中断されたクロールが失っていたはずのものもありません(プロセスは
+`write_repros` へ届く前に落ちており、そのバイト列はそもそもディスクへ届いて
+いません。これは `--resume` がその先行クロール自身の書かれなかったレポートについて
+すでに受け入れている損失と同じです)。`screenmap_from_dict` は、引き継がれるすべての
+`Crash` を `artifacts=()` というデータクラスの既定値で組み立て直します。クラッシュが
+まだ `actions` を持たなかった時代に保存されたマップに対して、すでに `actions` へ
+行っているのと同じ扱いです。
+
 ### 本物のクラッシュで、スタブだけでなく証明する
 
 ユニットテストは `~/Library/Logs/DiagnosticReports` や、疑似的な `logcat`・tombstone 取得をスタブ
@@ -751,10 +796,12 @@ fake backend の実行が収集する内容は変わりません。
       よう包みます。
 - [ ] Unit 6 — `RunEnvironment.app_crash_artifacts()` のプロトコルの形（`list[tuple[str,
       bytes]]` を返し、この環境の解放前にスナップショットとサンクによる間接参照なしでその場
-      で読みます）。`WebEnvironment`・`AndroidEnvironment`・`_DeviceEnvironment`（
-      `FakeEnvironment` が継承）それぞれに加える1行の `return []`。`take_crash_snapshot()`
-      自身がすでに持つ3つの no-op 宣言と同じ形であり、プロトコル自身には継承できる既定値が
-      ないためです。`pool.py` の `lease()` クロージャを通した、`crash_artifacts` の隣への
+      で読みます）。`WebEnvironment` と `_DeviceEnvironment`(`FakeEnvironment` が継承)に加える
+      1行の `return []`。`take_crash_snapshot()` がこの3クラスすべてにすでに持つ no-op 宣言と
+      同じ形ですが、Android だけは対応する no-op を持ちません。`AndroidEnvironment` は
+      `app_crash_artifacts()` を本物の収集(Unit 5)でオーバーライドしており no-op ではないから
+      です。`XcuitestEnvironment` が自前の本物の収集(Unit 3)でオーバーライドするのと同じ
+      理由です。`pool.py` の `lease()` クロージャを通した、`crash_artifacts` の隣への
       `Lease.app_crash_artifacts` の配線。
 - [ ] Unit 7 — `run_scenario` / `_step_runner.py`：新しい `_finish_outcome` ヘルパーを、
       `self.state.outcomes.append(outcome)` の5つの呼び出し箇所すべて（`_handle_if` /
@@ -791,7 +838,9 @@ fake backend の実行が収集する内容は変わりません。
       通します。収集呼び出しを `record_crash` の既存のロック外クラッシュ確認へ加えます。
       ドライバが事象を積極的に確認したとき（`isinstance`/`app_crash_signal()`）にだけ収集する
       ようゲートし、UI ツリーの誤検知が全タイムアウト分の掃引を払わないようにします。`Crash` の
-      新しい `artifacts` フィールド。`repro.py` の `write_repros` が、空でない証跡を、
+      新しい `artifacts` フィールド(生の `bytes` には JSON 表現がないため `serialize.py` の
+      `screenmap_dict`/`screenmap_from_dict` の往復からはあえて除き、引き継がれる `Crash` は
+      常に `artifacts=()` で組み立て直されます)。`repro.py` の `write_repros` が、空でない証跡を、
       再現できないクラッシュをスキップする自身の `continue` より前で
       `crashes/crash-NNN/app-crash/` へ、そのクラッシュ自身の `crashes/crash-NNN.yaml`
       再現ファイルの隣に書き込みます。
@@ -820,8 +869,11 @@ fake backend の実行が収集する内容は変わりません。
       `_step_runner.py` のテスト。`app-crash/` がマスキング済みのテキストを保持すること、
       `steps` だけでなく `before_outcomes`・`after_outcomes` の中のクラッシュも走査が
       見つけること、パイプラインレベルのクラッシュリトライが起きないことを検証する
-      `pipeline.py` のテスト。web backend・fake backend で `isinstance` が `False` を
-      返し、何も変わらないことを検証するテスト。
+      `pipeline.py` のテスト。`await_ready` をスタブしてタイムアウトさせ、新しい起動が
+      ready にならなかった `relaunch` ステップ自身は `ok=True` を報告すること(除外自身の
+      前提が成り立つことの検証)、そしてそのクラッシュは死んだアプリに対する次のステップで
+      `app_crashed=True` として捕まることを検証するテスト。web backend・fake backend で
+      `isinstance` が `False` を返し、何も変わらないことを検証するテスト。
 
 ## 参考
 
@@ -874,6 +926,15 @@ fake backend の実行が収集する内容は変わりません。
   読むレーンごとの環境
 - [`bajutsu/crawl/repro.py`](../../bajutsu/crawl/repro.py) — `write_repros`。すでに
   `screen_map.crashes` を歩き、収集した証跡を書き込む `crash-NNN` の番号づけを所有する
+- [`bajutsu/crawl/serialize.py`](../../bajutsu/crawl/serialize.py) — `screenmap_dict` /
+  `screenmap_from_dict`。`Crash` の新しい `artifacts` フィールドをあえて除く JSON の往復
+- [`bajutsu/common/platform_lifecycle/readiness.py`](../../bajutsu/common/platform_lifecycle/readiness.py) —
+  `await_ready`。タイムアウトしても送出せず返すだけであり、`relaunch` ステップ自身の
+  readiness 待機がそのステップを失敗させない理由
+- [`bajutsu/common/backend_cli/simctl/env.py`](../../bajutsu/common/backend_cli/simctl/env.py) —
+  `Env.terminate`/`Env.launch`。その `CalledProcessError` の扱いが、relaunch の除外で
+  `outcome.ok is False` になり得る経路がアラートガード側だけであり、アプリの健全性とは
+  無関係である理由
 - [`bajutsu/common/evidence/sink.py`](../../bajutsu/common/evidence/sink.py) —
   `write_text`（マスキングする）と `write_bytes`（シンクの検査できない内容向けで、
   マスキングしない）の違い。本項目の証跡は、先にテキストへデコードすることでこれに従う
