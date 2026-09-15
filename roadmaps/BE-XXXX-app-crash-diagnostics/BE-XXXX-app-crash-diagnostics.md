@@ -234,7 +234,13 @@ crash the check itself caused.
 
 That same object also latches a *confirmed* crash, the first time `_finish_outcome` raises and catches
 `AppCrashedError`, so a later outcome in the same propagation folds the already-known signal into its
-own `outcome.reason` instead of probing `app_crash_signal()` again. It does not latch on an
+own `outcome.reason` instead of probing `app_crash_signal()` again — but only that first, confirming
+outcome sets `outcome.app_crashed = True` and captures `app_crash_artifacts`; a wrapping `if`/`forEach`
+outcome that settles afterward, seeing the latch already set, still gets the message folded into its
+own `reason` for a contributor reading the failure, but leaves its own `app_crashed` at the dataclass
+default (`False`) and calls `capture_app_crash` nowhere. This is what keeps `pipeline.py`'s later scan
+(*Wiring the capture*) unambiguous: a scenario carries at most one `app_crashed` outcome by
+construction, never several competing ones a scan would have to choose among. It does not latch on an
 unconfirmed answer, though, and that asymmetry is deliberate: a `None` from one step teaches nothing
 about whether the *next* step's own failure is a crash, so latching there would risk missing a real
 one. The bound this bought is narrower than "once per scenario" for that reason — it holds for the
@@ -622,10 +628,10 @@ launch. The comparison is made against a third device-clock rendering of the lau
 (`adb shell date '+%Y-%m-%d %H:%M:%S'`, recorded at each launch site alongside the other two), not
 against the epoch `launched_at()`: resolving a bare `timestamp=` on the host would run it through the
 *host's* timezone, so a UTC emulator driven from a host in any other zone would place every fresh
-crash hours before the marker and answer `None` on every real crash — ruling out a stale entry from
-before this launch — or the bound
-expires. Either the bound expiring or the newest
-entry never meeting both conditions answers `None`, the same "cannot confirm" answer a backend with no
+crash hours before the marker and answer `None` on every real crash. The poll ends either when such
+an entry appears — ruling out a stale one from before this launch — or when the bound expires; both
+the bound expiring and the newest entry never meeting both conditions answer `None`, the same
+"cannot confirm" answer a backend with no
 signal at all gives. This is the corroboration `app.state`'s
 `notRunning` gets for free from the Simulator's own constraints above; Android's own platform-reported,
 time-bound exit reason gives adb the equivalent positive confirmation, once the read is given the same
@@ -634,26 +640,29 @@ room to catch up that the write needs.
 `AndroidEnvironment`
 ([`bajutsu/common/platform_lifecycle/environments/android/android_environment.py`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py))
 gains the same `app_launched_at` tracking as the iOS environment, recorded at each of its three launch
-call sites (`e.launch(package, launch_env)`). It reads from the device's own clock (`adb shell date
-+%s`, an epoch integer) at launch time rather than the host's, so a launch marker compared only
-against later device-clock reads never needs host/device clock reconciliation — this is the value
-the tombstone mtime comparison below consumes directly, since it compares against an epoch already.
-Neither of the other two consumers can use that same epoch value, and for two different reasons that
-both trace back to the same rule: never resolve a device-side rendering into an epoch on the host,
-since that conversion runs through the *host's* timezone, not the device's, and a UTC emulator driven
-from a host in any other zone would then place every fresh timestamp hours away from the marker —
-silently reintroducing the exact host/device clock reconciliation this design otherwise avoids
-entirely. `dumpsys activity exit-info`'s `timestamp=` field is `ApplicationExitInfo`'s own wall-clock
-rendering in the device's timezone, carrying no offset, so the exit-info poll above compares it
-against a third device-clock rendering of the launch moment (`adb shell date '+%Y-%m-%d %H:%M:%S'`),
-recorded at each launch site alongside the other two — never against the epoch `launched_at()`.
+call sites (`e.launch(package, launch_env)`). It reads from the device's own clock at launch time
+rather than the host's, so a launch marker compared only against later device-clock reads never needs
+host/device clock reconciliation — `app_launched_at` itself is the epoch field of that read (`adb
+shell date +%s`), the value the tombstone mtime comparison below consumes directly, since it compares
+against an epoch already. Neither of the other two consumers can use that same epoch value, and for
+two different reasons that both trace back to the same rule: never resolve a device-side rendering
+into an epoch on the host, since that conversion runs through the *host's* timezone, not the device's,
+and a UTC emulator driven from a host in any other zone would then place every fresh timestamp hours
+away from the marker — silently reintroducing the exact host/device clock reconciliation this design
+otherwise avoids entirely. `dumpsys activity exit-info`'s `timestamp=` field is `ApplicationExitInfo`'s
+own wall-clock rendering in the device's timezone, carrying no offset, so the exit-info poll above
+compares it against a second device-clock rendering of the same launch moment
+(`'+%Y-%m-%d %H:%M:%S'`) — never against the epoch `launched_at()`.
 `logcat -t` cannot consume the epoch value either, but for the more mundane reason that `adb
 logcat -t` is overloaded, and an integer argument is read as a *line count* (\"the most recent N
 lines\"), not a time bound — only a quoted `'MM-DD hh:mm:ss.mmm'` string is read as one, a different
 rendering from exit-info's (`logcat`'s carries no year; exit-info's does, so neither substitutes for
 the other). So each
-launch site also records a second rendering of the same moment, `adb shell date '+%m-%d
-%H:%M:%S.000'`, stashed alongside `app_launched_at` for `logcat -t` alone to consume; threading the
+launch site takes **one** `adb shell date '+%s|%Y-%m-%d %H:%M:%S|%m-%d %H:%M:%S.000'` read and
+splits its three fields on the host — a plain string split, never a timezone resolution, so the rule
+above still holds — rather than three separate `date` invocations, which would stamp three different
+instants and leave the `logcat` one (stamped last) filtering out a crash that landed in the gap.
+The third field is stashed alongside `app_launched_at` for `logcat -t` alone to consume; threading the
 epoch straight through would silently return the whole ring buffer with no time bound at all, since
 the process bound below is by package alone and would then let an earlier scenario's crash on the
 *same* package through as this scenario's own. It captures two layers, matching this item's own
@@ -1071,17 +1080,21 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       reading `AndroidEnvironment.app_launched_at`; `AdbDriver.app_crash_signal()` via `adb shell
       pidof <package>` corroborated by a time-bound `adb shell dumpsys activity exit-info <package>`
       check (its newest entry only, its `timestamp=` field — a device-timezone wall-clock rendering,
-      never an epoch — compared against a third device-clock rendering of the launch moment,
-      `adb shell date '+%Y-%m-%d %H:%M:%S'`, never against the epoch `launched_at()`: resolving
+      never an epoch — compared against the second field of Unit 5's own combined launch-moment read,
+      never against the epoch `launched_at()`: resolving
       `timestamp=` into an epoch on the host would run the conversion through the host's own
       timezone, reintroducing the clock reconciliation this design otherwise avoids), polled the same
       short, bounded way
       as the iOS `.ips` sweep rather than read once, since `ApplicationExitInfo` is recorded only
       after `system_server` reaps the death.
-- [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at` (device clock, `adb shell date +%s`, an
-      epoch value) at each launch site, alongside a second rendering for the exit-info poll alone
-      (`adb shell date '+%Y-%m-%d %H:%M:%S'`, Unit 4) and a third for `logcat
-      -t` alone (`adb shell date '+%m-%d %H:%M:%S.000'`) — `logcat -t` reads an integer argument as a
+- [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at` at each launch site, from **one**
+      combined `adb shell date '+%s|%Y-%m-%d %H:%M:%S|%m-%d %H:%M:%S.000'` read whose three
+      pipe-separated fields are split on the host (a plain string split, not a timezone resolution) —
+      the epoch (`app_launched_at` itself), a rendering for the exit-info poll (Unit 4), and a
+      rendering for `logcat -t`, stashed together rather than taken from three separate `date`
+      invocations, which would stamp three different instants and risk the `logcat` field (were it
+      read last) filtering out a crash that landed in the gap between reads; `logcat -t` reads an
+      integer argument as a
       line count, not a time bound, so the epoch value cannot be threaded straight through, and
       `dumpsys activity exit-info`'s own `timestamp=` is a different rendering still (device-timezone,
       carrying a year `logcat`'s format omits), so neither substitutes for the other; a
@@ -1148,7 +1161,10 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       confirmed-crash latch; in the same catch, when `self.cfg.capture_app_crash` is set, calling it
       synchronously and storing the result on a new `StepOutcome.app_crash_artifacts` field — at
       confirmation time, not later, so a subsequent teardown step in the same scenario cannot move
-      `app_launched_at` out from under the sweep; a fast-suite test driving a failing step of every
+      `app_launched_at` out from under the sweep; a later outcome that only folds the already-latched
+      signal into `reason` leaving its own `app_crashed` at the dataclass default and never calling
+      `capture_app_crash` again, so a nested crash's wrapping `if`/`forEach` outcomes never compete
+      with the one confirming outcome for `pipeline.py`'s later scan; a fast-suite test driving a failing step of every
       kind through the loop and asserting each settled outcome passed through `_finish_outcome` — a
       behavioural pin, not a source-text grep for `self.state.outcomes.append`.
 - [ ] Unit 8 — `pipeline.py`: `_run_on_lease` scanning
@@ -1245,7 +1261,11 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       both poll rather than trust a single read, and the bound itself expiring on an entry that never
       arrives; a `_step_runner.py` test asserting the
       in-band failure, the new `app_crashed`
-      field, and the confirmed-crash latch holding across a nested `if`/`forEach` failure; a
+      field, and the confirmed-crash latch holding across a nested `if`/`forEach` failure — and, on
+      that same nested crash with a failing `after: on: error` step dispatched afterward, that
+      `app_crashed` is `True` on exactly one settled outcome (the confirming action's own, not its
+      wrapping `if`/`forEach` outcomes or the `after` step), so `pipeline.py`'s later scan never has
+      to choose among several; a
       `pipeline.py` test asserting the `app-crash/` directory with redacted text content, the scan
       finding a crash in `before_outcomes`/`after_outcomes` as well as `steps`, and no crash-retry
       loop trigger; a stubbed-`await_ready`-timeout test asserting a `relaunch` step whose new launch
