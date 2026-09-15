@@ -70,9 +70,9 @@ OS 自身のレポートを手で探しに行くことになります。
 
 本項目が生み出す観測可能な違いは次の点です。着地すれば、アプリがクラッシュしたシナリオは、その
 事象を名指しするメッセージで失敗します。`runs/<run_id>/<sid>/app-crash/` ディレクトリは、
-プラットフォーム自身の証跡を保持します。iOS では `crash-<bundle>-<pid>.ips`、Android では
-`logcat-crash.txt`（端末が許せば `tombstone.txt` も）です。開発者は、2つの誤った説明を消去する
-前に、正しいファイルを最初に開けるようになります。
+プラットフォーム自身の証跡を保持します。iOS では `ReportCrash` が書き出した `.ips` レポート
+をその名前のまま、Android では `logcat-crash.txt`（端末が許せば `tombstone.txt` も）です。
+開発者は、2つの誤った説明を消去する前に、正しいファイルを最初に開けるようになります。
 
 ## 詳細設計
 
@@ -181,23 +181,52 @@ tip の解除やアラートガードの再試行が終わったあとにあり�
 `_handle_web` の `within` セレクタの失敗にはまったく届きません。どちらもこの行を
 通らないからです。
 
-4つのハンドラが実際に共有しているのは、`self.state.outcomes.append(outcome)` です。
-これは、返る直前に `outcome` へ加える最後の操作であり、`_handle_action` を含め、他の
-あらゆる変更のあとに来ます。本項目は、この同じ場所で、4つのハンドラすべてが素の
-`append` の代わりに呼ぶ共有のステップを1つ加えます。`self._finish_outcome(active_driver,
-outcome)` です。append 自体もこの中で行うため、あとから加わるステップの種類がここへの
-配線を必要としない点は変わりません。`_drain_step_interruptions` がすでに同じ4つの
-ハンドラへ割り込みの確認について与えているのと同じ性質です。`_finish_outcome` は、
-その append の直前で、`isinstance(active_driver, base.AppCrashSignal)` と
-`outcome.ok is False` の両方を確認します。
+4つのハンドラが実際に共有しているのは `self.state.outcomes.append(outcome)` ですが、
+呼ぶ回数は1つずつではありません。`_handle_if`・`_handle_for_each`・`_handle_web` は、
+返る直前にそれぞれちょうど1回だけ呼びます。`_handle_action` は2回呼びます。自身の
+終端でも呼びますが、それより前、`UncoveredSystemAlertLocale` を受けた早期リターン
+（`_step_runner.py:457`）でも呼んでおり、そちらはその時点で `outcome.ok` を `False`
+にしてから返ります。ハンドラごとに1つの呼び出し箇所だけを見る設計は、本項目の初期の
+草案が採った形ですが、その `_handle_action` の2つ目の呼び出しを見逃します。ファイル
+自身のコメントがすでに名指ししている、他のあらゆる事後処理を同じ理由で個別に飛ばして
+しまう、まさにその出口です。本項目は、この5つの呼び出し箇所すべてで、素の `append`
+の代わりに呼ぶ共有のステップを1つ加えます。`self._finish_outcome(active_driver,
+outcome)` です。他の3つのハンドラは1回ずつ、`_handle_action` は2回、計5箇所です。
+append 自体もこの中で行うため、あとから加わるステップの種類がここへの配線を必要と
+しない点は変わりません。`_drain_step_interruptions` がすでに同じ4つのハンドラへ
+割り込みの確認について与えているのと同じ性質です。あとから加わる6つ目の呼び出し
+箇所が同じ抜け穴を静かに開け直さないよう、`_finish_outcome` の外に
+`self.state.outcomes.append` が残っていないことを検証する高速スイートのテストも
+加えます。`_finish_outcome` は、その append の直前で、
+`isinstance(active_driver, base.AppCrashSignal)` と `outcome.ok is False` の両方を
+確認します。
 
-両方が成り立つとき、`_finish_outcome` は `active_driver.app_crash_signal()` を呼びます。
-`None` でない答えは、その場で `base.AppCrashedError(signal)` を送出し、同じ式の中で
-捕まえ、そのメッセージを `outcome.reason` へ折り込み、`outcome.app_crashed` を `True` に
-します。この1点より先へ伝播することはありません。`active_driver` は、そのステップを
-実際に操作したドライバです。ネイティブの
-ドライバであることも、`web` ブロックの中では `WebContextDriver` であることもあります。
-後者に対しては `isinstance` が `False` を返すため、確認は no-op になります。「はじめに」で
+入れ子になったステップの失敗は、最初にそれを観測したハンドラだけでなく、構造上
+何度も `_finish_outcome` に届きます。`_run_if` と `_run_for_each` は、どちらも
+自身の本体を `self.exec_steps`（割り込みの回復処理も再入する、同じループ）を通じて
+走らせます。したがって、`if` の中の `forEach` の中のアクションという3段の入れ子で
+クラッシュが起きると、アクション自身、`forEach`、`if` という3つの外側の outcome が
+順に確定し、それぞれが独立して `_finish_outcome` を呼びます。`_run_recovery`
+（`_step_runner.py:70`）も、同じ `exec_steps` を通じて走る `after` のステップごとに、
+すでに落ちたアプリに対してもう1回ずつ加わります。ドライバのシグナルをその回数だけ
+確認すること自体のコストは小さいものの、`app_crash_artifacts()` はそうではありません。
+iOS の掃引だけでも `~/Library/Logs/DiagnosticReports` を数秒を上限にポーリングします
+（「iOS：`.ips` レポートの照合」を参照）。すでに結果の確定したシナリオに対してその
+掃引を複数回払うことは、後述の「検討した代替案」が `capturePolicy` によるゲートを
+却下する根拠にしている、定常的なステップごとの負荷そのものです。`self.state` への
+ラッチ（`_finish_outcome` が `AppCrashedError` を送出し捕まえた最初の時点で立て、
+次に確認する前にまず読む）を置き、ドライバへの呼び出しも証跡の掃引もシナリオごとに
+1回にとどめます。そのあとで確定するあらゆる outcome は、`app_crash_signal()` を
+もう一度呼ぶことなく、そのすでにわかっているシグナルを自身の `outcome.reason` へ
+折り込むだけになります。
+
+ラッチがまだ立っていないときにだけ、`_finish_outcome` は `active_driver.app_crash_signal()`
+を呼びます。`None` でない答えは、その場で `base.AppCrashedError(signal)` を送出し、
+同じ式の中で捕まえ、そのメッセージを `outcome.reason` へ折り込み、`outcome.app_crashed`
+とラッチの両方を `True` にします。この1点より先へ伝播することはありません。
+`active_driver` は、そのステップを実際に操作したドライバです。ネイティブのドライバ
+であることも、`web` ブロックの中では `WebContextDriver` であることもあります。後者に
+対しては `isinstance` が `False` を返すため、確認は no-op になります。「はじめに」で
 述べた本項目の web バックエンドに対する範囲と一致します。
 
 ### iOS：要素ツリーではなく `app.state` を使う
@@ -315,8 +344,8 @@ serial といくつかの注入されたコールバックだけから構築さ�
 None = None` というキーワードを加え、`device_os`（BE-0358）をすでに通しているのと同じ
 方法で `AdbDriver.__init__` へ通します。`Driver` は `@runtime_checkable` で共通の基底
 クラスを持たないため、そこにデータメンバーを置けば、あらゆるバックエンドとあらゆる
-インラインのテストダブルが繰り返すことになる宣言です。素のコンストラクタ引数として
-渡すほうを選びます。
+インラインのテストダブルが、同じ宣言を繰り返すことになります。そこで、素の
+コンストラクタ引数として渡すほうを選びます。
 
 空の `pidof` という答えは、アプリがまだプロセスを保持しているはずの場面では、必要条件
 ではあっても十分条件ではありません。起動が完了しなかった場合や、本項目がシナリオレベル
@@ -549,10 +578,16 @@ fake backend の実行が収集する内容は変わりません。
       で読む）と no-op のデフォルト値。`pool.py` の `lease()` クロージャを通した、
       `crash_artifacts` の隣への `Lease.app_crash_artifacts` の配線。
 - [ ] Unit 7 — `run_scenario` / `_step_runner.py`：新しい `_finish_outcome` ヘルパーを、
-      `_handle_if` / `_handle_for_each` / `_handle_web` / `_handle_action` が自身の
-      `self.state.outcomes.append(outcome)` の代わりに呼ぶようにし、あらゆる種類のステップの
-      本当の最終結果を覆う。その1点で `AppCrashedError` を送出し捕まえ、そのメッセージを
-      `outcome.reason` へ折り込み、新しい `StepOutcome.app_crashed` フィールドを立てる。
+      `self.state.outcomes.append(outcome)` の5つの呼び出し箇所すべて（`_handle_if` /
+      `_handle_for_each` / `_handle_web` はそれぞれ1回、`_handle_action` は自身の終端と
+      `UncoveredSystemAlertLocale` の早期リターンの2回）で、素の append の代わりに呼ぶよう
+      にし、あらゆる種類のステップの本当の最終結果を覆う。`self.state` へのラッチにより、
+      `_run_if` / `_run_for_each` / `_run_recovery` を通じた入れ子の失敗の再入が
+      `app_crash_signal()` と `app_crash_artifacts()` を確認するのをシナリオごとに最大1回に
+      とどめる。その1点で `AppCrashedError` を送出し捕まえ、そのメッセージを `outcome.reason`
+      へ折り込み、新しい `StepOutcome.app_crashed` フィールドとラッチを立てる。
+      `_finish_outcome` の外に `self.state.outcomes.append` が残っていないことを検証する
+      高速スイートのテストを加える。
 - [ ] Unit 8 — `pipeline.py`：`_run_on_lease` が `run_scenario` の直後、まだ同じリースを
       保持したまま `result.steps[-1].app_crashed` を読む。`_write_crash_artifacts`
       （BE-0421、`pipeline.py:758`）を真似た新しい `_write_app_crash_artifacts(lz, s, sid)`

@@ -67,9 +67,9 @@ to one that fails because a selector's `id` was renamed or a screen never loaded
 
 This item's observable outcome: once landed, a scenario whose app crashes fails with a message that
 names the event. Its `runs/<run_id>/<sid>/app-crash/` directory holds the platform's own evidence —
-`crash-<bundle>-<pid>.ips` on iOS, `logcat-crash.txt` on Android (and `tombstone.txt` too, where the
-device allows it). A contributor opens the right file first, instead of ruling out two wrong
-explanations before finding it.
+the `.ips` report `ReportCrash` wrote, under its own name, on iOS; `logcat-crash.txt` on Android
+(and `tombstone.txt` too, where the device allows it). A contributor opens the right file first,
+instead of ruling out two wrong explanations before finding it.
 
 ## Detailed design
 
@@ -170,21 +170,46 @@ alone — the shape an earlier draft of this item used — sees `_handle_action`
 late, and never sees `_handle_if`'s or `_handle_for_each`'s condition-query failure or
 `_handle_web`'s `within`-selector failure at all, since neither reaches that line.
 
-What every handler *does* share is `self.state.outcomes.append(outcome)`, the last thing each one
-does with `outcome` before returning — after every other mutation, `_handle_action`'s included. This
-item adds one more shared step, `self._finish_outcome(active_driver, outcome)`, called in that same
-place by all four handlers in place of the bare `append`. It does the append itself, so a step kind
-added later still needs no wiring here, the same property `_drain_step_interruptions` already gives
-the interruption check it shares across the same four handlers. `_finish_outcome` checks
-`isinstance(active_driver, base.AppCrashSignal)` and `outcome.ok is False`, together, right before
-that append.
+What every handler *does* share is `self.state.outcomes.append(outcome)` — but not once each.
+`_handle_if`, `_handle_for_each`, and `_handle_web` call it exactly once, the last thing they do with
+`outcome` before returning. `_handle_action` calls it twice: once at its own end, and once more on an
+early return, its `UncoveredSystemAlertLocale` branch (`_step_runner.py:457`), which sets
+`outcome.ok = False` and returns well before that end is ever reached. A check keyed to one call site
+per handler — the shape an earlier draft of this item used — would miss that second `_handle_action`
+append: the one exit the file's own comments already single out as the exit that skips every other
+shared post-step step, for the same reason. This item adds one more shared step,
+`self._finish_outcome(active_driver, outcome)`, called at all five call sites — one apiece for the
+other three handlers, two for `_handle_action` — in place of the bare `append`. It does the append
+itself, so a step kind added later still needs no wiring here, the same property
+`_drain_step_interruptions` already gives the interruption check it shares across the same four
+handlers. A fast-suite assertion that no `self.state.outcomes.append` survives outside
+`_finish_outcome` keeps a sixth call site, added later, from reopening the same gap silently.
+`_finish_outcome` checks `isinstance(active_driver, base.AppCrashSignal)` and `outcome.ok is False`,
+together, right before that append.
 
-When both hold, `_finish_outcome` calls `active_driver.app_crash_signal()`. A non-`None` answer raises
-`base.AppCrashedError(signal)` immediately and catches it in the same expression, folding its message
-into `outcome.reason` and setting `outcome.app_crashed = True` — never letting the exception itself
-propagate past this one point. `active_driver` is already whichever driver actuated this step: the
-native driver, or the `WebContextDriver` inside a `web` block. `isinstance` answers `False` for the
-latter, so the check is a no-op there, matching this item's `web`-backend scope from the Introduction.
+A nested step's failure reaches `_finish_outcome` more than once by construction, not only at the
+handler that first observed it. `_run_if` and `_run_for_each` both run their body through
+`self.exec_steps` — the same re-entrant loop an interrupt's own recovery uses — so a crash three
+levels deep, an action inside a `forEach` inside an `if`, settles three wrapping outcomes in turn: the
+action's own, the `forEach`'s, and the `if`'s, each a separate call to `_finish_outcome`. `_run_recovery`
+(`_step_runner.py:70`) adds one more for every `after` step it runs through the same `exec_steps`
+against an app that is already gone. Probing the driver's signal that many times costs little by
+itself, but `app_crash_artifacts()` does not: the iOS sweep alone polls
+`~/Library/Logs/DiagnosticReports` for up to a few seconds (see *iOS: matching the `.ips` report*), and
+paying that sweep more than once on a scenario whose outcome is already settled is exactly the
+standing per-step cost *Alternatives considered* rules out below for a `capturePolicy` gate. A latch
+on `self.state` — set the first time `_finish_outcome` raises and catches `AppCrashedError`, checked
+before probing again — keeps both the driver call and the artifact sweep to once per scenario; every
+outcome the propagation still settles afterward folds that same, already-known signal into its own
+`outcome.reason` without probing `app_crash_signal()` a second time.
+
+Only when the latch is not yet set does `_finish_outcome` call `active_driver.app_crash_signal()`. A
+non-`None` answer raises `base.AppCrashedError(signal)` immediately and catches it in the same
+expression, folding its message into `outcome.reason` and setting both `outcome.app_crashed` and the
+latch to `True` — never letting the exception itself propagate past this one point. `active_driver` is
+already whichever driver actuated this step: the native driver, or the `WebContextDriver` inside a
+`web` block. `isinstance` answers `False` for the latter, so the check is a no-op there, matching this
+item's `web`-backend scope from the Introduction.
 
 ### iOS: `app.state`, not the element tree
 
@@ -489,11 +514,16 @@ changes what a web or fake-backend run captures.
       tears the environment down before this scenario's own lease releases) and no-op defaults;
       `Lease.app_crash_artifacts` wired through `pool.py`'s `lease()` closure alongside
       `crash_artifacts`.
-- [ ] Unit 7 — `run_scenario` / `_step_runner.py`: the new `_finish_outcome` helper, called by
-      `_handle_if` / `_handle_for_each` / `_handle_web` / `_handle_action` in place of their own
-      `self.state.outcomes.append(outcome)`, covering every step kind's true final outcome; raising
-      and catching `AppCrashedError` in that one place to fold its message into `outcome.reason` and
-      set the new `StepOutcome.app_crashed` field.
+- [ ] Unit 7 — `run_scenario` / `_step_runner.py`: the new `_finish_outcome` helper, called at all
+      five `self.state.outcomes.append(outcome)` call sites — `_handle_if` / `_handle_for_each` /
+      `_handle_web` once each, `_handle_action` twice (its own end and its
+      `UncoveredSystemAlertLocale` early return) — in place of the bare append, covering every step
+      kind's true final outcome; a `self.state` latch so a nested failure's repeated re-entry through
+      `_run_if` / `_run_for_each` / `_run_recovery` probes `app_crash_signal()` and
+      `app_crash_artifacts()` at most once per scenario; raising and catching `AppCrashedError` in
+      that one place to fold its message into `outcome.reason` and set the new
+      `StepOutcome.app_crashed` field and the latch; a fast-suite assertion that no
+      `self.state.outcomes.append` survives outside `_finish_outcome`.
 - [ ] Unit 8 — `pipeline.py`: `_run_on_lease` reading `result.steps[-1].app_crashed` right after
       `run_scenario` returns, still holding the same lease, before its own `finally` releases it; the
       new `_write_app_crash_artifacts(lz, s, sid)` mirroring `_write_crash_artifacts` (BE-0421,
