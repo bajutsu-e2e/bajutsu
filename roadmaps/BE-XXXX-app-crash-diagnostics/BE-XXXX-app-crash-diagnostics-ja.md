@@ -318,7 +318,11 @@ outcome は、`app_crash_signal()` をもう一度呼ぶことなく、そのす
 
 `_finish_outcome` が `active_driver.app_crash_signal()` を呼ぶのは、どちらのラッチも
 立っていないときだけです。`None` でない答えは、その場で `base.AppCrashedError(signal)`
-を送出し、同じ式の中で捕まえ、そのメッセージを `outcome.reason` へ折り込み、
+を送出し、同じ式の中で捕まえます——本項目が意図して残す唯一の `try` 内 `raise` であり、
+`CLAUDE.md` のインラインコメント規則が求める理由つきの `# noqa: TRY301` を持ちます。
+送出を組み替えて避けるのではなくこちらを選ぶのは、`AppCrashedError` の存在理由そのものが
+この1組の送出・捕捉に名前を与えることだからです（上記のクラス自身のドキュメント文字列が
+そう述べています）。そのメッセージを `outcome.reason` へ折り込み、
 `outcome.app_crashed` と確定済みクラッシュのラッチの両方を `True` にします。同じ
 catch の中で、`self.cfg.capture_app_crash` が設定されていれば、その呼び出し可能
 オブジェクトもその場で同期的に呼び、結果を新しい
@@ -1099,7 +1103,11 @@ fake backend の実行が収集する内容は変わりません。
 
 - [ ] Unit 1 — `base.AppCrashedError`（新規ファイル）。`Driver` プロトコルとは別に設ける、
       `base.AppCrashSignal` というケイパビリティプロトコル（`app_crash_signal() -> str |
-      None`）。新しい `StepOutcome.app_crashed: bool = False` フィールド。
+      None`）。新しい `StepOutcome.app_crashed: bool = False` フィールド。`ruff` の `TRY`
+      系列は `TRY003` だけを無視して選択されているため、Unit 7 の送出・捕捉（後述）には
+      `CLAUDE.md` のインラインコメント規則が求める理由つきの独自の `# noqa: TRY301` が
+      要ります。`AppCrashedError` を `signal` から組み立てるただの文字列にせず、実際に
+      送出する型のまま残すかどうかを決める箇所なので、ここに名指しておきます。
 - [ ] Unit 2 — iOS：`XCUIApplication.state` を読む新しい `openapi.yaml` のルートと、
       生成された `APIHandler` のメソッド。`Router.swift` ではなく `RunnerServer` から
       配信します。`XcuitestDriver.app_crash_signal()` が `AppCrashSignal` を実装し、
@@ -1200,7 +1208,8 @@ fake backend の実行が収集する内容は変わりません。
       outcome が、そのすでにわかっているシグナルを自身の `outcome.reason` へ折り込む
       だけにする——`app_crash_signal()` の確認を relaunch と確定済みクラッシュのケースに
       限って抑えるものであり、クラッシュを伴わないふつうの失敗は確定する outcome ごとに
-      1回の確認を払い続けます。その1点で `AppCrashedError` を送出し捕まえ、そのメッセージを
+      1回の確認を払い続けます。その1点で `AppCrashedError` を送出し捕まえます——理由つきの
+      独自の `# noqa: TRY301`（Unit 1）を持ちます——そのメッセージを
       `outcome.reason` へ折り込み、新しい `StepOutcome.app_crashed` フィールドと確定済み
       クラッシュのラッチを立てます。同じ catch の中で、`self.cfg.capture_app_crash` が
       設定されていれば同期的に呼び、結果を新しい `StepOutcome.app_crash_artifacts`

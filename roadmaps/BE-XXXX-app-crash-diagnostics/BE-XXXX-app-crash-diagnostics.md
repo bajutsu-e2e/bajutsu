@@ -280,7 +280,11 @@ green by this design's own construction.
 
 `_finish_outcome` calls `active_driver.app_crash_signal()` only when neither latch is set. A
 non-`None` answer raises `base.AppCrashedError(signal)` immediately and catches it in the same
-expression, folding its message into `outcome.reason` and setting both `outcome.app_crashed` and the
+expression — the one `raise`-within-`try` this item deliberately keeps, carrying a
+`# noqa: TRY301` with a suppression reason ([`CLAUDE.md`](../../CLAUDE.md)'s inline-comment rule)
+rather than restructuring the raise away, since `AppCrashedError`'s whole reason to exist is naming
+this one raise/catch pair (its own docstring above says so) — folding its message into
+`outcome.reason` and setting both `outcome.app_crashed` and the
 confirmed-crash latch to `True`. In the same catch, when `self.cfg.capture_app_crash` is not `None`, it
 also calls that callable synchronously and stores the result on a new
 `outcome.app_crash_artifacts: tuple[tuple[str, bytes], ...]` field — capturing right here, at
@@ -941,7 +945,11 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 
 - [ ] Unit 1 — `base.AppCrashedError` (new file); the `base.AppCrashSignal` capability protocol
       (`app_crash_signal() -> str | None`), separate from the `Driver` protocol; the new
-      `StepOutcome.app_crashed: bool = False` field.
+      `StepOutcome.app_crashed: bool = False` field. `ruff`'s `TRY` family is selected with only
+      `TRY003` ignored, so Unit 7's raise/catch (below) needs its own `# noqa: TRY301` with a
+      suppression reason, as `CLAUDE.md`'s inline-comment rule requires — named here since it
+      decides `AppCrashedError` stays a real, raised type rather than a plain string built from
+      `signal` inline.
 - [ ] Unit 2 — iOS: a new `openapi.yaml` route and generated `APIHandler` method reading
       `XCUIApplication.state`, served through `RunnerServer` (not `Router.swift`);
       `XcuitestDriver.app_crash_signal()` implementing `AppCrashSignal`, classifying `notRunning` as
@@ -1028,7 +1036,8 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       `AppCrashedError`, so a later outcome in the same propagation folds the known signal into its
       own `outcome.reason` without probing again — bounding `app_crash_signal()` calls for the
       relaunch and confirmed-crash cases specifically, not for an ordinary failure, which still pays
-      one probe per settling outcome; raising and catching `AppCrashedError` in that one place to fold
+      one probe per settling outcome; raising and catching `AppCrashedError` in that one place —
+      carrying its own `# noqa: TRY301` with a suppression reason (Unit 1) — to fold
       its message into `outcome.reason` and set the new `StepOutcome.app_crashed` field and the
       confirmed-crash latch; in the same catch, when `self.cfg.capture_app_crash` is set, calling it
       synchronously and storing the result on a new `StepOutcome.app_crash_artifacts` field — at
