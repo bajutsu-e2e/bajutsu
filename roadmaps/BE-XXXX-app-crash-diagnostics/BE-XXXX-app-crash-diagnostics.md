@@ -728,8 +728,21 @@ independently wrapped so that a failure in one never drops the other:
    there, never attach an older one under the wrong name. A real
    device, a user build, or a refused `adb root` all resolve to skipping this layer silently. The event
    is still reported and `logcat-crash.txt` still lands; a device that refuses root loses only the
-   native-frame detail a managed-code crash never needed in the first place, and every scenario after
-   this one gets a resident server exactly as fresh as it would have anyway.
+   native-frame detail a managed-code crash never needed in the first place. `adb root` is paired
+   with an `adb unroot` (and a second `adb wait-for-device`) once the pull finishes, inside the same
+   best-effort wrapper, so the device is handed back at the privilege level every other lease
+   already assumes — `adb root` persists device-wide otherwise, until `adb unroot` or a reboot, and
+   nothing else in this repository restores it: the one existing `adb root` caller
+   ([`scripts/collect_android_diagnostics.sh:101`](../../scripts/collect_android_diagnostics.sh))
+   runs at end of job, deliberately with nothing left to run after it, which this layer's mid-run
+   pull is not. Left unrestored, a later scenario sharing this device — `AndroidEnvironment.start()`'s
+   own `install`/`pm clear`/`force_stop`/`launch` calls
+   ([`android_environment.py:122-146`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py))
+   — would run through a root `adb shell` instead of an ordinary one, silently, with device state (and
+   anything downstream of shell uid, such as a pulled artifact's file ownership) turning on whether an
+   earlier, unrelated scenario happened to crash: exactly the run-order dependence a deterministic core
+   exists to keep out. Every scenario after this one then gets a resident server, and an `adbd`, exactly
+   as fresh as it would have anyway.
 
    That "nothing after this point needs either channel" justification is specific to `run`'s
    per-scenario lease, where the environment is torn down and rebuilt fresh on every lease regardless
@@ -1091,7 +1104,11 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       needs them and the pool rebuilds both fresh on the next lease regardless — kept out of
       `app_crash_artifacts()` and off the `_finish_outcome` call site entirely, since firing `adb root`
       mid-scenario risks the escaping `BackendCrashError` *Android: `logcat`'s crash buffer first, a
-      root-gated tombstone pull second* describes; `crawl` needs no constructor-time flag to keep this
+      root-gated tombstone pull second* describes; an `adb unroot` (and a second `adb wait-for-device`)
+      once the pull finishes, inside the same best-effort wrapper, so `adb root`'s device-wide
+      privilege level — which nothing else in this repository restores — never outlives this one
+      lease and leaks into a later, unrelated scenario's own `install`/`pm clear`/`force_stop`/
+      `launch` calls; `crawl` needs no constructor-time flag to keep this
       layer off its own long-lived lane, since it simply never calls `app_crash_tombstone()` (Unit 10);
       each layer independently wrapped so any failure resolves to `[]`.
 - [ ] Unit 6 — `RunEnvironment.app_crash_artifacts()` and `RunEnvironment.app_crash_tombstone()`
@@ -1217,7 +1234,10 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       (non-`relaunch`, non-crash) failure three levels deep still probing once per settling outcome,
       pinning that the latch does not bound this case; the iOS `.ips` sweep and the Android `logcat`/tombstone capture
       against stubbed directories and stubbed `adb` output, including the Android exit-info
-      corroboration; a `logcat` dump within the launch marker's own time window but carrying only a
+      corroboration; a stubbed `adb` sequence asserting `app_crash_tombstone()` calls `adb unroot`
+      (and a second `adb wait-for-device`) after a successful pull, and does so even when the pull
+      itself fails, pinning that `adb root`'s privilege level never outlives the one lease that
+      requested it; a `logcat` dump within the launch marker's own time window but carrying only a
       different package's `FATAL EXCEPTION`/`>>> <process> <<<` block extracting nothing, pinning that
       the process bound is real and not only the time one; a stubbed exit-info sequence and a stubbed
       `logcat` dump sequence each answering empty/no-match on the first read and a matching entry only

@@ -841,8 +841,23 @@ exit-info の裏付けについても同じ範囲を名指します。ただし�
    user ビルド、`adb root` を拒む状態のいずれでも、この層は黙ってスキップします。
    事象自体は報告済みであり、`logcat-crash.txt` はすでに届いています。root を拒む
    端末が失うのはマネージドコードのクラッシュがそもそも必要としないネイティブ
-   フレームの詳細だけであり、このシナリオより後のあらゆるシナリオは、もともと
-   そうであったのと変わらず新しいレジデントサーバを得ます。
+   フレームの詳細だけです。`adb root` には、取得が終わったあと、同じベストエフォートの
+   ラッパーの内側で `adb unroot`（と2回目の `adb wait-for-device`）を対にします。
+   これにより、端末は他のあらゆるリースがすでに前提としている権限レベルへ戻ります。
+   `adb root` はそうしなければ端末全体で持続し、`adb unroot` か再起動までそのままです。
+   このリポジトリの他のどこにもそれを戻す処理はありません。既存の唯一の `adb root` の
+   呼び出し元（[`scripts/collect_android_diagnostics.sh:101`](../../scripts/collect_android_diagnostics.sh)）
+   はジョブの終わりで走り、意図してそのあとに何も走らせません。この層の run 途中の pull は
+   そうではありません。戻さないままだと、この端末を共有する後続のシナリオ——
+   `AndroidEnvironment.start()` 自身の `install`・`pm clear`・`force_stop`・`launch` の各
+   呼び出し
+   （[`android_environment.py:122-146`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py)）
+   ——は、ふつうの `adb shell` ではなく root の `adb shell` を通って走ってしまいます。しかも
+   黙ってです。端末の状態は（そして pull したアーティファクトのファイル所有権のような
+   shell の uid に依存する下流のあらゆるものも）、無関係な前のシナリオがたまたま
+   クラッシュしたかどうかの関数になってしまいます。決定的な中核がそもそも締め出そうと
+   している実行順序依存そのものです。このシナリオより後のあらゆるシナリオは、もともと
+   そうであったのと変わらず新しいレジデントサーバと、新しい `adbd` を得ます。
 
    この「この時点より後にはどちらのチャネルも必要とするものがない」という正当化は、
    `run` の1シナリオごとのリースに限った話です。リースは毎回まっさらに解体・再構築
@@ -1266,7 +1281,12 @@ fake backend の実行が収集する内容は変わりません。
       `app_crash_artifacts()` からも `_finish_outcome` の呼び出し箇所からも外します。
       `adb root` をシナリオの途中で発火させれば、「Android：`logcat` のクラッシュ用
       バッファをまず読み、root 権限があるときだけ tombstone を取得する」節が述べる、
-      エスケープする `BackendCrashError` の危うさを招くからです。`crawl` は、この層を
+      エスケープする `BackendCrashError` の危うさを招くからです。取得が終わったあと、
+      同じベストエフォートのラッパーの内側で `adb unroot`（と2回目の
+      `adb wait-for-device`）を対にします。`adb root` の権限レベルはこのリポジトリの
+      他のどこにも戻す処理がなく、このリースを越えて後続の無関係なシナリオ自身の
+      `install`・`pm clear`・`force_stop`・`launch` の各呼び出しへ漏れ出さないようにする
+      ためです。`crawl` は、この層を
       自身の長寿命レーンから外すのに別立てのフラグを必要としません。`app_crash_tombstone()`
       を一度も呼ばないだけで足ります（Unit 10）。それぞれ独立して失敗を `[]` へ解決する
       よう包みます。
@@ -1415,7 +1435,11 @@ fake backend の実行が収集する内容は変わりません。
       でも確定済みクラッシュでもない）失敗が、確定する outcome ごとに1回の確認を払い
       続け、ラッチがこのケースを抑えないことを固定するテスト。スタブしたディレクトリと
       スタブした `adb` の出力に対する、iOS の `.ips` 掃引と Android の `logcat`・
-      tombstone 収集（Android の exit-info による裏付けを含みます）。起動の目印の時間窓には
+      tombstone 収集（Android の exit-info による裏付けを含みます）。スタブした `adb` の
+      連続に対して、`app_crash_tombstone()` が pull の成功後に `adb unroot`（と2回目の
+      `adb wait-for-device`）を呼ぶこと、そして pull 自体が失敗した場合でも同じく呼ぶことを
+      固定するテスト。`adb root` の権限レベルが、それを要求した1回のリースを越えて
+      持続しないことを固定します。起動の目印の時間窓には
       収まるものの、別のパッケージの `FATAL EXCEPTION`/`>>> <process> <<<` ブロックしか
       運ばない `logcat` ダンプが何も抽出しないこと。プロセスによる絞り込みが実在し、
       時刻によるものだけではないことを固定します。スタブした exit-info の連続と、
