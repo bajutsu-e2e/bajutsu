@@ -627,7 +627,7 @@ Python 側の呼び出しは `_prepare_simulator`・`_launch_params`・`_spawn_c
 `DiagnosticReports` を掃引することになります。`relaunch` 自身がすでに置き換えたはずの
 クラッシュの `.ips` を、逆に添付しかねないほど広い範囲です。`XcuitestEnvironment` は
 `relauncher()` をオーバーライドします（それ以外は `_DeviceEnvironment` 自身の実装の
-ままです）。`device_relauncher` が返す `RelaunchFn` を包み、それを呼んだあとで、
+ままです）。`device_relauncher` が返す `RelaunchFn` を包み、それを呼ぶ*前に*、
 コールド起動の箇所がすでにしているのと同じ方法で `app_launched_at` を記録し直します。
 `AndroidEnvironment` には対応するオーバーライドは要りません。すでに自前で
 `relauncher()` をオーバーライドしており
@@ -650,7 +650,7 @@ Python 側の呼び出しは `_prepare_simulator`・`_launch_params`・`_spawn_c
 自体は*ファクトリ*です。`_build_lane` はこれを1回だけ呼び、返ってきた `Reset` を保持し
 続けます（[`cli.py:300`](../../bajutsu/crawl/cli.py)）。したがってこのオーバーライドは、
 ファクトリ呼び出しの隣で記録するのではなく、その返ってきた `Reset` を包みます。
-`_DeviceEnvironment` の `Reset` を呼んでから、`app_launched_at` をフロンティアの再訪
+`_DeviceEnvironment` の `Reset` を呼ぶ*前に*、`app_launched_at` をフロンティアの再訪
 のたびに記録します。`AndroidEnvironment` には、
 ここでも対応するオーバーライドは要りません。自前の `crawl_reset()` の `e.launch`
 （[`android_environment.py:410`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py)）
@@ -670,7 +670,7 @@ X 上でシナリオ1がコールド起動し（目印 = T0）、そのアプリ
 （同じアプリ）、`udid` の確認にも（同じ Simulator）一致してしまい、
 `_app_crash_reports` はそれを受け入れます。シナリオ5の `app-crash/` には、シナリオ1の
 クラッシュが入ってしまいます。他の2つと同じ形の直し方です。`_resume_warm` の中で、
-自身の `e.launch` の隣で `app_launched_at` を記録し直します。目印は、アプリが実際に
+自身の `e.launch` の*直前*に `app_launched_at` を記録し直します。目印は、アプリが実際に
 走っている、そのときどきの起動を追いかけ続けます。
 
 新しく `app_crash_artifacts() -> list[tuple[str, bytes]]` を `RunEnvironment` プロトコル
@@ -845,13 +845,22 @@ BE-0291 のリースをまたぐ再利用は XCUITest だけの仕組みです�
 下の「`crawl` 自身のクラッシュ記録を拡張する」は、この同じ確認を巡回中のあらゆる検知へ
 配線するため、`run` が無償で得ているこの暗黙のリセットがないままでは、確認できなかった
 最初の crawl の検知のあとフラグが立ちっぱなしになり、その巡回の残り全体で*本物の*
-クラッシュを無ポーリングにしてしまいます。そこで `invalidate_settled_cache()` も、
-すでにリセットしているフィールドと並べて `self._exit_info_exhausted` をリセットします
-——既存のメソッドへの1フィールド追加であり、新しい呼び出し箇所ではありません。
-`AndroidEnvironment.crawl_reset()` 自身の `reset()` クロージャは、`e.force_stop(package)`・
-`e.launch(...)` が `app_launched_at` を再記録した直後にすでにこれを呼んでいます
-（[`android_environment.py:408-413`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py)）
-——文字どおり新しい起動こそが、新しい回収を待つ価値が再び生まれる瞬間だからです。
+クラッシュを無ポーリングにしてしまいます。このリセットを `invalidate_settled_cache()` へ
+折り込むのは、場所として間違っています。あのメソッド自身の契約は「画面が変わった——この
+ドライバ自身のアクチュエータ以外の何かによって」であり、`AdbDriver` はふつうのジェスチャ
+1回1回でもすでにこれを呼んでいます（`_act`・`_device_act`・`type_text`、
+[`adb_driver.py:352`](../../bajutsu/common/drivers/adb/adb_driver.py)、`:1119`、`:1145`、
+`:1462`）。そのため、このラッチをそこへ折り込めば、このラッチが抑えようとしている
+ほぼすべての確認の手前でフラグを解除してしまいます。両方のバックエンドで、この確認を
+配線している以上です。文字どおり新しい起動こそが——「画面が変わった」ではなく——新しい
+`system_server` の回収を待つ価値が再び生まれる出来事なので、`AdbDriver` は代わりに
+2つ目の、狭い専用メソッドを持ちます（`reset_exit_info_poll()`。隣の
+`SettledCacheInvalidator` と同じ形です）。これは、`invalidate_settled_cache()` をすでに
+*別の*理由で呼んでいる同じ2つのクロージャから呼びます——`AndroidEnvironment.relauncher()`
+の `relaunch()` は `e.launch(...)` の直後
+（[`android_environment.py:339-351`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py)）、
+`crawl_reset()` の `reset()` は自身の `e.launch(...)` の直後です。`AdbDriver` 自身の
+アクチュエータの中からは決して呼びません。
 一度立ってしまえば（まだリセットされていなければ）、あとの呼び出しは上限つきポーリングを飛ばし、exit-info の履歴を
 一度だけ読んで、その読み取りが一致を見つけたかどうかにかかわらず即座に答えます
 ——本項目自身の見積もりがもともと想定していた、確認できなかった確認のコストであり、
@@ -1381,15 +1390,15 @@ fake backend の実行が収集する内容は変わりません。
       `_spawn_cold_with_retry` が戻ったあとに記録すれば、それが指す起動よりも
       すでに遅れており、まさにその起動の最中にクラッシュしたアプリの `.ips` を拒んで
       しまいます。新しい `XcuitestEnvironment.relauncher()` オーバーライドが `device_relauncher` の
-      `RelaunchFn` を包み、`relaunch` ステップ自身の起動のあとにこれを記録し直します
+      `RelaunchFn` を包み、`relaunch` ステップ自身の起動の*前に*これを記録し直します
       （`_DeviceEnvironment` が継承する `relauncher()` には、それを更新すべき環境がその場に
       ない、まさにその呼び出し箇所）。対応する `XcuitestEnvironment.crawl_reset()`
       オーバーライドも同じ形でこれを3回目記録し直します。`crawl` 自身のフロンティア再訪ごとの
-      relaunch のあとで、`_DeviceEnvironment` が継承する `crawl_reset()` にも、それを更新
+      relaunch の*前に*、`_DeviceEnvironment` が継承する `crawl_reset()` にも、それを更新
       すべき環境がその場にない、もう1つの呼び出し箇所です。`_resume_warm`
       （BE-0291 のリースをまたぐウォーム再利用の起動、`xcuitest_environment.py:855-856`。
       `start()` が再利用可能なたびに戻る、同じ長命の `XcuitestEnvironment` インスタンスの
-      上で走ります）自身の中でも、その `e.launch` の隣で4回目記録し直します。そうしなければ、
+      上で走ります）自身の中でも、その `e.launch` の*直前*に4回目記録し直します。そうしなければ、
       ウォーム再利用されたリースのクラッシュが、目印がたまたま古いタイムスタンプを共有する
       どこか前のリースの `.ips` レポートと一致してしまいかねません。新しい `self._app_path`
       フィールドを `start()` で `self._bundle_id` の隣に保存します（`ios.app_path`、
@@ -1445,11 +1454,18 @@ fake backend の実行が収集する内容は変わりません。
       返すため（BE-0291 のリースをまたぐ再利用は XCUITest だけの仕組みです）、この
       バックエンドではリースごとに新しい `AdbDriver` が組み立てられるからです。しかし
       `crawl` は巡回全体を通じて1つの `AdbDriver` を使い続けるため
-      （`crawl/cli.py:283-300`）、`invalidate_settled_cache()` もこのフィールドを
-      リセットします。`AndroidEnvironment.crawl_reset()` の `reset()` クロージャは、
-      `app_launched_at` の再記録の直後にすでにこれを呼んでいます
-      （`android_environment.py:408-413`）。これは、ポーリングの上限を再び払う価値が
-      生まれる、文字どおり新しい起動の瞬間です。
+      （`crawl/cli.py:283-300`）、この専用のリセットが必要です。
+      `invalidate_settled_cache()` への折り込みではありません。あのメソッドの契約は
+      「画面が変わった」であり、`AdbDriver` はふつうのアクチュエータ（`_act`・
+      `_device_act`・`type_text`）からもすでにこれを呼んでいるため、折り込めば、この
+      ラッチが抑えようとしているほぼすべての確認の手前でフラグを解除してしまいます。
+      代わりに、2つ目の狭い専用メソッド（`reset_exit_info_poll()`。隣の
+      `SettledCacheInvalidator` と同じ形です）を、`AndroidEnvironment.relauncher()` の
+      `relaunch()` クロージャで `e.launch(...)` の直後に
+      （`android_environment.py:339-351`）、`crawl_reset()` の `reset()` クロージャで
+      自身の `e.launch(...)` の直後に呼びます。これらは、ポーリングの上限を再び払う
+      価値が生まれる、文字どおり新しい起動の瞬間です。`AdbDriver` 自身のアクチュエータの
+      中からは決して呼びません。
 - [ ] Unit 5 — Android：各起動の箇所の `e.launch(...)` 呼び出しの*直前*に記録する
       `AndroidEnvironment.app_launched_at`。あとではありません。`e.launch` は起動の完了を
       待つ `am start -W` であり、返ったあとに立てた目印はすでに起動時のクラッシュを

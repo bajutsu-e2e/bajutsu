@@ -538,8 +538,8 @@ distinguished from `_resume_warm`'s, runs through `device_relauncher`'s closure 
 mid-scenario `relaunch` would sweep `DiagnosticReports` with a `since` reaching back before the
 relaunch — wide enough to attach a `.ips` from a crash that `relaunch` itself already superseded.
 `XcuitestEnvironment` overrides `relauncher()` — `_DeviceEnvironment`'s own implementation, unchanged
-otherwise — to wrap the `RelaunchFn` `device_relauncher` returns: call it, then record
-`app_launched_at` the same way `_spawn_cold` already does. `AndroidEnvironment` needs no
+otherwise — to wrap the `RelaunchFn` `device_relauncher` returns: record `app_launched_at` *before*
+calling it, the same ordering `_spawn_cold` already uses. `AndroidEnvironment` needs no
 matching override: it already overrides `relauncher()` itself
 ([`android_environment.py:326`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py)),
 and its `e.launch` there is one of the three sites Unit 5 already names.
@@ -557,8 +557,8 @@ wrong crash, in a directory whose whole purpose is attributing the report correc
 `XcuitestEnvironment` overrides `crawl_reset()` too, the same shape as the `relauncher()` override —
 `crawl_reset(eff)` is a *factory* (`_build_lane` calls it once and keeps the `Reset` it returns,
 [`cli.py:300`](../../bajutsu/crawl/cli.py)), so the override wraps that returned `Reset` rather than
-stamping beside the factory call: call `_DeviceEnvironment`'s `Reset`, then record `app_launched_at`,
-once per frontier revisit. `AndroidEnvironment`
+stamping beside the factory call: record `app_launched_at` *before* calling `_DeviceEnvironment`'s
+`Reset`, once per frontier revisit. `AndroidEnvironment`
 needs no matching override here either — its own `crawl_reset()`'s `e.launch`
 ([`android_environment.py:410`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py))
 is the third of the three sites Unit 5 already names.
@@ -575,8 +575,8 @@ resume warm on the same device, marker still T0. Scenario 5's app crashes and sw
 with `since = T0`: scenario 1's report matches the executable-name pattern (same app) *and* the `udid`
 check (same Simulator), so `_app_crash_reports` accepts it — scenario 5's `app-crash/` gets scenario 1's
 crash. The fix is the same shape as the other two: `XcuitestEnvironment` records `app_launched_at`
-inside `_resume_warm` itself, next to its own `e.launch`, so the marker tracks whichever launch the app
-is actually running under.
+inside `_resume_warm` itself, immediately *before* its own `e.launch`, so the marker tracks whichever
+launch the app is actually running under.
 
 A new `app_crash_artifacts() -> list[tuple[str, bytes]]` joins the `RunEnvironment` protocol
 ([`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py)),
@@ -725,12 +725,20 @@ bounded poll ends without a matching entry. A driver instance never outlives one
 [`crawl/cli.py:283-300`](../../bajutsu/crawl/cli.py)), and *Extending `crawl`'s own crash recording*
 below wires this same probe into every detection along that walk — an implicit reset only `run` gets for
 free would leave the flag latched after the first unconfirmed crawl detection, un-polling every
-*genuine* crash for the rest of the run. `invalidate_settled_cache()` therefore also clears
-`self._exit_info_exhausted`, alongside the fields it already resets — a one-field addition to an
-existing method, not a new call site, since `AndroidEnvironment.crawl_reset()`'s own `reset()` closure
-already calls it right after `e.force_stop(package)` / `e.launch(...)` re-stamps `app_launched_at`
-([`android_environment.py:408-413`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py))
-— a genuinely fresh launch is exactly the moment a fresh reap becomes worth waiting for again. Once set
+*genuine* crash for the rest of the run. Folding the reset into `invalidate_settled_cache()` would be
+the wrong seam: that method's own contract is "the screen changed, through something other than this
+driver's own actuators" — `_act`, `_device_act`, and `type_text` all call it on every ordinary gesture
+too ([`adb_driver.py:352`](../../bajutsu/common/drivers/adb/adb_driver.py), `:1119`, `:1145`, `:1462`),
+so folding this latch into it would clear the flag before nearly every probe it exists to bound, on both
+backends this item wires the probe into. A genuinely fresh launch — not "the screen moved" — is the
+event that makes waiting on a fresh `system_server` reap worth paying for again, so `AdbDriver` instead
+gains a second, narrow method for it (`reset_exit_info_poll()`, the same shape as
+`SettledCacheInvalidator` next to it), called from the same two closures that already call
+`invalidate_settled_cache()` for the *other* reason — `AndroidEnvironment.relauncher()`'s `relaunch()`
+right after `e.launch(...)`
+([`android_environment.py:339-351`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py))
+and `crawl_reset()`'s `reset()` right after its own `e.launch(...)` — never from inside `AdbDriver`'s own
+actuators. Once set
 (and not yet cleared), a later call
 skips the bounded poll and reads the exit-info history exactly once, answering immediately whether or
 not that single read finds a match — the bound this item's own accounting already assumes an
@@ -1177,14 +1185,14 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       `_spawn_cold_with_retry` has returned would already be later than the launch it names and
       would reject the `.ips` of an app that crashed during that very launch; a new
       `XcuitestEnvironment.relauncher()` override wrapping `device_relauncher`'s `RelaunchFn` to
-      record it again after a `relaunch` step's own launch, the one call site `_DeviceEnvironment`'s
+      record it again *before* a `relaunch` step's own launch, the one call site `_DeviceEnvironment`'s
       inherited `relauncher()` has no environment in scope to update; a matching
-      `XcuitestEnvironment.crawl_reset()` override recording it a third time after `crawl`'s own
+      `XcuitestEnvironment.crawl_reset()` override recording it a third time *before* `crawl`'s own
       per-frontier-revisit relaunch, the one other call site `_DeviceEnvironment`'s inherited
       `crawl_reset()` also has no environment in scope to update; a fourth record inside
       `_resume_warm` itself (BE-0291's cross-lease warm-reuse launch,
       `xcuitest_environment.py:855-856`, on the same long-lived `XcuitestEnvironment` `start()`
-      returns through) next to its own `e.launch`, since a warm-reused lease's crash would otherwise
+      returns through) immediately *before* its own `e.launch`, since a warm-reused lease's crash would otherwise
       match whichever earlier lease's `.ips` report happened to share the marker's stale timestamp;
       a new `self._app_path` field, stashed at `start()` next to `self._bundle_id` (`ios.app_path`,
       the same `ios` `self._bundle_id` already reads from) — `app_crash_artifacts()` takes no
@@ -1233,10 +1241,15 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       immediately rather than re-polling. `run` gets this reset for free — a fresh `AdbDriver` is built
       per lease there, since `AndroidEnvironment.has_reusable_resident()` answers `False`
       unconditionally (BE-0291's cross-lease reuse is XCUITest-only) — but `crawl` builds one
-      `AdbDriver` for the whole walk (`crawl/cli.py:283-300`), so `invalidate_settled_cache()` also
-      clears this field: `AndroidEnvironment.crawl_reset()`'s `reset()` closure already calls it right
-      after re-stamping `app_launched_at` (`android_environment.py:408-413`), the same genuinely-fresh-
-      launch moment a poll bound becomes worth paying again.
+      `AdbDriver` for the whole walk (`crawl/cli.py:283-300`), so this needs its own reset, not a fold
+      into `invalidate_settled_cache()`: that method's contract is "the screen changed", and `AdbDriver`
+      already calls it from every ordinary actuator (`_act`, `_device_act`, `type_text`), so folding
+      this in would clear the flag before nearly every probe it exists to bound. A second, narrow method
+      — `reset_exit_info_poll()`, the same shape as `SettledCacheInvalidator` — is called instead from
+      `AndroidEnvironment.relauncher()`'s `relaunch()` closure right after `e.launch(...)`
+      (`android_environment.py:339-351`) and `crawl_reset()`'s `reset()` closure right after its own
+      `e.launch(...)`, the two genuinely-fresh-launch moments a poll bound becomes worth paying again,
+      never from inside `AdbDriver`'s own actuators.
 - [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at`, recorded immediately *before* each launch
       site's `e.launch(...)` call, never after — `e.launch` is `am start -W`, which waits for the
       launch to complete, so a marker stamped once it returns has already missed a startup crash — from
