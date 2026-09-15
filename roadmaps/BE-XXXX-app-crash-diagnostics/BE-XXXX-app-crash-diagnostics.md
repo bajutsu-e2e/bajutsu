@@ -862,7 +862,20 @@ independently wrapped so that a failure in one never drops the other:
    — would run through a root `adb shell` instead of an ordinary one, silently, with device state (and
    anything downstream of shell uid, such as a pulled artifact's file ownership) turning on whether an
    earlier, unrelated scenario happened to crash: exactly the run-order dependence a deterministic core
-   exists to keep out. Every scenario after this one then gets a resident server, and an `adbd`, exactly
+   exists to keep out. Sharper still: `AdbDriver._rooted()` probes `adb shell id -u` once per driver and
+   caches the answer
+   ([`adb_driver.py:1230-1237`](../../bajutsu/common/drivers/adb/adb_driver.py)), and two actuation
+   decisions read it — `double_tap` picks the raw `sendevent` path over `input tap` when it answers
+   `True`, and a two-finger gesture raises `base.UnsupportedAction` when it answers `False` but runs
+   when it answers `True`. Leaked root would flip both silently: a two-finger-gesture scenario that
+   should fail loudly with `UnsupportedAction` on an unrooted device instead runs and passes, decided by
+   whether an earlier, unrelated scenario happened to crash — the same class of run-order dependence,
+   but reaching a scenario's pass/fail verdict directly rather than only file ownership. Swallowing
+   `adb unroot`'s own failure inside the same best-effort wrapper is what lets this happen invisibly, so
+   the restore is *verified*, not just attempted: after the second `adb wait-for-device`, `adb shell id
+   -u` is re-read, and an answer still `0` is logged loudly (a diagnostic capture must never be free to
+   silently change how every later scenario on that device actuates) rather than swallowed the same way
+   the initial pull's own failures are. Every scenario after this one then gets a resident server, and an `adbd`, exactly
    as fresh as it would have anyway.
 
    That "nothing after this point needs either channel" justification is specific to `run`'s
@@ -1423,7 +1436,9 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       corroboration; a stubbed `adb` sequence asserting `app_crash_tombstone()` calls `adb unroot`
       (and a second `adb wait-for-device`) after a successful pull, and does so even when the pull
       itself fails, pinning that `adb root`'s privilege level never outlives the one lease that
-      requested it; a `logcat` dump within the launch marker's own time window but carrying only a
+      requested it; a stubbed `adb` sequence whose post-`unroot` `id -u` still answers `0` — a refused
+      `unroot` — asserting the loud log this now requires, since pinning only that `unroot` is *called*
+      would miss a restore that was attempted but never took effect; a `logcat` dump within the launch marker's own time window but carrying only a
       different package's `FATAL EXCEPTION`/`>>> <process> <<<` block extracting nothing, pinning that
       the process bound is real and not only the time one; a stubbed exit-info sequence and a stubbed
       `logcat` dump sequence each answering empty/no-match on the first read and a matching entry only
