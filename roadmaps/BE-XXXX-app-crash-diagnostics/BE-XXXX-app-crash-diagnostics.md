@@ -442,7 +442,7 @@ resolved `self._bundle_id` from. `ios.app_path` is itself optional
 `deviceType: simulator` target naming only `bundle_id`, against a Simulator that already has the app
 installed, configures none, the same case `_prepare_simulator` already gates its own install on
 (`if ios.app_path:`, `xcuitest_environment.py:902`) and the replacement-device path raises its own
-named error over rather than assume set (`xcuitest_environment.py:627-632`). With no PID accessor to
+named error rather than assume it is set (`xcuitest_environment.py:627-632`). With no PID accessor to
 derive the executable name from instead (the reason this reads `Info.plist` at all), there is no
 fallback pattern to build: this capture is scoped to targets that configure `appPath`, and that scope
 is checked explicitly, before the read — `self._app_path is None` resolves to `[]` immediately, the
