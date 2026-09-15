@@ -197,14 +197,10 @@ append 自体もこの中で行うため、あとから加わるステップの�
 割り込みの確認について与えているのと同じ性質です。あとから加わる6つ目の呼び出し
 箇所が同じ抜け穴を静かに開け直さないよう、`_finish_outcome` の外に
 `self.state.outcomes.append` が残っていないことを検証する高速スイートのテストも
-加えます。`_finish_outcome` は、その append の直前で、
-`isinstance(active_driver, base.AppCrashSignal)`、`outcome.ok is False`、
-`outcome.action != "relaunch"` の3つをまとめて確認します。`StepOutcome.action` には
-すでにそのステップ自身の種別が入っており（ディスパッチ自体がそう設定します、
-`_step_runner.py:97`）、他の2つと同じくらい素直に読めます。`relaunch` アクションは
-意図的にアプリを終了させてから再起動するため（「iOS：要素ツリーではなく `app.state`
-を使う」を参照）、そうしなければ起動側が失敗した `relaunch` を、確認自身が引き起こした
-クラッシュと読んでしまいます。
+加えます。`_finish_outcome` は、その append の直前で
+`isinstance(active_driver, base.AppCrashSignal)` と `outcome.ok is False` の両方を
+確認します。加えて、アプリ自身を意図的に終了させる、たった1つのアクションのための
+シナリオスコープの除外があります。次の段落で説明します。
 
 入れ子になったステップの失敗は、最初にそれを観測したハンドラだけでなく、構造上
 何度も `_finish_outcome` に届きます。`_run_if` と `_run_for_each` は、どちらも
@@ -213,36 +209,51 @@ append 自体もこの中で行うため、あとから加わるステップの�
 クラッシュが起きると、アクション自身、`forEach`、`if` という3つの外側の outcome が
 順に確定し、それぞれが独立して `_finish_outcome` を呼びます。`_run_recovery`
 （`_step_runner.py:70`）も、同じ `exec_steps` を通じて走る `after` のステップごとに、
-すでに落ちたアプリに対してもう1回ずつ加わります。ドライバのシグナルをその回数だけ
-確認すること自体のコストは小さいものの、`app_crash_artifacts()` はそうではありません。
-この繰り返しが実際に払うコストは、`app_crash_signal()` への余分な往復が *N* 回増える
-ことです。証跡の掃引ではありません。掃引は `pipeline.py` がこの確認とは別に、
-`StepOutcome.app_crashed` を見てシナリオごとに高々1回だけ走らせます（「収集をつなぐ」
-を参照）。それでも1つのフェーズの内側では抑える価値がありますが、`self.state` への
-ラッチではフェーズを*またいで*抑えられません。`run_phase`（`_functions.py:994`）は
-呼ばれるたびに新しい `StepLoopState` を組み立て、`after` の発火も規則ごとに1回ずつ
-呼ぶため、そこに置いたラッチは `before` の開始時にも、本体ステップの開始時にも、
-発火する `after` の規則ごとにも立て直されてしまいます。まさに `_run_recovery` が
-上で挙げたフェーズをまたぐ再入そのものです。ラッチは、フェーズをまたいで生き残る
-置き場所を必要とします。`run_scenario` が1回だけ作り、`live_bindings` をすでに
-フェーズ間で共有しているのと同じ方法（`_functions.py:683`、`:692`）で、`run_phase`
-の呼び出しのたびにそのクロージャへ渡す1つの可変オブジェクトです。`mailbox` や
-`progress` の隣、`_LoopConfig` に置きます。どちらもすでに、それ自体は不変な
-フィールドの奥にある可変オブジェクトです。`_finish_outcome` が `AppCrashedError` を
-送出し捕まえた最初の時点でこれを立て、次に確認する前にまず読むことで、
-`app_crash_signal()` を `before`・本体ステップ・あらゆる `after` の規則を通じて
-シナリオごとに1回にとどめます。そのあとで確定するあらゆる outcome は、
-`app_crash_signal()` をもう一度呼ぶことなく、そのすでにわかっているシグナルを
-自身の `outcome.reason` へ折り込むだけになります。
+すでに落ちたアプリに対してもう1回ずつ加わります。`after: on: fail` の後片付けが、
+直前の `relaunch` の失敗が*原因で*走り、その `relaunch` 自身が終了させたばかりの
+アプリに対して確認してしまう場合も含まれます。除外を `outcome.action` だけに
+結びつけると、まさにこのケースを見逃します。失敗した `relaunch` 自身の outcome は
+確認を飛ばしますが、それを包む `forEach`・`if` の outcome や、その後に発火する
+`after: on: fail` のステップは、それぞれ別の `outcome.action` を持つため、いずれも
+新規に確認してしまい、`app.state` の正直な `notRunning` を、確定したばかりの新しい
+クラッシュと読み違えます。したがって除外は、1つの outcome の性質ではなく*シナリオ*
+の性質でなければなりません。`run_scenario` が1回だけ作り、`live_bindings` をすでに
+フェーズ間で共有しているのと同じ方法（`_functions.py:690`、`:699`）で `run_phase`
+の呼び出しのたびにそのクロージャへ渡す、同じ可変オブジェクトです。`mailbox` や
+`progress` の隣、`_LoopConfig` に置きます（`StepLoopState` ではありません）。どちらも
+すでに、それ自体は不変なフィールドの奥にある可変オブジェクトです。`_finish_outcome`
+は、`outcome.action == "relaunch"` かつ `outcome.ok is False` を見た瞬間、
+`app_crash_signal()` を一度も呼ぶ前にこれを立てます。そして以後のあらゆる呼び出しで
+まずこれを確認します。一度立てば、同じシナリオの中でそれ以降のどの outcome も
+確認しません。それを包む outcome も `after` フェーズのステップも例外ではなく、
+どれも確認自身が引き起こしたクラッシュと読み違えられることはありません。
 
-ラッチがまだ立っていないときにだけ、`_finish_outcome` は `active_driver.app_crash_signal()`
-を呼びます。`None` でない答えは、その場で `base.AppCrashedError(signal)` を送出し、
-同じ式の中で捕まえ、そのメッセージを `outcome.reason` へ折り込み、`outcome.app_crashed`
-とラッチの両方を `True` にします。この1点より先へ伝播することはありません。
-`active_driver` は、そのステップを実際に操作したドライバです。ネイティブのドライバ
-であることも、`web` ブロックの中では `WebContextDriver` であることもあります。後者に
-対しては `isinstance` が `False` を返すため、確認は no-op になります。「はじめに」で
-述べた本項目の web バックエンドに対する範囲と一致します。
+同じオブジェクトは、*確定した*クラッシュも記憶します。`_finish_outcome` が
+`AppCrashedError` を送出し捕まえた最初の時点で立て、同じ伝播の中であとから確定する
+outcome は、`app_crash_signal()` をもう一度呼ぶことなく、そのすでにわかっている
+シグナルを自身の `outcome.reason` へ折り込むだけになります。ただし、確認できなかった
+答えではこれを立てません。これは意図的な非対称です。ある1つのステップの `None` は、
+*次の*ステップの失敗がクラッシュかどうかについて何も教えてくれないため、そこで
+立ててしまうと、本物のクラッシュを見逃す危険を冒すことになります。この理由から、
+ここで買えた抑制は「シナリオごとに1回」よりも狭いものです。上に挙げた relaunch と
+確定済みクラッシュのケースでは効きますが、クラッシュを伴わないふつうの失敗には
+効きません。ふつうの失敗は、これまで通り、確定する outcome ごとに1回の確認を払い
+続けます（入れ子の深さに、失敗する `after` の規則1つにつき1回を足したぶんです）。
+本項目の初期の草案がまるごと避けられると主張していたのと同じコストです。それでも
+そのコストは、シナリオがどれだけ深く入れ子になり、失敗時にいくつの `after` 規則を
+発火させるかで抑えられており、実際には小さい数字であることが多く、しかもすでに
+失敗したステップに対してしか走りません。後述の「検討した代替案」がグリーンな実行
+すべてにコストを足すとして却下する、事前のステップごとのポーリングとは違います。
+
+`_finish_outcome` が `active_driver.app_crash_signal()` を呼ぶのは、どちらのラッチも
+立っていないときだけです。`None` でない答えは、その場で `base.AppCrashedError(signal)`
+を送出し、同じ式の中で捕まえ、そのメッセージを `outcome.reason` へ折り込み、
+`outcome.app_crashed` と確定済みクラッシュのラッチの両方を `True` にします。この1点
+より先へ伝播することはありません。`active_driver` は、そのステップを実際に操作した
+ドライバです。ネイティブのドライバであることも、`web` ブロックの中では
+`WebContextDriver` であることもあります。後者に対しては `isinstance` が `False` を
+返すため、確認は no-op になります。「はじめに」で述べた本項目の web バックエンドに
+対する範囲と一致します。
 
 ### iOS：要素ツリーではなく `app.state` を使う
 
@@ -255,15 +266,30 @@ XCUITest は、対象アプリのプロセス状態を `XCUIApplication.state` �
 `runningBackgroundActive` を返し、`notRunning` にはなりません。
 
 `notRunning` という答えだけでは、あらゆるプラットフォームでクラッシュを証明できません。
-実機では、OS によるメモリ不足時の強制終了や、起動未完了も同じ答えを返し得ます。どちらも、このバックエンドが操作する Simulator には当てはまりません。Simulator の
-ホストはデスクトップ級のメモリを持ち、実機のようにフォアグラウンドのアプリを jetsam で
-終了させません。シナリオのステップのうち1つ、`relaunch` だけは、アプリを意図的に
-終了させます。その iOS 側の経路は `e.terminate(bundle_id)` に続けて `e.launch(...)` を
-呼ぶというものです
-（[`xcuitest_environment.py:819-820`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py)）。
-そこで `_finish_outcome` は、直前に失敗したステップが `relaunch` であるときには確認その
-ものを飛ばします。`relaunch` の起動側が失敗するのは、そのステップ自身の失敗であって
-クラッシュではなく、その失敗メッセージ自体がすでにそう述べているからです。それ以外の
+実機では、OS によるメモリ不足時の強制終了や、起動未完了も同じ答えを返し得ます。どちらも
+Simulator には当てはまりませんが、XCUITest バックエンドは Simulator 専用ではありません。
+`xcuitest.deviceType: device`
+（[`xcuitest_config.py:20`](../../bajutsu/common/config/schema/xcuitest_config.py)）は、
+同じ `XcuitestDriver` と `XcuitestEnvironment` を通じて実機の iPhone を操作します。そこでは
+Simulator 自身の制約が成り立ちません。実機はメモリ不足時にフォアグラウンドのアプリを
+実際に jetsam で終了させます。しかも以下の `.ips` 掃引にはそもそも読むものがありません。
+実機のクラッシュは、ホスト自身の `~/Library/Logs/DiagnosticReports` には決して届かず、
+実機では `self._bundle_id` が `None` になります
+（[`xcuitest_environment.py:319`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py)）。
+そのビルドは `_prepare_simulator` の経路を通さず、帯域外でインストールされるからです。
+本項目の `Info.plist` 読み取りは、まさにその経路に依存しています。本項目は、web backend
+をすでに後続の項目へ切り出しているのと同じように、Simulator だけを対象にします。
+`XcuitestDriver.app_crash_signal()` は実機に対してその場で `None` を返します。シグナルを
+まったく持たないバックエンドが返すのと同じ「確認できない」という答えです。実機自身の
+OS による強制終了や、`deviceType: device` ターゲット自身が抱える証跡の欠落を、確定した
+アプリクラッシュと読み違えないためです。シナリオのステップのうち1つ、`relaunch` だけは、
+どちらのデバイス種別でもアプリを意図的に終了させます。その iOS 側の経路は
+`e.terminate(bundle_id)` に続けて `e.launch(...)` を呼ぶというものです
+（[`xcuitest_environment.py:855-856`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py)）。
+そこで `_finish_outcome` は、`relaunch` ステップ自身が失敗した時点で確認を飛ばし、この
+シナリオがそれ以降に行うはずだった確認もすべて抑えます（「検知の方式」を参照）。
+`relaunch` の起動側が失敗するのは、そのステップ自身の失敗であってクラッシュではなく、
+その失敗メッセージ自体がすでにそう述べているからです。それ以外の
 確認は、ステップがすでに失敗した後、しかも同じシナリオの手前のすべてのステップで
 アプリが動作していると確認できた*あと*にしか走りません。したがって、`relaunch` 以外の
 ステップの下で起動が完了しなかったケースは、この事後確認が出会う場面ではありません。
@@ -285,7 +311,11 @@ XCUITest は、対象アプリのプロセス状態を `XCUIApplication.state` �
 
 `XcuitestDriver`
 （[`bajutsu/common/drivers/xcuitest/xcuitest_driver.py`](../../bajutsu/common/drivers/xcuitest/xcuitest_driver.py)）
-は、このルートを1回呼ぶことで `app_crash_signal()` を実装します。`notRunning` という
+に、`is_real_device: bool = False` というコンストラクタ引数を加えます。`device_os`
+（BE-0358）をすでに通しているのと同じ方法で `make_driver` から通します。
+`app_crash_signal()` はまずこれを確認し、`True` であればルートを呼ぶ前にその場で
+`None` を返します。上で決めた、Simulator だけを対象にする範囲です。それ以外では、
+このルートを1回呼ぶことで `app_crash_signal()` を実装します。`notRunning` という
 答えがそのままシグナルの文字列になります。それ以外の状態はすべて `None` を返します。
 この呼び出しに届いたチャンネルエラーは `None` へ
 握りつぶしません。それは既存の `XcuitestRunnerCrashError` であり `BackendCrashError` の
@@ -348,8 +378,13 @@ Simulator 上のアプリの `.ips` レポートは、そのヘッダに実行�
 時点で（後述の「収集をつなぐ」を参照）、この同じシナリオ自身のリースをまだ保持しており、
 そのリースが解放されるよりずっと前だからです。したがって `app_crash_artifacts()` は
 `app_launched_at` をその場で生きたまま読み、完成したリストをそのまま返します。サンクは
-要りません。既定値は `[]` です。`take_crash_snapshot()` がすでに、何も捕捉しないプラット
-フォームのために確立している no-op の既定値と同じ形です。
+要りません。`RunEnvironment` は、どの具象クラスも継承しない構造的プロトコルであるため、
+`take_crash_snapshot()` にも継承された既定値はありません。`WebEnvironment`・
+`AndroidEnvironment`・`_DeviceEnvironment`（`FakeEnvironment` がこれを継承します）は、
+すでにそれぞれ自前の1行の `return` を宣言しています。`app_crash_artifacts()` も同じ形を
+踏襲します。`pool.py` の `lease()` がこのメソッドをリースしたあらゆる環境から、クラッシュ
+したときだけでなくあらゆるリースのたびに読むため、この3つのクラスがそれぞれ自前の
+`return []` を新たに持ちます。
 
 `ReportCrash` は、アプリが落ちたその瞬間にはまだレポートを書き終えていないことがあります。
 `_app_crash_reports` は `~/Library/Logs/DiagnosticReports` を、対象の実行ファイル名と
@@ -429,25 +464,35 @@ adb にとって同じ役割の積極的な確認を与えます。
    運ぶ2つの形式です。一致したほうを抽出し、`logcat-crash.txt` として書き出します。
    これは、この adb バックエンドが到達できるどの AVD や実機でも保証される唯一の
    証跡です。
-2. **tombstone の取得**は、ベストエフォートで root 権限に依存します。`adb root`
-   は、このバックエンドが対象とするエミュレータイメージに対しては、すでに日常的な
-   操作ですが、`adbd` を再起動します
+2. **tombstone の取得**は、ベストエフォートで root 権限に依存し、上の `logcat` の層より
+   あとに、最後に走ります。`adb root` は、このバックエンドが対象とするエミュレータ
+   イメージに対しては、すでに日常的な操作ですが、`adbd` を再起動します
    （[`scripts/collect_android_diagnostics.sh:98-102`](../../scripts/collect_android_diagnostics.sh)
    はすでに `adb root` の直後に自身の `adb wait-for-device` を置いており、その理由を
-   「adbd restarting as root」と述べています）。その再起動は、この端末上のあらゆる
-   `adb forward`・`adb reverse` を切断します。レジデントサーバ自身の読み取りチャネル
-   （`resident_server.py:114`）や BE-0283 のネットワークコレクタの reverse トンネル
-   （`android_environment.py:298-306`）も含まれ、`_run_on_lease` がまさにこのリースを
-   保持しているあいだ、どちらも生きたままです。この取得は、そのコレクタスクリプト自身の
-   作法にならい、`adb wait-for-device` を挟んでから両方の対応づけを再確立します。
-   `lease()` がリース取得時にすでに行っているのと同じ2つの呼び出しです。そのあとで
-   ようやく、もっとも新しい `/data/tombstones/tombstone_NN` のうち、更新時刻が前述の
-   起動の目印以降のものを1件取得します。比較は端末自身の相対的な時刻どうしで行うため、
-   ここでも時計のすり合わせは不要です。実機、user ビルド、`adb root` を拒む状態の
-   いずれでも、この層は（何も壊れていないので再接続もろとも）黙ってスキップします。
-   事象自体は報告済みであり、`logcat-crash.txt` はすでに届いています。root を拒む端末が
-   失うのは、マネージドコードのクラッシュがそもそも必要としないネイティブフレーム
-   の詳細だけです。
+   「adbd restarting as root」と述べています）。その再起動は、レジデントサーバ自身の
+   `am instrument -w` セッションを、単なる `adb forward` の対応づけ以上に、まるごと
+   終わらせます（`instrument_cmd` の `-w` は「インストルメンテーションを装着したまま
+   にし……`UiAutomation` のセッションを温存する」ためのフラグです、
+   [`adb/_functions.py:604-616`](../../bajutsu/common/backend_cli/adb/_functions.py)）。
+   BE-0283 のネットワークコレクタの `adb reverse` トンネル
+   （`android_environment.py:298-306`）も同じように落とします。もう存在しないセッション
+   へポートを forward し直しても、それを回復することにはなりません。レジデントサーバ
+   自体を再起動することだけが唯一の直し方であり、この層はそこまでは行いません。ただし、
+   `_run_on_lease` のこの時点より後には、どちらのチャネルも必要とするものが何もありません。
+   シナリオはすでに終わっており、`lz.release()` までに残るのはネットワークのスナップ
+   ショット書き込みと進捗行だけで、どちらも `lz.collector` がすでに取り終えたデータを
+   読むだけで、ドライバを経由し直すことはありません。`AndroidEnvironment.start()` は、
+   どのリースでもレジデントサーバと reverse トンネルを一から組み立て直します
+   （`_begin_resident`、`bridge_collector`）。「温存されたレジデントは残さない」という、
+   本項目がすでに前提としているふだんの解体・再構築です。したがって、この層が壊した
+   ものによって、この端末上の次のリースが影響を受けることはありません。そのあとで
+   もっとも新しい `/data/tombstones/tombstone_NN` のうち、更新時刻が前述の起動の目印
+   以降のものを1件取得します。比較は端末自身の相対的な時刻どうしで行うため、ここでも
+   時計のすり合わせは不要です。実機、user ビルド、`adb root` を拒む状態のいずれでも、
+   この層は黙ってスキップします。事象自体は報告済みであり、`logcat-crash.txt` はすでに
+   届いています。root を拒む端末が失うのはマネージドコードのクラッシュがそもそも必要と
+   しないネイティブフレームの詳細だけであり、このシナリオより後のあらゆるシナリオは、
+   もともとそうであったのと変わらず新しいレジデントサーバを得ます。
 
 ### 失敗したシナリオの run ディレクトリへ収集をつなぐ
 
@@ -485,10 +530,10 @@ adb にとって同じ役割の積極的な確認を与えます。
 とは限りません。また `result.steps` だけでは `before` と `after` の両フェーズを
 まるごと見落とします。`RunResult.steps` は本体フェーズ自身のリストにすぎず
 （`_functions.py:851`）、`before` のステップが失敗すると本体ステップの実行自体が
-スキップされるため（`_functions.py:728-732`）、`[]` のままになります。本項目の初期の
+スキップされるため（`_functions.py:732-740`）、`[]` のままになります。本項目の初期の
 草案が、解放後に証跡を読むことで残していた競合は、これで閉じます。走査が見つけた
 とき、新しい `_write_app_crash_artifacts(lz, s, sid)` が
-`_write_crash_artifacts`（BE-0421、`pipeline.py:758`）をほぼそのまま真似ます。
+`_write_crash_artifacts`（BE-0421、`pipeline.py:803`）をほぼそのまま真似ます。
 `lz.app_crash_artifacts()` を呼び、返ってきた `(name, content)` の組をそれぞれ
 `writer.write_text(f"{sid}/app-crash/{name}", content.decode(errors="replace"))` という、
 マスキングを行うテキスト側の経路で書き込みます。`write_bytes` ではありません。BE-0421
@@ -575,11 +620,11 @@ adb にとって同じ役割の積極的な確認を与えます。
 のままです。`crawl` には、`run` と違って、事後確認をぶら下げるシナリオステップが
 ありません。2つの入口のあいだで共有されるのは収集であり、検知は共有しません。
 
-### 実機での本物のクラッシュで、スタブだけでなく証明する
+### 本物のクラッシュで、スタブだけでなく証明する
 
 ユニットテストは `~/Library/Logs/DiagnosticReports` や、疑似的な `logcat`・tombstone 取得をスタブ
 できます。しかし、この設計が前提とする基盤側の仕組み、`ReportCrash` 自身の `.ips` 書き出しや
-`logcat` のクラッシュバッファが、実機の Simulator やエミュレータ上でも同じように振る舞う
+`logcat` のクラッシュバッファが、実際の Simulator やエミュレータ上でも同じように振る舞う
 ことまでは証明しません。showcase アプリ
 （[`demos/showcase/`](../../demos/showcase)）に、デバッグ専用の「強制的にクラッシュさせる」
 操作を追加します。
@@ -599,16 +644,19 @@ adb にとって同じ役割の積極的な確認を与えます。
 
 ### web backend と fake backend への影響
 
-これらは別々の2つの継ぎ目であり、どちらのバックエンドもどちらの半分も実装する必要は
-ありません。`PlaywrightDriver` は `AppCrashSignal` を実装しないため、事後確認の
+これらは別々の2つの継ぎ目であり、どちらのバックエンドもどちらの半分にも意味のある
+作業は要りません。`PlaywrightDriver` は `AppCrashSignal` を実装しないため、事後確認の
 `isinstance` による問い合わせは `False` を返し、プロトコルを一切宣言しない他のあらゆる
 ドライバと同じように読み飛ばされます。`WebEnvironment`
 （[`bajutsu/common/platform_lifecycle/environments/web.py`](../../bajutsu/common/platform_lifecycle/environments/web.py)）
-も `app_crash_artifacts()` を実装しないため、`RunEnvironment` 自身の no-op の既定値へ
-そのまま落ちます。`FakeEnvironment`
+は自前の `app_crash_artifacts()` を宣言し、`[]` を返します。すでに `take_crash_snapshot()`
+に対して持っている宣言の隣に加わる1行です。`RunEnvironment` はどの具象クラスも継承しない
+構造的プロトコルであり、どちらのメソッドも継承によって落ちる先となる既定値を持たない
+ためです。`FakeEnvironment`
 （[`bajutsu/common/platform_lifecycle/environments/fake.py`](../../bajutsu/common/platform_lifecycle/environments/fake.py)）
-とテスト用の fake ドライバも、両方の継ぎ目で同じ振る舞いをします。本項目によって、
-web backend や fake backend の実行が収集する内容は変わりません。
+は `_DeviceEnvironment` から同じ no-op を継承し、テスト用の fake ドライバも
+`AppCrashSignal` の継ぎ目では同じ振る舞いをします。本項目によって、web backend や
+fake backend の実行が収集する内容は変わりません。
 
 ## 検討した代替案
 
@@ -637,7 +685,10 @@ web backend や fake backend の実行が収集する内容は変わりません
       生成された `APIHandler` のメソッド。`Router.swift` ではなく `RunnerServer` から
       配信する。`XcuitestDriver.app_crash_signal()` が `AppCrashSignal` を実装し、
       `notRunning` をシグナルとして分類し、チャンネルエラーは `XcuitestRunnerCrashError`
-      としてそのまま伝播させる。
+      としてそのまま伝播させる。新しい `is_real_device` コンストラクタ引数を
+      `device_os` と同じ方法で `make_driver` から通し、`deviceType: device` では
+      `app_crash_signal()` がその場で `None` を返すようにする。本項目は Simulator だけを
+      対象にする。
 - [ ] Unit 3 — iOS：各アプリ起動・再起動の直後に記録する `XcuitestEnvironment.app_launched_at`。
       掃引自身の照合パターンのために `Path(ios.app_path) / "Info.plist"` から
       `CFBundleExecutable` を読む（`ios.bundle_id` はこの名前ではない）。`app_crash_artifacts()`
@@ -654,32 +705,42 @@ web backend や fake backend の実行が収集する内容は変わりません
       ネイティブの両形式）は、クラッシュバッファをクリアする代わりに `-t "<起動の目印>"`
       という時刻フィルタを使い、`scripts/collect_android_diagnostics.sh` 自身のジョブ終了時
       掃引がそれ以前の内容を引き続き見られるようにする。ベストエフォートで root 権限に依存
-      する tombstone 取得は、`adb root` がそれらを壊したあと、`adb wait-for-device` を挟んで
-      レジデントサーバの `adb forward` とコレクタの `adb reverse`（`lease()` がすでに行う
-      のと同じ2つの呼び出し）を再確立する。それぞれ独立して失敗を `[]` へ解決するよう包む。
+      する tombstone 取得は最後に走り、`adb root` がレジデントサーバの `am instrument -w`
+      セッションと BE-0283 の `adb reverse` トンネルをまるごと終わらせることを受け入れる。
+      再確立はしない。このリースに残る work はどちらも必要とせず、プールが次のリースで
+      両方を一から組み立て直すからである。それぞれ独立して失敗を `[]` へ解決するよう包む。
 - [ ] Unit 6 — `RunEnvironment.app_crash_artifacts()` のプロトコルの形（`list[tuple[str,
       bytes]]` を返し、この環境の解放前にスナップショットとサンクによる間接参照なしでその場
-      で読む）と no-op のデフォルト値。`pool.py` の `lease()` クロージャを通した、
-      `crash_artifacts` の隣への `Lease.app_crash_artifacts` の配線。
+      で読む）。`WebEnvironment`・`AndroidEnvironment`・`_DeviceEnvironment`（
+      `FakeEnvironment` が継承）それぞれに加える1行の `return []`。`take_crash_snapshot()`
+      自身がすでに持つ3つの no-op 宣言と同じ形であり、プロトコル自身には継承できる既定値が
+      ないためである。`pool.py` の `lease()` クロージャを通した、`crash_artifacts` の隣への
+      `Lease.app_crash_artifacts` の配線。
 - [ ] Unit 7 — `run_scenario` / `_step_runner.py`：新しい `_finish_outcome` ヘルパーを、
       `self.state.outcomes.append(outcome)` の5つの呼び出し箇所すべて（`_handle_if` /
       `_handle_for_each` / `_handle_web` はそれぞれ1回、`_handle_action` は自身の終端と
       `UncoveredSystemAlertLocale` の早期リターンの2回）で、素の append の代わりに呼ぶよう
-      にし、あらゆる種類のステップの本当の最終結果を覆う。シナリオスコープのラッチ
+      にし、あらゆる種類のステップの本当の最終結果を覆う。シナリオスコープのオブジェクト
       （`run_scenario` が1回だけ作り、`live_bindings` と同じ方法であらゆる `run_phase`
       呼び出しに共有し、`StepLoopState` ではなく `_LoopConfig` に置くことで `before`・
-      本体ステップ・発火するあらゆる `after` の規則をまたいで生き残る）により、
-      `_run_if` / `_run_for_each` / `_run_recovery` を通じた入れ子の失敗の再入が
-      `app_crash_signal()` を確認するのをシナリオごとに最大1回にとどめる。その1点で
-      `AppCrashedError` を送出し捕まえ、そのメッセージを `outcome.reason` へ折り込み、
-      新しい `StepOutcome.app_crashed` フィールドとラッチを立てる。`outcome.action ==
-      "relaunch"` のときは、そのアクション自身がアプリを意図的に終了させるため、確認を
-      丸ごと飛ばす。`_finish_outcome` の外に `self.state.outcomes.append` が残っていない
-      ことを検証する高速スイートのテストを加える。
+      本体ステップ・発火するあらゆる `after` の規則をまたいで生き残る）が、2つのラッチを
+      運ぶ。1つは意図的終了フラグであり、`outcome.action == "relaunch"` かつ
+      `outcome.ok is False` を見た瞬間（確認より前に）立ち、それ以降の同じシナリオの
+      あらゆる確認を抑える——失敗した `relaunch` を包む `if`・`forEach` の outcome や、
+      発火する `after: on: fail` の後片付けも含め、`relaunch` ステップ自身の outcome
+      だけにはとどまらない。もう1つは確定済みクラッシュのラッチであり、`_finish_outcome`
+      が `AppCrashedError` を送出し捕まえた最初の時点で立ち、同じ伝播の中であとに続く
+      outcome が、そのすでにわかっているシグナルを自身の `outcome.reason` へ折り込む
+      だけにする——`app_crash_signal()` の確認を relaunch と確定済みクラッシュのケースに
+      限って抑えるものであり、クラッシュを伴わないふつうの失敗は確定する outcome ごとに
+      1回の確認を払い続ける。その1点で `AppCrashedError` を送出し捕まえ、そのメッセージを
+      `outcome.reason` へ折り込み、新しい `StepOutcome.app_crashed` フィールドと確定済み
+      クラッシュのラッチを立てる。`_finish_outcome` の外に `self.state.outcomes.append`
+      が残っていないことを検証する高速スイートのテストを加える。
 - [ ] Unit 8 — `pipeline.py`：`_run_on_lease` が `run_scenario` の直後、まだ同じリースを
       保持したまま `(*result.before_outcomes, *result.steps, *result.after_outcomes)` を
       `app_crashed` で走査する（`result.steps[-1]` ではない）。`_write_crash_artifacts`
-      （BE-0421、`pipeline.py:758`）を真似た新しい `_write_app_crash_artifacts(lz, s, sid)`
+      （BE-0421、`pipeline.py:803`）を真似た新しい `_write_app_crash_artifacts(lz, s, sid)`
       が、各証跡をマスキングを行う `writer.write_text` の経路で書き込み、ディレクトリを
       名指しする一節を `result.failure` へ追記する。
 - [ ] Unit 9 — `TracingDriver`：`base.AppCrashSignal` を `_PROTOCOLS` へ加え、
@@ -701,17 +762,22 @@ web backend や fake backend の実行が収集する内容は変わりません
       `docs/architecture.md`（および `docs/ja/`）に、既存のバックエンドクラッシュのリトライ
       節と、この項目のリトライなしの経路を相互参照させる。
 - [ ] Unit 13 — テスト。両バックエンドで、ふつうの `ElementNotFound` や `wait`・`assert` の
-      失敗に対して `app_crash_signal()` が `None` を返すこと（誤検知しないこと）。失敗した
-      `relaunch` ステップが `app_crash_signal()` をまったく確認しないこと。スタブした
-      ディレクトリとスタブした `adb` の出力に対する、iOS の `.ips` 掃引と Android の
-      `logcat`・tombstone 収集（Android の exit-info による裏付けを含む）。事後確認が経路の
-      内側にとどまること、`app_crashed` フィールドを立てること、入れ子になった
-      `if`・`forEach` の失敗をまたいでラッチが保たれることを検証する `_step_runner.py` の
-      テスト。`app-crash/` がマスキング済みのテキストを保持すること、`steps` だけでなく
-      `before_outcomes`・`after_outcomes` の中のクラッシュも走査が見つけること、パイプライン
-      レベルのクラッシュリトライが起きないことを検証する `pipeline.py` のテスト。
-      web backend・fake backend で `isinstance` が `False` を返し、何も変わらないことを
-      検証するテスト。
+      失敗、そして `app.state` の答えに関わらず `deviceType: device` に対して
+      `app_crash_signal()` が `None` を返すこと（誤検知しないこと）。失敗した `relaunch`
+      ステップ自身が `app_crash_signal()` をまったく確認しないこと、それを包む
+      `if`・`forEach` の outcome も、終了させられたアプリに対して失敗する
+      `after: on: fail` のステップも同様であること。3段の入れ子のふつうの（`relaunch`
+      でも確定済みクラッシュでもない）失敗が、確定する outcome ごとに1回の確認を払い
+      続け、ラッチがこのケースを抑えないことを固定するテスト。スタブしたディレクトリと
+      スタブした `adb` の出力に対する、iOS の `.ips` 掃引と Android の `logcat`・
+      tombstone 収集（Android の exit-info による裏付けを含む）。事後確認が経路の内側に
+      とどまること、`app_crashed` フィールドを立てること、入れ子になった `if`・`forEach`
+      の失敗をまたいで確定済みクラッシュのラッチが保たれることを検証する
+      `_step_runner.py` のテスト。`app-crash/` がマスキング済みのテキストを保持すること、
+      `steps` だけでなく `before_outcomes`・`after_outcomes` の中のクラッシュも走査が
+      見つけること、パイプラインレベルのクラッシュリトライが起きないことを検証する
+      `pipeline.py` のテスト。web backend・fake backend で `isinstance` が `False` を
+      返し、何も変わらないことを検証するテスト。
 
 ## 参考
 
@@ -763,11 +829,13 @@ web backend や fake backend の実行が収集する内容は変わりません
   `write_text`（マスキングする）と `write_bytes`（シンクの検査できない内容向けで、
   マスキングしない）の違い。本項目の証跡は、先にテキストへデコードすることでこれに従う
 - [`scripts/collect_android_diagnostics.sh`](../../scripts/collect_android_diagnostics.sh) —
-  ジョブ終了時の Android 診断掃引。本項目の `logcat` フィルタリングと `adb root` の
-  再接続は、どちらもこの前例にならう
+  ジョブ終了時の Android 診断掃引。本項目の `logcat` フィルタリングが従う前例であり、
+  自身の `adb wait-for-device` が `adb root` の壊す対象を名指ししている
 - [`bajutsu/common/backend_cli/adb_resident/resident_server.py`](../../bajutsu/common/backend_cli/adb_resident/resident_server.py) —
-  `AdbDriver` 自身の読み取りチャネル。`adb root` に切断され、本項目の tombstone 層が
-  再確立する
+  `AdbDriver` 自身の読み取りチャネル。tombstone 取得の `adb root` にまるごと終わらされ、
+  再起動はしない
+- [`bajutsu/common/backend_cli/adb/_functions.py`](../../bajutsu/common/backend_cli/adb/_functions.py) —
+  `instrument_cmd`。その `-w` フラグこそが、tombstone 取得の `adb root` が実際に終わらせるもの
 - [`bajutsu/common/backends.py`](../../bajutsu/common/backends.py) — `make_driver`。既存の
   `device_os` キーワードが、本項目の `package` キーワードの先例になっている
 - [`docs/ci.md`](../../docs/ci.md#the-ios-lane) — `fault-injection (xcuitest)`。本項目の
