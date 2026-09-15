@@ -111,8 +111,8 @@ class AppCrashedError(RuntimeError):
 （[`bajutsu/common/orchestrator/types/step_outcome.py`](../../bajutsu/common/orchestrator/types/step_outcome.py)）
 に新しく加える `app_crashed: bool = False` フィールドを `True` にします。これが、アプリ自身の
 証跡を取り込むかどうかを `pipeline.py` があとから読んで判断する合図です（「収集をつなぐ」を
-参照）。シナリオがどう終わったかについてレポートが必要とする他のあらゆる情報を、
-`RunResult.steps[-1]` がすでに運んでいるのと同じ形です。
+参照）——そこで説明する `before_outcomes`・`steps`・`after_outcomes` にわたる走査が見つけるの
+であり、`RunResult.steps[-1]` から読むのではありません。
 
 ### 検知の方式：ステップがすでに失敗した時点で確認する1つのシグナル
 
@@ -845,7 +845,7 @@ OS による強制終了はありませんが、ふつうのプロセス終了�
 から直接読みますが、こちらは見つけた
 outcome 自身の `app_crash_artifacts`——確認の時点ですでに収集済みで、ここで再び掃引する
 のではありません——から始めるため、走査が見つけたその outcome を暗黙のままにせず、
-引数として渡す必要があります。そこから、Android のときだけもう1つの呼び出し、
+引数として渡す必要があります。そこから、条件なしにもう1つの呼び出し、
 `lz.app_crash_tombstone()` でそれを拡張します。ここで初めて呼びます。これは本項目が
 `_finish_outcome` の内側では収集しない、ただ1件の証跡です。理由は「Android：`logcat` の
 クラッシュ用バッファをまず読み、root 権限があるときだけ tombstone を取得する」節が
@@ -853,7 +853,12 @@ outcome 自身の `app_crash_artifacts`——確認の時点ですでに収集�
 上がってきた `BackendCrashError` に `RunResult` そのものを奪われかねません。ここで
 呼ぶのは本当に安全です。`run_scenario` はすでに戻っており、同じシナリオの後続の
 どのステップも、これから再起動しようとしているレジデントサーバを経由して操作を
-続けることはもうありません。組み合わさったリスト——`logcat` が先、tombstone の
+続けることはもうありません。`_run_on_lease` が持つのは `Lease` であってバックエンドの
+識別子ではないため、この呼び出しは `result.backend == "adb"` のような分岐にせず、
+条件なしのままにします。バックエンドごとの知識を決定的な中核から
+締め出す「1つのプラットフォームは1つのバックエンド」という継ぎ目
+（[`CLAUDE.md`](../../CLAUDE.md)）を保ち、2つ目のバックエンドが将来 tombstone 相当の
+機能を持ったときに直す箇所も1つ減ります。組み合わさったリスト——`logcat` が先、tombstone の
 項目があとから加わり、iOS・web・fake では `app_crash_tombstone()` が no-op なので
 空のまま——を書き込みます。返ってきた `(name, content)` の組をそれぞれ
 `writer.write_text(f"{sid}/app-crash/{name}", content.decode(errors="replace"))` という、
@@ -867,6 +872,35 @@ outcome 自身の `app_crash_artifacts`——確認の時点ですでに収集�
 なりません。tombstone を失っても、outcome にすでに載っている `logcat` の層を
 巻き添えにしてはなりません。これは素の事後確認であり、新しい `except` 節では
 ありません。シナリオ自身のリトライの挙動は、これが走る時点ですでに確定しています。
+
+`StepOutcome.app_crash_artifacts` は outcome に載ったまま、上のディスクへのコピーだけでなく
+もう1つ消費者を抱えます。`manifest_dict` の `_scenario_dict(r)`
+（[`bajutsu/common/report/manifest.py`](../../bajutsu/common/report/manifest.py)）は素の
+`asdict(r)` であるため、`steps`・`before_outcomes`・`after_outcomes` を通じて届くあらゆる
+`StepOutcome`——クラッシュした本人も含みます——がそのままマニフェストの辞書に載り、
+`write_json` の `json.dumps` は `default=` を持ちません
+（[`bajutsu/common/evidence/sink.py`](../../bajutsu/common/evidence/sink.py)）。生の `bytes`
+には JSON 表現がないため、最初の app-crash シナリオが `manifest.json` を書き込む際に
+`TypeError` を送出してしまいます。クラッシュが正しく分類された*あとで*、run 全体の
+マニフェストと HTML レポートを道連れにする形です。本項目はすでに `crawl` 自身の
+`Crash.artifacts`（後述の「`crawl` 自身のクラッシュ記録を拡張する」）については逆向きの
+判断を正しく下しています。同じ理由で `serialize.py` の往復からあえて除いています。
+`_scenario_dict` にも、`run` 側の同じ危うさに対応する、対になる除外が要ります。すでに
+行っている `wall_offset_s` の pop
+（[`bajutsu/common/report/manifest.py`](../../bajutsu/common/report/manifest.py)）の隣に、
+`steps`・`before_outcomes`・`after_outcomes` それぞれの outcome の辞書を歩いて
+`app_crash_artifacts` も pop します。`wall_offset_s` はトップレベルの `RunResult` フィールドで
+1回の pop が届きますが、こちらはその3つのリストが運ぶあらゆる `StepOutcome` の内側に
+ネストされているため、除外もそれらを歩く必要があります。`report/load.py` 側の逆変換に
+対応する変更は要りません。`_step` の `_kw(StepOutcome, d)` は、`d` にないフィールドを
+すでにデータクラスの既定値で組み立て直します。`RunResult` の `wall_offset_s` に対してすでに
+行っているのと同じ仕組みです。取り除かれた `app_crash_artifacts` は、ふつうのステップが
+すでに持つ空の既定値とまったく同じように `()` として組み立て直されるだけです。クラッシュは
+それでも完全に報告されます。`outcome.reason` と `outcome.app_crashed`（シリアライズの
+危うさのない、ただの `bool` です）はそのまま往復し、この節がすでに `{sid}/app-crash/` の下へ
+書き込んでいるマスキング済みのコピーこそが、レポートの読み手がたどる恒久的なコピーです。
+outcome 上のメモリ内の bytes は、その書き込みに届くためだけに存在し、マニフェストに届く
+ためのものではありません。
 
 ### `crawl` 自身のクラッシュ記録を拡張する
 
@@ -1172,12 +1206,19 @@ fake backend の実行が収集する内容は変わりません。
       （BE-0421、`pipeline.py:803`）を真似た新しい
       `_write_app_crash_artifacts(lz, outcome, s, sid)`
       が、見つけた outcome 自身の `app_crash_artifacts`（Unit 7 が確認の時点ですでに収集
-      済みで、ここで再び掃引するのではありません）から始め、Android のときだけ
-      `lz.app_crash_tombstone()` で拡張します——ここで初めて、本当に事後に呼びます——
+      済みで、ここで再び掃引するのではありません）から始め、条件なしに
+      `lz.app_crash_tombstone()` で拡張します——ここで初めて、本当に事後に呼びます。
+      Android 以外では他の3つが no-op を宣言しているため空のままです（Unit 6）——
       組み合わさったリストをマスキングを行う `writer.write_text` の経路で書き込み、
       ディレクトリを名指しする一節を `result.failure` へ追記します。
       `lz.app_crash_tombstone()` 自身の失敗はログに記録するだけで、
       すでに outcome にある `logcat` の層を巻き添えにしません。
+      `bajutsu/common/report/manifest.py` の `_scenario_dict` が、既存の `wall_offset_s` の
+      pop の隣で、`steps`・`before_outcomes`・`after_outcomes` それぞれの outcome の辞書から
+      `app_crash_artifacts` を pop し、本ユニットが `StepOutcome` に加える生の `bytes` が
+      `json.dumps` に届かないようにします。`report/load.py` は、`_kw` の既存の
+      欠落フィールド処理がすでにその項目を既定値で組み立て直すため、対応する変更は
+      要りません。
 - [ ] Unit 9 — `TracingDriver`：`base.AppCrashSignal` を `_PROTOCOLS` へ加え、
       `--trace-driver` がそれを実装したドライバに対してだけ実属性として設置するようにします。
 - [ ] Unit 10 — `crawl` 自身の統合。`_build_lane` のレーンごとの `app_crash_artifacts`
@@ -1227,8 +1268,10 @@ fake backend の実行が収集する内容は変わりません。
       もっとも新しいその起動のレポートだけを見つけ、以前のシナリオやクラッシュのもの
       ではないこと。偽の `AndroidEnvironment.app_crash_tombstone()` が `_finish_outcome`
       からもステップループのどこからも一度も呼ばれないこと——`_LoopConfig`・
-      `StepLoopState` が `app_crash_artifacts` への参照だけを運び、これへの参照は
-      まったく運ばないことをソースレベルで確認します——tombstone の層の呼び出し箇所が
+      `StepLoopState` へのソースレベルの確認ではなく、その偽の実装が受け取ったあらゆる
+      呼び出しを記録する形で振る舞いとして確認します。`capture_app_crash` は不透明な
+      `Callable` であり、`_LoopConfig` も `StepLoopState` も、それがどの環境メソッドに
+      由来するかを記録しないためです——tombstone の層の呼び出し箇所が
       `pipeline.py` の事後走査だけにとどまることを固定します。その走査自身の
       `_write_app_crash_artifacts` が、クラッシュした `RunResult` ごとに
       `lz.app_crash_tombstone()` をちょうど1回呼び、outcome の `app_crash_artifacts`
@@ -1288,6 +1331,13 @@ fake backend の実行が収集する内容は変わりません。
       分類され、`app_crashed=True` が立ち `app-crash/` が書き込まれることを固定する
       テスト。そのあとかたづけステップ自身の outcome が、ふつうの
       `_dispatch_after`・`run_phase` の経路を通って `_finish_outcome` に届くからです。
+      `manifest.py` のテスト。`steps`・`before_outcomes`・`after_outcomes` それぞれの
+      outcome に `StepOutcome.app_crash_artifacts` を持たせたクラッシュ済み `RunResult` を
+      `manifest_dict` と `default=` のない素の `json.dumps` へ往復させ、何も送出しないこと
+      ——本ユニット自身の `_scenario_dict` 除外が防ぐ回帰そのものです——を固定します。
+      `report/load.py` が同じ `RunResult` を、影響を受けたすべての outcome で
+      `app_crash_artifacts` を `()` の既定値に戻し、`app_crashed` と `reason` はそのまま
+      保って組み立て直すことも固定します。
 
 ## 参考
 
@@ -1329,6 +1379,12 @@ fake backend の実行が収集する内容は変わりません。
   が真似る `_write_crash_artifacts`（BE-0421）
 - [`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py) —
   `Lease.crash_artifacts`。`Lease.app_crash_artifacts` が踏襲する前例
+- [`bajutsu/common/report/manifest.py`](../../bajutsu/common/report/manifest.py) —
+  `_scenario_dict`。既存の `wall_offset_s` の pop が、本項目自身の `app_crash_artifacts` 除外の
+  踏襲する前例
+- [`bajutsu/common/report/load.py`](../../bajutsu/common/report/load.py) — `_kw` の欠落
+  フィールド処理。すでに `wall_offset_s` 自身の組み立て直し経路として文書化されており、
+  本項目では変更しません
 - [`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py) —
   `app_crash_artifacts()` と `app_crash_tombstone()` が加わるプロトコル
 - [`bajutsu/common/platform_lifecycle/relaunchers.py`](../../bajutsu/common/platform_lifecycle/relaunchers.py) —

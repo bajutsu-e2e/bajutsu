@@ -106,8 +106,8 @@ the existing pipeline already knows how to finish correctly, and sets a new `app
 field on `StepOutcome`
 ([`bajutsu/common/orchestrator/types/step_outcome.py`](../../bajutsu/common/orchestrator/types/step_outcome.py))
 to `True` — the signal `pipeline.py` reads afterward (see *Wiring the capture*) to decide whether to
-copy the app's own evidence in, the same way `RunResult.steps[-1]` already carries everything else a
-report needs to know about how a scenario ended.
+copy the app's own evidence in — found by the scan over `before_outcomes` / `steps` /
+`after_outcomes` described there, not read off `RunResult.steps[-1]`.
 
 ### Detecting the event: a reactive signal, checked once a step has already failed
 
@@ -286,7 +286,7 @@ also calls that callable synchronously and stores the result on a new
 `outcome.app_crash_artifacts: tuple[tuple[str, bytes], ...]` field — capturing right here, at
 confirmation, rather than later once the scenario finishes, is what keeps a subsequent teardown step
 from moving the evidence out from under the sweep (see *iOS: matching the `.ips` report* and *Wiring
-the capture*). Never letting the exception itself propagate past this one point.
+the capture*). The exception itself never propagates past this one point.
 `active_driver` is already whichever driver actuated this step, and a `web` block's inner steps and its
 own wrapping outcome answer differently: `_handle_web` runs `step.web.steps` on a `WebContextDriver` it
 constructs for the block (`self.exec_steps(step.web.steps, web_driver)`), so *those* inner steps'
@@ -731,15 +731,19 @@ phase's own list (`_functions.py:851`), and it is `[]` outright when a `before` 
 `pipeline.py:803`) almost exactly, with one extra parameter its sibling does not need: the sibling
 reads every artifact off `lz.crash_artifacts()` directly, but this one starts from the found
 `outcome`'s own `app_crash_artifacts` — already captured at confirmation time, not re-swept here —
-so the scan's own found outcome has to reach it as an argument, not stay implicit. It then, on
-Android only, extends that list
-with one more call, `lz.app_crash_tombstone()`, made right here for the first time: this is the one
-piece of evidence this item does *not* capture inside `_finish_outcome`, for the reason *Android:
-`logcat`'s crash buffer first, a root-gated tombstone pull second* gives — the pull needs `adb root`,
-and firing that mid-scenario risks losing the whole `RunResult` to an escaping `BackendCrashError`.
-Calling it here instead is genuinely safe: `run_scenario` has already returned, so nothing later in
-the same scenario can still be actuating through the resident server this call is about to restart.
-The combined list — `logcat` first, the tombstone entry appended after, empty on iOS/web/fake since
+so the scan's own found outcome has to reach it as an argument, not stay implicit. It then extends
+that list unconditionally with one more call, `lz.app_crash_tombstone()`, made right here for the
+first time: this is the one piece of evidence this item does *not* capture inside `_finish_outcome`,
+for the reason *Android: `logcat`'s crash buffer first, a root-gated tombstone pull second* gives —
+the pull needs `adb root`, and firing that mid-scenario risks losing the whole `RunResult` to an
+escaping `BackendCrashError`. Calling it here instead is genuinely safe: `run_scenario` has already
+returned, so nothing later in the same scenario can still be actuating through the resident server
+this call is about to restart. `_run_on_lease` holds a `Lease`, not a backend identity, so this call
+stays unconditional rather than branching on `result.backend == "adb"` — the per-backend knowledge
+the "a platform is a backend" seam ([`CLAUDE.md`](../../CLAUDE.md)) keeps out of the deterministic
+core, and one fewer site to edit the day a second backend grows a tombstone equivalent. The combined
+list —
+`logcat` first, the tombstone entry appended after, empty on iOS/web/fake since
 their `app_crash_tombstone()` is a no-op — is what gets written: each `(name, content)` pair through
 `writer.write_text(f"{sid}/app-crash/{name}", content.decode(errors="replace"))` — the redacting text
 path, not `write_bytes`, for the same reason BE-0421's own copy uses it: a crash report is text a
@@ -750,6 +754,30 @@ same posture: a diagnostic capture must never turn an already-decided failure in
 a lost tombstone must never cost the `logcat` layer already on the outcome. This is a plain post-return
 check, not a new `except` branch — the scenario's own retry behavior above is already settled by the
 time it runs.
+
+`StepOutcome.app_crash_artifacts` living on the outcome, not only copied to disk above, has a second
+consumer this item has to account for: `manifest_dict`'s `_scenario_dict(r)`
+([`bajutsu/common/report/manifest.py`](../../bajutsu/common/report/manifest.py)) is a plain `asdict(r)`,
+so every `StepOutcome` reachable through `steps` / `before_outcomes` / `after_outcomes` — the crashed
+one included — lands in the manifest dict verbatim, and `write_json`'s `json.dumps` carries no
+`default=` ([`bajutsu/common/evidence/sink.py`](../../bajutsu/common/evidence/sink.py)). Raw `bytes`
+has no JSON encoding, so the first app-crash scenario would raise `TypeError` writing `manifest.json`
+— after the crash was correctly classified, taking the whole run's manifest and HTML report down with
+it. This item already makes the opposite call correctly for `crawl`'s own `Crash.artifacts` (*Extending
+`crawl`'s own crash recording*, below): deliberately left out of `serialize.py`'s round trip for the
+same reason. `_scenario_dict` needs the matching exclusion for `run`'s half of the same hazard:
+alongside the `wall_offset_s` pop it already does
+([`bajutsu/common/report/manifest.py`](../../bajutsu/common/report/manifest.py)), it walks each outcome
+dict in `steps` / `before_outcomes` / `after_outcomes` and pops `app_crash_artifacts` from it too —
+`wall_offset_s` is a top-level `RunResult` field a single pop reaches, while this one is nested inside
+every `StepOutcome` the three lists carry, so the exclusion has to walk them. `report/load.py`'s
+inverse needs no matching change: `_step`'s `_kw(StepOutcome, d)` already reconstructs any field
+missing from `d` at its dataclass default, the same way it already does for `wall_offset_s` on
+`RunResult` — a stripped `app_crash_artifacts` simply reconstructs as `()`, exactly like a normal
+step's own already-empty default. The crash is still fully reported: `outcome.reason` and
+`outcome.app_crashed` (a plain `bool`, no serialization hazard) still round-trip, and the redacted
+copy under `{sid}/app-crash/` this section already writes is the durable copy a report reader follows
+— the in-memory bytes on the outcome exist only to reach that write, never to reach the manifest.
 
 ### Extending `crawl`'s own crash recording
 
@@ -1010,12 +1038,17 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       `finally` releases it; the new `_write_app_crash_artifacts(lz, outcome, s, sid)` mirroring
       `_write_crash_artifacts` (BE-0421,
       `pipeline.py:803`), starting from the found outcome's own `app_crash_artifacts` (captured at
-      confirmation time by Unit 7, not re-swept here) and, on Android only, extending it with
-      `lz.app_crash_tombstone()` — called here, genuinely post-return, for the first time — before
+      confirmation time by Unit 7, not re-swept here) and unconditionally extending it with
+      `lz.app_crash_tombstone()` — called here, genuinely post-return, for the first time, empty on
+      every backend but Android since the other three declare it a no-op (Unit 6) — before
       writing the combined list through the redacting `writer.write_text` path under `{sid}/app-crash/`,
       appending a directory-naming trailer to `result.failure`; a failure inside
       `lz.app_crash_tombstone()` itself logged, never raised, so a lost tombstone never costs the
-      `logcat` layer already on the outcome.
+      `logcat` layer already on the outcome; `bajutsu/common/report/manifest.py`'s `_scenario_dict`
+      popping `app_crash_artifacts` from every outcome dict in `steps` / `before_outcomes` /
+      `after_outcomes`, alongside its existing `wall_offset_s` pop, so the raw `bytes` this unit adds
+      to `StepOutcome` never reaches `json.dumps` — `report/load.py` needs no matching change, since
+      `_kw`'s existing missing-field handling already reconstructs the field at its default.
 - [ ] Unit 9 — `TracingDriver`: add `base.AppCrashSignal` to `_PROTOCOLS` so `--trace-driver` installs
       it as a real attribute only on a wrapped driver that implements it.
 - [ ] Unit 10 — `crawl`'s own integration: `_build_lane`'s per-lane `app_crash_artifacts` (never
@@ -1057,9 +1090,11 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       a `_resume_warm` cross-lease reuse's own launch, and the `.ips` sweep after each finding only the
       report from that most recent launch, never an earlier scenario's or crash's; a fake
       `AndroidEnvironment.app_crash_tombstone()` never invoked from `_finish_outcome` or anywhere else
-      inside the step loop — a source-level assertion that `_LoopConfig`/`StepLoopState` carries no
-      reference to it at all, only to `app_crash_artifacts` — pinning that the tombstone layer's call
-      site stays exclusively in `pipeline.py`'s post-return scan; that scan's own
+      inside the step loop — asserted behaviourally, through that fake recording every call it
+      receives rather than through a source-level check on `_LoopConfig`/`StepLoopState`, since
+      neither records which environment method an opaque `capture_app_crash` callable came from —
+      pinning that the tombstone layer's call site stays exclusively in `pipeline.py`'s post-return
+      scan; that scan's own
       `_write_app_crash_artifacts` calling `lz.app_crash_tombstone()` exactly once per crashed
       `RunResult` and writing the merged `logcat`-plus-tombstone list, never the outcome's
       `app_crash_artifacts` alone; a crawl lane's own `AndroidEnvironment` never attempting the
@@ -1107,7 +1142,13 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       and the same shape again but with an `on: always` `after` rule that also fails against the
       now-dead app, pinning that this one *is* classified, `app_crashed=True` and `app-crash/` written,
       since that teardown step's own outcome reaches `_finish_outcome` through the ordinary
-      `_dispatch_after`/`run_phase` path.
+      `_dispatch_after`/`run_phase` path; a `manifest.py` test round-tripping a crashed `RunResult`
+      (`StepOutcome.app_crash_artifacts` populated on an outcome in each of `steps`, `before_outcomes`,
+      and `after_outcomes`) through `manifest_dict` and a plain `json.dumps` with no `default=`,
+      pinning that it raises nothing — the regression this unit's own `_scenario_dict` exclusion
+      exists to prevent — and that `report/load.py` reconstructs the same `RunResult` with
+      `app_crash_artifacts` back at its `()` default on every affected outcome, `app_crashed` and
+      `reason` intact.
 
 ## References
 
@@ -1145,6 +1186,11 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
   `_write_app_crash_artifacts` mirrors
 - [`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py) — `Lease.crash_artifacts`,
   the precedent `Lease.app_crash_artifacts` follows
+- [`bajutsu/common/report/manifest.py`](../../bajutsu/common/report/manifest.py) — `_scenario_dict`,
+  whose existing `wall_offset_s` pop is the precedent this item's own `app_crash_artifacts` exclusion
+  follows
+- [`bajutsu/common/report/load.py`](../../bajutsu/common/report/load.py) — `_kw`'s missing-field
+  handling, already documented as `wall_offset_s`'s own reconstruction path and unchanged by this item
 - [`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py) —
   the protocol `app_crash_artifacts()` and `app_crash_tombstone()` join
 - [`bajutsu/common/platform_lifecycle/relaunchers.py`](../../bajutsu/common/platform_lifecycle/relaunchers.py) —
