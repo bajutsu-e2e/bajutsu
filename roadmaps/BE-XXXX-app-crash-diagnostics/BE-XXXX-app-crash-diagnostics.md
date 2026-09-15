@@ -184,8 +184,12 @@ itself, so a step kind added later still needs no wiring here, the same property
 `_drain_step_interruptions` already gives the interruption check it shares across the same four
 handlers. A fast-suite assertion that no `self.state.outcomes.append` survives outside
 `_finish_outcome` keeps a sixth call site, added later, from reopening the same gap silently.
-`_finish_outcome` checks `isinstance(active_driver, base.AppCrashSignal)` and `outcome.ok is False`,
-together, right before that append.
+`_finish_outcome` checks `isinstance(active_driver, base.AppCrashSignal)`, `outcome.ok is False`, and
+`outcome.action != "relaunch"`, together, right before that append. `StepOutcome.action` already
+carries the step's own kind (`_step_runner.py:97` sets it from the dispatch itself), so this reads as
+plainly as the other two. The `relaunch` action deliberately terminates the app before relaunching it
+(see *iOS: `app.state`, not the element tree*), so a `relaunch` whose launch half fails would
+otherwise read as a crash the check itself caused.
 
 A nested step's failure reaches `_finish_outcome` more than once by construction, not only at the
 handler that first observed it. `_run_if` and `_run_for_each` both run their body through
@@ -193,15 +197,21 @@ handler that first observed it. `_run_if` and `_run_for_each` both run their bod
 levels deep, an action inside a `forEach` inside an `if`, settles three wrapping outcomes in turn: the
 action's own, the `forEach`'s, and the `if`'s, each a separate call to `_finish_outcome`. `_run_recovery`
 (`_step_runner.py:70`) adds one more for every `after` step it runs through the same `exec_steps`
-against an app that is already gone. Probing the driver's signal that many times costs little by
-itself, but `app_crash_artifacts()` does not: the iOS sweep alone polls
-`~/Library/Logs/DiagnosticReports` for up to a few seconds (see *iOS: matching the `.ips` report*), and
-paying that sweep more than once on a scenario whose outcome is already settled is exactly the
-standing per-step cost *Alternatives considered* rules out below for a `capturePolicy` gate. A latch
-on `self.state` — set the first time `_finish_outcome` raises and catches `AppCrashedError`, checked
-before probing again — keeps both the driver call and the artifact sweep to once per scenario; every
-outcome the propagation still settles afterward folds that same, already-known signal into its own
-`outcome.reason` without probing `app_crash_signal()` a second time.
+against an app that is already gone. What that redundancy costs is *N* extra `app_crash_signal()`
+round-trips — not the artifact sweep, which `pipeline.py` runs at most once per scenario regardless,
+off `StepOutcome.app_crashed` rather than off this check (see *Wiring the capture*). Worth bounding
+within a phase all the same, but a `self.state` latch cannot bound it *across* phases: `run_phase`
+(`_functions.py:994`) builds a fresh `StepLoopState` on every call, and the `after` dispatch calls it
+once per rule, so a latch kept there resets at the start of `before`, again at the start of the main
+steps, and again for every dispatched `after` rule — exactly the cross-phase re-entry `_run_recovery`
+raises above. The latch instead needs a home that survives across phases: a single mutable object
+`run_scenario` creates once and hands to every `run_phase` call through its closure, the same way it
+already shares `live_bindings` across phases (`_functions.py:683`, `:692`), landed on `_LoopConfig`
+next to `mailbox` and `progress` — themselves already mutable objects behind an otherwise-invariant
+field. Set the first time `_finish_outcome` raises and catches `AppCrashedError`, checked before
+probing again, it keeps `app_crash_signal()` to once per scenario across `before`, the main steps, and
+every `after` rule; every outcome the propagation still settles afterward folds that same,
+already-known signal into its own `outcome.reason` without probing again.
 
 Only when the latch is not yet set does `_finish_outcome` call `active_driver.app_crash_signal()`. A
 non-`None` answer raises `base.AppCrashedError(signal)` immediately and catches it in the same
@@ -223,11 +233,16 @@ sidesteps both. A backgrounded-but-alive app answers `runningBackgroundSuspended
 A `notRunning` answer is not, by itself, proof of a crash on every platform: on a real device an OS
 memory-pressure kill or an unfinished launch could answer the same way. Neither applies to the
 Simulator this backend drives. The Simulator's host has desktop-class memory and does not jetsam-kill
-a foreground app the way a real device does. The scenario schema has no step that terminates the app
-under test either. This check also runs only once a step has already failed, *after* the app was
-observed running through every earlier step of the same scenario, so a launch that never completed is
-not a case it meets. A `notRunning` answer here means the app that was running a moment ago is not
-running now, on a host with no other way for that to happen.
+a foreground app the way a real device does. One scenario step does deliberately terminate the app —
+`relaunch`, whose iOS path is `e.terminate(bundle_id)` then `e.launch(...)`
+([`xcuitest_environment.py:819-820`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py)) —
+so `_finish_outcome` skips the probe outright when the step that just failed is a `relaunch`: a
+relaunch whose own launch half fails is that step's own failure, not a crash, and its failure message
+already says so without this item's help. Every other check also runs only once a step has already
+failed, *after* the app was observed running through every earlier step of the same scenario, so a
+launch that never completed under a non-`relaunch` step is not a case it meets. A `notRunning` answer
+anywhere else means the app that was running a moment ago is not running now, on a host with no other
+way for that to happen.
 
 A new route joins
 [`BajutsuKit/Sources/BajutsuRunner/openapi.yaml`](../../BajutsuKit/Sources/BajutsuRunner/openapi.yaml),
@@ -273,6 +288,15 @@ device's own `udid`, so a new `_app_crash_reports(launched_at, udid)` — a sibl
 when its path names that same `udid`, in place of `_reported_pid`'s check. That disambiguates two
 Simulators running the identical target binary in the same window, the case a CI host running two
 lanes in parallel (`--workers 2`) can produce, without needing a PID at all.
+
+`_reports_since(reports_dir, pattern, since)` still matches by filename, though, and a `.ips`
+report's filename names the process that crashed (`Showcase-2026-…ips`), never the bundle id —
+BE-0421 passes the literal `"xcodebuild-*.ips"` for its own known process. `XcuitestEnvironment`
+holds `ios.bundle_id` (`self._bundle_id`, `com.example.Showcase`), which is not that name and never
+matches a report's filename. This item instead reads `CFBundleExecutable` from the installed app's
+own `Info.plist`, at `Path(ios.app_path) / "Info.plist"`, once at launch time — the one plist key
+every iOS bundle is required to declare — and builds the sweep's pattern from it, the same way
+`ios.app_path` already names the bundle `e.install` installs from.
 
 `XcuitestEnvironment`
 ([`bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py))
@@ -344,21 +368,36 @@ reads never needs host/device clock reconciliation. It implements `app_crash_art
 layers, matching this item's own scoping decision to capture both, each independently wrapped so that
 a failure in one layer never drops the other:
 
-1. **`logcat`'s `crash` buffer**, always attempted, needing no elevated access. Right after each
-   launch, `adb logcat -b crash -c` clears the buffer. A later `adb logcat -b crash -d` dump can then
-   hold only content from the launch this scenario is running, never a stale crash the same package
-   left behind on an earlier run sharing the device. The dump is parsed two ways: a `FATAL EXCEPTION`
-   block for a managed-code (Java/Kotlin) crash, and, when none is found, the native crash buffer's
-   own `Fatal signal <n>` header line for an NDK crash — the two formats `logcat`'s crash buffer
-   actually carries. Whichever matches is extracted and written as `logcat-crash.txt`. This is the one
-   artifact guaranteed available on any AVD or real device the adb backend can already reach.
+1. **`logcat`'s `crash` buffer**, always attempted, needing no elevated access. `logcat -b crash` is a
+   device-global ring buffer that persists across launches and across scenarios sharing the same
+   device — [`scripts/collect_android_diagnostics.sh`](../../scripts/collect_android_diagnostics.sh)
+   dumps it whole (`-b main,system,crash,events,radio`) at the end of every failed CI job, so clearing
+   it per launch would destroy evidence that end-of-job sweep still needs. Nothing here clears it: a
+   later `adb logcat -b crash -d -t "<launch marker>"` dump uses the device-relative launch marker
+   already recorded above as `logcat`'s own time filter, so it holds only content from the launch this
+   scenario is running — never a stale crash the same package left behind on an earlier run sharing
+   the device — while leaving everything before that marker intact for the end-of-job sweep to still
+   find. The dump is parsed two ways: a `FATAL EXCEPTION` block for a managed-code (Java/Kotlin)
+   crash, and, when none is found, the native crash buffer's own `Fatal signal <n>` header line for an
+   NDK crash — the two formats `logcat`'s crash buffer actually carries. Whichever matches is
+   extracted and written as `logcat-crash.txt`. This is the one artifact guaranteed available on any
+   AVD or real device the adb backend can already reach.
 2. **A tombstone pull**, best-effort and gated on root access. `adb root` is already a routine
-   operation against the emulator images this backend targets. It is followed by a pull of the most
-   recent `/data/tombstones/tombstone_NN` whose modification time is at or after the launch marker
-   above, compared as device-relative timestamps, so no clock reconciliation is needed here either. A
-   real device, a user build, or a refused `adb root` all resolve to skipping this layer silently. The
-   event is still reported and `logcat-crash.txt` still lands; a device that refuses root loses only
-   the native-frame detail a managed-code crash never needed in the first place.
+   operation against the emulator images this backend targets, but it restarts `adbd`
+   (`scripts/collect_android_diagnostics.sh:98-102` already covers this with its own
+   `adb wait-for-device` right after `adb root`, noting why: "adbd restarting as root"). That restart
+   drops every `adb forward`/`adb reverse` mapping on this device — the resident server's own read
+   channel (`resident_server.py:114`) and BE-0283's network-collector reverse tunnel
+   (`android_environment.py:298-306`) among them — while `_run_on_lease` still holds this exact lease,
+   both connections still live. The pull follows the collector script's own pattern:
+   `adb wait-for-device`, then re-establishes both mappings — the same two calls `pool.py`'s `lease()`
+   already makes once at lease acquisition — before it pulls the most recent
+   `/data/tombstones/tombstone_NN` whose modification time is at or after the launch marker above,
+   compared as device-relative timestamps, so no clock reconciliation is needed here either. A real
+   device, a user build, or a refused `adb root` all resolve to skipping this layer (and the
+   reconnect, since nothing tore anything down) silently. The event is still reported and
+   `logcat-crash.txt` still lands; a device that refuses root loses only the native-frame detail a
+   managed-code crash never needed in the first place.
 
 ### Wiring the capture into a failed scenario's run directory
 
@@ -383,10 +422,16 @@ the same way `crash_artifacts` already is, and wired in `pool.py`'s `lease()` cl
 reading the environment's method directly, with no snapshot-and-thunk indirection, since (unlike a
 backend crash) nothing tears this environment down or hands it to a new lease before this call.
 
-`pipeline.py`'s `_run_on_lease` reads `result.steps[-1].app_crashed` right after `run_scenario`
+`pipeline.py`'s `_run_on_lease` reads `result` for a crashed outcome right after `run_scenario`
 returns, still holding the same lease it leased, before its own `finally` ever releases it — closing
-the race an earlier draft of this item left open by reading artifacts after release. When it is
-`True`, a new `_write_app_crash_artifacts(lz, s, sid)` mirrors `_write_crash_artifacts` (BE-0421,
+the race an earlier draft of this item left open by reading artifacts after release. It scans
+`(*result.before_outcomes, *result.steps, *result.after_outcomes)` for `app_crashed` rather than
+reading `result.steps[-1]`: a nested crash settles its wrapping `if`/`forEach` outcomes *after* the
+crashed one (`_step_runner.py:220`, `:238`), so the crashed outcome is not always last, and
+`result.steps` alone omits the `before` and `after` phases entirely — `RunResult.steps` is the main
+phase's own list (`_functions.py:851`), and it is `[]` outright when a `before` step fails
+(`_functions.py:728-732` skips the main steps in that case). When the scan finds one, a new
+`_write_app_crash_artifacts(lz, s, sid)` mirrors `_write_crash_artifacts` (BE-0421,
 `pipeline.py:758`) almost exactly: it calls `lz.app_crash_artifacts()`, writes each `(name, content)`
 pair through `writer.write_text(f"{sid}/app-crash/{name}", content.decode(errors="replace"))` — the
 redacting text path, not `write_bytes`, for the same reason BE-0421's own copy uses it: a crash report
@@ -417,13 +462,23 @@ The capture is therefore threaded the same way `driver` and `reset` already are:
 a third return value, that lane's own `env.app_crash_artifacts`, carried alongside its driver and
 reset through `WorkerFactory` (`bajutsu/crawl/core/_functions.py`) for every extra lane and through
 `crawl()`'s own primary-lane parameters for the first one. `record_crash`'s call site
-(`bajutsu/crawl/core/_functions.py:667`) already computes the crash signal off the coordinator's lock
-— "pure deterministic reads, off-lock", its own comment says — right before calling
-`coord.record_crash(path)`. This item's capture call joins it there, in the same off-lock window,
-calling that worker's own lane-scoped `env.app_crash_artifacts()` directly — the same
-no-argument method `run`'s own path calls, needing no driver-reported signal to key off since it
-already reads `app_launched_at` and the environment's own `udid` internally. Capturing here matters
-for concurrency, not only correctness: `record_crash` holds the
+(`bajutsu/crawl/core/_functions.py:667`) already computes `crashed = not alive(d, landed)` off the
+coordinator's lock — "pure deterministic reads, off-lock", its own comment says — right before calling
+`coord.record_crash(path)`. `alive` falls back to the UI-tree heuristic `is_app_alive` on both
+backends this item covers, and this item's own Introduction already names its risk: a system alert or
+a deliberate `background` step reads as a false positive. `run`'s own bounded `.ips`/tombstone poll
+earns its wait because `app.state == notRunning` or a `pidof`-plus-exit-info check confirmed the event
+first; `crawl` has no such confirmation, so a false positive here would poll to its full timeout on
+every occurrence — the common case, not the rare one, since `crawl` does not stop after recording a
+crash (`current_fp = None; continue` right after `record_crash`, `_functions.py:668-669`) and can walk
+into the same false positive repeatedly in one run. This item's capture call therefore joins the
+existing check in the same off-lock window, but only calls that worker's own lane-scoped
+`env.app_crash_artifacts()` when the driver can positively confirm the event first: `isinstance(d,
+base.AppCrashSignal)` and a non-`None` `d.app_crash_signal()`, the same capability both backends
+already implement for `run`. `crawl`'s own detection is unchanged either way — a `Crash` is still
+recorded on the UI-tree heuristic alone — only the artifact sweep is gated, so an unconfirmed crash
+records a `Crash` with no `artifacts` rather than paying a full-timeout poll on what might be a
+covering alert. Capturing here matters for concurrency, not only correctness: `record_crash` holds the
 coordinator's `self._cond` for its whole body, and that same lock also serializes `on_event`
 (`_coordinator.py`'s `_emit`) and every other worker's own `record_crash` / `record_edge` calls — a
 multi-second `.ips` poll or tombstone pull run *inside* that lock would stall every other crawl lane
@@ -432,15 +487,20 @@ an ordinary list append.
 
 `Crash` ([`bajutsu/crawl/core/crash.py`](../../bajutsu/crawl/core/crash.py)) gains an
 `artifacts: tuple[tuple[str, bytes], ...] = ()` field, and `record_crash` takes and stores it alongside
-`path`. `bajutsu/crawl/cli.py`'s `_finish`
-([`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py)) already walks `screen_map.crashes` in order to
-write each one's `crashes/crash-NNN.yaml` repro (`bajutsu/crawl/repro.py`), `NNN` that crash's own
-zero-padded, one-based index in the list. It gains one more step there, writing any non-empty
-`artifacts` under `crashes/crash-NNN/app-crash/` — a sibling of the repro file, not a same-named
-top-level directory, so the two are found together and sort together, and written by the one place
-that already owns both the artifact writer and the finished, ordered crash list, rather than needing
-`on_event` to do it mid-crawl. A crawl's own detection stays the UI-tree heuristic it already uses:
-`crawl` has no scenario step to hang a reactive check off, unlike `run`. The capture is shared between
+`path`. [`bajutsu/crawl/repro.py`](../../bajutsu/crawl/repro.py)'s `write_repros` — not `cli.py`'s
+`_finish`, which only calls it and echoes a count — already walks `screen_map.crashes` in order to
+write each one's `crashes/crash-NNN.yaml` repro, `NNN` that crash's own zero-padded, one-based index
+in the list (`enumerate(screen_map.crashes, start=1)`, `repro.py:154`). That loop owns the numbering,
+so it gains the artifact-writing step rather than `_finish` re-deriving the same index in a second
+file, a duplicated-logic shape that would drift silently if the numbering ever changed in one place
+and not the other. `write_repros` also `continue`s past a crash whose path cannot be faithfully
+replayed, writing no `.yaml` for it (a `tap_point` action has no selector to address) — the artifact
+write sits *before* that `continue`, so a non-replayable crash, the kind whose platform report is
+worth the most since there is no repro to run instead, does not lose its artifacts along with its
+repro. It writes any non-empty `artifacts` under `crashes/crash-NNN/app-crash/` — a sibling of the
+repro file, not a same-named top-level directory, so the two are found together and sort together. A
+crawl's own detection stays the UI-tree heuristic it already uses: `crawl` has no scenario step to
+hang a reactive check off, unlike `run`. The capture is shared between
 the two entry points; the detection is not.
 
 ### Proving the capture on a real crash, not only a stubbed one
@@ -502,18 +562,23 @@ fake-backend run captures.
       `XcuitestDriver.app_crash_signal()` implementing `AppCrashSignal`, classifying `notRunning` as
       the signal and letting a channel error propagate as `XcuitestRunnerCrashError`.
 - [ ] Unit 3 — iOS: `XcuitestEnvironment.app_launched_at`, recorded at each app launch/relaunch;
-      `app_crash_artifacts()`'s name-and-`udid`-matched `.ips` sweep (no PID accessor exists on
-      `XCUIApplication`), with a bounded wait for `ReportCrash`'s asynchronous write, wrapped so any
-      failure resolves to `[]`.
+      reading `CFBundleExecutable` from `Path(ios.app_path) / "Info.plist"` for the sweep's own
+      match pattern (`ios.bundle_id` is not this name); `app_crash_artifacts()`'s name-and-`udid`-
+      matched `.ips` sweep (no PID accessor exists on `XCUIApplication`), with a bounded wait for
+      `ReportCrash`'s asynchronous write, wrapped so any failure resolves to `[]`.
 - [ ] Unit 4 — Android: a `package` keyword threaded through `backends.make_driver` into
       `AdbDriver.__init__`, the same way `device_os` already is; a `launched_at` injected callable
       reading `AndroidEnvironment.app_launched_at`; `AdbDriver.app_crash_signal()` via `adb shell
       pidof <package>` corroborated by a time-bound `adb shell dumpsys activity exit-info <package>`
       check (its newest entry only, at or after `launched_at()`).
-- [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at` (device clock) at each launch site,
-      clearing the `logcat` crash buffer right after; `app_crash_artifacts()`'s always-attempted
-      `logcat` extraction (managed *and* native crash formats) plus the best-effort, root-gated
-      tombstone pull, each independently wrapped so any failure resolves to `[]`.
+- [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at` (device clock) at each launch site;
+      `app_crash_artifacts()`'s always-attempted `logcat` extraction (managed *and* native crash
+      formats) using a `-t "<launch marker>"` time filter rather than clearing the crash buffer, so
+      `scripts/collect_android_diagnostics.sh`'s own end-of-job sweep still sees everything earlier;
+      the best-effort, root-gated tombstone pull re-establishing the resident server's `adb forward`
+      and the collector's `adb reverse` (via `adb wait-for-device` then the same two calls `lease()`
+      already makes) after `adb root` tears them down, each layer independently wrapped so any
+      failure resolves to `[]`.
 - [ ] Unit 6 — `RunEnvironment.app_crash_artifacts()` protocol shape (returning
       `list[tuple[str, bytes]]`, read live with no snapshot-and-thunk indirection, since nothing
       tears the environment down before this scenario's own lease releases) and no-op defaults;
@@ -523,24 +588,32 @@ fake-backend run captures.
       five `self.state.outcomes.append(outcome)` call sites — `_handle_if` / `_handle_for_each` /
       `_handle_web` once each, `_handle_action` twice (its own end and its
       `UncoveredSystemAlertLocale` early return) — in place of the bare append, covering every step
-      kind's true final outcome; a `self.state` latch so a nested failure's repeated re-entry through
-      `_run_if` / `_run_for_each` / `_run_recovery` probes `app_crash_signal()` and
-      `app_crash_artifacts()` at most once per scenario; raising and catching `AppCrashedError` in
-      that one place to fold its message into `outcome.reason` and set the new
-      `StepOutcome.app_crashed` field and the latch; a fast-suite assertion that no
-      `self.state.outcomes.append` survives outside `_finish_outcome`.
-- [ ] Unit 8 — `pipeline.py`: `_run_on_lease` reading `result.steps[-1].app_crashed` right after
-      `run_scenario` returns, still holding the same lease, before its own `finally` releases it; the
-      new `_write_app_crash_artifacts(lz, s, sid)` mirroring `_write_crash_artifacts` (BE-0421,
+      kind's true final outcome; a scenario-scoped latch (a mutable object `run_scenario` creates
+      once and shares with every `run_phase` call the same way it already shares `live_bindings`,
+      landed on `_LoopConfig`, not `StepLoopState`, so it survives `before`, the main steps, and
+      every dispatched `after` rule) so a nested failure's repeated re-entry through `_run_if` /
+      `_run_for_each` / `_run_recovery` probes `app_crash_signal()` at most once per scenario; raising
+      and catching `AppCrashedError` in that one place to fold its message into `outcome.reason` and
+      set the new `StepOutcome.app_crashed` field and the latch; skipping the probe outright when
+      `outcome.action == "relaunch"`, since that action deliberately terminates the app itself; a
+      fast-suite assertion that no `self.state.outcomes.append` survives outside `_finish_outcome`.
+- [ ] Unit 8 — `pipeline.py`: `_run_on_lease` scanning
+      `(*result.before_outcomes, *result.steps, *result.after_outcomes)` for an `app_crashed`
+      outcome right after `run_scenario` returns, still holding the same lease, before its own
+      `finally` releases it; the new `_write_app_crash_artifacts(lz, s, sid)` mirroring
+      `_write_crash_artifacts` (BE-0421,
       `pipeline.py:758`), writing each artifact through the redacting `writer.write_text` path under
       `{sid}/app-crash/` and appending a directory-naming trailer to `result.failure`.
 - [ ] Unit 9 — `TracingDriver`: add `base.AppCrashSignal` to `_PROTOCOLS` so `--trace-driver` installs
       it as a real attribute only on a wrapped driver that implements it.
 - [ ] Unit 10 — `crawl`'s own integration: `_build_lane`'s per-lane `app_crash_artifacts`, threaded
       through `WorkerFactory` and `crawl()`'s primary-lane parameters the same way `driver`/`reset`
-      already are; the capture call joining `record_crash`'s existing off-lock crash check; `Crash`'s
-      new `artifacts` field; `cli.py`'s `_finish` writing non-empty artifacts under
-      `crashes/crash-NNN/app-crash/` alongside that crash's own `crashes/crash-NNN.yaml` repro.
+      already are; the capture call joining `record_crash`'s existing off-lock crash check, gated on
+      the driver positively confirming the event (`isinstance`/`app_crash_signal()`) so a UI-tree
+      false positive does not pay a full-timeout sweep; `Crash`'s new `artifacts` field;
+      `repro.py`'s `write_repros` writing non-empty artifacts under `crashes/crash-NNN/app-crash/`
+      before its own `continue` on a non-replayable crash, alongside that crash's own
+      `crashes/crash-NNN.yaml` repro.
 - [ ] Unit 11 — Showcase fixtures: a debug-only "force a crash" affordance on iOS (SwiftUI) and
       Android (Compose), one scenario per platform exercising it, wired as a non-gating per-PR signal
       in `ios-e2e.yml` / `android-e2e.yml`.
@@ -548,12 +621,15 @@ fake-backend run captures.
       (+ `docs/ja/`) notes the showcase signal lane; `docs/architecture.md` (+ `docs/ja/`)
       cross-references the no-retry app-crash path against the existing backend-crash retry section.
 - [ ] Unit 13 — Tests: `app_crash_signal()` answering `None` on an ordinary `ElementNotFound` (no
-      false positive on a missing selector), and on a `wait`/`assert` failure, for both backends; the
-      iOS `.ips` sweep and the Android `logcat`/tombstone capture against stubbed directories and
-      stubbed `adb` output, including the Android exit-info corroboration; a `_step_runner.py` test
-      asserting the in-band failure and the new `app_crashed` field; a `pipeline.py` test asserting
-      the `app-crash/` directory with redacted text content and no crash-retry loop trigger; a
-      web/fake-backend test asserting `isinstance` answers `False` and nothing changes.
+      false positive on a missing selector), and on a `wait`/`assert` failure, for both backends; a
+      failing `relaunch` step never probing `app_crash_signal()` at all; the iOS `.ips` sweep and the
+      Android `logcat`/tombstone capture against stubbed directories and stubbed `adb` output,
+      including the Android exit-info corroboration; a `_step_runner.py` test asserting the in-band
+      failure, the new `app_crashed` field, and the latch holding across a nested `if`/`forEach`
+      failure; a `pipeline.py` test asserting the `app-crash/` directory with redacted text content,
+      the scan finding a crash in `before_outcomes`/`after_outcomes` as well as `steps`, and no
+      crash-retry loop trigger; a web/fake-backend test asserting `isinstance` answers `False` and
+      nothing changes.
 
 ## References
 
@@ -580,20 +656,34 @@ fake-backend run captures.
 - [`bajutsu/common/orchestrator/loop/_step_runner.py`](../../bajutsu/common/orchestrator/loop/_step_runner.py) —
   the per-step loop, whose four step-kind handlers share the new `_finish_outcome` helper this
   item's one reactive check lives in
+- [`bajutsu/common/orchestrator/loop/_functions.py`](../../bajutsu/common/orchestrator/loop/_functions.py) —
+  `run_scenario`'s `run_phase` closure sharing `live_bindings` across `before` / the main steps /
+  every `after` rule, the precedent this item's cross-phase crash latch follows
+- [`bajutsu/common/orchestrator/loop/_loop_config.py`](../../bajutsu/common/orchestrator/loop/_loop_config.py) —
+  `_LoopConfig`, where the latch lands next to `mailbox` and `progress`
 - [`bajutsu/common/runner/pipeline.py`](../../bajutsu/common/runner/pipeline.py) — `_run_on_lease`,
-  reading `result.steps[-1].app_crashed` while still holding the lease, and `_write_crash_artifacts`
-  (BE-0421), the sibling the new `_write_app_crash_artifacts` mirrors
+  scanning `result`'s `before_outcomes` / `steps` / `after_outcomes` for `app_crashed` while still
+  holding the lease, and `_write_crash_artifacts` (BE-0421), the sibling the new
+  `_write_app_crash_artifacts` mirrors
 - [`bajutsu/common/runner/types.py`](../../bajutsu/common/runner/types.py) — `Lease.crash_artifacts`,
   the precedent `Lease.app_crash_artifacts` follows
 - [`bajutsu/common/platform_lifecycle/protocols/run_environment.py`](../../bajutsu/common/platform_lifecycle/protocols/run_environment.py) —
   the protocol `app_crash_artifacts()` joins
 - [`bajutsu/crawl/core/_functions.py`](../../bajutsu/crawl/core/_functions.py) — `record_crash`'s
   off-lock crash check, the join point for this item's crawl-side capture call
-- [`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py) — `_build_lane` (the per-lane environment this
-  item's capture reads) and `_finish` (where the captured artifacts are written)
+- [`bajutsu/crawl/cli.py`](../../bajutsu/crawl/cli.py) — `_build_lane`, the per-lane environment this
+  item's capture reads
+- [`bajutsu/crawl/repro.py`](../../bajutsu/crawl/repro.py) — `write_repros`, which already walks
+  `screen_map.crashes` and owns the `crash-NNN` numbering the captured artifacts are written under
 - [`bajutsu/common/evidence/sink.py`](../../bajutsu/common/evidence/sink.py) — `write_text` (redacting)
   versus `write_bytes` (unmasked, for content the sink cannot inspect), the distinction this item's
   artifacts follow by decoding to text first
+- [`scripts/collect_android_diagnostics.sh`](../../scripts/collect_android_diagnostics.sh) — the
+  end-of-job Android diagnostics sweep this item's `logcat` filtering and `adb root` reconnect both
+  follow the precedent of
+- [`bajutsu/common/backend_cli/adb_resident/resident_server.py`](../../bajutsu/common/backend_cli/adb_resident/resident_server.py) —
+  `AdbDriver`'s own read channel, torn down by `adb root` and re-established by this item's tombstone
+  layer
 - [`bajutsu/common/backends.py`](../../bajutsu/common/backends.py) — `make_driver`, whose existing
   `device_os` keyword is the precedent this item's `package` keyword follows
 - [`docs/ci.md`](../../docs/ci.md#the-ios-lane) — `fault-injection (xcuitest)`, whose non-gating,
