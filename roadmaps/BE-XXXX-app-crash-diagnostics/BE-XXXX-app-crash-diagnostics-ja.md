@@ -526,11 +526,16 @@ adb にとって同じ役割の積極的な確認を与えます。
 
 ### web backend と fake backend への影響
 
-`PlaywrightDriver` とテスト用の fake backend は、`AppCrashSignal` と `app_crash_artifacts()`
-のどちらも実装しません。その必要もありません。どちらも opt-in のケイパビリティであり、事後確認は
-`isinstance` と no-op の既定値だけでそれを問い合わせます。どちらのバックエンドにも、
-実装必須のメンバーとしてスタブを持たせる必要はありません。本項目によって、web backend や
-fake backend の実行が収集する内容は変わりません。
+これらは別々の2つの継ぎ目であり、どちらのバックエンドもどちらの半分も実装する必要は
+ありません。`PlaywrightDriver` は `AppCrashSignal` を実装しないため、事後確認の
+`isinstance` による問い合わせは `False` を返し、プロトコルを一切宣言しない他のあらゆる
+ドライバと同じように読み飛ばされます。`WebEnvironment`
+（[`bajutsu/common/platform_lifecycle/environments/web.py`](../../bajutsu/common/platform_lifecycle/environments/web.py)）
+も `app_crash_artifacts()` を実装しないため、`RunEnvironment` 自身の no-op の既定値へ
+そのまま落ちます。`FakeEnvironment`
+（[`bajutsu/common/platform_lifecycle/environments/fake.py`](../../bajutsu/common/platform_lifecycle/environments/fake.py)）
+とテスト用の fake ドライバも、両方の継ぎ目で同じ振る舞いをします。本項目によって、
+web backend や fake backend の実行が収集する内容は変わりません。
 
 ## 検討した代替案
 

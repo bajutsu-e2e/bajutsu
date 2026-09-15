@@ -464,10 +464,15 @@ check — the same path every other new signal in those lanes has taken.
 
 ### Cost on the web backend and the fake backend
 
-`PlaywrightDriver` and the fake test backend implement neither `AppCrashSignal` nor
-`app_crash_artifacts()`, and need not: both are opt-in capabilities the reactive check probes with
-`isinstance`/a no-op default, not required members either backend must stub. Nothing in this item
-changes what a web or fake-backend run captures.
+These are two separate seams, and neither backend needs to implement either half. `PlaywrightDriver`
+does not implement `AppCrashSignal`, so the reactive check's `isinstance` probe answers `False` and
+skips it, the same way it would for any other driver that never declares the protocol. `WebEnvironment`
+([`bajutsu/common/platform_lifecycle/environments/web.py`](../../bajutsu/common/platform_lifecycle/environments/web.py))
+does not implement `app_crash_artifacts()` either, so it falls through to `RunEnvironment`'s own no-op
+default. `FakeEnvironment`
+([`bajutsu/common/platform_lifecycle/environments/fake.py`](../../bajutsu/common/platform_lifecycle/environments/fake.py))
+and the fake test driver behave the same way on both seams. Nothing in this item changes what a web or
+fake-backend run captures.
 
 ## Alternatives considered
 
