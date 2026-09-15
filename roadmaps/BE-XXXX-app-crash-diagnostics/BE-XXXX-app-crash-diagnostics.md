@@ -393,7 +393,10 @@ the `FileSink` first-wait diagnostic — a `Lease`-side copy is what's missing, 
 `readiness: ReadinessResult | None = None` parameter, threaded from `lz.readiness` the same way
 `relaunch=lz.relaunch` already is
 ([`pipeline.py:898`](../../bajutsu/common/runner/pipeline.py)), and seeds the scenario-scoped latch object
-(Unit 7, below) with a third field the moment `StepLoopState` is built: unconfirmed when `readiness is
+(Unit 7, below) with a third field, seeded once when `run_scenario` creates that object — never on each
+phase's freshly built `StepLoopState`, which only *shares* the object through the closure the same way
+the other two latches already do, so a success in one phase stays cleared into the next: unconfirmed
+when `readiness is
 None or not readiness.ready or readiness.signal == "count"` — the bare-count rung cannot tell the app
 from SpringBoard, so a `ready` answer there is not evidence the app ever foregrounded either, exactly the
 misdiagnosis this item exists to remove, inverted. That rung is also the *ordinary* answer, not a rare
@@ -714,10 +717,21 @@ scenario — a crash three levels deep inside `if`/`forEach`, plus every failing
 *Detecting the event* above — has nothing new to wait out if the first probe already burned the bound
 without a match. `AdbDriver` therefore gains an `self._exit_info_exhausted: bool = False` instance
 field, the same shape as its existing `_act_warned` / `_act_unavailable` latches, set the first time a
-bounded poll ends without a matching entry. A driver instance never outlives one scenario on this
-backend — `AndroidEnvironment.has_reusable_resident()` answers `False` unconditionally (see
+bounded poll ends without a matching entry. A driver instance never outlives one scenario on `run` —
+`AndroidEnvironment.has_reusable_resident()` answers `False` unconditionally (see
 *iOS: matching the `.ips` report* above — BE-0291's cross-lease warm reuse is XCUITest-only), so a fresh
-`AdbDriver` is constructed per lease and this field needs no explicit reset. Once set, a later call
+`AdbDriver` is constructed per lease there — but `crawl` builds one `AdbDriver` for the *entire* walk
+(`_build_lane` calls `launch_driver` once, `crawl()` never rebuilds it,
+[`crawl/cli.py:283-300`](../../bajutsu/crawl/cli.py)), and *Extending `crawl`'s own crash recording*
+below wires this same probe into every detection along that walk — an implicit reset only `run` gets for
+free would leave the flag latched after the first unconfirmed crawl detection, un-polling every
+*genuine* crash for the rest of the run. `invalidate_settled_cache()` therefore also clears
+`self._exit_info_exhausted`, alongside the fields it already resets — a one-field addition to an
+existing method, not a new call site, since `AndroidEnvironment.crawl_reset()`'s own `reset()` closure
+already calls it right after `e.force_stop(package)` / `e.launch(...)` re-stamps `app_launched_at`
+([`android_environment.py:408-413`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py))
+— a genuinely fresh launch is exactly the moment a fresh reap becomes worth waiting for again. Once set
+(and not yet cleared), a later call
 skips the bounded poll and reads the exit-info history exactly once, answering immediately whether or
 not that single read finds a match — the bound this item's own accounting already assumes an
 unconfirmed probe costs, not the multi-second poll Android's signal actually takes without this latch.
@@ -1202,10 +1216,14 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       after `system_server` reaps the death — but only the scenario's first such poll pays the full
       bound: a new `self._exit_info_exhausted: bool = False` instance field (the same shape as
       `AdbDriver`'s existing `_act_warned` / `_act_unavailable` latches), set once a bounded poll ends
-      without a match, makes every later probe in the same scenario read the history once and answer
-      immediately rather than re-polling — safe with no explicit reset since
-      `AndroidEnvironment.has_reusable_resident()` answers `False` unconditionally, so a fresh
-      `AdbDriver` is built per lease on this backend (BE-0291's cross-lease reuse is XCUITest-only).
+      without a match, makes every later probe read the history once and answer
+      immediately rather than re-polling. `run` gets this reset for free — a fresh `AdbDriver` is built
+      per lease there, since `AndroidEnvironment.has_reusable_resident()` answers `False`
+      unconditionally (BE-0291's cross-lease reuse is XCUITest-only) — but `crawl` builds one
+      `AdbDriver` for the whole walk (`crawl/cli.py:283-300`), so `invalidate_settled_cache()` also
+      clears this field: `AndroidEnvironment.crawl_reset()`'s `reset()` closure already calls it right
+      after re-stamping `app_launched_at` (`android_environment.py:408-413`), the same genuinely-fresh-
+      launch moment a poll bound becomes worth paying again.
 - [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at`, recorded immediately *before* each launch
       site's `e.launch(...)` call, never after — `e.launch` is `am start -W`, which waits for the
       launch to complete, so a marker stamped once it returns has already missed a startup crash — from

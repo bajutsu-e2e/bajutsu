@@ -454,9 +454,12 @@ SpringBoard のアイコンだけでこの条件を満たしてしまい、ア�
 にも同じ形の
 `readiness: ReadinessResult | None = None` 引数を加え、`relaunch=lz.relaunch` が
 すでにそうしているのと同じように `lz.readiness` から注入します
-（[`pipeline.py:898`](../../bajutsu/common/runner/pipeline.py)）。この値は `StepLoopState`
-が組み立てられる瞬間に、シナリオスコープのラッチオブジェクト（下の Unit 7）へ3つ目の
-フィールドとして渡り、`readiness is None or not readiness.ready or readiness.signal ==
+（[`pipeline.py:898`](../../bajutsu/common/runner/pipeline.py)）。この値は、シナリオスコープの
+ラッチオブジェクト（下の Unit 7）へ3つ目のフィールドとして加わり、`run_scenario` がその
+オブジェクトを作る瞬間に一度だけ立ちます——フェーズごとに新しく組み立てられる
+`StepLoopState` の側ではありません。`StepLoopState` は他の2つのラッチがすでにそうして
+いるのと同じように、クロージャを通してそのオブジェクトを*共有する*だけであり、そのため
+あるフェーズでの成功は次のフェーズへ持ち越されます。`readiness is None or not readiness.ready or readiness.signal ==
 "count"` のとき未確認と判定されます——素朴な要素数判定は SpringBoard とアプリ自身を
 見分けられないため、その判定による `ready` という答えもまた、アプリがフォアグラウンドへ
 来た証拠にはならず、この項目が取り除こうとしている誤診断そのものが逆向きに起きている
@@ -832,12 +835,24 @@ exit-info の裏付けについても同じ範囲を名指します。ただし�
 理由を持ちません。そこで `AdbDriver` に、`self._exit_info_exhausted: bool = False`
 という新しいインスタンスフィールドを加えます。既存の `_act_warned`・
 `_act_unavailable` という2つのラッチと同じ形であり、上限つきポーリングが一致
-なしで終わった最初の時点で立てます。このバックエンドではドライバのインスタンスが
-1つのシナリオより長生きすることはありません——`AndroidEnvironment.has_reusable_resident()`
+なしで終わった最初の時点で立てます。`run` ではドライバのインスタンスが1つのシナリオより
+長生きすることはありません——`AndroidEnvironment.has_reusable_resident()`
 は無条件に `False` を返すため（前述の「iOS：`.ips` レポートの照合」を参照。
 BE-0291 のリースをまたぐ再利用は XCUITest だけの仕組みです）、リースごとに新しい
-`AdbDriver` が組み立てられ、このフィールドを明示的にリセットする必要はありません。
-一度立ってしまえば、あとの呼び出しは上限つきポーリングを飛ばし、exit-info の履歴を
+`AdbDriver` が組み立てられます。しかし `crawl` は、その巡回全体を通じて1つの
+`AdbDriver` を使い続けます（`_build_lane` は `launch_driver` を一度だけ呼び、`crawl()`
+はそれを組み立て直しません。[`crawl/cli.py:283-300`](../../bajutsu/crawl/cli.py)）。
+下の「`crawl` 自身のクラッシュ記録を拡張する」は、この同じ確認を巡回中のあらゆる検知へ
+配線するため、`run` が無償で得ているこの暗黙のリセットがないままでは、確認できなかった
+最初の crawl の検知のあとフラグが立ちっぱなしになり、その巡回の残り全体で*本物の*
+クラッシュを無ポーリングにしてしまいます。そこで `invalidate_settled_cache()` も、
+すでにリセットしているフィールドと並べて `self._exit_info_exhausted` をリセットします
+——既存のメソッドへの1フィールド追加であり、新しい呼び出し箇所ではありません。
+`AndroidEnvironment.crawl_reset()` 自身の `reset()` クロージャは、`e.force_stop(package)`・
+`e.launch(...)` が `app_launched_at` を再記録した直後にすでにこれを呼んでいます
+（[`android_environment.py:408-413`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py)）
+——文字どおり新しい起動こそが、新しい回収を待つ価値が再び生まれる瞬間だからです。
+一度立ってしまえば（まだリセットされていなければ）、あとの呼び出しは上限つきポーリングを飛ばし、exit-info の履歴を
 一度だけ読んで、その読み取りが一致を見つけたかどうかにかかわらず即座に答えます
 ——本項目自身の見積もりがもともと想定していた、確認できなかった確認のコストであり、
 このラッチなしでは Android のシグナルが実際に取っている数秒のポーリングではありません。
@@ -1405,14 +1420,20 @@ fake backend の実行が収集する内容は変わりません。
       避けているはずの時計のすり合わせを呼び戻してしまいます）で裏付けます。iOS の
       `.ips` 掃引と同じ短い上限つきの方法でポーリングします。一度だけ読むのではありません。
       `ApplicationExitInfo` は `system_server` がその死を回収したあとにしか記録されない
-      からです——ただし、上限まで待つのはシナリオの最初のポーリングだけです。新しい
+      からです——ただし、上限まで待つのは最初のポーリングだけです。新しい
       `self._exit_info_exhausted: bool = False` インスタンスフィールド（既存の
       `_act_warned`・`_act_unavailable` という2つのラッチと同じ形）を、上限つき
-      ポーリングが一致なしで終わった最初の時点で立て、同じシナリオのあとの確認では
-      履歴を一度だけ読んで即座に答えるようにします——明示的なリセットは不要です。
-      `AndroidEnvironment.has_reusable_resident()` は無条件に `False` を返すため、この
-      バックエンドではリースごとに新しい `AdbDriver` が組み立てられます
-      （BE-0291 のリースをまたぐ再利用は XCUITest だけの仕組みです）。
+      ポーリングが一致なしで終わった最初の時点で立て、あとの確認では
+      履歴を一度だけ読んで即座に答えるようにします。`run` ではこのリセットは無償で
+      得られます。`AndroidEnvironment.has_reusable_resident()` は無条件に `False` を
+      返すため（BE-0291 のリースをまたぐ再利用は XCUITest だけの仕組みです）、この
+      バックエンドではリースごとに新しい `AdbDriver` が組み立てられるからです。しかし
+      `crawl` は巡回全体を通じて1つの `AdbDriver` を使い続けるため
+      （`crawl/cli.py:283-300`）、`invalidate_settled_cache()` もこのフィールドを
+      リセットします。`AndroidEnvironment.crawl_reset()` の `reset()` クロージャは、
+      `app_launched_at` の再記録の直後にすでにこれを呼んでいます
+      （`android_environment.py:408-413`）。これは、ポーリングの上限を再び払う価値が
+      生まれる、文字どおり新しい起動の瞬間です。
 - [ ] Unit 5 — Android：各起動の箇所の `e.launch(...)` 呼び出しの*直前*に記録する
       `AndroidEnvironment.app_launched_at`。あとではありません。`e.launch` は起動の完了を
       待つ `am start -W` であり、返ったあとに立てた目印はすでに起動時のクラッシュを
