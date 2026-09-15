@@ -489,21 +489,26 @@ Simulator 上のアプリの `.ips` レポートは、実行ファイルのフ�
 `"xcodebuild-*.ips"` を渡しています。`XcuitestEnvironment` が保持する `ios.bundle_id`
 （`self._bundle_id`、`com.example.Showcase`）はその名前ではなく、レポートのファイル名と
 一致することはありません。本項目は代わりに、インストール済みアプリ自身の `Info.plist`
-（`Path(ios.app_path) / "Info.plist"`）から `CFBundleExecutable` を、`app_crash_artifacts()`
+（`Path(self._app_path) / "Info.plist"`）から `CFBundleExecutable` を、`app_crash_artifacts()`
 自身の中で読み取ります。あらゆる iOS バンドルが宣言を義務づけられているこの1つのプロパティリスト
-キーから、掃引のパターンを組み立てます。`e.install` がインストール元とする、その同じ
-`ios.app_path` がすでに名指すバンドルからの読み取りです。`ios.app_path` 自体は任意です
+キーから、掃引のパターンを組み立てます。`app_crash_artifacts()` は「iOS：`.ips` レポートの
+照合」の冒頭が述べる `RunEnvironment` プロトコルの形どおり、引数を取らないメソッドです。
+そのため `eff` がスコープになく、`ios.app_path` を生きたまま読むことはできません。
+`self._app_path` は新しいフィールドであり、`start()` で
+`self._bundle_id`（`self._bundle_id = ios.bundle_id if device_type != "device" else None`、
+`xcuitest_environment.py:319`）のすぐ隣に、同じ `ios` から同じ方法で保存します。
+`ios.app_path` 自体は任意です
 （`str | None`、
 [`target_config.py:107`](../../bajutsu/common/config/schema/target_config.py)）。
 `bundle_id` だけを名指す `deviceType: simulator` ターゲットで、すでにアプリが
 インストール済みの Simulator に対しては、これを設定しません。同じケースを
 `_prepare_simulator` 自身の install もすでにゲートしており（`if ios.app_path:`、
-`xcuitest_environment.py:235`）、置き換えデバイスの経路は、設定済みだと決めつける
+`xcuitest_environment.py:902`）、置き換えデバイスの経路は、設定済みだと決めつける
 のではなく自前の専用エラーを送出します（`xcuitest_environment.py:627-632`）。
 実行ファイル名を代わりに導く PID アクセサもないため（そもそも `Info.plist` を
 読む理由そのものです）、組み立てる代替パターンがありません。この収集は `appPath`
 を設定したターゲットに限った範囲であり、その範囲は読み取りより*前に*明示的に
-確認します。`ios.app_path is None` はその場で `[]` へ解決します。非 macOS ホストと
+確認します。`self._app_path is None` はその場で `[]` へ解決します。非 macOS ホストと
 同じ、名前のついた事前確認です。読み取り側で `Path(None)` が送出し、数段落あとの
 広い `except Exception` に握りつぶされ、説明のつかない見落としとして読めてしまう
 のではありません。
@@ -631,7 +636,7 @@ serial といくつかの注入されたコールバックだけから構築さ�
 `launch` の各呼び出しは、いずれもターゲットの設定（`targets.<name>.android.package`）から
 それを受け取っていますが、ドライバには届いていません。`make_driver`
 （[`bajutsu/common/backends.py`](../../bajutsu/common/backends.py)）に `package: str |
-None = None` というキーワードを加え、`device_os`（BE-0358）をすでに通しているのと同じ
+None = None` というキーワードを加え、`fetch_clock` と `act` をすでに通しているのと同じ
 方法で `AdbDriver.__init__` へ通します。`Driver` は `@runtime_checkable` で共通の基底
 クラスを持たないため、そこにデータメンバーを置けば、あらゆるバックエンドとあらゆる
 インラインのテストダブルが、同じ宣言を繰り返すことになります。そこで、素の
@@ -719,7 +724,7 @@ OS による強制終了はありませんが、ふつうのプロセス終了�
    運ぶ2つの形式です。どちらも、時刻の窓だけでなく、テスト対象アプリ自身の
    プロセスにも絞り込みます。このバッファは起動をまたぐだけでなく、プロセスも
    またいで端末全体で共有されるからです。マネージドのブロックは、自身の
-   `Process: <package>` 行が対象の `android.package` を名指すときにだけ受け入れ、
+   `Process: <package>` 行が対象の `self._package` を名指すときにだけ受け入れ、
    ネイティブのブロックは、自身の `>>> <process> <<<` という見出しが名指すときに
    だけ受け入れます。同じ時間帯にシステムサービスや別のアプリがクラッシュしても、
    このシナリオ自身の証跡としては書き込みません。その場で取った1回のダンプは、
@@ -946,7 +951,7 @@ outcome 上のメモリ内の bytes は、その書き込みに届くためだ�
 システムアラートや、意図的な `background` ステップです。`run` 自身の上限つき
 `.ips`・tombstone のポーリングがその待ちに値するのは、`app.state == notRunning` や
 `pidof` とexit-info の確認が先に事象を確定させているからです。`crawl` にはそうした
-確認がありません。したがってここでの誤検知は毎回、全タイムアウト分ポーリングします。
+確認がありません。そのためここでの誤検知は毎回、全タイムアウト分のポーリングを払いかねません。
 しかもそれは稀なケースではなくよくあるケースです。`crawl` は `record_crash` の直後、
 `current_fp = None; continue`（`_functions.py:668-669`）でクラッシュを記録したあとも
 止まらないため、同じ誤検知に1回のクロールの中で繰り返し踏み込みかねません。そこで
@@ -1128,8 +1133,11 @@ fake backend の実行が収集する内容は変わりません。
       `start()` が再利用可能なたびに戻る、同じ長命の `XcuitestEnvironment` インスタンスの
       上で走ります）自身の中でも、その `e.launch` の隣で4回目記録し直します。そうしなければ、
       ウォーム再利用されたリースのクラッシュが、目印がたまたま古いタイムスタンプを共有する
-      どこか前のリースの `.ips` レポートと一致してしまいかねません。掃引自身の照合パターンのために
-      `Path(ios.app_path) / "Info.plist"` から `CFBundleExecutable` を読みます
+      どこか前のリースの `.ips` レポートと一致してしまいかねません。新しい `self._app_path`
+      フィールドを `start()` で `self._bundle_id` の隣に保存します（`ios.app_path`、
+      `self._bundle_id` がすでに読んでいるのと同じ `ios` からです）。`app_crash_artifacts()`
+      は引数を取らないため、これが値へ届く唯一の経路です。掃引自身の照合パターンのために
+      `Path(self._app_path) / "Info.plist"` から `CFBundleExecutable` を読みます
       （`ios.bundle_id` はこの名前ではない）。`app_crash_artifacts()` の、名前と `udid` に
       よる `.ips` 掃引。候補となる各レポートをパスでもヘッダでもなく*ペイロード*まで
       読んで確認します
@@ -1137,8 +1145,8 @@ fake backend の実行が収集する内容は変わりません。
       読む手段もない）。
       `ReportCrash` の非同期な書き込みに対する上限つきの待機を含み、失敗はすべて `[]` へ
       解決するよう包みます。
-- [ ] Unit 4 — Android：`backends.make_driver` から `AdbDriver.__init__` へ、`device_os` と
-      同じ方法で通す `package` キーワード。`app_crash_signal()` は `package is None` か、
+- [ ] Unit 4 — Android：`backends.make_driver` から `AdbDriver.__init__` へ、`fetch_clock` と
+      `act` と同じ方法で通す `package` キーワード。`app_crash_signal()` は `package is None` か、
       `launched_at` が未設定または `None` を返す場合を最初に確認し、その場で `None` へ
       解決します。パッケージなしの `dumpsys activity exit-info` は端末上のあらゆる
       パッケージを報告してしまうため、黙った `None` の既定値は別のプロセスのクラッシュを
@@ -1150,10 +1158,14 @@ fake backend の実行が収集する内容は変わりません。
       `ApplicationExitInfo` は `system_server` がその死を回収したあとにしか記録されない
       からです。
 - [ ] Unit 5 — Android：各起動の箇所での `AndroidEnvironment.app_launched_at`（端末自身の
-      時計）。`app_crash_artifacts()` の、常に試みる `logcat` 抽出（マネージドコードと
+      時計）。新しい `self._package` フィールドを `start()` でその隣に保存します
+      （`android.package`。起動の目印がすでに読んでいるのと同じ
+      `android = require_android(eff)` からです）。`app_crash_artifacts()` は引数を取らない
+      ため、これが自身の `logcat` プロセス絞り込みに必要な値へ届く唯一の経路です。
+      `app_crash_artifacts()` の、常に試みる `logcat` 抽出（マネージドコードと
       ネイティブの両形式）は、クラッシュバッファをクリアする代わりに `-t "<起動の目印>"`
       という時刻フィルタを使い、`scripts/collect_android_diagnostics.sh` 自身のジョブ終了時
-      掃引がそれ以前の内容を引き続き見られるようにします。対象自身の `android.package`
+      掃引がそれ以前の内容を引き続き見られるようにします。`self._package`
       にも絞り込みます（マネージドのブロックなら `Process: <package>` 行、ネイティブなら
       `>>> <process> <<<` 見出し）。このバッファは起動だけでなくプロセスもまたいで端末全体で
       共有されるからです。exit-info のポーリングと同じ理由で、その場の1回の `-d` スナップ
@@ -1441,7 +1453,8 @@ fake backend の実行が収集する内容は変わりません。
   再起動はしません
 - [`bajutsu/common/backend_cli/adb/_functions.py`](../../bajutsu/common/backend_cli/adb/_functions.py) —
   `instrument_cmd`。その `-w` フラグこそが、tombstone 取得の `adb root` が実際に終わらせるもの
-- [`bajutsu/common/backends.py`](../../bajutsu/common/backends.py) — `make_driver`。既存の
-  `device_os` キーワードが、本項目の `package` キーワードの先例になっています
+- [`bajutsu/common/backends.py`](../../bajutsu/common/backends.py) — `make_driver`。adb 分岐が
+  既存の `fetch_clock`・`act` キーワードを通している形が、本項目の `package` キーワードの
+  先例になっています
 - [`docs/ci.md`](../../docs/ci.md#the-ios-lane) — `fault-injection (xcuitest)`。本項目の
   showcase シナリオが従う、ゲートしない・失敗の形を検証するという配置

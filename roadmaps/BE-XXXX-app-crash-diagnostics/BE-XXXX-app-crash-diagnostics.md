@@ -236,8 +236,8 @@ unconfirmed answer, though, and that asymmetry is deliberate: a `None` from one 
 about whether the *next* step's own failure is a crash, so latching there would risk missing a real
 one. The bound this bought is narrower than "once per scenario" for that reason — it holds for the
 relaunch and confirmed-crash cases above, not for an ordinary failure with no crash behind it, which
-still pays one probe per settling outcome (nesting depth, plus one per failing `after` step) the same
-way an earlier draft of this item claimed to avoid entirely. That cost is still bounded by how deep a
+still pays one probe per settling outcome (nesting depth, plus one per failing `after` step) — the
+very cost an earlier draft claimed to avoid entirely. That cost is still bounded by how deep a
 scenario nests and how many `after` rules it dispatches on failure — figures usually small in
 practice — and it only runs on a step that has already failed, unlike the proactive per-step polling
 *Alternatives considered* rules out below for adding cost to every green run.
@@ -427,21 +427,25 @@ report's filename names the process that crashed (`Showcase-2026-…ips`), never
 BE-0421 passes the literal `"xcodebuild-*.ips"` for its own known process. `XcuitestEnvironment`
 holds `ios.bundle_id` (`self._bundle_id`, `com.example.Showcase`), which is not that name and never
 matches a report's filename. This item instead reads `CFBundleExecutable` from the installed app's
-own `Info.plist`, at `Path(ios.app_path) / "Info.plist"`, inside `app_crash_artifacts()` itself —
-the one plist key every iOS bundle is required to declare — and builds the sweep's pattern from it,
-the same way
-`ios.app_path` already names the bundle `e.install` installs from. `ios.app_path` is itself optional
+own `Info.plist`, at `Path(self._app_path) / "Info.plist"`, inside `app_crash_artifacts()` itself —
+the one plist key every iOS bundle is required to declare — and builds the sweep's pattern from it.
+`app_crash_artifacts()` is a zero-argument method, per the `RunEnvironment` protocol shape (*iOS:
+matching the `.ips` report*'s own introduction), so it has no `eff` in scope to read `ios.app_path`
+from live; `self._app_path` is a new field, stashed at `start()` right next to `self._bundle_id`
+(`self._bundle_id = ios.bundle_id if device_type != "device" else None`,
+`xcuitest_environment.py:319`) the same way that field already is, the same `ios` this section already
+resolved `self._bundle_id` from. `ios.app_path` is itself optional
 (`str | None`, [`target_config.py:107`](../../bajutsu/common/config/schema/target_config.py)) — a
 `deviceType: simulator` target naming only `bundle_id`, against a Simulator that already has the app
 installed, configures none, the same case `_prepare_simulator` already gates its own install on
-(`if ios.app_path:`, `xcuitest_environment.py:235`) and the replacement-device path raises its own
+(`if ios.app_path:`, `xcuitest_environment.py:902`) and the replacement-device path raises its own
 named error over rather than assume set (`xcuitest_environment.py:627-632`). With no PID accessor to
 derive the executable name from instead (the reason this reads `Info.plist` at all), there is no
 fallback pattern to build: this capture is scoped to targets that configure `appPath`, and that scope
-is checked explicitly, before the read — `ios.app_path is None` resolves to `[]` immediately, the same
-named, up-front case a non-macOS host is below, rather than left to fall through into `Path(None)`
-raising inside the broad `except Exception` a few paragraphs down and reading as an accidental,
-unexplained miss.
+is checked explicitly, before the read — `self._app_path is None` resolves to `[]` immediately, the
+same named, up-front case a non-macOS host is below, rather than left to fall through into
+`Path(None)` raising inside the broad `except Exception` a few paragraphs down and reading as an
+accidental, unexplained miss.
 
 `XcuitestEnvironment`
 ([`bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py))
@@ -549,7 +553,7 @@ serial and a handful of injected callables today. It holds no package name, and 
 `AndroidEnvironment` — its `install` / `pm clear` / `force_stop` / `launch` calls all take it from the
 target's own config (`targets.<name>.android.package`) — but not the driver. `make_driver`
 ([`bajutsu/common/backends.py`](../../bajutsu/common/backends.py)) gains a `package: str | None = None`
-keyword, threaded into `AdbDriver.__init__` the same way it already threads `device_os` (BE-0358): a
+keyword, threaded into `AdbDriver.__init__` the same way it already threads `fetch_clock` and `act`: a
 plain constructor argument rather than a `Driver` member. `Driver` is `@runtime_checkable`, with no
 shared base class, so a data member there would be a declaration every backend and every inline test
 double has to repeat.
@@ -624,7 +628,7 @@ independently wrapped so that a failure in one never drops the other:
    NDK crash — the two formats `logcat`'s crash buffer actually carries. Both are bounded to the app
    under test's own process, not to the time window alone, since the buffer is device-global across
    processes as well as across launches: a managed block is accepted only when its own
-   `Process: <package>` line names the target's `android.package`, and a native block only when its
+   `Process: <package>` line names the target's `self._package`, and a native block only when its
    `>>> <process> <<<` header does, so a system service or another app crashing in the same window is
    never written as this scenario's evidence. A single dump taken immediately can still come up
    empty for a native crash: `crash_dump` writes the `>>> <process> <<<` block after the death
@@ -968,8 +972,10 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       `xcuitest_environment.py:855-856`, on the same long-lived `XcuitestEnvironment` `start()`
       returns through) next to its own `e.launch`, since a warm-reused lease's crash would otherwise
       match whichever earlier lease's `.ips` report happened to share the marker's stale timestamp;
-      reading `CFBundleExecutable`
-      from `Path(ios.app_path) / "Info.plist"` for the sweep's own match pattern (`ios.bundle_id` is
+      a new `self._app_path` field, stashed at `start()` next to `self._bundle_id` (`ios.app_path`,
+      the same `ios` `self._bundle_id` already reads from) — `app_crash_artifacts()` takes no
+      arguments, so it has no other way to reach it; reading `CFBundleExecutable`
+      from `Path(self._app_path) / "Info.plist"` for the sweep's own match pattern (`ios.bundle_id` is
       not this name); `app_crash_artifacts()`'s name-and-`udid`-matched `.ips` sweep, reading and
       parsing each candidate report's own *payload* for the udid rather than its path or its header
       (no udid appears in a report's filename or its header, and no PID accessor exists on
@@ -977,7 +983,7 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       for `ReportCrash`'s asynchronous write,
       wrapped so any failure resolves to `[]`.
 - [ ] Unit 4 — Android: a `package` keyword threaded through `backends.make_driver` into
-      `AdbDriver.__init__`, the same way `device_os` already is; `app_crash_signal()` checking
+      `AdbDriver.__init__`, the same way `fetch_clock` and `act` already are; `app_crash_signal()` checking
       `package is None` or an unset/`None`-answering `launched_at` first, resolving to `None`
       immediately — `dumpsys activity exit-info` with no package reports every package on the
       device, so a silent `None` default would confirm another process's crash; a `launched_at`
@@ -987,11 +993,15 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       check (its newest entry only, at or after `launched_at()`), polled the same short, bounded way
       as the iOS `.ips` sweep rather than read once, since `ApplicationExitInfo` is recorded only
       after `system_server` reaps the death.
-- [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at` (device clock) at each launch site;
+- [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at` (device clock) at each launch site; a
+      new `self._package` field, stashed in `start()` alongside it (`android.package`, from the same
+      `android = require_android(eff)` the launch marker already reads) — `app_crash_artifacts()`
+      takes no arguments, so this is the only way it reaches the value its own `logcat` process bound
+      needs;
       `app_crash_artifacts()`'s always-attempted `logcat` extraction (managed *and* native crash
       formats) using a `-t "<launch marker>"` time filter rather than clearing the crash buffer, so
       `scripts/collect_android_diagnostics.sh`'s own end-of-job sweep still sees everything earlier —
-      bounded to the target's own `android.package` (a managed block's `Process: <package>` line,
+      bounded to `self._package` (a managed block's `Process: <package>` line,
       a native block's `>>> <process> <<<` header), since the buffer is device-global across processes
       too, not only across launches — and, for the same reason as the exit-info poll, re-dumped the
       same short, bounded way rather than trusted on a single `-d` snapshot, since `crash_dump` writes
@@ -1242,6 +1252,7 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 - [`bajutsu/common/backend_cli/adb/_functions.py`](../../bajutsu/common/backend_cli/adb/_functions.py) —
   `instrument_cmd`, whose `-w` flag is what the tombstone pull's `adb root` actually kills
 - [`bajutsu/common/backends.py`](../../bajutsu/common/backends.py) — `make_driver`, whose existing
-  `device_os` keyword is the precedent this item's `package` keyword follows
+  `fetch_clock`/`act` keywords on the adb branch are the precedent this item's `package` keyword
+  follows
 - [`docs/ci.md`](../../docs/ci.md#the-ios-lane) — `fault-injection (xcuitest)`, whose non-gating,
   failure-shape-asserting placement this item's showcase scenarios follow
