@@ -47,14 +47,18 @@ pipeline had to be confined to the org its token was exchanged for. It deliberat
 path alone: narrowing that is a tenant-boundary change of its own, and widening a machine-session
 item to carry it would have mixed two decisions in one change. This item is that follow-up.
 
-The exposure is bounded by the job id, which is opaque and unguessable, so this is a confidentiality
-and integrity gap rather than an open door. It still reaches further than a read: cancelling another
-tenant's run destroys work in progress, and answering its handoff prompt injects input into a run
-that tenant is watching.
+Nothing bounds the exposure to a caller who already knows an id. A job id is the decimal form of a
+single counter shared by every org (`JobRegistry._register` assigns `str(self._seq)`, seeded across
+the whole jobs table at startup), so ids run "1", "2", "3" and an editor of any tenant reaches every
+other tenant's jobs by walking the range. That makes this an open door rather than a gap someone
+would have to hold a secret to walk through. What lies beyond it is not only disclosure:
+cancelling another tenant's run destroys work in progress, and answering its handoff prompt injects
+input into a run that tenant is watching.
 
-**Verifiable outcome.** A member of org A, holding the id of a job dispatched by org B, is refused
+**Verifiable outcome.** An **editor** of org A, holding the id of a job dispatched by org B, is refused
 on all four endpoints while acting as org A — and the refusal is a 404, not a 403, so the reply does
-not confirm that the id names a real job. The same member switching to org B reaches the same job
+not confirm that the id names a real job. A viewer is refused the two writes by the role gate ahead
+of this check, with a 403, which is unchanged. The same member switching to org B reaches the same job
 normally, so the boundary follows the org the caller is acting as rather than shutting that member
 out permanently.
 
@@ -84,11 +88,14 @@ switching to org B to look at something, switching back to A, and cancelling the
 works: back in A the org comparison passes and the editor check runs against the role held in A.
 Visibility is a function of where the caller is now, never of where that caller has been.
 
-**Refuse with 404, not 403.** A job id is opaque, so answering "forbidden" would confirm that this
-particular id names a live job in some other tenant — the one fact the refusal exists to withhold.
-`job_view` already answers 404 for a machine principal under BE-0414, and the three remaining
-endpoints adopt the same answer, matching what each already returns for an id that names no job at
-all. The two are then indistinguishable, which is the point.
+**Refuse with 404, not 403.** Not because it withholds much: while ids are sequential, an
+enumerating caller learns which ids are live either way, and the shared counter already leaks
+cross-tenant volume — a caller's own ids jumping from 41 to 58 discloses how many jobs other
+tenants dispatched in between. 404 is chosen because it costs nothing, matches what each of the
+four already returns for an id that names no job, and matches the answer `job_view` adopted for a
+machine principal under BE-0414. Making job ids unguessable is a separate defect with its own fix,
+and this item deliberately does not wait on it: an enumerable id is only reachable at all because
+the tenant check is missing, which is what this item restores.
 
 ### Unit 1 — The three uniform operations
 
@@ -100,8 +107,8 @@ unit gives it the `actor` argument its sibling reads take and compares against
 `cancel_job` takes only `(state, job_id)` today and `respond_human` only `(state, job_id, body)` —
 neither takes an actor. Both gain the same `actor` and
 `machine_org` keyword arguments the sibling reads take, and the route table
-(`bajutsu/serve/routes/_shared.py`) passes `ctx.actor()` to all three — alongside the
-`ctx.machine_org()` it already hands `job_view`.
+(`bajutsu/serve/routes/_shared.py`) passes both `ctx.actor()` and `ctx.machine_org()` to all three,
+where `job_view` receives only the latter today.
 
 A machine principal reaches neither write: the BE-0414 allowlist names neither path, so
 `machine_org` arrives None for them in practice. They take the argument anyway rather than assuming
@@ -123,6 +130,13 @@ frame would cost a resolution per frame and still not end a stream whose caller 
 mid-stream. A stream already open when its caller switches org keeps running to the job's end, which
 is consistent with the switch taking effect on the next request rather than retroactively.
 
+Revocation is the case that equivalence does not cover. `delete_org` drops every member's session
+at once, so an admin retiring a tenant while someone holds an open stream on one of its
+long-running jobs leaves that stream delivering log lines until the job ends. The once-only check
+never re-consults the session. This item accepts that bound rather than closing it, because ending
+a live stream on revocation is a session-lifecycle change that belongs with the revocation path,
+not with the tenant check.
+
 Refusing before the stream opens lets each backend answer with an ordinary 404 rather than having to
 express the refusal inside an event stream a client has already begun reading.
 
@@ -130,8 +144,9 @@ express the refusal inside an event stream a client has already begun reading.
 
 Covered in the fast Python suite, with no Simulator and no browser:
 
-- A member of org A is refused on all four endpoints for a job dispatched by org B, and the refusal
-  is 404 on each.
+- An editor of org A is refused on all four endpoints for a job dispatched by org B, and the refusal
+  is 404 on each. A viewer is refused the two writes by the role gate first, with a 403 — the existing
+  behaviour, asserted so the two gates stay distinguishable.
 - That refusal is indistinguishable from the answer for a job id that names nothing at all.
 - The same member, switched to org B, reaches the same job on all four.
 - A run dispatched in org A is still cancellable after switching to org B and back to A, so the
@@ -159,7 +174,7 @@ job until the caller switches back.
 |---|---|
 | Scope by membership (`eligible_orgs`) rather than the active org | Its one advantage over the active-org rule — it never hides callers from their own jobs — is an advantage over a problem that is already solved: a caller who switches away gets the job back by switching back, and `set_active_org` moves the role with the org, so the editor check is already evaluated against the job's own org. What it adds is a second scoping rule beside the one every neighbouring read uses. A second rule with no remaining problem to solve is cost without benefit. |
 | Answer 403 rather than 404 | More honest about why the request failed, and it discloses that the id names a real job in another tenant. The id is the only thing the caller holds, so confirming it is exactly the leak worth avoiding. `job_view` already chose 404 under BE-0414; matching it keeps one answer across the four. |
-| Check the org inside `ServeState.jobs` / `JobRegistry` instead of per operation | Appealing, because one guard would cover every caller at once. The registry is a plain id-keyed map that the runner, the worker-result path, and the metrics reader all consult without an actor, so an org-aware lookup there would need an optional actor threaded through every one of them and would silently change what those internal callers see. Serve enforces tenancy per operation everywhere else; this follows that. |
+| Check the org inside `ServeState.jobs` / `JobRegistry` instead of per operation | Appealing, because one guard would cover every caller at once. The registry already knows about orgs — `in_flight_by_org` aggregates by one for `/metrics` — but it is keyed by id and the runner, the worker-result path, and the metrics reader all consult it without an actor, so an org-aware lookup there would need an optional actor threaded through every one of them and would silently change what those internal callers see. Serve enforces tenancy per operation everywhere else; this follows that. |
 | Re-check the org on every frame of the live stream | Would end a stream whose caller switched org mid-stream. It costs an org resolution per frame, and the switch already takes effect on the caller's next request everywhere else — a stream that died halfway through would be a stricter rule than the rest of the interface applies, not a safer one. |
 | Leave the two reads and scope only the writes | Cancelling and answering a handoff are the destructive pair, so the writes matter more. Reading another tenant's job view and its live log still discloses scenario names, step progress, and log output, which is the confidentiality half of the same boundary. Splitting them would leave the item half-done for no saving. |
 
