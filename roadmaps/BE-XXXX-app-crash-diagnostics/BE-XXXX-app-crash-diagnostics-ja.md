@@ -75,7 +75,8 @@ iOS は Simulator に限ります。実機自身が抱える証跡の欠落（�
 事象を名指しするメッセージで失敗します。`runs/<run_id>/<sid>/app-crash/` ディレクトリは、
 プラットフォーム自身の証跡を保持します。iOS では `ReportCrash` が書き出した `.ips` レポート
 をその名前のまま、Android では `logcat-crash.txt`（端末が許せば `tombstone.txt` も）です。
-開発者は、2つの誤った説明を消去する前に、正しいファイルを最初に開けるようになります。
+開発者は、2つの誤った説明を消去法で潰してから探し当てるのではなく、最初から正しい
+ファイルを開けるようになります。
 
 ## 詳細設計
 
@@ -222,7 +223,7 @@ append 自体もこの中で行うため、あとから加わるステップの�
 通るのではありません。こちらは BE-0314 の*割り込み*の回復ステップのための再入経路
 です（同じ `exec_steps` を囲む `self.state.running_recovery = True`、
 `_interrupt_guard.py:70`）。`after` フェーズではありません。`_run_recovery` は、この
-段落が別途勘定に入れる必要のある、3つ目の独立した確認の倍加要因です。すでに落ちた
+段落が別途勘定に入れる必要のある、確認の回数を増やす3つ目の独立した要因です。すでに落ちた
 アプリに対して走る割り込みの回復ステップは、確定する outcome ごとに1回の確認を
 払います。これはどちらのラッチも抑えない、ふつうの（`relaunch` でない）失敗です。
 除外を `outcome.action` だけに
@@ -437,7 +438,21 @@ Simulator 上のアプリの `.ips` レポートは、そのヘッダに実行�
 （`Path(ios.app_path) / "Info.plist"`）から `CFBundleExecutable` を、各起動時に一度
 読み取ります。あらゆる iOS バンドルが宣言を義務づけられているこの1つのプロパティリスト
 キーから、掃引のパターンを組み立てます。`e.install` がインストール元とする、その同じ
-`ios.app_path` がすでに名指すバンドルからの読み取りです。
+`ios.app_path` がすでに名指すバンドルからの読み取りです。`ios.app_path` 自体は任意です
+（`str | None`、
+[`target_config.py:107`](../../bajutsu/common/config/schema/target_config.py)）。
+`bundle_id` だけを名指す `deviceType: simulator` ターゲットで、すでにアプリが
+インストール済みの Simulator に対しては、これを設定しません。同じケースを
+`_prepare_simulator` 自身の install もすでにゲートしており（`if ios.app_path:`、
+`xcuitest_environment.py:235`）、置き換えデバイスの経路は、設定済みだと決めつける
+のではなく自前の専用エラーを送出します（`xcuitest_environment.py:627-632`）。
+実行ファイル名を代わりに導く PID アクセサもないため（そもそも `Info.plist` を
+読む理由そのものです）、組み立てる代替パターンがありません。この収集は `appPath`
+を設定したターゲットに限った範囲であり、その範囲は読み取りより*前に*明示的に
+確認します。`ios.app_path is None` はその場で `[]` へ解決します。非 macOS ホストと
+同じ、名前のついた事前確認です。読み取り側で `Path(None)` が送出し、数段落あとの
+広い `except Exception` に握りつぶされ、説明のつかない見落としとして読めてしまう
+のではありません。
 
 `XcuitestEnvironment`
 （[`bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py)）
@@ -974,7 +989,9 @@ fake backend の実行が収集する内容は変わりません。
       もっとも新しいその起動のレポートだけを見つけ、以前のシナリオやクラッシュのもの
       ではないこと。クロールレーンの `AndroidEnvironment` は、クラッシュを確定しても
       root 権限に依存する tombstone 取得をまったく試みないこと（`logcat` の層は走る）。
-      `run` でリースされた方は引き続き試みること。失敗した
+      `run` でリースされた方は引き続き試みること。`appPath` を設定していないターゲットで
+      `app_crash_artifacts()` がその場で `[]` へ解決し、`Info.plist` の読み取りにまったく
+      届かないこと。失敗した
       `relaunch` ステップ自身が `app_crash_signal()` をまったく確認しないこと、それを包む
       `if`・`forEach` の outcome も、終了させられたアプリに対して失敗する
       `after: on: fail` のステップも同様であること。割り込みの回復ステップ

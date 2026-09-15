@@ -31,7 +31,7 @@ subdirectory next to its other evidence, holding the platform's own report or th
 the platform offers.
 
 This item covers `bajutsu run` first, on the iOS (XCUITest) and Android (adb) backends — iOS scoped to
-the Simulator, where a real device's own gaps in evidence (see *iOS: `app.state`*) leave
+the Simulator: on a real device, the gaps in evidence named under *iOS: `app.state`* leave
 `app_crash_signal()` answering `None`, the same "cannot confirm" answer a backend with no signal at all
 gives. It extends the same underlying capture to `bajutsu crawl`'s existing detection of the same
 event. The web (Playwright) backend and its own signals for it are left to a follow-up item, noted
@@ -383,7 +383,18 @@ holds `ios.bundle_id` (`self._bundle_id`, `com.example.Showcase`), which is not 
 matches a report's filename. This item instead reads `CFBundleExecutable` from the installed app's
 own `Info.plist`, at `Path(ios.app_path) / "Info.plist"`, once at launch time — the one plist key
 every iOS bundle is required to declare — and builds the sweep's pattern from it, the same way
-`ios.app_path` already names the bundle `e.install` installs from.
+`ios.app_path` already names the bundle `e.install` installs from. `ios.app_path` is itself optional
+(`str | None`, [`target_config.py:107`](../../bajutsu/common/config/schema/target_config.py)) — a
+`deviceType: simulator` target naming only `bundle_id`, against a Simulator that already has the app
+installed, configures none, the same case `_prepare_simulator` already gates its own install on
+(`if ios.app_path:`, `xcuitest_environment.py:235`) and the replacement-device path raises its own
+named error over rather than assume set (`xcuitest_environment.py:627-632`). With no PID accessor to
+derive the executable name from instead (the reason this reads `Info.plist` at all), there is no
+fallback pattern to build: this capture is scoped to targets that configure `appPath`, and that scope
+is checked explicitly, before the read — `ios.app_path is None` resolves to `[]` immediately, the same
+named, up-front case a non-macOS host is below, rather than left to fall through into `Path(None)`
+raising inside the broad `except Exception` a few paragraphs down and reading as an accidental,
+unexplained miss.
 
 `XcuitestEnvironment`
 ([`bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py`](../../bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py))
@@ -834,8 +845,9 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       a `_resume_warm` cross-lease reuse's own launch, and the `.ips` sweep after each finding only the
       report from that most recent launch, never an earlier scenario's or crash's; a crawl-lane
       `AndroidEnvironment` never attempting the root-gated tombstone pull regardless of a confirmed
-      crash (the `logcat` layer still runs), while a `run`-leased one still attempts it; a failing
-      `relaunch` step never probing
+      crash (the `logcat` layer still runs), while a `run`-leased one still attempts it; a target with
+      no `appPath` configured resolving `app_crash_artifacts()` to `[]` up front, never reaching the
+      `Info.plist` read at all; a failing `relaunch` step never probing
       `app_crash_signal()`, and neither does its wrapping `if`/`forEach` outcome nor a dispatched
       `after: on: fail` step that also fails against the terminated app; an interrupt recovery step
       (BE-0314's `_run_recovery`, distinct from the `after` phase) that also fails against a
