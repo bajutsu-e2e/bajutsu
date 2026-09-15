@@ -249,7 +249,10 @@ still pays one probe per settling outcome (nesting depth, plus one per failing `
 very cost an earlier draft claimed to avoid entirely. That cost is still bounded by how deep a
 scenario nests and how many `after` rules it dispatches on failure — figures usually small in
 practice — and it only runs on a step that has already failed, unlike the proactive per-step polling
-*Alternatives considered* rules out below for adding cost to every green run.
+*Alternatives considered* rules out below for adding cost to every green run. "Usually small" prices a
+single round trip per probe, which holds on iOS but not on Android, where an unconfirmed probe polls to
+a multi-second bound rather than answering in one call (*Android: `logcat`'s crash buffer first...*
+below bounds that cost per scenario instead).
 
 This reactive shape has one structural blind spot worth naming rather than discovering later: a crash
 caused by a scenario's own *last* step, where that step's own actuation still reports `ok=True` — a
@@ -393,11 +396,22 @@ the `FileSink` first-wait diagnostic — a `Lease`-side copy is what's missing, 
 (Unit 7, below) with a third field the moment `StepLoopState` is built: unconfirmed when `readiness is
 None or not readiness.ready or readiness.signal == "count"` — the bare-count rung cannot tell the app
 from SpringBoard, so a `ready` answer there is not evidence the app ever foregrounded either, exactly the
-misdiagnosis this item exists to remove, inverted. `_finish_outcome` treats that the same way it treats a
-failed `relaunch` — skipping this probe and every later one in the same scenario — since a launch this
-item cannot confirm ever completed leaves the scenario in exactly the same "app state is now unknown"
-position a failed `relaunch` does, and the same scenario-wide suppression already accepted there is the
-simpler, safer choice here too. `ReadinessResult` documents itself as "Pure diagnosis: it never enters a
+misdiagnosis this item exists to remove, inverted. That rung is also the *ordinary* answer, not a rare
+one: `launch_driver` never passes `id_namespaces` to `await_ready`
+([`launch.py:99`](../../bajutsu/common/runner/launch.py)), so `namespace` never fires on this path and
+every target declaring no `readyWhen` lands on `count` at every launch — this repository's own
+`showcase-*-noax` targets among them
+([`demos/showcase/showcase.config.yaml:90`](../../demos/showcase/showcase.config.yaml), `idNamespaces: []`
+with no `readyWhen`, each carrying a full scenario suite). Latching this flag for the rest of the
+scenario the unconditional way the `relaunch` flag does would therefore disable the item outright for
+that whole class of targets, not just protect their first step. `_finish_outcome` instead clears the flag
+the moment it sees *any* settled outcome with `outcome.ok is True` — a step that actually succeeded is
+exactly the missing positive observation the scenario's first step lacked, so the protection holds for a
+first failing step without silencing every later one on a target whose readiness rung just happens to be
+the weak one. Until that first success, `_finish_outcome` treats an unconfirmed launch the same way it
+treats a failed `relaunch` — skipping the probe — since a launch this item cannot yet confirm leaves the
+scenario in exactly the same "app state is not yet known" position a failed `relaunch` leaves it in for
+the rest of the scenario. `ReadinessResult` documents itself as "Pure diagnosis: it never enters a
 verdict (prime directive 1)"
 ([`protocols/readiness_result.py:15-16`](../../bajutsu/common/platform_lifecycle/protocols/readiness_result.py),
 repeated on `signal` at `:27`) — true of every consumer before this one, which only ever displayed it on
@@ -671,7 +685,19 @@ the bound expiring and the newest entry never meeting both conditions answer `No
 signal at all gives. This is the corroboration `app.state`'s
 `notRunning` gets for free from the Simulator's own constraints above; Android's own platform-reported,
 time-bound exit reason gives adb the equivalent positive confirmation, once the read is given the same
-room to catch up that the write needs.
+room to catch up that the write needs. Only the *first* such poll in a scenario needs the full bound,
+though: that first probe is the one racing `system_server`'s reap, but a later probe in the same
+scenario — a crash three levels deep inside `if`/`forEach`, plus every failing `after` step, per
+*Detecting the event* above — has nothing new to wait out if the first probe already burned the bound
+without a match. `AdbDriver` therefore gains an `self._exit_info_exhausted: bool = False` instance
+field, the same shape as its existing `_act_warned` / `_act_unavailable` latches, set the first time a
+bounded poll ends without a matching entry. A driver instance never outlives one scenario on this
+backend — `AndroidEnvironment.has_reusable_resident()` answers `False` unconditionally (see
+*iOS: matching the `.ips` report* above — BE-0291's cross-lease warm reuse is XCUITest-only), so a fresh
+`AdbDriver` is constructed per lease and this field needs no explicit reset. Once set, a later call
+skips the bounded poll and reads the exit-info history exactly once, answering immediately whether or
+not that single read finds a match — the bound this item's own accounting already assumes an
+unconfirmed probe costs, not the multi-second poll Android's signal actually takes without this latch.
 
 `AndroidEnvironment`
 ([`bajutsu/common/platform_lifecycle/environments/android/android_environment.py`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py))
@@ -695,7 +721,9 @@ logcat -t` is overloaded, and an integer argument is read as a *line count* (\"t
 lines\"), not a time bound — only a quoted `'MM-DD hh:mm:ss.mmm'` string is read as one, a different
 rendering from exit-info's (`logcat`'s carries no year; exit-info's does, so neither substitutes for
 the other). So each
-launch site takes **one** `adb shell date '+%s|%Y-%m-%d %H:%M:%S|%m-%d %H:%M:%S.000'` read and
+launch site takes **one** `adb shell "date '+%s|%Y-%m-%d %H:%M:%S|%m-%d %H:%M:%S.000'"` read — the
+format quoted for the *device* shell, which would otherwise read the `|` as a pipe and word-split the
+rest — and
 splits its three fields on the host — a plain string split, never a timezone resolution, so the rule
 above still holds — rather than three separate `date` invocations, which would stamp three different
 instants and leave the `logcat` one (stamped last) filtering out a crash that landed in the gap.
@@ -1126,9 +1154,17 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       timezone, reintroducing the clock reconciliation this design otherwise avoids), polled the same
       short, bounded way
       as the iOS `.ips` sweep rather than read once, since `ApplicationExitInfo` is recorded only
-      after `system_server` reaps the death.
+      after `system_server` reaps the death — but only the scenario's first such poll pays the full
+      bound: a new `self._exit_info_exhausted: bool = False` instance field (the same shape as
+      `AdbDriver`'s existing `_act_warned` / `_act_unavailable` latches), set once a bounded poll ends
+      without a match, makes every later probe in the same scenario read the history once and answer
+      immediately rather than re-polling — safe with no explicit reset since
+      `AndroidEnvironment.has_reusable_resident()` answers `False` unconditionally, so a fresh
+      `AdbDriver` is built per lease on this backend (BE-0291's cross-lease reuse is XCUITest-only).
 - [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at` at each launch site, from **one**
-      combined `adb shell date '+%s|%Y-%m-%d %H:%M:%S|%m-%d %H:%M:%S.000'` read whose three
+      combined `adb shell "date '+%s|%Y-%m-%d %H:%M:%S|%m-%d %H:%M:%S.000'"` read — the format quoted
+      for the *device* shell, which would otherwise read the `|` as a pipe and word-split the rest —
+      whose three
       pipe-separated fields are split on the host (a plain string split, not a timezone resolution) —
       the epoch (`app_launched_at` itself), a rendering for the exit-info poll (Unit 4), and a
       rendering for `logcat -t`, stashed together rather than taken from three separate `date`
@@ -1199,11 +1235,16 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       first capture), true when `readiness is None or not readiness.ready or readiness.signal ==
       "count"` — the bare-count rung cannot tell the app from SpringBoard
       ([`readiness.py:151-152`](../../bajutsu/common/platform_lifecycle/readiness.py)), so a `ready`
-      answer there is not evidence the app ever foregrounded either — that suppresses every probe in
-      the scenario the same unconditional way the deliberate-termination flag does — closing the gap
+      answer there is not evidence the app ever foregrounded either, and `count` is also the *ordinary*
+      signal for any target declaring no `readyWhen` (`launch_driver` never passes `id_namespaces`, so
+      `namespace` never fires on this path; this repository's own `showcase-*-noax` targets are exactly
+      this shape and each carries a full scenario suite) — closing the gap
       where a scenario's first failing step has no earlier step to have observed the app running, so an
       app that never reached the foreground would otherwise read as a confirmed crash on that first
-      probe; this same Unit also updates `ReadinessResult`'s own docstring
+      probe, *without* the unconditional, rest-of-scenario suppression the deliberate-termination flag
+      uses, which would silence every later probe for that whole class of targets: `_finish_outcome`
+      instead clears this flag the moment it sees any settled outcome with `outcome.ok is True`, the
+      positive observation a genuinely successful step supplies; this same Unit also updates `ReadinessResult`'s own docstring
       (`protocols/readiness_result.py:15-16`, `:27`), which currently reads "Pure diagnosis: it never
       enters a verdict (prime directive 1)" — true of every consumer before this flag, which only ever
       displayed the value on a wait-timeout diagnostic — to name this new use before the invariant goes
