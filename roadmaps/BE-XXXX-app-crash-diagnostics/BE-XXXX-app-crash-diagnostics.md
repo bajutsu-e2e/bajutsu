@@ -422,8 +422,11 @@ crashes per run (`current_fp = None; continue`,
 [`_functions.py:668-669`](../../bajutsu/crawl/core/_functions.py)), so the second crash's sweep would
 reach back before its own `crawl_reset` and accept the *first* crash's `.ips` report instead — the
 wrong crash, in a directory whose whole purpose is attributing the report correctly.
-`XcuitestEnvironment` overrides `crawl_reset()` too, the same shape as the `relauncher()` override:
-call `_DeviceEnvironment`'s version, then record `app_launched_at` next to it. `AndroidEnvironment`
+`XcuitestEnvironment` overrides `crawl_reset()` too, the same shape as the `relauncher()` override —
+`crawl_reset(eff)` is a *factory* (`_build_lane` calls it once and keeps the `Reset` it returns,
+[`cli.py:300`](../../bajutsu/crawl/cli.py)), so the override wraps that returned `Reset` rather than
+stamping beside the factory call: call `_DeviceEnvironment`'s `Reset`, then record `app_launched_at`,
+once per frontier revisit. `AndroidEnvironment`
 needs no matching override here either — its own `crawl_reset()`'s `e.launch`
 ([`android_environment.py:410`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py))
 is the third of the three sites Unit 5 already names.
@@ -638,7 +641,20 @@ base.AppCrashSignal)` and a non-`None` `d.app_crash_signal()`, the same capabili
 already implement for `run`. `crawl`'s own detection is unchanged either way — a `Crash` is still
 recorded on the UI-tree heuristic alone — only the artifact sweep is gated, so an unconfirmed crash
 records a `Crash` with no `artifacts` rather than paying a full-timeout poll on what might be a
-covering alert. Capturing here matters for concurrency, not only correctness: `record_crash` holds the
+covering alert.
+
+That `d.app_crash_signal()` call is wrapped in its own `except base.BackendCrashError: pass`, treating
+a channel error the same as an unconfirmed answer — `crawl` records the `Crash` and keeps walking, no
+`artifacts`. *iOS: `app.state`* deliberately leaves a channel error unswallowed for `run`, letting it
+propagate as `XcuitestRunnerCrashError` into the recovery path `pipeline.py` already owns; `crawl` has
+no such path — nothing under `bajutsu/crawl/` handles `BackendCrashError` — and this call sits outside
+`_walk`'s own `try` (`_functions.py:597-655`, scoped to `action.perform`/`_observe`), in the "pure
+deterministic reads, off-lock" window that was pure Python before this item added the first raising
+round-trip to it. Left unswallowed here, the error would propagate through `_run`'s `except Exception:
+coord.note_failure(exc)`, be re-raised on the main thread after join, and reach `cli.py`'s bare
+`_execute(...)` then `_finish(...)` — no `try`/`finally` between them — so `_finish` never runs:
+`write_repros` never walks `screen_map.crashes`, discarding every repro and every artifact this item
+buffered for the *entire* walk, on exactly the failure this item exists to capture evidence for. Capturing here matters for concurrency, not only correctness: `record_crash` holds the
 coordinator's `self._cond` for its whole body, and that same lock also serializes `on_event`
 (`_coordinator.py`'s `_emit`) and every other worker's own `record_crash` / `record_edge` calls — a
 multi-second `.ips` poll or tombstone pull run *inside* that lock would stall every other crawl lane
@@ -831,7 +847,9 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       tombstone-pull layer stays off for the whole walk (Unit 5); the capture call joining
       `record_crash`'s existing off-lock crash check, gated on
       the driver positively confirming the event (`isinstance`/`app_crash_signal()`) so a UI-tree
-      false positive does not pay a full-timeout sweep; `Crash`'s new `artifacts` field, deliberately
+      false positive does not pay a full-timeout sweep, wrapped in its own
+      `except base.BackendCrashError: pass` — unlike `run`, `crawl` owns no recovery path for a
+      propagating `XcuitestRunnerCrashError`, and this call sits outside `_walk`'s own `try`; `Crash`'s new `artifacts` field, deliberately
       left out of `serialize.py`'s `screenmap_dict`/`screenmap_from_dict` round trip (raw `bytes` has
       no JSON encoding; a carried-forward `Crash` reload always gets `artifacts=()`);
       `repro.py`'s `write_repros` writing non-empty artifacts under `crashes/crash-NNN/app-crash/`
@@ -853,9 +871,13 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       a `_resume_warm` cross-lease reuse's own launch, and the `.ips` sweep after each finding only the
       report from that most recent launch, never an earlier scenario's or crash's; a crawl-lane
       `AndroidEnvironment` never attempting the root-gated tombstone pull regardless of a confirmed
-      crash (the `logcat` layer still runs), while a `run`-leased one still attempts it; a target with
+      crash (the `logcat` layer still runs), while a `run`-leased one still attempts it; a
+      `BackendCrashError` raised by `d.app_crash_signal()` inside `crawl`'s own gate never escaping —
+      the `Crash` is still recorded, with no `artifacts`, and the walk continues; a target with
       no `appPath` configured resolving `app_crash_artifacts()` to `[]` up front, never reaching the
-      `Info.plist` read at all; a failing `relaunch` step never probing
+      `Info.plist` read at all; `write_repros` writing `crashes/crash-NNN/app-crash/` for a crash whose
+      path cannot be faithfully replayed — pinning that the artifact write sits before that loop's own
+      `continue` — under the same `NNN` the skipped repro would have carried; a failing `relaunch` step never probing
       `app_crash_signal()`, and neither does its wrapping `if`/`forEach` outcome nor a dispatched
       `after: on: fail` step that also fails against the terminated app; an interrupt recovery step
       (BE-0314's `_run_recovery`, distinct from the `after` phase) that also fails against a

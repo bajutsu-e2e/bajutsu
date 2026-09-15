@@ -485,8 +485,12 @@ Simulator 上のアプリの `.ips` レポートは、そのヘッダに実行�
 掃引は自身の `crawl_reset` より前にまで遡り、1件目のクラッシュの `.ips` レポートをそのまま
 受け入れてしまいます。誤ったクラッシュのレポートを、レポートを正しく紐づけることこそが
 存在意義のディレクトリへ持ち込むことになります。`XcuitestEnvironment` は `crawl_reset()`
-もオーバーライドします。`relauncher()` のオーバーライドと同じ形です。`_DeviceEnvironment`
-の実装を呼んでから、その隣で `app_launched_at` を記録します。`AndroidEnvironment` には、
+もオーバーライドします。`relauncher()` のオーバーライドと同じ形ですが、`crawl_reset(eff)`
+自体は*ファクトリ*です。`_build_lane` はこれを1回だけ呼び、返ってきた `Reset` を保持し
+続けます（[`cli.py:300`](../../bajutsu/crawl/cli.py)）。したがってこのオーバーライドは、
+ファクトリ呼び出しの隣で記録するのではなく、その返ってきた `Reset` を包みます。
+`_DeviceEnvironment` の `Reset` を呼んでから、`app_launched_at` をフロンティアの再訪
+のたびに記録します。`AndroidEnvironment` には、
 ここでも対応するオーバーライドは要りません。自前の `crawl_reset()` の `e.launch`
 （[`android_environment.py:410`](../../bajutsu/common/platform_lifecycle/environments/android/android_environment.py)）
 が、Unit 5 がすでに名指す3か所のうちの3つ目だからです。
@@ -757,7 +761,26 @@ adb にとって同じ役割の積極的な確認を与えます。
 向けに実装しているケイパビリティです。`crawl` 自身の検知はどちらの場合も変わりません。
 `Crash` は UI ツリーのヒューリスティックだけで記録され続けます。ゲートされるのは収集
 だけです。したがって未確認のクラッシュは、全タイムアウト分のポーリングを払う代わりに、
-`artifacts` を持たない `Crash` を記録します。ここで収集する理由は、正しさだけでなく
+`artifacts` を持たない `Crash` を記録します。
+
+この `d.app_crash_signal()` 呼び出しは、自前の `except base.BackendCrashError: pass` で
+包みます。チャンネルエラーを未確認の答えと同じ扱いにします。`crawl` は `Crash` を記録して
+歩き続け、`artifacts` は持ちません。「iOS：`app.state`」は `run` に対して、チャンネル
+エラーをあえて `None` へ握りつぶさず、`pipeline.py` がすでに持つ回復経路へ
+`XcuitestRunnerCrashError` としてそのまま伝播させると決めています。しかし `crawl` には
+そうした経路がありません。`bajutsu/crawl/` の下には `BackendCrashError` を扱う場所が
+どこにもなく、しかもこの呼び出しは `_walk` 自身の `try`（`_functions.py:597-655`、
+`action.perform`/`_observe` だけを覆います）の外にあります。「ロック外の、純粋な
+決定的読み取り」というこの窓は、本項目がここへ最初の送出しうる往復を持ち込むまでは
+ただの Python でした。ここで握りつぶさなければ、その例外は `_run` の
+`except Exception: coord.note_failure(exc)` を通り、join のあとメインスレッドで
+再送出され、`cli.py` の素の `_execute(...)` から `_finish(...)` へ——両者のあいだに
+`try`/`finally` はありません——届きます。つまり `_finish` は一度も走らず、`write_repros`
+は `screen_map.crashes` を一度も歩かず、本項目がこの巡回*全体*にわたってメモリに
+蓄えてきた再現シナリオと証跡のすべてが、まさに本項目が証跡を残すために存在する、
+その失敗そのもので失われてしまいます。
+
+ここで収集する理由は、正しさだけでなく
 並行性のためでもあります。`record_crash` は本体全体にわたって、コーディネータの
 `self._cond` を保持し続けます。その同じロックは `on_event`（`_coordinator.py` の
 `_emit`）と、他のあらゆるワーカー自身の `record_crash` / `record_edge` 呼び出しも
@@ -971,7 +994,10 @@ fake backend の実行が収集する内容は変わりません。
       通します。`_build_lane` の `environment_for` 呼び出しに新しいクロールレーンフラグを
       渡し、Android の tombstone 取得の層を巡回全体で止めておきます（Unit 5）。収集呼び出しを `record_crash` の既存のロック外クラッシュ確認へ加えます。
       ドライバが事象を積極的に確認したとき（`isinstance`/`app_crash_signal()`）にだけ収集する
-      ようゲートし、UI ツリーの誤検知が全タイムアウト分の掃引を払わないようにします。`Crash` の
+      ようゲートし、UI ツリーの誤検知が全タイムアウト分の掃引を払わないようにします。自前の
+      `except base.BackendCrashError: pass` で包み、`run` と違って `crawl` には伝播した
+      `XcuitestRunnerCrashError` を受け持つ回復経路がなく、この呼び出しは `_walk` 自身の
+      `try` の外にあります。`Crash` の
       新しい `artifacts` フィールド(生の `bytes` には JSON 表現がないため `serialize.py` の
       `screenmap_dict`/`screenmap_from_dict` の往復からはあえて除き、引き継がれる `Crash` は
       常に `artifacts=()` で組み立て直されます)。`repro.py` の `write_repros` が、空でない証跡を、
@@ -998,9 +1024,14 @@ fake backend の実行が収集する内容は変わりません。
       もっとも新しいその起動のレポートだけを見つけ、以前のシナリオやクラッシュのもの
       ではないこと。クロールレーンの `AndroidEnvironment` は、クラッシュを確定しても
       root 権限に依存する tombstone 取得をまったく試みないこと（`logcat` の層は走る）。
-      `run` でリースされた方は引き続き試みること。`appPath` を設定していないターゲットで
+      `run` でリースされた方は引き続き試みること。`crawl` 自身のゲート内で
+      `d.app_crash_signal()` が送出する `BackendCrashError` が外へ漏れないこと。`Crash` は
+      `artifacts` なしで記録され続け、巡回は続くこと。`appPath` を設定していないターゲットで
       `app_crash_artifacts()` がその場で `[]` へ解決し、`Info.plist` の読み取りにまったく
-      届かないこと。失敗した
+      届かないこと。再現できないクラッシュに対して `write_repros` が
+      `crashes/crash-NNN/app-crash/` を書き込むこと——証跡の書き込みがループ自身の
+      `continue` より前にあることを固定します——スキップされた再現ファイルが持つはずだった
+      その同じ `NNN` の下にです。失敗した
       `relaunch` ステップ自身が `app_crash_signal()` をまったく確認しないこと、それを包む
       `if`・`forEach` の outcome も、終了させられたアプリに対して失敗する
       `after: on: fail` のステップも同様であること。割り込みの回復ステップ
