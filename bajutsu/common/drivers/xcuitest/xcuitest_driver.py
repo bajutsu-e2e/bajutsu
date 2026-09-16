@@ -91,8 +91,14 @@ class XcuitestDriver:
         on_stall: Callable[[], None] | None = None,
         sleep: Callable[[float], None] = time.sleep,
         device_os: DeviceOS | None = None,
+        is_real_device: bool = False,
         zorder: ZOrderSource | None = None,
     ) -> None:
+        # Whether this drives a real iPhone rather than a Simulator (`xcuitest.deviceType: device`).
+        # Read only by `app_crash_signal`, which scopes itself out on one: a real device jetsam-kills
+        # a foreground app under memory pressure, so `notRunning` there is not the proof it is on the
+        # Simulator — and its crash reports never reach this host to be attached anyway (BE-0424).
+        self.is_real_device = is_real_device
         # The parsed OS version of the device this drives (BE-0358), or None when the environment
         # could not name one. Nothing here branches on it yet — it exists so a driver-level failure
         # can name the OS it happened on, and so the first genuinely per-OS decision has one route
@@ -623,6 +629,29 @@ class XcuitestDriver:
         """
         buttons, _ = self._parse_elements(self._transport("POST", "/systemAlert/query", {}))
         return [label for b in buttons if (label := b["label"])]
+
+    def app_crash_signal(self) -> str | None:
+        """Whether the app under test has crashed, from `XCUIApplication.state` (BE-0424).
+
+        `notRunning` answers "is it actually gone" directly, which the element tree cannot: an empty
+        or unexpected tree is equally consistent with a system alert covering the app or a deliberate
+        `background` step, while a backgrounded-but-alive app reports one of the running states here.
+
+        Simulator only. On a real device (`xcuitest.deviceType: device`) the same `notRunning` can
+        mean an OS memory-pressure kill instead, and there is no `.ips` report on this host to attach
+        anyway — so this answers `None` outright, the same "cannot confirm" a backend with no signal
+        at all gives, rather than misreading an OS kill as an app crash.
+
+        A channel error is deliberately *not* swallowed into `None`: it surfaces as the existing
+        `XcuitestRunnerCrashError`, a `BackendCrashError`, and propagates into the recovery path that
+        already owns it. A route failing right after this step's own selector failure is ordinary
+        contention, not evidence the channel is unrelated to this step.
+        """
+        if self.is_real_device:
+            return None
+        if self._transport("POST", "/app/state", {}).app_state != "notRunning":
+            return None
+        return "the app under test is no longer running (XCUIApplication.state == notRunning)"
 
     def set_interruption_policy(
         self, rules: Sequence[tuple[frozenset[str], str]], governs: bool

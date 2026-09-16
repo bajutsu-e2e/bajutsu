@@ -42,3 +42,14 @@ class StepOutcome:
     # actually used. Evidence only — nothing on the verdict path reads it. None for every other
     # action, and for a `generate` step that failed before it wrote its var.
     generated: str | None = None
+    # Set by the step loop's reactive check when a driver positively confirmed the app under test had
+    # crashed while settling this step (BE-0424). `pipeline.py` scans every phase's outcomes for it to
+    # decide whether to write an `app-crash/` directory. At most one outcome per scenario carries it:
+    # a wrapping `if`/`forEach` outcome that settles afterward folds the already-known signal into its
+    # own `reason` and leaves this at the default, so the scan never has to choose among several.
+    app_crashed: bool = False
+    # The platform's own crash evidence, captured synchronously at the moment above — not later, when
+    # a teardown `relaunch` in the same scenario's `after` phase could already have moved the launch
+    # marker the sweep matches against. Deliberately excluded from `manifest.py`'s `_scenario_dict`:
+    # raw `bytes` has no JSON encoding, and the durable copy is the redacted one under `app-crash/`.
+    app_crash_artifacts: tuple[tuple[str, bytes], ...] = ()

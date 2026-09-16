@@ -67,6 +67,17 @@ def test_only_the_xcuitest_simulator_backend_captures_anything_for_a_crash() -> 
         assert environment_for(actuator, "UDID").take_crash_snapshot()() == []
 
 
+def test_a_fresh_environment_captures_nothing_for_an_app_crash() -> None:
+    # BE-0424's app-side sibling to the check above: every environment answers both methods, so
+    # `pool.py`'s lease closure can read them off unconditionally with no per-backend branch. A fresh
+    # environment (no package, no `appPath`, no launch marker) has nothing to sweep for either way —
+    # `app_crash_tombstone` is a no-op on every platform but adb.
+    for actuator in ("xcuitest", "playwright", "fake", "adb"):
+        env = environment_for(actuator, "UDID")
+        assert env.app_crash_artifacts() == []
+        assert env.app_crash_tombstone() == []
+
+
 def test_captures_video_is_true_for_the_simctl_backed_devices() -> None:
     # The `record` bug BE-0256 fixes: the simctl-backed iOS device (xcuitest) can record a
     # scenario-wide video, so `captures_video` reads it from the Environment seam rather than a

@@ -47,6 +47,7 @@ final class RouterConcurrencyTests: XCTestCase {
         func querySystemAlertButtons() -> [ElementSnapshot] { [] }
         func tapSystemAlertButton(backingElement: AnyObject) -> TapResult { .ok }
         func screenshot() -> Data? { nil }
+        func appState() -> AppRunState { .runningForeground }
     }
 
     func testConcurrentReadsAreSerializedNotReentrant() {

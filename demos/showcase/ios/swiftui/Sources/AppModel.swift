@@ -76,6 +76,12 @@ final class AppModel: ObservableObject {
     /// `SHOWCASE_GESTURES` rather than a tab, so no existing scenario's tab bar moves.
     let signInMode: Bool
 
+    /// Swaps the whole UI for the crash fixture (`SHOWCASE_CRASH`, BE-0424), whose one button
+    /// faults the process on demand. A launch-env swap like `SHOWCASE_GESTURES` rather than a build
+    /// configuration: a Release build would compile a `#if DEBUG` affordance out, and the
+    /// expected-to-fail scenario would then fail on a missing selector rather than on a crash.
+    let crashMode: Bool
+
     private let env: [String: String]
 
     init(env: [String: String]) {
@@ -88,6 +94,7 @@ final class AppModel: ObservableObject {
         gesturesMode = env["SHOWCASE_GESTURES"] != nil
         pickersMode = env["SHOWCASE_PICKERS"] != nil
         signInMode = env["SHOWCASE_SIGNIN"] != nil
+        crashMode = env["SHOWCASE_CRASH"] != nil
         tipKitMode = env["SHOWCASE_TIPKIT"] != nil
         conformanceIDs = Self.conformanceIDs(env["SHOWCASE_CONFORMANCE"])
         if conformanceIDs != nil {

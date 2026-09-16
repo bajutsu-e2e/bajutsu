@@ -37,6 +37,55 @@ logger = logging.getLogger(__name__)
 # not built). Either way a channel failure falls back to `uiautomator dump`.
 _RESIDENT_ENV = "BAJUTSU_ADB_RESIDENT"
 
+# The three renderings one `date` read yields for a launch marker (BE-0424): the epoch, exit-info's
+# `timestamp=` form, and `logcat -t`'s. A read returning anything else is treated as no marker.
+_LAUNCH_MARKER_FIELDS = 3
+
+# How long the `logcat` crash-block extraction re-dumps for, and how often. Bounded the same way, and
+# for the same reason, as the driver's exit-info poll: `crash_dump` writes a native block after the
+# death the detection already keyed off, so one snapshot can legitimately come up empty (BE-0424).
+_LOGCAT_TIMEOUT = 5.0
+_LOGCAT_POLL = 0.25
+
+
+def _reset_exit_info_poll(driver: base.Driver) -> None:
+    """Let a genuinely fresh launch restore the driver's app-crash poll bound (BE-0424).
+
+    `isinstance` against the narrow `AppCrashPollResettable` protocol, the same shape
+    `SettledCacheInvalidator` is checked with two lines above each call site: a concrete-class check
+    would silently stop working the moment the driver reaches here through a wrapper (`TracingDriver`
+    installs protocol members as real attributes precisely so this kind of check keeps reading true).
+    """
+    if isinstance(driver, base.AppCrashPollResettable):
+        driver.reset_exit_info_poll()
+
+
+def _newest_tombstone(listing: str, launched_at: float) -> str | None:
+    """The newest `/data/tombstones` entry modified at or after *launched_at*, or None (BE-0424).
+
+    Both sides of the comparison are the *device's* own seconds-since-epoch — `stat -c "%Y"` here,
+    `date +%s` when the marker was stamped — so this is a plain number comparison and never resolves
+    a device-side rendering through the host's timezone, the rule the whole marker design turns on.
+
+    On API 30+ (this item's own floor) `debuggerd` writes both `tombstone_NN` (text) and its
+    protobuf sibling `tombstone_NN.pb`, and the `tombstone_*` glob this reads matches both — so the
+    `.pb` file is skipped here rather than in the shell glob: a `cat` of binary protobuf through the
+    redacting text path would either mangle it (`errors="replace"`) or raise, silently dropping the
+    whole layer.
+    """
+    newest: tuple[float, str] | None = None
+    for line in listing.splitlines():
+        epoch, _, path = line.strip().partition(" ")
+        if path.endswith(".pb"):
+            continue
+        try:
+            mtime = float(epoch)
+        except ValueError:
+            continue
+        if mtime >= launched_at and (newest is None or mtime > newest[0]):
+            newest = (mtime, path.rsplit("/", 1)[-1])
+    return newest[1] if newest is not None else None
+
 
 class AndroidEnvironment:
     """The Android emulator lifecycle via `adb` (the adb backend's environment).
@@ -71,6 +120,17 @@ class AndroidEnvironment:
         self._spawn = spawn
         # A video recording begun before the app launched, for the sink to adopt (video timing).
         self._prestarted_video: intervals.Interval | None = None
+        # The app under test's package, stashed at `start()` so `app_crash_artifacts()` — which takes
+        # no arguments — can bound its `logcat` extraction to this process (BE-0424).
+        self._package: str | None = None
+        # The device-clock instant of the most recent launch, in the two renderings its two consumers
+        # need: the epoch (the tombstone mtime bound) and exit-info's own `timestamp=` form, handed to
+        # the driver as a live read. Stamped before each of the three launch sites, never after.
+        self._launch_marker: tuple[float, str] | None = None
+        # The same instant in `logcat -t`'s own format, which is a third rendering again — `logcat`
+        # reads a bare integer as a line count, and its format carries no year where exit-info's does,
+        # so neither of the two above substitutes for it.
+        self._logcat_marker: str | None = None
         # Override the resident-server construction in tests; None uses the real, env-gated default.
         self._resident_factory = resident_factory
         self._resident: ResidentServerLike | None = None
@@ -98,6 +158,9 @@ class AndroidEnvironment:
         permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
         android = require_android(eff)
+        # `app_crash_artifacts()` takes no arguments, so this is the only route the `logcat` extraction
+        # has to the package it must bound itself to (BE-0424).
+        self._package = android.package
         e = adb.Env(self._serial, run=self._run)
         try:
             # A device provider that hands over an already-booted device / an already-installed build
@@ -143,6 +206,11 @@ class AndroidEnvironment:
             # launched — so the recording spans the app's cold start rather than missing it.
             self._prestart_video(record_video_dir)
             try:
+                # Stamped *before* `e.launch`, never after (BE-0424): `e.launch` is `am start -W`,
+                # whose `-W` waits for the launch to complete, so a marker taken once it returns has
+                # already been passed by a startup crash — and would then reject that crash's own
+                # `logcat` block and exit-info entry, both timestamped before it.
+                self._stamp_launch_marker()
                 e.launch(android.package, launch_env)
                 if pre.deeplink is not None:
                     e.open_url(pre.deeplink, android.package)
@@ -164,8 +232,52 @@ class AndroidEnvironment:
         clock = channel.clock if channel is not None else None
         act = channel.act if channel is not None else None
         return backends.make_driver(
-            self._actuator, self._serial, fetch_hierarchy=fetch, fetch_clock=clock, act=act
+            self._actuator,
+            self._serial,
+            fetch_hierarchy=fetch,
+            fetch_clock=clock,
+            act=act,
+            package=android.package,
+            api_level=self._read_api_level(),
+            # A live read, not a value frozen at construction — the same seam `fetch_clock` uses —
+            # so a mid-scenario `relaunch` moves the bound the driver compares against (BE-0424).
+            launched_at=lambda: self._launch_marker,
         )
+
+    def _read_api_level(self) -> int | None:
+        """The device's SDK level, or None when it cannot be read (BE-0424).
+
+        Nothing else in this codebase tracks it. The driver needs it because `ApplicationExitInfo`
+        does not exist below API 30, and an unreadable level fails the probe closed rather than
+        letting it poll for a signal the device may never report.
+        """
+        try:
+            return int(self._run(adb.get_prop_cmd(self._serial, "ro.build.version.sdk")).strip())
+        except (subprocess.CalledProcessError, OSError, ValueError):
+            return None
+
+    def _stamp_launch_marker(self) -> None:
+        """Record the device-clock instant of the launch about to happen, in all three renderings.
+
+        One `date` read, split on the host into the epoch (the tombstone mtime bound), the exit-info
+        `timestamp=` rendering, and `logcat -t`'s — see `adb.launch_marker_cmd` for why one read
+        rather than three, and why no rendering is derived from another on the host. A read that
+        fails leaves the marker unset, which makes every consumer answer "cannot confirm" (BE-0424).
+        """
+        try:
+            fields = self._run(adb.launch_marker_cmd(self._serial)).strip().split("|")
+        except (subprocess.CalledProcessError, OSError):
+            fields = []
+        if len(fields) != _LAUNCH_MARKER_FIELDS:
+            self._launch_marker, self._logcat_marker = None, None
+            return
+        epoch, exit_info_stamp, logcat_stamp = fields
+        try:
+            self._launch_marker = (float(epoch), exit_info_stamp)
+        except ValueError:
+            self._launch_marker, self._logcat_marker = None, None
+            return
+        self._logcat_marker = logcat_stamp
 
     def _begin_resident(self, *, native_z: bool = False) -> ResidentChannel | None:
         """Start the resident server for this lease, or None to read via `uiautomator dump`."""
@@ -343,12 +455,17 @@ class AndroidEnvironment:
                 **(extra_env or {}),
                 **(opts.env or {}),
             }
+            self._stamp_launch_marker()  # before the launch, per `start` (BE-0424)
             e.launch(package, launch_env)
             # `force_stop`/`launch` replace the screen through `adb.Env`, never through the driver's
             # own actuators — the one door `AdbDriver._settled_key` needs closed that its actuators
             # cannot close themselves (`base.SettledCacheInvalidator`, BE-0351).
             if isinstance(driver, base.SettledCacheInvalidator):
                 driver.invalidate_settled_cache()
+            # A genuinely fresh launch, so the app-crash probe's exit-info bound is worth paying
+            # again — a separate seam from the cache invalidation above, which every ordinary gesture
+            # also triggers and which would therefore clear this latch far too eagerly (BE-0424).
+            _reset_exit_info_poll(driver)
             readiness.await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
 
         return relaunch
@@ -391,6 +508,109 @@ class AndroidEnvironment:
         # crash report of its own to copy into the scenario's directory (BE-0421).
         return list
 
+    def app_crash_artifacts(self) -> list[tuple[str, bytes]]:
+        """The `logcat` crash block for the app under test's own crash (BE-0424).
+
+        The always-available layer: it needs no elevated access and touches no channel a later step
+        in this scenario still needs, which is what makes it safe to call the moment the crash is
+        confirmed. The tombstone layer is `app_crash_tombstone()` instead, for exactly that reason.
+
+        Nothing is cleared. The crash buffer is device-global and persists across launches, so
+        `scripts/collect_android_diagnostics.sh`'s end-of-job sweep still needs everything before this
+        launch; the `-t` bound is what keeps a stale crash out without destroying it.
+        """
+        try:
+            return self._logcat_crash()
+        except Exception as exc:
+            logger.debug("android: the app-crash logcat extraction failed (%s)", exc, exc_info=True)
+            return []
+
+    def _logcat_crash(self) -> list[tuple[str, bytes]]:
+        """Poll the crash buffer for a block belonging to this app since this launch (BE-0424)."""
+        if self._package is None or self._logcat_marker is None:
+            return []
+        for _ in base.deadline_ticks(_LOGCAT_TIMEOUT, _LOGCAT_POLL):
+            # Re-dumped rather than trusted on one `-d` snapshot: `crash_dump` writes a native
+            # `>>> <process> <<<` block only *after* the death `pidof` already reported, the same
+            # asynchrony the driver's own exit-info poll exists to close.
+            try:
+                text = self._run(adb.logcat_crash_dump_cmd(self._serial, self._logcat_marker))
+            except (subprocess.CalledProcessError, OSError):
+                return []
+            block = adb.extract_crash_block(text, self._package)
+            if block is not None:
+                return [("logcat-crash.txt", block.encode())]
+        return []
+
+    def app_crash_tombstone(self) -> list[tuple[str, bytes]]:
+        """The native tombstone for the same crash, best-effort and root-gated (BE-0424).
+
+        Called only from `pipeline.py`'s post-return scan. `adb root` restarts `adbd`, which kills the
+        resident server's `am instrument -w` session and drops BE-0283's `adb reverse` tunnel — so
+        firing it mid-scenario would make every outcome still to come raise `BackendCrashError`
+        against a dead channel and discard the whole `RunResult`. Neither is re-established here:
+        nothing later in this lease needs them, and `start()` rebuilds both from scratch on the next
+        one regardless.
+
+        A real device, a user build, or a refused `adb root` all resolve to skipping this layer
+        silently. The event is still reported and `logcat-crash.txt` still lands; what is lost is the
+        native-frame detail a managed-code crash never needed in the first place.
+        """
+        if self._launch_marker is None:
+            return []
+        try:
+            return self._pull_tombstone(self._launch_marker[0])
+        except Exception as exc:
+            logger.debug("android: the tombstone pull failed (%s)", exc, exc_info=True)
+            return []
+        finally:
+            self._restore_unroot()
+
+    def _pull_tombstone(self, launched_at: float) -> list[tuple[str, bytes]]:
+        """`adb root`, then the newest tombstone written at or after *launched_at* (BE-0424)."""
+        self._run(adb.root_cmd(self._serial))
+        # Without this every command below races `adbd`'s restart — the same gate
+        # `collect_android_diagnostics.sh` puts between its own `adb root` and its `adb pull`.
+        self._run(adb.wait_for_device_cmd(self._serial))
+        listing = self._run(adb.tombstones_cmd(self._serial))
+        name = _newest_tombstone(listing, launched_at)
+        if name is None:
+            return []
+        return [(name, self._run(adb.cat_cmd(self._serial, f"/data/tombstones/{name}")).encode())]
+
+    def _restore_unroot(self) -> None:
+        """Hand the device back at the privilege level every other lease already assumes (BE-0424).
+
+        `adb root` persists device-wide until `adb unroot` or a reboot, and nothing else in this
+        repository restores it. Left leaked, a later scenario on this device would run its
+        `install` / `pm clear` / `force_stop` / `launch` through a root shell — and, sharper,
+        `AdbDriver._rooted()` caches `id -u` and two actuation decisions read it, so a two-finger
+        gesture that should fail loudly with `UnsupportedAction` would instead run and pass, decided
+        by whether an earlier, unrelated scenario happened to crash.
+
+        Verified, not merely attempted: swallowing the failure the way the pull's own errors are
+        swallowed is exactly what would let that happen invisibly, so a shell still answering `0`
+        afterward is logged loudly.
+        """
+        try:
+            self._run(adb.unroot_cmd(self._serial))
+            self._run(adb.wait_for_device_cmd(self._serial))
+            still_root = self._run(adb.id_u_cmd(self._serial)).strip() == "0"
+        except (subprocess.CalledProcessError, OSError) as exc:
+            logger.warning(
+                "android: could not restore adbd to unrooted on %s (%s); later scenarios on this "
+                "device may actuate differently than they would have",
+                self._serial,
+                exc,
+            )
+            return
+        if still_root:
+            logger.warning(
+                "android: adbd on %s is still running as root after `adb unroot`; later scenarios "
+                "on this device may actuate differently than they would have",
+                self._serial,
+            )
+
     def end_lease(self, driver: base.Driver, eff: Effective) -> None:
         self.teardown(driver, eff)  # no warm resident kept: a lease's end is its full teardown
 
@@ -407,10 +627,14 @@ class AndroidEnvironment:
 
         def reset(driver: base.Driver) -> None:
             e.force_stop(package)
+            self._stamp_launch_marker()  # before the launch, per `start` (BE-0424)
             e.launch(package, eff.launch_env)
             # Same gap as `relauncher` above: this replaces the screen outside the driver's actuators.
             if isinstance(driver, base.SettledCacheInvalidator):
                 driver.invalidate_settled_cache()
+            # And the same second seam: a crawl builds one driver for the whole walk, so without this
+            # the first unconfirmed detection would latch the poll off for every later one (BE-0424).
+            _reset_exit_info_poll(driver)
             readiness.await_ready(driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces)
 
         return reset

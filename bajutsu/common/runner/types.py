@@ -14,6 +14,7 @@ from bajutsu.common.drivers.webview import DomSource
 from bajutsu.common.evidence import EvidenceSink
 from bajutsu.common.evidence.network import Collector
 from bajutsu.common.orchestrator import AlertGuardConfig, DeviceControl, RelaunchFn, SkippedCapture
+from bajutsu.common.platform_lifecycle.protocols import ReadinessResult
 from bajutsu.common.scenario import Scenario
 
 # Builds the in-scenario relaunch function for a scenario (given its live driver).
@@ -85,6 +86,19 @@ class Lease:
     # and written into the failed scenario's own evidence directory — so a scenario that recovered
     # never asks, and a platform that captures nothing returns `[]` and leaves the write a no-op.
     crash_artifacts: Callable[[], list[tuple[str, bytes]]] = _no_crash_artifacts
+    # The platform's own report for a crash of the *app under test* (BE-0424), as `(name, bytes)`
+    # pairs. Threaded into the step loop, not read here: it is called the moment a driver confirms the
+    # crash, before any later step in the same scenario can move the launch marker it matches against.
+    app_crash_artifacts: Callable[[], list[tuple[str, bytes]]] = _no_crash_artifacts
+    # The same crash's root-gated Android tombstone, called instead from `pipeline.py` once
+    # `run_scenario` has returned: the `adb root` it needs restarts `adbd` and kills the resident
+    # server, so it is unsafe anywhere a later step still actuates through that channel (BE-0424).
+    app_crash_tombstone: Callable[[], list[tuple[str, bytes]]] = _no_crash_artifacts
+    # How this lease's post-launch readiness gate ended (BE-0231), carried through so the step loop can
+    # tell "the app never reached the foreground" from "the app was running and then crashed" on a
+    # scenario's very first failing step, which has no earlier step to have observed it running
+    # (BE-0424). `None` where no gate ran.
+    readiness: ReadinessResult | None = None
 
 
 # Leases a free device for one scenario (blocking until one frees up): launches the app

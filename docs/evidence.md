@@ -500,6 +500,58 @@ The file is self-contained so a rerun-to-green does not discard it:
 It is recorded as an `Artifact(kind="waitDiagnostic", provider="runner")` — written by the run loop,
 not a backend actuator.
 
+## App-crash evidence (BE-0424)
+
+When the app under test itself terminates abnormally mid-scenario, the failing step's message names
+the event and the scenario's evidence directory gains an `app-crash/` subdirectory holding the
+platform's own report for it. Without this, the failure reads as an `ElementNotFound` naming a
+selector that should exist and normally does, so a contributor has to rule out a renamed `id` and an
+unloaded screen before suspecting the app at all.
+
+It is a diagnostic, never a verdict: the scenario fails because its step failed, exactly as it would
+for any other terminal step failure, and nothing here decides pass/fail (prime directive 1). The
+crash is classified **in-band**, so the scenario finishes normally — the failing step's screenshot,
+the running video recording, and any `after: on: error` rule all land the way they always do — and
+the backend-crash retry loop (`crash-diagnostics/` above, BE-0421) is never triggered: that one names
+a fault in the *test infrastructure*, this one a likely defect in the app a team is testing.
+
+| Backend | What lands in `app-crash/` | How the crash is confirmed |
+|---|---|---|
+| iOS (XCUITest), **Simulator only** | the `.ips` report macOS's `ReportCrash` wrote for the faulting process, under its own name | `XCUIApplication.state` answering `notRunning`. On a real device (`xcuitest.deviceType: device`) nothing is confirmed: the same answer can mean an OS memory-pressure kill, and the device's reports never reach this host |
+| Android (adb), **API 30 and above** | `logcat-crash.txt`, the crash buffer's own block for this process — managed (`FATAL EXCEPTION`) or native (`Fatal signal`) — plus `tombstone_NN` where the device allows `adb root` | `pidof` reporting no process, corroborated by `dumpsys activity exit-info` reporting `CRASH` / `CRASH_NATIVE` at or after this launch. Below API 30 `ApplicationExitInfo` does not exist, so nothing is confirmed |
+| web (Playwright) | nothing | left to a follow-up item |
+
+The check is **reactive**: a driver is asked only once a step's own action, wait, or assertion has
+already failed, never polled. Polling would add a round trip to every step of every green run to
+catch a failure mode that is rare by construction, and the reactive shape still catches the event at
+the exact step it happened, since that step is already failing.
+
+That shape has two blind spots, both accepted deliberately rather than closed with an unconditional
+end-of-scenario probe (which is the every-green-run cost the design exists to avoid):
+
+- A crash caused by a scenario's **last** step, where that step's own actuation still reports
+  success — a tap the runner delivered before the app died — is never probed, so a scenario
+  declaring neither `expect` nor a non-failure `after` rule stays **green**.
+- The same shape *with* a scenario-level `expect` goes **red but unclassified**: `expect` produces
+  assertion results rather than step outcomes, so it never reaches the check, and the reader sees an
+  assertion mismatch instead of a crash.
+
+A scenario written to exercise this signal therefore takes one more step after the crash trigger, so
+it is that later step — not the trigger itself — that fails and gets probed. An `after` rule that
+runs on success or always is enough too: its own teardown step does reach the check, so the crash is
+caught one step later rather than missed.
+
+A crawl records the same evidence under `crashes/crash-NNN/app-crash/`, beside that crash's own
+repro scenario. A crawl's *detection* stays the accessibility-tree heuristic it already used, which a
+covering system alert can trip; only the capture is gated on a driver positively confirming the
+event, so an unconfirmed detection records the crash with no artifacts rather than paying a bounded
+sweep on what may be an alert. The Android tombstone layer is `run`-only: the `adb root` it needs
+restarts `adbd`, which a crawl lane — holding one environment for its entire walk — could not recover
+from.
+
+Every write goes through the redacting text path, like the backend's own crash evidence above: a
+crash report is text a crashing app can echo a secret into.
+
 ## Artifact provenance (provider)
 
 Every piece of evidence is recorded as an `Artifact(name, kind, provider, depicts)`, leaving in the

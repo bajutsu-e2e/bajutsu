@@ -583,6 +583,14 @@ def device_pool(  # noqa: C901, PLR0915
                 # The lambda is load-bearing: `crash_evidence` is rebound by `release()`, so binding
                 # the name directly would freeze this lease on the no-op it starts at.
                 crash_artifacts=lambda: crash_evidence(),  # noqa: PLW0108
+                # Read off the live environment rather than a released copy, unlike the three above:
+                # both are called while this lease is still held — the first from inside the step loop
+                # at the moment the crash is confirmed, the second from `pipeline.py` once
+                # `run_scenario` has returned — so there is no later lease to protect them from
+                # (BE-0424).
+                app_crash_artifacts=lease_env.app_crash_artifacts,
+                app_crash_tombstone=lease_env.app_crash_tombstone,
+                readiness=readiness,
             )
         except BaseException:
             # A failed launch must not leak the collector tunnel (BE-0283) or the collector itself —

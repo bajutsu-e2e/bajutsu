@@ -39,6 +39,7 @@ from bajutsu.common.scenario import (
     system_alert_shapes,
 )
 
+from . import app_crash_latches
 from ._functions import (
     _dismiss_blocking_tip,
     _run_for_each,
@@ -52,6 +53,17 @@ from ._loop_config import _LoopConfig
 from ._screen_read import _ScreenRead
 from ._shared import _logger
 from .step_loop_state import StepLoopState
+
+
+def _with_crash_note(reason: str, signal: str) -> str:
+    """Name the app's crash in a step's failure, without losing the failure the step itself saw.
+
+    Appended rather than substituted, the same shape `_drain_step_interruptions` uses for an
+    undeclared interruption: the selector that could not be found is still the concrete thing the
+    step was doing when the app went down (BE-0424).
+    """
+    note = f"the app under test crashed: {signal}"
+    return f"{reason} — {note}" if reason else note
 
 
 class _StepRunner:
@@ -115,6 +127,77 @@ class _StepRunner:
             if kind == "web":
                 return self._handle_web(step, active_driver, idx, kind, outcome, start)
             return self._handle_action(step, active_driver, idx, kind, outcome, start)
+
+    def _finish_outcome(self, active_driver: base.Driver, outcome: StepOutcome) -> None:
+        """Settle one step's outcome: classify an app crash behind it, then record it.
+
+        The one place every handler appends through, so a step kind added later is covered with no
+        wiring of its own — the same property `_drain_step_interruptions` already gives the
+        interruption check it shares across the same four handlers (BE-0424). All five append sites
+        call it, including `_handle_action`'s `UncoveredSystemAlertLocale` early return, the one exit
+        this file's own comments already single out as the exit that skips every other shared step.
+        """
+        self._classify_app_crash(active_driver, outcome)
+        self.state.outcomes.append(outcome)
+
+    def _classify_app_crash(self, active_driver: base.Driver, outcome: StepOutcome) -> None:
+        """Ask a capable driver whether the app under test is behind this step's failure (BE-0424).
+
+        Reactive by design: a driver is asked only once a step's own action, wait, or assertion has
+        already failed, never polled, so a green run pays nothing for a failure mode that is rare by
+        construction. Three latches on the scenario-scoped `state.app_crash` bound what it costs and
+        keep it from misreading a termination the run itself caused.
+        """
+        latches = self.state.app_crash
+        if outcome.ok:
+            if outcome.action == app_crash_latches.RELAUNCH:
+                # Re-arms rather than clears: `relaunch`'s own closure discards the `ReadinessResult`
+                # `await_ready` hands it, and `await_ready` never raises — so a `relaunch` reporting
+                # `ok=True` says nothing about whether the app it just launched came up at all.
+                latches.unconfirmed_launch = True
+            elif outcome.action in app_crash_latches.OBSERVES_APP:
+                latches.unconfirmed_launch = False
+            return
+        if outcome.action == app_crash_latches.RELAUNCH:
+            # The one step that deliberately terminates the app. Latched before any probe, and it
+            # suppresses every later probe in this scenario — this step's own wrapping `if`/`forEach`
+            # outcomes and any `after: on: error` cleanup step included, each of which carries a
+            # different `outcome.action` and would otherwise probe fresh, reading the app's honest
+            # `notRunning` as a crash the check itself caused.
+            latches.deliberate_termination = True
+            return
+        if latches.confirmed_signal is not None:
+            # Already confirmed further in. Fold the known signal into this outcome's reason for a
+            # contributor reading the failure, but leave `app_crashed` at its default and capture
+            # nothing: exactly one outcome per scenario carries the classification, which is what
+            # keeps `pipeline.py`'s later scan from having to choose among several.
+            outcome.reason = _with_crash_note(outcome.reason, latches.confirmed_signal)
+            return
+        if latches.deliberate_termination or latches.unconfirmed_launch:
+            return
+        if not isinstance(active_driver, base.AppCrashSignal):
+            return
+        signal = active_driver.app_crash_signal()
+        if signal is None:
+            # Deliberately not latched: a "cannot confirm" answer for this step teaches nothing about
+            # whether the *next* step's own failure is a crash, so latching here would risk missing a
+            # real one.
+            return
+        try:
+            # The one raise-within-`try` this item keeps rather than restructuring away: naming this
+            # raise/catch pair is `AppCrashedError`'s whole reason to exist, and keeping the
+            # classification in-band is what lets `run_scenario` finish the scenario the way it
+            # finishes every other terminal step failure.
+            raise base.AppCrashedError(signal)  # noqa: TRY301
+        except base.AppCrashedError as exc:
+            outcome.reason = _with_crash_note(outcome.reason, str(exc))
+            outcome.app_crashed = True
+            latches.confirmed_signal = str(exc)
+            if self.cfg.capture_app_crash is not None:
+                # Synchronously, here at confirmation rather than once the scenario finishes: a
+                # teardown `relaunch` in this scenario's own `after` phase re-stamps the launch marker
+                # the sweep matches against, so a later read would sweep past the crash it is for.
+                outcome.app_crash_artifacts = tuple(self.cfg.capture_app_crash())
 
     def _drain_step_interruptions(self, driver: base.Driver, outcome: StepOutcome) -> None:
         """Drain what interrupted this step, and fail it unconditionally on an undeclared one.
@@ -217,7 +300,7 @@ class _StepRunner:
         )
         outcome.duration_s = self.cfg.clock.now() - start
         self._drain_step_interruptions(active_driver, outcome)
-        self.state.outcomes.append(outcome)
+        self._finish_outcome(active_driver, outcome)
         return None if outcome.ok else f"step {idx} ({kind}): {outcome.reason}"
 
     def _handle_for_each(
@@ -235,7 +318,7 @@ class _StepRunner:
         )
         outcome.duration_s = self.cfg.clock.now() - start
         self._drain_step_interruptions(active_driver, outcome)
-        self.state.outcomes.append(outcome)
+        self._finish_outcome(active_driver, outcome)
         return None if outcome.ok else f"step {idx} ({kind}): {outcome.reason}"
 
     def _handle_web(
@@ -288,7 +371,7 @@ class _StepRunner:
         # resolution above, on the native driver, before the block ever switches context — the same
         # native-only surface `_handle_action`'s own drain covers (BE-0406 Unit 2b).
         self._drain_step_interruptions(active_driver, outcome)
-        self.state.outcomes.append(outcome)
+        self._finish_outcome(active_driver, outcome)
         return None if outcome.ok else f"step {idx} ({kind}): {outcome.reason}"
 
     def _seed_prev_after(
@@ -454,7 +537,7 @@ class _StepRunner:
                         elements_source=active_driver.name,
                     )
                 )
-            self.state.outcomes.append(outcome)
+            self._finish_outcome(active_driver, outcome)
             # The step keeps `before.png` (the pre-step baseline) and the tree just written above,
             # both describing the same pre-action screen. Nothing acted, so there is no post-action
             # state to record — adding an `after.png` later would pair pixels from then with a tree
@@ -932,5 +1015,5 @@ class _StepRunner:
         # read, the next `before` reads fresh (BE-0234 Unit 2).
         self.state.prev_after = screen.cached
 
-        self.state.outcomes.append(outcome)
+        self._finish_outcome(active_driver, outcome)
         return None if outcome.ok else f"step {idx} ({kind}): {outcome.reason}"

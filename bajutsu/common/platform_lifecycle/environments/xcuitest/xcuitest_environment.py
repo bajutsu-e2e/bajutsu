@@ -22,19 +22,24 @@ from bajutsu.common.devices import os as device_os
 from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.zorder import ZOrderSource
+from bajutsu.common.orchestrator import RelaunchFn
 from bajutsu.common.platform_lifecycle.environments._bundled_runner import _products_digest
 from bajutsu.common.platform_lifecycle.environments.ios import _DeviceEnvironment
-from bajutsu.common.scenario import Preconditions
+from bajutsu.common.scenario import Preconditions, Relaunch, Scenario
+from bajutsu.crawl import Reset
 
 from ._attempt_failure import _AttemptFailure
 from ._functions import (
     _allocate_port,
+    _app_crash_reports,
+    _bundle_executable,
     _destination,
     _diagnostic_reports_dir,
     _max_warm_reuses,
     _never_ended,
     _no_recovery,
     _patch_xctestrun_env,
+    _read_report,
     _recovery_timeout,
     _reported_pid,
     _reports_since,
@@ -86,6 +91,13 @@ _CRASH_LOG_TAIL_LINES = 500
 # regardless. The name-and-time match below usually leaves exactly one, so this only bounds the case
 # where several concurrent workers' `xcodebuild` processes faulted within the same window.
 _MAX_CRASH_REPORTS = 3
+
+# How long the app's own `.ips` sweep waits for `ReportCrash` to finish writing, and how often it
+# re-looks (BE-0424). A condition wait, not a fixed sleep: it returns the instant a matching report
+# appears. Bounded short because the scenario has already failed by the time this runs — the wait
+# buys evidence, never a different verdict.
+_APP_CRASH_REPORT_TIMEOUT = 5.0
+_APP_CRASH_REPORT_POLL = 0.2
 
 
 # Probing a *warm* runner before reuse (BE-0291): a live runner answers /health at once, so this only
@@ -168,6 +180,22 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # (`_terminate_app_under_test`). None until the first spawn, and on a real device, where
         # simctl does not apply.
         self._bundle_id: str | None = None
+        # The installed app bundle this environment prepped, for the `CFBundleExecutable` read that
+        # builds the `.ips` sweep's own match pattern — `app_crash_artifacts()` takes no arguments, so
+        # it has no `eff` in scope to reach `ios.app_path` through (BE-0424). None on a target that
+        # configures no `appPath`, which scopes that capture out up front.
+        self._app_path: str | None = None
+        # Whether this drives a real iPhone rather than a Simulator, set by `start` before either
+        # branch and read only by the driver's BE-0424 app-crash signal, which scopes itself out on
+        # one. False until the first `start`.
+        self._is_real_device = False
+        # The device-clock instant the app under test was last launched at, the lower bound the
+        # `.ips` sweep matches reports against (BE-0424). Stamped immediately *before* each of the
+        # four launch sites — the cold spawn, a `relaunch` step, a crawl's frontier reset, and a warm
+        # cross-lease resume — never after: a marker stamped too early can only over-collect, which
+        # the udid and executable-name checks already narrow, while one stamped too late rejects the
+        # report of an app that crashed during the very launch it names.
+        self._app_launched_at: float | None = None
         # The XCTRunner apps of the .xctestrun this environment spawned, read out of its plist so a
         # discard can terminate the runner app itself (`_terminate_runner_app`). Empty until the
         # first spawn, and on a real device, where simctl does not apply.
@@ -212,6 +240,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
         ios = require_ios(eff)
         xcfg = ios.xcuitest
         device_type = effective_device_type(xcfg)
+        # Recorded here, before either branch, so every `make_driver` call below — the cold spawn's
+        # and the warm resume's alike — reaches it. BE-0424's app-crash signal scopes itself out on a
+        # real device: `notRunning` there can be an OS memory-pressure kill, and its crash reports
+        # never land in this host's own `DiagnosticReports` to be attached.
+        self._is_real_device = device_type == "device"
         # The app answers `nativeZ` on the port this run injected, so the client is built from the
         # same launch env the app will read (BE-0355). Held on the environment rather than threaded
         # through the spawn path, so a warm resume reuses the responder its own launch set up.
@@ -317,6 +350,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         """
         ios = require_ios(eff)
         self._bundle_id = ios.bundle_id if device_type != "device" else None
+        self._app_path = ios.app_path if device_type != "device" else None
         if device_type != "device":
             self._prepare_simulator(eff, pre, permissions, cold=True)
 
@@ -358,6 +392,13 @@ class XcuitestEnvironment(_DeviceEnvironment):
         def recover(failure: _AttemptFailure) -> _Recovery | None:
             return self._recover_between_attempts(failure, eff, pre, permissions)
 
+        # Stamped *before* the spawn, not after it returns (BE-0424). The app itself is launched
+        # inside the runner, by its own `XCUIApplication.launch()`, so there is no Python-side launch
+        # call to stamp beside — and a marker taken once `_spawn_cold_with_retry` has returned would
+        # already be later than the launch it names, rejecting the `.ips` of an app that crashed
+        # during that very launch. Stamping early can only widen a window the udid and
+        # executable-name checks already narrow.
+        self._app_launched_at = time.time()
         spawned = _spawn_cold_with_retry(
             spawn, timeout=timeout, recover=_no_recovery if device_type == "device" else recover
         )
@@ -812,6 +853,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             runner_alive=self._runner_alive,
             on_stall=self._capture_stall,
             device_os=self._device_os(),
+            is_real_device=self._is_real_device,
             zorder=self._zorder,
         )
         # `log_tail` / `discard` reach live environment state (`self._runner_log` / `self._runner_proc`);
@@ -853,6 +895,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
         e = simctl.Env(self._udid, run=self._run)
         try:
             e.terminate(ios.bundle_id)
+            # The cross-lease warm-reuse launch (BE-0291), and the fourth site this marker is stamped
+            # at. Without it the marker would stay frozen at the original cold launch, so a scenario
+            # resuming warm on this device would sweep back far enough to match an *earlier*
+            # scenario's `.ips` — which passes both the executable-name and the udid check, being the
+            # same app on the same Simulator (BE-0424).
+            self._app_launched_at = time.time()
             e.launch(ios.bundle_id, launch_args, launch_env)
             if pre.deeplink is not None:
                 e.openurl(pre.deeplink)
@@ -1099,6 +1147,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             runner_alive=self._runner_alive,
             on_stall=self._capture_stall,
             device_os=self._device_os(),
+            is_real_device=self._is_real_device,
             zorder=self._zorder,
         )
         try:
@@ -1288,6 +1337,88 @@ class XcuitestEnvironment(_DeviceEnvironment):
             if len(reports) == _MAX_CRASH_REPORTS:
                 break
         return reports
+
+    def relauncher(
+        self,
+        eff: Effective,
+        scenario: Scenario,
+        driver: base.Driver,
+        *,
+        extra_env: Mapping[str, str] | None = None,
+    ) -> RelaunchFn:
+        """`_DeviceEnvironment`'s relauncher, wrapped to re-stamp the launch marker (BE-0424).
+
+        A `relaunch` step's own launch runs through `device_relauncher`'s closure over
+        `(udid, run, extra_env)`, which has no `XcuitestEnvironment` in scope to update. Left alone,
+        the marker would stay at the lease's cold launch, so a crash after a mid-scenario `relaunch`
+        would sweep back far enough to attach an `.ips` that `relaunch` itself already superseded.
+        Stamped *before* the call, the same ordering `_spawn_cold` uses and for the same reason.
+        """
+        inner = super().relauncher(eff, scenario, driver, extra_env=extra_env)
+
+        def relaunch(step: Relaunch) -> None:
+            self._app_launched_at = time.time()
+            inner(step)
+
+        return relaunch
+
+    def crawl_reset(self, eff: Effective) -> Reset:
+        """`_DeviceEnvironment`'s crawl reset, wrapped to re-stamp the launch marker (BE-0424).
+
+        A crawl's own per-frontier-revisit relaunch is a third launch site, reached through neither
+        `relauncher()` nor the spawn path. It matters because a crawl records several crashes in one
+        run and keeps walking, so an unstamped marker would make the second crash's sweep reach back
+        past its own reset and attach the *first* crash's report instead.
+
+        `crawl_reset` is a factory — `_build_lane` calls it once and keeps the `Reset` — so the wrap
+        goes around the returned callable rather than beside the factory call.
+        """
+        inner = super().crawl_reset(eff)
+
+        def reset(driver: base.Driver) -> None:
+            self._app_launched_at = time.time()
+            inner(driver)
+
+        return reset
+
+    def app_crash_artifacts(self) -> list[tuple[str, bytes]]:
+        """The `.ips` report macOS wrote for the app under test's own crash (BE-0424).
+
+        Called synchronously from the step loop at the moment a driver confirms the crash, so the
+        launch marker it matches against is still the one the crashed app was running under. The whole
+        body is wrapped: a failure anywhere in the directory scan, the plist read, or the report read
+        is exactly as unable to change the app's own crash verdict as a missing report is.
+        """
+        try:
+            return self._collect_app_crash_reports()
+        except Exception as exc:
+            _logger.debug("xcuitest: the app-crash report sweep failed (%s)", exc, exc_info=True)
+            return []
+
+    def _collect_app_crash_reports(self) -> list[tuple[str, bytes]]:
+        """The name-, time- and udid-matched `.ips` reports for this launch (BE-0424)."""
+        reports_dir = _diagnostic_reports_dir()
+        # Each of these is a named, up-front scope rather than a failure: a non-macOS host has no
+        # report store; a real device's reports never reach this host; a target configuring no
+        # `appPath` gives no `Info.plist` to read the executable name from, and with no PID accessor
+        # on `XCUIApplication` there is no fallback pattern to build instead.
+        if reports_dir is None or self._is_real_device or self._app_path is None:
+            return []
+        if self._app_launched_at is None:
+            return []
+        executable = _bundle_executable(self._app_path)
+        if executable is None:
+            return []
+        paths = _app_crash_reports(
+            reports_dir,
+            f"{executable}-*.ips",
+            self._app_launched_at,
+            self._udid,
+            base.deadline_ticks(_APP_CRASH_REPORT_TIMEOUT, _APP_CRASH_REPORT_POLL),
+        )
+        return [(path.name, content) for path in paths if (content := _read_report(path))][
+            :_MAX_CRASH_REPORTS
+        ]
 
     def _discard_runner(self, *, warn_on_crash: bool = True, keep_log: bool = False) -> None:
         """Terminate the runner process and remove its patched .xctestrun (kills the warm resident).

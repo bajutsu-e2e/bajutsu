@@ -148,6 +148,76 @@ def test_write_repros_with_no_crashes_writes_nothing(
     assert write_repros(run_sink, ScreenMap()) == []
 
 
+# --- app-crash artifacts (BE-0424) -----------------------------------------------------------------
+
+
+def test_write_repros_writes_app_crash_artifacts_beside_the_repro(
+    tmp_path: Path, run_sink: RunArtifactWriter
+) -> None:
+    crash = Crash(
+        ("tap login",),
+        (Action(kind="tap", target="login"),),
+        (("logcat-crash.txt", b"FATAL EXCEPTION: main\n"),),
+    )
+    write_repros(run_sink, ScreenMap(crashes=[crash]))
+
+    written = (tmp_path / "crashes" / "crash-001" / "app-crash" / "logcat-crash.txt").read_text(
+        encoding="utf-8"
+    )
+    assert "FATAL EXCEPTION" in written
+
+
+def test_write_repros_writes_artifacts_even_for_a_non_replayable_crash(
+    tmp_path: Path, run_sink: RunArtifactWriter
+) -> None:
+    # The artifact write sits before the `continue`: a non-replayable crash (a `tap_point` with no
+    # selector) is exactly the one whose platform report is worth the most, since there is no repro
+    # to run instead — it must not lose its artifacts along with its repro.
+    crash = Crash(
+        ("tap menu", "tapPoint"),
+        (Action(kind="tap", target="menu"), Action(kind="tap_point", point=(0.5, 0.9))),
+        (("logcat-crash.txt", b"FATAL EXCEPTION: main\n"),),
+    )
+    written = write_repros(run_sink, ScreenMap(crashes=[crash]))
+
+    assert written == []  # no repro: the path cannot be faithfully replayed
+    assert (tmp_path / "crashes" / "crash-001" / "app-crash" / "logcat-crash.txt").exists()
+
+
+def test_write_repros_writes_no_app_crash_directory_with_no_artifacts(
+    tmp_path: Path, run_sink: RunArtifactWriter
+) -> None:
+    write_repros(run_sink, ScreenMap(crashes=[_crash(Action(kind="tap", target="a"))]))
+    assert not (tmp_path / "crashes" / "crash-001" / "app-crash").exists()
+
+
+def test_write_repros_redacts_the_artifact_content(
+    tmp_path: Path, run_sink: RunArtifactWriter
+) -> None:
+    # The same free-text scrub `run`'s own copy uses: a crash report is text a crashing app can echo
+    # a secret into.
+    secret = b"token=ghp_0123456789abcdefghijklmnopqrstuvwxyz\n"
+    crash = Crash(("tap a",), (Action(kind="tap", target="a"),), (("report.txt", secret),))
+    write_repros(run_sink, ScreenMap(crashes=[crash]))
+
+    written = (tmp_path / "crashes" / "crash-001" / "app-crash" / "report.txt").read_text(
+        encoding="utf-8"
+    )
+    assert "ghp_0123456789abcdefghijklmnopqrstuvwxyz" not in written
+
+
+def test_the_artifacts_field_is_excluded_from_the_screenmap_round_trip() -> None:
+    # Raw `bytes` has no JSON encoding: deliberately left out of `serialize.py` in both directions
+    # rather than base64-widening every other field's dump. A carried-forward `Crash` reload always
+    # gets `artifacts=()`, the dataclass default.
+    from bajutsu.crawl import screenmap_dict, screenmap_from_dict
+
+    crash = Crash(("tap a",), (Action(kind="tap", target="a"),), (("r.txt", b"x"),))
+    reloaded = screenmap_from_dict(screenmap_dict(ScreenMap(crashes=[crash])))
+    assert reloaded.crashes[0].artifacts == ()
+    assert reloaded.crashes[0].path == ("tap a",)  # everything else still round-trips
+
+
 def test_screenmap_json_round_trips_crash_actions() -> None:
     sm = ScreenMap(
         crashes=[

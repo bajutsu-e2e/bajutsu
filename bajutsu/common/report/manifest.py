@@ -217,7 +217,7 @@ def manifest_dict(
 
 
 def _scenario_dict(r: RunResult) -> dict[str, object]:
-    """`asdict(r)`, minus `wall_offset_s`.
+    """`asdict(r)`, minus `wall_offset_s` and every outcome's `app_crash_artifacts`.
 
     `wall_offset_s` is `scenario_wall_start - scenario_start` — a delta that converts *this run's*
     `time.monotonic()` instants to wall-clock ones. It exists only for `pipeline.py` to carry a
@@ -225,9 +225,21 @@ def _scenario_dict(r: RunResult) -> dict[str, object]:
     while the run is still in-process; no monotonic instant survives into the manifest for a later
     reader to convert with it, so persisting it would be noise at best. `video_anchor_s`, by
     contrast, is itself already an absolute instant (BE-0348) and stays.
+
+    `app_crash_artifacts` (BE-0424) is dropped for a harder reason: it holds raw `bytes`, which has no
+    JSON encoding, and `write_json` carries no `default=` — so the first app-crash scenario would
+    raise `TypeError` writing `manifest.json`, taking the whole run's manifest and HTML report down
+    *after* the crash was correctly classified. It is nested inside every `StepOutcome` rather than a
+    top-level field, so the three phase lists have to be walked instead of one `pop` reaching it. The
+    crash itself still reports fully: `app_crashed` and `reason` are plain scalars and round-trip,
+    and the durable copy of the bytes is the redacted one `pipeline.py` already wrote under
+    `app-crash/` — these exist only to reach that write.
     """
     d = asdict(r)
     d.pop("wall_offset_s", None)
+    for phase in ("steps", "before_outcomes", "after_outcomes"):
+        for outcome in d.get(phase) or ():
+            outcome.pop("app_crash_artifacts", None)
     return d
 
 

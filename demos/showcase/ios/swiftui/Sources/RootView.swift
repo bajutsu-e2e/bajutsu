@@ -7,8 +7,8 @@ struct RootView: View {
         // BE-0114: the SHOWCASE_CONFORMANCE launch env swaps the whole UI for the flat conformance
         // screen; BE-0019: SHOWCASE_GESTURES swaps in the flat pinch/rotate screen; BE-0356:
         // SHOWCASE_PICKERS swaps in the flat wheel-picker screen; SHOWCASE_SIGNIN swaps in the
-        // native sign-in screen. Otherwise the normal tab app
-        // (BE-0079) is untouched.
+        // native sign-in screen; BE-0424: SHOWCASE_CRASH swaps in the flat crash-fixture screen.
+        // Otherwise the normal tab app (BE-0079) is untouched.
         if let identifiers = model.conformanceIDs {
             ConformanceView(identifiers: identifiers)
         } else if model.gesturesMode {
@@ -17,6 +17,8 @@ struct RootView: View {
             PickerView()
         } else if model.signInMode {
             SignInView()
+        } else if model.crashMode {
+            CrashView()
         } else {
             MainTabView()
         }

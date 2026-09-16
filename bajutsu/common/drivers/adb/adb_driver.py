@@ -54,6 +54,21 @@ ActFn = Callable[[ActRequest], ActOutcome]
 # this backend's actuation records — a coordinate only means something alongside its unit.
 _UNIT = "pixel"
 
+# `ApplicationExitInfo` — and therefore `dumpsys activity exit-info` — arrived in API 30. Below it
+# the corroborating half of BE-0424's crash signal cannot exist, so the probe scopes itself out
+# rather than polling for something the device will never report.
+_EXIT_INFO_MIN_API = 30
+
+# toybox `pidof` exits 1 when nothing matches, which is the probe's expected answer, not an error.
+_PIDOF_NO_MATCH = 1
+
+# How long the exit-info poll waits for `system_server` to record the death `pidof` already reported,
+# and how often it re-reads. A condition wait, not a fixed sleep. Only the scenario's *first*
+# unconfirmed poll pays the full bound (`_exit_info_exhausted`), and it runs only on a step that has
+# already failed.
+_EXIT_INFO_TIMEOUT = 5.0
+_EXIT_INFO_POLL = 0.25
+
 
 # BE-0415: one wrap per callable, folded in at `__init__` only when a trace is already open
 # (`--trace-driver` is a whole-run flag, so a driver built while none is open never traces for the
@@ -201,8 +216,28 @@ class AdbDriver(CoordinateTreeDriver):
         fetch_hierarchy: HierarchyFetch | None = None,
         fetch_clock: ClockFetch | None = None,
         act: ActFn | None = None,
+        package: str | None = None,
+        api_level: int | None = None,
+        launched_at: Callable[[], tuple[float, str] | None] | None = None,
     ) -> None:
         super().__init__()
+        # The app under test's package, its device's API level, and a live read of the environment's
+        # launch marker — the three inputs BE-0424's crash signal needs. All three default to the
+        # value that makes `app_crash_signal` answer "cannot confirm" up front rather than guess:
+        # `dumpsys activity exit-info` with no package reports *every* package on the device, so a
+        # silent default would confirm another process's crash as this app's, and
+        # `ApplicationExitInfo` does not exist below API 30, so polling for it on an older image
+        # would time out on every real crash instead of failing closed immediately.
+        self._package = package
+        self._api_level = api_level
+        self._launched_at = launched_at
+        # Set once a bounded exit-info poll has ended without a match, so every later probe in the
+        # same scenario reads the history once and answers immediately (the same shape as
+        # `_act_warned` / `_act_unavailable` below). The first probe is the one racing
+        # `system_server`'s reap; a later one — a crash three levels deep, or a failing `after` step —
+        # has nothing new to wait out. `run` builds a fresh driver per lease, but `crawl` builds one
+        # for the whole walk, which is why `reset_exit_info_poll()` exists to clear it.
+        self._exit_info_exhausted = False
         self.serial = adb.checked_serial(serial)
         # BE-0415: a driver built while a trace is open times every subprocess call `run` issues and
         # every resident-channel round trip these three callables make. Checked once here, not on
@@ -1226,6 +1261,76 @@ class AdbDriver(CoordinateTreeDriver):
         else:
             cmd = adb.double_tap_cmd(self.serial, point[0], point[1])
         self._actuate_centered(cmd)
+
+    def reset_exit_info_poll(self) -> None:
+        """Let the next app-crash probe pay the full exit-info bound again (BE-0424).
+
+        A genuinely fresh launch — not "the screen moved" — is what makes waiting on a new
+        `system_server` reap worth paying for, so this is deliberately *not* folded into
+        `invalidate_settled_cache()`: that method's contract is the screen changing, and this
+        driver's own actuators call it on every ordinary gesture, which would clear the latch before
+        nearly every probe it exists to bound. Called from `AndroidEnvironment`'s relaunch and crawl
+        reset closures instead, right after their own `e.launch(...)`.
+        """
+        self._exit_info_exhausted = False
+
+    def app_crash_signal(self) -> str | None:
+        """Whether the app under test has crashed, from `pidof` corroborated by exit-info (BE-0424).
+
+        An empty `pidof` is necessary but not sufficient: it matches an ordinary process exit and a
+        launch that never completed just as well as a crash. `ApplicationExitInfo` supplies the
+        platform's own verdict — `CRASH` / `CRASH_NATIVE` rather than `ANR` / `LOW_MEMORY` /
+        `USER_REQUESTED` — and the entry's own timestamp rules out a stale one from before this
+        launch. Polled rather than read once, because `pidof` reports empty the instant the process
+        dies while `system_server` records the exit only after it reaps the death.
+
+        The timestamp is compared against the *device-clock rendering* the launch marker carries, not
+        against its epoch: resolving `timestamp=` on the host would run it through the host's
+        timezone, so a UTC emulator driven from any other zone would place every fresh crash hours
+        before the marker and answer `None` on every real one.
+
+        Answers `None` — the same "cannot confirm" a backend with no signal at all gives — on every
+        up-front gap, and on any `adb` failure: an unhandled fault on the first real crash this probe
+        is meant to catch would be strictly worse than no answer.
+        """
+        marker = self._launched_at() if self._launched_at is not None else None
+        if self._package is None or marker is None or (self._api_level or 0) < _EXIT_INFO_MIN_API:
+            return None
+        try:
+            if self._run(adb.pidof_cmd(self.serial, self._package)).strip():
+                return None  # the app still holds a process, so nothing to confirm
+        except subprocess.CalledProcessError as exc:
+            # toybox `pidof` exits 1 on no match — the routine, expected outcome — and the default
+            # `RunFn` is `check=True`, so this is how "no process" actually arrives. Any other
+            # non-zero exit is a genuine failure and cannot confirm anything.
+            if exc.returncode != _PIDOF_NO_MATCH or (exc.stdout or "").strip():
+                return None
+        except OSError:
+            return None
+        return self._confirm_exit_info(marker[1])
+
+    def _confirm_exit_info(self, launched_at: str) -> str | None:
+        """Poll `ApplicationExitInfo` for a crash recorded at or after *launched_at* (BE-0424)."""
+        assert self._package is not None
+        ticks = (
+            iter((None,))
+            if self._exit_info_exhausted
+            else base.deadline_ticks(_EXIT_INFO_TIMEOUT, _EXIT_INFO_POLL)
+        )
+        for _ in ticks:
+            try:
+                text = self._run(adb.exit_info_cmd(self.serial, self._package))
+            except (subprocess.CalledProcessError, OSError):
+                return None
+            newest = adb.newest_exit_info(text)
+            if (
+                newest is not None
+                and newest[0] in adb.EXIT_INFO_CRASH_REASONS
+                and newest[1] >= launched_at  # both are the device's own '%Y-%m-%d %H:%M:%S'
+            ):
+                return f"the app under test exited with {newest[0]} at {newest[1]}"
+        self._exit_info_exhausted = True
+        return None
 
     def _rooted(self) -> bool:
         """Whether adbd runs as root (`id -u` is 0), cached — a precondition for `sendevent`."""

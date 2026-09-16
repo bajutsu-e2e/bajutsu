@@ -35,6 +35,9 @@ final class FakeElementProvider: ElementProviding {
     // The SpringBoard alert buttons `/systemAlert/query` returns, and the taps it records (BE-0316).
     var systemAlertButtons: [ElementSnapshot] = []
     var systemAlertTapCalls: [AnyObject] = []
+    // What `/app/state` reports (BE-0424). A live app by default, so every existing test keeps the
+    // behavior it had before this route existed.
+    var appRunState: AppRunState = .runningForeground
 
     func queryElements() -> [ElementSnapshot] {
         beforeQueryElements?()
@@ -112,4 +115,6 @@ final class FakeElementProvider: ElementProviding {
     }
 
     func screenshot() -> Data? { screenshotData }
+
+    func appState() -> AppRunState { appRunState }
 }

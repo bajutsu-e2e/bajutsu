@@ -64,7 +64,14 @@ Recover = Callable[[base.Driver], None]
 # Builds one extra worker's `(driver, reset)` lane. The engine calls it *inside that worker's own
 # thread*, so a thread-affine driver (Playwright's sync API, BE-0077) is created on the very thread
 # that drives it; the iOS backend is thread-agnostic, so this is also where the run pool builds its lanes.
-WorkerFactory = Callable[[], "tuple[base.Driver, Reset]"]
+WorkerFactory = Callable[[], "tuple[base.Driver, Reset, AppCrashCapture]"]
+
+# One lane's sweep for the platform's own report of an app crash (BE-0424) — its environment's
+# `app_crash_artifacts`, never `app_crash_tombstone`: a crawl lane holds *one* environment for its
+# entire walk, so the `adb root` that layer needs would break every later query on that lane with
+# nothing left to rebuild the resident server until the crawl itself ends. `crawl` simply never
+# calls that second method, which is what keeps the tombstone layer off without a flag of its own.
+AppCrashCapture = Callable[[], list[tuple[str, bytes]]]
 
 # Fires once per newly discovered screen, while the worker's driver is still positioned on it — the
 # moment to capture a per-screen artifact (a screenshot). It receives that worker's driver, so a
@@ -78,6 +85,45 @@ OnNode = Callable[[base.Driver, "Node"], None]
 # persisted plan, so without this the older spelling never matches and every input branch the map
 # had left to explore is dropped in silence — the crawl can then stop as "completed".
 _LEGACY_TYPED_ENTRY = re.compile(r"(?s)^(type .+?)=(['\"]).*\2$")
+
+
+def _no_app_crash_capture() -> list[tuple[str, bytes]]:
+    """The neutral capture: a lane whose caller wired none, or whose platform captures nothing."""
+    return []
+
+
+def _confirmed_app_crash_artifacts(
+    driver: base.Driver, capture: AppCrashCapture
+) -> tuple[tuple[str, bytes], ...]:
+    """This crash's platform report, but only where the driver positively confirms it (BE-0424).
+
+    `crawl`'s own detection is the UI-tree heuristic, which a system alert or a deliberate
+    `background` step can trip — and unlike `run`, a crawl does not stop after recording a crash, so
+    it can walk into the same false positive repeatedly. `run`'s bounded sweep earns its wait because
+    `app.state`, or `pidof` plus exit-info, confirmed the event first; this gate is what buys the
+    same confirmation here, so an unconfirmed detection records a `Crash` with no artifacts rather
+    than paying a full-timeout poll on what may be a covering alert.
+
+    The detection itself is unchanged either way: only the sweep is gated.
+
+    The catch is `Exception`, wider than `BackendCrashError` alone — deliberately, since neither
+    backend's own failure mode is reliably one of its subclasses. `AdbDriver`'s `RunFn` is
+    `subprocess.run(..., check=True)` and nothing under `backend_cli/adb/` raises `BackendCrashError`
+    at all, so a narrower catch would still miss a `pidof` / exit-info failure; on iOS, a channel
+    reply the driver cannot decode raises the plain `XcuitestChannelError` `RuntimeError` — only its
+    `XcuitestRunnerCrashError` subclass is also a `BackendCrashError` — so a catch naming only that
+    base class would still let an ordinary decode hiccup through. And unlike `run`, a crawl owns no
+    recovery path: this call sits outside `_walk`'s own `try`, in the off-lock window that was pure
+    Python before this, so an escaping error would propagate through `_run`'s `note_failure`, be
+    re-raised on the main thread, and skip `_finish` — discarding every repro and every artifact
+    buffered for the *entire* walk, on exactly the failure this exists to capture evidence for.
+    """
+    try:
+        if not isinstance(driver, base.AppCrashSignal) or driver.app_crash_signal() is None:
+            return ()
+        return tuple(capture())
+    except Exception:
+        return ()
 
 
 # A guide proposes the replayable actions to try from a screen, given how it was reached
@@ -381,6 +427,7 @@ def crawl(  # noqa: C901, PLR0915
     on_node: OnNode | None = None,
     recover: Recover | None = None,
     extra_workers: Sequence[WorkerFactory] | None = None,
+    app_crash_artifacts: AppCrashCapture | None = None,
 ) -> ScreenMap:
     """Crawl by a forward walk, resetting + replaying only to backtrack to an unexplored screen.
 
@@ -557,7 +604,9 @@ def crawl(  # noqa: C901, PLR0915
             on_node(d, node)
         return node, actions
 
-    def _worker(d: base.Driver, rst: Reset, current_fp: str | None, lane: str) -> None:
+    def _worker(
+        d: base.Driver, rst: Reset, current_fp: str | None, lane: str, capture: AppCrashCapture
+    ) -> None:
         errors = 0  # consecutive device faults → retire so a wedged device can't busy-loop
 
         def _give_back(src_fp: str, action: Action, cause: str) -> bool:
@@ -664,7 +713,7 @@ def crawl(  # noqa: C901, PLR0915
             if dismissed:
                 coord.record_alert(path, dismissed)
             if crashed:
-                coord.record_crash(path)
+                coord.record_crash(path, _confirmed_app_crash_artifacts(d, capture))
                 current_fp = None  # the app collapsed — reset to keep going
                 continue
             is_new = coord.record_edge(src_fp, action, dst_fp, dismissed, path)
@@ -677,13 +726,15 @@ def crawl(  # noqa: C901, PLR0915
             node, actions = _discover(d, dst_fp, landed, reached)
             coord.finish_discovery(node, actions)
 
-    def _run(d: base.Driver, rst: Reset, current_fp: str | None, lane: int) -> None:
+    def _run(
+        d: base.Driver, rst: Reset, current_fp: str | None, lane: int, capture: AppCrashCapture
+    ) -> None:
         # Surface an unexpected worker error after join (a bare thread would otherwise swallow it),
         # while device-error isolation is handled inside `_worker`.
         # The engine never learns a lane's udid (the caller's factory holds it), so a log names a
         # device by its backend and lane number — enough to tell two lanes of a pool apart.
         try:
-            _worker(d, rst, current_fp, f"{d.name} lane {lane}/{1 + len(extra_factories)}")
+            _worker(d, rst, current_fp, f"{d.name} lane {lane}/{1 + len(extra_factories)}", capture)
         except Exception as exc:  # re-raised on the main thread after join
             coord.note_failure(exc)
 
@@ -699,11 +750,11 @@ def crawl(  # noqa: C901, PLR0915
         # thread — BE-0077), then walk. A lane that can't even start is surfaced after join, like any
         # other worker fault, rather than silently dropping a worker.
         try:
-            d, rst = factory()
+            d, rst, capture = factory()
         except Exception as exc:
             coord.note_failure(exc)
             return
-        _run(d, rst, None, lane)
+        _run(d, rst, None, lane, capture)
 
     # The primary worker is left on the entry screen; extras start cold and reset to a frontier.
     threads = [
@@ -712,7 +763,7 @@ def crawl(  # noqa: C901, PLR0915
     ]
     for t in threads:
         t.start()
-    _run(driver, reset, start_fp, 1)
+    _run(driver, reset, start_fp, 1, app_crash_artifacts or _no_app_crash_capture)
     for t in threads:
         t.join()
     if coord.failure:

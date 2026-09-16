@@ -617,6 +617,13 @@ class _RecordingEnv:
         self.snapshots_taken += 1
         return lambda: [(f"runner-{self.udid}.log", b"crashed")]
 
+    def app_crash_artifacts(self) -> list[tuple[str, bytes]]:
+        # Named after the udid for the same reason as the snapshot above (BE-0424).
+        return [(f"app-{self.udid}.ips", b"app crashed")]
+
+    def app_crash_tombstone(self) -> list[tuple[str, bytes]]:
+        return []
+
     def end_lease(self, driver: base.Driver, eff: Effective) -> None:
         if self.end_lease_error is not None:
             raise self.end_lease_error

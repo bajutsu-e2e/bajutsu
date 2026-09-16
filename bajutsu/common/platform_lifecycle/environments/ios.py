@@ -110,6 +110,17 @@ class _DeviceEnvironment:
         # null, the same shape `bridge_collector` above already returns (BE-0421).
         return list
 
+    def app_crash_artifacts(self) -> list[tuple[str, bytes]]:
+        # `XcuitestEnvironment` overrides this with the real `.ips` sweep; the live WebDriver route
+        # drives a real device whose crash reports never reach this host, and fake has no app at all
+        # (BE-0424).
+        return []
+
+    def app_crash_tombstone(self) -> list[tuple[str, bytes]]:
+        # Android alone has a tombstone to pull, so every iOS-side environment inherits this no-op —
+        # `XcuitestEnvironment` included, which overrides only the layer above (BE-0424).
+        return []
+
     def end_lease(self, driver: base.Driver, eff: Effective) -> None:
         # No warm resident here, so a lease's end is just its full teardown (BE-0291).
         self.teardown(driver, eff)
