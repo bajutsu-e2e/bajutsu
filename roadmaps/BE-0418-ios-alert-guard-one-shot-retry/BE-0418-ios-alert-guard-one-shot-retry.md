@@ -267,11 +267,10 @@ Log:
   `loop/_functions.py` (97.41 → 97.38), `loop/_step_runner.py` (98.29 → 98.28, whose own guard
   block shrank once the settle moved inside `__call__`), and `waits/_functions.py` (97.9 → 97.88,
   relocating `_tree_signature` to the
-  shared `drivers/elements.py` as the public `tree_signature`). The other two rose over the same
-  span rather than dropping: `waits/_alert_guard_gate.py` (97.07 → 97.36) and `types/_functions.py`
-  (97.46 → 97.75), a later round's shared-helper extraction (`identified_alert_rules`,
-  `subtract_labels`) and its regression tests fully covering branches an earlier round had briefly
-  left untested.
+  shared `drivers/elements.py` as the public `tree_signature`). One rose over the same span rather
+  than dropping — `waits/_alert_guard_gate.py` (97.07 → 97.36) — after a later round's
+  shared-helper extraction (`identified_alert_rules`, `subtract_labels`) and its regression tests
+  fully covered branches an earlier round had briefly left untested.
 
 ## References
 

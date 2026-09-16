@@ -3727,8 +3727,9 @@ def test_the_end_of_step_guard_settles_after_the_round_that_exhausts_its_bound()
 
 def test_the_end_of_step_guard_clears_a_single_alert_with_no_added_latency() -> None:
     # The regression guard for pre-BE-0418 behavior: one in-tree alert still clears, and nothing
-    # here adds a fixed delay to the common single-alert case — every extra round this loop spends
-    # confirming the screen is clear costs one more in-memory probe, never a sleep.
+    # here adds a fixed delay to the common single-alert case — the one extra round this loop
+    # spends confirming the screen is clear costs one more `system_alert_labels()` query and one
+    # more `driver.query()` on a real backend, never a sleep.
     prompt_button = _button("Not Now")
     driver = FakeDriver([_button("Sign In"), prompt_button], react=_clearing_tree_tap("Not Now"))
     guard = AlertGuardConfig(rules=[guard_rule("Not Now")])

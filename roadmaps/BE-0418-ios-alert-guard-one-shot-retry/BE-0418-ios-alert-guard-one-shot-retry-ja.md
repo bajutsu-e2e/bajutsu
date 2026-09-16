@@ -280,10 +280,10 @@ docstring には、シートの登場アニメーションが終わるまでボ�
   98.28)も同様です。settle の呼び出しが `__call__` の内側へ移ったことで、こちら自身のガード用コードが
   縮んだためです。もう 1 つは `waits/_functions.py`(97.9 → 97.88)です。
   `_tree_signature` を共有モジュール `drivers/elements.py` へ公開関数 `tree_signature` として移した
-  変更に伴うものです。残る 2 つは同じ期間でむしろ上がりました。`waits/_alert_guard_gate.py`(97.07 →
-  97.36)と `types/_functions.py`(97.46 → 97.75)です。後のラウンドで共有ヘルパー
-  `identified_alert_rules` と `subtract_labels` を切り出し、その回帰テストを加えました。前のラウンド
-  では一時的に未検証のままだった分岐が、これですべてカバーされました。
+  変更に伴うものです。残る 1 つ、`waits/_alert_guard_gate.py`(97.07 → 97.36)は同じ期間でむしろ
+  上がりました。後のラウンドで共有ヘルパー `identified_alert_rules` と `subtract_labels` を切り出し、
+  その回帰テストを加えました。前のラウンドでは一時的に未検証のままだった分岐が、これですべて
+  カバーされました。
 
 ## 参考
 

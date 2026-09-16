@@ -835,8 +835,11 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   compared. An
   app screen the closing sheet revealed can coincidentally carry the same button labels and get
   misnamed as the sheet that never closed, but `exclude` already keeps this call from tapping either
-  one again regardless of which read it takes, so the misreport costs only an imprecise note, never
-  a second tap. The tree
+  one again regardless of which read it takes, so the misreport never costs a second tap. It does
+  cost more than an imprecise note, though: the same containment check withdraws the `AlertEvent`
+  that tap genuinely earned, so a sheet that really did close is reported as never dismissed — and
+  when it was the call's only dismissal, the caller's own one-shot retry is skipped against a
+  screen that had in fact moved on. The tree
   note survives a later round that finds nothing to match, or one that goes on to dismiss an
   unrelated alert on either surface — native or
   in-tree — rather than either round erasing a real, still-open diagnosis. A native leftover note is
