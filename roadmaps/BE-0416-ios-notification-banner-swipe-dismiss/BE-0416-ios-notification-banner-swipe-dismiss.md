@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0416") |
-| Implementing PR | [#1975](https://github.com/bajutsu-e2e/bajutsu/pull/1975) (units 1, 4, 6, 7) |
+| Implementing PR | [#1975](https://github.com/bajutsu-e2e/bajutsu/pull/1975) (units 1, 4, 6, 7), [#2015](https://github.com/bajutsu-e2e/bajutsu/pull/2015) (units 2, 3, 5, 8) |
 | Topic | Platform support |
 | Related | [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md), [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0399](../BE-0399-ios-system-alert-interruption-policy/BE-0399-ios-system-alert-interruption-policy.md), [BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md) |
 <!-- /BE-METADATA -->
@@ -318,7 +318,7 @@ Log:
   banner arriving during a run with `systemAlertHandling` on was recorded as an undeclared
   interruption and failed an otherwise-passing step, naming the notification's body text among the
   buttons the run had expected.
-- 2026-09-16 — [#PR-TBD] — Units 2, 3, 5, and 8 landed, completing the item. A new
+- 2026-09-16 — [#2015](https://github.com/bajutsu-e2e/bajutsu/pull/2015) — Units 2, 3, 5, and 8 landed, completing the item. A new
   `HANDLE_NOTIFICATION_BANNER` capability and `Driver.notification_banner_frame()` (a new
   `/notificationBanner/query` runner route) report a banner's frame between interactions;
   `base.notification_banner_swipe_points` converts it into the swipe `swipe` already performs. The

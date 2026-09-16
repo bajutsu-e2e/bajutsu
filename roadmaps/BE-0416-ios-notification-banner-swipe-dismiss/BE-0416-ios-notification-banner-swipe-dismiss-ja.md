@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0416") |
-| 実装 PR | [#1975](https://github.com/bajutsu-e2e/bajutsu/pull/1975)（単位 1、4、6、7） |
+| 実装 PR | [#1975](https://github.com/bajutsu-e2e/bajutsu/pull/1975)（単位 1、4、6、7）、[#2015](https://github.com/bajutsu-e2e/bajutsu/pull/2015)（単位 2、3、5、8） |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)、[BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md)、[BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)、[BE-0399](../BE-0399-ios-system-alert-interruption-policy/BE-0399-ios-system-alert-interruption-policy-ja.md)、[BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md) |
 <!-- /BE-METADATA -->
@@ -222,7 +222,7 @@ Unit 1 は、純粋な照会が割り込み監視を呼ばず、通知バナー�
   これにより、単位 1 が測定した欠陥を取り除きました。`systemAlertHandling` が有効な実行に通知バナーが
   届くと、未宣言の割り込みとして記録され、実行が期待したボタンの位置に通知本文を並べたまま、本来通る
   はずのステップが落ちていました。
-- 2026-09-16 — [#PR-TBD] — 単位 2、3、5、8 を実装し、この項目を完了しました。新しい能力トークン
+- 2026-09-16 — [#2015](https://github.com/bajutsu-e2e/bajutsu/pull/2015) — 単位 2、3、5、8 を実装し、この項目を完了しました。新しい能力トークン
   `HANDLE_NOTIFICATION_BANNER` と `Driver.notification_banner_frame()`（新しい runner ルート
   `/notificationBanner/query`）が、操作の合間に通知バナーの枠を報告します。
   `base.notification_banner_swipe_points` が、その枠を `swipe` がすでに行うスワイプへ変換します。
