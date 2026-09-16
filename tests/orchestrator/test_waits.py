@@ -1538,6 +1538,76 @@ def test_wait_guard_clears_the_note_the_moment_it_retires_a_give_up_with_nothing
     assert gate.blocked_note == ""
 
 
+def test_wait_guard_clears_a_disproved_unhandled_note_even_while_a_give_up_still_stands() -> None:
+    # BE-0418 review finding: the `raced` branch's own clear-guard (`elif self._native_unhandled:`)
+    # used to also require `not self._tree_gave_up`, unlike its `if leftover:` sibling, which sets
+    # `_native_unhandled` / `_native_unhandled_note` regardless of the give-up standing. That
+    # asymmetry meant a disproved "unhandled" diagnosis never got retracted while a give-up stood,
+    # so the retirement fix above (restoring `_native_unhandled_note` on retirement) could write a
+    # stale note back out once the sheet finally left the tree.
+    from bajutsu.common.orchestrator.types import (
+        ResolvedAlertRule,
+        alert_block_note,
+        uncleared_prompt_note,
+    )
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesAway(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = _RacesAway(tree)
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            ),
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}),
+                tap_label="Allow",
+                native=True,
+                in_tree=False,
+            ),
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+    # A `savePassword`-style sheet already spent its tap budget and gave up; it is still on screen.
+    gate._tree_gave_up = True
+    gate._tree_gave_up_shape = frozenset({"Not Now"})
+    gate.blocked_note = uncleared_prompt_note("Not Now")
+
+    # Poll 1 (t=0): a probe finds an undeclared alert -- "unhandled" latches with its own note,
+    # deferred behind the standing give-up.
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    gate.observe(tree)
+    assert gate._native_unhandled
+    assert gate._native_unhandled_note == alert_block_note(["Weird Button"])
+
+    # Poll 2 (t=poll_interval): "Weird Button" is gone; a *declared* rule's own alert races away
+    # instead, with no leftover -- disproving the earlier "unhandled" diagnosis, even though the
+    # give-up still stands and defers the actual `blocked_note` write.
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+    ]
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+    assert not gate._native_unhandled
+    assert gate._native_unhandled_note == ""
+
+    # Poll 3 (t=poll_interval+0.05, native probe not due): the sheet leaves the tree. Retirement
+    # must not write the disproved "Weird Button" note back out.
+    clock.sleep(0.05)
+    gate.observe([])
+    assert not gate._tree_gave_up
+    assert gate.blocked_note == ""
+
+
 def test_wait_guard_does_not_blame_a_scrim_for_time_a_race_withheld_its_own_tap() -> None:
     # BE-0418 review finding: narrowing `probed_absent` to a genuinely empty read means a raced
     # native alert withholds the in-tree tap's own licence for as long as it keeps racing away --

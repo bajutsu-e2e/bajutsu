@@ -336,15 +336,22 @@ class _AlertGuardGate:
                         # to clear, and the hedged "unhandled" note would tell the author the
                         # opposite (`uncleared_prompt_note`'s own docstring, BE-0418 review finding).
                         self.blocked_note = self._native_unhandled_note
-                elif self._native_unhandled and not self._tree_gave_up:
+                elif self._native_unhandled:
                     # Nothing but the raced rule's own shape is on the surface, and this read is the
                     # whole SpringBoard enumeration -- so an earlier probe's "unhandled" note names a
-                    # button this very read proves gone. The proxy's hedged note, for a surface the
-                    # query cannot enumerate, is a different story and is preserved above (BE-0418
-                    # review finding).
+                    # button this very read proves gone. The latch and its own note go regardless of
+                    # `_tree_gave_up`, exactly as the `if leftover:` branch above *sets* them
+                    # regardless: the give-up's retirement writes `_native_unhandled_note` back out,
+                    # so leaving a disproved one latched here would hand that retirement a stale note
+                    # naming a button this read already enumerated away (BE-0418 review finding).
+                    # Only the `blocked_note` write itself defers to the give-up, the same exception
+                    # the clear-guard above and the `if leftover:` branch both make. The proxy's
+                    # hedged note, for a surface the query cannot enumerate, is a different story and
+                    # is preserved above (BE-0418 review finding).
                     self._native_unhandled = False
                     self._native_unhandled_note = ""
-                    self.blocked_note = ""
+                    if not self._tree_gave_up:
+                        self.blocked_note = ""
                 self._collapsed_polls = 0
                 self._withhold_tree_tap_licence()
                 return
