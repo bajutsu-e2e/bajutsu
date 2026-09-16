@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-job-endpoint-org-scoping-ja.md)
+**English** · [日本語](BE-0425-job-endpoint-org-scoping-ja.md)
 
-# BE-XXXX — Scope the job endpoints to the caller's org
+# BE-0425 — Scope the job endpoints to the caller's org
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-job-endpoint-org-scoping.md) |
+| Proposal | [BE-0425](BE-0425-job-endpoint-org-scoping.md) |
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0425") |
 | Topic | Hosting the web UI |
 | Related | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md), [BE-0375](../BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management.md) |
 <!-- /BE-METADATA -->

@@ -1,14 +1,14 @@
-[English](BE-XXXX-job-endpoint-org-scoping.md) · **日本語**
+[English](BE-0425-job-endpoint-org-scoping.md) · **日本語**
 
-# BE-XXXX — job の endpoint を呼び出し元の org でスコープする
+# BE-0425 — job の endpoint を呼び出し元の org でスコープする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-job-endpoint-org-scoping-ja.md) |
+| 提案 | [BE-0425](BE-0425-job-endpoint-org-scoping-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0425") |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)、[BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md)、[BE-0375](../BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management-ja.md) |
 <!-- /BE-METADATA -->
