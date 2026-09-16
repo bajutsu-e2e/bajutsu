@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0423](BE-0423-cli-repl-inspect-actuate-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0423") |
+| 実装 PR | PR_PLACEHOLDER |
 | トピック | オーサリング体験 |
 <!-- /BE-METADATA -->
 
@@ -175,25 +176,40 @@ v1ではそこまで届きません。ツリーに要素そのものが現れな
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 新しい`bajutsu/repl/`パッケージでの`bajutsu repl`コマンドの土台。
+- [x] 新しい`bajutsu/repl/`パッケージでの`bajutsu repl`コマンドの土台。
   `_load_effective_with_source`・`_select_actuator_or_exit`・`_start_launch_server_or_exit`・
   `launch_driver`の再利用(launchサーバは`atexit`で停止)、
   `--headed`・`--no-headed`・`--browser`、`bajutsu>`プロンプトのループ、`help`・`exit`・`quit`
   (終了時のWebバックエンドの`cast(base.BackendLifecycle, driver).close()`と、
   `--udid https://…`のライブ経路での`XcuitestLiveEnvironment.teardown`によるWebDriverセッション
   終了を含みます)。
-- [ ] `tree`・`tree --json`・`find <substring>`。`settled_query()`・`query()`とread-lagバリアの
+- [x] `tree`・`tree --json`・`find <substring>`。`settled_query()`・`query()`とread-lagバリアの
   経路を再利用します。
-- [ ] `tap <id>`・`type <id> <text>`。`run`と同じ形で`ElementNotFound`・`AmbiguousSelector`・
+- [x] `tap <id>`・`type <id> <text>`。`run`と同じ形で`ElementNotFound`・`AmbiguousSelector`・
   `ElementNotTappable`を表示します。
-- [ ] `back`・`screenshot [path]`。
-- [ ] `FakeDriver`を使った高速スイートのテスト。コマンド解析、`tree`・`find`の表示、
+- [x] `back`・`screenshot [path]`。
+- [x] `FakeDriver`を使った高速スイートのテスト。コマンド解析、`tree`・`find`の表示、
   `ElementNotFound`・`AmbiguousSelector`・`ElementNotTappable`の各経路を対象にします。
-- [ ] `docs/cli.md`と`docs/ja/cli.md`のリファレンス節。あわせて、`repl`によって古くなるCLIの一覧
+- [x] `docs/cli.md`と`docs/ja/cli.md`のリファレンス節。あわせて、`repl`によって古くなるCLIの一覧
   (`docs/glossary.md`と`docs/ja/glossary.md`のCLI動詞の表、`docs/architecture.md`のコマンド一覧
   ([BE-0113](../../roadmaps/BE-0113-design-doc-realignment/BE-0113-design-doc-realignment-ja.md)))
   と、`bajutsu/repl/`自身の`docs/architecture.md`モジュール表への行(`make lint-module-map`)も
   更新します。
+
+ログ：
+
+- PR_PLACEHOLDER — 作業単位 1〜6、項目全体。`bajutsu/repl/` パッケージを追加しました。`render.py` が
+  `id` / `label` / `traits` / `value` / `frame` の表とそのままの JSON を出力し、`session.py` がコマンド
+  集合（`tree` / `find` / `tap` / `type` / `back` / `screenshot` / `help` / `exit`）を持ち、`loop.py` が
+  `bajutsu>` のプロンプトループ、`cli.py` が Typer コマンドです。`cli.py` は `record` の起動ヘルパと、
+  `crawl` の「1 つの environment で起動と終了を行う」形を再利用しており、終了時にはこのプロセス自身が
+  持つブラウザまたは live 経路の WebDriver セッションだけを閉じます。`find` の一致は、セレクタの照合と
+  同じく大文字と小文字を区別します。コマンドは `_FEATURE_MODULE_NAMES` に登録し、`capabilities.py` で
+  Claude 不要として分類し、`bajutsu.repl` を決定的コアの import 契約に加えました。`tests/test_repl.py`
+  が表示、各動詞が呼ぶ driver、`ElementNotFound` / `AmbiguousSelector` / `ElementNotTappable` の各経路、
+  ループの 3 通りの抜け方（`exit`/`quit`、入力の終端、割り込み）を対象にします。ドキュメントは英日の両方を更新しました。`cli` のリファレンス節、
+  用語集の CLI 動詞の表、AI 境界の分離表、`getting-started` の `--help` 一覧、`architecture` のコマンド
+  一覧とモジュール表、`developer-guide` のパッケージ表と地図、そして両方の README です。
 
 ## 参考
 

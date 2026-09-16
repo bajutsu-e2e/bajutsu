@@ -41,6 +41,7 @@ _FEATURE_MODULE_NAMES: tuple[str, ...] = (
     "bajutsu.crawl.cli",
     "bajutsu.mcp.cli",
     "bajutsu.record.cli",
+    "bajutsu.repl.cli",
     "bajutsu.run.cli",
     "bajutsu.serve.cli",
     "bajutsu.triage.cli",

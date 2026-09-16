@@ -119,7 +119,7 @@ orchestrator、証跡、config、レポート）は [`bajutsu/common/`](bajutsu/
 - **自己修復トリアージ**: 既定はルールベースの heuristic agent で、`--ai` で Claude ベースの
   agent に切り替えられます。原因 + 最小修正案を出す、CI ゲートから外れた助言です
 - 配線済み CLI: `run` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` /
-  `export` / `trace` / `report` / `triage` / `record` / `crawl` / `codegen` / `approve` /
+  `export` / `trace` / `report` / `triage` / `record` / `crawl` / `repl` / `codegen` / `approve` /
   `serve` / `mcp` / `worker` / `lint` / `schema`
 - **MCP サーバ**（`bajutsu mcp`）: `run` と `doctor` を MCP ツールとして、run の証跡
   （manifest / report / JUnit / artifact）をリソースとして公開し、Claude Desktop / Code 連携に
@@ -321,6 +321,7 @@ bajutsu/
 ├── record/               # AI record ループ: 観測 -> 提案 -> 実行 -> シナリオ出力
 ├── crawl/                # 幅優先クロール -> スクリーンマップ（決定的な core/、AI 支援の guide/
 │                         #   と tabs/、レイアウト用の report/）
+├── repl/                 # AI を使わない手動シェル: 要素ツリーを読み、id を指定して操作する
 ├── triage/               # 自己修復トリアージ: ルールベースの heuristic agent（既定）と
 │                         #   Claude ベースの agent（--ai）
 ├── codegen/              # シナリオ -> ネイティブテスト (XCUITest / Playwright / UI Automator)

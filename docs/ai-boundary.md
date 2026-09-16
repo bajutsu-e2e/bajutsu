@@ -32,6 +32,7 @@ no login, no AI runtime. Clone the repo and it works immediately.
 |---|---|---|
 | **Claude-free** (zero-config) | `run` | run scenarios deterministically — pass/fail is machine-only, never a model |
 | | `doctor` | check the environment is runnable and score the current screen |
+| | `repl` | open a manual shell against the running app: read the element tree, act on an id |
 | | `codegen` | generate native XCUITest source from a scenario |
 | | `trace` | print a text timeline over a saved run |
 | | `lint` / `schema` | validate scenarios / emit the JSON Schema, without running |

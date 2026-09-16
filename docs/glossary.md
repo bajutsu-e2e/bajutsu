@@ -174,6 +174,7 @@ command and option is in [cli](cli.md).
 |---|---|---|
 | `record` | 1 | AI explores toward a `goal` and authors a scenario. |
 | `crawl` | 1 | AI explores an app breadth-first and draws its screen map. |
+| `repl` | — | A manual shell against the running app: read the element tree, act on an id (no AI). |
 | `run` | 2 | Deterministic execution; the only pass/fail authority. |
 | `trace` | — | Render a finished run as a read-only timeline (no AI). |
 | `triage` | 1 | AI diagnoses a failed run and proposes a fix (advisory). |

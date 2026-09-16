@@ -480,6 +480,68 @@ bajutsu crawl --target <name> [--max-screens N] [--max-steps N] [--out <dir>] [o
   iOS の vision アラートガードの置き換えです。`--system-alert-handling` と vision 経路は iOS 専用で、`--headed` は
   web で有効です（可視ブラウザでクロールを見られます）。
 
+## `repl`
+
+起動中のアプリに対する**手動シェル**を開きます（[BE-0423](../../roadmaps/BE-0423-cli-repl-inspect-actuate/BE-0423-cli-repl-inspect-actuate-ja.md)）。
+いまの画面の要素ツリーを読み、その id の 1 つを操作し、もう一度読む、という繰り返しです。`record`（ゴール
+指向の AI オーサリング）と `crawl`（自律的な探索）の隣に並び、同じ
+[driver](glossary.md#driver-backend-actuator-platform) インタフェースを通ってターゲットに届く 3 つ目の道です。
+モデルに何ひとつ尋ねず、シナリオも書かないのは、`record` / `crawl` / `repl` のうち `repl` だけです。
+ふだんなら「実行してレポートを読む」という往復を丸ごと費やす問いに、数秒で答えるために使います。
+その問いとは、この画面は実際に何を公開しているのか、そしてその id は解決するのか、という 2 つです。
+
+```bash
+bajutsu repl --target <name> [options]
+```
+
+| オプション | 既定 | 説明 |
+|---|---|---|
+| `--target` | （必須） | 対象アプリ |
+| `--udid` | `booted` | 対象 Simulator（live 経路では WebDriver エンドポイント） |
+| `--backend` | config | actuator 順 |
+| `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
+| `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザを調べます。省略時はアプリの `headless` 設定に従います |
+| `--browser` | アプリの `browser`（既定 chromium） | web backend: 調べる対象の Playwright レンダリングエンジン。`chromium` / `firefox` / `webkit` から選びます。省略時はターゲットの `browser` config に従います |
+| `--config` | `bajutsu.config.yaml` | config |
+
+アプリが立ち上がると、シェルは `bajutsu>` のプロンプトを出します。
+
+| コマンド | 何をするか |
+|---|---|
+| `tree` | いまの要素ツリーを `id` / `label` / `traits` / `value` / `frame` の表として表示します |
+| `tree --json` | 同じツリーをそのまま JSON で表示します。パイプ、差分、frame の正確な読み取りに使えます |
+| `find <substring>` | 同じツリーを、`id` または `label` が `<substring>` を含む行だけに絞ります（セレクタの照合と同じく、大文字と小文字を区別します） |
+| `tap <id>` | その id を持つ要素をタップします |
+| `type <id> <text>` | その要素にフォーカスを当ててから `<text>` を入力します（id は最初の空白までです） |
+| `back` | 1 階層戻ります。backend ごとにプラットフォームとして正しい方法を使います |
+| `screenshot [path]` | スクリーンショットを書き出します。パスを省略するとカレントディレクトリに `repl-<UTC タイムスタンプ>.png` の名前で自動命名します |
+| `help` | 上のコマンド一覧を表示します |
+| `exit` / `quit` | シェルを抜けます（Ctrl-D も同じです。Ctrl-C は打ちかけの行を捨てます） |
+
+- **表の列は[セレクタ](glossary.md#シナリオのオーサリング)が照合する対象のフィールドそのもの**で、backend が
+  正規化した形です。プラットフォーム付属のインスペクタが持つ独自の語彙ではありません。`tree` の行から読んだ
+  id は、`run` が解決する id と同じものです。
+- **推測はしません。** `tap` の id がどの要素にも一致しなければ `ElementNotFound` で、複数の要素に一致すれば
+  `AmbiguousSelector` で失敗します。いずれも即座に、`run` が送出するのと同じメッセージで失敗します。シェルは
+  その失敗を表示して次の行を読みます。
+- **`tap` は覆っている要素をスクロールでどかしません。** 別の要素が対象を遮っているとき、`run` はまず範囲を
+  限ったスクロールで再試行します。`repl` は driver 自身の `ElementNotTappable` をそのまま出し、その例外が
+  遮っている要素を名指しします。セレクタを調べている最中には、こちらのほうが役に立つ答えだからです。その
+  結果、覆われた対象については `run` と `repl` の判定が食い違うこともあります。スクロールによる回復が必要なら、
+  シナリオに明示的な `scroll` ステップを書いてください。
+- **要素の指定はこの最初の版では `id` だけ**で、`run` が受け付ける完全なセレクタ構文より狭くなっています。
+  `tree` がすでに各要素の `label` と `traits` を見せているので、行を読んでその id を打つ、という流れになります。
+  `id` を持たない要素には、シェルからはまだ届きません。
+- **ジェスチャ**（`swipe`、`scroll`、`pinch`、`rotate`）とプラットフォーム固有のアクション
+  （`setPickerValue`、`selectOption`）は、この版には入っていません。
+- **シェルを抜けてもアプリは動いたままです。** Simulator や実機の上のアプリは抜けた時点の状態で残るので、
+  そのまま手で調べ続けられます。閉じるのは、このコマンド自身が持っている 2 つのセッションだけです。1 つは
+  web backend のブラウザ、もう 1 つは `--udid https://…` の live 経路の WebDriver セッションです。この
+  WebDriver セッションは、閉じないとグリッド上で期限切れまで予約されたままになります。
+- `launchServer` を宣言しているターゲットでは、シェルを開く前にサーバを起動し、抜けるときに停止します。これが
+  ないと、web ターゲットは待ち受けていないホストに対してブラウザを開き、`tree` のたびにエラーページを読むことに
+  なります。
+
 ## `codegen`
 
 シナリオから **ネイティブテスト** を生成します（AI 非依存、構造マッピング、[codegen](codegen.md)）。出力先は

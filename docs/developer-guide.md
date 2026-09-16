@@ -119,7 +119,7 @@ The package splits into a shared `common/` core and one directory per user-facin
 directory holds that command's own logic plus its `cli.py`, which registers the Typer command. The
 map below groups the directories by the job they do rather than alphabetically.
 
-![Package map. The command layer holds cli, run, record, crawl, triage, codegen, mcp, serve, and analysis. Below it, the execution core holds common/runner, common/orchestrator, and common/platform_lifecycle. Below that, the platform seam holds common/drivers, common/backend_cli, and common/backends. To the side, the contract layer holds common/scenario and common/config, and the output layer holds common/assertions, common/evidence, and common/report. A separate periphery column holds common/agents and common/ai, which the command layer reaches but the execution core never does.](assets/diagrams/developer-guide-packages.svg)
+![Package map. The command layer holds cli, run, record, crawl, repl, triage, codegen, mcp, serve, and analysis. Below it, the execution core holds common/runner, common/orchestrator, and common/platform_lifecycle. Below that, the platform seam holds common/drivers, common/backend_cli, and common/backends. To the side, the contract layer holds common/scenario and common/config, and the output layer holds common/assertions, common/evidence, and common/report. A separate periphery column holds common/agents and common/ai, which the command layer reaches but the execution core never does.](assets/diagrams/developer-guide-packages.svg)
 
 <details>
 <summary>Mermaid source</summary>
@@ -128,7 +128,7 @@ map below groups the directories by the job they do rather than alphabetically.
 ```mermaid
 flowchart TB
     subgraph cmd["Commands · one directory each, plus its cli.py"]
-        c1["run/ · record/ · crawl/ · triage/"]
+        c1["run/ · record/ · crawl/ · repl/ · triage/"]
         c2["codegen/ · mcp/ · serve/ · analysis/"]
         c3["cli/ · assembles the Typer app"]
     end
@@ -197,6 +197,7 @@ inventory than the diagram's boxes have room for, grouped the same way.
 | `run/` | 3, 1,701 | `cli` (the `run` command), `notify` |
 | `record/` | 4, 1,318 | `capture`, `cli`, `loop` |
 | `crawl/` | 9, 3,109 | `cli`, `core`, `flows`, `guide`, `report`, `repro`, `serialize`, `tabs` |
+| `repl/` | 5, 371 | `cli`, `loop`, `render`, `session` |
 | `triage/` | 3, 1,203 | `cli`, `heuristic` |
 | `codegen/` | 7, 2,623 | `cli`, `common`, `xcuitest`, `playwright`, `uiautomator` |
 | `mcp/` | 4, 327 | `cli`, `resources`, `tools` |

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0423](BE-0423-cli-repl-inspect-actuate.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0423") |
+| Implementing PR | PR_PLACEHOLDER |
 | Topic | Authoring experience |
 <!-- /BE-METADATA -->
 
@@ -173,24 +174,40 @@ own handlers are tested, so the new module clears the per-file coverage floor
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `bajutsu repl` command scaffold under the new `bajutsu/repl/` package:
+- [x] `bajutsu repl` command scaffold under the new `bajutsu/repl/` package:
   `_load_effective_with_source` / `_select_actuator_or_exit` / `_start_launch_server_or_exit` /
   `launch_driver` reuse (with the launch server stopped on exit via `atexit`),
   `--headed`/`--no-headed`/`--browser`, the `bajutsu>` prompt loop, `help` / `exit` / `quit`
   (including `cast(base.BackendLifecycle, driver).close()` on the web backend's exit and
   `XcuitestLiveEnvironment.teardown`'s WebDriver-session close on the `--udid https://…` live
   route).
-- [ ] `tree` / `tree --json` / `find <substring>`, reusing `settled_query()` / `query()` and the
+- [x] `tree` / `tree --json` / `find <substring>`, reusing `settled_query()` / `query()` and the
   read-lag-barrier path.
-- [ ] `tap <id>` / `type <id> <text>`, surfacing `ElementNotFound` / `AmbiguousSelector` /
+- [x] `tap <id>` / `type <id> <text>`, surfacing `ElementNotFound` / `AmbiguousSelector` /
   `ElementNotTappable` the same way `run` does.
-- [ ] `back` / `screenshot [path]`.
-- [ ] `FakeDriver`-backed tests in the fast suite: command parsing, `tree` / `find` rendering, and
+- [x] `back` / `screenshot [path]`.
+- [x] `FakeDriver`-backed tests in the fast suite: command parsing, `tree` / `find` rendering, and
   the `ElementNotFound` / `AmbiguousSelector` / `ElementNotTappable` surfaces.
-- [ ] `docs/cli.md` and `docs/ja/cli.md` reference sections, plus the CLI inventories `repl` makes
+- [x] `docs/cli.md` and `docs/ja/cli.md` reference sections, plus the CLI inventories `repl` makes
   stale — the CLI-verbs table in `docs/glossary.md` (and `docs/ja/glossary.md`), the command
   lists in `docs/architecture.md` ([BE-0113](../../roadmaps/BE-0113-design-doc-realignment/BE-0113-design-doc-realignment.md)),
   and `bajutsu/repl/`'s own row in `docs/architecture.md`'s module table (`make lint-module-map`).
+
+Log:
+
+- PR_PLACEHOLDER — Units 1-6, the whole item. Added the `bajutsu/repl/` package: `render.py` (the
+  `id` / `label` / `traits` / `value` / `frame` table and the verbatim JSON), `session.py` (the command
+  set — `tree` / `find` / `tap` / `type` / `back` / `screenshot` / `help` / `exit`), `loop.py` (the
+  `bajutsu>` prompt loop), and `cli.py` (the Typer command, reusing `record`'s launch helpers and
+  `crawl`'s one-environment launch-and-exit pattern so the exit closes only the browser or the live
+  WebDriver session this process owns). `find` matches case-sensitively, like every selector match.
+  Registered the command in `_FEATURE_MODULE_NAMES`, classified it Claude-free in `capabilities.py`,
+  and added `bajutsu.repl` to the deterministic-core import contract. `tests/test_repl.py` covers the
+  rendering, each verb's driver call, the `ElementNotFound` / `AmbiguousSelector` /
+  `ElementNotTappable` surfaces, and the loop's three ways out (`exit`/`quit`, end of input, an interrupt). Docs updated in both languages:
+  the `cli` reference section, the glossary CLI-verbs table, the AI-boundary split, the
+  `getting-started` `--help` list, the `architecture` command lists and module table, the
+  `developer-guide` package table and map, and both READMEs.
 
 ## References
 
