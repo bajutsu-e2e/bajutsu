@@ -165,9 +165,15 @@ class _AlertGuardGate:
         self._tree_not_tappable_since = None
 
     def _observe_native(self, elements: list[base.Element]) -> None:
-        if self._tree_gave_up and not (
-            self._tree_gave_up_shape is not None
-            and self._tree_gave_up_shape <= set(_tree_buttons(elements))
+        if (
+            self._tree_gave_up
+            and shows_app_ui(elements)
+            and not any(
+                rule.identifying_labels == self._tree_gave_up_shape
+                for rule in identified_alert_rules(
+                    self.guard.tree_dedup_rules, _tree_buttons(elements)
+                )
+            )
         ):
             # The given-up sheet is no longer on this poll's own tree, so the deference below —
             # holding every note to what the give-up named rather than what a *new* alert's own
@@ -177,11 +183,19 @@ class _AlertGuardGate:
             # below, which a live, undeclared SpringBoard alert stops from holding for as long as
             # that alert is up — exactly the case where a fresher diagnosis is needed most.
             #
-            # Checked by shape, not by the given-up label alone: two `in_tree` rules can share one
-            # tap label under different choices (`savePassword`'s three shapes all tap "Not Now"),
-            # so a *different*, genuinely live prompt that merely shares the given-up label would
-            # otherwise keep this latch armed for a sheet that already left (BE-0418 review
-            # finding) — exactly the case this retirement exists to catch.
+            # Gated on `shows_app_ui`, not on the raw tree read alone: a genuine SpringBoard alert
+            # collapses the tree to bare content (`shows_app_ui`'s own docstring; `_GUARD_DEBOUNCE_POLLS`
+            # above states the same fact), so a poll where one is covering the screen enumerates no
+            # buttons regardless of whether the given-up sheet is still there underneath it -- reading
+            # that as "the sheet left" would retire the latch, and its whole per-showing budget with
+            # it, every time an unrelated SpringBoard alert happens to be up (BE-0418 review finding).
+            # Only a poll that genuinely shows app UI again can tell the two apart.
+            #
+            # Resolved via `identified_alert_rules`, the same accept test `matching_alert_rule` uses
+            # (`excluded_labels`, per-label uniqueness), not a bare shape-subset test: the given-up
+            # shape can nest inside a different, live prompt's own wider read the same way a stuck
+            # tree shape does elsewhere in this call, and a bare subset test would then keep the latch
+            # armed for a sheet that already left (BE-0418 review finding).
             #
             # The note goes with the latch: every write to `blocked_note` below that could otherwise
             # win is gated on `not self._tree_gave_up`, and the give-up's own two write sites
@@ -309,9 +323,12 @@ class _AlertGuardGate:
             if raced:
                 # The same deference "unhandled" gets, just above: a live, enumerated surface is not
                 # something the collapsed-tree proxy below can say more about, and letting this poll
-                # fall into it would replace the note this branch's own clear-guard preserved with the
-                # proxy's hedged one — or erase it outright, since the app tree an out-of-process
-                # SpringBoard alert covers still `shows_app_ui` (BE-0418 review finding).
+                # fall into it would eventually replace the note this branch's own clear-guard
+                # preserved with the proxy's own hedged one, once `_GUARD_DEBOUNCE_POLLS` consecutive
+                # collapsed reads accumulate — the SpringBoard alert itself collapses the tree
+                # (`shows_app_ui`'s own docstring; `_GUARD_DEBOUNCE_POLLS` above states the same fact),
+                # so the proxy sees exactly the bare surface it exists to hedge about, not the raced
+                # alert's own identity (BE-0418 review finding).
                 #
                 # Preserving an existing note is not the same as producing one: a co-present button
                 # no rule identifies, enumerated by this very read alongside the raced rule's own

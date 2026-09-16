@@ -1030,12 +1030,14 @@ def test_wait_guard_keeps_an_unhandled_note_when_a_matched_alert_races() -> None
     # rule identifies ("Weird Button") and names it; poll 2's own matched rule ("OK"/"Cancel")
     # races away, but "Weird Button" is still right there in that very same read -- the note must
     # survive, not be wiped by a race that never proved the surface clear. Poll 2's own element list
-    # is a non-empty app tree, not `[]`: an empty list is the one input where the collapsed-tree
-    # proxy's own `shows_app_ui` is false *and* its debounce has not yet fired, so it is the one
-    # input that cannot expose the proxy silently erasing or overwriting the note on its own, past
-    # the earlier `raced` guard (BE-0418 review finding) -- a real device's app tree stays visible
-    # under an out-of-process SpringBoard alert (`shows_app_ui` is true), which is exactly what the
-    # native probe exists to see past. Poll 3 -- no `clock.sleep` before it, so `poll_interval`
+    # is a non-empty app tree, not `[]`, chosen so a missing `raced` guard would be caught at once:
+    # an empty list is the one input where the collapsed-tree proxy's own `shows_app_ui` is already
+    # false, so the proxy would only *count toward* its debounce rather than immediately overwriting
+    # the note, and a regression here would not show up on this poll at all (BE-0418 review finding).
+    # A non-empty app tree is synthetic input for this poll, not a claim about what a real device's
+    # tree does under an out-of-process SpringBoard alert -- that alert collapses the tree
+    # (`shows_app_ui`'s own docstring) -- since this branch's own note-preservation logic runs the
+    # same regardless of what `elements` holds. Poll 3 -- no `clock.sleep` before it, so `poll_interval`
     # has not elapsed and the native probe does not run again -- pins the same guarantee one tick
     # further out: `_native_unhandled` is the only thing standing between this tick and the proxy
     # until the next native probe is due, so a race must not drop that latch either, only the
@@ -1362,7 +1364,13 @@ def test_wait_guard_keeps_an_in_tree_give_up_note_through_a_race_with_a_leftover
         rules=[
             ResolvedAlertRule(
                 identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
-            )
+            ),
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            ),
         ]
     )
     gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
@@ -1383,12 +1391,21 @@ def test_wait_guard_keeps_an_in_tree_give_up_note_through_an_unhandled_native_al
     # unrelated native alert no rule identifies must not overwrite that tree note with the hedged
     # "unhandled" form while the given-up sheet is still on screen (its own retirement, once it
     # is not, is a different finding -- see the test below).
-    from bajutsu.common.orchestrator.types import uncleared_prompt_note
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, uncleared_prompt_note
     from bajutsu.common.orchestrator.waits import _AlertGuardGate
 
     driver = FakeDriver([])
     driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
-    guard = AlertGuardConfig()
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
     gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
     gate._tree_gave_up = True
     gate._tree_gave_up_shape = frozenset({"Not Now"})
@@ -1419,8 +1436,10 @@ def test_wait_guard_retires_an_in_tree_give_up_once_the_sheet_leaves_the_tree() 
     gate._tree_gave_up = True
     gate._tree_gave_up_shape = frozenset({"Not Now"})
     gate.blocked_note = uncleared_prompt_note("Not Now")
-    # "Not Now" is gone from this poll's own tree -- the sheet closed on its own.
-    gate.observe([])
+    # "Not Now" is gone from this poll's own tree -- the sheet closed on its own, revealing an
+    # ordinary app screen (not an empty tree, which `shows_app_ui` would read as a SpringBoard
+    # alert covering the screen rather than evidence the sheet actually left).
+    gate.observe([el("home", "Home", ["button"])])
     assert not gate._tree_gave_up
     assert gate._tree_gave_up_shape is None
     # The unrelated native alert's own diagnosis now gets through, naming the button that is
@@ -1497,10 +1516,12 @@ def test_wait_guard_restores_a_still_live_unhandled_note_once_a_give_up_retires(
     gate._tree_gave_up_shape = frozenset({"Not Now"})
     gate.blocked_note = uncleared_prompt_note("Not Now")
     # One `_POLL` tick later -- nowhere near a full `poll_interval` -- "Not Now" is gone from the
-    # tree, but the native probe is not due and `_native_unhandled` returns before the collapsed-
-    # tree proxy ever runs: no other write to `blocked_note` happens this poll.
+    # tree, replaced by an ordinary app screen (not an empty tree, which `shows_app_ui` would read
+    # as a SpringBoard alert still covering the screen rather than evidence the sheet left). The
+    # native probe is not due and `_native_unhandled` returns before the collapsed-tree proxy ever
+    # runs: no other write to `blocked_note` happens this poll.
     clock.sleep(0.05)
-    gate.observe([])
+    gate.observe([el("home", "Home", ["button"])])
     assert not gate._tree_gave_up
     assert gate.blocked_note == alert_block_note(["Weird Button"])
 
@@ -1533,7 +1554,9 @@ def test_wait_guard_clears_the_note_the_moment_it_retires_a_give_up_with_nothing
     gate._tree_gave_up_shape = frozenset({"Not Now"})
     gate.blocked_note = uncleared_prompt_note("Not Now")
     clock.sleep(0.05)
-    gate.observe([])
+    # An ordinary app screen, not an empty tree, which `shows_app_ui` would otherwise read as a
+    # SpringBoard alert still covering the screen rather than evidence the sheet left.
+    gate.observe([el("home", "Home", ["button"])])
     assert not gate._tree_gave_up
     assert gate.blocked_note == ""
 
@@ -1600,10 +1623,12 @@ def test_wait_guard_clears_a_disproved_unhandled_note_even_while_a_give_up_still
     assert not gate._native_unhandled
     assert gate._native_unhandled_note == ""
 
-    # Poll 3 (t=poll_interval+0.05, native probe not due): the sheet leaves the tree. Retirement
-    # must not write the disproved "Weird Button" note back out.
+    # Poll 3 (t=poll_interval+0.05, native probe not due): the sheet leaves the tree, replaced by
+    # an ordinary app screen (not an empty tree, which `shows_app_ui` would read as a SpringBoard
+    # alert still covering the screen rather than evidence the sheet left). Retirement must not
+    # write the disproved "Weird Button" note back out.
     clock.sleep(0.05)
-    gate.observe([])
+    gate.observe([el("home", "Home", ["button"])])
     assert not gate._tree_gave_up
     assert gate.blocked_note == ""
 
@@ -1651,8 +1676,10 @@ def test_wait_guard_retaps_a_new_showing_after_a_give_up_retires_mid_lifetime() 
     gate.observe(tree)
     clock.sleep(guard.poll_interval)
 
-    # The sheet closes -- retirement fires here, mid-lifetime, with the alert still up.
-    gate.observe([])
+    # The sheet closes -- retirement fires here, mid-lifetime, with the alert still up. An
+    # ordinary app screen, not an empty tree, which `shows_app_ui` would otherwise read as a
+    # SpringBoard alert still covering the screen rather than evidence the sheet left.
+    gate.observe([el("home", "Home", ["button"])])
     assert not gate._tree_gave_up
     clock.sleep(guard.poll_interval)
 
@@ -1668,6 +1695,60 @@ def test_wait_guard_retaps_a_new_showing_after_a_give_up_retires_mid_lifetime() 
     assert not gate._tree_gave_up
     assert len(gate.alerts) == 1
     assert gate.alerts[0].label == "Not Now"
+
+
+def test_wait_guard_does_not_reset_a_tap_budget_when_a_springboard_alert_only_collapses_the_tree() -> (
+    None
+):
+    # BE-0418 review finding: retirement used to decide "the given-up sheet is gone" from a bare
+    # subset test over this poll's own `elements`, with no allowance for a genuine SpringBoard
+    # alert collapsing that same tree to bare content (`shows_app_ui`'s own docstring;
+    # `_GUARD_DEBOUNCE_POLLS`'s own comment states the same fact). A poll where such an alert
+    # covers the screen enumerates no tree buttons at all, which the bare subset test read as "the
+    # given-up sheet left" -- retiring the latch, and the whole per-showing tap budget with it,
+    # every time an unrelated SpringBoard alert happened to flash up and clear, even though the
+    # given-up sheet had never actually closed.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _TREE_DISMISS_MAX_TAPS, _AlertGuardGate
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = FakeDriver(tree)  # "Not Now" never actually closes
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+
+    # Polls 1-4 (t=0..3): no SpringBoard alert, so every poll licenses the in-tree tap. The sheet
+    # never closes, so each retry lands on an unchanged tree -- exhausting the tap budget on poll 4.
+    for _ in range(4):
+        gate.observe(tree)
+        clock.sleep(guard.poll_interval)
+    assert gate._tree_gave_up
+    assert gate._tree_taps >= _TREE_DISMISS_MAX_TAPS
+
+    # An undeclared SpringBoard alert then raises, collapsing this poll's own tree to bare content
+    # while it is up -- the same collapse `_GUARD_DEBOUNCE_POLLS` names, not evidence the given-up
+    # sheet left.
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    gate.observe([])
+    clock.sleep(guard.poll_interval)
+
+    # The alert clears; the sheet -- which never actually closed -- is right back in this poll's
+    # own tree. Retirement must not have fired on the collapsed poll, so the tap budget is still
+    # spent: the given-up latch stays armed rather than being handed a fresh budget it would spend
+    # unboundedly every time an unrelated alert happens to flash up and clear.
+    driver.system_alert_buttons = []
+    gate.observe(tree)
+    assert gate._tree_gave_up
+    assert gate._tree_taps >= _TREE_DISMISS_MAX_TAPS
 
 
 def test_wait_guard_does_not_blame_a_scrim_for_time_a_race_withheld_its_own_tap() -> None:

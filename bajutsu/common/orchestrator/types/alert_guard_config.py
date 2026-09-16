@@ -517,8 +517,21 @@ def _final_tree_check(
     return whose one-shot retry then spends itself against a screen that sheet is still covering
     (BE-0418 review finding). The withdrawal still runs; only the returned note keeps *note*'s own
     precedence when it is non-empty.
+
+    Also skipped when `round_index < _GUARD_CALL_MAX_ROUNDS - 1`: `round_index` here is the round the
+    loop *stopped* at, which is the final round only when the loop actually ran it out — a branch
+    that `break`s early (an "unhandled" alert nothing is worth another round for, say) stops on an
+    earlier round with rounds still unspent. The in-loop lingering-fade branch reaches this same
+    withdrawal only through a check gated on `round_index == _GUARD_CALL_MAX_ROUNDS - 1`
+    (`_bound_exhaustion_note`); reaching it here on an earlier round would withdraw a tap on
+    evidence the in-loop branch itself would not yet have trusted, on a call that still had a round
+    left to test it properly (BE-0418 review finding).
     """
-    if not dismissed_tree_info or (tree_read_round is not None and tree_read_round >= round_index):
+    if (
+        not dismissed_tree_info
+        or round_index < _GUARD_CALL_MAX_ROUNDS - 1
+        or (tree_read_round is not None and tree_read_round >= round_index)
+    ):
         return note
     _, final_tree_buttons, _ = _read_tree(driver)
     lingering_shape = _first_lingering_tree_shape(dismissed_tree_info, final_tree_buttons)
@@ -1078,12 +1091,16 @@ class AlertGuardConfig:
                     # equally proof that event's own tap landed — carrying it forward would let a
                     # later branch withdraw an already-landed dismissal from `alerts` on some future
                     # exhaustion note this round cannot foresee (BE-0418 review finding).
-                    dismissed_native, native_dismiss_shape, native_dismiss_label = (
-                        frozenset(),
-                        None,
-                        None,
-                    )
-                    native_dismiss_event = None
+                    # And the shape a race round would corroborate against: an empty enumeration is
+                    # positive proof the surface was clear, so an earlier race on it is no longer
+                    # repetition a later one can lean on (BE-0418 review finding).
+                    (
+                        dismissed_native,
+                        native_dismiss_shape,
+                        native_dismiss_label,
+                        native_dismiss_event,
+                        raced_native_shape,
+                    ) = (frozenset(), None, None, None, None)
                 # The one alert this round's own probe just proved gone (the race above) is not in
                 # `dismissed_native` either — nothing was actually dismissed — so a leftover
                 # computed against `dismissed_native` alone still lets that alert's own labels
@@ -1130,18 +1147,26 @@ class AlertGuardConfig:
                         # (BE-0418 review finding).
                         tree_dismiss_signature = tree_read_signature
                         # No stuck diagnosis means whatever `note` holds is stale regardless. A
-                        # stuck shape *contained in* this round's own dismissal clears too — not
-                        # only an exact match: recording `rule.identifying_labels` in
-                        # `dismissed_tree_info` two lines above feeds `_resolve_alert_rule`'s own
-                        # subset test, so a nested stuck shape can never match again this call
-                        # either, and the two must agree
-                        # (equality alone left a nested `stuck_tree_shape` marked both "answered,
-                        # never retry" and "could not clear" at once, BE-0418 review finding). One
-                        # with a shape genuinely unrelated by containment survives, even sharing the
-                        # stuck one's own tap label (`savePassword`'s three shapes all tap "Not Now"
-                        # under `choice: deny`): this round dismissed a genuinely different in-tree
-                        # prompt, which says nothing about whether the stuck one is still stuck.
-                        if stuck_tree_shape is None or stuck_tree_shape <= rule.identifying_labels:
+                        # stuck shape that nests with this round's own dismissal either way clears
+                        # too — not only when the stuck shape is the narrower one: recording
+                        # `rule.identifying_labels` in `dismissed_tree_info` two lines above feeds
+                        # `_resolve_alert_rule`'s own *bidirectional* `_nests_with_a_dismissed_shape`
+                        # test, so a stuck shape nesting either way can never match again this call
+                        # either, and the two must agree (a one-directional test here left a stuck
+                        # wider shape clearing only when the *dismissed* shape was the wider one —
+                        # a `savePassword`-style stuck read of the full "Save Password", "Never for
+                        # This Website", "Not Now" shape, later dismissed as the narrower two-button
+                        # reading of the very same alert, stayed marked stuck forever even though the
+                        # rules the two must agree with had already retired it, BE-0418 review
+                        # finding). A shape genuinely unrelated by containment survives, even sharing
+                        # the stuck one's own tap label (`savePassword`'s three shapes all tap
+                        # "Not Now" under `choice: deny`): this round dismissed a genuinely different
+                        # in-tree prompt, which says nothing about whether the stuck one is still
+                        # stuck.
+                        if stuck_tree_shape is None or (
+                            stuck_tree_shape <= rule.identifying_labels
+                            or rule.identifying_labels <= stuck_tree_shape
+                        ):
                             # Not `_leftover_note`: `buttons` is `[]` here, inside `if not buttons:`
                             # above, so that call would only ever reduce to its own fallback (BE-0418
                             # review finding) — spelled out directly instead.
