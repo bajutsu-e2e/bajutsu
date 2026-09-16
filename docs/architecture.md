@@ -900,9 +900,14 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   guard could not clear rather than as one no rule identifies; a co-present button no rule
   identifies on that same read is named the way the `raced` branch names one, rather than the
   ambiguous rule's own diagnosis crowding it out and leaving that button unreported for a whole
-  `poll_interval`; and the note is left alone entirely while an in-tree give-up is still standing —
+  `poll_interval`; and the note is left alone entirely while an in-tree give-up is still standing,
   so a `wait` blocked by an undeclared SpringBoard alert sitting on top of a sheet the tree path
-  gave up on reports the sheet, not the alert. And `_dismiss_from_tree` resolves over the same
+  gave up on reports the sheet, not the alert — for as long as that sheet's own shape is still in
+  the poll's tree. The give-up now retires itself the moment it is not, from the poll's own read
+  rather than waiting for a native probe to report the surface empty: that probe is what a live,
+  undeclared alert keeps from reporting empty at all, so before this the given-up sheet's note
+  stood for the rest of the wait even once the sheet had closed, and the alert actually holding the
+  screen was never named. And `_dismiss_from_tree` resolves over the same
   widest-first `tree_dedup_rules` this change gives the one-shot dismiss, rather than plain
   declaration order, so two nested in-tree shapes match the wider one first regardless of how a
   scenario declared them — the two are declared twins over the same screen, so which button a

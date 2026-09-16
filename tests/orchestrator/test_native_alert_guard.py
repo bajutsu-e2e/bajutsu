@@ -1925,7 +1925,8 @@ def test_the_end_of_step_guard_keeps_trying_a_stuck_tree_prompt_through_an_unrel
     None
 ):
     # The `"unhandled"` branch's own settle-skip condition used to break the call without ever
-    # consulting `stuck_tree_label`, unlike the tree side's own equivalent check (line 778) -- so an
+    # consulting `stuck_tree_label`, unlike the tree side's own equivalent check (the ambiguous-read
+    # branch inside `"absent"`, `if stuck_tree_label is not None: settle(); continue`) -- so an
     # unrelated, transient SpringBoard alert no rule identifies could cut Unit 2's landing-race
     # retry short even with a tree-only policy (`self.native_rules` empty, so the condition's own
     # `any(...)` is vacuously `False`). Round 0's scrim has not lifted; round 1 is an unrelated
