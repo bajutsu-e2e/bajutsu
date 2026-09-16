@@ -594,11 +594,6 @@ def test_ensure_fresh_rebuilds_only_once_under_concurrent_callers(
     # cold/stale bundle must trigger exactly one `xcodebuild`, not one per lane.
     bundle = _products(tmp_path / "bundle")
     state = {"built": False}
-    # A generous ceiling, not a tight one: this only guards against a genuine deadlock. A `join` that
-    # timed out here would return control to the test before its thread actually finishes, letting it
-    # run past monkeypatch's teardown and call the *real* subprocess.run/shutil.which against this
-    # checkout's real BajutsuKit source — silently shelling out to a real `xcodebuild` from a test
-    # that looks fully mocked. The explicit `is_alive` assertions below turn that failure mode loud.
     start = threading.Barrier(2, timeout=30)
 
     monkeypatch.setattr(_bundled_runner, "runner_source_present", lambda: True)
@@ -628,14 +623,23 @@ def test_ensure_fresh_rebuilds_only_once_under_concurrent_callers(
         _bundled_runner.ensure_bundled_runner_fresh()
 
     threads = [threading.Thread(target=_call) for _ in range(2)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=30)
-        assert not t.is_alive(), (
-            "a thread outlived its join — it would run past this test's monkeypatching and hit "
-            "the real subprocess/shutil.which, not a mock"
-        )
+    # A watchdog, not a soft timeout check: a `join(timeout=...)` that merely timed out would return
+    # control to this test while its thread keeps running, letting it outlive monkeypatch's teardown
+    # and call the *real* subprocess.run/shutil.which against this checkout's real BajutsuKit source —
+    # silently shelling out to a real `xcodebuild`/`make runner-bundle` from a test that looks fully
+    # mocked (this is exactly what leaked a real `bajutsu/_xcuitest_runner/` onto disk under a loaded
+    # full-suite run). `os._exit` kills every thread in the process immediately, so a genuine deadlock
+    # here crashes the whole worker loudly instead of leaving a zombie thread to race later tests.
+    watchdog = threading.Timer(30, os._exit, args=(1,))
+    watchdog.daemon = True
+    watchdog.start()
+    try:
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()  # unconditional: only returns once the thread has actually finished
+    finally:
+        watchdog.cancel()
 
     assert calls == [["make", "runner-bundle"]]
 
