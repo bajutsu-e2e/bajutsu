@@ -243,10 +243,12 @@ def _raced_exhaustion_note(
     the shape being "still enumerable" proves nothing about whether the race was a genuine,
     benign self-resolve (`probe_native`'s own `ElementNotFound` branch) rather than a shape truly
     stuck across rounds. A freshly resolved rule counts as exhausting evidence there only when its
-    shape equals `require_corroboration` — the shape that raced on the immediately preceding round
-    too, so two consecutive rounds racing the identical shape is real repetition, not a coincidence
-    of pre-tap timing; `None` there means nothing raced on the round before this one, which can
-    never equal a real shape, so a first-ever race is never enough on its own. Left at the default
+    shape equals `require_corroboration` — the shape the *most recent* race round resolved, not
+    necessarily the immediately preceding one: `__call__` updates it from its race branch alone,
+    so a round of any other kind in between neither corroborates nor clears it. Two race rounds
+    on the identical shape is real repetition, not a coincidence of pre-tap timing; `None` means
+    no earlier round of this call raced at all, and can never equal a real shape, so a first-ever
+    race is never enough on its own. Left at the default
     `False` for the `"unhandled"` caller, where the containment check is already sound and needs no
     such gate: an `AmbiguousSelector` tap failure means the label matched *twice*, positive evidence
     the button is still there, not merely enumerable at query time.
@@ -494,7 +496,10 @@ def _final_tree_check(
     that requirement: a sheet that changed shape without closing — a validation error re-presenting
     it, say — would otherwise never be named here either, and this check never taps regardless of
     the read it takes, so a revealed screen's ordinary buttons happening to share the dismissed
-    shape's labels costs only an imprecise note, not a second tap.
+    shape's labels never cost a second tap. They cost more than an imprecise note, though: the
+    `_withdraw` below takes that shape's own `AlertEvent` back on the same containment check, so a
+    sheet that really did close is reported as never dismissed — and when it was this call's only
+    dismissal, `__call__`'s return flips to `False` and the caller skips its one-shot retry.
 
     Resolved via `_first_lingering_tree_shape` over the whole of `dismissed_tree_info`, the same
     helper the in-loop lingering-fade branch uses — not a single most-recently-tapped shape of its
@@ -1178,11 +1183,15 @@ class AlertGuardConfig:
                     # positive an unchanged-signature requirement would have protected against — the
                     # sheet genuinely closed and revealed an app screen whose own ordinary buttons
                     # happen to carry the same labels (`savePassword`'s 26.5 shape, "Save" / "Not
-                    # Now", is exactly this) — costs only an imprecise note here, unlike the mid-wait
-                    # gate's own identical ambiguity: `exclude` already keeps this call from tapping
-                    # the dismissed shape again regardless of which read this branch takes, so
-                    # misreading a revealed screen as still-stuck never risks the second, unlicensed
-                    # tap it would there.
+                    # Now", is exactly this) — never risks the second, unlicensed tap the mid-wait
+                    # gate's own identical ambiguity would, since `exclude` already keeps this call
+                    # from tapping the dismissed shape again regardless of which read this branch
+                    # takes. It costs more than an imprecise note, though: `_lingering_tree_note`
+                    # withdraws that shape's own `AlertEvent` on the same containment check, so a
+                    # sheet that really did close is reported as never dismissed — and when it was
+                    # this call's only dismissal, the return below flips to False and the caller
+                    # skips its one-shot retry against a screen that had in fact moved on
+                    # (`docs/architecture.md` records the same trade-off).
                     lingering_shape = (
                         _first_lingering_tree_shape(dismissed_tree_info, tree_buttons)
                         if tree_dismiss_signature is not None

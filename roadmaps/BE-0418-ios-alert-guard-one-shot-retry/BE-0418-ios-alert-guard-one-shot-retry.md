@@ -270,7 +270,9 @@ Log:
   shared `drivers/elements.py` as the public `tree_signature`). One rose over the same span rather
   than dropping — `waits/_alert_guard_gate.py` (97.07 → 97.36) — after a later round's
   shared-helper extraction (`identified_alert_rules`, `subtract_labels`) and its regression tests
-  fully covered branches an earlier round had briefly left untested.
+  fully covered branches an earlier round had briefly left untested. The fifth is a new entry
+  rather than a move: `drivers/elements.py`, the file `tree_signature` relocated into, joins the
+  snapshot at 100.0.
 
 ## References
 
