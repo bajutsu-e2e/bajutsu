@@ -896,7 +896,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   mid-retry when such a race begins is not charged for the gap: the in-tree give-up's own
   not-tappable horizon resets on any poll that withholds the licence this way, so a scrim that
   lifts during the race is retried in full once the licence returns, rather than being given up on
-  for wall-clock time the tap was never allowed to spend (BE-0418 review finding). The
+  for wall-clock time the tap was never allowed to spend. The
   same poll stopped clearing `blocked_note` unconditionally on that race too, and can now report its
   own note naming whichever buttons no declared rule accounts for on the read — a note this path
   never produced on a bare `"absent"` answer before. Its `"unhandled"` note changed three ways too:
