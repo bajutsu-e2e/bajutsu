@@ -117,6 +117,7 @@ flowchart TB
 | `run/` | `bajutsu run` の CLI コマンド（`cli.py`）: target/backend 解決、デバイスの lease 取得、plan 構築、決定的な run/report ディスパッチ | [cli](cli.md) |
 | `record/` | record ループ（observe → 提案 → 実行 → 書き出し）（パッケージ: `loop.py`、加えて `capture.py` ── tap/type/swipe のプロキシ actuation をシナリオステップに解決、および `cli.py` ── その CLI コマンド） | [recording](recording.md#record-ループ) |
 | `crawl/` | 自律的な幅優先クロール → スクリーンマップ：`core` エンジン + `serialize`、`guide` / `tabs` / `report` / `repro` / `flows`、加えてその CLI コマンド（`cli.py`） | [recording](recording.md) |
+| `repl/` | AI を使わない手動シェル（BE-0423）：`render.py` が要素ツリーを表示し、`session.py` がコマンド集合（`tree` / `find` / `tap` / `type` / `back` / `screenshot`）、`loop.py` が `bajutsu>` のプロンプトループ、`cli.py` がその CLI コマンド | [cli](cli.md#repl) |
 | `codegen/` | シナリオ → ネイティブテスト生成: XCUITest（Swift）、Playwright（TypeScript）、UI Automator（Kotlin）、加えてその CLI コマンド（`cli.py`） | [codegen](codegen.md) |
 | `triage/` | M4 自己修復: ルールベース `HeuristicTriageAgent` + 構造化 fix（`renameId`/`addIndex`/`raiseTimeout`）、`--apply`/`--write`/`--rerun`（パッケージ: `heuristic.py`、加えて `cli.py` ── その CLI コマンド） | [cli](cli.md) |
 | `common/github/` | GitHub ヘルパ：`actions`（CI、アノテーション + ジョブサマリ）、`app`（プライベートリポジトリの config source 向けの App インストールトークン）、`errors`（共有するアクセスエラー） | [ci](ci.md) |
@@ -146,7 +147,7 @@ flowchart TB
 <!-- mermaid-svg: assets/diagrams/architecture-dependency-layers-ja.svg -->
 ```mermaid
 flowchart TB
-    cli["cli/<br/>ユーザ接点（Typer）: run · doctor · audit · coverage · impact · stats ·<br/>flakiness · export · trace · report · triage · record · crawl · codegen ·<br/>approve · serve · mcp · worker · lint · schema"]
+    cli["cli/<br/>ユーザ接点（Typer）: run · doctor · audit · coverage · impact · stats ·<br/>flakiness · export · trace · report · triage · record · crawl · repl · codegen ·<br/>approve · serve · mcp · worker · lint · schema"]
 
     runner["runner/"]
     record["record.py / crawl/<br/>（Tier 1 / AI）"]
@@ -387,7 +388,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
 
 #### CLI、`serve`、codegen
 
-- CLI: `run` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` / `export` / `trace` / `report` / `triage` / `record` / `crawl` / `codegen` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema`。`record` と `crawl` が Tier 1 の AI オーサリング経路で、alert guard を伴います
+- CLI: `run` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` / `export` / `trace` / `report` / `triage` / `record` / `crawl` / `repl` / `codegen` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema`。`record` と `crawl` が Tier 1 の AI オーサリング経路で、alert guard を伴います。`repl` はその隣に並ぶ、AI を使わない手動シェルです（BE-0423）
 - **解析済みのデバイス OS**（`common/devices/os.py`、BE-0358）: デバイスの OS バージョンを、プラットフォーム、メジャー、マイナーからなる小さな解析済みの事実として持ちます。値は、run がシナリオごとにすでに記録している `device_runtime` のラベルから読みます。ラベルがないか解釈できないときは、推測したバージョンではなく「不明」として解析します。2 つのフレーキネス面はこの値をグループ化のキーに持つので、シナリオの判定履歴は OS バージョンごとに分かれます。バージョン間で再現する差異が、フレーキネスとして採点されることはなくなります。XCUITest ドライバは `make_driver` のキーワード引数として受け取ります。`Driver` のメンバーにすると、すべてのバックエンドとテストダブルが宣言し直すことになるためです。これにより、ドライバ層の失敗は、どの OS で起きたかを名乗れます。**OS を読めることは、OS で分岐してよいという許可ではありません。** 挙動の OS 差はバージョンに依存しない形で直す、というのがこのリポジトリの立場です。OS ごとの分岐は、その代案に対して、それ自身のロードマップ項目で論証する必要があります
 - 実機も AI も使わない読み取り専用の助言的な分析コマンド（CI を止めない。入力が欠けている、読めないときだけ非ゼロで終了します）: 静的、repeat-and-diff、longitudinal の 3 モードを持つ決定性・フレーキネス監査（`audit`、BE-0049）、シナリオの id 名前空間カバレッジマップ（`coverage`、BE-0050）、カバレッジ索引を反転して `git` の diff から影響するシナリオステップを選ぶ**テスト影響分析**（`impact`、BE-0321）、CLI / HTML 出力の集計 run 統計ダッシュボード（`stats`、BE-0102）、runs ディレクトリまたは `serve` のデータベースから見るクロスランのフレーキネスランキング（`flakiness`、BE-0220）、完了した run を持ち運び可能な `.zip` にまとめる export（`export`、BE-0060）、保存済みの run データから再実行なしに `report.html`/`junit.xml`/`ctrf.json` を再生成する report（`report`、BE-0068）
 - **run 履歴のラベルと target の刻印**（BE-0404）: run は、実行した config（`runs.label`。config 自身の名前か、明示した `run --label` の値）と、実行した target（`runs.target`。manifest から写します）を記録します。別の config で `serve` を起動し直しても、1 つに混ざった履歴ではなく 2 つの読み分けられる履歴になり、target 単位の比較が保存済みのデータから計算できます。org の行は、その org が最後に bind した config ソースを 1 つ保持します。アップロードされたバンドルを受け取っていない別のレプリカが、そこから復元します。展開済みのバンドルを手元に持つレプリカは、オブジェクトストアを要求する前にそのキャッシュを解決するので、取得せずに bind し直せます（[BE-0393](../../roadmaps/BE-0393-per-org-config-memory/BE-0393-per-org-config-memory-ja.md) の作業単位 5）。今日 config の記憶を持つデプロイはいずれもストアを持つので、これは作業単位 6 と 7 が開くデプロイ形態への地ならしです。BE-0225 の名前付き**プロジェクト**レジストリを置き換えたもので、テーブル、エンドポイント、CLI コマンド、Web の画面はいずれも無くなりました
