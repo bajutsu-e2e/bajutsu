@@ -583,10 +583,13 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 - DSL: the `within` selector (geometric scoping), the `relaunch` step (validated on-device),
   reusable `setup` preludes, `locale` applied at launch, and parallel runs (`--workers`) over a
   device pool
-- DSL authoring reuse: reusable parameterized components (`use` / `${params.*}`), data-driven
-  scenarios (`data` / `dataFile` with `${row.*}`), secret variables (`${secrets.X}` with value
-  masking), scenario tags + `--tag` / `--exclude` selection, the `setLocation` / `push` device
-  steps, the pre-launch `permissions` field (`simctl privacy` / `pm grant`|`pm revoke`, BE-0276),
+- DSL authoring reuse: reusable parameterized components (`use` / `${params.*}`, resolved by a ref
+  holding a `/` or ending in `.yaml` / `.yml` as a cross-file component file (BE-0030), or by a
+  bare name against a `components:` block declared inline in the same scenario file (BE-0422)),
+  data-driven scenarios (`data` / `dataFile` with `${row.*}`), secret variables (`${secrets.X}`
+  with value masking), scenario tags + `--tag` / `--exclude` selection, the `setLocation` / `push`
+  device steps, the pre-launch `permissions` field (`simctl privacy` /
+  `pm grant`|`pm revoke`, BE-0276),
   the `doubleTap` action, and file-level + scenario-level `description`
 - DSL control flow & data capture: conditional `if` and `forEach` loops (deterministic; the
   condition is a machine assertion), and `extract` (capture an element's value / label / identifier
