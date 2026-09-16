@@ -894,9 +894,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   That costs one `poll_interval` when the race resolves on the next probe, and the wait's whole
   remaining timeout when it does not, since nothing re-licenses the tap in between. A sheet already
   mid-retry when such a race begins is not charged for the gap: the in-tree give-up's own
-  not-tappable horizon resets on any poll that withholds the licence this way, so a scrim that
-  lifts during the race is retried in full once the licence returns, rather than being given up on
-  for wall-clock time the tap was never allowed to spend. The
+  not-tappable horizon resets on every poll whose own probe withholds that licence — the race, a
+  dismissal, an alert no rule identifies, and the step's own reserved alert alike — so a scrim that
+  lifts while any of them is holding the licence back is retried in full once it returns, rather
+  than being given up on for wall-clock time the tap was never allowed to spend. The
   same poll stopped clearing `blocked_note` unconditionally on that race too, and can now report its
   own note naming whichever buttons no declared rule accounts for on the read — a note this path
   never produced on a bare `"absent"` answer before. Its `"unhandled"` note changed three ways too:
@@ -911,7 +912,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   rather than waiting for a native probe to report the surface empty: that probe is what a live,
   undeclared alert keeps from reporting empty at all, so before this the given-up sheet's note
   stood for the rest of the wait even once the sheet had closed, and the alert actually holding the
-  screen was never named. And `_dismiss_from_tree` resolves over the same
+  screen was never named. Retirement takes the showing's whole per-showing bookkeeping with it —
+  the pending label, the tap count, the recorded signature and event, the not-tappable horizon — so
+  a fresh showing of the same sheet is tapped afresh rather than inheriting an already-spent tap
+  budget and being given up on without ever being tapped. And `_dismiss_from_tree` resolves over the same
   widest-first `tree_dedup_rules` this change gives the one-shot dismiss, rather than plain
   declaration order, so two nested in-tree shapes match the wider one first regardless of how a
   scenario declared them — the two are declared twins over the same screen, so which button a
