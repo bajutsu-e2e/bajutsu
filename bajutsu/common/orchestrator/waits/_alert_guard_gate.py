@@ -101,6 +101,12 @@ class _AlertGuardGate:
     # this the proxy would overwrite the probe's own button-naming note with its hedged one on every
     # tick in between — reporting less than the guard actually knows.
     _native_unhandled: bool = False
+    # The note `_native_unhandled`'s own diagnosis would write to `blocked_note`, computed at both
+    # sites that set `_native_unhandled = True` even when an in-tree give-up defers the write itself
+    # (BE-0418 review finding): the give-up's own retirement needs it to restore a still-live native
+    # diagnosis rather than emptying `blocked_note` outright, once `_tree_gave_up` no longer holds
+    # exclusive claim to it.
+    _native_unhandled_note: str = ""
     # Whether the most recent native probe found the alert the waiting step itself named. Latched
     # for the same reason as `_native_unhandled` above: the probe runs once per `poll_interval`
     # while the collapsed-tree proxy samples every `_POLL`, and that alert covers the app, so
@@ -177,16 +183,23 @@ class _AlertGuardGate:
             # otherwise keep this latch armed for a sheet that already left (BE-0418 review
             # finding) — exactly the case this retirement exists to catch.
             #
-            # The note goes with the latch: every other write to `blocked_note` below is gated on
-            # `not self._tree_gave_up`, and the give-up's own two write sites (`_dismiss_from_tree`)
-            # are the only ones reached while it stands — so whenever this branch runs, `blocked_note`
-            # is exactly the note the give-up itself set. Leaving it standing would hand the job to
-            # whichever write runs next, and on a poll where the native probe is not due — or a live,
-            # undeclared alert has latched `_native_unhandled`, which returns above the collapsed-tree
-            # proxy — there is no next writer this tick: the stale note would then name a sheet this
-            # very poll already proved gone for up to a whole `poll_interval` (BE-0418 review
-            # finding).
-            self.blocked_note = ""
+            # The note goes with the latch: every write to `blocked_note` below that could otherwise
+            # win is gated on `not self._tree_gave_up`, and the give-up's own two write sites
+            # (`_dismiss_from_tree`) are the only ones reached while it stands — so whenever this
+            # branch runs, `blocked_note` is exactly the note the give-up itself set. Leaving it
+            # standing would hand the job to whichever write runs next, and on a poll where the
+            # native probe is not due — or a live, undeclared alert has latched `_native_unhandled`,
+            # which returns above the collapsed-tree proxy — there is no next writer this tick: the
+            # stale note would then name a sheet this very poll already proved gone for up to a whole
+            # `poll_interval` (BE-0418 review finding).
+            #
+            # Not a bare clear, though: `_native_unhandled` can itself already be latched `True` with
+            # nothing to show for it, since its own write sites compute a note only when this deferred
+            # to it (`if not self._tree_gave_up:`) — the flag still flips regardless (BE-0418 review
+            # finding). Restoring `_native_unhandled_note` here, rather than clearing unconditionally,
+            # is what lets that still-live native diagnosis survive the give-up's own departure instead
+            # of leaving `blocked_note` empty on a screen a probe has already named as blocked.
+            self.blocked_note = self._native_unhandled_note if self._native_unhandled else ""
             self._tree_gave_up = False
             self._tree_gave_up_shape = None
         # Rate-limit only the cross-process native query to `poll_interval`, not the whole gate: a
@@ -259,20 +272,25 @@ class _AlertGuardGate:
                 # outranks the ambiguous rule's own diagnosis, since something else is demonstrably
                 # unhandled either way (BE-0418 review finding).
                 self._collapsed_polls = 0
+                # Computed regardless of `_tree_gave_up`, unlike the write to `blocked_note` below:
+                # the give-up's own retirement needs this diagnosis intact even on a poll where the
+                # give-up deferred writing it (BE-0418 review finding) -- see `_native_unhandled_note`
+                # itself for why.
+                identified = identified_alert_rules(self.guard.native_rules, buttons)
+                leftover = subtract_labels(
+                    buttons, (rule.identifying_labels for rule in identified)
+                )
+                self._native_unhandled_note = (
+                    alert_block_note(leftover)
+                    if leftover or not identified
+                    else uncleared_prompt_note(identified[0].tap_label)
+                )
                 if not self._tree_gave_up:
                     # The same exception the clear-guard above and the `raced` branch below both
                     # make: an in-tree give-up names a prompt a rule *did* identify and a tap
                     # failed to clear, and nothing re-arms that note once a live SpringBoard alert
                     # stops `probed_absent` from holding (BE-0418 review finding).
-                    identified = identified_alert_rules(self.guard.native_rules, buttons)
-                    leftover = subtract_labels(
-                        buttons, (rule.identifying_labels for rule in identified)
-                    )
-                    self.blocked_note = (
-                        alert_block_note(leftover)
-                        if leftover or not identified
-                        else uncleared_prompt_note(identified[0].tap_label)
-                    )
+                    self.blocked_note = self._native_unhandled_note
                 self._withhold_tree_tap_licence()
                 return
             if raced:
@@ -308,12 +326,16 @@ class _AlertGuardGate:
                 )
                 if leftover:
                     self._native_unhandled = True
+                    # Computed regardless of `_tree_gave_up`, the same reason the "unhandled" branch
+                    # above does: the give-up's own retirement needs this diagnosis intact even when
+                    # the give-up defers writing it this poll (BE-0418 review finding).
+                    self._native_unhandled_note = alert_block_note(leftover)
                     if not self._tree_gave_up:
                         # The same exception the clear-guard above and the `elif` below both make:
                         # an in-tree give-up names a prompt a rule *did* identify and a tap failed
                         # to clear, and the hedged "unhandled" note would tell the author the
                         # opposite (`uncleared_prompt_note`'s own docstring, BE-0418 review finding).
-                        self.blocked_note = alert_block_note(leftover)
+                        self.blocked_note = self._native_unhandled_note
                 elif self._native_unhandled and not self._tree_gave_up:
                     # Nothing but the raced rule's own shape is on the surface, and this read is the
                     # whole SpringBoard enumeration -- so an earlier probe's "unhandled" note names a
@@ -321,6 +343,7 @@ class _AlertGuardGate:
                     # query cannot enumerate, is a different story and is preserved above (BE-0418
                     # review finding).
                     self._native_unhandled = False
+                    self._native_unhandled_note = ""
                     self.blocked_note = ""
                 self._collapsed_polls = 0
                 self._withhold_tree_tap_licence()
