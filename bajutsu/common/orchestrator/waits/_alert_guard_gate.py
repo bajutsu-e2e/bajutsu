@@ -12,7 +12,7 @@ from bajutsu.common.orchestrator.types import (
     Clock,
     alert_block_note,
     identified_alert_rules,
-    match_alert_rule,
+    matching_alert_rule,
     subtract_labels,
     uncleared_prompt_note,
 )
@@ -116,11 +116,16 @@ class _AlertGuardGate:
     _tree_event: AlertEvent | None = None
     _tree_taps: int = 0
     _tree_gave_up: bool = False
-    # The label `_tree_gave_up` names, so `_observe_native` can tell whether the given-up sheet is
-    # still on screen this poll and retire the latch once it is not (BE-0418 review finding): set
-    # alongside `_tree_gave_up = True` at both give-up sites below, and cleared with it everywhere
-    # `_tree_gave_up` itself resets.
+    # The label and shape `_tree_gave_up` names, so `_observe_native` can tell whether the given-up
+    # sheet is still on screen this poll and retire the latch once it is not (BE-0418 review
+    # finding): set alongside `_tree_gave_up = True` at both give-up sites below, and cleared with
+    # it everywhere `_tree_gave_up` itself resets. The shape, not the label alone, decides
+    # retirement — two `in_tree` rules can share one tap label under different choices
+    # (`savePassword`'s three shapes all tap "Not Now"), so a different, genuinely live prompt that
+    # merely shares the given-up label would otherwise keep the latch armed for a sheet that
+    # already left (BE-0418 review finding). The label still names the prompt in the note.
     _tree_gave_up_label: str | None = None
+    _tree_gave_up_shape: frozenset[str] | None = None
     _tree_not_tappable_label: str | None = None
     _tree_not_tappable_since: float | None = None
 
@@ -135,7 +140,10 @@ class _AlertGuardGate:
             self._observe_collapsed(elements)
 
     def _observe_native(self, elements: list[base.Element]) -> None:
-        if self._tree_gave_up and self._tree_gave_up_label not in _tree_buttons(elements):
+        if self._tree_gave_up and not (
+            self._tree_gave_up_shape is not None
+            and self._tree_gave_up_shape <= set(_tree_buttons(elements))
+        ):
             # The given-up sheet is no longer on this poll's own tree, so the deference below —
             # holding every note to what the give-up named rather than what a *new* alert's own
             # diagnosis would say — no longer applies (BE-0418 review finding). Retiring it here,
@@ -143,8 +151,15 @@ class _AlertGuardGate:
             # is the only other place that resets it, and it runs only when `probed_absent` holds
             # below, which a live, undeclared SpringBoard alert stops from holding for as long as
             # that alert is up — exactly the case where a fresher diagnosis is needed most.
+            #
+            # Checked by shape, not by the given-up label alone: two `in_tree` rules can share one
+            # tap label under different choices (`savePassword`'s three shapes all tap "Not Now"),
+            # so a *different*, genuinely live prompt that merely shares the given-up label would
+            # otherwise keep this latch armed for a sheet that already left (BE-0418 review
+            # finding) — exactly the case this retirement exists to catch.
             self._tree_gave_up = False
             self._tree_gave_up_label = None
+            self._tree_gave_up_shape = None
         # Rate-limit only the cross-process native query to `poll_interval`, not the whole gate: a
         # per-`_POLL` SpringBoard query would roughly double the single-main-thread runner's load
         # (BE-0315). `_last_native` starts None so the first poll probes at once.
@@ -393,8 +408,13 @@ class _AlertGuardGate:
         # The one shared ordering every in-tree, dedup-aware match reads from (BE-0418 review
         # finding): matching over anything else here would let this gate and `dismiss_from_tree_once`
         # — declared twins over the same screen — pick differently, so which button a scenario gets
-        # would depend on whether a `wait` happened to be running when the sheet appeared.
-        label = match_alert_rule(self.guard.tree_dedup_rules, buttons)
+        # would depend on whether a `wait` happened to be running when the sheet appeared. The rule
+        # itself, not just its tap label, so a give-up can record `identifying_labels` alongside it
+        # (BE-0418 review finding) — two `in_tree` rules can share one tap label under different
+        # choices (`savePassword`'s three shapes all tap "Not Now"), so the label alone cannot tell
+        # a still-showing sheet from a different, genuinely live one that merely shares its label.
+        rule = matching_alert_rule(self.guard.tree_dedup_rules, buttons)
+        label = rule.tap_label if rule is not None else None
         if label is None:
             # The tree stopped matching: the showing ended, so its recorded event stands as the real
             # dismissal it was — only the reference is dropped, so a later give-up cannot withdraw it.
@@ -405,9 +425,11 @@ class _AlertGuardGate:
             self._tree_taps = 0
             self._tree_gave_up = False
             self._tree_gave_up_label = None
+            self._tree_gave_up_shape = None
             self._tree_not_tappable_label = None
             self._tree_not_tappable_since = None
             return None
+        assert rule is not None  # `label` is only ever `rule.tap_label`, never a bare default
         if label == self._tree_dismiss_pending:
             # This label's own tap left it showing. Inside `_TREE_RETAP_DELAY` that is the dismiss
             # animation, so wait rather than tap what is under a vanishing sheet; past it the tap did
@@ -436,6 +458,7 @@ class _AlertGuardGate:
                 if not self._tree_gave_up:
                     self._tree_gave_up = True
                     self._tree_gave_up_label = label
+                    self._tree_gave_up_shape = rule.identifying_labels
                     self._withdraw_tree_event()
                     _logger.warning(
                         "in-tree alert dismiss gave up after %d taps on %r; the prompt is still "
@@ -458,6 +481,7 @@ class _AlertGuardGate:
             self._tree_taps = 0
             self._tree_gave_up = False
             self._tree_gave_up_label = None
+            self._tree_gave_up_shape = None
         if label != self._tree_not_tappable_label:
             self._tree_not_tappable_label = label
             self._tree_not_tappable_since = None
@@ -472,6 +496,7 @@ class _AlertGuardGate:
             # collapsed-tree proxy reads the screen as unblocked and would erase the note (BE-0402).
             self._tree_gave_up = True
             self._tree_gave_up_label = label
+            self._tree_gave_up_shape = rule.identifying_labels
             self.blocked_note = uncleared_prompt_note(label)
             return None
         # Scope the tap to `traits: [BUTTON]`, the same constraint `buttons` above already applied

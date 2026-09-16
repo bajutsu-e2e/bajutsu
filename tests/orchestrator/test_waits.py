@@ -1159,10 +1159,12 @@ def test_wait_guard_keeps_the_collapsed_tree_proxys_hedged_note_through_a_leftov
     # `_tree_gave_up`) protects that no existing test reaches: a race whose own read leaves nothing
     # over (`leftover` empty) and that was not already latched `_native_unhandled`. Neither the
     # `if leftover:` branch nor the `elif self._native_unhandled:` branch below fires then, so the
-    # only thing standing between this poll and an erased note is line 158's own guard declining to
-    # clear it in the first place -- the collapsed-tree proxy's hedged `alert_block_note([])`, for a
-    # non-SpringBoard surface the native query cannot enumerate, must survive a race that says
-    # nothing about whether *that* surface cleared (BE-0418 review finding).
+    # only thing standing between this poll and an erased note is the `not raced` conjunct of
+    # `_observe_native`'s own clear-guard (`if state != "unhandled" and not raced and not
+    # self._tree_gave_up`) declining to clear it in the first place -- the collapsed-tree proxy's
+    # hedged `alert_block_note([])`, for a non-SpringBoard surface the native query cannot
+    # enumerate, must survive a race that says nothing about whether *that* surface cleared
+    # (BE-0418 review finding).
     from bajutsu.common.orchestrator.types import ResolvedAlertRule, alert_block_note
     from bajutsu.common.orchestrator.waits import _AlertGuardGate
 
@@ -1191,7 +1193,7 @@ def test_wait_guard_keeps_the_collapsed_tree_proxys_hedged_note_through_a_leftov
     assert gate.blocked_note == alert_block_note([])
     # A fresh native probe (the clock has moved a full `poll_interval`) now races over a read that
     # is nothing but the declared rule's own shape -- `leftover` is empty and `_native_unhandled` is
-    # still False, so this is the one case only line 158's guard protects.
+    # still False, so this is the one case only the `not raced` conjunct protects.
     clock.sleep(guard.poll_interval)
     driver.system_alert_buttons = [
         el(None, "Allow", ["button"]),
@@ -1366,6 +1368,7 @@ def test_wait_guard_keeps_an_in_tree_give_up_note_through_a_race_with_a_leftover
     gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
     gate._tree_gave_up = True
     gate._tree_gave_up_label = "Not Now"
+    gate._tree_gave_up_shape = frozenset({"Not Now"})
     gate.blocked_note = uncleared_prompt_note("Not Now")
     # The given-up sheet is still on screen (its own retirement is a different finding, pinned
     # below), so its label is in this poll's own tree too (BE-0418 review finding).
@@ -1390,6 +1393,7 @@ def test_wait_guard_keeps_an_in_tree_give_up_note_through_an_unhandled_native_al
     gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
     gate._tree_gave_up = True
     gate._tree_gave_up_label = "Not Now"
+    gate._tree_gave_up_shape = frozenset({"Not Now"})
     gate.blocked_note = uncleared_prompt_note("Not Now")
     # The given-up sheet is still on screen (its own retirement is a different finding, pinned
     # below), so its label is in this poll's own tree too (BE-0418 review finding).
@@ -1416,15 +1420,48 @@ def test_wait_guard_retires_an_in_tree_give_up_once_the_sheet_leaves_the_tree() 
     gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
     gate._tree_gave_up = True
     gate._tree_gave_up_label = "Not Now"
+    gate._tree_gave_up_shape = frozenset({"Not Now"})
     gate.blocked_note = uncleared_prompt_note("Not Now")
     # "Not Now" is gone from this poll's own tree -- the sheet closed on its own.
     gate.observe([])
     assert not gate._tree_gave_up
     assert gate._tree_gave_up_label is None
+    assert gate._tree_gave_up_shape is None
     # The unrelated native alert's own diagnosis now gets through, naming the button that is
     # actually still blocking the screen instead of the sheet that already left it.
     assert "Weird Button" in gate.blocked_note
     assert "Not Now" not in gate.blocked_note
+
+
+def test_wait_guard_retires_an_in_tree_give_up_by_shape_not_by_the_label_alone() -> None:
+    # The retirement above must key on the given-up *shape*, not the label alone (BE-0418 review
+    # finding): two `in_tree` rules can share one tap label under different choices --
+    # `savePassword`'s three shapes all tap "Not Now" -- so a *different*, genuinely live prompt
+    # that merely shares the given-up label must not keep the latch armed for a sheet that already
+    # left. Gave up on the web-form shape ("Save Password"/"Never for This Website"/"Not Now");
+    # that sheet then closes and the 26.5 in-app shape ("Save"/"Not Now") is presented in its
+    # place -- a different, genuinely live prompt sharing only "Not Now" with the one given up on.
+    from bajutsu.common.orchestrator.types import uncleared_prompt_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    driver = FakeDriver([])
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    guard = AlertGuardConfig()
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate._tree_gave_up = True
+    gate._tree_gave_up_label = "Not Now"
+    gate._tree_gave_up_shape = frozenset({"Save Password", "Never for This Website", "Not Now"})
+    gate.blocked_note = uncleared_prompt_note("Not Now")
+    # "Not Now" is still on screen, but the web-form shape's other two labels are gone: this is a
+    # different prompt (the 26.5 in-app shape) that merely shares the given-up label, not the same
+    # sheet still showing.
+    gate.observe([el(None, "Save", ["button"]), el(None, "Not Now", ["button"])])
+    assert not gate._tree_gave_up
+    assert gate._tree_gave_up_label is None
+    assert gate._tree_gave_up_shape is None
+    # The unrelated native alert's own diagnosis now gets through, rather than the stale note about
+    # the web-form sheet -- which already left -- continuing to mask it.
+    assert "Weird Button" in gate.blocked_note
 
 
 def test_wait_guard_does_not_credit_a_rule_matching_alert_rule_would_refuse() -> None:
