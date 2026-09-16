@@ -892,7 +892,11 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   the way a genuinely empty enumeration does, and a declared app-owned sheet stacked behind the race
   is no longer tapped immediately: it goes untapped until a probe reads the surface genuinely empty.
   That costs one `poll_interval` when the race resolves on the next probe, and the wait's whole
-  remaining timeout when it does not, since nothing re-licenses the tap in between. The
+  remaining timeout when it does not, since nothing re-licenses the tap in between. A sheet already
+  mid-retry when such a race begins is not charged for the gap: the in-tree give-up's own
+  not-tappable horizon resets on any poll that withholds the licence this way, so a scrim that
+  lifts during the race is retried in full once the licence returns, rather than being given up on
+  for wall-clock time the tap was never allowed to spend (BE-0418 review finding). The
   same poll stopped clearing `blocked_note` unconditionally on that race too, and can now report its
   own note naming whichever buttons no declared rule accounts for on the read — a note this path
   never produced on a bare `"absent"` answer before. Its `"unhandled"` note changed three ways too:

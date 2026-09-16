@@ -1367,7 +1367,6 @@ def test_wait_guard_keeps_an_in_tree_give_up_note_through_a_race_with_a_leftover
     )
     gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
     gate._tree_gave_up = True
-    gate._tree_gave_up_label = "Not Now"
     gate._tree_gave_up_shape = frozenset({"Not Now"})
     gate.blocked_note = uncleared_prompt_note("Not Now")
     # The given-up sheet is still on screen (its own retirement is a different finding, pinned
@@ -1392,7 +1391,6 @@ def test_wait_guard_keeps_an_in_tree_give_up_note_through_an_unhandled_native_al
     guard = AlertGuardConfig()
     gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
     gate._tree_gave_up = True
-    gate._tree_gave_up_label = "Not Now"
     gate._tree_gave_up_shape = frozenset({"Not Now"})
     gate.blocked_note = uncleared_prompt_note("Not Now")
     # The given-up sheet is still on screen (its own retirement is a different finding, pinned
@@ -1419,13 +1417,11 @@ def test_wait_guard_retires_an_in_tree_give_up_once_the_sheet_leaves_the_tree() 
     guard = AlertGuardConfig()
     gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
     gate._tree_gave_up = True
-    gate._tree_gave_up_label = "Not Now"
     gate._tree_gave_up_shape = frozenset({"Not Now"})
     gate.blocked_note = uncleared_prompt_note("Not Now")
     # "Not Now" is gone from this poll's own tree -- the sheet closed on its own.
     gate.observe([])
     assert not gate._tree_gave_up
-    assert gate._tree_gave_up_label is None
     assert gate._tree_gave_up_shape is None
     # The unrelated native alert's own diagnosis now gets through, naming the button that is
     # actually still blocking the screen instead of the sheet that already left it.
@@ -1449,7 +1445,6 @@ def test_wait_guard_retires_an_in_tree_give_up_by_shape_not_by_the_label_alone()
     guard = AlertGuardConfig()
     gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
     gate._tree_gave_up = True
-    gate._tree_gave_up_label = "Not Now"
     gate._tree_gave_up_shape = frozenset({"Save Password", "Never for This Website", "Not Now"})
     gate.blocked_note = uncleared_prompt_note("Not Now")
     # "Not Now" is still on screen, but the web-form shape's other two labels are gone: this is a
@@ -1457,11 +1452,84 @@ def test_wait_guard_retires_an_in_tree_give_up_by_shape_not_by_the_label_alone()
     # sheet still showing.
     gate.observe([el(None, "Save", ["button"]), el(None, "Not Now", ["button"])])
     assert not gate._tree_gave_up
-    assert gate._tree_gave_up_label is None
     assert gate._tree_gave_up_shape is None
     # The unrelated native alert's own diagnosis now gets through, rather than the stale note about
     # the web-form sheet -- which already left -- continuing to mask it.
     assert "Weird Button" in gate.blocked_note
+
+
+def test_wait_guard_does_not_blame_a_scrim_for_time_a_race_withheld_its_own_tap() -> None:
+    # BE-0418 review finding: narrowing `probed_absent` to a genuinely empty read means a raced
+    # native alert withholds the in-tree tap's own licence for as long as it keeps racing away --
+    # but `_tree_not_tappable_since` is a wall-clock horizon that keeps ticking regardless of
+    # whether `_dismiss_from_tree` ever runs. Left unreset, a scrim that lifts *during* the race is
+    # still given up on the moment the race resolves, purely because unlicensed wall-clock time was
+    # counted against it -- the very first retry since the scrim lifted sees the whole, un-attempted
+    # gap and gives up without ever attempting the tap.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _StuckThenRaces(FakeDriver):
+        def __init__(self, screen: list[base.Element]) -> None:
+            super().__init__(screen)
+            self.tappable = False
+
+        def tap(self, sel: base.Selector) -> None:
+            if sel.get("label") == "Not Now" and not self.tappable:
+                raise base.ElementNotTappable("scrim still presenting")
+            super().tap(sel)
+
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = _StuckThenRaces(tree)
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            ),
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}),
+                tap_label="Allow",
+                native=True,
+                in_tree=False,
+            ),
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+
+    # Poll 1 (t=0): a genuinely empty native read licenses the in-tree tap; the sheet resolves but
+    # a scrim still covers its button.
+    gate.observe(tree)
+
+    # Polls 2-3 (t=1, t=2): an unrelated SpringBoard alert raises and its own tap races away on
+    # each probe -- `probed_absent` stays False throughout, withholding the tree's own licence for
+    # two full `poll_interval`s, which alone already meets `_decline_giveup`'s default 2s horizon.
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+    ]
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+
+    # The scrim lifted well before either raced poll ran -- the sheet has been tappable the whole
+    # time the race was withholding the licence. A full `poll_interval` so the native probe is due
+    # again and reports the surface genuinely empty, re-licensing the in-tree tap.
+    driver.tappable = True
+    driver.system_alert_buttons = []
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+
+    assert not gate._tree_gave_up
+    assert len(gate.alerts) == 1
+    assert gate.alerts[0].label == "Not Now"
 
 
 def test_wait_guard_does_not_credit_a_rule_matching_alert_rule_would_refuse() -> None:

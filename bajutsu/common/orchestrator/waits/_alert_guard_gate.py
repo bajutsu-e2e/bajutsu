@@ -116,15 +116,14 @@ class _AlertGuardGate:
     _tree_event: AlertEvent | None = None
     _tree_taps: int = 0
     _tree_gave_up: bool = False
-    # The label and shape `_tree_gave_up` names, so `_observe_native` can tell whether the given-up
-    # sheet is still on screen this poll and retire the latch once it is not (BE-0418 review
-    # finding): set alongside `_tree_gave_up = True` at both give-up sites below, and cleared with
-    # it everywhere `_tree_gave_up` itself resets. The shape, not the label alone, decides
-    # retirement — two `in_tree` rules can share one tap label under different choices
-    # (`savePassword`'s three shapes all tap "Not Now"), so a different, genuinely live prompt that
-    # merely shares the given-up label would otherwise keep the latch armed for a sheet that
-    # already left (BE-0418 review finding). The label still names the prompt in the note.
-    _tree_gave_up_label: str | None = None
+    # The shape `_tree_gave_up` names, so `_observe_native` can tell whether the given-up sheet is
+    # still on screen this poll and retire the latch once it is not (BE-0418 review finding): set
+    # alongside `_tree_gave_up = True` at both give-up sites below, and cleared with it everywhere
+    # `_tree_gave_up` itself resets. Shape, not label, is what decides retirement — two `in_tree`
+    # rules can share one tap label under different choices (`savePassword`'s three shapes all tap
+    # "Not Now"), so a different, genuinely live prompt that merely shares the given-up label would
+    # otherwise keep the latch armed for a sheet that already left (BE-0418 review finding). The
+    # note itself is built from each give-up site's own local `label`, not from a field here.
     _tree_gave_up_shape: frozenset[str] | None = None
     _tree_not_tappable_label: str | None = None
     _tree_not_tappable_since: float | None = None
@@ -138,6 +137,25 @@ class _AlertGuardGate:
             self._observe_native(elements)
         else:
             self._observe_collapsed(elements)
+
+    def _withhold_tree_tap_licence(self) -> None:
+        """Reset the in-tree not-tappable horizon on a poll that cannot honour `probed_absent`.
+
+        `_tree_not_tappable_since` is a wall-clock horizon (`_dismiss_from_tree`'s own docstring),
+        but it means something only against polls that actually got to retry the tap: `probed_absent`
+        licenses that retry, and a poll answering `"dismissed"`, `"unhandled"`, or `raced` withholds
+        it — no different, for this horizon's purposes, than a live SpringBoard alert stopping
+        `probed_absent` from holding for however many consecutive polls it stays up (BE-0418 review
+        finding). Left unreset, a scrim that lifts while such a poll runs is still given up on the
+        moment the licence returns, purely because unlicensed wall-clock time was counted against
+        it — the very first retry since the scrim lifted sees the full, un-attempted gap and gives up
+        without ever attempting the tap. Clearing it here restarts the horizon at the next poll that
+        is actually licensed, rather than blaming the sheet for time the tap was never allowed to
+        spend. Only the horizon, not `_tree_not_tappable_label`: the label still matching on the next
+        licensed poll is what lets that poll retry at once instead of treating the sheet as a fresh
+        showing.
+        """
+        self._tree_not_tappable_since = None
 
     def _observe_native(self, elements: list[base.Element]) -> None:
         if self._tree_gave_up and not (
@@ -158,7 +176,6 @@ class _AlertGuardGate:
             # otherwise keep this latch armed for a sheet that already left (BE-0418 review
             # finding) — exactly the case this retirement exists to catch.
             self._tree_gave_up = False
-            self._tree_gave_up_label = None
             self._tree_gave_up_shape = None
         # Rate-limit only the cross-process native query to `poll_interval`, not the whole gate: a
         # per-`_POLL` SpringBoard query would roughly double the single-main-thread runner's load
@@ -211,6 +228,7 @@ class _AlertGuardGate:
                 # so a later collapse starts fresh.
                 self.alerts.append(event)
                 self._collapsed_polls = 0
+                self._withhold_tree_tap_licence()
                 return
             if state == "unhandled":
                 # `probe_native` reaches "unhandled" two ways: a genuinely unidentified alert, and
@@ -243,6 +261,7 @@ class _AlertGuardGate:
                         if leftover or not identified
                         else uncleared_prompt_note(identified[0].tap_label)
                     )
+                self._withhold_tree_tap_licence()
                 return
             if raced:
                 # The same deference "unhandled" gets, just above: a live, enumerated surface is not
@@ -292,6 +311,7 @@ class _AlertGuardGate:
                     self._native_unhandled = False
                     self.blocked_note = ""
                 self._collapsed_polls = 0
+                self._withhold_tree_tap_licence()
                 return
             # Only a genuinely empty "absent" falls through to the in-tree dismiss below; "reserved"
             # falls through to the collapsed-tree proxy, but its own latch stops it short of it.
@@ -424,7 +444,6 @@ class _AlertGuardGate:
             self._tree_event = None
             self._tree_taps = 0
             self._tree_gave_up = False
-            self._tree_gave_up_label = None
             self._tree_gave_up_shape = None
             self._tree_not_tappable_label = None
             self._tree_not_tappable_since = None
@@ -457,7 +476,6 @@ class _AlertGuardGate:
                 self.blocked_note = uncleared_prompt_note(label)
                 if not self._tree_gave_up:
                     self._tree_gave_up = True
-                    self._tree_gave_up_label = label
                     self._tree_gave_up_shape = rule.identifying_labels
                     self._withdraw_tree_event()
                     _logger.warning(
@@ -480,7 +498,6 @@ class _AlertGuardGate:
             self._tree_event = None
             self._tree_taps = 0
             self._tree_gave_up = False
-            self._tree_gave_up_label = None
             self._tree_gave_up_shape = None
         if label != self._tree_not_tappable_label:
             self._tree_not_tappable_label = label
@@ -495,7 +512,6 @@ class _AlertGuardGate:
             # a permanently obstructed sheet keeps its own labelled buttons in the tree, so the
             # collapsed-tree proxy reads the screen as unblocked and would erase the note (BE-0402).
             self._tree_gave_up = True
-            self._tree_gave_up_label = label
             self._tree_gave_up_shape = rule.identifying_labels
             self.blocked_note = uncleared_prompt_note(label)
             return None
