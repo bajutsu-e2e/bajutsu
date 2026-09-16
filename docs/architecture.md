@@ -880,8 +880,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   the token's `repository` claim rather than a parsed `sub`, with an optional per-entry
   `environment` / `ref` / `workflowRef` narrowing. The machine session is a third caller shape
   beside a human's OAuth session and the worker's shared token: not a role, but an explicit
-  endpoint allowlist in `gate.py` (the three artifact uploads, `POST /api/run`, and reading its
-  own org's runs), revocable per repository and refused outright on a database-less deployment or
+  endpoint allowlist in `gate.py` (the content-miss probe `GET /api/artifacts/exists`, the three
+  artifact uploads, `POST /api/run`, and reading its own org's runs and the job it dispatched),
+  revocable per repository and refused outright on a database-less deployment or
   a session store that cannot enforce a per-session expiry
 - The **cross-target comparison dashboard** (BE-0226, repointed to the target axis by BE-0404): a `serve` **Comparison** tab that ranks the bound config's targets side by side — pass-rate, flaky-rate, and p50/p95 run duration, plus a per-target trend sparkline — reusing BE-0102's per-config aggregation computed once per target (`GET /api/metrics/targets`); read-only and advisory, like BE-0102. A row opens that target's run history read-only, by pointer or by keyboard. The view writes nothing: a target is not a binding, so there is nothing on it to activate
 - AI **crawl** (`crawl/`): autonomous breadth-first exploration of an app → a screen map (`screenmap.json`)
