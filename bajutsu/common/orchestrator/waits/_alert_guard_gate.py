@@ -175,6 +175,17 @@ class _AlertGuardGate:
             # so a *different*, genuinely live prompt that merely shares the given-up label would
             # otherwise keep this latch armed for a sheet that already left (BE-0418 review
             # finding) — exactly the case this retirement exists to catch.
+            #
+            # The note goes with the latch: every other write to `blocked_note` below is gated on
+            # `not self._tree_gave_up`, and the give-up's own two write sites (`_dismiss_from_tree`)
+            # are the only ones reached while it stands — so whenever this branch runs, `blocked_note`
+            # is exactly the note the give-up itself set. Leaving it standing would hand the job to
+            # whichever write runs next, and on a poll where the native probe is not due — or a live,
+            # undeclared alert has latched `_native_unhandled`, which returns above the collapsed-tree
+            # proxy — there is no next writer this tick: the stale note would then name a sheet this
+            # very poll already proved gone for up to a whole `poll_interval` (BE-0418 review
+            # finding).
+            self.blocked_note = ""
             self._tree_gave_up = False
             self._tree_gave_up_shape = None
         # Rate-limit only the cross-process native query to `poll_interval`, not the whole gate: a

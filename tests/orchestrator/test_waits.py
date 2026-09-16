@@ -1458,6 +1458,50 @@ def test_wait_guard_retires_an_in_tree_give_up_by_shape_not_by_the_label_alone()
     assert "Weird Button" in gate.blocked_note
 
 
+def test_wait_guard_clears_the_note_the_moment_it_retires_a_give_up_with_no_native_probe_due() -> (
+    None
+):
+    # BE-0418 review finding: retiring `_tree_gave_up` without also clearing the note it was
+    # holding leaves the stale diagnosis standing for up to a whole `poll_interval` -- exactly the
+    # window this retirement exists to close. Every other write to `blocked_note` in
+    # `_observe_native` is gated on `not self._tree_gave_up`, so while the latch stood, nothing else
+    # could have touched the note; retiring the latch here without also clearing it hands the job to
+    # whichever write runs next, and on a poll where the native probe is not due -- and a live,
+    # undeclared alert has already latched `_native_unhandled`, which returns above the collapsed-
+    # tree proxy -- there is no next writer this tick at all.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, uncleared_prompt_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    driver = FakeDriver([])
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+    # A previous poll already probed natively and latched the undeclared alert as unhandled --
+    # `_last_native` is no longer `None`, so the very next poll is not guaranteed to probe again.
+    gate._last_native = 0.0
+    gate._native_unhandled = True
+    gate._tree_gave_up = True
+    gate._tree_gave_up_shape = frozenset({"Not Now"})
+    gate.blocked_note = uncleared_prompt_note("Not Now")
+    # One `_POLL` tick later -- nowhere near a full `poll_interval` -- "Not Now" is gone from the
+    # tree, but the native probe is not due and `_native_unhandled` returns before the collapsed-
+    # tree proxy ever runs: no other write to `blocked_note` happens this poll.
+    clock.sleep(0.05)
+    gate.observe([])
+    assert not gate._tree_gave_up
+    assert gate.blocked_note == ""
+
+
 def test_wait_guard_does_not_blame_a_scrim_for_time_a_race_withheld_its_own_tap() -> None:
     # BE-0418 review finding: narrowing `probed_absent` to a genuinely empty read means a raced
     # native alert withholds the in-tree tap's own licence for as long as it keeps racing away --
