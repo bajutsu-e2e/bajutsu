@@ -35,11 +35,12 @@ Every mapping rejects keys it does not declare (`_Model`, `scenario/models/_base
 
 ## 2. Grammar at a glance
 
-The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that the EBNF text below states but does not show directly: `Selector`'s `within` self-loop; `RequestMatch`, shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`; `Web` and `Component`, which both nest a fresh `Step` list; and the two control-flow steps — `If`, which nests `then`/`else` under an `Assertion` condition, and `ForEach`, which nests `steps` under a `Selector`. The diagram omits actions that carry only scalars and reference no shared non-terminal (`relaunch`, `setLocation`, `push`, `http`, `setClipboard`, `foreground`, and the remaining device / status-bar steps) and the `golden` assertion, whose payload is a bare path.
+The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that the EBNF text below states but does not show directly: `Selector`'s `within` self-loop; `RequestMatch`, shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`; `Web` and `Component`, which both nest a fresh `Step` list; `Component` reached a second way from `ScenarioFile` itself (a file may declare its own components inline; §6.2); and the two control-flow steps — `If`, which nests `then`/`else` under an `Assertion` condition, and `ForEach`, which nests `steps` under a `Selector`. The diagram omits actions that carry only scalars and reference no shared non-terminal (`relaunch`, `setLocation`, `push`, `http`, `setClipboard`, `foreground`, and the remaining device / status-bar steps) and the `golden` assertion, whose payload is a bare path.
 
 ```mermaid
 graph LR
   SF["ScenarioFile"] --> SC["Scenario"]
+  SF -->|components| CMP["Component"]
 
   SC -->|preconditions| PRE["Preconditions"]
   SC -->|steps| ST["Step"]
@@ -96,9 +97,12 @@ And the productions in full:
 # ── Files ──────────────────────────────────────────────────────────────
 # Two on-disk forms: a bare sequence of scenarios, or a mapping that also carries a file-level
 # `description` and/or `schema` (the cross-version read gate, BE-0119; default 1, an older
-# bajutsu rejects a higher declared version rather than misinterpret it).
+# bajutsu rejects a higher declared version rather than misinterpret it). Only the mapping form
+# can carry `components` — file-scoped components (§6.2), keyed by the bare name a `use` in this
+# same file refers to them by.
 ScenarioFile  ::= list(<Scenario>)
-               | { schema?: integer, description?: string, scenarios: list(<Scenario>) }
+               | { schema?: integer, description?: string,
+                   components?: map(string,<Component>), scenarios: list(<Scenario>) }
 ComponentFile ::= <Component>               # a single mapping (loaded separately)
 
 # ── Scenario ───────────────────────────────────────────────────────────
@@ -450,11 +454,13 @@ via config `secrets:`, resolved from the environment by the run loop at action t
 
 ### 6.2 Components (`use` → reusable steps)
 
-A `<Component>` is a separate file (`ComponentFile`): a list of `params` and a list of `steps` that
-reference them as `${params.<name>}`. A `use` step invokes it, binding the params via `with`:
+A `<Component>` is a list of `params` and a list of `steps` that reference them as
+`${params.<name>}`. A `use` step invokes it, binding the params via `with`. A component lives in a
+file of its own (`ComponentFile`). It may instead live inline in the scenario file that calls it
+(`ScenarioFile.components`, BE-0422):
 
 ```yaml
-# login.component.yaml
+# login.component.yaml — a component file
 params: [email, password]
 steps:
   - type: { text: "${params.email}",    into: { id: auth.email } }
@@ -463,16 +469,40 @@ steps:
 ```
 
 ```yaml
-# in a scenario
-steps:
-  - use: { component: login.component.yaml, with: { email: "a@b.com", password: "pw" } }
+# a scenario file — a file-scoped component beside the scenarios that call it
+components:
+  dismiss:
+    steps:
+      - tap: { id: banner.close }
+
+scenarios:
+  - name: s
+    steps:
+      - use: { component: login.component.yaml, with: { email: "a@b.com", password: "pw" } }
+      - use: { component: dismiss }
 ```
 
+**The ref's own shape decides how it resolves.** One `component:` field carries both, with no new
+syntax. A ref holding a `/` or ending in `.yaml` / `.yml` is a path. It resolves as a component file,
+against the referring scenario file's own directory. It stays confined to the suite root
+([BE-0174](../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md)).
+Anything else is a bare name. A bare name resolves in the calling file's own `components:` map. One
+that map does not define is an error, never a fallback file read.
+
+The map is **scoped to one file**. The loader reads it per file and never merges it across a suite
+directory. A name declared in one file stays invisible to every other. Crossing into a component
+*file* drops the map entirely. That file declares no `components:` of its own, so a bare `use`
+inside one is always undefined. A file-scoped component's own steps, by contrast, expand in the
+declaring file's scope. One may `use` another by bare name, or `use` a file by path. Reuse that
+spans files stays the path ref's job.
+
 `expand_components` (`scenario/expand.py`) **replaces** each `use` with the component's substituted
-steps, recursively (a component may itself `use` another, depth ≤ 25). It raises on a missing param,
-an unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle.
-Because expansion is pure and compile-time, **no `use` survives into the run** — determinism is
-unaffected.
+steps, recursively (a component may itself `use` another, depth ≤ 25). It raises on a missing or
+unknown param, a residual `${params.*}` referencing something undeclared, an undefined bare name, or
+a reference cycle. `ComponentResolver` (`scenario/load_expanded.py`) is the one place binding a
+`resolve` to a file. It carries that file's map, the suite root, and the base directory refs
+resolve against, so `run` and every device-free reader expand a file identically. Because expansion is pure and compile-time, **no `use` survives into the
+run** — determinism holds.
 
 ### 6.3 Data-driven scenarios (`data` / `dataFile`)
 
@@ -496,7 +526,10 @@ derived scenario is renamed `"<name> [row N: col=val, …]"` and **keeps the ori
 
 - **`setup`** (a `Preconditions` key, or the app/config default): names a reusable scenario file
   whose steps are **prepended** to this scenario's own (`apply_setups`, `scenario/expand.py`) — a shared
-  login / navigation flow written once.
+  login / navigation flow written once. The prelude's own `use` steps expand **before** the splice,
+  in the prelude's own scope. Its bare names resolve against the prelude's `components:`, not the
+  calling file's (§6.5). A path ref inside a prelude resolves against the prelude's own directory
+  too.
 - **`secrets`** (declared in config as `secrets:` — a list of environment-variable names): each
   declared name `X` is resolved from `os.environ[X]` and bound to `${secrets.X}`, substituted into the
   executed step **at action time** (`cli/commands/run.py`, `orchestrator/substitution.py` `_interp_step`). The scenario keeps the
@@ -512,7 +545,7 @@ The load pipeline (`cli/commands/run.py`) applies these deterministically, in or
 ```
 load_scenarios        # parse + validate against this grammar
   → select_scenarios  # --tag / --exclude
-  → apply_setups      # prepend the setup prelude (so a prelude may itself `use` components)
+  → apply_setups      # prepend the setup prelude (already expanded in its own scope, §6.4)
   → expand_components  # `use` → component steps  (${params.*})
   → expand_data        # one scenario per row     (${row.*})
   → run               # the deterministic loop sees only expanded scenarios
