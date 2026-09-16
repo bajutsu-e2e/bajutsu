@@ -1365,8 +1365,11 @@ def test_wait_guard_keeps_an_in_tree_give_up_note_through_a_race_with_a_leftover
     )
     gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
     gate._tree_gave_up = True
+    gate._tree_gave_up_label = "Not Now"
     gate.blocked_note = uncleared_prompt_note("Not Now")
-    gate.observe([])
+    # The given-up sheet is still on screen (its own retirement is a different finding, pinned
+    # below), so its label is in this poll's own tree too (BE-0418 review finding).
+    gate.observe([el(None, "Not Now", ["button"])])
     assert gate.blocked_note == uncleared_prompt_note("Not Now")
 
 
@@ -1376,8 +1379,8 @@ def test_wait_guard_keeps_an_in_tree_give_up_note_through_an_unhandled_native_al
     # this PR adds around it all make one (BE-0418 review finding). A guarded `wait` on a screen
     # holding a `savePassword` sheet spends its tap budget and gives up on the tree side; a later,
     # unrelated native alert no rule identifies must not overwrite that tree note with the hedged
-    # "unhandled" form -- nothing else ever restores it once a live SpringBoard alert blocks
-    # `probed_absent` from holding again.
+    # "unhandled" form while the given-up sheet is still on screen (its own retirement, once it
+    # is not, is a different finding -- see the test below).
     from bajutsu.common.orchestrator.types import uncleared_prompt_note
     from bajutsu.common.orchestrator.waits import _AlertGuardGate
 
@@ -1386,9 +1389,42 @@ def test_wait_guard_keeps_an_in_tree_give_up_note_through_an_unhandled_native_al
     guard = AlertGuardConfig()
     gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
     gate._tree_gave_up = True
+    gate._tree_gave_up_label = "Not Now"
     gate.blocked_note = uncleared_prompt_note("Not Now")
-    gate.observe([])
+    # The given-up sheet is still on screen (its own retirement is a different finding, pinned
+    # below), so its label is in this poll's own tree too (BE-0418 review finding).
+    gate.observe([el(None, "Not Now", ["button"])])
     assert gate.blocked_note == uncleared_prompt_note("Not Now")
+
+
+def test_wait_guard_retires_an_in_tree_give_up_once_the_sheet_leaves_the_tree() -> None:
+    # The one thing missing from the deference the two tests above pin: nothing ever *lifted*
+    # `_tree_gave_up`, since `_dismiss_from_tree` is the only other place that resets it and it
+    # runs only when `probed_absent` holds -- which a live, undeclared SpringBoard alert stops
+    # from holding for as long as that alert is up (BE-0418 review finding). A given-up sheet
+    # that closes (or is navigated past) while an unrelated native alert is still up would
+    # otherwise leave its own stale note standing for the rest of the wait, with the alert that
+    # is actually blocking the screen never named. Retiring the latch from this poll's own tree —
+    # rather than waiting for a `probed_absent` poll that may never come — is what lets the fresher
+    # diagnosis through.
+    from bajutsu.common.orchestrator.types import uncleared_prompt_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    driver = FakeDriver([])
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    guard = AlertGuardConfig()
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate._tree_gave_up = True
+    gate._tree_gave_up_label = "Not Now"
+    gate.blocked_note = uncleared_prompt_note("Not Now")
+    # "Not Now" is gone from this poll's own tree -- the sheet closed on its own.
+    gate.observe([])
+    assert not gate._tree_gave_up
+    assert gate._tree_gave_up_label is None
+    # The unrelated native alert's own diagnosis now gets through, naming the button that is
+    # actually still blocking the screen instead of the sheet that already left it.
+    assert "Weird Button" in gate.blocked_note
+    assert "Not Now" not in gate.blocked_note
 
 
 def test_wait_guard_does_not_credit_a_rule_matching_alert_rule_would_refuse() -> None:

@@ -44,6 +44,21 @@ _TREE_RETAP_DELAY = 1.0
 _TREE_DISMISS_MAX_TAPS = 3
 
 
+def _tree_buttons(elements: list[base.Element]) -> list[str]:
+    """The identifier-less, labelled button text among *elements* — the same narrow surface
+    `_dismiss_from_tree` matches a scenario's own in-tree rules against.
+
+    Factored out so `_observe_native`'s own give-up-retirement check (BE-0418 review finding) reads
+    this poll's tree the identical way `_dismiss_from_tree` already does, rather than a second,
+    hand-rolled filter that could quietly drift from it.
+    """
+    return [
+        el["label"]
+        for el in elements
+        if el["label"] and not el["identifier"] and base.Trait.BUTTON in el["traits"]
+    ]
+
+
 @dataclass
 class _AlertGuardGate:
     """Fires the system-alert guard mid-wait (BE-0269; native path BE-0315).
@@ -101,6 +116,11 @@ class _AlertGuardGate:
     _tree_event: AlertEvent | None = None
     _tree_taps: int = 0
     _tree_gave_up: bool = False
+    # The label `_tree_gave_up` names, so `_observe_native` can tell whether the given-up sheet is
+    # still on screen this poll and retire the latch once it is not (BE-0418 review finding): set
+    # alongside `_tree_gave_up = True` at both give-up sites below, and cleared with it everywhere
+    # `_tree_gave_up` itself resets.
+    _tree_gave_up_label: str | None = None
     _tree_not_tappable_label: str | None = None
     _tree_not_tappable_since: float | None = None
 
@@ -115,6 +135,16 @@ class _AlertGuardGate:
             self._observe_collapsed(elements)
 
     def _observe_native(self, elements: list[base.Element]) -> None:
+        if self._tree_gave_up and self._tree_gave_up_label not in _tree_buttons(elements):
+            # The given-up sheet is no longer on this poll's own tree, so the deference below —
+            # holding every note to what the give-up named rather than what a *new* alert's own
+            # diagnosis would say — no longer applies (BE-0418 review finding). Retiring it here,
+            # from this poll's own `elements`, is what lets it lift at all: `_dismiss_from_tree`
+            # is the only other place that resets it, and it runs only when `probed_absent` holds
+            # below, which a live, undeclared SpringBoard alert stops from holding for as long as
+            # that alert is up — exactly the case where a fresher diagnosis is needed most.
+            self._tree_gave_up = False
+            self._tree_gave_up_label = None
         # Rate-limit only the cross-process native query to `poll_interval`, not the whole gate: a
         # per-`_POLL` SpringBoard query would roughly double the single-main-thread runner's load
         # (BE-0315). `_last_native` starts None so the first poll probes at once.
@@ -359,11 +389,7 @@ class _AlertGuardGate:
         # breaks the cycle the split creates on this side.
         from ._functions import _decline_giveup
 
-        buttons = [
-            el["label"]
-            for el in elements
-            if el["label"] and not el["identifier"] and base.Trait.BUTTON in el["traits"]
-        ]
+        buttons = _tree_buttons(elements)
         # The one shared ordering every in-tree, dedup-aware match reads from (BE-0418 review
         # finding): matching over anything else here would let this gate and `dismiss_from_tree_once`
         # — declared twins over the same screen — pick differently, so which button a scenario gets
@@ -378,6 +404,7 @@ class _AlertGuardGate:
             self._tree_event = None
             self._tree_taps = 0
             self._tree_gave_up = False
+            self._tree_gave_up_label = None
             self._tree_not_tappable_label = None
             self._tree_not_tappable_since = None
             return None
@@ -408,6 +435,7 @@ class _AlertGuardGate:
                 self.blocked_note = uncleared_prompt_note(label)
                 if not self._tree_gave_up:
                     self._tree_gave_up = True
+                    self._tree_gave_up_label = label
                     self._withdraw_tree_event()
                     _logger.warning(
                         "in-tree alert dismiss gave up after %d taps on %r; the prompt is still "
@@ -429,6 +457,7 @@ class _AlertGuardGate:
             self._tree_event = None
             self._tree_taps = 0
             self._tree_gave_up = False
+            self._tree_gave_up_label = None
         if label != self._tree_not_tappable_label:
             self._tree_not_tappable_label = label
             self._tree_not_tappable_since = None
@@ -442,6 +471,7 @@ class _AlertGuardGate:
             # a permanently obstructed sheet keeps its own labelled buttons in the tree, so the
             # collapsed-tree proxy reads the screen as unblocked and would erase the note (BE-0402).
             self._tree_gave_up = True
+            self._tree_gave_up_label = label
             self.blocked_note = uncleared_prompt_note(label)
             return None
         # Scope the tap to `traits: [BUTTON]`, the same constraint `buttons` above already applied
