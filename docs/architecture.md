@@ -583,7 +583,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 - DSL: the `within` selector (geometric scoping), the `relaunch` step (validated on-device),
   reusable `setup` preludes, `locale` applied at launch, and parallel runs (`--workers`) over a
   device pool
-- DSL authoring reuse: reusable parameterized components (`use` / `${params.*}`), data-driven
+- DSL authoring reuse: reusable parameterized components (`use` / `${params.*}`), resolved either
+  as a cross-file component (BE-0030) or, by a bare name with no `/` or `.yaml`/`.yml`, against a
+  `components:` block declared inline in the same scenario file — a block reused only within that
+  file needs no separate component file (BE-0422); data-driven
   scenarios (`data` / `dataFile` with `${row.*}`), secret variables (`${secrets.X}` with value
   masking), scenario tags + `--tag` / `--exclude` selection, the `setLocation` / `push` device
   steps, the pre-launch `permissions` field (`simctl privacy` / `pm grant`|`pm revoke`, BE-0276),
