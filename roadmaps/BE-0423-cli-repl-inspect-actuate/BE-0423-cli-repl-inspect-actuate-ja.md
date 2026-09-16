@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0423") |
-| 実装 PR | PR_PLACEHOLDER |
+| 実装 PR | [#2009](https://github.com/bajutsu-e2e/bajutsu/pull/2009) |
 | トピック | オーサリング体験 |
 <!-- /BE-METADATA -->
 
@@ -198,7 +198,7 @@ v1ではそこまで届きません。ツリーに要素そのものが現れな
 
 ログ：
 
-- PR_PLACEHOLDER — 作業単位 1〜6、項目全体。`bajutsu/repl/` パッケージを追加しました。`render.py` が
+- [#2009](https://github.com/bajutsu-e2e/bajutsu/pull/2009) — 作業単位 1〜6、項目全体。`bajutsu/repl/` パッケージを追加しました。`render.py` が
   `id` / `label` / `traits` / `value` / `frame` の表とそのままの JSON を出力し、`session.py` がコマンド
   集合（`tree` / `find` / `tap` / `type` / `back` / `screenshot` / `help` / `exit`）を持ち、`loop.py` が
   `bajutsu>` のプロンプトループ、`cli.py` が Typer コマンドです。`cli.py` は `record` の起動ヘルパと、

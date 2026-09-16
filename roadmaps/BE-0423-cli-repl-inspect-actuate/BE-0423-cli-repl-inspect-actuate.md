@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0423") |
-| Implementing PR | PR_PLACEHOLDER |
+| Implementing PR | [#2009](https://github.com/bajutsu-e2e/bajutsu/pull/2009) |
 | Topic | Authoring experience |
 <!-- /BE-METADATA -->
 
@@ -195,7 +195,7 @@ own handlers are tested, so the new module clears the per-file coverage floor
 
 Log:
 
-- PR_PLACEHOLDER — Units 1-6, the whole item. Added the `bajutsu/repl/` package: `render.py` (the
+- [#2009](https://github.com/bajutsu-e2e/bajutsu/pull/2009) — Units 1-6, the whole item. Added the `bajutsu/repl/` package: `render.py` (the
   `id` / `label` / `traits` / `value` / `frame` table and the verbatim JSON), `session.py` (the command
   set — `tree` / `find` / `tap` / `type` / `back` / `screenshot` / `help` / `exit`), `loop.py` (the
   `bajutsu>` prompt loop), and `cli.py` (the Typer command, reusing `record`'s launch helpers and
