@@ -819,10 +819,14 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   is the call's own last read still showing a live, policy-named alert — not a streak across every
   round since the tap, which a round of any other kind in between would break. A round whose own
   tap raced away instead of landing carries the identical note when the matched rule's shape is
-  still enumerable on the final round, even though this call never confirmed a tap landed at all —
-  resolved fresh against that round's own read rather than a stale record of an earlier, already-
-  tapped shape, so a call whose every round races the same alert away still names it instead of
-  falling silent, and one that raced away only after cleanly tapping a *different* alert names the
+  still enumerable on the final round *and* an earlier round of the same call raced that same shape
+  away, even though this call never confirmed a tap landed at all — resolved fresh against that
+  round's own read rather than a stale record of an earlier, already-tapped shape. The second race
+  is what makes the evidence real: on a race round the shape is in the read by construction, since
+  that is the very read the rule matched against before the tap raced, so one race alone proves
+  nothing and the round stays silent unless an earlier tap of its own is what reads back. A call
+  whose every round races the same alert away therefore still names it instead of falling silent,
+  and one that raced away only after cleanly tapping a *different* alert names the
   rule that actually raced, not the unrelated one it already tapped. An
   in-tree sheet the
   call tapped carries it too, once the bound is spent with the sheet still enumerable — on the
@@ -895,9 +899,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   remaining timeout when it does not, since nothing re-licenses the tap in between. A sheet already
   mid-retry when such a race begins is not charged for the gap: the in-tree give-up's own
   not-tappable horizon resets on every poll whose own probe withholds that licence — the race, a
-  dismissal, an alert no rule identifies, and the step's own reserved alert alike — so a scrim that
-  lifts while any of them is holding the licence back is retried in full once it returns, rather
-  than being given up on for wall-clock time the tap was never allowed to spend. The
+  dismissal, an alert no rule identifies, and the step's own reserved alert alike — so the tap gets
+  its full horizon back the moment the licence returns, even when the scrim lifted while one of them
+  was holding that licence back, rather than the sheet being given up on for wall-clock time the tap
+  was never allowed to spend. The
   same poll stopped clearing `blocked_note` unconditionally on that race too, and can now report its
   own note naming whichever buttons no declared rule accounts for on the read — a note this path
   never produced on a bare `"absent"` answer before. Its `"unhandled"` note changed three ways too:
