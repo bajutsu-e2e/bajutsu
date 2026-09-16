@@ -1608,6 +1608,68 @@ def test_wait_guard_clears_a_disproved_unhandled_note_even_while_a_give_up_still
     assert gate.blocked_note == ""
 
 
+def test_wait_guard_retaps_a_new_showing_after_a_give_up_retires_mid_lifetime() -> None:
+    # BE-0418 review finding: retiring `_tree_gave_up` cleared only the latch and its shape, leaving
+    # every other write site's own two reset sites (`_dismiss_from_tree`'s `label is None` and
+    # tap-budget give-up branches) as the sole place the per-showing bookkeeping
+    # (`_tree_dismiss_pending`, `_tree_tapped_at`, `_tree_signature`, `_tree_event`, `_tree_taps`,
+    # `_tree_not_tappable_label`/`_since`) ever got reset -- so a showing that gave up on its tap
+    # budget, retired mid-lifetime while a live undeclared alert held `probed_absent` False, then
+    # left `_tree_dismiss_pending`/`_tree_taps` stale for whatever showing came next. A *new*
+    # showing of the identical shape then inherited an already-exhausted tap budget and was given up
+    # on all over again without ever being tapped.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _TREE_DISMISS_MAX_TAPS, _AlertGuardGate
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = FakeDriver(tree)
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+
+    # Polls 1-4 (t=0..3): no SpringBoard alert, so every poll licenses the in-tree tap. The sheet
+    # never closes (`driver.screen` keeps the same button throughout), so each retry lands on an
+    # unchanged tree and is read as "the tap did not land" -- exhausting the tap budget on poll 4.
+    for _ in range(4):
+        gate.observe(tree)
+        clock.sleep(guard.poll_interval)
+    assert gate._tree_gave_up
+    assert gate._tree_taps >= _TREE_DISMISS_MAX_TAPS
+
+    # An undeclared SpringBoard alert then raises for a few polls -- `probed_absent` is False
+    # throughout, so `_dismiss_from_tree` never runs and never resets anything on its own.
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    gate.observe(tree)
+    clock.sleep(guard.poll_interval)
+
+    # The sheet closes -- retirement fires here, mid-lifetime, with the alert still up.
+    gate.observe([])
+    assert not gate._tree_gave_up
+    clock.sleep(guard.poll_interval)
+
+    # The sheet is presented again while the alert is still up -- still no `_dismiss_from_tree`.
+    gate.observe(tree)
+    clock.sleep(guard.poll_interval)
+
+    # The alert resolves; the next probe reports the surface genuinely empty, re-licensing the tap
+    # on this *new* showing.
+    driver.system_alert_buttons = []
+    gate.observe(tree)
+
+    assert not gate._tree_gave_up
+    assert len(gate.alerts) == 1
+    assert gate.alerts[0].label == "Not Now"
+
+
 def test_wait_guard_does_not_blame_a_scrim_for_time_a_race_withheld_its_own_tap() -> None:
     # BE-0418 review finding: narrowing `probed_absent` to a genuinely empty read means a raced
     # native alert withholds the in-tree tap's own licence for as long as it keeps racing away --

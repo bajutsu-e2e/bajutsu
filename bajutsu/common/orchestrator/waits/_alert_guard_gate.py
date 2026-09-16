@@ -202,6 +202,19 @@ class _AlertGuardGate:
             self.blocked_note = self._native_unhandled_note if self._native_unhandled else ""
             self._tree_gave_up = False
             self._tree_gave_up_shape = None
+            # The showing itself ended — the same fact `_dismiss_from_tree`'s own `label is None`
+            # branch resets on — so its per-showing bookkeeping goes with the latch rather than
+            # being inherited by whatever shows next: a stale `_tree_dismiss_pending` paired with a
+            # stale `_tree_signature` would decline the next showing outright, with the latch now
+            # retired and no note left to name it (BE-0418 review finding). `_tree_event` is only
+            # the reference — an event already recorded stands as the real dismissal it was.
+            self._tree_dismiss_pending = None
+            self._tree_tapped_at = None
+            self._tree_signature = None
+            self._tree_event = None
+            self._tree_taps = 0
+            self._tree_not_tappable_label = None
+            self._tree_not_tappable_since = None
         # Rate-limit only the cross-process native query to `poll_interval`, not the whole gate: a
         # per-`_POLL` SpringBoard query would roughly double the single-main-thread runner's load
         # (BE-0315). `_last_native` starts None so the first poll probes at once.
