@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0424") |
+| Implementing PR | [#2012](https://github.com/bajutsu-e2e/bajutsu/pull/2012) |
 | Topic | Platform support |
 | Related | [BE-0421](../BE-0421-xcuitest-crash-report-scenario-artifact/BE-0421-xcuitest-crash-report-scenario-artifact.md), [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0066](../BE-0066-web-crawl/BE-0066-web-crawl.md) |
 <!-- /BE-METADATA -->
@@ -1530,6 +1531,18 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       exists to prevent — and that `report/load.py` reconstructs the same `RunResult` with
       `app_crash_artifacts` back at its `()` default on every affected outcome, `app_crashed` and
       `reason` intact.
+
+Log:
+
+- [#2012](https://github.com/bajutsu-e2e/bajutsu/pull/2012) — Units 1–13. Shipped the whole item: the
+  reactive in-band step-loop classification and its three scenario-scoped latches, the iOS `.ips`
+  sweep and Android `logcat`/exit-info/tombstone signal, the pipeline write and manifest exclusion,
+  the `crawl` integration, the showcase fixtures and their non-gating CI lanes, and the bilingual
+  docs. A 3-round self-review pass before this PR opened found and fixed two Android parsing bugs
+  (an exit-info field-order assumption that didn't match real `dumpsys` output, and a `logcat`
+  crash-block match window that could absorb a neighboring process's crash) and a protocol-isinstance
+  gap (`AppCrashPollResettable`, added to keep the exit-info poll's reset working through
+  `TracingDriver`) — see the PR body for the full account.
 
 ## References
 

@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0424") |
+| 実装 PR | [#2012](https://github.com/bajutsu-e2e/bajutsu/pull/2012) |
 | トピック | Platform support |
 | 関連 | [BE-0421](../BE-0421-xcuitest-crash-report-scenario-artifact/BE-0421-xcuitest-crash-report-scenario-artifact-ja.md)、[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)、[BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md)、[BE-0066](../BE-0066-web-crawl/BE-0066-web-crawl-ja.md) |
 <!-- /BE-METADATA -->
@@ -1799,6 +1800,19 @@ fake backend の実行が収集する内容は変わりません。
       `report/load.py` が同じ `RunResult` を、影響を受けたすべての outcome で
       `app_crash_artifacts` を `()` の既定値に戻し、`app_crashed` と `reason` はそのまま
       保って組み立て直すことも固定します。
+
+ログ：
+
+- [#2012](https://github.com/bajutsu-e2e/bajutsu/pull/2012) — 単位1〜13。項目全体を出荷しました。
+  出荷した範囲は、ステップループ内でのインバンドな分類とそのシナリオスコープの3つのラッチ、iOS の
+  `.ips` スイープ、Android の `logcat`・exit-info・tombstone シグナル、pipeline の書き出しと
+  manifest からの除外、`crawl` との統合、showcase のフィクスチャとその非ゲート化 CI レーン、
+  二言語のドキュメントです。この PR を開く前の3ラウンドのセルフレビューでは、Android のパースに
+  関するバグを2件見つけました。1件は実際の `dumpsys` 出力と一致しないフィールド順序の想定、もう
+  1件は隣接プロセスのクラッシュを取り込みかねない `logcat` クラッシュブロックの一致範囲です。
+  加えて、プロトコルの isinstance に関する不備も見つけました。`TracingDriver` を通しても
+  exit-info ポーリングのリセットが機能し続けるよう、`AppCrashPollResettable` を追加して直して
+  います。詳しい経緯は PR 本文を参照してください。
 
 ## 参考
 
