@@ -41,9 +41,11 @@ def tree_signature(elements: list[base.Element]) -> tuple[tuple[str | None, str 
     sheet closed, matches just as well, and treating the two as the same element re-taps the app
     under test rather than the sheet (`_AlertGuardGate._dismiss_from_tree`,
     `waits/_alert_guard_gate.py`) or keeps a shape `AlertGuardConfig.__call__` has already dismissed
-    in its `exclude` record past the tap that cleared it (its `dismissed_tree_shapes` retraction —
-    that call's own tree bound-exhaustion check deliberately does not consult this signature, since
-    a sheet re-presenting itself with a validation error changes the tree by construction).
+    in its `exclude` record past the tap that cleared it. `AlertGuardConfig.__call__`'s own tree
+    bound-exhaustion check deliberately does *not* consult this signature — a sheet that accepts a
+    tap and re-presents itself with a validation error changes the tree by construction — so what
+    `__call__` uses it for is narrower: retracting an already-dismissed shape from its own `exclude`
+    once the tree has moved (BE-0418).
 
     A tap the app never acted on leaves the screen byte-identical; a tap that dismissed a sheet does
     not. Comparing this signature is what makes "the tap did not land" a measured claim rather than

@@ -226,7 +226,7 @@ def _raced_exhaustion_note(
     round_index: int,
     fallback_shape: frozenset[str] | None,
     fallback_label: str | None,
-) -> str:
+) -> tuple[str, bool]:
     """The `_bound_exhaustion_note` earned by the rule this round's own read resolves — shared by
     the race and `"unhandled"` branches of `__call__` (BE-0418 review finding): both face a round
     that matched or raced a rule without ever *tapping* it, so a possibly-stale
@@ -234,6 +234,12 @@ def _raced_exhaustion_note(
     round precisely when this call never tapped anything at all. Neither caller has a further use
     for the rule itself: each already credits every rule `identified_alert_rules` finds on the same
     read for its own leftover, rather than only the one this resolves.
+
+    Returns the note alongside whether it fell back to *fallback_shape*/*fallback_label* rather than
+    a freshly resolved rule — the caller's own signal for whether a non-empty note here means the
+    fallback's own `AlertEvent`, if any, is now known to have never actually cleared and should be
+    withdrawn (BE-0418 review finding), the same way a fresh resolution's own note never implicates
+    an earlier tap this round had nothing to do with.
     """
     rule = _resolve_alert_rule(rules, buttons, dismissed)
     shape, label = (
@@ -241,9 +247,230 @@ def _raced_exhaustion_note(
         if rule is not None
         else (fallback_shape, fallback_label)
     )
-    return _bound_exhaustion_note(
+    note = _bound_exhaustion_note(
         dismiss_shape=shape, dismiss_label=label, buttons=buttons, round_index=round_index
     )
+    return note, rule is None
+
+
+def _withdraw(alerts: list[AlertEvent], event: AlertEvent | None) -> None:
+    """Un-record *event* from *alerts*, by identity, if it is there (BE-0418 review finding) — the
+    one-shot twin of `_AlertGuardGate._withdraw_tree_event` (`waits/_alert_guard_gate.py`). A tap is
+    recorded the moment it lands, which is the only moment it *can* be: nothing then distinguishes a
+    tap that lands from one the app never acts on. Reaching the round bound with the same shape
+    still reading back is where that becomes knowable, and leaving the event would make the report
+    contradict `blocked_note` right beside it — a step that both names a prompt as never cleared and
+    claims to have dismissed it. By identity, not equality, so an earlier, genuinely-cleared
+    dismissal of the same shape (a re-raised prompt this call tapped a second time) keeps its own
+    record even when *this* one is withdrawn.
+    """
+    if event is None:
+        return
+    for i, recorded in enumerate(alerts):
+        if recorded is event:
+            del alerts[i]
+            return
+
+
+def _withdraw_if_exhausted(
+    alerts: list[AlertEvent],
+    event: AlertEvent | None,
+    note: str,
+    exhaustion_note: str,
+    *,
+    used_fallback: bool = True,
+) -> AlertEvent | None:
+    """The one check all three native diagnosis branches of `__call__` share before withdrawing
+    *event* (BE-0418 review finding): only when *note* — what the round actually reports — is
+    exactly *exhaustion_note*, never when a co-present leftover outranked it (`_leftover_note`'s own
+    precedence rule already implies nothing here says *event*'s own tap did not land) and, for the
+    race and `"unhandled"` branches, never when *exhaustion_note* came from a rule this round's own
+    read freshly resolved rather than from *event*'s own fallback shape (`used_fallback`, always
+    `True` for `already_dismissed`'s direct call, which has no such rule to prefer).
+
+    Returns the value the caller's own `*_dismiss_event` variable should hold afterward: `None` once
+    withdrawn, *event* unchanged otherwise — so a call site can write `x_dismiss_event =
+    _withdraw_if_exhausted(...)` in place of the three-line branch this factors out of `__call__`.
+    """
+    if used_fallback and note and note == exhaustion_note:
+        _withdraw(alerts, event)
+        return None
+    return event
+
+
+def _fresh_dismiss_leftover_note(
+    native_rules: Sequence[ResolvedAlertRule],
+    buttons: Sequence[str],
+    dismissed_native: frozenset[frozenset[str]],
+    round_index: int,
+) -> str:
+    """`__call__`'s own `"dismissed"` branch note, factored out to keep that method under ruff's
+    statement ceiling: a co-present, not-yet-answered leftover always takes precedence, and the
+    fallback beneath it resolves a rule fresh against this round's own read rather than trusting a
+    possibly-stale shape from an earlier tap — see the call site's own comment for why no fallback
+    shape of its own is needed here.
+    """
+    fallback_note, _ = _raced_exhaustion_note(
+        native_rules, buttons, dismissed_native, round_index, None, None
+    )
+    return _leftover_note(
+        buttons,
+        dismissed_native
+        | {rule.identifying_labels for rule in identified_alert_rules(native_rules, buttons)},
+        fallback_note,
+    )
+
+
+def _already_dismissed_note(
+    alerts: list[AlertEvent],
+    native_dismiss_shape: frozenset[str] | None,
+    native_dismiss_label: str | None,
+    native_dismiss_event: AlertEvent | None,
+    buttons: Sequence[str],
+    dismissed_native: frozenset[frozenset[str]],
+    round_index: int,
+) -> tuple[str, AlertEvent | None]:
+    """`__call__`'s own `"already_dismissed"` branch note, factored out to keep that method under
+    ruff's statement ceiling: a leftover the same read still holds outranks the exhaustion
+    diagnosis, and `native_dismiss_event` is withdrawn exactly when it does not (see
+    `_withdraw_if_exhausted`'s own docstring).
+    """
+    exhaustion_note = _bound_exhaustion_note(
+        dismiss_shape=native_dismiss_shape,
+        dismiss_label=native_dismiss_label,
+        buttons=buttons,
+        round_index=round_index,
+    )
+    note = _leftover_note(buttons, dismissed_native, exhaustion_note)
+    return note, _withdraw_if_exhausted(alerts, native_dismiss_event, note, exhaustion_note)
+
+
+def _raced_or_unhandled_note(
+    alerts: list[AlertEvent],
+    native_rules: Sequence[ResolvedAlertRule],
+    buttons: Sequence[str],
+    dismissed_native: frozenset[frozenset[str]],
+    round_index: int,
+    native_dismiss_shape: frozenset[str] | None,
+    native_dismiss_label: str | None,
+    native_dismiss_event: AlertEvent | None,
+    leftover_dismissed: frozenset[frozenset[str]],
+) -> tuple[str, AlertEvent | None]:
+    """The identical note shared by `__call__`'s race and `"unhandled"` branches, factored out to
+    keep that method under ruff's statement ceiling: prefers whichever rule this round's own read
+    freshly resolves over a possibly-stale fallback shape (`_raced_exhaustion_note`), then withdraws
+    `native_dismiss_event` exactly when nothing did and the exhaustion diagnosis is what the round
+    actually reports (see `_withdraw_if_exhausted`'s own docstring).
+    """
+    exhaustion_note, used_fallback = _raced_exhaustion_note(
+        native_rules,
+        buttons,
+        dismissed_native,
+        round_index,
+        native_dismiss_shape,
+        native_dismiss_label,
+    )
+    note = _leftover_note(buttons, leftover_dismissed, exhaustion_note)
+    return note, _withdraw_if_exhausted(
+        alerts, native_dismiss_event, note, exhaustion_note, used_fallback=used_fallback
+    )
+
+
+def _first_lingering_tree_shape(
+    dismissed_tree_info: dict[frozenset[str], tuple[str, AlertEvent | None]],
+    tree_buttons: Sequence[str],
+) -> frozenset[str] | None:
+    """The first shape in *dismissed_tree_info* (insertion order — the order each was tapped this
+    call) still fully enumerable in *tree_buttons*, or `None` if none is.
+
+    `__call__`'s own lingering-fade branch used to diagnose only the most recently tapped shape
+    against this same containment test, even though the test itself (`any(...)`) already ranges
+    over every dismissed shape: an earlier sheet this call tapped that never closed would report
+    nothing at all once a later, different sheet was tapped and clears, since only the latter's own
+    shape was ever compared (BE-0418 review finding). Returning the shape the test actually found
+    lets the caller diagnose it directly instead.
+    """
+    buttons = set(tree_buttons)
+    return next((shape for shape in dismissed_tree_info if shape <= buttons), None)
+
+
+def _lingering_tree_note(
+    alerts: list[AlertEvent],
+    dismissed_tree_info: dict[frozenset[str], tuple[str, AlertEvent | None]],
+    lingering_shape: frozenset[str],
+    tree_buttons: Sequence[str],
+    round_index: int,
+) -> str:
+    """`__call__`'s own lingering-fade branch note, factored out to keep that method under ruff's
+    statement ceiling: diagnoses *lingering_shape* — whichever dismissed shape
+    `_first_lingering_tree_shape` actually found still enumerable, not only the most recently
+    tapped one (BE-0418 review finding) — and withdraws its own `AlertEvent` once the diagnosis
+    fires, the same way `_withdraw_if_exhausted` does for the native side.
+    """
+    label, event = dismissed_tree_info[lingering_shape]
+    note = _bound_exhaustion_note(
+        dismiss_shape=lingering_shape,
+        dismiss_label=label,
+        buttons=tree_buttons,
+        round_index=round_index,
+    )
+    if note:
+        # The final round's own read still shows the sheet this call itself tapped, so it never
+        # actually closed — withdraw the `AlertEvent` rather than let `alerts` claim a dismissal
+        # `blocked_note` says never happened (BE-0418 review finding).
+        _withdraw(alerts, event)
+        dismissed_tree_info[lingering_shape] = (label, None)
+    return note
+
+
+def _final_tree_check(
+    driver: base.Driver,
+    alerts: list[AlertEvent],
+    note: str,
+    *,
+    tree_read_round: int | None,
+    round_index: int,
+    tree_dismiss_shape: frozenset[str] | None,
+    tree_dismiss_label: str | None,
+    tree_dismiss_event: AlertEvent | None,
+) -> str:
+    """`__call__`'s own post-loop tree check, factored out to keep that method under ruff's
+    branch/statement ceiling: the lingering-fade branch inside `"absent"` is the only place that can
+    report a tapped tree shape still covering the screen, so a call whose *final* round takes any
+    other path never runs it, even though the evidence that branch would have used survives right
+    here to check.
+
+    A *fresh* query, deliberately, rather than the last round's own read: a path that leaves
+    `tree_dismiss_shape` set and reaches here without itself settling first also called `settle()`
+    on an *earlier* round on its way here, so a stale read would misreport a sheet the call's own
+    settling has since watched close (BE-0418 review finding). Read-only, so nothing here risks the
+    unlicensed tap the loop's own gate above exists to prevent. Skipped only when `tree_read_round ==
+    round_index`: a round whose own read already tested this exact evidence and found it false, with
+    no settle since to have moved the screen, would have a fresh query here only reproduce that same
+    false (BE-0418 review finding) — `None` (the shape came from a tap `dismiss_from_tree_once`
+    recorded but no *later* read has yet tested it) still runs the check, the same as any round
+    strictly before the final one. Not gated on this fresh read's own signature matching the tap's
+    own, for the identical reason the lingering-fade branch dropped that requirement: a sheet that
+    changed shape without closing — a validation error re-presenting it, say — would otherwise never
+    be named here either, and this check never taps regardless of the read it takes, so a revealed
+    screen's ordinary buttons happening to share the dismissed shape's labels costs only an imprecise
+    note, not a second tap.
+
+    When it fires, `tree_dismiss_event` is withdrawn from `alerts` in place — the post-loop twin of
+    the two in-loop withdrawals `__call__` makes itself (BE-0418 review finding).
+    """
+    if (
+        note
+        or (tree_read_round is not None and tree_read_round >= round_index)
+        or tree_dismiss_shape is None
+        or tree_dismiss_label is None
+    ):
+        return note
+    _, final_tree_buttons, _ = _read_tree(driver)
+    if tree_dismiss_shape <= set(final_tree_buttons):
+        _withdraw(alerts, tree_dismiss_event)
+        return uncleared_prompt_note(tree_dismiss_label)
+    return note
 
 
 def _native_round_worth_another_try(
@@ -585,7 +812,16 @@ class AlertGuardConfig:
         Returns whether anything was cleared at all, which is what the caller's own one-shot retry
         gates on; `blocked_note` can still be non-empty on a `True` return — an earlier round can
         clear a stacked alert while a later one leaves a second unhandled, and the caller reports both
-        facts rather than treating them as mutually exclusive.
+        facts rather than treating them as mutually exclusive. A dismissal the round bound later
+        concludes never actually landed — the shape most recently tapped on either surface still
+        reading back on the final round — has its own `AlertEvent` withdrawn from `alerts` at that
+        point (the twin of `_AlertGuardGate._withdraw_tree_event`, `waits/_alert_guard_gate.py`), so
+        the return value is computed from `alerts`' own net length change rather than tracked
+        separately: an earlier, genuinely-cleared dismissal this call never revisits still counts,
+        even when a *later* one on the same or the other surface is withdrawn (BE-0418 review
+        finding) — leaving both `alerts` and a `True` return claiming a dismissal `blocked_note`
+        says never happened would contradict the one fact a caller building a report or deciding
+        whether to retry the step can check.
 
         `settle` runs after every round that acted on a live alert or found one it could not yet
         resolve — one that dismissed something, one that found a button not yet tappable, one that
@@ -622,7 +858,11 @@ class AlertGuardConfig:
         round goes on to dismiss an unrelated SpringBoard alert, rather than that unrelated success
         silently erasing a diagnosis the tree round still stands by.
         """
-        cleared, note = False, ""
+        note = ""
+        # Not tracked as this call goes, unlike `note`: computed from `alerts`' own net length
+        # change at the very end, once every withdrawal below has already had its say (BE-0418
+        # review finding) — see this method's own docstring.
+        alerts_start_len = len(alerts)
         # The tap label and shape of a tree round that could not land, naming and identifying which
         # stuck diagnosis is still open — not a bare bool: a later round tapping a *different*
         # in-tree prompt must not clear a still-open diagnosis for one that never became tappable
@@ -631,23 +871,31 @@ class AlertGuardConfig:
         # `choice: deny`), so a later round dismissing a genuinely different prompt that happens to
         # share the stuck one's label must not read as "the same prompt finally landed" (BE-0418
         # review finding). The label still names the prompt in the eventual note.
-        stuck_tree_label: str | None = None
-        stuck_tree_shape: frozenset[str] | None = None
+        stuck_tree_label, stuck_tree_shape = None, None
         dismissed_native: frozenset[frozenset[str]] = frozenset()
-        dismissed_tree_shapes: frozenset[frozenset[str]] = frozenset()
+        # Every shape this call has dismissed from the tree, each with the tap label and `AlertEvent`
+        # *that* shape's own tap earned — not only the most recently tapped one — so the
+        # lingering-fade check below can diagnose whichever dismissed shape it actually finds still
+        # enumerable, rather than only the last one tapped (BE-0418 review finding): an earlier
+        # sheet this call tapped that never closed would otherwise report nothing at all once a
+        # later, different sheet is tapped and clears, since only the latter's own shape was ever
+        # compared against `_bound_exhaustion_note`.
+        dismissed_tree_info: dict[frozenset[str], tuple[str, AlertEvent | None]] = {}
         # The shape and tap label of the native rule most recently tapped fresh, for
         # `_bound_exhaustion_note` to check against the final round's own read (BE-0418 review
         # finding) — the label is carried alongside the shape so that check can name it without a
-        # second lookup.
-        native_dismiss_shape, native_dismiss_label = None, None
-        # The tree-side twin of the two fields above, for the identical bound-exhaustion diagnosis on
-        # a tapped-but-still-there in-tree sheet (BE-0418 review finding): the native branch already
-        # treats "tapped, and still reading back on the final round" as evidence the tap never
-        # landed, and `dismiss_from_tree_once` can reach the same state — an `AlertEvent` it returned
-        # whose shape then keeps enumerating in the tree, `exclude` guaranteeing this call never taps
-        # it again — with nothing naming it.
-        tree_dismiss_shape: frozenset[str] | None = None
-        tree_dismiss_label: str | None = None
+        # second lookup. `native_dismiss_event` is the exact `AlertEvent` that tap appended to
+        # `alerts`, held by identity (not equality — two dismissals of the same shape compare equal)
+        # so the withdrawal below can remove precisely this one and never an earlier, genuine
+        # dismissal of the same shape (BE-0418 review finding).
+        native_dismiss_shape, native_dismiss_label, native_dismiss_event = None, None, None
+        # The tree-side twin of the three fields above, for the identical bound-exhaustion diagnosis
+        # on a tapped-but-still-there in-tree sheet (BE-0418 review finding): the native branch
+        # already treats "tapped, and still reading back on the final round" as evidence the tap
+        # never landed, and `dismiss_from_tree_once` can reach the same state — an `AlertEvent` it
+        # returned whose shape then keeps enumerating in the tree, `exclude` guaranteeing this call
+        # never taps it again — with nothing naming it or withdrawing it.
+        tree_dismiss_shape, tree_dismiss_label, tree_dismiss_event = None, None, None
         # The tree read `dismiss_from_tree_once` took the round it last tapped fresh — the same
         # signature `_AlertGuardGate._dismiss_from_tree` already compares a later poll's own read
         # against (`waits/_alert_guard_gate.py`). A later round's shape still being enumerable in
@@ -678,10 +926,10 @@ class AlertGuardConfig:
                 dismissed_native |= {rule.identifying_labels}
                 # A fresh tap, of any shape, is what `_bound_exhaustion_note` checks on the final
                 # round: whatever an earlier shape's own fade was doing says nothing about this one.
-                native_dismiss_shape, native_dismiss_label, cleared = (
+                native_dismiss_shape, native_dismiss_label, native_dismiss_event = (
                     rule.identifying_labels,
                     rule.tap_label,
-                    True,
+                    event,
                 )
                 if stuck_tree_label is None:
                     # Not an unconditional clear: `buttons` is the whole SpringBoard enumeration, so
@@ -708,21 +956,8 @@ class AlertGuardConfig:
                     # trivially satisfy `_bound_exhaustion_note`'s check against this very round's own
                     # pre-tap read, naming the alert that was just confirmed tapped as still uncleared
                     # (BE-0418 review finding).
-                    note = _leftover_note(
-                        buttons,
-                        dismissed_native
-                        | {
-                            rule.identifying_labels
-                            for rule in identified_alert_rules(self.native_rules, buttons)
-                        },
-                        _raced_exhaustion_note(
-                            self.native_rules,
-                            buttons,
-                            dismissed_native,
-                            round_index,
-                            None,
-                            None,
-                        ),
+                    note = _fresh_dismiss_leftover_note(
+                        self.native_rules, buttons, dismissed_native, round_index
                     )
                 settle()
                 continue
@@ -748,15 +983,14 @@ class AlertGuardConfig:
                     # round's own read — see its own docstring for why that must be a containment
                     # check against the final round alone, not a streak counted since the tap
                     # (BE-0418 review finding).
-                    note = _leftover_note(
+                    note, native_dismiss_event = _already_dismissed_note(
+                        alerts,
+                        native_dismiss_shape,
+                        native_dismiss_label,
+                        native_dismiss_event,
                         buttons,
                         dismissed_native,
-                        _bound_exhaustion_note(
-                            dismiss_shape=native_dismiss_shape,
-                            dismiss_label=native_dismiss_label,
-                            buttons=buttons,
-                            round_index=round_index,
-                        ),
+                        round_index,
                     )
                 settle()
                 continue
@@ -806,7 +1040,7 @@ class AlertGuardConfig:
                     # time-of-use race above has left a live SpringBoard alert on screen is
                     # unlicensed, not merely undiagnosed (BE-0399, BE-0418 review finding).
                     tree_result, tree_buttons, tree_read_signature = self.dismiss_from_tree_once(
-                        driver, exclude=dismissed_tree_shapes
+                        driver, exclude=frozenset(dismissed_tree_info)
                     )
                     if isinstance(tree_result, AlertEvent):
                         alerts.append(tree_result)  # excluded once cleared, never a repeat report
@@ -815,10 +1049,13 @@ class AlertGuardConfig:
                         # does — and over the same widest-first ordering `dismiss_from_tree_once`
                         # itself just used, so this always agrees with what it actually matched.
                         rule = _resolve_alert_rule(
-                            self.tree_dedup_rules, tree_buttons, dismissed_tree_shapes
+                            self.tree_dedup_rules, tree_buttons, frozenset(dismissed_tree_info)
                         )
                         assert rule is not None  # the round that dismissed this alert matched it
-                        dismissed_tree_shapes |= {rule.identifying_labels}
+                        dismissed_tree_info[rule.identifying_labels] = (
+                            rule.tap_label,
+                            tree_result,
+                        )
                         # A fresh tap, of any shape, is what `_bound_exhaustion_note` checks on the
                         # final round (mirrors the native branch above).
                         # `tree_dismiss_signature` is this round's own pre-tap read, so a later
@@ -829,13 +1066,19 @@ class AlertGuardConfig:
                             tree_dismiss_shape,
                             tree_dismiss_label,
                             tree_dismiss_signature,
-                            cleared,
-                        ) = (rule.identifying_labels, rule.tap_label, tree_read_signature, True)
+                            tree_dismiss_event,
+                        ) = (
+                            rule.identifying_labels,
+                            rule.tap_label,
+                            tree_read_signature,
+                            tree_result,
+                        )
                         # No stuck diagnosis means whatever `note` holds is stale regardless. A
                         # stuck shape *contained in* this round's own dismissal clears too — not
-                        # only an exact match: `dismissed_tree_shapes |= {rule.identifying_labels}`
-                        # two lines above feeds `_resolve_alert_rule`'s own subset test, so a nested
-                        # stuck shape can never match again this call either, and the two must agree
+                        # only an exact match: recording `rule.identifying_labels` in
+                        # `dismissed_tree_info` two lines above feeds `_resolve_alert_rule`'s own
+                        # subset test, so a nested stuck shape can never match again this call
+                        # either, and the two must agree
                         # (equality alone left a nested `stuck_tree_shape` marked both "answered,
                         # never retry" and "could not clear" at once, BE-0418 review finding). One
                         # with a shape genuinely unrelated by containment survives, even sharing the
@@ -876,13 +1119,12 @@ class AlertGuardConfig:
                     # only ever removes a shape the `any()` check below would already have excluded
                     # itself, so it never actually changes this round's own outcome, only
                     # `exclude`'s contents for a round that may never come (BE-0418 review finding).
-                    dismissed_tree_shapes = (
-                        dismissed_tree_shapes
-                        if tree_read_signature == tree_dismiss_signature
-                        else frozenset(
-                            shape for shape in dismissed_tree_shapes if shape <= set(tree_buttons)
-                        )
-                    )
+                    if tree_read_signature != tree_dismiss_signature:
+                        dismissed_tree_info = {
+                            shape: info
+                            for shape, info in dismissed_tree_info.items()
+                            if shape <= set(tree_buttons)
+                        }
                     # A shape this call already cleared, still enumerable among this round's own
                     # tree read, is the in-tree twin of `probe_native`'s "already_dismissed": the
                     # sheet's own fade outlasted `settle`, so settle again and give a sheet stacked
@@ -900,24 +1142,32 @@ class AlertGuardConfig:
                     # the dismissed shape again regardless of which read this branch takes, so
                     # misreading a revealed screen as still-stuck never risks the second, unlicensed
                     # tap it would there.
-                    if tree_dismiss_signature is not None and any(
-                        shape <= set(tree_buttons) for shape in dismissed_tree_shapes
-                    ):
+                    lingering_shape = (
+                        _first_lingering_tree_shape(dismissed_tree_info, tree_buttons)
+                        if tree_dismiss_signature is not None
+                        else None
+                    )
+                    if lingering_shape is not None:
                         # The tree twin of the native diagnosis above (BE-0418 review finding):
                         # `dismiss_from_tree_once` reported a tap as landed, but a sheet that
                         # accepts a tap without closing (a validation error re-presenting it, say)
                         # leaves this call unable to ever act on it again (`exclude`), and otherwise
                         # the step would fail on the bare `element not found` BE-0402 exists to
-                        # prevent. Not wrapped in `_leftover_note`, unlike the native side's own call
-                        # on `_bound_exhaustion_note` above: `buttons` is provably `[]` here, inside
-                        # `if not buttons:`, so that wrapper would only ever reduce to this very
-                        # fallback (BE-0418 review finding) — called directly instead.
+                        # prevent. Diagnosed against `lingering_shape` — whichever dismissed shape
+                        # the check above actually found still enumerable, not only the most
+                        # recently tapped one — so an earlier sheet this call tapped that never
+                        # closed is still named once a later, different sheet is tapped and clears
+                        # (BE-0418 review finding). Not wrapped in `_leftover_note`, unlike the
+                        # native side's own call on `_bound_exhaustion_note` above: `buttons` is
+                        # provably `[]` here, inside `if not buttons:`, so that wrapper would only
+                        # ever reduce to this very fallback — called directly instead.
                         if stuck_tree_label is None:
-                            note = _bound_exhaustion_note(
-                                dismiss_shape=tree_dismiss_shape,
-                                dismiss_label=tree_dismiss_label,
-                                buttons=tree_buttons,
-                                round_index=round_index,
+                            note = _lingering_tree_note(
+                                alerts,
+                                dismissed_tree_info,
+                                lingering_shape,
+                                tree_buttons,
+                                round_index,
                             )
                         settle()
                         continue
@@ -962,17 +1212,16 @@ class AlertGuardConfig:
                     # Prefers the rule that raced *this* round over a possibly-stale
                     # `native_dismiss_shape`, the same way "unhandled" below prefers its own
                     # `resolved_rule` (BE-0418 review finding) — see `_raced_exhaustion_note`.
-                    note = _leftover_note(
+                    note, native_dismiss_event = _raced_or_unhandled_note(
+                        alerts,
+                        self.native_rules,
                         buttons,
+                        dismissed_native,
+                        round_index,
+                        native_dismiss_shape,
+                        native_dismiss_label,
+                        native_dismiss_event,
                         leftover_dismissed_native,
-                        _raced_exhaustion_note(
-                            self.native_rules,
-                            buttons,
-                            dismissed_native,
-                            round_index,
-                            native_dismiss_shape,
-                            native_dismiss_label,
-                        ),
                     )
                 settle()
                 continue
@@ -1009,21 +1258,22 @@ class AlertGuardConfig:
                 # the final round just because this call never *tapped* anything (BE-0418 review
                 # finding).
                 if stuck_tree_label is None:
-                    note = _leftover_note(
+                    # The ambiguous tap's own rule aside — see `_raced_or_unhandled_note`'s own
+                    # docstring for the shared exhaustion/withdrawal logic (BE-0418 review finding).
+                    note, native_dismiss_event = _raced_or_unhandled_note(
+                        alerts,
+                        self.native_rules,
                         buttons,
+                        dismissed_native,
+                        round_index,
+                        native_dismiss_shape,
+                        native_dismiss_label,
+                        native_dismiss_event,
                         dismissed_native
                         | {
                             rule.identifying_labels
                             for rule in identified_alert_rules(self.native_rules, buttons)
                         },
-                        _raced_exhaustion_note(
-                            self.native_rules,
-                            buttons,
-                            dismissed_native,
-                            round_index,
-                            native_dismiss_shape,
-                            native_dismiss_label,
-                        ),
                     )
                 if stuck_tree_label is None and not _native_round_worth_another_try(
                     dismissed_native, buttons, self.native_rules
@@ -1066,14 +1316,19 @@ class AlertGuardConfig:
         # otherwise never be named here either, and this check never taps regardless of the read it
         # takes, so a revealed screen's ordinary buttons happening to share the dismissed shape's
         # labels costs only an imprecise note, not a second tap.
-        if (
-            not note
-            and (tree_read_round is None or tree_read_round < round_index)
-            and tree_dismiss_shape is not None
-            and tree_dismiss_label is not None
-        ):
-            _, final_tree_buttons, _ = _read_tree(driver)
-            if tree_dismiss_shape <= set(final_tree_buttons):
-                note = uncleared_prompt_note(tree_dismiss_label)
+        note = _final_tree_check(
+            driver,
+            alerts,
+            note,
+            tree_read_round=tree_read_round,
+            round_index=round_index,
+            tree_dismiss_shape=tree_dismiss_shape,
+            tree_dismiss_label=tree_dismiss_label,
+            tree_dismiss_event=tree_dismiss_event,
+        )
         self.blocked_note = note
-        return cleared
+        # Not tracked incrementally: a dismissal any of the withdrawals above took back must not
+        # count, while an earlier, genuinely-cleared one this call never revisited still does, even
+        # when a *later* dismissal on the same or the other surface is the one withdrawn (BE-0418
+        # review finding) — see this method's own docstring.
+        return len(alerts) > alerts_start_len
