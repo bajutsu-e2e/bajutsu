@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0422") |
+| 実装 PR | [#2011](https://github.com/bajutsu-e2e/bajutsu/pull/2011) |
 | トピック | シナリオ記述機能 |
 <!-- /BE-METADATA -->
 
@@ -234,6 +235,19 @@ BE-0174 が閉じたパス封じ込めの論点も呼び戻します。実ファ
       §6.4／§6.5）、および両者の `docs/ja/` 側の鏡を更新する。§6.5 のパイプライン注記
       「`apply_setups` …（プレリュード自身がコンポーネントを `use` できるように）」は、この項目が
       変える順序を述べています
+
+ログ：
+
+- [#2011](https://github.com/bajutsu-e2e/bajutsu/pull/2011) — 作業分解の全体を実装しました。
+  `ScenarioFile` に `components` フィールドを追加しました。`use` が絶対に届かないパス形式の
+  キーはバリデータで拒否し、名前が参照不能なまま静かに残ることを防ぎます。共有
+  `ComponentResolver` は `load_expanded_scenarios` と `run/cli.py` の両方へ配線しました。
+  `expand_components` 自身の再帰の中でスコープを切り替えるようにしました。同じ
+  `stack`／`max_depth` の管理の下で行うため、コンポーネントファイルをまたぐ循環も今までどおり
+  きれいに失敗します。setup の `resolve` も書き換え、プレリュード自身の `use` ステップを
+  裸の名前とパス参照の両方について、前置の前にプレリュード自身のスコープで展開するように
+  しました。ドキュメントと両方の `docs/ja/` 鏡も更新しました。進捗のチェックボックスはすべて
+  チェック済みになり、状態は実装済みへ移ります。
 
 ## 参考
 

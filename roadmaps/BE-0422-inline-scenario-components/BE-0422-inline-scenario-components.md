@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0422") |
+| Implementing PR | [#2011](https://github.com/bajutsu-e2e/bajutsu/pull/2011) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -223,6 +224,19 @@ scenarios:
       production in §2, §6.2, and §6.4 / §6.5 — §6.5's pipeline note "`apply_setups` … (so a prelude
       may itself `use` components)" states the order this item changes) plus their `docs/ja/`
       mirrors
+
+Log:
+
+- [#2011](https://github.com/bajutsu-e2e/bajutsu/pull/2011) — Landed the whole work breakdown: the
+  `components:` field on `ScenarioFile` (with a validator rejecting a path-shaped key, so a name
+  `use` could never reach fails loudly at load time instead of sitting unreachable), the shared
+  `ComponentResolver`
+  wired through both `load_expanded_scenarios` and `run/cli.py`, the per-ref scope swap inside
+  `expand_components`'s own recursion (still under one `stack` / `max_depth`, so a cycle through a
+  component file still raises cleanly), and the setup-prelude `resolve` rewritten to expand a
+  prelude's own `use` steps — bare names and path refs alike — against the prelude's own scope
+  before splicing. Docs and both `docs/ja/` mirrors updated. Every Progress box is now checked;
+  `Status` moves to Implemented.
 
 ## References
 
