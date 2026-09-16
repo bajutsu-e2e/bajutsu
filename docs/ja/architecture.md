@@ -407,9 +407,11 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
 - **CI ジョブ自身の識別情報**（BE-0414）: `permissions: id-token: write` を宣言した GitHub Actions の
   ワークフローは、GitHub が発行する OpenID Connect（OIDC）トークンを `POST /api/oidc/exchange` へ一度だけ
   提示します。serve は発行者・JWKS（JSON Web Key Set）・デプロイが設定した `aud`（未設定なら OIDC 経路
-  そのものを無効化）を検証し、以後の呼び出しが使う短命な**マシンセッション**を発行します。どの org の
-  セッションになるかは `allowedRepositories` が決め、判定はトークンの `repository` クレームへの完全一致
-  で行います（`sub` はパースしません）。エントリごとに `environment` / `ref` / `workflowRef` で絞り込め
+  そのものを無効化）を検証し、以後の呼び出しが使う短命な**マシンセッション**を発行します。どの org として
+  振る舞うかはリクエスト自身が指定します。org の指定は選択であって権限の付与ではありません。
+  1つのリポジトリを複数の org が列挙できるため、指定された org の `allowedRepositories` が
+  受け入れたときにだけセッションを発行します。判定はトークンの `repository` クレームへの完全一致で
+  行います（`sub` はパースしません）。エントリごとに `environment` / `ref` / `workflowRef` で絞り込め
   ます。マシンセッションは人間の OAuth セッション、worker の共有トークンに次ぐ3つ目の呼び出し元です。
   ロールではなく `gate.py` の明示的なエンドポイント許可リスト（`GET /api/artifacts/exists` による
   アーティファクトの有無の確認、3種類のアーティファクトのアップロード、`POST /api/run`、自 org の run と
