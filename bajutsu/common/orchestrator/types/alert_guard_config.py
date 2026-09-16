@@ -1162,9 +1162,10 @@ class AlertGuardConfig:
                     # the whole surface: a dismissed shape no longer enumerable anywhere in this
                     # read is gone, not fading, so keeping it in `exclude` could only ever wrongly
                     # block a *different*, not-yet-tapped rule whose own shape happens to nest
-                    # inside it (BE-0418 review finding) — nothing here retaps a genuinely
-                    # re-presented occurrence of the retracted shape itself, since that shape's own
-                    # labels being present again is indistinguishable from a fade that never lifted.
+                    # inside it (BE-0418 review finding). The shape leaves `exclude` along with the
+                    # record, so a later round whose own read holds those labels again would tap it
+                    # afresh — the same treatment the native retraction gives a genuine re-raise,
+                    # and out of reach at today's bound, which leaves no round for that re-tap.
                     # Keyed on the tree actually having moved since the dismiss, not merely on
                     # whether this read's own labels still overlap it: retracting unconditionally
                     # only ever removes a shape the `any()` check below would already have excluded

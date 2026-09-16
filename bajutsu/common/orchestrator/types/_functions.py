@@ -138,11 +138,12 @@ def selector_names_button(sel: base.Selector, buttons: Sequence[str]) -> bool:
 def subtract_labels(buttons: Sequence[str], shapes: Iterable[frozenset[str]]) -> list[str]:
     """The buttons left over once every one of *shapes*' own labels has been accounted for.
 
-    Shared by `AlertGuardConfig.__call__`'s `_leftover_note` (`alert_guard_config.py`) and
-    `_AlertGuardGate._observe_native`'s own race branch (`waits/_alert_guard_gate.py`, BE-0418), so
-    the two do not each carry an independent copy of the same subtraction — the one-shot call's
-    `dismissed` shapes and the mid-wait gate's own `identified_alert_rules` result are both, after
-    all, "shapes whose labels this read should not still name".
+    Shared by `AlertGuardConfig.__call__`'s `_leftover_note` (`alert_guard_config.py`) and both
+    `_AlertGuardGate._observe_native` branches that credit a whole read — its `"unhandled"` one and
+    its race one (`waits/_alert_guard_gate.py`, BE-0418) — so none of the three carries an
+    independent copy of the same subtraction: the one-shot call's `dismissed` shapes and the
+    mid-wait gate's own `identified_alert_rules` result are all, after all, "shapes whose labels
+    this read should not still name".
 
     Subtracted with multiplicity, not as a set: `answered = {label for labels in shapes for label
     in labels}` followed by `[b for b in buttons if b not in answered]` would treat one shape as
