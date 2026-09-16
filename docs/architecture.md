@@ -764,14 +764,14 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   over a non-empty read; and one whose tree read matched nothing while an earlier round's own
   in-tree tap was still stuck behind a scrim that had not yet lifted — the round that exhausts the
   bound included, so a caller reading the screen the instant the call returns never reads one still
-  animating. A round that finds nothing left to act on ends the call — unless what it found was a
-  shape this call already cleared, still lingering, in which case it settles and gives a sheet
+  animating. A round that finds nothing left to act on ends the call — unless the only thing it
+  matched was a shape this call already cleared, still lingering, in which case it settles and gives a sheet
   stacked behind that fade another round rather than ending the call on a lingering fade this loop
   exists to see past — the same holds when an earlier round's own in-tree tap is still stuck behind
   a scrim that has not yet lifted: an ambiguous read that matches nothing is not itself proof the
-  scrim lifted, so the round settles and retries rather than ending the call there. An alert no
-  rule identifies settles and tries again too, rather than ending the call outright, but only when
-  continuing could still change what a later round reads. That
+  scrim lifted, so the round settles and retries rather than ending the call there. A round that
+  meets an alert no rule identifies settles and tries again too, rather than ending the call
+  outright, but only when continuing could still change what a later round reads. That
   holds once this call has already dismissed a native alert, or once a native rule's own shape is
   already present in the read — though not uniquely, and with none of that rule's own excluded
   labels present. Two rules can share a tapped label
