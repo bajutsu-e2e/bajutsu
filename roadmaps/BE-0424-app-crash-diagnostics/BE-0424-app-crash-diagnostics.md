@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-app-crash-diagnostics-ja.md)
+**English** · [日本語](BE-0424-app-crash-diagnostics-ja.md)
 
-# BE-XXXX — Detect a crash in the app under test and capture its stack trace as scenario evidence
+# BE-0424 — Detect a crash in the app under test and capture its stack trace as scenario evidence
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-app-crash-diagnostics.md) |
+| Proposal | [BE-0424](BE-0424-app-crash-diagnostics.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0424") |
 | Topic | Platform support |
 | Related | [BE-0421](../BE-0421-xcuitest-crash-report-scenario-artifact/BE-0421-xcuitest-crash-report-scenario-artifact.md), [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0066](../BE-0066-web-crawl/BE-0066-web-crawl.md) |
 <!-- /BE-METADATA -->
