@@ -204,8 +204,12 @@ def _expand_file(
         its bare refs must resolve there — never against whichever scenario file happened to name it
         as `setup` (BE-0422). Expanding before `apply_setups` splices is what guarantees that: no
         unexpanded `use` ever crosses from a prelude into the scenario including it.
+
+        The prelude path itself stays inside the suite root (BE-0174), the same as every other ref
+        this function resolves — a scenario file is untrusted input under `serve`, so `setup` gets no
+        exemption from the containment every `use`/`dataFile` ref already has.
         """
-        prelude = base_dir / ref
+        prelude = contained_ref(root, base_dir, ref)
         prelude_file = parse_yaml_named(prelude, load_scenario_file)
         scenario = prelude_file.scenarios[0]
         expand_components(

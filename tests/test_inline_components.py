@@ -272,6 +272,20 @@ def test_a_component_file_scope_refuses_to_carry_names(tmp_path: Path) -> None:
         )
 
 
+def test_a_setup_ref_escaping_the_suite_root_is_rejected(tmp_path: Path) -> None:
+    # `setup` gets no exemption from BE-0174: a scenario file is untrusted input under `serve`, and
+    # every other ref this function resolves (component, dataFile, and now a prelude's own refs) is
+    # already confined to the suite root.
+    secret = _write(tmp_path / "secret.yaml", "steps:\n  - tap: { id: TOPSECRET }\n")
+    scenario = _write(
+        tmp_path / "suite" / "s.yaml",
+        "- name: s\n  preconditions: { setup: ../secret.yaml }\n  steps:\n    - tap: { id: own }\n",
+    )
+    with pytest.raises(typer.Exit):
+        _expand_file(scenario, _eff(), root=scenario.parent)
+    assert secret.exists()
+
+
 def test_a_prelude_resolves_bare_names_against_its_own_components(tmp_path: Path) -> None:
     # A prelude's `use` steps are expanded at the call site, in the prelude's own scope, before
     # being spliced — so a same-named entry in the calling file's map cannot capture them.
