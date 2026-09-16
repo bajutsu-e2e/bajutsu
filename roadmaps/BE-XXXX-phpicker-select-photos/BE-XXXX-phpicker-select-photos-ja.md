@@ -37,10 +37,13 @@ Unit 3の答えが出たときに引き継げるよう、そのまま残して�
 ## 動機
 
 このギャップは、機能そのものではなく、ステップの欠如です。`permissions: { photos: grant }`は
-すでに存在し(BE-0276)、アプリ側のクエリでは観測できないOSレベルの写真アクセスを事前に許可します。
-しかし、その先でピッカー自体を操作して画像を選ぶ手段がありません。この一連の流れの中で、事前許可
-では答えられない唯一のプロンプトです。`simctl privacy`で切り替えられる「写真」というサービスは
-存在せず、ピッカーのグリッド自体がプロンプトそのものだからです。そのため、プロフィール画像の変更
+すでに存在します(BE-0276)。`photos`は`camera`や`location`と同じ、ごく普通の`simctl privacy`
+のTCCサービスです。これはアプリ側のクエリでは観測できないOSレベルの写真アクセスを事前に許可
+します。しかし、この許可を与えることと画像を選ぶことは別の問いです。許可を与えても、その先で
+ピッカー自体を操作して画像を選ぶ手段は生まれません。ピッカーのグリッド自体は、`permissions`が
+原理的にも事前に答えられる類いの許可プロンプトを一切起こさないからです。「アプリがライブラリを
+見てよいか」と「ユーザーがどの写真を選んだか」の間には、OSレベルの同意ゲートは存在せず、
+グリッドそのものがあるだけです。そのため、プロフィール画像の変更
 や投稿への画像添付を扱うシナリオは、ユーザーが実際にたどる操作を再現できません。具体的には、
 ピッカーを開き、画像を選び、確定するという操作です。「選択済みの状態」をあらかじめ用意してそこから
 検証するか、ピッカーが開く手前で検証を止めるかのどちらかになります。
@@ -79,36 +82,64 @@ Unit 3の答えが出たときに引き継げるよう、そのまま残して�
 
 ## 詳細設計
 
-### Unit 1 — Simulatorの写真ライブラリへの投入
+### Unit 1: Simulatorの写真ライブラリへの投入
 
-`bajutsu/common/backend_cli/simctl/_functions.py`に`addmedia_cmd(udid: str, media_paths:
-Sequence[str]) -> list[str]`を追加します。`privacy_cmd`・`push_cmd`と同じ形の引数配列
-ビルダーです。
+`bajutsu/common/backend_cli/simctl/_functions.py`に`addmedia_cmd(udid: str, media_path: str)
+-> list[str]`を追加します。`privacy_cmd`・`push_cmd`と同じ形の引数配列ビルダーです。
 
 ```python
-def addmedia_cmd(udid: str, media_paths: Sequence[str]) -> list[str]:
-    return ["xcrun", "simctl", "addmedia", validated_udid(udid), *media_paths]
+def addmedia_cmd(udid: str, media_path: str) -> list[str]:
+    return ["xcrun", "simctl", "addmedia", validated_udid(udid), media_path]
 ```
+
+1回の呼び出しにつきパスは1つだけです。バッチ呼び出しにはしません。後述する新しい順の並びは、
+1つ前の呼び出しが完了してから次を投入する**別々の**呼び出しでのみ実測しており、1回の呼び出しに
+複数のアセットをまとめて渡したときに`simctl`がどんな相対順序を割り当てるかはわかっていません。
+バッチ呼び出しでは2枚のフィクスチャが同じタイムスタンプを持つこともあり得て、その場合はグリッド
+の並びが`seedPhotos`の列挙順ではなく、その呼び出しがたまたま作った順になります。
+`Env.add_media`(`bajutsu/common/backend_cli/simctl/env.py`)は、与えられたパスを1つずつ順に
+`addmedia_cmd`へ渡すループにします。これにより、どの呼び出し元も実測した並びをそのまま得られ
+ます。
 
 `privacy`・`push`とは異なり、`addmedia`はバンドル単位ではなくデバイス全体の写真ライブラリへ
 投入します。同じパスに対して再実行すると、冪等にはならずライブラリに重複したエントリが増えて
-いきます。`Scenario`モデル(`bajutsu/common/scenario/models/scenario/scenario.py`)には
-`seed_photos: list[str]`(YAMLでは`seedPhotos`)を追加します。値はスイートルートを起点とした
-相対パスの配列です。`dataFile`がすでに使っているものと同じ`contained_ref`の関所
-(`bajutsu/common/scenario/load_expanded.py`)を通して解決するため、スイートの外を指すパスは
-投入できません。投入先は`_prepare_simulator`
-(`bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py:866-939`)
-に限ります。対象は、コールド起動かつ`erase`を伴う経路(`cold and pre.erase`)だけです。この
-経路はすでにSimulatorの既存状態を消去する経路であり、ここに乗せることで、ウォーム再開や
-`erase`を伴わないリースでの重複投入を防げます。
+いきます。`seed_photos: list[str]`(YAMLでは`seedPhotos`)を追加する先は、`Scenario`ではなく
+`Preconditions`(`bajutsu/common/scenario/models/scenario/preconditions.py`)です。同じリセット
+をすでに司っている`erase`・`reinstall`の隣に置きます。`Scenario`側(`permissions`と同じ場所)
+ではなくここに置くことで、後述の`_prepare_simulator`へ新しい配線を要らずに届きます。
+`pre: Preconditions`はすでにそのメソッド自身の引数の1つだからです。`Scenario`側のフィールドに
+すると、`permissions`がそうしているように(`bajutsu/common/runner/pool.py:419`)
+`launch_driver`と`RunEnvironment.start`を通して配線する必要が生じますが、`_prepare_simulator`
+はそもそも`Scenario`全体を必要としません。
 
-ピッカーはライブラリを新しい順に並べます。実測では、数秒間隔で3枚のフィクスチャを別々の
+`seed_photos`が空でない場合は、同じ`Preconditions`上で`erase: true`を必須とし、シナリオの
+読み込み時に例外を送出する`model_validator`で確認します。声を上げるのであって、投入を黙って
+飛ばすのではありません。これがなければ、`seedPhotos`だけを設定して`erase`を設定しないシナリオ
+は何も投入しないまま(後述のゲートが一度も開かないため)エラーにもならず、
+`selectPhotos: { indices: [0, 1] }`はSimulatorの既存ライブラリがたまたま持っている中身を
+黙って指すことになります。これは「検討した代替案」が退けているのと同じ非再現的な状態に、
+設計ではなく見落としによって行き着いた形です。パスの解決は`dataFile`がすでに使っているものと
+同じです。シナリオファイル自身のディレクトリを起点とし、共有の`contained_ref`の関所
+(`bajutsu/common/scenario/load_expanded.py:21-45`)によってスイートルートの内側に収まって
+いるかを確認します。**ルートは起点ではなく境界です**。パスを連結する起点ではありません。これは
+`dataFile`の解決方法そのままです。`bajutsu run`自身のローダー(`bajutsu/run/cli.py`)も
+`dataFile`・`use`の参照をこの同じ関数で解決しているため、`seedPhotos`は両方の入口で追加の
+作業なしに同じ封じ込めを引き継ぎます。
+
+投入先は`_prepare_simulator`
+(`bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py:866-939`)
+に限ります。対象は、コールド起動かつ`erase`を伴う経路(`cold and pre.erase`)だけです。上記の
+バリデータにより、この経路は`erase`を伴う場合にしか`seed_photos`が空でなくなりません。この
+経路はすでにSimulatorの既存状態を消去する経路です。ここに乗せることで、`cold`が`False`となる
+ウォーム再開のリース(このブロック自体が実行されません)での重複投入を防げます。
+
+ピッカーはライブラリを新しい順に並べます。実測では、数秒間隔で3枚のフィクスチャをそれぞれ別々の
 `addmedia`呼び出しで追加したところ、追加順とは逆順に並びました。最後に追加したフィクスチャが
 インデックス0に来ます。これは、Simulatorにあらかじめ入っているサンプル画像よりも前に来ます。
 したがって、シナリオの`indices`は、`seedPhotos`に列挙した順序とは逆順でフィクスチャを指す
 ことになります。この対応は、動作から発見させるのではなく、DSLのリファレンスに明記します。
 
-### Unit 2 — `selectPhotos` DSLアクション
+### Unit 2: `selectPhotos` DSLアクション
 
 ```yaml
 - selectPhotos:
@@ -133,7 +164,7 @@ def addmedia_cmd(udid: str, media_paths: Sequence[str]) -> list[str]:
 既存の`/elements`クエリで解決します。グリッドに専用のクエリエンドポイントは不要でした。必要
 だったのは、そのクエリがすでに見つけている対象を「タップする」専用の方法だけです(Unit 3)。
 
-### Unit 3 — セルのアクチュエーション(ブロック中)
+### Unit 3: セルのアクチュエーション(ブロック中)
 
 `XcuitestDriver.select_photos(indices: Sequence[int], *, timeout: float) -> None`は、当初
 次の手順で動作させる計画でした。`/elements`を呼んで要求された各インデックスを
@@ -141,13 +172,17 @@ def addmedia_cmd(udid: str, media_paths: Sequence[str]) -> list[str]:
 `/elements`を再度呼んでピッカーがまだ提示されているかで確定タップの要否を決める、という
 3手順です。このうち中間の手順、解決したセルをタップする部分について、試したアクチュエーション
 手法はどれも選択を成立させられませんでした。showcaseアプリに対し、Xcode 26.6、この調査で
-使えた唯一のMac(Apple silicon、M系チップ)で実測した結果です。
+使えた唯一のMac(Apple silicon、M系チップ)で実測した結果です。ピッカーの提示方法はUnit 4が
+指定するとおりにしました。`selectionLimit = 0`(無制限)、SwiftUIから
+`UIViewControllerRepresentable`経由です。使ったのはshowcaseへの変更を手元で試作したもので、
+コミットはしていません(下記のブロッカーがアクチュエーション側をふさいだ時点で元に戻しました)。
+この項目を引き継ぐ人は、以降の結論に影響しないUnit 4自身の記述からそのまま再構築できます。
 
 | 手法 | `via` | 結果 |
 |---|---|---|
 | ハンドルで解決したセルへの`XCUIElement.tap()` | handle | `element vanished (stale handle)`。ドライバ自身の失効時再試行ループを使い切っても再現する |
 | 同じハンドルへの`XCUIElement.press(forDuration:)`(0.05秒・0.4秒の両方) | handle | どちらの秒数でも同じ`stale handle`で失敗 |
-| セルの実際のフレーム中心への生の座標タップ(既存の`/tap`エンドポイントの`point`フィールド。DSLの`tapPoint`アクションが既に使っているものなので、この試行のために新しいエンドポイントすら要らない) | coordinate | エラーは出ないが、どのセルも選択済みにならない。タップは受理されるが、観測できる効果が何もない |
+| セルの実際のフレーム中心への生の座標タップ(既存の`/tap`エンドポイントの`point`フィールド。DSLの`tapPoint`アクションがすでに使っているものなので、この試行のために新しいエンドポイントすら要らない) | coordinate | エラーは出ないが、どのセルも選択済みにならない。タップは受理されるが、観測できる効果が何もない |
 | 同じ座標への0.15秒の**プレス**(`XCUICoordinate.press(forDuration:)`。[BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree-ja.md)がブラウザのフレーム中心タップに使っているのと同じ仕組みを`tapPoint`に拡張し、この確認のために試作した) | coordinate | 生の座標タップと同じ結果。受理されるが、どのセルも選択済みにならない |
 
 最初の3つの試行を、iOS 26.5とiOS 18.6の両方のSimulatorで繰り返し、結果は同一でした。これは
@@ -163,7 +198,7 @@ Simulator上のXCUITestでは登録されない一方、Intel SimulatorやReal�
 714024](https://developer.apple.com/forums/thread/714024)、[Bitrise Discussions, "Cannot
 pick image during
 XCUITest"](https://discuss.bitrise.io/t/cannot-pick-image-during-xcuitest/14427))。
-Bajutsuは、iOSのもう1つの実演算経路だった`idb`を
+Bajutsuは、iOSのもう1つのアクチュエーション手段だった`idb`を
 [BE-0290](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md)
 で廃止しており、iOS Simulatorを操作する経路はXCUITestだけが残っています。この制約を
 迂回する既存の代替経路は、ツール側にありません。
@@ -179,18 +214,22 @@ Bajutsuは、iOSのもう1つの実演算経路だった`idb`を
 決定のいずれかが要ります。今回の調査では、そのいずれも見つかりませんでした。
 
 確定ボタン側の計画は、上記のブロッカーの影響を受けず、この項目を引き継ぐ人のために残して
-おきます。ラベルではなく**構造的に**解決します。「Photos」ナビゲーションバー
-(`traits: ["navigationBar"]`)の内側にあるボタンのうち、識別子が`Cancel`ではないものです。
-実測では、ピッカー自身の解散コントロールは`Cancel`という安定した識別子を持つのに対し、
-確定コントロールには識別子がなく、ラベルも「Add」ではなく「Done」でした(このiOSバージョンでは
-チェックマークの図柄です)。このラベルではなく除外によって解決する方法を取れば、ロケール別の
-対応表がまるごと不要になります。SpringBoardのアラートボタンとは違い、ここで安定しているのは
-ラベルではなく識別子が付いていないという事実だからです。上記のUnit 3のブロッカーの影響も
-受けません。ナビゲーションバーのボタンは再利用されるセルとは異なる静的なクローム要素であり、
-`Cancel`の実測がすでに、静的なクロームはハンドル経由の通常の経路で問題なくアクチュエーション
-できることを示しています。
+おきます。ラベルではなく**構造的に**解決します。ピッカーが提示するナビゲーションバー
+(`traits: ["navigationBar"]`。ピッカーが持つバーはこの1つだけです。バー自身のタイトル
+「Photos」で名指すのではありません。このタイトルも`PHPickerViewController`が他のラベルと
+同様にローカライズします)の内側にあるボタンのうち、識別子が`Cancel`ではないものです。実測
+では、ピッカー自身の解散コントロールは`Cancel`という安定した識別子を持つのに対し、確定
+コントロールには識別子がなく、ラベルも「Add」ではなく「Done」でした(このiOSバージョンでは
+チェックマークの図柄です)。バーそのものの内側で、どちらのボタンのラベルにも頼らず除外に
+よって解決する方法を取れば、この解決経路のどこにもロケールとともに変わる文字列は登場しません。
+バーは自身のトレイトで見つけるのであって、ローカライズされたタイトルでは見つけないからです。
+SpringBoardのアラートボタンとは違い、ここで安定しているのは確定コントロールのラベルではなく
+識別子が付いていないという事実です。この半分は上記のUnit 3のブロッカーの影響も受けません。
+ナビゲーションバーのボタンは再利用されるセルとは異なる静的なクローム要素であり、`Cancel`の
+実測がすでに、静的なクロームはハンドル経由の通常の経路で問題なくアクチュエーションできる
+ことを示しています。
 
-### Unit 4 — Capability、他バックエンド、showcaseでの実証
+### Unit 4: Capability、他バックエンド、showcaseでの実証
 
 `Capability.SELECT_PHOTOS = "selectPhotos"`(`bajutsu/common/drivers/base/capability.py`)は
 `XcuitestDriver.CAPABILITIES`(ユニットテスト用に`FakeDriver.CAPABILITIES`にも)だけが宣言
@@ -208,7 +247,8 @@ showcaseの`PermissionsView.swift`(SwiftUIのみ。UIKit側への展開は範囲
 (`perm.photos.value`)が選択件数を報告します。両方のIDは既存の`perm`名前空間にそのまま
 収まるため、`idNamespaces`の変更は不要です。
 `demos/showcase/fixtures/photos/`には判別できるフィクスチャ画像(単色)を数枚用意します。
-`demos/showcase/scenarios/select_photos.yaml`が`seedPhotos`でこれらを投入し、
+`demos/showcase/scenarios/select_photos.yaml`が`preconditions: { erase: true, seedPhotos: [...]
+}`(Unit 1のバリデータが`seedPhotos`と`erase: true`の同時指定を求めます)でこれらを投入し、
 `perm.openPhotoPicker`をタップし、`selectPhotos: { indices: [0, 1] }`を実行し、
 `perm.photos.value`が`2`になることを検証します。`demos/showcase/SPEC.md`§5.4には、この
 セクションの既存IDと並べて新しい2つのIDを記載します。
@@ -265,12 +305,12 @@ Unit 1・2・4はブロッカーと無関係に単体で作れますが、動く
 
 ログは次のとおりです。
 
-- 2026-09-16 — showcaseアプリに対してUnit 3を調査した(Xcode 26.6、iOS 26.5とiOS 18.6の
+- 2026-09-16 — showcaseアプリに対してUnit 3を調査しました(Xcode 26.6、iOS 26.5とiOS 18.6の
   両Simulator、Apple silicon Mac)。最初の調査の後に試作した4番目の手法(座標プレス。
-  `tapPoint`の`duration`を拡張して検証し、この項目を解除できなかったため元に戻した)を
-  含め、試したアクチュエーション手法はどれもセルの選択を成立させられなかった。他の3つの
-  Unitだけを出荷せず、この項目を保留とした。PRなし: 中核となる仕組みが動かない項目からは
-  何もマージしない。
+  `tapPoint`の`duration`を拡張して検証し、この項目を解除できなかったため元に戻しました)を
+  含め、試したアクチュエーション手法はどれもセルの選択を成立させられませんでした。他の
+  3つのUnitだけを出荷せず、この項目を保留としました。PRはありません。中核となる仕組みが
+  動かない項目からは、何もマージしないためです。
 
 ## 参考
 
@@ -282,15 +322,13 @@ Unit 1・2・4はブロッカーと無関係に単体で作れますが、動く
   — Unit 3が試した、フレーム中心アクチュエーションと`Tappable`の仕組み、およびそれがピッカーの
   セルには通用しない理由。
 - [BE-0290](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend-ja.md)
-  — `idb`の廃止。Unit 3のブロッカーを迂回できていた可能性がある、iOSのもう1つの実演算経路で
-  あり、現在残っているのはXCUITestだけである。
+  — `idb`の廃止。Unit 3のブロッカーを迂回できていた可能性がある、iOSのもう1つのアクチュエーション
+  手段であり、現在残っているのはXCUITestだけである。
 - [Apple Developer Forums, thread 714024](https://developer.apple.com/forums/thread/714024)、
   [Bitrise Discussions, "Cannot pick image during
   XCUITest"](https://discuss.bitrise.io/t/cannot-pick-image-during-xcuitest/14427) —
   Apple silicon SimulatorのXCUITest下で画像ピッカーの選択が登録されないという、同じ系統の
   失敗の独立した報告。ここでの実測と一致する。
-- [BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree-ja.md)
-  — Unit 3がピッカーのセルに再利用する、フレーム中心アクチュエーションと`Tappable`の仕組み。
 - [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md) —
   この項目のセルのインデックス指定が踏襲する、序列位置によるラベル不要のボタン指定。
 - [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md) —

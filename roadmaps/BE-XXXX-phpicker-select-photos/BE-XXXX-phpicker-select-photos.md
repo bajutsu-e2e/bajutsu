@@ -37,10 +37,13 @@ is kept below as the starting point for whoever picks this back up once Unit 3 h
 ## Motivation
 
 The gap is not a missing capability so much as a missing *step*. `permissions: { photos: grant }`
-already exists (BE-0276) and pre-grants the OS-level photo access an app-scoped query cannot
-observe, but nothing then reaches inside the picker itself to choose an image — the one prompt in
-this flow that pre-granting cannot answer, because there is no "photos" service to switch on with
-`simctl privacy`; the picker's own grid is the entire prompt. A scenario for a profile-photo or
+already exists (BE-0276) — `photos` is an ordinary `simctl privacy` TCC service, like `camera` or
+`location` — and pre-grants the OS-level photo access an app-scoped query cannot observe. But
+granting that access answers a different question from picking an image: nothing then reaches
+inside the picker itself to choose one, and the picker's own grid raises no separate permission
+prompt `permissions` could pre-answer even in principle — there is no OS-level consent gate between
+"the app may see the library" and "which photo did the user pick", only the grid itself. A scenario
+for a profile-photo or
 post-attachment screen therefore cannot exercise the path a user actually takes: open the picker,
 pick a photo, confirm. It either asserts on a pre-seeded "already picked" state, which skips the
 interaction under test, or stops before the picker opens.
@@ -80,27 +83,55 @@ architecture), Units 1, 2, and 4 below need no rework to ship alongside it.
 
 ### Unit 1 — Seed the Simulator's photo library
 
-`bajutsu/common/backend_cli/simctl/_functions.py` gains `addmedia_cmd(udid: str, media_paths:
-Sequence[str]) -> list[str]`, in the same argv-builder shape as `privacy_cmd` / `push_cmd`:
+`bajutsu/common/backend_cli/simctl/_functions.py` gains `addmedia_cmd(udid: str, media_path: str)
+-> list[str]`, in the same argv-builder shape as `privacy_cmd` / `push_cmd`:
 
 ```python
-def addmedia_cmd(udid: str, media_paths: Sequence[str]) -> list[str]:
-    return ["xcrun", "simctl", "addmedia", validated_udid(udid), *media_paths]
+def addmedia_cmd(udid: str, media_path: str) -> list[str]:
+    return ["xcrun", "simctl", "addmedia", validated_udid(udid), media_path]
 ```
+
+One path per call, not a batch: the newest-first ordering below was measured only across *separate*
+invocations, each landing before the next started, and nothing establishes the relative order
+`simctl` assigns to several assets handed to one invocation — a batch call could just as well leave
+two fixtures sharing one timestamp, making the grid order the invocation happened to produce, not
+the order `seedPhotos` lists. `Env.add_media` (`bajutsu/common/backend_cli/simctl/env.py`) loops
+over the given paths and calls `addmedia_cmd` once per path, in order, so the measured ordering is
+what every caller actually gets.
 
 Unlike `privacy` / `push`, `addmedia` is not bundle-scoped — it seeds the whole device's photo
 library — and re-running it against the same paths adds duplicate library entries rather than being
-a no-op. The `Scenario` model (`bajutsu/common/scenario/models/scenario/scenario.py`) gains
-`seed_photos: list[str]` (YAML `seedPhotos`), a list of paths resolved relative to the suite root
-through the same `contained_ref` choke point `dataFile` already uses
-(`bajutsu/common/scenario/load_expanded.py`), so a scenario cannot seed a path outside its suite.
-`_prepare_simulator` (`bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py:866-939`)
-seeds only on the cold-and-erase path (`cold and pre.erase`), the same path that already wipes the
-Simulator's prior state — reusing it here is what keeps re-seeding from duplicating entries on a
-warm-resumed or non-erased lease.
+a no-op. `Preconditions` (`bajutsu/common/scenario/models/scenario/preconditions.py`), not
+`Scenario`, gains `seed_photos: list[str]` (YAML `seedPhotos`), beside the `erase`/`reinstall`
+fields that already govern this same reset. Placing it there — rather than on `Scenario`, alongside
+`permissions` — is what lets it reach `_prepare_simulator` (below) with no new plumbing: `pre:
+Preconditions` is already one of that method's own parameters, where a `Scenario`-level field would
+need threading through `launch_driver` and `RunEnvironment.start` the way `permissions` is
+(`bajutsu/common/runner/pool.py:419`), for a value `_prepare_simulator` never otherwise needs the
+full `Scenario` to read.
 
-The picker sorts the library newest-first (measured: three fixtures added a few seconds apart, via
-three separate `addmedia` invocations, appeared in reverse of their addition order — the
+A non-empty `seed_photos` requires `erase: true` on the same `Preconditions`, checked by a
+`model_validator` that raises at scenario-load time — loud, not a skipped seed. Without this, a
+scenario that sets `seedPhotos` but not `erase` would seed nothing (the gate below never opens), no
+error would surface, and `selectPhotos: { indices: [0, 1] }` would silently address whatever the
+Simulator's ambient library happens to contain — the exact non-reproducible state the *Alternatives*
+section rejects, just reached by omission instead of by design. Paths are resolved the same way
+`dataFile` already is: relative to the scenario file's own directory, contained within the suite
+root by the shared `contained_ref` choke point
+(`bajutsu/common/scenario/load_expanded.py:21-45`) — the *root* is the containment boundary, not the
+base a path is joined against, matching `dataFile`'s own resolution exactly. `bajutsu run`'s own
+loader (`bajutsu/run/cli.py`) resolves `dataFile` and `use` refs through this identical function
+rather than a separate implementation, so `seedPhotos` inherits the same containment on both entry
+points without extra work.
+
+`_prepare_simulator` (`bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py:866-939`)
+seeds only on the cold-and-erase path (`cold and pre.erase`) — now guaranteed non-empty-only-with-erase
+by the validator above — the same path that already wipes the Simulator's prior state. Reusing it
+here is what keeps re-seeding from duplicating entries on a warm-resumed lease, where `cold` is
+`False` and the block does not run at all.
+
+The picker sorts the library newest-first (measured: three fixtures added a few seconds apart, each
+via its own `addmedia` invocation, appeared in reverse of their addition order — the
 most-recently-added fixture at index 0), *ahead of* the Simulator's own pre-installed sample
 images. A scenario's `indices` therefore address the seeded fixtures in the *reverse* of the order
 `seedPhotos` lists them, which the DSL reference states explicitly rather than leaving to be
@@ -138,7 +169,12 @@ None` was: query `/elements`, resolve each requested index against `{ id: "PXGGr
 index: i }`, tap each resolved cell, then decide whether a confirm tap is needed by re-querying
 `/elements` and checking whether the picker is still up. Every actuation technique tried for the
 middle step — tapping the resolved cell — failed to select anything, against the showcase app, on
-Xcode 26.6, on the one Mac this investigation had access to (Apple silicon, an M-series chip):
+Xcode 26.6, on the one Mac this investigation had access to (Apple silicon, an M-series chip). The
+picker was presented exactly as Unit 4 specifies — `selectionLimit = 0` (unlimited), through
+`UIViewControllerRepresentable` from SwiftUI — using a local prototype of Unit 4's showcase change
+that was not committed (reverted once the blocker below closed off the actuation side); whoever
+resumes this item can reconstruct it directly from Unit 4's own description, which is unaffected by
+what follows:
 
 | Technique | `via` | Result |
 |---|---|---|
@@ -174,15 +210,18 @@ technique that does register a selection, or a deliberate decision to scope `sel
 devices / Intel Simulators only, none of which this investigation found.
 
 The confirm-button half of the plan is unaffected by this and is kept for whoever resumes the
-item: resolve it **structurally**, not by its label — the one button inside the `Photos` navigation
-bar (`traits: ["navigationBar"]`) whose identifier is not `Cancel`. Measured: the picker's dismiss
-control carries the stable identifier `Cancel`, but the confirm control carries no identifier and
-only the label `Done` (a checkmark glyph in this iOS version, not the word "Add"). Resolving by
-elimination rather than by that label needs no per-locale lookup table — unlike SpringBoard's alert
-buttons, this control's identifier absence, not its label, is the stable fact. It is also
-unaffected by the Unit 3 blocker above: a navigation-bar button is static chrome, not a recycled
-cell, and the `Cancel` measurement already confirms static chrome actuates fine through the
-ordinary handle-based path.
+item: resolve it **structurally**, not by its label — the one button inside the picker's navigation
+bar (`traits: ["navigationBar"]`, the only bar the picker presents — not named by its own title,
+`Photos`, which `PHPickerViewController` localizes the same way it would localize any label) whose
+identifier is not `Cancel`. Measured: the picker's dismiss control carries the stable identifier
+`Cancel`, but the confirm control carries no identifier and only the label `Done` (a checkmark
+glyph in this iOS version, not the word "Add"). Resolving by elimination inside the bar itself,
+rather than by either control's label, needs no per-locale lookup table anywhere in the rule — the
+bar is found by trait, not by its localized title, so nothing in the resolution path reads a string
+that changes with the scenario's locale. Unlike SpringBoard's alert buttons, the confirm control's
+identifier absence, not its label, is the stable fact. This half is also unaffected by the Unit 3
+blocker above: a navigation-bar button is static chrome, not a recycled cell, and the `Cancel`
+measurement already confirms static chrome actuates fine through the ordinary handle-based path.
 
 ### Unit 4 — Capability, other backends, and the showcase fixture
 
@@ -201,9 +240,11 @@ The showcase's `PermissionsView.swift` (SwiftUI only; UIKit parity is out of sco
 always exercised), and a mirrored `Text` (`perm.photos.value`) reports the picked count. Both ids
 join the existing `perm` namespace — no `idNamespaces` change needed. `demos/showcase/fixtures/photos/`
 carries a handful of distinguishable fixture images (solid colours), seeded by
-`demos/showcase/scenarios/select_photos.yaml` via `seedPhotos`, which taps `perm.openPhotoPicker`,
-runs `selectPhotos: { indices: [0, 1] }`, and asserts `perm.photos.value` equals `2`. `demos/showcase/SPEC.md`
-§5.4 documents the two new ids next to the section's existing ones.
+`demos/showcase/scenarios/select_photos.yaml` via `preconditions: { erase: true, seedPhotos: [...]
+}` (Unit 1's validator requires `erase: true` alongside `seedPhotos`), which taps
+`perm.openPhotoPicker`, runs `selectPhotos: { indices: [0, 1] }`, and asserts `perm.photos.value`
+equals `2`. `demos/showcase/SPEC.md` §5.4 documents the two new ids next to the section's existing
+ones.
 
 ## Alternatives considered
 
