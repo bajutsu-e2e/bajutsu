@@ -774,8 +774,11 @@ def run_scenario(
                         # Taken whether or not the call cleared anything: a multi-round call can clear a
                         # stacked alert while leaving a second one unhandled, so both facts hold at once.
                         expect_block_note = alert_guard.blocked_note
+                        # Drained whether or not anything cleared: since BE-0418 a call can tap and
+                        # still return False, once a withdrawn `AlertEvent` leaves `alerts` no
+                        # longer than it started (BE-0402's report still needs that tap).
+                        expect_actuations.extend(drain_actuations(driver).records)
                         if cleared:
-                            expect_actuations.extend(drain_actuations(driver).records)
                             _capture_visual_actual(
                                 ctx,
                                 driver,
