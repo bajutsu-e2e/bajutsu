@@ -570,7 +570,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   operator named. Because a replacement resets strictly more than an erase does, it also honors the
   two opt-outs the erase rung honors: `reinstall: overwrite` and `bajutsu run --no-erase`
 - **Per-scenario iOS crash-report capture** (BE-0421): a scenario that fails on an exhausted
-  XCUITest crash retry gains a `crash-diagnostics/` subdirectory under its own run directory,
+  XCUITest crash retry gains a `crash-diagnostics/` subdirectory in its *own* evidence directory,
+  `runs/<run_id>/<sid>/`,
   holding a bounded tail of the runner's own captured output and, whenever macOS wrote one for the
   crashed `xcodebuild` process, its `.ips` crash report. The capture happens at lease release,
   before a later scenario can re-lease and overwrite the same warm environment, and the scenario's
