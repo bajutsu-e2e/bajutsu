@@ -114,6 +114,38 @@ def test_a_backend_without_the_capability_is_left_unchanged() -> None:
     assert _swipes(driver) == []
 
 
+def test_a_banner_that_auto_dismisses_before_the_swipe_is_never_swiped() -> None:
+    # The banner is present on the first read (the one that decides to swipe at all) but gone by
+    # the re-check immediately before the gesture — the same race `RunnerUITest.swift`'s own
+    # `banner.exists` guard exists to catch, so a flick is never delivered at its former position.
+    reads = {"n": 0}
+
+    class _AutoDismissingDriver(FakeDriver):
+        def notification_banner_frame(self) -> base.Frame | None:
+            reads["n"] += 1
+            return _BANNER_FRAME if reads["n"] == 1 else None
+
+    driver = _AutoDismissingDriver(
+        [
+            {
+                "identifier": "home",
+                "label": "Home",
+                "traits": [],
+                "value": None,
+                "frame": (0.0, 0.0, 10.0, 10.0),
+                "nativeZ": None,
+            }
+        ]
+    )
+    result = run_scenario(
+        driver,
+        _scenario({"name": "n", "steps": [{"assert": [{"exists": {"id": "home"}}]}]}),
+        clock=FakeClock(),
+    )
+    assert result.ok, result.failure
+    assert _swipes(driver) == []
+
+
 def test_the_query_is_not_paid_on_every_step_within_the_poll_interval() -> None:
     # Three plain steps run at (near-)zero elapsed clock time — nothing here sleeps — so a large
     # poll_interval must rate-limit the query to the first step alone, not one call per step.

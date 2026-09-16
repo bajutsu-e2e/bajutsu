@@ -961,6 +961,12 @@ def _clear_notification_banner(driver: base.Driver, clock: Clock) -> None:
     points = base.notification_banner_swipe_points(frame)
     if points is None:
         return
+    # Re-checked immediately before the gesture, mirroring `RunnerUITest.swift`'s own `banner.exists`
+    # guard: the banner can lose the race with its own auto-dismissal between the frame read above
+    # and this swipe, and a flick delivered at its former position would land on whatever the app
+    # under test draws there — a gesture the scenario never asked for, recorded as its own actuation.
+    if driver.notification_banner_frame() is None:
+        return
     frm, to = points
     driver.swipe(frm, to)
     deadline = clock.now() + _BANNER_CLEARANCE_TIMEOUT

@@ -756,6 +756,13 @@ class _StepRunner:
         # interactions. Drained beside the actuations, and for the same reason: it really happened to
         # the device during this step, so it belongs on this step's outcome rather than nowhere.
         self._drain_step_interruptions(active_driver, outcome)
+        if active_driver is not self.cfg.driver:
+            # The sweep's own swipe can itself be interrupted (Unit 4's banner branch fires on any
+            # native interaction, the sweep's included) — draining only `active_driver` would miss
+            # that `AlertEvent` here, the same way it would have missed the actuation above.
+            # `_drain_step_interruptions` extends `outcome` rather than replacing it, so calling it
+            # again for the native driver composes with what `active_driver` already contributed.
+            self._drain_step_interruptions(self.cfg.driver, outcome)
 
         # The post-action shutter, taken here rather than down with the rest of the post-step
         # capture. Every step records `after.png` (the capture call below drops `screenshot.after`
@@ -811,10 +818,13 @@ class _StepRunner:
             if outcome.ok and interp_step.extract:
                 if snapshot is None:
                     # A mutating step: the extract read must postdate this step's actuation by the
-                    # backend's read lag (BE-0332 Unit 1). Nothing actuates between the step body
-                    # returning and here, so `now` is that actuation's completion; bound into the deferred
-                    # read so the barrier is measured from the action, not from whenever `_ScreenRead`
-                    # later fires.
+                    # backend's read lag (BE-0332 Unit 1). The one thing that can still actuate
+                    # between the step body returning and here is the banner sweep (BE-0416 Unit 8),
+                    # which also spends up to its own clearance timeout confirming the banner gone —
+                    # so `now` postdates the later of the two, whichever one actually ran, and the
+                    # barrier this bounds only ever moves later, never earlier. Bound into the
+                    # deferred read so it is measured from that point, not from whenever
+                    # `_ScreenRead` later fires.
                     actuated_at = self.cfg.clock.now()
                     read = partial(
                         _settle_extract_read,

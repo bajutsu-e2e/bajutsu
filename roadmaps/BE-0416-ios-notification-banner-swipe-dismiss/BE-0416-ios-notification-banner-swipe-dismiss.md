@@ -282,8 +282,9 @@ interrupted one.
       its own frame, confirm the clearance before claiming the interruption, and report it as an
       `AlertEvent` under a kind of its own. Lands without the config/scenario toggle the proposal
       called for — see *Unit 4* above for why Unit 1 removed the case for it.
-- [x] Unit 5 — showcase fixture, including the app-side foreground banner presentation
-      (`UNUserNotificationCenterDelegate`, both iOS targets) and a tap target inside the banner's
+- [x] Unit 5 — showcase fixture, including the app-side foreground banner presentation (a
+      SwiftUI-only `UNUserNotificationCenterDelegate`, gated on the fixture's own launch env so it
+      never affects `push.yaml`'s pre-existing first scenario) and a tap target inside the banner's
       frame, and on-device verification. Verified on a dedicated Simulator: the notification
       authorization flow, the delegate's `willPresent` signal, and the tap target's on-screen
       position (measured inside the frame Unit 1 recorded). The notification banner itself did not
@@ -326,9 +327,12 @@ Log:
   `pollInterval`, right before the `after.png` shutter and before the `expect`-phase visual capture
   — the corrupted screenshots Unit 1 measured the interruption monitor alone cannot reach. No
   scenario/CLI toggle, matching Unit 4's own precedent. The showcase fixture (`push.yaml`) gained a
-  second scenario raising a genuine foreground banner via a new `UNUserNotificationCenterDelegate`
-  (both iOS targets) and a dedicated flat screen (`SHOWCASE_NOTIFICATION_BANNER`) whose tap target
-  sits inside the banner's measured frame. On-device verification on a dedicated Simulator confirmed
+  second scenario raising a genuine foreground banner via a new, SwiftUI-only
+  `UNUserNotificationCenterDelegate` (gated on the fixture's own launch env, so the pre-existing
+  first scenario in the same file never raises one) and a dedicated flat screen
+  (`SHOWCASE_NOTIFICATION_BANNER`) whose tap target sits inside the banner's measured frame. The
+  UIKit target gains no delegate at all, having no such screen to raise or tap a banner from.
+  On-device verification on a dedicated Simulator confirmed
   the permission flow, the delegate's timing signal, and the target's on-screen position; the
   banner's own visual rendering did not appear on this session's host, isolated to a local Simulator
   notification-permission gap (confirmed with both a real push and a local notification) rather than
@@ -336,10 +340,11 @@ Log:
   to CI's `actuation` job — the fixture cannot itself distinguish whether the interruption monitor
   or the proactive sweep is what clears a given run's banner, since a step boundary sits between
   the banner's appearance and the tap. The swipe itself leaves a frame caught mid-animation alone
-  when its computed endpoint would not sit above its start — a downward or zero-length drag rather
-  than a dismissal — and re-confirms the banner gone with a bounded poll before returning, matching
-  the interruption monitor's own confirm-before-claiming
-  discipline.
+  whenever the resulting gesture would travel less than the interruption monitor's own 20-point
+  swipe — the inverted (downward) case is only the extreme of that — re-checks presence again
+  immediately before the gesture (a banner can auto-dismiss between the two reads), and re-confirms
+  the banner gone with a bounded poll before returning, matching the interruption monitor's own
+  confirm-before-claiming discipline.
 
 ## References
 

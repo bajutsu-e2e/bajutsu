@@ -1,9 +1,12 @@
 import BajutsuKit
 import UIKit
-import UserNotifications
 
+// BE-0416 Unit 5's foreground-banner fixture (NotificationBannerTargetView, a flat SwiftUI-only
+// screen) has no UIKit counterpart, so this target gains no UNUserNotificationCenterDelegate: one
+// here would opt every launch into showing a banner with no screen to raise or tap it from — cost
+// with no benefit, unlike the SwiftUI target's own env-gated delegate.
 @main
-final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+final class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
@@ -14,18 +17,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         }
         // Network capture: a no-op unless bajutsu injected BAJUTSU_COLLECTOR.
         BajutsuNet.startIfEnabled()
-        // Without this, iOS never presents anything while the app itself is frontmost — the
-        // foreground banner BE-0416 dismisses (BE-0416 Unit 5).
-        UNUserNotificationCenter.current().delegate = self
         return true
-    }
-
-    func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification,
-        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
-    ) {
-        completionHandler([.banner, .sound])
     }
 
     func application(

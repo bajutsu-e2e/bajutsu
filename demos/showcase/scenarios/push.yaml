@@ -18,10 +18,11 @@
     - exists: { id: stable.row.1 }
 
 # BE-0416 Unit 5: `push` alone (above) never raises a foreground banner unless the app opts in —
-# this fixture adds a UNUserNotificationCenterDelegate (ShowcaseApp.swift/AppDelegate.swift) and a
-# dedicated flat screen (SHOWCASE_NOTIFICATION_BANNER, see AppModel/NotificationBannerTargetView,
-# SwiftUI only — no UIKit equivalent, matching gesturesMode/pickersMode's own SwiftUI-only scope)
-# whose one target sits inside the frame Unit 1 measured for the banner on a 6.3-inch device, so
+# this fixture adds a UNUserNotificationCenterDelegate, SwiftUI only (ShowcaseApp.swift, gated on
+# SHOWCASE_NOTIFICATION_BANNER so push.yaml's own first scenario above never raises one) — no UIKit
+# equivalent, matching gesturesMode/pickersMode's own SwiftUI-only scope; a dedicated flat screen
+# (see AppModel/NotificationBannerTargetView) whose one target sits inside the frame Unit 1
+# measured for the banner on a 6.3-inch device, so
 # the overlap holds by construction rather than by timing. `permissions` cannot pre-grant
 # notification authorization on iOS, so the request fires on appear and a `handleSystemAlert` step
 # grants it — the same deterministic, native path `permission_system_alert.yaml` uses. Tagged

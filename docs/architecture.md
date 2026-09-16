@@ -800,11 +800,14 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   every visual-regression comparison built from it, that this path exists to reach. Found, the
   banner is swiped by `notification_banner_swipe_points`, the same upward gesture the interruption
   monitor performs, reusing the ordinary `swipe` action rather than a second gesture primitive — but
-  only when the computed endpoint genuinely sits above the swipe's own start; a frame caught
-  mid-animation can place the (top-margin-clamped) endpoint at or past that start, which would
-  invert the gesture into a downward drag or a zero-length one — the notification-shade gesture the
-  top margin exists to prevent. Such a frame is left alone. The swipe is re-confirmed gone by a
-  bounded poll immediately after, the same discipline the interruption monitor's own
+  only when the resulting drag still travels at least the 20 points that monitor's own swipe clears
+  a banner's top edge by. A frame caught mid-animation leaves the (top-margin-clamped) endpoint too
+  close to the start for that, and at the extreme below it, inverting the drag downward. Such a
+  frame is left alone. Immediately before the gesture itself, a fresh presence check also declines a
+  banner that has since auto-dismissed — the confirmed frame and the acted-on one can otherwise
+  differ by one round trip, landing the swipe on whatever the app now shows at that point instead.
+  The swipe is re-confirmed gone by a bounded poll immediately after, the same discipline the
+  interruption monitor's own
   confirm-before-claiming applies. The query is rate-limited to `systemAlertHandling`'s
   own resolved `pollInterval` (BE-0315's default when the guard is off), so a passing scenario pays
   it once per interval rather than once per step.
