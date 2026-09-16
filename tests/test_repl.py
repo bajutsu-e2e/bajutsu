@@ -451,10 +451,17 @@ def test_a_web_driver_error_is_reported_rather_than_crashing_the_shell() -> None
 
 
 def test_repl_is_registered_and_documents_its_web_only_flags() -> None:
+    # Introspect the command's declared options rather than the rendered `--help` text — Rich
+    # formats help in an environment-dependent way (terminal width, TTY detection), so its output is
+    # not a stable substring to assert on (the idiom `test_record_exposes_token_budget_flags` uses).
+    import typer.main
+
     result = runner.invoke(app, ["repl", "--help"])
     assert result.exit_code == 0
+    repl_cmd = typer.main.get_command(app).commands["repl"]  # type: ignore[attr-defined]
+    flags = {opt for p in repl_cmd.params for opt in (*p.opts, *p.secondary_opts)}
     for flag in ("--target", "--udid", "--backend", "--erase", "--headed", "--browser", "--config"):
-        assert flag in result.output
+        assert flag in flags
 
 
 def test_repl_needs_a_target() -> None:
