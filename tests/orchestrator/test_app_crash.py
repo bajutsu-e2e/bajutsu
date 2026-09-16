@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+import pytest
 from _orch import FakeClock, _scenario
 from conftest import el
 
@@ -360,6 +361,46 @@ def test_an_unconfirmed_answer_is_not_latched() -> None:
     # The action's own outcome and the wrapping `if`'s both probe: nothing was latched by the first
     # unconfirmed answer.
     assert driver2.probes == 2
+
+
+# --- the probe's own failure must not abort the run -------------------------------------------------
+
+
+class _RaisingCrashProbe(FakeDriver):
+    """A `FakeDriver` whose `app_crash_signal()` raises instead of answering (BE-0424)."""
+
+    def __init__(self, elements: list[base.Element], *, raises: BaseException) -> None:
+        super().__init__(elements)
+        self._raises = raises
+        self.probes = 0
+
+    def app_crash_signal(self) -> str | None:
+        self.probes += 1
+        raise self._raises
+
+
+def test_a_probe_failure_that_is_not_a_backend_crash_is_swallowed() -> None:
+    # The probe runs only after a step has already failed; anything it raises besides
+    # `BackendCrashError` must not also take down the scenario's own result — `run_scenario` converts
+    # only `ControlChannelError` / `RunCancelled`, so an escaping `RuntimeError` here would discard
+    # every scenario's result, not just this one's (the failure mode a truncated `/app/state` reply
+    # from `XcuitestDriver.app_crash_signal` produces in practice).
+    driver = _RaisingCrashProbe([el("home", "Home")], raises=RuntimeError("truncated reply"))
+    result = _run(driver, [{"tap": {"id": "gone"}}])
+
+    assert not result.ok
+    assert driver.probes == 1
+    assert _crashed(result) == []
+
+
+def test_a_backend_crash_from_the_probe_still_propagates() -> None:
+    # The one exception this catch must not swallow: a dead backend already belongs to the recovery
+    # path that owns `BackendCrashError`, so re-raising it here is what keeps that path in charge
+    # rather than misreporting the dead channel as an ordinary step failure.
+    driver = _RaisingCrashProbe([el("home", "Home")], raises=base.BackendCrashError("gone"))
+
+    with pytest.raises(base.BackendCrashError):
+        _run(driver, [{"tap": {"id": "gone"}}])
 
 
 # --- the capture -----------------------------------------------------------------------------------

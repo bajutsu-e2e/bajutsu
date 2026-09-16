@@ -410,11 +410,13 @@ def _exit_info_reason(text: str) -> str | None:
 def newest_exit_info(text: str) -> tuple[str, str] | None:
     """The `(reason, timestamp)` of the newest `ApplicationExitInfo` entry, or None (BE-0424).
 
-    `dumpsys activity exit-info` prints the history newest first, each entry carrying a `reason=` and
-    a `timestamp=`. Only the newest is read: an older entry is an earlier lifetime's, which is what
-    the caller's time bound exists to rule out. `timestamp=` is a wall-clock rendering in the
-    *device's* own timezone carrying no offset, so it is returned as the string it is — resolving it
-    into an epoch on the host would run it through the host's timezone instead.
+    `dumpsys activity exit-info` prints the history newest first, and the scan takes the first entry
+    whose `reason=` names a token this item classifies — an unrecognised reason falls through to an
+    older entry rather than ending the scan, so the pair returned is not always the newest entry's.
+    The caller's time bound is the only thing that then rules an earlier lifetime's entry out.
+    `timestamp=` is a wall-clock rendering in the *device's* own timezone carrying no offset, so it
+    is returned as the string it is — resolving it into an epoch on the host would run it through
+    the host's timezone instead.
     """
     starts = [m.start() for m in _EXIT_INFO_ENTRY.finditer(text)]
     ends = [*starts[1:], len(text)]
@@ -452,7 +454,7 @@ def extract_crash_block(text: str, package: str) -> str | None:
         # follows it closely in the device-global buffer.
         end = min(start + _CRASH_BLOCK_LINES, starts[i + 1] if i + 1 < len(starts) else len(lines))
         body = "\n".join(lines[start:end])
-        if f"Process: {package}" in body or f">>> {package} <<<" in body:
+        if f"Process: {package}," in body or f">>> {package} <<<" in body:
             return body
     return None
 

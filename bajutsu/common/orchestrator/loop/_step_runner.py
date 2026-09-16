@@ -177,7 +177,16 @@ class _StepRunner:
             return
         if not isinstance(active_driver, base.AppCrashSignal):
             return
-        signal = active_driver.app_crash_signal()
+        try:
+            signal = active_driver.app_crash_signal()
+        except base.BackendCrashError:
+            raise  # a dead backend still belongs to the recovery path that already owns it
+        except Exception as exc:
+            # A diagnostic probe on an already-failed step must never abort the run: `run_scenario`
+            # converts only `ControlChannelError` / `RunCancelled`, so anything else here escapes
+            # `run_all` and discards every scenario's result.
+            _logger.debug("the app-crash probe failed (%s)", exc, exc_info=True)
+            return
         if signal is None:
             # Deliberately not latched: a "cannot confirm" answer for this step teaches nothing about
             # whether the *next* step's own failure is a crash, so latching here would risk missing a
