@@ -1806,6 +1806,142 @@ def test_wait_guard_does_not_blame_a_scrim_for_time_a_reserved_alert_withheld_it
     assert gate.alerts[0].label == "Not Now"
 
 
+def test_wait_guard_does_not_blame_a_scrim_for_time_a_dismissal_withheld_its_own_tap() -> None:
+    # BE-0418 review finding: `"dismissed"` withholds the in-tree tap's own licence exactly the way
+    # `raced`/`"reserved"` do -- `probed_absent` is False for as long as the declared SpringBoard
+    # alert keeps answering `"dismissed"` (a real alert can take more than one probe to actually
+    # clear) -- but the earlier fix's own tests never pinned this branch, so a regression here would
+    # land `make check` green.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _StuckThenDismisses(FakeDriver):
+        def __init__(self, screen: list[base.Element]) -> None:
+            super().__init__(screen)
+            self.tappable = False
+
+        def tap(self, sel: base.Selector) -> None:
+            if sel.get("label") == "Not Now" and not self.tappable:
+                raise base.ElementNotTappable("scrim still presenting")
+            super().tap(sel)
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = _StuckThenDismisses(tree)
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            ),
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}),
+                tap_label="Allow",
+                native=True,
+                in_tree=False,
+            ),
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+
+    # Poll 1 (t=0): a genuinely empty native read licenses the in-tree tap; the sheet resolves but
+    # a scrim still covers its button.
+    gate.observe(tree)
+
+    # Polls 2-3 (t=1, t=2): a declared SpringBoard alert answers `"dismissed"` on each probe --
+    # `FakeDriver.handle_system_alert` never removes it from `system_alert_buttons`, so it keeps
+    # answering `"dismissed"` the same way a real alert taking more than one probe to clear would.
+    # `probed_absent` stays False throughout, withholding the tree's own licence for two full
+    # `poll_interval`s, which alone already meets `_decline_giveup`'s default 2s horizon.
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+    ]
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+
+    # The alert clears and the scrim lifted well before either dismissed poll ran -- the sheet has
+    # been tappable the whole time the dismissal was withholding the licence. A full `poll_interval`
+    # so the native probe is due again and reports the surface genuinely empty, re-licensing the
+    # in-tree tap.
+    driver.tappable = True
+    driver.system_alert_buttons = []
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+
+    assert not gate._tree_gave_up
+    # Two genuine native dismissals (one per "dismissed" poll -- `FakeDriver` never removes the
+    # alert from `system_alert_buttons`, so each probe answers it afresh) plus the tree tap once
+    # the licence returns.
+    assert [a.label for a in gate.alerts] == ["Allow", "Allow", "Not Now"]
+
+
+def test_wait_guard_does_not_blame_a_scrim_for_time_an_unhandled_alert_withheld_its_own_tap() -> (
+    None
+):
+    # BE-0418 review finding: `"unhandled"` withholds the in-tree tap's own licence exactly the way
+    # `raced`/`"reserved"`/`"dismissed"` do -- an undeclared alert no rule identifies can sit up for
+    # the wait's whole remaining timeout -- but the earlier fix's own tests never pinned this branch
+    # either.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _StuckThenUnhandled(FakeDriver):
+        def __init__(self, screen: list[base.Element]) -> None:
+            super().__init__(screen)
+            self.tappable = False
+
+        def tap(self, sel: base.Selector) -> None:
+            if sel.get("label") == "Not Now" and not self.tappable:
+                raise base.ElementNotTappable("scrim still presenting")
+            super().tap(sel)
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = _StuckThenUnhandled(tree)
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+
+    # Poll 1 (t=0): a genuinely empty native read licenses the in-tree tap; the sheet resolves but
+    # a scrim still covers its button.
+    gate.observe(tree)
+
+    # Polls 2-3 (t=1, t=2): an undeclared SpringBoard alert no rule identifies sits up on each
+    # probe -- `probed_absent` stays False throughout, withholding the tree's own licence for two
+    # full `poll_interval`s, which alone already meets `_decline_giveup`'s default 2s horizon.
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+
+    # The alert resolves and the scrim lifted well before either unhandled poll ran -- the sheet has
+    # been tappable the whole time the alert was withholding the licence. A full `poll_interval` so
+    # the native probe is due again and reports the surface genuinely empty, re-licensing the
+    # in-tree tap.
+    driver.tappable = True
+    driver.system_alert_buttons = []
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+
+    assert not gate._tree_gave_up
+    assert len(gate.alerts) == 1
+    assert gate.alerts[0].label == "Not Now"
+
+
 def test_wait_guard_does_not_credit_a_rule_matching_alert_rule_would_refuse() -> None:
     # The leftover computation above must match `matching_alert_rule`'s own terms exactly, not a
     # bare subset test (BE-0418 review finding): a shape whose labels are present but not

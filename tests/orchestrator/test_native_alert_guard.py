@@ -21,6 +21,7 @@ from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.orchestrator import AlertEvent, AlertGuardConfig
 from bajutsu.common.orchestrator.types import (
     ResolvedAlertRule,
+    alert_block_note,
     match_alert_rule,
     uncleared_prompt_note,
 )
@@ -2469,6 +2470,14 @@ def test_the_end_of_step_guard_names_a_racing_leftover_button_alongside_an_earli
         def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
             raise base.ElementNotFound("the prompt raced away")
 
+        def tap(self, sel: base.Selector) -> None:
+            # "Sheet" genuinely closes, so the post-loop tree check's own fresh read -- no longer
+            # skipped just because the native side leaves a non-empty note (BE-0418 review
+            # finding) -- does not find it still enumerable and mistake it for a fade that never
+            # lifted.
+            super().tap(sel)
+            self.screen = []
+
     driver = _RacesAwayOnTap([_button("Sheet")])
     tree_rule = ResolvedAlertRule(
         identifying_labels=frozenset({"Sheet"}), tap_label="Sheet", native=False, in_tree=True
@@ -2516,7 +2525,11 @@ def test_the_end_of_step_guard_reports_a_native_alert_uncleared_after_a_leading_
         nonlocal settle_count
         settle_count += 1
         if settle_count == 1:
-            # The native alert this test cares about only raises after round 0's tree round.
+            # "T" genuinely closes, so the post-loop tree check's own fresh read -- no longer
+            # skipped just because the native side leaves a non-empty note (BE-0418 review
+            # finding) -- does not find it still enumerable and mistake it for a fade that never
+            # lifted. The native alert this test cares about only raises after round 0's tree round.
+            driver.screen = []
             driver.system_alert_buttons = [_button("Allow"), _button("Don't Allow")]
 
     guard = AlertGuardConfig(rules=[rule, other])
@@ -2897,6 +2910,14 @@ def test_the_end_of_step_guard_reports_an_unhandled_native_alert_after_an_unrela
         def system_alert_labels(self) -> list[str]:
             self.probes += 1
             return [] if self.probes == 1 else ["Weird Button"]
+
+        def tap(self, sel: base.Selector) -> None:
+            # "T" genuinely closes, so the post-loop tree check's own fresh read -- no longer
+            # skipped just because the native side leaves a non-empty note (BE-0418 review
+            # finding) -- does not find it still enumerable and mistake it for a fade that never
+            # lifted.
+            super().tap(sel)
+            self.screen = []
 
     driver = _AbsentThenUnhandled()
     rule = ResolvedAlertRule(
@@ -3785,6 +3806,42 @@ def test_the_end_of_step_guard_names_an_uncleared_tree_sheet_after_a_native_fina
     assert cleared
     assert alerts == [AlertEvent(label="Ping")]
     assert guard.blocked_note == uncleared_prompt_note("A")
+
+
+def test_the_end_of_step_guard_still_withdraws_a_stuck_tap_behind_a_later_native_note() -> None:
+    # BE-0418 review finding: `_final_tree_check` used to skip its whole read-and-withdraw when
+    # `note` was already non-empty, conflating "a native diagnosis outranks the tree note for
+    # reporting" with "skip the check entirely" -- but the withdrawal is evidence-gathering, not
+    # reporting, and a round that ends on an unrelated native note has never itself confirmed
+    # whether an earlier tree tap actually landed. Round 0 taps "S", which accepts the tap but never
+    # closes (`FakeDriver`'s screen is never mutated); `dismissed_tree_info` records it and
+    # `tree_read_round` stays `None`, since the tap branch `continue`s before that line runs. Round 1
+    # answers "unhandled" for an undeclared alert no rule identifies, which sets a non-empty note and
+    # ends the call without the tree ever being read again inside the loop.
+    tree_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"S"}), tap_label="S", native=False, in_tree=True
+    )
+    driver = FakeDriver([_button("S")])  # never removed: "S" accepts the tap without closing
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:  # right after round 0's own tap
+            driver.system_alert_buttons = [_button("Weird Button")]
+
+    guard = AlertGuardConfig(rules=[tree_rule])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    # "S" never actually closes, so the post-loop check must still withdraw its own `AlertEvent`
+    # even though the round that reaches it ended on a native "unhandled" note -- leaving it in
+    # `alerts` would report a dismissal for a sheet the call never confirmed closed, and the
+    # `cleared` return would spend the caller's one-shot retry against a screen "S" still covers.
+    assert not cleared
+    assert alerts == []
+    # The native note still wins the report over the tree's own `uncleared_prompt_note("S")`: a
+    # non-empty *note* keeps its own precedence, only the withdrawal itself was skipped before.
+    assert guard.blocked_note == alert_block_note(["Weird Button"])
 
 
 def test_the_end_of_step_guard_reports_two_native_alerts_sharing_a_tap_label() -> None:

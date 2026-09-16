@@ -508,12 +508,17 @@ def _final_tree_check(
     (a native alert dismissed on the last round, say) reaches here with an *earlier* tree tap still
     unconfirmed, and only the shape actually found still enumerable is the one whose own `AlertEvent`
     is withdrawn from `alerts` in place — the post-loop twin of the in-loop withdrawal.
+
+    A non-empty *note* does not skip this check the way the other two conditions do: `note` is a
+    reporting-precedence decision (a native diagnosis wins over the tree's own), not evidence that
+    the tree tap actually landed, and a round that ends on an unrelated native note — an undeclared
+    alert raising after the tap, say — has never itself read the tree since. Skipping the withdrawal
+    there would ship an `AlertEvent` for a sheet this call never confirmed closed, and a `True`
+    return whose one-shot retry then spends itself against a screen that sheet is still covering
+    (BE-0418 review finding). The withdrawal still runs; only the returned note keeps *note*'s own
+    precedence when it is non-empty.
     """
-    if (
-        note
-        or not dismissed_tree_info
-        or (tree_read_round is not None and tree_read_round >= round_index)
-    ):
+    if not dismissed_tree_info or (tree_read_round is not None and tree_read_round >= round_index):
         return note
     _, final_tree_buttons, _ = _read_tree(driver)
     lingering_shape = _first_lingering_tree_shape(dismissed_tree_info, final_tree_buttons)
@@ -521,7 +526,7 @@ def _final_tree_check(
         return note
     label, event = dismissed_tree_info[lingering_shape]
     _withdraw(alerts, event)
-    return uncleared_prompt_note(label)
+    return note or uncleared_prompt_note(label)
 
 
 def _native_round_worth_another_try(
