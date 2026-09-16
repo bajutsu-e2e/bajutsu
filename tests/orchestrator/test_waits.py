@@ -1576,6 +1576,68 @@ def test_wait_guard_does_not_blame_a_scrim_for_time_a_race_withheld_its_own_tap(
     assert gate.alerts[0].label == "Not Now"
 
 
+def test_wait_guard_does_not_blame_a_scrim_for_time_a_reserved_alert_withheld_its_own_tap() -> None:
+    # BE-0418 review finding: `"reserved"` withholds the in-tree tap's own licence exactly the way
+    # `raced` does -- `probed_absent` is False for as long as the step's own `handleSystemAlert`
+    # alert stays up, which can be the step's entire timeout -- but the earlier fix for `raced`
+    # left this path uncovered, so the not-tappable horizon kept ticking through it regardless.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _StuckThenReserved(FakeDriver):
+        def __init__(self, screen: list[base.Element]) -> None:
+            super().__init__(screen)
+            self.tappable = False
+
+        def tap(self, sel: base.Selector) -> None:
+            if sel.get("label") == "Not Now" and not self.tappable:
+                raise base.ElementNotTappable("scrim still presenting")
+            super().tap(sel)
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = _StuckThenReserved(tree)
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(
+        driver=driver, clock=clock, guard=guard, alerts=[], reserved={"label": "Allow"}
+    )
+
+    # Poll 1 (t=0): a genuinely empty native read licenses the in-tree tap; the sheet resolves but
+    # a scrim still covers its button.
+    gate.observe(tree)
+
+    # Polls 2-3 (t=1, t=2): the step's own alert raises and its selector reserves it -- `probed_absent`
+    # stays False throughout, withholding the tree's own licence for two full `poll_interval`s, which
+    # alone already meets `_decline_giveup`'s default 2s horizon.
+    driver.system_alert_buttons = [el(None, "Allow", ["button"])]
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+
+    # The step answers its own alert and the scrim lifts well before either reserved poll ran -- the
+    # sheet has been tappable the whole time the reservation was withholding the licence. A full
+    # `poll_interval` so the native probe is due again and reports the surface genuinely empty,
+    # re-licensing the in-tree tap.
+    driver.tappable = True
+    driver.system_alert_buttons = []
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+
+    assert not gate._tree_gave_up
+    assert len(gate.alerts) == 1
+    assert gate.alerts[0].label == "Not Now"
+
+
 def test_wait_guard_does_not_credit_a_rule_matching_alert_rule_would_refuse() -> None:
     # The leftover computation above must match `matching_alert_rule`'s own terms exactly, not a
     # bare subset test (BE-0418 review finding): a shape whose labels are present but not

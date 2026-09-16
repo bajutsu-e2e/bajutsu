@@ -143,10 +143,11 @@ class _AlertGuardGate:
 
         `_tree_not_tappable_since` is a wall-clock horizon (`_dismiss_from_tree`'s own docstring),
         but it means something only against polls that actually got to retry the tap: `probed_absent`
-        licenses that retry, and a poll answering `"dismissed"`, `"unhandled"`, or `raced` withholds
-        it — no different, for this horizon's purposes, than a live SpringBoard alert stopping
-        `probed_absent` from holding for however many consecutive polls it stays up (BE-0418 review
-        finding). Left unreset, a scrim that lifts while such a poll runs is still given up on the
+        licenses that retry, and a poll answering `"dismissed"`, `"unhandled"`, `raced`, or
+        `"reserved"` withholds it — no different, for this horizon's purposes, than a live
+        SpringBoard alert, or the step's own reserved alert, stopping `probed_absent` from holding
+        for however many consecutive polls it stays up (BE-0418 review finding). Left unreset, a
+        scrim that lifts while such a poll runs is still given up on the
         moment the licence returns, purely because unlicensed wall-clock time was counted against
         it — the very first retry since the scrim lifted sees the full, un-attempted gap and gives up
         without ever attempting the tap. Clearing it here restarts the horizon at the next poll that
@@ -352,7 +353,13 @@ class _AlertGuardGate:
             # itself waiting on, and that step taps it on its own next read (BE-0406). Nothing here
             # acts, and the proxy below must not run either: the alert covers the app, so the proxy
             # would record a block against a prompt that is about to be answered.
+            #
+            # It withholds the in-tree tap's licence exactly the way the three branches above do —
+            # `probed_absent` is False for however long the step's own alert stays up, which can be
+            # the step's entire timeout — so the not-tappable horizon must not count that time
+            # against a scrim it never got to retry through (BE-0418 review finding).
             self._collapsed_polls = 0
+            self._withhold_tree_tap_licence()
             return
         if self._native_unhandled:
             # The last probe named an alert nothing will clear, and the proxy can only say less about
