@@ -2,16 +2,20 @@ import BajutsuKit
 import SwiftUI
 import TipKit
 import UIKit
+import UserNotifications
 
 @main
 struct ShowcaseApp: App {
     @StateObject private var model = AppModel(env: ProcessInfo.processInfo.environment)
+    // Held for the app's lifetime: `UNUserNotificationCenter.delegate` is weak (BE-0416 Unit 5).
+    private static let notificationPresenter = NotificationPresenter()
 
     init() {
         // UI-test hook (SPEC §3): disable animations so condition waits stay tight.
         if ProcessInfo.processInfo.environment["SHOWCASE_UITEST"] != nil {
             UIView.setAnimationsEnabled(false)
         }
+        UNUserNotificationCenter.current().delegate = Self.notificationPresenter
         // Reset TipKit's datastore so the tip shows on every launch of this mode, not once per
         // install — TipKit persists "already shown" state, which would make the run order-dependent.
         if ProcessInfo.processInfo.environment["SHOWCASE_TIPKIT"] != nil {

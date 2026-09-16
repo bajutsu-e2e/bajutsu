@@ -761,6 +761,11 @@ class PlaywrightDriver:
         # No OS-level SpringBoard prompt on the web; the reactive guard's native path never runs here.
         return []
 
+    def notification_banner_frame(self) -> base.Frame | None:
+        # No OS-level foreground banner on the web; this backend does not advertise
+        # HANDLE_NOTIFICATION_BANNER (BE-0416).
+        return None
+
     def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:  # noqa: ARG002  # Driver shape
         # TipKit is an iOS framework; this backend does not advertise HANDLE_TIPKIT_TIP. A
         # browser-owned dialog, the nearest web analogue, is already auto-dismissed by `_on_dialog`.

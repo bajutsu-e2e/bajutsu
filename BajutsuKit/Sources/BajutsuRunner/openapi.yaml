@@ -309,6 +309,31 @@ paths:
                 $ref: "#/components/schemas/ActuationReply"
         "400":
           $ref: "#/components/responses/BadRequest"
+  /notificationBanner/query:
+    post:
+      operationId: queryNotificationBanner
+      summary: Snapshot a foreground notification banner's own frame, when one is showing.
+      description: >-
+        Empty when no banner is up. Distinct from `/systemAlert/query`: the banner is a different
+        SpringBoard element (`NotificationShortLookView`), enumerated by its own identifier rather
+        than the alert query's `springboard.alerts`, and iOS coalesces concurrent banners so at
+        most one ever matches. The proactive guard (BE-0416 Units 2/3/8) polls this between
+        interactions to clear a banner nothing is about to tap — the interruption monitor that
+        answers a banner blocking an in-flight interaction (Unit 4) never calls this route, since it
+        already holds the element XCUITest handed it.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmptyRequest"
+      responses:
+        "200":
+          description: The banner's element, empty when none is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ElementsReply"
   /interruptionPolicy:
     post:
       operationId: setInterruptionPolicy

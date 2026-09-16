@@ -51,3 +51,8 @@ class StepLoopState:
     # while recovery runs also keeps a run's interrupt handling to the outermost screen, not the
     # handlers reacting to each other mid-recovery.
     running_recovery: bool = False
+    # When the proactive notification-banner sweep (BE-0416 Unit 8) last actually queried the
+    # backend, in `clock.now()` units — `None` before the run's first step. Rate-limits that query
+    # to the resolved poll interval, decoupled from how often a step runs, the same way
+    # `_AlertGuardGate` rate-limits its own native probe (BE-0315).
+    last_notification_banner_poll_at: float | None = None

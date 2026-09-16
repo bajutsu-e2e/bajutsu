@@ -107,6 +107,14 @@ public protocol ElementProviding: AnyObject {
     /// Tap the SpringBoard alert button identified by its backing reference (BE-0316).
     func tapSystemAlertButton(backingElement: AnyObject) -> TapResult
 
+    /// Snapshot a foreground notification banner's own frame, empty when none is up (BE-0416).
+    /// Distinct from `querySystemAlertButtons`: a different SpringBoard element
+    /// (`NotificationShortLookView`), matched against SpringBoard's whole tree rather than
+    /// `alerts`. At most one ever matches — iOS coalesces concurrent banners. The proactive guard
+    /// polls this between interactions; the interruption monitor that clears a banner blocking an
+    /// in-flight interaction never calls it, since it already holds the element XCUITest handed it.
+    func queryNotificationBanner() -> [ElementSnapshot]
+
     /// Capture a screenshot as PNG data.
     func screenshot() -> Data?
 }

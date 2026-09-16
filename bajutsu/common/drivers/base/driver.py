@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from ._shared import Point
+from ._shared import Frame, Point
 from .element import Element
 from .selector import Selector
 
@@ -99,6 +99,12 @@ class Driver(Protocol):
     # caller already holds: the mid-wait gate asks on every poll tick, so letting it answer "no tip"
     # off the poll's own tree keeps the common case free instead of doubling the wait's query load.
     def dismiss_blocking_tip(self, tree: list[Element] | None = None) -> bool: ...
+    # A single, non-blocking read of a foreground notification banner's own frame — `None` when none
+    # is showing (BE-0416). Measured to enumerate at most one banner (iOS coalesces concurrent ones),
+    # in SpringBoard's own coordinate space. Gated on HANDLE_NOTIFICATION_BANNER: a backend without
+    # it returns `None` rather than raising, the same opportunistic no-op `dismiss_blocking_tip`
+    # follows, since the proactive sweep that reads this runs on every step regardless of backend.
+    def notification_banner_frame(self) -> Frame | None: ...
     # Single-shot by contract (BE-0118): whether `sel` matches the *current* screen,
     # checked once. A backend never loops here — the shared `wait_until` owns the
     # deadline poll, so a caller's timeout means the same real seconds on every backend.

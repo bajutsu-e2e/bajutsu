@@ -17,6 +17,8 @@ struct RootView: View {
             PickerView()
         } else if model.signInMode {
             SignInView()
+        } else if model.notificationBannerMode {
+            NotificationBannerTargetView()
         } else {
             MainTabView()
         }

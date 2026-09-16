@@ -467,3 +467,41 @@ def gesture_anchor(frame: Frame) -> tuple[float, float, float]:
     """
     x, y, w, h = frame
     return x + w / 2, y + h / 2, min(w, h) / 4
+
+
+# How far above the banner's own top edge the swipe ends, and the highest point it may end at — the
+# same two distances `RunnerUITest.swift`'s interruption-monitor path already swipes a banner by
+# (BE-0416), kept in step so the proactive guard's own dismiss travels the same distance.
+_NOTIFICATION_BANNER_SWIPE_TRAVEL = 20.0
+_NOTIFICATION_BANNER_SWIPE_TOP_MARGIN = 8.0
+
+
+def notification_banner_swipe_points(frame: Frame) -> tuple[Point, Point] | None:
+    """The `swipe` `frm`/`to` points that dismiss a notification banner measured at `frame` (BE-0416).
+
+    `frame` is read from SpringBoard's own coordinate space (`Driver.notification_banner_frame`),
+    while `swipe` resolves its points as an offset from the app under test's own origin. The two
+    coincide at the physical screen's top-left in points for a foreground app that fills the screen
+    (no split-view multitasking) — the same assumption the app's own frame-reading already makes
+    throughout this driver seam — so the frame's raw numbers carry over unchanged, with no
+    transform to apply.
+
+    `None` when `frame` is caught mid-animation (not yet settled) and the resulting gesture would
+    travel less than `_NOTIFICATION_BANNER_SWIPE_TRAVEL` — the distance `RunnerUITest.swift`'s
+    own interruption-monitor path measured sufficient to dismiss a settled banner. The top-margin
+    clamp below can otherwise leave a genuine but too-short gesture (or, at the extreme, one that
+    travels *downward*) for a frame whose top edge sits at or above the screen's own top margin —
+    a shape only a banner still sliding into place produces. The caller's next poll reads the frame
+    again once it has settled, rather than attempting a gesture too weak to act on.
+
+    Returns:
+        `(frm, to)` — the banner's own center, and a point above its top edge (never past
+        `_NOTIFICATION_BANNER_SWIPE_TOP_MARGIN`, where SpringBoard would instead claim the drag as
+        its own notification-shade gesture).
+    """
+    x, y, w, h = frame
+    cx, cy = x + w / 2, y + h / 2
+    top = max(_NOTIFICATION_BANNER_SWIPE_TOP_MARGIN, y - _NOTIFICATION_BANNER_SWIPE_TRAVEL)
+    if cy - top < _NOTIFICATION_BANNER_SWIPE_TRAVEL:
+        return None
+    return (cx, cy), (cx, top)

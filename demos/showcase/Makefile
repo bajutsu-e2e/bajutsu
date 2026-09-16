@@ -118,13 +118,16 @@ runner-build-device:
 # resolves to XCUITest, the sole iOS backend since idb was retired (BE-0290). `scenarios/tabs.yaml`
 # stays tagged `xcuitest` and excluded here — a legacy split from when a coordinate backend could not
 # reach the tab bar — and `run-swiftui-tabs`/`run-uikit-tabs` below run it on its own; both paths run
-# on XCUITest now. `permission_system_alert.yaml` (BE-0316) and `paste_system_alert.yaml` (BE-0369)
-# are tagged `systemalert` and excluded too: these bulk runs discover every scenario file and do not
-# reset per-scenario device state, so the `notDetermined` prompt the first one's handleSystemAlert
-# step needs is not guaranteed here, and the second one leaves the pasteboard holding its own string
-# for whatever scenario the lane discovers next. Each runs instead on a named iOS CI scenario list
-# (`run` for the first, `actuation` for the second), where what precedes it is controlled rather than
-# discovered. A dedicated tag keeps them out without riding the legacy `xcuitest` tag.
+# on XCUITest now. `permission_system_alert.yaml` (BE-0316), `paste_system_alert.yaml` (BE-0369),
+# and push.yaml's second scenario (BE-0416) are tagged `systemalert` and excluded too: these bulk
+# runs discover every scenario file and do not reset per-scenario device state, so the
+# `notDetermined` prompt each one's own handleSystemAlert step needs is not guaranteed here (and
+# paste_system_alert.yaml's own decline leaves the pasteboard holding its own string for whatever
+# scenario the lane discovers next); push.yaml's banner scenario also needs a screen
+# (SHOWCASE_NOTIFICATION_BANNER) that exists on the SwiftUI target only. Each runs instead on a
+# named iOS CI scenario list (`run` for the first, `actuation` for the second and third), where
+# what precedes it is controlled rather than discovered. A dedicated tag keeps them out without
+# riding the legacy `xcuitest` tag.
 # `browser` (scenarios/browser.yaml, the SFSafariViewController flow) is excluded for the same
 # reason as the two below: it needs a fixture page served on BROWSER_PORT, which only its own
 # `e2e-browser` lane starts, so discovering it here would leave the browser with nothing to load.

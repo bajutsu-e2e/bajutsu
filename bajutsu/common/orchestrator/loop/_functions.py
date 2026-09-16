@@ -33,6 +33,7 @@ from bajutsu.common.orchestrator.control_channel import ControlChannelError, cap
 from bajutsu.common.orchestrator.evidence_rules import _extract_stable_key, requested_intervals
 from bajutsu.common.orchestrator.substitution import _interp_asserts
 from bajutsu.common.orchestrator.types import (
+    DEFAULT_ALERT_POLL_INTERVAL,
     AlertEvent,
     AlertGuardConfig,
     Clock,
@@ -741,6 +742,12 @@ def run_scenario(
                 if failure is None and scenario.expect:
                     expect = _interp_asserts(scenario.expect, live_bindings)
                     clip = _clipboard_for(expect, control)
+                    # A banner nothing interacted with never reaches the step loop's own per-step
+                    # sweep — this phase runs after the last step's (BE-0416 Unit 8) — so it is
+                    # cleared here too, right before the capture the `visual` assertions read.
+                    _clear_notification_banner_before_visual_capture(
+                        ctx, driver, clock, expect_actuations
+                    )
                     _capture_visual_actual(
                         ctx, driver, channel=channel, hide_markers=hide_markers, cancelled=cancelled
                     )
@@ -773,6 +780,9 @@ def run_scenario(
                             # assertions against a still tree rather than one mid-animation (BE-0406).
                             settle_after_alert_dismiss(
                                 driver, clock, transitions=transitions, cancelled=cancelled
+                            )
+                            _clear_notification_banner_before_visual_capture(
+                                ctx, driver, clock, expect_actuations
                             )
                             _capture_visual_actual(
                                 ctx,
@@ -908,6 +918,108 @@ def _tip_poll_hook(
         return interrupt_poll(elements) if interrupt_poll is not None else False
 
     return poll
+
+
+# How long a swipe's clearance is re-checked before the shutter proceeds regardless — the same
+# deadline `RunnerUITest.swift`'s own `bannerClearanceTimeout` re-observes a banner's absence by
+# (BE-0416), so a banner still mid-animation when the swipe lands does not reach the screenshot
+# this sweep exists to protect. A condition wait against the injected `clock`, not a fixed sleep or
+# a real-time deadline: each tick is a real presence query, and a fake clock in tests never pays
+# the real 2s.
+_BANNER_CLEARANCE_TIMEOUT = 2.0
+_BANNER_CLEARANCE_POLL = 0.1
+
+
+def _clear_notification_banner(driver: base.Driver, clock: Clock) -> None:
+    """Swipe away a foreground notification banner if one is showing right now (BE-0416 Unit 8).
+
+    A single unconditional check, no rate limit: for the `expect`-phase visual capture, which this
+    backs directly and which pays this at most once or twice a scenario regardless of step count.
+    `_sweep_notification_banner` below is the rate-limited wrapper the per-step call site needs
+    instead, since that one runs on every step.
+
+    The swipe's clearance is re-confirmed by a bounded poll before returning, mirroring the
+    interruption monitor's own discipline (Unit 4's Swift path never claims a dismissal it has not
+    observed) — otherwise a banner still mid-dismissal-animation when the swipe lands would still
+    reach the very screenshot this sweep exists to protect. A confirmed-gone banner returns at
+    once; an unconfirmed one is logged, since a corrupted `after.png` or a failed `visual` diff
+    with nothing pointing at the banner reproduces, in miniature, the invisibility this whole
+    mechanism exists to end — the same reasoning the Swift path's own decline log carries.
+
+    A degenerate frame (a banner caught mid-appearance or mid-dismissal, not yet settled) is left
+    alone rather than swiped: `notification_banner_swipe_points` returns `None` whenever the
+    resulting gesture would travel too little to act as a dismissal — including, at the extreme,
+    a downward or zero-length drag, which SpringBoard would read as its own notification-shade
+    gesture instead. The next poll (this call, or the per-step sweep's own next tick) reads the
+    frame again once it has settled.
+    """
+    if base.Capability.HANDLE_NOTIFICATION_BANNER not in driver.capabilities():
+        return
+    frame = driver.notification_banner_frame()
+    if frame is None:
+        return
+    points = base.notification_banner_swipe_points(frame)
+    if points is None:
+        return
+    frm, to = points
+    driver.swipe(frm, to)
+    deadline = clock.now() + _BANNER_CLEARANCE_TIMEOUT
+    while True:
+        if driver.notification_banner_frame() is None:
+            return
+        if clock.now() >= deadline:
+            _logger.warning(
+                "notification banner still on screen %.0fs after the swipe; the capture that "
+                "follows may carry it (BE-0416)",
+                _BANNER_CLEARANCE_TIMEOUT,
+            )
+            return
+        clock.sleep(_BANNER_CLEARANCE_POLL)
+
+
+def _clear_notification_banner_before_visual_capture(
+    ctx: EvalContext, driver: base.Driver, clock: Clock, expect_actuations: list[Actuation]
+) -> None:
+    """`_clear_notification_banner`, gated on an actual `visual` assertion being present.
+
+    Mirrors the gate `_capture_visual_actual` itself applies (`ctx.visual is None`), so a scenario
+    with no `visual` in `expect` pays no extra query at either of that function's two call sites.
+
+    Drains the swipe into `expect_actuations` at once: left in the driver's own log, it would
+    otherwise strand until some later drain (the next scenario's first step, since a lease's
+    driver outlives one scenario) picks it up as a phantom actuation nobody performed there.
+    """
+    if ctx.visual is not None:
+        _clear_notification_banner(driver, clock)
+        expect_actuations.extend(drain_actuations(driver).records)
+
+
+def _sweep_notification_banner(
+    driver: base.Driver, clock: Clock, alert_guard: AlertGuardConfig | None, state: StepLoopState
+) -> None:
+    """Clear a foreground notification banner sitting on screen, before it corrupts a screenshot.
+
+    Unlike the interruption-monitor path (BE-0416 Unit 4), a banner nothing is interacting with
+    never reaches XCUITest's interruption monitor at all — a plain query never invokes it, so the
+    banner stays up through every non-interactive read. Called unconditionally, once per step,
+    right before that step's own `after.png` shutter starts, which is the corrupted capture this
+    unit exists to reach; the rate limit below is what keeps the added SpringBoard query cheap
+    rather than paid on every step.
+
+    No scenario/CLI toggle (BE-0416 Unit 8): a scenario cannot observe a banner, so none can be
+    broken by clearing it — the same "no known use for a toggle" the interruption path's own
+    design already established (Unit 4). The interval reuses whatever `systemAlertHandling`
+    resolved for this scenario when the guard is configured, so the two SpringBoard polls (this
+    one and `_AlertGuardGate`'s own) share one cadence; a scenario with the guard off still gets
+    BE-0315's plain default, since nothing here is the guard's to turn off.
+    """
+    interval = alert_guard.poll_interval if alert_guard is not None else DEFAULT_ALERT_POLL_INTERVAL
+    now = clock.now()
+    last = state.last_notification_banner_poll_at
+    if last is not None and now - last < interval:
+        return
+    state.last_notification_banner_poll_at = now
+    _clear_notification_banner(driver, clock)
 
 
 def _run_if(

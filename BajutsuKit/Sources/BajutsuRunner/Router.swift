@@ -15,6 +15,8 @@ final class Router {
     // A separate handle store for SpringBoard alert buttons (BE-0316), so their handles never
     // collide with the app tree's and a `/systemAlert/query` never disturbs the app snapshot.
     private let alertStore = SnapshotStore()
+    // A separate handle store for the notification banner (BE-0416), for the same reason.
+    private let bannerStore = SnapshotStore()
     // Serializes every XCUITest-touching operation so no two run — or *re-enter* — concurrently.
     // `app.snapshot()` / `app.screenshot()` / an `XCUIElement` interaction pumps the main run loop
     // internally while it waits on the app over XPC, and that run-loop spin drains the main dispatch
@@ -75,6 +77,8 @@ final class Router {
             return handleSystemAlertQuery()
         case ("POST", "/systemAlert/tap"):
             return handleSystemAlertTap(request)
+        case ("POST", "/notificationBanner/query"):
+            return handleNotificationBannerQuery()
         case ("GET", "/screenshot"):
             return handleScreenshot()
         default:
@@ -155,6 +159,14 @@ final class Router {
         case .notFound:
             return .json(200, ["status": "not-found"])
         }
+    }
+
+    // The notification-banner presence query (BE-0416): the same element+handle contract as
+    // `/systemAlert/query`, sourced from a different SpringBoard element and keyed into its own
+    // store. Empty when no banner is up.
+    private func handleNotificationBannerQuery() -> HTTPResponse {
+        let elements = caughtOnMain([]) { self.provider.queryNotificationBanner() }
+        return elementsResponse(store: bannerStore, elements: elements)
     }
 
     /// Serialize a fresh element snapshot into the `{status, elements:[…handle…]}` reply both the app

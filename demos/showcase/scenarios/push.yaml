@@ -16,3 +16,45 @@
     - push: { payload: { aps: { alert: "You have a new message" } } }
   expect:
     - exists: { id: stable.row.1 }
+
+# BE-0416 Unit 5: `push` alone (above) never raises a foreground banner unless the app opts in —
+# this fixture adds a UNUserNotificationCenterDelegate (ShowcaseApp.swift/AppDelegate.swift) and a
+# dedicated flat screen (SHOWCASE_NOTIFICATION_BANNER, see AppModel/NotificationBannerTargetView,
+# SwiftUI only — no UIKit equivalent, matching gesturesMode/pickersMode's own SwiftUI-only scope)
+# whose one target sits inside the frame Unit 1 measured for the banner on a 6.3-inch device, so
+# the overlap holds by construction rather than by timing. `permissions` cannot pre-grant
+# notification authorization on iOS, so the request fires on appear and a `handleSystemAlert` step
+# grants it — the same deterministic, native path `permission_system_alert.yaml` uses. Tagged
+# `systemalert`, not `system`: this step needs a `notDetermined` permission state and the local
+# bulk `run-swiftui`/`run-uikit`/Flutter lanes neither reset per-scenario device state nor build a
+# UIKit screen for this launch env, exactly the reasons `permission_system_alert.yaml` and
+# `paste_system_alert.yaml` carry the same tag (demos/showcase/Makefile) — CI's `actuation` job
+# names this file by path with no exclusion, so the tag does not keep it off CI.
+# `systemAlertHandling: false` here turns off only the reactive alert guard; both the banner branch
+# of the interruption monitor (Unit 4) and the proactive sweep (Unit 8) run regardless of that
+# switch, by design (docs/scenarios.md), so this fixture cannot pin down which of the two actually
+# clears the banner before the tap — a step boundary (the `wait` below) sits between the banner's
+# appearance and the tap, and the proactive sweep runs at every step boundary. What this scenario
+# demonstrates is the outcome BE-0416 exists to guarantee either way: a real foreground banner
+# never survives to block the tap or corrupt the screenshot taken after it. `push` returns once the
+# payload reaches the device, not once the banner is actually on screen — measured racing ahead of
+# it outright — so the fixture waits on `notif.presented`, flipped by the delegate's own
+# `willPresent` right before iOS raises the banner, a real condition rather than a fixed delay
+# (prime directive 2). Whether the run's report carries a `notificationBanner`-kind `AlertEvent` for
+# this particular run depends on which path won that race; CI's `actuation` job
+# (.github/workflows/ios-e2e.yml), which runs this file on a fresh macOS runner, is what confirms
+# the banner is cleared live (BE-0416 roadmap item, Unit 5).
+- name: a foreground notification banner is swiped away, not tapped
+  tags: [systemalert]
+  systemAlertHandling: false
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_NOTIFICATION_BANNER: "1" }
+  steps:
+    - wait: { for: { id: notif.permission.value }, timeout: 10 }
+    - handleSystemAlert: { prompt: notifications, choice: grant, timeout: 10 }
+    - wait: { for: { id: notif.permission.value, value: "authorized" }, timeout: 10 }
+    - push: { payload: { aps: { alert: "You have a new message" } } }
+    - wait: { for: { id: notif.presented }, timeout: 10 }
+    - tap: { id: notif.bannerTarget }
+  expect:
+    - value: { sel: { id: notif.bannerTarget.value }, equals: "tapped" }

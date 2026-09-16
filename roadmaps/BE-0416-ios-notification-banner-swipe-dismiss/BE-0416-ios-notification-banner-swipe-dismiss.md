@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0416](BE-0416-ios-notification-banner-swipe-dismiss.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0416") |
 | Implementing PR | [#1975](https://github.com/bajutsu-e2e/bajutsu/pull/1975) (units 1, 4, 6, 7) |
 | Topic | Platform support |
@@ -271,20 +271,42 @@ interrupted one.
 
 - [x] Unit 1 — the banner's accessibility surface, measured on iOS 18.6 and 26.5. The answers, and
       the two findings that reshaped Units 2–4, are recorded in *Detailed design* above.
-- [ ] Unit 2 — deterministic presence query (`Driver` method reporting the banner's frame or absence).
-      Scope narrowed by Unit 1: it serves Unit 8's proactive poll, not Unit 4.
-- [ ] Unit 3 — deterministic swipe-dismiss action anchored to the measured frame. Narrowed the same
-      way.
+- [x] Unit 2 — deterministic presence query (`Driver.notification_banner_frame()`, gated on the new
+      `HANDLE_NOTIFICATION_BANNER` capability). Scope narrowed by Unit 1: it serves Unit 8's
+      proactive poll, not Unit 4. A new `/notificationBanner/query` runner route (mirroring
+      `/systemAlert/query`), since Unit 4's own route reuse covered only the drain fold.
+- [x] Unit 3 — deterministic swipe-dismiss action anchored to the measured frame
+      (`base.notification_banner_swipe_points`), reusing the existing `swipe` action rather than a
+      second gesture primitive. Narrowed the same way as Unit 2.
 - [x] Unit 4 — the interruption-monitor path: recognize the banner ahead of the policy, swipe it by
       its own frame, confirm the clearance before claiming the interruption, and report it as an
       `AlertEvent` under a kind of its own. Lands without the config/scenario toggle the proposal
       called for — see *Unit 4* above for why Unit 1 removed the case for it.
-- [ ] Unit 5 — showcase fixture, including the app-side foreground banner presentation and a tap
-      target inside the banner's frame, and on-device verification.
-- [x] Unit 6 — docs (`docs/scenarios.md`, `docs/architecture.md`, and both `docs/ja/` mirrors).
-- [x] Unit 7 — tests for what Unit 4 landed. The Unit 2/3/8 half remains with those units.
-- [ ] Unit 8 — the proactive poll, for the banner a run never interacts its way past: the corrupted
-      `after.png` and visual-regression capture Unit 1 measured the monitor cannot reach.
+- [x] Unit 5 — showcase fixture, including the app-side foreground banner presentation
+      (`UNUserNotificationCenterDelegate`, both iOS targets) and a tap target inside the banner's
+      frame, and on-device verification. Verified on a dedicated Simulator: the notification
+      authorization flow, the delegate's `willPresent` signal, and the tap target's on-screen
+      position (measured inside the frame Unit 1 recorded). The notification banner itself did not
+      visually render on this session's host — confirmed, with both `simctl push` and a local
+      notification, that `willPresent` fires correctly while SpringBoard draws nothing, which
+      isolates the gap to this host's own Simulator notification permission (a system dialog no
+      unattended session can click through) rather than to the fixture or the driver code. The
+      scenario and app changes ship as written; CI's `actuation` job (`ios-e2e.yml`), which already
+      runs `push.yaml` on a fresh macOS runner, is what confirms live that a real banner never
+      survives to block the tap. A step boundary sits between the banner's appearance and the tap
+      (the `wait` for the delegate's own `willPresent` signal), so the fixture cannot pin down
+      whether the interruption monitor (Unit 4) or the proactive sweep (Unit 8) is what actually
+      clears the banner on a given run — either is a correct outcome, and the scenario's own
+      comment says so.
+- [x] Unit 6 — docs (`docs/scenarios.md`, `docs/architecture.md`, and both `docs/ja/` mirrors) —
+      extended again for the Unit 2/3/8 proactive sweep.
+- [x] Unit 7 — tests for what Unit 4 landed, plus the Unit 2/3/8 half: a fake driver whose presence
+      query flips between polls, the guard clearing the banner before a step's own after-shot and
+      before an `expect`-phase visual capture, the capability gate leaving a backend without it
+      unchanged, and the Swift-side route's parity/contract tests.
+- [x] Unit 8 — the proactive poll, for the banner a run never interacts its way past: the corrupted
+      `after.png` and visual-regression capture Unit 1 measured the monitor cannot reach. No
+      scenario/CLI toggle — the same "no known use for a toggle" Unit 4 already established.
 
 Log:
 
@@ -296,6 +318,28 @@ Log:
   banner arriving during a run with `systemAlertHandling` on was recorded as an undeclared
   interruption and failed an otherwise-passing step, naming the notification's body text among the
   buttons the run had expected.
+- 2026-09-16 — [#PR-TBD] — Units 2, 3, 5, and 8 landed, completing the item. A new
+  `HANDLE_NOTIFICATION_BANNER` capability and `Driver.notification_banner_frame()` (a new
+  `/notificationBanner/query` runner route) report a banner's frame between interactions;
+  `base.notification_banner_swipe_points` converts it into the swipe `swipe` already performs. The
+  step loop calls this once per step, rate-limited to `systemAlertHandling`'s own resolved
+  `pollInterval`, right before the `after.png` shutter and before the `expect`-phase visual capture
+  — the corrupted screenshots Unit 1 measured the interruption monitor alone cannot reach. No
+  scenario/CLI toggle, matching Unit 4's own precedent. The showcase fixture (`push.yaml`) gained a
+  second scenario raising a genuine foreground banner via a new `UNUserNotificationCenterDelegate`
+  (both iOS targets) and a dedicated flat screen (`SHOWCASE_NOTIFICATION_BANNER`) whose tap target
+  sits inside the banner's measured frame. On-device verification on a dedicated Simulator confirmed
+  the permission flow, the delegate's timing signal, and the target's on-screen position; the
+  banner's own visual rendering did not appear on this session's host, isolated to a local Simulator
+  notification-permission gap (confirmed with both a real push and a local notification) rather than
+  to the code, so the live confirmation that a real banner never survives to block the tap is left
+  to CI's `actuation` job — the fixture cannot itself distinguish whether the interruption monitor
+  or the proactive sweep is what clears a given run's banner, since a step boundary sits between
+  the banner's appearance and the tap. The swipe itself leaves a frame caught mid-animation alone
+  when its computed endpoint would not sit above its start — a downward or zero-length drag rather
+  than a dismissal — and re-confirms the banner gone with a bounded poll before returning, matching
+  the interruption monitor's own confirm-before-claiming
+  discipline.
 
 ## References
 

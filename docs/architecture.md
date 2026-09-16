@@ -790,6 +790,28 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   passing step, while an ungoverned one left XCUITest to wait the banner out, measured at ~9s per
   interrupted interaction against ~0.6s undisturbed. `systemAlertHandling` itself is on by default,
   and `false` disables it per scenario — the banner branch above runs either way
+- A banner reaches that monitor only on an *interaction* — a plain query never invokes it, so a
+  banner sitting on screen with nothing tapping through it is never cleared there (BE-0416 Units
+  2/3/8). A second, proactive path covers that gap: `Driver.notification_banner_frame()`
+  (`HANDLE_NOTIFICATION_BANNER`, the XCUITest-only capability that gates it) is a non-blocking read
+  of the same SpringBoard element by a different identifier query
+  (`NotificationShortLookView` against SpringBoard's whole tree, not `alerts`), and the step loop
+  calls it once per step, right before the `after.png` shutter starts — the corrupted capture, and
+  every visual-regression comparison built from it, that this path exists to reach. Found, the
+  banner is swiped by `notification_banner_swipe_points`, the same upward gesture the interruption
+  monitor performs, reusing the ordinary `swipe` action rather than a second gesture primitive — but
+  only when the computed endpoint genuinely sits above the swipe's own start; a frame caught
+  mid-animation can place the (top-margin-clamped) endpoint at or past that start, which would
+  invert the gesture into a downward drag or a zero-length one — the notification-shade gesture the
+  top margin exists to prevent. Such a frame is left alone. The swipe is re-confirmed gone by a
+  bounded poll immediately after, the same discipline the interruption monitor's own
+  confirm-before-claiming applies. The query is rate-limited to `systemAlertHandling`'s
+  own resolved `pollInterval` (BE-0315's default when the guard is off), so a passing scenario pays
+  it once per interval rather than once per step.
+  The `expect`-phase visual capture gets the same unconditional check immediately before it,
+  gated on an actual `visual` assertion being present. No scenario or CLI toggle: a scenario cannot
+  observe a banner, so none can be broken by clearing it — the same "no known use for a toggle"
+  the interruption path above already established
 - DSL `iosTipKitHandling` (BE-0389), an opt-in guard for a blocking Apple TipKit tip: TipKit's
   presentation marks the content it covers accessibility-hidden rather than merely occluding it, so a
   blocked tap can fail as `ElementNotFound`, not only `ElementNotTappable`. The XCUITest backend alone
