@@ -875,9 +875,11 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   id-token: write` presents the GitHub-issued OpenID Connect (OIDC) token once, to `POST
   /api/oidc/exchange`. `serve` verifies the issuer, the JSON Web Key Set (JWKS), and a
   deployment-configured `aud` (audience; unset disables the whole OIDC caller shape) before
-  minting a short-lived **machine session** that every later call presents instead. Which org's
-  session it mints is decided by that org's `allowedRepositories`, matched by exact equality on
-  the token's `repository` claim rather than a parsed `sub`, with an optional per-entry
+  minting a short-lived **machine session** that every later call presents instead. The request
+  names the org it wants to act as — naming selects, it never grants, since one repository may be
+  listed by several orgs — and that org's own `allowedRepositories` is what admits it, matched by
+  exact equality on the token's `repository` claim rather than a parsed `sub`, with an optional
+  per-entry
   `environment` / `ref` / `workflowRef` narrowing. The machine session is a third caller shape
   beside a human's OAuth session and the worker's shared token: not a role, but an explicit
   endpoint allowlist in `gate.py` (the content-miss probe `GET /api/artifacts/exists`, the three
