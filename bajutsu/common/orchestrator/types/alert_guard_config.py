@@ -345,6 +345,7 @@ def _fresh_dismiss_leftover_note(
 
 def _already_dismissed_note(
     alerts: list[AlertEvent],
+    native_rules: Sequence[ResolvedAlertRule],
     native_dismiss_shape: frozenset[str] | None,
     native_dismiss_label: str | None,
     native_dismiss_event: AlertEvent | None,
@@ -356,6 +357,15 @@ def _already_dismissed_note(
     ruff's statement ceiling: a leftover the same read still holds outranks the exhaustion
     diagnosis, and `native_dismiss_event` is withdrawn exactly when it does not (see
     `_withdraw_if_exhausted`'s own docstring).
+
+    Credits every rule `identified_alert_rules` finds on this read, not only the shapes
+    `dismissed_native` already names (BE-0418 review finding), the same way the `"dismissed"`,
+    race, and `"unhandled"` branches all credit their own leftover: a nested pair — a wider
+    declared sibling `_resolve_alert_rule`'s own containment test treats as the same answered
+    alert once it renders a label a narrower reading of it was dismissed without — reaches this
+    branch (`_resolve_alert_rule` returns `None` because every match nests with `dismissed_native`)
+    with the wider shape's own extra label still on `buttons`, and bare `dismissed_native` would
+    report that label as an alert no rule identifies, when a rule does identify it.
     """
     exhaustion_note = _bound_exhaustion_note(
         dismiss_shape=native_dismiss_shape,
@@ -363,7 +373,12 @@ def _already_dismissed_note(
         buttons=buttons,
         round_index=round_index,
     )
-    note = _leftover_note(buttons, dismissed_native, exhaustion_note)
+    note = _leftover_note(
+        buttons,
+        dismissed_native
+        | {rule.identifying_labels for rule in identified_alert_rules(native_rules, buttons)},
+        exhaustion_note,
+    )
     return note, _withdraw_if_exhausted(alerts, native_dismiss_event, note, exhaustion_note)
 
 
@@ -1004,12 +1019,15 @@ class AlertGuardConfig:
                 if stuck_tree_label is None:
                     # `buttons` is the whole enumerable SpringBoard surface, not this one rule's
                     # own set, so declining a re-tap here does not mean nothing else is up: a
-                    # second, still-live alert no rule identifies can sit right alongside it. Only
-                    # the labels of rules this call has already answered are accounted for;
-                    # anything else on the surface gets the same diagnosis a fresh "unhandled"
-                    # probe would give it — exactly the check the "dismissed" branch above and the
-                    # "unhandled" branch below both make too, for the identical reason. A leftover
-                    # takes precedence over the exhaustion note: something else is demonstrably
+                    # second, still-live alert no rule identifies can sit right alongside it. Every
+                    # rule `identified_alert_rules` finds on this read is accounted for, not only
+                    # the shapes already in `dismissed_native` (BE-0418 review finding) — a wider
+                    # declared sibling nesting with an already-dismissed shape reaches this branch
+                    # too, and crediting only the tapped shapes would report its own extra label as
+                    # an alert no rule identifies when a rule does identify it — exactly the check
+                    # the "dismissed" branch above and the "unhandled" branch below both make too,
+                    # for the identical reason. A leftover takes precedence over the exhaustion
+                    # note: something else is demonstrably
                     # still up regardless of whether this round's own tap ever landed.
                     # `_bound_exhaustion_note` checks `native_dismiss_shape` directly against this
                     # round's own read — see its own docstring for why that must be a containment
@@ -1017,6 +1035,7 @@ class AlertGuardConfig:
                     # (BE-0418 review finding).
                     note, native_dismiss_event = _already_dismissed_note(
                         alerts,
+                        self.native_rules,
                         native_dismiss_shape,
                         native_dismiss_label,
                         native_dismiss_event,

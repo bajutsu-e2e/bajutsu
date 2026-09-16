@@ -2765,6 +2765,39 @@ def test_the_end_of_step_guard_still_names_a_co_present_alert_no_rule_identifies
     assert "Allow" not in guard.blocked_note
 
 
+def test_the_end_of_step_guard_credits_a_wider_sibling_in_already_dismissed_too() -> None:
+    # Every leftover producer except `already_dismissed` credits per read
+    # (`identified_alert_rules`), not only the shapes this call has tapped -- but a wider declared
+    # sibling nesting with an already-dismissed narrower shape (`_resolve_alert_rule`'s own
+    # reverse-containment test) reaches `already_dismissed` too, with its own extra label still on
+    # the read (BE-0418 review finding). Round 0 taps the narrower shape ("A"/"B"); `settle()` then
+    # renders "C", completing the wider sibling's own shape ("A"/"B"/"C") without it ever being
+    # tapped -- both nest with the dismissed shape, so `_resolve_alert_rule` excludes both and
+    # `probe_native` answers "already_dismissed", with "C" the only label bare `dismissed_native`
+    # would leave stranded and misname as an alert no rule identifies.
+    narrow = ResolvedAlertRule(identifying_labels=frozenset({"A", "B"}), tap_label="A")
+    wide = ResolvedAlertRule(identifying_labels=frozenset({"A", "B", "C"}), tap_label="A")
+    driver = _fake_with_alert(["A", "B"])
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:
+            driver.system_alert_buttons = [_button("A"), _button("B"), _button("C")]
+
+    guard = AlertGuardConfig(rules=[narrow, wide])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    # "C" is a rule *does* identify (the wider sibling), so it is never named as unhandled; once the
+    # leftover is correctly empty, the final round's own exhaustion note fires instead and withdraws
+    # the narrow shape's own tap -- this call never actually saw "A"/"B" close, only "C" newly
+    # rendering alongside them, which is exactly the evidence the exhaustion note is for.
+    assert "C" not in guard.blocked_note
+    assert guard.blocked_note == uncleared_prompt_note("A")
+    assert not cleared and alerts == []
+
+
 def test_the_end_of_step_guard_names_a_co_present_alert_on_a_dismissing_final_round() -> None:
     # The "dismissed" branch used to clear `note` unconditionally, the only round kind that
     # touched `note` without computing the leftover first -- so a co-present alert no rule

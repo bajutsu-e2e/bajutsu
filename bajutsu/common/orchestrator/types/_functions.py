@@ -41,10 +41,13 @@ def alert_block_note(buttons: Sequence[str]) -> str:
     `already_dismissed`, `"unhandled"`, or raced-`"absent"` round (`subtract_labels`) finds beyond
     the shapes that round accounted for (`AlertGuardConfig.__call__`, BE-0418) — a fresh dismissal
     computes it too, since the alert it just tapped is never the only thing `buttons` enumerates.
-    Three of those four credit per *read* — every rule `identified_alert_rules` resolves on it, not
-    only the shapes this call has tapped — so a second, *declared* prompt co-present on the same
-    read is subtracted too rather than named as one no rule identifies; `already_dismissed` alone
-    credits the tapped shapes only, since every rule identified there is already one of them.
+    All four credit per *read* — every rule `identified_alert_rules` resolves on it, not only the
+    shapes this call has tapped — so a second, *declared* prompt co-present on the same read is
+    subtracted too rather than named as one no rule identifies. `already_dismissed` needs this too,
+    not only the other three: a wider declared sibling nesting with an already-dismissed narrower
+    shape (`_resolve_alert_rule`'s own reverse-containment test) reaches `already_dismissed` with
+    its own extra label still on `buttons`, and crediting only the tapped shapes there would report
+    that label as one no rule identifies, when a rule does identify it (BE-0418 review finding).
     `_AlertGuardGate._observe_native`'s `"unhandled"` and raced-`"absent"` branches
     (`waits/_alert_guard_gate.py`) pass a leftover credited that same per-read way.
     Not-yet-answered is weaker than "no rule accounts for it": a label two rules both name can
