@@ -145,8 +145,9 @@ Xcode 26.6, on the one Mac this investigation had access to (Apple silicon, an M
 | `XCUIElement.tap()` on the handle-resolved cell | handle | `element vanished (stale handle)`, reproducible after the driver's own stale-retry loop is exhausted |
 | `XCUIElement.press(forDuration:)` on the same handle, 0.05 s and 0.4 s | handle | Same `stale handle` failure at both durations |
 | A raw coordinate tap at the cell's live frame centre (the existing `/tap` endpoint's `point` field — already used by the DSL's `tapPoint` action, so no new endpoint was even needed for this attempt) | coordinate | No error, but no cell is marked selected either — the tap is accepted and does nothing observable |
+| A coordinate *press* at the same point, 0.15 s (`XCUICoordinate.press(forDuration:)` — the same primitive [BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md) uses for the browser's frame-centre tap, extended to `tapPoint` and prototyped for this check) | coordinate | Same as the plain coordinate tap: accepted, no cell marked selected |
 
-The same three attempts were repeated on both an iOS 26.5 Simulator and an iOS 18.6 Simulator with
+The first three attempts were repeated on both an iOS 26.5 Simulator and an iOS 18.6 Simulator with
 identical results, which rules out an iOS-version regression as the cause. A structurally identical
 tap against a *non-recycled* control — `Cancel`, in the same picker, at the same moment — succeeds
 every time by the plain handle-based path (Motivation), so whatever is failing is specific to the
@@ -165,10 +166,12 @@ route around this.
 
 **This is why the item is deferred rather than implemented.** Determinism (prime directive 2) rules
 out shipping a step whose one essential action does not work on the architecture most contributors
-now run — an Apple silicon Mac. Resuming this item needs one of: a fix or documented workaround from
-Apple, a still-untried actuation technique that does register a selection, or a deliberate decision
-to scope `selectPhotos` to real devices / Intel Simulators only, none of which this investigation
-found.
+now run — an Apple silicon Mac. The fourth attempt closes off the most obvious remaining avenue:
+[BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md)'s
+own fix, generalized from a tap to a press, still does not reach this collection view. Resuming
+this item needs one of: a fix or documented workaround from Apple, a still-untried actuation
+technique that does register a selection, or a deliberate decision to scope `selectPhotos` to real
+devices / Intel Simulators only, none of which this investigation found.
 
 The confirm-button half of the plan is unaffected by this and is kept for whoever resumes the
 item: resolve it **structurally**, not by its label — the one button inside the `Photos` navigation
@@ -256,9 +259,11 @@ none has been merged either. All four wait on Unit 3.
 Log:
 
 - 2026-09-16 — investigated Unit 3 against the showcase app (Xcode 26.6, iOS 26.5 and iOS 18.6
-  Simulators, Apple silicon Mac); every actuation technique tried failed to select a cell. Deferred
-  the item rather than shipping the other three units alone. No PR: nothing merges from an item
-  with no working core mechanism.
+  Simulators, Apple silicon Mac); every actuation technique tried, including a fourth prototyped
+  after the first pass (a coordinate press, `tapPoint`'s `duration` extended and tested, then
+  reverted since it did not unblock the item), failed to select a cell. Deferred the item rather
+  than shipping the other three units alone. No PR: nothing merges from an item with no working
+  core mechanism.
 
 ## References
 
