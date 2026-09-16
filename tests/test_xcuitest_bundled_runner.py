@@ -623,23 +623,22 @@ def test_ensure_fresh_rebuilds_only_once_under_concurrent_callers(
         _bundled_runner.ensure_bundled_runner_fresh()
 
     threads = [threading.Thread(target=_call) for _ in range(2)]
-    # A watchdog, not a soft timeout check: a `join(timeout=...)` that merely timed out would return
-    # control to this test while its thread keeps running, letting it outlive monkeypatch's teardown
-    # and call the *real* subprocess.run/shutil.which against this checkout's real BajutsuKit source —
-    # silently shelling out to a real `xcodebuild`/`make runner-bundle` from a test that looks fully
-    # mocked (this is exactly what leaked a real `bajutsu/_xcuitest_runner/` onto disk under a loaded
-    # full-suite run). `os._exit` kills every thread in the process immediately, so a genuine deadlock
-    # here crashes the whole worker loudly instead of leaving a zombie thread to race later tests.
-    watchdog = threading.Timer(30, os._exit, args=(1,))
-    watchdog.daemon = True
-    watchdog.start()
-    try:
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()  # unconditional: only returns once the thread has actually finished
-    finally:
-        watchdog.cancel()
+    for t in threads:
+        t.start()
+
+    # A single monotonic deadline for both joins — comfortably above the barrier's own 30s timeout
+    # so a stalled rendezvous still fails ordinarily via BrokenBarrierError inside the thread, rather
+    # than racing a background watchdog. Only once every thread has had its full share of that budget
+    # and `is_alive()` confirms it is still running do we treat it as a genuine deadlock: `os._exit`
+    # then kills every thread in the process immediately, so a real hang can never survive past this
+    # point (and past monkeypatch's teardown) to call the *real* subprocess.run/shutil.which against
+    # this checkout's real BajutsuKit source — exactly what leaked a real `bajutsu/_xcuitest_runner/`
+    # onto disk under a loaded full-suite run.
+    deadline = time.monotonic() + 90
+    for t in threads:
+        t.join(timeout=max(0.0, deadline - time.monotonic()))
+    if any(t.is_alive() for t in threads):
+        os._exit(1)
 
     assert calls == [["make", "runner-bundle"]]
 
