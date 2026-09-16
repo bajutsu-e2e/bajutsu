@@ -411,8 +411,9 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   セッションになるかは `allowedRepositories` が決め、判定はトークンの `repository` クレームへの完全一致
   で行います（`sub` はパースしません）。エントリごとに `environment` / `ref` / `workflowRef` で絞り込め
   ます。マシンセッションは人間の OAuth セッション、worker の共有トークンに次ぐ3つ目の呼び出し元です。
-  ロールではなく `gate.py` の明示的なエンドポイント許可リスト（3種類のアーティファクトのアップロード、
-  `POST /api/run`、自 org の run の読み取り）で権限が決まります。リポジトリ単位で失効でき、データベース
+  ロールではなく `gate.py` の明示的なエンドポイント許可リスト（`GET /api/artifacts/exists` による
+  アーティファクトの有無の確認、3種類のアーティファクトのアップロード、`POST /api/run`、自 org の run と
+  発行したジョブの読み取り）で権限が決まります。リポジトリ単位で失効でき、データベース
   なしのデプロイやセッションの有効期限を守れないストアでは拒否されます
 - **target を横断する比較ダッシュボード**（BE-0226。BE-0404 で軸を target に付け替え）: `serve` の **Comparison** タブが、bind している config の target を pass 率、flaky 率、p50/p95 の run 所要時間、そして target ごとのトレンドスパークラインで横並びに順位付けします。BE-0102 の config 単位の集計を target ごとに 1 回ずつ実行して再利用します（`GET /api/metrics/targets`）。BE-0102 と同じく読み取り専用でアドバイザリです。行を選ぶと、その target の run 履歴が読み取り専用で開きます。ポインタでもキーボードでも到達できます。この画面は何も書き換えません。target は binding ではないので、有効にするものが存在しないからです
 - AI **crawl**（`crawl/`）: アプリを自律的に幅優先で探索し、スクリーンマップ（`screenmap.json`）を作ります
