@@ -778,8 +778,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   (`notifications` and `tracking` both grant `"Allow"`), so a round reading one's still-fading
   buttons alongside the other's now-live ones fails the per-label uniqueness check for either. That
   collision can be this call's own first round, before any native alert has been dismissed, since
-  both alerts can already be on the screen. Only settling past the fade lets the live one read
-  uniquely and resolve on a later round of its own — the note such a round reports filters out one
+  both alerts can already be on the screen. Settling is what buys a later read that no longer holds
+  both at once, whether by an already-answered alert's fade draining or by the other alert leaving
+  the surface, so the live one reads uniquely and resolves on a round of its own. The note such a
+  round reports filters out one
   occurrence per label this call has already answered, so the alert already cleared is not re-named
   while a second, still-live alert's own copy of a shared label is. With no native alert dismissed
   and no native rule's shape present in the read, there is no fade of this call's own making to
@@ -821,12 +823,16 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   resolved fresh against that round's own read rather than a stale record of an earlier, already-
   tapped shape, so a call whose every round races the same alert away still names it instead of
   falling silent, and one that raced away only after cleanly tapping a *different* alert names the
-  rule that actually raced, not the unrelated one it already tapped (BE-0418 review finding). An
+  rule that actually raced, not the unrelated one it already tapped. An
   in-tree sheet the
   call tapped carries it too, once the bound is spent with the sheet still enumerable — on the
   shape's own labels alone, not the rest of the tree's own identity: a sheet that accepts a tap
   without closing can re-present itself with a validation error, which changes the tree by
-  construction, so requiring the tree to read back unchanged would rule out exactly that case. An
+  construction, so requiring the tree to read back unchanged would rule out exactly that case. That
+  check ranges over every shape this call has tapped from the tree, not only the most recently
+  tapped one: an earlier sheet that never closed would otherwise go unreported the moment a later,
+  different sheet is tapped and genuinely clears, since only the latter's own shape was ever
+  compared. An
   app screen the closing sheet revealed can coincidentally carry the same button labels and get
   misnamed as the sheet that never closed, but `exclude` already keeps this call from tapping either
   one again regardless of which read it takes, so the misreport costs only an imprecise note, never
@@ -837,7 +843,18 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   not so durable, and for two different reasons depending on what that later round did: dismissing
   an unrelated native alert recomputes the note fresh against that round's own buttons rather than
   preserving whatever it held before, while a round whose own probe proves the surface absent clears
-  it outright — a deterministic fact the diagnosis cannot outlive. XCUITest itself intervenes on an
+  it outright — a deterministic fact the diagnosis cannot outlive. A dismissal either diagnosis
+  later names as never having landed has its own `AlertEvent` withdrawn from the caller's report at
+  that point, rather than left standing beside a note that says the opposite: a tap is recorded the
+  moment it lands, which is the only moment it can be, since nothing then distinguishes a tap that
+  lands from one the app never acts on, and reaching the round bound with the same shape still
+  reading back is where that becomes knowable. Leaving the record in place would ship two
+  contradictory facts about one prompt — a dismissal the report counts and a note saying that same
+  prompt was never cleared — and spend the caller's own one-shot retry against a screen this call
+  already concluded is still blocked by the very prompt it would otherwise report as dismissed.
+  What the call returns is computed from the report's own net change rather than tracked as the
+  rounds go, so an earlier, genuinely cleared dismissal this call never revisits still counts even
+  when a later one on the same or the other surface is the one taken back. XCUITest itself intervenes on an
   alert that interrupts an in-flight interaction *before* this guard ever polls, and left alone
   answers with the alert's own default button — silently overriding a scenario's policy with
   nothing in the report. The runner therefore installs

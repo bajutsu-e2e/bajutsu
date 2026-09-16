@@ -264,8 +264,9 @@ Log:
   coverage-floors` as each round landed. Three dropped by 0.01-0.03 points each, every one traced
   via `coverage.json`'s own `missing_lines`/`missing_branches` to a pre-existing, unrelated gap
   becoming a marginally larger share of a slightly smaller file rather than new untested logic:
-  `loop/_functions.py` (97.41 → 97.38), `loop/_step_runner.py` (98.29 → 98.28, the original
-  multi-round loop), and `waits/_functions.py` (97.9 → 97.88, relocating `_tree_signature` to the
+  `loop/_functions.py` (97.41 → 97.38), `loop/_step_runner.py` (98.29 → 98.28, whose own guard
+  block shrank once the settle moved inside `__call__`), and `waits/_functions.py` (97.9 → 97.88,
+  relocating `_tree_signature` to the
   shared `drivers/elements.py` as the public `tree_signature`). The other two rose over the same
   span rather than dropping: `waits/_alert_guard_gate.py` (97.07 → 97.36) and `types/_functions.py`
   (97.46 → 97.75), a later round's shared-helper extraction (`identified_alert_rules`,
