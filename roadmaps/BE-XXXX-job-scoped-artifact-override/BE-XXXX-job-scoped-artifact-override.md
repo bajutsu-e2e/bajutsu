@@ -110,6 +110,37 @@ names nothing therefore behaves exactly as the same request does before this ite
 fallback is what keeps the two fields independent. CI that rebuilds the app but not the scenarios
 names `binaryArtifact` alone, and the pull request that adds a scenario names both.
 
+Naming a `scenariosArtifact` changes where the requested scenario is **resolved from**, and that is
+the part of this leg with no counterpart in the binary one. `start_run` today resolves the request's
+`scenario` against the bound source before any job exists: `scope.runnable(...)` globs the bound
+tree's scenarios directory, or, on a hosted deployment, reads the text out of the org's scenario
+store and ships it as `materials`. A scenario that lives only in the override would fail that lookup
+with the existing 400, and the pull request that adds a scenario is exactly that case — so without
+this sub-unit the leg closes nothing. When the request names a `scenariosArtifact`, the scope
+therefore resolves against **the override's own entry listing** instead. Serve can read that listing
+without a worker: `bind_artifact` already wrote the artifact into serve's content-addressed cache
+(`local_artifact_dir`). The confinement that makes the lookup safe is unchanged — the client string
+is reduced to a basename and checked by `valid_scenario_ref` against a trusted listing, so no
+client-controlled value becomes a path (BE-0051).
+
+Two consequences follow, and both are design, not detail. First, the resulting `Runnable` carries
+**no** `materials` for the scenario: the worker receives the whole artifact through the lease and
+places it, rather than receiving one scenario's text inline. `start_run` today derives
+`on_worker` from `bool(materials)`. That flag must come from the job's topology instead: a job
+with an override is workspace-relative even though it ships no materials. Second, this item
+**requires the `scenarios` override to be a zip** and refuses a single YAML file with a clear error.
+A zip's entries carry their own names, which is what the request's `scenario` is matched against. A
+single-file artifact carries no name at dispatch: the request fields hold a digest and nothing else,
+and compose's own single-file path only works because `POST /api/compose` takes a separate filename
+alongside the bytes.
+
+The two fields also stay at the *editor* role that `POST /api/run` already requires. They do not
+rise to the *admin* role that guards the binding and artifact-upload endpoints. The reason those paths sit at admin is not that they choose a binary — it is that
+they **repoint what future runs serve**, for every caller in the org. A per-job override chooses for
+one job and writes no shared record, which is the property this whole item is built on. Gating the
+fields at admin would therefore charge a per-job choice the price of a shared-state change, and it
+would put the override out of reach of the same CI caller the Motivation is about.
+
 The dispatch-side gate cannot reuse `artifact_exists` as it
 stands: that helper deliberately reads a store error as "not confirmed present" and returns the same
 `200 {"exists": false}` a real miss returns, so a gate built on it unchanged would read a transient
@@ -160,7 +191,7 @@ Three dispatch topologies exist, and an override leg reaches each one differentl
 |---|---|---|
 | `run` on a hosted deployment (BE-0106's `DbQueueExecutor`) | placed at the job's own target `appPath`, inside a job-scoped workspace | placed into that target's scenarios directory, in the same workspace |
 | `run` on a single-process `serve` (`LocalExecutor`) | refused | refused |
-| `run-set` cloud-batch fan-out ([BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md)) | resolved to serve's own artifact-cache path | refused |
+| `run-set` cloud-batch fan-out ([BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md)) | fetched by the worker and staged under a platform-correct filename, which `BatchRequest.app_path` names | refused |
 
 The hosted worker topology is the one this item exists to serve, and the rest of this unit describes
 it before returning to the two refusals.
@@ -188,13 +219,20 @@ an `Upload`'s tree, or a Git checkout, would otherwise have placed there. And it
 path a materials-based job — one with no `bundle` at all — has ever had for a binary it does not
 already carry on disk.
 
-The scenarios artifact lands in the directory that target's config names. This item **replaces**
-that directory's contents rather than merging into them. `materialize_composition` already handles
-both artifact shapes, and the override reuses each unchanged. A zip is extracted at the root. A
-single YAML file is written under a confined `*.yaml` basename (`_safe_scenario_name`) that the
-runner's listing will find. Replacement is what makes the run match the branch that asked for it. A
-merge would leave a scenario the branch deleted still sitting in the directory. A fan-out over every
-scenario in the target's directory would then run it, and the run would correspond to no commit.
+The scenarios artifact lands in the directory that target's config names, and this item **replaces**
+that directory's contents rather than merging into them. Replacement needs its own step, which is
+worth stating plainly because a reader may expect it to come for free. It does not.
+`extract_bundle` writes a zip's entries into a destination and deletes nothing.
+`materialize_composition` ends up with a replaced tree because it extracts into a freshly
+created empty directory. On the worker the destination already holds whatever the bound tree put
+there. The worker therefore removes the target's scenarios directory and recreates it empty before
+extracting, under the same BE-0051 confinement every other placement gets.
+
+Replacement is what makes the run match the branch that asked for it. A merge would leave a scenario
+the branch deleted still sitting in the directory. A fan-out over every scenario in the target's
+directory would then run it, and the run would correspond to no commit. The deletion is safe to
+state this bluntly because the directory being emptied is inside the job's own workspace, never the
+bound tree: the workspace key below gives an overridden job a tree of its own.
 
 That covers the app under test, and on iOS the app is not the only product a run installs: XCUITest
 also needs a runner. The override does not carry one, and for the common case it does not need to.
@@ -225,19 +263,29 @@ against it with nothing announcing it. The overrides therefore participate in th
 | materials-based job, one or both overrides | a directory keyed by `(materials identity, override identity)`, instead of the worker's shared working directory |
 | materials-based job, no override | the worker's shared working directory — exactly today, unchanged |
 
-The **override identity** in that key is a digest over the named legs. It is built the way
+The **override identity** in that key is a digest over the named legs, built the way
 `_composition_id` already builds a compose cache key: the shas joined in a fixed kind order, with an
 absent leg joining as an empty segment. No real 64-character digest can collide with that empty
-segment. A single-file scenarios artifact's display name salts the digest, since the same bytes under
-two names must key two trees. Reusing that construction is what makes the key cover a materials-based
-job's scenarios too, rather than the binary sha alone.
+segment. The **materials identity** beside it is a digest over what a materials-based job already
+carries in its own spec — its config text and its scenario text — which is what keeps two such jobs
+apart when their configs name different `appPath`s.
+
+Keying the job's tree this way must not cost the bundle a second download, and stated carelessly it
+would. `_bundle_workspace` keys the bundle tree by bundle id today precisely "so a second job off
+the same bundle reuses it and fetches nothing", and folding the override into *that* key would make
+every new build a fresh key — a full re-fetch and re-extract of the bundle zip on the exact workload
+this item exists to speed up. The two keys therefore stay separate. The bundle cache keeps its
+bundle-id key and is still fetched once. The job's tree is a per-override directory built **from**
+that cached bundle, so an override costs a local copy rather than a network round trip. The disk
+cost it does inherit is BE-0413's, which `docs/self-hosting.md` already tells an operator to manage
+by pruning the bundle cache.
 
 A job that names no override keeps today's key exactly, so nothing about existing behavior changes;
 only a job carrying an override gets a tree of its own. That makes the placement job-scoped by
-construction, with no deletion or re-placement step for the worker to get right. This follows
+construction, and it is what lets the scenarios step above empty a directory without ever touching
+the bound tree. This follows
 BE-0413's own principle that an artifact's identity is a digest of its contents, so two different
-binaries are two different trees; it also inherits BE-0413's disk cost, which `docs/self-hosting.md`
-already tells an operator to manage by pruning the bundle cache.
+binaries are two different trees.
 
 A local, single-process `serve` is a different topology: it runs the job itself, in the operator's own
 project directory — `_register_and_dispatch` freezes `job.cwd` from the binding in every topology, so
@@ -252,14 +300,25 @@ has direct filesystem access and can point `appPath` wherever they want without 
 the item scoped to the topology whose problem it exists to solve — the hosted split, where a worker
 runs the job and serve owns the workspace.
 
-A `run-set` fan-out is the third topology, and it takes the two legs differently.
-`start_run_set` already resolves `appPath` on the
-serve process itself and hands it to the cloud-batch provider as `BatchRequest.app_path`; when the job
-carries a `binaryArtifact`, that path resolves instead to the override's location inside serve's own
-content-addressed artifact cache (`local_artifact_dir`, where `bind_artifact` already wrote it), and the
-provider reads it there in-process. This branch places nothing at the config's `appPath` and mutates
-no tree — which is also why the `LocalExecutor` refusal above does not apply to it: the `BatchRequest`
-check settles that ahead of the executor-based refusal, not after it.
+A `run-set` fan-out is the third topology, and it takes the two legs differently. `start_run_set`
+resolves `appPath` on the serve process and hands it to the cloud-batch provider as
+`BatchRequest.app_path`. The tempting move is to point that field at the override inside serve's own
+artifact cache and call the branch finished. That does not work on the topology this item targets,
+and the reason is worth naming because the field's name suggests otherwise: `BatchRequest` is
+serialized into the job spec and rebuilt on the **worker**, so a hosted batch job runs the provider
+there, not in the serve process. A path into serve's `local_artifact_dir` does not exist on that
+worker, and the upload would fail on the cloud host with a missing file — the opaque install-time
+failure this item refuses everywhere else.
+
+The override therefore reaches a `run-set` job the same way it reaches every other hosted job. The
+lease signs `binary_url`, and the worker downloads and verifies the bytes before building its
+`BatchRequest`. The worker stages them under a filename carrying the suffix the target's platform
+requires, `.apk` for Android and `.ipa` for iOS, and `app_path` names that staged file. The suffix is
+not cosmetic: the Device Farm upload is created with `name=app_path.name` under `ANDROID_APP` or
+`IOS_APP`, which reject a name without the matching extension, and the artifact cache stores an entry
+under its bare sha256. The platform decides the suffix, never a client-supplied value. This branch
+still places nothing at the config's `appPath` and mutates no tree, which is why the `LocalExecutor`
+refusal does not reach it.
 
 A `scenariosArtifact` on `run-set` is refused instead. The reason is the packaging model rather
 than a choice about scope. The provider packages `work_dir` at the zip root, so `BatchRequest` carries
@@ -291,6 +350,16 @@ The gate covers each seam without a network or a Simulator:
   org's binding.
 - A request naming `binaryArtifact` alone keeps resolving its scenarios through the binding, and one
   naming `scenariosArtifact` alone keeps resolving its `appPath` through the binding.
+- A request naming a `scenariosArtifact` runs a scenario that exists **only** in that artifact and
+  not in the org's scenario store or the bound tree — the pull-request case, which returns 400 today.
+- That same job ships no scenario `materials`, and still runs workspace-relative, so the flag driving
+  workspace-relative paths does not regress to `bool(materials)`.
+- A scenario name absent from the override's listing is refused with the existing confinement error,
+  and a name carrying a path separator is reduced to its basename before the lookup.
+- A single-YAML `scenarios` override is refused with a clear error rather than landing under a
+  generated name the request's `scenario` could never match.
+- A job carrying either override field is accepted at the *editor* role, the same role
+  `POST /api/run` already requires.
 - `worker_lease` signs `binary_url` and `scenarios_url` for a job carrying the matching override,
   scoped to the leased job's org.
 - A job carrying an override whose lease signs no url for it fails immediately, the same way
@@ -302,8 +371,10 @@ The gate covers each seam without a network or a Simulator:
 - A `.app` zip-bundle artifact extracts into a directory at `appPath` rather than landing as a zip
   file.
 - A zip `scenarios` override replaces the target's scenarios directory, so a scenario present in the
-  bound tree but absent from the override does not run.
-- A single-YAML `scenarios` override lands under a confined `*.yaml` name the runner's listing finds.
+  bound tree but absent from the override does not run — the case a plain extraction would miss,
+  since it deletes nothing.
+- A bundle job carrying an override reuses the cached bundle rather than re-fetching its zip, so the
+  per-override tree costs no second download.
 - A job with both a bound `Upload` and the two overrides installs the overrides, not the bound tree's
   own binary and scenarios.
 - Two concurrent jobs naming different artifacts each install their own, and neither changes the org's
@@ -320,8 +391,9 @@ The gate covers each seam without a network or a Simulator:
   for good.
 - A job dispatched on a `LocalExecutor` deployment gets either override field refused, leaving the
   operator's `appPath` binary and scenarios directory untouched.
-- An overridden `run-set` fan-out hands the provider the artifact-cache path, not the config-derived
-  one, leaving `appPath` untouched.
+- An overridden `run-set` fan-out builds `BatchRequest.app_path` on the worker from the staged
+  override, leaving the config's `appPath` untouched, and the staged filename carries the target
+  platform's `.apk` or `.ipa` suffix so the cloud upload is accepted.
 - A `run-set` request carrying a `scenariosArtifact` is refused, with the same posture the existing
   materials refusal takes.
 
@@ -335,6 +407,9 @@ override fields and what a job's manifest records for them.
 | Name an artifact by a raw object-storage path (`prefix/org/<path>`), trusted by location alone | Drops content-addressing: the object at that path can change after the fact, so a run's manifest can no longer say which bytes it installed. It also reopens the path-validation surface BE-0413's sha-revalidation and BE-0051's confinement already close, for no capability a sha256 reference does not already give. |
 | Override the `binary` leg alone, leaving scenarios to a rebind | Closes only half of the motivating case. A pull request that changes code commonly adds or edits a scenario in the same commit, so its CI run would still have to rebind the org's active config for the scenarios — reinstating both contention on the deployment fallback binding and the write into the org's remembered configuration that this item exists to remove. |
 | Extend the per-job override to the `config` leg as well | The config decides which targets exist, what each target's `appPath` is, and where its scenarios live, so overriding it changes the very inputs the other two legs and the three topologies resolve against. A job's named target might not exist in the overridden config, and `start_run_set` resolves `appPath` from the config on the control plane before any worker is involved. Both need answers this item's motivation does not yet demand. The two fields here are optional and independent, so a `configArtifact` stays a purely additive change for a later item. |
+| Accept a single-YAML `scenarios` override, as `POST /api/compose` does | Compose can take one YAML file because the same request carries its filename alongside the bytes; the dispatch fields carry a digest and nothing else. A single-file override would therefore have to land under a generated name, which the request's own `scenario` value could never match — so the job would resolve to a scenario that is not the one the caller uploaded. Requiring a zip keeps the entry names inside the artifact, where the resolution needs them. |
+| Gate the two override fields at the *admin* role, matching the artifact and binding endpoints | Those endpoints sit at admin because they repoint what *future* runs serve for the whole org, not because they choose a binary. A per-job override chooses for one job and writes no shared record. Charging it the price of a shared-state change would also put it out of reach of the CI caller this item is written for, which authenticates against `POST /api/run`. |
+| Fold the override identity into the bundle cache key | The bundle tree is keyed by bundle id today so a second job off the same bundle fetches nothing. Folding the override in makes every new build a distinct key, forcing a full re-download and re-extract of the bundle zip on precisely the CI workload this item is meant to serve. Keeping the two keys separate buys the same isolation for a local copy. |
 | Merge a `scenarios` override into the bound tree's directory instead of replacing it | A merge keeps whatever the bound tree held, so a scenario the branch deleted would still be present, and a fan-out over the target's whole directory would run it. The run would then correspond to no commit, which is the opposite of what a CI verdict needs. |
 | Write a `scenarios` override under the `run-set` package root instead of refusing it | The cloud-batch provider packages one directory at the zip root, and `start_run_set` already refuses a materials-backed scenario rather than reaching outside it. Adding a second, quieter path for the override leg would leave two rules where one holds now. The packaging step both cases want is its own item. |
 | Require a rebind (`bind`/`compose`) before every dispatch, as today's two paths do | Makes the org's active config the unit of change: every sessionless CI caller contends for the one deployment fallback binding instead of each getting the artifacts its own job asked for, and the bind additionally writes the org's remembered configuration, which a member's next session inherits. |
@@ -351,10 +426,13 @@ override fields and what a job's manifest records for them.
 
 - [ ] Unit 1 — `binaryArtifact` and `scenariosArtifact` request fields, each optional and
       existence-checked. Both travel on `Job` independent of `Job.bundle`. An unnamed leg still
-      resolves through the org's binding.
-- [ ] Unit 2 — Sign and deliver each named override on the worker topology, resolve a binary override
-      from serve's own artifact cache for a `run-set` fan-out, refuse a scenarios override there and
-      both on a `LocalExecutor` deployment, with provenance recorded on the run's manifest.
+      resolves through the org's binding. A named `scenariosArtifact` moves the request's `scenario`
+      lookup onto the override's entry listing, ships no scenario materials, and requires a zip.
+- [ ] Unit 2 — Sign and deliver each named override on the worker topology, clearing the target's
+      scenarios directory before extracting, and keying the job's tree separately from the bundle
+      cache. Stage a `run-set` binary override on the worker under a platform-correct filename.
+      Refuse a scenarios override there, and refuse both on a `LocalExecutor` deployment, with
+      provenance recorded on the run's manifest.
 - [ ] Unit 3 — Tests for each seam, plus the `self-hosting` / `cli` documentation.
 
 ## References
@@ -381,5 +459,5 @@ override fields and what a job's manifest records for them.
   — why a Simulator run's runner needs no delivery, so this item's overrides cover the app and its
   scenarios alone.
 - [BE-0336 — serve-driven Device Farm dispatch with bounded per-scenario fan-out](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md)
-  — the cloud-batch fan-out `start_run_set` drives, whose packaging model takes a binary override from
-  serve's artifact cache and refuses a scenarios override.
+  — the cloud-batch fan-out `start_run_set` drives, whose `BatchRequest` is rebuilt on the worker and
+  whose packaging model is why a scenarios override is refused there.
