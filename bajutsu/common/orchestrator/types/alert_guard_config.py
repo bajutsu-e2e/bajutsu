@@ -1068,12 +1068,17 @@ class AlertGuardConfig:
                 if not buttons:
                     # And the shape `_bound_exhaustion_note` keys on, for the same reason: this read
                     # is proof the tap that recorded it landed, so a later round must not name it as
-                    # one that never cleared (BE-0418 review finding).
+                    # one that never cleared (BE-0418 review finding). `native_dismiss_event` goes
+                    # with it: every withdrawal path takes the event, not the shape, and this read is
+                    # equally proof that event's own tap landed — carrying it forward would let a
+                    # later branch withdraw an already-landed dismissal from `alerts` on some future
+                    # exhaustion note this round cannot foresee (BE-0418 review finding).
                     dismissed_native, native_dismiss_shape, native_dismiss_label = (
                         frozenset(),
                         None,
                         None,
                     )
+                    native_dismiss_event = None
                 # The one alert this round's own probe just proved gone (the race above) is not in
                 # `dismissed_native` either — nothing was actually dismissed — so a leftover
                 # computed against `dismissed_native` alone still lets that alert's own labels
