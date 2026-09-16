@@ -957,7 +957,9 @@ expect:
 
 ### コンポーネント（`use` → 再利用ステップ）
 
-**コンポーネント**は別ファイルで、`params` のリストと、それを `${params.<name>}` で参照する `steps` のリストからなります。`use` ステップが `with` で params を束縛して呼び出します。`use` は **コンパイル時マクロ**であり、`expand_components`（`scenario/expand.py`）が run の前に、コンポーネントの置換済みステップへ置き換えます。展開は再帰的で、コンポーネントが別のコンポーネントを `use` でき、深さは 25 までです。params 不足、未知の params、未宣言を指す残留 `${params.*}`、循環参照ではエラーになります。`use` は run に残らないため、決定性には影響しません。展開の対象は、シナリオ自身の `steps` と、[`interrupts`](#interrupts予測できない差し込み画面への対処) の各エントリの回復用 `steps` です。
+**コンポーネント**は、`params` のリストと、それを `${params.<name>}` で参照する `steps` のリストからなります。`use` ステップが `with` で params を束縛して呼び出します。`use` は **コンパイル時マクロ**であり、`expand_components`（`scenario/expand.py`）が run の前に、コンポーネントの置換済みステップへ置き換えます。展開は再帰的で、コンポーネントが別のコンポーネントを `use` でき、深さは 25 までです。params 不足、未知の params、未宣言を指す残留 `${params.*}`、循環参照ではエラーになります。`use` は run に残らないため、決定性には影響しません。展開の対象は、シナリオ自身の `steps` と、[`interrupts`](#interrupts予測できない差し込み画面への対処) の各エントリの回復用 `steps` です。
+
+コンポーネントは**専用のファイル**に置けます。スイート全体から再利用できます。
 
 ```yaml
 # login.component.yaml: コンポーネントファイル（単一マッピング。別ファイルとして読み込む）
@@ -974,6 +976,44 @@ steps:
   - use: { component: login.component.yaml, with: { user: alice, pass: hunter2 } }
   - tap: { id: home.tab }
 ```
+
+#### ファイルスコープのコンポーネント（`components:`）
+
+1つのファイルの**中だけ**で使い回すステップ列に、専用のファイルは要りません。シナリオファイルの先頭の `components:` に宣言し、下のシナリオから名前で呼び出せます（[BE-0422](../../roadmaps/BE-0422-inline-scenario-components/BE-0422-inline-scenario-components.md)）。コンポーネントは、それを使うシナリオの隣に並びます。1つのファイルでしか使わない名前のために、スイートのディレクトリ一覧が増えることもありません。
+
+```yaml
+# シナリオファイル1つだけ。別のコンポーネントファイルは要らない
+components:
+  search:
+    params: [query]
+    steps:
+      - type: { text: "${params.query}", into: { id: home.search }, submit: true }
+
+scenarios:
+  - name: search returns dogs
+    steps:
+      - use: { component: search, with: { query: dog } }
+    expect:
+      - label: { sel: { id: home.status }, equals: "1 result" }
+  - name: search returns cats
+    steps:
+      - use: { component: search, with: { query: cat } }
+    expect:
+      - label: { sel: { id: home.status }, equals: "2 results" }
+```
+
+`components:` を持てるのは、シナリオファイルのうち `{description, scenarios}` のマッピング形式だけです。シナリオの素のリストとして書いたファイルは、先にマッピング形式へ書き換えます。
+
+**どちらとして解決するかは ref 自身の形が決めます。** `component:` フィールド1つで両方をまかない、既存のシナリオはそのまま動きます。
+
+| ref | 解決先 |
+|---|---|
+| `/` を含む、または `.yaml` / `.yml` で終わる | **コンポーネントファイル**。シナリオファイルからの相対で解決し、スイートルートの内側に閉じ込める |
+| それ以外（素の名前） | **そのファイル自身の `components:`** のエントリ |
+
+`components:` にない素の名前は、ref を名指ししたエラーになります。代わりにファイルを開こうとするフォールバックは起きません。`components:` の有効範囲は**1ファイル**です。ファイルごとに読み、スイートディレクトリをまたいで統合しません。あるファイルで宣言した名前は、隣のファイルからは見えません。ファイルをまたぐ再利用はコンポーネントファイルの役目のままです。コンポーネントファイルへ入ると `components:` は完全に外れます。コンポーネントファイルは `components:` を持たないため、その中の素の `use` は常に未定義です。参照元のファイルが何を宣言していても変わりません。一方、ファイルスコープのコンポーネント自身の steps は宣言元ファイルのスコープで展開されます。別のファイルスコープのコンポーネントを素の名前で `use` できますし、パスでファイルも `use` できます。
+
+`setup` プレリュードもシナリオファイルと同じ形をした文書なので、自分の `components:` を持てます。プレリュードの `use` ステップは、steps が前置される前に、プレリュード自身のスコープで展開されます。呼び出す側のシナリオファイルに同じ名前のエントリがあっても、そちらへ横取りされません。プレリュードの中のパス参照も、呼び出す側ではなくプレリュード自身のディレクトリを基準に解決します。
 
 ### データ駆動シナリオ（`data` / `dataFile`）
 

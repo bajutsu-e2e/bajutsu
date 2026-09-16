@@ -1355,7 +1355,9 @@ A small templating and macro layer wraps the core grammar. It runs **at load tim
 
 ### Components (`use` → reusable steps)
 
-A **component** is a separate file containing a list of `params` and a list of `steps` that reference them as `${params.<name>}`. A `use` step invokes it, binding params via `with`. `use` is a **compile-time macro**: `expand_components` (`scenario/expand.py`) replaces it with the component's substituted steps before the run. Expansion is recursive — a component may itself `use` another, up to depth 25. It raises an error on a missing or unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle. No `use` step survives into the run, so determinism is unaffected. Expansion reaches a scenario's own `steps` and the recovery `steps` of each [`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) entry.
+A **component** is a list of `params` and a list of `steps` that reference them as `${params.<name>}`. A `use` step invokes it, binding params via `with`. `use` is a **compile-time macro**: `expand_components` (`scenario/expand.py`) replaces it with the component's substituted steps before the run. Expansion is recursive — a component may itself `use` another, up to depth 25. It raises an error on a missing or unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle. No `use` step survives into the run, so determinism is unaffected. Expansion reaches a scenario's own `steps` and the recovery `steps` of each [`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) entry.
+
+A component lives in **a file of its own**, reusable across the whole suite:
 
 ```yaml
 # login.component.yaml — a component file (a single mapping, loaded separately)
@@ -1372,6 +1374,44 @@ steps:
   - use: { component: login.component.yaml, with: { user: alice, pass: hunter2 } }
   - tap: { id: home.tab }
 ```
+
+#### File-scoped components (`components:`)
+
+A block reused *inside* one file alone needs no file of its own ([BE-0422](../roadmaps/BE-0422-inline-scenario-components/BE-0422-inline-scenario-components.md)). Declare it under `components:` at the top of the scenario file. The scenarios below it then call it by name. The component sits beside the scenarios that use it. The suite's directory listing gains no entry:
+
+```yaml
+# one scenario file — no separate component file
+components:
+  search:
+    params: [query]
+    steps:
+      - type: { text: "${params.query}", into: { id: home.search }, submit: true }
+
+scenarios:
+  - name: search returns dogs
+    steps:
+      - use: { component: search, with: { query: dog } }
+    expect:
+      - label: { sel: { id: home.status }, equals: "1 result" }
+  - name: search returns cats
+    steps:
+      - use: { component: search, with: { query: cat } }
+    expect:
+      - label: { sel: { id: home.status }, equals: "2 results" }
+```
+
+A scenario file carries `components:` in its `{description, scenarios}` mapping form. A file written as a bare list of scenarios takes the mapping form first.
+
+**The ref's own shape decides how `use` resolves.** One `component:` field serves both kinds. Every existing scenario keeps working unchanged:
+
+| Ref | Resolves as |
+|---|---|
+| holds a `/`, or ends in `.yaml` / `.yml` | a **component file**, resolved against the scenario file's own directory and confined to the suite root |
+| anything else (a bare name) | an entry in **this file's own `components:`** |
+
+A bare name the map does not define is an error naming the ref. No fallback opens a file. The map is **scoped to one file**. The loader reads it per file and never merges it across a suite directory. A name declared in one file stays invisible from its siblings. Reuse that spans files stays the component file's job. Crossing into a component file drops the map entirely. A component file declares no `components:`, so a bare `use` inside one is always undefined. A file-scoped component's own steps expand in the declaring file's scope. One may `use` another by bare name, or `use` a file by path.
+
+A `setup` prelude is a scenario-file-shaped document, so it may carry its own `components:`. The loader expands a prelude's `use` steps in the prelude's own scope before prepending them. A same-named entry in the calling scenario file cannot capture them. A path ref inside a prelude resolves against the prelude's own directory too, not the calling scenario file's.
 
 ### Data-driven scenarios (`data` / `dataFile`)
 

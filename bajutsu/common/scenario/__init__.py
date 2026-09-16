@@ -17,9 +17,11 @@ from bajutsu.common.scenario.expand import (
 )
 from bajutsu.common.scenario.load import load_component, load_scenario_file, load_scenarios
 from bajutsu.common.scenario.load_expanded import (
+    ComponentResolver,
     contained_ref,
     load_expanded_scenarios,
     load_scenarios_dir,
+    parse_yaml_named,
 )
 from bajutsu.common.scenario.models import (
     ASSERTION_KINDS,
@@ -131,6 +133,7 @@ __all__ = [
     "ClearStatusBar",
     "ClipboardMatch",
     "Component",
+    "ComponentResolver",
     "CountMatch",
     "CountOp",
     "DatetimeValue",
@@ -214,6 +217,7 @@ __all__ = [
     "load_scenario_file",
     "load_scenarios",
     "load_scenarios_dir",
+    "parse_yaml_named",
     "read_csv",
     "redact_totp_secrets",
     "scenario_dict",

@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0422](BE-0422-inline-scenario-components-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0422") |
+| 実装 PR | [#2011](https://github.com/bajutsu-e2e/bajutsu/pull/2011) |
 | トピック | シナリオ記述機能 |
 <!-- /BE-METADATA -->
 
@@ -199,21 +200,21 @@ BE-0174 が閉じたパス封じ込めの論点も呼び戻します。実ファ
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `ScenarioFile` に `components: dict[str, Component]` を追加する
-- [ ] `load_expanded.py` に `ComponentResolver` を追加する。ローカルな `components` マップ、
+- [x] `ScenarioFile` に `components: dict[str, Component]` を追加する
+- [x] `load_expanded.py` に `ComponentResolver` を追加する。ローカルな `components` マップ、
       `root`、`base` ディレクトリに束縛した `resolve` 呼び出し可能オブジェクトを組み立て（裸の名前
       なら束縛したローカルマップ、パス形式なら既存のファイル解決）、自分自身のキャッシュを持ち、
       空のマップに束縛した姉妹オブジェクトのための `for_component_file()` を公開する。
       `load_expanded_scenarios` と `run/cli.py` の `_expand_file` の両方をこれ経由にする
-- [ ] `expand_components` の `expand(steps, stack)` 再帰の中で、パス形式の `ref` が解決された瞬間に
+- [x] `expand_components` の `expand(steps, stack)` 再帰の中で、パス形式の `ref` が解決された瞬間に
       再帰呼び出しへ `resolve` の代わりに `resolve.for_component_file()` を渡す。新しく
       `expand_components` を呼び直すのではなく、同じ `stack`／`max_depth` の管理の中で行い、その
       コンポーネントのステップの中の裸の名前を常に未定義として失敗させる
-- [ ] `run/cli.py` の setup `resolve` クロージャを更新し、プレリュードの `ScenarioFile` を読み込み、
+- [x] `run/cli.py` の setup `resolve` クロージャを更新し、プレリュードの `ScenarioFile` を読み込み、
       プレリュード自身の `components` マップとプレリュード自身のディレクトリに束縛した
       `ComponentResolver` を組み立て、プレリュード自身のステップに対してその下で
       `expand_components` を実行し、展開済みの結果を `apply_setups`（こちらは変更不要）へ返す
-- [ ] 高速スイートでカバーする。
+- [x] 高速スイートでカバーする。
       - ファイル内だけのコンポーネントが、手で複製した場合と同じステップ列へ展開されること。
       - ファイル内のコンポーネントとファイル型コンポーネントが、1つのシナリオの中で共存できること。
       - `components` に定義のない裸の名前が、明確なエラーで失敗すること。
@@ -230,10 +231,23 @@ BE-0174 が閉じたパス封じ込めの論点も呼び戻します。実ファ
       - `bajutsu run` 経由で壊れたコンポーネントファイルを読んだときのエラーが、
         `load_expanded_scenarios` がすでに出しているものと同じ `invalid YAML in <file>` になる
         こと（BE-0150）。
-- [ ] `docs/scenarios.md`（§Components）と `docs/dsl-grammar.md`（§2 の `ScenarioFile` 定義／§6.2／
+- [x] `docs/scenarios.md`（§Components）と `docs/dsl-grammar.md`（§2 の `ScenarioFile` 定義／§6.2／
       §6.4／§6.5）、および両者の `docs/ja/` 側の鏡を更新する。§6.5 のパイプライン注記
       「`apply_setups` …（プレリュード自身がコンポーネントを `use` できるように）」は、この項目が
       変える順序を述べています
+
+ログ：
+
+- [#2011](https://github.com/bajutsu-e2e/bajutsu/pull/2011) — 作業分解の全体を実装しました。
+  `ScenarioFile` に `components` フィールドを追加しました。`use` が絶対に届かないパス形式の
+  キーはバリデータで拒否し、名前が参照不能なまま静かに残ることを防ぎます。共有
+  `ComponentResolver` は `load_expanded_scenarios` と `run/cli.py` の両方へ配線しました。
+  `expand_components` 自身の再帰の中でスコープを切り替えるようにしました。同じ
+  `stack`／`max_depth` の管理の下で行うため、コンポーネントファイルをまたぐ循環も今までどおり
+  きれいに失敗します。setup の `resolve` も書き換え、プレリュード自身の `use` ステップを
+  裸の名前とパス参照の両方について、前置の前にプレリュード自身のスコープで展開するように
+  しました。ドキュメントと両方の `docs/ja/` 鏡も更新しました。進捗のチェックボックスはすべて
+  チェック済みになり、状態は実装済みへ移ります。
 
 ## 参考
 

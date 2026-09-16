@@ -33,11 +33,12 @@ DSL は YAML ノードの木なので、文法は文字列ではなく **抽象�
 
 ## 2. 文法の全体像
 
-以下の **参照グラフ**は、どの非終端がどれを参照するかを示します。下の EBNF テキストが述べていても直接には見えない再帰と共有が、これで見て取れます。`Selector` の `within` が自分自身へループする点。`RequestMatch` を `request` アサーション、`until: { request }` 待機、`Mock.match` の三箇所が共有する点。`Web` と `Component` がそれぞれ新しい `Step` の列を内側に持つ点。そして制御フローの 2 つのステップ、すなわち `If` が `Assertion` の条件のもとに `then`/`else` を、`ForEach` が `Selector` のもとに `steps` を、それぞれ新しい `Step` の列として内側に持つ点です。図はいくつかの要素を省略しています。スカラのみを持ち共有の非終端を参照しないアクション（`relaunch`、`setLocation`、`push`、`http`、`setClipboard`、`foreground`、その他デバイス / ステータスバー系のステップ）です。ペイロードが単純なパスだけの `golden` アサーションも同様です。
+以下の **参照グラフ**は、どの非終端がどれを参照するかを示します。下の EBNF テキストが述べていても直接には見えない再帰と共有が、これで見て取れます。`Selector` の `within` が自分自身へループする点。`RequestMatch` を `request` アサーション、`until: { request }` 待機、`Mock.match` の三箇所が共有する点。`Web` と `Component` がそれぞれ新しい `Step` の列を内側に持つ点。`Component` へ `ScenarioFile` からも辺が伸びる点（シナリオファイルが自分のコンポーネントをインラインで宣言できるためです。§6.2）。そして制御フローの 2 つのステップ、すなわち `If` が `Assertion` の条件のもとに `then`/`else` を、`ForEach` が `Selector` のもとに `steps` を、それぞれ新しい `Step` の列として内側に持つ点です。図はいくつかの要素を省略しています。スカラのみを持ち共有の非終端を参照しないアクション（`relaunch`、`setLocation`、`push`、`http`、`setClipboard`、`foreground`、その他デバイス / ステータスバー系のステップ）です。ペイロードが単純なパスだけの `golden` アサーションも同様です。
 
 ```mermaid
 graph LR
   SF["ScenarioFile"] --> SC["Scenario"]
+  SF -->|components| CMP["Component"]
 
   SC -->|preconditions| PRE["Preconditions"]
   SC -->|steps| ST["Step"]
@@ -95,8 +96,11 @@ graph LR
 # ディスク上の形式は2つあります。シナリオの素のシーケンス、またはファイル単位の `description` や
 # `schema`（クロスバージョン読み込みのゲート、BE-0119。既定は 1。より新しいバージョンを宣言した
 # ファイルは、誤解釈するのではなく古い bajutsu 側が拒否します）も持てるマッピングです。
+# `components` を持てるのはマッピング形式だけです。ファイルスコープのコンポーネント（§6.2）を、
+# 同じファイル内の `use` が参照する素の名前をキーにして並べます。
 ScenarioFile  ::= list(<Scenario>)
-               | { schema?: integer, description?: string, scenarios: list(<Scenario>) }
+               | { schema?: integer, description?: string,
+                   components?: map(string,<Component>), scenarios: list(<Scenario>) }
 ComponentFile ::= <Component>               # 単一マッピング（別ロード）
 
 # ── Scenario ───────────────────────────────────────────────────────────
@@ -432,10 +436,10 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 
 ### 6.2 コンポーネント（`use` → 再利用ステップ）
 
-`<Component>` は別ファイル（`ComponentFile`）です。`params` のリストと、それを `${params.<name>}` で参照する `steps` のリストからなります。`use` ステップが `with` で params を束縛して呼び出します。
+`<Component>` は、`params` のリストと、それを `${params.<name>}` で参照する `steps` のリストからなります。`use` ステップが `with` で params を束縛して呼び出します。コンポーネントの置き場所は2つあります。専用のファイル（`ComponentFile`）か、呼び出すシナリオファイルの中（`ScenarioFile.components`、BE-0422）です。
 
 ```yaml
-# login.component.yaml
+# login.component.yaml（コンポーネントファイル）
 params: [email, password]
 steps:
   - type: { text: "${params.email}",    into: { id: auth.email } }
@@ -444,12 +448,24 @@ steps:
 ```
 
 ```yaml
-# シナリオ側
-steps:
-  - use: { component: login.component.yaml, with: { email: "a@b.com", password: "pw" } }
+# シナリオファイル側。呼び出すシナリオの隣にファイルスコープのコンポーネントを置きます
+components:
+  dismiss:
+    steps:
+      - tap: { id: banner.close }
+
+scenarios:
+  - name: s
+    steps:
+      - use: { component: login.component.yaml, with: { email: "a@b.com", password: "pw" } }
+      - use: { component: dismiss }
 ```
 
-`expand_components`（`scenario/expand.py`）は各 `use` をコンポーネントの置換済みステップに **置き換えます**。展開は再帰的で、コンポーネントが別のコンポーネントを `use` でき、深さは 25 までです。params の不足、未知の params、未宣言を指す残留した `${params.*}`、循環参照のいずれかがあるとエラーになります。展開は純粋でコンパイル時に行われるため、**`use` は run に残らず**、決定性に影響しません。
+**どちらとして解決するかは ref 自身の形が決めます。** `component:` フィールドは1つのままで、新しい構文は要りません。`/` を含むか `.yaml` / `.yml` で終わる ref はパスです。参照元のシナリオファイルからの相対で解決し、スイートルートの内側に閉じ込めます（[BE-0174](../../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md) の封じ込め）。それ以外は素の名前です。呼び出し元ファイル自身の `components:` を引きます。`components:` にない素の名前はエラーになります。ファイルを読みに行くフォールバックは起きません。
+
+`components:` の有効範囲は1ファイルです。ファイルごとに読み、スイートディレクトリをまたいで統合しません。あるファイルで宣言した名前は、ほかのファイルからは見えません。コンポーネントファイルへ入ると `components:` は完全に外れます。コンポーネントファイルは自分の `components:` を持たないため、その中の素の `use` は常に未定義です。参照元のシナリオファイルが何を宣言していても変わりません。一方、ファイルスコープのコンポーネント自身の steps は、宣言元ファイルのスコープで展開されます。別のファイルスコープのコンポーネントを素の名前で `use` できますし、パスでファイルも `use` できます。ファイルをまたぐ再利用はパス参照の役目のままです。
+
+`expand_components`（`scenario/expand.py`）は各 `use` をコンポーネントの置換済みステップに **置き換えます**。展開は再帰的で、コンポーネントが別のコンポーネントを `use` でき、深さは 25 までです。params の不足、未知の params、未宣言を指す残留した `${params.*}`、未定義の素の名前、循環参照のいずれかがあるとエラーになります。`ComponentResolver`（`scenario/load_expanded.py`）は、`resolve` をファイルの `components:` とルートと基準ディレクトリに束ねる唯一の場所です。おかげで `run` とデバイス不要のリーダーは、同じファイルを同一に展開します。展開は純粋でコンパイル時に行われるため、**`use` は run に残らず**、決定性に影響しません。
 
 ### 6.3 データ駆動シナリオ（`data` / `dataFile`）
 
@@ -468,7 +484,7 @@ steps:
 
 ### 6.4 `setup` プレリュード、secrets、タグ選択
 
-- **`setup`**（`Preconditions` のキー、またはアプリや config の既定）：再利用シナリオファイルを指し、その steps をこのシナリオ自身の前に **前置**します（`apply_setups`, `scenario/expand.py`）。共有のログインやナビゲーション手順を 1 度だけ記述する用途に使います。
+- **`setup`**（`Preconditions` のキー、またはアプリや config の既定）：再利用シナリオファイルを指し、その steps をこのシナリオ自身の前に **前置**します（`apply_setups`, `scenario/expand.py`）。共有のログインやナビゲーション手順を 1 度だけ記述する用途に使います。プレリュード自身の `use` ステップは、前置の**前**に、プレリュード自身のスコープで展開されます。素の名前はプレリュードの `components:` を引き、`setup` に指定した側のシナリオファイルは参照しません（§6.5）。プレリュードの中のパス参照も、呼び出す側ではなくプレリュード自身のディレクトリを基準に解決します。
 - **`secrets`**（config の `secrets:` で宣言する、環境変数名のリスト）：宣言した各名 `X` は `os.environ[X]` から解決され `${secrets.X}` に束縛され、**アクション時**に実行ステップへ置換されます（`cli/commands/run.py`, `orchestrator/substitution.py` `_interp_step`）。シナリオは `${secrets.X}` トークンを保ち値は持たず、リテラル値は証跡で自動マスクされます（`Redactor`）。`params.*` / `row.*` と異なり、この名前空間はロード時ではなく run ループが解決します。
 - **`tags`** と CLI の `--tag` / `--exclude` で実行対象を絞ります。`exclude` が `include` より優先されます（`select_scenarios`, `scenario/select.py`）。
 
@@ -479,7 +495,7 @@ steps:
 ```
 load_scenarios        # この文法に対しパース + 検証
   → select_scenarios  # --tag / --exclude
-  → apply_setups      # setup プレリュードを前置（プレリュード自体も use 可）
+  → apply_setups      # setup プレリュードを前置（自身のスコープで展開済み。§6.4）
   → expand_components  # use → コンポーネントステップ（${params.*}）
   → expand_data        # 1 行 1 シナリオ（${row.*}）
   → run               # 決定的ループは展開済みシナリオだけを見る
