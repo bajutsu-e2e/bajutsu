@@ -204,6 +204,28 @@ def test_a_real_shared_identity_passes(tmp_path: Path) -> None:
     assert _run(root).returncode == 0
 
 
+@pytest.mark.parametrize(
+    "email",
+    [
+        # Shares a substring with a reserved name without being one — a naive substring check
+        # would flag these, and a real contributor could plausibly carry either.
+        "user@notexample.com",
+        "user@example.company.com",
+        "t@notlocalhost",
+    ],
+)
+def test_a_domain_that_merely_resembles_a_reserved_one_passes(tmp_path: Path, email: str) -> None:
+    """The reserved-domain match is anchored, not a substring search.
+
+    `*@*.example.com` must not fire on a domain that happens to contain "example.com" or
+    "localhost" without actually being that reserved name or a subdomain of it.
+    """
+    root = _checkout(tmp_path / "repo")
+    _set_shared(root, "user.email", email)
+
+    assert _run(root).returncode == 0
+
+
 def test_a_directory_that_is_no_checkout_passes(tmp_path: Path) -> None:
     """A source export has no config to be wrong about, and must exit the *quiet* way.
 
@@ -285,6 +307,11 @@ def test_a_shared_bare_true_fails(tmp_path: Path, value: str) -> None:
     assert "    core.bare = true\n" in result.stderr
     # Nothing to unset for core.worktree here, so that remedy line must not be offered.
     assert "git config --unset-all core.worktree" not in result.stderr
+    # No core.worktree means no prefix is actually in use anywhere in the remedy — a fixed epilogue
+    # insisting "the prefix is not optional" here would tell the reader to keep something that never
+    # appeared, and the plain `git config --unset-all core.bare` line must not carry it either.
+    assert "GIT_WORK_TREE=." not in result.stderr
+    assert "      git config --unset-all core.bare\n" in result.stderr
 
 
 def test_an_empty_shared_core_worktree_fails(tmp_path: Path) -> None:
@@ -391,10 +418,19 @@ def test_the_incident_state_reports_both_offenders_and_a_remedy_that_works(tmp_p
         "bot@ci.example",
         "user@host.invalid",
         "runner@sandbox.test",
+        # Subdomains of the three reserved second-level names, not just the bare domain — a fixture
+        # is just as free to spell its throwaway identity as a subdomain of one.
+        "t@ci.example.com",
+        "bot@mail.example.net",
+        "runner@x.example.org",
+        # RFC 6761's reserved name, and a subdomain of it.
+        "t@localhost",
+        "t@sandbox.localhost",
     ],
 )
 def test_a_shared_placeholder_email_fails(tmp_path: Path, email: str) -> None:
-    """Every RFC 2606 reserved example/test domain must arm the guard, not just `example.com`.
+    """Every reserved example/test/local domain (and its subdomains) must arm the guard, not just
+    the one spelling already seen.
 
     A test fixture is free to spell its throwaway identity any of these ways, and a guard that
     caught only the one spelling already seen would miss the next incident's variant.
@@ -482,6 +518,44 @@ def test_both_incidents_at_once_get_a_remedy_that_works(tmp_path: Path) -> None:
     assert "    user.email = t@example.com\n" in result.stderr
 
     for key in ("core.worktree", "user.email", "user.name"):
+        line = f"GIT_WORK_TREE=. git config --unset-all {key}"
+        assert line in result.stderr
+        subprocess.run(
+            ["git", "config", "--unset-all", key],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            env=_clean_env(GIT_WORK_TREE="."),
+        )
+
+    assert _run(root).returncode == 0
+
+
+def test_a_dangling_core_worktree_with_the_extension_off_still_gets_a_prefixed_identity_remedy(
+    tmp_path: Path,
+) -> None:
+    """The likelier combination than the one above: no `extensions.worktreeConfig` at all.
+
+    Without the extension, a shared `core.worktree` is not reported as an offense — git's own
+    documented exception confines it to the main checkout rather than disabling it — but it still
+    governs *this* checkout, since this checkout is the main one. Every remedy command below,
+    including the identity unset that has nothing to do with worktrees, still resolves it during
+    repository setup, so the prefix is still required even though core.worktree itself is silent
+    here. Nothing sets `extensions.worktreeConfig`, which is the whole point of this test.
+    """
+    root = _checkout(tmp_path / "repo")
+    _set_shared(root, "core.worktree", "/gone/session-worktree")
+    _set_shared(root, "user.email", "t@example.com")
+    _set_shared(root, "user.name", "T")
+
+    result = _run(root)
+    assert result.returncode == 1
+    # core.worktree is not itself reported — the extension is off, so it is not an offense here.
+    assert "core.worktree = /gone/session-worktree" not in result.stderr
+    assert "git config --unset-all core.worktree" not in result.stderr
+    assert "    user.email = t@example.com\n" in result.stderr
+
+    for key in ("user.email", "user.name"):
         line = f"GIT_WORK_TREE=. git config --unset-all {key}"
         assert line in result.stderr
         subprocess.run(
