@@ -94,12 +94,16 @@ The `<reason>` in a stall directory is the trigger, and there are exactly four:
 
 Unlike the on-device lanes above, these are not simulator/emulator faults and carry no
 `runs/diagnostics/` artifact to confirm them — the job log itself is the evidence, because the
-failure happens inside GitHub's own workflow-template evaluation, before any of this repository's
-steps run.
+failure traces to infrastructure GitHub Actions or a dependency registry it calls out to owns, not
+to anything this repository's own steps control. Most of these fire inside GitHub's own
+workflow-template evaluation before any of this repository's steps run (#13); one (#15) fires
+inside a repository step whose command reaches an external package registry, which is still outside
+this repository's control even though the step itself is ours.
 
 | # | Symptom | Confirm with | Notes |
 |---|---|---|---|
 | 13 | A step fails with `##[error]The template is not valid. <workflow>.yml (Line: N, Col: N): hashFiles('...') couldn't finish within 120 seconds` | the job's own log — no artifact to download; the error is timestamped at an `actions/cache`-style step, before any `bajutsu`-specific script has run | GitHub Actions' own `hashFiles()` backend timing out, unrelated to any code in this repository. Confirmed PR #2012 (`codegen (xcuitest)`, run 35174153612): the failure landed on a cache-key `hashFiles(...)` step, immediately after Xcode version resolution and before the job reached any scenario code, on a job that had passed on every prior run of this same PR. A rerun is the correct response; there is nothing in the repository to fix. |
+| 15 | `Analyze (java-kotlin)`'s `make -C demos/showcase/android compose-build` step fails Gradle's dependency resolution with `Could not GET '<url>'. Received status code 403 from server: Forbidden`, repeated for every single artifact the build needs (`kotlin-stdlib`, `kotlin-reflect`, `commons-codec`, `javawriter`, …) against both `repo.maven.apache.org` and `plugins.gradle.org` | the job's own log: every POM/JAR fetch in the build returns 403, not a handful — a per-artifact rejection would point at that one coordinate, but a blanket rejection across every registry the build touches points at the registry (or the runner's route to it) refusing the whole client | Confirmed PR #2012 (run 35250805835, job 105302464362): the failing build is Android/Gradle-only and this PR's diff touches no Android build config, no Gradle file, and no dependency version — CodeQL's own dependency-extraction step (`codeql database create`) invokes the ordinary project build unmodified, so a code change in this PR cannot explain every coordinate being rejected by the registry at once. A rerun is the correct response; there is nothing in the repository to fix. |
 
 ## What is deliberately not here
 
