@@ -934,7 +934,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   before this the given-up sheet's note stood for the rest of the wait even once the sheet had
   closed, and the alert actually holding the screen was never named while the alert itself was up
   either. Retirement takes the showing's whole per-showing bookkeeping with it —
-  the pending label, the tap count, the recorded signature and event, the not-tappable horizon — so
+  the pending label, the tap count, the recorded signature, its reference to the already-recorded
+  `AlertEvent`, and the not-tappable horizon — so
   a fresh showing of the same sheet is tapped afresh rather than inheriting an already-spent tap
   budget and being given up on without ever being tapped. And `_dismiss_from_tree` resolves over the same
   widest-first `tree_dedup_rules` this change gives the one-shot dismiss, rather than plain
