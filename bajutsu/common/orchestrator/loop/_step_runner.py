@@ -170,8 +170,12 @@ class _StepRunner:
             # Already confirmed further in. Fold the known signal into this outcome's reason for a
             # contributor reading the failure, but leave `app_crashed` at its default and capture
             # nothing: exactly one outcome per scenario carries the classification, which is what
-            # keeps `pipeline.py`'s later scan from having to choose among several.
-            outcome.reason = _with_crash_note(outcome.reason, latches.confirmed_signal)
+            # keeps `pipeline.py`'s later scan from having to choose among several. Guarded: a
+            # wrapping `if`/`forEach` outcome's `reason` is already the inner step's own
+            # `exec_steps(...)` result, which already carries this note — appending unconditionally
+            # would repeat it once per nesting level.
+            if latches.confirmed_signal not in outcome.reason:
+                outcome.reason = _with_crash_note(outcome.reason, latches.confirmed_signal)
             return
         if latches.deliberate_termination or latches.unconfirmed_launch:
             return

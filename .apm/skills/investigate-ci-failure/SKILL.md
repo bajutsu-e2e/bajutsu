@@ -95,8 +95,9 @@ gh run download <run-id> -n <the failing job's own name from that list>
 ```
 
 Match what you find against the `e2e-known-flake` tables in
-[`references/known-ci-failure-patterns.md`](references/known-ci-failure-patterns.md) — eight
-confirmed patterns across the two on-device lanes, each with the artifact path that confirms it.
+[`references/known-ci-failure-patterns.md`](references/known-ci-failure-patterns.md) — thirteen
+confirmed patterns across the two on-device lanes and GitHub Actions' own platform faults, each
+with the artifact path, or the log line where no artifact carries it, that confirms it.
 Read that file now rather than guessing from the job log.
 
 A match → `e2e-known-flake`, citing the artifact path that confirmed it. No match → step 4.
@@ -151,9 +152,10 @@ move. When the sub-skill's own history is too thin to classify (`unproven`), rep
 
 ### 5. Record a newly confirmed pattern
 
-When step 4 produced an `e2e-known-flake` from the history, append it to the `e2e-known-flake` table:
-the symptom, the artifact path that shows it, and that it was confirmed from run history rather than
-a prior diagnosis. The next investigation then matches it at step 3 and skips twenty downloads.
+When step 4 produced an `e2e-known-flake` from the history, append it to whichever of the
+`e2e-known-flake` tables covers that lane: the symptom, the artifact path that shows it, and that it
+was confirmed from run history rather than a prior diagnosis. The next investigation then matches it
+at step 3 and skips twenty downloads.
 
 **Edit the source copy, then redeploy — and stop there.** The file to append to is
 `.apm/skills/investigate-ci-failure/references/known-ci-failure-patterns.md`, named from the

@@ -1803,10 +1803,10 @@ fake backend の実行が収集する内容は変わりません。
 
 ログ：
 
-- [#2012](https://github.com/bajutsu-e2e/bajutsu/pull/2012) — 単位1〜13。項目全体を出荷しました。
+- [#2012](https://github.com/bajutsu-e2e/bajutsu/pull/2012) — Unit 1〜13。項目全体を出荷しました。
   出荷した範囲は、ステップループ内でのインバンドな分類とそのシナリオスコープの3つのラッチ、iOS の
   `.ips` スイープ、Android の `logcat`・exit-info・tombstone シグナル、pipeline の書き出しと
-  manifest からの除外、`crawl` との統合、showcase のフィクスチャとその非ゲート化 CI レーン、
+  manifest からの除外、`crawl` との統合、showcase のフィクスチャとそのゲートしない CI レーン、
   二言語のドキュメントです。この PR を開く前の3ラウンドのセルフレビューでは、Android のパースに
   関するバグを2件見つけました。1件は実際の `dumpsys` 出力と一致しないフィールド順序の想定、もう
   1件は隣接プロセスのクラッシュを取り込みかねない `logcat` クラッシュブロックの一致範囲です。

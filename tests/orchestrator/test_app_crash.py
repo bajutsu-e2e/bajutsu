@@ -309,6 +309,11 @@ def test_a_nested_crash_marks_exactly_one_outcome_and_probes_once() -> None:
     assert driver.probes == 1
     assert len(_crashed(result)) == 1
     assert _crashed(result)[0].action == "tap"
+    # Two levels of nesting, so the note must still land once: the wrapping outcomes inherit the
+    # inner step's reason, and folding the signal in unconditionally produced one copy per level.
+    outer = [o for o in result.steps if o.action == "if_"]
+    assert len(outer) == 1
+    assert outer[0].reason.count(_SIGNAL) == 1
 
 
 def test_the_wrapping_outcomes_still_carry_the_signal_in_their_reason() -> None:
@@ -329,7 +334,7 @@ def test_the_wrapping_outcomes_still_carry_the_signal_in_their_reason() -> None:
 
     wrapping = [o for o in result.steps if o.action == "if_"]
     assert len(wrapping) == 1
-    assert _SIGNAL in wrapping[0].reason
+    assert wrapping[0].reason.count(_SIGNAL) == 1
     assert wrapping[0].app_crashed is False
 
 
