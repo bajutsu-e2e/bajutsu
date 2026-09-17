@@ -3604,16 +3604,16 @@ def test_dismiss_from_tree_once_treats_a_narrower_rendering_of_an_excluded_shape
 
 
 def test_tree_rules_tries_the_widest_nested_shape_first_regardless_of_declaration_order() -> None:
-    # The subset test in `_resolve_alert_rule` excludes a candidate whose shape is *contained in*
-    # an already-dismissed one, not the reverse -- so whichever nested shape `matching_alert_rule`
-    # (itself first-match-in-list-order) happens to try first is the one that must be dismissed
-    # first, or a narrower sibling dismissed on round 0 leaves the wider one free to match the same
-    # still-fading sheet and tap it again on round 1. Declaring the narrower rule *first* here would
-    # reproduce exactly that repeat tap if `tree_rules` returned rules in declaration order; sorting
-    # widest-first removes the dependency on that order entirely (BE-0418 review finding).
+    # `_resolve_alert_rule`'s own containment test excludes a candidate nesting with an
+    # already-dismissed shape either way, so which of this nested pair gets dismissed first no
+    # longer decides whether the other can re-tap -- but it still decides *which* rule the
+    # dismissal is recorded under (`_widest_first`'s own docstring, BE-0418 review finding). Distinct
+    # `tap_label`s on the two nested rules is what makes that observable: declaring the narrower
+    # rule first would tap "Not Now" if `tree_rules` returned declaration order untouched, and only
+    # sorting widest-first taps "Never for This Website" instead.
     widest = ResolvedAlertRule(
         identifying_labels=frozenset({"Save Password", "Never for This Website", "Not Now"}),
-        tap_label="Not Now",
+        tap_label="Never for This Website",
         native=False,
         in_tree=True,
     )
@@ -3631,25 +3631,27 @@ def test_tree_rules_tries_the_widest_nested_shape_first_regardless_of_declaratio
     cleared, alerts = _call(driver, guard)
     # Never removed, so the final round's own read still shows it — diagnosed as never having
     # landed, and its `AlertEvent` withdrawn along with the diagnosis naming it (BE-0418 review
-    # finding). What this test actually pins — tapped once, not once per nested shape — is what
-    # `driver.actions` checks below.
+    # finding). What this test actually pins — tapped once, and on the *widest* rule's own label
+    # despite being declared second — is what `driver.actions` checks below.
     assert cleared is False
     assert alerts == []
     taps = [a for a in driver.actions if a[0] == "tap"]
-    assert len(taps) == 1 and _tap_label(taps[0]) == "Not Now"
+    assert len(taps) == 1 and _tap_label(taps[0]) == "Never for This Website"
 
 
 def test_tree_rules_widest_first_survives_a_non_nesting_rule_in_between() -> None:
     # Subset is a partial order, not a total one: an adjacent-swap pass only fixes a nested pair
     # that is already next to each other, so a rule nesting with neither sibling sitting between
-    # them in declaration order blocks every swap and leaves the narrower shape matching first --
-    # exactly the repeat tap the test above already covers, but the above only ever declares the
-    # nested pair adjacent, so it cannot catch this gap on its own (review finding). Modeled on
-    # savePassword's real three shapes, declared narrower, unrelated, widest -- today's catalogue
-    # happens to declare the widest one first, so this is the one order that would misfire.
+    # them in declaration order blocks every swap and leaves the narrower shape matching -- and
+    # tapping -- first. `_resolve_alert_rule`'s bidirectional containment test already stops that
+    # from producing a repeat tap regardless of order (the test above), so what distinct
+    # `tap_label`s on the nested pair let this test pin instead is *which* rule the single tap
+    # gets recorded under (review finding). Modeled on savePassword's real three shapes, declared
+    # narrower, unrelated, widest -- today's catalogue happens to declare the widest one first, so
+    # this is the one order that would misfire without the sort.
     widest = ResolvedAlertRule(
         identifying_labels=frozenset({"Save Password", "Never for This Website", "Not Now"}),
-        tap_label="Not Now",
+        tap_label="Never for This Website",
         native=False,
         in_tree=True,
     )
@@ -3673,12 +3675,12 @@ def test_tree_rules_widest_first_survives_a_non_nesting_rule_in_between() -> Non
     cleared, alerts = _call(driver, guard)
     # Never removed, so the final round's own read still shows it — diagnosed as never having
     # landed, and its `AlertEvent` withdrawn along with the diagnosis naming it (BE-0418 review
-    # finding). What this test actually pins — tapped once, not once per nested shape — is what
-    # `driver.actions` checks below.
+    # finding). What this test actually pins — tapped once, and on the *widest* rule's own label
+    # despite being declared last — is what `driver.actions` checks below.
     assert cleared is False
     assert alerts == []
     taps = [a for a in driver.actions if a[0] == "tap"]
-    assert len(taps) == 1 and _tap_label(taps[0]) == "Not Now"
+    assert len(taps) == 1 and _tap_label(taps[0]) == "Never for This Website"
 
 
 def test_the_end_of_step_guard_finds_a_stacked_alert_behind_a_fading_first_match() -> None:

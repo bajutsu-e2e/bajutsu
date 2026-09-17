@@ -1458,12 +1458,12 @@ def test_wait_guard_retires_an_in_tree_give_up_by_shape_not_by_the_label_alone()
     # place -- a different, genuinely live prompt sharing only "Not Now" with the one given up on.
     #
     #
-    # The retirement check itself reads only this poll's raw tree
-    # (`_tree_gave_up_shape_matches`: `shape <= set(tree_buttons(elements))`), never the rule set,
-    # so the rules declared below are scene-setting rather than load-bearing. What makes a
-    # label-keyed variant of that check fail here is the tree alone: "Not Now" is still in it, so
-    # a label-keyed latch would stay armed, while the given-up shape's other two labels are gone,
-    # so the shape-keyed one retires -- which is what this test asserts.
+    # The retirement check resolves this poll's own tree against the declared rules
+    # (`_tree_gave_up_shape_matches`: `matching_alert_rule(guard.tree_dedup_rules, ...)`, nested
+    # bidirectionally against the given-up shape), so the two rules below are load-bearing: the
+    # 26.5 shape is what the resolved read matches once the web-form shape's other two labels drop
+    # out, and neither direction of containment holds between it and the given-up shape -- which is
+    # what lets retirement fire here rather than reading the shared "Not Now" as the same sheet.
     from bajutsu.common.orchestrator.types import ResolvedAlertRule, uncleared_prompt_note
     from bajutsu.common.orchestrator.waits import _AlertGuardGate
 
@@ -1496,6 +1496,57 @@ def test_wait_guard_retires_an_in_tree_give_up_by_shape_not_by_the_label_alone()
     # The unrelated native alert's own diagnosis now gets through, rather than the stale note about
     # the web-form sheet -- which already left -- continuing to mask it.
     assert "Weird Button" in gate.blocked_note
+
+
+def test_wait_guard_does_not_retire_a_give_up_when_the_same_sheet_narrows_its_own_rendering() -> (
+    None
+):
+    # `_tree_gave_up_shape` is recorded once, from whichever rule matched at give-up time -- and
+    # since `tree_dedup_rules` is widest-first, that is always the *widest* matching shape. Plain
+    # one-directional containment (`shape <= set(tree_buttons(elements))`) catches a sheet that
+    # renders its widest label a frame late (the narrower recorded shape still nests inside the
+    # now-wider read), but misses the reverse: the same still-live sheet re-presenting with *fewer*
+    # labels than it gave up on (a validation-error redraw, or simply a narrower reading of the same
+    # prompt) shows a `buttons` the widest recorded shape is no longer a subset of, so the
+    # one-directional test would retire the give-up while the sheet is still fully on screen --
+    # exactly the device-hammering the give-up exists to stop (BE-0418 review finding).
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, uncleared_prompt_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    def _sheet(*labels: str) -> ResolvedAlertRule:
+        return ResolvedAlertRule(
+            identifying_labels=frozenset(labels),
+            tap_label="Not Now",
+            native=False,
+            in_tree=True,
+        )
+
+    driver = FakeDriver([])
+    # A co-present, undeclared native button (unrelated to the give-up): keeps the native probe's
+    # own "unhandled" state from reading as "absent", which would otherwise route this poll into
+    # `_dismiss_from_tree` instead of the retirement check this test means to exercise (the same
+    # setup `test_wait_guard_retires_an_in_tree_give_up_by_shape_not_by_the_label_alone` above uses
+    # for the same reason).
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    guard = AlertGuardConfig(
+        rules=[
+            _sheet("Save Password", "Never for This Website", "Not Now"),
+            _sheet("Save Password", "Not Now"),
+        ]
+    )
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate._tree_gave_up = True
+    # Gave up while the sheet showed all three labels -- the widest of the two declared shapes.
+    gate._tree_gave_up_shape = frozenset({"Save Password", "Never for This Website", "Not Now"})
+    gate.blocked_note = uncleared_prompt_note("Not Now")
+    # The same sheet, now missing "Never for This Website": still nests inside the recorded
+    # widest shape, so this must read as the same live sheet, not a departure.
+    gate.observe([el(None, "Save Password", ["button"]), el(None, "Not Now", ["button"])])
+    assert gate._tree_gave_up
+    assert gate._tree_gave_up_shape == frozenset(
+        {"Save Password", "Never for This Website", "Not Now"}
+    )
+    assert gate.blocked_note == uncleared_prompt_note("Not Now")
 
 
 def test_wait_guard_restores_a_still_live_unhandled_note_once_a_give_up_retires() -> None:

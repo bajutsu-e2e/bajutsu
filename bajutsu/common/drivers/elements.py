@@ -38,11 +38,11 @@ def tree_buttons(elements: list[base.Element]) -> list[str]:
 
     Shared by `AlertGuardConfig`'s own tree read (`types/alert_guard_config.py`) and the mid-wait
     gate's (`waits/_alert_guard_gate.py`) so both resolve the same `tree_dedup_rules` against the
-    identical button set from the same screen — the button set is the third input to that match,
-    alongside the ordering (`tree_dedup_rules` itself) and the signature (`tree_signature` above,
-    kept here for the same reason), and a filter that drifted between the two call sites would let
-    which button a scenario gets depend on whether a `wait` happened to be running when the sheet
-    appeared (BE-0418 review finding).
+    identical button set from the same screen — the button set is one of the two inputs to that
+    match, alongside the ordering (`tree_dedup_rules` itself); `tree_signature` below lives here
+    for the same sharing reason but takes no part in the match. A filter that drifted between the
+    two call sites would let which button a scenario gets depend on whether a `wait` happened to
+    be running when the sheet appeared (BE-0418 review finding).
     """
     return [
         el["label"]

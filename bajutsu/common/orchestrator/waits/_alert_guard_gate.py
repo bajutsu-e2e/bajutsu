@@ -188,29 +188,38 @@ class _AlertGuardGate:
         self._tree_tap_licence_withheld_since = None
 
     def _tree_gave_up_shape_matches(self, elements: list[base.Element]) -> bool:
-        """Whether this poll's raw tree read still shows `_tree_gave_up_shape`'s own labels.
+        """Whether this poll's raw tree read still shows a shape nesting with `_tree_gave_up_shape`.
 
         Factored out from `shows_app_ui` on purpose: a matched shape means nothing when the read
         that matched it is a collapsed one (see the two call sites below, and their own callers,
         for how each combines this with `shows_app_ui` in its own direction).
 
-        Plain containment, not `identified_alert_rules`'s own accept test (BE-0418 review finding):
-        the question here is "is the sheet still on screen", and `identified_alert_rules` answers a
-        different one — "does a rule still *uniquely* identify this read" — which a transient label
-        collision can answer `False` while the sheet is still fully there. An app-attached sheet
-        does not collapse the tree, so `shows_app_ui` alone cannot rule that out, and this repo
-        already treats a system-owned button colliding with an app-authored one carrying the same
-        label as a real screen shape (`test_dismiss_from_tree_declines_on_an_in_app_label_collision`).
-        Reading that collision as "the sheet left" retired the give-up while it was still up,
-        resetting the whole per-showing record a live sheet's tap budget exists to bound — the
-        exact device-hammering `_dismiss_from_tree`'s own docstring says the give-up exists to stop.
-        `AlertGuardConfig.__call__` — this gate's declared twin over the same screen, per
-        `tree_dedup_rules`' own docstring — already asks this same question with plain containment
-        (`_first_lingering_tree_shape`), so this matches it rather than diverging (BE-0418 review
-        finding).
+        Bidirectional nesting against every declared shape this read's own buttons still contain,
+        not one-directional containment of the recorded shape's own labels (BE-0418 review
+        finding): `_tree_gave_up_shape` is recorded once, from whichever rule matched at give-up
+        time, and since `tree_dedup_rules` is widest-first that is always the *widest* matching
+        shape. Plain `shape <= set(buttons)` only catches a sheet that renders its widest label a
+        frame late — the narrower shape it gave up on still contains the recorded one. It misses
+        the opposite: a `savePassword`-style sheet that gave up showing all three labels and then
+        re-presents with fewer (a validation error redraw, or simply a narrower reading of the same
+        prompt) shows a `buttons` the recorded shape is no longer a subset of, so the plain test
+        retired the give-up while the same sheet was still fully on screen — the exact
+        device-hammering `_dismiss_from_tree`'s own docstring says the give-up exists to stop.
+        Checking every declared shape against the recorded one — the same `_nests_with_a_dismissed_shape`
+        test `_resolve_alert_rule` (`types/alert_guard_config.py`) already applies to the identical
+        widest-first/narrower ambiguity — catches both directions, without `matching_alert_rule`'s
+        own uniqueness requirement: a transient label collision (an unrelated app button repeating
+        one of the given-up shape's own labels) must not read as "no rule matches" the way it would
+        if this went through `matching_alert_rule`'s first-uniquely-identified-shape search, the
+        same reason this method existed as plain containment in the first place.
         """
         shape = self._tree_gave_up_shape
-        return shape is not None and shape <= set(tree_buttons(elements))
+        buttons = set(tree_buttons(elements))
+        return shape is not None and any(
+            rule.identifying_labels <= buttons
+            and (rule.identifying_labels <= shape or shape <= rule.identifying_labels)
+            for rule in self.guard.tree_dedup_rules
+        )
 
     def _tree_gave_up_shape_still_shown(self, elements: list[base.Element]) -> bool:
         """Whether this poll's own tree read *positively* shows the given-up sheet still there.

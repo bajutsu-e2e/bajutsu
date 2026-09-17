@@ -661,7 +661,7 @@ class AlertGuardConfig:
         SpringBoard, and an application screen happening to show identifier-less "Allow" and
         "Don't Allow" buttons would be tapped (BE-0406).
 
-        In declaration order — deliberately, unlike `native_rules` below: BE-0177's
+        In declaration order, as `native_rules` below also is: BE-0177's
         scenario-before-target precedence has to survive here, and what it actually needs is
         narrower than full declaration order — two layers declaring the same prompt resolve to the
         same shapes, and `_widest_first` below never reorders two rules of equal shape, so the
