@@ -207,28 +207,24 @@ def identified_alert_rules(
 def matching_alert_rule(
     rules: Sequence[ResolvedAlertRule], buttons: Sequence[str]
 ) -> ResolvedAlertRule | None:
-    """The first rule whose shape is uniquely identified on `buttons` (see `match_alert_rule`).
-
-    Returns the rule itself, not just its tap label, for a caller that needs the shape a match
-    resolved to — `AlertGuardConfig.__call__`'s native dedup (BE-0418) keys on a matched rule's
-    `identifying_labels` rather than the raw `buttons` read, since `buttons` enumerates every
-    alert SpringBoard currently holds and changes whenever a *different* alert joins or leaves the
-    surface, while the rule that answers one already-dismissed alert does not.
-    """
-    identified = identified_alert_rules(rules, buttons)
-    return identified[0] if identified else None
-
-
-def match_alert_rule(rules: Sequence[ResolvedAlertRule], buttons: Sequence[str]) -> str | None:
-    """The tap label of the first rule whose shape is uniquely identified on `buttons`.
+    """The first rule whose shape is uniquely identified on `buttons`.
 
     A rule matches when each of its identifying labels is present exactly once — the full set, not
     only the label it taps, since a single shared label cannot by itself distinguish one covered
     prompt from another — and no excluded label is present at all. None means no rule's prompt is
     identified, so the caller leaves the alert alone and reports it (BE-0406).
+
+    Returns the rule itself, not just its tap label: a caller that keyed on the label alone could
+    not tell two rules sharing one alert's shape under different choices apart (a scenario's
+    `choice` overriding a target's for the same prompt, BE-0177), and one such rule's exclusion
+    would then promote its sibling to tap the opposite button on an alert it never actually
+    matched. `AlertGuardConfig.__call__`'s native dedup (BE-0418) keys on a matched rule's own
+    `identifying_labels` rather than the raw `buttons` read for the identical reason: `buttons`
+    enumerates every alert SpringBoard currently holds and changes whenever a *different* alert
+    joins or leaves the surface, while the rule that answers one already-dismissed alert does not.
     """
-    rule = matching_alert_rule(rules, buttons)
-    return rule.tap_label if rule is not None else None
+    identified = identified_alert_rules(rules, buttons)
+    return identified[0] if identified else None
 
 
 def push_interruption_policy(driver: base.Driver, guard: AlertGuardConfig | None) -> None:

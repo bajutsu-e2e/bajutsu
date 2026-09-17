@@ -22,7 +22,7 @@ from bajutsu.common.orchestrator import AlertEvent, AlertGuardConfig
 from bajutsu.common.orchestrator.types import (
     ResolvedAlertRule,
     alert_block_note,
-    match_alert_rule,
+    matching_alert_rule,
     uncleared_prompt_note,
 )
 from bajutsu.common.scenario import Wait
@@ -125,7 +125,22 @@ def _clearing_tree_tap(label: str) -> Callable[[FakeDriver, str, object], None]:
     return react
 
 
-# --- match_alert_rule -------------------------------------------------------------------------------
+# --- matching_alert_rule -----------------------------------------------------------------------------
+
+
+def _match_tap_label(rules: list[ResolvedAlertRule], buttons: list[str]) -> str | None:
+    """The tap label `matching_alert_rule` resolves to, or None (BE-0418 review finding).
+
+    A thin test-only convenience: production keys on the rule `matching_alert_rule` itself returns,
+    never on the bare label alone (two rules can share one alert's shape under different choices,
+    and keying on the label alone would let one such rule's exclusion promote its sibling to tap
+    the opposite button — see `matching_alert_rule`'s own docstring). This block's tests below only
+    care about the resolved label, so this local helper extracts it rather than reintroducing a
+    production wrapper with no caller of its own.
+    """
+    rule = matching_alert_rule(rules, buttons)
+    return rule.tap_label if rule is not None else None
+
 
 _NOTIF_RULE = ResolvedAlertRule(
     identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
@@ -136,52 +151,52 @@ _TRACKING_RULE = ResolvedAlertRule(
 )
 
 
-def test_match_alert_rule_identifies_the_prompt_by_its_full_label_pair() -> None:
+def test_matching_alert_rule_identifies_the_prompt_by_its_full_label_pair() -> None:
     # The tracking prompt's alert carries both of its own labels, so the tracking rule matches even
     # though "Allow" alone is shared with the notifications prompt.
     assert (
-        match_alert_rule([_TRACKING_RULE], ["Allow", "Ask App Not to Track"])
+        _match_tap_label([_TRACKING_RULE], ["Allow", "Ask App Not to Track"])
         == "Ask App Not to Track"
     )
 
 
-def test_match_alert_rule_none_when_only_the_shared_label_is_present() -> None:
+def test_matching_alert_rule_none_when_only_the_shared_label_is_present() -> None:
     # "Allow" alone cannot identify which of two prompts is on screen.
-    assert match_alert_rule([_TRACKING_RULE], ["Allow", "Cancel"]) is None
+    assert _match_tap_label([_TRACKING_RULE], ["Allow", "Cancel"]) is None
 
 
-def test_match_alert_rule_returns_the_first_matching_rule_in_order() -> None:
-    assert match_alert_rule([_NOTIF_RULE, _TRACKING_RULE], ["Allow", "Don't Allow"]) == "Allow"
+def test_matching_alert_rule_returns_the_first_matching_rule_in_order() -> None:
+    assert _match_tap_label([_NOTIF_RULE, _TRACKING_RULE], ["Allow", "Don't Allow"]) == "Allow"
     assert (
-        match_alert_rule([_NOTIF_RULE, _TRACKING_RULE], ["Allow", "Ask App Not to Track"])
+        _match_tap_label([_NOTIF_RULE, _TRACKING_RULE], ["Allow", "Ask App Not to Track"])
         == "Ask App Not to Track"
     )
 
 
-def test_match_alert_rule_none_when_no_rules_or_no_match() -> None:
-    assert match_alert_rule([], ["Allow", "Don't Allow"]) is None
-    assert match_alert_rule([_NOTIF_RULE], ["Weird Button"]) is None
-    assert match_alert_rule([_NOTIF_RULE], []) is None  # nothing on screen identifies nothing
+def test_matching_alert_rule_none_when_no_rules_or_no_match() -> None:
+    assert _match_tap_label([], ["Allow", "Don't Allow"]) is None
+    assert _match_tap_label([_NOTIF_RULE], ["Weird Button"]) is None
+    assert _match_tap_label([_NOTIF_RULE], []) is None  # nothing on screen identifies nothing
 
 
-def test_match_alert_rule_requires_each_identifying_label_exactly_once() -> None:
+def test_matching_alert_rule_requires_each_identifying_label_exactly_once() -> None:
     # Two buttons carrying the same label cannot uniquely identify the prompt, so the rule is
     # declined rather than resolved to whichever button matched first (determinism first, mirroring
     # resolve_unique).
-    assert match_alert_rule([_NOTIF_RULE], ["Allow", "Allow", "Don't Allow"]) is None
+    assert _match_tap_label([_NOTIF_RULE], ["Allow", "Allow", "Don't Allow"]) is None
 
 
-def test_match_alert_rule_skips_an_ambiguous_rule_and_takes_the_next_one() -> None:
+def test_matching_alert_rule_skips_an_ambiguous_rule_and_takes_the_next_one() -> None:
     # A duplicated label disqualifies only the rule that names it: the scan continues rather than
     # stopping at the first rule it could not resolve, so a second rule the same alert identifies
     # unambiguously still answers it.
     ambiguous = ResolvedAlertRule(identifying_labels=frozenset({"OK"}), tap_label="OK")
     unambiguous = ResolvedAlertRule(identifying_labels=frozenset({"Cancel"}), tap_label="Cancel")
-    assert match_alert_rule([ambiguous, unambiguous], ["OK", "OK", "Cancel"]) == "Cancel"
-    assert match_alert_rule([ambiguous], ["OK", "OK"]) is None
+    assert _match_tap_label([ambiguous, unambiguous], ["OK", "OK", "Cancel"]) == "Cancel"
+    assert _match_tap_label([ambiguous], ["OK", "OK"]) is None
 
 
-def test_match_alert_rule_declines_a_rule_whose_excluded_label_is_on_the_alert() -> None:
+def test_matching_alert_rule_declines_a_rule_whose_excluded_label_is_on_the_alert() -> None:
     # Two prompts can share their whole identifying pair — iOS 26.5's save sheet and its credit-card
     # sibling are both "Save"/"Not Now" — and only a third button tells them apart. `excluded_labels`
     # is how the save rule declines the card sheet: the pair is present, so without the exclusion it
@@ -191,8 +206,8 @@ def test_match_alert_rule_declines_a_rule_whose_excluded_label_is_on_the_alert()
         tap_label="Not Now",
         excluded_labels=frozenset({"Never for This Card"}),
     )
-    assert match_alert_rule([save], ["Save", "Not Now", "Never for This Card"]) is None
-    assert match_alert_rule([save], ["Save", "Not Now"]) == "Not Now"
+    assert _match_tap_label([save], ["Save", "Not Now", "Never for This Card"]) is None
+    assert _match_tap_label([save], ["Save", "Not Now"]) == "Not Now"
 
 
 # --- AlertGuardConfig.probe_native ------------------------------------------------------------------
@@ -788,7 +803,7 @@ def test_dismiss_from_tree_stops_retrying_a_permanently_covered_button() -> None
 
 def test_dismiss_from_tree_declines_on_an_in_app_label_collision() -> None:
     # A system-owned identifier-less button and an app-authored one share a rule's label:
-    # `match_alert_rule` resolves uniquely over the identifier-less subset, but the whole-tree tap
+    # `matching_alert_rule` resolves uniquely over the identifier-less subset, but the whole-tree tap
     # sees both and must decline rather than tap the wrong one (determinism first). A *persistent*
     # collision (unlike a vanish race) must decline before ever attempting the tap: the collision
     # never clears, so `_tree_dismiss_pending` (only armed on a successful tap) never guards it, and
@@ -4113,7 +4128,7 @@ def test_the_end_of_step_guard_stays_off_the_tree_without_scenario_rules() -> No
 
 
 def test_the_end_of_step_guard_declines_when_an_identified_button_shares_the_label() -> None:
-    # `match_alert_rule` resolves over the identifier-less subset, so a same-named *identified* app
+    # `matching_alert_rule` resolves over the identifier-less subset, so a same-named *identified* app
     # button does not stop it — but the tap sees the whole tree and would be ambiguous. The
     # whole-tree uniqueness pre-check is what catches that, exactly as the mid-wait path's does.
     app_button = _button("Not Now")
