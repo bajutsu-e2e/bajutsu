@@ -1900,6 +1900,65 @@ def test_wait_guard_does_not_blame_a_scrim_for_time_a_race_withheld_its_own_tap(
     assert gate.alerts[0].label == "Not Now"
 
 
+def test_wait_guard_still_reaches_a_give_up_through_recurring_licence_gaps() -> None:
+    # BE-0418 review finding: `_withhold_tree_tap_licence` used to clear `_tree_not_tappable_since`
+    # outright, discarding the *licensed* time already spent toward the give-up along with the
+    # unlicensed time -- the sibling tests just above pin only the direction that fix was for (not
+    # blaming the sheet for unlicensed time). A permanently obstructed sheet whose polls interleave
+    # with a *recurring* unlicensed state -- an undeclared alert flashing up every other poll, say
+    # -- could then never accumulate the consecutive licensed time `_decline_giveup` requires: every
+    # withheld poll reset the horizon to `None`, and the very next licensed poll's own
+    # `ElementNotTappable` set it fresh to that poll's own timestamp, so `now - since` was never
+    # more than one `poll_interval` no matter how many polls piled up.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _PermanentScrim(FakeDriver):
+        def tap(self, sel: base.Selector) -> None:
+            raise base.ElementNotTappable("the scrim never lifts")
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = _PermanentScrim(tree)
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+
+    # t=0: genuinely empty native read licenses the tap; the scrim blocks it. since = 0.
+    driver.system_alert_buttons = []
+    gate.observe(tree)
+    clock.sleep(guard.poll_interval)
+    # t=1: an undeclared alert withholds the licence for one poll.
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    gate.observe([])
+    clock.sleep(guard.poll_interval)
+    # t=2: licensed again -- the gap (t=1 to t=2) is excluded, but the licensed time from t=0
+    # still counts: since advances from 0 to 1, not reset to 2.
+    driver.system_alert_buttons = []
+    gate.observe(tree)
+    clock.sleep(guard.poll_interval)
+    # t=3: withheld again.
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    gate.observe([])
+    clock.sleep(guard.poll_interval)
+    # t=4: licensed again -- since advances from 1 to 2, meeting `_decline_giveup`'s default 2s
+    # horizon (`now - since == 2.0`), across four polls that were never licensed for more than one
+    # `poll_interval` at a stretch.
+    driver.system_alert_buttons = []
+    gate.observe(tree)
+
+    assert gate._tree_gave_up
+    assert "Not Now" in gate.blocked_note
+
+
 def test_wait_guard_does_not_blame_a_scrim_for_time_a_reserved_alert_withheld_its_own_tap() -> None:
     # BE-0418 review finding: `"reserved"` withholds the in-tree tap's own licence exactly the way
     # `raced` does -- `probed_absent` is False for as long as the step's own `handleSystemAlert`

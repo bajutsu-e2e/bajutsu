@@ -418,11 +418,14 @@ def _raced_or_unhandled_note(
 
 
 def _first_lingering_tree_shape(
-    dismissed_tree_info: dict[frozenset[str], tuple[str, AlertEvent | None]],
+    dismissed_tree_info: dict[frozenset[str], tuple[str, AlertEvent | None, int]],
     tree_buttons: Sequence[str],
+    *,
+    round_index: int,
 ) -> frozenset[str] | None:
     """The first shape in *dismissed_tree_info* (insertion order — the order each was tapped this
-    call) still fully enumerable in *tree_buttons*, or `None` if none is.
+    call) still fully enumerable in *tree_buttons* and tapped on a round *earlier* than
+    *round_index*, or `None` if none is.
 
     `__call__`'s own lingering-fade branch used to diagnose only the most recently tapped shape
     against this same containment test, even though the test itself (`any(...)`) already ranges
@@ -430,14 +433,32 @@ def _first_lingering_tree_shape(
     nothing at all once a later, different sheet was tapped and clears, since only the latter's own
     shape was ever compared (BE-0418 review finding). Returning the shape the test actually found
     lets the caller diagnose it directly instead.
+
+    Excluding a shape tapped on *round_index* itself is what gives `_final_tree_check` the same
+    "an earlier round tapped it, and only a later read still sees it" bar the in-loop caller
+    enforces structurally (BE-0418 review finding): the in-loop lingering-fade branch can only
+    ever run this against a shape from an *earlier* round, since its own tap branch `continue`s
+    before ever reaching it, but `_final_tree_check` runs unconditionally after the loop —
+    including right after a round whose own action was the very tap in question, with only one
+    best-effort `settle()` between the tap and this check's fresh read, far short of the full round
+    plus settle the in-loop branch always has. Passing the current round as *round_index* from the
+    in-loop caller is harmless there for the identical structural reason: it can never hold a
+    same-round entry to exclude in the first place.
     """
     buttons = set(tree_buttons)
-    return next((shape for shape in dismissed_tree_info if shape <= buttons), None)
+    return next(
+        (
+            shape
+            for shape, (_, _, tapped_round) in dismissed_tree_info.items()
+            if shape <= buttons and tapped_round != round_index
+        ),
+        None,
+    )
 
 
 def _lingering_tree_note(
     alerts: list[AlertEvent],
-    dismissed_tree_info: dict[frozenset[str], tuple[str, AlertEvent | None]],
+    dismissed_tree_info: dict[frozenset[str], tuple[str, AlertEvent | None, int]],
     lingering_shape: frozenset[str],
     tree_buttons: Sequence[str],
     round_index: int,
@@ -448,7 +469,7 @@ def _lingering_tree_note(
     tapped one (BE-0418 review finding) — and withdraws its own `AlertEvent` once the diagnosis
     fires, the same way `_withdraw_if_exhausted` does for the native side.
     """
-    label, event = dismissed_tree_info[lingering_shape]
+    label, event, tapped_round = dismissed_tree_info[lingering_shape]
     note = _bound_exhaustion_note(
         dismiss_shape=lingering_shape,
         dismiss_label=label,
@@ -460,7 +481,7 @@ def _lingering_tree_note(
         # actually closed — withdraw the `AlertEvent` rather than let `alerts` claim a dismissal
         # `blocked_note` says never happened (BE-0418 review finding).
         _withdraw(alerts, event)
-        dismissed_tree_info[lingering_shape] = (label, None)
+        dismissed_tree_info[lingering_shape] = (label, None, tapped_round)
     return note
 
 
@@ -468,7 +489,7 @@ def _final_tree_check(
     driver: base.Driver,
     alerts: list[AlertEvent],
     note: str,
-    dismissed_tree_info: dict[frozenset[str], tuple[str, AlertEvent | None]],
+    dismissed_tree_info: dict[frozenset[str], tuple[str, AlertEvent | None, int]],
     *,
     tree_read_round: int | None,
     round_index: int,
@@ -506,6 +527,17 @@ def _final_tree_check(
     unconfirmed, and only the shape actually found still enumerable is the one whose own `AlertEvent`
     is withdrawn from `alerts` in place — the post-loop twin of the in-loop withdrawal.
 
+    Passing *round_index* through to that same helper is what keeps this check from diagnosing a
+    shape *this* round's own tree action just tapped (BE-0418 review finding): the in-loop
+    lingering-fade branch can only ever run against an *earlier* round's tap, since its own tap
+    branch `continue`s before ever reaching it, giving a full round plus a `settle()` of separation
+    before that evidence is trusted. This check runs unconditionally after the loop ends, including
+    right after a round whose own action was the tap in question, with only one best-effort
+    `settle()` between the tap and this check's own fresh read — far short of the bar the in-loop
+    branch enforces, and not enough to trust that a still-fading animation has finished. Excluding a
+    same-round tap here is what restores that bar rather than reporting an ordinary last-round
+    dismissal as never cleared merely because one `settle()` was not enough to finish its animation.
+
     A non-empty *note* does not skip this check the way the other condition does: `note` is a
     reporting-precedence decision (a native diagnosis wins over the tree's own), not evidence that
     the tree tap actually landed, and a round that ends on an unrelated native note — an undeclared
@@ -533,10 +565,12 @@ def _final_tree_check(
     if not dismissed_tree_info or (tree_read_round is not None and tree_read_round >= round_index):
         return note
     _, final_tree_buttons, _ = _read_tree(driver)
-    lingering_shape = _first_lingering_tree_shape(dismissed_tree_info, final_tree_buttons)
+    lingering_shape = _first_lingering_tree_shape(
+        dismissed_tree_info, final_tree_buttons, round_index=round_index
+    )
     if lingering_shape is None:
         return note
-    label, event = dismissed_tree_info[lingering_shape]
+    label, event, _tapped_round = dismissed_tree_info[lingering_shape]
     _withdraw(alerts, event)
     return note or uncleared_prompt_note(label)
 
@@ -951,8 +985,11 @@ class AlertGuardConfig:
         # enumerable, rather than only the last one tapped (BE-0418 review finding): an earlier
         # sheet this call tapped that never closed would otherwise report nothing at all once a
         # later, different sheet is tapped and clears, since only the latter's own shape was ever
-        # compared against `_bound_exhaustion_note`.
-        dismissed_tree_info: dict[frozenset[str], tuple[str, AlertEvent | None]] = {}
+        # compared against `_bound_exhaustion_note`. The round each shape was tapped on rides
+        # alongside it, so `_final_tree_check` can tell an earlier round's still-unconfirmed tap
+        # from the tap its own round just made (BE-0418 review finding) — see
+        # `_first_lingering_tree_shape`'s own docstring.
+        dismissed_tree_info: dict[frozenset[str], tuple[str, AlertEvent | None, int]] = {}
         # The shape and tap label of the native rule most recently tapped fresh, for
         # `_bound_exhaustion_note` to check against the final round's own read (BE-0418 review
         # finding) — the label is carried alongside the shape so that check can name it without a
@@ -1155,6 +1192,7 @@ class AlertGuardConfig:
                         dismissed_tree_info[rule.identifying_labels] = (
                             rule.tap_label,
                             tree_result,
+                            round_index,
                         )
                         # A fresh tap, of any shape, is what `_first_lingering_tree_shape` and the
                         # post-loop check can diagnose on the final round (mirrors the native branch
@@ -1246,7 +1284,9 @@ class AlertGuardConfig:
                     # skips its one-shot retry against a screen that had in fact moved on
                     # (`docs/architecture.md` records the same trade-off).
                     lingering_shape = (
-                        _first_lingering_tree_shape(dismissed_tree_info, tree_buttons)
+                        _first_lingering_tree_shape(
+                            dismissed_tree_info, tree_buttons, round_index=round_index
+                        )
                         if tree_dismiss_signature is not None
                         else None
                     )

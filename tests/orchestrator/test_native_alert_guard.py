@@ -2236,13 +2236,15 @@ def test_the_end_of_step_guard_does_not_retap_a_fading_alert_after_a_toctou_race
     cleared = guard(driver, alerts, settle=settle)
     assert cleared
     # No duplicate "Allow": the TOCTOU-race "absent" must not have retracted notifications' own
-    # dismissed-shape record. "Not Now" is tapped on the call's own final round and the fake never
-    # removes it from the tree, so the post-loop check diagnoses it as never having landed and
-    # withdraws its own `AlertEvent` (BE-0418 review finding) — notifications' earlier, genuinely
-    # cleared dismissal still counts, since `cleared` is the net change in `alerts`, not a per-round
+    # dismissed-shape record. "Not Now" is tapped on the call's own final round, and the fake never
+    # removes it from the tree — indistinguishable, from this call's own final read alone, between
+    # "still fading" and "never closes at all" — so `_final_tree_check` no longer second-guesses it
+    # (BE-0418 review finding, superseding an earlier round's own mistaken fix for this exact
+    # scenario): only a *later* round's own read could still disprove it, and this call has none
+    # left. Both dismissals count, since `cleared` is the net change in `alerts`, not a per-round
     # streak.
-    assert alerts == [AlertEvent(label="Allow")]
-    assert guard.blocked_note == uncleared_prompt_note("Not Now")
+    assert alerts == [AlertEvent(label="Allow"), AlertEvent(label="Not Now")]
+    assert guard.blocked_note == ""
     assert sum(1 for action in driver.actions if action[0] == "handle_system_alert") == 2
 
 
@@ -3777,16 +3779,26 @@ def test_the_end_of_step_guard_skips_the_post_loop_query_on_an_unsettled_termina
     assert driver.query_calls == 2
 
 
-def test_the_end_of_step_guard_still_checks_a_first_ever_tree_tap_on_the_final_round() -> None:
-    # Twin of the skip above, for the one case it must never fire: recording `tree_read_round`
-    # only on a read that goes on to *test* existing evidence (not the tap that just produced it,
-    # per that branch's own `if not isinstance(tree_result, AlertEvent)` guard) means a call whose
-    # first-ever tree interaction is a tap on its own final round leaves `tree_read_round` at `None`
-    # -- nothing has settled *since* a read that tested this tap, because no such read ever ran.
-    # `None` must still run the post-loop check, not be read as "nothing to verify" (BE-0418 review
-    # finding): rounds 0 and 1 dismiss two unrelated native alerts, never touching the tree at all;
-    # round 2 finally reads an empty SpringBoard surface and taps a sheet that accepts the tap and
-    # re-presents itself instead of closing.
+def test_the_end_of_step_guard_does_not_second_guess_its_own_final_round_tree_tap() -> None:
+    # BE-0418 review finding (superseding an earlier round's own mistaken fix for this exact
+    # scenario): `_final_tree_check` must never diagnose a shape *this* round's own tree action
+    # just tapped. The in-loop lingering-fade branch can only ever run against an *earlier* round's
+    # tap -- its own tap branch `continue`s before ever reaching that check -- giving a full round
+    # plus a `settle()` of separation before the evidence is trusted. `_final_tree_check` has no
+    # such separation of its own: reaching it right after a round whose own action was the tap in
+    # question leaves only one best-effort `settle()` between the tap and this check's fresh read,
+    # nowhere near enough to tell a still-fading animation from a genuinely stuck sheet. Recording
+    # the round each shape was tapped on, and excluding a same-round entry from
+    # `_first_lingering_tree_shape`, restores the same bar the in-loop branch enforces: an ordinary
+    # dismissal whose fade merely outlasts one settle call is no longer wrongly reported as never
+    # cleared and no longer costs the caller its one-shot retry.
+    #
+    # Rounds 0 and 1 dismiss two unrelated native alerts, never touching the tree at all; round 2
+    # finally reads an empty SpringBoard surface and taps a sheet, which `FakeDriver` leaves in the
+    # tree afterward (it models no removal) -- indistinguishable, from this call's own final read
+    # alone, between "still fading" and "never closes at all". A same-round tap earns the benefit
+    # of that doubt now; only a *later* round's own read can still disprove it (see the sibling
+    # tests above, which tap on an earlier round and are unaffected by this change).
     rule_a = ResolvedAlertRule(identifying_labels=frozenset({"A1", "A2"}), tap_label="A1")
     rule_b = ResolvedAlertRule(identifying_labels=frozenset({"B1", "B2"}), tap_label="B1")
     tree_rule = ResolvedAlertRule(
@@ -3804,17 +3816,18 @@ def test_the_end_of_step_guard_still_checks_a_first_ever_tree_tap_on_the_final_r
         elif settle_calls == 2:
             driver.system_alert_buttons = []
         # settle_calls == 3, after round 2's own tap: "Sheet" is deliberately left in place -- the
-        # sheet accepted the tap without closing.
+        # fake models no removal, so this is indistinguishable from a still-animating close.
 
     guard = AlertGuardConfig(rules=[rule_a, rule_b, tree_rule])
     alerts: list[AlertEvent] = []
     cleared = guard(driver, alerts, settle=settle)
-    # "Sheet" never actually closes, so the post-loop check this test exists to exercise withdraws
-    # its own `AlertEvent` along with the diagnosis naming it; the two earlier, genuinely cleared
-    # native dismissals still count (BE-0418 review finding).
     assert cleared
-    assert alerts == [AlertEvent(label="A1"), AlertEvent(label="B1")]
-    assert guard.blocked_note == uncleared_prompt_note("Sheet")
+    assert alerts == [
+        AlertEvent(label="A1"),
+        AlertEvent(label="B1"),
+        AlertEvent(label="Sheet"),
+    ]
+    assert guard.blocked_note == ""
 
 
 def test_dismiss_from_tree_once_declines_an_excluded_shape() -> None:

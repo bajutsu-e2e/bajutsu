@@ -118,6 +118,10 @@ class _AlertGuardGate:
     _tree_gave_up_shape: frozenset[str] | None = None
     _tree_not_tappable_label: str | None = None
     _tree_not_tappable_since: float | None = None
+    # The moment the in-tree tap licence was last withheld, so a licensed poll's own return can
+    # push `_tree_not_tappable_since` forward by exactly the gap rather than discarding it outright
+    # (BE-0418 review finding) — see `_withhold_tree_tap_licence` and `_restore_tree_tap_licence`.
+    _tree_tap_licence_withheld_since: float | None = None
 
     def __post_init__(self) -> None:
         self._native = base.Capability.HANDLE_SYSTEM_ALERT in self.driver.capabilities()
@@ -130,24 +134,51 @@ class _AlertGuardGate:
             self._observe_collapsed(elements)
 
     def _withhold_tree_tap_licence(self) -> None:
-        """Reset the in-tree not-tappable horizon on a poll that cannot honour `probed_absent`.
+        """Mark the in-tree not-tappable horizon as running through unlicensed time.
 
         `_tree_not_tappable_since` is a wall-clock horizon (`_dismiss_from_tree`'s own docstring),
         but it means something only against polls that actually got to retry the tap: `probed_absent`
         licenses that retry, and a poll answering `"dismissed"`, `"unhandled"`, `raced`, or
         `"reserved"` withholds it — no different, for this horizon's purposes, than a live
         SpringBoard alert, or the step's own reserved alert, stopping `probed_absent` from holding
-        for however many consecutive polls it stays up (BE-0418 review finding). Left unreset, a
-        scrim that lifts while such a poll runs is still given up on the
-        moment the licence returns, purely because unlicensed wall-clock time was counted against
-        it — the very first retry since the scrim lifted sees the full, un-attempted gap and gives up
-        without ever attempting the tap. Clearing it here restarts the horizon at the next poll that
-        is actually licensed, rather than blaming the sheet for time the tap was never allowed to
-        spend. Only the horizon, not `_tree_not_tappable_label`: the label still matching on the next
-        licensed poll is what lets that poll retry at once instead of treating the sheet as a fresh
-        showing.
+        for however many consecutive polls it stays up (BE-0418 review finding). Left running
+        through that gap unadjusted, a scrim that lifts while such a poll runs is still given up on
+        the moment the licence returns, purely because unlicensed wall-clock time was counted
+        against it — the very first retry since the scrim lifted sees the full, un-attempted gap and
+        gives up without ever attempting the tap.
+
+        Recording when the gap started, rather than clearing the horizon outright, is what
+        `_restore_tree_tap_licence` needs to push it forward by exactly that gap once the licence
+        returns (BE-0418 review finding): a bare clear discards the *licensed* time already spent
+        toward the give-up along with the unlicensed time, so a permanently obstructed sheet whose
+        polls interleave with even one recurring unlicensed state (an undeclared alert flashing up
+        every other poll, say) can never accumulate the three consecutive licensed polls
+        `_decline_giveup` requires — the give-up latches only in a direction wall-clock time can
+        actually earn it. Idempotent across a run of consecutive unlicensed polls: only the first
+        one starts the gap, so a later one in the same run does not shorten it.
         """
-        self._tree_not_tappable_since = None
+        if self._tree_tap_licence_withheld_since is None:
+            self._tree_tap_licence_withheld_since = self.clock.now()
+
+    def _restore_tree_tap_licence(self) -> None:
+        """Push the not-tappable horizon forward by however long the tap licence was just withheld.
+
+        Called at the top of every poll that reaches `_dismiss_from_tree` — a licensed poll by
+        construction, so any gap `_withhold_tree_tap_licence` recorded has just ended. A no-op
+        when nothing was withheld (the common case: most licensed polls follow another licensed
+        poll) or when no horizon is running yet (nothing to protect). Otherwise both `else` this
+        moves as one: the label still matching a licensed poll a scrim finally lets through sees a
+        horizon that counts only the licensed time actually spent against it, neither penalized for
+        the unlicensed gap nor forgiven the licensed time that came before it (BE-0418 review
+        finding).
+        """
+        if self._tree_tap_licence_withheld_since is None:
+            return
+        if self._tree_not_tappable_since is not None:
+            self._tree_not_tappable_since += (
+                self.clock.now() - self._tree_tap_licence_withheld_since
+            )
+        self._tree_tap_licence_withheld_since = None
 
     def _tree_gave_up_shape_matches(self, elements: list[base.Element]) -> bool:
         """Whether this poll's raw tree read matches the shape `_tree_gave_up_shape` names.
@@ -495,6 +526,10 @@ class _AlertGuardGate:
         obstruction still degrades to the wait's own timeout instead of hammering the device for
         its entire remainder.
         """
+        # This poll's own arrival here is the licence returning (only `_observe_native` calls this,
+        # and only when `probed_absent` holds), so any gap `_withhold_tree_tap_licence` recorded on
+        # an intervening unlicensed poll has just ended (BE-0418 review finding).
+        self._restore_tree_tap_licence()
         # Imported in the method, not at module load: `_functions` builds this gate, and rule 5
         # breaks the cycle the split creates on this side.
         from ._functions import _decline_giveup
