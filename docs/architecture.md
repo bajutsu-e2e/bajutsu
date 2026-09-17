@@ -828,15 +828,19 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   whose every round races the same alert away therefore still names it instead of falling silent,
   and one that raced away only after cleanly tapping a *different* alert names the
   rule that actually raced, not the unrelated one it already tapped. An
-  in-tree sheet the
-  call tapped carries it too, once the bound is spent with the sheet still enumerable — on the
+  in-tree sheet an *earlier* round tapped carries it too, once the bound is spent with the sheet
+  still enumerable — on the
   shape's own labels alone, not the rest of the tree's own identity: a sheet that accepts a tap
   without closing can re-present itself with a validation error, which changes the tree by
   construction, so requiring the tree to read back unchanged would rule out exactly that case. That
   check ranges over every shape this call has tapped from the tree, not only the most recently
   tapped one: an earlier sheet that never closed would otherwise go unreported the moment a later,
   different sheet is tapped and genuinely clears, since only the latter's own shape was ever
-  compared. An
+  compared. A sheet tapped on the very round that spends the bound is exempt: one best-effort
+  settle is not enough to tell a still-fading animation from a sheet that never closes, the bar
+  every earlier round's own tap already clears by having a full round and a settle pass before this
+  check ever runs against it, so an ordinary dismissal whose fade merely outlasts that one settle
+  earns the same benefit of the doubt rather than losing the caller's retry over it. An
   app screen the closing sheet revealed can coincidentally carry the same button labels and get
   misnamed as the sheet that never closed, but `exclude` already keeps this call from tapping either
   one again regardless of which read it takes, so the misreport never costs a second tap. It does
