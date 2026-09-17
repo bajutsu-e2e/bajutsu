@@ -131,6 +131,9 @@ class AndroidEnvironment:
         # reads a bare integer as a line count, and its format carries no year where exit-info's does,
         # so neither of the two above substitutes for it.
         self._logcat_marker: str | None = None
+        # Whether `_pull_tombstone` found the device already root before it rooted it itself, so
+        # `_restore_unroot` only drops a privilege level this call actually raised (BE-0424).
+        self._was_root: bool = False
         # Override the resident-server construction in tests; None uses the real, env-gated default.
         self._resident_factory = resident_factory
         self._resident: ResidentServerLike | None = None
@@ -568,6 +571,10 @@ class AndroidEnvironment:
 
     def _pull_tombstone(self, launched_at: float) -> list[tuple[str, bytes]]:
         """`adb root`, then the newest tombstone written at or after *launched_at* (BE-0424)."""
+        # Only restore what this method changed: a device an outer harness already rooted (the
+        # `e2e` / `e2e-conformance` targets both do, for a whole session) must keep its root, or
+        # every later scenario's `AdbDriver._rooted()` caches the wrong answer (BE-0424).
+        self._was_root = self._run(adb.id_u_cmd(self._serial)).strip() == "0"
         self._run(adb.root_cmd(self._serial))
         # Without this every command below races `adbd`'s restart — the same gate
         # `collect_android_diagnostics.sh` puts between its own `adb root` and its `adb pull`.
@@ -579,7 +586,7 @@ class AndroidEnvironment:
         return [(name, self._run(adb.cat_cmd(self._serial, f"/data/tombstones/{name}")).encode())]
 
     def _restore_unroot(self) -> None:
-        """Hand the device back at the privilege level every other lease already assumes (BE-0424).
+        """Hand the device back at the privilege level `_pull_tombstone` actually found it at (BE-0424).
 
         `adb root` persists device-wide until `adb unroot` or a reboot, and nothing else in this
         repository restores it. Left leaked, a later scenario on this device would run its
@@ -588,10 +595,19 @@ class AndroidEnvironment:
         gesture that should fail loudly with `UnsupportedAction` would instead run and pass, decided
         by whether an earlier, unrelated scenario happened to crash.
 
+        The reverse leak is just as real: an outer harness that deliberately rooted the device for a
+        whole session (`demos/showcase/android/Makefile`'s `e2e` / `e2e-conformance` targets both
+        do, for scenarios like `gestures` that require it) must keep that root after this call — an
+        unconditional `adb unroot` here would drop it mid-session, decided by whether an earlier,
+        unrelated scenario happened to crash. `self._was_root` is what `_pull_tombstone` found
+        before it rooted the device itself, so this only undoes what this call actually changed.
+
         Verified, not merely attempted: swallowing the failure the way the pull's own errors are
         swallowed is exactly what would let that happen invisibly, so a shell still answering `0`
         afterward is logged loudly.
         """
+        if self._was_root:
+            return
         try:
             self._run(adb.unroot_cmd(self._serial))
             self._run(adb.wait_for_device_cmd(self._serial))

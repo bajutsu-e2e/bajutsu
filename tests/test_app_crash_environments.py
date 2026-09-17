@@ -682,12 +682,19 @@ def test_a_refused_unroot_is_logged_loudly_rather_than_swallowed(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     # Pinning only that `unroot` is *called* would miss a restore that was attempted but never took
-    # effect — the case that silently changes how every later scenario on the device actuates.
+    # effect — the case that silently changes how every later scenario on the device actuates. The
+    # device must answer "not root" on `_pull_tombstone`'s own pre-check (else `_restore_unroot`
+    # would skip the restore entirely as an already-rooted device, per the test below) and "still
+    # root" only afterward, once the refused `unroot` has had its chance to run.
+    id_u_calls = 0
+
     def run(cmd: list[str]) -> str:
+        nonlocal id_u_calls
         if "stat" in " ".join(cmd):
             return ""
         if cmd[-2:] == ["id", "-u"]:
-            return "0\n"  # still root after the unroot
+            id_u_calls += 1
+            return "2000\n" if id_u_calls == 1 else "0\n"
         return ""
 
     env = _android(run)
@@ -697,6 +704,33 @@ def test_a_refused_unroot_is_logged_loudly_rather_than_swallowed(
         env.app_crash_tombstone()
 
     assert any("still running as root" in r.message for r in caplog.records)
+
+
+def test_restore_unroot_leaves_an_already_rooted_device_alone() -> None:
+    # An outer harness that rooted the device for a whole session (`demos/showcase/android/Makefile`'s
+    # `e2e` / `e2e-conformance` targets both do, for scenarios like `gestures` that require it) must
+    # keep that root after this call — an unconditional `adb unroot` would drop it mid-session, decided
+    # by whether an earlier, unrelated scenario happened to crash.
+    calls: list[list[str]] = []
+
+    def run(cmd: list[str]) -> str:
+        calls.append(cmd)
+        if "stat" in " ".join(cmd):
+            return "1700000005 /data/tombstones/tombstone_00\n"
+        if cmd[-2:] == ["id", "-u"]:
+            return "0\n"  # already root before this call
+        if "cat" in cmd:
+            return "backtrace:\n  #00 pc 0000\n"
+        return ""
+
+    env = _android(run)
+    env._launch_marker = (1700000000.0, "2026-09-16 10:00:00")
+
+    found = env.app_crash_tombstone()
+    flat = [" ".join(c) for c in calls]
+    assert [name for name, _ in found] == ["tombstone_00"]
+    assert any("adb -s emulator-5554 root" in c for c in flat)
+    assert not any("unroot" in c for c in flat)
 
 
 def test_the_tombstone_bound_compares_device_epochs_on_both_sides() -> None:
