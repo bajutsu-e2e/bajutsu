@@ -14,12 +14,14 @@ from bajutsu.cli._shared import (
     _start_launch_server_or_exit,
     _with_headed,
 )
-from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.config import WEB_ENGINES, Effective
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
 from bajutsu.common.platform_lifecycle import Environment, WebEnvironment, environment_for
-from bajutsu.common.platform_lifecycle.environments.xcuitest_live import XcuitestLiveEnvironment
+from bajutsu.common.platform_lifecycle.environments.xcuitest_live import (
+    XcuitestLiveEnvironment,
+    is_webdriver_endpoint,
+)
 from bajutsu.common.runner import launch_driver
 from bajutsu.common.scenario import Preconditions
 from bajutsu.repl.loop import repl_loop
@@ -44,8 +46,11 @@ def repl(
     target_name: str = typer.Option(..., "--target"),
     udid: str = typer.Option("booted"),
     backend: str = typer.Option(""),
-    erase: bool = typer.Option(
-        True, "--erase/--no-erase", help="erase the device before launching (app must be installed)"
+    erase: bool | None = typer.Option(
+        None,
+        "--erase/--no-erase",
+        help="erase the device before launching (app must be installed); default: erase locally, "
+        "no-erase on the live `--udid https://…` route, which does not support it",
     ),
     headed: bool | None = typer.Option(
         None,
@@ -73,10 +78,21 @@ def repl(
     eff = _with_headed(eff, headed)
     eff = _resolve_browser(eff, browser)
     actuator, _ = _select_actuator_or_exit(backend, eff, [])
-    # Web has no simctl udid (launch_driver ignores it for playwright); resolving "booted" would
-    # shell out to simctl and crash off-macOS, so skip it for the web backend.
-    if actuator != "playwright":
-        udid = _simctl.resolve_udid(udid)
+    # Resolve through the selected environment's own device lookup — ios/fake via simctl, adb via
+    # its serial resolver, web and the live `--udid https://…` route passing the value straight
+    # through — rather than hard-coding simctl here, which would shell out to `simctl`/`xcodebuild`
+    # tooling for `--backend adb` and crash off-macOS, or reject the live route's URL outright.
+    udid = environment_for(actuator, udid).resolve_device(udid)
+    # The live WebDriver route's device is already booted with its build installed (BE-0238); erase
+    # is a simctl operation that route explicitly rejects (`XcuitestLiveEnvironment.start`), so an
+    # unset `--erase` defaults to off there instead of the local route's on, and an operator who asks
+    # for it anyway gets a clean CLI error instead of an `UnsupportedAction` traceback.
+    is_live_route = is_webdriver_endpoint(udid)
+    if erase is None:
+        erase = not is_live_route
+    elif erase and is_live_route:
+        typer.echo("repl: --erase is not supported on the live `--udid https://…` route")
+        raise typer.Exit(2)
     # Bring the app's target server up if the config declares launchServer — without it a web
     # target opens the browser on a host that is not listening, and every `tree` reads the error
     # page. Stopped when this command exits (atexit), the way `record` and `crawl` stop theirs.

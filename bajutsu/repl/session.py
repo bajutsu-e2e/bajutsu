@@ -6,6 +6,7 @@ import subprocess
 
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
+from bajutsu.common.drivers.xcuitest import XcuitestChannelError
 from bajutsu.common.drivers.xcuitest_live import WebDriverError
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.repl.render import render_json, render_table
@@ -20,17 +21,20 @@ class ReplExit(Exception):
 # and a screenshot path the filesystem rejects. Each is an answer to the operator's question, so
 # the loop prints it and reads the next line. Anything else is a bug and propagates.
 #
-# `subprocess.CalledProcessError` and `WebDriverError` are here for the two backends that don't
-# wrap every device-side failure into `DeviceError` before it reaches a `Driver` method: adb's
-# action methods bottom out in a bare `subprocess.run(..., check=True)`, and the `--udid https://…`
-# live route's WebDriver calls raise their own `RuntimeError` subclass. Without both, a USB flake or
-# a grid hiccup would kill the whole interactive session instead of reading like any other refusal.
+# `subprocess.CalledProcessError`, `XcuitestChannelError`, and `WebDriverError` are here for the
+# backends that don't wrap every device-side failure into `DeviceError` before it reaches a `Driver`
+# method: adb's action methods bottom out in a bare `subprocess.run(..., check=True)`, the local
+# XCUITest runner channel raises its own `RuntimeError` subclass on a lost/bad response (a failed
+# tap, type, or screenshot request), and the `--udid https://…` live route's WebDriver calls raise
+# a sibling `RuntimeError` subclass. Without all three, a USB flake, a wedged runner, or a grid
+# hiccup would kill the whole interactive session instead of reading like any other refusal.
 COMMAND_ERRORS: tuple[type[Exception], ...] = (
     base.SelectorError,
     base.ElementNotTappable,
     base.UnsupportedAction,
     device_errors.DeviceError,
     subprocess.CalledProcessError,
+    XcuitestChannelError,
     WebDriverError,
     OSError,
 )
