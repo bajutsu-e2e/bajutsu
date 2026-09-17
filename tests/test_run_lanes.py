@@ -748,7 +748,11 @@ def test_alert_guard_factory_scenario_rule_shadows_target_rule_for_the_same_prom
     assert guard is not None
     # The scenario's rule for `notifications` comes first, so it wins the first-match.
     assert [r.tap_label for r in guard.rules] == ["Allow", "Don’t Allow"]
-    assert _match_tap_label(guard.rules, ["Allow", "Don’t Allow"]) == "Allow"
+    # Through `native_rules`, not `guard.rules`: that's the list `probe_native` actually matches
+    # over (BE-0418 review finding) -- `native_rules` happens to equal `guard.rules` here only
+    # because every declared rule for this prompt is native, so asserting through the property the
+    # code reads is what keeps this pinned to BE-0177's precedence rather than to that coincidence.
+    assert _match_tap_label(guard.native_rules, ["Allow", "Don’t Allow"]) == "Allow"
 
 
 def test_alert_guard_factory_target_rule_applies_when_scenario_has_none() -> None:

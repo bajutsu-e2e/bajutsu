@@ -187,6 +187,30 @@ class _AlertGuardGate:
             )
         self._tree_tap_licence_withheld_since = None
 
+    def _reset_tree_showing(self) -> None:
+        """Clear every per-showing field the in-tree dismiss path keeps.
+
+        Shared by the two sites that end a showing outright — the give-up's own retirement in
+        `_observe_native` and `_dismiss_from_tree`'s `label is None` branch — so a later addition to
+        this bookkeeping (a second signature, a per-showing decline counter, the licence horizon)
+        cannot be wired into one reset while the other keeps handing the next showing a stale value
+        (BE-0418 review finding): this PR already had to edit both copies in lockstep once, to add
+        `_tree_gave_up_shape` / `_tree_gave_up_note`. `_dismiss_from_tree`'s `else:` branch (a
+        different label now showing) is a deliberate *partial* third copy rather than a third call
+        here — it resets every field below except the last two, which the label check right after it
+        re-derives against the new label instead of clearing outright.
+        """
+        self._tree_dismiss_pending = None
+        self._tree_tapped_at = None
+        self._tree_signature = None
+        self._tree_event = None
+        self._tree_taps = 0
+        self._tree_gave_up = False
+        self._tree_gave_up_shape = None
+        self._tree_gave_up_note = ""
+        self._tree_not_tappable_label = None
+        self._tree_not_tappable_since = None
+
     def _tree_gave_up_shape_matches(self, elements: list[base.Element]) -> bool:
         """Whether this poll's raw tree read still shows a shape nesting with `_tree_gave_up_shape`.
 
@@ -265,22 +289,13 @@ class _AlertGuardGate:
             # lets that still-live native diagnosis survive the give-up's own departure instead of
             # leaving `blocked_note` empty on a screen a probe has already named as blocked.
             self.blocked_note = self._native_unhandled_note if self._native_unhandled else ""
-            self._tree_gave_up = False
-            self._tree_gave_up_shape = None
-            self._tree_gave_up_note = ""
             # The showing itself ended — the same fact `_dismiss_from_tree`'s own `label is None`
             # branch resets on — so its per-showing bookkeeping goes with the latch rather than
             # being inherited by whatever shows next: a stale `_tree_dismiss_pending` paired with a
             # stale `_tree_signature` would decline the next showing outright, with the latch now
             # retired and no note left to name it (BE-0418 review finding). `_tree_event` is only
             # the reference — an event already recorded stands as the real dismissal it was.
-            self._tree_dismiss_pending = None
-            self._tree_tapped_at = None
-            self._tree_signature = None
-            self._tree_event = None
-            self._tree_taps = 0
-            self._tree_not_tappable_label = None
-            self._tree_not_tappable_since = None
+            self._reset_tree_showing()
         # Rate-limit only the cross-process native query to `poll_interval`, not the whole gate: a
         # per-`_POLL` SpringBoard query would roughly double the single-main-thread runner's load
         # (BE-0315). `_last_native` starts None so the first poll probes at once.
@@ -582,16 +597,7 @@ class _AlertGuardGate:
         if label is None:
             # The tree stopped matching: the showing ended, so its recorded event stands as the real
             # dismissal it was — only the reference is dropped, so a later give-up cannot withdraw it.
-            self._tree_dismiss_pending = None
-            self._tree_tapped_at = None
-            self._tree_signature = None
-            self._tree_event = None
-            self._tree_taps = 0
-            self._tree_gave_up = False
-            self._tree_gave_up_shape = None
-            self._tree_gave_up_note = ""
-            self._tree_not_tappable_label = None
-            self._tree_not_tappable_since = None
+            self._reset_tree_showing()
             return None
         assert rule is not None  # `label` is only ever `rule.tap_label`, never a bare default
         if label == self._tree_dismiss_pending:
@@ -638,6 +644,12 @@ class _AlertGuardGate:
             # would silently drop a genuine second dismissal of that label from `alerts`. The event
             # the previous showing already recorded stays: it was a real dismissal, and this different
             # label is often exactly what it revealed.
+            #
+            # A deliberate *partial* copy of `_reset_tree_showing`, not a call to it (BE-0418 review
+            # finding): the two fields that method also clears, `_tree_not_tappable_label` and
+            # `_tree_not_tappable_since`, are re-derived against this new label by the check right
+            # below instead of being cleared outright — clearing them here would just have that check
+            # set the label back on the very next line.
             self._tree_dismiss_pending = None
             self._tree_tapped_at = None
             self._tree_signature = None
