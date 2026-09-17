@@ -164,55 +164,61 @@ class _AlertGuardGate:
         """
         self._tree_not_tappable_since = None
 
+    def _tree_gave_up_shape_matches(self, elements: list[base.Element]) -> bool:
+        """Whether this poll's raw tree read matches the shape `_tree_gave_up_shape` names.
+
+        Factored out from `shows_app_ui` on purpose: a matched shape means nothing when the read
+        that matched it is a collapsed one (see the two call sites below, and their own callers,
+        for how each combines this with `shows_app_ui` in its own direction).
+        """
+        return any(
+            rule.identifying_labels == self._tree_gave_up_shape
+            for rule in identified_alert_rules(self.guard.tree_dedup_rules, _tree_buttons(elements))
+        )
+
+    def _tree_gave_up_shape_still_shown(self, elements: list[base.Element]) -> bool:
+        """Whether this poll's own tree read *positively* shows the given-up sheet still there.
+
+        Shared by every native-branch note deferral in `_observe_native` (BE-0418 review finding),
+        so each can tell "yes, still there" from "unknown" the same way the retirement below tells
+        "yes, it left" from "unknown" — a collapsed tree (a SpringBoard alert covering the screen)
+        answers neither question with a "yes", it answers "unknown", and a deferral gated on
+        `_tree_gave_up` alone cannot see that difference: it holds the give-up's own note through
+        an "unknown" poll exactly as it would through a firm "yes", which is precisely the state a
+        live, undeclared SpringBoard alert produces — the one poll where the fresher, more certain
+        native diagnosis that alert *is* should be allowed to win instead (BE-0418 review finding).
+        Requiring `shows_app_ui` here, not only a shape match, is what turns "unknown" into "no"
+        for this caller's purposes: without it, a deferral gated on `_tree_gave_up` alone could
+        never be overridden by the one diagnosis it exists to defer to in the first place, since the
+        very state that diagnosis reports is what collapses the tree in the first place.
+        """
+        return shows_app_ui(elements) and self._tree_gave_up_shape_matches(elements)
+
     def _observe_native(self, elements: list[base.Element]) -> None:
         if (
             self._tree_gave_up
             and shows_app_ui(elements)
-            and not any(
-                rule.identifying_labels == self._tree_gave_up_shape
-                for rule in identified_alert_rules(
-                    self.guard.tree_dedup_rules, _tree_buttons(elements)
-                )
-            )
+            and not self._tree_gave_up_shape_matches(elements)
         ):
-            # The given-up sheet is no longer on this poll's own tree, so the deference below —
-            # holding every note to what the give-up named rather than what a *new* alert's own
-            # diagnosis would say — no longer applies (BE-0418 review finding). Retiring it here,
-            # from this poll's own `elements`, is what lets it lift at all: `_dismiss_from_tree`
-            # is the only other place that resets it, and it runs only when `probed_absent` holds
-            # below, which a live, undeclared SpringBoard alert stops from holding for as long as
-            # that alert is up — exactly the case where a fresher diagnosis is needed most.
-            #
-            # Gated on `shows_app_ui`, not on the raw tree read alone: a genuine SpringBoard alert
-            # collapses the tree to bare content (`shows_app_ui`'s own docstring; `_GUARD_DEBOUNCE_POLLS`
-            # above states the same fact), so a poll where one is covering the screen enumerates no
-            # buttons regardless of whether the given-up sheet is still there underneath it -- reading
-            # that as "the sheet left" would retire the latch, and its whole per-showing budget with
-            # it, every time an unrelated SpringBoard alert happens to be up (BE-0418 review finding).
-            # Only a poll that genuinely shows app UI again can tell the two apart.
-            #
-            # Resolved via `identified_alert_rules`, the same accept test `matching_alert_rule` uses
-            # (`excluded_labels`, per-label uniqueness), not a bare shape-subset test: the given-up
-            # shape can nest inside a different, live prompt's own wider read the same way a stuck
-            # tree shape does elsewhere in this call, and a bare subset test would then keep the latch
-            # armed for a sheet that already left (BE-0418 review finding).
-            #
-            # The note goes with the latch: every write to `blocked_note` below that could otherwise
-            # win is gated on `not self._tree_gave_up`, and the give-up's own two write sites
-            # (`_dismiss_from_tree`) are the only ones reached while it stands — so whenever this
-            # branch runs, `blocked_note` is exactly the note the give-up itself set. Leaving it
-            # standing would hand the job to whichever write runs next, and on a poll where the
-            # native probe is not due — or a live, undeclared alert has latched `_native_unhandled`,
-            # which returns above the collapsed-tree proxy — there is no next writer this tick: the
-            # stale note would then name a sheet this very poll already proved gone for up to a whole
-            # `poll_interval` (BE-0418 review finding).
+            # The given-up sheet is confirmed gone from this poll's own tree — a *positive* read
+            # finding it absent, not merely a collapsed one that cannot say either way (`shows_app_ui`
+            # rules that out) — so the deference every native branch below applies through
+            # `_tree_gave_up_shape_still_shown` no longer holds, and the note goes with the latch
+            # (BE-0418 review finding). Retiring it here, from this poll's own `elements`, is what
+            # lets it lift at all: `_dismiss_from_tree` is the only other place that resets it, and
+            # it runs only when `probed_absent` holds below, which a live, undeclared SpringBoard
+            # alert stops from holding for as long as that alert is up — but
+            # `_tree_gave_up_shape_still_shown` answering `False` on exactly those collapsed polls
+            # (an "unknown" read, not a confirmed "still there") is what lets every native branch
+            # below already prefer its own fresher diagnosis then, rather than only once retirement
+            # itself can confirm the sheet left.
             #
             # Not a bare clear, though: `_native_unhandled` can itself already be latched `True` with
-            # nothing to show for it, since its own write sites compute a note only when this deferred
-            # to it (`if not self._tree_gave_up:`) — the flag still flips regardless (BE-0418 review
-            # finding). Restoring `_native_unhandled_note` here, rather than clearing unconditionally,
-            # is what lets that still-live native diagnosis survive the give-up's own departure instead
-            # of leaving `blocked_note` empty on a screen a probe has already named as blocked.
+            # nothing to show for it, since its own write sites compute a note only when the same
+            # helper defers to it — the flag still flips regardless (BE-0418 review finding).
+            # Restoring `_native_unhandled_note` here, rather than clearing unconditionally, is what
+            # lets that still-live native diagnosis survive the give-up's own departure instead of
+            # leaving `blocked_note` empty on a screen a probe has already named as blocked.
             self.blocked_note = self._native_unhandled_note if self._native_unhandled else ""
             self._tree_gave_up = False
             self._tree_gave_up_shape = None
@@ -312,11 +318,15 @@ class _AlertGuardGate:
                     if leftover or not identified
                     else uncleared_prompt_note(identified[0].tap_label)
                 )
-                if not self._tree_gave_up:
+                if not (self._tree_gave_up and self._tree_gave_up_shape_still_shown(elements)):
                     # The same exception the clear-guard above and the `raced` branch below both
-                    # make: an in-tree give-up names a prompt a rule *did* identify and a tap
-                    # failed to clear, and nothing re-arms that note once a live SpringBoard alert
-                    # stops `probed_absent` from holding (BE-0418 review finding).
+                    # make: an in-tree give-up whose own sheet this poll's tree still shows is a
+                    # prompt a rule *did* identify and a tap failed to clear, and nothing re-arms
+                    # that note while it stands. But a collapsed tree can show it neither way — see
+                    # `_tree_gave_up_shape_still_shown` — and this poll's own probe just proved a live,
+                    # undeclared alert is what collapsed it, so that fresher, more certain diagnosis
+                    # wins instead of a give-up note this poll cannot itself corroborate (BE-0418
+                    # review finding).
                     self.blocked_note = self._native_unhandled_note
                 self._withhold_tree_tap_licence()
                 return
@@ -360,11 +370,13 @@ class _AlertGuardGate:
                     # above does: the give-up's own retirement needs this diagnosis intact even when
                     # the give-up defers writing it this poll (BE-0418 review finding).
                     self._native_unhandled_note = alert_block_note(leftover)
-                    if not self._tree_gave_up:
-                        # The same exception the clear-guard above and the `elif` below both make:
-                        # an in-tree give-up names a prompt a rule *did* identify and a tap failed
-                        # to clear, and the hedged "unhandled" note would tell the author the
-                        # opposite (`uncleared_prompt_note`'s own docstring, BE-0418 review finding).
+                    if not (self._tree_gave_up and self._tree_gave_up_shape_still_shown(elements)):
+                        # The same exception the clear-guard above and the `elif` below both make,
+                        # gated the same way: an in-tree give-up whose sheet this poll's own tree
+                        # still shows keeps its note, since the hedged "unhandled" one would tell
+                        # the author the opposite (`uncleared_prompt_note`'s own docstring); a
+                        # collapsed tree corroborates neither way, so the live alert this probe just
+                        # found wins instead (BE-0418 review finding).
                         self.blocked_note = self._native_unhandled_note
                 elif self._native_unhandled:
                     # Nothing but the raced rule's own shape is on the surface, and this read is the
@@ -380,7 +392,7 @@ class _AlertGuardGate:
                     # is preserved above (BE-0418 review finding).
                     self._native_unhandled = False
                     self._native_unhandled_note = ""
-                    if not self._tree_gave_up:
+                    if not (self._tree_gave_up and self._tree_gave_up_shape_still_shown(elements)):
                         self.blocked_note = ""
                 self._collapsed_polls = 0
                 self._withhold_tree_tap_licence()
