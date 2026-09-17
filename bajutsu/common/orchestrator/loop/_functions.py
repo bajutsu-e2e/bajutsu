@@ -671,6 +671,12 @@ def run_scenario(
     # it is drained here rather than left in the driver's log with no step to carry it (see BE-0315's
     # `expect_alerts` beside it).
     expect_actuations: list[Actuation] = []
+    # `RunResult.dropped_expect_actuations`' running total: the driver-side half of that field's
+    # disclosure (the report loader's own half is a malformed record found on load, `load.py`'s
+    # `_actuations`). Every drain into `expect_actuations` below folds its own `.dropped` in here
+    # rather than discarding it, the same disclosure a step's own `drain_actuations` gets via
+    # `outcome.dropped_actuations`.
+    expect_dropped_actuations = 0
     # What the guard saw blocking the screen during the `expect` retry and could not clear (BE-0402).
     expect_block_note = ""
     failure: str | None = None
@@ -745,7 +751,7 @@ def run_scenario(
                     # A banner nothing interacted with never reaches the step loop's own per-step
                     # sweep — this phase runs after the last step's (BE-0416 Unit 8) — so it is
                     # cleared here too, right before the capture the `visual` assertions read.
-                    _clear_notification_banner_before_visual_capture(
+                    expect_dropped_actuations += _clear_notification_banner_before_visual_capture(
                         ctx, driver, clock, expect_actuations
                     )
                     _capture_visual_actual(
@@ -774,29 +780,20 @@ def run_scenario(
                             expect_block_note = alert_guard.blocked_note
                         if event is not None:
                             expect_alerts.append(event)
-                            expect_actuations.extend(drain_actuations(driver).records)
-                            # The prompt has been tapped, not yet cleared: let the sheet finish leaving
-                            # and the screen it covered finish rendering, so the retry below judges the
-                            # assertions against a still tree rather than one mid-animation (BE-0406).
-                            settle_after_alert_dismiss(
-                                driver, clock, transitions=transitions, cancelled=cancelled
-                            )
-                            _clear_notification_banner_before_visual_capture(
-                                ctx, driver, clock, expect_actuations
-                            )
-                            _capture_visual_actual(
+                            expect_results, dropped = _retry_expect_after_guard_dismiss(
                                 ctx,
                                 driver,
-                                channel=channel,
-                                hide_markers=hide_markers,
-                                cancelled=cancelled,
+                                clock,
+                                expect,
+                                network,
+                                control,
+                                transitions,
+                                cancelled,
+                                channel,
+                                hide_markers,
+                                expect_actuations,
                             )
-                            # Re-read the clipboard too: clearing the block may have let the app update the
-                            # pasteboard, so the retry must compare against the fresh value, not the stale one.
-                            clip = _clipboard_for(expect, control)
-                            expect_results = _evaluate_expect(
-                                driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
-                            )  # retry once
+                            expect_dropped_actuations += dropped
                         # The guard's own probe just now, and the retry's queries when one ran, can
                         # each be interrupted too, and nothing else drains this phase again afterwards
                         # (BE-0406 Unit 2b). Outside the `event is not None` branch above so a probe
@@ -868,6 +865,7 @@ def run_scenario(
         wall_offset_s=wall_offset_s,
         expect_alerts=expect_alerts,
         expect_actuations=expect_actuations,
+        dropped_expect_actuations=expect_dropped_actuations,
         before_outcomes=before_outcomes,
         after_outcomes=after_outcomes,
         after_verdict=after_verdict,
@@ -985,7 +983,7 @@ def _clear_notification_banner(driver: base.Driver, clock: Clock) -> None:
 
 def _clear_notification_banner_before_visual_capture(
     ctx: EvalContext, driver: base.Driver, clock: Clock, expect_actuations: list[Actuation]
-) -> None:
+) -> int:
     """`_clear_notification_banner`, gated on an actual `visual` assertion being present.
 
     Mirrors the gate `_capture_visual_actual` itself applies (`ctx.visual is None`), so a scenario
@@ -994,10 +992,74 @@ def _clear_notification_banner_before_visual_capture(
     Drains the swipe into `expect_actuations` at once: left in the driver's own log, it would
     otherwise strand until some later drain (the next scenario's first step, since a lease's
     driver outlives one scenario) picks it up as a phantom actuation nobody performed there.
+
+    Returns:
+        How many records that drain had to discard — the caller's own share of
+        `RunResult.dropped_expect_actuations`, since this function has no `StepOutcome` of its
+        own to carry the disclosure the way a step's `drain_actuations` call does.
     """
-    if ctx.visual is not None:
-        _clear_notification_banner(driver, clock)
-        expect_actuations.extend(drain_actuations(driver).records)
+    if ctx.visual is None:
+        return 0
+    _clear_notification_banner(driver, clock)
+    return _drain_into_expect_actuations(driver, expect_actuations)
+
+
+def _drain_into_expect_actuations(driver: base.Driver, expect_actuations: list[Actuation]) -> int:
+    """Drain `driver`'s actuation log into `expect_actuations`, returning its own `dropped` count.
+
+    The one place this phase's two drain sites (the guard's dismissing tap, the banner sweep above)
+    share the disclosure `RunResult.dropped_expect_actuations` needs — neither has a `StepOutcome`
+    of its own to carry a truncated drain the way `outcome.dropped_actuations` does.
+    """
+    drained = drain_actuations(driver)
+    expect_actuations.extend(drained.records)
+    return drained.dropped
+
+
+def _retry_expect_after_guard_dismiss(
+    ctx: EvalContext,
+    driver: base.Driver,
+    clock: Clock,
+    expect: list[Assertion],
+    network: NetworkSource,
+    control: DeviceControl | None,
+    transitions: TransitionSource,
+    cancelled: CancelSource,
+    channel: Collector | None,
+    hide_markers: bool,
+    expect_actuations: list[Actuation],
+) -> tuple[list[AssertionResult], int]:
+    """Re-evaluate `expect` once the alert guard has dismissed whatever blocked it the first time.
+
+    Extracted out of `run_scenario` (BE-0416 Unit 8's `dropped_expect_actuations` threading pushed
+    it over `PLR0915`'s statement cap) rather than folded into a smaller piece: everything here runs
+    only on the one path that reaches it — a guard dismissal — so splitting it further would just
+    scatter one retry's steps across more call sites.
+
+    Returns:
+        The retried `expect` results, and how many actuations the guard's own dismissing tap and the
+        banner sweep this triggers had to drop between them (`_drain_into_expect_actuations`'s and
+        `_clear_notification_banner_before_visual_capture`'s own shares of
+        `RunResult.dropped_expect_actuations`).
+    """
+    dropped = _drain_into_expect_actuations(driver, expect_actuations)
+    # The prompt has been tapped, not yet cleared: let the sheet finish leaving and the screen it
+    # covered finish rendering, so the retry below judges the assertions against a still tree
+    # rather than one mid-animation (BE-0406).
+    settle_after_alert_dismiss(driver, clock, transitions=transitions, cancelled=cancelled)
+    dropped += _clear_notification_banner_before_visual_capture(
+        ctx, driver, clock, expect_actuations
+    )
+    _capture_visual_actual(
+        ctx, driver, channel=channel, hide_markers=hide_markers, cancelled=cancelled
+    )
+    # Re-read the clipboard too: clearing the block may have let the app update the pasteboard, so
+    # the retry must compare against the fresh value, not the stale one.
+    clip = _clipboard_for(expect, control)
+    expect_results = _evaluate_expect(
+        driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
+    )
+    return expect_results, dropped
 
 
 def _sweep_notification_banner(

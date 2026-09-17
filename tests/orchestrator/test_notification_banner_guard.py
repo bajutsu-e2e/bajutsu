@@ -392,6 +392,55 @@ def test_the_swipe_is_drained_from_the_expect_phase_at_once(tmp_path: object) ->
     assert drain_actuations(driver).records == []
 
 
+def test_the_expect_phase_sweeps_dropped_actuations_are_disclosed(tmp_path: object) -> None:
+    # `_clear_notification_banner_before_visual_capture` has no `StepOutcome` of its own to carry
+    # a truncated drain the way a step's `outcome.dropped_actuations` does, so a driver whose
+    # bounded actuation log overflowed during the sweep's own swipe must surface that count on
+    # `RunResult.dropped_expect_actuations` instead of discarding it.
+    from pathlib import Path
+
+    from bajutsu.common.assertions import EvalContext, VisualContext
+    from bajutsu.common.drivers.actuation import Drained
+    from bajutsu.common.evidence.redaction import Redactor
+    from bajutsu.common.evidence.sink import RunArtifactWriter
+
+    assert isinstance(tmp_path, Path)
+
+    class _OverflowingDriver(FakeDriver):
+        def drain_actuations(self) -> Drained:
+            drained = super().drain_actuations()
+            return Drained(records=drained.records, dropped=drained.dropped + 3)
+
+    driver = _OverflowingDriver(
+        [
+            {
+                "identifier": "home",
+                "label": "Home",
+                "traits": [],
+                "value": None,
+                "frame": (0.0, 0.0, 10.0, 10.0),
+                "nativeZ": None,
+            }
+        ]
+    )
+    driver.notification_banner = _BANNER_FRAME
+    vc = VisualContext(
+        screenshot_path=tmp_path / "00-m" / "shot.png",
+        baselines_dir=tmp_path / "baselines",
+        writer=RunArtifactWriter(tmp_path, Redactor(None)),
+        prefix="00-m",
+    )
+    result = run_scenario(
+        driver,
+        _scenario({"name": "m", "steps": [], "expect": [{"visual": {"baseline": "home.png"}}]}),
+        clock=FakeClock(),
+        ctx=EvalContext(visual=vc),
+    )
+    assert result.dropped_expect_actuations == 3, (
+        "the expect-phase sweep's own dropped actuations were discarded instead of disclosed"
+    )
+
+
 def test_a_short_travel_frame_is_left_alone_even_when_not_fully_inverted() -> None:
     # Not every insufficient swipe inverts outright: a banner still sliding in near the top margin
     # can leave the endpoint *above* the start (not inverted) while travelling far less than the
