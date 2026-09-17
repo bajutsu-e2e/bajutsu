@@ -816,14 +816,14 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   share one alert's shape under different choices, a scenario's `choice` overriding a target's for
   the same prompt, and keying on the label alone would let one such rule's exclusion promote its
   sibling to tap the opposite button on the alert this call already answered. A later alert
-  resolving to a shape that
-  is neither a match nor a nested rendering — narrower or wider — of one already dismissed — including one sharing the
-  tapped label alone (the built-in `notifications` and `tracking` prompts both grant `"Allow"`) —
-  still taps as usual once it is no longer read alongside the one already dismissed; two such
-  alerts read together instead share that label's count, so neither uniquely matches and the round
-  reports the surface as unhandled. A match landing back on an already-answered shape does not by
-  itself end the round on either path: a real, not-yet-answered alert can be enumerable right
-  alongside that fade, so the search retries among the shapes not yet dismissed before declining. A
+  resolving to a shape that is neither a match nor a nested rendering (narrower or wider) of one
+  already dismissed still taps as usual once it is no longer read alongside the one already
+  dismissed — an alert sharing only the tapped label included, as the built-in `notifications` and
+  `tracking` prompts both grant `"Allow"`. Two such alerts read together instead share that
+  label's count, so neither uniquely matches and the round reports the surface as unhandled. A
+  match landing back on an already-answered shape does not by itself end the round on either path:
+  a real, not-yet-answered alert can be enumerable right alongside that fade, so the search retries
+  among the shapes not yet dismissed before declining. A
   round that declines a repeat native tap still checks the buttons the probe read against every
   shape answered so far: a queued second alert no rule identifies can sit right alongside the one
   this call already dismissed, and the decline alone does not mean the rest of the surface is
