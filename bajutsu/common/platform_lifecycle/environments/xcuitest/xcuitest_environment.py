@@ -96,13 +96,19 @@ _MAX_CRASH_REPORTS = 3
 # re-looks (BE-0424). A condition wait, not a fixed sleep: it returns the instant a matching report
 # appears, so a generous bound costs nothing on the common case where the report is already there.
 # Bounded rather than unbounded because the scenario has already failed by the time this runs — the
-# wait buys evidence, never a different verdict. 15s rather than the 5s this started at, because two
-# consecutive `app-crash (xcuitest)` CI runs on one commit (PR #2012) each classified the crash
-# correctly (`app_crashed: true`) yet swept no report inside the old bound, while the same scenario
-# against a freshly built app on an uncontended local Simulator captures one every time. No
-# code-side cause was found, which leaves `ReportCrash` being slower to finish its write on a shared
-# runner as the remaining explanation.
-_APP_CRASH_REPORT_TIMEOUT = 15.0
+# wait buys evidence, never a different verdict. Raised twice on PR #2012. First 5s → 15s, after two
+# consecutive `app-crash (xcuitest)` CI runs each classified the crash correctly (`app_crashed:
+# true`) yet swept no report inside the old bound, while the same scenario against a freshly built
+# app on an uncontended local Simulator captures one every time. Then 15s → 30s, once the job's own
+# diagnostics-upload gap that had made that first bump circumstantial was fixed (the job now uploads
+# `render-probe.txt` and the BE-0361 stall captures alongside the run) and four further recurrences
+# all carried direct evidence of the same host degradation recorded before any scenario ran — a
+# screenshot probe killed for not answering, and a `backboardd` telemetry sample that itself timed
+# out. No code-side cause was found on the crash-detection path itself; `ReportCrash` sharing that
+# degraded host's render/IPC contention is the remaining explanation, and this second bump is a
+# mitigation for a host that recovers within tens of seconds rather than a claim that 30s beats a
+# fully wedged one.
+_APP_CRASH_REPORT_TIMEOUT = 30.0
 _APP_CRASH_REPORT_POLL = 0.2
 
 
