@@ -46,6 +46,7 @@ final class RouterConcurrencyTests: XCTestCase {
         func setPickerValue(backingElement: AnyObject, value: String) -> TapResult { .ok }
         func querySystemAlertButtons() -> [ElementSnapshot] { [] }
         func tapSystemAlertButton(backingElement: AnyObject) -> TapResult { .ok }
+        func queryNotificationBanner() -> [ElementSnapshot] { [] }
         func screenshot() -> Data? { nil }
     }
 

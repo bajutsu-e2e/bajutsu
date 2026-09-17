@@ -49,6 +49,7 @@ _TRACED_METHODS = frozenset(
         "set_picker_value",
         "handle_system_alert",
         "system_alert_labels",
+        "notification_banner_frame",
         "dismiss_blocking_tip",
         "wait_for",
         "screenshot",

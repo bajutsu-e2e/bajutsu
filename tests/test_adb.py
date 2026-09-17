@@ -382,6 +382,13 @@ def test_capabilities_lean_end() -> None:
     assert base.Capability.TEXT_SELECTION in caps  # Ctrl+A / Ctrl+C actuate (BE-0280)
 
 
+def test_notification_banner_frame_is_none() -> None:
+    # No SpringBoard on Android; this backend never advertises HANDLE_NOTIFICATION_BANNER (BE-0416).
+    driver = AdbDriver("U", run=lambda a: "")
+    assert base.Capability.HANDLE_NOTIFICATION_BANNER not in driver.capabilities()
+    assert driver.notification_banner_frame() is None
+
+
 def test_driver_interval_routes_video_and_devicelog_to_adb_starters(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

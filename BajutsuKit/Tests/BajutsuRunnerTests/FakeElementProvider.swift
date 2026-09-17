@@ -35,6 +35,8 @@ final class FakeElementProvider: ElementProviding {
     // The SpringBoard alert buttons `/systemAlert/query` returns, and the taps it records (BE-0316).
     var systemAlertButtons: [ElementSnapshot] = []
     var systemAlertTapCalls: [AnyObject] = []
+    // The notification banner `/notificationBanner/query` returns, empty when none is up (BE-0416).
+    var notificationBanner: [ElementSnapshot] = []
 
     func queryElements() -> [ElementSnapshot] {
         beforeQueryElements?()
@@ -109,6 +111,10 @@ final class FakeElementProvider: ElementProviding {
     func tapSystemAlertButton(backingElement: AnyObject) -> TapResult {
         systemAlertTapCalls.append(backingElement)
         return tapResult
+    }
+
+    func queryNotificationBanner() -> [ElementSnapshot] {
+        notificationBanner
     }
 
     func screenshot() -> Data? { screenshotData }

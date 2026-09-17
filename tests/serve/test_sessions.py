@@ -28,6 +28,8 @@ from bajutsu.serve.sessions import (
     InMemorySessionStore,
     Principal,
     kind_from_stored,
+    machine_identity,
+    machine_repository,
 )
 
 
@@ -399,3 +401,113 @@ def test_a_redis_record_missing_its_kind_reads_as_a_machine() -> None:
     redis.setex("bajutsu:session:odd", 60, json.dumps({"identity": "alice", "org": "acme"}))
     principal = RedisSessionStore(redis).principal("odd")
     assert principal is not None and principal.kind == MACHINE
+
+
+# --- revoking machine sessions (BE-0414 unit 3) -------------------------------------------------
+# Scoped by org, which `revoke_identities` cannot be: a machine identity is `repo:<owner>/<repo>`
+# and carries no tenant, but one repository may be listed by several orgs. Every store enforces the
+# same scoping, since which one a deployment wires is not something an admin action can see.
+
+
+def test_every_store_revokes_a_repositorys_sessions_within_one_org_only(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    """A shared pipeline repository testing apps owned by different teams. Revoking on identity
+    alone would let one org's admin end the other org's running pipelines."""
+    for store in _stores(serve_engine):
+        here = store.issue("repo:shared/ci", org="acme", kind=MACHINE)
+        there = store.issue("repo:shared/ci", org="globex", kind=MACHINE)
+        assert store.revoke_machine_sessions("acme", identity="repo:shared/ci") == 1, type(store)
+        assert not store.valid(here), type(store)
+        assert store.valid(there), type(store)
+
+
+def test_every_store_revokes_a_row_whose_kind_this_version_does_not_know(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    """`kind_from_stored` governs an unrecognized kind — a row a newer version wrote during a
+    rolling deploy — as a machine. A revocation matching the literal `"machine"` would leave
+    exactly those rows admitted by the gate and untouched by every revocation."""
+    store = _sql_store(serve_engine)
+    sid = store.issue("repo:acme/app", org="acme", kind="machine-v2")  # type: ignore[arg-type]
+    principal = store.principal(sid)
+    assert principal is not None and principal.kind == MACHINE, "the gate reads it as a machine"
+    assert store.revoke_machine_sessions("acme") == 1
+    assert not store.valid(sid)
+
+
+def test_every_store_revokes_a_whole_orgs_machine_sessions(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    """Omitting the identity is the reach org retirement needs, and the one an admin wants when the
+    roster itself is what went wrong."""
+    for store in _stores(serve_engine):
+        app = store.issue("repo:acme/app", org="acme", kind=MACHINE)
+        web = store.issue("repo:acme/web", org="acme", kind=MACHINE)
+        other = store.issue("repo:globex/ci", org="globex", kind=MACHINE)
+        assert store.revoke_machine_sessions("acme") == 2, type(store)
+        assert not store.valid(app) and not store.valid(web), type(store)
+        assert store.valid(other), type(store)
+
+
+def test_every_store_leaves_a_human_session_alone(serve_engine: Callable[..., Engine]) -> None:
+    """The kind the store recorded decides, not the shape of an identity string — so a person whose
+    org is being cleaned up keeps the session they signed in with."""
+    for store in _stores(serve_engine):
+        human = store.issue("dana", org="acme")
+        # Not even one that borrowed the reserved form: it is still recorded as a human.
+        impostor = store.issue("repo:acme/app", org="acme", kind=HUMAN)
+        assert store.revoke_machine_sessions("acme") == 0, type(store)
+        assert store.valid(human) and store.valid(impostor), type(store)
+
+
+def test_every_store_revokes_nothing_for_an_org_with_no_machine_sessions(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    for store in _stores(serve_engine):
+        assert store.revoke_machine_sessions("nobody") == 0, type(store)
+
+
+def test_the_machine_identity_form_round_trips_and_rejects_a_login() -> None:
+    """Minting and reading the reserved form live together so they cannot drift apart. A GitHub
+    login cannot contain `/`, so nothing a person signs in as is ever read as a repository."""
+    assert machine_identity("acme/app") == "repo:acme/app"
+    assert machine_repository(machine_identity("acme/app")) == "acme/app"
+    for identity in (None, "", "alice", "repository:acme/app"):
+        assert machine_repository(identity) is None, identity
+    # The prefix alone settles that the caller is a machine. A bare `repo:` answering None would
+    # send `_record_audit` down the human branch and write it into a foreign key.
+    assert machine_repository("repo:") == ""
+
+
+def test_the_machine_identity_folds_case_like_the_roster_does() -> None:
+    """`AllowedRepository.admits` matches the roster case-insensitively, and revocation compares
+    identities exactly. Minting from the raw claim would leave an admin who types the casing their
+    own roster uses revoking nothing, which looks identical to having nothing left to revoke."""
+    assert machine_identity("Acme/App") == machine_identity("acme/app")
+
+
+def test_every_store_revokes_a_session_minted_before_the_case_folding(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    """BE-0414 units 1-2 interpolated the GitHub `repository` claim raw, so a session minted before
+    the folding landed — or by an older replica mid-rolling-deploy — carries the owner's own casing.
+    Comparing exactly would leave it admitted by the gate and matched by no revocation, reporting
+    `sessionsRevoked: 0`: indistinguishable from having nothing left to revoke."""
+    for store in _stores(serve_engine):
+        legacy = store.issue("repo:Acme/App", org="acme", kind=MACHINE)  # the pre-folding form
+        assert store.revoke_machine_sessions("acme", identity=machine_identity("Acme/App")) == 1, (
+            type(store)
+        )
+        assert not store.valid(legacy), type(store)
+
+
+def test_every_store_still_revokes_only_the_named_repository(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    """Folding case must not widen the match to a different repository in the same org."""
+    for store in _stores(serve_engine):
+        app = store.issue(machine_identity("acme/app"), org="acme", kind=MACHINE)
+        web = store.issue(machine_identity("acme/web"), org="acme", kind=MACHINE)
+        assert store.revoke_machine_sessions("acme", identity=machine_identity("acme/app")) == 1
+        assert not store.valid(app) and store.valid(web), type(store)

@@ -7,6 +7,7 @@ from bajutsu.common.drivers.base import (
     Capability,
     Element,
     ElementNotFound,
+    Frame,
     Point,
     Selector,
     UnsupportedAction,
@@ -149,6 +150,10 @@ class WebContextDriver:
     def system_alert_labels(self) -> list[str]:
         # A WebView DOM context sees no SpringBoard alert layer; the reactive native path never runs.
         return []
+
+    def notification_banner_frame(self) -> Frame | None:
+        # A WebView DOM context sees no SpringBoard banner layer either; nothing to report here.
+        return None
 
     def dismiss_blocking_tip(self, tree: list[Element] | None = None) -> bool:  # noqa: ARG002  # Driver shape
         # A TipKit tip is native UIKit, outside the DOM this context sees; nothing to dismiss here.

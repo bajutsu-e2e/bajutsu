@@ -528,6 +528,16 @@ def _build_server_state(
             "spends each token's 'jti' in the database to make it single-use across replicas, so "
             "every exchange will be refused until one is configured",
         )
+    if oidc is not None and token is None:
+        # Both backends skip the request gate with no token configured, so the machine allowlist
+        # never runs and the org the exchange verified never reaches an operation. `oidc_exchange`
+        # refuses outright in that case; say so here, where an operator is looking.
+        _warn(
+            "oidc_without_token",
+            "BAJUTSU_OIDC_AUDIENCE is set but no token is — with no token the request gate is "
+            "skipped entirely, so nothing would enforce what a machine session may reach or scope "
+            "it to the org it exchanged for, and every exchange will be refused",
+        )
     if oidc is not None and not _joserfc_installed():
         # Verification imports `joserfc` lazily, so a deployment missing the extra would otherwise
         # discover it as a 500 per exchange with no `oidc.denied` behind it. Say it once at boot,

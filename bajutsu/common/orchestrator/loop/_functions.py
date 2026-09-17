@@ -33,6 +33,7 @@ from bajutsu.common.orchestrator.control_channel import ControlChannelError, cap
 from bajutsu.common.orchestrator.evidence_rules import _extract_stable_key, requested_intervals
 from bajutsu.common.orchestrator.substitution import _interp_asserts
 from bajutsu.common.orchestrator.types import (
+    DEFAULT_ALERT_POLL_INTERVAL,
     AlertEvent,
     AlertGuardConfig,
     Clock,
@@ -670,6 +671,12 @@ def run_scenario(
     # it is drained here rather than left in the driver's log with no step to carry it (see BE-0315's
     # `expect_alerts` beside it).
     expect_actuations: list[Actuation] = []
+    # `RunResult.dropped_expect_actuations`' running total: the driver-side half of that field's
+    # disclosure (the report loader's own half is a malformed record found on load, `load.py`'s
+    # `_actuations`). Every drain into `expect_actuations` below folds its own `.dropped` in here
+    # rather than discarding it, the same disclosure a step's own `drain_actuations` gets via
+    # `outcome.dropped_actuations`.
+    expect_dropped_actuations = 0
     # What the guard saw blocking the screen during the `expect` retry and could not clear (BE-0402).
     expect_block_note = ""
     failure: str | None = None
@@ -741,6 +748,12 @@ def run_scenario(
                 if failure is None and scenario.expect:
                     expect = _interp_asserts(scenario.expect, live_bindings)
                     clip = _clipboard_for(expect, control)
+                    # A banner nothing interacted with never reaches the step loop's own per-step
+                    # sweep — this phase runs after the last step's (BE-0416 Unit 8) — so it is
+                    # cleared here too, right before the capture the `visual` assertions read.
+                    expect_dropped_actuations += _clear_notification_banner_before_visual_capture(
+                        ctx, driver, clock, expect_actuations
+                    )
                     _capture_visual_actual(
                         ctx, driver, channel=channel, hide_markers=hide_markers, cancelled=cancelled
                     )
@@ -760,7 +773,9 @@ def run_scenario(
                     if not assertions.passed(expect_results) and alert_guard is not None:
                         # The guard's own call settles the screen after every round it dismisses
                         # something in (BE-0418), the last one included, so nothing here settles again
-                        # before the retry below reads the screen.
+                        # before the retry below reads the screen -- `_retry_expect_after_guard_dismiss`
+                        # no longer settles for that reason (review finding, merging BE-0416 and
+                        # BE-0418).
                         cleared = alert_guard(
                             driver,
                             expect_alerts,
@@ -776,22 +791,27 @@ def run_scenario(
                         expect_block_note = alert_guard.blocked_note
                         # Drained whether or not anything cleared: since BE-0418 a call can tap and
                         # still return False, once a withdrawn `AlertEvent` leaves `alerts` no
-                        # longer than it started (BE-0402's report still needs that tap).
-                        expect_actuations.extend(drain_actuations(driver).records)
+                        # longer than it started (BE-0402's report still needs that tap). Uses the
+                        # shared helper so this drain's own dropped count folds into
+                        # `RunResult.dropped_expect_actuations` the same way the banner sweep's does
+                        # (BE-0416 Unit 8).
+                        expect_dropped_actuations += _drain_into_expect_actuations(
+                            driver, expect_actuations
+                        )
                         if cleared:
-                            _capture_visual_actual(
+                            expect_results, dropped = _retry_expect_after_guard_dismiss(
                                 ctx,
                                 driver,
-                                channel=channel,
-                                hide_markers=hide_markers,
-                                cancelled=cancelled,
+                                clock,
+                                expect,
+                                network,
+                                control,
+                                cancelled,
+                                channel,
+                                hide_markers,
+                                expect_actuations,
                             )
-                            # Re-read the clipboard too: clearing the block may have let the app update the
-                            # pasteboard, so the retry must compare against the fresh value, not the stale one.
-                            clip = _clipboard_for(expect, control)
-                            expect_results = _evaluate_expect(
-                                driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
-                            )  # retry once
+                            expect_dropped_actuations += dropped
                         # The guard's own rounds just now, and the retry's queries when one ran, can
                         # each be interrupted too, and nothing else drains this phase again afterwards
                         # (BE-0406 Unit 2b). Outside the `if cleared` branch above so a call that cleared
@@ -863,6 +883,7 @@ def run_scenario(
         wall_offset_s=wall_offset_s,
         expect_alerts=expect_alerts,
         expect_actuations=expect_actuations,
+        dropped_expect_actuations=expect_dropped_actuations,
         before_outcomes=before_outcomes,
         after_outcomes=after_outcomes,
         after_verdict=after_verdict,
@@ -913,6 +934,177 @@ def _tip_poll_hook(
         return interrupt_poll(elements) if interrupt_poll is not None else False
 
     return poll
+
+
+# How long a swipe's clearance is re-checked before the shutter proceeds regardless — the same
+# deadline `RunnerUITest.swift`'s own `bannerClearanceTimeout` re-observes a banner's absence by
+# (BE-0416), so a banner still mid-animation when the swipe lands does not reach the screenshot
+# this sweep exists to protect. A condition wait against the injected `clock`, not a fixed sleep or
+# a real-time deadline: each tick is a real presence query, and a fake clock in tests never pays
+# the real 2s.
+_BANNER_CLEARANCE_TIMEOUT = 2.0
+_BANNER_CLEARANCE_POLL = 0.1
+
+
+def _clear_notification_banner(driver: base.Driver, clock: Clock) -> None:
+    """Swipe away a foreground notification banner if one is showing right now (BE-0416 Unit 8).
+
+    A single unconditional check, no rate limit: for the `expect`-phase visual capture, which this
+    backs directly and which pays this at most once or twice a scenario regardless of step count.
+    `_sweep_notification_banner` below is the rate-limited wrapper the per-step call site needs
+    instead, since that one runs on every step.
+
+    The swipe's clearance is re-confirmed by a bounded poll before returning, mirroring the
+    interruption monitor's own discipline (Unit 4's Swift path never claims a dismissal it has not
+    observed) — otherwise a banner still mid-dismissal-animation when the swipe lands would still
+    reach the very screenshot this sweep exists to protect. A confirmed-gone banner returns at
+    once; an unconfirmed one is logged, since a corrupted `after.png` or a failed `visual` diff
+    with nothing pointing at the banner reproduces, in miniature, the invisibility this whole
+    mechanism exists to end — the same reasoning the Swift path's own decline log carries.
+
+    A degenerate frame (a banner caught mid-appearance or mid-dismissal, not yet settled) is left
+    alone rather than swiped: `notification_banner_swipe_points` returns `None` whenever the
+    resulting gesture would travel too little to act as a dismissal — including, at the extreme,
+    a downward or zero-length drag, which SpringBoard would read as its own notification-shade
+    gesture instead. The next poll (this call, or the per-step sweep's own next tick) reads the
+    frame again once it has settled.
+    """
+    if base.Capability.HANDLE_NOTIFICATION_BANNER not in driver.capabilities():
+        return
+    frame = driver.notification_banner_frame()
+    if frame is None:
+        return
+    points = base.notification_banner_swipe_points(frame)
+    if points is None:
+        return
+    # Re-checked immediately before the gesture, mirroring `RunnerUITest.swift`'s own `banner.exists`
+    # guard: the banner can lose the race with its own auto-dismissal between the frame read above
+    # and this swipe, and a flick delivered at its former position would land on whatever the app
+    # under test draws there — a gesture the scenario never asked for, recorded as its own actuation.
+    if driver.notification_banner_frame() is None:
+        return
+    frm, to = points
+    driver.swipe(frm, to)
+    deadline = clock.now() + _BANNER_CLEARANCE_TIMEOUT
+    while True:
+        if driver.notification_banner_frame() is None:
+            return
+        if clock.now() >= deadline:
+            _logger.warning(
+                "notification banner still on screen %.0fs after the swipe; the capture that "
+                "follows may carry it (BE-0416)",
+                _BANNER_CLEARANCE_TIMEOUT,
+            )
+            return
+        clock.sleep(_BANNER_CLEARANCE_POLL)
+
+
+def _clear_notification_banner_before_visual_capture(
+    ctx: EvalContext, driver: base.Driver, clock: Clock, expect_actuations: list[Actuation]
+) -> int:
+    """`_clear_notification_banner`, gated on an actual `visual` assertion being present.
+
+    Mirrors the gate `_capture_visual_actual` itself applies (`ctx.visual is None`), so a scenario
+    with no `visual` in `expect` pays no extra query at either of that function's two call sites.
+
+    Drains the swipe into `expect_actuations` at once: left in the driver's own log, it would
+    otherwise strand until some later drain (the next scenario's first step, since a lease's
+    driver outlives one scenario) picks it up as a phantom actuation nobody performed there.
+
+    Returns:
+        How many records that drain had to discard — the caller's own share of
+        `RunResult.dropped_expect_actuations`, since this function has no `StepOutcome` of its
+        own to carry the disclosure the way a step's `drain_actuations` call does.
+    """
+    if ctx.visual is None:
+        return 0
+    _clear_notification_banner(driver, clock)
+    return _drain_into_expect_actuations(driver, expect_actuations)
+
+
+def _drain_into_expect_actuations(driver: base.Driver, expect_actuations: list[Actuation]) -> int:
+    """Drain `driver`'s actuation log into `expect_actuations`, returning its own `dropped` count.
+
+    The one place this phase's two drain sites (the guard's dismissing tap, the banner sweep above)
+    share the disclosure `RunResult.dropped_expect_actuations` needs — neither has a `StepOutcome`
+    of its own to carry a truncated drain the way `outcome.dropped_actuations` does.
+    """
+    drained = drain_actuations(driver)
+    expect_actuations.extend(drained.records)
+    return drained.dropped
+
+
+def _retry_expect_after_guard_dismiss(
+    ctx: EvalContext,
+    driver: base.Driver,
+    clock: Clock,
+    expect: list[Assertion],
+    network: NetworkSource,
+    control: DeviceControl | None,
+    cancelled: CancelSource,
+    channel: Collector | None,
+    hide_markers: bool,
+    expect_actuations: list[Actuation],
+) -> tuple[list[AssertionResult], int]:
+    """Re-evaluate `expect` once the alert guard has dismissed whatever blocked it the first time.
+
+    Extracted out of `run_scenario` (BE-0416 Unit 8's `dropped_expect_actuations` threading pushed
+    it over `PLR0915`'s statement cap) rather than folded into a smaller piece: everything here runs
+    only on the one path that reaches it — a guard dismissal — so splitting it further would just
+    scatter one retry's steps across more call sites.
+
+    Does not settle the screen itself, unlike an ordinary post-dismiss retry (BE-0406): the caller's
+    own multi-round guard call already settles after every round it dismisses something in
+    (BE-0418), the last one included, so settling again here would just repeat a condition wait the
+    guard's own call already resolved.
+
+    Returns:
+        The retried `expect` results, and how many actuations the banner sweep this triggers had to
+        drop (`_clear_notification_banner_before_visual_capture`'s own share of
+        `RunResult.dropped_expect_actuations` — the guard's own dismissing tap is the caller's
+        share, drained before this is called).
+    """
+    dropped = _clear_notification_banner_before_visual_capture(
+        ctx, driver, clock, expect_actuations
+    )
+    _capture_visual_actual(
+        ctx, driver, channel=channel, hide_markers=hide_markers, cancelled=cancelled
+    )
+    # Re-read the clipboard too: clearing the block may have let the app update the pasteboard, so
+    # the retry must compare against the fresh value, not the stale one.
+    clip = _clipboard_for(expect, control)
+    expect_results = _evaluate_expect(
+        driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
+    )
+    return expect_results, dropped
+
+
+def _sweep_notification_banner(
+    driver: base.Driver, clock: Clock, alert_guard: AlertGuardConfig | None, state: StepLoopState
+) -> None:
+    """Clear a foreground notification banner sitting on screen, before it corrupts a screenshot.
+
+    Unlike the interruption-monitor path (BE-0416 Unit 4), a banner nothing is interacting with
+    never reaches XCUITest's interruption monitor at all — a plain query never invokes it, so the
+    banner stays up through every non-interactive read. Called unconditionally, once per step,
+    right before that step's own `after.png` shutter starts, which is the corrupted capture this
+    unit exists to reach; the rate limit below is what keeps the added SpringBoard query cheap
+    rather than paid on every step.
+
+    No scenario/CLI toggle (BE-0416 Unit 8): a scenario cannot observe a banner, so none can be
+    broken by clearing it — the same "no known use for a toggle" the interruption path's own
+    design already established (Unit 4). The interval reuses whatever `systemAlertHandling`
+    resolved for this scenario when the guard is configured, so the two SpringBoard polls (this
+    one and `_AlertGuardGate`'s own) share one cadence; a scenario with the guard off still gets
+    BE-0315's plain default, since nothing here is the guard's to turn off.
+    """
+    interval = alert_guard.poll_interval if alert_guard is not None else DEFAULT_ALERT_POLL_INTERVAL
+    now = clock.now()
+    last = state.last_notification_banner_poll_at
+    if last is not None and now - last < interval:
+        return
+    state.last_notification_banner_poll_at = now
+    _clear_notification_banner(driver, clock)
 
 
 def _run_if(

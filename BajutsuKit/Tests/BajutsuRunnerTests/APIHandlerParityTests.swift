@@ -129,6 +129,22 @@ final class APIHandlerParityTests: XCTestCase {
         )
     }
 
+    func testNotificationBannerQueryParity() async throws {
+        let provider = FakeElementProvider()
+        provider.notificationBanner = [Self.sample]
+        let other = FakeElementProvider()
+        other.notificationBanner = [Self.sample]
+        let new = try await APIHandler(provider: provider)
+            .queryNotificationBanner(.init(body: .json(.init())))
+        guard case .ok(let ok) = new, case .json(let payload) = ok.body else {
+            return XCTFail("unexpected notificationBanner/query output")
+        }
+        assertSame(
+            try legacy("POST", "/notificationBanner/query", body: [:], provider: other),
+            try generated(payload), "/notificationBanner/query"
+        )
+    }
+
     // MARK: - Actuation
 
     /// The five statuses are the contract's whole vocabulary, and the driver matches them as

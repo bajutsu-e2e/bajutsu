@@ -128,7 +128,11 @@ def bulk_delete_runs(
 
 
 def sweep_expired_trash(
-    state: ServeState, *, actor: str | None = None, now: datetime | None = None
+    state: ServeState,
+    *,
+    actor: str | None = None,
+    now: datetime | None = None,
+    machine_org: str | None = None,
 ) -> int:
     """Purge soft-deleted runs past the retention window for the actor's org, returning how many.
 
@@ -140,7 +144,7 @@ def sweep_expired_trash(
         return 0
     now = now or datetime.now(UTC)
     cutoff = now - timedelta(days=days)
-    org = state.org_of(actor)
+    org = state.org_for(actor, machine_org)
     store = state.for_org(org).artifacts
     repo = state.repository
     # Eligible run ids from both trash records, deduped (dict preserves insertion order): the store's

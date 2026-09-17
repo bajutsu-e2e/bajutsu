@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0422](BE-0422-inline-scenario-components.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0422") |
+| Implementing PR | [#2011](https://github.com/bajutsu-e2e/bajutsu/pull/2011) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -188,21 +189,21 @@ scenarios:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add `components: dict[str, Component]` to `ScenarioFile`
-- [ ] Add `ComponentResolver` to `load_expanded.py`: binds a `resolve` callable to a local
+- [x] Add `components: dict[str, Component]` to `ScenarioFile`
+- [x] Add `ComponentResolver` to `load_expanded.py`: binds a `resolve` callable to a local
       `components:` map, a `root`, and a `base` directory (dispatching a `use` ref by shape: bare
       name → the bound local map, path-like ref → the existing file resolution), owns its own
       per-ref cache, and exposes `for_component_file()` for a sibling bound to an empty map. Wire
       both `load_expanded_scenarios` and `run/cli.py`'s `_expand_file` through it
-- [ ] In `expand_components`'s `expand(steps, stack)` recursion, hand the recursive call
+- [x] In `expand_components`'s `expand(steps, stack)` recursion, hand the recursive call
       `resolve.for_component_file()` in place of `resolve` the moment a path-shaped ref resolves —
       inside the same `stack` / `max_depth` accounting, not a fresh `expand_components` call — so a
       bare name inside that component's steps always fails as undefined
-- [ ] Update `run/cli.py`'s setup `resolve` lambda to load the prelude's `ScenarioFile`, build a
+- [x] Update `run/cli.py`'s setup `resolve` lambda to load the prelude's `ScenarioFile`, build a
       `ComponentResolver` bound to the prelude's own `components:` map and its own directory, run
       `expand_components` on the prelude's own steps under it, and return the expanded result to
       `apply_setups` (which itself needs no change)
-- [ ] Cover it in the fast suite:
+- [x] Cover it in the fast suite:
       - A file-scoped component expands identically to its hand-duplicated steps.
       - A file-scoped component and a file-based component coexist in one scenario.
       - A bare name undefined in `components:` fails with a clear error.
@@ -219,10 +220,23 @@ scenarios:
         by a same-named entry in the calling scenario file's map.
       - A malformed component file read through `bajutsu run` reports the same
         `invalid YAML in <file>` message `load_expanded_scenarios` already produces (BE-0150).
-- [ ] Update `docs/scenarios.md` (§Components) and `docs/dsl-grammar.md` (the `ScenarioFile`
+- [x] Update `docs/scenarios.md` (§Components) and `docs/dsl-grammar.md` (the `ScenarioFile`
       production in §2, §6.2, and §6.4 / §6.5 — §6.5's pipeline note "`apply_setups` … (so a prelude
       may itself `use` components)" states the order this item changes) plus their `docs/ja/`
       mirrors
+
+Log:
+
+- [#2011](https://github.com/bajutsu-e2e/bajutsu/pull/2011) — Landed the whole work breakdown: the
+  `components:` field on `ScenarioFile` (with a validator rejecting a path-shaped key, so a name
+  `use` could never reach fails loudly at load time instead of sitting unreachable), the shared
+  `ComponentResolver`
+  wired through both `load_expanded_scenarios` and `run/cli.py`, the per-ref scope swap inside
+  `expand_components`'s own recursion (still under one `stack` / `max_depth`, so a cycle through a
+  component file still raises cleanly), and the setup-prelude `resolve` rewritten to expand a
+  prelude's own `use` steps — bare names and path refs alike — against the prelude's own scope
+  before splicing. Docs and both `docs/ja/` mirrors updated. Every Progress box is now checked;
+  `Status` moves to Implemented.
 
 ## References
 

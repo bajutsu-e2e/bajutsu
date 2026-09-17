@@ -102,6 +102,17 @@ def test_cycle_raises() -> None:
         expand_components(scns, _resolver(table))
 
 
+def test_nesting_deeper_than_max_depth_raises() -> None:
+    # A runaway chain with no cycle in it: the depth cap, not the cycle check, is what stops it.
+    table = {
+        "a.yaml": load_component("steps:\n  - use: { component: b.yaml }\n"),
+        "b.yaml": load_component("steps:\n  - tap: { id: deep }\n"),
+    }
+    scns = load_scenarios("- name: s\n  steps:\n    - use: { component: a.yaml }\n")
+    with pytest.raises(ValueError, match="nesting too deep"):
+        expand_components(scns, _resolver(table), max_depth=1)
+
+
 def test_use_expands_inside_an_interrupt_handler() -> None:
     # An `interrupts` handler's recovery steps run through the same step loop, so a `use` there
     # must be expanded like any other — an unexpanded one reaches the loop with no action at all.

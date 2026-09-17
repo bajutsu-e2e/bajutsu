@@ -92,6 +92,7 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("POST", "/api/org"),
         ("POST", "/api/orgs"),
         ("POST", "/api/orgs/{slug}/membership"),
+        ("POST", "/api/orgs/{slug}/machine-sessions/revoke"),
         ("POST", "/api/record"),
         ("POST", "/api/crawl"),
         ("POST", "/api/triage"),

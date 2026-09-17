@@ -43,6 +43,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability("crawl", uses_claude=True),
     Capability("triage", uses_claude=False, claude_flag="--ai"),
     Capability("run", uses_claude=False),
+    Capability("repl", uses_claude=False),
     Capability("doctor", uses_claude=False),
     Capability("codegen", uses_claude=False),
     Capability("trace", uses_claude=False),

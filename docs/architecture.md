@@ -119,6 +119,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `run/` | `bajutsu run`'s CLI command (`cli.py`): target/backend resolution, device leasing, plan construction, and the deterministic run/report dispatch | [cli](cli.md) |
 | `record/` | The record loop (observe → propose → execute → emit) (package: `loop.py`, plus `capture.py` — proxy-actuation capture of tap/type/swipe into a scenario step — and `cli.py`, its CLI command) | [recording](recording.md#the-record-loop) |
 | `crawl/` | Autonomous breadth-first crawl → screen map: `core` engine + `serialize`, with `guide` / `tabs` / `report` / `repro` / `flows`, plus its CLI command (`cli.py`) | [recording](recording.md) |
+| `repl/` | The AI-free manual shell (BE-0423): `render.py` prints an element tree, `session.py` is the command set (`tree` / `find` / `tap` / `type` / `back` / `screenshot`), `loop.py` the `bajutsu>` prompt loop, `cli.py` its CLI command | [cli](cli.md#repl) |
 | `codegen/` | Scenario → native test generation: XCUITest (Swift), Playwright (TypeScript), UI Automator (Kotlin), plus its CLI command (`cli.py`) | [codegen](codegen.md) |
 | `triage/` | M4 self-heal: rule-based `HeuristicTriageAgent` + structured fixes (`renameId`/`addIndex`/`raiseTimeout`), `--apply`/`--write`/`--rerun` (package: `heuristic.py`, plus `cli.py` — its CLI command) | [cli](cli.md) |
 | `common/github/` | GitHub helpers: `actions` (CI, continuous integration, annotations + job summary), `app` (App installation token for the private-repo config source), `errors` (the shared access error) | [ci](ci.md) |
@@ -149,7 +150,7 @@ Lower layers are more stable; upper layers depend on lower ones. The core is `co
 <!-- mermaid-svg: assets/diagrams/architecture-dependency-layers.svg -->
 ```mermaid
 flowchart TB
-    cli["cli/<br/>user entry (Typer): run · doctor · audit · coverage · impact · stats ·<br/>flakiness · export · trace · report · triage · record · crawl · codegen ·<br/>approve · serve · mcp · worker · lint · schema"]
+    cli["cli/<br/>user entry (Typer): run · doctor · audit · coverage · impact · stats ·<br/>flakiness · export · trace · report · triage · record · crawl · repl · codegen ·<br/>approve · serve · mcp · worker · lint · schema"]
 
     runner["runner/"]
     record["record.py / crawl/<br/>(Tier 1 / AI)"]
@@ -569,16 +570,26 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   run with an `appPath` to install, so `--udid` keeps the erase-level retry on the device the
   operator named. Because a replacement resets strictly more than an erase does, it also honors the
   two opt-outs the erase rung honors: `reinstall: overwrite` and `bajutsu run --no-erase`
+- **Per-scenario iOS crash-report capture** (BE-0421): a scenario that fails on an exhausted
+  XCUITest crash retry gains a `crash-diagnostics/` subdirectory in its *own* evidence directory,
+  `runs/<run_id>/<sid>/`,
+  holding a bounded tail of the runner's own captured output and, whenever macOS wrote one for the
+  crashed `xcodebuild` process, its `.ips` crash report. The capture happens at lease release,
+  before a later scenario can re-lease and overwrite the same warm environment, and the scenario's
+  own failure string names the subdirectory directly
 
 #### DSL authoring, control flow, and data
 
 - DSL: the `within` selector (geometric scoping), the `relaunch` step (validated on-device),
   reusable `setup` preludes, `locale` applied at launch, and parallel runs (`--workers`) over a
   device pool
-- DSL authoring reuse: reusable parameterized components (`use` / `${params.*}`), data-driven
-  scenarios (`data` / `dataFile` with `${row.*}`), secret variables (`${secrets.X}` with value
-  masking), scenario tags + `--tag` / `--exclude` selection, the `setLocation` / `push` device
-  steps, the pre-launch `permissions` field (`simctl privacy` / `pm grant`|`pm revoke`, BE-0276),
+- DSL authoring reuse: reusable parameterized components (`use` / `${params.*}`, resolved by a ref
+  holding a `/` or ending in `.yaml` / `.yml` as a cross-file component file (BE-0030), or by a
+  bare name against a `components:` block declared inline in the same scenario file (BE-0422)),
+  data-driven scenarios (`data` / `dataFile` with `${row.*}`), secret variables (`${secrets.X}`
+  with value masking), scenario tags + `--tag` / `--exclude` selection, the `setLocation` / `push`
+  device steps, the pre-launch `permissions` field (`simctl privacy` /
+  `pm grant`|`pm revoke`, BE-0276),
   the `doubleTap` action, and file-level + scenario-level `description`
 - DSL control flow & data capture: conditional `if` and `forEach` loops (deterministic; the
   condition is a machine assertion), and `extract` (capture an element's value / label / identifier
@@ -944,6 +955,31 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   declaration order, so two nested in-tree shapes match the wider one first regardless of how a
   scenario declared them — the two are declared twins over the same screen, so which button a
   scenario gets must not depend on whether a `wait` happened to be running when the sheet appeared
+- A banner reaches that monitor only on an *interaction* — a plain query never invokes it, so a
+  banner sitting on screen with nothing tapping through it is never cleared there (BE-0416 Units
+  2/3/8). A second, proactive path covers that gap: `Driver.notification_banner_frame()`
+  (`HANDLE_NOTIFICATION_BANNER`, the XCUITest-only capability that gates it) is a non-blocking read
+  of the same SpringBoard element by a different identifier query
+  (`NotificationShortLookView` against SpringBoard's whole tree, not `alerts`), and the step loop
+  calls it once per step, right before the `after.png` shutter starts — the corrupted capture, and
+  every visual-regression comparison built from it, that this path exists to reach. Found, the
+  banner is swiped by `notification_banner_swipe_points`, the same upward gesture the interruption
+  monitor performs, reusing the ordinary `swipe` action rather than a second gesture primitive — but
+  only when the resulting drag still travels at least the 20 points that monitor's own swipe clears
+  a banner's top edge by. A frame caught mid-animation leaves the (top-margin-clamped) endpoint too
+  close to the start for that, and at the extreme below it, inverting the drag downward. Such a
+  frame is left alone. Immediately before the gesture itself, a fresh presence check also declines a
+  banner that has since auto-dismissed — the confirmed frame and the acted-on one can otherwise
+  differ by one round trip, landing the swipe on whatever the app now shows at that point instead.
+  The swipe is re-confirmed gone by a bounded poll immediately after, the same discipline the
+  interruption monitor's own
+  confirm-before-claiming applies. The query is rate-limited to `systemAlertHandling`'s
+  own resolved `pollInterval` (BE-0315's default when the guard is off), so a passing scenario pays
+  it once per interval rather than once per step.
+  The `expect`-phase visual capture gets the same unconditional check immediately before it,
+  gated on an actual `visual` assertion being present. No scenario or CLI toggle: a scenario cannot
+  observe a banner, so none can be broken by clearing it — the same "no known use for a toggle"
+  the interruption path above already established
 - DSL `iosTipKitHandling` (BE-0389), an opt-in guard for a blocking Apple TipKit tip: TipKit's
   presentation marks the content it covers accessibility-hidden rather than merely occluding it, so a
   blocked tap can fail as `ElementNotFound`, not only `ElementNotTappable`. The XCUITest backend alone
@@ -1008,7 +1044,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 
 #### The CLI, `serve`, and codegen
 
-- The CLI: `run` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` / `export` / `trace` / `report` / `triage` / `record` / `crawl` / `codegen` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard
+- The CLI: `run` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` / `export` / `trace` / `report` / `triage` / `record` / `crawl` / `repl` / `codegen` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard, and `repl` as the AI-free manual shell beside them (BE-0423)
 - The **parsed device OS** (`common/devices/os.py`, BE-0358): the device's operating-system (OS) version as a small parsed fact — platform, major, minor — read from the `device_runtime` label a run already records per scenario. An absent or unrecognized label parses to "unknown" rather than to a guessed version. Both flakiness surfaces carry the parsed OS in their grouping key, so a scenario's verdict history is per OS version, and a reproducible cross-version difference no longer scores as flakiness. The XCUITest driver receives it as a `make_driver` keyword — not a `Driver` member, which every backend and every test double would then have to declare — so a driver-level report can name the OS it ran on. **Reading the OS is not a licence to branch on it**: this repository fixes a behavioural OS difference version-agnostically, and a per-OS branch must earn its place in its own roadmap item against that alternative
 - Read-only advisory analysis commands (no device, no AI, never gate CI — only a missing/unreadable input exits non-zero): a determinism/flakiness **audit** with static, repeat-and-diff, and longitudinal modes (`audit`, BE-0049); a scenario id-namespace **coverage** map (`coverage`, BE-0050); **test impact analysis** — the affected scenario steps a `git` diff selects, by inverting the coverage index (`impact`, BE-0321); the aggregate run-stats dashboard as CLI/HTML output (`stats`, BE-0102); cross-run **flakiness** ranking, from a runs directory or the `serve` database (`flakiness`, BE-0220); a finished run's **export** as a portable `.zip` (`export`, BE-0060); and **report** re-rendering (`report.html`/`junit.xml`/`ctrf.json`) from stored run data with no re-run (`report`, BE-0068)
 - The **run-history label and the target stamp** (BE-0404): a run records the config it ran (`runs.label`, from the config's own name or an explicit `run --label`) and the target it ran (`runs.target`, mirrored from the manifest), so restarting `serve` against a second config yields two readable histories instead of one interleaved list, and a per-target comparison is computable from stored data. The org row holds the one config source it last bound, which is how a hosted replica recovers an uploaded bundle it never received; a replica that still holds the extracted bundle resolves that cache before any object store is required, so it rebinds without a fetch ([BE-0393](../roadmaps/BE-0393-per-org-config-memory/BE-0393-per-org-config-memory.md) unit 5 — groundwork, since every deployment that keeps a config memory today also has a store). This replaced BE-0225's named **project** registry, whose table, endpoints, CLI commands, and web surfaces are gone
@@ -1025,6 +1061,21 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   that is still eligible — a user removed from the org they picked lands on the head of their new
   eligible list — and goes on re-resolving the rest. A single-org deployment renders the badge
   exactly as before
+- **A CI job's own identity** (BE-0414): a GitHub Actions workflow declaring `permissions:
+  id-token: write` presents the GitHub-issued OpenID Connect (OIDC) token once, to `POST
+  /api/oidc/exchange`. `serve` verifies the issuer, the JSON Web Key Set (JWKS), and a
+  deployment-configured `aud` (audience; unset disables the whole OIDC caller shape) before
+  minting a short-lived **machine session** that every later call presents instead. The request
+  names the org it wants to act as — naming selects, it never grants, since one repository may be
+  listed by several orgs — and that org's own `allowedRepositories` is what admits it, matched by
+  exact equality on the token's `repository` claim rather than a parsed `sub`, with an optional
+  per-entry
+  `environment` / `ref` / `workflowRef` narrowing. The machine session is a third caller shape
+  beside a human's OAuth session and the worker's shared token: not a role, but an explicit
+  endpoint allowlist in `gate.py` (the content-miss probe `GET /api/artifacts/exists`, the three
+  artifact uploads, `POST /api/run`, and reading its own org's runs and the job it dispatched),
+  revocable per repository and refused outright on a database-less deployment or
+  a session store that cannot enforce a per-session expiry
 - The **cross-target comparison dashboard** (BE-0226, repointed to the target axis by BE-0404): a `serve` **Comparison** tab that ranks the bound config's targets side by side — pass-rate, flaky-rate, and p50/p95 run duration, plus a per-target trend sparkline — reusing BE-0102's per-config aggregation computed once per target (`GET /api/metrics/targets`); read-only and advisory, like BE-0102. A row opens that target's run history read-only, by pointer or by keyboard. The view writes nothing: a target is not a binding, so there is nothing on it to activate
 - AI **crawl** (`crawl/`): autonomous breadth-first exploration of an app → a screen map (`screenmap.json`)
 - The `serve` local web UI (Tier 1): author (`record` / `crawl`), edit, and run scenarios; **open a `.zip` bundle** of config + scenarios + the built app binary as the active config the tabs run from (BE-0073) — the server also accepts those same three pieces as independent content-addressed artifacts and composes them into that tree at bind time (`POST /api/artifacts/{config,scenarios,binary}`, BE-0268), with a **Compose & load** panel in the UI — a drop zone per artifact, each hashed in the browser and uploaded only on a content miss, composed into a bound config on demand, reopening the panel pre-fills each zone from the active composition (with a per-zone **Clear**) so only the legs that changed need re-uploading, while `POST /api/compose` stays a pure function of its request body (`GET /api/compose/current`, BE-0325); browse reports and evidence; a per-row or bulk **delete** on the Replay or Crawl history list moves a run to a shared **Trash**, restorable within a retention window before permanent removal (BE-0239); a past crawl's screen map can also be **resumed live** — continuing its remaining frontier with the same budget and worker controls, or re-exploring one pruned branch with the same budget (BE-0181); a read-only aggregate **run-stats dashboard** across the run history (BE-0102), with every axis — date, backend, scenario, and step/assertion hotspot — now a deep link into the matching runs in the history list (BE-0241); a ranked **Flaky** tab surfacing the cross-run flakiness ranking, linking each row to its representative passing and failing run evidence (BE-0220); a read-only **Usage** dashboard over the attributed AI usage/cost ledger — token and dollar totals by provider, model, command, and scenario (BE-0195, BE-0196); a per-target **Coverage** map — id-namespace coverage against declared `idNamespaces`, the gap list, and off-namespace ids, folding in the endpoint/observed-id dimensions with a selected run set and the screens-visited dimension when a crawl is selected alongside those runs (BE-0146); each of Stats, Flaky, Usage, and Coverage also opens as its own linkable page (`GET /stats`, `/flakiness`, `/usage`, and — since the map needs a target the other three don't — `/coverage?target=<name>`); a pre-run **readiness panel** (`doctor`: environment runnability + the current screen's convention score) in the Record and Replay forms (BE-0148); a read-only **scenario viewer** in the Replay form that shows the selected scenario's raw YAML and its runner-parsed structured steps before a run — the scenario-level mirror of the config viewer, non-gating and AI-free (BE-0273); an **upload scenario** control in the same form that adds a local `.yaml` file (via the existing `POST /api/scenario`) or a `.zip` of more than one (`POST /api/scenarios/upload`) straight into the bound config's target scope with no config rebind — reporting a same-named file as overwritten rather than replacing it silently, and parsing every zip entry before writing any of them, so one bad entry aborts the whole upload rather than leaving a partial batch behind (BE-0340); a **scenario secrets** panel that provisions the bound config's declared `${secrets.X}` names as write-once values from the browser, inherited by a spawned Record / Replay / Crawl run (BE-0274); a read-only **Server** settings tab reporting the running server's resolved configuration (deployment mode, bound config provenance, backends, run-storage/retention/concurrency settings) plus whether this build ships the bundled iOS XCUITest Simulator runner and what toolchain it was built against (`GET /api/server`, BE-0318); a **pluggable theme system** — drop-in visual tokens + swappable transitions, a header picker, and an in-UI editor with live preview and local-draft/server-upload persistence (BE-0191); a header **version badge** reporting which build of bajutsu is serving the page — the version string always, plus a short commit SHA / branch / dirty flag when serve runs from a Git checkout, or a build-time-embedded commit (`BAJUTSU_BUILD_COMMIT`, surfaced with `source: "build-arg"`) for a self-hosted Docker image shipping no `.git` (the checkout detail admin-gated, since a branch name can encode an in-progress topic; `GET /api/version` open, `GET /api/version/checkout` admin, read fresh per request via `git` plumbing with an environment-variable fallback — no LLM; BE-0272, BE-0277); approve visual baselines; live job streaming — from a browser (not for CI)

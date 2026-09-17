@@ -15,7 +15,63 @@ PrincipalKind = Literal["human", "machine"]
 HUMAN: PrincipalKind = "human"
 MACHINE: PrincipalKind = "machine"
 
+#: The reserved prefix a machine session's identity carries. A GitHub login cannot contain `/`, and
+#: the repository that follows always does, so the form can never collide with a person's.
+_MACHINE_PREFIX = "repo:"
+
 _logger = logging.getLogger(__name__)
+
+
+def machine_identity(repository: str) -> str:
+    """The session identity a pipeline acting for *repository* is minted with (BE-0414).
+
+    Minting and reading the form live together so they cannot drift apart — the identity has to be
+    non-None at all for the session to be revocable, since `revoke_identities` works by identity and
+    never touches a session carrying none.
+
+    Case-folded, because `AllowedRepository.admits` matches the roster case-insensitively: GitHub
+    will not let `Acme/App` and `acme/app` both exist, so an entry written in either casing admits
+    the same repository. Revocation compares identities by exact equality, so minting from the raw
+    claim would leave an admin who types the casing their own roster uses revoking nothing — and a
+    revocation that matches nothing looks identical to one that had nothing left to match.
+    """
+    return f"{_MACHINE_PREFIX}{repository.lower()}"
+
+
+def same_machine_identity(stored: str | None, wanted: str) -> bool:
+    """Whether a stored machine identity names the same repository as *wanted* (BE-0414 unit 3).
+
+    Case-insensitive, because `machine_identity` folds case and a stored value that differs only in
+    casing is the same principal by definition. Two kinds of row need that: one minted before the
+    folding landed (BE-0414 units 1-2 interpolated the GitHub `repository` claim raw, which keeps
+    the owner's own casing), and one an older replica is still minting during a rolling deploy.
+    Comparing exactly would leave those admitted by the gate and matched by no revocation, reporting
+    `sessionsRevoked: 0` — indistinguishable from having nothing left to revoke, which is the silent
+    no-op the folding exists to prevent.
+    """
+    return stored is not None and stored.lower() == wanted.lower()
+
+
+def machine_repository(identity: str | None) -> str | None:
+    """The repository behind a machine *identity*, or None for a human or token caller.
+
+    Reading the identity's shape is right *here* and wrong in the request gate. Which gate governs a
+    session is a security decision, and it reads the kind the store recorded
+    (`Principal.kind`) — never a string convention a future identity format could break. This answers
+    a different question: having already established what the caller is, how should the audit trail
+    name it? A mis-read there writes a slightly wrong log line rather than admitting anyone.
+    """
+    if identity is None or not identity.startswith(_MACHINE_PREFIX):
+        return None
+    # The prefix alone settles that the caller is a machine. Returning None for a bare `repo:` would
+    # answer "not a machine" for one that is, and `_record_audit` reads that answer as "write the
+    # identity into `actor_id`" — a foreign key no pipeline has a row behind.
+    #
+    # Folded, like `machine_identity` mints it, so the audit trail names one repository one way. A
+    # session minted before the folding landed carries the claim's own casing, and an operator
+    # filtering audit rows by repository would otherwise see that one repository's history split in
+    # two — the same split the folding exists to close on the revocation side.
+    return identity[len(_MACHINE_PREFIX) :].lower()
 
 
 @dataclass(frozen=True)
@@ -65,11 +121,10 @@ def kind_from_stored(value: object) -> PrincipalKind:
     — a value from a newer version, a corrupted one — reads as *machine*, the kind the gate governs
     more narrowly, so an unrecognized session is refused rather than handed a human's role gate.
 
-    That "more narrowly" is true while `gate.forbidden_for_machine` refuses every endpoint. When
-    BE-0414 unit 3 replaces it with an allowlist scoped by `Principal.org`, a machine principal
-    carrying no org must be refused outright there rather than falling back to any default org —
-    an unrecognized row reaches that branch with `org=None`, and the exchange is the only thing
-    that ever sets one.
+    "More narrowly" holds because `gate.forbidden_for_machine` refuses a machine principal outright
+    when it carries no org, and an unrecognized row reaches that branch with `org=None` — only the
+    exchange ever sets one. A revocation matches the same way, by "not human", so a row a newer
+    version wrote is both governed and revoked as the machine the gate already treats it as.
     """
     if value is None or value == HUMAN:
         return HUMAN

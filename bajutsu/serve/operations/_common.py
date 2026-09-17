@@ -36,7 +36,11 @@ def _device_args(body: dict[str, Any]) -> tuple[str, str, tuple[Any, int] | None
 
 
 def _resolve_org_or_forbid(
-    state: ServeState, target: str, actor: str | None, session: str | None
+    state: ServeState,
+    target: str,
+    actor: str | None,
+    session: str | None,
+    machine_org: str | None = None,
 ) -> tuple[str, tuple[Any, int] | None]:
     """The org resolution + cross-org guard shared by every start_* endpoint: resolve the actor's
     org and deny a target that belongs to another org (BE-0015; single-tenant never forbids).
@@ -46,8 +50,12 @@ def _resolve_org_or_forbid(
     binding the request is running against, so a guard that silently fell back to the deployment's
     would answer from a partition the rest of the request is not using — and a defaulted parameter
     is how the first eight callers came to omit it.
+
+    *machine_org* is the tenant a machine principal acts as (BE-0414 unit 3), which `org_of` cannot
+    answer for: it reads a persisted user row, and a pipeline has none. Only `start_run` is on the
+    machine allowlist, so every other `start_*` caller leaves it None and resolves exactly as before.
     """
-    org = state.org_of(actor)
+    org = state.org_for(actor, machine_org)
     if _target_forbidden(state, org, target, session):
         return org, ({"error": "forbidden"}, 403)
     return org, None

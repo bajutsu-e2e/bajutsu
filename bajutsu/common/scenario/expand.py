@@ -8,10 +8,27 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any, Protocol, cast, runtime_checkable
 
 from bajutsu.common.scenario import interp
 from bajutsu.common.scenario.models import Component, Scenario, Step
+
+
+@runtime_checkable
+class ScopedResolve(Protocol):
+    """A `resolve` that also knows the scope a resolved ref's own steps expand under.
+
+    `expand_components` takes a plain `Callable[[str], Component]`; one that *also* implements this
+    gets its nested expansion re-scoped per ref. That is what keeps a file-scoped component name
+    (BE-0422) invisible inside a component file the same scenario references: crossing into a file
+    swaps to a resolver bound to no local names, so a bare ref there is always undefined.
+    """
+
+    def __call__(self, ref: str) -> Component: ...
+
+    def scope_for(self, ref: str) -> Callable[[str], Component]:
+        """The resolver *ref*'s own steps expand under."""
+        ...
 
 
 def _interp_steps(steps: list[Step], bindings: dict[str, str]) -> list[Step]:
@@ -39,7 +56,9 @@ def expand_components(
     Args:
         scenarios: The scenarios to expand; their `steps`, their `before` / `after` lifecycle
             steps, and every `interrupts` entry's recovery `steps` are rewritten in place.
-        resolve: Maps a component name to its `Component` (e.g. by loading a shared file).
+        resolve: Maps a component name to its `Component` (e.g. by loading a shared file). One that
+            also satisfies `ScopedResolve` re-scopes each ref's nested expansion, and owns whatever
+            caching it needs — this function itself resolves every occurrence.
         max_depth: The deepest `use` nesting allowed before giving up on a runaway chain.
 
     Raises:
@@ -47,9 +66,10 @@ def expand_components(
             references an undeclared param, a reference cycle is detected, or nesting exceeds
             `max_depth`.
     """
-    cache: dict[str, Component] = {}
 
-    def expand(steps: list[Step], stack: list[str]) -> list[Step]:
+    def expand(
+        steps: list[Step], stack: list[str], resolve: Callable[[str], Component]
+    ) -> list[Step]:
         if len(stack) > max_depth:
             raise ValueError(f"component nesting too deep (>{max_depth}): {' -> '.join(stack)}")
         out: list[Step] = []
@@ -60,9 +80,7 @@ def expand_components(
             ref = st.use.component
             if ref in stack:
                 raise ValueError(f"component cycle detected: {' -> '.join([*stack, ref])}")
-            if ref not in cache:
-                cache[ref] = resolve(ref)
-            comp = cache[ref]
+            comp = resolve(ref)
             args = st.use.with_
             missing = sorted(set(comp.params) - set(args))
             unknown = sorted(set(args) - set(comp.params))
@@ -75,20 +93,25 @@ def expand_components(
             residual = sorted(t for t in interp.find_tokens(dumps) if t.startswith("params."))
             if residual:
                 raise ValueError(f"component {ref!r} references undeclared params: {residual}")
-            out.extend(expand(substituted, [*stack, ref]))
+            # The resolved component's own steps expand under the scope *it* brings, not the
+            # caller's: crossing into a component file drops the caller's file-scoped names
+            # (BE-0422). Still this same recursion, so `stack` and `max_depth` keep accounting for
+            # the whole chain and a real cycle raises cleanly instead of blowing the Python stack.
+            nested = resolve.scope_for(ref) if isinstance(resolve, ScopedResolve) else resolve
+            out.extend(expand(substituted, [*stack, ref], nested))
         return out
 
     for scenario in scenarios:
-        scenario.steps = expand(scenario.steps, [])
+        scenario.steps = expand(scenario.steps, [], resolve)
         # The lifecycle phases (BE-0392) and an `interrupts` handler's recovery steps (BE-0314)
         # all take the ordinary step grammar, so a `use` can appear in any of them. Left
         # unexpanded it reaches the step loop as a step with no action and aborts the whole run
         # with an `AssertionError`, not one failed scenario.
-        scenario.before = expand(scenario.before, [])
+        scenario.before = expand(scenario.before, [], resolve)
         for rule in scenario.after:
-            rule.steps = expand(rule.steps, [])
+            rule.steps = expand(rule.steps, [], resolve)
         for entry in scenario.interrupts:
-            entry.steps = expand(entry.steps, [])
+            entry.steps = expand(entry.steps, [], resolve)
 
 
 def read_csv(text: str) -> list[dict[str, str]]:

@@ -25,7 +25,7 @@ from typing import Any
 from bajutsu.serve import oplog
 from bajutsu.serve.oidc import JwksCache, OidcError, verify
 from bajutsu.serve.orgs import orgs_from_db
-from bajutsu.serve.sessions import MACHINE
+from bajutsu.serve.sessions import MACHINE, machine_identity
 from bajutsu.serve.state import ServeState
 
 _logger = logging.getLogger(__name__)
@@ -61,6 +61,19 @@ def oidc_exchange(state: ServeState, token: str, org: str) -> tuple[Any, int, st
         # No expected audience configured, so the caller shape is off entirely. The route is not
         # even open in that case (`gate.is_open`); this is the second lock on the same door.
         return {"error": "oidc not configured"}, 404, None
+    if state.auth.token is None:
+        # Both backends skip the request gate entirely when no shared token is configured, so
+        # nothing would run the machine allowlist — and, worse, nothing would carry the org this
+        # exchange just verified. `org_of` reads a persisted user row a pipeline has none of, so
+        # every later call would answer 200 while quietly acting as the `default` tenant. Refuse
+        # instead of minting a session whose whole point cannot be enforced.
+        oplog.log_event(
+            _logger,
+            "oidc.denied",
+            "the OIDC exchange needs a configured token, or the request gate never runs",
+            level=logging.WARNING,
+        )
+        return {"error": "oidc exchange needs an authenticated deployment"}, 400, None
     if state.repository is None:
         # The replay cache is a table in the shared system of record, because a hosted control
         # plane is several replicas and a per-process cache would fall to a replay against the
@@ -99,10 +112,10 @@ def oidc_exchange(state: ServeState, token: str, org: str) -> tuple[Any, int, st
         # born dead. Refuse rather than answer 200 with a cookie that 401s on the pipeline's next
         # call: the same clock judges both, so if one says expired the other cannot disagree.
         return _refuse("the token expires too soon to mint a session from", org=org)
-    identity = f"repo:{workload.repository}"
     # A reserved form no GitHub login can collide with — a login cannot contain `/`. It has to be
     # non-None at all for the session to be revocable: `revoke_identities` works by identity, and
     # never touches a session carrying none.
+    identity = machine_identity(workload.repository)
     sid = state.auth.issue_session(identity, expires_at=expires_at, org=org, kind=MACHINE)
     oplog.log_event(
         _logger,

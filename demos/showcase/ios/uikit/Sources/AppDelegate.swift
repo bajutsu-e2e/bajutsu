@@ -1,6 +1,11 @@
 import BajutsuKit
 import UIKit
 
+// BE-0416 Unit 5's foreground-banner fixture (NotificationBannerTargetView, a flat SwiftUI-only
+// screen) has no UIKit counterpart, so this target gains no UNUserNotificationCenterDelegate: one
+// here would opt every launch into showing a banner with no screen to raise or tap it from,
+// unlike the SwiftUI target's own env-gated delegate — a cost this target has no matching benefit
+// for.
 @main
 final class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(

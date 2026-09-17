@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0414](BE-0414-ci-oidc-machine-identity.md) |
 | Author | [@paihu](https://github.com/paihu) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0414") |
-| Implementing PR | [#1986](https://github.com/bajutsu-e2e/bajutsu/pull/1986) (units 1-2) |
+| Implementing PR | [#1986](https://github.com/bajutsu-e2e/bajutsu/pull/1986) (units 1-2), [#2004](https://github.com/bajutsu-e2e/bajutsu/pull/2004) (units 3-4) |
 | Topic | Hosting the web UI |
 | Related | [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md), [BE-0051](../BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
 <!-- /BE-METADATA -->
@@ -475,14 +475,14 @@ serve configuration.
 - [x] Unit 2 — `allowedRepositories` on `OrgConfig`, checked against the discrete claims for the org
       the exchange request names, with the optional per-entry `environment` / `ref` /
       `job_workflow_ref` narrowing and an `environment` bound refusing an absent claim.
-- [ ] Unit 3 — The machine session (identity `repo:<owner>/<repo>`, revocable) and its endpoint
+- [x] Unit 3 — The machine session (identity `repo:<owner>/<repo>`, revocable) and its endpoint
       allowlist in `bajutsu/serve/gate.py`, added to `gate.is_open`'s POST arm and enforced
       unconditionally regardless of the database, the verified org carried on the machine session
       rather than read through `org_of` (run reads included), `_record_audit` writing null for a
       machine principal with the repository recorded in the audit entry's detail payload, a
       revocation path for a repository's outstanding sessions, and org retirement widened to revoke
       the machine sessions bound to the retired org.
-- [ ] Unit 4 — Tests for each seam, including the cross-replica `jti` replay test, the DB-less
+- [x] Unit 4 — Tests for each seam, including the cross-replica `jti` replay test, the DB-less
       exchange refusal, and the import-guard check for `joserfc`, and the self-hosting documentation.
 
 Log:
@@ -497,6 +497,27 @@ Log:
   exact-equality matching on the discrete claims and optional per-entry `environment` / `ref` /
   `workflowRef` bounds. Alembic revision 0020 carries the two session columns, the org column and
   the `oidc_jti` table.
+- [#2004](https://github.com/bajutsu-e2e/bajutsu/pull/2004) — Units 3 and 4. Replaced
+  `gate.forbidden_for_machine`'s refuse-everything stub with a default-deny endpoint allowlist —
+  the exists-probe, the three artifact uploads, `POST /api/run`, and `GET /api/runs` plus
+  `GET /api/jobs/{id}` to watch the result — refusing a machine principal that carries no org, and
+  enforced with or without a database. The verified org travels on the machine session and reaches
+  every allowlisted operation through `ServeState.org_for`, rather than `org_of`, which reads a
+  persisted user row a pipeline has none of and would resolve `default` for every tenant. A machine
+  resolves its configuration through the sessionless `binding_for` path, so a CI job takes no
+  member binding slot. `_record_audit` keeps a machine's entry with a null `actor_id` and records
+  the repository in the detail payload; `artifact_exists` gained the audit line it lacked. Added
+  `SessionStore.revoke_machine_sessions` across all three implementations, org-scoped because one
+  repository may be listed by several orgs, with two callers: a new admin
+  `POST /api/orgs/{slug}/machine-sessions/revoke` and org retirement, which `revoke_identities`
+  could not reach. The exchange is refused when no shared token is configured, since both backends
+  skip the request gate entirely then. `machine_identity` folds case, matching the roster's own
+  case-insensitive comparison, so a revocation cannot silently match nothing. `job_view`'s org
+  check applies to a machine principal rather than to every caller: the job routes are uniformly
+  unscoped for people today, and scoping one here would refuse a member their own in-flight run
+  after an org switch. Documented in `docs/self-hosting.md` and its Japanese mirror. The per-job
+  artifact triple this unit's prose describes still awaits the sibling job-scoped binary override
+  proposal; the allowlist stands without it.
 
   Three deviations from this item's text, each because the literal reading does not work.
   `allowedRepositories` needed a database column as well as the config field, since a DB-backed

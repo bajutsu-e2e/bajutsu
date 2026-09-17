@@ -48,7 +48,7 @@ final class LegacyBackedTransport: ServerTransport {
     ///
     /// Registration is one generated call covering every operation at once, so a route that silently
     /// went missing would surface only as a 404 on a device. Reading the table back is what lets a
-    /// test assert the sixteen the contract declares are all here.
+    /// test assert every operation `openapi.yaml` declares is here.
     var registeredRoutes: Set<String> {
         lock.withLock { Set(routes.keys.map { "\($0.method.rawValue) \($0.path)" }) }
     }
