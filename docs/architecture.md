@@ -910,14 +910,19 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   guard could not clear rather than as one no rule identifies; a co-present button no rule
   identifies on that same read is named the way the `raced` branch names one, rather than the
   ambiguous rule's own diagnosis crowding it out and leaving that button unreported for a whole
-  `poll_interval`; and the note is left alone entirely while an in-tree give-up is still standing,
-  so a `wait` blocked by an undeclared SpringBoard alert sitting on top of a sheet the tree path
-  gave up on reports the sheet, not the alert — for as long as that sheet's own shape is still in
-  the poll's tree. The give-up now retires itself the moment it is not, from the poll's own read
-  rather than waiting for a native probe to report the surface empty: that probe is what a live,
-  undeclared alert keeps from reporting empty at all, so before this the given-up sheet's note
-  stood for the rest of the wait even once the sheet had closed, and the alert actually holding the
-  screen was never named. Retirement takes the showing's whole per-showing bookkeeping with it —
+  `poll_interval`; and the note is left alone while an in-tree give-up is still standing only when
+  this poll's own tree read positively confirms the given-up sheet is still there — `shows_app_ui`
+  true and the sheet's own shape still matching, not merely `_tree_gave_up` being set. A poll where
+  a SpringBoard alert collapses the tree cannot confirm that either way, so on exactly that poll the
+  deferral steps aside and a `wait` blocked by an undeclared SpringBoard alert sitting on top of a
+  sheet the tree path gave up on reports the alert, the fresher and more certain of the two
+  diagnoses, rather than the give-up's own stale note. The give-up itself still retires — clearing
+  the latch outright, not merely stepping its note aside for one poll — the moment a *later*, tree-
+  readable poll confirms the sheet is gone, rather than waiting for a native probe to report the
+  surface empty: that probe is what a live, undeclared alert keeps from reporting empty at all, so
+  before this the given-up sheet's note stood for the rest of the wait even once the sheet had
+  closed, and the alert actually holding the screen was never named while the alert itself was up
+  either. Retirement takes the showing's whole per-showing bookkeeping with it —
   the pending label, the tap count, the recorded signature and event, the not-tappable horizon — so
   a fresh showing of the same sheet is tapped afresh rather than inheriting an already-spent tap
   budget and being given up on without ever being tapped. And `_dismiss_from_tree` resolves over the same
