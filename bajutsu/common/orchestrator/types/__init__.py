@@ -14,18 +14,25 @@ from ._functions import (
     alert_block_note,
     drain_actuations,
     drain_interruptions,
-    match_alert_rule,
+    identified_alert_rules,
+    matching_alert_rule,
     push_interruption_policy,
     sanitize_source_stem,
     scenario_slug,
     selector_names_button,
+    subtract_labels,
     uncleared_prompt_note,
     undeclared_interruption_note,
 )
 from ._shared import BlockedHandler, NetworkSource, ProgressFn, RelaunchFn, WallClock
 from .alert_event import AlertEvent
 from .alert_guard_config import _NATIVE_TAP_TIMEOUT as _NATIVE_TAP_TIMEOUT
-from .alert_guard_config import DEFAULT_ALERT_POLL_INTERVAL, AlertGuardConfig, NativeAlertState
+from .alert_guard_config import (
+    DEFAULT_ALERT_POLL_INTERVAL,
+    AlertGuardConfig,
+    NativeAlertState,
+    NotTappable,
+)
 from .clock import Clock
 from .device_control import DeviceControl
 from .drained_interruption_events import DrainedInterruptionEvents
@@ -49,6 +56,7 @@ __all__ = [
     "MailboxReader",
     "NativeAlertState",
     "NetworkSource",
+    "NotTappable",
     "ProgressFn",
     "RealClock",
     "RelaunchFn",
@@ -62,11 +70,13 @@ __all__ = [
     "alert_block_note",
     "drain_actuations",
     "drain_interruptions",
-    "match_alert_rule",
+    "identified_alert_rules",
+    "matching_alert_rule",
     "push_interruption_policy",
     "sanitize_source_stem",
     "scenario_slug",
     "selector_names_button",
+    "subtract_labels",
     "uncleared_prompt_note",
     "undeclared_interruption_note",
 ]

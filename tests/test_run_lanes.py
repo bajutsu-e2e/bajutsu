@@ -10,7 +10,7 @@ import typer
 
 from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.common.orchestrator import DEFAULT_ALERT_POLL_INTERVAL
-from bajutsu.common.orchestrator.types import match_alert_rule
+from bajutsu.common.orchestrator.types import ResolvedAlertRule, matching_alert_rule
 from bajutsu.common.scenario import (
     Scenario,
     SystemAlertHandling,
@@ -81,6 +81,20 @@ def test_an_unpinned_device_run_is_always_a_serial_pool_of_one() -> None:
     udids, workers = _resolve_lanes("xcuitest", udid="booted", workers=8, resolve_udid=_resolve)
     assert udids == ["resolved:booted"]
     assert workers == 1
+
+
+def _match_tap_label(rules: list[ResolvedAlertRule], buttons: list[str]) -> str | None:
+    """The tap label `matching_alert_rule` resolves to, or None (BE-0418 review finding).
+
+    A thin test-only convenience over `matching_alert_rule`, which returns the rule itself rather
+    than a bare label: production keys on the rule's own shape, since two rules can share one
+    alert's shape under different choices and keying on the label alone would let one such rule's
+    exclusion promote its sibling to tap the opposite button. The tests below only care about the
+    resolved label, so this extracts it rather than reintroducing a production wrapper with no
+    caller of its own.
+    """
+    rule = matching_alert_rule(rules, buttons)
+    return rule.tap_label if rule is not None else None
 
 
 def _eff(**target: str) -> Effective:
@@ -488,7 +502,7 @@ def test_alert_guard_factory_needs_no_credential_and_reaches_no_model(
 
         # A backend with no native capability: nothing left to try, so the guard reports nothing and
         # leaves no note — an absent alert is not a blocked screen.
-        assert guard(FakeDriver([])) is None
+        assert guard(FakeDriver([]), [], settle=lambda: None) is False
         assert guard.blocked_note == ""
 
         # The native path is untouched — it needs no credential, so it still taps the prompt the
@@ -703,8 +717,8 @@ def test_resolve_rules_excludes_the_credit_card_sheet_from_the_in_app_save_shape
     resolved = _resolve_rules([SystemAlertRule(prompt="savePassword", choice="deny")], "en")
     in_app_26 = resolved[-1]
     assert in_app_26.excluded_labels == {"Never for This Card"}
-    assert match_alert_rule([in_app_26], ["Save", "Not Now"]) == "Not Now"
-    assert match_alert_rule([in_app_26], ["Save", "Never for This Card", "Not Now"]) is None
+    assert _match_tap_label([in_app_26], ["Save", "Not Now"]) == "Not Now"
+    assert _match_tap_label([in_app_26], ["Save", "Never for This Card", "Not Now"]) is None
     # The other two shapes need none: their identifying labels are specific enough on their own.
     assert all(not r.excluded_labels for r in resolved[:-1])
 
@@ -734,7 +748,11 @@ def test_alert_guard_factory_scenario_rule_shadows_target_rule_for_the_same_prom
     assert guard is not None
     # The scenario's rule for `notifications` comes first, so it wins the first-match.
     assert [r.tap_label for r in guard.rules] == ["Allow", "Don’t Allow"]
-    assert match_alert_rule(guard.rules, ["Allow", "Don’t Allow"]) == "Allow"
+    # Through `native_rules`, not `guard.rules`: that's the list `probe_native` actually matches
+    # over (BE-0418 review finding) -- `native_rules` happens to equal `guard.rules` here only
+    # because every declared rule for this prompt is native, so asserting through the property the
+    # code reads is what keeps this pinned to BE-0177's precedence rather than to that coincidence.
+    assert _match_tap_label(guard.native_rules, ["Allow", "Don’t Allow"]) == "Allow"
 
 
 def test_alert_guard_factory_target_rule_applies_when_scenario_has_none() -> None:

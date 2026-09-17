@@ -110,23 +110,6 @@ def _decline_giveup(poll_interval: float) -> float:
     return max(_TREE_DISMISS_DECLINE_GIVEUP_FLOOR, 2 * poll_interval)
 
 
-def _tree_signature(elements: list[base.Element]) -> tuple[tuple[str | None, str | None], ...]:
-    """A cheap identity for one poll's screen, used to tell a tap that did nothing from one that did.
-
-    `_dismiss_from_tree` matches identifier-less buttons, and `shows_app_ui`'s docstring records that
-    a whole app can legitimately have none (the label/coordinate-driven `-noax` shape). So a label
-    still matching after a tap is *not* by itself evidence the prompt is still up — an app-authored
-    button carrying the same label, revealed once the sheet closed, matches just as well, and
-    re-tapping that navigates the app under test and fails the step for an unrelated reason.
-
-    A tap the app never acted on leaves the screen byte-identical; a tap that dismissed a sheet does
-    not. Comparing this signature is what makes "the tap did not land" a measured claim rather than
-    an assumption. Labels and identifiers rather than frames, so an animation settling a few pixels
-    does not read as a changed screen.
-    """
-    return tuple((el["label"], el["identifier"]) for el in elements)
-
-
 def _timeout_floor() -> float:
     raw = os.environ.get(_FLOOR_ENV)
     if not raw:

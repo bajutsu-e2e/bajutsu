@@ -10,7 +10,8 @@ with alert buttons, so nothing here needs a Simulator; the on-device confirmatio
 from __future__ import annotations
 
 import logging
-from typing import cast
+from collections.abc import Callable
+from typing import ClassVar, cast
 
 import pytest
 from conftest import guard_rule
@@ -18,7 +19,12 @@ from conftest import guard_rule
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.orchestrator import AlertEvent, AlertGuardConfig
-from bajutsu.common.orchestrator.types import ResolvedAlertRule, match_alert_rule
+from bajutsu.common.orchestrator.types import (
+    ResolvedAlertRule,
+    alert_block_note,
+    matching_alert_rule,
+    uncleared_prompt_note,
+)
 from bajutsu.common.scenario import Wait
 
 
@@ -61,13 +67,80 @@ def _button(label: str) -> base.Element:
     }
 
 
+def _tap_label(action: tuple[str, object]) -> object:
+    """The `label` a recorded `("tap", selector)` action targeted — `driver.actions` types its own
+    second element as a bare `object`, so tests that check which label a tree tap actually landed on
+    narrow it here rather than indexing an `object` directly."""
+    return cast(dict[str, object], action[1])["label"]
+
+
 def _fake_with_alert(labels: list[str], react: object = None) -> FakeDriver:
     driver = FakeDriver([], react=react)  # type: ignore[arg-type]
     driver.system_alert_buttons = [_button(label) for label in labels]
     return driver
 
 
-# --- match_alert_rule -------------------------------------------------------------------------------
+def _call(
+    driver: base.Driver,
+    guard: AlertGuardConfig,
+    *,
+    settle: Callable[[], None] | None = None,
+) -> tuple[bool, list[AlertEvent]]:
+    """`guard(driver, ...)` (BE-0418) with a fresh `alerts` list and a no-op `settle` by default.
+
+    Nothing here needs the real `settle_after_alert_dismiss` sweep: the fake driver never animates,
+    so a no-op stands in unless a test cares whether/when `settle` itself ran.
+    """
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle or (lambda: None))
+    return cleared, alerts
+
+
+def _clearing_native(labels_left: list[str]) -> Callable[[FakeDriver, str, object], None]:
+    """A `react` hook: dismissing a SpringBoard alert actually clears it, as a real device would.
+
+    `FakeDriver.handle_system_alert` never removes the tapped button on its own — a test opts into
+    that, exactly as the mid-wait gate's own tests already do — so without this a BE-0418 loop
+    round would re-probe the same still-seeded alert and re-dismiss it.
+    """
+
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "handle_system_alert":
+            d.system_alert_buttons = [_button(label) for label in labels_left]
+
+    return react
+
+
+def _clearing_tree_tap(label: str) -> Callable[[FakeDriver, str, object], None]:
+    """A `react` hook: a landed in-tree tap actually removes the button, as a real dismiss would.
+
+    `FakeDriver.tap` never mutates `screen` on its own, so without this a BE-0418 loop round would
+    find the same button still there and tap it a second time.
+    """
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and isinstance(arg, dict) and arg.get("label") == label:
+            d.screen = [el for el in d.screen if el["label"] != label]
+
+    return react
+
+
+# --- matching_alert_rule -----------------------------------------------------------------------------
+
+
+def _match_tap_label(rules: list[ResolvedAlertRule], buttons: list[str]) -> str | None:
+    """The tap label `matching_alert_rule` resolves to, or None (BE-0418 review finding).
+
+    A thin test-only convenience: production keys on the rule `matching_alert_rule` itself returns,
+    never on the bare label alone (two rules can share one alert's shape under different choices,
+    and keying on the label alone would let one such rule's exclusion promote its sibling to tap
+    the opposite button — see `matching_alert_rule`'s own docstring). This block's tests below only
+    care about the resolved label, so this local helper extracts it rather than reintroducing a
+    production wrapper with no caller of its own.
+    """
+    rule = matching_alert_rule(rules, buttons)
+    return rule.tap_label if rule is not None else None
+
 
 _NOTIF_RULE = ResolvedAlertRule(
     identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
@@ -78,52 +151,52 @@ _TRACKING_RULE = ResolvedAlertRule(
 )
 
 
-def test_match_alert_rule_identifies_the_prompt_by_its_full_label_pair() -> None:
+def test_matching_alert_rule_identifies_the_prompt_by_its_full_label_pair() -> None:
     # The tracking prompt's alert carries both of its own labels, so the tracking rule matches even
     # though "Allow" alone is shared with the notifications prompt.
     assert (
-        match_alert_rule([_TRACKING_RULE], ["Allow", "Ask App Not to Track"])
+        _match_tap_label([_TRACKING_RULE], ["Allow", "Ask App Not to Track"])
         == "Ask App Not to Track"
     )
 
 
-def test_match_alert_rule_none_when_only_the_shared_label_is_present() -> None:
+def test_matching_alert_rule_none_when_only_the_shared_label_is_present() -> None:
     # "Allow" alone cannot identify which of two prompts is on screen.
-    assert match_alert_rule([_TRACKING_RULE], ["Allow", "Cancel"]) is None
+    assert _match_tap_label([_TRACKING_RULE], ["Allow", "Cancel"]) is None
 
 
-def test_match_alert_rule_returns_the_first_matching_rule_in_order() -> None:
-    assert match_alert_rule([_NOTIF_RULE, _TRACKING_RULE], ["Allow", "Don't Allow"]) == "Allow"
+def test_matching_alert_rule_returns_the_first_matching_rule_in_order() -> None:
+    assert _match_tap_label([_NOTIF_RULE, _TRACKING_RULE], ["Allow", "Don't Allow"]) == "Allow"
     assert (
-        match_alert_rule([_NOTIF_RULE, _TRACKING_RULE], ["Allow", "Ask App Not to Track"])
+        _match_tap_label([_NOTIF_RULE, _TRACKING_RULE], ["Allow", "Ask App Not to Track"])
         == "Ask App Not to Track"
     )
 
 
-def test_match_alert_rule_none_when_no_rules_or_no_match() -> None:
-    assert match_alert_rule([], ["Allow", "Don't Allow"]) is None
-    assert match_alert_rule([_NOTIF_RULE], ["Weird Button"]) is None
-    assert match_alert_rule([_NOTIF_RULE], []) is None  # nothing on screen identifies nothing
+def test_matching_alert_rule_none_when_no_rules_or_no_match() -> None:
+    assert _match_tap_label([], ["Allow", "Don't Allow"]) is None
+    assert _match_tap_label([_NOTIF_RULE], ["Weird Button"]) is None
+    assert _match_tap_label([_NOTIF_RULE], []) is None  # nothing on screen identifies nothing
 
 
-def test_match_alert_rule_requires_each_identifying_label_exactly_once() -> None:
+def test_matching_alert_rule_requires_each_identifying_label_exactly_once() -> None:
     # Two buttons carrying the same label cannot uniquely identify the prompt, so the rule is
     # declined rather than resolved to whichever button matched first (determinism first, mirroring
     # resolve_unique).
-    assert match_alert_rule([_NOTIF_RULE], ["Allow", "Allow", "Don't Allow"]) is None
+    assert _match_tap_label([_NOTIF_RULE], ["Allow", "Allow", "Don't Allow"]) is None
 
 
-def test_match_alert_rule_skips_an_ambiguous_rule_and_takes_the_next_one() -> None:
+def test_matching_alert_rule_skips_an_ambiguous_rule_and_takes_the_next_one() -> None:
     # A duplicated label disqualifies only the rule that names it: the scan continues rather than
     # stopping at the first rule it could not resolve, so a second rule the same alert identifies
     # unambiguously still answers it.
     ambiguous = ResolvedAlertRule(identifying_labels=frozenset({"OK"}), tap_label="OK")
     unambiguous = ResolvedAlertRule(identifying_labels=frozenset({"Cancel"}), tap_label="Cancel")
-    assert match_alert_rule([ambiguous, unambiguous], ["OK", "OK", "Cancel"]) == "Cancel"
-    assert match_alert_rule([ambiguous], ["OK", "OK"]) is None
+    assert _match_tap_label([ambiguous, unambiguous], ["OK", "OK", "Cancel"]) == "Cancel"
+    assert _match_tap_label([ambiguous], ["OK", "OK"]) is None
 
 
-def test_match_alert_rule_declines_a_rule_whose_excluded_label_is_on_the_alert() -> None:
+def test_matching_alert_rule_declines_a_rule_whose_excluded_label_is_on_the_alert() -> None:
     # Two prompts can share their whole identifying pair — iOS 26.5's save sheet and its credit-card
     # sibling are both "Save"/"Not Now" — and only a third button tells them apart. `excluded_labels`
     # is how the save rule declines the card sheet: the pair is present, so without the exclusion it
@@ -133,8 +206,8 @@ def test_match_alert_rule_declines_a_rule_whose_excluded_label_is_on_the_alert()
         tap_label="Not Now",
         excluded_labels=frozenset({"Never for This Card"}),
     )
-    assert match_alert_rule([save], ["Save", "Not Now", "Never for This Card"]) is None
-    assert match_alert_rule([save], ["Save", "Not Now"]) == "Not Now"
+    assert _match_tap_label([save], ["Save", "Not Now", "Never for This Card"]) is None
+    assert _match_tap_label([save], ["Save", "Not Now"]) == "Not Now"
 
 
 # --- AlertGuardConfig.probe_native ------------------------------------------------------------------
@@ -221,6 +294,10 @@ def test_probe_native_unhandled_when_no_candidate_resolves() -> None:
 def test_probe_native_treats_a_dismiss_race_as_absent() -> None:
     # TOCTOU: the alert vanishes between the presence query and the tap, so handle_system_alert
     # raises ElementNotFound. That is a benign self-resolved race — reported as absent, not a failure.
+    # Carries the original non-empty read forward rather than discarding it like a genuine empty
+    # enumeration would: this race only proves the one alert the round tried to tap is gone, not
+    # that the rest of the surface is (BE-0418 review finding) — `__call__` needs the distinction to
+    # avoid retracting an unrelated, still-fading dismissal's own dedup record on this race alone.
     class _RaceDriver(FakeDriver):
         def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
             raise base.ElementNotFound("the alert vanished before the tap")
@@ -228,7 +305,7 @@ def test_probe_native_treats_a_dismiss_race_as_absent() -> None:
     driver = _RaceDriver([])
     driver.system_alert_buttons = [_button("Allow")]
     guard = AlertGuardConfig(rules=[guard_rule("Allow")])
-    assert guard.probe_native(driver) == ("absent", None, [])
+    assert guard.probe_native(driver) == ("absent", None, ["Allow"])
 
 
 # --- AlertGuardConfig.__call__ (native only since BE-0402) ------------------------------------------
@@ -236,7 +313,9 @@ def test_probe_native_treats_a_dismiss_race_as_absent() -> None:
 
 def test_call_returns_the_native_event_and_leaves_no_note() -> None:
     guard = AlertGuardConfig(rules=[guard_rule("Allow")])
-    assert guard(_fake_with_alert(["Allow"])) == AlertEvent(label="Allow")
+    driver = _fake_with_alert(["Allow"], react=_clearing_native([]))
+    cleared, alerts = _call(driver, guard)
+    assert cleared and alerts == [AlertEvent(label="Allow")]
     assert guard.blocked_note == ""  # the screen is unblocked; nothing to report
 
 
@@ -244,7 +323,8 @@ def test_call_reports_an_unnamed_alert_instead_of_guessing_at_it() -> None:
     # BE-0402: no rule or candidate label names this button, and nothing here will guess where to
     # tap. The step keeps failing — but with the alert named, which is the whole point.
     guard = AlertGuardConfig(rules=[guard_rule("Allow")])
-    assert guard(_fake_with_alert(["Weird Button"])) is None
+    cleared, alerts = _call(_fake_with_alert(["Weird Button"]), guard)
+    assert not cleared and alerts == []
     assert "unhandled system alert" in guard.blocked_note
     assert "Weird Button" in guard.blocked_note
 
@@ -253,7 +333,8 @@ def test_call_leaves_no_note_on_an_incapable_backend() -> None:
     # No native query ran, so nothing was observed. A note here would claim a block the guard never
     # saw, on every failed step of every non-iOS backend.
     guard = AlertGuardConfig()
-    assert guard(_Incapable()) is None  # type: ignore[arg-type]
+    cleared, alerts = _call(cast("base.Driver", _Incapable()), guard)
+    assert not cleared and alerts == []
     assert guard.blocked_note == ""
 
 
@@ -261,9 +342,11 @@ def test_call_clears_a_stale_note_once_the_alert_is_gone() -> None:
     # The note states the *latest* observation, never that a block was ever seen: a scenario runs its
     # steps against one config, so a sticky note would mislabel every later failure in it.
     guard = AlertGuardConfig(rules=[guard_rule("Allow")])
-    assert guard(_fake_with_alert(["Weird Button"])) is None
+    cleared, _alerts = _call(_fake_with_alert(["Weird Button"]), guard)
+    assert not cleared
     assert guard.blocked_note
-    assert guard(FakeDriver([])) is None
+    cleared, _alerts = _call(FakeDriver([]), guard)
+    assert not cleared
     assert guard.blocked_note == ""
 
 
@@ -720,7 +803,7 @@ def test_dismiss_from_tree_stops_retrying_a_permanently_covered_button() -> None
 
 def test_dismiss_from_tree_declines_on_an_in_app_label_collision() -> None:
     # A system-owned identifier-less button and an app-authored one share a rule's label:
-    # `match_alert_rule` resolves uniquely over the identifier-less subset, but the whole-tree tap
+    # `matching_alert_rule` resolves uniquely over the identifier-less subset, but the whole-tree tap
     # sees both and must decline rather than tap the wrong one (determinism first). A *persistent*
     # collision (unlike a vanish race) must decline before ever attempting the tap: the collision
     # never clears, so `_tree_dismiss_pending` (only armed on a successful tap) never guards it, and
@@ -1304,21 +1387,2831 @@ def test_the_end_of_step_guard_clears_an_app_owned_prompt_from_the_tree() -> Non
     # without a credential — so without this the prompt covered the screen and `expect` read a
     # covered tree.
     prompt_button = _button("Not Now")
-    driver = FakeDriver([_button("Sign In"), prompt_button])
+    driver = FakeDriver([_button("Sign In"), prompt_button], react=_clearing_tree_tap("Not Now"))
     guard = AlertGuardConfig(rules=[guard_rule("Not Now")])
-    assert guard(driver) == AlertEvent(label="Not Now")
-    assert driver.actions and driver.actions[-1][0] == "tap"
+    cleared, alerts = _call(driver, guard)
+    assert cleared and alerts == [AlertEvent(label="Not Now")]
+    assert ("tap", {"label": "Not Now", "traits": [base.Trait.BUTTON]}) in driver.actions
+
+
+def test_the_end_of_step_guard_clears_a_native_alert_stacked_in_front_of_an_in_tree_one() -> None:
+    # BE-0418's own motivating case: iOS commonly queues more than one prompt after a single user
+    # action. A single one-shot dismiss used to end the moment the native SpringBoard alert cleared,
+    # leaving the app-owned sheet underneath for the step's own retry to fail against a second time,
+    # with no note explaining why. The guard now keeps going once the SpringBoard alert is gone.
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "handle_system_alert":
+            d.system_alert_buttons = []
+        if kind == "tap" and isinstance(arg, dict) and arg.get("label") == "Not Now":
+            d.screen = [el for el in d.screen if el["label"] != "Not Now"]
+
+    driver = _fake_with_alert(["Don't Allow", "Allow"], react=react)
+    driver.screen = [_button("Not Now")]
+    guard = AlertGuardConfig(rules=[guard_rule("Don't Allow"), guard_rule("Not Now")])
+    cleared, alerts = _call(driver, guard)
+    assert cleared
+    assert alerts == [AlertEvent(label="Don't Allow"), AlertEvent(label="Not Now")]
+    # The SpringBoard alert is answered natively before the tree is ever touched: the first action
+    # is the native handle, not a tap.
+    assert driver.actions[0][0] == "handle_system_alert"
+    assert guard.blocked_note == ""
 
 
 def test_the_end_of_step_guard_leaves_the_tree_alone_while_a_springboard_alert_is_up() -> None:
     # The same licence the mid-wait gate needs: XCUITest answers an interrupting out-of-process alert
     # before it synthesizes any element interaction, so an app tap issued while one is up is not this
-    # guard's to make. The native path answers that alert first; the tree is next time's business.
-    driver = _fake_with_alert(["Don't Allow", "Allow"])
+    # guard's to make. The native probe reports "unhandled" (no rule identifies the alert) rather
+    # than "absent" — the one answer that licenses the tree — so the same-labelled in-tree button
+    # underneath is never touched. This call has dismissed nothing of its own, so "unhandled" ends
+    # the call on this first round rather than spending the rest of the bound re-reading the same
+    # surface (BE-0418).
+    driver = _fake_with_alert(["Weird Button"])  # up, and no rule identifies it
     driver.screen = [_button("Not Now")]
-    guard = AlertGuardConfig(rules=[guard_rule("Don't Allow"), guard_rule("Not Now")])
-    assert guard(driver) == AlertEvent(label="Don't Allow")  # the SpringBoard alert, natively
+    guard = AlertGuardConfig(rules=[guard_rule("Not Now")])
+    cleared, alerts = _call(driver, guard)
+    assert not cleared and alerts == []
     assert not any(action[0] == "tap" for action in driver.actions)
+    assert "Weird Button" in guard.blocked_note
+
+
+def test_the_end_of_step_guard_ends_on_the_first_unhandled_round_when_it_dismissed_nothing() -> (
+    None
+):
+    # Continuing past "unhandled" only makes sense when this call has dismissed something of its
+    # own -- the recovery is that answered alert's own fade draining to reveal a live one uniquely.
+    # With nothing yet dismissed there is no such fade, and continuing risks erasing this round's
+    # own diagnosis if the alert clears on its own before the bound is spent (BE-0418 review
+    # finding). Ending the call on this first round instead keeps it.
+    class _ClearsAfterFirstRead(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.probes = 0
+
+        def system_alert_labels(self) -> list[str]:
+            self.probes += 1
+            return ["Weird Button"] if self.probes == 1 else []
+
+    driver = _ClearsAfterFirstRead()
+    guard = AlertGuardConfig(rules=[guard_rule("Allow")])
+    cleared, alerts = _call(driver, guard)
+    assert not cleared and alerts == []
+    assert "Weird Button" in guard.blocked_note
+    assert driver.probes == 1  # never re-probed to see the alert clear itself
+
+
+def test_the_end_of_step_guard_ends_on_the_first_unhandled_round_ruled_out_by_an_exclusion() -> (
+    None
+):
+    # `rule.identifying_labels <= set(buttons)` is also true, with no fade and no collision, when
+    # a rule matched on shape but was ruled out by an *excluded* label being present --
+    # `matching_alert_rule` rejects that case just as it rejects a genuine count collision, but the
+    # early-break condition above only ever checked the shape, not the exclusion, so this case was
+    # read as "recoverable" and given rounds it could never use (review finding). No native rule in
+    # today's catalogue declares `excluded_labels`, but a tree one already does (`savePassword`'s
+    # 26.5 shape), so this is a matter of when a native one does, not if.
+    class _CountingDriver(FakeDriver):
+        def __init__(self, buttons: list[str]) -> None:
+            super().__init__([])
+            self.system_alert_buttons = [_button(label) for label in buttons]
+            self.probes = 0
+
+        def system_alert_labels(self) -> list[str]:
+            self.probes += 1
+            return [b["label"] for b in self.system_alert_buttons if b["label"]]
+
+    driver = _CountingDriver(["A1", "A2", "X"])
+    rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"A1", "A2"}), tap_label="A1", excluded_labels=frozenset({"X"})
+    )
+    guard = AlertGuardConfig(rules=[rule])
+    cleared, alerts = _call(driver, guard)
+    assert not cleared and alerts == []
+    assert "A1" in guard.blocked_note or "X" in guard.blocked_note
+    assert driver.probes == 1  # never re-probed a screen no later round could read differently
+
+
+def test_the_end_of_step_guard_still_recovers_a_collision_on_its_very_first_round() -> None:
+    # The early-break above is gated on more than `dismissed_native` alone: a rule's own shape
+    # being present on the surface (just not uniquely) is itself evidence a later round can read
+    # differently, even when nothing has been dismissed yet -- BE-0418's flagship stacked pair can
+    # collide on round 0 itself, not only after an earlier dismissal, and must still recover.
+    notifications = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+    )
+    tracking = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Ask App Not to Track"}), tap_label="Allow"
+    )
+    # Both alerts are already up on round 0 -- nothing dismissed yet, but notifications' own shape
+    # is present on the surface (just not uniquely), so the round must not end here.
+    driver = _fake_with_alert(["Allow", "Don't Allow", "Allow", "Ask App Not to Track"])
+    settle_count = 0
+
+    def settle() -> None:
+        nonlocal settle_count
+        settle_count += 1
+        if settle_count == 1:
+            # notifications' own buttons drop out, leaving tracking uniquely matchable.
+            driver.system_alert_buttons = [_button("Allow"), _button("Ask App Not to Track")]
+        elif settle_count == 2:
+            # tracking's own tap actually lands and the sheet clears.
+            driver.system_alert_buttons = []
+
+    guard = AlertGuardConfig(rules=[notifications, tracking])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared and alerts == [AlertEvent(label="Allow")]  # tracking, tapped on round 1
+    assert guard.blocked_note == ""
+
+
+def test_the_end_of_step_guard_leaves_a_second_native_alert_unhandled_after_clearing_the_first() -> (
+    None
+):
+    # The stacked case's other half (BE-0418): the loop still cleared something (`cleared` is True),
+    # but the second alert is one no rule identifies, so it is left alone and named in `blocked_note`
+    # rather than silently dropped — the same fact the failure reason needs even though the call as a
+    # whole did clear an alert.
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "handle_system_alert":
+            d.system_alert_buttons = [_button("Weird Button")]
+
+    driver = _fake_with_alert(["Allow"], react=react)
+    guard = AlertGuardConfig(rules=[guard_rule("Allow")])
+    cleared, alerts = _call(driver, guard)
+    assert cleared and alerts == [AlertEvent(label="Allow")]
+    assert "unhandled system alert" in guard.blocked_note
+    assert "Weird Button" in guard.blocked_note
+
+
+def test_the_end_of_step_guard_recovers_the_stacked_case_when_labels_collide_mid_fade() -> None:
+    # BE-0418's own flagship stacked pair, with an added wrinkle: `notifications` and `tracking`
+    # both tap "Allow", so a round reading the first's still-fading buttons alongside the second's
+    # now-live ones fails `matching_alert_rule`'s per-label uniqueness check for either and lands
+    # on `"unhandled"` rather than `"already_dismissed"`. That round must settle and try again, the
+    # same as an ordinary already_dismissed fade, rather than ending the call and leaving a
+    # rule-named alert untapped.
+    notifications = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+    )
+    tracking = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Ask App Not to Track"}), tap_label="Allow"
+    )
+    driver = _fake_with_alert(["Allow", "Don't Allow"])
+    settle_count = 0
+
+    def settle() -> None:
+        nonlocal settle_count
+        settle_count += 1
+        if settle_count == 1:
+            # notifications' own dismiss animation still enumerates its buttons, and tracking has
+            # now also queued -- the colliding-label read the "unhandled" fix must see past.
+            driver.system_alert_buttons = [
+                _button("Allow"),
+                _button("Don't Allow"),
+                _button("Allow"),
+                _button("Ask App Not to Track"),
+            ]
+        elif settle_count == 2:
+            # notifications' fade has now drained; only tracking remains, uniquely matchable.
+            driver.system_alert_buttons = [_button("Allow"), _button("Ask App Not to Track")]
+
+    guard = AlertGuardConfig(rules=[notifications, tracking])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared
+    assert alerts == [AlertEvent(label="Allow"), AlertEvent(label="Allow")]
+    assert guard.blocked_note == ""
+
+
+def test_the_end_of_step_guard_filters_the_unhandled_note_when_the_collision_never_resolves() -> (
+    None
+):
+    # Direct coverage of the `"unhandled"` branch's own leftover filter surviving to the call's
+    # final note: unlike the recovery case above, this collision never drains, so the filtered note
+    # from the last round is what `blocked_note` ends up holding. The filter subtracts with
+    # multiplicity, not as a set: `notifications`' answered shape accounts for exactly one "Allow"
+    # and one "Don't Allow", so the *second* "Allow" -- `tracking`'s own, still genuinely unhandled
+    # -- is left behind to name, while "Don't Allow" (fully accounted for, one occurrence only) is
+    # not (BE-0418 review finding).
+    notifications = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+    )
+    tracking = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Ask App Not to Track"}), tap_label="Allow"
+    )
+    driver = _fake_with_alert(["Allow", "Don't Allow"])
+
+    def settle() -> None:
+        # The collision persists for the rest of the call: notifications' fade never drains.
+        driver.system_alert_buttons = [
+            _button("Allow"),
+            _button("Don't Allow"),
+            _button("Allow"),
+            _button("Ask App Not to Track"),
+        ]
+
+    guard = AlertGuardConfig(rules=[notifications, tracking])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared and alerts == [AlertEvent(label="Allow")]  # only notifications ever tapped
+    assert "Ask App Not to Track" in guard.blocked_note
+    assert (
+        guard.blocked_note.count("Allow") == 1
+    )  # tracking's own copy, not notifications' answered one
+    assert "Don't Allow" not in guard.blocked_note
+
+
+def test_the_end_of_step_guard_names_a_later_unhandled_native_alert_over_a_pending_tree_note() -> (
+    None
+):
+    # BE-0418 review finding (superseding an earlier round's own mistaken fix for this exact
+    # scenario): the `"unhandled"` branch's own note is not gated on a pending tree diagnosis the
+    # way `already_dismissed` and the tree-lingering branch are, because this round has no way to
+    # corroborate that diagnosis either way -- the tree is read at all only inside `if not
+    # buttons:`, which "unhandled" can never reach (an unhandled alert is by definition a
+    # non-empty `buttons` read). A live, undeclared alert confirmed right now is exactly the
+    # "unknown, not a confirmed yes" state `_tree_gave_up_shape_still_shown` already resolves this
+    # same way on the gate side of this PR: the fresher, confirmable native diagnosis wins over a
+    # tree note this round cannot itself corroborate.
+    class _StuckTreeThenUnhandledNative(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([_button("Not Now")])
+            self.probes = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            raise base.ElementNotTappable("the scrim never lifts")
+
+        def system_alert_labels(self) -> list[str]:
+            self.probes += 1
+            return [] if self.probes == 1 else ["Weird Button"]
+
+    driver = _StuckTreeThenUnhandledNative()
+    guard = AlertGuardConfig(rules=[guard_rule("Not Now", native=False, in_tree=True)])
+    cleared, alerts = _call(driver, guard)
+    assert not cleared and alerts == []
+    assert "Weird Button" in guard.blocked_note
+    assert "Not Now" not in guard.blocked_note
+
+
+def test_the_end_of_step_guard_keeps_a_stuck_tree_note_after_a_different_tree_tap_lands() -> None:
+    # The bool `tree_note_pending` used to be, protects a pending `NotTappable` diagnosis from a
+    # later *native* dismissal, but a later round that dismisses a different, unrelated in-tree
+    # prompt is not evidence the stuck one became tappable — that requires the same label to land
+    # (BE-0418 review finding).
+    #
+    # `tree_read_round` is only set on a round that reaches the lingering-fade check itself (BE-0418
+    # review finding, superseding an earlier round's own mistaken assignment order): round 0 and
+    # round 2 both raise `NotTappable` on `StuckBtn`, which `continue`s before ever reaching that
+    # check, so neither one marks `tree_read_round`. `_final_tree_check` therefore still takes a
+    # fresh, post-loop read on `OtherBtn`'s own tap from round 1 -- which nothing this call ever did
+    # explicitly re-verified -- and finds it still enumerable on the true final round, withdrawing
+    # it the same way any other lingering tap would be. `StuckBtn`'s own diagnosis is unaffected.
+    stuck = ResolvedAlertRule(
+        identifying_labels=frozenset({"StuckBtn"}), tap_label="StuckBtn", native=False, in_tree=True
+    )
+    other = ResolvedAlertRule(
+        identifying_labels=frozenset({"OtherBtn"}), tap_label="OtherBtn", native=False, in_tree=True
+    )
+
+    class _OneButtonNeverLands(FakeDriver):
+        def tap(self, sel: base.Selector) -> None:
+            if isinstance(sel, dict) and sel.get("label") == "StuckBtn":
+                raise base.ElementNotTappable("StuckBtn's scrim never lifts")
+            super().tap(sel)
+
+    driver = _OneButtonNeverLands([_button("StuckBtn")])
+    settle_count = 0
+
+    def settle() -> None:
+        nonlocal settle_count
+        settle_count += 1
+        if settle_count == 1:
+            # StuckBtn is still unlanded and lingering; a second, unrelated prompt has now raised.
+            driver.screen = [_button("StuckBtn"), _button("OtherBtn")]
+
+    guard = AlertGuardConfig(rules=[other, stuck])  # `other` first, so it matches first once up
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert not cleared and alerts == []
+    # StuckBtn's own diagnosis must survive OtherBtn's unrelated (and, in the end, unconfirmed) tap.
+    assert "StuckBtn" in guard.blocked_note
+
+
+def test_a_note_from_a_cleared_stacked_call_does_not_survive_a_retry_that_passes() -> None:
+    # The step-runner's `not ok` conjunct, pinned (BE-0418 review finding): a cleared stacked call's
+    # note explains a failure the retry still has, but when the dismiss reveals the step's own
+    # target and the retry lands, the step passed — the still-unhandled second alert's note must not
+    # tag along onto a step with nothing to explain. Every other stacked-call test either has an
+    # empty note or a retry that fails, so without `not ok` this is the one case that would silently
+    # start tagging a passing step with a failure diagnosis.
+    from bajutsu.common.orchestrator import run_scenario
+    from bajutsu.common.scenario import load_scenarios
+
+    go = _button("Go")
+    go["identifier"] = "go"
+
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "handle_system_alert":
+            d.system_alert_buttons = [_button("Weird Button")]  # a second, unhandled alert
+            d.screen = [go]  # ...and the dismiss reveals the step's own target
+
+    driver = _fake_with_alert(["Allow"], react=react)
+    guard = AlertGuardConfig(rules=[guard_rule("Allow")])
+    result = run_scenario(
+        driver,
+        load_scenarios("- name: t\n  steps:\n    - tap: { id: go }\n")[0],
+        alert_guard=guard,
+    )
+    assert result.ok
+    # Asserted so the test cannot pass vacuously: `not ok` only suppresses anything while the
+    # note itself is non-empty.
+    assert "Weird Button" in guard.blocked_note
+    assert result.steps[0].reason == ""
+    assert result.steps[0].alerts == [AlertEvent(label="Allow")]  # the first alert did clear
+
+
+def test_a_note_from_a_cleared_stacked_call_still_reaches_the_step_s_own_failure() -> None:
+    # The same stacked case, driven through `run_scenario` (BE-0418): `cleared` and a non-empty
+    # `blocked_note` are no longer mutually exclusive the way a single-shot dismiss made them, so the
+    # step-runner's own note-append must survive the retry it now runs alongside. A version that
+    # appends the note before the retry loses it the moment the retry reassigns the failure reason.
+    from bajutsu.common.orchestrator import run_scenario
+    from bajutsu.common.scenario import load_scenarios
+
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "handle_system_alert":
+            d.system_alert_buttons = [_button("Weird Button")]
+
+    driver = _fake_with_alert(["Allow"], react=react)  # no "go" element at any point
+    result = run_scenario(
+        driver,
+        load_scenarios("- name: t\n  steps:\n    - tap: { id: go }\n")[0],
+        alert_guard=AlertGuardConfig(rules=[guard_rule("Allow")]),
+    )
+    assert not result.ok
+    reason = result.steps[0].reason or ""
+    assert "an unhandled system alert is blocking the screen (buttons: Weird Button)" in reason
+    assert result.steps[0].alerts == [AlertEvent(label="Allow")]  # the first alert did clear
+
+
+def test_the_end_of_step_guard_retries_a_tap_that_lands_on_a_later_round() -> None:
+    # The landing-race gap (BE-0418): a scrim still covers the sheet's button on the first attempt,
+    # exactly the "not yet reachable" condition the mid-wait path already retries. The one-shot path
+    # now gets the same short, round-bounded retry instead of giving up on the first `ElementNotTappable`.
+    prompt_button = _button("Not Now")
+    attempts = 0
+
+    class _SlowToLand(FakeDriver):
+        def tap(self, sel: base.Selector) -> None:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise base.ElementNotTappable("a scrim still covers the button")
+            super().tap(sel)
+            self.screen = [el for el in self.screen if el["label"] != "Not Now"]
+
+    driver = _SlowToLand([prompt_button])
+    guard = AlertGuardConfig(rules=[guard_rule("Not Now")])
+    cleared, alerts = _call(driver, guard)
+    assert cleared and alerts == [AlertEvent(label="Not Now")]
+    assert attempts == 2
+    assert guard.blocked_note == ""  # the eventual dismiss clears the interim "not tappable" note
+
+
+def test_the_end_of_step_guard_names_a_permanently_obstructed_prompt() -> None:
+    # Out of scope (per the proposal): actually clearing a permanently obstructed prompt is not this
+    # change's job. What changes is the diagnosis — the failure names the alert instead of reading as
+    # a bare missing element, once the loop's round bound is spent retrying a tap that never lands.
+    class _NeverLands(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([_button("Not Now")])
+            self.tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            raise base.ElementNotTappable("the scrim never lifts")
+
+    driver = _NeverLands()
+    guard = AlertGuardConfig(rules=[guard_rule("Not Now")])
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+
+    cleared, alerts = _call(driver, guard, settle=settle)
+    assert not cleared and alerts == []
+    assert "a system prompt the guard could not clear is still up" in guard.blocked_note
+    assert "Not Now" in guard.blocked_note
+    # Pins the round bound itself: a widened `_GUARD_CALL_MAX_ROUNDS` would retap (and re-settle)
+    # more times here without any other assertion in the suite noticing.
+    assert driver.tap_calls == 3
+    # And pins the settle on a round that found a button not yet tappable, not only on one that
+    # dismissed (BE-0418 Unit 1): without it the next round's retap — and, on the bound-exhausting
+    # round, the caller's own read — lands on a scrim still mid-presentation.
+    assert settle_calls == 3
+
+
+def test_the_end_of_step_guard_preserves_an_uncleared_tree_note_past_an_unrelated_native_dismissal() -> (
+    None
+):
+    # The other half of BE-0418's note bookkeeping: a round that clears an unrelated SpringBoard
+    # alert must not erase an earlier round's still-open tree diagnosis. Round 1 and 2 both find the
+    # same tree button stuck; round 2's own tap incidentally reveals a distinct native alert, which
+    # round 3 — the call's last — dismisses. Without gating the reset on whether the tree issue is
+    # still open, that unrelated success would silently discard the genuine, unresolved obstruction.
+    class _StuckTreePromptRevealsANativeOne(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([_button("Not Now")])
+            self.tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            if self.tap_calls == 2:
+                self.system_alert_buttons = [_button("Allow")]
+            raise base.ElementNotTappable("the scrim never lifts")
+
+    driver = _StuckTreePromptRevealsANativeOne()
+    guard = AlertGuardConfig(
+        rules=[
+            guard_rule("Not Now", native=False, in_tree=True),
+            guard_rule("Allow", native=True, in_tree=False),
+        ]
+    )
+    cleared, alerts = _call(driver, guard)
+    assert cleared and alerts == [AlertEvent(label="Allow")]
+    assert driver.tap_calls == 2
+    assert "a system prompt the guard could not clear is still up" in guard.blocked_note
+    assert "Not Now" in guard.blocked_note
+
+
+def test_the_end_of_step_guard_does_not_double_report_an_alert_reappearing_after_a_different_one() -> (
+    None
+):
+    # The native dedup must remember every alert already dismissed this call, not only the round
+    # immediately before: round 1 clears alert A, round 2 clears a distinct alert B, and round 3
+    # reads A's exact button set again — the first dismissal still fading, not a genuine third alert.
+    # Comparing only against the *previous* round's key would miss this A-B-A ordering entirely.
+    notifications = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+    )
+    tracking = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Ask App Not to Track"}), tap_label="Allow"
+    )
+    handled = 0
+
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        nonlocal handled
+        if kind != "handle_system_alert":
+            return
+        handled += 1
+        if handled == 1:
+            d.system_alert_buttons = [_button("Allow"), _button("Ask App Not to Track")]
+        else:
+            d.system_alert_buttons = [_button("Allow"), _button("Don't Allow")]
+
+    driver = _fake_with_alert(["Allow", "Don't Allow"], react=react)
+    guard = AlertGuardConfig(rules=[notifications, tracking])
+    cleared, alerts = _call(driver, guard)
+    assert cleared
+    assert alerts == [
+        AlertEvent(label="Allow"),
+        AlertEvent(label="Allow"),
+    ]  # A, then B — not A again
+    # Round 2's already_dismissed decline is A's fade reappearing, not three consecutive reads of
+    # a tap that never landed — B was tapped in between, so the round-exhaustion diagnosis must not
+    # fire here even though the round bound is spent on an already_dismissed round (BE-0418).
+    assert guard.blocked_note == ""
+
+
+def test_the_end_of_step_guard_preserves_an_uncleared_note_through_a_later_empty_round() -> None:
+    # A round that matches nothing does not prove the screen actually cleared (BE-0418's own design
+    # names this risk: "a round that reads a tree still mid-animation risks matching nothing at
+    # all"). Erasing round 1's real diagnosis on that ambiguous evidence would leave the eventual
+    # failure reading as a bare missing element again — exactly what this proposal exists to fix.
+    # An open `NotTappable` diagnosis must also keep the call retrying through that ambiguous round
+    # rather than ending on it (BE-0418 review finding): round 1's empty read is itself only
+    # ambiguous, not proof the stuck sheet resolved, so the call still spends round 2 on it — this
+    # driver never lets the tap land, so all three rounds are used before the call gives up.
+    class _ObstructedThenAmbiguous(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([_button("Not Now")])
+            self.attempts = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.attempts += 1
+            if self.attempts == 1:
+                raise base.ElementNotTappable("the scrim never lifts")
+            raise base.ElementNotFound("a mid-transition read caught it between frames")
+
+    driver = _ObstructedThenAmbiguous()
+    guard = AlertGuardConfig(rules=[guard_rule("Not Now")])
+    cleared, alerts = _call(driver, guard)
+    assert not cleared and alerts == []
+    assert driver.attempts == 3  # every round retried; the stuck diagnosis never let the call give
+    # up on round 1's merely-ambiguous read
+    assert "a system prompt the guard could not clear is still up" in guard.blocked_note
+    assert "Not Now" in guard.blocked_note
+
+
+def test_the_end_of_step_guard_lands_a_stuck_tap_after_an_ambiguous_middle_round() -> None:
+    # The positive twin of the test above: an open `NotTappable` diagnosis must not just survive an
+    # ambiguous middle round, it must let the call spend a genuinely useful round after it. Round 0's
+    # scrim has not lifted; round 1's read catches the sheet mid-frame and matches nothing at all
+    # (no rule, not even an already-excluded one); round 2's scrim has finally lifted. Before the fix,
+    # round 1's empty read ended the call outright, so the tap round 2 would have landed never ran.
+    class _ScrimLiftsOnTheLastRound(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([_button("Not Now")])
+            self.query_calls = 0
+            self.tap_calls = 0
+
+        def query(self) -> list[base.Element]:
+            self.query_calls += 1
+            if self.query_calls == 2:  # round 1's own read: the sheet mid-frame, nothing enumerable
+                return []
+            return super().query()
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            if self.tap_calls == 1:
+                raise base.ElementNotTappable("the scrim has not lifted yet")
+            super().tap(sel)
+
+    driver = _ScrimLiftsOnTheLastRound()
+    guard = AlertGuardConfig(rules=[guard_rule("Not Now")])
+
+    def settle() -> None:
+        if driver.tap_calls == 2:  # the landing tap genuinely closes the sheet, once it lands
+            driver.screen = []
+
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared and alerts == [AlertEvent(label="Not Now")]
+    assert guard.blocked_note == ""  # the stuck diagnosis clears once its own shape finally lands
+    assert driver.tap_calls == 2  # round 0's failed attempt, round 2's landing one — round 1 tapped
+    # nothing because its own read matched no rule at all
+
+
+def test_the_end_of_step_guard_keeps_trying_a_stuck_tree_prompt_through_an_unrelated_native_round() -> (
+    None
+):
+    # The `"unhandled"` branch's own settle-skip condition used to break the call without ever
+    # consulting `stuck_tree_label`, unlike the tree side's own equivalent check (the ambiguous-read
+    # branch inside `"absent"`, `if stuck_tree_label is not None: settle(); continue`) -- so an
+    # unrelated, transient SpringBoard alert no rule identifies could cut Unit 2's landing-race
+    # retry short even with a tree-only policy (`self.native_rules` empty, so the condition's own
+    # `any(...)` is vacuously `False`). Round 0's scrim has not lifted; round 1 is an unrelated
+    # native alert with nothing else to gain from continuing; round 2's scrim finally lifts
+    # (BE-0418 review finding).
+    class _StuckThenLandsPastAnUnrelatedNativeRound(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([_button("Sheet")])
+            self.tree_tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tree_tap_calls += 1
+            if self.tree_tap_calls == 1:
+                raise base.ElementNotTappable("the scrim has not lifted yet")
+            super().tap(sel)
+
+    driver = _StuckThenLandsPastAnUnrelatedNativeRound()
+    tree_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Sheet"}), tap_label="Sheet", native=False, in_tree=True
+    )
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:
+            # An unrelated, transient SpringBoard alert no rule identifies appears for round 1.
+            driver.system_alert_buttons = [_button("Weird Button")]
+        elif settle_calls == 2:
+            # It resolves on its own before round 2's own native probe.
+            driver.system_alert_buttons = []
+        elif settle_calls == 3:
+            # Round 2's own landing tap genuinely closes the sheet, the way a real device's
+            # settle_after_alert_dismiss would reflect by the time this call returns.
+            driver.screen = []
+
+    guard = AlertGuardConfig(rules=[tree_rule])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared and alerts == [AlertEvent(label="Sheet")]
+    assert guard.blocked_note == ""
+
+
+def test_the_end_of_step_guard_never_retaps_a_native_alert_it_already_dismissed() -> None:
+    # `settle` is best-effort and bounded: a dismissal whose own animation runs past it can still be
+    # up, unchanged, on a later round's read. `probe_native` declines to tap a match already in
+    # `dismissed` (BE-0418), so this is not merely deduplicated after the fact — a real device never
+    # sees a second tap that could land on nothing (the alert genuinely gone) or on whatever a
+    # closing alert has by then revealed underneath it, the same hazard the tree path's `exclude`
+    # closes on its own surface.
+    driver = _fake_with_alert(["Allow"])  # never cleared: models a fade that outlasts `settle`
+    guard = AlertGuardConfig(rules=[guard_rule("Allow")])
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    # The bound is spent with the same alert still up on every round: three consecutive reads is
+    # evidence the tap never actually landed, not that its dismiss animation is merely still
+    # playing out, so the last round names it rather than clearing the note (BE-0418) — and the
+    # `AlertEvent` the tap appended is withdrawn along with it, rather than standing alongside a
+    # note that says the opposite (BE-0418 review finding).
+    assert not cleared and alerts == []
+    assert guard.blocked_note == uncleared_prompt_note("Allow")
+    assert sum(1 for action in driver.actions if action[0] == "handle_system_alert") == 1
+    # Every round still settles, the declined ones included: each one enumerated a live alert
+    # mid-fade, and a caller reading the screen the instant this call returns must not read one
+    # still animating — the guarantee `__call__`'s own docstring makes for every round.
+    assert settle_calls == 3
+
+
+def test_the_end_of_step_guard_retaps_a_native_alert_that_genuinely_re_raises_after_absent() -> (
+    None
+):
+    # `dismissed_native` exists only to keep a still-fading alert from a second real tap — but an
+    # `"absent"` round is a deterministic proof the surface holds nothing at all, fading or
+    # otherwise. Carrying the record past that round declines a *later*, genuine re-raise of the
+    # same shape as though it were the earlier occurrence's own stale fade, tapping nothing
+    # (BE-0418 review finding). Round 0 dismisses "Allow"; round 1 reads "absent" and clears an
+    # in-tree sheet instead; round 2's app re-raises the identical "Allow" prompt, which must be
+    # tapped again rather than declined.
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "handle_system_alert":
+            d.system_alert_buttons = []  # the tapped alert genuinely clears every time
+
+    driver = _fake_with_alert(["Allow"], react=react)
+    driver.screen = [_button("Not Now")]
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 2:  # right after round 1's in-tree dismiss settles
+            driver.system_alert_buttons = [_button("Allow")]  # the app re-raises the same prompt
+            # Round 1's own tap genuinely closed "Not Now", the way a real device's
+            # settle_after_alert_dismiss would reflect by the time this call returns.
+            driver.screen = []
+
+    guard = AlertGuardConfig(
+        rules=[
+            guard_rule("Allow", native=True, in_tree=False),
+            guard_rule("Not Now", native=False, in_tree=True),
+        ]
+    )
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared
+    assert alerts == [
+        AlertEvent(label="Allow"),
+        AlertEvent(label="Not Now"),
+        AlertEvent(label="Allow"),
+    ]  # the re-raised "Allow" tapped a second time, not declined as the first occurrence's fade
+    assert sum(1 for action in driver.actions if action[0] == "handle_system_alert") == 2
+    assert guard.blocked_note == ""
+
+
+def test_the_end_of_step_guard_does_not_blame_a_retracted_native_shape_after_a_later_race() -> None:
+    # The genuinely-empty-read retraction cleared `dismissed_native` but left `native_dismiss_shape`
+    # / `native_dismiss_label` standing, so the bound-exhaustion diagnosis could still fire on a
+    # shape this very call already watched go away -- an empty enumeration is equally proof the tap
+    # that recorded the shape landed (BE-0418 review finding). Round 0 taps "notifications" cleanly;
+    # round 1 reads "absent" and clears an in-tree sheet instead, retracting the record; round 2's
+    # app genuinely re-raises the identical prompt, but *this* occurrence races away -- the call
+    # must not blame round 0's own, already-cleared shape for it. The race branch's own fallback
+    # resolves the rule fresh against this round's `buttons`/`dismissed_native` (BE-0418 review
+    # finding) rather than trusting a stale `native_dismiss_shape`, so round 0's own shape is never
+    # named here regardless. Round 2's own fresh race is *not* named either, though, and correctly
+    # so: a race's own containment check is tautological without corroboration from a race on a
+    # previous round too (BE-0418 review finding) -- this call's single, first-ever race of "Allow"
+    # is indistinguishable, from the evidence available, from a benign self-resolve.
+    class _SucceedsOnceThenRaces(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([_button("Not Now")])
+            self.tap_calls = 0
+
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            self.tap_calls += 1
+            if self.tap_calls == 1:
+                super().handle_system_alert(sel, timeout)
+            else:
+                raise base.ElementNotFound("the re-raised prompt raced away")
+
+    driver = _SucceedsOnceThenRaces()
+    driver.system_alert_buttons = [_button("Allow"), _button("Don't Allow")]
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:
+            driver.system_alert_buttons = []  # genuinely gone before round 1's own probe
+        elif settle_calls == 2:
+            driver.system_alert_buttons = [_button("Allow"), _button("Don't Allow")]  # re-raised
+            # Round 1's own tap genuinely closed "Not Now" -- isolates this test to the native-side
+            # retraction under review, not the tree side's own separate post-loop check.
+            driver.screen = []
+
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+            ),
+            guard_rule("Not Now", native=False, in_tree=True),
+        ]
+    )
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared
+    assert alerts == [AlertEvent(label="Allow"), AlertEvent(label="Not Now")]
+    assert guard.blocked_note == ""
+
+
+def test_the_end_of_step_guard_does_not_corroborate_a_race_against_an_already_retracted_shape() -> (
+    None
+):
+    # BE-0418 review finding: the genuinely-empty-read retraction reset `dismissed_native`,
+    # `native_dismiss_shape`/`_label`, and `native_dismiss_event`, but not `raced_native_shape` --
+    # so a race the call itself watched resolve (a genuinely empty read in between) could still
+    # corroborate a *later* race on the identical shape, naming a prompt as never cleared on
+    # repetition this call had already disproved.
+    #
+    # Round 0's own tap races away, setting `raced_native_shape`. Round 1 reads the native surface
+    # genuinely empty -- which must retract that corroboration along with everything else -- but a
+    # bare empty native read ends the call outright (nothing left to diagnose) unless something
+    # else is still worth another round: an in-tree sheet ("Not Now") this same round taps and
+    # genuinely closes keeps the call going without ever setting `stuck_tree_label`, so round 2's
+    # own native evidence is read exactly as it would be on a fresh call. Round 2 (final) re-raises
+    # the identical native prompt and races again -- with no surviving corroboration, this must
+    # read as a first-ever race, not a confirmed repetition.
+    class _RacesOnAllowClosesOnTap(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+        def tap(self, sel: base.Selector) -> None:
+            super().tap(sel)
+            if isinstance(sel, dict) and sel.get("label") == "Not Now":
+                self.screen = []  # the in-tree sheet genuinely closes
+
+    driver = _RacesOnAllowClosesOnTap([_button("Not Now")])
+    driver.system_alert_buttons = [_button("Allow"), _button("Don't Allow")]
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:
+            driver.system_alert_buttons = []  # genuinely empty before round 1's own probe
+        elif settle_calls == 2:
+            driver.system_alert_buttons = [_button("Allow"), _button("Don't Allow")]  # re-raised
+
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+            ),
+            guard_rule("Not Now", native=False, in_tree=True),
+        ]
+    )
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    # "Not Now" is the one genuine dismissal; "Allow" never lands, but with no surviving
+    # corroboration round 2's own race must stay silent rather than name it as never cleared.
+    assert cleared
+    assert alerts == [AlertEvent(label="Not Now")]
+    assert guard.blocked_note == ""
+
+
+def test_the_end_of_step_guard_does_not_retap_a_fading_alert_after_a_toctou_race_clears_a_second() -> (
+    None
+):
+    # The other half of the fix above: `dismissed_native`'s retraction must fire only on a
+    # genuinely empty read, not on every `"absent"` answer. `probe_native` also reports `"absent"`
+    # after a *non-empty* read, when the alert it tried to tap that round raced away between the
+    # query and the tap — that only proves the one alert this round tried is gone, not that the
+    # rest of the surface (an earlier round's own still-fading dismissal included) is (BE-0418
+    # review finding). Round 0 dismisses `notifications`; its fade outlasts `settle`, and a second,
+    # disjoint alert joins it; round 1 tries the second alert, which races away before the tap
+    # lands — a live native read, so the tree is left alone that round too (BE-0418 review
+    # finding); round 2's own read is genuinely empty, and must still decline `notifications`'
+    # lingering fade rather than tapping the device a second real time, while finally reaching the
+    # tree.
+    handled = 0
+
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        nonlocal handled
+        if kind != "handle_system_alert":
+            return
+        handled += 1
+        if handled == 2:
+            raise base.ElementNotFound("the second alert vanished between query and tap")
+
+    driver = _fake_with_alert(["Allow", "Don't Allow"], react=react)
+    driver.screen = [_button("Not Now")]
+    notifications = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+    )
+    second = ResolvedAlertRule(identifying_labels=frozenset({"OK", "Cancel"}), tap_label="OK")
+    tree_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Not Now"}), tap_label="Not Now", native=False, in_tree=True
+    )
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:
+            # notifications' own fade outlasts this settle, and a second, disjoint alert joins it.
+            driver.system_alert_buttons = [
+                _button("Allow"),
+                _button("Don't Allow"),
+                _button("OK"),
+                _button("Cancel"),
+            ]
+        elif settle_calls == 2:
+            # Both alerts genuinely resolve on their own, so round 2's own native read is empty —
+            # the only read that licenses the tree tap now (BE-0418 review finding).
+            driver.system_alert_buttons = []
+
+    guard = AlertGuardConfig(rules=[notifications, second, tree_rule])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared
+    # No duplicate "Allow": the TOCTOU-race "absent" must not have retracted notifications' own
+    # dismissed-shape record. "Not Now" is tapped on the call's own final round, and the fake never
+    # removes it from the tree — indistinguishable, from this call's own final read alone, between
+    # "still fading" and "never closes at all" — so `_final_tree_check` no longer second-guesses it
+    # (BE-0418 review finding, superseding an earlier round's own mistaken fix for this exact
+    # scenario): only a *later* round's own read could still disprove it, and this call has none
+    # left. Both dismissals count, since `cleared` is the net change in `alerts`, not a per-round
+    # streak.
+    assert alerts == [AlertEvent(label="Allow"), AlertEvent(label="Not Now")]
+    assert guard.blocked_note == ""
+    assert sum(1 for action in driver.actions if action[0] == "handle_system_alert") == 2
+
+
+def test_the_end_of_step_guard_names_an_unhandled_button_after_a_toctou_race() -> None:
+    # The tree-absent branch's own terminal note-clear used to treat every `"absent"` round as
+    # proof the SpringBoard surface was empty, but a time-of-check/time-of-use race also answers
+    # `"absent"` after a *non-empty* read (BE-0418 review finding): only the alert this round tried
+    # to tap raced away, not the rest of the surface. Clearing the note there drops a co-present,
+    # unhandled button the bare `element not found` BE-0402 exists to prevent naming.
+    class _RacesAwayOnTap(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    driver = _RacesAwayOnTap([])
+    driver.system_alert_buttons = [_button("OK"), _button("Cancel"), _button("Weird Button")]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"OK", "Cancel"}),
+                tap_label="OK",
+                native=True,
+                in_tree=False,
+            )
+        ]
+    )
+    cleared, alerts = _call(driver, guard)
+    assert not cleared and alerts == []
+    assert "Weird Button" in guard.blocked_note
+    # The raced-away shape is not in dismissed_native (nothing was dismissed), but a rule did
+    # identify it -- naming it as unhandled too would be exactly the misdiagnosis this branch
+    # exists to avoid (BE-0418 review finding).
+    assert "OK" not in guard.blocked_note and "Cancel" not in guard.blocked_note
+
+
+def test_the_end_of_step_guard_names_a_fourth_queued_prompt_instead_of_going_silent() -> None:
+    # The "dismissed" branch's own leftover check credited only `dismissed_native` -- the shapes
+    # this call has *tapped* -- not every rule `identified_alert_rules` finds on the same read, so a
+    # fourth declared prompt queued behind three the call already dismissed, uniquely identified on
+    # the final round's own read but not yet tapped, survived into the leftover and was named an
+    # alert no rule identifies (BE-0418 review finding). Unlike a mid-call round, the final round has
+    # no successor to self-correct it. Four disjoint native rules; rounds 0-2 dismiss the first
+    # three cleanly, and the fourth is still on screen, fully identified, when the bound is spent.
+    # Crediting it keeps it out of the generic `alert_block_note` -- it must never be named as an
+    # alert nothing identifies -- but the call still never taps it, so the exhaustion fallback
+    # (`_raced_exhaustion_note`, BE-0418 review finding) now names it via `uncleared_prompt_note`
+    # rather than falling silent, the same bare-`""` misdiagnosis already fixed on the race and
+    # `"unhandled"` branches.
+    class _DismissesThreeOfFour(FakeDriver):
+        _SHAPES: ClassVar[dict[str, set[str]]] = {
+            "A1": {"A1", "A2"},
+            "B1": {"B1", "B2"},
+            "C1": {"C1", "C2"},
+        }
+
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            super().handle_system_alert(sel, timeout)
+            label = sel["label"] if isinstance(sel, dict) else None
+            shape = self._SHAPES.get(label, set()) if label is not None else set()
+            self.system_alert_buttons = [
+                b for b in self.system_alert_buttons if b["label"] not in shape
+            ]
+
+    driver = _DismissesThreeOfFour([])
+    driver.system_alert_buttons = [
+        _button(label) for label in ("A1", "A2", "B1", "B2", "C1", "C2", "D1", "D2")
+    ]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(identifying_labels=frozenset({"A1", "A2"}), tap_label="A1"),
+            ResolvedAlertRule(identifying_labels=frozenset({"B1", "B2"}), tap_label="B1"),
+            ResolvedAlertRule(identifying_labels=frozenset({"C1", "C2"}), tap_label="C1"),
+            ResolvedAlertRule(identifying_labels=frozenset({"D1", "D2"}), tap_label="D1"),
+        ]
+    )
+    cleared, alerts = _call(driver, guard)
+    assert cleared
+    assert alerts == [
+        AlertEvent(label="A1"),
+        AlertEvent(label="B1"),
+        AlertEvent(label="C1"),
+    ]
+    assert guard.blocked_note == uncleared_prompt_note("D1")
+
+
+def test_the_end_of_step_guard_does_not_call_a_co_present_declared_prompt_unhandled_on_a_race() -> (
+    None
+):
+    # The TOCTOU race branch's own leftover credit used to resolve only the *one* rule that raced
+    # (`_resolve_alert_rule`), so a second, disjoint declared prompt co-present on the very same
+    # read survived into the leftover and was named as an alert no rule identifies -- exactly the
+    # misdiagnosis `uncleared_prompt_note`'s docstring says must not happen, since a rule does
+    # identify it and the very next native probe would dismiss it (BE-0418 review finding). Mirrors
+    # `test_wait_guard_does_not_call_a_co_present_declared_prompt_unhandled_on_a_race`
+    # (`tests/orchestrator/test_waits.py`), the mid-wait gate's own fix for the identical shape.
+    # "notifications" races away on every round; "paste" is a second, disjoint prompt fully present
+    # on every read but never itself attempted. The leftover fix keeps "paste" out of the generic
+    # `alert_block_note` -- it must never be named as an alert nothing identifies -- but the call
+    # still never confirms "notifications" cleared in three rounds, so the bound-exhaustion fallback
+    # (BE-0418 review finding, separate from the leftover credit above) now names *that* rule rather
+    # than going silent.
+    class _RacesAway(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    driver = _RacesAway([])
+    driver.system_alert_buttons = [
+        _button("Allow"),
+        _button("Don't Allow"),
+        _button("Allow Paste"),
+        _button("Don't Allow Paste"),
+    ]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}),
+                tap_label="Allow",
+                native=True,
+                in_tree=False,
+            ),
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow Paste", "Don't Allow Paste"}),
+                tap_label="Allow Paste",
+                native=True,
+                in_tree=False,
+            ),
+        ]
+    )
+    cleared, alerts = _call(driver, guard)
+    assert not cleared and alerts == []
+    assert guard.blocked_note == uncleared_prompt_note("Allow")
+    assert "Allow Paste" not in guard.blocked_note and "Don't Allow Paste" not in guard.blocked_note
+
+
+def test_the_end_of_step_guard_does_not_call_a_raced_ambiguous_alert_unhandled() -> None:
+    # `probe_native` reaches "unhandled" two ways: a genuinely unidentified alert, and the other
+    # half of the TOCTOU race above -- a matched rule whose tap found the label twice
+    # (`AmbiguousSelector`). The "unhandled" branch's own note used to subtract only
+    # `dismissed_native`, so a raced-but-matched rule's own labels survived into the leftover and
+    # were named as an alert no rule identifies -- exactly what `uncleared_prompt_note`'s docstring
+    # says must not happen, since the rule did identify it and only the tap failed (BE-0418 review
+    # finding). With nothing else on the surface, the bound-exhaustion fallback must also name that
+    # same rule on the final round rather than fall silent: the earlier fix folded the rule's own
+    # labels out of the leftover but left the fallback keyed on `native_dismiss_shape` alone, which
+    # is `None` here since this call never actually tapped anything -- the note went empty instead
+    # of `uncleared_prompt_note`, a silence worse than the "unhandled" framing it replaced (BE-0418
+    # review finding).
+    class _AmbiguousEveryRound(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.AmbiguousSelector("the alert offers this label twice")
+
+    driver = _AmbiguousEveryRound([])
+    driver.system_alert_buttons = [_button("Allow"), _button("Don't Allow")]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}),
+                tap_label="Allow",
+                native=True,
+                in_tree=False,
+            )
+        ]
+    )
+    cleared, alerts = _call(driver, guard)
+    assert not cleared and alerts == []
+    assert guard.blocked_note == uncleared_prompt_note("Allow")
+
+
+def test_the_end_of_step_guard_does_not_call_a_co_present_declared_prompt_unhandled_on_an_ambiguous_match() -> (
+    None
+):
+    # The "unhandled" branch's own leftover credit resolved only `_resolve_alert_rule`'s single
+    # match, unlike the race branch beside it (`leftover_dismissed_native`) and the mid-wait gate's
+    # own `"unhandled"` branch, both of which credit every rule `identified_alert_rules` finds on
+    # the same read (BE-0418 review finding). "notifications" hits `AmbiguousSelector` every round;
+    # "paste" is a second, disjoint declared prompt fully present on the same read but never itself
+    # attempted -- a single-rule credit still let its labels survive into the leftover and be named
+    # an alert no rule identifies.
+    class _AmbiguousEveryRound(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.AmbiguousSelector("the alert offers this label twice")
+
+    driver = _AmbiguousEveryRound([])
+    driver.system_alert_buttons = [
+        _button("Allow"),
+        _button("Don't Allow"),
+        _button("Allow Paste"),
+        _button("Don't Allow Paste"),
+    ]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}),
+                tap_label="Allow",
+                native=True,
+                in_tree=False,
+            ),
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow Paste", "Don't Allow Paste"}),
+                tap_label="Allow Paste",
+                native=True,
+                in_tree=False,
+            ),
+        ]
+    )
+    cleared, alerts = _call(driver, guard)
+    assert not cleared and alerts == []
+    assert guard.blocked_note == uncleared_prompt_note("Allow")
+    assert "Allow Paste" not in guard.blocked_note and "Don't Allow Paste" not in guard.blocked_note
+
+
+def test_the_end_of_step_guard_never_taps_the_tree_while_a_native_alert_races() -> None:
+    # `"absent"` stopped meaning "the SpringBoard surface is clear" once the time-of-check/time-of-
+    # use race started carrying its own non-empty read forward -- but the tree tap was still
+    # licensed by `state == "absent"` alone, so it could fire with a live system alert demonstrably
+    # on screen. XCUITest answers an interrupting alert with its own default button before
+    # synthesizing any interaction (BE-0399), so a tap issued here would silently override the
+    # scenario's own policy with nothing in the report. A tree rule's own button is present and
+    # tappable throughout, and is never touched (BE-0418 review finding).
+    class _RacesAwayEveryRound(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    driver = _RacesAwayEveryRound([_button("Sheet")])
+    driver.system_alert_buttons = [_button("OK"), _button("Cancel"), _button("Weird Button")]
+    tree_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Sheet"}), tap_label="Sheet", native=False, in_tree=True
+    )
+    native_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"OK", "Cancel"}), tap_label="OK", native=True, in_tree=False
+    )
+    guard = AlertGuardConfig(rules=[tree_rule, native_rule])
+    cleared, alerts = _call(driver, guard)
+    assert not cleared and alerts == []
+    assert not any(action[0] == "tap" for action in driver.actions)  # the tree was never touched
+    assert "Weird Button" in guard.blocked_note
+
+
+def test_the_end_of_step_guard_keeps_a_stuck_tree_diagnosis_through_a_racing_native_round() -> None:
+    # The race branch above used to overwrite `note` unconditionally, unlike every other branch in
+    # this loop -- so a still-open `NotTappable` diagnosis from an earlier round could be silently
+    # erased the moment a *different* round's own native probe raced away (BE-0418 review finding).
+    # Round 0's tree tap is blocked by a scrim (`NotTappable`); round 1 (and the final round 2)
+    # each match the native rule but race away (`ElementNotFound`), leaving a non-empty read that
+    # skips the tree entirely -- the stuck diagnosis must survive both, not vanish under either.
+    class _StuckThenNativeRaces(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([_button("Not Now")])  # never removed: the scrim never lifts
+            self.tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            if self.tap_calls == 1:
+                raise base.ElementNotTappable("the scrim has not lifted yet")
+            super().tap(sel)
+
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    driver = _StuckThenNativeRaces()
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:
+            # Round 0's own NotTappable diagnosis settles; a live alert appears for round 1's own
+            # native probe to race away on.
+            driver.system_alert_buttons = [_button("Allow"), _button("Don't Allow")]
+
+    tree_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Not Now"}), tap_label="Not Now", native=False, in_tree=True
+    )
+    native_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Don't Allow"}),
+        tap_label="Allow",
+        native=True,
+        in_tree=False,
+    )
+    guard = AlertGuardConfig(rules=[tree_rule, native_rule])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert not cleared and alerts == []
+    assert guard.blocked_note == uncleared_prompt_note("Not Now")
+
+
+def test_the_end_of_step_guard_names_a_racing_leftover_button_alongside_an_earlier_tree_dismissal() -> (
+    None
+):
+    # Not the lingering-fade branch: `settle()` seeds `system_alert_buttons` unconditionally, so
+    # from round 1 on `probe_native` matches `native_rule`, races away on the tap, and answers
+    # `"absent"` over a *non-empty* read every round after the first — `__call__`'s `if not
+    # buttons:` is false each time, so the tree is never read again and "Sheet" never re-enters the
+    # picture. What this pins is the race branch's own `_leftover_note` (already covered standalone
+    # by `test_the_end_of_step_guard_names_an_unhandled_button_after_a_toctou_race`) correctly
+    # naming "Weird Button" while an *earlier*, unrelated tree dismissal from round 0 — "Sheet",
+    # genuinely landed and never revisited — keeps its own `AlertEvent`, rather than the two being
+    # conflated the way a single-shape credit or a stale bookkeeping reset could (review finding:
+    # this test previously claimed to pin the lingering-fade branch itself, which it never reaches
+    # by construction — that branch sits inside `if not buttons:`, and this fixture never leaves
+    # `buttons` empty past round 0).
+    class _RacesAwayOnTap(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+        def tap(self, sel: base.Selector) -> None:
+            # "Sheet" genuinely closes, so the post-loop tree check's own fresh read -- no longer
+            # skipped just because the native side leaves a non-empty note (BE-0418 review
+            # finding) -- does not find it still enumerable and mistake it for a fade that never
+            # lifted.
+            super().tap(sel)
+            self.screen = []
+
+    driver = _RacesAwayOnTap([_button("Sheet")])
+    tree_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Sheet"}), tap_label="Sheet", native=False, in_tree=True
+    )
+    native_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"OK", "Cancel"}), tap_label="OK", native=True, in_tree=False
+    )
+
+    def settle() -> None:
+        # Seeds a live, non-empty native surface from round 1 onward, which is what keeps
+        # `__call__` from ever reading the tree again after round 0's own dismissal of "Sheet".
+        driver.system_alert_buttons = [
+            _button("OK"),
+            _button("Cancel"),
+            _button("Weird Button"),
+        ]
+
+    guard = AlertGuardConfig(rules=[tree_rule, native_rule])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared and alerts == [AlertEvent(label="Sheet")]
+    assert "Weird Button" in guard.blocked_note
+    # The raced-away "OK"/"Cancel" shape must not also be named (BE-0418 review finding).
+    assert "OK" not in guard.blocked_note and "Cancel" not in guard.blocked_note
+
+
+def test_the_end_of_step_guard_reports_a_native_alert_uncleared_after_a_leading_tree_round() -> (
+    None
+):
+    # `native_declines == round_index` measured position in the call, not declines since the
+    # dismissal: a round of any other kind before the tap -- an unrelated in-tree prompt tapped
+    # cleanly here -- permanently left the decline count behind `round_index`, so a genuinely stuck
+    # native alert preceded by one such round was never reported (review finding).
+    rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+    )
+    other = ResolvedAlertRule(
+        identifying_labels=frozenset({"T"}), tap_label="T", native=False, in_tree=True
+    )
+
+    driver = FakeDriver([_button("T")])  # round 0: an unrelated in-tree prompt, tapped cleanly
+    settle_count = 0
+
+    def settle() -> None:
+        nonlocal settle_count
+        settle_count += 1
+        if settle_count == 1:
+            # "T" genuinely closes, so the post-loop tree check's own fresh read -- no longer
+            # skipped just because the native side leaves a non-empty note (BE-0418 review
+            # finding) -- does not find it still enumerable and mistake it for a fade that never
+            # lifted. The native alert this test cares about only raises after round 0's tree round.
+            driver.screen = []
+            driver.system_alert_buttons = [_button("Allow"), _button("Don't Allow")]
+
+    guard = AlertGuardConfig(rules=[rule, other])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    # "Allow" never actually clears (the final round's own read still shows it), so its own
+    # `AlertEvent` is withdrawn along with the diagnosis naming it — "T"'s own, earlier and genuinely
+    # cleared dismissal still counts (BE-0418 review finding).
+    assert cleared and alerts == [AlertEvent(label="T")]
+    assert guard.blocked_note == uncleared_prompt_note("Allow")
+
+
+def test_the_end_of_step_guard_reports_a_second_native_alert_stuck_behind_an_earlier_ones_fade() -> (
+    None
+):
+    # `_bound_exhaustion_note` must anchor on the *shape* of the most recently tapped alert
+    # directly, not on whichever shape `matching_alert_rule`'s own plain, dedup-blind pick happens
+    # to return: an earlier dismissal's own still-enumerable fade can crowd the recent one out of
+    # that pick, which would otherwise lose the diagnosis for the rest of the call once two native
+    # shapes have been tapped in it (review finding). Wide (round 0) never actually clears, and
+    # narrow -- tapped on round 1 once wide's own fade excludes it -- never clears either;
+    # `matching_alert_rule`'s plain pick keeps returning wide (first in `native_rules`, which stays
+    # in declaration order -- `_widest_first` is the tree path's own, not this one's) on every later
+    # round even though narrow is the shape the check is meant to be reading.
+    wide = ResolvedAlertRule(identifying_labels=frozenset({"A1", "A2"}), tap_label="A1")
+    narrow = ResolvedAlertRule(identifying_labels=frozenset({"B1"}), tap_label="B1")
+    driver = _fake_with_alert(["A1", "A2"])
+    settle_count = 0
+
+    def settle() -> None:
+        nonlocal settle_count
+        settle_count += 1
+        if settle_count == 1:
+            # Round 0 tapped wide, but its fade lingers, and narrow's own alert now joins it.
+            driver.system_alert_buttons = [_button("A1"), _button("A2"), _button("B1")]
+
+    guard = AlertGuardConfig(rules=[wide, narrow])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    # The exhaustion check anchors on narrow's own shape -- the most recently tapped -- and
+    # withdraws its `AlertEvent` once the final round's read still shows it (BE-0418 review
+    # finding). Wide's own tap never clears either, but nothing here re-diagnoses it once a later
+    # tap has overwritten the single shape the check reads (the same gap this test's own docstring
+    # already names for the note); wide's `AlertEvent` is what this call read out, so it stands.
+    assert cleared and alerts == [AlertEvent(label="A1")]
+    assert guard.blocked_note == uncleared_prompt_note("B1")
+
+
+def test_the_end_of_step_guard_reports_a_native_alert_uncleared_past_an_intervening_collision() -> (
+    None
+):
+    # `_bound_exhaustion_note` must check the final round's own read directly, not a streak counted
+    # since the tap: an "unhandled" collision round -- BE-0418's own notifications/tracking pair,
+    # sharing the tapped label "Allow" -- sits between the tap and the bound here, and an earlier
+    # version of the check never advanced its own count for a round of that kind, permanently losing
+    # the diagnosis for the rest of the call once it did (review finding).
+    notifications = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+    )
+    tracking = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Ask App Not to Track"}), tap_label="Allow"
+    )
+    driver = _fake_with_alert(["Allow", "Don't Allow"])
+    settle_count = 0
+
+    def settle() -> None:
+        nonlocal settle_count
+        settle_count += 1
+        if settle_count == 1:
+            # Round 0 tapped notifications, but its fade lingers, and tracking's own alert joins it:
+            # two "Allow" buttons now enumerable together fail the per-label uniqueness check for
+            # either, landing round 1 in "unhandled" rather than "already_dismissed".
+            driver.system_alert_buttons = [
+                _button("Allow"),
+                _button("Don't Allow"),
+                _button("Allow"),
+                _button("Ask App Not to Track"),
+            ]
+        elif settle_count == 2:
+            # Tracking's own alert resolves elsewhere (an interruption monitor, say) by round 2, but
+            # notifications' own tap still never actually landed.
+            driver.system_alert_buttons = [_button("Allow"), _button("Don't Allow")]
+
+    guard = AlertGuardConfig(rules=[notifications, tracking])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    # Tracking never actually tapped (no rule ever resolves it uniquely), and notifications' own
+    # tap never actually landed either -- its final round's own read still shows the exact shape it
+    # tapped, so that `AlertEvent` is withdrawn along with the diagnosis naming it (BE-0418 review
+    # finding).
+    assert not cleared and alerts == []
+    assert guard.blocked_note == uncleared_prompt_note("Allow")
+
+
+def test_the_end_of_step_guard_reports_an_unhandled_native_alert_uncleared_at_the_bound() -> None:
+    # The "unhandled" branch must fall back to `_bound_exhaustion_note` exactly like its
+    # "already_dismissed" twin, not clear the note whenever `leftover` happens to be empty (review
+    # finding): "unhandled" is not only "no rule identifies this at all" -- a per-label uniqueness
+    # collision on a read that *does* fully cover every already-dismissed shape lands here too, and
+    # which of the two branches a torn-down alert's read falls into from one round to the next is
+    # not something the caller controls, so the diagnosis must not depend on it. Both notifications
+    # and tracking get cleanly dismissed at different rounds, then both fades collide on the final
+    # round: `leftover` comes back empty (every button is one of the two dismissed reads' own), but
+    # tracking's own shape -- the more recently tapped one -- is still fully present, and that must
+    # still be named rather than silently dropped.
+    notifications = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+    )
+    tracking = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Ask App Not to Track"}), tap_label="Allow"
+    )
+    driver = _fake_with_alert(["Allow", "Don't Allow"])
+    settle_count = 0
+
+    def settle() -> None:
+        nonlocal settle_count
+        settle_count += 1
+        if settle_count == 1:
+            # Round 0's notifications fade is fully gone, so tracking's own alert dismisses cleanly.
+            driver.system_alert_buttons = [_button("Allow"), _button("Ask App Not to Track")]
+        elif settle_count == 2:
+            # Both fades now linger together, colliding on "Allow" -- neither dismissed shape reads
+            # uniquely, but each one's own labels are still fully accounted for between the two.
+            driver.system_alert_buttons = [
+                _button("Allow"),
+                _button("Don't Allow"),
+                _button("Allow"),
+                _button("Ask App Not to Track"),
+            ]
+
+    guard = AlertGuardConfig(rules=[notifications, tracking])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    # Tracking's own shape -- the more recently tapped one -- is still fully present on the final
+    # round, so its `AlertEvent` is withdrawn along with the diagnosis naming it; notifications' own,
+    # earlier and genuinely cleared dismissal still counts (BE-0418 review finding).
+    assert cleared and alerts == [AlertEvent(label="Allow")]
+    assert guard.blocked_note == uncleared_prompt_note("Allow")
+
+
+def test_the_end_of_step_guard_names_the_rule_that_actually_races_on_a_final_race() -> None:
+    # The race branch was the one native round kind that passed `""` instead of
+    # `_bound_exhaustion_note`, unlike its `already_dismissed` and `"unhandled"` siblings over the
+    # identical evidence (BE-0418 review finding) -- so a call whose *final* round is a race never
+    # named a native alert it tapped and never saw clear. Round 0 taps "Allow"; its own fade
+    # outlasts the settle, and "OK"/"Cancel" joins the surface; rounds 1 and 2 both race away on
+    # "OK". The fallback resolves the rule fresh against the final round's own `buttons` (BE-0418
+    # review finding) rather than trusting round 0's own `native_dismiss_shape`, so it names "OK" --
+    # the rule this round actually raced on and never confirmed cleared -- not "Allow", whose own
+    # tap the `alerts` list already confirms landed.
+    class _TapsAllowThenRacesOnOK(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            button = base.resolve_unique(self.system_alert_buttons, sel)
+            if button["label"] == "OK":
+                raise base.ElementNotFound("the prompt raced away")
+            super().handle_system_alert(sel, timeout)
+
+    driver = _TapsAllowThenRacesOnOK([])
+    driver.system_alert_buttons = [_button("Allow"), _button("Don't Allow")]
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:
+            # "Allow"'s own fade outlasts this settle, and "OK"/"Cancel" joins the surface.
+            driver.system_alert_buttons = [
+                _button("Allow"),
+                _button("Don't Allow"),
+                _button("OK"),
+                _button("Cancel"),
+            ]
+
+    rule_a = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Don't Allow"}),
+        tap_label="Allow",
+        native=True,
+        in_tree=False,
+    )
+    rule_b = ResolvedAlertRule(
+        identifying_labels=frozenset({"OK", "Cancel"}), tap_label="OK", native=True, in_tree=False
+    )
+    guard = AlertGuardConfig(rules=[rule_a, rule_b])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared and alerts == [AlertEvent(label="Allow")]
+    assert guard.blocked_note == uncleared_prompt_note("OK")
+
+
+def test_the_end_of_step_guard_does_not_blame_a_races_first_ever_occurrence() -> None:
+    # A race's own containment check is tautological on its own: `_resolve_alert_rule` resolves the
+    # rule from the *same* `buttons` `probe_native`'s own `matching_alert_rule` already matched it
+    # against, before the tap raced away -- so the shape being "still enumerable" in that read is
+    # true by construction, not evidence the alert is still up (BE-0418 review finding). "Ping" and
+    # "Foo" are dismissed cleanly on rounds 0 and 1; round 2 (final) is the *first and only* time
+    # this call ever reads "notifications", and it self-resolves between the query and the tap --
+    # `probe_native`'s own "absent" branch already treats exactly this as no longer blocking, so the
+    # race branch must not contradict it by naming "Allow" as never cleared on the strength of a
+    # single, uncorroborated race.
+    rule_ping = ResolvedAlertRule(identifying_labels=frozenset({"Ping"}), tap_label="Ping")
+    rule_foo = ResolvedAlertRule(identifying_labels=frozenset({"Foo"}), tap_label="Foo")
+    notifications = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+    )
+
+    class _RacesOnlyOnAllow(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            button = base.resolve_unique(self.system_alert_buttons, sel)
+            if button["label"] == "Allow":
+                raise base.ElementNotFound("the prompt self-resolved between query and tap")
+            super().handle_system_alert(sel, timeout)
+
+    driver = _RacesOnlyOnAllow([])
+    driver.system_alert_buttons = [_button("Ping")]
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:
+            driver.system_alert_buttons = [_button("Foo")]
+        elif settle_calls == 2:
+            driver.system_alert_buttons = [_button("Allow"), _button("Don't Allow")]
+
+    guard = AlertGuardConfig(rules=[rule_ping, rule_foo, notifications])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared and alerts == [AlertEvent(label="Ping"), AlertEvent(label="Foo")]
+    assert guard.blocked_note == ""
+
+
+def test_the_end_of_step_guard_still_names_a_co_present_alert_no_rule_identifies() -> None:
+    # `subtract_labels` subtracts a dismissed rule's own `identifying_labels`, not the
+    # whole round-0 read -- a second, different, unidentified alert already up alongside the one
+    # a scenario declares is the ordinary shape of a stacked pair queued by one action (review
+    # finding: recording the whole read instead, tried for a different finding, swallowed exactly
+    # this case). The scenario declares only `notifications`; SpringBoard's very first read already
+    # holds a second, undeclared alert ("OK" / "Cancel") right alongside it.
+    driver = _fake_with_alert(["Allow", "Don't Allow", "OK", "Cancel"])
+    guard = AlertGuardConfig(rules=[guard_rule("Allow", identifying=("Allow", "Don't Allow"))])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=lambda: None)
+    assert cleared and alerts == [AlertEvent(label="Allow")]  # notifications did clear
+    # Names the still-unidentified "OK" / "Cancel" alert, not a claim that notifications itself
+    # never cleared -- the tap the guard actually made is not what is still blocking the screen.
+    assert "OK" in guard.blocked_note and "Cancel" in guard.blocked_note
+    assert "Allow" not in guard.blocked_note
+
+
+def test_the_end_of_step_guard_credits_a_wider_sibling_in_already_dismissed_too() -> None:
+    # Every leftover producer except `already_dismissed` credits per read
+    # (`identified_alert_rules`), not only the shapes this call has tapped -- but a wider declared
+    # sibling nesting with an already-dismissed narrower shape (`_resolve_alert_rule`'s own
+    # reverse-containment test) reaches `already_dismissed` too, with its own extra label still on
+    # the read (BE-0418 review finding). Round 0 taps the narrower shape ("A"/"B"); `settle()` then
+    # renders "C", completing the wider sibling's own shape ("A"/"B"/"C") without it ever being
+    # tapped -- both nest with the dismissed shape, so `_resolve_alert_rule` excludes both and
+    # `probe_native` answers "already_dismissed", with "C" the only label bare `dismissed_native`
+    # would leave stranded and misname as an alert no rule identifies.
+    narrow = ResolvedAlertRule(identifying_labels=frozenset({"A", "B"}), tap_label="A")
+    wide = ResolvedAlertRule(identifying_labels=frozenset({"A", "B", "C"}), tap_label="A")
+    driver = _fake_with_alert(["A", "B"])
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:
+            driver.system_alert_buttons = [_button("A"), _button("B"), _button("C")]
+
+    guard = AlertGuardConfig(rules=[narrow, wide])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    # "C" is a rule *does* identify (the wider sibling), so it is never named as unhandled; once the
+    # leftover is correctly empty, the final round's own exhaustion note fires instead and withdraws
+    # the narrow shape's own tap -- this call never actually saw "A"/"B" close, only "C" newly
+    # rendering alongside them, which is exactly the evidence the exhaustion note is for.
+    assert "C" not in guard.blocked_note
+    assert guard.blocked_note == uncleared_prompt_note("A")
+    assert not cleared and alerts == []
+
+
+def test_the_end_of_step_guard_names_a_co_present_alert_on_a_dismissing_final_round() -> None:
+    # The "dismissed" branch used to clear `note` unconditionally, the only round kind that
+    # touched `note` without computing the leftover first -- so a co-present alert no rule
+    # identifies was silently dropped whenever the call's *final* round happened to be a fresh
+    # dismissal, since no later round is left to self-correct into "unhandled" or
+    # "already_dismissed" (review finding). Round 0 dismisses notifications; round 1 collides with
+    # tracking on the shared "Allow" label (an existing, already-correct "unhandled" round); round
+    # 2, the last one, dismisses tracking cleanly -- with an undeclared "OK" / "Cancel" alert
+    # sitting right alongside it throughout.
+    notifications = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+    )
+    tracking = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Ask App Not to Track"}), tap_label="Allow"
+    )
+    driver = _fake_with_alert(["Allow", "Don't Allow"])
+    settle_count = 0
+
+    def settle() -> None:
+        nonlocal settle_count
+        settle_count += 1
+        if settle_count == 1:
+            # notifications' fade collides with tracking's own alert on "Allow", and the undeclared
+            # pair is already up alongside both.
+            driver.system_alert_buttons = [
+                _button("Allow"),
+                _button("Don't Allow"),
+                _button("Allow"),
+                _button("Ask App Not to Track"),
+                _button("OK"),
+                _button("Cancel"),
+            ]
+        elif settle_count == 2:
+            # notifications' own fade is fully gone, so tracking now dismisses cleanly -- on the
+            # call's own final round.
+            driver.system_alert_buttons = [
+                _button("Allow"),
+                _button("Ask App Not to Track"),
+                _button("OK"),
+                _button("Cancel"),
+            ]
+
+    guard = AlertGuardConfig(rules=[notifications, tracking])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared and alerts == [AlertEvent(label="Allow"), AlertEvent(label="Allow")]
+    assert "OK" in guard.blocked_note and "Cancel" in guard.blocked_note
+
+
+def test_the_end_of_step_guard_clears_a_native_leftover_note_once_the_surface_reads_absent() -> (
+    None
+):
+    # An `already_dismissed` round's leftover note names a *native* alert `probe_native` actually
+    # enumerated. A later round's own probe answering `"absent"` is a deterministic no-SpringBoard-
+    # alert fact (`probe_native`'s own docstring), so that note is now stale evidence of an alert
+    # this call has since watched go away -- unlike a tree diagnosis, which a merely-ambiguous tree
+    # read cannot contradict this cleanly, and which this fix must not touch.
+    driver = _fake_with_alert(["Allow", "Don't Allow"])
+    guard = AlertGuardConfig(rules=[guard_rule("Allow", identifying=("Allow", "Don't Allow"))])
+    settle_count = 0
+
+    def settle() -> None:
+        nonlocal settle_count
+        settle_count += 1
+        if settle_count == 1:
+            # Round 0's own alert fades, and a second, unrelated one queues alongside it.
+            driver.system_alert_buttons = [
+                _button("Allow"),
+                _button("Don't Allow"),
+                _button("OK"),
+                _button("Cancel"),
+            ]
+        elif settle_count == 2:
+            # Both are gone by round 2 -- an interruption monitor answered the second one, say.
+            driver.system_alert_buttons = []
+
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared and alerts == [AlertEvent(label="Allow")]
+    assert guard.blocked_note == ""
+
+
+def test_the_end_of_step_guard_reports_an_unhandled_native_alert_after_an_unrelated_tree_dismiss() -> (
+    None
+):
+    # An "unhandled" round with nothing native dismissed ends the call rather than continuing
+    # (BE-0418 review finding): a prior round's own tree activity -- dismissing T here -- does not
+    # change that, since the recovery "unhandled" exists for is specifically a *native* alert's own
+    # fade draining, and this call has never dismissed one. The diagnosis this round makes must
+    # still come out, not get lost to a further round this call has no reason to spend.
+    class _AbsentThenUnhandled(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([_button("T")])
+            self.probes = 0
+
+        def system_alert_labels(self) -> list[str]:
+            self.probes += 1
+            return [] if self.probes == 1 else ["Weird Button"]
+
+        def tap(self, sel: base.Selector) -> None:
+            # "T" genuinely closes, so the post-loop tree check's own fresh read -- no longer
+            # skipped just because the native side leaves a non-empty note (BE-0418 review
+            # finding) -- does not find it still enumerable and mistake it for a fade that never
+            # lifted.
+            super().tap(sel)
+            self.screen = []
+
+    driver = _AbsentThenUnhandled()
+    rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"T"}), tap_label="T", native=False, in_tree=True
+    )
+    guard = AlertGuardConfig(rules=[rule])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=lambda: None)
+    assert cleared and alerts == [AlertEvent(label="T")]  # T tapped on round 0
+    assert "Weird Button" in guard.blocked_note  # round 1's own diagnosis, not lost
+    assert driver.probes == 2  # ended on round 1 rather than spending the rest of the bound
+
+
+def test_the_end_of_step_guard_withdraws_a_lingering_tap_even_through_a_stuck_tree_note() -> None:
+    # BE-0418 review finding (superseding an earlier round's own mistaken fix for this exact
+    # scenario): `_lingering_tree_note` both computes the note and withdraws the lingering shape's
+    # own `AlertEvent`, and gating the whole call on `stuck_tree_label is None` suppressed the
+    # withdrawal along with the note -- exactly the pattern already fixed on the three native
+    # branches, for the identical reason: the withdrawal is a fact about whether an earlier round's
+    # own tap landed, not a reporting-precedence decision the way *note* itself is.
+    # `_final_tree_check` cannot pick up the slack here either, since this path sets
+    # `tree_read_round = round_index` on its way to the lingering check, so `_final_tree_check`'s
+    # own `tree_read_round >= round_index` skip fires on exactly this round.
+    #
+    # Round 0's Stuck sheet fails to tap (`stuck_tree_label = "Stuck"`); round 0's own settle moves
+    # it off-screen and a distinct, unrelated prompt takes its place. Round 1 taps that prompt
+    # ("T") cleanly. Round 2 (the final round) reads the tree again -- "T" is still enumerable (the
+    # fake models no removal) and was tapped on an *earlier* round (round 1, not this one), so the
+    # containment evidence is exactly as strong as the native branches' own final-round exhaustion
+    # checks: T's own tap is never confirmed to have landed, and its `AlertEvent` is withdrawn.
+    class _StuckDriver(FakeDriver):
+        def tap(self, sel: base.Selector) -> None:
+            if isinstance(sel, dict) and sel.get("label") == "Stuck":
+                raise base.ElementNotTappable("Stuck's scrim never lifts")
+            super().tap(sel)
+
+    driver = _StuckDriver([_button("Stuck")])
+    stuck = ResolvedAlertRule(
+        identifying_labels=frozenset({"Stuck"}), tap_label="Stuck", native=False, in_tree=True
+    )
+    other = ResolvedAlertRule(
+        identifying_labels=frozenset({"T"}), tap_label="T", native=False, in_tree=True
+    )
+    settle_count = 0
+
+    def settle() -> None:
+        nonlocal settle_count
+        settle_count += 1
+        if settle_count == 1:
+            driver.screen = [_button("T")]
+
+    guard = AlertGuardConfig(rules=[other, stuck])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert not cleared and alerts == []
+    # The tree diagnosis still wins the *note* -- the withdrawal above is a separate, fact-based
+    # decision, and does not hand the reported note to the round that triggered it.
+    assert "Stuck" in guard.blocked_note
+
+
+def test_the_end_of_step_guard_withdraws_a_lingering_tap_sharing_the_stuck_shapes_label() -> None:
+    # The label-sharing twin of the withdrawal test above (BE-0418 review finding): two `in_tree`
+    # rules can share one tap label under different choices -- `savePassword`'s three shapes all
+    # tap "Not Now" under `choice: deny` -- so `a` and `b` here tap the identical label with only
+    # their shapes differing, confirming the withdrawal (and the note precedence protecting it)
+    # both key on shape, not label.
+    class _StuckDriver(FakeDriver):
+        def tap(self, sel: base.Selector) -> None:
+            if (
+                isinstance(sel, dict)
+                and sel.get("label") == "Not Now"
+                and any(el["label"] == "A1" for el in self.screen)
+            ):
+                raise base.ElementNotTappable("A's scrim never lifts")
+            super().tap(sel)
+
+    driver = _StuckDriver([_button("A1"), _button("A2"), _button("Not Now")])
+    a = ResolvedAlertRule(
+        identifying_labels=frozenset({"A1", "A2"}), tap_label="Not Now", native=False, in_tree=True
+    )
+    b = ResolvedAlertRule(
+        identifying_labels=frozenset({"B1", "B2"}), tap_label="Not Now", native=False, in_tree=True
+    )
+    settle_count = 0
+
+    def settle() -> None:
+        nonlocal settle_count
+        settle_count += 1
+        if settle_count == 1:
+            # A's own sheet moves off-screen (or behind another), and a distinct prompt that shares
+            # its tap label takes its place.
+            driver.screen = [_button("B1"), _button("B2"), _button("Not Now")]
+
+    guard = AlertGuardConfig(rules=[a, b])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    # B taps cleanly on round 1 but is still enumerable, unconfirmed, on the final round -- the
+    # same lingering-tap evidence withdraws it regardless of the label it shares with the stuck A.
+    assert not cleared and alerts == []
+    assert guard.blocked_note == uncleared_prompt_note("Not Now")
+
+
+def test_the_end_of_step_guard_clears_a_stuck_tree_note_when_a_wider_nested_shape_lands() -> None:
+    # The stuck-shape clear used equality, but `exclude`'s own dedup (`dismissed_tree_shapes |=
+    # {rule.identifying_labels}`, feeding `_resolve_alert_rule`'s subset test) can retire a *nested*
+    # stuck shape without ever matching it exactly again. `savePassword`'s narrower shape N and
+    # wider shape W both tap "Not Now" (N subset of W): round 0 catches N's own scrim before W's
+    # third label has rendered; round 1 renders it, and the widest-first match lands on W instead,
+    # closing the sheet N was itself naming. Equality left N marked stuck forever after that,
+    # contradicting `exclude`, which already treats N as answered (BE-0418 review finding).
+    class _NestedShapeStuckThenLands(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([_button("Save Password"), _button("Not Now")])
+            self.tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            if self.tap_calls == 1:
+                raise base.ElementNotTappable("the scrim has not lifted yet")
+            super().tap(sel)
+
+    driver = _NestedShapeStuckThenLands()
+    narrower = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save Password", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    wider = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save Password", "Never for This Website", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:
+            # The sheet finishes rendering its third label.
+            driver.screen = [
+                _button("Save Password"),
+                _button("Not Now"),
+                _button("Never for This Website"),
+            ]
+        elif settle_calls == 2:
+            # Round 1's tap genuinely closes it.
+            driver.screen = []
+
+    guard = AlertGuardConfig(rules=[narrower, wider])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared and alerts == [AlertEvent(label="Not Now")]  # tapped once, on the wider shape
+    assert guard.blocked_note == ""
+
+
+def test_the_end_of_step_guard_does_not_retap_a_nested_shape_that_renders_a_label_late() -> None:
+    # `_widest_first` only decides which rule matches first when *both* already match; it cannot
+    # make a not-yet-rendered label match. `savePassword`'s narrower shape N (`{"Save Password",
+    # "Not Now"}`) and wider shape W (`{"Save Password", "Never for This Website", "Not Now"}`,
+    # N subset of W) both tap "Not Now": round 0 catches only N's own two labels (W's third has not
+    # rendered yet) and taps it -- successfully, unlike the sibling test above. Round 1 renders the
+    # third label, so `matching_alert_rule` now resolves W over the same, still-showing screen. A
+    # one-directional subset test (`candidate <= dismissed`, not the reverse) does not exclude W --
+    # dismissed names only N's narrower shape, and W is not a subset of it -- so W matches afresh and
+    # `dismiss_from_tree_once` taps the sheet `exclude` was supposed to keep this call off of a
+    # second time (BE-0418 review finding). A containment check in *either* direction closes it.
+    class _NestedShapeLandsThenRendersWider(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([_button("Save Password"), _button("Not Now")])
+
+    driver = _NestedShapeLandsThenRendersWider()
+    narrower = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save Password", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    wider = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save Password", "Never for This Website", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:
+            # Round 0's own tap on N never actually mutates `screen` (the fake models no removal),
+            # and the sheet finishes rendering its third label in the meantime.
+            driver.screen = [
+                _button("Save Password"),
+                _button("Not Now"),
+                _button("Never for This Website"),
+            ]
+        elif settle_calls == 2:
+            # Round 0's tap genuinely closes the sheet; this settle is what finally shows it.
+            driver.screen = []
+
+    guard = AlertGuardConfig(rules=[narrower, wider])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared and alerts == [AlertEvent(label="Not Now")]  # tapped once, not twice
+    assert sum(1 for action in driver.actions if action[0] == "tap") == 1
+    assert guard.blocked_note == ""
+
+
+def test_the_end_of_step_guard_clears_a_stuck_tree_note_when_the_dismissal_is_the_narrower_shape() -> (
+    None
+):
+    # The sibling of the two tests above, but the containment runs the other way: there the *stuck*
+    # shape was the narrower one; here it is the wider one. `savePassword`'s narrower shape N
+    # (`{"Save Password", "Not Now"}`) and wider shape W (`{"Save Password", "Never for This
+    # Website", "Not Now"}`, N subset of W) both tap "Not Now": round 0 reads all three of W's
+    # labels and the widest-first match lands on W, but the tap fails (`stuck_tree_shape` becomes
+    # W). Round 1's read shows only N's two labels (W's third has stopped rendering), so the match
+    # lands on N instead, and this round's tap succeeds. A one-directional test
+    # (`stuck_tree_shape <= rule.identifying_labels`, i.e. W <= N) never holds — W is the *larger*
+    # set — so it left W marked stuck forever even though `_resolve_alert_rule`'s own bidirectional
+    # `_nests_with_a_dismissed_shape` already retires it via `dismissed_tree_info` (BE-0418 review
+    # finding). Only a containment check in *either* direction closes it.
+    class _WiderShapeStuckThenNarrowerLands(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__(
+                [_button("Save Password"), _button("Not Now"), _button("Never for This Website")]
+            )
+            self.tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            if self.tap_calls == 1:
+                raise base.ElementNotTappable("the scrim has not lifted yet")
+            super().tap(sel)
+
+    driver = _WiderShapeStuckThenNarrowerLands()
+    narrower = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save Password", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    wider = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save Password", "Never for This Website", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:
+            # The wider shape's third label stops rendering; only the narrower shape still shows.
+            driver.screen = [_button("Save Password"), _button("Not Now")]
+        elif settle_calls == 2:
+            # Round 1's tap genuinely closes it.
+            driver.screen = []
+
+    guard = AlertGuardConfig(rules=[narrower, wider])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared and alerts == [AlertEvent(label="Not Now")]  # tapped once, on the narrower shape
+    assert guard.blocked_note == ""
+
+
+def test_the_end_of_step_guard_does_not_retap_a_fading_alert_when_another_one_joins_it() -> None:
+    # The native dedup keys on the matched rule's own shape, not the raw buttons read: that read
+    # (`system_alert_labels()`) enumerates every alert SpringBoard currently holds, so a still-
+    # fading alert's own button set would otherwise change the instant a second, distinct alert
+    # queues up alongside it — read naively that looks like a genuinely new alert and re-taps the
+    # first one a second time, landing on nothing or on whatever it has by then revealed.
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "handle_system_alert":
+            # The first alert is still fading (never removed) and a second, disjoint one joins it.
+            d.system_alert_buttons = [
+                _button("Allow"),
+                _button("Don't Allow"),
+                _button("OK"),
+                _button("Cancel"),
+            ]
+
+    driver = _fake_with_alert(["Allow", "Don't Allow"], react=react)
+    guard = AlertGuardConfig(rules=[guard_rule("Allow", identifying=("Allow", "Don't Allow"))])
+    cleared, alerts = _call(driver, guard)
+    assert cleared and alerts == [AlertEvent(label="Allow")]
+    assert sum(1 for a in driver.actions if a[0] == "handle_system_alert") == 1
+    # The joining alert ("OK" / "Cancel") is one this call never answered — `already_dismissed`
+    # declining to re-tap the first alert must not read as "nothing else is up" and silently drop
+    # it (BE-0418): the eventual failure still needs to name it, the same as a fresh "unhandled".
+    assert "an unhandled system alert is blocking the screen" in guard.blocked_note
+    assert "OK" in guard.blocked_note and "Cancel" in guard.blocked_note
+    # ...and *only* those: the already-answered labels are filtered out of the note, so it never
+    # re-names the alert this call just cleared. Without this the unfiltered `alert_block_note(
+    # buttons)` passes every assertion above, on this branch and on the `"unhandled"` one alike.
+    assert "Allow" not in guard.blocked_note and "Don't Allow" not in guard.blocked_note
+
+
+def test_the_end_of_step_guard_keeps_a_pending_tree_note_through_a_repeated_native_alert() -> None:
+    # The counterpart to the "preserves an uncleared tree note past an unrelated native dismissal"
+    # test: once a native alert has already been dismissed and keeps reading back unchanged
+    # (`probe_native`'s own `already_dismissed` decline), that round must not let the native
+    # diagnosis's *note* win over a still-open tree diagnosis's own.
+    #
+    # `handle_system_alert` never removes "Allow" (the fake models no removal, same as the tap
+    # above), so this call's own final round still enumerates it -- the fade this call itself just
+    # tapped, reading back unchanged for lack of a later round to disprove it. Withdrawing the
+    # `AlertEvent` on exactly that evidence is the fix for the review finding this test used to
+    # mask (BE-0418 review finding): the note computation and its own withdrawal used to be gated
+    # on the same `stuck_tree_label is None` check as the note's precedence, so an open tree
+    # diagnosis suppressed the withdrawal along with the note, shipping a dismissal this round's own
+    # read shows never confirmed cleared. `_bound_exhaustion_note`'s own containment check cannot
+    # tell that apart from a genuinely stuck tap here -- the same ambiguity `_final_tree_check`
+    # already resolves the identical way on the tree side -- so `cleared` now reports `False`,
+    # matching a call that confirmed nothing.
+    class _StuckTreeThenRepeatingNative(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([_button("Not Now")])
+            self.tap_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            if self.tap_calls == 1:
+                self.system_alert_buttons = [_button("Allow")]
+            raise base.ElementNotTappable("the scrim never lifts")
+
+    driver = _StuckTreeThenRepeatingNative()
+    guard = AlertGuardConfig(
+        rules=[
+            guard_rule("Not Now", native=False, in_tree=True),
+            guard_rule("Allow", native=True, in_tree=False),
+        ]
+    )
+    cleared, alerts = _call(driver, guard)
+    assert not cleared and alerts == []
+    assert driver.tap_calls == 1
+    assert sum(1 for a in driver.actions if a[0] == "handle_system_alert") == 1
+    # The tree diagnosis still wins the *note* -- the withdrawal above is a separate, fact-based
+    # decision about the native tap, and does not hand the reported note to the native side.
+    assert "a system prompt the guard could not clear is still up" in guard.blocked_note
+    assert "Not Now" in guard.blocked_note
+
+
+def test_the_end_of_step_guard_withdraws_a_raced_dismissal_even_through_a_still_open_tree_note() -> (
+    None
+):
+    # The race branch's own twin of the "already_dismissed" test above (BE-0418 review finding): a
+    # still-open tree diagnosis used to suppress the race branch's withdrawal along with its note,
+    # exactly the way it did for `_already_dismissed_note`. "Allow" genuinely dismisses, but a
+    # second, distinct alert ("Ask App Not to Track") queues up right behind it and races away on
+    # the final round -- `_raced_exhaustion_note` prefers that fresh race over `native_dismiss_shape`
+    # (BE-0418 review finding), finds no corroborating earlier race for it, and falls back to
+    # `native_dismiss_shape` itself: "Allow" is still enumerable, unchanged, on this call's own last
+    # read, so the exhaustion diagnosis fires against it and its `AlertEvent` should be withdrawn --
+    # regardless of whether an unrelated tree diagnosis is what the reported *note* names instead.
+    class _DismissesThenRacesASecondAlert(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([_button("Not Now")])
+            self.tap_calls = 0
+            self.handle_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            if self.tap_calls == 1:
+                self.system_alert_buttons = [_button("Allow")]
+            raise base.ElementNotTappable("the scrim never lifts")
+
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            self.handle_calls += 1
+            if self.handle_calls == 1:
+                super().handle_system_alert(sel, timeout)
+                # "Allow" itself is never removed (the fake models no removal), and a second,
+                # distinct alert joins it right after.
+                self.system_alert_buttons = [
+                    *self.system_alert_buttons,
+                    _button("Ask App Not to Track"),
+                ]
+                return
+            raise base.ElementNotFound(f"raced away: {sel!r}")
+
+    driver = _DismissesThenRacesASecondAlert()
+    guard = AlertGuardConfig(
+        rules=[
+            guard_rule("Not Now", native=False, in_tree=True),
+            guard_rule("Allow", native=True, in_tree=False),
+            guard_rule("Ask App Not to Track", native=True, in_tree=False),
+        ]
+    )
+    cleared, alerts = _call(driver, guard)
+    assert not cleared and alerts == []
+    assert driver.tap_calls == 1
+    assert driver.handle_calls == 2
+    assert "a system prompt the guard could not clear is still up" in guard.blocked_note
+    assert "Not Now" in guard.blocked_note
+
+
+def test_the_end_of_step_guard_never_retaps_a_label_it_already_cleared_from_the_tree() -> None:
+    # The in-tree twin of the native case above, but closed a different way (BE-0418): a button a
+    # round just tapped successfully stays in the tree (the fake models no removal), so a later
+    # round's match would land on it again — and unlike the native path, re-tapping it risks landing
+    # on an application button the closing sheet has by then revealed, not just the same fading
+    # sheet. `dismiss_from_tree_once`'s own `exclude` withholds a label already cleared this call
+    # from matching again at all, so the tap happens exactly once, not merely reported once. A sheet
+    # that stays in the tree for the whole rest of the bound after being tapped is exactly the case
+    # `uncleared_prompt_note` exists for (review finding): `exclude` guarantees this call can never
+    # act on it again, so nothing later would otherwise report a sheet that accepted the tap without
+    # actually closing.
+    driver = FakeDriver([_button("Not Now")])  # never removed: models a fade past `settle`
+    guard = AlertGuardConfig(rules=[guard_rule("Not Now")])
+    cleared, alerts = _call(driver, guard)
+    # The final round's own read still shows the exact shape this call tapped, so the tap is
+    # diagnosed as never having landed — and the `AlertEvent` it appended is withdrawn along with
+    # that diagnosis, rather than standing alongside a note that says the opposite (BE-0418 review
+    # finding).
+    assert not cleared and alerts == []
+    assert guard.blocked_note == uncleared_prompt_note("Not Now")
+    assert sum(1 for action in driver.actions if action[0] == "tap") == 1
+
+
+def test_the_end_of_step_guard_reports_a_revealed_screen_sharing_a_dismissed_shapes_labels() -> (
+    None
+):
+    # The other half of the test above, and the one a bare label-containment check cannot tell
+    # apart from it: `savePassword`'s 26.5 shape names only ordinary UI vocabulary ("Save",
+    # "Not Now"), so once the sheet genuinely closes, an underlying app screen (an edit form, say)
+    # whose own ordinary buttons happen to carry those same two labels reads back identically to
+    # the sheet's own labels lingering past `settle`. Comparing the whole tree's own identity
+    # against the pre-tap read once distinguished the two, mirroring `_AlertGuardGate.
+    # _dismiss_from_tree`'s own guard for the mid-wait path -- but that same requirement also ruled
+    # out the guard's own motivating case, a sheet that accepts a tap without closing and
+    # re-presents with a validation error, which changes the tree by construction (BE-0418 review
+    # finding). Dropped in favor of the label-containment check alone: unlike the mid-wait gate,
+    # this one-shot call never taps again regardless of which read it takes here (`exclude` already
+    # forbids it), so a second, unlicensed tap is never the cost. The accepted cost is now larger
+    # than an imprecise note, though: the same containment check also withdraws the `AlertEvent`
+    # this tap genuinely earned and reports `cleared=False`, spending the caller's one-shot retry
+    # against a screen that actually moved on (BE-0418 review finding) — the price of naming the
+    # sibling test's genuinely still-stuck case above, since a bare label check cannot tell the two
+    # apart.
+    class _RevealsAFormWithTheSameButtonLabels(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([_button("Save"), _button("Not Now")])
+
+        def tap(self, sel: base.Selector) -> None:
+            super().tap(sel)
+            # The sheet closes, revealing a form whose own "Save"/"Not Now" buttons are a distinct
+            # element from the sheet's own — modeled here by an extra, identified field alongside
+            # them, changing the tree's own identity even though the two button labels read back
+            # unchanged.
+            self.screen = [
+                _button("Save"),
+                _button("Not Now"),
+                {
+                    "identifier": "email_field",
+                    "label": None,
+                    "traits": [],
+                    "value": None,
+                    "frame": (0, 0, 10, 10),
+                    "nativeZ": None,
+                },
+            ]
+
+    driver = _RevealsAFormWithTheSameButtonLabels()
+    sheet = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    guard = AlertGuardConfig(rules=[sheet])
+    cleared, alerts = _call(driver, guard)
+    # The sheet genuinely cleared on round 0, unlike the test above where the same labels really are
+    # the sheet's own fade outlasting the bound -- but the two are indistinguishable from a bare
+    # label check, so the withdrawal that case earns fires here too: the tap's own `AlertEvent` is
+    # taken back and `cleared` reports `False` even though the tap actually landed (BE-0418 review
+    # finding). `exclude` already withholds this shape regardless, so nothing here risks a second,
+    # unlicensed tap -- only the report is wrong.
+    assert not cleared and alerts == []
+    assert guard.blocked_note == uncleared_prompt_note("Not Now")
+    assert sum(1 for action in driver.actions if action[0] == "tap") == 1
+
+
+def test_the_end_of_step_guard_names_a_sheet_that_re_presents_with_a_validation_error() -> None:
+    # The motivating case the two tests above's own tree-identity check ruled out (BE-0418 review
+    # finding): a sheet that accepts a tap without closing and re-presents itself with a validation
+    # error changes the tree by construction (the new error row, at minimum), so requiring the whole
+    # tree signature to match the pre-tap read never held for it -- the call fell through to a bare
+    # `""` instead of naming the sheet `exclude` will never let it tap again. Dropping that
+    # requirement in favor of the label-containment check alone is what lets this case through.
+    class _ReRaisesWithAnErrorRow(FakeDriver):
+        def tap(self, sel: base.Selector) -> None:
+            super().tap(sel)
+            self.screen = [
+                _button("Save"),
+                _button("Not Now"),
+                {
+                    "identifier": None,
+                    "label": "Incorrect password",
+                    "traits": [],
+                    "value": None,
+                    "frame": (0, 0, 10, 10),
+                    "nativeZ": None,
+                },
+            ]
+
+    driver = _ReRaisesWithAnErrorRow([_button("Save"), _button("Not Now")])
+    sheet = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    guard = AlertGuardConfig(rules=[sheet])
+    cleared, alerts = _call(driver, guard)
+    # The sheet never actually closes, so the tap's own `AlertEvent` is withdrawn along with the
+    # diagnosis that names it, rather than standing alongside a note that says the opposite
+    # (BE-0418 review finding).
+    assert not cleared and alerts == []
+    assert guard.blocked_note == uncleared_prompt_note("Not Now")
+
+
+def test_dismiss_from_tree_once_does_not_promote_a_shadowed_choice_for_the_same_alert() -> None:
+    # Two rules can share one alert's shape (`identifying_labels`) under different `tap_label`s —
+    # a scenario's `choice` overriding a target's for the same prompt (BE-0177). Filtering the
+    # candidate rules by `tap_label` before matching would drop only the already-tapped rule and
+    # promote its sibling, matching the very same alert and tapping the opposite button on it.
+    deny = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    grant = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save", "Not Now"}),
+        tap_label="Save",
+        native=False,
+        in_tree=True,
+    )
+    driver = FakeDriver([_button("Save"), _button("Not Now")])  # never removed: models a fade
+    guard = AlertGuardConfig(rules=[deny, grant])
+    cleared, alerts = _call(driver, guard)
+    # Never removed, so the final round's own read still shows it — diagnosed as never having
+    # landed, and its `AlertEvent` withdrawn along with the diagnosis naming it (BE-0418 review
+    # finding). What this test actually pins — the scenario's own choice, tapped once rather than
+    # its shadowed sibling — is what `driver.actions` checks below.
+    assert not cleared and alerts == []
+    taps = [a for a in driver.actions if a[0] == "tap"]
+    assert len(taps) == 1 and _tap_label(taps[0]) == "Not Now"
+
+
+def test_dismiss_from_tree_once_treats_a_narrower_rendering_of_an_excluded_shape_as_excluded() -> (
+    None
+):
+    # A `savePassword`-style policy resolves to three rules, two of whose shapes nest rather than
+    # share one exact shape: the widest names three labels, the narrower one names two of those
+    # same three, and both tap the same button. Excluding only the exact shape a round tapped would
+    # leave the narrower sibling free to match the very same still-fading sheet and tap it a second
+    # time. Excluding by subset closes that: a shape wholly contained in one already excluded counts
+    # as excluded too, so the narrower sibling declines along with the exact match. The third rule
+    # neither nests with nor matches either of the other two ("Save", not "Save Password"), and is
+    # here to confirm the subset test never excludes a genuinely unrelated shape by mistake.
+    widest = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save Password", "Never for This Website", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    narrower = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save Password", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    unrelated = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    # Never removed: models the sheet's own dismiss animation outlasting `settle`.
+    driver = FakeDriver(
+        [_button("Save Password"), _button("Never for This Website"), _button("Not Now")]
+    )
+    guard = AlertGuardConfig(rules=[widest, narrower, unrelated])
+    cleared, alerts = _call(driver, guard)
+    # Never removed, so the final round's own read still shows it — diagnosed as never having
+    # landed, and its `AlertEvent` withdrawn along with the diagnosis naming it (BE-0418 review
+    # finding). What this test actually pins — tapped once, not once per nested rule — is what
+    # `driver.actions` checks below.
+    assert cleared is False
+    assert alerts == []
+    taps = [a for a in driver.actions if a[0] == "tap"]
+    assert len(taps) == 1 and _tap_label(taps[0]) == "Not Now"
+
+
+def test_tree_rules_tries_the_widest_nested_shape_first_regardless_of_declaration_order() -> None:
+    # `_resolve_alert_rule`'s own containment test excludes a candidate nesting with an
+    # already-dismissed shape either way, so which of this nested pair gets dismissed first no
+    # longer decides whether the other can re-tap -- but it still decides *which* rule the
+    # dismissal is recorded under (`_widest_first`'s own docstring, BE-0418 review finding). Distinct
+    # `tap_label`s on the two nested rules is what makes that observable: declaring the narrower
+    # rule first would tap "Not Now" if `tree_rules` returned declaration order untouched, and only
+    # sorting widest-first taps "Never for This Website" instead.
+    widest = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save Password", "Never for This Website", "Not Now"}),
+        tap_label="Never for This Website",
+        native=False,
+        in_tree=True,
+    )
+    narrower = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save Password", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    # Never removed: models the sheet's own dismiss animation outlasting `settle`.
+    driver = FakeDriver(
+        [_button("Save Password"), _button("Never for This Website"), _button("Not Now")]
+    )
+    guard = AlertGuardConfig(rules=[narrower, widest])  # narrower declared first, deliberately
+    cleared, alerts = _call(driver, guard)
+    # Never removed, so the final round's own read still shows it — diagnosed as never having
+    # landed, and its `AlertEvent` withdrawn along with the diagnosis naming it (BE-0418 review
+    # finding). What this test actually pins — tapped once, and on the *widest* rule's own label
+    # despite being declared second — is what `driver.actions` checks below.
+    assert cleared is False
+    assert alerts == []
+    taps = [a for a in driver.actions if a[0] == "tap"]
+    assert len(taps) == 1 and _tap_label(taps[0]) == "Never for This Website"
+
+
+def test_tree_rules_widest_first_survives_a_non_nesting_rule_in_between() -> None:
+    # Subset is a partial order, not a total one: an adjacent-swap pass only fixes a nested pair
+    # that is already next to each other, so a rule nesting with neither sibling sitting between
+    # them in declaration order blocks every swap and leaves the narrower shape matching -- and
+    # tapping -- first. `_resolve_alert_rule`'s bidirectional containment test already stops that
+    # from producing a repeat tap regardless of order (the test above), so what distinct
+    # `tap_label`s on the nested pair let this test pin instead is *which* rule the single tap
+    # gets recorded under (review finding). Modeled on savePassword's real three shapes, declared
+    # narrower, unrelated, widest -- today's catalogue happens to declare the widest one first, so
+    # this is the one order that would misfire without the sort.
+    widest = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save Password", "Never for This Website", "Not Now"}),
+        tap_label="Never for This Website",
+        native=False,
+        in_tree=True,
+    )
+    narrower = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save Password", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    unrelated = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save", "Not Now"}),  # the 26.5 shape -- nests with neither
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    # Never removed: models the sheet's own dismiss animation outlasting `settle`.
+    driver = FakeDriver(
+        [_button("Save Password"), _button("Never for This Website"), _button("Not Now")]
+    )
+    guard = AlertGuardConfig(rules=[narrower, unrelated, widest])
+    cleared, alerts = _call(driver, guard)
+    # Never removed, so the final round's own read still shows it — diagnosed as never having
+    # landed, and its `AlertEvent` withdrawn along with the diagnosis naming it (BE-0418 review
+    # finding). What this test actually pins — tapped once, and on the *widest* rule's own label
+    # despite being declared last — is what `driver.actions` checks below.
+    assert cleared is False
+    assert alerts == []
+    taps = [a for a in driver.actions if a[0] == "tap"]
+    assert len(taps) == 1 and _tap_label(taps[0]) == "Never for This Website"
+
+
+def test_the_end_of_step_guard_finds_a_stacked_alert_behind_a_fading_first_match() -> None:
+    # `already_dismissed` must not end the round the instant the plain first match is one this
+    # call already answered: a real, not-yet-answered alert can be enumerable right alongside that
+    # fade (BE-0418's own stacked case), and `matching_alert_rule` always returns the first
+    # candidate in list order, so the lingering alert being listed first must not hide a second,
+    # disjoint one behind it.
+    notifications = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+    )
+    second = ResolvedAlertRule(identifying_labels=frozenset({"OK", "Cancel"}), tap_label="OK")
+
+    taps = 0
+
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        nonlocal taps
+        if kind != "handle_system_alert":
+            return
+        taps += 1
+        if taps == 1:
+            # The first tap's own alert is still fading (its buttons linger), and the second,
+            # disjoint alert has now also raised — both enumerable together, which is exactly the
+            # round `_resolve_alert_rule`'s retry must see past.
+            d.system_alert_buttons = [
+                _button("Allow"),
+                _button("Don't Allow"),
+                _button("OK"),
+                _button("Cancel"),
+            ]
+        else:
+            d.system_alert_buttons = []  # both alerts genuinely gone once the second is tapped
+
+    driver = _fake_with_alert(["Allow", "Don't Allow"], react=react)
+    guard = AlertGuardConfig(rules=[notifications, second])
+    cleared, alerts = _call(driver, guard)
+    assert cleared
+    assert alerts == [AlertEvent(label="Allow"), AlertEvent(label="OK")]
+    assert guard.blocked_note == ""  # both alerts accounted for; nothing left over
+
+
+def test_the_end_of_step_guard_gives_a_lingering_tree_exclusion_another_round_instead_of_ending_the_call() -> (
+    None
+):
+    # `dismiss_from_tree_once` returns a bare `None` for two different facts: nothing matched at
+    # all, and every match landed on a shape `exclude` already holds. The native path's twin of the
+    # second fact (`already_dismissed`) settles and continues, precisely so a sheet stacked
+    # underneath a still-fading one gets another round to be presented -- the tree path must do the
+    # same, rather than ending the whole call the instant a round finds only the shape it already
+    # excluded and nothing new yet.
+    first = ResolvedAlertRule(
+        identifying_labels=frozenset({"Not Now"}), tap_label="Not Now", native=False, in_tree=True
+    )
+    second = ResolvedAlertRule(
+        identifying_labels=frozenset({"Later"}), tap_label="Later", native=False, in_tree=True
+    )
+    driver = FakeDriver([_button("Not Now")])  # the fade outlasts every settle in this test
+    settle_count = 0
+
+    def settle() -> None:
+        nonlocal settle_count
+        settle_count += 1
+        if settle_count == 2:  # not revealed until the round *after* the one that tapped "Not Now"
+            driver.screen = [*driver.screen, _button("Later")]
+        elif settle_count == 3:
+            # Round 2's own landing tap genuinely closes "Later", the way a real device's
+            # settle_after_alert_dismiss would reflect by the time this call returns.
+            driver.screen = []
+
+    guard = AlertGuardConfig(rules=[first, second])
+    cleared, alerts = _call(driver, guard, settle=settle)
+    assert cleared
+    assert alerts == [AlertEvent(label="Not Now"), AlertEvent(label="Later")]
+    assert guard.blocked_note == ""
+
+
+def test_the_end_of_step_guard_skips_the_post_loop_query_on_an_unsettled_terminal_tree_break() -> (
+    None
+):
+    # The post-loop check's own fresh `_read_tree` call exists for a path that settled since the
+    # tree was last read -- but the loop's own most common tree exit, a round whose tree read
+    # matches nothing and ends the call right there (`note = ""; break`), settles nothing on its way
+    # to that break. Nothing can have moved the screen since that round's own read already tested
+    # this exact evidence and found it false, so a second `driver.query()` back-to-back against the
+    # same screen would only reproduce the same false (BE-0418 review finding). Round 0 taps "Sheet"
+    # and settle() genuinely closes it; round 1's own tree read finds nothing and ends the call
+    # without settling again.
+    class _CountingQueryDriver(FakeDriver):
+        def __init__(self, screen: list[base.Element]) -> None:
+            super().__init__(screen)
+            self.query_calls = 0
+
+        def query(self) -> list[base.Element]:
+            self.query_calls += 1
+            return super().query()
+
+    driver = _CountingQueryDriver([_button("Sheet")])
+    tree_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Sheet"}), tap_label="Sheet", native=False, in_tree=True
+    )
+    guard = AlertGuardConfig(rules=[tree_rule])
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:
+            driver.screen = []  # the tap genuinely closed the sheet
+
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared and alerts == [AlertEvent(label="Sheet")]
+    assert guard.blocked_note == ""
+    # Round 0's own tap-time read, round 1's own terminal read -- no third, post-loop query.
+    assert driver.query_calls == 2
+
+
+def test_the_end_of_step_guard_does_not_second_guess_its_own_final_round_tree_tap() -> None:
+    # BE-0418 review finding (superseding an earlier round's own mistaken fix for this exact
+    # scenario): `_final_tree_check` must never diagnose a shape *this* round's own tree action
+    # just tapped. The in-loop lingering-fade branch can only ever run against an *earlier* round's
+    # tap -- its own tap branch `continue`s before ever reaching that check -- giving a full round
+    # plus a `settle()` of separation before the evidence is trusted. `_final_tree_check` has no
+    # such separation of its own: reaching it right after a round whose own action was the tap in
+    # question leaves only one best-effort `settle()` between the tap and this check's fresh read,
+    # nowhere near enough to tell a still-fading animation from a genuinely stuck sheet. Recording
+    # the round each shape was tapped on, and excluding a same-round entry from
+    # `_first_lingering_tree_shape`, restores the same bar the in-loop branch enforces: an ordinary
+    # dismissal whose fade merely outlasts one settle call is no longer wrongly reported as never
+    # cleared and no longer costs the caller its one-shot retry.
+    #
+    # Rounds 0 and 1 dismiss two unrelated native alerts, never touching the tree at all; round 2
+    # finally reads an empty SpringBoard surface and taps a sheet, which `FakeDriver` leaves in the
+    # tree afterward (it models no removal) -- indistinguishable, from this call's own final read
+    # alone, between "still fading" and "never closes at all". A same-round tap earns the benefit
+    # of that doubt now; only a *later* round's own read can still disprove it (see the sibling
+    # tests above, which tap on an earlier round and are unaffected by this change).
+    rule_a = ResolvedAlertRule(identifying_labels=frozenset({"A1", "A2"}), tap_label="A1")
+    rule_b = ResolvedAlertRule(identifying_labels=frozenset({"B1", "B2"}), tap_label="B1")
+    tree_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Sheet"}), tap_label="Sheet", native=False, in_tree=True
+    )
+    driver = FakeDriver([_button("Sheet")])
+    driver.system_alert_buttons = [_button("A1"), _button("A2")]
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:
+            driver.system_alert_buttons = [_button("B1"), _button("B2")]
+        elif settle_calls == 2:
+            driver.system_alert_buttons = []
+        # settle_calls == 3, after round 2's own tap: "Sheet" is deliberately left in place -- the
+        # fake models no removal, so this is indistinguishable from a still-animating close.
+
+    guard = AlertGuardConfig(rules=[rule_a, rule_b, tree_rule])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared
+    assert alerts == [
+        AlertEvent(label="A1"),
+        AlertEvent(label="B1"),
+        AlertEvent(label="Sheet"),
+    ]
+    assert guard.blocked_note == ""
+
+
+def test_dismiss_from_tree_once_declines_an_excluded_shape() -> None:
+    # Direct unit coverage of the `exclude` parameter itself: a button that would otherwise resolve
+    # and tap cleanly is withheld once its shape (`identifying_labels`) is excluded, exactly as if
+    # no rule named it. Also confirms the buttons this round's own tree read found come back
+    # alongside the result even when nothing was tapped, so a caller can resolve the same match
+    # again without a second, possibly-different query.
+    driver = FakeDriver([_button("Not Now")])
+    guard = AlertGuardConfig(rules=[guard_rule("Not Now")])
+    result, buttons, _signature = guard.dismiss_from_tree_once(
+        driver, exclude=frozenset({frozenset({"Not Now"})})
+    )
+    assert result is None
+    assert buttons == ["Not Now"]
+    assert not any(action[0] == "tap" for action in driver.actions)
+
+
+def test_dismiss_from_tree_once_keeps_declaration_order_for_a_non_nested_pair() -> None:
+    # `_widest_first` must only ever reorder a *nested* pair -- moving a wider, unrelated rule
+    # ahead of a narrower one that does not nest with it would invert BE-0177's scenario-before-
+    # target precedence for any two rules of different width that both happen to match the same
+    # read (review finding: a plain width sort did exactly that). `scenario` (declared first,
+    # narrower) and `target` (declared second, wider) share no label at all, so neither nests in
+    # the other -- both match this read independently, and declaration order alone must still
+    # decide which one the tap goes to.
+    scenario = ResolvedAlertRule(
+        identifying_labels=frozenset({"X"}), tap_label="X", native=False, in_tree=True
+    )
+    target = ResolvedAlertRule(
+        identifying_labels=frozenset({"Y", "Z"}), tap_label="Y", native=False, in_tree=True
+    )
+    driver = FakeDriver([_button("X"), _button("Y"), _button("Z")])
+    guard = AlertGuardConfig(rules=[scenario, target])
+    result, _buttons, _signature = guard.dismiss_from_tree_once(driver)
+    assert result == AlertEvent(label="X")
+
+
+def test_the_end_of_step_guard_finds_a_second_tree_alert_behind_an_excluded_first_match() -> None:
+    # The tree twin of the native "stacked alert behind a fading first match" case: excluding the
+    # winning match must not end the search the instant it lands back on an already-answered
+    # shape — a real, differently-shaped second alert revealed once the first tap lands (BE-0418's
+    # own stacked case) must still be found via the retry among the shapes not yet excluded. Neither
+    # tapped sheet is ever actually removed from the tree (the fake models no removal), so both are
+    # still enumerable on the final round — the tree bound-exhaustion diagnosis names whichever one
+    # `_first_lingering_tree_shape` finds first, "Not Now" (tapped on round 0, so the diagnosis open
+    # longest), not only the most recently tapped "Later" (BE-0418 review finding).
+    first = ResolvedAlertRule(
+        identifying_labels=frozenset({"Not Now"}), tap_label="Not Now", native=False, in_tree=True
+    )
+    second = ResolvedAlertRule(
+        identifying_labels=frozenset({"Later"}), tap_label="Later", native=False, in_tree=True
+    )
+
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and isinstance(arg, dict) and arg.get("label") == "Not Now":
+            d.screen = [*d.screen, _button("Later")]  # revealed once the first tap lands
+
+    driver = FakeDriver([_button("Not Now")], react=react)
+    guard = AlertGuardConfig(rules=[first, second])
+    cleared, alerts = _call(driver, guard)
+    # Both are tapped -- the retry among not-yet-excluded shapes did find "Later" once it was
+    # revealed -- but "Not Now"'s own `AlertEvent` is withdrawn along with the diagnosis naming it;
+    # "Later"'s own, later and equally still-open dismissal is the one this call actually reports
+    # cleared (BE-0418 review finding).
+    taps = [a for a in driver.actions if a[0] == "tap"]
+    assert [_tap_label(t) for t in taps] == ["Not Now", "Later"]
+    assert cleared
+    assert alerts == [AlertEvent(label="Later")]
+    assert guard.blocked_note == uncleared_prompt_note("Not Now")
+
+
+def test_the_end_of_step_guard_names_an_earlier_stuck_sheet_once_a_later_one_clears() -> None:
+    # The lingering-fade branch's own `any()` check ranges over every dismissed shape, but used to
+    # diagnose only the most recently tapped one against it — so an earlier sheet this call tapped
+    # that never closed reported nothing at all once a later, different sheet was tapped and
+    # genuinely cleared (BE-0418 review finding). Round 0 taps "A" (`s1`), which accepts the tap and
+    # re-presents itself with a validation error -- it never leaves the tree. `settle()` then
+    # reveals "B" (`s2`) underneath. Round 1's plain match for `s1` nests with the already-dismissed
+    # shape, so the retry resolves `s2` and taps "B", which genuinely closes. Round 2 (final) reads
+    # only "A" -- the check used to compare only against "B"'s own shape, find it gone, and wrongly
+    # conclude nothing was stuck, when "A" demonstrably still is.
+    s1 = ResolvedAlertRule(
+        identifying_labels=frozenset({"A"}), tap_label="A", native=False, in_tree=True
+    )
+    s2 = ResolvedAlertRule(
+        identifying_labels=frozenset({"B"}), tap_label="B", native=False, in_tree=True
+    )
+
+    class _AReRaisesBGenuinelyCloses(FakeDriver):
+        def tap(self, sel: base.Selector) -> None:
+            super().tap(sel)
+            if isinstance(sel, dict) and sel.get("label") == "B":
+                self.screen = [_button("A")]  # "B" genuinely closes; "A" never did
+
+    driver = _AReRaisesBGenuinelyCloses([_button("A")])
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:
+            driver.screen = [_button("A"), _button("B")]  # "B" revealed underneath "A"
+
+    guard = AlertGuardConfig(rules=[s1, s2])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    # "B"'s own dismissal genuinely landed and is what this call reports cleared; "A"'s own
+    # `AlertEvent` is withdrawn along with the diagnosis correctly naming it, even though it was
+    # tapped on an *earlier* round than the one that last touched the tree (BE-0418 review finding).
+    assert cleared and alerts == [AlertEvent(label="B")]
+    assert guard.blocked_note == uncleared_prompt_note("A")
+
+
+def test_the_end_of_step_guard_names_an_earlier_stuck_sheet_from_the_post_loop_check_too() -> None:
+    # The post-loop twin of the test above (BE-0418 review finding): `_final_tree_check` used to
+    # diagnose only the single most-recently-tapped tree shape, reproducing outside the loop exactly
+    # the gap `_first_lingering_tree_shape` was added to close inside it. Round 0 taps "A" (`s1`),
+    # which accepts the tap and re-presents itself with a validation error -- it never leaves the
+    # tree. `settle()` reveals "B" (`s2`) underneath; round 1's retry resolves `s2` and taps "B",
+    # which genuinely closes. Round 2 (final) is an unrelated native alert dismissed on the call's
+    # own last round, so the tree is never read again inside the loop at all -- `_final_tree_check`
+    # is the only thing left to notice "A" is still stuck, and the old single-shape version compared
+    # only against "B"'s own shape (gone from the final read), finding nothing wrong.
+    s1 = ResolvedAlertRule(
+        identifying_labels=frozenset({"A"}), tap_label="A", native=False, in_tree=True
+    )
+    s2 = ResolvedAlertRule(
+        identifying_labels=frozenset({"B"}), tap_label="B", native=False, in_tree=True
+    )
+    native_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Ping"}), tap_label="Ping", native=True, in_tree=False
+    )
+
+    class _AReRaisesBGenuinelyCloses(FakeDriver):
+        def tap(self, sel: base.Selector) -> None:
+            super().tap(sel)
+            if isinstance(sel, dict) and sel.get("label") == "B":
+                self.screen = [_button("A")]  # "B" genuinely closes; "A" never did
+
+    driver = _AReRaisesBGenuinelyCloses([_button("A")])
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:
+            driver.screen = [_button("A"), _button("B")]  # "B" revealed underneath "A"
+        elif settle_calls == 2:
+            driver.system_alert_buttons = [_button("Ping")]  # an unrelated alert joins, round 2's
+
+    guard = AlertGuardConfig(rules=[s1, s2, native_rule])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    # "B"'s own dismissal and "Ping"'s own native dismissal both genuinely landed; "A"'s own
+    # `AlertEvent` is withdrawn by the post-loop check, which never ran on the tree again after
+    # round 1 (round 2 took the native "dismissed" branch instead).
+    assert cleared and alerts == [AlertEvent(label="B"), AlertEvent(label="Ping")]
+    assert guard.blocked_note == uncleared_prompt_note("A")
+
+
+def test_the_end_of_step_guard_names_an_uncleared_tree_sheet_after_a_native_final_round() -> None:
+    # The tree bound-exhaustion diagnosis used to live only inside the `"absent"` branch's own
+    # lingering-fade check, so a call whose *final* round takes any other path never ran it, unlike
+    # the native diagnosis's own twin (reachable from both `already_dismissed` and `"unhandled"`).
+    # Round 0 taps sheet "A", which accepts the tap but re-presents itself instead of closing;
+    # round 1's tree read is unchanged, landing in the lingering-fade branch but not yet the final
+    # round; round 2 is an unrelated native alert dismissed on the call's own last round, so the
+    # tree is never read again — the diagnosis must still survive to the end (BE-0418 review
+    # finding).
+    tree_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"A"}), tap_label="A", native=False, in_tree=True
+    )
+    native_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Ping"}), tap_label="Ping", native=True, in_tree=False
+    )
+    driver = FakeDriver([_button("A")])  # never removed: "A" accepts the tap without closing
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 2:  # right after round 1's own lingering-fade read
+            driver.system_alert_buttons = [_button("Ping")]
+
+    guard = AlertGuardConfig(rules=[tree_rule, native_rule])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    # "A" never actually closes, so the post-loop check withdraws its own `AlertEvent` along with
+    # the diagnosis naming it; "Ping"'s own, later and genuinely cleared dismissal still counts
+    # (BE-0418 review finding).
+    assert cleared
+    assert alerts == [AlertEvent(label="Ping")]
+    assert guard.blocked_note == uncleared_prompt_note("A")
+
+
+def test_the_end_of_step_guard_withdraws_an_unconfirmed_tap_on_an_early_break() -> None:
+    # BE-0418 review finding (superseding an earlier round's own mistaken fix for this exact
+    # scenario): a `break` ends the call outright, so `round_index` at that point is not "a round
+    # short of the bound with more still to come" -- no further round will ever run regardless of
+    # its value, which makes a `break` the *strongest* form of "this is the last round," not a
+    # weaker one that should be exempted from `_final_tree_check`. Round 0 taps "Not Now" (an
+    # in-tree-only policy, so `native_rules` is empty); `FakeDriver` never removes a tapped button
+    # on its own, so nothing this call ever does confirms the sheet actually closed.
+    # `tree_read_round` stays `None`, since the tap branch deliberately does not set it. Round 1 is
+    # an undeclared SpringBoard alert no rule identifies -- with `dismissed_native` empty and no
+    # native rules, `_native_round_worth_another_try` is `False`, so the call `break`s at
+    # `round_index == 1`, with the tree never read again inside the loop. `_final_tree_check`'s own
+    # fresh, post-loop read is this call's *only* remaining chance to test whether "Not Now"
+    # actually cleared, and it finds the identical button still there -- so the tap is withdrawn,
+    # exactly as it would be had round 1 instead been a real final round reading the same tree.
+    driver = FakeDriver([_button("Not Now")])  # never removed: never confirmed closed
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:
+            driver.system_alert_buttons = [_button("Weird Button")]
+
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    # Withdrawn: the early break leaves no round to confirm "Not Now" actually closed, and the
+    # live, undeclared alert that ended the call is what the report names instead.
+    assert not cleared
+    assert alerts == []
+    assert "Weird Button" in guard.blocked_note
+
+
+def test_the_end_of_step_guard_still_withdraws_a_stuck_tap_behind_a_later_native_note() -> None:
+    # BE-0418 review finding: `_final_tree_check` used to skip its whole read-and-withdraw when
+    # `note` was already non-empty, conflating "a native diagnosis outranks the tree note for
+    # reporting" with "skip the check entirely" -- but the withdrawal is evidence-gathering, not
+    # reporting, and a round that ends on an unrelated native note has never itself confirmed
+    # whether an earlier tree tap actually landed. Round 0 taps "S", which accepts the tap but never
+    # closes (`FakeDriver`'s screen is never mutated); `dismissed_tree_info` records it and
+    # `tree_read_round` stays `None`, since the tap branch `continue`s before that line runs. Round 1
+    # cleanly dismisses an unrelated native alert ("Ping"), so the call is still worth another round;
+    # round 2 (the genuine final round -- a later review finding requires the withdrawal to wait for
+    # it) answers "unhandled" for an undeclared alert no rule identifies, which sets a non-empty note
+    # and ends the call without the tree ever being read again inside the loop.
+    tree_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"S"}), tap_label="S", native=False, in_tree=True
+    )
+    native_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Ping"}), tap_label="Ping", native=True, in_tree=False
+    )
+    driver = FakeDriver([_button("S")])  # never removed: "S" accepts the tap without closing
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+        if settle_calls == 1:  # right after round 0's own tap
+            driver.system_alert_buttons = [_button("Ping")]
+        elif settle_calls == 2:  # right after round 1's own clean native dismissal
+            driver.system_alert_buttons = [_button("Weird Button")]
+
+    guard = AlertGuardConfig(rules=[tree_rule, native_rule])
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    # "S" never actually closes, so the post-loop check must still withdraw its own `AlertEvent`
+    # even though the round that reaches it ended on a native "unhandled" note -- leaving it in
+    # `alerts` would report a dismissal for a sheet the call never confirmed closed. "Ping"'s own,
+    # earlier and genuinely cleared dismissal still counts, so the call as a whole still reports
+    # `cleared`.
+    assert cleared
+    assert alerts == [AlertEvent(label="Ping")]
+    # The native note still wins the report over the tree's own `uncleared_prompt_note("S")`: a
+    # non-empty *note* keeps its own precedence, only the withdrawal itself was skipped before.
+    assert guard.blocked_note == alert_block_note(["Weird Button"])
+
+
+def test_the_end_of_step_guard_reports_two_native_alerts_sharing_a_tap_label() -> None:
+    # BE-0418's own under-reporting risk (Unit 3), reachable through the built-in catalogue itself:
+    # `notifications` and `tracking` both resolve to a `choice: grant` tap of "Allow", so a scenario
+    # declaring both gets two rules whose tap label is identical. Deduplicating a repeat dismissal by
+    # label alone would silently drop the second, genuinely distinct alert — the dedup must key on
+    # the alert's full button set too, not the tapped label in isolation.
+    notifications = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+    )
+    tracking = ResolvedAlertRule(
+        identifying_labels=frozenset({"Allow", "Ask App Not to Track"}), tap_label="Allow"
+    )
+
+    handled = 0
+
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        nonlocal handled
+        if kind != "handle_system_alert":
+            return
+        handled += 1
+        # Tracking's own alert joins once notifications is tapped, and genuinely clears once
+        # tracking itself is tapped in turn -- left lingering forever would have its own tap
+        # diagnosed as never having landed on the call's final round, withdrawing exactly the
+        # `AlertEvent` this test exists to pin (BE-0418 review finding).
+        d.system_alert_buttons = (
+            [_button("Allow"), _button("Ask App Not to Track")] if handled == 1 else []
+        )
+
+    driver = _fake_with_alert(["Allow", "Don't Allow"], react=react)
+    guard = AlertGuardConfig(rules=[notifications, tracking])
+    cleared, alerts = _call(driver, guard)
+    assert cleared
+    assert alerts == [AlertEvent(label="Allow"), AlertEvent(label="Allow")]
+
+
+def test_the_end_of_step_guard_settles_after_the_round_that_exhausts_its_bound() -> None:
+    # Three stacked prompts, each dismissed on its own round, with the third landing right as the
+    # loop's round bound is spent. `settle` must still run after that last round: the caller reads
+    # the screen the instant this call returns, and a still-animating sheet would fail the retry for
+    # a reason that is not the retry's own.
+    labels = ["First", "Second", "Third"]
+
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "handle_system_alert" and d.system_alert_buttons:
+            tapped = d.system_alert_buttons[0]["label"]
+            assert tapped is not None
+            remaining = labels[labels.index(tapped) + 1 :]
+            d.system_alert_buttons = [_button(label) for label in remaining]
+
+    driver = _fake_with_alert(labels, react=react)
+    guard = AlertGuardConfig(rules=[guard_rule(label, in_tree=False) for label in labels])
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared
+    assert alerts == [AlertEvent(label=label) for label in labels]
+    assert settle_calls == 3  # once per dismissing round, the bound-exhausting one included
+
+
+def test_the_end_of_step_guard_clears_a_single_alert_with_no_added_latency() -> None:
+    # The regression guard for pre-BE-0418 behavior: one in-tree alert still clears, and nothing
+    # here adds a fixed delay to the common single-alert case — the one extra round this loop
+    # spends confirming the screen is clear costs one more `system_alert_labels()` query and one
+    # more `driver.query()` on a real backend, never a sleep.
+    prompt_button = _button("Not Now")
+    driver = FakeDriver([_button("Sign In"), prompt_button], react=_clearing_tree_tap("Not Now"))
+    guard = AlertGuardConfig(rules=[guard_rule("Not Now")])
+    settle_calls = 0
+
+    def settle() -> None:
+        nonlocal settle_calls
+        settle_calls += 1
+
+    alerts: list[AlertEvent] = []
+    cleared = guard(driver, alerts, settle=settle)
+    assert cleared and alerts == [AlertEvent(label="Not Now")]
+    assert settle_calls == 1  # one dismissing round; the next round finds nothing left to settle
 
 
 def test_the_end_of_step_guard_declines_an_ambiguous_in_tree_label() -> None:
@@ -1326,7 +4219,8 @@ def test_the_end_of_step_guard_declines_an_ambiguous_in_tree_label() -> None:
     # not a prompt this guard may guess at. It reports nothing rather than tapping one.
     driver = FakeDriver([_button("Not Now"), _button("Not Now")])
     guard = AlertGuardConfig(rules=[guard_rule("Not Now")])
-    assert guard(driver) is None
+    cleared, _alerts = _call(driver, guard)
+    assert not cleared
     assert not any(action[0] == "tap" for action in driver.actions)
 
 
@@ -1335,19 +4229,21 @@ def test_the_end_of_step_guard_stays_off_the_tree_without_scenario_rules() -> No
     # dismissive defaults — "Cancel" / "Close" are ordinary UI vocabulary a real screen can show.
     driver = FakeDriver([_button("Cancel")])
     guard = AlertGuardConfig()
-    assert guard(driver) is None
+    cleared, _alerts = _call(driver, guard)
+    assert not cleared
     assert not any(action[0] == "tap" for action in driver.actions)
 
 
 def test_the_end_of_step_guard_declines_when_an_identified_button_shares_the_label() -> None:
-    # `match_alert_rule` resolves over the identifier-less subset, so a same-named *identified* app
+    # `matching_alert_rule` resolves over the identifier-less subset, so a same-named *identified* app
     # button does not stop it — but the tap sees the whole tree and would be ambiguous. The
     # whole-tree uniqueness pre-check is what catches that, exactly as the mid-wait path's does.
     app_button = _button("Not Now")
     app_button["identifier"] = "screen.home.button.not-now"
     driver = FakeDriver([_button("Not Now"), app_button])
     guard = AlertGuardConfig(rules=[guard_rule("Not Now")])
-    assert guard(driver) is None
+    cleared, _alerts = _call(driver, guard)
+    assert not cleared
     assert not any(action[0] == "tap" for action in driver.actions)
 
 
@@ -1360,7 +4256,8 @@ def test_the_end_of_step_guard_reports_nothing_when_the_prompt_closes_itself() -
 
     driver = _VanishingPrompt([_button("Not Now")])
     guard = AlertGuardConfig(rules=[guard_rule("Not Now")])
-    assert guard(driver) is None
+    cleared, _alerts = _call(driver, guard)
+    assert not cleared
 
 
 def test_a_blocked_tap_names_the_alert_in_the_step_s_own_failure() -> None:
@@ -1424,6 +4321,43 @@ def test_a_blocked_expect_names_the_alert_in_the_scenario_s_own_failure() -> Non
     )
 
 
+def test_a_note_from_a_cleared_stacked_expect_call_still_reaches_the_scenario_s_own_failure() -> (
+    None
+):
+    # The `expect` twin of `test_a_note_from_a_cleared_stacked_call_still_reaches_the_step_s_own_
+    # failure`: `expect_block_note` must reach the scenario's own failure even though the guard's
+    # call cleared something, since a multi-round call can clear a stacked alert while leaving a
+    # second one unhandled — a regression that re-gates the note on `cleared` would pass every other
+    # `expect` test here (all single-alert) yet silently drop this one's note.
+    from bajutsu.common.orchestrator import run_scenario
+    from bajutsu.common.scenario import load_scenarios
+
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "handle_system_alert":
+            d.system_alert_buttons = [_button("Weird Button")]
+
+    # A trivially-passing step (its target is already on screen), so the alert reaches `expect`'s
+    # own guard call untouched — a `wait` step here would let its own mid-wait gate dismiss "Allow"
+    # first, attributing it to the step instead of to `expect`.
+    real_button = _button("Real")
+    real_button["identifier"] = "real"
+    driver = _fake_with_alert(["Allow"], react=react)
+    driver.screen = [real_button]
+    result = run_scenario(
+        driver,
+        load_scenarios(
+            "- name: t\n  steps:\n    - tap: { id: real }\n  expect:\n    - exists: { id: later }\n"
+        )[0],
+        alert_guard=AlertGuardConfig(rules=[guard_rule("Allow")]),
+    )
+    assert not result.ok
+    assert (result.failure or "").startswith("expect: ")
+    assert "an unhandled system alert is blocking the screen (buttons: Weird Button)" in (
+        result.failure or ""
+    )
+    assert result.expect_alerts == [AlertEvent(label="Allow")]  # the first alert did clear
+
+
 def test_a_step_failing_with_no_alert_up_keeps_its_own_bare_reason() -> None:
     # The note is not a blanket suffix on every failure: with no alert on screen there is nothing to
     # report, and a step that failed for its own reasons must not be made to look blocked.
@@ -1469,7 +4403,10 @@ def test_probe_native_reports_an_ambiguous_alert_as_unhandled_not_absent() -> No
 
 def test_probe_native_still_reports_a_vanished_alert_as_absent() -> None:
     # The other half of the same race keeps its answer: the alert really did go away between the
-    # presence query and the tap, so nothing is blocking and the in-tree path may proceed.
+    # presence query and the tap, so that one alert is no longer blocking. The original, non-empty
+    # read still comes back alongside "absent" (BE-0418 review finding) — and is what now withholds
+    # the in-tree path rather than licensing it: both consumers require an empty read (`__call__`'s
+    # `if not buttons`, `_observe_native`'s `state == "absent" and not buttons`).
     class _VanishedOnTap(FakeDriver):
         def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
             raise base.ElementNotFound("the alert vanished")
@@ -1477,4 +4414,24 @@ def test_probe_native_still_reports_a_vanished_alert_as_absent() -> None:
     driver = _VanishedOnTap([])
     driver.system_alert_buttons = [_button("Don't Allow"), _button("Allow")]
     guard = AlertGuardConfig(rules=[guard_rule("Don't Allow")])
-    assert guard.probe_native(driver) == ("absent", None, [])
+    assert guard.probe_native(driver) == ("absent", None, ["Don't Allow", "Allow"])
+
+
+def test_withdraw_is_a_no_op_when_there_is_no_event_to_take_back() -> None:
+    # `_withdraw` mirrors `_AlertGuardGate._withdraw_tree_event` (`waits/_alert_guard_gate.py`),
+    # whose own single call site never pre-checks for a recorded event before calling it -- the
+    # `None` guard is what makes that safe. `__call__`'s own call sites always pass a real event
+    # when the exhaustion diagnosis they gate on actually fires (a non-empty note requires a
+    # non-`None` shape, which is only ever set alongside its own event), so neither guard here is
+    # reachable through the public surface; both are pinned directly instead (BE-0418 review
+    # finding).
+    from bajutsu.common.orchestrator.types.alert_guard_config import _withdraw
+
+    alerts = [AlertEvent(label="Allow")]
+    _withdraw(alerts, None)
+    assert alerts == [AlertEvent(label="Allow")]
+    # By identity, not equality: an equal-by-value `AlertEvent` the list never actually held is
+    # left alone too, the same way a genuinely different, still-fading dismissal of an identical
+    # shape would be.
+    _withdraw(alerts, AlertEvent(label="Allow"))
+    assert alerts == [AlertEvent(label="Allow")]

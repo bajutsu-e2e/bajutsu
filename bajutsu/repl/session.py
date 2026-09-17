@@ -6,6 +6,7 @@ import subprocess
 
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
+from bajutsu.common.drivers.xcuitest import XcuitestChannelError, XcuitestRunnerCrashError
 from bajutsu.common.drivers.xcuitest_live import WebDriverError
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.repl.render import render_json, render_table
@@ -20,20 +21,37 @@ class ReplExit(Exception):
 # and a screenshot path the filesystem rejects. Each is an answer to the operator's question, so
 # the loop prints it and reads the next line. Anything else is a bug and propagates.
 #
-# `subprocess.CalledProcessError` and `WebDriverError` are here for the two backends that don't
-# wrap every device-side failure into `DeviceError` before it reaches a `Driver` method: adb's
-# action methods bottom out in a bare `subprocess.run(..., check=True)`, and the `--udid https://…`
-# live route's WebDriver calls raise their own `RuntimeError` subclass. Without both, a USB flake or
-# a grid hiccup would kill the whole interactive session instead of reading like any other refusal.
+# `subprocess.CalledProcessError`, `XcuitestChannelError`, and `WebDriverError` are here for the
+# backends that don't wrap every device-side failure into `DeviceError` before it reaches a `Driver`
+# method: adb's action methods bottom out in a bare `subprocess.run(..., check=True)`, the local
+# XCUITest runner channel raises its own `RuntimeError` subclass on a lost/bad response (a failed
+# tap, type, or screenshot request), and the `--udid https://…` live route's WebDriver calls raise
+# a sibling `RuntimeError` subclass. Without all three, a USB flake, a wedged runner, or a grid
+# hiccup would kill the whole interactive session instead of reading like any other refusal.
+#
+# `XcuitestRunnerCrashError` — the runner died and stayed unreachable past the driver's own
+# transient-retry budget — is deliberately *not* here even though it subclasses
+# `XcuitestChannelError`: everywhere else in the tool it is also a `base.BackendCrashError`, whose
+# answer is to discard the lease and cold-respawn (`runner/pipeline.py`'s `except BackendCrashError`).
+# `repl` has no respawn, and `_close_owned_session` deliberately leaves the local XCUITest
+# environment running, so treating it as an ordinary command error would print one line and prompt
+# again against a permanently dead driver — every later command failing the same way with nothing
+# telling the operator the session can no longer answer anything. `FATAL_ERRORS` below ends the shell
+# instead.
 COMMAND_ERRORS: tuple[type[Exception], ...] = (
     base.SelectorError,
     base.ElementNotTappable,
     base.UnsupportedAction,
     device_errors.DeviceError,
     subprocess.CalledProcessError,
+    XcuitestChannelError,
     WebDriverError,
     OSError,
 )
+
+# A dead runner is not an answer to the operator's question; it ends the shell rather than being
+# reported and prompting again against a driver that can no longer answer anything.
+FATAL_ERRORS: tuple[type[Exception], ...] = (XcuitestRunnerCrashError,)
 
 _HELP = (
     "tree [--json]      the current element tree, as a table (or verbatim as JSON)",

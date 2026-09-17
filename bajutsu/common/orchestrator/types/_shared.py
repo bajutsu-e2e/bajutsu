@@ -28,7 +28,8 @@ WallClock = Callable[[], float]
 
 
 # on_blocked(driver) -> the AlertEvent it dismissed if it cleared a blocking condition
-# (e.g. a system alert), so the step/expect is worth retrying; else None. `record` / `crawl` pass the
-# vision guard's `SystemAlertGuard.dismiss`; `run` passes `AlertGuardConfig` (below), whose every
-# path is deterministic (BE-0402).
+# (e.g. a system alert), so the step/expect is worth retrying; else None. `record` / `crawl` bind
+# this to the vision guard's `SystemAlertGuard.dismiss`. `run` calls `AlertGuardConfig` (below)
+# directly instead, not through this alias: since BE-0418 its own call clears more than one alert
+# per call, a shape this single-event contract cannot report.
 BlockedHandler = Callable[[base.Driver], "AlertEvent | None"]
