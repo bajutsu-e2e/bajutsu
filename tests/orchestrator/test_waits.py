@@ -1773,6 +1773,52 @@ def test_wait_guard_does_not_reset_a_tap_budget_when_a_springboard_alert_only_co
     assert gate._tree_taps >= _TREE_DISMISS_MAX_TAPS
 
 
+def test_wait_guard_does_not_retire_a_give_up_over_a_transient_label_collision() -> None:
+    # BE-0418 review finding: retirement used to ask "does a rule still *uniquely identify* this
+    # shape" (`identified_alert_rules`'s own accept test), not "is the sheet still on screen" --
+    # and a transient label collision answers the first `False` while the sheet is fully present.
+    # An app-attached sheet does not collapse the tree, so `shows_app_ui` cannot rule this out
+    # either: with the given-up shape's own three labels all still enumerable, plus an unrelated,
+    # identifier-less app button that happens to carry the sheet's own tap label a second time,
+    # `identified_alert_rules` returns `[]` for every rule needing that label exactly once -- the
+    # old check read that as "the sheet left", retiring the latch and resetting the whole
+    # per-showing record a live sheet's tap budget exists to bound. Plain containment, matching
+    # `AlertGuardConfig.__call__`'s own declared-twin check (`_first_lingering_tree_shape`), answers
+    # the right question: the shape's own labels are still all there, so the sheet has not left.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, uncleared_prompt_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    save_password = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save Password", "Never for This Website", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    driver = FakeDriver([])
+    guard = AlertGuardConfig(rules=[save_password])
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+    gate._tree_gave_up = True
+    gate._tree_gave_up_shape = frozenset({"Save Password", "Never for This Website", "Not Now"})
+    gate.blocked_note = uncleared_prompt_note("Not Now")
+
+    # The given-up sheet is still fully on screen, but an unrelated, identifier-less app button
+    # behind it happens to carry "Not Now" too -- a second occurrence of the same label. A live,
+    # undeclared SpringBoard alert is also up, so `probed_absent` stays False and `_dismiss_from_tree`
+    # never runs this poll, isolating the retirement block's own logic from the in-tree tap path.
+    elements = [
+        el(None, "Save Password", ["button"]),
+        el(None, "Never for This Website", ["button"]),
+        el(None, "Not Now", ["button"]),
+        el(None, "Not Now", ["button"]),
+    ]
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    gate.observe(elements)
+
+    assert gate._tree_gave_up
+    assert gate.blocked_note == uncleared_prompt_note("Not Now")
+
+
 def test_wait_guard_names_a_live_undeclared_alert_over_a_give_up_the_collapsed_tree_cannot_confirm() -> (
     None
 ):
