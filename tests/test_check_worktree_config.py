@@ -1,6 +1,7 @@
-"""Tests for scripts/check_worktree_config.sh — the guard behind issue #1803 and its sibling.
+"""Tests for scripts/check_worktree_config.sh — the guard behind issue #1803 and its siblings.
 
-Two incidents, both a git-exports-its-location bug, share this guard:
+Two real incidents, both a git-exports-its-location bug, plus one defensive check for a third way
+the same class of failure could arrive, share this guard:
 
 - `core.bare = true` and a `core.worktree` pointing at one session's worktree, present in the
   *shared* `.git/config` with `extensions.worktreeConfig` enabled, which strips git's built-in
@@ -13,21 +14,27 @@ Two incidents, both a git-exports-its-location bug, share this guard:
   meant to write only there, landed in the shared file instead because an inherited `GIT_DIR`
   overrode `-C`. Every commit in every worktree was then silently misattributed until someone
   noticed by reading `git log` closely — which happened, more than once, before anyone did.
+- `GIT_AUTHOR_EMAIL`/`GIT_COMMITTER_EMAIL` at the same kind of placeholder identity, but from the
+  *environment* rather than any config file — the vector a per-directory tool like direnv's `.envrc`
+  would create, since these variables outrank every config scope. Not an incident this repository has
+  actually had; checked alongside the other two so it never becomes one silently.
 
-Five groups of tests carry the weight here, and each guards a different way this script can betray
+Six groups of tests carry the weight here, and each guards a different way this script can betray
 its own purpose:
 
 - The **negative** tests. Both worktree settings in the *per-worktree* config, where they belong,
   must not fail; neither must a shared value while the extension is off (git's own documented
-  exception); neither must a real, non-placeholder repo-local identity, which plenty of contributors
-  set deliberately and which has nothing to do with either incident. `make hooks` runs this guard
-  first for `check`, `setup`, and `worktree` alike, so a false positive would brick the entire gate
-  and the guard would be deleted within a day.
+  exception); neither must a real, non-placeholder identity — repo-local or environment-provided —
+  which plenty of contributors set deliberately and which has nothing to do with any of the three
+  failures. `make hooks` runs this guard first for `check`, `setup`, and `worktree` alike, so a false
+  positive would brick the entire gate and the guard would be deleted within a day.
 - The **worktree-setting** tests, for the `core.worktree`/`core.bare` incident.
 - The **identity** tests, for the `user.email`/`user.name` incident — including that it fires with
   the extension off, unlike the worktree-setting checks, since the shared file governs every
   worktree either way.
-- The **linked worktree** tests. CLAUDE.md mandates worktrees for concurrent sessions and both
+- The **environment-identity** tests, for the `GIT_AUTHOR_EMAIL`/`GIT_COMMITTER_EMAIL` vector —
+  including that the report never claims the shared config is at fault when only the environment is.
+- The **linked worktree** tests. CLAUDE.md mandates worktrees for concurrent sessions and both real
   incidents happened in one, so the path where `--git-common-dir` resolves the *main* checkout's
   config is the guard's whole reason for existing.
 - The **loud-failure** tests. A guard against a silent misconfiguration is worthless if it reports a
@@ -567,6 +574,86 @@ def test_a_dangling_core_worktree_with_the_extension_off_still_gets_a_prefixed_i
         )
 
     assert _run(root).returncode == 0
+
+
+# --- the guard fires on an environment-variable identity leak --------------------------------------
+
+
+@pytest.mark.parametrize("variable", ["GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"])
+def test_a_placeholder_env_identity_fails(tmp_path: Path, variable: str) -> None:
+    """Either variable alone must arm the guard — git resolves author and committer independently,
+    and a fixture (or a `.envrc`) is free to set just one."""
+    root = _checkout(tmp_path / "repo")
+
+    result = _run(root, **{variable: "t@example.com"})
+
+    assert result.returncode == 1
+    assert f"    ${variable} = t@example.com\n" in result.stderr
+    # Nothing to unset via git config for an environment variable — there must be no such command.
+    assert "git config --unset-all" not in result.stderr
+
+
+def test_a_real_env_identity_passes(tmp_path: Path) -> None:
+    """The direnv case this check exists for: a real address set on purpose via the environment.
+
+    A per-directory environment tool is exactly what these two variables are for — a work identity
+    exported by one project's `.envrc`, say — and that value is correct, not a leak, so it must never
+    be reported just for being present or for differing from anything else.
+    """
+    root = _checkout(tmp_path / "repo")
+
+    result = _run(
+        root, GIT_AUTHOR_EMAIL="someone@acmecorp.com", GIT_COMMITTER_EMAIL="someone@acmecorp.com"
+    )
+
+    assert result.returncode == 0
+
+
+def test_the_env_offense_report_never_blames_the_shared_config(tmp_path: Path) -> None:
+    """With no config-file offense at all, the report must not claim one — there is nothing in
+    `.git/config` to point at, and no `git config --unset-all` command would do anything."""
+    root = _checkout(tmp_path / "repo")
+
+    result = _run(root, GIT_AUTHOR_EMAIL="t@example.com")
+
+    assert result.returncode == 1
+    assert "SHARED config" not in result.stderr
+    assert "in: " not in result.stderr
+    assert "Clear it from the shared config" not in result.stderr
+
+
+def test_a_config_offense_and_an_env_offense_are_reported_together(tmp_path: Path) -> None:
+    """The two vectors can coincide — a leaked shared config plus a leaked environment — and the
+    report must name both, not just whichever this script happened to check first."""
+    root = _checkout(tmp_path / "repo")
+    _set_shared(root, "user.email", "t@example.com")
+
+    result = _run(root, GIT_COMMITTER_EMAIL="t@example.com")
+
+    assert result.returncode == 1
+    assert "    user.email = t@example.com\n" in result.stderr
+    assert "    $GIT_COMMITTER_EMAIL = t@example.com\n" in result.stderr
+    assert "  in: " in result.stderr
+    assert "Clear it from the shared config" in result.stderr
+
+
+def test_the_scripts_own_git_location_unset_never_swallows_the_identity_variables() -> None:
+    """The script unsets GIT_DIR and friends for its own safety (issue #1803's `GIT_DIR`-override
+    class of bug), and that unset list must never grow to swallow `GIT_AUTHOR_EMAIL`/
+    `GIT_COMMITTER_EMAIL` along with them by, say, a future `GIT_*` wildcard — those two are the
+    entire point of the environment check, not repository-location noise to be scrubbed away.
+    """
+    lines = SCRIPT.read_text(encoding="utf-8").splitlines()
+    i = next(i for i, line in enumerate(lines) if line.startswith("unset "))
+    # The statement continues onto the next line(s) with a trailing backslash; join them so a name
+    # placed on the wrapped line is checked too, not just the one `unset` itself sits on.
+    unset_statement = lines[i]
+    while unset_statement.rstrip().endswith("\\"):
+        i += 1
+        unset_statement += " " + lines[i].strip()
+
+    assert "GIT_AUTHOR_EMAIL" not in unset_statement
+    assert "GIT_COMMITTER_EMAIL" not in unset_statement
 
 
 # --- linked worktrees, where the incident happened ------------------------------------------------

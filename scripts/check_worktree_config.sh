@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Refuse to run when a git setting that must not be shared has been written to the shared config —
-# two sibling incidents, both issue #1803.
+# Refuse to run when a git setting that must not be shared has been written to the shared config, or
+# when a placeholder identity has leaked into the environment — three ways for a wrong git identity
+# or worktree setting to take hold, the first two already real incidents (issue #1803).
 #
 # 1. `core.worktree` / `core.bare = true`. With `extensions.worktreeConfig` enabled, git drops its
 #    built-in exception confining these two to the main working tree. A shared value then applies to
@@ -19,12 +20,24 @@
 #    of whichever repository `GIT_DIR` names instead of the throwaway one, silently overriding every
 #    contributor's real identity for every future commit in every worktree. This has already
 #    happened to this repository more than once.
+# 3. `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_EMAIL` at the same kind of placeholder identity — not a
+#    config file at all. git's identity resolution puts these environment variables above every
+#    config scope (worktree, local, global, system), so a per-directory environment tool such as
+#    direnv's `.envrc` can silently override even a correctly configured `user.email` for as long as
+#    it stays exported. Checked defensively, alongside 1 and 2 rather than as their own incident:
+#    this repository does not use direnv today, but the checks above would report a clean bill of
+#    health while every commit still used a poisoned identity from the environment. Only the same
+#    reserved-domain pattern as #2 is ever flagged — a real address a contributor deliberately sets
+#    this way (a work address via one project's `.envrc`, say) is exactly what these variables are
+#    for, and is left alone as the correct value, never reported.
 #
-# Both failures are silent, not loud, which is why this guard exists rather than a note in the docs.
+# All three failures are silent, not loud, which is why this guard exists rather than a note in the
+# docs.
 #
-# This only reports. Every offending setting arrives from outside this repository's tooling (nothing
-# here writes any of them), and the correct repair can depend on whether the checkout is the main or
-# a linked worktree, so the remedy is printed for a human to apply rather than guessed at.
+# This only reports. Every offending setting or variable arrives from outside this repository's
+# tooling (nothing here writes or exports any of them), and the correct repair can depend on whether
+# the checkout is the main or a linked worktree, so the remedy is printed for a human to apply rather
+# than guessed at.
 #
 # Every uncertain answer here resolves to a *loud* failure. A guard whose whole purpose is to end a
 # silent misconfiguration must never report a clean bill of health on a repository it could not
@@ -138,32 +151,40 @@ shared_read() {
   esac
 }
 
+# Whether an email is an RFC 2606/6761 reserved example/test/local domain, or a subdomain of one. No
+# real contributor's identity ever resolves to one of these, in any subdomain, so a match is never a
+# false positive the way a plain "differs from global" (or "differs from what direnv set") check
+# would be — plenty of contributors legitimately set a repo-local, or environment-provided, identity
+# that has nothing to do with either incident this guard exists for. Shared by every place below that
+# checks an identity, whether the source is the shared config file or an environment variable.
+is_placeholder_email() {
+  case "$1" in
+    *@example.com | *@example.net | *@example.org | \
+      *@*.example.com | *@*.example.net | *@*.example.org | \
+      *@*.example | *@*.invalid | *@*.test | *@localhost | *@*.localhost)
+      return 0
+      ;;
+    *) return 1 ;;
+  esac
+}
+
 # Accumulated as text rather than as an array: bash 3.2 — still the stock shell on macOS, a
 # first-class target here — treats an empty array as unset under `set -u`.
 offenders=""
 
-# `user.email` at an RFC 2606/6761 reserved example/test/local domain — or a subdomain of one — is
-# checked unconditionally — unlike core.worktree/core.bare below, this offense has nothing to do with
-# extensions.worktreeConfig: even without that extension, everything in the shared file already
-# governs every worktree, because there is nowhere else for a worktree's own config to live. It is
-# issue #1803's sibling: a test fixture's `git -C <tmp-repo> config user.email t@example.com`, meant
-# for a throwaway repo, lands in the shared file instead because an inherited GIT_DIR overrode `-C`.
-# No real contributor's identity ever resolves to one of these reserved names, in any subdomain, so a
-# match here is never a false positive the way a plain "differs from global" check would be — plenty
-# of contributors legitimately set a repo-local identity unrelated to this bug.
+# `user.email` at a placeholder identity is checked unconditionally — unlike core.worktree/core.bare
+# below, this offense has nothing to do with extensions.worktreeConfig: even without that extension,
+# everything in the shared file already governs every worktree, because there is nowhere else for a
+# worktree's own config to live. It is issue #1803's sibling: a test fixture's `git -C <tmp-repo>
+# config user.email t@example.com`, meant for a throwaway repo, lands in the shared file instead
+# because an inherited GIT_DIR overrode `-C`.
 shared_read user.email
 email_value="$shared_value"
 placeholder_identity=0
-if [ "$shared_found" -eq 1 ]; then
-  case "$email_value" in
-    *@example.com | *@example.net | *@example.org | \
-      *@*.example.com | *@*.example.net | *@*.example.org | \
-      *@*.example | *@*.invalid | *@*.test | *@localhost | *@*.localhost)
-      placeholder_identity=1
-      offenders="${offenders}    user.email = ${email_value}
+if [ "$shared_found" -eq 1 ] && is_placeholder_email "$email_value"; then
+  placeholder_identity=1
+  offenders="${offenders}    user.email = ${email_value}
 "
-      ;;
-  esac
 fi
 
 # Reported only alongside a placeholder email: pairing the two is what a leaked fixture writes, and a
@@ -177,6 +198,26 @@ if [ "$placeholder_identity" -eq 1 ]; then
     offenders="${offenders}    user.name = ${name_value}
 "
   fi
+fi
+
+# GIT_AUTHOR_EMAIL / GIT_COMMITTER_EMAIL at a placeholder identity — checked the same way and for the
+# same reason as user.email above, just from the environment instead of a file. Left untouched by the
+# GIT_* unset above (that list is only ever the repository-location variables), so this sees exactly
+# what a real `git commit` in this shell would: whatever a per-directory tool such as direnv exported,
+# unfiltered. A real address set this way is the correct value and is never reported — only the exact
+# placeholder pattern is.
+identity_env_offense=0
+env_author_email="${GIT_AUTHOR_EMAIL:-}"
+if [ -n "$env_author_email" ] && is_placeholder_email "$env_author_email"; then
+  identity_env_offense=1
+  offenders="${offenders}    \$GIT_AUTHOR_EMAIL = ${env_author_email}
+"
+fi
+env_committer_email="${GIT_COMMITTER_EMAIL:-}"
+if [ -n "$env_committer_email" ] && is_placeholder_email "$env_committer_email"; then
+  identity_env_offense=1
+  offenders="${offenders}    \$GIT_COMMITTER_EMAIL = ${env_committer_email}
+"
 fi
 
 shared_read extensions.worktreeConfig bool
@@ -234,13 +275,30 @@ if [ "$worktree_is_offense" -eq 1 ] || [ -n "$bare_value" ]; then
   worktree_offense=1
 fi
 
+# Whether anything reported above actually lives in the shared config file — as opposed to only the
+# environment — decides whether "in: $shared_config" and its unset remedy make sense to print at all.
+config_offense=0
+if [ "$placeholder_identity" -eq 1 ] || [ "$worktree_offense" -eq 1 ]; then
+  config_offense=1
+fi
+
 {
-  echo "check-worktree-config: a git setting that must not be shared is in the SHARED config:"
+  if [ "$config_offense" -eq 1 ] && [ "$identity_env_offense" -eq 1 ]; then
+    echo "check-worktree-config: a git setting that must not be shared, and a placeholder identity in"
+    echo "check-worktree-config: the environment, are both present:"
+  elif [ "$config_offense" -eq 1 ]; then
+    echo "check-worktree-config: a git setting that must not be shared is in the SHARED config:"
+  else
+    echo "check-worktree-config: a placeholder git identity is set in the environment:"
+  fi
   echo
   printf '%s' "$offenders"
   echo
-  echo "  in: $shared_config"
-  echo
+
+  if [ "$config_offense" -eq 1 ]; then
+    echo "  in: $shared_config"
+    echo
+  fi
 
   if [ "$worktree_offense" -eq 1 ]; then
     echo "  core.worktree/core.bare apply to *every* worktree of this repository once here"
@@ -260,23 +318,35 @@ fi
     echo
   fi
 
-  echo "  Clear it from the shared config, then re-run:"
-  # `--unset-all` rather than `--unset`, which refuses (exit 5) when the key carries more than one
-  # value and so would leave the reader following a command that changes nothing. For the ordinary
-  # single value the two behave identically.
-  if [ "$worktree_is_offense" -eq 1 ]; then
-    echo "      ${work_tree_prefix}git config --unset-all core.worktree"
+  if [ "$identity_env_offense" -eq 1 ]; then
+    echo "  \$GIT_AUTHOR_EMAIL/\$GIT_COMMITTER_EMAIL override every config file's identity — including"
+    echo "  a correct one — for as long as they stay exported in this shell. A per-directory"
+    echo "  environment tool such as direnv's .envrc is the usual source. There is no config file for"
+    echo "  this guard to unset: find and remove the export (or fix the value) wherever it comes"
+    echo "  from, then start a new shell. A real address set this way on purpose is never reported —"
+    echo "  only this exact placeholder pattern is."
+    echo
   fi
-  if [ -n "$bare_value" ]; then
-    echo "      ${work_tree_prefix}git config --unset-all core.bare"
-  fi
-  if [ "$placeholder_identity" -eq 1 ]; then
-    echo "      ${work_tree_prefix}git config --unset-all user.email"
-    if [ "$name_present" -eq 1 ]; then
-      echo "      ${work_tree_prefix}git config --unset-all user.name"
+
+  if [ "$config_offense" -eq 1 ]; then
+    echo "  Clear it from the shared config, then re-run:"
+    # `--unset-all` rather than `--unset`, which refuses (exit 5) when the key carries more than one
+    # value and so would leave the reader following a command that changes nothing. For the ordinary
+    # single value the two behave identically.
+    if [ "$worktree_is_offense" -eq 1 ]; then
+      echo "      ${work_tree_prefix}git config --unset-all core.worktree"
     fi
+    if [ -n "$bare_value" ]; then
+      echo "      ${work_tree_prefix}git config --unset-all core.bare"
+    fi
+    if [ "$placeholder_identity" -eq 1 ]; then
+      echo "      ${work_tree_prefix}git config --unset-all user.email"
+      if [ "$name_present" -eq 1 ]; then
+        echo "      ${work_tree_prefix}git config --unset-all user.name"
+      fi
+    fi
+    echo
   fi
-  echo
 
   if [ -n "$work_tree_prefix" ]; then
     # Without the prefix the remedy dies in the very state that motivates it, and a reader who takes
