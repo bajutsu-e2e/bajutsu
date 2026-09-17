@@ -662,6 +662,11 @@ class _AlertGuardGate:
             self._tree_gave_up_shape = rule.identifying_labels
             self.blocked_note = uncleared_prompt_note(label)
             self._tree_gave_up_note = self.blocked_note
+            # The same contradiction the tap-ceiling give-up above withdraws for: `_tree_event` can
+            # still hold a landed tap from this showing, since `ElementNotTappable` never advances
+            # `_tree_taps` and so never reaches that branch. Idempotent across the polls this branch
+            # repeats on.
+            self._withdraw_tree_event()
             return None
         # Scope the tap to `traits: [BUTTON]`, the same constraint `buttons` above already applied
         # when resolving `label` — matching a bare `{"label": label}` selector against `matches()`

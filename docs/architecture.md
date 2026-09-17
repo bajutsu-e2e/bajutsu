@@ -796,7 +796,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   occurrence per label this call has already answered, so the alert already cleared is not re-named
   while a second, still-live alert's own copy of a shared label is. With no native alert dismissed
   and no native rule's shape present in the read, there is no fade of this call's own making to
-  drain and no live collision to wait out, so the round ends the call instead. A later round could
+  drain and no live collision to wait out, so the round ends the call instead — unless an earlier
+  round's own in-tree tap is still stuck behind a scrim, which is itself something this call can
+  still act on, so the round settles and retries rather than ending there. A later round could
   only re-read the same surface or find the alert gone on its own, and continuing risks losing this
   round's own diagnosis to that second case. A native alert whose fade outlasts that settle still
   reads back, unchanged, on a later round.

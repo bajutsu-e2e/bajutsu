@@ -1549,6 +1549,73 @@ def test_wait_guard_does_not_retire_a_give_up_when_the_same_sheet_narrows_its_ow
     assert gate.blocked_note == uncleared_prompt_note("Not Now")
 
 
+def test_wait_guard_withdraws_a_landed_tap_when_a_scrim_blocks_every_retap() -> None:
+    # BE-0418 review finding: the not-tappable give-up below (distinct from the tap-ceiling give-up
+    # ~40 lines above, which already calls `_withdraw_tree_event`) used to latch `_tree_gave_up`
+    # without withdrawing the `AlertEvent` the first, landed tap already recorded -- so the report
+    # could ship a dismissal for the very prompt `blocked_note` says was never cleared.
+    # `ElementNotTappable` never advances `_tree_taps` (only a landed tap does), so once the first
+    # tap lands and every retap after it hits a redrawn scrim, `_tree_taps` stays frozen at 1 --
+    # forever below `_TREE_DISMISS_MAX_TAPS` -- and the tap-ceiling branch is never reached. Only
+    # this not-tappable horizon can end such a showing.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, uncleared_prompt_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _LandsOnceThenScrims(FakeDriver):
+        def __init__(self, screen: list[base.Element]) -> None:
+            super().__init__(screen)
+            self._taps = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self._taps += 1
+            if self._taps > 1:
+                raise base.ElementNotTappable("the sheet redrew its scrim")
+            super().tap(sel)
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = _LandsOnceThenScrims(tree)
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+
+    # Poll 1 (t=0): the first tap lands, recording an `AlertEvent` and arming
+    # `_tree_dismiss_pending`.
+    gate.observe(tree)
+    assert len(gate.alerts) == 1
+    clock.sleep(guard.poll_interval)
+
+    # Poll 2 (t=1, past `_TREE_RETAP_DELAY`): the sheet accepted nothing (unchanged tree
+    # signature), so the retry retaps -- and the scrim now blocks every further tap, raising
+    # `ElementNotTappable` without ever advancing `_tree_taps` past 1.
+    gate.observe(tree)
+    clock.sleep(guard.poll_interval)
+
+    # Poll 3 (t=2): one full `poll_interval` since the scrim first blocked a retap -- not yet
+    # `_decline_giveup`'s 2s horizon.
+    gate.observe(tree)
+    assert not gate._tree_gave_up
+    clock.sleep(guard.poll_interval)
+
+    # Poll 4 (t=3): the horizon is met. `_tree_taps` is still 1, so this is the only give-up this
+    # showing can reach.
+    gate.observe(tree)
+
+    assert gate._tree_gave_up
+    assert gate.blocked_note == uncleared_prompt_note("Not Now")
+    # The landed tap's own `AlertEvent` must be withdrawn: the report must not ship a dismissal for
+    # the very prompt the note above says is still up.
+    assert gate.alerts == []
+
+
 def test_wait_guard_restores_a_still_live_unhandled_note_once_a_give_up_retires() -> None:
     # BE-0418 review finding: retiring `_tree_gave_up` must not empty `blocked_note`
     # unconditionally -- `_native_unhandled` can already be latched `True` with its own note
