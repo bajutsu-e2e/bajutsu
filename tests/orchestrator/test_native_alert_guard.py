@@ -3010,11 +3010,23 @@ def test_the_end_of_step_guard_reports_an_unhandled_native_alert_after_an_unrela
     assert driver.probes == 2  # ended on round 1 rather than spending the rest of the bound
 
 
-def test_the_end_of_step_guard_keeps_a_stuck_tree_note_on_a_lingering_tree_round_too() -> None:
-    # The other half of the fix above: a pending tree diagnosis must still survive a *lingering*
-    # tree round (a shape this call already cleared, still enumerable) exactly as it survives the
-    # "genuinely nothing matched" branch just below -- this round settling and continuing must not
-    # be mistaken for evidence that the stuck prompt resolved.
+def test_the_end_of_step_guard_withdraws_a_lingering_tap_even_through_a_stuck_tree_note() -> None:
+    # BE-0418 review finding (superseding an earlier round's own mistaken fix for this exact
+    # scenario): `_lingering_tree_note` both computes the note and withdraws the lingering shape's
+    # own `AlertEvent`, and gating the whole call on `stuck_tree_label is None` suppressed the
+    # withdrawal along with the note -- exactly the pattern already fixed on the three native
+    # branches, for the identical reason: the withdrawal is a fact about whether an earlier round's
+    # own tap landed, not a reporting-precedence decision the way *note* itself is.
+    # `_final_tree_check` cannot pick up the slack here either, since this path sets
+    # `tree_read_round = round_index` on its way to the lingering check, so `_final_tree_check`'s
+    # own `tree_read_round >= round_index` skip fires on exactly this round.
+    #
+    # Round 0's Stuck sheet fails to tap (`stuck_tree_label = "Stuck"`); round 0's own settle moves
+    # it off-screen and a distinct, unrelated prompt takes its place. Round 1 taps that prompt
+    # ("T") cleanly. Round 2 (the final round) reads the tree again -- "T" is still enumerable (the
+    # fake models no removal) and was tapped on an *earlier* round (round 1, not this one), so the
+    # containment evidence is exactly as strong as the native branches' own final-round exhaustion
+    # checks: T's own tap is never confirmed to have landed, and its `AlertEvent` is withdrawn.
     class _StuckDriver(FakeDriver):
         def tap(self, sel: base.Selector) -> None:
             if isinstance(sel, dict) and sel.get("label") == "Stuck":
@@ -3034,26 +3046,23 @@ def test_the_end_of_step_guard_keeps_a_stuck_tree_note_on_a_lingering_tree_round
         nonlocal settle_count
         settle_count += 1
         if settle_count == 1:
-            # Round 0's Stuck sheet moves off-screen (or behind another), and a distinct, unrelated
-            # prompt takes its place -- T's own button lingers once dismissed, same as any fade.
             driver.screen = [_button("T")]
 
     guard = AlertGuardConfig(rules=[other, stuck])
     alerts: list[AlertEvent] = []
     cleared = guard(driver, alerts, settle=settle)
-    assert cleared and alerts == [AlertEvent(label="T")]  # only the unrelated prompt ever tapped
-    assert "Stuck" in guard.blocked_note  # the stuck diagnosis, not silently cleared
+    assert not cleared and alerts == []
+    # The tree diagnosis still wins the *note* -- the withdrawal above is a separate, fact-based
+    # decision, and does not hand the reported note to the round that triggered it.
+    assert "Stuck" in guard.blocked_note
 
 
-def test_the_end_of_step_guard_keeps_a_stuck_tree_note_when_another_shape_shares_its_label() -> (
-    None
-):
-    # The other half of the fix above, and the one label alone cannot tell apart: two `in_tree`
+def test_the_end_of_step_guard_withdraws_a_lingering_tap_sharing_the_stuck_shapes_label() -> None:
+    # The label-sharing twin of the withdrawal test above (BE-0418 review finding): two `in_tree`
     # rules can share one tap label under different choices -- `savePassword`'s three shapes all
-    # tap "Not Now" under `choice: deny` -- so comparing the *label* a later round's tap lands on
-    # against the stuck prompt's own label would read a genuinely different prompt's success as
-    # the stuck one finally landing (BE-0418 review finding). `a` and `b` tap the identical label;
-    # only their shapes differ.
+    # tap "Not Now" under `choice: deny` -- so `a` and `b` here tap the identical label with only
+    # their shapes differing, confirming the withdrawal (and the note precedence protecting it)
+    # both key on shape, not label.
     class _StuckDriver(FakeDriver):
         def tap(self, sel: base.Selector) -> None:
             if (
@@ -3084,9 +3093,9 @@ def test_the_end_of_step_guard_keeps_a_stuck_tree_note_when_another_shape_shares
     guard = AlertGuardConfig(rules=[a, b])
     alerts: list[AlertEvent] = []
     cleared = guard(driver, alerts, settle=settle)
-    assert cleared and alerts == [AlertEvent(label="Not Now")]  # only b ever actually tapped
-    # a's own stuck diagnosis survives b's unrelated success, even though the note names the same
-    # label either way -- an empty note here would mean the bug cleared it.
+    # B taps cleanly on round 1 but is still enumerable, unconfirmed, on the final round -- the
+    # same lingering-tap evidence withdraws it regardless of the label it shares with the stuck A.
+    assert not cleared and alerts == []
     assert guard.blocked_note == uncleared_prompt_note("Not Now")
 
 

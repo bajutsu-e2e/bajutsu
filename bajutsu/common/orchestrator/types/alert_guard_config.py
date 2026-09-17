@@ -1304,14 +1304,25 @@ class AlertGuardConfig:
                         # native side's own call on `_bound_exhaustion_note` above: `buttons` is
                         # provably `[]` here, inside `if not buttons:`, so that wrapper would only
                         # ever reduce to this very fallback — called directly instead.
-                        if stuck_tree_label is None:
-                            note = _lingering_tree_note(
-                                alerts,
-                                dismissed_tree_info,
-                                lingering_shape,
-                                tree_buttons,
-                                round_index,
-                            )
+                        #
+                        # Computed unconditionally, not only when `stuck_tree_label is None`
+                        # (BE-0418 review finding): `_lingering_tree_note` both computes the note
+                        # and withdraws `lingering_shape`'s own `AlertEvent`, and the withdrawal is
+                        # a fact about whether an earlier round's own tap landed, not a
+                        # reporting-precedence decision the way *note* itself is — the same
+                        # distinction `_final_tree_check`'s own docstring draws for the mirror case,
+                        # and the same fix already applied to the three native branches above.
+                        # `_final_tree_check` cannot pick up a same-round skip here either: this
+                        # path sets `tree_read_round = round_index` a few lines above, so its own
+                        # `tree_read_round >= round_index` skip fires on exactly this round.
+                        candidate = _lingering_tree_note(
+                            alerts,
+                            dismissed_tree_info,
+                            lingering_shape,
+                            tree_buttons,
+                            round_index,
+                        )
+                        note = note if stuck_tree_label is not None else candidate
                         settle()
                         continue
                     # An open `NotTappable` diagnosis is itself something this call still has to
@@ -1467,12 +1478,12 @@ class AlertGuardConfig:
                     dismissed_native, buttons, self.native_rules
                 ):
                     # Breaking here keeps this round's own diagnosis and costs nothing this call
-                    # could still change — an open `NotTappable` diagnosis does not exempt this
-                    # branch from breaking the way it does the sibling branches above, since `note`
-                    # itself no longer defers to it here; a round remains for Unit 2's landing-race
-                    # retry to meet the scrim lifting regardless, since that decision is about
-                    # whether another round is worth spending, not about which note this one reports
-                    # (BE-0418 review finding).
+                    # could still change — but an open `NotTappable` diagnosis does exempt this
+                    # branch from breaking, the same way it exempts the sibling branches above: a
+                    # round still owed to Unit 2's landing-race retry is a round this call *could*
+                    # change something in, and ending here would spend it. Only `note` itself no
+                    # longer defers to the tree diagnosis on this branch — a reporting decision,
+                    # separate from whether another round is worth spending (BE-0418 review finding).
                     break
                 settle()
                 continue
