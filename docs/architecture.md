@@ -846,7 +846,11 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   screen that had in fact moved on. The tree
   note survives a later round that finds nothing to match, or one that goes on to dismiss an
   unrelated alert on either surface — native or
-  in-tree — rather than either round erasing a real, still-open diagnosis. A native leftover note is
+  in-tree — rather than either round erasing a real, still-open diagnosis. The one round it does not
+  survive is one that finds a live, undeclared alert no rule identifies: the tree is read at all
+  only when the native surface answers genuinely empty, so such a round can never itself confirm
+  the tree diagnosis is still open, and the fresher, confirmable native finding reports instead. A
+  native leftover note is
   not so durable, and for two different reasons depending on what that later round did: dismissing
   an unrelated native alert recomputes the note fresh against that round's own buttons rather than
   preserving whatever it held before, while a round whose own probe proves the surface absent clears
