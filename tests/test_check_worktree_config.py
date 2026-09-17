@@ -1,21 +1,34 @@
-"""Tests for scripts/check_worktree_config.sh — the guard behind issue #1803.
+"""Tests for scripts/check_worktree_config.sh — the guard behind issue #1803 and its sibling.
 
-The incident: `core.bare = true` and a `core.worktree` pointing at one session's worktree were
-present in the *shared* `.git/config` with `extensions.worktreeConfig` enabled, which strips git's
-built-in exception confining those two to the main working tree. Every worktree then resolved to
-that one directory — `git add` reported success without changing anything, `git commit --amend`
-dropped a file, and `git checkout -- <path>` wrote into a neighbouring session's tree — while
-`--git-dir` still answered locally, so nothing looked wrong.
+Two incidents, both a git-exports-its-location bug, share this guard:
 
-Three groups of tests carry the weight here, and each guards a different way this script can betray
+- `core.bare = true` and a `core.worktree` pointing at one session's worktree, present in the
+  *shared* `.git/config` with `extensions.worktreeConfig` enabled, which strips git's built-in
+  exception confining those two to the main working tree. Every worktree then resolved to that one
+  directory — `git add` reported success without changing anything, `git commit --amend` dropped a
+  file, and `git checkout -- <path>` wrote into a neighbouring session's tree — while `--git-dir`
+  still answered locally, so nothing looked wrong.
+- `user.email`/`user.name` at a test fixture's placeholder identity (`t@example.com` and friends),
+  also in the shared config: a throwaway repo's `git -C <tmp> config user.email t@example.com`,
+  meant to write only there, landed in the shared file instead because an inherited `GIT_DIR`
+  overrode `-C`. Every commit in every worktree was then silently misattributed until someone
+  noticed by reading `git log` closely — which happened, more than once, before anyone did.
+
+Five groups of tests carry the weight here, and each guards a different way this script can betray
 its own purpose:
 
-- The **negative** tests. Both settings in the *per-worktree* config, where they belong, must not
-  fail, and neither must a shared value while the extension is off, which is git's own documented
-  exception. `make hooks` runs this guard first for `check`, `setup`, and `worktree` alike, so a
-  false positive would brick the entire gate and the guard would be deleted within a day.
-- The **linked worktree** tests. CLAUDE.md mandates worktrees for concurrent sessions and the
-  incident happened in one, so the path where `--git-common-dir` resolves the *main* checkout's
+- The **negative** tests. Both worktree settings in the *per-worktree* config, where they belong,
+  must not fail; neither must a shared value while the extension is off (git's own documented
+  exception); neither must a real, non-placeholder repo-local identity, which plenty of contributors
+  set deliberately and which has nothing to do with either incident. `make hooks` runs this guard
+  first for `check`, `setup`, and `worktree` alike, so a false positive would brick the entire gate
+  and the guard would be deleted within a day.
+- The **worktree-setting** tests, for the `core.worktree`/`core.bare` incident.
+- The **identity** tests, for the `user.email`/`user.name` incident — including that it fires with
+  the extension off, unlike the worktree-setting checks, since the shared file governs every
+  worktree either way.
+- The **linked worktree** tests. CLAUDE.md mandates worktrees for concurrent sessions and both
+  incidents happened in one, so the path where `--git-common-dir` resolves the *main* checkout's
   config is the guard's whole reason for existing.
 - The **loud-failure** tests. A guard against a silent misconfiguration is worthless if it reports a
   clean bill of health on a repository it could not read, so every unreadable state must exit 1
@@ -173,6 +186,20 @@ def test_a_shared_setting_passes_while_the_extension_is_off(tmp_path: Path) -> N
     root = _checkout(tmp_path / "repo")
     _set_shared(root, "core.worktree", "/somewhere/else")
     _set_shared(root, "core.bare", "true")
+
+    assert _run(root).returncode == 0
+
+
+def test_a_real_shared_identity_passes(tmp_path: Path) -> None:
+    """A deliberate, real repo-local identity is not this guard's business.
+
+    Plenty of contributors set `user.email` in a repo's own config to separate a work identity from
+    a personal one — a real domain is the signal that distinguishes that from the placeholder-domain
+    incident below, and a guard that could not tell the two apart would be deleted within a day.
+    """
+    root = _checkout(tmp_path / "repo")
+    _set_shared(root, "user.email", "someone@acmecorp.com")
+    _set_shared(root, "user.name", "Someone")
 
     assert _run(root).returncode == 0
 
@@ -352,6 +379,122 @@ def test_the_incident_state_reports_both_offenders_and_a_remedy_that_works(tmp_p
     assert _run(root).returncode == 0
 
 
+# --- the guard fires on the identity incident -----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "email",
+    [
+        "t@example.com",
+        "test@example.net",
+        "ci@example.org",
+        "bot@ci.example",
+        "user@host.invalid",
+        "runner@sandbox.test",
+    ],
+)
+def test_a_shared_placeholder_email_fails(tmp_path: Path, email: str) -> None:
+    """Every RFC 2606 reserved example/test domain must arm the guard, not just `example.com`.
+
+    A test fixture is free to spell its throwaway identity any of these ways, and a guard that
+    caught only the one spelling already seen would miss the next incident's variant.
+    """
+    root = _checkout(tmp_path / "repo")
+    _set_shared(root, "user.email", email)
+
+    result = _run(root)
+
+    assert result.returncode == 1
+    assert f"    user.email = {email}\n" in result.stderr
+    assert "git config --unset-all user.email" in result.stderr
+    # Nothing to unset for user.name here, so that remedy line must not be offered.
+    assert "git config --unset-all user.name" not in result.stderr
+
+
+def test_a_shared_placeholder_identity_with_a_name_fails(tmp_path: Path) -> None:
+    """The pair a leaked fixture actually writes: an email *and* a name, both reported."""
+    root = _checkout(tmp_path / "repo")
+    _set_shared(root, "user.email", "t@example.com")
+    _set_shared(root, "user.name", "T")
+
+    result = _run(root)
+
+    assert result.returncode == 1
+    assert "    user.email = t@example.com\n" in result.stderr
+    assert "    user.name = T\n" in result.stderr
+    assert "git config --unset-all user.email" in result.stderr
+    assert "git config --unset-all user.name" in result.stderr
+
+
+def test_the_placeholder_identity_check_fires_with_the_extension_off(tmp_path: Path) -> None:
+    """Unlike core.worktree/core.bare, this offense needs no `extensions.worktreeConfig`.
+
+    Without the extension there is nowhere else for a worktree's own config to live at all, so the
+    shared file already governs every worktree either way — the guard must not wait for a flag that
+    has nothing to do with this incident.
+    """
+    root = _checkout(tmp_path / "repo")
+    _set_shared(root, "user.email", "t@example.com")
+
+    assert _run(root).returncode == 1
+
+
+def test_the_placeholder_identity_remedy_actually_clears_it(tmp_path: Path) -> None:
+    """The round-trip: apply the printed remedy exactly, then the guard must pass."""
+    root = _checkout(tmp_path / "repo")
+    _set_shared(root, "user.email", "t@example.com")
+    _set_shared(root, "user.name", "T")
+
+    result = _run(root)
+    assert result.returncode == 1
+
+    for key in ("user.email", "user.name"):
+        assert f"git config --unset-all {key}" in result.stderr
+        subprocess.run(
+            ["git", "config", "--unset-all", key],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            env=_clean_env(),
+        )
+
+    assert _run(root).returncode == 0
+
+
+def test_both_incidents_at_once_get_a_remedy_that_works(tmp_path: Path) -> None:
+    """The worst case: a dangling `core.worktree` *and* a placeholder identity, both in the shared
+    config at the same time.
+
+    Every remedy line has to survive the dangling `core.worktree` — including the identity unset,
+    which has nothing to do with worktrees but still runs through the same git-config-resolves-
+    core.worktree-first machinery — or the reader is left red with a command that dies with
+    "Invalid path" and no idea why.
+    """
+    root = _checkout(tmp_path / "repo")
+    _set_shared(root, "extensions.worktreeConfig", "true")
+    _set_shared(root, "core.worktree", "/gone/session-worktree")
+    _set_shared(root, "user.email", "t@example.com")
+    _set_shared(root, "user.name", "T")
+
+    result = _run(root)
+    assert result.returncode == 1
+    assert "    core.worktree = /gone/session-worktree\n" in result.stderr
+    assert "    user.email = t@example.com\n" in result.stderr
+
+    for key in ("core.worktree", "user.email", "user.name"):
+        line = f"GIT_WORK_TREE=. git config --unset-all {key}"
+        assert line in result.stderr
+        subprocess.run(
+            ["git", "config", "--unset-all", key],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            env=_clean_env(GIT_WORK_TREE="."),
+        )
+
+    assert _run(root).returncode == 0
+
+
 # --- linked worktrees, where the incident happened ------------------------------------------------
 
 
@@ -371,6 +514,22 @@ def test_a_linked_worktree_is_judged_by_the_shared_config(tmp_path: Path) -> Non
 
     assert result.returncode == 1
     assert "core.worktree = /gone/session-worktree" in result.stderr
+    assert str(_shared_config(main)) in result.stderr
+
+
+def test_a_linked_worktree_is_judged_by_the_shared_identity_too(tmp_path: Path) -> None:
+    """The identity incident, read from a linked worktree, must resolve to the MAIN checkout's file.
+
+    A placeholder `user.email` is exactly what leaks into the shared file from *any* worktree's test
+    run — the incident is not confined to the worktree that happens to invoke this guard.
+    """
+    main, linked = _linked_worktree(tmp_path)
+    _set_shared(main, "user.email", "t@example.com")
+
+    result = _run(linked)
+
+    assert result.returncode == 1
+    assert "user.email = t@example.com" in result.stderr
     assert str(_shared_config(main)) in result.stderr
 
 

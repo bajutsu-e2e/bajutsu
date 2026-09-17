@@ -1,22 +1,30 @@
 #!/usr/bin/env bash
-# Refuse to run when a per-worktree git setting has been written to the shared config (issue #1803).
+# Refuse to run when a git setting that must not be shared has been written to the shared config —
+# two sibling incidents, both issue #1803.
 #
-# With `extensions.worktreeConfig` enabled, git drops its built-in exception for `core.bare` and
-# `core.worktree` — the one that otherwise confines a shared value to the main working tree. A
-# shared value then applies to *every* worktree, and git-worktree(1) says so plainly: `core.worktree`
-# "should never be shared", and `core.bare` "should not be shared if the value is core.bare=true".
+# 1. `core.worktree` / `core.bare = true`. With `extensions.worktreeConfig` enabled, git drops its
+#    built-in exception confining these two to the main working tree. A shared value then applies to
+#    *every* worktree, and git-worktree(1) says so plainly: `core.worktree` "should never be shared",
+#    and `core.bare` "should not be shared if the value is core.bare=true". A shared `core.worktree`
+#    makes every command in every worktree resolve to one other tree's directory while `--git-dir`
+#    still answers locally: `git status` lists another branch's files, `git add` reports success and
+#    changes nothing, `git commit --amend` drops a file from the commit, and `git checkout -- <path>`
+#    writes into a concurrent session's worktree. A shared `core.bare = true` is the loud half —
+#    every invocation fails with "this operation must be run in a work tree" — but it hides behind
+#    the first until that one is cleared.
+# 2. `user.email` / `user.name` at a test fixture's placeholder identity (`t@example.com`, and
+#    similar). A throwaway repo built by a test is meant to carry its own committer identity, set
+#    with a real, persistent `git config` write — but if the process that runs it has inherited
+#    `GIT_DIR` (a git hook exports it into everything it runs), that write lands in the shared config
+#    of whichever repository `GIT_DIR` names instead of the throwaway one, silently overriding every
+#    contributor's real identity for every future commit in every worktree. This has already happened
+#    to this repository once.
 #
-# The failure that follows is silent, not loud, which is why this guard exists rather than a note in
-# the docs. A shared `core.worktree` makes every command in every worktree resolve to one other
-# tree's directory while `--git-dir` still answers locally: `git status` lists another branch's
-# files, `git add` reports success and changes nothing, `git commit --amend` drops a file from the
-# commit, and `git checkout -- <path>` writes into a concurrent session's worktree. A shared
-# `core.bare = true` is the loud half — every invocation fails with "this operation must be run in a
-# work tree" — but it hides behind the first until that one is cleared.
+# Both failures are silent, not loud, which is why this guard exists rather than a note in the docs.
 #
-# This only reports. The two settings arrive from outside this repository's tooling (nothing here
-# writes either one), and the correct repair depends on whether the checkout is the main or a linked
-# worktree, so the remedy is printed for a human to apply rather than guessed at.
+# This only reports. Every offending setting arrives from outside this repository's tooling (nothing
+# here writes any of them), and the correct repair can depend on whether the checkout is the main or
+# a linked worktree, so the remedy is printed for a human to apply rather than guessed at.
 #
 # Every uncertain answer here resolves to a *loud* failure. A guard whose whole purpose is to end a
 # silent misconfiguration must never report a clean bill of health on a repository it could not
@@ -130,73 +138,148 @@ shared_read() {
   esac
 }
 
-shared_read extensions.worktreeConfig bool
-[ "$shared_value" = "true" ] || exit 0
-
 # Accumulated as text rather than as an array: bash 3.2 — still the stock shell on macOS, a
 # first-class target here — treats an empty array as unset under `set -u`.
 offenders=""
 
+# `user.email` at an RFC 2606 reserved example/test domain is checked unconditionally — unlike
+# core.worktree/core.bare below, this offense has nothing to do with extensions.worktreeConfig: even
+# without that extension, everything in the shared file already governs every worktree, because
+# there is nowhere else for a worktree's own config to live. It is issue #1803's sibling: a test
+# fixture's `git -C <tmp-repo> config user.email t@example.com`, meant for a throwaway repo, lands in
+# the shared file instead because an inherited GIT_DIR overrode `-C`. No real contributor's identity
+# ever resolves to example.com/.net/.org or the .test/.example/.invalid TLDs, so a match here is
+# never a false positive the way a plain "differs from global" check would be — plenty of
+# contributors legitimately set a repo-local identity unrelated to this bug.
+shared_read user.email
+email_value="$shared_value"
+placeholder_identity=0
+if [ "$shared_found" -eq 1 ]; then
+  case "$email_value" in
+    *@example.com | *@example.net | *@example.org | *@*.example | *@*.invalid | *@*.test)
+      placeholder_identity=1
+      offenders="${offenders}    user.email = ${email_value}
+"
+      ;;
+  esac
+fi
+
+# Reported only alongside a placeholder email: pairing the two is what a leaked fixture writes, and a
+# `user.name` on its own (an initial, a nickname) is unremarkable and none of this guard's business.
+name_present=0
+if [ "$placeholder_identity" -eq 1 ]; then
+  shared_read user.name
+  name_value="$shared_value"
+  name_present="$shared_found"
+  if [ "$name_present" -eq 1 ]; then
+    offenders="${offenders}    user.name = ${name_value}
+"
+  fi
+fi
+
+shared_read extensions.worktreeConfig bool
+worktree_config_on="$shared_value"
+
 # Presence, not a non-empty value: a shared `core.worktree` set to the empty string offends just as
 # much, and leaves git unable to run at all ("cannot chdir to ''"). Passing it for want of a value to
 # print would hand the next command that cryptic message instead of this one's remedy.
-shared_read core.worktree
-worktree_value="$shared_value"
-worktree_present="$shared_found"
-if [ "$worktree_present" -eq 1 ]; then
-  offenders="${offenders}    core.worktree = ${worktree_value}
-"
-fi
-
-# Only `true` offends: git-worktree(1) singles out that value, and a shared `core.bare = false` is
-# both harmless and what a normal clone carries.
-shared_read core.bare bool
+worktree_present=0
 bare_value=""
-if [ "$shared_value" = "true" ]; then
-  bare_value="true"
-  offenders="${offenders}    core.bare = true
+if [ "$worktree_config_on" = "true" ]; then
+  shared_read core.worktree
+  worktree_value="$shared_value"
+  worktree_present="$shared_found"
+  if [ "$worktree_present" -eq 1 ]; then
+    offenders="${offenders}    core.worktree = ${worktree_value}
 "
+  fi
+
+  # Only `true` offends: git-worktree(1) singles out that value, and a shared `core.bare = false` is
+  # both harmless and what a normal clone carries.
+  shared_read core.bare bool
+  if [ "$shared_value" = "true" ]; then
+    bare_value="true"
+    offenders="${offenders}    core.bare = true
+"
+  fi
 fi
 
 [ -n "$offenders" ] || exit 0
 
+# core.worktree, present and pointing anywhere at all — even a path that no longer exists — makes
+# every later git command in this script (the remedy lines included) resolve it during repository
+# setup and die with "Invalid path" unless overridden. The prefix below is what survives that.
+work_tree_prefix=""
+if [ "$worktree_present" -eq 1 ]; then
+  work_tree_prefix="GIT_WORK_TREE=. "
+fi
+
+worktree_offense=0
+if [ "$worktree_present" -eq 1 ] || [ -n "$bare_value" ]; then
+  worktree_offense=1
+fi
+
 {
-  echo "check-worktree-config: a per-worktree git setting is in the SHARED config, so it applies to"
-  echo "check-worktree-config: every worktree of this repository (extensions.worktreeConfig is on):"
+  echo "check-worktree-config: a shared git setting belongs somewhere else, in the SHARED config:"
   echo
   printf '%s' "$offenders"
   echo
   echo "  in: $shared_config"
   echo
-  echo "  Left in place, git silently reads a different working tree than your shell's directory:"
-  echo "  'git status' lists another branch's files, 'git add' succeeds without changing anything,"
-  echo "  'git commit --amend' drops files, and 'git checkout -- <path>' writes into another"
-  echo "  session's worktree. See issue #1803."
-  echo
+
+  if [ "$worktree_offense" -eq 1 ]; then
+    echo "  core.worktree/core.bare apply to *every* worktree of this repository once here"
+    echo "  (extensions.worktreeConfig is on) — the setting git-worktree(1) says should never be"
+    echo "  shared. Left in place, git silently reads a different working tree than your shell's"
+    echo "  directory: 'git status' lists another branch's files, 'git add' succeeds without"
+    echo "  changing anything, 'git commit --amend' drops files, and 'git checkout -- <path>' writes"
+    echo "  into another session's worktree. See issue #1803."
+    echo
+  fi
+
+  if [ "$placeholder_identity" -eq 1 ]; then
+    echo "  user.email/user.name here silently override every contributor's real git identity, in"
+    echo "  every worktree, for every commit, until someone notices by reading 'git log' closely —"
+    echo "  as happened before. It is issue #1803's sibling bug: a test fixture's throwaway-repo"
+    echo "  'git config' write missed its target because an inherited GIT_DIR overrode '-C'."
+    echo
+  fi
+
   echo "  Clear it from the shared config, then re-run:"
   # `--unset-all` rather than `--unset`, which refuses (exit 5) when the key carries more than one
   # value and so would leave the reader following a command that changes nothing. For the ordinary
   # single value the two behave identically.
   if [ "$worktree_present" -eq 1 ]; then
-    echo "      GIT_WORK_TREE=. git config --unset-all core.worktree"
+    echo "      ${work_tree_prefix}git config --unset-all core.worktree"
   fi
   if [ -n "$bare_value" ]; then
-    echo "      GIT_WORK_TREE=. git config --unset-all core.bare"
+    echo "      ${work_tree_prefix}git config --unset-all core.bare"
+  fi
+  if [ "$placeholder_identity" -eq 1 ]; then
+    echo "      ${work_tree_prefix}git config --unset-all user.email"
+    if [ "$name_present" -eq 1 ]; then
+      echo "      ${work_tree_prefix}git config --unset-all user.name"
+    fi
   fi
   echo
-  # Without the prefix the remedy dies in the very state that motivates it, and a reader who takes
-  # the prefix for noise and drops it gets that failure with no idea why.
-  echo "  The 'GIT_WORK_TREE=.' prefix is not optional: git resolves core.worktree before it runs"
-  echo "  the command you asked for, so once the setting points at a worktree that has been"
-  echo "  removed, these commands themselves die with \"Invalid path\" until it is overridden."
-  echo
-  # `--worktree` alone would leave the shared value in place, still governing every other worktree
-  # while this one looks repaired — which is how the misconfiguration went unnoticed before.
-  echo "  Repairing only the worktree in hand ('git config --worktree core.bare false') leaves the"
-  echo "  shared value governing every other worktree, so clear the shared config as above. A"
-  echo "  worktree that genuinely needs either setting — a bare main repository keeping"
-  echo "  core.bare = true — then adds it back with 'git config --worktree', never to the shared"
-  echo "  file. See docs/ai-development.md#isolate-concurrent-sessions-with-worktrees."
+
+  if [ "$worktree_offense" -eq 1 ]; then
+    # Without the prefix the remedy dies in the very state that motivates it, and a reader who takes
+    # the prefix for noise and drops it gets that failure with no idea why. It has to prefix every
+    # line above too, including a same-command identity unset, since git resolves core.worktree
+    # during repository setup regardless of which key the command is actually changing.
+    echo "  The 'GIT_WORK_TREE=.' prefix is not optional: git resolves core.worktree before it runs"
+    echo "  the command you asked for, so once the setting points at a worktree that has been"
+    echo "  removed, these commands themselves die with \"Invalid path\" until it is overridden."
+    echo
+    # `--worktree` alone would leave the shared value in place, still governing every other worktree
+    # while this one looks repaired — which is how the misconfiguration went unnoticed before.
+    echo "  Repairing only the worktree in hand ('git config --worktree core.bare false') leaves the"
+    echo "  shared value governing every other worktree, so clear the shared config as above. A"
+    echo "  worktree that genuinely needs either setting — a bare main repository keeping"
+    echo "  core.bare = true — then adds it back with 'git config --worktree', never to the shared"
+    echo "  file. See docs/ai-development.md#isolate-concurrent-sessions-with-worktrees."
+  fi
 } >&2
 
 exit 1
