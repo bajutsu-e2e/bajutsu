@@ -190,7 +190,7 @@ there.
   lanes carry a non-gating `app-crash` job driving a showcase affordance that crashes on demand,
   next to `actuation (xcuitest)` and `golden (adb)`: newly wired on-device coverage earns its
   stability as a per-PR signal before any promotion into the required aggregators, the same path
-  every other new signal in those lanes has taken. The runner
+  every other new signal in those lanes has taken. Back in `crash-diagnostics/`, the runner
   output is collected for the two crash shapes the runner's own liveness signals name — `xcodebuild`
   exited, or it lingers past a test run its capture says has ended. A channel that simply stopped
   answering while the process runs on and writes no such marker is the wedged-Simulator shape
