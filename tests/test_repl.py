@@ -22,12 +22,14 @@ from bajutsu.common.config import load_config, resolve
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.drivers.xcuitest import XcuitestChannelError, XcuitestRunnerCrashError
 from bajutsu.common.drivers.xcuitest_live import WebDriverError
 from bajutsu.common.platform_lifecycle import Environment, FakeEnvironment, WebEnvironment
 from bajutsu.common.platform_lifecycle.environments.xcuitest_live import XcuitestLiveEnvironment
+from bajutsu.common.scenario import Preconditions
 from bajutsu.repl.loop import PROMPT, repl_loop
 from bajutsu.repl.render import _display_width, render_json, render_table
-from bajutsu.repl.session import COMMAND_ERRORS, ReplExit, ReplSession
+from bajutsu.repl.session import COMMAND_ERRORS, FATAL_ERRORS, ReplExit, ReplSession
 
 runner = CliRunner()
 
@@ -447,6 +449,38 @@ def test_a_web_driver_error_is_reported_rather_than_crashing_the_shell() -> None
     assert said[0].startswith("WebDriverError: ")
 
 
+def test_an_xcuitest_channel_error_is_reported_rather_than_crashing_the_shell() -> None:
+    # The local XCUITest runner channel raises its own RuntimeError subclass on a lost/bad response
+    # (a failed tap, type, or screenshot request), not DeviceError.
+    assert XcuitestChannelError in COMMAND_ERRORS
+
+    class _RunnerGone(FakeDriver):
+        def back(self) -> None:
+            raise XcuitestChannelError("runner stopped answering")
+
+    said = _run_loop(_RunnerGone(), ["back", "exit"])
+    assert said[0].startswith("XcuitestChannelError: ")
+
+
+def test_a_runner_crash_ends_the_shell_instead_of_looping_on_a_dead_driver() -> None:
+    # XcuitestRunnerCrashError subclasses XcuitestChannelError but names a runner that is gone for
+    # good (the driver's own transient-retry budget is already spent); repl has no respawn, so
+    # treating it like an ordinary channel hiccup would print one line and prompt again against a
+    # driver that can no longer answer anything.
+    assert XcuitestRunnerCrashError not in COMMAND_ERRORS
+    assert XcuitestRunnerCrashError in FATAL_ERRORS
+
+    class _Dead(FakeDriver):
+        def back(self) -> None:
+            raise XcuitestRunnerCrashError("xcodebuild exited")
+
+    # A single scripted line: if the loop read a second one instead of leaving, `_scripted` would
+    # raise `IndexError` on the exhausted list, failing the test loudly.
+    said = _run_loop(_Dead(), ["back"])
+    assert said[0].startswith("XcuitestRunnerCrashError: ")
+    assert said[1] == "the XCUITest runner is gone; this shell cannot recover it — leaving"
+
+
 # --- the command's own wiring --------------------------------------------------------------------
 
 
@@ -532,6 +566,133 @@ def test_repl_never_resolves_a_udid_for_the_web_backend(
 
     result = runner.invoke(app, ["repl", "--target", "demo", "--config", str(cfg)], input="exit\n")
     assert result.exit_code == 0
+
+
+def test_repl_resolves_a_udid_through_the_selected_environment_for_adb(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # For --backend adb, resolving "booted" through simctl would shell out to `xcrun simctl` on an
+    # Android-only host (or hand an iOS-shaped id to adb) and crash before the shell ever opens —
+    # resolution must go through the selected environment's own resolver (adb's `resolve_serial`).
+    monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: "adb")
+
+    def unexpected(*_a: object, **_k: object) -> str:
+        raise AssertionError("simctl.resolve_udid must not be called for the adb backend")
+
+    monkeypatch.setattr("bajutsu.common.backend_cli.simctl.resolve_udid", unexpected)
+    monkeypatch.setattr(
+        "bajutsu.common.backend_cli.adb.resolve_serial", lambda u, run=None: "ADB-SERIAL"
+    )
+    monkeypatch.setattr(
+        repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: ((lambda: None), None)
+    )
+    captured: dict[str, object] = {}
+
+    def launch(udid: str, *_a: object, **_k: object) -> tuple[FakeDriver, None]:
+        captured["udid"] = udid
+        return FakeDriver(), None
+
+    monkeypatch.setattr(repl_cli, "launch_driver", launch)
+
+    result = runner.invoke(
+        app, ["repl", "--target", "demo", "--config", str(_fake_config(tmp_path))], input="exit\n"
+    )
+    assert result.exit_code == 0
+    assert captured["udid"] == "ADB-SERIAL"
+
+
+def test_repl_defaults_to_no_erase_on_the_live_webdriver_route(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The live `--udid https://…` route's device is already booted with its build installed
+    # (BE-0238); its environment explicitly rejects `Preconditions(erase=True)`, so an unset
+    # `--erase` must default to off there rather than the local route's on.
+    monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: "xcuitest")
+    monkeypatch.setattr(
+        repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: ((lambda: None), None)
+    )
+    captured: dict[str, object] = {}
+
+    def launch(
+        _udid: str, _eff: object, _actuator: str, pre: Preconditions, **_k: object
+    ) -> tuple[FakeDriver, None]:
+        captured["erase"] = pre.erase
+        return FakeDriver(), None
+
+    monkeypatch.setattr(repl_cli, "launch_driver", launch)
+
+    result = runner.invoke(
+        app,
+        [
+            "repl",
+            "--target",
+            "demo",
+            "--udid",
+            "https://grid.example/wd/hub",
+            "--config",
+            str(_fake_config(tmp_path)),
+        ],
+        input="exit\n",
+    )
+    assert result.exit_code == 0
+    assert captured["erase"] is False
+
+
+def test_repl_rejects_explicit_erase_on_the_live_webdriver_route(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An operator who explicitly asks for --erase on the live route gets a clean CLI error instead
+    # of an UnsupportedAction traceback out of the environment's own `start`.
+    monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: "xcuitest")
+    monkeypatch.setattr(
+        repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: ((lambda: None), None)
+    )
+
+    def unexpected(*_a: object, **_k: object) -> tuple[FakeDriver, None]:
+        raise AssertionError("launch_driver must not be reached for a rejected --erase")
+
+    monkeypatch.setattr(repl_cli, "launch_driver", unexpected)
+
+    result = runner.invoke(
+        app,
+        [
+            "repl",
+            "--target",
+            "demo",
+            "--udid",
+            "https://grid.example/wd/hub",
+            "--erase",
+            "--config",
+            str(_fake_config(tmp_path)),
+        ],
+    )
+    assert result.exit_code == 2
+    assert "not supported on the live" in result.output
+
+
+def test_repl_honors_an_explicit_no_erase_on_the_local_route(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An explicit --no-erase on the ordinary (non-live) route is neither the unset default nor the
+    # live-route rejection — it passes straight through to the launch.
+    _stub_launch(monkeypatch, FakeDriver())
+    captured: dict[str, object] = {}
+
+    def launch(
+        _udid: str, _eff: object, _actuator: str, pre: Preconditions, **_k: object
+    ) -> tuple[FakeDriver, None]:
+        captured["erase"] = pre.erase
+        return FakeDriver(), None
+
+    monkeypatch.setattr(repl_cli, "launch_driver", launch)
+
+    result = runner.invoke(
+        app,
+        ["repl", "--target", "demo", "--no-erase", "--config", str(_fake_config(tmp_path))],
+        input="exit\n",
+    )
+    assert result.exit_code == 0
+    assert captured["erase"] is False
 
 
 def test_repl_launches_the_app_and_drives_the_typed_commands(
