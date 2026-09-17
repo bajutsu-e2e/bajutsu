@@ -192,13 +192,20 @@ class _AlertGuardGate:
 
         Shared by the two sites that end a showing outright — the give-up's own retirement in
         `_observe_native` and `_dismiss_from_tree`'s `label is None` branch — so a later addition to
-        this bookkeeping (a second signature, a per-showing decline counter, the licence horizon)
+        this bookkeeping (a second signature, a per-showing decline counter)
         cannot be wired into one reset while the other keeps handing the next showing a stale value
         (BE-0418 review finding): this PR already had to edit both copies in lockstep once, to add
         `_tree_gave_up_shape` / `_tree_gave_up_note`. `_dismiss_from_tree`'s `else:` branch (a
         different label now showing) is a deliberate *partial* third copy rather than a third call
         here — it resets every field below except the last two, which the label check right after it
         re-derives against the new label instead of clearing outright.
+
+        Deliberately does not clear `_tree_tap_licence_withheld_since`, the one other piece of
+        per-showing bookkeeping this PR itself added (BE-0418 review finding): `_restore_tree_tap_licence`
+        runs at the top of every `_dismiss_from_tree`, before any poll can open a new
+        `_tree_not_tappable_since`, so a marker left over from the showing this reset just ended can
+        never be applied to a horizon a later showing opens. Clearing it here would instead discard a
+        real unlicensed gap the *still-running* horizon it was recorded against is owed.
         """
         self._tree_dismiss_pending = None
         self._tree_tapped_at = None

@@ -146,16 +146,41 @@ def _resolve_alert_rule(
 
 def _leftover_note(
     buttons: Sequence[str], dismissed: frozenset[frozenset[str]], fallback: str
-) -> str:
+) -> tuple[str, bool]:
     """`alert_block_note` over `subtract_labels`, or *fallback* when nothing is left over.
 
     The one computation `AlertGuardConfig.__call__` (BE-0418) repeats at every round kind that can
     end the call with a native leftover still live: a co-present alert this call has not already
     answered always takes precedence over whatever diagnosis *fallback* would otherwise report,
     since something else is demonstrably still up regardless of what that other diagnosis found.
+
+    Returns the note alongside whether nothing was left over — the caller's own signal for whether
+    *fallback* is what actually shipped, rather than re-deriving that fact by comparing this note
+    against *fallback* as formatted strings (BE-0418 review finding): a future change to either
+    note's own wording would silently break a string comparison, with no test pinning the equality
+    itself.
     """
     leftover = subtract_labels(buttons, dismissed)
-    return alert_block_note(leftover) if leftover else fallback
+    if leftover:
+        return alert_block_note(leftover), False
+    return fallback, True
+
+
+def _credited_shapes(
+    rules: Sequence[ResolvedAlertRule], buttons: Sequence[str], dismissed: frozenset[frozenset[str]]
+) -> frozenset[frozenset[str]]:
+    """*dismissed*, plus every shape a rule still identifies on *buttons* (BE-0418).
+
+    The one expression the `"dismissed"`, `already_dismissed`, race, and `"unhandled"` branches of
+    `__call__` all need byte-identical, so `blocked_note` does not depend on which round kind ended
+    the call (BE-0418 review finding): each credits every rule `identified_alert_rules` finds on
+    this read, not only the shapes *dismissed* already names, so a nested pair's own wider sibling
+    reaching a branch with its extra label still on `buttons` is not reported as an alert nothing
+    identifies. `_observe_native`'s own `"unhandled"` and `raced` branches
+    (`waits/_alert_guard_gate.py`) spell this out inline instead of sharing it here: neither has a
+    *dismissed* of its own to union in, so they would keep passing the bare generator regardless.
+    """
+    return dismissed | {rule.identifying_labels for rule in identified_alert_rules(rules, buttons)}
 
 
 def _read_tree(
@@ -211,7 +236,7 @@ def _bound_exhaustion_note(
         and dismiss_shape is not None
         and dismiss_shape <= set(buttons)
     ):
-        assert dismiss_label is not None  # a shape can only be `dismiss_shape` once tapped
+        assert dismiss_label is not None  # shape and label are passed together, or neither
         return uncleared_prompt_note(dismiss_label)
     return ""
 
@@ -297,23 +322,26 @@ def _withdraw_if_exhausted(
     alerts: list[AlertEvent],
     event: AlertEvent | None,
     note: str,
-    exhaustion_note: str,
     *,
     used_fallback: bool = True,
 ) -> AlertEvent | None:
     """The one check all three native diagnosis branches of `__call__` share before withdrawing
-    *event* (BE-0418 review finding): only when *note* — what the round actually reports — is
-    exactly *exhaustion_note*, never when a co-present leftover outranked it (`_leftover_note`'s own
-    precedence rule already implies nothing here says *event*'s own tap did not land) and, for the
-    race and `"unhandled"` branches, never when *exhaustion_note* came from a rule this round's own
-    read freshly resolved rather than from *event*'s own fallback shape (`used_fallback`, always
-    `True` for `already_dismissed`'s direct call, which has no such rule to prefer).
+    *event* (BE-0418 review finding): only when *note* is non-empty and *used_fallback* says
+    withdrawal is warranted — the caller's own conjunction of two independent facts, never re-derived
+    here by comparing *note* against the exhaustion note as formatted strings (BE-0418 review
+    finding: a future change to either note's own wording would silently break that comparison, with
+    no test pinning the equality itself). The two facts: nothing else on this read outranked the
+    exhaustion diagnosis (`_leftover_note`'s own "nothing left over" flag — a co-present leftover
+    already implies nothing here says *event*'s own tap did not land), and, for the race and
+    `"unhandled"` branches, the diagnosis traces back to *event*'s own fallback shape rather than a
+    rule this round's own read freshly resolved (`_raced_exhaustion_note`'s own `used_fallback`,
+    always `True` for `already_dismissed`'s direct call, which has no such rule to prefer).
 
     Returns the value the caller's own `*_dismiss_event` variable should hold afterward: `None` once
     withdrawn, *event* unchanged otherwise — so a call site can write `x_dismiss_event =
     _withdraw_if_exhausted(...)` in place of the three-line branch this factors out of `__call__`.
     """
-    if used_fallback and note and note == exhaustion_note:
+    if used_fallback and note:
         _withdraw(alerts, event)
         return None
     return event
@@ -334,12 +362,10 @@ def _fresh_dismiss_leftover_note(
     fallback_note, _ = _raced_exhaustion_note(
         native_rules, buttons, dismissed_native, round_index, None, None
     )
-    return _leftover_note(
-        buttons,
-        dismissed_native
-        | {rule.identifying_labels for rule in identified_alert_rules(native_rules, buttons)},
-        fallback_note,
+    note, _ = _leftover_note(
+        buttons, _credited_shapes(native_rules, buttons, dismissed_native), fallback_note
     )
+    return note
 
 
 def _already_dismissed_note(
@@ -372,13 +398,12 @@ def _already_dismissed_note(
         buttons=buttons,
         round_index=round_index,
     )
-    note = _leftover_note(
-        buttons,
-        dismissed_native
-        | {rule.identifying_labels for rule in identified_alert_rules(native_rules, buttons)},
-        exhaustion_note,
+    note, nothing_left_over = _leftover_note(
+        buttons, _credited_shapes(native_rules, buttons, dismissed_native), exhaustion_note
     )
-    return note, _withdraw_if_exhausted(alerts, native_dismiss_event, note, exhaustion_note)
+    return note, _withdraw_if_exhausted(
+        alerts, native_dismiss_event, note, used_fallback=nothing_left_over
+    )
 
 
 def _raced_or_unhandled_note(
@@ -411,9 +436,9 @@ def _raced_or_unhandled_note(
         native_dismiss_label,
         require_corroboration=require_corroboration,
     )
-    note = _leftover_note(buttons, leftover_dismissed, exhaustion_note)
+    note, nothing_left_over = _leftover_note(buttons, leftover_dismissed, exhaustion_note)
     return note, _withdraw_if_exhausted(
-        alerts, native_dismiss_event, note, exhaustion_note, used_fallback=used_fallback
+        alerts, native_dismiss_event, note, used_fallback=used_fallback and nothing_left_over
     )
 
 
@@ -1166,10 +1191,9 @@ class AlertGuardConfig:
                 # identified it and only the tap failed for a *different* shape (BE-0418 review
                 # finding) — the same fix `_observe_native`'s own `raced` branch
                 # (`waits/_alert_guard_gate.py`) already applies via `identified_alert_rules`.
-                leftover_dismissed_native = dismissed_native | {
-                    rule.identifying_labels
-                    for rule in identified_alert_rules(self.native_rules, buttons)
-                }
+                leftover_dismissed_native = _credited_shapes(
+                    self.native_rules, buttons, dismissed_native
+                )
                 if not buttons:
                     # Only a genuinely empty read licenses the tree tap at all: XCUITest answers an
                     # interrupting out-of-process alert with its own default button before
@@ -1461,11 +1485,7 @@ class AlertGuardConfig:
                     native_dismiss_shape,
                     native_dismiss_label,
                     native_dismiss_event,
-                    dismissed_native
-                    | {
-                        rule.identifying_labels
-                        for rule in identified_alert_rules(self.native_rules, buttons)
-                    },
+                    _credited_shapes(self.native_rules, buttons, dismissed_native),
                 )
                 # Not gated on `stuck_tree_label`, unlike the sibling branches above (BE-0418
                 # review finding): a tree diagnosis's own note only outranks a fresher one when this
