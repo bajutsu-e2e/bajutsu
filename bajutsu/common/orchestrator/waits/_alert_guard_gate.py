@@ -113,9 +113,16 @@ class _AlertGuardGate:
     # `_tree_gave_up` itself resets. Shape, not label, is what decides retirement — two `in_tree`
     # rules can share one tap label under different choices (`savePassword`'s three shapes all tap
     # "Not Now"), so a different, genuinely live prompt that merely shares the given-up label would
-    # otherwise keep the latch armed for a sheet that already left (BE-0418 review finding). The
-    # note itself is built from each give-up site's own local `label`, not from a field here.
+    # otherwise keep the latch armed for a sheet that already left (BE-0418 review finding).
     _tree_gave_up_shape: frozenset[str] | None = None
+    # The note each give-up site's own local `label` builds — the twin of `_native_unhandled_note`,
+    # set alongside `_tree_gave_up = True` and cleared everywhere `_tree_gave_up` itself resets
+    # (BE-0418 review finding): a branch that clears a *disproved* native diagnosis while the give-up
+    # still stands needs something to fall back to besides `""`, the same way retirement above falls
+    # back to `_native_unhandled_note` in the opposite direction — without this, the only other
+    # candidate is re-deriving `uncleared_prompt_note` from `_tree_gave_up_shape`'s own labels, which
+    # cannot recover the label the give-up actually tapped when the shape names more than one.
+    _tree_gave_up_note: str = ""
     _tree_not_tappable_label: str | None = None
     _tree_not_tappable_since: float | None = None
     # The moment the in-tree tap licence was last withheld, so a licensed poll's own return can
@@ -251,6 +258,7 @@ class _AlertGuardGate:
             self.blocked_note = self._native_unhandled_note if self._native_unhandled else ""
             self._tree_gave_up = False
             self._tree_gave_up_shape = None
+            self._tree_gave_up_note = ""
             # The showing itself ended — the same fact `_dismiss_from_tree`'s own `label is None`
             # branch resets on — so its per-showing bookkeeping goes with the latch rather than
             # being inherited by whatever shows next: a stale `_tree_dismiss_pending` paired with a
@@ -415,14 +423,18 @@ class _AlertGuardGate:
                     # regardless: the give-up's retirement writes `_native_unhandled_note` back out,
                     # so leaving a disproved one latched here would hand that retirement a stale note
                     # naming a button this read already enumerated away (BE-0418 review finding).
-                    # Only the `blocked_note` write itself defers to the give-up, the same exception
-                    # the clear-guard above and the `if leftover:` branch both make. The proxy's
-                    # hedged note, for a surface the query cannot enumerate, is a different story and
-                    # is preserved above (BE-0418 review finding).
                     self._native_unhandled = False
                     self._native_unhandled_note = ""
-                    if not (self._tree_gave_up and self._tree_gave_up_shape_still_shown(elements)):
-                        self.blocked_note = ""
+                    # `blocked_note` itself falls back to the give-up's own note, not `""` (BE-0418
+                    # review finding): this branch is retracting a now-disproved native diagnosis
+                    # with nothing fresher to put in its place, unlike every sibling branch, which
+                    # either substitutes a real, fresher finding (`if leftover:` above) or defers
+                    # outright (the clear-guard). `""` here would drop the BE-0402 disclosure for a
+                    # sheet whose give-up is still armed, permanently — no other write site in this
+                    # method can restore it once `_native_unhandled` is gone. Gated on `_tree_gave_up`
+                    # alone, not `_tree_gave_up_shape_still_shown`, since there is no fresher
+                    # diagnosis competing for the note here for that check to arbitrate between.
+                    self.blocked_note = self._tree_gave_up_note if self._tree_gave_up else ""
                 self._collapsed_polls = 0
                 self._withhold_tree_tap_licence()
                 return
@@ -568,6 +580,7 @@ class _AlertGuardGate:
             self._tree_taps = 0
             self._tree_gave_up = False
             self._tree_gave_up_shape = None
+            self._tree_gave_up_note = ""
             self._tree_not_tappable_label = None
             self._tree_not_tappable_since = None
             return None
@@ -600,6 +613,7 @@ class _AlertGuardGate:
                 if not self._tree_gave_up:
                     self._tree_gave_up = True
                     self._tree_gave_up_shape = rule.identifying_labels
+                    self._tree_gave_up_note = self.blocked_note
                     self._withdraw_tree_event()
                     _logger.warning(
                         "in-tree alert dismiss gave up after %d taps on %r; the prompt is still "
@@ -622,6 +636,7 @@ class _AlertGuardGate:
             self._tree_taps = 0
             self._tree_gave_up = False
             self._tree_gave_up_shape = None
+            self._tree_gave_up_note = ""
         if label != self._tree_not_tappable_label:
             self._tree_not_tappable_label = label
             self._tree_not_tappable_since = None
@@ -637,6 +652,7 @@ class _AlertGuardGate:
             self._tree_gave_up = True
             self._tree_gave_up_shape = rule.identifying_labels
             self.blocked_note = uncleared_prompt_note(label)
+            self._tree_gave_up_note = self.blocked_note
             return None
         # Scope the tap to `traits: [BUTTON]`, the same constraint `buttons` above already applied
         # when resolving `label` — matching a bare `{"label": label}` selector against `matches()`

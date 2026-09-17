@@ -1819,6 +1819,66 @@ def test_wait_guard_does_not_retire_a_give_up_over_a_transient_label_collision()
     assert gate.blocked_note == uncleared_prompt_note("Not Now")
 
 
+def test_wait_guard_falls_back_to_a_give_up_note_when_a_race_disproves_unhandled() -> None:
+    # BE-0418 review finding: the race branch's own disproved-"unhandled" clear used to write
+    # `blocked_note = ""` outright when the give-up latch could not corroborate the sheet, unlike
+    # every sibling write in `_observe_native` -- the clear-guard refuses outright, and the
+    # `if leftover:` branch just above substitutes a real, fresher `_native_unhandled_note`. This
+    # branch has no fresher diagnosis to substitute (the one it held is what just got disproved), so
+    # writing `""` drops the BE-0402 disclosure permanently: nothing else in this method can restore
+    # it once `_native_unhandled` is cleared, since `_dismiss_from_tree` never runs again while the
+    # race keeps recurring (`probed_absent` never holds) and the collapsed-tree proxy is held off by
+    # `if self._tree_gave_up: return` above it.
+    #
+    # Round 1: the in-tree sheet spends its tap budget, arming the give-up with its own note.
+    # Round 2: an undeclared SpringBoard alert collapses the tree -- `_tree_gave_up_shape_still_shown`
+    # cannot corroborate the sheet from an empty read, so the fresher "unhandled" note wins, exactly
+    # as intended. Round 3: a *declared* rule's own tap races away over a read holding nothing but
+    # its own shape -- `leftover` is empty, so the disproved-"unhandled" branch fires. The give-up's
+    # own note -- now the only diagnosis left -- must win instead of `""`.
+    from bajutsu.common.orchestrator.types import (
+        ResolvedAlertRule,
+        alert_block_note,
+        uncleared_prompt_note,
+    )
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _StuckThenRaces(FakeDriver):
+        def tap(self, sel: base.Selector) -> None:
+            raise base.ElementNotTappable("the scrim never lifts")
+
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound(f"raced away: {sel!r}")
+
+    tree_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Not Now"}), tap_label="Not Now", native=False, in_tree=True
+    )
+    racing_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Ping"}), tap_label="Ping", native=True, in_tree=False
+    )
+    tree = [el(None, "Not Now", ["button"])]
+    driver = _StuckThenRaces(tree)
+    guard = AlertGuardConfig(rules=[tree_rule, racing_rule])
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+
+    for _ in range(3):
+        gate.observe(tree)
+        clock.sleep(guard.poll_interval)
+    assert gate._tree_gave_up
+
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    gate.observe([])
+    assert gate.blocked_note == alert_block_note(["Weird Button"])
+    clock.sleep(guard.poll_interval)
+
+    driver.system_alert_buttons = [el(None, "Ping", ["button"])]
+    gate.observe([])
+
+    assert gate._tree_gave_up
+    assert gate.blocked_note == uncleared_prompt_note("Not Now")
+
+
 def test_wait_guard_names_a_live_undeclared_alert_over_a_give_up_the_collapsed_tree_cannot_confirm() -> (
     None
 ):
