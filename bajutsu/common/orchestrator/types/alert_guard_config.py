@@ -1036,33 +1036,42 @@ class AlertGuardConfig:
                 # reach "absent" — and any app-owned sheet stacked underneath — instead of
                 # spending the whole bound re-reading the same alert.
                 #
-                if stuck_tree_label is None:
-                    # `buttons` is the whole enumerable SpringBoard surface, not this one rule's
-                    # own set, so declining a re-tap here does not mean nothing else is up: a
-                    # second, still-live alert no rule identifies can sit right alongside it. Every
-                    # rule `identified_alert_rules` finds on this read is accounted for, not only
-                    # the shapes already in `dismissed_native` (BE-0418 review finding) — a wider
-                    # declared sibling nesting with an already-dismissed shape reaches this branch
-                    # too, and crediting only the tapped shapes would report its own extra label as
-                    # an alert no rule identifies when a rule does identify it — exactly the check
-                    # the "dismissed" branch above and the "unhandled" branch below both make too,
-                    # for the identical reason. A leftover takes precedence over the exhaustion
-                    # note: something else is demonstrably
-                    # still up regardless of whether this round's own tap ever landed.
-                    # `_bound_exhaustion_note` checks `native_dismiss_shape` directly against this
-                    # round's own read — see its own docstring for why that must be a containment
-                    # check against the final round alone, not a streak counted since the tap
-                    # (BE-0418 review finding).
-                    note, native_dismiss_event = _already_dismissed_note(
-                        alerts,
-                        self.native_rules,
-                        native_dismiss_shape,
-                        native_dismiss_label,
-                        native_dismiss_event,
-                        buttons,
-                        dismissed_native,
-                        round_index,
-                    )
+                # `buttons` is the whole enumerable SpringBoard surface, not this one rule's own
+                # set, so declining a re-tap here does not mean nothing else is up: a second,
+                # still-live alert no rule identifies can sit right alongside it. Every rule
+                # `identified_alert_rules` finds on this read is accounted for, not only the shapes
+                # already in `dismissed_native` (BE-0418 review finding) — a wider declared sibling
+                # nesting with an already-dismissed shape reaches this branch too, and crediting
+                # only the tapped shapes would report its own extra label as an alert no rule
+                # identifies when a rule does identify it — exactly the check the "dismissed"
+                # branch above and the "unhandled" branch below both make too, for the identical
+                # reason. A leftover takes precedence over the exhaustion note: something else is
+                # demonstrably still up regardless of whether this round's own tap ever landed.
+                # `_bound_exhaustion_note` checks `native_dismiss_shape` directly against this
+                # round's own read — see its own docstring for why that must be a containment
+                # check against the final round alone, not a streak counted since the tap
+                # (BE-0418 review finding).
+                #
+                # Computed unconditionally, not only when `stuck_tree_label is None` (BE-0418
+                # review finding): the withdrawal `_already_dismissed_note` performs is a fact about
+                # whether this round's own tap landed, not a reporting-precedence decision the way
+                # *note* itself is — the same distinction `_final_tree_check`'s own docstring draws
+                # for the mirror case. Gating the whole call on the tree diagnosis being closed left
+                # an open `NotTappable` diagnosis suppressing the withdrawal too, shipping a native
+                # `AlertEvent` this round's own final read shows never cleared. Only the assignment
+                # to `note` itself still defers to the tree diagnosis, so its precedence is
+                # unaffected.
+                candidate, native_dismiss_event = _already_dismissed_note(
+                    alerts,
+                    self.native_rules,
+                    native_dismiss_shape,
+                    native_dismiss_label,
+                    native_dismiss_event,
+                    buttons,
+                    dismissed_native,
+                    round_index,
+                )
+                note = note if stuck_tree_label is not None else candidate
                 settle()
                 continue
             if state == "absent":
@@ -1291,26 +1300,39 @@ class AlertGuardConfig:
                 # `matching_alert_rule` already matched it, which itself never returns a rule ruled
                 # out by its own `excluded_labels` — so `_native_round_worth_another_try` can never
                 # end the call here.
+                # Prefers the rule that raced *this* round over a possibly-stale
+                # `native_dismiss_shape`, the same way "unhandled" below prefers its own
+                # `resolved_rule` (BE-0418 review finding) — see `_raced_exhaustion_note`.
+                # `require_corroboration` gates the fresh resolution's own exhaustion note on
+                # having raced on a *previous* round too, not only this one (BE-0418 review
+                # finding) — see that function's own docstring for why a race round's fresh
+                # containment check is tautological without it.
+                #
+                # Computed unconditionally, not only when `stuck_tree_label is None` (BE-0418
+                # review finding): the withdrawal `_raced_or_unhandled_note` performs is a fact
+                # about whether an earlier round's own tap landed, not a reporting-precedence
+                # decision the way *note* itself is — the same distinction `_final_tree_check`'s
+                # own docstring draws for the mirror case. Gating the whole call on the tree
+                # diagnosis being closed left an open `NotTappable` diagnosis suppressing the
+                # withdrawal too, shipping a native `AlertEvent` this round's own final read shows
+                # never cleared.
+                candidate, native_dismiss_event = _raced_or_unhandled_note(
+                    alerts,
+                    self.native_rules,
+                    buttons,
+                    dismissed_native,
+                    round_index,
+                    native_dismiss_shape,
+                    native_dismiss_label,
+                    native_dismiss_event,
+                    leftover_dismissed_native,
+                    require_corroboration=raced_native_shape,
+                )
+                # Only the assignment to `note` itself, and the corroboration bookkeeping below,
+                # still defer to the tree diagnosis — *note*'s own precedence is unaffected by the
+                # withdrawal running unconditionally above.
+                note = note if stuck_tree_label is not None else candidate
                 if stuck_tree_label is None:
-                    # Prefers the rule that raced *this* round over a possibly-stale
-                    # `native_dismiss_shape`, the same way "unhandled" below prefers its own
-                    # `resolved_rule` (BE-0418 review finding) — see `_raced_exhaustion_note`.
-                    # `require_corroboration` gates the fresh resolution's own exhaustion note on
-                    # having raced on a *previous* round too, not only this one (BE-0418 review
-                    # finding) — see that function's own docstring for why a race round's fresh
-                    # containment check is tautological without it.
-                    note, native_dismiss_event = _raced_or_unhandled_note(
-                        alerts,
-                        self.native_rules,
-                        buttons,
-                        dismissed_native,
-                        round_index,
-                        native_dismiss_shape,
-                        native_dismiss_label,
-                        native_dismiss_event,
-                        leftover_dismissed_native,
-                        require_corroboration=raced_native_shape,
-                    )
                     # Re-resolves the same rule the call above just did, so the *next* round's own
                     # corroboration check knows what raced this one (BE-0418 review finding) —
                     # rather than add a return member only this one caller needs, the same choice
@@ -1351,33 +1373,45 @@ class AlertGuardConfig:
                 # here means nothing else is on the surface, so the fallback must not go silent on
                 # the final round just because this call never *tapped* anything (BE-0418 review
                 # finding).
-                if stuck_tree_label is None:
-                    # The ambiguous tap's own rule aside — see `_raced_or_unhandled_note`'s own
-                    # docstring for the shared exhaustion/withdrawal logic (BE-0418 review finding).
-                    note, native_dismiss_event = _raced_or_unhandled_note(
-                        alerts,
-                        self.native_rules,
-                        buttons,
-                        dismissed_native,
-                        round_index,
-                        native_dismiss_shape,
-                        native_dismiss_label,
-                        native_dismiss_event,
-                        dismissed_native
-                        | {
-                            rule.identifying_labels
-                            for rule in identified_alert_rules(self.native_rules, buttons)
-                        },
-                    )
+                # The ambiguous tap's own rule aside — see `_raced_or_unhandled_note`'s own
+                # docstring for the shared exhaustion/withdrawal logic (BE-0418 review finding).
+                #
+                # Computed unconditionally, not only when `stuck_tree_label is None` (BE-0418
+                # review finding): the withdrawal `_raced_or_unhandled_note` performs is a fact
+                # about whether an earlier round's own tap landed, not a reporting-precedence
+                # decision the way *note* itself is — the same distinction `_final_tree_check`'s
+                # own docstring draws for the mirror case. Gating the whole call on the tree
+                # diagnosis being closed left an open `NotTappable` diagnosis suppressing the
+                # withdrawal too, shipping a native `AlertEvent` this round's own final read shows
+                # never cleared.
+                candidate, native_dismiss_event = _raced_or_unhandled_note(
+                    alerts,
+                    self.native_rules,
+                    buttons,
+                    dismissed_native,
+                    round_index,
+                    native_dismiss_shape,
+                    native_dismiss_label,
+                    native_dismiss_event,
+                    dismissed_native
+                    | {
+                        rule.identifying_labels
+                        for rule in identified_alert_rules(self.native_rules, buttons)
+                    },
+                )
+                # Only the assignment to `note` itself defers to the tree diagnosis — its own
+                # precedence is unaffected by the withdrawal running unconditionally above.
+                note = note if stuck_tree_label is not None else candidate
                 if stuck_tree_label is None and not _native_round_worth_another_try(
                     dismissed_native, buttons, self.native_rules
                 ):
                     # Breaking here keeps this round's own diagnosis and costs nothing this call
                     # could still change — unless an open `NotTappable` diagnosis is the one still
-                    # in flight, in which case this round's own note computation above was already
-                    # skipped, so there is nothing of this round's own to lose, and a round remains
-                    # for Unit 2's landing-race retry to meet the scrim lifting (BE-0418 review
-                    # finding).
+                    # in flight, in which case `note` itself was left holding the tree's own
+                    # diagnosis above (only the assignment was skipped, not the computation or the
+                    # withdrawal), so there is nothing of this round's own report to lose, and a
+                    # round remains for Unit 2's landing-race retry to meet the scrim lifting
+                    # (BE-0418 review finding).
                     break
                 settle()
                 continue

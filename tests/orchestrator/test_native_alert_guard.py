@@ -3283,8 +3283,20 @@ def test_the_end_of_step_guard_does_not_retap_a_fading_alert_when_another_one_jo
 def test_the_end_of_step_guard_keeps_a_pending_tree_note_through_a_repeated_native_alert() -> None:
     # The counterpart to the "preserves an uncleared tree note past an unrelated native dismissal"
     # test: once a native alert has already been dismissed and keeps reading back unchanged
-    # (`probe_native`'s own `already_dismissed` decline), that round must not clear a still-open
-    # tree diagnosis either.
+    # (`probe_native`'s own `already_dismissed` decline), that round must not let the native
+    # diagnosis's *note* win over a still-open tree diagnosis's own.
+    #
+    # `handle_system_alert` never removes "Allow" (the fake models no removal, same as the tap
+    # above), so this call's own final round still enumerates it -- the fade this call itself just
+    # tapped, reading back unchanged for lack of a later round to disprove it. Withdrawing the
+    # `AlertEvent` on exactly that evidence is the fix for the review finding this test used to
+    # mask (BE-0418 review finding): the note computation and its own withdrawal used to be gated
+    # on the same `stuck_tree_label is None` check as the note's precedence, so an open tree
+    # diagnosis suppressed the withdrawal along with the note, shipping a dismissal this round's own
+    # read shows never confirmed cleared. `_bound_exhaustion_note`'s own containment check cannot
+    # tell that apart from a genuinely stuck tap here -- the same ambiguity `_final_tree_check`
+    # already resolves the identical way on the tree side -- so `cleared` now reports `False`,
+    # matching a call that confirmed nothing.
     class _StuckTreeThenRepeatingNative(FakeDriver):
         def __init__(self) -> None:
             super().__init__([_button("Not Now")])
@@ -3304,9 +3316,64 @@ def test_the_end_of_step_guard_keeps_a_pending_tree_note_through_a_repeated_nati
         ]
     )
     cleared, alerts = _call(driver, guard)
-    assert cleared and alerts == [AlertEvent(label="Allow")]
+    assert not cleared and alerts == []
     assert driver.tap_calls == 1
     assert sum(1 for a in driver.actions if a[0] == "handle_system_alert") == 1
+    # The tree diagnosis still wins the *note* -- the withdrawal above is a separate, fact-based
+    # decision about the native tap, and does not hand the reported note to the native side.
+    assert "a system prompt the guard could not clear is still up" in guard.blocked_note
+    assert "Not Now" in guard.blocked_note
+
+
+def test_the_end_of_step_guard_withdraws_a_raced_dismissal_even_through_a_still_open_tree_note() -> (
+    None
+):
+    # The race branch's own twin of the "already_dismissed" test above (BE-0418 review finding): a
+    # still-open tree diagnosis used to suppress the race branch's withdrawal along with its note,
+    # exactly the way it did for `_already_dismissed_note`. "Allow" genuinely dismisses, but a
+    # second, distinct alert ("Ask App Not to Track") queues up right behind it and races away on
+    # the final round -- `_raced_exhaustion_note` prefers that fresh race over `native_dismiss_shape`
+    # (BE-0418 review finding), finds no corroborating earlier race for it, and falls back to
+    # `native_dismiss_shape` itself: "Allow" is still enumerable, unchanged, on this call's own last
+    # read, so the exhaustion diagnosis fires against it and its `AlertEvent` should be withdrawn --
+    # regardless of whether an unrelated tree diagnosis is what the reported *note* names instead.
+    class _DismissesThenRacesASecondAlert(FakeDriver):
+        def __init__(self) -> None:
+            super().__init__([_button("Not Now")])
+            self.tap_calls = 0
+            self.handle_calls = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self.tap_calls += 1
+            if self.tap_calls == 1:
+                self.system_alert_buttons = [_button("Allow")]
+            raise base.ElementNotTappable("the scrim never lifts")
+
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            self.handle_calls += 1
+            if self.handle_calls == 1:
+                super().handle_system_alert(sel, timeout)
+                # "Allow" itself is never removed (the fake models no removal), and a second,
+                # distinct alert joins it right after.
+                self.system_alert_buttons = [
+                    *self.system_alert_buttons,
+                    _button("Ask App Not to Track"),
+                ]
+                return
+            raise base.ElementNotFound(f"raced away: {sel!r}")
+
+    driver = _DismissesThenRacesASecondAlert()
+    guard = AlertGuardConfig(
+        rules=[
+            guard_rule("Not Now", native=False, in_tree=True),
+            guard_rule("Allow", native=True, in_tree=False),
+            guard_rule("Ask App Not to Track", native=True, in_tree=False),
+        ]
+    )
+    cleared, alerts = _call(driver, guard)
+    assert not cleared and alerts == []
+    assert driver.tap_calls == 1
+    assert driver.handle_calls == 2
     assert "a system prompt the guard could not clear is still up" in guard.blocked_note
     assert "Not Now" in guard.blocked_note
 
