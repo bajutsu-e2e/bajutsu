@@ -811,48 +811,74 @@ jobs:
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
 
+      # As in `conformance`/`fault-injection`/`visual` above: this job drives a raw `bajutsu run`, not
+      # the `bajutsu-e2e` action, so it wires the BE-0361 diagnostics itself. Without this, a host
+      # render/window-server wedge (the `video-no-bytes` class #9/#11/#12 name in
+      # known-ci-failure-patterns.md) leaves no stall/crash-report evidence behind this job's own
+      # failures — only the bare job log.
+      - name: Start iOS diagnostics
+        # An observer may never decide this job: the step's own shell disables errexit and exits 0, and
+        # this is the outer net for anything that gets past it (BE-0361). A lane that reddens because
+        # its *diagnostics* fell over reports nothing about the software under test.
+        continue-on-error: true
+        uses: ./.github/actions/collect-ios-diagnostics
+        with:
+          phase: start
+          udid: ${{ steps.toolchain.outputs.udid }}
+
       # `||:` because the scenario is expected to fail: a red exit here is the *expected* outcome, and
       # the assertion step below is what decides this job. `run` mints its own timestamped run id (no
       # `--run-id` override exists), so `--runs-dir` points at a directory this step removes and
       # re-creates fresh every time, so a re-run of this job (or a local invocation of the same
-      # commands) never finds two run directories where the next step expects one. Under gitignored
-      # `tmp/`, not the repo root: `make lint-secrets` runs `gitleaks dir .`, a directory scan that
-      # does not consult `.gitignore`, so an untracked run tree left at the repo root would still
-      # redden that gate on a later local `make check` — the same reasoning `demos/showcase/Makefile`
-      # already documents for its own `NET_RUNS`.
+      # commands) never finds two run directories where the next step expects one. Under `runs/`, like
+      # every sibling job — not the `tmp/showcase-app-crash-runs` this job used before: both `runs/`
+      # and `tmp/` are gitignored (`make lint-secrets`'s `gitleaks dir .` sweeps both equally
+      # regardless), but only a `runs/` subdirectory rides the diagnostics steps above/below and the
+      # upload step's existing `runs/` sweep, the same wiring `demos/showcase/Makefile`'s `NET_RUNS`
+      # keeps under `tmp/` because *that* job has no diagnostics sweep to ride.
       - name: Run the app-crash scenario (expected to fail)
         run: |
-          rm -rf tmp/showcase-app-crash-runs
+          rm -rf runs/app-crash
           uv run bajutsu run \
             --config demos/showcase/showcase.config.yaml \
             --target showcase-swiftui \
             --backend xcuitest \
             --udid "${{ steps.toolchain.outputs.udid }}" \
-            --runs-dir tmp/showcase-app-crash-runs \
+            --runs-dir runs/app-crash \
             --scenario demos/showcase/scenarios/app_crash.yaml ||:
 
       # The real check: the crash was classified, exactly one outcome carries it, and the platform's
       # own report landed in the scenario's `app-crash/` directory. A green `bajutsu run` would fail
       # here too — it would mean the fixture never crashed at all. `find | wc -l` (never `echo | wc -l`
       # on the already-joined string, which reads an empty match as one blank line) so an empty
-      # `tmp/showcase-app-crash-runs/` is caught by this same guard instead of reaching the assertion
-      # script with an empty path and failing on the unrelated-looking "no manifest at manifest.json".
+      # `runs/app-crash/` is caught by this same guard instead of reaching the assertion script with an
+      # empty path and failing on the unrelated-looking "no manifest at manifest.json".
       - name: Assert the crash was diagnosed and its report captured
+        id: assert
         run: |
-          run_dir_count="$(find tmp/showcase-app-crash-runs -mindepth 1 -maxdepth 1 -type d | wc -l)"
+          run_dir_count="$(find runs/app-crash -mindepth 1 -maxdepth 1 -type d | wc -l)"
           if [ "$run_dir_count" -ne 1 ]; then
-            echo "::error::expected exactly one run directory under tmp/showcase-app-crash-runs/, found $run_dir_count"
+            echo "::error::expected exactly one run directory under runs/app-crash/, found $run_dir_count"
             exit 1
           fi
-          run_dir="$(find tmp/showcase-app-crash-runs -mindepth 1 -maxdepth 1 -type d)"
+          run_dir="$(find runs/app-crash -mindepth 1 -maxdepth 1 -type d)"
           uv run python scripts/assert_app_crash_evidence.py "$run_dir"
 
-      - name: Upload the run directory
+      - name: Collect iOS diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/collect-ios-diagnostics
+        with:
+          phase: collect
+          udid: ${{ steps.toolchain.outputs.udid }}
+          failed: ${{ steps.assert.outcome != 'success' }}
+
+      - name: Upload run artifacts
         if: always()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
         with:
           name: ios-app-crash-run
-          path: tmp/showcase-app-crash-runs
+          path: runs/
           if-no-files-found: ignore
 
   # The codegen output path: a scenario -> native XCUITest, compiled and run by xcodebuild
