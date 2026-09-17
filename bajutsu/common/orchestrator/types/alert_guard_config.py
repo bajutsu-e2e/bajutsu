@@ -1230,11 +1230,16 @@ class AlertGuardConfig:
                         settle()
                         continue
                     # Reached only when `tree_result` was not a tap (the branch just above always
-                    # continues): only a read that went on to *test* the exhaustion evidence retires
-                    # the post-loop query below — a tap moved the screen and settled after this read,
-                    # so nothing has checked yet whether that sheet actually closed (BE-0418 review
-                    # finding).
-                    tree_read_round = round_index
+                    # continues). `NotTappable` below tests nothing about `dismissed_tree_info` — it
+                    # `continue`s before ever reaching the lingering-fade check further down — so
+                    # `tree_read_round` is not set until after it, on the read that actually goes on
+                    # to *test* the exhaustion evidence and retire the post-loop query below (BE-0418
+                    # review finding): recording it here unconditionally let a round that only
+                    # diagnosed a *different* prompt as stuck retire `_final_tree_check` for an
+                    # earlier round's own tree tap that this round never looked at, the same two
+                    # contradictory facts `_withdraw` exists to rule out. A tap moved the screen and
+                    # settled after this read, so nothing has checked yet whether that sheet actually
+                    # closed either way.
                     if isinstance(tree_result, NotTappable):
                         note, stuck_tree_label, stuck_tree_shape = (
                             uncleared_prompt_note(tree_result.label),
@@ -1243,6 +1248,7 @@ class AlertGuardConfig:
                         )
                         settle()
                         continue
+                    tree_read_round = round_index
                     # The tree twin of the native retraction above, but keyed on a shape rather than
                     # the whole surface: a dismissed shape no longer enumerable anywhere in this
                     # read is gone, not fading, so keeping it in `exclude` could only ever wrongly

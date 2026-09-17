@@ -1657,6 +1657,14 @@ def test_the_end_of_step_guard_keeps_a_stuck_tree_note_after_a_different_tree_ta
     # later *native* dismissal, but a later round that dismisses a different, unrelated in-tree
     # prompt is not evidence the stuck one became tappable — that requires the same label to land
     # (BE-0418 review finding).
+    #
+    # `tree_read_round` is only set on a round that reaches the lingering-fade check itself (BE-0418
+    # review finding, superseding an earlier round's own mistaken assignment order): round 0 and
+    # round 2 both raise `NotTappable` on `StuckBtn`, which `continue`s before ever reaching that
+    # check, so neither one marks `tree_read_round`. `_final_tree_check` therefore still takes a
+    # fresh, post-loop read on `OtherBtn`'s own tap from round 1 -- which nothing this call ever did
+    # explicitly re-verified -- and finds it still enumerable on the true final round, withdrawing
+    # it the same way any other lingering tap would be. `StuckBtn`'s own diagnosis is unaffected.
     stuck = ResolvedAlertRule(
         identifying_labels=frozenset({"StuckBtn"}), tap_label="StuckBtn", native=False, in_tree=True
     )
@@ -1683,8 +1691,8 @@ def test_the_end_of_step_guard_keeps_a_stuck_tree_note_after_a_different_tree_ta
     guard = AlertGuardConfig(rules=[other, stuck])  # `other` first, so it matches first once up
     alerts: list[AlertEvent] = []
     cleared = guard(driver, alerts, settle=settle)
-    assert cleared and alerts == [AlertEvent(label="OtherBtn")]
-    # StuckBtn's own diagnosis must survive OtherBtn's unrelated success.
+    assert not cleared and alerts == []
+    # StuckBtn's own diagnosis must survive OtherBtn's unrelated (and, in the end, unconfirmed) tap.
     assert "StuckBtn" in guard.blocked_note
 
 
