@@ -1457,14 +1457,13 @@ def test_wait_guard_retires_an_in_tree_give_up_by_shape_not_by_the_label_alone()
     # that sheet then closes and the 26.5 in-app shape ("Save"/"Not Now") is presented in its
     # place -- a different, genuinely live prompt sharing only "Not Now" with the one given up on.
     #
-    # Both shapes must be declared rules, not just the given-up one (BE-0418 review finding):
-    # retirement's own shape check runs entirely inside `identified_alert_rules(tree_dedup_rules,
-    # ...)`, which returns `[]` for undeclared rules regardless of what the tree shows -- with no
-    # 26.5 rule declared, `not any(...)` is unconditionally `True` and retirement would fire on
-    # `_tree_gave_up and shows_app_ui(elements)` alone, never actually exercising the shape
-    # comparison this test names. Declaring both is what makes a label-keyed variant fail here:
-    # the 26.5 shape's `identifying_labels` differ from the given-up shape (so shape-keyed
-    # retirement still fires, as asserted), but its `tap_label` is the same "Not Now".
+    #
+    # The retirement check itself reads only this poll's raw tree
+    # (`_tree_gave_up_shape_matches`: `shape <= set(tree_buttons(elements))`), never the rule set,
+    # so the rules declared below are scene-setting rather than load-bearing. What makes a
+    # label-keyed variant of that check fail here is the tree alone: "Not Now" is still in it, so
+    # a label-keyed latch would stay armed, while the given-up shape's other two labels are gone,
+    # so the shape-keyed one retires -- which is what this test asserts.
     from bajutsu.common.orchestrator.types import ResolvedAlertRule, uncleared_prompt_note
     from bajutsu.common.orchestrator.waits import _AlertGuardGate
 
