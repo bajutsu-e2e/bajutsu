@@ -6,7 +6,7 @@ import subprocess
 
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.xcuitest import XcuitestChannelError
+from bajutsu.common.drivers.xcuitest import XcuitestChannelError, XcuitestRunnerCrashError
 from bajutsu.common.drivers.xcuitest_live import WebDriverError
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.repl.render import render_json, render_table
@@ -28,6 +28,16 @@ class ReplExit(Exception):
 # tap, type, or screenshot request), and the `--udid https://…` live route's WebDriver calls raise
 # a sibling `RuntimeError` subclass. Without all three, a USB flake, a wedged runner, or a grid
 # hiccup would kill the whole interactive session instead of reading like any other refusal.
+#
+# `XcuitestRunnerCrashError` — the runner died and stayed unreachable past the driver's own
+# transient-retry budget — is deliberately *not* here even though it subclasses
+# `XcuitestChannelError`: everywhere else in the tool it is also a `base.BackendCrashError`, whose
+# answer is to discard the lease and cold-respawn (`runner/pipeline.py`'s `except BackendCrashError`).
+# `repl` has no respawn, and `_close_owned_session` deliberately leaves the local XCUITest
+# environment running, so treating it as an ordinary command error would print one line and prompt
+# again against a permanently dead driver — every later command failing the same way with nothing
+# telling the operator the session can no longer answer anything. `FATAL_ERRORS` below ends the shell
+# instead.
 COMMAND_ERRORS: tuple[type[Exception], ...] = (
     base.SelectorError,
     base.ElementNotTappable,
@@ -38,6 +48,10 @@ COMMAND_ERRORS: tuple[type[Exception], ...] = (
     WebDriverError,
     OSError,
 )
+
+# A dead runner is not an answer to the operator's question; it ends the shell rather than being
+# reported and prompting again against a driver that can no longer answer anything.
+FATAL_ERRORS: tuple[type[Exception], ...] = (XcuitestRunnerCrashError,)
 
 _HELP = (
     "tree [--json]      the current element tree, as a table (or verbatim as JSON)",

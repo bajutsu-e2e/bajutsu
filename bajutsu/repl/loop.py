@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from bajutsu.repl.session import COMMAND_ERRORS, ReplExit, ReplSession
+from bajutsu.repl.session import COMMAND_ERRORS, FATAL_ERRORS, ReplExit, ReplSession
 
 PROMPT = "bajutsu> "
 
@@ -37,6 +37,12 @@ def repl_loop(
             for out in session.dispatch(line):
                 say(out)
         except ReplExit:
+            return
+        except FATAL_ERRORS as e:
+            # Ordered before COMMAND_ERRORS, which would otherwise swallow this subclass: the
+            # runner is gone and this shell has no respawn, so nothing typed next can succeed.
+            say(f"{type(e).__name__}: {e}")
+            say("the XCUITest runner is gone; this shell cannot recover it — leaving")
             return
         except COMMAND_ERRORS as e:
             # Named by its class, the way `run` reports the same failure, so an id that is wrong

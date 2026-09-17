@@ -22,14 +22,14 @@ from bajutsu.common.config import load_config, resolve
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
-from bajutsu.common.drivers.xcuitest import XcuitestChannelError
+from bajutsu.common.drivers.xcuitest import XcuitestChannelError, XcuitestRunnerCrashError
 from bajutsu.common.drivers.xcuitest_live import WebDriverError
 from bajutsu.common.platform_lifecycle import Environment, FakeEnvironment, WebEnvironment
 from bajutsu.common.platform_lifecycle.environments.xcuitest_live import XcuitestLiveEnvironment
 from bajutsu.common.scenario import Preconditions
 from bajutsu.repl.loop import PROMPT, repl_loop
 from bajutsu.repl.render import _display_width, render_json, render_table
-from bajutsu.repl.session import COMMAND_ERRORS, ReplExit, ReplSession
+from bajutsu.repl.session import COMMAND_ERRORS, FATAL_ERRORS, ReplExit, ReplSession
 
 runner = CliRunner()
 
@@ -460,6 +460,25 @@ def test_an_xcuitest_channel_error_is_reported_rather_than_crashing_the_shell() 
 
     said = _run_loop(_RunnerGone(), ["back", "exit"])
     assert said[0].startswith("XcuitestChannelError: ")
+
+
+def test_a_runner_crash_ends_the_shell_instead_of_looping_on_a_dead_driver() -> None:
+    # XcuitestRunnerCrashError subclasses XcuitestChannelError but names a runner that is gone for
+    # good (the driver's own transient-retry budget is already spent); repl has no respawn, so
+    # treating it like an ordinary channel hiccup would print one line and prompt again against a
+    # driver that can no longer answer anything.
+    assert XcuitestRunnerCrashError not in COMMAND_ERRORS
+    assert XcuitestRunnerCrashError in FATAL_ERRORS
+
+    class _Dead(FakeDriver):
+        def back(self) -> None:
+            raise XcuitestRunnerCrashError("xcodebuild exited")
+
+    # A single scripted line: if the loop read a second one instead of leaving, `_scripted` would
+    # raise `IndexError` on the exhausted list, failing the test loudly.
+    said = _run_loop(_Dead(), ["back"])
+    assert said[0].startswith("XcuitestRunnerCrashError: ")
+    assert said[1] == "the XCUITest runner is gone; this shell cannot recover it — leaving"
 
 
 # --- the command's own wiring --------------------------------------------------------------------
