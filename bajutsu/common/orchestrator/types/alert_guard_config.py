@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.elements import tree_signature
+from bajutsu.common.drivers.elements import tree_buttons, tree_signature
 
 from ._functions import (
     alert_block_note,
@@ -166,15 +166,12 @@ def _read_tree(
 
     Factored out of `dismiss_from_tree_once` so `AlertGuardConfig.__call__`'s own final tree check
     (BE-0418 review finding) can take an equally fresh read without duplicating the filter or
-    re-deriving a stale signature from whatever round last happened to touch the tree.
+    re-deriving a stale signature from whatever round last happened to touch the tree. The button
+    filter itself is `tree_buttons` (`drivers/elements.py`), shared with the mid-wait gate's own
+    tree read for the same reason `tree_signature` lives there too (BE-0418 review finding).
     """
     elements = driver.query()
-    buttons = [
-        el["label"]
-        for el in elements
-        if el["label"] and not el["identifier"] and base.Trait.BUTTON in el["traits"]
-    ]
-    return elements, buttons, tree_signature(elements)
+    return elements, tree_buttons(elements), tree_signature(elements)
 
 
 def _bound_exhaustion_note(

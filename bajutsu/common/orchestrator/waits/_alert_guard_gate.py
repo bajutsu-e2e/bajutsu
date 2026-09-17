@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.elements import shows_app_ui, tree_signature
+from bajutsu.common.drivers.elements import shows_app_ui, tree_buttons, tree_signature
 from bajutsu.common.orchestrator.types import (
     AlertEvent,
     AlertGuardConfig,
@@ -42,21 +42,6 @@ _TREE_RETAP_DELAY = 1.0
 # after this many is not one more tap will fix, so it degrades to the wait's own timeout rather than
 # actuating the device for the rest of it.
 _TREE_DISMISS_MAX_TAPS = 3
-
-
-def _tree_buttons(elements: list[base.Element]) -> list[str]:
-    """The identifier-less, labelled button text among *elements* — the same narrow surface
-    `_dismiss_from_tree` matches a scenario's own in-tree rules against.
-
-    Factored out so `_observe_native`'s own give-up-retirement check (BE-0418 review finding) reads
-    this poll's tree the identical way `_dismiss_from_tree` already does, rather than a second,
-    hand-rolled filter that could quietly drift from it.
-    """
-    return [
-        el["label"]
-        for el in elements
-        if el["label"] and not el["identifier"] and base.Trait.BUTTON in el["traits"]
-    ]
 
 
 @dataclass
@@ -173,7 +158,7 @@ class _AlertGuardGate:
         """
         return any(
             rule.identifying_labels == self._tree_gave_up_shape
-            for rule in identified_alert_rules(self.guard.tree_dedup_rules, _tree_buttons(elements))
+            for rule in identified_alert_rules(self.guard.tree_dedup_rules, tree_buttons(elements))
         )
 
     def _tree_gave_up_shape_still_shown(self, elements: list[base.Element]) -> bool:
@@ -514,7 +499,7 @@ class _AlertGuardGate:
         # breaks the cycle the split creates on this side.
         from ._functions import _decline_giveup
 
-        buttons = _tree_buttons(elements)
+        buttons = tree_buttons(elements)
         # The one shared ordering every in-tree, dedup-aware match reads from (BE-0418 review
         # finding): matching over anything else here would let this gate and `dismiss_from_tree_once`
         # — declared twins over the same screen — pick differently, so which button a scenario gets
