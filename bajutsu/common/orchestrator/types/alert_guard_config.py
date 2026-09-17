@@ -506,7 +506,7 @@ def _final_tree_check(
     unconfirmed, and only the shape actually found still enumerable is the one whose own `AlertEvent`
     is withdrawn from `alerts` in place — the post-loop twin of the in-loop withdrawal.
 
-    A non-empty *note* does not skip this check the way the other two conditions do: `note` is a
+    A non-empty *note* does not skip this check the way the other condition does: `note` is a
     reporting-precedence decision (a native diagnosis wins over the tree's own), not evidence that
     the tree tap actually landed, and a round that ends on an unrelated native note — an undeclared
     alert raising after the tap, say — has never itself read the tree since. Skipping the withdrawal
@@ -515,20 +515,22 @@ def _final_tree_check(
     (BE-0418 review finding). The withdrawal still runs; only the returned note keeps *note*'s own
     precedence when it is non-empty.
 
-    Also skipped when `round_index < _GUARD_CALL_MAX_ROUNDS - 1`: `round_index` here is the round the
-    loop *stopped* at, which is the final round only when the loop actually ran it out — a branch
-    that `break`s early (an "unhandled" alert nothing is worth another round for, say) stops on an
-    earlier round with rounds still unspent. The in-loop lingering-fade branch reaches this same
-    withdrawal only through a check gated on `round_index == _GUARD_CALL_MAX_ROUNDS - 1`
-    (`_bound_exhaustion_note`); reaching it here on an earlier round would withdraw a tap on
-    evidence the in-loop branch itself would not yet have trusted, on a call that still had a round
-    left to test it properly (BE-0418 review finding).
+    Not skipped on a call whose final round `break`s early, unlike the in-loop lingering-fade
+    branch's own `round_index == _GUARD_CALL_MAX_ROUNDS - 1` gate (`_bound_exhaustion_note`): a
+    `break` ends the call outright, so `round_index` at that point is not "a round short of the
+    bound with more still to come" — no further round will ever run regardless of its value, which
+    makes a `break` the *strongest* form of "this is the last round," not a weaker one. Gating this
+    check on `round_index` having reached the nominal final index would skip it on exactly the
+    `break` this mechanism exists to cover: an "unhandled" alert nothing is worth another round for
+    can `break` right after an earlier round's own tree tap, leaving that tap's `AlertEvent`
+    unconfirmed with no later round left to test it — the two harms this check and `_withdraw` exist
+    to prevent (BE-0418 review finding). The two other `break` sites need no such gate either: one
+    is reachable only when `dismissed_tree_info` is already empty (`not dismissed_tree_info` above
+    already covers it), and the other has just run this same `_first_lingering_tree_shape` check
+    itself and found nothing, which `tree_read_round == round_index` below already recognizes as
+    freshly re-tested.
     """
-    if (
-        not dismissed_tree_info
-        or round_index < _GUARD_CALL_MAX_ROUNDS - 1
-        or (tree_read_round is not None and tree_read_round >= round_index)
-    ):
+    if not dismissed_tree_info or (tree_read_round is not None and tree_read_round >= round_index):
         return note
     _, final_tree_buttons, _ = _read_tree(driver)
     lingering_shape = _first_lingering_tree_shape(dismissed_tree_info, final_tree_buttons)
@@ -922,7 +924,11 @@ class AlertGuardConfig:
         `note` likewise survives a round that resolves a *different* surface: a tree button stuck
         behind a scrim (`NotTappable`) stays named in the eventual `blocked_note` even if a later
         round goes on to dismiss an unrelated SpringBoard alert, rather than that unrelated success
-        silently erasing a diagnosis the tree round still stands by.
+        silently erasing a diagnosis the tree round still stands by. The one exception is a round
+        that finds a live, undeclared alert no rule identifies: the tree is read at all only when
+        the native surface answers genuinely empty, so such a round can never itself corroborate
+        that a still-open tree diagnosis is still there, and the fresher, confirmable native
+        finding reports instead (BE-0418 review finding).
         """
         note = ""
         # Not tracked as this call goes, unlike `note`: computed from `alerts`' own net length
@@ -1022,7 +1028,12 @@ class AlertGuardConfig:
                     # here means nothing else is queued, and `native_dismiss_shape` would otherwise
                     # trivially satisfy `_bound_exhaustion_note`'s check against this very round's own
                     # pre-tap read, naming the alert that was just confirmed tapped as still uncleared
-                    # (BE-0418 review finding).
+                    # (BE-0418 review finding). The queued prompt's own note is `uncleared_prompt_note`,
+                    # not `alert_block_note`, for the same reason `_bound_exhaustion_note`'s two other
+                    # callers choose it: naming it "unhandled" would say no rule identifies it, when
+                    # one does — its generic "could not clear" phrasing covers this round never having
+                    # attempted a tap on it at all, not only a tap that was attempted and failed
+                    # (`uncleared_prompt_note`'s own docstring, BE-0418 review finding).
                     note = _fresh_dismiss_leftover_note(
                         self.native_rules, buttons, dismissed_native, round_index
                     )
@@ -1399,18 +1410,28 @@ class AlertGuardConfig:
                         for rule in identified_alert_rules(self.native_rules, buttons)
                     },
                 )
-                # Only the assignment to `note` itself defers to the tree diagnosis — its own
-                # precedence is unaffected by the withdrawal running unconditionally above.
-                note = note if stuck_tree_label is not None else candidate
+                # Not gated on `stuck_tree_label`, unlike the sibling branches above (BE-0418
+                # review finding): a tree diagnosis's own note only outranks a fresher one when this
+                # round cannot corroborate the tree either way — the tree is read at all only inside
+                # `if not buttons:`, which "unhandled" can never reach (an unhandled alert is by
+                # definition a non-empty `buttons` read). A live, undeclared SpringBoard alert
+                # confirmed right now is exactly the "unknown, not a confirmed yes" state
+                # `_tree_gave_up_shape_still_shown` already resolves this same way on the gate side
+                # of this PR: a poll that cannot corroborate the given-up shape lets the fresher
+                # native diagnosis win rather than deferring to a note this round cannot itself
+                # confirm. `candidate` empty (nothing new this round; see this call's own docstring)
+                # falls back to whatever `note` already held, rather than blanking a still-live tree
+                # diagnosis over a round with nothing to add.
+                note = candidate or note
                 if stuck_tree_label is None and not _native_round_worth_another_try(
                     dismissed_native, buttons, self.native_rules
                 ):
                     # Breaking here keeps this round's own diagnosis and costs nothing this call
-                    # could still change — unless an open `NotTappable` diagnosis is the one still
-                    # in flight, in which case `note` itself was left holding the tree's own
-                    # diagnosis above (only the assignment was skipped, not the computation or the
-                    # withdrawal), so there is nothing of this round's own report to lose, and a
-                    # round remains for Unit 2's landing-race retry to meet the scrim lifting
+                    # could still change — an open `NotTappable` diagnosis does not exempt this
+                    # branch from breaking the way it does the sibling branches above, since `note`
+                    # itself no longer defers to it here; a round remains for Unit 2's landing-race
+                    # retry to meet the scrim lifting regardless, since that decision is about
+                    # whether another round is worth spending, not about which note this one reports
                     # (BE-0418 review finding).
                     break
                 settle()

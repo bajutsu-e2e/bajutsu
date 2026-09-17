@@ -71,14 +71,19 @@ def alert_block_note(buttons: Sequence[str]) -> str:
 def uncleared_prompt_note(label: str) -> str:
     """A give-up on a prompt a rule named but could not clear (BE-0402): the in-tree dismiss's own
     `NotTappable`, `AlertGuardConfig.__call__` spending its whole round bound with the shape it
-    most recently tapped — native or in-tree — still reading back on the final round, or a native
-    tap `_AlertGuardGate._observe_native` resolved and then found the label twice
-    (`AmbiguousSelector`, which `probe_native` reports as `"unhandled"`) — BE-0418.
+    most recently tapped — native or in-tree — still reading back on the final round, a native tap
+    `_AlertGuardGate._observe_native` resolved and then found the label twice (`AmbiguousSelector`,
+    which `probe_native` reports as `"unhandled"`), or a second, declared prompt the `"dismissed"`
+    branch's own fallback (`_fresh_dismiss_leftover_note`) resolves fresh against the final round's
+    own read, queued behind the one that round actually tapped and never reached within the bound
+    (BE-0418 review finding) — BE-0418.
 
     Deliberately not `alert_block_note`: "unhandled" would tell the author no rule identified the
-    alert, when their rule did identify it and only the tap failed — it did not take, or never
-    became deliverable — sending them to write a rule they already have instead of to the stuck
-    prompt.
+    alert, when their rule did identify it. "Could not clear" covers every producer above without
+    claiming which one happened — a tap that did not take or never became deliverable, *and* a
+    prompt this call never attempted a tap on at all because the round bound ran out first (BE-0418
+    review finding) — either way, telling the author to write a rule they already have instead of
+    to the stuck prompt is the one wrong answer this note exists to avoid.
     """
     return f"{_UNCLEARED_PROMPT_NOTE} (button: {label})"
 

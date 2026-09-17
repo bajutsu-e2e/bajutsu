@@ -1620,11 +1620,18 @@ def test_the_end_of_step_guard_filters_the_unhandled_note_when_the_collision_nev
     assert "Don't Allow" not in guard.blocked_note
 
 
-def test_the_end_of_step_guard_keeps_a_pending_tree_note_through_a_later_unhandled_round() -> None:
-    # The `"unhandled"` branch's own note computation must defer to a pending tree diagnosis the
-    # same way `already_dismissed` and the tree-lingering branch already do: a native alert that
-    # shows up on a later round, and that no rule identifies, must not overwrite (or clear) a
-    # `NotTappable` note an earlier round is still standing by.
+def test_the_end_of_step_guard_names_a_later_unhandled_native_alert_over_a_pending_tree_note() -> (
+    None
+):
+    # BE-0418 review finding (superseding an earlier round's own mistaken fix for this exact
+    # scenario): the `"unhandled"` branch's own note is not gated on a pending tree diagnosis the
+    # way `already_dismissed` and the tree-lingering branch are, because this round has no way to
+    # corroborate that diagnosis either way -- the tree is read at all only inside `if not
+    # buttons:`, which "unhandled" can never reach (an unhandled alert is by definition a
+    # non-empty `buttons` read). A live, undeclared alert confirmed right now is exactly the
+    # "unknown, not a confirmed yes" state `_tree_gave_up_shape_still_shown` already resolves this
+    # same way on the gate side of this PR: the fresher, confirmable native diagnosis wins over a
+    # tree note this round cannot itself corroborate.
     class _StuckTreeThenUnhandledNative(FakeDriver):
         def __init__(self) -> None:
             super().__init__([_button("Not Now")])
@@ -1641,8 +1648,8 @@ def test_the_end_of_step_guard_keeps_a_pending_tree_note_through_a_later_unhandl
     guard = AlertGuardConfig(rules=[guard_rule("Not Now", native=False, in_tree=True)])
     cleared, alerts = _call(driver, guard)
     assert not cleared and alerts == []
-    assert "Not Now" in guard.blocked_note  # the tree diagnosis, not the later native one
-    assert "Weird Button" not in guard.blocked_note
+    assert "Weird Button" in guard.blocked_note
+    assert "Not Now" not in guard.blocked_note
 
 
 def test_the_end_of_step_guard_keeps_a_stuck_tree_note_after_a_different_tree_tap_lands() -> None:
@@ -4004,21 +4011,22 @@ def test_the_end_of_step_guard_names_an_uncleared_tree_sheet_after_a_native_fina
     assert guard.blocked_note == uncleared_prompt_note("A")
 
 
-def test_the_end_of_step_guard_does_not_withdraw_a_landed_tap_on_an_early_break() -> None:
-    # BE-0418 review finding: `_final_tree_check` had no "the bound was actually spent" condition,
-    # so a call that `break`s out with rounds still unused ran the withdrawal anyway -- where the
-    # in-loop lingering-fade twin deliberately waits for the final round
-    # (`_bound_exhaustion_note`'s own `round_index == _GUARD_CALL_MAX_ROUNDS - 1` gate).
-    # `round_index` after the loop is the round the loop *stopped* at, which is the final round
-    # only when the loop actually ran it out. Round 0 taps "Not Now" (an in-tree-only policy, so
-    # `native_rules` is empty) and it genuinely lands; `tree_read_round` stays `None`, since the
-    # tap branch deliberately does not set it. Round 1 is an undeclared SpringBoard alert no rule
-    # identifies -- with `dismissed_native` empty and no native rules, `_native_round_worth_another_try`
-    # is `False`, so the call `break`s at `round_index == 1`, one round short of the final one. The
-    # tree is never read again inside the loop, and `driver.screen` never mutated, so a fresh
-    # post-loop query would (wrongly) still find "Not Now" enumerable and treat it as a fade that
-    # never lifted -- on a call that still had a round left to test that properly.
-    driver = FakeDriver([_button("Not Now")])  # never removed: "Not Now" genuinely closed already
+def test_the_end_of_step_guard_withdraws_an_unconfirmed_tap_on_an_early_break() -> None:
+    # BE-0418 review finding (superseding an earlier round's own mistaken fix for this exact
+    # scenario): a `break` ends the call outright, so `round_index` at that point is not "a round
+    # short of the bound with more still to come" -- no further round will ever run regardless of
+    # its value, which makes a `break` the *strongest* form of "this is the last round," not a
+    # weaker one that should be exempted from `_final_tree_check`. Round 0 taps "Not Now" (an
+    # in-tree-only policy, so `native_rules` is empty); `FakeDriver` never removes a tapped button
+    # on its own, so nothing this call ever does confirms the sheet actually closed.
+    # `tree_read_round` stays `None`, since the tap branch deliberately does not set it. Round 1 is
+    # an undeclared SpringBoard alert no rule identifies -- with `dismissed_native` empty and no
+    # native rules, `_native_round_worth_another_try` is `False`, so the call `break`s at
+    # `round_index == 1`, with the tree never read again inside the loop. `_final_tree_check`'s own
+    # fresh, post-loop read is this call's *only* remaining chance to test whether "Not Now"
+    # actually cleared, and it finds the identical button still there -- so the tap is withdrawn,
+    # exactly as it would be had round 1 instead been a real final round reading the same tree.
+    driver = FakeDriver([_button("Not Now")])  # never removed: never confirmed closed
     settle_calls = 0
 
     def settle() -> None:
@@ -4039,10 +4047,10 @@ def test_the_end_of_step_guard_does_not_withdraw_a_landed_tap_on_an_early_break(
     )
     alerts: list[AlertEvent] = []
     cleared = guard(driver, alerts, settle=settle)
-    # "Not Now" genuinely landed on round 0 and must not be withdrawn just because the call ended
-    # early on round 1's own "unhandled" diagnosis, one round short of the bound.
-    assert cleared
-    assert alerts == [AlertEvent(label="Not Now")]
+    # Withdrawn: the early break leaves no round to confirm "Not Now" actually closed, and the
+    # live, undeclared alert that ended the call is what the report names instead.
+    assert not cleared
+    assert alerts == []
     assert "Weird Button" in guard.blocked_note
 
 
