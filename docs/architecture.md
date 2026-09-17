@@ -906,11 +906,14 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   That costs one `poll_interval` when the race resolves on the next probe, and the wait's whole
   remaining timeout when it does not, since nothing re-licenses the tap in between. A sheet already
   mid-retry when such a race begins is not charged for the gap: the in-tree give-up's own
-  not-tappable horizon resets on every poll whose own probe withholds that licence — the race, a
-  dismissal, an alert no rule identifies, and the step's own reserved alert alike — so the tap gets
-  its full horizon back the moment the licence returns, even when the scrim lifted while one of them
-  was holding that licence back, rather than the sheet being given up on for wall-clock time the tap
-  was never allowed to spend. The
+  not-tappable horizon is pushed forward by exactly however long that licence was withheld — by the
+  race, a dismissal, an alert no rule identifies, or the step's own reserved alert alike — so it
+  counts only the licensed time the tap actually got to spend, neither penalized for the gap nor
+  forgiven what it had already spent before it. A scrim that lifts while one of those polls is
+  holding the licence back is therefore still met once the licence returns, rather than the sheet
+  being given up on for wall-clock time the tap was never allowed to spend, while a permanently
+  obstructed sheet whose polls interleave with a recurring gap still reaches its give-up instead of
+  having the clock wiped each time. The
   same poll stopped clearing `blocked_note` unconditionally on that race too, and can now report its
   own note naming whichever buttons no declared rule accounts for on the read — a note this path
   never produced on a bare `"absent"` answer before. Its `"unhandled"` note changed three ways too:
