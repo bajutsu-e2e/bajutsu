@@ -789,8 +789,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   only re-read the same surface or find the alert gone on its own, and continuing risks losing this
   round's own diagnosis to that second case. A native alert whose fade outlasts that settle still
   reads back, unchanged, on a later round.
-  Where a later round's read matches a shape a previous round already dismissed, or a narrower
-  rendering of one — two of a `savePassword` policy's three rules nest that way, though only on the
+  Where a later round's read matches a shape a previous round already dismissed, or any shape that
+  nests with one — narrower *or* wider, since the same alert can render a label it had not yet
+  drawn when a narrower reading of it was dismissed; two of a `savePassword` policy's three rules
+  nest that way, though only on the
   in-tree surface that prompt ever reaches, and both tap the same button — the round declines to
   tap it at all: the same alert still fading, not a distinct one, so a repeat tap never reaches the
   device and never risks landing on nothing or on whatever the closing alert has by then revealed
@@ -802,7 +804,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   the same prompt, and keying on the label alone would let one such rule's exclusion promote its
   sibling to tap the opposite button on the alert this call already answered. A later alert
   resolving to a shape that
-  is neither a match nor a narrower rendering of one already dismissed — including one sharing the
+  is neither a match nor a nested rendering — narrower or wider — of one already dismissed — including one sharing the
   tapped label alone (the built-in `notifications` and `tracking` prompts both grant `"Allow"`) —
   still taps as usual once it is no longer read alongside the one already dismissed; two such
   alerts read together instead share that label's count, so neither uniquely matches and the round

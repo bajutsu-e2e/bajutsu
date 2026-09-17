@@ -252,9 +252,10 @@ Log:
   of the raw buttons a probe reads, since that read enumerates the whole surface and moves the
   moment a different alert joins it; `_resolve_alert_rule` retries among the shapes not yet
   answered when the plain match lands on one already answered, so a stacked alert behind the fade
-  is still found on both the native and tree paths, and treats a narrower rendering of an
-  already-answered shape as answered too, since a policy's own rules for one prompt can nest
-  (`savePassword`'s three shapes are one such case). A round that exhausts the bound with the only
+  is still found on both the native and tree paths, and treats any nested rendering — narrower or
+  wider — of an already-answered shape as answered too, since a policy's own rules for one prompt
+  can nest (`savePassword`'s three shapes are one such case) and the same alert can render a label
+  it had not yet drawn when a narrower reading of it was dismissed. A round that exhausts the bound with the only
   thing still on screen being the alert this call already tapped now reports it via
   `uncleared_prompt_note`, rather than the note going silently empty. The fast suite covers the
   stacked-alert, landing-race, permanently-obstructed, settle-on-exhaustion, nested-shape, and
