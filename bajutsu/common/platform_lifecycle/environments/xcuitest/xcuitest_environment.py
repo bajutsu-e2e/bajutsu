@@ -94,9 +94,15 @@ _MAX_CRASH_REPORTS = 3
 
 # How long the app's own `.ips` sweep waits for `ReportCrash` to finish writing, and how often it
 # re-looks (BE-0424). A condition wait, not a fixed sleep: it returns the instant a matching report
-# appears. Bounded short because the scenario has already failed by the time this runs — the wait
-# buys evidence, never a different verdict.
-_APP_CRASH_REPORT_TIMEOUT = 5.0
+# appears, so a generous bound costs nothing on the common case where the report is already there.
+# Bounded rather than unbounded because the scenario has already failed by the time this runs — the
+# wait buys evidence, never a different verdict. 15s rather than the 5s this started at, because two
+# consecutive `app-crash (xcuitest)` CI runs on one commit (PR #2012) each classified the crash
+# correctly (`app_crashed: true`) yet swept no report inside the old bound, while the same scenario
+# against a freshly built app on an uncontended local Simulator captures one every time. No
+# code-side cause was found, which leaves `ReportCrash` being slower to finish its write on a shared
+# runner as the remaining explanation.
+_APP_CRASH_REPORT_TIMEOUT = 15.0
 _APP_CRASH_REPORT_POLL = 0.2
 
 
