@@ -735,56 +735,174 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   inside the driver's own loop nothing else could act, so a declared prompt held the screen for the
   step's whole timeout. The guard is given the step's selector and declines an alert it names, so
   the two never answer the same prompt
-- DSL `systemAlertHandling` (BE-0315), the reactive counterpart: an alert guard that fires only when
-  a step or `wait` is blocked, polling `handleSystemAlert`'s SpringBoard query on its own interval
-  (default 1s, decoupled from the wait's poll cadence) and answering the prompts the scenario's own
-  `rules` name — no model call, reusing BE-0316's plumbing rather than a parallel API. Since
-  BE-0402 the guard is deterministic throughout: where nothing deterministic can act (a backend lacking
-  the capability, an alert no rule identifies, or a non-enumerable blocking
-  surface no rule identifies either — the ones a rule does identify, an
-  in-tree tap takes on) it does nothing, and what it saw rides the failure: a guarded `wait` always
-  carries the note (its gate watches the tree every poll), while a step outside a wait carries it only
-  where the native query enumerated the alert. The note names what the guard saw in its own
-  timeout —
-  `… — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`, or a hedged
-  form where no query enumerated the surface. Before BE-0402 that case fell back to an AI-vision guard
-  reading a screenshot, and `visionInstruction` steered that fallback alone, so `run` now
-  rejects it before any scenario starts rather than ignoring it — the silent inversion BE-0401 split
-  the old single `instruction` key to expose. BE-0406 then made `rules` the guard's whole
-  declaration and removed `labels`: a button label named a button, never the alert it sat on, so it
-  licensed a tap on a screen no scenario had described. `rules` composes across two layers
-  (scenario, then target) by concatenation, innermost-first, and the sole remaining scalar,
-  `pollInterval`, takes the innermost layer that supplies one; no flag carries a prompt paired with
-  a choice legibly, so the command line supplies `pollInterval` alone. A prompt's entry records
-  which of the three answer surfaces it reaches — the `handleSystemAlert` step, the native
-  SpringBoard probe, and the in-tree dismissal — so `savePassword`, which iOS raises inside the
-  application's own process, is declarable as a rule and answered by the in-tree dismissal alone,
-  and the step rejects it at parse time rather than polling an empty button list to its deadline.
-  Both one-shot dismiss sites — the end-of-step dismiss and the `expect` retry — then wait for the
-  screen to stop changing before the retry reads it, bounded at one second and best-effort: a prompt
-  that has been tapped is not yet a prompt that is gone, and without that settle the retry judged a
-  tree mid-animation and could fail for that reason alone. Like the `handleSystemAlert` wait the
-  bullet above moved to the orchestrator, the settle is a condition wait rather than a fixed sleep,
-  and reaching its bound simply proceeds — it never decides a verdict. XCUITest itself
-  intervenes on an alert that interrupts an in-flight interaction *before* this guard ever polls, and
-  left alone answers with the alert's own default button — silently overriding a scenario's policy
-  with nothing in the report. The runner therefore installs an interruption monitor that presses the
-  same rule-named button the reactive guard would, and records what it pressed as an ordinary
-  `AlertEvent`; the orchestrator resolves each rule's labels and pushes them, alongside whether the
-  guard governs the scenario at all, once per scenario over `POST /interruptionPolicy`, dropping a
-  rule this surface can never meet (an in-process prompt never interrupts another process's
-  interaction). A `handleSystemAlert` step's own prompt/choice form is not necessarily among those
-  rules — the step exists precisely for a prompt an author chooses not to declare in
-  `systemAlertHandling` — so while that one step waits the orchestrator pushes one
-  more rule for the step's own target alongside the scenario's, and restores the scenario's own
-  policy once the step returns, fails, or the wait raises. Without it, an earlier action's own
-  interruption could meet that same prompt first, find no matching rule, and fail a step for an
-  alert this one was about to answer. A prompt the policy names no button on is still left
-  to XCUITest's own default
-  handler, unchanged (BE-0399) — nothing here can stop that tap — but since BE-0406 a governing
-  policy records the buttons it declined before doing so, and the step or `expect` that met the
-  interruption fails, naming them, rather than the run continuing as if nothing had answered on the
-  scenario's behalf. A foreground notification banner reaches that same monitor but takes a branch of
+- DSL `systemAlertHandling` (BE-0315), the reactive counterpart: an alert guard that fires only
+  when a step or `wait` is blocked, polling `handleSystemAlert`'s SpringBoard query on its own
+  interval (default 1s, decoupled from the wait's poll cadence) and answering the prompts the
+  scenario's own `rules` name — no model call, reusing BE-0316's plumbing rather than a parallel
+  API. Since BE-0402 the guard is deterministic throughout: where nothing deterministic can act (a
+  backend lacking the capability, an alert no rule identifies, or a non-enumerable blocking surface
+  no rule identifies either — the ones a rule does identify, an in-tree tap takes on) it does
+  nothing, and what it saw rides the failure: a guarded `wait` always carries the note (its gate
+  watches the tree every poll), while a step outside a wait carries it only where the native query
+  enumerated the alert. The note names what the guard saw in its own timeout — `… — an unhandled
+  system alert is blocking the screen (buttons: Allow, Don't Allow)`, or a hedged form where no
+  query enumerated the surface. Before BE-0402 that case fell back to an AI-vision guard reading a
+  screenshot, and `visionInstruction` steered that fallback alone, so `run` now rejects it before
+  any scenario starts rather than ignoring it — the silent inversion BE-0401 split the old single
+  `instruction` key to expose. BE-0406 then made `rules` the guard's whole declaration and removed
+  `labels`: a button label named a button, never the alert it sat on, so it licensed a tap on a
+  screen no scenario had described. `rules` composes across two layers (scenario, then target) by
+  concatenation, innermost-first, and the sole remaining scalar, `pollInterval`, takes the
+  innermost layer that supplies one; no flag carries a prompt paired with a choice legibly, so the
+  command line supplies `pollInterval` alone. A prompt's entry records which of the three answer
+  surfaces it reaches — the `handleSystemAlert` step, the native SpringBoard probe, and the in-tree
+  dismissal — so `savePassword`, which iOS raises inside the application's own process, is
+  declarable as a rule and answered by the in-tree dismissal alone, and the step rejects it at
+  parse time rather than polling an empty button list to its deadline. Both one-shot dismiss sites
+  — the end-of-step dismiss and the `expect` retry — then wait for the screen to stop changing
+  before the retry reads it, bounded at one second and best-effort: a prompt that has been tapped
+  is not yet a prompt that is gone, and without that settle the retry judged a tree mid-animation
+  and could fail for that reason alone. Like the `handleSystemAlert` wait the bullet above moved to
+  the orchestrator, the settle is a condition wait rather than a fixed sleep, and reaching its
+  bound simply proceeds — it never decides a verdict. Since BE-0418 each one-shot call itself
+  loops, up to three rounds, rather than stopping at its first dismissal: a SpringBoard-owned alert
+  queued in front of an app-owned sheet no longer ends the call before the sheet is even read, and
+  a tap a still-animating scrim keeps from landing gets the same bounded retry the mid-wait gate
+  already carries for that race. The settle above runs after every round that acted on a live alert
+  or found one it could not yet resolve — one that dismissed something; one that found a button not
+  yet tappable; one that declined a still-fading alert this call had already dismissed; one
+  that read a shared-label collision no rule could uniquely match; one whose own tap raced away
+  over a non-empty read; and one whose tree read matched nothing while an earlier round's own
+  in-tree tap was still stuck behind a scrim that had not yet lifted — the round that exhausts the
+  bound included, so a caller reading the screen the instant the call returns never reads one still
+  animating. A round that finds nothing left to act on ends the call — unless the only thing it
+  matched was a shape this call already cleared, still lingering, in which case it settles and gives a sheet
+  stacked behind that fade another round rather than ending the call on a lingering fade this loop
+  exists to see past — the same holds when an earlier round's own in-tree tap is still stuck behind
+  a scrim that has not yet lifted: an ambiguous read that matches nothing is not itself proof the
+  scrim lifted, so the round settles and retries rather than ending the call there. A round that
+  meets an alert no rule identifies settles and tries again too, rather than ending the call
+  outright, but only when continuing could still change what a later round reads. That
+  holds once this call has already dismissed a native alert, or once a native rule's own shape is
+  already present in the read — though not uniquely, and with none of that rule's own excluded
+  labels present. Two rules can share a tapped label
+  (`notifications` and `tracking` both grant `"Allow"`), so a round reading one's still-fading
+  buttons alongside the other's now-live ones fails the per-label uniqueness check for either. That
+  collision can be this call's own first round, before any native alert has been dismissed, since
+  both alerts can already be on the screen. Settling is what buys a later read that no longer holds
+  both at once, whether by an already-answered alert's fade draining or by the other alert leaving
+  the surface, so the live one reads uniquely and resolves on a round of its own. The note such a
+  round reports filters out one
+  occurrence per label this call has already answered, so the alert already cleared is not re-named
+  while a second, still-live alert's own copy of a shared label is. With no native alert dismissed
+  and no native rule's shape present in the read, there is no fade of this call's own making to
+  drain and no live collision to wait out, so the round ends the call instead — unless an earlier
+  round's own in-tree tap is still stuck behind a scrim, which is itself something this call can
+  still act on, so the round settles and retries rather than ending there. A later round could
+  only re-read the same surface or find the alert gone on its own, and continuing risks losing this
+  round's own diagnosis to that second case. A native alert whose fade outlasts that settle still
+  reads back, unchanged, on a later round.
+  Where a later round's read matches a shape a previous round already dismissed, or any shape that
+  nests with one — narrower *or* wider, since the same alert can render a label it had not yet
+  drawn when a narrower reading of it was dismissed; two of a `savePassword` policy's three rules
+  nest that way, though only on the
+  in-tree surface that prompt ever reaches, and both tap the same button — the round declines to
+  tap it at all: the same alert still fading, not a distinct one, so a repeat tap never reaches the
+  device and never risks landing on nothing or on whatever the closing alert has by then revealed
+  underneath it, on either path. Both are keyed on a rule's own shape rather than the buttons a
+  probe reads, since that read enumerates every alert the surface currently holds and so changes
+  the moment a different alert joins or leaves it — something the alert this call already dismissed
+  has not itself done. Both key on shape rather than a rule's own tap label, too: two rules can
+  share one alert's shape under different choices, a scenario's `choice` overriding a target's for
+  the same prompt, and keying on the label alone would let one such rule's exclusion promote its
+  sibling to tap the opposite button on the alert this call already answered. A later alert
+  resolving to a shape that is neither a match nor a nested rendering (narrower or wider) of one
+  already dismissed still taps as usual once it is no longer read alongside the one already
+  dismissed — an alert sharing only the tapped label included, as the built-in `notifications` and
+  `tracking` prompts both grant `"Allow"`. Two such alerts read together instead share that
+  label's count, so neither uniquely matches and the round reports the surface as unhandled. A
+  match landing back on an already-answered shape does not by itself end the round on either path:
+  a real, not-yet-answered alert can be enumerable right alongside that fade, so the search retries
+  among the shapes not yet dismissed before declining. A
+  round that declines a repeat native tap still checks the buttons the probe read against every
+  shape answered so far: a queued second alert no rule identifies can sit right alongside the one
+  this call already dismissed, and the decline alone does not mean the rest of the surface is
+  clear. A button that never becomes reachable within the bound carries its own note, distinct from
+  the one an alert no rule identifies carries, rather than reading as a bare missing element. A
+  native alert the call did tap carries that same note once the bound is spent with nothing left on
+  the surface that this call has not already answered, its own earlier fades included. The evidence
+  is the call's own last read still showing a live, policy-named alert — not a streak across every
+  round since the tap, which a round of any other kind in between would break. A round whose own
+  tap raced away instead of landing carries the identical note when the matched rule's shape is
+  still enumerable on the final round *and* an earlier round of the same call raced that same shape
+  away, even though this call never confirmed a tap landed at all — resolved fresh against that
+  round's own read rather than a stale record of an earlier, already-tapped shape. The second race
+  is what makes the evidence real: on a race round the shape is in the read by construction, since
+  that is the very read the rule matched against before the tap raced, so one race alone proves
+  nothing and the round stays silent unless an earlier tap of its own is what reads back. A call
+  whose every round races the same alert away therefore still names it instead of falling silent,
+  and one that raced away only after cleanly tapping a *different* alert names the
+  rule that actually raced, not the unrelated one it already tapped. An
+  in-tree sheet an *earlier* round tapped carries it too, once the bound is spent with the sheet
+  still enumerable — on the
+  shape's own labels alone, not the rest of the tree's own identity: a sheet that accepts a tap
+  without closing can re-present itself with a validation error, which changes the tree by
+  construction, so requiring the tree to read back unchanged would rule out exactly that case. That
+  check ranges over every shape this call has tapped from the tree, not only the most recently
+  tapped one: an earlier sheet that never closed would otherwise go unreported the moment a later,
+  different sheet is tapped and genuinely clears, since only the latter's own shape was ever
+  compared. A sheet tapped on the very round that spends the bound is exempt: one best-effort
+  settle is not enough to tell a still-fading animation from a sheet that never closes, the bar
+  every earlier round's own tap already clears by having a full round and a settle pass before this
+  check ever runs against it, so an ordinary dismissal whose fade merely outlasts that one settle
+  earns the same benefit of the doubt rather than losing the caller's retry over it. An
+  app screen the closing sheet revealed can coincidentally carry the same button labels and get
+  misnamed as the sheet that never closed, but `exclude` already keeps this call from tapping either
+  one again regardless of which read it takes, so the misreport never costs a second tap. It does
+  cost more than an imprecise note, though: the same containment check withdraws the `AlertEvent`
+  that tap genuinely earned, so a sheet that really did close is reported as never dismissed — and
+  when it was the call's only dismissal, the caller's own one-shot retry is skipped against a
+  screen that had in fact moved on. The tree
+  note survives a later round that finds nothing to match, or one that goes on to dismiss an
+  unrelated alert on either surface — native or
+  in-tree — rather than either round erasing a real, still-open diagnosis. The one round it does not
+  survive is one that finds a live, undeclared alert no rule identifies: the tree is read at all
+  only when the native surface answers genuinely empty, so such a round can never itself confirm
+  the tree diagnosis is still open, and the fresher, confirmable native finding reports instead. A
+  native leftover note is
+  not so durable, and for two different reasons depending on what that later round did: dismissing
+  an unrelated native alert recomputes the note fresh against that round's own buttons rather than
+  preserving whatever it held before, while a round whose own probe proves the surface absent clears
+  it outright — a deterministic fact the diagnosis cannot outlive. A dismissal either diagnosis
+  later names as never having landed has its own `AlertEvent` withdrawn from the caller's report at
+  that point, rather than left standing beside a note that says the opposite: a tap is recorded the
+  moment it lands, which is the only moment it can be, since nothing then distinguishes a tap that
+  lands from one the app never acts on, and reaching the round bound with the same shape still
+  reading back is where that becomes knowable. Leaving the record in place would ship two
+  contradictory facts about one prompt — a dismissal the report counts and a note saying that same
+  prompt was never cleared — and spend the caller's own one-shot retry against a screen this call
+  already concluded is still blocked by the very prompt it would otherwise report as dismissed.
+  What the call returns is computed from the report's own net change rather than tracked as the
+  rounds go, so an earlier, genuinely cleared dismissal this call never revisits still counts even
+  when a later one on the same or the other surface is the one taken back. XCUITest itself intervenes on an
+  alert that interrupts an in-flight interaction *before* this guard ever polls, and left alone
+  answers with the alert's own default button — silently overriding a scenario's policy with
+  nothing in the report. The runner therefore installs
+  an interruption monitor that presses the same rule-named button the reactive guard would, and
+  records what it pressed as an ordinary `AlertEvent`; the orchestrator resolves each rule's labels
+  and pushes them, alongside whether the guard governs the scenario at all, once per scenario over
+  `POST /interruptionPolicy`, dropping a rule this surface can never meet (an in-process prompt
+  never interrupts another process's interaction). A `handleSystemAlert` step's own prompt/choice
+  form is not necessarily among those rules — the step exists precisely for a prompt an author
+  chooses not to declare in `systemAlertHandling` — so while that one step waits the orchestrator
+  pushes one more rule for the step's own target alongside the scenario's, and restores the
+  scenario's own policy once the step returns, fails, or the wait raises. Without it, an earlier
+  action's own interruption could meet that same prompt first, find no matching rule, and fail a
+  step for an alert this one was about to answer. A prompt the policy names no button on is still
+  left to XCUITest's own default handler, unchanged (BE-0399) — nothing here can stop that tap —
+  but since BE-0406 a governing policy records the buttons it declined before doing so, and the
+  step or `expect` that met the interruption fails, naming them, rather than the run continuing as
+  if nothing had answered on the scenario's behalf. A foreground notification banner reaches that same monitor but takes a branch of
   its own, ahead of the policy (BE-0416): a banner carries no button a rule could identify — its one
   tappable region opens the notification's app — so the monitor swipes it upward by its own measured
   frame, confirms the clearance before claiming the interruption, and records it as an `AlertEvent`
@@ -793,7 +911,52 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   banner: a governing policy recorded it as an undeclared interruption and failed an otherwise
   passing step, while an ungoverned one left XCUITest to wait the banner out, measured at ~9s per
   interrupted interaction against ~0.6s undisturbed. `systemAlertHandling` itself is on by default,
-  and `false` disables it per scenario — the banner branch above runs either way
+  and `false` disables it per scenario — the banner branch above runs either way.
+  The mid-wait gate's own reach changed alongside the one-shot call above (BE-0418). Its
+  `probed_absent` narrowed from `state == "absent"` alone to `state == "absent" and not buttons`:
+  that state now also answers the time-of-check/time-of-use race — a matched rule's own tap racing
+  away over a *non-empty* read — so a poll catching that race no longer licenses the in-tree dismiss
+  the way a genuinely empty enumeration does, and a declared app-owned sheet stacked behind the race
+  is no longer tapped immediately: it goes untapped until a probe reads the surface genuinely empty.
+  That costs one `poll_interval` when the race resolves on the next probe, and the wait's whole
+  remaining timeout when it does not, since nothing re-licenses the tap in between. A sheet already
+  mid-retry when such a race begins is not charged for the gap: the in-tree give-up's own
+  not-tappable horizon is pushed forward by exactly however long that licence was withheld — by the
+  race, a dismissal, an alert no rule identifies, or the step's own reserved alert alike — so it
+  counts only the licensed time the tap actually got to spend, neither penalized for the gap nor
+  forgiven what it had already spent before it. A scrim that lifts while one of those polls is
+  holding the licence back is therefore still met once the licence returns, rather than the sheet
+  being given up on for wall-clock time the tap was never allowed to spend, while a permanently
+  obstructed sheet whose polls interleave with a recurring gap still reaches its give-up instead of
+  having the clock wiped each time. The
+  same poll stopped clearing `blocked_note` unconditionally on that race too, and can now report its
+  own note naming whichever buttons no declared rule accounts for on the read — a note this path
+  never produced on a bare `"absent"` answer before. Its `"unhandled"` note changed three ways too:
+  an alert a rule *did* identify, whose tap then found the label twice, is now named as a prompt the
+  guard could not clear rather than as one no rule identifies; a co-present button no rule
+  identifies on that same read is named the way the `raced` branch names one, rather than the
+  ambiguous rule's own diagnosis crowding it out and leaving that button unreported for a whole
+  `poll_interval`; and the note is left alone while an in-tree give-up is still standing only when
+  this poll's own tree read positively confirms the given-up sheet is still there — `shows_app_ui`
+  true and the sheet's own shape still matching, not merely `_tree_gave_up` being set. A poll where
+  a SpringBoard alert collapses the tree cannot confirm that either way, so on exactly that poll the
+  deferral steps aside and a `wait` blocked by an undeclared SpringBoard alert sitting on top of a
+  sheet the tree path gave up on reports the alert, the fresher and more certain of the two
+  diagnoses, rather than the give-up's own stale note. The give-up itself still retires — clearing
+  the latch outright, not merely stepping its note aside for one poll — the moment a *later*, tree-
+  readable poll confirms the sheet is gone, rather than waiting for a native probe to report the
+  surface empty: that probe is what a live, undeclared alert keeps from reporting empty at all, so
+  before this the given-up sheet's note stood for the rest of the wait even once the sheet had
+  closed, and the alert actually holding the screen was never named while the alert itself was up
+  either. Retirement takes the showing's whole per-showing bookkeeping with it —
+  the pending label, the tap count, the recorded signature, its reference to the already-recorded
+  `AlertEvent`, and the not-tappable horizon — so
+  a fresh showing of the same sheet is tapped afresh rather than inheriting an already-spent tap
+  budget and being given up on without ever being tapped. And `_dismiss_from_tree` resolves over the same
+  widest-first `tree_dedup_rules` this change gives the one-shot dismiss, rather than plain
+  declaration order, so two nested in-tree shapes match the wider one first regardless of how a
+  scenario declared them — the two are declared twins over the same screen, so which button a
+  scenario gets must not depend on whether a `wait` happened to be running when the sheet appeared
 - A banner reaches that monitor only on an *interaction* — a plain query never invokes it, so a
   banner sitting on screen with nothing tapping through it is never cleared there (BE-0416 Units
   2/3/8). A second, proactive path covers that gap: `Driver.notification_banner_frame()`

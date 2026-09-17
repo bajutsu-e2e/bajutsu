@@ -191,6 +191,49 @@ def test_the_expect_phase_guard_records_onto_the_scenario_result() -> None:
     assert result.steps[0].actuations == []
 
 
+def test_the_expect_phase_guard_drains_its_own_tap_even_when_the_call_reports_nothing_cleared() -> (
+    None
+):
+    """A tap that really reached the device is still reported even when the guard's own later
+    diagnosis withdraws the `AlertEvent` it earned (BE-0418 review finding): the sheet accepts the
+    tap and re-presents itself with a validation error, so it never actually closes, and the final
+    round's own diagnosis takes the `AlertEvent` back -- `cleared` reports `False` even though
+    `driver.tap` genuinely fired once. Gating the actuation drain on `cleared` lost that tap from
+    the report entirely, on exactly the failing `expect` whose report needs it most.
+    """
+
+    class _ReRaisesWithAnErrorRow(FakeDriver):
+        def tap(self, sel: base.Selector) -> None:
+            super().tap(sel)
+            self.screen = [
+                el(None, "Not Now", ["button"], frame=(10.0, 10.0, 30.0, 30.0)),
+                el(None, "Incorrect password", frame=(0.0, 0.0, 5.0, 5.0)),
+            ]
+
+    driver = _ReRaisesWithAnErrorRow(
+        [el(None, "Not Now", ["button"], frame=(10.0, 10.0, 30.0, 30.0))]
+    )
+
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "expect retry never lands",
+                "steps": [{"assert": [{"exists": {"label": "Not Now"}}]}],
+                "expect": [{"exists": {"id": "verified"}}],
+            }
+        ),
+        clock=FakeClock(),
+        alert_guard=AlertGuardConfig(rules=[guard_rule("Not Now")]),
+    )
+
+    assert not result.ok  # the sheet never actually clears, so "verified" never appears
+    # The tap the guard made on round 0 still reaches the report, even though the call's own final
+    # round concludes it never landed and withdraws the AlertEvent for it.
+    assert [(a.gesture, a.target) for a in result.expect_actuations] == [("tap", None)]
+    assert result.steps[0].actuations == []
+
+
 # --- the redaction boundary: no authored string reaches the record ---
 
 

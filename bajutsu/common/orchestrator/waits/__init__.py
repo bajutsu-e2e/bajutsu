@@ -19,7 +19,6 @@ from ._functions import _decline_giveup as _decline_giveup
 from ._functions import _effective_timeout as _effective_timeout
 from ._functions import _exists as _exists
 from ._functions import _timeout_floor as _timeout_floor
-from ._functions import _tree_signature as _tree_signature
 from ._functions import _wait as _wait
 from ._functions import _wait_settled as _wait_settled
 from ._functions import _wait_settled_by_signal as _wait_settled_by_signal

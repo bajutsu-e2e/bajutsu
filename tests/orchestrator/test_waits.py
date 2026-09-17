@@ -871,6 +871,1559 @@ def test_wait_guard_debounces_a_transient_collapse() -> None:
     assert ok and reason == ""
 
 
+def test_wait_guard_asserts_probe_native_never_reports_already_dismissed() -> None:
+    # BE-0418 added a sixth `NativeAlertState` member, but this poll never passes `dismissed` --
+    # unlike `AlertGuardConfig.__call__`'s own round loop -- so `_resolve_alert_rule`'s subset-based
+    # retry (the only path that can return `None`) never runs, and `probe_native` can never actually
+    # report "already_dismissed" here. The rest of `_observe_native` still tests the five states
+    # that predate it by equality, not a `match` or `assert_never`, so a state reaching here it does
+    # not recognize would otherwise read silently as "nothing is blocking" (review finding) --
+    # asserted instead, so a future change that starts threading real `dismissed` state through this
+    # poll fails loudly the moment it does, rather than corrupting `blocked_note` silently.
+    from bajutsu.common.orchestrator.types import AlertEvent, NativeAlertState
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _AlwaysAlreadyDismissed(AlertGuardConfig):
+        def probe_native(
+            self,
+            driver: base.Driver,
+            reserved: base.Selector | None = None,
+            *,
+            dismissed: frozenset[frozenset[str]] = frozenset(),
+        ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
+            return "already_dismissed", None, []
+
+    gate = _AlertGuardGate(
+        driver=FakeDriver([]), clock=_LogicalClock(), guard=_AlwaysAlreadyDismissed(), alerts=[]
+    )
+    with pytest.raises(AssertionError):
+        gate.observe([])
+
+
+def test_wait_guard_matches_in_tree_shapes_the_same_way_dismiss_from_tree_once_does() -> None:
+    # The mid-wait gate's own `_dismiss_from_tree` and the one-shot `dismiss_from_tree_once` are
+    # declared twins over the same screen (BE-0418 review finding): both must resolve two
+    # differently-shaped in-tree rules the same way, or which button a scenario gets would depend
+    # on whether a `wait` happened to be running when the sheet appeared. `narrow` is declared
+    # first -- the plain, declaration-order match dismiss_from_tree_once no longer makes -- but
+    # `wide`'s own shape is also fully present, so widest-first still picks `wide` here too.
+    from bajutsu.common.orchestrator.types import AlertEvent, ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    narrow = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save"}), tap_label="Save", native=False, in_tree=True
+    )
+    wide = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    guard = AlertGuardConfig(rules=[narrow, wide])
+    driver = FakeDriver([el(None, "Save", ["button"]), el(None, "Not Now", ["button"])])
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe(driver.query())
+    assert gate.alerts == [AlertEvent(label="Not Now")]
+
+
+def test_wait_guard_never_taps_the_tree_while_a_native_alert_races() -> None:
+    # Twin of `AlertGuardConfig.__call__`'s own `if not buttons` gate (BE-0418 review finding):
+    # `probe_native`'s time-of-check/time-of-use race answers "absent" over a *non-empty* button
+    # read, and this poll reaches the tree through the same `Driver.tap` that call reasons about --
+    # so licensing the tap on `state == "absent"` alone risks it landing under a live SpringBoard
+    # alert, which XCUITest answers with its own default button before synthesizing the interaction
+    # (BE-0399). Before the fix, `probed_absent` ignored the non-empty `buttons` this probe reports
+    # and tapped the tree sheet anyway.
+    from bajutsu.common.orchestrator.types import AlertEvent, NativeAlertState, ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesAway(AlertGuardConfig):
+        def probe_native(
+            self,
+            driver: base.Driver,
+            reserved: base.Selector | None = None,
+            *,
+            dismissed: frozenset[frozenset[str]] = frozenset(),
+        ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
+            return "absent", None, ["Allow", "Don't Allow"]
+
+    tree_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save"}), tap_label="Save", native=False, in_tree=True
+    )
+    driver = FakeDriver([el(None, "Save", ["button"])])
+    guard = _RacesAway(rules=[tree_rule])
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe(driver.query())
+    assert gate.alerts == []
+    assert not any(action[0] == "tap" for action in driver.actions)
+
+
+def test_wait_guard_names_an_ambiguous_matched_alert_uncleared_not_unhandled() -> None:
+    # `probe_native` reaches "unhandled" two ways: a genuinely unidentified alert, and a matched
+    # rule whose tap found the label twice (`AmbiguousSelector`, "the other half of that race").
+    # This poll used to treat both as "no rule identifies it", telling the author no rule named
+    # their prompt when one did -- exactly what `uncleared_prompt_note`'s docstring says must not
+    # happen (BE-0418 review finding). Re-resolving with `matching_alert_rule` tells them apart.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, uncleared_prompt_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _AmbiguousEveryPoll(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.AmbiguousSelector("the alert offers this label twice")
+
+    driver = _AmbiguousEveryPoll([])
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+    ]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+            )
+        ]
+    )
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe([])
+    assert gate.blocked_note == uncleared_prompt_note("Allow")
+
+
+def test_wait_guard_reports_a_co_present_alert_no_rule_identifies_on_an_ambiguous_match() -> None:
+    # `AmbiguousSelector` fires only after a rule has already matched, and `buttons` here is the
+    # whole SpringBoard enumeration, not that rule's own shape -- so a co-present button no rule
+    # identifies can sit alongside it on the very same read. This branch used to report only the
+    # ambiguous rule's own diagnosis (`uncleared_prompt_note`), silently dropping "Weird Button"
+    # for a whole `poll_interval` -- the exact BE-0402 disclosure this branch exists to make, and
+    # the same shape the `raced` branch just below already handles via `identified_alert_rules`
+    # (BE-0418 review finding).
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _AmbiguousEveryPoll(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.AmbiguousSelector("the alert offers this label twice")
+
+    driver = _AmbiguousEveryPoll([])
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+        el(None, "Weird Button", ["button"]),
+    ]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+            )
+        ]
+    )
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe([])
+    assert "Weird Button" in gate.blocked_note
+    assert "Allow" not in gate.blocked_note and "Don't Allow" not in gate.blocked_note
+
+
+def test_wait_guard_keeps_an_unhandled_note_when_a_matched_alert_races() -> None:
+    # Twin of the `AlertGuardConfig.__call__` TOCTOU fix, for this poll's own note-clear
+    # (BE-0418 review finding): `"absent"` carries two meanings here too -- a genuinely empty
+    # enumeration, and a matched rule's own tap racing away over a *non-empty* read that says
+    # nothing about a *different* button the same read enumerated. Poll 1 finds only a button no
+    # rule identifies ("Weird Button") and names it; poll 2's own matched rule ("OK"/"Cancel")
+    # races away, but "Weird Button" is still right there in that very same read -- the note must
+    # survive, not be wiped by a race that never proved the surface clear. Poll 2's own element list
+    # is a non-empty app tree, not `[]`, chosen so a missing `raced` guard would be caught at once:
+    # an empty list is the one input where the collapsed-tree proxy's own `shows_app_ui` is already
+    # false, so the proxy would only *count toward* its debounce rather than immediately overwriting
+    # the note, and a regression here would not show up on this poll at all (BE-0418 review finding).
+    # A non-empty app tree is synthetic input for this poll, not a claim about what a real device's
+    # tree does under an out-of-process SpringBoard alert -- that alert collapses the tree
+    # (`shows_app_ui`'s own docstring) -- since this branch's own note-preservation logic runs the
+    # same regardless of what `elements` holds. Poll 3 -- no `clock.sleep` before it, so `poll_interval`
+    # has not elapsed and the native probe does not run again -- pins the same guarantee one tick
+    # further out: `_native_unhandled` is the only thing standing between this tick and the proxy
+    # until the next native probe is due, so a race must not drop that latch either, only the
+    # explicit clear a few lines above it (BE-0418 review finding).
+    from bajutsu.common.orchestrator.types import AlertEvent, NativeAlertState, ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _MatchedAlertRacesPastAnUnhandledOne(AlertGuardConfig):
+        polls: int = 0
+
+        def probe_native(
+            self,
+            driver: base.Driver,
+            reserved: base.Selector | None = None,
+            *,
+            dismissed: frozenset[frozenset[str]] = frozenset(),
+        ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
+            self.polls += 1
+            if self.polls == 1:
+                return "unhandled", None, ["Weird Button"]
+            return "absent", None, ["OK", "Cancel", "Weird Button"]
+
+    # A rule for the raced shape makes the branch's own subtraction real: without one,
+    # `matching_alert_rule` finds nothing to subtract and the whole read -- "OK" and "Cancel"
+    # included -- becomes "leftover", so the note under test would be a freshly re-derived
+    # superset rather than the preserved one this test means to pin (BE-0418 review finding).
+    guard = _MatchedAlertRacesPastAnUnhandledOne(
+        rules=[ResolvedAlertRule(identifying_labels=frozenset({"OK", "Cancel"}), tap_label="OK")]
+    )
+    driver = FakeDriver([])
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+    gate.observe([])
+    assert "Weird Button" in gate.blocked_note
+    clock.sleep(guard.poll_interval)
+    gate.observe([el("home", "Home", ["button"])])
+    assert "Weird Button" in gate.blocked_note
+    assert "OK" not in gate.blocked_note and "Cancel" not in gate.blocked_note
+    gate.observe([el("home", "Home", ["button"])])  # same poll_interval window: no native re-probe
+    assert "Weird Button" in gate.blocked_note
+
+
+def test_wait_guard_reports_a_co_present_alert_no_rule_identifies_on_a_race() -> None:
+    # Preserving an existing note is not the same as producing one (BE-0418 review finding): the
+    # `raced` branch above stops this poll from clearing or overwriting `blocked_note`, but the very
+    # first poll has no earlier note to preserve. A co-present button no rule identifies, enumerated
+    # by the very same read as the rule that raced away, must still be reported -- mirroring
+    # `AlertGuardConfig.__call__`'s own race branch, which subtracts only the raced rule's own
+    # labels from the read rather than the whole surface.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesAway(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    driver = _RacesAway([])
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+        el(None, "Weird Button", ["button"]),
+    ]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}),
+                tap_label="Allow",
+                native=True,
+                in_tree=False,
+            )
+        ]
+    )
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe([])
+    assert "Weird Button" in gate.blocked_note
+    assert "Allow" not in gate.blocked_note and "Don't Allow" not in gate.blocked_note
+
+
+def test_wait_guard_does_not_call_a_co_present_declared_prompt_unhandled_on_a_race() -> None:
+    # The leftover computation above must subtract every rule a *declared* shape identifies on this
+    # read, not only the one that raced: `matching_alert_rule` returns just its own first match, so
+    # a second, different declared prompt stacked alongside the raced one would otherwise survive
+    # into `leftover` and be reported as an alert no rule identifies -- the exact misdiagnosis
+    # `uncleared_prompt_note`'s docstring says must not happen, since a rule does identify it and the
+    # very next native probe would dismiss it (BE-0418 review finding). "notifications" races away;
+    # "paste" is a second, disjoint prompt fully present on the very same read.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesAway(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    driver = _RacesAway([])
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+        el(None, "Allow Paste", ["button"]),
+        el(None, "Don't Allow Paste", ["button"]),
+    ]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+            ),
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow Paste", "Don't Allow Paste"}),
+                tap_label="Allow Paste",
+            ),
+        ]
+    )
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe([])
+    assert gate.blocked_note == ""
+
+
+def test_wait_guard_keeps_the_collapsed_tree_proxys_hedged_note_through_a_leftover_free_race() -> (
+    None
+):
+    # The one case the `raced` branch's own clear-guard (`not raced`, alongside `"unhandled"` and
+    # `_tree_gave_up`) protects that no existing test reaches: a race whose own read leaves nothing
+    # over (`leftover` empty) and that was not already latched `_native_unhandled`. Neither the
+    # `if leftover:` branch nor the `elif self._native_unhandled:` branch below fires then, so the
+    # only thing standing between this poll and an erased note is the `not raced` conjunct of
+    # `_observe_native`'s own clear-guard (`if state != "unhandled" and not raced and not
+    # self._tree_gave_up`) declining to clear it in the first place -- the collapsed-tree proxy's
+    # hedged `alert_block_note([])`, for a non-SpringBoard surface the native query cannot
+    # enumerate, must survive a race that says nothing about whether *that* surface cleared
+    # (BE-0418 review finding).
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, alert_block_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _CollapsedThenRacesAway(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    driver = _CollapsedThenRacesAway([])
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}),
+                tap_label="Allow",
+                native=True,
+                in_tree=False,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+    # Three collapsed polls (no SpringBoard alert, no app UI either) debounce into the proxy's own
+    # hedged note -- the native probe answers "absent" over an empty read each time, so none of
+    # these polls touch the `raced` branch under test.
+    for _ in range(3):
+        gate.observe([])
+    assert gate.blocked_note == alert_block_note([])
+    # A fresh native probe (the clock has moved a full `poll_interval`) now races over a read that
+    # is nothing but the declared rule's own shape -- `leftover` is empty and `_native_unhandled` is
+    # still False, so this is the one case only the `not raced` conjunct protects.
+    clock.sleep(guard.poll_interval)
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+    ]
+    gate.observe([])
+    assert gate.blocked_note == alert_block_note([])
+
+
+def test_wait_guard_reports_nothing_when_a_race_leaves_no_leftover() -> None:
+    # The other half of the fresh-diagnosis fix above: a race whose own read holds nothing beyond
+    # the raced rule's own shape has no leftover to report, so this poll must not manufacture a note
+    # out of the very buttons it just subtracted.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesAway(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    driver = _RacesAway([])
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+    ]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}),
+                tap_label="Allow",
+                native=True,
+                in_tree=False,
+            )
+        ]
+    )
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe([])
+    assert gate.blocked_note == ""
+
+
+def test_wait_guard_does_not_double_count_a_label_two_declared_rules_share() -> None:
+    # Coverage for the multiplicity loop's own "already removed" path: two declared rules can share
+    # one label (the built-in `notifications` and `tracking` both grant "Allow"), so once the first
+    # shape's own processing consumes that occurrence, the second shape's identical label is already
+    # gone from `leftover` -- not a distinct button to remove a second time.
+    from bajutsu.common.orchestrator.types import AlertEvent, NativeAlertState, ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesWithTwoRulesSharingAllow(AlertGuardConfig):
+        def probe_native(
+            self,
+            driver: base.Driver,
+            reserved: base.Selector | None = None,
+            *,
+            dismissed: frozenset[frozenset[str]] = frozenset(),
+        ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
+            return "absent", None, ["Allow", "Don't Allow", "Ask App Not to Track"]
+
+    guard = _RacesWithTwoRulesSharingAllow(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+            ),
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Ask App Not to Track"}), tap_label="Allow"
+            ),
+        ]
+    )
+    driver = FakeDriver([])
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe([])
+    assert gate.blocked_note == ""
+
+
+def test_wait_guard_does_not_subtract_a_native_rule_an_excluded_label_rules_out() -> None:
+    # The second half of the same fix: a rule `matching_alert_rule` would refuse (an excluded label
+    # is present) must not have its labels subtracted here either -- the exact reason
+    # `_native_round_worth_another_try` grew its own `excluded_labels` check (BE-0418 review
+    # finding). Stubbed the same way, for the same reason.
+    from bajutsu.common.orchestrator.types import AlertEvent, NativeAlertState, ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesWithAnExcludedRulePresent(AlertGuardConfig):
+        def probe_native(
+            self,
+            driver: base.Driver,
+            reserved: base.Selector | None = None,
+            *,
+            dismissed: frozenset[frozenset[str]] = frozenset(),
+        ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
+            return "absent", None, ["Save", "Not Now", "Never for This Card"]
+
+    guard = _RacesWithAnExcludedRulePresent(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Save", "Not Now"}),
+                tap_label="Save",
+                excluded_labels=frozenset({"Never for This Card"}),
+            )
+        ]
+    )
+    driver = FakeDriver([])
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe([])
+    assert "Save" in gate.blocked_note
+    assert "Not Now" in gate.blocked_note
+    assert "Never for This Card" in gate.blocked_note
+
+
+def test_wait_guard_clears_a_stale_unhandled_note_when_a_leftover_free_race_disproves_it() -> None:
+    # `buttons` here is the whole SpringBoard enumeration, not one alert's own set: a race whose
+    # own read holds nothing but the raced rule's own shape is positive evidence that any *other*
+    # button an earlier probe named is gone (BE-0418 review finding). Poll 1 names "Weird Button"
+    # as unhandled; poll 2's own matched rule ("Allow"/"Don't Allow") races away, but this read no
+    # longer holds "Weird Button" at all -- the stale note must clear, not survive on the strength
+    # of the earlier `raced` preservation guard, which exists for evidence the current read does
+    # *not* disprove.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesAwayOnNotifications(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    driver = _RacesAwayOnNotifications([])
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+    gate.observe([])
+    assert "Weird Button" in gate.blocked_note
+    clock.sleep(guard.poll_interval)
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+    ]
+    gate.observe([el("home", "Home", ["button"])])
+    assert gate.blocked_note == ""
+
+
+def test_wait_guard_keeps_an_in_tree_give_up_note_through_a_race_with_a_leftover() -> None:
+    # `_tree_gave_up` is the exception the clear-guard above and the sibling `elif` below both make
+    # (BE-0418 review finding): an in-tree give-up names a prompt a rule *did* identify and a tap
+    # failed to clear, so a *different*, co-present alert racing away must not replace that note
+    # with the hedged "unhandled" form just because this branch also found a genuine leftover.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, uncleared_prompt_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesAway(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    driver = _RacesAway([])
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+        el(None, "Weird Button", ["button"]),
+    ]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+            ),
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            ),
+        ]
+    )
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate._tree_gave_up = True
+    gate._tree_gave_up_shape = frozenset({"Not Now"})
+    gate.blocked_note = uncleared_prompt_note("Not Now")
+    # The given-up sheet is still on screen (its own retirement is a different finding, pinned
+    # below), so its label is in this poll's own tree too (BE-0418 review finding).
+    gate.observe([el(None, "Not Now", ["button"])])
+    assert gate.blocked_note == uncleared_prompt_note("Not Now")
+
+
+def test_wait_guard_keeps_an_in_tree_give_up_note_through_an_unhandled_native_alert() -> None:
+    # The `"unhandled"` branch's own note-set is the one write in `_observe_native` that used to
+    # have no `_tree_gave_up` exception, even though the clear-guard above it and both branches
+    # this PR adds around it all make one (BE-0418 review finding). A guarded `wait` on a screen
+    # holding a `savePassword` sheet spends its tap budget and gives up on the tree side; a later,
+    # unrelated native alert no rule identifies must not overwrite that tree note with the hedged
+    # "unhandled" form while the given-up sheet is still on screen (its own retirement, once it
+    # is not, is a different finding -- see the test below).
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, uncleared_prompt_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    driver = FakeDriver([])
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate._tree_gave_up = True
+    gate._tree_gave_up_shape = frozenset({"Not Now"})
+    gate.blocked_note = uncleared_prompt_note("Not Now")
+    # The given-up sheet is still on screen (its own retirement is a different finding, pinned
+    # below), so its label is in this poll's own tree too (BE-0418 review finding).
+    gate.observe([el(None, "Not Now", ["button"])])
+    assert gate.blocked_note == uncleared_prompt_note("Not Now")
+
+
+def test_wait_guard_retires_an_in_tree_give_up_once_the_sheet_leaves_the_tree() -> None:
+    # The one thing missing from the deference the two tests above pin: nothing ever *lifted*
+    # `_tree_gave_up`, since `_dismiss_from_tree` is the only other place that resets it and it
+    # runs only when `probed_absent` holds -- which a live, undeclared SpringBoard alert stops
+    # from holding for as long as that alert is up (BE-0418 review finding). A given-up sheet
+    # that closes (or is navigated past) while an unrelated native alert is still up would
+    # otherwise leave its own stale note standing for the rest of the wait, with the alert that
+    # is actually blocking the screen never named. Retiring the latch from this poll's own tree —
+    # rather than waiting for a `probed_absent` poll that may never come — is what lets the fresher
+    # diagnosis through.
+    from bajutsu.common.orchestrator.types import uncleared_prompt_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    driver = FakeDriver([])
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    guard = AlertGuardConfig()
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate._tree_gave_up = True
+    gate._tree_gave_up_shape = frozenset({"Not Now"})
+    gate.blocked_note = uncleared_prompt_note("Not Now")
+    # "Not Now" is gone from this poll's own tree -- the sheet closed on its own, revealing an
+    # ordinary app screen (not an empty tree, which `shows_app_ui` would read as a SpringBoard
+    # alert covering the screen rather than evidence the sheet actually left).
+    gate.observe([el("home", "Home", ["button"])])
+    assert not gate._tree_gave_up
+    assert gate._tree_gave_up_shape is None
+    # The unrelated native alert's own diagnosis now gets through, naming the button that is
+    # actually still blocking the screen instead of the sheet that already left it.
+    assert "Weird Button" in gate.blocked_note
+    assert "Not Now" not in gate.blocked_note
+
+
+def test_wait_guard_retires_an_in_tree_give_up_by_shape_not_by_the_label_alone() -> None:
+    # The retirement above must key on the given-up *shape*, not the label alone (BE-0418 review
+    # finding): two `in_tree` rules can share one tap label under different choices --
+    # `savePassword`'s three shapes all tap "Not Now" -- so a *different*, genuinely live prompt
+    # that merely shares the given-up label must not keep the latch armed for a sheet that already
+    # left. Gave up on the web-form shape ("Save Password"/"Never for This Website"/"Not Now");
+    # that sheet then closes and the 26.5 in-app shape ("Save"/"Not Now") is presented in its
+    # place -- a different, genuinely live prompt sharing only "Not Now" with the one given up on.
+    #
+    #
+    # The retirement check resolves this poll's own tree against the declared rules
+    # (`_tree_gave_up_shape_matches`: `matching_alert_rule(guard.tree_dedup_rules, ...)`, nested
+    # bidirectionally against the given-up shape), so the two rules below are load-bearing: the
+    # 26.5 shape is what the resolved read matches once the web-form shape's other two labels drop
+    # out, and neither direction of containment holds between it and the given-up shape -- which is
+    # what lets retirement fire here rather than reading the shared "Not Now" as the same sheet.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, uncleared_prompt_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    def _sheet(*labels: str) -> ResolvedAlertRule:
+        return ResolvedAlertRule(
+            identifying_labels=frozenset(labels),
+            tap_label="Not Now",
+            native=False,
+            in_tree=True,
+        )
+
+    driver = FakeDriver([])
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    guard = AlertGuardConfig(
+        rules=[
+            _sheet("Save Password", "Never for This Website", "Not Now"),
+            _sheet("Save", "Not Now"),
+        ]
+    )
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate._tree_gave_up = True
+    gate._tree_gave_up_shape = frozenset({"Save Password", "Never for This Website", "Not Now"})
+    gate.blocked_note = uncleared_prompt_note("Not Now")
+    # "Not Now" is still on screen, but the web-form shape's other two labels are gone: this is a
+    # different prompt (the 26.5 in-app shape) that merely shares the given-up label, not the same
+    # sheet still showing.
+    gate.observe([el(None, "Save", ["button"]), el(None, "Not Now", ["button"])])
+    assert not gate._tree_gave_up
+    assert gate._tree_gave_up_shape is None
+    # The unrelated native alert's own diagnosis now gets through, rather than the stale note about
+    # the web-form sheet -- which already left -- continuing to mask it.
+    assert "Weird Button" in gate.blocked_note
+
+
+def test_wait_guard_does_not_retire_a_give_up_when_the_same_sheet_narrows_its_own_rendering() -> (
+    None
+):
+    # `_tree_gave_up_shape` is recorded once, from whichever rule matched at give-up time -- and
+    # since `tree_dedup_rules` is widest-first, that is always the *widest* matching shape. Plain
+    # one-directional containment (`shape <= set(tree_buttons(elements))`) catches a sheet that
+    # renders its widest label a frame late (the narrower recorded shape still nests inside the
+    # now-wider read), but misses the reverse: the same still-live sheet re-presenting with *fewer*
+    # labels than it gave up on (a validation-error redraw, or simply a narrower reading of the same
+    # prompt) shows a `buttons` the widest recorded shape is no longer a subset of, so the
+    # one-directional test would retire the give-up while the sheet is still fully on screen --
+    # exactly the device-hammering the give-up exists to stop (BE-0418 review finding).
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, uncleared_prompt_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    def _sheet(*labels: str) -> ResolvedAlertRule:
+        return ResolvedAlertRule(
+            identifying_labels=frozenset(labels),
+            tap_label="Not Now",
+            native=False,
+            in_tree=True,
+        )
+
+    driver = FakeDriver([])
+    # A co-present, undeclared native button (unrelated to the give-up): keeps the native probe's
+    # own "unhandled" state from reading as "absent", which would otherwise route this poll into
+    # `_dismiss_from_tree` instead of the retirement check this test means to exercise (the same
+    # setup `test_wait_guard_retires_an_in_tree_give_up_by_shape_not_by_the_label_alone` above uses
+    # for the same reason).
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    guard = AlertGuardConfig(
+        rules=[
+            _sheet("Save Password", "Never for This Website", "Not Now"),
+            _sheet("Save Password", "Not Now"),
+        ]
+    )
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate._tree_gave_up = True
+    # Gave up while the sheet showed all three labels -- the widest of the two declared shapes.
+    gate._tree_gave_up_shape = frozenset({"Save Password", "Never for This Website", "Not Now"})
+    gate.blocked_note = uncleared_prompt_note("Not Now")
+    # The same sheet, now missing "Never for This Website": still nests inside the recorded
+    # widest shape, so this must read as the same live sheet, not a departure.
+    gate.observe([el(None, "Save Password", ["button"]), el(None, "Not Now", ["button"])])
+    assert gate._tree_gave_up
+    assert gate._tree_gave_up_shape == frozenset(
+        {"Save Password", "Never for This Website", "Not Now"}
+    )
+    assert gate.blocked_note == uncleared_prompt_note("Not Now")
+
+
+def test_wait_guard_withdraws_a_landed_tap_when_a_scrim_blocks_every_retap() -> None:
+    # BE-0418 review finding: the not-tappable give-up below (distinct from the tap-ceiling give-up
+    # ~40 lines above, which already calls `_withdraw_tree_event`) used to latch `_tree_gave_up`
+    # without withdrawing the `AlertEvent` the first, landed tap already recorded -- so the report
+    # could ship a dismissal for the very prompt `blocked_note` says was never cleared.
+    # `ElementNotTappable` never advances `_tree_taps` (only a landed tap does), so once the first
+    # tap lands and every retap after it hits a redrawn scrim, `_tree_taps` stays frozen at 1 --
+    # forever below `_TREE_DISMISS_MAX_TAPS` -- and the tap-ceiling branch is never reached. Only
+    # this not-tappable horizon can end such a showing.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, uncleared_prompt_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _LandsOnceThenScrims(FakeDriver):
+        def __init__(self, screen: list[base.Element]) -> None:
+            super().__init__(screen)
+            self._taps = 0
+
+        def tap(self, sel: base.Selector) -> None:
+            self._taps += 1
+            if self._taps > 1:
+                raise base.ElementNotTappable("the sheet redrew its scrim")
+            super().tap(sel)
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = _LandsOnceThenScrims(tree)
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+
+    # Poll 1 (t=0): the first tap lands, recording an `AlertEvent` and arming
+    # `_tree_dismiss_pending`.
+    gate.observe(tree)
+    assert len(gate.alerts) == 1
+    clock.sleep(guard.poll_interval)
+
+    # Poll 2 (t=1, past `_TREE_RETAP_DELAY`): the sheet accepted nothing (unchanged tree
+    # signature), so the retry retaps -- and the scrim now blocks every further tap, raising
+    # `ElementNotTappable` without ever advancing `_tree_taps` past 1.
+    gate.observe(tree)
+    clock.sleep(guard.poll_interval)
+
+    # Poll 3 (t=2): one full `poll_interval` since the scrim first blocked a retap -- not yet
+    # `_decline_giveup`'s 2s horizon.
+    gate.observe(tree)
+    assert not gate._tree_gave_up
+    clock.sleep(guard.poll_interval)
+
+    # Poll 4 (t=3): the horizon is met. `_tree_taps` is still 1, so this is the only give-up this
+    # showing can reach.
+    gate.observe(tree)
+
+    assert gate._tree_gave_up
+    assert gate.blocked_note == uncleared_prompt_note("Not Now")
+    # The landed tap's own `AlertEvent` must be withdrawn: the report must not ship a dismissal for
+    # the very prompt the note above says is still up.
+    assert gate.alerts == []
+
+
+def test_wait_guard_restores_a_still_live_unhandled_note_once_a_give_up_retires() -> None:
+    # BE-0418 review finding: retiring `_tree_gave_up` must not empty `blocked_note`
+    # unconditionally -- `_native_unhandled` can already be latched `True` with its own note
+    # deferred rather than written, since both its write sites gate the actual `blocked_note`
+    # write on `not self._tree_gave_up` while still flipping the flag itself. A bare clear on
+    # retirement would then erase the only trace of a still-live native diagnosis, on a poll
+    # where the native probe is not due -- and `_native_unhandled` returns above the collapsed-
+    # tree proxy -- so nothing else writes `blocked_note` this tick either.
+    from bajutsu.common.orchestrator.types import (
+        ResolvedAlertRule,
+        alert_block_note,
+        uncleared_prompt_note,
+    )
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    driver = FakeDriver([])
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+    # A previous poll already probed natively, found "Weird Button" unhandled, and deferred that
+    # note (the give-up already stood) -- `_last_native` is no longer `None`, so the very next
+    # poll is not guaranteed to probe again.
+    gate._last_native = 0.0
+    gate._native_unhandled = True
+    gate._native_unhandled_note = alert_block_note(["Weird Button"])
+    gate._tree_gave_up = True
+    gate._tree_gave_up_shape = frozenset({"Not Now"})
+    gate.blocked_note = uncleared_prompt_note("Not Now")
+    # One `_POLL` tick later -- nowhere near a full `poll_interval` -- "Not Now" is gone from the
+    # tree, replaced by an ordinary app screen (not an empty tree, which `shows_app_ui` would read
+    # as a SpringBoard alert still covering the screen rather than evidence the sheet left). The
+    # native probe is not due and `_native_unhandled` returns before the collapsed-tree proxy ever
+    # runs: no other write to `blocked_note` happens this poll.
+    clock.sleep(0.05)
+    gate.observe([el("home", "Home", ["button"])])
+    assert not gate._tree_gave_up
+    assert gate.blocked_note == alert_block_note(["Weird Button"])
+
+
+def test_wait_guard_clears_the_note_the_moment_it_retires_a_give_up_with_nothing_else_live() -> (
+    None
+):
+    # The other half of the fix above: retirement must still clear `blocked_note` when there is
+    # no still-live native diagnosis to restore, rather than leaving the give-up's own stale note
+    # standing because `_native_unhandled` happens to be `False`.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, uncleared_prompt_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    driver = FakeDriver([])
+    driver.system_alert_buttons = []
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+    gate._last_native = 0.0
+    gate._tree_gave_up = True
+    gate._tree_gave_up_shape = frozenset({"Not Now"})
+    gate.blocked_note = uncleared_prompt_note("Not Now")
+    clock.sleep(0.05)
+    # An ordinary app screen, not an empty tree, which `shows_app_ui` would otherwise read as a
+    # SpringBoard alert still covering the screen rather than evidence the sheet left.
+    gate.observe([el("home", "Home", ["button"])])
+    assert not gate._tree_gave_up
+    assert gate.blocked_note == ""
+
+
+def test_wait_guard_clears_a_disproved_unhandled_note_even_while_a_give_up_still_stands() -> None:
+    # BE-0418 review finding: the `raced` branch's own clear-guard (`elif self._native_unhandled:`)
+    # used to also require `not self._tree_gave_up`, unlike its `if leftover:` sibling, which sets
+    # `_native_unhandled` / `_native_unhandled_note` regardless of the give-up standing. That
+    # asymmetry meant a disproved "unhandled" diagnosis never got retracted while a give-up stood,
+    # so the retirement fix above (restoring `_native_unhandled_note` on retirement) could write a
+    # stale note back out once the sheet finally left the tree.
+    from bajutsu.common.orchestrator.types import (
+        ResolvedAlertRule,
+        alert_block_note,
+        uncleared_prompt_note,
+    )
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesAway(FakeDriver):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = _RacesAway(tree)
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            ),
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}),
+                tap_label="Allow",
+                native=True,
+                in_tree=False,
+            ),
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+    # A `savePassword`-style sheet already spent its tap budget and gave up; it is still on screen.
+    gate._tree_gave_up = True
+    gate._tree_gave_up_shape = frozenset({"Not Now"})
+    gate.blocked_note = uncleared_prompt_note("Not Now")
+
+    # Poll 1 (t=0): a probe finds an undeclared alert -- "unhandled" latches with its own note,
+    # deferred behind the standing give-up.
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    gate.observe(tree)
+    assert gate._native_unhandled
+    assert gate._native_unhandled_note == alert_block_note(["Weird Button"])
+
+    # Poll 2 (t=poll_interval): "Weird Button" is gone; a *declared* rule's own alert races away
+    # instead, with no leftover -- disproving the earlier "unhandled" diagnosis, even though the
+    # give-up still stands and defers the actual `blocked_note` write.
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+    ]
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+    assert not gate._native_unhandled
+    assert gate._native_unhandled_note == ""
+
+    # Poll 3 (t=poll_interval+0.05, native probe not due): the sheet leaves the tree, replaced by
+    # an ordinary app screen (not an empty tree, which `shows_app_ui` would read as a SpringBoard
+    # alert still covering the screen rather than evidence the sheet left). Retirement must not
+    # write the disproved "Weird Button" note back out.
+    clock.sleep(0.05)
+    gate.observe([el("home", "Home", ["button"])])
+    assert not gate._tree_gave_up
+    assert gate.blocked_note == ""
+
+
+def test_wait_guard_retaps_a_new_showing_after_a_give_up_retires_mid_lifetime() -> None:
+    # BE-0418 review finding: retiring `_tree_gave_up` cleared only the latch and its shape, leaving
+    # every other write site's own two reset sites (`_dismiss_from_tree`'s `label is None` and
+    # tap-budget give-up branches) as the sole place the per-showing bookkeeping
+    # (`_tree_dismiss_pending`, `_tree_tapped_at`, `_tree_signature`, `_tree_event`, `_tree_taps`,
+    # `_tree_not_tappable_label`/`_since`) ever got reset -- so a showing that gave up on its tap
+    # budget, retired mid-lifetime while a live undeclared alert held `probed_absent` False, then
+    # left `_tree_dismiss_pending`/`_tree_taps` stale for whatever showing came next. A *new*
+    # showing of the identical shape then inherited an already-exhausted tap budget and was given up
+    # on all over again without ever being tapped.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _TREE_DISMISS_MAX_TAPS, _AlertGuardGate
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = FakeDriver(tree)
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+
+    # Polls 1-4 (t=0..3): no SpringBoard alert, so every poll licenses the in-tree tap. The sheet
+    # never closes (`driver.screen` keeps the same button throughout), so each retry lands on an
+    # unchanged tree and is read as "the tap did not land" -- exhausting the tap budget on poll 4.
+    for _ in range(4):
+        gate.observe(tree)
+        clock.sleep(guard.poll_interval)
+    assert gate._tree_gave_up
+    assert gate._tree_taps >= _TREE_DISMISS_MAX_TAPS
+
+    # An undeclared SpringBoard alert then raises for a few polls -- `probed_absent` is False
+    # throughout, so `_dismiss_from_tree` never runs and never resets anything on its own.
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    gate.observe(tree)
+    clock.sleep(guard.poll_interval)
+
+    # The sheet closes -- retirement fires here, mid-lifetime, with the alert still up. An
+    # ordinary app screen, not an empty tree, which `shows_app_ui` would otherwise read as a
+    # SpringBoard alert still covering the screen rather than evidence the sheet left.
+    gate.observe([el("home", "Home", ["button"])])
+    assert not gate._tree_gave_up
+    clock.sleep(guard.poll_interval)
+
+    # The sheet is presented again while the alert is still up -- still no `_dismiss_from_tree`.
+    gate.observe(tree)
+    clock.sleep(guard.poll_interval)
+
+    # The alert resolves; the next probe reports the surface genuinely empty, re-licensing the tap
+    # on this *new* showing.
+    driver.system_alert_buttons = []
+    gate.observe(tree)
+
+    assert not gate._tree_gave_up
+    assert len(gate.alerts) == 1
+    assert gate.alerts[0].label == "Not Now"
+
+
+def test_wait_guard_does_not_reset_a_tap_budget_when_a_springboard_alert_only_collapses_the_tree() -> (
+    None
+):
+    # BE-0418 review finding: retirement used to decide "the given-up sheet is gone" from a bare
+    # subset test over this poll's own `elements`, with no allowance for a genuine SpringBoard
+    # alert collapsing that same tree to bare content (`shows_app_ui`'s own docstring;
+    # `_GUARD_DEBOUNCE_POLLS`'s own comment states the same fact). A poll where such an alert
+    # covers the screen enumerates no tree buttons at all, which the bare subset test read as "the
+    # given-up sheet left" -- retiring the latch, and the whole per-showing tap budget with it,
+    # every time an unrelated SpringBoard alert happened to flash up and clear, even though the
+    # given-up sheet had never actually closed.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _TREE_DISMISS_MAX_TAPS, _AlertGuardGate
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = FakeDriver(tree)  # "Not Now" never actually closes
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+
+    # Polls 1-4 (t=0..3): no SpringBoard alert, so every poll licenses the in-tree tap. The sheet
+    # never closes, so each retry lands on an unchanged tree -- exhausting the tap budget on poll 4.
+    for _ in range(4):
+        gate.observe(tree)
+        clock.sleep(guard.poll_interval)
+    assert gate._tree_gave_up
+    assert gate._tree_taps >= _TREE_DISMISS_MAX_TAPS
+
+    # An undeclared SpringBoard alert then raises, collapsing this poll's own tree to bare content
+    # while it is up -- the same collapse `_GUARD_DEBOUNCE_POLLS` names, not evidence the given-up
+    # sheet left.
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    gate.observe([])
+    clock.sleep(guard.poll_interval)
+
+    # The alert clears; the sheet -- which never actually closed -- is right back in this poll's
+    # own tree. Retirement must not have fired on the collapsed poll, so the tap budget is still
+    # spent: the given-up latch stays armed rather than being handed a fresh budget it would spend
+    # unboundedly every time an unrelated alert happens to flash up and clear.
+    driver.system_alert_buttons = []
+    gate.observe(tree)
+    assert gate._tree_gave_up
+    assert gate._tree_taps >= _TREE_DISMISS_MAX_TAPS
+
+
+def test_wait_guard_does_not_retire_a_give_up_over_a_transient_label_collision() -> None:
+    # BE-0418 review finding: retirement used to ask "does a rule still *uniquely identify* this
+    # shape" (`identified_alert_rules`'s own accept test), not "is the sheet still on screen" --
+    # and a transient label collision answers the first `False` while the sheet is fully present.
+    # An app-attached sheet does not collapse the tree, so `shows_app_ui` cannot rule this out
+    # either: with the given-up shape's own three labels all still enumerable, plus an unrelated,
+    # identifier-less app button that happens to carry the sheet's own tap label a second time,
+    # `identified_alert_rules` returns `[]` for every rule needing that label exactly once -- the
+    # old check read that as "the sheet left", retiring the latch and resetting the whole
+    # per-showing record a live sheet's tap budget exists to bound. Plain containment, matching
+    # `AlertGuardConfig.__call__`'s own declared-twin check (`_first_lingering_tree_shape`), answers
+    # the right question: the shape's own labels are still all there, so the sheet has not left.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, uncleared_prompt_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    save_password = ResolvedAlertRule(
+        identifying_labels=frozenset({"Save Password", "Never for This Website", "Not Now"}),
+        tap_label="Not Now",
+        native=False,
+        in_tree=True,
+    )
+    driver = FakeDriver([])
+    guard = AlertGuardConfig(rules=[save_password])
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+    gate._tree_gave_up = True
+    gate._tree_gave_up_shape = frozenset({"Save Password", "Never for This Website", "Not Now"})
+    gate.blocked_note = uncleared_prompt_note("Not Now")
+
+    # The given-up sheet is still fully on screen, but an unrelated, identifier-less app button
+    # behind it happens to carry "Not Now" too -- a second occurrence of the same label. A live,
+    # undeclared SpringBoard alert is also up, so `probed_absent` stays False and `_dismiss_from_tree`
+    # never runs this poll, isolating the retirement block's own logic from the in-tree tap path.
+    elements = [
+        el(None, "Save Password", ["button"]),
+        el(None, "Never for This Website", ["button"]),
+        el(None, "Not Now", ["button"]),
+        el(None, "Not Now", ["button"]),
+    ]
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    gate.observe(elements)
+
+    assert gate._tree_gave_up
+    assert gate.blocked_note == uncleared_prompt_note("Not Now")
+
+
+def test_wait_guard_falls_back_to_a_give_up_note_when_a_race_disproves_unhandled() -> None:
+    # BE-0418 review finding: the race branch's own disproved-"unhandled" clear used to write
+    # `blocked_note = ""` outright when the give-up latch could not corroborate the sheet, unlike
+    # every sibling write in `_observe_native` -- the clear-guard refuses outright, and the
+    # `if leftover:` branch just above substitutes a real, fresher `_native_unhandled_note`. This
+    # branch has no fresher diagnosis to substitute (the one it held is what just got disproved), so
+    # writing `""` drops the BE-0402 disclosure permanently: nothing else in this method can restore
+    # it once `_native_unhandled` is cleared, since `_dismiss_from_tree` never runs again while the
+    # race keeps recurring (`probed_absent` never holds) and the collapsed-tree proxy is held off by
+    # `if self._tree_gave_up: return` above it.
+    #
+    # Round 1: the in-tree sheet spends its tap budget, arming the give-up with its own note.
+    # Round 2: an undeclared SpringBoard alert collapses the tree -- `_tree_gave_up_shape_still_shown`
+    # cannot corroborate the sheet from an empty read, so the fresher "unhandled" note wins, exactly
+    # as intended. Round 3: a *declared* rule's own tap races away over a read holding nothing but
+    # its own shape -- `leftover` is empty, so the disproved-"unhandled" branch fires. The give-up's
+    # own note -- now the only diagnosis left -- must win instead of `""`.
+    from bajutsu.common.orchestrator.types import (
+        ResolvedAlertRule,
+        alert_block_note,
+        uncleared_prompt_note,
+    )
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _StuckThenRaces(FakeDriver):
+        def tap(self, sel: base.Selector) -> None:
+            raise base.ElementNotTappable("the scrim never lifts")
+
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound(f"raced away: {sel!r}")
+
+    tree_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Not Now"}), tap_label="Not Now", native=False, in_tree=True
+    )
+    racing_rule = ResolvedAlertRule(
+        identifying_labels=frozenset({"Ping"}), tap_label="Ping", native=True, in_tree=False
+    )
+    tree = [el(None, "Not Now", ["button"])]
+    driver = _StuckThenRaces(tree)
+    guard = AlertGuardConfig(rules=[tree_rule, racing_rule])
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+
+    for _ in range(3):
+        gate.observe(tree)
+        clock.sleep(guard.poll_interval)
+    assert gate._tree_gave_up
+
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    gate.observe([])
+    assert gate.blocked_note == alert_block_note(["Weird Button"])
+    clock.sleep(guard.poll_interval)
+
+    driver.system_alert_buttons = [el(None, "Ping", ["button"])]
+    gate.observe([])
+
+    assert gate._tree_gave_up
+    assert gate.blocked_note == uncleared_prompt_note("Not Now")
+
+
+def test_wait_guard_names_a_live_undeclared_alert_over_a_give_up_the_collapsed_tree_cannot_confirm() -> (
+    None
+):
+    # BE-0418 review finding: the give-up's own note deferral used to be gated on `_tree_gave_up`
+    # alone, the same as the sibling retirement check just above it in `_observe_native` -- but
+    # retirement requires `shows_app_ui` before it will act, precisely because a genuine SpringBoard
+    # alert collapses the tree and a collapsed read is not evidence either way. The deferral had no
+    # equivalent gate, so it kept holding the give-up's own stale note through exactly the poll that
+    # needs it least: the one where a live, undeclared SpringBoard alert is what collapsed the tree
+    # in the first place, and `probe_native`'s own "unhandled" diagnosis -- a fresher, more certain
+    # fact about what is actually on screen right now -- could never win against it, since the very
+    # state that diagnosis reports is the one state retirement itself refuses to read as "gone".
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule, alert_block_note
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = FakeDriver(tree)  # "Not Now" never actually closes
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+
+    # Polls 1-4: no SpringBoard alert, so every poll licenses the in-tree tap. The sheet never
+    # closes, so each retry lands on an unchanged tree -- exhausting the tap budget on poll 4 and
+    # arming the give-up latch with its own "Not Now" note.
+    for _ in range(4):
+        gate.observe(tree)
+        clock.sleep(guard.poll_interval)
+    assert gate._tree_gave_up
+    assert "Not Now" in gate.blocked_note
+
+    # An undeclared SpringBoard alert then raises -- no rule names "Weird Button", so this poll's
+    # own native probe reports "unhandled". The tree collapses to bare content while the alert is
+    # up, so this poll cannot corroborate that the given-up "Not Now" sheet is still there.
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    gate.observe([])
+
+    # The give-up latch itself stays armed (retirement never fired -- this is not evidence the
+    # sheet left either), but the note must name the alert actually covering the screen right now,
+    # not the give-up's own stale one: this poll cannot confirm "Not Now" is still there, so the
+    # fresher, more certain native diagnosis wins.
+    assert gate._tree_gave_up
+    assert gate.blocked_note == alert_block_note(["Weird Button"])
+
+
+def test_wait_guard_does_not_blame_a_scrim_for_time_a_race_withheld_its_own_tap() -> None:
+    # BE-0418 review finding: narrowing `probed_absent` to a genuinely empty read means a raced
+    # native alert withholds the in-tree tap's own licence for as long as it keeps racing away --
+    # but `_tree_not_tappable_since` is a wall-clock horizon that keeps ticking regardless of
+    # whether `_dismiss_from_tree` ever runs. Left unreset, a scrim that lifts *during* the race is
+    # still given up on the moment the race resolves, purely because unlicensed wall-clock time was
+    # counted against it -- the very first retry since the scrim lifted sees the whole, un-attempted
+    # gap and gives up without ever attempting the tap.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _StuckThenRaces(FakeDriver):
+        def __init__(self, screen: list[base.Element]) -> None:
+            super().__init__(screen)
+            self.tappable = False
+
+        def tap(self, sel: base.Selector) -> None:
+            if sel.get("label") == "Not Now" and not self.tappable:
+                raise base.ElementNotTappable("scrim still presenting")
+            super().tap(sel)
+
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            raise base.ElementNotFound("the prompt raced away")
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = _StuckThenRaces(tree)
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            ),
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}),
+                tap_label="Allow",
+                native=True,
+                in_tree=False,
+            ),
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+
+    # Poll 1 (t=0): a genuinely empty native read licenses the in-tree tap; the sheet resolves but
+    # a scrim still covers its button.
+    gate.observe(tree)
+
+    # Polls 2-3 (t=1, t=2): an unrelated SpringBoard alert raises and its own tap races away on
+    # each probe -- `probed_absent` stays False throughout, withholding the tree's own licence for
+    # two full `poll_interval`s, which alone already meets `_decline_giveup`'s default 2s horizon.
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+    ]
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+
+    # The scrim lifted well before either raced poll ran -- the sheet has been tappable the whole
+    # time the race was withholding the licence. A full `poll_interval` so the native probe is due
+    # again and reports the surface genuinely empty, re-licensing the in-tree tap.
+    driver.tappable = True
+    driver.system_alert_buttons = []
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+
+    assert not gate._tree_gave_up
+    assert len(gate.alerts) == 1
+    assert gate.alerts[0].label == "Not Now"
+
+
+def test_wait_guard_still_reaches_a_give_up_through_recurring_licence_gaps() -> None:
+    # BE-0418 review finding: `_withhold_tree_tap_licence` used to clear `_tree_not_tappable_since`
+    # outright, discarding the *licensed* time already spent toward the give-up along with the
+    # unlicensed time -- the sibling tests just above pin only the direction that fix was for (not
+    # blaming the sheet for unlicensed time). A permanently obstructed sheet whose polls interleave
+    # with a *recurring* unlicensed state -- an undeclared alert flashing up every other poll, say
+    # -- could then never accumulate the consecutive licensed time `_decline_giveup` requires: every
+    # withheld poll reset the horizon to `None`, and the very next licensed poll's own
+    # `ElementNotTappable` set it fresh to that poll's own timestamp, so `now - since` was never
+    # more than one `poll_interval` no matter how many polls piled up.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _PermanentScrim(FakeDriver):
+        def tap(self, sel: base.Selector) -> None:
+            raise base.ElementNotTappable("the scrim never lifts")
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = _PermanentScrim(tree)
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+
+    # t=0: genuinely empty native read licenses the tap; the scrim blocks it. since = 0.
+    driver.system_alert_buttons = []
+    gate.observe(tree)
+    clock.sleep(guard.poll_interval)
+    # t=1: an undeclared alert withholds the licence for one poll.
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    gate.observe([])
+    clock.sleep(guard.poll_interval)
+    # t=2: licensed again -- the gap (t=1 to t=2) is excluded, but the licensed time from t=0
+    # still counts: since advances from 0 to 1, not reset to 2.
+    driver.system_alert_buttons = []
+    gate.observe(tree)
+    clock.sleep(guard.poll_interval)
+    # t=3: withheld again.
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    gate.observe([])
+    clock.sleep(guard.poll_interval)
+    # t=4: licensed again -- since advances from 1 to 2, meeting `_decline_giveup`'s default 2s
+    # horizon (`now - since == 2.0`), across four polls that were never licensed for more than one
+    # `poll_interval` at a stretch.
+    driver.system_alert_buttons = []
+    gate.observe(tree)
+
+    assert gate._tree_gave_up
+    assert "Not Now" in gate.blocked_note
+
+
+def test_wait_guard_does_not_blame_a_scrim_for_time_a_reserved_alert_withheld_its_own_tap() -> None:
+    # BE-0418 review finding: `"reserved"` withholds the in-tree tap's own licence exactly the way
+    # `raced` does -- `probed_absent` is False for as long as the step's own `handleSystemAlert`
+    # alert stays up, which can be the step's entire timeout -- but the earlier fix for `raced`
+    # left this path uncovered, so the not-tappable horizon kept ticking through it regardless.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _StuckThenReserved(FakeDriver):
+        def __init__(self, screen: list[base.Element]) -> None:
+            super().__init__(screen)
+            self.tappable = False
+
+        def tap(self, sel: base.Selector) -> None:
+            if sel.get("label") == "Not Now" and not self.tappable:
+                raise base.ElementNotTappable("scrim still presenting")
+            super().tap(sel)
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = _StuckThenReserved(tree)
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(
+        driver=driver, clock=clock, guard=guard, alerts=[], reserved={"label": "Allow"}
+    )
+
+    # Poll 1 (t=0): a genuinely empty native read licenses the in-tree tap; the sheet resolves but
+    # a scrim still covers its button.
+    gate.observe(tree)
+
+    # Polls 2-3 (t=1, t=2): the step's own alert raises and its selector reserves it -- `probed_absent`
+    # stays False throughout, withholding the tree's own licence for two full `poll_interval`s, which
+    # alone already meets `_decline_giveup`'s default 2s horizon.
+    driver.system_alert_buttons = [el(None, "Allow", ["button"])]
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+
+    # The step answers its own alert and the scrim lifts well before either reserved poll ran -- the
+    # sheet has been tappable the whole time the reservation was withholding the licence. A full
+    # `poll_interval` so the native probe is due again and reports the surface genuinely empty,
+    # re-licensing the in-tree tap.
+    driver.tappable = True
+    driver.system_alert_buttons = []
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+
+    assert not gate._tree_gave_up
+    assert len(gate.alerts) == 1
+    assert gate.alerts[0].label == "Not Now"
+
+
+def test_wait_guard_does_not_blame_a_scrim_for_time_a_dismissal_withheld_its_own_tap() -> None:
+    # BE-0418 review finding: `"dismissed"` withholds the in-tree tap's own licence exactly the way
+    # `raced`/`"reserved"` do -- `probed_absent` is False for as long as the declared SpringBoard
+    # alert keeps answering `"dismissed"` (a real alert can take more than one probe to actually
+    # clear) -- but the earlier fix's own tests never pinned this branch, so a regression here would
+    # land `make check` green.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _StuckThenDismisses(FakeDriver):
+        def __init__(self, screen: list[base.Element]) -> None:
+            super().__init__(screen)
+            self.tappable = False
+
+        def tap(self, sel: base.Selector) -> None:
+            if sel.get("label") == "Not Now" and not self.tappable:
+                raise base.ElementNotTappable("scrim still presenting")
+            super().tap(sel)
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = _StuckThenDismisses(tree)
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            ),
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}),
+                tap_label="Allow",
+                native=True,
+                in_tree=False,
+            ),
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+
+    # Poll 1 (t=0): a genuinely empty native read licenses the in-tree tap; the sheet resolves but
+    # a scrim still covers its button.
+    gate.observe(tree)
+
+    # Polls 2-3 (t=1, t=2): a declared SpringBoard alert answers `"dismissed"` on each probe --
+    # `FakeDriver.handle_system_alert` never removes it from `system_alert_buttons`, so it keeps
+    # answering `"dismissed"` the same way a real alert taking more than one probe to clear would.
+    # `probed_absent` stays False throughout, withholding the tree's own licence for two full
+    # `poll_interval`s, which alone already meets `_decline_giveup`'s default 2s horizon.
+    driver.system_alert_buttons = [
+        el(None, "Allow", ["button"]),
+        el(None, "Don't Allow", ["button"]),
+    ]
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+
+    # The alert clears and the scrim lifted well before either dismissed poll ran -- the sheet has
+    # been tappable the whole time the dismissal was withholding the licence. A full `poll_interval`
+    # so the native probe is due again and reports the surface genuinely empty, re-licensing the
+    # in-tree tap.
+    driver.tappable = True
+    driver.system_alert_buttons = []
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+
+    assert not gate._tree_gave_up
+    # Two genuine native dismissals (one per "dismissed" poll -- `FakeDriver` never removes the
+    # alert from `system_alert_buttons`, so each probe answers it afresh) plus the tree tap once
+    # the licence returns.
+    assert [a.label for a in gate.alerts] == ["Allow", "Allow", "Not Now"]
+
+
+def test_wait_guard_does_not_blame_a_scrim_for_time_an_unhandled_alert_withheld_its_own_tap() -> (
+    None
+):
+    # BE-0418 review finding: `"unhandled"` withholds the in-tree tap's own licence exactly the way
+    # `raced`/`"reserved"`/`"dismissed"` do -- an undeclared alert no rule identifies can sit up for
+    # the wait's whole remaining timeout -- but the earlier fix's own tests never pinned this branch
+    # either.
+    from bajutsu.common.orchestrator.types import ResolvedAlertRule
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _StuckThenUnhandled(FakeDriver):
+        def __init__(self, screen: list[base.Element]) -> None:
+            super().__init__(screen)
+            self.tappable = False
+
+        def tap(self, sel: base.Selector) -> None:
+            if sel.get("label") == "Not Now" and not self.tappable:
+                raise base.ElementNotTappable("scrim still presenting")
+            super().tap(sel)
+
+    tree = [el(None, "Not Now", ["button"])]
+    driver = _StuckThenUnhandled(tree)
+    guard = AlertGuardConfig(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Not Now"}),
+                tap_label="Not Now",
+                native=False,
+                in_tree=True,
+            )
+        ]
+    )
+    clock = _LogicalClock()
+    gate = _AlertGuardGate(driver=driver, clock=clock, guard=guard, alerts=[])
+
+    # Poll 1 (t=0): a genuinely empty native read licenses the in-tree tap; the sheet resolves but
+    # a scrim still covers its button.
+    gate.observe(tree)
+
+    # Polls 2-3 (t=1, t=2): an undeclared SpringBoard alert no rule identifies sits up on each
+    # probe -- `probed_absent` stays False throughout, withholding the tree's own licence for two
+    # full `poll_interval`s, which alone already meets `_decline_giveup`'s default 2s horizon.
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+
+    # The alert resolves and the scrim lifted well before either unhandled poll ran -- the sheet has
+    # been tappable the whole time the alert was withholding the licence. A full `poll_interval` so
+    # the native probe is due again and reports the surface genuinely empty, re-licensing the
+    # in-tree tap.
+    driver.tappable = True
+    driver.system_alert_buttons = []
+    clock.sleep(guard.poll_interval)
+    gate.observe(tree)
+
+    assert not gate._tree_gave_up
+    assert len(gate.alerts) == 1
+    assert gate.alerts[0].label == "Not Now"
+
+
+def test_wait_guard_does_not_credit_a_rule_matching_alert_rule_would_refuse() -> None:
+    # The leftover computation above must match `matching_alert_rule`'s own terms exactly, not a
+    # bare subset test (BE-0418 review finding): a shape whose labels are present but not
+    # *uniquely* is a prompt no later probe resolves either (the per-label uniqueness collision
+    # `AlertGuardConfig.__call__`'s own "unhandled" branch documents for the built-in `notifications`
+    # / `tracking` pair), so its buttons must stay in the leftover rather than being credited away.
+    # Stubbed via `probe_native`, the same isolation this file's other race tests already use, since
+    # a real read reaching this exact collision would answer "unhandled" before ever racing.
+    from bajutsu.common.orchestrator.types import (
+        AlertEvent,
+        NativeAlertState,
+        ResolvedAlertRule,
+        alert_block_note,
+    )
+    from bajutsu.common.orchestrator.waits import _AlertGuardGate
+
+    class _RacesOnPasteAlongsideACollidingNotifications(AlertGuardConfig):
+        def probe_native(
+            self,
+            driver: base.Driver,
+            reserved: base.Selector | None = None,
+            *,
+            dismissed: frozenset[frozenset[str]] = frozenset(),
+        ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
+            return "absent", None, ["Allow", "Don't Allow", "Allow", "Don't Allow", "Allow Paste"]
+
+    guard = _RacesOnPasteAlongsideACollidingNotifications(
+        rules=[
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow", "Don't Allow"}), tap_label="Allow"
+            ),
+            ResolvedAlertRule(
+                identifying_labels=frozenset({"Allow Paste"}), tap_label="Allow Paste"
+            ),
+        ]
+    )
+    driver = FakeDriver([])
+    gate = _AlertGuardGate(driver=driver, clock=_LogicalClock(), guard=guard, alerts=[])
+    gate.observe([])
+    # "Allow"/"Don't Allow" collide (each appears twice) and stay in the leftover uncredited;
+    # "Allow Paste" is uniquely identified and correctly excluded from it.
+    assert gate.blocked_note == alert_block_note(["Allow", "Don't Allow", "Allow", "Don't Allow"])
+
+
 def test_wait_guard_reports_a_persistent_collapse_it_cannot_clear() -> None:
     """BE-0402: on a backend with no native path, a persistently collapsed screen is not something
     the guard will act on — it neither guesses nor calls a model. What it does instead is refuse to
