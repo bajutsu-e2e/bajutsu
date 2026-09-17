@@ -916,6 +916,14 @@ def test_capabilities() -> None:
     assert base.Capability.TEXT_SELECTION in caps  # Ctrl+A / Ctrl+C actuate (BE-0280)
 
 
+def test_notification_banner_frame_is_none() -> None:
+    # No OS-level foreground banner on the web; this backend never advertises
+    # HANDLE_NOTIFICATION_BANNER (BE-0416).
+    drv, _ = _driver([])
+    assert base.Capability.HANDLE_NOTIFICATION_BANNER not in drv.capabilities()
+    assert drv.notification_banner_frame() is None
+
+
 def test_importing_module_does_not_load_playwright() -> None:
     # The playwright package must stay off the import path until a browser is actually started.
     assert "playwright" not in sys.modules

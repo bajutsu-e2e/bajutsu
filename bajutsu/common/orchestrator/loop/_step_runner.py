@@ -45,6 +45,7 @@ from ._functions import (
     _run_if,
     _run_step_body,
     _settle_extract_read,
+    _sweep_notification_banner,
     _tip_poll_hook,
 )
 from ._interrupt_guard import _InterruptGuard
@@ -721,18 +722,47 @@ class _StepRunner:
                 outcome.ok = False
                 note = undeclared_interruption_note(reserved_undeclared)
                 outcome.reason = f"{outcome.reason} \u2014 {note}" if outcome.reason else note
+        # A banner sitting on screen with nothing interacting with it never reaches the
+        # interruption monitor drained below (BE-0416 Unit 8) — cleared here, against the native
+        # driver the shutter below actually captures, so it never reaches `after.png` or a
+        # visual-regression comparison built from it. Ahead of the drains just below, not after:
+        # the swipe this performs is itself an actuation, and this step's own `drain_actuations`
+        # call is what has to carry it — after the drain, it would silently miss this step's
+        # outcome and surface as a phantom actuation on whichever step runs next.
+        _sweep_notification_banner(
+            self.cfg.driver, self.cfg.clock, self.cfg.alert_guard, self.state
+        )
+
         # What the driver actually did to the screen during this step. Drained once, after the body has
         # finished, rather than per attempt: when the alert guard dismissed a prompt and retried, both
         # attempts really happened to the device and belong on this step in the order they occurred —
         # as does the guard's own dismissing tap, on the step it interrupted. `active_driver`, not
-        # `cfg.driver`, because a step inside a `web` block actuates the WebView driver; nothing
-        # actuates the native driver during such a step, so nothing is stranded.
+        # `cfg.driver`, because a step inside a `web` block actuates the WebView driver — but the
+        # banner sweep just above always acts on `cfg.driver` regardless, so a `web`-block step also
+        # drains that native log, or the sweep's own swipe would be stranded there until a later
+        # native step drains it as a phantom actuation of its own (BE-0416 Unit 8). The sweep's own
+        # record is appended last, not prepended: it is the one thing in this step that actuates
+        # after the body itself, so it belongs after everything `active_driver` just recorded.
         drained = drain_actuations(active_driver)
+        if active_driver is not self.cfg.driver:
+            swept = drain_actuations(self.cfg.driver)
+            drained = replace(
+                drained,
+                records=drained.records + swept.records,
+                dropped=drained.dropped + swept.dropped,
+            )
         outcome.actuations, outcome.dropped_actuations = drained.records, drained.dropped
         # A prompt the backend answered or declined while it was interrupting one of this step's own
         # interactions. Drained beside the actuations, and for the same reason: it really happened to
         # the device during this step, so it belongs on this step's outcome rather than nowhere.
         self._drain_step_interruptions(active_driver, outcome)
+        if active_driver is not self.cfg.driver:
+            # The sweep's own swipe can itself be interrupted (Unit 4's banner branch fires on any
+            # native interaction, the sweep's included) — draining only `active_driver` would miss
+            # that `AlertEvent` here, the same way it would have missed the actuation above.
+            # `_drain_step_interruptions` extends `outcome` rather than replacing it, so calling it
+            # again for the native driver composes with what `active_driver` already contributed.
+            self._drain_step_interruptions(self.cfg.driver, outcome)
 
         # The post-action shutter, taken here rather than down with the rest of the post-step
         # capture. Every step records `after.png` (the capture call below drops `screenshot.after`
@@ -788,10 +818,13 @@ class _StepRunner:
             if outcome.ok and interp_step.extract:
                 if snapshot is None:
                     # A mutating step: the extract read must postdate this step's actuation by the
-                    # backend's read lag (BE-0332 Unit 1). Nothing actuates between the step body
-                    # returning and here, so `now` is that actuation's completion; bound into the deferred
-                    # read so the barrier is measured from the action, not from whenever `_ScreenRead`
-                    # later fires.
+                    # backend's read lag (BE-0332 Unit 1). The one thing that can still actuate
+                    # between the step body returning and here is the banner sweep (BE-0416 Unit 8),
+                    # which also spends up to its own clearance timeout confirming the banner gone —
+                    # so `now` postdates the later of the two, whichever one actually ran, and the
+                    # barrier this bounds only ever moves later, never earlier. Bound into the
+                    # deferred read so it is measured from that point, not from whenever
+                    # `_ScreenRead` later fires.
                     actuated_at = self.cfg.clock.now()
                     read = partial(
                         _settle_extract_read,

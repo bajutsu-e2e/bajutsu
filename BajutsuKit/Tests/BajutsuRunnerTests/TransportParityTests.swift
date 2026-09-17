@@ -281,6 +281,17 @@ final class TransportParityTests: XCTestCase {
         XCTAssertEqual(provider.systemAlertTapCalls.count, 1, "the tap must reach the alert provider")
     }
 
+    /// The banner query resolves against its own store too (BE-0416), keyed apart from the alert's
+    /// and the app tree's — it has no tap counterpart, since Unit 3 dismisses by raw coordinate.
+    func testNotificationBannerQueryServesIdenticallyOverTheWire() throws {
+        script { $0.notificationBanner = [Self.sample] }
+        try assertSame(
+            try wire("POST", "/notificationBanner/query", json: [:]),
+            try reference("POST", "/notificationBanner/query", json: [:]),
+            "/notificationBanner/query"
+        )
+    }
+
     func testInterruptionPolicyPairServesIdenticallyOverTheWire() throws {
         // The `Router` half of this pair is hand-written rather than generated, so nothing else
         // holds the two stacks to the same answer for it. The policy the driver pushes decides

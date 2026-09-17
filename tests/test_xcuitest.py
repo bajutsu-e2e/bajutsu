@@ -1946,6 +1946,29 @@ def test_system_alert_labels_returns_empty_when_no_alert_is_up() -> None:
     assert _driver(lambda m, p, b: _elements()).system_alert_labels() == []
 
 
+# --- notification_banner_frame (BE-0416): the proactive guard's non-blocking presence read --------
+
+
+def test_notification_banner_frame_reads_the_frame_from_its_own_query() -> None:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        assert (method, path) == ("POST", "/notificationBanner/query")
+        return _elements(
+            _el_wire(
+                "h-banner",
+                "NotificationShortLookView",
+                label="Test message",
+                frame=(8.0, 58.7, 386.0, 78.7),
+            )
+        )
+
+    assert _driver(transport).notification_banner_frame() == (8.0, 58.7, 386.0, 78.7)
+
+
+def test_notification_banner_frame_returns_none_when_no_banner_is_up() -> None:
+    # A different route than `/systemAlert/query`, so an alert being up never reads as a banner.
+    assert _driver(lambda m, p, b: _elements()).notification_banner_frame() is None
+
+
 # --- the interruption policy: which button the runner presses on an interrupting alert -----------
 
 

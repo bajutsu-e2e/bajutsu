@@ -26,6 +26,11 @@ private final class SystemAlertButtonBacking {
     init(ordinal: Int) { self.ordinal = ordinal }
 }
 
+/// The notification banner's backing (BE-0416). Inert: nothing ever acts on a banner by handle —
+/// Unit 3's dismiss is a raw-coordinate swipe through the existing `/swipe` route, not a tap
+/// resolved from this snapshot — but `ElementSnapshot.backingElement` still needs some identity.
+private final class NotificationBannerBacking {}
+
 final class XcuitestElementProvider: ElementProviding {
     private let app: XCUIApplication
     // A second, on-demand handle for SpringBoard — which owns the out-of-process permission prompt
@@ -372,6 +377,27 @@ final class XcuitestElementProvider: ElementProviding {
         guard button.exists else { return .stale }  // the alert dismissed itself between query and tap
         button.tap()
         return .ok
+    }
+
+    func queryNotificationBanner() -> [ElementSnapshot] {
+        // The identifier the interruption monitor already recognizes (`InterruptionPolicy.swift`),
+        // matched against SpringBoard's whole tree rather than `alerts` — a banner is not an alert
+        // element, so `querySystemAlertButtons`'s query never matches one. `firstMatch` alone is a
+        // full SpringBoard query, so this pays exactly one round trip whether or not a banner is up.
+        let banner = springboard.descendants(matching: .any)
+            .matching(identifier: notificationBannerIdentifier)
+            .firstMatch
+        guard banner.exists else { return [] }
+        return [
+            ElementSnapshot(
+                identifier: notificationBannerIdentifier,
+                label: nonEmpty(banner.label),
+                value: nil,
+                traits: [],
+                frame: frameTuple(banner.frame),
+                backingElement: NotificationBannerBacking()
+            )
+        ]
     }
 
     func screenshot() -> Data? {

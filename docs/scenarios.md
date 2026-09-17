@@ -224,6 +224,16 @@ Nothing about a banner is yours to declare. The banner path runs regardless of w
 No rule matched, so the step failed. Its reason named the notification's body text among the
 buttons the run had expected.
 
+That monitor only ever answers a banner that is *interrupting* something — a plain query never
+invokes it, so a banner sitting on screen with nothing tapping through it stays up. Left alone, it
+corrupts `after.png` and every visual-regression comparison built from it. A second, proactive
+sweep closes that gap: the runner looks for a banner and swipes it away before the shot starts —
+once per step, right before that screenshot, and once more before the `expect`-phase capture a
+`visual` assertion reads. The underlying query is rate-limited to `systemAlertHandling`'s own poll
+interval, so a passing scenario pays it once per interval, not once per step — and like the
+interruption path above, it runs with no scenario or CLI toggle of its own, on the iOS XCUITest
+backend alone.
+
 ### Answering more than one prompt differently: `rules`
 
 One onboarding flow often meets several prompts and means a different answer on each. A rule pairs

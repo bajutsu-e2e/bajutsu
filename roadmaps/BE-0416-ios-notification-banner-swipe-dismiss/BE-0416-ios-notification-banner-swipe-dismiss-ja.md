@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0416](BE-0416-ios-notification-banner-swipe-dismiss-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0416") |
-| 実装 PR | [#1975](https://github.com/bajutsu-e2e/bajutsu/pull/1975)（単位 1、4、6、7） |
+| 実装 PR | [#1975](https://github.com/bajutsu-e2e/bajutsu/pull/1975)（単位 1、4、6、7）、[#2015](https://github.com/bajutsu-e2e/bajutsu/pull/2015)（単位 2、3、5、8） |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0177](../BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)、[BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md)、[BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)、[BE-0399](../BE-0399-ios-system-alert-interruption-policy/BE-0399-ios-system-alert-interruption-policy-ja.md)、[BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md) |
 <!-- /BE-METADATA -->
@@ -175,21 +175,44 @@ Unit 1 は、純粋な照会が割り込み監視を呼ばず、通知バナー�
 
 - [x] 単位 1 — 通知バナーのアクセシビリティ上の見え方を iOS 18.6 と 26.5 で測定しました。結果と、
       Units 2〜4 を組み替えた 2 つの発見は、上の *詳細設計* に記録しています。
-- [ ] Unit 2 — 決定論的な存在照会（通知バナーの枠、または不在を返す `Driver` のメソッド）。Unit 1 に
-      よって範囲が狭まり、支える相手は Unit 4 ではなく Unit 8 になりました。
-- [ ] 単位 3 — 実測した枠を基準にしたスワイプによる決定論的な dismiss アクション。範囲の狭まり方は
-      単位 2 と同じです。
+- [x] 単位 2 — 決定論的な存在照会です。新しい能力トークン `HANDLE_NOTIFICATION_BANNER` の背後に
+      `Driver.notification_banner_frame()` を置きます。Unit 1 によって範囲が狭まり、支える相手は
+      Unit 4 ではなく Unit 8 になりました。新しい runner ルート `/notificationBanner/query` を
+      `/systemAlert/query` と同型で追加しています。Unit 4 自身のルート再利用は drain の fold だけを
+      カバーしていたためです。
+- [x] 単位 3 — 実測した枠を基準にしたスワイプによる決定論的な dismiss アクションです。
+      `base.notification_banner_swipe_points` が枠を計算します。2 つ目のジェスチャの基本要素を足す
+      代わりに、既存の `swipe` アクションを再利用します。範囲の狭まり方は単位 2 と同じです。
 - [x] 単位 4 — 割り込み監視の経路。ポリシーより前で通知バナーを判定し、自身の枠を起点にスワイプし、
       割り込みを引き受ける前に消えたことを確認し、専用の種別を持つ `AlertEvent` として報告します。
       提案が求めていた config/シナリオのスイッチは含みません。Unit 1 がその根拠を取り除いた経緯は、
       上の *Unit 4* を参照してください。
-- [ ] 単位 5 — showcase の fixture（アプリ側のフォアグラウンドでの通知バナー表示と、通知バナーの枠の
-      内側に置くタップ先を含む）と実機検証。
+- [x] 単位 5 — showcase の fixture と実機検証です。アプリ側のフォアグラウンドでの通知バナー表示として
+      SwiftUI 側だけに `UNUserNotificationCenterDelegate` を追加しました。fixture 自身の launch env
+      で有効・無効を切り替えるため、`push.yaml` の既存の最初のシナリオには影響しません。通知バナーの
+      枠の内側にタップ先を置きました。専用の Simulator で、通知許可のフロー、デリゲートの `willPresent`
+      シグナル、タップ先の画面上の位置を確認しました。位置は Unit 1 が記録した枠の内側にあることを
+      実測済みです。通知バナー自身は本セッションのホストでは画面に描画されませんでした。`simctl
+      push` とローカル通知の両方で `willPresent` はまさしく発火する一方、SpringBoard は何も描画しません
+      でした。原因は fixture や driver のコードではなく、このホスト固有の Simulator の通知権限に
+      絞り込めます（無人のセッションではクリックできないシステムダイアログを伴う設定です）。シナリオと
+      アプリ側の変更はそのまま出荷します。`push.yaml` をすでに実行している CI の `actuation` ジョブ
+      （`ios-e2e.yml`）が、新しい macOS ランナー上で、本物のバナーがタップを妨げず生き残らないことを
+      実地に確認します。バナーの出現とタップのあいだにはステップの境界（デリゲートの `willPresent`
+      シグナルを待つ `wait`）が挟まるため、この fixture では割り込み監視（Unit 4）と能動的な
+      ポーリング（Unit 8）のどちらが実際にバナーを消したのかを特定できません。どちらの経路でも
+      正しい結果であり、シナリオ自身のコメントもそう記しています。
 - [x] 単位 6 — ドキュメント（`docs/scenarios.md`、`docs/architecture.md`、および両方の `docs/ja/`
-      対訳）。
-- [x] 単位 7 — 単位 4 が実装した範囲のテスト。単位 2、3、8 に対応する分は、それぞれの単位に残ります。
-- [ ] 単位 8 — 実行が操作によって通り抜けることのない通知バナーのための、能動的なポーリング。
+      対訳）。単位 2、3、8 の能動的な掃除について再度拡張しました。
+- [x] 単位 7 — 単位 4 が実装した範囲のテストに加え、単位 2、3、8 の分も含みます。ポーリングのたびに
+      存在照会の返り値が入れ替わる fake driver を用意しました。ステップ自身の after ショットと
+      `expect` フェーズのビジュアル撮影、その両方の直前でガードが通知バナーを消すことも検証します。
+      capability を持たないバックエンドでは何も変わらないこと、そして Swift 側の新規ルートの
+      parity/contract テストも含みます。
+- [x] 単位 8 — 実行が操作によって通り抜けることのない通知バナーのための、能動的なポーリング。
       割り込み監視では届かないことを Unit 1 が測定した、壊れた `after.png` と視覚回帰の撮影が対象です。
+      config/シナリオのスイッチは追加しません。Unit 4 がすでに示した「トグルに使い道がない」という
+      判断と同じです。
 
 ログ：
 
@@ -200,6 +223,28 @@ Unit 1 は、純粋な照会が割り込み監視を呼ばず、通知バナー�
   これにより、単位 1 が測定した欠陥を取り除きました。`systemAlertHandling` が有効な実行に通知バナーが
   届くと、未宣言の割り込みとして記録され、実行が期待したボタンの位置に通知本文を並べたまま、本来通る
   はずのステップが落ちていました。
+- 2026-09-16 — [#2015](https://github.com/bajutsu-e2e/bajutsu/pull/2015) — 単位 2、3、5、8 を実装し、この項目を完了しました。新しい能力トークン
+  `HANDLE_NOTIFICATION_BANNER` と `Driver.notification_banner_frame()`（新しい runner ルート
+  `/notificationBanner/query`）が、操作の合間に通知バナーの枠を報告します。
+  `base.notification_banner_swipe_points` が、その枠を `swipe` がすでに行うスワイプへ変換します。
+  ステップループはこれを 1 ステップにつき 1 回、`systemAlertHandling` 自身が解決した `pollInterval`
+  でレート制限しながら、`after.png` の撮影の直前と `expect` フェーズのビジュアル撮影の直前に呼びます。
+  Unit 1 が測定した、割り込み監視だけでは届かない壊れたスクリーンショットです。Unit 4 の判断と同じく
+  config/シナリオのスイッチはありません。showcase の fixture（`push.yaml`）には、新しい
+  SwiftUI 専用の `UNUserNotificationCenterDelegate`（fixture 自身の launch env で切り替えるため、
+  同じファイルの既存の最初のシナリオには影響しません）で本物のフォアグラウンド通知バナーを発生させ、
+  通知バナーの実測した枠の内側にタップ先を置いた専用のフラット画面
+  （`SHOWCASE_NOTIFICATION_BANNER`）を使う 2 つ目のシナリオを追加しました。専用の Simulator での
+  実機検証では、許可のフロー、デリゲートのタイミングシグナル、タップ先の画面上の位置を確認しました。
+  通知バナー自身の描画は本セッションのホストでは現れず、実際の push とローカル通知の両方で確認した
+  とおり、ローカルの Simulator の通知権限のギャップに切り分けられます。本物のバナーがタップを妨げず
+  生き残らないことの実地確認は、そのため CI の `actuation` ジョブに委ねます。バナーの出現とタップの
+  あいだにステップの境界が挟まるため、この fixture は割り込み監視と能動的なポーリングのどちらが
+  実際に消したのかを特定できません。スワイプ自身は、割り込み監視自身の 20 ポイントのスワイプに満たない
+  距離しか進めない描画途中の枠には手を出しません。下方向への反転はその極端な一例にすぎません。
+  ジェスチャの直前にも存在を再確認します（2 回の読み取りのあいだにバナーが自動的に消えることが
+  あるためです）。返す前にはバナーが消えたことを上限付きで再確認します。割り込み監視自身が確認して
+  から引き受けるという流儀と同じです。
 
 ## 参考
 
