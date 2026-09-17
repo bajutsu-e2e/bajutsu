@@ -681,6 +681,67 @@ engine is platform-neutral, so `bajutsu crawl --target <web-app> --backend web` 
   recorded in `alerts`, replacing the iOS vision alert guard. `--system-alert-handling` and the
   vision path are iOS-only; `--headed` applies (watch the crawl in a visible browser).
 
+## `repl`
+
+Opens a **manual shell** against the running app: read the current element tree, act on one of its
+ids, read it again ([BE-0423](../roadmaps/BE-0423-cli-repl-inspect-actuate/BE-0423-cli-repl-inspect-actuate.md)).
+It sits beside `record` (goal-directed AI authoring) and `crawl` (autonomous exploration) as a third
+way to reach a target through the same [driver](glossary.md#driver-backend-actuator-platform)
+interface — and is the only one of the three that asks no model anything and writes no scenario.
+Use it to answer, in seconds, the question that otherwise costs a whole run-and-read-the-report
+cycle: what does this screen actually expose, and does that id resolve?
+
+```bash
+bajutsu repl --target <name> [options]
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--target` | (required) | the target app |
+| `--udid` | `booted` | the target Simulator (or a WebDriver endpoint on the live route) |
+| `--backend` | config | actuator order |
+| `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
+| `--headed / --no-headed` | app `headless` | web backend: inspect a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
+| `--browser` | app `browser` (chromium) | web backend: the Playwright rendering engine to inspect — `chromium` / `firefox` / `webkit`; omit to use the target's `browser` config |
+| `--config` | `bajutsu.config.yaml` | config |
+
+Once the app is up, the shell prompts with `bajutsu>`:
+
+| Command | What it does |
+|---|---|
+| `tree` | the current element tree, as an `id` / `label` / `traits` / `value` / `frame` table |
+| `tree --json` | the same tree verbatim, as JSON — for piping, diffing, or reading a frame exactly |
+| `find <substring>` | the same tree, filtered to rows whose `id` or `label` contains `<substring>` (case-sensitive, like every selector match) |
+| `tap <id>` | tap the element carrying that id |
+| `type <id> <text>` | focus that element, then type `<text>` (the id is everything up to the first space) |
+| `back` | navigate back one level, each backend using its platform-correct primitive |
+| `screenshot [path]` | write a screenshot; auto-named `repl-<UTC timestamp>.png` in the current directory when the path is omitted |
+| `help` | list the commands above |
+| `exit` / `quit` | leave the shell (Ctrl-D does the same; Ctrl-C abandons the half-typed line) |
+
+- **The columns are the fields a [selector](glossary.md#scenario-authoring) matches against**,
+  normalized by the backend — not a platform inspector's own vocabulary. An id read off a `tree`
+  row is the id `run` will resolve.
+- **Nothing is guessed.** A `tap` whose id matches nothing fails with `ElementNotFound`, and one
+  matching several elements fails with `AmbiguousSelector` — immediately, with the same message
+  `run` would raise. The shell prints the failure and reads the next line.
+- **`tap` does not scroll a cover away.** `run` first retries a bounded scroll when another element
+  obstructs the target; `repl` surfaces the driver's own `ElementNotTappable`, which names the
+  covering element — the more useful answer while diagnosing a selector. The two can therefore
+  disagree on a covered target; write the explicit `scroll` step in the scenario to get the recovery.
+- **Elements are addressed by `id` alone** in this first version, narrower than the full selector
+  syntax `run` accepts. `tree` already shows every element's `label` and `traits`, so the loop is:
+  read the row, type its id. An element carrying no `id` cannot be reached from the shell yet.
+- **Gestures** (`swipe`, `scroll`, `pinch`, `rotate`) and platform-specific actions
+  (`setPickerValue`, `selectOption`) are not in this version.
+- **Leaving the shell leaves the app running.** A Simulator- or device-backed app stays where you
+  left it, so you can keep inspecting it by hand. The two sessions the command itself owns are
+  closed: the web backend's browser, and the WebDriver session on the `--udid https://…` live route,
+  which would otherwise stay reserved on the grid until it expires.
+- A target declaring `launchServer` has its server started before the shell opens and stopped when
+  it exits — without that, a web target would open the browser on a host that is not listening and
+  every `tree` would read the error page.
+
 ## `codegen`
 
 Generates a **native test** from a scenario (AI-independent · structural mapping · [codegen](codegen.md)):

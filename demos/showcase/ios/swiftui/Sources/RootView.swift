@@ -7,7 +7,8 @@ struct RootView: View {
         // BE-0114: the SHOWCASE_CONFORMANCE launch env swaps the whole UI for the flat conformance
         // screen; BE-0019: SHOWCASE_GESTURES swaps in the flat pinch/rotate screen; BE-0356:
         // SHOWCASE_PICKERS swaps in the flat wheel-picker screen; SHOWCASE_SIGNIN swaps in the
-        // native sign-in screen; BE-0424: SHOWCASE_CRASH swaps in the flat crash-fixture screen.
+        // native sign-in screen; BE-0424: SHOWCASE_CRASH swaps in the flat crash-fixture screen;
+        // BE-0416: SHOWCASE_NOTIFICATION_BANNER swaps in the flat notification-banner target screen.
         // Otherwise the normal tab app (BE-0079) is untouched.
         if let identifiers = model.conformanceIDs {
             ConformanceView(identifiers: identifiers)
@@ -19,6 +20,8 @@ struct RootView: View {
             SignInView()
         } else if model.crashMode {
             CrashView()
+        } else if model.notificationBannerMode {
+            NotificationBannerTargetView()
         } else {
             MainTabView()
         }

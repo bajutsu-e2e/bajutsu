@@ -1550,6 +1550,11 @@ class AdbDriver(CoordinateTreeDriver):
         # No SpringBoard on Android; the reactive guard's native path never runs here (BE-0315).
         return []
 
+    def notification_banner_frame(self) -> base.Frame | None:
+        # No SpringBoard on Android; a heads-up notification reaches the app's own tree, unlike an
+        # iOS foreground banner, so this backend never advertises HANDLE_NOTIFICATION_BANNER (BE-0416).
+        return None
+
     def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:  # noqa: ARG002  # Driver shape
         # TipKit is an iOS framework. Android's nearest equivalents (`TooltipCompat`, Compose
         # Material3 tooltips) are per-app widgets with no shared tree shape, so they stay BE-0314

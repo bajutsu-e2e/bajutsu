@@ -38,6 +38,8 @@ final class FakeElementProvider: ElementProviding {
     // What `/app/state` reports (BE-0424). A live app by default, so every existing test keeps the
     // behavior it had before this route existed.
     var appRunState: AppRunState = .runningForeground
+    // The notification banner `/notificationBanner/query` returns, empty when none is up (BE-0416).
+    var notificationBanner: [ElementSnapshot] = []
 
     func queryElements() -> [ElementSnapshot] {
         beforeQueryElements?()
@@ -112,6 +114,10 @@ final class FakeElementProvider: ElementProviding {
     func tapSystemAlertButton(backingElement: AnyObject) -> TapResult {
         systemAlertTapCalls.append(backingElement)
         return tapResult
+    }
+
+    func queryNotificationBanner() -> [ElementSnapshot] {
+        notificationBanner
     }
 
     func screenshot() -> Data? { screenshotData }

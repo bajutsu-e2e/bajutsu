@@ -31,6 +31,7 @@ final class LegacyBackedTransportTests: XCTestCase {
                 "POST /setPickerValue",
                 "POST /type", "POST /deleteText", "POST /selectAll", "POST /copy",
                 "POST /systemAlert/query", "POST /systemAlert/tap",
+                "POST /notificationBanner/query",
                 "POST /interruptionPolicy", "POST /interruptionPolicy/drain",
                 "POST /app/state",
             ]

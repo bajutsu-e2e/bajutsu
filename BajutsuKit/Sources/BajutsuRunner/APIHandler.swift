@@ -23,6 +23,10 @@ final class APIHandler: APIProtocol {
     /// A separate handle store for SpringBoard alert buttons (BE-0316), so their handles never
     /// collide with the app tree's and a `/systemAlert/query` never disturbs the app snapshot.
     private let alertStore = SnapshotStore()
+    /// A separate handle store for the notification banner (BE-0416), for the same reason —
+    /// `/notificationBanner/query` mints handles nothing ever resolves back (Unit 3 dismisses by
+    /// raw coordinate, not by handle), but it still shares no store with the app tree or the alert.
+    private let bannerStore = SnapshotStore()
 
     /// Serializes every XCUITest-touching operation, and absorbs the blocking main-thread hop.
     ///
@@ -299,6 +303,19 @@ final class APIHandler: APIProtocol {
         return .ok(.init(body: .json(await actOnHandle(alertStore, request.handle) { snapshot in
             self.provider.tapSystemAlertButton(backingElement: snapshot.backingElement)
         })))
+    }
+
+    // MARK: - Notification banner
+
+    /// The notification-banner presence query (BE-0416): the same element+handle contract as
+    /// `/systemAlert/query`, sourced from a different SpringBoard element and keyed into its own
+    /// store. Empty when no banner is up, so the proactive guard polls it opportunistically between
+    /// interactions rather than against any step's own timeout.
+    func queryNotificationBanner(
+        _ input: Operations.queryNotificationBanner.Input
+    ) async throws -> Operations.queryNotificationBanner.Output {
+        let banner = await caught([]) { self.provider.queryNotificationBanner() }
+        return .ok(.init(body: .json(elementsReply(store: bannerStore, elements: banner))))
     }
 
     // MARK: - Shared shaping

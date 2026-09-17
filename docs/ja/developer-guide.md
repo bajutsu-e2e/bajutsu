@@ -119,7 +119,7 @@ flowchart TB
 分かれます。コマンドのディレクトリには、そのコマンド自身のロジックと、Typer にコマンドを登録する
 `cli.py` が入ります。次の図は、アルファベット順ではなく役割ごとにディレクトリをまとめたものです。
 
-![パッケージ地図。コマンド層に cli、run、record、crawl、triage、codegen、mcp、serve、analysis が並びます。その下の実行コアに common/runner、common/orchestrator、common/platform_lifecycle が並びます。さらに下のプラットフォーム接続面に common/drivers、common/backend_cli、common/backends が並びます。横には契約層として common/scenario と common/config が、出力層として common/assertions、common/evidence、common/report が並びます。別の列に周辺層として common/agents と common/ai があり、コマンド層からは到達しますが実行コアからは到達しません。](assets/diagrams/developer-guide-packages-ja.svg)
+![パッケージ地図。コマンド層に cli、run、record、crawl、repl、triage、codegen、mcp、serve、analysis が並びます。その下の実行コアに common/runner、common/orchestrator、common/platform_lifecycle が並びます。さらに下のプラットフォーム接続面に common/drivers、common/backend_cli、common/backends が並びます。横には契約層として common/scenario と common/config が、出力層として common/assertions、common/evidence、common/report が並びます。別の列に周辺層として common/agents と common/ai があり、コマンド層からは到達しますが実行コアからは到達しません。](assets/diagrams/developer-guide-packages-ja.svg)
 
 <details>
 <summary>Mermaid のソース</summary>
@@ -128,7 +128,7 @@ flowchart TB
 ```mermaid
 flowchart TB
     subgraph cmd["コマンド層 · 1 コマンド 1 ディレクトリ + cli.py"]
-        c1["run/ · record/ · crawl/ · triage/"]
+        c1["run/ · record/ · crawl/ · repl/ · triage/"]
         c2["codegen/ · mcp/ · serve/ · analysis/"]
         c3["cli/ · Typer アプリを組み立てる"]
     end
@@ -197,6 +197,7 @@ flowchart TB
 | `run/` | 3 ファイル、1,701 行 | `cli`（`run` コマンド本体）、`notify` |
 | `record/` | 4 ファイル、1,318 行 | `capture`、`cli`、`loop` |
 | `crawl/` | 9 ファイル、3,109 行 | `cli`、`core`、`flows`、`guide`、`report`、`repro`、`serialize`、`tabs` |
+| `repl/` | 5 ファイル、371 行 | `cli`、`loop`、`render`、`session` |
 | `triage/` | 3 ファイル、1,203 行 | `cli`、`heuristic` |
 | `codegen/` | 7 ファイル、2,623 行 | `cli`、`common`、`xcuitest`、`playwright`、`uiautomator` |
 | `mcp/` | 4 ファイル、327 行 | `cli`、`resources`、`tools` |

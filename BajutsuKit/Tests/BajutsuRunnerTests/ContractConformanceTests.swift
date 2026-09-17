@@ -164,6 +164,21 @@ final class ContractConformanceTests: XCTestCase {
         XCTAssertEqual(reply.elements.first?.label, "Allow")
     }
 
+    func testNotificationBannerQueryReusesTheElementsReplyShape() throws {
+        let provider = FakeElementProvider()
+        provider.notificationBanner = [
+            ElementSnapshot(
+                identifier: "NotificationShortLookView", label: "Test message", value: nil,
+                traits: [], frame: (8, 58.7, 386, 78.7), backingElement: NSObject()
+            ),
+        ]
+        let reply = try decode(
+            Components.Schemas.ElementsReply.self,
+            from: route("POST", "/notificationBanner/query", body: [:], provider: provider)
+        )
+        XCTAssertEqual(reply.elements.first?.label, "Test message")
+    }
+
     // MARK: - Requests: the generated types must accept what the driver sends
 
     /// Each literal below is the body `bajutsu/common/drivers/xcuitest.py` builds today. Decoding them
@@ -228,8 +243,8 @@ final class ContractConformanceTests: XCTestCase {
         )
         XCTAssertEqual(delete.count, 3)
 
-        // `/selectAll`, `/copy`, and `/systemAlert/query` are sent an empty object, not an
-        // absent body, so the schema has to accept `{}`.
+        // `/selectAll`, `/copy`, `/systemAlert/query`, and `/notificationBanner/query` are sent an
+        // empty object, not an absent body, so the schema has to accept `{}`.
         XCTAssertNoThrow(
             try decoder.decode(Components.Schemas.EmptyRequest.self, from: Data("{}".utf8))
         )

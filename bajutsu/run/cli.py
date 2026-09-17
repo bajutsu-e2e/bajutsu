@@ -49,8 +49,10 @@ from bajutsu.common.runner.build import BuildError, build_if_missing
 from bajutsu.common.runner.device_provider import acquire_device
 from bajutsu.common.runner.types import AlertGuardFor
 from bajutsu.common.scenario import (
+    ComponentResolver,
     RawScenario,
     Scenario,
+    Step,
     SystemAlertHandling,
     SystemAlertHandlingField,
     SystemAlertRule,
@@ -60,9 +62,8 @@ from bajutsu.common.scenario import (
     dump_mocks,
     expand_components,
     expand_data,
-    load_component,
     load_scenario_file,
-    load_scenarios,
+    parse_yaml_named,
     read_csv,
     scenario_sources,
     select_scenarios,
@@ -195,21 +196,39 @@ def _expand_file(
     }
     # Refs (setup/use/data) resolve relative to this scenario file's own directory.
     base_dir = path.parent
-    try:
-        apply_setups(
-            scenarios,
-            eff.setup,
-            lambda ref: load_scenarios((base_dir / ref).read_text(encoding="utf-8"))[0].steps,
+
+    def _setup_steps(ref: str) -> list[Step]:
+        """The prelude's own steps, its `use` steps already expanded in the prelude's own scope.
+
+        A prelude is a scenario-file-shaped document and carries a `components:` map of its own, so
+        its bare refs must resolve there — never against whichever scenario file happened to name it
+        as `setup` (BE-0422). Expanding before `apply_setups` splices is what guarantees that: no
+        unexpanded `use` ever crosses from a prelude into the scenario including it.
+
+        The prelude path itself stays inside the suite root (BE-0174), the same as every other ref
+        this function resolves — a scenario file is untrusted input under `serve`, so `setup` gets no
+        exemption from the containment every `use`/`dataFile` ref already has.
+        """
+        prelude = contained_ref(root, base_dir, ref)
+        prelude_file = parse_yaml_named(prelude, load_scenario_file)
+        scenario = prelude_file.scenarios[0]
+        expand_components(
+            [scenario],
+            ComponentResolver(
+                prelude_file.components, root=root, base=prelude.parent, source=prelude
+            ),
         )
+        return scenario.steps
+
+    try:
+        apply_setups(scenarios, eff.setup, _setup_steps)
     except (OSError, ValueError, IndexError) as e:
         typer.echo(f"setup の読み込みに失敗: {e}")
         raise typer.Exit(2) from None
     try:
         expand_components(
             scenarios,
-            lambda ref: load_component(
-                contained_ref(root, base_dir, ref).read_text(encoding="utf-8")
-            ),
+            ComponentResolver(scenario_file.components, root=root, base=base_dir, source=path),
         )
     except (OSError, ValueError) as e:
         typer.echo(f"component の展開に失敗: {e}")

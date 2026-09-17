@@ -52,6 +52,10 @@ class FakeDriver:
         # Notification banners the runner-side monitor should report having swiped away (BE-0416),
         # seeded the same way and just as inert.
         self.banners_to_drain: list[str] = []
+        # The proactive guard's presence query (Units 2/3/8, BE-0416): a test seeds this to stand in
+        # for a foreground banner sitting on screen with nothing interacting with it. A subclass
+        # overriding `notification_banner_frame` is how a test flips this between polls.
+        self.notification_banner: base.Frame | None = None
         # The rows each seeded picker wheel offers `set_picker_value` (BE-0356), keyed by `id()` of
         # the `Element` object in `screen` rather than by its identifier: a multi-component picker's
         # sibling wheels (a year wheel beside a month wheel) carry no identifier of their own — they
@@ -246,6 +250,9 @@ class FakeDriver:
     def system_alert_labels(self) -> list[str]:
         return [label for b in self.system_alert_buttons if (label := b["label"])]
 
+    def notification_banner_frame(self) -> base.Frame | None:
+        return self.notification_banner
+
     def set_interruption_policy(
         self, rules: Sequence[tuple[frozenset[str], str]], governs: bool
     ) -> None:
@@ -316,6 +323,7 @@ class FakeDriver:
             base.Capability.HANDLE_SYSTEM_ALERT,
             base.Capability.PICKER_WHEEL,
             base.Capability.HANDLE_TIPKIT_TIP,
+            base.Capability.HANDLE_NOTIFICATION_BANNER,
         }
     )
 

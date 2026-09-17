@@ -13,9 +13,10 @@ from pathlib import Path
 
 import yaml
 
-from bajutsu.common.scenario.expand import expand_components, expand_data, read_csv
+from bajutsu.common.scenario.expand import ScopedResolve, expand_components, expand_data, read_csv
 from bajutsu.common.scenario.load import load_component, load_scenario_file
-from bajutsu.common.scenario.models import Scenario
+from bajutsu.common.scenario.models import Component, Scenario
+from bajutsu.common.scenario.models.scenario.component import is_component_file_ref
 
 
 def contained_ref(root: Path, base: Path, ref: str) -> Path:
@@ -45,7 +46,7 @@ def contained_ref(root: Path, base: Path, ref: str) -> Path:
     return target
 
 
-def _parse_yaml_named[T](file: Path, parse: Callable[[str], T]) -> T:
+def parse_yaml_named[T](file: Path, parse: Callable[[str], T]) -> T:
     """Read and *parse* a YAML file, re-raising a syntax error as a `ValueError` naming *file*.
 
     A `yaml.YAMLError` is not a `ValueError` subclass, so a caller's `except (OSError, ValueError)`
@@ -60,6 +61,103 @@ def _parse_yaml_named[T](file: Path, parse: Callable[[str], T]) -> T:
         raise ValueError(f"invalid YAML in {file}: {' '.join(str(e).split())}") from e
 
 
+class ComponentResolver(ScopedResolve):
+    """Resolve a `use: { component: <ref> }` ref by the ref's own shape (BE-0422).
+
+    Binding a file's own `components:` map, the suite root, and the directory refs resolve against
+    into one object is what lets the deterministic `run` gate and the device-free readers expand the
+    same scenario file identically — the two built separate resolvers before, and had already
+    drifted on how a malformed component file reported (BE-0150).
+    """
+
+    def __init__(
+        self,
+        components: dict[str, Component],
+        *,
+        root: Path,
+        base: Path,
+        source: Path | None,
+    ) -> None:
+        """Bind the resolver to one file's scope.
+
+        The three paths are keyword-only: they are interchangeable to the type checker, so a
+        transposed `root` and `base` would otherwise pass every check and quietly move the
+        containment boundary.
+
+        Args:
+            components: The `components:` map a bare name resolves against.
+            root: The suite root a path ref must stay within (BE-0174).
+            base: The directory a path ref resolves against.
+            source: The scenario file whose `components:` map this is, named in the error when a
+                bare name misses. None marks a component file's scope, which declares no map at
+                all — a different mistake, and reported as one.
+
+        Raises:
+            ValueError: `source` is None alongside a non-empty map. A component-file scope exists
+                precisely to hold no names, so accepting one would silently reopen the leak the
+                scope swap closes.
+        """
+        if source is None and components:
+            raise ValueError("a component-file scope declares no `components:` of its own")
+        self._components = components
+        self._root = root
+        self._base = base
+        self._source = source
+        self._cache: dict[str, Component] = {}
+        self._file_scope: ComponentResolver | None = None
+
+    def __call__(self, ref: str) -> Component:
+        """The component *ref* names, resolved once per resolver and cached.
+
+        Raises:
+            OSError: A path ref names a file that cannot be read.
+            ValueError: A bare name no bound `components:` entry defines, or a path ref that
+                escapes the suite root or holds invalid YAML.
+        """
+        if ref not in self._cache:
+            self._cache[ref] = self._resolve(ref)
+        return self._cache[ref]
+
+    def _resolve(self, ref: str) -> Component:
+        """Read a path ref off disk, or look a bare name up in the bound map."""
+        if is_component_file_ref(ref):
+            return parse_yaml_named(contained_ref(self._root, self._base, ref), load_component)
+        component = self._components.get(ref)
+        if component is None:
+            raise ValueError(f"component {ref!r} is not defined: {self._undefined_hint()}")
+        return component
+
+    def _undefined_hint(self) -> str:
+        """Why a bare name missed here, which differs between a scenario file and a component file."""
+        if self._source is None:
+            return (
+                "a component file declares no `components:` of its own, so only a ref holding a "
+                "'/' or ending in .yaml / .yml resolves inside one"
+            )
+        return (
+            f"no such entry in the `components:` of {self._source} (a ref holding a '/' or "
+            "ending in .yaml / .yml resolves as a file instead)"
+        )
+
+    def scope_for(self, ref: str) -> ComponentResolver:
+        """The resolver *ref*'s own steps expand under: the file scope for a path ref, else self."""
+        return self.for_component_file() if is_component_file_ref(ref) else self
+
+    def for_component_file(self) -> ComponentResolver:
+        """A sibling bound to no local names, for expanding a component file's own steps.
+
+        A component file is a bare `params` + `steps` mapping and declares no `components:`, so every
+        bare ref inside one is undefined however the including scenario file spelled its own map.
+        A component-file scope is already that, so it answers with itself; every other resolver
+        builds its sibling once and reuses it, keeping one ref cache across the whole expansion.
+        """
+        if self._source is None:
+            return self
+        if self._file_scope is None:
+            self._file_scope = ComponentResolver({}, root=self._root, base=self._base, source=None)
+        return self._file_scope
+
+
 def load_expanded_scenarios(path: Path, root: Path | None = None) -> list[Scenario]:
     """Load a scenario file and expand its components + data rows, resolving refs relative to the file.
 
@@ -71,17 +169,19 @@ def load_expanded_scenarios(path: Path, root: Path | None = None) -> list[Scenar
 
     Raises:
         OSError: The scenario file or a referenced component / CSV cannot be read.
-        ValueError: The content is invalid, the YAML does not parse — `_parse_yaml_named`
+        ValueError: The content is invalid, the YAML does not parse — `parse_yaml_named`
             normalizes a `yaml.YAMLError` into a `ValueError` naming the offending file (the scenario
             or a referenced component), so its callers' `except (OSError, ValueError)` guard a
-            malformed file as cleanly as a structurally-invalid one (BE-0150) — or a ref resolves
-            outside `root` (`contained_ref`).
+            malformed file as cleanly as a structurally-invalid one (BE-0150) — a ref resolves
+            outside `root` (`contained_ref`), or a bare `use` ref names no entry in this file's own
+            `components:` (`ComponentResolver`).
     """
     base = path.parent
     root = base if root is None else root
-    scenarios = _parse_yaml_named(path, load_scenario_file).scenarios
+    scenario_file = parse_yaml_named(path, load_scenario_file)
+    scenarios = scenario_file.scenarios
     expand_components(
-        scenarios, lambda ref: _parse_yaml_named(contained_ref(root, base, ref), load_component)
+        scenarios, ComponentResolver(scenario_file.components, root=root, base=base, source=path)
     )
     expanded = expand_data(
         scenarios,

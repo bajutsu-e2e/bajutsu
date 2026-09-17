@@ -75,6 +75,7 @@ class XcuitestDriver:
                 base.Capability.HANDLE_SYSTEM_ALERT,
                 base.Capability.PICKER_WHEEL,
                 base.Capability.HANDLE_TIPKIT_TIP,
+                base.Capability.HANDLE_NOTIFICATION_BANNER,
             }
         )
         | base.DEVICE_CONTROL_ALL
@@ -652,6 +653,17 @@ class XcuitestDriver:
         if self._transport("POST", "/app/state", {}).app_state != "notRunning":
             return None
         return "the app under test is no longer running (XCUIApplication.state == notRunning)"
+
+    def notification_banner_frame(self) -> base.Frame | None:
+        """The current foreground notification banner's own frame, or None when none is up (BE-0416).
+
+        A single, non-blocking read against `/notificationBanner/query` — a different SpringBoard
+        element than `/systemAlert/query` reads, so it never enumerates an alert as a banner or vice
+        versa. The proactive guard (Units 2/3/8) polls this between interactions to clear a banner
+        nothing is about to tap; at most one banner ever enumerates (iOS coalesces concurrent ones).
+        """
+        banners, _ = self._parse_elements(self._transport("POST", "/notificationBanner/query", {}))
+        return banners[0]["frame"] if banners else None
 
     def set_interruption_policy(
         self, rules: Sequence[tuple[frozenset[str], str]], governs: bool

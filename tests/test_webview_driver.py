@@ -137,6 +137,13 @@ def test_capabilities_include_webview() -> None:
     assert base.Capability.QUERY in caps
 
 
+def test_notification_banner_frame_is_none() -> None:
+    # A WebView DOM context sees no SpringBoard banner layer; nothing to report here (BE-0416).
+    driver = WebContextDriver(bridge=FakeBridge([]), webview_id="wv")
+    assert base.Capability.HANDLE_NOTIFICATION_BANNER not in driver.capabilities()
+    assert driver.notification_banner_frame() is None
+
+
 def test_double_tap_dispatches() -> None:
     elements = [_el("btn", frame=(0.0, 0.0, 80.0, 40.0))]
     bridge = FakeBridge(elements)

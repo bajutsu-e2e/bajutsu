@@ -562,6 +562,13 @@ def test_capabilities_include_multitouch_but_exclude_simctl_backed() -> None:
     assert not (caps & base.DEVICE_CONTROL_ALL)
 
 
+def test_notification_banner_frame_is_none() -> None:
+    # The resident-runner SpringBoard query channel is not exposed on the live grid (BE-0416).
+    driver = XcuitestLiveDriver(WebDriverClient(_FakeGrid([])))
+    assert base.Capability.HANDLE_NOTIFICATION_BANNER not in driver.capabilities()
+    assert driver.notification_banner_frame() is None
+
+
 # --- routing: an http(s) endpoint takes the live path --- #
 
 

@@ -119,6 +119,7 @@ The `bajutsu/` package (Python 3.13+, pydantic v2 / typer / anthropic / pyyaml /
 | `run/` | `bajutsu run`'s CLI command (`cli.py`): target/backend resolution, device leasing, plan construction, and the deterministic run/report dispatch | [cli](cli.md) |
 | `record/` | The record loop (observe → propose → execute → emit) (package: `loop.py`, plus `capture.py` — proxy-actuation capture of tap/type/swipe into a scenario step — and `cli.py`, its CLI command) | [recording](recording.md#the-record-loop) |
 | `crawl/` | Autonomous breadth-first crawl → screen map: `core` engine + `serialize`, with `guide` / `tabs` / `report` / `repro` / `flows`, plus its CLI command (`cli.py`) | [recording](recording.md) |
+| `repl/` | The AI-free manual shell (BE-0423): `render.py` prints an element tree, `session.py` is the command set (`tree` / `find` / `tap` / `type` / `back` / `screenshot`), `loop.py` the `bajutsu>` prompt loop, `cli.py` its CLI command | [cli](cli.md#repl) |
 | `codegen/` | Scenario → native test generation: XCUITest (Swift), Playwright (TypeScript), UI Automator (Kotlin), plus its CLI command (`cli.py`) | [codegen](codegen.md) |
 | `triage/` | M4 self-heal: rule-based `HeuristicTriageAgent` + structured fixes (`renameId`/`addIndex`/`raiseTimeout`), `--apply`/`--write`/`--rerun` (package: `heuristic.py`, plus `cli.py` — its CLI command) | [cli](cli.md) |
 | `common/github/` | GitHub helpers: `actions` (CI, continuous integration, annotations + job summary), `app` (App installation token for the private-repo config source), `errors` (the shared access error) | [ci](ci.md) |
@@ -149,7 +150,7 @@ Lower layers are more stable; upper layers depend on lower ones. The core is `co
 <!-- mermaid-svg: assets/diagrams/architecture-dependency-layers.svg -->
 ```mermaid
 flowchart TB
-    cli["cli/<br/>user entry (Typer): run · doctor · audit · coverage · impact · stats ·<br/>flakiness · export · trace · report · triage · record · crawl · codegen ·<br/>approve · serve · mcp · worker · lint · schema"]
+    cli["cli/<br/>user entry (Typer): run · doctor · audit · coverage · impact · stats ·<br/>flakiness · export · trace · report · triage · record · crawl · repl · codegen ·<br/>approve · serve · mcp · worker · lint · schema"]
 
     runner["runner/"]
     record["record.py / crawl/<br/>(Tier 1 / AI)"]
@@ -594,10 +595,13 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 - DSL: the `within` selector (geometric scoping), the `relaunch` step (validated on-device),
   reusable `setup` preludes, `locale` applied at launch, and parallel runs (`--workers`) over a
   device pool
-- DSL authoring reuse: reusable parameterized components (`use` / `${params.*}`), data-driven
-  scenarios (`data` / `dataFile` with `${row.*}`), secret variables (`${secrets.X}` with value
-  masking), scenario tags + `--tag` / `--exclude` selection, the `setLocation` / `push` device
-  steps, the pre-launch `permissions` field (`simctl privacy` / `pm grant`|`pm revoke`, BE-0276),
+- DSL authoring reuse: reusable parameterized components (`use` / `${params.*}`, resolved by a ref
+  holding a `/` or ending in `.yaml` / `.yml` as a cross-file component file (BE-0030), or by a
+  bare name against a `components:` block declared inline in the same scenario file (BE-0422)),
+  data-driven scenarios (`data` / `dataFile` with `${row.*}`), secret variables (`${secrets.X}`
+  with value masking), scenario tags + `--tag` / `--exclude` selection, the `setLocation` / `push`
+  device steps, the pre-launch `permissions` field (`simctl privacy` /
+  `pm grant`|`pm revoke`, BE-0276),
   the `doubleTap` action, and file-level + scenario-level `description`
 - DSL control flow & data capture: conditional `if` and `forEach` loops (deterministic; the
   condition is a machine assertion), and `extract` (capture an element's value / label / identifier
@@ -802,6 +806,31 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   passing step, while an ungoverned one left XCUITest to wait the banner out, measured at ~9s per
   interrupted interaction against ~0.6s undisturbed. `systemAlertHandling` itself is on by default,
   and `false` disables it per scenario — the banner branch above runs either way
+- A banner reaches that monitor only on an *interaction* — a plain query never invokes it, so a
+  banner sitting on screen with nothing tapping through it is never cleared there (BE-0416 Units
+  2/3/8). A second, proactive path covers that gap: `Driver.notification_banner_frame()`
+  (`HANDLE_NOTIFICATION_BANNER`, the XCUITest-only capability that gates it) is a non-blocking read
+  of the same SpringBoard element by a different identifier query
+  (`NotificationShortLookView` against SpringBoard's whole tree, not `alerts`), and the step loop
+  calls it once per step, right before the `after.png` shutter starts — the corrupted capture, and
+  every visual-regression comparison built from it, that this path exists to reach. Found, the
+  banner is swiped by `notification_banner_swipe_points`, the same upward gesture the interruption
+  monitor performs, reusing the ordinary `swipe` action rather than a second gesture primitive — but
+  only when the resulting drag still travels at least the 20 points that monitor's own swipe clears
+  a banner's top edge by. A frame caught mid-animation leaves the (top-margin-clamped) endpoint too
+  close to the start for that, and at the extreme below it, inverting the drag downward. Such a
+  frame is left alone. Immediately before the gesture itself, a fresh presence check also declines a
+  banner that has since auto-dismissed — the confirmed frame and the acted-on one can otherwise
+  differ by one round trip, landing the swipe on whatever the app now shows at that point instead.
+  The swipe is re-confirmed gone by a bounded poll immediately after, the same discipline the
+  interruption monitor's own
+  confirm-before-claiming applies. The query is rate-limited to `systemAlertHandling`'s
+  own resolved `pollInterval` (BE-0315's default when the guard is off), so a passing scenario pays
+  it once per interval rather than once per step.
+  The `expect`-phase visual capture gets the same unconditional check immediately before it,
+  gated on an actual `visual` assertion being present. No scenario or CLI toggle: a scenario cannot
+  observe a banner, so none can be broken by clearing it — the same "no known use for a toggle"
+  the interruption path above already established
 - DSL `iosTipKitHandling` (BE-0389), an opt-in guard for a blocking Apple TipKit tip: TipKit's
   presentation marks the content it covers accessibility-hidden rather than merely occluding it, so a
   blocked tap can fail as `ElementNotFound`, not only `ElementNotTappable`. The XCUITest backend alone
@@ -866,7 +895,7 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 
 #### The CLI, `serve`, and codegen
 
-- The CLI: `run` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` / `export` / `trace` / `report` / `triage` / `record` / `crawl` / `codegen` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard
+- The CLI: `run` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` / `export` / `trace` / `report` / `triage` / `record` / `crawl` / `repl` / `codegen` / `approve` / `serve` / `mcp` / `worker` / `lint` / `schema` — with `record` + `crawl` as the Tier 1 AI authoring paths and the alert guard, and `repl` as the AI-free manual shell beside them (BE-0423)
 - The **parsed device OS** (`common/devices/os.py`, BE-0358): the device's operating-system (OS) version as a small parsed fact — platform, major, minor — read from the `device_runtime` label a run already records per scenario. An absent or unrecognized label parses to "unknown" rather than to a guessed version. Both flakiness surfaces carry the parsed OS in their grouping key, so a scenario's verdict history is per OS version, and a reproducible cross-version difference no longer scores as flakiness. The XCUITest driver receives it as a `make_driver` keyword — not a `Driver` member, which every backend and every test double would then have to declare — so a driver-level report can name the OS it ran on. **Reading the OS is not a licence to branch on it**: this repository fixes a behavioural OS difference version-agnostically, and a per-OS branch must earn its place in its own roadmap item against that alternative
 - Read-only advisory analysis commands (no device, no AI, never gate CI — only a missing/unreadable input exits non-zero): a determinism/flakiness **audit** with static, repeat-and-diff, and longitudinal modes (`audit`, BE-0049); a scenario id-namespace **coverage** map (`coverage`, BE-0050); **test impact analysis** — the affected scenario steps a `git` diff selects, by inverting the coverage index (`impact`, BE-0321); the aggregate run-stats dashboard as CLI/HTML output (`stats`, BE-0102); cross-run **flakiness** ranking, from a runs directory or the `serve` database (`flakiness`, BE-0220); a finished run's **export** as a portable `.zip` (`export`, BE-0060); and **report** re-rendering (`report.html`/`junit.xml`/`ctrf.json`) from stored run data with no re-run (`report`, BE-0068)
 - The **run-history label and the target stamp** (BE-0404): a run records the config it ran (`runs.label`, from the config's own name or an explicit `run --label`) and the target it ran (`runs.target`, mirrored from the manifest), so restarting `serve` against a second config yields two readable histories instead of one interleaved list, and a per-target comparison is computable from stored data. The org row holds the one config source it last bound, which is how a hosted replica recovers an uploaded bundle it never received; a replica that still holds the extracted bundle resolves that cache before any object store is required, so it rebinds without a fetch ([BE-0393](../roadmaps/BE-0393-per-org-config-memory/BE-0393-per-org-config-memory.md) unit 5 — groundwork, since every deployment that keeps a config memory today also has a store). This replaced BE-0225's named **project** registry, whose table, endpoints, CLI commands, and web surfaces are gone

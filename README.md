@@ -123,8 +123,8 @@ Implemented and covered by tests (run without a Simulator):
 - **Self-healing triage**: a rule-based heuristic agent by default, or `--ai` for a Claude-backed
   agent — root cause + minimal-fix suggestions; advisory, off the CI path
 - The wired CLI: `run` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` /
-  `export` / `trace` / `report` / `triage` / `record` / `crawl` / `codegen` / `approve` / `serve` /
-  `mcp` / `worker` / `lint` / `schema`
+  `export` / `trace` / `report` / `triage` / `record` / `crawl` / `repl` / `codegen` / `approve` /
+  `serve` / `mcp` / `worker` / `lint` / `schema`
 - **MCP server** (`bajutsu mcp`): exposes `run` and `doctor` as MCP tools and run evidence
   (manifest / report / JUnit / artifacts) as resources, for Claude Desktop / Code integration
 - **Web UI** (`bajutsu serve`): author (`record` / `crawl`), edit, and run scenarios; browse
@@ -326,6 +326,7 @@ bajutsu/
 ├── record/               # AI record loop: observe -> propose -> execute -> emit a scenario
 ├── crawl/                # breadth-first crawl -> screen map (deterministic core/, AI-assisted
 │                         #   guide/ and tabs/, report/ layout)
+├── repl/                 # AI-free manual shell: read the element tree, act on an id
 ├── triage/               # self-healing triage: a rule-based heuristic agent (default) plus a
 │                         #   Claude-backed agent (--ai)
 ├── codegen/              # scenario -> native tests (XCUITest / Playwright / UI Automator)

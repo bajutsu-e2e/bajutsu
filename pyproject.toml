@@ -352,6 +352,7 @@ forbidden_modules = [
     "bajutsu.crawl.guide",
     "bajutsu.common.github.actions",
     "bajutsu.run",
+    "bajutsu.repl",
 ]
 
 # The deterministic core must also stay free of the hosting-only third-party extras (BE-0129): the

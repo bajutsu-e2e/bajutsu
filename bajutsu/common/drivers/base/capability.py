@@ -45,6 +45,14 @@ class Capability:
     # orchestrator's. Unlike HANDLE_SYSTEM_ALERT the tip is in-process, so this needs no runner route
     # — but it stays a token so an iOS-only identifier never reaches the backend-agnostic core.
     HANDLE_TIPKIT_TIP = "handleTipkitTip"
+    # Report a foreground notification banner's own frame, when one is showing (BE-0416). Only the
+    # resident-runner XCUITest backend advertises it: the banner is a SpringBoard element, on-device
+    # XCUITest access the same way HANDLE_SYSTEM_ALERT is, and no other backend has an equivalent
+    # foreground-banner surface to report. The interruption-monitor path that answers a banner
+    # blocking an in-flight interaction (BE-0416 Unit 4) needs no token of its own — it already holds
+    # the element XCUITest handed it — so this token gates only the proactive presence query and the
+    # swipe it feeds (Units 2/3/8), used opportunistically between interactions.
+    HANDLE_NOTIFICATION_BANNER = "handleNotificationBanner"
     # The `DeviceControl` family, one token per operation (BE-0212, split from the coarse
     # `deviceControl` of BE-0128). A backend advertises exactly the operations it can honor, so
     # preflight gates each device-control step on its own operation — the Android emulator backs
