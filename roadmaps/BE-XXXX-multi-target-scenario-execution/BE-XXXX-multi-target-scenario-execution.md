@@ -149,17 +149,31 @@ expect:
 
 The iOS steps mirror `demos/showcase/scenarios/firstlook.yaml`'s own "favorite a horse" flow (down to
 the dotted-and-underscore id pairs BE-0221 already requires for cross-platform ids), skipping only its
-middle "still off" assertion for brevity; the web steps are the opening of
-`demos/web/scenarios/counter.yaml`'s own onboarding flow. Both already run today, each in its own
-single-target scenario file — this example only adds `targets`, `target`, and the `extract`/`${vars.*}`
-hop between them.
+middle "still off" assertion, its `preconditions.launchEnv`, and its `capture` modifier for brevity;
+the web steps are the opening of `demos/web/scenarios/counter.yaml`'s own onboarding flow. Both
+already run today, each in its own single-target scenario file — this example only adds `targets`,
+`target`, and the `extract`/`${vars.*}` hop between them.
+
+Running this exact file against this repository as it stands needs one more step this example glosses
+over: `showcase-swiftui` and `web` are declared in two separate config files —
+[`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml) and
+[`demos/web/demo.config.yaml`](../../demos/web/demo.config.yaml) — and the "Declaring participating
+targets" rule above resolves every name in `scenario.targets` against the one config `bajutsu run`
+loads for that invocation, never several at once; this proposal adds no way to merge two config files
+into one. Running this scenario as written needs a config that declares both `showcase-swiftui` and
+`web` as `targets.<name>` entries side by side — copying `web`'s block from `demo.config.yaml` into a
+copy of `showcase.config.yaml`, or the reverse, is enough, since neither target's own config depends
+on being the only one present — before `bajutsu run --scenario` can resolve both from one load. The
+example is otherwise unchanged: real ids, a real per-step flow from each of the two existing scenario
+files, and no product-level claim about the two apps sharing data.
 
 `Scenario` gains `targets: list[str] = Field(default_factory=list)`, alongside its existing `before`,
 `steps`, and `after` fields
 ([`bajutsu/common/scenario/models/scenario/scenario.py:45-84`](../../bajutsu/common/scenario/models/scenario/scenario.py)).
 Each entry names a `targets.<name>` config unit — the same [target](../../docs/glossary.md#target-app-device)
-`--target` already resolves — and every name must already exist in the loaded config, checked the
-same way `--target` is checked today.
+`--target` already resolves — every name must already exist in the loaded config, checked the same
+way `--target` is checked today, and repeating the same name twice in `targets` is rejected at load
+time rather than silently deduplicated.
 
 `Step` gains `target: str | None = None`, joining the fixed tuple of orthogonal step modifiers —
 today `("capture", "extract", "name", "from_")`
@@ -216,6 +230,19 @@ declared order. `AssertionResult`
 reporting reason — inline `assert:` results are already scoped by their own step's `target`, so this
 matters only for `expect_results`.
 
+`Assertion` gaining this field once, on the model itself, makes the same `target` key syntactically
+legal everywhere an `Assertion` appears, not only in `expect` — the inline `assert:` list `Step`
+carries (`assert_: list[Assertion] | None`,
+[`bajutsu/common/scenario/models/steps/step.py:92`](../../bajutsu/common/scenario/models/steps/step.py))
+and the `condition: Assertion` `If` wraps
+([`bajutsu/common/scenario/models/steps/if_.py:20`](../../bajutsu/common/scenario/models/steps/if_.py))
+both already run against a target the enclosing step's own `target` field fixes, so a `target` set
+inside one of their assertions would either restate that value redundantly or, worse, silently
+contradict it. The `Scenario`-level validator adds one more check alongside the `target` rules above:
+walking `steps`, `before`, and `after` the same way it already does, it rejects at load time any
+`Assertion` reached through an inline `assert:` list or an `if`'s `condition` that sets `target` at
+all — only an `Assertion` reached through the top-level `expect` block may set it.
+
 ### The command-line interface (CLI): `--target` becomes optional once a scenario declares its own
 
 `--target` stays required, exactly as it is today
@@ -233,15 +260,20 @@ declared targets, mismatching otherwise — rather than ignored, so a stale flag
 the scenario fails loudly instead of silently selecting a target the file no longer expects.
 
 Because that directory glob is the only whole-suite shorthand `run` has, and it belongs to one
-target, a self-declaring scenario file must not live inside any single target's own `scenarios`
-directory. A plain `bajutsu run --target <name>` with no `--scenario` override globs every file
-there in, self-declaring ones included, and the outcome is bad either way: if `name` is not one of
-that file's own declared targets, the mismatch check above rejects it and fails every other scenario
-in that same batch alongside it; if `name` does happen to be one of its declared targets, the
-membership check lets it through and the batch silently launches every other target the file
-declares too, well beyond the single target that invocation named. This is a placement discipline
-the author keeps by directory layout — keep self-declaring scenarios in a directory of their own,
-run only via explicit `--scenario` files — not a new runtime check this item adds.
+target, this item makes the rule an enforced check rather than an author discipline kept by directory
+layout: the directory-glob path a plain `bajutsu run --target <name>` with no `--scenario` override
+takes rejects, at discovery time, any file it globs whose own `targets` field is non-empty, rather
+than handing it to the mismatch check above or launching it — a plain error naming the file and
+pointing at `--scenario` instead, before the run itself starts. Without this check the outcome would
+be bad either way once such a file lands in that directory: if `name` is not one of the file's own
+declared targets, the mismatch check rejects it and fails every other scenario in that same batch
+alongside it; if `name` does happen to be one of its declared targets, the membership check lets it
+through and the batch silently launches every other target the file declares too, well beyond the
+single target that invocation named. With the discovery-time rejection in place, a self-declaring
+scenario can only ever run through an explicit `--scenario <file>`, so neither bad outcome depends on
+where in the tree the file happens to sit — keeping self-declaring scenarios in a directory of their
+own remains good practice for a reader mapping the tree, but this item no longer relies on it for
+correctness.
 
 This item leaves the web backend's cross-engine matrix (`--browsers`,
 [`bajutsu/run/cli.py:264-307`](../../bajutsu/run/cli.py)) and `--headed` / `--browser` untouched: they
@@ -289,15 +321,27 @@ neither of which takes one today (both take only the CLI's single `eff: Effectiv
 `_run_one_impl` calls the resolution chain once per name in `scenario.targets`, building its
 per-scenario `dict[str, Effective]` locally.
 
+Before any pool exists, one `DeviceLease` is already acquired for the run — a distinct, upstream
+concept from the per-scenario `pool.lease()`/`Lease` this item has generalized so far.
+`acquire_device(eff, udid)` ([`bajutsu/run/cli.py:1514`](../../bajutsu/run/cli.py)) calls the target's
+own `eff.device_provider` ([`bajutsu/common/config/schema/target_config.py:72`](../../bajutsu/common/config/schema/target_config.py),
+`targets.<name>.deviceProvider`, BE-0236) — the built-in `local` provider when unset, a real
+device-cloud provider otherwise — and returns the `udid_spec` and provisioning data every later step,
+including `make_pool`, resolves devices from. This call is unconditional on every run today, and it
+reads one target's `eff`; since `deviceProvider` is per-target config, this item calls it once per
+declared target instead, before building any pool, and releases each target's own `DeviceLease` at
+teardown alongside its driver and pool.
+
 Bringing every declared target's driver up needs its own pool, not one shared pool, because a pool is
 platform-specific today: `make_pool` resolves one `pool_actuator`/`pool_env` pair from one platform's
 udid list and pre-starts that platform's own collectors
 ([`bajutsu/common/runner/pool.py:149-182`](../../bajutsu/common/runner/pool.py)) — an iOS target and a
 web target, this item's own headline example, need two differently-built pools, not one pool handling
 both. `run_all` builds one pool per distinct platform among every declared target across the whole
-scenario set instead of the single pool it builds today, still once per run, and `_run_one_impl`
-leases from whichever pool matches each of its scenario's declared targets. It launches one driver
-per resolved `Effective` through the existing `launch_driver`
+scenario set instead of the single pool it builds today, still once per run, each fed by that
+platform's own targets' `DeviceLease`s from the previous paragraph, and `_run_one_impl` leases from
+whichever pool matches each of its scenario's declared targets. It launches one driver per resolved
+`Effective` through the existing `launch_driver`
 ([`bajutsu/common/runner/launch.py:27-110`](../../bajutsu/common/runner/launch.py)) — in place of the
 pool's current single per-scenario lease and launch
 ([`bajutsu/common/runner/pool.py:408`](../../bajutsu/common/runner/pool.py)) — collecting the results
@@ -325,26 +369,47 @@ needs the same generalization for a different reason: `self.baselines_dir` / `se
 `self.golden_context` are each derived from the single `self.eff` too, and each names a directory
 `Effective.rebased` already resolves per target (per the paths this item's per-target resolution
 already carries) — so a `visual` or `golden` assertion on a second declared target must compare
-against that target's own baseline and goldens directories, not the primary target's. Every one of
-these per-target values resolves the same way, keyed alongside its driver. Three fields on
-`_ScenarioRunner` stay run-level rather than splitting per target, because
-what they represent isn't a property of any one target: `redactor` applies the union of every
-declared target's own `secrets` to whichever target's evidence it redacts, so a value one target's
-config marks secret is scrubbed everywhere rather than only from that one target's own capture;
-`mailbox` names an inbox an `email` / `totp` step reads regardless of which target's action requested
-the message; and `caps` gates which operations the whole run may perform, a run-wide policy rather
-than a per-target one.
+against that target's own baseline and goldens directories, not the primary target's.
+
+Two more fields move the same way, correcting an earlier draft of this design that kept them shared.
+`caps`, computed once per run from one target's actuator
+([`bajutsu/common/backends.py:194-236`](../../bajutsu/common/backends.py)) and checked once against
+the *whole* scenario before any device is leased
+([`bajutsu/common/runner/pipeline.py:373`](../../bajutsu/common/runner/pipeline.py), BE-0082's
+fail-fast preflight), is a property of one backend's capability set, not of the run — sharing it
+would preflight a second declared target's steps against the primary target's capabilities, wrongly
+rejecting a construct the second target supports or wrongly allowing one it does not. This item
+resolves `caps` per declared target the same way, and runs the preflight once per declared target
+against only that target's own steps (grouped by `step.target`, the same grouping this item's
+`_evaluate_expect` change already introduces for `expect`) and that target's own capability set.
+`mailbox` is not run-level either: it already comes from one target's own config
+(`targets.<name>.mailbox`, [`bajutsu/common/config/schema/target_config.py:103`](../../bajutsu/common/config/schema/target_config.py)),
+and an `email` / `totp` step reads whichever inbox the *run's* single target configured
+([`bajutsu/common/orchestrator/loop/_functions.py:281`](../../bajutsu/common/orchestrator/loop/_functions.py)) —
+sharing one mailbox across declared targets would poll the wrong inbox for a step whose target
+configures a different one. Both `caps` and `mailbox` join the other per-target fields above in
+`TargetRuntime` instead of staying on `_ScenarioRunner`. Only `redactor` stays run-level: it applies
+the union of every declared target's own `secrets` to whichever target's evidence it redacts, so a
+value one target's config marks secret is scrubbed everywhere rather than only from that one target's
+own capture — widening the redaction set is strictly safer than narrowing it, unlike `caps` or
+`mailbox`, where sharing one target's own value produces a wrong answer for another.
 
 Acquiring one lease per declared target needs one more rule this item adds explicitly: `pool.lease()`
 blocks on `free.get()` against a queue seeded with the run's udids
 ([`bajutsu/common/runner/pool.py:163-165, 255`](../../bajutsu/common/runner/pool.py)), so a scenario
 that leases N device-backed targets — now drawn from as many as N different per-platform pools, per
-the previous paragraph — while `--workers` runs several scenarios at once can starve or deadlock:
+the previous paragraphs — while `--workers` runs several scenarios at once can starve or deadlock:
 every worker holds one device from one pool and blocks forever acquiring its next one from another.
-This item's launch step acquires a scenario's whole set of device-backed leases, across every pool it
-needs, as one atomic reservation before starting any of them, rather than one blocking `pool.lease()`
-call per target in sequence, so a scenario that cannot get its full set right away waits in place
-instead of holding a partial set that starves or deadlocks a sibling worker.
+Acquiring "as one atomic reservation" needs an actual protocol to mean anything, since neither
+`pool.lease()` nor a second, independent pool object offers a transaction across the two: this item's
+launch step orders every pool a scenario needs by a fixed, deterministic key (the declared platform
+name, sorted) and acquires them strictly in that order, every worker included — the standard
+lock-ordering discipline that rules out circular wait, the shape every deadlock in this paragraph
+takes. A worker that cannot acquire its next pool in the sequence blocks on that one pool's queue
+alone, holding only the pools before it in the fixed order; no two workers can then be holding each
+other's next pool, since both approach every pool in the same order. A worker releases anything it
+already holds if a later pool in its sequence times out, rather than holding a partial set
+indefinitely.
 
 Teardown brackets the whole set the same way one launch already brackets one scenario today. A launch
 that fails partway through the list tears down every driver that did start before propagating the
@@ -357,16 +422,20 @@ down its one lease today, by calling that same release once per declared target'
 ### Routing a step to its driver, and sharing `${vars.*}` across all of them
 
 `run_scenario`'s existing flat keyword parameters — `driver`, `sink`, `alert_guard`, `network`,
-`relaunch`, `control`, `ctx`, `webview_bridge`, `transitions`, `interrupts`, `locale`, `capture`,
-`channel`, and `target_launch_env`
+`relaunch`, `control`, `ctx`, `mailbox`, `webview_bridge`, `transitions`, `interrupts`, `locale`,
+`capture`, `channel`, and `target_launch_env`
 ([`bajutsu/common/orchestrator/loop/_functions.py:572-594`](../../bajutsu/common/orchestrator/loop/_functions.py)) —
 are, read together, everything the pipeline binds from one target's one lease today (per the previous
 section's enumeration). A step that names no `target` keeps reading all of them exactly as it does
 now: they stay `run_scenario`'s primary target's runtime, unchanged in shape, so every existing caller
 is untouched. `run_scenario` gains one new parameter for every *other* declared target instead of
 widening each of these into a per-target mapping in place: `target_runtimes: Mapping[str,
-TargetRuntime] | None = None`, where `TargetRuntime` (a new small dataclass) bundles exactly that same
-list of fields — one instance per additional declared target, built by `_run_one_impl` the same way
+TargetRuntime] | None = None`, where `TargetRuntime` (a new small dataclass) bundles that same list of
+fields, plus `caps`: unlike the rest, `caps` never reaches `run_scenario` as one of its own keyword
+arguments, since the preflight check that consults it runs in `_run_one_impl` before `run_scenario` is
+called at all, but it is resolved per declared target the same way, so it travels alongside the others
+on each target's own `TargetRuntime` rather than needing a separate carrier — one instance per
+additional declared target, built by `_run_one_impl` the same way
 the previous section already builds the driver map. `_StepRunner`'s own methods already take the
 active driver as an explicit `active_driver: base.Driver` argument at every call, rather than reading
 it off shared state
@@ -424,48 +493,67 @@ scenario. The report's Steps view shows each step's target name beside its actio
 block lists every declared target's device next to its own evidence, alongside the run's existing
 single-device header for a scenario that declares none.
 
-### Two open questions this proposal leaves to implementation
+### One open question this proposal leaves to implementation
 
-Two pieces of shared, run-level state still resolve from a single `Effective` in ways this proposal
-does not settle, and each needs a design call once the work above is under way rather than a guess
-made here. `_ScenarioRunner`'s `run_dir`, `udid_spec`, `actuator`, `resolve_actuator`,
-`baselines_dir`, `schemas_dir`, and `golden_context` fields all derive from the CLI's single `eff:
-Effective` today, and `run_all` / `run_and_report` keep `eff` as a required parameter even after this
-item makes `--target` itself optional — so which target's `Effective` should govern them, once a run
-has no single `--target` to derive one from, is an open question. Separately, `gc_with_screen`
+Every other piece of shared state an earlier draft of this design left open resolves elsewhere in
+this design, or was confirmed not to need resolving at all. `_ScenarioRunner`'s `run_dir` derives from
+`runs_dir / run_id` ([`bajutsu/common/runner/pipeline.py:1223`](../../bajutsu/common/runner/pipeline.py)),
+a run-level artifact directory that was never derived from any target's `Effective`, so it needs no
+per-target generalization. `udid_spec`, `actuator`, `baselines_dir`, `schemas_dir`, and
+`golden_context` are exactly the fields "Launching every declared target together, and tearing all of
+them down together" above resolves per declared target, alongside `caps` and `mailbox`. The optional
+per-scenario `resolve_actuator` callback (BE-0240,
+[`bajutsu/common/runner/pipeline.py:190`](../../bajutsu/common/runner/pipeline.py)) is explicitly out
+of scope rather than silently dropped: a caller that passes it already opts out of the pool-based
+actuator selection this item generalizes, and extending it to resolve one actuator per declared target
+— rather than one for the whole scenario — is deferred to whichever future item first needs
+`resolve_actuator` and multi-target scenarios together.
+
+One question remains genuinely open. `gc_with_screen`
 ([`bajutsu/common/runner/pipeline.py:875-884`](../../bajutsu/common/runner/pipeline.py)) probes one
 driver's screen bounds for `golden` frame sanity (BE-0006); an iOS target and a web target generally
 report different screen geometries, and only one `GoldenContext` reaches `run_scenario` today, so a
-`golden` assertion's behavior on a second declared target is likewise open — per-target golden
-contexts, or restricting `golden` to one declared target, are the two shapes this proposal has
-identified, and choosing between them is deferred rather than guessed.
+`golden` assertion's behavior on a second declared target is open — per-target golden contexts, or
+restricting `golden` to one declared target, are the two shapes this proposal has identified, and
+choosing between them is deferred rather than guessed.
 
 ### Work breakdown (MECE)
 
-1. **Schema.** `Scenario.targets: list[str]`; `Step.target: str | None`; `Assertion.target: str |
-   None` (excluded from `_ASSERTION_KINDS` like `from_`); a `Scenario`-level validator (not `Step`'s
-   own, which cannot see the enclosing scenario) tying `target`'s requirement to
-   `len(scenario.targets)`, walking `steps`, `before`, and every rule in `after` recursively into
-   every nested `if`/`forEach`/`web` step list, and applying the same rule to `expect`.
+1. **Schema.** `Scenario.targets: list[str]`, rejecting a duplicate name at load time; `Step.target:
+   str | None`; `Assertion.target: str | None` (excluded from `_ASSERTION_KINDS` like `from_`); a
+   `Scenario`-level validator (not `Step`'s own, which cannot see the enclosing scenario) tying
+   `target`'s requirement to `len(scenario.targets)`, walking `steps`, `before`, and every rule in
+   `after` recursively into every nested `if`/`forEach` step list — a step nested inside a `web:`
+   block is the one exception, required to omit `target` rather than declare one, since it always
+   runs against the target the enclosing `web:` step already resolved — applying the same
+   required-or-not rule to `expect`, and rejecting `target` outright on any `Assertion` reached
+   through an inline `assert:` list or an `if`'s `condition` rather than through `expect`.
 2. **CLI.** `--target` becomes optional once `scenario.targets` is non-empty, and `--scenario`
    becomes mandatory in its place; an explicit `--target` is checked against `scenario.targets`
    rather than silently overridden; the scenario-file loader resolves and validates every declared
-   name against the loaded config before the run starts.
-3. **Launch and teardown.** `_load_effective_with_source` and `_resolve_config_and_engines` returning
-   the loaded `Config` alongside the `Effective` they already return; threading it from `run`'s CLI
-   through `run_and_report` and `run_all` into a new read-only field on `_ScenarioRunner`, none of
-   which takes one today; `run_all` building one pool per distinct platform among every declared
-   target instead of today's single pool; `_run_one_impl` resolving one already-rebased `Effective`
-   per declared target name into a local map (never stored on the shared `_ScenarioRunner`); one
-   atomic multi-lease reservation per scenario across every pool it needs, instead of one blocking
-   `pool.lease()` per target, so a partial set never starves or deadlocks a sibling worker; one
-   `launch_driver` call per name, collected into a local `dict[str, base.Driver]`, all before the
-   first step; a launch failure partway through tears down every driver that did start; the run's
-   own end tears down the whole set.
+   name against the loaded config before the run starts; the `--target`-only directory-glob path
+   rejects, at discovery time, any globbed file whose own `targets` field is non-empty, rather than
+   handing a self-declaring scenario to the mismatch check or launching it.
+3. **Launch and teardown.** One `DeviceLease` acquired per declared target before any pool exists,
+   released at teardown alongside its driver and pool; `_load_effective_with_source` and
+   `_resolve_config_and_engines` returning the loaded `Config` alongside the `Effective` they already
+   return; threading it from `run`'s CLI through `run_and_report` and `run_all` into a new read-only
+   field on `_ScenarioRunner`, none of which takes one today; `run_all` building one pool per distinct
+   platform among every declared target instead of today's single pool, each fed by that platform's
+   own targets' `DeviceLease`s; `_run_one_impl` resolving one already-rebased `Effective` per declared
+   target name into a local map (never stored on the shared `_ScenarioRunner`); acquiring every pool a
+   scenario needs in a fixed, deterministic order (the declared platform name, sorted) rather than one
+   blocking `pool.lease()` per target in arbitrary order — the standard lock-ordering discipline, so no
+   two workers can hold each other's next pool and deadlock, releasing anything already held if a
+   later pool in the sequence times out; one `launch_driver` call per name, collected into a local
+   `dict[str, base.Driver]`, all before the first step; a launch failure partway through tears down
+   every driver that did start; the run's own end tears down the whole set.
 4. **Runner.** A new `TargetRuntime` dataclass bundling every argument `run_scenario` already binds
    from one lease (`driver`, `sink`, `alert_guard`, `network`, `relaunch`, `control`, `ctx`,
-   `webview_bridge`, `transitions`, `interrupts`, `locale`, `capture`, `channel`,
-   `target_launch_env`); `run_scenario`'s new `target_runtimes: Mapping[str, TargetRuntime] | None`
+   `mailbox`, `webview_bridge`, `transitions`, `interrupts`, `locale`, `capture`, `channel`,
+   `target_launch_env`), plus `caps`, resolved per target the same way but consulted directly by the
+   preflight check in `_run_one_impl` rather than forwarded through `run_scenario`;
+   `run_scenario`'s new `target_runtimes: Mapping[str, TargetRuntime] | None`
    parameter, alongside its unchanged flat parameters for the primary target; the step-dispatch
    lookup in `_run_one` that resolves `step.target` against `active_driver`/`target_runtimes` instead
    of the primary target's own values; one `TargetRuntime` built per declared target in
@@ -473,7 +561,8 @@ identified, and choosing between them is deferred rather than guessed.
    scenario; `_evaluate_expect` grouping `expect` by target and calling `_poll_asserts` once per
    referenced target's own driver and network source, merging the results back in declared order.
 5. **Report.** `StepOutcome.target` (including the single-declared-target default);
-   `AssertionResult.target` mirroring it for `expect_results`; `RunResult`'s singular fields left
+   `AssertionResult.target` mirroring it for `expect_results` only (an inline `assert:` result stays
+   scoped by its own step's `target`); `RunResult`'s singular fields left
    empty on a multi-target run; `RunResult.target_devices`; the Steps view's per-step target label;
    the header block listing every declared target's device.
 6. **Docs.** `docs/scenarios.md` (the `targets`/`target` reference and a worked example),
