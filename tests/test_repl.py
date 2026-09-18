@@ -10,6 +10,7 @@ input) while a command failure keeps it alive.
 from __future__ import annotations
 
 import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -229,9 +230,76 @@ def test_tap_accepts_an_id_carrying_a_space() -> None:
     assert driver.actions == [("tap", {"id": "save button"})]
 
 
-def test_tap_needs_an_id() -> None:
+def test_tap_needs_a_target() -> None:
     session, _driver = _session(_el("stable.save"))
-    assert session.dispatch("tap") == ["usage: tap <id>"]
+    assert session.dispatch("tap") == [
+        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y>"
+    ]
+
+
+def test_tap_by_id_and_index_disambiguates() -> None:
+    session, driver = _session(
+        _el("row", label="A"),
+        _el("row", label="B"),
+    )
+    assert session.dispatch("tap row#1") == ["tapped row#1"]
+    assert driver.actions == [("tap", {"id": "row", "index": 1})]
+
+
+def test_tap_by_negative_index_counts_from_the_end() -> None:
+    session, driver = _session(_el("row", label="A"), _el("row", label="B"))
+    assert session.dispatch("tap row#-1") == ["tapped row#-1"]
+    assert driver.actions == [("tap", {"id": "row", "index": -1})]
+
+
+def test_tap_by_label_addresses_an_element_with_no_id() -> None:
+    session, driver = _session(_el(None, label="Sign in"))
+    assert session.dispatch("tap label:Sign in") == ["tapped label:Sign in"]
+    assert driver.actions == [("tap", {"label": "Sign in"})]
+
+
+def test_tap_by_label_and_index_disambiguates() -> None:
+    session, driver = _session(_el(None, label="dup"), _el(None, label="dup"))
+    assert session.dispatch("tap label:dup#0") == ["tapped label:dup#0"]
+    assert driver.actions == [("tap", {"label": "dup", "index": 0})]
+
+
+def test_tap_by_label_rejects_an_empty_label() -> None:
+    session, driver = _session()
+    assert session.dispatch("tap label:") == [
+        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y>"
+    ]
+    assert driver.actions == []
+
+
+def test_tap_by_id_rejects_an_empty_id_left_by_a_bare_index_suffix() -> None:
+    session, driver = _session()
+    assert session.dispatch("tap #0") == [
+        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y>"
+    ]
+    assert driver.actions == []
+
+
+def test_tap_by_coordinate_bypasses_the_element_tree() -> None:
+    session, driver = _session()
+    assert session.dispatch("tap @120,340") == ["tapped @120,340"]
+    assert driver.actions == [("tap_point", (120.0, 340.0))]
+
+
+def test_tap_by_coordinate_rejects_a_malformed_point() -> None:
+    session, driver = _session()
+    assert session.dispatch("tap @120") == [
+        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y>"
+    ]
+    assert driver.actions == []
+
+
+def test_tap_by_coordinate_rejects_non_numeric_components() -> None:
+    session, driver = _session()
+    assert session.dispatch("tap @abc,340") == [
+        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y>"
+    ]
+    assert driver.actions == []
 
 
 def test_tap_raises_element_not_found_for_an_id_the_screen_has_not_got() -> None:
@@ -267,10 +335,61 @@ def test_type_focuses_the_element_before_typing() -> None:
     assert driver.actions == [("tap", {"id": "stable.query"}), ("type", "hello world")]
 
 
-def test_type_needs_both_an_id_and_text() -> None:
+def test_type_needs_both_a_target_and_text() -> None:
     session, driver = _session(_el("stable.query"))
-    assert session.dispatch("type stable.query") == ["usage: type <id> <text>"]
-    assert session.dispatch("type") == ["usage: type <id> <text>"]
+    usage = [
+        "usage: type <target> <text> — target is <id>[#<index>], label:<text>[#<index>], "
+        'or "<quoted target>" when it carries a space'
+    ]
+    assert session.dispatch("type stable.query") == usage
+    assert session.dispatch("type") == usage
+    assert driver.actions == []
+
+
+def test_type_by_index_disambiguates() -> None:
+    session, driver = _session(_el("field", label="A"), _el("field", label="B"))
+    assert session.dispatch("type field#1 hi") == ["typed into field#1"]
+    assert driver.actions == [("tap", {"id": "field", "index": 1}), ("type", "hi")]
+
+
+def test_type_by_label_addresses_an_element_with_no_id() -> None:
+    session, driver = _session(_el(None, label="Search"))
+    assert session.dispatch("type label:Search hello") == ["typed into label:Search"]
+    assert driver.actions == [("tap", {"label": "Search"}), ("type", "hello")]
+
+
+def test_type_accepts_a_quoted_target_carrying_a_space() -> None:
+    session, driver = _session(_el(None, label="Search box"))
+    assert session.dispatch('type "label:Search box" hello world') == [
+        "typed into label:Search box"
+    ]
+    assert driver.actions == [("tap", {"label": "Search box"}), ("type", "hello world")]
+
+
+def test_type_rejects_an_unclosed_quoted_target() -> None:
+    session, driver = _session(_el("stable.query"))
+    assert session.dispatch('type "label:Search box hello') == [
+        "usage: type <target> <text> — target is <id>[#<index>], label:<text>[#<index>], "
+        'or "<quoted target>" when it carries a space'
+    ]
+    assert driver.actions == []
+
+
+def test_type_rejects_a_coordinate_target() -> None:
+    session, driver = _session()
+    assert session.dispatch("type @120,340 hello") == [
+        "type does not support an @<x>,<y> coordinate target — tap it instead"
+    ]
+    assert driver.actions == []
+
+
+def test_type_rejects_an_empty_label_target() -> None:
+    session, driver = _session()
+    usage = [
+        "usage: type <target> <text> — target is <id>[#<index>], label:<text>[#<index>], "
+        'or "<quoted target>" when it carries a space'
+    ]
+    assert session.dispatch("type label: hello") == usage
     assert driver.actions == []
 
 
@@ -317,8 +436,17 @@ def test_a_blank_line_says_nothing() -> None:
 
 def test_help_lists_every_verb_dispatch_accepts() -> None:
     session, _driver = _session()
-    listed = {line.split()[0] for line in session.dispatch("help")}
+    lines = session.dispatch("help")
+    verb_lines = lines[: lines.index("")]  # the target-syntax block follows a blank separator
+    listed = {line.split()[0] for line in verb_lines}
     assert listed == {"tree", "find", "tap", "type", "back", "screenshot", "help", "exit"}
+
+
+def test_help_documents_every_target_form() -> None:
+    session, _driver = _session()
+    text = "\n".join(session.dispatch("help"))
+    for form in ("<id>", "<id>#<index>", "label:<text>", "label:<text>#<index>", "@<x>,<y>"):
+        assert form in text
 
 
 def test_an_unknown_verb_points_at_help() -> None:
@@ -709,6 +837,39 @@ def test_repl_launches_the_app_and_drives_the_typed_commands(
     assert "demo is up on fake" in result.output
     assert "stable.save" in result.output
     assert driver.actions == [("tap", {"id": "stable.save"})]
+
+
+def test_repl_uses_the_tui_front_end_on_a_real_terminal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The routing decision only — `run_tui` itself is unit-tested in `test_repl_tui.py`.
+
+    `CliRunner` never gives a real tty (its captured stdin/stdout don't implement `isatty`), which
+    is exactly what every other test here relies on to keep exercising `repl_loop`; this test forces
+    both ends to report a tty, from inside the launch stub (the earliest point in the command body
+    that runs after `CliRunner` has swapped `sys.stdin`/`sys.stdout` for its captured streams), to
+    confirm `cli.py` picks the TUI when a real terminal is actually driving it.
+    """
+    calls: list[str] = []
+    monkeypatch.setattr(repl_cli, "run_tui", lambda session: calls.append("tui"))
+    monkeypatch.setattr(
+        "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
+    )
+    monkeypatch.setattr(
+        repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: (lambda: None, None)
+    )
+
+    def launch(*_args: object, **_kwargs: object) -> tuple[FakeDriver, None]:
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+        return FakeDriver(screen=[]), None
+
+    monkeypatch.setattr(repl_cli, "launch_driver", launch)
+    result = runner.invoke(
+        app, ["repl", "--target", "demo", "--config", str(_fake_config(tmp_path))]
+    )
+    assert result.exit_code == 0
+    assert calls == ["tui"]
 
 
 def test_repl_exits_2_when_the_device_cannot_be_brought_up(

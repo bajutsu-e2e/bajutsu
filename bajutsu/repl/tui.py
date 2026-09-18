@@ -1,0 +1,288 @@
+"""An ncurses-style front end for `repl`: input pinned at top, output scrollable/greppable below.
+
+Used instead of the plain `repl_loop` (`loop.py`) only when both stdin and stdout are a real
+terminal (`cli.py`) — a piped/non-interactive `repl` keeps the plain line-at-a-time shell, which is
+what most terminal tools do and keeps this front end optional rather than a hard dependency of every
+caller. Split the same way `loop.py` splits `read_line`/`say` from `ReplSession`: `TuiState` and
+`handle_key` are pure (no curses import touches them), so they run under a `FakeScreen` in tests with
+no real terminal; only `run` — the actual entry point — touches `curses`.
+"""
+
+from __future__ import annotations
+
+import curses
+import locale
+from dataclasses import dataclass, field
+from typing import Literal, Protocol
+
+from bajutsu.repl.loop import PROMPT
+from bajutsu.repl.session import COMMAND_ERRORS, FATAL_ERRORS, ReplExit, ReplSession
+
+Mode = Literal["input", "scroll", "filter"]
+
+
+class Screen(Protocol):
+    """The slice of a curses window this module draws through — real or fake, for testing.
+
+    A real `curses.wrapper` `stdscr` already implements every one of these methods with this exact
+    signature, so `run` passes it straight through with no adapter.
+    """
+
+    def getmaxyx(self) -> tuple[int, int]: ...  # (height, width)
+    def get_wch(self) -> int | str: ...  # a decoded keycode (int) or one Unicode character (str)
+    def erase(self) -> None: ...
+    def addnstr(self, y: int, x: int, text: str, n: int) -> None: ...
+    def move(self, y: int, x: int) -> None: ...
+    def refresh(self) -> None: ...
+
+
+@dataclass
+class TuiState:
+    """Everything the TUI needs to decide what a keystroke does and what to draw. No curses here."""
+
+    mode: Mode = "input"
+    input_buffer: str = ""
+    cursor: int = 0
+    history: list[str] = field(default_factory=list)
+    history_index: int | None = None  # None = not recalling; else the entry currently shown
+    output: list[str] = field(default_factory=list)  # the full transcript, prompt lines included
+    scroll_offset: int = 0  # lines scrolled up from the bottom of the current (filtered) view
+    filter_query: str | None = None
+
+
+def handle_key(state: TuiState, key: int | str, pane_height: int) -> str | None:
+    """Apply one keystroke to *state*, mutating it in place.
+
+    Returns the line to run through `session.dispatch`, only when Enter was pressed in `"input"`
+    mode — the one case with a side effect this pure function cannot itself perform. Every other
+    keystroke (editing, history recall, a mode switch, a filter query) is fully handled here.
+    """
+    if state.mode == "scroll":
+        _handle_scroll_key(state, key, pane_height)
+        return None
+    if state.mode == "filter":
+        _handle_filter_key(state, key)
+        return None
+    return _handle_input_key(state, key)
+
+
+def _handle_input_key(state: TuiState, key: int | str) -> str | None:
+    if _is_enter(key):
+        line = state.input_buffer
+        state.input_buffer = ""
+        state.cursor = 0
+        state.history_index = None
+        return line
+    if key == "\t":
+        state.mode = "scroll"
+        return None
+    if key == curses.KEY_UP:
+        _recall_history(state, -1)
+        return None
+    if key == curses.KEY_DOWN:
+        _recall_history(state, 1)
+        return None
+    _edit_buffer(state, key)
+    return None
+
+
+def _handle_scroll_key(state: TuiState, key: int | str, pane_height: int) -> None:
+    if key == "\t":
+        state.mode = "input"
+    elif key == curses.KEY_UP:
+        state.scroll_offset += 1
+    elif key == curses.KEY_DOWN:
+        state.scroll_offset = max(0, state.scroll_offset - 1)
+    elif key == curses.KEY_PPAGE:
+        state.scroll_offset += max(1, pane_height)
+    elif key == curses.KEY_NPAGE:
+        state.scroll_offset = max(0, state.scroll_offset - max(1, pane_height))
+    elif key == "/":
+        state.mode = "filter"
+        state.input_buffer = ""
+        state.cursor = 0
+
+
+def _handle_filter_key(state: TuiState, key: int | str) -> None:
+    if _is_enter(key):
+        state.filter_query = state.input_buffer.strip() or None
+        state.input_buffer = ""
+        state.cursor = 0
+        state.scroll_offset = 0
+        state.mode = "scroll"
+        return
+    if key == "\x1b":  # Esc: abandon the edit; whatever filter was active stays active
+        state.input_buffer = ""
+        state.cursor = 0
+        state.mode = "scroll"
+        return
+    _edit_buffer(state, key)
+
+
+def _edit_buffer(state: TuiState, key: int | str) -> None:
+    """Line-editing shared by `"input"` and `"filter"` — both just edit `input_buffer`/`cursor`."""
+    if _is_backspace(key):
+        if state.cursor > 0:
+            state.input_buffer = (
+                state.input_buffer[: state.cursor - 1] + state.input_buffer[state.cursor :]
+            )
+            state.cursor -= 1
+    elif key == curses.KEY_LEFT:
+        state.cursor = max(0, state.cursor - 1)
+    elif key == curses.KEY_RIGHT:
+        state.cursor = min(len(state.input_buffer), state.cursor + 1)
+    elif key == curses.KEY_HOME:
+        state.cursor = 0
+    elif key == curses.KEY_END:
+        state.cursor = len(state.input_buffer)
+    elif isinstance(key, str) and len(key) == 1 and key.isprintable():
+        # `get_wch` decodes a full multi-byte character in one call (BE-0423's original `input()`
+        # loop got this for free from the line-buffered terminal; a raw `getch` would instead hand
+        # back one raw byte of a Japanese character's UTF-8 encoding at a time).
+        state.input_buffer = (
+            state.input_buffer[: state.cursor] + key + state.input_buffer[state.cursor :]
+        )
+        state.cursor += 1
+
+
+def _recall_history(state: TuiState, direction: int) -> None:
+    if not state.history:
+        return
+    if state.history_index is None:
+        state.history_index = len(state.history)
+    new_index = state.history_index + direction
+    if not 0 <= new_index <= len(state.history):
+        return  # already at the oldest/newest end; nothing to move to
+    state.history_index = new_index
+    state.input_buffer = "" if new_index == len(state.history) else state.history[new_index]
+    state.cursor = len(state.input_buffer)
+
+
+def _is_enter(key: int | str) -> bool:
+    return key in ("\n", "\r") or key == curses.KEY_ENTER
+
+
+def _is_backspace(key: int | str) -> bool:
+    return key in ("\x7f", "\x08") or key == curses.KEY_BACKSPACE
+
+
+def _filtered(state: TuiState) -> list[str]:
+    if state.filter_query is None:
+        return state.output
+    needle = state.filter_query.lower()
+    return [line for line in state.output if needle in line.lower()]
+
+
+def _visible(state: TuiState, height: int) -> list[str]:
+    """The output-pane slice to draw for a `height`-row pane, honoring scroll and filter."""
+    lines = _filtered(state)
+    max_offset = max(0, len(lines) - height)
+    offset = min(state.scroll_offset, max_offset)
+    start = max(0, len(lines) - height - offset)
+    return lines[start : start + height]
+
+
+def _note_new_output(state: TuiState, added: list[str]) -> None:
+    """Keep a scrolled-up view showing the same content when new output arrives (no yank-to-bottom).
+
+    Pinned (`scroll_offset == 0`) is left alone — the view already tracks the bottom on its own.
+    Scrolled up, the offset grows by however many of the new lines would actually appear in the
+    current (possibly filtered) view, which is what keeps `_visible`'s computed window unchanged.
+    """
+    if state.scroll_offset == 0:
+        return
+    if state.filter_query is None:
+        state.scroll_offset += len(added)
+    else:
+        needle = state.filter_query.lower()
+        state.scroll_offset += sum(1 for line in added if needle in line.lower())
+
+
+def _run_line(session: ReplSession, line: str) -> tuple[list[str], bool]:
+    """Run one submitted line the same way `repl_loop` does.
+
+    Returns the lines to append to the transcript and whether the shell should now leave — the
+    curses analog of `repl_loop`'s `say` calls and early `return`.
+    """
+    try:
+        return list(session.dispatch(line)), False
+    except ReplExit:
+        return [], True
+    except FATAL_ERRORS as e:
+        return [
+            f"{type(e).__name__}: {e}",
+            "the XCUITest runner is gone; this shell cannot recover it — leaving",
+        ], True
+    except COMMAND_ERRORS as e:
+        return [f"{type(e).__name__}: {e}"], False
+
+
+def run_tui(session: ReplSession, screen: Screen) -> None:
+    """Drive the ncurses-style shell against *screen* until the operator leaves.
+
+    Ctrl-C abandons the half-typed line (or a half-typed filter query), same intent as the plain
+    loop's — but, unlike `input()`, curses gives no Ctrl-D/EOF signal in cbreak mode, so `exit` /
+    `quit`, typed and submitted, is the only way out.
+    """
+    state = TuiState()
+    while True:
+        _draw(screen, state)
+        try:
+            key = screen.get_wch()
+        except KeyboardInterrupt:
+            state.input_buffer = ""
+            state.cursor = 0
+            if state.mode == "filter":
+                state.mode = "scroll"
+            continue
+        if key == curses.KEY_RESIZE:
+            continue  # the next redraw picks up the new size
+        height, _width = screen.getmaxyx()
+        line = handle_key(state, key, max(1, height - 2))
+        if line is None:
+            continue
+        if line.strip():
+            state.history.append(line)
+        state.history_index = None
+        new_output, leave = _run_line(session, line)
+        new_output.insert(0, f"{PROMPT}{line}")
+        _note_new_output(state, new_output)
+        state.output.extend(new_output)
+        if leave:
+            # One last redraw so a fatal error's explanation is on screen when the shell exits —
+            # the loop would otherwise leave before the frame showing it is ever drawn.
+            _draw(screen, state)
+            return
+
+
+def _draw(screen: Screen, state: TuiState) -> None:
+    height, width = screen.getmaxyx()
+    screen.erase()
+    prompt = "/" if state.mode == "filter" else PROMPT
+    # Leaves the last column blank: writing a full-width string into a window's bottom-right cell
+    # is a well-known ncurses quirk (the cursor tries to wrap) that can raise `curses.error`.
+    n = max(0, width - 1)
+    screen.addnstr(0, 0, f"{prompt}{state.input_buffer}", n)
+    banner = (
+        "-- SCROLL  (Tab: back to input · ↑↓ scroll · PgUp/PgDn: page · /: filter) --"
+        if state.mode == "scroll"
+        else "-" * min(width, 40)
+    )
+    screen.addnstr(1, 0, banner, n)
+    pane_height = max(0, height - 2)
+    for i, line in enumerate(_visible(state, pane_height)):
+        screen.addnstr(2 + i, 0, line, n)
+    if state.mode != "scroll":
+        screen.move(0, min(len(prompt) + state.cursor, n))
+    screen.refresh()
+
+
+def run(session: ReplSession) -> None:
+    """The real entry point: an alternate-screen ncurses session against the actual terminal.
+
+    `locale.setlocale` puts ncurses in the terminal's own locale (normally a UTF-8 one) before
+    `get_wch` is asked to assemble multi-byte characters from it — without it, a Japanese
+    `type`/`tap label:` argument decodes as mojibake instead of the characters actually typed.
+    """
+    locale.setlocale(locale.LC_ALL, "")
+    curses.wrapper(lambda stdscr: run_tui(session, stdscr))

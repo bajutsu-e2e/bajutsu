@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 
 from bajutsu.common.devices import errors as device_errors
@@ -10,6 +11,8 @@ from bajutsu.common.drivers.xcuitest import XcuitestChannelError, XcuitestRunner
 from bajutsu.common.drivers.xcuitest_live import WebDriverError
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.repl.render import render_json, render_table
+
+_INDEX_SUFFIX = re.compile(r"(.*)#(-?\d+)\Z")
 
 
 class ReplExit(Exception):
@@ -56,12 +59,19 @@ FATAL_ERRORS: tuple[type[Exception], ...] = (XcuitestRunnerCrashError,)
 _HELP = (
     "tree [--json]      the current element tree, as a table (or verbatim as JSON)",
     "find <substring>   the same tree, filtered to ids and labels containing <substring>",
-    "tap <id>           tap the element with that id",
-    "type <id> <text>   focus that element, then type <text>",
+    "tap <target>       tap the element <target> resolves to (see below)",
+    "type <target> <text>   focus <target>, then type <text> (quote <target> if it has a space)",
     "back               navigate back one level",
     "screenshot [path]  write a screenshot; auto-named in the current directory when omitted",
     "help               this list",
     "exit | quit        leave the shell",
+    "",
+    "<target> is one of:",
+    "  <id>              an element's id, verbatim (may contain spaces for `tap`, not `type`)",
+    "  <id>#<index>       the nth of several elements sharing that id (0-based; negative from the end)",
+    "  label:<text>      an element with no id, addressed by its exact label",
+    "  label:<text>#<index>  the nth of several elements sharing that label",
+    "  @<x>,<y>          a raw screen coordinate — `tap` only, bypasses the element tree entirely",
 )
 
 
@@ -121,25 +131,43 @@ class ReplSession:
         return _table(matched, empty=f"no id or label contains {rest!r}")
 
     def _tap(self, rest: str) -> list[str]:
+        usage = ["usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y>"]
         if not rest:
-            return ["usage: tap <id>"]
+            return usage
+        target = _parse_target(rest)
+        if target is None:
+            return usage
+        if isinstance(target, tuple):
+            # Bypasses element resolution entirely — no `ElementNotFound`/`AmbiguousSelector` to
+            # report, since there is no selector here for the driver to resolve.
+            self._driver.tap_point(target)
+            return [f"tapped {rest}"]
         # `driver.tap`, not the runner's `_tap_with_recovery`: while diagnosing a selector, the
         # driver's own `ElementNotTappable` — naming the element in the way — is the more useful
         # answer than a bounded scroll that quietly clears the obstruction. The deliberate v1 gap
         # is that `run` would recover where this reports a failure (BE-0423, *Alternatives considered*).
-        self._driver.tap({"id": rest})
+        self._driver.tap(target)
         return [f"tapped {rest}"]
 
     def _type(self, rest: str) -> list[str]:
-        parts = rest.split(maxsplit=1)
-        if len(parts) != 2:
-            return ["usage: type <id> <text>"]
-        target, text = parts
+        usage = [
+            "usage: type <target> <text> — target is <id>[#<index>], label:<text>[#<index>], "
+            'or "<quoted target>" when it carries a space'
+        ]
+        split = _split_target_and_text(rest)
+        if split is None:
+            return usage
+        target_token, text = split
+        target = _parse_target(target_token)
+        if isinstance(target, tuple):
+            return ["type does not support an @<x>,<y> coordinate target — tap it instead"]
+        if target is None:
+            return usage
         # Focus first: `type_text` acts on whatever the platform currently focuses, the same
         # contract the runner's own `type` step relies on.
-        self._driver.tap({"id": target})
+        self._driver.tap(target)
         self._driver.type_text(text)
-        return [f"typed into {target}"]
+        return [f"typed into {target_token}"]
 
     def _back(self, rest: str) -> list[str]:
         if rest:
@@ -164,6 +192,71 @@ class ReplSession:
         if isinstance(driver, base.SettledReadProvider):
             return driver.settled_query()
         return driver.query()
+
+
+def _parse_target(token: str) -> base.Selector | base.Point | None:
+    """A `tap`/`type` target token, as a `Selector` to resolve or a raw `Point` to tap directly.
+
+    `None` marks a token this shell cannot parse at all (never a valid, just-unresolvable, selector
+    — that distinction is `driver.tap`'s to raise as `ElementNotFound`/`AmbiguousSelector`, not this
+    parser's). An id or label ending in a literal `#<digits>`, or starting with `@` or `label:`,
+    cannot be reached this way — a narrow, documented gap (`help`), not a silent misread: `tree` /
+    `find` remain the way to check what an element's id or label actually is.
+    """
+    if token.startswith("@"):
+        return _parse_point(token[1:])
+    if token.startswith("label:"):
+        text, index = _split_index_suffix(token[len("label:") :])
+        if not text:
+            return None
+        sel: base.Selector = {"label": text}
+    else:
+        text, index = _split_index_suffix(token)
+        if not text:
+            return None
+        sel = {"id": text}
+    if index is not None:
+        sel["index"] = index
+    return sel
+
+
+def _split_index_suffix(text: str) -> tuple[str, int | None]:
+    """*text*, with a trailing `#<int>` (0-based, negative-from-end) split off if present."""
+    match = _INDEX_SUFFIX.match(text)
+    if match is None:
+        return text, None
+    return match.group(1), int(match.group(2))
+
+
+def _parse_point(text: str) -> base.Point | None:
+    """`<x>,<y>` (the part of `@<x>,<y>` after the `@`) as a raw pixel `Point`, or `None`."""
+    x, sep, y = text.partition(",")
+    if not sep:
+        return None
+    try:
+        return (float(x), float(y))
+    except ValueError:
+        return None
+
+
+def _split_target_and_text(rest: str) -> tuple[str, str] | None:
+    """`type`'s remainder, split into its target token and the text to type.
+
+    A target with an embedded space (a multi-word `label:...`) must be quoted — free-typed text
+    never is, so quoting is never required for it and a stray `"` in it is never misread as a
+    target delimiter. `None` marks a malformed line (no closing quote, or either half empty).
+    """
+    if rest.startswith('"'):
+        closing = rest.find('"', 1)
+        if closing == -1:
+            return None
+        target, text = rest[1:closing], rest[closing + 1 :].lstrip(" ")
+    else:
+        parts = rest.split(maxsplit=1)
+        if len(parts) != 2:
+            return None
+        target, text = parts
+    return (target, text) if target and text else None
 
 
 def _table(elements: list[base.Element], *, empty: str) -> list[str]:
