@@ -499,7 +499,7 @@ bajutsu repl --target <name> [options]
 | `--target` | （必須） | 対象アプリ |
 | `--udid` | `booted` | 対象 Simulator（live 経路では WebDriver エンドポイント） |
 | `--backend` | config | actuator 順 |
-| `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
+| `--erase / --no-erase` | live 経路以外は erase | 起動前に erase（アプリはインストール済みである必要）。live の `--udid https://…` 経路は erase を受け付けないため、その経路の既定は off になり、そこで明示的に `--erase` を指定すると CLI エラーで終了します |
 | `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザを調べます。省略時はアプリの `headless` 設定に従います |
 | `--browser` | アプリの `browser`（既定 chromium） | web backend: 調べる対象の Playwright レンダリングエンジン。`chromium` / `firefox` / `webkit` から選びます。省略時はターゲットの `browser` config に従います |
 | `--config` | `bajutsu.config.yaml` | config |
