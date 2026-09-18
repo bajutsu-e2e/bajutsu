@@ -879,7 +879,7 @@ with a clear "not supported in web context" reason.
           - exists: { id: TabBarItemTitle }
 ```
 
-`app` activates the named app by bundle id — installed or not yet running, and never launched by
+`app` activates the named app by bundle id — installed but not yet running, and never launched by
 the test target — and runs the nested `steps` against that app's own accessibility tree, not the
 test target's. The feasibility findings behind this behavior are recorded in
 `docs/specs/ios-cross-app-ui-control-feasibility.md`.
@@ -888,7 +888,9 @@ enter/leave contract `web` uses — nesting an `app` block inside another return
 parent, not unconditionally to the test target. `bundleId` is a plain string, not a value drawn
 from a fixed set: any installed app can be named, including one the test target has no way to open
 itself. iOS (XCUITest) only; a scenario using it against another backend fails preflight before any
-device work.
+device work. `bundleId` must name an app already installed on the device — one that is slow to
+foreground (a cold launch, a permission prompt) fails the step with `ElementNotFound`, but one that
+is not installed at all is not guaranteed to fail this cleanly.
 
 ### `swipe`
 

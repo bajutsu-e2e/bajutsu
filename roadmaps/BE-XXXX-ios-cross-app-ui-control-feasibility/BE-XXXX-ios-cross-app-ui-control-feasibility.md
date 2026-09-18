@@ -241,6 +241,27 @@ Log:
   control" heading; added. Re-verified afterward: `swift test` (229 passed), `make check` (8065
   passed, green), and `make -C demos/showcase e2e-cross-app` (both the SwiftUI and UIKit targets
   passed) on a fresh dedicated Simulator.
+- 2026-09-18 — CI's on-device `conformance (xcuitest)` job crashed the resident runner on
+  `test_app_context_capability_matches_behavior`, and a neighboring job on the same runner
+  reported "CoreSimulator may be wedged" shortly after. Reproduced twice, standalone, against a
+  dedicated Simulator: `enter_app` with a fabricated bundle id (as the test used) left `POST
+  /app/enter` unanswered — the runner never responded at all, not even with a `not-foreground`
+  reply — while the showcase app was genuinely foreground. `XCUIApplication.activate()` for a
+  bundle id that is not installed, called while a different app is legitimately running, does not
+  reliably return on this Xcode/Simulator combination; catching an `NSException` around the call
+  (confirmed harmless in isolation, no prior foreground app) does not help a call that never
+  returns at all. `enterApp`'s bounded `.runningForeground` poll only starts once `.activate()`
+  itself returns, so it cannot bound this. Fixed by changing the shared on-device conformance test
+  to exercise `enter_app`/`leave_app` against `com.apple.mobilesafari` — a bundle id every iOS
+  Simulator carries — instead of a fabricated one; the "bad bundle id" failure semantics stay
+  covered by the existing fast-suite test against `XcuitestDriver`'s fake transport, which never
+  touches real XCUITest. Corrected every "wrong or uninstalled bundle id" claim this item's own
+  code, docs, and tests had made about `not-foreground` to instead read "installed but slow to
+  foreground", and documented in `enter_app`'s own contract and the `app` cookbook entry that
+  `bundleId` must name an already-installed app — an uninstalled one is not guaranteed to fail
+  cleanly. Re-verified: the corrected on-device test passes against a fresh dedicated Simulator
+  (`enter_app`/`leave_app` against Safari, round-tripping back to the showcase app), and `make
+  check` stays green.
 
 ## References
 

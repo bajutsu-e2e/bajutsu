@@ -111,14 +111,17 @@ class Driver(Protocol):
     def wait_for(self, sel: Selector) -> bool: ...
     def screenshot(self, path: str) -> None: ...
     def capabilities(self) -> set[str]: ...
-    # Activate the app named by `bundle_id` — installed or not yet running, and never launched by
+    # Activate the app named by `bundle_id` — installed but not yet running, and never launched by
     # the test target — and make it the target of every method above until a matching
     # `leave_app()`. Nests: entering a second app before leaving the first pushes onto
     # it, and `leave_app` pops back to it, not past it. A backend without the APP_CONTEXT
     # capability raises UnsupportedAction; preflight rejects the scenario before any device work,
-    # so this raise is only the mid-run backstop, mirroring `handle_system_alert`. A bundle id that
-    # never reaches the foreground raises ElementNotFound rather than silently leaving the
-    # previous app active.
+    # so this raise is only the mid-run backstop, mirroring `handle_system_alert`. `bundle_id`
+    # must name an app already installed on the device: an app that is slow to foreground (a cold
+    # launch, a permission prompt) raises ElementNotFound once the bounded poll gives up, but a
+    # bundle id that is not installed at all is not guaranteed to fail this cleanly — confirmed on
+    # real hardware to leave the runner unresponsive instead, because the handoff from the
+    # currently-foreground app never completes. Not fixed here; see the roadmap item's own Scope.
     def enter_app(self, bundle_id: str) -> None: ...
     # Leave the most recently entered app and re-activate the one beneath it — the test target
     # itself, if this is the outermost `leave_app()`.

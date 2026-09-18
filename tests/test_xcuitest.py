@@ -2520,8 +2520,10 @@ def test_enter_app_posts_the_bundle_id() -> None:
 
 
 def test_enter_app_raises_element_not_found_when_never_foreground() -> None:
-    # A wrong or uninstalled bundle id is a scenario mistake, not a channel failure —
-    # the same reading `set_picker_value`'s value-not-found reply gets.
+    # A `not-foreground` reply (a slow-to-launch installed app, most often) is a scenario mistake,
+    # not a channel failure — the same reading `set_picker_value`'s value-not-found reply gets. A
+    # bundle id that is not installed at all is not guaranteed to reach this reply rather than
+    # leaving the runner unresponsive (a real backend limitation, not modeled by this fake).
     with pytest.raises(base.ElementNotFound, match=r"com\.example\.missing"):
         _driver(lambda m, p, b: _Reply(status="not-foreground")).enter_app("com.example.missing")
 

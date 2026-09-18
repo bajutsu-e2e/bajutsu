@@ -33,8 +33,10 @@ public enum AppActivationResult {
     /// bounded poll.
     case ok
     /// `activate()` was called but the target never reached `.runningForeground` within the bounded
-    /// poll — a wrong or uninstalled bundle id, most often. Distinct from `TapResult` because no
-    /// element resolution is involved; nothing was queried or acted on.
+    /// poll — a slow-to-launch installed app, most often (a cold launch, a permission prompt).
+    /// Distinct from `TapResult` because no element resolution is involved; nothing was queried or
+    /// acted on. Does NOT cover every failure mode: a bundle id that is not installed at all is not
+    /// guaranteed to reach this case rather than leaving `.activate()` itself never returning.
     case notForeground
 }
 

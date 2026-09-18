@@ -242,6 +242,29 @@ showcaseのシナリオで、実際のシステムアプリに対して`app:`ス
   ため、追加しました。この後、`swift test`（229件成功）、`make check`（8065件成功、グリーン）、
   そして検証専用の新しいSimulatorに対する`make -C demos/showcase e2e-cross-app`（SwiftUI・UIKit
   両ターゲットとも成功）で再確認しました。
+- 2026-09-18 — CIの実機`conformance (xcuitest)`ジョブが常駐runnerをクラッシュさせました。
+  落ちたのは`test_app_context_capability_matches_behavior`です。同じrunner上の別ジョブも、その
+  直後に「CoreSimulatorがwedgeしている可能性がある」と報告しました。検証専用のSimulatorに対して
+  単独で2回再現しました。テストが使っていたような架空のバンドルIDで`enter_app`を呼ぶと、
+  `POST /app/enter`が応答すら返さなくなりました。`not-foreground`の返信すら届きません。
+  showcaseアプリが本当にフォアグラウンドにある状態でのことです。この組み合わせのXcode・
+  Simulatorには、こういう性質があるようです。別のアプリが正当に動作している最中に、インストール
+  されていないバンドルIDへ`XCUIApplication.activate()`すると、確実には戻ってきません。
+  呼び出しを`NSException`のcatchで囲んでも効きません。単独で、事前のフォアグラウンド
+  アプリがないときは無害だと確認済みですが、そもそも戻ってこない呼び出しには効かないのです。
+  `enterApp`の`.runningForeground`への有界ポーリングは、`.activate()`自身が戻ってから初めて
+  始まります。そのため、これを抑えることはできません。修正は、共有の実機conformanceテストが
+  検証する対象の変更です。`enter_app`/`leave_app`に渡すバンドルIDを、架空のものから、iOS
+  Simulatorなら必ず持っている`com.apple.mobilesafari`へ変えました。「不正なバンドルID」の失敗時の
+  ふるまい自体は、既存のテストが引き続き担います。実際のXCUITestに一切触れない、
+  `XcuitestDriver`のfakeなtransportに対する高速スイートのテストです。この項目自身のコード・
+  ドキュメント・テストにあった「不正な、またはインストールされていないバンドルID」という主張を
+  すべて、「インストール済みだが前面化が遅い」という表現に訂正しました。`enter_app`自身の契約と
+  `app`のクックブック項目にも、次の2点を明記しました。1点目は、`bundleId`はすでにインストール済みの
+  アプリを名指しする必要があることです。2点目は、インストールされていないものを名指ししても
+  きれいに失敗するとは限らないことです。再確認: 修正後の実機テストは、検証専用の新しいSimulatorに対して通ります
+  （`enter_app`/`leave_app`をSafariに対して行い、showcaseアプリへ戻ってくる往復です）。
+  `make check`もグリーンのままです。
 
 ## 参考
 

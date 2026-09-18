@@ -314,13 +314,15 @@ paths:
       operationId: enterApp
       summary: Activate an app by bundle id and make it the target of every following route.
       description: >-
-        Activates the named app — installed or not yet running, and never launched by the test
+        Activates the named app — installed but not yet running, and never launched by the test
         target — and pushes it onto the runner's app stack, so `/elements`, `/tap`, and
         every other route below address it until a matching `/app/leave`. Reports
         `not-foreground` when `.activate()` was called but the app never reached the foreground
-        within a bounded poll — a wrong or uninstalled bundle id, most often — rather than a
+        within a bounded poll — a slow-to-launch installed app, most often — rather than a
         `400`: the bundle id is well-formed, the failure is a device-state outcome, not a
-        malformed request.
+        malformed request. `bundleId` must name an app already installed on the device: one that
+        is not installed at all is not guaranteed to reach this reply rather than leaving the
+        request unanswered.
       requestBody:
         required: true
         content:
