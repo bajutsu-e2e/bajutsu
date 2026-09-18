@@ -82,19 +82,23 @@ targets: [showcase-app, showcase-web]
 steps:
   - target: showcase-app
     tap: { id: post.like }
-    extract: { var: postId, sel: { id: post.id } }
+    extract:
+      postId: { sel: { id: post.id } }
 
   - target: showcase-web
     wait: { for: { id: "post.${vars.postId}.likeCount" }, timeout: 10 }
+  - target: showcase-web
     assert:
       - value: { sel: { id: "post.${vars.postId}.likeCount" }, equals: "1" }
 
   - target: showcase-web
     tap: { id: "post.${vars.postId}.comment.input" }
+  - target: showcase-web
     type: { text: "nice!" }
 
   - target: showcase-app
     wait: { for: { id: "post.${vars.postId}.comment.latest" }, timeout: 10 }
+  - target: showcase-app
     assert:
       - value: { sel: { id: "post.${vars.postId}.comment.latest" }, equals: "nice!" }
 ```
@@ -116,19 +120,27 @@ targets: [showcase-swiftui, web]
 steps:
   - target: showcase-swiftui
     wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
+  - target: showcase-swiftui
     tap: { id: [stable.row.1, stable_row_1] }
 
   - target: showcase-swiftui
     wait: { for: { id: [horse.favorite, horse_favorite] }, timeout: 5 }
+  - target: showcase-swiftui
     tap: { id: [horse.favorite, horse_favorite] }
-    extract: { var: favorited, sel: { id: [horse.favorite.value, horse_favorite_value] } }
+    extract:
+      favorited: { sel: { id: [horse.favorite.value, horse_favorite_value] } }
 
   - target: web
     tap: { id: onboarding.start }
+  - target: web
     type: { text: "favorited-${vars.favorited}@example.com", into: { id: auth.email } }
+  - target: web
     type: { text: "pw", into: { id: auth.password } }
+  - target: web
     tap: { id: auth.submit }
+  - target: web
     wait: { for: { id: home.title }, timeout: 5 }
+  - target: web
     tap: { id: counter.increment }
 expect:
   - target: showcase-swiftui
@@ -138,10 +150,11 @@ expect:
 ```
 
 iOS側のステップは、`demos/showcase/scenarios/firstlook.yaml`自身の「馬をお気に入りに登録する」
-流れをそのまま使っています(BE-0221がすでに要求している、ドット区切りとアンダースコア区切りの
-id併記も含めて)。Web側のステップは、`demos/web/scenarios/counter.yaml`自身のオンボーディング
-フローの冒頭です。どちらも今日すでに、それぞれ単独の単一ターゲットシナリオファイルとして動いて
-います。この例が加えているのは`targets`、`target`、そして両者をまたぐ`${vars.*}`の受け渡しだけです。
+流れを踏襲しています(BE-0221がすでに要求している、ドット区切りとアンダースコア区切りのid併記も
+含めて)。ただし途中の「まだoffである」ことを確認するアサーションだけは、簡潔さのために省いて
+います。Web側のステップは、`demos/web/scenarios/counter.yaml`自身のオンボーディングフローの冒頭
+です。どちらも今日すでに、それぞれ単独の単一ターゲットシナリオファイルとして動いています。この
+例が加えているのは`targets`、`target`、そして`extract`/`${vars.*}`による両者の受け渡しだけです。
 
 `Scenario`は`targets: list[str] = Field(default_factory=list)`を新たに持ちます。既存の`before`、
 `steps`、`after`と並ぶ位置です

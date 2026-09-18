@@ -82,19 +82,23 @@ targets: [showcase-app, showcase-web]
 steps:
   - target: showcase-app
     tap: { id: post.like }
-    extract: { var: postId, sel: { id: post.id } }
+    extract:
+      postId: { sel: { id: post.id } }
 
   - target: showcase-web
     wait: { for: { id: "post.${vars.postId}.likeCount" }, timeout: 10 }
+  - target: showcase-web
     assert:
       - value: { sel: { id: "post.${vars.postId}.likeCount" }, equals: "1" }
 
   - target: showcase-web
     tap: { id: "post.${vars.postId}.comment.input" }
+  - target: showcase-web
     type: { text: "nice!" }
 
   - target: showcase-app
     wait: { for: { id: "post.${vars.postId}.comment.latest" }, timeout: 10 }
+  - target: showcase-app
     assert:
       - value: { sel: { id: "post.${vars.postId}.comment.latest" }, equals: "nice!" }
 ```
@@ -114,19 +118,27 @@ targets: [showcase-swiftui, web]
 steps:
   - target: showcase-swiftui
     wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
+  - target: showcase-swiftui
     tap: { id: [stable.row.1, stable_row_1] }
 
   - target: showcase-swiftui
     wait: { for: { id: [horse.favorite, horse_favorite] }, timeout: 5 }
+  - target: showcase-swiftui
     tap: { id: [horse.favorite, horse_favorite] }
-    extract: { var: favorited, sel: { id: [horse.favorite.value, horse_favorite_value] } }
+    extract:
+      favorited: { sel: { id: [horse.favorite.value, horse_favorite_value] } }
 
   - target: web
     tap: { id: onboarding.start }
+  - target: web
     type: { text: "favorited-${vars.favorited}@example.com", into: { id: auth.email } }
+  - target: web
     type: { text: "pw", into: { id: auth.password } }
+  - target: web
     tap: { id: auth.submit }
+  - target: web
     wait: { for: { id: home.title }, timeout: 5 }
+  - target: web
     tap: { id: counter.increment }
 expect:
   - target: showcase-swiftui
@@ -135,11 +147,12 @@ expect:
     value: { sel: { id: counter.value }, equals: "1" }
 ```
 
-The iOS steps are `demos/showcase/scenarios/firstlook.yaml`'s own "favorite a horse" flow verbatim
-(down to the dotted-and-underscore id pairs BE-0221 already requires for cross-platform ids); the web
-steps are the opening of `demos/web/scenarios/counter.yaml`'s own onboarding flow. Both already run
-today, each in its own single-target scenario file — this example only adds `targets`, `target`, and
-the `${vars.*}` hop between them.
+The iOS steps mirror `demos/showcase/scenarios/firstlook.yaml`'s own "favorite a horse" flow (down to
+the dotted-and-underscore id pairs BE-0221 already requires for cross-platform ids), skipping only its
+middle "still off" assertion for brevity; the web steps are the opening of
+`demos/web/scenarios/counter.yaml`'s own onboarding flow. Both already run today, each in its own
+single-target scenario file — this example only adds `targets`, `target`, and the `extract`/`${vars.*}`
+hop between them.
 
 `Scenario` gains `targets: list[str] = Field(default_factory=list)`, alongside its existing `before`,
 `steps`, and `after` fields
