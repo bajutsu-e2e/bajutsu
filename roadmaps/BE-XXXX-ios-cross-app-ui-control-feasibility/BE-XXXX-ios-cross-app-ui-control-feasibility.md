@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-ios-cross-app-ui-control-feasibility.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | [#2021](https://github.com/bajutsu-e2e/bajutsu/pull/2021) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
 
@@ -97,10 +98,17 @@ SpringBoard/SafariViewService merge logic is untouched — it still reads relati
 target's own entry, not whatever the current top is, since a system alert can interrupt a scenario
 regardless of which app an `app:` block currently targets). Entering an `app:` block pushes a new
 `XCUIApplication(bundleIdentifier:)` handle and calls `.activate()`; leaving it pops and
-`.activate()`s the handle beneath. TBD during implementation: whether every actuation the test
-target supports (gestures, text selection, picker wheels) carries over unchanged to a foreign app's
-handle, since the spike measured only `activate()` and a tree read, not the full actuation surface —
-each capability should be checked against a real foreign app as its own step lands, not assumed.
+`.activate()`s the handle beneath.
+
+Resolved during implementation: a real-device check (a temporary, since-removed spike, same
+discipline as Unit 1) confirmed `enterApp`/`leaveApp` against real Safari — `queryElements()`
+returned Safari's own tree (146 elements, including its `TabBarItemTitle` address field) while
+entered, and the host app's own tree (unchanged element count) once left. `tap`/`type`/gesture
+actuation *inside* a foreign app's tree is exercised only through `FakeDriver` in the fast suite —
+proven at the dispatch/nesting level, not against a real foreign app's live hit-testing — since
+proving each gesture for real needs a target app with a known, stable control to act on, which
+Safari's own onboarding surface does not reliably offer. Left as a real, open gap for whichever
+concrete scenario first needs a gesture inside an `app:` block, rather than assumed away.
 
 ### Unit 3 — Capability gating
 
@@ -172,11 +180,11 @@ one-off manual run.
 
 - [x] Unit 1 — feasibility spike (Safari/Maps/Contacts, cross-app `activate()` and resident-runner
   survival confirmed; see `docs/specs/ios-cross-app-ui-control-feasibility.md`)
-- [ ] Unit 2 — query/actuation target stack in `XcuitestElementProvider`
-- [ ] Unit 3 — `app:`'s preflight capability token
-- [ ] Unit 4 — scenario model (`App` step type) and `Driver` interface enter/leave pair
-- [ ] Unit 5 — showcase fixture and scenario exercising `app:` end to end
-- [ ] Unit 6 — documentation (`dsl-grammar.md`, `drivers.md`, `scenarios.md`, both languages)
+- [x] Unit 2 — query/actuation target stack in `XcuitestElementProvider`
+- [x] Unit 3 — `app:`'s preflight capability token
+- [x] Unit 4 — scenario model (`App` step type) and `Driver` interface enter/leave pair
+- [x] Unit 5 — showcase fixture and scenario exercising `app:` end to end
+- [x] Unit 6 — documentation (`dsl-grammar.md`, `drivers.md`, `scenarios.md`, both languages)
 
 Log:
 
@@ -188,6 +196,51 @@ Log:
   never going down across the sequence (11.288s total, 0 failures). Findings recorded in
   `docs/specs/ios-cross-app-ui-control-feasibility.md`; the spike file and its
   `project.pbxproj` wiring were removed afterward.
+- 2026-09-18 — Units 2–6 implemented and verified. Swift: `XcuitestElementProvider.appStack` plus
+  `enterApp`/`leaveApp` (bounded `.runningForeground` poll, matching the spike's own bound), two new
+  resident-runner routes (`POST /app/enter`, `POST /app/leave`) on the generated OpenAPI surface,
+  with a host-only `APIHandler` test (no legacy `Router` twin — `app:` is new to the generated path
+  only). Python: `Driver.enter_app`/`leave_app` implemented for real by `XcuitestDriver` and as
+  `UnsupportedAction` on every other backend; `Capability.APP_CONTEXT`, declared by `XcuitestDriver`
+  and `FakeDriver`; the `App` scenario model; `_handle_app` in the step runner, reusing
+  `active_driver` unchanged (not a new driver instance, unlike `web:`'s `WebContextDriver`) with
+  `leave_app()` in a `finally` so a failing nested step still restores the foreground app. A
+  fast-suite regression test drives the exact nested sequence the spike measured by hand (enter A,
+  enter B, leave, leave) and confirms it restores the *immediate* parent, not the test target
+  unconditionally. A second real-device check (temporary, since removed) confirmed the Swift stack
+  against live Safari: `queryElements()` returned Safari's own 146-element tree while entered, and
+  the host app's own tree, unchanged, once left. `make check` green throughout
+  (8053 passed, coverage unaffected).
+- 2026-09-18 — Units 5 and 6 (originally sketched together) landed as: a showcase scenario
+  (`demos/showcase/scenarios/app.yaml`) driving real Safari.app end to end, using
+  `TabBarItemTitle` — Safari's own address-field identifier, read off the same real-device check
+  above — and a new `make -C demos/showcase e2e-cross-app` lane (no fixture server needed, unlike
+  `e2e-browser`: Safari serves its own start page). Run for real against a dedicated Simulator on
+  both the SwiftUI and UIKit showcase targets: both passed (`manifest.json` `"ok": true` for each;
+  the `app` step itself completed in ~6s). Documentation added in both languages: `dsl-grammar.md`
+  (the `App` production and its reference-graph edges), `drivers.md` (the `enter_app`/`leave_app`
+  bullet), `scenarios.md` (the `app` cookbook entry), and `architecture.md` (a new "DSL cross-app
+  control" subsection under Implementation status).
+- 2026-09-18 — A self-review pass against `.github/claude-review-prompt.md` (`propose-and-build`
+  Phase B) found seven issues, all fixed. A `BE-XXXX` placeholder had leaked into roughly 40
+  non-roadmap files (code comments, docstrings, tests, docs) in violation of the id-confinement
+  invariant; removed everywhere outside this item's own directory, with the two dead roadmap links
+  in `scenarios.md` replaced by a reference to the durable spec doc. `demos/showcase/Makefile`'s
+  three bulk lanes (`run-swiftui`, `run-uikit`, `run-flutter`) were missing `app` from their
+  `--exclude` lists despite `app.yaml`'s own comment claiming the exclusion; added. `AppActivationTests.swift`
+  used `XCTSkip` on an unexpected output shape, which would hide a real regression as a skip rather
+  than a failure; changed to `XCTFail`. The new `APP_CONTEXT` preflight requirement had no dedicated
+  test; three added, mirroring `handleSystemAlert`'s. `_handle_app`'s `finally: leave_app()` could
+  mask the exception already propagating out of the block — `RunCancelled` included — with whatever
+  `leave_app()` itself raised; now logs the leave failure and re-raises the original, mirroring
+  `capability_suspended`'s BE-0365 precedent, with a new regression test proving a cancellation
+  still wins over a simultaneous leave failure. `XcuitestElementProvider.enterApp`'s `.notForeground`
+  path did not re-activate the app already on the stack, leaving the device's foreground state
+  unspecified after a failed activation; now re-activates it, matching `leaveApp`'s own restore
+  guarantee. The Japanese `architecture.md` bullet lacked the English side's own "DSL cross-app
+  control" heading; added. Re-verified afterward: `swift test` (229 passed), `make check` (8065
+  passed, green), and `make -C demos/showcase e2e-cross-app` (both the SwiftUI and UIKit targets
+  passed) on a fresh dedicated Simulator.
 
 ## References
 

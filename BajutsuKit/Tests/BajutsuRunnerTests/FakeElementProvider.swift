@@ -37,6 +37,12 @@ final class FakeElementProvider: ElementProviding {
     var systemAlertTapCalls: [AnyObject] = []
     // The notification banner `/notificationBanner/query` returns, empty when none is up (BE-0416).
     var notificationBanner: [ElementSnapshot] = []
+    // What `enterApp`/`leaveApp` report, and the bundle ids `enterApp` was called with.
+    // Kept apart from `tapResult` since these calls never resolve an element.
+    var enterAppResult: AppActivationResult = .ok
+    var leaveAppResult: AppActivationResult = .ok
+    var enterAppCalls: [String] = []
+    var leaveAppCalls = 0
 
     func queryElements() -> [ElementSnapshot] {
         beforeQueryElements?()
@@ -118,4 +124,14 @@ final class FakeElementProvider: ElementProviding {
     }
 
     func screenshot() -> Data? { screenshotData }
+
+    func enterApp(bundleId: String) -> AppActivationResult {
+        enterAppCalls.append(bundleId)
+        return enterAppResult
+    }
+
+    func leaveApp() -> AppActivationResult {
+        leaveAppCalls += 1
+        return leaveAppResult
+    }
 }

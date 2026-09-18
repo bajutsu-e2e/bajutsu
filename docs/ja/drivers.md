@@ -82,6 +82,14 @@ class Driver(Protocol):
 - `pinch` / `rotate`: runner がネイティブに実行する 2 本指の multi-touch ジェスチャです。
 - `select` / `copy`: フォーカス中フィールドのネイティブなテキスト選択です。
 - `screenshot`: `simctl io screenshot`。
+- `enter_app` / `leave_app`: `app:` ステップです。上の `SFSafariViewController` のマージとは違い、
+  2つのツリーをマージすることはありません。`enter_app` は新しい `XCUIApplication(bundleIdentifier:)` を
+  runner自身のappスタックへpushして`.activate()`し、上のすべてのルート（`query()`、`tap`、…）は、対応する
+  `leave_app` が1つ下のappへpopするまで、そのappだけを対象にします。`HANDLE_SYSTEM_ALERT` / `PICKER_WHEEL`
+  と同じくXCUITest限定の`APP_CONTEXT` capabilityで許可を得ます。実現可能性のスパイクにより、
+  `activate()`はテスト対象アプリが一度も起動していないアプリを、アプリ単位のconfigやアプリ側の協力なしに
+  確実に前面化することを確かめました
+  （[`docs/specs/ios-cross-app-ui-control-feasibility.md`](../specs/ios-cross-app-ui-control-feasibility.md)）。
 
 > 汎用の runner は `XCUIApplication(bundleIdentifier:)` を使うので、アプリ側の協力なしにインストール済みの任意のアプリを駆動します。Simulator の実行は runner の config を一切必要としません。target が `xcuitest.testRunner` も `xcuitest.build` も指定しないときは、wheel にパッケージデータとして同梱された Simulator 用 runner に解決します（BE-0292）。明示的な `testRunner` や `build` は依然としてこの既定より優先し、`deviceType: device` は引き続き明示的な署名済み runner を必要とします。署名済み runner はオペレーターのチーム向けに Bajutsu が同梱できないためです。この backend は `make -C demos/showcase run-swiftui` ＋ `ios-e2e.yml` CI ワークフローで**実機検証済みです**（iPhone 17 Pro、最近の iOS）。XCUITest backend は pip extra を必要とせず、`xcodebuild` は Xcode が供給します。
 

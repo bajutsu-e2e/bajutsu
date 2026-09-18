@@ -536,6 +536,32 @@ class DriverConformanceContract:
             with pytest.raises(base.UnsupportedAction):
                 driver.set_picker_value({"id": "wheel"}, "opt")
 
+    def test_app_context_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
+        # capabilities() is a promise: an APP_CONTEXT backend must not raise
+        # UnsupportedAction for enter_app; one without it must raise rather than silently
+        # no-op'ing (the same shape as MULTI_TOUCH). A supporting backend may still fail some
+        # other way — a made-up bundle id has no seeded tree (or, on a real device, never reaches
+        # the foreground) — so any non-UnsupportedAction error is acceptable, exactly the
+        # tolerance `test_picker_wheel_capability_matches_behavior` already grants.
+        driver = harness.with_screen([])
+        supports = base.Capability.APP_CONTEXT in driver.capabilities()
+        if supports:
+            try:
+                driver.enter_app("com.bajutsu.conformance.nonexistent")
+            except base.UnsupportedAction:
+                pytest.fail(
+                    "APP_CONTEXT capability declared but enter_app raised UnsupportedAction"
+                )
+            except Exception:
+                pass  # no such bundle id / never foregrounds: any other failure is acceptable here
+            finally:
+                driver.leave_app()  # must not raise UnsupportedAction either
+        else:
+            with pytest.raises(base.UnsupportedAction):
+                driver.enter_app("com.bajutsu.conformance.nonexistent")
+            with pytest.raises(base.UnsupportedAction):
+                driver.leave_app()
+
     def test_text_selection_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
         # capabilities() is a promise (BE-0280): a TEXT_SELECTION backend actuates select-all + copy
         # without UnsupportedAction; one without it (a coordinate-only backend) refuses both loudly rather

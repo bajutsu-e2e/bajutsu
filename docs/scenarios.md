@@ -869,6 +869,27 @@ supports `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` inside th
 `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` are not reachable there, and each fails
 with a clear "not supported in web context" reason.
 
+### `app` (driving another app's UI, iOS only)
+
+```yaml
+- app:
+    bundleId: com.apple.mobilesafari
+    steps:
+      - assert:
+          - exists: { id: TabBarItemTitle }
+```
+
+`app` activates the named app by bundle id — installed or not yet running, and never launched by
+the test target — and runs the nested `steps` against that app's own accessibility tree, not the
+test target's. The feasibility findings behind this behavior are recorded in
+`docs/specs/ios-cross-app-ui-control-feasibility.md`.
+Control returns to whatever was active before the block once its steps finish, the same
+enter/leave contract `web` uses — nesting an `app` block inside another returns to the immediate
+parent, not unconditionally to the test target. `bundleId` is a plain string, not a value drawn
+from a fixed set: any installed app can be named, including one the test target has no way to open
+itself. iOS (XCUITest) only; a scenario using it against another backend fails preflight before any
+device work.
+
 ### `swipe`
 
 ```yaml

@@ -147,6 +147,15 @@ class WebContextDriver:
         # only the resident-runner XCUITest backend declares the capability, so this never runs.
         raise UnsupportedAction("handleSystemAlert is iOS-only; not supported in web context")
 
+    def enter_app(self, bundle_id: str) -> None:  # noqa: ARG002  # Driver shape
+        # app: rests on XCUITest's own cross-app activate(); a WebView's DOM context has
+        # no bundle-id concept to switch to, and only the resident-runner XCUITest backend declares
+        # APP_CONTEXT, so this never runs.
+        raise UnsupportedAction("app is iOS-only; not supported in web context")
+
+    def leave_app(self) -> None:
+        raise UnsupportedAction("app is iOS-only; not supported in web context")
+
     def system_alert_labels(self) -> list[str]:
         # A WebView DOM context sees no SpringBoard alert layer; the reactive native path never runs.
         return []

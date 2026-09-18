@@ -678,3 +678,54 @@ def test_handle_system_alert_nested_in_if_branch_is_detected() -> None:
     )
     reasons = capability_preflight.unsupported(sc, _LEAN_IOS)
     assert any("handleSystemAlert" in r for r in reasons)
+
+
+# --- app (cross-app UI control) -------------------------------------------------------------------
+
+
+def test_app_requires_the_capability() -> None:
+    sc = _sc(
+        steps=[{"app": {"bundleId": "com.example.app", "steps": [{"tap": {"id": "confirm"}}]}}]
+    )
+    # _LEAN_IOS does not advertise the token, standing in for a backend that lacks it.
+    reasons = capability_preflight.unsupported(sc, _LEAN_IOS)
+    assert reasons and any("app" in r and "step 1" in r for r in reasons)
+    assert capability_preflight.unsupported(sc, _LEAN_IOS | {base.Capability.APP_CONTEXT}) == []
+
+
+def test_app_passes_on_xcuitest_but_fails_on_android_and_web() -> None:
+    from bajutsu.common.drivers.adb import AdbDriver
+    from bajutsu.common.drivers.playwright import PlaywrightDriver
+    from bajutsu.common.drivers.xcuitest import XcuitestDriver
+
+    sc = _sc(
+        steps=[{"app": {"bundleId": "com.example.app", "steps": [{"tap": {"id": "confirm"}}]}}]
+    )
+    assert base.Capability.APP_CONTEXT in XcuitestDriver.CAPABILITIES
+    assert capability_preflight.unsupported(sc, set(XcuitestDriver.CAPABILITIES)) == []
+    for driver in (AdbDriver, PlaywrightDriver):
+        assert base.Capability.APP_CONTEXT not in driver.CAPABILITIES
+        reasons = capability_preflight.unsupported(sc, set(driver.CAPABILITIES))
+        assert any("app" in r for r in reasons)
+
+
+def test_app_nested_in_if_branch_is_detected() -> None:
+    sc = _sc(
+        steps=[
+            {
+                "if": {
+                    "condition": {"exists": {"id": "perm.requestNotif"}},
+                    "then": [
+                        {
+                            "app": {
+                                "bundleId": "com.example.app",
+                                "steps": [{"tap": {"id": "confirm"}}],
+                            }
+                        }
+                    ],
+                }
+            }
+        ]
+    )
+    reasons = capability_preflight.unsupported(sc, _LEAN_IOS)
+    assert any("app" in r for r in reasons)

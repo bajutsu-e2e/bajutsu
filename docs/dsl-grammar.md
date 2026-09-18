@@ -35,7 +35,7 @@ Every mapping rejects keys it does not declare (`_Model`, `scenario/models/_base
 
 ## 2. Grammar at a glance
 
-The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that the EBNF text below states but does not show directly: `Selector`'s `within` self-loop; `RequestMatch`, shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`; `Web` and `Component`, which both nest a fresh `Step` list; `Component` reached a second way from `ScenarioFile` itself (a file may declare its own components inline; §6.2); and the two control-flow steps — `If`, which nests `then`/`else` under an `Assertion` condition, and `ForEach`, which nests `steps` under a `Selector`. The diagram omits actions that carry only scalars and reference no shared non-terminal (`relaunch`, `setLocation`, `push`, `http`, `setClipboard`, `foreground`, and the remaining device / status-bar steps) and the `golden` assertion, whose payload is a bare path.
+The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that the EBNF text below states but does not show directly: `Selector`'s `within` self-loop; `RequestMatch`, shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`; `Web`, `App`, and `Component`, which all nest a fresh `Step` list (`App`'s own field is a bare `bundleId` string, not a `Selector`, so it has no edge into `Selector` the way `Web`'s `within` does); `Component` reached a second way from `ScenarioFile` itself (a file may declare its own components inline; §6.2); and the two control-flow steps — `If`, which nests `then`/`else` under an `Assertion` condition, and `ForEach`, which nests `steps` under a `Selector`. The diagram omits actions that carry only scalars and reference no shared non-terminal (`relaunch`, `setLocation`, `push`, `http`, `setClipboard`, `foreground`, and the remaining device / status-bar steps) and the `golden` assertion, whose payload is a bare path.
 
 ```mermaid
 graph LR
@@ -59,12 +59,14 @@ graph LR
   ST -->|assert| AS
   ST -->|use| CMP["Component"]
   ST -->|web| WEB["Web"]
+  ST -->|app| APP["App"]
   ST -->|capture| CT["CaptureToken"]
   ST -->|if| IF["If"]
   ST -->|forEach| FE["ForEach"]
   CMP -->|steps| ST
   WEB -->|within| SEL
   WEB -->|steps| ST
+  APP -->|steps| ST
   IR -->|condition| AS
   IR -->|steps| ST
   IF -->|condition| AS
@@ -214,6 +216,7 @@ Action    ::=
   | { if:          <If> }                                               # conditional (no capture/extract)
   | { forEach:     <ForEach> }                                          # loop (no capture/extract)
   | { web:         <Web> }                                              # enter a WebView's DOM context (BE-0037; no capture/extract)
+  | { app:         <App> }                                              # launch an app the test target never started and drive its UI (iOS/XCUITest only; no capture/extract)
   | { manual:      { label: string, bypass?: string } }                # human takeover recorded during `record` (BE-0185); fails loudly at run time — no deterministic equivalent unless `bypass` is wired
 
 If ::= { condition: <Assertion>, then: list(<Step>), else?: list(<Step>) }
@@ -221,6 +224,10 @@ ForEach ::= { sel: <Selector>, as: string, steps: list(<Step>) }
 Web ::= { within: <Selector>, steps: list(<Step>) }
     # `within` resolves natively to exactly one WKWebView host; nested `steps` address the
     # normalized DOM (`data-testid` → Element.identifier), not the native accessibility tree.
+App ::= { bundleId: string, steps: list(<Step>) }
+    # `bundleId` names any installed app, launched (or already running) with no cooperation from
+    # the test target; nested `steps` address that app's own accessibility tree. Control returns to
+    # whatever was active before the block once it ends, the same enter/leave contract as `Web`.
 
 Swipe ::=
     { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # selector form  ┐ XOR

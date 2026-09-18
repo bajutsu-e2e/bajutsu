@@ -30,7 +30,7 @@ _CAPTURE_MODS = {"before", "after", "around", "onError"}
 # The step-action (models/steps.py) and assertion-kind (models/assertions.py) field names are each
 # derived from their own model, so adding one edits exactly one place — the model — instead of also
 # appending here. Only the control-flow subset, which the Step validator needs, is named.
-_CONTROL_FLOW_ACTIONS = ("if_", "for_each", "web")
+_CONTROL_FLOW_ACTIONS = ("if_", "for_each", "web", "app")
 
 
 class _Model(BaseModel):

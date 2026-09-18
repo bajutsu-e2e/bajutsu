@@ -34,6 +34,10 @@ _NOT_HITTABLE = "not-hittable"  # the element is live but not reachable at its o
 # it has no such row (BE-0356). Distinct from `_NOT_FOUND`, whose "no actuatable element" message
 # names the selector and would misreport a perfectly resolved, live wheel.
 _VALUE_NOT_FOUND = "value-not-found"
+# `/app/enter` and `/app/leave` only: `activate()` was called but the app never reached
+# `.runningForeground` within the runner's bounded poll — a wrong or uninstalled bundle
+# id, most often, for `enter_app`.
+_NOT_FOREGROUND = "not-foreground"
 
 # Bounded re-resolution retry for a STALE actuation handle (BE-0289), held separate from BE-0207's
 # transport retry above even though it starts at the same values: the two loops bound different
@@ -74,6 +78,7 @@ class XcuitestDriver:
                 base.Capability.TEXT_SELECTION,
                 base.Capability.HANDLE_SYSTEM_ALERT,
                 base.Capability.PICKER_WHEEL,
+                base.Capability.APP_CONTEXT,
                 base.Capability.HANDLE_TIPKIT_TIP,
                 base.Capability.HANDLE_NOTIFICATION_BANNER,
             }
@@ -790,6 +795,31 @@ class XcuitestDriver:
 
     def capabilities(self) -> set[str]:
         return set(self.CAPABILITIES)
+
+    def enter_app(self, bundle_id: str) -> None:
+        """Activate `bundle_id` and make it the target of every following call.
+
+        Never launched by the test target — the runner activates it directly, pushing it onto its
+        own app stack — so this works for any installed app, including one the scenario's own
+        target has no way to open itself.
+        """
+        reply = self._transport("POST", "/app/enter", {"bundleId": bundle_id})
+        if reply.status == _OK:
+            return
+        if reply.status == _NOT_FOREGROUND:
+            raise base.ElementNotFound(f"app did not reach the foreground: {bundle_id!r}")
+        raise XcuitestChannelError(
+            f"runner error entering app (status={reply.status}): {bundle_id!r}"
+        )
+
+    def leave_app(self) -> None:
+        """Leave the most recently entered app and re-activate the one beneath it."""
+        reply = self._transport("POST", "/app/leave", {})
+        if reply.status == _OK:
+            return
+        if reply.status == _NOT_FOREGROUND:
+            raise base.ElementNotFound("app did not reach the foreground while leaving")
+        raise XcuitestChannelError(f"runner error leaving app (status={reply.status})")
 
     # --- lifecycle ---
 

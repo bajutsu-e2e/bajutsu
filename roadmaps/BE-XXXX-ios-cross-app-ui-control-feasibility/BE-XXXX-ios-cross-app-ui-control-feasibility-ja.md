@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-XXXX](BE-XXXX-ios-cross-app-ui-control-feasibility-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| 実装 PR | [#2021](https://github.com/bajutsu-e2e/bajutsu/pull/2021) |
 | トピック | Platform support |
 <!-- /BE-METADATA -->
 
@@ -97,11 +98,17 @@ SpringBoard・SafariViewServiceのマージ処理には触れません。シス�
 どのアプリを対象にしていても割り込みうるため、この処理はこれまでどおり、現在のスタック先頭ではなく
 テスト対象アプリ自身のエントリを基準に読み取り続けます。`app:`ブロックに入ると、新しい
 `XCUIApplication(bundleIdentifier:)`ハンドルをpushして`.activate()`します。ブロックを抜けると、
-それをpopして1つ下のハンドルを`.activate()`します。実装時に詰める点として、テスト対象アプリが対応する
-すべての操作（ジェスチャ、テキスト選択、ピッカーホイール）が、別アプリのハンドルに対しても変わらず
-成り立つかは未確認です。スパイクが測ったのは`activate()`とツリーの読み取りだけで、操作面全体では
-ありません。各能力は、それぞれのステップが実装される段階で、実際の別アプリに対して確かめるべきで、
-前提として扱うべきではありません。
+それをpopして1つ下のハンドルを`.activate()`します。
+
+実装の中で確かめられた点があります。実機での確認（Unit 1と同じ流儀の、確認後に削除した一時的な
+スパイク）により、実際のSafariに対する`enterApp`/`leaveApp`を確認しました。入っている間は
+`queryElements()`がSafari自身のツリー（アドレス欄の`TabBarItemTitle`を含む146要素）を返しました。
+抜けたあとは、ホストアプリ自身のツリー（要素数は変化なし）を返しました。別アプリのツリーの内側での
+`tap`/`type`/ジェスチャ操作は、`FakeDriver`を通じて高速スイートで確認しただけです。ディスパッチと
+入れ子の水準では実証済みですが、実際の別アプリのライブなヒットテストに対しては未確認です。どの
+ジェスチャで確かめるにも、確実で安定した操作対象を持つターゲットアプリが要り、Safariの初回起動画面
+はそれを確実には提供しないからです。`app:`ブロックの内側でジェスチャを最初に必要とする具体的な
+シナリオが出てきたときのために、前提とせず、本当に未確認のままにしています。
 
 ### Unit 3 — capabilityのゲーティング
 
@@ -173,11 +180,11 @@ showcaseのシナリオで、実際のシステムアプリに対して`app:`ス
 
 - [x] Unit 1 — 実現可能性のスパイク。Safari/Maps/Contactsで`activate()`と常駐ランナーの持ちこたえを
   確認済み
-- [ ] Unit 2 — `XcuitestElementProvider`のクエリ・操作対象スタック
-- [ ] Unit 3 — `app:`のpreflight capabilityトークン
-- [ ] Unit 4 — シナリオモデル（`App`ステップ型）と`Driver`インタフェースの入る・抜けるの組
-- [ ] Unit 5 — `app:`を端から端まで動かすshowcaseのフィクスチャとシナリオ
-- [ ] Unit 6 — ドキュメント（`dsl-grammar.md`、`drivers.md`、`scenarios.md`、両言語）
+- [x] Unit 2 — `XcuitestElementProvider`のクエリ・操作対象スタック
+- [x] Unit 3 — `app:`のpreflight capabilityトークン
+- [x] Unit 4 — シナリオモデル（`App`ステップ型）と`Driver`インタフェースの入る・抜けるの組
+- [x] Unit 5 — `app:`を端から端まで動かすshowcaseのフィクスチャとシナリオ
+- [x] Unit 6 — ドキュメント（`dsl-grammar.md`、`drivers.md`、`scenarios.md`、両言語）
 
 ログ：
 
@@ -189,6 +196,52 @@ showcaseのシナリオで、実際のシステムアプリに対して`app:`ス
   通じて最後まで落ちませんでした（合計11.288秒、失敗0件）。結果は
   `docs/specs/ios-cross-app-ui-control-feasibility.md`に記録し、スパイクのファイルと
   `project.pbxproj`への配線はそのあと削除しました。
+- 2026-09-18 — Unit 2〜6を実装し、確認しました。Swift側は`XcuitestElementProvider.appStack`と
+  `enterApp`/`leaveApp`（スパイクと同じ、境界を持つ`.runningForeground`ポーリング）、常駐ランナーの
+  生成されたOpenAPI面への2つの新しいルート（`POST /app/enter`、`POST /app/leave`）です。legacyの
+  `Router`側には対応を持たせていません（`app:`は生成された経路にだけ新しく追加したためです）。
+  host限定の`APIHandler`テストを追加しました。Python側は、`Driver.enter_app`/`leave_app`を
+  `XcuitestDriver`で実装し、ほかのすべてのbackendでは`UnsupportedAction`にしました。
+  `Capability.APP_CONTEXT`は`XcuitestDriver`と`FakeDriver`が宣言します。`App`シナリオモデル、
+  ステップループの`_handle_app`は、`web:`の`WebContextDriver`とは異なり新しいドライバのインスタンスを
+  作らず`active_driver`をそのまま再利用し、`leave_app()`を`finally`に置くことで、中のステップが
+  失敗してもフォアグラウンドのアプリを復元します。高速スイートの回帰テストが、スパイクが手作業で
+  測ったのと同じ入れ子の並び（Aへ入り、Bへ入り、抜け、抜け）を動かし、戻る先が直近の親であり、
+  テスト対象アプリへ無条件に戻るのではないことを確かめます。2回目の実機確認（一時的なもので、
+  確認後に削除済み）で、Swiftのスタックを実際のSafariに対して確かめました。`queryElements()`は、
+  入っている間はSafari自身の146要素のツリーを、抜けたあとはホストアプリ自身のツリー（要素数は
+  変化なし）を返しました。`make check`はこの間ずっとグリーンでした（8053件成功、coverageに影響なし）。
+- 2026-09-18 — Unit 5とUnit 6（当初は1つにまとめて素描していました）は、次の形で着地しました。
+  showcaseのシナリオ（`demos/showcase/scenarios/app.yaml`）が実際のSafari.appを端から端まで動かし、
+  `TabBarItemTitle`（上の実機確認で読み取った、Safari自身のアドレス欄の識別子）を使います。
+  新しい`make -C demos/showcase e2e-cross-app`レーンも作りました（`e2e-browser`とは異なりフィクスチャ
+  サーバは要りません。Safariは自分のスタートページを自分で出すからです）。検証専用のSimulatorに対して
+  実際に実行し、SwiftUI・UIKitの両showcaseターゲットで通りました（それぞれの`manifest.json`が
+  `"ok": true`。`app`ステップ自体は約6秒で完了）。ドキュメントも両言語に追記しました。
+  `dsl-grammar.md`（`App`のプロダクションと参照グラフの辺）、`drivers.md`（`enter_app`/`leave_app`の
+  項目）、`scenarios.md`（`app`のクックブック項目）、`architecture.md`（Implementation statusの下に
+  新設した`DSL cross-app control`の節）です。
+- 2026-09-18 — `.github/claude-review-prompt.md`に基づくセルフレビュー（`propose-and-build`の
+  Phase B）を実施しました。7件の指摘が見つかり、すべて修正しました。`BE-XXXX`というプレースホルダが、
+  この項目自身のディレクトリ以外の約40ファイル（コードコメント、docstring、テスト、ドキュメント）に
+  漏れ込んでいました。id閉じ込めの不変条件に反するため、ディレクトリの外側からはすべて取り除きました。
+  `scenarios.md`にあった2つのリンク切れは、恒久的な仕様書への参照に置き換えました。
+  `demos/showcase/Makefile`の一括実行レーン3つ（`run-swiftui`、`run-uikit`、`run-flutter`）は、
+  `app.yaml`自身のコメントが除外されると述べているにもかかわらず`--exclude`から`app`が抜けていたため、
+  追加しました。`AppActivationTests.swift`は、想定外の出力形状に対して`XCTSkip`を投げていました。
+  これでは実際のリグレッションが失敗ではなくスキップとして隠れてしまうため、`XCTFail`へ変更しました。
+  新設した`APP_CONTEXT`のpreflight要件には専用のテストがなかったため、`handleSystemAlert`のものに
+  倣って3件追加しました。`_handle_app`の`finally: leave_app()`は、ブロックからすでに伝播している
+  例外（`RunCancelled`を含む）を、`leave_app()`自身が投げた例外で覆い隠しうる作りでした。
+  leave失敗のほうをログに残しつつ元の例外を再送出するよう改め、BE-0365の`capability_suspended`と
+  同じ流儀にそろえました。cancelが同時に起きたleave失敗に勝つことを確かめる回帰テストも追加しました。
+  `XcuitestElementProvider.enterApp`の`.notForeground`経路は、スタックにすでに積んであるアプリを
+  再activateしていませんでした。そのためactivate失敗後のデバイスのフォアグラウンド状態が不定に
+  なっていたので、`leaveApp`自身の復元と同じ保証になるよう再activateするよう改めました。日本語版
+  `architecture.md`の箇条書きには、英語版が持つ「DSL cross-app control」に対応する見出しがなかった
+  ため、追加しました。この後、`swift test`（229件成功）、`make check`（8065件成功、グリーン）、
+  そして検証専用の新しいSimulatorに対する`make -C demos/showcase e2e-cross-app`（SwiftUI・UIKit
+  両ターゲットとも成功）で再確認しました。
 
 ## 参考
 

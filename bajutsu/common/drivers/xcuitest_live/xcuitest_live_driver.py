@@ -341,6 +341,19 @@ class XcuitestLiveDriver:
             "setPickerValue is not implemented on the XCUITest live route (BE-0356)"
         )
 
+    def enter_app(self, bundle_id: str) -> None:  # noqa: ARG002  # Driver shape
+        # app: is scoped to the resident runner's own app stack for its first slice; a
+        # live Appium / WebDriver grid session has no equivalent here. This backend does not
+        # advertise APP_CONTEXT, so preflight rejects the step; this is only the mid-run backstop.
+        raise base.UnsupportedAction(
+            "app is served by the resident-runner XCUITest backend; not on the live grid"
+        )
+
+    def leave_app(self) -> None:
+        raise base.UnsupportedAction(
+            "app is served by the resident-runner XCUITest backend; not on the live grid"
+        )
+
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:  # noqa: ARG002  # Driver shape
         # BE-0316 targets the resident-runner XCUITest backend's SpringBoard query channel, which a
         # live Appium / WebDriver grid does not expose here; this backend does not advertise the

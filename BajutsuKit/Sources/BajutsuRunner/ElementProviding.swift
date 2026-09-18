@@ -27,6 +27,17 @@ public struct ElementSnapshot {
     }
 }
 
+/// The result of entering or leaving another app's foreground.
+public enum AppActivationResult {
+    /// `activate()` was called and the target's `.state` reached `.runningForeground` within the
+    /// bounded poll.
+    case ok
+    /// `activate()` was called but the target never reached `.runningForeground` within the bounded
+    /// poll — a wrong or uninstalled bundle id, most often. Distinct from `TapResult` because no
+    /// element resolution is involved; nothing was queried or acted on.
+    case notForeground
+}
+
 /// The result of a tap attempt, or of an `isHittable` query reusing the same resolution outcomes.
 public enum TapResult {
     case ok
@@ -117,4 +128,17 @@ public protocol ElementProviding: AnyObject {
 
     /// Capture a screenshot as PNG data.
     func screenshot() -> Data?
+
+    /// Activate the app named by `bundleId` — installed or not yet running, and never launched by
+    /// the test target — and make it the target every other method in this protocol addresses,
+    /// until a matching `leaveApp()`. Nests: a second `enterApp` before a `leaveApp`
+    /// pushes onto the app the first `enterApp` already pushed, and `leaveApp` pops back to it, not
+    /// past it.
+    func enterApp(bundleId: String) -> AppActivationResult
+
+    /// Leave the most recently entered app and re-activate the one beneath it — the test target
+    /// itself, if this is the outermost `leaveApp()`. A `leaveApp()` with no matching
+    /// `enterApp()` is a caller error the implementation tolerates rather than traps: it leaves the
+    /// stack at its seed and reports `.ok`.
+    func leaveApp() -> AppActivationResult
 }

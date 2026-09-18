@@ -1051,6 +1051,15 @@ def test_select_option_unsupported() -> None:
         driver.select_option({"id": "nav.theme-picker"}, "midnight")
 
 
+def test_enter_app_and_leave_app_unsupported() -> None:
+    # app: rests on XCUITest's own cross-app activate(); Android has no equivalent.
+    driver = AdbDriver("U", run=lambda a: FIXTURE)
+    with pytest.raises(base.UnsupportedAction):
+        driver.enter_app("com.example")
+    with pytest.raises(base.UnsupportedAction):
+        driver.leave_app()
+
+
 def test_screenshot_writes_capture_bytes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[list[str]] = []
 

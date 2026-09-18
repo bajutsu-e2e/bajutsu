@@ -1383,3 +1383,12 @@ def test_driver_interval_video_none_without_recording(tmp_path: Any) -> None:
     # No record_video_dir on this lane (video not requested): no video interval.
     drv, _ = _driver([])
     assert drv.driver_interval("video", tmp_path / "scenario.mp4") is None
+
+
+def test_enter_app_and_leave_app_unsupported() -> None:
+    # app: rests on XCUITest's own cross-app activate(); a browser has no bundle ids.
+    drv, _ = _driver([])
+    with pytest.raises(base.UnsupportedAction):
+        drv.enter_app("com.example")
+    with pytest.raises(base.UnsupportedAction):
+        drv.leave_app()

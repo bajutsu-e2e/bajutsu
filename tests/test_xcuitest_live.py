@@ -540,6 +540,16 @@ def test_select_all_and_copy_are_unsupported_on_the_live_route() -> None:
         driver.copy_selection()
 
 
+def test_enter_app_and_leave_app_are_unsupported_on_the_live_route() -> None:
+    # app: is scoped to the resident runner's own app stack for its first slice; the
+    # live Appium / WebDriver grid has no equivalent, so both fail loudly rather than no-op'ing.
+    driver = XcuitestLiveDriver(WebDriverClient(_FakeGrid([])))
+    with pytest.raises(base.UnsupportedAction):
+        driver.enter_app("com.example")
+    with pytest.raises(base.UnsupportedAction):
+        driver.leave_app()
+
+
 def test_a_gesture_on_an_ambiguous_selector_fails_before_actuation() -> None:
     # Distinct rects: two genuinely different buttons sharing a name, not a content-identical
     # duplicate (which resolve_unique now collapses rather than flags ambiguous).

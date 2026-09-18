@@ -162,6 +162,14 @@ than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
 - `pinch` / `rotate`: two-finger multi-touch gestures performed natively by the runner.
 - `select` / `copy`: native text selection on the focused field.
 - `screenshot`: `simctl io screenshot`.
+- `enter_app` / `leave_app`: the `app:` step. Unlike the `SFSafariViewController` merge
+  above, this never merges two trees — `enter_app` pushes a new `XCUIApplication(bundleIdentifier:)`
+  onto the runner's own app stack and `.activate()`s it, so every route above (`query()`, `tap`, …)
+  addresses that app exclusively until a matching `leave_app` pops back to the one beneath. Gated on
+  the `APP_CONTEXT` capability, XCUITest-only like `HANDLE_SYSTEM_ALERT` / `PICKER_WHEEL`: a
+  feasibility spike confirmed `activate()` reliably foregrounds an app the test target never
+  launched, with no per-app config or app-side cooperation
+  ([`docs/specs/ios-cross-app-ui-control-feasibility.md`](specs/ios-cross-app-ui-control-feasibility.md)).
 
 > The generic runner uses `XCUIApplication(bundleIdentifier:)`, so it drives any installed app with
 > no app-side cooperation. A Simulator run needs no runner config at all: when a target names neither
