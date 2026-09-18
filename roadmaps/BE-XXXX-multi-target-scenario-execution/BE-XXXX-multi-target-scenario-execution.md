@@ -99,6 +99,48 @@ steps:
       - value: { sel: { id: "post.${vars.postId}.comment.latest" }, equals: "nice!" }
 ```
 
+The example above is illustrative — no fixture in this repository shares one product across an iOS
+target and a web target the way it depicts. A second example, built entirely from two fixtures this
+repository already ships, shows the same mechanics against real, existing scenarios: `showcase-swiftui`
+([`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml)) and `web`
+([`demos/web/demo.config.yaml`](../../demos/web/demo.config.yaml)) are two genuinely independent apps
+with no shared backend, so the value one target's step captures here carries no product meaning on
+the other — the point is only to show `targets`, per-step `target`, and `${vars.*}` sharing working
+end to end against real ids, not to claim a cross-app product check:
+
+```yaml
+name: favorite a horse on the iOS showcase, then carry what it captured into the web demo
+targets: [showcase-swiftui, web]
+steps:
+  - target: showcase-swiftui
+    wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
+    tap: { id: [stable.row.1, stable_row_1] }
+
+  - target: showcase-swiftui
+    wait: { for: { id: [horse.favorite, horse_favorite] }, timeout: 5 }
+    tap: { id: [horse.favorite, horse_favorite] }
+    extract: { var: favorited, sel: { id: [horse.favorite.value, horse_favorite_value] } }
+
+  - target: web
+    tap: { id: onboarding.start }
+    type: { text: "favorited-${vars.favorited}@example.com", into: { id: auth.email } }
+    type: { text: "pw", into: { id: auth.password } }
+    tap: { id: auth.submit }
+    wait: { for: { id: home.title }, timeout: 5 }
+    tap: { id: counter.increment }
+expect:
+  - target: showcase-swiftui
+    value: { sel: { id: [horse.favorite.value, horse_favorite_value] }, equals: "on" }
+  - target: web
+    value: { sel: { id: counter.value }, equals: "1" }
+```
+
+The iOS steps are `demos/showcase/scenarios/firstlook.yaml`'s own "favorite a horse" flow verbatim
+(down to the dotted-and-underscore id pairs BE-0221 already requires for cross-platform ids); the web
+steps are the opening of `demos/web/scenarios/counter.yaml`'s own onboarding flow. Both already run
+today, each in its own single-target scenario file — this example only adds `targets`, `target`, and
+the `${vars.*}` hop between them.
+
 `Scenario` gains `targets: list[str] = Field(default_factory=list)`, alongside its existing `before`,
 `steps`, and `after` fields
 ([`bajutsu/common/scenario/models/scenario/scenario.py:45-84`](../../bajutsu/common/scenario/models/scenario/scenario.py)).
@@ -138,6 +180,28 @@ every action step does: which target's driver the block's own WebView bridge ope
 target's element tree, confirmed by `ForEach`'s own `sel: Selector` field
 ([`bajutsu/common/scenario/models/steps/for_each.py:19`](../../bajutsu/common/scenario/models/steps/for_each.py)) —
 independently of whatever `target` each nested step underneath sets for itself.
+
+The scenario-level `expect` block needs the same field for the same reason `steps` does: today it
+evaluates as one condition-wait poll against a single driver —
+`_evaluate_expect(driver, expect, network, clock, ctx=...)`
+([`bajutsu/common/orchestrator/loop/_functions.py:157-171`](../../bajutsu/common/orchestrator/loop/_functions.py)),
+called from `run_scenario`'s own passing path and from its post-guard-dismissal retry
+([`bajutsu/common/orchestrator/loop/_functions.py:748-760`](../../bajutsu/common/orchestrator/loop/_functions.py),
+[`:1076`](../../bajutsu/common/orchestrator/loop/_functions.py)) — so `Assertion`
+([`bajutsu/common/scenario/models/assertions/assertion.py:23-56`](../../bajutsu/common/scenario/models/assertions/assertion.py))
+gains `target: str | None = None`, excluded from `_ASSERTION_KINDS` the same way its existing `from_`
+provenance field already is. The `Scenario`-level validator's rule extends to `expect` entries
+unchanged: optional (or matching the one declared target) when `scenario.targets` has zero or one
+entries, required when it has two or more. `_evaluate_expect` groups `expect` by the target each
+entry names, and calls `_poll_asserts`
+([`bajutsu/common/orchestrator/loop/_functions.py:115-123`](../../bajutsu/common/orchestrator/loop/_functions.py))
+once per referenced target — using that target's own driver and network source from its
+`TargetRuntime` — merging the results back into one `expect_results` list in the scenario's own
+declared order. `AssertionResult`
+([`bajutsu/common/assertions/_common.py:29-38`](../../bajutsu/common/assertions/_common.py)) gains
+`target: str = ""` alongside its existing `kind`, mirroring `StepOutcome.target` (below) for the same
+reporting reason — inline `assert:` results are already scoped by their own step's `target`, so this
+matters only for `expect_results`.
 
 ### The command-line interface (CLI): `--target` becomes optional once a scenario declares its own
 
@@ -365,10 +429,11 @@ identified, and choosing between them is deferred rather than guessed.
 
 ### Work breakdown (MECE)
 
-1. **Schema.** `Scenario.targets: list[str]`; `Step.target: str | None`; a `Scenario`-level validator
-   (not `Step`'s own, which cannot see the enclosing scenario) tying `target`'s requirement to
+1. **Schema.** `Scenario.targets: list[str]`; `Step.target: str | None`; `Assertion.target: str |
+   None` (excluded from `_ASSERTION_KINDS` like `from_`); a `Scenario`-level validator (not `Step`'s
+   own, which cannot see the enclosing scenario) tying `target`'s requirement to
    `len(scenario.targets)`, walking `steps`, `before`, and every rule in `after` recursively into
-   every nested `if`/`forEach`/`web` step list.
+   every nested `if`/`forEach`/`web` step list, and applying the same rule to `expect`.
 2. **CLI.** `--target` becomes optional once `scenario.targets` is non-empty, and `--scenario`
    becomes mandatory in its place; an explicit `--target` is checked against `scenario.targets`
    rather than silently overridden; the scenario-file loader resolves and validates every declared
@@ -392,10 +457,12 @@ identified, and choosing between them is deferred rather than guessed.
    lookup in `_run_one` that resolves `step.target` against `active_driver`/`target_runtimes` instead
    of the primary target's own values; one `TargetRuntime` built per declared target in
    `_run_one_impl`, the same way today's single set of per-lease arguments is already built once per
-   scenario.
-5. **Report.** `StepOutcome.target` (including the single-declared-target default); `RunResult`'s
-   singular fields left empty on a multi-target run; `RunResult.target_devices`; the Steps view's
-   per-step target label; the header block listing every declared target's device.
+   scenario; `_evaluate_expect` grouping `expect` by target and calling `_poll_asserts` once per
+   referenced target's own driver and network source, merging the results back in declared order.
+5. **Report.** `StepOutcome.target` (including the single-declared-target default);
+   `AssertionResult.target` mirroring it for `expect_results`; `RunResult`'s singular fields left
+   empty on a multi-target run; `RunResult.target_devices`; the Steps view's per-step target label;
+   the header block listing every declared target's device.
 6. **Docs.** `docs/scenarios.md` (the `targets`/`target` reference and a worked example),
    `docs/cli.md` (`--target`'s new optional condition and `--scenario`'s new mandatory one), and
    `docs/run-loop.md` (the multi-driver step dispatch), and their `docs/ja/` mirrors.
@@ -441,15 +508,17 @@ identified, and choosing between them is deferred rather than guessed.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Schema: `Scenario.targets`, `Step.target`, and the validator tying `target`'s requirement to
-      `len(scenario.targets)`.
+- [ ] Schema: `Scenario.targets`, `Step.target`, `Assertion.target`, and the validator tying
+      `target`'s requirement to `len(scenario.targets)` across `steps` and `expect` alike.
 - [ ] CLI: `--target` optional under a self-declaring scenario; mismatch rejection; config
       validation for every declared name.
 - [ ] Launch and teardown: `Config` threaded through to `_ScenarioRunner`; one pool per declared
       platform; one driver per declared target, launched together and torn down together.
-- [ ] Runner: the `TargetRuntime` bundle, `run_scenario`'s `target_runtimes` mapping, and the
-      per-target actuator/locale/capture/interrupts/guard/network/evidence-context construction.
-- [ ] Report: `StepOutcome.target`, `RunResult.target_devices`, and the report views that show them.
+- [ ] Runner: the `TargetRuntime` bundle, `run_scenario`'s `target_runtimes` mapping, the per-target
+      actuator/locale/capture/interrupts/guard/network/evidence-context construction, and
+      `_evaluate_expect`'s per-target grouping.
+- [ ] Report: `StepOutcome.target`, `AssertionResult.target`, `RunResult.target_devices`, and the
+      report views that show them.
 - [ ] Docs: `docs/scenarios.md`, `docs/cli.md`, `docs/run-loop.md`, and their `docs/ja/` mirrors.
 
 ## References

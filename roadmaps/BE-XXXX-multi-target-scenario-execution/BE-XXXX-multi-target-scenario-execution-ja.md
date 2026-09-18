@@ -99,6 +99,50 @@ steps:
       - value: { sel: { id: "post.${vars.postId}.comment.latest" }, equals: "nice!" }
 ```
 
+上の例は説明のためのものです。この描いているような、iOSターゲットとWebターゲットの間で1つの製品を
+共有するフィクスチャは、このリポジトリには存在しません。2つ目の例は、このリポジトリがすでに持って
+いる2つのフィクスチャだけで組み立て、同じ仕組みを実在のシナリオに対して示します。
+`showcase-swiftui`
+([`demos/showcase/showcase.config.yaml`](../../demos/showcase/showcase.config.yaml))と`web`
+([`demos/web/demo.config.yaml`](../../demos/web/demo.config.yaml))は、バックエンドを共有しない
+本当に独立した2つのアプリです。したがって、ここで一方のステップが捕まえる値は、もう一方の側では
+製品としての意味を持ちません。狙いは、実在のidに対して`targets`、ステップごとの`target`、
+`${vars.*}`の共有が最後まで動くことを示すだけであり、アプリをまたいだ製品上のチェックを主張する
+ものではありません。
+
+```yaml
+name: favorite a horse on the iOS showcase, then carry what it captured into the web demo
+targets: [showcase-swiftui, web]
+steps:
+  - target: showcase-swiftui
+    wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
+    tap: { id: [stable.row.1, stable_row_1] }
+
+  - target: showcase-swiftui
+    wait: { for: { id: [horse.favorite, horse_favorite] }, timeout: 5 }
+    tap: { id: [horse.favorite, horse_favorite] }
+    extract: { var: favorited, sel: { id: [horse.favorite.value, horse_favorite_value] } }
+
+  - target: web
+    tap: { id: onboarding.start }
+    type: { text: "favorited-${vars.favorited}@example.com", into: { id: auth.email } }
+    type: { text: "pw", into: { id: auth.password } }
+    tap: { id: auth.submit }
+    wait: { for: { id: home.title }, timeout: 5 }
+    tap: { id: counter.increment }
+expect:
+  - target: showcase-swiftui
+    value: { sel: { id: [horse.favorite.value, horse_favorite_value] }, equals: "on" }
+  - target: web
+    value: { sel: { id: counter.value }, equals: "1" }
+```
+
+iOS側のステップは、`demos/showcase/scenarios/firstlook.yaml`自身の「馬をお気に入りに登録する」
+流れをそのまま使っています(BE-0221がすでに要求している、ドット区切りとアンダースコア区切りの
+id併記も含めて)。Web側のステップは、`demos/web/scenarios/counter.yaml`自身のオンボーディング
+フローの冒頭です。どちらも今日すでに、それぞれ単独の単一ターゲットシナリオファイルとして動いて
+います。この例が加えているのは`targets`、`target`、そして両者をまたぐ`${vars.*}`の受け渡しだけです。
+
 `Scenario`は`targets: list[str] = Field(default_factory=list)`を新たに持ちます。既存の`before`、
 `steps`、`after`と並ぶ位置です
 ([`bajutsu/common/scenario/models/scenario/scenario.py:45-84`](../../bajutsu/common/scenario/models/scenario/scenario.py))。
@@ -141,6 +185,27 @@ steps:
 ([`bajutsu/common/scenario/models/steps/for_each.py:19`](../../bajutsu/common/scenario/models/steps/for_each.py))
 がこれを裏付けます。`if`と`forEach`は自分自身の`target`を、内側の各ステップが自分自身に設定する
 `target`とは独立に持ちます。
+
+シナリオレベルの`expect`ブロックにも、`steps`と同じ理由で同じフィールドが必要です。今日は
+単一のドライバに対する1回の条件待ちポーリングとして評価されます。
+`_evaluate_expect(driver, expect, network, clock, ctx=...)`
+([`bajutsu/common/orchestrator/loop/_functions.py:157-171`](../../bajutsu/common/orchestrator/loop/_functions.py))
+は、`run_scenario`自身の合格経路と、ガード解除後のリトライの両方から呼ばれます
+([`bajutsu/common/orchestrator/loop/_functions.py:748-760`](../../bajutsu/common/orchestrator/loop/_functions.py)、
+[`:1076`](../../bajutsu/common/orchestrator/loop/_functions.py))。そこで`Assertion`
+([`bajutsu/common/scenario/models/assertions/assertion.py:23-56`](../../bajutsu/common/scenario/models/assertions/assertion.py))
+は`target: str | None = None`を持ちます。既存の`from_`という来歴フィールドと同じように
+`_ASSERTION_KINDS`から除外されます。`Scenario`レベルのバリデータの規則は、そのまま`expect`の
+各エントリにも及びます。`scenario.targets`が0個か1個なら任意(または宣言した1個との一致)、2個以上
+なら必須です。`_evaluate_expect`は`expect`を各エントリが指すターゲットごとにまとめ、`_poll_asserts`
+([`bajutsu/common/orchestrator/loop/_functions.py:115-123`](../../bajutsu/common/orchestrator/loop/_functions.py))
+を、参照されたターゲットごとに、その`TargetRuntime`自身のドライバとネットワークソースを使って1回
+ずつ呼び出し、結果をシナリオが宣言した順序どおりに1つの`expect_results`リストへまとめ直します。
+`AssertionResult`
+([`bajutsu/common/assertions/_common.py:29-38`](../../bajutsu/common/assertions/_common.py))は、
+既存の`kind`と並んで`target: str = ""`を持ちます。これは`StepOutcome.target`(後述)と同じ、レポート
+上の理由からの鏡像です。インラインの`assert:`の結果はすでにそのステップ自身の`target`で範囲が
+決まっているため、これが意味を持つのは`expect_results`だけです。
 
 ### CLI（コマンドラインインターフェース）：シナリオが自己宣言していれば`--target`は省略できる
 
@@ -382,10 +447,11 @@ Effective`から導かれています。`run_all`と`run_and_report`は、この
 
 ### 作業分解(MECE)
 
-1. **スキーマ**：`Scenario.targets: list[str]`、`Step.target: str | None`、`target`の要否を
-   `len(scenario.targets)`に紐づける`Scenario`レベルのバリデータ（`Step`自身のバリデータは外側の
-   シナリオを見られないため不可）。`steps`、`before`、`after`の各ルールの`steps`を、`if`/`forEach`/
-   `web`のネストしたステップリストにも再帰的に適用します。
+1. **スキーマ**：`Scenario.targets: list[str]`、`Step.target: str | None`、`Assertion.target: str |
+   None`（`from_`と同様に`_ASSERTION_KINDS`から除外）、`target`の要否を`len(scenario.targets)`に
+   紐づける`Scenario`レベルのバリデータ（`Step`自身のバリデータは外側のシナリオを見られないため
+   不可）。`steps`、`before`、`after`の各ルールの`steps`を、`if`/`forEach`/`web`のネストした
+   ステップリストにも再帰的に適用し、同じ規則を`expect`にも適用します。
 2. **CLI**：`scenario.targets`が空でなければ`--target`を省略可能にし、代わりに`--scenario`を必須に
    します。明示的な`--target`は黙って上書きせず`scenario.targets`と照合します。シナリオファイルの
    ローダーは、宣言された各名前を、実行が始まる前に読み込んだ設定に対して検証します。
@@ -409,10 +475,13 @@ Effective`から導かれています。`run_all`と`run_and_report`は、この
    `target_runtimes: Mapping[str, TargetRuntime] | None`パラメータ。`step.target`を主ターゲットの
    値ではなく`active_driver`/`target_runtimes`に対して解決する、`_run_one`のステップ振り分け。
    宣言したターゲットごとに1つ`TargetRuntime`を組み立てる`_run_one_impl`は、今日1組の
-   リースごとの引数がシナリオごとに1回組み立てられているのと同じ方法です。
-5. **レポート**：`StepOutcome.target`（宣言されたターゲットが1個の場合の既定値を含む）、複数
-   ターゲットの実行で空のままになる`RunResult`の単数形フィールド、`RunResult.target_devices`、
-   Stepsビューのターゲットラベル、宣言した各ターゲットのデバイスを一覧するヘッダーブロック。
+   リースごとの引数がシナリオごとに1回組み立てられているのと同じ方法です。`_evaluate_expect`が
+   `expect`をターゲットごとにまとめ、参照されたターゲットごとに、その自身のドライバとネットワーク
+   ソースで`_poll_asserts`を1回呼び出し、結果をまとめ直します。
+5. **レポート**：`StepOutcome.target`（宣言されたターゲットが1個の場合の既定値を含む）、
+   `expect_results`向けにこれを鏡映しする`AssertionResult.target`、複数ターゲットの実行で空のままに
+   なる`RunResult`の単数形フィールド、`RunResult.target_devices`、Stepsビューのターゲットラベル、
+   宣言した各ターゲットのデバイスを一覧するヘッダーブロック。
 6. **ドキュメント**：`docs/scenarios.md`(`targets`/`target`のリファレンスと実例)、`docs/cli.md`
    (`--target`の新しい省略条件と`--scenario`の新しい必須条件)、`docs/run-loop.md`(複数ドライバの
    ステップ振り分け)、それぞれの`docs/ja/`ミラー。
@@ -458,16 +527,17 @@ Effective`から導かれています。`run_all`と`run_and_report`は、この
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] スキーマ：`Scenario.targets`、`Step.target`、`target`の要否を`len(scenario.targets)`に紐づける
-      バリデータ。
+- [ ] スキーマ：`Scenario.targets`、`Step.target`、`Assertion.target`、`target`の要否を
+      `len(scenario.targets)`に`steps`と`expect`の両方で紐づけるバリデータ。
 - [ ] CLI：自己宣言したシナリオのもとでの`--target`の省略、不一致の拒否、宣言された各名前の設定に
       対する検証。
 - [ ] 起動と後片付け：`_ScenarioRunner`まで配線した`Config`、宣言したプラットフォームごとの1つの
       プール、宣言したターゲットごとに1つのドライバの、まとめての起動とまとめての後片付け。
 - [ ] ランナー：`TargetRuntime`のまとまり、`run_scenario`の`target_runtimes`マッピング、ターゲット
       ごとのアクチュエータ/ロケール/`capture`/`interrupts`/ガード/ネットワーク/証跡コンテキストの
-      組み立て。
-- [ ] レポート：`StepOutcome.target`、`RunResult.target_devices`、それらを表示するレポートの画面。
+      組み立て、`_evaluate_expect`のターゲットごとのグループ化。
+- [ ] レポート：`StepOutcome.target`、`AssertionResult.target`、`RunResult.target_devices`、それらを
+      表示するレポートの画面。
 - [ ] ドキュメント：`docs/scenarios.md`、`docs/cli.md`、`docs/run-loop.md`、それぞれの`docs/ja/`
       ミラー。
 
