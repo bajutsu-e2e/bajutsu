@@ -65,7 +65,7 @@ class HeuristicTriageAgent:
             )
 
         if fs is not None and fs.action in _ACT_TARGETS:
-            if "件一致" in fs.reason and context.target_id:
+            if "elements matched" in fs.reason and context.target_id:
                 sugg = [
                     f"`{context.target_id}` matched multiple elements — add `within` or `index` to disambiguate."
                 ]

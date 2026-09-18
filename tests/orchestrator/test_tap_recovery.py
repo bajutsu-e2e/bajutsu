@@ -234,7 +234,7 @@ def test_ambiguous_selector_never_reaches_recovery() -> None:
     )
     ok, reason, gestures = _run(driver, {"tap": {"id": "dup"}})
     assert ok is False
-    assert "AmbiguousSelector" in reason or "件一致" in reason
+    assert "AmbiguousSelector" in reason or "elements matched" in reason
     assert gestures == []  # no scroll, no tap — nothing was ever actuated
 
 

@@ -35,14 +35,14 @@ def _write_failed_run(runs: Path, run_id: str) -> Path:
                                 "index": 0,
                                 "action": "tap",
                                 "ok": False,
-                                "reason": "一致なし: {'id': 'home.titel'}",
+                                "reason": "no match: {'id': 'home.titel'}",
                                 "artifacts": [
                                     {"name": "00-alpha/step0/elements.json", "kind": "elements"}
                                 ],
                             }
                         ],
                         "expect_results": [],
-                        "failure": "step0 tap: 一致なし",
+                        "failure": "step0 tap: no match",
                     }
                 ],
             }

@@ -112,7 +112,7 @@ def _write_run(
 
 def test_assemble_extracts_failure_context(tmp_path: Path) -> None:
     ctx = triage.assemble(
-        _write_run(tmp_path / "runs", ok=False, reason="一致なし: {'id': 'home.titel'}")
+        _write_run(tmp_path / "runs", ok=False, reason="no match: {'id': 'home.titel'}")
     )
     assert ctx is not None
     assert ctx.scenario == "s"
@@ -290,7 +290,7 @@ def test_assemble_takes_no_image_from_a_step_whose_screenshot_is_not_its_trees_s
 
 def test_heuristic_selector_suggests_close_id(tmp_path: Path) -> None:
     ctx = triage.assemble(
-        _write_run(tmp_path / "runs", ok=False, reason="一致なし: {'id': 'home.titel'}")
+        _write_run(tmp_path / "runs", ok=False, reason="no match: {'id': 'home.titel'}")
     )
     assert ctx is not None
     result = HeuristicTriageAgent().triage(ctx)
@@ -304,7 +304,7 @@ def test_heuristic_ambiguous_selector() -> None:
     ctx = TriageContext(
         scenario="s",
         failure="...",
-        failed_step=FailedStep(0, "tap", "2 件一致: ..."),
+        failed_step=FailedStep(0, "tap", "2 elements matched: ..."),
         failed_expectations=[],
         elements=[],
         scenario_yaml="",
@@ -344,7 +344,7 @@ def test_diff_fix_shows_change() -> None:
 
 
 def test_cli_triage_apply_dry_run_then_write(tmp_path: Path) -> None:
-    run = _write_run(tmp_path / "runs", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    run = _write_run(tmp_path / "runs", ok=False, reason="no match: {'id': 'home.titel'}")
     src = tmp_path / "src.yaml"
     src.write_text("- name: s\n  steps:\n    - tap: { id: home.titel }\n", encoding="utf-8")
 
@@ -367,7 +367,7 @@ def test_cli_triage_apply_no_fix_is_advisory(tmp_path: Path) -> None:
     run = _write_run(
         tmp_path / "runs",
         ok=False,
-        reason="2 件一致: {'id': 'home.title'}",
+        reason="2 elements matched: {'id': 'home.title'}",
         scenario_id="home.title",
     )
     src = tmp_path / "src.yaml"
@@ -400,7 +400,7 @@ def test_rerun_command_builder() -> None:
 
 
 def test_cli_rerun_needs_write(tmp_path: Path) -> None:
-    run = _write_run(tmp_path / "runs", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    run = _write_run(tmp_path / "runs", ok=False, reason="no match: {'id': 'home.titel'}")
     src = tmp_path / "src.yaml"
     src.write_text("- name: s\n  steps:\n    - tap: { id: home.titel }\n", encoding="utf-8")
     r = runner.invoke(app, ["triage", str(run), "--apply", str(src), "--rerun", "--target", "demo"])
@@ -410,7 +410,7 @@ def test_cli_rerun_needs_write(tmp_path: Path) -> None:
 
 
 def test_cli_rerun_after_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    run = _write_run(tmp_path / "runs", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    run = _write_run(tmp_path / "runs", ok=False, reason="no match: {'id': 'home.titel'}")
     src = tmp_path / "src.yaml"
     src.write_text("- name: s\n  steps:\n    - tap: { id: home.titel }\n", encoding="utf-8")
     captured: dict[str, list[str]] = {}
@@ -491,7 +491,7 @@ def test_result_payload_no_fix_is_null() -> None:
 
 
 def test_cli_triage_json_writes_result_with_diff(tmp_path: Path) -> None:
-    run = _write_run(tmp_path / "runs", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    run = _write_run(tmp_path / "runs", ok=False, reason="no match: {'id': 'home.titel'}")
     src = tmp_path / "src.yaml"
     src.write_text("- name: s\n  steps:\n    - tap: { id: home.titel }\n", encoding="utf-8")
     out = tmp_path / "triage.json"
@@ -514,7 +514,7 @@ def test_cli_triage_json_writes_result_with_diff(tmp_path: Path) -> None:
 
 
 def test_cli_triage_json_without_apply_has_no_patch(tmp_path: Path) -> None:
-    run = _write_run(tmp_path / "runs", ok=False, reason="一致なし")
+    run = _write_run(tmp_path / "runs", ok=False, reason="no match")
     out = tmp_path / "t.json"
     r = runner.invoke(app, ["triage", str(run), "--json", str(out)])
     assert r.exit_code == 0
@@ -551,7 +551,7 @@ def test_heuristic_timing_and_assertion() -> None:
 
 
 def test_render_has_diagnosis_and_fixes(tmp_path: Path) -> None:
-    ctx = triage.assemble(_write_run(tmp_path / "runs", ok=False, reason="一致なし"))
+    ctx = triage.assemble(_write_run(tmp_path / "runs", ok=False, reason="no match"))
     assert ctx is not None
     out = triage.render(ctx, HeuristicTriageAgent().triage(ctx))
     assert "triage · s" in out
@@ -638,7 +638,7 @@ def test_read_artifact_applies_loader_and_returns_default_on_miss(tmp_path: Path
 
 def test_assemble_cross_run_gathers_pass_and_fail(tmp_path: Path) -> None:
     passing = _write_run(tmp_path / "pass", ok=True)
-    failing = _write_run(tmp_path / "fail", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    failing = _write_run(tmp_path / "fail", ok=False, reason="no match: {'id': 'home.titel'}")
     ctx = triage.assemble_cross_run([passing], [failing], scenario="s", scenario_hash="abc")
     assert ctx is not None
     assert ctx.scenario == "s"
@@ -804,8 +804,8 @@ def _cross_context() -> triage.CrossRunTriageContext:
     failing = triage.RunEvidence(
         run_id="rF",
         ok=False,
-        failure="一致なし: {'id': 'home.titel'}",
-        failed_step=FailedStep(0, "tap", "一致なし"),
+        failure="no match: {'id': 'home.titel'}",
+        failed_step=FailedStep(0, "tap", "no match"),
         failed_expectations=[],
         elements=[
             {
@@ -941,7 +941,7 @@ def test_split_flaky_runs_classifies_by_scenario_verdict(tmp_path: Path) -> None
 
     hist = tmp_path / "hist"
     _write_flaky_run(hist / "r1", ok=True)
-    _write_flaky_run(hist / "r2", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    _write_flaky_run(hist / "r2", ok=False, reason="no match: {'id': 'home.titel'}")
     _write_flaky_run(hist / "r3", ok=True)
     name, pass_dirs, fail_dirs, scenario_hash = _split_flaky_runs(hist, "login")
     assert name == "login"
@@ -958,7 +958,7 @@ def test_split_flaky_runs_excludes_other_fingerprint(tmp_path: Path) -> None:
 
     hist = tmp_path / "hist"
     _write_flaky_run(hist / "r1", ok=True)  # reference fingerprint sha-abc
-    _write_flaky_run(hist / "r2", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    _write_flaky_run(hist / "r2", ok=False, reason="no match: {'id': 'home.titel'}")
     _write_flaky_run(hist / "r3", ok=False, scenario_hash="sha-edited")
     name, pass_dirs, fail_dirs, scenario_hash = _split_flaky_runs(hist, "login")
     assert name == "login" and scenario_hash == "sha-abc"
@@ -1031,7 +1031,7 @@ def _stub_ai_cli(monkeypatch: pytest.MonkeyPatch, fix: Fix | None) -> None:
 def test_cli_flaky_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     hist = tmp_path / "hist"
     _write_flaky_run(hist / "r1", ok=True)
-    _write_flaky_run(hist / "r2", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    _write_flaky_run(hist / "r2", ok=False, reason="no match: {'id': 'home.titel'}")
     _stub_ai_cli(monkeypatch, Fix("renameId", "rename id", "home.titel", "home.title"))
     r = runner.invoke(
         app, ["triage", "--flaky", "--scenario", "login", "--history", str(hist), "--ai"]
@@ -1045,7 +1045,7 @@ def test_cli_flaky_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 def test_cli_flaky_json_writes_payload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     hist = tmp_path / "hist"
     _write_flaky_run(hist / "r1", ok=True)
-    _write_flaky_run(hist / "r2", ok=False, reason="一致なし: {'id': 'home.titel'}")
+    _write_flaky_run(hist / "r2", ok=False, reason="no match: {'id': 'home.titel'}")
     _stub_ai_cli(monkeypatch, Fix("renameId", "rename id", "home.titel", "home.title"))
     out = tmp_path / "flaky.json"
     r = runner.invoke(

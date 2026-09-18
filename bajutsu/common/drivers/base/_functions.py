@@ -321,13 +321,15 @@ def resolve_unique(elements: list[Element], sel: Selector) -> Element:
     if "index" in sel:
         i = sel["index"]
         if not -len(candidates) <= i < len(candidates):
-            raise ElementNotFound(f"index {i} は候補 {len(candidates)} 件の範囲外: {sel!r}")
+            raise ElementNotFound(
+                f"index {i} is out of range for {len(candidates)} candidates: {sel!r}"
+            )
         return candidates[i]
     if not candidates:
-        raise ElementNotFound(f"一致なし: {sel!r}")
+        raise ElementNotFound(f"no match: {sel!r}")
     if len(candidates) > 1:
         raise AmbiguousSelector(
-            f"{len(candidates)} 件一致: {sel!r} — `within` か `index` で一意化が必要"
+            f"{len(candidates)} elements matched {sel!r} — add `within` or `index` to disambiguate"
         )
     return candidates[0]
 

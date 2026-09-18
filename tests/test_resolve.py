@@ -90,7 +90,7 @@ def test_index_out_of_range_raises_at_either_end() -> None:
             resolve_unique(SCREEN, {"idMatches": "result.row.*", "index": bad})
         except ElementNotFound as e:
             message = str(e)
-        assert "範囲外" in message, f"index {bad} は範囲外で ElementNotFound になるべき"
+        assert "out of range" in message, f"index {bad} は範囲外で ElementNotFound になるべき"
 
 
 def test_index_on_no_candidates_is_out_of_range() -> None:
@@ -101,7 +101,7 @@ def test_index_on_no_candidates_is_out_of_range() -> None:
         resolve_unique(SCREEN, {"id": "nope", "index": 0})
     except ElementNotFound as e:
         message = str(e)
-    assert "範囲外" in message, "候補ゼロへの index は範囲外であるべき"
+    assert "out of range" in message, "候補ゼロへの index は範囲外であるべき"
 
 
 def test_count_via_find_all() -> None:
@@ -378,7 +378,7 @@ def test_index_counts_over_the_other_filtered_candidates() -> None:
         resolve_unique(screen, {"label": "設定", "index": 2})
     except ElementNotFound as e:
         message = str(e)
-    assert "範囲外" in message, "index 2 は other を除いた候補2件の範囲外であるべき"
+    assert "out of range" in message, "index 2 は other を除いた候補2件の範囲外であるべき"
 
 
 def test_explicit_other_trait_selector_disambiguates_by_index_too() -> None:
