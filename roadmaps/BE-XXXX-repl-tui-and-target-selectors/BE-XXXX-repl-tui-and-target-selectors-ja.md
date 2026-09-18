@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| 実装 PR | [#2026](https://github.com/bajutsu-e2e/bajutsu/pull/2026) |
 | トピック | オーサリング体験 |
 | 関連 | [BE-0423](../BE-0423-cli-repl-inspect-actuate/BE-0423-cli-repl-inspect-actuate-ja.md) |
 <!-- /BE-METADATA -->
@@ -177,7 +178,7 @@ Ctrl-Cは打ちかけの行(またはフィルタの入力)を捨てます。プ
 
 ログ:
 
-- [#PR_NUMBER](https://github.com/bajutsu-e2e/bajutsu/pull/PR_NUMBER) — 作業単位1〜4、本項目の全体。
+- [#2026](https://github.com/bajutsu-e2e/bajutsu/pull/2026) — 作業単位1〜4、本項目の全体。
 
 ## 参考
 

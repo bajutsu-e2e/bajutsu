@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | [#2026](https://github.com/bajutsu-e2e/bajutsu/pull/2026) |
 | Topic | Authoring experience |
 | Related | [BE-0423](../BE-0423-cli-repl-inspect-actuate/BE-0423-cli-repl-inspect-actuate.md) |
 <!-- /BE-METADATA -->
@@ -166,7 +167,7 @@ is the TUI's only way out — documented as the one behavioral difference from t
 
 Log:
 
-- [#PR_NUMBER](https://github.com/bajutsu-e2e/bajutsu/pull/PR_NUMBER) — Units 1-4, the whole item.
+- [#2026](https://github.com/bajutsu-e2e/bajutsu/pull/2026) — Units 1-4, the whole item.
 
 ## References
 
