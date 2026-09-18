@@ -1,14 +1,14 @@
-[English](BE-XXXX-multi-target-scenario-execution.md) · **日本語**
+[English](BE-0428-multi-target-scenario-execution.md) · **日本語**
 
-# BE-XXXX — 複数ターゲットを1シナリオ内で行き来する実行モデル
+# BE-0428 — 複数ターゲットを1シナリオ内で行き来する実行モデル
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-multi-target-scenario-execution-ja.md) |
+| 提案 | [BE-0428](BE-0428-multi-target-scenario-execution-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0428") |
 | トピック | Scenario authoring features |
 | 関連 | [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md) |
 <!-- /BE-METADATA -->
