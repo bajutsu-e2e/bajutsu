@@ -27,7 +27,7 @@ XCUITest backendは現在、テスト対象アプリ1つを指すハンドルを
 この2つの副次ハンドルは、`.launch()`を一度も呼ばずに構築される。`.state == .runningForeground`を見てから読み取る（[`:73-77`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift)）。この形は、XCUITestが公式に提供する「マルチアプリUIテスト」機能の一部を使う。この機能は`XCUIApplication(bundleIdentifier:)`と`.activate()`で任意のインストール済みアプリを前面に出し、そのアプリ自身のアクセシビリティツリーを読む。Bajutsuはこの機能を、SpringBoardとSafariViewServiceという2つの固定した相手にだけ使っている。この事実は、任意の別アプリへ一般化できる可能性を示す。ただし次の2点は、現在のコードを読むだけでは判定できなかった。
 
 - SpringBoardとSafariViewServiceは、どちらもOS自身が前面に出す相手である。テスト対象アプリ側の操作をきっかけに、OSが自発的にフォアグラウンドを渡す。システムアラートの表示や、SFSafariViewControllerの提示がそれにあたる。Safari.app本体やMaps.app、Contacts.appはこれと違う。ユーザー操作なしには勝手に前面へ出てこない。こうしたアプリを、テスト対象アプリの協力なしに`activate()`だけで前面へ出せるかどうかは、確かめていなかった。
-- 常駐ランナーは、1つの長寿命テストメソッドが多数の操作を捌く設計である（[`RunnerUITest.swift:9-10`](../../BajutsuKit/Runner/Sources/RunnerUITest.swift)のコメント）。SpringBoardとSafariViewServiceの読み取りは、この設計の中ですでに実証済みである。フォアグラウンドの主が何度も入れ替わる操作、たとえばSafari→Maps→Contacts→元のアプリという切り替えの連続でも、同じ前提が保たれるかどうかは、確かめていなかった。
+- 常駐ランナーは、1つの長寿命テストメソッドが多数の操作を捌く設計である（[`RunnerUITest.swift:15-16`](../../BajutsuKit/Runner/Sources/RunnerUITest.swift)のコメント）。SpringBoardとSafariViewServiceの読み取りは、この設計の中ですでに実証済みである。フォアグラウンドの主が何度も入れ替わる操作、たとえばSafari→Maps→Contacts→元のアプリという切り替えの連続でも、同じ前提が保たれるかどうかは、確かめていなかった。
 
 ### 得られた答え
 
@@ -112,6 +112,8 @@ final class CrossAppFeasibilitySpike: XCTestCase {
     }
 }
 ```
+
+このコードは疑似コードではなく、実際に実行したコードそのものを載せた。ただし`XCTAssert`は持たない。`reachedForeground`や`elementCount`を`print`するだけで、しきい値を判定してテストを失敗させることはしない。この1回限りのスパイクは「`activate()`のあとどれだけ待てば前面化を確認できるか」という測定値そのものを確かめようとした。判定基準はあらかじめ決めていなかった。合否は、`xcodebuild`の出力に印字された`SPIKE_RESULT`行を目で読んで確認した。判定に使った実測値は、上の「2. なぜつくったか」の「得られた答え」に記録済みである（各アプリの`elementCount`、`reachedForeground`がすべて`true`であったこと）。恒久的なテストではなく、この記録がその検証の唯一の記録として残る。
 
 検証専用のSimulatorは`xcrun simctl create`で作成し、実行後に`xcrun simctl shutdown` / `delete`で破棄した。他セッションがすでに起動しているSimulatorは流用していない。
 

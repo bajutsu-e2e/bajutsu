@@ -20,9 +20,9 @@ the test target never started, and drive that app's own UI — read its accessib
 type into it, assert against it — the same way a scenario already drives the test target. A new
 step, sketched below as `app: { bundleId, steps }` after the shape [BE-0037](../BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md)
 already established for entering a WebView's DOM context, switches the driver's query and actuation
-target to the named app for its nested `steps`, then switches back to the test target once the
-block ends. This is iOS-only: it rests on the XCUITest backend's `XCUIApplication(bundleIdentifier:)`
-capability, which the web and Android backends do not have.
+target to the named app for its nested `steps`, then switches back to whichever app was active
+before the block once the block ends. This is iOS-only: it rests on the XCUITest backend's
+`XCUIApplication(bundleIdentifier:)` capability, which the web and Android backends do not have.
 
 Before writing this design, a throwaway XCTest spike confirmed the two facts the design depends on.
 `XCUIApplication(bundleIdentifier:).activate()` reliably foregrounds an app the test target never
@@ -71,13 +71,36 @@ that block. That is this item's detailed design.
 stays app-agnostic per prime directive 3 (any installed app, not a config-listed one, can be named).
 `steps` nests the existing `Step` grammar unchanged: `tap`, `type`, `assert`, and the rest resolve
 selectors and actuate against the named app's own tree while inside the block, exactly as they do
-against the test target outside it. On entry, the driver activates the named app; on exit — the
+against the test target outside it. On entry, the driver activates the named app and waits, bounded,
+for `.state == .runningForeground` — `.activate()` returning is not by itself the readiness signal,
+since the spike's own measurements needed this same poll before its first read; a bundle id that
+never reaches the foreground within the bound fails the step by name (`ElementNotFound`) rather than
+reading an empty or not-yet-foreground tree. That guarantee holds for an *installed* app that is
+slow to foreground (a cold launch, a permission prompt) — it does not hold for a bundle id that is
+not installed at all, confirmed on real hardware to leave the runner unresponsive instead of
+reaching this bounded poll at all, when a different app is already genuinely foreground (see this
+item's own Log). `bundleId` naming an already-installed app is a requirement of the step, not merely
+a recommendation. On exit — the
 block's last step completing, or a step inside it failing — it activates back to whichever app was
 active before the block, mirroring [`web: { within, steps }`](../../docs/dsl-grammar.md)'s own
 enter/leave contract (BE-0037) rather than inventing a second one. Nesting an `app:` block inside
 another follows the same stack discipline the spike exercised by hand (Safari → Maps → back to
 Safari): each block's exit returns to its immediate parent, not to the test target unconditionally,
 so a scenario can visit a second app from inside the first without losing its way back.
+
+"Unchanged" does not mean every step composes safely with `app:`, and this item deliberately does
+not widen either gap by adding new guarding. The device-lifecycle steps (`relaunch`, `foreground`,
+`background`, `clearKeychain`, `overrideStatusBar`) act on the test target through its own
+simctl-bound bundle id, never through the `app:` stack, so one used inside an `app:` block affects
+the test target regardless of which app is currently on top — a scenario author who wants one of
+these mid-block should expect it to reach the test target, not whatever `app:` last entered. A
+nested `web:` block behaves differently depending on direction: `app:` inside `web:` fails cleanly,
+since `WebContextDriver` does not implement `enter_app`/`leave_app` and raises `UnsupportedAction`
+the same way it rejects every action outside its narrowed surface; `web:` inside `app:` does not —
+it opens a `WebContextDriver` bound to the test target's own `BAJUTSU_WEBVIEW_PORT` bridge
+regardless of which app is on the `app:` stack, so it is a mistake preflight does not catch today
+(matching the acknowledged, pre-existing gap that neither `web:` nor `app:` steps are recursed into
+by the capability walk this item's own preflight requirement uses).
 
 ### Unit 1 — Feasibility spike (complete)
 
@@ -93,10 +116,15 @@ of this item's design rests on.
 
 `XcuitestElementProvider.app` is a single fixed property today. It becomes the top of a stack of
 `XCUIApplication` handles, seeded with the test target's own handle. `query()`, `tap`, and every
-other actuation resolve against the stack's top, unchanged in every other respect (the existing
-SpringBoard/SafariViewService merge logic is untouched — it still reads relative to the test
-target's own entry, not whatever the current top is, since a system alert can interrupt a scenario
-regardless of which app an `app:` block currently targets). Entering an `app:` block pushes a new
+other actuation resolve against the stack's top, unchanged in every other respect. The existing
+SpringBoard alert-button and notification-banner reads stay untouched: both address a separate
+`springboard` handle directly, never through `app`, so a system alert can still interrupt a scenario
+regardless of which app an `app:` block currently targets. The SafariViewService merge inside
+`queryElements()` is different — it already reads `app.snapshot()`, the same `app` this unit
+redefines as the stack's current top, so once `app:` shifts that top, the merge naturally follows
+it: a foreign app's own `SFSafariViewController` presentation attaches to that app's tree, not to
+the test target's. This falls out of the stack change itself; no separate code path is needed for
+it. Entering an `app:` block pushes a new
 `XCUIApplication(bundleIdentifier:)` handle and calls `.activate()`; leaving it pops and
 `.activate()`s the handle beneath.
 
@@ -126,17 +154,29 @@ The Python scenario model (`bajutsu/common/scenario/models/`) gains the `App` st
 `Driver` interface gains the enter/leave pair the XCUITest backend implements against unit 2's stack;
 every other backend's implementation simply raises "unsupported" — a path unit 3's preflight token
 already short-circuits before a scenario reaches it — so this is a compile-time surface, not a new
-runtime branch for those backends to maintain.
+runtime branch for those backends to maintain. The step runner reuses `active_driver` unchanged for
+the block, rather than constructing a second driver instance the way `web:` does — `app:` needs the
+full native actuation surface (tap, type, gestures, picker wheels), which reusing the same object
+gets for free. The one piece of shared run-loop state that does need resetting around the block on
+both sides is `prev_after`, the previous step's screenshot-reuse cache: the block reads a different
+app's tree, so a native step right after the block must not reuse a screenshot the block's own last
+step took, the same reason `_handle_web` already resets it around its own context switch (BE-0234
+Unit 2).
 
 ### Unit 5 — Showcase fixture and scenario
 
-A showcase scenario exercises the step end to end against a real system app — the same fixture-app
-pattern [BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md)'s
-`scenarios/browser.yaml` uses. Candidate flow: from the showcase app, assert an element inside
-Safari (or another system app) after an `app:` block activates it, then assert a showcase element is
-readable again once the block ends — the same round trip the spike measured by hand, now driven
-through the scenario DSL and part of the repository's own CI-covered regression net rather than a
-one-off manual run.
+A showcase scenario exercises the step end to end against a real system app: from the showcase app,
+assert an element inside Safari after an `app:` block activates it, then assert a showcase element
+is readable again once the block ends — the same round trip the spike measured by hand, now driven
+through the scenario DSL. Unlike [BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md)'s
+`scenarios/browser.yaml`, this is *not* the same fixture-app pattern: `browser.yaml` asserts against
+a page this repository serves itself and is hermetic by construction, while a scenario that asserts
+inside Safari.app depends on Apple's own UI, which changes across iOS releases and carries
+onboarding/network state the repository does not control — exactly the kind of dependency prime
+directive 2 exists to keep out of a regression gate. So this scenario is deliberately **not** wired
+into `ios-e2e.yml`'s automated matrix: it runs only through its own opt-in `make -C demos/showcase
+e2e-cross-app` lane, the same way `e2e-browser` is its own lane rather than folded into the bulk
+`run-swiftui`/`run-uikit` targets, and both bulk lanes exclude its tag for the same reason.
 
 ### Unit 6 — Documentation
 
@@ -169,8 +209,8 @@ one-off manual run.
   to have on hand.
 - **Probe through `bajutsu repl` (BE-0423's interactive shell) instead of a scenario step.** The REPL
   is an authoring aid for inspecting one app's tree interactively, not a vehicle for expressing a
-  reusable, checked-in scenario; the two are complementary; the REPL does not substitute for a
-  step scenario files can carry, run in CI, and rerun deterministically.
+  reusable, checked-in scenario. The REPL does not substitute for a step that scenario files can
+  carry, run in CI, and rerun deterministically.
 
 ## Progress
 
