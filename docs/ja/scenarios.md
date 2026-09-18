@@ -56,6 +56,7 @@ scenarios:
 | `description` | str | なし | 任意の説明文。シナリオの report カードと serve UI に表示 |
 | `from` | str | なし | **来歴（provenance）**：`record` がこのシナリオを書き起こした元の自然言語ゴール（[来歴](#from来歴)）。オーサリング用のメタデータで、`run` は読みません |
 | `tags` | list[str] | `[]` | 選択ラベル。CLI の `--tag` / `--exclude` で実行対象を絞る（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
+| `targets` | list[str] | `[]` | このシナリオが操作する [target](glossary.md#target-app-device) の一覧（[下記](#targets--target複数ターゲットシナリオbe-0428)）。各エントリは `targets.<name>` の config ユニットを指します。現時点ではスキーマだけが先行しており、**2つ以上**を宣言したシナリオを `run` は拒みます。実行を担う CLI / 起動 / runner のサポートは、後続の変更で届きます |
 | `data` / `dataFile` | list / str | なし | データ駆動の行。インライン `data` か `dataFile`（CSV パス）で指定する。1 行 1 run に展開し `${row.col}` を置換する。両者は排他（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
 | `preconditions` | object | `{}` | テスト前の環境準備（下記） |
 | `before` | list | `[]` | `steps` の前に**独立したフェーズ**として走るセットアップのステップ列。ここで失敗するとシナリオを打ち切る（[下記](#before--afterセットアップとティアダウンのフェーズ)） |
@@ -515,6 +516,7 @@ targets:
 - `capture: [<token>...]`：このステップだけの証跡（[evidence](evidence.md#b-インライン証跡)）。
 - `name: <str>`：ステップ ID（証跡の出力先ディレクトリ名やレポート表示に使う）。省略時は `step<i>`。
 - `from: <str>`：**来歴**（[後述](#from来歴)）。このステップを記録した元のフレーズ。オーサリング用のメタデータで、`run` は読みません。
+- `target: <str>`：このステップが操作する対象を、シナリオ自身の [`targets`](#targets--target複数ターゲットシナリオbe-0428) から選んで指定します。
 
 ### `tap`
 
@@ -777,6 +779,76 @@ run ごとに違うのは生成された値だけで、これは `totp` の時�
 ```
 
 `setLocation` / `push` と同様、これらは `simctl` 経由で Simulator を操作するため、デバイスごとの制御チャネルが必要で、fake ドライバや並列実行ではクリーンに失敗します。`overrideStatusBar` は、スクリーンショットや `visual` アサーションの直前に時計や電波表示を固定して画像を安定させる用途に向きます。`background` / `foreground` はバックグラウンド/フォアグラウンド遷移の対で、`foreground` は settle 用の sleep を入れずに復帰するので、必要なら直後に具体的な要素を待ってください。`setClipboard` はペースト操作のためペーストボードに値を投入します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
+
+## `targets` / `target`（複数ターゲットシナリオ、BE-0428）
+
+> **現時点ではスキーマだけです。** `Scenario.targets` と `Step` / `Assertion` の `target` は、ここに書いた
+> 通りにパース・検証されます。これらを使って、スイートを書き始められます。ただし `bajutsu run` は、`targets`
+> を**2つ以上**宣言したシナリオをまだ実行できません。すべてのステップを1つのターゲットへ黙って流すのでは
+> なく、「未実装」エラーで終了します。（ちょうど1つ宣言したシナリオは今日も実行できます。実際にどの
+> ターゲットに対して走るかは、下記の注記を参照してください。）各ステップを自分のライブドライバへ実際に
+> 振り分ける CLI・起動・runner の
+> サポートは、後続の変更で届きます
+> （[BE-0428](../../roadmaps/BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md)）。
+
+シナリオのトップレベル `targets` フィールドは、このシナリオが操作する
+[target](glossary.md#target-app-device) をすべて名指しします。同じサービスの2つのクライアントである
+iOS の target と web の target は、その一例です。1つのシナリオが、あるターゲットで操作し、別のターゲット
+で結果を確認できます。この2つは自由に組み合わせられ、1回の決定的な run として1つの判定にまとまります。
+各エントリは
+`targets.<name>` の config ユニットを名指しします。`--target` がすでに解決するのと同じユニットです。
+同じターゲット名を2回名指しすると、読み込み時のエラーになります。`targets` を宣言しないシナリオ
+（既定）は、今日の挙動のままです。その中のステップも `target` の省略が必須です。
+
+`targets` が2つ以上のエントリを持つと、すべてのステップが自分の `target` を設定しなければなりません。
+`if` / `forEach` / `web` のラッパーステップも対象で、末端のアクションだけではありません。トップレベルの
+`expect` エントリも同様で、それぞれが宣言済みのターゲットの1つを名指しします。
+
+```yaml
+- name: liking a post on the app shows up on the web
+  targets: [showcase-app, showcase-web]
+  steps:
+    - target: showcase-app
+      tap: { id: post.like }
+      extract:
+        postId: { sel: { id: post.id } }
+    - target: showcase-web
+      wait: { for: { id: "post.${vars.postId}.likeCount" }, timeout: 10 }
+  expect:
+    - target: showcase-web
+      value: { sel: { id: "post.${vars.postId}.likeCount" }, equals: "1" }
+```
+
+宣言済みターゲットが1つだけのとき、ステップは `target` を省略できます。省略すると、`targets` が
+空のときと同じく、そのとき起動が解決する `--target` に対して走ります。スキーマ検証が確認するのは、
+ステップ自身の `target`（設定されていれば）が、宣言済みの1つの名前と一致するかどうかだけです。
+その名前を `--target` 自体と突き合わせることはしません。食い違いは、チェックされないまま run 時に
+届きます。それを検出する所属チェックは、後続の BE-0428 ユニット自身の作業です。そのターゲットを
+直接名指ししてもかまいません。どちらの書き方でも挙動は同じです。`${vars.*}` は、1回の run の中で
+宣言済みのすべてのターゲットを
+またいで持ち越されます。これは [runtime variables](#ランタイム変数-vars) が指すのと同じ、`extract`
+が生成する変数です。あるターゲットのステップが捕まえた値は、別のターゲットに対するアサーションから
+読み出せます。
+
+`web` ブロック内で入れ子になったステップだけは例外です。`target` は完全に省略しなければ
+なりません。このステップは、囲んでいる `web` ステップが自分自身の WebView ブリッジへとすでに
+解決したターゲットに対して、常に走ります。
+
+このアイテムには、まだ解決していない未決問題が2つあります。どちらも、推測せず拒む形にしてあります。
+シナリオが2つ以上のターゲットを宣言すると、両方とも該当します。`use:` ステップは頭から拒まれます。
+`expand_components` がこのステップを、コンポーネント自身のステップでまるごと置き換えるためです。
+これにより `use:` ステップ自身の `target` が失われます。展開は、この必須に見えるフィールドを警告なく
+落としてしまいます。空でない [`interrupts`](#interrupts予測できない差し込み画面への対処) も同じく
+拒まれます。その `steps` と `condition` 自体が本来なら通る内容であっても、この拒否は変わりません。
+`condition` がどのターゲットをポーリングするのかは、まだ答えがありません。
+
+`Assertion.target` は `Step.target` より狭い規則に従います。トップレベルの `expect` エントリだけが、
+これを設定できます。ステップのインラインの `assert:` リストを通して届くアサーションは、囲んでいる
+ステップ自身の `target` によって、すでにターゲットが決まっています。`if` の `condition` を通して届く
+アサーションも同様です。そこで `target` を設定すると、その値を言い直すか、矛盾させるかのどちらかに
+なります。`interrupts` エントリの `condition` も同じように拒まれます。理由はより単純です。そもそも、
+それに代わってターゲットを決めてくれる囲みステップがありません。ローダーは、以上の3か所すべてで
+`target` を読み込み時に拒みます。
 
 ## アサーション DSL
 

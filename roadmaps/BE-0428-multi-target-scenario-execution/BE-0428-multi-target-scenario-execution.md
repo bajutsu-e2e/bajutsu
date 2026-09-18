@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0428](BE-0428-multi-target-scenario-execution.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0428") |
 | Topic | Scenario authoring features |
 | Related | [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md), [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md) |
@@ -699,7 +699,7 @@ choosing between them is deferred rather than guessed.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Schema: `Scenario.targets`, `Step.target`, `Assertion.target`, and the validator tying
+- [x] Schema: `Scenario.targets`, `Step.target`, `Assertion.target`, and the validator tying
       `target`'s requirement to `len(scenario.targets)` across `steps` and `expect` alike.
 - [ ] CLI: `--target` optional under a self-declaring scenario; mismatch rejection; config
       validation for every declared name.

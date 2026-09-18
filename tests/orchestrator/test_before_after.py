@@ -343,6 +343,20 @@ def test_source_stem_survives_the_before_after_merge_copy() -> None:
     assert merged.source_stem == "login_flow"
 
 
+def test_folding_config_hooks_re_checks_target_requirements() -> None:
+    # BE-0428: at load time the scenario's own `before`/`after` are empty, so the initial
+    # validator has nothing to reject; `_MERGE_CONFIG`'s own `before`/`after` hooks carry no
+    # `target` of their own (config-level hooks aren't stamped with one until BE-0428's launch
+    # unit lands). Once `with_lifecycle_phases` folds them in, the re-check must catch what the
+    # load-time pass could not, rather than silently run an unrouted hook step in a two-target run.
+    eff = resolve(load_config(_MERGE_CONFIG), "app")
+    scenario = _scenario(
+        {"name": "s", "targets": ["app", "web"], "steps": [{"target": "app", "tap": {"id": "x"}}]}
+    )
+    with pytest.raises(ValueError, match="target is required"):
+        with_lifecycle_phases(eff, [scenario])
+
+
 def test_the_merged_phases_are_what_the_run_executes() -> None:
     merged = _merged({"steps": [{"tap": {"id": "a"}}], "before": [{"tap": {"id": "c"}}]})
     r = run_scenario(_driver(), merged, FakeClock())

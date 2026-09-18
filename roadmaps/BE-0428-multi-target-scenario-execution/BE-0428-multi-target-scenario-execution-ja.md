@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0428](BE-0428-multi-target-scenario-execution-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0428") |
 | トピック | Scenario authoring features |
 | 関連 | [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md) |
@@ -733,7 +733,7 @@ Common Test Report Format（CTRF）のエクスポートを含め、単一ター
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] スキーマ：`Scenario.targets`、`Step.target`、`Assertion.target`、`target`の要否を
+- [x] スキーマ：`Scenario.targets`、`Step.target`、`Assertion.target`、`target`の要否を
       `len(scenario.targets)`に`steps`と`expect`の両方で紐づけるバリデータ。
 - [ ] CLI：自己宣言したシナリオのもとでの`--target`の省略、不一致の拒否、宣言された各名前の設定に
       対する検証。

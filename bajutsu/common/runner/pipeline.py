@@ -72,6 +72,8 @@ from bajutsu.common.runner.types import AlertGuardFor, Lease, LeaseFn
 from bajutsu.common.scenario import (
     Scenario,
     UncoveredSystemAlertLocale,
+    _check_target_requirements,
+    _scenarios_declaring_targets,
     dump_scenario_file,
     redact_totp_secrets,
 )
@@ -972,7 +974,7 @@ def with_lifecycle_phases(eff: Effective, scenarios: list[Scenario]) -> list[Sce
     """
     if not eff.run_defaults.before and not eff.run_defaults.after:
         return scenarios  # nothing app-wide to fold in; keep the caller's own objects
-    return [
+    folded = [
         s.model_copy(
             update={
                 "before": [*eff.run_defaults.before, *s.before],
@@ -981,6 +983,12 @@ def with_lifecycle_phases(eff: Effective, scenarios: list[Scenario]) -> list[Sce
         )
         for s in scenarios
     ]
+    # `model_copy(update=...)` never re-runs a `model_validator` — so a config-level `before`/`after`
+    # hook would otherwise splice in steps the load-time pass never saw, each free to omit the
+    # `target` its scenario requires (BE-0428; see `scenario/models/scenario/_targets.py`).
+    for s in folded:
+        _check_target_requirements(s)
+    return folded
 
 
 def run_all(
@@ -1105,6 +1113,17 @@ def run_all(
     # the resolver win and discarding the fixed actuator/caps (prime directive 2).
     if actuator is not None and resolve_actuator is not None:
         raise ValueError("pass either actuator or resolve_actuator to run_all, not both")
+    # `run_all` is the one chokepoint every caller funnels through — `run`, `audit`, and any future
+    # one — so the multi-target guard lives here, not only in `run`'s own CLI (BE-0428): a scenario
+    # declaring `targets` would otherwise lease one device and run every step against it regardless
+    # of which target each step actually names, since the CLI/launch/runner support that would
+    # route steps across several live drivers hasn't landed yet.
+    affected = _scenarios_declaring_targets(scenarios)
+    if affected:
+        raise ValueError(
+            "multi-target scenario execution (targets:) is not yet implemented (BE-0428); "
+            f"affected scenario(s): {', '.join(affected)}"
+        )
     # The target config's own lifecycle phases, folded in once here (BE-0392). `run_and_report` and
     # `run_matrix_and_report` apply the same helper to what they hand the report, so the run and the
     # report read one effective scenario rather than two lists that could drift.

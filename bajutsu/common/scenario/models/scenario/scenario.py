@@ -22,6 +22,7 @@ from bajutsu.common.scenario.models.mocks import Mock
 from bajutsu.common.scenario.models.steps import AfterRule, Interrupt, Step
 
 from ._functions import _coerce_system_alert_handling
+from ._targets import _check_target_requirements
 from .preconditions import Preconditions
 from .system_alert_handling import SystemAlertHandling
 
@@ -51,6 +52,11 @@ class Scenario(_Model):
     # from. Authoring metadata only — `run` never reads it. Kept None (pruned) when unset.
     from_: str | None = Field(default=None, alias="from")
     tags: list[str] = Field(default_factory=list)
+    # Every target this scenario drives (BE-0428): each entry names a `targets.<name>` config unit,
+    # launched before the first step and torn down together with the rest after the last one. Empty
+    # (the default) is today's single-target scenario, resolved entirely from the CLI's `--target` —
+    # a per-step `target` is then optional and, if set, must name that one target.
+    targets: list[str] = Field(default_factory=list)
     # Per-scenario OS permission state (BE-0276), applied before the app process starts: grant or
     # revoke a permission up front so the runtime prompt never appears (iOS `simctl privacy`,
     # Android `pm grant`/`pm revoke`). Deterministic and AI-free, unlike the vision
@@ -143,4 +149,12 @@ class Scenario(_Model):
     def _one_data_source(self) -> Self:
         if self.data is not None and self.data_file is not None:
             raise ValueError("data and dataFile are mutually exclusive")
+        return self
+
+    @model_validator(mode="after")
+    def _target_requirements(self) -> Self:
+        # Extracted into `_check_target_requirements` (BE-0428) so `expand_components` and
+        # `with_lifecycle_phases` — which each rebuild an already-validated `Scenario` in a way
+        # Pydantic never re-validates — can run the same check again on their own result.
+        _check_target_requirements(self)
         return self

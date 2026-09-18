@@ -43,6 +43,11 @@ class Assertion(_Model):
     # the assertion kinds (`_ASSERTION_KINDS`), so it doesn't disturb the one-kind rule; `run`
     # ignores it.
     from_: str | None = Field(default=None, alias="from")
+    # Which target this assertion checks (BE-0428) — only legal on a top-level `expect` entry, never
+    # on one reached through an inline `assert:` list or an `if`'s `condition`, where the enclosing
+    # step's own `target` already fixes it (`_check_target_requirements` enforces both rules). Not a
+    # kind either, for the same reason `from_` isn't.
+    target: str | None = None
 
     @model_validator(mode="after")
     def _one_kind(self) -> Self:
@@ -52,5 +57,6 @@ class Assertion(_Model):
 
 # The assertion-kind field names, derived from the model so a new kind is declared in exactly one
 # place — adding an `Assertion` field — instead of also appending to a parallel hand-maintained
-# tuple (a per-kind merge-conflict point). `from_` is provenance (BE-0044), not a kind.
-_ASSERTION_KINDS = tuple(f for f in Assertion.model_fields if f != "from_")
+# tuple (a per-kind merge-conflict point). `from_` is provenance (BE-0044) and `target` is routing
+# (BE-0428); neither is a kind.
+_ASSERTION_KINDS = tuple(f for f in Assertion.model_fields if f not in ("from_", "target"))

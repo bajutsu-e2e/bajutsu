@@ -11,7 +11,7 @@ from collections.abc import Callable
 from typing import Any, Protocol, cast, runtime_checkable
 
 from bajutsu.common.scenario import interp
-from bajutsu.common.scenario.models import Component, Scenario, Step
+from bajutsu.common.scenario.models import Component, Scenario, Step, _check_target_requirements
 
 
 @runtime_checkable
@@ -112,6 +112,10 @@ def expand_components(
             rule.steps = expand(rule.steps, [], resolve)
         for entry in scenario.interrupts:
             entry.steps = expand(entry.steps, [], resolve)
+        # The assignments above are plain attribute writes, which Pydantic never re-runs a
+        # `model_validator` against — so a component's own steps would otherwise splice in a
+        # `target` the load-time pass never saw (BE-0428; see `models/scenario/_targets.py`).
+        _check_target_requirements(scenario)
 
 
 def read_csv(text: str) -> list[dict[str, str]]:
@@ -225,3 +229,8 @@ def apply_setups(
         if ref not in cache:
             cache[ref] = resolve(ref)
         scenario.steps = [*cache[ref], *scenario.steps]
+        # A plain attribute write, which Pydantic never re-runs a `model_validator` against — a
+        # prelude's own steps, authored with no notion of this scenario's `targets`, would
+        # otherwise splice in a `target` the load-time pass never saw (BE-0428; see
+        # `models/scenario/_targets.py`).
+        _check_target_requirements(scenario)

@@ -111,6 +111,7 @@ Scenario ::= {
   description?:   string,                   # authoring metadata; `run` never reads it
   from?:           string,                  # provenance: the natural-language goal `record` authored this from (BE-0044)
   tags?:           list(string),            # default []  — selection (§6.4)
+  targets?:        list(string),            # default []  — every target this scenario drives (BE-0428); each name a `targets.<name>` config unit. Schema-only today — `run` cannot yet execute more than one (§4)
   data?:           list(map(string,string)),# inline rows   ┐ XOR
   dataFile?:       string,                  # CSV path      ┘ (§6.3)
   preconditions?:  <Preconditions>,         # default {}
@@ -169,10 +170,14 @@ PermissionAction  ::= "grant" | "revoke"
 
 # ── Step = exactly one Action + optional modifiers ─────────────────────
 Step      ::= <Action> & <StepMods>
-StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string, from?: string }
+StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string, from?: string, target?: string }
                 # `from`: provenance, the natural-language phrase `record` normalized this step from (BE-0044)
                 # `name` becomes a real filesystem path segment (the run's step_id, the editor's
                 # artifact lookup) — a path separator, or a bare "." / "..", is a load error
+                # `target`: which of `scenario.targets` this step runs against (BE-0428); its
+                # requirement depends on `len(scenario.targets)` (§4). Rejected outright on a step
+                # nested inside a `web:` block, which always runs against the block's own
+                # resolved target
 Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # default "value"
 Action    ::=
     { tap:         <Selector> }
@@ -299,6 +304,12 @@ VisualMatch ::= {                  # pixel-compare the screen against a baseline
 ExcludeRegion  ::= { x: number, y: number, w: number, h: number }   # screenshot pixels
 SelectorRegion ::= { selector: <Selector> }   # mask the element's frame (BE-0171); ambiguous → fail, no match → no-op
 
+Every `Assertion` variant above also carries an optional `target?: string` (BE-0428), which
+names which of `scenario.targets` the check runs against. It is legal only on a top-level
+`expect` entry — an `Assertion` reached through a `Step`'s inline `assert:` list or an `If`'s
+`condition` already has its target fixed by the enclosing step, so `target` is rejected there
+outright (§4).
+
 RequestMatch ::= {              # ≥1 of the match fields below
   method?:      string,
   url?:         string,         # exact full URL (the endpoint)
@@ -387,6 +398,9 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 | `Assertion.requestSequence` | **≥ 1** item | `scenario/models/assertions.py` |
 | `Trigger` (`capturePolicy[].on`) | **exactly one** of `action` / `event` / `result`; `idMatches` only **with** `action` | `scenario/models/evidence.py` |
 | `Scenario` | `data` and `dataFile` **not both** | `scenario/models/scenario.py` |
+| `Scenario.targets` | no duplicate name (BE-0428) | `scenario/models/scenario/_targets.py` |
+| `Step.target` / `Assertion.target` (`expect` only) | omitted or matching the one entry when `len(targets) ≤ 1`; **required** — including on an `if`/`forEach`/`web` wrapper and an `interrupts` entry's own `steps` — naming a declared target, when `len(targets) ≥ 2`; **rejected** on a step nested inside `web:`, and on an `Assertion` reached through an inline `assert:` list, an `if`'s `condition`, or an `interrupts` entry's `condition` (BE-0428) | `scenario/models/scenario/_targets.py` |
+| `Step.use` / `Scenario.interrupts` (`len(targets) ≥ 2` only) | **rejected outright** — a `use:` step (its own `target` would be discarded by expansion) and a non-empty `interrupts` (its `condition` has no target of its own to poll) are both open questions this item defers, so neither is accepted rather than accepted with unclear semantics (BE-0428) | `scenario/models/scenario/_targets.py` |
 | every mapping | **no unknown keys** (`extra="forbid"`) | `scenario/models/_base.py` |
 
 `exists` is special: its selector is written **inline** (`exists: { id: home.title }`), and an

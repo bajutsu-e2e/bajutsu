@@ -98,6 +98,10 @@ from bajutsu.common.scenario.models import (
     WaitRequest,
     Web,
 )
+from bajutsu.common.scenario.models import _check_target_requirements as _check_target_requirements
+from bajutsu.common.scenario.models import (
+    _scenarios_declaring_targets as _scenarios_declaring_targets,
+)
 from bajutsu.common.scenario.raw_source import RawScenario, scenario_sources
 from bajutsu.common.scenario.select import select_scenarios
 from bajutsu.common.scenario.serialize import (

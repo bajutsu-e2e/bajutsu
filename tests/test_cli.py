@@ -763,6 +763,179 @@ def test_run_browsers_matrix_is_web_only(tmp_path: Path) -> None:
     assert "web-only" in r.output
 
 
+def test_reject_multi_target_scenarios_passes_a_targetless_scenario() -> None:
+    from bajutsu.run.cli import _reject_multi_target_scenarios
+
+    scenarios = [Scenario.model_validate({"name": "s", "steps": [{"tap": {"id": "a"}}]})]
+    _reject_multi_target_scenarios(scenarios)  # no exception
+
+
+def test_reject_multi_target_scenarios_exits_2_naming_the_scenario(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import typer
+
+    from bajutsu.run.cli import _reject_multi_target_scenarios
+
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "cross-target",
+                "targets": ["app", "web"],
+                "steps": [
+                    {"target": "app", "tap": {"id": "a"}},
+                    {"target": "web", "tap": {"id": "b"}},
+                ],
+            }
+        )
+    ]
+    with pytest.raises(typer.Exit) as exc:
+        _reject_multi_target_scenarios(scenarios)
+    assert exc.value.exit_code == 2
+    assert "cross-target" in capsys.readouterr().out
+
+
+def test_reject_multi_target_scenarios_names_every_affected_scenario(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import typer
+
+    from bajutsu.run.cli import _reject_multi_target_scenarios
+
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "a-cross",
+                "targets": ["app", "web"],
+                "steps": [{"target": "app", "tap": {"id": "x"}}],
+            }
+        ),
+        Scenario.model_validate({"name": "b-single", "steps": [{"tap": {"id": "x"}}]}),
+        Scenario.model_validate(
+            {
+                "name": "c-cross",
+                "targets": ["app", "web"],
+                "steps": [{"target": "app", "tap": {"id": "x"}}],
+            }
+        ),
+    ]
+    with pytest.raises(typer.Exit):
+        _reject_multi_target_scenarios(scenarios)
+    out = capsys.readouterr().out
+    assert "a-cross" in out
+    assert "c-cross" in out
+    assert "b-single" not in out  # a single-target scenario is never an offender
+
+
+def test_run_rejects_a_multi_target_scenario_end_to_end(tmp_path: Path) -> None:
+    # BE-0428: CLI/launch/runner routing support hasn't shipped yet, so a scenario declaring
+    # `targets` must fail loudly at load time instead of silently running every step against the
+    # run's single `--target`.
+    cfg, _ = _fake_run(tmp_path)
+    scn = tmp_path / "cross.yaml"
+    scn.write_text(
+        "- name: cross-target\n"
+        "  targets: [demo, other]\n"
+        "  steps:\n"
+        "    - target: demo\n"
+        "      tap: { id: home.title }\n",
+        encoding="utf-8",
+    )
+    r = runner.invoke(
+        app,
+        [
+            "run",
+            "--scenario",
+            str(scn),
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--config",
+            str(cfg),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "not yet implemented" in r.output
+    assert "cross-target" in r.output
+
+
+def test_run_tag_filtering_away_a_multi_target_scenario_lets_the_rest_run(
+    tmp_path: Path,
+) -> None:
+    # BE-0428: the guard runs after `_filter_scenarios`, so `--tag` selecting away the only
+    # multi-target scenario in a suite still lets an ordinary scenario in the same file run —
+    # rather than a suite-wide exit 2 just because *some* file in it declares `targets`.
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake] }\n"
+        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        encoding="utf-8",
+    )
+    scn = tmp_path / "s.yaml"
+    scn.write_text(
+        "- name: demo\n"
+        "  tags: [smoke]\n"
+        "  steps:\n"
+        "    - tap: { id: home.title }\n"
+        "- name: cross-target\n"
+        "  tags: [cross]\n"
+        "  targets: [demo, other]\n"
+        "  steps:\n"
+        "    - target: demo\n"
+        "      tap: { id: home.title }\n",
+        encoding="utf-8",
+    )
+    r = runner.invoke(
+        app,
+        [
+            "run",
+            "--scenario",
+            str(scn),
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--tag",
+            "smoke",
+            "--config",
+            str(cfg),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+        ],
+    )
+    # Reaches the fake driver's deterministic verdict (FAIL: `home.title` is absent from its empty
+    # screen) rather than being turned away at the multi-target guard (exit 2).
+    assert r.exit_code == 1
+    assert "not yet implemented" not in r.output
+
+
+def test_codegen_rejects_a_multi_target_scenario(tmp_path: Path) -> None:
+    # BE-0428: every generator emits against this run's single --target, so a multi-target
+    # scenario's step would silently lose which target it names — refused instead of emitting a
+    # plausible-looking test that acts on the wrong app.
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        encoding="utf-8",
+    )
+    scn = tmp_path / "cross.yaml"
+    scn.write_text(
+        "- name: cross-target\n"
+        "  targets: [demo, other]\n"
+        "  steps:\n"
+        "    - target: demo\n"
+        "      tap: { id: home.title }\n",
+        encoding="utf-8",
+    )
+    r = runner.invoke(app, ["codegen", str(scn), "--target", "demo", "--config", str(cfg)])
+    assert r.exit_code == 2
+    assert "cannot emit a multi-target scenario" in r.output
+    assert "cross-target" in r.output
+
+
 def _web_eff(browser: str) -> Effective:
     cfg = load_config(f"targets: {{ web: {{ baseUrl: 'http://x/', browser: {browser} }} }}")
     return resolve(cfg, "web")

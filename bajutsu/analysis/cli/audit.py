@@ -38,7 +38,7 @@ from bajutsu.common.platform_lifecycle import environment_for
 from bajutsu.common.run_meta.files import runs_root
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import device_pool, run_all
-from bajutsu.common.scenario import Scenario, load_expanded_scenarios
+from bajutsu.common.scenario import Scenario, _scenarios_declaring_targets, load_expanded_scenarios
 
 
 def audit(
@@ -139,6 +139,17 @@ def _repeat_audit(
     """Run each scenario `repeat` times through a real device pool and diff the outcomes."""
     if not target_name:
         typer.echo("--repeat needs --target (the app to run the scenario against)")
+        raise typer.Exit(2)
+    # `run_all` itself refuses a scenario declaring 2+ targets too — the one chokepoint every
+    # caller funnels through — but that guard fires only once device/server startup already ran
+    # (bare ValueError, uncaught here). Checking it here first gives `audit` the same clean exit 2
+    # `run` gets, before any of that startup cost (BE-0428).
+    affected = _scenarios_declaring_targets(scenarios)
+    if affected:
+        typer.echo(
+            "multi-target scenario execution (targets:) is not yet implemented (BE-0428); "
+            f"affected scenario(s): {', '.join(affected)}"
+        )
         raise typer.Exit(2)
     eff = _load_effective(config, target_name)  # exits 2 on missing config / unknown target
     # Mirror `run`/`doctor`: validate the backend before touching device CLIs, so an unknown /

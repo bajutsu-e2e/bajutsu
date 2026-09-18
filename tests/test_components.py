@@ -23,6 +23,15 @@ steps:
 """
 )
 
+LOGIN_TARGETED_ELSEWHERE = load_component(
+    """
+params: [user, pass]
+steps:
+  - target: other
+    type: { into: { id: auth.user }, text: "${params.user}" }
+"""
+)
+
 
 def _resolver(table: dict[str, Component]) -> Callable[[str], Component]:
     return lambda ref: table[ref]
@@ -47,6 +56,25 @@ def test_use_expands_and_substitutes_params() -> None:
     assert steps[3].tap is not None and steps[3].tap.id == "home.tab"
     # No `use` steps remain after expansion.
     assert all(s.use is None for s in steps)
+
+
+def test_use_expansion_re_checks_target_requirements() -> None:
+    # BE-0428: at load time, the scenario's own `steps` holds only the `use` step, so the initial
+    # validator never sees the component's own steps. Once `expand_components` splices them in,
+    # the re-check must catch what the load-time pass could not: here, a component step whose own
+    # `target` doesn't match the scenario's one declared target. (A `use:` step itself is refused
+    # outright once a scenario declares two or more targets — see `test_target_routing.py` — so
+    # this case, a component's own step disagreeing with the scenario, only arises for one.)
+    scns = load_scenarios(
+        """
+- name: s
+  targets: [app]
+  steps:
+    - use: { component: login.yaml, with: { user: alice, pass: hunter2 } }
+"""
+    )
+    with pytest.raises(ValueError, match="does not match"):
+        expand_components(scns, _resolver({"login.yaml": LOGIN_TARGETED_ELSEWHERE}))
 
 
 def test_nested_components_expand() -> None:

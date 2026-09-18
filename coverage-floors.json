@@ -328,6 +328,8 @@
     "bajutsu/common/scenario/models/evidence/capture_rule.py": 100.0,
     "bajutsu/common/scenario/models/evidence/redact.py": 100.0,
     "bajutsu/common/scenario/models/evidence/trigger.py": 100.0,
+    "bajutsu/common/scenario/models/scenario/__init__.py": 100.0,
+    "bajutsu/common/scenario/models/scenario/_targets.py": 100.0,
     "bajutsu/common/scenario/models/scenario/preconditions.py": 100.0,
     "bajutsu/common/scenario/models/scenario/scenario.py": 100.0,
     "bajutsu/common/scenario/models/scenario/system_alert_handling.py": 100.0,
