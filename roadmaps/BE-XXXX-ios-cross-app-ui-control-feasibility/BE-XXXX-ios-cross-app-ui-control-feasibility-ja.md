@@ -304,6 +304,16 @@ prime directive 2が回帰ゲートから遠ざけたい種類の依存です。
   きれいに失敗するとは限らないことです。再確認: 修正後の実機テストは、検証専用の新しいSimulatorに対して通ります
   （`enter_app`/`leave_app`をSafariに対して行い、showcaseアプリへ戻ってくる往復です）。
   `make check`もグリーンのままです。
+- 2026-09-18 — `demos/showcase/scenarios/app.yaml`を強化しました。Safariへの受け渡しの前後だけ
+  タブバーをアサートする形から、2回の受け渡しのあいだでshowcaseアプリを実際に操作する形に変えました。
+  シナリオは今、カタログの行から詳細画面をpushします。Safariへ受け渡してから戻り、pushした画面が
+  まだ残っていることをアサートします。popしてPermissionsタブへ切り替え、2回目にSafariへ受け渡して
+  から戻ります。Permissionsタブがまだ表示されていることをアサートします。最初に書いた版は、詳細画面を
+  pushする代わりにSearchタブのテキストフィールドへ入力していました。実機で走らせると、そのとき
+  立ち上がるオンスクリーンキーボードがタブバーを覆ってしまいました。`submit: true`もこのアプリ自身の
+  `SearchView`も、それを閉じないことがわかりました。そのため、後続のタブ切り替えがタップ可能な
+  対象を解決できませんでした。再確認: showcase-swiftui・showcase-uikitの両方が、検証専用の新しい
+  Simulatorに対して通ります。
 
 ## 参考
 
@@ -319,8 +329,8 @@ prime directive 2が回帰ゲートから遠ざけたい種類の依存です。
 - [BE-0212 — 粗い deviceControl 能力を操作単位のトークンに分割する](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md) ——
   Unit 3の新しいpreflightトークンが従う前例です。
 - [BE-0396 — SFSafariViewController の要素ツリーを、それを描くプロセスから読む](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree-ja.md) ——
-  この項目の「動機」が限界を説明する、副次ハンドルのパターンです。Unit 5が踏襲するshowcaseフィクスチャの
-  パターンでもあります。
+  この項目の「動機」が限界を説明する、副次ハンドルのパターンです。Unit 5自身のshowcaseシナリオが
+  `ios-e2e.yml`の自動化されたマトリックスにあえて入らない理由でもあります（Unit 5を参照）。
 - [BE-0019 — XCUITest backend](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md) ——
   `XcuitestElementProvider`を所有する常駐ランナーです。
 - [BE-0423 — 要素ツリーを閲覧し id で操作する対話シェル](../BE-0423-cli-repl-inspect-actuate/BE-0423-cli-repl-inspect-actuate-ja.md) ——

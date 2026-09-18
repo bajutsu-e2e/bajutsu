@@ -302,6 +302,16 @@ Log:
   cleanly. Re-verified: the corrected on-device test passes against a fresh dedicated Simulator
   (`enter_app`/`leave_app` against Safari, round-tripping back to the showcase app), and `make
   check` stays green.
+- 2026-09-18 — Strengthened `demos/showcase/scenarios/app.yaml` to drive the showcase app for
+  real between two separate handoffs to Safari, rather than only asserting its tab bar before and
+  after a single one: the scenario now pushes a catalog row's detail screen, hands off to Safari
+  and back, asserts the pushed screen is still there, pops it, switches to the Permissions tab,
+  then hands off to Safari a second time and asserts the Permissions tab is still the one showing.
+  An earlier version typed into the Search tab's text field between the two handoffs instead of
+  pushing a detail screen; dropped after a real run showed the on-screen keyboard it raised covers
+  the tab bar, and neither `submit: true` nor this app's own `SearchView` resigns it, so the
+  follow-up tab switch could not resolve a hittable target. Re-verified: both showcase-swiftui and
+  showcase-uikit pass against a fresh dedicated Simulator.
 
 ## References
 
@@ -317,8 +327,8 @@ Log:
 - [BE-0212 — Split the coarse deviceControl capability into per-operation tokens](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md) —
   the precedent Unit 3's new preflight token follows.
 - [BE-0396 — Read SFSafariViewController's element tree from the process that draws it](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md) —
-  the companion-handle pattern this item's Motivation explains the limits of, and the showcase
-  fixture pattern Unit 5 follows.
+  the companion-handle pattern this item's Motivation explains the limits of, and the reason Unit
+  5's own showcase scenario stays out of `ios-e2e.yml`'s automated matrix (see Unit 5).
 - [BE-0019 — XCUITest backend](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md) — the
   resident runner that owns `XcuitestElementProvider`.
 - [BE-0423 — Interactive REPL for element-tree inspection and id-based actuation](../BE-0423-cli-repl-inspect-actuate/BE-0423-cli-repl-inspect-actuate.md) —
