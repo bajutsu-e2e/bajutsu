@@ -77,31 +77,36 @@
 ### 参加するターゲットを宣言する：`targets`とステップごとの`target`
 
 ```yaml
-name: liking a post on the app shows up on the web, and a web comment reaches the app
-targets: [showcase-app, showcase-web]
-steps:
-  - target: showcase-app
-    tap: { id: post.like }
-    extract:
-      postId: { sel: { id: post.id } }
+- name: liking a post on the app shows up on the web, and a web comment reaches the app
+  targets: [showcase-app, showcase-web]
+  steps:
+    - target: showcase-app
+      tap: { id: post.like }
+      extract:
+        postId: { sel: { id: post.id } }
 
-  - target: showcase-web
-    wait: { for: { id: "post.${vars.postId}.likeCount" }, timeout: 10 }
-  - target: showcase-web
-    assert:
-      - value: { sel: { id: "post.${vars.postId}.likeCount" }, equals: "1" }
+    - target: showcase-web
+      wait: { for: { id: "post.${vars.postId}.likeCount" }, timeout: 10 }
+    - target: showcase-web
+      assert:
+        - value: { sel: { id: "post.${vars.postId}.likeCount" }, equals: "1" }
 
-  - target: showcase-web
-    tap: { id: "post.${vars.postId}.comment.input" }
-  - target: showcase-web
-    type: { text: "nice!" }
+    - target: showcase-web
+      tap: { id: "post.${vars.postId}.comment.input" }
+    - target: showcase-web
+      type: { text: "nice!" }
 
-  - target: showcase-app
-    wait: { for: { id: "post.${vars.postId}.comment.latest" }, timeout: 10 }
-  - target: showcase-app
-    assert:
-      - value: { sel: { id: "post.${vars.postId}.comment.latest" }, equals: "nice!" }
+    - target: showcase-app
+      wait: { for: { id: "post.${vars.postId}.comment.latest" }, timeout: 10 }
+    - target: showcase-app
+      assert:
+        - value: { sel: { id: "post.${vars.postId}.comment.latest" }, equals: "nice!" }
 ```
+
+`load_scenario_file`が受け付けるのは、シナリオのトップレベルのリスト、または`{description,
+scenarios}`のマッピングだけであり、シナリオ自身の`name`から始まる素のマッピングは受け付けません
+([`bajutsu/common/scenario/load.py:48-63`](../../bajutsu/common/scenario/load.py)、§6.1)。この
+アイテムのすべてのシナリオ例が、この例も含めて1件だけのリストになっているのはそのためです。
 
 上の例は説明のためのものです。上の例のような、iOSターゲットとWebターゲットの間で1つの製品を
 共有するフィクスチャは、このリポジトリには存在しません。2つ目の例は、このリポジトリがすでに持って
@@ -115,38 +120,38 @@ steps:
 ものではありません。
 
 ```yaml
-name: favorite a horse on the iOS showcase, then carry what it captured into the web demo
-targets: [showcase-swiftui, web]
-steps:
-  - target: showcase-swiftui
-    wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
-  - target: showcase-swiftui
-    tap: { id: [stable.row.1, stable_row_1] }
+- name: favorite a horse on the iOS showcase, then carry what it captured into the web demo
+  targets: [showcase-swiftui, web]
+  steps:
+    - target: showcase-swiftui
+      wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
+    - target: showcase-swiftui
+      tap: { id: [stable.row.1, stable_row_1] }
 
-  - target: showcase-swiftui
-    wait: { for: { id: [horse.favorite, horse_favorite] }, timeout: 5 }
-  - target: showcase-swiftui
-    tap: { id: [horse.favorite, horse_favorite] }
-    extract:
-      favorited: { sel: { id: [horse.favorite.value, horse_favorite_value] } }
+    - target: showcase-swiftui
+      wait: { for: { id: [horse.favorite, horse_favorite] }, timeout: 5 }
+    - target: showcase-swiftui
+      tap: { id: [horse.favorite, horse_favorite] }
+      extract:
+        favorited: { sel: { id: [horse.favorite.value, horse_favorite_value] } }
 
-  - target: web
-    tap: { id: onboarding.start }
-  - target: web
-    type: { text: "favorited-${vars.favorited}@example.com", into: { id: auth.email } }
-  - target: web
-    type: { text: "pw", into: { id: auth.password } }
-  - target: web
-    tap: { id: auth.submit }
-  - target: web
-    wait: { for: { id: home.title }, timeout: 5 }
-  - target: web
-    tap: { id: counter.increment }
-expect:
-  - target: showcase-swiftui
-    value: { sel: { id: [horse.favorite.value, horse_favorite_value] }, equals: "on" }
-  - target: web
-    value: { sel: { id: counter.value }, equals: "1" }
+    - target: web
+      tap: { id: onboarding.start }
+    - target: web
+      type: { text: "favorited-${vars.favorited}@example.com", into: { id: auth.email } }
+    - target: web
+      type: { text: "pw", into: { id: auth.password } }
+    - target: web
+      tap: { id: auth.submit }
+    - target: web
+      wait: { for: { id: home.title }, timeout: 5 }
+    - target: web
+      tap: { id: counter.increment }
+  expect:
+    - target: showcase-swiftui
+      value: { sel: { id: [horse.favorite.value, horse_favorite_value] }, equals: "on" }
+    - target: web
+      value: { sel: { id: counter.value }, equals: "1" }
 ```
 
 iOS側のステップは、`demos/showcase/scenarios/firstlook.yaml`自身の「馬をお気に入りに登録する」
@@ -201,6 +206,31 @@ iOS側のステップは、`demos/showcase/scenarios/firstlook.yaml`自身の「
 読み込み時にエラーになります)。そのステップは常に、囲む`web`ステップ自身が解決済みのターゲットに
 対して開いた`WebContextDriver`ブリッジに対して実行されるからです。これは今日、複数のターゲットが
 存在することを知らずに動いているのと同じ形です。
+
+読み込みのあとに2箇所、このバリデータがまったく見ないステップを追加できる場所があります。どちらも、
+`Scenario.model_validate`を通して新しいオブジェクトを組み立てるのではなく、すでに検証済みの
+`Scenario`をその場で書き換えるからです。Pydanticは、ふつうの属性代入や`model_copy`に対して
+`model_validator`を再実行しません。`expand_components`
+([`bajutsu/common/scenario/expand.py:104-114`](../../bajutsu/common/scenario/expand.py))は、
+`use`ステップをそのコンポーネント自身のステップで置き換える際、`scenario.steps = expand(...)`
+という代入を(`before`、各`after`ルールの`steps`、各`interrupts`エントリの`steps`についても
+同様に)`Scenario`がすでに読み込まれ検証された後に行います。コンポーネント自身のステップが
+`target`を省略していても、ほかのステップごとの規則はすべて満たしてしまうため、このアイテムが
+求める規則だけを静かにすり抜けます。`with_lifecycle_phases`
+([`bajutsu/common/runner/pipeline.py:959-983`](../../bajutsu/common/runner/pipeline.py))は、
+あるターゲットの設定レベルの`before`/`after`フックを`model_copy`でシナリオへ折り込みますが、
+これもPydanticは再検証しません。このアイテムは、`target`必須チェックを`Scenario`自身の
+`model_validator`から素の関数として切り出し、この2つの書き換え箇所がそれぞれ自分の結果に対して
+もう一度呼び出すことで、両方の抜け穴をふさぎます。`expand_components`がシナリオの処理を終えた
+直後にもう一度、`with_lifecycle_phases`が折り込み済みのコピーを組み立てた直後にもう一度呼び出し、
+`target`を持たない裸のステップを含むシナリオファイルがすでに起こしているのと同じ、読み込み時の
+エラーを起こします。コンポーネントや設定レベルのフックが静かにすり抜けることはありません。
+`with_lifecycle_phases`自身もターゲットごとに呼ぶ必要があります(あるターゲットの`before`/`after`
+フックはそのターゲット自身の設定に由来するため。詳しくは後述の「宣言したターゲットをまとめて
+起動し、まとめて後片付けする」を参照してください)。そして、この再検査が走る前に、折り込む各フック
+ステップへそのターゲット自身の名前を刻みます。これにより、設定レベルのフックも、著者が書いた
+ステップと同じように、どのターゲットに対して動くのかが明確になります。この再検査は主に、どちらかの
+関数を将来呼び出す誰かが、自分の挿入するステップへ名前を刻み忘れた場合への保険として存在します。
 
 `if`、`forEach`、`web`は事情が違います。`_CONTROL_FLOW_ACTIONS`
 ([`bajutsu/common/scenario/models/_base.py:33`](../../bajutsu/common/scenario/models/_base.py))は
@@ -268,6 +298,17 @@ iOS側のステップは、`demos/showcase/scenarios/firstlook.yaml`自身の「
 ます。宣言したターゲットのどれか1つと一致すれば一致、それ以外は不一致です。一致しなければ実行を
 拒みます。シナリオを編集した後に取り残された古いフラグが、ファイルがもう期待していないターゲットを
 黙って選んでしまう事態を防ぐためです。
+
+`--target`は呼び出し全体で1つのフラグですが、`--scenario`は繰り返し指定できるため、1回のバッチが
+複数のファイルを同時に名指しできます。そして、従来のファイル(`targets`が空)には頼れる自分自身の
+`target`がなく、今日と同じく、どのターゲットに対して実行するかを知るには呼び出し全体の単一の
+`--target`が必要です。したがって、従来のファイルを1つでも含むバッチで`--target`を省略すると、
+そのファイルには解決する手立てが何も残りません。このアイテムはそのようなバッチを読み込み時に
+拒否します。従来のファイルが1つでもあるのに`--target`がない組み合わせはエラーであり、そのファイル
+名を示したうえで、`--target`を渡すかそのファイル自身に`targets`フィールドを持たせるよう求めます。
+`--target`を渡しつつ従来のファイルと自己宣言したファイルを混在させたバッチは、今日の単一ターゲット
+の規則どおりに動き続けます。従来のファイルは今までどおりそれを使い、自己宣言したファイルに対しては
+上の不一致規則のとおり、そのファイル自身の`scenario.targets`への所属で照合されます。
 
 このディレクトリの一括読み込みは`run`が持つ唯一のスイート全体向けの簡便な手段であり、1つのターゲット
 に属します。そこでこのアイテムは、著者がディレクトリの配置で守る運用上の規律ではなく、実際に強制
@@ -418,6 +459,37 @@ redactionする場合にも、宣言した各ターゲット自身の`secrets`�
 redactionの対象を広げることは、狭めることより厳密に安全です。これは、あるターゲット自身の値を
 共有すると別のターゲットに対して誤った答えを生む`caps`や`mailbox`とは異なります。
 
+`with_lifecycle_phases`
+([`bajutsu/common/runner/pipeline.py:959-983`](../../bajutsu/common/runner/pipeline.py))は、
+実行が始まる前に、あるターゲットの設定レベルの`before`(設定してからシナリオの順)と`after`
+(シナリオしてから設定の順)のフックをシナリオへ折り込みます(BE-0392)。今日はCLIの単一の`eff`
+から実行につき1回だけ呼ばれますが、このアイテムは宣言したターゲットごとに、そのターゲット自身の
+`eff`で1回ずつ呼びます。これにより、宣言した各ターゲット自身の`targets.<name>.before`/`after`
+フックが、主ターゲットのものだけでなくそれぞれに対して折り込まれます。複数のターゲットのフックを
+シナリオの単一の`before`/`after`リストへまとめるには、このアイテムが明示的に順序を加える必要が
+あります。宣言した各ターゲット自身の`before`フックは、シナリオ自身の`before`ステップより前に
+折り込まれ、ターゲット同士の間では`scenario.targets`の宣言順です。これは今日の単一の
+「設定してからシナリオ」の順序を踏襲します。`after`はその逆順です。シナリオ自身のステップの
+後片付けが先に来て、そのあとに宣言した各ターゲット自身の`after`フックが同じ宣言順で続きます。
+これは今日の「シナリオしてから設定」の順序を踏襲します。折り込む各フックステップには、自分自身の
+ターゲットの名前を刻みます。これは前段落の再検査バリデータがすでに求めている修正であり、同じ
+シナリオに折り込まれたアプリ側の`erase`フックとWeb側のフックが、それぞれ正しいターゲットに対して
+動き続けるためです。
+
+`preconditions`と`permissions`にはこのようなターゲットごとの分割は要りません。どちらもすでに
+今日、シナリオレベルのフィールドです(`scenario.preconditions`、`scenario.permissions`)。これらは
+`launch_driver`
+([`bajutsu/common/runner/launch.py:27-98`](../../bajutsu/common/runner/launch.py))へ1回だけ渡され、
+すでにiOS固有ではなくバックエンドを問いません。`env.start`は、iOSの`Preconditions`フィールド
+(erase、reinstall)をsimctlのライフサイクルを通じてすでに解釈し、Webターゲット自身の`env.start`は
+代わりに新しいブラウザコンテキストとして解釈します。これは、`--target ios`と`--target web`の
+それぞれの実行が、1つのバックエンドずつ今日すでに行き来している違いそのものです。このアイテムの
+ターゲットごとの`launch_driver`呼び出しは、同じ`scenario.preconditions`と`scenario.permissions`を
+宣言した各ターゲット自身の呼び出しへ渡し、各ターゲット自身のバックエンドが、自分に当てはまる部分
+だけを解釈し残りを無視し続けます。単一ターゲットの実行がすでに、`--target`がある`Preconditions`
+フィールドの当てはまらないバックエンドを指すたびに頼っている仕組みであり、このアイテムが新たに
+発明する能力ではありません。
+
 宣言したターゲットごとに1つのリースを取得するには、このアイテムが明示的に加えるルールがもう1つ
 必要です。`pool.lease()`は、実行のudidを入れたキューに対して`free.get()`でブロックします
 ([`bajutsu/common/runner/pool.py:163-165, 255`](../../bajutsu/common/runner/pool.py))。したがって、
@@ -554,12 +626,18 @@ Common Test Report Format（CTRF）のエクスポートを含め、単一ター
    ステップだけは例外で、`target`を宣言するのではなく省略するよう求めます。これは、そのステップが
    常に、囲んでいる`web:`ステップがすでに解決したターゲットに対して実行されるからです。同じ
    要否の規則を`expect`にも適用し、インラインの`assert:`リストや`if`の`condition`を通じて到達した
-   `Assertion`（`expect`を経由しないもの）が`target`を設定していれば、それも拒否します。
+   `Assertion`（`expect`を経由しないもの）が`target`を設定していれば、それも拒否します。この検査
+   全体を素の関数として切り出し、`expand_components`と`with_lifecycle_phases`がそれぞれ自分の
+   結果に対してもう一度呼び出せるようにします。どちらもすでに検証済みの`Scenario`をその場で
+   書き換えるため、Pydanticはふつうの属性代入や`model_copy`に対して`model_validator`を
+   再実行しないからです。
 2. **CLI**：`scenario.targets`が空でなければ`--target`を省略可能にし、代わりに`--scenario`を必須に
    します。明示的な`--target`は黙って上書きせず`scenario.targets`と照合します。シナリオファイルの
    ローダーは、宣言された各名前を、実行が始まる前に読み込んだ設定に対して検証します。`--target`
    だけを渡すディレクトリの一括読み込み経路は、発見した時点で、自分の`targets`フィールドが空でない
    ファイルを、自己宣言したシナリオを不一致チェックに渡したり起動したりするのではなく拒否します。
+   `--target`を省略したバッチに従来のファイル(`targets`が空)が1つでも含まれていれば、解決する
+   手立てのないそのファイル名を示して、読み込み時に拒否します。
 3. **起動と後片付け**：宣言したターゲットごとに、どのプールが存在するより前に`DeviceLease`を1つ
    取得し、後片付けの際にはドライバとプールに並べて解放します。`_load_effective_with_source`と
    `_resolve_config_and_engines`が、すでに返している`Effective`と並べて、読み込んだ`Config`も返す
@@ -574,8 +652,11 @@ Common Test Report Format（CTRF）のエクスポートを含め、単一ター
    どの2つのワーカーも互いの次のプールを取得できずデッドロックすることがなくなり、順序の後方にある
    プールがタイムアウトした場合はすでに保持しているものをすべて解放します。名前ごとに1回
    `launch_driver`を呼び出し、ローカルな`dict[str, base.Driver]`にまとめます。すべて最初のステップ
-   より前に済ませます。途中の起動失敗は、その時点までに起動できたドライバをすべて後片付けします。
-   実行の終わりは集合全体を後片付けします。
+   より前に済ませ、シナリオ自身の変更しない`preconditions`/`permissions`をどの呼び出しにも渡します。
+   `with_lifecycle_phases`を宣言したターゲットごとに、そのターゲット自身の`eff`で1回ずつ呼び、
+   折り込む各フックステップにそのターゲット自身の名前を刻み、宣言したターゲットのフックを宣言順で
+   シナリオの`before`/`after`へまとめます。途中の起動失敗は、その時点までに起動できたドライバを
+   すべて後片付けします。実行の終わりは集合全体を後片付けします。
 4. **ランナー**：`run_scenario`が今日1つのリースから束ねているすべての引数（`driver`、`sink`、
    `alert_guard`、`network`、`relaunch`、`control`、`ctx`、`mailbox`、`webview_bridge`、
    `transitions`、`interrupts`、`locale`、`capture`、`channel`、`target_launch_env`）に加えて、
@@ -596,6 +677,20 @@ Common Test Report Format（CTRF）のエクスポートを含め、単一ター
 6. **ドキュメント**：`docs/scenarios.md`(`targets`/`target`のリファレンスと実例)、`docs/cli.md`
    (`--target`の新しい省略条件と`--scenario`の新しい必須条件)、`docs/run-loop.md`(複数ドライバの
    ステップ振り分け)、それぞれの`docs/ja/`ミラー。
+7. **テスト**：スキーマ側は、`targets`が0個・1個・2個以上のそれぞれでの`target`必須バリデータを
+   `steps`/`before`/`after`/`expect`と`if`/`forEach`/`web`のネストした形すべてに対して、重複名の
+   拒否、`expect`の外での`Assertion.target`の拒否、そして`expand_components`と
+   `with_lifecycle_phases`を経ても再検査が生き残ることを検証します。CLI側は、`--target`の省略・
+   必須の切り替え、不一致の拒否、自己宣言したファイルのディレクトリ一括読み込みでの拒否、従来の
+   ファイルと自己宣言したファイルが混在するバッチの拒否を検証します。起動側は、複数ターゲットの
+   集合の途中の起動失敗が起動済みのものを後片付けすること、ロック順序付けによる取得が同じ2つの
+   プラットフォームを逆順に必要とする2つのワーカー間でデッドロックしないこと、ターゲットごとの
+   `caps`事前検査が主ターゲットにしかない構文だけを拒否すること、ターゲットごとの`mailbox`選択を
+   検証します。ランナー側は、1つのシナリオの中でのターゲット混在ステップ振り分け(隣接する2つの
+   ブロックだけでなく行き来すること)、ターゲットをまたいだ`${vars.*}`共有、`expect`が宣言順で
+   まとめ直されることを検証します。レポート側は、複数ターゲットの`RunResult`で単数形フィールドが
+   空のまま`target_devices`が埋まること、既存のJUnit/CTRFの読み手が単一ターゲットの実行を今までと
+   変わらず解釈できることを検証します。
 
 ## 検討した代替案
 
@@ -651,6 +746,9 @@ Common Test Report Format（CTRF）のエクスポートを含め、単一ター
       表示するレポートの画面。
 - [ ] ドキュメント：`docs/scenarios.md`、`docs/cli.md`、`docs/run-loop.md`、それぞれの`docs/ja/`
       ミラー。
+- [ ] テスト：スキーマのバリデータ（`expand_components`/`with_lifecycle_phases`の再検査を含む）、
+      CLIの選択・拒否の規則、複数プールのリース・デッドロック網羅、ターゲットごとの
+      caps/mailbox/事前検査、ターゲット混在のステップ振り分け、レポートの後方互換性。
 
 ## 参考
 

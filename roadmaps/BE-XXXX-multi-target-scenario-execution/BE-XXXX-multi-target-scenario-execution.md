@@ -77,31 +77,36 @@ where today that value cannot cross from one run to the other at all.
 ### Declaring participating targets: `targets` and per-step `target`
 
 ```yaml
-name: liking a post on the app shows up on the web, and a web comment reaches the app
-targets: [showcase-app, showcase-web]
-steps:
-  - target: showcase-app
-    tap: { id: post.like }
-    extract:
-      postId: { sel: { id: post.id } }
+- name: liking a post on the app shows up on the web, and a web comment reaches the app
+  targets: [showcase-app, showcase-web]
+  steps:
+    - target: showcase-app
+      tap: { id: post.like }
+      extract:
+        postId: { sel: { id: post.id } }
 
-  - target: showcase-web
-    wait: { for: { id: "post.${vars.postId}.likeCount" }, timeout: 10 }
-  - target: showcase-web
-    assert:
-      - value: { sel: { id: "post.${vars.postId}.likeCount" }, equals: "1" }
+    - target: showcase-web
+      wait: { for: { id: "post.${vars.postId}.likeCount" }, timeout: 10 }
+    - target: showcase-web
+      assert:
+        - value: { sel: { id: "post.${vars.postId}.likeCount" }, equals: "1" }
 
-  - target: showcase-web
-    tap: { id: "post.${vars.postId}.comment.input" }
-  - target: showcase-web
-    type: { text: "nice!" }
+    - target: showcase-web
+      tap: { id: "post.${vars.postId}.comment.input" }
+    - target: showcase-web
+      type: { text: "nice!" }
 
-  - target: showcase-app
-    wait: { for: { id: "post.${vars.postId}.comment.latest" }, timeout: 10 }
-  - target: showcase-app
-    assert:
-      - value: { sel: { id: "post.${vars.postId}.comment.latest" }, equals: "nice!" }
+    - target: showcase-app
+      wait: { for: { id: "post.${vars.postId}.comment.latest" }, timeout: 10 }
+    - target: showcase-app
+      assert:
+        - value: { sel: { id: "post.${vars.postId}.comment.latest" }, equals: "nice!" }
 ```
+
+`load_scenario_file` accepts a top-level list of scenarios or a `{description, scenarios}` mapping,
+never a bare mapping starting with a scenario's own `name`
+([`bajutsu/common/scenario/load.py:48-63`](../../bajutsu/common/scenario/load.py), §6.1) — every
+scenario example in this item, this one included, is a one-item list for exactly that reason.
 
 The example above is illustrative — no fixture in this repository shares one product across an iOS
 target and a web target the way it depicts. A second example, built entirely from two fixtures this
@@ -113,38 +118,38 @@ the other — the point is only to show `targets`, per-step `target`, and `${var
 end to end against real ids, not to claim a cross-app product check:
 
 ```yaml
-name: favorite a horse on the iOS showcase, then carry what it captured into the web demo
-targets: [showcase-swiftui, web]
-steps:
-  - target: showcase-swiftui
-    wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
-  - target: showcase-swiftui
-    tap: { id: [stable.row.1, stable_row_1] }
+- name: favorite a horse on the iOS showcase, then carry what it captured into the web demo
+  targets: [showcase-swiftui, web]
+  steps:
+    - target: showcase-swiftui
+      wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
+    - target: showcase-swiftui
+      tap: { id: [stable.row.1, stable_row_1] }
 
-  - target: showcase-swiftui
-    wait: { for: { id: [horse.favorite, horse_favorite] }, timeout: 5 }
-  - target: showcase-swiftui
-    tap: { id: [horse.favorite, horse_favorite] }
-    extract:
-      favorited: { sel: { id: [horse.favorite.value, horse_favorite_value] } }
+    - target: showcase-swiftui
+      wait: { for: { id: [horse.favorite, horse_favorite] }, timeout: 5 }
+    - target: showcase-swiftui
+      tap: { id: [horse.favorite, horse_favorite] }
+      extract:
+        favorited: { sel: { id: [horse.favorite.value, horse_favorite_value] } }
 
-  - target: web
-    tap: { id: onboarding.start }
-  - target: web
-    type: { text: "favorited-${vars.favorited}@example.com", into: { id: auth.email } }
-  - target: web
-    type: { text: "pw", into: { id: auth.password } }
-  - target: web
-    tap: { id: auth.submit }
-  - target: web
-    wait: { for: { id: home.title }, timeout: 5 }
-  - target: web
-    tap: { id: counter.increment }
-expect:
-  - target: showcase-swiftui
-    value: { sel: { id: [horse.favorite.value, horse_favorite_value] }, equals: "on" }
-  - target: web
-    value: { sel: { id: counter.value }, equals: "1" }
+    - target: web
+      tap: { id: onboarding.start }
+    - target: web
+      type: { text: "favorited-${vars.favorited}@example.com", into: { id: auth.email } }
+    - target: web
+      type: { text: "pw", into: { id: auth.password } }
+    - target: web
+      tap: { id: auth.submit }
+    - target: web
+      wait: { for: { id: home.title }, timeout: 5 }
+    - target: web
+      tap: { id: counter.increment }
+  expect:
+    - target: showcase-swiftui
+      value: { sel: { id: [horse.favorite.value, horse_favorite_value] }, equals: "on" }
+    - target: web
+      value: { sel: { id: counter.value }, equals: "1" }
 ```
 
 The iOS steps mirror `demos/showcase/scenarios/firstlook.yaml`'s own "favorite a horse" flow (down to
@@ -195,6 +200,29 @@ nested inside a `web:` block is the one exception: it carries no `target` of its
 at load time if given one), since it always runs against the `WebContextDriver` bridge the enclosing
 `web:` step already opened for its own resolved target — the same way it runs today, unaware that
 more than one target exists.
+
+Two points after load can add steps this validator never sees, because both mutate an
+already-validated `Scenario` in place rather than building a new one through
+`Scenario.model_validate` — and Pydantic does not re-run `model_validator` against a plain attribute
+assignment. `expand_components`
+([`bajutsu/common/scenario/expand.py:104-114`](../../bajutsu/common/scenario/expand.py)) replaces a
+`use` step with its component's own steps by assigning `scenario.steps = expand(...)` (and the same
+for `before`, every `after` rule's `steps`, and every `interrupts` entry's `steps`) after `Scenario`
+has already loaded and validated; a component whose own steps omit `target` would otherwise satisfy
+every other per-step rule while silently evading this item's requirement. `with_lifecycle_phases`
+([`bajutsu/common/runner/pipeline.py:959-983`](../../bajutsu/common/runner/pipeline.py)) folds a
+target's own config-level `before`/`after` hooks into the scenario via `model_copy`, which Pydantic
+likewise never re-validates. This item closes both gaps by extracting the target-required check out
+of `Scenario`'s own `model_validator` into a plain function the two mutation points call again on
+their own result — once right after `expand_components` finishes a scenario, and once right after
+`with_lifecycle_phases` builds its folded copy — raising the same load-time error a scenario file
+with a bare targetless step already raises, rather than letting a component or a config-level hook
+slip one through silently. `with_lifecycle_phases` itself also needs to become per-target (a
+target's own `before`/`after` hooks come from that target's own config, per "Launching every declared
+target together" below) and stamps every hook step it folds in with that target's own name before the
+re-check runs, so a config-level hook is unambiguous about which target it acts on the same way an
+author-written step already must be, and the re-check exists mainly as a defense against a future
+caller of either function forgetting to stamp a step it injects.
 
 `if`, `forEach`, and `web` are different in kind: `_CONTROL_FLOW_ACTIONS`
 ([`bajutsu/common/scenario/models/_base.py:33`](../../bajutsu/common/scenario/models/_base.py)) names
@@ -258,6 +286,17 @@ naming several always names its files explicitly instead. An explicit `--target`
 such a scenario is checked for membership in `scenario.targets` — matching if it names any one of the
 declared targets, mismatching otherwise — rather than ignored, so a stale flag left over from editing
 the scenario fails loudly instead of silently selecting a target the file no longer expects.
+
+`--target` is one flag for the whole invocation, but `--scenario` is repeatable, so a batch can name
+several files at once — and a legacy file (`targets` empty) has no `target` of its own to fall back
+on, the same way it does not today: it needs the invocation's single `--target` to know which one to
+run against. Omitting `--target` for a batch that includes even one legacy file therefore leaves that
+file with nothing to resolve, so this item rejects such a batch at load time — one legacy file and no
+`--target` in the same invocation is an error naming the file and asking for either `--target` or a
+`targets` field on it, rather than a silent failure to resolve. A batch that supplies `--target`
+alongside a mix of legacy and self-declaring files keeps working exactly as today's single-target
+rules already describe: the legacy files use it as they always have, and it is checked for membership
+against each self-declaring file's own `scenario.targets` per the mismatch rule above.
 
 Because that directory glob is the only whole-suite shorthand `run` has, and it belongs to one
 target, this item makes the rule an enforced check rather than an author discipline kept by directory
@@ -394,6 +433,34 @@ value one target's config marks secret is scrubbed everywhere rather than only f
 own capture — widening the redaction set is strictly safer than narrowing it, unlike `caps` or
 `mailbox`, where sharing one target's own value produces a wrong answer for another.
 
+`with_lifecycle_phases`
+([`bajutsu/common/runner/pipeline.py:959-983`](../../bajutsu/common/runner/pipeline.py)) folds one
+target's config-level `before` (config-then-scenario order) and `after` (scenario-then-config order)
+hooks into a scenario before the run starts, called once per run today from the CLI's single `eff`
+(BE-0392). This item calls it once per declared target instead, each with that target's own `eff`, so
+each declared target's own `targets.<name>.before`/`after` hooks are the ones folded in for it rather
+than the primary target's alone. Merging more than one target's hooks into the scenario's single
+`before`/`after` lists needs an explicit order this item adds: every declared target's own `before`
+hooks fold in ahead of the scenario's own `before` steps, one target's hooks after another's in
+`scenario.targets`' declared order, mirroring today's single "config-then-scenario" order; `after`
+mirrors it in reverse, the scenario's own steps' cleanup first and every declared target's own `after`
+hooks behind it in the same declared order, mirroring today's "scenario-then-config" order. Each
+folded-in hook step is stamped with its own target's name — the fix the previous paragraph's
+validator re-check already requires of it — so an app-side `erase` hook and a web-side hook folded
+into the same scenario each still run against the right target.
+
+`preconditions` and `permissions` need no such per-target split: both are already scenario-level
+fields today (`scenario.preconditions`, `scenario.permissions`), passed once into `launch_driver`
+([`bajutsu/common/runner/launch.py:27-98`](../../bajutsu/common/runner/launch.py)), and already
+backend-tolerant rather than iOS-specific — `env.start` already interprets an iOS `Preconditions`
+field (erase, reinstall) through the simctl lifecycle and a web target's own `env.start` through a
+fresh browser context instead, exactly the difference a `--target ios` versus `--target web` run
+already exercises today, one backend at a time. This item's per-target `launch_driver` calls pass the
+same `scenario.preconditions` and `scenario.permissions` to every declared target's own call, and each
+target's own backend keeps interpreting the parts that apply to it and ignoring the rest — not a new
+capability this item must invent, since a single-target run already relies on it whenever `--target`
+points at a backend some `Preconditions` field doesn't apply to.
+
 Acquiring one lease per declared target needs one more rule this item adds explicitly: `pool.lease()`
 blocks on `free.get()` against a queue seeded with the run's udids
 ([`bajutsu/common/runner/pool.py:163-165, 255`](../../bajutsu/common/runner/pool.py)), so a scenario
@@ -527,13 +594,18 @@ choosing between them is deferred rather than guessed.
    block is the one exception, required to omit `target` rather than declare one, since it always
    runs against the target the enclosing `web:` step already resolved — applying the same
    required-or-not rule to `expect`, and rejecting `target` outright on any `Assertion` reached
-   through an inline `assert:` list or an `if`'s `condition` rather than through `expect`.
+   through an inline `assert:` list or an `if`'s `condition` rather than through `expect`; extracting
+   that whole check into a plain function `expand_components` and `with_lifecycle_phases` each call
+   again on their own result, since both mutate an already-validated `Scenario` in place and Pydantic
+   never re-runs `model_validator` against a plain attribute assignment or a `model_copy`.
 2. **CLI.** `--target` becomes optional once `scenario.targets` is non-empty, and `--scenario`
    becomes mandatory in its place; an explicit `--target` is checked against `scenario.targets`
    rather than silently overridden; the scenario-file loader resolves and validates every declared
    name against the loaded config before the run starts; the `--target`-only directory-glob path
    rejects, at discovery time, any globbed file whose own `targets` field is non-empty, rather than
-   handing a self-declaring scenario to the mismatch check or launching it.
+   handing a self-declaring scenario to the mismatch check or launching it; a batch that omits
+   `--target` while including a legacy (empty-`targets`) file is rejected at load time, naming the
+   file that has nothing to resolve `--target` from.
 3. **Launch and teardown.** One `DeviceLease` acquired per declared target before any pool exists,
    released at teardown alongside its driver and pool; `_load_effective_with_source` and
    `_resolve_config_and_engines` returning the loaded `Config` alongside the `Effective` they already
@@ -546,8 +618,12 @@ choosing between them is deferred rather than guessed.
    blocking `pool.lease()` per target in arbitrary order — the standard lock-ordering discipline, so no
    two workers can hold each other's next pool and deadlock, releasing anything already held if a
    later pool in the sequence times out; one `launch_driver` call per name, collected into a local
-   `dict[str, base.Driver]`, all before the first step; a launch failure partway through tears down
-   every driver that did start; the run's own end tears down the whole set.
+   `dict[str, base.Driver]`, all before the first step, passing the scenario's own unchanged
+   `preconditions`/`permissions` to every call; `with_lifecycle_phases` called once per declared
+   target with that target's own `eff`, stamping each folded-in hook step with its own target's name
+   and merging every declared target's hooks into the scenario's `before`/`after` in declared order; a
+   launch failure partway through tears down every driver that did start; the run's own end tears down
+   the whole set.
 4. **Runner.** A new `TargetRuntime` dataclass bundling every argument `run_scenario` already binds
    from one lease (`driver`, `sink`, `alert_guard`, `network`, `relaunch`, `control`, `ctx`,
    `mailbox`, `webview_bridge`, `transitions`, `interrupts`, `locale`, `capture`, `channel`,
@@ -568,6 +644,19 @@ choosing between them is deferred rather than guessed.
 6. **Docs.** `docs/scenarios.md` (the `targets`/`target` reference and a worked example),
    `docs/cli.md` (`--target`'s new optional condition and `--scenario`'s new mandatory one), and
    `docs/run-loop.md` (the multi-driver step dispatch), and their `docs/ja/` mirrors.
+7. **Tests.** Schema: the target-required validator across zero/one/two-or-more `targets`, on
+   `steps`/`before`/`after`/`expect` and every nested `if`/`forEach`/`web` shape, duplicate-name
+   rejection, the `Assertion.target`-outside-`expect` rejection, and the re-check surviving
+   `expand_components` and `with_lifecycle_phases`. CLI: `--target` optional/mandatory switch,
+   mismatch rejection, the directory-glob rejection of a self-declaring file, and the mixed
+   legacy/self-declaring batch rejection. Launch: a launch failure partway through a multi-target set
+   tears down what did start; the lock-ordering acquisition never deadlocks two concurrent workers
+   needing the same two platforms in opposite order; per-target `caps` preflight rejects a construct
+   only the primary target lacks; per-target `mailbox` selection. Runner: mixed-target step routing
+   within one scenario (interleaving, not just two contiguous blocks); `${vars.*}` sharing across
+   targets; `expect` grouped and merged back in declared order. Report: a multi-target `RunResult`'s
+   singular fields stay empty while `target_devices` is populated, and an existing JUnit/CTRF reader
+   still parses a single-target run unchanged.
 
 ## Alternatives considered
 
@@ -622,6 +711,9 @@ choosing between them is deferred rather than guessed.
 - [ ] Report: `StepOutcome.target`, `AssertionResult.target`, `RunResult.target_devices`, and the
       report views that show them.
 - [ ] Docs: `docs/scenarios.md`, `docs/cli.md`, `docs/run-loop.md`, and their `docs/ja/` mirrors.
+- [ ] Tests: schema validator (including the `expand_components`/`with_lifecycle_phases` re-check),
+      CLI selection and rejection rules, multi-pool lease/deadlock coverage, per-target
+      caps/mailbox/preflight, mixed-target step routing, and report backward compatibility.
 
 ## References
 
