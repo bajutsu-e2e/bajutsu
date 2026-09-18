@@ -23,6 +23,16 @@ if TYPE_CHECKING:
     from .queryable import Queryable
 
 
+# The distinctive fragment of `resolve_unique`'s ambiguous-match message below, exported so
+# `heuristic_triage_agent.py` can match on it instead of re-deriving its own copy of the wording —
+# the two drifting apart would silently stop the "add `within` or `index`" triage hint from firing,
+# with `make check` still green.
+AMBIGUOUS_MATCH_MARKER = "elements matched"
+# The same message's pre-translation (Japanese) wording. A run recorded before that translation
+# still carries it verbatim in `steps[].reason`, so triage matches both markers — otherwise the
+# hint silently stops firing on archived run history that spans the change.
+LEGACY_AMBIGUOUS_MATCH_MARKER = "件一致"
+
 # Single-entry cache: (list_id, list_ref, index_dict).
 # Holding list_ref prevents GC so id() stays stable across lookups.
 _cached_index: tuple[int, list[Element], dict[str | None, list[Element]]] | None = None
@@ -329,7 +339,8 @@ def resolve_unique(elements: list[Element], sel: Selector) -> Element:
         raise ElementNotFound(f"no match: {sel!r}")
     if len(candidates) > 1:
         raise AmbiguousSelector(
-            f"{len(candidates)} elements matched {sel!r} — add `within` or `index` to disambiguate"
+            f"{len(candidates)} {AMBIGUOUS_MATCH_MARKER} {sel!r} — "
+            "add `within` or `index` to disambiguate"
         )
     return candidates[0]
 

@@ -316,6 +316,55 @@ def test_heuristic_ambiguous_selector() -> None:
     assert result.fix is None  # ambiguity is not a mechanically-applicable rename
 
 
+def test_heuristic_ambiguous_selector_fires_from_the_real_exception_message() -> None:
+    # Builds the fixture from `resolve_unique`'s actual `AmbiguousSelector`, not a hand-written
+    # string, so a future rewording of that message would fail this test rather than leaving the
+    # heuristic's substring check silently stale.
+    from bajutsu.common.drivers.base import AmbiguousSelector, resolve_unique
+
+    def _el(y: float) -> Any:
+        return {
+            "identifier": "row.cell",
+            "label": None,
+            "traits": [],
+            "value": None,
+            "frame": (0.0, y, 10.0, 10.0),
+            "nativeZ": None,
+        }
+
+    screen = [_el(0.0), _el(10.0)]  # same id, distinct content — a genuine ambiguity, not a
+    # duplicate registration `_collapse_identical_duplicates` would otherwise fold into one
+    with pytest.raises(AmbiguousSelector) as exc_info:
+        resolve_unique(screen, {"id": "row.cell"})
+    ctx = TriageContext(
+        scenario="s",
+        failure="...",
+        failed_step=FailedStep(0, "tap", str(exc_info.value)),
+        failed_expectations=[],
+        elements=[],
+        scenario_yaml="",
+        target_id="row.cell",
+    )
+    result = HeuristicTriageAgent().triage(ctx)
+    assert any("within" in s or "index" in s for s in result.suggestions)
+
+
+def test_heuristic_ambiguous_selector_fires_on_a_pre_translation_manifest() -> None:
+    # A run recorded before the Japanese message was translated to English still carries the old
+    # wording ("件一致") in its stored `reason` — the hint must keep firing when triage reads it.
+    ctx = TriageContext(
+        scenario="s",
+        failure="...",
+        failed_step=FailedStep(0, "tap", "2 件一致: ..."),
+        failed_expectations=[],
+        elements=[],
+        scenario_yaml="",
+        target_id="row.cell",
+    )
+    result = HeuristicTriageAgent().triage(ctx)
+    assert any("within" in s or "index" in s for s in result.suggestions)
+
+
 def test_apply_fix_renames_whole_token_only() -> None:
     text = "    - tap: { id: nav.setting }\n    - exists: { id: nav.settings }\n"
     patched, n = apply_fix(text, Fix("renameId", "rename", "nav.setting", "nav.settings"))

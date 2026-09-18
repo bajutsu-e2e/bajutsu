@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from bajutsu.common.drivers.base import AMBIGUOUS_MATCH_MARKER, LEGACY_AMBIGUOUS_MATCH_MARKER
+
 from ._functions import _close, _ids, fix_summary
 from .fix import Fix
 from .triage import Triage
@@ -65,7 +67,13 @@ class HeuristicTriageAgent:
             )
 
         if fs is not None and fs.action in _ACT_TARGETS:
-            if "elements matched" in fs.reason and context.target_id:
+            # `LEGACY_AMBIGUOUS_MATCH_MARKER` catches a manifest recorded before the message was
+            # translated to English — triage reads stored runs, and `assemble` accepts any manifest
+            # with no `schemaVersion` gate, so an old run's `reason` can still carry the old wording.
+            is_ambiguous = (
+                AMBIGUOUS_MATCH_MARKER in fs.reason or LEGACY_AMBIGUOUS_MATCH_MARKER in fs.reason
+            )
+            if is_ambiguous and context.target_id:
                 sugg = [
                     f"`{context.target_id}` matched multiple elements — add `within` or `index` to disambiguate."
                 ]

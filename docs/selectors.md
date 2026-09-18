@@ -282,8 +282,8 @@ exceptions leave the tie untouched. The selector itself may target `other`, or e
 candidate may already be `other`. `index` then counts positions in that filtered set, never the raw
 `find_all` result. A dropped `other` candidate must never shift a later position by one. An `index`
 against zero candidates is out of range, not "no match". A port's own error taxonomy needs that
-same two-way split. The Python message text is Japanese and implementation-specific. A port needs
-the classification alone, never the exact words.
+same two-way split. The Python message text is implementation-specific. A port needs the
+classification alone, never the exact words.
 
 ### Android's derived-label rule
 
