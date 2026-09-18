@@ -38,6 +38,7 @@ from bajutsu.common.platform_lifecycle import environment_for
 from bajutsu.common.run_meta.files import runs_root
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import device_pool, run_all
+from bajutsu.common.runner.pipeline import with_lifecycle_phases
 from bajutsu.common.scenario import Scenario, _scenarios_declaring_targets, load_expanded_scenarios
 
 
@@ -152,6 +153,17 @@ def _repeat_audit(
         )
         raise typer.Exit(2)
     eff = _load_effective(config, target_name)  # exits 2 on missing config / unknown target
+    # `with_lifecycle_phases` re-validates its own folded result already, but only `run_all` calls
+    # it — deep inside a path whose `finally` below only tears down the device pool / server, not a
+    # clean exit 2. A `targets.<name>.before`/`after` hook step carrying a `target` that disagrees
+    # with a 0- or 1-target scenario here (the check above only covers `len(targets) >= 2`) would
+    # otherwise reach the operator as a raw traceback (BE-0428). Calling it again here, discarding
+    # the result, is cheap and means passing this check guarantees `run_all` will too.
+    try:
+        with_lifecycle_phases(eff, scenarios)
+    except ValueError as e:
+        typer.echo(f"config-level before/after hook: {e}")
+        raise typer.Exit(2) from None
     # Mirror `run`/`doctor`: validate the backend before touching device CLIs, so an unknown /
     # unavailable actuator exits cleanly instead of crashing later.
     actuator, backends = _select_actuator_or_exit(backend, eff, [])

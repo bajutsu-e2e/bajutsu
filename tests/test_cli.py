@@ -862,6 +862,44 @@ def test_run_rejects_a_multi_target_scenario_end_to_end(tmp_path: Path) -> None:
     assert "cross-target" in r.output
 
 
+def test_run_rejects_a_bad_target_config_hook_end_to_end(tmp_path: Path) -> None:
+    # BE-0428: a config-level `before` hook step carrying a `target` that a 0-target scenario in
+    # this suite would reject must exit 2 cleanly, not crash with a raw traceback from deep inside
+    # `run_all` — the multi-target guard above only covers `len(targets) >= 2`.
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake] }\n"
+        "targets:\n"
+        "  demo:\n"
+        "    bundleId: com.example.demo\n"
+        "    before:\n"
+        "      - target: web\n"
+        "        tap: { id: home.start }\n",
+        encoding="utf-8",
+    )
+    scn = tmp_path / "s.yaml"
+    scn.write_text("- name: demo\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
+    r = runner.invoke(
+        app,
+        [
+            "run",
+            "--scenario",
+            str(scn),
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--config",
+            str(cfg),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "config-level before/after hook" in r.output
+    assert "declares no targets" in r.output
+
+
 def test_run_tag_filtering_away_a_multi_target_scenario_lets_the_rest_run(
     tmp_path: Path,
 ) -> None:
