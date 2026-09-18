@@ -6,11 +6,15 @@ import math
 import re
 import subprocess
 
+import yaml
+from pydantic import ValidationError
+
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.xcuitest import XcuitestChannelError, XcuitestRunnerCrashError
 from bajutsu.common.drivers.xcuitest_live import WebDriverError
 from bajutsu.common.run_meta.id import new_run_id
+from bajutsu.common.scenario import Selector as SelectorModel
 from bajutsu.repl.render import render_json, render_table
 
 _INDEX_SUFFIX = re.compile(r"(.*)#(-?\d+)\Z")
@@ -73,6 +77,9 @@ _HELP = (
     "  label:<text>      an element with no id, addressed by its exact label",
     "  label:<text>#<index>  the nth of several elements sharing that label",
     "  @<x>,<y>          a raw screen coordinate — `tap` only, bypasses the element tree entirely",
+    "  --sel <yaml>      a full scenario selector, e.g. --sel {idMatches: row.*, index: 1} — the",
+    "                    same id/idMatches/label/labelMatches/traits/value/within/index vocabulary",
+    "                    `run` accepts; must be one flow-style {...} mapping (no block YAML)",
 )
 
 
@@ -132,9 +139,23 @@ class ReplSession:
         return _table(matched, empty=f"no id or label contains {rest!r}")
 
     def _tap(self, rest: str) -> list[str]:
-        usage = ["usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y>"]
+        usage = [
+            "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y> | "
+            "tap --sel <yaml>"
+        ]
         if not rest:
             return usage
+        sel_arg = _strip_sel_flag(rest)
+        if sel_arg is not None:
+            split = _split_yaml_selector(sel_arg)
+            if split is None or split[1]:  # no {...}, or trailing text `tap` has no use for
+                return usage
+            try:
+                sel = _parse_yaml_selector(split[0])
+            except _InvalidYamlSelector as e:
+                return str(e).splitlines()
+            self._driver.tap(sel)
+            return [f"tapped {rest}"]
         target = _parse_target(rest)
         if target is None:
             return usage
@@ -153,12 +174,25 @@ class ReplSession:
     def _type(self, rest: str) -> list[str]:
         usage = [
             "usage: type <target> <text> — target is <id>[#<index>], label:<text>[#<index>], "
-            'or "<quoted target>" when it carries a space'
+            'or "<quoted target>" when it carries a space; or type --sel <yaml> <text>'
         ]
-        split = _split_target_and_text(rest)
-        if split is None:
+        sel_arg = _strip_sel_flag(rest)
+        if sel_arg is not None:
+            split = _split_yaml_selector(sel_arg)
+            if split is None or not split[1]:  # no {...}, or no text left to type
+                return usage
+            yaml_text, text = split
+            try:
+                sel = _parse_yaml_selector(yaml_text)
+            except _InvalidYamlSelector as e:
+                return str(e).splitlines()
+            self._driver.tap(sel)
+            self._driver.type_text(text)
+            return [f"typed into {yaml_text}"]
+        split2 = _split_target_and_text(rest)
+        if split2 is None:
             return usage
-        target_token, text = split
+        target_token, text = split2
         target = _parse_target(target_token)
         if isinstance(target, tuple):
             return ["type does not support an @<x>,<y> coordinate target — tap it instead"]
@@ -241,6 +275,65 @@ def _parse_point(text: str) -> base.Point | None:
     # `float` also reads `nan`/`inf`/`infinity`, none of which is a screen position: reject them
     # here rather than let one reach `tap_point` and fail opaquely inside a backend.
     return point if all(math.isfinite(c) for c in point) else None
+
+
+class _InvalidYamlSelector(Exception):
+    """A `--sel <yaml>` argument that didn't parse as YAML or didn't validate as a `Selector`."""
+
+
+def _strip_sel_flag(rest: str) -> str | None:
+    """The text after a leading `--sel` token, or `None` when *rest* doesn't start with one."""
+    if rest == "--sel":
+        return ""
+    if rest.startswith("--sel "):
+        return rest[len("--sel ") :].lstrip()
+    return None
+
+
+def _split_yaml_selector(rest: str) -> tuple[str, str] | None:
+    """*rest* split into a flow-style `{...}` YAML mapping and whatever text follows it.
+
+    Flow style only — the only YAML shape one typed line can hold unambiguously without block
+    style's newlines — so the closing `}` is an unambiguous boundary, the same role a quote plays
+    for a spaced `label:` target. `None` marks a line that doesn't open with `{` or never closes it.
+    """
+    rest = rest.lstrip()
+    if not rest.startswith("{"):
+        return None
+    depth = 0
+    for i, ch in enumerate(rest):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return rest[: i + 1], rest[i + 1 :].lstrip()
+    return None  # unbalanced braces
+
+
+def _parse_yaml_selector(text: str) -> base.Selector:
+    """A `--sel` argument's flow-style YAML mapping, as a resolvable `Selector`.
+
+    Reuses the same `Selector` pydantic model (and its `id`/`idMatches`/`label`/`labelMatches`/
+    `traits`/`value`/`within`/`index` vocabulary, camelCase aliases included) a scenario step
+    authors against, so this is the one target form with no vocabulary gap — everything `run`
+    accepts, `tap`/`type` can now express too.
+
+    Raises:
+        _InvalidYamlSelector: *text* isn't valid YAML, isn't a mapping, or fails `Selector`'s own
+            validation (an unknown field, a malformed `id` candidate list, no condition at all).
+    """
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        raise _InvalidYamlSelector(f"invalid --sel YAML: {e}") from e
+    try:
+        # `model_validate` itself rejects a non-mapping (e.g. the flow-set shorthand `{a, b}`,
+        # valid YAML but not a `Selector`) with its own clear message — no separate dict check
+        # needed on top of it.
+        return SelectorModel.model_validate(data).as_selector()
+    except ValidationError as e:
+        raise _InvalidYamlSelector(f"invalid --sel selector: {e}") from e
 
 
 def _split_target_and_text(rest: str) -> tuple[str, str] | None:

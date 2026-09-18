@@ -19,12 +19,14 @@
 [BE-0423](../BE-0423-cli-repl-inspect-actuate/BE-0423-cli-repl-inspect-actuate-ja.md)は、`bajutsu
 repl`をプレーンな1行ずつの`bajutsu>`プロンプトとして実装しました。そこでの`tap`/`type`は`id`だけ
 で要素を指定する形式で、このBE-0423自身の「詳細設計」と「検討した代替案」が、シェル本体が着地した
-あとの自然な続きとして明記していた、意図的なv1の範囲縮小です。本項目は、その続きを2つの方向で
-実現します。`tap`/`type`が、シェルが内部ですでに解決している`Selector`の語彙のうち`label`と
-`index`にも届くようになり、加えてセレクタの解決を一切経由しない座標タップが加わります。そしてシェル
-自体が、標準入力と標準出力の両方が対応する端末であるとき、ncurses風の画面として描画されるように
-なります。コマンド行はつねに画面の一番上に固定され、各コマンドへの応答は下のスクロール可能かつ
-検索可能な領域に積み重なります。
+あとの自然な続きとして明記していた、意図的なv1の範囲縮小です。本項目は、その続きを3つの方向で
+実現します。`tap`/`type`が、シェルが内部ですでに解決している`Selector`の語彙に届くようになります。
+短いショートカット文法(`label`、`index`)と、ショートカットでは届かないフィールド
+(`idMatches`・`labelMatches`・`traits`・`value`・`within`)向けにシナリオの`Selector`モデルを
+そのまま再利用する`--sel <yaml>`という逃げ道の、両方によってです。加えてセレクタの解決を一切
+経由しない座標タップが加わります。そしてシェル自体が、標準入力と標準出力の両方が対応する端末で
+あるとき、ncurses風の画面として描画されるようになります。コマンド行はつねに画面の一番上に固定され、
+各コマンドへの応答は下のスクロール可能かつ検索可能な領域に積み重なります。
 
 ## 動機
 
@@ -42,6 +44,14 @@ v1のシェルを実際に使うなかで、2つの隙間が見えてきまし�
 報告するコントロールに届いたりするために、シナリオのステップを書かずに済ませる用途です。
 `Driver.tap_point`はすでにどのbackendにも存在しますが、`repl`にはそれを呼び出すコマンドが
 ありませんでした。
+
+`id`・`label`・`index`をカバーするショートカット文法だけでは、本当の隙間がまだ残ります。
+`idMatches`・`labelMatches`・`traits`・`value`・`within`には、ショートカットの綴りが一つも
+ありません。それぞれにglobフラグ・正規表現フラグ・trait一覧・入れ子セレクタ構文といった綴りを
+発明していけば、コマンドライン文法はショートカットが本来持つべき範囲をはるかに超えて膨らんで
+しまいます。シナリオの著者はまさにこのための語彙をすでに持っています。ステップが実際に使う
+`Selector`のYAMLです。これをREPLの逃げ道としてそのまま再利用すれば、新しい語彙を設計したり
+覚えたりすることなくこの隙間を埋められます。
 
 もう一つ、プレーンなプロンプトループでは、長い`tree`を読み返したり、以前の`tap`の結果を探したり
 する作業が、端末自体の履歴をスクロールすることを意味していました。シェル自身は自分が表示した内容
@@ -83,6 +93,25 @@ id や label自体が`#<digits>`で終わっていたり、`@`や`label:`で始�
 それ以外では最初の空白区切りトークンがターゲットになる、という今までどおりの挙動です。`type`は
 `@<x>,<y>`ターゲットをそのまま拒否します。「その座標にタップする」という概念はあっても、「その
 座標にタイプする」という概念は存在しないためです。
+
+### 完全なセレクタへの逃げ道(`--sel`)
+
+`tap --sel <yaml>`と`type --sel <yaml> <text>`は、flowスタイルの`{...}`という1つのYAMLマッピング
+だけを受け付けます。blockスタイルは改行を必要とし、1行で打つ入力にはその形を取れないため、flow
+スタイルがこの入力にとりうる唯一の形です。その閉じる`}`は、`"<空白を含むターゲット>"`における
+引用符と同じ役割を果たし、`type`のターゲットとテキストの境界にもなります。このマッピングは
+`yaml.safe_load`で解析したあと、シナリオのステップが実際に使うのと**同じ**
+`bajutsu.common.scenario.Selector` pydanticモデルで検証します
+(`Selector.model_validate(data).as_selector()`)。独自に組んだスキーマではありません。そのため
+シナリオが使えるすべてのフィールド(`id`・`idMatches`・`label`・`labelMatches`・`traits`・
+`value`・`within`・`index`。snake_caseのフィールド名とcamelCaseの別名のどちらも)が、両者の間に
+語彙のずれを一切持ち込まずにここでも使えます。ショートカットの綴りでは表せない`within`の入れ子
+セレクタの形も含めてです。YAMLの構文エラーやSelectorの検証失敗(未知のフィールド、空のセレクタ、
+不正な`id`のOR候補リストなど)は、汎用的な使い方の案内ではなく、その根本の例外
+(`yaml.YAMLError`または`pydantic.ValidationError`)をそのままコマンドの応答として表示します。
+これらのメッセージはすでに具体的で、そのまま手がかりになるからです。上のショートカット形式は、
+`--sel`に置き換えられることなく既定のまま残ります。よくある単一idの場合には、`tap <id>`のほうが
+`--sel {id: ...}`より短く打てるからです(詳細は「検討した代替案」を参照)。
 
 ### ncurses風の画面
 
@@ -156,6 +185,12 @@ Ctrl-Cは打ちかけの行(またはフィルタの入力)を捨てます。プ
   が実際に求めていた「何らかのショートカットキー1つ」(すでに`Tab`がそれにあたります)に遅延を
   持ち込みます。`Esc`は代わりに、進行中のフィルタ編集を取り消す用途に限って使っています。小さな
   遅延が気にならない場面だからです。
+- **`--sel`を並べて足すのではなく、ショートカットのターゲット文法を丸ごとYAMLに置き換える。**
+  却下しました。素朴な`tap <id>`は圧倒的によくある使い方であり、`tap {id: stable.save}`はそれに
+  対して単に打つ量が増えるだけで得るものがありません。ショートカットが存在する理由自体が、操作者
+  がまず手を伸ばす操作に対して完全なセレクタ構文より速いことにあります。先頭の`{`を検知する方式
+  ではなく明示的な`--sel`フラグにすることで、パーサにとっても読み手にとっても2つの文法が曖昧に
+  ならず、このシェルがすでに持つフラグの流儀(`tree --json`)にも合います。
 
 ## 進捗
 
@@ -166,19 +201,23 @@ Ctrl-Cは打ちかけの行(またはフィルタの入力)を捨てます。プ
 - [x] `bajutsu/repl/session.py`の`_parse_target`/`_split_target_and_text`。`tap`/`type`向けの
   `<id>`、`<id>#<index>`、`label:<text>[#<index>]`、`@<x>,<y>`(tap専用)の各ターゲット形式と、
   それを文書化した`_HELP`の更新。
+- [x] `bajutsu/repl/session.py`の`--sel <yaml>`。`_strip_sel_flag`/`_split_yaml_selector`/
+  `_parse_yaml_selector`が、`bajutsu.common.scenario.Selector`を通じて
+  `id`・`idMatches`・`label`・`labelMatches`・`traits`・`value`・`within`・`index`の全語彙を検証します。
 - [x] `bajutsu/repl/tui.py`。`Screen` Protocol、`TuiState`、`handle_key`、`run_tui`、そして実際
   のエントリポイントである`run`(`curses.wrapper` + `locale.setlocale`)。`bajutsu/repl/cli.py`
   は、標準入力と標準出力の両方が端末であるときはそちらへ、そうでなければ従来どおり
   `repl_loop`へ振り分けます。
-- [x] 新しいターゲット形式に対する`FakeDriver`ベースのテスト(`tests/test_repl.py`)と、TUIの
-  エンジンに対する`FakeScreen`ベースのテスト一式(`tests/test_repl_tui.py`)。どちらもカバレッジ
-  100%です。
-- [x] `docs/cli.md`と`docs/ja/cli.md`の`## repl`節を更新しました。新しいターゲット構文の表と
-  TUIのキー割り当ての表を加え、閉じた「`id`だけで指定する」というv1の制約を置き換えました。
+- [x] 新しいターゲット形式(`--sel`を含む)に対する`FakeDriver`ベースのテスト(`tests/test_repl.py`)
+  と、TUIのエンジンに対する`FakeScreen`ベースのテスト一式(`tests/test_repl_tui.py`)。どちらも
+  カバレッジ100%です。
+- [x] `docs/cli.md`と`docs/ja/cli.md`の`## repl`節を更新しました。新しいターゲット構文の表
+  (`--sel`を含む)とTUIのキー割り当ての表を加え、閉じた「`id`だけで指定する」というv1の制約を
+  置き換えました。
 
 ログ:
 
-- [#2026](https://github.com/bajutsu-e2e/bajutsu/pull/2026) — 作業単位1〜4、本項目の全体。
+- [#2026](https://github.com/bajutsu-e2e/bajutsu/pull/2026) — 作業単位1〜5、本項目の全体。
 
 ## 参考
 
@@ -187,6 +226,8 @@ Ctrl-Cは打ちかけの行(またはフィルタの入力)を捨てます。プ
   「検討した代替案」を参照してください。
 - [`Selector`](../../docs/ja/glossary.md#シナリオのオーサリング) — `bajutsu/common/drivers/base/selector.py`、
   `bajutsu/common/drivers/base/_functions.py`(`resolve_unique`、`matches`)
+- シナリオの`Selector` pydanticモデル — `bajutsu/common/scenario/models/selector.py`。`--sel <yaml>`
+  がそのまま再利用するバリデータです
 - `Driver.tap_point` — `bajutsu/common/drivers/base/driver.py`
 - [BE-0332 — 読み取り遅延バリア](../BE-0332-read-lag-barrier/BE-0332-read-lag-barrier-ja.md) —
   本項目による影響は受けません。すべての`tree`読み取りに対して、BE-0423のときと同じように働き

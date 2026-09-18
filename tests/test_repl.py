@@ -233,7 +233,7 @@ def test_tap_accepts_an_id_carrying_a_space() -> None:
 def test_tap_needs_a_target() -> None:
     session, _driver = _session(_el("stable.save"))
     assert session.dispatch("tap") == [
-        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y>"
+        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y> | tap --sel <yaml>"
     ]
 
 
@@ -267,7 +267,7 @@ def test_tap_by_label_and_index_disambiguates() -> None:
 def test_tap_by_label_rejects_an_empty_label() -> None:
     session, driver = _session()
     assert session.dispatch("tap label:") == [
-        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y>"
+        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y> | tap --sel <yaml>"
     ]
     assert driver.actions == []
 
@@ -275,7 +275,7 @@ def test_tap_by_label_rejects_an_empty_label() -> None:
 def test_tap_by_id_rejects_an_empty_id_left_by_a_bare_index_suffix() -> None:
     session, driver = _session()
     assert session.dispatch("tap #0") == [
-        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y>"
+        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y> | tap --sel <yaml>"
     ]
     assert driver.actions == []
 
@@ -289,7 +289,7 @@ def test_tap_by_coordinate_bypasses_the_element_tree() -> None:
 def test_tap_by_coordinate_rejects_a_malformed_point() -> None:
     session, driver = _session()
     assert session.dispatch("tap @120") == [
-        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y>"
+        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y> | tap --sel <yaml>"
     ]
     assert driver.actions == []
 
@@ -297,7 +297,7 @@ def test_tap_by_coordinate_rejects_a_malformed_point() -> None:
 def test_tap_by_coordinate_rejects_non_numeric_components() -> None:
     session, driver = _session()
     assert session.dispatch("tap @abc,340") == [
-        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y>"
+        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y> | tap --sel <yaml>"
     ]
     assert driver.actions == []
 
@@ -309,7 +309,7 @@ def test_tap_by_coordinate_rejects_a_non_finite_component(point: str) -> None:
     # reach the driver and fail opaquely inside a backend.
     session, driver = _session()
     assert session.dispatch(f"tap @{point}") == [
-        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y>"
+        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y> | tap --sel <yaml>"
     ]
     assert driver.actions == []
 
@@ -341,6 +341,77 @@ def test_tap_raises_element_not_tappable_rather_than_scrolling_the_cover_away() 
         session.dispatch("tap stable.save")
 
 
+def test_tap_by_sel_uses_the_full_selector_vocabulary() -> None:
+    # idMatches + index together: no shortcut form reaches this combination, only --sel.
+    session, driver = _session(
+        _el("row.1", label="A"),
+        _el("row.2", label="B"),
+    )
+    assert session.dispatch("tap --sel {idMatches: row.*, index: 1}") == [
+        "tapped --sel {idMatches: row.*, index: 1}"
+    ]
+    assert driver.actions == [("tap", {"idMatches": "row.*", "index": 1})]
+
+
+def test_tap_by_sel_reaches_within() -> None:
+    # `within` has no shortcut spelling at all — only the full Selector vocabulary via --sel.
+    session, driver = _session(
+        _el("form.login", frame=(0.0, 0.0, 100.0, 50.0)),
+        _el("row.submit", frame=(10.0, 10.0, 30.0, 20.0)),  # inside form.login
+    )
+    session.dispatch("tap --sel {id: row.submit, within: {id: form.login}}")
+    assert driver.actions == [
+        ("tap", {"id": "row.submit", "within": {"id": "form.login"}}),
+    ]
+
+
+def test_tap_by_sel_needs_an_argument() -> None:
+    session, driver = _session()
+    assert session.dispatch("tap --sel") == [
+        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y> | tap --sel <yaml>"
+    ]
+    assert driver.actions == []
+
+
+def test_tap_by_sel_rejects_unbalanced_braces() -> None:
+    session, driver = _session()
+    assert session.dispatch("tap --sel {id: stable.save") == [
+        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y> | tap --sel <yaml>"
+    ]
+    assert driver.actions == []
+
+
+def test_tap_by_sel_rejects_trailing_text_after_the_mapping() -> None:
+    session, driver = _session()
+    assert session.dispatch("tap --sel {id: stable.save} extra") == [
+        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y> | tap --sel <yaml>"
+    ]
+    assert driver.actions == []
+
+
+def test_tap_by_sel_rejects_an_empty_selector() -> None:
+    session, driver = _session()
+    result = session.dispatch("tap --sel {}")
+    assert "invalid --sel selector" in result[0]
+    assert driver.actions == []
+
+
+def test_tap_by_sel_rejects_malformed_yaml() -> None:
+    # Balanced braces (so `_split_yaml_selector` accepts it as a mapping candidate) but invalid
+    # YAML inside them (an unterminated quoted scalar) — a distinct failure from an unknown field.
+    session, driver = _session()
+    result = session.dispatch('tap --sel {id: "unterminated}')
+    assert "invalid --sel YAML" in result[0]
+    assert driver.actions == []
+
+
+def test_tap_by_sel_rejects_an_unknown_field() -> None:
+    session, driver = _session()
+    result = session.dispatch("tap --sel {bogus: 1}")
+    assert "invalid --sel selector" in result[0]
+    assert driver.actions == []
+
+
 def test_type_focuses_the_element_before_typing() -> None:
     session, driver = _session(_el("stable.query"))
     assert session.dispatch("type stable.query hello world") == ["typed into stable.query"]
@@ -351,7 +422,7 @@ def test_type_needs_both_a_target_and_text() -> None:
     session, driver = _session(_el("stable.query"))
     usage = [
         "usage: type <target> <text> — target is <id>[#<index>], label:<text>[#<index>], "
-        'or "<quoted target>" when it carries a space'
+        'or "<quoted target>" when it carries a space; or type --sel <yaml> <text>'
     ]
     assert session.dispatch("type stable.query") == usage
     assert session.dispatch("type") == usage
@@ -382,7 +453,7 @@ def test_type_rejects_an_unclosed_quoted_target() -> None:
     session, driver = _session(_el("stable.query"))
     assert session.dispatch('type "label:Search box hello') == [
         "usage: type <target> <text> — target is <id>[#<index>], label:<text>[#<index>], "
-        'or "<quoted target>" when it carries a space'
+        'or "<quoted target>" when it carries a space; or type --sel <yaml> <text>'
     ]
     assert driver.actions == []
 
@@ -399,9 +470,37 @@ def test_type_rejects_an_empty_label_target() -> None:
     session, driver = _session()
     usage = [
         "usage: type <target> <text> — target is <id>[#<index>], label:<text>[#<index>], "
-        'or "<quoted target>" when it carries a space'
+        'or "<quoted target>" when it carries a space; or type --sel <yaml> <text>'
     ]
     assert session.dispatch("type label: hello") == usage
+    assert driver.actions == []
+
+
+def test_type_by_sel_uses_the_full_selector_vocabulary() -> None:
+    session, driver = _session(_el(None, label="Search box"))
+    assert session.dispatch("type --sel {label: Search box} hello world") == [
+        "typed into {label: Search box}"
+    ]
+    assert driver.actions == [
+        ("tap", {"label": "Search box"}),
+        ("type", "hello world"),
+    ]
+
+
+def test_type_by_sel_needs_text_after_the_mapping() -> None:
+    session, driver = _session()
+    usage = [
+        "usage: type <target> <text> — target is <id>[#<index>], label:<text>[#<index>], "
+        'or "<quoted target>" when it carries a space; or type --sel <yaml> <text>'
+    ]
+    assert session.dispatch("type --sel {id: stable.query}") == usage
+    assert driver.actions == []
+
+
+def test_type_by_sel_rejects_an_invalid_yaml_mapping() -> None:
+    session, driver = _session()
+    result = session.dispatch("type --sel {id: stable.query, bogus: 1} hello")
+    assert "invalid --sel selector" in result[0]
     assert driver.actions == []
 
 

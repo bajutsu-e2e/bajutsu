@@ -20,11 +20,13 @@
 `bajutsu repl` as a plain, line-at-a-time `bajutsu>` prompt whose `tap`/`type` addressed an element
 by `id` alone — a deliberate v1 scope cut, named in that item's own *Detailed design* and
 *Alternatives considered* as a natural follow-up once the shell itself had landed. This item is
-that follow-up, on two fronts: `tap`/`type` now reach the rest of the `Selector` vocabulary the
-shell already resolves against under the hood (`label`, `index`), plus a raw coordinate `tap`
-bypassing selector resolution entirely; and the shell itself renders as an ncurses-style screen —
-the command line pinned at the top, every answer accumulating in a scrollable, greppable pane below
-it — when both ends of the terminal support it.
+that follow-up, on three fronts: `tap`/`type` reach the rest of the `Selector` vocabulary the shell
+already resolves against under the hood, through both a terse shortcut grammar (`label`, `index`)
+and a `--sel <yaml>` escape hatch reusing the scenario `Selector` model directly for the fields the
+shortcuts cannot reach (`idMatches`, `labelMatches`, `traits`, `value`, `within`); a raw coordinate
+`tap` bypasses selector resolution entirely; and the shell itself renders as an ncurses-style
+screen — the command line pinned at the top, every answer accumulating in a scrollable, greppable
+pane below it — when both ends of the terminal support it.
 
 ## Motivation
 
@@ -41,6 +43,13 @@ a target was missing. A raw coordinate tap closes a third, narrower gap: confirm
 covering element's edge sits, or reaching a control the tree misreports, without writing a scenario
 step to do it. `Driver.tap_point` already exists on every backend for this; `repl` had no command
 that called it.
+
+A shortcut grammar covering `id`, `label`, and `index` still leaves a real gap: `idMatches`,
+`labelMatches`, `traits`, `value`, and `within` have no shortcut spelling at all, and inventing one
+for each — a glob flag, a regex flag, a trait list, a nested-selector syntax — would grow the
+command-line grammar well past what a shortcut should carry. A scenario author already has a
+vocabulary for exactly this: the `Selector` YAML a step authors against. Reusing it as a REPL escape
+hatch closes the gap with no new vocabulary to design or learn.
 
 Separately, the plain prompt loop makes reading back a long `tree` or hunting for one earlier
 `tap`'s result mean scrolling the terminal's own history — the shell has no memory of what it
@@ -80,6 +89,24 @@ line starting with `"` reads up to the matching `"` as the target (letting `type
 hello` name a spaced label), otherwise the first whitespace-delimited token is the target, exactly
 today's behavior. `type` rejects an `@<x>,<y>` target outright — there is no "type at a point"
 concept the way there is a "tap at a point" one.
+
+### Full-selector escape hatch (`--sel`)
+
+`tap --sel <yaml>` and `type --sel <yaml> <text>` accept one flow-style `{...}` YAML mapping —
+block style needs newlines a single typed line cannot hold, so flow style is the only shape this
+input can take, and its closing `}` doubles as `type`'s target/text boundary, the same role a quote
+plays for `"<target with a space>"`. The mapping is parsed with `yaml.safe_load` and validated
+through the *same* `bajutsu.common.scenario.Selector` pydantic model a scenario step authors
+against (`Selector.model_validate(data).as_selector()`), not a hand-rolled schema — so every field
+a scenario can use (`id`, `idMatches`, `label`, `labelMatches`, `traits`, `value`, `within`,
+`index`, both the snake_case field names and their camelCase aliases) is available here with zero
+vocabulary drift between the two surfaces, including `within`'s nested-selector shape, which no
+shortcut spelling could express. A YAML syntax error or a `Selector` validation failure (an unknown
+field, an empty selector, a malformed `id` OR-candidate list) reports the underlying error
+(`yaml.YAMLError` or `pydantic.ValidationError`) as the command's answer rather than a generic usage
+line, since those messages are already specific enough to act on. The shortcut forms above stay the
+default rather than being replaced by `--sel`, because `tap <id>` is shorter to type than
+`--sel {id: ...}` for the common single-id case — see *Alternatives considered*.
 
 ### An ncurses-style screen
 
@@ -147,6 +174,12 @@ is the TUI's only way out — documented as the one behavioral difference from t
   one shortcut key this item's request actually asked for (a single key, which `Tab` already is).
   `Esc` is used narrowly instead, only to abandon an in-progress filter edit, where a small delay is
   unnoticeable.
+- **Replace the shortcut target grammar with YAML entirely, rather than adding `--sel` beside it.**
+  Rejected: a bare `tap <id>` is the overwhelmingly common case, and `tap {id: stable.save}` is
+  strictly more to type for it with no benefit — the shortcuts' whole reason to exist is that they
+  are faster than the full selector syntax for what an operator reaches for first. An explicit
+  `--sel` flag (over sniffing a leading `{`) keeps the two grammars unambiguous to both the parser
+  and the reader, and matches this shell's existing flag style (`tree --json`).
 
 ## Progress
 
@@ -157,17 +190,22 @@ is the TUI's only way out — documented as the one behavioral difference from t
 - [x] `_parse_target`/`_split_target_and_text` in `bajutsu/repl/session.py`: `<id>`, `<id>#<index>`,
   `label:<text>[#<index>]`, and `@<x>,<y>` (tap-only) target forms for `tap`/`type`, with `_HELP`
   updated to document them.
+- [x] `--sel <yaml>` in `bajutsu/repl/session.py`: `_strip_sel_flag`/`_split_yaml_selector`/
+  `_parse_yaml_selector`, validating through `bajutsu.common.scenario.Selector` for the full
+  `id`/`idMatches`/`label`/`labelMatches`/`traits`/`value`/`within`/`index` vocabulary.
 - [x] `bajutsu/repl/tui.py`: `Screen` Protocol, `TuiState`, `handle_key`, `run_tui`, and the real
   `run` entry point (`curses.wrapper` + `locale.setlocale`); `bajutsu/repl/cli.py` routes to it
   when both stdin and stdout are a tty, the plain `repl_loop` otherwise.
-- [x] `FakeDriver`-backed tests for the new target forms (`tests/test_repl.py`) and a `FakeScreen`-
-  backed test suite for the TUI engine (`tests/test_repl_tui.py`), both at 100% coverage.
+- [x] `FakeDriver`-backed tests for the new target forms, including `--sel` (`tests/test_repl.py`),
+  and a `FakeScreen`-backed test suite for the TUI engine (`tests/test_repl_tui.py`), both at 100%
+  coverage.
 - [x] `docs/cli.md` and `docs/ja/cli.md` `## repl` sections updated: the new target-syntax table
-  and the TUI keybindings table, replacing the closed "addressed by `id` alone" v1 limitation.
+  (including `--sel`) and the TUI keybindings table, replacing the closed "addressed by `id` alone"
+  v1 limitation.
 
 Log:
 
-- [#2026](https://github.com/bajutsu-e2e/bajutsu/pull/2026) — Units 1-4, the whole item.
+- [#2026](https://github.com/bajutsu-e2e/bajutsu/pull/2026) — Units 1-5, the whole item.
 
 ## References
 
@@ -176,6 +214,8 @@ Log:
   original id-only scope cut this item closes.
 - [`Selector`](../../docs/glossary.md#scenario-authoring) — `bajutsu/common/drivers/base/selector.py`,
   `bajutsu/common/drivers/base/_functions.py` (`resolve_unique`, `matches`)
+- The scenario `Selector` pydantic model — `bajutsu/common/scenario/models/selector.py`, the
+  validator `--sel <yaml>` reuses directly
 - `Driver.tap_point` — `bajutsu/common/drivers/base/driver.py`
 - [BE-0332 — read-lag barrier](../BE-0332-read-lag-barrier/BE-0332-read-lag-barrier.md) — unaffected
   by this item; still governs every `tree` read the same way it did under BE-0423

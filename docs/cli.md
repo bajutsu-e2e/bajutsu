@@ -719,9 +719,10 @@ Once the app is up, the shell prompts with `bajutsu>`:
 | `help` | list the commands above |
 | `exit` / `quit` | leave the shell |
 
-**Targets** (`tap`/`type`): the shell now reaches the same `id` / `label` / `index` vocabulary a
+**Targets** (`tap`/`type`): the shell reaches the same `id` / `label` / `index` vocabulary a
 scenario selector does, plus a raw coordinate that `tap` alone accepts, bypassing selector
-resolution entirely:
+resolution entirely, plus (`--sel`) the full selector grammar for anything the shortcut forms
+below cannot express:
 
 | Form | Matches |
 |---|---|
@@ -731,9 +732,12 @@ resolution entirely:
 | `label:<text>#<index>` | the `<index>`-th of several elements sharing that label |
 | `@<x>,<y>` | `tap` only — a raw pixel coordinate, bypassing the element tree entirely (`Driver.tap_point`) |
 | `"<target with a space>"` | `type` only — quote a multi-word `label:` target so it can be told apart from the text that follows |
+| `--sel <yaml>` | a full [selector](glossary.md#scenario-authoring) — `--sel {idMatches: row.*, index: 1}`, `--sel {label: Sign in, within: {id: form.login}}` — the same `id` / `idMatches` / `label` / `labelMatches` / `traits` / `value` / `within` / `index` fields `run` accepts, parsed with the scenario's own `Selector` model. Must be one flow-style `{...}` mapping (block YAML needs newlines a single typed line cannot hold); the closing `}` is what tells `type`'s target from its text, the way a quote does for `"<target with a space>"` |
 
-This shell cannot reach an id or label that itself ends in a literal `#<digits>`, or starts with
-`@` or `label:` — read it off `tree`/`find` to check, and treat the gap as a known limitation.
+The shortcut forms above cannot reach an id or label that itself ends in a literal `#<digits>`,
+or starts with `@` or `label:`, and none of them reaches `idMatches`, `labelMatches`, `traits`,
+`value`, or `within` — `--sel` is the escape hatch for all of these; the shortcuts exist because
+`--sel {id: ...}` is more to type than `tap <id>` for the common case.
 
 - **The columns are the fields a [selector](glossary.md#scenario-authoring) matches against**,
   normalized by the backend — not a platform inspector's own vocabulary. An id read off a `tree`
