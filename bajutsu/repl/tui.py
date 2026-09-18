@@ -4,8 +4,8 @@ Used instead of the plain `repl_loop` (`loop.py`) only when both stdin and stdou
 terminal (`cli.py`) — a piped/non-interactive `repl` keeps the plain line-at-a-time shell, which is
 what most terminal tools do and keeps this front end optional rather than a hard dependency of every
 caller. Split the same way `loop.py` splits `read_line`/`say` from `ReplSession`: `TuiState` and
-`handle_key` are pure (no curses import touches them), so they run under a `FakeScreen` in tests with
-no real terminal; only `run` — the actual entry point — touches `curses`.
+`handle_key` do no terminal I/O — they read curses' key constants but never touch a window — so they
+run under a `FakeScreen` in tests with no real terminal; only `run` opens a real one.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
 from bajutsu.repl.loop import PROMPT
+from bajutsu.repl.render import _display_width
 from bajutsu.repl.session import COMMAND_ERRORS, FATAL_ERRORS, ReplExit, ReplSession
 
 Mode = Literal["input", "scroll", "filter"]
@@ -48,6 +49,8 @@ class TuiState:
     output: list[str] = field(default_factory=list)  # the full transcript, prompt lines included
     scroll_offset: int = 0  # lines scrolled up from the bottom of the current (filtered) view
     filter_query: str | None = None
+    stashed_input: tuple[str, int] = ("", 0)  # a command parked while the filter prompt borrows
+    # `input_buffer`/`cursor` — restored, not discarded, when the filter prompt closes
 
 
 def handle_key(state: TuiState, key: int | str, pane_height: int) -> str | None:
@@ -87,17 +90,22 @@ def _handle_input_key(state: TuiState, key: int | str) -> str | None:
 
 
 def _handle_scroll_key(state: TuiState, key: int | str, pane_height: int) -> None:
+    # Clamped here, not only inside `_visible`: an offset the view cannot honor would still
+    # accumulate unboundedly (every no-op ↑ press while already at the top), so later output
+    # would jump the pane up by however far past the end it had run, instead of staying pinned.
+    max_offset = max(0, len(_filtered(state)) - pane_height)
     if key == "\t":
         state.mode = "input"
     elif key == curses.KEY_UP:
-        state.scroll_offset += 1
+        state.scroll_offset = min(max_offset, state.scroll_offset + 1)
     elif key == curses.KEY_DOWN:
         state.scroll_offset = max(0, state.scroll_offset - 1)
     elif key == curses.KEY_PPAGE:
-        state.scroll_offset += max(1, pane_height)
+        state.scroll_offset = min(max_offset, state.scroll_offset + max(1, pane_height))
     elif key == curses.KEY_NPAGE:
         state.scroll_offset = max(0, state.scroll_offset - max(1, pane_height))
     elif key == "/":
+        state.stashed_input = (state.input_buffer, state.cursor)
         state.mode = "filter"
         state.input_buffer = ""
         state.cursor = 0
@@ -106,14 +114,12 @@ def _handle_scroll_key(state: TuiState, key: int | str, pane_height: int) -> Non
 def _handle_filter_key(state: TuiState, key: int | str) -> None:
     if _is_enter(key):
         state.filter_query = state.input_buffer.strip() or None
-        state.input_buffer = ""
-        state.cursor = 0
+        state.input_buffer, state.cursor = state.stashed_input
         state.scroll_offset = 0
         state.mode = "scroll"
         return
     if key == "\x1b":  # Esc: abandon the edit; whatever filter was active stays active
-        state.input_buffer = ""
-        state.cursor = 0
+        state.input_buffer, state.cursor = state.stashed_input
         state.mode = "scroll"
         return
     _edit_buffer(state, key)
@@ -230,9 +236,13 @@ def run_tui(session: ReplSession, screen: Screen) -> None:
         try:
             key = screen.get_wch()
         except KeyboardInterrupt:
-            state.input_buffer = ""
-            state.cursor = 0
-            if state.mode == "filter":
+            # A no-op while just browsing the scroll pane (nothing is being typed there to
+            # abandon) — matches the docs table's "Ctrl-C: —" row for that mode.
+            if state.mode == "input":
+                state.input_buffer = ""
+                state.cursor = 0
+            elif state.mode == "filter":
+                state.input_buffer, state.cursor = state.stashed_input
                 state.mode = "scroll"
             continue
         if key == curses.KEY_RESIZE:
@@ -255,6 +265,50 @@ def run_tui(session: ReplSession, screen: Screen) -> None:
             return
 
 
+def _fit(text: str, columns: int) -> str:
+    """*text* cut to at most *columns* terminal columns — `_display_width`, not `len`, per char.
+
+    `addnstr`'s own `n` argument counts characters, not columns, so a line of full-width text (a
+    Japanese element label, a typed Japanese argument) can pass it and still overrun the row: two
+    display columns per character, not one, wrapping onto the next row or hitting `curses.error` at
+    the bottom-right cell.
+    """
+    out: list[str] = []
+    used = 0
+    for ch in text:
+        cost = _display_width(ch)
+        if used + cost > columns:
+            break
+        out.append(ch)
+        used += cost
+    return "".join(out)
+
+
+def _input_row(prompt: str, buffer: str, cursor: int, columns: int) -> tuple[str, int]:
+    """The `prompt`+`buffer` slice to draw in a `columns`-wide row, plus the column to place the
+    cursor at within it.
+
+    Slides right, in display columns (not characters — see `_fit`), just far enough to keep the
+    cursor (a character index into `buffer`) on screen once typing runs past the row's width;
+    `addnstr`'s own truncation only ever hides the *end* of a long line, which would otherwise
+    leave every keystroke past the edge invisible with the cursor pinned in place.
+    """
+    if columns <= 0:
+        return "", 0
+    text = prompt + buffer
+    cursor_index = len(prompt) + cursor
+    cursor_col = _display_width(text[:cursor_index])
+    if cursor_col < columns:
+        return _fit(text, columns), cursor_col
+    target_col = cursor_col - columns + 1
+    start = 0
+    col = 0
+    while start < len(text) and col < target_col:
+        col += _display_width(text[start])
+        start += 1
+    return _fit(text[start:], columns), cursor_col - col
+
+
 def _draw(screen: Screen, state: TuiState) -> None:
     height, width = screen.getmaxyx()
     screen.erase()
@@ -262,18 +316,19 @@ def _draw(screen: Screen, state: TuiState) -> None:
     # Leaves the last column blank: writing a full-width string into a window's bottom-right cell
     # is a well-known ncurses quirk (the cursor tries to wrap) that can raise `curses.error`.
     n = max(0, width - 1)
-    screen.addnstr(0, 0, f"{prompt}{state.input_buffer}", n)
+    row, cursor_col = _input_row(prompt, state.input_buffer, state.cursor, n)
+    screen.addnstr(0, 0, row, n)
     banner = (
         "-- SCROLL  (Tab: back to input · ↑↓ scroll · PgUp/PgDn: page · /: filter) --"
         if state.mode == "scroll"
         else "-" * min(width, 40)
     )
-    screen.addnstr(1, 0, banner, n)
+    screen.addnstr(1, 0, _fit(banner, n), n)
     pane_height = max(0, height - 2)
     for i, line in enumerate(_visible(state, pane_height)):
-        screen.addnstr(2 + i, 0, line, n)
+        screen.addnstr(2 + i, 0, _fit(line, n), n)
     if state.mode != "scroll":
-        screen.move(0, min(len(prompt) + state.cursor, n))
+        screen.move(0, min(cursor_col, n))
     screen.refresh()
 
 

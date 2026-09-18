@@ -302,6 +302,18 @@ def test_tap_by_coordinate_rejects_non_numeric_components() -> None:
     assert driver.actions == []
 
 
+@pytest.mark.parametrize("point", ["nan,340", "340,inf", "-infinity,340", "1e400,340"])
+def test_tap_by_coordinate_rejects_a_non_finite_component(point: str) -> None:
+    # `float()` also reads nan/inf/infinity, and an overflowing literal like 1e400 reads as inf —
+    # none of these is a screen position, so they must fail the same way a typo does rather than
+    # reach the driver and fail opaquely inside a backend.
+    session, driver = _session()
+    assert session.dispatch(f"tap @{point}") == [
+        "usage: tap <id>[#<index>] | tap label:<text>[#<index>] | tap @<x>,<y>"
+    ]
+    assert driver.actions == []
+
+
 def test_tap_raises_element_not_found_for_an_id_the_screen_has_not_got() -> None:
     session, _driver = _session(_el("stable.save"))
     with pytest.raises(base.ElementNotFound):

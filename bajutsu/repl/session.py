@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 import subprocess
 
@@ -234,9 +235,12 @@ def _parse_point(text: str) -> base.Point | None:
     if not sep:
         return None
     try:
-        return (float(x), float(y))
+        point = (float(x), float(y))
     except ValueError:
         return None
+    # `float` also reads `nan`/`inf`/`infinity`, none of which is a screen position: reject them
+    # here rather than let one reach `tap_point` and fail opaquely inside a backend.
+    return point if all(math.isfinite(c) for c in point) else None
 
 
 def _split_target_and_text(rest: str) -> tuple[str, str] | None:

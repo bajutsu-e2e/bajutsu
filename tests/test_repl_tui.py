@@ -1,9 +1,10 @@
 """Tests for the ncurses-style `repl` front end (`bajutsu/repl/tui.py`).
 
-`TuiState`/`handle_key` are pure — no curses import touches them — so most of this file drives them
-directly with plain keycodes/characters, exactly the way `test_repl.py` drives `ReplSession.dispatch`
-directly. `run_tui` is exercised end to end against a `FakeScreen`, a minimal `Screen` double that
-scripts `get_wch()` and records what got drawn, so the whole thing runs with no real terminal.
+`TuiState`/`handle_key` do no terminal I/O — they read curses' key constants but never touch a
+window — so most of this file drives them directly with plain keycodes/characters, exactly the way
+`test_repl.py` drives `ReplSession.dispatch` directly. `run_tui` is exercised end to end against a
+`FakeScreen`, a minimal `Screen` double that scripts `get_wch()` and records what got drawn, so the
+whole thing runs with no real terminal.
 """
 
 from __future__ import annotations
@@ -17,8 +18,20 @@ from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.drivers.xcuitest import XcuitestRunnerCrashError
 from bajutsu.repl.loop import PROMPT
+from bajutsu.repl.render import _display_width
 from bajutsu.repl.session import ReplSession
-from bajutsu.repl.tui import Screen, TuiState, _note_new_output, _visible, handle_key, run, run_tui
+from bajutsu.repl.tui import (
+    Screen,
+    TuiState,
+    _filtered,
+    _fit,
+    _input_row,
+    _note_new_output,
+    _visible,
+    handle_key,
+    run,
+    run_tui,
+)
 
 
 def _el(identifier: str | None = None, *, label: str | None = None) -> base.Element:
@@ -152,8 +165,10 @@ def test_up_with_no_history_is_a_no_op() -> None:
 
 def test_up_down_never_recall_in_scroll_mode() -> None:
     # Up/Down is overloaded — history in "input", scrolling in "scroll" — so they must never both
-    # fire from one keystroke.
-    state = TuiState(mode="scroll", history=["tree"], output=[f"{PROMPT}tree", "a", "b"])
+    # fire from one keystroke. 25 lines in a 20-row pane leaves room to actually scroll (max_offset
+    # 5), so this also confirms Up moved the offset rather than recalling history silently.
+    output = [f"{PROMPT}tree", *[f"line {i}" for i in range(24)]]
+    state = TuiState(mode="scroll", history=["tree"], output=output)
     handle_key(state, curses.KEY_UP, 20)
     assert state.input_buffer == ""
     assert state.scroll_offset == 1
@@ -210,6 +225,33 @@ def test_page_up_and_page_down_move_by_a_full_pane() -> None:
     assert state.scroll_offset == 0
 
 
+def test_up_clamps_at_the_top_instead_of_accumulating_past_it() -> None:
+    # A short transcript (5 lines in a 10-row pane, max_offset 0): repeatedly pressing Up must not
+    # let scroll_offset run up unboundedly, or new output later would jump the pane far above the
+    # bottom instead of staying pinned (the bug this test pins).
+    state = _scrolled(5)
+    for _ in range(5):
+        handle_key(state, curses.KEY_UP, 10)
+    assert state.scroll_offset == 0
+
+
+def test_page_up_clamps_to_the_top_in_one_press() -> None:
+    state = _scrolled(15)  # max_offset = 15 - 10 = 5
+    handle_key(state, curses.KEY_PPAGE, 10)
+    assert state.scroll_offset == 5
+
+
+def test_scroll_clamp_tracks_a_shrinking_filtered_view() -> None:
+    # Scrolled up over the unfiltered transcript, then a filter narrows the view: the clamp must
+    # use the *filtered* count, not the stale unfiltered one, or Up would again accumulate past
+    # what `_visible` can ever show.
+    state = _scrolled(50)
+    state.filter_query = "line 4"  # matches only "line 4" and "line 45..49" etc. — a small set
+    for _ in range(20):
+        handle_key(state, curses.KEY_UP, 10)
+    assert state.scroll_offset == max(0, len(_filtered(state)) - 10)
+
+
 # --- filter (`/`) --------------------------------------------------------------------------------
 
 
@@ -251,6 +293,76 @@ def test_filter_never_returns_a_line_to_dispatch() -> None:
     handle_key(state, "/", 20)
     _type_str(state, "line")
     assert handle_key(state, "\n", 20) is None
+
+
+def test_opening_the_filter_prompt_parks_a_half_typed_command() -> None:
+    state = TuiState()
+    _type_str(state, "tap label:Sign")
+    handle_key(state, "\t", 20)  # into scroll mode, command carried along (already covered above)
+    handle_key(state, "/", 20)  # "/" borrows input_buffer for the filter query
+    assert state.input_buffer == ""
+
+
+def test_confirming_a_filter_restores_the_parked_command() -> None:
+    state = TuiState()
+    _type_str(state, "tap label:Sign")
+    handle_key(state, "\t", 20)
+    handle_key(state, "/", 20)
+    _type_str(state, "line 3")
+    handle_key(state, "\n", 20)  # confirms the filter, returns to "scroll"
+    handle_key(state, "\t", 20)  # back to "input"
+    assert state.input_buffer == "tap label:Sign"
+
+
+def test_escaping_a_filter_restores_the_parked_command() -> None:
+    state = TuiState()
+    _type_str(state, "tap label:Sign")
+    handle_key(state, "\t", 20)
+    handle_key(state, "/", 20)
+    _type_str(state, "abandoned")
+    handle_key(state, "\x1b", 20)
+    handle_key(state, "\t", 20)
+    assert state.input_buffer == "tap label:Sign"
+
+
+# --- drawing: full-width columns and the input line's horizontal scroll ------------------------
+
+
+def test_fit_counts_a_fullwidth_character_as_two_columns() -> None:
+    # 5 full-width characters cost 10 columns; a character-count truncation (plain `addnstr`) would
+    # instead let all 5 through into a 6-column row and overrun it.
+    assert _fit("ログイン画面", 6) == "ログイ"  # 3 chars = 6 columns, the 4th would make 8
+
+
+def test_fit_never_splits_within_its_column_budget_for_ascii() -> None:
+    assert _fit("hello world", 5) == "hello"
+
+
+def test_input_row_is_empty_when_the_terminal_has_no_columns() -> None:
+    assert _input_row(PROMPT, "tree", 4, 0) == ("", 0)
+
+
+def test_input_row_shows_the_whole_line_when_it_fits() -> None:
+    row, cursor_col = _input_row(PROMPT, "tree", 4, 40)
+    assert row == f"{PROMPT}tree"
+    assert cursor_col == len(PROMPT) + 4
+
+
+def test_input_row_slides_right_to_keep_an_ascii_cursor_visible() -> None:
+    # 9-column prompt + 30 "a"s + cursor at the end, in a 20-column row: without sliding, the
+    # cursor would sit at column 20+ with nothing on screen showing where it is.
+    row, cursor_col = _input_row(PROMPT, "a" * 30, 30, 20)
+    assert cursor_col < 20  # the cursor itself must land inside the drawn row
+    assert row.endswith("a")
+
+
+def test_input_row_slides_by_display_width_for_japanese_text() -> None:
+    # Each full-width character the cursor has passed costs 2 columns, not 1 — sliding by
+    # character count (the naive fix) would under-shoot and still clip the cursor off-screen.
+    buffer = "検索フィールドに日本語を入力する"  # well past a narrow row, all full-width
+    row, cursor_col = _input_row(PROMPT, buffer, len(buffer), 20)
+    assert cursor_col < 20
+    assert _display_width(row) <= 20
 
 
 # --- FakeScreen / run_tui end to end -------------------------------------------------------------
@@ -317,16 +429,19 @@ def test_run_tui_reports_a_command_error_and_keeps_the_shell_alive() -> None:
     run_tui(session, screen)  # would raise if the error propagated instead of being reported
 
 
+class _InterruptingScreen(FakeScreen):
+    """A `FakeScreen` where the sentinel char `"\\x03"` raises `KeyboardInterrupt` (our stand-in
+    for ^C) instead of being replayed as an ordinary key."""
+
+    def get_wch(self) -> int | str:
+        if self.keys and self.keys[0] == "\x03":
+            self.keys.pop(0)
+            raise KeyboardInterrupt
+        return super().get_wch()
+
+
 def test_run_tui_ctrl_c_abandons_the_half_typed_line() -> None:
     session, driver = _session()
-
-    class _InterruptingScreen(FakeScreen):
-        def get_wch(self) -> int | str:
-            if self.keys and self.keys[0] == "\x03":  # a single sentinel char, our stand-in for ^C
-                self.keys.pop(0)
-                raise KeyboardInterrupt
-            return super().get_wch()
-
     screen = _InterruptingScreen(keys=_keys("tap garbage", "\x03", "exit", "\n"))
     run_tui(session, screen)
     assert driver.actions == []  # the abandoned line was never submitted
@@ -372,16 +487,40 @@ def test_run_tui_ignores_a_terminal_resize() -> None:
 
 def test_run_tui_ctrl_c_while_filtering_returns_to_scroll_mode() -> None:
     session, _driver = _session()
-
-    class _InterruptingScreen(FakeScreen):
-        def get_wch(self) -> int | str:
-            if self.keys and self.keys[0] == "\x03":
-                self.keys.pop(0)
-                raise KeyboardInterrupt
-            return super().get_wch()
-
     screen = _InterruptingScreen(keys=_keys("\t", "/", "abc", "\x03", "\t", "exit", "\n"))
     run_tui(session, screen)  # would hang/raise if the interrupt left the shell stuck in "filter"
+
+
+def test_run_tui_ctrl_c_while_browsing_the_pane_is_a_no_op() -> None:
+    # Tab into "scroll" (nothing being typed there — not "filter"): Ctrl-C must not touch the
+    # parked command, matching the docs table's "Ctrl-C: —" row for that mode.
+    session, driver = _session()
+    screen = _InterruptingScreen(
+        keys=_keys("tap stable.save", "\t", "\x03", "\t", "\n", "exit", "\n")
+    )
+    run_tui(session, screen)
+    assert driver.actions == [("tap", {"id": "stable.save"})]
+
+
+def test_run_tui_never_draws_a_row_wider_than_the_pane_with_japanese_output() -> None:
+    # A narrow pane (20 columns) plus a full-width label: a character-count truncation would let
+    # the row through at roughly double the pane's actual width.
+    driver = FakeDriver(screen=[_el("stable.a", label="ログインフィールドへようこそ")])
+    session = ReplSession(driver)
+    screen = FakeScreen(keys=_keys("tree", "\n", "exit", "\n"), width=21)
+    run_tui(session, screen)
+    for frame in screen.draws:
+        for row in frame:
+            assert _display_width(row) <= screen.width - 1
+
+
+def test_run_tui_ctrl_c_while_filtering_restores_the_parked_command() -> None:
+    session, driver = _session()
+    screen = _InterruptingScreen(
+        keys=_keys("tap stable.save", "\t", "/", "query", "\x03", "\t", "\n", "exit", "\n")
+    )
+    run_tui(session, screen)
+    assert driver.actions == [("tap", {"id": "stable.save"})]
 
 
 def test_run_tui_a_fatal_error_ends_the_shell() -> None:
