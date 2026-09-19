@@ -188,6 +188,10 @@ def _step_run_row(
         "line": line,
         "result": {"cls": "ok" if out.ok else "ng", "text": "PASS" if out.ok else "FAIL"},
         "action": _action_data(step_def, out.action),
+        # Which declared target ran this step (BE-0428), shown beside the action so a reader of a
+        # cross-platform scenario can tell the app-side rows from the web-side ones. Empty — and so
+        # rendered as nothing at all — for a scenario that declares no targets.
+        "target": out.target,
         "detail": _step_detail(step_def, from_),
         "at": at_text,
         "elapsed": elapsed,

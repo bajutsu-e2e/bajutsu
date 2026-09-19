@@ -24,7 +24,13 @@ from bajutsu.common.assertions import AssertionResult, VisualEvidence
 from bajutsu.common.drivers.actuation import Actuation
 from bajutsu.common.drivers.base import Frame, Point
 from bajutsu.common.evidence import Artifact
-from bajutsu.common.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
+from bajutsu.common.orchestrator import (
+    AlertEvent,
+    RunResult,
+    SkippedCapture,
+    StepOutcome,
+    TargetDeviceInfo,
+)
 from bajutsu.common.report.html import html_report, scenario_render_inputs, write_html_and_junit
 from bajutsu.common.scenario import load_scenario_file
 
@@ -200,6 +206,13 @@ def _result(d: dict[str, Any]) -> RunResult:
             "skipped_captures": [
                 SkippedCapture(**_kw(SkippedCapture, c)) for c in d.get("skipped_captures") or []
             ],
+            # A mapping of sub-dataclasses rather than a list of them, but nested all the same, so
+            # it needs its own line here for the same reason (BE-0428).
+            "target_devices": {
+                name: TargetDeviceInfo(**_kw(TargetDeviceInfo, info))
+                for name, info in (d.get("target_devices") or {}).items()
+                if isinstance(info, dict)
+            },
         }
     )
 

@@ -84,7 +84,11 @@ class _StepRunner:
         already the block's `WebContextDriver` — resetting it would silently run the step against
         the app surface underneath the WebView instead of the WebView itself.
         """
-        if step.target and (other := self.by_target.get(step.target)) is not None and other is not self:
+        if (
+            step.target
+            and (other := self.by_target.get(step.target)) is not None
+            and other is not self
+        ):
             return other, other.cfg.driver
         return self, active_driver
 

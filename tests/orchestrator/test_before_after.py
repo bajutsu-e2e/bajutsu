@@ -386,9 +386,10 @@ def test_each_declared_targets_own_hooks_fold_in_stamped_with_its_name() -> None
     )
     merged = with_lifecycle_phases(effs["app"], [scenario], effs)[0]
     assert [(s.target, s.tap.id) for s in merged.before if s.tap] == [("app", "a"), ("web", "w")]
-    assert [
-        (s.target, s.tap.id) for rule in merged.after for s in rule.steps if s.tap
-    ] == [("app", "b"), ("web", "z")]
+    assert [(s.target, s.tap.id) for rule in merged.after for s in rule.steps if s.tap] == [
+        ("app", "b"),
+        ("web", "z"),
+    ]
 
 
 def test_folding_config_hooks_re_checks_target_requirements() -> None:

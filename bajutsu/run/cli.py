@@ -1884,9 +1884,7 @@ def run(
     _check_target_membership(scenarios, target_name, explicit=explicit_target)
     _reject_legacy_without_target(scenarios, target_name, explicit=explicit_target)
     target_effs = _resolve_target_effs(loaded, scenarios, target_name, eff)
-    _reject_web_flags_across_targets(
-        target_effs, headed=headed, browser=browser, browsers=browsers
-    )
+    _reject_web_flags_across_targets(target_effs, headed=headed, browser=browser, browsers=browsers)
     _reject_bad_target_config_hooks(target_effs, scenarios, target_name)
     # Where this target's devices come from is a seam (BE-0236): the provider `acquire` returns the
     # udid spec the lanes resolve against (the `--udid` flag verbatim for the default local provider,
