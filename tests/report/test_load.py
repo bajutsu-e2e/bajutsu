@@ -388,6 +388,6 @@ def test_a_damaged_target_devices_entry_is_dropped_rather_than_crashing_the_rend
     # The same untrusting read the actuation records get: a manifest is re-read long after the run
     # that wrote it, so a non-object under a target name must cost that row, not the whole report.
     data = json.loads(json.dumps(manifest_dict("r1", [_multi_target_result()])))
-    data["scenarios"][0]["target_devices"]["web"] = "not-an-object"  # type: ignore[index]
+    data["scenarios"][0]["target_devices"]["web"] = "not-an-object"
     [r] = results_from_manifest(data)
     assert sorted(r.target_devices) == ["app"]

@@ -1,0 +1,417 @@
+"""Tests for `run`'s multi-target resolution and device bring-up (BE-0428).
+
+`--target` becomes optional once every `--scenario` file declares its own `targets`, and every
+declared name is resolved, device-leased, and pooled before the run starts. These cover the
+selection rules and the bring-up bookkeeping with no device and no Simulator: the fake backend
+stands in for a real one, and the device provider is the inert local one.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+import typer
+
+from bajutsu.cli._shared import LoadedConfig
+from bajutsu.common.config import Effective, load_config, resolve
+from bajutsu.common.platform_lifecycle import ProvisionProfile
+from bajutsu.common.runner.device_provider import DeviceLease
+from bajutsu.common.scenario import Scenario
+from bajutsu.run.cli import (
+    _acquire_targets,
+    _declared_targets_in,
+    _pool_demand,
+    _reject_self_declaring_in_dir,
+    _reject_web_flags_across_targets,
+    _release_devices,
+    _resolve_multi_target_workers,
+    _resolve_primary_target,
+    _resolve_target_effs,
+    _TargetSetup,
+)
+
+_CONFIG = """
+defaults: { backend: [fake] }
+targets:
+  app: { bundleId: com.example.app }
+  site: { baseUrl: 'http://localhost:1/' }
+"""
+
+
+def _effs() -> dict[str, Effective]:
+    cfg = load_config(_CONFIG)
+    return {"app": resolve(cfg, "app"), "site": resolve(cfg, "site")}
+
+
+# --- reading a file's declared targets --------------------------------------------------------
+
+
+def test_declared_targets_reads_them_before_any_expansion(tmp_path: Path) -> None:
+    scn = tmp_path / "cross.yaml"
+    scn.write_text(
+        "- name: cross\n  targets: [app, site]\n  steps:\n    - target: app\n      tap: { id: a }\n",
+        encoding="utf-8",
+    )
+    assert _declared_targets_in(scn) == ["app", "site"]
+
+
+def test_declared_targets_is_empty_for_a_legacy_scenario(tmp_path: Path) -> None:
+    scn = tmp_path / "legacy.yaml"
+    scn.write_text("- name: legacy\n  steps:\n    - tap: { id: a }\n", encoding="utf-8")
+    assert _declared_targets_in(scn) == []
+
+
+def test_declared_targets_exits_2_on_an_unparseable_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The pre-pass reads the file before the ordinary load does, so its own parse errors have to
+    # exit cleanly rather than surface as a traceback from outside any handler.
+    scn = tmp_path / "broken.yaml"
+    scn.write_text("- name: broken\n  steps: [{ nope: 1 }]\n", encoding="utf-8")
+    with pytest.raises(typer.Exit) as exc:
+        _declared_targets_in(scn)
+    assert exc.value.exit_code == 2
+    assert "broken.yaml" in capsys.readouterr().out
+
+
+# --- resolving the primary target -------------------------------------------------------------
+
+
+def test_an_explicit_target_is_the_primary_unchanged() -> None:
+    assert _resolve_primary_target("demo", []) == "demo"
+
+
+def test_omitting_target_takes_the_first_files_first_declared_name(tmp_path: Path) -> None:
+    scn = tmp_path / "cross.yaml"
+    scn.write_text(
+        "- name: cross\n  targets: [site, app]\n  steps:\n    - target: site\n      tap: { id: a }\n",
+        encoding="utf-8",
+    )
+    assert _resolve_primary_target("", [str(scn)]) == "site"
+
+
+def test_omitting_target_without_any_scenario_exits_2(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # The directory-glob shorthand belongs to one target, so a run driven by self-declaring
+    # scenarios has to name its files.
+    with pytest.raises(typer.Exit) as exc:
+        _resolve_primary_target("", [])
+    assert exc.value.exit_code == 2
+    assert "--scenario" in capsys.readouterr().out
+
+
+def test_omitting_target_with_a_legacy_file_exits_2_naming_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    scn = tmp_path / "legacy.yaml"
+    scn.write_text("- name: legacy\n  steps:\n    - tap: { id: a }\n", encoding="utf-8")
+    with pytest.raises(typer.Exit) as exc:
+        _resolve_primary_target("", [str(scn)])
+    assert exc.value.exit_code == 2
+    assert "legacy.yaml" in capsys.readouterr().out
+
+
+def test_omitting_target_with_a_missing_file_exits_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(typer.Exit) as exc:
+        _resolve_primary_target("", [str(tmp_path / "absent.yaml")])
+    assert exc.value.exit_code == 2
+    assert "not found" in capsys.readouterr().out
+
+
+# --- the scenarios-dir rejection ---------------------------------------------------------------
+
+
+def test_the_scenarios_dir_refuses_a_self_declaring_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Rejected at discovery: a matching name would silently launch every other target the file
+    # declares, and a mismatching one would fail every other scenario in the same batch.
+    legacy = tmp_path / "ok.yaml"
+    legacy.write_text("- name: ok\n  steps:\n    - tap: { id: a }\n", encoding="utf-8")
+    cross = tmp_path / "cross.yaml"
+    cross.write_text(
+        "- name: cross\n  targets: [app, site]\n  steps:\n    - target: app\n      tap: { id: a }\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(typer.Exit) as exc:
+        _reject_self_declaring_in_dir([legacy, cross], "app")
+    assert exc.value.exit_code == 2
+    out = capsys.readouterr().out
+    assert "cross.yaml" in out
+    assert "--scenario" in out
+
+
+def test_the_scenarios_dir_passes_a_suite_of_legacy_files(tmp_path: Path) -> None:
+    scn = tmp_path / "ok.yaml"
+    scn.write_text("- name: ok\n  steps:\n    - tap: { id: a }\n", encoding="utf-8")
+    _reject_self_declaring_in_dir([scn], "app")  # no exception
+
+
+# --- resolving every declared name against the config ------------------------------------------
+
+
+def test_every_declared_name_resolves_against_the_loaded_config() -> None:
+    effs = _effs()
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "cross",
+                "targets": ["app", "site"],
+                "steps": [{"target": "app", "tap": {"id": "a"}}],
+            }
+        )
+    ]
+    # The primary's own already-resolved config is reused, so a `--headed` / `--browser` override
+    # applied to it is not silently dropped for the target it was meant for.
+    resolved = _resolve_target_effs(_loaded(), scenarios, "app", effs["app"])
+    assert sorted(resolved) == ["app", "site"]
+    assert resolved["app"] is effs["app"]
+
+
+def _loaded() -> LoadedConfig:
+    """The parsed `_CONFIG`, wrapped the way the shared CLI loader hands it over."""
+    return LoadedConfig(
+        config=load_config(_CONFIG), path=Path("bajutsu.config.yaml"), source=None, root=None
+    )
+
+
+def test_an_unknown_declared_name_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
+    effs = _effs()
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "cross",
+                "targets": ["app", "ghost"],
+                "steps": [{"target": "app", "tap": {"id": "a"}}],
+            }
+        )
+    ]
+    with pytest.raises(typer.Exit) as exc:
+        _resolve_target_effs(_loaded(), scenarios, "app", effs["app"])
+    assert exc.value.exit_code == 2
+    assert "ghost" in capsys.readouterr().out
+
+
+# --- the web engine flags ----------------------------------------------------------------------
+
+
+def test_the_web_flags_are_refused_across_two_web_targets(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cfg = load_config(
+        "defaults: { backend: [fake] }\n"
+        "targets:\n"
+        "  a: { baseUrl: 'http://localhost:1/' }\n"
+        "  b: { baseUrl: 'http://localhost:2/' }\n"
+    )
+    effs = {"a": resolve(cfg, "a"), "b": resolve(cfg, "b")}
+    with pytest.raises(typer.Exit) as exc:
+        _reject_web_flags_across_targets(effs, headed=True, browser="", browsers="")
+    assert exc.value.exit_code == 2
+    out = capsys.readouterr().out
+    assert "a" in out and "b" in out
+
+
+def test_the_web_flags_pass_with_one_web_target() -> None:
+    _reject_web_flags_across_targets(_effs(), headed=True, browser="", browsers="")
+
+
+def test_two_web_targets_without_the_flags_are_fine() -> None:
+    cfg = load_config(
+        "defaults: { backend: [fake] }\n"
+        "targets:\n"
+        "  a: { baseUrl: 'http://localhost:1/' }\n"
+        "  b: { baseUrl: 'http://localhost:2/' }\n"
+    )
+    effs = {"a": resolve(cfg, "a"), "b": resolve(cfg, "b")}
+    _reject_web_flags_across_targets(effs, headed=None, browser="", browsers="")
+
+
+# --- device bring-up and pools ------------------------------------------------------------------
+
+
+def _setup(name: str, actuator: str, udids: list[str], released: list[str]) -> _TargetSetup:
+    effs = _effs()
+    return _TargetSetup(
+        name=name,
+        eff=effs["app" if name == "app" else "site"],
+        actuator=actuator,
+        backends=["fake"],
+        device=DeviceLease(
+            udid_spec="booted", provision=ProvisionProfile(), release=lambda: released.append(name)
+        ),
+        udids=udids,
+        workers=len(udids),
+    )
+
+
+def test_acquiring_every_declared_target_leases_one_device_each(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    acquired: list[str] = []
+
+    def fake_acquire(eff: object, udid: str) -> DeviceLease:
+        acquired.append(getattr(eff, "target", "?"))
+        return DeviceLease(udid_spec=udid, provision=ProvisionProfile(), release=lambda: None)
+
+    monkeypatch.setattr("bajutsu.run.cli.acquire_device", fake_acquire)
+    monkeypatch.setattr(
+        "bajutsu.run.cli.environment_for",
+        lambda *a, **k: _FakeEnv(),
+    )
+    setups = _acquire_targets(_effs(), "fake", [], "booted", 1)
+    assert sorted(setups) == ["app", "site"]
+    assert sorted(acquired) == ["app", "site"]
+
+
+def test_a_failed_acquisition_hands_back_what_was_already_taken(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A cloud device reserved for the first target must not leak when the second target's own
+    # provider fails.
+    released: list[str] = []
+    calls: list[str] = []
+
+    def fake_acquire(eff: object, udid: str) -> DeviceLease:
+        name = getattr(eff, "target", "?")
+        calls.append(name)
+        if len(calls) == 2:
+            raise RuntimeError("provider down")
+        return DeviceLease(
+            udid_spec=udid, provision=ProvisionProfile(), release=lambda: released.append(name)
+        )
+
+    monkeypatch.setattr("bajutsu.run.cli.acquire_device", fake_acquire)
+    monkeypatch.setattr(
+        "bajutsu.run.cli.environment_for",
+        lambda *a, **k: _FakeEnv(),
+    )
+    with pytest.raises(RuntimeError, match="provider down"):
+        _acquire_targets(_effs(), "fake", [], "booted", 1)
+    assert len(released) == 1
+
+
+def test_releasing_devices_warns_and_continues_when_one_raises(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # A provider's teardown failure must not flip the machine-only verdict, and must not stop the
+    # remaining targets being handed back.
+    released: list[str] = []
+    boom = _setup("app", "fake", ["UD-1"], released)
+    boom = _TargetSetup(
+        name="app",
+        eff=boom.eff,
+        actuator="fake",
+        backends=["fake"],
+        device=DeviceLease(udid_spec="booted", provision=ProvisionProfile(), release=_raise),
+        udids=["UD-1"],
+        workers=1,
+    )
+    _release_devices({"app": boom, "site": _setup("site", "playwright", ["web-0"], released)})
+    assert released == ["site"]
+    assert "device release for target 'app' failed" in capsys.readouterr().err
+
+
+def _raise() -> None:
+    raise RuntimeError("teardown exploded")
+
+
+class _FakeEnv:
+    """Just enough `RunEnvironment` for lane resolution: a udid resolver that echoes its input."""
+
+    def resolve_device(self, udid: str) -> str:
+        return udid
+
+
+# --- pool demand and worker capping --------------------------------------------------------------
+
+
+def test_two_targets_on_one_pool_demand_two_devices() -> None:
+    released: list[str] = []
+    setups = {
+        "app": _setup("app", "fake", ["UD-1", "UD-2"], released),
+        "site": _setup("site", "fake", ["UD-1", "UD-2"], released),
+    }
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "cross",
+                "targets": ["app", "site"],
+                "steps": [{"target": "app", "tap": {"id": "a"}}],
+            }
+        )
+    ]
+    assert _pool_demand(scenarios, setups) == {"fake": 2}
+
+
+def test_two_targets_on_two_pools_demand_one_device_each() -> None:
+    released: list[str] = []
+    setups = {
+        "app": _setup("app", "fake", ["UD-1"], released),
+        "site": _setup("site", "playwright", ["web-0"], released),
+    }
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "cross",
+                "targets": ["app", "site"],
+                "steps": [{"target": "app", "tap": {"id": "a"}}],
+            }
+        )
+    ]
+    assert _pool_demand(scenarios, setups) == {"fake": 1, "playwright": 1}
+
+
+def test_a_pool_with_too_few_devices_is_refused_up_front(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Refused rather than left to block on a queue that will never free a device.
+    released: list[str] = []
+    setups = {
+        "app": _setup("app", "fake", ["UD-1"], released),
+        "site": _setup("site", "fake", ["UD-1"], released),
+    }
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "cross",
+                "targets": ["app", "site"],
+                "steps": [{"target": "app", "tap": {"id": "a"}}],
+            }
+        )
+    ]
+    with pytest.raises(typer.Exit) as exc:
+        _resolve_multi_target_workers(scenarios, setups, 1)
+    assert exc.value.exit_code == 2
+    assert "--udid" in capsys.readouterr().out
+
+
+def test_workers_are_capped_to_what_the_pools_can_serve() -> None:
+    # Each worker holds one device per declared target for its scenario's whole length, so four
+    # devices serve at most two concurrent two-target scenarios.
+    released: list[str] = []
+    setups = {
+        "app": _setup("app", "fake", ["a", "b", "c", "d"], released),
+        "site": _setup("site", "fake", ["a", "b", "c", "d"], released),
+    }
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "cross",
+                "targets": ["app", "site"],
+                "steps": [{"target": "app", "tap": {"id": "a"}}],
+            }
+        )
+    ]
+    assert _resolve_multi_target_workers(scenarios, setups, 4) == 2
+
+
+def test_a_single_target_run_keeps_its_requested_workers() -> None:
+    released: list[str] = []
+    setups = {"app": _setup("app", "fake", ["a", "b"], released)}
+    scenarios = [Scenario.model_validate({"name": "legacy", "steps": [{"tap": {"id": "a"}}]})]
+    assert _resolve_multi_target_workers(scenarios, setups, 2) == 2

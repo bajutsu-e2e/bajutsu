@@ -20,7 +20,7 @@ from bajutsu.common.config import Effective
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import NullSink
 from bajutsu.common.runner import Lease, run_all
-from bajutsu.common.runner.types import TargetPool
+from bajutsu.common.runner.types import LeaseFn, TargetPool
 from bajutsu.common.scenario import Scenario
 
 _SCREEN = [_el("ok", "OK", ["button"]), _el("other", "Other", ["button"])]
@@ -28,7 +28,7 @@ _SCREEN = [_el("ok", "OK", ["button"]), _el("other", "Other", ["button"])]
 
 def _recording_lease(
     log: list[str], name: str, *, released: list[str] | None = None, boom: bool = False
-):
+) -> LeaseFn:
     """A lease callable that records the order targets are leased in, and optionally fails."""
 
     def lease(eff: Effective, scenario: Scenario) -> Lease:

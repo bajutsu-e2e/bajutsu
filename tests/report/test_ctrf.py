@@ -16,7 +16,13 @@ from jsonschema import Draft7Validator
 
 from bajutsu.common.assertions import AssertionResult
 from bajutsu.common.evidence import Artifact
-from bajutsu.common.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
+from bajutsu.common.orchestrator import (
+    AlertEvent,
+    RunResult,
+    SkippedCapture,
+    StepOutcome,
+    TargetDeviceInfo,
+)
 from bajutsu.common.report import ctrf_json
 
 _SCHEMA = json.loads((Path(__file__).parent / "ctrf.schema.json").read_text(encoding="utf-8"))
@@ -321,3 +327,65 @@ def test_report_command_regenerates_ctrf(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     # `bajutsu report` re-emits ctrf.json for a past run from its stored model (BE-0068).
     _validate(json.loads((run_dir / "ctrf.json").read_text(encoding="utf-8")))
+
+
+def _multi_target() -> RunResult:
+    """A multi-target scenario's result: no singular device, one row per declared target (BE-0428)."""
+    return RunResult(
+        scenario="cross-target",
+        ok=True,
+        steps=[
+            StepOutcome(index=0, action="tap", target="app", ok=True, duration_s=0.5),
+            StepOutcome(index=1, action="assert", target="web", ok=True, duration_s=0.2),
+        ],
+        duration_s=0.7,
+        target_devices={
+            "app": TargetDeviceInfo(
+                backend="xcuitest",
+                device="UD-1",
+                device_name="iPhone 15",
+                device_runtime="iOS 17.2",
+            ),
+            "web": TargetDeviceInfo(backend="playwright", device="web-0"),
+        },
+    )
+
+
+def test_a_multi_target_test_names_every_targets_device() -> None:
+    # CTRF carries one `device` per test, and a multi-target scenario ran on several. Joining them
+    # keeps that field honest rather than dropping it, so an importer still learns what ran it.
+    doc = ctrf_json("r1", [_multi_target()])
+    [test] = doc["results"]["tests"]  # type: ignore[index]
+    assert "iPhone 15 (iOS 17.2)" in str(test["device"])
+
+
+def test_a_multi_target_test_carries_a_per_target_extra_block() -> None:
+    # `backend` has no single answer on a multi-target run, so the per-target rows travel under
+    # `extra` — where an importer can attribute a failure to one platform.
+    doc = ctrf_json("r1", [_multi_target()])
+    [test] = doc["results"]["tests"]  # type: ignore[index]
+    targets = test["extra"]["targets"]
+    assert sorted(targets) == ["app", "web"]
+    assert targets["app"]["deviceRuntime"] == "iOS 17.2"
+    assert targets["web"]["backend"] == "playwright"
+
+
+def test_each_ctrf_step_names_the_target_that_ran_it() -> None:
+    # The per-step label the report shows, carried into the export so a CTRF reader can tell an
+    # app-side step from a web-side one without re-reading the scenario file.
+    doc = ctrf_json("r1", [_multi_target()])
+    [test] = doc["results"]["tests"]  # type: ignore[index]
+    assert [s["extra"]["target"] for s in test["steps"]] == ["app", "web"]
+
+
+def test_a_single_target_step_carries_no_target_key() -> None:
+    # Nothing changes for a scenario declaring no targets: the key is absent, not empty.
+    doc = ctrf_json("r1", [_passing()])
+    [test] = doc["results"]["tests"]  # type: ignore[index]
+    assert all("target" not in s["extra"] for s in test["steps"])
+
+
+def test_a_multi_target_document_still_validates_against_the_ctrf_schema() -> None:
+    # Every Bajutsu-specific addition lives under `extra`, so the export stays a valid CTRF
+    # document however many targets a scenario declares.
+    _validate(ctrf_json("r1", [_multi_target()]))
