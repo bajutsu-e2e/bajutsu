@@ -63,8 +63,8 @@ def triage_context() -> TriageContext:
     """A failed-scenario context over a committed showcase golden — a real screen, no Simulator."""
     return TriageContext(
         scenario="controls",
-        failure=f"step0 tap: 一致なし: {_TARGET_TYPO}",
-        failed_step=FailedStep(0, "tap", f"一致なし: {_TARGET_TYPO}"),
+        failure=f"step0 tap: no match: {_TARGET_TYPO}",
+        failed_step=FailedStep(0, "tap", f"no match: {_TARGET_TYPO}"),
         failed_expectations=[],
         elements=showcase_screen("controls"),
         scenario_yaml=_SCENARIO_YAML,

@@ -27,10 +27,10 @@ from bajutsu.common.drivers.base import (
 _FIXTURES_DIR = Path(__file__).parent / "fixtures" / "be0408"
 _SUPPORTED_SCHEMA = 1
 # `resolve_unique`'s own out-of-range wording (base/_functions.py); the fixtures record only the
-# noMatch/outOfRange classification a port must reproduce, never this Japanese, implementation-
-# specific text (see docs/selectors.md's porting contract) — so this marker exists only to tell
-# the two failure shapes apart here, not as part of the contract itself.
-_OUT_OF_RANGE_MARKER = "範囲外"
+# noMatch/outOfRange classification a port must reproduce, never this implementation-specific text
+# (see docs/selectors.md's porting contract) — so this marker exists only to tell the two failure
+# shapes apart here, not as part of the contract itself.
+_OUT_OF_RANGE_MARKER = "out of range"
 
 
 def _load(name: str) -> dict[str, Any]:

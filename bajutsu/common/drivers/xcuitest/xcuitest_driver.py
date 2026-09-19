@@ -560,7 +560,7 @@ class XcuitestDriver:
 
     def select_option(self, sel: base.Selector, option: str) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction(
-            "selectOption は <select> を持つ web バックエンド専用; iOS ネイティブに <select> はない"
+            "selectOption is web-backend-only, for a <select>; iOS has no native <select>"
         )
 
     def set_picker_value(self, sel: base.Selector, value: str) -> None:

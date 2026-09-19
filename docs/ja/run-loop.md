@@ -122,7 +122,7 @@ class RunResult:
     ok: bool
     steps: list[StepOutcome]
     expect_results: list[AssertionResult]  # 最終 expect の評価
-    failure: str | None          # 例: "step 3 (tap): 一致なし: {...}"
+    failure: str | None          # 例: "step 3 (tap): no match: {...}"
     before_outcomes: list[StepOutcome]  # before フェーズ自身のステップ
     after_outcomes: list[StepOutcome]   # after フェーズ自身のステップ
     after_verdict: str           # "success" / "error" — どの after ルールが走ったか。なければ ""

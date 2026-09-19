@@ -8,10 +8,9 @@ Frozen first because everything else depends on it:
   nondeterminism structurally.
 """
 
-from ._functions import _collapse_identical_duplicates as _collapse_identical_duplicates
-from ._functions import _compile as _compile
-from ._functions import _id_index as _id_index
 from ._functions import (
+    AMBIGUOUS_MATCH_MARKER,
+    LEGACY_AMBIGUOUS_MATCH_MARKER,
     contains,
     deadline_ticks,
     default_wait_for,
@@ -30,6 +29,9 @@ from ._functions import (
     validate_id_candidates,
     wait_until,
 )
+from ._functions import _collapse_identical_duplicates as _collapse_identical_duplicates
+from ._functions import _compile as _compile
+from ._functions import _id_index as _id_index
 from ._shared import (
     ANDROID_PERMISSION_CAPABILITIES,
     DEVICE_CONTROL_ALL,
@@ -67,9 +69,11 @@ from .unsupported_action import UnsupportedAction
 from .viewport_provider import ViewportProvider
 
 __all__ = [
+    "AMBIGUOUS_MATCH_MARKER",
     "ANDROID_PERMISSION_CAPABILITIES",
     "DEVICE_CONTROL_ALL",
     "IOS_PERMISSION_CAPABILITIES",
+    "LEGACY_AMBIGUOUS_MATCH_MARKER",
     "MAX_REDIRECT_CANDIDATES",
     "OS_BACK_BUTTON",
     "PERMISSION_SERVICES",

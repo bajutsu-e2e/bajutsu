@@ -961,7 +961,7 @@ class AdbDriver(CoordinateTreeDriver):
                 "scroll %d/%d brought %r into the tree", attempt, self._SCROLL_RETRIES, sel
             )
             return el, tree
-        raise base.ElementNotFound(f"一致なし（scroll しても見つからず）: {sel!r}")
+        raise base.ElementNotFound(f"no match (not found even after scrolling): {sel!r}")
 
     def _scroll_toward(self, tree: list[base.Element]) -> None:
         w, h = screen_size_from_elements(tree)
@@ -969,7 +969,9 @@ class AdbDriver(CoordinateTreeDriver):
             # A degenerate/empty tree gives no screen extent to swipe across; a zero-length or
             # edge-column swipe would be a silent no-op that burns the retry budget and then fails
             # with a misleading "not found after scroll". Fail loudly with the real cause (BE-0210).
-            raise base.ElementNotFound("scroll 不可（要素ツリーが空。UI Automator が要素を返さず）")
+            raise base.ElementNotFound(
+                "cannot scroll (element tree is empty — UI Automator returned no elements)"
+            )
         cx = w / 2
         self.swipe((cx, h * self._SCROLL_FROM_FRAC), (cx, h * self._SCROLL_TO_FRAC))
 
@@ -1386,13 +1388,14 @@ class AdbDriver(CoordinateTreeDriver):
         """
         if not self._rooted():
             raise base.UnsupportedAction(
-                f"{action} は rooted device が必要; 二本指ジェスチャに単一タッチの代替は無い"
-                "（sendevent で /dev/input に書き込むため root が要る）"
+                f"{action} requires a rooted device; there is no single-touch fallback for a "
+                "two-finger gesture (sendevent writes to /dev/input, which needs root)"
             )
         dev = self._touch_device()
         if dev is None:
             raise base.UnsupportedAction(
-                f"{action} 不可（touchscreen node が getevent に見つからず、二本指の接点を撃てない）"
+                f"{action} not possible (no touchscreen node found in getevent — cannot fire a "
+                "two-finger contact)"
             )
         frame, screen, el = self._resolve_frame_and_screen(sel)
         # gesture_anchor keeps both fingers (and a ~2x pinch-out) inside the target (BE-0251).
@@ -1403,7 +1406,8 @@ class AdbDriver(CoordinateTreeDriver):
             # times out with a misleading cause. Fail loudly with the real one, as `_scroll_toward`
             # does for a degenerate screen extent (BE-0232).
             raise base.UnsupportedAction(
-                f"{action} 不可（対象の frame が退化しており二本指の接点を配置できない）: {sel!r}"
+                f"{action} not possible (the target's frame is degenerate; cannot place a "
+                f"two-finger contact): {sel!r}"
             )
         start, end = contacts((cx, cy), half)
         raw_start = (
@@ -1425,12 +1429,12 @@ class AdbDriver(CoordinateTreeDriver):
 
     def select_option(self, sel: base.Selector, option: str) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction(
-            "selectOption は <select> を持つ web バックエンド専用; Android ネイティブに <select> はない"
+            "selectOption is web-backend-only, for a <select>; Android has no native <select>"
         )
 
     def set_picker_value(self, sel: base.Selector, value: str) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction(
-            "setPickerValue は iOS の picker wheel 専用; Android に相当するコントロールはない"
+            "setPickerValue is iOS-picker-wheel-only; Android has no equivalent control"
         )
 
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:  # noqa: ARG002  # Driver shape
@@ -1438,7 +1442,8 @@ class AdbDriver(CoordinateTreeDriver):
         # dump, so an ordinary `tap` already reaches it. Preflight rejects the step before any device
         # work (adb never advertises HANDLE_SYSTEM_ALERT); this is the mid-run backstop.
         raise base.UnsupportedAction(
-            "handleSystemAlert は iOS 専用; Android のシステムダイアログは通常の tap で操作できる"
+            "handleSystemAlert is iOS-only; Android's system dialogs are reachable with an "
+            "ordinary tap"
         )
 
     def system_alert_labels(self) -> list[str]:

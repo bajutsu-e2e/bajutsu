@@ -1380,7 +1380,7 @@ def test_scroll_on_empty_tree_fails_loudly_without_bogus_swipes() -> None:
 
     driver = AdbDriver("U", run=run)
     driver._RESOLVE_TIMEOUT_S = 0
-    with pytest.raises(base.ElementNotFound, match="空"):
+    with pytest.raises(base.ElementNotFound, match="empty"):
         driver.tap({"id": "target"})
     assert swipes["n"] == 0  # no bogus (0,0) swipe issued
 
