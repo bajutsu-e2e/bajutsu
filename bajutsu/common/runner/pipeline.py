@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -73,6 +73,7 @@ from bajutsu.common.runner.recovery import (
 from bajutsu.common.runner.types import AlertGuardFor, Lease, LeaseFn, TargetPool
 from bajutsu.common.scenario import (
     AfterRule,
+    Redact,
     Scenario,
     Step,
     UncoveredSystemAlertLocale,
@@ -690,6 +691,11 @@ class _ScenarioRunner:
                         # just returned `lz` — not here — so a cold respawn's own readiness round
                         # trips are attributed to the attempt that actually made them.)
                         lz.driver = tracing.TracingDriver(lz.driver)
+                        # Every other declared target's lease too (BE-0428): a two-target scenario's
+                        # trace would otherwise contain only the primary's half of the round trips,
+                        # with nothing saying the other half was never instrumented.
+                        for extra in others.values():
+                            extra.driver = tracing.TracingDriver(extra.driver)
                     if attempt > 1:
                         _logger.info(
                             "scenario %s: backend respawned and recovered on attempt %d/%d",
@@ -1164,17 +1170,23 @@ class _ScenarioRunner:
                 result.device = lz.udid  # attribute the scenario to the device that ran it
                 result.device_name = lz.device_name  # for the report's Environment tab
                 result.device_runtime = lz.device_runtime
-            result.skipped_captures = list(lz.skipped_captures)  # disclose evidence gaps (BE-0020)
-            if lz.collector is not None and writer is not None:
-                art = _write_network(
-                    lz.collector.snapshot_timed(),
-                    writer,
-                    sid,
-                    wall_offset_s=result.wall_offset_s,
-                    provider=lz.collector_provider,
-                )
-                if art is not None:
-                    result.artifacts.append(art)
+            # Every declared target's own evidence gaps and network capture, not only the
+            # primary's — an extra target's lease is exactly as capable of skipping a capture kind
+            # or carrying `request`-asserted traffic as the primary's (BE-0428).
+            primary_name = s.targets[0] if s.targets else ""
+            for name, target_lz in {primary_name: lz, **others}.items():
+                result.skipped_captures += target_lz.skipped_captures
+                if target_lz.collector is not None and writer is not None:
+                    prefix = sid if name == primary_name else f"{sid}/{name}"
+                    art = _write_network(
+                        target_lz.collector.snapshot_timed(),
+                        writer,
+                        prefix,
+                        wall_offset_s=result.wall_offset_s,
+                        provider=target_lz.collector_provider,
+                    )
+                    if art is not None:
+                        result.artifacts.append(art)
             if self.progress is not None:
                 mark = "✔" if result.ok else "✘"
                 self.progress(
@@ -1244,6 +1256,43 @@ def _release_all(leases: Mapping[str, Lease]) -> None:
             lz.release()
         except Exception as exc:
             _logger.warning("releasing target %s's lease failed: %s", name, exc, exc_info=True)
+
+
+def _union_redact(effs: Iterable[Effective]) -> Redact:
+    """The union of every declared target's own `redact` config (BE-0428).
+
+    Each list unions rather than intersects, since scrubbing a value from one target's evidence
+    that another target's config never named as secret is strictly safer than the reverse. An
+    `unmask_*` opt-out applies only when every one of the targets agrees to release it — one
+    target still asking for that protection keeps it on for the whole run, the same asymmetry the
+    list union already gives.
+    """
+    labels: dict[str, None] = {}
+    headers: dict[str, None] = {}
+    fields: dict[str, None] = {}
+    unmask_headers: dict[str, None] = {}
+    unmask_secure_fields = True
+    unmask_credential_names = True
+    seen = False
+    for eff in effs:
+        seen = True
+        r = eff.redact
+        labels.update(dict.fromkeys(r.labels))
+        headers.update(dict.fromkeys(r.headers))
+        fields.update(dict.fromkeys(r.fields))
+        unmask_headers.update(dict.fromkeys(r.unmask_headers))
+        unmask_secure_fields = unmask_secure_fields and r.unmask_secure_fields
+        unmask_credential_names = unmask_credential_names and r.unmask_credential_names
+    if not seen:
+        return Redact()
+    return Redact(
+        labels=list(labels),
+        headers=list(headers),
+        fields=list(fields),
+        unmaskHeaders=list(unmask_headers),
+        unmaskSecureFields=unmask_secure_fields,
+        unmaskCredentialNames=unmask_credential_names,
+    )
 
 
 def _effs_of(targets: Mapping[str, TargetPool] | None) -> dict[str, Effective]:
@@ -1465,8 +1514,14 @@ def run_all(
     # The target config's own lifecycle phases, folded in once here (BE-0392). `run_and_report` and
     # `run_matrix_and_report` apply the same helper to what they hand the report, so the run and the
     # report read one effective scenario rather than two lists that could drift.
-    scenarios = with_lifecycle_phases(eff, scenarios, _effs_of(targets))
-    redactor = Redactor(eff.redact, values=secret_values)
+    target_effs = _effs_of(targets)
+    scenarios = with_lifecycle_phases(eff, scenarios, target_effs)
+    # `redact` unions every declared target's own config (BE-0428): a value one target's config
+    # marks secret is scrubbed everywhere, not only from that one target's own capture. Widening the
+    # redaction set is the safer error, unlike a field with only one right answer (`caps`, `mailbox`).
+    redactor = Redactor(
+        _union_redact(target_effs.values() if target_effs else [eff]), values=secret_values
+    )
     # One mailbox reader for the whole run (it's per-target, not per-device): the `email` step polls
     # it, with ${secrets.*} in the url/headers resolved from the same secret bindings (BE-0046).
     mailbox = build_mailbox_reader(eff.mailbox, bindings or {})
@@ -1606,7 +1661,11 @@ def run_and_report(
         trace_driver=trace_driver,
     )
     manifest = _assemble_report(
-        with_lifecycle_phases(eff, scenarios),
+        # The same fold `run_all` already applied, over the same per-target config, so the report
+        # pairs each outcome with the step definition that actually produced it — a config-level
+        # hook folded from one target's own `before`/`after` here and the primary's there would
+        # otherwise mislabel or drop outcomes for every other declared target (BE-0428).
+        with_lifecycle_phases(eff, scenarios, _effs_of(targets)),
         results,
         run_dir,
         run_id,

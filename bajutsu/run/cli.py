@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
@@ -59,6 +59,7 @@ from bajutsu.common.scenario import (
     SystemAlertHandling,
     SystemAlertHandlingField,
     SystemAlertRule,
+    _scenarios_declaring_targets,
     apply_setups,
     contained_ref,
     declared_name,
@@ -385,14 +386,17 @@ def _resolve_config_and_engines(
     return loaded, eff, config_source, engines
 
 
-def _resolve_secrets(eff: Effective) -> tuple[dict[str, str], list[str]]:
+def _resolve_secrets(effs: Iterable[Effective]) -> tuple[dict[str, str], list[str]]:
     """Resolve declared secrets from the environment into ${secrets.X} bindings and mask values.
 
     Only secrets actually present in the environment are bound. The literal values are collected so
     evidence and run-level artifacts can mask them (the scenario definition keeps the token, never
-    the value).
+    the value). Every declared target's own `secrets` names are read (BE-0428), so a `${secrets.X}`
+    a step routed to a non-primary target uses still binds — `X` may be declared only on that
+    target's own config, not the primary's.
     """
-    bindings = {f"secrets.{n}": os.environ[n] for n in eff.secrets if n in os.environ}
+    names = dict.fromkeys(n for eff in effs for n in eff.secrets)  # ordered-unique across targets
+    bindings = {f"secrets.{n}": os.environ[n] for n in names if n in os.environ}
     return bindings, list(bindings.values())
 
 
@@ -520,6 +524,28 @@ def _reject_web_flags_across_targets(
             "--headed / --browser / --browsers apply to a run's single web target, but this run "
             f"declares {len(web)}: {', '.join(web)} — set each target's own `headless` / `browser` "
             "config instead"
+        )
+        raise typer.Exit(2)
+
+
+def _reject_cross_browser_matrix_with_targets(
+    scenarios: list[Scenario], engines: list[str]
+) -> None:
+    """Refuse `--browsers <2 engines>` on a scenario declaring `targets` (BE-0428).
+
+    The matrix path (`run_matrix_and_report` / `_dispatch_matrix`) runs one full pass per engine
+    against one pool and carries no per-target map, so it cannot launch a scenario's other declared
+    targets at all. Without this check, `run_all` would raise a bare `ValueError` well after every
+    device was already leased, instead of the clean exit 2 every other multi-target refusal gives.
+    Extending the matrix axis to a multi-target run is separate work.
+    """
+    if len(engines) < 2:
+        return
+    affected = _scenarios_declaring_targets(scenarios)
+    if affected:
+        typer.echo(
+            "--browsers cannot fan out a scenario declaring targets: (BE-0428); "
+            f"affected scenario(s): {', '.join(affected)}"
         )
         raise typer.Exit(2)
 
@@ -1421,17 +1447,27 @@ def _open_pools(plan: _RunPlan) -> dict[str, tuple[LeaseFn, Callable[[], None]]]
                 provision=setup.device.provision,
             )
     except BaseException:
-        _close_pools(pools)
+        # `mid_run=True`: a pool that came up before a later one failed to must not have its own
+        # teardown defect replace the bring-up error that's already propagating — the same
+        # mask-the-real-fault risk `guarded_teardown`'s own `mid_run` flag exists to rule out.
+        _close_pools(pools, mid_run=True)
         raise
     return pools
 
 
-def _close_pools(pools: Mapping[str, tuple[LeaseFn, Callable[[], None]]]) -> None:
+def _close_pools(
+    pools: Mapping[str, tuple[LeaseFn, Callable[[], None]]], *, mid_run: bool = False
+) -> None:
     """Shut every pool down, letting the first wiring defect surface once they all have.
 
     A pool's `shutdown()` raises the first lease-teardown defect it stashed (BE-0342), and that
     must still reach the operator — but not at the cost of leaving another platform's collectors
     listening, so the remaining pools are shut down first and the earliest defect re-raised after.
+
+    `mid_run` (set by a caller unwinding an exception of its own, or by this function's own
+    `finally`-time check below) downgrades that re-raise to a warning: a teardown defect raised from
+    a `finally` while a different exception is already propagating would silently replace it, the
+    same failure mode `guarded_teardown`'s own `mid_run` flag exists to rule out.
     """
     first: BaseException | None = None
     for actuator, (_lease, shutdown) in pools.items():
@@ -1440,8 +1476,12 @@ def _close_pools(pools: Mapping[str, tuple[LeaseFn, Callable[[], None]]]) -> Non
         except Exception as exc:
             typer.echo(f"warning: shutting down the {actuator} pool failed ({exc})", err=True)
             first = first or exc
-    if first is not None:
-        raise first
+    if first is None:
+        return
+    if mid_run or sys.exc_info()[0] is not None:
+        typer.echo(f"warning: device pool teardown failed ({first}); continuing", err=True)
+        return
+    raise first
 
 
 def _dispatch_single(
@@ -1865,7 +1905,6 @@ def run(
         browser=browser,
         browsers=browsers,
     )
-    secret_bindings, secret_values = _resolve_secrets(eff)
     scenarios, description, source_name, files, plan_sources = _load_scenarios(
         eff, scenario or [], target_name
     )
@@ -1884,7 +1923,11 @@ def run(
     _check_target_membership(scenarios, target_name, explicit=explicit_target)
     _reject_legacy_without_target(scenarios, target_name, explicit=explicit_target)
     target_effs = _resolve_target_effs(loaded, scenarios, target_name, eff)
+    # Every declared target's own `secrets` names, not only the primary's — a `${secrets.X}` a step
+    # routed elsewhere uses may be declared only on that target's own config (BE-0428).
+    secret_bindings, secret_values = _resolve_secrets(target_effs.values())
     _reject_web_flags_across_targets(target_effs, headed=headed, browser=browser, browsers=browsers)
+    _reject_cross_browser_matrix_with_targets(scenarios, engines)
     _reject_bad_target_config_hooks(target_effs, scenarios, target_name)
     # Where this target's devices come from is a seam (BE-0236): the provider `acquire` returns the
     # udid spec the lanes resolve against (the `--udid` flag verbatim for the default local provider,
@@ -1901,9 +1944,12 @@ def run(
     primary = setups[target_name]
     actuator, backends = primary.actuator, primary.backends
     udids = primary.udids
-    workers = _resolve_multi_target_workers(scenarios, setups, primary.workers)
     lease = primary.device
     try:
+        # Every target's device is already reserved by here, so a rejection past this point must
+        # still release them — including this one, which can exit 2 on a pool too small for the
+        # scenario's own target count (BE-0428).
+        workers = _resolve_multi_target_workers(scenarios, setups, primary.workers)
         _apply_system_alert_handling(
             scenarios, resolve_system_alert_handling_flag(system_alert_handling)
         )

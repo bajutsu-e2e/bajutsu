@@ -206,15 +206,34 @@ def _result(d: dict[str, Any]) -> RunResult:
             "skipped_captures": [
                 SkippedCapture(**_kw(SkippedCapture, c)) for c in d.get("skipped_captures") or []
             ],
-            # A mapping of sub-dataclasses rather than a list of them, but nested all the same, so
-            # it needs its own line here for the same reason (BE-0428).
-            "target_devices": {
-                name: TargetDeviceInfo(**_kw(TargetDeviceInfo, info))
-                for name, info in (d.get("target_devices") or {}).items()
-                if isinstance(info, dict)
-            },
+            "target_devices": _target_devices(d.get("target_devices")),
         }
     )
+
+
+def _target_devices(raw: Any) -> dict[str, TargetDeviceInfo]:
+    """Every readable `target_devices` row, dropping a malformed one rather than crashing the load.
+
+    A mapping of sub-dataclasses rather than a list of them, but nested all the same, so it needs
+    its own reconstruction here the way `_actuations` needs one for its own nested list (BE-0428).
+    This is the *only* record of which devices ran a multi-target scenario — its own singular
+    `RunResult.device`/`backend` fields are empty — so a dropped row is disclosed the same way a
+    malformed actuation record is, not silently absent from a rendered report.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, TargetDeviceInfo] = {}
+    dropped = 0
+    for name, info in raw.items():
+        if isinstance(info, dict):
+            out[name] = TargetDeviceInfo(**_kw(TargetDeviceInfo, info))
+        else:
+            dropped += 1
+    if dropped:
+        _logger.warning(
+            "dropped %d malformed target_devices entry/entries while loading a run", dropped
+        )
+    return out
 
 
 def results_from_manifest(data: dict[str, Any]) -> list[RunResult]:

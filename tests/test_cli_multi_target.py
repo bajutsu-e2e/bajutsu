@@ -8,6 +8,7 @@ stands in for a real one, and the device provider is the inert local one.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -17,9 +18,11 @@ from bajutsu.cli._shared import LoadedConfig
 from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.common.platform_lifecycle import ProvisionProfile
 from bajutsu.common.runner.device_provider import DeviceLease
+from bajutsu.common.runner.types import Lease, LeaseFn
 from bajutsu.common.scenario import Scenario
 from bajutsu.run.cli import (
     _acquire_targets,
+    _close_pools,
     _declared_targets_in,
     _pool_demand,
     _reject_self_declaring_in_dir,
@@ -415,3 +418,51 @@ def test_a_single_target_run_keeps_its_requested_workers() -> None:
     setups = {"app": _setup("app", "fake", ["a", "b"], released)}
     scenarios = [Scenario.model_validate({"name": "legacy", "steps": [{"tap": {"id": "a"}}]})]
     assert _resolve_multi_target_workers(scenarios, setups, 2) == 2
+
+
+# --- _close_pools: never mask a bring-up error, but still surface a genuine teardown defect ----
+
+
+def _pool_pair(shutdown: Callable[[], None]) -> dict[str, tuple[LeaseFn, Callable[[], None]]]:
+    def _lease_unused(eff: Effective, s: Scenario) -> Lease:
+        raise AssertionError("this pool's lease is never called in a teardown-only test")
+
+    return {"fake": (_lease_unused, shutdown)}
+
+
+def test_close_pools_raises_the_first_teardown_defect_when_nothing_else_is_in_flight() -> None:
+    def boom() -> None:
+        raise RuntimeError("wiring defect")
+
+    with pytest.raises(RuntimeError, match="wiring defect"):
+        _close_pools(_pool_pair(boom))
+
+
+def test_close_pools_mid_run_swallows_and_warns_instead_of_raising(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def boom() -> None:
+        raise RuntimeError("wiring defect")
+
+    _close_pools(_pool_pair(boom), mid_run=True)  # must not raise
+    assert "wiring defect" in capsys.readouterr().err
+
+
+def _raise_the_real_failure() -> None:
+    def boom() -> None:
+        raise RuntimeError("teardown defect")
+
+    try:
+        raise ValueError("the real failure")
+    finally:
+        _close_pools(_pool_pair(boom))  # mid_run not passed — self-detects via sys.exc_info()
+
+
+def test_close_pools_never_masks_an_exception_already_propagating(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # BE-0428 regression: called from a `finally` while a different exception unwinds, raising the
+    # first teardown defect would silently replace it — even with `mid_run` left at its default.
+    with pytest.raises(ValueError, match="the real failure"):
+        _raise_the_real_failure()
+    assert "teardown defect" in capsys.readouterr().err

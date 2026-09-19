@@ -84,12 +84,25 @@ class _StepRunner:
         already the block's `WebContextDriver` — resetting it would silently run the step against
         the app surface underneath the WebView instead of the WebView itself.
         """
-        if (
-            step.target
-            and (other := self.by_target.get(step.target)) is not None
-            and other is not self
-        ):
-            return other, other.cfg.driver
+        if step.target and self.by_target:
+            other = self.by_target.get(step.target)
+            if other is None:
+                # `step.target` is a declared field the load-time validator already checked against
+                # `scenario.targets`, so this is a wiring defect (a target the runner never brought
+                # up), not an authoring mistake — fail loudly rather than silently run the step
+                # against whichever driver happens to be active (prime directive 2).
+                raise RuntimeError(
+                    f"step target {step.target!r} has no live runtime; "
+                    f"declared targets: {sorted(self.by_target)}"
+                )
+            if other is not self:
+                # A genuinely different device, unlike the same-driver `web:` bridge swap — so the
+                # "nothing actuated in between" premise `prev_after`/`prev_after_screenshot` rely on
+                # is false across this switch. Reset both, the same way `_handle_web` already does
+                # for its own (same-device) context change.
+                self.state.prev_after = None
+                self.state.prev_after_screenshot = None
+                return other, other.cfg.driver
         return self, active_driver
 
     def _run_recovery(self, steps: list[Step], active_driver: base.Driver) -> str | None:

@@ -6,6 +6,7 @@ import subprocess
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import replace
+from typing import cast
 
 from bajutsu.common import assertions
 from bajutsu.common.assertions import AssertionResult, EvalContext
@@ -162,36 +163,69 @@ def _evaluate_expect(
     clock: Clock,
     *,
     ctx: EvalContext,
+    expect_actuations: list[Actuation],
+    control: DeviceControl | None = None,
+    channel: Collector | None = None,
+    hide_markers: bool = False,
+    cancelled: CancelSource = not_cancelled,
     target_runtimes: Mapping[str, TargetRuntime] | None = None,
     primary_target: str = "",
-) -> list[AssertionResult]:
+) -> tuple[list[AssertionResult], int]:
     """Evaluate the trailing `expect` block as a condition wait (BE-0245), via `_poll_asserts`.
-
-    The scenario-level `expect` needs only the assertion results, not the settled tree, so it drops
-    the tree `_poll_asserts` also returns.
 
     Entries are grouped by the target each names (BE-0428) and polled once per referenced target,
     against that target's own driver and network source — one condition wait per target rather than
     one per entry, so two assertions on the same target still settle together the way they do
     today. The results merge back in the scenario's own declared order, so a reader of
     `expect_results` sees the block as it was written rather than regrouped.
+
+    The pre-poll setup a `visual` or `clipboard` entry needs — clearing a notification banner,
+    shooting the actual screenshot, reading the pasteboard — runs once per referenced target here
+    too, against that target's own driver/context/control, rather than once up front against the
+    primary's: a `visual` entry naming a second target would otherwise read a screenshot that was
+    never captured, and a `clipboard` entry naming it would read the wrong device's pasteboard.
+    `control`/`channel`/`hide_markers`/`cancelled` describe the *primary* target only, exactly like
+    `driver`/`network`/`ctx`; a referenced `TargetRuntime` supplies its own `driver`/`ctx`/
+    `control`/`network`/`channel` for every other one. `expect_actuations` stays one flat list for
+    the whole phase regardless of which target's banner sweep drained into it — it is evidence
+    bookkeeping, not a per-target verdict input, so nothing needs it split apart.
+
+    Returns the merged results and how many actuations the banner sweep(s) this triggers had to
+    drop — the caller's own share of `RunResult.dropped_expect_actuations`.
     """
     groups: dict[str, list[int]] = {}
     for i, a in enumerate(expect):
         groups.setdefault(a.target or primary_target, []).append(i)
     merged: list[AssertionResult | None] = [None] * len(expect)
+    dropped = 0
     for name, indexes in groups.items():
         rt = (target_runtimes or {}).get(name)
+        group_driver = driver if rt is None else rt.driver
+        group_ctx = ctx if rt is None else (rt.ctx or ctx)
+        group_control = control if rt is None else rt.control
+        group_channel = channel if rt is None else cast("Collector | None", rt.channel)
+        group_entries = [expect[i] for i in indexes]
+        dropped += _clear_notification_banner_before_visual_capture(
+            group_ctx, group_driver, clock, expect_actuations
+        )
+        _capture_visual_actual(
+            group_ctx,
+            group_driver,
+            channel=group_channel,
+            hide_markers=hide_markers,
+            cancelled=cancelled,
+        )
+        clip = _clipboard_for(group_entries, group_control)
         results, _ = _poll_asserts(
-            driver if rt is None else rt.driver,
-            [expect[i] for i in indexes],
+            group_driver,
+            group_entries,
             network if rt is None else rt.network,
             clock,
-            ctx=ctx if rt is None or rt.ctx is None else replace(rt.ctx, clipboard=ctx.clipboard),
+            ctx=replace(group_ctx, clipboard=clip),
         )
         for i, r in zip(indexes, results, strict=True):
             merged[i] = replace(r, target=name)
-    return [r for r in merged if r is not None]
+    return [r for r in merged if r is not None], dropped
 
 
 def _settle_extract_read(
@@ -774,25 +808,26 @@ def run_scenario(
                     failure = run_phase(scenario.steps, outcomes, "", cancelled)
                 if failure is None and scenario.expect:
                     expect = _interp_asserts(scenario.expect, live_bindings)
-                    clip = _clipboard_for(expect, control)
-                    # A banner nothing interacted with never reaches the step loop's own per-step
-                    # sweep — this phase runs after the last step's (BE-0416 Unit 8) — so it is
-                    # cleared here too, right before the capture the `visual` assertions read.
-                    expect_dropped_actuations += _clear_notification_banner_before_visual_capture(
-                        ctx, driver, clock, expect_actuations
-                    )
-                    _capture_visual_actual(
-                        ctx, driver, channel=channel, hide_markers=hide_markers, cancelled=cancelled
-                    )
-                    expect_results = _evaluate_expect(
+                    # The banner clear, visual capture, and clipboard read all run inside
+                    # `_evaluate_expect` now, once per referenced target (BE-0428) — a banner
+                    # nothing interacted with never reaches the step loop's own per-step sweep
+                    # (BE-0416 Unit 8), so each target still needs its own clear before the capture
+                    # its own `visual` assertions read.
+                    expect_results, dropped = _evaluate_expect(
                         driver,
                         expect,
                         network,
                         clock,
-                        ctx=replace(ctx, clipboard=clip),
+                        ctx=ctx,
+                        control=control,
+                        channel=channel,
+                        hide_markers=hide_markers,
+                        cancelled=cancelled,
+                        expect_actuations=expect_actuations,
                         target_runtimes=target_runtimes,
                         primary_target=primary_target,
                     )
+                    expect_dropped_actuations += dropped
                     # A prompt the backend answered or declined while it was interrupting one of
                     # `expect`'s own queries. Outside the failure branch below: an `expect` that passed
                     # *because* the interruption was answered still has a dismissal to report, and a
@@ -832,17 +867,24 @@ def run_scenario(
                             driver, expect_actuations
                         )
                         if cleared:
-                            expect_results, dropped = _retry_expect_after_guard_dismiss(
-                                ctx,
+                            # Does not settle the screen itself, unlike an ordinary post-dismiss
+                            # retry (BE-0406): the guard's own multi-round call above already
+                            # settles after every round it dismisses something in (BE-0418), the
+                            # last one included, so settling again here would just repeat a
+                            # condition wait the guard's own call already resolved.
+                            expect_results, dropped = _evaluate_expect(
                                 driver,
-                                clock,
                                 expect,
                                 network,
-                                control,
-                                cancelled,
-                                channel,
-                                hide_markers,
-                                expect_actuations,
+                                clock,
+                                ctx=ctx,
+                                control=control,
+                                channel=channel,
+                                hide_markers=hide_markers,
+                                cancelled=cancelled,
+                                expect_actuations=expect_actuations,
+                                target_runtimes=target_runtimes,
+                                primary_target=primary_target,
                             )
                             expect_dropped_actuations += dropped
                         # The guard's own rounds just now, and the retry's queries when one ran, can
@@ -1065,59 +1107,6 @@ def _drain_into_expect_actuations(driver: base.Driver, expect_actuations: list[A
     drained = drain_actuations(driver)
     expect_actuations.extend(drained.records)
     return drained.dropped
-
-
-def _retry_expect_after_guard_dismiss(
-    ctx: EvalContext,
-    driver: base.Driver,
-    clock: Clock,
-    expect: list[Assertion],
-    network: NetworkSource,
-    control: DeviceControl | None,
-    cancelled: CancelSource,
-    channel: Collector | None,
-    hide_markers: bool,
-    expect_actuations: list[Actuation],
-    target_runtimes: Mapping[str, TargetRuntime] | None = None,
-    primary_target: str = "",
-) -> tuple[list[AssertionResult], int]:
-    """Re-evaluate `expect` once the alert guard has dismissed whatever blocked it the first time.
-
-    Extracted out of `run_scenario` (BE-0416 Unit 8's `dropped_expect_actuations` threading pushed
-    it over `PLR0915`'s statement cap) rather than folded into a smaller piece: everything here runs
-    only on the one path that reaches it — a guard dismissal — so splitting it further would just
-    scatter one retry's steps across more call sites.
-
-    Does not settle the screen itself, unlike an ordinary post-dismiss retry (BE-0406): the caller's
-    own multi-round guard call already settles after every round it dismisses something in
-    (BE-0418), the last one included, so settling again here would just repeat a condition wait the
-    guard's own call already resolved.
-
-    Returns:
-        The retried `expect` results, and how many actuations the banner sweep this triggers had to
-        drop (`_clear_notification_banner_before_visual_capture`'s own share of
-        `RunResult.dropped_expect_actuations` — the guard's own dismissing tap is the caller's
-        share, drained before this is called).
-    """
-    dropped = _clear_notification_banner_before_visual_capture(
-        ctx, driver, clock, expect_actuations
-    )
-    _capture_visual_actual(
-        ctx, driver, channel=channel, hide_markers=hide_markers, cancelled=cancelled
-    )
-    # Re-read the clipboard too: clearing the block may have let the app update the pasteboard, so
-    # the retry must compare against the fresh value, not the stale one.
-    clip = _clipboard_for(expect, control)
-    expect_results = _evaluate_expect(
-        driver,
-        expect,
-        network,
-        clock,
-        ctx=replace(ctx, clipboard=clip),
-        target_runtimes=target_runtimes,
-        primary_target=primary_target,
-    )
-    return expect_results, dropped
 
 
 def _sweep_notification_banner(

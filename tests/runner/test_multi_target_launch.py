@@ -194,3 +194,43 @@ def test_a_single_target_run_keeps_todays_singular_device_fields() -> None:
     scenario = Scenario.model_validate({"name": "legacy", "steps": [{"tap": {"id": "ok"}}]})
     result = run_all(_eff(), [scenario], _recording_lease([], "only"))[0]
     assert result.target_devices == {}
+
+
+def test_redact_unions_every_declared_targets_own_config() -> None:
+    # BE-0428: a value one target's config marks secret must be scrubbed everywhere, not only from
+    # that one target's own capture — widening the redaction set is the safer error.
+    from bajutsu.common.runner.pipeline import _union_redact
+    from bajutsu.common.scenario import Redact
+
+    app_eff = replace(_eff(), redact=Redact(labels=["app-secret"], headers=["x-app-token"]))
+    web_eff = replace(_web_eff(), redact=Redact(labels=["web-secret"], headers=["x-web-token"]))
+    merged = _union_redact([app_eff, web_eff])
+    assert sorted(merged.labels) == ["app-secret", "web-secret"]
+    assert sorted(merged.headers) == ["x-app-token", "x-web-token"]
+
+
+def test_redact_unmask_opt_out_needs_every_target_to_agree() -> None:
+    # A target still wanting the BE-0331 default protection must keep it for the whole run, even
+    # when another declared target opted out of it for itself alone.
+    from bajutsu.common.runner.pipeline import _union_redact
+    from bajutsu.common.scenario import Redact
+
+    protective = replace(_eff(), redact=Redact())  # keeps the default protection
+    permissive = replace(_web_eff(), redact=Redact(unmaskSecureFields=True))
+    merged = _union_redact([protective, permissive])
+    assert merged.unmask_secure_fields is False  # one target still wants it masked
+
+    both_permissive = replace(_eff(), redact=Redact(unmaskSecureFields=True))
+    merged_both = _union_redact([both_permissive, permissive])
+    assert merged_both.unmask_secure_fields is True  # every declared target agreed to release it
+
+
+def test_redact_falls_back_to_the_run_wide_config_with_no_target_map() -> None:
+    # A run whose scenarios declare no targets never builds a target map at all — this must stay
+    # the plain single-`Effective` path with no behavior change.
+    from bajutsu.common.runner.pipeline import _union_redact
+    from bajutsu.common.scenario import Redact
+
+    eff = replace(_eff(), redact=Redact(labels=["only-one"]))
+    assert _union_redact([eff]).labels == ["only-one"]
+    assert _union_redact([]).labels == []

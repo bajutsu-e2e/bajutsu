@@ -894,6 +894,72 @@ def test_run_rejects_a_stale_target_flag_end_to_end(tmp_path: Path) -> None:
     assert "demo" in r.output
 
 
+def test_a_pool_too_small_for_the_scenario_still_releases_every_device(tmp_path: Path) -> None:
+    # BE-0428 regression: `_resolve_multi_target_workers` can exit 2 well after every target's
+    # device was already acquired — that rejection must still release them, the same as any other
+    # error reached inside `run`'s own `try`, rather than leaking every one of them silently.
+    import bajutsu.common.runner.device_provider as dp
+    from bajutsu.common.platform_lifecycle import ProvisionProfile
+
+    released: list[str] = []
+
+    class _CountingLocal:
+        def acquire(self, eff: Effective, requested_udid: str) -> dp.DeviceLease:
+            name = eff.target
+
+            def _release() -> None:
+                released.append(name)
+
+            return dp.DeviceLease(
+                udid_spec=requested_udid, provision=ProvisionProfile(), release=_release
+            )
+
+    dp.register("counting-local", _CountingLocal())
+    try:
+        cfg = tmp_path / "bajutsu.config.yaml"
+        cfg.write_text(
+            "defaults: { backend: [fake] }\n"
+            "targets:\n"
+            "  app: { bundleId: com.example.app, deviceProvider: { kind: counting-local } }\n"
+            "  other: { bundleId: com.example.other, deviceProvider: { kind: counting-local } }\n",
+            encoding="utf-8",
+        )
+        scn = tmp_path / "cross.yaml"
+        scn.write_text(
+            "- name: cross-target\n"
+            "  targets: [app, other]\n"
+            "  steps:\n"
+            "    - target: app\n"
+            "      tap: { id: home.title }\n"
+            "    - target: other\n"
+            "      tap: { id: home.title }\n",
+            encoding="utf-8",
+        )
+        # Both targets resolve to the "fake" actuator and thus share one pool; a single `--udid`
+        # gives that pool exactly one lane for a scenario that needs two.
+        r = runner.invoke(
+            app,
+            [
+                "run",
+                "--scenario",
+                str(scn),
+                "--backend",
+                "fake",
+                "--udid",
+                "UD-1",
+                "--config",
+                str(cfg),
+                "--runs-dir",
+                str(tmp_path / "runs"),
+            ],
+        )
+        assert r.exit_code == 2
+        assert "--udid" in r.output
+        assert sorted(released) == ["app", "other"]
+    finally:
+        dp._PROVIDERS.pop("counting-local", None)
+
+
 def test_run_rejects_a_bad_target_config_hook_end_to_end(tmp_path: Path) -> None:
     # BE-0428: a config-level `before` hook step carrying a `target` that a 0-target scenario in
     # this suite would reject must exit 2 cleanly, not crash with a raw traceback from deep inside

@@ -363,6 +363,55 @@ def test_repeat_cli_rejects_a_multi_target_scenario(tmp_path: Path) -> None:
     assert "cross-target" in result.output
 
 
+def test_repeat_cli_rejects_a_target_mismatched_single_declared_target(tmp_path: Path) -> None:
+    # BE-0428 regression: a scenario declaring exactly one target must run against that one — the
+    # multi-target guard above only covers two or more. Without this check, `--target web` on a
+    # scenario declaring `targets: [ios]` would pass every other check (a lone declared target's
+    # steps are always valid against it) and silently repeat-and-diff against the wrong platform.
+    scn = tmp_path / "single.yaml"
+    scn.write_text(
+        "- name: single-target\n"
+        "  targets: [ios]\n"
+        "  steps:\n"
+        "    - target: ios\n"
+        "      tap: { id: home.start }\n",
+        encoding="utf-8",
+    )
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "targets:\n  ios:\n    bundleId: com.example.ios\n  web: { baseUrl: 'http://x/' }\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        ["audit", str(scn), "--repeat", "2", "--target", "web", "--config", str(cfg)],
+    )
+    assert result.exit_code == 2
+    assert "web" in result.output
+    assert "single-target" in result.output
+
+
+def test_repeat_cli_allows_a_matching_single_declared_target(tmp_path: Path) -> None:
+    # The membership check must not reject the scenario's own declared target — only a mismatch.
+    scn = tmp_path / "single.yaml"
+    scn.write_text(
+        "- name: single-target\n"
+        "  targets: [demo]\n"
+        "  steps:\n"
+        "    - target: demo\n"
+        "      tap: { id: home.start }\n",
+        encoding="utf-8",
+    )
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n", encoding="utf-8")
+    result = runner.invoke(
+        app,
+        ["audit", str(scn), "--repeat", "2", "--target", "demo", "--config", str(cfg)],
+    )
+    # Fails past the membership check (no device on this gate) rather than being rejected by it.
+    assert "declared targets" not in result.output
+
+
 def test_repeat_cli_rejects_a_bad_target_config_hook(tmp_path: Path) -> None:
     # BE-0428: a config-level `before` hook step carrying a `target` that a 0-target scenario
     # would reject must exit 2 cleanly, not crash with a raw traceback from deep inside `run_all`
