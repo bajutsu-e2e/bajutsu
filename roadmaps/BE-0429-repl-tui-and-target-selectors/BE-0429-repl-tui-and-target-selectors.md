@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-repl-tui-and-target-selectors-ja.md)
+**English** · [日本語](BE-0429-repl-tui-and-target-selectors-ja.md)
 
-# BE-XXXX — An ncurses-style `repl` screen, and `label`/`index`/coordinate targets for `tap`/`type`
+# BE-0429 — An ncurses-style `repl` screen, and `label`/`index`/coordinate targets for `tap`/`type`
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-repl-tui-and-target-selectors.md) |
+| Proposal | [BE-0429](BE-0429-repl-tui-and-target-selectors.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0429") |
 | Implementing PR | [#2026](https://github.com/bajutsu-e2e/bajutsu/pull/2026) |
 | Topic | Authoring experience |
 | Related | [BE-0423](../BE-0423-cli-repl-inspect-actuate/BE-0423-cli-repl-inspect-actuate.md) |
