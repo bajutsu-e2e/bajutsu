@@ -712,26 +712,45 @@ Once the app is up, the shell prompts with `bajutsu>`:
 | `tree` | the current element tree, as an `id` / `label` / `traits` / `value` / `frame` table |
 | `tree --json` | the same tree verbatim, as JSON — for piping, diffing, or reading a frame exactly |
 | `find <substring>` | the same tree, filtered to rows whose `id` or `label` contains `<substring>` (case-sensitive, like every selector match) |
-| `tap <id>` | tap the element carrying that id |
-| `type <id> <text>` | focus that element, then type `<text>` (the id is everything up to the first space) |
+| `tap <target>` | tap the element `<target>` resolves to, or a raw coordinate (see *Targets*, below) |
+| `type <target> <text>` | focus `<target>`, then type `<text>` |
 | `back` | navigate back one level, each backend using its platform-correct primitive |
 | `screenshot [path]` | write a screenshot; auto-named `repl-<UTC timestamp>.png` in the current directory when the path is omitted |
 | `help` | list the commands above |
-| `exit` / `quit` | leave the shell (Ctrl-D does the same; Ctrl-C abandons the half-typed line) |
+| `exit` / `quit` | leave the shell |
+
+**Targets** (`tap`/`type`): the shell reaches the same `id` / `label` / `index` vocabulary a
+scenario selector does, plus a raw coordinate that `tap` alone accepts, bypassing selector
+resolution entirely, plus (`--sel`) the full selector grammar for anything the shortcut forms
+below cannot express:
+
+| Form | Matches |
+|---|---|
+| `<id>` | the element carrying that id, verbatim — may contain a space for `tap` (its whole remainder is the id); `type` needs a quoted target (below) for that |
+| `<id>#<index>` | the `<index>`-th (0-based; negative counts from the end) of several elements sharing that id |
+| `label:<text>` | an element carrying no `id`, addressed by its exact `label` |
+| `label:<text>#<index>` | the `<index>`-th of several elements sharing that label |
+| `@<x>,<y>` | `tap` only — a raw pixel coordinate, bypassing the element tree entirely (`Driver.tap_point`) |
+| `"<target with a space>"` | `type` only — quote a multi-word `label:` target so it can be told apart from the text that follows |
+| `--sel <yaml>` | a full [selector](glossary.md#scenario-authoring) — `--sel {idMatches: row.*, index: 1}`, `--sel {label: Sign in, within: {id: form.login}}` — the same `id` / `idMatches` / `label` / `labelMatches` / `traits` / `value` / `within` / `index` fields `run` accepts, parsed with the scenario's own `Selector` model. Must be one flow-style `{...}` mapping (block YAML needs newlines a single typed line cannot hold); the closing `}` is what tells `type`'s target from its text, the way a quote does for `"<target with a space>"` |
+
+The shortcut forms above cannot reach an id or label that itself ends in a literal `#<digits>`,
+or starts with `@` or `label:`, and none of them reaches `idMatches`, `labelMatches`, `traits`,
+`value`, or `within` — `--sel` is the escape hatch for all of these; the shortcuts exist because
+`--sel {id: ...}` is more to type than `tap <id>` for the common case.
 
 - **The columns are the fields a [selector](glossary.md#scenario-authoring) matches against**,
   normalized by the backend — not a platform inspector's own vocabulary. An id read off a `tree`
   row is the id `run` will resolve.
-- **Nothing is guessed.** A `tap` whose id matches nothing fails with `ElementNotFound`, and one
-  matching several elements fails with `AmbiguousSelector` — immediately, with the same message
-  `run` would raise. The shell prints the failure and reads the next line.
+- **Nothing is guessed.** A `tap` whose target matches no element fails with `ElementNotFound`, and
+  one matching several fails with `AmbiguousSelector` — immediately, with the same message `run`
+  would raise (add `#<index>` to disambiguate, or read the tree again). The shell prints the failure
+  and reads the next line. A raw `@<x>,<y>` coordinate tap skips this entirely, since it resolves
+  no selector at all.
 - **`tap` does not scroll a cover away.** `run` first retries a bounded scroll when another element
   obstructs the target; `repl` surfaces the driver's own `ElementNotTappable`, which names the
   covering element — the more useful answer while diagnosing a selector. The two can therefore
   disagree on a covered target; write the explicit `scroll` step in the scenario to get the recovery.
-- **Elements are addressed by `id` alone** in this first version, narrower than the full selector
-  syntax `run` accepts. `tree` already shows every element's `label` and `traits`, so the loop is:
-  read the row, type its id. An element carrying no `id` cannot be reached from the shell yet.
 - **Gestures** (`swipe`, `scroll`, `pinch`, `rotate`) and platform-specific actions
   (`setPickerValue`, `selectOption`) are not in this version.
 - **Leaving the shell leaves the app running.** A Simulator- or device-backed app stays where you
@@ -741,6 +760,23 @@ Once the app is up, the shell prompts with `bajutsu>`:
 - A target declaring `launchServer` has its server started before the shell opens and stopped when
   it exits — without that, a web target would open the browser on a host that is not listening and
   every `tree` would read the error page.
+
+**The shell itself** is an ncurses-style screen when both stdin and stdout are a real terminal —
+the command line stays pinned at the top; every command's answer accumulates in a scrollable pane
+below it:
+
+| Key | In the input line | In the scroll pane |
+|---|---|---|
+| `Tab` | switch to the scroll pane | switch back to the input line |
+| `↑` / `↓` | recall the previous/next command from history | scroll the output up/down one line |
+| `PgUp` / `PgDn` | — | scroll the output up/down a full pane |
+| `/` | — | open a filter prompt; `Enter` sets it (a case-insensitive substring over the whole transcript), an empty pattern clears it, `Esc` abandons the edit |
+| `Ctrl-C` | abandon the half-typed line | — |
+
+Piped stdin/stdout (a script, a test harness, `bajutsu repl < commands.txt`) falls back to a plain
+line-at-a-time shell instead — every command above behaves identically either way, and `exit` /
+`quit` leave the shell in both (Ctrl-D also does, in the plain fallback only — curses has no
+Ctrl-D/EOF signal to read).
 
 ## `codegen`
 

@@ -374,6 +374,7 @@
     "bajutsu/repl/loop.py": 100.0,
     "bajutsu/repl/render.py": 100.0,
     "bajutsu/repl/session.py": 100.0,
+    "bajutsu/repl/tui.py": 100.0,
     "bajutsu/run/cli.py": 90.33,
     "bajutsu/run/notify/__init__.py": 100.0,
     "bajutsu/run/notify/_functions.py": 85.64,
