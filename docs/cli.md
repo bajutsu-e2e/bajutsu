@@ -700,7 +700,7 @@ bajutsu repl --target <name> [options]
 | `--target` | (required) | the target app |
 | `--udid` | `booted` | the target Simulator (or a WebDriver endpoint on the live route) |
 | `--backend` | config | actuator order |
-| `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
+| `--erase / --no-erase` | erase, except on the live route | erase before launch (the app must be installed); the live `--udid https://…` route rejects erase outright, so the default there is off, and an explicit `--erase` on that route exits with a CLI error instead |
 | `--headed / --no-headed` | app `headless` | web backend: inspect a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
 | `--browser` | app `browser` (chromium) | web backend: the Playwright rendering engine to inspect — `chromium` / `firefox` / `webkit`; omit to use the target's `browser` config |
 | `--config` | `bajutsu.config.yaml` | config |
