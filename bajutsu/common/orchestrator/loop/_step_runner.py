@@ -64,9 +64,46 @@ class _StepRunner:
     they share one `StepLoopState`.
     """
 
-    def __init__(self, state: StepLoopState, cfg: _LoopConfig) -> None:
+    def __init__(self, state: StepLoopState, cfg: _LoopConfig, target: str = "") -> None:
         self.state = state
         self.cfg = cfg
+        # Which declared target this runner drives, "" for a scenario that declares none (BE-0428).
+        self.target = target
+        # Every declared target's runner, keyed by name and shared by all of them, so a step naming
+        # another target is dispatched to the runner holding *that* target's driver, sink, network
+        # source, and WebView bridge. Populated by `_run_steps` right after it builds them; a
+        # single-target run leaves it empty and every lookup below falls through to `self`.
+        self.by_target: dict[str, _StepRunner] = {}
+
+    def _route(self, step: Step, active_driver: base.Driver) -> tuple[_StepRunner, base.Driver]:
+        """The runner and driver this step executes against (BE-0428).
+
+        A step naming a different declared target switches to that target's own runner and its own
+        driver. Anything else keeps `active_driver` rather than falling back to `self.cfg.driver`:
+        a step nested inside a `web:` block carries no target of its own, and its active driver is
+        already the block's `WebContextDriver` — resetting it would silently run the step against
+        the app surface underneath the WebView instead of the WebView itself.
+        """
+        if step.target and self.by_target:
+            other = self.by_target.get(step.target)
+            if other is None:
+                # `step.target` is a declared field the load-time validator already checked against
+                # `scenario.targets`, so this is a wiring defect (a target the runner never brought
+                # up), not an authoring mistake — fail loudly rather than silently run the step
+                # against whichever driver happens to be active (prime directive 2).
+                raise RuntimeError(
+                    f"step target {step.target!r} has no live runtime; "
+                    f"declared targets: {sorted(self.by_target)}"
+                )
+            if other is not self:
+                # A genuinely different device, unlike the same-driver `web:` bridge swap — so the
+                # "nothing actuated in between" premise `prev_after`/`prev_after_screenshot` rely on
+                # is false across this switch. Reset both, the same way `_handle_web` already does
+                # for its own (same-device) context change.
+                self.state.prev_after = None
+                self.state.prev_after_screenshot = None
+                return other, other.cfg.driver
+        return self, active_driver
 
     def _run_recovery(self, steps: list[Step], active_driver: base.Driver) -> str | None:
         self.state.running_recovery = True
@@ -81,7 +118,10 @@ class _StepRunner:
             # step has not acted yet, so nothing is left half-actuated and no artifact is half-written.
             if self.cfg.cancelled():
                 raise RunCancelled
-            failure = self._run_one(step, active_driver)
+            runner, step_driver = self._route(step, active_driver)
+            # Another instance of this same class, not another type's internals — SLF001's own
+            # rationale (reaching into a foreign object) does not apply to a sibling runner.
+            failure = runner._run_one(step, step_driver)  # noqa: SLF001
             if failure is not None:
                 return failure
         return None
@@ -95,7 +135,11 @@ class _StepRunner:
         """
         kind = _action_of(step)
         idx = self.state.counter.take()
-        outcome = StepOutcome(index=idx, action=kind)
+        # `self.target`, not `step.target`: a scenario declaring exactly one target lets its steps
+        # omit the name, and a step nested inside a `web:` block must omit it — both still ran
+        # against a named target, and a report that left them blank would look like a single-target
+        # run's (BE-0428).
+        outcome = StepOutcome(index=idx, action=kind, target=self.target)
         if self.cfg.progress is not None:
             label = f"{self.cfg.phase} step" if self.cfg.phase else "step"
             self.cfg.progress(f"{self.cfg.sid} · {label} {idx + 1}: {_step_label(step, kind)}")

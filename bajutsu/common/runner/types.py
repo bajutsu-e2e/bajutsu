@@ -90,3 +90,23 @@ class Lease:
 # Leases a free device for one scenario (blocking until one frees up): launches the app
 # and returns the Lease the run loop drives, then release()s.
 LeaseFn = Callable[[Effective, Scenario], Lease]
+
+
+@dataclass(frozen=True)
+class TargetPool:
+    """How one target a scenario declares is resolved, leased, and preflighted (BE-0428).
+
+    The caller that owns device bring-up — `run`'s CLI — fills one of these per declared name and
+    hands the pipeline the whole map, so the pipeline never needs the config file, the device
+    provider, or the actuator registry to bring a second target up.
+
+    `lease` is the pool serving this target's *platform*: two targets on the same platform share one
+    pool and are told apart by the `eff` each hands it, which is what decides the app that lease
+    launches. `actuator` and `udid_spec` are this target's own, so the capability preflight judges
+    each target's steps against the backend that will actually run them.
+    """
+
+    eff: Effective
+    lease: LeaseFn
+    actuator: str
+    udid_spec: str = "booted"

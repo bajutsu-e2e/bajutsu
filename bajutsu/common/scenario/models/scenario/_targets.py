@@ -52,7 +52,7 @@ def _check_step_target(step: Step, *, known: set[str], inside_web: bool) -> None
         if step.target is not None:
             raise ValueError(
                 f"{context}: target is not allowed on a step nested inside a "
-                "web: block (it always runs against the block's own resolved target)"
+                "web: or app: block (it always runs against the block's own device)"
             )
         return
     if step.use is not None and len(known) >= 2:
@@ -81,11 +81,12 @@ def _check_target_requirements(scenario: Scenario) -> None:
     """Enforce `target`'s requirement against `len(scenario.targets)`, recursively.
 
     Zero or one declared targets: every step's/assertion's `target` must be omitted, or must name
-    that one target. Two or more: every step — including an `if` / `forEach` / `web` wrapper, not
-    only a leaf action — and every top-level `expect` entry must set `target` explicitly, naming
-    one of the declared targets. A step nested inside a `web:` block is the one exception — it must
-    omit `target` outright, since it always runs against the target the enclosing `web:` step
-    already resolved. An `Assertion` reached through an inline `assert:` list, an `if`'s
+    that one target. Two or more: every step — including an `if` / `forEach` / `web` / `app`
+    wrapper, not only a leaf action — and every top-level `expect` entry must set `target`
+    explicitly, naming one of the declared targets. A step nested inside a `web:` or `app:` block
+    is the one exception — it must omit `target` outright, since it always runs against the device
+    the enclosing block already resolved (`web:`'s own `WebContextDriver`, or `app:`'s unchanged
+    native driver). An `Assertion` reached through an inline `assert:` list, an `if`'s
     `condition`, or an `interrupts` entry's `condition` must never set `target` — only one reached
     through the scenario's top-level `expect` block may. Two open questions this item has not yet
     resolved fail closed instead of guessing: a `use:` step (its own `target` would be discarded by
@@ -113,6 +114,12 @@ def _check_target_requirements(scenario: Scenario) -> None:
                 walk_steps(step.for_each.steps, inside_web=inside_web)
             if step.web is not None:
                 walk_steps(step.web.steps, inside_web=True)
+            if step.app is not None:
+                # `app:` reuses the same native driver throughout, unlike `web:`'s separate
+                # `WebContextDriver` — but a nested step still always runs against the device the
+                # enclosing step already routed to, so the same omit-`target` rule applies
+                # (BE-0428).
+                walk_steps(step.app.steps, inside_web=True)
 
     walk_steps(scenario.steps, inside_web=False)
     walk_steps(scenario.before, inside_web=False)

@@ -65,11 +65,24 @@ def _test_name(r: RunResult) -> str:
     return f"{r.scenario} [{r.engine}]" if r.engine else r.scenario
 
 
+def _device_label(device_name: str, device_runtime: str) -> str:
+    """One device's model + runtime label, e.g. `iPhone 15 (iOS 17.2)`."""
+    if device_name and device_runtime:
+        return f"{device_name} ({device_runtime})"
+    return device_name or device_runtime
+
+
 def _device(r: RunResult) -> str:
-    """The model + runtime label for the CTRF `device` field, e.g. `iPhone 15 (iOS 17.2)`."""
-    if r.device_name and r.device_runtime:
-        return f"{r.device_name} ({r.device_runtime})"
-    return r.device_name or r.device_runtime
+    """The label for the CTRF `device` field.
+
+    CTRF names one device per test, and a multi-target scenario ran on several (BE-0428), so those
+    are joined into one label rather than dropped — an importer reading the field still learns
+    every device involved, and `extra.targets` below carries them apart.
+    """
+    if r.target_devices:
+        labels = [_device_label(d.device_name, d.device_runtime) for d in r.target_devices.values()]
+        return ", ".join(label for label in labels if label)
+    return _device_label(r.device_name, r.device_runtime)
 
 
 def _step(s: StepOutcome) -> dict[str, object]:
@@ -79,6 +92,8 @@ def _step(s: StepOutcome) -> dict[str, object]:
     assertions / artifacts (all richer than the schema's top level) are preserved under `extra`.
     """
     extra: dict[str, object] = {"index": s.index, "duration": _ms(s.duration_s)}
+    if s.target:
+        extra["target"] = s.target
     if s.reason:
         extra["reason"] = s.reason
     if s.assertion_results:
@@ -104,6 +119,18 @@ def _attachments(r: RunResult) -> list[dict[str, object]]:
 def _test_extra(r: RunResult) -> dict[str, object]:
     """Bajutsu surplus with no first-class CTRF home, kept under the test's `extra`."""
     extra: dict[str, object] = {"backend": r.backend}
+    if r.target_devices:
+        # A multi-target scenario has no single backend (BE-0428): one entry per declared target
+        # instead, so an importer can still attribute a failure to a platform.
+        extra["targets"] = {
+            name: {
+                "backend": d.backend,
+                "device": d.device,
+                "deviceName": d.device_name,
+                "deviceRuntime": d.device_runtime,
+            }
+            for name, d in r.target_devices.items()
+        }
     if r.sid:
         extra["sid"] = r.sid
     # The lifecycle phases (BE-0392) sit beside `steps` rather than inside it, so a consumer reading

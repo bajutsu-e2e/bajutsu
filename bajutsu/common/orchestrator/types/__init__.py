@@ -43,6 +43,11 @@ from .run_result import RunResult
 from .selection_state import SelectionState
 from .skipped_capture import SkippedCapture
 from .step_outcome import StepOutcome
+from .target_device_info import TargetDeviceInfo
+
+# Imported after the plain result types above: `TargetRuntime` carries the live driver and evidence
+# sink a run binds per target, so it depends on layers those types do not.
+from .target_runtime import TargetRuntime
 from .undeclared_interruption import UndeclaredInterruption
 
 __all__ = [
@@ -65,6 +70,8 @@ __all__ = [
     "SelectionState",
     "SkippedCapture",
     "StepOutcome",
+    "TargetDeviceInfo",
+    "TargetRuntime",
     "UndeclaredInterruption",
     "WallClock",
     "alert_block_note",

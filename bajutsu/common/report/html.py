@@ -158,7 +158,15 @@ def html_report(
         )
         for i, r in enumerate(results)
     ]
-    devices = dict.fromkeys(r.device for r in results if r.device)  # ordered-unique device count
+    # Ordered-unique device count. A multi-target scenario names one device per declared target
+    # rather than one for itself (BE-0428), so those count too — otherwise a run every one of whose
+    # scenarios was multi-target would report "0 devices".
+    devices = dict.fromkeys(
+        device
+        for r in results
+        for device in ([r.device] if r.device else [d.device for d in r.target_devices.values()])
+        if device
+    )
     total_duration = _fmt_duration(sum(r.duration_s for r in results))
     return (
         _env()

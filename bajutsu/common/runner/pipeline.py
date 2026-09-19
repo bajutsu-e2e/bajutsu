@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -45,6 +45,8 @@ from bajutsu.common.orchestrator import (
     ProgressFn,
     RunResult,
     SkippedCapture,
+    TargetDeviceInfo,
+    TargetRuntime,
     push_interruption_policy,
     run_scenario,
     sanitize_source_stem,
@@ -68,9 +70,12 @@ from bajutsu.common.runner.recovery import (
     _default_crash_retries,
     _default_run_crash_recovery_budget,
 )
-from bajutsu.common.runner.types import AlertGuardFor, Lease, LeaseFn
+from bajutsu.common.runner.types import AlertGuardFor, Lease, LeaseFn, TargetPool
 from bajutsu.common.scenario import (
+    AfterRule,
+    Redact,
     Scenario,
+    Step,
     UncoveredSystemAlertLocale,
     _check_target_requirements,
     _scenarios_declaring_targets,
@@ -170,6 +175,11 @@ class _ScenarioRunner:
     mailbox: MailboxReader | None
     caps: frozenset[str] | None
     total: int
+    # Every target any scenario in this run declares, brought up by the caller (BE-0428). Read-only
+    # and whole-run: two scenarios can declare different subsets, so which of these entries a given
+    # scenario touches is decided per scenario in `_run_one_impl`, never stored back here. Empty on
+    # a single-target run, where the primary `eff` / `lease` above are the only ones.
+    targets: Mapping[str, TargetPool] = field(default_factory=dict)
     clock: Clock | None = None
     alert_guard: AlertGuardConfig | None = None
     alert_guard_for: AlertGuardFor | None = None
@@ -278,6 +288,56 @@ class _ScenarioRunner:
         except Exception as exc:  # diagnostic only — the run's verdict must not depend on it
             _logger.debug("entry-screen convention score failed: %s", exc, exc_info=True)
 
+    def _routed(self, s: Scenario) -> list[str]:
+        """The declared targets this runner can actually bring up, or none (BE-0428).
+
+        A scenario declaring one target, run by a caller that passed no `targets` map, stays on the
+        single-target path and is still correct there: every step either omits `target` or names
+        that one target, so the run's own `eff` and `lease` are the right ones. `run_all` refuses
+        the two-or-more case outright rather than letting it reach here.
+        """
+        return list(s.targets) if s.targets and self.targets else []
+
+    def _preflight_targets(self, s: Scenario) -> str | None:
+        """Why one declared target cannot run the steps routed to it, or None (BE-0428).
+
+        BE-0082's fail-fast preflight, applied once per declared target rather than once per
+        scenario: the scenario is narrowed to the steps that name each target, and judged against
+        that target's own backend capabilities. A `web:` block on a web target and a `handleSystemAlert`
+        on an iOS target are each supported by exactly one of them, which a single shared set could
+        not express.
+        """
+        for name in self._routed(s):
+            pool = self.targets[name]
+            caps = capabilities_for_run(pool.actuator, pool.eff, pool.udid_spec)
+            if reasons := capability_preflight.unsupported(_steps_for_target(s, name), caps):
+                return f"unsupported on backend '{pool.actuator}' (target '{name}'): {'; '.join(reasons)}"
+        return None
+
+    def _lease_targets(self, s: Scenario, launch_scenario: Scenario) -> dict[str, Lease]:
+        """One live lease per target *s* declares, brought up before its first step runs.
+
+        Pools are acquired in one fixed order — the pool's own actuator, then the target name —
+        by every worker alike. That is the standard lock-ordering discipline: with every worker
+        approaching every pool in the same order, no two can each hold the other's next pool, which
+        is the circular wait every deadlock here would need. A pool later in the sequence that never
+        frees a device leaves this worker blocked on that one queue holding the pools before it, and
+        anything already held is released if the acquisition fails rather than held indefinitely.
+
+        The same `launch_scenario` — the crash-retry loop's possibly erase-forced copy — goes to
+        every target, since `preconditions` and `permissions` are scenario-level and each backend
+        already interprets only the parts that apply to it.
+        """
+        held: dict[str, Lease] = {}
+        try:
+            for name in sorted(self._routed(s), key=lambda n: (self.targets[n].actuator, n)):
+                pool = self.targets[name]
+                held[name] = pool.lease(pool.eff, launch_scenario)
+        except BaseException:
+            _release_all(held)
+            raise
+        return held
+
     def _artifacts(self) -> RunArtifactWriter | None:
         """The run's artifact sink, or None when this run keeps no run directory at all."""
         return None if self.run_dir is None else RunArtifactWriter(self.run_dir, self.redactor)
@@ -360,7 +420,24 @@ class _ScenarioRunner:
         # actuator can't run *before* any device is leased (BE-0082 fail-fast).
         actuator = self.actuator
         caps = self.caps
-        if self.resolve_actuator is not None:
+        if routed := self._routed(s):
+            # Each declared target is preflighted against its own backend's capability set, over
+            # only the steps routed to it (BE-0428). Sharing one set would reject a construct the
+            # second target supports, or admit one it does not.
+            if (unsupported := self._preflight_targets(s)) is not None:
+                if self.progress is not None:
+                    self.progress(f"✘ scenario {i + 1}/{self.total}: {s.name} ({unsupported})")
+                return RunResult(
+                    scenario=s.name,
+                    ok=False,
+                    steps=[],
+                    backend=self.targets[routed[0]].actuator,
+                    sid=sid,
+                    failure=unsupported,
+                )
+            actuator = self.targets[routed[0]].actuator
+            caps = None  # already checked per target, against each one's own set
+        elif self.resolve_actuator is not None:
             try:
                 actuator = self.resolve_actuator(s)
             except RuntimeError as exc:
@@ -527,6 +604,10 @@ class _ScenarioRunner:
                 # Reset per attempt: the crash handler reads it to reach the lease's own signals, and
                 # a lease-time crash must not be judged on the previous attempt's lease.
                 lz: Lease | None = None
+                # Every other declared target's lease (BE-0428), keyed by name, empty on a
+                # single-target run. Reset per attempt alongside `lz` for the same reason: a retry
+                # relaunches the whole set, so the previous attempt's drivers are already gone.
+                others: dict[str, Lease] = {}
                 # A retry forces the device recovery `erase: true` would give: respawning onto the
                 # device that just wedged reproduces the crash. Skipped on `reinstall: overwrite`
                 # (the scenario needs its app data preserved), on `not self.force_erase_on_retry`
@@ -556,7 +637,7 @@ class _ScenarioRunner:
                 # the retry leases afresh — a cold respawn, since the pool drops the dead warm runner.
                 try:
                     try:
-                        lz = self.lease(self.eff, retry_scenario)
+                        lz, others = self._lease_set(s, retry_scenario)
                     except device_errors.DeviceError as exc:
                         # A failed forced-erase prep (`simctl.DeviceError`/`adb.DeviceError`, e.g. the
                         # device rejected `erase`/`shutdown`/`boot`) is not a `BackendCrashError`, so it
@@ -597,7 +678,7 @@ class _ScenarioRunner:
                             s.name,
                             exc,
                         )
-                        lz = self.lease(self.eff, s)
+                        lz, others = self._lease_set(s, s)
                     if self.trace_driver:
                         # BE-0415: wraps the `Lease` this attempt just returned, not anything inside
                         # `pool.py` — `device_pool`'s warm-driver cache stores the raw driver
@@ -608,6 +689,11 @@ class _ScenarioRunner:
                         # just returned `lz` — not here — so a cold respawn's own readiness round
                         # trips are attributed to the attempt that actually made them.)
                         lz.driver = tracing.TracingDriver(lz.driver)
+                        # Every other declared target's lease too (BE-0428): a two-target scenario's
+                        # trace would otherwise contain only the primary's half of the round trips,
+                        # with nothing saying the other half was never instrumented.
+                        for extra in others.values():
+                            extra.driver = tracing.TracingDriver(extra.driver)
                     if attempt > 1:
                         _logger.info(
                             "scenario %s: backend respawned and recovered on attempt %d/%d",
@@ -625,8 +711,13 @@ class _ScenarioRunner:
                         # work, not recovery. A mid-step crash below re-arms the clock.
                         self.run_crash_budget.add_recovery_time(self._now() - recovery_started)
                         recovery_started = None
-                    return self._run_on_lease(lz, handler, i, s, sid)
+                    return self._run_on_lease(lz, others, handler, i, s, sid)
                 except BackendCrashError as crash:
+                    # Nothing is released here: `_lease_set` already rolls back its own partial
+                    # bring-up, and `_run_on_lease` owns the whole set's release in its `finally`
+                    # once entered. Releasing again would run `pool.py`'s non-idempotent
+                    # `release()` — which ends in `free.put(udid)` — twice per extra target on
+                    # every mid-step crash, handing one device to two workers (BE-0428).
                     last_crash = crash
                     if crash.partial_artifacts:
                         partial_artifacts = crash.partial_artifacts
@@ -836,8 +927,131 @@ class _ScenarioRunner:
             return ""
         return f"; the backend's own crash evidence is in {directory}"
 
+    def _lease_set(self, s: Scenario, launch_scenario: Scenario) -> tuple[Lease, dict[str, Lease]]:
+        """The scenario's primary lease and, for a self-declaring scenario, every other one.
+
+        A scenario declaring no targets leases exactly as it did before BE-0428. One that declares
+        them leases every declared target up front — never lazily on first reference, since a step
+        naming a target expects it already live — and the first declared name is the primary, whose
+        driver the report attributes the run to and whose lease the crash-recovery loop judges.
+        """
+        routed = self._routed(s)
+        if not routed:
+            return self.lease(self.eff, launch_scenario), {}
+        held = self._lease_targets(s, launch_scenario)
+        primary = held.pop(routed[0])
+        return primary, held
+
+    def _eval_context_for(
+        self, eff: Effective, driver: base.Driver, writer: RunArtifactWriter | None, prefix: str
+    ) -> EvalContext:
+        """The evaluation context one target's own assertions read (BE-0428).
+
+        Each directory follows that target's own config where it declares one and falls back to the
+        run's otherwise, so a `visual` or `golden` assertion on a second declared target compares
+        against that target's own baselines and goldens rather than the primary's. `prefix` keeps
+        two targets' `visual-actual` captures in separate files under the same scenario's evidence.
+
+        This is also where the proposal's one open question lands: a golden frame is sanity-checked
+        against *this* target's screen bounds, since an iOS target and a web target report different
+        geometries and judging one by the other's would reject a correctly framed golden.
+        """
+        baselines = _dir_or(eff.evidence_dirs.baselines, self.baselines_dir)
+        vc: VisualContext | None = None
+        if baselines is not None and writer is not None:
+            vc = VisualContext(
+                screenshot_path=writer.reserve(f"{prefix}/visual-actual.png"),
+                baselines_dir=baselines,
+                writer=writer,
+                prefix=prefix,
+                default_compare=eff.visual_compare,
+            )
+        schemas = _dir_or(eff.evidence_dirs.schemas, self.schemas_dir)
+        goldens = _dir_or(
+            eff.evidence_dirs.goldens,
+            self.golden_context.goldens_dir if self.golden_context is not None else None,
+        )
+        return EvalContext(
+            visual=vc,
+            schema=SchemaContext(schemas_dir=schemas) if schemas is not None else None,
+            golden=_golden_with_screen(GoldenContext(goldens_dir=goldens), driver)
+            if goldens is not None
+            else None,
+        )
+
+    def _target_runtimes(
+        self,
+        s: Scenario,
+        lz: Lease,
+        others: Mapping[str, Lease],
+        handler: AlertGuardConfig | None,
+        writer: RunArtifactWriter | None,
+        sid: str,
+    ) -> dict[str, TargetRuntime] | None:
+        """One `TargetRuntime` per target *s* declares, or None when it declares none.
+
+        Built here, per scenario, for the same reason the driver map is: two scenarios in one run
+        can declare different targets, so none of this can live on the shared runner. Every field is
+        resolved from the target's own lease and its own `Effective` — the alert guard is the one
+        exception, being a property of the scenario rather than of any target.
+        """
+        routed = self._routed(s)
+        if not routed:
+            return None
+        leases = {routed[0]: lz, **others}
+        return {
+            name: self._runtime_for(
+                name, leases[name], s, handler, writer, sid, primary=name == routed[0]
+            )
+            for name in routed
+        }
+
+    def _runtime_for(
+        self,
+        name: str,
+        lz: Lease,
+        s: Scenario,
+        handler: AlertGuardConfig | None,
+        writer: RunArtifactWriter | None,
+        sid: str,
+        *,
+        primary: bool,
+    ) -> TargetRuntime:
+        """One declared target's runtime, bound to its own lease and its own resolved config."""
+        pool = self.targets[name]
+        collector = lz.collector
+        return TargetRuntime(
+            driver=lz.driver,
+            sink=lz.sink,
+            alert_guard=handler,
+            network=collector.snapshot if collector is not None else _no_network,
+            relaunch=lz.relaunch,
+            control=lz.control,
+            # A second target's evidence goes under its own name, so two targets' `visual-actual`
+            # captures in one scenario never overwrite each other.
+            ctx=self._eval_context_for(
+                pool.eff, lz.driver, writer, sid if primary else f"{sid}/{name}"
+            ),
+            mailbox=build_mailbox_reader(pool.eff.mailbox, self.bindings or {}),
+            webview_bridge=lz.webview_bridge,
+            transitions=(
+                collector.transitions_snapshot_timed if collector is not None else _no_transitions
+            ),
+            interrupts=[*pool.eff.run_defaults.interrupts, *s.interrupts],
+            locale=s.preconditions.resolved_locale(pool.eff.locale),
+            capture=list(pool.eff.capture),
+            channel=collector,
+            caps=capabilities_for_run(pool.actuator, pool.eff, pool.udid_spec),
+        )
+
     def _run_on_lease(
-        self, lz: Lease, handler: AlertGuardConfig | None, i: int, s: Scenario, sid: str
+        self,
+        lz: Lease,
+        others: dict[str, Lease],
+        handler: AlertGuardConfig | None,
+        i: int,
+        s: Scenario,
+        sid: str,
     ) -> RunResult:
         """Run one scenario on an already-leased device and return its result.
 
@@ -851,11 +1065,16 @@ class _ScenarioRunner:
             # is set per scenario rather than per lease — including to *empty* when the scenario
             # disables the guard, so it never inherits the previous scenario's policy.
             push_interruption_policy(lz.driver, handler)
+            for extra in others.values():
+                push_interruption_policy(extra.driver, handler)
             # Score the entry screen before the scenario mutates it — the app is freshly launched here,
             # exactly what a standalone `doctor` probe would see, but on the lease this run already holds.
             self._maybe_emit_score(i, lz.driver)
             if lz.collector is not None:
                 lz.collector.clear()
+            for extra in others.values():
+                if extra.collector is not None:
+                    extra.collector.clear()
             writer = self._artifacts()
             # Build visual context for scenario-level visual assertions (expect).
             vc: VisualContext | None = None
@@ -876,19 +1095,11 @@ class _ScenarioRunner:
             )
             # Best-effort device screen bounds for golden frame sanity (BE-0006):
             # a query() failure here must not block non-golden scenarios.
-            gc_with_screen = self.golden_context
-            if self.golden_context is not None and self.golden_context.screen is None:
-                try:
-                    from bajutsu.common.drivers.elements import screen_size_from_elements
-
-                    sw, sh = screen_size_from_elements(lz.driver.query())
-                    gc_with_screen = GoldenContext(
-                        goldens_dir=self.golden_context.goldens_dir, screen=(0.0, 0.0, sw, sh)
-                    )
-                except Exception as exc:  # best-effort; _eval_golden falls back
-                    _logger.debug(
-                        "screen-bounds probe for golden framing failed: %s", exc, exc_info=True
-                    )
+            gc_with_screen = (
+                None
+                if self.golden_context is None
+                else _golden_with_screen(self.golden_context, lz.driver)
+            )
             result = run_scenario(
                 lz.driver,
                 s,
@@ -932,22 +1143,48 @@ class _ScenarioRunner:
                 # exactly as the app that launched sees it, not read as if the scenario pinned
                 # nothing (BE-0365 unit 3).
                 target_launch_env=self.eff.launch_env,
+                # One runtime per declared target (BE-0428), the primary's included so the step
+                # loop resolves every `step.target` through one map rather than special-casing it.
+                target_runtimes=self._target_runtimes(s, lz, others, handler, writer, sid),
+                primary_target=next(iter(self._routed(s)), ""),
             )
             result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
-            result.device = lz.udid  # attribute the scenario to the device that ran it
-            result.device_name = lz.device_name  # for the report's Environment tab
-            result.device_runtime = lz.device_runtime
-            result.skipped_captures = list(lz.skipped_captures)  # disclose evidence gaps (BE-0020)
-            if lz.collector is not None and writer is not None:
-                art = _write_network(
-                    lz.collector.snapshot_timed(),
-                    writer,
-                    sid,
-                    wall_offset_s=result.wall_offset_s,
-                    provider=lz.collector_provider,
-                )
-                if art is not None:
-                    result.artifacts.append(art)
+            if others:
+                # A multi-target run has no single device to attribute the scenario to, so the
+                # singular fields stay empty and each declared target gets its own row instead
+                # (BE-0428). `backend` is left as the run set it for the same reason it is here at
+                # all — `run_one`'s early-return paths already fill it before any lease exists.
+                result.backend = ""
+                result.target_devices = {
+                    name: TargetDeviceInfo(
+                        backend=self.targets[name].actuator,
+                        device=target_lz.udid,
+                        device_name=target_lz.device_name,
+                        device_runtime=target_lz.device_runtime,
+                    )
+                    for name, target_lz in {s.targets[0]: lz, **others}.items()
+                }
+            else:
+                result.device = lz.udid  # attribute the scenario to the device that ran it
+                result.device_name = lz.device_name  # for the report's Environment tab
+                result.device_runtime = lz.device_runtime
+            # Every declared target's own evidence gaps and network capture, not only the
+            # primary's — an extra target's lease is exactly as capable of skipping a capture kind
+            # or carrying `request`-asserted traffic as the primary's (BE-0428).
+            primary_name = s.targets[0] if s.targets else ""
+            for name, target_lz in {primary_name: lz, **others}.items():
+                result.skipped_captures += target_lz.skipped_captures
+                if target_lz.collector is not None and writer is not None:
+                    prefix = sid if name == primary_name else f"{sid}/{name}"
+                    art = _write_network(
+                        target_lz.collector.snapshot_timed(),
+                        writer,
+                        prefix,
+                        wall_offset_s=result.wall_offset_s,
+                        provider=target_lz.collector_provider,
+                    )
+                    if art is not None:
+                        result.artifacts.append(art)
             if self.progress is not None:
                 mark = "✔" if result.ok else "✘"
                 self.progress(
@@ -955,10 +1192,157 @@ class _ScenarioRunner:
                 )
             return result
         finally:
+            # The extra targets first, best-effort, so one failing release cannot strand the
+            # others' devices; the primary's own release then propagates exactly as it always has.
+            _release_all(others)
             lz.release()
 
 
-def with_lifecycle_phases(eff: Effective, scenarios: list[Scenario]) -> list[Scenario]:
+def _dir_or(configured: str | None, fallback: Path | None) -> Path | None:
+    """A target's own configured evidence directory, else the run-level one (BE-0428)."""
+    return Path(configured) if configured else fallback
+
+
+def _golden_with_screen(gc: GoldenContext, driver: base.Driver) -> GoldenContext:
+    """*gc* with this driver's own screen bounds filled in for golden frame sanity (BE-0006).
+
+    Best-effort: a `query()` fault here is diagnostic, and `_eval_golden` falls back on its own, so
+    it must not block a scenario that asserts no goldens at all.
+    """
+    if gc.screen is not None:
+        return gc
+    try:
+        from bajutsu.common.drivers.elements import screen_size_from_elements
+
+        sw, sh = screen_size_from_elements(driver.query())
+    except Exception as exc:  # best-effort; _eval_golden falls back
+        _logger.debug("screen-bounds probe for golden framing failed: %s", exc, exc_info=True)
+        return gc
+    return GoldenContext(goldens_dir=gc.goldens_dir, screen=(0.0, 0.0, sw, sh))
+
+
+def _steps_for_target(s: Scenario, target: str) -> Scenario:
+    """*s* narrowed to the steps and `expect` entries routed to *target* (BE-0428).
+
+    Only what the capability preflight reads is narrowed — a nested `if` / `forEach` body keeps
+    whatever it holds, since a nested step carries its own `target` and the preflight walks into it
+    anyway; a top-level step naming another target is what has to go, so one backend is never asked
+    to justify a construct it will never be handed.
+
+    `None` too: a scenario declaring exactly one target may omit the name on every step and
+    `expect` entry, and those still ran against that target — filtering them out would hand the
+    preflight an empty scenario and skip BE-0082 for the whole single-declared-target shape.
+    """
+    routed = {target, None}
+    return s.model_copy(
+        update={
+            "before": [st for st in s.before if st.target in routed],
+            "steps": [st for st in s.steps if st.target in routed],
+            "after": [
+                rule.model_copy(update={"steps": [st for st in rule.steps if st.target in routed]})
+                for rule in s.after
+            ],
+            "expect": [a for a in s.expect if a.target in routed],
+        }
+    )
+
+
+def _release_all(leases: Mapping[str, Lease]) -> None:
+    """Release every lease, so one failing release cannot strand the devices behind the others.
+
+    Each failure is warned about rather than raised: a teardown fault must not replace the
+    scenario's own result or the launch failure that brought us here (the same rule
+    `guarded_teardown` applies inside the pool), and a device left un-returned is loud on stderr.
+    """
+    for name, lz in reversed(list(leases.items())):
+        try:
+            lz.release()
+        except Exception as exc:
+            _logger.warning("releasing target %s's lease failed: %s", name, exc, exc_info=True)
+
+
+def _union_redact(effs: Iterable[Effective]) -> Redact:
+    """The union of every declared target's own `redact` config (BE-0428).
+
+    Each list unions rather than intersects, since scrubbing a value from one target's evidence
+    that another target's config never named as secret is strictly safer than the reverse. An
+    `unmask_*` opt-out applies only when every one of the targets agrees to release it — one
+    target still asking for that protection keeps it on for the whole run, the same asymmetry the
+    list union already gives.
+    """
+    labels: dict[str, None] = {}
+    headers: dict[str, None] = {}
+    fields: dict[str, None] = {}
+    unmask_headers: dict[str, None] = {}
+    unmask_secure_fields = True
+    unmask_credential_names = True
+    seen = False
+    for eff in effs:
+        seen = True
+        r = eff.redact
+        labels.update(dict.fromkeys(r.labels))
+        headers.update(dict.fromkeys(r.headers))
+        fields.update(dict.fromkeys(r.fields))
+        unmask_headers.update(dict.fromkeys(r.unmask_headers))
+        unmask_secure_fields = unmask_secure_fields and r.unmask_secure_fields
+        unmask_credential_names = unmask_credential_names and r.unmask_credential_names
+    if not seen:
+        return Redact()
+    return Redact(
+        labels=list(labels),
+        headers=list(headers),
+        fields=list(fields),
+        unmaskHeaders=list(unmask_headers),
+        unmaskSecureFields=unmask_secure_fields,
+        unmaskCredentialNames=unmask_credential_names,
+    )
+
+
+def _effs_of(targets: Mapping[str, TargetPool] | None) -> dict[str, Effective]:
+    """Each declared target's resolved config, dropped out of its `TargetPool` (BE-0428)."""
+    return {name: t.eff for name, t in (targets or {}).items()}
+
+
+def _hooks_for(
+    s: Scenario, eff: Effective, target_effs: Mapping[str, Effective] | None
+) -> tuple[list[Step], list[AfterRule]]:
+    """This scenario's folded-in config hooks: `(before, after)`, already target-stamped.
+
+    A scenario with no `targets` of its own reads the run's single `eff`, exactly as before
+    BE-0428. A self-declaring one reads each declared target's own `targets.<name>.before`/`after`
+    instead, since a hook is config on the target it acts on: `before` folds every target's hooks in
+    declared order ahead of the scenario's own steps, and `after` mirrors it in reverse, behind
+    them. Each folded step is stamped with its own target's name — for an `after` entry, every step
+    inside the rule rather than the rule itself, which carries no target of its own — so a hook is
+    exactly as unambiguous about which target it acts on as an author-written step already has to be.
+    """
+    if not s.targets:
+        return list(eff.run_defaults.before), list(eff.run_defaults.after)
+    before: list[Step] = []
+    after: list[AfterRule] = []
+    for name in s.targets:
+        target_eff = (target_effs or {}).get(name, eff)
+        before += [_stamped(h, name) for h in target_eff.run_defaults.before]
+        after += [
+            rule.model_copy(update={"steps": [_stamped(h, name) for h in rule.steps]})
+            for rule in target_eff.run_defaults.after
+        ]
+    return before, after
+
+
+def _stamped(step: Step, target: str) -> Step:
+    """*step* with its `target` set to *target*, leaving one that already names a target alone.
+
+    A config-level hook may name a target itself — the validator then checks it like any other
+    step's — so stamping only fills the far commoner blank rather than overwriting an author's
+    explicit choice with the target whose config happened to carry the hook.
+    """
+    return step if step.target else step.model_copy(update={"target": target})
+
+
+def with_lifecycle_phases(
+    eff: Effective, scenarios: list[Scenario], target_effs: Mapping[str, Effective] | None = None
+) -> list[Scenario]:
     """Fold the target config's `before` / `after` into each scenario's own (BE-0392).
 
     The two merge in opposite orders. `before` is config-then-scenario, like `interrupts`: the
@@ -971,17 +1355,19 @@ def with_lifecycle_phases(eff: Effective, scenarios: list[Scenario]) -> list[Sce
     and the scenario whose Before / After blocks the report renders are one object. Handing the
     merged lists to the runner separately would leave the report pairing an app-wide step's outcome
     with the scenario's own step definition, and drop an app-wide `after` rule's outcomes entirely.
+
+    Args:
+        eff: The run's primary target config — the only one a scenario declaring no `targets` reads.
+        scenarios: The scenarios to fold into; returned unchanged when nothing folds in.
+        target_effs: Every declared target's own config, keyed by name (BE-0428). A self-declaring
+            scenario folds each of these in instead of `eff`; None keeps the single-target path.
     """
-    if not eff.run_defaults.before and not eff.run_defaults.after:
+    hooks = [_hooks_for(s, eff, target_effs) for s in scenarios]
+    if not any(before or after for before, after in hooks):
         return scenarios  # nothing app-wide to fold in; keep the caller's own objects
     folded = [
-        s.model_copy(
-            update={
-                "before": [*eff.run_defaults.before, *s.before],
-                "after": [*s.after, *eff.run_defaults.after],
-            }
-        )
-        for s in scenarios
+        s.model_copy(update={"before": [*before, *s.before], "after": [*s.after, *after]})
+        for s, (before, after) in zip(scenarios, hooks, strict=True)
     ]
     # `model_copy(update=...)` never re-runs a `model_validator` — so a config-level `before`/`after`
     # hook would otherwise splice in steps the load-time pass never saw, each free to omit the
@@ -995,6 +1381,7 @@ def run_all(
     eff: Effective,
     scenarios: list[Scenario],
     lease: LeaseFn,
+    targets: Mapping[str, TargetPool] | None = None,
     clock: Clock | None = None,
     alert_guard: AlertGuardConfig | None = None,
     alert_guard_for: AlertGuardFor | None = None,
@@ -1030,6 +1417,10 @@ def run_all(
         scenarios: The scenarios to run; results come back in this declaration order.
         lease: Leases a device and launches the app for one scenario (a single-device run is a pool
             of one).
+        targets: Every target a scenario in this run declares, already resolved and pooled by the
+            caller, keyed by name (BE-0428) — the primary's own entry included. Empty keeps the
+            single-target path, where `eff` and `lease` alone are read, and refuses any scenario
+            declaring two or more targets, since nothing could launch the second one.
         clock: Injectable time source for condition waits, so tests need no real sleeps. None uses
             the real clock.
         alert_guard: A single alert-guard handler, used by tests.
@@ -1113,22 +1504,27 @@ def run_all(
     # the resolver win and discarding the fixed actuator/caps (prime directive 2).
     if actuator is not None and resolve_actuator is not None:
         raise ValueError("pass either actuator or resolve_actuator to run_all, not both")
-    # `run_all` is the one chokepoint every caller funnels through — `run`, `audit`, and any future
-    # one — so the multi-target guard lives here, not only in `run`'s own CLI (BE-0428): a scenario
-    # declaring `targets` would otherwise lease one device and run every step against it regardless
-    # of which target each step actually names, since the CLI/launch/runner support that would
-    # route steps across several live drivers hasn't landed yet.
-    affected = _scenarios_declaring_targets(scenarios)
-    if affected:
+    # A scenario declaring two or more `targets` needs one launched driver per declared name to
+    # route its steps (BE-0428), which only a caller that resolved and pooled them can supply. A
+    # caller that passes no `targets` map — `audit`, or a test driving one
+    # lease directly — is not one of those, so refuse rather than lease one device and run every step
+    # against it regardless of which target each step names.
+    if not targets and (affected := _scenarios_declaring_targets(scenarios)):
         raise ValueError(
-            "multi-target scenario execution (targets:) is not yet implemented (BE-0428); "
+            "multi-target scenario execution (targets:) needs a per-target lease from the caller; "
             f"affected scenario(s): {', '.join(affected)}"
         )
     # The target config's own lifecycle phases, folded in once here (BE-0392). `run_and_report` and
     # `run_matrix_and_report` apply the same helper to what they hand the report, so the run and the
     # report read one effective scenario rather than two lists that could drift.
-    scenarios = with_lifecycle_phases(eff, scenarios)
-    redactor = Redactor(eff.redact, values=secret_values)
+    target_effs = _effs_of(targets)
+    scenarios = with_lifecycle_phases(eff, scenarios, target_effs)
+    # `redact` unions every declared target's own config (BE-0428): a value one target's config
+    # marks secret is scrubbed everywhere, not only from that one target's own capture. Widening the
+    # redaction set is the safer error, unlike a field with only one right answer (`caps`, `mailbox`).
+    redactor = Redactor(
+        _union_redact(target_effs.values() if target_effs else [eff]), values=secret_values
+    )
     # One mailbox reader for the whole run (it's per-target, not per-device): the `email` step polls
     # it, with ${secrets.*} in the url/headers resolved from the same secret bindings (BE-0046).
     mailbox = build_mailbox_reader(eff.mailbox, bindings or {})
@@ -1156,6 +1552,7 @@ def run_all(
         mailbox=mailbox,
         caps=caps,
         total=len(scenarios),
+        targets=dict(targets or {}),
         clock=clock,
         alert_guard=alert_guard,
         alert_guard_for=alert_guard_for,
@@ -1198,6 +1595,7 @@ def run_and_report(
     lease: LeaseFn,
     runs_dir: Path,
     run_id: str,
+    targets: Mapping[str, TargetPool] | None = None,
     clock: Clock | None = None,
     alert_guard: AlertGuardConfig | None = None,
     alert_guard_for: AlertGuardFor | None = None,
@@ -1227,7 +1625,8 @@ def run_and_report(
     Wraps `run_all` and persists the report: `manifest.json`, JUnit XML, and the executed
     `scenario.yaml` (so a run is re-runnable / reviewable).
 
-    Beyond `run_all`'s arguments (`force_erase_on_retry`, `cancelled`, and `trace_driver` pass
+    Beyond `run_all`'s arguments (`targets`, `force_erase_on_retry`,
+    `cancelled`, and `trace_driver` pass
     straight through — see their docstrings there), `runs_dir` + `run_id` locate this run's artifact directory
     (`runs_dir/run_id`),
     `source_name` / `description` are recorded in the report, `plan_sources` (keyed by declared
@@ -1244,7 +1643,8 @@ def run_and_report(
         eff,
         scenarios,
         lease,
-        clock,
+        targets=targets,
+        clock=clock,
         alert_guard=alert_guard,
         alert_guard_for=alert_guard_for,
         run_dir=run_dir,
@@ -1264,7 +1664,11 @@ def run_and_report(
         trace_driver=trace_driver,
     )
     manifest = _assemble_report(
-        with_lifecycle_phases(eff, scenarios),
+        # The same fold `run_all` already applied, over the same per-target config, so the report
+        # pairs each outcome with the step definition that actually produced it — a config-level
+        # hook folded from one target's own `before`/`after` here and the primary's there would
+        # otherwise mislabel or drop outcomes for every other declared target (BE-0428).
+        with_lifecycle_phases(eff, scenarios, _effs_of(targets)),
         results,
         run_dir,
         run_id,

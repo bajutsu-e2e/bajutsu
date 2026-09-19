@@ -35,6 +35,10 @@ class AssertionResult:
     detail: str  # what was checked (for the report)
     reason: str = ""  # failure reason (empty when ok)
     visual: VisualEvidence | None = None  # set only for `visual` assertions
+    # The declared target this assertion was evaluated against (BE-0428). Set only for a scenario's
+    # trailing `expect` block, whose entries may each name a different target; an inline `assert:`
+    # result is already scoped by its own step's `target`, so it stays empty here.
+    target: str = ""
 
 
 def sel_str(sel: Selector) -> str:

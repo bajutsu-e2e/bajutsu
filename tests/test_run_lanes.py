@@ -278,9 +278,19 @@ def test_expand_file_missing_data_file_exits_2(tmp_path: Path) -> None:
 def test_resolve_secrets_binds_only_present_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TOKEN", "s3cr3t")
     monkeypatch.delenv("ABSENT", raising=False)
-    bindings, values = _resolve_secrets(_eff(secrets="[TOKEN, ABSENT]"))
+    bindings, values = _resolve_secrets([_eff(secrets="[TOKEN, ABSENT]")])
     assert bindings == {"secrets.TOKEN": "s3cr3t"}  # ABSENT is unbound, not an empty string
     assert values == ["s3cr3t"]
+
+
+def test_resolve_secrets_unions_across_declared_targets(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A step routed to a non-primary target may use a `${secrets.X}` declared only on that
+    # target's own config, not the primary's (BE-0428) — every declared target's names are read.
+    monkeypatch.setenv("APP_TOKEN", "app-secret")
+    monkeypatch.setenv("WEB_TOKEN", "web-secret")
+    bindings, values = _resolve_secrets([_eff(secrets="[APP_TOKEN]"), _eff(secrets="[WEB_TOKEN]")])
+    assert bindings == {"secrets.APP_TOKEN": "app-secret", "secrets.WEB_TOKEN": "web-secret"}
+    assert sorted(values) == ["app-secret", "web-secret"]
 
 
 # --- _load_scenarios: the --scenario file, or the target's configured dir
