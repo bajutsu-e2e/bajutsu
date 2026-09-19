@@ -1219,8 +1219,9 @@ both spellings behave the same way.
 is readable from an assertion against another target. A cross-platform check can thus name the
 record each side touched, not merely a changed count.
 
-A step nested inside a `web` block is the one exception. It must **omit** `target` outright. It always
-runs against the target the enclosing `web` step resolved into its own WebView bridge.
+A step nested inside a `web` or `app` block is the one exception. It must **omit** `target`
+outright. It always runs against the device the enclosing block already resolved. That is `web`'s
+own WebView bridge, or `app`'s unchanged native driver.
 
 ### What a multi-target run does with the rest of a target's config
 
