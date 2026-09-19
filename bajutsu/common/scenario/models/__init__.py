@@ -89,6 +89,12 @@ from bajutsu.common.scenario.models.scenario import (
     SystemAlertHandlingField,
     SystemAlertRule,
 )
+from bajutsu.common.scenario.models.scenario import (
+    _check_target_requirements as _check_target_requirements,
+)
+from bajutsu.common.scenario.models.scenario import (
+    _scenarios_declaring_targets as _scenarios_declaring_targets,
+)
 from bajutsu.common.scenario.models.selector import Selector
 from bajutsu.common.scenario.models.steps import _STEP_ACTIONS as STEP_ACTIONS
 from bajutsu.common.scenario.models.steps import (

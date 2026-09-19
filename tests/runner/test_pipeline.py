@@ -1641,6 +1641,47 @@ def test_run_all_rejects_both_actuator_and_resolve_actuator() -> None:
         )
 
 
+def test_run_all_rejects_a_scenario_declaring_targets() -> None:
+    # BE-0428: `run_all` is the one chokepoint every caller (`run`, `audit`) funnels through, so the
+    # multi-target guard lives here too, not only in `run`'s own CLI — a scenario declaring
+    # `targets` would otherwise lease one device and run every step against it regardless of which
+    # target each step actually names.
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "cross-target",
+                "targets": ["app", "web"],
+                "steps": [{"target": "app", "tap": {"id": "ok"}}],
+            }
+        )
+    ]
+
+    def lease_must_not_run(eff: Effective, s: Scenario) -> Lease:
+        raise AssertionError("lease must not be called when the multi-target guard rejects it")
+
+    with pytest.raises(ValueError, match="not yet implemented"):
+        run_all(_eff(), scenarios, lease_must_not_run)
+
+
+def test_run_all_allows_a_scenario_declaring_one_target() -> None:
+    # A single declared target poses no routing hazard — every step must already omit `target` or
+    # match that one name, so today's single-driver pipeline already runs it correctly; the guard
+    # is about *multi*-target execution, not the mere presence of a `targets` field.
+    scenarios = [
+        Scenario.model_validate(
+            {"name": "z", "targets": ["app"], "steps": [{"target": "app", "tap": {"id": "ok"}}]}
+        )
+    ]
+    leased: list[str] = []
+
+    def lease(eff: Effective, s: Scenario) -> Lease:
+        leased.append(s.name)
+        return _lease(eff, s)
+
+    run_all(_eff(), scenarios, lease)
+    assert leased == ["z"]
+
+
 def test_resolve_actuator_no_available_actuator_fails_cleanly() -> None:
     # BE-0240: when no iOS actuator is even available the resolver raises; the pipeline turns that
     # into a clean per-scenario failure (no lease, no crash aborting the whole run).

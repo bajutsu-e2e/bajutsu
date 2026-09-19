@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0428](BE-0428-multi-target-scenario-execution.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0428") |
+| Implementing PR | [#2025](https://github.com/bajutsu-e2e/bajutsu/pull/2025) (unit 1) |
 | Topic | Scenario authoring features |
 | Related | [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md), [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md) |
 <!-- /BE-METADATA -->
@@ -699,7 +700,7 @@ choosing between them is deferred rather than guessed.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Schema: `Scenario.targets`, `Step.target`, `Assertion.target`, and the validator tying
+- [x] Schema: `Scenario.targets`, `Step.target`, `Assertion.target`, and the validator tying
       `target`'s requirement to `len(scenario.targets)` across `steps` and `expect` alike.
 - [ ] CLI: `--target` optional under a self-declaring scenario; mismatch rejection; config
       validation for every declared name.
@@ -714,6 +715,23 @@ choosing between them is deferred rather than guessed.
 - [ ] Tests: schema validator (including the `expand_components`/`with_lifecycle_phases` re-check),
       CLI selection and rejection rules, multi-pool lease/deadlock coverage, per-target
       caps/mailbox/preflight, mixed-target step routing, and report backward compatibility.
+
+Log:
+
+- [#2025](https://github.com/bajutsu-e2e/bajutsu/pull/2025) — Unit 1 (Schema). `Scenario.targets`,
+  `Step.target`, `Assertion.target`, and the validator tying `target`'s presence to
+  `len(scenario.targets)`, recursively across `steps`/`before`/`after`/`interrupts` and every
+  nested `if`/`forEach`/`web` shape. Closed a gap the design didn't call out: `apply_setups` is a
+  third mutation point that rebuilds an already-validated `Scenario` without Pydantic re-running a
+  `model_validator`, alongside `expand_components` and `with_lifecycle_phases` — all three now
+  re-run the check on their own result. Resolved two open questions the design left unaddressed by
+  failing closed rather than guessing: a `use:` step (component expansion discards its own
+  `target`) and a non-empty `interrupts` (its `condition` has no target of its own to poll) are
+  both refused once a scenario declares two or more targets, deferred to a later unit. Since
+  nothing yet routes a step to more than one live target, every caller that would run or emit
+  against such a scenario refuses it instead — `run_all` (shared by `run` and `audit --repeat`),
+  `codegen`, and serve's own Codegen endpoint — rather than acting against the wrong one without a
+  word.
 
 ## References
 

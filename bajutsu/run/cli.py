@@ -47,6 +47,7 @@ from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import device_pool, run_all, run_and_report, run_matrix_and_report
 from bajutsu.common.runner.build import BuildError, build_if_missing
 from bajutsu.common.runner.device_provider import acquire_device
+from bajutsu.common.runner.pipeline import with_lifecycle_phases
 from bajutsu.common.runner.types import AlertGuardFor
 from bajutsu.common.scenario import (
     ComponentResolver,
@@ -56,6 +57,7 @@ from bajutsu.common.scenario import (
     SystemAlertHandling,
     SystemAlertHandlingField,
     SystemAlertRule,
+    _scenarios_declaring_targets,
     apply_setups,
     contained_ref,
     declared_name,
@@ -358,6 +360,44 @@ def _load_scenarios(
     # The report's source label: the single file's name, else the root dir's name.
     source_name = files[0].name if single else root.name
     return scenarios, description, source_name, files, plan_sources
+
+
+def _reject_multi_target_scenarios(scenarios: list[Scenario]) -> None:
+    """Fail fast, with a clean CLI message, on a scenario declaring `targets` (BE-0428).
+
+    The schema accepts `targets`/`target` so a suite can author against it, but the CLI/launch/
+    runner support that would route each step to the right target hasn't shipped yet — every step
+    still runs against this run's single resolved `--target`. `run_all` itself refuses the same
+    scenarios (the one chokepoint every caller, including `audit`, funnels through) — this earlier,
+    CLI-level check exists only so `run` fails before any device work starts, with a `typer.Exit(2)`
+    instead of `run_all`'s bare `ValueError`.
+    """
+    affected = _scenarios_declaring_targets(scenarios)
+    if affected:
+        typer.echo(
+            "multi-target scenario execution (targets:) is not yet implemented (BE-0428); "
+            f"affected scenario(s): {', '.join(affected)}"
+        )
+        raise typer.Exit(2)
+
+
+def _reject_bad_target_config_hooks(eff: Effective, scenarios: list[Scenario]) -> None:
+    """Fail fast, with a clean CLI message, on a `target` mismatch folded in from config (BE-0428).
+
+    `with_lifecycle_phases` re-validates its own folded result already — but only `run_all` calls
+    it, deep inside a path this command's own `try` doesn't catch (its `finally` only releases the
+    device lease). A `targets.<name>.before`/`after` hook step carrying a `target` that disagrees
+    with a 0- or 1-target scenario in this suite — the multi-target guard above only covers
+    `len(targets) >= 2` — would otherwise reach the operator as a raw traceback instead of the
+    clean exit 2 every other scenario-loading error gets. Calling it here again, and discarding
+    the result, is redundant with `run_all`'s own call on the same `eff`/`scenarios` — cheap, and
+    it means passing this check guarantees `run_all` will too.
+    """
+    try:
+        with_lifecycle_phases(eff, scenarios)
+    except ValueError as e:
+        typer.echo(f"config-level before/after hook: {e}")
+        raise typer.Exit(2) from None
 
 
 def _filter_scenarios(
@@ -1505,6 +1545,11 @@ def run(
         ios_tipkit_handling,
         eff.run_defaults.ios_tip_kit_handling,
     )
+    # After filtering, so `--tag`/`--exclude` selecting away every multi-target scenario in a suite
+    # still lets the rest of the suite run (BE-0428) — the guard exists to fail loudly on a scenario
+    # this run would actually attempt, not on one selection already dropped.
+    _reject_multi_target_scenarios(scenarios)
+    _reject_bad_target_config_hooks(eff, scenarios)
     actuator, backends = _select_actuator(backend, eff, engines)
     # Where this target's devices come from is a seam (BE-0236): the provider `acquire` returns the
     # udid spec the lanes resolve against (the `--udid` flag verbatim for the default local provider,

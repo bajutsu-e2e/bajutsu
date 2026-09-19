@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0428](BE-0428-multi-target-scenario-execution-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0428") |
+| 実装 PR | [#2025](https://github.com/bajutsu-e2e/bajutsu/pull/2025)（単位 1） |
 | トピック | Scenario authoring features |
 | 関連 | [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md) |
 <!-- /BE-METADATA -->
@@ -733,7 +734,7 @@ Common Test Report Format（CTRF）のエクスポートを含め、単一ター
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] スキーマ：`Scenario.targets`、`Step.target`、`Assertion.target`、`target`の要否を
+- [x] スキーマ：`Scenario.targets`、`Step.target`、`Assertion.target`、`target`の要否を
       `len(scenario.targets)`に`steps`と`expect`の両方で紐づけるバリデータ。
 - [ ] CLI：自己宣言したシナリオのもとでの`--target`の省略、不一致の拒否、宣言された各名前の設定に
       対する検証。
@@ -749,6 +750,23 @@ Common Test Report Format（CTRF）のエクスポートを含め、単一ター
 - [ ] テスト：スキーマのバリデータ（`expand_components`/`with_lifecycle_phases`の再検査を含む）、
       CLIの選択・拒否の規則、複数プールのリース・デッドロック網羅、ターゲットごとの
       caps/mailbox/事前検査、ターゲット混在のステップ振り分け、レポートの後方互換性。
+
+ログ：
+
+- [#2025](https://github.com/bajutsu-e2e/bajutsu/pull/2025) — 単位1（スキーマ）です。
+  `Scenario.targets`、`Step.target`、`Assertion.target`を追加し、`target`の有無を
+  `len(scenario.targets)`に紐づけるバリデータを実装しました。`steps`/`before`/`after`/
+  `interrupts`と、あらゆる`if`/`forEach`/`web`の入れ子を再帰的に辿ります。設計が触れていなかった
+  抜け穴も塞ぎました。`apply_setups`は、`expand_components`や`with_lifecycle_phases`と並ぶ
+  第3の変更点です。Pydantic が `model_validator` を再実行しない形で、検証済みの`Scenario`を
+  作り直します。この3つすべてが、自身の結果に対してチェックを再実行するようになりました。設計が
+  未解決のまま残した2つの問題は、推測せずに拒否する形で解決しました。`use:`ステップは、
+  コンポーネント展開が自身の`target`を捨ててしまいます。空でない`interrupts`は、`condition`に
+  自身がポーリングするターゲットがありません。どちらも、シナリオが2つ以上のターゲットを宣言すると
+  拒否され、解決は後続のユニットに委ねます。複数のライブなターゲットへステップを振り分ける仕組みは
+  まだありません。そのため、そうしたシナリオを実行・生成しようとするすべての呼び出し元がこれを
+  拒否します。`run_all`（`run`と`audit --repeat`が共有）、`codegen`、serve自身のCodegen
+  エンドポイントです。間違った対象に対して、黙って作用することはありません。
 
 ## 参考
 

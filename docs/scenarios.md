@@ -65,6 +65,7 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `description` | str | none | Optional human description; shown on the scenario's report card and in the serve UI |
 | `from` | str | none | **Provenance** — the natural-language goal `record` authored this scenario from ([provenance](#from-provenance)). Authoring metadata only; `run` ignores it |
 | `tags` | list[str] | `[]` | Selection labels; the CLI `--tag` / `--exclude` flags pick which scenarios run ([reuse, data, and tags](#reuse-data-and-tags)) |
+| `targets` | list[str] | `[]` | Every [target](glossary.md#target-app-device) this scenario drives ([below](#targets--target-multi-target-scenarios-be-0428)). Each entry names a `targets.<name>` config unit. Schema only today — `run` refuses a scenario declaring **two or more**, until a follow-up ships the CLI/launch/runner support to carry it out |
 | `data` / `dataFile` | list / str | none | Data-driven rows — inline `data`, or `dataFile` (a CSV path). Expands into one run per row, substituting `${row.col}`. Mutually exclusive ([reuse, data, and tags](#reuse-data-and-tags)) |
 | `preconditions` | object | `{}` | Per-test environment setup (below) |
 | `before` | list | `[]` | Setup steps run as their **own phase** ahead of `steps`; a failure there aborts the scenario ([below](#before--after-setup-and-teardown-phases)) |
@@ -752,6 +753,7 @@ Modifiers:
 - `capture: [<token>...]` — evidence for this step only ([evidence](evidence.md#b-inline-evidence)).
 - `name: <str>` — the step id (the evidence output directory name · report label). Defaults to `step<i>`.
 - `from: <str>` — **provenance** ([below](#from-provenance)): the phrase this step was recorded from. Authoring metadata; `run` ignores it.
+- `target: <str>` — which of the scenario's own [`targets`](#targets--target-multi-target-scenarios-be-0428) this step runs against.
 
 ### `tap`
 
@@ -1144,6 +1146,74 @@ before a screenshot or a `visual` assertion, to freeze the clock and signal bars
 `background` / `foreground` are the two halves of a background/foreground transition; `foreground`
 resumes the app without any settle sleep, so wait for a concrete element afterward if you need one.
 `setClipboard` seeds the pasteboard for a paste flow ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
+
+## `targets` / `target` (multi-target scenarios, BE-0428)
+
+> **Schema only today.** `Scenario.targets` and `Step`/`Assertion`'s `target` parse and validate as
+> described here, so a suite can be authored against them — but `bajutsu run` does not yet execute a
+> scenario declaring **two or more** targets: it exits with a "not yet implemented" error rather
+> than silently running every step against one target. (A scenario declaring exactly one still
+> runs today, against whatever `--target` the invocation resolves — see the note on that below.)
+> The CLI, launch, and runner support that would actually route each step to its own live driver
+> lands in follow-up work
+> ([BE-0428](../roadmaps/BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md)).
+
+A scenario's top-level `targets` field names every [target](glossary.md#target-app-device) it
+drives. An iOS target and a web target that are two clients of the same service are one example.
+One scenario can act on one target, then check the result on another. These interleave freely, in
+a single deterministic run with one verdict. Each entry names a `targets.<name>` config unit.
+`--target` already resolves that same unit. Naming the same target twice is a load error. A
+scenario that declares no `targets` (the default) keeps today's behavior unchanged. Every step in
+it must still omit `target`.
+
+Once `targets` holds two or more entries, every step must set its own `target`. That includes an
+`if` / `forEach` / `web` wrapper, not merely a leaf action. Every top-level `expect` entry must set
+one too, each naming one of the declared targets:
+
+```yaml
+- name: liking a post on the app shows up on the web
+  targets: [showcase-app, showcase-web]
+  steps:
+    - target: showcase-app
+      tap: { id: post.like }
+      extract:
+        postId: { sel: { id: post.id } }
+    - target: showcase-web
+      wait: { for: { id: "post.${vars.postId}.likeCount" }, timeout: 10 }
+  expect:
+    - target: showcase-web
+      value: { sel: { id: "post.${vars.postId}.likeCount" }, equals: "1" }
+```
+
+With one declared target, a step may omit `target`. It then runs against whatever `--target` the
+invocation resolves, as if `targets` were empty. Schema validation checks a step's own `target`,
+when set, against the one declared name alone. It never checks that declared name against
+`--target` itself. A mismatch reaches run time unchecked. The membership check that would catch one
+is a later BE-0428 unit's own work. A step may also name that target directly, and both spellings
+behave the same way. `${vars.*}` carries across every declared target in one run. These
+are the same
+[runtime variables](#runtime-variables-vars) `extract` populates. A value one target's step captures
+is readable from an assertion against another target.
+
+A step nested inside a `web` block is the one exception. It must **omit** `target` outright. It always
+runs against the target the enclosing `web` step resolved into its own WebView bridge.
+
+Two open questions this item hasn't resolved fail closed instead of guessing. Both apply once a
+scenario declares two or more targets. The loader refuses a `use:` step outright.
+`expand_components` replaces it wholesale with the component's own steps. That discards the `use:`
+step's own `target`. Expansion would otherwise drop that required-looking field with no warning.
+The loader refuses a non-empty
+[`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) too. That holds regardless
+of whether its own `steps` and `condition` would otherwise pass. Which target its `condition` polls
+has no answer yet.
+
+`Assertion.target` follows a narrower rule than `Step.target`. A top-level `expect` entry is the sole
+place it may appear. An assertion reached through a step's inline `assert:` list already has a
+target. So does one reached through an `if`'s `condition`. The enclosing step's own `target` fixed
+it in both cases. Setting `target` there would restate that value, or contradict it outright. The
+loader refuses an `interrupts` entry's `condition` the same way. The reason is simpler: it has no
+enclosing step to fix one for it in the first place. The loader refuses `target` in all three
+places at load time.
 
 ## Assertion DSL
 

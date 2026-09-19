@@ -109,6 +109,7 @@ Scenario ::= {
   description?:   string,                   # オーサリング用メタデータ。run は読まない
   from?:           string,                  # 由来: record がこのシナリオを起こした元の自然言語のゴール（BE-0044）
   tags?:           list(string),            # 既定 []  — 選択（§6.4）
+  targets?:        list(string),            # 既定 []  — このシナリオが操作するすべてのターゲット（BE-0428）。各エントリは `targets.<name>` の config ユニットを指す。現時点ではスキーマだけが先行しており、run はまだ2つ以上を実行できない（§4）
   data?:           list(map(string,string)),# インライン行  ┐ XOR
   dataFile?:       string,                  # CSV パス      ┘ （§6.3）
   preconditions?:  <Preconditions>,         # 既定 {}
@@ -167,10 +168,14 @@ PermissionAction  ::= "grant" | "revoke"
 
 # ── Step = ちょうど 1 アクション + 任意の修飾子 ─────────────────────────
 Step      ::= <Action> & <StepMods>
-StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string, from?: string }
+StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string, from?: string, target?: string }
                 # `from`: 由来。record がこのステップを正規化した元の自然言語の文（BE-0044）
                 # `name` はダウンストリームで実際のファイルシステムパスの一部になる（run の
                 # step_id、エディタの証跡参照）。パス区切り文字、または単独の「.」「..」はロードエラー
+                # `target`: このステップが scenario.targets のどれを操作するか（BE-0428）。要否は
+                # len(scenario.targets) で決まる（§4）。web ブロック内に入れ子になったステップでは
+                # 拒まれる。そのステップは、囲んでいる web ステップがすでに解決したターゲットへ常に
+                # 走るため
 Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # 既定 "value"
 Action    ::=
     { tap:         <Selector> }
@@ -297,6 +302,12 @@ VisualMatch ::= {                  # 画面をベースライン画像とピク�
 ExcludeRegion  ::= { x: number, y: number, w: number, h: number }   # スクリーンショットのピクセル
 SelectorRegion ::= { selector: <Selector> }   # 要素のフレームをマスクする（BE-0171）。曖昧なら失敗、不一致なら何もしない
 
+上記の `Assertion` はどの種類も、任意の `target?: string` を持ちます（BE-0428）。これは、チェックが
+`scenario.targets` のどれに対して走るかを名指しします。設定できるのは、トップレベルの `expect`
+エントリだけです。`Step` のインラインの `assert:` リストや `If` の `condition` を通して届く
+`Assertion` は、囲んでいるステップによってすでにターゲットが決まっています。そのため、そこでの
+`target` の指定は拒まれます（§4）。
+
 RequestMatch ::= {              # 下記マッチフィールドの 1 つ以上
   method?:      string,
   url?:         string,         # 完全一致 URL（エンドポイント）
@@ -377,6 +388,9 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Assertion.requestSequence` | **1 件以上** | `scenario/models/assertions.py` |
 | `Trigger`（`capturePolicy[].on`） | `action` / `event` / `result` の **ちょうど 1 つ**。`idMatches` は `action` と **併用時のみ** | `scenario/models/evidence.py` |
 | `Scenario` | `data` と `dataFile` は **両方不可** | `scenario/models/scenario.py` |
+| `Scenario.targets` | 同じ名前の重複不可（BE-0428） | `scenario/models/scenario/_targets.py` |
+| `Step.target` / `Assertion.target`（`expect` のみ） | `len(targets) ≤ 1` なら省略可、または宣言済みの1つと一致。`len(targets) ≥ 2` なら**必須**（`if`/`forEach`/`web` ラッパーも含み、末端のアクションだけではない）で、宣言済みターゲットの1つを名指し。`web` ブロック内に入れ子になったステップと、インラインの `assert:` リスト・`if` の `condition`・`interrupts` エントリの `condition` を通して届く `Assertion` では**拒否**（BE-0428） | `scenario/models/scenario/_targets.py` |
+| `Step.use` / `Scenario.interrupts`（`len(targets) ≥ 2` のみ） | **頭から拒否** — `use:` ステップ（展開で自身の `target` が失われる）と、空でない `interrupts`（`condition` に自身がポーリングするターゲットがない）は、どちらも本アイテムが先送りにした未決問題であり、意味の不明確なまま受理せず拒否（BE-0428） | `scenario/models/scenario/_targets.py` |
 | すべてのマッピング | **未知キー不可**（`extra="forbid"`） | `scenario/models/_base.py` |
 
 `exists` は特別です。セレクタを **インライン**で書き（`exists: { id: home.title }`）、任意の `negate: true` で不在を確認します。ローダは検証前にこれを `{ sel, negate }` へ書き換えます（`Exists._inline`, `scenario/models/assertions.py`）。

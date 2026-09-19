@@ -120,6 +120,11 @@ class Step(_Model):
     # authoring metadata — `run` never reads it. A modifier, not an action, so it doesn't disturb
     # the one-action rule; allowed on every step, control-flow included.
     from_: str | None = Field(default=None, alias="from")
+    # Which of the enclosing scenario's `targets` this step runs against (BE-0428). A modifier, not
+    # an action, like `from_` above — required or optional depending on `len(scenario.targets)`, a
+    # rule `Step` itself cannot enforce since it cannot see the enclosing scenario
+    # (`_check_target_requirements` does, from `Scenario`'s own validator).
+    target: str | None = None
 
     @field_validator("capture")
     @classmethod

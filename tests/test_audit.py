@@ -339,6 +339,55 @@ def test_repeat_cli_requires_target(tmp_path: Path) -> None:
     assert result.exit_code == 2 and "--repeat needs --target" in result.output
 
 
+def test_repeat_cli_rejects_a_multi_target_scenario(tmp_path: Path) -> None:
+    # BE-0428: `run_all` itself refuses a scenario declaring 2+ targets too, but only after this
+    # command's own device/server startup already ran (a bare ValueError, uncaught here) — so
+    # `_repeat_audit` checks it first, exiting 2 cleanly before any of that startup cost.
+    scn = tmp_path / "cross.yaml"
+    scn.write_text(
+        "- name: cross-target\n"
+        "  targets: [demo, other]\n"
+        "  steps:\n"
+        "    - target: demo\n"
+        "      tap: { id: home.start }\n",
+        encoding="utf-8",
+    )
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n", encoding="utf-8")
+    result = runner.invoke(
+        app,
+        ["audit", str(scn), "--repeat", "2", "--target", "demo", "--config", str(cfg)],
+    )
+    assert result.exit_code == 2
+    assert "not yet implemented" in result.output
+    assert "cross-target" in result.output
+
+
+def test_repeat_cli_rejects_a_bad_target_config_hook(tmp_path: Path) -> None:
+    # BE-0428: a config-level `before` hook step carrying a `target` that a 0-target scenario
+    # would reject must exit 2 cleanly, not crash with a raw traceback from deep inside `run_all`
+    # — the multi-target guard above only covers `len(targets) >= 2`.
+    scn = tmp_path / "s.yaml"
+    scn.write_text("- name: x\n  steps:\n    - tap: { id: home.start }\n", encoding="utf-8")
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "targets:\n"
+        "  demo:\n"
+        "    bundleId: com.example.demo\n"
+        "    before:\n"
+        "      - target: web\n"
+        "        tap: { id: home.start }\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        ["audit", str(scn), "--repeat", "2", "--target", "demo", "--config", str(cfg)],
+    )
+    assert result.exit_code == 2
+    assert "config-level before/after hook" in result.output
+    assert "declares no targets" in result.output
+
+
 def test_repeat_cli_unavailable_backend_exits_two(tmp_path: Path) -> None:
     # An unknown / unavailable actuator fails the preflight (no simctl/browser) and exits 2.
     scn, cfg = _audit_project(tmp_path)
