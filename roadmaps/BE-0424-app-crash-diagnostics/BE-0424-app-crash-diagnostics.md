@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0424](BE-0424-app-crash-diagnostics.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0424") |
+| Implementing PR | [#2012](https://github.com/bajutsu-e2e/bajutsu/pull/2012) |
 | Topic | Platform support |
 | Related | [BE-0421](../BE-0421-xcuitest-crash-report-scenario-artifact/BE-0421-xcuitest-crash-report-scenario-artifact.md), [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0066](../BE-0066-web-crawl/BE-0066-web-crawl.md) |
 <!-- /BE-METADATA -->
@@ -1181,21 +1182,21 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — `base.AppCrashedError` (new file); the `base.AppCrashSignal` capability protocol
+- [x] Unit 1 — `base.AppCrashedError` (new file); the `base.AppCrashSignal` capability protocol
       (`app_crash_signal() -> str | None`), separate from the `Driver` protocol; the new
       `StepOutcome.app_crashed: bool = False` field. `ruff`'s `TRY` family is selected with only
       `TRY003` ignored, so Unit 7's raise/catch (below) needs its own `# noqa: TRY301` with a
       suppression reason, as `CLAUDE.md`'s inline-comment rule requires — named here since it
       decides `AppCrashedError` stays a real, raised type rather than a plain string built from
       `signal` inline.
-- [ ] Unit 2 — iOS: a new `openapi.yaml` route and generated `APIHandler` method reading
+- [x] Unit 2 — iOS: a new `openapi.yaml` route and generated `APIHandler` method reading
       `XCUIApplication.state`, served through `RunnerServer` (not `Router.swift`);
       `XcuitestDriver.app_crash_signal()` implementing `AppCrashSignal`, classifying `notRunning` as
       the signal and letting a channel error propagate as `XcuitestRunnerCrashError`; a new
       `is_real_device` constructor argument, threaded from `make_driver` the same way `device_os`
       already is, that makes `app_crash_signal()` answer `None` outright on `deviceType: device` —
       this item scopes to the Simulator only.
-- [ ] Unit 3 — iOS: `XcuitestEnvironment.app_launched_at`, recorded in `_spawn_cold` immediately
+- [x] Unit 3 — iOS: `XcuitestEnvironment.app_launched_at`, recorded in `_spawn_cold` immediately
       *before* the `xcodebuild` spawn — the cold launch is performed by the runner itself
       (`XCUIApplication.launch()`, `xcuitest_environment.py:323`), not by this environment, so there
       is no Python-side launch call to record beside, and a marker stamped once
@@ -1221,7 +1222,7 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       `XCUIApplication`), with a bounded wait
       for `ReportCrash`'s asynchronous write,
       wrapped so any failure resolves to `[]`.
-- [ ] Unit 4 — Android: a `package` keyword threaded through `backends.make_driver` into
+- [x] Unit 4 — Android: a `package` keyword threaded through `backends.make_driver` into
       `AdbDriver.__init__`, the same way `fetch_clock` and `act` already are; an `api_level: int |
       None = None` keyword threaded the same way, read once via `adb shell getprop
       ro.build.version.sdk` in `AndroidEnvironment.start()` and stashed alongside `self._package`,
@@ -1267,7 +1268,7 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       (`android_environment.py:339-351`) and `crawl_reset()`'s `reset()` closure right after its own
       `e.launch(...)`, the two genuinely-fresh-launch moments a poll bound becomes worth paying again,
       never from inside `AdbDriver`'s own actuators.
-- [ ] Unit 5 — Android: `AndroidEnvironment.app_launched_at`, recorded immediately *before* each launch
+- [x] Unit 5 — Android: `AndroidEnvironment.app_launched_at`, recorded immediately *before* each launch
       site's `e.launch(...)` call, never after — `e.launch` is `am start -W`, which waits for the
       launch to complete, so a marker stamped once it returns has already missed a startup crash — from
       **one**
@@ -1309,7 +1310,7 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       `launch` calls; `crawl` needs no constructor-time flag to keep this
       layer off its own long-lived lane, since it simply never calls `app_crash_tombstone()` (Unit 10);
       each layer independently wrapped so any failure resolves to `[]`.
-- [ ] Unit 6 — `RunEnvironment.app_crash_artifacts()` and `RunEnvironment.app_crash_tombstone()`
+- [x] Unit 6 — `RunEnvironment.app_crash_artifacts()` and `RunEnvironment.app_crash_tombstone()`
       protocol shapes (each returning `list[tuple[str, bytes]]`); a one-line `app_crash_artifacts()`
       `return []` on `WebEnvironment` and `_DeviceEnvironment` (inherited by `FakeEnvironment`), and a
       one-line `app_crash_tombstone()` `return []` on those two — the same no-op shape
@@ -1325,7 +1326,7 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       loop, not from `pipeline.py`, so the sweep runs before a same-scenario teardown step can move
       `app_launched_at` (see Unit 7 and *iOS: matching the `.ips` report*). `lz.app_crash_tombstone`
       itself is called directly by `pipeline.py` (Unit 8), never threaded into `_LoopConfig` at all.
-- [ ] Unit 7 — `run_scenario` / `_step_runner.py`: the new `_finish_outcome` helper, called at all
+- [x] Unit 7 — `run_scenario` / `_step_runner.py`: the new `_finish_outcome` helper, called at all
       five `self.state.outcomes.append(outcome)` call sites — `_handle_if` / `_handle_for_each` /
       `_handle_web` once each, `_handle_action` twice (its own end and its
       `UncoveredSystemAlertLocale` early return) — in place of the bare append, covering every step
@@ -1383,7 +1384,7 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       with the one confirming outcome for `pipeline.py`'s later scan; a fast-suite test driving a failing step of every
       kind through the loop and asserting each settled outcome passed through `_finish_outcome` — a
       behavioural pin, not a source-text grep for `self.state.outcomes.append`.
-- [ ] Unit 8 — `pipeline.py`: `_run_on_lease` scanning
+- [x] Unit 8 — `pipeline.py`: `_run_on_lease` scanning
       `(*result.before_outcomes, *result.steps, *result.after_outcomes)` for an `app_crashed`
       outcome right after `run_scenario` returns, still holding the same lease, before its own
       `finally` releases it; the new `_write_app_crash_artifacts(lz, outcome, s, sid)` mirroring
@@ -1404,9 +1405,9 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       alongside `wall_offset_s` as a second deliberate round-trip exception, since it currently reads
       "the *one* deliberate exception" and would otherwise invite a later contributor to "fix" this
       item's own pop as an oversight.
-- [ ] Unit 9 — `TracingDriver`: add `base.AppCrashSignal` to `_PROTOCOLS` so `--trace-driver` installs
+- [x] Unit 9 — `TracingDriver`: add `base.AppCrashSignal` to `_PROTOCOLS` so `--trace-driver` installs
       it as a real attribute only on a wrapped driver that implements it.
-- [ ] Unit 10 — `crawl`'s own integration: `_build_lane`'s per-lane `app_crash_artifacts` (never
+- [x] Unit 10 — `crawl`'s own integration: `_build_lane`'s per-lane `app_crash_artifacts` (never
       `app_crash_tombstone` — `crawl` simply does not thread that second callable anywhere, which is
       what keeps Android's tombstone-pull layer off for the whole walk (Unit 5), with no separate flag
       needed), threaded through `WorkerFactory` and `crawl()`'s primary-lane parameters the same way
@@ -1426,16 +1427,16 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       `writer.write_text` path `run`'s own copy uses, under `crashes/crash-NNN/app-crash/`
       before its own `continue` on a non-replayable crash, alongside that crash's own
       `crashes/crash-NNN.yaml` repro.
-- [ ] Unit 11 — Showcase fixtures: a "force a crash" affordance gated behind a launch-env flag (not a
+- [x] Unit 11 — Showcase fixtures: a "force a crash" affordance gated behind a launch-env flag (not a
       build configuration) on iOS (SwiftUI) and Android (Compose), one scenario per platform
       exercising it via `preconditions.launchEnv` — each scenario takes one step after the crash
       trigger (against the now-dead app), not ending on the trigger itself, since a scenario whose last
       step is the crash trigger never fails by this item's own reactive-check design (see *Detecting
       the event*) — wired as a non-gating per-PR signal in `ios-e2e.yml` / `android-e2e.yml`.
-- [ ] Unit 12 — Docs: `docs/evidence.md` (+ `docs/ja/`) gains this artifact kind; `docs/ci.md`
+- [x] Unit 12 — Docs: `docs/evidence.md` (+ `docs/ja/`) gains this artifact kind; `docs/ci.md`
       (+ `docs/ja/`) notes the showcase signal lane; `docs/architecture.md` (+ `docs/ja/`)
       cross-references the no-retry app-crash path against the existing backend-crash retry section.
-- [ ] Unit 13 — Tests: three pins for the unconfirmed-launch flag, the third latch Unit 7 adds — the
+- [x] Unit 13 — Tests: three pins for the unconfirmed-launch flag, the third latch Unit 7 adds — the
       most stateful new logic this item introduces, and otherwise ships with no coverage distinguishing
       "the app never foregrounded, so do not confirm" from "confirm on the very first failing step" (the
       misdiagnosis the flag exists to remove) from the opposite failure (the flag latching for a whole
@@ -1530,6 +1531,18 @@ the `AppCrashSignal` seam. Nothing in this item changes what a web or fake-backe
       exists to prevent — and that `report/load.py` reconstructs the same `RunResult` with
       `app_crash_artifacts` back at its `()` default on every affected outcome, `app_crashed` and
       `reason` intact.
+
+Log:
+
+- [#2012](https://github.com/bajutsu-e2e/bajutsu/pull/2012) — Units 1–13. Shipped the whole item: the
+  reactive in-band step-loop classification and its three scenario-scoped latches, the iOS `.ips`
+  sweep and Android `logcat`/exit-info/tombstone signal, the pipeline write and manifest exclusion,
+  the `crawl` integration, the showcase fixtures and their non-gating CI lanes, and the bilingual
+  docs. A 3-round self-review pass before this PR opened found and fixed two Android parsing bugs
+  (an exit-info field-order assumption that didn't match real `dumpsys` output, and a `logcat`
+  crash-block match window that could absorb a neighboring process's crash) and a protocol-isinstance
+  gap (`AppCrashPollResettable`, added to keep the exit-info poll's reset working through
+  `TracingDriver`) — see the PR body for the full account.
 
 ## References
 

@@ -346,6 +346,19 @@ final class XcuitestElementProvider: ElementProviding {
     /// sleep (BE-0356).
     private static let maxPickerValueSamples = 5
 
+    func appState() -> AppRunState {
+        // One property read, no query: `XCUIApplication.state` is the process's own state, which is
+        // why it distinguishes what an element tree cannot. A `background` step leaves the app in one
+        // of the two background cases, never `notRunning` (BE-0424).
+        switch app.state {
+        case .notRunning: return .notRunning
+        case .runningBackgroundSuspended: return .runningBackgroundSuspended
+        case .runningBackground: return .runningBackground
+        case .runningForeground: return .runningForeground
+        default: return .unknown
+        }
+    }
+
     func querySystemAlertButtons() -> [ElementSnapshot] {
         // Read the buttons of whatever SpringBoard alert is up, in order; empty when no alert is
         // present, which the Python driver polls against the step's timeout. `alerts.buttons.count`

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from bajutsu.common.assertions import EvalContext
@@ -53,6 +54,13 @@ class _LoopConfig:
     interrupts: list[Interrupt] | None
     locale: str | None
     capture: list[str] | None
+    # The lease's own sweep for the platform's report of an app crash (BE-0424), called the moment a
+    # driver confirms one rather than after the scenario finishes: a teardown `relaunch` in the same
+    # `after` phase re-stamps the launch marker the sweep matches against, so reading it any later
+    # would widen the window past the crash it exists to attribute. A callable the loop only invokes,
+    # like `relaunch` and `mailbox` above — never state it writes through, so it belongs here and not
+    # on `StepLoopState`. `None` on every caller with no lease behind it.
+    capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None = None
     # Which lifecycle phase this loop is running (BE-0392): "" for the scenario's own `steps`,
     # "before" / "after" for the hook phases. Each phase counts its steps from zero, so the label
     # also namespaces their evidence `step_id`s — without it a hook's `step0` would write into the

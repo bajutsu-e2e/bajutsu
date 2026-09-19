@@ -47,7 +47,7 @@ class MainActivity : ComponentActivity() {
         val extras = intent?.extras ?: return emptyMap()
         val keys = listOf(
             "SHOWCASE_UITEST", "SHOWCASE_TAB", "SHOWCASE_API_URL", "SHOWCASE_HTTP_BASE",
-            "SHOWCASE_GESTURES", "SHOWCASE_CONFORMANCE",
+            "SHOWCASE_GESTURES", "SHOWCASE_CONFORMANCE", "SHOWCASE_CRASH",
             // The network collector bajutsu injects (BE-0283); BajutsuNet.configure reads these, AppModel ignores them.
             "BAJUTSU_COLLECTOR", "BAJUTSU_COLLECTOR_TOKEN",
         )

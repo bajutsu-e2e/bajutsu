@@ -303,6 +303,168 @@ def id_u_cmd(serial: str) -> list[str]:
     return _adb(serial, "shell", "id", "-u")
 
 
+def pidof_cmd(serial: str, package: str) -> list[str]:
+    """The package's live process ids, empty when it holds none (BE-0424).
+
+    Note for the caller: toybox `pidof` exits 1 on no match rather than returning empty stdout, and
+    the default `RunFn` is `check=True` — so the routine, expected outcome this probe exists to
+    observe arrives as a `CalledProcessError`, not as an empty string.
+    """
+    return _adb(serial, "shell", "pidof", package)
+
+
+def exit_info_cmd(serial: str, package: str) -> list[str]:
+    """The platform's own `ApplicationExitInfo` history for one package (BE-0424).
+
+    Scoped to `package` deliberately: with no package argument `dumpsys activity exit-info` reports
+    every package on the device, so the newest entry would be some other process's. API 30+ only —
+    the caller checks that before reaching here rather than polling a signal that cannot exist.
+    """
+    return _adb(serial, "shell", "dumpsys", "activity", "exit-info", package)
+
+
+def launch_marker_cmd(serial: str) -> list[str]:
+    """One device-clock read yielding the three renderings a launch marker needs (BE-0424).
+
+    Epoch, `dumpsys activity exit-info`'s `timestamp=` rendering, and `logcat -t`'s — taken together
+    in one call rather than as three `date` invocations, which would stamp three different instants
+    and let the `logcat` one filter out a crash that landed in the gap between reads. The format
+    string is quoted for the *device* shell, which would otherwise read the `|` as a pipe and
+    word-split the rest.
+
+    The three cannot be derived from one another on the host: resolving a device-side rendering into
+    an epoch would run it through the *host's* timezone, so a UTC emulator driven from any other zone
+    would place every fresh timestamp hours from the marker. Splitting these three fields is a plain
+    string split, never a timezone resolution, which is what keeps that rule intact.
+    """
+    return _adb(serial, "shell", "date '+%s|%Y-%m-%d %H:%M:%S|%m-%d %H:%M:%S.000'")
+
+
+def logcat_crash_dump_cmd(serial: str, since: str) -> list[str]:
+    """A one-shot dump of the crash buffer since *since* (BE-0424).
+
+    `-d` dumps and exits rather than following. `-t "<MM-DD hh:mm:ss.mmm>"` is a *time* bound only in
+    its quoted-string form — `adb logcat -t` reads a bare integer as a line count instead, which is
+    why the launch marker's epoch cannot be threaded through here. Nothing is cleared: the buffer is
+    device-global and `scripts/collect_android_diagnostics.sh` still sweeps it whole at end of job.
+    """
+    return _adb(serial, "logcat", "-b", "crash", "-d", "-t", since)
+
+
+def root_cmd(serial: str) -> list[str]:
+    """Restart `adbd` as root (`adb root`); device-wide until `adb unroot` or a reboot."""
+    return _adb(serial, "root")
+
+
+def unroot_cmd(serial: str) -> list[str]:
+    """Restart `adbd` unprivileged again (`adb unroot`), handing the device back as it was found."""
+    return _adb(serial, "unroot")
+
+
+def wait_for_device_cmd(serial: str) -> list[str]:
+    """Block until `adbd` is answering again — the gate every `adb root`/`unroot` needs after it."""
+    return _adb(serial, "wait-for-device")
+
+
+def tombstones_cmd(serial: str) -> list[str]:
+    """Device tombstones as `<device-epoch> <path>` lines, root-gated (BE-0424).
+
+    `stat -c "%Y %n"` rather than `ls -lt`: the caller compares these against the epoch half of its
+    launch marker, and both are then the device's own seconds-since-epoch — a plain number
+    comparison, never a rendering the host would have to resolve through *its* timezone. An empty
+    directory makes the glob fail, so the `|| true` keeps that routine case off the error path.
+    """
+    return _adb(serial, "shell", 'stat -c "%Y %n" /data/tombstones/tombstone_* 2>/dev/null || true')
+
+
+def cat_cmd(serial: str, device_path: str) -> list[str]:
+    """One device-side file's contents on stdout — the tombstone read, which needs root."""
+    return _adb(serial, "shell", "cat", device_path)
+
+
+# `AppExitInfoTracker.dumpLocked` (frameworks/base) prints entries newest first, each framed as its
+# own `ApplicationExitInfo` block, one field per line — `timestamp=` and `reason=` among them, in an
+# order and an exact punctuation around `reason=`'s value (`reasonCodeToString(mReason)` alone, or
+# with the numeric `Reason` constant alongside it) that varies across AOSP revisions and cannot be
+# pinned to one literal shape without a live capture off a real device. Splitting on this marker is
+# what lets `timestamp=` and `reason=` be read in either order within the entry that actually carries
+# them, rather than pairing one entry's reason with another's timestamp; matching `reason=`'s value by
+# known token rather than by a fixed separator is what keeps the read from depending on a punctuation
+# guess.
+_EXIT_INFO_ENTRY = re.compile(r"ApplicationExitInfo")
+
+# The token `reasonCodeToString` renders for each `ApplicationExitInfo.REASON_*` constant this item
+# cares about. Matched as a substring of whatever follows `reason=` on its own line, not as the whole
+# remainder, so a leading numeric code and/or surrounding punctuation (`4 CRASH`, `CRASH (4)`,
+# `CRASH(4)`) all match the same way without needing to know which shape the device renders.
+# `CRASH_NATIVE` is checked before `CRASH`, since it names a superset of the same characters.
+_EXIT_INFO_REASON_TOKENS = ("CRASH_NATIVE", "CRASH", "ANR", "LOW_MEMORY", "USER_REQUESTED")
+
+
+def _exit_info_reason(text: str) -> str | None:
+    """The known reason token `text` (the remainder of a `reason=` line) names, or None."""
+    upper = text.upper()
+    return next((token for token in _EXIT_INFO_REASON_TOKENS if token in upper), None)
+
+
+def newest_exit_info(text: str) -> tuple[str, str] | None:
+    """The `(reason, timestamp)` of the newest `ApplicationExitInfo` entry, or None (BE-0424).
+
+    `dumpsys activity exit-info` prints the history newest first, and the scan takes the first entry
+    whose `reason=` names a token this item classifies — an unrecognised reason falls through to an
+    older entry rather than ending the scan, so the pair returned is not always the newest entry's.
+    The caller's time bound is the only thing that then rules an earlier lifetime's entry out.
+    `timestamp=` is a wall-clock rendering in the *device's* own timezone carrying no offset, so it
+    is returned as the string it is — resolving it into an epoch on the host would run it through
+    the host's timezone instead.
+    """
+    starts = [m.start() for m in _EXIT_INFO_ENTRY.finditer(text)]
+    ends = [*starts[1:], len(text)]
+    blocks = [text] if not starts else [text[a:b] for a, b in zip(starts, ends, strict=True)]
+    for block in blocks:  # newest first, per dumpsys's own ordering
+        reason_line = re.search(r"\breason=([^\r\n]*)", block)
+        stamp = re.search(r"\btimestamp=(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", block)
+        if reason_line is None or stamp is None:
+            continue
+        reason = _exit_info_reason(reason_line.group(1))
+        if reason is not None:
+            return reason, stamp.group(1)
+    return None
+
+
+# What `ApplicationExitInfo` calls a crash, managed and native. `ANR`, `LOW_MEMORY` and
+# `USER_REQUESTED` are deliberately not here: each is a real termination the app did not fault on.
+EXIT_INFO_CRASH_REASONS = frozenset({"CRASH", "CRASH_NATIVE"})
+
+
+def extract_crash_block(text: str, package: str) -> str | None:
+    """The `logcat` crash block belonging to *package*, managed or native, or None (BE-0424).
+
+    Two formats, because the crash buffer carries both: a managed (Java/Kotlin) `FATAL EXCEPTION`
+    block, and an NDK crash's `Fatal signal` block under its own `>>> <process> <<<` header. Each is
+    bounded to the app under test's own process, not to the caller's time window alone — the buffer
+    is device-global across processes as well as across launches, so a system service faulting in the
+    same window must never be written as this scenario's evidence.
+    """
+    lines = text.splitlines()
+    starts = [i for i, line in enumerate(lines) if "FATAL EXCEPTION" in line or ">>> " in line]
+    for i, start in enumerate(starts):
+        # Bounded by whichever comes first: the next block's own header, or the line cap — never
+        # past the next header, which is what keeps a block from absorbing a second crash that
+        # follows it closely in the device-global buffer.
+        end = min(start + _CRASH_BLOCK_LINES, starts[i + 1] if i + 1 < len(starts) else len(lines))
+        body = "\n".join(lines[start:end])
+        if f"Process: {package}," in body or f">>> {package} <<<" in body:
+            return body
+    return None
+
+
+# How many lines of a `logcat` crash block are kept. A managed stack trace with its `Caused by`
+# chain, or a native block through its backtrace, both fit comfortably; the cap is what keeps an
+# unrelated flood after the block from being copied in as though it were part of it.
+_CRASH_BLOCK_LINES = 200
+
+
 def parse_touch_device(text: str) -> TouchDevice | None:
     """The touchscreen node from `getevent -lp`: the one exposing both ABS_MT_POSITION axes.
 

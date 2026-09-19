@@ -269,6 +269,28 @@ paths:
                 $ref: "#/components/schemas/ActuationReply"
         "400":
           $ref: "#/components/responses/BadRequest"
+  /app/state:
+    post:
+      operationId: queryAppState
+      summary: Report whether the app under test is still running.
+      description: >-
+        Asked only once a step has already failed, never polled, so the driver can tell an app that
+        went down from one that is merely not showing what was expected (BE-0424). `notRunning` is
+        the only answer that names a crash; a backgrounded-but-alive app reports one of the running
+        states instead, which is what makes this safe where an empty element tree is not.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmptyRequest"
+      responses:
+        "200":
+          description: The target app's process state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppStateReply"
   /systemAlert/query:
     post:
       operationId: querySystemAlert
@@ -463,6 +485,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Element"
+    AppStateReply:
+      type: object
+      required: [status, state]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        state:
+          type: string
+          enum: [unknown, notRunning, runningBackgroundSuspended, runningBackground, runningForeground]
+          description: >-
+            `XCUIApplication.state`, spelled as its own cases. Only `notRunning` names a crash;
+            `unknown` is XCTest's own "cannot tell", which the driver treats as no confirmation
+            rather than as evidence either way (BE-0424).
     ActuationReply:
       type: object
       required: [status]

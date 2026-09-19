@@ -76,6 +76,12 @@ final class AppModel: ObservableObject {
     /// `SHOWCASE_GESTURES` rather than a tab, so no existing scenario's tab bar moves.
     let signInMode: Bool
 
+    /// Swaps the whole UI for the crash fixture (`SHOWCASE_CRASH`, BE-0424), whose one button
+    /// faults the process on demand. A launch-env swap like `SHOWCASE_GESTURES` rather than a build
+    /// configuration: a Release build would compile a `#if DEBUG` affordance out, and the
+    /// expected-to-fail scenario would then fail on a missing selector rather than on a crash.
+    let crashMode: Bool
+
     /// A test-only affordance gated on the SHOWCASE_NOTIFICATION_BANNER launch env, mirroring
     /// gestures above (BE-0416 Unit 5). When set, the app renders a flat screen with one target
     /// pinned at a known point near the top of the screen — inside the frame Unit 1 measured for a
@@ -96,6 +102,7 @@ final class AppModel: ObservableObject {
         gesturesMode = env["SHOWCASE_GESTURES"] != nil
         pickersMode = env["SHOWCASE_PICKERS"] != nil
         signInMode = env["SHOWCASE_SIGNIN"] != nil
+        crashMode = env["SHOWCASE_CRASH"] != nil
         notificationBannerMode = env["SHOWCASE_NOTIFICATION_BANNER"] != nil
         tipKitMode = env["SHOWCASE_TIPKIT"] != nil
         conformanceIDs = Self.conformanceIDs(env["SHOWCASE_CONFORMANCE"])

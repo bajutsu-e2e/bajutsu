@@ -51,7 +51,8 @@ from bajutsu.common.orchestrator import (
     scenario_slug,
 )
 from bajutsu.common.orchestrator.evidence_rules import requested_intervals
-from bajutsu.common.orchestrator.types import _no_network
+from bajutsu.common.orchestrator.types import StepOutcome, _no_network
+from bajutsu.common.platform_lifecycle.protocols import ReadinessResult
 from bajutsu.common.report import (
     ScenarioPlanSource,
     git_revision,
@@ -91,6 +92,28 @@ _logger = logging.getLogger(__name__)
 # captured output, and the host crash report for a process that faulted (BE-0421). Named once here
 # because the failed scenario's failure string points at it as well as writing into it.
 _CRASH_DIAGNOSTICS_DIR = "crash-diagnostics"
+
+# The sibling directory holding the *app under test's* own crash report — the `.ips` macOS wrote for
+# a faulting Simulator process, Android's `logcat` crash block and tombstone (BE-0424). Separate from
+# the directory above because the two name different faults: the backend's test infrastructure there,
+# a likely defect in the app a team is testing here.
+_APP_CRASH_DIR = "app-crash"
+
+
+def _launch_unconfirmed(readiness: ReadinessResult | None) -> bool:
+    """Whether this lease's readiness gate left the app's own arrival unproven (BE-0424).
+
+    `count` is the gate's weakest rung — a bare `len(elements) >= 2`, which a slow cold boot's
+    SpringBoard icons satisfy before the app itself foregrounds — so a `ready` answer there is no
+    evidence the app rendered. It is also the *ordinary* rung rather than a rare one: `launch_driver`
+    passes no `id_namespaces`, so every target declaring no `readyWhen` lands on it at every launch.
+
+    This is the first consumer to decide behavior from a `ReadinessResult` rather than word a
+    diagnostic message, which is why `ReadinessResult`'s own docstring now names the use. It stays
+    off the verdict path (prime directive 1): it only suppresses a diagnostic probe, and the probe
+    itself never decides pass/fail either.
+    """
+    return readiness is None or not readiness.ready or readiness.signal == "count"
 
 
 def _evidence_sid(i: int, s: Scenario) -> str:
@@ -834,6 +857,49 @@ class _ScenarioRunner:
             return ""
         return f"; the backend's own crash evidence is in {directory}"
 
+    def _write_app_crash_artifacts(
+        self, lz: Lease, outcome: StepOutcome, s: Scenario, sid: str
+    ) -> str:
+        """Copy the crashed *app's* own platform report into this scenario's directory (BE-0424).
+
+        The app-side sibling of `_write_crash_artifacts` above, with one difference its sibling does
+        not need: the evidence is already on `outcome`, captured synchronously the moment the driver
+        confirmed the crash, so nothing is re-swept here — only the Android tombstone layer is pulled,
+        now, because the `adb root` it needs would have killed the resident server had it fired while
+        the scenario was still actuating. That call stays unconditional rather than branching on the
+        backend: a `Lease` carries no backend identity, and every other environment declares the
+        method a no-op, so the per-backend knowledge stays out of the deterministic core.
+
+        Returns the trailer to append to the failure string, empty when nothing landed. Writes go
+        through `write_text`, not `write_bytes`: a crash report is text a crashing app can echo a
+        secret into, so it still crosses the free-text scrub (BE-0331).
+        """
+        writer = self._artifacts()
+        if writer is None:
+            return ""
+        try:
+            tombstone = lz.app_crash_tombstone()
+        except Exception as exc:
+            # Logged, never raised, and never allowed to cost the layer already on the outcome: a lost
+            # tombstone is strictly less evidence, not a different verdict.
+            _logger.warning("scenario %s: pulling the app's tombstone failed (%s)", s.name, exc)
+            tombstone = []
+        directory: Path | None = None
+        for name, content in (*outcome.app_crash_artifacts, *tombstone):
+            try:
+                written = writer.write_text(
+                    f"{sid}/{_APP_CRASH_DIR}/{name}", content.decode(errors="replace")
+                )
+            except OSError as exc:
+                _logger.warning(
+                    "scenario %s: writing the app-crash artifact %s failed (%s)", s.name, name, exc
+                )
+            else:
+                directory = written.parent
+        if directory is None:
+            return ""
+        return f"; the app's own crash report is in {directory}"
+
     def _run_on_lease(
         self, lz: Lease, handler: AlertGuardConfig | None, i: int, s: Scenario, sid: str
     ) -> RunResult:
@@ -930,6 +996,11 @@ class _ScenarioRunner:
                 # exactly as the app that launched sees it, not read as if the scenario pinned
                 # nothing (BE-0365 unit 3).
                 target_launch_env=self.eff.launch_env,
+                # Called from inside the step loop, not here, so the sweep runs at the moment the
+                # crash is confirmed — strictly before a teardown step in this scenario's own `after`
+                # phase can re-stamp the launch marker it matches against (BE-0424).
+                capture_app_crash=lz.app_crash_artifacts,
+                app_launch_unconfirmed=_launch_unconfirmed(lz.readiness),
             )
             result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
             result.device = lz.udid  # attribute the scenario to the device that ran it
@@ -946,6 +1017,30 @@ class _ScenarioRunner:
                 )
                 if art is not None:
                     result.artifacts.append(art)
+            # Still holding the lease this scenario ran on, before the `finally` below releases it —
+            # and genuinely after `run_scenario`, so the tombstone layer's `adb root` can no longer
+            # break a channel a later step needs. A plain post-return check, not a new `except`
+            # branch: the scenario's own retry behavior is already settled by the time it runs, since
+            # an app crash is classified in-band and never escapes as an exception (BE-0424).
+            crashed = next(
+                (
+                    o
+                    for o in (*result.before_outcomes, *result.steps, *result.after_outcomes)
+                    if o.app_crashed
+                ),
+                None,
+            )
+            if crashed is not None:
+                trailer = self._write_app_crash_artifacts(lz, crashed, s, sid)
+                # `result.ok` is already fixed by `run_scenario` (`ok=failure is None`) before this
+                # scan ever runs, so an empty trailer here cannot flip it — but `result.failure` would
+                # still silently become `""` instead of staying `None`, a stale non-`None`-yet-empty
+                # value nothing downstream expects. An `app_crashed` outcome always carries a failure
+                # by construction (the confirming driver call only runs on a step that already
+                # failed), so `result.failure` is never actually `None` here — guarded anyway, since
+                # nothing enforces that invariant at this call site.
+                if trailer:
+                    result.failure = (result.failure or "") + trailer
             if self.progress is not None:
                 mark = "✔" if result.ok else "✘"
                 self.progress(

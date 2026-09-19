@@ -412,6 +412,10 @@ def make_driver(
     fetch_clock: ClockFetch | None = None,
     act: ActFn | None = None,
     device_os: DeviceOS | None = None,
+    is_real_device: bool = False,
+    package: str | None = None,
+    api_level: int | None = None,
+    launched_at: Callable[[], tuple[float, str] | None] | None = None,
     zorder: ZOrderSource | None = None,
 ) -> base.Driver:
     """Construct the driver for an actuator, wiring up its backend-specific arguments.
@@ -432,11 +436,29 @@ def make_driver(
     travels as a keyword rather than as a `Driver` member because that Protocol is
     `@runtime_checkable` with no shared base class: a data member there would be a declaration every
     backend and every inline test double has to repeat.
+
+    Four more keywords feed BE-0424's app-crash signal, all travelling for that same reason.
+    `is_real_device` scopes the xcuitest signal out on a real iPhone. `package`, `api_level` and
+    `launched_at` are the adb signal's own inputs, and all three default to the value that makes it
+    answer "cannot confirm" up front: `dumpsys activity exit-info` with no package reports *every*
+    package on the device, so a silently defaulted `None` would let it confirm some other process's
+    crash as this app's. Every scenario-run `AdbDriver` is built where the package is in scope, but
+    `make_driver` has callers that pass neither (`serve/operations/_common.py`,
+    `common/doctor/_functions.py`), and failing closed is what keeps one of those from inheriting the
+    unsafe answer.
     """
     if actuator == "adb":
         from bajutsu.common.drivers.adb import AdbDriver
 
-        return AdbDriver(udid, fetch_hierarchy=fetch_hierarchy, fetch_clock=fetch_clock, act=act)
+        return AdbDriver(
+            udid,
+            fetch_hierarchy=fetch_hierarchy,
+            fetch_clock=fetch_clock,
+            act=act,
+            package=package,
+            api_level=api_level,
+            launched_at=launched_at,
+        )
     if actuator == "fake":
         return FakeDriver([])
     if actuator == "xcuitest":
@@ -452,6 +474,7 @@ def make_driver(
             runner_alive=runner_alive,
             on_stall=on_stall,
             device_os=device_os,
+            is_real_device=is_real_device,
             zorder=zorder,
         )
     if actuator == "playwright":

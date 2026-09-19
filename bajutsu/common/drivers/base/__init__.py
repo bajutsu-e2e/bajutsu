@@ -43,6 +43,9 @@ from ._shared import (
     Point,
 )
 from .ambiguous_selector import AmbiguousSelector
+from .app_crash_poll_resettable import AppCrashPollResettable
+from .app_crash_signal import AppCrashSignal
+from .app_crashed_error import AppCrashedError
 from .backend_crash_error import BackendCrashError
 from .backend_lifecycle import BackendLifecycle
 from .background_screenshot_provider import BackgroundScreenshotProvider
@@ -78,6 +81,9 @@ __all__ = [
     "OS_BACK_BUTTON",
     "PERMISSION_SERVICES",
     "AmbiguousSelector",
+    "AppCrashPollResettable",
+    "AppCrashSignal",
+    "AppCrashedError",
     "BackendCrashError",
     "BackendLifecycle",
     "BackgroundScreenshotProvider",

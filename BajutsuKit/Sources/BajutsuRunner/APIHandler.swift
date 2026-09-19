@@ -273,6 +273,28 @@ final class APIHandler: APIProtocol {
         return .ok(.init(body: .json(elementsReply(store: alertStore, elements: buttons))))
     }
 
+    func queryAppState(
+        _ input: Operations.queryAppState.Input
+    ) async throws -> Operations.queryAppState.Output {
+        // `.unknown` as the fallback, not `.notRunning`: a handler that raised tells us nothing about
+        // the app, and answering "it crashed" on that would be the exact misdiagnosis this route
+        // exists to remove (BE-0424).
+        let state = await caught(AppRunState.unknown) { self.provider.appState() }
+        return .ok(.init(body: .json(.init(status: .ok, state: appStatePayload(state)))))
+    }
+
+    private func appStatePayload(
+        _ state: AppRunState
+    ) -> Components.Schemas.AppStateReply.statePayload {
+        switch state {
+        case .notRunning: return .notRunning
+        case .runningBackgroundSuspended: return .runningBackgroundSuspended
+        case .runningBackground: return .runningBackground
+        case .runningForeground: return .runningForeground
+        case .unknown: return .unknown
+        }
+    }
+
     func tapSystemAlert(
         _ input: Operations.tapSystemAlert.Input
     ) async throws -> Operations.tapSystemAlert.Output {

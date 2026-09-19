@@ -577,6 +577,18 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   crashed `xcodebuild` process, its `.ips` crash report. The capture happens at lease release,
   before a later scenario can re-lease and overwrite the same warm environment, and the scenario's
   own failure string names the subdirectory directly
+- **Per-scenario app-crash capture** (BE-0424): the app-side counterpart to the entry above, and
+  deliberately *not* a retry. A crash of the backend leaves nothing of the scenario to salvage, so
+  the pipeline discards the lease and re-runs it; a crash of the app under test leaves the driver,
+  the backend process, and the running video recording all intact, so it is classified **in-band** —
+  it fails the step that observed it, and the ordinary `RunResult` assembly finishes around it. The
+  detection is reactive, asked of a driver only once a step has already failed, so a green run pays
+  nothing; the evidence lands in an `app-crash/` subdirectory next to the one above. Retrying here
+  would spend the crash-recovery budget on a scenario likely to fail the same way, and risk
+  absorbing a real app regression as flakiness (BE-0049) instead of failing loudly. Scoped to the
+  iOS Simulator and to Android API 30 and above, where each platform's own signal can actually
+  confirm the event; elsewhere it answers "cannot confirm" rather than guessing
+  ([`docs/evidence.md`](evidence.md#app-crash-evidence-be-0424))
 
 #### DSL authoring, control flow, and data
 
