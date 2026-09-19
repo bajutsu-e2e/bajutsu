@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0428") |
-| Implementing PR | [#2025](https://github.com/bajutsu-e2e/bajutsu/pull/2025) (unit 1) |
+| Implementing PR | [#2025](https://github.com/bajutsu-e2e/bajutsu/pull/2025) (unit 1), [#2028](https://github.com/bajutsu-e2e/bajutsu/pull/2028) (units 2-7) |
 | Topic | Scenario authoring features |
 | Related | [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md), [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md) |
 <!-- /BE-METADATA -->
@@ -734,7 +734,7 @@ Log:
   `codegen`, and serve's own Codegen endpoint — rather than acting against the wrong one without a
   word.
 
-- PR_PLACEHOLDER — Units 2-7, covering the CLI through the tests. `--target` becomes optional once
+- [#2028](https://github.com/bajutsu-e2e/bajutsu/pull/2028) — Units 2-7, covering the CLI through the tests. `--target` becomes optional once
   every `--scenario` file declares its own `targets`. Each declared name resolves against the same
   loaded config. Each takes its own `DeviceLease` and pool, then launches before the first step.
   The step loop sends each step to its own target's driver and evidence, over one shared

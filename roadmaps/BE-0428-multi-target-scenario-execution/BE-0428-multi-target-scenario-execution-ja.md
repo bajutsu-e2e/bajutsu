@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0428") |
-| 実装 PR | [#2025](https://github.com/bajutsu-e2e/bajutsu/pull/2025)（単位 1） |
+| 実装 PR | [#2025](https://github.com/bajutsu-e2e/bajutsu/pull/2025)（単位 1）、[#2028](https://github.com/bajutsu-e2e/bajutsu/pull/2028)（単位 2〜7） |
 | トピック | Scenario authoring features |
 | 関連 | [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md) |
 <!-- /BE-METADATA -->
@@ -768,7 +768,7 @@ Common Test Report Format（CTRF）のエクスポートを含め、単一ター
   拒否します。`run_all`（`run`と`audit --repeat`が共有）、`codegen`、serve自身のCodegen
   エンドポイントです。間違った対象に対して、黙って作用することはありません。
 
-- PR_PLACEHOLDER — 単位2〜7（CLI、起動と後片付け、ランナー、レポート、ドキュメント、テスト）です。
+- [#2028](https://github.com/bajutsu-e2e/bajutsu/pull/2028) — 単位2〜7（CLI、起動と後片付け、ランナー、レポート、ドキュメント、テスト）です。
   `--scenario`のファイルがすべて自分の`targets`を宣言していれば、`--target`は省略できるように
   なりました。宣言された各名前は同じ読み込み済み config から解決され、自分の`DeviceLease`とプールを
   与えられ、最初のステップより前に起動します。ステップループは、共有された1つの`StepLoopState`の上で
