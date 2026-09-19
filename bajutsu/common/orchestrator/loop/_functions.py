@@ -46,6 +46,7 @@ from bajutsu.common.orchestrator.types import (
     RunResult,
     SelectionState,
     StepOutcome,
+    TargetRuntime,
     UndeclaredInterruption,
     WallClock,
     _no_network,
@@ -161,14 +162,36 @@ def _evaluate_expect(
     clock: Clock,
     *,
     ctx: EvalContext,
+    target_runtimes: Mapping[str, TargetRuntime] | None = None,
+    primary_target: str = "",
 ) -> list[AssertionResult]:
     """Evaluate the trailing `expect` block as a condition wait (BE-0245), via `_poll_asserts`.
 
     The scenario-level `expect` needs only the assertion results, not the settled tree, so it drops
     the tree `_poll_asserts` also returns.
+
+    Entries are grouped by the target each names (BE-0428) and polled once per referenced target,
+    against that target's own driver and network source — one condition wait per target rather than
+    one per entry, so two assertions on the same target still settle together the way they do
+    today. The results merge back in the scenario's own declared order, so a reader of
+    `expect_results` sees the block as it was written rather than regrouped.
     """
-    results, _ = _poll_asserts(driver, expect, network, clock, ctx=ctx)
-    return results
+    groups: dict[str, list[int]] = {}
+    for i, a in enumerate(expect):
+        groups.setdefault(a.target or primary_target, []).append(i)
+    merged: list[AssertionResult | None] = [None] * len(expect)
+    for name, indexes in groups.items():
+        rt = (target_runtimes or {}).get(name)
+        results, _ = _poll_asserts(
+            driver if rt is None else rt.driver,
+            [expect[i] for i in indexes],
+            network if rt is None else rt.network,
+            clock,
+            ctx=ctx if rt is None or rt.ctx is None else replace(rt.ctx, clipboard=ctx.clipboard),
+        )
+        for i, r in zip(indexes, results, strict=True):
+            merged[i] = replace(r, target=name)
+    return [r for r in merged if r is not None]
 
 
 def _settle_extract_read(
@@ -592,6 +615,8 @@ def run_scenario(
     cancelled: CancelSource = not_cancelled,
     channel: Collector | None = None,
     target_launch_env: Mapping[str, str] | None = None,
+    target_runtimes: Mapping[str, TargetRuntime] | None = None,
+    primary_target: str = "",
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -731,6 +756,8 @@ def run_scenario(
             phase_cancelled,
             phase,
             counter,
+            target_runtimes,
+            primary_target,
         )
 
     try:
@@ -758,7 +785,13 @@ def run_scenario(
                         ctx, driver, channel=channel, hide_markers=hide_markers, cancelled=cancelled
                     )
                     expect_results = _evaluate_expect(
-                        driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
+                        driver,
+                        expect,
+                        network,
+                        clock,
+                        ctx=replace(ctx, clipboard=clip),
+                        target_runtimes=target_runtimes,
+                        primary_target=primary_target,
                     )
                     # A prompt the backend answered or declined while it was interrupting one of
                     # `expect`'s own queries. Outside the failure branch below: an `expect` that passed
@@ -1045,6 +1078,8 @@ def _retry_expect_after_guard_dismiss(
     channel: Collector | None,
     hide_markers: bool,
     expect_actuations: list[Actuation],
+    target_runtimes: Mapping[str, TargetRuntime] | None = None,
+    primary_target: str = "",
 ) -> tuple[list[AssertionResult], int]:
     """Re-evaluate `expect` once the alert guard has dismissed whatever blocked it the first time.
 
@@ -1074,7 +1109,13 @@ def _retry_expect_after_guard_dismiss(
     # the retry must compare against the fresh value, not the stale one.
     clip = _clipboard_for(expect, control)
     expect_results = _evaluate_expect(
-        driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
+        driver,
+        expect,
+        network,
+        clock,
+        ctx=replace(ctx, clipboard=clip),
+        target_runtimes=target_runtimes,
+        primary_target=primary_target,
     )
     return expect_results, dropped
 
@@ -1147,6 +1188,32 @@ def _run_for_each(
     return True, ""
 
 
+def _config_for(cfg: _LoopConfig, rt: TargetRuntime) -> _LoopConfig:
+    """*cfg* with every field one target's own runtime owns replaced (BE-0428).
+
+    Everything not replaced here — the scenario, the clock, the anchor offset, the evidence sid,
+    the phase label, the cancel source — describes the *run*, not a target, so a per-target runner
+    inherits the primary's unchanged. The rest are each bound to one lease, and handing a step the
+    wrong one would read another target's screen or write into another target's evidence.
+    """
+    return replace(
+        cfg,
+        driver=rt.driver,
+        sink=rt.sink,
+        alert_guard=rt.alert_guard,
+        network=rt.network,
+        relaunch=rt.relaunch,
+        control=rt.control,
+        ctx=rt.ctx,
+        mailbox=rt.mailbox,
+        webview_bridge=rt.webview_bridge,
+        transitions=rt.transitions,
+        interrupts=rt.interrupts,
+        locale=rt.locale,
+        capture=rt.capture,
+    )
+
+
 def _run_steps(
     driver: base.Driver,
     scenario: Scenario,
@@ -1173,6 +1240,8 @@ def _run_steps(
     cancelled: CancelSource = not_cancelled,
     phase: str = "",
     counter: _StepCounter | None = None,
+    target_runtimes: Mapping[str, TargetRuntime] | None = None,
+    primary_target: str = "",
 ) -> str | None:
     """Run one phase's step loop, appending outcomes; return the failure string or None.
 
@@ -1186,7 +1255,13 @@ def _run_steps(
 
     ``bindings`` is a mutable dict (guaranteed by ``run_scenario``) — extract
     steps add ``vars.*`` entries so that subsequent steps and scenario-level
-    ``expect`` can reference them."""
+    ``expect`` can reference them.
+
+    ``target_runtimes`` (BE-0428) is one live bundle per target the scenario declares; a step naming
+    one is dispatched to a runner built over *that* target's driver and evidence. Every such runner
+    shares this call's single ``StepLoopState``, so one numbering, one outcome list, and one
+    ``bindings`` dict span every target — which is what lets a value one target's ``extract``
+    captured reach an assertion against another."""
     assert bindings is not None
     state = StepLoopState(counter=counter or _StepCounter(), outcomes=outcomes, bindings=bindings)
     cfg = _LoopConfig(
@@ -1216,7 +1291,19 @@ def _run_steps(
     # so rule 5 breaks the cycle the split creates on the single edge back into it.
     from ._step_runner import _StepRunner
 
-    result = _StepRunner(state, cfg).exec_steps(steps, driver)
+    primary = _StepRunner(state, cfg, primary_target)
+    if target_runtimes:
+        by_target = {
+            name: (
+                primary
+                if name == primary_target
+                else _StepRunner(state, _config_for(cfg, rt), name)
+            )
+            for name, rt in target_runtimes.items()
+        }
+        for runner in by_target.values():
+            runner.by_target = by_target
+    result = primary.exec_steps(steps, driver)
     _logger.debug("%s: %d runner-issued screen reads (BE-0234)", sid, state.total_reads)
     # No end-of-run safety capture here: every step that acts shoots its own `after.png` in
     # `_handle_action`, so the net only reached the step that returns before acting at all, where it

@@ -763,81 +763,113 @@ def test_run_browsers_matrix_is_web_only(tmp_path: Path) -> None:
     assert "web-only" in r.output
 
 
-def test_reject_multi_target_scenarios_passes_a_targetless_scenario() -> None:
-    from bajutsu.run.cli import _reject_multi_target_scenarios
+def test_check_target_membership_passes_a_targetless_scenario() -> None:
+    from bajutsu.run.cli import _check_target_membership
 
     scenarios = [Scenario.model_validate({"name": "s", "steps": [{"tap": {"id": "a"}}]})]
-    _reject_multi_target_scenarios(scenarios)  # no exception
+    _check_target_membership(scenarios, "demo", explicit=True)  # no exception
 
 
-def test_reject_multi_target_scenarios_exits_2_naming_the_scenario(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    import typer
-
-    from bajutsu.run.cli import _reject_multi_target_scenarios
+def test_check_target_membership_passes_when_target_is_one_of_the_declared_names() -> None:
+    from bajutsu.run.cli import _check_target_membership
 
     scenarios = [
         Scenario.model_validate(
             {
                 "name": "cross-target",
                 "targets": ["app", "web"],
-                "steps": [
-                    {"target": "app", "tap": {"id": "a"}},
-                    {"target": "web", "tap": {"id": "b"}},
-                ],
+                "steps": [{"target": "app", "tap": {"id": "a"}}],
             }
         )
     ]
-    with pytest.raises(typer.Exit) as exc:
-        _reject_multi_target_scenarios(scenarios)
-    assert exc.value.exit_code == 2
-    assert "cross-target" in capsys.readouterr().out
+    _check_target_membership(scenarios, "web", explicit=True)  # matching any declared name is fine
 
 
-def test_reject_multi_target_scenarios_names_every_affected_scenario(
+def test_check_target_membership_exits_2_on_a_stale_flag(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    # A `--target` left over from editing the scenario must fail loudly rather than be ignored:
+    # silently selecting a target the file no longer expects is the outcome BE-0428 rules out.
     import typer
 
-    from bajutsu.run.cli import _reject_multi_target_scenarios
+    from bajutsu.run.cli import _check_target_membership
 
     scenarios = [
         Scenario.model_validate(
             {
-                "name": "a-cross",
+                "name": "cross-target",
                 "targets": ["app", "web"],
-                "steps": [{"target": "app", "tap": {"id": "x"}}],
+                "steps": [{"target": "app", "tap": {"id": "a"}}],
             }
-        ),
-        Scenario.model_validate({"name": "b-single", "steps": [{"tap": {"id": "x"}}]}),
+        )
+    ]
+    with pytest.raises(typer.Exit) as exc:
+        _check_target_membership(scenarios, "staging", explicit=True)
+    assert exc.value.exit_code == 2
+    out = capsys.readouterr().out
+    assert "cross-target" in out
+    assert "staging" in out
+
+
+def test_check_target_membership_skips_a_primary_this_command_derived() -> None:
+    # Only an *explicit* flag is checked. A batch's primary comes from the first file, and a later
+    # file may legitimately declare a disjoint target set, so checking it would reject a valid run.
+    from bajutsu.run.cli import _check_target_membership
+
+    scenarios = [
         Scenario.model_validate(
-            {
-                "name": "c-cross",
-                "targets": ["app", "web"],
-                "steps": [{"target": "app", "tap": {"id": "x"}}],
-            }
+            {"name": "a", "targets": ["app"], "steps": [{"target": "app", "tap": {"id": "x"}}]}
+        ),
+        Scenario.model_validate(
+            {"name": "b", "targets": ["web"], "steps": [{"target": "web", "tap": {"id": "x"}}]}
         ),
     ]
-    with pytest.raises(typer.Exit):
-        _reject_multi_target_scenarios(scenarios)
+    _check_target_membership(scenarios, "app", explicit=False)  # no exception
+
+
+def test_reject_legacy_without_target_names_every_orphan(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Without `--target`, a scenario declaring no targets has nothing to resolve one from — it
+    # would otherwise silently borrow the primary another file declared.
+    import typer
+
+    from bajutsu.run.cli import _reject_legacy_without_target
+
+    scenarios = [
+        Scenario.model_validate(
+            {"name": "a-self", "targets": ["app"], "steps": [{"target": "app", "tap": {"id": "x"}}]}
+        ),
+        Scenario.model_validate({"name": "b-legacy", "steps": [{"tap": {"id": "x"}}]}),
+        Scenario.model_validate({"name": "c-legacy", "steps": [{"tap": {"id": "x"}}]}),
+    ]
+    with pytest.raises(typer.Exit) as exc:
+        _reject_legacy_without_target(scenarios, "app", explicit=False)
+    assert exc.value.exit_code == 2
     out = capsys.readouterr().out
-    assert "a-cross" in out
-    assert "c-cross" in out
-    assert "b-single" not in out  # a single-target scenario is never an offender
+    assert "b-legacy" in out
+    assert "c-legacy" in out
+    assert "a-self" not in out  # a self-declaring scenario is never an orphan
 
 
-def test_run_rejects_a_multi_target_scenario_end_to_end(tmp_path: Path) -> None:
-    # BE-0428: CLI/launch/runner routing support hasn't shipped yet, so a scenario declaring
-    # `targets` must fail loudly at load time instead of silently running every step against the
-    # run's single `--target`.
+def test_reject_legacy_without_target_is_inert_when_target_was_given() -> None:
+    # With `--target`, a legacy scenario resolves from it exactly as it always has.
+    from bajutsu.run.cli import _reject_legacy_without_target
+
+    scenarios = [Scenario.model_validate({"name": "b-legacy", "steps": [{"tap": {"id": "x"}}]})]
+    _reject_legacy_without_target(scenarios, "demo", explicit=True)  # no exception
+
+
+def test_run_rejects_a_stale_target_flag_end_to_end(tmp_path: Path) -> None:
+    # BE-0428 end to end: the run must stop before any device work when `--target` names a target
+    # the scenario's own `targets` no longer lists.
     cfg, _ = _fake_run(tmp_path)
     scn = tmp_path / "cross.yaml"
     scn.write_text(
         "- name: cross-target\n"
-        "  targets: [demo, other]\n"
+        "  targets: [other]\n"
         "  steps:\n"
-        "    - target: demo\n"
+        "    - target: other\n"
         "      tap: { id: home.title }\n",
         encoding="utf-8",
     )
@@ -858,8 +890,8 @@ def test_run_rejects_a_multi_target_scenario_end_to_end(tmp_path: Path) -> None:
         ],
     )
     assert r.exit_code == 2
-    assert "not yet implemented" in r.output
     assert "cross-target" in r.output
+    assert "demo" in r.output
 
 
 def test_run_rejects_a_bad_target_config_hook_end_to_end(tmp_path: Path) -> None:
