@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from bajutsu.common.assertions import EvalContext
@@ -33,6 +32,12 @@ class TargetRuntime:
     consults it runs before the scenario is dispatched at all. It travels here anyway because it is
     resolved per target the same way the rest are, and a separate carrier for one field would only
     give the two a chance to disagree about which target they describe.
+
+    Carries no `launchEnv`: the touch-marker policy it would drive (`_hides_touch_markers`) is a
+    property of the whole visual-capture group, not of one target, so `_evaluate_expect` reads it
+    from the *primary*'s own launch env once, exactly like `control`/`channel`/`cancelled` — see
+    that function's docstring. A per-target field here would sit unread the way it did before this
+    note existed (BE-0428 review), which is worse than not carrying it at all.
     """
 
     driver: base.Driver
@@ -51,5 +56,4 @@ class TargetRuntime:
     # The in-app control channel (BE-0365). Typed loosely because the collector it names lives in
     # the evidence layer, which imports back from here; the step loop only ever hands it on.
     channel: object | None = None
-    target_launch_env: Mapping[str, str] = field(default_factory=dict)
     caps: frozenset[str] | None = None

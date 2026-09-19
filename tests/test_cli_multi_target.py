@@ -25,6 +25,7 @@ from bajutsu.run.cli import (
     _close_pools,
     _declared_targets_in,
     _pool_demand,
+    _reject_incompatible_actuator_sharing,
     _reject_self_declaring_in_dir,
     _reject_web_flags_across_targets,
     _release_devices,
@@ -175,6 +176,31 @@ def test_every_declared_name_resolves_against_the_loaded_config() -> None:
     assert resolved["app"] is effs["app"]
 
 
+def test_headed_and_browser_apply_to_a_non_primary_target_too() -> None:
+    # A run's single web target need not be the primary — `_reject_web_flags_across_targets` is
+    # what refuses the flags outright once a run declares two, so short of that this target must
+    # still see `--headed`/`--browser` the same as it would if it had been named `--target` itself.
+    from bajutsu.common.config import WebConfig
+
+    effs = _effs()
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "cross",
+                "targets": ["app", "site"],
+                "steps": [{"target": "app", "tap": {"id": "a"}}],
+            }
+        )
+    ]
+    resolved = _resolve_target_effs(
+        _loaded(), scenarios, "app", effs["app"], headed=True, browser="firefox"
+    )
+    site_config = resolved["site"].platform_config
+    assert isinstance(site_config, WebConfig)
+    assert site_config.headless is False
+    assert site_config.browser == "firefox"
+
+
 def _loaded() -> LoadedConfig:
     """The parsed `_CONFIG`, wrapped the way the shared CLI loader hands it over."""
     return LoadedConfig(
@@ -237,7 +263,14 @@ def test_two_web_targets_without_the_flags_are_fine() -> None:
 # --- device bring-up and pools ------------------------------------------------------------------
 
 
-def _setup(name: str, actuator: str, udids: list[str], released: list[str]) -> _TargetSetup:
+def _setup(
+    name: str,
+    actuator: str,
+    udids: list[str],
+    released: list[str],
+    *,
+    udid_spec: str = "booted",
+) -> _TargetSetup:
     effs = _effs()
     return _TargetSetup(
         name=name,
@@ -245,7 +278,9 @@ def _setup(name: str, actuator: str, udids: list[str], released: list[str]) -> _
         actuator=actuator,
         backends=["fake"],
         device=DeviceLease(
-            udid_spec="booted", provision=ProvisionProfile(), release=lambda: released.append(name)
+            udid_spec=udid_spec,
+            provision=ProvisionProfile(),
+            release=lambda: released.append(name),
         ),
         udids=udids,
         workers=len(udids),
@@ -418,6 +453,51 @@ def test_a_single_target_run_keeps_its_requested_workers() -> None:
     setups = {"app": _setup("app", "fake", ["a", "b"], released)}
     scenarios = [Scenario.model_validate({"name": "legacy", "steps": [{"tap": {"id": "a"}}]})]
     assert _resolve_multi_target_workers(scenarios, setups, 2) == 2
+
+
+# --- refusing an actuator two targets would otherwise silently share ---------------------------
+
+
+def test_two_same_actuator_targets_sharing_one_provider_are_fine() -> None:
+    # The common case: both `booted` (or both naming the same explicit `--udid`) resolve the same
+    # `udid_spec`, so sharing `_open_pools`'s one pool for that actuator is exactly what either
+    # target would have built alone.
+    released: list[str] = []
+    setups = {
+        "app": _setup("app", "fake", ["UD-1"], released, udid_spec="booted"),
+        "site": _setup("site", "fake", ["UD-1"], released, udid_spec="booted"),
+    }
+    _reject_incompatible_actuator_sharing(setups)  # does not raise
+
+
+def test_two_same_actuator_targets_on_different_devices_are_refused(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # A second target's own `deviceProvider` (BE-0236) reserved a different device than the first
+    # target sharing its actuator — `_open_pools` would build the shared pool from the first
+    # target's device alone, silently running the second target on a device its own provider never
+    # gave it (and, for a device-cloud provider, leaving that reservation billed but never driven).
+    released: list[str] = []
+    setups = {
+        "ios-local": _setup("app", "xcuitest", ["local-udid"], released, udid_spec="local-udid"),
+        "ios-cloud": _setup("site", "xcuitest", ["cloud-udid"], released, udid_spec="cloud-udid"),
+    }
+    with pytest.raises(typer.Exit) as exc:
+        _reject_incompatible_actuator_sharing(setups)
+    assert exc.value.exit_code == 2
+    out = capsys.readouterr().out
+    assert "ios-local" in out and "ios-cloud" in out and "xcuitest" in out
+
+
+def test_two_targets_on_different_actuators_are_never_compared() -> None:
+    # Nothing to refuse here: each actuator gets its own pool regardless of udid_spec, so two
+    # different devices under two different actuators is the ordinary cross-platform case.
+    released: list[str] = []
+    setups = {
+        "app": _setup("app", "fake", ["UD-1"], released, udid_spec="UD-1"),
+        "site": _setup("site", "playwright", ["web-0"], released, udid_spec="web-0"),
+    }
+    _reject_incompatible_actuator_sharing(setups)  # does not raise
 
 
 # --- _close_pools: never mask a bring-up error, but still surface a genuine teardown defect ----

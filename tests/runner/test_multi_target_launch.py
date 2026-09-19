@@ -11,14 +11,20 @@ path is exercised on the fast gate.
 
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 from _runner import _eff, _el, _web_eff
 
+from bajutsu.common.assertions.evaluate.golden_context import GoldenContext
 from bajutsu.common.config import Effective
+from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import NullSink
+from bajutsu.common.evidence.network import Collector, NetworkExchange, ScreenTransition
 from bajutsu.common.runner import Lease, run_all
 from bajutsu.common.runner.types import LeaseFn, TargetPool
 from bajutsu.common.scenario import Scenario
@@ -27,7 +33,12 @@ _SCREEN = [_el("ok", "OK", ["button"]), _el("other", "Other", ["button"])]
 
 
 def _recording_lease(
-    log: list[str], name: str, *, released: list[str] | None = None, boom: bool = False
+    log: list[str],
+    name: str,
+    *,
+    released: list[str] | None = None,
+    boom: bool = False,
+    collector: Collector | None = None,
 ) -> LeaseFn:
     """A lease callable that records the order targets are leased in, and optionally fails."""
 
@@ -40,11 +51,40 @@ def _recording_lease(
             sink=NullSink(),
             relaunch=None,
             control=None,
-            collector=None,
+            collector=collector,
             release=lambda: (released if released is not None else []).append(name),
         )
 
     return lease
+
+
+class _ClearTrackingCollector:
+    """A `Collector` whose only interesting behavior is counting `clear()` calls (BE-0428)."""
+
+    def __init__(self) -> None:
+        self.cleared = 0
+
+    def snapshot(self) -> list[NetworkExchange]:
+        return []
+
+    def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]:
+        return []
+
+    def transitions_snapshot_timed(self) -> list[tuple[ScreenTransition, float]]:
+        return []
+
+    def clear(self) -> None:
+        self.cleared += 1
+
+    def stop(self) -> None:
+        pass
+
+
+class _QueryFailsDriver(FakeDriver):
+    """A driver whose `query()` always raises, for the golden screen-bounds probe's fallback."""
+
+    def query(self) -> list[base.Element]:
+        raise RuntimeError("device unreachable")
 
 
 def _pools(**entries: TargetPool) -> dict[str, TargetPool]:
@@ -234,3 +274,147 @@ def test_redact_falls_back_to_the_run_wide_config_with_no_target_map() -> None:
     eff = replace(_eff(), redact=Redact(labels=["only-one"]))
     assert _union_redact([eff]).labels == ["only-one"]
     assert _union_redact([]).labels == []
+
+
+def _device_control_scenario() -> Scenario:
+    return Scenario.model_validate(
+        {
+            "name": "device-control",
+            "targets": ["app", "remote"],
+            "steps": [
+                {"target": "app", "tap": {"id": "ok"}},
+                {"target": "remote", "setLocation": {"lat": 1.0, "lon": 2.0}},
+            ],
+        }
+    )
+
+
+def _device_control_targets() -> dict[str, TargetPool]:
+    # `xcuitest` on a real-device WebDriver endpoint loses simctl device control (BE-0238), so
+    # `remote`'s own step rejects at the per-target preflight the same way
+    # `test_each_targets_steps_are_preflighted_against_its_own_capabilities` exercises.
+    return _pools(
+        app=TargetPool(_eff(), _recording_lease([], "app"), "fake"),
+        remote=TargetPool(
+            replace(_eff(), backend=["ios"]),
+            _recording_lease([], "remote"),
+            "xcuitest",
+            udid_spec="http://device-cloud.test:4723",
+        ),
+    )
+
+
+def test_preflight_failure_reports_progress_naming_the_target() -> None:
+    # The operator-facing progress line names which target rejected the scenario, the same as
+    # `result.failure` does — not just that some scenario failed.
+    progress: list[str] = []
+    result = run_all(
+        _eff(),
+        [_device_control_scenario()],
+        _recording_lease([], "x"),
+        targets=_device_control_targets(),
+        progress=progress.append,
+    )[0]
+    assert not result.ok
+    assert any("remote" in line and "✘" in line for line in progress)
+
+
+def test_trace_driver_wraps_every_declared_targets_own_driver(tmp_path: Path) -> None:
+    # BE-0428: an extra target's driver must be wrapped too, or its half of a cross-platform
+    # scenario's round trips would be silently missing from `driver_trace.json`.
+    targets = _pools(
+        app=TargetPool(_eff(), _recording_lease([], "app"), "fake"),
+        site=TargetPool(_web_eff(), _recording_lease([], "site"), "playwright"),
+    )
+    run_dir = tmp_path / "runs" / "run1"
+    results = run_all(
+        _eff(),
+        [_cross()],
+        _recording_lease([], "x"),
+        run_dir=run_dir,
+        targets=targets,
+        trace_driver=True,
+    )
+    assert results[0].ok, results[0].failure
+    trace_path = run_dir / results[0].sid / "driver_trace.json"
+    doc = json.loads(trace_path.read_text(encoding="utf-8"))
+    driver_records = [r for r in doc["records"] if r["category"] == "driver"]
+    # One `tap` per target's own step (BE-0428): only the primary's would show up if the extra
+    # target's driver were never wrapped in a `TracingDriver`.
+    assert sum(1 for r in driver_records if r["name"] == "tap") == 2
+
+
+def test_a_multi_target_scenario_clears_every_targets_own_collector(tmp_path: Path) -> None:
+    # BE-0428: network collection is cleared per scenario so one scenario's traffic never leaks
+    # into the next one's evidence — an extra target's own collector needs the same reset the
+    # primary's already gets.
+    extra_collector = _ClearTrackingCollector()
+    targets = _pools(
+        app=TargetPool(_eff(), _recording_lease([], "app"), "fake"),
+        site=TargetPool(
+            _web_eff(), _recording_lease([], "site", collector=extra_collector), "playwright"
+        ),
+    )
+    result = run_all(_eff(), [_cross()], _recording_lease([], "x"), targets=targets)[0]
+    assert result.ok, result.failure
+    assert extra_collector.cleared == 1
+
+
+def test_release_all_warns_but_still_releases_every_other_lease(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # BE-0428: one target's teardown fault must not strand another target's device — the same rule
+    # `guarded_teardown` applies inside the pool.
+    from bajutsu.common.runner.pipeline import _release_all
+
+    released: list[str] = []
+
+    def _boom() -> None:
+        raise RuntimeError("device gone")
+
+    leases = {
+        "a": Lease(
+            driver=FakeDriver([]),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=_boom,
+        ),
+        "b": Lease(
+            driver=FakeDriver([]),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: released.append("b"),
+        ),
+    }
+    with caplog.at_level(logging.WARNING):
+        _release_all(leases)
+    assert released == ["b"]
+    assert any("releasing target" in r.message for r in caplog.records)
+
+
+def test_golden_with_screen_falls_back_when_the_bounds_probe_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Best-effort (BE-0006): a `query()` fault while probing screen bounds for golden framing must
+    # not block a scenario that asserts no goldens at all, so the caller's own context comes back
+    # unchanged instead of raising.
+    from bajutsu.common.runner.pipeline import _golden_with_screen
+
+    gc = GoldenContext(goldens_dir=Path("goldens"))
+    with caplog.at_level(logging.DEBUG):
+        result = _golden_with_screen(gc, _QueryFailsDriver())
+    assert result is gc
+    assert any("golden framing failed" in r.message for r in caplog.records)
+
+
+def test_golden_with_screen_is_a_noop_once_the_screen_is_already_known() -> None:
+    # The probe only runs when the caller's own `GoldenContext` has no screen yet — one already
+    # carrying `screen` (set by an earlier target, or passed in directly) must never be probed.
+    from bajutsu.common.runner.pipeline import _golden_with_screen
+
+    gc = GoldenContext(goldens_dir=Path("goldens"), screen=(0.0, 0.0, 100.0, 200.0))
+    assert _golden_with_screen(gc, _QueryFailsDriver()) is gc

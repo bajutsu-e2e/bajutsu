@@ -488,7 +488,13 @@ def _reject_legacy_without_target(
 
 
 def _resolve_target_effs(
-    loaded: LoadedConfig, scenarios: list[Scenario], primary: str, primary_eff: Effective
+    loaded: LoadedConfig,
+    scenarios: list[Scenario],
+    primary: str,
+    primary_eff: Effective,
+    *,
+    headed: bool | None = None,
+    browser: str = "",
 ) -> dict[str, Effective]:
     """One already-rebased `Effective` per target any scenario in this run declares (BE-0428).
 
@@ -496,14 +502,18 @@ def _resolve_target_effs(
     `appPath` / `baselines` / `goldens` resolve against the config file's own directory rather than
     the caller's working directory (BE-0242). An unknown name exits 2 here, before any device work,
     the same way an unknown `--target` already does. The primary's own entry reuses the
-    already-resolved `Effective` so the run's `--headed` / `--browser` overrides — applied to it
-    alone — are not silently dropped for the target they were meant for.
+    already-resolved `Effective` so the run's `--headed` / `--browser` overrides are not applied
+    twice; every other target gets them applied here, so a run's single web target still sees them
+    when it is not the primary — `_reject_web_flags_across_targets` is what refuses them outright
+    once a run declares two web targets, since which one they would mean has no answer there.
     """
     effs = {primary: primary_eff}
     for s in scenarios:
         for name in s.targets:
             if name not in effs:
-                effs[name] = _effective_for(loaded, name)
+                effs[name] = _resolve_browser(
+                    _with_headed(_effective_for(loaded, name), headed), browser
+                )
     return effs
 
 
@@ -1274,6 +1284,33 @@ def _resolve_multi_target_workers(
     return max(1, workers)
 
 
+def _reject_incompatible_actuator_sharing(setups: Mapping[str, _TargetSetup]) -> None:
+    """Refuse two same-actuator targets whose providers resolved different devices (BE-0428).
+
+    `_open_pools` builds one pool per actuator from whichever target it sees first, and every
+    later target sharing that actuator draws from that same pool — correct when they share one
+    `deviceProvider` (the common case: both `booted`, or both naming the same explicit `--udid`),
+    since they then resolve the same `udid_spec` and the pool is exactly the device catalog either
+    one would have built. It is wrong when a second target's own provider (BE-0236) reserved a
+    *different* device: that target would run on the first target's device instead of its own,
+    with its own reservation left sitting unused (and, for a device-cloud provider, billed) for the
+    whole run. Checked here, once every target's device is already resolved, rather than left to
+    surface as a silently wrong device — prime directive 2 rules out the substitution outright.
+    """
+    seen: dict[str, tuple[str, str]] = {}  # actuator -> (first target name, its udid_spec)
+    for name, setup in setups.items():
+        first_name, first_spec = seen.setdefault(setup.actuator, (name, setup.device.udid_spec))
+        if setup.device.udid_spec != first_spec:
+            typer.echo(
+                f"targets '{first_name}' and '{name}' both resolve the '{setup.actuator}' "
+                f"backend, but their device providers reserved different devices "
+                f"({first_spec!r} vs {setup.device.udid_spec!r}) — a run does not yet support two "
+                "device pools for one actuator, so give them the same deviceProvider/udid, or "
+                "put one on a different actuator"
+            )
+            raise typer.Exit(2)
+
+
 def _release_devices(setups: Mapping[str, _TargetSetup]) -> None:
     """Hand every target's device back to its provider (a no-op for the local one).
 
@@ -1429,6 +1466,10 @@ def _open_pools(plan: _RunPlan) -> dict[str, tuple[LeaseFn, Callable[[], None]]]
     what `device_pool` builds its environment from, and it already implies the platform, so this
     separates every pair of targets a platform key would and additionally separates two actuators
     on one platform — which a shared pool would serve with the wrong environment.
+
+    `_reject_incompatible_actuator_sharing` has already refused a same-actuator pair whose
+    providers resolved different devices by the time this runs, so every target sharing a pool
+    here genuinely shares one provider's device(s).
     """
     pools: dict[str, tuple[LeaseFn, Callable[[], None]]] = {}
     try:
@@ -1922,7 +1963,9 @@ def run(
     # — these checks speak about the scenarios this run will actually attempt.
     _check_target_membership(scenarios, target_name, explicit=explicit_target)
     _reject_legacy_without_target(scenarios, target_name, explicit=explicit_target)
-    target_effs = _resolve_target_effs(loaded, scenarios, target_name, eff)
+    target_effs = _resolve_target_effs(
+        loaded, scenarios, target_name, eff, headed=headed, browser=browser
+    )
     # Every declared target's own `secrets` names, not only the primary's — a `${secrets.X}` a step
     # routed elsewhere uses may be declared only on that target's own config (BE-0428).
     secret_bindings, secret_values = _resolve_secrets(target_effs.values())
@@ -1949,6 +1992,7 @@ def run(
         # Every target's device is already reserved by here, so a rejection past this point must
         # still release them — including this one, which can exit 2 on a pool too small for the
         # scenario's own target count (BE-0428).
+        _reject_incompatible_actuator_sharing(setups)
         workers = _resolve_multi_target_workers(scenarios, setups, primary.workers)
         _apply_system_alert_handling(
             scenarios, resolve_system_alert_handling_flag(system_alert_handling)

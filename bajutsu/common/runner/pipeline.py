@@ -310,8 +310,6 @@ class _ScenarioRunner:
         for name in self._routed(s):
             pool = self.targets[name]
             caps = capabilities_for_run(pool.actuator, pool.eff, pool.udid_spec)
-            if caps is None:
-                continue
             if reasons := capability_preflight.unsupported(_steps_for_target(s, name), caps):
                 return f"unsupported on backend '{pool.actuator}' (target '{name}'): {'; '.join(reasons)}"
         return None
@@ -715,10 +713,11 @@ class _ScenarioRunner:
                         recovery_started = None
                     return self._run_on_lease(lz, others, handler, i, s, sid)
                 except BackendCrashError as crash:
-                    # Every other declared target's driver is still up when the primary crashes
-                    # mid-bring-up (BE-0428); `_run_on_lease` owns the release once it is entered,
-                    # so this covers only the window before that.
-                    _release_all(others)
+                    # Nothing is released here: `_lease_set` already rolls back its own partial
+                    # bring-up, and `_run_on_lease` owns the whole set's release in its `finally`
+                    # once entered. Releasing again would run `pool.py`'s non-idempotent
+                    # `release()` — which ends in `free.put(udid)` — twice per extra target on
+                    # every mid-step crash, handing one device to two workers (BE-0428).
                     last_crash = crash
                     if crash.partial_artifacts:
                         partial_artifacts = crash.partial_artifacts
@@ -1042,7 +1041,6 @@ class _ScenarioRunner:
             locale=s.preconditions.resolved_locale(pool.eff.locale),
             capture=list(pool.eff.capture),
             channel=collector,
-            target_launch_env=pool.eff.launch_env,
             caps=capabilities_for_run(pool.actuator, pool.eff, pool.udid_spec),
         )
 
@@ -1230,16 +1228,21 @@ def _steps_for_target(s: Scenario, target: str) -> Scenario:
     whatever it holds, since a nested step carries its own `target` and the preflight walks into it
     anyway; a top-level step naming another target is what has to go, so one backend is never asked
     to justify a construct it will never be handed.
+
+    `None` too: a scenario declaring exactly one target may omit the name on every step and
+    `expect` entry, and those still ran against that target — filtering them out would hand the
+    preflight an empty scenario and skip BE-0082 for the whole single-declared-target shape.
     """
+    routed = {target, None}
     return s.model_copy(
         update={
-            "before": [st for st in s.before if st.target == target],
-            "steps": [st for st in s.steps if st.target == target],
+            "before": [st for st in s.before if st.target in routed],
+            "steps": [st for st in s.steps if st.target in routed],
             "after": [
-                rule.model_copy(update={"steps": [st for st in rule.steps if st.target == target]})
+                rule.model_copy(update={"steps": [st for st in rule.steps if st.target in routed]})
                 for rule in s.after
             ],
-            "expect": [a for a in s.expect if a.target == target],
+            "expect": [a for a in s.expect if a.target in routed],
         }
     )
 
