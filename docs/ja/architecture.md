@@ -361,6 +361,22 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
 - このモニタにバナーが届くのは、何かに割り込んでいるときだけです。ただの問い合わせでは監視は起動しないため、何もタップしていない画面に居座るバナーはここでは消えません（BE-0416 の作業単位 2・3・8）。この隙間を塞ぐのが、もう 1 つの能動的な経路です。`Driver.notification_banner_frame()` は、同じ SpringBoard の要素を待ち合わせずに一度だけ読みます。これを許可する能力トークンは `HANDLE_NOTIFICATION_BANNER` で、宣言するのは XCUITest バックエンドだけです。照会先は `alerts` ではなく、SpringBoard の全ツリーに対する識別子 `NotificationShortLookView` です。ステップループは、ステップごとに 1 回、`after.png` の撮影直前でこれを呼びます。この経路が塞ぐのは、その撮影と、そこから作るビジュアルリグレッションの比較画像です。バナーが見つかると、割り込みモニタと同じ上方向へのスワイプ先を `notification_banner_swipe_points` が計算し、専用のジェスチャを足さずに通常の `swipe` アクションで消します。ただし消すのは、その結果が割り込みモニタ自身のスワイプと同じ 20 ポイント以上を進む場合だけです。まだ描画途中のバナーを基準に計算すると、上限に張り付いた終点が始点に近すぎて、極端な場合は始点より下になり下方向へ反転して、実際の dismiss には足りない長さになることがあります。そのような枠には手を出しません。ジェスチャそのものを送る直前にもあらためて存在を確認します。確認した瞬間と実際にスワイプする瞬間のあいだにバナーが自動的に消えていれば、その場に残っているものへスワイプを送ってしまうからです。スワイプの直後には、消えたことを上限付きで再確認します。割り込みモニタ自身が消えたことを確認してから割り込みを引き受けるのと同じ流儀です。この照会は `systemAlertHandling` 自身が解決した `pollInterval`（ガード無効時は BE-0315 が定めた値）でレート制限します。通るシナリオが払うコストは、ステップごとではなく間隔ごとに 1 回です。`expect` フェーズのビジュアル撮影の直前も同様に確認しますが、対象は `visual` アサーションがある場合だけです。シナリオや CLI 側のトグルは持ちません。バナーはシナリオから観測できないため、消してもシナリオが壊れる心配はありません。この「トグルに使い道がない」という判断は、上記の割り込み経路がすでに下したものと同じです
 - iOS の TipKit tip に対する opt-in ガードである DSL の `iosTipKitHandling`（BE-0389）: TipKit の提示は、覆う内容をアクセシビリティから隠すのであって、単に重ねて表示するのではありません。そのため、ブロックされた tap は `ElementNotTappable` だけでなく `ElementNotFound` としても失敗しえます。XCUITest バックエンドだけが `Capability.HANDLE_TIPKIT_TIP` を宣言し、`PopoverDismissRegion` scrim を解決して `Driver.dismiss_blocking_tip()` を実装します。ガードはこの scrim を、tip 自身のコンテナ `TipView` と組み合わせて要求します。アプリ自身の popover（`confirmationDialog` が同一の scrim を設置します）には手を触れないためです。tip はすでに、どの wait のポーリングも tap の解決もフェッチする同じアクセシビリティツリーに現れるため、Swift ランナー側の変更は不要です。ステップループは、dismiss が実際に tip を見つけて片付けたときだけステップを 1 回リトライします。これはアラートガード自身のステップ末尾の分岐の隣に置かれます。dismiss は BE-0314 の `on_interrupt_poll` フックにも合成されるため、tip 1 つのために wait がタイムアウトいっぱいまで保持されることもありません。`systemAlertHandling` と異なり既定は無効です。シナリオが tip 自体をアサーションの対象にすることがあるためです。`--ios-tipkit-handling`/`--no-ios-tipkit-handling` は `systemAlertHandling`（BE-0177）と同じ flag > scenario > target > default の優先順位に従います
 
+#### DSL のクロスアプリ操作
+
+- 決定的でiOS限定のDSL `app`: テスト対象アプリが一度も起動していないアプリを、バンドルIDで
+  アプリ側の協力なしにactivateし、入れ子の`steps`をそのアプリ自身のアクセシビリティツリーに対して実行
+  します。`XcuitestElementProvider`は、固定の単一ハンドルの代わりに`XCUIApplication`ハンドルのスタックを
+  持ちます。ブロックへ入ると新しいハンドルをpushして`.activate()`し、抜けると1つ下へpopするので、
+  `app`ブロックを別の`app`ブロックの中に入れ子にした場合、戻る先は直近の親です。Pythonのドライバは
+  `web`ステップの専用の`WebContextDriver`とは異なり、テスト対象アプリ自身の`XcuitestDriver`インスタンスを
+  そのまま再利用します。`app`はネイティブの操作面（tap、type、ジェスチャ、picker wheel）をそのまま必要と
+  するため、同じインスタンスを再利用するほうが得るものが大きいからです。`APP_CONTEXT` capabilityで
+  ゲートし、これは常駐runnerのXCUITest backendと`FakeDriver`だけが宣言するので、Androidとwebはデバイス側
+  の作業に入る前にpreflightで弾かれます。`web`のWebView bridgeの可否が実行ごとの事実であり実行時に失敗
+  するのとは対照的です。この設計に先立って、実現可能性のスパイクが、`activate()`が協力しないアプリ
+  （Safari・Maps・Contacts）をSimulator上で確実に前面化することを確かめました
+  （[`docs/specs/ios-cross-app-ui-control-feasibility.md`](../specs/ios-cross-app-ui-control-feasibility.md)）。
+
 #### 証跡、ネットワーク観測、レポート
 
 - 証跡: 瞬時（`screenshot`/`elements`/`actionLog`/`rawTree`。`actionLog` はステップごとの具体的な actuation、つまり送った座標、ジェスチャの形状、それを運んだ経路を持ち、`rawTree` は `elements` の元になった生ダンプで、opt-in、adb と XCUITest が対応します）+ 区間（`video`/`deviceLog`/`appTrace`）+ ネットワーク collector（`network.json`）+ **ビジュアルリグレッション**（baseline に対する `visual`。`approve` コマンドで baseline を昇格）+ `capturePolicy` 発火 + 書き出し前の **redaction 適用** + `bajutsu run --touch-markers`（BE-0371、iOS 限定、`BajutsuKit` をリンクするアプリが必要。アプリの `UIEvent` キューが実際に配送した各タッチをマーカーとして録画と各ステップのスクリーンショットへ描画、ジェスチャが実際に届いた証跡。既定では無効、リポジトリ自身の iOS CI レーンでは有効、`visual` アサーションが比較する 1 回の撮影のあいだだけアプリ内制御チャネル（BE-0365）で非表示）

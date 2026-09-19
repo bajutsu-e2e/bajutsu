@@ -1446,6 +1446,14 @@ class AdbDriver(CoordinateTreeDriver):
             "ordinary tap"
         )
 
+    def enter_app(self, bundle_id: str) -> None:  # noqa: ARG002  # Driver shape
+        # app: は XCUITest backend 専用。preflight がデバイス側の作業に入る前にこのシナリオ
+        # を弾くので、これはmid-runのbackstopにすぎない。
+        raise base.UnsupportedAction("app は iOS XCUITest 専用; Android には対応する仕組みがない")
+
+    def leave_app(self) -> None:
+        raise base.UnsupportedAction("app は iOS XCUITest 専用; Android には対応する仕組みがない")
+
     def system_alert_labels(self) -> list[str]:
         # No SpringBoard on Android; the reactive guard's native path never runs here (BE-0315).
         return []

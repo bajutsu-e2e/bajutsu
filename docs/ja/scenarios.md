@@ -585,6 +585,30 @@ targets:
 
 `web` は `within` をネイティブに解決し、ちょうど 1 つの `WKWebView` ホストを指します。入れ子の `steps` は、アプリのネイティブなアクセシビリティツリーではなく、その WebView の正規化された DOM（`data-testid` → `Element.identifier`）を対象にします。web コンテンツをネイティブアプリに埋め込んだハイブリッド画面向けの構造です（[BE-0037](../../roadmaps/BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md)）。ブロックの `steps` を終えると、制御はネイティブドライバーに戻ります。入れ子の `steps` は、`if` や `forEach` の分岐と同じく、囲むシナリオの `vars.*` を共有します。`capture` / `extract` 修飾子は `web` ステップ自体には使えません。WebView bridge の設定（`BAJUTSU_WEBVIEW_PORT`）が必要で、未設定のときは何もせず済ませるのではなくステップを明確に失敗させます。この最初の実装は、ブロック内の `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` に対応しています。`longPress` / `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` / `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` はそこに届かず、いずれも「web コンテキストは非対応」という明確な理由で失敗します。
 
+### `app`（別アプリのUIを操作する。iOS限定）
+
+```yaml
+- app:
+    bundleId: com.apple.mobilesafari
+    steps:
+      - assert:
+          - exists: { id: TabBarItemTitle }
+```
+
+`app` は、バンドルIDで名指ししたアプリをactivateします。テスト対象アプリが一度も起動していない
+アプリでも構いません。入れ子の`steps`は、テスト対象アプリのものではなく、そのアプリ自身のアクセシ
+ビリティツリーを対象にします。この挙動の裏付けとなるフィージビリティ調査の結果は
+`docs/specs/ios-cross-app-ui-control-feasibility.md`にあります。
+ブロックの`steps`を終えると、`web`と同じ入る・抜けるの契約で、直前にアクティブだったものへ制御が
+戻ります。`app`ブロックを別の`app`ブロックの中に入れ子にした場合、戻る先は直近の親であり、テスト
+対象アプリへ無条件に戻るわけではありません。`bundleId`は素のstringであり、固定の集合から選ぶ値では
+ありません。インストール済みの任意のアプリを名指しできます。テスト対象アプリ自身では開く手段がない
+アプリも含みます。iOS（XCUITest）限定です。ほかのbackendに対してこのステップを使うシナリオは、
+デバイス側の作業に入る前にpreflightで失敗します。`bundleId`は、デバイスにすでにインストール済みの
+アプリを名指しする必要があります。前面化が遅いアプリ（コールドスタート、権限プロンプトなど）は
+`ElementNotFound`としてステップを失敗させますが、そもそもインストールされていないアプリを名指しした
+場合、同じようにきれいに失敗するとは限りません。
+
 ### `swipe`
 
 ```yaml

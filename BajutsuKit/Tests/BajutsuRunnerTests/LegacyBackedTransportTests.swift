@@ -16,9 +16,11 @@ import XCTest
 /// operations at once, because the second operation's `DispatchQueue.main.sync` cannot be drained
 /// while the first's main block is executing. That suite's docstring carries the measurement.
 final class LegacyBackedTransportTests: XCTestCase {
-    /// Registration is one generated call covering all nineteen operations, so an operation dropped
-    /// from `openapi.yaml` — or a path renamed in it — would leave the driver with a 404 discovered
-    /// only on a device. Pinning the table against the contract's own paths catches it here.
+    /// Registration is one generated call covering all twenty-one operations, so an operation
+    /// dropped from `openapi.yaml` — or a path renamed in it — would leave the driver with a 404
+    /// discovered only on a device. Pinning the table against the contract's own paths catches it
+    /// here. `/app/enter` and `/app/leave` are new to the generated path, with no legacy
+    /// `Router` twin — see `AppActivationTests`'s own doc comment for why.
     func testEveryContractOperationRegisters() throws {
         let transport = LegacyBackedTransport()
         try APIHandler(provider: FakeElementProvider()).registerHandlers(on: transport)
@@ -33,6 +35,7 @@ final class LegacyBackedTransportTests: XCTestCase {
                 "POST /systemAlert/query", "POST /systemAlert/tap",
                 "POST /notificationBanner/query",
                 "POST /interruptionPolicy", "POST /interruptionPolicy/drain",
+                "POST /app/enter", "POST /app/leave",
             ]
         )
     }

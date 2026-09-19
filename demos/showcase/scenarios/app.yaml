@@ -1,0 +1,58 @@
+# Cross-app UI control: `app:` activates Safari.app itself — a genuinely separate
+# process the test target never launches — and drives its own UI, then returns.
+#
+# Unlike browser.yaml's `SFSafariViewController`, whose tree is *merged* into the app's own reply,
+# Safari.app here is never merged: while the `app:` block is open, its nested steps address
+# Safari's own tree exclusively, and no showcase-side trigger is needed to open it — that no
+# cooperating action is required from the test target at all is the point of this step.
+#
+# The showcase app is driven for real between the two `app:` blocks below — pushing and popping a
+# detail screen, then switching tabs — rather than only asserted on before and after, so the round
+# trip proves the showcase app's own navigation state survives two separate handoffs to Safari and
+# back, not just that its tab bar is still present.
+#
+# `TabBarItemTitle` is Safari's own address-field identifier, read directly off a real device
+# (iPhone 17 Pro, iOS 26.5, Xcode 26.6) during the feasibility spike this item's design rests on;
+# it is present the moment Safari activates, so this scenario asserts on it without ever tapping
+# it. Tagged `app` and excluded from the bulk lanes for the usual "this file has its own lane"
+# reason: those lanes don't foreground a second app, and this one always does.
+- name: app drives Safari and back, twice, around real showcase navigation
+  tags: [app]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    # Operate the showcase app first: push a catalog row's detail screen (the same flow
+    # navigation.yaml exercises on its own), so there is real showcase navigation state — a
+    # pushed screen, not just the root tab — for the first handoff to disturb if the return leg
+    # were broken.
+    - tap: { id: stable.row.3 }
+    - wait: { for: { id: horse.title }, timeout: 5 }
+    - assert:
+        - value: { sel: { id: horse.id.value }, equals: "3" }
+    - app:
+        bundleId: com.apple.mobilesafari
+        steps:
+          - assert:
+              - exists: { id: TabBarItemTitle }
+    # Back on the showcase app: the detail screen the block interrupted is still pushed, not
+    # popped back to the catalog on its own.
+    - assert:
+        - exists: { id: horse.title }
+    - back: {}
+    - wait: { for: { id: stable.row.3 }, timeout: 5 }
+    # Operate the showcase app again, this time switching tabs, before handing off a second time —
+    # proving the round trip holds up on a repeat, not only on the first entry.
+    - tap: { label: "Permissions", traits: [button] }
+    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+    - app:
+        bundleId: com.apple.mobilesafari
+        steps:
+          - assert:
+              - exists: { id: TabBarItemTitle }
+    # Control is back on the test target a second time: the Permissions tab it switched to
+    # between the two `app:` blocks is still the one showing, not the Stable tab from before.
+    - assert:
+        - exists: { id: perm.requestNotif }
+  expect:
+    - exists: { id: perm.requestNotif }
+    - exists: { label: "Permissions", traits: [button] }

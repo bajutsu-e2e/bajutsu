@@ -87,6 +87,13 @@ def _walk_steps(steps: list[Step], prefix: str = "") -> Iterator[tuple[str, Step
             yield from _walk_steps(step.if_.else_ or [], f"{path} > if > else")
         if step.for_each is not None:
             yield from _walk_steps(step.for_each.steps, f"{path} > forEach")
+        # `web.steps` and `app.steps` are deliberately not recursed into. A `web:`/`app:` step
+        # itself is still walked and gated (its own `_Requirement` fires wherever it sits), but
+        # what happens *inside* the block is not separately visible here — a construct needing a
+        # capability neither backend today declares only alongside WEBVIEW/APP_CONTEXT does not
+        # currently exist, so this is a real but so-far harmless gap, not fixed here (this item
+        # keeps it rather than fixing `web:`'s pre-existing one as a drive-by, which is out of its
+        # lane).
 
 
 def _walk_scenario(sc: Scenario) -> Iterator[tuple[str, Step]]:
@@ -222,6 +229,11 @@ _REQUIREMENTS = (
         base.Capability.HANDLE_SYSTEM_ALERT,
         "handleSystemAlert (iOS system-alert tap; iOS XCUITest only)",
         _step_locations(lambda s: s.handle_system_alert is not None),
+    ),
+    _Requirement(
+        base.Capability.APP_CONTEXT,
+        "app (cross-app UI control; iOS XCUITest only)",
+        _step_locations(lambda s: s.app is not None),
     ),
     *(
         _Requirement(token, f"{label} (device control)", _step_locations(matches))

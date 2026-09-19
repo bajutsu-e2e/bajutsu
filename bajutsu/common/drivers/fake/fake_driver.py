@@ -69,6 +69,15 @@ class FakeDriver:
         # whatever it put in the tree rather than this fake hardcoding iOS identifiers of its own.
         self.tipkit_dismiss_id: str | None = None
         self.tipkit_container_id: str | None = None
+        # The tree `enter_app` swaps `screen` to, keyed by bundle id; a test seeds this to
+        # stand in for the foreign app's own tree the real backend reads cross-process. A bundle id
+        # never seeded here swaps to an empty screen rather than raising — a test can still assert
+        # that dispatch happened without seeding a full foreign tree.
+        self.apps: dict[str, list[base.Element]] = {}
+        # What `enter_app` pushes and `leave_app` pops: the screen that was active before the block,
+        # so nesting (enter A, enter B, leave, leave) restores the *immediate* parent, not always the
+        # outermost one — the same LIFO discipline the real backend's Swift-side stack keeps.
+        self._app_stack: list[list[base.Element]] = []
         self._react = react
         self.actions: list[tuple[str, object]] = []  # log of performed actions
         # The concrete actuations this driver performed, drained per step by the run loop. The fake
@@ -247,6 +256,18 @@ class FakeDriver:
         )
         self._record("handle_system_alert", (sel, timeout))
 
+    def enter_app(self, bundle_id: str) -> None:
+        """Swap `screen` to the tree seeded for `bundle_id`, empty when none was seeded."""
+        self._app_stack.append(self.screen)
+        self.screen = list(self.apps.get(bundle_id, []))
+        self._record("enter_app", bundle_id)
+
+    def leave_app(self) -> None:
+        """Restore the screen `enter_app` swapped away from — a no-op past the seed."""
+        if self._app_stack:
+            self.screen = self._app_stack.pop()
+        self._record("leave_app", None)
+
     def system_alert_labels(self) -> list[str]:
         return [label for b in self.system_alert_buttons if (label := b["label"])]
 
@@ -322,6 +343,7 @@ class FakeDriver:
             base.Capability.TEXT_SELECTION,
             base.Capability.HANDLE_SYSTEM_ALERT,
             base.Capability.PICKER_WHEEL,
+            base.Capability.APP_CONTEXT,
             base.Capability.HANDLE_TIPKIT_TIP,
             base.Capability.HANDLE_NOTIFICATION_BANNER,
         }

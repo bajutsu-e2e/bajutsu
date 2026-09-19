@@ -71,6 +71,8 @@ final class APIHandlerConcurrencyTests: XCTestCase {
         func tapSystemAlertButton(backingElement: AnyObject) -> TapResult { .ok }
         func queryNotificationBanner() -> [ElementSnapshot] { [] }
         func screenshot() -> Data? { nil }
+        func enterApp(bundleId: String) -> AppActivationResult { .ok }
+        func leaveApp() -> AppActivationResult { .ok }
     }
 
     func testAReadOccupiesTheQueue() {

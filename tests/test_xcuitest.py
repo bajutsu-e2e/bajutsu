@@ -2508,6 +2508,52 @@ def test_set_picker_value_reports_an_unknown_status_as_a_channel_error() -> None
         _driver(transport).set_picker_value({"id": "form.school"}, "大学")
 
 
+def test_enter_app_posts_the_bundle_id() -> None:
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        sent.append((path, body))
+        return _Reply(status="ok")
+
+    _driver(transport).enter_app("com.apple.mobilesafari")
+    assert ("/app/enter", {"bundleId": "com.apple.mobilesafari"}) in sent
+
+
+def test_enter_app_raises_element_not_found_when_never_foreground() -> None:
+    # A `not-foreground` reply (a slow-to-launch installed app, most often) is a scenario mistake,
+    # not a channel failure — the same reading `set_picker_value`'s value-not-found reply gets. A
+    # bundle id that is not installed at all is not guaranteed to reach this reply rather than
+    # leaving the runner unresponsive (a real backend limitation, not modeled by this fake).
+    with pytest.raises(base.ElementNotFound, match=r"com\.example\.missing"):
+        _driver(lambda m, p, b: _Reply(status="not-foreground")).enter_app("com.example.missing")
+
+
+def test_enter_app_reports_an_unknown_status_as_a_channel_error() -> None:
+    with pytest.raises(XcuitestChannelError):
+        _driver(lambda m, p, b: _Reply(status="error")).enter_app("com.example")
+
+
+def test_leave_app_posts_an_empty_body() -> None:
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        sent.append((path, body))
+        return _Reply(status="ok")
+
+    _driver(transport).leave_app()
+    assert ("/app/leave", {}) in sent
+
+
+def test_leave_app_raises_element_not_found_when_never_foreground() -> None:
+    with pytest.raises(base.ElementNotFound):
+        _driver(lambda m, p, b: _Reply(status="not-foreground")).leave_app()
+
+
+def test_leave_app_reports_an_unknown_status_as_a_channel_error() -> None:
+    with pytest.raises(XcuitestChannelError):
+        _driver(lambda m, p, b: _Reply(status="error")).leave_app()
+
+
 def test_set_interruption_policy_raises_when_the_runner_did_not_store_it() -> None:
     # `_decode` turns a non-200 into a `status="error"` reply rather than raising, so a runner build
     # without this route — a stale `runner-build`, a mixed-version device — would otherwise return

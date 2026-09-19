@@ -36,7 +36,7 @@ def _selector_hint(obj: object) -> str:
     """A short target string for a progress label — the first id/label found on an action object
     or its nested selector (e.g. `type`'s `into`, `swipe`'s `on`). Empty when nothing identifies
     it. Never returns typed text (kept out of progress so secrets don't leak)."""
-    for attr in ("id", "label", "id_matches", "label_matches"):
+    for attr in ("id", "label", "id_matches", "label_matches", "bundle_id"):
         v = getattr(obj, attr, None)
         if v:
             return str(v)

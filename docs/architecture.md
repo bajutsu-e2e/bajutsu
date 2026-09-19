@@ -997,6 +997,24 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   follows the same flag > scenario > target > default precedence as `systemAlertHandling`'s own
   on/off bit (BE-0177); `systemAlertHandling`'s policy keys compose by type instead (BE-0401)
 
+#### DSL cross-app control
+
+- DSL `app`: a deterministic, iOS-only step that activates an app the test target never
+  started — by bundle id, with no app-side cooperation — and runs nested `steps` against that
+  app's own accessibility tree. `XcuitestElementProvider` holds a stack of `XCUIApplication`
+  handles instead of one fixed one; entering the block pushes a new handle and `.activate()`s it,
+  and leaving pops back to the one beneath, so nesting an `app` block inside another returns to
+  the immediate parent rather than unconditionally to the test target. The Python driver reuses the
+  test target's own `XcuitestDriver` instance for the block — unlike the `web` step's separate
+  `WebContextDriver`, `app` needs the full native actuation surface (tap, type, gestures, picker
+  wheels), which reusing the same object gets for free. Gated on the `APP_CONTEXT` capability,
+  which only the resident-runner XCUITest backend and `FakeDriver` declare, so Android and web are
+  rejected at preflight before any device work — unlike `web`, whose WebView bridge availability is
+  a per-run fact rather than a fixed backend capability, so it fails at run time instead. A
+  feasibility spike measured `activate()` reliably foregrounding an uncooperative app (Safari,
+  Maps, Contacts) on Simulator before this step was designed
+  ([`docs/specs/ios-cross-app-ui-control-feasibility.md`](specs/ios-cross-app-ui-control-feasibility.md)).
+
 #### Evidence, network observation, and reporting
 
 - Evidence: instant (`screenshot`/`elements`/`actionLog`/`rawTree` — `actionLog` carries each step's

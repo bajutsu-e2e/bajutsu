@@ -33,7 +33,7 @@ DSL は YAML ノードの木なので、文法は文字列ではなく **抽象�
 
 ## 2. 文法の全体像
 
-以下の **参照グラフ**は、どの非終端がどれを参照するかを示します。下の EBNF テキストが述べていても直接には見えない再帰と共有が、これで見て取れます。`Selector` の `within` が自分自身へループする点。`RequestMatch` を `request` アサーション、`until: { request }` 待機、`Mock.match` の三箇所が共有する点。`Web` と `Component` がそれぞれ新しい `Step` の列を内側に持つ点。`Component` へ `ScenarioFile` からも辺が伸びる点（シナリオファイルが自分のコンポーネントをインラインで宣言できるためです。§6.2）。そして制御フローの 2 つのステップ、すなわち `If` が `Assertion` の条件のもとに `then`/`else` を、`ForEach` が `Selector` のもとに `steps` を、それぞれ新しい `Step` の列として内側に持つ点です。図はいくつかの要素を省略しています。スカラのみを持ち共有の非終端を参照しないアクション（`relaunch`、`setLocation`、`push`、`http`、`setClipboard`、`foreground`、その他デバイス / ステータスバー系のステップ）です。ペイロードが単純なパスだけの `golden` アサーションも同様です。
+以下の **参照グラフ**は、どの非終端がどれを参照するかを示します。下の EBNF テキストが述べていても直接には見えない再帰と共有が、これで見て取れます。`Selector` の `within` が自分自身へループする点。`RequestMatch` を `request` アサーション、`until: { request }` 待機、`Mock.match` の三箇所が共有する点。`Web` と `App` と `Component` がそれぞれ新しい `Step` の列を内側に持つ点（`App` 自身のフィールドは素の `bundleId` 文字列であり、`Web` の `within` のような `Selector` への辺は持ちません）。`Component` へ `ScenarioFile` からも辺が伸びる点（シナリオファイルが自分のコンポーネントをインラインで宣言できるためです。§6.2）。そして制御フローの 2 つのステップ、すなわち `If` が `Assertion` の条件のもとに `then`/`else` を、`ForEach` が `Selector` のもとに `steps` を、それぞれ新しい `Step` の列として内側に持つ点です。図はいくつかの要素を省略しています。スカラのみを持ち共有の非終端を参照しないアクション（`relaunch`、`setLocation`、`push`、`http`、`setClipboard`、`foreground`、その他デバイス / ステータスバー系のステップ）です。ペイロードが単純なパスだけの `golden` アサーションも同様です。
 
 ```mermaid
 graph LR
@@ -57,12 +57,14 @@ graph LR
   ST -->|assert| AS
   ST -->|use| CMP["Component"]
   ST -->|web| WEB["Web"]
+  ST -->|app| APP["App"]
   ST -->|capture| CT["CaptureToken"]
   ST -->|if| IF["If"]
   ST -->|forEach| FE["ForEach"]
   CMP -->|steps| ST
   WEB -->|within| SEL
   WEB -->|steps| ST
+  APP -->|steps| ST
   IR -->|condition| AS
   IR -->|steps| ST
   IF -->|condition| AS
@@ -217,6 +219,7 @@ Action    ::=
   | { if:          <If> }                                               # 条件分岐（capture/extract 不可）
   | { forEach:     <ForEach> }                                          # ループ（capture/extract 不可）
   | { web:         <Web> }                                              # WebView の DOM コンテキストに入る（BE-0037。capture/extract 不可）
+  | { app:         <App> }                                              # テスト対象アプリが起動していないアプリを起動してUIを操作する（iOS/XCUITest限定。capture/extract 不可）
   | { manual:      { label: string, bypass?: string } }                # `record` 中に記録される人による操作の引き取り（BE-0185）。決定的な等価物がないため、`bypass` を配線しない限り実行時に明示的に失敗する
 
 If ::= { condition: <Assertion>, then: list(<Step>), else?: list(<Step>) }
@@ -224,6 +227,11 @@ ForEach ::= { sel: <Selector>, as: string, steps: list(<Step>) }
 Web ::= { within: <Selector>, steps: list(<Step>) }
     # `within` はネイティブに解決してちょうど1つの WKWebView ホストを指す。内側の `steps` はネイティブの
     # アクセシビリティツリーではなく、正規化された DOM（`data-testid` → Element.identifier）を対象にする。
+App ::= { bundleId: string, steps: list(<Step>) }
+    # `bundleId` はインストール済みの任意のアプリを名指しする。テスト対象アプリの協力なしに起動（また
+    # は、すでに起動していればそれを活用）する。内側の `steps` はそのアプリ自身のアクセシビリティツリー
+    # を対象にする。ブロックを抜けると、`Web` と同じ入る・抜けるの契約で、直前にアクティブだったものへ
+    # 戻る。
 
 Swipe ::=
     { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # セレクタ形  ┐ XOR

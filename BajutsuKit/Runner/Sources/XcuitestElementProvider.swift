@@ -32,7 +32,12 @@ private final class SystemAlertButtonBacking {
 private final class NotificationBannerBacking {}
 
 final class XcuitestElementProvider: ElementProviding {
-    private let app: XCUIApplication
+    // The app every other method addresses: the test target, seeded in `init`, with one more
+    // `XCUIApplication` pushed for each `enterApp` not yet matched by a `leaveApp`.
+    // `enterApp`/`leaveApp` are the stack's only mutators; every existing method below still just
+    // reads `app` and is unaffected by which bundle id that resolves to right now.
+    private var appStack: [XCUIApplication]
+    private var app: XCUIApplication { appStack[appStack.count - 1] }
     // A second, on-demand handle for SpringBoard — which owns the out-of-process permission prompt
     // (BE-0316) — built lazily so every other query and tap stays scoped to the app under test.
     private lazy var springboard = XCUIApplication(bundleIdentifier: springboardBundleID)
@@ -60,7 +65,7 @@ final class XcuitestElementProvider: ElementProviding {
     }
 
     init(app: XCUIApplication) {
-        self.app = app
+        self.appStack = [app]
     }
 
     func queryElements() -> [ElementSnapshot] {
@@ -403,6 +408,43 @@ final class XcuitestElementProvider: ElementProviding {
     func screenshot() -> Data? {
         app.screenshot().pngRepresentation
     }
+
+    func enterApp(bundleId: String) -> AppActivationResult {
+        let target = XCUIApplication(bundleIdentifier: bundleId)
+        target.activate()
+        guard waitForForeground(target) else {
+            // `target` never reached the foreground, so what the device settled into is unknown —
+            // re-activate the app already on the stack top (never popped, since `target` was never
+            // pushed) so every step after this failure still has a known foreground to act
+            // against, the same guarantee `leaveApp` gives on its own failure path.
+            app.activate()
+            return .notForeground
+        }
+        appStack.append(target)
+        return .ok
+    }
+
+    func leaveApp() -> AppActivationResult {
+        guard appStack.count > 1 else { return .ok }  // no matching enterApp; see the protocol doc
+        appStack.removeLast()
+        app.activate()
+        return waitForForeground(app) ? .ok : .notForeground
+    }
+
+    /// Poll `target.state` for the bounded window the spike measured as generous —
+    /// Safari, Maps, and Contacts on Simulator each reached `.runningForeground` well inside it. A
+    /// condition wait, never a fixed sleep past the deadline: the loop returns the moment the state
+    /// is observed, and only the final iteration's `Thread.sleep` is ever wasted.
+    private func waitForForeground(_ target: XCUIApplication) -> Bool {
+        for _ in 0..<Self.appForegroundPollAttempts {
+            if target.state == .runningForeground { return true }
+            Thread.sleep(forTimeInterval: Self.appForegroundPollInterval)
+        }
+        return target.state == .runningForeground
+    }
+
+    private static let appForegroundPollAttempts = 20
+    private static let appForegroundPollInterval: TimeInterval = 0.5
 
     // MARK: - Helpers
 

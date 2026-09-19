@@ -536,6 +536,30 @@ class DriverConformanceContract:
             with pytest.raises(base.UnsupportedAction):
                 driver.set_picker_value({"id": "wheel"}, "opt")
 
+    def test_app_context_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
+        # capabilities() is a promise: an APP_CONTEXT backend must not raise
+        # UnsupportedAction for enter_app; one without it must raise rather than silently
+        # no-op'ing (the same shape as MULTI_TOUCH). Uses a bundle id every iOS Simulator carries
+        # (Safari) rather than a fabricated one: activating a bundle id that is not installed at
+        # all, while a real app is already foreground, left the real XCUITest runner permanently
+        # unresponsive on real hardware (reproduced twice; `POST /app/enter` never returned) rather
+        # than reporting `not-foreground` — the handoff never completes because the requested
+        # target never comes up to confirm it, and the runner's per-call bounded poll only starts
+        # after `.activate()` itself returns. That is a real, standing limitation of `enter_app`
+        # with a bad bundle id, not something this contract should risk reproducing in CI; a
+        # scenario mistake's failure semantics are covered instead by a fast-suite test against
+        # `XcuitestDriver`'s fake transport (`test_enter_app_raises_element_not_found_when_never_foreground`).
+        driver = harness.with_screen([])
+        supports = base.Capability.APP_CONTEXT in driver.capabilities()
+        if supports:
+            driver.enter_app("com.apple.mobilesafari")
+            driver.leave_app()
+        else:
+            with pytest.raises(base.UnsupportedAction):
+                driver.enter_app("com.apple.mobilesafari")
+            with pytest.raises(base.UnsupportedAction):
+                driver.leave_app()
+
     def test_text_selection_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
         # capabilities() is a promise (BE-0280): a TEXT_SELECTION backend actuates select-all + copy
         # without UnsupportedAction; one without it (a coordinate-only backend) refuses both loudly rather

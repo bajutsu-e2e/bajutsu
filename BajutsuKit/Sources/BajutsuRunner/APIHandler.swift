@@ -283,6 +283,30 @@ final class APIHandler: APIProtocol {
         })))
     }
 
+    // MARK: - Cross-app control
+
+    /// Activate a named app and make it the target of every following route until a matching
+    /// `/app/leave`.
+    func enterApp(
+        _ input: Operations.enterApp.Input
+    ) async throws -> Operations.enterApp.Output {
+        let request: Components.Schemas.AppRequest
+        switch input.body { case .json(let body): request = body }
+        let bundleId = request.bundleId
+        let result = await caught(AppActivationResult.notForeground) {
+            self.provider.enterApp(bundleId: bundleId)
+        }
+        return .ok(.init(body: .json(appActivationReply(result))))
+    }
+
+    /// Leave the most recently entered app and re-activate the one beneath it.
+    func leaveApp(
+        _ input: Operations.leaveApp.Input
+    ) async throws -> Operations.leaveApp.Output {
+        let result = await caught(AppActivationResult.notForeground, self.provider.leaveApp)
+        return .ok(.init(body: .json(appActivationReply(result))))
+    }
+
     // MARK: - Notification banner
 
     /// The notification-banner presence query (BE-0416): the same element+handle contract as
@@ -328,6 +352,13 @@ final class APIHandler: APIProtocol {
         case .notFound: return .init(status: .not_hyphen_found)
         case .notHittable: return .init(status: .not_hyphen_hittable)
         case .valueNotFound: return .init(status: .value_hyphen_not_hyphen_found)
+        }
+    }
+
+    private func appActivationReply(_ result: AppActivationResult) -> Components.Schemas.ActuationReply {
+        switch result {
+        case .ok: return .init(status: .ok)
+        case .notForeground: return .init(status: .not_hyphen_foreground)
         }
     }
 

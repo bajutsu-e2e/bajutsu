@@ -53,6 +53,7 @@ from .extract import Extract
 from .use import Use
 
 if TYPE_CHECKING:
+    from .app import App
     from .for_each import ForEach
     from .if_ import If
     from .web import Web
@@ -107,6 +108,7 @@ class Step(_Model):
     clear_status_bar: ClearStatusBar | None = Field(default=None, alias="clearStatusBar")
     handle_system_alert: HandleSystemAlert | None = Field(default=None, alias="handleSystemAlert")
     web: Web | None = None
+    app: App | None = None
     # A human-takeover marker (BE-0185): an operation the AI could not perform, recorded during
     # `record` and — because it has no deterministic run-time equivalent — failing loudly at `run`
     # time rather than faking a pass. A leaf action, so it obeys the one-action rule like the rest.

@@ -309,6 +309,56 @@ paths:
                 $ref: "#/components/schemas/ActuationReply"
         "400":
           $ref: "#/components/responses/BadRequest"
+  /app/enter:
+    post:
+      operationId: enterApp
+      summary: Activate an app by bundle id and make it the target of every following route.
+      description: >-
+        Activates the named app — installed but not yet running, and never launched by the test
+        target — and pushes it onto the runner's app stack, so `/elements`, `/tap`, and
+        every other route below address it until a matching `/app/leave`. Reports
+        `not-foreground` when `.activate()` was called but the app never reached the foreground
+        within a bounded poll — a slow-to-launch installed app, most often — rather than a
+        `400`: the bundle id is well-formed, the failure is a device-state outcome, not a
+        malformed request. `bundleId` must name an app already installed on the device: one that
+        is not installed at all is not guaranteed to reach this reply rather than leaving the
+        request unanswered.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppRequest"
+      responses:
+        "200":
+          description: The activation outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActuationReply"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /app/leave:
+    post:
+      operationId: leaveApp
+      summary: Leave the most recently entered app and re-activate the one beneath it.
+      description: >-
+        Pops the runner's app stack and re-activates the app underneath — the test
+        target itself, if this is the outermost `/app/leave`. A call with no matching
+        `/app/enter` is tolerated: the stack stays at its seed and the reply is `ok`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmptyRequest"
+      responses:
+        "200":
+          description: The re-activation outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActuationReply"
   /notificationBanner/query:
     post:
       operationId: queryNotificationBanner
@@ -469,13 +519,15 @@ components:
       properties:
         status:
           type: string
-          enum: [ok, stale, not-found, not-hittable, value-not-found]
+          enum: [ok, stale, not-found, not-hittable, value-not-found, not-foreground]
           description: >-
             `ok` succeeded. `stale` means the handle no longer maps to a live element, and
             `not-found` that no live element matched it; both are test outcomes rather than
             infrastructure errors. `not-hittable` means the element is live but unreachable at
             its own point right now. `value-not-found` means the element resolved and was acted
             on, but never took the requested value — a picker wheel with no such row (BE-0356).
+            `not-foreground` means `/app/enter` or `/app/leave` called `activate()` but the app
+            never reached `.runningForeground` within the bounded poll.
         labels:
           type: array
           description: >-
@@ -617,6 +669,15 @@ components:
           description: >-
             The row value the wheel must end on. It never reaches the actuation record, since like
             a typed string it can hold a resolved secret.
+    AppRequest:
+      type: object
+      required: [bundleId]
+      properties:
+        bundleId:
+          type: string
+          description: >-
+            The bundle identifier to activate, e.g. `com.apple.mobilesafari`. A plain
+            string, not drawn from a fixed set — any installed app can be named.
     GestureRequest:
       type: object
       required: [handle, kind]

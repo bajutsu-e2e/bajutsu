@@ -9,7 +9,7 @@
 	run-swiftui-noax run-uikit-noax doctor record ui-test ui-test-coverage \
 	vrt vrt-approve vrt-swiftui vrt-swiftui-approve vrt-uikit vrt-uikit-approve \
 	e2e-visual e2e-visual-approve e2e-network e2e-browser e2e-savepassword \
-	e2e-savepassword-native \
+	e2e-savepassword-native e2e-cross-app \
 	flutter-build flutter-android-build flutter-android-noax-build \
 	run-flutter run-flutter-android clean
 
@@ -131,6 +131,9 @@ runner-build-device:
 # `browser` (scenarios/browser.yaml, the SFSafariViewController flow) is excluded for the same
 # reason as the two below: it needs a fixture page served on BROWSER_PORT, which only its own
 # `e2e-browser` lane starts, so discovering it here would leave the browser with nothing to load.
+# `app` (scenarios/app.yaml) is excluded for the same "this file has its own lane" reason: it
+# always foregrounds Safari.app, which these bulk lanes never expect mid-run — `e2e-cross-app`
+# below names it explicitly.
 # Two more tags are excluded for the same "this file has its own lane" reason: `visual`
 # (scenarios/visual.yaml), because these lanes pass no `--baselines` and every pixel check could only
 # report its baseline missing — `vrt` below names that file and its baseline directory explicitly;
@@ -153,9 +156,9 @@ SIM ?= $(shell xcrun simctl list devices booted | sed -nE 's/.*\(([0-9A-F-]{36})
 # channel to hide the markers for its capture, and one added here would fail until the build gains
 # the setting.
 run-swiftui: swiftui-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,browser --config $(CONFIG) --touch-markers
+	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,browser,app --config $(CONFIG) --touch-markers
 run-uikit: uikit-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,swiftui,browser --config $(CONFIG) --touch-markers
+	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,swiftui,browser,app --config $(CONFIG) --touch-markers
 
 # scenarios/tabs.yaml on its own, forced onto XCUITest (see the comment above run-swiftui/run-uikit).
 run-swiftui-tabs: swiftui-build runner-build
@@ -355,6 +358,16 @@ e2e-browser: swiftui-build uikit-build runner-build
 	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/browser.yaml \
 		--target showcase-uikit --udid $(SIM) --backend ios --config $(CONFIG)
 
+# The `app:` lane: unlike `e2e-browser`, this drives a real second process (Safari.app),
+# so it needs no fixture server — Safari serves its own start page — and no showcase-side trigger.
+# Simulator-only, like `e2e-browser`: `app:` rests on `XCUIApplication(bundleIdentifier:).activate()`,
+# which the resident runner's own Simulator lease provides.
+e2e-cross-app: swiftui-build uikit-build runner-build
+	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/app.yaml \
+		--target showcase-swiftui --udid $(SIM) --backend ios --config $(CONFIG) && \
+	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/app.yaml \
+		--target showcase-uikit --udid $(SIM) --backend ios --config $(CONFIG)
+
 # The save-password lane: iOS's *real* "Save Password" alert, raised by signing in to a page the
 # in-app browser loads. Its own target rather than a line in `e2e-browser` because it needs
 # notification authorization still `notDetermined` — hence the `erase` — and leaves the device
@@ -451,11 +464,13 @@ flutter-android-noax-build:
 # drops what a Flutter target does not serve (see docs/drivers.md "Flutter" out-of-scope): `network`
 # (Dart HTTP bypasses the native interceptors, so capture / mocks see nothing), the AI-path
 # `systemalert`, `alert` (scenarios/alert.yaml — no Flutter Log screen has a native-alert affordance
-# yet), and `visual` (scenarios/visual.yaml, which needs the `--baselines` directory `vrt` supplies).
+# yet), `visual` (scenarios/visual.yaml, which needs the `--baselines` directory `vrt` supplies), and
+# `app` (scenarios/app.yaml — its return-leg assertion targets the a11y showcase apps' own
+# "Permissions" screen, which Flutter has no counterpart for).
 # Prereqs: a booted Simulator, `make runner-build`; an attached emulator for Android.
 run-flutter: flutter-build runner-build
 	cd $(ROOT) && uv run bajutsu run --target showcase-flutter --udid $(SIM) --backend xcuitest \
-		--exclude network,systemalert,alert,visual,swiftui,browser --config $(CONFIG)
+		--exclude network,systemalert,alert,visual,swiftui,browser,app --config $(CONFIG)
 
 # The same on-device set the native Compose lane runs (demos/showcase/android/Makefile), minus
 # device.yaml — its device-control clipboard round-trips through the in-app BajutsuAndroid receiver

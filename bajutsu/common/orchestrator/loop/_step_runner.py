@@ -115,6 +115,8 @@ class _StepRunner:
                 return self._handle_for_each(step, active_driver, idx, kind, outcome, start)
             if kind == "web":
                 return self._handle_web(step, active_driver, idx, kind, outcome, start)
+            if kind == "app":
+                return self._handle_app(step, active_driver, idx, kind, outcome, start)
             return self._handle_action(step, active_driver, idx, kind, outcome, start)
 
     def _drain_step_interruptions(self, driver: base.Driver, outcome: StepOutcome) -> None:
@@ -288,6 +290,55 @@ class _StepRunner:
         # `active_driver`, not the inner `web_driver`: the query this drains is the `within`
         # resolution above, on the native driver, before the block ever switches context — the same
         # native-only surface `_handle_action`'s own drain covers (BE-0406 Unit 2b).
+        self._drain_step_interruptions(active_driver, outcome)
+        self.state.outcomes.append(outcome)
+        return None if outcome.ok else f"step {idx} ({kind}): {outcome.reason}"
+
+    def _handle_app(
+        self,
+        step: Step,
+        active_driver: base.Driver,
+        idx: int,
+        kind: str,
+        outcome: StepOutcome,
+        start: float,
+    ) -> str | None:
+        assert step.app is not None
+        try:
+            bundle_id = interp.interpolate(step.app.bundle_id, self.state.bindings)
+            active_driver.enter_app(bundle_id)
+            # The inner steps read a different app's tree, so it must not seed a native step's
+            # `before` — reset around the block on both sides, the same `web:` reason
+            # (BE-0234 Unit 2).
+            self.state.prev_after = None
+            # `active_driver` is the *same* object throughout — unlike `web:`'s separate
+            # `WebContextDriver`, `app:` reuses the native driver's full actuation surface, so
+            # nesting (enter A, enter B, leave, leave) is Swift's own stack discipline on the
+            # runner side; this method's own nesting is just recursion.
+            try:
+                failure = self.exec_steps(step.app.steps, active_driver)
+            except BaseException:
+                # Always try to leave, even when a nested step raised: a failing `app:` block must
+                # not leave the device foregrounded on the wrong app for every step after it. A
+                # leave failure here is logged rather than raised — the same restore-after-failure
+                # reasoning `capability_suspended` uses (BE-0365) — because the nested step's own
+                # exception (a `RunCancelled` included) is what the caller must see, not whatever
+                # leaving the app raised on top of it.
+                try:
+                    active_driver.leave_app()
+                except Exception as exc:
+                    _logger.warning(
+                        "leaving app %r after a failure also failed: %s", bundle_id, exc
+                    )
+                self.state.prev_after = None
+                raise
+            active_driver.leave_app()
+            self.state.prev_after = None
+            ok, reason = failure is None, failure or ""
+        except (base.SelectorError, base.UnsupportedAction) as e:
+            ok, reason = False, str(e)
+        outcome.ok, outcome.reason = ok, reason
+        outcome.duration_s = self.cfg.clock.now() - start
         self._drain_step_interruptions(active_driver, outcome)
         self.state.outcomes.append(outcome)
         return None if outcome.ok else f"step {idx} ({kind}): {outcome.reason}"
