@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0428](BE-0428-multi-target-scenario-execution-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0428") |
 | 実装 PR | [#2025](https://github.com/bajutsu-e2e/bajutsu/pull/2025)（単位 1） |
 | トピック | Scenario authoring features |
@@ -736,18 +736,18 @@ Common Test Report Format（CTRF）のエクスポートを含め、単一ター
 
 - [x] スキーマ：`Scenario.targets`、`Step.target`、`Assertion.target`、`target`の要否を
       `len(scenario.targets)`に`steps`と`expect`の両方で紐づけるバリデータ。
-- [ ] CLI：自己宣言したシナリオのもとでの`--target`の省略、不一致の拒否、宣言された各名前の設定に
+- [x] CLI：自己宣言したシナリオのもとでの`--target`の省略、不一致の拒否、宣言された各名前の設定に
       対する検証。
-- [ ] 起動と後片付け：`_ScenarioRunner`まで配線した`Config`、宣言したプラットフォームごとの1つの
-      プール、宣言したターゲットごとに1つのドライバの、まとめての起動とまとめての後片付け。
-- [ ] ランナー：`TargetRuntime`のまとまり、`run_scenario`の`target_runtimes`マッピング、ターゲット
+- [x] 起動と後片付け：`_ScenarioRunner`まで配線したターゲットごとの解決済み設定、宣言したバックエンド
+      ごとの1つのプール、宣言したターゲットごとに1つのドライバの、まとめての起動とまとめての後片付け。
+- [x] ランナー：`TargetRuntime`のまとまり、`run_scenario`の`target_runtimes`マッピング、ターゲット
       ごとのアクチュエータ/ロケール/`capture`/`interrupts`/ガード/ネットワーク/証跡コンテキストの
       組み立て、`_evaluate_expect`のターゲットごとのグループ化。
-- [ ] レポート：`StepOutcome.target`、`AssertionResult.target`、`RunResult.target_devices`、それらを
+- [x] レポート：`StepOutcome.target`、`AssertionResult.target`、`RunResult.target_devices`、それらを
       表示するレポートの画面。
-- [ ] ドキュメント：`docs/scenarios.md`、`docs/cli.md`、`docs/run-loop.md`、それぞれの`docs/ja/`
+- [x] ドキュメント：`docs/scenarios.md`、`docs/cli.md`、`docs/run-loop.md`、それぞれの`docs/ja/`
       ミラー。
-- [ ] テスト：スキーマのバリデータ（`expand_components`/`with_lifecycle_phases`の再検査を含む）、
+- [x] テスト：スキーマのバリデータ（`expand_components`/`with_lifecycle_phases`の再検査を含む）、
       CLIの選択・拒否の規則、複数プールのリース・デッドロック網羅、ターゲットごとの
       caps/mailbox/事前検査、ターゲット混在のステップ振り分け、レポートの後方互換性。
 
@@ -767,6 +767,39 @@ Common Test Report Format（CTRF）のエクスポートを含め、単一ター
   まだありません。そのため、そうしたシナリオを実行・生成しようとするすべての呼び出し元がこれを
   拒否します。`run_all`（`run`と`audit --repeat`が共有）、`codegen`、serve自身のCodegen
   エンドポイントです。間違った対象に対して、黙って作用することはありません。
+
+- PR_PLACEHOLDER — 単位2〜7（CLI、起動と後片付け、ランナー、レポート、ドキュメント、テスト）です。
+  `--scenario`のファイルがすべて自分の`targets`を宣言していれば、`--target`は省略できるように
+  なりました。宣言された各名前は同じ読み込み済み config から解決され、自分の`DeviceLease`とプールを
+  与えられ、最初のステップより前に起動します。ステップループは、共有された1つの`StepLoopState`の上で
+  各ステップを自分のターゲットのドライバと証跡へ振り分けます。採番も`${vars.*}`の辞書も判定も1つずつ
+  で、すべてのターゲットにまたがります。設計からの逸脱が3つあり、いずれも意図的なものです。
+
+  - **パイプラインは解決済みのターゲット表を受け取ります。** 読み込み済みの`Config`ではありません。
+    設計では`Config`を`_ScenarioRunner`まで配線し、シナリオごとに`_load_effective_with_source`を
+    再実行する予定でした。代わりに CLI が、その同じ経路で（つまり rebase も同一のまま）宣言された各名前を一度
+    だけ解決し、読み取り専用の`Mapping[str, TargetPool]`を渡します。ランナーに CLI 層の import を
+    持ち込まずに済み、Git 由来の config をシナリオ×ターゲットの回数だけ再取得することも避けられます。
+    表は名前をキーにするため、別々の部分集合を宣言する2つのシナリオも、それぞれ自分のものを選べます。
+  - **プールのキーはプラットフォームではなくアクチュエータです。** `device_pool`は解決済みの
+    アクチュエータから環境を組み立てます。プラットフォームをキーにすると、同じプラットフォームの2つの
+    アクチュエータに、組み立て方の誤ったプールを渡してしまいます。アクチュエータをキーにすれば、
+    プラットフォームのキーが分ける組み合わせをすべて分けたうえで、さらにこの1組も分けられます。
+    ロック順序に従うリース取得も、同じキーで整列します。
+  - **`golden`の未決問題は、ターゲットごとのコンテキストで解決しました。** 各ターゲットの
+    `EvalContext`は、golden のフレーム妥当性のために*自分自身の*ドライバの画面境界を調べます。設定が
+    指定していれば、自分の`baselines` / `schemas` / `goldens`のディレクトリも読みます。web ターゲットの
+    golden を iOS ターゲットの画面形状で判定すると、正しく撮られた golden を落としてしまいます。
+    `golden`を1つの宣言済みターゲットに限る案では、それを避けられませんでした。
+
+  単位1が記録した2つの拒否は、拒否のまま残しています。2つ以上のターゲットを宣言したときの`use:`
+  ステップと、空でない`interrupts`です。どちらもこのアイテムにまだ答えのない決定を要し、どちらも、
+  このアイテムが実現しようとしている組み合わせ実行を妨げません。クロスブラウザマトリックス
+  （`--browsers`）も、*詳細設計*のとおり単一ターゲットのままです。複数ターゲットのシナリオと
+  組み合わせた実行は、推測せずに拒否します。設計が想定していなかった制限が1つあります。同じ
+  バックエンドの2つのターゲットは、シナリオの全長にわたってそのバックエンドのデバイスキューを共有
+  します。そのため`run`は、シナリオの必要数に満たないプールを拒み、`--workers`もプールが賄える範囲
+  まで抑えます。空きが永久に出ないキューで待ち続ける代わりです。
 
 ## 参考
 
