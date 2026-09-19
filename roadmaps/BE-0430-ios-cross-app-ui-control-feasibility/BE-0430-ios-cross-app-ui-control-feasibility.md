@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ios-cross-app-ui-control-feasibility-ja.md)
+**English** · [日本語](BE-0430-ios-cross-app-ui-control-feasibility-ja.md)
 
-# BE-XXXX — Launch a named app and drive its UI from a scenario (iOS)
+# BE-0430 — Launch a named app and drive its UI from a scenario (iOS)
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ios-cross-app-ui-control-feasibility.md) |
+| Proposal | [BE-0430](BE-0430-ios-cross-app-ui-control-feasibility.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0430") |
 | Implementing PR | [#2021](https://github.com/bajutsu-e2e/bajutsu/pull/2021) |
 | Topic | Platform support |
 <!-- /BE-METADATA -->
@@ -262,7 +262,7 @@ Log:
   bullet), `scenarios.md` (the `app` cookbook entry), and `architecture.md` (a new "DSL cross-app
   control" subsection under Implementation status).
 - 2026-09-18 — A self-review pass against `.github/claude-review-prompt.md` (`propose-and-build`
-  Phase B) found seven issues, all fixed. A `BE-XXXX` placeholder had leaked into roughly 40
+  Phase B) found seven issues, all fixed. A `BE-0430` placeholder had leaked into roughly 40
   non-roadmap files (code comments, docstrings, tests, docs) in violation of the id-confinement
   invariant; removed everywhere outside this item's own directory, with the two dead roadmap links
   in `scenarios.md` replaced by a reference to the durable spec doc. `demos/showcase/Makefile`'s

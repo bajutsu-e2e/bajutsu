@@ -1,14 +1,14 @@
-[English](BE-XXXX-ios-cross-app-ui-control-feasibility.md) · **日本語**
+[English](BE-0430-ios-cross-app-ui-control-feasibility.md) · **日本語**
 
-# BE-XXXX — シナリオから指定アプリを起動してUIを操作できるようにする（iOS）
+# BE-0430 — シナリオから指定アプリを起動してUIを操作できるようにする（iOS）
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ios-cross-app-ui-control-feasibility-ja.md) |
+| 提案 | [BE-0430](BE-0430-ios-cross-app-ui-control-feasibility-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0430") |
 | 実装 PR | [#2021](https://github.com/bajutsu-e2e/bajutsu/pull/2021) |
 | トピック | Platform support |
 <!-- /BE-METADATA -->
@@ -261,7 +261,7 @@ prime directive 2が回帰ゲートから遠ざけたい種類の依存です。
   項目）、`scenarios.md`（`app`のクックブック項目）、`architecture.md`（Implementation statusの下に
   新設した`DSL cross-app control`の節）です。
 - 2026-09-18 — `.github/claude-review-prompt.md`に基づくセルフレビュー（`propose-and-build`の
-  Phase B）を実施しました。7件の指摘が見つかり、すべて修正しました。`BE-XXXX`というプレースホルダが、
+  Phase B）を実施しました。7件の指摘が見つかり、すべて修正しました。`BE-0430`というプレースホルダが、
   この項目自身のディレクトリ以外の約40ファイル（コードコメント、docstring、テスト、ドキュメント）に
   漏れ込んでいました。id閉じ込めの不変条件に反するため、ディレクトリの外側からはすべて取り除きました。
   `scenarios.md`にあった2つのリンク切れは、恒久的な仕様書への参照に置き換えました。
