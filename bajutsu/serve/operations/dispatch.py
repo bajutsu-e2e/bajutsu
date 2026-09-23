@@ -270,10 +270,11 @@ def _artifact_overrides(
     named = {field: body[field] for field in _OVERRIDE_FIELDS if body.get(field) is not None}
     if not named:
         return None, None
-    if isinstance(state.executor, LocalExecutor):
-        # A single-process serve runs the job in the operator's own project directory, with no
-        # job-scoped workspace to place an override into; overwriting their build output or the
-        # scenarios they are editing is the side effect this refuses.
+    # Only the HTTP-lease worker (`bajutsu worker`, which needs the jobs table) places overrides; an
+    # executor that runs `execute_job_spec` directly would install the bound binary while the manifest
+    # records the override. A single-process serve runs the job in the operator's own project
+    # directory, with no job-scoped workspace to place an override into at all.
+    if isinstance(state.executor, LocalExecutor) or state.repository is None:
         return None, (
             {
                 "error": f"{' and '.join(named)} require a hosted deployment's workers; a single-process "

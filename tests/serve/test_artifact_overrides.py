@@ -14,6 +14,7 @@ import io
 import zipfile
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from conftest import FakeObjectStore
@@ -70,6 +71,8 @@ def _hosted(
     )
     if not local:
         state.executor = _Recorder()
+        # The lease worker that places overrides reads its jobs from the database.
+        state.repository = MagicMock()
     store = FakeObjectStore()
     state.object_store = store
     return state, store
@@ -165,6 +168,17 @@ def test_a_single_process_serve_refuses_either_field(tmp_path: Path) -> None:
     assert not state.jobs
     resp, code = _run(state, scenariosArtifact=sha)
     assert code == 400
+
+
+def test_an_executor_without_the_lease_worker_refuses_either_field(tmp_path: Path) -> None:
+    # A queue executor that runs the job spec directly never places the override, so accepting it
+    # would run the bound binary under a manifest naming the override.
+    state, store = _hosted(tmp_path)
+    state.repository = None
+    resp, code = _run(state, binaryArtifact=_store(store, "binary", b"bin"))
+    assert code == 400
+    assert "hosted" in resp["error"]
+    assert not state.executor.jobs  # type: ignore[attr-defined]
 
 
 def test_a_malformed_digest_is_refused(tmp_path: Path) -> None:
