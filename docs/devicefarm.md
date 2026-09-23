@@ -82,7 +82,13 @@ submitter renders one that:
    temporary workaround, removed once Device Farm ships 3.13 (see `_python_bootstrap_commands` in the
    submitter). The adb backend is pure subprocess, so the base install (no extras) is enough.
 2. **pre_test** — runs `adb devices` to prove the reserved device is visible (the serial-resolution
-   check).
+   check). A caller may append its own device-side setup here through `render_test_spec`'s
+   `pre_test_commands` parameter — commands spliced in verbatim, in order, after the probe, for
+   whatever one deployment's backend needs before the run (a network relay, a VPN client). Paired
+   with `build_package`'s `extra_texts` (which ships the setup script into the package), it keeps
+   that per-deployment setup entirely outside `bajutsu/`. It is a Python-API-only hook: no `serve`
+   endpoint, config field, or batch-request field wires to it, so no client-supplied value reaches a
+   shell on the host holding the run's AWS role.
 3. **test** — one `bajutsu run --backend adb --udid booted` per scenario, so a scenario that fails
    still leaves a manifest for the others.
 4. **post_test** — copies the whole `runs/` tree into `$DEVICEFARM_LOG_DIR` so the artifacts come

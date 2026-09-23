@@ -7,8 +7,12 @@ collect logic is exercised without the ``aws`` extra.
 
 from __future__ import annotations
 
+import ast
+import dataclasses
+import inspect
 import io
 import json
+import textwrap
 import zipfile
 from collections.abc import Iterator
 from pathlib import Path
@@ -42,6 +46,41 @@ def test_resolve_fails_closed_on_an_unknown_provider() -> None:
     # cloud-batch job quietly vanish.
     with pytest.raises(ValueError, match="unknown batch provider 'nope'"):
         bp.resolve("nope")
+
+
+def _render_test_spec_calls(source: str) -> list[ast.Call]:
+    """Every `render_test_spec(...)` call node in `source` (a class method's own source has leading
+    indentation `ast.parse` rejects, hence the dedent)."""
+    tree = ast.parse(textwrap.dedent(source))
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "render_test_spec"
+    ]
+
+
+def test_provider_never_wires_a_request_into_the_pre_test_hook() -> None:
+    # render_test_spec's pre_test_commands hook (BE-0432) is Python-API-only: no request-sourced value
+    # may reach it, or a client body would hand a shell on the host holding the run's AWS role. Guard
+    # the one in-tree call site structurally (an AST walk, not a substring match on the source text) so
+    # a comment merely mentioning the parameter can't trip a false positive, and so a future
+    # `BatchRequest` field named anything (`setup_commands`, `device_setup`) wired into the hook still
+    # trips this, forcing a reviewer to confirm the change consciously.
+    calls = _render_test_spec_calls(inspect.getsource(bp.DeviceFarmBatchProvider.submit))
+    assert calls, "expected DeviceFarmBatchProvider.submit to call render_test_spec"
+    for call in calls:
+        keyword_names = {keyword.arg for keyword in call.keywords}
+        assert "pre_test_commands" not in keyword_names
+        # `render_test_spec`'s parameter is keyword-only (after the `*` in its signature), so mypy
+        # --strict already rejects passing it positionally — nothing to check there. A `**mapping`
+        # splat is the one way a keyword-only argument still slips in unnamed; reject one on this call
+        # (an `ast.keyword` with `arg is None` is a `**` unpack).
+        assert None not in keyword_names
+    # And, as documentation of the seam, the request today carries no field the call site could pass.
+    field_names = {field.name for field in dataclasses.fields(bp.BatchRequest)}
+    assert "pre_test_commands" not in field_names
 
 
 def _zip_bytes(members: dict[str, str]) -> bytes:

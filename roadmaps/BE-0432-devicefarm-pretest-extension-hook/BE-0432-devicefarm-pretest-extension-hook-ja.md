@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0432](BE-0432-devicefarm-pretest-extension-hook-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0432") |
+| 実装 PR | [#2033](https://github.com/bajutsu-e2e/bajutsu/pull/2033) |
 | トピック | デバイスクラウド実行 |
 | 関連 | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter-ja.md) |
 <!-- /BE-METADATA -->
@@ -138,13 +139,29 @@ build_package(entries, out_zip, extra_texts={"configure-proxy.sh": script_text})
 
 ## 進捗
 
-- [ ] `render_test_spec`に`pre_test_commands: Sequence[str] = ()`を追加し、既存のプローブの後に
+- [x] `render_test_spec`に`pre_test_commands: Sequence[str] = ()`を追加し、既存のプローブの後に
   `pre_test.commands`へ追記する。
-- [ ] デフォルト値(`()`)が今日の出力と同一になることを確認するユニットテストを追加する。
-- [ ] 渡したコマンドが、プローブの直後に順序どおりそのまま現れることを確認するユニットテストを追
+- [x] デフォルト値(`()`)が今日の出力と同一になることを確認するユニットテストを追加する。
+- [x] 渡したコマンドが、プローブの直後に順序どおりそのまま現れることを確認するユニットテストを追
   加する。
-- [ ] `render_test_spec`のdocstringを更新し、新しいパラメータとそのシェル安全性に関する信頼境界を
+- [x] `render_test_spec`のdocstringを更新し、新しいパラメータとそのシェル安全性に関する信頼境界を
   記載する。
+- [x] `serve`エンドポイント・configフィールド・`BatchRequest`フィールドのいずれも、このパラメータ
+  へ配線しないこと（リクエスト由来の値が到達しないこと）を確認する。ユニットテストは
+  `render_test_spec`呼び出し箇所の抽象構文木（AST）をたどるので、`BatchRequest`のフィールド名が
+  変わっても、`**mapping`展開で渡されても検知できます。
+- [x] `pre_test_commands`だけでなく`scenarios`についても、単なる`str`を渡した場合は拒否します。
+  `Sequence[str]`は`str`にもマッチしますが、そのまま渡すと1文字ずつ1コマンド（または1シナリオ）として
+  展開されてしまうためです。どちらの拒否にもユニットテストがあります。
+
+ログ：
+
+- [#2033](https://github.com/bajutsu-e2e/bajutsu/pull/2033) — `render_test_spec`に
+  `pre_test_commands`を追加し、可視性プローブの後に`pre_test`フェーズへそのまま（`build_package`の
+  `extra_texts`と同様にクオートせず）追記するようにしました。`serve`・config・`BatchRequest`のいず
+  れからも配線しないPython API専用のフックとし、デフォルトで出力が同一になること・順序どおりそのま
+  ま現れること・単なる文字列を渡すと拒否されること・配線されないことをユニットテストでカバーしまし
+  た。`docs/devicefarm.md`とその日本語ミラーにフックを記載しました。
 
 ## 参考
 

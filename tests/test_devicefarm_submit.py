@@ -145,6 +145,13 @@ def test_test_spec_rejects_an_empty_scenario_list() -> None:
         render_test_spec([], target="t", config="c.yaml")
 
 
+def test_test_spec_rejects_a_bare_string_scenario() -> None:
+    # `Sequence[str]` matches a bare `str`, and a non-empty one is truthy (so the empty-list guard
+    # above never catches it) — it would silently splice one `--scenario` command per character.
+    with pytest.raises(TypeError, match="not a single string"):
+        render_test_spec("s.yaml", target="t", config="c.yaml")
+
+
 def test_android_is_the_default_platform_running_over_adb_against_booted() -> None:
     # The pre-iOS behavior is the default: no platform argument runs the adb backend against the
     # host's single reserved device (serial `booted`).
@@ -190,6 +197,41 @@ def test_ios_test_spec_probe_is_not_adb() -> None:
     pre = " ".join(yaml.safe_load(spec)["phases"]["pre_test"]["commands"])
     assert "adb devices" not in pre
     assert "xctrace list devices" in pre
+
+
+# ---------------------------------------------------------------------------
+# render_test_spec — the pre_test extension hook (BE-0432)
+# ---------------------------------------------------------------------------
+
+
+def test_default_pre_test_commands_render_output_identical_to_no_argument() -> None:
+    # The hook's default `()` must change nothing: an explicit empty list renders byte-identical to
+    # omitting the argument, so every existing caller keeps generating the same spec.
+    with_default = render_test_spec(["s.yaml"], target="t", config="c.yaml")
+    with_empty = render_test_spec(["s.yaml"], target="t", config="c.yaml", pre_test_commands=())
+    assert with_empty == with_default
+
+
+def test_pre_test_commands_append_verbatim_in_order_after_the_probe() -> None:
+    # Caller-supplied setup runs after the visibility probe, in the given order, spliced through
+    # unquoted (the caller owns shell safety, as with build_package's extra_texts).
+    spec = render_test_spec(
+        ["s.yaml"],
+        target="t",
+        config="c.yaml",
+        pre_test_commands=["bash configure-proxy.sh", "echo 'ready to go'"],
+    )
+    commands = yaml.safe_load(spec)["phases"]["pre_test"]["commands"]
+    assert commands == ["adb devices", "bash configure-proxy.sh", "echo 'ready to go'"]
+
+
+def test_pre_test_commands_rejects_a_bare_string() -> None:
+    # `Sequence[str]` matches a bare `str`, which would splice one pre_test command per character and
+    # silently skip the caller's setup. Fail loud on the single-command-as-string mistake instead.
+    with pytest.raises(TypeError, match="not a single string"):
+        render_test_spec(
+            ["s.yaml"], target="t", config="c.yaml", pre_test_commands="bash configure-proxy.sh"
+        )
 
 
 # ---------------------------------------------------------------------------
