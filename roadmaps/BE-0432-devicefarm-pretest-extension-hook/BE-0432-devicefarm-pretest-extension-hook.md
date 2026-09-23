@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-devicefarm-pretest-extension-hook-ja.md)
+**English** · [日本語](BE-0432-devicefarm-pretest-extension-hook-ja.md)
 
-# BE-XXXX — A generic pre_test hook in the Device Farm test spec
+# BE-0432 — A generic pre_test hook in the Device Farm test spec
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-devicefarm-pretest-extension-hook.md) |
+| Proposal | [BE-0432](BE-0432-devicefarm-pretest-extension-hook.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0432") |
 | Topic | Device-cloud execution |
 | Related | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md) |
 <!-- /BE-METADATA -->
