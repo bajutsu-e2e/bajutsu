@@ -329,6 +329,39 @@ def bind_artifact(
     return {"ok": True, "kind": kind, "sha256": sha256, "size": size}, 200
 
 
+def artifact_presence(state: ServeState, org: str, kind: ArtifactKind, sha256: str) -> bool | None:
+    """Whether *org* holds the *kind*/*sha256* artifact: True, False when confirmed absent, or None
+    when the object store could not answer.
+
+    Three states rather than two because a caller that refuses on absence — the `run` override gate
+    (BE-0431) — must not tell a caller its upload never happened when the store merely hiccupped.
+    *sha256* must already be validated (`valid_sha256`).
+    """
+    if state.object_store is not None:
+        try:
+            return state.object_store.exists(
+                artifact_store_key(state.object_store_prefix, org, kind, sha256)
+            )
+        except Exception:  # SDK-specific errors vary by backend (S3 vs GCS), same broad catch
+            _logger.warning(
+                "could not confirm %s artifact %s is stored", kind, sha256, exc_info=True
+            )
+            return None
+    # No object store: consult the local content-addressed cache. Rather than join the untrusted
+    # *sha256* onto a path and stat it (a filesystem read driven by client input), list the kind's
+    # cache directory — whose path derives only from the allowlisted *kind* — and test *sha256* as a
+    # plain string against the entry names. The sha never reaches a path expression, and a name with
+    # a separator simply matches nothing.
+    cache_dir = local_artifact_dir(_artifacts_dir(state), org, kind)
+    try:
+        return sha256 in {entry.name for entry in cache_dir.iterdir()}
+    except FileNotFoundError:  # cache dir not created yet ⇒ nothing stored for this kind/org
+        return False
+    except OSError:
+        _logger.warning("could not read the %s artifact cache", kind, exc_info=True)
+        return None
+
+
 def artifact_exists(
     state: ServeState,
     kind: str | None,
@@ -346,24 +379,9 @@ def artifact_exists(
     if not valid_sha256(sha256):
         return {"error": "sha256 must be a full lowercase hex digest"}, 400
     org = state.org_for(actor, machine_org)
-    if state.object_store is not None:
-        try:
-            exists = state.object_store.exists(
-                artifact_store_key(state.object_store_prefix, org, kind, sha256)
-            )
-        except Exception:  # a transient store error reads as "not confirmed present", not a crash
-            exists = False
-    else:
-        # No object store: consult the local content-addressed cache. Rather than join the
-        # untrusted *sha256* onto a path and stat it (a filesystem read driven by client input),
-        # list the kind's cache directory — whose path derives only from the allowlisted *kind* —
-        # and test *sha256* as a plain string against the entry names. The sha never reaches a
-        # path expression, and a name with a separator simply matches nothing.
-        cache_dir = local_artifact_dir(_artifacts_dir(state), org, kind)
-        try:
-            exists = sha256 in {entry.name for entry in cache_dir.iterdir()}
-        except OSError:  # cache dir not created yet ⇒ nothing stored for this kind/org
-            exists = False
+    # Both "confirmed absent" and "could not confirm" answer False: a dedup caller reads either as
+    # "upload it again", which is safe, so this endpoint keeps its two-state contract (BE-0431).
+    exists = artifact_presence(state, org, kind, sha256) is True
     # A read, and the only org-resolving artifact route that recorded nothing. A pipeline's probe is
     # the first call in its sequence, so without this the audit trail for a CI run starts at the
     # upload and never shows the job that probed, found the build already stored, and skipped it

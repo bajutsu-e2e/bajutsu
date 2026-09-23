@@ -336,6 +336,63 @@ backend sets `hosted: true`.
   web (Playwright) backend has no binary concept on either side; the browser engine installs on demand
   instead.
 
+### Per-job artifact overrides for a CI run (BE-0431)
+
+A continuous integration (CI) run for a pull request pairs a build with a branch. It wants that
+build's binary, run against that branch's scenarios. `POST /api/compose` can deliver that pair,
+but it rebinds the org's active config. Every caller outside a signed-in browser shares that one binding.
+Two concurrent CI dispatches then race for it. Each bind also moves the org's remembered
+configuration.
+
+`POST /api/run` accepts two optional fields instead. Each names an artifact by its sha256. The
+caller's org must already hold that artifact.
+
+| Field | What the job gets |
+|---|---|
+| `binaryArtifact` | a `binary` artifact, placed at the requested target's `appPath` alone |
+| `scenariosArtifact` | a `scenarios` artifact (a zip), replacing that target's scenarios directory |
+
+A leg the request leaves out keeps resolving through the org's binding. Nothing writes the binding
+itself. Upload each artifact first through `POST /api/artifacts/binary` or
+`POST /api/artifacts/scenarios`. Probe `GET /api/artifacts/exists` to skip bytes already stored.
+The two fields need the *editor* role, the same role `POST /api/run` already requires.
+
+```bash
+curl -X POST "$SERVER/api/run" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"scenario": "added.yaml", "target": "demo",
+       "binaryArtifact": "<sha256>", "scenariosArtifact": "<sha256>"}'
+```
+
+The control plane checks the request before any job exists:
+
+- A named artifact the org does not hold returns `400`.
+- An object store that cannot answer returns a retryable `503`. It never returns a `400` that
+  claims the upload never happened.
+- With `scenariosArtifact`, `serve` looks up `scenario` among the zip's own entries. A scenario
+  that exists nowhere else still runs.
+- The zip keeps the layout compose uses, with paths from the config's directory, such as
+  `scenarios/added.yaml`. Every entry must sit under the target's scenarios directory, so the
+  override cannot overwrite the bound binary or baselines.
+- `serve` refuses a single YAML Ain't Markup Language (YAML) file. A digest carries no file name
+  to match `scenario` against.
+- `binaryArtifact` on a target with no `appPath`, such as a web target, returns `400`.
+- A single-process `serve` refuses both fields. It runs the job in the operator's own project
+  directory, which no override may overwrite.
+- `POST /api/run-set` refuses both fields. Its cloud-batch fan-out does not run on the split
+  serve-and-worker topology yet.
+
+The lease signs one presigned HTTP GET URL per named override: `binary_url` and `scenarios_url`.
+It signs each under the leased job's org. The worker checks each download against its sha256. It
+then builds the job a tree of its own, apart from the tree a job with no override uses. For a
+bundle job, that tree is a local copy of the cached bundle. The worker still fetches the bundle
+zip once.
+
+A `404` ends the job. A digest mismatch leaves the lease to lapse, so another attempt can succeed.
+The run's `manifest.json` records `binaryArtifact` and `scenariosArtifact` under `provenance`. A
+bound bundle's identity sits beside them. Override trees live in the worker's `.overrides/`
+directory. Prune it together with the `.bundles/` cache.
+
 ### 1. Bring up the control plane
 
 ```bash

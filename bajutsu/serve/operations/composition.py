@@ -26,9 +26,9 @@ import re
 import shutil
 import tempfile
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from bajutsu.common.config import WebConfig, load_config, resolve
+from bajutsu.common.config import Effective, WebConfig, load_config, resolve
 from bajutsu.serve.uploads import extract_bundle, validate_bundle_config
 
 # Everything a single-file `scenarios` artifact's basename may NOT contain. The dropped filename is
@@ -190,4 +190,85 @@ def materialize_composition(
     return dest
 
 
-__all__ = ["CompositionError", "materialize_composition"]
+def scenarios_zip_strays(zip_path: Path, scenarios_rel: PurePosixPath) -> list[str]:
+    """The entries of a `scenarios` override zip that sit outside *scenarios_rel* (BE-0431).
+
+    An override replaces one target's scenarios directory and nothing else, so an entry elsewhere —
+    an `appPath` binary, a baseline — would overwrite part of the bound tree the job's provenance
+    never names. Raises `zipfile.BadZipFile` for an unreadable archive.
+    """
+    with zipfile.ZipFile(zip_path) as archive:
+        names = archive.namelist()
+    return [
+        name
+        for name in names
+        if ".." in (entry := PurePosixPath(name)).parts
+        or (entry != scenarios_rel and scenarios_rel not in entry.parents)
+    ]
+
+
+def _check_scenarios_override(
+    root: Path, eff: Effective, scenarios_dir: Path, zip_path: Path
+) -> None:
+    """Refuse a `scenarios` override whose replacement would reach past the scenarios directory.
+
+    Emptying the directory is what makes a branch's deleted scenario disappear, so that directory
+    must hold nothing else the job needs: a config naming `scenarios: .`, or one sharing or nesting
+    its `appPath` or baselines under it, would have the replacement delete them.
+    """
+    resolved = scenarios_dir.resolve()
+    if resolved == root.resolve():
+        raise CompositionError("a scenarios override cannot replace the whole tree (scenarios: .)")
+    app_path = None if isinstance(eff.platform_config, WebConfig) else eff.platform_config.app_path
+    dirs = eff.evidence_dirs
+    for kept in (app_path, dirs.baselines, dirs.schemas, dirs.goldens):
+        if kept is not None and resolved in (kept_dir := Path(kept).resolve(), *kept_dir.parents):
+            raise CompositionError(f"a scenarios override would delete {kept!r} inside {resolved}")
+    rel = PurePosixPath(resolved.relative_to(root.resolve()).as_posix())
+    if strays := scenarios_zip_strays(zip_path, rel):
+        raise CompositionError(f"scenarios override entries sit outside {rel}/: {strays[:3]}")
+
+
+def place_overrides(
+    root: Path, target: str, *, binary: Path | None, scenarios: Path | None
+) -> None:
+    """Place a job's per-job artifact overrides (BE-0431) into the tree at *root*, for *target* alone.
+
+    *root* holds the job's `bajutsu.config.yaml` and is the job's own copy, never a shared tree, so
+    replacing things in it touches no other job. A `scenarios` zip **replaces** the target's scenarios
+    directory rather than merging into it — `extract_bundle` deletes nothing, and a scenario the
+    caller's branch removed must not survive to be run — and is extracted at the root as compose
+    extracts one, refused when any entry sits outside that directory. The binary goes to *target*'s
+    `appPath` only, replacing whatever was there. Every path is confined to *root* (BE-0051).
+
+    Raises `CompositionError` when *target* names no place for a supplied leg, `BundleError` for an
+    unextractable zip, or a `load_config`/`rebased` failure.
+    """
+    config_text = (root / "bajutsu.config.yaml").read_text(encoding="utf-8")
+    eff = resolve(load_config(config_text), target).rebased(root, confine=True)
+    if scenarios is not None:
+        if eff.evidence_dirs.scenarios is None:
+            raise CompositionError(f"target {target!r} names no scenarios dir for the override")
+        scenarios_dir = Path(eff.evidence_dirs.scenarios)
+        _check_scenarios_override(root, eff, scenarios_dir, scenarios)
+        if scenarios_dir.exists():
+            shutil.rmtree(scenarios_dir)
+        scenarios_dir.mkdir(parents=True)
+        extract_bundle(scenarios, root)
+    if binary is not None:
+        if isinstance(eff.platform_config, WebConfig) or eff.platform_config.app_path is None:
+            raise CompositionError(f"target {target!r} names no appPath for the binary override")
+        app_path = Path(eff.platform_config.app_path)
+        if app_path.is_dir():
+            shutil.rmtree(app_path)
+        app_path.unlink(missing_ok=True)
+        _place_binary(binary, app_path)
+    validate_bundle_config(root)
+
+
+__all__ = [
+    "CompositionError",
+    "materialize_composition",
+    "place_overrides",
+    "scenarios_zip_strays",
+]

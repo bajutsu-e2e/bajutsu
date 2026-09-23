@@ -74,6 +74,8 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "label": None,  # no config bound for this locally-built job to derive one from (BE-0404)
         "env_overlay": {},  # no AI provider selected for this org, so no overlay (BE-0229)
         "batch": None,  # not a cloud-batch job (BE-0336 Unit 5)
+        "overrides": None,  # no per-job artifact override named (BE-0431)
+        "provenance": None,  # nothing uploaded or overridden to record into the manifest
     }
     json.dumps(spec)  # must carry no live objects (locks/Popen/bus) — JSON round-trips
 
@@ -244,6 +246,51 @@ def test_execute_job_spec_rebuilds_and_runs_run_job(tmp_path: Path) -> None:
     v = job.view()
     assert v["status"] == "done" and v["ok"] is True and v["runId"] == "20260610-1"
     assert "step 0 ok" in v["lines"]
+
+
+def test_job_spec_carries_the_overrides_and_their_provenance(tmp_path: Path) -> None:
+    from bajutsu.serve.upload_artifacts import ArtifactOverrides
+
+    state = srv.ServeState(runs_dir=tmp_path / "runs")
+    job = state.register(
+        srv.Job(
+            cmd=["run"],
+            overrides=ArtifactOverrides("demo", binary="b" * 64),
+            provenance={"binaryArtifact": "b" * 64},
+        )
+    )
+    spec = job_spec(job)
+    assert spec["overrides"] == {"target": "demo", "binary": "b" * 64, "scenarios": None}
+    assert spec["provenance"] == {"binaryArtifact": "b" * 64}
+
+
+def test_execute_job_spec_records_the_carried_provenance_into_the_manifest(
+    tmp_path: Path,
+) -> None:
+    # The run executes on the worker, so the provenance the control plane resolved (an override's
+    # sha, BE-0431; a bundle's identity, BE-0073) has to travel in the spec to reach its manifest.
+    project(tmp_path)
+    run_dir = tmp_path / "runs" / "20260610-1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"runId": "20260610-1", "provenance": {"scenarioHash": "x"}}), encoding="utf-8"
+    )
+    spec = {
+        "job_id": "1",
+        "cmd": ["bajutsu", "run"],
+        "udids": [],
+        "app_path": None,
+        "build": None,
+        "provenance": {"binaryArtifact": "b" * 64},
+    }
+    execute_job_spec(
+        spec,
+        popen=fake_popen(["PASS  runs/20260610-1/manifest.json\n"]),
+        cwd=tmp_path,
+        bus=srv.InMemoryLogBus(),
+    )
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["provenance"] == {"scenarioHash": "x", "binaryArtifact": "b" * 64}
 
 
 def test_execute_job_spec_streams_logs_to_the_injected_bus(tmp_path: Path) -> None:

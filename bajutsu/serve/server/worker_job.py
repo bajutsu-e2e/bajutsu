@@ -95,6 +95,12 @@ def job_spec(job: Job) -> dict[str, Any]:
         # reconstructed as a batch run on the worker instead of degrading to a local subprocess. None
         # for a normal (local-subprocess) job.
         "batch": _batch_spec(job.batch),
+        # The per-job artifact overrides (BE-0431): the worker places each named artifact into this
+        # job's own workspace before running. None for a job naming none.
+        "overrides": job.overrides.to_spec() if job.overrides is not None else None,
+        # What the run's manifest records it executed (a bound bundle's identity, BE-0073; each
+        # override's sha, BE-0431). The run executes here, so this is where `run_job` stamps it.
+        "provenance": dict(job.provenance) if job.provenance is not None else None,
     }
 
 
@@ -119,6 +125,13 @@ def _batch_from_spec(data: dict[str, Any] | None) -> BatchRequest | None:
     from bajutsu.serve.batch_provider import BatchRequest
 
     return BatchRequest(**data)
+
+
+def _provenance_from_spec(raw: Any) -> dict[str, str] | None:
+    """The spec's provenance block, kept to its all-strings shape, or None when it carries none."""
+    if not isinstance(raw, dict):
+        return None
+    return {str(k): str(v) for k, v in raw.items()} or None
 
 
 def _materialize(work: Path, materials: dict[str, str]) -> None:
@@ -229,6 +242,7 @@ def execute_job_spec(
         # The cloud-batch request (BE-0336 Unit 5), so a batch job leased from the DB queue runs on the
         # batch seam here rather than degrading to a local subprocess. None for a normal job.
         batch=_batch_from_spec(spec.get("batch")),
+        provenance=_provenance_from_spec(spec.get("provenance")),
     )
     # Bind the job's ids so every operational record on this worker correlates to it (BE-0055);
     # `run_id` is the run's own id, minted by `run_job`, so it binds only once the run has started.

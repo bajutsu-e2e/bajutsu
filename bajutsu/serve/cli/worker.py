@@ -36,9 +36,9 @@ from bajutsu.common.run_meta.object_store import content_type_for
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import WORKER_CAPABILITIES_ENV, worker_capabilities
 from bajutsu.serve.helpers import valid_sha256
-from bajutsu.serve.operations.composition import materialize_composition
-from bajutsu.serve.server.worker_job import WorkerIO, execute_job_spec
-from bajutsu.serve.upload_artifacts import ARTIFACT_KINDS
+from bajutsu.serve.operations.composition import materialize_composition, place_overrides
+from bajutsu.serve.server.worker_job import WorkerIO, _materialize, execute_job_spec
+from bajutsu.serve.upload_artifacts import ARTIFACT_KINDS, OVERRIDE_KINDS, ArtifactOverrides
 from bajutsu.serve.uploads import find_bundle_config, materialize_bundle, validate_bundle_config
 
 _logger = logging.getLogger("bajutsu.worker")
@@ -60,6 +60,9 @@ _USER_AGENT = "bajutsu-worker"
 # working directory. Dot-prefixed so it is never mistaken for a run's own output, nor picked up by a
 # glob over the workspace. Trees nest one level deeper, per org (see `_bundle_workspace`).
 _BUNDLE_CACHE_DIR = ".bundles"
+# Where a job carrying per-job artifact overrides (BE-0431) gets a tree of its own, beside the bundle
+# cache rather than inside it, so a bundle's tree is still fetched once whatever overrides reuse it.
+_OVERRIDE_CACHE_DIR = ".overrides"
 
 # The parts a lease may sign for one bundle: the whole tree as a zip (a single-zip bind, BE-0073), or
 # one object per artifact kind (a composed triple, BE-0268). A name outside this set is a broken or
@@ -243,6 +246,7 @@ def worker(
             job_id=job_id,
             work=work,
             bundle_urls=body.get("bundle_urls"),
+            override_urls=_override_urls(body),
             bus=bus,
             url=url,
             wid=wid,
@@ -302,6 +306,7 @@ def _run_with_heartbeat(
     auth_token: str | None,
     heartbeat_interval: float,
     io: WorkerIO | None = None,
+    override_urls: dict[str, str] | None = None,
 ) -> tuple[dict[str, Any] | None, bool, Path]:
     """Run the job on a background thread while heart-beating its lease from this one.
 
@@ -331,7 +336,7 @@ def _run_with_heartbeat(
 
     def _run() -> None:
         try:
-            job_work, failure = _workspace_or_failure(work, spec, bundle_urls)
+            job_work, failure = _workspace_or_failure(work, spec, bundle_urls, override_urls)
         except _TransientFetch as e:
             _logger.warning(
                 "bundle fetch failed for job %s; leaving the lease to lapse: %s", job_id, e
@@ -554,8 +559,18 @@ def _safe_org(org: Any) -> str:
     return f"{cleaned[:51] or 'org'}-{digest[:12]}"
 
 
+def _override_urls(lease: dict[str, Any]) -> dict[str, str]:
+    """The lease's signed override GETs (``binary_url`` / ``scenarios_url``), keyed by kind."""
+    return {
+        kind: url for kind in OVERRIDE_KINDS if isinstance(url := lease.get(f"{kind}_url"), str)
+    }
+
+
 def _workspace_or_failure(
-    work: Path, spec: dict[str, Any], bundle_urls: Any
+    work: Path,
+    spec: dict[str, Any],
+    bundle_urls: Any,
+    override_urls: dict[str, str] | None = None,
 ) -> tuple[Path, dict[str, Any] | None]:
     """The workspace to run this job from, or the failed result to post when none can be prepared.
 
@@ -572,12 +587,110 @@ def _workspace_or_failure(
     keeps the permanent classification.
     """
     try:
-        return _bundle_workspace(work, spec, bundle_urls), None
+        base = _bundle_workspace(work, spec, bundle_urls)
     except _TransientFetch:
         raise
     except Exception as e:
         _logger.exception("could not materialize the job's bundle")
         return work, {"ok": False, "error": f"bundle unavailable: {e}"}
+    try:
+        return _override_workspace(work, base, spec, override_urls or {}), None
+    except _TransientFetch:
+        raise
+    except Exception as e:
+        _logger.exception("could not place the job's artifact overrides")
+        return work, {"ok": False, "error": f"artifact override unavailable: {e}"}
+
+
+def _job_overrides(spec: dict[str, Any]) -> ArtifactOverrides | None:
+    """The job's per-job artifact overrides (BE-0431), re-validated, or None when it names none.
+
+    Server-authored, but each sha becomes a directory key and is checked against a download, and a
+    leased spec is still remote input.
+    """
+    raw = spec.get("overrides")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        # The spec's provenance still names the overrides, so running the binding would misreport it.
+        raise RuntimeError(f"job carries malformed overrides: {raw!r}")  # noqa: TRY004  # invalid external payload, not a caller type error
+    shas = {kind: raw.get(kind) for kind in OVERRIDE_KINDS if raw.get(kind) is not None}
+    if not shas:
+        return None
+    for kind, sha in shas.items():
+        if not valid_sha256(sha):
+            raise RuntimeError(f"job carries an invalid {kind} override: {sha!r}")
+    target = raw.get("target")
+    if not isinstance(target, str) or not target:
+        raise RuntimeError("job carries artifact overrides but names no target")
+    return ArtifactOverrides(target, binary=shas.get("binary"), scenarios=shas.get("scenarios"))
+
+
+def _override_workspace(work: Path, base: Path, spec: dict[str, Any], urls: dict[str, str]) -> Path:
+    """The tree a job carrying artifact overrides runs from, or *base* when it carries none.
+
+    The overrides are placed into a tree of the job's own — a copy of the cached bundle's, or a
+    fresh directory for a materials-based job — never into *base*: *base* is shared with every
+    later job off the same bundle, or is the worker's own working directory, and an override left
+    there would reach the next job with nothing announcing it. The tree is keyed by what it was built
+    from, the target, and the overrides' identity, so an identical job reuses it and two jobs that
+    differ in any of them never share one. Built aside and renamed into place, so a failed fetch or
+    placement leaves nothing a later job could mistake for a finished tree.
+    """
+    overrides = _job_overrides(spec)
+    if overrides is None:
+        return base
+    bundle = spec.get("bundle")
+    raw_materials = spec.get("materials")
+    materials: dict[str, str] = raw_materials if isinstance(raw_materials, dict) else {}
+    source = (
+        bundle["id"]
+        if isinstance(bundle, dict)
+        else hashlib.sha256(json.dumps(materials, sort_keys=True).encode()).hexdigest()
+    )
+    key = hashlib.sha256(f"{source}:{overrides.target}:{overrides.identity}".encode()).hexdigest()
+    cache = work / _OVERRIDE_CACHE_DIR / _safe_org(spec.get("org"))
+    tree = cache / key
+    if tree.exists():
+        return tree
+    for kind, sha in overrides.shas.items():
+        if kind not in urls:
+            raise RuntimeError(
+                f"job needs {kind} artifact {sha}, but the lease signed no url for it"
+            )
+    cache.mkdir(parents=True, exist_ok=True)
+    tmp = Path(tempfile.mkdtemp(dir=cache, prefix=f".{key}.tmp-"))
+    try:
+        if isinstance(bundle, dict):
+            # Copy the config's tree without the runs earlier jobs wrote into it: an override is a
+            # local copy of the cached bundle, never a second download of it.
+            shutil.copytree(
+                base,
+                tmp,
+                dirs_exist_ok=True,
+                ignore=lambda d, _names: [DEFAULT_RUNS_DIR] if Path(d) == base else [],
+            )
+        else:
+            _materialize(tmp, materials)
+        with tempfile.TemporaryDirectory(dir=cache, prefix=".fetch-") as raw:
+            parts: dict[str, Path] = {}
+            for kind, sha in overrides.shas.items():
+                parts[kind] = Path(raw) / kind
+                _fetch_part(urls[kind], parts[kind], sha)
+            place_overrides(
+                tmp, overrides.target, binary=parts.get("binary"), scenarios=parts.get("scenarios")
+            )
+        try:
+            tmp.rename(tree)
+        except OSError:
+            # A concurrent build of the same key won the rename; its tree is equivalent, so drop ours.
+            if not tree.exists():
+                raise
+            shutil.rmtree(tmp, ignore_errors=True)
+    except BaseException:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+    return tree
 
 
 def _bundle_workspace(work: Path, spec: dict[str, Any], bundle_urls: Any) -> Path:

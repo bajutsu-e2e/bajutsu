@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0431](BE-0431-job-scoped-artifact-override-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0431") |
 | トピック | config の取得元 |
 | 関連 | [BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory-ja.md)、[BE-0413](../BE-0413-worker-app-binary-delivery/BE-0413-worker-app-binary-delivery-ja.md)、[BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md)、[BE-0160](../BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads-ja.md)、[BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md) |
@@ -415,15 +415,29 @@ bundleプロベナンスと並べて記録します。どのアーティファ�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 単位1 — `binaryArtifact`と`scenariosArtifact`のリクエストフィールド。どちらも任意項目であり、
+- [x] 単位1 — `binaryArtifact`と`scenariosArtifact`のリクエストフィールド。どちらも任意項目であり、
       存在確認を行います。両方とも`Job.bundle`とは独立に`Job`へ運ばれます。名指されなかったレッグは、
       引き続きorgのバインディングを通じて解決されます。`scenariosArtifact`を名指した場合は、リクエストの
       `scenario`の探索を上書きのエントリ一覧へ移し、scenarioのmaterialsを送らず、zipを必須にします。
-- [ ] 単位2 — 本項目は、workerのトポロジーで名指された上書きに署名・配送します。展開の前にターゲットの
+- [x] 単位2 — 本項目は、workerのトポロジーで名指された上書きに署名・配送します。展開の前にターゲットの
       scenariosディレクトリを空にし、ジョブのツリーをbundleキャッシュとは別にキー付けします。
       `LocalExecutor`のデプロイと`run-set`では、どちらのフィールドも拒否します。runのマニフェストには、
       プロベナンスを記録します。
-- [ ] 単位3 — 各接続点のテストと、`self-hosting`/`cli`ドキュメント。
+- [x] 単位3 — 各接続点のテストと、`self-hosting`/`cli`ドキュメント。
+
+ログ：
+
+- [#PR](https://github.com/bajutsu-e2e/bajutsu/pull/PR) — 単位 1〜3 を1つの変更で実装しました。
+  `start_run` は `binaryArtifact` / `scenariosArtifact` を受け付けます。存在確認には3状態の
+  `artifact_presence` を使い、存在しないと確定すれば 400、ストアが答えられなければ 503 を返します。
+  リースは `binary_url` / `scenarios_url` に署名します。worker は上書きごとにキー付けしたツリーを作り、
+  `place_overrides` で上書きを配置します。上の本文からは、現在のコードに合わせて次の3点を変えました。
+  - `job_spec` はこれまで `provenance` を運んでおらず、worker で走った job のマニフェストには何も
+    記録されていませんでした。spec で運ぶようにしたので、bundle の job（BE-0073）の欠落も解消します。
+  - シナリオの探索では、アーティファクトを `_fetch_artifact`（ローカルキャッシュ、次にオブジェクト
+    ストア）で読みます。アップロードを受けたのと別のレプリカには、ローカルのコピーがないためです。
+  - worker のツリーのキーには target も含めます。バイナリはその target の `appPath` だけに置くので、
+    含めないと同じ config の2つの target が1つのツリーを共有してしまいます。
 
 ## 参考
 

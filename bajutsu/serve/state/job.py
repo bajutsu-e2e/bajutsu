@@ -13,6 +13,7 @@ from ._shared import _DEFAULT_ORG
 
 if TYPE_CHECKING:
     from bajutsu.serve.batch_provider import BatchRequest
+    from bajutsu.serve.upload_artifacts import ArtifactOverrides
 
 
 @dataclass
@@ -80,6 +81,10 @@ class Job:
     # has no project on disk, rebuilds the tree its config's relative `appPath` resolves against.
     # None for a local-file or Git-sourced config, whose tree the worker resolves for itself.
     bundle: dict[str, Any] | None = None
+    # The standalone artifacts this one job resolves against instead of its bound tree (BE-0431).
+    # Independent of `bundle`, which stays whatever the binding resolved to. None for a job naming
+    # no override, which keeps every path exactly as before.
+    overrides: ArtifactOverrides | None = None
     # Per-run key prefix for evidence upload, under the server's --evidence-store base (BE-0110). CI
     # sets it via the /api/run body to pick the cloud lifecycle policy; travels in the job spec so the
     # worker relays it back when requesting presigned PUT URLs. Empty = key directly under the base.

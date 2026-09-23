@@ -464,3 +464,41 @@ def test_worker_lease_signs_nothing_for_a_malformed_artifacts_block(
     payload, code = ops.worker_lease(state, "w1")
     assert code == 200
     assert "bundle_urls" not in payload
+
+
+def test_worker_lease_signs_each_named_artifact_override_under_the_jobs_org(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    # A per-job override (BE-0431) is signed like a composed leg, under the *leased job's* org — the
+    # worker supplies no part of the key.
+    state, repo = _state_with_db(serve_engine, tmp_path)
+    state.object_store = _FakeStore()
+    overrides = {"target": "demo", "binary": "b" * 64, "scenarios": "c" * 64}
+    repo.enqueue_job("j1", org_id="o1", spec={"cmd": ["run"], "overrides": overrides})
+    payload, code = ops.worker_lease(state, "w1")
+    assert code == 200
+    assert payload["binary_url"] == f"https://signed.example/get/o1/uploads/binary/{'b' * 64}"
+    assert payload["scenarios_url"] == f"https://signed.example/get/o1/uploads/scenarios/{'c' * 64}"
+
+
+def test_worker_lease_signs_only_the_override_legs_a_job_names(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state, repo = _state_with_db(serve_engine, tmp_path)
+    state.object_store = _FakeStore()
+    overrides = {"target": "demo", "binary": "b" * 64, "scenarios": None}
+    repo.enqueue_job("j1", org_id="o1", spec={"cmd": ["run"], "overrides": overrides})
+    payload, _code = ops.worker_lease(state, "w1")
+    assert "binary_url" in payload
+    assert "scenarios_url" not in payload
+
+
+def test_worker_lease_refuses_to_sign_an_override_that_is_not_a_digest(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    state, repo = _state_with_db(serve_engine, tmp_path)
+    state.object_store = _FakeStore()
+    overrides = {"target": "demo", "binary": "../../other-org/secret", "scenarios": None}
+    repo.enqueue_job("j1", org_id="o1", spec={"cmd": ["run"], "overrides": overrides})
+    payload, _code = ops.worker_lease(state, "w1")
+    assert "binary_url" not in payload
