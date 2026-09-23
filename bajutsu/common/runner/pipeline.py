@@ -30,7 +30,7 @@ from bajutsu.common.backends import (
 )
 from bajutsu.common.cancellation import CANCELLED_FAILURE, CancelSource, not_cancelled
 from bajutsu.common.capability import capability_preflight
-from bajutsu.common.config import Effective
+from bajutsu.common.config import Effective, web_engine
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import tracing
 from bajutsu.common.drivers.base import BackendCrashError
@@ -987,13 +987,15 @@ class _ScenarioRunner:
         handler: AlertGuardConfig | None,
         writer: RunArtifactWriter | None,
         sid: str,
+        primary_ctx: EvalContext,
     ) -> dict[str, TargetRuntime] | None:
         """One `TargetRuntime` per target *s* declares, or None when it declares none.
 
         Built here, per scenario, for the same reason the driver map is: two scenarios in one run
         can declare different targets, so none of this can live on the shared runner. Every field is
         resolved from the target's own lease and its own `Effective` — the alert guard is the one
-        exception, being a property of the scenario rather than of any target.
+        exception, being a property of the scenario rather than of any target. `primary_ctx` is the
+        exact `EvalContext` `run_scenario` was itself given for the primary; see `_runtime_for`.
         """
         routed = self._routed(s)
         if not routed:
@@ -1001,7 +1003,7 @@ class _ScenarioRunner:
         leases = {routed[0]: lz, **others}
         return {
             name: self._runtime_for(
-                name, leases[name], s, handler, writer, sid, primary=name == routed[0]
+                name, leases[name], s, handler, writer, sid, primary_ctx, primary=name == routed[0]
             )
             for name in routed
         }
@@ -1014,10 +1016,23 @@ class _ScenarioRunner:
         handler: AlertGuardConfig | None,
         writer: RunArtifactWriter | None,
         sid: str,
+        primary_ctx: EvalContext,
         *,
         primary: bool,
     ) -> TargetRuntime:
-        """One declared target's runtime, bound to its own lease and its own resolved config."""
+        """One declared target's runtime, bound to its own lease and its own resolved config.
+
+        The primary's own `ctx` is *`primary_ctx`* verbatim, never rebuilt through
+        `_eval_context_for`: `self.baselines_dir` / `self.schemas_dir` / `self.golden_context` (what
+        that function falls back to) already resolved flag > the primary's own config > the
+        scenario-relative default, once, in the CLI. Passing the primary's config through
+        `_eval_context_for` too would apply that same "target's config first" rule a second time —
+        letting a bare config value the flag already overrode win back — and would give the primary
+        a second, differently-resolved context depending on whether a step or an `expect` entry
+        reads it. Every *other* declared target has no such pre-resolved value to reuse, so it goes
+        through `_eval_context_for`'s own target-config-first path, matching what
+        `docs/scenarios.md` documents for a non-primary target.
+        """
         pool = self.targets[name]
         collector = lz.collector
         return TargetRuntime(
@@ -1029,9 +1044,9 @@ class _ScenarioRunner:
             control=lz.control,
             # A second target's evidence goes under its own name, so two targets' `visual-actual`
             # captures in one scenario never overwrite each other.
-            ctx=self._eval_context_for(
-                pool.eff, lz.driver, writer, sid if primary else f"{sid}/{name}"
-            ),
+            ctx=primary_ctx
+            if primary
+            else self._eval_context_for(pool.eff, lz.driver, writer, f"{sid}/{name}"),
             mailbox=build_mailbox_reader(pool.eff.mailbox, self.bindings or {}),
             webview_bridge=lz.webview_bridge,
             transitions=(
@@ -1154,7 +1169,9 @@ class _ScenarioRunner:
                 target_launch_env=self.eff.launch_env,
                 # One runtime per declared target (BE-0428), the primary's included so the step
                 # loop resolves every `step.target` through one map rather than special-casing it.
-                target_runtimes=self._target_runtimes(s, lz, others, handler, writer, sid),
+                target_runtimes=self._target_runtimes(
+                    s, lz, others, handler, writer, sid, primary_ctx
+                ),
                 primary_target=next(iter(self._routed(s)), ""),
             )
             result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
@@ -1167,6 +1184,19 @@ class _ScenarioRunner:
                 result.target_devices = {
                     name: TargetDeviceInfo(
                         backend=self.targets[name].actuator,
+                        # A web target's own fixed rendering engine — never a matrix axis, which
+                        # `_reject_cross_browser_matrix_with_targets` (run/cli.py) already refuses
+                        # to combine with a declared `targets:` — so this is always exactly one
+                        # engine per target, unlike `RunResult.engine`'s single-target matrix tag.
+                        # Empty for a non-web target, the same "not applicable" convention as
+                        # `RunResult.engine` itself, rather than `web_engine`'s own "chromium"
+                        # default meant for a caller that needs *some* browser regardless of
+                        # platform.
+                        engine=(
+                            web_engine(self.targets[name].eff)
+                            if self.targets[name].eff.platform == "web"
+                            else ""
+                        ),
                         device=target_lz.udid,
                         device_name=target_lz.device_name,
                         device_runtime=target_lz.device_runtime,

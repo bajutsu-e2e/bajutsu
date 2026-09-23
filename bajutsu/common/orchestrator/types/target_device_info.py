@@ -16,6 +16,10 @@ class TargetDeviceInfo:
     """
 
     backend: str = ""
+    # A web target's own fixed rendering engine ("chromium" / "firefox" / "webkit"), empty for a
+    # non-web target — never a `--browsers` matrix axis, which a declared `targets:` scenario
+    # cannot combine with, so this names exactly one engine rather than `RunResult.engine`'s own
+    # per-matrix-pass tag.
     engine: str = ""
     device: str = ""
     device_name: str = ""

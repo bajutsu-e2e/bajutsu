@@ -89,15 +89,22 @@ def _result_panel(
 
 
 def _device_rows(
-    name: str, backend: str, device_name: str, runtime: str, udid: str
+    name: str, backend: str, device_name: str, runtime: str, udid: str, engine: str = ""
 ) -> list[tuple[str, str]]:
     """One device's environment rows, each prefixed with *name* when the run declared targets.
 
     Unknown fields (e.g. the fake driver names no device) are omitted, so an unresolvable value
-    leaves its row out rather than showing a blank one.
+    leaves its row out rather than showing a blank one. `engine` is a web target's own fixed
+    rendering engine (BE-0428); empty for a non-web target, so it drops out the same way.
     """
     prefix = f"{name} " if name else ""
-    rows = [("device", device_name), ("OS", runtime), ("actuator", backend), ("udid", udid)]
+    rows = [
+        ("device", device_name),
+        ("OS", runtime),
+        ("actuator", backend),
+        ("engine", engine),
+        ("udid", udid),
+    ]
     return [(f"{prefix}{label}", value) for label, value in rows if value]
 
 
@@ -112,7 +119,7 @@ def _environment_panel(r: RunResult) -> dict[str, Any]:
             row
             for name, info in r.target_devices.items()
             for row in _device_rows(
-                name, info.backend, info.device_name, info.device_runtime, info.device
+                name, info.backend, info.device_name, info.device_runtime, info.device, info.engine
             )
         ]
     else:

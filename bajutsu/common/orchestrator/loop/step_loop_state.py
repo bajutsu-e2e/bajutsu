@@ -44,6 +44,13 @@ class StepLoopState:
     # the shutter always targets the native driver, so the screen it captures is the same one
     # throughout, web block or not.
     prev_after_screenshot: Artifact | None = None
+    # The declared target the *previous* top-level-routed step ran against (BE-0428) — "" before any
+    # such step has run. `_StepRunner._route` resets `prev_after`/`prev_after_screenshot` when a
+    # step's own target differs from this, not when it differs from `self` (the runner driving the
+    # current loop): the loop always starts on the primary, so comparing against `self` alone misses
+    # a switch *back* to the primary after a detour through another target (`app, web, app`), the
+    # third step then wrongly reusing the second step's device state as its own `before`.
+    last_target: str = ""
     total_reads: int = 0  # runner-issued screen reads, the BE-0234 read-count yardstick (Unit 1)
     # True while an interrupt's own recovery steps run (BE-0314). Those steps go through the step loop
     # too, so without this an interrupt whose recovery targets the very screen its `condition` matches

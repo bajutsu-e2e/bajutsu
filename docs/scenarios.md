@@ -1229,7 +1229,7 @@ Each declared target keeps its own config, not the primary target's. Resolution 
 
 | Reads that target's own config | Why |
 |---|---|
-| `before` / `after` lifecycle steps | Each target's own fold in, in declared order, stamped with that target's name — so an app-side teardown and a web-side one each run against the right driver |
+| `before` / `after` lifecycle steps | Each target's own hooks fold in, in declared order, stamped with that target's name — so an app-side teardown and a web-side one each run against the right driver |
 | `mailbox` | An `email` or `totp` step polls the inbox its own target configured |
 | `locale`, `launchEnv`, `capture`, `interrupts` | Each is a property of the app under test, not of the run |
 | `baselines` / `schemas` / `goldens` | A `visual` or `golden` assertion compares against its own target's directory when that target configures one, else the run's |

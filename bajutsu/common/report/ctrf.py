@@ -128,6 +128,7 @@ def _test_extra(r: RunResult) -> dict[str, object]:
                 "device": d.device,
                 "deviceName": d.device_name,
                 "deviceRuntime": d.device_runtime,
+                **({"engine": d.engine} if d.engine else {}),
             }
             for name, d in r.target_devices.items()
         }

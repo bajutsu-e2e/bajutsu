@@ -226,6 +226,12 @@ def test_a_multi_target_run_reports_one_device_row_per_target() -> None:
     assert result.backend == ""
     assert sorted(result.target_devices) == ["app", "site"]
     assert result.target_devices["site"].backend == "playwright"
+    # BE-0428 review: `engine` is wired from each target's own config, not left unset — a web
+    # target reports its rendering engine, and a non-web target reports none rather than
+    # `web_engine`'s own "chromium" default (meant for a caller needing *some* browser regardless
+    # of platform, not for "not applicable" here).
+    assert result.target_devices["site"].engine == "chromium"
+    assert result.target_devices["app"].engine == ""
 
 
 def test_a_single_target_run_keeps_todays_singular_device_fields() -> None:
@@ -418,3 +424,48 @@ def test_golden_with_screen_is_a_noop_once_the_screen_is_already_known() -> None
 
     gc = GoldenContext(goldens_dir=Path("goldens"), screen=(0.0, 0.0, 100.0, 200.0))
     assert _golden_with_screen(gc, _QueryFailsDriver()) is gc
+
+
+def test_the_primarys_own_target_runtime_reuses_primary_ctx_verbatim() -> None:
+    # BE-0428 review: the primary's own `TargetRuntime.ctx` must be `primary_ctx` verbatim — the
+    # exact `EvalContext` `run_scenario` itself was given — never rebuilt through
+    # `_eval_context_for`. That helper checks the target's own config *before* the run-wide
+    # flag/default (`_dir_or(eff.evidence_dirs.schemas, self.schemas_dir)`), which is the right
+    # precedence for every *other* declared target (`docs/scenarios.md`) but wrong for the primary:
+    # `self.schemas_dir` already resolved flag > the primary's own config > the scenario-relative
+    # default, once, in the CLI, so re-checking the primary's bare config in front of it would let a
+    # value the flag already overrode win back.
+    from bajutsu.common.assertions import EvalContext
+    from bajutsu.common.assertions.schema import SchemaContext
+    from bajutsu.common.config import EvidenceDirs
+    from bajutsu.common.evidence.redaction import Redactor
+    from bajutsu.common.runner.pipeline import _ScenarioRunner
+
+    flag_dir = Path("/flag-schemas")
+    own_dir = Path("/primarys-own-schemas")  # must lose to the flag if the fix holds
+    primary_eff = replace(_eff(), evidence_dirs=EvidenceDirs(schemas=str(own_dir)))
+    runner = _ScenarioRunner(
+        eff=primary_eff,
+        lease=_recording_lease([], "app"),
+        redactor=Redactor(None),
+        mailbox=None,
+        caps=None,
+        total=1,
+        targets=_pools(app=TargetPool(primary_eff, _recording_lease([], "app"), "fake")),
+        schemas_dir=flag_dir,
+    )
+    primary_ctx = EvalContext(schema=SchemaContext(schemas_dir=flag_dir))
+    lz = Lease(
+        driver=FakeDriver(list(_SCREEN)),
+        sink=NullSink(),
+        relaunch=None,
+        control=None,
+        collector=None,
+        release=lambda: None,
+    )
+    runtime = runner._runtime_for(
+        "app", lz, _cross(), None, None, "00-x", primary_ctx, primary=True
+    )
+    assert runtime.ctx is primary_ctx
+    assert runtime.ctx.schema is not None
+    assert runtime.ctx.schema.schemas_dir == flag_dir

@@ -20,7 +20,7 @@ from conftest import el, guard_rule
 from bajutsu.common.assertions import EvalContext, VisualContext
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
-from bajutsu.common.evidence import NullSink
+from bajutsu.common.evidence import Artifact, NullSink
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.orchestrator import AlertGuardConfig, RunResult, TargetRuntime, run_scenario
@@ -507,3 +507,80 @@ def test_a_step_naming_an_unbuilt_target_fails_loudly_rather_than_silently_misro
             primary_target="app",
         )
     assert _taps(web) == []  # never reached — the failure is loud, not a silent misroute
+
+
+class _ReuseTrackingSink(NullSink):
+    """Records what `reuse_before_screenshot` each step's `before` capture was given, and hands
+    back a distinct `after.png` artifact per step so a later step has something real to (wrongly)
+    reuse if the bug under test were still present."""
+
+    def __init__(self) -> None:
+        self.reuse_by_step: dict[str, Artifact | None] = {}
+        self.after_by_step: dict[str, Artifact] = {}
+        self._next_id = 0
+
+    def capture(
+        self,
+        driver: base.Driver,
+        step_id: str,
+        kinds: list[str],
+        *,
+        elements: list[base.Element] | None = None,
+        elements_source: str | None = None,
+        reuse_before_screenshot: Artifact | None = None,
+    ) -> list[Artifact]:
+        if "screenshot.before" in kinds:
+            self.reuse_by_step[step_id] = reuse_before_screenshot
+        if "screenshot.after" in kinds:
+            self._next_id += 1
+            artifact = Artifact(
+                name=f"after-{self._next_id}.png", kind="screenshot", provider=driver.name
+            )
+            self.after_by_step[step_id] = artifact
+            return [artifact]
+        return []
+
+
+def test_returning_to_the_primary_after_a_detour_does_not_reuse_the_others_screenshot() -> None:
+    # BE-0428 review: `_route`'s reset compared runner identity (`other is not self`), which never
+    # fires on a switch *back* to the primary — the top-level loop always calls `_route` on the
+    # primary's own runner, so `other is self` there regardless of which target the *previous* step
+    # ran against. An `app, web, app` sequence then let the third step's `before` reuse the second
+    # step's `after.png`, a different device's pixels, as if nothing had actuated in between. The fix
+    # compares the previous step's own target name (`state.last_target`) instead, which does fire on
+    # the return to "app".
+    sink = _ReuseTrackingSink()
+    app, web = FakeDriver(screen=list(_APP_SCREEN)), FakeDriver(screen=list(_WEB_SCREEN))
+    r = run_scenario(
+        app,
+        _scenario(
+            {
+                "name": "detour",
+                "targets": ["app", "web"],
+                "steps": [
+                    {"target": "app", "tap": {"id": "app.button"}},
+                    {"target": "web", "tap": {"id": "web.button"}},
+                    {"target": "app", "tap": {"id": "app.value"}},
+                    {"target": "app", "tap": {"id": "app.button"}},
+                ],
+            }
+        ),
+        FakeClock(),
+        sink=sink,
+        target_runtimes={
+            "app": TargetRuntime(driver=app, sink=sink),
+            "web": TargetRuntime(driver=web, sink=sink),
+        },
+        primary_target="app",
+    )
+    assert r.ok, r.failure
+    reused = list(sink.reuse_by_step.values())
+    assert len(reused) == 4
+    assert reused[0] is None  # scenario's first step ever: nothing to reuse yet
+    assert reused[1] is None  # first step on "web": a different device, never app's own after.png
+    assert reused[2] is None  # back on "app": must not reuse "web"'s after.png either
+    # The other direction, same test: two consecutive steps on the *same* target must still reuse —
+    # nothing actuated a different device in between, so a matching `last_target` must NOT reset.
+    step_ids = list(sink.reuse_by_step)
+    assert reused[3] is not None
+    assert reused[3] == sink.after_by_step[step_ids[2]]

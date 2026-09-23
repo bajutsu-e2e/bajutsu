@@ -95,13 +95,21 @@ class _StepRunner:
                     f"step target {step.target!r} has no live runtime; "
                     f"declared targets: {sorted(self.by_target)}"
                 )
-            if other is not self:
-                # A genuinely different device, unlike the same-driver `web:` bridge swap — so the
-                # "nothing actuated in between" premise `prev_after`/`prev_after_screenshot` rely on
-                # is false across this switch. Reset both, the same way `_handle_web` already does
-                # for its own (same-device) context change.
+            # Compared against the *previous* step's own target, tracked on the shared state — not
+            # against `self`, the runner driving *this* loop. `_run_steps` always starts the
+            # top-level loop on the primary, so `self` is the primary for every top-level step in
+            # it; comparing against `self` alone never resets on a switch *back* to the primary
+            # after a detour through another target (`app, web, app`), which would otherwise reuse
+            # the web device's tree/screenshot as the third step's `before` (BE-0428 review).
+            if other.target != self.state.last_target:
+                # A genuinely different device from the one the *previous* step ran on, unlike the
+                # same-driver `web:` bridge swap — so the "nothing actuated in between" premise
+                # `prev_after`/`prev_after_screenshot` rely on is false across this switch. Reset
+                # both, the same way `_handle_web` already does for its own context change.
                 self.state.prev_after = None
                 self.state.prev_after_screenshot = None
+            self.state.last_target = other.target
+            if other is not self:
                 return other, other.cfg.driver
         return self, active_driver
 
