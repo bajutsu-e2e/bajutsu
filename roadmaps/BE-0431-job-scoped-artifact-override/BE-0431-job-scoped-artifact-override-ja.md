@@ -9,6 +9,7 @@
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0431") |
+| 実装 PR | [#2034](https://github.com/bajutsu-e2e/bajutsu/pull/2034) |
 | トピック | config の取得元 |
 | 関連 | [BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory-ja.md)、[BE-0413](../BE-0413-worker-app-binary-delivery/BE-0413-worker-app-binary-delivery-ja.md)、[BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md)、[BE-0160](../BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads-ja.md)、[BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md) |
 <!-- /BE-METADATA -->
@@ -427,7 +428,7 @@ bundleプロベナンスと並べて記録します。どのアーティファ�
 
 ログ：
 
-- [#PR](https://github.com/bajutsu-e2e/bajutsu/pull/PR) — 単位 1〜3 を1つの変更で実装しました。
+- [#2034](https://github.com/bajutsu-e2e/bajutsu/pull/2034) — 単位 1〜3 を1つの変更で実装しました。
   `start_run` は `binaryArtifact` / `scenariosArtifact` を受け付けます。存在確認には3状態の
   `artifact_presence` を使い、存在しないと確定すれば 400、ストアが答えられなければ 503 を返します。
   リースは `binary_url` / `scenarios_url` に署名します。worker は上書きごとにキー付けしたツリーを作り、

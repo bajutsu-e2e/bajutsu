@@ -9,6 +9,7 @@
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0431") |
+| Implementing PR | [#2034](https://github.com/bajutsu-e2e/bajutsu/pull/2034) |
 | Topic | Configuration sourcing |
 | Related | [BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory.md), [BE-0413](../BE-0413-worker-app-binary-delivery/BE-0413-worker-app-binary-delivery.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md), [BE-0160](../BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads.md), [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md) |
 <!-- /BE-METADATA -->
@@ -419,7 +420,7 @@ override fields and what a job's manifest records for them.
 
 Log:
 
-- [#PR](https://github.com/bajutsu-e2e/bajutsu/pull/PR) — Units 1–3 in one change. `start_run` takes
+- [#2034](https://github.com/bajutsu-e2e/bajutsu/pull/2034) — Units 1–3 in one change. `start_run` takes
   `binaryArtifact` / `scenariosArtifact`, gated by a three-state `artifact_presence` probe (400 on a
   confirmed miss, 503 when the store cannot answer). The lease signs `binary_url` / `scenarios_url`.
   The worker builds an override-keyed tree and places the overrides with `place_overrides`. Three
