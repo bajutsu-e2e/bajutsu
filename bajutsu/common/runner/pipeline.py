@@ -1100,6 +1100,15 @@ class _ScenarioRunner:
                 if self.golden_context is None
                 else _golden_with_screen(self.golden_context, lz.driver)
             )
+            # Built once and reused for the primary's own `TargetRuntime.ctx` below — never
+            # rebuilt through `_eval_context_for` for the primary specifically. `self.baselines_dir`
+            # / `self.schemas_dir` / `self.golden_context` already resolved flag > the primary's own
+            # config > the scenario-relative default, once, in the CLI (`_resolve_evidence_dirs`);
+            # re-checking the primary's bare config in front of them (as `_dir_or` does for every
+            # *other* declared target) would let a config value the flag already overrode win back,
+            # and would also give the primary two different contexts depending on whether a step or
+            # an `expect` entry reads it (BE-0428 review finding).
+            primary_ctx = EvalContext(visual=vc, schema=sc, golden=gc_with_screen)
             result = run_scenario(
                 lz.driver,
                 s,
@@ -1112,7 +1121,7 @@ class _ScenarioRunner:
                 bindings=self.bindings,
                 control=lz.control,
                 progress=self.progress,
-                ctx=EvalContext(visual=vc, schema=sc, golden=gc_with_screen),
+                ctx=primary_ctx,
                 mailbox=self.mailbox,
                 webview_bridge=lz.webview_bridge,
                 transitions=(
