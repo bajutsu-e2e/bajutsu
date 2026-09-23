@@ -218,6 +218,15 @@ def test_pre_test_commands_append_verbatim_in_order_after_the_probe() -> None:
     assert commands == ["adb devices", "bash configure-proxy.sh", "echo 'ready to go'"]
 
 
+def test_pre_test_commands_rejects_a_bare_string() -> None:
+    # `Sequence[str]` matches a bare `str`, which would splice one pre_test command per character and
+    # silently skip the caller's setup. Fail loud on the single-command-as-string mistake instead.
+    with pytest.raises(TypeError, match="not a single string"):
+        render_test_spec(
+            ["s.yaml"], target="t", config="c.yaml", pre_test_commands="bash configure-proxy.sh"
+        )
+
+
 # ---------------------------------------------------------------------------
 # The Device Farm config (Device Farm pre-installs the app, so the config carries no appPath)
 # ---------------------------------------------------------------------------

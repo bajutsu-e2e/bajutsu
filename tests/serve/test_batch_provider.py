@@ -8,6 +8,7 @@ collect logic is exercised without the ``aws`` extra.
 from __future__ import annotations
 
 import dataclasses
+import inspect
 import io
 import json
 import zipfile
@@ -45,11 +46,14 @@ def test_resolve_fails_closed_on_an_unknown_provider() -> None:
         bp.resolve("nope")
 
 
-def test_batch_request_carries_no_pre_test_commands_field() -> None:
+def test_provider_never_wires_a_request_into_the_pre_test_hook() -> None:
     # render_test_spec's pre_test_commands hook (BE-0432) is Python-API-only: no request-sourced value
-    # may reach it, or a client body would hand a shell on the host holding the run's AWS role. The
-    # provider builds its render_test_spec arguments from a BatchRequest, so guard that the request
-    # carries no field that could wire into the hook.
+    # may reach it, or a client body would hand a shell on the host holding the run's AWS role. Guard
+    # the one in-tree call site directly, which is name-independent — a future BatchRequest field named
+    # anything (`setup_commands`, `device_setup`) wired into the hook trips this, forcing a reviewer to
+    # confirm the change consciously. Matching a field name alone would let a renamed field slip past.
+    assert "pre_test_commands" not in inspect.getsource(bp.DeviceFarmBatchProvider.submit)
+    # And, as documentation of the seam, the request today carries no field the call site could pass.
     field_names = {field.name for field in dataclasses.fields(bp.BatchRequest)}
     assert "pre_test_commands" not in field_names
 

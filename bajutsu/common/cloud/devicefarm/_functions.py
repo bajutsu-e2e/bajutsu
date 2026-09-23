@@ -170,12 +170,20 @@ def render_test_spec(
             request-sourced text `render_test_spec` quotes into the `bajutsu run` command. It is a
             Python-API-only hook for that reason — no `serve`, config, or `BatchRequest` field wires
             to it, so no client-supplied value reaches a shell on the host holding the run's AWS role.
+            A bare `str` is rejected (see Raises): `Sequence[str]` matches one, but a single command
+            passed as a string would splice one `pre_test` command per character.
 
     Raises:
         ValueError: If `scenarios` is empty — a spec that runs nothing would silently "pass".
+        TypeError: If `pre_test_commands` is a bare `str`, which `Sequence[str]` matches but would
+            splice one `pre_test` command per character.
     """
     if not scenarios:
         raise ValueError("cannot render a test spec with no scenario to run")
+    # `Sequence[str]` also matches a bare `str`, which `mypy --strict` accepts; iterating it would
+    # emit one `pre_test` command per character, silently skipping the intended setup. Fail loudly.
+    if isinstance(pre_test_commands, str):
+        raise TypeError("pre_test_commands must be a sequence of commands, not a single string")
     run = _PLATFORM_RUN[platform]
     # `target`, `config`, and each scenario path trace back to workflow_dispatch text inputs, so
     # quote every splice: an unescaped space or shell metacharacter would otherwise break argument
