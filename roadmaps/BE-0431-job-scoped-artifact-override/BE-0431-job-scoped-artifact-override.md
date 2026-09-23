@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-job-scoped-artifact-override-ja.md)
+**English** · [日本語](BE-0431-job-scoped-artifact-override-ja.md)
 
-# BE-XXXX — Job-scoped artifact overrides, independent of the active config binding
+# BE-0431 — Job-scoped artifact overrides, independent of the active config binding
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-job-scoped-artifact-override.md) |
+| Proposal | [BE-0431](BE-0431-job-scoped-artifact-override.md) |
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0431") |
 | Topic | Configuration sourcing |
 | Related | [BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory.md), [BE-0413](../BE-0413-worker-app-binary-delivery/BE-0413-worker-app-binary-delivery.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md), [BE-0160](../BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads.md), [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md) |
 <!-- /BE-METADATA -->

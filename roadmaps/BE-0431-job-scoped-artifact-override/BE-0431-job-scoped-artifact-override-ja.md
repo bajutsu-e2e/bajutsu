@@ -1,14 +1,14 @@
-[English](BE-XXXX-job-scoped-artifact-override.md) · **日本語**
+[English](BE-0431-job-scoped-artifact-override.md) · **日本語**
 
-# BE-XXXX — アクティブな設定バインディングとは独立した、ジョブ単位のアーティファクト上書き
+# BE-0431 — アクティブな設定バインディングとは独立した、ジョブ単位のアーティファクト上書き
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-job-scoped-artifact-override-ja.md) |
+| 提案 | [BE-0431](BE-0431-job-scoped-artifact-override-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0431") |
 | トピック | config の取得元 |
 | 関連 | [BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory-ja.md)、[BE-0413](../BE-0413-worker-app-binary-delivery/BE-0413-worker-app-binary-delivery-ja.md)、[BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts-ja.md)、[BE-0160](../BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads-ja.md)、[BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md) |
 <!-- /BE-METADATA -->
