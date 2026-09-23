@@ -10,7 +10,7 @@ from bajutsu.serve.jobs import persist_run
 from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.server.object_store import baseline_prefix, org_prefix, upload_store_key
 from bajutsu.serve.state import ServeState
-from bajutsu.serve.upload_artifacts import ARTIFACT_KINDS, artifact_store_key
+from bajutsu.serve.upload_artifacts import ARTIFACT_KINDS, OVERRIDE_KINDS, artifact_store_key
 
 
 def _clean_capabilities(raw: Any) -> list[str]:
@@ -40,7 +40,8 @@ def worker_lease(
     A job dispatched off an uploaded bundle carries ``bundle_urls`` the same way: a presigned GET URL
     per stored object the bundle is made of, which the worker rebuilds into the workspace it runs the
     job from. Without them the run would start against an ``appPath`` binary only the control plane
-    holds.
+    holds. A job naming per-job artifact overrides (BE-0431) carries ``binary_url`` /
+    ``scenarios_url`` the same way.
     """
     if state.repository is None:
         return {"error": "server backend has no database configured"}, 503
@@ -58,7 +59,26 @@ def worker_lease(
             resp["baseline_urls"] = _baseline_urls(state, org)
         if urls := _bundle_urls(state, org, leased.spec.get("bundle")):
             resp["bundle_urls"] = urls
+        resp.update(_override_urls(state, org, leased.spec.get("overrides")))
     return resp, 200
+
+
+def _override_urls(state: ServeState, org: str, overrides: Any) -> dict[str, str]:
+    """``binary_url`` / ``scenarios_url`` for each per-job artifact override a job names (BE-0431).
+
+    Keyed under the leased job's org and re-validated as full digests, for the same reasons
+    `_bundle_urls` gives: the shas come back out of a stored job row, and each becomes a key.
+    """
+    assert state.object_store is not None  # caller guards; narrows the type for the signer below
+    if not isinstance(overrides, dict):
+        return {}
+    return {
+        f"{kind}_url": state.object_store.presigned_url(
+            artifact_store_key(state.object_store_prefix, org, kind, sha)
+        )
+        for kind in OVERRIDE_KINDS
+        if valid_sha256(sha := overrides.get(kind))
+    }
 
 
 def _bundle_urls(state: ServeState, org: str, bundle: Any) -> dict[str, str]:

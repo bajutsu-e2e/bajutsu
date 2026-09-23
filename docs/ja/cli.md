@@ -773,6 +773,13 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   （[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) / [BE-0016](../../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）。
   現状は `127.0.0.1` バインドかつ認証なしなので、信頼できないネットワークにはまだ晒さないでください。
 
+- **`/api/run` での job 単位のアーティファクト差し替え（BE-0431）。** ホスト型デプロイの `POST /api/run` は、
+  `binaryArtifact` と `scenariosArtifact` も受け付けます。どちらも、org に保存済みのアーティファクトの sha256 です。
+  その job だけが、指定したバイナリを target の `appPath` に置き、指定した scenarios の zip で実行します。
+  org のアクティブな config は、バインドされたまま変わりません。run の `manifest.json` は、差し替えた sha256 を
+  `provenance` の下に記録します。単一プロセスの `serve` は、どちらのフィールドも拒否します。
+  詳しくは [self-hosting](self-hosting.md#ci-の-run-に-job-単位でアーティファクトを差し替えるbe-0431) を参照してください。
+
 ### 同時実行数、証跡、ホスティング
 
 - **`--max-concurrent-runs`（既定 4）** は同時実行できる run/record ジョブ数の上限です。1 呼び出し元が

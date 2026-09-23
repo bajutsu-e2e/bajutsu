@@ -988,6 +988,12 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   surprising argv. This hardening is the prerequisite for hosting `serve` beyond loopback
   ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) / [BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md));
   it still binds `127.0.0.1` and has no auth, so don't expose it to an untrusted network yet.
+- **Per-job artifact overrides on `/api/run` (BE-0431).** Hosted, `POST /api/run` takes two
+  more fields. `binaryArtifact` and `scenariosArtifact` each hold the sha256 of an artifact stored
+  for the org. One job installs that binary at its target's `appPath`. The same job runs against
+  that scenarios zip. The org's active config keeps its binding. The run's `manifest.json` records
+  each overridden sha256 under `provenance`. A single-process `serve` refuses both fields. See
+  [self-hosting](self-hosting.md#per-job-artifact-overrides-for-a-ci-run-be-0431).
 
 ### Run limits, evidence, and hosting
 

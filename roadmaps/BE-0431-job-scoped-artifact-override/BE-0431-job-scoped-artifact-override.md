@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0431](BE-0431-job-scoped-artifact-override.md) |
 | Author | [@paihu](https://github.com/paihu) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0431") |
+| Implementing PR | [#2034](https://github.com/bajutsu-e2e/bajutsu/pull/2034) |
 | Topic | Configuration sourcing |
 | Related | [BE-0393](../BE-0393-per-org-config-memory/BE-0393-per-org-config-memory.md), [BE-0413](../BE-0413-worker-app-binary-delivery/BE-0413-worker-app-binary-delivery.md), [BE-0268](../BE-0268-composable-upload-artifacts/BE-0268-composable-upload-artifacts.md), [BE-0160](../BE-0160-worker-credential-free-uploads/BE-0160-worker-credential-free-uploads.md), [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md) |
 <!-- /BE-METADATA -->
@@ -407,15 +408,29 @@ override fields and what a job's manifest records for them.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — `binaryArtifact` and `scenariosArtifact` request fields, each optional and
+- [x] Unit 1 — `binaryArtifact` and `scenariosArtifact` request fields, each optional and
       existence-checked. Both travel on `Job` independent of `Job.bundle`. An unnamed leg still
       resolves through the org's binding. A named `scenariosArtifact` moves the request's `scenario`
       lookup onto the override's entry listing, ships no scenario materials, and requires a zip.
-- [ ] Unit 2 — Sign and deliver each named override on the worker topology, clearing the target's
+- [x] Unit 2 — Sign and deliver each named override on the worker topology, clearing the target's
       scenarios directory before extracting, and keying the job's tree separately from the bundle
       cache. Refuse both fields on a `LocalExecutor` deployment and on `run-set`, with provenance
       recorded on the run's manifest.
-- [ ] Unit 3 — Tests for each seam, plus the `self-hosting` / `cli` documentation.
+- [x] Unit 3 — Tests for each seam, plus the `self-hosting` / `cli` documentation.
+
+Log:
+
+- [#2034](https://github.com/bajutsu-e2e/bajutsu/pull/2034) — Units 1–3 in one change. `start_run` takes
+  `binaryArtifact` / `scenariosArtifact`, gated by a three-state `artifact_presence` probe (400 on a
+  confirmed miss, 503 when the store cannot answer). The lease signs `binary_url` / `scenarios_url`.
+  The worker builds an override-keyed tree and places the overrides with `place_overrides`. Three
+  deviations from the text above, each forced by today's code:
+  - `job_spec` never carried `provenance`, so a worker-run job stamped none into its manifest. The
+    spec now carries it, which also fixes that gap for bundle jobs (BE-0073).
+  - The scenario lookup reads the artifact through `_fetch_artifact` (local cache, then the object
+    store), since a replica other than the uploading one holds no local copy.
+  - The worker's tree key also covers the target, because the binary lands at that target's
+    `appPath` alone and two targets of one config would otherwise share a tree.
 
 ## References
 
