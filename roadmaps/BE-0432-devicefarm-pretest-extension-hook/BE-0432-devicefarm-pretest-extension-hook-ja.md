@@ -147,8 +147,12 @@ build_package(entries, out_zip, extra_texts={"configure-proxy.sh": script_text})
 - [x] `render_test_spec`のdocstringを更新し、新しいパラメータとそのシェル安全性に関する信頼境界を
   記載する。
 - [x] `serve`エンドポイント・configフィールド・`BatchRequest`フィールドのいずれも、このパラメータ
-  へ配線しないこと（リクエスト由来の値が到達しないこと）を確認する。`BatchRequest`が該当フィール
-  ドを持たないことをユニットテストでアサートしています。
+  へ配線しないこと（リクエスト由来の値が到達しないこと）を確認する。ユニットテストは
+  `render_test_spec`呼び出し箇所の抽象構文木（AST）をたどるので、`BatchRequest`のフィールド名が
+  変わっても、`**mapping`展開で渡されても検知できます。
+- [x] `pre_test_commands`だけでなく`scenarios`についても、単なる`str`を渡した場合は拒否します。
+  `Sequence[str]`は`str`にもマッチしますが、そのまま渡すと1文字ずつ1コマンド（または1シナリオ）として
+  展開されてしまうためです。どちらの拒否にもユニットテストがあります。
 
 ログ：
 
@@ -156,8 +160,8 @@ build_package(entries, out_zip, extra_texts={"configure-proxy.sh": script_text})
   `pre_test_commands`を追加し、可視性プローブの後に`pre_test`フェーズへそのまま（`build_package`の
   `extra_texts`と同様にクオートせず）追記するようにしました。`serve`・config・`BatchRequest`のいず
   れからも配線しないPython API専用のフックとし、デフォルトで出力が同一になること・順序どおりそのま
-  ま現れること・配線されないことをユニットテストでカバーしました。`docs/devicefarm.md`とその日本語
-  ミラーにフックを記載しました。
+  ま現れること・単なる文字列を渡すと拒否されること・配線されないことをユニットテストでカバーしまし
+  た。`docs/devicefarm.md`とその日本語ミラーにフックを記載しました。
 
 ## 参考
 

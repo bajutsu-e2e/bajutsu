@@ -155,7 +155,10 @@ def render_test_spec(
     so `list_artifacts` can return it.
 
     Args:
-        scenarios: Scenario file paths as they appear inside the unpacked test package.
+        scenarios: Scenario file paths as they appear inside the unpacked test package. A bare `str`
+            is rejected (see Raises): `Sequence[str]` matches one, but a non-empty string is truthy
+            (so the empty-`scenarios` guard below never catches it) and would splice one `--scenario`
+            command per character.
         target: The `targets.<name>` config entry the scenarios run against.
         config: The Bajutsu config path inside the unpacked test package.
         platform: Which reserved-device platform to target (`_PLATFORM_RUN` picks the backend, the
@@ -175,15 +178,19 @@ def render_test_spec(
 
     Raises:
         ValueError: If `scenarios` is empty — a spec that runs nothing would silently "pass".
-        TypeError: If `pre_test_commands` is a bare `str`, which `Sequence[str]` matches but would
-            splice one `pre_test` command per character.
+        TypeError: If `scenarios` or `pre_test_commands` is a bare `str`, which `Sequence[str]`
+            matches but would splice one command per character.
     """
-    if not scenarios:
-        raise ValueError("cannot render a test spec with no scenario to run")
-    # `Sequence[str]` also matches a bare `str`, which `mypy --strict` accepts; iterating it would
-    # emit one `pre_test` command per character, silently skipping the intended setup. Fail loudly.
+    # `Sequence[str]` also matches a bare `str`, which `mypy --strict` accepts; iterating one emits a
+    # command per character, so both sequence parameters reject it loudly rather than render a spec
+    # whose every `bajutsu run` (or setup command) is a single-character fragment. Checked before the
+    # emptiness guard below: a non-empty string is truthy, so that guard alone would not catch it.
+    if isinstance(scenarios, str):
+        raise TypeError("scenarios must be a sequence of scenario paths, not a single string")
     if isinstance(pre_test_commands, str):
         raise TypeError("pre_test_commands must be a sequence of commands, not a single string")
+    if not scenarios:
+        raise ValueError("cannot render a test spec with no scenario to run")
     run = _PLATFORM_RUN[platform]
     # `target`, `config`, and each scenario path trace back to workflow_dispatch text inputs, so
     # quote every splice: an unescaped space or shell metacharacter would otherwise break argument

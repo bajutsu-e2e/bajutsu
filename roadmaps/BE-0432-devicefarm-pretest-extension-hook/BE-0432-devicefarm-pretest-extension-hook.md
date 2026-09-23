@@ -157,8 +157,12 @@ setup does.
 - [x] Update `render_test_spec`'s docstring for the new parameter and its
   shell-safety boundary.
 - [x] Confirm that no `serve` endpoint, no config field, and no `BatchRequest` field
-  wires to this parameter (no request-sourced value reaches it) — a unit test asserts
-  `BatchRequest` carries no such field.
+  wires to this parameter (no request-sourced value reaches it) — a unit test walks the
+  `render_test_spec` call site's abstract syntax tree (AST), so a renamed `BatchRequest`
+  field or a `**mapping` splat still trips the check.
+- [x] Reject a bare `str` for `pre_test_commands` — and, symmetrically, for `scenarios` —
+  since `Sequence[str]` matches one but iterating it would splice one command per
+  character; each rejection has a unit test.
 
 Log:
 
@@ -166,8 +170,8 @@ Log:
   to `render_test_spec`, appended verbatim (unquoted, like `build_package`'s `extra_texts`)
   to the `pre_test` phase after the visibility probe. Kept it a Python-API-only hook — no
   `serve`, config, or `BatchRequest` field wires to it — and covered the default-identity,
-  verbatim-in-order, and no-wiring cases with unit tests. Documented the hook in
-  `docs/devicefarm.md` and its Japanese mirror.
+  verbatim-in-order, bare-string-rejection, and no-wiring cases with unit tests. Documented
+  the hook in `docs/devicefarm.md` and its Japanese mirror.
 
 ## References
 

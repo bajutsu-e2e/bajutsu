@@ -145,6 +145,13 @@ def test_test_spec_rejects_an_empty_scenario_list() -> None:
         render_test_spec([], target="t", config="c.yaml")
 
 
+def test_test_spec_rejects_a_bare_string_scenario() -> None:
+    # `Sequence[str]` matches a bare `str`, and a non-empty one is truthy (so the empty-list guard
+    # above never catches it) — it would silently splice one `--scenario` command per character.
+    with pytest.raises(TypeError, match="not a single string"):
+        render_test_spec("s.yaml", target="t", config="c.yaml")
+
+
 def test_android_is_the_default_platform_running_over_adb_against_booted() -> None:
     # The pre-iOS behavior is the default: no platform argument runs the adb backend against the
     # host's single reserved device (serial `booted`).
