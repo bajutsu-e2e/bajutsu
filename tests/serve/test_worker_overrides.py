@@ -75,10 +75,15 @@ def _overrides(*, binary: bytes | None = None, scenarios: bytes | None = None) -
     }
 
 
-def _materials_spec(config: str = _CONFIG, **legs: bytes) -> dict[str, Any]:
+def _materials_spec(
+    config: str = _CONFIG, *, scenario_material: str | None = None, **legs: bytes
+) -> dict[str, Any]:
+    materials = {"bajutsu.config.yaml": config}
+    if scenario_material is not None:
+        materials["scenarios/bound.yaml"] = scenario_material
     return {
         "org": "acme",
-        "materials": {"bajutsu.config.yaml": config},
+        "materials": materials,
         "overrides": _overrides(**legs),
     }
 
@@ -172,6 +177,21 @@ def test_two_materials_jobs_whose_configs_differ_get_separate_workspaces(
     assert first != second
     assert (second / "out" / "Other.app" / "Demo").is_file()
     assert not (first / "out").exists()
+
+
+def test_two_materials_jobs_sharing_a_binary_but_not_scenario_text_share_a_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A CI fan-out running many scenarios against one binary override ships the same config but a
+    # different bound scenario's text per job (`storage_scenario_scope.runnable`). The tree is keyed
+    # on the config alone, so this must not re-fetch the binary once per scenario.
+    fetched = _serve_urls(monkeypatch, _URLS)
+
+    first = _workspace(tmp_path, _materials_spec(binary=_BINARY, scenario_material="- name: a\n"))
+    second = _workspace(tmp_path, _materials_spec(binary=_BINARY, scenario_material="- name: b\n"))
+
+    assert first == second
+    assert fetched == ["https://signed/binary"]
 
 
 def test_jobs_sharing_a_binary_but_not_scenarios_get_separate_workspaces(

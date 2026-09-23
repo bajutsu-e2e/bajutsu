@@ -646,7 +646,10 @@ def _override_workspace(work: Path, base: Path, spec: dict[str, Any], urls: dict
     source = (
         bundle["id"]
         if isinstance(bundle, dict)
-        else hashlib.sha256(json.dumps(materials, sort_keys=True).encode()).hexdigest()
+        # Only the config decides where the overrides land; every other material is re-written into
+        # the tree by `execute_job_spec` on each run, so keying on them would re-fetch the binary
+        # once per scenario of a single CI fan-out.
+        else hashlib.sha256(materials.get("bajutsu.config.yaml", "").encode()).hexdigest()
     )
     key = hashlib.sha256(f"{source}:{overrides.target}:{overrides.identity}".encode()).hexdigest()
     cache = work / _OVERRIDE_CACHE_DIR / _safe_org(spec.get("org"))
@@ -671,7 +674,10 @@ def _override_workspace(work: Path, base: Path, spec: dict[str, Any], urls: dict
                 ignore=lambda d, _names: [DEFAULT_RUNS_DIR] if Path(d) == base else [],
             )
         else:
-            _materialize(tmp, materials)
+            # Only the config material is keyed (see `source` above); writing the rest here too
+            # would let one job's scenario text leak into a tree a later, differently-scenario'd
+            # job reuses, since nothing else refreshes it once the tree exists.
+            _materialize(tmp, {"bajutsu.config.yaml": materials.get("bajutsu.config.yaml", "")})
         with tempfile.TemporaryDirectory(dir=cache, prefix=".fetch-") as raw:
             parts: dict[str, Path] = {}
             for kind, sha in overrides.shas.items():

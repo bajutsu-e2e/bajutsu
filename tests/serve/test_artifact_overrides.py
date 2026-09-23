@@ -55,11 +55,13 @@ class _Recorder:
         self.jobs.append(job)
 
 
-def _hosted(tmp_path: Path, *, local: bool = False) -> tuple[srv.ServeState, FakeObjectStore]:
+def _hosted(
+    tmp_path: Path, *, local: bool = False, config: str = _CONFIG
+) -> tuple[srv.ServeState, FakeObjectStore]:
     (tmp_path / "scenarios").mkdir()
     (tmp_path / "scenarios" / "bound.yaml").write_text(_SCENARIO, encoding="utf-8")
     cfg = tmp_path / "bajutsu.config.yaml"
-    cfg.write_text(_CONFIG, encoding="utf-8")
+    cfg.write_text(config, encoding="utf-8")
     state = srv.ServeState(
         runs_dir=tmp_path / "runs",
         config=cfg,
@@ -216,6 +218,19 @@ def test_a_binary_override_on_a_target_with_no_app_path_is_refused(tmp_path: Pat
     resp, code = _run(state, target="web", binaryArtifact=sha)
     assert code == 400
     assert "appPath" in resp["error"]
+
+
+def test_a_binary_override_on_an_android_target_is_accepted(tmp_path: Path) -> None:
+    # target_build_info only ever names an iOS app_path; the gate must read app_path
+    # platform-neutrally (target_batch_info) or every non-iOS target is refused regardless of
+    # whether it names an appPath.
+    state, store = _hosted(tmp_path, config=_MIXED_CONFIG)
+    sha = _store(store, "binary", b"apk")
+    resp, code = _run(state, target="android", binaryArtifact=sha)
+    assert code == 200, resp
+    job = _dispatched(state)
+    assert job.overrides is not None
+    assert (job.overrides.target, job.overrides.binary) == ("android", sha)
 
 
 def test_a_scenarios_override_runs_a_scenario_only_it_holds(tmp_path: Path) -> None:

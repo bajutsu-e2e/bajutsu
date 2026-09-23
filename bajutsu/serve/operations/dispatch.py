@@ -295,7 +295,7 @@ def _artifact_overrides(
         if not present:
             return None, ({"error": f"{field} {raw} is not stored for this org"}, 400)
         shas[kind] = raw
-    if "binary" in shas and target_build_info(cfg, target)[0] is None:
+    if "binary" in shas and target_batch_info(cfg, target)[2] is None:
         return None, ({"error": f"binaryArtifact needs target '{target}' to name an appPath"}, 400)
     return ArtifactOverrides(
         target, binary=shas.get("binary"), scenarios=shas.get("scenarios")
