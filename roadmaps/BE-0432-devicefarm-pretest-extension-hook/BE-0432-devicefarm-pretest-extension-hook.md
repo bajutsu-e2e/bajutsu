@@ -9,6 +9,7 @@
 | Author | [@hirosassa](https://github.com/hirosassa) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0432") |
+| Implementing PR | [#2033](https://github.com/bajutsu-e2e/bajutsu/pull/2033) |
 | Topic | Device-cloud execution |
 | Related | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md) |
 <!-- /BE-METADATA -->
@@ -158,6 +159,15 @@ setup does.
 - [x] Confirm that no `serve` endpoint, no config field, and no `BatchRequest` field
   wires to this parameter (no request-sourced value reaches it) — a unit test asserts
   `BatchRequest` carries no such field.
+
+Log:
+
+- [#2033](https://github.com/bajutsu-e2e/bajutsu/pull/2033) — Added `pre_test_commands`
+  to `render_test_spec`, appended verbatim (unquoted, like `build_package`'s `extra_texts`)
+  to the `pre_test` phase after the visibility probe. Kept it a Python-API-only hook — no
+  `serve`, config, or `BatchRequest` field wires to it — and covered the default-identity,
+  verbatim-in-order, and no-wiring cases with unit tests. Documented the hook in
+  `docs/devicefarm.md` and its Japanese mirror.
 
 ## References
 

@@ -9,6 +9,7 @@
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0432") |
+| 実装 PR | [#2033](https://github.com/bajutsu-e2e/bajutsu/pull/2033) |
 | トピック | デバイスクラウド実行 |
 | 関連 | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter-ja.md) |
 <!-- /BE-METADATA -->
@@ -148,6 +149,15 @@ build_package(entries, out_zip, extra_texts={"configure-proxy.sh": script_text})
 - [x] `serve`エンドポイント・configフィールド・`BatchRequest`フィールドのいずれも、このパラメータ
   へ配線しないこと（リクエスト由来の値が到達しないこと）を確認する。`BatchRequest`が該当フィール
   ドを持たないことをユニットテストでアサートしています。
+
+ログ：
+
+- [#2033](https://github.com/bajutsu-e2e/bajutsu/pull/2033) — `render_test_spec`に
+  `pre_test_commands`を追加し、可視性プローブの後に`pre_test`フェーズへそのまま（`build_package`の
+  `extra_texts`と同様にクオートせず）追記するようにしました。`serve`・config・`BatchRequest`のいず
+  れからも配線しないPython API専用のフックとし、デフォルトで出力が同一になること・順序どおりそのま
+  ま現れること・配線されないことをユニットテストでカバーしました。`docs/devicefarm.md`とその日本語
+  ミラーにフックを記載しました。
 
 ## 参考
 
