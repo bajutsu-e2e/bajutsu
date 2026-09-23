@@ -144,6 +144,7 @@ def render_test_spec(
     config: str,
     platform: Platform = "android",
     python_version: str = "3.13",
+    pre_test_commands: Sequence[str] = (),
 ) -> str:
     """Render a Device Farm custom-environment test spec that runs the given scenarios.
 
@@ -160,6 +161,15 @@ def render_test_spec(
         platform: Which reserved-device platform to target (`_PLATFORM_RUN` picks the backend, the
             ``--udid`` argument, and the visibility probe).
         python_version: The Python uv provisions for the run (see `_python_bootstrap_commands`).
+        pre_test_commands: Extra shell commands appended verbatim to the `pre_test` phase, in order,
+            after the visibility probe — a caller's hook for device-side setup its own backend needs
+            before the run (a network relay, a VPN client), keeping that per-deployment setup outside
+            `bajutsu/` (BE-0432). Each entry is treated as an opaque, already-shell-safe string and is
+            spliced through unquoted, like `build_package`'s `extra_texts`: the whole test spec is a
+            shell trust boundary, and the entry is the caller's own construction, not the
+            request-sourced text `render_test_spec` quotes into the `bajutsu run` command. It is a
+            Python-API-only hook for that reason — no `serve`, config, or `BatchRequest` field wires
+            to it, so no client-supplied value reaches a shell on the host holding the run's AWS role.
 
     Raises:
         ValueError: If `scenarios` is empty — a spec that runs nothing would silently "pass".
@@ -186,6 +196,8 @@ def render_test_spec(
                 "commands": [
                     # Prove the reserved device is visible before running (the serial-resolution PoC).
                     run.probe,
+                    # Caller-supplied device-side setup runs after the probe (BE-0432); empty by default.
+                    *pre_test_commands,
                 ]
             },
             "test": {"commands": run_cmds},

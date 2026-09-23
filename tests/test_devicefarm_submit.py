@@ -193,6 +193,32 @@ def test_ios_test_spec_probe_is_not_adb() -> None:
 
 
 # ---------------------------------------------------------------------------
+# render_test_spec — the pre_test extension hook (BE-0432)
+# ---------------------------------------------------------------------------
+
+
+def test_default_pre_test_commands_render_output_identical_to_no_argument() -> None:
+    # The hook's default `()` must change nothing: an explicit empty list renders byte-identical to
+    # omitting the argument, so every existing caller keeps generating the same spec.
+    with_default = render_test_spec(["s.yaml"], target="t", config="c.yaml")
+    with_empty = render_test_spec(["s.yaml"], target="t", config="c.yaml", pre_test_commands=())
+    assert with_empty == with_default
+
+
+def test_pre_test_commands_append_verbatim_in_order_after_the_probe() -> None:
+    # Caller-supplied setup runs after the visibility probe, in the given order, spliced through
+    # unquoted (the caller owns shell safety, as with build_package's extra_texts).
+    spec = render_test_spec(
+        ["s.yaml"],
+        target="t",
+        config="c.yaml",
+        pre_test_commands=["bash configure-proxy.sh", "echo 'ready to go'"],
+    )
+    commands = yaml.safe_load(spec)["phases"]["pre_test"]["commands"]
+    assert commands == ["adb devices", "bash configure-proxy.sh", "echo 'ready to go'"]
+
+
+# ---------------------------------------------------------------------------
 # The Device Farm config (Device Farm pre-installs the app, so the config carries no appPath)
 # ---------------------------------------------------------------------------
 

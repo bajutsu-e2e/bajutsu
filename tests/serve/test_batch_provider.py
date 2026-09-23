@@ -7,6 +7,7 @@ collect logic is exercised without the ``aws`` extra.
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 import zipfile
@@ -42,6 +43,15 @@ def test_resolve_fails_closed_on_an_unknown_provider() -> None:
     # cloud-batch job quietly vanish.
     with pytest.raises(ValueError, match="unknown batch provider 'nope'"):
         bp.resolve("nope")
+
+
+def test_batch_request_carries_no_pre_test_commands_field() -> None:
+    # render_test_spec's pre_test_commands hook (BE-0432) is Python-API-only: no request-sourced value
+    # may reach it, or a client body would hand a shell on the host holding the run's AWS role. The
+    # provider builds its render_test_spec arguments from a BatchRequest, so guard that the request
+    # carries no field that could wire into the hook.
+    field_names = {field.name for field in dataclasses.fields(bp.BatchRequest)}
+    assert "pre_test_commands" not in field_names
 
 
 def _zip_bytes(members: dict[str, str]) -> bytes:

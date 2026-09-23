@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0432](BE-0432-devicefarm-pretest-extension-hook.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0432") |
 | Topic | Device-cloud execution |
 | Related | [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md) |
@@ -147,16 +147,17 @@ setup does.
 
 ## Progress
 
-- [ ] Add `pre_test_commands: Sequence[str] = ()` to `render_test_spec`, appended to
+- [x] Add `pre_test_commands: Sequence[str] = ()` to `render_test_spec`, appended to
   `pre_test.commands` after the existing probe.
-- [ ] Add a unit test confirming the default (`()`) renders output identical to
+- [x] Add a unit test confirming the default (`()`) renders output identical to
   today's.
-- [ ] Add a unit test confirming passed commands appear verbatim, in order, right
+- [x] Add a unit test confirming passed commands appear verbatim, in order, right
   after the probe.
-- [ ] Update `render_test_spec`'s docstring for the new parameter and its
+- [x] Update `render_test_spec`'s docstring for the new parameter and its
   shell-safety boundary.
-- [ ] Confirm that no `serve` endpoint, no config field, and no `BatchRequest` field
-  wires to this parameter (no request-sourced value reaches it).
+- [x] Confirm that no `serve` endpoint, no config field, and no `BatchRequest` field
+  wires to this parameter (no request-sourced value reaches it) — a unit test asserts
+  `BatchRequest` carries no such field.
 
 ## References
 

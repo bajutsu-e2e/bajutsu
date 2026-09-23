@@ -31,7 +31,7 @@ Device Farm の iOS は実機で動作するため、下記の [iOS: 再署名�
 Device Farm は[カスタム環境のテスト仕様](https://docs.aws.amazon.com/devicefarm/latest/developerguide/custom-test-environment-test-spec.html)から実行を駆動します。これは `install`、`pre_test`、`test`、`post_test` の各フェーズにシェルコマンドを記した YAML ファイルです。サブミッターは、次のような仕様を生成します。
 
 1. **install**：uv で Python 3.13 を用意し、アップロードしたテストパッケージから Bajutsu をその venv へインストールします。Device Farm のホストは Python が最大 3.12 まで（`devicefarm-cli use python` は Amazon があらかじめ用意したランタイムしか選べません）で、Bajutsu は 3.13 を要求するため、ホストの標準 pip で uv を入れ、uv にスタンドアロンの 3.13 を取得させて、その venv へインストールします。これは暫定的な回避策で、Device Farm が 3.13 を提供したら取り除きます（サブミッターの `_python_bootstrap_commands` を参照）。adb バックエンドはサブプロセスだけで動くため、追加の extra を入れないベースのインストールで足ります。
-2. **pre_test**：`adb devices` を実行し、予約されたデバイスが見えていること（シリアル解決の確認）を示します。
+2. **pre_test**：`adb devices` を実行し、予約されたデバイスが見えていること（シリアル解決の確認）を示します。呼び出し側は、`render_test_spec` の `pre_test_commands` パラメータを使って、独自のデバイス側セットアップをここに追加できます。渡したコマンドはプローブの後に、そのままの文字列で、指定した順序で差し込まれます。あるデプロイのバックエンドが実行前に必要とするもの（ネットワークリレーや VPN クライアントなど）を配置するための拡張点です。`build_package` の `extra_texts`（セットアップスクリプトをパッケージへ同梱するパラメータ）と組み合わせることで、そのデプロイ固有のセットアップを `bajutsu/` の外に完全に置いておけます。これは Python API 専用のフックです。`serve` エンドポイント・config フィールド・バッチリクエストのフィールドのいずれからも配線されないため、クライアント由来の値が、実行時の AWS ロール認証情報を持つホスト上のシェルに到達することはありません。
 3. **test**：シナリオごとに 1 回ずつ `bajutsu run --backend adb --udid booted` を実行します。あるシナリオが失敗しても、残りのシナリオの manifest は残ります。
 4. **post_test**：`runs/` ツリー全体を `$DEVICEFARM_LOG_DIR` にコピーし、成果物が回収できるようにします。
 
