@@ -17,7 +17,8 @@
 
 `render_test_spec`は、Device Farmカスタム環境テストスペックをレンダリングします。この関数は
 [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter-ja.md)が
-`bajutsu/cloud/devicefarm.py`に導入しました。レンダリングされたスペックは、予約済みデバイス上で
+導入し、現在は`bajutsu/common/cloud/devicefarm/_functions.py`にあります
+（`bajutsu.common.cloud.devicefarm`から再エクスポートされます）。レンダリングされたスペックは、予約済みデバイス上で
 一連のシナリオを実行します。
 
 その`pre_test`フェーズは現在、1つのコマンドしか実行しません。予約済みデバイスの疎通確認プローブ
@@ -26,8 +27,8 @@
 代替は、`render_test_spec`がすでにレンダリングしているものをすべて作り直すことです。
 
 本提案は、`pre_test_commands`パラメータを追加します。呼び出し元はこれを使い、自分のコマンドを
-`pre_test`フェーズへ差し込みます。デプロイ環境固有のbackendを持つデバイス側セットアップは、これ
-により`bajutsu/`の外側だけで完結します。
+`pre_test`フェーズへ差し込みます。あるデプロイ環境のbackendに固有のデバイス側セットアップは、
+これにより`bajutsu/`の外側だけで完結します。
 
 ## 動機
 
@@ -40,8 +41,8 @@ Device Farmのデバイスからそのbackendへ到達するには、run単位�
 ん。このセットアップは1つのデプロイ環境のbackendに固有のものです。別のデプロイ環境では、必要な
 ものが違います。
 
-- Virtual Private Network(VPN)クライアントの種類
-- モバイルデバイス管理(Mobile Device Management、MDM)プロファイル
+- Virtual Private Network（VPN）クライアント
+- モバイルデバイス管理（MDM）プロファイル
 - あるいは何も要らない場合
 
 これらはいずれもBajutsu自体が抱え込むべき事情ではありません。Bajutsuは、呼び出し元のbackendが

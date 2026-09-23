@@ -17,14 +17,14 @@
 
 `render_test_spec` renders a Device Farm custom-environment test spec.
 [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md)
-introduced the function, in `bajutsu/cloud/devicefarm.py`. The rendered spec runs a
+introduced the function, which now lives in `bajutsu/common/cloud/devicefarm/_functions.py`
+and is re-exported from `bajutsu.common.cloud.devicefarm`. The rendered spec runs a
 set of scenarios on a reserved device.
 
 Today its `pre_test` phase runs one command: the reserved-device visibility probe. A
-caller may need the device to do something else first. That must happen before the
-`test` phase's `bajutsu run` calls start. That caller has no way to add a command to
-`pre_test`. The single alternative is reimplementing everything `render_test_spec`
-already renders.
+caller may need the device to do something else before the `test` phase's
+`bajutsu run` calls start, and has no way to add a command to `pre_test`. The single
+alternative is reimplementing everything `render_test_spec` already renders.
 
 This proposal adds a `pre_test_commands` parameter. A caller uses it to splice its
 own commands into the `pre_test` phase. Device-side setup specific to one
@@ -45,7 +45,7 @@ Another deployment might need something different:
 - a Mobile Device Management (MDM) profile
 - nothing at all
 
-None of that belongs inside Bajutsu. Bajutsu must stay usable regardless of what a
+None of this setup belongs inside Bajutsu. Bajutsu must stay usable regardless of what a
 caller's backend requires.
 
 Today a caller has two options, and both defeat the purpose of a shared, tested
@@ -94,11 +94,19 @@ phases:
 `render_test_spec` treats each entry as an opaque, already-shell-safe string. A
 Device Farm test spec already has this trust boundary: every phase runs arbitrary
 shell. This mirrors how `build_package`'s `extra_texts` passes caller content
-through verbatim.
+through verbatim — though `extra_texts` content stays inert data inside the zip,
+while a `pre_test` command executes on the Device Farm host.
 
 It differs from how `render_test_spec` quotes `scenarios`, `target`, and `config`
-today. Those three compose into one command the function itself builds. A
+today. Those three compose into one command the function itself builds, and they
+trace back to request or workflow text input, so the function quotes them. A
 caller-supplied command list is the caller's own construction instead.
+
+`pre_test_commands` stays a Python-API-only hook for that reason: no `serve`
+endpoint, no config field, and no `BatchRequest` field may carry it.
+`DeviceFarmBatchProvider` — the one in-tree caller — builds its `render_test_spec`
+arguments from an HTTP request body, so routing this parameter through that path
+would hand a client shell on a host holding the run's AWS role credentials.
 
 The default `()` renders nothing extra. Every existing caller, and every existing
 test, keeps generating byte-identical output.
@@ -147,6 +155,8 @@ setup does.
   after the probe.
 - [ ] Update `render_test_spec`'s docstring for the new parameter and its
   shell-safety boundary.
+- [ ] Confirm that no `serve` endpoint, no config field, and no `BatchRequest` field
+  wires to this parameter (no request-sourced value reaches it).
 
 ## References
 
