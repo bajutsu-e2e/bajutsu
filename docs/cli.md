@@ -25,6 +25,7 @@ Runs a scenario **deterministically**; pass/fail is machine-only, and since [BE-
 
 ```bash
 bajutsu run --target <name> [--scenario <file.yaml>] [options]
+bajutsu run --scenario <self-declaring.yaml> [options]          # --target optional
 ```
 
 By default `run` loads **every `*.yaml`** in the app's configured scenarios dir
@@ -32,9 +33,25 @@ By default `run` loads **every `*.yaml`** in the app's configured scenarios dir
 to run. Pass `--scenario <file>` to run one file instead, or repeat the flag to run several
 specific files in one process, sharing a single warm runner.
 
+### When `--target` is optional
+
+A scenario that declares its own
+[`targets`](scenarios.md#targets--target-multi-target-scenarios-be-0428) resolves every target it
+needs from the config. `--target` then has nothing left to decide. Four rules follow:
+
+| Rule | What happens |
+|---|---|
+| `--scenario` becomes required in its place | The whole-suite shorthand globs one target's configured scenarios dir. A scenario naming two or more targets belongs to no one such dir, so it names its files explicitly |
+| An explicit `--target` is checked, never ignored | Passed beside a self-declaring scenario, it must name one of that scenario's own declared targets. A stale flag left over from editing the file exits 2, instead of picking a target the file dropped |
+| The scenarios dir refuses a self-declaring file | A file carrying its own `targets` inside a target's configured dir fails at discovery. The error names the file and points at `--scenario` |
+| A batch mixing both shapes still needs `--target` | A file declaring no `targets` has nothing but the invocation's `--target` to resolve one from. Omitting the flag with even one such file in the batch fails, naming that file |
+
+Passing `--target` alongside a mix of both shapes keeps working. Each file declaring no targets
+uses it as always. Each self-declaring file has it checked for membership instead.
+
 | Option | Default | Description |
 |---|---|---|
-| `--target` | (required) | the target app (config's `targets.<name>`) |
+| `--target` | (required, unless every `--scenario` file declares its own `targets`) | the target app (config's `targets.<name>`); see [when `--target` is optional](#when---target-is-optional) |
 | `--scenario` | config's `scenarios` dir | run these `*.yaml` files instead of the app's whole scenarios dir; repeat the flag to run several in one process, sharing one warm runner |
 | `--backend` | config | actuator order (comma-separated; first usable wins) |
 | `--tag` | "" | comma list; run only scenarios carrying any of these tags |
@@ -47,7 +64,7 @@ specific files in one process, sharing a single warm runner.
 | `--log-predicate` | "" | an NSPredicate narrowing the `deviceLog` stream (e.g. subsystem) |
 | `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
 | `--network / --no-network` | config › on | collect the app's network exchanges for `request` assertions; omit and it resolves the target's `network` config, then on ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). iOS needs BajutsuKit in the app; web observes natively via Playwright, and stubs scenario `mocks` in-process |
-| `--workers` | 1 | parallel scenarios over a device pool. On iOS, needs `--udid u1,u2,…` and is capped to that pool size. On web, `--workers N` alone is N parallel browser-context lanes — no `--udid` needed ([BE-0054](../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)). Each lane carries its own network collector, interval recordings, and (iOS) device control, so network / video / `setLocation` / `push` work the same as a single-device run |
+| `--workers` | 1 | parallel scenarios over a device pool. A scenario declaring several targets holds one device per target for its whole length, so `run` caps this to what the pools can serve without starving a worker. On iOS, needs `--udid u1,u2,…` and is capped to that pool size. On web, `--workers N` alone is N parallel browser-context lanes — no `--udid` needed ([BE-0054](../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)). Each lane carries its own network collector, interval recordings, and (iOS) device control, so network / video / `setLocation` / `push` work the same as a single-device run |
 | `--baselines` | config's `baselines`, then `baselines/` beside the scenario | directory of baseline images for `visual` assertions; `baseline: home.png` resolves inside it |
 | `--schemas` | config's `schemas`, then `schemas/` beside the scenario | directory of JSON Schema files for `responseSchema` assertions; `schema: items.json` resolves inside it (needs the `schema` extra) |
 | `--goldens` | config's `goldens`, then `goldens/` beside the scenario | directory of golden JSON files for `golden` assertions; `golden: response.json` resolves inside it |
@@ -75,6 +92,7 @@ specific files in one process, sharing a single warm runner.
 ```bash
 bajutsu run --target showcase-swiftui --udid <UDID> --backend ios --no-erase            # the app's whole scenarios dir
 bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --no-erase   # one file
+bajutsu run --scenario cross-platform.yaml --config both-targets.yaml                   # the file names its own targets
 ```
 
 ## `doctor`

@@ -8,7 +8,8 @@ from dataclasses import asdict
 from xml.etree import ElementTree as ET
 
 from bajutsu import __version__
-from bajutsu.common.orchestrator import RunResult, scenario_slug
+from bajutsu.common.assertions import AssertionResult
+from bajutsu.common.orchestrator import RunResult, StepOutcome, scenario_slug
 
 # A run-history label longer than this is rejected at the boundary rather than truncated (BE-0404
 # unit 2), so an operator learns the label was refused instead of finding a silently shortened one.
@@ -44,7 +45,17 @@ def _run_backend(results: list[RunResult]) -> str:
     could mix distinct per-scenario backends, which are joined here (e.g. ``"a, b"``); iOS is a
     single actuator today (XCUITest), so an iOS run reports one name.
     """
-    names = dict.fromkeys(r.backend for r in results if r.backend)  # ordered-unique
+    names = dict.fromkeys(
+        # A multi-target scenario leaves `backend` empty — no one actuator drove it — and names one
+        # per declared target instead (BE-0428), so the run-level answer joins those rather than
+        # reporting nothing at all for a run every one of whose scenarios was multi-target.
+        backend
+        for r in results
+        for backend in (
+            [r.backend] if r.backend else [d.backend for d in r.target_devices.values()]
+        )
+        if backend
+    )  # ordered-unique
     return ", ".join(names)
 
 
@@ -76,7 +87,12 @@ def _run_backend(results: list[RunResult]) -> str:
 #   target passes while the iOS target fails" is computable from stored data) and the run-history
 #   partition an operator may set. Absent on every older run, which reads as "this run named
 #   neither": it drops out of a per-target comparison and stays visible under any label filter.
-SCHEMA_VERSION = 10
+# v11 (BE-0428): a step may carry "target" — which declared target ran it — and a scenario may
+#   carry "target_devices", one device row per target a multi-target scenario declared, with the
+#   singular "backend"/"device"/"device_name"/"device_runtime" left empty there because none of them
+#   describes the whole scenario any more. Absent on every older run and on every single-target run,
+#   where the singular fields still say everything there is to say.
+SCHEMA_VERSION = 11
 
 
 def _matrix(results: list[RunResult]) -> dict[str, object] | None:
@@ -239,20 +255,35 @@ def _details(r: RunResult) -> str:
     failed only in `before` or `after` would carry an empty `<failure>` body, since neither phase's
     outcomes live in `steps`.
     """
-    lines: list[str] = []
-    for s in r.before_outcomes:
-        status = "ok" if s.ok else "FAIL"
-        lines.append(f"before step {s.index} {s.action}: {status} {s.reason}".rstrip())
-    for s in r.steps:
-        status = "ok" if s.ok else "FAIL"
-        lines.append(f"step {s.index} {s.action}: {status} {s.reason}".rstrip())
-    for a in r.expect_results:
-        status = "ok" if a.ok else "FAIL"
-        lines.append(f"expect {a.kind}: {status} {a.reason}".rstrip())
-    for s in r.after_outcomes:
-        status = "ok" if s.ok else "FAIL"
-        lines.append(f"after step {s.index} {s.action}: {status} {s.reason}".rstrip())
-    return "\n".join(lines)
+
+    def step_line(prefix: str, s: StepOutcome) -> str:
+        return f"{prefix}step {s.index} {_step_label(s)}: {_status(s.ok)} {s.reason}".rstrip()
+
+    def expect_line(a: AssertionResult) -> str:
+        kind = f"{a.kind}@{a.target}" if a.target else a.kind
+        return f"expect {kind}: {_status(a.ok)} {a.reason}".rstrip()
+
+    return "\n".join(
+        [
+            *(step_line("before ", s) for s in r.before_outcomes),
+            *(step_line("", s) for s in r.steps),
+            *(expect_line(a) for a in r.expect_results),
+            *(step_line("after ", s) for s in r.after_outcomes),
+        ]
+    )
+
+
+def _status(ok: bool) -> str:
+    return "ok" if ok else "FAIL"
+
+
+def _step_label(s: StepOutcome) -> str:
+    """The step's action, qualified by the target that ran it on a multi-target scenario (BE-0428).
+
+    A `<failure>` body a CI log shows is often all a reviewer of a cross-platform scenario sees, so
+    it has to say which platform the step ran on; a scenario declaring no targets is unchanged.
+    """
+    return f"{s.action}@{s.target}" if s.target else s.action
 
 
 def junit_xml(results: list[RunResult]) -> str:

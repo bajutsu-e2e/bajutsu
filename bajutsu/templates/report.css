@@ -524,3 +524,7 @@ tr.visrow>td{background:#fafafb}
  .vcmp.mode-blend .vcmp-stage{background:#000}
  .vcmp-mode{background:#2a2f3a;border-color:#34353a}
 }
+
+/* The declared target a step ran against (BE-0428): a quiet chip beside the action badge,
+   absent entirely on a scenario that declares no targets. */
+.tgt{display:inline-block;margin-left:.35em;padding:0 .35em;border-radius:3px;font-size:.78em;color:var(--muted);border:1px solid var(--line)}

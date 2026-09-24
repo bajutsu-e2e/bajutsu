@@ -11,6 +11,7 @@ from bajutsu.common.evidence import Artifact
 from .alert_event import AlertEvent
 from .skipped_capture import SkippedCapture
 from .step_outcome import StepOutcome
+from .target_device_info import TargetDeviceInfo
 
 
 @dataclass
@@ -38,6 +39,13 @@ class RunResult:
     # report's Environment tab; empty when not resolvable (e.g. the fake driver).
     device_name: str = ""
     device_runtime: str = ""
+    # The four fields above, plus `backend`/`engine`, once per target a multi-target scenario
+    # declared (BE-0428) — each of them describes exactly one target, so on such a run they stay
+    # empty here rather than presenting one declared target's values as if they spoke for the whole
+    # scenario. The same "empty means not applicable" convention `engine` already uses. An existing
+    # reader compiled against today's shape — the JUnit and CTRF exports among them — therefore sees
+    # a single-target run exactly as before, and an empty value rather than a misleading one here.
+    target_devices: dict[str, TargetDeviceInfo] = field(default_factory=dict)
     # Wall-clock the scenario took end to end (steps + verification), for the report.
     duration_s: float = 0.0
     # The absolute wall-clock instant (epoch seconds) the scenario's video started, corrected by

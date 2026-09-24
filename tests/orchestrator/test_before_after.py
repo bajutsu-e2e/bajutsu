@@ -302,6 +302,36 @@ targets:
 """
 
 
+_WEB_HOOKS_CONFIG = """
+targets:
+  app:
+    bundleId: com.example.app
+    before:
+      - tap: { id: a }
+    after:
+      - on: always
+        steps: [{ tap: { id: b } }]
+  web:
+    baseUrl: http://localhost:1/
+    before:
+      - tap: { id: w }
+    after:
+      - on: always
+        steps: [{ tap: { id: z } }]
+"""
+
+_STRAY_TARGET_HOOK_CONFIG = """
+targets:
+  app:
+    bundleId: com.example.app
+    before:
+      - target: staging
+        tap: { id: a }
+  web:
+    baseUrl: http://localhost:1/
+"""
+
+
 def _merged(scenario: dict[str, object]) -> Scenario:
     eff = resolve(load_config(_MERGE_CONFIG), "app")
     return with_lifecycle_phases(eff, [_scenario({"name": "s", **scenario})])[0]
@@ -343,18 +373,37 @@ def test_source_stem_survives_the_before_after_merge_copy() -> None:
     assert merged.source_stem == "login_flow"
 
 
-def test_folding_config_hooks_re_checks_target_requirements() -> None:
-    # BE-0428: at load time the scenario's own `before`/`after` are empty, so the initial
-    # validator has nothing to reject; `_MERGE_CONFIG`'s own `before`/`after` hooks carry no
-    # `target` of their own (config-level hooks aren't stamped with one until BE-0428's launch
-    # unit lands). Once `with_lifecycle_phases` folds them in, the re-check must catch what the
-    # load-time pass could not, rather than silently run an unrouted hook step in a two-target run.
-    eff = resolve(load_config(_MERGE_CONFIG), "app")
+def test_each_declared_targets_own_hooks_fold_in_stamped_with_its_name() -> None:
+    # BE-0428: a config-level hook is config on the target it acts on, so a two-target scenario
+    # folds in each declared target's own `before`/`after` — in declared order, each step stamped
+    # with that target's name, so an app-side hook and a web-side one never run against each other's
+    # driver. `_WEB_HOOKS_CONFIG` gives `web` its own pair with different ids, so the assertion
+    # below distinguishes "stamped correctly" from "the primary's hooks folded in twice".
+    cfg = load_config(_WEB_HOOKS_CONFIG)
+    effs = {"app": resolve(cfg, "app"), "web": resolve(cfg, "web")}
     scenario = _scenario(
         {"name": "s", "targets": ["app", "web"], "steps": [{"target": "app", "tap": {"id": "x"}}]}
     )
-    with pytest.raises(ValueError, match="target is required"):
-        with_lifecycle_phases(eff, [scenario])
+    merged = with_lifecycle_phases(effs["app"], [scenario], effs)[0]
+    assert [(s.target, s.tap.id) for s in merged.before if s.tap] == [("app", "a"), ("web", "w")]
+    assert [(s.target, s.tap.id) for rule in merged.after for s in rule.steps if s.tap] == [
+        ("app", "b"),
+        ("web", "z"),
+    ]
+
+
+def test_folding_config_hooks_re_checks_target_requirements() -> None:
+    # The re-check still has to run on the folded result: stamping fills a hook's blank `target`,
+    # but a hook that names a target *itself* is left alone, so one naming a target the scenario
+    # never declared has to be caught here — `model_copy(update=...)` never re-runs the load-time
+    # validator that would otherwise have rejected it.
+    cfg = load_config(_STRAY_TARGET_HOOK_CONFIG)
+    effs = {"app": resolve(cfg, "app"), "web": resolve(cfg, "web")}
+    scenario = _scenario(
+        {"name": "s", "targets": ["app", "web"], "steps": [{"target": "app", "tap": {"id": "x"}}]}
+    )
+    with pytest.raises(ValueError, match="is not one of the scenario's declared targets"):
+        with_lifecycle_phases(effs["app"], [scenario], effs)
 
 
 def test_the_merged_phases_are_what_the_run_executes() -> None:

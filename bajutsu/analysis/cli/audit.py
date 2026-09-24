@@ -152,6 +152,18 @@ def _repeat_audit(
             f"affected scenario(s): {', '.join(affected)}"
         )
         raise typer.Exit(2)
+    # A scenario declaring exactly one target must run against that one — the guard above only
+    # covers two or more. Without this, `--repeat --target web` on a scenario declaring `targets:
+    # [ios]` would pass every check (a lone declared target's steps are always valid against it)
+    # and silently run the whole repeat-and-diff against the wrong platform (BE-0428) — the same
+    # membership check `run`'s CLI applies to an explicit `--target`.
+    mismatched = [s.name for s in scenarios if s.targets and s.targets != [target_name]]
+    if mismatched:
+        typer.echo(
+            f"--target '{target_name}' is not one of the declared targets for scenario(s): "
+            f"{', '.join(mismatched)}"
+        )
+        raise typer.Exit(2)
     eff = _load_effective(config, target_name)  # exits 2 on missing config / unknown target
     # `with_lifecycle_phases` re-validates its own folded result already, but only `run_all` calls
     # it — deep inside a path whose `finally` below only tears down the device pool / server, not a
