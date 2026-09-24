@@ -5,7 +5,13 @@ from __future__ import annotations
 from _report import _passing, _scenarios
 
 from bajutsu.common.drivers.actuation import Actuation
-from bajutsu.common.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
+from bajutsu.common.orchestrator import (
+    AlertEvent,
+    RunResult,
+    SkippedCapture,
+    StepOutcome,
+    TargetDeviceInfo,
+)
 from bajutsu.common.report import html_report, manifest_dict
 
 
@@ -286,3 +292,72 @@ def test_html_shows_backend() -> None:
     assert '<span class="chip dchip"' in out
     assert ".chip.dchip{background:#2c5fb3;color:#fff" in out
     assert "align-items:center" in out and "display:inline-flex;align-items:center" in out
+
+
+def test_html_environment_tab_lists_every_declared_targets_device() -> None:
+    # BE-0428: a multi-target scenario has no single device to name, so the panel lists one labeled
+    # block per declared target instead of the singular fields, which are empty on such a run.
+    r = _passing()
+    r.backend, r.device, r.device_name, r.device_runtime = "", "", "", ""
+    r.target_devices = {
+        "app": TargetDeviceInfo(
+            backend="xcuitest", device="SIM-1", device_name="iPhone 15", device_runtime="iOS 17.2"
+        ),
+        "web": TargetDeviceInfo(backend="playwright", device="web-0"),
+    }
+    out = html_report("run1", [r])
+    assert '<td class="pk">app device</td><td>iPhone 15</td>' in out
+    assert '<td class="pk">app OS</td><td>iOS 17.2</td>' in out
+    assert '<td class="pk">app udid</td><td>SIM-1</td>' in out
+    assert '<td class="pk">web actuator</td><td>playwright</td>' in out
+    assert '<td class="pk">web udid</td><td>web-0</td>' in out
+
+
+def test_html_scenario_chips_name_every_declared_targets_backend_and_device() -> None:
+    # The per-scenario summary chips read the per-target rows when the singular fields are empty,
+    # so a multi-target scenario's header is not blank where a single-target one shows its backend.
+    r = _passing()
+    r.backend, r.device = "", ""
+    r.target_devices = {
+        "app": TargetDeviceInfo(backend="xcuitest", device="SIM-1"),
+        "web": TargetDeviceInfo(backend="playwright", device="web-0"),
+    }
+    out = html_report("run1", [r])
+    assert "xcuitest, playwright" in out
+
+
+def test_html_steps_table_labels_each_step_with_its_target() -> None:
+    # The Steps view names the target beside each action badge, so a reader of a cross-platform
+    # scenario can tell the app-side rows from the web-side ones.
+    r = RunResult(
+        scenario="cross-target",
+        ok=True,
+        steps=[
+            StepOutcome(index=0, action="tap", target="app", ok=True),
+            StepOutcome(index=1, action="assert", target="web", ok=True),
+        ],
+        backend="",
+    )
+    out = html_report("run1", [r])
+    assert 'class="tgt"' in out
+    assert ">app</span>" in out
+    assert ">web</span>" in out
+
+
+def test_html_steps_table_shows_no_target_chip_for_a_single_target_run() -> None:
+    # Nothing changes for a scenario declaring no targets: no chip at all, rather than an empty one.
+    assert 'class="tgt"' not in html_report("run1", [_passing()])
+
+
+def test_html_scenario_chips_skip_a_target_whose_device_never_resolved() -> None:
+    # A backend that names no device (the fake driver, a web lane before it opens) contributes
+    # nothing to the chips, rather than a stray separator with an empty side.
+    r = _passing()
+    r.backend, r.device = "", ""
+    r.target_devices = {
+        "app": TargetDeviceInfo(backend="xcuitest", device="SIM-1"),
+        "web": TargetDeviceInfo(backend="", device=""),
+    }
+    out = html_report("run1", [r])
+    assert "SIM-1"[-6:] in out
+    assert "xcuitest, " not in out  # no trailing separator for the target that named nothing

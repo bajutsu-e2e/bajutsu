@@ -23,14 +23,31 @@
 
 ```bash
 bajutsu run --target <name> [--scenario <file.yaml>] [options]
+bajutsu run --scenario <self-declaring.yaml> [options]          # --target は省略可
 ```
 
 既定では、そのアプリの設定済みシナリオディレクトリ（`targets.<name>.scenarios`、[configuration](configuration.md) 参照）内の
 **すべての `*.yaml`** を読み込んで実行します。config だけで実行できます。1 ファイルだけ実行するには `--scenario <file>` を渡してください。このフラグを繰り返すと、指定した複数ファイルを1つの warm な runner を共有しながら1プロセスで実行できます。
 
+### `--target` を省略できる場合
+
+自分で [`targets`](scenarios.md#targets--target複数ターゲットシナリオbe-0428) を宣言するシナリオは、
+必要なターゲットをすべて config から解決します。`--target` が決めることは、もう残っていません。ここから
+規則が4つ導かれます。
+
+| 規則 | 何が起きるか |
+|---|---|
+| 代わりに `--scenario` が必須になります | スイート全体の短縮記法は、1つのターゲットの設定済みシナリオディレクトリを glob します。2つ以上のターゲットを名指しするシナリオは、そのどのディレクトリにも属しません。そのため、ファイルを明示的に名指しします |
+| `--target` を明示したら、無視せず検査します | 自分で宣言するシナリオに添えて渡した場合、そのシナリオが宣言しているターゲットのどれかを名指しする必要があります。ファイルを編集したあとに残った古いフラグは、ファイルが外したターゲットを選ばず、終了コード 2 で止まります |
+| シナリオディレクトリは、自分で宣言するファイルを拒みます | 自分の `targets` を持つファイルが、あるターゲットの設定済みディレクトリにあると、発見の時点で失敗します。エラーはそのファイルを名指しし、`--scenario` を指し示します |
+| 両方の形が混ざったバッチには、なお `--target` が要ります | `targets` を宣言しないファイルは、起動の `--target` 以外にターゲットを解決する手がかりを持ちません。そのファイルが1つでもバッチにあると、フラグの省略は失敗し、そのファイルを名指しします |
+
+両方の形が混ざっていても、`--target` を渡せば従来どおり動きます。ターゲットを宣言しないファイルは、
+これまでどおりそれを使います。自分で宣言するファイルは、代わりに所属を検査されます。
+
 | オプション | 既定 | 説明 |
 |---|---|---|
-| `--target` | （必須） | 対象アプリ（config の `targets.<name>`） |
+| `--target` | （必須。ただし `--scenario` のファイルがすべて自分の `targets` を宣言していれば省略可） | 対象アプリ（config の `targets.<name>`）。[`--target` を省略できる場合](#--target-を省略できる場合)を参照 |
 | `--scenario` | config の `scenarios` ディレクトリ | アプリのシナリオディレクトリ全体ではなく指定した `*.yaml` を実行。フラグを繰り返すと、複数ファイルを1つの warm な runner を共有しながら1プロセスで実行 |
 | `--backend` | config | actuator 順（カンマ区切り。先頭から最初に使えるもの） |
 | `--tag` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオのみ実行 |
@@ -43,7 +60,7 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `bundleId`） |
 | `--network / --no-network` | config › ON | `request` アサーション用にアプリの通信を収集。省略時はターゲットの `network` config、次に ON の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。iOS はアプリに BajutsuKit が必要。web は Playwright でネイティブに観測し、シナリオの `mocks` をその場でスタブします |
-| `--workers` | 1 | デバイスプール上で並列実行します。iOS では `--udid u1,u2,…` が必要で、そのプール数で上限になります。web では `--workers N` だけで N 本の並列ブラウザコンテキストレーンになります（`--udid` 不要、[BE-0054](../../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md)）。各レーンが自前のネットワークコレクタ、インターバル録画、（iOS では）デバイス制御を持つので、network / 動画 / `setLocation` / `push` はシングルデバイス実行と同じく機能します |
+| `--workers` | 1 | デバイスプール上で並列実行します。複数のターゲットを宣言するシナリオは、ターゲットごとに1台のデバイスをそのシナリオの全長にわたって保持します。そのため `run` は、ワーカーが互いのデバイスを奪い合わない範囲までこの値を抑えます。iOS では `--udid u1,u2,…` が必要で、そのプール数で上限になります。web では `--workers N` だけで N 本の並列ブラウザコンテキストレーンになります（`--udid` 不要、[BE-0054](../../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md)）。各レーンが自前のネットワークコレクタ、インターバル録画、（iOS では）デバイス制御を持つので、network / 動画 / `setLocation` / `push` はシングルデバイス実行と同じく機能します |
 | `--baselines` | config の `baselines`、次にシナリオ隣の `baselines/` | `visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決されます |
 | `--schemas` | config の `schemas`、次にシナリオ隣の `schemas/` | `responseSchema` アサーション用の JSON Schema ファイルのディレクトリ。`schema: items.json` はこの中で解決されます（`schema` extra が必要です） |
 | `--goldens` | config の `goldens`、次にシナリオ隣の `goldens/` | `golden` アサーション用の golden JSON ファイルのディレクトリ。`golden: response.json` はこの中で解決されます |
@@ -70,6 +87,7 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 ```bash
 bajutsu run --target showcase-swiftui --udid <UDID> --backend ios --no-erase            # アプリのシナリオディレクトリ全体
 bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --no-erase   # 単一ファイル
+bajutsu run --scenario cross-platform.yaml --config both-targets.yaml                   # ファイルが自分でターゲットを名指しする
 ```
 
 ## `doctor`
