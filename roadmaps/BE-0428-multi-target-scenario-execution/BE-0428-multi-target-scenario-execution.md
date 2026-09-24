@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0428](BE-0428-multi-target-scenario-execution.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0428") |
-| Implementing PR | [#2025](https://github.com/bajutsu-e2e/bajutsu/pull/2025) (unit 1) |
+| Implementing PR | [#2025](https://github.com/bajutsu-e2e/bajutsu/pull/2025) (unit 1), [#2028](https://github.com/bajutsu-e2e/bajutsu/pull/2028) (units 2-7) |
 | Topic | Scenario authoring features |
 | Related | [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0033](../BE-0033-scenario-variables-control-flow/BE-0033-scenario-variables-control-flow.md), [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md) |
 <!-- /BE-METADATA -->
@@ -702,17 +702,18 @@ choosing between them is deferred rather than guessed.
 
 - [x] Schema: `Scenario.targets`, `Step.target`, `Assertion.target`, and the validator tying
       `target`'s requirement to `len(scenario.targets)` across `steps` and `expect` alike.
-- [ ] CLI: `--target` optional under a self-declaring scenario; mismatch rejection; config
+- [x] CLI: `--target` optional under a self-declaring scenario; mismatch rejection; config
       validation for every declared name.
-- [ ] Launch and teardown: `Config` threaded through to `_ScenarioRunner`; one pool per declared
-      platform; one driver per declared target, launched together and torn down together.
-- [ ] Runner: the `TargetRuntime` bundle, `run_scenario`'s `target_runtimes` mapping, the per-target
+- [x] Launch and teardown: the per-target resolved config threaded through to `_ScenarioRunner`;
+      one pool per declared backend; one driver per declared target, launched together and torn
+      down together.
+- [x] Runner: the `TargetRuntime` bundle, `run_scenario`'s `target_runtimes` mapping, the per-target
       actuator/locale/capture/interrupts/guard/network/evidence-context construction, and
       `_evaluate_expect`'s per-target grouping.
-- [ ] Report: `StepOutcome.target`, `AssertionResult.target`, `RunResult.target_devices`, and the
+- [x] Report: `StepOutcome.target`, `AssertionResult.target`, `RunResult.target_devices`, and the
       report views that show them.
-- [ ] Docs: `docs/scenarios.md`, `docs/cli.md`, `docs/run-loop.md`, and their `docs/ja/` mirrors.
-- [ ] Tests: schema validator (including the `expand_components`/`with_lifecycle_phases` re-check),
+- [x] Docs: `docs/scenarios.md`, `docs/cli.md`, `docs/run-loop.md`, and their `docs/ja/` mirrors.
+- [x] Tests: schema validator (including the `expand_components`/`with_lifecycle_phases` re-check),
       CLI selection and rejection rules, multi-pool lease/deadlock coverage, per-target
       caps/mailbox/preflight, mixed-target step routing, and report backward compatibility.
 
@@ -732,6 +733,41 @@ Log:
   against such a scenario refuses it instead — `run_all` (shared by `run` and `audit --repeat`),
   `codegen`, and serve's own Codegen endpoint — rather than acting against the wrong one without a
   word.
+
+- [#2028](https://github.com/bajutsu-e2e/bajutsu/pull/2028) — Units 2-7, covering the CLI through the tests. `--target` becomes optional once
+  every `--scenario` file declares its own `targets`. Each declared name resolves against the same
+  loaded config. Each takes its own `DeviceLease` and pool, then launches before the first step.
+  The step loop sends each step to its own target's driver and evidence, over one shared
+  `StepLoopState`. One numbering, one `${vars.*}` dictionary, and one verdict then span every
+  target. Three choices differ from the design on purpose:
+
+  - **The pipeline takes a resolved per-target map, not the loaded `Config`.** The design threaded
+    `Config` into `_ScenarioRunner` and re-ran `_load_effective_with_source` per scenario. Instead
+    the CLI resolves every declared name once, through that same chain, so rebasing stays
+    identical. It passes a `Mapping[str, TargetPool]` the runner never mutates. That keeps a
+    CLI-layer import out of the runner. It also stops a Git-sourced config being re-materialized
+    per scenario per target.
+    The map's key is the target name. Two scenarios declaring different subsets each still pick
+    their own.
+  - **A pool is keyed by actuator, not platform.** `device_pool` builds its environment from it. Two actuators on one platform would share a wrongly-built pool
+    under a platform key. An actuator key separates every pair a platform key would, and that one
+    besides. The lock-ordering acquisition sorts on the same key.
+  - **The open question on `golden` resolves to per-target contexts.** Each target's
+    `EvalContext` probes its *own* driver's screen bounds for golden frame sanity. It reads its
+    own `baselines` / `schemas` / `goldens` directories where its config names them. Judging a web
+    target's golden by an iOS target's geometry would fail a well-framed golden. Restricting
+    `golden` to one declared target would have cost precisely that.
+
+  Two refusals unit 1 recorded stay in place. They cover a `use:` step and a non-empty
+  `interrupts`, under two or more declared targets. Both need a decision this item still has no
+  answer for. Neither blocks the interleaving this item exists to deliver. The cross-browser matrix
+  (`--browsers`) likewise stays single-target, per *Detailed design*. `run` refuses to combine it
+  with a multi-target scenario, rather than guess.
+
+  One limit the design does not cover. Two targets on one backend share that backend's device queue
+  for a scenario's whole length. `run` thus refuses a pool holding fewer devices than a scenario
+  needs. It also caps `--workers` to what the pools can serve. Blocking on a queue that will never
+  free a device is the alternative.
 
 ## References
 

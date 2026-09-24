@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
@@ -17,7 +17,9 @@ from pydantic import ValidationError
 
 from bajutsu.cli._shared import (
     DEFAULT_CONFIG,
-    _load_effective_with_source,
+    LoadedConfig,
+    _effective_for,
+    _load_config_with_source,
     _log_subsystem_default,
     _resolve_browser,
     _select_actuator_or_exit,
@@ -46,9 +48,9 @@ from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import device_pool, run_all, run_and_report, run_matrix_and_report
 from bajutsu.common.runner.build import BuildError, build_if_missing
-from bajutsu.common.runner.device_provider import acquire_device
+from bajutsu.common.runner.device_provider import DeviceLease, acquire_device
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
-from bajutsu.common.runner.types import AlertGuardFor
+from bajutsu.common.runner.types import AlertGuardFor, LeaseFn, TargetPool
 from bajutsu.common.scenario import (
     ComponentResolver,
     RawScenario,
@@ -131,6 +133,78 @@ def _resolve_dir(
     return scenario_file.parent / default_name
 
 
+def _declared_targets_in(path: Path) -> list[str]:
+    """Every target the scenarios in *path* declare, in declared order, read before expansion.
+
+    `run` has to know whether a file is self-declaring (BE-0428) before it can resolve `--target`
+    into the `Effective` the ordinary load needs, so this reads the file on its own rather than
+    waiting for `_load_scenarios`. Parse and schema errors exit 2 here the same way they would
+    there; the file is parsed again by the ordinary load, which is cheap next to a device run.
+    """
+    try:
+        scenarios = load_scenario_file(path.read_text(encoding="utf-8")).scenarios
+    except (OSError, ValueError) as e:
+        typer.echo(f"scenario の読み込みに失敗 ({path}): {e}")
+        raise typer.Exit(2) from None
+    seen: dict[str, None] = {}
+    for s in scenarios:
+        seen.update(dict.fromkeys(s.targets))
+    return list(seen)
+
+
+def _resolve_primary_target(target_name: str, scenario: list[str]) -> str:
+    """The target `run` resolves its config, pool, and legacy scenarios against.
+
+    `--target` when given, unchanged. Omitted, the run is driven entirely by self-declaring
+    scenarios (BE-0428): at least one `--scenario` is required, since the directory-glob shorthand
+    belongs to one target, every named file must declare its own `targets`, and the first file's
+    first declared name becomes the primary — the one whose pool, secrets, and evidence dirs stand
+    for the run, with every other declared target resolved alongside it.
+    """
+    if target_name:
+        return target_name
+    if not scenario:
+        typer.echo(
+            "--target is required unless every --scenario file declares its own targets; "
+            "pass --target <name>, or name self-declaring files with --scenario"
+        )
+        raise typer.Exit(2)
+    primary = ""
+    for raw in scenario:
+        path = Path(raw)
+        if not path.exists():
+            typer.echo(f"scenario not found: {path}")
+            raise typer.Exit(2)
+        declared = _declared_targets_in(path)
+        if not declared:
+            typer.echo(
+                f"--target is required: {path} declares no targets of its own, so there is "
+                "nothing to resolve it from — pass --target <name>, or give that file a "
+                "`targets:` field"
+            )
+            raise typer.Exit(2)
+        primary = primary or declared[0]
+    return primary
+
+
+def _reject_self_declaring_in_dir(files: list[Path], target_name: str) -> None:
+    """Refuse a self-declaring scenario reached through the target's scenarios dir (BE-0428).
+
+    The directory glob is `run`'s only whole-suite shorthand and it belongs to one target, so a
+    file declaring its own `targets` can only ever run through an explicit `--scenario`. Rejecting
+    at discovery keeps the two bad outcomes off the table regardless of where the file sits: a
+    mismatching name would fail every other scenario in the batch alongside it, and a matching one
+    would silently launch every other target that file declares.
+    """
+    for path in files:
+        if _declared_targets_in(path):
+            typer.echo(
+                f"{path} declares its own targets, so it cannot run through target "
+                f"'{target_name}'s scenarios dir — name it with --scenario instead"
+            )
+            raise typer.Exit(2)
+
+
 def _scenario_files(
     eff: Effective, scenario: list[str], target_name: str
 ) -> tuple[list[Path], bool]:
@@ -162,6 +236,7 @@ def _scenario_files(
     if not files:
         typer.echo(f"no scenarios found in {eff.evidence_dirs.scenarios}")
         raise typer.Exit(2)
+    _reject_self_declaring_in_dir(files, target_name)
     return files, False
 
 
@@ -272,18 +347,20 @@ def _resolve_config_and_engines(
     headed: bool | None,
     browser: str,
     browsers: str,
-) -> tuple[Effective, dict[str, str] | None, list[str]]:
+) -> tuple[LoadedConfig, Effective, dict[str, str] | None, list[str]]:
     """Resolve the effective config (building a Git-sourced app on demand) and the engine list.
 
     Applies `--headed` and `--browser`, then parses `--browsers` into the cross-browser matrix axis
-    (BE-0076). Returns the resolved config, its Git source provenance (None for a local config), and
+    (BE-0076). Returns the loaded config itself — so a multi-target scenario resolves every other
+    name it declares against the same materialized file (BE-0428) — the resolved config for
+    *target_name*, its Git source provenance (None for a local config), and
     the requested engines exactly as `--browsers` gave them: empty when `--browsers` is absent, a
     single entry — already collapsed onto `eff.browser`, the single-engine path — for one engine, or
     every listed engine for several. Only `len(...) > 1` takes the matrix path downstream.
     """
-    eff, config_source, checkout_root = _load_effective_with_source(
-        config, target_name, offline=offline, require_pinned=require_pinned
-    )
+    loaded = _load_config_with_source(config, offline=offline, require_pinned=require_pinned)
+    eff = _effective_for(loaded, target_name)
+    config_source, checkout_root = loaded.source, loaded.root
     # A Git-sourced config is fetched into a content-addressed checkout that holds no built binary,
     # with no chance to build it by hand first — so build it on demand from the checkout root (where
     # the config's `build` command is rooted). Local configs keep today's behavior: launch errors if
@@ -306,17 +383,20 @@ def _resolve_config_and_engines(
     engines = _parse_browsers(browsers)
     if len(engines) == 1:
         eff = _resolve_browser(eff, engines[0])
-    return eff, config_source, engines
+    return loaded, eff, config_source, engines
 
 
-def _resolve_secrets(eff: Effective) -> tuple[dict[str, str], list[str]]:
+def _resolve_secrets(effs: Iterable[Effective]) -> tuple[dict[str, str], list[str]]:
     """Resolve declared secrets from the environment into ${secrets.X} bindings and mask values.
 
     Only secrets actually present in the environment are bound. The literal values are collected so
     evidence and run-level artifacts can mask them (the scenario definition keeps the token, never
-    the value).
+    the value). Every declared target's own `secrets` names are read (BE-0428), so a `${secrets.X}`
+    a step routed to a non-primary target uses still binds — `X` may be declared only on that
+    target's own config, not the primary's.
     """
-    bindings = {f"secrets.{n}": os.environ[n] for n in eff.secrets if n in os.environ}
+    names = dict.fromkeys(n for eff in effs for n in eff.secrets)  # ordered-unique across targets
+    bindings = {f"secrets.{n}": os.environ[n] for n in names if n in os.environ}
     return bindings, list(bindings.values())
 
 
@@ -362,39 +442,139 @@ def _load_scenarios(
     return scenarios, description, source_name, files, plan_sources
 
 
-def _reject_multi_target_scenarios(scenarios: list[Scenario]) -> None:
-    """Fail fast, with a clean CLI message, on a scenario declaring `targets` (BE-0428).
+def _check_target_membership(
+    scenarios: list[Scenario], target_name: str, *, explicit: bool
+) -> None:
+    """Refuse an explicit `--target` that no longer names one of a scenario's own targets.
 
-    The schema accepts `targets`/`target` so a suite can author against it, but the CLI/launch/
-    runner support that would route each step to the right target hasn't shipped yet — every step
-    still runs against this run's single resolved `--target`. `run_all` itself refuses the same
-    scenarios (the one chokepoint every caller, including `audit`, funnels through) — this earlier,
-    CLI-level check exists only so `run` fails before any device work starts, with a `typer.Exit(2)`
-    instead of `run_all`'s bare `ValueError`.
+    A self-declaring scenario resolves its own targets, so `--target` is redundant beside it — but
+    ignoring it would let a stale flag, left over from editing the scenario, silently select a
+    target the file no longer expects. Checked for membership instead: matching any one declared
+    name is fine, naming none is an error (BE-0428). A primary this command derived itself, from
+    the scenarios rather than from a flag, is not checked — a batch's later file may legitimately
+    declare a disjoint target set from the first file's.
     """
+    if not explicit:
+        return
+    for s in scenarios:
+        if s.targets and target_name not in s.targets:
+            typer.echo(
+                f"--target '{target_name}' is not one of scenario '{s.name}'s declared targets "
+                f"{s.targets} — drop --target, or name one of them"
+            )
+            raise typer.Exit(2)
+
+
+def _reject_legacy_without_target(
+    scenarios: list[Scenario], target_name: str, *, explicit: bool
+) -> None:
+    """Refuse a legacy (targetless) scenario in a batch that supplied no `--target` (BE-0428).
+
+    A scenario with no `targets` of its own has nothing to resolve a target from but the
+    invocation's single `--target`, exactly as today. `_resolve_primary_target` already catches the
+    files named on the command line; this catches the ones a `setup`/`use` expansion or a data-row
+    fan-out produced after that pre-pass, so no scenario ever runs against a target it never named.
+    """
+    if explicit:
+        return
+    orphans = [s.name for s in scenarios if not s.targets]
+    if orphans:
+        typer.echo(
+            f"--target is required: scenario(s) {', '.join(orphans)} declare no targets of their "
+            f"own, so '{target_name}' would be resolved from another file — pass --target, or "
+            "give them a `targets:` field"
+        )
+        raise typer.Exit(2)
+
+
+def _resolve_target_effs(
+    loaded: LoadedConfig,
+    scenarios: list[Scenario],
+    primary: str,
+    primary_eff: Effective,
+    *,
+    headed: bool | None = None,
+    browser: str = "",
+) -> dict[str, Effective]:
+    """One already-rebased `Effective` per target any scenario in this run declares (BE-0428).
+
+    Resolved through the same chain the primary target goes through, so a second target's relative
+    `appPath` / `baselines` / `goldens` resolve against the config file's own directory rather than
+    the caller's working directory (BE-0242). An unknown name exits 2 here, before any device work,
+    the same way an unknown `--target` already does. The primary's own entry reuses the
+    already-resolved `Effective` so the run's `--headed` / `--browser` overrides are not applied
+    twice; every other target gets them applied here, so a run's single web target still sees them
+    when it is not the primary — `_reject_web_flags_across_targets` is what refuses them outright
+    once a run declares two web targets, since which one they would mean has no answer there.
+    """
+    effs = {primary: primary_eff}
+    for s in scenarios:
+        for name in s.targets:
+            if name not in effs:
+                effs[name] = _resolve_browser(
+                    _with_headed(_effective_for(loaded, name), headed), browser
+                )
+    return effs
+
+
+def _reject_web_flags_across_targets(
+    target_effs: Mapping[str, Effective], *, headed: bool | None, browser: str, browsers: str
+) -> None:
+    """Refuse the web engine flags when the run declares more than one web-platform target.
+
+    `--headed` / `--browser` / `--browsers` each apply to a run's single web target, and this item
+    leaves that axis untouched: which of two declared web targets they mean has no answer, so a
+    scenario naming both rejects them outright rather than having one silently picked (BE-0428).
+    """
+    web = sorted(name for name, eff in target_effs.items() if eff.platform == "web")
+    if len(web) < 2:
+        return
+    if headed is not None or browser or browsers:
+        typer.echo(
+            "--headed / --browser / --browsers apply to a run's single web target, but this run "
+            f"declares {len(web)}: {', '.join(web)} — set each target's own `headless` / `browser` "
+            "config instead"
+        )
+        raise typer.Exit(2)
+
+
+def _reject_cross_browser_matrix_with_targets(
+    scenarios: list[Scenario], engines: list[str]
+) -> None:
+    """Refuse `--browsers <2 engines>` on a scenario declaring `targets` (BE-0428).
+
+    The matrix path (`run_matrix_and_report` / `_dispatch_matrix`) runs one full pass per engine
+    against one pool and carries no per-target map, so it cannot launch a scenario's other declared
+    targets at all. Without this check, `run_all` would raise a bare `ValueError` well after every
+    device was already leased, instead of the clean exit 2 every other multi-target refusal gives.
+    Extending the matrix axis to a multi-target run is separate work.
+    """
+    if len(engines) < 2:
+        return
     affected = _scenarios_declaring_targets(scenarios)
     if affected:
         typer.echo(
-            "multi-target scenario execution (targets:) is not yet implemented (BE-0428); "
+            "--browsers cannot fan out a scenario declaring targets: (BE-0428); "
             f"affected scenario(s): {', '.join(affected)}"
         )
         raise typer.Exit(2)
 
 
-def _reject_bad_target_config_hooks(eff: Effective, scenarios: list[Scenario]) -> None:
+def _reject_bad_target_config_hooks(
+    target_effs: Mapping[str, Effective], scenarios: list[Scenario], primary: str
+) -> None:
     """Fail fast, with a clean CLI message, on a `target` mismatch folded in from config (BE-0428).
 
     `with_lifecycle_phases` re-validates its own folded result already — but only `run_all` calls
     it, deep inside a path this command's own `try` doesn't catch (its `finally` only releases the
     device lease). A `targets.<name>.before`/`after` hook step carrying a `target` that disagrees
-    with a 0- or 1-target scenario in this suite — the multi-target guard above only covers
-    `len(targets) >= 2` — would otherwise reach the operator as a raw traceback instead of the
-    clean exit 2 every other scenario-loading error gets. Calling it here again, and discarding
-    the result, is redundant with `run_all`'s own call on the same `eff`/`scenarios` — cheap, and
+    with the scenario it folds into would otherwise reach the operator as a raw traceback instead
+    of the clean exit 2 every other scenario-loading error gets. Calling it here again, and
+    discarding the result, is redundant with `run_all`'s own call on the same inputs — cheap, and
     it means passing this check guarantees `run_all` will too.
     """
     try:
-        with_lifecycle_phases(eff, scenarios)
+        with_lifecycle_phases(target_effs[primary], scenarios, target_effs)
     except ValueError as e:
         typer.echo(f"config-level before/after hook: {e}")
         raise typer.Exit(2) from None
@@ -1005,6 +1185,151 @@ def _resolve_evidence_dirs(
 
 
 @dataclass(frozen=True)
+class _TargetSetup:
+    """One declared target, brought up as far as `run` can before the pools exist (BE-0428).
+
+    Everything here is resolved per target because the underlying config is: which actuator runs
+    it, which device provider hands it a device, and how many lanes that device spec yields. A
+    single-target run holds exactly one of these — the primary — so the path through `_dispatch` is
+    the same either way.
+    """
+
+    name: str
+    eff: Effective
+    actuator: str
+    backends: list[str]
+    device: DeviceLease
+    udids: list[str]
+    workers: int
+
+
+def _acquire_targets(
+    target_effs: Mapping[str, Effective],
+    backend: str,
+    engines: list[str],
+    udid: str,
+    workers: int,
+) -> dict[str, _TargetSetup]:
+    """Select an actuator and acquire a device for every declared target, or release what we took.
+
+    `acquire_device` reads the target's own `deviceProvider` (BE-0236), so it runs once per target
+    rather than once per run: two targets can be served by two different providers, and a cloud
+    device reserved for one of them must be handed back even if a later target's acquisition fails.
+    """
+    setups: dict[str, _TargetSetup] = {}
+    try:
+        for name, eff in target_effs.items():
+            actuator, backends = _select_actuator(backend, eff, engines)
+            device = acquire_device(eff, udid)
+            udids, lanes = _resolve_lanes(
+                actuator,
+                device.udid_spec,
+                workers,
+                environment_for(actuator, device.udid_spec).resolve_device,
+            )
+            setups[name] = _TargetSetup(
+                name=name,
+                eff=eff,
+                actuator=actuator,
+                backends=backends,
+                device=device,
+                udids=udids,
+                workers=lanes,
+            )
+    except BaseException:
+        _release_devices(setups)
+        raise
+    return setups
+
+
+def _pool_demand(scenarios: list[Scenario], setups: Mapping[str, _TargetSetup]) -> dict[str, int]:
+    """The most devices any one scenario needs from each pool at once (BE-0428).
+
+    Targets sharing a pool share its device queue, and a scenario holds every declared target's
+    lease for its whole length, so two targets on one pool need two devices from it.
+    """
+    demand: dict[str, int] = {}
+    for s in scenarios:
+        per_pool: dict[str, int] = {}
+        for name in s.targets:
+            key = setups[name].actuator
+            per_pool[key] = per_pool.get(key, 0) + 1
+        for key, n in per_pool.items():
+            demand[key] = max(demand.get(key, 0), n)
+    return demand
+
+
+def _resolve_multi_target_workers(
+    scenarios: list[Scenario], setups: Mapping[str, _TargetSetup], workers: int
+) -> int:
+    """Cap `--workers` so concurrent scenarios cannot starve each other of devices (BE-0428).
+
+    Each worker holds every one of its scenario's declared targets for that scenario's whole
+    length, so N workers each needing k devices from one platform's pool need N*k devices there.
+    The pools are acquired in a fixed order, which rules out a circular wait — but not a pool that
+    simply never has a free device left, so the worker count is capped rather than left to block.
+    Refusing outright would be worse: `--workers` is a throughput knob, and quietly running a
+    correct suite more slowly beats failing a run that has enough devices to finish.
+    """
+    for actuator, needed in _pool_demand(scenarios, setups).items():
+        lanes = next(len(s.udids) for s in setups.values() if s.actuator == actuator)
+        if needed > lanes:
+            typer.echo(
+                f"a scenario declares {needed} targets served by the {actuator} pool, but only "
+                f"{lanes} device lane(s) are available there — pass more devices via --udid, or "
+                "raise --workers to widen a web pool"
+            )
+            raise typer.Exit(2)
+        workers = min(workers, lanes // needed)
+    return max(1, workers)
+
+
+def _reject_incompatible_actuator_sharing(setups: Mapping[str, _TargetSetup]) -> None:
+    """Refuse two same-actuator targets whose providers resolved different devices (BE-0428).
+
+    `_open_pools` builds one pool per actuator from whichever target it sees first, and every
+    later target sharing that actuator draws from that same pool — correct when they share one
+    `deviceProvider` (the common case: both `booted`, or both naming the same explicit `--udid`),
+    since they then resolve the same `udid_spec` and the pool is exactly the device catalog either
+    one would have built. It is wrong when a second target's own provider (BE-0236) reserved a
+    *different* device: that target would run on the first target's device instead of its own,
+    with its own reservation left sitting unused (and, for a device-cloud provider, billed) for the
+    whole run. Checked here, once every target's device is already resolved, rather than left to
+    surface as a silently wrong device — prime directive 2 rules out the substitution outright.
+    """
+    seen: dict[str, tuple[str, str]] = {}  # actuator -> (first target name, its udid_spec)
+    for name, setup in setups.items():
+        first_name, first_spec = seen.setdefault(setup.actuator, (name, setup.device.udid_spec))
+        if setup.device.udid_spec != first_spec:
+            typer.echo(
+                f"targets '{first_name}' and '{name}' both resolve the '{setup.actuator}' "
+                f"backend, but their device providers reserved different devices "
+                f"({first_spec!r} vs {setup.device.udid_spec!r}) — a run does not yet support two "
+                "device pools for one actuator, so give them the same deviceProvider/udid, or "
+                "put one on a different actuator"
+            )
+            raise typer.Exit(2)
+
+
+def _release_devices(setups: Mapping[str, _TargetSetup]) -> None:
+    """Hand every target's device back to its provider (a no-op for the local one).
+
+    Warn-only, never propagated: a provider's teardown failure must not flip or mask the
+    machine-only verdict, the same rule the post-verdict zip / upload steps honor — a leaked device
+    is loud on stderr, not a crash. One failure never stops the remaining targets being released.
+    """
+    for name, setup in setups.items():
+        try:
+            setup.device.release()
+        except Exception as exc:
+            typer.echo(
+                f"warning: device release for target '{name}' failed ({exc}); "
+                "a reserved device may be leaked",
+                err=True,
+            )
+
+
+@dataclass(frozen=True)
 class _RunPlan:
     """Everything a resolved `run` needs to dispatch and report — plain data, no behavior.
 
@@ -1016,6 +1341,11 @@ class _RunPlan:
     eff: Effective
     config_source: dict[str, str] | None
     target_name: str
+    # Every target this run's scenarios declare, each already actuator-selected and device-leased
+    # (BE-0428), keyed by name and including the primary. A run whose scenarios declare none holds
+    # only the primary, and the singular fields below are its own — so the single-target path and
+    # the cross-browser matrix read exactly what they always have.
+    targets: dict[str, _TargetSetup]
     scenarios: list[Scenario]
     description: str | None
     source_name: str
@@ -1123,23 +1453,86 @@ def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path]:
         stop_server()
 
 
+def _open_pools(plan: _RunPlan) -> dict[str, tuple[LeaseFn, Callable[[], None]]]:
+    """One device pool per distinct platform among this run's declared targets (BE-0428).
+
+    A pool is backend-specific, not target-specific: it resolves one `RunEnvironment`'s device
+    catalog and pre-starts that backend's own collectors, so an iOS target and a web target need two
+    differently-built pools. Targets that share a backend share one pool and are told apart by the
+    `Effective` each hands `lease()`, which is what decides the app that lease launches. A run whose
+    scenarios declare no targets opens exactly one pool, exactly as before.
+
+    Keyed by the resolved actuator rather than by the platform the proposal names: the actuator is
+    what `device_pool` builds its environment from, and it already implies the platform, so this
+    separates every pair of targets a platform key would and additionally separates two actuators
+    on one platform — which a shared pool would serve with the wrong environment.
+
+    `_reject_incompatible_actuator_sharing` has already refused a same-actuator pair whose
+    providers resolved different devices by the time this runs, so every target sharing a pool
+    here genuinely shares one provider's device(s).
+    """
+    pools: dict[str, tuple[LeaseFn, Callable[[], None]]] = {}
+    try:
+        for setup in plan.targets.values():
+            if setup.actuator in pools:
+                continue
+            pools[setup.actuator] = device_pool(
+                setup.udids,
+                setup.backends,
+                setup.eff,
+                plan.runs_dir / plan.run_id,
+                network=plan.network,
+                log_predicate=plan.log_predicate or None,
+                log_subsystem=plan.log_subsystem or _log_subsystem_default(setup.eff),
+                secret_values=plan.secret_values,
+                provision=setup.device.provision,
+            )
+    except BaseException:
+        # `mid_run=True`: a pool that came up before a later one failed to must not have its own
+        # teardown defect replace the bring-up error that's already propagating — the same
+        # mask-the-real-fault risk `guarded_teardown`'s own `mid_run` flag exists to rule out.
+        _close_pools(pools, mid_run=True)
+        raise
+    return pools
+
+
+def _close_pools(
+    pools: Mapping[str, tuple[LeaseFn, Callable[[], None]]], *, mid_run: bool = False
+) -> None:
+    """Shut every pool down, letting the first wiring defect surface once they all have.
+
+    A pool's `shutdown()` raises the first lease-teardown defect it stashed (BE-0342), and that
+    must still reach the operator — but not at the cost of leaving another platform's collectors
+    listening, so the remaining pools are shut down first and the earliest defect re-raised after.
+
+    `mid_run` (set by a caller unwinding an exception of its own, or by this function's own
+    `finally`-time check below) downgrades that re-raise to a warning: a teardown defect raised from
+    a `finally` while a different exception is already propagating would silently replace it, the
+    same failure mode `guarded_teardown`'s own `mid_run` flag exists to rule out.
+    """
+    first: BaseException | None = None
+    for actuator, (_lease, shutdown) in pools.items():
+        try:
+            shutdown()
+        except Exception as exc:
+            typer.echo(f"warning: shutting down the {actuator} pool failed ({exc})", err=True)
+            first = first or exc
+    if first is None:
+        return
+    if mid_run or sys.exc_info()[0] is not None:
+        typer.echo(f"warning: device pool teardown failed ({first}); continuing", err=True)
+        return
+    raise first
+
+
 def _dispatch_single(
     plan: _RunPlan,
     progress_fn: Callable[[str], None] | None,
     exec_decision: dict[str, str | None] | None,
 ) -> tuple[list[RunResult], Path]:
-    """The single-engine path — exactly today's flow: one pool, one `run_and_report`, no matrix."""
-    lease, shutdown = device_pool(
-        plan.udids,
-        plan.backends,
-        plan.eff,
-        plan.runs_dir / plan.run_id,
-        network=plan.network,
-        log_predicate=plan.log_predicate or None,
-        log_subsystem=plan.log_subsystem or _log_subsystem_default(plan.eff),
-        secret_values=plan.secret_values,
-        provision=plan.provision,
-    )
+    """The single-engine path — exactly today's flow: one pool per platform, one `run_and_report`."""
+    pools = _open_pools(plan)
+    lease = pools[plan.actuator][0]
     try:
         return run_and_report(
             plan.eff,
@@ -1147,6 +1540,15 @@ def _dispatch_single(
             lease,
             plan.runs_dir,
             plan.run_id,
+            targets={
+                name: TargetPool(
+                    eff=setup.eff,
+                    lease=pools[setup.actuator][0],
+                    actuator=setup.actuator,
+                    udid_spec=setup.device.udid_spec,
+                )
+                for name, setup in plan.targets.items()
+            },
             alert_guard_for=plan.alert_guard_for,
             workers=plan.workers,
             bindings=plan.secret_bindings,
@@ -1176,7 +1578,7 @@ def _dispatch_single(
             cancelled=plan.cancelled,
         )
     finally:
-        shutdown()
+        _close_pools(pools)
 
 
 def _dispatch_matrix(
@@ -1330,7 +1732,13 @@ def _finish(plan: _RunPlan, results: list[RunResult], manifest: Path) -> None:
 
 def run(
     # --- Target & scenario selection ---
-    target_name: str = typer.Option(..., "--target"),
+    target_name: str = typer.Option(
+        "",
+        "--target",
+        help="the target to run against; required unless every --scenario file declares its own "
+        "`targets:` (BE-0428), in which case --scenario is required in its place and the file's "
+        "own names are resolved from the config",
+    ),
     scenario: Annotated[
         list[str] | None,
         typer.Option(
@@ -1523,7 +1931,13 @@ def run(
         )
     # Resolve the run's inputs from the flags — each step is an independently testable helper — then
     # assemble the plan and hand it to dispatch/finish. `run` itself stays a thin sequence.
-    eff, config_source, engines = _resolve_config_and_engines(
+    #
+    # `--target` may be omitted for a run driven entirely by self-declaring scenarios (BE-0428), so
+    # the primary target is resolved first, from the flag or from the `--scenario` files themselves;
+    # everything below — the config load, the pool, the evidence dirs — is unchanged once it has one.
+    explicit_target = bool(target_name)
+    target_name = _resolve_primary_target(target_name, scenario or [])
+    loaded, eff, config_source, engines = _resolve_config_and_engines(
         config,
         target_name,
         offline=config_offline,
@@ -1532,7 +1946,6 @@ def run(
         browser=browser,
         browsers=browsers,
     )
-    secret_bindings, secret_values = _resolve_secrets(eff)
     scenarios, description, source_name, files, plan_sources = _load_scenarios(
         eff, scenario or [], target_name
     )
@@ -1545,29 +1958,42 @@ def run(
         ios_tipkit_handling,
         eff.run_defaults.ios_tip_kit_handling,
     )
-    # After filtering, so `--tag`/`--exclude` selecting away every multi-target scenario in a suite
-    # still lets the rest of the suite run (BE-0428) — the guard exists to fail loudly on a scenario
-    # this run would actually attempt, not on one selection already dropped.
-    _reject_multi_target_scenarios(scenarios)
-    _reject_bad_target_config_hooks(eff, scenarios)
-    actuator, backends = _select_actuator(backend, eff, engines)
+    # After filtering, so `--tag`/`--exclude` selecting away a self-declaring scenario in a suite
+    # leaves the rest of the suite resolving exactly as it did before that file was added (BE-0428)
+    # — these checks speak about the scenarios this run will actually attempt.
+    _check_target_membership(scenarios, target_name, explicit=explicit_target)
+    _reject_legacy_without_target(scenarios, target_name, explicit=explicit_target)
+    target_effs = _resolve_target_effs(
+        loaded, scenarios, target_name, eff, headed=headed, browser=browser
+    )
+    # Every declared target's own `secrets` names, not only the primary's — a `${secrets.X}` a step
+    # routed elsewhere uses may be declared only on that target's own config (BE-0428).
+    secret_bindings, secret_values = _resolve_secrets(target_effs.values())
+    _reject_web_flags_across_targets(target_effs, headed=headed, browser=browser, browsers=browsers)
+    _reject_cross_browser_matrix_with_targets(scenarios, engines)
+    _reject_bad_target_config_hooks(target_effs, scenarios, target_name)
     # Where this target's devices come from is a seam (BE-0236): the provider `acquire` returns the
     # udid spec the lanes resolve against (the `--udid` flag verbatim for the default local provider,
     # a reserved serial / endpoint for a device cloud) plus what it already did to the device
     # (`provision`). Acquired before the `try` so its release runs even on a setup-time error below;
-    # off the run/CI verdict path — no LLM, no assertion input.
-    lease = acquire_device(eff, udid)
+    # off the run/CI verdict path — no LLM, no assertion input. Once per declared target, since the
+    # provider — like the actuator and the device lanes it feeds — is per-target config (BE-0428).
+    #
+    # Web has no simctl udid: `--workers N` is N near-free BrowserContext lanes (BE-0054); for
+    # idb, `--udid` is a concrete comma list capped to the pool size. (The "booted" default is
+    # unused on web.) How a device handle resolves is the platform's, behind the Environment seam
+    # (BE-0256): Android via adb, the iOS family via simctl — no `actuator == "adb"` branch here.
+    setups = _acquire_targets(target_effs, backend, engines, udid, workers)
+    primary = setups[target_name]
+    actuator, backends = primary.actuator, primary.backends
+    udids = primary.udids
+    lease = primary.device
     try:
-        # Web has no simctl udid: `--workers N` is N near-free BrowserContext lanes (BE-0054); for
-        # idb, `--udid` is a concrete comma list capped to the pool size. (The "booted" default is
-        # unused on web.) How a device handle resolves is the platform's, behind the Environment seam
-        # (BE-0256): Android via adb, the iOS family via simctl — no `actuator == "adb"` branch here.
-        udids, workers = _resolve_lanes(
-            actuator,
-            lease.udid_spec,
-            workers,
-            environment_for(actuator, lease.udid_spec).resolve_device,
-        )
+        # Every target's device is already reserved by here, so a rejection past this point must
+        # still release them — including this one, which can exit 2 on a pool too small for the
+        # scenario's own target count (BE-0428).
+        _reject_incompatible_actuator_sharing(setups)
+        workers = _resolve_multi_target_workers(scenarios, setups, primary.workers)
         _apply_system_alert_handling(
             scenarios, resolve_system_alert_handling_flag(system_alert_handling)
         )
@@ -1601,6 +2027,7 @@ def run(
                 eff=eff,
                 config_source=config_source,
                 target_name=target_name,
+                targets=setups,
                 scenarios=scenarios,
                 description=description,
                 source_name=source_name,
@@ -1640,16 +2067,9 @@ def run(
             results, manifest = _dispatch(plan)
             _finish(plan, results, manifest)
     finally:
-        # Hand the device back to its provider (a no-op for the local one), even on failure so a
-        # reserved cloud device is never leaked (BE-0236). Warn-only, never propagate: a provider's
-        # teardown failure must not flip or mask the machine-only verdict, the same rule the
-        # post-verdict zip/upload steps honor — a leaked device is loud on stderr, not a crash.
-        try:
-            lease.release()
-        except Exception as exc:
-            typer.echo(
-                f"warning: device release failed ({exc}); a reserved device may be leaked", err=True
-            )
+        # Hand every target's device back to its provider (a no-op for the local one), even on
+        # failure so a reserved cloud device is never leaked (BE-0236).
+        _release_devices(setups)
 
 
 def register(app: typer.Typer) -> None:

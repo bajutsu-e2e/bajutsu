@@ -24,6 +24,41 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 - `sink`: 証跡の出力先（既定 `NullSink` は何も書かない）。詳細は [evidence](evidence.md)。
 - `alert_guard`: ステップ失敗時に「ブロッカー（システムアラート等）を片付けたら、その片付けたイベントを返す」ハンドラです。イベントを返した場合、**そのステップを 1 回だけ再試行します**（[recording の alert guard](recording.md#システムアラートの自動対処)）。`wait` ステップ（`for`/`settled`/`screenChanged`）では同じハンドラが **wait の途中でも**待ち構えています（BE-0269）。すでにポーリング済みの画面のツリーが崩壊して見えた時点で発火します（デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回まで）。末尾の再試行とは独立に、wait 自体のタイムアウトを待たず回復できます。
 
+- `target_runtimes`: シナリオが宣言したターゲットごとに 1 つずつの束で、名前をキーにします。各束は、そのターゲット自身のライブドライバと、そのリースに紐づく残りすべてを持ちます。ターゲットを宣言しないシナリオにはありません。その場合は上の平坦な引数をそのまま読みます。
+
+### ステップを自分のターゲットへ振り分ける（複数ターゲットシナリオ）
+
+[2 つ以上のターゲットを宣言するシナリオ](scenarios.md#targets--target複数ターゲットシナリオbe-0428)でも、
+ステップループは 1 本です。ターゲットごとには増えません。`run_scenario` は宣言済みのターゲットごとに
+ステップランナーを 1 つ作ります。どれも**共有された 1 つのループ状態**の上で動きます。各ステップは、
+自分の `target` が名指しするランナーへ渡ります。
+
+ターゲットごとの束が持つものは次のとおりです。
+
+| フィールド | 紐づく先 |
+|---|---|
+| `driver` | そのターゲットのライブドライバ |
+| `sink` | そのターゲットの証跡の出力先 |
+| `network` / `transitions` / `channel` | そのターゲット自身のコレクタ |
+| `webview_bridge` | そのターゲットの WebView ブリッジ。`web:` ブロックが正しいアプリを開きます |
+| `control` / `relaunch` | そのターゲットのデバイス |
+| `mailbox` / `locale` / `capture` / `interrupts` | そのターゲット自身の config |
+| `ctx` | そのターゲットの baselines / schemas / goldens ディレクトリ |
+
+ループ状態を共有することから、3 つの帰結が出ます。
+
+- **採番が 1 つ。** どのターゲットが走らせたかによらず、各ステップは次の番号を取ります。2 つのターゲットの証跡ディレクトリが衝突しません。
+- **`${vars.*}` の辞書が 1 つ。** `live_bindings` はどのドライバのものでもありません。あるターゲットの `extract` が捕まえた値は、別のターゲットに対するアサーションから読めます。
+- **判定が 1 つ。** 2 つめのターゲットでの取りこぼしは、1 つめでの取りこぼしと同じようにシナリオを終わらせます。
+
+`target` を名指ししないステップは、すでにアクティブなドライバをそのまま使います。この規則が効くのは
+`web:` ブロックの内側です。その入れ子のステップは、ブロック自身の `WebContextDriver` に対して走り続ける
+必要があります。取りこぼすと、その下のアプリの画面に届いてしまいます。
+
+末尾の `expect` ブロックは、各エントリを名指しされたターゲットごとにまとめます。参照されたターゲット
+ごとに 1 回、そのターゲットのドライバとネットワークソースに対してポーリングします。結果はシナリオの
+宣言順に戻して束ねます。読み手には、書いたとおりのブロックが見えます。
+
 ### ステップループを挟む 2 つのライフサイクルフェーズ
 
 シナリオの `before` / `after`（[scenarios](scenarios.md#before--afterセットアップとティアダウンのフェーズ)）は、ステップループの前後にもう 2 つのフェーズを足します。どちらも同じステップランナーが動かすので、フックのステップは他のステップとまったく同じことができ、run の `vars.*` バインディングを共有します。
@@ -109,6 +144,7 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 class StepOutcome:
     index: int
     action: str                  # "tap" / "wait" / ...
+    target: str                  # それを走らせた宣言済みターゲット。宣言がなければ ""
     ok: bool
     reason: str                  # 失敗理由
     duration_s: float            # 計時
@@ -126,7 +162,14 @@ class RunResult:
     before_outcomes: list[StepOutcome]  # before フェーズ自身のステップ
     after_outcomes: list[StepOutcome]   # after フェーズ自身のステップ
     after_verdict: str           # "success" / "error" — どの after ルールが走ったか。なければ ""
+    target_devices: dict[str, TargetDeviceInfo]  # 宣言済みターゲットごとに 1 行（複数ターゲットのみ）
 ```
+
+`RunResult` の単数形の `backend` / `device` / `device_name` / `device_runtime` は、どれも 1 つのターゲット
+だけを説明します。複数ターゲットの run では 4 つとも空のままにし、代わりに `target_devices` を埋めます。
+宣言済みのターゲットごとに 1 行あり、そのターゲットのバックエンド、udid、機種、OS バージョンを持ちます。
+単一ターゲットの run は単数形のフィールドを埋め、`target_devices` を空にします。どちらの読み手にも、
+従来どおりの値が見えます。
 
 `expect` は全ステップ成功後にのみ評価されます。`alert_guard` があれば expect も 1 回だけ再評価します。これらはそのまま `report/` の `manifest.json` / JUnit / HTML になります（[reporting](reporting.md)）。
 
@@ -147,6 +190,26 @@ erase（pre.erase なら shutdown → erase） → boot → bootstatus -b（起�
 ```
 
 > `await_ready` は、利用できる中で最も強いレディネスシグナルを順に探してポーリングします。明示的な `readyWhen` セレクタ、次にアプリが報告する画面遷移イベント（[BE-0310](../../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)。`BajutsuKit` 経由のオプトイン）、次に宣言済みの `idNamespaces` に属する id を持つ要素、そしてどれも無ければ「アプリが UI を描画した（ルート要素より多い）」ことへとフォールバックし、最大 10s まで待ちます（各段の詳細は [configuration](configuration.md) を参照）。どの段で決まった場合も、ゲートは続けて画面が**動かなくなる**のを待ちます。連続する2回のクエリが同じ要素の識別子、ラベル、frame を返した時点で返ります。どの段も答えているのは「アプリの最初の内容が画面に出た」ことであり、遷移の途中の画面もこれを満たします。そして動いている画面に合成されたタッチは Simulator が取りこぼすことがあり、操作は配送済みとして報告される一方、失敗はずっと後の無関係なステップの `wait` タイムアウトとして現れます。この確認にかかるポーリングは、その段自身のツリー読み取りが比較の起点になる場合は1回、自前の読み取りを持たない `screenChanged` の段では2回です。上限は3回です。上限に達した場合は、静止しない画面を待ち続けるのではなく ready を返し、最初の wait の診断に `settled: false` を記録します。ready なアプリをタイムアウトに変えることはありません。`locale` は launch 時に **適用されます**（シナリオの `preconditions.locale` が config 既定を上書きし、`env.locale_args` で launch 引数として渡ります）。`simctl boot` は起動を要求した時点で返るため、boot に続く手順はいずれも `bootstatus` で起動の完了を待ってから進みます。システムロケールの固定が行うもう1回の起動も同じです（[BE-0359](../../roadmaps/BE-0359-xcuitest-boot-completion-wait/BE-0359-xcuitest-boot-completion-wait-ja.md)）。simctl の launch 手順は `make -C demos/showcase run-swiftui` ＋ `ios-e2e.yml` CI ワークフローで実機（iPhone 17 Pro）検証済みです。
+
+### 複数のターゲットをまとめて起動する
+
+`run_all` は、宣言済みのターゲットごとに `TargetPool` を 1 つ受け取ります。各 `TargetPool` は、その
+ターゲットの解決済み config と、そのバックエンドを受け持つプールを持ちます。さらに、そのターゲット自身
+の capability 事前検査が読む actuator とデバイス指定も持ちます。この対応表を埋めるのはコマンドライン層
+です。パイプラインは、2 つめのターゲットを起動するために config ファイルもデバイスのレジストリも必要
+としません。
+
+パイプラインが作るプールは、ターゲットごとではなく **actuator** ごとに 1 つです。プールは 1 つの
+`RunEnvironment` のデバイスカタログを解決し、そのバックエンド自身のコレクタを先に起動します。iOS の
+ターゲットと web のターゲットには、作り方の違う 2 つのプールが要ります。actuator を共有する 2 つの
+ターゲットは、1 つのプールを共有します。両者を区別するのは、それぞれが `lease()` に渡す config です。
+それが、そのリースの起動するアプリを決めます。
+
+パイプラインは、シナリオの最初のステップより前に、宣言済みのターゲットをすべてリースします。どのワーカー
+も、プールを 1 つの固定順で取ります。プールの actuator、次にターゲット名の順です。この順序が、デッドロック
+に必要な循環待ちを排除します。すべてのワーカーが同じ向きですべてのプールへ向かうので、互いの次のプールを
+握り合うことがありません。途中で起動に失敗したときは、すでに起動済みのものをすべて解放してから例外を
+伝播します。シナリオ自身の終了時には、一式をまとめて解放します。
 
 ### `device_pool` / `run_all` / `run_and_report`
 

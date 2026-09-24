@@ -238,5 +238,5 @@ def test_run_warns_and_keeps_its_verdict_when_release_raises(
 
     assert result.exit_code == 0, result.output  # PASS verdict survives the release failure
     assert "PASS" in result.output
-    assert "device release failed" in result.output
+    assert "device release for target 'demo' failed" in result.output
     assert "cloud teardown exploded" in result.output

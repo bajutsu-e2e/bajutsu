@@ -65,7 +65,7 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `description` | str | none | Optional human description; shown on the scenario's report card and in the serve UI |
 | `from` | str | none | **Provenance** — the natural-language goal `record` authored this scenario from ([provenance](#from-provenance)). Authoring metadata only; `run` ignores it |
 | `tags` | list[str] | `[]` | Selection labels; the CLI `--tag` / `--exclude` flags pick which scenarios run ([reuse, data, and tags](#reuse-data-and-tags)) |
-| `targets` | list[str] | `[]` | Every [target](glossary.md#target-app-device) this scenario drives ([below](#targets--target-multi-target-scenarios-be-0428)). Each entry names a `targets.<name>` config unit. Schema only today — `run` refuses a scenario declaring **two or more**, until a follow-up ships the CLI/launch/runner support to carry it out |
+| `targets` | list[str] | `[]` | Every [target](glossary.md#target-app-device) this scenario drives ([below](#targets--target-multi-target-scenarios-be-0428)). Each entry names a `targets.<name>` config unit, resolved from the config the run loads |
 | `data` / `dataFile` | list / str | none | Data-driven rows — inline `data`, or `dataFile` (a CSV path). Expands into one run per row, substituting `${row.col}`. Mutually exclusive ([reuse, data, and tags](#reuse-data-and-tags)) |
 | `preconditions` | object | `{}` | Per-test environment setup (below) |
 | `before` | list | `[]` | Setup steps run as their **own phase** ahead of `steps`; a failure there aborts the scenario ([below](#before--after-setup-and-teardown-phases)) |
@@ -1172,15 +1172,6 @@ resumes the app without any settle sleep, so wait for a concrete element afterwa
 
 ## `targets` / `target` (multi-target scenarios, BE-0428)
 
-> **Schema only today.** `Scenario.targets` and `Step`/`Assertion`'s `target` parse and validate as
-> described here, so a suite can be authored against them — but `bajutsu run` does not yet execute a
-> scenario declaring **two or more** targets: it exits with a "not yet implemented" error rather
-> than silently running every step against one target. (A scenario declaring exactly one still
-> runs today, against whatever `--target` the invocation resolves — see the note on that below.)
-> The CLI, launch, and runner support that would actually route each step to its own live driver
-> lands in follow-up work
-> ([BE-0428](../roadmaps/BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md)).
-
 A scenario's top-level `targets` field names every [target](glossary.md#target-app-device) it
 drives. An iOS target and a web target that are two clients of the same service are one example.
 One scenario can act on one target, then check the result on another. These interleave freely, in
@@ -1188,6 +1179,12 @@ a single deterministic run with one verdict. Each entry names a `targets.<name>`
 `--target` already resolves that same unit. Naming the same target twice is a load error. A
 scenario that declares no `targets` (the default) keeps today's behavior unchanged. Every step in
 it must still omit `target`.
+
+`bajutsu run` launches every declared target before the scenario's first step. It tears them all
+down after the last one. No step waits for its target to launch. The interleaving above costs no
+extra startup. Each declared name resolves against the one config file the invocation loads. Both
+targets must appear side by side as `targets.<name>` entries there. Merging two config files has no
+support ([configuration](configuration.md#config-layering-defaults--targets)).
 
 Once `targets` holds two or more entries, every step must set its own `target`. That includes an
 `if` / `forEach` / `web` wrapper, not merely a leaf action. Every top-level `expect` entry must set
@@ -1208,18 +1205,46 @@ one too, each naming one of the declared targets:
       value: { sel: { id: "post.${vars.postId}.likeCount" }, equals: "1" }
 ```
 
-With one declared target, a step may omit `target`. It then runs against whatever `--target` the
-invocation resolves, as if `targets` were empty. Schema validation checks a step's own `target`,
-when set, against the one declared name alone. It never checks that declared name against
-`--target` itself. A mismatch reaches run time unchecked. The membership check that would catch one
-is a later BE-0428 unit's own work. A step may also name that target directly, and both spellings
-behave the same way. `${vars.*}` carries across every declared target in one run. These
-are the same
-[runtime variables](#runtime-variables-vars) `extract` populates. A value one target's step captures
-is readable from an assertion against another target.
+A self-declaring scenario resolves its own targets. `bajutsu run --scenario <file>` then needs no
+`--target` at all. An explicit `--target` passed beside one must name a target that scenario
+declares. A stale flag left over from editing the file stops the run. It never picks a target the
+file dropped. [The command-line reference](cli.md#when---target-is-optional) has the full rule,
+including which invocations still require `--target`.
 
-A step nested inside a `web` block is the one exception. It must **omit** `target` outright. It always
-runs against the target the enclosing `web` step resolved into its own WebView bridge.
+With one declared target, a step may omit `target`. A step may also name that target directly, and
+both spellings behave the same way.
+
+`${vars.*}` carries across every declared target in one run. These are the same
+[runtime variables](#runtime-variables-vars) `extract` populates. A value one target's step captures
+is readable from an assertion against another target. A cross-platform check can thus name the
+record each side touched, not merely a changed count.
+
+A step nested inside a `web` or `app` block is the one exception. It must **omit** `target`
+outright. It always runs against the device the enclosing block already resolved. That is `web`'s
+own WebView bridge, or `app`'s unchanged native driver.
+
+### What a multi-target run does with the rest of a target's config
+
+Each declared target keeps its own config, not the primary target's. Resolution per target:
+
+| Reads that target's own config | Why |
+|---|---|
+| `before` / `after` lifecycle steps | Each target's own hooks fold in, in declared order, stamped with that target's name — so an app-side teardown and a web-side one each run against the right driver |
+| `mailbox` | An `email` or `totp` step polls the inbox its own target configured |
+| `locale`, `launchEnv`, `capture`, `interrupts` | Each is a property of the app under test, not of the run |
+| `baselines` / `schemas` / `goldens` | A `visual` or `golden` assertion compares against its own target's directory when that target configures one, else the run's |
+| Backend capabilities | Each target's steps are checked against its own backend before any device is leased, so a construct only one platform supports fails the right one |
+
+Two run-wide values stay shared. The `redact` secret set unions every declared target's own
+secrets. That union scrubs every target's evidence, since scrubbing too widely is the safer error.
+The run directory is a run-level artifact, never per target.
+
+The web engine flags still apply to a run's single web target. Those flags are `--headed`,
+`--browser`, and `--browsers`. A scenario naming two web-platform targets refuses all three. Which
+of the two they mean has no answer. Extending the matrix across a multi-target run is separate
+work.
+
+### Limits
 
 Two open questions this item hasn't resolved fail closed instead of guessing. Both apply once a
 scenario declares two or more targets. The loader refuses a `use:` step outright.
@@ -1237,6 +1262,23 @@ it in both cases. Setting `target` there would restate that value, or contradict
 loader refuses an `interrupts` entry's `condition` the same way. The reason is simpler: it has no
 enclosing step to fix one for it in the first place. The loader refuses `target` in all three
 places at load time.
+
+Two targets on the same backend share one device pool. A scenario holds every declared target's
+device for its whole length. Two iOS targets in one scenario thus need two devices: pass them with
+`--udid a,b`. `run` refuses the invocation up front when a pool has fewer devices than a scenario
+needs. Blocking on a queue that will never free one would be the alternative. `run` also caps
+`--workers`, keeping concurrent scenarios from starving each other the same way.
+
+### What the report shows
+
+Each step's row in the report names the target that ran it. A scenario declaring no targets leaves
+that label empty, as before. `manifest.json` carries the same name per step. It also carries one
+`target_devices` row per declared target. Each row holds that target's backend, device, model, and
+OS version.
+
+Four singular fields stay **empty** on a multi-target run. They are `backend`, `device`,
+`device_name`, and `device_runtime`. None of them describes the whole scenario any more. That matches the "empty means
+not applicable" rule `engine` uses. A single-target run's reader sees all four as before.
 
 ## Assertion DSL
 

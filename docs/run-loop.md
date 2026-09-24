@@ -30,6 +30,43 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
   against the already-polled screen as soon as the tree looks collapsed — debounced, cooldown-limited,
   capped at two attempts per wait — so a blocked wait can recover before its own timeout elapses,
   independent of the end-of-step retry.
+- `target_runtimes`: one bundle per target the scenario declares, keyed by name. Each bundle holds
+  that target's own live driver and everything else bound to its lease. Absent for a scenario
+  declaring no targets, which reads the flat arguments above unchanged.
+
+### Routing a step to its own target (multi-target scenarios)
+
+A [scenario declaring two or more targets](scenarios.md#targets--target-multi-target-scenarios-be-0428)
+runs one step loop, not one per target. `run_scenario` builds one step runner per declared target,
+all over **one shared loop state**. Each step goes to the runner its own `target` names.
+
+What each target's own bundle carries:
+
+| Field | Bound to |
+|---|---|
+| `driver` | that target's live driver |
+| `sink` | that target's evidence output |
+| `network` / `transitions` / `channel` | that target's own collector |
+| `webview_bridge` | that target's WebView bridge, so a `web:` block opens the right app |
+| `control` / `relaunch` | that target's device |
+| `mailbox` / `locale` / `capture` / `interrupts` | that target's own config |
+| `ctx` | that target's baselines / schemas / goldens directories |
+
+Three consequences follow from the shared loop state:
+
+- **One numbering.** Every step takes the next index whichever target ran it. Two targets'
+  evidence directories never collide.
+- **One `${vars.*}` dictionary.** `live_bindings` belongs to no driver. A value one target's
+  `extract` captures is readable from an assertion against another.
+- **One verdict.** A miss on the second target ends the scenario as one on the first does.
+
+A step naming no target keeps whatever driver is already active. That rule matters inside a `web:`
+block. Its nested steps must keep running against the block's own `WebContextDriver`. Falling back
+would reach the app surface underneath it instead.
+
+The trailing `expect` block groups its entries by the target each names. It polls once per
+referenced target, against that target's driver and network source. Results merge back in the
+scenario's declared order, so a reader sees the block as authored.
 
 ### The lifecycle phases around the step loop
 
@@ -142,6 +179,7 @@ swipe → `on`). An `idMatches` trigger `fnmatch`es against this `id`.
 class StepOutcome:
     index: int
     action: str                  # "tap" / "wait" / ...
+    target: str                  # the declared target that ran it; "" when the scenario declares none
     ok: bool
     reason: str                  # failure reason
     duration_s: float            # timing
@@ -159,7 +197,15 @@ class RunResult:
     before_outcomes: list[StepOutcome]  # the `before` phase's own steps
     after_outcomes: list[StepOutcome]   # the `after` phase's own steps
     after_verdict: str           # "success" / "error" — which `after` rules ran; "" when none
+    target_devices: dict[str, TargetDeviceInfo]  # one row per declared target (multi-target only)
 ```
+
+`RunResult`'s singular `backend` / `device` / `device_name` / `device_runtime` each describe one
+target alone. A multi-target run leaves all four empty and fills `target_devices` instead. That
+holds one row per declared target. Each row carries that target's backend, udid, model, and OS
+version. A
+single-target run fills the singular fields and leaves `target_devices` empty. An existing reader of
+either sees what it always did.
 
 `expect` is evaluated only after all steps pass. If `alert_guard` is present, expect is also
 re-evaluated once. These become `report/`'s `manifest.json` / JUnit / HTML directly
@@ -201,6 +247,24 @@ erase (if pre.erase: shutdown → erase) → boot → bootstatus -b (wait out th
 > cycle the system-locale pin runs ([BE-0359](../roadmaps/BE-0359-xcuitest-boot-completion-wait/BE-0359-xcuitest-boot-completion-wait.md)).
 > The simctl launch sequencing is validated on a real device
 > (iPhone 17 Pro) via `make -C demos/showcase run-swiftui` + the `ios-e2e.yml` CI workflow.
+
+### Bringing several targets up together
+
+`run_all` takes one `TargetPool` per declared target. Each carries that target's resolved config
+and the pool serving its backend. Each also carries the actuator and device spec its own capability
+preflight reads. The command-line layer fills the map. The pipeline needs neither the config file nor the device
+registry to bring a second target up.
+
+The pipeline builds one pool per distinct **actuator**, not per target. A pool resolves one
+environment's device catalog and pre-starts that backend's collectors. An iOS target and a web
+target need two differently-built pools. Two targets sharing an actuator share a pool. The config
+each hands `lease()` tells them apart, and decides the app that lease launches.
+
+The pipeline leases every declared target before the scenario's first step. Every worker takes the
+pools in one fixed order: the pool's actuator, then the target name. That ordering rules out the
+circular wait a deadlock needs. All workers approach all pools the same way round, so no two can
+hold each other's next pool. A launch failing partway through releases everything already up before
+propagating. The scenario's own end releases the whole set.
 
 ### `device_pool` / `run_all` / `run_and_report`
 
