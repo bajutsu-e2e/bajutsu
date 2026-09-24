@@ -39,6 +39,7 @@ from .relaunch import Relaunch
 from .rotate import Rotate
 from .scroll import Scroll
 from .select_option import SelectOption
+from .select_photos import SelectPhotos
 from .select_text import SelectText
 from .set_clipboard import SetClipboard
 from .set_location import SetLocation
@@ -81,6 +82,7 @@ __all__ = [
     "Rotate",
     "Scroll",
     "SelectOption",
+    "SelectPhotos",
     "SelectText",
     "SetClipboard",
     "SetLocation",

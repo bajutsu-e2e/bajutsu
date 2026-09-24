@@ -550,6 +550,14 @@ def test_enter_app_and_leave_app_are_unsupported_on_the_live_route() -> None:
         driver.leave_app()
 
 
+def test_select_photos_is_unsupported_on_the_live_route() -> None:
+    # The resident runner's own actuation for `selectPhotos` is not implemented on this transport,
+    # not ruled out by it — same reasoning as `set_picker_value`'s own refusal.
+    driver = XcuitestLiveDriver(WebDriverClient(_FakeGrid([])))
+    with pytest.raises(base.UnsupportedAction):
+        driver.select_photos([0], timeout=10)
+
+
 def test_a_gesture_on_an_ambiguous_selector_fails_before_actuation() -> None:
     # Distinct rects: two genuinely different buttons sharing a name, not a content-identical
     # duplicate (which resolve_unique now collapses rather than flags ambiguous).

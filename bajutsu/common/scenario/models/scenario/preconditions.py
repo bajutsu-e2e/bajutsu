@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from bajutsu.common.scenario.models._base import _Model
 
@@ -27,6 +27,23 @@ class Preconditions(_Model):
     deeplink: str | None = None
     locale: str | None = None
     setup: str | None = None
+    # Image files to seed into the iOS Simulator's photo library before `selectPhotos` addresses it
+    # by ordinal position (`Env.add_media`, one `simctl addmedia` call per path, in order). Paths are
+    # scenario-file-relative, resolved the same way `dataFile` is (`contained_ref`). Lives here,
+    # beside `erase`/`reinstall`, rather than on `Scenario` — the field the seeding gate below already
+    # reads, with no separate plumbing through `launch_driver` / `RunEnvironment.start` needed.
+    seed_photos: list[str] = Field(default_factory=list, alias="seedPhotos")
+
+    @model_validator(mode="after")
+    def _seed_photos_needs_erase(self) -> Self:
+        # `_prepare_simulator` only seeds on the cold-and-erase path — the same wipe that already
+        # guarantees a known-empty library. Without this check, `seedPhotos` set alongside `erase:
+        # false` (or unset) would silently seed nothing, leaving `selectPhotos: { indices: [...] }`
+        # to address whatever the Simulator's ambient library happens to contain — non-reproducible
+        # by omission rather than by the design the seeding exists to replace (prime directive 2).
+        if self.seed_photos and not self.erase:
+            raise ValueError("preconditions.seedPhotos requires preconditions.erase: true")
+        return self
 
     def resolved_locale(self, target_locale: str) -> str:
         """The locale this scenario runs under: its own override, else the target config's `locale`.

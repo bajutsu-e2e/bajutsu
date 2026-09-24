@@ -120,6 +120,8 @@ def test_unsupported_actions_raise() -> None:
     with pytest.raises(base.UnsupportedAction):
         driver.select_option({"id": "x"}, "midnight")
     with pytest.raises(base.UnsupportedAction):
+        driver.select_photos([0], timeout=10)  # PHPickerViewController is an iOS system control
+    with pytest.raises(base.UnsupportedAction):
         driver.back()  # BE-0210: back is unsupported in the web context (first slice)
     with pytest.raises(base.UnsupportedAction):
         driver.delete_text(1)  # BE-0265: text-editing steps unsupported in the web context yet

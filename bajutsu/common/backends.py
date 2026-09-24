@@ -15,6 +15,7 @@ See `docs/vision.md` for the per-platform actuator/environment/id design.
 
 from __future__ import annotations
 
+import platform
 import shutil
 from collections.abc import Callable
 from pathlib import Path
@@ -191,27 +192,47 @@ def capabilities_for(actuator: str) -> frozenset[str]:
     raise ValueError(f"unknown backend: {actuator!r}")
 
 
+def apple_silicon_simulator_host() -> bool:
+    """Whether the Mac running bajutsu itself is Apple Silicon (`platform.machine() == "arm64"`).
+
+    A Simulator's guest OS runs natively on the host CPU rather than emulating a separate one, so
+    "an Apple Silicon Simulator" and "a Simulator on an Apple Silicon Mac" are the same fact — no
+    `xcrun simctl` query can add anything a plain host-architecture read does not already answer,
+    and unlike a `simctl` call this is free of device-fault flakiness (prime directive 2). Read once
+    per call rather than cached: cheap, and a call ever migrating host mid-process (a remote runner
+    reassigned to different hardware) should see the machine it is actually on.
+    """
+    return platform.machine() == "arm64"
+
+
 def capabilities_for_run(
     actuator: str, eff: Effective, udid_spec: str = "booted"
 ) -> frozenset[str]:
     """The capability set for one run, narrowing the static set to the run's device target (BE-0238).
 
-    `capabilities_for` returns a backend's *static* capabilities. Two XCUITest device targets narrow
-    it, each so preflight (BE-0082) skips an unrunnable scenario up front instead of failing late:
+    `capabilities_for` returns a backend's *static* capabilities. Three XCUITest device targets
+    narrow it, each so preflight (BE-0082) skips an unrunnable scenario up front instead of failing
+    late:
 
     - **A live WebDriver endpoint** drives a reserved device through Appium's XCUITest `mobile:`
       commands, not simctl and not the native text selection the local runner does — so it advertises
       exactly what that transport drives, the live driver's own `CAPABILITIES` (the single source of
-      truth). This is the narrower of the two, dropping text selection on top of the real-device
-      narrowing below. The signal is `udid_spec` being a WebDriver URL — the *same* `is_webdriver_endpoint`
-      check `environment_for` routes on, so preflight and routing can never disagree (whether the URL
-      arrives from the `appium` provider's endpoint or a raw `--udid https://…` under the local provider).
+      truth). This is the narrowest of the three, dropping text selection and photo selection on top
+      of the real-device narrowing below. The signal is `udid_spec` being a WebDriver URL — the *same*
+      `is_webdriver_endpoint` check `environment_for` routes on, so preflight and routing can never
+      disagree (whether the URL arrives from the `appium` provider's endpoint or a raw
+      `--udid https://…` under the local provider).
     - **A real device via `xcuitest.deviceType: device`** loses the simctl-backed `DeviceControl`
       family and the simctl-privacy permission grants (simctl cannot reach a physical device), the
       same fail-fast the permission preconditions already get in the XCUITest lifecycle (Unit 1). This
       keys on config (`deviceType`), which a udid spec cannot express, so it stays an `eff` check.
+    - **An Apple Silicon Simulator** loses `SELECT_PHOTOS`: `selectPhotos`'s one essential
+      actuation — tapping a `PHPickerViewController` grid cell — is measured to fail to register on
+      that one Simulator/host combination, while it works on a real device or an Intel Simulator
+      (roadmap item). A real device already returns above this check, so reaching it means the target
+      is a Simulator; `apple_silicon_simulator_host` decides the rest.
 
-    Every other backend, and the Simulator default, is unchanged.
+    Every other backend is unchanged.
     """
     # Lazy import: `bajutsu.common.config` imports this module (`resolve` -> `platform_of`), so a top-level
     # import would close the cycle. By call time config is fully loaded.
@@ -233,6 +254,8 @@ def capabilities_for_run(
             return XcuitestLiveDriver.CAPABILITIES
         if xcuitest_targets_real_device(eff):
             return caps - base.DEVICE_CONTROL_ALL - base.IOS_PERMISSION_CAPABILITIES
+        if apple_silicon_simulator_host():
+            return caps - {base.Capability.SELECT_PHOTOS}
     return caps
 
 

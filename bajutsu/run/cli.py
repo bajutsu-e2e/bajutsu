@@ -246,6 +246,10 @@ def _expand_file(
     plan_sources: dict[str, ScenarioPlanSource] = {}
     for s in scenarios:
         s.set_source_stem(path.stem)
+        if s.preconditions.seed_photos:
+            s.preconditions.seed_photos = [
+                str(contained_ref(root, base_dir, ref)) for ref in s.preconditions.seed_photos
+            ]
         base_name = declared_name(s.name)
         plan = plan_by_name.get(base_name)
         if plan is None:

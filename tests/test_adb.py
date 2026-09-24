@@ -267,6 +267,13 @@ def test_tap_resolves_frame_center() -> None:
     assert calls == [["adb", "-s", "U", "shell", "input", "tap", "100", "150"]]
 
 
+def test_select_photos_is_unsupported_on_android() -> None:
+    # `PHPickerViewController` is an iOS system control; Android has no equivalent (roadmap item).
+    driver = AdbDriver("U", run=lambda a: "")
+    with pytest.raises(base.UnsupportedAction):
+        driver.select_photos([0], timeout=10)
+
+
 def test_tap_on_ambiguous_selector_fails_fast() -> None:
     # Two buttons match `traits: [button]`; a single action must not tap "whatever matched first".
     driver = AdbDriver("U", run=lambda a: FIXTURE)

@@ -36,6 +36,7 @@ from bajutsu.common.scenario.models.actions import (
     Rotate,
     Scroll,
     SelectOption,
+    SelectPhotos,
     SelectText,
     SetClipboard,
     SetLocation,
@@ -82,6 +83,7 @@ class Step(_Model):
     # Python field is suffixed so it doesn't shadow pydantic `BaseModel.copy`.
     copy_: Copy | None = Field(default=None, alias="copy")
     select_option: SelectOption | None = Field(default=None, alias="selectOption")
+    select_photos: SelectPhotos | None = Field(default=None, alias="selectPhotos")
     set_picker_value: SetPickerValue | None = Field(default=None, alias="setPickerValue")
     swipe: Swipe | None = None
     drag: Drag | None = None

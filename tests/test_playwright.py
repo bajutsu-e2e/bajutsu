@@ -857,6 +857,13 @@ def test_select_option_raises_element_not_tappable_when_covered() -> None:
     assert len(page.evaluate_returns) == 0
 
 
+def test_select_photos_is_unsupported_on_the_web() -> None:
+    # `PHPickerViewController` is an iOS system control; the web has no equivalent (roadmap item).
+    drv, _page = _driver([])
+    with pytest.raises(base.UnsupportedAction):
+        drv.select_photos([0], timeout=10)
+
+
 def _touch_points(params: Any) -> list[tuple[float, float]]:
     return [(p["x"], p["y"]) for p in params["touchPoints"]]
 

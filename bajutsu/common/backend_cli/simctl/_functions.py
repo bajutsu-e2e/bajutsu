@@ -212,6 +212,18 @@ def push_cmd(udid: str, bundle_id: str, payload_path: str) -> list[str]:
     return ["xcrun", "simctl", "push", validated_udid(udid), bundle_id, payload_path]
 
 
+def addmedia_cmd(udid: str, media_path: str) -> list[str]:
+    """`simctl addmedia <udid> <path>` — add one photo/video to the device's photo library.
+
+    Unlike `privacy` / `push`, this is device-scoped, not bundle-scoped, and adds a library entry
+    on every call rather than being idempotent — a caller that seeds the same path twice gets two
+    entries. `seed_photos` (`Preconditions`) calls this once per path for exactly that reason: the
+    relative order `simctl` assigns to several assets handed to one invocation is unspecified, so
+    only a sequence of single-path calls has a measured, reproducible ordering (roadmap item).
+    """
+    return ["xcrun", "simctl", "addmedia", validated_udid(udid), media_path]
+
+
 def keychain_reset_cmd(udid: str) -> list[str]:
     return ["xcrun", "simctl", "keychain", validated_udid(udid), "reset"]
 
