@@ -21,10 +21,12 @@ from bajutsu.repl.loop import PROMPT
 from bajutsu.repl.render import _display_width
 from bajutsu.repl.session import ReplSession
 from bajutsu.repl.tui import (
+    _EOL_MARKER,
     Screen,
     TuiState,
     _filtered,
     _fit,
+    _handle_wheel_scroll,
     _input_row,
     _note_new_output,
     _visible,
@@ -306,6 +308,43 @@ def test_scroll_clamp_tracks_a_shrinking_filtered_view() -> None:
     assert state.scroll_offset == max(0, len(_filtered(state)) - 10)
 
 
+# --- mouse wheel (works in every mode, unlike a key `handle_key` dispatches on) -----------------
+
+
+def test_wheel_up_increases_the_offset_regardless_of_mode() -> None:
+    state = TuiState(mode="input", output=[f"line {i}" for i in range(30)])
+    _handle_wheel_scroll(state, curses.BUTTON4_PRESSED, 10)
+    assert state.scroll_offset == 1
+    assert state.mode == "input"  # unlike Tab, a wheel tick never switches mode
+
+
+def test_wheel_up_clamps_at_the_top() -> None:
+    state = _scrolled(15)  # max_offset = 15 - 10 = 5
+    for _ in range(10):
+        _handle_wheel_scroll(state, curses.BUTTON4_PRESSED, 10)
+    assert state.scroll_offset == 5
+
+
+def test_an_unrecognized_bstate_is_a_no_op() -> None:
+    state = _scrolled(50)
+    _handle_wheel_scroll(state, 0, 10)
+    assert state.scroll_offset == 0
+
+
+@pytest.mark.skipif(
+    not hasattr(curses, "BUTTON5_PRESSED"),
+    reason="this platform's ncurses build has no BUTTON5_PRESSED (wheel-down) constant",
+)
+def test_wheel_down_decreases_but_not_below_zero() -> None:
+    state = _scrolled(50)
+    _handle_wheel_scroll(state, curses.BUTTON4_PRESSED, 10)  # up once first
+    assert state.scroll_offset == 1
+    _handle_wheel_scroll(state, curses.BUTTON5_PRESSED, 10)
+    assert state.scroll_offset == 0
+    _handle_wheel_scroll(state, curses.BUTTON5_PRESSED, 10)  # already at the bottom
+    assert state.scroll_offset == 0
+
+
 # --- filter (`/`) --------------------------------------------------------------------------------
 
 
@@ -523,6 +562,39 @@ def test_run_tui_submitting_a_blank_line_is_not_recorded_in_history() -> None:
     assert driver.actions == []
 
 
+def test_run_tui_appends_an_eol_marker_after_each_commands_output() -> None:
+    session, _driver = _session()
+    screen = FakeScreen(keys=_keys("tree", "\n", "exit", "\n"))
+    run_tui(session, screen)
+    assert any(_EOL_MARKER in "".join(frame) for frame in screen.draws)
+
+
+def test_run_tui_clear_wipes_the_transcript() -> None:
+    session, _driver = _session()
+    screen = FakeScreen(keys=_keys("tree", "\n", "clear", "\n", "exit", "\n"))
+    run_tui(session, screen)
+    frames = ["".join(frame) for frame in screen.draws]
+    assert any("stable.save" in frame for frame in frames)  # `tree` really did print something
+    assert "stable.save" not in frames[-1]  # `clear` wiped it, and it never came back
+
+
+def test_run_tui_clear_never_reaches_session_dispatch() -> None:
+    session, _driver = _session()
+    screen = FakeScreen(keys=_keys("clear", "\n", "exit", "\n"))
+    run_tui(session, screen)
+    frames = ["".join(frame) for frame in screen.draws]
+    # `ReplSession.dispatch` has no `clear` verb; if this ever fell through to it (instead of being
+    # intercepted before `_run_line`), its fallback case would print exactly this.
+    assert not any("unknown command" in frame for frame in frames)
+
+
+def test_run_tui_still_dispatches_commands_after_clear() -> None:
+    session, driver = _session()
+    screen = FakeScreen(keys=_keys("clear", "\n", "tap stable.save", "\n", "exit", "\n"))
+    run_tui(session, screen)
+    assert driver.actions == [("tap", {"id": "stable.save"})]
+
+
 def test_run_tui_draws_the_scroll_banner_after_tab() -> None:
     session, _driver = _session()
     screen = FakeScreen(keys=_keys("\t", "\t", "exit", "\n"))  # Tab in, then Tab back out
@@ -554,6 +626,29 @@ def test_run_tui_ignores_a_terminal_resize() -> None:
     screen = FakeScreen(keys=_keys("tap stable.save", curses.KEY_RESIZE, "\n", "exit", "\n"))
     run_tui(session, screen)
     assert driver.actions == [("tap", {"id": "stable.save"})]
+
+
+def test_run_tui_mouse_wheel_does_not_dispatch_a_command() -> None:
+    # KEY_MOUSE is resolved through `get_mouse_event`, not fed to `handle_key` — it must never be
+    # mistaken for a submitted line.
+    session, driver = _session()
+    screen = FakeScreen(keys=_keys(curses.KEY_MOUSE, "exit", "\n"))
+    run_tui(session, screen, get_mouse_event=lambda: (0, 0, 0, 0, curses.BUTTON4_PRESSED))
+    assert driver.actions == []
+
+
+def test_run_tui_mouse_wheel_scrolls_the_pane() -> None:
+    session, _driver = _session()
+    # Six distinguishable commands overflow a short pane (height=6, so pane_height=4); each of
+    # `find 1` .. `find 6` echoes a distinct prompt line and error line, so shifting the visible
+    # window by one line actually changes what is drawn (identical repeated lines would not).
+    fills = [chunk for i in range(1, 7) for chunk in (f"find {i}", "\n")]
+    mouse_index = len(_keys(*fills))  # the draw right before `KEY_MOUSE` is read
+    screen = FakeScreen(keys=_keys(*fills, curses.KEY_MOUSE, "exit", "\n"), height=6)
+    run_tui(session, screen, get_mouse_event=lambda: (0, 0, 0, 0, curses.BUTTON4_PRESSED))
+    pinned_frame = "".join(screen.draws[mouse_index])  # pinned to the bottom, before the wheel tick
+    scrolled_frame = "".join(screen.draws[mouse_index + 1])  # shifted up by one line, right after
+    assert pinned_frame != scrolled_frame
 
 
 def test_run_tui_ctrl_c_while_filtering_returns_to_scroll_mode() -> None:
