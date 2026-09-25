@@ -239,13 +239,14 @@ def _note_new_output(state: TuiState, added: list[str]) -> None:
     """
     if state.scroll_offset == 0:
         return
-    if added:
-        state.new_output_while_scrolled = True
     if state.filter_query is None:
-        state.scroll_offset += len(added)
+        visible = list(added)
     else:
         needle = state.filter_query.lower()
-        state.scroll_offset += sum(1 for line in added if needle in line.lower())
+        visible = [line for line in added if needle in line.lower()]
+    if visible:
+        state.new_output_while_scrolled = True
+    state.scroll_offset += len(visible)
 
 
 def _run_line(session: ReplSession, line: str) -> tuple[list[str], bool]:

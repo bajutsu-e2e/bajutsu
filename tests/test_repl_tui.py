@@ -805,6 +805,16 @@ def test_note_new_output_does_not_raise_the_flag_for_an_empty_batch() -> None:
     assert state.scroll_offset == 3  # nothing to add, offset unchanged
 
 
+def test_note_new_output_never_raises_the_flag_for_lines_the_filter_hides() -> None:
+    # Paired with `test_note_new_output_counts_only_lines_matching_the_active_filter`: the flag
+    # must track the same filtered count the offset arithmetic does, or the banner would point the
+    # operator at lines the filtered view will never render.
+    state = TuiState(output=["match a"], scroll_offset=2, filter_query="match")
+    _note_new_output(state, ["skip this", "also skip"])
+    assert state.new_output_while_scrolled is False
+    assert state.scroll_offset == 2  # neither line matched, so nothing to scroll past either
+
+
 def test_run_wires_a_real_curses_session(monkeypatch: pytest.MonkeyPatch) -> None:
     """`run`'s own body — locale setup plus handing off to `curses.wrapper` — needs no real tty."""
     screen = FakeScreen(keys=_keys("exit", "\n"))

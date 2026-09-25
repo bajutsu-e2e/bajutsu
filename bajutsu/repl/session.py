@@ -14,6 +14,7 @@ from bajutsu.common.drivers import base
 from bajutsu.common.drivers.xcuitest import XcuitestChannelError, XcuitestRunnerCrashError
 from bajutsu.common.drivers.xcuitest_live import WebDriverError
 from bajutsu.common.orchestrator.actions import _action_of, _do_action
+from bajutsu.common.orchestrator.types import SelectionState
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.scenario import Selector as SelectorModel
 from bajutsu.common.scenario import Step
@@ -87,22 +88,26 @@ _HELP = (
     "",
     "step's <yaml> is exactly a scenario step — one flow-style {...} mapping, e.g.:",
     "  step {swipe: {on: {id: card}, direction: up}}",
-    "  step {pinch: {on: {id: map}, scale: 0.5}}",
+    "  step {pinch: {sel: {id: map}, scale: 0.5}}",
     "any one-shot action a scenario's own steps accept works this way — tap, type, scroll, swipe,",
     "drag, pinch, rotate, setPickerValue, selectOption, select, copy, handleSystemAlert, and more —",
-    "except wait / assert / control-flow (if/forEach/web/app), which need a whole scenario to run",
+    "except wait / assert / control-flow (if/forEach/web/app) / use, which need a whole scenario to run",
 )
 
 
 class ReplSession:
     """One shell against one launched app: run a typed line against the driver, render the answer.
 
-    Holds nothing but the driver. Every command reads the live screen, so two `tree`s never
-    disagree because of something the shell cached between them.
+    Holds the driver plus the two bits of state `step` needs across separate calls: every other
+    command reads the live screen fresh, so two `tree`s never disagree because of something the
+    shell cached between them, but `select` + `copy` (BE-0265) and `generate` are meaningless
+    without a scope that outlives the one `step` call that set them.
     """
 
     def __init__(self, driver: base.Driver) -> None:
         self._driver = driver
+        self._selection = SelectionState()
+        self._bindings: dict[str, str] = {}
 
     def dispatch(self, line: str) -> list[str]:
         """Run one typed line and return the lines to print (empty when there is nothing to say).
@@ -239,16 +244,33 @@ class ReplSession:
             step = _parse_yaml_step(rest)
         except _InvalidYamlStep as e:
             return str(e).splitlines()
-        kind = _action_of(step)
         try:
-            _do_action(self._driver, step)
+            kind = _action_of(step)
         except AssertionError:
+            # `use` is the one `Step` field with no runtime action kind at all — a compile-time
+            # macro the run expands away before dispatch — so `_action_of` itself has nothing to
+            # name; report the same way an unhandled kind below does, rather than let its own
+            # bare `AssertionError` escape.
+            return ["step kind 'use' needs `run`/a scenario — it expands away before dispatch"]
+        try:
+            _do_action(self._driver, step, bindings=self._bindings, selection=self._selection)
+        except AssertionError as e:
+            if str(e) != "unhandled action":
+                raise  # a handler's own internal assert — a real bug, not a missing run loop
             # `_do_action` covers every one-shot action kind (BE-0423's whole point is skipping
             # `run`/a scenario for exactly those); `wait`/`assert`/control-flow steps have no
-            # handler there at all — they need a run loop, not this shell, so name that gap rather
-            # than let the bare "unhandled action" `AssertionError` read as an internal bug.
-            return [f"step kind {kind!r} needs `run`/a scenario — the shell has no run loop"]
-        return [f"ran step: {kind}"]
+            # handler there at all — they need a run loop, not this shell.
+            return [
+                f"step kind {_yaml_key(kind)!r} needs `run`/a scenario — the shell has no run loop"
+            ]
+        if kind == "generate":
+            # `bindings` (above) gives it a real scope to write into instead of silently no-op'ing
+            # on the `is None` early-return `_do_generate` takes for a bare condition eval — show
+            # the value so the write is visible rather than merely not-silent.
+            assert step.generate is not None
+            key = f"vars.{step.generate.into.var}"
+            return [f"ran step: generate ({key} = {self._bindings[key]!r})"]
+        return [f"ran step: {_yaml_key(kind)}"]
 
     def _back(self, rest: str) -> list[str]:
         if rest:
@@ -411,6 +433,14 @@ def _parse_yaml_step(text: str) -> Step:
         return Step.model_validate(data)
     except ValidationError as e:
         raise _InvalidYamlStep(f"invalid step: {e}") from e
+
+
+def _yaml_key(kind: str) -> str:
+    """An action's own YAML key — `_action_of` returns the Python field name, which differs from
+    it exactly where `Step` aliases one (`copy_` -> `copy`, `if_` -> `if`, `for_each` -> `forEach`,
+    ...); reporting the alias is what an operator can actually paste back into another `step` line.
+    """
+    return Step.model_fields[kind].alias or kind
 
 
 def _split_target_and_text(rest: str) -> tuple[str, str] | None:

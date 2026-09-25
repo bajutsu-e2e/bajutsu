@@ -30,7 +30,7 @@ from bajutsu.common.platform_lifecycle.environments.xcuitest_live import Xcuites
 from bajutsu.common.scenario import Preconditions
 from bajutsu.repl.loop import PROMPT, repl_loop
 from bajutsu.repl.render import _display_width, render_json, render_table
-from bajutsu.repl.session import COMMAND_ERRORS, FATAL_ERRORS, ReplExit, ReplSession
+from bajutsu.repl.session import COMMAND_ERRORS, FATAL_ERRORS, ReplExit, ReplSession, _yaml_key
 
 runner = CliRunner()
 
@@ -586,6 +586,62 @@ def test_step_still_reports_a_selector_error_the_normal_way() -> None:
     session, driver = _session()  # no elements on screen
     with pytest.raises(base.ElementNotFound):
         session.dispatch("step {tap: {id: missing}}")
+    assert driver.actions == []
+
+
+def test_step_reports_use_instead_of_crashing() -> None:
+    # `use` is a compile-time macro `_action_of` has no runtime kind for at all — a bare
+    # `AssertionError` from *that* call (not `_do_action`'s) would otherwise crash the shell.
+    session, driver = _session()
+    result = session.dispatch("step {use: {component: foo}}")
+    assert result == ["step kind 'use' needs `run`/a scenario — it expands away before dispatch"]
+    assert driver.actions == []
+
+
+def test_step_reraises_an_internal_assertion_thats_not_unhandled_action(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Only the exact "unhandled action" message means "no handler for this kind" — any other
+    # AssertionError is a real bug in a handler and must not be reworded into misleading advice.
+    session, _driver = _session(_el("stable.save"))
+
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("some other internal bug")
+
+    monkeypatch.setattr("bajutsu.repl.session._do_action", _boom)
+    with pytest.raises(AssertionError, match="some other internal bug"):
+        session.dispatch("step {tap: {id: stable.save}}")
+
+
+def test_step_select_then_copy_share_one_persistent_selection() -> None:
+    # Each `_do_action` call defaults to a fresh, always-inactive `SelectionState` unless one is
+    # threaded through — two separate `step` commands must still see the same selection established
+    # by the first, the way the run loop / record / enrich do.
+    session, driver = _session(_el("stable.text"))
+    assert session.dispatch("step {select: {into: {id: stable.text}}}") == ["ran step: select"]
+    assert session.dispatch("step {copy: {}}") == ["ran step: copy"]
+    assert ("select_all", None) in driver.actions
+    assert ("copy_selection", None) in driver.actions
+
+
+def test_yaml_key_returns_the_alias_where_the_python_field_name_differs() -> None:
+    assert _yaml_key("copy_") == "copy"
+    assert _yaml_key("if_") == "if"
+    assert _yaml_key("for_each") == "forEach"
+
+
+def test_yaml_key_returns_the_field_name_itself_when_there_is_no_alias() -> None:
+    assert _yaml_key("tap") == "tap"
+    assert _yaml_key("wait") == "wait"
+
+
+def test_step_generate_shows_the_written_value() -> None:
+    # `bindings=None` makes `_do_generate` a silent no-op (it has no scope to write into); a
+    # persistent dict gives it one, and the reported value is what makes that write observable
+    # rather than merely not-silent.
+    session, driver = _session()
+    (line,) = session.dispatch("step {generate: {random: {uuid: {}}, into: {var: token}}}")
+    assert line.startswith("ran step: generate (vars.token = ")
     assert driver.actions == []
 
 
