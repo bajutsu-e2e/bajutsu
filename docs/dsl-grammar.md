@@ -113,7 +113,7 @@ Scenario ::= {
   description?:   string,                   # authoring metadata; `run` never reads it
   from?:           string,                  # provenance: the natural-language goal `record` authored this from (BE-0044)
   tags?:           list(string),            # default []  — selection (§6.4)
-  targets?:        list(string),            # default []  — every target this scenario drives (BE-0428); each name a `targets.<name>` config unit. `run` launches and interleaves all of them in one deterministic run (§4)
+  targets?:        list(string),            # default []  — every target this scenario drives (BE-0428); each name a `targets.<name>` config unit. `run` launches each declared target and interleaves their steps in one deterministic run (§4)
   data?:           list(map(string,string)),# inline rows   ┐ XOR
   dataFile?:       string,                  # CSV path      ┘ (§6.3)
   preconditions?:  <Preconditions>,         # default {}
