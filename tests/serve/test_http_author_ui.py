@@ -270,6 +270,10 @@ def test_tiling_follows_the_narrow_tier_across_resizes(tmp_path: Path) -> None:
     assert "p.replaceChildren(...kids)" in text
     # Widening builds the tiler once and re-mounts it; window listeners must not stack up.
     assert "(tiler||=initTiling()).mount()" in text
+    # Narrowing also drops the persisted desktop column widths, and re-mounting reconciles
+    # Record's optional Run-result pane with whatever visibility it picked up while untiled.
+    assert "clearSplits();return;}" in text
+    assert "if(V===recV)syncReport();" in text
 
 
 def test_author_is_block_level_for_tiling(tmp_path: Path) -> None:
