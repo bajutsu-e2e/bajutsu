@@ -18,10 +18,11 @@
 [複数ターゲットシナリオ](../../docs/ja/scenarios.md)
 ([BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md))
 に、任意のトップレベルフィールド `primaryTarget` を追加します。値には、そのシナリオ自身の
-`targets` リストに含まれる名前を1つ指定します。シナリオが `primaryTarget` を設定すると、ステップ、
-`if` / `forEach` / `web` / `app` のラッパー、トップレベルの `expect` エントリのいずれも、
-単一ターゲットのシナリオで今までできていたのと同じように `target` を再び省略できます。省略した
-`target` は、読み込みエラーにはならず、指定した primary target を対象に実行されます。
+`targets` リストの先頭の名前を指定します。ランナーがすでに primary として扱っている、まさに
+その1つです(詳しくは後述の「`primaryTarget` の宣言」を参照)。シナリオが `primaryTarget` を
+設定すると、ステップ、`if` / `forEach` / `web` / `app` のラッパー、トップレベルの `expect`
+エントリのいずれも、単一ターゲットのシナリオで今までできていたのと同じように `target` を再び
+省略できます。省略した `target` は、読み込みエラーにはならず、primary を対象に実行されます。
 
 ```yaml
 - name: liking a post on the app shows up on the web
@@ -38,10 +39,13 @@
       value: { sel: { id: "post.${vars.postId}.likeCount" }, equals: "1" }
 ```
 
-`primaryTarget` は、`targets` の数によらず常に任意です。設定しないシナリオでは、今日のルールが
-そのまま残ります。`targets` が2つ以上のとき、すべてのステップと、トップレベルの `expect` エントリ
-すべてが、引き続き自分の `target` を明示します。`targets` 自体の仕様は変わりません。`targets` が
-0個または1個のシナリオも、どちらの場合もこの提案の影響を受けません。
+`primaryTarget` を未設定のままにすると、`targets` の数によらず今日のルールがそのまま残ります。
+`targets` が2つ以上のとき、すべてのステップと、トップレベルの `expect` エントリすべてが、
+引き続き自分の `target` を明示します。`targets` が0個または1個のときも、どちらの場合も今日と
+同じ動作のままです。`primaryTarget` を設定して初めて、`targets` が2つ以上のシナリオの動作が
+変わります。`targets` が0個のシナリオへ設定することは、それ自体が読み込みエラーです。
+`targets` がちょうど1個のシナリオへ設定できるのは、その1個のターゲットを指定した場合に限ります。
+どちらも次の「`primaryTarget` の宣言」で詳しく述べます。
 
 ## 動機
 
@@ -50,26 +54,28 @@ BE-0428 自身のバリデータ `_check_target_requirements`
 は、シナリオが2つ以上のターゲットを宣言すると、すべてのステップとすべての `expect` エントリに
 `target` を要求します。このルールは意図的なものです。BE-0428 自身の「検討した代替案」は、
 ステップの行き先を暗黙のルールから決める案を退けています。読者に暗黙のルールを覚えさせないためです。
-このルールは、ターゲットを何度も切り替え続けるシナリオにはよく合います。一方で、クロスプラット
-フォームの確認がよく取る形には、あまり合いません。1つのターゲットがほぼすべての操作を担い、
-シナリオは検証のため、あるいは1ステップの結果を渡すためだけに、もう1つのターゲットへ一度だけ
-寄り道します。
+このルールは、ターゲットを何度も切り替え続けるシナリオにはよく合います。一方で、1つのターゲット
+自身の流れを軸に組み立てられ、もう1つのターゲットに対して一度だけ確認するシナリオには、あまり
+合いません。BE-0428 自身のワーク例がまさにこの形を示しています。`showcase-app` に対する `tap`
+が1つ、それが届いたことを確かめる `wait` と `value` の検証が `showcase-web` に対して1つずつです
+([`docs/scenarios.md:1193-1206`](../../docs/scenarios.md))。この1個の `tap` ステップに
+`target: showcase-app` と書くことには、実際の情報があります。読者には、そのステップがどの
+ターゲットに対して動くのかを知る手段がほかにないからです。
 
-BE-0428 自身のワーク例が、まさにこの後者の形を示しています
-([`docs/scenarios.md:1193-1206`](../../docs/scenarios.md))。1つを除くすべてのステップに、
-同じターゲット名が書かれています。読者は `target: showcase-app` を6回読み返して、
-シナリオ全体に共通する1つの事実を読み取ることになります。このテストの主戦場は `showcase-app` です。
-シナリオが `showcase-web` へ寄り道するのは一度きりです。繰り返されるフィールドは、その事実を
-最初の1行で伝えたあと、残り5回は何も足さずに同じことを言い直しています。しかも、本当に重要な
-1行(*別の*ターゲットを名指しするステップ)が、同じ文言を繰り返す6行の隣人に埋もれて、
-目立たなくなっています。
+同じ記述は、`showcase-app` から一度も離れない、もっと長い流れの4番目や10番目のステップには、
+新しい情報を何も足しません。2回目以降の繰り返しはどれも、シナリオの形自体がすでに決めている
+事実を述べ直しているだけです。最後にようやく `showcase-web` へ向かう1つのステップだけが、
+読者がまだ知らなかったことを告げます。そのステップは、10個の同じ隣人に囲まれていても、
+1個だけの隣人に囲まれていても、同じくらいはっきり目立ちます。
 
 `primaryTarget` が答える問いは、BE-0428 自身のバリデータが答える問いより狭いものです。
 「どのターゲットでステップを実行するか」ではなく、「どのターゲットなら書かなくてよいか」に答えます。
 シナリオがその答えを宣言すれば、ステップは自分の `target` を、答えと異なる場合にだけ書けば
 済みます。単一ターゲットのシナリオがすでに得ている、`target` を一度も書かずに済む経済性と同じ
-ものです。こうして読者は、クロスターゲットシナリオの形を一目で読み取れます。`target` を明示している
-ステップこそが、primary target から離れるステップです。それ以外の行を読み直す必要はありません。
+ものです。こうして読者は、クロスターゲットシナリオの形を一目で読み取れます。primary 以外を
+明示的に名指しするステップこそが、別のプラットフォームで動くステップです。それ以外の行を
+読み直す必要はありません。primary 自身の名前をあえて明示するステップも文法上は有効なままですが、
+それはどちらにしても何も付け加えません。
 
 ## 詳細設計
 
@@ -81,29 +87,45 @@ alias="primaryTarget")` を追加します。既存の `targets: list[str]`
 の隣に置きます。新しいチェック関数 `_check_primary_target` が、この値を `scenario.targets` に
 照らして検証します。この関数は
 [`_targets.py`](../../bajutsu/common/scenario/models/scenario/_targets.py) に置き、
-`_check_target_requirements` がステップを1つも歩く前に一度呼び出します。`primaryTarget` を
-未設定のままにすることは、常に許されます。`targets` が空なのに設定すると読み込みエラーになります。
-メッセージは `primaryTarget is set but the scenario declares no targets` とし、ステップ自身の
-`target` が同じ形で不正なときに `_check_target` が出す既存のメッセージに合わせます。`targets` に
-含まれない名前を設定した場合も読み込みエラーとし、宣言済みの一覧を示します。`targets` が
-1個だけのシナリオでも、一致する `primaryTarget` は冗長として拒否せず受け入れます。単一ターゲットの
-シナリオでは、すでにステップがその1つのターゲットを省略せず明示してもよいことになっています
-([`docs/scenarios.md:1214-1215`](../../docs/scenarios.md))。`primaryTarget` はその1つの名前を
-無害に繰り返すだけです。
+`_check_target_requirements` がステップを1つも歩く前に一度呼び出します。
+
+`primaryTarget` を未設定のままにすることは、常に許されます。何も変わりません。`targets` が空
+なのに設定すると読み込みエラーになります。メッセージは `primaryTarget is set but the scenario
+declares no targets` とし、ステップ自身の `target` が同じ形で不正なときに `_check_target` が
+出す既存のメッセージに合わせます。それ以外の値を設定できるのは、その値が `targets` 自身の先頭
+エントリ `targets[0]` と一致する場合に限ります。一致しなければ、指定した値と要求される値の両方を
+示す読み込みエラーになります。これは「宣言済みのどれでもよい」の言い換えではなく、実質を伴う
+制約です。`_lease_set` と `_target_runtimes`
+([`bajutsu/common/runner/pipeline.py:930-943, 1000-1007`](../../bajutsu/common/runner/pipeline.py))
+は、今日すでにランナー全体を通じて `targets[0]` こそが primary だと扱っています。クラッシュ
+リカバリのループが判断材料にするリースは `targets[0]` のものであり、`_runtime_for`
+([`bajutsu/common/runner/pipeline.py:1011-1060`](../../bajutsu/common/runner/pipeline.py))は、
+そのすでに解決済みの評価コンテキストをそのまま再利用します。ほかの宣言済みターゲットが通る、
+ターゲット設定優先の経路を通し直すことはありません。`primaryTarget` に別のエントリを許すと、
+シナリオファイル側の「primary」という考えとランナー側のそれとが、黙って食い違ってしまいます。
+一致を要求しておけば、この2つは常に1つの事実のままです。このあとの節にある「ランナー側のコード
+には変更が要らない」という主張も、この一致に支えられています。`targets` がちょうど1個の
+シナリオでも、一致する `primaryTarget` は冗長として拒否せず受け入れます。理由はいつもと同じで、
+`targets[0]` はその1個のエントリでもあるからです。
 
 ### 省略の解決先
 
 `_check_target_requirements` は、`_check_target` という関数を、ステップごとに1回、`expect`
 エントリごとに1回呼び出します
-([`_targets.py:26-46`](../../bajutsu/common/scenario/models/scenario/_targets.py))。この関数に
-`default: str | None` という引数を追加し、戻り値を呼び出し元が受け取るようにします。今日の
-呼び出し元は、この戻り値を使っていません。検証を通過したとき、`_check_target` はフィールド自身の
-値をそのまま返しているだけだからです。この提案が追加する版は、これまで失敗していた1つの新しい
-ケースでだけ `default` を返します。そのケースとは、ターゲットが2つ以上宣言されていて、`target`
-が省略されていて、`default` が手元にある状況です。それ以外の分岐は、今日と同じくフィールド
-自身の値を返します。
-`primaryTarget` を未設定のままにしたシナリオも同じです。そこでは `default` が `None` のままなので、
-新しいケースは発火せず、読み込みエラー `target is required` がそのまま発生します。
+([`_targets.py:26-46`](../../bajutsu/common/scenario/models/scenario/_targets.py))。この関数は
+現在 `-> None` と注釈されていて、どの分岐も、例外を送出するか、`return` を書かずに関数の末尾へ
+そのまま落ちるかのどちらかです。`return` を書かずに落ちた分岐がとる `None` は、明示的に
+`return None` と書いた場合とまったく同じです。この提案は、そうして落ちていた分岐のすべてに
+`return target` を明示的に書き加えます。そのうえで、新しい分岐を1つ加えます。ターゲットが
+2つ以上宣言されていて、`target` が `None` で、`default` が手元にあるときに `return default`
+します。新しい分岐だけでなく、すべての分岐を書き換えることには見た目以上の意味があります。
+新しいケースにだけ `return default` を足し、残りを書き換えないままにした版でも、型チェックは
+通りますし、明示的な `target` を渡すテストも通ってしまいます。ところが、書き換えていない分岐は
+`return default` を書いた分岐とまったく同じように `None` を返すため、その同じ明示的な選択が、
+いずれ呼び出し元に `None` として届いてしまいます。`_check_target_requirements` は、`_check_target`
+を呼び出すたびに `scenario.primary_target` を `default` として渡します。`primaryTarget` を
+未設定のままにしたシナリオでは `None` を渡すことになるため、新しい分岐の条件は成立せず、
+残りの分岐がいまや明示的に返す値は、もともとあった値のままです。
 
 `_check_target_requirements` は、`_check_target` を呼び出すたびに `scenario.primary_target` を
 `default` として渡します。ステップ自身の `target`
@@ -116,10 +138,29 @@ alias="primaryTarget")` を追加します。既存の `targets: list[str]`
 この単純な属性への書き込みは、`expand_components` がシナリオ自身の `steps` を丸ごと置き換えるのに
 すでに使っている手法と同じです。
 
-この書き戻しには、`Scenario` をきれいに保つ以上の意味があります。省略された `target` を `None` の
-まま残し、ランナーが手元のドライバへフォールバックする設計にすると、`step.target` /
-`a.target` を直接読んでいる既存の箇所を2つ壊します。どちらも、宣言されたターゲットが2つ以上のとき
-このフィールドは `None` にならないという前提で書かれています。
+この書き戻しがそのまま安全なのは、`Scenario` が持つ `Step` と `Assertion` のインスタンスが、
+どれもそのシナリオだけのものだからです。この提案は、その前提が崩れる既存の1箇所も、あわせて
+塞ぐ必要があります。`apply_setups`
+([`bajutsu/common/scenario/expand.py:208-236`](../../bajutsu/common/scenario/expand.py))は、
+共有セットアップへの参照を一度だけ解決して `Step` のリストをキャッシュし、その同じオブジェクトを、
+同じ参照を名指しするすべてのシナリオへ差し込みます。`scenario.steps = [*cache[ref],
+*scenario.steps]` という形です。今日、セットアップを共有する2つのシナリオは、この共有ステップを
+読むだけなので、オブジェクトを共有しても何のコストもかかりません。この提案の書き戻しは、
+そうはいきません。先に検証される側のシナリオが、共有ステップの `target` に自分自身の
+`primary_target` を刻んでしまいます。同じセットアップを共有するもう一方のシナリオが、
+`primaryTarget` を持たない、あるいは違う `primaryTarget` を持つ場合、そのステップの `target` は、
+あたかも自分自身の著者が明示したかのように見えてしまいます。`targets` を宣言しないシナリオでは
+`target is set but the scenario declares no targets` というエラーになりますし、そうでなければ、
+先に検証されたシナリオの primary へ黙って誤ってルーティングされてしまいます。`apply_setups` は、
+キャッシュした各ステップを、あるシナリオへ差し込む前に複製することでこれを塞ぎます。
+`cache[ref]` のそれぞれに対して `st.model_copy(deep=True)` を行います。こうすれば、この提案が
+導入する書き戻しは、そのシナリオ自身の複製にだけ及び、別のシナリオがすでに検証した側には
+決して及びません。
+
+この書き戻しには、それ以上の意味もあります。省略された `target` を `None` のまま残し、
+ランナーが手元のドライバへフォールバックする設計にすると、`step.target` / `a.target` を直接
+読んでいる既存の箇所を2つ壊します。どちらも、宣言されたターゲットが2つ以上のとき、このフィールドは
+`None` にならないという前提で書かれています。
 
 1つ目は `_steps_for_target`
 ([`bajutsu/common/runner/pipeline.py:1263-1275`](../../bajutsu/common/runner/pipeline.py))です。
@@ -138,16 +179,17 @@ BE-0082 の能力プリフライトのため、シナリオを1つのターゲ�
 `target` を持つときだけです。BE-0428 がデバイスの切り替えの目印に使う `prev_after` /
 `prev_after_screenshot` の組をリセットする処理も同様です
 ([`_step_runner.py:87`](../../bajutsu/common/orchestrator/loop/_step_runner.py))。寄り道のあとで
-primary target へ戻ってくるステップにも、同じリセットが必要です。これは BE-0428 自身のコード
+primary へ戻ってくるステップにも、同じリセットが必要です。これは BE-0428 自身のコード
 コメントが名指しする `app, web, app` という形です
 ([`_step_runner.py:98-103`](../../bajutsu/common/orchestrator/loop/_step_runner.py))。明示的な
 `target: <primary>` は、すでにこのリセットを起動します。`target` が `None` のまま残るステップは、
 このリセットを飛ばしてしまい、直前のステップが動かした別デバイスのスクリーンショットとアクセシビリ
 ティツリーを、3番目のステップへそのまま渡してしまいます。
 
-読み込み時に解決済みの名前を書き戻せば、この2つの問題をどちらも避けられます。ランナー側の
-コードはどちらも変更せずに済みます。すべてのステップの `target` が具体的な宣言名になれば、
-`_route` の既存のルックアップ `self.by_target.get(step.target)`
+読み込み時に解決済みの名前を書き戻せば、この2つの問題をどちらも避けられます。`primaryTarget` を
+`targets[0]` に固定してあるため(前節の「`primaryTarget` の宣言」を参照)、ランナー側のコードは
+どちらも変更せずに済みます。すべてのステップの `target` が具体的な宣言名になれば、`_route` の
+既存のルックアップ `self.by_target.get(step.target)`
 ([`_step_runner.py:88`](../../bajutsu/common/orchestrator/loop/_step_runner.py))は、primary に
 解決されたステップも、明示的に名指しされたステップと同じ経路で振り分けます。`_steps_for_target`
 も `None` を一度も見ることなく、正しいターゲットの検証群へ分類します。解決された名前は、
@@ -156,6 +198,23 @@ target=self.target)`
 ([`_step_runner.py:137-150`](../../bajutsu/common/orchestrator/loop/_step_runner.py))も、
 `_evaluate_expect` の内側で `replace(r, target=name)` によって組み立てられる `AssertionResult`
 ([`_functions.py:196-227`](../../bajutsu/common/orchestrator/loop/_functions.py))も同様です。
+
+`_steps_for_target` に残る既存の限界を、読者に後から見つけさせるのではなく、ここで名指しして
+おきます。この関数自身のドキュメンテーション文字列が、絞り込みをトップレベルのエントリだけに
+限っています。「ネストした `if` / `forEach` の本体は、中身をそのまま保持する。ネストしたステップは
+自分自身の `target` を持ち、プリフライトはいずれにせよそこへ入っていくからだ」
+([`pipeline.py:1266-1269`](../../bajutsu/common/runner/pipeline.py))という説明です。BE-0428 は
+すでに、ネストしたステップが自分を囲むラッパーとは異なるターゲットを名指しすることを許して
+います。そのため、プリフライトの絞り込み結果に残ったラッパーが運んできた、そのラッパーとは
+異なるターゲットを持つネストしたステップは、今日すでに誤ったバックエンドの能力に照らして
+検証されています。この提案とは無関係に、明示的にその食い違いを書けば今日でも起きることです。
+この提案がこの隙間を作るわけではありません。それでも、`target` を省略しただけのネストしたステップが
+黙って primary に解決されるようになる分だけ、著者が気づかないままこの同じ構図に行き着きやすく
+なります。`_steps_for_target` 自身のトップレベル限定の絞り込みを閉じることは、この提案の役目
+ではありません。この隙間はこの提案より前からあり、BE-0428 もそれを閉じてはいません。ただし
+後述の作業手順には、テストを1つ加えます。primary へ解決されたステップが、primary 以外へ
+ルーティングされたラッパーの内側にネストしている状態です。黙って通り過ぎるのではなく可視化して
+おきます。`_steps_for_target` 自身の再帰を次に引き受ける提案のために、既知の限界として記録します。
 
 この解決は平坦であり、囲む `if` / `forEach` から継承されるものではありません。どちらかの内側に
 ネストしたステップが `target` を省略すると、その解決先は `scenario.primary_target` に直接なります。
@@ -184,27 +243,38 @@ target=self.target)`
 
 ### 作業手順(MECE)
 
-1. **スキーマ。** `Scenario.primary_target: str | None`。`_check_primary_target` をステップの
-   走査の前に一度呼び出す。`_check_target` の新しい `default` 引数と戻り値。
-   `_check_step_target` と `expect` のループで、解決した値を `step.target` / `a.target` へ
-   書き戻す。
-2. **ドキュメント。** `docs/dsl-grammar.md`(`primaryTarget` フィールドと、更新された `target`
-   必須ルール)と `docs/scenarios.md`(`targets` / `target` の節、ワーク例つき)、およびそれぞれの
-   `docs/ja/` 版。
-3. **テスト。** スキーマ: `primaryTarget` のメンバーシップ検証と、`targets` が空のときの拒否。
-   ステップ、`if` / `forEach` にネストしたステップ、`web` / `app` のラッパー、トップレベルの
-   `expect` エントリがそれぞれ、`targets` が0個・1個・2個以上のどの場合でも、省略時に primary へ
-   解決されること。`web` / `app` の内側にネストしたステップが、明示的な `target` を引き続き
-   拒否すること。`use:` ステップと、空でない `interrupts` が引き続き無条件で拒否されること。
-   ランナー: 寄り道のあとで primary へ戻るステップが、明示的な `target: <primary>` と同じように
-   `prev_after` / `prev_after_screenshot` をリセットすること。能力プリフライトが、primary へ
-   解決されたステップを自分のターゲットの検証群だけへ分類し、もう一方には分類しないこと。
+1. **スキーマ。** `Scenario.primary_target: str | None`。`_check_primary_target` は、未設定か
+   `targets[0]` と一致する場合だけを許し、ステップの走査の前に一度呼び出す。`_check_target` の
+   新しい `default` 引数は、新しい分岐だけでなくすべての分岐で、解決した値を明示的に返す。
+   `_check_step_target` と `expect` のループで、その値を `step.target` / `a.target` へ
+   書き戻す。`apply_setups` は、キャッシュした各ステップを、あるシナリオへ差し込む前に
+   `st.model_copy(deep=True)` で複製し、この提案の書き戻しが別のシナリオがすでに検証した
+   ステップへ及ばないようにする。
+2. **ドキュメント。** `docs/dsl-grammar.md`(`primaryTarget` フィールド、その `targets[0]`
+   制約、更新された `target` 必須ルール)と `docs/scenarios.md`(`targets` / `target` の節、
+   ワーク例つき)、およびそれぞれの `docs/ja/` 版。
+3. **テスト。** スキーマ: `primaryTarget` が未設定か `targets[0]` と一致する場合だけ受け入れられ
+   ること、`targets` が空のときの拒否。ステップ、`if` / `forEach` にネストしたステップ、
+   `web` / `app` のラッパー、トップレベルの `expect` エントリがそれぞれ、`targets` が2個以上の
+   とき、省略時に primary へ解決されること。それとは別に、`targets` が0個または1個のときの
+   ステップは、`primaryTarget` の有無によらず今日どおりの動作を保つこと。`web` / `app` の
+   内側にネストしたステップが、明示的な `target` を引き続き拒否すること。`use:` ステップと、
+   空でない `interrupts` が引き続き無条件で拒否されること。同じ1つの `setup` を共有する
+   2つのシナリオが、それぞれ違う `primaryTarget` を持っていても、それぞれ自分の省略ステップを
+   正しく解決できること(複製による修正の証明)。ランナー: 寄り道のあとで primary へ戻るステップが、
+   明示的な `target: <primary>` と同じように `prev_after` / `prev_after_screenshot` を
+   リセットすること。能力プリフライトが、primary へ解決されたトップレベルのステップを自分の
+   ターゲットの検証群だけへ分類すること。そして、上で述べた既知の限界を見過ごさず、primary へ
+   解決されたステップが primary 以外へルーティングされたラッパーの内側にネストしていると、
+   そのラッパー自身のバックエンドに照らして検証されることを、今後の別の提案に向けた既知の
+   隙間として記録すること。
 
 ## 検討した代替案
 
 | 案 | 概要 | 採らなかった理由 |
 |---|---|---|
-| 位置による primary | 新しいフィールドを追加せず、`targets` の先頭の要素を primary とみなす。 | BE-0428 自身の「検討した代替案」が、`Step.target` 自体についてこの形をすでに却下している。`targets` の並び替えが、省略されたステップの実行先を黙って変えてしまう。BE-0428 が避けようとした、読者が覚えておかなければならない暗黙のルールそのものになる。 |
+| 位置による primary | 新しいフィールドをまったく追加せず、`targets` の先頭の要素を primary とみなす。 | BE-0428 自身の「検討した代替案」が、`Step.target` 自体についてこの形をすでに却下している。理由はここでもそのまま当てはまる。`targets` の並び替えが、省略されたステップの実行先を黙って変えてしまい、並び順に意味があることをどこにも記録しない。この提案の `primaryTarget` も結局は `targets[0]` に解決される(「`primaryTarget` の宣言」を参照)が、著者が明示し、ローダーがリストと突き合わせて検証する名前としてである。`targets` を編集して意図した primary が先頭から外れると、黙った挙動の変化ではなく、食い違いを名指しする読み込みエラーになる。 |
+| `primaryTarget` をランナーへ通し、どの宣言済みターゲットも許す | `primaryTarget` を `targets[0]` に制約する代わりに、`_lease_set`・`_target_runtimes`・`_runtime_for` の評価コンテキスト解決(`pipeline.py:930-1060`)を拡張し、今日 `targets[0]` を直書きしている箇所すべてで `scenario.primary_target` を読ませる。 | より柔軟な選択肢であり、著者は宣言順によらずどのターゲットでも primary に選べる。この提案では採らない。スキーマだけの変更を、リース、クラッシュリカバリのリース判定、評価コンテキスト解決に触れるランナーの変更へ変えてしまうからである。得られる利点(宣言順とは無関係に primary を選べること)は、著者が `targets` 自体の並び順を選ぶだけですでにただで手に入る。primary と先頭宣言とを実際に食い違わせたいシナリオが現れたときのために、今後の提案として残しておく。 |
 | マッピング形式の `targets` | 独立したフィールドの代わりに、`targets` を `{name, primary}` の形のエントリ(`targets: [{name: showcase-app, primary: true}, {name: showcase-web}]`)に拡張する。 | `targets` は、スキーマのほかの箇所ではすべて単純な `list[str]` である。`tags` や `capturePolicy` のトークンなど、シナリオレベルのリストはすべてこの形を共有している。マッピング形式は、ありふれたケース(primary 以外のエントリも含め、すべて)で YAML(YAML Ain't Markup Language)の分量を2倍にし、独立した `primaryTarget: <name>` がより素直に言えることを、何も付け加えない。 |
 | `primaryTarget` を `targets` 2個以上で必須にする | `target` を全ステップに明示していて省略に頼らないシナリオも含め、複数ターゲットのシナリオすべてに primary の宣言を強制する。 | BE-0428 のもとですでにコミットされている複数ターゲットのシナリオは、どれもすでに全ステップへ `target` を明示している。`primaryTarget` を無条件に必須にすると、一度も使わないフィールドのためだけに、そのすべてへ編集を強いることになる。任意にすれば、関心のないシナリオには何のコストもかからない。`primaryTarget` を未設定のままにしたときの読み込み時ルールは、今日から変わらない。 |
 | リーフのアクションステップだけで省略を許す | 単純なアクションステップ(`tap`、`type`、`wait` など)には `target` の省略を許す一方、`expect` エントリと `if` / `forEach` / `web` / `app` のラッパーには引き続き明示を要求する。これらはどのターゲットで確認するかを決めたり検証したりする役割を持つため。 | この提案が加えるルールは、すでに一文で言い切れる。省略された `target` は `primaryTarget` を意味する。`target` が許される場所ならどこでも同じである。これを「ここでは省略可、あそこでは必須」に分割すると、読者が覚えておくべきルールが1つ増える。リーフのステップとラッパーや `expect` という区別は、シナリオがすでに primary を宣言して同意している以上、扱いを分ける理由にならない。 |
@@ -214,11 +284,14 @@ target=self.target)`
 > 作業の進行に合わせて最新の状態を保つ。チェックリストは「詳細設計」の MECE な作業手順に対応する
 > (作業単位ごとに1つのチェック項目)。ログには、変更内容と時期を古い順に記録し、PR へリンクする。
 
-- [ ] スキーマ: `Scenario.primary_target`、`_check_primary_target`、`_check_target` の `default`
-      引数を `_check_step_target` と `expect` のループへ通す変更。
+- [ ] スキーマ: `Scenario.primary_target`、`_check_primary_target`(未設定か `targets[0]` の
+      どちらかだけを許す)、すべての分岐で明示的に値を返す `_check_target` の `default` 引数を
+      `_check_step_target` と `expect` のループへ通す変更、`apply_setups` がキャッシュした
+      ステップを複製する変更。
 - [ ] ドキュメント: `docs/dsl-grammar.md`、`docs/scenarios.md`、およびそれぞれの `docs/ja/` 版。
-- [ ] テスト: すべてのステップの形と宣言済みターゲット数にわたるスキーマの解決。primary への
-      復帰時のランナーの `prev_after` リセット。能力プリフライトのターゲットごとの分類。
+- [ ] テスト: すべてのステップの形と宣言済みターゲット数にわたるスキーマの解決。共有セットアップの
+      複製による修正。primary への復帰時のランナーの `prev_after` リセット。能力プリフライトの
+      ターゲットごとの分類と、既知のネストしたラッパーの限界。
 
 ## 参考
 
@@ -229,5 +302,10 @@ target=self.target)`
   `targets` / `target` の現行の一次情報であり、この提案のドキュメント作業が拡張する対象。
 - [`bajutsu/common/scenario/models/scenario/_targets.py`](../../bajutsu/common/scenario/models/scenario/_targets.py)：
   この提案のスキーマ作業単位が変更するバリデータ。
+- [`bajutsu/common/scenario/expand.py`](../../bajutsu/common/scenario/expand.py)：`apply_setups`。
+  この提案の書き戻しのために、そのキャッシュしたステップを複製する必要がある。
+- [`bajutsu/common/runner/pipeline.py`](../../bajutsu/common/runner/pipeline.py)：`_lease_set` と
+  `_target_runtimes`。この提案自身の `primaryTarget` が食い違わずに固定される、
+  「`targets[0]` が primary」というルールの出どころ。
 - [`bajutsu/common/orchestrator/loop/_step_runner.py`](../../bajutsu/common/orchestrator/loop/_step_runner.py)：
   `_route`。この提案は、その既存のディスパッチと `last_target` の記録処理を変更せずに利用する。
