@@ -1,14 +1,14 @@
-[English](BE-0434-multi-target-interrupts.md) · **日本語**
+[English](BE-XXXX-multi-target-interrupts.md) · **日本語**
 
-# BE-0434 — interruptsのエントリにtargetを追加し、省略時はprimary targetにします
+# BE-XXXX — interruptsのエントリにtargetを追加し、省略時はprimary targetにします
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-0434](BE-0434-multi-target-interrupts-ja.md) |
+| 提案 | [BE-XXXX](BE-XXXX-multi-target-interrupts-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0434") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | Scenario authoring features |
 | 関連 | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md)、[BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md) |
 <!-- /BE-METADATA -->
