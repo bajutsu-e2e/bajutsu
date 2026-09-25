@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ja-register-drift-detector-ja.md)
+**English** · [日本語](BE-0434-ja-register-drift-detector-ja.md)
 
-# BE-XXXX — Detect 敬体 register drift in existing Japanese docs and convert them file by file
+# BE-0434 — Detect 敬体 register drift in existing Japanese docs and convert them file by file
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ja-register-drift-detector.md) |
+| Proposal | [BE-0434](BE-0434-ja-register-drift-detector.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0434") |
 | Topic | Contributor workflow |
 | Related | [BE-0278](../BE-0278-tech-writing-skill/BE-0278-tech-writing-skill.md) |
 <!-- /BE-METADATA -->
