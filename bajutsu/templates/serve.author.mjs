@@ -123,8 +123,8 @@ function restoreSplits(){
   let v={};try{v=JSON.parse(localStorage.getItem(SPLIT_KEY)||'{}')}catch(e){}
   document.querySelectorAll('main .gutter').forEach(g=>{const w=v[g.dataset.var];if(w)g.closest('main').style.setProperty(g.dataset.var,w)});
 }
+let drag=null;
 function initSplitters(){
-  let drag=null;
   document.querySelectorAll('main .gutter').forEach(g=>g.addEventListener('mousedown',e=>{
     e.preventDefault();
     const row=g.classList.contains('row'),b=g.previousElementSibling.getBoundingClientRect();
@@ -145,6 +145,10 @@ function initSplitters(){
   });
 }
 function clearSplits(){
+  // Cancel an in-flight gutter drag first, as unmount() does for a panel drag / divider resize:
+  // otherwise its next mousemove re-applies the px width removed just below, and body keeps
+  // user-select:none and the resize cursor.
+  if(drag){drag.g.classList.remove('dragging');document.body.style.userSelect='';document.body.style.cursor='';drag=null;}
   document.querySelectorAll('main .gutter').forEach(g=>g.closest('main').style.removeProperty(g.dataset.var));
 }
 
