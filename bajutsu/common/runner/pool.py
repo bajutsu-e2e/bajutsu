@@ -454,6 +454,10 @@ def device_pool(  # noqa: C901, PLR0915
                 # Video the environment already began before the app launched (Android, so
                 # the cold start is recorded); the sink adopts it instead of starting one on demand.
                 prestarted_intervals=lease_env.prestarted_intervals(),
+                # The container the driver's recorder actually writes (default mp4 for
+                # simctl/adb's ISO base media; Playwright overrides it to webm — its native
+                # container), so the reserved filename never lies about the bytes behind it.
+                video_extension=getattr(driver, "video_extension", "mp4"),
                 # Carried so a first-wait timeout diagnostic can state whether the readiness gate had
                 # passed and on which signal, stamped with this scenario's BE-0049 provenance so the
                 # evidence survives a rerun-to-green (BE-0231 Unit 1). The `scenarioHash` here

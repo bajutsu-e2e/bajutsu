@@ -495,6 +495,25 @@ def test_filesink_dispatches_intervals_to_web_provider(tmp_path: Path) -> None:
     assert started[0].provider == "playwright"
 
 
+def test_filesink_reserves_the_video_extension_the_driver_actually_records(tmp_path: Path) -> None:
+    # Playwright's recorder writes real Matroska/WebM, not ISO base media, so the device pool wires
+    # `video_extension="webm"` for it — the sink must reserve `scenario.webm`, not blindly assume
+    # every backend's video is mp4 (the pre-fix bug: a WebM file served/labeled as `video/mp4`).
+    from bajutsu.common.evidence import FileSink, intervals
+
+    calls: list[tuple[str, str]] = []
+
+    def driver_interval(kind: str, path: Path) -> intervals.Interval | None:
+        calls.append((kind, path.name))
+        if kind == "video":
+            return intervals.Interval(kind="video", path=path, provider="playwright")
+        return None
+
+    sink = FileSink(tmp_path, udid="web-0", driver_interval=driver_interval, video_extension="webm")
+    sink.start_scenario_intervals("00-s", ["video"])
+    assert calls == [("video", "scenario.webm")]
+
+
 def test_filesink_without_web_provider_uses_udid_gate(tmp_path: Path) -> None:
     from bajutsu.common.evidence import FileSink
 
@@ -716,6 +735,18 @@ def test_finish_scenario_intervals_emits_a_video_without_reading_it(tmp_path: Pa
     unreadable.mkdir(parents=True)
     out = sink.finish_scenario_intervals("s", [_StubInterval(unreadable, kind="video")])
     assert [a.name for a in out] == ["s/scenario.mp4"]
+
+
+def test_finish_scenario_intervals_emits_a_webm_video_without_reading_it(tmp_path: Path) -> None:
+    # The opaque-bytes exemption is keyed on `interval.kind == "video"`, not on a `.mp4` suffix — a
+    # Playwright recording, correctly named `scenario.webm`, must ship unmasked exactly like
+    # simctl/adb's `scenario.mp4` rather than being run through the text scrubber (which would either
+    # corrupt the binary or fail to read it and drop the artifact).
+    sink = FileSink(tmp_path, udid="u", secrets=["topsecret"])
+    unreadable = tmp_path / "s" / "scenario.webm"
+    unreadable.mkdir(parents=True)
+    out = sink.finish_scenario_intervals("s", [_StubInterval(unreadable, kind="video")])
+    assert [a.name for a in out] == ["s/scenario.webm"]
 
 
 def test_finish_scenario_intervals_drops_apptrace_when_only_the_raw_is_unredactable(

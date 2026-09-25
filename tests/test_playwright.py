@@ -1392,6 +1392,34 @@ def test_driver_interval_video_none_without_recording(tmp_path: Any) -> None:
     assert drv.driver_interval("video", tmp_path / "scenario.mp4") is None
 
 
+def test_playwright_declares_its_native_video_container() -> None:
+    # The device pool reads this to pick the artifact's extension (FileSink.video_extension) —
+    # regressing it back to "mp4" would silently mislabel every web scenario's real WebM recording.
+    assert PlaywrightDriver.video_extension == "webm"
+
+
+def test_finalized_video_keeps_its_real_webm_magic_bytes(tmp_path: Any) -> None:
+    # Playwright's own recorder always writes Matroska/WebM (VP8/VP9), never ISO base media —
+    # `_finalize_video` only moves the file, it never transcodes it. Regression guard for the actual
+    # container, not just the path: a real Playwright recording starts with the EBML magic number
+    # (\x1a\x45\xdf\xa3), and `_finalize_video` must deliver those exact bytes, untouched, to
+    # whatever extension the sink reserved (`scenario.webm`, matching `video_extension` above) —
+    # never silently re-labeled as `video/mp4`, the pre-fix bug this pins.
+    ebml_magic = b"\x1a\x45\xdf\xa3"
+    src = tmp_path / "raw.webm"
+    src.write_bytes(
+        ebml_magic + b"\x00" * 32
+    )  # a real file has more after the magic; irrelevant here
+    target = tmp_path / "out" / "scenario.webm"
+    drv, _ = _video_driver(tmp_path / "vtmp", src)
+    interval = drv.driver_interval("video", target)
+    assert interval is not None
+    interval.stop()
+    assert target.suffix == ".webm"
+    assert target.read_bytes()[:4] == ebml_magic  # the genuine WebM signature, byte for byte
+    assert not src.exists()
+
+
 def test_enter_app_and_leave_app_unsupported() -> None:
     # app: rests on XCUITest's own cross-app activate(); a browser has no bundle ids.
     drv, _ = _driver([])

@@ -277,7 +277,11 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   (after the device is booted and the app installed, but before `am start`) and hands the running
   `Interval` back through `prestarted_intervals`; the sink *adopts* it at scenario start
   (`intervals.adopt`) instead of starting a fresh one, and on stop finalizes it and relocates the
-  file to `scenario.mp4`. Web wires the same up-front capture into the browser context at creation.
+  file to `scenario.mp4` (Android's `screenrecord` writes real ISO base media). Web wires the same
+  up-front capture into the browser context at creation, but finalizes to `scenario.webm` instead —
+  Playwright's recorder always writes Matroska/WebM, so its artifact is named after that real
+  container rather than borrowing Android/iOS's `.mp4` (see `PlaywrightDriver.video_extension` in
+  [drivers.md](drivers.md#playwright-web)).
   XCUITest, the current iOS backend, records on demand instead: nothing starts a recording before
   the `xcodebuild` runner spawns and launches the app, so its `prestarted_intervals` is always empty.
   The up-front

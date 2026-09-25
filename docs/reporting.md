@@ -219,9 +219,12 @@ The document is `{ reportFormat: "CTRF", specVersion, generatedBy, timestamp, re
 - A CTRF `step` allows only `{ name, status, extra }`, so a step's richer data (duration, reason,
   per-step assertions, artifacts) lands in `step.extra` — a consumer that renders just name/status
   sees a clean list, and Bajutsu-aware tooling can read the extras.
-- Attachment `contentType` comes from an artifact-`kind` → MIME map (`video`→`video/mp4`,
-  `screenshot`→`image/png`, `deviceLog`→`text/plain`, `elements`/`network`/`appTrace`→`application/json`),
-  defaulting to `application/octet-stream`; `path` stays run-directory relative like the manifest.
+- Attachment `contentType` comes from an artifact-`kind` → MIME map (`screenshot`→`image/png`,
+  `deviceLog`→`text/plain`, `elements`/`network`/`appTrace`→`application/json`), defaulting to
+  `application/octet-stream`; `path` stays run-directory relative like the manifest. `video` is the
+  one exception: its MIME is derived from the artifact's real filename extension instead of a fixed
+  kind mapping, since a Playwright-recorded web scenario's video is genuine WebM (`video/webm`,
+  `scenario.webm`) rather than the `video/mp4` a simctl/adb recording is (see [evidence.md](evidence.md)).
 - On a `--browsers` matrix run each engine × scenario cell is one CTRF test — the engine in the test
   `name` and the `browser` field (mirroring JUnit's `classname`) — and the engine × scenario grid is
   carried under `results.extra.matrix`. Bajutsu's other surplus (`sid`, `expect` results, alerts,

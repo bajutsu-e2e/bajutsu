@@ -139,6 +139,18 @@ def test_attachments_carry_mime_content_type() -> None:
     assert attachments[0]["contentType"] == "video/mp4"
 
 
+def test_video_attachment_content_type_follows_its_real_extension() -> None:
+    # A Playwright-recorded web scenario's video is genuinely Matroska/WebM, named `scenario.webm`
+    # (not `scenario.mp4`, see `_interval_filename`) — the CTRF export must not hardcode every
+    # "video" kind to `video/mp4` regardless of the file it actually points at.
+    run = _passing()
+    run.artifacts[0] = Artifact(name="00-login/scenario.webm", kind="video", provider="playwright")
+    doc = ctrf_json("20260704-101500", [run])
+    attachments = doc["results"]["tests"][0]["attachments"]  # type: ignore[index]
+    assert attachments[0]["path"] == "00-login/scenario.webm"
+    assert attachments[0]["contentType"] == "video/webm"
+
+
 def test_browser_and_device_fields() -> None:
     doc = ctrf_json("20260704-101500", [_passing()])
     test = doc["results"]["tests"][0]  # type: ignore[index]

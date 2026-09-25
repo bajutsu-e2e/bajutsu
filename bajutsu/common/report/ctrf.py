@@ -19,6 +19,7 @@ from bajutsu import __version__
 from bajutsu.common.orchestrator import RunResult, StepOutcome
 from bajutsu.common.report.manifest import _details, _matrix
 from bajutsu.common.run_meta.id import parse_run_id_timestamp
+from bajutsu.common.run_meta.object_store import content_type_for
 
 # The CTRF spec version this projection targets; the vendored test schema is pinned to it.
 SPEC_VERSION = "0.0.0"
@@ -26,7 +27,6 @@ SPEC_VERSION = "0.0.0"
 # Artifact `kind` → MIME content type. Unknown kinds fall back to a safe octet-stream, so a new
 # evidence kind still exports (as an opaque attachment) rather than breaking the document.
 _ARTIFACT_MIME = {
-    "video": "video/mp4",
     "screenshot": "image/png",
     "deviceLog": "text/plain",
     "elements": "application/json",
@@ -36,7 +36,12 @@ _ARTIFACT_MIME = {
 _DEFAULT_MIME = "application/octet-stream"
 
 
-def _content_type(kind: str) -> str:
+def _content_type(kind: str, name: str) -> str:
+    # `video` has no fixed MIME: the file's real extension names its actual container (mp4 for
+    # simctl/adb, webm for Playwright — see `_interval_filename`), so it is derived the same way
+    # `bajutsu serve` derives a served artifact's Content-Type, rather than assumed from the kind.
+    if kind == "video":
+        return content_type_for(name)
     return _ARTIFACT_MIME.get(kind, _DEFAULT_MIME)
 
 
@@ -112,7 +117,8 @@ def _attachments(r: RunResult) -> list[dict[str, object]]:
     Paths stay run-directory relative, matching how `manifest.json` records them.
     """
     return [
-        {"name": a.name, "contentType": _content_type(a.kind), "path": a.name} for a in r.artifacts
+        {"name": a.name, "contentType": _content_type(a.kind, a.name), "path": a.name}
+        for a in r.artifacts
     ]
 
 

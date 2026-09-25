@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Callable, Mapping
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from bajutsu.common.drivers import base
@@ -46,8 +46,13 @@ class FileSink:
         readiness: ReadinessResult | None = None,
         provenance: Mapping[str, object] | None = None,
         on_video_start_stall: Callable[[], None] | None = None,
+        video_extension: str = "mp4",
     ) -> None:
         self.udid = udid
+        # The container the recording driver actually writes (`mp4` for simctl/adb, `webm` for
+        # Playwright) — the caller derives it from the driver so the reserved filename matches the
+        # real bytes (see `_interval_filename`).
+        self.video_extension = video_extension
         self.log_predicate = log_predicate
         self.log_subsystem = log_subsystem  # for appTrace: the app's os_log subsystem
         self.redactor = Redactor(redact, values=secrets)
@@ -134,7 +139,9 @@ class FileSink:
             kind = token.partition(".")[0]
             # An external recorder (simctl, screenrecord, Playwright) writes the file itself, so the
             # sink reserves the path; `finish_scenario_intervals` below closes the loop (BE-0331).
-            target = self._writer.reserve(f"{scenario_id}/{_interval_filename(kind)}")
+            target = self._writer.reserve(
+                f"{scenario_id}/{_interval_filename(kind, self.video_extension)}"
+            )
             pre = self._prestarted.get(kind)
             if pre is not None:
                 started.append(intervals.adopt(pre, target))
@@ -202,12 +209,14 @@ class FileSink:
             # that reservation's — a transform (appTrace's parse, adb's pull) only ever renames within it.
             name = f"{scenario_id}/{path.name}"
             # appTrace also has a raw stream beside it; both must be scrubbed before the artifact ships.
-            to_scrub = [name]
-            if interval.kind == "appTrace":
-                to_scrub.append(f"{scenario_id}/appTrace.raw")
             # A video is opaque bytes the sink cannot inspect, so it is recorded as written unmasked
-            # rather than scrubbed — the honesty BE-0151 established for screenshots.
-            unsafe = [n for n in to_scrub if not self._scrub_or_record(n)]
+            # rather than scrubbed — the honesty BE-0151 established for screenshots. Keyed on
+            # `interval.kind`, not the file's extension: a Playwright recording's real container
+            # (webm) must be just as opaque to the scrubber as simctl/adb's mp4.
+            to_scrub = [(name, interval.kind == "video")]
+            if interval.kind == "appTrace":
+                to_scrub.append((f"{scenario_id}/appTrace.raw", False))
+            unsafe = [n for n, opaque in to_scrub if not self._scrub_or_record(n, opaque=opaque)]
             if unsafe:
                 # Redaction is a security control: if we couldn't read a file to scrub it, don't ship
                 # the artifact (fail closed), and name the offending file loudly rather than leak it.
@@ -220,9 +229,9 @@ class FileSink:
             out.append(Artifact(name=name, kind=interval.kind, provider=interval.provider))
         return out
 
-    def _scrub_or_record(self, name: str) -> bool:
+    def _scrub_or_record(self, name: str, *, opaque: bool) -> bool:
         """Close a reserved recording's redaction loop; return whether it is safe to ship."""
-        if PurePosixPath(name).suffix == ".mp4":
+        if opaque:
             self._writer.record_unmasked(name)
             return True
         return self._writer.scrub_reserved(name)

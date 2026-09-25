@@ -569,9 +569,12 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   scenario — both Playwright-native (no simctl), the web analogues of the iOS os_log / simctl video.
   The pool enables recording only when `video` is in the scenario's `capture` (the `BrowserContext`
   is created with `record_video_dir`), and the `video` interval finalizes it into
-  `<scenario>/scenario.mp4` (webm content) on close. The pool injects the driver's `driver_interval`
-  (the driver-supplied interval seam, shared with the adb backend) into the `FileSink`, so the same
-  backend-agnostic `capture` policy carries both.
+  `<scenario>/scenario.webm` on close — Playwright's recorder always writes Matroska/WebM, so
+  `PlaywrightDriver.video_extension` names the artifact after its real container rather than the
+  `.mp4` every other backend produces (simctl/adb write genuine ISO base media). The pool injects
+  the driver's `driver_interval` (the driver-supplied interval seam, shared with the adb backend)
+  and `video_extension` into the `FileSink`, so the same backend-agnostic `capture` policy carries
+  both while each artifact still names its own bytes honestly.
 
 > `playwright` is imported **lazily** (only when a browser is actually started), so it never loads on
 > the default CLI path (locked by `tests/serve/test_import_guard.py`). Install with

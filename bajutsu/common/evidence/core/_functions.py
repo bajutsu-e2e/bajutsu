@@ -22,12 +22,23 @@ if TYPE_CHECKING:
     from bajutsu.common.platform_lifecycle import ReadinessResult
 
 # scenario-dir file names for interval kinds — one source of truth for both the simctl (iOS)
-# and the Playwright (web) providers, so the two never drift.
-_INTERVAL_FILE = {"video": "scenario.mp4", "deviceLog": "device.log", "appTrace": "appTrace.raw"}
+# and the Playwright (web) providers, so the two never drift. `video`'s extension varies by
+# provider (see `_interval_filename`): simctl/adb record real ISO base media (mp4), Playwright
+# records Matroska/WebM, and naming the latter `.mp4` served it with a lying Content-Type.
+_INTERVAL_FILE = {"deviceLog": "device.log", "appTrace": "appTrace.raw"}
 
 
-def _interval_filename(kind: str) -> str:
-    """The artifact filename for an interval `kind`."""
+def _interval_filename(kind: str, video_extension: str = "mp4") -> str:
+    """The artifact filename for an interval `kind`.
+
+    `video_extension` names the container the recording driver actually produces (`FileSink`'s
+    caller derives it from the driver, e.g. `"webm"` for Playwright) — the filename must match the
+    real bytes so a served Content-Type (extension-derived, `content_type_for`) and the report's
+    `<video>` element both describe the file honestly rather than assuming every backend's video is
+    ISO base media.
+    """
+    if kind == "video":
+        return f"scenario.{video_extension}"
     return _INTERVAL_FILE.get(kind, kind)
 
 
