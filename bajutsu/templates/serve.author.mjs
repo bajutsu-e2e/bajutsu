@@ -22,10 +22,12 @@ import {initOrgsView} from './serve.orgs.mjs';
 let authorInit=()=>{}, authorRefresh=()=>{}, applyCaptureCapability=()=>{};
 
 // Wire the section modules' listeners first — their bodies only define; this entry module owns the
-// explicit order. This must run before initTiling() below: the tiler rebuilds each view and detaches
-// the Record view's optional Run-result pane (which holds #rec-runclose etc.), so initPanels has to
-// bind those controls while they are still in the DOM — the order the old concatenated load had
-// (panels loaded before author's tiling) and which BE-0247 must preserve.
+// explicit order. This must run before applyLayoutTier() below ever mounts the tiler: mount()
+// rebuilds each view and detaches the Record view's optional Run-result pane (which holds
+// #rec-runclose etc.), so initPanels has to bind those controls while they are still in the DOM —
+// the order the old concatenated load had (panels loaded before author's tiling) and which BE-0247
+// must preserve. initTiling() itself only builds the SPECS array now and is harmless to precede;
+// the invariant binds on mount(), which a later NARROW_MQ change can trigger long after this runs.
 initPanels();
 initCrawl();
 initMetrics();
