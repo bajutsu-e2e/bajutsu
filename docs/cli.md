@@ -732,8 +732,10 @@ Once the app is up, the shell prompts with `bajutsu>`:
 | `find <substring>` | the same tree, filtered to rows whose `id` or `label` contains `<substring>` (case-sensitive, like every selector match) |
 | `tap <target>` | tap the element `<target>` resolves to, or a raw coordinate (see *Targets*, below) |
 | `type <target> <text>` | focus `<target>`, then type `<text>` |
+| `scroll @<x1>,<y1> @<x2>,<y2>` | a raw one-shot drag/scroll gesture from one coordinate to another (`Driver.scroll`) |
 | `back` | navigate back one level, each backend using its platform-correct primitive |
 | `screenshot [path]` | write a screenshot; auto-named `repl-<UTC timestamp>.png` in the current directory when the path is omitted |
+| `step <yaml>` | run one scenario step verbatim — any one-shot action a scenario's own steps accept (`swipe`, `pinch`, `rotate`, `setPickerValue`, `selectOption`, and more), none of which has its own shortcut command (see *Steps*, below) |
 | `help` | list the commands above |
 | `exit` / `quit` | leave the shell |
 | `clear` | wipe the scroll pane's transcript — the ncurses shell only; the plain fallback (below) has no persistent transcript to wipe, so it reports `clear` as an unknown command |
@@ -770,8 +772,11 @@ or starts with `@` or `label:`, and none of them reaches `idMatches`, `labelMatc
   obstructs the target; `repl` surfaces the driver's own `ElementNotTappable`, which names the
   covering element — the more useful answer while diagnosing a selector. The two can therefore
   disagree on a covered target; write the explicit `scroll` step in the scenario to get the recovery.
-- **Gestures** (`swipe`, `scroll`, `pinch`, `rotate`) and platform-specific actions
-  (`setPickerValue`, `selectOption`) are not in this version.
+- **`scroll` is a raw gesture, not "scroll until visible."** A scenario's own `scroll` step always
+  names a target and stops once it is on screen; this shortcut has no target, no stopping
+  condition, and no selector to fail on — it is the same one-shot primitive `Driver.scroll` is,
+  nothing more. Reach the target-seeking form, or any other gesture (`swipe`, `pinch`, `rotate`) or
+  platform-specific action (`setPickerValue`, `selectOption`), through `step` instead.
 - **Leaving the shell leaves the app running.** A Simulator- or device-backed app stays where you
   left it, so you can keep inspecting it by hand. The two sessions the command itself owns are
   closed: the web backend's browser, and the WebDriver session on the `--udid https://…` live route,
@@ -779,6 +784,16 @@ or starts with `@` or `label:`, and none of them reaches `idMatches`, `labelMatc
 - A target declaring `launchServer` has its server started before the shell opens and stopped when
   it exits — without that, a web target would open the browser on a host that is not listening and
   every `tree` would read the error page.
+
+**Steps** (`step <yaml>`): one flow-style `{...}` mapping, the exact `Step` model a scenario file's
+own steps validate against — `step {swipe: {on: {id: card}, direction: up}}`,
+`step {pinch: {sel: {id: map}, scale: 0.5}}`. Runs through the same dispatcher `run` uses for a
+one-shot action (`tap`, `type`, `scroll`, `swipe`, `drag`, `pinch`, `rotate`, `setPickerValue`,
+`selectOption`, `select`, `copy`, `handleSystemAlert`, and more), so a target it resolves fails the
+same way `tap`'s target does (`ElementNotFound` / `AmbiguousSelector`). `wait`, `assert`, and
+control flow (`if` / `forEach` / `web` / `app`) have no one-shot handler to run through — `step`
+reports the gap by name rather than attempting them; only a whole scenario run has the loop those
+need.
 
 **The shell itself** is an ncurses-style screen when both stdin and stdout are a real terminal —
 the command line stays pinned at the top; every command's answer accumulates in a scrollable pane

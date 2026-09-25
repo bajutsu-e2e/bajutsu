@@ -13,8 +13,10 @@ from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.xcuitest import XcuitestChannelError, XcuitestRunnerCrashError
 from bajutsu.common.drivers.xcuitest_live import WebDriverError
+from bajutsu.common.orchestrator.actions import _action_of, _do_action
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.scenario import Selector as SelectorModel
+from bajutsu.common.scenario import Step
 from bajutsu.repl.render import render_json, render_table
 
 _INDEX_SUFFIX = re.compile(r"(.*)#(-?\d+)\Z")
@@ -66,8 +68,10 @@ _HELP = (
     "find <substring>   the same tree, filtered to ids and labels containing <substring>",
     "tap <target>       tap the element <target> resolves to (see below)",
     "type <target> <text>   focus <target>, then type <text> (quote <target> if it has a space)",
+    "scroll @<x1>,<y1> @<x2>,<y2>   drag/scroll from one raw coordinate to another",
     "back               navigate back one level",
     "screenshot [path]  write a screenshot; auto-named in the current directory when omitted",
+    "step <yaml>        run one scenario step verbatim (see below)",
     "help               this list",
     "exit | quit        leave the shell",
     "",
@@ -80,6 +84,13 @@ _HELP = (
     "  --sel <yaml>      a full scenario selector, e.g. --sel {idMatches: row.*, index: 1} — the",
     "                    same id/idMatches/label/labelMatches/traits/value/within/index vocabulary",
     "                    `run` accepts; must be one flow-style {...} mapping (no block YAML)",
+    "",
+    "step's <yaml> is exactly a scenario step — one flow-style {...} mapping, e.g.:",
+    "  step {swipe: {on: {id: card}, direction: up}}",
+    "  step {pinch: {on: {id: map}, scale: 0.5}}",
+    "any one-shot action a scenario's own steps accept works this way — tap, type, scroll, swipe,",
+    "drag, pinch, rotate, setPickerValue, selectOption, select, copy, handleSystemAlert, and more —",
+    "except wait / assert / control-flow (if/forEach/web/app), which need a whole scenario to run",
 )
 
 
@@ -113,10 +124,14 @@ class ReplSession:
                 return self._tap(rest)
             case "type":
                 return self._type(rest)
+            case "scroll":
+                return self._scroll(rest)
             case "back":
                 return self._back(rest)
             case "screenshot":
                 return self._screenshot(rest)
+            case "step":
+                return self._step(rest)
             case "help":
                 return list(_HELP)
             case "exit" | "quit":
@@ -204,6 +219,37 @@ class ReplSession:
         self._driver.type_text(text)
         return [f"typed into {target_token}"]
 
+    def _scroll(self, rest: str) -> list[str]:
+        usage = ["usage: scroll @<x1>,<y1> @<x2>,<y2>"]
+        parts = rest.split()
+        if len(parts) != 2:
+            return usage
+        frm = _parse_at_point(parts[0])
+        to = _parse_at_point(parts[1])
+        if frm is None or to is None:
+            return usage
+        self._driver.scroll(frm, to)
+        return [f"scrolled {rest}"]
+
+    def _step(self, rest: str) -> list[str]:
+        usage = ["usage: step <yaml> — one scenario step, e.g. step {tap: {id: row.1}}"]
+        if not rest:
+            return usage
+        try:
+            step = _parse_yaml_step(rest)
+        except _InvalidYamlStep as e:
+            return str(e).splitlines()
+        kind = _action_of(step)
+        try:
+            _do_action(self._driver, step)
+        except AssertionError:
+            # `_do_action` covers every one-shot action kind (BE-0423's whole point is skipping
+            # `run`/a scenario for exactly those); `wait`/`assert`/control-flow steps have no
+            # handler there at all — they need a run loop, not this shell, so name that gap rather
+            # than let the bare "unhandled action" `AssertionError` read as an internal bug.
+            return [f"step kind {kind!r} needs `run`/a scenario — the shell has no run loop"]
+        return [f"ran step: {kind}"]
+
     def _back(self, rest: str) -> list[str]:
         if rest:
             return ["usage: back"]
@@ -277,6 +323,13 @@ def _parse_point(text: str) -> base.Point | None:
     return point if all(math.isfinite(c) for c in point) else None
 
 
+def _parse_at_point(token: str) -> base.Point | None:
+    """`@<x>,<y>` as a raw pixel `Point` — `None` when *token* isn't that shape at all."""
+    if not token.startswith("@"):
+        return None
+    return _parse_point(token[1:])
+
+
 class _InvalidYamlSelector(Exception):
     """A `--sel <yaml>` argument that didn't parse as YAML or didn't validate as a `Selector`."""
 
@@ -334,6 +387,30 @@ def _parse_yaml_selector(text: str) -> base.Selector:
         return SelectorModel.model_validate(data).as_selector()
     except ValidationError as e:
         raise _InvalidYamlSelector(f"invalid --sel selector: {e}") from e
+
+
+class _InvalidYamlStep(Exception):
+    """A `step <yaml>` argument that didn't parse as YAML or didn't validate as a `Step`."""
+
+
+def _parse_yaml_step(text: str) -> Step:
+    """A `step` argument's YAML, as the exact `Step` model a scenario's own steps validate against.
+
+    Unlike `--sel`, *text* is the whole remainder of the line — nothing follows a step, so there is
+    no brace-balance split to do first, only the YAML load and the model's own validation.
+
+    Raises:
+        _InvalidYamlStep: *text* isn't valid YAML, isn't a mapping, or fails `Step`'s own
+            validation (an unknown field, more than one action set, or no action at all).
+    """
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        raise _InvalidYamlStep(f"invalid step YAML: {e}") from e
+    try:
+        return Step.model_validate(data)
+    except ValidationError as e:
+        raise _InvalidYamlStep(f"invalid step: {e}") from e
 
 
 def _split_target_and_text(rest: str) -> tuple[str, str] | None:
