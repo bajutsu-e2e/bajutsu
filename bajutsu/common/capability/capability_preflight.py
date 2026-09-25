@@ -23,10 +23,8 @@ The map gates only the **true hard requirements** the capability set cleanly dec
   resident-runner XCUITest backend can land on a named row deterministically, so a scenario setting
   a wheel's value is rejected up front on every other backend.
 - `selectPhotos` needs `selectPhotos` (roadmap item): a `PHPickerViewController` grid is an iOS
-  control, and only the resident-runner XCUITest backend can address it at all. The token is
-  narrower than "this backend" — `capabilities_for_run` drops it further on an Apple Silicon
-  Simulator, where the grid's cells cannot be tapped reliably — so a scenario using this step is
-  rejected up front on every other backend, and on that one Simulator/host combination too.
+  control, and only the resident-runner XCUITest backend can address it at all, so a scenario using
+  this step is rejected up front on every other backend.
 - `select` / `copy` need `textSelection` (BE-0280): select-all + clipboard copy on the focused
   field. A backend with no select-all handle raises `UnsupportedAction` and does not advertise the
   token, so a scenario selecting or copying is rejected up front. `delete` / `clear` are not gated:
@@ -222,7 +220,7 @@ _REQUIREMENTS = (
     ),
     _Requirement(
         base.Capability.SELECT_PHOTOS,
-        "selectPhotos (iOS photo-picker selection; device / Intel Simulator only)",
+        "selectPhotos (iOS photo-picker selection; iOS XCUITest only)",
         _step_locations(lambda s: s.select_photos is not None),
     ),
     _Requirement(

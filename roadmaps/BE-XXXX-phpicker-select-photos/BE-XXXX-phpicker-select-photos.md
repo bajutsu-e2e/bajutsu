@@ -11,7 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Implementing PR | [#2008](https://github.com/bajutsu-e2e/bajutsu/pull/2008) |
 | Topic | Platform support |
-| Related | [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md) |
+| Related | [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -29,13 +29,11 @@ This item adds a `selectPhotos` step that picks one or more images from the pick
 ordinal position and confirms the selection, plus a `seedPhotos` precondition that seeds the
 Simulator's photo library with known fixture images so the grid's content is deterministic. The
 picker turned out to need neither a second process handle nor a tree merge — it is measured to run
-inside the host app's own process, unlike the two precedents above — but every actuation technique
-tried against its grid cells on an Apple silicon Simulator failed to reliably select one. That
-finding, recorded in full in *Detailed design*, Unit 3, does not rule the action out: it is
-independently reported as an Apple-silicon-Simulator-specific limitation, so `selectPhotos` ships
-scoped to where the ordinary handle-based tap every other element already uses is expected to
-work — a real device or an Intel Simulator — and raises a named capability error everywhere else,
-including on an Apple silicon Simulator, rather than failing non-deterministically on-device.
+inside the host app's own process, unlike the two precedents above. A handle-based tap against a
+grid cell, the same mechanism every other element uses, is measured to fail; a raw coordinate tap at
+the cell's exact resolved frame center is measured to reliably select it instead. `selectPhotos`
+ships using the latter, on every Simulator and device this item's `Capability.SELECT_PHOTOS` is
+otherwise advertised for.
 
 ## Motivation
 
@@ -60,28 +58,26 @@ Two further facts, both measured on the showcase app rather than assumed, decide
   `bajutsu/common/backend_cli/simctl/_functions.py` wraps `privacy`/`push`/`erase`/`boot`, not
   `addmedia`.
 - **The grid's cells cannot be tapped by the same handle-based path an ordinary element uses.**
-  Measured against the showcase app on Xcode 26.6 / iOS 26.5: resolving a grid cell by
-  `{ id: "PXGGridLayout-Info", index: 0 }` (every cell shares that one identifier, so `index` is
-  the only way to name one — see Unit 2) and tapping it through the driver's existing `/tap`
-  reproducibly fails as `element vanished (stale handle)`, even after the driver's own stale-retry
-  loop (`_STALE_MAX_ATTEMPTS` re-resolutions) is exhausted. The picker's collection view
-  invalidates a cell's accessibility node between resolution and actuation on every attempt — not
-  a transient race, but a two-for-two reproducible failure. A `Cancel` tap resolved and actuated
+  Measured against the showcase app on Xcode 26.6 / iOS 26.5, on an Apple silicon Simulator:
+  resolving a grid cell by `{ id: "PXGGridLayout-Info", index: 0 }` (every cell shares that one
+  identifier, so `index` is the only way to name one — see Unit 2) and tapping it through the
+  driver's existing handle-based `/tap` reproducibly fails as `element vanished (stale handle)`,
+  even after the driver's own stale-retry loop (`_STALE_MAX_ATTEMPTS` re-resolutions) is exhausted;
+  resolving a different index the same way instead reports the handle live but refuses the tap as
+  `ElementNotTappable` (`element resolved but not hittable`). A `Cancel` tap resolved and actuated
   the same way, immediately after opening the same picker, succeeds every time; only the recycled
-  grid cells are affected. This resembles the failure
-  [BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md)
-  hit with the in-app browser's chrome, where `XCUIElement.tap()` was silently dropped rather than
-  reported as stale — but unlike that case, the matching fix (actuate at the element's live frame
-  centre through a raw coordinate) does not carry over: tried here, it drops the tap just as
-  silently and selects nothing. Unit 3 records the full investigation and the capability scoping
-  it decides.
+  grid cells are affected. A raw coordinate tap at a cell's exact resolved frame center, by
+  contrast, is measured to reliably select it: across all six cells of a seeded two-row grid, each
+  tap selected its intended photo, and the on-screen selection count matched every time. A
+  coordinate on the boundary shared with an adjacent cell, rather than the frame's own center, can
+  register that neighboring cell instead. Unit 3 records the full investigation and the coordinate
+  actuation `select_photos` uses.
 
-The showcase's own scenario (`select_photos.yaml`, Unit 4) exercises Units 1, 2, and 4 against a
-seeded, two-image library on every Simulator, and exercises Unit 3's capability rejection on the
-one this investigation's Mac carries — an Apple silicon host. It cannot exercise Unit 3's actuation
-succeeding, since that needs hardware (a real device, or an Intel Mac) this investigation had no
-access to; a later reader with such hardware can confirm it directly by running that same scenario
-there and checking that the app mirrors `Selected: 2`.
+The showcase's own scenario (`select_photos.yaml`, Unit 4) exercises Units 1 through 4 end to end
+against a seeded, two-image library, verified directly on an Apple silicon Simulator. It has not
+been run on a real device or an Intel Simulator, which this investigation had no access to; a later
+reader with such hardware can confirm it directly by running that same scenario there and checking
+that the app mirrors `Selected: 2`.
 
 ## Detailed design
 
@@ -166,79 +162,42 @@ buttons. No new selector field is needed; `select_photos`'s driver method builds
 existing `/elements` query — the grid did not need a dedicated query endpoint, only a dedicated way
 to *tap* what that query already finds (Unit 3).
 
-### Unit 3 — Actuate a cell, scoped to where it works
+### Unit 3 — Actuate a cell by coordinate tap
 
 `XcuitestDriver.select_photos(indices: list[int], *, timeout: float) -> None` queries `/elements`,
 resolves each requested index against `{ id: "PXGGridLayout-Info", index: i }`, taps each resolved
-cell through the ordinary handle-based `/tap` every other element uses, then taps the confirm
-control (below) if the picker is still up. No dedicated actuation primitive and no new Swift-side
-endpoint: the same mechanism the DSL's existing `tap` action already uses. This is only sound
-because of the scoping the rest of this unit derives — building it on a mechanism proven broken
-against this specific view would repeat the earlier investigation's mistake, not fix it.
+cell's exact frame center (`base.frame_center`) by a raw coordinate `/tap`, then taps the confirm
+control (below) if the picker is still up. No dedicated Swift-side endpoint: the same `/tap`
+endpoint's `point` field the DSL's `tapPoint` action already uses.
 
 The picker was presented exactly as Unit 4 specifies — `selectionLimit = 0` (unlimited), through
-`UIViewControllerRepresentable` from SwiftUI. Every actuation technique tried against a grid cell,
-on Xcode 26.6, on the one Mac this investigation had access to (Apple silicon, an M-series chip),
-failed to select anything:
+`UIViewControllerRepresentable` from SwiftUI. Measured against the showcase app, on Xcode 26.6, on
+an Apple silicon Simulator (iOS 26.5):
 
 | Technique | `via` | Result |
 |---|---|---|
-| `XCUIElement.tap()` on the handle-resolved cell | handle | `element vanished (stale handle)`, reproducible after the driver's own stale-retry loop is exhausted |
-| `XCUIElement.press(forDuration:)` on the same handle, 0.05 s and 0.4 s | handle | Same `stale handle` failure at both durations |
-| A raw coordinate tap at the cell's live frame centre (the existing `/tap` endpoint's `point` field — already used by the DSL's `tapPoint` action, so no new endpoint was even needed for this attempt) | coordinate | No error, but no cell is marked selected either — the tap is accepted and does nothing observable |
-| A coordinate *press* at the same point, 0.15 s (`XCUICoordinate.press(forDuration:)` — the same primitive [BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md) uses for the browser's frame-centre tap, extended to `tapPoint` and prototyped for this check) | coordinate | Same as the plain coordinate tap: accepted, no cell marked selected |
+| `XCUIElement.tap()` on a handle-resolved cell | handle | `element vanished (stale handle)`, reproducible after the driver's own stale-retry loop is exhausted |
+| A handle-resolved tap on a different cell (same identifier, a different `index`) | handle | The handle resolves to a live element, but the tap is refused: `ElementNotTappable` (`element resolved but not hittable`) |
+| A raw coordinate tap at a cell's exact resolved frame center (`base.frame_center`) | coordinate | Selects the intended cell. Repeated across all six cells of a seeded two-row grid: every cell selected correctly, and the on-screen selection count matched the number tapped every time |
+| A coordinate tap at a point on the boundary shared with an adjacent cell, rather than the frame's own center | coordinate | Selected the neighboring cell instead of the intended one |
 
-The first three attempts were repeated on both an iOS 26.5 Simulator and an iOS 18.6 Simulator with
-identical results, which rules out an iOS-version regression as the cause. A structurally identical
-tap against a *non-recycled* control — `Cancel`, in the same picker, at the same moment — succeeds
-every time by the plain handle-based path (Motivation), so whatever is failing is specific to the
-grid's cells, not to the picker or to XCUITest taps in general.
+A structurally identical handle-based tap against a *non-recycled* control — `Cancel`, in the same
+picker, at the same moment — succeeds every time (Motivation), so the handle-based failure is
+specific to the grid's cells, not to the picker or to XCUITest taps in general.
 
-This matches a limitation independently reported on Apple's own developer forums: image selection
-inside `UIImagePickerController` / `PHPickerViewController` failing to register under XCUITest
-specifically on Apple silicon Simulators, while working on Intel Simulators and real devices
-([Apple Developer Forums, thread 714024](https://developer.apple.com/forums/thread/714024);
-[Bitrise Discussions, "Cannot pick image during
-XCUITest"](https://discuss.bitrise.io/t/cannot-pick-image-during-xcuitest/14427)). Bajutsu retired
-its one alternative iOS actuator, `idb`, in
-[BE-0290](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md); XCUITest is the sole
-route left to drive an iOS Simulator, so there is no existing fallback path within the tool to
-route around this.
+`select_photos` therefore taps each resolved cell's exact frame center by raw coordinate rather than
+by handle, re-resolving the frame fresh before every tap in the same call: nothing about this
+recycled collection view guarantees a cell's frame stays put while an earlier index in the same call
+is still being tapped. `Capability.SELECT_PHOTOS` carries no restriction by Simulator host
+architecture — every target this driver's static `CAPABILITIES` advertises the token for gets the
+same actuation.
 
-Determinism (prime directive 2) rules out shipping a step whose one essential action does not work
-on the architecture most contributors now run — an Apple silicon Mac — with no way for a scenario
-author to know that up front. The fourth attempt closes off the most obvious remaining avenue:
-[BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md)'s
-own fix, generalized from a tap to a press, still does not reach this collection view. Rather than
-wait on a fix or a workaround from Apple, or a still-untried actuation technique, this item scopes
-`selectPhotos` to where the ordinary tap mechanism is corroborated to work — a real device or an
-Intel Simulator — and rejects the scenario up front everywhere else, the same fail-fast promise
-`capabilities_for_run` already makes for a real device's missing simctl-backed capabilities
-(BE-0238 Unit 3).
-
-`backends.apple_silicon_simulator_host() -> bool` (`bajutsu/common/backends.py`) reads
-`platform.machine() == "arm64"` on the machine running bajutsu itself — not a `xcrun simctl` query
-against the target device. The two are the same fact: a Simulator's guest OS runs natively on the
-host CPU rather than emulating a separate one, so "an Apple silicon Simulator" and "a Simulator on
-an Apple silicon Mac" name the same thing, and a plain host-architecture read is free of the
-device-fault flakiness a `simctl` call would risk (prime directive 2). `capabilities_for_run`
-(already the run-time narrowing point for a real device, BE-0238) drops `SELECT_PHOTOS` from the
-static `XcuitestDriver.CAPABILITIES` set whenever the target is a Simulator (not a real device) on
-an Apple silicon host — an Intel host, or a real device, keeps it. Capability preflight
-(BE-0082) then rejects a `selectPhotos` step there before any device work, the same fail-fast
-`unsupported()` already gives `pickerWheel` / `selectOption`.
-
-**What this investigation could and could not verify.** The rejection path is fully verified here:
-every test in this item's test suite that exercises `apple_silicon_simulator_host`,
-`capabilities_for_run`'s narrowing, and capability preflight runs device-free and passes. The
-success path — the actuation actually landing on a real device or an Intel Simulator — could not be
-verified on real hardware: neither was available to this investigation. What stands behind it
-instead is that it is the exact mechanism already proven to work against this same picker for a
-*different* control (`Cancel`, above) and against every other element type this driver addresses,
-and that the Apple Developer Forums / Bitrise reports name the failure as specific to Apple silicon
-Simulators, not to XCUITest taps in general. A later reader with the hardware this investigation
-lacked can close that gap directly: run `select_photos.yaml` (Unit 4) on a real device or an Intel
-Mac and confirm `Selected: 2`.
+**What this investigation could and could not verify.** The actuation is verified directly, on an
+Apple silicon Simulator: a coordinate tap at each resolved cell's exact frame center selected the
+intended photo, across all six cells of a seeded two-row grid, with the on-screen selection count
+matching every time. Real-device and Intel-Simulator behavior is unverified — neither was available
+to this investigation. A later reader with either can confirm it directly: run `select_photos.yaml`
+(Unit 4) there and check that the app mirrors `Selected: 2`.
 
 The confirm button is resolved **structurally**, not by its label — the one button inside the
 picker's navigation bar (`traits: ["navigationBar"]`, the only bar the picker presents — not named
@@ -249,21 +208,18 @@ stable identifier `Cancel`, but the confirm control carries no identifier and on
 itself, rather than by either control's label, needs no per-locale lookup table anywhere in the
 rule — the bar is found by trait, not by its localized title, so nothing in the resolution path
 reads a string that changes with the scenario's locale. Unlike SpringBoard's alert buttons, the
-confirm control's identifier absence, not its label, is the stable fact. This resolution is
-unaffected by the actuation scoping above: a navigation-bar button is static chrome, not a recycled
-cell, and the `Cancel` measurement already confirms static chrome actuates fine through the ordinary
-handle-based path on the one architecture this investigation could test — the same reasoning the
-scoping itself rests on.
+confirm control's identifier absence, not its label, is the stable fact. This resolution keeps the
+ordinary handle-based path unchanged: a navigation-bar button is static chrome, not a recycled cell,
+and the `Cancel` measurement above confirms static chrome actuates fine through it.
 
 ### Unit 4 — Capability, other backends, and the showcase fixture
 
 `Capability.SELECT_PHOTOS = "selectPhotos"` (`bajutsu/common/drivers/base/capability.py`) is
 declared by `XcuitestDriver.CAPABILITIES` (and by `FakeDriver.CAPABILITIES` for unit tests) as its
-*static* set, then narrowed away at run time by `capabilities_for_run` on an Apple silicon Simulator
-specifically (Unit 3). Either way it is gated through
+static set, carrying no run-time narrowing. It is gated through
 `bajutsu/common/capability/capability_preflight.py` the same way `HANDLE_SYSTEM_ALERT` is — an
-Android or web target, or an Apple silicon Simulator target, using `selectPhotos` fails preflight
-with a named-capability error rather than an opaque runtime one. `playwright_driver.py`,
+Android or web target using `selectPhotos` fails preflight with a named-capability error rather than
+an opaque runtime one. `playwright_driver.py`,
 `adb_driver.py`, `xcuitest_live_driver.py`, and `web_context_driver.py` each raise
 `UnsupportedAction` from their own `select_photos`, matching every other iOS-only action.
 
@@ -284,11 +240,12 @@ ones.
 
 - **Reach the grid with a generic `tap` step instead of a dedicated action.** The selector half of
   this actually works today — `{ id: "PXGGridLayout-Info", index: 0 }` is an ordinary selector, no
-  new field needed. Rejected anyway, on the actuation half: the same generic `/tap` a scenario
-  author would have to name explicitly is exactly the path Unit 3 measured failing against this
-  collection view. A generic step cannot route to a dedicated actuation path without the DSL
-  knowing it is addressing a picker cell specifically, which is what makes this a dedicated action
-  rather than scenario-authored composition of existing steps.
+  new field needed. Rejected anyway, on the actuation half: the DSL's generic `tap` step actuates by
+  handle, exactly the path Unit 3 measured failing against this collection view, and a scenario
+  author has no way to ask it for a coordinate tap at a resolved element's frame center instead. A
+  generic step cannot route to a dedicated actuation path without the DSL knowing it is addressing a
+  picker cell specifically, which is what makes this a dedicated action rather than scenario-authored
+  composition of existing steps.
 - **Treat the picker like SpringBoard or SafariViewService: a second `XCUIApplication` handle, a
   separate query endpoint, a separate handle store.** Measured unnecessary — no separate process
   ever appears in `launchctl list` while the picker is presented, and the app's own `/elements`
@@ -307,17 +264,6 @@ ones.
   project's fixture, is not guaranteed stable across Xcode/Simulator runtime versions, and is not
   under version control — an `indices` reference to it would not be reproducible across machines or
   CI runs, violating determinism (prime directive 2) outright rather than merely being inconvenient.
-- **Wait for a fix or documented workaround from Apple, or a still-untried actuation technique,
-  before shipping anything.** Rejected: nothing in this investigation's four attempts, nor the
-  external reports it matches, points to a fix arriving on any predictable timeline, and Units 1, 2,
-  and 4 need no rework once one does — they are unaffected by which architectures Unit 3 can
-  eventually cover. Holding the whole item hostage to an external fix of unknown timing would cost
-  every contributor with the hardware this already works on (a real device, an Intel Mac) a feature
-  they could use today.
-- **Detect the Simulator's own architecture via an `xcrun simctl` query instead of the host's.**
-  Rejected: a Simulator's guest OS runs natively on the host CPU, so the two questions have the same
-  answer, and a `simctl` round trip risks the device-fault flakiness (BE-0363) a plain
-  `platform.machine()` read cannot — checking the host is strictly simpler for an identical result.
 - **UIKit showcase parity in the same item.** Deferred, not rejected: the SwiftUI screen is enough
   to exercise and document every unit above, and `PHPickerViewController` is a UIKit type either
   way, so a UIKit-hosted equivalent adds no new driver-side coverage — only a second fixture screen
@@ -332,9 +278,8 @@ ones.
 - [x] Unit 1 — `addmedia_cmd`, the `seedPhotos` precondition, and its `cold`-and-`erase`-gated
   seeding in `_prepare_simulator`.
 - [x] Unit 2 — the `SelectPhotos` DSL action and its validation.
-- [x] Unit 3 — actuation for a picker grid cell, scoped to a real device / Intel Simulator via
-  `apple_silicon_simulator_host` (see *Detailed design*), and the structural confirm-button
-  resolution.
+- [x] Unit 3 — coordinate-tap actuation for a picker grid cell (see *Detailed design*), and the
+  structural confirm-button resolution.
 - [x] Unit 4 — the `SELECT_PHOTOS` capability, the other backends' `UnsupportedAction`, and the
   showcase fixture (`PermissionsView.swift`, fixture images, `select_photos.yaml`, `SPEC.md`).
 
@@ -347,42 +292,32 @@ Log:
   than shipping the other three units alone. No PR: nothing merges from an item with no working
   core mechanism.
 - 2026-09-24 — resolved Unit 3 by scoping rather than by finding a new actuation technique:
-  `selectPhotos` ships using the ordinary handle-based tap every other element uses, gated off an
-  Apple silicon Simulator by `capabilities_for_run` (`apple_silicon_simulator_host`, a host
-  `platform.machine()` read). Implemented all four units, the showcase fixture, and their tests;
-  `make check` green. The success path (a real device or an Intel Simulator) is unverified on real
-  hardware — none was available to this investigation — and is left for a later reader to confirm
-  by running `select_photos.yaml` there.
+  `selectPhotos` shipped using the ordinary handle-based tap every other element uses, gated off an
+  Apple silicon Simulator by `capabilities_for_run`. Implemented all four units, the showcase
+  fixture, and their tests; `make check` green.
+- 2026-09-25 — superseded the previous day's scoping: a manual, interactive re-investigation of
+  Unit 3 found that a coordinate tap at a grid cell's exact resolved frame center reliably selects
+  it, measured across all six cells of the showcase's seeded grid on the same Apple silicon
+  Simulator the earlier investigation used, with the on-screen selection count matching every time.
+  The prior attempt's coordinate tap had not targeted the frame's exact center. Replaced the
+  handle-based tap in `XcuitestDriver.select_photos` with a coordinate tap at the resolved frame
+  center, and removed the Apple-silicon-Simulator capability narrowing
+  (`apple_silicon_simulator_host`, `capabilities_for_run`) — `Capability.SELECT_PHOTOS` no longer
+  restricts by Simulator host architecture. `make check` green.
 
 ## References
 
 - `bajutsu/common/scenario/models/actions/handle_system_alert.py` — the action-shape and
   locale-table precedent this item's Unit 2 and Unit 3 each partly follow and partly depart from.
 - `bajutsu/common/drivers/base/_functions.py` — `resolve_unique`'s existing `index` handling
-  (line 321), which this item reuses rather than extends.
+  (line 321), and `frame_center` (line 362), both of which this item reuses rather than extends.
 - [BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md)
-  — the frame-centre actuation and `Tappable` mechanism Unit 3 tried, and why it does not carry
-  over to the picker's cells.
-- [BE-0290](../BE-0290-xcuitest-default-ios-backend/BE-0290-xcuitest-default-ios-backend.md) — the
-  retirement of `idb`, the one alternative iOS actuator that might have routed around the Apple
-  silicon Simulator limitation Unit 3 measures; XCUITest is the only one left.
-- [Apple Developer Forums, thread 714024](https://developer.apple.com/forums/thread/714024) and
-  [Bitrise Discussions, "Cannot pick image during
-  XCUITest"](https://discuss.bitrise.io/t/cannot-pick-image-during-xcuitest/14427) — independent
-  reports of the same class of failure (image-picker selection not registering under XCUITest on
-  Apple silicon Simulators), consistent with what Unit 3 measured here.
+  — the frame-center coordinate-tap mechanism this item's Unit 3 actuation reuses.
 - [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md) — the
   ordinal, label-free button addressing this item's cell indexing follows.
 - [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md) — the
   `permissions:` pre-grant that answers every OS prompt this flow raises *except* the picker's own
   grid, which is this item's subject.
-- [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md) — the
-  real-device run-time capability narrowing (`capabilities_for_run`) this item's own Apple-silicon
-  narrowing extends, in the opposite direction (removing a capability from the Simulator default
-  rather than restoring one for a real device).
 - [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md) — the
-  preflight check that rejects a `selectPhotos` step up front on a backend, or a Simulator/host
-  combination, lacking `SELECT_PHOTOS`.
-- [BE-0363](../BE-0363-simctl-subprocess-timeout/BE-0363-simctl-subprocess-timeout.md) — the
-  `simctl` device-fault flakiness a host `platform.machine()` read avoids paying, unlike a `simctl`
-  query for the same fact (*Alternatives considered*).
+  preflight check that rejects a `selectPhotos` step up front on a backend lacking
+  `SELECT_PHOTOS`.

@@ -293,9 +293,8 @@ the fixture for out-of-process UI a scenario must still drive.
 
 **Photos** (SwiftUI only; see *Alternatives* in the roadmap item) — presents the system
 `PHPickerViewController` with unlimited selection, so the confirm-tap `selectPhotos` relies on is
-always exercised. Backs `selectPhotos`, the one iOS-only DSL action gated on `Capability.SELECT_PHOTOS`
-(device / Intel Simulator only — an Apple Silicon Simulator cannot register a tap against the
-picker's grid cells; see the roadmap item for the measurement). [`select_photos.yaml`](scenarios/select_photos.yaml)
+always exercised. Backs `selectPhotos`, the one iOS-only DSL action gated on
+`Capability.SELECT_PHOTOS` (iOS XCUITest only). [`select_photos.yaml`](scenarios/select_photos.yaml)
 seeds the photo library with `preconditions.seedPhotos` (`erase: true` required alongside it) before
 opening the picker.
 - `perm.openPhotoPicker` — button that presents the picker

@@ -142,12 +142,6 @@ runner-build-device:
 # `swiftui` (scenarios/picker_wheel.yaml), which drives the SHOWCASE_PICKERS wheel-picker screen only
 # the SwiftUI app renders; the SwiftUI lane keeps it. Backend preflight cannot stand in for the tag —
 # it rejects a backend that lacks a capability, not an app that lacks a screen.
-# `deviceOnly` (scenarios/select_photos.yaml) is excluded for a third reason: `Capability.SELECT_PHOTOS`
-# is only ever advertised on a real device or an Intel Simulator (`capabilities_for_run` drops it on
-# an Apple Silicon Simulator, where the picker grid's cells cannot be tapped reliably — roadmap
-# item), and this lane runs on whatever Simulator `$(SIM)` resolves to, almost always Apple Silicon
-# today. Preflight would reject the scenario cleanly either way, but excluding it here keeps this
-# bulk sweep's output free of an expected rejection on the common contributor machine.
 # Prereqs: a booted simulator, `make runner-build`.
 # Extracts the UDID from the parenthesized group immediately before "(Booted)" rather than the
 # first 36-char hex-ish run on the line: a device whose display name was rewritten to include a
@@ -162,7 +156,7 @@ SIM ?= $(shell xcrun simctl list devices booted | sed -nE 's/.*\(([0-9A-F-]{36})
 # channel to hide the markers for its capture, and one added here would fail until the build gains
 # the setting.
 run-swiftui: swiftui-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,browser,app,deviceOnly --config $(CONFIG) --touch-markers
+	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,browser,app --config $(CONFIG) --touch-markers
 run-uikit: uikit-build runner-build
 	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,swiftui,browser,app --config $(CONFIG) --touch-markers
 

@@ -1,13 +1,6 @@
 # selectPhotos (roadmap item): pick images from an open PHPickerViewController grid.
-#
-# `deviceOnly` (this Makefile's own convention, not a DSL tag): `Capability.SELECT_PHOTOS` is only
-# ever advertised on a real device or an Intel Simulator — an Apple Silicon Simulator cannot
-# register a tap against the picker's grid cells (measured; see the roadmap item). CI's own gating
-# `run`/`actuation` jobs list their scenarios explicitly and never name this file, so it needs no
-# tag to stay out of them; the local `run-swiftui` bulk sweep (Makefile) excludes `deviceOnly`
-# so a contributor on an Apple Silicon Mac gets a clean run rather than a preflight rejection.
 - name: selectPhotos picks images from the photo picker grid
-  tags: [swiftui, deviceOnly]
+  tags: [swiftui]
   preconditions:
     launchEnv: { SHOWCASE_UITEST: "1" }
     erase: true

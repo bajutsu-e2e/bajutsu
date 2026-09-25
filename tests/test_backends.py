@@ -507,34 +507,16 @@ def test_capabilities_for_run_drops_simctl_backed_caps_on_a_real_ios_device() ->
         assert cap in caps
 
 
-def test_capabilities_for_run_keeps_the_full_set_on_an_intel_simulator_host(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # The Simulator default (no deviceType, or explicit "simulator") keeps every static capability
-    # on an Intel host: simctl reaches the Simulator, so DeviceControl / permissions still apply,
-    # and SELECT_PHOTOS's own actuation is expected to work there too (roadmap item).
+def test_capabilities_for_run_keeps_the_full_set_on_a_simulator() -> None:
+    # The Simulator default (no deviceType, or explicit "simulator") keeps every static capability,
+    # including SELECT_PHOTOS: unlike the real-device and WebDriver narrowings above, nothing about
+    # a Simulator's host architecture changes what `select_photos` can actuate (roadmap item).
     from bajutsu.common.backends import capabilities_for
 
-    monkeypatch.setattr("bajutsu.common.backends.apple_silicon_simulator_host", lambda: False)
     for xcfg in (None, XcuitestConfig(testRunner="Runner.xctestrun", deviceType="simulator")):
         assert capabilities_for_run("xcuitest", _ios_eff(xcuitest=xcfg)) == capabilities_for(
             "xcuitest"
         )
-
-
-def test_capabilities_for_run_drops_select_photos_on_an_apple_silicon_simulator(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # The one narrowing that removes a capability from the Simulator default rather than adding one
-    # back for a real device: SELECT_PHOTOS's actuation is measured not to register against the
-    # picker grid on this one Simulator/host combination (roadmap item), so preflight must reject it
-    # up front rather than fail late and non-deterministically on-device.
-    from bajutsu.common.backends import capabilities_for
-
-    monkeypatch.setattr("bajutsu.common.backends.apple_silicon_simulator_host", lambda: True)
-    caps = capabilities_for_run("xcuitest", _ios_eff(xcuitest=None))
-    assert base.Capability.SELECT_PHOTOS not in caps
-    assert caps == capabilities_for("xcuitest") - {base.Capability.SELECT_PHOTOS}
 
 
 def test_capabilities_for_run_is_a_noop_for_non_xcuitest_backends() -> None:

@@ -2,20 +2,17 @@
 
 Every grid cell shares one identifier, `PXGGridLayout-Info`, disambiguated by ordinal `index` — the
 same "nth of multiple matches" mechanism `handleSystemAlert` relies on for a SpringBoard button no
-author-assignable identifier ever names. iOS-only, and narrower than "this backend": only a real
-device or an Intel Simulator advertises `Capability.SELECT_PHOTOS` — `capabilities_for_run` drops
-it on an Apple Silicon Simulator, where the grid's cells cannot be tapped reliably.
+author-assignable identifier ever names. iOS-only: only the resident-runner XCUITest backend
+advertises `Capability.SELECT_PHOTOS`.
 
 Covers the DSL parse + validation, the orchestrator dispatch to the driver, the fake's resolution
-discipline, the preflight rejection on a backend without the capability, and the host-architecture
-capability narrowing.
+discipline, and the preflight rejection on a backend without the capability.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from bajutsu.common import backends
 from bajutsu.common.capability.capability_preflight import unsupported
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.adb import AdbDriver
@@ -122,15 +119,3 @@ def test_preflight_accepts_a_backend_that_advertises_the_capability() -> None:
         "- name: t\n  steps:\n    - selectPhotos: { indices: [0], timeout: 10 }\n"
     )[0]
     assert unsupported(scenario, FakeDriver.CAPABILITIES) == []
-
-
-# --- capabilities_for_run: the Apple Silicon Simulator narrowing ---
-
-
-def test_apple_silicon_simulator_host_reads_platform_machine(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr("platform.machine", lambda: "arm64")
-    assert backends.apple_silicon_simulator_host() is True
-    monkeypatch.setattr("platform.machine", lambda: "x86_64")
-    assert backends.apple_silicon_simulator_host() is False

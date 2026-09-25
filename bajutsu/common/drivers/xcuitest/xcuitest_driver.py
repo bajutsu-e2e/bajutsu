@@ -591,16 +591,37 @@ class XcuitestDriver:
 
         Every cell shares one identifier, `PXGGridLayout-Info`, disambiguated by ordinal `index` —
         the same "nth of multiple matches" mechanism `handle_system_alert` relies on for a
-        SpringBoard button no author-assignable identifier ever names. Each is tapped through the
-        ordinary handle-based `/tap` every other element uses, no dedicated actuation primitive:
-        `capabilities_for_run` only ever advertises SELECT_PHOTOS where that ordinary path is
-        expected to work (a real device or an Intel Simulator), dropping it on the one
-        Simulator/host combination where it is measured not to (roadmap item).
+        SpringBoard button no author-assignable identifier ever names. Each is tapped by raw
+        coordinate at its resolved frame's exact center (`base.frame_center`), not the ordinary
+        handle-based `/tap` every other element uses: measured against this picker's grid, a
+        handle-based tap is refused (`ElementNotTappable`) or reports the handle stale, while a
+        coordinate tap at the same cell's exact frame center lands and registers the selection —
+        a coordinate on the boundary shared with an adjacent cell can register that neighbor
+        instead, which is why the exact center, not an arbitrary point in the frame, is used
+        (roadmap item). Re-resolved fresh before every tap rather than once for the whole call:
+        nothing about this recycled collection view guarantees a cell's frame stays put while an
+        earlier index in the same call is still being tapped.
         """
         for i in indices:
             sel: base.Selector = {"id": "PXGGridLayout-Info", "index": i}
-            handle, el = self._resolve_handle(sel)
-            self._actuate("/tap", {"handle": handle}, sel, gesture="tap", element=el)
+            elements, _ = self._query_with_handles(apply_native_z=False)
+            el = base.resolve_unique(elements, sel)
+            p = base.frame_center(el["frame"])
+            self._actuations.record(
+                Actuation(
+                    gesture="tap",
+                    via="coordinate",
+                    unit=_UNIT,
+                    points=(p,),
+                    frame=el["frame"],
+                    target=el["identifier"],
+                )
+            )
+            reply = self._transport("POST", "/tap", {"point": [p[0], p[1]]})
+            if reply.status != _OK:
+                raise base.ElementNotFound(
+                    f"coordinate tap failed (status={reply.status}) at {p} for {sel!r}"
+                )
         self._confirm_photo_selection()
 
     def _confirm_photo_selection(self) -> None:

@@ -2581,6 +2581,10 @@ def _done(handle: str = "h-done") -> dict[str, Any]:
 
 
 def test_select_photos_taps_each_cell_then_the_confirm_control() -> None:
+    # Each cell is tapped by coordinate at its resolved frame center, not by handle — measured
+    # (roadmap item) to be the one path that actually registers a selection against this picker's
+    # grid. The confirm control, static chrome rather than a recycled cell, is still tapped by
+    # handle (`_confirm_photo_selection`, unchanged).
     sent: list[tuple[str, Mapping[str, Any] | None]] = []
 
     def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
@@ -2593,8 +2597,8 @@ def test_select_photos_taps_each_cell_then_the_confirm_control() -> None:
 
     _driver(transport).select_photos([0, 1], timeout=10)
     assert sent == [
-        ("/tap", {"handle": "h-0"}),
-        ("/tap", {"handle": "h-1"}),
+        ("/tap", {"point": [50.0, 250.0]}),
+        ("/tap", {"point": [50.0, 350.0]}),
         ("/tap", {"handle": "h-done"}),
     ]
 
@@ -2602,17 +2606,30 @@ def test_select_photos_taps_each_cell_then_the_confirm_control() -> None:
 def test_select_photos_resolves_cells_by_ordinal_index() -> None:
     # `indices` picks by position among the identical-id candidates, in the order they were found —
     # not by any value on the cell itself.
-    sent: list[str] = []
+    sent: list[list[float]] = []
 
     def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
         if path == "/elements":
             return _elements(_grid_cell("h-0", 0), _grid_cell("h-1", 1), _grid_cell("h-2", 2))
         assert isinstance(body, dict)
-        sent.append(str(body["handle"]))
+        sent.append(list(body["point"]))
         return _Reply(status="ok")
 
     _driver(transport).select_photos([2, 0], timeout=10)
-    assert sent == ["h-2", "h-0"]  # no confirm control present -> no-op, not an error
+    assert sent == [
+        [50.0, 450.0],
+        [50.0, 250.0],
+    ]  # no confirm control present -> no-op, not an error
+
+
+def test_select_photos_raises_when_the_coordinate_tap_is_refused() -> None:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_grid_cell("h-0", 0))
+        return _Reply(status="error")
+
+    with pytest.raises(base.ElementNotFound, match="coordinate tap failed"):
+        _driver(transport).select_photos([0], timeout=10)
 
 
 def test_confirm_photo_selection_is_a_noop_when_the_picker_already_dismissed_itself() -> None:
