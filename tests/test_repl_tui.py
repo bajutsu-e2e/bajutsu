@@ -217,6 +217,34 @@ def test_down_in_scroll_mode_decreases_but_not_below_zero() -> None:
     assert state.scroll_offset == 0
 
 
+def test_k_in_scroll_mode_increases_the_offset_like_up() -> None:
+    state = _scrolled(50)
+    handle_key(state, "k", 10)
+    handle_key(state, "k", 10)
+    assert state.scroll_offset == 2
+
+
+def test_j_in_scroll_mode_decreases_but_not_below_zero() -> None:
+    state = _scrolled(50)
+    handle_key(state, "j", 10)
+    assert state.scroll_offset == 0
+
+
+def test_j_after_k_returns_to_the_bottom() -> None:
+    state = _scrolled(50)
+    handle_key(state, "k", 10)
+    handle_key(state, "k", 10)
+    handle_key(state, "j", 10)
+    assert state.scroll_offset == 1
+
+
+def test_j_and_k_are_ordinary_characters_outside_scroll_mode() -> None:
+    # "j"/"k" are only scroll bindings in "scroll" mode — elsewhere they must type normally.
+    state = TuiState()
+    _type_str(state, "jk")
+    assert state.input_buffer == "jk"
+
+
 def test_page_up_and_page_down_move_by_a_full_pane() -> None:
     state = _scrolled(50)
     handle_key(state, curses.KEY_PPAGE, 10)
@@ -476,6 +504,23 @@ def test_run_tui_draws_the_scroll_banner_after_tab() -> None:
     # The frame drawn right after the first Tab (before the next key is read) is in scroll mode.
     scroll_frame = "".join(screen.draws[1])
     assert "SCROLL" in scroll_frame
+
+
+def test_run_tui_draws_the_filter_banner_after_slash() -> None:
+    session, _driver = _session()
+    screen = FakeScreen(keys=_keys("\t", "/", "\x1b", "\t", "exit", "\n"))
+    run_tui(session, screen)
+    assert any("FILTER" in "".join(frame) for frame in screen.draws)
+
+
+def test_run_tui_draws_a_tab_hint_in_input_mode() -> None:
+    # The mode-switch binding is always on screen, not only after Tab into "scroll" — the operator
+    # should never have to guess or consult the docs to discover it.
+    session, _driver = _session()
+    screen = FakeScreen(keys=_keys("exit", "\n"))
+    run_tui(session, screen)
+    first_frame = "".join(screen.draws[0])
+    assert "Tab" in first_frame
 
 
 def test_run_tui_ignores_a_terminal_resize() -> None:

@@ -96,9 +96,9 @@ def _handle_scroll_key(state: TuiState, key: int | str, pane_height: int) -> Non
     max_offset = max(0, len(_filtered(state)) - pane_height)
     if key == "\t":
         state.mode = "input"
-    elif key == curses.KEY_UP:
+    elif key in (curses.KEY_UP, "k"):  # "k"/"j": vim-style scroll, alongside the arrow keys
         state.scroll_offset = min(max_offset, state.scroll_offset + 1)
-    elif key == curses.KEY_DOWN:
+    elif key in (curses.KEY_DOWN, "j"):
         state.scroll_offset = max(0, state.scroll_offset - 1)
     elif key == curses.KEY_PPAGE:
         state.scroll_offset = min(max_offset, state.scroll_offset + max(1, pane_height))
@@ -318,11 +318,12 @@ def _draw(screen: Screen, state: TuiState) -> None:
     n = max(0, width - 1)
     row, cursor_col = _input_row(prompt, state.input_buffer, state.cursor, n)
     screen.addnstr(0, 0, row, n)
-    banner = (
-        "-- SCROLL  (Tab: back to input · ↑↓ scroll · PgUp/PgDn: page · /: filter) --"
-        if state.mode == "scroll"
-        else "-" * min(width, 40)
-    )
+    if state.mode == "scroll":
+        banner = "-- SCROLL  (Tab: back to input · ↑↓/jk scroll · PgUp/PgDn: page · /: filter) --"
+    elif state.mode == "filter":
+        banner = "-- FILTER  (Enter: apply · Esc: cancel) --"
+    else:
+        banner = "-- INPUT  (Tab: switch to scroll pane) --"
     screen.addnstr(1, 0, _fit(banner, n), n)
     pane_height = max(0, height - 2)
     for i, line in enumerate(_visible(state, pane_height)):
