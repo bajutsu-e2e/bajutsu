@@ -111,7 +111,7 @@ Scenario ::= {
   description?:   string,                   # オーサリング用メタデータ。run は読まない
   from?:           string,                  # 由来: record がこのシナリオを起こした元の自然言語のゴール（BE-0044）
   tags?:           list(string),            # 既定 []  — 選択（§6.4）
-  targets?:        list(string),            # 既定 []  — このシナリオが操作するすべてのターゲット（BE-0428）。各エントリは `targets.<name>` の config ユニットを指す。現時点ではスキーマだけが先行しており、run はまだ2つ以上を実行できない（§4）
+  targets?:        list(string),            # 既定 []  — このシナリオが操作するすべてのターゲット（BE-0428）。各エントリは `targets.<name>` の config ユニットを指す。run は宣言された各ターゲットを起動し、そのステップを1回の決定的な実行の中で組み合わせて実行する（§4）
   data?:           list(map(string,string)),# インライン行  ┐ XOR
   dataFile?:       string,                  # CSV パス      ┘ （§6.3）
   preconditions?:  <Preconditions>,         # 既定 {}
