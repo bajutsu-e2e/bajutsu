@@ -1,14 +1,14 @@
-[English](BE-XXXX-phpicker-select-photos.md) · **日本語**
+[English](BE-0433-phpicker-select-photos.md) · **日本語**
 
-# BE-XXXX — PHPickerViewControllerからの画像選択
+# BE-0433 — PHPickerViewControllerからの画像選択
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-phpicker-select-photos-ja.md) |
+| 提案 | [BE-0433](BE-0433-phpicker-select-photos-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0433") |
 | 実装 PR | [#2008](https://github.com/bajutsu-e2e/bajutsu/pull/2008) |
 | トピック | Platform support |
 | 関連 | [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)、[BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree-ja.md)、[BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state-ja.md)、[BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md) |

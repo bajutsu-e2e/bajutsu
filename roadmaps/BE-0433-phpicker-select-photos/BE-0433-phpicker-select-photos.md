@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-phpicker-select-photos-ja.md)
+**English** · [日本語](BE-0433-phpicker-select-photos-ja.md)
 
-# BE-XXXX — Select photos from PHPickerViewController
+# BE-0433 — Select photos from PHPickerViewController
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-phpicker-select-photos.md) |
+| Proposal | [BE-0433](BE-0433-phpicker-select-photos.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0433") |
 | Implementing PR | [#2008](https://github.com/bajutsu-e2e/bajutsu/pull/2008) |
 | Topic | Platform support |
 | Related | [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md), [BE-0276](../BE-0276-scenario-permission-state/BE-0276-scenario-permission-state.md), [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md) |
