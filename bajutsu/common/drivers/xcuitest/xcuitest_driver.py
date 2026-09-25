@@ -641,9 +641,15 @@ class XcuitestDriver:
         `.navigationTitle`), and *that* bar's own non-`Cancel` content (its title text) would
         otherwise satisfy the same elimination this method uses for the picker's bar — mistakenly
         tapping the app's own UI instead of recognizing the picker already closed. So a
-        `navigationBar` only counts as the picker's own when a `Cancel` control is found inside
-        one; no such bar (the picker was never modal-cancelable, or it already dismissed itself)
-        means nothing to tap.
+        `navigationBar` only counts as the picker's own when *that specific bar* contains a
+        `Cancel` control, not merely when some `Cancel` exists anywhere in the snapshot: the single
+        `/elements` query behind this method is an immediate, unsynchronized accessibility-tree
+        read (`XCUIApplication.snapshot()`, chosen for its cost over the query path that would
+        otherwise wait for the app to settle — see `XcuitestElementProvider.swift`), so a snapshot
+        taken right after the auto-dismissing tap can land mid-transition, observing the picker's
+        still-there `Cancel`-bearing bar *and* the app's own bar at once. Scoping candidates to only
+        the bar(s) that themselves hold a `Cancel` keeps the app's own bar out of the count in that
+        window too, not just once the picker's bar is fully gone.
 
         Not routed through `_actuate`: its stale-retry re-resolves from a `Selector`, and this
         control's resolution — elimination, not a field match — has no `Selector` to hand it. A
@@ -652,18 +658,26 @@ class XcuitestDriver:
         try), so a single query-then-tap, mirroring `handle_system_alert`'s own shape, is enough.
         """
         elements, handles = self._query_with_handles(apply_native_z=False)
-        bar_sel: base.Selector = {"traits": ["navigationBar"]}
-        if not base.find_all(elements, {"within": bar_sel, "id": "Cancel"}):
+        bars = base.find_all(elements, {"traits": ["navigationBar"]})
+        cancels = base.find_all(elements, {"id": "Cancel"})
+        picker_bars = [
+            b for b in bars if any(base.contains(b["frame"], c["frame"]) for c in cancels)
+        ]
+        if not picker_bars:
             return
-        bars = base.find_all(elements, bar_sel)
-        # `within` matches by frame containment, which is reflexive — the bar's own element is
-        # "within" its own frame just as its children are — so the bar itself must be excluded by
-        # identity, not merely by lacking a `Cancel` identifier (BE-0355's `id(el)` keying, reused).
-        bar_ids = {id(b) for b in bars}
+        # Containment is reflexive — a bar's own element sits inside its own frame just as its
+        # children do — so a picker bar must be excluded from its own candidates by identity, not
+        # merely by lacking a `Cancel` identifier (BE-0355's `id(el)` keying, reused). Candidates are
+        # scoped to `picker_bars`' own frames specifically, not every `navigationBar` in the
+        # snapshot, so the app's own bar never contributes one even while both are present at once.
+        picker_bar_ids = {id(b) for b in picker_bars}
+        picker_bar_frames = [b["frame"] for b in picker_bars]
         candidates = [
             el
-            for el in base.find_all(elements, {"within": bar_sel})
-            if id(el) not in bar_ids and el["identifier"] != "Cancel"
+            for el in elements
+            if id(el) not in picker_bar_ids
+            and el["identifier"] != "Cancel"
+            and any(base.contains(frame, el["frame"]) for frame in picker_bar_frames)
         ]
         if len(candidates) != 1:
             raise base.ElementNotFound(

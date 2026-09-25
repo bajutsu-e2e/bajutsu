@@ -2665,6 +2665,32 @@ def test_confirm_photo_selection_is_a_noop_when_only_the_apps_own_bar_remains() 
     assert calls == ["/elements"]  # queried once, tapped nothing
 
 
+def test_confirm_photo_selection_ignores_the_apps_own_bar_when_the_picker_bar_is_still_present() -> (
+    None
+):
+    # `/elements` is one unsynchronized snapshot with no settle wait (BE-0087's settle is
+    # idb-only), so a query fired right after a selectionLimit=1 auto-confirm's *animated* dismiss
+    # can land mid-transition: the picker's own Cancel-bearing bar still in the tree alongside the
+    # app's own bar underneath. Candidates must come only from the bar(s) that themselves hold
+    # Cancel, so the app's own bar's content is never counted even while both are present at once.
+    app_bar = _el_wire(
+        "h-app-bar", None, None, None, ["navigationBar"], frame=(0.0, 200.0, 400.0, 100.0)
+    )
+    app_title = _el_wire(
+        "h-app-title", None, "Permissions", None, [], frame=(150.0, 220.0, 100.0, 20.0)
+    )
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_nav_bar(), _cancel(), _done(), app_bar, app_title)
+        sent.append((path, body))
+        return _Reply(status="ok")
+
+    _driver(transport)._confirm_photo_selection()
+    assert sent == [("/tap", {"handle": "h-done"})]  # the picker's Done, not the app's own title
+
+
 def test_confirm_photo_selection_raises_on_an_ambiguous_bar() -> None:
     # Two non-Cancel candidates in the navigation bar: elimination cannot pick one, so this must
     # fail loudly rather than guess (prime directive 2).

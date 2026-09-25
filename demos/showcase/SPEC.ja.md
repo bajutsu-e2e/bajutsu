@@ -289,7 +289,7 @@ associated domain の仕掛けも要ります。無ければ iOS は何も申し
 提示します。ボタンは2つあり、ピッカーが画面を去る2通りの経路にそれぞれ対応します。無制限選択のボタンは、
 `selectPhotos` が頼る確定タップ（`_confirm_photo_selection`）を必ず起こします。`selectionLimit = 1` の
 ボタンは、必要な1回のタップでピッカーが自動的に閉じ、確定コントロールが一度も表示されない経路をたどります。
-これは同じメソッドが持つ、排除法によるノーオップの経路です。どちらも `selectPhotos` を支えます。
+これは同じメソッドが持つ、排除法による no-op の経路です。どちらも `selectPhotos` を支えます。
 `selectPhotos` は iOS 専用の DSL アクションで、`Capability.SELECT_PHOTOS` によって限定されます。
 有効なのは XCUITest バックエンドのみです。シナリオは
 [`select_photos.yaml`](scenarios/select_photos.yaml) と
