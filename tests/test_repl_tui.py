@@ -506,6 +506,13 @@ def test_run_tui_draws_the_scroll_banner_after_tab() -> None:
     assert "SCROLL" in scroll_frame
 
 
+def test_run_tui_draws_the_filter_banner_after_slash() -> None:
+    session, _driver = _session()
+    screen = FakeScreen(keys=_keys("\t", "/", "\x1b", "\t", "exit", "\n"))
+    run_tui(session, screen)
+    assert any("FILTER" in "".join(frame) for frame in screen.draws)
+
+
 def test_run_tui_draws_a_tab_hint_in_input_mode() -> None:
     # The mode-switch binding is always on screen, not only after Tab into "scroll" — the operator
     # should never have to guess or consult the docs to discover it.
