@@ -311,6 +311,7 @@ function initTiling(){
   // The pane may have been shown or dismissed while untiled (narrow tier), so reconcile the tree with
   // its visibility before building — otherwise a visible pane missing from the tree is detached.
   function syncReport(){
+    if(!recV.panel.report)return;   // the spec loop skips a pane whose selector doesn't match
     const shown=!recV.panel.report.hidden;
     if(shown&&!inTree())recV.tree=insertBeside(recV.tree,'yaml','report','bottom');
     else if(!shown&&inTree())recV.tree=removeLeaf(recV.tree,'report')||recV.tree;
@@ -319,6 +320,9 @@ function initTiling(){
   // off main>[data-pane], .rec-stack and .viewswitch, all of which the tiled root drops). The home
   // snapshot is taken per mount, so markup added while untiled survives the next unmount (#1801).
   function mount(){
+    // Idempotent: a second mount() with no unmount() between would snapshot the already-tiled DOM as
+    // V.homes and lose the pre-tiling children (.viewswitch/.rec-stack/gutters) for good.
+    if(views.some(V=>V.view.querySelector(':scope>.tile-root')))return;
     views.forEach(V=>{
       const parents=new Set([V.view,...Object.values(V.panel).map(el=>el.parentNode)]);
       V.homes=[...parents].map(p=>({p,kids:[...p.childNodes]}));
