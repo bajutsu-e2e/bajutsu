@@ -82,9 +82,12 @@ sentence, grouped by file and line number. It targets `*-ja.md` roadmap items an
 
 The scan excludes fenced code blocks, tables, headings, block quotes, and `## Progress` / `## 進捗`
 checklist bullets before it looks at a single sentence — the same exclusion set Issue #1842's own
-manual measurement used, plus the checklist carve-out this item adds. It splits what remains into
-sentences on `。`, `！`, and `？`; a line with no terminal mark (a 体言止め label, most often) counts
-as one sentence ending where the line does.
+manual measurement used, plus the checklist carve-out this item adds. It then joins each
+paragraph's hard-wrapped lines into one block, since this repository wraps prose at roughly 100
+columns and only a paragraph's last line carries `。`; splitting on raw lines instead would flag
+nearly every wrapped continuation line as an unterminated sentence. It splits what remains into
+sentences on `。`, `！`, and `？`; a block with no terminal mark (a 体言止め label, most often)
+counts as one sentence.
 
 Detection works by exclusion, not enumeration. Each sentence goes through a Japanese morphological
 analyzer. A plain suffix match cannot do this reliably: a trailing parenthetical group (skipped
