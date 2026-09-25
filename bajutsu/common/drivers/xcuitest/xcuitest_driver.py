@@ -47,6 +47,12 @@ _STALE_MAX_ATTEMPTS = 3
 # exponential per retry: 0.5s, 1.0s, … between re-resolve attempts
 _STALE_BACKOFF_BASE_SECONDS = 0.5
 
+# `select_photos`'s pre-actuation grid-cell resolution (`_resolve_grid_cell`) is bounded by the
+# caller's own `timeout` rather than a fixed attempt count — held as a separate constant from the
+# stale-handle retry above even though both are BE-0289-flavored, since the two bound different
+# things (a wall-clock budget vs. a handful of post-actuation re-resolutions).
+_GRID_CELL_POLL_SECONDS = 0.3
+
 # iOS reports every frame and coordinate in points, so that is the space stamped on this backend's
 # actuation records.
 _UNIT = "point"
@@ -586,7 +592,7 @@ class XcuitestDriver:
             element=el,
         )
 
-    def select_photos(self, indices: list[int], *, timeout: float) -> None:  # noqa: ARG002  # Driver shape; the picker must already be open, so no on-device wait belongs here
+    def select_photos(self, indices: list[int], *, timeout: float) -> None:
         """Pick the grid cells at `indices` from an open `PHPickerViewController`, then confirm.
 
         Every cell shares one identifier, `PXGGridLayout-Info`, disambiguated by ordinal `index` —
@@ -601,11 +607,18 @@ class XcuitestDriver:
         (roadmap item). Re-resolved fresh before every tap rather than once for the whole call:
         nothing about this recycled collection view guarantees a cell's frame stays put while an
         earlier index in the same call is still being tapped.
+
+        Resolution is bounded by `timeout` (BE-0289's stale-retry spirit, applied pre-actuation
+        rather than post-): observed on-device, a `PXGGridLayout-Info` query right after the
+        picker presents can transiently find zero matches even though the grid is already visible
+        — the collection view's cells can report as untyped `other` elements for a beat before
+        their identifier syncs into the accessibility tree. `_resolve_grid_cell` re-queries until
+        the selector resolves or `timeout` elapses, rather than failing on the first empty
+        snapshot.
         """
         for i in indices:
             sel: base.Selector = {"id": "PXGGridLayout-Info", "index": i}
-            elements, _ = self._query_with_handles(apply_native_z=False)
-            el = base.resolve_unique(elements, sel)
+            el = self._resolve_grid_cell(sel, timeout=timeout)
             p = base.frame_center(el["frame"])
             self._actuations.record(
                 Actuation(
@@ -623,6 +636,29 @@ class XcuitestDriver:
                     f"coordinate tap failed (status={reply.status}) at {p} for {sel!r}"
                 )
         self._confirm_photo_selection()
+
+    def _resolve_grid_cell(self, sel: base.Selector, *, timeout: float) -> base.Element:
+        """Re-query until `sel` resolves to exactly one element, or raise once `timeout` elapses.
+
+        Only a zero-match `ElementNotFound` is retried — the transient case where the cell has not
+        synced into the tree yet. An `AmbiguousSelector` (two-or-more matches) is a real,
+        non-transient failure (prime directive 2: an ambiguous selector fails immediately rather
+        than being retried into a guess) and propagates on the first query.
+
+        The first attempt runs immediately, with no upfront sleep, mirroring `_actuate`'s BE-0289
+        stale-retry (the re-query itself is the wait); `_GRID_CELL_POLL_SECONDS` only spaces
+        attempts after a miss, capped so the last sleep never overshoots the deadline.
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            elements, _ = self._query_with_handles(apply_native_z=False)
+            try:
+                return base.resolve_unique(elements, sel)
+            except base.ElementNotFound:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                self._sleep(min(_GRID_CELL_POLL_SECONDS, remaining))
 
     def _confirm_photo_selection(self) -> None:
         """Tap the picker's confirm control, resolved structurally rather than by its localized label.

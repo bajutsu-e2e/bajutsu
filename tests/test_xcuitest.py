@@ -2632,6 +2632,59 @@ def test_select_photos_raises_when_the_coordinate_tap_is_refused() -> None:
         _driver(transport).select_photos([0], timeout=10)
 
 
+def _other_el(handle: str) -> dict[str, Any]:
+    # A collection-view cell that has not synced its identifier into the tree yet: untyped, no id.
+    return _el_wire(handle, None, None, None, ["other"], frame=(0.0, 200.0, 100.0, 100.0))
+
+
+def test_resolve_grid_cell_retries_past_a_transient_empty_snapshot() -> None:
+    # Measured on-device: right after the picker presents, a `PXGGridLayout-Info` query can find
+    # zero matches — every cell still reports as untyped `other` — even though the grid is already
+    # visible. The next query catches up.
+    query_count = 0
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        nonlocal query_count
+        if path == "/elements":
+            query_count += 1
+            if query_count == 1:
+                return _elements(_other_el("h-other"))
+            return _elements(_grid_cell("h-0", 0))
+        return _Reply(status="ok")
+
+    el = _driver(transport)._resolve_grid_cell({"id": "PXGGridLayout-Info", "index": 0}, timeout=10)
+    assert el["identifier"] == "PXGGridLayout-Info"
+    assert query_count == 2
+
+
+def test_resolve_grid_cell_raises_once_timeout_elapses() -> None:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_other_el("h-other"))
+        return _Reply(status="ok")
+
+    with pytest.raises(base.ElementNotFound):
+        _driver(transport)._resolve_grid_cell(
+            {"id": "PXGGridLayout-Info", "index": 0}, timeout=0.05
+        )
+
+
+def test_resolve_grid_cell_does_not_retry_an_ambiguous_match() -> None:
+    # Two content-distinct candidates is a real, non-transient failure (prime directive 2) — must
+    # not be treated the same as the zero-match transient case above.
+    calls: list[str] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        calls.append(path)
+        if path == "/elements":
+            return _elements(_grid_cell("h-0", 0), _grid_cell("h-1", 1))
+        return _Reply(status="ok")
+
+    with pytest.raises(base.AmbiguousSelector):
+        _driver(transport)._resolve_grid_cell({"id": "PXGGridLayout-Info"}, timeout=10)
+    assert calls == ["/elements"]  # one query only, no retry
+
+
 def test_confirm_photo_selection_is_a_noop_when_the_picker_already_dismissed_itself() -> None:
     # A single-selection grid can auto-confirm on the one tap above; a navigation bar with no
     # non-Cancel control (here: none at all) means there is nothing left to tap.
