@@ -21,6 +21,12 @@ from bajutsu.repl.session import COMMAND_ERRORS, FATAL_ERRORS, ReplExit, ReplSes
 
 Mode = Literal["input", "scroll", "filter"]
 
+_BANNERS: dict[Mode, str] = {
+    "input": "-- INPUT  (Tab: switch to scroll pane) --",
+    "scroll": "-- SCROLL  (Tab: back to input · ↑↓/jk scroll · PgUp/PgDn: page · /: filter) --",
+    "filter": "-- FILTER  (Enter: apply · Esc: cancel) --",
+}
+
 
 class Screen(Protocol):
     """The slice of a curses window this module draws through — real or fake, for testing.
@@ -318,13 +324,7 @@ def _draw(screen: Screen, state: TuiState) -> None:
     n = max(0, width - 1)
     row, cursor_col = _input_row(prompt, state.input_buffer, state.cursor, n)
     screen.addnstr(0, 0, row, n)
-    if state.mode == "scroll":
-        banner = "-- SCROLL  (Tab: back to input · ↑↓/jk scroll · PgUp/PgDn: page · /: filter) --"
-    elif state.mode == "filter":
-        banner = "-- FILTER  (Enter: apply · Esc: cancel) --"
-    else:
-        banner = "-- INPUT  (Tab: switch to scroll pane) --"
-    screen.addnstr(1, 0, _fit(banner, n), n)
+    screen.addnstr(1, 0, _fit(_BANNERS[state.mode], n), n)
     pane_height = max(0, height - 2)
     for i, line in enumerate(_visible(state, pane_height)):
         screen.addnstr(2 + i, 0, _fit(line, n), n)
