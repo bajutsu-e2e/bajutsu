@@ -61,15 +61,16 @@ covers each contiguous run: four steps, then six steps
 Two more repetitions follow in `expect` (lines 150–152). Twelve lines name a target, to express two
 groups.
 
-That repetition is not a correctness gap. BE-0428's validator already catches a wrong or missing
-target at load time. The repetition causes friction, not a bug. A `target:` line reads the same on
-every one of ten consecutive steps: it carries no new information, since a reader already saw the
-same value one line above. The line exists because the rule requires it. It also crowds out the
-step's own action in a diff, since every changed line in a target's run starts with the same key. A
-reorder, an insertion, or a copy inside a same-target run risks a stray mismatched `target:`. The
-validator catches that mismatch, but not before an author makes the mistake and has to notice and
-fix it. A target group removes that whole class of edit. An author sets the target once, in one
-place. The nested steps carry no target field of their own to drift out of sync.
+That repetition is not a correctness gap on its own. BE-0428's validator already catches a missing
+target, or one that names no declared target, at load time. It does not catch a target copied from
+the wrong place: `target: showcase-web` pasted into a run of `showcase-app` steps still names a
+declared target, so it passes load time and misroutes that one step with no error at all. A
+`target:` line reads the same on every one of ten consecutive steps: it carries no new information,
+since a reader already saw the same value one line above. The line exists because the rule requires
+it. It also crowds out the step's own action in a diff, since every changed line in a target's run
+starts with the same key. A reorder, an insertion, or a copy inside a same-target run risks exactly
+that silent misroute. A target group removes that whole class of edit. An author sets the target
+once, in one place. The nested steps carry no target field of their own to drift out of sync.
 
 Once this ships, an author states each target once per contiguous run of steps, rather than once
 per step. BE-0428's own second example above would then state its two targets twice, not ten times.
@@ -152,9 +153,9 @@ since those are an ordinary step list like any other.
 A new pass, `_expand_target_groups`, handles this. It lives beside the existing
 `_check_target_requirements`, in
 [`bajutsu/common/scenario/models/scenario/_targets.py`](../../bajutsu/common/scenario/models/scenario/_targets.py).
-It walks a scenario's `steps`, `before`, and every rule's `steps` in `after`. It recurses into an
-`if`'s `then`/`else` and a `forEach`'s `steps`, the same way `_check_target_requirements`'s own
-`walk_steps` helper already does. Reaching a target group, it replaces that one step with its own
+It walks a scenario's `steps`, `before`, every rule's `steps` in `after`, and every `interrupts`
+entry's `steps` — the same four step lists `_check_target_requirements`'s own `walk_steps` helper
+already walks. It recurses into an `if`'s `then`/`else` and a `forEach`'s `steps` the same way, too. Reaching a target group, it replaces that one step with its own
 nested steps and stamps the group's `target` onto each of them in place. Reaching a `web` or `app`
 block, it recurses into that block's own nested steps, carrying the same `inside_web` flag
 `_check_target_requirements` already threads through its own walk. Finding a target group there is
@@ -216,9 +217,9 @@ directly. Its `docs/ja/` mirror gets the same addition.
   no marker at that step showing inheritance rather than declaration. BE-0428 rejected a related
   shape, `switchTarget`, for a similar reason: it reads as an imperative routing action a reader has
   to track across the whole step list, rather than a property visible on the step it governs
-  (BE-0428, *Alternatives considered*). This item's own load-time-rejected form of the same
-  objection explains why a group's children may not override its target either (see *Nesting*,
-  above): a step's effective target must stay visible on the step itself.
+  (BE-0428, *Alternatives considered*). This item turns that same objection into a load-time error,
+  which is why a group's children may not override its target either (see *Nesting*, above): a
+  step's effective target must stay visible on the step itself.
 - **A dedicated wrapper keyword**, such as `group:` or `section:`, holding `target` and `steps` as
   its own fields, mirroring how `web:` holds `within` and `steps`. Rejected: it adds a second piece
   of vocabulary for an idea `target` and `steps` already express directly on `Step`, with no new
@@ -227,8 +228,8 @@ directly. Its `docs/ja/` mirror gets the same addition.
 - **A runtime-native construct**, keeping the group as a real node the runner and report see
   through execution, the way `web` and `app` do. Rejected as disproportionate to the problem:
   BE-0428 needed a runtime construct because `web`/`app` open a real driver context nothing else can
-  substitute for. A target group changes nothing about execution; it merely spells the same
-  per-step `target` more than once, so a load-time expansion delivers the same authoring benefit
+  substitute for. A target group changes nothing about execution; it only saves writing the same
+  per-step `target` over and over, so a load-time expansion delivers the same authoring benefit
   without touching the runner, the report, or the CLI at all.
 - **Allowing a child to override a group's target.** A middle ground between full inheritance and
   full omission, letting one step inside a same-target run diverge when it genuinely needs to.
@@ -251,9 +252,10 @@ directly. Its `docs/ja/` mirror gets the same addition.
 - [ ] Docs: `docs/scenarios.md` and its `docs/ja/` mirror.
 - [ ] Tests: schema validator (group requires target; forbidden modifiers; child omission; nested
       group rejection; `web:`/`app:` nesting rejection), expansion correctness (a group-authored
-      scenario produces the same stamped step list a hand-flattened version would), and the
-      re-expansion surviving `expand_components`, `apply_setups`, and hook-folding the same way
-      `_check_target_requirements` already does.
+      scenario produces the same stamped step list a hand-flattened version would, including a
+      group nested inside an `interrupts` entry's `steps`), and the re-expansion surviving
+      `expand_components`, `apply_setups`, and hook-folding the same way `_check_target_requirements`
+      already does.
 
 ## References
 
