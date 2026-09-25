@@ -23,7 +23,10 @@ Mode = Literal["input", "scroll", "filter"]
 
 _BANNERS: dict[Mode, str] = {
     "input": "-- INPUT  (Tab: switch to scroll pane) --",
-    "scroll": "-- SCROLL  (Tab: back to input · ↑↓/jk scroll · PgUp/PgDn: page · /: filter) --",
+    "scroll": (
+        "-- SCROLL  (Tab: back to input · ↑↓/jk scroll · PgUp/PgDn: page"
+        " · ←→: top/bottom · /: filter) --"
+    ),
     "filter": "-- FILTER  (Enter: apply · Esc: cancel) --",
 }
 
@@ -110,6 +113,10 @@ def _handle_scroll_key(state: TuiState, key: int | str, pane_height: int) -> Non
         state.scroll_offset = min(max_offset, state.scroll_offset + max(1, pane_height))
     elif key == curses.KEY_NPAGE:
         state.scroll_offset = max(0, state.scroll_offset - max(1, pane_height))
+    elif key == curses.KEY_LEFT:
+        state.scroll_offset = max_offset
+    elif key == curses.KEY_RIGHT:
+        state.scroll_offset = 0
     elif key == "/":
         state.stashed_input = (state.input_buffer, state.cursor)
         state.mode = "filter"

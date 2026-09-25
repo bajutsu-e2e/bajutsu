@@ -258,6 +258,27 @@ def test_page_up_and_page_down_move_by_a_full_pane() -> None:
     assert state.scroll_offset == 0
 
 
+def test_left_jumps_straight_to_the_top() -> None:
+    state = _scrolled(50)  # max_offset = 50 - 10 = 40
+    handle_key(state, curses.KEY_LEFT, 10)
+    assert state.scroll_offset == 40
+
+
+def test_right_jumps_straight_to_the_bottom() -> None:
+    state = _scrolled(50)
+    handle_key(state, curses.KEY_LEFT, 10)
+    handle_key(state, curses.KEY_RIGHT, 10)
+    assert state.scroll_offset == 0
+
+
+def test_left_and_right_are_no_ops_when_the_whole_transcript_already_fits() -> None:
+    state = _scrolled(5)  # max_offset = 0
+    handle_key(state, curses.KEY_LEFT, 10)
+    assert state.scroll_offset == 0
+    handle_key(state, curses.KEY_RIGHT, 10)
+    assert state.scroll_offset == 0
+
+
 def test_up_clamps_at_the_top_instead_of_accumulating_past_it() -> None:
     # A short transcript (5 lines in a 10-row pane, max_offset 0): repeatedly pressing Up must not
     # let scroll_offset run up unboundedly, or new output later would jump the pane far above the

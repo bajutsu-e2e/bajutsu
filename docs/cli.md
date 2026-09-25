@@ -791,6 +791,7 @@ checking this table:
 | `↑` / `↓` | recall the previous/next command from history | scroll the output up/down one line |
 | `k` / `j` | typed as ordinary characters | scroll the output up/down one line (vim-style, alongside `↑`/`↓`) |
 | `PgUp` / `PgDn` | — | scroll the output up/down a full pane |
+| `←` / `→` | move the cursor left/right | jump straight to the top/bottom |
 | `/` | — | open a filter prompt; `Enter` sets it (a case-insensitive substring over the whole transcript), an empty pattern clears it, `Esc` abandons the edit |
 | `Ctrl-C` | abandon the half-typed line | — |
 
