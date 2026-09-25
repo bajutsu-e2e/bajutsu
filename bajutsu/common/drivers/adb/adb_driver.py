@@ -1437,6 +1437,11 @@ class AdbDriver(CoordinateTreeDriver):
             "setPickerValue is iOS-picker-wheel-only; Android has no equivalent control"
         )
 
+    def select_photos(self, indices: list[int], *, timeout: float) -> None:  # noqa: ARG002  # Driver shape
+        raise base.UnsupportedAction(
+            "selectPhotos は iOS の PHPickerViewController 専用; Android に相当するコントロールはない"
+        )
+
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:  # noqa: ARG002  # Driver shape
         # BE-0316 is iOS-only: Android surfaces a system permission dialog in the topmost-window
         # dump, so an ordinary `tap` already reaches it. Preflight rejects the step before any device

@@ -560,6 +560,28 @@ class DriverConformanceContract:
             with pytest.raises(base.UnsupportedAction):
                 driver.leave_app()
 
+    def test_select_photos_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
+        # capabilities() is a promise (roadmap item): a SELECT_PHOTOS backend must not raise
+        # UnsupportedAction for select_photos; one without it must raise rather than silently
+        # no-op'ing (the same shape as PICKER_WHEEL / SELECT_OPTION). A supporting backend may still
+        # fail some other way — the seeded element is an ordinary one, not a real PHPicker grid cell,
+        # and no harness can seed a picker's confirm control — so any non-UnsupportedAction error is
+        # acceptable, the same tolerance the picker-wheel test above grants a non-wheel element.
+        driver = harness.with_screen([element(identifier="PXGGridLayout-Info")])
+        supports = base.Capability.SELECT_PHOTOS in driver.capabilities()
+        if supports:
+            try:
+                driver.select_photos([0], timeout=10)
+            except base.UnsupportedAction:
+                pytest.fail(
+                    "SELECT_PHOTOS capability declared but select_photos raised UnsupportedAction"
+                )
+            except Exception:
+                pass  # not a real picker grid: any other failure is acceptable here
+        else:
+            with pytest.raises(base.UnsupportedAction):
+                driver.select_photos([0], timeout=10)
+
     def test_text_selection_capability_matches_behavior(self, harness: ConformanceHarness) -> None:
         # capabilities() is a promise (BE-0280): a TEXT_SELECTION backend actuates select-all + copy
         # without UnsupportedAction; one without it (a coordinate-only backend) refuses both loudly rather

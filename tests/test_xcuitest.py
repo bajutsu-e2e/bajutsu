@@ -2554,6 +2554,125 @@ def test_leave_app_reports_an_unknown_status_as_a_channel_error() -> None:
         _driver(lambda m, p, b: _Reply(status="error")).leave_app()
 
 
+# --- selectPhotos: pick grid cells, then confirm by elimination (roadmap item) ---
+
+
+def _grid_cell(handle: str, index: int) -> dict[str, Any]:
+    # Every cell shares one identifier; only `index` disambiguates them (BE-0356's `resolve_unique`
+    # precedent, reused rather than extended).
+    return _el_wire(
+        handle, "PXGGridLayout-Info", f"Photo {index}", None, ["image"],
+        frame=(0.0, 200.0 + index * 100.0, 100.0, 100.0),
+    )  # fmt: skip
+
+
+def _nav_bar(handle: str = "h-bar") -> dict[str, Any]:
+    return _el_wire(handle, None, None, None, ["navigationBar"], frame=(0.0, 0.0, 400.0, 100.0))
+
+
+def _cancel(handle: str = "h-cancel") -> dict[str, Any]:
+    return _el_wire(handle, "Cancel", "Cancel", None, ["button"], frame=(0.0, 0.0, 50.0, 44.0))
+
+
+def _done(handle: str = "h-done") -> dict[str, Any]:
+    # The confirm control carries no identifier — only a label, which changes with locale/iOS
+    # version — so it is never named directly, only found by elimination.
+    return _el_wire(handle, None, "Done", None, ["button"], frame=(350.0, 0.0, 50.0, 44.0))
+
+
+def test_select_photos_taps_each_cell_then_the_confirm_control() -> None:
+    # Each cell is tapped by coordinate at its resolved frame center, not by handle — measured
+    # (roadmap item) to be the one path that actually registers a selection against this picker's
+    # grid. The confirm control, static chrome rather than a recycled cell, is still tapped by
+    # handle (`_confirm_photo_selection`, unchanged).
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(
+                _grid_cell("h-0", 0), _grid_cell("h-1", 1), _nav_bar(), _cancel(), _done()
+            )
+        sent.append((path, body))
+        return _Reply(status="ok")
+
+    _driver(transport).select_photos([0, 1], timeout=10)
+    assert sent == [
+        ("/tap", {"point": [50.0, 250.0]}),
+        ("/tap", {"point": [50.0, 350.0]}),
+        ("/tap", {"handle": "h-done"}),
+    ]
+
+
+def test_select_photos_resolves_cells_by_ordinal_index() -> None:
+    # `indices` picks by position among the identical-id candidates, in the order they were found —
+    # not by any value on the cell itself.
+    sent: list[list[float]] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_grid_cell("h-0", 0), _grid_cell("h-1", 1), _grid_cell("h-2", 2))
+        assert isinstance(body, dict)
+        sent.append(list(body["point"]))
+        return _Reply(status="ok")
+
+    _driver(transport).select_photos([2, 0], timeout=10)
+    assert sent == [
+        [50.0, 450.0],
+        [50.0, 250.0],
+    ]  # no confirm control present -> no-op, not an error
+
+
+def test_select_photos_raises_when_the_coordinate_tap_is_refused() -> None:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_grid_cell("h-0", 0))
+        return _Reply(status="error")
+
+    with pytest.raises(base.ElementNotFound, match="coordinate tap failed"):
+        _driver(transport).select_photos([0], timeout=10)
+
+
+def test_confirm_photo_selection_is_a_noop_when_the_picker_already_dismissed_itself() -> None:
+    # A single-selection grid can auto-confirm on the one tap above; a navigation bar with no
+    # non-Cancel control (here: none at all) means there is nothing left to tap.
+    calls: list[str] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        calls.append(path)
+        if path == "/elements":
+            return _elements()
+        return _Reply(status="ok")
+
+    _driver(transport)._confirm_photo_selection()
+    assert calls == ["/elements"]  # queried once, tapped nothing
+
+
+def test_confirm_photo_selection_raises_on_an_ambiguous_bar() -> None:
+    # Two non-Cancel candidates in the navigation bar: elimination cannot pick one, so this must
+    # fail loudly rather than guess (prime directive 2).
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_nav_bar(), _cancel(), _done("h-done-1"), _done("h-done-2"))
+        return _Reply(status="ok")
+
+    with pytest.raises(base.ElementNotFound, match="2 non-Cancel candidate"):
+        _driver(transport)._confirm_photo_selection()
+
+
+def test_confirm_photo_selection_raises_when_the_control_vanishes_before_tap() -> None:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_nav_bar(), _cancel(), _done())
+        return _Reply(status="stale")
+
+    with pytest.raises(base.ElementNotFound, match="vanished before tap"):
+        _driver(transport)._confirm_photo_selection()
+
+
+def test_xcuitest_advertises_the_select_photos_capability() -> None:
+    assert base.Capability.SELECT_PHOTOS in XcuitestDriver.CAPABILITIES
+
+
 def test_set_interruption_policy_raises_when_the_runner_did_not_store_it() -> None:
     # `_decode` turns a non-200 into a `status="error"` reply rather than raising, so a runner build
     # without this route — a stale `runner-build`, a mixed-version device — would otherwise return

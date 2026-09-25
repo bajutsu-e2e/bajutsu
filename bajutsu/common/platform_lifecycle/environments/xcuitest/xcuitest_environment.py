@@ -898,6 +898,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     resolved = simctl.device_type_of(self._udid, self._run)
                     self._device_type_id, self._device_runtime_id = resolved or (None, None)
                 self._pin_system_locale(e, pre.resolved_locale(eff.locale))
+                # `seedPhotos` requires `erase: true` (`Preconditions`'s own validator), so this
+                # reuses the same wipe that already guarantees a known-empty library — never runs on
+                # a warm resume (`cold` is False there) or seeds twice into the same device lease.
+                if pre.erase and pre.seed_photos:
+                    e.add_media(pre.seed_photos)
             clean_reinstall = pre.reinstall == "clean" and not pre.erase
             if ios.app_path:
                 app_path = Path(ios.app_path)

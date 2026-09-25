@@ -22,6 +22,9 @@ The map gates only the **true hard requirements** the capability set cleanly dec
 - `setPickerValue` needs `pickerWheel` (BE-0356): a picker wheel is an iOS control, and only the
   resident-runner XCUITest backend can land on a named row deterministically, so a scenario setting
   a wheel's value is rejected up front on every other backend.
+- `selectPhotos` needs `selectPhotos` (roadmap item): a `PHPickerViewController` grid is an iOS
+  control, and only the resident-runner XCUITest backend can address it at all, so a scenario using
+  this step is rejected up front on every other backend.
 - `select` / `copy` need `textSelection` (BE-0280): select-all + clipboard copy on the focused
   field. A backend with no select-all handle raises `UnsupportedAction` and does not advertise the
   token, so a scenario selecting or copying is rejected up front. `delete` / `clear` are not gated:
@@ -214,6 +217,11 @@ _REQUIREMENTS = (
         base.Capability.PICKER_WHEEL,
         "setPickerValue (iOS picker-wheel value; iOS XCUITest only)",
         _step_locations(lambda s: s.set_picker_value is not None),
+    ),
+    _Requirement(
+        base.Capability.SELECT_PHOTOS,
+        "selectPhotos (iOS photo-picker selection; iOS XCUITest only)",
+        _step_locations(lambda s: s.select_photos is not None),
     ),
     _Requirement(
         base.Capability.TEXT_SELECTION,

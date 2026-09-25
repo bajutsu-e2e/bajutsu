@@ -750,6 +750,11 @@ class PlaywrightDriver:
             "setPickerValue is iOS-only; use selectOption for a web <select>"
         )
 
+    def select_photos(self, indices: list[int], *, timeout: float) -> None:  # noqa: ARG002  # Driver shape
+        raise base.UnsupportedAction(
+            "selectPhotos is iOS-only; the web has no PHPickerViewController"
+        )
+
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:  # noqa: ARG002  # Driver shape
         # BE-0316 is an iOS SpringBoard concept: the web backend has no OS-level permission prompt at
         # all, so it never advertises the capability and preflight rejects the step. Mid-run backstop.

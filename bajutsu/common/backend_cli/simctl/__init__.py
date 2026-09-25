@@ -14,6 +14,7 @@ from ._functions import _probe_timed_out as _probe_timed_out
 from ._functions import _subcommand_of as _subcommand_of
 from ._functions import _timeout_for as _timeout_for
 from ._functions import (
+    addmedia_cmd,
     boot_cmd,
     booted_udids,
     bootstatus_cmd,
@@ -82,6 +83,7 @@ __all__ = [
     "DeviceTimeout",
     "Env",
     "RunFn",
+    "addmedia_cmd",
     "boot_cmd",
     "booted_udids",
     "bootstatus_cmd",

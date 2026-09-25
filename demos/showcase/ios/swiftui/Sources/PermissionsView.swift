@@ -1,4 +1,5 @@
 import CoreLocation
+import PhotosUI
 import SafariServices
 import SwiftUI
 import UIKit
@@ -17,6 +18,8 @@ struct PermissionsView: View {
     @StateObject private var browser = BrowserPresenter()
     @State private var notifStatus = "notDetermined"
     @State private var pasted = ""
+    @State private var showPhotoPicker = false
+    @State private var selectedPhotoCount = 0
 
     var body: some View {
         NavigationStack {
@@ -68,8 +71,22 @@ struct PermissionsView: View {
                         .accessibilityID("sys.browser.value")
                         .accessibilityStateValue(browser.status)
                 }
+
+                // `selectPhotos` (device / Intel Simulator only — see Capability.SELECT_PHOTOS):
+                // unlimited selection so the confirm-tap the driver relies on is always exercised.
+                Section("Photos") {
+                    Button("Open Photo Picker") { showPhotoPicker = true }
+                        .accessibilityID("perm.openPhotoPicker")
+                    Text("Selected: \(selectedPhotoCount)")
+                        .foregroundStyle(.secondary)
+                        .accessibilityID("perm.photos.value")
+                        .accessibilityStateValue(String(selectedPhotoCount))
+                }
             }
             .navigationTitle("Permissions")
+            .sheet(isPresented: $showPhotoPicker) {
+                PhotoPicker(selectedCount: $selectedPhotoCount)
+            }
         }
     }
 
@@ -187,5 +204,35 @@ private final class BrowserPresenter: NSObject, ObservableObject, SFSafariViewCo
         var top = root
         while let presented = top?.presentedViewController { top = presented }
         return top
+    }
+}
+
+// Wraps PHPickerViewController with unlimited selection, mirroring the picked count back to
+// perm.photos.value. `selectPhotos` resolves grid cells by the `PXGGridLayout-Info` identifier
+// every cell shares (disambiguated by ordinal `index`) and the confirm control by elimination
+// inside the picker's navigation bar — neither depends on anything below.
+private struct PhotoPicker: UIViewControllerRepresentable {
+    @Binding var selectedCount: Int
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var config = PHPickerConfiguration()
+        config.selectionLimit = 0
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let parent: PhotoPicker
+        init(_ parent: PhotoPicker) { self.parent = parent }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            parent.selectedCount = results.count
+            picker.dismiss(animated: true)
+        }
     }
 }

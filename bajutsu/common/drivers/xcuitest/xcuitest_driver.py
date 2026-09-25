@@ -62,10 +62,12 @@ class XcuitestDriver:
     # the app-side collector (BE-0020 boundary), not the actuator. The whole device-control family
     # (`DEVICE_CONTROL_ALL`) and the permission grants because xcuitest shares the iOS Simulator
     # lifecycle, which wires a real simctl-backed `DeviceControl` for its runs too (BE-0128;
-    # per-operation tokens since BE-0212). This is the *static* set; a real device (`deviceType:
-    # device`) drops the simctl-backed capabilities at run time via `backends.capabilities_for_run`,
-    # since simctl reaches only the Simulator (BE-0238). A class constant so the preflight (BE-0082)
-    # reads it via backends.capabilities_for without constructing a driver.
+    # per-operation tokens since BE-0212). This is the *static* set; `backends.capabilities_for_run`
+    # narrows it at run time in two directions: a real device (`deviceType: device`) drops the
+    # simctl-backed capabilities, since simctl reaches only the Simulator (BE-0238), while
+    # SELECT_PHOTOS is dropped the other way — present here, removed on an Apple Silicon Simulator
+    # specifically. A class constant so the preflight (BE-0082) reads it via backends.capabilities_for
+    # without constructing a driver.
     CAPABILITIES = (
         frozenset(
             {
@@ -79,6 +81,7 @@ class XcuitestDriver:
                 base.Capability.HANDLE_SYSTEM_ALERT,
                 base.Capability.PICKER_WHEEL,
                 base.Capability.APP_CONTEXT,
+                base.Capability.SELECT_PHOTOS,
                 base.Capability.HANDLE_TIPKIT_TIP,
                 base.Capability.HANDLE_NOTIFICATION_BANNER,
             }
@@ -582,6 +585,93 @@ class XcuitestDriver:
             gesture="setPickerValue",
             element=el,
         )
+
+    def select_photos(self, indices: list[int], *, timeout: float) -> None:  # noqa: ARG002  # Driver shape; the picker must already be open, so no on-device wait belongs here
+        """Pick the grid cells at `indices` from an open `PHPickerViewController`, then confirm.
+
+        Every cell shares one identifier, `PXGGridLayout-Info`, disambiguated by ordinal `index` —
+        the same "nth of multiple matches" mechanism `handle_system_alert` relies on for a
+        SpringBoard button no author-assignable identifier ever names. Each is tapped by raw
+        coordinate at its resolved frame's exact center (`base.frame_center`), not the ordinary
+        handle-based `/tap` every other element uses: measured against this picker's grid, a
+        handle-based tap is refused (`ElementNotTappable`) or reports the handle stale, while a
+        coordinate tap at the same cell's exact frame center lands and registers the selection —
+        a coordinate on the boundary shared with an adjacent cell can register that neighbor
+        instead, which is why the exact center, not an arbitrary point in the frame, is used
+        (roadmap item). Re-resolved fresh before every tap rather than once for the whole call:
+        nothing about this recycled collection view guarantees a cell's frame stays put while an
+        earlier index in the same call is still being tapped.
+        """
+        for i in indices:
+            sel: base.Selector = {"id": "PXGGridLayout-Info", "index": i}
+            elements, _ = self._query_with_handles(apply_native_z=False)
+            el = base.resolve_unique(elements, sel)
+            p = base.frame_center(el["frame"])
+            self._actuations.record(
+                Actuation(
+                    gesture="tap",
+                    via="coordinate",
+                    unit=_UNIT,
+                    points=(p,),
+                    frame=el["frame"],
+                    target=el["identifier"],
+                )
+            )
+            reply = self._transport("POST", "/tap", {"point": [p[0], p[1]]})
+            if reply.status != _OK:
+                raise base.ElementNotFound(
+                    f"coordinate tap failed (status={reply.status}) at {p} for {sel!r}"
+                )
+        self._confirm_photo_selection()
+
+    def _confirm_photo_selection(self) -> None:
+        """Tap the picker's confirm control, resolved structurally rather than by its localized label.
+
+        The picker's dismiss control carries the stable identifier `Cancel`; the confirm control
+        carries none, only a label that changes with both locale and iOS version (`Done`, or a
+        checkmark glyph on newer releases) — naming it by label would need a per-locale lookup the
+        way `handle_system_alert` needs one for SpringBoard. Finding it by elimination inside the
+        picker's own navigation bar instead needs no such table: the confirm control's identifier
+        *absence*, not its label, is the stable fact. A bar with no non-`Cancel` control means the
+        picker already dismissed itself (a single-selection grid auto-confirms on the one tap
+        above), so that case is a no-op rather than an error.
+
+        Not routed through `_actuate`: its stale-retry re-resolves from a `Selector`, and this
+        control's resolution — elimination, not a field match — has no `Selector` to hand it. A
+        static navigation-bar control is not the recycled-cell case that retry exists for (the
+        `Cancel` measurement in the roadmap item confirms static chrome actuates fine on the first
+        try), so a single query-then-tap, mirroring `handle_system_alert`'s own shape, is enough.
+        """
+        elements, handles = self._query_with_handles(apply_native_z=False)
+        bar_sel: base.Selector = {"traits": ["navigationBar"]}
+        bars = base.find_all(elements, bar_sel)
+        if not bars:
+            return
+        # `within` matches by frame containment, which is reflexive — the bar's own element is
+        # "within" its own frame just as its children are — so the bar itself must be excluded by
+        # identity, not merely by lacking a `Cancel` identifier (BE-0355's `id(el)` keying, reused).
+        bar_ids = {id(b) for b in bars}
+        candidates = [
+            el
+            for el in base.find_all(elements, {"within": bar_sel})
+            if id(el) not in bar_ids and el["identifier"] != "Cancel"
+        ]
+        if len(candidates) != 1:
+            raise base.ElementNotFound(
+                "could not resolve the picker's confirm control by elimination: "
+                f"{len(candidates)} non-Cancel candidate(s) in the navigation bar"
+            )
+        el = candidates[0]
+        self._actuations.record(
+            Actuation(
+                gesture="tap", via="handle", unit=_UNIT, frame=el["frame"], target=el["identifier"]
+            )
+        )
+        reply = self._transport("POST", "/tap", {"handle": handles[id(el)]})
+        if reply.status != _OK:
+            raise base.ElementNotFound(
+                f"the picker's confirm control vanished before tap (status={reply.status})"
+            )
 
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:  # noqa: ARG002  # Driver shape
         # Query the alert once and tap the button `sel` names (BE-0316). The alert is out-of-process,

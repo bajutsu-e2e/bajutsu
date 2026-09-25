@@ -155,6 +155,16 @@ def _do_set_picker_value(
     driver.set_picker_value(step.set_picker_value.sel.as_selector(), step.set_picker_value.value)
 
 
+@_handler("select_photos")
+def _do_select_photos(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
+    assert step.select_photos is not None
+    # No capability guard here: preflight rejects a SELECT_PHOTOS-less backend — including an Apple
+    # Silicon Simulator, which `capabilities_for_run` narrows the token away from — before any device
+    # work, and the driver's own UnsupportedAction is the mid-run backstop (mirrors select_option /
+    # set_picker_value).
+    driver.select_photos(step.select_photos.indices, timeout=step.select_photos.timeout)
+
+
 @_handler("clear")
 def _do_clear(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
     assert step.clear is not None

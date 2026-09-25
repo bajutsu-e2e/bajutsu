@@ -1,0 +1,18 @@
+# selectPhotos (roadmap item): pick images from an open PHPickerViewController grid.
+- name: selectPhotos picks images from the photo picker grid
+  tags: [swiftui]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    erase: true
+    seedPhotos:
+      - ../fixtures/photos/fixture-red.png
+      - ../fixtures/photos/fixture-green.png
+  steps:
+    - tap: { label: "Permissions", traits: [button] }
+    - wait: { for: { id: perm.openPhotoPicker }, timeout: 10 }
+    - tap: { id: perm.openPhotoPicker }
+    - wait: { for: { id: "PXGGridLayout-Info" }, timeout: 10 }
+    - selectPhotos: { indices: [0, 1], timeout: 10 }
+    - wait: { for: { id: perm.photos.value, value: "2" }, timeout: 10 }
+  expect:
+    - value: { sel: { id: perm.photos.value }, equals: "2" }

@@ -142,6 +142,9 @@ class WebContextDriver:
     def set_picker_value(self, sel: Selector, value: str) -> None:  # noqa: ARG002  # Driver shape
         raise UnsupportedAction("setPickerValue is iOS-only; a DOM has no picker wheel")
 
+    def select_photos(self, indices: list[int], *, timeout: float) -> None:  # noqa: ARG002  # Driver shape
+        raise UnsupportedAction("selectPhotos is iOS-only; a DOM has no photo picker")
+
     def handle_system_alert(self, sel: Selector, timeout: float) -> None:  # noqa: ARG002  # Driver shape
         # BE-0316 taps an iOS SpringBoard prompt; a WebView DOM context has no OS-level alert, and
         # only the resident-runner XCUITest backend declares the capability, so this never runs.

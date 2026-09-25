@@ -242,6 +242,16 @@ class FakeDriver:
         self._log_target("setPickerValue", wheel)
         self._record("set_picker_value", (sel, value))
 
+    def select_photos(self, indices: list[int], *, timeout: float) -> None:  # noqa: ARG002  # fake has no wait
+        # Same resolution discipline as every other action: zero -> ElementNotFound, ambiguous ->
+        # AmbiguousSelector, `index` picks the nth cell among candidates sharing the one identifier
+        # every grid cell carries — a fixture screen seeds them under `PXGGridLayout-Info` the same
+        # way a real PHPickerViewController grid would.
+        for i in indices:
+            target = base.resolve_unique(self.screen, {"id": "PXGGridLayout-Info", "index": i})
+            self._log_target("selectPhotos", target)
+        self._record("select_photos", tuple(indices))
+
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
         # Resolve `sel` over the seeded alert buttons with the same discipline the real backend uses
         # (BE-0316): zero → ElementNotFound, ambiguous → AmbiguousSelector, `index` picks the nth.
@@ -344,6 +354,7 @@ class FakeDriver:
             base.Capability.HANDLE_SYSTEM_ALERT,
             base.Capability.PICKER_WHEEL,
             base.Capability.APP_CONTEXT,
+            base.Capability.SELECT_PHOTOS,
             base.Capability.HANDLE_TIPKIT_TIP,
             base.Capability.HANDLE_NOTIFICATION_BANNER,
         }
