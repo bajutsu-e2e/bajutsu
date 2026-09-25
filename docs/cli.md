@@ -786,7 +786,11 @@ below it, each answer closed by its own `-- EOL --` line so a long scrollback st
 command's output ends and the next begins. A banner on the line right below the input names the
 current mode; in the input line and the scroll pane it also spells out the `Tab` binding, so the
 mode switch stays visible without checking this table. The mouse wheel also scrolls the pane, in
-every mode, on a terminal that reports it — a keyboard-free alternative to the rows below:
+every mode, on a terminal that reports it — a keyboard-free alternative to the rows below. And
+because that same pane keeps drawing in every mode, a command's answer can land below the current
+view unnoticed — while scrolled up in the pane, or typing the next command without having Tab'd
+back down — so the banner grows a `[new output ↓]` suffix (in whichever mode's own text) the moment
+that happens, clearing again as soon as the view returns to the bottom:
 
 | Key | In the input line | In the scroll pane |
 |---|---|---|
@@ -794,7 +798,7 @@ every mode, on a terminal that reports it — a keyboard-free alternative to the
 | `↑` / `↓` | recall the previous/next command from history | scroll the output up/down one line |
 | `k` / `j` | typed as ordinary characters | scroll the output up/down one line (vim-style, alongside `↑`/`↓`) |
 | `PgUp` / `PgDn` | — | scroll the output up/down a full pane |
-| `←` / `→` | move the cursor left/right | jump straight to the top/bottom |
+| `←` / `→` / `t` / `b` | move the cursor left/right (`t`/`b` type as ordinary characters) | jump straight to the top/bottom |
 | `/` | — | open a filter prompt; `Enter` sets it (a case-insensitive substring over the whole transcript), an empty pattern clears it, `Esc` abandons the edit |
 | `Ctrl-C` | abandon the half-typed line | — |
 
