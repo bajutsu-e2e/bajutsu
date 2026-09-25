@@ -632,9 +632,18 @@ class XcuitestDriver:
         checkmark glyph on newer releases) — naming it by label would need a per-locale lookup the
         way `handle_system_alert` needs one for SpringBoard. Finding it by elimination inside the
         picker's own navigation bar instead needs no such table: the confirm control's identifier
-        *absence*, not its label, is the stable fact. A bar with no non-`Cancel` control means the
-        picker already dismissed itself (a single-selection grid auto-confirms on the one tap
-        above), so that case is a no-op rather than an error.
+        *absence*, not its label, is the stable fact.
+
+        A single-selection grid (`selectionLimit == 1`) auto-confirms on the one tap above and
+        dismisses the whole picker, so there is no confirm control left to tap — a no-op, not an
+        error. Measured on-device (not just against the mocked unit tests below): once the picker
+        is gone, the app's own screen can still have its own `navigationBar`-trait element (e.g. a
+        `.navigationTitle`), and *that* bar's own non-`Cancel` content (its title text) would
+        otherwise satisfy the same elimination this method uses for the picker's bar — mistakenly
+        tapping the app's own UI instead of recognizing the picker already closed. So a
+        `navigationBar` only counts as the picker's own when a `Cancel` control is found inside
+        one; no such bar (the picker was never modal-cancelable, or it already dismissed itself)
+        means nothing to tap.
 
         Not routed through `_actuate`: its stale-retry re-resolves from a `Selector`, and this
         control's resolution — elimination, not a field match — has no `Selector` to hand it. A
@@ -644,9 +653,9 @@ class XcuitestDriver:
         """
         elements, handles = self._query_with_handles(apply_native_z=False)
         bar_sel: base.Selector = {"traits": ["navigationBar"]}
-        bars = base.find_all(elements, bar_sel)
-        if not bars:
+        if not base.find_all(elements, {"within": bar_sel, "id": "Cancel"}):
             return
+        bars = base.find_all(elements, bar_sel)
         # `within` matches by frame containment, which is reflexive — the bar's own element is
         # "within" its own frame just as its children are — so the bar itself must be excluded by
         # identity, not merely by lacking a `Cancel` identifier (BE-0355's `id(el)` keying, reused).

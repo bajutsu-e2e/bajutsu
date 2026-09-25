@@ -285,6 +285,20 @@ associated domain の仕掛けも要ります。無ければ iOS は何も申し
   ブラウザを開くたびに `idle` へ戻すので、前回の結果で `loaded` の待機が満たされることはない。
   読めるのはブラウザを閉じてこの画面がツリーに戻ってからで、シナリオもそこでアサートする
 
+**Photos**（SwiftUI のみ。ロードマップ項目の「代替案」を参照）は、システムの `PHPickerViewController` を
+提示します。ボタンは2つあり、ピッカーが画面を去る2通りの経路にそれぞれ対応します。無制限選択のボタンは、
+`selectPhotos` が頼る確定タップ（`_confirm_photo_selection`）を必ず起こします。`selectionLimit = 1` の
+ボタンは、必要な1回のタップでピッカーが自動的に閉じ、確定コントロールが一度も表示されない経路をたどります。
+これは同じメソッドが持つ、排除法によるノーオップの経路です。どちらも `selectPhotos` を支えます。
+`selectPhotos` は iOS 専用の DSL アクションで、`Capability.SELECT_PHOTOS` によって限定されます。
+有効なのは XCUITest バックエンドのみです。シナリオは
+[`select_photos.yaml`](scenarios/select_photos.yaml) と
+[`select_photo_single.yaml`](scenarios/select_photo_single.yaml) です。どちらもピッカーを開く前に
+`preconditions.seedPhotos` で写真ライブラリへ種をまきます。併記する `erase: true` が必須です。
+- `perm.openPhotoPicker` — 無制限選択のピッカーを提示するボタン
+- `perm.openPhotoPickerSingle` — `selectionLimit = 1` のピッカーを提示するボタン
+- `perm.photos.value` — 選択した枚数。ピッカーが閉じた時点でミラーされる（それまでは 0）
+
 ### 5.5 タブ：Notices（`notice` 名前空間。長いリスト → 詳細、スクロール先の要素）
 
 `NavigationStack`（SwiftUI）/ `UINavigationController`（UIKit）が、**20 件**の静的な notice の縦リストを

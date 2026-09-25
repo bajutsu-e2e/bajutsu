@@ -2647,6 +2647,24 @@ def test_confirm_photo_selection_is_a_noop_when_the_picker_already_dismissed_its
     assert calls == ["/elements"]  # queried once, tapped nothing
 
 
+def test_confirm_photo_selection_is_a_noop_when_only_the_apps_own_bar_remains() -> None:
+    # Found on-device (not by the mocked case above): a single-selection grid's auto-dismiss
+    # leaves the picker's own Cancel-bearing bar gone, but the app's underlying screen can still
+    # have its own `navigationBar`-trait element with its own non-Cancel content (a title). That
+    # bar must not be mistaken for the picker's — elimination requires a Cancel control in the bar
+    # first, so this stays a no-op instead of tapping the app's own UI.
+    calls: list[str] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        calls.append(path)
+        if path == "/elements":
+            return _elements(_nav_bar(), _done())  # non-Cancel content, but no Cancel control
+        return _Reply(status="ok")
+
+    _driver(transport)._confirm_photo_selection()
+    assert calls == ["/elements"]  # queried once, tapped nothing
+
+
 def test_confirm_photo_selection_raises_on_an_ambiguous_bar() -> None:
     # Two non-Cancel candidates in the navigation bar: elimination cannot pick one, so this must
     # fail loudly rather than guess (prime directive 2).
