@@ -257,6 +257,21 @@ def test_author_registered_in_tiling_specs(tmp_path: Path) -> None:
     assert ".rec-stack .au-screen-card" in text
 
 
+def test_tiling_follows_the_narrow_tier_across_resizes(tmp_path: Path) -> None:
+    """Crossing the phone breakpoint after load re-applies the layout tier (#1801): widening a
+    page opened narrow tiles it, and narrowing a tiled page restores the single-column markup."""
+    text = _author_js(tmp_path)
+    assert "NARROW_MQ.addEventListener('change',applyLayoutTier)" in text
+    # The load-time decision goes through the same function, not a one-shot guard.
+    assert "applyLayoutTier();" in text
+    assert "if(!NARROW_MQ.matches)initTiling();" not in text
+    # Narrowing puts the pre-tiling DOM back rather than leaving the tiled root in place.
+    assert "tiler.unmount()" in text
+    assert "p.replaceChildren(...kids)" in text
+    # Widening builds the tiler once and re-mounts it; window listeners must not stack up.
+    assert "(tiler||=initTiling()).mount()" in text
+
+
 def test_author_is_block_level_for_tiling(tmp_path: Path) -> None:
     """The fixed #view-author grid is gone; it is block-level like the other tiled views, so
     the tiler's .tile-root fills the <main> (BE-0263)."""

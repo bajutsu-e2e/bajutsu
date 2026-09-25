@@ -144,9 +144,9 @@ function initSplitters(){
     drag=null;
   });
 }
-// At the phone tier the persisted desktop column widths and the splitter drags are skipped — the
-// single-column stack takes over, so applying saved px widths would only fight the reflow (BE-0072).
-if(!NARROW_MQ.matches){restoreSplits();initSplitters();}
+function clearSplits(){
+  document.querySelectorAll('main .gutter').forEach(g=>g.closest('main').style.removeProperty(g.dataset.var));
+}
 
 // Tiling layout (Record/Replay): drag a panel's grip and drop on another panel's edge to split
 // that way (up/down/left/right), or on its center to swap the two. Dividers resize both axes and
@@ -174,7 +174,7 @@ function initTiling(){
   let saved={};
   try{saved=JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){}
   const views=[];
-  let pdrag=null,ind=null;
+  let pdrag=null,ind=null,rsz=null;
   const save=()=>{const s={};views.forEach(V=>s[V.spec.id]=V.tree);try{localStorage.setItem(KEY,JSON.stringify(s));}catch(e){}};
   const keyOf=(V,el)=>Object.keys(V.panel).find(k=>V.panel[k]===el);
   function render(V,node){
@@ -259,8 +259,8 @@ function initTiling(){
     const w=(node.s[i-1]??1)+(node.s[i]??1);
     dv.classList.add('dragging');document.body.style.userSelect='none';document.body.style.cursor=row?'col-resize':'row-resize';
     const mv=ev=>{const n0=Math.max(80,Math.min(tot-80,s0+(row?ev.clientX:ev.clientY)-start)),wa=w*n0/tot,wb=w-wa;node.s[i-1]=wa;node.s[i]=wb;a.style.flex=wa+' 1 0';b.style.flex=wb+' 1 0';reflectSizes(V);};
-    const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up);dv.classList.remove('dragging');document.body.style.userSelect='';document.body.style.cursor='';save();};
-    window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up);
+    const up=()=>{rsz=null;window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up);dv.classList.remove('dragging');document.body.style.userSelect='';document.body.style.cursor='';save();};
+    window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up);rsz=up;
   }
   const zdir=z=>(z==='left'||z==='right')?'row':'col';
   function removeLeaf(n,key){
@@ -302,15 +302,47 @@ function initTiling(){
       g.addEventListener('mousedown',e=>{e.preventDefault();pdrag={V,key:k};panel[k].classList.add('tile-dragging');document.body.classList.add('reordering-active');document.body.style.userSelect='none';document.body.style.cursor='grabbing';});
       panel[k].appendChild(g);
     });
-    rebuild(V);views.push(V);
+    views.push(V);
   });
-  // Expose add/remove of Record's optional Run-result pane, so the run handlers can show it on Run
-  // and its X can dismiss it — using the same tiling machinery (insert/remove leaf) as a drag would.
+  // Record's optional Run-result pane is added/removed with the same insert/remove-leaf machinery a
+  // drag uses, so the run handlers can show it on Run and its X can dismiss it.
   const recV=views.find(v=>v.spec.id==='view-record');
-  if(recV){
-    const inTree=()=>leaves(recV.tree).includes('report');
-    state.recReportShow=()=>{recV.panel.report.hidden=false;if(!inTree()){recV.tree=insertBeside(recV.tree,'yaml','report','bottom');rebuild(recV);}};
-    state.recReportHide=()=>{if(inTree()){recV.tree=removeLeaf(recV.tree,'report')||recV.tree;rebuild(recV);}recV.panel.report.hidden=true;};
+  const inTree=()=>leaves(recV.tree).includes('report');
+  // The pane may have been shown or dismissed while untiled (narrow tier), so reconcile the tree with
+  // its visibility before building — otherwise a visible pane missing from the tree is detached.
+  function syncReport(){
+    const shown=!recV.panel.report.hidden;
+    if(shown&&!inTree())recV.tree=insertBeside(recV.tree,'yaml','report','bottom');
+    else if(!shown&&inTree())recV.tree=removeLeaf(recV.tree,'report')||recV.tree;
+  }
+  // mount() tiles every view; unmount() puts back the exact pre-tiling DOM (the narrow-tier CSS keys
+  // off main>[data-pane], .rec-stack and .viewswitch, all of which the tiled root drops). The home
+  // snapshot is taken per mount, so markup added while untiled survives the next unmount (#1801).
+  function mount(){
+    views.forEach(V=>{
+      const parents=new Set([V.view,...Object.values(V.panel).map(el=>el.parentNode)]);
+      V.homes=[...parents].map(p=>({p,kids:[...p.childNodes]}));
+      V.styles=Object.fromEntries(V.keys.map(k=>[k,V.panel[k].style.cssText]));
+      if(V===recV)syncReport();
+      rebuild(V);
+    });
+    if(recV){
+      state.recReportShow=()=>{recV.panel.report.hidden=false;if(!inTree()){recV.tree=insertBeside(recV.tree,'yaml','report','bottom');rebuild(recV);}};
+      state.recReportHide=()=>{if(inTree()){recV.tree=removeLeaf(recV.tree,'report')||recV.tree;rebuild(recV);}recV.panel.report.hidden=true;};
+    }
+  }
+  function unmount(){
+    if(pdrag){pdrag.V.panel[pdrag.key].classList.remove('tile-dragging');document.body.classList.remove('reordering-active');document.body.style.userSelect='';document.body.style.cursor='';pdrag=null;}
+    if(rsz)rsz();
+    hideInd();
+    views.forEach(V=>{
+      V.homes.forEach(({p,kids})=>p.replaceChildren(...kids));
+      V.keys.forEach(k=>{
+        const el=V.panel[k];el.classList.remove('tile-leaf');el.style.cssText=V.styles[k];
+        const r=el.querySelector(':scope>.tile-size');if(r)r.remove();
+      });
+    });
+    state.recReportShow=null;state.recReportHide=null;
   }
   window.addEventListener('mousemove',e=>{
     if(!pdrag)return;
@@ -332,10 +364,21 @@ function initTiling(){
     }
     V.panel[pdrag.key].classList.remove('tile-dragging');document.body.classList.remove('reordering-active');document.body.style.userSelect='';document.body.style.cursor='';hideInd();pdrag=null;
   });
+  return {mount,unmount};
 }
-// Likewise the drag-to-split/swap tiling is a desktop power feature with no touch equivalent and no
-// room on a phone; skip it at the narrow tier so the markup stays in its single-column stack form.
-if(!NARROW_MQ.matches)initTiling();
+// The desktop layout — persisted column widths, splitter drags, and the drag-to-split/swap tiler —
+// has no touch equivalent and no room on a phone, so the narrow tier keeps the markup in its
+// single-column stack form (BE-0072). The tier is re-applied whenever the window crosses it, not only
+// at load: a page opened narrow and then widened must still tile, and vice versa (#1801).
+let splittersWired=false,tiler=null;
+function applyLayoutTier(){
+  if(NARROW_MQ.matches){if(tiler)tiler.unmount();clearSplits();return;}
+  restoreSplits();
+  if(!splittersWired){initSplitters();splittersWired=true;}
+  (tiler||=initTiling()).mount();
+}
+applyLayoutTier();
+NARROW_MQ.addEventListener('change',applyLayoutTier);
 
 // ===========================================================================
 // Author tab (BE-0098) — one open scenario, three modes (Capture / Edit / Enrich)
