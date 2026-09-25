@@ -681,6 +681,19 @@ def test_run_tui_mouse_wheel_does_not_dispatch_a_command() -> None:
     assert driver.actions == []
 
 
+def test_run_tui_survives_a_stale_mouse_event() -> None:
+    # Observed after an idle stretch: `get_wch` reports `KEY_MOUSE` but the real `curses.getmouse()`
+    # then raises `error("getmouse() returned ERR")` — the shell must drop that tick, not crash.
+    session, driver = _session()
+    screen = FakeScreen(keys=_keys(curses.KEY_MOUSE, "tap stable.save", "\n", "exit", "\n"))
+
+    def _stale_mouse_event() -> tuple[int, int, int, int, int]:
+        raise curses.error("getmouse() returned ERR")
+
+    run_tui(session, screen, get_mouse_event=_stale_mouse_event)  # would raise if uncaught
+    assert driver.actions == [("tap", {"id": "stable.save"})]  # the shell kept working afterward
+
+
 def test_run_tui_mouse_wheel_scrolls_the_pane() -> None:
     session, _driver = _session()
     # Six distinguishable commands overflow a short pane (height=6, so pane_height=4); each of
