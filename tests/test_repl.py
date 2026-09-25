@@ -504,6 +504,91 @@ def test_type_by_sel_rejects_an_invalid_yaml_mapping() -> None:
     assert driver.actions == []
 
 
+# --- scroll --------------------------------------------------------------------------------------
+
+
+def test_scroll_calls_driver_scroll_with_raw_points() -> None:
+    session, driver = _session()
+    assert session.dispatch("scroll @10,20 @10,80") == ["scrolled @10,20 @10,80"]
+    assert driver.actions == [("scroll", ((10.0, 20.0), (10.0, 80.0)))]
+
+
+def test_scroll_needs_two_coordinate_arguments() -> None:
+    session, driver = _session()
+    usage = ["usage: scroll @<x1>,<y1> @<x2>,<y2>"]
+    assert session.dispatch("scroll") == usage
+    assert session.dispatch("scroll @10,20") == usage
+    assert session.dispatch("scroll @10,20 @10,80 @10,140") == usage
+    assert driver.actions == []
+
+
+def test_scroll_rejects_a_non_coordinate_argument() -> None:
+    session, driver = _session()
+    result = session.dispatch("scroll stable.list @10,80")
+    assert result == ["usage: scroll @<x1>,<y1> @<x2>,<y2>"]
+    assert driver.actions == []
+
+
+# --- step ------------------------------------------------------------------------------------
+
+
+def test_step_runs_a_one_shot_action_via_the_orchestrators_own_dispatcher() -> None:
+    session, driver = _session(_el("stable.save"))
+    assert session.dispatch("step {tap: {id: stable.save}}") == ["ran step: tap"]
+    assert driver.actions == [("tap", {"id": "stable.save"})]
+
+
+def test_step_runs_a_gesture_kind_the_shell_has_no_shortcut_for() -> None:
+    # The whole point of `step`: `pinch` (and swipe/rotate/setPickerValue/...) have no dedicated
+    # verb, only this YAML escape hatch, same as `--sel` is the escape hatch for a target.
+    session, driver = _session(_el("card"))
+    assert session.dispatch("step {pinch: {sel: {id: card}, scale: 0.5}}") == ["ran step: pinch"]
+    assert driver.actions == [("pinch", ({"id": "card"}, 0.5))]
+
+
+def test_step_needs_an_argument() -> None:
+    session, driver = _session()
+    assert session.dispatch("step") == [
+        "usage: step <yaml> — one scenario step, e.g. step {tap: {id: row.1}}"
+    ]
+    assert driver.actions == []
+
+
+def test_step_rejects_malformed_yaml() -> None:
+    session, driver = _session()
+    result = session.dispatch("step {tap: [")
+    assert "invalid step YAML" in result[0]
+    assert driver.actions == []
+
+
+def test_step_rejects_a_step_with_no_action() -> None:
+    session, driver = _session()
+    result = session.dispatch("step {name: nothing}")
+    assert "invalid step" in result[0]
+    assert driver.actions == []
+
+
+def test_step_rejects_a_step_with_two_actions() -> None:
+    session, driver = _session()
+    result = session.dispatch("step {tap: {id: a}, back: {}}")
+    assert "invalid step" in result[0]
+    assert driver.actions == []
+
+
+def test_step_reports_a_kind_that_needs_a_whole_scenario_to_run() -> None:
+    session, driver = _session()
+    result = session.dispatch("step {wait: {for: {id: log.note}, timeout: 5}}")
+    assert result == ["step kind 'wait' needs `run`/a scenario — the shell has no run loop"]
+    assert driver.actions == []
+
+
+def test_step_still_reports_a_selector_error_the_normal_way() -> None:
+    session, driver = _session()  # no elements on screen
+    with pytest.raises(base.ElementNotFound):
+        session.dispatch("step {tap: {id: missing}}")
+    assert driver.actions == []
+
+
 # --- back / screenshot -------------------------------------------------------------------------
 
 
@@ -550,7 +635,18 @@ def test_help_lists_every_verb_dispatch_accepts() -> None:
     lines = session.dispatch("help")
     verb_lines = lines[: lines.index("")]  # the target-syntax block follows a blank separator
     listed = {line.split()[0] for line in verb_lines}
-    assert listed == {"tree", "find", "tap", "type", "back", "screenshot", "help", "exit"}
+    assert listed == {
+        "tree",
+        "find",
+        "tap",
+        "type",
+        "scroll",
+        "back",
+        "screenshot",
+        "step",
+        "help",
+        "exit",
+    }
 
 
 def test_help_documents_every_target_form() -> None:
