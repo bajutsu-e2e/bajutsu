@@ -305,7 +305,12 @@ def run_tui(
         if key == curses.KEY_MOUSE:
             # Handled here, not through `handle_key`'s mode dispatch — same reasoning as
             # `KEY_RESIZE` above: a terminal-level event, not a keystroke any mode interprets.
-            _handle_wheel_scroll(state, get_mouse_event()[4], pane_height)
+            # `get_wch` reporting `KEY_MOUSE` is no guarantee `getmouse()` can still retrieve it —
+            # observed after an idle stretch, where it raises `error("getmouse() returned ERR")`
+            # instead; best-effort like `_enable_wheel_reporting`, so a stale/unreadable event
+            # drops this one tick rather than crashing the whole shell.
+            with contextlib.suppress(curses.error):
+                _handle_wheel_scroll(state, get_mouse_event()[4], pane_height)
             continue
         line = handle_key(state, key, pane_height)
         if line is None:
