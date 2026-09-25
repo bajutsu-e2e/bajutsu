@@ -1,14 +1,14 @@
-**English** · [日本語](BE-0434-multi-target-interrupts-ja.md)
+**English** · [日本語](BE-XXXX-multi-target-interrupts-ja.md)
 
-# BE-0434 — Give `interrupts` entries a `target`, defaulting to the primary target
+# BE-XXXX — Give `interrupts` entries a `target`, defaulting to the primary target
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-0434](BE-0434-multi-target-interrupts.md) |
+| Proposal | [BE-XXXX](BE-XXXX-multi-target-interrupts.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0434") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Scenario authoring features |
 | Related | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md) |
 <!-- /BE-METADATA -->
