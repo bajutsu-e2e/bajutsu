@@ -5,8 +5,8 @@
     launchEnv: { SHOWCASE_UITEST: "1" }
     erase: true
     seedPhotos:
-      - ../fixtures/photos/fixture-red.png
-      - ../fixtures/photos/fixture-green.png
+      - fixtures/photos/fixture-red.png
+      - fixtures/photos/fixture-green.png
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - wait: { for: { id: perm.openPhotoPicker }, timeout: 10 }
