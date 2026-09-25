@@ -27,7 +27,7 @@ _BANNERS: dict[Mode, str] = {
     "input": "-- INPUT  (Tab: switch to scroll pane) --",
     "scroll": (
         "-- SCROLL  (Tab: back to input · ↑↓/jk scroll · PgUp/PgDn: page"
-        " · ←→: top/bottom · /: filter) --"
+        " · ←→/tb: top/bottom · /: filter) --"
     ),
     "filter": "-- FILTER  (Enter: apply · Esc: cancel) --",
 }
@@ -66,6 +66,7 @@ class TuiState:
     history_index: int | None = None  # None = not recalling; else the entry currently shown
     output: list[str] = field(default_factory=list)  # the full transcript, prompt lines included
     scroll_offset: int = 0  # lines scrolled up from the bottom of the current (filtered) view
+    new_output_while_scrolled: bool = False  # set by `_note_new_output`, cleared on return to 0
     filter_query: str | None = None
     stashed_input: tuple[str, int] = ("", 0)  # a command parked while the filter prompt borrows
     # `input_buffer`/`cursor` — restored, not discarded, when the filter prompt closes
@@ -122,9 +123,9 @@ def _handle_scroll_key(state: TuiState, key: int | str, pane_height: int) -> Non
         state.scroll_offset = min(max_offset, state.scroll_offset + max(1, pane_height))
     elif key == curses.KEY_NPAGE:
         state.scroll_offset = max(0, state.scroll_offset - max(1, pane_height))
-    elif key == curses.KEY_LEFT:
+    elif key in (curses.KEY_LEFT, "t"):  # "t"/"b": top/bottom, alongside the arrow keys
         state.scroll_offset = max_offset
-    elif key == curses.KEY_RIGHT:
+    elif key in (curses.KEY_RIGHT, "b"):
         state.scroll_offset = 0
     elif key == "/":
         state.stashed_input = (state.input_buffer, state.cursor)
@@ -232,10 +233,14 @@ def _note_new_output(state: TuiState, added: list[str]) -> None:
 
     Pinned (`scroll_offset == 0`) is left alone — the view already tracks the bottom on its own.
     Scrolled up, the offset grows by however many of the new lines would actually appear in the
-    current (possibly filtered) view, which is what keeps `_visible`'s computed window unchanged.
+    current (possibly filtered) view, which is what keeps `_visible`'s computed window unchanged —
+    and `new_output_while_scrolled` is raised so the banner can tell the operator something arrived
+    below the current view; `run_tui`'s loop lowers it again once `scroll_offset` returns to 0.
     """
     if state.scroll_offset == 0:
         return
+    if added:
+        state.new_output_while_scrolled = True
     if state.filter_query is None:
         state.scroll_offset += len(added)
     else:
@@ -276,6 +281,10 @@ def run_tui(
     """
     state = TuiState()
     while True:
+        if state.scroll_offset == 0:
+            # Reached fresh each time the operator scrolls back to the bottom — by any of the keys
+            # `_handle_scroll_key`/`_handle_wheel_scroll` mutate `scroll_offset` with, or `clear`.
+            state.new_output_while_scrolled = False
         _draw(screen, state)
         try:
             key = screen.get_wch()
@@ -366,6 +375,19 @@ def _input_row(prompt: str, buffer: str, cursor: int, columns: int) -> tuple[str
     return _fit(text[start:], columns), cursor_col - col
 
 
+def _banner(state: TuiState) -> str:
+    """The status line for the current mode, with a suffix while output has arrived off-screen.
+
+    Appended regardless of mode, not folded into `_BANNERS["scroll"]` alone: the transcript pane
+    draws in every mode (only the banner and prompt differ), so new output can go unseen while
+    typing in "input" just as easily as while parked in "scroll".
+    """
+    text = _BANNERS[state.mode]
+    if state.new_output_while_scrolled:
+        text += "  [new output ↓]"
+    return text
+
+
 def _draw(screen: Screen, state: TuiState) -> None:
     height, width = screen.getmaxyx()
     screen.erase()
@@ -375,7 +397,7 @@ def _draw(screen: Screen, state: TuiState) -> None:
     n = max(0, width - 1)
     row, cursor_col = _input_row(prompt, state.input_buffer, state.cursor, n)
     screen.addnstr(0, 0, row, n)
-    screen.addnstr(1, 0, _fit(_BANNERS[state.mode], n), n)
+    screen.addnstr(1, 0, _fit(_banner(state), n), n)
     pane_height = max(0, height - 2)
     for i, line in enumerate(_visible(state, pane_height)):
         screen.addnstr(2 + i, 0, _fit(line, n), n)
