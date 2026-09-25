@@ -12,6 +12,16 @@
     - wait: { for: { id: perm.openPhotoPicker }, timeout: 10 }
     - tap: { id: perm.openPhotoPicker }
     - wait: { for: { id: "PXGGridLayout-Info" }, timeout: 10 }
+    # The grid can render before the freshly-`erase`d + `seedPhotos`-ed library has finished its own
+    # async catch-up (PHPhotoLibrary indexing/thumbnailing lags the `simctl addmedia` call that seeds
+    # it), so a tap that lands the instant the first cell appears can race an in-flight collection-view
+    # reload. `until: settled` (two identical consecutive tree reads) waits that reload out for the
+    # ordinary case; best-effort/never-fails, so it costs nothing when the grid was already stable.
+    # It does not fully close a rarer, deeper flake also seen on-device — the picker closing itself
+    # after only the first tap, apparently a PhotoKit-internal race under Simulator resource pressure
+    # from rapid repeated erase+reseed cycles, outside what any pre-tap wait here can observe or
+    # prevent (investigated; see the PR discussion for what was tried and ruled out).
+    - wait: { until: settled, timeout: 5 }
     - selectPhotos: { indices: [0, 1], timeout: 10 }
     - wait: { for: { id: perm.photos.value, value: "2" }, timeout: 10 }
   expect:

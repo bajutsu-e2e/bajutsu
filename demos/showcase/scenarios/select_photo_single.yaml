@@ -14,6 +14,9 @@
     - scroll: { to: { id: perm.openPhotoPickerSingle }, direction: down }
     - tap: { id: perm.openPhotoPickerSingle }
     - wait: { for: { id: "PXGGridLayout-Info" }, timeout: 10 }
+    # See select_photos.yaml's own comment on this step: waits out an in-flight collection-view
+    # reload for the ordinary case, but does not fully close the rarer, deeper flake noted there.
+    - wait: { until: settled, timeout: 5 }
     - selectPhotos: { indices: [0], timeout: 10 }
     - wait: { for: { id: perm.photos.value, value: "1" }, timeout: 10 }
   expect:
