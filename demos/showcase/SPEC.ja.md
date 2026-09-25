@@ -294,7 +294,7 @@ associated domain の仕掛けも要ります。無ければ iOS は何も申し
 有効なのは XCUITest バックエンドのみです。シナリオは
 [`select_photos.yaml`](scenarios/select_photos.yaml) と
 [`select_photo_single.yaml`](scenarios/select_photo_single.yaml) です。どちらもピッカーを開く前に
-`preconditions.seedPhotos` で写真ライブラリへ種をまきます。併記する `erase: true` が必須です。
+`preconditions.seedPhotos` で写真ライブラリをシードします。併記する `erase: true` が必須です。
 - `perm.openPhotoPicker` — 無制限選択のピッカーを提示するボタン
 - `perm.openPhotoPickerSingle` — `selectionLimit = 1` のピッカーを提示するボタン
 - `perm.photos.value` — 選択した枚数。ピッカーが閉じた時点でミラーされる（それまでは 0）
