@@ -10,8 +10,10 @@ run under a `FakeScreen` in tests with no real terminal; only `run` opens a real
 
 from __future__ import annotations
 
+import contextlib
 import curses
 import locale
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
@@ -20,6 +22,22 @@ from bajutsu.repl.render import _display_width
 from bajutsu.repl.session import COMMAND_ERRORS, FATAL_ERRORS, ReplExit, ReplSession
 
 Mode = Literal["input", "scroll", "filter"]
+
+_BANNERS: dict[Mode, str] = {
+    "input": "-- INPUT  (Tab: switch to scroll pane) --",
+    "scroll": (
+        "-- SCROLL  (Tab: back to input · ↑↓/jk scroll · PgUp/PgDn: page"
+        " · ←→: top/bottom · /: filter) --"
+    ),
+    "filter": "-- FILTER  (Enter: apply · Esc: cancel) --",
+}
+
+# `curses.getmouse()`'s own return shape: (id, x, y, z, bstate) — only `bstate` matters here.
+GetMouseEvent = Callable[[], tuple[int, int, int, int, int]]
+
+# Appended after every command's output — a scrollback full of answers otherwise runs together
+# with no visual seam between one command's last line and the next command's prompt.
+_EOL_MARKER = "-- EOL --"
 
 
 class Screen(Protocol):
@@ -104,11 +122,32 @@ def _handle_scroll_key(state: TuiState, key: int | str, pane_height: int) -> Non
         state.scroll_offset = min(max_offset, state.scroll_offset + max(1, pane_height))
     elif key == curses.KEY_NPAGE:
         state.scroll_offset = max(0, state.scroll_offset - max(1, pane_height))
+    elif key == curses.KEY_LEFT:
+        state.scroll_offset = max_offset
+    elif key == curses.KEY_RIGHT:
+        state.scroll_offset = 0
     elif key == "/":
         state.stashed_input = (state.input_buffer, state.cursor)
         state.mode = "filter"
         state.input_buffer = ""
         state.cursor = 0
+
+
+def _handle_wheel_scroll(state: TuiState, bstate: int, pane_height: int) -> None:
+    """Scroll the output pane on a mouse-wheel tick, whatever the current mode is.
+
+    A terminal's wheel arrives as `curses.KEY_MOUSE`/`getmouse()`, not a key constant `handle_key`
+    already dispatches on, and a wheel tick should move the view no matter what the operator is
+    doing — typing a command, filtering, already in the scroll pane — so this runs before
+    `handle_key`'s mode dispatch rather than folding into `_handle_scroll_key`. `BUTTON5_PRESSED`
+    (wheel down) is missing from some platforms' ncurses builds; `getattr` with a `0` default keeps
+    the check a no-op there instead of raising, at the cost of wheel-down doing nothing on those.
+    """
+    max_offset = max(0, len(_filtered(state)) - pane_height)
+    if bstate & curses.BUTTON4_PRESSED:
+        state.scroll_offset = min(max_offset, state.scroll_offset + 1)
+    elif bstate & getattr(curses, "BUTTON5_PRESSED", 0):  # pragma: no cover - no BUTTON5 here
+        state.scroll_offset = max(0, state.scroll_offset - 1)
 
 
 def _handle_filter_key(state: TuiState, key: int | str) -> None:
@@ -223,12 +262,17 @@ def _run_line(session: ReplSession, line: str) -> tuple[list[str], bool]:
         return [f"{type(e).__name__}: {e}"], False
 
 
-def run_tui(session: ReplSession, screen: Screen) -> None:
+def run_tui(
+    session: ReplSession,
+    screen: Screen,
+    get_mouse_event: GetMouseEvent = curses.getmouse,
+) -> None:
     """Drive the ncurses-style shell against *screen* until the operator leaves.
 
     Ctrl-C abandons the half-typed line (or a half-typed filter query), same intent as the plain
     loop's — but, unlike `input()`, curses gives no Ctrl-D/EOF signal in cbreak mode, so `exit` /
-    `quit`, typed and submitted, is the only way out.
+    `quit`, typed and submitted, is the only way out. `get_mouse_event` defaults to the real
+    `curses.getmouse` and is overridden only in tests, which have no mouse queue to read.
     """
     state = TuiState()
     while True:
@@ -248,14 +292,27 @@ def run_tui(session: ReplSession, screen: Screen) -> None:
         if key == curses.KEY_RESIZE:
             continue  # the next redraw picks up the new size
         height, _width = screen.getmaxyx()
-        line = handle_key(state, key, max(1, height - 2))
+        pane_height = max(1, height - 2)
+        if key == curses.KEY_MOUSE:
+            # Handled here, not through `handle_key`'s mode dispatch — same reasoning as
+            # `KEY_RESIZE` above: a terminal-level event, not a keystroke any mode interprets.
+            _handle_wheel_scroll(state, get_mouse_event()[4], pane_height)
+            continue
+        line = handle_key(state, key, pane_height)
         if line is None:
             continue
         if line.strip():
             state.history.append(line)
         state.history_index = None
+        if line.strip() == "clear":
+            # A shell-local convenience, not a driver command: `ReplSession` knows nothing of a
+            # transcript to wipe, so this never reaches `_run_line`/`session.dispatch`.
+            state.output = []
+            state.scroll_offset = 0
+            continue
         new_output, leave = _run_line(session, line)
         new_output.insert(0, f"{PROMPT}{line}")
+        new_output.append(_EOL_MARKER)
         _note_new_output(state, new_output)
         state.output.extend(new_output)
         if leave:
@@ -318,19 +375,24 @@ def _draw(screen: Screen, state: TuiState) -> None:
     n = max(0, width - 1)
     row, cursor_col = _input_row(prompt, state.input_buffer, state.cursor, n)
     screen.addnstr(0, 0, row, n)
-    if state.mode == "scroll":
-        banner = "-- SCROLL  (Tab: back to input · ↑↓/jk scroll · PgUp/PgDn: page · /: filter) --"
-    elif state.mode == "filter":
-        banner = "-- FILTER  (Enter: apply · Esc: cancel) --"
-    else:
-        banner = "-- INPUT  (Tab: switch to scroll pane) --"
-    screen.addnstr(1, 0, _fit(banner, n), n)
+    screen.addnstr(1, 0, _fit(_BANNERS[state.mode], n), n)
     pane_height = max(0, height - 2)
     for i, line in enumerate(_visible(state, pane_height)):
         screen.addnstr(2 + i, 0, _fit(line, n), n)
     if state.mode != "scroll":
         screen.move(0, min(cursor_col, n))
     screen.refresh()
+
+
+def _enable_wheel_reporting() -> None:
+    """Ask the terminal to report the mouse wheel as `curses.KEY_MOUSE`, best-effort.
+
+    `curses.error` covers both a terminal that cannot report mouse events at all and — relevant
+    only to this function's own tests — a `curses.wrapper` double that skips real `initscr()`;
+    either way the shell still works from the keyboard alone.
+    """
+    with contextlib.suppress(curses.error):
+        curses.mousemask(curses.BUTTON4_PRESSED | getattr(curses, "BUTTON5_PRESSED", 0))
 
 
 def run(session: ReplSession) -> None:
@@ -341,4 +403,9 @@ def run(session: ReplSession) -> None:
     `type`/`tap label:` argument decodes as mojibake instead of the characters actually typed.
     """
     locale.setlocale(locale.LC_ALL, "")
-    curses.wrapper(lambda stdscr: run_tui(session, stdscr))
+
+    def _run(stdscr: Screen) -> None:
+        _enable_wheel_reporting()
+        run_tui(session, stdscr)
+
+    curses.wrapper(_run)

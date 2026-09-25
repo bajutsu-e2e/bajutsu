@@ -736,6 +736,7 @@ Once the app is up, the shell prompts with `bajutsu>`:
 | `screenshot [path]` | write a screenshot; auto-named `repl-<UTC timestamp>.png` in the current directory when the path is omitted |
 | `help` | list the commands above |
 | `exit` / `quit` | leave the shell |
+| `clear` | wipe the scroll pane's transcript — the ncurses shell only; the plain fallback (below) has no persistent transcript to wipe, so it reports `clear` as an unknown command |
 
 **Targets** (`tap`/`type`): the shell reaches the same `id` / `label` / `index` vocabulary a
 scenario selector does, plus a raw coordinate that `tap` alone accepts, bypassing selector
@@ -781,9 +782,11 @@ or starts with `@` or `label:`, and none of them reaches `idMatches`, `labelMatc
 
 **The shell itself** is an ncurses-style screen when both stdin and stdout are a real terminal —
 the command line stays pinned at the top; every command's answer accumulates in a scrollable pane
-below it. A banner on the line right below the input names the current mode; in the input line and
-the scroll pane it also spells out the `Tab` binding, so the mode switch stays visible without
-checking this table:
+below it, each answer closed by its own `-- EOL --` line so a long scrollback still shows where one
+command's output ends and the next begins. A banner on the line right below the input names the
+current mode; in the input line and the scroll pane it also spells out the `Tab` binding, so the
+mode switch stays visible without checking this table. The mouse wheel also scrolls the pane, in
+every mode, on a terminal that reports it — a keyboard-free alternative to the rows below:
 
 | Key | In the input line | In the scroll pane |
 |---|---|---|
@@ -791,13 +794,14 @@ checking this table:
 | `↑` / `↓` | recall the previous/next command from history | scroll the output up/down one line |
 | `k` / `j` | typed as ordinary characters | scroll the output up/down one line (vim-style, alongside `↑`/`↓`) |
 | `PgUp` / `PgDn` | — | scroll the output up/down a full pane |
+| `←` / `→` | move the cursor left/right | jump straight to the top/bottom |
 | `/` | — | open a filter prompt; `Enter` sets it (a case-insensitive substring over the whole transcript), an empty pattern clears it, `Esc` abandons the edit |
 | `Ctrl-C` | abandon the half-typed line | — |
 
 Piped stdin/stdout (a script, a test harness, `bajutsu repl < commands.txt`) falls back to a plain
-line-at-a-time shell instead — every command above behaves identically either way, and `exit` /
-`quit` leave the shell in both (Ctrl-D also does, in the plain fallback only — curses has no
-Ctrl-D/EOF signal to read).
+line-at-a-time shell instead — every command above except `clear` behaves identically either way,
+and `exit` / `quit` leave the shell in both (Ctrl-D also does, in the plain fallback only — curses
+has no Ctrl-D/EOF signal to read).
 
 ## `codegen`
 
