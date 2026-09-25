@@ -56,6 +56,10 @@ summary::-webkit-details-marker{display:none}
 /* Custom player: a slim control bar sits BELOW the recording rather than overlaying it
    (the native HTML5 controls draw their bar across the bottom of the frame, covering the
    app's own bottom UI — e.g. a tab bar — which reads as "in the way"). */
+/* A multi-target scenario's own videos (BE-0428) stack in the same 300px media column, each
+   labeled by its target so a reader can tell which device the frame below it shows. */
+.players{display:flex;flex-direction:column;gap:.6rem}
+.players .tgtlbl{margin:0 0 .2rem}
 .player{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#000}
 .player video{display:block;width:100%;background:#000;cursor:pointer}
 .vctl{display:flex;align-items:center;gap:.5rem;padding:.34rem .5rem;background:#1c1c1e;color:#e6e6e6}
@@ -210,7 +214,9 @@ img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-ali
 .deflbl{display:block;margin-top:.9rem;margin-bottom:.35rem;font-size:.72rem;font-weight:700;
  text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}
 .envsec{margin-bottom:.8rem}
-.envsec .pretbl{border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.envsec .pretbl{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:.4rem}
+.envsec .pretbl:last-child{margin-bottom:0}
+.tgtlbl{display:block;margin-bottom:.2rem;font:700 .74rem ui-monospace,Menlo,Consolas,monospace;color:var(--ink)}
 details.pre{margin-bottom:.6rem;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 details.pre>summary{display:block;cursor:pointer;padding:.32rem .6rem;background:#fafafb;
  font:700 .72rem -apple-system,system-ui,sans-serif;text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}

@@ -7,6 +7,7 @@ import logging
 import subprocess
 import threading
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -1841,6 +1842,42 @@ def test_device_pool_web_lease(monkeypatch: pytest.MonkeyPatch) -> None:
         assert fakes[0].navigated == 2
         leased.release()  # tears the browser down
         assert fakes[0].closed == 1
+    finally:
+        shutdown()
+
+
+def test_device_pool_web_lease_starts_video_from_config_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BE-0028's third source (the config's `defaults.capture` baseline) has to reach the up-front
+    recorders too: web binds video to the browser context at creation (`records_video_up_front`),
+    before any step's own `capture:` could fire — so a scenario that asks for video only through
+    that config baseline, never its own `capturePolicy` or an inline step `capture:`, must still
+    get one. (Regression: this leg of `lease()` used to call `requested_intervals(scenario)` with
+    no config baseline at all, unlike the interval-video path, which always threaded it through.)"""
+    captured: dict[str, object] = {}
+
+    def fake_make_driver(
+        actuator: str,
+        udid: str,
+        base_url: str | None = None,
+        headless: bool = True,
+        browser: str = "chromium",
+        device_mode: str = "desktop",
+        record_video_dir: object = None,
+    ) -> base.Driver:
+        captured["record_video_dir"] = record_video_dir
+        return _FakeWeb([_el("home", "H"), _el("ok", "OK")])
+
+    monkeypatch.setattr("bajutsu.common.backends.make_driver", fake_make_driver)
+    eff = replace(_eff_web(), capture=["screenshot.after", "video"])
+    lease, shutdown = device_pool(
+        ["web"], ["web"], eff, Path("runs"), network=False, available=lambda b: True
+    )
+    try:
+        leased = lease(eff, _scn("a"))  # the scenario itself declares no capture at all
+        assert captured["record_video_dir"] is not None
+        leased.release()
     finally:
         shutdown()
 

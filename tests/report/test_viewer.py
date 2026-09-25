@@ -54,6 +54,41 @@ def test_html_embeds_scenario_video() -> None:
     assert "<video " not in html_report("run9", [_passing()])
 
 
+def test_html_embeds_one_player_per_declared_targets_video() -> None:
+    # BE-0428: a multi-target scenario's secondary target can record its own scenario-wide video
+    # too (its own lease, its own capture baseline) — the report shows both, each in its own
+    # labeled player, rather than only the primary's own the way a single-target run always has.
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[
+            StepOutcome(index=0, action="tap", target="app", ok=True, started_at=100.0),
+            StepOutcome(index=1, action="tap", target="web", ok=True, started_at=104.0),
+        ],
+        expect_results=[],
+        artifacts=[
+            Artifact("00-s1/scenario.mp4", "video", "simctl"),
+            Artifact("00-s1/web/scenario.mp4", "video", "playwright", target="web"),
+        ],
+        video_anchor_s=100.0,
+        target_video_anchors={"web": 102.0},
+    )
+    out = html_report("run1", [r])
+    assert out.count("<video ") == 2
+    assert 'src="00-s1/scenario.mp4"' in out and 'src="00-s1/web/scenario.mp4"' in out
+    # The primary's own player carries no target label or offset (offset 0.0, the reference video);
+    # the web one is labeled and carries its offset relative to the primary (102.0 - 100.0 = 2.0).
+    assert '<div class="player" data-target="" data-offset="0.0">' in out
+    assert '<div class="player" data-target="web" data-offset="2.0">' in out
+    assert '<span class="tgtlbl">web</span>' in out
+    # Each step's own `data-t` is computed against its own target's anchor, not the other one's:
+    # the app step (started_at=100.0, anchor 100.0) reads 0.0s in; the web step (started_at=104.0,
+    # anchor 102.0) reads 2.0s into *its own* recording, not 4.0s into the primary's.
+    assert "data-t='0.000'" in out
+    assert "data-t='2.000'" in out
+    assert " data-target='app'" in out and " data-target='web'" in out
+
+
 def test_html_discloses_why_the_video_is_missing_on_a_backend_crash() -> None:
     # A scenario whose backend crashed mid-run and never recovered carries no video artifact
     # (the recording died with the lease), but the pipeline discloses the gap as a `SkippedCapture`

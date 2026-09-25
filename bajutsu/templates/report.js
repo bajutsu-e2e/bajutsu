@@ -300,7 +300,11 @@
   // expectations footer then pins to the bottom of that bound. Cleared when there is no
   // recording or the card is collapsed (so the layout falls back to its natural flow).
   function syncResultHeight(scn){
-    var player = scn.querySelector('.player'), wrap = scn.querySelector('.rich-wrap');
+    // `.players` (BE-0428) wraps every video a multi-target scenario shows, stacked — bound to its
+    // combined height, not just the first one's, so the steps list doesn't overflow past a second
+    // or third player underneath it.
+    var player = scn.querySelector('.players') || scn.querySelector('.player');
+    var wrap = scn.querySelector('.rich-wrap');
     if(!wrap) return;
     if(!player){ wrap.style.maxHeight = ''; return; }
     var pr = player.getBoundingClientRect();
@@ -313,11 +317,37 @@
   ROOT.querySelectorAll('details.scn').forEach(function(d){
     d.addEventListener('toggle', function(){ if(d.open) syncResultHeight(d); });
   });
+  // Every scenario's videos share one group here (BE-0428): keyed by the `.scn` element, so a
+  // click, seek, or play/pause on any one of a multi-target scenario's recordings can find its
+  // siblings and follow — the group is looked up live inside each player's own listeners below,
+  // not captured at setup time, so it already holds every player by the time any of them fires.
+  var scnGroups = new Map();
   ROOT.querySelectorAll('.player').forEach(function(p){
     var v = p.querySelector('video'), btn = p.querySelector('.vplay');
     var seek = p.querySelector('.vseek'), time = p.querySelector('.vtime');
     var marks = p.querySelector('.vmarks'), segs = p.querySelector('.vsegs'), scn = p.closest('.scn');
     var knob = p.querySelector('.vknob');
+    // This player's own declared target ("" for the primary/single-target case) and how many
+    // seconds ahead of the *first* video in this scenario its own recording started — never the
+    // raw wall-clock instant itself (the server deliberately never sends one; see `_videos` in
+    // panels.py). `syncSiblings` below turns that small delta into "the same moment, on a sibling
+    // video's own timeline" (BE-0428).
+    var target = p.getAttribute('data-target') || '';
+    var offset = parseFloat(p.getAttribute('data-offset')); if(isNaN(offset)) offset = 0;
+    // This player's own rows: every `tr.srow[data-t]` naming the same target, primary included (a
+    // single-target scenario's rows all carry `data-target=""`, matching its one player). Scoping
+    // ticks/bands/highlighting to these — instead of every row in the scenario — is what keeps a
+    // second target's steps off the first target's scrubber and vice versa.
+    function myRows(){
+      return Array.prototype.slice.call(scn ? scn.querySelectorAll('tr.srow[data-t]') : []).filter(
+        function(r){ return (r.getAttribute('data-target') || '') === target; }
+      );
+    }
+    if(scn){
+      var group = scnGroups.get(scn);
+      if(!group){ group = []; scnGroups.set(scn, group); }
+      group.push({v: v, offset: offset});
+    }
     function moveKnob(){
       if(!knob || !isFinite(v.duration) || v.duration <= 0) return;
       knob.style.left = Math.max(0, Math.min(100, v.currentTime / v.duration * 100)) + '%';
@@ -325,6 +355,36 @@
     if(!v || !btn || !seek || !time) return;
     function paint(){ btn.textContent = v.paused ? '▶' : '❚❚'; }
     function clock(){ time.textContent = fmtT(v.currentTime) + ' / ' + fmtT(v.duration); }
+    // Carry this video's play/pause state and playhead onto every sibling recording in the same
+    // scenario (BE-0428): every player's own `offset` (server-computed, BE-0428's `_videos`) is
+    // relative to the same first video, so subtracting this one's own offset and adding a
+    // sibling's converts "this instant" into "the same moment, on the sibling's own timeline" —
+    // never by way of a raw wall-clock instant (see the `offset` field's own comment above).
+    //
+    // `v._synced` guards against exactly the feedback loop that clamping otherwise creates: two
+    // recordings rarely span the same wall-clock range (one target's steps often finish before the
+    // other's start), so a moment past a sibling's own end/start clamps to its boundary — a value
+    // that does *not* map back to the instant that produced it. Without the guard, that sibling's
+    // own `seeked` would call this function again, "correct" *this* video from the very position
+    // the viewer just set, and the two would fight over it. Marking a sibling `_synced` right before
+    // giving it a new position or play state means its own resulting event finds the flag, clears
+    // it, and returns without propagating — the sibling's echo is absorbed, not relayed.
+    function syncSiblings(){
+      if(v._synced){ v._synced = false; return; }
+      if(!scn) return;
+      var group = scnGroups.get(scn);
+      if(!group || group.length < 2) return;
+      var refTime = v.currentTime - offset;
+      var playing = !v.paused;
+      group.forEach(function(sib){
+        if(sib.v === v) return;
+        var t = refTime + sib.offset;
+        t = isFinite(sib.v.duration) && sib.v.duration > 0 ? Math.max(0, Math.min(sib.v.duration, t)) : Math.max(0, t);
+        if(Math.abs(sib.v.currentTime - t) > 0.08){ sib.v._synced = true; sib.v.currentTime = t; }
+        if(playing && sib.v.paused){ sib.v._synced = true; sib.v.play().catch(function(){}); }
+        else if(!playing && !sib.v.paused){ sib.v._synced = true; sib.v.pause(); }
+      });
+    }
     function bands(){
       // The `before` band runs from the recording's start to the first main step (or, lacking
       // one, its own last step); the `after` band runs from its first step to the recording's
@@ -332,7 +392,7 @@
       // roughly where setup/teardown sit relative to the scenario's own steps.
       if(!segs || !scn || !isFinite(v.duration) || v.duration <= 0) return;
       var before = [], main = [], after = [];
-      scn.querySelectorAll('tr.srow[data-t]').forEach(function(r){
+      myRows().forEach(function(r){
         var t = parseFloat(r.getAttribute('data-t')); if(isNaN(t)) return;
         var phase = r.getAttribute('data-phase');
         (phase === 'before' ? before : phase === 'after' ? after : main).push(t);
@@ -359,7 +419,7 @@
       // number + time, or time range) and seeks to the start on click.
       if(!marks || !scn || !isFinite(v.duration) || v.duration <= 0) return;
       var html = '';
-      scn.querySelectorAll('tr.srow[data-t]').forEach(function(r){
+      myRows().forEach(function(r){
         var t = parseFloat(r.getAttribute('data-t')); if(isNaN(t)) return;
         var endAttr = r.getAttribute('data-t-end');
         var tEnd = endAttr !== null ? parseFloat(endAttr) : NaN;
@@ -405,6 +465,7 @@
         v.currentTime = t;
         if(!seek.matches(':active')) seek.value = t;
         moveKnob();
+        syncSiblings();
       }
       marks.addEventListener('pointerdown', function(e){
         var m = e.target.closest('.vmark');
@@ -462,13 +523,29 @@
     }
     v.addEventListener('play', paint);
     v.addEventListener('pause', paint);
+    // BE-0428: play and seek propagate to every sibling recording in the same scenario, once, at
+    // the moment they happen — never on every `timeupdate` tick. Two recordings are almost never
+    // the same length (one target's steps often finish well before the other's), so pinning them
+    // to march in lockstep the whole time would mean whichever is shorter keeps yanking the other
+    // back to a clamped boundary for as long as it plays, and would then stop it outright at its
+    // own end (see the `pause` handler below) — a sibling that starts in the right place is left to
+    // play on at its own native rate after that, exactly like an ordinary unsynced video would.
+    v.addEventListener('play', syncSiblings);
+    v.addEventListener('pause', function(){
+      // The shorter recording reaches `pause` via its own natural end (`v.ended`) before a longer
+      // sibling does — that must not stop the sibling early. Only a real pause (the button, or the
+      // frame click, both call `v.pause()` directly with `ended` still false) propagates.
+      if(v.ended) return;
+      syncSiblings();
+    });
+    v.addEventListener('seeked', syncSiblings);
     v.addEventListener('loadedmetadata', meta);
     v.addEventListener('timeupdate', function(){
       if(!seek.matches(':active')) seek.value = v.currentTime;   // don't fight an active drag
       clock();
       moveKnob();
     });
-    seek.addEventListener('input', function(){ v.currentTime = parseFloat(seek.value); moveKnob(); });
+    seek.addEventListener('input', function(){ v.currentTime = parseFloat(seek.value); moveKnob(); syncSiblings(); });
     paint(); meta();   // handle the case where metadata is already cached (event won't fire)
   });
   // Sync each scenario's recording with its step rows: click a step to seek there (or
@@ -482,38 +559,49 @@
     else if(rr.bottom > cr.bottom) box.scrollTop += (rr.bottom - cr.bottom) + 8;
   }
   ROOT.querySelectorAll('.scn').forEach(function(scn){
-    var v = scn.querySelector('video'); if(!v) return;
-    var rows = Array.prototype.slice.call(scn.querySelectorAll('tr.srow'));
-    if(!rows.length) return;
-    var box = scn.querySelector('.rich-scroll'), lastCur = null;
-    rows.forEach(function(r){
-      r.addEventListener('click', function(e){
-        // links / tree button / screenshot / the step's own jump buttons handled elsewhere
-        // (a jump button seeks to its own instant instead of the row's default start).
-        if(e.target.closest('a') || e.target.closest('.treebtn') || e.target.closest('.shot') || e.target.closest('.stepjump')) return;
-        var t = parseFloat(r.getAttribute('data-t'));
-        // Seek only: keep playing if already playing, stay paused if paused.
-        if(!isNaN(t)){ v.currentTime = t; }
+    var box = scn.querySelector('.rich-scroll');
+    // One pass per player rather than per scenario (BE-0428): each recording only ever seeks
+    // itself and only ever highlights its own target's rows — a click on a web step never moves
+    // the iOS recording's playhead, only (via `syncSiblings` above) follows it there. A row's own
+    // target ("" included) is what ties it to the one player it belongs to.
+    scn.querySelectorAll('.player').forEach(function(p){
+      var v = p.querySelector('video'); if(!v) return;
+      var target = p.getAttribute('data-target') || '';
+      var rows = Array.prototype.slice.call(scn.querySelectorAll('tr.srow[data-target]')).filter(
+        function(r){ return r.getAttribute('data-target') === target; }
+      );
+      if(!rows.length) return;
+      var lastCur = null;
+      rows.forEach(function(r){
+        r.addEventListener('click', function(e){
+          // links / tree button / screenshot / the step's own jump buttons handled elsewhere
+          // (a jump button seeks to its own instant instead of the row's default start).
+          if(e.target.closest('a') || e.target.closest('.treebtn') || e.target.closest('.shot') || e.target.closest('.stepjump')) return;
+          var t = parseFloat(r.getAttribute('data-t'));
+          // Seek only: keep playing if already playing, stay paused if paused.
+          if(!isNaN(t)){ v.currentTime = t; }
+        });
+        // A step's own start/end jump buttons (its `before`/`after` moment) — stop the click from
+        // also firing the row handler above, which would otherwise re-seek to the row's start right
+        // after the end button just seeked past it. Scoped to this player's own rows, same as the
+        // row click above: a jump button always belongs to the row it is drawn inside of.
+        r.querySelectorAll('.stepjump').forEach(function(btn){
+          btn.addEventListener('click', function(e){
+            e.stopPropagation();
+            var t = parseFloat(btn.getAttribute('data-t'));
+            if(!isNaN(t)){ v.currentTime = t; }
+          });
+        });
       });
-    });
-    // A step's own start/end jump buttons (its `before`/`after` moment) — stop the click from
-    // also firing the row handler above, which would otherwise re-seek to the row's start right
-    // after the end button just seeked past it.
-    scn.querySelectorAll('.stepjump').forEach(function(btn){
-      btn.addEventListener('click', function(e){
-        e.stopPropagation();
-        var t = parseFloat(btn.getAttribute('data-t'));
-        if(!isNaN(t)){ v.currentTime = t; }
+      v.addEventListener('timeupdate', function(){
+        var ct = v.currentTime + 0.001, cur = null;
+        for(var i=0;i<rows.length;i++){
+          var t = parseFloat(rows[i].getAttribute('data-t'));
+          if(!isNaN(t) && t <= ct) cur = rows[i];
+        }
+        rows.forEach(function(r){ r.classList.toggle('playing', r===cur); });
+        if(cur !== lastCur){ lastCur = cur; if(cur) scrollIntoBox(box, cur); }
       });
-    });
-    v.addEventListener('timeupdate', function(){
-      var ct = v.currentTime + 0.001, cur = null;
-      for(var i=0;i<rows.length;i++){
-        var t = parseFloat(rows[i].getAttribute('data-t'));
-        if(!isNaN(t) && t <= ct) cur = rows[i];
-      }
-      rows.forEach(function(r){ r.classList.toggle('playing', r===cur); });
-      if(cur !== lastCur){ lastCur = cur; if(cur) scrollIntoBox(box, cur); }
     });
   });
 })();

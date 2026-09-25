@@ -316,3 +316,14 @@ targets:
       - condition: { exists: { id: [aerr_wait] } }
         steps:
           - tap: { id: [aerr_close] }
+
+  # ---- Web, the app-agnostic Playwright twin used only by cross_platform_app_web.yaml -----
+  # Not a showcase app port: it points at demos/web's own static demo app (its stable data-testid
+  # ids, unrelated to the horse catalog), reused here purely as a second, independently driven
+  # client for a multi-target scenario (BE-0428) pairing a native target with a web one — the
+  # pairing docs/scenarios.md's `targets` section illustrates. `make -C demos/showcase
+  # e2e-multi-target-web` serves it on its own port (distinct from demos/web's own e2e, so the two
+  # never collide if run back to back).
+  web:
+    baseUrl: "http://127.0.0.1:8789/index.html"
+    backend: [web]
