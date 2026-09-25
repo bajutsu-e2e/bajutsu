@@ -224,18 +224,23 @@ def test_k_in_scroll_mode_increases_the_offset_like_up() -> None:
     assert state.scroll_offset == 2
 
 
-def test_j_in_scroll_mode_decreases_but_not_below_zero() -> None:
+def test_j_in_scroll_mode_clamps_at_zero() -> None:
     state = _scrolled(50)
     handle_key(state, "j", 10)
     assert state.scroll_offset == 0
 
 
-def test_j_after_k_returns_to_the_bottom() -> None:
+def test_j_decreases_a_positive_offset_and_clamps_at_zero() -> None:
     state = _scrolled(50)
     handle_key(state, "k", 10)
     handle_key(state, "k", 10)
+    assert state.scroll_offset == 2
     handle_key(state, "j", 10)
     assert state.scroll_offset == 1
+    handle_key(state, "j", 10)
+    assert state.scroll_offset == 0
+    handle_key(state, "j", 10)  # already at the bottom
+    assert state.scroll_offset == 0
 
 
 def test_j_and_k_are_ordinary_characters_outside_scroll_mode() -> None:
