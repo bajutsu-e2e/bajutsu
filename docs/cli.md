@@ -781,12 +781,14 @@ or starts with `@` or `label:`, and none of them reaches `idMatches`, `labelMatc
 
 **The shell itself** is an ncurses-style screen when both stdin and stdout are a real terminal —
 the command line stays pinned at the top; every command's answer accumulates in a scrollable pane
-below it:
+below it. A banner on the line right below the input always names the current mode and reminds
+that `Tab` switches it, so the binding stays visible without checking this table:
 
 | Key | In the input line | In the scroll pane |
 |---|---|---|
 | `Tab` | switch to the scroll pane | switch back to the input line |
 | `↑` / `↓` | recall the previous/next command from history | scroll the output up/down one line |
+| `k` / `j` | — | scroll the output up/down one line (vim-style, alongside `↑`/`↓`) |
 | `PgUp` / `PgDn` | — | scroll the output up/down a full pane |
 | `/` | — | open a filter prompt; `Enter` sets it (a case-insensitive substring over the whole transcript), an empty pattern clears it, `Esc` abandons the edit |
 | `Ctrl-C` | abandon the half-typed line | — |
