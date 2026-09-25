@@ -67,10 +67,8 @@ conditional form, a 体言止め label) as a confirmed violation sends a contrib
 prose instead of fixing real drift. Either failure mode defeats the rule this item's design depends
 on: finish a file, or leave it alone.
 
-Once this item ships, a converted file's own detector report is the observable proof. Today, the
-detector flags most of BE-0089's Japanese sentences, since the file is 94% 常体. After this item's
-own implementation converts that file, the detector's report for it holds only the candidates a
-human discarded on purpose. No genuine violation remains.
+Once this item ships, a converted file's own detector report is the observable proof, as *Proving
+the recipe: BE-0089* below shows in detail.
 
 ## Detailed design
 
@@ -90,13 +88,13 @@ sentences on `。`, `！`, and `？`; a block with no terminal mark (a 体言止
 counts as one sentence.
 
 Detection works by exclusion, not enumeration. Each sentence goes through a Japanese morphological
-analyzer. A plain suffix match cannot do this reliably: a trailing parenthetical group (skipped
-whole, from the closing bracket back to its matching opening bracket, so "（BE-0089）" does not
-hide the predicate before it), sentence-final particles (か, ね, よ), and multi-morpheme auxiliary
-chains (ました splits into まし + た) all sit after the morpheme that actually carries 敬体. The
-detector walks the sentence's trailing morphemes back past those, and flags the sentence as a
-candidate unless that trailing span contains a です or ます morpheme, matched by lemma, or ends in
-ください (lemma 下さる).
+analyzer. A plain suffix match cannot do this reliably: a trailing parenthetical group,
+sentence-final particles (か, ね, よ), and multi-morpheme auxiliary chains (ました splits into
+まし + た) all sit after the morpheme that actually carries 敬体. A trailing parenthetical is
+skipped whole, from the closing bracket back to its matching opening bracket, so "（BE-0089）" does
+not hide the predicate before it. The detector walks the sentence's trailing morphemes back past
+these, and flags the sentence as a candidate unless that trailing span contains a です or ます
+morpheme, matched by lemma, or ends in ください (lemma 下さる).
 
 The detector over-flags on purpose. `japanese-document-writing` already exempts a 連体修飾節 and a
 conditional or conjunctive form (〜する場合, 〜すると, 〜であり) mid-sentence, since the
@@ -147,20 +145,24 @@ conjunctive form) — but none of those cover a `## Progress` / `## 進捗` chec
 
 This item adds that fourth exemption anyway, on the same footing as the label exemption a heading
 already has: a work-item bullet names a task, not an argument a reader follows, and the heading and
-体言止め-label exemptions turn on exactly that distinction between a label and prose. Every
-already-`Implemented` item this proposal surveyed —
-[BE-0343](../BE-0343-prose-companion-pr/BE-0343-prose-companion-pr-ja.md),
-[BE-0384](../BE-0384-record-issue-skill/BE-0384-record-issue-skill-ja.md) — already writes its
-checklist this way, so the carve-out states what the corpus already does rather than changing it,
-though the two disagree on form: BE-0343 writes each bullet as a task label, while BE-0384 writes a
-full 常体 sentence. The exemption covers both, since neither is 敬体 prose a reader follows.
-Converting those already-shipped checklists to match the letter of the current rule would touch a
-finished work log for no reader's benefit.
+体言止め-label exemptions turn on exactly that distinction between a label and prose. The corpus is
+mixed rather than uniform on this point. 39 or more `*-ja.md` items already write a single-line
+`## Progress` bullet in 敬体, so the exemption permits a form beside the one the norm already
+requires, rather than only describing what exists. Two already-`Implemented` items this proposal
+surveyed write it the other way, and differ from each other too:
+[BE-0343](../BE-0343-prose-companion-pr/BE-0343-prose-companion-pr-ja.md) writes each bullet as a
+task label, while [BE-0384](../BE-0384-record-issue-skill/BE-0384-record-issue-skill-ja.md) writes
+a full 常体 sentence. The exemption covers both, since neither is 敬体 prose a reader follows, and
+it leaves an existing 敬体 checklist untouched — the conversion recipe never has to decide whether
+to downgrade one. Converting an already-shipped 常体 or label checklist to match the letter of the
+current rule would touch a finished work log for no reader's benefit.
 
-Two sentences in `japanese-document-writing` need the edit, not one: the bullet-list line in the
-textlint section, and the no-mixing sentence in the 文体 section ("do not mix 敬体 and 常体 within
-one document"), which otherwise still reads a 常体 checklist bullet as mixing register with the
-rest of a 敬体 document.
+Three sentences in `japanese-document-writing` need the edit, not one. The bullet-list line in the
+textlint section states the rule. The sentence right after it goes further, and names a 常体 or
+体言止め checklist bullet a violation outright ("writing a bullet in 常体 or 体言止め prose violates
+this norm and textlint both"). The no-mixing sentence in the 文体 section ("do not mix 敬体 and 常体
+within one document") still reads a 常体 checklist bullet as mixing register with the rest of a
+敬体 document unless it is edited too.
 
 ### Proving the recipe: BE-0089
 
@@ -179,11 +181,14 @@ here: it is one-time retroactive cleanup, not a recurring drift. Issue #1842 sta
 informal pointer to it. A contributor converts one file at a time, confirms it with the detector,
 and opens a small PR whenever time allows.
 
-This item also adds no guard against a converted file drifting back: the register norm already
-governed BE-0089's Japanese side when it was written non-compliant, and nothing here changes that.
-The detector over-flags by design, so its raw candidate count cannot gate a file the way
-`coverage-floors.json` gates a coverage number; a per-file candidate-count ratchet is a real option,
-left for a later item if regression turns out to be a real problem rather than a hypothetical one.
+This item also adds no guard against a converted file drifting back. Motivation already shows drift
+is not hypothetical: about 347 files were written under a rule that already named 敬体 as the
+required register, and 363 of them drifted anyway, so the norm alone does not hold. A review-time
+norm without tooling inherits that same failure mode after a file converts, and this item does not
+change that. The detector over-flags by design, so its raw candidate count cannot gate a file the
+way `coverage-floors.json` gates a coverage number, but a per-file candidate-count ratchet, or a
+gate scoped to only the `*-ja.md` files a pull request touches, is a real option — left for a later
+item, since no converted file has drifted back yet to show which of the two is worth building.
 
 ## Alternatives considered
 
@@ -203,9 +208,10 @@ left for a later item if regression turns out to be a real problem rather than a
 - [ ] Add `scripts/ja_register_check.py` — the exclusion-based detector, its ephemeral
       `sudachipy` dependency via PEP 723, the `[[tool.mypy.overrides]]` entry, and the
       `make ja-register-check` wrapper.
-- [ ] Amend `japanese-document-writing`'s 文体 no-mixing sentence and its textlint bullet-list
-      line to exempt `## Progress` / `## 進捗` checklist bullets from 敬体, alongside the existing
-      heading and 体言止め-label exemption.
+- [ ] Amend three sentences in `japanese-document-writing` — the textlint bullet-list line, the
+      sentence right after it that names a 常体 or 体言止め bullet a violation, and the 文体
+      no-mixing sentence — to exempt `## Progress` / `## 進捗` checklist bullets from 敬体,
+      alongside the existing heading and 体言止め-label exemption.
 - [ ] Convert [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md)'s
       Japanese side to 敬体 completely, checked against the detector's report, as the first proof
       of the recipe.
