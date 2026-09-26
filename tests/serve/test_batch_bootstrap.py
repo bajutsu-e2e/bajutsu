@@ -127,3 +127,86 @@ def test_register_batch_providers_raises_when_client_factory_fails(
         batch_bootstrap.register_batch_providers(
             {"DEVICEFARM_PROJECT_ARN": "arn:aws:devicefarm:us-west-2:1:project:abc"}
         )
+
+
+# ---------------------------------------------------------------------------
+# BAJUTSU_BATCH_HOOKS loading (BE-0435)
+# ---------------------------------------------------------------------------
+
+
+def _patch_aws(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Patch the AWS seams so register_batch_providers doesn't need boto3 or HTTP."""
+    monkeypatch.setattr(batch_bootstrap, "_make_devicefarm_client", _recording_client([]))
+    monkeypatch.setattr(batch_bootstrap, "HttpTransfer", object)
+
+
+def test_no_hooks_env_var_produces_empty_hooks(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_aws(monkeypatch)
+    batch_bootstrap.register_batch_providers(
+        {"DEVICEFARM_PROJECT_ARN": "arn:aws:devicefarm:us-west-2:1:project:abc"}
+    )
+    provider = bp.resolve("devicefarm")
+    assert isinstance(provider, bp.DeviceFarmBatchProvider)
+    assert provider._hooks == []
+
+
+def test_bajutsu_batch_hooks_loads_hook_factory(monkeypatch: pytest.MonkeyPatch) -> None:
+    # BAJUTSU_BATCH_HOOKS=module:factory → importlib loads the module, calls factory(), wires result.
+    import sys
+    from types import ModuleType
+
+    _patch_aws(monkeypatch)
+    sentinel = object()
+    fake_mod = ModuleType("_test_hook_module_single")
+    fake_mod.make_hook = lambda: sentinel  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "_test_hook_module_single", fake_mod)
+
+    batch_bootstrap.register_batch_providers(
+        {
+            "DEVICEFARM_PROJECT_ARN": "arn:aws:devicefarm:us-west-2:1:project:abc",
+            "BAJUTSU_BATCH_HOOKS": "_test_hook_module_single:make_hook",
+        }
+    )
+
+    provider = bp.resolve("devicefarm")
+    assert isinstance(provider, bp.DeviceFarmBatchProvider)
+    assert provider._hooks == [sentinel]
+
+
+def test_bajutsu_batch_hooks_loads_multiple_comma_separated(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+    from types import ModuleType
+
+    _patch_aws(monkeypatch)
+    hook_a = object()
+    hook_b = object()
+    mod_a = ModuleType("_test_hook_mod_a")
+    mod_a.factory = lambda: hook_a  # type: ignore[attr-defined]
+    mod_b = ModuleType("_test_hook_mod_b")
+    mod_b.factory = lambda: hook_b  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "_test_hook_mod_a", mod_a)
+    monkeypatch.setitem(sys.modules, "_test_hook_mod_b", mod_b)
+
+    batch_bootstrap.register_batch_providers(
+        {
+            "DEVICEFARM_PROJECT_ARN": "arn:aws:devicefarm:us-west-2:1:project:abc",
+            "BAJUTSU_BATCH_HOOKS": "_test_hook_mod_a:factory, _test_hook_mod_b:factory",
+        }
+    )
+
+    provider = bp.resolve("devicefarm")
+    assert isinstance(provider, bp.DeviceFarmBatchProvider)
+    assert provider._hooks == [hook_a, hook_b]
+
+
+def test_bajutsu_batch_hooks_invalid_format_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    # An entry without the module:factory colon separator must raise, not silently skip.
+    _patch_aws(monkeypatch)
+
+    with pytest.raises(ValueError, match="module:factory"):
+        batch_bootstrap.register_batch_providers(
+            {
+                "DEVICEFARM_PROJECT_ARN": "arn:aws:devicefarm:us-west-2:1:project:abc",
+                "BAJUTSU_BATCH_HOOKS": "bad_entry_no_colon",
+            }
+        )

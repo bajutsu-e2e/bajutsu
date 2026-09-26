@@ -253,6 +253,55 @@ directory so its report viewer and history render it like any other. The submiss
 machinery stays off the `run`/CI verdict path, with no large language model (LLM) call on it (prime
 directive 1).
 
+## Server-side batch lifecycle hooks (BE-0435)
+
+`render_test_spec`'s `pre_test_commands` hook (BE-0432) handles **device-host setup**: commands that run on the Device Farm host, during the run, as shell. Some per-run setup cannot run there. It must happen in the `serve` process before packaging — for example, minting a short-lived credential that the app must receive through its launch environment.
+
+`BatchLifecycleHook` covers that gap. A hook runs in the `serve` process around one `DeviceFarmBatchProvider.submit` call:
+
+- **`before_submit(ctx)`** — called before the package is built. May populate `ctx.launch_env` with key/value pairs that are merged into the packaged config's `targets.<target>.launchEnv` before upload, so the app receives them as launch environment variables.
+- **`after_run(ctx, verdict)`** — called in a `finally` after the verdict is collected (or with `verdict=None` when the run fails before a verdict is available), in reverse hook order so teardown mirrors setup.
+
+`BatchContext` carries the run's `request`, `work_dir`, `job_id` (the stable per-job identifier, useful for looking up per-job state across a restart), and the mutable `launch_env` dict.
+
+### Wiring hooks
+
+Hooks are wired at **process start only**, through the `BAJUTSU_BATCH_HOOKS` environment variable — a comma-separated list of `module:factory` paths. Bajutsu imports each module and calls the named factory (no arguments) to produce one hook instance:
+
+```bash
+BAJUTSU_BATCH_HOOKS=myapp.hooks:make_proxy_hook,myapp.hooks:make_audit_hook \
+  bajutsu serve --asgi --backend=server
+```
+
+A deployment ships its hook module in the serve image and names it in that variable. No `serve` endpoint, config field, or batch-request field may select or configure a hook — hook identity comes only from the deploy-time environment (the same trust boundary as `pre_test_commands`).
+
+```python
+# myapp/hooks.py
+from bajutsu.serve.batch_provider import BatchContext, BatchLifecycleHook
+
+class ProxyHook(BatchLifecycleHook):
+    def before_submit(self, ctx: BatchContext) -> None:
+        psk = _mint_session_key(ctx.job_id)      # caller-owned credential store
+        ctx.launch_env["PROXY_HOST"] = "proxy.internal"
+        ctx.launch_env["PROXY_PSK"] = psk
+
+    def after_run(self, ctx: BatchContext, verdict) -> None:
+        _revoke_session_key(ctx.job_id)           # caller-owned credential store
+
+def make_proxy_hook() -> ProxyHook:
+    return ProxyHook()
+```
+
+> **Security note.** Values injected through `ctx.launch_env` land in the packaged run config, which is stored as a Device Farm artifact visible to principals with access to the deployment's own Device Farm project. Hooks that inject secrets should mint **short-lived, per-run values** (which is the motivating case) rather than long-lived ones.
+
+### Key-collision guard
+
+On-device, the launch-environment merge order is `{**target_env, **preconditions.launch_env}` — a scenario's `preconditions.launchEnv` wins over the target-level value. If a hook injects a key that a scenario's preconditions also set, the injected value would be silently overridden. To surface this early, `submit` checks the scenario file and **fails loudly at submit time**, naming the scenario, the key, and the file, before any upload happens.
+
+### Checkpoint-resume behaviour
+
+When a run restarts mid-poll (the worker re-leases the job), `before_submit` is skipped — the run is already scheduled and packaged — but `after_run` still runs once the resumed run's verdict is collected. A hook that mints credentials in `before_submit` should persist them keyed by `ctx.job_id` so `after_run` can retrieve and release them after a restart.
+
 ## The serial-resolution proof of concept (manual)
 
 The one empirical unknown is whether Bajutsu's Android backend picks up the Device Farm host's

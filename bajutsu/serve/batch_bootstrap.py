@@ -14,6 +14,7 @@ single-process and the base install lean (test_import_guard.py).
 
 from __future__ import annotations
 
+import importlib
 import os
 from collections.abc import Mapping
 from pathlib import Path
@@ -21,12 +22,14 @@ from typing import cast
 
 from bajutsu.common.cloud.devicefarm import DeviceFarmClient, DeviceFarmError, HttpTransfer
 from bajutsu.serve import batch_provider
+from bajutsu.serve.batch_provider import BatchLifecycleHook
 
 # Device Farm's control plane lives only in us-west-2; `DEVICEFARM_REGION` overrides it for a rare
 # account pinned elsewhere. `DEVICEFARM_PROJECT_ARN` is the switch: its presence is what turns
 # cloud-batch dispatch on for this serve process (AWS credentials come from boto3's own chain).
 _PROJECT_ARN_ENV = "DEVICEFARM_PROJECT_ARN"
 _REGION_ENV = "DEVICEFARM_REGION"
+_HOOKS_ENV = "BAJUTSU_BATCH_HOOKS"
 _DEFAULT_REGION = "us-west-2"
 
 
@@ -62,6 +65,35 @@ def bajutsu_source_root() -> Path | None:
     return None
 
 
+def _load_hooks(env: Mapping[str, str]) -> list[BatchLifecycleHook]:
+    """Load BatchLifecycleHook instances from BAJUTSU_BATCH_HOOKS (BE-0435).
+
+    Parses a comma-separated list of ``module:factory`` paths, imports each module, calls the
+    named factory (no arguments), and returns the results in order. Hooks are wired at process
+    start only — this function must never be called from a request path.
+
+    Raises:
+        ValueError: If any entry does not follow the ``module:factory`` format.
+    """
+    hooks_spec = env.get(_HOOKS_ENV, "").strip()
+    if not hooks_spec:
+        return []
+    hooks: list[BatchLifecycleHook] = []
+    for raw in hooks_spec.split(","):
+        entry = raw.strip()
+        if not entry:
+            continue
+        module_path, sep, factory_name = entry.rpartition(":")
+        if not sep or not module_path or not factory_name:
+            raise ValueError(
+                f"BAJUTSU_BATCH_HOOKS entry {entry!r} must be 'module:factory'"
+            )
+        module = importlib.import_module(module_path)
+        factory = getattr(module, factory_name)
+        hooks.append(factory())
+    return hooks
+
+
 def register_batch_providers(env: Mapping[str, str] | None = None) -> list[str]:
     """Register concrete batch providers named by the environment; return the kinds registered.
 
@@ -79,10 +111,12 @@ def register_batch_providers(env: Mapping[str, str] | None = None) -> list[str]:
     if not project_arn:
         return []
     region = resolved.get(_REGION_ENV) or _DEFAULT_REGION
+    hooks = _load_hooks(resolved)
     provider = batch_provider.DeviceFarmBatchProvider(
         client=_make_devicefarm_client(region),
         transfer=HttpTransfer(),
         project_arn=project_arn,
+        hooks=hooks,
     )
     batch_provider.register("devicefarm", provider)
     return ["devicefarm"]
