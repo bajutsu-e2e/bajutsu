@@ -47,6 +47,12 @@ _STALE_MAX_ATTEMPTS = 3
 # exponential per retry: 0.5s, 1.0s, … between re-resolve attempts
 _STALE_BACKOFF_BASE_SECONDS = 0.5
 
+# `select_photos`'s pre-actuation grid-cell resolution (`_resolve_grid_cell`) is bounded by the
+# caller's own `timeout` rather than a fixed attempt count — held as a separate constant from the
+# stale-handle retry above even though both are BE-0289-flavored, since the two bound different
+# things (a wall-clock budget vs. a handful of post-actuation re-resolutions).
+_GRID_CELL_POLL_SECONDS = 0.3
+
 # iOS reports every frame and coordinate in points, so that is the space stamped on this backend's
 # actuation records.
 _UNIT = "point"
@@ -586,7 +592,7 @@ class XcuitestDriver:
             element=el,
         )
 
-    def select_photos(self, indices: list[int], *, timeout: float) -> None:  # noqa: ARG002  # Driver shape; the picker must already be open, so no on-device wait belongs here
+    def select_photos(self, indices: list[int], *, timeout: float) -> None:
         """Pick the grid cells at `indices` from an open `PHPickerViewController`, then confirm.
 
         Every cell shares one identifier, `PXGGridLayout-Info`, disambiguated by ordinal `index` —
@@ -601,11 +607,18 @@ class XcuitestDriver:
         (roadmap item). Re-resolved fresh before every tap rather than once for the whole call:
         nothing about this recycled collection view guarantees a cell's frame stays put while an
         earlier index in the same call is still being tapped.
+
+        Resolution is bounded by `timeout` (BE-0289's stale-retry spirit, applied pre-actuation
+        rather than post-): observed on-device, a `PXGGridLayout-Info` query right after the
+        picker presents can transiently find zero matches even though the grid is already visible
+        — the collection view's cells can report as untyped `other` elements for a beat before
+        their identifier syncs into the accessibility tree. `_resolve_grid_cell` re-queries until
+        the selector resolves or `timeout` elapses, rather than failing on the first empty
+        snapshot.
         """
         for i in indices:
             sel: base.Selector = {"id": "PXGGridLayout-Info", "index": i}
-            elements, _ = self._query_with_handles(apply_native_z=False)
-            el = base.resolve_unique(elements, sel)
+            el = self._resolve_grid_cell(sel, timeout=timeout)
             p = base.frame_center(el["frame"])
             self._actuations.record(
                 Actuation(
@@ -624,6 +637,29 @@ class XcuitestDriver:
                 )
         self._confirm_photo_selection()
 
+    def _resolve_grid_cell(self, sel: base.Selector, *, timeout: float) -> base.Element:
+        """Re-query until `sel` resolves to exactly one element, or raise once `timeout` elapses.
+
+        Only a zero-match `ElementNotFound` is retried — the transient case where the cell has not
+        synced into the tree yet. An `AmbiguousSelector` (two-or-more matches) is a real,
+        non-transient failure (prime directive 2: an ambiguous selector fails immediately rather
+        than being retried into a guess) and propagates on the first query.
+
+        The first attempt runs immediately, with no upfront sleep, mirroring `_actuate`'s BE-0289
+        stale-retry (the re-query itself is the wait); `_GRID_CELL_POLL_SECONDS` only spaces
+        attempts after a miss, capped so the last sleep never overshoots the deadline.
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            elements, _ = self._query_with_handles(apply_native_z=False)
+            try:
+                return base.resolve_unique(elements, sel)
+            except base.ElementNotFound:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                self._sleep(min(_GRID_CELL_POLL_SECONDS, remaining))
+
     def _confirm_photo_selection(self) -> None:
         """Tap the picker's confirm control, resolved structurally rather than by its localized label.
 
@@ -632,9 +668,24 @@ class XcuitestDriver:
         checkmark glyph on newer releases) — naming it by label would need a per-locale lookup the
         way `handle_system_alert` needs one for SpringBoard. Finding it by elimination inside the
         picker's own navigation bar instead needs no such table: the confirm control's identifier
-        *absence*, not its label, is the stable fact. A bar with no non-`Cancel` control means the
-        picker already dismissed itself (a single-selection grid auto-confirms on the one tap
-        above), so that case is a no-op rather than an error.
+        *absence*, not its label, is the stable fact.
+
+        A single-selection grid (`selectionLimit == 1`) auto-confirms on the one tap above and
+        dismisses the whole picker, so there is no confirm control left to tap — a no-op, not an
+        error. Measured on-device (not just against the mocked unit tests below): once the picker
+        is gone, the app's own screen can still have its own `navigationBar`-trait element (e.g. a
+        `.navigationTitle`), and *that* bar's own non-`Cancel` content (its title text) would
+        otherwise satisfy the same elimination this method uses for the picker's bar — mistakenly
+        tapping the app's own UI instead of recognizing the picker already closed. So a
+        `navigationBar` only counts as the picker's own when *that specific bar* contains a
+        `Cancel` control, not merely when some `Cancel` exists anywhere in the snapshot: the single
+        `/elements` query behind this method is an immediate, unsynchronized accessibility-tree
+        read (`XCUIApplication.snapshot()`, chosen for its cost over the query path that would
+        otherwise wait for the app to settle — see `XcuitestElementProvider.swift`), so a snapshot
+        taken right after the auto-dismissing tap can land mid-transition, observing the picker's
+        still-there `Cancel`-bearing bar *and* the app's own bar at once. Scoping candidates to only
+        the bar(s) that themselves hold a `Cancel` keeps the app's own bar out of the count in that
+        window too, not just once the picker's bar is fully gone.
 
         Not routed through `_actuate`: its stale-retry re-resolves from a `Selector`, and this
         control's resolution — elimination, not a field match — has no `Selector` to hand it. A
@@ -643,18 +694,26 @@ class XcuitestDriver:
         try), so a single query-then-tap, mirroring `handle_system_alert`'s own shape, is enough.
         """
         elements, handles = self._query_with_handles(apply_native_z=False)
-        bar_sel: base.Selector = {"traits": ["navigationBar"]}
-        bars = base.find_all(elements, bar_sel)
-        if not bars:
+        bars = base.find_all(elements, {"traits": ["navigationBar"]})
+        cancels = base.find_all(elements, {"id": "Cancel"})
+        picker_bars = [
+            b for b in bars if any(base.contains(b["frame"], c["frame"]) for c in cancels)
+        ]
+        if not picker_bars:
             return
-        # `within` matches by frame containment, which is reflexive — the bar's own element is
-        # "within" its own frame just as its children are — so the bar itself must be excluded by
-        # identity, not merely by lacking a `Cancel` identifier (BE-0355's `id(el)` keying, reused).
-        bar_ids = {id(b) for b in bars}
+        # Containment is reflexive — a bar's own element sits inside its own frame just as its
+        # children do — so a picker bar must be excluded from its own candidates by identity, not
+        # merely by lacking a `Cancel` identifier (BE-0355's `id(el)` keying, reused). Candidates are
+        # scoped to `picker_bars`' own frames specifically, not every `navigationBar` in the
+        # snapshot, so the app's own bar never contributes one even while both are present at once.
+        picker_bar_ids = {id(b) for b in picker_bars}
+        picker_bar_frames = [b["frame"] for b in picker_bars]
         candidates = [
             el
-            for el in base.find_all(elements, {"within": bar_sel})
-            if id(el) not in bar_ids and el["identifier"] != "Cancel"
+            for el in elements
+            if id(el) not in picker_bar_ids
+            and el["identifier"] != "Cancel"
+            and any(base.contains(frame, el["frame"]) for frame in picker_bar_frames)
         ]
         if len(candidates) != 1:
             raise base.ElementNotFound(

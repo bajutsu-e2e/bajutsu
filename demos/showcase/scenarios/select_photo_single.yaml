@@ -1,0 +1,23 @@
+# selectPhotoSingle (roadmap item BE-0433 follow-up): a selectionLimit=1 PHPickerViewController
+# auto-dismisses on the one required tap, leaving no confirm control for the driver to tap —
+# exercises `_confirm_photo_selection`'s no-op elimination path against a live picker, not just
+# the mocked unit test (test_xcuitest.py::test_confirm_photo_selection_is_a_noop_when_the_picker_already_dismissed_itself).
+- name: selectPhotos auto-confirms when a single-selection picker dismisses itself
+  tags: [swiftui]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    erase: true
+    seedPhotos:
+      - fixtures/photos/fixture-red.png
+  steps:
+    - tap: { label: "Permissions", traits: [button] }
+    - scroll: { to: { id: perm.openPhotoPickerSingle }, direction: down }
+    - tap: { id: perm.openPhotoPickerSingle }
+    - wait: { for: { id: "PXGGridLayout-Info" }, timeout: 10 }
+    # See select_photos.yaml's own comment on this step: waits out an in-flight collection-view
+    # reload for the ordinary case, but does not fully close the rarer, deeper flake noted there.
+    - wait: { until: settled, timeout: 5 }
+    - selectPhotos: { indices: [0], timeout: 10 }
+    - wait: { for: { id: perm.photos.value, value: "1" }, timeout: 10 }
+  expect:
+    - value: { sel: { id: perm.photos.value }, equals: "1" }
