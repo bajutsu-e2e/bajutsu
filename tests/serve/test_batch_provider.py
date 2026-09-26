@@ -335,8 +335,8 @@ def _make_provider(
     )
 
 
-def test_no_hooks_config_is_unchanged(tmp_path: Path) -> None:
-    # With no hooks and empty launch_env, the packaged config is unchanged from the original file.
+def test_no_launch_env_injection_preserves_existing_config(tmp_path: Path) -> None:
+    # Without a hook injecting launch_env, the packaged config retains its original values.
     transfer = _CapturingTransfer(manifest_ok=True)
     provider = _make_provider(transfer=transfer)
     work, request = _android_request_with_config(
