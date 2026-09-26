@@ -77,40 +77,96 @@ A new `BatchLifecycleHook` protocol, with a `BatchContext` passed to both steps:
 @dataclass
 class BatchContext:
     request: BatchRequest       # read-only view of the run request
-    work_dir: Path              # the project dir that build_package will zip
+    work_dir: Path              # the project dir that build_package packs
+    job_id: str                 # the serve job id (the key the checkpoint is stored under)
     launch_env: dict[str, str] = field(default_factory=dict)  # additions, applied before packaging
 
 class BatchLifecycleHook(Protocol):
     def before_submit(self, ctx: BatchContext) -> None: ...
-    def after_run(self, ctx: BatchContext, verdict: Verdict) -> None: ...
+    def after_run(self, ctx: BatchContext, verdict: Verdict | None) -> None: ...
 ```
 
 `before_submit` may perform external setup and populate `ctx.launch_env`. `after_run`
-may perform external teardown; it receives the collected `Verdict` and runs even when
-the run failed. Both default to no-ops via the protocol, so a hook may implement only
-one.
+may perform external teardown; it receives the collected `Verdict`, or `None` when the
+run failed before a verdict existed (see the provider flow below), and runs on both
+paths.
+
+The `...` bodies are no-op defaults **only for a hook that explicitly subclasses**
+`BatchLifecycleHook`. A structurally-typed hook — the shape a `BAJUTSU_BATCH_HOOKS`
+factory most naturally returns — that defines only one method is not a
+`BatchLifecycleHook`: `mypy --strict` rejects it at the assignment site, and at runtime
+the provider's unconditional `hook.after_run(...)` call would raise `AttributeError`
+*inside the teardown `finally`*, destroying the run's real outcome. So a hook that wants
+to implement only one step must inherit from the protocol class to pick up the no-op
+default for the other.
+
+`ctx.job_id` is the stable identifier the serve layer already assigns each job
+(`bajutsu/serve/state/job.py`), and the same key the batch checkpoint is stored under
+(`_RepositoryBatchCheckpoint`, `bajutsu/serve/jobs.py`). It is identical on the original
+submit and on a later checkpoint-resume, which is what makes teardown work across a
+restart (see *The checkpoint-resume path*).
 
 ### Provider changes
 
-`DeviceFarmBatchProvider.__init__` gains `hooks: Sequence[BatchLifecycleHook] = ()`.
-`submit` invokes them around the existing flow:
+`DeviceFarmBatchProvider.__init__` gains `hooks: Sequence[BatchLifecycleHook] = ()`, and
+`submit` receives the job id so it can build the context. `submit` invokes the hooks
+around the existing flow:
 
-1. Build `ctx = BatchContext(request, work_dir)`.
+1. Build `ctx = BatchContext(request, work_dir, job_id)`.
 2. Run `hook.before_submit(ctx)` for each hook, in order.
-3. If `ctx.launch_env` is non-empty, merge it into the packaged config: load
-   `work_dir / request.config`, merge the entries into
-   `targets[request.target].launchEnv` (caller entries win on key collision), and
-   write the config back into `work_dir` so `build_package` zips the merged form.
-4. Render the spec, build the package, upload, schedule, and collect — unchanged.
-5. In a `finally`, run `hook.after_run(ctx, verdict)` for each hook, in reverse
-   order, so teardown mirrors setup and always runs.
-
-The checkpoint-resume path (an already-scheduled run) skips `before_submit` and the
-config merge — the package is already uploaded — but still runs `after_run` once the
-resumed run's verdict is collected.
+3. If `ctx.launch_env` is non-empty, merge it into the packaged config **without
+   mutating `work_dir`**. `work_dir` is the shared package/binding root
+   (`bajutsu/serve/jobs.py` passes `state.devicefarm_package_root or job.cwd or
+   state.binding.cwd`), and concurrent batch jobs pack the same directory, so rewriting
+   the config file there would let one run's minted credential land in another run's zip
+   and would leave a per-run value behind in the user's project config. Instead:
+   - load `work_dir / request.config`, merge the entries into
+     `targets[request.target].launchEnv` (caller entries win on key collision), and
+   - hand the merged text to `build_package` as a per-submit overlay via `extra_texts`,
+     **excluding the config's arcname from the walked `entries`** so the zip holds the
+     merged config exactly once (`build_package`'s `extra_texts` loop *adds* an arcname
+     rather than replacing a walked one — `bajutsu/common/cloud/devicefarm/_functions.py`).
+4. **Collision guard (fail loudly).** On the device, `bajutsu run` merges the two launch
+   env sources as `{**target_env, **scenario.preconditions.launch_env}`
+   (`bajutsu/run/cli.py:993`), so a scenario that sets the same key in its own
+   `preconditions.launchEnv` silently shadows the injected value — the app would launch
+   with the scenario's stale value and the relay would reject the run with nothing
+   pointing at the cause. To keep this deterministic, `submit` loads the referenced
+   scenarios' `preconditions.launchEnv` from `work_dir` and, if any scenario declares a
+   key present in `ctx.launch_env`, raises at submit time with a message naming the
+   scenario, the key, and the file — before packaging. (This gives the provider a new,
+   narrow read of scenario preconditions; today it handles scenarios only as file paths.)
+5. Render the spec, build the package, upload, schedule, and collect — unchanged.
+6. In a `finally`, run `hook.after_run(ctx, verdict)` for each hook, in reverse order,
+   so teardown mirrors setup and always runs. `verdict` is `Verdict | None`: it is
+   `None` when packaging, the upload, or collection raised before a verdict existed, so
+   the teardown still runs and the original exception still propagates unchanged (rather
+   than being replaced by an `UnboundLocalError` from an unbound `verdict`).
 
 With no hooks (the default `()`), `submit` behaves exactly as today and the packaged
 config is byte-identical.
+
+### The checkpoint-resume path
+
+A checkpoint-resume happens after a restart: `submit` finds a persisted run ARN
+(`checkpoint.load()`), returns `collect_run(...)` for the already-scheduled run, and
+skips rendering, packaging, upload, and therefore `before_submit` and the config merge
+(`bajutsu/serve/batch_provider/device_farm_batch_provider.py`). The hooks are fresh
+objects in a new process; `before_submit` never ran here, so `ctx.launch_env` is empty
+and the in-memory hook holds no handle on whatever the pre-restart `before_submit`
+minted.
+
+`after_run` still runs on this path, in the same `finally`, with the resumed run's
+verdict. For teardown to actually release the credential, `before_submit` must persist
+the minted credential's identity to **durable per-job state keyed by `ctx.job_id`**, and
+`after_run` looks it up by that same `job_id` and releases it. Because `job_id` is stable
+across the restart, the resumed `after_run` — though it runs in a fresh process with an
+empty `ctx.launch_env` — can still find and release the credential.
+
+That durable store is the caller's own, outside `bajutsu/` (a deployment might use a
+row in its own database, a DynamoDB item, etc.), consistent with prime directive 3.
+Bajutsu's only contribution is the guarantee that `ctx.job_id` is the same value on the
+original submit and on the resume, giving the hook a stable correlation key.
 
 ### Loading hooks — server-side only
 
@@ -158,6 +214,20 @@ short-lived, per-run values (which is the motivating case) rather than long-live
   pure function of its inputs. Setup and teardown are lifecycle concerns of `submit`,
   not of rendering; placing them in the provider keeps the pure function pure and the
   side effects in one place.
+- **Mutating the config in `work_dir` instead of an `extra_texts` overlay.** Rejected.
+  `work_dir` is the shared package root that concurrent batch jobs pack, so an in-place
+  rewrite races across jobs and leaves per-run values behind on disk. The overlay
+  packages the merged config for one submit only and never touches the shared tree.
+- **Injecting at the scenario `preconditions.launchEnv` layer (so the hook value wins
+  the on-device merge).** Rejected in favor of the collision guard. Reaching the
+  scenario layer would mean the provider rewriting each scenario file — deeper mutation
+  of caller content than injecting one target-level key. The guard keeps injection at
+  `targets.<name>.launchEnv` and turns the one collision that layer loses into a loud
+  submit-time failure, per determinism-first.
+- **Skipping `after_run` on the checkpoint-resume path.** Rejected. It would leak the
+  per-run credential until expiry — the exact outcome the teardown exists to avoid.
+  Persisting the credential's identity under `ctx.job_id` lets the resumed `after_run`
+  release it.
 - **Selecting or configuring the hook from the request.** Rejected on security
   grounds, consistent with BE-0432. Hook identity is deploy-time only.
 - **A build/entry-point plugin registry instead of an env var.** Rejected as
@@ -167,20 +237,36 @@ short-lived, per-run values (which is the motivating case) rather than long-live
 
 ## Progress
 
-- [ ] Add `BatchLifecycleHook` protocol and `BatchContext` dataclass.
-- [ ] Add `hooks: Sequence[BatchLifecycleHook] = ()` to `DeviceFarmBatchProvider.__init__`.
-- [ ] Invoke `before_submit` before packaging; merge `ctx.launch_env` into the
-  packaged config under `targets[request.target].launchEnv`.
-- [ ] Invoke `after_run` in a `finally`, in reverse order, including on the
-  checkpoint-resume path and on run failure.
+- [ ] Add `BatchLifecycleHook` protocol and `BatchContext` dataclass (`request`,
+  `work_dir`, `job_id`, `launch_env`); `after_run` takes `Verdict | None`. Document that
+  no-op defaults require explicitly subclassing the protocol class.
+- [ ] Add `hooks: Sequence[BatchLifecycleHook] = ()` to
+  `DeviceFarmBatchProvider.__init__`, and thread the stable `job_id` into `submit`/`ctx`.
+- [ ] Invoke `before_submit` before packaging; merge `ctx.launch_env` into the packaged
+  config's `targets[request.target].launchEnv` and package it via `build_package`'s
+  `extra_texts` overlay, excluding the config arcname from `entries`, without mutating
+  `work_dir`.
+- [ ] Collision guard: load the referenced scenarios' `preconditions.launchEnv` from
+  `work_dir`; raise at submit (naming scenario, key, file) if any collides with an
+  injected key, since `bajutsu run`'s merge would otherwise silently shadow it.
+- [ ] Invoke `after_run` in a `finally`, in reverse order, with `verdict: Verdict | None`
+  (`None` on a pre-verdict failure), including on run failure and the checkpoint-resume
+  path.
+- [ ] Checkpoint-resume: guarantee `ctx.job_id` is identical on submit and resume so a
+  hook can release, via caller-owned durable per-job state, the credential its original
+  `before_submit` minted.
 - [ ] Load hooks from `BAJUTSU_BATCH_HOOKS` (`module:factory`, comma-separated) in
   `batch_bootstrap`, and pass them to the provider.
 - [ ] Unit test: default (no hooks) leaves the packaged config and behavior
   byte-identical to today.
 - [ ] Unit test: `before_submit`'s `ctx.launch_env` appears merged in the packaged
-  config, caller entries winning on key collision.
-- [ ] Unit test: `after_run` runs on success, on run failure, and on the
-  checkpoint-resume path; teardown order is the reverse of setup.
+  config (via the overlay, `work_dir` unchanged), caller entries winning on key
+  collision.
+- [ ] Unit test: the collision guard raises at submit, with a message naming the
+  scenario, key, and file, when a scenario's `preconditions.launchEnv` collides.
+- [ ] Unit test: `after_run` runs on success, on run failure (`verdict is None`), and on
+  the checkpoint-resume path; teardown order is the reverse of setup; a pre-verdict
+  failure propagates unchanged (no `UnboundLocalError`).
 - [ ] Unit test: no `serve` endpoint, config field, or `BatchRequest` field selects
   or configures a hook (walks the wiring, like BE-0432's AST check).
 - [ ] Update `docs/devicefarm.md` and its Japanese mirror.
