@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -28,6 +29,27 @@ if TYPE_CHECKING:
     from sqlalchemy import Engine
 
     from bajutsu.serve.artifacts import Artifact
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    # When pytest runs inside a subprocess whose stdout pipe is in O_NONBLOCK mode (e.g. through
+    # Claude Code's Bash tool, which captures output via non-blocking reads), pytest-cov's terminal
+    # summary write throws BlockingIOError (EAGAIN / errno 35 on macOS) if the ~194 KB coverage
+    # report overflows the ~64 KB pipe buffer. Only reset to blocking when O_NONBLOCK is actually
+    # set — interactive terminals and normal CI runs are already blocking and are unaffected.
+    try:
+        import fcntl
+
+        for stream in (sys.stdout, sys.stderr):
+            try:
+                fd = stream.fileno()
+                flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+                if flags & os.O_NONBLOCK:
+                    fcntl.fcntl(fd, fcntl.F_SETFL, flags & ~os.O_NONBLOCK)
+            except (OSError, AttributeError):  # fileno() raises AttributeError on non-real streams
+                pass
+    except ImportError:  # fcntl is Unix-only; Windows is unaffected
+        pass
 
 
 @pytest.fixture(autouse=True)

@@ -54,7 +54,13 @@ def test_run_job_cloud_batch_records_the_manifest_verdict(tmp_path: Path) -> Non
 
     class _Provider:
         def submit(
-            self, request: Any, *, work_dir: Path, dest: Path, checkpoint: Any = None
+            self,
+            request: Any,
+            *,
+            work_dir: Path,
+            dest: Path,
+            checkpoint: Any = None,
+            job_id: str = "",
         ) -> Any:
             run_dir = dest / "runs" / "20260101-1"
             run_dir.mkdir(parents=True)
@@ -122,7 +128,13 @@ def test_run_job_cloud_batch_fails_loud_when_submit_raises(tmp_path: Path) -> No
 
     class _BrokenProvider:
         def submit(
-            self, request: Any, *, work_dir: Path, dest: Path, checkpoint: Any = None
+            self,
+            request: Any,
+            *,
+            work_dir: Path,
+            dest: Path,
+            checkpoint: Any = None,
+            job_id: str = "",
         ) -> Any:
             raise RuntimeError("simulated AWS failure")
 
@@ -898,7 +910,15 @@ class _CapturingProvider:
     def __init__(self) -> None:
         self.checkpoint: Any = "unset"
 
-    def submit(self, request: Any, *, work_dir: Path, dest: Path, checkpoint: Any = None) -> Any:
+    def submit(
+        self,
+        request: Any,
+        *,
+        work_dir: Path,
+        dest: Path,
+        checkpoint: Any = None,
+        job_id: str = "",
+    ) -> Any:
         import json
 
         from bajutsu.common.cloud.devicefarm import verdict_from_manifest

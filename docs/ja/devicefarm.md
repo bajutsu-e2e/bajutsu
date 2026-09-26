@@ -127,6 +127,55 @@ serve は AWS へ設定ファイルではなくプロセスの環境変数を通
 
 これらはいずれも判定には触れません。各 Device Farm 実行は、ローカル実行とまったく同じく、Bajutsu 自身の `manifest.json` から合否を報告します。serve はダウンロードした実行を自身の runs ディレクトリの下に収め、レポートビューアと履歴がほかの実行と同じように描画します。投入とポーリングのしくみは `run` / CI の判定経路の外にとどまり、そこに大規模言語モデル（LLM）の呼び出しは載りません（prime directive 1）。
 
+## サーバ側バッチライフサイクルフック（BE-0435）
+
+`render_test_spec` の `pre_test_commands` フック（BE-0432）は**デバイスホスト側のセットアップ**を担います。Device Farm ホスト上でシェルとして実行されるコマンドです。しかし、そこでは実行できないセットアップがあります。パッケージのビルド前に `serve` プロセス内で実行し、その結果をアプリの launch 環境変数として届ける必要があるもの——たとえば、短命な per-run クレデンシャルの発行——です。
+
+`BatchLifecycleHook` はそのギャップを埋めます。フックは `serve` プロセス内で `DeviceFarmBatchProvider.submit` の前後に実行されます。
+
+- **`before_submit(ctx)`** — パッケージのビルド前に呼ばれます。`ctx.launch_env` にキーと値を追加することで、パッケージされる config の `targets.<target>.launchEnv` にマージされ、アプリが launch 環境変数として受け取ります。
+- **`after_run(ctx, verdict)`** — 判定収集後（または判定前に失敗した場合は `verdict=None`）に `finally` の中で逆順に呼ばれます。
+
+`BatchContext` には実行の `request`、`work_dir`、`job_id`（再起動をまたいで安定した per-job 識別子）、および変更可能な `launch_env` 辞書が含まれます。
+
+### フックの配線
+
+フックは**プロセス起動時にのみ**配線されます。環境変数 `BAJUTSU_BATCH_HOOKS`（`module:factory` パスのカンマ区切りリスト）を通じてです。Bajutsu は各モジュールをインポートし、指定されたファクトリ関数を呼び出してフックインスタンスを生成します。
+
+```bash
+BAJUTSU_BATCH_HOOKS=myapp.hooks:make_proxy_hook,myapp.hooks:make_audit_hook \
+  bajutsu serve --asgi --backend=server
+```
+
+デプロイ側はフックモジュールを serve イメージに同梱し、その変数で名前を指定します。いかなる `serve` エンドポイント、config フィールド、バッチリクエストフィールドもフックを選択・設定してはなりません——フックの同一性はデプロイ時の環境からのみ与えられます（`pre_test_commands` と同じ信頼境界）。
+
+```python
+# myapp/hooks.py
+from bajutsu.serve.batch_provider import BatchContext, BatchLifecycleHook
+
+class ProxyHook(BatchLifecycleHook):
+    def before_submit(self, ctx: BatchContext) -> None:
+        psk = _mint_session_key(ctx.job_id)
+        ctx.launch_env["PROXY_HOST"] = "proxy.internal"
+        ctx.launch_env["PROXY_PSK"] = psk
+
+    def after_run(self, ctx: BatchContext, verdict) -> None:
+        _revoke_session_key(ctx.job_id)
+
+def make_proxy_hook() -> ProxyHook:
+    return ProxyHook()
+```
+
+> **セキュリティ上の注意。** `ctx.launch_env` 経由で注入された値はパッケージされる run config に載り、デプロイ自身の Device Farm プロジェクトにアクセスできるプリンシパルから見えます。秘密値を注入するフックは、長命な値ではなく**短命な per-run 値**を発行してください。
+
+### キー衝突ガード
+
+デバイス上のマージ順序は `{**target_env, **preconditions.launch_env}` です——シナリオの `preconditions.launchEnv` が target レベルの値より優先されます。フックが注入したキーとシナリオの preconditions が衝突する場合、注入された値が暗黙的に上書きされます。これを早期に表面化させるため、`submit` はシナリオファイルを確認し、衝突があれば**投入時点でシナリオ名・キー・ファイル名を明示してエラー**を発生させます。アップロードは開始されません。
+
+### checkpoint 再開時の動作
+
+再起動によってワーカーが再リースされた場合、`before_submit` はスキップされます（実行は既にスケジュール済みでパッケージ済みです）。しかし、再開した実行の判定収集後に `after_run` は実行されます。`before_submit` でクレデンシャルを発行するフックは、`ctx.job_id` をキーとして永続化しておくことで、`after_run` が再起動後に取得・解放できるようにしてください。
+
 ## シリアル解決の実証（手動）
 
 唯一の経験的な未知は、Bajutsu の Android バックエンドが Device Farm ホストの予約されたデバイスを拾えるかどうかです。`pre_test` の `adb devices` にそのデバイスが並び、`bajutsu run --udid booted` がそれを解決するはずです。これをエンドツーエンドで実証するには、実際の AWS アカウント、認証情報、Device Farm プロジェクト、そして課金が必要です。そのため、これは決定的な `make check` ゲート（クラウドのアカウントなしでどこでも動く必要があります）には**含めません**。実施は手動の手順とします。
