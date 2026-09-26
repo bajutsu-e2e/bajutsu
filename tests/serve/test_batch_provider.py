@@ -557,6 +557,38 @@ def test_job_id_reaches_batch_context(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_after_run_hook_failure_does_not_skip_remaining_hooks(tmp_path: Path) -> None:
+    # Even when an earlier hook's after_run raises, all later hooks still run.
+    ran: list[str] = []
+
+    class _FailHook(bp.BatchLifecycleHook):
+        def after_run(self, ctx: bp.BatchContext, verdict: Any) -> None:
+            ran.append("fail")
+            raise RuntimeError("hook teardown error")
+
+    class _RecordHook(bp.BatchLifecycleHook):
+        def after_run(self, ctx: bp.BatchContext, verdict: Any) -> None:
+            ran.append("record")
+
+    provider = _make_provider(hooks=[_RecordHook(), _FailHook()])
+    work, request = _android_request_with_config(tmp_path)
+
+    with pytest.raises(RuntimeError, match="hook teardown error"):
+        provider.submit(request, work_dir=work, dest=tmp_path / "d")
+
+    # Hooks run in reverse; FailHook is last → runs first in teardown → RecordHook still runs
+    assert ran == ["fail", "record"]
+
+
+def test_collision_guard_skips_non_dict_preconditions(tmp_path: Path) -> None:
+    # preconditions that is not a mapping (e.g. a scalar) must not raise AttributeError.
+    from bajutsu.serve.batch_provider.device_farm_batch_provider import _check_launch_env_collisions
+
+    scenario = tmp_path / "scenario.yaml"
+    scenario.write_text("- name: s1\n  preconditions: true\n")
+    _check_launch_env_collisions(scenario, {"PROXY_HOST": "proxy.example.com"})
+
+
 def test_collision_guard_accepts_non_list_scenario_yaml(tmp_path: Path) -> None:
     # If the scenario YAML root is not a list, the guard returns early without raising.
     from bajutsu.serve.batch_provider.device_farm_batch_provider import _check_launch_env_collisions

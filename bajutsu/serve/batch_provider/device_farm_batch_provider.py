@@ -46,6 +46,8 @@ def _check_launch_env_collisions(
         if not isinstance(scenario, dict):
             continue
         preconditions = scenario.get("preconditions") or {}
+        if not isinstance(preconditions, dict):
+            continue
         launch_env = preconditions.get("launchEnv") or {}
         for key in launch_env:
             if key in injected:
@@ -180,8 +182,14 @@ class DeviceFarmBatchProvider:
                         on_scheduled=(checkpoint.save if checkpoint is not None else None),
                     )
         finally:
+            hook_errors: list[BaseException] = []
             for hook in reversed(self._hooks):
-                hook.after_run(ctx, verdict)
+                try:
+                    hook.after_run(ctx, verdict)
+                except Exception as exc:
+                    hook_errors.append(exc)
+            if hook_errors:
+                raise hook_errors[0]
 
         assert verdict is not None  # exceptions take the other path
         return verdict

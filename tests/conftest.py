@@ -32,11 +32,11 @@ if TYPE_CHECKING:
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    # When pytest runs inside a subprocess whose stdout is a non-blocking pipe (e.g. through
-    # Claude Code's Bash tool or similar capture infrastructure), pytest-cov's terminal summary
-    # write throws BlockingIOError (EAGAIN / errno 35 on macOS) if the pipe buffer fills. Reset
-    # stdout and stderr to blocking mode here so the write blocks until the reader catches up
-    # rather than failing.
+    # When pytest runs inside a subprocess whose stdout pipe is in O_NONBLOCK mode (e.g. through
+    # Claude Code's Bash tool, which captures output via non-blocking reads), pytest-cov's terminal
+    # summary write throws BlockingIOError (EAGAIN / errno 35 on macOS) if the ~194 KB coverage
+    # report overflows the ~64 KB pipe buffer. Only reset to blocking when O_NONBLOCK is actually
+    # set — interactive terminals and normal CI runs are already blocking and are unaffected.
     try:
         import fcntl
 
@@ -44,10 +44,11 @@ def pytest_configure(config: pytest.Config) -> None:
             try:
                 fd = stream.fileno()
                 flags = fcntl.fcntl(fd, fcntl.F_GETFL)
-                fcntl.fcntl(fd, fcntl.F_SETFL, flags & ~os.O_NONBLOCK)
-            except OSError:
+                if flags & os.O_NONBLOCK:
+                    fcntl.fcntl(fd, fcntl.F_SETFL, flags & ~os.O_NONBLOCK)
+            except (OSError, AttributeError):  # fileno() raises AttributeError on non-real streams
                 pass
-    except ImportError:
+    except ImportError:  # fcntl is Unix-only; Windows is unaffected
         pass
 
 

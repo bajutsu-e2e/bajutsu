@@ -26,6 +26,7 @@ class BatchProvider(Protocol):
         work_dir: Path,
         dest: Path,
         checkpoint: BatchCheckpoint | None = None,
+        job_id: str = "",
     ) -> Verdict:
         """Package `work_dir`, run `request.scenario` on the cloud, download artifacts under `dest`.
 
