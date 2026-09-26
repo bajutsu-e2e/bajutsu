@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -28,6 +29,26 @@ if TYPE_CHECKING:
     from sqlalchemy import Engine
 
     from bajutsu.serve.artifacts import Artifact
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    # When pytest runs inside a subprocess whose stdout is a non-blocking pipe (e.g. through
+    # Claude Code's Bash tool or similar capture infrastructure), pytest-cov's terminal summary
+    # write throws BlockingIOError (EAGAIN / errno 35 on macOS) if the pipe buffer fills. Reset
+    # stdout and stderr to blocking mode here so the write blocks until the reader catches up
+    # rather than failing.
+    try:
+        import fcntl
+
+        for stream in (sys.stdout, sys.stderr):
+            try:
+                fd = stream.fileno()
+                flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+                fcntl.fcntl(fd, fcntl.F_SETFL, flags & ~os.O_NONBLOCK)
+            except OSError:
+                pass
+    except ImportError:
+        pass
 
 
 @pytest.fixture(autouse=True)
