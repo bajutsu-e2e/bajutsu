@@ -580,7 +580,5 @@ def test_collision_guard_accepts_non_overlapping_keys(tmp_path: Path) -> None:
     from bajutsu.serve.batch_provider.device_farm_batch_provider import _check_launch_env_collisions
 
     scenario = tmp_path / "scenario.yaml"
-    scenario.write_text(
-        "- name: s1\n  preconditions:\n    launchEnv:\n      OTHER_KEY: value\n"
-    )
+    scenario.write_text("- name: s1\n  preconditions:\n    launchEnv:\n      OTHER_KEY: value\n")
     _check_launch_env_collisions(scenario, {"PROXY_HOST": "proxy.example.com"})
