@@ -1,0 +1,36 @@
+# Cross-platform parity (BE-0428): the same query narrows the catalog identically on the SwiftUI
+# (iOS) and Compose (Android) showcase twins. One `targets:` declaration, one run, one verdict,
+# interleaved across both backends — the search count `extract`ed on iOS is asserted against the
+# live value on Android, rather than each platform separately re-asserting the same "1" (BE-0221's
+# id-parity claim proven directly, not by two coincidentally equal literals).
+#
+# Needs an iOS Simulator (showcase-swiftui) and an Android emulator (showcase-compose) leased at
+# once, so — like browser.yaml / app.yaml — it has its own lane and is excluded from each single-
+# platform bulk sweep by its `multi-target` tag: `make -C demos/showcase e2e-multi-target`.
+- name: search narrows the catalog identically on iOS and Android
+  tags: [multi-target]
+  targets: [showcase-swiftui, showcase-compose]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - target: showcase-swiftui
+      tap: { label: "Search", traits: [button] }
+    - target: showcase-swiftui
+      wait: { for: { id: [search.field, search_field] }, timeout: 10 }
+    - target: showcase-swiftui
+      type: { text: "Horse 3", into: { id: [search.field, search_field] } }
+    - target: showcase-swiftui
+      wait: { for: { id: [search.row.3, search_row_3] }, timeout: 5 }
+      extract:
+        iosCount: { sel: { id: [search.count, search_count] } }
+    - target: showcase-compose
+      tap: { label: "Search", traits: [button] }
+    - target: showcase-compose
+      wait: { for: { id: [search.field, search_field] }, timeout: 10 }
+    - target: showcase-compose
+      type: { text: "Horse 3", into: { id: [search.field, search_field] } }
+    - target: showcase-compose
+      wait: { for: { id: [search.row.3, search_row_3] }, timeout: 5 }
+  expect:
+    - target: showcase-compose
+      value: { sel: { id: [search.count, search_count] }, equals: "${vars.iosCount}" }

@@ -21,6 +21,7 @@ from bajutsu.common.assertions import EvalContext, VisualContext
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import Artifact, NullSink
+from bajutsu.common.evidence.intervals import Interval
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.orchestrator import AlertGuardConfig, RunResult, TargetRuntime, run_scenario
@@ -584,3 +585,120 @@ def test_returning_to_the_primary_after_a_detour_does_not_reuse_the_others_scree
     step_ids = list(sink.reuse_by_step)
     assert reused[3] is not None
     assert reused[3] == sink.after_by_step[step_ids[2]]
+
+
+# --- every declared target's own scenario-wide video (BE-0428) ------------------------------------
+
+
+class _VideoTargetSink:
+    """A NullSink twin that finalizes one video artifact per call it is given a "video" interval
+    for — the fake this file's video tests need, since `NullSink` always answers empty and so never
+    proves a target's own sink got its own interval lifecycle at all."""
+
+    def __init__(self, true_start: float | None = None) -> None:
+        self._true_start = true_start
+        self.finished_ids: list[str] = []
+
+    def capture(self, *args: object, **kwargs: object) -> list[Artifact]:
+        return []
+
+    def wait_diagnostic(self, *args: object, **kwargs: object) -> Artifact | None:
+        return None
+
+    def start_scenario_intervals(self, scenario_id: str, kinds: list[str]) -> list[Interval]:
+        if "video" not in kinds:
+            return []
+        return [
+            Interval(
+                kind="video", path=Path(f"{scenario_id}/scenario.mp4"), true_start=self._true_start
+            )
+        ]
+
+    def finish_scenario_intervals(
+        self, scenario_id: str, started: list[Interval]
+    ) -> list[Artifact]:
+        self.finished_ids.append(scenario_id)
+        out = []
+        for iv in started:
+            iv.measured_start = self._true_start
+            out.append(Artifact(name=f"{scenario_id}/scenario.mp4", kind=iv.kind, provider="fake"))
+        return out
+
+
+def test_every_other_declared_targets_own_video_is_finalized_and_tagged() -> None:
+    # BE-0428: `run_scenario` used to start/finish scenario-wide intervals (video, deviceLog,
+    # appTrace) only on the primary's own sink — a second target's own lease recorded nothing into
+    # the report at all, however its own config asked for video. Each other declared target's own
+    # sink now gets the same start/finish lifecycle, its artifact tagged with its own name — and
+    # namespaced under it (`{sid}/web/…`) so it cannot collide with the primary's `scenario.mp4`.
+    app, web = FakeDriver(screen=list(_APP_SCREEN)), FakeDriver(screen=list(_WEB_SCREEN))
+    app_sink, web_sink = _VideoTargetSink(), _VideoTargetSink()
+    r = run_scenario(
+        app,
+        _scenario(
+            {
+                "name": "cross",
+                "targets": ["app", "web"],
+                "steps": [
+                    {"target": "app", "tap": {"id": "app.button"}},
+                    {"target": "web", "tap": {"id": "web.button"}},
+                ],
+            }
+        ),
+        FakeClock(),
+        sink=app_sink,
+        capture=["video"],
+        target_runtimes={
+            "app": TargetRuntime(driver=app, sink=app_sink, capture=["video"]),
+            "web": TargetRuntime(driver=web, sink=web_sink, capture=["video"]),
+        },
+        primary_target="app",
+    )
+    assert r.ok, r.failure
+    videos = [a for a in r.artifacts if a.kind == "video"]
+    assert len(videos) == 2
+    primary_video = next(a for a in videos if a.target == "")
+    web_video = next(a for a in videos if a.target == "web")
+    assert "/web/" in web_video.name
+    assert "/web/" not in primary_video.name
+    # The primary's own anchor is unaffected (unprefixed field); the extra target gets its own.
+    assert "web" in r.target_video_anchors
+    assert web_sink.finished_ids  # the web sink's own finish was actually called, not skipped
+
+
+def test_a_target_that_declares_no_video_capture_gets_no_artifact_or_anchor() -> None:
+    # A target whose own resolved `capture` never asks for video (its config, unlike the primary's,
+    # sets no `video` baseline) records nothing and stays absent from `target_video_anchors` — the
+    # same "empty means not applicable" convention `target_devices` already uses, rather than a
+    # spurious anchor pointing at a recording that was never made.
+    app, web = FakeDriver(screen=list(_APP_SCREEN)), FakeDriver(screen=list(_WEB_SCREEN))
+    app_sink, web_sink = _VideoTargetSink(), _VideoTargetSink()
+    r = run_scenario(
+        app,
+        _scenario(
+            {
+                "name": "cross",
+                "targets": ["app", "web"],
+                "steps": [
+                    {"target": "app", "tap": {"id": "app.button"}},
+                    {"target": "web", "tap": {"id": "web.button"}},
+                ],
+            }
+        ),
+        FakeClock(),
+        sink=app_sink,
+        capture=["video"],
+        target_runtimes={
+            "app": TargetRuntime(driver=app, sink=app_sink, capture=["video"]),
+            "web": TargetRuntime(driver=web, sink=web_sink, capture=[]),
+        },
+        primary_target="app",
+    )
+    assert r.ok, r.failure
+    videos = [a for a in r.artifacts if a.kind == "video"]
+    assert len(videos) == 1
+    assert videos[0].target == ""
+    assert "web" not in r.target_video_anchors
+    # The web sink's own interval lifecycle still ran (BE-0428's finalize loop is unconditional) —
+    # it simply had nothing to start, since its own capture named no interval kind.
+    assert web_sink.finished_ids

@@ -142,6 +142,12 @@ runner-build-device:
 # `swiftui` (scenarios/picker_wheel.yaml), which drives the SHOWCASE_PICKERS wheel-picker screen only
 # the SwiftUI app renders; the SwiftUI lane keeps it. Backend preflight cannot stand in for the tag —
 # it rejects a backend that lacks a capability, not an app that lacks a screen.
+# `multi-target` (cross_platform_search.yaml, cross_platform_app_web.yaml, BE-0428) is excluded for
+# the same "this file has its own lane" reason: each declares `targets` beyond showcase-swiftui —
+# an Android emulator or the `web` target's own server, neither of which this bulk lane brings up —
+# and, unlike a single-target scenario, `--target showcase-swiftui` does not stop either from being
+# discovered and launched, since it only has to name one of the declared targets. `e2e-multi-target`
+# / `e2e-multi-target-web` below name each file explicitly, with its other target's device ready.
 # Prereqs: a booted simulator, `make runner-build`.
 # Extracts the UDID from the parenthesized group immediately before "(Booted)" rather than the
 # first 36-char hex-ish run on the line: a device whose display name was rewritten to include a
@@ -156,9 +162,9 @@ SIM ?= $(shell xcrun simctl list devices booted | sed -nE 's/.*\(([0-9A-F-]{36})
 # channel to hide the markers for its capture, and one added here would fail until the build gains
 # the setting.
 run-swiftui: swiftui-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,browser,app --config $(CONFIG) --touch-markers
+	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,browser,app,multi-target --config $(CONFIG) --touch-markers
 run-uikit: uikit-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,swiftui,browser,app --config $(CONFIG) --touch-markers
+	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,swiftui,browser,app,multi-target --config $(CONFIG) --touch-markers
 
 # scenarios/tabs.yaml on its own, forced onto XCUITest (see the comment above run-swiftui/run-uikit).
 run-swiftui-tabs: swiftui-build runner-build

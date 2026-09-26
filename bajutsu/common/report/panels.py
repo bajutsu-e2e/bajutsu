@@ -56,9 +56,43 @@ def _video_skip_reason(r: RunResult) -> str | None:
 
     Distinguishes a scenario a backend simply never records video for (no disclosure — the media
     area's ordinary "no recording") from one where a recording was expected but lost, e.g. to a
-    mid-run backend crash — so the report says why instead of looking like a plain miss.
+    mid-run backend crash — so the report says why instead of looking like a plain miss. Read
+    run-wide rather than per target: `SkippedCapture` carries no target of its own (BE-0428 never
+    extended it), so a gap on one declared target's recording is disclosed the same way regardless
+    of how many targets recorded successfully.
     """
     return next((sc.reason for sc in r.skipped_captures if sc.kind == "video"), None)
+
+
+def _videos(r: RunResult) -> list[dict[str, Any]]:
+    """Every scenario-wide video this result carries (the primary's own plus every other target's).
+
+    Each carries the small *offset* (seconds) its own recording started at relative to the first
+    video in this list, so the report's sync script can turn any one recording's current position
+    into every other one's without doing that arithmetic itself.
+
+    Deliberately not each video's raw anchor: an absolute epoch instant looks enough like an
+    ordinary `data-t` seconds-into-the-recording value that leaking one into the page risks it
+    being fed to `currentTime` somewhere and seeking a player to a moment billions of seconds past
+    its end (the same reasoning `video_seconds` and the HTML/JS sync script never expose one
+    either). The two videos' anchors already fix their difference, so the offset carries everything
+    the sync needs while the epoch itself never reaches the page.
+    """
+
+    def anchor_of(a: Artifact) -> float:
+        return (
+            r.video_anchor_s
+            if not a.target
+            else r.target_video_anchors.get(a.target, r.video_anchor_s)
+        )
+
+    video_arts = [a for a in r.artifacts if a.kind == "video"]
+    if not video_arts:
+        return []
+    reference = anchor_of(video_arts[0])
+    return [
+        {"target": a.target, "src": a.name, "offset": anchor_of(a) - reference} for a in video_arts
+    ]
 
 
 def _result_panel(
@@ -80,7 +114,7 @@ def _result_panel(
         # steps: a reviewer can tell setup and teardown from the scenario under test at a glance,
         # which a `preconditions.setup` prelude spliced into `steps` gives no way to do.
         "beforerows": _phase_rows(
-            r.before_outcomes, (definition or {}).get("before") or [], r.video_anchor_s, run_dir
+            r.before_outcomes, (definition or {}).get("before") or [], r, run_dir
         ),
         "steprows": _merged_rows(r, plan, exchanges, run_dir, step_lines),
         "afterrows": _after_rows(r, (definition or {}).get("after") or [], run_dir),
@@ -89,15 +123,14 @@ def _result_panel(
 
 
 def _device_rows(
-    name: str, backend: str, device_name: str, runtime: str, udid: str, engine: str = ""
+    backend: str, device_name: str, runtime: str, udid: str, engine: str = ""
 ) -> list[tuple[str, str]]:
-    """One device's environment rows, each prefixed with *name* when the run declared targets.
+    """One device's environment rows: device / OS / actuator / engine / udid.
 
     Unknown fields (e.g. the fake driver names no device) are omitted, so an unresolvable value
     leaves its row out rather than showing a blank one. `engine` is a web target's own fixed
     rendering engine (BE-0428); empty for a non-web target, so it drops out the same way.
     """
-    prefix = f"{name} " if name else ""
     rows = [
         ("device", device_name),
         ("OS", runtime),
@@ -105,25 +138,31 @@ def _device_rows(
         ("engine", engine),
         ("udid", udid),
     ]
-    return [(f"{prefix}{label}", value) for label, value in rows if value]
+    return [(label, value) for label, value in rows if value]
 
 
 def _environment_panel(r: RunResult) -> dict[str, Any]:
     """The device(s) the scenario ran on — model / OS / actuator / udid — shown beside Result.
 
-    A multi-target scenario has no single device to name, so it lists one labeled block per
-    declared target instead of the run's singular fields, which are empty there (BE-0428).
+    A multi-target scenario has no single device to name, so it lists one group per declared
+    target — its own name as a sub-heading over its own unprefixed rows — instead of the run's
+    singular fields, which are empty there (BE-0428). A target that resolved no device at all
+    (a web lane before it opens, a crashed lease) contributes an empty group, dropped here rather
+    than shown as a bare name with nothing under it.
     """
     if r.target_devices:
         sim = [
-            row
+            {"name": name, "rows": rows}
             for name, info in r.target_devices.items()
-            for row in _device_rows(
-                name, info.backend, info.device_name, info.device_runtime, info.device, info.engine
+            if (
+                rows := _device_rows(
+                    info.backend, info.device_name, info.device_runtime, info.device, info.engine
+                )
             )
         ]
     else:
-        sim = _device_rows("", r.backend, r.device_name, r.device_runtime, r.device)
+        rows = _device_rows(r.backend, r.device_name, r.device_runtime, r.device)
+        sim = [{"name": "", "rows": rows}] if rows else []
     skips = [{"kind": sc.kind, "reason": sc.reason} for sc in r.skipped_captures]
     return {"kind": "env", "key": "env", "label": "Environment", "sim": sim, "skips": skips}
 
@@ -253,7 +292,7 @@ def _scenario_data(
     source_file: str | None = None,
     step_lines: list[int] | None = None,
 ) -> dict[str, Any]:
-    video = _artifact(r, "video")
+    videos = _videos(r)
     net = _artifact(r, "network")
     net_data = _read_json(run_dir, net.name) if (net is not None and run_dir is not None) else None
     all_exchanges = (
@@ -291,7 +330,7 @@ def _scenario_data(
         "description": (definition or {}).get("description"),
         "source_file": source_file,
         "duration": _fmt_duration(r.duration_s),
-        "video": video.name if video else None,
-        "video_note": None if video else _video_skip_reason(r),
+        "videos": videos,
+        "video_note": None if videos else _video_skip_reason(r),
         "panels": panels,
     }
