@@ -314,7 +314,7 @@ def _read_config_from_package(packages: dict[str, bytes]) -> dict[str, Any]:
         try:
             with zipfile.ZipFile(io.BytesIO(data)) as zf:
                 if "bajutsu.config.yaml" in zf.namelist():
-                    return yaml.safe_load(zf.read("bajutsu.config.yaml").decode())
+                    return yaml.safe_load(zf.read("bajutsu.config.yaml").decode()) or {}
         except zipfile.BadZipFile:
             continue
     raise AssertionError("bajutsu.config.yaml not found in any uploaded package zip")
