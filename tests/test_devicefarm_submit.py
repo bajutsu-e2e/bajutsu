@@ -402,6 +402,22 @@ def test_package_writes_synthesized_extra_texts_at_their_arcnames(tmp_path: Path
         assert zf.read("requirements.txt").decode() == "# empty\n"
 
 
+def test_package_exclude_arcnames_skips_individual_file_entry(tmp_path: Path) -> None:
+    # An individual-file source entry whose arcname is in exclude_arcnames must be omitted.
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text("targets: {}")
+    out = tmp_path / "p.zip"
+
+    build_package(
+        [(config, "bajutsu.config.yaml")],
+        out,
+        exclude_arcnames={"bajutsu.config.yaml"},
+    )
+
+    with zipfile.ZipFile(out) as zf:
+        assert "bajutsu.config.yaml" not in zf.namelist()
+
+
 def test_package_never_zips_the_output_archive_into_itself(tmp_path: Path) -> None:
     src = tmp_path / "src"
     src.mkdir()

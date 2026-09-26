@@ -550,3 +550,37 @@ def test_job_id_reaches_batch_context(tmp_path: Path) -> None:
     provider.submit(request, work_dir=work, dest=tmp_path / "d", job_id="job-abc-123")
 
     assert received_job_ids == ["job-abc-123"]
+
+
+# ---------------------------------------------------------------------------
+# _check_launch_env_collisions: edge-case branches (BE-0435)
+# ---------------------------------------------------------------------------
+
+
+def test_collision_guard_accepts_non_list_scenario_yaml(tmp_path: Path) -> None:
+    # If the scenario YAML root is not a list, the guard returns early without raising.
+    from bajutsu.serve.batch_provider.device_farm_batch_provider import _check_launch_env_collisions
+
+    scenario = tmp_path / "scenario.yaml"
+    scenario.write_text("not_a_list: true\n")
+    _check_launch_env_collisions(scenario, {"PROXY_HOST": "proxy.example.com"})
+
+
+def test_collision_guard_skips_non_dict_scenario_item(tmp_path: Path) -> None:
+    # A non-dict item in the scenario list (e.g. a bare string) is silently skipped.
+    from bajutsu.serve.batch_provider.device_farm_batch_provider import _check_launch_env_collisions
+
+    scenario = tmp_path / "scenario.yaml"
+    scenario.write_text("- just_a_string\n")
+    _check_launch_env_collisions(scenario, {"PROXY_HOST": "proxy.example.com"})
+
+
+def test_collision_guard_accepts_non_overlapping_keys(tmp_path: Path) -> None:
+    # A scenario with launchEnv keys that don't overlap with the injected dict must not raise.
+    from bajutsu.serve.batch_provider.device_farm_batch_provider import _check_launch_env_collisions
+
+    scenario = tmp_path / "scenario.yaml"
+    scenario.write_text(
+        "- name: s1\n  preconditions:\n    launchEnv:\n      OTHER_KEY: value\n"
+    )
+    _check_launch_env_collisions(scenario, {"PROXY_HOST": "proxy.example.com"})
