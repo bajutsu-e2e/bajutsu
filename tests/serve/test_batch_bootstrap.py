@@ -173,7 +173,9 @@ def test_bajutsu_batch_hooks_loads_hook_factory(monkeypatch: pytest.MonkeyPatch)
     assert provider._hooks == [sentinel]
 
 
-def test_bajutsu_batch_hooks_loads_multiple_comma_separated(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_bajutsu_batch_hooks_loads_multiple_comma_separated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import sys
     from types import ModuleType
 

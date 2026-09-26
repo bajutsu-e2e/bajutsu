@@ -128,9 +128,9 @@ class DeviceFarmBatchProvider:
 
                 if ctx.launch_env:
                     config_path = work_dir / request.config
-                    config_data: dict[str, Any] = yaml.safe_load(
-                        config_path.read_text(encoding="utf-8")
-                    ) or {}
+                    config_data: dict[str, Any] = (
+                        yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+                    )
 
                     # Collision guard: scenario preconditions.launchEnv wins on-device, so a key
                     # collision means the injected value is silently overridden — fail loudly here.

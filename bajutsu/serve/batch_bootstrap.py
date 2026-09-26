@@ -85,9 +85,7 @@ def _load_hooks(env: Mapping[str, str]) -> list[BatchLifecycleHook]:
             continue
         module_path, sep, factory_name = entry.rpartition(":")
         if not sep or not module_path or not factory_name:
-            raise ValueError(
-                f"BAJUTSU_BATCH_HOOKS entry {entry!r} must be 'module:factory'"
-            )
+            raise ValueError(f"BAJUTSU_BATCH_HOOKS entry {entry!r} must be 'module:factory'")
         module = importlib.import_module(module_path)
         factory = getattr(module, factory_name)
         hooks.append(factory())
