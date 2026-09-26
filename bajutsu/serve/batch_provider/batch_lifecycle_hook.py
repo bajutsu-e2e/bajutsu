@@ -40,8 +40,8 @@ class BatchLifecycleHook(Protocol):
 
     def before_submit(self, ctx: BatchContext) -> None:
         """Run in the serve process before packaging; may populate ``ctx.launch_env``."""
-        ...
+        return None
 
     def after_run(self, ctx: BatchContext, verdict: Verdict | None) -> None:
         """Run after the verdict is collected (``verdict=None`` on pre-verdict failure)."""
-        ...
+        return None
