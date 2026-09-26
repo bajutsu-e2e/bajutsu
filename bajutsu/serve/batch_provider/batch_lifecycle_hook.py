@@ -38,10 +38,10 @@ class BatchLifecycleHook(Protocol):
     Structural conformance (duck typing without subclassing) requires both methods to be defined.
     """
 
-    def before_submit(self, ctx: BatchContext) -> None:
+    def before_submit(self, ctx: BatchContext) -> None:  # noqa: ARG002
         """Run in the serve process before packaging; may populate ``ctx.launch_env``."""
-        return None
+        return
 
-    def after_run(self, ctx: BatchContext, verdict: Verdict | None) -> None:
+    def after_run(self, ctx: BatchContext, verdict: Verdict | None) -> None:  # noqa: ARG002
         """Run after the verdict is collected (``verdict=None`` on pre-verdict failure)."""
-        return None
+        return
