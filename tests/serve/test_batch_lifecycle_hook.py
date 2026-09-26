@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from bajutsu.serve import batch_provider as bp
 
 
@@ -71,7 +69,6 @@ def test_hook_no_op_before_submit_via_explicit_subclassing() -> None:
 
 
 def test_batch_lifecycle_hook_is_a_protocol() -> None:
-    from typing import runtime_checkable
 
     import typing
 

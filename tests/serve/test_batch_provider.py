@@ -18,9 +18,8 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 import pytest
+import yaml
 
 from bajutsu.serve import batch_provider as bp
 
