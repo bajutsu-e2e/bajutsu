@@ -152,11 +152,11 @@ around the existing flow:
    the hook's. What is actually lost is narrower: `_fail_batch`'s message
    (``f"cloud-batch run failed: {exc}"``) names only the hook's exception, and `submit`
    raises just `hook_errors[0]` — the first collected while iterating `reversed(self._hooks)`,
-   i.e. the *last-registered* hook's exception — so any earlier-registered hook's
-   exception (`hook_errors[1:]`) is neither raised nor chained onto it and never reaches
-   that log at all. The current behavior is: only the last-registered hook's teardown
+   i.e. the exception of the *last-registered hook that raised* — so an earlier-registered
+   failing hook's exception (`hook_errors[1:]`) is neither raised nor chained onto it and
+   never reaches that log at all. The current behavior is: only that hook's teardown
    exception is raised and logged (with the run's own exception as context); every other
-   hook's teardown exception is silently dropped. A deployment whose hook teardown
+   failing hook's teardown exception is silently dropped. A deployment whose hook teardown
    failures must never be lost should have `after_run` log or forward them itself rather
    than rely only on the raise.
 
