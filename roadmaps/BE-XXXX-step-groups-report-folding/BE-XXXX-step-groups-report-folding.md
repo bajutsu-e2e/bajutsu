@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | Not yet opened (added once this branch is pushed) |
+| Implementing PR | [#2059](https://github.com/bajutsu-e2e/bajutsu/pull/2059) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 

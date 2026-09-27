@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| 実装 PR | 未定（プッシュ後に追記） |
+| 実装 PR | [#2059](https://github.com/bajutsu-e2e/bajutsu/pull/2059) |
 | トピック | Scenario authoring features |
 <!-- /BE-METADATA -->
 
