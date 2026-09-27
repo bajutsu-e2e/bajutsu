@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import tempfile
 import time
 from collections.abc import Callable, Sequence
@@ -26,6 +27,8 @@ from bajutsu.common.cloud.devicefarm import (
 from .batch_checkpoint import BatchCheckpoint
 from .batch_lifecycle_hook import BatchContext, BatchLifecycleHook
 from .batch_request import BatchRequest
+
+_logger = logging.getLogger(__name__)
 
 
 def _check_launch_env_collisions(
@@ -104,7 +107,9 @@ class DeviceFarmBatchProvider:
 
         `hooks` (set at construction) run server-side lifecycle steps: `before_submit` may inject
         launch environment variables into the packaged config; `after_run` runs in a ``finally`` in
-        reverse hook order so teardown always mirrors setup (BE-0435).
+        reverse hook order so teardown always mirrors setup (BE-0435). No `after_run` failure is
+        dropped: each is logged, except that when no verdict was collected the first one is raised
+        instead — so a teardown failure never discards a collected run.
         """
         resume_arn = checkpoint.load() if checkpoint is not None else None
         ctx = BatchContext(request=request, work_dir=work_dir, job_id=job_id)
@@ -182,14 +187,24 @@ class DeviceFarmBatchProvider:
                         on_scheduled=(checkpoint.save if checkpoint is not None else None),
                     )
         finally:
-            hook_errors: list[BaseException] = []
+            hook_errors: list[tuple[BatchLifecycleHook, Exception]] = []
             for hook in reversed(self._hooks):
                 try:
                     hook.after_run(ctx, verdict)
                 except Exception as exc:
-                    hook_errors.append(exc)
-            if hook_errors:
-                raise hook_errors[0]
+                    hook_errors.append((hook, exc))
+            # A collected verdict means the run and its artifacts exist, so a teardown failure is
+            # logged rather than raised: raising would replace the `return` and discard both.
+            raise_first = bool(hook_errors) and verdict is None
+            for failed_hook, err in hook_errors[1:] if raise_first else hook_errors:
+                _logger.error(
+                    "BatchLifecycleHook %s.after_run failed during teardown of job %r",
+                    type(failed_hook).__name__,
+                    job_id,
+                    exc_info=err,
+                )
+            if raise_first:
+                raise hook_errors[0][1]
 
         assert verdict is not None  # exceptions take the other path
         return verdict
