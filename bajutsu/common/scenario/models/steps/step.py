@@ -167,18 +167,26 @@ class Step(_Model):
         # A target group (BE-0437) never reaches the runner — expansion replaces it with its own
         # nested steps before the scenario finishes loading. `target` is what it exists to fix
         # once, so it is required unconditionally, not only once the scenario declares two or more
-        # targets like a leaf action's. `capture`/`extract`/`name`/`from_` are each a modifier read
+        # targets like a leaf action's. Every other modifier (`_MODIFIERS` minus `target`) is read
         # off the one step the runner executes; setting one here would vanish with expansion,
         # silently, so it is refused at load time instead.
         if self.steps is None:
             return self
-        if self.target is None:
+        if not self.target:
             raise ValueError("steps: target is required on a target group (§6.2)")
-        for field in ("capture", "extract", "name", "from_"):
+        if not self.steps:
+            raise ValueError("steps: a target group's steps must not be empty (§6.2)")
+        for field in _MODIFIERS:
+            if field == "target":
+                continue
             if getattr(self, field) is not None:
-                alias = self.model_fields[field].alias or field
+                alias = type(self).model_fields[field].alias or field
                 raise ValueError(f"steps: {alias} is not supported on a target group (§6.2)")
         for child in self.steps:
+            if child.steps is not None:
+                raise ValueError(
+                    "steps: a target group cannot nest directly inside another target group (§6.2)"
+                )
             if child.target is not None:
                 raise ValueError(
                     "steps: a step nested directly inside a target group must omit target — "

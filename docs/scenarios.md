@@ -1257,7 +1257,7 @@ under its own `steps`, instead of stamping `target` on each one by hand:
 ```
 
 Written the flat way, this same scenario needs ten `target:` lines to name the same two runs. Each
-group above states those steps once. No `target:` line drifts out of sync with the one above it.
+group above names its target once. No `target:` line drifts out of sync with the one above it.
 
 A target group is pure authoring sugar. A load-time pass expands it before the rest of this
 section's rules run. It produces the same flat, per-step `target:` form a hand-written scenario

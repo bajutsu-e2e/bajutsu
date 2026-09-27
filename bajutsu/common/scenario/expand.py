@@ -80,6 +80,20 @@ def expand_components(
             raise ValueError(f"component nesting too deep (>{max_depth}): {' -> '.join(stack)}")
         out: list[Step] = []
         for st in steps:
+            if st.steps is not None:
+                # A target group (BE-0437) a component's own steps carry is never flattened at
+                # `Component`-parse time the way a `Scenario`'s own top-level group already is —
+                # `Component` carries no such validator — so it can still hold an unexpanded
+                # `use:` by the time it lands here. Expand its own children first (so a `use:`
+                # inside it resolves the same as one anywhere else), then stamp the group's target
+                # onto whichever ones `Step`'s own validator left blank.
+                out.extend(
+                    child
+                    if child.target is not None
+                    else child.model_copy(update={"target": st.target})
+                    for child in expand(st.steps, stack, resolve)
+                )
+                continue
             if st.use is None:
                 out.append(st)
                 continue

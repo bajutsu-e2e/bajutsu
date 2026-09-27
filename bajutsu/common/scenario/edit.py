@@ -60,8 +60,11 @@ def apply_selector(
     stale caller-supplied action can't misdirect the edit.
 
     Raises:
-        EditError: The scenario or step index is not found, or the step's action has no selector
-            slot (e.g. `wait`, `back`) — Apply refuses rather than corrupt it.
+        EditError: The scenario or step index is not found, the step's action has no selector
+            slot (e.g. `wait`, `back`) — Apply refuses rather than corrupt it — or the scenario's
+            raw `steps:` sequence and its parsed step list disagree in length (a target group,
+            BE-0437, expands one YAML item into several parsed steps, so *step_index* would
+            address a different item in each).
         ValueError: *text* is not a valid scenario file, or the selector is malformed.
     """
     scenarios = load_scenario_file(text).scenarios
@@ -70,6 +73,17 @@ def apply_selector(
         raise EditError(f"scenario '{scenario_name}' not found")
     if not 0 <= step_index < len(scenario.steps):
         raise EditError(f"step index {step_index} out of range for scenario '{scenario.name}'")
+
+    root = yaml.compose(text, Loader=_yaml._Loader)  # noqa: SLF001  # see bajutsu/common/_yaml.py
+    steps_node = _steps_node(root, scenario.name)
+    if len(steps_node.value) != len(scenario.steps):
+        # A target group (BE-0437) expands into more than one parsed step per raw YAML item, so
+        # *step_index* would no longer address the same step in `scenario.steps` and in the raw
+        # sequence below — refuse rather than edit the wrong step or corrupt the file.
+        raise EditError(
+            f"cannot apply a selector: scenario '{scenario.name}' uses a target group, so its "
+            "steps cannot be indexed one-to-one yet"
+        )
 
     step = scenario.steps[step_index]
     alias = _action_alias(step)
@@ -87,8 +101,7 @@ def apply_selector(
         dumped[alias] = holder
     new_step = Step.model_validate(dumped)
 
-    root = yaml.compose(text, Loader=_yaml._Loader)  # noqa: SLF001  # see bajutsu/common/_yaml.py
-    step_node = _steps_node(root, scenario.name).value[step_index]
+    step_node = steps_node.value[step_index]
     lines = text.split("\n")
     start, end = _content_span(step_node)
     replacement = _reindent(dump_block([new_step]), _indent_of(lines[start]))

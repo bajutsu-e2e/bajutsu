@@ -112,6 +112,38 @@ scenarios:
     assert _tap_ids(load_expanded_scenarios(scenario)[0]) == ["from.inline", "from.file"]
 
 
+def test_a_target_group_inside_a_component_still_expands_a_nested_use(tmp_path: Path) -> None:
+    # BE-0437: `expand()`'s own `use:` scan is a flat, top-level walk — a component's own target
+    # group is never flattened at `Component`-parse time the way a scenario's own top-level group
+    # already is, so a `use:` hidden one level inside it must still resolve, not survive expansion
+    # and abort the run with `_action_of`'s `AssertionError` (BE-0437's own step-runner registry).
+    scenario = _write(
+        tmp_path / "s.yaml",
+        """\
+components:
+  inner:
+    steps:
+      - tap: { id: from.inner }
+  outer:
+    steps:
+      - target: web
+        steps:
+          - use: { component: inner }
+          - tap: { id: from.outer }
+
+scenarios:
+  - name: s
+    targets: [web]
+    steps:
+      - use: { component: outer }
+""",
+    )
+    scenarios = load_expanded_scenarios(scenario)
+    assert _tap_ids(scenarios[0]) == ["from.inner", "from.outer"]
+    assert [s.target for s in scenarios[0].steps] == ["web", "web"]
+    assert all(s.use is None and s.steps is None for s in scenarios[0].steps)
+
+
 def test_undefined_bare_name_fails_with_a_clear_error(tmp_path: Path) -> None:
     # A bare name is never a filesystem probe: it fails loudly rather than guessing a file.
     scenario = _write(

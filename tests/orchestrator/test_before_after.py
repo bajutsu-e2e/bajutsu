@@ -599,6 +599,21 @@ def test_an_app_wide_phase_cannot_use_a_component() -> None:
         )
 
 
+def test_a_use_hidden_inside_an_app_wide_hooks_target_group_is_caught_too() -> None:
+    # BE-0437: a target group is never flattened at `TargetConfig`-parse time either, so a `use:`
+    # one level inside it is exactly as unresolvable as a bare one above — the same load-time
+    # refusal must see through it.
+    with pytest.raises(ValidationError, match="cannot use a component"):
+        load_config(
+            "targets:\n"
+            "  app:\n"
+            "    bundleId: com.example.app\n"
+            "    before:\n"
+            "      - target: app\n"
+            "        steps: [{ use: { component: c } }]\n"
+        )
+
+
 def test_the_capability_preflight_sees_a_hook_steps_construct() -> None:
     # Missed here, an unsupported teardown step passes the preflight, a device is leased, and the
     # whole scenario is driven before the step fails — and a failing `after` rule on an otherwise

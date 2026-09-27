@@ -174,8 +174,17 @@ class TargetConfig(_Model):
             "before / after": [*self.before, *(s for rule in self.after for s in rule.steps)],
             "interrupts": [s for entry in self.interrupts for s in entry.steps],
         }
+
+        def _has_use(s: Step) -> bool:
+            # A target group (BE-0437) is never flattened at `TargetConfig`-parse time — unlike a
+            # scenario's own top-level group — so a `use:` hidden one level inside it is just as
+            # unresolvable here as a bare one.
+            return s.use is not None or (
+                s.steps is not None and any(c.use is not None for c in s.steps)
+            )
+
         for field, steps in groups.items():
-            if any(s.use is not None for s in steps):
+            if any(_has_use(s) for s in steps):
                 raise ValueError(
                     f"targets.<name>.{field} cannot use a component (`use`): components are "
                     "expanded per scenario file, so an app-wide one is never resolved"

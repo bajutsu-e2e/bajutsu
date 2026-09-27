@@ -48,7 +48,9 @@ def _expand_steps(steps: list[Step], *, group_target: str | None, inside_web: bo
                 )
             out.extend(_expand_steps(step.steps, group_target=step.target, inside_web=False))
             continue
-        stamped = step.model_copy(update={"target": group_target}) if group_target else step
+        stamped = (
+            step.model_copy(update={"target": group_target}) if group_target is not None else step
+        )
         out.append(_expand_nested(stamped, inside_web=inside_web))
     return out
 

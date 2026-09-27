@@ -103,10 +103,11 @@ def test_group_child_setting_its_own_target_rejected() -> None:
         )
 
 
-def test_nested_group_rejected_by_the_same_child_omission_rule() -> None:
+def test_nested_group_rejected_with_a_dedicated_message() -> None:
     # A nested group always sets its own target (it is required unconditionally, above) — exactly
-    # what an immediate child may never do, so no separate check is needed for this case.
-    with pytest.raises(ValidationError, match="must omit target"):
+    # what an immediate child may never do. A dedicated check names this case rather than letting
+    # it fall through to the generic child-omission message below.
+    with pytest.raises(ValidationError, match="cannot nest directly inside another target group"):
         Scenario.model_validate(
             {
                 "name": "s",
@@ -125,6 +126,42 @@ def test_group_cannot_combine_with_a_leaf_action() -> None:
                 "steps": [{"target": "app", "tap": {"id": "a"}, "steps": [_step()]}],
             }
         )
+
+
+def test_group_with_empty_steps_rejected() -> None:
+    with pytest.raises(ValidationError, match="steps must not be empty"):
+        Scenario.model_validate(
+            {"name": "s", "targets": ["app", "web"], "steps": [_group("app", [])]}
+        )
+
+
+def test_group_with_an_empty_string_target_rejected() -> None:
+    with pytest.raises(ValidationError, match="target is required on a target group"):
+        Scenario.model_validate(
+            {"name": "s", "targets": ["app", "web"], "steps": [_group("", [_step()])]}
+        )
+
+
+# --- a group's own target is validated against the scenario's declared targets, once stamped --
+
+
+def test_group_target_not_among_two_or_more_declared_targets_rejected() -> None:
+    with pytest.raises(ValidationError, match="not one of the scenario's declared targets"):
+        Scenario.model_validate(
+            {"name": "s", "targets": ["app", "web"], "steps": [_group("android", [_step()])]}
+        )
+
+
+def test_group_target_not_matching_the_one_declared_target_rejected() -> None:
+    with pytest.raises(ValidationError, match="does not match the scenario's one declared"):
+        Scenario.model_validate(
+            {"name": "s", "targets": ["app"], "steps": [_group("web", [_step()])]}
+        )
+
+
+def test_group_target_rejected_when_scenario_declares_no_targets() -> None:
+    with pytest.raises(ValidationError, match="declares no targets"):
+        Scenario.model_validate({"name": "s", "steps": [_group("app", [_step()])]})
 
 
 # --- a group cannot sit inside web:/app: — enforced by `_expand_target_groups`, since `Step`
@@ -173,12 +210,21 @@ def test_group_inside_app_rejected_at_expansion() -> None:
 
 
 def test_expansion_matches_a_hand_flattened_scenario() -> None:
+    # A child's own modifiers (`name`, `capture`, `extract`, `from`) must survive stamping
+    # unchanged — `_expand_steps` copies the whole step, not just its action fields.
+    child_with_modifiers: dict[str, object] = {
+        "tap": {"id": "x"},
+        "name": "tap x",
+        "capture": ["screenshot"],
+        "extract": {"v": {"sel": {"id": "y"}}},
+        "from": "tap the x button",
+    }
     grouped = Scenario.model_validate(
         {
             "name": "s",
             "targets": ["app", "web"],
             "steps": [
-                _group("app", [{"tap": {"id": "x"}}, {"wait": {"for": {"id": "y"}, "timeout": 5}}]),
+                _group("app", [child_with_modifiers, {"wait": {"for": {"id": "y"}, "timeout": 5}}]),
                 _group("web", [{"tap": {"id": "z"}}]),
             ],
         }
@@ -188,13 +234,17 @@ def test_expansion_matches_a_hand_flattened_scenario() -> None:
             "name": "s",
             "targets": ["app", "web"],
             "steps": [
-                {"target": "app", "tap": {"id": "x"}},
+                {"target": "app", **child_with_modifiers},
                 {"target": "app", "wait": {"for": {"id": "y"}, "timeout": 5}},
                 {"target": "web", "tap": {"id": "z"}},
             ],
         }
     )
     assert grouped.steps == flat.steps
+    assert grouped.steps[0].name == "tap x"
+    assert grouped.steps[0].capture == ["screenshot"]
+    assert grouped.steps[0].extract is not None
+    assert grouped.steps[0].from_ == "tap the x button"
 
 
 def test_no_group_remains_after_expansion() -> None:
@@ -235,6 +285,7 @@ def test_before_and_after_and_interrupts_are_expanded_the_same_way() -> None:
 def test_if_as_a_direct_child_inherits_the_groups_target() -> None:
     # Shallow inheritance: the `if` step itself is stamped, but its own `then`/`else` are a fresh
     # scope requiring their own explicit target (BE-0428's existing rule, unaffected by the group).
+    # Both branches are exercised, since `_expand_nested` handles `then` and `else_` separately.
     s = Scenario.model_validate(
         {
             "name": "s",
@@ -246,7 +297,8 @@ def test_if_as_a_direct_child_inherits_the_groups_target() -> None:
                         {
                             "if": {
                                 "condition": {"exists": {"id": "a"}},
-                                "then": [{"target": "app", "tap": {"id": "x"}}],
+                                "then": [{"target": "web", "tap": {"id": "x"}}],
+                                "else": [{"target": "app", "tap": {"id": "y"}}],
                             }
                         },
                     ],
@@ -256,7 +308,9 @@ def test_if_as_a_direct_child_inherits_the_groups_target() -> None:
     )
     if_step = s.steps[0]
     assert if_step.target == "app"
-    assert if_step.if_ is not None and if_step.if_.then[0].target == "app"
+    assert if_step.if_ is not None
+    assert if_step.if_.then[0].target == "web"
+    assert if_step.if_.else_ is not None and if_step.if_.else_[0].target == "app"
 
 
 def test_then_inside_a_group_child_still_requires_its_own_target() -> None:
@@ -452,6 +506,12 @@ targets:
         steps:
           - tap: { id: a1 }
           - tap: { id: a2 }
+    after:
+      - on: always
+        steps:
+          - target: app
+            steps:
+              - tap: { id: a3 }
   web:
     baseUrl: http://localhost:1/
 """
@@ -469,3 +529,5 @@ def test_hook_folding_expands_a_group_a_config_level_hook_carries() -> None:
     )
     merged = with_lifecycle_phases(effs["app"], [scenario], effs)[0]
     assert [(s.target, _tap_id(s)) for s in merged.before] == [("app", "a1"), ("app", "a2")]
+    after_steps = merged.after[0].steps
+    assert [(s.target, _tap_id(s)) for s in after_steps] == [("app", "a3")]

@@ -261,7 +261,6 @@ def _expand_file(
     scenario_file = load_scenario_file(text)
     scenarios = scenario_file.scenarios
     raw_sources = scenario_sources(text)
-    pre_step_counts = {s.name: len(s.steps) for s in scenarios}
 
     def _plan_source(s: Scenario, raw: RawScenario) -> ScenarioPlanSource:
         if s.data is not None or s.data_file is not None:
@@ -333,10 +332,12 @@ def _expand_file(
             # strips to a name `plan_by_name` never had. That is a valid scenario file, not a bug
             # here, so this scenario simply gets no recovered plan rather than crashing the run.
             continue
-        # `apply_setups`/`expand_components` mutate `Scenario.steps` in place, so a changed count
-        # against the pre-expansion snapshot means this scenario's line numbers no longer line up
-        # with its executed steps (data-row expansion never changes the count, so a row keeps them).
-        if pre_step_counts.get(base_name) != len(s.steps):
+        # A target group (BE-0437), and `apply_setups`/`expand_components`, can each change the
+        # step count against `plan.step_lines`'s raw, one-entry-per-YAML-item count (captured
+        # before any of that ran) — when they do, this scenario's line numbers no longer line up
+        # with its executed steps (data-row expansion never changes the count, so a row keeps
+        # them, and its `step_lines` is already `[]`).
+        if len(plan.step_lines) != len(s.steps):
             plan = ScenarioPlanSource(file_name=plan.file_name, text=plan.text, step_lines=[])
         plan_sources[base_name] = plan
     return scenarios, scenario_file.description, plan_sources
