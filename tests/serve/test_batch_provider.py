@@ -345,21 +345,20 @@ def test_no_launch_env_injection_preserves_existing_config(tmp_path: Path) -> No
     # Without a hook injecting launch_env, the packaged config retains its original values.
     transfer = _CapturingTransfer(manifest_ok=True)
     provider = _make_provider(transfer=transfer)
-    work, request = _android_request_with_config(
-        tmp_path, existing_launch_env={"EXISTING": "value"}
-    )
-    # Overwrite with formatting `yaml.dump`'s own re-serialization would never reproduce
-    # (a comment, non-default key order) — a byte-for-byte match below can then only mean
-    # the no-hooks path skipped the extra_texts overlay entirely, not that the overlay
-    # happened to re-serialize to equivalent-looking bytes.
+    work, request = _android_request_with_config(tmp_path)
+    # Overwrite with formatting `yaml.dump`'s own re-serialization would never reproduce: a
+    # comment, and keys in genuinely non-sorted order (`yaml.dump` defaults to sort_keys=True, so
+    # launchEnv/package/platform *is* what it emits — sorted order distinguishes nothing). A
+    # byte-for-byte match below can then only mean the no-hooks path skipped the extra_texts
+    # overlay entirely, not that the overlay happened to re-serialize to equivalent-looking bytes.
     non_canonical = (
         "# operator note: demo target\n"
         "targets:\n"
         "  demo:\n"
+        "    platform: android\n"
+        "    package: com.example.app\n"
         "    launchEnv:\n"
         "      EXISTING: value\n"
-        "    package: com.example.app\n"
-        "    platform: android\n"
     )
     (work / "bajutsu.config.yaml").write_text(non_canonical, encoding="utf-8")
 
@@ -577,13 +576,30 @@ def _is_load_hooks_call(value: ast.expr) -> bool:
     )
 
 
+def _assigned_rhs(stmt: ast.AST, name: str) -> ast.expr | None:
+    """The right-hand side of stmt, if it is a plain or annotated assignment to 'name'."""
+    if isinstance(stmt, ast.Assign) and any(
+        isinstance(t, ast.Name) and t.id == name for t in stmt.targets
+    ):
+        return stmt.value
+    if (
+        isinstance(stmt, ast.AnnAssign)
+        and isinstance(stmt.target, ast.Name)
+        and stmt.target.id == name
+        and stmt.value is not None
+    ):
+        return stmt.value
+    return None
+
+
 def test_hooks_construction_site_sources_only_from_load_hooks() -> None:
     # The AST walk above proves submit() never re-passes 'hooks' per-call, but hooks are
     # constructor-only, so a request- or config-sourced value could only reach a provider at its
     # one construction site instead: batch_bootstrap.register_batch_providers. Walk that module
     # and confirm 'hooks=' there is always _load_hooks(...)'s return value — directly, or via a
-    # local variable last assigned from it — never a per-request or config-sourced value. A hook
-    # spec is a 'module:factory' string that gets imported and called, so letting a request body
+    # local variable whose every assignment comes from it, so a later reassignment from a
+    # request- or config-sourced value can't slip past a check that only looked at one assignment.
+    # A hook spec is a 'module:factory' string that gets imported and called, so letting a request body
     # choose hooks would be arbitrary code execution in the process holding the run's AWS role
     # (BE-0435, the same trust boundary BE-0432 drew for pre_test_commands).
     tree = ast.parse(textwrap.dedent(inspect.getsource(batch_bootstrap)))
@@ -614,14 +630,16 @@ def test_hooks_construction_site_sources_only_from_load_hooks() -> None:
         )
         enclosing = next((fn for fn in functions if call in ast.walk(fn)), None)
         assert enclosing is not None, "construction call must live inside a function"
-        assert any(
-            isinstance(stmt, ast.Assign)
-            and any(isinstance(t, ast.Name) and t.id == value.id for t in stmt.targets)
-            and _is_load_hooks_call(stmt.value)
+        assigned = [
+            rhs
             for stmt in ast.walk(enclosing)
-        ), (
-            f"hooks= local variable {value.id!r} must be assigned from _load_hooks(...), "
-            "never a request- or config-sourced value"
+            if (rhs := _assigned_rhs(stmt, value.id)) is not None
+        ]
+        assert assigned, f"hooks= local variable {value.id!r} is never assigned"
+        # Every assignment, not just one: a later `hooks = <request value>` must not slip through.
+        assert all(_is_load_hooks_call(expr) for expr in assigned), (
+            f"every assignment to hooks= local variable {value.id!r} must come from "
+            "_load_hooks(...), never a request- or config-sourced value"
         )
 
 
