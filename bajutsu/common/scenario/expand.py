@@ -228,7 +228,10 @@ def apply_setups(
             continue
         if ref not in cache:
             cache[ref] = resolve(ref)
-        scenario.steps = [*cache[ref], *scenario.steps]
+        # A fresh copy per scenario: validation stamps each omitted-`target` step with this
+        # scenario's own `primaryTarget` (BE-0436), and a shared instance would carry whichever
+        # scenario sharing the setup happened to be validated last.
+        scenario.steps = [*(st.model_copy(deep=True) for st in cache[ref]), *scenario.steps]
         # A plain attribute write, which Pydantic never re-runs a `model_validator` against — a
         # prelude's own steps, authored with no notion of this scenario's `targets`, would
         # otherwise splice in a `target` the load-time pass never saw (BE-0428; see

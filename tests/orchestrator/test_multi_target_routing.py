@@ -584,3 +584,125 @@ def test_returning_to_the_primary_after_a_detour_does_not_reuse_the_others_scree
     step_ids = list(sink.reuse_by_step)
     assert reused[3] is not None
     assert reused[3] == sink.after_by_step[step_ids[2]]
+
+
+# --- primaryTarget (BE-0436): an omitted `target` runs on the primary -------------------------
+
+
+def test_a_step_omitting_target_runs_on_the_primary() -> None:
+    app, web = FakeDriver(screen=list(_APP_SCREEN)), FakeDriver(screen=list(_WEB_SCREEN))
+    r = _run(
+        _scenario(
+            {
+                "name": "primary default",
+                "targets": ["app", "web"],
+                "primaryTarget": "app",
+                "steps": [
+                    {"tap": {"id": "app.button"}},
+                    {"target": "web", "tap": {"id": "web.button"}},
+                    {"tap": {"id": "app.value"}},
+                ],
+            }
+        ),
+        app=app,
+        web=web,
+    )
+    assert r.ok, r.failure
+    assert _taps(app) == [{"id": "app.button"}, {"id": "app.value"}]
+    assert _taps(web) == [{"id": "web.button"}]
+    assert [o.target for o in r.steps] == ["app", "web", "app"]
+
+
+def test_a_nested_step_omitting_target_runs_on_the_primary_not_its_wrapper() -> None:
+    # The `if` itself routes to "web", but its nested step omitted `target`: the resolution is
+    # flat, so the nested step still runs on the primary rather than inheriting "web".
+    app, web = FakeDriver(screen=list(_APP_SCREEN)), FakeDriver(screen=list(_WEB_SCREEN))
+    r = _run(
+        _scenario(
+            {
+                "name": "flat nested",
+                "targets": ["app", "web"],
+                "primaryTarget": "app",
+                "steps": [
+                    {
+                        "target": "web",
+                        "if": {
+                            "condition": {"exists": {"id": "web.button"}},
+                            "then": [{"tap": {"id": "app.button"}}],
+                        },
+                    },
+                ],
+            }
+        ),
+        app=app,
+        web=web,
+    )
+    assert r.ok, r.failure
+    assert _taps(app) == [{"id": "app.button"}]
+    assert _taps(web) == []
+
+
+def test_returning_to_the_primary_by_omission_resets_prev_after_like_an_explicit_target() -> None:
+    # The same `app, web, app` detour as the BE-0428 regression above, but the two "app" steps
+    # omit `target`: `_route` must read the resolved primary, or the return would never register
+    # as a switch and the third step's `before` would reuse "web"'s `after.png`.
+    sink = _ReuseTrackingSink()
+    app, web = FakeDriver(screen=list(_APP_SCREEN)), FakeDriver(screen=list(_WEB_SCREEN))
+    r = run_scenario(
+        app,
+        _scenario(
+            {
+                "name": "detour by omission",
+                "targets": ["app", "web"],
+                "primaryTarget": "app",
+                "steps": [
+                    {"tap": {"id": "app.button"}},
+                    {"target": "web", "tap": {"id": "web.button"}},
+                    {"tap": {"id": "app.value"}},
+                    {"tap": {"id": "app.button"}},
+                ],
+            }
+        ),
+        FakeClock(),
+        sink=sink,
+        target_runtimes={
+            "app": TargetRuntime(driver=app, sink=sink),
+            "web": TargetRuntime(driver=web, sink=sink),
+        },
+        primary_target="app",
+    )
+    assert r.ok, r.failure
+    reused = list(sink.reuse_by_step.values())
+    assert reused[:3] == [None, None, None]
+    step_ids = list(sink.reuse_by_step)
+    assert reused[3] == sink.after_by_step[step_ids[2]]
+
+
+def _primary_expect(element_id: str) -> RunResult:
+    app, web = FakeDriver(screen=list(_APP_SCREEN)), FakeDriver(screen=list(_WEB_SCREEN))
+    return _run(
+        _scenario(
+            {
+                "name": "expect by omission",
+                "targets": ["app", "web"],
+                "primaryTarget": "app",
+                "steps": [{"tap": {"id": "app.button"}}],
+                "expect": [{"exists": {"id": element_id}}],
+            }
+        ),
+        app=app,
+        web=web,
+    )
+
+
+def test_an_expect_entry_omitting_target_is_polled_against_the_primary() -> None:
+    # Only the app screen carries `app.value`, so a pass proves the entry reached the primary.
+    r = _primary_expect("app.value")
+    assert r.ok, r.failure
+    assert [a.ok for a in r.expect_results] == [True]
+
+
+def test_an_expect_entry_omitting_target_never_polls_a_secondary() -> None:
+    r = _primary_expect("web.value")
+    assert not r.ok
+    assert [a.ok for a in r.expect_results] == [False]

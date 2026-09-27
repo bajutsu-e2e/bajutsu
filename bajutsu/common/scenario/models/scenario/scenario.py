@@ -57,6 +57,11 @@ class Scenario(_Model):
     # (the default) is today's single-target scenario, resolved entirely from the CLI's `--target` —
     # a per-step `target` is then optional and, if set, must name that one target.
     targets: list[str] = Field(default_factory=list)
+    # The target a step or top-level `expect` entry runs against when it omits `target` under two
+    # or more declared `targets` (BE-0436). Pinned to `targets[0]`, the entry the runner already
+    # leases and resolves evidence for as the primary, so the file's "primary" and the runner's
+    # can never diverge. Unset keeps BE-0428's rule: every step names its own `target`.
+    primary_target: str | None = Field(default=None, alias="primaryTarget")
     # Per-scenario OS permission state (BE-0276), applied before the app process starts: grant or
     # revoke a permission up front so the runtime prompt never appears (iOS `simctl privacy`,
     # Android `pm grant`/`pm revoke`). Deterministic and AI-free, unlike the vision

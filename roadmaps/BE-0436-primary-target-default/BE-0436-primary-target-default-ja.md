@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0436](BE-0436-primary-target-default-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0436") |
+| 実装 PR | [#2061](https://github.com/bajutsu-e2e/bajutsu/pull/2061) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md) |
 <!-- /BE-METADATA -->
@@ -288,18 +289,37 @@ YAML へ再びシリアライズし直す既存の呼び出し箇所が2つあ�
 > 作業の進行に合わせて最新の状態を保つ。チェックリストは「詳細設計」の MECE な作業手順に対応する
 > (作業単位ごとに1つのチェック項目)。ログには、変更内容と時期を古い順に記録し、PR へリンクする。
 
-- [ ] スキーマ: `Scenario.primary_target`、`_check_primary_target`(未設定か `targets[0]` の
+- [x] スキーマ: `Scenario.primary_target`、`_check_primary_target`(未設定か `targets[0]` の
       どちらかだけを許します)、`target` の省略を合法にする `_check_target` の新しい逃げ道、
       `Step._resolved_target` / `resolved_target`、キャッシュしたステップを複製する
       `apply_setups` の変更を追加します。
-- [ ] ランナー: `_route` と `_steps_for_target` を、`step.target` の代わりに `step.resolved_target`
+- [x] ランナー: `_route` と `_steps_for_target` を、`step.target` の代わりに `step.resolved_target`
       を読むよう変更します。
-- [ ] ドキュメント: `docs/dsl-grammar.md`、`docs/scenarios.md`、およびそれぞれの `docs/ja/` 版を
+- [x] ドキュメント: `docs/dsl-grammar.md`、`docs/scenarios.md`、およびそれぞれの `docs/ja/` 版を
       更新します。
-- [ ] テスト: すべてのステップの形と宣言済みターゲット数にわたるスキーマの解決、往復の修正
+- [x] テスト: すべてのステップの形と宣言済みターゲット数にわたるスキーマの解決、往復の修正
       (`model_dump()` が `target` を出力しないこと)、共有セットアップの複製による修正、primary
       への復帰時のランナーの `prev_after` リセット、能力プリフライトのターゲットごとの分類と
       既知のネストしたラッパーの限界を検証します。
+
+ログ：
+
+- [#2061](https://github.com/bajutsu-e2e/bajutsu/pull/2061)：単位1（スキーマ）です。`targets[0]`
+  に固定した `Scenario.primary_target` を追加しました。`Step._resolved_target` と
+  `resolved_target` は、読み込み時の判定のたびに書き込みます。`None` に戻す場合も含みます。その
+  ため、解決済みのシナリオからコピーされたステップが、古い名前を持ち越すことはありません。
+  `apply_setups` は、キャッシュしたセットアップのステップをシナリオごとに複製します。
+- [#2061](https://github.com/bajutsu-e2e/bajutsu/pull/2061)：単位2（ランナー）です。`_route` と
+  `_steps_for_target` は `resolved_target` を読みます。省略した `expect` エントリは、プリフライトの
+  絞り込みでは主ターゲットに解決されます。config の `before` や `after` に属するステップ自身の、
+  入れ子になった `if`／`forEach` ステップは、そのステップ自身のターゲットに解決されます。シナリオの
+  主ターゲットには解決されません。
+- [#2061](https://github.com/bajutsu-e2e/bajutsu/pull/2061)：単位3（ドキュメント）です。
+  `docs/dsl-grammar.md`、`docs/scenarios.md`、`docs/architecture.md`、およびそれぞれの `docs/ja/`
+  版を更新しました。
+- [#2061](https://github.com/bajutsu-e2e/bajutsu/pull/2061)：単位4（テスト）です。すべてのステップの
+  形と宣言済みターゲット数、往復の修正、共有セットアップと共有ステップに対する修正、既知のネストした
+  ラッパーのプリフライトの限界を検証します。
 
 ## 参考
 
