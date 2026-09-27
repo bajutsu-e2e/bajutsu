@@ -911,6 +911,27 @@ def test_screenshot_and_navigate_and_close() -> None:
     drv.close()  # injected page -> no browser to close; must not raise
 
 
+def test_close_does_not_resolve_playwright_errors_for_an_injected_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # An injected page has nothing to close, so close() must not resolve the error types: that
+    # memoizes a real `from playwright.sync_api import …` process-wide and breaks
+    # test_importing_module_does_not_load_playwright wherever the `web` extra is installed.
+    drv, _ = _driver([])
+    calls = 0
+
+    def _spy() -> tuple[type[BaseException], ...]:
+        nonlocal calls
+        calls += 1
+        return ()
+
+    monkeypatch.setattr(
+        "bajutsu.common.drivers.playwright.playwright_driver._playwright_error_types", _spy
+    )
+    drv.close()
+    assert calls == 0
+
+
 def test_capabilities() -> None:
     drv, _ = _driver([])
     caps = drv.capabilities()

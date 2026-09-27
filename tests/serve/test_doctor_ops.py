@@ -11,9 +11,18 @@ import pytest
 from _shared import project
 
 from bajutsu.common.backend_cli import simctl
+from bajutsu.common.capability.preflight import Check
 from bajutsu.common.drivers import base
 from bajutsu.serve import operations as ops
 from bajutsu.serve.state import ServeState
+
+# A playwright-backend doctor check always calls preflight.doctor_environment_checks(), whose
+# default probes do a *real* `from playwright.sync_api import sync_playwright` when the `web` extra
+# happens to be installed — leaking the module into sys.modules for the rest of the test process
+# (breaking test_playwright.py's "importing the driver doesn't load playwright" invariant) and, once
+# `ok` is true, sending doctor on to query a real screen. Every playwright-backend test below stubs
+# it out so the check assembly never touches the real dependency, mirroring test_doctor_cli.py.
+_NO_BROWSER = [Check("chromium browser", False, "not installed (stubbed)")]
 
 
 def _state(tmp_path: Path, config_text: str | None = None) -> ServeState:
@@ -82,8 +91,13 @@ def test_ios_backend_reports_config_check(tmp_path: Path) -> None:
     assert all(c["ok"] for c in config_checks)
 
 
-def test_playwright_backend_missing_base_url_fails_check(tmp_path: Path) -> None:
+def test_playwright_backend_missing_base_url_fails_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # A web target without baseUrl should fail the config check.
+    monkeypatch.setattr(
+        "bajutsu.common.capability.preflight.doctor_environment_checks", lambda *a, **k: _NO_BROWSER
+    )
     state = _state(
         tmp_path,
         "defaults: { backend: [playwright] }\ntargets:\n  webapp: { bundleId: com.example }\n",
@@ -95,13 +109,20 @@ def test_playwright_backend_missing_base_url_fails_check(tmp_path: Path) -> None
     assert any("baseUrl" in c["name"] for c in failed)
 
 
-def test_playwright_backend_with_base_url_passes_config_check(tmp_path: Path) -> None:
+def test_playwright_backend_with_base_url_passes_config_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Stub both the environment checks and the live screen so the config-check assertion never
+    # depends on Playwright actually being installed (with the `web` extra present, the real probe
+    # would import the package for real and — once `ok` turns true — launch Chromium to navigate
+    # the baseUrl).
+    monkeypatch.setattr(
+        "bajutsu.common.capability.preflight.doctor_environment_checks", lambda *a, **k: _NO_BROWSER
+    )
     state = _state(
         tmp_path,
         "defaults: { backend: [playwright] }\ntargets:\n  webapp: { baseUrl: 'http://localhost:3000' }\n",
     )
-    # Stub the live screen so the config-check assertion never depends on a browser being installed
-    # (with the `web` extra present the real probe would launch Chromium and navigate the baseUrl).
     payload, status = ops.doctor_check(state, {"target": "webapp"}, screen_query=lambda *a: [])
     assert status == 200
     assert payload["backend"] == "playwright"
@@ -324,9 +345,12 @@ def test_score_reports_gaps(tmp_path: Path) -> None:
     assert score["missingId"][0]["label"] == "Submit"
 
 
-def test_score_null_when_runnability_fails(tmp_path: Path) -> None:
+def test_score_null_when_runnability_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # A web target without baseUrl fails the config check, so no screen is queried — the score
     # is null, mirroring the CLI which exits before scoring when the environment isn't runnable.
+    monkeypatch.setattr(
+        "bajutsu.common.capability.preflight.doctor_environment_checks", lambda *a, **k: _NO_BROWSER
+    )
     state = _state(
         tmp_path,
         "defaults: { backend: [playwright] }\ntargets:\n  webapp: { bundleId: com.example }\n",
