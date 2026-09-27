@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0436") |
+| 実装 PR | [#2061](https://github.com/bajutsu-e2e/bajutsu/pull/2061) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md) |
 <!-- /BE-METADATA -->
@@ -300,6 +301,25 @@ YAML へ再びシリアライズし直す既存の呼び出し箇所が2つあ�
       (`model_dump()` が `target` を出力しないこと)、共有セットアップの複製による修正、primary
       への復帰時のランナーの `prev_after` リセット、能力プリフライトのターゲットごとの分類と
       既知のネストしたラッパーの限界を検証します。
+
+ログ：
+
+- [#2061](https://github.com/bajutsu-e2e/bajutsu/pull/2061)：単位1（スキーマ）です。`targets[0]`
+  に固定した `Scenario.primary_target` を追加しました。`Step._resolved_target` と
+  `resolved_target` は、読み込み時の判定のたびに書き込みます。`None` に戻す場合も含みます。その
+  ため、解決済みのシナリオからコピーされたステップが、古い名前を持ち越すことはありません。
+  `apply_setups` は、キャッシュしたセットアップのステップをシナリオごとに複製します。
+- [#2061](https://github.com/bajutsu-e2e/bajutsu/pull/2061)：単位2（ランナー）です。`_route` と
+  `_steps_for_target` は `resolved_target` を読みます。省略した `expect` エントリは、プリフライトの
+  絞り込みでは主ターゲットに解決されます。config の `before` や `after` に属するステップ自身の、
+  入れ子になった `if`／`forEach` ステップは、そのステップ自身のターゲットに解決されます。シナリオの
+  主ターゲットには解決されません。
+- [#2061](https://github.com/bajutsu-e2e/bajutsu/pull/2061)：単位3（ドキュメント）です。
+  `docs/dsl-grammar.md`、`docs/scenarios.md`、`docs/architecture.md`、およびそれぞれの `docs/ja/`
+  版を更新しました。
+- [#2061](https://github.com/bajutsu-e2e/bajutsu/pull/2061)：単位4（テスト）です。すべてのステップの
+  形と宣言済みターゲット数、往復の修正、共有セットアップと共有ステップに対する修正、既知のネストした
+  ラッパーのプリフライトの限界を検証します。
 
 ## 参考
 

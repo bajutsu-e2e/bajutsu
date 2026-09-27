@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0436") |
+| Implementing PR | [#2061](https://github.com/bajutsu-e2e/bajutsu/pull/2061) |
 | Topic | Scenario authoring features |
 | Related | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md) |
 <!-- /BE-METADATA -->
@@ -278,6 +279,22 @@ condition should poll.
       (`model_dump()` never emits a stamped `target`); the shared-setup cloning fix; the runner's
       `prev_after` reset on a return to the primary; the capability preflight's per-target grouping,
       including the known nested-wrapper limitation.
+
+Log:
+
+- [#2061](https://github.com/bajutsu-e2e/bajutsu/pull/2061) — Unit 1 (Schema). `Scenario.primary_target`
+  pinned to `targets[0]`. `Step._resolved_target` / `resolved_target`, written on every load-time
+  check, `None` included. A step copied from a scenario that already resolved it never keeps a stale
+  name. `apply_setups` clones cached setup steps per scenario.
+- [#2061](https://github.com/bajutsu-e2e/bajutsu/pull/2061) — Unit 2 (Runner). `_route` and
+  `_steps_for_target` read `resolved_target`. An omitted `expect` entry falls back to the primary
+  in the preflight narrowing. A config-level `before` / `after` step's own nested `if` / `forEach`
+  step resolves to that config step's target, never to the scenario's primary.
+- [#2061](https://github.com/bajutsu-e2e/bajutsu/pull/2061) — Unit 3 (Docs). `docs/dsl-grammar.md`,
+  `docs/scenarios.md`, `docs/architecture.md`, and their `docs/ja/` mirrors.
+- [#2061](https://github.com/bajutsu-e2e/bajutsu/pull/2061) — Unit 4 (Tests). Covers every step shape
+  and declared-target count, and the round trip. Covers the shared-setup and shared-config-step
+  fixes too. Pins the known nested-wrapper preflight limitation.
 
 ## References
 
