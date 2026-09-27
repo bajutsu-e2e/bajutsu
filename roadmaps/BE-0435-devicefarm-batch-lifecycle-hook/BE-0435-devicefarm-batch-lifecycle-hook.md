@@ -149,13 +149,17 @@ around the existing flow:
    failure. Python's implicit chaining keeps the run's own exception as the hook
    exception's `__context__`, so it is not erased outright — `bajutsu/serve/jobs.py`'s
    `logger.warning(..., exc_info=True)` still logs the run's original traceback alongside
-   the hook's. What is actually lost is narrower: `_fail_batch`'s message
-   (``f"cloud-batch run failed: {exc}"``) names only the hook's exception, and `submit`
-   raises just `hook_errors[0]` — the first collected while iterating `reversed(self._hooks)`,
-   i.e. the exception of the *last-registered hook that raised* — so an earlier-registered
-   failing hook's exception (`hook_errors[1:]`) is neither raised nor chained onto it and
-   never reaches that log at all. A deployment whose hook teardown
-   failures must never be lost should have `after_run` log or forward them itself rather
+   the hook's. On a run that had already failed, what is actually lost is narrower:
+   `_fail_batch`'s message (``f"cloud-batch run failed: {exc}"``) names only the hook's
+   exception, and `submit` raises just `hook_errors[0]` — the first collected while
+   iterating `reversed(self._hooks)`, i.e. the exception of the *last-registered hook that
+   raised* — so an earlier-registered failing hook's exception (`hook_errors[1:]`) is
+   neither raised nor chained onto it and never reaches that log at all. On a run that
+   *succeeded*, the cost is larger: the raise replaces the `return`, so `_run_batch_job`
+   never reaches `_land_batch_run` — the collected run is discarded with its temporary
+   download directory and the job is reported `FAIL`, even though the device run passed.
+   A deployment whose hook teardown failures must never be lost should have `after_run`
+   log or forward them itself rather
    than rely only on the raise.
 
 With no hooks (the default `()`), `submit` behaves exactly as today and the packaged
