@@ -745,11 +745,11 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `setClipboard` | `setClipboard: { text: "..." }` | seed the Simulator pasteboard for a paste flow |
 | `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | override the status bar for deterministic screenshots |
 | `clearStatusBar` | `clearStatusBar: {}` | remove status-bar overrides (restore the live bar) |
-| `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)) |
+| `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)); **takes no modifiers** — `capture` / `extract` / `name` / `from` / `target` are all rejected |
 | `group` | `group: { name: <str>, steps: [...] }` | name a run of consecutive steps — a compile-time macro, folded together in `report.html` ([below](#grouping-steps-group--folded-in-reporthtml)) |
 | `web` | `web: { within: <Selector>, steps: [...] }` | enter a WebView's DOM: `within` resolves the host `WKWebView` natively, and the nested `steps` address its normalized DOM instead of the native tree ([below](#web-entering-a-webviews-dom)) |
 
-Modifiers:
+Modifiers (none of them on a `use` step, which takes none — see the table row above):
 
 - `capture: [<token>...]` — evidence for this step only ([evidence](evidence.md#b-inline-evidence)).
 - `name: <str>` — the step id (the evidence output directory name · report label). Defaults to `step<i>`.
@@ -1283,10 +1283,9 @@ work.
 ### Limits
 
 Two open questions this item hasn't resolved fail closed instead of guessing. Both apply once a
-scenario declares two or more targets. The loader refuses a `use:` step outright.
-`expand_components` replaces it wholesale with the component's own steps. That discards the `use:`
-step's own `target`. Expansion would otherwise drop that required-looking field with no warning.
-The loader refuses a non-empty
+scenario declares two or more targets. The loader refuses a `use:` step outright. A `use` step
+takes no modifiers, so it cannot carry the `target` every step then needs. The loader refuses a
+non-empty
 [`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) too. That holds regardless
 of whether its own `steps` and `condition` would otherwise pass. Which target its `condition` polls
 has no answer yet.
@@ -1538,6 +1537,8 @@ A small templating and macro layer wraps the core grammar. It runs **at load tim
 
 A **component** is a list of `params` and a list of `steps` that reference them as `${params.<name>}`. A `use` step invokes it, binding params via `with`. `use` is a **compile-time macro**: `expand_components` (`scenario/expand.py`) replaces it with the component's substituted steps before the run. Expansion is recursive — a component may itself `use` another, up to depth 25. It raises an error on a missing or unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle. No `use` step survives into the run, so determinism is unaffected. Expansion reaches a scenario's own `steps` and the recovery `steps` of each [`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) entry.
 
+A `use` step takes no modifiers. The loader refuses a `use` step that also sets any of `capture` / `extract` / `name` / `from` / `target`. Expansion replaces the whole step, so it would otherwise drop those fields with no warning.
+
 A component lives in **a file of its own**, reusable across the whole suite:
 
 ```yaml
@@ -1762,9 +1763,9 @@ trigger key `on:` from becoming `True`, Bajutsu's YAML loader (`common/_yaml.py`
 ## `from` (provenance)
 
 `from:` records **which natural-language phrase a construct was recorded from** (BE-0044). It is an
-optional string attached at four levels — the scenario (the original goal), each step, each `expect`
-assertion, and each `capturePolicy` rule — so a reviewer can see *why* each part exists and judge
-whether `record` normalized the intent faithfully.
+optional string attached at four levels — the scenario (the original goal), each step but `use`
+(which takes no modifiers), each `expect` assertion, and each `capturePolicy` rule — so a reviewer
+can see *why* each part exists and judge whether `record` normalized the intent faithfully.
 
 ```yaml
 - name: open settings and reindex

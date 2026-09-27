@@ -462,6 +462,10 @@ class _StubCollector(FakeNetworkCollector):
 class _FakeWeb(FakeDriver):
     """A fake web driver: a FakeDriver plus the web-only navigate()/close() lifecycle."""
 
+    # Mirrors PlaywrightDriver's own declaration (its recorder writes real WebM, not mp4) — proves
+    # the pool actually reads this attribute off the driver rather than hardcoding "mp4".
+    video_extension = "webm"
+
     def __init__(self, screen: list[base.Element], *, fail_collector_stop: bool = False) -> None:
         super().__init__(screen)
         self.navigated = 0
@@ -1835,6 +1839,10 @@ def test_device_pool_web_lease(monkeypatch: pytest.MonkeyPatch) -> None:
         assert leased.collector is None  # network off for web
         assert isinstance(leased.sink, FileSink)
         assert leased.sink.udid == "web"
+        # The pool reads the driver's own declared container (BE-0331) rather than assuming mp4;
+        # a typo in the getattr key here, or dropping the argument in a later refactor of the
+        # FileSink(...) call, would silently fall back to "mp4" with the rest of the suite green.
+        assert leased.sink.video_extension == "webm"
         assert fakes[0].navigated == 1  # launch == navigate to base_url
         assert leased.relaunch is not None
         leased.relaunch(Relaunch())  # re-navigate, no device restart

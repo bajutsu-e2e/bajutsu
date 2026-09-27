@@ -38,6 +38,10 @@ class PlaywrightDriver:
     """Driver implementation for the web via Playwright."""
 
     name = "playwright"
+    # Playwright's own `record_video_dir` always writes Matroska/WebM (VP8/VP9), regardless of the
+    # target platform — unlike simctl/adb, which produce real ISO base media (mp4). The device pool
+    # reads this to reserve the scenario video's artifact under its actual extension (BE-0331).
+    video_extension = "webm"
 
     def __init__(
         self,

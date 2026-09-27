@@ -6,8 +6,9 @@ proxy (`intervals.Interval.true_start`). That origin is what a report anchors st
 timestamps to, so the parsing here is deliberately narrow: only the one field each container needs
 to state its duration, from the two containers the interval providers produce — ISO base media
 (`simctl io recordVideo`, `adb shell screenrecord`) and Matroska/WebM (Playwright's recorder, whose
-output the sink still names `.mp4`). Anything else, and any file that does not parse, answers
-`None` so the caller degrades to the proxy rather than to a guessed number.
+output the sink names `scenario.webm` to match, see `_interval_filename`). Anything else, and any
+file that does not parse, answers `None` so the caller degrades to the proxy rather than to a
+guessed number.
 
 Reads are bounded rather than whole-file: a scenario recording is tens of megabytes, and the field
 in question is a few bytes near one end of it.

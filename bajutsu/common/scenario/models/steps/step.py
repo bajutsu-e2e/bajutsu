@@ -125,7 +125,7 @@ class Step(_Model):
     name: str | None = None
     # Provenance (BE-0044): the natural-language phrase `record` normalized this step from. Pure
     # authoring metadata — `run` never reads it. A modifier, not an action, so it doesn't disturb
-    # the one-action rule; allowed on every step, control-flow included.
+    # the one-action rule; allowed on every step but `use`, control-flow included.
     from_: str | None = Field(default=None, alias="from")
     # Which of the enclosing scenario's `targets` this step runs against (BE-0428). A modifier, not
     # an action, like `from_` above — required or optional depending on `len(scenario.targets)`, a
@@ -186,6 +186,21 @@ class Step(_Model):
                 raise ValueError(f"capture is not supported on {action} steps")
             if self.extract is not None:
                 raise ValueError(f"extract is not supported on {action} steps")
+        return self
+
+    @model_validator(mode="after")
+    def _no_modifiers_on_use(self) -> Self:
+        if self.use is not None:
+            present = [
+                (field.alias or name)
+                for name, field in type(self).model_fields.items()
+                if name in _MODIFIERS and getattr(self, name) is not None
+            ]
+            if present:
+                raise ValueError(
+                    f"use steps take no modifiers, got {', '.join(present)} — expansion replaces "
+                    "the step with the component's own steps, which would silently discard them"
+                )
         return self
 
 

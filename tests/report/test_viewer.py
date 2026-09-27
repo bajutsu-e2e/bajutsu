@@ -48,10 +48,27 @@ def test_html_embeds_scenario_video() -> None:
     out = html_report("run9", [r])
     assert "<video " in out
     assert 'src="00-s1/scenario.mp4"' in out
+    assert 'type="video/mp4"' in out
     # A scenario with no video artifact embeds no player. The bare "<video" substring (no
     # trailing space) is not enough on its own — the inlined stylesheet mentions "<video>" in a
     # comment on every page, video or not.
     assert "<video " not in html_report("run9", [_passing()])
+
+
+def test_html_declares_the_video_elements_real_container_type() -> None:
+    # A Playwright-recorded web scenario's video is genuinely WebM (see `_interval_filename`), named
+    # `scenario.webm` — the `<video>` element must declare `video/webm`, not silently inherit a
+    # `video/mp4` a browser could refuse to play against the real bytes.
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[],
+        expect_results=[],
+        artifacts=[Artifact("00-s1/scenario.webm", "video", "playwright")],
+    )
+    out = html_report("run9", [r])
+    assert 'src="00-s1/scenario.webm"' in out
+    assert 'type="video/webm"' in out
 
 
 def test_html_discloses_why_the_video_is_missing_on_a_backend_crash() -> None:
