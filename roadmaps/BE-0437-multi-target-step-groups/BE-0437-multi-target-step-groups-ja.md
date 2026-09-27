@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0437](BE-0437-multi-target-step-groups-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0437") |
+| 実装 PR | [#2066](https://github.com/bajutsu-e2e/bajutsu/pull/2066) |
 | トピック | シナリオの記述機能 |
 | 関連 | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md) |
 <!-- /BE-METADATA -->
@@ -259,17 +260,36 @@ target」というチェックが、グループのスタンプ済みの子ス�
 > 挙げたMECEな作業分割を1項目1チェックボックスで映し、ログはPRへのリンクとともに変更内容と日時を
 > 古い順に記録します。
 
-- [ ] スキーマ：`Step.steps`、グループに`target`を必須とするバリデーター、
+- [x] スキーマ：`Step.steps`、グループに`target`を必須とするバリデーター、
       capture/extract/name/from_をグループ上で禁止する規則。
-- [ ] 展開：`_expand_target_groups`を、既存の4か所の`_check_target_requirements`呼び出しそれぞれの
+- [x] 展開：`_expand_target_groups`を、既存の4か所の`_check_target_requirements`呼び出しそれぞれの
       直前に呼ぶ。`web:`・`app:`へのネストの拒否。子ステップによるターゲット上書きの拒否。
-- [ ] ドキュメント：`docs/scenarios.md`とその`docs/ja/`ミラー。
-- [ ] テスト：スキーマのバリデーターを検証します（グループへのターゲット必須化、禁止した修飾
+- [x] ドキュメント：`docs/scenarios.md`とその`docs/ja/`ミラー。
+- [x] テスト：スキーマのバリデーターを検証します（グループへのターゲット必須化、禁止した修飾
       フィールド、子ステップの省略、ネストしたグループの拒否、`web:`・`app:`へのネストの拒否）。
       展開の正しさも検証します。グループで書いたシナリオが、手でフラットに書いたシナリオと同じ
       スタンプ済みステップ列を生成することを確かめます。`interrupts`エントリーの`steps`にネストした
       グループも対象に含めます。`expand_components`・`apply_setups`・フックの折り込みを経ても、
       再展開が同じように生き残ることも確かめます。
+
+ログ：
+
+- [#2066](https://github.com/bajutsu-e2e/bajutsu/pull/2066) — この項目全体を実装しました。`Step.steps`
+  とそのバリデーター、既存の4か所すべての`_check_target_requirements`呼び出しに組み込んだ
+  `_expand_target_groups`、両言語のドキュメント、テストが含まれます。PRを開く前に4つの観点
+  （code-reviewer、code-simplifier、silent-failure-hunter、pr-test-analyzer）でセルフレビューを
+  行い、最初の実装が見落としていた本物のバグを何件か発見し、修正しました。1つ目は、真偽値での判定が
+  空文字列のグループターゲットを黙って落としていた点です。既存の一致チェックに失敗させる代わりに、
+  黙って落としていました。2つ目は、空のグループ（`steps: []`）がターゲットの検証を経ずに受理されて
+  いた点です。3つ目は、コンポーネント自身のステップが運ぶターゲットグループの中に隠れた`use:`が
+  展開を生き延び、run のループを`AssertionError`で落としていた点です。`Component`には`Scenario`が
+  持つような、ロード時に展開するバリデーターがないためです。config レベルのフックが運ぶグループでも
+  同じ抜けをふさぎました。4つ目は、エディタの`apply_selector`です。生の YAML の`steps:`の1項目が、
+  パース後のステップと1対1で対応するという前提がありましたが、ターゲットグループはこれを崩します。
+  そこで、誤ったステップを黙って書き換えるおそれがある代わりに、拒否するようにしました。ほかにも、
+  レポートの行番号ガードが、すでにグループ展開を反映したロード後のステップ数と比較していたため、
+  グループによる変化を検出できていない点を見つけました。展開前の、生のステップ数と比較するように
+  直しました。後続項目に切り出した単位はありません。
 
 ## 参考
 

@@ -131,6 +131,25 @@ def test_apply_selector_rejects_unknown_scenario() -> None:
         apply_selector(text, "nope", 0, {"id": "b"})
 
 
+def test_apply_selector_refuses_a_scenario_with_a_target_group() -> None:
+    # BE-0437: a target group expands one raw YAML item into several parsed steps, so the same
+    # `step_index` would address a different item in the raw sequence than in `scenario.steps` —
+    # refuse rather than edit the wrong step or corrupt the file (see `_targets.py`).
+    text = (
+        "- name: s\n"
+        "  targets: [app, web]\n"
+        "  steps:\n"
+        "    - target: app\n"
+        "      steps:\n"
+        "        - tap: { id: a1 }\n"
+        "        - tap: { id: a2 }\n"
+        "    - target: web\n"
+        "      tap: { id: w1 }\n"
+    )
+    with pytest.raises(EditError, match="uses a target group"):
+        apply_selector(text, "s", 1, {"id": "new"})
+
+
 # --- apply_enrichment -------------------------------------------------------------------------
 
 

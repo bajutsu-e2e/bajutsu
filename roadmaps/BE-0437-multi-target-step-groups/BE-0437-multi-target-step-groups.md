@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0437](BE-0437-multi-target-step-groups.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0437") |
+| Implementing PR | [#2066](https://github.com/bajutsu-e2e/bajutsu/pull/2066) |
 | Topic | Scenario authoring features |
 | Related | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md) |
 <!-- /BE-METADATA -->
@@ -244,18 +245,36 @@ directly. Its `docs/ja/` mirror gets the same addition.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Schema: `Step.steps`, the target-required-on-a-group validator, and the
+- [x] Schema: `Step.steps`, the target-required-on-a-group validator, and the
       capture/extract/name/from_ refusal on a group.
-- [ ] Expansion: `_expand_target_groups`, called right before each of the four existing
+- [x] Expansion: `_expand_target_groups`, called right before each of the four existing
       `_check_target_requirements` call sites; the `web:`/`app:` nesting refusal; the
       child-target-override refusal.
-- [ ] Docs: `docs/scenarios.md` and its `docs/ja/` mirror.
-- [ ] Tests: schema validator (group requires target; forbidden modifiers; child omission; nested
+- [x] Docs: `docs/scenarios.md` and its `docs/ja/` mirror.
+- [x] Tests: schema validator (group requires target; forbidden modifiers; child omission; nested
       group rejection; `web:`/`app:` nesting rejection), expansion correctness (a group-authored
       scenario produces the same stamped step list a hand-flattened version would, including a
       group nested inside an `interrupts` entry's `steps`), and the re-expansion surviving
       `expand_components`, `apply_setups`, and hook-folding the same way `_check_target_requirements`
       already does.
+
+Log:
+
+- [#2066](https://github.com/bajutsu-e2e/bajutsu/pull/2066) — Implemented the whole item: `Step.steps`
+  and its validator, `_expand_target_groups` wired into all four existing
+  `_check_target_requirements` call sites, docs (both languages), and tests. A four-lens self-review
+  pass before opening the PR (code-reviewer, code-simplifier, silent-failure-hunter,
+  pr-test-analyzer) found and fixed several real bugs the initial cut missed: a truthy-vs-`None`
+  check that silently dropped an empty-string group target instead of failing the existing
+  membership check; an empty group (`steps: []`) accepted with no target validation; a `use:` step
+  hidden inside a target group a *component's* own steps carried surviving expansion and crashing
+  the run loop with an `AssertionError` (a `Component` has no expand-on-load validator the way a
+  `Scenario` does), with the same gap closed for a config-level hook's own group; and the editor's
+  `apply_selector`, which assumed a raw YAML `steps:` item maps 1:1 to a parsed step — a target group
+  breaks that, so it now refuses rather than risk silently editing the wrong step. Also found: the
+  report's line-number guard compared against a post-load step count that already reflected group
+  expansion, so it never caught a group changing the count; fixed to compare against the raw,
+  pre-expansion count instead. No unit was carved out to a follow-up item.
 
 ## References
 

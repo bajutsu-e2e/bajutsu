@@ -11,7 +11,13 @@ from collections.abc import Callable
 from typing import Any, Protocol, cast, runtime_checkable
 
 from bajutsu.common.scenario import interp
-from bajutsu.common.scenario.models import Component, Scenario, Step, _check_target_requirements
+from bajutsu.common.scenario.models import (
+    Component,
+    Scenario,
+    Step,
+    _check_target_requirements,
+    _expand_target_groups,
+)
 
 
 @runtime_checkable
@@ -74,6 +80,20 @@ def expand_components(
             raise ValueError(f"component nesting too deep (>{max_depth}): {' -> '.join(stack)}")
         out: list[Step] = []
         for st in steps:
+            if st.steps is not None:
+                # A target group (BE-0437) a component's own steps carry is never flattened at
+                # `Component`-parse time the way a `Scenario`'s own top-level group already is —
+                # `Component` carries no such validator — so it can still hold an unexpanded
+                # `use:` by the time it lands here. Expand its own children first (so a `use:`
+                # inside it resolves the same as one anywhere else), then stamp the group's target
+                # onto whichever ones `Step`'s own validator left blank.
+                out.extend(
+                    child
+                    if child.target is not None
+                    else child.model_copy(update={"target": st.target})
+                    for child in expand(st.steps, stack, resolve)
+                )
+                continue
             if st.use is None:
                 out.append(st)
                 continue
@@ -114,7 +134,9 @@ def expand_components(
             entry.steps = expand(entry.steps, [], resolve)
         # The assignments above are plain attribute writes, which Pydantic never re-runs a
         # `model_validator` against — so a component's own steps would otherwise splice in a
-        # `target` the load-time pass never saw (BE-0428; see `models/scenario/_targets.py`).
+        # `target` the load-time pass never saw (BE-0428), or a target group it never expanded
+        # (BE-0437; see `models/scenario/_targets.py`).
+        _expand_target_groups(scenario)
         _check_target_requirements(scenario)
 
 
@@ -234,6 +256,7 @@ def apply_setups(
         scenario.steps = [*(st.model_copy(deep=True) for st in cache[ref]), *scenario.steps]
         # A plain attribute write, which Pydantic never re-runs a `model_validator` against — a
         # prelude's own steps, authored with no notion of this scenario's `targets`, would
-        # otherwise splice in a `target` the load-time pass never saw (BE-0428; see
-        # `models/scenario/_targets.py`).
+        # otherwise splice in a `target` the load-time pass never saw (BE-0428), or a target group
+        # it never expanded (BE-0437; see `models/scenario/_targets.py`).
+        _expand_target_groups(scenario)
         _check_target_requirements(scenario)

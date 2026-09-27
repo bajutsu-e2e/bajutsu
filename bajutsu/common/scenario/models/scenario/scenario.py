@@ -22,7 +22,7 @@ from bajutsu.common.scenario.models.mocks import Mock
 from bajutsu.common.scenario.models.steps import AfterRule, Interrupt, Step
 
 from ._functions import _coerce_system_alert_handling
-from ._targets import _check_target_requirements
+from ._targets import _check_target_requirements, _expand_target_groups
 from .preconditions import Preconditions
 from .system_alert_handling import SystemAlertHandling
 
@@ -161,5 +161,8 @@ class Scenario(_Model):
         # Extracted into `_check_target_requirements` (BE-0428) so `expand_components` and
         # `with_lifecycle_phases` — which each rebuild an already-validated `Scenario` in a way
         # Pydantic never re-validates — can run the same check again on their own result.
+        # `_expand_target_groups` (BE-0437) runs first, so a target group is already gone by the
+        # time the check walks the tree.
+        _expand_target_groups(self)
         _check_target_requirements(self)
         return self

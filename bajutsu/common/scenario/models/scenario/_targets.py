@@ -6,6 +6,11 @@ later points rebuild an already-validated `Scenario` in place — `apply_setups`
 and Pydantic re-runs a `model_validator` against none of them, so each calls this same function
 again on its own result rather than trusting the one load-time pass to have seen the steps it just
 spliced in.
+
+`_expand_target_groups` (BE-0437) runs right before each of those same four points, replacing every
+target group with its own nested, target-stamped steps. Once it has run, `_check_target_requirements`
+itself needs no change: every step it walks is already the flat, per-step `target:` form, whether an
+author wrote it by hand or a group produced it.
 """
 
 from __future__ import annotations
@@ -21,6 +26,87 @@ if TYPE_CHECKING:
 
 def _step_label(step: Step) -> str:
     return repr(step.name) if step.name is not None else "<unnamed step>"
+
+
+def _expand_steps(steps: list[Step], *, group_target: str | None, inside_web: bool) -> list[Step]:
+    """Expand every target group (BE-0437) in *steps*, recursively; the flat result.
+
+    *group_target* is the target a directly-enclosing group already fixed, to stamp onto a child
+    that omits its own (`Step`'s own validator guarantees every such child does). It is None
+    anywhere outside a group — a scenario's own top-level lists, and a `then`/`else`/`forEach`
+    body, which are each a fresh scope requiring their own explicit target or group — where a
+    step's `target` is left exactly as the author wrote it, for the existing per-step rule to
+    check afterward.
+    """
+    out: list[Step] = []
+    for step in steps:
+        if step.steps is not None:
+            if inside_web:
+                raise ValueError(
+                    f"{_step_label(step)}: a target group is not allowed nested inside a web: or "
+                    "app: block — every step there already runs against the block's own device"
+                )
+            out.extend(_expand_steps(step.steps, group_target=step.target, inside_web=False))
+            continue
+        stamped = (
+            step.model_copy(update={"target": group_target}) if group_target is not None else step
+        )
+        out.append(_expand_nested(stamped, inside_web=inside_web))
+    return out
+
+
+def _expand_nested(step: Step, *, inside_web: bool) -> Step:
+    """*step*, with a target group expanded away inside its own `if`/`forEach`/`web`/`app` body."""
+    updates: dict[str, object] = {}
+    if step.if_ is not None:
+        else_ = step.if_.else_
+        updates["if_"] = step.if_.model_copy(
+            update={
+                "then": _expand_steps(step.if_.then, group_target=None, inside_web=inside_web),
+                "else_": (
+                    _expand_steps(else_, group_target=None, inside_web=inside_web)
+                    if else_ is not None
+                    else None
+                ),
+            }
+        )
+    if step.for_each is not None:
+        updates["for_each"] = step.for_each.model_copy(
+            update={
+                "steps": _expand_steps(
+                    step.for_each.steps, group_target=None, inside_web=inside_web
+                )
+            }
+        )
+    if step.web is not None:
+        updates["web"] = step.web.model_copy(
+            update={"steps": _expand_steps(step.web.steps, group_target=None, inside_web=True)}
+        )
+    if step.app is not None:
+        updates["app"] = step.app.model_copy(
+            update={"steps": _expand_steps(step.app.steps, group_target=None, inside_web=True)}
+        )
+    return step.model_copy(update=updates) if updates else step
+
+
+def _expand_target_groups(scenario: Scenario) -> None:
+    """Replace every target group (BE-0437) with its own nested, target-stamped steps, in place.
+
+    A pure load-time authoring convenience: `bajutsu run`, the report, and the CLI never see a
+    target group, only the flat per-step `target:` form BE-0428 already validates and runs. Walks
+    the same four step lists `_check_target_requirements` walks (`steps`, `before`, every `after`
+    rule's `steps`, every `interrupts` entry's `steps`), and the same `if`/`forEach`/`web`/`app`
+    nesting.
+
+    Raises:
+        ValueError: A target group sits nested directly inside a `web:`/`app:` block's own steps.
+    """
+    scenario.steps = _expand_steps(scenario.steps, group_target=None, inside_web=False)
+    scenario.before = _expand_steps(scenario.before, group_target=None, inside_web=False)
+    for rule in scenario.after:
+        rule.steps = _expand_steps(rule.steps, group_target=None, inside_web=False)
+    for entry in scenario.interrupts:
+        entry.steps = _expand_steps(entry.steps, group_target=None, inside_web=False)
 
 
 def _check_target(

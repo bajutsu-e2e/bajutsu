@@ -895,6 +895,78 @@ run を止めます。ファイルが外したターゲットを選ぶことは�
 常に走ります。`web` なら自分自身の WebView ブリッジ、`app` なら変わらない同じネイティブドライバ
 です。
 
+### ターゲットグループ：連続するステップに対してターゲットを1回だけ書く（BE-0437）
+
+上で見た `target` は、1つのターゲットに対して連続するステップの列に、同じ値を繰り返し書かせます。
+**ターゲットグループ**は、この繰り返しをなくします。`target` を1回だけ設定し、そのステップ1つ1つに
+`target` を刻む代わりに、実行するアクションをすべて自分の `steps` の下にまとめる、そういうステップ
+です。
+
+```yaml
+- name: favorite a horse on the iOS showcase, then carry what it captured into the web demo
+  targets: [showcase-swiftui, web]
+  steps:
+    - target: showcase-swiftui
+      steps:
+        - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
+        - tap: { id: [stable.row.1, stable_row_1] }
+        - wait: { for: { id: [horse.favorite, horse_favorite] }, timeout: 5 }
+        - tap: { id: [horse.favorite, horse_favorite] }
+          extract:
+            favorited: { sel: { id: [horse.favorite.value, horse_favorite_value] } }
+    - target: web
+      steps:
+        - tap: { id: onboarding.start }
+        - type: { text: "favorited-${vars.favorited}@example.com", into: { id: auth.email } }
+        - type: { text: "pw", into: { id: auth.password } }
+        - tap: { id: auth.submit }
+        - wait: { for: { id: home.title }, timeout: 5 }
+        - tap: { id: counter.increment }
+  expect:
+    - target: showcase-swiftui
+      value: { sel: { id: [horse.favorite.value, horse_favorite_value] }, equals: "on" }
+    - target: web
+      value: { sel: { id: counter.value }, equals: "1" }
+```
+
+フラットな書き方、つまり1ステップに1行の `target:` では、この同じシナリオに10行が要ります。ここでは
+ターゲットを2箇所で名指しするだけで、同じ2つのまとまりを表せます。上の行と食い違う `target:` 行
+そのものが、存在しません。
+
+ターゲットグループは、純粋な記述の糖衣構文です。この節より先にあるほかの規則を適用する前に、ロード時
+の1パスがターゲットグループを展開します。展開後の形は、手書きのシナリオがすでに使っている、フラット
+で1ステップ1行の `target:` です。`bajutsu run`、レポート、CLI のどれも、ターゲットグループを目にしま
+せん。見るのは、展開済みのステップだけです。
+
+ターゲットグループ自身の `target` は、必須です。シナリオがターゲットを0個または1個しか宣言していなく
+ても、`primaryTarget`（前述）を宣言していても、これは変わりません。末端のアクション自身の `target`
+とは、ここが違います。末端のアクションなら `target` を省略して、プライマリに対して走らせられます。
+ターゲットグループの役割は、自分の配下にあるステップに対してターゲットを1回だけ固定することなので、
+固定する先がつねに要ります。`capture` / `extract` / `name` / `from` も、ターゲットグループには
+許されません。どれも、run が実行する、たった1つのステップから読み出すフィールドです。ターゲット
+グループは run に届くことがありません。展開が、ターゲットグループを自分の配下のステップに置き換えて
+しまうからです。この4つのどれかを設定しても、その値は黙って消えます。
+
+グループ自身の `steps` へ直接入れ子になったステップは、`target` を省略しなければなりません。
+末端のアクション、`if`、`forEach`、`web` / `app` ブロックのどれであっても同じです。グループが
+すでに固定しているからです。それでも子が `target` を設定すると、暗黙に上書きされるのではなく、
+ロード時のエラーになります。ターゲットグループを別のターゲットグループへ直接入れ子にした場合も、
+同じ理由でエラーです。ネストしたグループは自分自身の `target` をつねに設定しますが、それこそが
+直接の子には許されない設定だからです。
+
+この省略の規則は、直接の子だけに及び、再帰しません。グループへ直接入れ子になった `if` や `forEach`
+は、末端のアクションと同じように、自分自身へグループのターゲットを継承します。ただし、その
+`then`、`else`、本体の中は新しいスコープです。そこでは、グループの外と同じく、それぞれが自分の
+`target` かターゲットグループを、あらためて明示しなければなりません。グループへ直接入れ子に
+なった `web` ブロックや `app` ブロックも、同じようにグループのターゲットを継承します。そのターゲット
+に対して、自分のブリッジを開きます。そのブロックの中へさらに入れ子になったステップは、グループとは
+関係なく、上で述べた既存の規則どおり `target` を省略し続けます。
+
+ターゲットグループは、`web:` ブロックや `app:` ブロック自身の入れ子ステップの中では、頭から拒まれ
+ます。そこではどのステップも、ブロック自身がすでに解決した1つのターゲットに対して、すでに走ってい
+ます。グループを置いても、同じターゲットを無意味に繰り返すか、どのドライバも開いていない別のター
+ゲットを名指しするかのどちらかにしかなりません。
+
 ### 複数ターゲット run での、残りの config の扱い
 
 宣言済みの各ターゲットは、主ターゲットのものではなく、自分自身の config を読みます。ターゲットごとに

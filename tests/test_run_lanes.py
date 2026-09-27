@@ -191,6 +191,28 @@ def test_expand_file_setup_expansion_drops_step_lines(tmp_path: Path) -> None:
     assert "the scenario under test" in plan.text  # the comment survives
 
 
+def test_expand_file_target_group_drops_step_lines(tmp_path: Path) -> None:
+    # BE-0437: a target group expands one raw `steps:` item into several parsed steps, so the raw
+    # per-item line numbers no longer line up with the executed steps either — the same guard that
+    # catches a setup prelude's step-count change must catch this one too.
+    path = tmp_path / "s.yaml"
+    path.write_text(
+        "- name: demo\n"
+        "  targets: [x]\n"
+        "  steps:\n"
+        "    - target: x\n"
+        "      steps:\n"
+        "        - tap: { id: a }\n"
+        "        - tap: { id: b }\n",
+        encoding="utf-8",
+    )
+    scenarios, _description, plan_sources = _expand_file(path, _eff(), root=tmp_path)
+    assert len(scenarios[0].steps) == 2  # the group's two children, flattened
+    plan = plan_sources["demo"]
+    assert plan.step_lines == []
+    assert plan.text is not None
+
+
 def test_expand_file_data_driven_scenario_drops_verbatim_text(tmp_path: Path) -> None:
     # A `data:`-driven scenario expands into one Scenario per row with `${row.*}` substituted, but
     # `expand_data` never changes the step count — the guard above cannot catch this case. Every
