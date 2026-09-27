@@ -164,29 +164,34 @@ class TargetConfig(_Model):
 
     @model_validator(mode="after")
     def _no_component_in_target_steps(self) -> Self:
-        # `use` is expanded when a *scenario* file loads, which a target config never passes through:
-        # an app-wide `use` would reach the step loop with no action on it and abort the whole run
-        # with an `AssertionError` rather than fail one scenario. Reject it here, loudly and at load
-        # time, until config-level component resolution exists. Every field that takes the step
-        # grammar is covered, not only the lifecycle phases (BE-0392): `interrupts` (BE-0314) skips
-        # the same expansion pass for the same reason.
-        groups = {
+        # `use` and `group` are both expanded when a *scenario* file loads, which a target config
+        # never passes through: an app-wide `use` or `group` would reach the step loop with no
+        # action on it and abort the whole run with an `AssertionError` rather than fail one
+        # scenario. Reject both here, loudly and at load time, until config-level component
+        # resolution exists. Every field that takes the step grammar is covered, not only the
+        # lifecycle phases (BE-0392): `interrupts` (BE-0314) skips the same expansion pass for the
+        # same reason.
+        field_steps = {
             "before / after": [*self.before, *(s for rule in self.after for s in rule.steps)],
             "interrupts": [s for entry in self.interrupts for s in entry.steps],
         }
 
-        def _has_use(s: Step) -> bool:
+        def _nested(s: Step) -> list[Step]:
             # A target group (BE-0437) is never flattened at `TargetConfig`-parse time — unlike a
-            # scenario's own top-level group — so a `use:` hidden one level inside it is just as
-            # unresolvable here as a bare one.
-            return s.use is not None or (
-                s.steps is not None and any(c.use is not None for c in s.steps)
-            )
+            # scenario's own top-level `use` or `group` — so a `use:` or `group:` hidden one level
+            # inside it (its own `steps`) is just as unresolvable here as a bare one.
+            return [s, *(s.steps or [])]
 
-        for field, steps in groups.items():
-            if any(_has_use(s) for s in steps):
+        for field, steps in field_steps.items():
+            reachable = [c for s in steps for c in _nested(s)]
+            if any(s.use is not None for s in reachable):
                 raise ValueError(
                     f"targets.<name>.{field} cannot use a component (`use`): components are "
+                    "expanded per scenario file, so an app-wide one is never resolved"
+                )
+            if any(s.group is not None for s in reachable):
+                raise ValueError(
+                    f"targets.<name>.{field} cannot use a group (`group`): groups are "
                     "expanded per scenario file, so an app-wide one is never resolved"
                 )
         return self

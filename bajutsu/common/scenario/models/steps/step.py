@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Annotated, Self
 
 from pydantic import Field, PrivateAttr, field_validator, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
 from bajutsu.common.scenario.models._base import (
     _CONTROL_FLOW_ACTIONS,
@@ -56,6 +57,7 @@ from .use import Use
 if TYPE_CHECKING:
     from .app import App
     from .for_each import ForEach
+    from .group import Group
     from .if_ import If
     from .web import Web
 
@@ -122,6 +124,7 @@ class Step(_Model):
     manual: Manual | None = None
     if_: If | None = Field(default=None, alias="if")
     for_each: ForEach | None = Field(default=None, alias="forEach")
+    group: Group | None = None
     capture: list[str] | None = None
     extract: dict[str, Extract] | None = None
     name: str | None = None
@@ -134,6 +137,21 @@ class Step(_Model):
     # rule `Step` itself cannot enforce since it cannot see the enclosing scenario
     # (`_check_target_requirements` does, from `Scenario`'s own validator).
     target: str | None = None
+    # Report-internal: which `group` (and which occurrence of it) `expand()` pulled this step out
+    # of, so `report.html` can fold it back together. Never exposed in `bajutsu schema`
+    # (`SkipJsonSchema` keeps both off the authoring surface), but not rejected on ordinary
+    # `model_validate` either: `expand()` sets these via `model_copy(update=...)`, which makes both
+    # a *set*, non-default field, so a dump the run path re-validates (`redact_totp_secrets`,
+    # `load_run`'s reload of its own `scenario.yaml`) carries a real value neither `exclude_none`
+    # nor `exclude_defaults` drops. Rejecting that value on re-validation — as an earlier version of
+    # this field did — broke exactly that round trip; see `serialize.py`'s `redact_totp_secrets`
+    # docstring for the matching BE-0401 precedent this field now follows instead.
+    report_group: Annotated[str | None, SkipJsonSchema()] = Field(
+        default=None, alias="_reportGroup"
+    )
+    report_group_id: Annotated[int | None, SkipJsonSchema()] = Field(
+        default=None, alias="_reportGroupId"
+    )
     # The scenario's `primaryTarget` an omitted `target` resolved to at load time (BE-0436). Private
     # rather than written back onto `target`, so `model_dump()` — the serve editor's splice and the
     # run's `scenario.yaml` snapshot — keeps the step as terse as the author wrote it.

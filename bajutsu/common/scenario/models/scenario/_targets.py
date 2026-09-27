@@ -174,6 +174,16 @@ def _check_step_target(
             f"{context}: use: is not yet supported when the scenario declares "
             f"{len(known)} targets — a use: step cannot carry the target they require"
         )
+    if step.group is not None and len(known) >= 2:
+        # `expand_components` replaces this step wholesale with the group's own steps too, but
+        # `Step` does not refuse `target` on a `group:` step the way it now does on `use:` — a
+        # `group` still discards it silently at expansion time, rather than the required field it
+        # looks like. Refused until a later BE-0428 unit decides whether/how `target` propagates
+        # into an expansion.
+        raise ValueError(
+            f"{context}: group: is not yet supported when the scenario declares "
+            f"{len(known)} targets — its own target would be discarded by expansion"
+        )
     # Assigned even when None: a step copied from a scenario that resolved it (`apply_setups`'s
     # deep-copied prelude) must not keep that scenario's primary.
     step.resolve_target(_check_target(step.target, known=known, context=context, default=default))
@@ -199,11 +209,11 @@ def _check_target_requirements(scenario: Scenario) -> None:
     the enclosing block already resolved (`web:`'s own `WebContextDriver`, or `app:`'s unchanged
     native driver). An `Assertion` reached through an inline `assert:` list, an `if`'s
     `condition`, or an `interrupts` entry's `condition` must never set `target` — only one reached
-    through the scenario's top-level `expect` block may. Two open questions this item has not yet
+    through the scenario's top-level `expect` block may. Three open questions this item has not yet
     resolved fail closed instead of guessing: a `use:` step (it takes no modifiers, so it cannot
-    carry the `target` two targets require) and a non-empty `interrupts` (its `condition` has no
-    target of its own to poll) are both refused outright once the scenario declares two or more
-    targets.
+    carry the `target` two targets require), a `group:` step (its own `target` would be discarded
+    by expansion), and a non-empty `interrupts` (its `condition` has no target of its own to poll)
+    are all refused outright once the scenario declares two or more targets.
 
     A scenario that sets `primaryTarget` (which must be `targets[0]`) lifts the two-or-more
     requirement (BE-0436): a step or top-level `expect` entry that omits `target` runs against the
@@ -232,6 +242,10 @@ def _check_target_requirements(scenario: Scenario) -> None:
                     walk_steps(step.if_.else_, inside_web=inside_web)
             if step.for_each is not None:
                 walk_steps(step.for_each.steps, inside_web=inside_web)
+            if step.group is not None:
+                # Reached only when `known` has fewer than 2 targets — `_check_step_target` above
+                # already refuses a `group` step outright once the scenario declares 2 or more.
+                walk_steps(step.group.steps, inside_web=inside_web)
             if step.web is not None:
                 walk_steps(step.web.steps, inside_web=True)
             if step.app is not None:

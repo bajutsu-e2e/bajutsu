@@ -746,6 +746,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | override the status bar for deterministic screenshots |
 | `clearStatusBar` | `clearStatusBar: {}` | remove status-bar overrides (restore the live bar) |
 | `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)); **takes no modifiers** — `capture` / `extract` / `name` / `from` / `target` are all rejected |
+| `group` | `group: { name: <str>, steps: [...] }` | name a run of consecutive steps — a compile-time macro, folded together in `report.html` ([below](#grouping-steps-group--folded-in-reporthtml)) |
 | `web` | `web: { within: <Selector>, steps: [...] }` | enter a WebView's DOM: `within` resolves the host `WKWebView` natively, and the nested `steps` address its normalized DOM instead of the native tree ([below](#web-entering-a-webviews-dom)) |
 
 Modifiers (none of them on a `use` step, which takes none — see the table row above):
@@ -1661,6 +1662,41 @@ A scenario file carries `components:` in its `{description, scenarios}` mapping 
 A bare name the map does not define is an error naming the ref. No fallback opens a file. The map is **scoped to one file**. The loader reads it per file and never merges it across a suite directory. A name declared in one file stays invisible from its siblings. Reuse that spans files stays the component file's job. Crossing into a component file drops the map entirely. A component file declares no `components:`, so a bare `use` inside one is always undefined. A file-scoped component's own steps expand in the declaring file's scope. One may `use` another by bare name, or `use` a file by path.
 
 A `setup` prelude is a scenario-file-shaped document, so it may carry its own `components:`. The loader expands a prelude's `use` steps in the prelude's own scope before prepending them. A same-named entry in the calling scenario file cannot capture them. A path ref inside a prelude resolves against the prelude's own directory too, not the calling scenario file's.
+
+### Grouping steps (`group:` → folded in report.html)
+
+A `group:` step names a run of consecutive steps. `expand_components` replaces it with its own
+`steps`, the same way it replaces a `use:` step. `run` never sees either — both are compile-time
+macros:
+
+```yaml
+steps:
+  - group:
+      name: ログイン
+      steps:
+        - tap: { id: auth.open }
+        - type: { text: "${vars.user}", into: { id: auth.user } }
+        - tap: { id: auth.submit }
+  - tap: { id: home.tab }
+```
+
+Unlike `use:`, `group:` takes no `params` and names no separate file. This is a purely local,
+one-off label for organizing one scenario's own `steps:`. It is not a mechanism for reuse across
+scenarios. A named `use:` / `components:` call is the right tool once the same run of steps is
+called from more than one place.
+
+`report.html` folds each group's steps into a collapsed section. A heading names the group and
+counts its steps. A group whose steps all pass stays collapsed. A group holding a failing step
+opens automatically. The existing "expand all" / "collapse all" controls open and close every
+group too. A network request/response row, or a step that never ran, can split one `group:`
+invocation into more than one fold in the report. Each fragment then gets its own heading, rather
+than one continuous fold.
+
+`group:` does not nest. A `group:` step inside another `group:`'s own `steps:` fails at load time.
+So does one inside an `if` / `forEach` / `web` / `app` step's nested `steps:`. A scenario declaring
+two or more [`targets`](#targets--target-multi-target-scenarios-be-0428) cannot use `group:`
+either. The reason matches `use:`'s own: expansion discards the step's own `target`, leaving a
+group's `target` to decide nothing.
 
 ### Data-driven scenarios (`data` / `dataFile`)
 

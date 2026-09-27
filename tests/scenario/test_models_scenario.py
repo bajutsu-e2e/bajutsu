@@ -328,3 +328,210 @@ def test_source_stem_never_appears_in_model_dump() -> None:
     assert "source_stem" not in s.model_dump()
     assert "sourceStem" not in s.model_dump(by_alias=True)
     assert "source_stem" not in dump_scenarios([s])
+
+
+# --- group nesting (rejected: a `group` never expands there) ---
+
+
+def test_group_at_top_level_is_accepted() -> None:
+    s = Scenario.model_validate(
+        {
+            "name": "x",
+            "steps": [{"group": {"name": "login", "steps": [{"tap": {"id": "a"}}]}}],
+        }
+    )
+    assert s.steps[0].group is not None
+
+
+def test_group_nested_inside_another_group_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="must not nest inside a group"):
+        Scenario.model_validate(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "group": {
+                            "name": "outer",
+                            "steps": [
+                                {
+                                    "group": {
+                                        "name": "inner",
+                                        "steps": [{"tap": {"id": "a"}}],
+                                    }
+                                }
+                            ],
+                        }
+                    }
+                ],
+            }
+        )
+
+
+_INNER_GROUP = {"name": "inner", "steps": [{"tap": {"id": "a"}}]}
+
+
+def test_group_nested_inside_an_if_then_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="must not nest inside if"):
+        Scenario.model_validate(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "if": {
+                            "condition": {"exists": {"id": "c"}},
+                            "then": [{"group": _INNER_GROUP}],
+                        }
+                    }
+                ],
+            }
+        )
+
+
+def test_group_nested_inside_a_foreach_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="must not nest inside forEach"):
+        Scenario.model_validate(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "forEach": {
+                            "sel": {"id": "c"},
+                            "as": "x",
+                            "steps": [{"group": _INNER_GROUP}],
+                        }
+                    }
+                ],
+            }
+        )
+
+
+def test_group_nested_inside_web_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="must not nest inside web"):
+        Scenario.model_validate(
+            {
+                "name": "x",
+                "steps": [{"web": {"within": {"id": "wv"}, "steps": [{"group": _INNER_GROUP}]}}],
+            }
+        )
+
+
+def test_group_nested_inside_app_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="must not nest inside app"):
+        Scenario.model_validate(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "app": {
+                            "bundleId": "com.example.app",
+                            "steps": [{"group": _INNER_GROUP}],
+                        }
+                    }
+                ],
+            }
+        )
+
+
+def test_group_nested_inside_an_else_branch_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="must not nest inside if"):
+        Scenario.model_validate(
+            {
+                "name": "x",
+                "steps": [
+                    {
+                        "if": {
+                            "condition": {"exists": {"id": "c"}},
+                            "then": [{"tap": {"id": "a"}}],
+                            "else": [
+                                {
+                                    "group": {
+                                        "name": "inner",
+                                        "steps": [{"tap": {"id": "b"}}],
+                                    }
+                                }
+                            ],
+                        }
+                    }
+                ],
+            }
+        )
+
+
+def test_group_nested_inside_before_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="must not nest inside a group"):
+        Scenario.model_validate(
+            {
+                "name": "x",
+                "before": [
+                    {
+                        "group": {
+                            "name": "outer",
+                            "steps": [
+                                {"group": {"name": "inner", "steps": [{"tap": {"id": "a"}}]}}
+                            ],
+                        }
+                    }
+                ],
+                "steps": [{"tap": {"id": "z"}}],
+            }
+        )
+
+
+def test_group_nested_inside_an_after_rules_steps_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="must not nest inside a group"):
+        Scenario.model_validate(
+            {
+                "name": "x",
+                "steps": [{"tap": {"id": "z"}}],
+                "after": [
+                    {
+                        "on": "always",
+                        "steps": [
+                            {
+                                "group": {
+                                    "name": "outer",
+                                    "steps": [
+                                        {
+                                            "group": {
+                                                "name": "inner",
+                                                "steps": [{"tap": {"id": "a"}}],
+                                            }
+                                        }
+                                    ],
+                                }
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+
+def test_group_nested_inside_an_interrupts_entrys_steps_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="must not nest inside a group"):
+        Scenario.model_validate(
+            {
+                "name": "x",
+                "steps": [{"tap": {"id": "z"}}],
+                "interrupts": [
+                    {
+                        "condition": {"exists": {"id": "dialog"}},
+                        "steps": [
+                            {
+                                "group": {
+                                    "name": "outer",
+                                    "steps": [
+                                        {
+                                            "group": {
+                                                "name": "inner",
+                                                "steps": [{"tap": {"id": "a"}}],
+                                            }
+                                        }
+                                    ],
+                                }
+                            }
+                        ],
+                    }
+                ],
+            }
+        )

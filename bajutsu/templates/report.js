@@ -21,6 +21,17 @@
       else { det.setAttribute('hidden',''); row.classList.remove('open'); }
     }
   });
+  // A `group:` fold's heading toggles every row sharing its `group_id` — the body row and any
+  // companion rows (alertrow/actrow/genrow) a member step also emitted.
+  ROOT.addEventListener('click', function(e){
+    var btn = e.target.closest('.grouptoggle'); if(!btn) return;
+    var gid = btn.getAttribute('data-group-id');
+    var open = btn.getAttribute('aria-expanded') !== 'true';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    ROOT.querySelectorAll('tr[data-group-id="'+gid+'"]:not(.grouphead)').forEach(function(row){
+      if(open){ row.removeAttribute('hidden'); } else { row.setAttribute('hidden',''); }
+    });
+  });
   // Visual-regression baseline approval. Only works when the report is served (so the
   // POST can reach the bajutsu serve endpoint); a report opened from disk hides the button.
   if (location.protocol === 'file:') {
@@ -113,6 +124,13 @@
   };
   window.toggleAll = function(open){
     ROOT.querySelectorAll('details.scn').forEach(function(d){ d.open = open; });
+    ROOT.querySelectorAll('.grouptoggle').forEach(function(btn){
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      var gid = btn.getAttribute('data-group-id');
+      ROOT.querySelectorAll('tr[data-group-id="'+gid+'"]:not(.grouphead)').forEach(function(row){
+        if(open){ row.removeAttribute('hidden'); } else { row.setAttribute('hidden',''); }
+      });
+    });
   };
   // Element viewer: clicking a step's screenshot (or its "tree" button) opens that step's
   // captured accessibility elements in an overlay — embedded inline, so it works offline

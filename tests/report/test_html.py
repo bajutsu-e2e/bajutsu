@@ -12,7 +12,7 @@ from bajutsu.common.evidence.network import NetworkExchange
 from bajutsu.common.orchestrator import RunResult, run_scenario
 from bajutsu.common.report import ScenarioPlanSource, html_report
 from bajutsu.common.report.html import scenario_render_inputs, scenario_source_meta
-from bajutsu.common.scenario import Scenario
+from bajutsu.common.scenario import Scenario, expand_components
 
 
 def test_html_report_shows_why_a_substituted_element_was_actuated() -> None:
@@ -397,3 +397,52 @@ def test_html_dark_mode_and_log_highlight() -> None:
     assert "@media (prefers-color-scheme: dark)" in out  # dark-mode CSS is bundled
     assert ".log mark{" in out  # highlight style for log matches
     assert "'<mark>'" in out  # the log filter wraps matches in <mark>
+
+
+def _group_scenario_result(*, second_step_id: str) -> tuple[Scenario, RunResult]:
+    scenario = Scenario.model_validate(
+        {
+            "name": "grouped",
+            "steps": [
+                {
+                    "group": {
+                        "name": "login",
+                        "steps": [{"tap": {"id": "a"}}, {"tap": {"id": second_step_id}}],
+                    }
+                }
+            ],
+        }
+    )
+
+    def resolve(_ref: str) -> object:
+        raise AssertionError("no components in this scenario")
+
+    expand_components([scenario], resolve)  # type: ignore[arg-type]
+    driver = FakeDriver([_el("a", "A")])
+    return scenario, run_scenario(driver, scenario)
+
+
+def test_html_report_folds_a_passing_group() -> None:
+    scenario, result = _group_scenario_result(second_step_id="a")
+    definitions, sources = scenario_render_inputs([scenario])
+    out = html_report("run1", [result], definitions=definitions, sources=sources)
+    assert result.ok, result.failure
+    assert "class='grouphead'" in out
+    assert 'class="groupname">login<' in out
+    assert "2 steps" in out
+    assert 'aria-expanded="false"' in out
+    # Both member rows are hidden by default (a passing group starts collapsed). The fold's DOM
+    # key is `{group_id}-{position}` (`_fold_groups`), not the bare `group_id` — so two fragments
+    # split from one invocation never share a `data-group-id`.
+    assert out.count("data-group-id='0-0'") >= 3  # heading + at least 2 member rows
+    assert "data-group-id='0-0' hidden" in out
+
+
+def test_html_report_expands_a_failing_group() -> None:
+    scenario, result = _group_scenario_result(second_step_id="missing")
+    definitions, sources = scenario_render_inputs([scenario])
+    out = html_report("run1", [result], definitions=definitions, sources=sources)
+    assert not result.ok
+    assert 'aria-expanded="true"' in out
+    # No member row is hidden once the group contains a failure.
+    assert "data-group-id='0-0' hidden" not in out

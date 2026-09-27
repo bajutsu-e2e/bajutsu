@@ -228,6 +228,47 @@ def test_use_allowed_under_one_target() -> None:
     assert s.steps[0].use is not None
 
 
+def test_group_not_yet_supported_under_two_targets() -> None:
+    # Same reason as `use:` above — `expand()` discards a `group:` step's own `target` — and the
+    # message names `group:`, not the fixed `use:` wording, so the author sees their own action.
+    with pytest.raises(ValidationError, match="group: is not yet supported"):
+        Scenario.model_validate(
+            {
+                "name": "s",
+                "targets": ["app", "web"],
+                "steps": [
+                    {"target": "app", "group": {"name": "login", "steps": [_step()]}},
+                ],
+            }
+        )
+
+
+def test_group_allowed_under_one_target() -> None:
+    s = Scenario.model_validate(
+        {
+            "name": "s",
+            "targets": ["app"],
+            "steps": [{"group": {"name": "login", "steps": [_step()]}}],
+        }
+    )
+    assert s.steps[0].group is not None
+
+
+def test_group_steps_are_checked_under_one_target() -> None:
+    # A `group`'s own inner steps are ordinary steps once `known` has fewer than 2 targets, so the
+    # usual per-step target rule still reaches them.
+    with pytest.raises(ValidationError, match="does not match"):
+        Scenario.model_validate(
+            {
+                "name": "s",
+                "targets": ["app"],
+                "steps": [
+                    {"group": {"name": "login", "steps": [_step(target="other")]}},
+                ],
+            }
+        )
+
+
 def test_interrupts_not_yet_supported_under_two_targets() -> None:
     # BE-0428: which target an interrupt's condition polls is an open question, so a non-empty
     # `interrupts` is refused outright once the scenario declares two or more targets — before the

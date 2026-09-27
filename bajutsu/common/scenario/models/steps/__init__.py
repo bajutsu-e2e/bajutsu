@@ -10,6 +10,7 @@ from .after_rule import AfterRule
 from .app import App
 from .extract import Extract
 from .for_each import ForEach
+from .group import Group
 from .if_ import If
 from .interrupt import Interrupt
 from .step import _STEP_ACTIONS as _STEP_ACTIONS
@@ -18,11 +19,23 @@ from .step import Step
 from .use import Use
 from .web import Web
 
-__all__ = ["AfterRule", "App", "Extract", "ForEach", "If", "Interrupt", "Step", "Use", "Web"]
+__all__ = [
+    "AfterRule",
+    "App",
+    "Extract",
+    "ForEach",
+    "Group",
+    "If",
+    "Interrupt",
+    "Step",
+    "Use",
+    "Web",
+]
 
 
 If.model_rebuild()
 ForEach.model_rebuild()
+Group.model_rebuild()
 Interrupt.model_rebuild()
 Web.model_rebuild()
 App.model_rebuild()

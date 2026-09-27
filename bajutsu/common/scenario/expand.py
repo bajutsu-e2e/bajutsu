@@ -6,6 +6,7 @@ and each data row is its own scenario — the runner is unaffected.
 
 from __future__ import annotations
 
+import itertools
 import re
 from collections.abc import Callable
 from typing import Any, Protocol, cast, runtime_checkable
@@ -18,6 +19,16 @@ from bajutsu.common.scenario.models import (
     _check_target_requirements,
     _expand_target_groups,
 )
+
+# A `group` invocation's id must stay unique across every `expand_components` call for one
+# scenario, not just within one call: a `setup` prelude expands through its own, separate call
+# (`run/cli.py`'s `_setup_steps`) before `apply_setups` splices its steps onto the scenario's own,
+# which then expands through a second call. A counter scoped to one call would hand out the same
+# id to the prelude's last group and the scenario's first, and `_fold_groups` (report/rows.py)
+# would merge the two if they land adjacent. A module-wide counter never repeats a value, so this
+# never happens; the exact numbers need not be stable across runs, since nothing outside one
+# render depends on them.
+_group_id_counter = itertools.count()
 
 
 @runtime_checkable
@@ -74,28 +85,56 @@ def expand_components(
     """
 
     def expand(
-        steps: list[Step], stack: list[str], resolve: Callable[[str], Component]
+        steps: list[Step],
+        stack: list[str],
+        resolve: Callable[[str], Component],
+        group_ctx: str | None = None,
+        group_id: int | None = None,
     ) -> list[Step]:
         if len(stack) > max_depth:
             raise ValueError(f"component nesting too deep (>{max_depth}): {' -> '.join(stack)}")
         out: list[Step] = []
         for st in steps:
+            if st.group is not None:
+                if group_ctx is not None:
+                    # A `group` reached while already inside another `group` — directly nested, or
+                    # arriving through a `use` call made from inside a `group`. A load-time
+                    # validator (`models/scenario/`) catches the directly-nested case statically;
+                    # this is the only place that sees the `use`-mediated one, since a `Scenario`
+                    # as loaded holds no component bodies to walk.
+                    raise ValueError(
+                        f"group {st.group.name!r} is nested inside group {group_ctx!r}"
+                    )
+                new_id = next(_group_id_counter)
+                out.extend(
+                    expand(st.group.steps, stack, resolve, group_ctx=st.group.name, group_id=new_id)
+                )
+                continue
             if st.steps is not None:
                 # A target group (BE-0437) a component's own steps carry is never flattened at
                 # `Component`-parse time the way a `Scenario`'s own top-level group already is —
                 # `Component` carries no such validator — so it can still hold an unexpanded
                 # `use:` by the time it lands here. Expand its own children first (so a `use:`
-                # inside it resolves the same as one anywhere else), then stamp the group's target
-                # onto whichever ones `Step`'s own validator left blank.
+                # inside it resolves the same as one anywhere else, and a `group:` nested inside
+                # it still inherits this call's own `group_ctx` / `group_id` when the target group
+                # itself sits inside a `group:`), then stamp the group's target onto whichever
+                # ones `Step`'s own validator left blank.
                 out.extend(
                     child
                     if child.target is not None
                     else child.model_copy(update={"target": st.target})
-                    for child in expand(st.steps, stack, resolve)
+                    for child in expand(
+                        st.steps, stack, resolve, group_ctx=group_ctx, group_id=group_id
+                    )
                 )
                 continue
             if st.use is None:
-                out.append(st)
+                tagged = (
+                    st.model_copy(update={"report_group": group_ctx, "report_group_id": group_id})
+                    if group_ctx is not None
+                    else st
+                )
+                out.append(tagged)
                 continue
             ref = st.use.component
             if ref in stack:
@@ -118,7 +157,11 @@ def expand_components(
             # (BE-0422). Still this same recursion, so `stack` and `max_depth` keep accounting for
             # the whole chain and a real cycle raises cleanly instead of blowing the Python stack.
             nested = resolve.scope_for(ref) if isinstance(resolve, ScopedResolve) else resolve
-            out.extend(expand(substituted, [*stack, ref], nested))
+            # `group_ctx` / `group_id` carry forward unchanged, so a `use` called from inside a
+            # `group` tags every step the component expands to with that same group.
+            out.extend(
+                expand(substituted, [*stack, ref], nested, group_ctx=group_ctx, group_id=group_id)
+            )
         return out
 
     for scenario in scenarios:

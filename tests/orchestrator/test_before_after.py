@@ -673,6 +673,18 @@ def test_an_app_wide_phase_cannot_use_a_component() -> None:
         )
 
 
+def test_an_app_wide_phase_cannot_use_a_group() -> None:
+    # Same reason as `use:` above — `group` is expanded per scenario file too.
+    with pytest.raises(ValidationError, match="cannot use a group"):
+        load_config(
+            "targets:\n"
+            "  app:\n"
+            "    bundleId: com.example.app\n"
+            "    before:\n"
+            "      - group: { name: setup, steps: [{ tap: { id: a } }] }\n"
+        )
+
+
 def test_a_use_hidden_inside_an_app_wide_hooks_target_group_is_caught_too() -> None:
     # BE-0437: a target group is never flattened at `TargetConfig`-parse time either, so a `use:`
     # one level inside it is exactly as unresolvable as a bare one above — the same load-time
@@ -685,6 +697,19 @@ def test_a_use_hidden_inside_an_app_wide_hooks_target_group_is_caught_too() -> N
             "    before:\n"
             "      - target: app\n"
             "        steps: [{ use: { component: c } }]\n"
+        )
+
+
+def test_a_group_hidden_inside_an_app_wide_hooks_target_group_is_caught_too() -> None:
+    # Same reason as the `use:` case above, symmetrically, for `group:`.
+    with pytest.raises(ValidationError, match="cannot use a group"):
+        load_config(
+            "targets:\n"
+            "  app:\n"
+            "    bundleId: com.example.app\n"
+            "    before:\n"
+            "      - target: app\n"
+            "        steps: [{ group: { name: setup, steps: [{ tap: { id: a } }] } }]\n"
         )
 
 

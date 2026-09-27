@@ -22,6 +22,7 @@ from bajutsu.common.scenario.models.mocks import Mock
 from bajutsu.common.scenario.models.steps import AfterRule, Interrupt, Step
 
 from ._functions import _coerce_system_alert_handling
+from ._group_nesting import _check_no_nested_group
 from ._targets import _check_target_requirements, _expand_target_groups
 from .preconditions import Preconditions
 from .system_alert_handling import SystemAlertHandling
@@ -165,4 +166,9 @@ class Scenario(_Model):
         # time the check walks the tree.
         _expand_target_groups(self)
         _check_target_requirements(self)
+        return self
+
+    @model_validator(mode="after")
+    def _no_nested_group(self) -> Self:
+        _check_no_nested_group(self)
         return self
