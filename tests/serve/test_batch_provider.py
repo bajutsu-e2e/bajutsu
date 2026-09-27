@@ -21,6 +21,7 @@ from typing import Any
 import pytest
 import yaml
 
+from bajutsu.serve import batch_bootstrap
 from bajutsu.serve import batch_provider as bp
 
 
@@ -306,20 +307,6 @@ def _android_request_with_config(
     return work, request
 
 
-def _read_config_from_package(packages: dict[str, bytes]) -> dict[str, Any]:
-    """Find the test package zip and extract bajutsu.config.yaml from it."""
-    for url, data in packages.items():
-        if not url.endswith(".zip") or "testspec" in url:
-            continue
-        try:
-            with zipfile.ZipFile(io.BytesIO(data)) as zf:
-                if "bajutsu.config.yaml" in zf.namelist():
-                    return yaml.safe_load(zf.read("bajutsu.config.yaml").decode()) or {}
-        except zipfile.BadZipFile:
-            continue
-    raise AssertionError("bajutsu.config.yaml not found in any uploaded package zip")
-
-
 def _raw_config_bytes_from_package(packages: dict[str, bytes]) -> bytes:
     """Find the test package zip and return bajutsu.config.yaml's raw member bytes, unparsed."""
     for url, data in packages.items():
@@ -332,6 +319,11 @@ def _raw_config_bytes_from_package(packages: dict[str, bytes]) -> bytes:
         except zipfile.BadZipFile:
             continue
     raise AssertionError("bajutsu.config.yaml not found in any uploaded package zip")
+
+
+def _read_config_from_package(packages: dict[str, bytes]) -> dict[str, Any]:
+    """Find the test package zip and extract bajutsu.config.yaml from it."""
+    return yaml.safe_load(_raw_config_bytes_from_package(packages).decode()) or {}
 
 
 def _make_provider(
@@ -377,11 +369,14 @@ def test_no_launch_env_injection_preserves_existing_config(tmp_path: Path) -> No
     assert config["targets"]["demo"].get("launchEnv", {}).get("EXISTING") == "value"
     # No hooks means ctx.launch_env stays empty, so the extra_texts overlay never fires
     # (device_farm_batch_provider.py's `if ctx.launch_env:` guard) — the packaged bytes must be
-    # exactly the on-disk config, not a re-serialization that happens to look equivalent.
-    assert (
-        _raw_config_bytes_from_package(transfer.packages)
-        == (work / "bajutsu.config.yaml").read_bytes()
-    )
+    # exactly the config as written on disk, not a re-serialization that happens to look
+    # equivalent. Compare against the literal above (captured before submit), not a re-read of
+    # work_dir afterward, so a provider that rewrote the file in place couldn't pass by moving
+    # both sides together.
+    assert _raw_config_bytes_from_package(transfer.packages) == non_canonical.encode("utf-8")
+    # work_dir is the shared package root concurrent batch jobs pack, so submit must never
+    # mutate it in place (BE-0435's "without mutating work_dir").
+    assert (work / "bajutsu.config.yaml").read_text(encoding="utf-8") == non_canonical
 
 
 def test_before_submit_launch_env_merged_into_packaged_config(tmp_path: Path) -> None:
@@ -394,6 +389,7 @@ def test_before_submit_launch_env_merged_into_packaged_config(tmp_path: Path) ->
     transfer = _CapturingTransfer(manifest_ok=True)
     provider = _make_provider(transfer=transfer, hooks=[_ProxyHook()])
     work, request = _android_request_with_config(tmp_path)
+    original = (work / "bajutsu.config.yaml").read_text(encoding="utf-8")
 
     provider.submit(request, work_dir=work, dest=tmp_path / "d")
 
@@ -401,6 +397,9 @@ def test_before_submit_launch_env_merged_into_packaged_config(tmp_path: Path) ->
     launch_env = config["targets"]["demo"]["launchEnv"]
     assert launch_env["PROXY_HOST"] == "proxy.example.com"
     assert launch_env["PROXY_PORT"] == "3128"
+    # The merge lands via build_package's extra_texts overlay, never by rewriting work_dir — the
+    # shared package root concurrent batch jobs pack (BE-0435's "without mutating work_dir").
+    assert (work / "bajutsu.config.yaml").read_text(encoding="utf-8") == original
 
 
 def test_injected_keys_win_over_existing_config_launch_env(tmp_path: Path) -> None:
@@ -548,7 +547,9 @@ def test_launch_env_collision_with_scenario_preconditions_raises(tmp_path: Path)
         tmp_path, scenario_preconditions_launch_env={"PROXY_HOST": "other"}
     )
 
-    with pytest.raises(ValueError, match="PROXY_HOST"):
+    # The key alone isn't enough to find the collision in a multi-scenario package — the message
+    # must also name the scenario and the file.
+    with pytest.raises(ValueError, match=r"PROXY_HOST.*alpha.*smoke\.yaml"):
         provider.submit(request, work_dir=work, dest=tmp_path / "d")
 
 
@@ -567,6 +568,61 @@ def test_hooks_never_sourced_from_a_batch_request_field() -> None:
                     "DeviceFarmBatchProvider.submit passes 'hooks' in a call — "
                     "hooks must be wired at construction only, never per-submit"
                 )
+
+
+def _is_load_hooks_call(value: ast.expr) -> bool:
+    return isinstance(value, ast.Call) and (
+        (isinstance(value.func, ast.Name) and value.func.id == "_load_hooks")
+        or (isinstance(value.func, ast.Attribute) and value.func.attr == "_load_hooks")
+    )
+
+
+def test_hooks_construction_site_sources_only_from_load_hooks() -> None:
+    # The AST walk above proves submit() never re-passes 'hooks' per-call, but hooks are
+    # constructor-only, so a request- or config-sourced value could only reach a provider at its
+    # one construction site instead: batch_bootstrap.register_batch_providers. Walk that module
+    # and confirm 'hooks=' there is always _load_hooks(...)'s return value — directly, or via a
+    # local variable last assigned from it — never a per-request or config-sourced value. A hook
+    # spec is a 'module:factory' string that gets imported and called, so letting a request body
+    # choose hooks would be arbitrary code execution in the process holding the run's AWS role
+    # (BE-0435, the same trust boundary BE-0432 drew for pre_test_commands).
+    tree = ast.parse(textwrap.dedent(inspect.getsource(batch_bootstrap)))
+    functions = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
+
+    construction_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and (
+            (isinstance(node.func, ast.Name) and node.func.id == "DeviceFarmBatchProvider")
+            or (
+                isinstance(node.func, ast.Attribute) and node.func.attr == "DeviceFarmBatchProvider"
+            )
+        )
+    ]
+    assert construction_calls, "expected at least one DeviceFarmBatchProvider(...) construction"
+
+    for call in construction_calls:
+        hooks_kw = next((kw for kw in call.keywords if kw.arg == "hooks"), None)
+        assert hooks_kw is not None, "DeviceFarmBatchProvider(...) must pass hooks= explicitly"
+        value = hooks_kw.value
+        if _is_load_hooks_call(value):
+            continue
+        assert isinstance(value, ast.Name), (
+            f"hooks= must be _load_hooks(...) or a local variable assigned from it, "
+            f"got {ast.dump(value)}"
+        )
+        enclosing = next((fn for fn in functions if call in ast.walk(fn)), None)
+        assert enclosing is not None, "construction call must live inside a function"
+        assert any(
+            isinstance(stmt, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == value.id for t in stmt.targets)
+            and _is_load_hooks_call(stmt.value)
+            for stmt in ast.walk(enclosing)
+        ), (
+            f"hooks= local variable {value.id!r} must be assigned from _load_hooks(...), "
+            "never a request- or config-sourced value"
+        )
 
 
 def test_job_id_reaches_batch_context(tmp_path: Path) -> None:
