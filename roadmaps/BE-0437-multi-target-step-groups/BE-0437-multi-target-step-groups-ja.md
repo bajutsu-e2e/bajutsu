@@ -1,14 +1,14 @@
-[English](BE-XXXX-multi-target-step-groups.md) · **日本語**
+[English](BE-0437-multi-target-step-groups.md) · **日本語**
 
-# BE-XXXX — ターゲットグループ：ひとまとまりのステップに対してターゲットを一度だけ書く
+# BE-0437 — ターゲットグループ：ひとまとまりのステップに対してターゲットを一度だけ書く
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-multi-target-step-groups-ja.md) |
+| 提案 | [BE-0437](BE-0437-multi-target-step-groups-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0437") |
 | トピック | シナリオの記述機能 |
 | 関連 | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md) |
 <!-- /BE-METADATA -->

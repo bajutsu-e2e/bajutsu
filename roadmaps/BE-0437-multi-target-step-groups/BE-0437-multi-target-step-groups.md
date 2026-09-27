@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-multi-target-step-groups-ja.md)
+**English** · [日本語](BE-0437-multi-target-step-groups-ja.md)
 
-# BE-XXXX — Target groups: naming one target once for a run of steps
+# BE-0437 — Target groups: naming one target once for a run of steps
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-multi-target-step-groups.md) |
+| Proposal | [BE-0437](BE-0437-multi-target-step-groups.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0437") |
 | Topic | Scenario authoring features |
 | Related | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md) |
 <!-- /BE-METADATA -->
