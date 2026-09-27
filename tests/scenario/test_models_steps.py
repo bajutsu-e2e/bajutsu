@@ -50,6 +50,36 @@ def test_step_accepts_ordinary_name(name: str) -> None:
     assert step.name == name
 
 
+# --- `use` expands away wholesale, so a modifier beside it would be silently dropped -------------
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("capture", ["screenshot"]),
+        ("extract", {"x": {"sel": {"id": "f"}}}),
+        ("name", "log in"),
+        ("from", "log in as alice"),
+        ("target", "app"),
+    ],
+)
+def test_use_step_rejects_modifier(key: str, value: object) -> None:
+    with pytest.raises(ValidationError, match=f"use steps take no modifiers, got {key} "):
+        Step.model_validate({"use": {"component": "login.yaml"}, key: value})
+
+
+def test_use_step_names_every_modifier_it_rejects() -> None:
+    with pytest.raises(ValidationError, match="got capture, name "):
+        Step.model_validate(
+            {"use": {"component": "login.yaml"}, "capture": ["screenshot"], "name": "x"}
+        )
+
+
+def test_use_step_without_modifiers_parses() -> None:
+    step = Step.model_validate({"use": {"component": "login.yaml", "with": {"user": "a"}}})
+    assert step.use is not None and step.use.with_ == {"user": "a"}
+
+
 def test_extract_on_step() -> None:
     step = Step.model_validate(
         {"tap": {"id": "counter.inc"}, "extract": {"count": {"sel": {"id": "counter.value"}}}}
