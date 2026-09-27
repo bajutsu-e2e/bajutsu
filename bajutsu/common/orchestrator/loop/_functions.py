@@ -626,7 +626,11 @@ def _capture_visual_actual(
         ctx.visual.capture_actual(driver)
 
 
-def run_scenario(
+# C901 and PLR0915 fold each nested function's count into the function enclosing it, so this score
+# measures the closures defined below (`run_phase` among them), not genuine branching here — the
+# same reasoning `pool.py`'s own `lease()` exemption gives (BE-0386). BE-0428's own-target interval
+# start/finish loop pushed the plain statement count over the line for the first time.
+def run_scenario(  # noqa: PLR0915
     driver: base.Driver,
     scenario: Scenario,
     clock: Clock | None = None,
@@ -712,6 +716,23 @@ def run_scenario(
     sid = scenario_id or scenario_slug(scenario.name)
     hide_markers = _hides_touch_markers(scenario, target_launch_env)
     recordings = sink.start_scenario_intervals(sid, requested_intervals(scenario, capture))
+    # Every *other* declared target gets its own scenario-wide recording too (BE-0428): the single
+    # `sink`/`capture` pair above describes the primary alone, so a second target's own video (or
+    # deviceLog/appTrace) would otherwise never start — its own lease records nothing, and a
+    # multi-target report showing only the primary's footage would look like the other target was
+    # never filmed rather than simply never asked to record. Each extra target's own `sid` is
+    # namespaced under its name (`{sid}/{name}/…`, the same convention a multi-target `visual`
+    # assertion's own evidence dir already uses) so its `scenario.mp4` cannot collide with the
+    # primary's file of the same name.
+    extra_runtimes = {
+        name: rt for name, rt in (target_runtimes or {}).items() if name != primary_target
+    }
+    extra_recordings = {
+        name: rt.sink.start_scenario_intervals(
+            f"{sid}/{name}", requested_intervals(scenario, rt.capture)
+        )
+        for name, rt in extra_runtimes.items()
+    }
     wants_screen_changed = any(r.on.event == "screenChanged" for r in scenario.capture_policy)
     outcomes: list[StepOutcome] = []
     before_outcomes: list[StepOutcome] = []
@@ -740,6 +761,10 @@ def run_scenario(
     expect_block_note = ""
     failure: str | None = None
     artifacts: list[Artifact] = []
+    # Every other declared target's own video anchor (BE-0428), filled in the `finally` below once
+    # its recording (if any) is finalized; absent for a target that recorded no video, the same
+    # "empty means not applicable" convention `target_devices` already uses.
+    target_video_anchors: dict[str, float] = {}
     # The anchor pair: a monotonic instant every in-run duration is measured from, and the wall-clock
     # instant it corresponds to. Read back to back so the two describe the same moment as closely as
     # the platform allows — `wall_offset_s` is their difference, and every recorded timestamp is
@@ -751,6 +776,10 @@ def run_scenario(
     # The offset this interval's recording implies is resolved once it is finalized, in the `finally`
     # below — the exact answer is the finished file's own duration, which does not exist yet here.
     video_interval = next((r for r in recordings if r.kind == "video"), None)
+    extra_video_intervals = {
+        name: next((r for r in recs if r.kind == "video"), None)
+        for name, recs in extra_recordings.items()
+    }
     # Mutable bindings: extract steps populate vars.* during the run; scenario-level
     # expect sees the accumulated values.
     live_bindings: dict[str, str] = dict(bindings or {})
@@ -936,6 +965,20 @@ def run_scenario(
             # place its origin, which is a measurement rather than the start-confirmation proxy a
             # scenario-start resolution would have to settle for (the correction BE-0346 introduced).
             video_start_offset = _resolve_video_start_offset(video_interval, scenario_start)
+            # Every other declared target's own recording finalizes here too (BE-0428), tagged with
+            # its own name so the report can tell two scenario-wide videos apart and each gets its
+            # own anchor — a second target's video rarely starts at the same instant the primary's
+            # does (a browser context opens on a different schedule than a Simulator boot), so one
+            # shared anchor would seek it to the wrong frame.
+            for name, rt in extra_runtimes.items():
+                extra_artifacts = rt.sink.finish_scenario_intervals(
+                    f"{sid}/{name}", extra_recordings[name]
+                )
+                artifacts += [replace(a, target=name) for a in extra_artifacts]
+                if any(a.kind == "video" for a in extra_artifacts):
+                    target_video_anchors[name] = scenario_wall_start + _resolve_video_start_offset(
+                        extra_video_intervals[name], scenario_start
+                    )
     except base.BackendCrashError as crash:
         # The `finally` above already ran, so a recording that was in flight when the backend
         # died is already finalized on disk and named in `artifacts` — attach it to the crash
@@ -955,6 +998,7 @@ def run_scenario(
         backend=getattr(driver, "name", ""),
         duration_s=max(0.0, clock.now() - scenario_start),
         video_anchor_s=scenario_wall_start + video_start_offset,
+        target_video_anchors=target_video_anchors,
         wall_offset_s=wall_offset_s,
         expect_alerts=expect_alerts,
         expect_actuations=expect_actuations,

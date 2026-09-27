@@ -53,6 +53,12 @@ class RunResult:
     # the seconds to seek the recording to (BE-0348); persisted, unlike the monotonic instant this
     # used to be, so that derivation survives the run that produced it.
     video_anchor_s: float = 0.0
+    # `video_anchor_s`'s counterpart for every *other* declared target's own scenario-wide video
+    # (BE-0428), keyed by target name; empty for a single-target run and absent for a target that
+    # recorded no video, the same "empty means not applicable" convention `target_devices` uses.
+    # `video_anchor_s` above stays the primary's own anchor, unprefixed, for the same reason
+    # `target_devices` leaves the singular device fields alone rather than moving them in here too.
+    target_video_anchors: dict[str, float] = field(default_factory=dict)
     # Added to a raw `time.monotonic()` instant from this run to get its wall-clock epoch
     # (`scenario_wall_start - scenario_start`). The network collector stamps monotonic receive times,
     # so `pipeline.py` converts them through this rather than sampling its own wall/monotonic pair at

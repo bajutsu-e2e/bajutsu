@@ -1,0 +1,43 @@
+# A native target and a web target in one interleaved run (BE-0428) — the pairing
+# docs/scenarios.md's `targets` section illustrates directly (an iOS client and a web client of
+# "the same service"). Unlike cross_platform_search.yaml's iOS/Android twins, the showcase app and
+# demos/web's demo app share no backend, so there is no shared value to `extract` and assert across
+# them; each side instead asserts its own deterministic fact, and the run's single verdict is still
+# the AND of both — the run-shape half of BE-0428, without a cross-target value check.
+#
+# Needs a booted iOS Simulator (showcase-swiftui) and the `web` target's static server running, so
+# — like cross_platform_search.yaml — it has its own lane and is excluded from the iOS bulk sweep
+# by its `multi-target` tag: `make -C demos/showcase e2e-multi-target-web`.
+- name: search narrows the iOS catalog while the web counter increments independently
+  tags: [multi-target]
+  targets: [showcase-swiftui, web]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - target: showcase-swiftui
+      tap: { label: "Search", traits: [button] }
+    - target: showcase-swiftui
+      wait: { for: { id: [search.field, search_field] }, timeout: 10 }
+    - target: showcase-swiftui
+      type: { text: "Horse 3", into: { id: [search.field, search_field] } }
+    - target: showcase-swiftui
+      wait: { for: { id: [search.row.3, search_row_3] }, timeout: 5 }
+    - target: web
+      tap: { id: onboarding.start }
+    - target: web
+      type: { text: "a@b.com", into: { id: auth.email } }
+    - target: web
+      type: { text: "pw", into: { id: auth.password } }
+    - target: web
+      tap: { id: auth.submit }
+    - target: web
+      wait: { for: { id: home.title }, timeout: 5 }
+    - target: web
+      tap: { id: counter.increment }
+    - target: web
+      tap: { id: counter.increment }
+  expect:
+    - target: showcase-swiftui
+      count: { sel: { idMatches: ["search.row.*", "search_row_*"] }, equals: 1 }
+    - target: web
+      value: { sel: { id: counter.value }, equals: "2" }
