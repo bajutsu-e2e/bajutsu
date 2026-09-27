@@ -542,6 +542,12 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   single-target run unchanged. `bajutsu crawl`, `record`, and `serve`'s own dispatch UI each still
   resolve one target, as before — carrying `targets`/`target` through them is a follow-up this item
   does not cover
+- **Target groups** (BE-0437): pure authoring sugar over BE-0428's per-step `target` — a step's new
+  `steps: list[Step]` field names one target once for a whole nested run of steps instead of
+  repeating `target:` on each of them. A load-time pass (`_expand_target_groups`) replaces every
+  group with its own stamped, flat children before validation and execution ever see it, so the
+  runner, the report, and the CLI are unchanged: `bajutsu run` never observes a target group, only
+  the same per-step `target` form BE-0428 already runs
 - Backend-crash recovery in the run pipeline: a mid-scenario backend crash
   (`base.BackendCrashError`, backend-agnostic) discards the dead lease and re-runs the whole
   scenario on a freshly respawned one, bounded by a retry count (`crash_retries`, default 1) and an
