@@ -73,6 +73,7 @@ from bajutsu.common.runner.recovery import (
 from bajutsu.common.runner.types import AlertGuardFor, Lease, LeaseFn, TargetPool
 from bajutsu.common.scenario import (
     AfterRule,
+    Interrupt,
     Redact,
     Scenario,
     Step,
@@ -1004,7 +1005,14 @@ class _ScenarioRunner:
         leases = {routed[0]: lz, **others}
         return {
             name: self._runtime_for(
-                name, leases[name], s, handler, writer, sid, primary_ctx, primary=name == routed[0]
+                name,
+                leases[name],
+                s,
+                handler,
+                writer,
+                sid,
+                primary_ctx,
+                primary_target=routed[0],
             )
             for name in routed
         }
@@ -1019,7 +1027,7 @@ class _ScenarioRunner:
         sid: str,
         primary_ctx: EvalContext,
         *,
-        primary: bool,
+        primary_target: str,
     ) -> TargetRuntime:
         """One declared target's runtime, bound to its own lease and its own resolved config.
 
@@ -1046,14 +1054,17 @@ class _ScenarioRunner:
             # A second target's evidence goes under its own name, so two targets' `visual-actual`
             # captures in one scenario never overwrite each other.
             ctx=primary_ctx
-            if primary
+            if name == primary_target
             else self._eval_context_for(pool.eff, lz.driver, writer, f"{sid}/{name}"),
             mailbox=build_mailbox_reader(pool.eff.mailbox, self.bindings or {}),
             webview_bridge=lz.webview_bridge,
             transitions=(
                 collector.transitions_snapshot_timed if collector is not None else _no_transitions
             ),
-            interrupts=[*pool.eff.run_defaults.interrupts, *s.interrupts],
+            interrupts=[
+                *pool.eff.run_defaults.interrupts,
+                *_scenario_interrupts_for(s, name, primary_target),
+            ],
             locale=s.preconditions.resolved_locale(pool.eff.locale),
             capture=list(pool.eff.capture),
             channel=collector,
@@ -1125,6 +1136,7 @@ class _ScenarioRunner:
             # and would also give the primary two different contexts depending on whether a step or
             # an `expect` entry reads it (BE-0428 review finding).
             primary_ctx = EvalContext(visual=vc, schema=sc, golden=gc_with_screen)
+            primary_target = next(iter(self._routed(s)), "")
             result = run_scenario(
                 lz.driver,
                 s,
@@ -1147,8 +1159,12 @@ class _ScenarioRunner:
                 ),
                 # Config-level interrupts first, then the scenario's own (BE-0314): an app-wide
                 # interstitial handler composes with a per-scenario addition, the config-then-scenario
-                # order the systemAlertHandling default already follows.
-                interrupts=[*self.eff.run_defaults.interrupts, *s.interrupts],
+                # order the systemAlertHandling default already follows. The scenario's own are
+                # narrowed to the entries the primary watches (BE-0438).
+                interrupts=[
+                    *self.eff.run_defaults.interrupts,
+                    *_scenario_interrupts_for(s, primary_target, primary_target),
+                ],
                 # The locale this scenario runs under — the same value the lease pinned the
                 # Simulator's system language to, so a `handleSystemAlert` naming a prompt and a
                 # choice resolves to the label SpringBoard is actually rendering (BE-0320).
@@ -1173,7 +1189,7 @@ class _ScenarioRunner:
                 target_runtimes=self._target_runtimes(
                     s, lz, others, handler, writer, sid, primary_ctx
                 ),
-                primary_target=next(iter(self._routed(s)), ""),
+                primary_target=primary_target,
             )
             result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
             if others:
@@ -1291,6 +1307,19 @@ def _steps_for_target(s: Scenario, target: str) -> Scenario:
             "expect": [a for a in s.expect if (a.target or s.primary_target) in routed],
         }
     )
+
+
+def _scenario_interrupts_for(s: Scenario, name: str, primary_target: str) -> list[Interrupt]:
+    """*s*'s own `interrupts` entries the runner for target *name* watches (BE-0438).
+
+    An entry omitting `target` watches the primary. An empty *primary_target* is the single-target
+    path, where `_routed` came back empty: validation already holds every entry there to omitting
+    `target` or naming the one target that exists, so nothing is filtered — comparing against ""
+    would instead drop an entry naming that target and silence it.
+    """
+    if not primary_target:
+        return list(s.interrupts)
+    return [e for e in s.interrupts if (e.target or primary_target) == name]
 
 
 def _release_all(leases: Mapping[str, Lease]) -> None:

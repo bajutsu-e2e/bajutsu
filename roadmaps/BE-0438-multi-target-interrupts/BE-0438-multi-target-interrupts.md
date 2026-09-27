@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0438](BE-0438-multi-target-interrupts.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0438") |
+| Implementing PR | [#2062](https://github.com/bajutsu-e2e/bajutsu/pull/2062) (units 1–6) |
 | Topic | Scenario authoring features |
 | Related | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md), [BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers.md) |
 <!-- /BE-METADATA -->
@@ -192,15 +193,25 @@ replaces that sentence and the one after it. The rest of *Limits* stays unchange
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — `Interrupt.target` (`bajutsu/common/scenario/models/steps/interrupt.py`).
-- [ ] Unit 2 — `_check_target`'s `required` parameter, the removed blanket rejection, and the new
+- [x] Unit 1 — `Interrupt.target` (`bajutsu/common/scenario/models/steps/interrupt.py`).
+- [x] Unit 2 — `_check_target`'s `required` parameter, the removed blanket rejection, and the new
       `Interrupt.steps` validation mode (`_targets.py`).
-- [ ] Unit 3 — reject `target` on a config-level `interrupts` entry and on any `Step` inside its
+- [x] Unit 3 — reject `target` on a config-level `interrupts` entry and on any `Step` inside its
       `steps` (`target_config.py`).
-- [ ] Unit 4 — filter `interrupts` per target in `_runtime_for` and `_run_on_lease`, conditioned on
+- [x] Unit 4 — filter `interrupts` per target in `_runtime_for` and `_run_on_lease`, conditioned on
       `_routed` being non-empty (`pipeline.py`).
-- [ ] Unit 5 — test coverage: single-target regression, cross-target isolation, config-level route.
-- [ ] Unit 6 — `docs/scenarios.md` / `docs/ja/scenarios.md`.
+- [x] Unit 5 — test coverage: single-target regression, cross-target isolation, config-level route.
+- [x] Unit 6 — `docs/scenarios.md` / `docs/ja/scenarios.md`.
+
+Log:
+
+- [#2062](https://github.com/bajutsu-e2e/bajutsu/pull/2062) — Units 1–6. `Interrupt.target` lands
+  with its validation and the config-level refusal. The per-target pipeline filter lands with them,
+  along with the tests and the docs. The PR deviates from this design in one place.
+  `_StepRunner._route` now also resets the carried-over tree for a step that omits `target` but
+  runs on a new device. Recovery steps made that case reachable. One naming another target can now
+  precede one without. Without the reset, `screenChanged` capture compared two devices' trees. A
+  `use:` step inside recovery steps stays refused under two or more targets, as at the top level.
 
 ## References
 

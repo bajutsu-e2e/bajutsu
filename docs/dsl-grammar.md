@@ -138,8 +138,9 @@ Component ::= { params?: list(string), steps: list(<Step>) }
 
 # A handler the runner checks opportunistically wherever in the step sequence the matching screen
 # surfaces, running `steps` to clear it (BE-0314). Free on a `wait`'s poll tick; every other
-# non-`wait` step pays one extra read.
-Interrupt ::= { condition: <Assertion>, steps: list(<Step>) }
+# non-`wait` step pays one extra read. `target` names the declared target the entry watches; omitted,
+# it watches the primary target (BE-0438).
+Interrupt ::= { condition: <Assertion>, steps: list(<Step>), target?: string }
 
 # One teardown rule (BE-0392): the outcome it answers, and the steps to run for that outcome. The
 # outcome is the scenario's own machine-checked verdict, never a model call.
@@ -415,7 +416,10 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 | `Scenario.targets` | no duplicate name (BE-0428) | `scenario/models/scenario/_targets.py` |
 | `Scenario.primaryTarget` | omitted, or equal to `targets[0]`; **rejected** when `targets` is empty (BE-0436) | `scenario/models/scenario/_targets.py` |
 | `Step.target` / `Assertion.target` (`expect` only) | omitted or matching the one entry when `len(targets) ≤ 1`; **required** — including on an `if`/`forEach`/`web` wrapper, not only a leaf action — naming a declared target, when `len(targets) ≥ 2` and `primaryTarget` is unset; **optional** when `len(targets) ≥ 2` and `primaryTarget` is set, an omitted one running against the primary at every nesting depth (BE-0436); **rejected** on a step nested inside `web:`, and on an `Assertion` reached through an inline `assert:` list, an `if`'s `condition`, or an `interrupts` entry's `condition` (BE-0428) | `scenario/models/scenario/_targets.py` |
-| `Step.use` / `Step.group` / `Scenario.interrupts` (`len(targets) ≥ 2` only) | **rejected outright** — a `use:` step (it takes no `target`; see the `Step.use` row and §6.2), a `group:` step (its own `target` would be discarded by expansion), and a non-empty `interrupts` (its `condition` has no target of its own to poll) are all open questions this item defers, so none is accepted rather than accepted with unclear semantics (BE-0428) | `scenario/models/scenario/_targets.py` |
+| `Step.use` / `Step.group` (`len(targets) ≥ 2` only) | **rejected outright** — a `use:` step (it takes no `target`; see the `Step.use` row and §6.2) and a `group:` step (its own `target` would be discarded by expansion) are both open questions this item defers, so neither is accepted rather than accepted with unclear semantics (BE-0428) | `scenario/models/scenario/_targets.py` |
+| `Interrupt.target`, and `Step.target` in an `interrupts` entry's `steps` | **optional** at any `len(targets)`, regardless of `primaryTarget`: an omitted entry `target` watches the primary target, and an omitted recovery-step `target` runs on the entry's own target (or an enclosing `if`/`forEach` step's when that step names one); a value that is set follows the `Step.target` rule above for naming a declared target (BE-0438) | `scenario/models/scenario/_targets.py` |
+| `Interrupt.target`, and `Step.target` in its `steps`, under `targets.<name>.interrupts` | **rejected** — the entry already belongs to the target that config block configures (BE-0438) | `config/schema/target_config.py` |
+| `Step.use` (`len(targets) ≥ 2` only) | **rejected outright**, in an `interrupts` entry's `steps` too — it takes no `target` at all (see the `Step.use` row above), an open question this item defers, so it is refused rather than accepted with unclear semantics (BE-0428) | `scenario/models/scenario/_targets.py` |
 | every mapping | **no unknown keys** (`extra="forbid"`) | `scenario/models/_base.py` |
 
 `exists` is special: its selector is written **inline** (`exists: { id: home.title }`), and an

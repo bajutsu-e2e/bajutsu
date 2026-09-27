@@ -713,6 +713,21 @@ def test_a_group_hidden_inside_an_app_wide_hooks_target_group_is_caught_too() ->
         )
 
 
+def test_an_app_wide_phase_rejects_use_nested_inside_if() -> None:
+    # BE-0438 review: the walker descends into `if`/`forEach`/`web`/`app` too, so a `use:` nested
+    # under one of those still loads cleanly rather than reaching the step loop unexpanded.
+    with pytest.raises(ValidationError, match="cannot use a component"):
+        load_config(
+            "targets:\n"
+            "  app:\n"
+            "    bundleId: com.example.app\n"
+            "    before:\n"
+            "      - if:\n"
+            "          condition: { exists: { id: a } }\n"
+            "          then: [{ use: { component: c } }]\n"
+        )
+
+
 def test_the_capability_preflight_sees_a_hook_steps_construct() -> None:
     # Missed here, an unsupported teardown step passes the preflight, a device is leased, and the
     # whole scenario is driven before the step fails — and a failing `after` rule on an otherwise

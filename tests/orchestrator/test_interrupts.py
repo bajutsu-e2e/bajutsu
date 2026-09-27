@@ -146,6 +146,75 @@ def test_config_interrupts_reject_group() -> None:
         )
 
 
+def test_config_interrupts_reject_component_use_nested_inside_if() -> None:
+    # BE-0438 review: the walker descends into `if`/`forEach`/`web`/`app` too, so a `use:` nested
+    # under one of those still loads cleanly rather than reaching the step loop unexpanded.
+    with pytest.raises(ValidationError, match="interrupts cannot use a component"):
+        load_config(
+            """
+            defaults: { backend: [web] }
+            targets:
+              myapp:
+                baseUrl: http://x
+                interrupts:
+                  - condition: { exists: { id: onboarding.title } }
+                    steps:
+                      - if:
+                          condition: { exists: { id: a } }
+                          then:
+                            - use: { component: skip-onboarding.yaml }
+            """
+        )
+
+
+def test_config_interrupts_reject_an_entry_target() -> None:
+    # BE-0438: an entry under `targets.<name>.interrupts` already belongs to that block's target,
+    # so naming a target there could only repeat or contradict it.
+    with pytest.raises(ValidationError, match="interrupts entries cannot set `target`"):
+        load_config(
+            """
+            defaults: { backend: [web] }
+            targets:
+              myapp:
+                baseUrl: http://x
+                interrupts:
+                  - target: other
+                    condition: { exists: { id: onboarding.skip } }
+                    steps:
+                      - tap: { id: onboarding.skip }
+            """
+        )
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        "{ target: other, tap: { id: onboarding.skip } }",
+        # Nested too: the scenario-side validator never sees a target config, so nothing else
+        # would stop `_StepRunner._route` from dispatching this to another target's runner.
+        "{ if: { condition: { exists: { id: a } }, then: [{ target: other, tap: { id: a } }] } }",
+        "{ if: { condition: { exists: { id: a } }, then: [], else: [{ target: other, tap: { id: a } }] } }",
+        "{ forEach: { sel: { id: a }, as: x, steps: [{ target: other, tap: { id: a } }] } }",
+        "{ web: { within: { id: wv }, steps: [{ target: other, tap: { id: a } }] } }",
+        "{ app: { bundleId: com.x, steps: [{ target: other, tap: { id: a } }] } }",
+    ],
+)
+def test_config_interrupts_reject_a_recovery_step_target(step: str) -> None:
+    with pytest.raises(ValidationError, match="recovery steps run on the target"):
+        load_config(
+            f"""
+            defaults: {{ backend: [web] }}
+            targets:
+              myapp:
+                baseUrl: http://x
+                interrupts:
+                  - condition: {{ exists: {{ id: onboarding.skip }} }}
+                    steps:
+                      - {step}
+            """
+        )
+
+
 # --- opportunistic check + resume (Units 2/3) ---------------------------------------------------
 
 

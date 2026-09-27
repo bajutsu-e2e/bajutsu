@@ -136,8 +136,9 @@ Component ::= { params?: list(string), steps: list(<Step>) }
 
 # 予測できないタイミングで現れる中断画面のハンドラです。ランナーは、ステップ列のどこで一致画面が現れても
 # 機会をとらえて `condition` をチェックし、`steps` で解消します（BE-0314）。`wait` のポーリングの各回は
-# 無料で済みますが、残りの `wait` 以外のステップは読み取りを 1 回余分に払います。
-Interrupt ::= { condition: <Assertion>, steps: list(<Step>) }
+# 無料で済みますが、残りの `wait` 以外のステップは読み取りを 1 回余分に払います。`target` は、エントリが
+# 監視する宣言済みターゲットを指定します。省略するとプライマリターゲットを監視します（BE-0438）。
+Interrupt ::= { condition: <Assertion>, steps: list(<Step>), target?: string }
 
 # ティアダウンのルール 1 件です（BE-0392）。答える結末と、その結末のときに走らせるステップを組にします。
 # 結末はシナリオ自身のマシンチェックされた判定であり、モデル呼び出しではありません。
@@ -405,7 +406,10 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Scenario.targets` | 同じ名前の重複不可（BE-0428） | `scenario/models/scenario/_targets.py` |
 | `Scenario.primaryTarget` | 省略するか、`targets[0]` と一致。`targets` が空なら**拒否**（BE-0436） | `scenario/models/scenario/_targets.py` |
 | `Step.target` / `Assertion.target`（`expect` のみ） | `len(targets) ≤ 1` なら省略可、または宣言済みの1つと一致。`len(targets) ≥ 2` で `primaryTarget` が未設定なら**必須**（`if`/`forEach`/`web` ラッパーも含み、末端のアクションだけではない）で、宣言済みターゲットの1つを名指し。`len(targets) ≥ 2` で `primaryTarget` を設定していれば**省略可**で、省略したものは入れ子の深さによらず主ターゲットに対して走る（BE-0436）。`web` ブロック内に入れ子になったステップと、インラインの `assert:` リスト・`if` の `condition`・`interrupts` エントリの `condition` を通して届く `Assertion` では**拒否**（BE-0428） | `scenario/models/scenario/_targets.py` |
-| `Step.use` / `Step.group` / `Scenario.interrupts`（`len(targets) ≥ 2` のみ） | **頭から拒否** — `use:` ステップ（`target` を取れないため。`Step.use` 行と §6.2 を参照）、`group:` ステップ（展開で自身の `target` が失われる）、空でない `interrupts`（`condition` に自身がポーリングするターゲットがない）は、どれも本アイテムが先送りにした未決問題であり、意味の不明確なまま受理せず拒否（BE-0428） | `scenario/models/scenario/_targets.py` |
+| `Step.use` / `Step.group`（`len(targets) ≥ 2` のみ） | **頭から拒否** — `use:` ステップ（`target` を取れないため。`Step.use` 行と §6.2 を参照）と `group:` ステップ（展開で自身の `target` が失われる）は、どちらも本アイテムが先送りにした未決問題であり、意味の不明確なまま受理せず拒否（BE-0428） | `scenario/models/scenario/_targets.py` |
+| `Interrupt.target` と、`interrupts` エントリの `steps` にある `Step.target` | `primaryTarget` の有無にかかわらず、`len(targets)` にかかわらず**省略可**。エントリの `target` を省略するとプライマリターゲットを監視し、リカバリ用ステップの `target` を省略するとエントリ自身のターゲットで実行する(ただし、`target` を指定した `if`/`forEach` ステップの内側では、そのステップのターゲットで実行する)。指定した値は、宣言済みターゲットの名指しについて上の `Step.target` の規則に従う（BE-0438） | `scenario/models/scenario/_targets.py` |
+| `targets.<name>.interrupts` の `Interrupt.target` と、その `steps` にある `Step.target` | **拒否**。エントリは、その config ブロックが設定するターゲットにすでに属している（BE-0438） | `config/schema/target_config.py` |
+| `Step.use`（`len(targets) ≥ 2` のみ） | `interrupts` エントリの `steps` の中でも**頭から拒否**。そもそも `target` を取れない（上の `Step.use` 行を参照）という、本アイテムが先送りにした未決問題であり、意味の不明確なまま受理せず拒否（BE-0428） | `scenario/models/scenario/_targets.py` |
 | すべてのマッピング | **未知キー不可**（`extra="forbid"`） | `scenario/models/_base.py` |
 
 `exists` は特別です。セレクタを **インライン**で書き（`exists: { id: home.title }`）、任意の `negate: true` で不在を確認します。ローダは検証前にこれを `{ sel, negate }` へ書き換えます（`Exists._inline`, `scenario/models/assertions.py`）。

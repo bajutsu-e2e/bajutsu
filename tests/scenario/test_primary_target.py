@@ -2,9 +2,10 @@
 
 Covers the `primaryTarget` constraint (unset, or equal to `targets[0]`), the omitted-`target`
 escape it opens under two or more declared targets on every step shape and on a top-level `expect`
-entry, the zero/one-target shapes it leaves unchanged, the `web:` / `app:` / `use:` / `interrupts`
-rules it leaves in force, the round-trip guarantee (the resolved name never reaches `model_dump()`),
-and `apply_setups` cloning its cached steps so scenarios sharing a setup resolve independently.
+entry, the zero/one-target shapes it leaves unchanged, the `web:` / `app:` / `use:` rules it leaves
+in force, `interrupts`' own independence from it (BE-0438), the round-trip guarantee (the resolved
+name never reaches `model_dump()`), and `apply_setups` cloning its cached steps so scenarios
+sharing a setup resolve independently.
 """
 
 from __future__ import annotations
@@ -179,13 +180,30 @@ def test_use_still_rejected_with_a_primary() -> None:
         _scenario(**_TWO, steps=[{"use": {"component": "login.yaml", "with": {}}}])
 
 
-def test_interrupts_still_rejected_with_a_primary() -> None:
-    with pytest.raises(ValidationError, match="interrupts is not yet supported"):
-        _scenario(
-            **_TWO,
-            steps=[_step()],
-            interrupts=[{"condition": {"exists": {"id": "popup"}}, "steps": [_step()]}],
-        )
+# --- interrupts: unaffected by primaryTarget (BE-0438) -----------------------------------------
+
+
+def test_an_interrupts_entry_still_works_with_a_primary_set() -> None:
+    # BE-0438 lifted the blanket refusal this module's own docstring once described; a scenario
+    # declaring `primaryTarget` uses `interrupts` exactly as one without it does.
+    s = _scenario(
+        **_TWO,
+        steps=[_step()],
+        interrupts=[{"condition": {"exists": {"id": "popup"}}, "steps": [_step()]}],
+    )
+    assert s.interrupts[0].target is None
+
+
+def test_a_recovery_step_omitting_target_never_resolves_through_the_primary() -> None:
+    # An interrupts entry's own resolution (its `target`, or the runner whose guard fired) is
+    # independent of `primaryTarget` — unlike an ordinary step, a recovery step omitting `target`
+    # never picks up the scenario's primary.
+    s = _scenario(
+        **_TWO,
+        steps=[_step(target="app")],
+        interrupts=[{"condition": {"exists": {"id": "popup"}}, "steps": [_step()]}],
+    )
+    assert s.interrupts[0].steps[0].resolved_target is None
 
 
 # --- round trip: the resolution never reaches a dump ------------------------------------------

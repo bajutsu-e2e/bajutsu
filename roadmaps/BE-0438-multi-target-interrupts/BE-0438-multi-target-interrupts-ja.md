@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0438](BE-0438-multi-target-interrupts-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0438") |
+| 実装 PR | [#2062](https://github.com/bajutsu-e2e/bajutsu/pull/2062)（単位 1〜6） |
 | トピック | Scenario authoring features |
 | 関連 | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md)、[BE-0314](../BE-0314-scenario-interrupt-handlers/BE-0314-scenario-interrupt-handlers-ja.md) |
 <!-- /BE-METADATA -->
@@ -189,15 +190,27 @@ config-levelの`targets.<name>.interrupts`エントリを宣言します。そ�
 > 作業の進行に合わせて最新の状態を保ちます。チェックリストは*詳細設計*のMECEな作業分解を
 > 1単位1項目でなぞります。ログには、変更した内容と時期(古い順)を、PRへのリンクとともに記録します。
 
-- [ ] 単位1 — `Interrupt.target`(`bajutsu/common/scenario/models/steps/interrupt.py`)。
-- [ ] 単位2 — `_check_target`の`required`引数、一律拒否の削除、`Interrupt.steps`向けの新しい検証
+- [x] 単位1 — `Interrupt.target`(`bajutsu/common/scenario/models/steps/interrupt.py`)。
+- [x] 単位2 — `_check_target`の`required`引数、一律拒否の削除、`Interrupt.steps`向けの新しい検証
       モード(`_targets.py`)。
-- [ ] 単位3 — config-levelの`interrupts`エントリ、および`steps`内の各Stepで`target`を拒否する
+- [x] 単位3 — config-levelの`interrupts`エントリ、および`steps`内の各Stepで`target`を拒否する
       (`target_config.py`)。
-- [ ] 単位4 — `_routed`が空でないときだけ、`_runtime_for`と`_run_on_lease`でターゲットごとに
+- [x] 単位4 — `_routed`が空でないときだけ、`_runtime_for`と`_run_on_lease`でターゲットごとに
       `interrupts`をフィルタする(`pipeline.py`)。
-- [ ] 単位5 — テストの網羅: 単一ターゲットの回帰、ターゲットをまたいだ分離、config-levelの配送。
-- [ ] 単位6 — `docs/scenarios.md` / `docs/ja/scenarios.md`。
+- [x] 単位5 — テストの網羅: 単一ターゲットの回帰、ターゲットをまたいだ分離、config-levelの配送。
+- [x] 単位6 — `docs/scenarios.md` / `docs/ja/scenarios.md`。
+
+ログ：
+
+- [#2062](https://github.com/bajutsu-e2e/bajutsu/pull/2062) — 単位1〜6です。`Interrupt.target`
+  とその検証、config 側での拒否をまとめて導入しました。パイプラインでのターゲットごとの
+  絞り込み、テスト、ドキュメントも同じ PR で導入しました。詳細設計から外れた点が
+  1つあります。`_StepRunner._route` は、`target` を省略したステップが直前のステップと別の
+  デバイスで動くときにも、持ち越した要素ツリーを破棄するようになりました。別ターゲットを指定した
+  リカバリ用ステップの後に、`target` を省略したステップが続けられるようになったためです。
+  破棄しないと、`screenChanged` のキャプチャ判定が、あるデバイスのツリーを別のデバイスの画面と
+  比べてしまいます。なお、2つ以上のターゲットを宣言したシナリオでは、リカバリ用ステップ内の
+  `use:` ステップも、トップレベルと同じく引き続き拒否します。
 
 ## 参考
 
