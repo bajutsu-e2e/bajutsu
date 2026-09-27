@@ -599,6 +599,18 @@ def test_an_app_wide_phase_cannot_use_a_component() -> None:
         )
 
 
+def test_an_app_wide_phase_cannot_use_a_group() -> None:
+    # Same reason as `use:` above — `group` is expanded per scenario file too.
+    with pytest.raises(ValidationError, match="cannot use a group"):
+        load_config(
+            "targets:\n"
+            "  app:\n"
+            "    bundleId: com.example.app\n"
+            "    before:\n"
+            "      - group: { name: setup, steps: [{ tap: { id: a } }] }\n"
+        )
+
+
 def test_the_capability_preflight_sees_a_hook_steps_construct() -> None:
     # Missed here, an unsupported teardown step passes the preflight, a device is leased, and the
     # whole scenario is driven before the step fails — and a failing `after` rule on an otherwise

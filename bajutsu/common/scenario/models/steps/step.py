@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Annotated, Self
 
 from pydantic import Field, field_validator, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
 from bajutsu.common.scenario.models._base import (
     _CONTROL_FLOW_ACTIONS,
@@ -56,6 +57,7 @@ from .use import Use
 if TYPE_CHECKING:
     from .app import App
     from .for_each import ForEach
+    from .group import Group
     from .if_ import If
     from .web import Web
 
@@ -117,6 +119,7 @@ class Step(_Model):
     manual: Manual | None = None
     if_: If | None = Field(default=None, alias="if")
     for_each: ForEach | None = Field(default=None, alias="forEach")
+    group: Group | None = None
     capture: list[str] | None = None
     extract: dict[str, Extract] | None = None
     name: str | None = None
@@ -129,6 +132,17 @@ class Step(_Model):
     # rule `Step` itself cannot enforce since it cannot see the enclosing scenario
     # (`_check_target_requirements` does, from `Scenario`'s own validator).
     target: str | None = None
+    # Report-internal: which `group` (and which occurrence of it) `expand()` pulled this step out
+    # of, so `report.html` can fold it back together. Never authored directly — `_no_author_report_group`
+    # below rejects any value reaching `Step` through ordinary validation; `expand()` sets these via
+    # `model_copy(update=...)`, which bypasses field validators. `SkipJsonSchema` keeps both out of
+    # `bajutsu schema`'s authoring surface.
+    report_group: Annotated[str | None, SkipJsonSchema()] = Field(
+        default=None, alias="_reportGroup"
+    )
+    report_group_id: Annotated[int | None, SkipJsonSchema()] = Field(
+        default=None, alias="_reportGroupId"
+    )
 
     @field_validator("capture")
     @classmethod
@@ -140,6 +154,17 @@ class Step(_Model):
     def _safe_name(cls, v: str | None) -> str | None:
         if v is not None and (any(c in v for c in _UNSAFE_STEP_NAME_CHARS) or v in (".", "..")):
             raise ValueError(f"name must not contain a path separator or be '.'/'..' (§6.2): {v!r}")
+        return v
+
+    @field_validator("report_group", "report_group_id")
+    @classmethod
+    def _no_author_report_group(cls, v: object) -> object:
+        # Field validators don't run on `model_copy(update=...)`, which is how `expand()` sets
+        # these — so a value reaching here came from ordinary `model_validate`, meaning an author
+        # wrote `_reportGroup` / `_reportGroupId` by hand. Reject it rather than let a hand-written
+        # value fake a report.html fold.
+        if v is not None:
+            raise ValueError("_reportGroup/_reportGroupId are report-internal; do not set them")
         return v
 
     @model_validator(mode="after")

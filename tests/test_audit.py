@@ -653,6 +653,24 @@ def test_referenced_ids_includes_scroll_targets_and_containers() -> None:
     assert referenced_ids(scenarios[0]) == {"notice.row.20", "notice.list"}
 
 
+def test_referenced_ids_reaches_inside_a_group() -> None:
+    # A `group:` step is compile-time-only and gone by `run`, but the editor audits the scenario's
+    # live (unexpanded) text — an id reached only through a `group` must still register, or it
+    # escapes the audit the same way BE-0227's drag targets once did.
+    scenarios = load_scenarios(
+        "- name: x\n  steps:\n    - group: { name: login, steps: [{ tap: { id: auth.submit } }] }\n"
+    )
+    assert referenced_ids(scenarios[0]) == {"auth.submit"}
+
+
+def test_loose_wait_inside_a_group_is_flagged() -> None:
+    report = _audit(
+        "- name: x\n  steps:\n"
+        "    - group: { name: g, steps: [{ wait: { until: screenChanged, timeout: 5 } }] }\n"
+    )
+    assert any(f.kind == "loose-wait" for f in report.findings)
+
+
 def test_loose_wait_is_flagged() -> None:
     report = _audit(
         "- name: x\n  steps:\n"

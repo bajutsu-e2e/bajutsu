@@ -33,7 +33,7 @@ DSL は YAML ノードの木なので、文法は文字列ではなく **抽象�
 
 ## 2. 文法の全体像
 
-以下の **参照グラフ**は、どの非終端がどれを参照するかを示します。下の EBNF テキストが述べていても直接には見えない再帰と共有が、これで見て取れます。`Selector` の `within` が自分自身へループする点。`RequestMatch` を `request` アサーション、`until: { request }` 待機、`Mock.match` の三箇所が共有する点。`Web` と `App` と `Component` がそれぞれ新しい `Step` の列を内側に持つ点（`App` 自身のフィールドは素の `bundleId` 文字列であり、`Web` の `within` のような `Selector` への辺は持ちません）。`Component` へ `ScenarioFile` からも辺が伸びる点（シナリオファイルが自分のコンポーネントをインラインで宣言できるためです。§6.2）。そして制御フローの 2 つのステップ、すなわち `If` が `Assertion` の条件のもとに `then`/`else` を、`ForEach` が `Selector` のもとに `steps` を、それぞれ新しい `Step` の列として内側に持つ点です。図はいくつかの要素を省略しています。スカラのみを持ち共有の非終端を参照しないアクション（`relaunch`、`setLocation`、`push`、`http`、`setClipboard`、`foreground`、その他デバイス / ステータスバー系のステップ）です。ペイロードが単純なパスだけの `golden` アサーションも同様です。
+以下の **参照グラフ**は、どの非終端がどれを参照するかを示します。下の EBNF テキストが述べていても直接には見えない再帰と共有が、これで見て取れます。`Selector` の `within` が自分自身へループする点。`RequestMatch` を `request` アサーション、`until: { request }` 待機、`Mock.match` の三箇所が共有する点。`Web` と `App` と `Group` と `Component` がそれぞれ新しい `Step` の列を内側に持つ点（`App` 自身のフィールドは素の `bundleId` 文字列であり、`Web` の `within` のような `Selector` への辺は持ちません）。`Component` へ `ScenarioFile` からも辺が伸びる点（シナリオファイルが自分のコンポーネントをインラインで宣言できるためです。§6.2）。そして制御フローの 2 つのステップ、すなわち `If` が `Assertion` の条件のもとに `then`/`else` を、`ForEach` が `Selector` のもとに `steps` を、それぞれ新しい `Step` の列として内側に持つ点です。図はいくつかの要素を省略しています。スカラのみを持ち共有の非終端を参照しないアクション（`relaunch`、`setLocation`、`push`、`http`、`setClipboard`、`foreground`、その他デバイス / ステータスバー系のステップ）です。ペイロードが単純なパスだけの `golden` アサーションも同様です。
 
 ```mermaid
 graph LR
@@ -56,12 +56,14 @@ graph LR
   ST -->|wait| WT["Wait"]
   ST -->|assert| AS
   ST -->|use| CMP["Component"]
+  ST -->|group| GRP["Group"]
   ST -->|web| WEB["Web"]
   ST -->|app| APP["App"]
   ST -->|capture| CT["CaptureToken"]
   ST -->|if| IF["If"]
   ST -->|forEach| FE["ForEach"]
   CMP -->|steps| ST
+  GRP -->|steps| ST
   WEB -->|within| SEL
   WEB -->|steps| ST
   APP -->|steps| ST
@@ -216,12 +218,14 @@ Action    ::=
   | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }
   | { clearStatusBar:   {} }                               # ライブのステータスバーに戻す
   | { use:         { component: string, with?: map(string,string) } }   # マクロ（§6.2）
+  | { group:       <Group> }                                            # ステップに名前を付け、report.htmlで折りたたむ（§6.2。capture/extract 不可。入れ子不可）
   | { if:          <If> }                                               # 条件分岐（capture/extract 不可）
   | { forEach:     <ForEach> }                                          # ループ（capture/extract 不可）
   | { web:         <Web> }                                              # WebView の DOM コンテキストに入る（BE-0037。capture/extract 不可）
   | { app:         <App> }                                              # テスト対象アプリが起動していないアプリを起動してUIを操作する（iOS/XCUITest限定。capture/extract 不可）
   | { manual:      { label: string, bypass?: string } }                # `record` 中に記録される人による操作の引き取り（BE-0185）。決定的な等価物がないため、`bypass` を配線しない限り実行時に明示的に失敗する
 
+Group ::= { name: string, steps: list(<Step>) }   # どちらも必須、空を許さない。コンパイル時マクロで、runの前に消える（§6.2）
 If ::= { condition: <Assertion>, then: list(<Step>), else?: list(<Step>) }
 ForEach ::= { sel: <Selector>, as: string, steps: list(<Step>) }
 Web ::= { within: <Selector>, steps: list(<Step>) }
@@ -398,7 +402,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Scenario` | `data` と `dataFile` は **両方不可** | `scenario/models/scenario.py` |
 | `Scenario.targets` | 同じ名前の重複不可（BE-0428） | `scenario/models/scenario/_targets.py` |
 | `Step.target` / `Assertion.target`（`expect` のみ） | `len(targets) ≤ 1` なら省略可、または宣言済みの1つと一致。`len(targets) ≥ 2` なら**必須**（`if`/`forEach`/`web` ラッパーも含み、末端のアクションだけではない）で、宣言済みターゲットの1つを名指し。`web` ブロック内に入れ子になったステップと、インラインの `assert:` リスト・`if` の `condition`・`interrupts` エントリの `condition` を通して届く `Assertion` では**拒否**（BE-0428） | `scenario/models/scenario/_targets.py` |
-| `Step.use` / `Scenario.interrupts`（`len(targets) ≥ 2` のみ） | **頭から拒否** — `use:` ステップ（展開で自身の `target` が失われる）と、空でない `interrupts`（`condition` に自身がポーリングするターゲットがない）は、どちらも本アイテムが先送りにした未決問題であり、意味の不明確なまま受理せず拒否（BE-0428） | `scenario/models/scenario/_targets.py` |
+| `Step.use` / `Step.group` / `Scenario.interrupts`（`len(targets) ≥ 2` のみ） | **頭から拒否** — `use:` または `group:` ステップ（どちらも展開で自身の `target` が失われる）と、空でない `interrupts`（`condition` に自身がポーリングするターゲットがない）は、どれも本アイテムが先送りにした未決問題であり、意味の不明確なまま受理せず拒否（BE-0428） | `scenario/models/scenario/_targets.py` |
 | すべてのマッピング | **未知キー不可**（`extra="forbid"`） | `scenario/models/_base.py` |
 
 `exists` は特別です。セレクタを **インライン**で書き（`exists: { id: home.title }`）、任意の `negate: true` で不在を確認します。ローダは検証前にこれを `{ sel, negate }` へ書き換えます（`Exists._inline`, `scenario/models/assertions.py`）。
@@ -488,6 +492,16 @@ scenarios:
 `components:` の有効範囲は1ファイルです。ファイルごとに読み、スイートディレクトリをまたいで統合しません。あるファイルで宣言した名前は、ほかのファイルからは見えません。コンポーネントファイルへ入ると `components:` は完全に外れます。コンポーネントファイルは自分の `components:` を持たないため、その中の素の `use` は常に未定義です。参照元のシナリオファイルが何を宣言していても変わりません。一方、ファイルスコープのコンポーネント自身の steps は、宣言元ファイルのスコープで展開されます。別のファイルスコープのコンポーネントを素の名前で `use` できますし、パスでファイルも `use` できます。ファイルをまたぐ再利用はパス参照の役目のままです。
 
 `expand_components`（`scenario/expand.py`）は各 `use` をコンポーネントの置換済みステップに **置き換えます**。展開は再帰的で、コンポーネントが別のコンポーネントを `use` でき、深さは 25 までです。params の不足、未知の params、未宣言を指す残留した `${params.*}`、未定義の素の名前、循環参照のいずれかがあるとエラーになります。`ComponentResolver`（`scenario/load_expanded.py`）は、`resolve` をファイルの `components:` とルートと基準ディレクトリに束ねる唯一の場所です。おかげで `run` とデバイス不要のリーダーは、同じファイルを同一に展開します。展開は純粋でコンパイル時に行われるため、**`use` は run に残らず**、決定性に影響しません。
+
+**`group` は `use` の身近な兄弟です。** `Group` は `name` と `steps` だけを持ち、params と
+別ファイルのどちらも持ちません。`expand_components` の同じ `expand()` 再帰が、`group` ステップを
+その場で自分自身の `steps` へ置き換えます。各ステップには `report_group` / `report_group_id`
+（内部フィールドで、書ける文法には含まれません）を付けます。これにより、`report.html` はそれらを
+1つにまとめて折りたためます（[reporting.md](../reporting.md#reporthtml)）。`expand()` は、すでに別の
+`group` の中にいる状態で `group` に出会うとエラーを送出します。これは、内側の `group` が直接
+書かれた場合も、`use` の呼び出しを経由して届いた場合も同じです。`Scenario` レベルのバリデータも、
+別の `group` の `steps` の中や、`if` / `forEach` / `web` / `app` ステップの入れ子の `steps` の中に
+直接書かれた `group` を、ロード時に拒否します。
 
 ### 6.3 データ駆動シナリオ（`data` / `dataFile`）
 

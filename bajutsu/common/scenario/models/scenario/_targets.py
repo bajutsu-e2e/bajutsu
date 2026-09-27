@@ -55,14 +55,16 @@ def _check_step_target(step: Step, *, known: set[str], inside_web: bool) -> None
                 "web: or app: block (it always runs against the block's own device)"
             )
         return
-    if step.use is not None and len(known) >= 2:
-        # `expand_components` replaces this step wholesale with the component's own steps,
-        # discarding this step's own `target` — a component author's steps would then decide the
-        # target instead of the value this `use:` step names, silently, rather than the required
+    if (step.use is not None or step.group is not None) and len(known) >= 2:
+        # `expand_components` replaces this step wholesale with the component's/group's own
+        # steps, discarding this step's own `target` — the replacement steps would then decide
+        # the target instead of the value this step names, silently, rather than the required
         # field it looks like. Refused until a later BE-0428 unit decides whether/how `target`
-        # propagates into an expansion.
+        # propagates into an expansion. Named explicitly rather than reusing one fixed message, so
+        # a `group:` author sees their own action named, not `use:`.
+        action = "use:" if step.use is not None else "group:"
         raise ValueError(
-            f"{context}: use: is not yet supported when the scenario declares "
+            f"{context}: {action} is not yet supported when the scenario declares "
             f"{len(known)} targets — its own target would be discarded by expansion"
         )
     _check_target(step.target, known=known, context=context)
@@ -88,10 +90,11 @@ def _check_target_requirements(scenario: Scenario) -> None:
     the enclosing block already resolved (`web:`'s own `WebContextDriver`, or `app:`'s unchanged
     native driver). An `Assertion` reached through an inline `assert:` list, an `if`'s
     `condition`, or an `interrupts` entry's `condition` must never set `target` — only one reached
-    through the scenario's top-level `expect` block may. Two open questions this item has not yet
-    resolved fail closed instead of guessing: a `use:` step (its own `target` would be discarded by
-    expansion) and a non-empty `interrupts` (its `condition` has no target of its own to poll) are
-    both refused outright once the scenario declares two or more targets.
+    through the scenario's top-level `expect` block may. Three open questions this item has not yet
+    resolved fail closed instead of guessing: a `use:` step and a `group:` step (each one's own
+    `target` would be discarded by expansion) and a non-empty `interrupts` (its `condition` has no
+    target of its own to poll) are all refused outright once the scenario declares two or more
+    targets.
     """
     known = set(scenario.targets)
     if len(known) != len(scenario.targets):
@@ -112,6 +115,10 @@ def _check_target_requirements(scenario: Scenario) -> None:
                     walk_steps(step.if_.else_, inside_web=inside_web)
             if step.for_each is not None:
                 walk_steps(step.for_each.steps, inside_web=inside_web)
+            if step.group is not None:
+                # Reached only when `known` has fewer than 2 targets — `_check_step_target` above
+                # already refuses a `group` step outright once the scenario declares 2 or more.
+                walk_steps(step.group.steps, inside_web=inside_web)
             if step.web is not None:
                 walk_steps(step.web.steps, inside_web=True)
             if step.app is not None:

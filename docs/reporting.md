@@ -282,7 +282,11 @@ numbers) are rendered as subtly-styled inline tokens — visually distinct from 
 action/assert badges, so variables and constants are distinguishable at a glance. An `assert` step's
 checks become a **nested table**, one row per assertion split into `kind` / `target` / `comparison`
 cells (instead of a hard-to-read `a; b; c` line). Steps that never ran (execution stops at the first
-failure) still appear, marked as skipped. **Observed network exchanges are interleaved into the
+failure) still appear, marked as skipped. A [`group:`](scenarios.md#grouping-steps-group--folded-in-reporthtml)
+step's own steps fold into one collapsed section, under a heading naming the group and counting its
+steps. A passing group stays collapsed; a group holding a failing step opens on its own. The header's
+"expand all" / "collapse all" buttons open and close every group too, alongside every scenario.
+**Observed network exchanges are interleaved into the
 steps** in time order (each placed by its offset from the scenario start): a row with the HTTP method
 as a neutral badge, the status in the `result` column, and the exchange's settings (method / endpoint
 / status / duration / headers) as a **nested table** in the detail cell. The scenario's `network.filter.domains` (by URL host) filters which requests appear; the Network tab still lists them all.

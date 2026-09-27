@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from bajutsu.common.scenario import (
+    Group,
     HandleSystemAlert,
     Step,
 )
@@ -378,3 +379,95 @@ def test_handle_system_alert_rejects_an_unknown_prompt() -> None:
         Step.model_validate(
             {"handleSystemAlert": {"prompt": "camera", "choice": "grant", "timeout": 5}}
         )
+
+
+# --- group (a named run of steps, folded in report.html) ---
+
+
+def test_group_step_parses() -> None:
+    step = Step.model_validate(
+        {
+            "group": {
+                "name": "login",
+                "steps": [{"tap": {"id": "auth.open"}}, {"tap": {"id": "auth.submit"}}],
+            },
+        }
+    )
+    assert step.group is not None
+    assert step.group.name == "login"
+    assert len(step.group.steps) == 2
+
+
+def test_group_requires_a_non_empty_name() -> None:
+    with pytest.raises(ValidationError):
+        Group.model_validate({"name": "", "steps": [{"tap": {"id": "a"}}]})
+
+
+def test_group_requires_at_least_one_step() -> None:
+    with pytest.raises(ValidationError):
+        Group.model_validate({"name": "login", "steps": []})
+
+
+def test_group_is_one_action() -> None:
+    with pytest.raises(ValidationError):
+        Step.model_validate(
+            {
+                "group": {"name": "login", "steps": [{"tap": {"id": "a"}}]},
+                "tap": {"id": "b"},
+            }
+        )
+
+
+def test_group_rejects_capture_modifier() -> None:
+    with pytest.raises(ValidationError, match="capture"):
+        Step.model_validate(
+            {
+                "group": {"name": "login", "steps": [{"tap": {"id": "a"}}]},
+                "capture": ["screenshot.after"],
+            }
+        )
+
+
+def test_group_rejects_extract_modifier() -> None:
+    with pytest.raises(ValidationError, match="extract"):
+        Step.model_validate(
+            {
+                "group": {"name": "login", "steps": [{"tap": {"id": "a"}}]},
+                "extract": {"v": {"sel": {"id": "z"}}},
+            }
+        )
+
+
+def test_step_rejects_an_author_written_report_group() -> None:
+    with pytest.raises(ValidationError, match="_reportGroup"):
+        Step.model_validate({"tap": {"id": "a"}, "_reportGroup": "login"})
+
+
+def test_step_rejects_an_author_written_report_group_id() -> None:
+    with pytest.raises(ValidationError, match="_reportGroup"):
+        Step.model_validate({"tap": {"id": "a"}, "_reportGroupId": 0})
+
+
+def test_report_group_explicit_none_is_accepted() -> None:
+    # An explicit `None` still reaches the validator (unlike an omitted field, which pydantic
+    # does not validate by default), and must pass through rather than be rejected.
+    step = Step.model_validate({"tap": {"id": "a"}, "_reportGroup": None, "_reportGroupId": None})
+    assert step.report_group is None
+    assert step.report_group_id is None
+
+
+def test_report_group_survives_a_model_copy_update() -> None:
+    # `expand()` tags a flattened step this way; `model_copy(update=...)` bypasses field
+    # validators, unlike `model_validate`, so the internal write must still succeed.
+    step = Step.model_validate({"tap": {"id": "a"}})
+    tagged = step.model_copy(update={"report_group": "login", "report_group_id": 0})
+    assert tagged.report_group == "login"
+    assert tagged.report_group_id == 0
+
+
+def test_report_group_is_excluded_from_the_json_schema() -> None:
+    schema = Step.model_json_schema()
+    defs = schema["$defs"][schema["$ref"].rsplit("/", 1)[-1]]
+    assert "_reportGroup" not in defs["properties"]
+    assert "_reportGroupId" not in defs["properties"]
+    assert "group" in defs["properties"]

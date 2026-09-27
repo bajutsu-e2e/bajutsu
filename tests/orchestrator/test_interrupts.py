@@ -129,6 +129,23 @@ def test_config_interrupts_reject_component_use() -> None:
         )
 
 
+def test_config_interrupts_reject_group() -> None:
+    # Same reason as `use:` above — `group` is expanded over scenarios only, too.
+    with pytest.raises(ValidationError, match="interrupts cannot use a group"):
+        load_config(
+            """
+            defaults: { backend: [web] }
+            targets:
+              myapp:
+                baseUrl: http://x
+                interrupts:
+                  - condition: { exists: { id: onboarding.title } }
+                    steps:
+                      - group: { name: skip, steps: [{ tap: { id: skip.btn } }] }
+            """
+        )
+
+
 # --- opportunistic check + resume (Units 2/3) ---------------------------------------------------
 
 
