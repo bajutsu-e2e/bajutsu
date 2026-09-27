@@ -1,14 +1,14 @@
-[English](BE-XXXX-primary-target-default.md) · **日本語**
+[English](BE-0436-primary-target-default.md) · **日本語**
 
-# BE-XXXX — primary target: 複数ターゲットシナリオのステップで `target` を省略できるようにする
+# BE-0436 — primary target: 複数ターゲットシナリオのステップで `target` を省略できるようにする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-primary-target-default-ja.md) |
+| 提案 | [BE-0436](BE-0436-primary-target-default-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **提案** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0436") |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md) |
 <!-- /BE-METADATA -->

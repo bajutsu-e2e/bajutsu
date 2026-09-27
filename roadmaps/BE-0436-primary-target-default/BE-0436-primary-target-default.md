@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-primary-target-default-ja.md)
+**English** · [日本語](BE-0436-primary-target-default-ja.md)
 
-# BE-XXXX — A primary target: let a multi-target scenario's steps omit `target`
+# BE-0436 — A primary target: let a multi-target scenario's steps omit `target`
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-primary-target-default.md) |
+| Proposal | [BE-0436](BE-0436-primary-target-default.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0436") |
 | Topic | Scenario authoring features |
 | Related | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md) |
 <!-- /BE-METADATA -->
