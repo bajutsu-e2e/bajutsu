@@ -154,9 +154,7 @@ around the existing flow:
    raises just `hook_errors[0]` — the first collected while iterating `reversed(self._hooks)`,
    i.e. the exception of the *last-registered hook that raised* — so an earlier-registered
    failing hook's exception (`hook_errors[1:]`) is neither raised nor chained onto it and
-   never reaches that log at all. The current behavior is: only that hook's teardown
-   exception is raised and logged (with the run's own exception as context); every other
-   failing hook's teardown exception is silently dropped. A deployment whose hook teardown
+   never reaches that log at all. A deployment whose hook teardown
    failures must never be lost should have `after_run` log or forward them itself rather
    than rely only on the raise.
 
