@@ -320,6 +320,20 @@ def _read_config_from_package(packages: dict[str, bytes]) -> dict[str, Any]:
     raise AssertionError("bajutsu.config.yaml not found in any uploaded package zip")
 
 
+def _raw_config_bytes_from_package(packages: dict[str, bytes]) -> bytes:
+    """Find the test package zip and return bajutsu.config.yaml's raw member bytes, unparsed."""
+    for url, data in packages.items():
+        if not url.endswith(".zip") or "testspec" in url:
+            continue
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as zf:
+                if "bajutsu.config.yaml" in zf.namelist():
+                    return zf.read("bajutsu.config.yaml")
+        except zipfile.BadZipFile:
+            continue
+    raise AssertionError("bajutsu.config.yaml not found in any uploaded package zip")
+
+
 def _make_provider(
     *,
     client: _FakeClient | None = None,
@@ -342,14 +356,32 @@ def test_no_launch_env_injection_preserves_existing_config(tmp_path: Path) -> No
     work, request = _android_request_with_config(
         tmp_path, existing_launch_env={"EXISTING": "value"}
     )
-    original = (work / "bajutsu.config.yaml").read_text(encoding="utf-8")
+    # Overwrite with formatting `yaml.dump`'s own re-serialization would never reproduce
+    # (a comment, non-default key order) — a byte-for-byte match below can then only mean
+    # the no-hooks path skipped the extra_texts overlay entirely, not that the overlay
+    # happened to re-serialize to equivalent-looking bytes.
+    non_canonical = (
+        "# operator note: demo target\n"
+        "targets:\n"
+        "  demo:\n"
+        "    launchEnv:\n"
+        "      EXISTING: value\n"
+        "    package: com.example.app\n"
+        "    platform: android\n"
+    )
+    (work / "bajutsu.config.yaml").write_text(non_canonical, encoding="utf-8")
 
     provider.submit(request, work_dir=work, dest=tmp_path / "d")
 
     config = _read_config_from_package(transfer.packages)
     assert config["targets"]["demo"].get("launchEnv", {}).get("EXISTING") == "value"
-    # Content round-trips through yaml.safe_load; verify key is present and unchanged
-    assert yaml.safe_load(original)["targets"]["demo"]["launchEnv"]["EXISTING"] == "value"
+    # No hooks means ctx.launch_env stays empty, so the extra_texts overlay never fires
+    # (device_farm_batch_provider.py's `if ctx.launch_env:` guard) — the packaged bytes must be
+    # exactly the on-disk config, not a re-serialization that happens to look equivalent.
+    assert (
+        _raw_config_bytes_from_package(transfer.packages)
+        == (work / "bajutsu.config.yaml").read_bytes()
+    )
 
 
 def test_before_submit_launch_env_merged_into_packaged_config(tmp_path: Path) -> None:

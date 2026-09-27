@@ -142,7 +142,23 @@ around the existing flow:
    so teardown mirrors setup and always runs. `verdict` is `Verdict | None`: it is
    `None` when packaging, the upload, or collection raised before a verdict existed, so
    the teardown still runs and the original exception still propagates unchanged (rather
-   than being replaced by an `UnboundLocalError` from an unbound `verdict`).
+   than being replaced by an `UnboundLocalError` from an unbound `verdict`) — unless a
+   hook's own `after_run` also raises, per the next paragraph.
+7. A hook exception raised inside that `finally` becomes the exception that propagates,
+   ahead of whatever the `try` block itself was already raising, including a genuine run
+   failure. Python's implicit chaining keeps the run's own exception as the hook
+   exception's `__context__`, so it is not erased outright — `bajutsu/serve/jobs.py`'s
+   `logger.warning(..., exc_info=True)` still logs the run's original traceback alongside
+   the hook's. What is actually lost is narrower: `_fail_batch`'s message
+   (``f"cloud-batch run failed: {exc}"``) names only the hook's exception, and `submit`
+   raises just `hook_errors[0]` — the first collected while iterating `reversed(self._hooks)`,
+   i.e. the *last-registered* hook's exception — so any earlier-registered hook's
+   exception (`hook_errors[1:]`) is neither raised nor chained onto it and never reaches
+   that log at all. The current behavior is: only the last-registered hook's teardown
+   exception is raised and logged (with the run's own exception as context); every other
+   hook's teardown exception is silently dropped. A deployment whose hook teardown
+   failures must never be lost should have `after_run` log or forward them itself rather
+   than rely only on the raise.
 
 With no hooks (the default `()`), `submit` behaves exactly as today and the packaged
 config is byte-identical.
