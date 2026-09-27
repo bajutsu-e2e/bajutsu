@@ -139,8 +139,8 @@ class Step(_Model):
         """The target this step runs against: its own `target`, else the primary it resolved to."""
         return self.target or self._resolved_target
 
-    def resolve_target(self, target: str) -> None:
-        """Record the primary target an omitted `target` defaults to (BE-0436)."""
+    def resolve_target(self, target: str | None) -> None:
+        """Record the primary target an omitted `target` defaults to, or None for none (BE-0436)."""
         self._resolved_target = target
 
     @field_validator("capture")

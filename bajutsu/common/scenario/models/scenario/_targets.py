@@ -78,6 +78,7 @@ def _check_step_target(
                 f"{context}: target is not allowed on a step nested inside a "
                 "web: or app: block (it always runs against the block's own device)"
             )
+        step.resolve_target(None)
         return
     if step.use is not None and len(known) >= 2:
         # `expand_components` replaces this step wholesale with the component's own steps,
@@ -89,9 +90,9 @@ def _check_step_target(
             f"{context}: use: is not yet supported when the scenario declares "
             f"{len(known)} targets — its own target would be discarded by expansion"
         )
-    resolved = _check_target(step.target, known=known, context=context, default=default)
-    if resolved is not None:
-        step.resolve_target(resolved)
+    # Assigned even when None: a step copied from a scenario that resolved it (`apply_setups`'s
+    # deep-copied prelude) must not keep that scenario's primary.
+    step.resolve_target(_check_target(step.target, known=known, context=context, default=default))
 
 
 def _reject_assertion_target(a: Assertion, *, context: str) -> None:

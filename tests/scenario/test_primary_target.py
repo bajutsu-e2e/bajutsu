@@ -230,3 +230,13 @@ def test_scenarios_sharing_a_setup_resolve_their_own_primary() -> None:
     assert scns[0].steps[0] is not scns[1].steps[0]
     assert scns[0].steps[0].resolved_target == "app"
     assert scns[1].steps[0].resolved_target == "web"
+
+
+def test_a_spliced_prelude_drops_a_resolution_from_another_scenario() -> None:
+    # The prelude steps were already resolved to 'a' under their own scenario; the re-check under a
+    # one-target scenario must clear that, not keep the stale name its copy carried over.
+    prelude = _scenario(targets=["a", "b"], primaryTarget="a", steps=[_step()]).steps
+    assert prelude[0].resolved_target == "a"
+    scns = [_scenario(targets=["c"], steps=[_step()])]
+    apply_setups(scns, default_setup="p", resolve=lambda _: prelude)
+    assert scns[0].steps[0].resolved_target is None

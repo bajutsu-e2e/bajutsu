@@ -1376,13 +1376,31 @@ def _hooks_for(
 
 
 def _stamped(step: Step, target: str) -> Step:
-    """*step* with its `target` set to *target*, leaving one that already names a target alone.
+    """A deep copy of *step* with *target* filled into every blank `target`, nested ones included.
 
     A config-level hook may name a target itself — the validator then checks it like any other
     step's — so stamping only fills the far commoner blank rather than overwriting an author's
-    explicit choice with the target whose config happened to carry the hook.
+    explicit choice with the target whose config happened to carry the hook. The fill reaches every
+    `if` / `forEach` step too, which would otherwise resolve to each scenario's own primary rather
+    than the hook's target; a `web` / `app` body is left alone, since its steps must omit `target`.
+    The copy keeps two scenarios folding the same hook from sharing (and re-resolving) one object.
     """
-    return step if step.target else step.model_copy(update={"target": target})
+    copy = step.model_copy(deep=True)
+    _fill_target(copy, target)
+    return copy
+
+
+def _fill_target(step: Step, target: str) -> None:
+    # Mutates a private deep copy in place; `_Model` validates neither assignment nor freezes.
+    if step.target is None:
+        step.target = target
+    nested: list[Step] = []
+    if step.if_ is not None:
+        nested += step.if_.then + (step.if_.else_ or [])
+    if step.for_each is not None:
+        nested += step.for_each.steps
+    for child in nested:
+        _fill_target(child, target)
 
 
 def with_lifecycle_phases(

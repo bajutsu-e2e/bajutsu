@@ -532,7 +532,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   `expect` entry omitting `target` behaves exactly as it does today for a scenario declaring zero or
   one targets, and is required once a scenario declares two or more — unless the scenario declares a
   `primaryTarget` (BE-0436, pinned to `targets[0]`), which an omitted `target` then resolves to via
-  `Step.resolved_target`, a private load-time value that never leaks into a re-serialized step.
+  the public `Step.resolved_target` property, backed by a private attribute that never reaches
+  `model_dump()` or a re-serialized step.
   `--target` becomes optional once
   a scenario is self-declaring this way (`--scenario` becomes mandatory in its place), and an explicit
   `--target` is checked for membership in `scenario.targets` rather than silently overridden.

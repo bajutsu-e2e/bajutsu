@@ -91,9 +91,9 @@ class _StepRunner:
         if target and self.by_target:
             other = self.by_target.get(target)
             if other is None:
-                # `step.target` is a declared field the load-time validator already checked against
-                # `scenario.targets`, so this is a wiring defect (a target the runner never brought
-                # up), not an authoring mistake — fail loudly rather than silently run the step
+                # The resolved target — the step's own `target` or the scenario's `primaryTarget` —
+                # was checked against `scenario.targets` at load time, so this is a wiring defect (a
+                # target the runner never brought up), not an authoring mistake — fail loudly rather than silently run the step
                 # against whichever driver happens to be active (prime directive 2).
                 raise RuntimeError(
                     f"step target {target!r} has no live runtime; "

@@ -406,6 +406,56 @@ def test_folding_config_hooks_re_checks_target_requirements() -> None:
         with_lifecycle_phases(effs["app"], [scenario], effs)
 
 
+_NESTED_HOOK_CONFIG = """
+targets:
+  a:
+    bundleId: com.example.app
+  b:
+    baseUrl: http://localhost:1/
+    before:
+      - if:
+          condition: { exists: { id: x } }
+          then:
+            - tap: { id: omitted }
+            - target: a
+              tap: { id: named }
+"""
+
+
+def _fold_nested_hook(targets: list[str]) -> Scenario:
+    cfg = load_config(_NESTED_HOOK_CONFIG)
+    effs = {"a": resolve(cfg, "a"), "b": resolve(cfg, "b")}
+    scenario = _scenario(
+        {
+            "name": "s",
+            "targets": targets,
+            "primaryTarget": targets[0],
+            "steps": [{"tap": {"id": "x"}}],
+        }
+    )
+    return with_lifecycle_phases(effs[targets[0]], [scenario], effs)[0]
+
+
+def test_a_hooks_nested_steps_run_against_the_hooks_own_target() -> None:
+    # A nested step omitting `target` would otherwise resolve to each scenario's own primary, so
+    # `b`'s hook would run its body against `a` in the first scenario.
+    folded = [_fold_nested_hook(["a", "b"]), _fold_nested_hook(["b", "a"])]
+    nested = []
+    for merged in folded:
+        (hook,) = merged.before
+        assert hook.if_ is not None
+        assert hook.resolved_target == "b"
+        assert hook.if_.then[0].resolved_target == "b"
+        nested.append(hook.if_.then[0])
+    assert nested[0] is not nested[1]
+
+
+def test_a_hooks_nested_step_naming_a_target_keeps_it() -> None:
+    (hook,) = _fold_nested_hook(["b", "a"]).before
+    assert hook.if_ is not None
+    assert hook.if_.then[1].target == "a"
+
+
 def test_the_merged_phases_are_what_the_run_executes() -> None:
     merged = _merged({"steps": [{"tap": {"id": "a"}}], "before": [{"tap": {"id": "c"}}]})
     r = run_scenario(_driver(), merged, FakeClock())

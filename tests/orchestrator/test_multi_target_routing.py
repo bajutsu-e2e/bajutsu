@@ -676,3 +676,33 @@ def test_returning_to_the_primary_by_omission_resets_prev_after_like_an_explicit
     assert reused[:3] == [None, None, None]
     step_ids = list(sink.reuse_by_step)
     assert reused[3] == sink.after_by_step[step_ids[2]]
+
+
+def _primary_expect(element_id: str) -> RunResult:
+    app, web = FakeDriver(screen=list(_APP_SCREEN)), FakeDriver(screen=list(_WEB_SCREEN))
+    return _run(
+        _scenario(
+            {
+                "name": "expect by omission",
+                "targets": ["app", "web"],
+                "primaryTarget": "app",
+                "steps": [{"tap": {"id": "app.button"}}],
+                "expect": [{"exists": {"id": element_id}}],
+            }
+        ),
+        app=app,
+        web=web,
+    )
+
+
+def test_an_expect_entry_omitting_target_is_polled_against_the_primary() -> None:
+    # Only the app screen carries `app.value`, so a pass proves the entry reached the primary.
+    r = _primary_expect("app.value")
+    assert r.ok, r.failure
+    assert [a.ok for a in r.expect_results] == [True]
+
+
+def test_an_expect_entry_omitting_target_never_polls_a_secondary() -> None:
+    r = _primary_expect("web.value")
+    assert not r.ok
+    assert [a.ok for a in r.expect_results] == [False]
