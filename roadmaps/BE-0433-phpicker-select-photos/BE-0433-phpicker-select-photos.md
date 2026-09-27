@@ -228,10 +228,13 @@ The showcase's `PermissionsView.swift` (SwiftUI only; UIKit parity is out of sco
 (`perm.openPhotoPicker`) presents a `PHPickerViewController` wrapped in
 `UIViewControllerRepresentable` with `selectionLimit = 0` (unlimited, so the confirm-tap path is
 always exercised), and a mirrored `Text` (`perm.photos.value`) reports the picked count. Both ids
-join the existing `perm` namespace — no `idNamespaces` change needed. `demos/showcase/fixtures/photos/`
-carries a handful of distinguishable fixture images (solid colours), seeded by
-`demos/showcase/scenarios/select_photos.yaml` via `preconditions: { erase: true, seedPhotos: [...]
-}` (Unit 1's validator requires `erase: true` alongside `seedPhotos`), which taps
+join the existing `perm` namespace — no `idNamespaces` change needed.
+`demos/showcase/scenarios/fixtures/photos/` carries a handful of distinguishable fixture images
+(solid colours) — inside `scenarios/`, not a sibling of it, since a `seedPhotos` ref is confined to
+the suite root like every other scenario ref
+([BE-0174](../BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md)).
+Seeded by `demos/showcase/scenarios/select_photos.yaml` via `preconditions: { erase: true,
+seedPhotos: [...] }` (Unit 1's validator requires `erase: true` alongside `seedPhotos`), which taps
 `perm.openPhotoPicker`, runs `selectPhotos: { indices: [0, 1] }`, and asserts `perm.photos.value`
 equals `2`. `demos/showcase/SPEC.md` §5.4 documents the two new ids next to the section's existing
 ones.

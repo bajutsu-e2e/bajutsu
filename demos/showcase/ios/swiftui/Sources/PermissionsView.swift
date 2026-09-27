@@ -18,7 +18,7 @@ struct PermissionsView: View {
     @StateObject private var browser = BrowserPresenter()
     @State private var notifStatus = "notDetermined"
     @State private var pasted = ""
-    @State private var showPhotoPicker = false
+    @State private var photoPickerMode: PhotoPickerMode?
     @State private var selectedPhotoCount = 0
 
     var body: some View {
@@ -73,10 +73,15 @@ struct PermissionsView: View {
                 }
 
                 // `selectPhotos` (device / Intel Simulator only — see Capability.SELECT_PHOTOS):
-                // unlimited selection so the confirm-tap the driver relies on is always exercised.
+                // the unlimited-selection button exercises the confirm-tap `_confirm_photo_selection`
+                // taps; the single-selection button exercises its no-op elimination path instead — a
+                // `selectionLimit = 1` grid auto-dismisses on the one required tap, leaving no confirm
+                // control in the navigation bar to tap.
                 Section("Photos") {
-                    Button("Open Photo Picker") { showPhotoPicker = true }
+                    Button("Open Photo Picker") { photoPickerMode = .unlimited }
                         .accessibilityID("perm.openPhotoPicker")
+                    Button("Open Photo Picker (Single)") { photoPickerMode = .single }
+                        .accessibilityID("perm.openPhotoPickerSingle")
                     Text("Selected: \(selectedPhotoCount)")
                         .foregroundStyle(.secondary)
                         .accessibilityID("perm.photos.value")
@@ -84,8 +89,8 @@ struct PermissionsView: View {
                 }
             }
             .navigationTitle("Permissions")
-            .sheet(isPresented: $showPhotoPicker) {
-                PhotoPicker(selectedCount: $selectedPhotoCount)
+            .sheet(item: $photoPickerMode) { mode in
+                PhotoPicker(selectionLimit: mode.selectionLimit, selectedCount: $selectedPhotoCount)
             }
         }
     }
@@ -207,16 +212,34 @@ private final class BrowserPresenter: NSObject, ObservableObject, SFSafariViewCo
     }
 }
 
-// Wraps PHPickerViewController with unlimited selection, mirroring the picked count back to
-// perm.photos.value. `selectPhotos` resolves grid cells by the `PXGGridLayout-Info` identifier
-// every cell shares (disambiguated by ordinal `index`) and the confirm control by elimination
-// inside the picker's navigation bar — neither depends on anything below.
+// Which of the two "Open Photo Picker" buttons presented the sheet — `Identifiable` so a single
+// `.sheet(item:)` drives both from one state var (two independent `.sheet(isPresented:)` on the
+// same view is a real SwiftUI footgun when either could theoretically fire while the other is up).
+private enum PhotoPickerMode: Identifiable {
+    case unlimited
+    case single
+
+    var id: Self { self }
+
+    var selectionLimit: Int {
+        switch self {
+        case .unlimited: return 0
+        case .single: return 1
+        }
+    }
+}
+
+// Wraps PHPickerViewController, mirroring the picked count back to perm.photos.value.
+// `selectPhotos` resolves grid cells by the `PXGGridLayout-Info` identifier every cell shares
+// (disambiguated by ordinal `index`) and the confirm control by elimination inside the picker's
+// navigation bar — neither depends on anything below.
 private struct PhotoPicker: UIViewControllerRepresentable {
+    let selectionLimit: Int
     @Binding var selectedCount: Int
 
     func makeUIViewController(context: Context) -> PHPickerViewController {
         var config = PHPickerConfiguration()
-        config.selectionLimit = 0
+        config.selectionLimit = selectionLimit
         let picker = PHPickerViewController(configuration: config)
         picker.delegate = context.coordinator
         return picker
