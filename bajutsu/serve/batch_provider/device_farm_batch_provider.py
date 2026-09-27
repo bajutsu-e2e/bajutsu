@@ -108,8 +108,9 @@ class DeviceFarmBatchProvider:
         `hooks` (set at construction) run server-side lifecycle steps: `before_submit` may inject
         launch environment variables into the packaged config; `after_run` runs in a ``finally`` in
         reverse hook order so teardown always mirrors setup (BE-0435). No `after_run` failure is
-        dropped: each is logged, except that when no verdict was collected the first one is raised
-        instead — so a teardown failure never discards a collected run.
+        dropped: each is logged, except that when no verdict was collected the last-registered
+        hook that raised propagates its exception instead — so a teardown failure never discards
+        a collected run.
         """
         resume_arn = checkpoint.load() if checkpoint is not None else None
         ctx = BatchContext(request=request, work_dir=work_dir, job_id=job_id)
