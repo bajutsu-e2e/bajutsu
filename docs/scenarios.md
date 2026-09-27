@@ -1223,6 +1223,73 @@ A step nested inside a `web` or `app` block is the one exception. It must **omit
 outright. It always runs against the device the enclosing block already resolved. That is `web`'s
 own WebView bridge, or `app`'s unchanged native driver.
 
+### Target groups: naming one target once for a run of steps (BE-0437)
+
+The `target` rule above repeats the same value across a whole run of steps that act on one target.
+A **target group** removes that repetition. It sets `target` once. It lists every nested action
+under its own `steps`, instead of stamping `target` on each one by hand:
+
+```yaml
+- name: favorite a horse on the iOS showcase, then carry what it captured into the web demo
+  targets: [showcase-swiftui, web]
+  steps:
+    - target: showcase-swiftui
+      steps:
+        - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
+        - tap: { id: [stable.row.1, stable_row_1] }
+        - wait: { for: { id: [horse.favorite, horse_favorite] }, timeout: 5 }
+        - tap: { id: [horse.favorite, horse_favorite] }
+          extract:
+            favorited: { sel: { id: [horse.favorite.value, horse_favorite_value] } }
+    - target: web
+      steps:
+        - tap: { id: onboarding.start }
+        - type: { text: "favorited-${vars.favorited}@example.com", into: { id: auth.email } }
+        - type: { text: "pw", into: { id: auth.password } }
+        - tap: { id: auth.submit }
+        - wait: { for: { id: home.title }, timeout: 5 }
+        - tap: { id: counter.increment }
+  expect:
+    - target: showcase-swiftui
+      value: { sel: { id: [horse.favorite.value, horse_favorite_value] }, equals: "on" }
+    - target: web
+      value: { sel: { id: counter.value }, equals: "1" }
+```
+
+Written the flat way, this same scenario needs ten `target:` lines to name the same two runs. Each
+group above states those steps once. No `target:` line drifts out of sync with the one above it.
+
+A target group is pure authoring sugar. A load-time pass expands it before the rest of this
+section's rules run. It produces the same flat, per-step `target:` form a hand-written scenario
+already uses. `bajutsu run`, the report, and the CLI never see a target group. They see the
+expanded steps.
+
+A target group always requires its own `target`, whatever the scenario declares. This holds even
+for a scenario declaring zero or one target. A leaf action's own `target` does not work that way.
+A group's purpose is fixing a target for its own nested steps. It always needs one. It also refuses
+`capture`, `extract`, `name`, and `from`. Each of those four reads off the one step the runner
+executes. A target group never reaches the runner. Expansion replaces it with its own nested steps
+first. Expansion would otherwise drop any of those four with no warning.
+
+Every step nested directly inside a group's own `steps` must omit `target`. This covers a leaf
+action, an `if`, a `forEach`, and a `web`/`app` block alike. The group already fixed it. A child
+that sets one anyway hits a load-time error, not a silent override. A target group nested directly
+inside another one hits the same error. A nested group always sets its own `target`. An immediate
+child may never do that.
+
+The omission is shallow, not recursive. An `if` or `forEach` nested directly inside a group
+inherits the group's target for itself. A leaf action inherits it the same way. But the steps
+inside its own `then`, `else`, or body form a fresh scope. Each still needs its own explicit
+`target` or a target group of its own. That holds the same as outside any group. A `web` or `app`
+block nested directly inside a group inherits the group's target the same way. It opens its bridge
+against that target. The steps nested inside that block keep omitting `target` under the existing
+rule above. That rule has nothing to do with the group.
+
+A `web:` or `app:` block's own nested steps refuse a target group outright. Every step there
+already runs against one target. The block itself already resolved that target. A group there
+would merely repeat that target for no purpose. Or it would claim a different one with no driver
+open for it.
+
 ### What a multi-target run does with the rest of a target's config
 
 Each declared target keeps its own config, not the primary target's. Resolution per target:

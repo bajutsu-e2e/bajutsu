@@ -11,7 +11,13 @@ from collections.abc import Callable
 from typing import Any, Protocol, cast, runtime_checkable
 
 from bajutsu.common.scenario import interp
-from bajutsu.common.scenario.models import Component, Scenario, Step, _check_target_requirements
+from bajutsu.common.scenario.models import (
+    Component,
+    Scenario,
+    Step,
+    _check_target_requirements,
+    _expand_target_groups,
+)
 
 
 @runtime_checkable
@@ -114,7 +120,9 @@ def expand_components(
             entry.steps = expand(entry.steps, [], resolve)
         # The assignments above are plain attribute writes, which Pydantic never re-runs a
         # `model_validator` against — so a component's own steps would otherwise splice in a
-        # `target` the load-time pass never saw (BE-0428; see `models/scenario/_targets.py`).
+        # `target` the load-time pass never saw (BE-0428), or a target group it never expanded
+        # (BE-0437; see `models/scenario/_targets.py`).
+        _expand_target_groups(scenario)
         _check_target_requirements(scenario)
 
 
@@ -231,6 +239,7 @@ def apply_setups(
         scenario.steps = [*cache[ref], *scenario.steps]
         # A plain attribute write, which Pydantic never re-runs a `model_validator` against — a
         # prelude's own steps, authored with no notion of this scenario's `targets`, would
-        # otherwise splice in a `target` the load-time pass never saw (BE-0428; see
-        # `models/scenario/_targets.py`).
+        # otherwise splice in a `target` the load-time pass never saw (BE-0428), or a target group
+        # it never expanded (BE-0437; see `models/scenario/_targets.py`).
+        _expand_target_groups(scenario)
         _check_target_requirements(scenario)

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0437](BE-0437-multi-target-step-groups.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0437") |
 | Topic | Scenario authoring features |
 | Related | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md) |
@@ -244,13 +244,13 @@ directly. Its `docs/ja/` mirror gets the same addition.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Schema: `Step.steps`, the target-required-on-a-group validator, and the
+- [x] Schema: `Step.steps`, the target-required-on-a-group validator, and the
       capture/extract/name/from_ refusal on a group.
-- [ ] Expansion: `_expand_target_groups`, called right before each of the four existing
+- [x] Expansion: `_expand_target_groups`, called right before each of the four existing
       `_check_target_requirements` call sites; the `web:`/`app:` nesting refusal; the
       child-target-override refusal.
-- [ ] Docs: `docs/scenarios.md` and its `docs/ja/` mirror.
-- [ ] Tests: schema validator (group requires target; forbidden modifiers; child omission; nested
+- [x] Docs: `docs/scenarios.md` and its `docs/ja/` mirror.
+- [x] Tests: schema validator (group requires target; forbidden modifiers; child omission; nested
       group rejection; `web:`/`app:` nesting rejection), expansion correctness (a group-authored
       scenario produces the same stamped step list a hand-flattened version would, including a
       group nested inside an `interrupts` entry's `steps`), and the re-expansion surviving

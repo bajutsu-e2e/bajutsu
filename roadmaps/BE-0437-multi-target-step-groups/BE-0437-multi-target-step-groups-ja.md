@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0437](BE-0437-multi-target-step-groups-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0437") |
 | トピック | シナリオの記述機能 |
 | 関連 | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md) |
@@ -259,12 +259,12 @@ target」というチェックが、グループのスタンプ済みの子ス�
 > 挙げたMECEな作業分割を1項目1チェックボックスで映し、ログはPRへのリンクとともに変更内容と日時を
 > 古い順に記録します。
 
-- [ ] スキーマ：`Step.steps`、グループに`target`を必須とするバリデーター、
+- [x] スキーマ：`Step.steps`、グループに`target`を必須とするバリデーター、
       capture/extract/name/from_をグループ上で禁止する規則。
-- [ ] 展開：`_expand_target_groups`を、既存の4か所の`_check_target_requirements`呼び出しそれぞれの
+- [x] 展開：`_expand_target_groups`を、既存の4か所の`_check_target_requirements`呼び出しそれぞれの
       直前に呼ぶ。`web:`・`app:`へのネストの拒否。子ステップによるターゲット上書きの拒否。
-- [ ] ドキュメント：`docs/scenarios.md`とその`docs/ja/`ミラー。
-- [ ] テスト：スキーマのバリデーターを検証します（グループへのターゲット必須化、禁止した修飾
+- [x] ドキュメント：`docs/scenarios.md`とその`docs/ja/`ミラー。
+- [x] テスト：スキーマのバリデーターを検証します（グループへのターゲット必須化、禁止した修飾
       フィールド、子ステップの省略、ネストしたグループの拒否、`web:`・`app:`へのネストの拒否）。
       展開の正しさも検証します。グループで書いたシナリオが、手でフラットに書いたシナリオと同じ
       スタンプ済みステップ列を生成することを確かめます。`interrupts`エントリーの`steps`にネストした

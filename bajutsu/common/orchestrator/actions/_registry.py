@@ -13,10 +13,11 @@ from bajutsu.common.drivers import base
 from bajutsu.common.orchestrator.types import DeviceControl, RelaunchFn, SelectionState
 from bajutsu.common.scenario import STEP_ACTIONS, Step
 
-# The actions the run loop can see, derived from the scenario model (STEP_ACTIONS) minus the
-# compile-time-only `use` macro, which is expanded away before the run. Deriving it means a new
-# action shows up here automatically — it is declared once, on the Step model.
-_RUNTIME_ACTIONS = tuple(a for a in STEP_ACTIONS if a != "use")
+# The actions the run loop can see, derived from the scenario model (STEP_ACTIONS) minus the two
+# compile-time-only actions expanded away before the run: the `use` macro and a target group
+# (BE-0437). Deriving it means a new action shows up here automatically — it is declared once, on
+# the Step model.
+_RUNTIME_ACTIONS = tuple(a for a in STEP_ACTIONS if a not in ("use", "steps"))
 
 # The two action kinds the BE-0265 selection contract turns on, named so the dispatch below reads as
 # intent rather than magic strings. `_SELECT` establishes a selection, `_COPY` requires and preserves
