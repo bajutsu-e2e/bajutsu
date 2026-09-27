@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0435](BE-0435-devicefarm-batch-lifecycle-hook.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0435") |
+| Implementing PR | [#2051](https://github.com/bajutsu-e2e/bajutsu/pull/2051) |
 | Topic | Device-cloud execution |
 | Related | [BE-0432](../BE-0432-devicefarm-pretest-extension-hook/BE-0432-devicefarm-pretest-extension-hook.md), [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter.md) |
 <!-- /BE-METADATA -->
@@ -141,7 +142,25 @@ around the existing flow:
    so teardown mirrors setup and always runs. `verdict` is `Verdict | None`: it is
    `None` when packaging, the upload, or collection raised before a verdict existed, so
    the teardown still runs and the original exception still propagates unchanged (rather
-   than being replaced by an `UnboundLocalError` from an unbound `verdict`).
+   than being replaced by an `UnboundLocalError` from an unbound `verdict`) — unless a
+   hook's own `after_run` also raises, per the next paragraph.
+7. A hook exception raised inside that `finally` becomes the exception that propagates,
+   ahead of whatever the `try` block itself was already raising, including a genuine run
+   failure. Python's implicit chaining keeps the run's own exception as the hook
+   exception's `__context__`, so it is not erased outright — `bajutsu/serve/jobs.py`'s
+   `logger.warning(..., exc_info=True)` still logs the run's original traceback alongside
+   the hook's. On a run that had already failed, what is actually lost is narrower:
+   `_fail_batch`'s message (``f"cloud-batch run failed: {exc}"``) names only the hook's
+   exception, and `submit` raises just `hook_errors[0]` — the first collected while
+   iterating `reversed(self._hooks)`, i.e. the exception of the *last-registered hook that
+   raised* — so an earlier-registered failing hook's exception (`hook_errors[1:]`) is
+   neither raised nor chained onto it and never reaches that log at all. On a run that
+   *succeeded*, the cost is larger: the raise replaces the `return`, so `_run_batch_job`
+   never reaches `_land_batch_run` — the collected run is discarded with its temporary
+   download directory and the job is reported `FAIL`, even though the device run passed.
+   A deployment whose hook teardown failures must never be lost should have `after_run`
+   log or forward them itself rather
+   than rely only on the raise.
 
 With no hooks (the default `()`), `submit` behaves exactly as today and the packaged
 config is byte-identical.
@@ -237,39 +256,51 @@ short-lived, per-run values (which is the motivating case) rather than long-live
 
 ## Progress
 
-- [ ] Add `BatchLifecycleHook` protocol and `BatchContext` dataclass (`request`,
+- [x] Add `BatchLifecycleHook` protocol and `BatchContext` dataclass (`request`,
   `work_dir`, `job_id`, `launch_env`); `after_run` takes `Verdict | None`. Document that
   no-op defaults require explicitly subclassing the protocol class.
-- [ ] Add `hooks: Sequence[BatchLifecycleHook] = ()` to
+- [x] Add `hooks: Sequence[BatchLifecycleHook] = ()` to
   `DeviceFarmBatchProvider.__init__`, and thread the stable `job_id` into `submit`/`ctx`.
-- [ ] Invoke `before_submit` before packaging; merge `ctx.launch_env` into the packaged
+- [x] Invoke `before_submit` before packaging; merge `ctx.launch_env` into the packaged
   config's `targets[request.target].launchEnv` and package it via `build_package`'s
   `extra_texts` overlay, excluding the config arcname from `entries`, without mutating
   `work_dir`.
-- [ ] Collision guard: load the referenced scenarios' `preconditions.launchEnv` from
+- [x] Collision guard: load the referenced scenarios' `preconditions.launchEnv` from
   `work_dir`; raise at submit (naming scenario, key, file) if any collides with an
   injected key, since `bajutsu run`'s merge would otherwise silently shadow it.
-- [ ] Invoke `after_run` in a `finally`, in reverse order, with `verdict: Verdict | None`
+- [x] Invoke `after_run` in a `finally`, in reverse order, with `verdict: Verdict | None`
   (`None` on a pre-verdict failure), including on run failure and the checkpoint-resume
   path.
-- [ ] Checkpoint-resume: guarantee `ctx.job_id` is identical on submit and resume so a
+- [x] Checkpoint-resume: guarantee `ctx.job_id` is identical on submit and resume so a
   hook can release, via caller-owned durable per-job state, the credential its original
   `before_submit` minted.
-- [ ] Load hooks from `BAJUTSU_BATCH_HOOKS` (`module:factory`, comma-separated) in
+- [x] Load hooks from `BAJUTSU_BATCH_HOOKS` (`module:factory`, comma-separated) in
   `batch_bootstrap`, and pass them to the provider.
-- [ ] Unit test: default (no hooks) leaves the packaged config and behavior
+- [x] Unit test: default (no hooks) leaves the packaged config and behavior
   byte-identical to today.
-- [ ] Unit test: `before_submit`'s `ctx.launch_env` appears merged in the packaged
+- [x] Unit test: `before_submit`'s `ctx.launch_env` appears merged in the packaged
   config (via the overlay, `work_dir` unchanged), caller entries winning on key
   collision.
-- [ ] Unit test: the collision guard raises at submit, with a message naming the
+- [x] Unit test: the collision guard raises at submit, with a message naming the
   scenario, key, and file, when a scenario's `preconditions.launchEnv` collides.
-- [ ] Unit test: `after_run` runs on success, on run failure (`verdict is None`), and on
+- [x] Unit test: `after_run` runs on success, on run failure (`verdict is None`), and on
   the checkpoint-resume path; teardown order is the reverse of setup; a pre-verdict
   failure propagates unchanged (no `UnboundLocalError`).
-- [ ] Unit test: no `serve` endpoint, config field, or `BatchRequest` field selects
+- [x] Unit test: no `serve` endpoint, config field, or `BatchRequest` field selects
   or configures a hook (walks the wiring, like BE-0432's AST check).
-- [ ] Update `docs/devicefarm.md` and its Japanese mirror.
+- [x] Update `docs/devicefarm.md` and its Japanese mirror.
+
+Log:
+
+- [#2051](https://github.com/bajutsu-e2e/bajutsu/pull/2051) — Units 1-13, the whole item. Added
+  `BatchLifecycleHook`/`BatchContext` (`bajutsu/serve/batch_provider/batch_lifecycle_hook.py`),
+  wired `hooks` into `DeviceFarmBatchProvider.__init__`, and invoked `before_submit`/`after_run`
+  around `submit` exactly as designed: the launch-env merge lands via a `build_package`
+  `extra_texts` overlay with the config's own arcname excluded from `entries`, the collision guard
+  raises at submit time on a colliding scenario `preconditions.launchEnv` key, and `after_run` runs
+  in a `finally` in reverse hook order on every path (success, a pre-verdict failure with
+  `verdict=None`, and checkpoint-resume). `batch_bootstrap` loads hooks from `BAJUTSU_BATCH_HOOKS`.
+  Documented in `docs/devicefarm.md` and its Japanese mirror.
 
 ## References
 

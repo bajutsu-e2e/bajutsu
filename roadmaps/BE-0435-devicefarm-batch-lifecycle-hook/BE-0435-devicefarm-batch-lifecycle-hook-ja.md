@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0435](BE-0435-devicefarm-batch-lifecycle-hook-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0435") |
+| 実装 PR | [#2051](https://github.com/bajutsu-e2e/bajutsu/pull/2051) |
 | トピック | デバイスクラウド実行 |
 | 関連 | [BE-0432](../BE-0432-devicefarm-pretest-extension-hook/BE-0432-devicefarm-pretest-extension-hook-ja.md), [BE-0235](../BE-0235-aws-device-farm-submitter/BE-0235-aws-device-farm-submitter-ja.md) |
 <!-- /BE-METADATA -->
@@ -135,7 +136,23 @@ checkpoint 再開とで同一であり、再起動をまたいでティアダウ
    セットアップと鏡写しになり、常に走るようにするためです。`verdict` は `Verdict | None` です。
    パッケージング・アップロード・収集が verdict の存在する前に失敗した場合は `None` になり、それでも
    ティアダウンは走り、元の例外はそのまま伝播します（未バインドの `verdict` による
-   `UnboundLocalError` に置き換わることはありません）。
+   `UnboundLocalError` に置き換わることはありません）——ただしフック自身の `after_run` も例外を
+   送出した場合は次の段落のとおりになります。
+7. この `finally` の中でフックの例外が送出されると、`try` ブロックがすでに送出していた例外——
+   本来の run 失敗を含みます——よりも先に伝播する例外になります。Python の暗黙のチェーン機能に
+   より、run 自身の例外はフック例外の `__context__` として保持されるため、完全に消えるわけでは
+   ありません。`bajutsu/serve/jobs.py` の `logger.warning(..., exc_info=True)` は、フックの例外と
+   ともに run 本来のトレースバックもログに出力します。すでに失敗していた run では、実際に
+   失われるのはもっと狭い範囲です。`_fail_batch` のメッセージ（``f"cloud-batch run failed: {exc}"``）
+   はフックの例外だけを名指しし、`submit` は `hook_errors[0]`——`reversed(self._hooks)` を走査して
+   最初に収集される例外、つまり例外を送出したフックのうち**最後に登録されたもの**の例外——だけ
+   を送出します。それより前に登録されたフックが送出した例外（`hook_errors[1:]`）は送出も連結も
+   されず、そのログにも一切現れません。**成功していた** run では、コストはより大きくなります。
+   この送出が `return` を置き換えるため、`_run_batch_job` は `_land_batch_run` に到達せず、収集
+   済みの run はその一時ダウンロードディレクトリとともに破棄され、デバイス側の run は合格して
+   いたにもかかわらずジョブは `FAIL` として報告されます。フックのティアダウン失敗を絶対に失い
+   たくないデプロイは、`after_run` の中で自ら
+   ログ出力するか、他へ転送するようにしてください。
 
 フックが無い場合（既定の `()`）、`submit` は現状と完全に同じ挙動になり、パッケージされる config
 はバイト単位で同一になります。
@@ -223,35 +240,48 @@ Device Farm アーティファクトに載ります。これはデプロイ自�
 
 ## 進捗
 
-- [ ] `BatchLifecycleHook` プロトコルと `BatchContext` dataclass（`request`・`work_dir`・
+- [x] `BatchLifecycleHook` プロトコルと `BatchContext` dataclass（`request`・`work_dir`・
   `job_id`・`launch_env`）を追加する。`after_run` は `Verdict | None` を取る。no-op 既定は
   プロトコルクラスの明示的な継承が必要である旨を明記する。
-- [ ] `DeviceFarmBatchProvider.__init__` に `hooks: Sequence[BatchLifecycleHook] = ()` を追加し、
+- [x] `DeviceFarmBatchProvider.__init__` に `hooks: Sequence[BatchLifecycleHook] = ()` を追加し、
   安定した `job_id` を `submit`/`ctx` に通す。
-- [ ] パッケージング前に `before_submit` を呼び、`ctx.launch_env` をパッケージされる config の
+- [x] パッケージング前に `before_submit` を呼び、`ctx.launch_env` をパッケージされる config の
   `targets[request.target].launchEnv` にマージし、`build_package` の `extra_texts` オーバーレイで
   パッケージする（config の arcname を `entries` から除外し、`work_dir` は書き換えない）。
-- [ ] 衝突ガード：`work_dir` から参照シナリオの `preconditions.launchEnv` を読み込み、注入キーと
+- [x] 衝突ガード：`work_dir` から参照シナリオの `preconditions.launchEnv` を読み込み、注入キーと
   衝突するものがあれば submit 時にシナリオ名・キー・ファイルを示して例外を送出する（さもないと
   `bajutsu run` のマージが暗黙に上書きしてしまう）。
-- [ ] `after_run` を `finally` の中で逆順に、`verdict: Verdict | None`（verdict 前の失敗時は
+- [x] `after_run` を `finally` の中で逆順に、`verdict: Verdict | None`（verdict 前の失敗時は
   `None`）で呼ぶ。run 失敗時と checkpoint 再開パスも含む。
-- [ ] checkpoint 再開：`ctx.job_id` が submit と再開とで同一であることを保証し、フックが呼び出し
+- [x] checkpoint 再開：`ctx.job_id` が submit と再開とで同一であることを保証し、フックが呼び出し
   側の durable な per-job state を通じて、最初の `before_submit` が発行したクレデンシャルを解放
   できるようにする。
-- [ ] `batch_bootstrap` で `BAJUTSU_BATCH_HOOKS`（`module:factory`、カンマ区切り）からフックを
+- [x] `batch_bootstrap` で `BAJUTSU_BATCH_HOOKS`（`module:factory`、カンマ区切り）からフックを
   ロードし、provider に渡す。
-- [ ] ユニットテスト：フック無し（既定）でパッケージされる config と挙動が現状とバイト単位で同一。
-- [ ] ユニットテスト：`before_submit` の `ctx.launch_env` がパッケージされる config にマージされて
+- [x] ユニットテスト：フック無し（既定）でパッケージされる config と挙動が現状とバイト単位で同一。
+- [x] ユニットテスト：`before_submit` の `ctx.launch_env` がパッケージされる config にマージされて
   現れ（オーバーレイ経由、`work_dir` は不変）、キー衝突時は呼び出し側エントリが勝つ。
-- [ ] ユニットテスト：シナリオの `preconditions.launchEnv` が衝突するとき、衝突ガードが submit 時に
+- [x] ユニットテスト：シナリオの `preconditions.launchEnv` が衝突するとき、衝突ガードが submit 時に
   シナリオ名・キー・ファイルを示して例外を送出する。
-- [ ] ユニットテスト：`after_run` が成功時・run 失敗時（`verdict is None`）・checkpoint 再開パスで
+- [x] ユニットテスト：`after_run` が成功時・run 失敗時（`verdict is None`）・checkpoint 再開パスで
   走り、ティアダウン順序がセットアップの逆順であり、verdict 前の失敗がそのまま伝播する
   （`UnboundLocalError` にならない）。
-- [ ] ユニットテスト：いかなる `serve` エンドポイント・config フィールド・`BatchRequest` フィールドも
+- [x] ユニットテスト：いかなる `serve` エンドポイント・config フィールド・`BatchRequest` フィールドも
   フックを選択・設定しない（BE-0432 の AST チェックと同様に配線を走査する）。
-- [ ] `docs/devicefarm.md` とその日本語ミラーを更新する。
+- [x] `docs/devicefarm.md` とその日本語ミラーを更新する。
+
+ログ：
+
+- [#2051](https://github.com/bajutsu-e2e/bajutsu/pull/2051) — Unit 1〜13、この項目のすべてです。
+  `BatchLifecycleHook`/`BatchContext`
+  （`bajutsu/serve/batch_provider/batch_lifecycle_hook.py`）を追加し、`hooks` を
+  `DeviceFarmBatchProvider.__init__` に配線し、`before_submit`/`after_run` を設計どおりに
+  `submit` の前後で呼び出しました。launch env のマージは `build_package` の `extra_texts`
+  オーバーレイ経由で行われ、config 自身の arcname は `entries` から除外されます。衝突ガードは
+  シナリオの `preconditions.launchEnv` が衝突するキーを宣言していると submit 時点で例外を
+  送出し、`after_run` は成功時・verdict 前の失敗時（`verdict=None`）・checkpoint 再開時のすべての
+  経路で `finally` の中を逆順に走ります。`batch_bootstrap` は `BAJUTSU_BATCH_HOOKS` からフックを
+  ロードします。`docs/devicefarm.md` とその日本語ミラーに記載しました。
 
 ## 参考
 
