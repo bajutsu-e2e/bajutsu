@@ -52,13 +52,16 @@ CI ワークフローの命名、ロードマップ項目のメタデータ表�
 
 ## 2. なぜつくるのか
 
-ロードマップ項目は、`Status: Proposal` のままでは `main` にマージできません。CI ワークフロー
-`roadmap-proposal-approvals.yml` が、`Status` を `Proposal` に設定する PR に対して2人のレビュアーの
-承認を必須としているためです。判定は
-[L88](../../.github/workflows/roadmap-proposal-approvals.yml#L88) の `if [ "$status" = "Proposal" ]`
-が行います。
-つまり、ロードマップ上に `Status: Proposal` として存在する項目は、その時点ですでに2人以上のレビュアーに
-よる審査を経てマージされています。実装はまだ始まっていませんが、意思決定としては完了しています。
+ロードマップ項目の `Status` を `Proposal` とする PR は、`main` へのマージ前に2人のレビュアーの
+承認が必要です。この要求は `roadmap-proposal-approvals.yml` が課しています
+（[L88](../../.github/workflows/roadmap-proposal-approvals.yml#L88) の `if [ "$status" = "Proposal" ]`
+が判定します）。ただし、PR に待避ラベル `single-approver proposal` が付いている場合は例外で、1人の
+承認でマージできます
+（[L101-110](../../.github/workflows/roadmap-proposal-approvals.yml#L101-L110)）。
+
+つまり、ロードマップ上に `Status: Proposal` として存在する項目の多くは、2人以上のレビュアーによる
+審査を経てマージされています。待避ラベル付きの少数の例外を除けば、実装はまだ始まっていませんが、
+意思決定としては完了しています。
 
 にもかかわらず、`Proposal`（提案）という名前は「まだ検討中で、採否が決まっていない案」を意味します。
 ロードマップダッシュボードや `roadmap-filter` の一覧をこの状態のまま読む開発者やコミュニティ
@@ -81,8 +84,11 @@ CI ワークフローの命名、ロードマップ項目のメタデータ表�
 | [`scripts/build_roadmap_index.py:105-118`](../../scripts/build_roadmap_index.py#L105-L118) | `STATUS_TO_BUCKET` のキー `"Proposal"` を `"Approved"` に、対応するバケットID `"Proposals"` を `"Approved"` に変更します。`BUCKETS` タプルの `("Proposals", "proposals")` を `("Approved", "approved")` に変更します（他の4バケットは値と表示名が一致しているため、この変更で単数・複数の表記ゆれも解消します）。 |
 | [`scripts/build_roadmap_dashboard.py:59-73`](../../scripts/build_roadmap_dashboard.py#L59-L73) | `BUCKET_COLOR` / `BUCKET_LABEL` 辞書のキー `"Proposals"` を `"Approved"` に変更します（色 `#534AB7` は維持し、`BUCKET_LABEL` の値も `"Approved"` にします）。[L57](../../scripts/build_roadmap_dashboard.py#L57) のコメント「indigo as proposed」も実態に合わせて更新します。[L931](../../scripts/build_roadmap_dashboard.py#L931) の `OPEN_BUCKETS=['Proposals', 'In progress']` を `['Approved', 'In progress']` に変更し、[L1413](../../scripts/build_roadmap_dashboard.py#L1413) 付近のヘルプ文言中の `Proposal` 言及も更新します。 |
 | [`scripts/sync_roadmap_tracking_issues.py:52`](../../scripts/sync_roadmap_tracking_issues.py#L52) | `OPEN_STATUSES = frozenset({"Proposal", "In progress"})` を `frozenset({"Approved", "In progress"})` に変更します。[L4](../../scripts/sync_roadmap_tracking_issues.py#L4)・[L19](../../scripts/sync_roadmap_tracking_issues.py#L19)・[L192](../../scripts/sync_roadmap_tracking_issues.py#L192) の docstring とコメント中の `Proposal` 言及も更新します。 |
-| [`scripts/new_roadmap_item.py:213`](../../scripts/new_roadmap_item.py#L213) | 新規項目を作るときのデフォルト値 `default="Proposal"` を `default="Approved"` に変更します。 |
+| [`scripts/new_roadmap_item.py:213`](../../scripts/new_roadmap_item.py#L213) | 新規項目を作るときのデフォルト値 `default="Proposal"` を `default="Approved"` に変更します。同ファイルの
+[L10](../../scripts/new_roadmap_item.py#L10) にある docstring の使用例 `[STATUS=Proposal]` も
+`[STATUS=Approved]` に更新します。 |
 | `scripts/roadmap_query.py` | `resolve_status()` など、`"Proposal"` をリテラルとして扱う箇所を更新します。 |
+| [`scripts/sync_roadmap_topic_labels.py:64-67`](../../scripts/sync_roadmap_topic_labels.py#L64-L67) | `SHIPPED_STATUS = "Implemented"` の定義に添えたコメント「every other Status (Proposal / In progress / Deferred / Rejected)」の `Proposal` 言及を `Approved` に更新します。`SHIPPED_STATUS` 自体の値は変更しません。 |
 
 ### CI ワークフロー
 
@@ -130,6 +136,7 @@ CI ワークフローの命名、ロードマップ項目のメタデータ表�
 
 - [`CLAUDE.md:283`](../../CLAUDE.md#L283) — `Status`（`Implemented` / `In progress` / `Proposal` / `Deferred` / `Rejected`）
 - [`roadmaps/README.md:7`](../../roadmaps/README.md#L7)、[`roadmaps/README.md:18`](../../roadmaps/README.md#L18)
+- [`roadmaps/README-ja.md:7`](../../roadmaps/README-ja.md#L7)、[`roadmaps/README-ja.md:19`](../../roadmaps/README-ja.md#L19)
 - [`docs/ai-development.md`](../ai-development.md)（英語版）と [`docs/ja/ai-development.md`](../ja/ai-development.md)（日本語版）のうち、`Status` の値を列挙・対応させている各箇所
 - [`docs/roadmap-workflow.md`](../roadmap-workflow.md) / [`docs/ja/roadmap-workflow.md`](../ja/roadmap-workflow.md)
 - [`docs/contributor-workflow-tutorial.md`](../contributor-workflow-tutorial.md) / 日本語版
@@ -200,10 +207,10 @@ textlint にかけ、新たな指摘を持ち込んでいないことを確か�
 | 3 | `BUCKET_COLOR`/`BUCKET_LABEL`/`OPEN_BUCKETS` の改称、関連コメントの更新 | `scripts/build_roadmap_dashboard.py` | `pytest tests/test_roadmap_dashboard.py` が通る | 2 |
 | 4 | `OPEN_STATUSES` と docstring の改称 | `scripts/sync_roadmap_tracking_issues.py` | `pytest tests/test_sync_roadmap_tracking_issues.py` が通る | 1 |
 | 5 | 新規項目を作るときのデフォルト値の改称 | `scripts/new_roadmap_item.py` | `pytest tests/test_new_roadmap_item.py` が通る | 1 |
-| 6 | `resolve_status()` など残るリテラル比較の改称 | `scripts/roadmap_query.py` | `pytest tests/test_roadmap_query.py` が通る | 1 |
+| 6 | `resolve_status()` など残るリテラル比較の改称、`SHIPPED_STATUS` に添えたコメント中の `Proposal` 言及の更新 | `scripts/roadmap_query.py`、`scripts/sync_roadmap_topic_labels.py` | `pytest tests/test_roadmap_query.py` `tests/test_sync_roadmap_topic_labels.py` が通る | 1 |
 | 7 | CI ワークフローの `Status` 値比較部分とコメント中の列挙値言及だけを改称（ジョブ名・待避ラベルは維持） | `.github/workflows/roadmap-proposal-approvals.yml`、`.github/workflows/roadmap-tracking-issues.yml`、`.github/roadmap-refresh-prompt.md` | `make lint-actions` が通る | 1-6 |
 | 8 | 既存ロードマップ項目44件のメタデータ行を、`\| Status \| **Proposal** \|` / `\| 状態 \| **提案** \|` という行全体に一致する場合だけ置換する | `roadmaps/BE-*/*.md` | `make lint-roadmap` が通り、`Status: Proposal` を持つ項目が0件になる | 1 |
-| 9 | 主要ドキュメントの `Status` 列挙値の言及を更新する（3章の一覧） | `CLAUDE.md`、`roadmaps/README.md`、`docs/ai-development.md`（英日）、`docs/roadmap-workflow.md`（英日）、`docs/contributor-workflow-tutorial.md`（英日）、`docs/overview.md`（英日）、`docs/specs/roadmap-dashboard-pagination-and-quick-filters.md` | 日本語ファイルは textlint が新たな指摘を持ち込んでいない。`grep -rn "Status.*Proposal\|状態.*提案" docs/ CLAUDE.md` の残り一致が、3章で除外した無関係な `Proposal` クラスの言及だけになる | 8 |
+| 9 | 主要ドキュメントの `Status` 列挙値の言及を更新する（3章の一覧） | `CLAUDE.md`、`roadmaps/README.md`、`roadmaps/README-ja.md`、`docs/ai-development.md`（英日）、`docs/roadmap-workflow.md`（英日）、`docs/contributor-workflow-tutorial.md`（英日）、`docs/overview.md`（英日）、`docs/specs/roadmap-dashboard-pagination-and-quick-filters.md` | 日本語ファイルは textlint が新たな指摘を持ち込んでいない。`grep -rn "Status.*Proposal\|状態.*提案" docs/ CLAUDE.md` の残り一致が、3章で除外した無関係な `Proposal` クラスの言及だけになる | 8 |
 | 10 | `.apm/skills/` 配下6スキルのソースを改称し、`make skills` で `.claude/skills/` と `apm.lock.yaml` に反映する | `.apm/skills/{ideation,propose-and-build,roadmap-filter,task-select,implement-be,be-progress-tracker}/SKILL.md`、`.claude/skills/`、`apm.lock.yaml` | `make lint-skills` が通る | 8 |
 | 11 | テストコード11ファイルのリテラル・パラメータ化・関数名を改称する | `tests/conftest.py` ほか10ファイル | `make test` が通る | 1-6 |
 | 12 | 全体を検証する | — | `make check` が通る。加えて `grep -rn "Proposal\|提案" --include="*.md" --include="*.py" --include="*.yml"` を実行し、残る一致がすべて「メタデータ表のフィールド名」「`bajutsu/` 内の無関係な `Proposal` クラス」「`ideation`/`propose-and-build` の一般語彙」のいずれかであることを確かめる | 1-11 |
