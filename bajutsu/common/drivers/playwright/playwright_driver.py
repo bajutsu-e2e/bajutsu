@@ -350,13 +350,17 @@ class PlaywrightDriver:
         # `launch_driver`'s contract) a genuine no-op instead of re-entering an already-stopped `pw`
         # — whose failure is a driver-connection error, not a `playwright.sync_api.Error`, so the
         # suppress above wouldn't cover it.
-        pw_errors = _playwright_error_types()
-        if self._browser is not None:
-            with contextlib.suppress(*pw_errors):
-                self._browser.close()
-        if self._pw is not None:
-            with contextlib.suppress(*pw_errors):
-                self._pw.stop()
+        # Resolved only when there is a handle to guard — an injected test page (both None) has
+        # nothing to close and must not trigger Playwright's own lazy import (BE-0300 invariant;
+        # see test_playwright.py's test_importing_module_does_not_load_playwright).
+        if self._browser is not None or self._pw is not None:
+            pw_errors = _playwright_error_types()
+            if self._browser is not None:
+                with contextlib.suppress(*pw_errors):
+                    self._browser.close()
+            if self._pw is not None:
+                with contextlib.suppress(*pw_errors):
+                    self._pw.stop()
         self._pw = self._browser = self._context = None
 
     # --- Driver Protocol ---
