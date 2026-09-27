@@ -1272,17 +1272,23 @@ def _steps_for_target(s: Scenario, target: str) -> Scenario:
     `None` too: a scenario declaring exactly one target may omit the name on every step and
     `expect` entry, and those still ran against that target — filtering them out would hand the
     preflight an empty scenario and skip BE-0082 for the whole single-declared-target shape.
+
+    A step or `expect` entry omitting `target` under a declared `primaryTarget` belongs to the
+    primary alone (BE-0436), so it reads its resolved target rather than falling into `None` and
+    being judged against every declared backend.
     """
     routed = {target, None}
     return s.model_copy(
         update={
-            "before": [st for st in s.before if st.target in routed],
-            "steps": [st for st in s.steps if st.target in routed],
+            "before": [st for st in s.before if st.resolved_target in routed],
+            "steps": [st for st in s.steps if st.resolved_target in routed],
             "after": [
-                rule.model_copy(update={"steps": [st for st in rule.steps if st.target in routed]})
+                rule.model_copy(
+                    update={"steps": [st for st in rule.steps if st.resolved_target in routed]}
+                )
                 for rule in s.after
             ],
-            "expect": [a for a in s.expect if a.target in routed],
+            "expect": [a for a in s.expect if (a.target or s.primary_target) in routed],
         }
     )
 
@@ -1371,13 +1377,31 @@ def _hooks_for(
 
 
 def _stamped(step: Step, target: str) -> Step:
-    """*step* with its `target` set to *target*, leaving one that already names a target alone.
+    """A deep copy of *step* with *target* filled into every blank `target`, nested ones included.
 
     A config-level hook may name a target itself — the validator then checks it like any other
     step's — so stamping only fills the far commoner blank rather than overwriting an author's
-    explicit choice with the target whose config happened to carry the hook.
+    explicit choice with the target whose config happened to carry the hook. The fill reaches every
+    `if` / `forEach` step too, which would otherwise resolve to each scenario's own primary rather
+    than the hook's target; a `web` / `app` body is left alone, since its steps must omit `target`.
+    The copy keeps two scenarios folding the same hook from sharing (and re-resolving) one object.
     """
-    return step if step.target else step.model_copy(update={"target": target})
+    copy = step.model_copy(deep=True)
+    _fill_target(copy, target)
+    return copy
+
+
+def _fill_target(step: Step, target: str) -> None:
+    # Mutates a private deep copy in place; `_Model` validates neither assignment nor freezes.
+    if step.target is None:
+        step.target = target
+    nested: list[Step] = []
+    if step.if_ is not None:
+        nested += step.if_.then + (step.if_.else_ or [])
+    if step.for_each is not None:
+        nested += step.for_each.steps
+    for child in nested:
+        _fill_target(child, target)
 
 
 def with_lifecycle_phases(

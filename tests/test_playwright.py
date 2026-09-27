@@ -911,6 +911,27 @@ def test_screenshot_and_navigate_and_close() -> None:
     drv.close()  # injected page -> no browser to close; must not raise
 
 
+def test_close_does_not_resolve_playwright_errors_for_an_injected_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # An injected page has nothing to close, so close() must not resolve the error types: that
+    # memoizes a real `from playwright.sync_api import …` process-wide and breaks
+    # test_importing_module_does_not_load_playwright wherever the `web` extra is installed.
+    drv, _ = _driver([])
+    calls = 0
+
+    def _spy() -> tuple[type[BaseException], ...]:
+        nonlocal calls
+        calls += 1
+        return ()
+
+    monkeypatch.setattr(
+        "bajutsu.common.drivers.playwright.playwright_driver._playwright_error_types", _spy
+    )
+    drv.close()
+    assert calls == 0
+
+
 def test_capabilities() -> None:
     drv, _ = _driver([])
     caps = drv.capabilities()
@@ -1390,6 +1411,34 @@ def test_driver_interval_video_none_without_recording(tmp_path: Any) -> None:
     # No record_video_dir on this lane (video not requested): no video interval.
     drv, _ = _driver([])
     assert drv.driver_interval("video", tmp_path / "scenario.mp4") is None
+
+
+def test_playwright_declares_its_native_video_container() -> None:
+    # The device pool reads this to pick the artifact's extension (FileSink.video_extension) —
+    # regressing it back to "mp4" would silently mislabel every web scenario's real WebM recording.
+    assert PlaywrightDriver.video_extension == "webm"
+
+
+def test_finalized_video_keeps_its_real_webm_magic_bytes(tmp_path: Any) -> None:
+    # Playwright's own recorder always writes Matroska/WebM (VP8/VP9), never ISO base media —
+    # `_finalize_video` only moves the file, it never transcodes it. Regression guard for the actual
+    # container, not just the path: a real Playwright recording starts with the EBML magic number
+    # (\x1a\x45\xdf\xa3), and `_finalize_video` must deliver those exact bytes, untouched, to
+    # whatever extension the sink reserved (`scenario.webm`, matching `video_extension` above) —
+    # never silently re-labeled as `video/mp4`, the pre-fix bug this pins.
+    ebml_magic = b"\x1a\x45\xdf\xa3"
+    src = tmp_path / "raw.webm"
+    src.write_bytes(
+        ebml_magic + b"\x00" * 32
+    )  # a real file has more after the magic; irrelevant here
+    target = tmp_path / "out" / "scenario.webm"
+    drv, _ = _video_driver(tmp_path / "vtmp", src)
+    interval = drv.driver_interval("video", target)
+    assert interval is not None
+    interval.stop()
+    assert target.suffix == ".webm"
+    assert target.read_bytes()[:4] == ebml_magic  # the genuine WebM signature, byte for byte
+    assert not src.exists()
 
 
 def test_enter_app_and_leave_app_unsupported() -> None:

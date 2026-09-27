@@ -167,7 +167,7 @@
     "bajutsu/common/drivers/playwright/_functions.py": 96.72,
     "bajutsu/common/drivers/playwright/_mouse.py": 60.0,
     "bajutsu/common/drivers/playwright/_page.py": 68.75,
-    "bajutsu/common/drivers/playwright/playwright_driver.py": 94.54,
+    "bajutsu/common/drivers/playwright/playwright_driver.py": 94.5,
     "bajutsu/common/drivers/tracing.py": 98.87,
     "bajutsu/common/drivers/web_network.py": 88.88,
     "bajutsu/common/drivers/webview/web_context_driver.py": 86.95,

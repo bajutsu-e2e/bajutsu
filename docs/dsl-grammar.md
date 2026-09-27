@@ -114,6 +114,7 @@ Scenario ::= {
   from?:           string,                  # provenance: the natural-language goal `record` authored this from (BE-0044)
   tags?:           list(string),            # default []  — selection (§6.4)
   targets?:        list(string),            # default []  — every target this scenario drives (BE-0428); each name a `targets.<name>` config unit. `run` launches each declared target and interleaves their steps in one deterministic run (§4)
+  primaryTarget?:  string,                  # the target a step or top-level `expect` entry runs against when it omits `target` (BE-0436); must equal `targets[0]`, the entry the runner already treats as primary (§4)
   data?:           list(map(string,string)),# inline rows   ┐ XOR
   dataFile?:       string,                  # CSV path      ┘ (§6.3)
   preconditions?:  <Preconditions>,         # default {}
@@ -177,7 +178,8 @@ StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>)
                 # `name` becomes a real filesystem path segment (the run's step_id, the editor's
                 # artifact lookup) — a path separator, or a bare "." / "..", is a load error
                 # `target`: which of `scenario.targets` this step runs against (BE-0428); its
-                # requirement depends on `len(scenario.targets)` (§4). Rejected outright on a step
+                # requirement depends on `len(scenario.targets)` and on `scenario.primaryTarget`
+                # (§4). Rejected outright on a step
                 # nested inside a `web:` block, which always runs against the block's own
                 # resolved target
 Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # default "value"
@@ -217,7 +219,7 @@ Action    ::=
   | { setClipboard:     { text: string } }                 # seed the pasteboard with text (simctl pbcopy), for paste flows
   | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }
   | { clearStatusBar:   {} }                               # restore the live status bar
-  | { use:         { component: string, with?: map(string,string) } }   # macro (§6.2)
+  | { use:         { component: string, with?: map(string,string) } }   # macro (§6.2; no modifiers)
   | { if:          <If> }                                               # conditional (no capture/extract)
   | { forEach:     <ForEach> }                                          # loop (no capture/extract)
   | { web:         <Web> }                                              # enter a WebView's DOM context (BE-0037; no capture/extract)
@@ -391,6 +393,7 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 |---|---|---|
 | `Selector` | **≥ 1** field present | `scenario/models/selector.py` |
 | `Step` | **exactly one** action key (`tap` … `use`); `capture`/`name` are modifiers, not actions | `scenario/models/steps.py` |
+| `Step.use` | **no modifiers** — refuses `capture` / `extract` / `name` / `from` / `target`, which expansion would otherwise discard with no warning | `scenario/models/steps/step.py` |
 | `Swipe` | **exactly one** form: `{on,direction}` **or** `{from,to}` — never mixed, never half-specified | `scenario/models/actions.py` |
 | `Pinch` | `scale` **> 0** | `scenario/models/actions.py` |
 | `HandleSystemAlert` | `sel` restricted to `label` / `labelMatches` / `index` (rejects `id`/`idMatches`/`traits`/`value`/`within`) | `scenario/models/actions.py` |
@@ -406,8 +409,9 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 | `Trigger` (`capturePolicy[].on`) | **exactly one** of `action` / `event` / `result`; `idMatches` only **with** `action` | `scenario/models/evidence.py` |
 | `Scenario` | `data` and `dataFile` **not both** | `scenario/models/scenario.py` |
 | `Scenario.targets` | no duplicate name (BE-0428) | `scenario/models/scenario/_targets.py` |
-| `Step.target` / `Assertion.target` (`expect` only) | omitted or matching the one entry when `len(targets) ≤ 1`; **required** — including on an `if`/`forEach`/`web` wrapper, not only a leaf action — naming a declared target, when `len(targets) ≥ 2`; **rejected** on a step nested inside `web:`, and on an `Assertion` reached through an inline `assert:` list, an `if`'s `condition`, or an `interrupts` entry's `condition` (BE-0428) | `scenario/models/scenario/_targets.py` |
-| `Step.use` / `Scenario.interrupts` (`len(targets) ≥ 2` only) | **rejected outright** — a `use:` step (its own `target` would be discarded by expansion) and a non-empty `interrupts` (its `condition` has no target of its own to poll) are both open questions this item defers, so neither is accepted rather than accepted with unclear semantics (BE-0428) | `scenario/models/scenario/_targets.py` |
+| `Scenario.primaryTarget` | omitted, or equal to `targets[0]`; **rejected** when `targets` is empty (BE-0436) | `scenario/models/scenario/_targets.py` |
+| `Step.target` / `Assertion.target` (`expect` only) | omitted or matching the one entry when `len(targets) ≤ 1`; **required** — including on an `if`/`forEach`/`web` wrapper, not only a leaf action — naming a declared target, when `len(targets) ≥ 2` and `primaryTarget` is unset; **optional** when `len(targets) ≥ 2` and `primaryTarget` is set, an omitted one running against the primary at every nesting depth (BE-0436); **rejected** on a step nested inside `web:`, and on an `Assertion` reached through an inline `assert:` list, an `if`'s `condition`, or an `interrupts` entry's `condition` (BE-0428) | `scenario/models/scenario/_targets.py` |
+| `Step.use` / `Scenario.interrupts` (`len(targets) ≥ 2` only) | **rejected outright** — a `use:` step (it takes no `target`; see the `Step.use` row and §6.2) and a non-empty `interrupts` (its `condition` has no target of its own to poll) are both open questions this item defers, so neither is accepted rather than accepted with unclear semantics (BE-0428) | `scenario/models/scenario/_targets.py` |
 | every mapping | **no unknown keys** (`extra="forbid"`) | `scenario/models/_base.py` |
 
 `exists` is special: its selector is written **inline** (`exists: { id: home.title }`), and an
@@ -524,6 +528,10 @@ a reference cycle. `ComponentResolver` (`scenario/load_expanded.py`) is the one 
 `resolve` to a file. It carries that file's map, the suite root, and the base directory refs
 resolve against, so `run` and every device-free reader expand a file identically. Because expansion is pure and compile-time, **no `use` survives into the
 run** — determinism holds.
+
+A `use` step takes no modifiers. The loader refuses one that also sets any of `capture` /
+`extract` / `name` / `from` / `target`. Expansion replaces the whole step, so it would otherwise
+drop those fields with no warning.
 
 ### 6.3 Data-driven scenarios (`data` / `dataFile`)
 

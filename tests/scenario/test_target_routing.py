@@ -194,17 +194,25 @@ def test_after_walked_the_same_way() -> None:
 
 
 def test_use_not_yet_supported_under_two_targets() -> None:
-    # BE-0428: expand_components replaces a `use:` step wholesale with the component's own steps,
-    # discarding the `use:` step's own `target` — refused outright rather than accepted with a
-    # required-looking field that expansion would silently ignore.
+    # BE-0428: a `use:` step cannot carry the `target` two targets require (expansion would
+    # discard it), so it is refused outright rather than failing as a missing target.
     with pytest.raises(ValidationError, match="use: is not yet supported"):
         Scenario.model_validate(
             {
                 "name": "s",
                 "targets": ["app", "web"],
-                "steps": [
-                    {"target": "app", "use": {"component": "login.yaml", "with": {}}},
-                ],
+                "steps": [{"use": {"component": "login.yaml", "with": {}}}],
+            }
+        )
+
+
+def test_use_with_target_refused_under_two_targets() -> None:
+    with pytest.raises(ValidationError, match="use steps take no modifiers, got target"):
+        Scenario.model_validate(
+            {
+                "name": "s",
+                "targets": ["app", "web"],
+                "steps": [{"target": "app", "use": {"component": "login.yaml", "with": {}}}],
             }
         )
 

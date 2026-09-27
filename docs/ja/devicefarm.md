@@ -134,7 +134,7 @@ serve は AWS へ設定ファイルではなくプロセスの環境変数を通
 `BatchLifecycleHook` はそのギャップを埋めます。フックは `serve` プロセス内で `DeviceFarmBatchProvider.submit` の前後に実行されます。
 
 - **`before_submit(ctx)`** — パッケージのビルド前に呼ばれます。`ctx.launch_env` にキーと値を追加することで、パッケージされる config の `targets.<target>.launchEnv` にマージされ、アプリが launch 環境変数として受け取ります。
-- **`after_run(ctx, verdict)`** — 判定収集後（または判定前に失敗した場合は `verdict=None`）に `finally` の中で逆順に呼ばれます。
+- **`after_run(ctx, verdict)`** — 判定収集後（または判定前に失敗した場合は `verdict=None`）に `finally` の中で逆順に呼ばれます。あるフックの `after_run` が例外を送出しても、残りのフックは実行されます。判定（verdict）を収集できた場合、`submit` はティアダウンの失敗をすべてログに出力し、1つも送出しません。クレデンシャルの解放に失敗しても、完了した実行が破棄されることはありません。判定が得られる前に失敗した場合は、失敗したフックのうち最後に登録されたものの例外が伝播し、残りを `submit` がログに出力します。
 
 `BatchContext` には実行の `request`、`work_dir`、`job_id`（再起動をまたいで安定した per-job 識別子）、および変更可能な `launch_env` 辞書が含まれます。
 

@@ -29,6 +29,7 @@ from bajutsu.common.report.rows import (
     _phase_rows,
     _preconditions_rows,
 )
+from bajutsu.common.run_meta.object_store import content_type_for
 
 # --- panel data (Result / Network / Device Log / App Trace) ---
 
@@ -292,6 +293,10 @@ def _scenario_data(
         "source_file": source_file,
         "duration": _fmt_duration(r.duration_s),
         "video": video.name if video else None,
+        # Named by the artifact's real extension (mp4 for simctl/adb, webm for Playwright — see
+        # `_interval_filename`), so the template can declare the `<video>` element's actual
+        # container instead of a browser guessing it from a possibly-wrong Content-Type.
+        "video_type": content_type_for(video.name) if video else None,
         "video_note": None if video else _video_skip_reason(r),
         "panels": panels,
     }
