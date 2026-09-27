@@ -1266,6 +1266,10 @@ Each declared target keeps its own config, not the primary target's. Resolution 
 | `baselines` / `schemas` / `goldens` | A `visual` or `golden` assertion compares against its own target's directory when that target configures one, else the run's |
 | Backend capabilities | Each target's steps are checked against its own backend before any device is leased, so a construct only one platform supports fails the right one |
 
+A nested `if` / `forEach` step from a target config's own `before` / `after` list omits `target`
+too. It resolves to that config's own target, never to the scenario's `primaryTarget`. The flat,
+every-nesting-depth default above applies to a scenario's own steps alone.
+
 Two run-wide values stay shared. The `redact` secret set unions every declared target's own
 secrets. That union scrubs every target's evidence, since scrubbing too widely is the safer error.
 The run directory is a run-level artifact, never per target.

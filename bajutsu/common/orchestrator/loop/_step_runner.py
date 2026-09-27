@@ -93,8 +93,9 @@ class _StepRunner:
             if other is None:
                 # The resolved target — the step's own `target` or the scenario's `primaryTarget` —
                 # was checked against `scenario.targets` at load time, so this is a wiring defect (a
-                # target the runner never brought up), not an authoring mistake — fail loudly rather than silently run the step
-                # against whichever driver happens to be active (prime directive 2).
+                # target the runner never brought up), not an authoring mistake — fail loudly rather
+                # than silently run the step against whichever driver happens to be active (prime
+                # directive 2).
                 raise RuntimeError(
                     f"step target {target!r} has no live runtime; "
                     f"declared targets: {sorted(self.by_target)}"

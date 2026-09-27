@@ -419,6 +419,17 @@ targets:
             - tap: { id: omitted }
             - target: a
               tap: { id: named }
+          else:
+            - tap: { id: else_step }
+      - forEach:
+          sel: { idMatches: "row.*" }
+          as: row
+          steps:
+            - tap: { id: for_each_step }
+      - web:
+          within: { id: webview }
+          steps:
+            - tap: { id: web_step }
 """
 
 
@@ -442,18 +453,31 @@ def test_a_hooks_nested_steps_run_against_the_hooks_own_target() -> None:
     folded = [_fold_nested_hook(["a", "b"]), _fold_nested_hook(["b", "a"])]
     nested = []
     for merged in folded:
-        (hook,) = merged.before
-        assert hook.if_ is not None
-        assert hook.resolved_target == "b"
-        assert hook.if_.then[0].resolved_target == "b"
-        nested.append(hook.if_.then[0])
+        hook_if, hook_for_each, _ = merged.before
+        assert hook_if.if_ is not None
+        assert hook_if.resolved_target == "b"
+        assert hook_if.if_.then[0].resolved_target == "b"
+        assert hook_if.if_.else_ is not None
+        assert hook_if.if_.else_[0].resolved_target == "b"
+        assert hook_for_each.for_each is not None
+        assert hook_for_each.for_each.steps[0].resolved_target == "b"
+        nested.append(hook_if.if_.then[0])
     assert nested[0] is not nested[1]
 
 
 def test_a_hooks_nested_step_naming_a_target_keeps_it() -> None:
-    (hook,) = _fold_nested_hook(["b", "a"]).before
-    assert hook.if_ is not None
-    assert hook.if_.then[1].target == "a"
+    hook_if, _, _ = _fold_nested_hook(["b", "a"]).before
+    assert hook_if.if_ is not None
+    assert hook_if.if_.then[1].target == "a"
+
+
+def test_a_hooks_web_body_is_left_out_of_the_target_fill() -> None:
+    # `_fill_target` must not descend into a `web:`/`app:` body — its nested steps still always
+    # run against the block's own device, and must keep omitting `target` outright.
+    _, _, hook_web = _fold_nested_hook(["b", "a"]).before
+    assert hook_web.web is not None
+    assert hook_web.web.steps[0].target is None
+    assert hook_web.web.steps[0].resolved_target is None
 
 
 def test_the_merged_phases_are_what_the_run_executes() -> None:
