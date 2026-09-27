@@ -523,6 +523,21 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   `selected` / `request` / `requestSequence` / `event` / `responseSchema` / `visual` / `clipboard` /
   `golden`)
 - The Tier 2 run loop (act → wait → verify), verified with `FakeDriver`
+- **Multi-target scenario execution** (BE-0428): a scenario's top-level `targets: list[str]` plus a
+  per-step `target: str` interleave steps across more than one declared target — an iOS target and a
+  web target, say — as one `bajutsu run` invocation with one pass/fail verdict, sharing `${vars.*}`
+  across all of them (a value one target's `extract` step captures is readable by an assertion
+  against a different target in the same run). Every declared target launches together before the
+  first step and tears down together after the last one; a step, an `if`/`forEach` condition, or an
+  `expect` entry omitting `target` behaves exactly as it does today for a scenario declaring zero or
+  one targets, and is required once a scenario declares two or more. `--target` becomes optional once
+  a scenario is self-declaring this way (`--scenario` becomes mandatory in its place), and an explicit
+  `--target` is checked for membership in `scenario.targets` rather than silently overridden.
+  `RunResult.target_devices` and `StepOutcome.target` report which device and target produced each
+  step, leaving the existing single-target fields empty so an existing JUnit/CTRF reader parses a
+  single-target run unchanged. `bajutsu crawl`, `record`, and `serve`'s own dispatch UI each still
+  resolve one target, as before — carrying `targets`/`target` through them is a follow-up this item
+  does not cover
 - Backend-crash recovery in the run pipeline: a mid-scenario backend crash
   (`base.BackendCrashError`, backend-agnostic) discards the dead lease and re-runs the whole
   scenario on a freshly respawned one, bounded by a retry count (`crash_retries`, default 1) and an
@@ -715,6 +730,18 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   selector's existing `within`/`traits`/`index` fields, one step per component. Gated on the
   `PICKER_WHEEL` capability, which only the resident-runner XCUITest backend and `FakeDriver`
   declare, so Android and web are rejected at preflight before any device work
+- DSL `selectPhotos` (BE-0433): pick one or more images from an open `PHPickerViewController` grid by
+  ordinal `indices`, then tap the picker's confirm control — resolved structurally, by elimination
+  inside the picker's navigation bar, since the confirm control carries no identifier of its own.
+  Every cell in the grid shares one identifier (`PXGGridLayout-Info`), disambiguated by the existing
+  `index` selector field the same way `handleSystemAlert` addresses an unlabeled SpringBoard button;
+  actuation is a raw coordinate tap at the resolved cell's exact frame center, since a handle-based
+  tap on the same cell is measured to fail (`element vanished`/`ElementNotTappable`) against this
+  recycled collection view. A `seedPhotos` precondition (`Preconditions.seed_photos`) seeds the
+  Simulator's photo library with fixture images via `simctl addmedia` so the grid's content is
+  reproducible — requiring `erase: true` on the same preconditions, checked at load time, since a
+  reused library would otherwise seed nothing silently. Gated on the `SELECT_PHOTOS` capability,
+  which only the XCUITest backend declares; Android and web reject at preflight
 
 #### DSL system-alert and tip handling
 
