@@ -175,13 +175,21 @@ class TargetConfig(_Model):
             "before / after": [*self.before, *(s for rule in self.after for s in rule.steps)],
             "interrupts": [s for entry in self.interrupts for s in entry.steps],
         }
+
+        def _nested(s: Step) -> list[Step]:
+            # A target group (BE-0437) is never flattened at `TargetConfig`-parse time — unlike a
+            # scenario's own top-level `use` or `group` — so a `use:` or `group:` hidden one level
+            # inside it (its own `steps`) is just as unresolvable here as a bare one.
+            return [s, *(s.steps or [])]
+
         for field, steps in field_steps.items():
-            if any(s.use is not None for s in steps):
+            reachable = [c for s in steps for c in _nested(s)]
+            if any(s.use is not None for s in reachable):
                 raise ValueError(
                     f"targets.<name>.{field} cannot use a component (`use`): components are "
                     "expanded per scenario file, so an app-wide one is never resolved"
                 )
-            if any(s.group is not None for s in steps):
+            if any(s.group is not None for s in reachable):
                 raise ValueError(
                     f"targets.<name>.{field} cannot use a group (`group`): groups are "
                     "expanded per scenario file, so an app-wide one is never resolved"

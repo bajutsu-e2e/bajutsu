@@ -113,6 +113,11 @@ class Step(_Model):
     handle_system_alert: HandleSystemAlert | None = Field(default=None, alias="handleSystemAlert")
     web: Web | None = None
     app: App | None = None
+    # A target group (BE-0437): names `target` once for a run of ordinary nested steps, expanded
+    # away at load time (`_expand_target_groups`) into the same flat, per-step `target:` form
+    # BE-0428 already validates and runs. An action, like `web`/`app`, so it obeys the one-action
+    # rule — a step cannot combine `steps` with a leaf action.
+    steps: list[Step] | None = None
     # A human-takeover marker (BE-0185): an operation the AI could not perform, recorded during
     # `record` and — because it has no deterministic run-time equivalent — failing loudly at `run`
     # time rather than faking a pass. A leaf action, so it obeys the one-action rule like the rest.
@@ -186,6 +191,38 @@ class Step(_Model):
                 raise ValueError(f"capture is not supported on {action} steps")
             if self.extract is not None:
                 raise ValueError(f"extract is not supported on {action} steps")
+        return self
+
+    @model_validator(mode="after")
+    def _target_group(self) -> Self:
+        # A target group (BE-0437) never reaches the runner — expansion replaces it with its own
+        # nested steps before the scenario finishes loading. `target` is what it exists to fix
+        # once, so it is required unconditionally, not only once the scenario declares two or more
+        # targets like a leaf action's. Every other modifier (`_MODIFIERS` minus `target`) is read
+        # off the one step the runner executes; setting one here would vanish with expansion,
+        # silently, so it is refused at load time instead.
+        if self.steps is None:
+            return self
+        if not self.target:
+            raise ValueError("steps: target is required on a target group (§6.2)")
+        if not self.steps:
+            raise ValueError("steps: a target group's steps must not be empty (§6.2)")
+        for field in _MODIFIERS:
+            if field == "target":
+                continue
+            if getattr(self, field) is not None:
+                alias = type(self).model_fields[field].alias or field
+                raise ValueError(f"steps: {alias} is not supported on a target group (§6.2)")
+        for child in self.steps:
+            if child.steps is not None:
+                raise ValueError(
+                    "steps: a target group cannot nest directly inside another target group (§6.2)"
+                )
+            if child.target is not None:
+                raise ValueError(
+                    "steps: a step nested directly inside a target group must omit target — "
+                    "the group already fixed it (§6.2)"
+                )
         return self
 
     @model_validator(mode="after")

@@ -94,6 +94,9 @@ from bajutsu.common.scenario.models.scenario import (
     _check_target_requirements as _check_target_requirements,
 )
 from bajutsu.common.scenario.models.scenario import (
+    _expand_target_groups as _expand_target_groups,
+)
+from bajutsu.common.scenario.models.scenario import (
     _scenarios_declaring_targets as _scenarios_declaring_targets,
 )
 from bajutsu.common.scenario.models.selector import Selector

@@ -78,6 +78,7 @@ from bajutsu.common.scenario import (
     Step,
     UncoveredSystemAlertLocale,
     _check_target_requirements,
+    _expand_target_groups,
     _scenarios_declaring_targets,
     dump_scenario_file,
     redact_totp_secrets,
@@ -1434,8 +1435,10 @@ def with_lifecycle_phases(
     ]
     # `model_copy(update=...)` never re-runs a `model_validator` — so a config-level `before`/`after`
     # hook would otherwise splice in steps the load-time pass never saw, each free to omit the
-    # `target` its scenario requires (BE-0428; see `scenario/models/scenario/_targets.py`).
+    # `target` its scenario requires (BE-0428), or a target group it never expanded (BE-0437; see
+    # `scenario/models/scenario/_targets.py`).
     for s in folded:
+        _expand_target_groups(s)
         _check_target_requirements(s)
     return folded
 
