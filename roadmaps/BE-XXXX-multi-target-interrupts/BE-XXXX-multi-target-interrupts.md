@@ -43,11 +43,11 @@ scenario's `interrupts` the moment `len(scenario.targets) >= 2`. It never looks 
 first.
 
 That refusal costs every scenario mixing two targets a mechanism a single-target scenario keeps.
-`interrupts` exists for a screen with no fixed point in the step sequence. An OS permission prompt
-and a Cookie-consent banner are two examples. A scenario author working around the block today
-hand-writes an `if` branch. It goes ahead of every action that might trigger such a screen. The
-alternative drops the second target and loses `interrupts` altogether. Neither choice follows from
-the screen's appearance, which has nothing to do with target routing.
+`interrupts` handles a screen with no fixed point in the step sequence. An OS permission prompt and
+a Cookie-consent banner are two examples. An author working around the block today has two options.
+One hand-writes an `if` branch ahead of every action that might trigger such a screen. The other
+drops the second target and loses `interrupts` altogether. Whether that screen appears has nothing
+to do with which target the scenario routes a given step to.
 
 Falling back to the primary target when an entry omits `target` is not new. This codebase already
 applies the same pattern one field over. `expect`'s own `Assertion.target` resolves an omitted
@@ -96,38 +96,84 @@ entry. It sits next to
 [`_no_component_in_target_steps`](../../bajutsu/common/config/schema/target_config.py), and it
 runs at load time.
 
+The same validator also rejects `target` on any `Step` inside that entry's own `steps`.
+`TargetConfig` never passes through `_check_target_requirements`, the scenario-side validator.
+Nothing checks a config-level `Step.target` today because of that gap. Left unchecked,
+`targets.web.interrupts[0].steps[0].target: ios` would load cleanly. `_StepRunner._route`
+([`_step_runner.py:87`](../../bajutsu/common/orchestrator/loop/_step_runner.py)) would then
+dispatch that step to the `ios` runner at runtime. That is the same hole this unit exists to close,
+one level down. The walk reuses a shape `_no_component_in_target_steps` already builds. That shape
+is `[s for entry in self.interrupts for s in entry.steps]`.
+
 ### Unit 4 — Runtime composition
 
-[`_runtime_for`](../../bajutsu/common/runner/pipeline.py) copies every `scenario.interrupts` entry
-into each target's `TargetRuntime.interrupts`. It copies unconditionally, today.
-[`_run_on_lease`](../../bajutsu/common/runner/pipeline.py) does the same for the
-primary's own `_LoopConfig.interrupts`. Both switch to filtering by
-`(entry.target or primary_target) == <that target's name>`. Both reuse the `primary_target` value
-`_target_runtimes` already resolves as `routed[0]`. Config-level `interrupts`
-(`run_defaults.interrupts`) stay unfiltered. Each already belongs to the one target whose config
-declared it.
+[`_runtime_for`](../../bajutsu/common/runner/pipeline.py) copies every `scenario.interrupts`
+entry into each target's `TargetRuntime.interrupts`. It does this today, unconditionally.
+[`_run_on_lease`](../../bajutsu/common/runner/pipeline.py) does the same for the primary's own
+`_LoopConfig.interrupts`. Both switch to filtering. The filter is
+`(entry.target or primary_target) == <that target's name>`. Both apply it once `_routed` returns a
+non-empty list.
 
-### Unit 5 — Effective target for recovery steps
+`primary_target` reuses a value `_run_on_lease` already computes. That happens at line 1175. The
+value is `next(iter(self._routed(s)), "")`. Neither call site derives its own, separate value.
 
-A `Step` inside `Interrupt.steps` that omits `target` runs against the entry's effective target.
-That target is `entry.target or primary_target`, not the scenario's primary target. Both
-`run_scenario` and the `_step_runner.py` interrupt-recovery path pass a `primary_target` value in.
-That value feeds the recovery run. Each swaps in the entry's effective target for that value while
-running the entry's own `steps`. Each restores the scenario's primary target afterward.
+That condition matters. `_routed` returns an empty list in two cases. One: the scenario declares no
+`targets`. Two: it declares one target, but the runner's own config carries no `targets.<name>`
+map. Both are the ordinary single-target path most scenarios take today. On that path,
+`primary_target` is `""`. An entry may still name a real target, though. A scenario declaring
+`targets: [ios]` may write an `interrupts` entry with `target: ios`. `_check_target`'s `n == 1`
+branch accepts that. Filtering there would compare `("ios" or "") == ""`. That comparison never
+holds, so the entry would drop out. Every such scenario's `interrupts` would stop firing, with no
+warning. Skipping the filter whenever `_routed` is empty avoids that regression. Validation already
+guarantees this for every entry on that path. Each one either omits `target` or names the one
+target that exists. Nothing needs filtering out there.
 
-### Unit 6 — Cross-target firing coverage
+Config-level `interrupts` (`run_defaults.interrupts`) stay unfiltered either way. Each already
+belongs to the one target whose config declared it.
+
+`_config_for` needs no change
+([`_functions.py:1180-1203`](../../bajutsu/common/orchestrator/loop/_functions.py)). Neither does
+the `by_target` construction it feeds. Both already pass `TargetRuntime.interrupts`
+straight through to each target's own `_LoopConfig`. A filtered list there is all `_InterruptGuard`
+([`_interrupt_guard.py`](../../bajutsu/common/orchestrator/loop/_interrupt_guard.py)) needs. This
+guard is already built once per `_StepRunner`
+([`_step_runner.py:598-605`](../../bajutsu/common/orchestrator/loop/_step_runner.py)).
+
+`Interrupt.steps`' own routing needs no change either. `_StepRunner._route`
+([`_step_runner.py:87`](../../bajutsu/common/orchestrator/loop/_step_runner.py)) redirects a step
+to another runner. It does this when the step itself sets `target`, never otherwise. An omitted
+`target` leaves the step on
+`self` — the runner whose `_InterruptGuard` had fired. `_run_recovery`
+([`_step_runner.py:116`](../../bajutsu/common/orchestrator/loop/_step_runner.py)) runs
+`entry.steps` on that same `self`. This unit places each entry into the runner that owns it. That
+runner already is the entry's own effective target. An omitted `Step.target` inside `entry.steps`
+lands in the right place, with no extra mechanism. An earlier draft of this item computed an
+effective target instead. It swapped that value into the recovery run explicitly. *Alternatives
+considered* below records why review dropped that approach.
+
+### Unit 5 — Test coverage
+
+A new regression test confirms `interrupts` still fires on the ordinary single-target path. It
+covers two scenarios. One declares no `targets`. The other declares one target, with no
+`targets.<name>` map configured. Both must behave the same way before and after this change.
 
 A new integration test declares two targets in one scenario. One target shows an
-interrupt-triggering screen; the other does not. The test confirms the interrupt fires against the target its
-`target` field (or the fallback) names. The same target clears it. The other target's
-`_InterruptGuard` never sees it.
+interrupt-triggering screen; the other does not. The test confirms the interrupt fires against the
+target its `target` field (or the fallback) names. The same target clears it. The other target's
+`_InterruptGuard` never sees it. A third case in the same test declares a config-level
+`targets.<name>.interrupts` entry. It confirms that entry's recovery steps run against that
+config's own target. They never run against the scenario's primary target.
 
-### Unit 7 — Documentation
+### Unit 6 — Documentation
 
-[`docs/scenarios.md`](../../docs/scenarios.md) carries two sections that need updating. One is
-"interrupts". The other is "What a multi-target run does with the rest of a target's config". Both
-say a scenario refuses `interrupts` outright once it declares two or more targets. Both instead
-describe the new `target` field and its primary-target fallback.
+[`docs/scenarios.md`](../../docs/scenarios.md) carries two sections that need updating, for
+different reasons. The
+[`interrupts`](../../docs/scenarios.md#interrupts-handling-unpredictable-interstitial-screens)
+section gains the new `target` field and its primary-target fallback. It says nothing about the
+restriction in place today. That restriction lives in the **Limits** section instead, around lines
+1247–1256. That section says the loader refuses a non-empty `interrupts` outright. The new text
+replaces that sentence and the one after it. The rest of *Limits* stays unchanged. That covers the
+`use:` restriction and the `Assertion.target` rules on `condition` — neither one changes.
 [`docs/ja/scenarios.md`](../../docs/ja/scenarios.md) carries the matching Japanese update.
 
 ## Alternatives considered
@@ -136,7 +182,8 @@ describe the new `target` field and its primary-target fallback.
 |---|---|
 | Require `target` on an `interrupts` entry once the scenario declares two or more targets, matching `Step` and `expect` | A `Step`'s own required `target` tells a reader which of several interleaved targets that one action concerns. Most `interrupts` entries in a multi-target scenario still concern the primary target, so requiring every entry to say so would add a repeated line with no routing decision behind it. |
 | Let one `interrupts` entry name several targets at once (`targets: list[str]`) | Each target's own `_InterruptGuard` already polls its own element tree independently, so one entry naming several targets would still expand into one check per target internally. The single-value `target` keeps the field symmetric with `Step.target`; an author needing the same condition and recovery steps on two targets writes two entries. |
-| Let a `Step` inside `Interrupt.steps` default to the scenario's primary target, the way a top-level step's own omitted `target` behaves | The target where an interrupt fires and the target its recovery steps act on are the same target in the ordinary case. Defaulting to the primary target would force `target` onto nearly every recovery step of an entry that watches a non-primary target. |
+| Let a `Step` inside `Interrupt.steps` default to the scenario's primary target when it omits its own | The target where an interrupt fires and the target its recovery steps act on are the same target in the ordinary case. Defaulting to the primary target would force `target` onto nearly every recovery step of an entry that watches a non-primary target. |
+| Compute `Interrupt.steps`' effective target (`entry.target or primary_target`) explicitly and swap it into the recovery run | `_StepRunner._route` (`_step_runner.py:87`) already redirects only a step that sets `target`. An omitted one stays on `self`, the runner whose `_InterruptGuard` fired. `_run_recovery` (`_step_runner.py:116`) already runs there. Once Unit 4 places each entry into the runner that owns it, this mechanism needs no help. Injecting the scenario's `primary_target` explicitly instead misroutes a config-level entry (`target` always `None`, per Unit 3) to the scenario's primary target rather than to the config's own runner. |
 | Allow `target` on a `targets.<name>.interrupts` entry, matching the scenario-level field | An entry under `targets.<name>.interrupts` already belongs to the one target that config block configures. A `target` field there could only repeat that same name or contradict it, and neither says anything a reader cannot already read off the block itself. |
 
 ## Progress
@@ -148,11 +195,12 @@ describe the new `target` field and its primary-target fallback.
 - [ ] Unit 1 — `Interrupt.target` (`bajutsu/common/scenario/models/steps/interrupt.py`).
 - [ ] Unit 2 — `_check_target`'s `required` parameter, the removed blanket rejection, and the new
       `Interrupt.steps` validation mode (`_targets.py`).
-- [ ] Unit 3 — reject `target` on a config-level `interrupts` entry (`target_config.py`).
-- [ ] Unit 4 — filter `interrupts` per target in `_runtime_for` and `_run_on_lease` (`pipeline.py`).
-- [ ] Unit 5 — resolve `Interrupt.steps`' effective target for recovery steps.
-- [ ] Unit 6 — cross-target interrupt-firing integration test.
-- [ ] Unit 7 — `docs/scenarios.md` / `docs/ja/scenarios.md`.
+- [ ] Unit 3 — reject `target` on a config-level `interrupts` entry and on any `Step` inside its
+      `steps` (`target_config.py`).
+- [ ] Unit 4 — filter `interrupts` per target in `_runtime_for` and `_run_on_lease`, conditioned on
+      `_routed` being non-empty (`pipeline.py`).
+- [ ] Unit 5 — test coverage: single-target regression, cross-target isolation, config-level route.
+- [ ] Unit 6 — `docs/scenarios.md` / `docs/ja/scenarios.md`.
 
 ## References
 
