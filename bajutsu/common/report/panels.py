@@ -29,6 +29,7 @@ from bajutsu.common.report.rows import (
     _phase_rows,
     _preconditions_rows,
 )
+from bajutsu.common.run_meta.object_store import content_type_for
 
 # --- panel data (Result / Network / Device Log / App Trace) ---
 
@@ -91,7 +92,16 @@ def _videos(r: RunResult) -> list[dict[str, Any]]:
         return []
     reference = anchor_of(video_arts[0])
     return [
-        {"target": a.target, "src": a.name, "offset": anchor_of(a) - reference} for a in video_arts
+        {
+            "target": a.target,
+            "src": a.name,
+            "offset": anchor_of(a) - reference,
+            # Named by the artifact's real extension (mp4 for simctl/adb, webm for Playwright —
+            # see `_interval_filename`), so the template can declare each `<video>`'s actual
+            # container instead of a browser guessing it from a possibly-wrong Content-Type.
+            "type": content_type_for(a.name),
+        }
+        for a in video_arts
     ]
 
 

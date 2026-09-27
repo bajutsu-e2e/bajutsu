@@ -48,16 +48,35 @@ def test_html_embeds_scenario_video() -> None:
     out = html_report("run9", [r])
     assert "<video " in out
     assert 'src="00-s1/scenario.mp4"' in out
+    assert 'type="video/mp4"' in out
     # A scenario with no video artifact embeds no player. The bare "<video" substring (no
     # trailing space) is not enough on its own — the inlined stylesheet mentions "<video>" in a
     # comment on every page, video or not.
     assert "<video " not in html_report("run9", [_passing()])
 
 
+def test_html_declares_the_video_elements_real_container_type() -> None:
+    # A Playwright-recorded web scenario's video is genuinely WebM (see `_interval_filename`), named
+    # `scenario.webm` — the `<video>` element must declare `video/webm`, not silently inherit a
+    # `video/mp4` a browser could refuse to play against the real bytes.
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[],
+        expect_results=[],
+        artifacts=[Artifact("00-s1/scenario.webm", "video", "playwright")],
+    )
+    out = html_report("run9", [r])
+    assert 'src="00-s1/scenario.webm"' in out
+    assert 'type="video/webm"' in out
+
+
 def test_html_embeds_one_player_per_declared_targets_video() -> None:
     # BE-0428: a multi-target scenario's secondary target can record its own scenario-wide video
     # too (its own lease, its own capture baseline) — the report shows both, each in its own
     # labeled player, rather than only the primary's own the way a single-target run always has.
+    # The web target's own video is genuinely WebM (see `_interval_filename` / BE-0428's sibling
+    # fix above), so its player must declare `video/webm` too, not inherit the primary's mp4 type.
     r = RunResult(
         scenario="s1",
         ok=True,
@@ -68,14 +87,15 @@ def test_html_embeds_one_player_per_declared_targets_video() -> None:
         expect_results=[],
         artifacts=[
             Artifact("00-s1/scenario.mp4", "video", "simctl"),
-            Artifact("00-s1/web/scenario.mp4", "video", "playwright", target="web"),
+            Artifact("00-s1/web/scenario.webm", "video", "playwright", target="web"),
         ],
         video_anchor_s=100.0,
         target_video_anchors={"web": 102.0},
     )
     out = html_report("run1", [r])
     assert out.count("<video ") == 2
-    assert 'src="00-s1/scenario.mp4"' in out and 'src="00-s1/web/scenario.mp4"' in out
+    assert 'src="00-s1/scenario.mp4"' in out and 'src="00-s1/web/scenario.webm"' in out
+    assert 'type="video/mp4"' in out and 'type="video/webm"' in out
     # The primary's own player carries no target label or offset (offset 0.0, the reference video);
     # the web one is labeled and carries its offset relative to the primary (102.0 - 100.0 = 2.0).
     assert '<div class="player" data-target="" data-offset="0.0">' in out
