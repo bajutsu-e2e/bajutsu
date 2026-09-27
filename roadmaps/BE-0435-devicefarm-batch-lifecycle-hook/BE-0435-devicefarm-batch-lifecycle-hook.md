@@ -144,23 +144,25 @@ around the existing flow:
    the teardown still runs and the original exception still propagates unchanged (rather
    than being replaced by an `UnboundLocalError` from an unbound `verdict`) — unless a
    hook's own `after_run` also raises, per the next paragraph.
-7. A hook exception raised inside that `finally` becomes the exception that propagates,
-   ahead of whatever the `try` block itself was already raising, including a genuine run
-   failure. Python's implicit chaining keeps the run's own exception as the hook
-   exception's `__context__`, so it is not erased outright — `bajutsu/serve/jobs.py`'s
-   `logger.warning(..., exc_info=True)` still logs the run's original traceback alongside
-   the hook's. On a run that had already failed, what is actually lost is narrower:
-   `_fail_batch`'s message (``f"cloud-batch run failed: {exc}"``) names only the hook's
-   exception, and `submit` raises just `hook_errors[0]` — the first collected while
-   iterating `reversed(self._hooks)`, i.e. the exception of the *last-registered hook that
-   raised* — so an earlier-registered failing hook's exception (`hook_errors[1:]`) is
-   neither raised nor chained onto it and never reaches that log at all. On a run that
-   *succeeded*, the cost is larger: the raise replaces the `return`, so `_run_batch_job`
-   never reaches `_land_batch_run` — the collected run is discarded with its temporary
-   download directory and the job is reported `FAIL`, even though the device run passed.
-   A deployment whose hook teardown failures must never be lost should have `after_run`
-   log or forward them itself rather
-   than rely only on the raise.
+7. `submit` never drops a hook exception raised inside that `finally`: it raises at most one
+   and logs every other one. How many it raises depends on whether `submit` collected a verdict.
+   - **No verdict.** The run raised before a verdict existed. The exception from the
+     *last-registered hook that raised* propagates, ahead of the run's own exception. That
+     hook is the first one that raised while `submit` iterates `reversed(self._hooks)`.
+     Python's implicit chaining keeps the run's exception as the hook exception's
+     `__context__`, so `bajutsu/serve/jobs.py`'s `logger.warning(..., exc_info=True)` logs
+     both tracebacks. `submit` logs every other hook's exception itself. The one loss
+     left is narrow: `_fail_batch`'s message (``f"cloud-batch run failed: {exc}"``) names
+     the raised hook exception alone.
+   - **A collected verdict.** The device run finished, whether it passed or failed. `submit`
+     logs every hook exception and raises none of them. A raise here would replace the
+     `return`, and `_run_batch_job` would never reach `_land_batch_run`. The collected run
+     would vanish with its temporary download directory, and a passing run would report
+     `FAIL`. A teardown failure on this path shows up in the serve log, not in the verdict.
+
+   An earlier revision raised the first collected hook exception in both cases and dropped
+   the rest. [bajutsu-e2e/bajutsu#2060](https://github.com/bajutsu-e2e/bajutsu/issues/2060)
+   replaced that behavior.
 
 With no hooks (the default `()`), `submit` behaves exactly as today and the packaged
 config is byte-identical.

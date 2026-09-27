@@ -260,7 +260,7 @@ directive 1).
 `BatchLifecycleHook` covers that gap. A hook runs in the `serve` process around one `DeviceFarmBatchProvider.submit` call:
 
 - **`before_submit(ctx)`** — called before the package is built. May populate `ctx.launch_env` with key/value pairs that are merged into the packaged config's `targets.<target>.launchEnv` before upload, so the app receives them as launch environment variables.
-- **`after_run(ctx, verdict)`** — called in a `finally` after the verdict is collected (or with `verdict=None` when the run fails before a verdict is available), in reverse hook order so teardown mirrors setup.
+- **`after_run(ctx, verdict)`** — called in a `finally` after the verdict is collected (or with `verdict=None` when the run fails before a verdict is available), in reverse hook order so teardown mirrors setup. A hook whose `after_run` raises does not stop the remaining hooks. Once `submit` collects a verdict, it logs every teardown error and raises none. A failed credential release thus never discards a finished run. Without a verdict, `submit` raises one teardown error and logs the others. The raised one comes from the last-registered hook that raised.
 
 `BatchContext` carries the run's `request`, `work_dir`, `job_id` (the stable per-job identifier, useful for looking up per-job state across a restart), and the mutable `launch_env` dict.
 

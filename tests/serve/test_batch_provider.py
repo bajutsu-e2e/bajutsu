@@ -12,6 +12,7 @@ import dataclasses
 import inspect
 import io
 import json
+import logging
 import textwrap
 import zipfile
 from collections.abc import Iterator, Sequence
@@ -715,11 +716,68 @@ def test_after_run_hook_failure_does_not_skip_remaining_hooks(tmp_path: Path) ->
     provider = _make_provider(hooks=[_RecordHook(), _FailHook()])
     work, request = _android_request_with_config(tmp_path)
 
-    with pytest.raises(RuntimeError, match="hook teardown error"):
-        provider.submit(request, work_dir=work, dest=tmp_path / "d")
+    verdict = provider.submit(request, work_dir=work, dest=tmp_path / "d")
 
+    assert verdict.ok
     # Hooks run in reverse; FailHook is last → runs first in teardown → RecordHook still runs
     assert ran == ["fail", "record"]
+
+
+class _TeardownFailHook(bp.BatchLifecycleHook):
+    def __init__(self, label: str) -> None:
+        self.label = label
+
+    def after_run(self, ctx: bp.BatchContext, verdict: Any) -> None:
+        raise RuntimeError(f"{self.label} failed to release its credential")
+
+
+def _teardown_messages(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        str(r.exc_info[1])
+        for r in caplog.records
+        if r.name == "bajutsu.serve.batch_provider.device_farm_batch_provider" and r.exc_info
+    ]
+
+
+def test_after_run_failures_after_a_collected_verdict_are_logged_not_raised(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A teardown failure must not replace the `return` of a collected run: raising there would
+    # make serve discard the run's artifacts and report FAIL for a run that finished (#2060).
+    provider = _make_provider(hooks=[_TeardownFailHook("A"), _TeardownFailHook("B")])
+    work, request = _android_request_with_config(tmp_path)
+
+    with caplog.at_level(logging.ERROR):
+        verdict = provider.submit(request, work_dir=work, dest=tmp_path / "d", job_id="job-1")
+
+    assert verdict.ok
+    assert _teardown_messages(caplog) == [
+        "B failed to release its credential",
+        "A failed to release its credential",
+    ]
+    assert all("job-1" in r.getMessage() for r in caplog.records if r.exc_info)
+
+
+def test_after_run_failures_before_a_verdict_raise_one_and_log_the_rest(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # With no verdict, the first teardown failure (last-registered hook) is still raised with the
+    # run's own exception as __context__; every other failure is logged, never dropped (#2060).
+    class _SetupFailHook(_TeardownFailHook):
+        def before_submit(self, ctx: bp.BatchContext) -> None:
+            raise ValueError("setup intentionally failed")
+
+    provider = _make_provider(hooks=[_TeardownFailHook("A"), _SetupFailHook("B")])
+    work, request = _android_request_with_config(tmp_path)
+
+    with (
+        caplog.at_level(logging.ERROR),
+        pytest.raises(RuntimeError, match="B failed to release its credential") as excinfo,
+    ):
+        provider.submit(request, work_dir=work, dest=tmp_path / "d")
+
+    assert isinstance(excinfo.value.__context__, ValueError)
+    assert _teardown_messages(caplog) == ["A failed to release its credential"]
 
 
 def test_collision_guard_skips_non_dict_preconditions(tmp_path: Path) -> None:
