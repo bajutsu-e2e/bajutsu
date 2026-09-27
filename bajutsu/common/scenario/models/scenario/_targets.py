@@ -23,12 +23,17 @@ def _step_label(step: Step) -> str:
     return repr(step.name) if step.name is not None else "<unnamed step>"
 
 
-def _check_target(target: str | None, *, known: set[str], context: str) -> None:
+def _check_target(
+    target: str | None, *, known: set[str], context: str, default: str | None = None
+) -> str | None:
     # One rule for both surfaces that may select a target — a step and an `expect` entry — with
-    # *context* naming the offender ("step 'tap login'", "expect entry").
+    # *context* naming the offender ("step 'tap login'", "expect entry"). Returns the primary an
+    # omitted *target* resolved to under two or more declared targets (BE-0436), else None.
     n = len(known)
     if n >= 2:
         if target is None:
+            if default is not None:
+                return default
             raise ValueError(f"{context}: target is required — the scenario declares {n} targets")
         if target not in known:
             raise ValueError(
@@ -44,9 +49,28 @@ def _check_target(target: str | None, *, known: set[str], context: str) -> None:
             )
     elif target is not None:
         raise ValueError(f"{context}: target is set but the scenario declares no targets")
+    return None
 
 
-def _check_step_target(step: Step, *, known: set[str], inside_web: bool) -> None:
+def _check_primary_target(scenario: Scenario) -> None:
+    # Pinned to `targets[0]` rather than any declared target: `_lease_set` / `_target_runtimes`
+    # already treat that entry as the primary for leasing, crash recovery, and evidence context, so
+    # allowing another would let the file's "primary" and the runner's diverge silently (BE-0436).
+    primary = scenario.primary_target
+    if primary is None:
+        return
+    if not scenario.targets:
+        raise ValueError("primaryTarget is set but the scenario declares no targets")
+    if primary != scenario.targets[0]:
+        raise ValueError(
+            f"primaryTarget {primary!r} must be the first entry of targets "
+            f"({scenario.targets[0]!r})"
+        )
+
+
+def _check_step_target(
+    step: Step, *, known: set[str], inside_web: bool, default: str | None
+) -> None:
     context = f"step {_step_label(step)}"
     if inside_web:
         if step.target is not None:
@@ -54,6 +78,7 @@ def _check_step_target(step: Step, *, known: set[str], inside_web: bool) -> None
                 f"{context}: target is not allowed on a step nested inside a "
                 "web: or app: block (it always runs against the block's own device)"
             )
+        step.resolve_target(None)
         return
     if (step.use is not None or step.group is not None) and len(known) >= 2:
         # `expand_components` replaces this step wholesale with the component's/group's own
@@ -67,7 +92,9 @@ def _check_step_target(step: Step, *, known: set[str], inside_web: bool) -> None
             f"{context}: {action} is not yet supported when the scenario declares "
             f"{len(known)} targets — its own target would be discarded by expansion"
         )
-    _check_target(step.target, known=known, context=context)
+    # Assigned even when None: a step copied from a scenario that resolved it (`apply_setups`'s
+    # deep-copied prelude) must not keep that scenario's primary.
+    step.resolve_target(_check_target(step.target, known=known, context=context, default=default))
 
 
 def _reject_assertion_target(a: Assertion, *, context: str) -> None:
@@ -95,14 +122,22 @@ def _check_target_requirements(scenario: Scenario) -> None:
     `target` would be discarded by expansion) and a non-empty `interrupts` (its `condition` has no
     target of its own to poll) are all refused outright once the scenario declares two or more
     targets.
+
+    A scenario that sets `primaryTarget` (which must be `targets[0]`) lifts the two-or-more
+    requirement (BE-0436): a step or top-level `expect` entry that omits `target` runs against the
+    primary. A step records that on its private `resolved_target`, never on `target` itself, so a
+    re-serialized step stays as terse as its author wrote it. The resolution is flat — a nested
+    `if` / `forEach` step that omits `target` resolves to the primary, never to its wrapper's own.
     """
     known = set(scenario.targets)
     if len(known) != len(scenario.targets):
         raise ValueError(f"targets contains a duplicate name: {scenario.targets}")
+    _check_primary_target(scenario)
+    default = scenario.primary_target
 
     def walk_steps(steps: list[Step], *, inside_web: bool) -> None:
         for step in steps:
-            _check_step_target(step, known=known, inside_web=inside_web)
+            _check_step_target(step, known=known, inside_web=inside_web, default=default)
             if step.assert_ is not None:
                 for a in step.assert_:
                     _reject_assertion_target(a, context=f"step {_step_label(step)}: assert")
@@ -146,7 +181,9 @@ def _check_target_requirements(scenario: Scenario) -> None:
         walk_steps(entry.steps, inside_web=False)
         _reject_assertion_target(entry.condition, context="interrupts entry: condition")
     for a in scenario.expect:
-        _check_target(a.target, known=known, context="expect entry")
+        # An omitted entry needs no stamp: `_evaluate_expect` already groups it under the run's
+        # primary, which `_check_primary_target` just pinned to this same name.
+        _check_target(a.target, known=known, context="expect entry", default=default)
 
 
 def _scenarios_declaring_targets(scenarios: list[Scenario]) -> list[str]:

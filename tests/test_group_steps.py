@@ -8,6 +8,7 @@ import pytest
 
 from bajutsu.common.orchestrator.actions._registry import _RUNTIME_ACTIONS
 from bajutsu.common.scenario import Component, expand_components, load_component, load_scenarios
+from bajutsu.common.scenario.serialize import redact_totp_secrets
 
 
 def _resolver(table: dict[str, Component]) -> Callable[[str], Component]:
@@ -145,3 +146,26 @@ def test_group_is_excluded_from_the_runtime_action_list() -> None:
     assert "group" not in _RUNTIME_ACTIONS
     assert "use" not in _RUNTIME_ACTIONS
     assert "tap" in _RUNTIME_ACTIONS
+
+
+def test_redact_totp_secrets_round_trips_an_expanded_group() -> None:
+    # `redact_totp_secrets` dumps the scenario (`by_alias`, `exclude_none`, `exclude_defaults`) and
+    # re-validates that same dump. A `group:` invocation tags its flattened steps via
+    # `model_copy(update=...)`, which makes `report_group` / `report_group_id` *set*, non-default
+    # fields that `exclude_defaults` therefore keeps — so this must survive the round trip. It runs
+    # on every executed scenario (`runner/pool.py`, `runner/pipeline.py`) before the run's evidence
+    # snapshot is written.
+    scns = load_scenarios(
+        """
+- name: s
+  steps:
+    - group:
+        name: login
+        steps:
+          - tap: { id: auth.open }
+"""
+    )
+    expand_components(scns, _resolver({}))
+    redacted = redact_totp_secrets(scns[0])
+    assert redacted.steps[0].report_group == "login"
+    assert redacted.steps[0].report_group_id == scns[0].steps[0].report_group_id

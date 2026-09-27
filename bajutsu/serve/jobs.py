@@ -743,6 +743,7 @@ def _run_batch_job(state: ServeState, job: Job) -> None:
                 work_dir=state.devicefarm_package_root or job.cwd or state.binding.cwd,
                 dest=Path(download_name),
                 checkpoint=_batch_checkpoint(state, job.id),
+                job_id=job.id,
             )
         except Exception as exc:
             # A provider or submission failure is a failed run, never a stranded worker thread: catch

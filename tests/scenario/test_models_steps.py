@@ -438,22 +438,20 @@ def test_group_rejects_extract_modifier() -> None:
         )
 
 
-def test_step_rejects_an_author_written_report_group() -> None:
-    with pytest.raises(ValidationError, match="_reportGroup"):
-        Step.model_validate({"tap": {"id": "a"}, "_reportGroup": "login"})
-
-
-def test_step_rejects_an_author_written_report_group_id() -> None:
-    with pytest.raises(ValidationError, match="_reportGroup"):
-        Step.model_validate({"tap": {"id": "a"}, "_reportGroupId": 0})
-
-
-def test_report_group_explicit_none_is_accepted() -> None:
-    # An explicit `None` still reaches the validator (unlike an omitted field, which pydantic
-    # does not validate by default), and must pass through rather than be rejected.
-    step = Step.model_validate({"tap": {"id": "a"}, "_reportGroup": None, "_reportGroupId": None})
-    assert step.report_group is None
-    assert step.report_group_id is None
+def test_report_group_round_trips_through_dump_and_revalidate() -> None:
+    # `expand()` tags a flattened step via `model_copy(update=...)`, which makes `report_group` a
+    # *set*, non-default field — `exclude_defaults=True` keeps it in the dump, exactly what the
+    # fold needs (`rows.py` reads it back out of `scenario_dict`). The run path re-validates that
+    # same dump twice (`redact_totp_secrets`, and `load_run`'s reload of its own `scenario.yaml`),
+    # so this round trip must succeed rather than be rejected — see the field's own docstring.
+    step = Step.model_validate({"tap": {"id": "a"}})
+    tagged = step.model_copy(update={"report_group": "login", "report_group_id": 0})
+    dumped = tagged.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
+    assert dumped["_reportGroup"] == "login"
+    assert dumped["_reportGroupId"] == 0
+    revalidated = Step.model_validate(dumped)
+    assert revalidated.report_group == "login"
+    assert revalidated.report_group_id == 0
 
 
 def test_report_group_survives_a_model_copy_update() -> None:

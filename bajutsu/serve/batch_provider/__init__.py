@@ -18,12 +18,15 @@ submitter uses.
 from ._functions import _PROVIDERS as _PROVIDERS
 from ._functions import register, resolve
 from .batch_checkpoint import BatchCheckpoint
+from .batch_lifecycle_hook import BatchContext, BatchLifecycleHook
 from .batch_provider import BatchProvider
 from .batch_request import BatchRequest
 from .device_farm_batch_provider import DeviceFarmBatchProvider
 
 __all__ = [
     "BatchCheckpoint",
+    "BatchContext",
+    "BatchLifecycleHook",
     "BatchProvider",
     "BatchRequest",
     "DeviceFarmBatchProvider",

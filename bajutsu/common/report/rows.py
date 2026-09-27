@@ -425,18 +425,24 @@ def _fold_groups(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             j += 1
         run = rows[i:j]
         open_ = any(_row_failed(row) for row in run)
+        # Keyed on this fragment's own occurrence, not the shared `gid`: two fragments split from
+        # one `group:` invocation (a network exchange row, or a not-run tail, breaking the run)
+        # would otherwise both carry the same `data-group-id`, and toggling one fragment's heading
+        # in `report.js` would then un-hide (or re-hide) the other fragment's rows too.
+        fold_id = f"{gid}-{len(out)}"
         out.append(
             {
                 "heading": {
                     "name": run[0].get("group"),
                     "count": len(run),
-                    "id": gid,
+                    "id": fold_id,
                     "open": open_,
                 }
             }
         )
         for row in run:
             row["hidden"] = not open_
+            row["group_id"] = fold_id
         out.extend(run)
         i = j
     return out

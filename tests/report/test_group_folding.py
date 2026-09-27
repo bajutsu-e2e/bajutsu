@@ -25,8 +25,8 @@ def test_a_run_of_grouped_rows_gets_one_heading() -> None:
     out = _fold_groups(rows)
     assert out[0]["heading"]["name"] == "login"
     assert out[0]["heading"]["count"] == 2
-    assert out[0]["heading"]["id"] == 0
-    assert out[1]["group_id"] == 0 and out[2]["group_id"] == 0
+    fold_id = out[0]["heading"]["id"]
+    assert out[1]["group_id"] == fold_id and out[2]["group_id"] == fold_id
     assert out[3]["group_id"] is None
 
 
@@ -53,8 +53,7 @@ def test_two_separate_invocations_of_the_same_name_get_separate_headings() -> No
     out = _fold_groups(rows)
     headings = [row["heading"] for row in out if "heading" in row]
     assert len(headings) == 2
-    assert headings[0]["id"] == 0
-    assert headings[1]["id"] == 1
+    assert headings[0]["id"] != headings[1]["id"]
 
 
 def test_a_network_row_interrupting_a_group_splits_it_into_two_folds() -> None:
@@ -67,3 +66,12 @@ def test_a_network_row_interrupting_a_group_splits_it_into_two_folds() -> None:
     assert len(headings) == 2
     assert headings[0]["count"] == 1
     assert headings[1]["count"] == 1
+    # Both fragments share the original `group_id` (0), but must not share the DOM key the fold
+    # renders: `report.js` toggles every row whose `data-group-id` matches a clicked heading's, so
+    # two same-keyed fragments would toggle together even though only one heading was clicked.
+    assert headings[0]["id"] != headings[1]["id"]
+    member_rows = [row for row in out if "heading" not in row and row.get("group_id") is not None]
+    assert len(member_rows) == 2
+    assert member_rows[0]["group_id"] != member_rows[1]["group_id"]
+    assert member_rows[0]["group_id"] == headings[0]["id"]
+    assert member_rows[1]["group_id"] == headings[1]["id"]

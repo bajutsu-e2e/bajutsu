@@ -1187,9 +1187,9 @@ extra startup. Each declared name resolves against the one config file the invoc
 targets must appear side by side as `targets.<name>` entries there. Merging two config files has no
 support ([configuration](configuration.md#config-layering-defaults--targets)).
 
-Once `targets` holds two or more entries, every step must set its own `target`. That includes an
-`if` / `forEach` / `web` wrapper, not merely a leaf action. Every top-level `expect` entry must set
-one too, each naming one of the declared targets:
+Under two or more `targets` and no `primaryTarget` (below), every step must set its own `target`.
+That includes an `if` / `forEach` / `web` wrapper, not merely a leaf action. Every top-level
+`expect` entry must set one too, each naming one of the declared targets:
 
 ```yaml
 - name: liking a post on the app shows up on the web
@@ -1205,6 +1205,37 @@ one too, each naming one of the declared targets:
     - target: showcase-web
       value: { sel: { id: "post.${vars.postId}.likeCount" }, equals: "1" }
 ```
+
+A scenario built around one target can declare that target as its `primaryTarget` (BE-0436).
+A step or top-level `expect` entry may then omit `target`, and it runs against the primary. A step
+names a target when it acts on another one. A reader spots those steps at a glance:
+
+```yaml
+- name: liking a post on the app shows up on the web
+  targets: [showcase-app, showcase-web]
+  primaryTarget: showcase-app
+  steps:
+    - tap: { id: post.like }              # target omitted: runs on showcase-app
+      extract:
+        postId: { sel: { id: post.id } }
+    - target: showcase-web
+      wait: { for: { id: "post.${vars.postId}.likeCount" }, timeout: 10 }
+  expect:
+    - target: showcase-web
+      value: { sel: { id: "post.${vars.postId}.likeCount" }, equals: "1" }
+```
+
+`primaryTarget` must name the first entry of `targets`. The runner already treats that entry as
+the primary for leasing, recovery, and evidence. Pinning the field to it keeps the file and the
+runner agreeing on one primary. Reordering `targets` without updating `primaryTarget` fails at load
+time. Setting `primaryTarget` on a scenario that declares no `targets` fails at load time too.
+With one declared target, `primaryTarget` may name that target and changes nothing.
+
+The default applies at every nesting depth. A nested step inside an `if` or `forEach` may omit
+`target`. It then runs against the primary, whatever target its wrapper names. A step may still name the primary
+explicitly; both spellings behave the same way. The loader never writes the resolved name back into
+the step. The serve editor and a run's `scenario.yaml` snapshot keep the step as terse as its author
+wrote it.
 
 A self-declaring scenario resolves its own targets. `bajutsu run --scenario <file>` then needs no
 `--target` at all. An explicit `--target` passed beside one must name a target that scenario
@@ -1235,6 +1266,10 @@ Each declared target keeps its own config, not the primary target's. Resolution 
 | `locale`, `launchEnv`, `capture`, `interrupts` | Each is a property of the app under test, not of the run |
 | `baselines` / `schemas` / `goldens` | A `visual` or `golden` assertion compares against its own target's directory when that target configures one, else the run's |
 | Backend capabilities | Each target's steps are checked against its own backend before any device is leased, so a construct only one platform supports fails the right one |
+
+A nested `if` / `forEach` step from a target config's own `before` / `after` list omits `target`
+too. It resolves to that config's own target, never to the scenario's `primaryTarget`. The flat,
+every-nesting-depth default above applies to a scenario's own steps alone.
 
 Two run-wide values stay shared. The `redact` secret set unions every declared target's own
 secrets. That union scrubs every target's evidence, since scrubbing too widely is the safer error.

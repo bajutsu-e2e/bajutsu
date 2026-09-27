@@ -1,7 +1,7 @@
 # ステップのグループ化とreport.htmlでの折りたたみ表示
 
 > ステータス: ドラフト
-> 対象: `bajutsu/common/scenario/models/steps/`、`bajutsu/common/scenario/expand.py`、`bajutsu/common/scenario/models/scenario/`、`bajutsu/common/orchestrator/actions/_registry.py`、`bajutsu/common/config/schema/target_config.py`、`bajutsu/common/report/`、`bajutsu/templates/report.html.j2` / `report.js` / `report.css`、`bajutsu/serve/operations/audit.py`、`bajutsu/common/lint.py`
+> 対象: `bajutsu/common/scenario/models/steps/`、`bajutsu/common/scenario/expand.py`、`bajutsu/common/scenario/models/scenario/`、`bajutsu/common/orchestrator/actions/_registry.py`、`bajutsu/common/config/schema/target_config.py`、`bajutsu/common/report/`、`bajutsu/templates/report.html.j2` / `report.js` / `report.css`、`bajutsu/analysis/audit/_functions.py`
 > 関連: [BE-0044](../../roadmaps/BE-0044-scenario-provenance/BE-0044-scenario-provenance.md)（provenance）、[BE-0030](../../roadmaps/BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md) / [BE-0422](../../roadmaps/BE-0422-inline-scenario-components/BE-0422-inline-scenario-components.md)（コンポーネント）、[docs/scenarios.md](../scenarios.md)、[docs/reporting.md](../reporting.md)
 
 新しい`group:`ステップで、`steps:`の中の連続するステップに意味のある単位の名前を付けて書けるようにする。`group:`は`run`の前にコンパイルタイムで平坦なステップ列へ展開されるため、決定性には影響しない。展開後の各ステップには元のグループ名を残し、`report.html`ではそのグループ名でステップ行を折りたたんで表示する。
@@ -86,7 +86,7 @@ report_group_id: int | None = Field(default=None, alias="_reportGroupId")
 
 両方とも`_MODIFIERS`（[_shared.py:8](../../bajutsu/common/scenario/models/steps/_shared.py)）に加える。ステップオブジェクトの通常のフィールドとして`model_dump` / `model_validate`の往復に乗るため、後述する`use`展開との合成でも特別な配線を要らない。
 
-普通のフィールドにするだけでは足りない。`_Model`の`extra="forbid"`（[_base.py:37](../../bajutsu/common/scenario/models/_base.py)）は未知のキーを拒否するが、`_reportGroup`と`_reportGroupId`は宣言済みのフィールドであり、未知のキーではない。著者が手で書いて、偽のfoldを作れてしまう。両方に、`None`以外の値を拒否するフィールドバリデータを足す。`expand()`は`model_copy(update=...)`でこの2つを設定する。この経路はフィールドバリデータを通らないため、内部からの書き込みはそのまま成功する。通常の`model_validate`から値が届く経路（つまり著者が書いた場合）はバリデータを通るため、そちらは失敗する。両方に`Annotated[..., SkipJsonSchema()]`も付ける。`bajutsu schema`の出力から、この2つが著者向けの項目として消える。
+値そのものを拒否するバリデータは足さない。`expand()`は`model_copy(update=...)`でこの2つを設定するため、`report_group`は*設定済み*の非デフォルト値になる。`run`経路は、この値を含んだダンプを2回再検証する。1つは`redact_totp_secrets`である。もう1つは`load_run`による`scenario.yaml`の再読み込みである。`redact_totp_secrets`は、展開済みの全シナリオに対して走る。`exclude_defaults`は*設定済み*の値を落とさない。そのため、どちらの再検証にも`_reportGroup` / `_reportGroupId`が届く。ここで値を拒否するバリデータを足すと、この2回の再検証そのものが失敗する。`group:`を含むシナリオの`run`は、エビデンスの書き出し中に落ちる。これはBE-0401が`systemAlertHandling.labels`で踏んだ罠と同じ形である。`serialize.py`の`redact_totp_secrets`のdocstringに記録がある。著者が`_reportGroup`を手で書けてしまう余地は残る。ただし`Annotated[..., SkipJsonSchema()]`が、この2つを`bajutsu schema`の出力から著者向けの項目として隠す。そのため、実際に踏む経路ではない。
 
 側路（`step_lines`のような、行番号を並行配列で運ぶ方式、[raw_source.py:36](../../bajutsu/common/scenario/raw_source.py)）ではなくこの方式を選ぶ理由は、`group`の中に`use`が入れ子になったときの伝播にある。`use`ステップの展開は、置き換え元の`use`ステップオブジェクトそのものを捨て、コンポーネント定義側の`steps`だけを使う（[expand.py:76](../../bajutsu/common/scenario/expand.py)〜）。並行配列で管理すると、展開の結果生まれた新しいステップ群への対応づけを、展開処理の外側で別途組み立てる必要がある。`Step`自身のフィールドにしておけば、後述する`expand()`の再帰に引数を足すだけで、`group`の中にある`use`呼び出しの展開結果にも伝播できる。
 
@@ -138,7 +138,9 @@ report_group_id: int | None = Field(default=None, alias="_reportGroupId")
 
 ### 展開前のシナリオを読む道具への影響
 
-`load_scenario_file`は、`use`や`group`を展開しない。`bajutsu/serve/operations/audit.py:53`と`bajutsu/common/lint.py`の`provenance_coverage`は、いずれもこの関数でシナリオを読み、その`steps`を歩いて集計や表示をする。`group`を導入すると、この歩き方は`group.steps`の中まで踏み込まない。`group`でくるんだステップを素通りし、集計対象から漏らしてしまう。各ツールのステップの歩き方に、`group`を透過的に扱う（`group`に出会ったら、その`steps`の中へ降りる）分岐を足す。
+`load_scenario_file`は、`use`や`group`を展開しない。`bajutsu/analysis/audit/_functions.py`の選択子とfinding抽出は、この関数でシナリオを読み、その`steps`を歩いて集計や表示をする。`group`を導入すると、この歩き方は`group.steps`の中まで踏み込まない。`group`でくるんだステップを素通りし、集計対象から漏らしてしまう。ステップの歩き方に、`group`を透過的に扱う（`group`に出会ったら、その`steps`の中へ降りる）分岐を足す。
+
+`bajutsu/common/lint.py`の`provenance_coverage`は対象外とする。この関数はシナリオ最上位の`steps`しか数えておらず、`if` / `forEach`の中へも元から降りていない。`group`だけを個別に直すと、この既存の限界に対して一貫性のない対応になる。
 
 `bajutsu/analysis/trace.py:285`も`load_scenario_file`を呼ぶが、対象は`run_dir / "scenario.yaml"`である。これは`pipeline.py`が、すでに展開済みの`scenarios`から書き出すファイルである（[pipeline.py:1899](../../bajutsu/common/runner/pipeline.py)以下）。`group`ステップがそこに残ることはないため、`trace.py`に対応する変更は要らない。`use`にもどのツールに対しても対応する修正は要らない。展開されるまで中身が見えないのは同じだからである。
 
@@ -156,7 +158,7 @@ report_group_id: int | None = Field(default=None, alias="_reportGroupId")
 |---|---|---|---|---|
 | 1 | `Group`モデルを追加し、`Step`に`group: Group \| None`フィールドを足す。`Group.name` / `Group.steps`は`min_length=1`にする | `bajutsu/common/scenario/models/steps/group.py`（新規）、`bajutsu/common/scenario/models/steps/step.py` | `group`を含むステップが`_one_action`バリデーションを通り、他のアクションと同時には書けないこと、`name`や`steps`が空だとロードに失敗することをユニットテストで確認する | — |
 | 2 | `group`を`_CONTROL_FLOW_ACTIONS`に加え、既存の`_no_modifiers_on_control_flow`が`capture` / `extract`を拒否することを確認する | `bajutsu/common/scenario/models/_base.py` | `group`ステップに`capture`や`extract`を書いたシナリオのロードが失敗することをユニットテストで確認する | 1 |
-| 3 | 内部フィールド`report_group`（エイリアス`_reportGroup`）と`report_group_id`（エイリアス`_reportGroupId`）を`Step`に足し、`_MODIFIERS`へ登録する。著者が設定した値を拒否するバリデータを足し、両方を`SkipJsonSchema`にする | `bajutsu/common/scenario/models/steps/step.py`、`bajutsu/common/scenario/models/steps/_shared.py` | `_STEP_ACTIONS`にこの2つが含まれないこと、`_reportGroup`を書いたシナリオのロードが失敗すること、`bajutsu schema`の出力にこの2つが載らないことをユニットテストで確認する | 1 |
+| 3 | 内部フィールド`report_group`（エイリアス`_reportGroup`）と`report_group_id`（エイリアス`_reportGroupId`）を`Step`に足し、`_MODIFIERS`へ登録する。両方を`SkipJsonSchema`にして`bajutsu schema`の出力から隠す。値そのものは拒否しない。`expand()`が`model_copy(update=...)`で設定した値は*設定済み*の非デフォルト値になり、`run`経路がその後2回再検証する（`redact_totp_secrets`、`load_run`による`scenario.yaml`の再読み込み）ため、通常の`model_validate`でも通す必要がある | `bajutsu/common/scenario/models/steps/step.py`、`bajutsu/common/scenario/models/steps/_shared.py` | `_STEP_ACTIONS`にこの2つが含まれないこと、`bajutsu schema`の出力にこの2つが載らないこと、`group`を含むシナリオが`expand`後に`redact_totp_secrets`を経由してもエラーなく再検証できることをユニットテストで確認する | 1 |
 | 4 | `expand.py`にモジュール単位のidカウンタを追加する（`setup`プレリュード専用の`expand_components`呼び出しとも共有する）。`expand()`に`group_ctx` / `group_id`引数を足し、`st.group`ケースの展開、`use`展開結果への伝播、`group_ctx`がすでに立っている状態で`st.group`に出会ったときの入れ子エラーを実装する | `bajutsu/common/scenario/expand.py` | グループ単体、グループの中に`use`がある場合、`use`経由でグループの中にグループが紛れ込む場合、`setup`プレリュードとシナリオ本体の両方に`group`がある場合のそれぞれで、`report_group` / `report_group_id`と入れ子エラーの発生がユニットテストで期待どおりであることを確認する | 1, 3 |
 | 5 | ロード後の`Scenario`の木を`scenario.steps` / `before` / `after`各ruleの`steps` / `interrupts`各entryの`steps`から再帰的に辿り、`if.then` / `if.else_` / `for_each.steps` / `web.steps` / `app.steps` / `group.steps`の中に直接書かれた`group`を拒否するバリデータを追加する | `bajutsu/common/scenario/models/scenario/`配下の該当バリデータ | それぞれの禁止パターンを含むシナリオのロードが、どちらの形の入れ子かを説明するエラーメッセージで失敗することをユニットテストで確認する | 1 |
 | 6 | `targets`を2つ以上宣言したシナリオでの`group`利用を拒否する。エラーメッセージは`use` / `group`のどちらが原因かを名指しする | `bajutsu/common/scenario/models/scenario/_targets.py` | 複数ターゲット宣言と`group`を同時に使うシナリオのロードが、`group`を名指ししたエラーメッセージで失敗することをユニットテストで確認する | 1 |
@@ -165,7 +167,7 @@ report_group_id: int | None = Field(default=None, alias="_reportGroupId")
 | 9 | `rows.py`の`_step_detail` / `_step_run_row` / `_step_skip_row`に`group` / `group_id`引数を足し、`_merged_rows` / `_phase_rows` / `_after_rows`から`_reportGroup` / `_reportGroupId`を渡す | `bajutsu/common/report/rows.py` | `plan[i]`に`_reportGroup` / `_reportGroupId`があるとき、対応する行dictに同じ値が入ることをユニットテストで確認する | 4 |
 | 10 | フラットな行リストへ、`group_id`の連続する区間ごとにグループ見出し行を挿入し、本体行と付随行（`alertrow` / `actrow` / `genrow`）のすべてに`hidden`属性と`group_id`属性を付与する後処理関数を追加し、3つの行生成関数から呼び出す | `bajutsu/common/report/rows.py` | `group_id`が連続する行の区間が見出し行1つにまとまること、付随行にも`group_id`が付くこと、失敗を含む区間には`hidden`が付かないことをユニットテストで確認する | 9 |
 | 11 | `report.html.j2`のsteprowマクロに見出し行の描画と`hidden` / `group_id`属性の付与を追加する。`report.js`にトグル用の関数と、既存の`toggleAll`をグループにも連動させる変更を追加する。`report.css`に見出し行のスタイルを追加する | `bajutsu/templates/report.html.j2`、`bajutsu/templates/report.js`、`bajutsu/templates/report.css` | `group:`を含むサンプルシナリオを1つ用意し、生成した`report.html`をブラウザで開いて、初期状態の折りたたみ、失敗グループの自動展開、見出しクリックでの開閉、全展開 / 全折りたたみボタンとの連動を目視で確認する | 10 |
-| 12 | `load_scenario_file`でシナリオを読む道具（`audit.py`、`lint.py`の`provenance_coverage`）のステップの歩き方に、`group.steps`の中へ降りる分岐を足す | `bajutsu/serve/operations/audit.py`、`bajutsu/common/lint.py` | `group`でステップをくるんだシナリオで、`audit` / `lint`の集計結果が、くるまなかった場合と一致することをユニットテストで確認する | 1 |
+| 12 | `load_scenario_file`でシナリオを読む`audit`のセレクタ / finding の歩き方に、`group`を透過的に扱う（`group`に出会ったら、その`steps`の中へ降りる）分岐を足す。`lint.py`の`provenance_coverage`は対象外とする。この関数はシナリオ最上位の`steps`しか数えておらず、`if` / `forEach`の中へも元から降りていないため、`group`だけを直すと既存の限界に対して一貫性のない対応になる | `bajutsu/analysis/audit/_functions.py` | `group`でステップをくるんだシナリオで、`audit`の集計結果が、くるまなかった場合と一致することをユニットテストで確認する | 1 |
 | 13 | `bajutsu lint` / `bajutsu schema`が`group`アクションを認識することを確認する | 該当すれば`bajutsu/cli/commands/lint.py`、`schema.py` | `group:`を含むシナリオを`bajutsu lint`がエラーなく処理し、`bajutsu schema`の出力に`group`アクションが載ることを確認する | 1 |
 | 14 | `docs/scenarios.md`（Step grammarの表と新セクション）、`docs/dsl-grammar.md`、`docs/reporting.md`（report.html章）と、それぞれの`docs/ja/`ミラーを更新する | `docs/scenarios.md`、`docs/dsl-grammar.md`、`docs/reporting.md`、`docs/ja/`配下の対応ファイル | 更新した文書がtextlintの指摘ゼロで通ることを確認する | 11 |
 | 15 | `make check`が通ることを確認する | — | `make check`がgreenで終わる | 1–14 |

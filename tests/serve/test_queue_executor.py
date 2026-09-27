@@ -672,7 +672,13 @@ def test_execute_job_spec_reconstructs_the_batch_request(tmp_path: Path) -> None
 
     class _Provider:
         def submit(
-            self, request: Any, *, work_dir: Path, dest: Path, checkpoint: Any = None
+            self,
+            request: Any,
+            *,
+            work_dir: Path,
+            dest: Path,
+            checkpoint: Any = None,
+            job_id: str = "",
         ) -> Any:
             captured["request"] = request
             run_dir = dest / "runs" / "20260101-1"

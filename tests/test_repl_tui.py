@@ -281,6 +281,25 @@ def test_left_and_right_are_no_ops_when_the_whole_transcript_already_fits() -> N
     assert state.scroll_offset == 0
 
 
+def test_t_jumps_straight_to_the_top() -> None:
+    state = _scrolled(50)  # max_offset = 50 - 10 = 40
+    handle_key(state, "t", 10)
+    assert state.scroll_offset == 40
+
+
+def test_b_jumps_straight_to_the_bottom() -> None:
+    state = _scrolled(50)
+    handle_key(state, "t", 10)
+    handle_key(state, "b", 10)
+    assert state.scroll_offset == 0
+
+
+def test_t_and_b_are_ordinary_characters_outside_scroll_mode() -> None:
+    state = TuiState()
+    _type_str(state, "tb")
+    assert state.input_buffer == "tb"
+
+
 def test_up_clamps_at_the_top_instead_of_accumulating_past_it() -> None:
     # A short transcript (5 lines in a 10-row pane, max_offset 0): repeatedly pressing Up must not
     # let scroll_offset run up unboundedly, or new output later would jump the pane far above the
@@ -621,6 +640,31 @@ def test_run_tui_draws_a_tab_hint_in_input_mode() -> None:
     assert "Tab" in first_frame
 
 
+def test_run_tui_banner_shows_and_clears_the_new_output_notification() -> None:
+    session, _driver = _session()
+    # Seven distinguishable commands overflow a short pane (height=6, pane_height=4), leaving
+    # plenty scrolled off the top for `t` to jump into.
+    fills = [chunk for i in range(1, 8) for chunk in (f"find {i}", "\n")]
+    keys = _keys(
+        *fills,
+        "\t",
+        "t",  # into scroll mode, jump to the top: scroll_offset > 0
+        "\t",  # back to input, still scrolled
+        "find 99",
+        "\n",  # a new command's output arrives while still scrolled
+        "\t",
+        "b",  # into scroll mode, jump back to the bottom: scroll_offset == 0
+        "\t",  # back to input, to type `exit` (scroll mode has no "type" — "t" would jump again)
+        "exit",
+        "\n",
+    )
+    screen = FakeScreen(keys=keys, height=6)
+    run_tui(session, screen)
+    frames = ["".join(frame) for frame in screen.draws]
+    assert any("new output" in frame for frame in frames)
+    assert "new output" not in frames[-1]  # cleared once scrolled back to the bottom
+
+
 def test_run_tui_ignores_a_terminal_resize() -> None:
     session, driver = _session()
     screen = FakeScreen(keys=_keys("tap stable.save", curses.KEY_RESIZE, "\n", "exit", "\n"))
@@ -635,6 +679,19 @@ def test_run_tui_mouse_wheel_does_not_dispatch_a_command() -> None:
     screen = FakeScreen(keys=_keys(curses.KEY_MOUSE, "exit", "\n"))
     run_tui(session, screen, get_mouse_event=lambda: (0, 0, 0, 0, curses.BUTTON4_PRESSED))
     assert driver.actions == []
+
+
+def test_run_tui_survives_a_stale_mouse_event() -> None:
+    # Observed after an idle stretch: `get_wch` reports `KEY_MOUSE` but the real `curses.getmouse()`
+    # then raises `error("getmouse() returned ERR")` — the shell must drop that tick, not crash.
+    session, driver = _session()
+    screen = FakeScreen(keys=_keys(curses.KEY_MOUSE, "tap stable.save", "\n", "exit", "\n"))
+
+    def _stale_mouse_event() -> tuple[int, int, int, int, int]:
+        raise curses.error("getmouse() returned ERR")
+
+    run_tui(session, screen, get_mouse_event=_stale_mouse_event)  # would raise if uncaught
+    assert driver.actions == [("tap", {"id": "stable.save"})]  # the shell kept working afterward
 
 
 def test_run_tui_mouse_wheel_scrolls_the_pane() -> None:
@@ -727,6 +784,35 @@ def test_note_new_output_counts_only_lines_matching_the_active_filter() -> None:
     state = TuiState(output=["match a"], scroll_offset=2, filter_query="match")
     _note_new_output(state, ["match b", "skip this", "match c"])
     assert state.scroll_offset == 4  # 2 + the two new lines that match, not all three
+
+
+def test_note_new_output_raises_the_notification_flag_while_scrolled() -> None:
+    state = TuiState(output=["a"], scroll_offset=3)
+    _note_new_output(state, ["b", "c"])
+    assert state.new_output_while_scrolled is True
+
+
+def test_note_new_output_never_raises_the_flag_while_pinned() -> None:
+    state = TuiState(output=["a"], scroll_offset=0)
+    _note_new_output(state, ["b", "c"])
+    assert state.new_output_while_scrolled is False
+
+
+def test_note_new_output_does_not_raise_the_flag_for_an_empty_batch() -> None:
+    state = TuiState(output=["a"], scroll_offset=3)
+    _note_new_output(state, [])
+    assert state.new_output_while_scrolled is False
+    assert state.scroll_offset == 3  # nothing to add, offset unchanged
+
+
+def test_note_new_output_never_raises_the_flag_for_lines_the_filter_hides() -> None:
+    # Paired with `test_note_new_output_counts_only_lines_matching_the_active_filter`: the flag
+    # must track the same filtered count the offset arithmetic does, or the banner would point the
+    # operator at lines the filtered view will never render.
+    state = TuiState(output=["match a"], scroll_offset=2, filter_query="match")
+    _note_new_output(state, ["skip this", "also skip"])
+    assert state.new_output_while_scrolled is False
+    assert state.scroll_offset == 2  # neither line matched, so nothing to scroll past either
 
 
 def test_run_wires_a_real_curses_session(monkeypatch: pytest.MonkeyPatch) -> None:

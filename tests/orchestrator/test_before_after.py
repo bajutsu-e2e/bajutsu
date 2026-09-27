@@ -406,6 +406,80 @@ def test_folding_config_hooks_re_checks_target_requirements() -> None:
         with_lifecycle_phases(effs["app"], [scenario], effs)
 
 
+_NESTED_HOOK_CONFIG = """
+targets:
+  a:
+    bundleId: com.example.app
+  b:
+    baseUrl: http://localhost:1/
+    before:
+      - if:
+          condition: { exists: { id: x } }
+          then:
+            - tap: { id: omitted }
+            - target: a
+              tap: { id: named }
+          else:
+            - tap: { id: else_step }
+      - forEach:
+          sel: { idMatches: "row.*" }
+          as: row
+          steps:
+            - tap: { id: for_each_step }
+      - web:
+          within: { id: webview }
+          steps:
+            - tap: { id: web_step }
+"""
+
+
+def _fold_nested_hook(targets: list[str]) -> Scenario:
+    cfg = load_config(_NESTED_HOOK_CONFIG)
+    effs = {"a": resolve(cfg, "a"), "b": resolve(cfg, "b")}
+    scenario = _scenario(
+        {
+            "name": "s",
+            "targets": targets,
+            "primaryTarget": targets[0],
+            "steps": [{"tap": {"id": "x"}}],
+        }
+    )
+    return with_lifecycle_phases(effs[targets[0]], [scenario], effs)[0]
+
+
+def test_a_hooks_nested_steps_run_against_the_hooks_own_target() -> None:
+    # A nested step omitting `target` would otherwise resolve to each scenario's own primary, so
+    # `b`'s hook would run its body against `a` in the first scenario.
+    folded = [_fold_nested_hook(["a", "b"]), _fold_nested_hook(["b", "a"])]
+    nested = []
+    for merged in folded:
+        hook_if, hook_for_each, _ = merged.before
+        assert hook_if.if_ is not None
+        assert hook_if.resolved_target == "b"
+        assert hook_if.if_.then[0].resolved_target == "b"
+        assert hook_if.if_.else_ is not None
+        assert hook_if.if_.else_[0].resolved_target == "b"
+        assert hook_for_each.for_each is not None
+        assert hook_for_each.for_each.steps[0].resolved_target == "b"
+        nested.append(hook_if.if_.then[0])
+    assert nested[0] is not nested[1]
+
+
+def test_a_hooks_nested_step_naming_a_target_keeps_it() -> None:
+    hook_if, _, _ = _fold_nested_hook(["b", "a"]).before
+    assert hook_if.if_ is not None
+    assert hook_if.if_.then[1].target == "a"
+
+
+def test_a_hooks_web_body_is_left_out_of_the_target_fill() -> None:
+    # `_fill_target` must not descend into a `web:`/`app:` body — its nested steps still always
+    # run against the block's own device, and must keep omitting `target` outright.
+    _, _, hook_web = _fold_nested_hook(["b", "a"]).before
+    assert hook_web.web is not None
+    assert hook_web.web.steps[0].target is None
+    assert hook_web.web.steps[0].resolved_target is None
+
+
 def test_the_merged_phases_are_what_the_run_executes() -> None:
     merged = _merged({"steps": [{"tap": {"id": "a"}}], "before": [{"tap": {"id": "c"}}]})
     r = run_scenario(_driver(), merged, FakeClock())

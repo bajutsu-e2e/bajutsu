@@ -301,8 +301,10 @@ details.pre[open]>summary::before{transform:rotate(90deg)}
   display:block}
 /* `hidden` on the collapsed exchange row (`tr.nxdetail`) is backed only by the UA stylesheet's
    `[hidden]{display:none}`, which any author `display` — including the block rule just above —
-   overrides regardless of specificity. Restore it explicitly. */
-.sttbl>tbody>tr[hidden]{display:none}
+   overrides regardless of specificity. Restore it explicitly. `!important` because the grid rule
+   above is (0,6,2) (five `:not()` classes) — higher than this rule's own (0,2,2) — so an ordinary,
+   `hidden` `group:` member row would otherwise stay visible under that rule instead. */
+.sttbl>tbody>tr[hidden]{display:none!important}
 /* A `group:` fold's heading row (one per run of consecutive same-`group_id` rows, inserted by
    `_fold_groups`). The button spans the row so the whole thing is clickable, not just the text. */
 .grouphead{background:var(--bg)}

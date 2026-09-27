@@ -114,15 +114,18 @@ report_group_id: int | None = Field(default=None, alias="_reportGroupId")
 `model_dump` / `model_validate` の往復を、そのまま生き延びます
 （[expand.py](../../bajutsu/common/scenario/expand.py)）。追加の配線は要りません。
 
-普通のフィールドにするだけでは足りません。`_Model` の `extra="forbid"`
-（[_base.py:37](../../bajutsu/common/scenario/models/_base.py)）は未知のキーを拒否しますが、
-`_reportGroup` と `_reportGroupId` は宣言済みのフィールドで、未知のキーではありません。著者が
-手で書いて偽のfoldを作れてしまいます。両方に、`None` 以外の値を拒否するフィールドバリデータを
-足します。`expand()` は `model_copy(update=...)` でこの2つを設定します。この経路はフィールド
-バリデータを通らないため、内部からの書き込みはそのまま成功します。通常の `model_validate` から
-値が届く経路（つまり著者が書いた場合）はバリデータを通るため、そちらは失敗します。両方に
-`Annotated[..., SkipJsonSchema()]` も付けます。`bajutsu schema` の出力から、この2つが著者向けの
-項目として消えます。
+フィールドバリデータで値を拒否することはしません。`Annotated[..., SkipJsonSchema()]` だけで、
+両方を著者向けの項目から隠します。`bajutsu schema` の出力にこの2つは載りません。`expand()` は
+`model_copy(update=...)` でこの2つを設定します。これにより、`group:` を含むシナリオが展開された
+あと、`report_group` は*設定済み*の非デフォルト値になります。`run` 経路は、同じダンプを2回
+再検証します。`redact_totp_secrets` は、実行を終えたすべてのシナリオに対して走ります。エビデンス
+のスナップショットを書き出す直前に走ります。`load_run` も、自分自身の `scenario.yaml` を同じ
+ように再読み込みします。`exclude_defaults=True` は、設定済みのフィールドをどちらのダンプからも
+落としません。`None` 以外を拒否するバリデータを足すと、この内部の往復そのものを拒否してしまい
+ます。`serialize.py` の `redact_totp_secrets` のdocstringに、同じ形の問題の記録があります。
+BE-0401 が `systemAlertHandling.labels` で踏んだのと同じ形です。著者が `_reportGroup` を手で
+書いて偽のfoldを作れる余地は残ります。ただし、著者がその項目を見つける手段であるスキーマ自体に、
+この項目は載りません。
 
 この役割の最初の設計案は、既存の `step_lines` の仕組み
 （[raw_source.py:36](../../bajutsu/common/scenario/raw_source.py)）に沿った並行配列でした。この
@@ -311,8 +314,8 @@ JavaScriptは `bajutsu/templates/report.js` に足します。`toggleAll` の定
       バリデータが `capture` / `extract` を拒否することを確認します
 - [x] 内部フィールド `report_group` / `report_group_id`
       （エイリアス `_reportGroup` / `_reportGroupId`）を `Step` に追加し、両方を `_MODIFIERS`
-      へ登録します。著者が設定した値を拒否するバリデータを足し、両方を `SkipJsonSchema` にして
-      `bajutsu schema` から隠します
+      へ登録します。両方を `SkipJsonSchema` にして `bajutsu schema` から隠します
+      （値を拒否するバリデータは足しません。理由はログを参照してください）
 - [x] `expand.py` にモジュール単位のidカウンタを追加します
       （`setup` プレリュード専用の `expand_components` 呼び出しとも共有します）。`expand()`
       の再帰へ `group_ctx` /
@@ -349,11 +352,24 @@ JavaScriptは `bajutsu/templates/report.js` に足します。`toggleAll` の定
   へのすでにある対応と同じ形です。`lint.py` の `provenance_coverage` はそのままにしました。この
   関数はシナリオの最上位の `steps` しか数えておらず、`if` / `forEach` の中へも元から降りていま
   せん。`group` だけを個別に直すと、既存のこの限界に対して一貫性のない対応になってしまいます。
-- 新しいフィールドの追加で `step.py` の行数が増え、カバレッジフロア（BE-0385）がテスト漏れの
-  1分岐を検出しました。`_no_author_report_group` バリデータには、値をそのまま通す経路があり
-  ます。この経路は、フィールドが省略された場合ではなく、入力に `_reportGroup: None` を明示的に
-  含めた場合にだけ通ります。それを直接検証するテストを追加しました。新規ファイルの
-  `_group_nesting.py` は、測定どおり100％として `coverage-floors.json` に登録しました。
+- この項目の以前のバージョンでは、フィールドバリデータを追加していました。著者が指定した
+  `_reportGroup` / `_reportGroupId` を拒否するバリデータです。オープンしたPRへのCIレビューで、
+  `run` 経路自体の往復に問題が見つかりました。`redact_totp_secrets` と `load_run` は、どちらも
+  同じダンプを再検証します。そのダンプは、設定済みの `report_group` を正当に運んでいます。
+  バリデータはそのダンプも拒否していました。その結果、`group:` を含むシナリオの `run` が、
+  自分自身のエビデンスのスナップショット書き出し中に失敗していました。この項目では、そのバリ
+  データを削除しました。`SkipJsonSchema` だけで、両方のフィールドを著者向けの項目から隠します。
+  `tests/test_group_steps.py` と `tests/scenario/test_models_steps.py` が、この往復をカバー
+  します。
+- `_fold_groups` は、foldの `data-group-id` 属性を、共有された `group_id` そのものにして
+  いました。1回の `group:` 呼び出しから分かれた2つのfoldが、同じキーで描画されていました。
+  これは、失敗したグループの通常の形です。ネットワーク交信行や未実行の末尾が、1回の呼び出しを
+  2つのfoldへ分割することがあります。片方のfoldの見出しを開閉すると、もう片方の行も一緒に
+  開閉していました。同じCIレビューがこれを見つけました。キーは、行リストの中でのfold自身の
+  位置と組み合わせた値になりました。この組み合わせは、foldごとに一意です。
+  `tests/report/test_group_folding.py` の回帰テストが、これをカバーしています。
+- 新規ファイルの `_group_nesting.py` は、測定どおり100％として `coverage-floors.json` に
+  登録しました。
 
 ## 参考
 

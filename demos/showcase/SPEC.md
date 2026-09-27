@@ -292,12 +292,16 @@ the fixture for out-of-process UI a scenario must still drive.
   scenario reads the mirror after dismissing the browser, once this screen is back in the tree
 
 **Photos** (SwiftUI only; see *Alternatives* in the roadmap item) — presents the system
-`PHPickerViewController` with unlimited selection, so the confirm-tap `selectPhotos` relies on is
-always exercised. Backs `selectPhotos`, the one iOS-only DSL action gated on
-`Capability.SELECT_PHOTOS` (iOS XCUITest only). [`select_photos.yaml`](scenarios/select_photos.yaml)
-seeds the photo library with `preconditions.seedPhotos` (`erase: true` required alongside it) before
-opening the picker.
-- `perm.openPhotoPicker` — button that presents the picker
+`PHPickerViewController`. Two buttons cover the two ways the picker leaves the screen. The
+unlimited-selection button always exercises the confirm tap `_confirm_photo_selection` performs; the
+`selectionLimit = 1` button auto-dismisses the picker on the one required tap, with no confirm
+control ever shown, so it exercises that method's no-op path instead. Both back `selectPhotos`, the
+one iOS-only DSL action gated on `Capability.SELECT_PHOTOS` (iOS XCUITest only).
+[`select_photos.yaml`](scenarios/select_photos.yaml) and
+[`select_photo_single.yaml`](scenarios/select_photo_single.yaml) each seed the photo library with
+`preconditions.seedPhotos` (`erase: true` required alongside it) before opening their picker.
+- `perm.openPhotoPicker` — button that presents the unlimited-selection picker
+- `perm.openPhotoPickerSingle` — button that presents the picker with `selectionLimit = 1`
 - `perm.photos.value` — the picked count, mirrored back once the picker dismisses (0 until then)
 
 ### 5.5 Tab: Notices — `notice` namespace (long list → detail, scroll-to-element)

@@ -2632,6 +2632,59 @@ def test_select_photos_raises_when_the_coordinate_tap_is_refused() -> None:
         _driver(transport).select_photos([0], timeout=10)
 
 
+def _other_el(handle: str) -> dict[str, Any]:
+    # A collection-view cell that has not synced its identifier into the tree yet: untyped, no id.
+    return _el_wire(handle, None, None, None, ["other"], frame=(0.0, 200.0, 100.0, 100.0))
+
+
+def test_resolve_grid_cell_retries_past_a_transient_empty_snapshot() -> None:
+    # Measured on-device: right after the picker presents, a `PXGGridLayout-Info` query can find
+    # zero matches — every cell still reports as untyped `other` — even though the grid is already
+    # visible. The next query catches up.
+    query_count = 0
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        nonlocal query_count
+        if path == "/elements":
+            query_count += 1
+            if query_count == 1:
+                return _elements(_other_el("h-other"))
+            return _elements(_grid_cell("h-0", 0))
+        return _Reply(status="ok")
+
+    el = _driver(transport)._resolve_grid_cell({"id": "PXGGridLayout-Info", "index": 0}, timeout=10)
+    assert el["identifier"] == "PXGGridLayout-Info"
+    assert query_count == 2
+
+
+def test_resolve_grid_cell_raises_once_timeout_elapses() -> None:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_other_el("h-other"))
+        return _Reply(status="ok")
+
+    with pytest.raises(base.ElementNotFound):
+        _driver(transport)._resolve_grid_cell(
+            {"id": "PXGGridLayout-Info", "index": 0}, timeout=0.05
+        )
+
+
+def test_resolve_grid_cell_does_not_retry_an_ambiguous_match() -> None:
+    # Two content-distinct candidates is a real, non-transient failure (prime directive 2) — must
+    # not be treated the same as the zero-match transient case above.
+    calls: list[str] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        calls.append(path)
+        if path == "/elements":
+            return _elements(_grid_cell("h-0", 0), _grid_cell("h-1", 1))
+        return _Reply(status="ok")
+
+    with pytest.raises(base.AmbiguousSelector):
+        _driver(transport)._resolve_grid_cell({"id": "PXGGridLayout-Info"}, timeout=10)
+    assert calls == ["/elements"]  # one query only, no retry
+
+
 def test_confirm_photo_selection_is_a_noop_when_the_picker_already_dismissed_itself() -> None:
     # A single-selection grid can auto-confirm on the one tap above; a navigation bar with no
     # non-Cancel control (here: none at all) means there is nothing left to tap.
@@ -2645,6 +2698,50 @@ def test_confirm_photo_selection_is_a_noop_when_the_picker_already_dismissed_its
 
     _driver(transport)._confirm_photo_selection()
     assert calls == ["/elements"]  # queried once, tapped nothing
+
+
+def test_confirm_photo_selection_is_a_noop_when_only_the_apps_own_bar_remains() -> None:
+    # Found on-device (not by the mocked case above): a single-selection grid's auto-dismiss
+    # leaves the picker's own Cancel-bearing bar gone, but the app's underlying screen can still
+    # have its own `navigationBar`-trait element with its own non-Cancel content (a title). That
+    # bar must not be mistaken for the picker's — elimination requires a Cancel control in the bar
+    # first, so this stays a no-op instead of tapping the app's own UI.
+    calls: list[str] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        calls.append(path)
+        if path == "/elements":
+            return _elements(_nav_bar(), _done())  # non-Cancel content, but no Cancel control
+        return _Reply(status="ok")
+
+    _driver(transport)._confirm_photo_selection()
+    assert calls == ["/elements"]  # queried once, tapped nothing
+
+
+def test_confirm_photo_selection_ignores_the_apps_own_bar_when_the_picker_bar_is_still_present() -> (
+    None
+):
+    # `/elements` is one unsynchronized snapshot with no settle wait (BE-0087's settle is
+    # idb-only), so a query fired right after a selectionLimit=1 auto-confirm's *animated* dismiss
+    # can land mid-transition: the picker's own Cancel-bearing bar still in the tree alongside the
+    # app's own bar underneath. Candidates must come only from the bar(s) that themselves hold
+    # Cancel, so the app's own bar's content is never counted even while both are present at once.
+    app_bar = _el_wire(
+        "h-app-bar", None, None, None, ["navigationBar"], frame=(0.0, 200.0, 400.0, 100.0)
+    )
+    app_title = _el_wire(
+        "h-app-title", None, "Permissions", None, [], frame=(150.0, 220.0, 100.0, 20.0)
+    )
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_nav_bar(), _cancel(), _done(), app_bar, app_title)
+        sent.append((path, body))
+        return _Reply(status="ok")
+
+    _driver(transport)._confirm_photo_selection()
+    assert sent == [("/tap", {"handle": "h-done"})]  # the picker's Done, not the app's own title
 
 
 def test_confirm_photo_selection_raises_on_an_ambiguous_bar() -> None:

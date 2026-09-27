@@ -431,9 +431,11 @@ def test_html_report_folds_a_passing_group() -> None:
     assert 'class="groupname">login<' in out
     assert "2 steps" in out
     assert 'aria-expanded="false"' in out
-    # Both member rows are hidden by default (a passing group starts collapsed).
-    assert out.count("data-group-id='0'") >= 3  # heading + at least 2 member rows
-    assert "data-group-id='0' hidden" in out
+    # Both member rows are hidden by default (a passing group starts collapsed). The fold's DOM
+    # key is `{group_id}-{position}` (`_fold_groups`), not the bare `group_id` — so two fragments
+    # split from one invocation never share a `data-group-id`.
+    assert out.count("data-group-id='0-0'") >= 3  # heading + at least 2 member rows
+    assert "data-group-id='0-0' hidden" in out
 
 
 def test_html_report_expands_a_failing_group() -> None:
@@ -443,4 +445,4 @@ def test_html_report_expands_a_failing_group() -> None:
     assert not result.ok
     assert 'aria-expanded="true"' in out
     # No member row is hidden once the group contains a failure.
-    assert "data-group-id='0' hidden" not in out
+    assert "data-group-id='0-0' hidden" not in out

@@ -84,15 +84,20 @@ class _StepRunner:
         already the block's `WebContextDriver` — resetting it would silently run the step against
         the app surface underneath the WebView instead of the WebView itself.
         """
-        if step.target and self.by_target:
-            other = self.by_target.get(step.target)
+        # `resolved_target`, not `target`: a step omitting `target` under a declared `primaryTarget`
+        # resolved to the primary at load time (BE-0436). This reads the step as loaded — never
+        # `_interp_step`'s rebuilt copy, which drops that private resolution.
+        target = step.resolved_target
+        if target and self.by_target:
+            other = self.by_target.get(target)
             if other is None:
-                # `step.target` is a declared field the load-time validator already checked against
-                # `scenario.targets`, so this is a wiring defect (a target the runner never brought
-                # up), not an authoring mistake — fail loudly rather than silently run the step
-                # against whichever driver happens to be active (prime directive 2).
+                # The resolved target — the step's own `target` or the scenario's `primaryTarget` —
+                # was checked against `scenario.targets` at load time, so this is a wiring defect (a
+                # target the runner never brought up), not an authoring mistake — fail loudly rather
+                # than silently run the step against whichever driver happens to be active (prime
+                # directive 2).
                 raise RuntimeError(
-                    f"step target {step.target!r} has no live runtime; "
+                    f"step target {target!r} has no live runtime; "
                     f"declared targets: {sorted(self.by_target)}"
                 )
             # Compared against the *previous* step's own target, tracked on the shared state — not

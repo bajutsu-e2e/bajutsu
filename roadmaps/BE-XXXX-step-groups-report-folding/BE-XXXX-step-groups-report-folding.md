@@ -113,15 +113,17 @@ fields. They survive the `model_dump` / `model_validate` round trip `_interp_ste
 performs during `use` substitution ([expand.py](../../bajutsu/common/scenario/expand.py)). This
 needs no extra plumbing.
 
-An ordinary field is not enough on its own, though. `_Model`'s `extra="forbid"`
-([_base.py:37](../../bajutsu/common/scenario/models/_base.py)) rejects an unknown key. But
-`_reportGroup` and `_reportGroupId` are declared fields, not unknown ones. An author could write
-either by hand, and fake a fold. Add a field validator on both, rejecting any value other than
-`None`. `expand()` sets them through `model_copy(update=...)`. That path skips field validators, so
-the internal write still succeeds. A value arriving through ordinary `model_validate` means an
-author wrote it, and that path does not skip validators — the write fails there. Mark both
-`Annotated[..., SkipJsonSchema()]` too. `bajutsu schema` then omits them from the authoring
-surface.
+No field validator turns away a value on either field. `Annotated[..., SkipJsonSchema()]` alone
+keeps both off the authoring surface. `bajutsu schema` never shows them. `expand()` sets both
+through `model_copy(update=...)`. That makes `report_group` a *set*, non-default field once a
+`group:` scenario expands. The run path then re-validates that same dump twice.
+`redact_totp_secrets` runs on every scenario a run has finished. It runs right before the run
+writes its evidence snapshot. `load_run` reloads its own `scenario.yaml` the same way.
+`exclude_defaults=True` keeps a set field in both dumps. A validator that turns away anything but
+`None` would then turn away its own internal round trip. `serialize.py`'s `redact_totp_secrets`
+docstring records the matching issue. BE-0401 hit the same shape on `systemAlertHandling.labels`.
+An author could still write `_reportGroup` by hand and fake a fold. The schema itself never shows
+that key for them to find, though.
 
 A parallel array was the first design considered for this role, threaded alongside the existing
 `step_lines` mechanism
@@ -303,8 +305,8 @@ steps stay invisible until expansion, regardless.
 - [x] Add `group` to `_CONTROL_FLOW_ACTIONS` and confirm the existing
       `_no_modifiers_on_control_flow` validator rejects `capture` / `extract` on it
 - [x] Add the internal `report_group` / `report_group_id` fields, aliased `_reportGroup` /
-      `_reportGroupId`, to `Step` and register both in `_MODIFIERS`; add a validator rejecting any
-      author-supplied value, and mark both `SkipJsonSchema` so `bajutsu schema` omits them
+      `_reportGroupId`, to `Step` and register both in `_MODIFIERS`; mark both `SkipJsonSchema` so
+      `bajutsu schema` omits them (no rejecting validator — see Log for why)
 - [x] Add a module-wide id counter to `expand.py`, shared across every `expand_components` call
       (including a setup prelude's own call); extend `expand()`'s recursion with `group_ctx` /
       `group_id`, expand `group`, propagate both through `use` substitution, and raise when a
@@ -340,12 +342,21 @@ this item's scope; a separate GitHub issue tracks it
   counts a scenario's top-level `steps` alone, and it already skips `if` and `forEach` too. Teaching
   it about `group` alone would patch one case of that limitation and leave `if` and `forEach`
   inconsistent; closing the limitation as a whole is outside this item's scope.
-- The new `_no_author_report_group` validator added a branch in
-  `bajutsu/common/scenario/models/steps/step.py` that no test exercised, which dropped the file
-  below its per-file coverage floor (BE-0385). That branch is the validator's pass-through path: an
-  explicit `_reportGroup: None` reaches it alone, because pydantic never validates an omitted
-  field. A direct test now covers it. `coverage-floors.json` gained one new entry:
-  `_group_nesting.py`, at its measured 100 percent.
+- An earlier version of this item added a field validator. It turned away any author-supplied
+  `_reportGroup` / `_reportGroupId`. A CI review pass on the opened PR found a break in the run
+  path's own round trip: `redact_totp_secrets` and `load_run` both re-validate a dump. That dump
+  legitimately carries a set `report_group`. The validator turned away that dump too, so `run` on
+  any `group:` scenario broke while it wrote its own evidence snapshot. This item drops that
+  validator now. `SkipJsonSchema` alone keeps both fields off the authoring surface.
+  `tests/test_group_steps.py` and `tests/scenario/test_models_steps.py` now cover that round trip.
+- `_fold_groups` keyed a fold's DOM `data-group-id` on the shared `group_id`. Two folds split from
+  one `group:` invocation then rendered with the same key. That is the normal shape of a failing
+  group. A network-exchange row or a not-run tail can break one invocation into two folds.
+  Toggling one fragment's heading also toggled the other's rows. The same CI review pass found
+  this. The key is now the group id paired with the fragment's own position in the row list. That
+  pairing is unique per fragment. A regression test in `tests/report/test_group_folding.py` covers
+  it.
+- `coverage-floors.json` gained one new entry: `_group_nesting.py`, at its measured 100 percent.
 
 ## References
 
