@@ -56,14 +56,12 @@ def _check_step_target(step: Step, *, known: set[str], inside_web: bool) -> None
             )
         return
     if step.use is not None and len(known) >= 2:
-        # `expand_components` replaces this step wholesale with the component's own steps,
-        # discarding this step's own `target` — a component author's steps would then decide the
-        # target instead of the value this `use:` step names, silently, rather than the required
-        # field it looks like. Refused until a later BE-0428 unit decides whether/how `target`
-        # propagates into an expansion.
+        # `expand_components` replaces this step wholesale with the component's own steps, so
+        # `Step` refuses a `target` on it — yet two or more targets make one required. Refused
+        # until a later BE-0428 unit decides whether/how `target` propagates into an expansion.
         raise ValueError(
             f"{context}: use: is not yet supported when the scenario declares "
-            f"{len(known)} targets — its own target would be discarded by expansion"
+            f"{len(known)} targets — a use: step cannot carry the target they require"
         )
     _check_target(step.target, known=known, context=context)
 
@@ -89,9 +87,10 @@ def _check_target_requirements(scenario: Scenario) -> None:
     native driver). An `Assertion` reached through an inline `assert:` list, an `if`'s
     `condition`, or an `interrupts` entry's `condition` must never set `target` — only one reached
     through the scenario's top-level `expect` block may. Two open questions this item has not yet
-    resolved fail closed instead of guessing: a `use:` step (its own `target` would be discarded by
-    expansion) and a non-empty `interrupts` (its `condition` has no target of its own to poll) are
-    both refused outright once the scenario declares two or more targets.
+    resolved fail closed instead of guessing: a `use:` step (it takes no modifiers, so it cannot
+    carry the `target` two targets require) and a non-empty `interrupts` (its `condition` has no
+    target of its own to poll) are both refused outright once the scenario declares two or more
+    targets.
     """
     known = set(scenario.targets)
     if len(known) != len(scenario.targets):

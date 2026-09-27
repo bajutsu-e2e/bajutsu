@@ -1247,10 +1247,9 @@ work.
 ### Limits
 
 Two open questions this item hasn't resolved fail closed instead of guessing. Both apply once a
-scenario declares two or more targets. The loader refuses a `use:` step outright.
-`expand_components` replaces it wholesale with the component's own steps. That discards the `use:`
-step's own `target`. Expansion would otherwise drop that required-looking field with no warning.
-The loader refuses a non-empty
+scenario declares two or more targets. The loader refuses a `use:` step outright. A `use` step
+takes no modifiers, so it cannot carry the `target` every step then needs. The loader refuses a
+non-empty
 [`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) too. That holds regardless
 of whether its own `steps` and `condition` would otherwise pass. Which target its `condition` polls
 has no answer yet.
@@ -1501,6 +1500,8 @@ A small templating and macro layer wraps the core grammar. It runs **at load tim
 ### Components (`use` → reusable steps)
 
 A **component** is a list of `params` and a list of `steps` that reference them as `${params.<name>}`. A `use` step invokes it, binding params via `with`. `use` is a **compile-time macro**: `expand_components` (`scenario/expand.py`) replaces it with the component's substituted steps before the run. Expansion is recursive — a component may itself `use` another, up to depth 25. It raises an error on a missing or unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle. No `use` step survives into the run, so determinism is unaffected. Expansion reaches a scenario's own `steps` and the recovery `steps` of each [`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) entry.
+
+A `use` step takes no modifiers. The loader refuses a `use` step that also sets any of `capture` / `extract` / `name` / `from` / `target`. Expansion replaces the whole step, so it would otherwise drop those fields with no warning.
 
 A component lives in **a file of its own**, reusable across the whole suite:
 
