@@ -508,10 +508,10 @@ targets:
 | `setClipboard` | `setClipboard: { text: "..." }` | ペースト操作のため Simulator のペーストボードにテキストを投入する |
 | `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | 決定的なスクリーンショットのためステータスバーを上書きする |
 | `clearStatusBar` | `clearStatusBar: {}` | ステータスバーの上書きを解除する（ライブ表示に戻す） |
-| `use` | `use: { component: <file>, with?: {...} }` | 再利用コンポーネントの steps を展開する。コンパイル時マクロ（[再利用](#再利用とデータ駆動とタグ)） |
+| `use` | `use: { component: <file>, with?: {...} }` | 再利用コンポーネントの steps を展開する。コンパイル時マクロ（[再利用](#再利用とデータ駆動とタグ)）。**修飾子を取らない**：`capture` / `extract` / `name` / `from` / `target` はいずれも拒否される |
 | `web` | `web: { within: <Selector>, steps: [...] }` | WebView の DOM コンテキストに入ります。`within` がホストの `WKWebView` をネイティブに解決し、入れ子の `steps` はネイティブツリーではなく正規化された DOM を対象にします（[後述](#webwebview-の-dom-コンテキストに入る)） |
 
-修飾子:
+修飾子（`use` ステップには付きません。上表のとおり修飾子を取りません）:
 
 - `capture: [<token>...]`：このステップだけの証跡（[evidence](evidence.md#b-インライン証跡)）。
 - `name: <str>`：ステップ ID（証跡の出力先ディレクトリ名やレポート表示に使う）。省略時は `step<i>`。
@@ -1276,7 +1276,7 @@ PyYAML（YAML 1.1）は `on`/`off`/`yes`/`no` を真偽値に解決します。`
 
 ## `from`（来歴）
 
-`from:` は、**ある構成要素がどの自然言語フレーズから記録されたか**を残します（BE-0044）。任意の文字列で、シナリオ（元のゴール）、各ステップ、各 `expect` アサーション、各 `capturePolicy` ルールという 4 つのレベルに付きます。これにより、レビュアーは各部分が*なぜ*存在するのかを見て、`record` が意図を忠実に正規化できているかを判断できます。
+`from:` は、**ある構成要素がどの自然言語フレーズから記録されたか**を残します（BE-0044）。任意の文字列で、シナリオ（元のゴール）、`use` を除く各ステップ（`use` は修飾子を取りません）、各 `expect` アサーション、各 `capturePolicy` ルールという 4 つのレベルに付きます。これにより、レビュアーは各部分が*なぜ*存在するのかを見て、`record` が意図を忠実に正規化できているかを判断できます。
 
 ```yaml
 - name: 設定を開いて再生成する

@@ -745,10 +745,10 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `setClipboard` | `setClipboard: { text: "..." }` | seed the Simulator pasteboard for a paste flow |
 | `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | override the status bar for deterministic screenshots |
 | `clearStatusBar` | `clearStatusBar: {}` | remove status-bar overrides (restore the live bar) |
-| `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)) |
+| `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)); **takes no modifiers** — `capture` / `extract` / `name` / `from` / `target` are all rejected |
 | `web` | `web: { within: <Selector>, steps: [...] }` | enter a WebView's DOM: `within` resolves the host `WKWebView` natively, and the nested `steps` address its normalized DOM instead of the native tree ([below](#web-entering-a-webviews-dom)) |
 
-Modifiers:
+Modifiers (none of them on a `use` step, which takes none — see the table row above):
 
 - `capture: [<token>...]` — evidence for this step only ([evidence](evidence.md#b-inline-evidence)).
 - `name: <str>` — the step id (the evidence output directory name · report label). Defaults to `step<i>`.
@@ -1692,9 +1692,9 @@ trigger key `on:` from becoming `True`, Bajutsu's YAML loader (`common/_yaml.py`
 ## `from` (provenance)
 
 `from:` records **which natural-language phrase a construct was recorded from** (BE-0044). It is an
-optional string attached at four levels — the scenario (the original goal), each step, each `expect`
-assertion, and each `capturePolicy` rule — so a reviewer can see *why* each part exists and judge
-whether `record` normalized the intent faithfully.
+optional string attached at four levels — the scenario (the original goal), each step but `use`
+(which takes no modifiers), each `expect` assertion, and each `capturePolicy` rule — so a reviewer
+can see *why* each part exists and judge whether `record` normalized the intent faithfully.
 
 ```yaml
 - name: open settings and reindex
