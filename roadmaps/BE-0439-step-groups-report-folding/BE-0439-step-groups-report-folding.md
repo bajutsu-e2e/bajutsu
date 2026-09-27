@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-step-groups-report-folding-ja.md)
+**English** · [日本語](BE-0439-step-groups-report-folding-ja.md)
 
-# BE-XXXX — Group steps into named sections, folded in report.html
+# BE-0439 — Group steps into named sections, folded in report.html
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-step-groups-report-folding.md) |
+| Proposal | [BE-0439](BE-0439-step-groups-report-folding.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0439") |
 | Implementing PR | [#2059](https://github.com/bajutsu-e2e/bajutsu/pull/2059) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->

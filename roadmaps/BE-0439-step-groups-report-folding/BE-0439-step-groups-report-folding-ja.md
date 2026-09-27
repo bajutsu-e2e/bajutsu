@@ -1,14 +1,14 @@
-[English](BE-XXXX-step-groups-report-folding.md) · **日本語**
+[English](BE-0439-step-groups-report-folding.md) · **日本語**
 
-# BE-XXXX — ステップを名前付き区画にまとめ、report.htmlで折りたたむ
+# BE-0439 — ステップを名前付き区画にまとめ、report.htmlで折りたたむ
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-step-groups-report-folding-ja.md) |
+| 提案 | [BE-0439](BE-0439-step-groups-report-folding-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0439") |
 | 実装 PR | [#2059](https://github.com/bajutsu-e2e/bajutsu/pull/2059) |
 | トピック | Scenario authoring features |
 <!-- /BE-METADATA -->
