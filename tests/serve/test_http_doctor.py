@@ -4,9 +4,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from _shared import _post, _serve, project
 
 from bajutsu import serve as srv
+from bajutsu.common.capability.preflight import Check
+
+# A playwright-backend doctor check always calls preflight.doctor_environment_checks(), whose
+# default probes do a *real* `from playwright.sync_api import sync_playwright` when the `web` extra
+# happens to be installed — leaking the module into sys.modules for the rest of the test process
+# (breaking test_playwright.py's "importing the driver doesn't load playwright" invariant) and, once
+# `ok` is true, sending doctor on to query a real screen (there is no screen_query seam through the
+# HTTP endpoint). Every playwright-backend test below stubs it out so the check assembly never
+# touches the real dependency, mirroring test_doctor_cli.py / test_doctor_ops.py.
+_NO_BROWSER = [Check("chromium browser", False, "not installed (stubbed)")]
 
 
 def test_doctor_returns_checks_for_target(tmp_path: Path) -> None:
@@ -110,8 +121,13 @@ def test_doctor_fake_backend_returns_ok(tmp_path: Path) -> None:
         server.server_close()
 
 
-def test_doctor_web_target_missing_base_url(tmp_path: Path) -> None:
+def test_doctor_web_target_missing_base_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A web target without baseUrl fails the config check."""
+    monkeypatch.setattr(
+        "bajutsu.common.capability.preflight.doctor_environment_checks", lambda *a, **k: _NO_BROWSER
+    )
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     cfg = tmp_path / "bajutsu.config.yaml"
@@ -163,8 +179,11 @@ def test_doctor_score_present_for_fake_backend(tmp_path: Path) -> None:
         server.server_close()
 
 
-def test_doctor_score_null_when_unrunnable(tmp_path: Path) -> None:
+def test_doctor_score_null_when_unrunnable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """When the runnability gate fails there is no reachable screen, so the score is null."""
+    monkeypatch.setattr(
+        "bajutsu.common.capability.preflight.doctor_environment_checks", lambda *a, **k: _NO_BROWSER
+    )
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     cfg = tmp_path / "bajutsu.config.yaml"
@@ -201,8 +220,13 @@ def test_doctor_rejects_invalid_backend(tmp_path: Path) -> None:
         server.server_close()
 
 
-def test_doctor_web_target_with_base_url(tmp_path: Path) -> None:
-    """A web target with baseUrl passes the config check (runnability may still fail)."""
+def test_doctor_web_target_with_base_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A web target with baseUrl passes the config check (runnability is stubbed to fail — there is
+    no screen_query seam through the HTTP endpoint, so `ok` must stay False to keep this from
+    cascading into a real screen query)."""
+    monkeypatch.setattr(
+        "bajutsu.common.capability.preflight.doctor_environment_checks", lambda *a, **k: _NO_BROWSER
+    )
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
     cfg = tmp_path / "bajutsu.config.yaml"

@@ -234,7 +234,10 @@ showcaseの`PermissionsView.swift`(SwiftUIのみ。UIKit側への展開は範囲
 `UIViewControllerRepresentable`でラップしたものです。ミラーされた`Text`
 (`perm.photos.value`)が選択件数を報告します。両方のIDは既存の`perm`名前空間にそのまま
 収まるため、`idNamespaces`の変更は不要です。
-`demos/showcase/fixtures/photos/`には判別できるフィクスチャ画像(単色)を数枚用意します。
+`demos/showcase/scenarios/fixtures/photos/`には判別できるフィクスチャ画像(単色)を数枚用意します。
+置き場所は`scenarios/`の兄弟ディレクトリではなく、その内側です。`seedPhotos`の参照も他の
+シナリオ参照と同じく、suite のルートに閉じ込められます
+([BE-0174](../BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment-ja.md))。
 `demos/showcase/scenarios/select_photos.yaml`が`preconditions: { erase: true, seedPhotos: [...]
 }`(Unit 1のバリデータが`seedPhotos`と`erase: true`の同時指定を求めます)でこれらを投入し、
 `perm.openPhotoPicker`をタップし、`selectPhotos: { indices: [0, 1] }`を実行し、

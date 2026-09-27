@@ -112,6 +112,7 @@ Scenario ::= {
   from?:           string,                  # 由来: record がこのシナリオを起こした元の自然言語のゴール（BE-0044）
   tags?:           list(string),            # 既定 []  — 選択（§6.4）
   targets?:        list(string),            # 既定 []  — このシナリオが操作するすべてのターゲット（BE-0428）。各エントリは `targets.<name>` の config ユニットを指す。run は宣言された各ターゲットを起動し、そのステップを1回の決定的な実行の中で組み合わせて実行する（§4）
+  primaryTarget?:  string,                  # `target` を省略したステップとトップレベルの `expect` エントリが走る先（BE-0436）。runner がすでに主ターゲットとして扱う `targets[0]` と一致しなければならない（§4）
   data?:           list(map(string,string)),# インライン行  ┐ XOR
   dataFile?:       string,                  # CSV パス      ┘ （§6.3）
   preconditions?:  <Preconditions>,         # 既定 {}
@@ -175,7 +176,7 @@ StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>)
                 # `name` はダウンストリームで実際のファイルシステムパスの一部になる（run の
                 # step_id、エディタの証跡参照）。パス区切り文字、または単独の「.」「..」はロードエラー
                 # `target`: このステップが scenario.targets のどれを操作するか（BE-0428）。要否は
-                # len(scenario.targets) で決まる（§4）。web ブロック内に入れ子になったステップでは
+                # len(scenario.targets) と scenario.primaryTarget で決まる（§4）。web ブロック内に入れ子になったステップでは
                 # 拒まれる。そのステップは、囲んでいる web ステップがすでに解決したターゲットへ常に
                 # 走るため
 Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # 既定 "value"
@@ -397,7 +398,8 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Trigger`（`capturePolicy[].on`） | `action` / `event` / `result` の **ちょうど 1 つ**。`idMatches` は `action` と **併用時のみ** | `scenario/models/evidence.py` |
 | `Scenario` | `data` と `dataFile` は **両方不可** | `scenario/models/scenario.py` |
 | `Scenario.targets` | 同じ名前の重複不可（BE-0428） | `scenario/models/scenario/_targets.py` |
-| `Step.target` / `Assertion.target`（`expect` のみ） | `len(targets) ≤ 1` なら省略可、または宣言済みの1つと一致。`len(targets) ≥ 2` なら**必須**（`if`/`forEach`/`web` ラッパーも含み、末端のアクションだけではない）で、宣言済みターゲットの1つを名指し。`web` ブロック内に入れ子になったステップと、インラインの `assert:` リスト・`if` の `condition`・`interrupts` エントリの `condition` を通して届く `Assertion` では**拒否**（BE-0428） | `scenario/models/scenario/_targets.py` |
+| `Scenario.primaryTarget` | 省略するか、`targets[0]` と一致。`targets` が空なら**拒否**（BE-0436） | `scenario/models/scenario/_targets.py` |
+| `Step.target` / `Assertion.target`（`expect` のみ） | `len(targets) ≤ 1` なら省略可、または宣言済みの1つと一致。`len(targets) ≥ 2` で `primaryTarget` が未設定なら**必須**（`if`/`forEach`/`web` ラッパーも含み、末端のアクションだけではない）で、宣言済みターゲットの1つを名指し。`len(targets) ≥ 2` で `primaryTarget` を設定していれば**省略可**で、省略したものは入れ子の深さによらず主ターゲットに対して走る（BE-0436）。`web` ブロック内に入れ子になったステップと、インラインの `assert:` リスト・`if` の `condition`・`interrupts` エントリの `condition` を通して届く `Assertion` では**拒否**（BE-0428） | `scenario/models/scenario/_targets.py` |
 | `Step.use` / `Scenario.interrupts`（`len(targets) ≥ 2` のみ） | **頭から拒否** — `use:` ステップ（展開で自身の `target` が失われる）と、空でない `interrupts`（`condition` に自身がポーリングするターゲットがない）は、どちらも本アイテムが先送りにした未決問題であり、意味の不明確なまま受理せず拒否（BE-0428） | `scenario/models/scenario/_targets.py` |
 | すべてのマッピング | **未知キー不可**（`extra="forbid"`） | `scenario/models/_base.py` |
 
