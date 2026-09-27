@@ -577,7 +577,8 @@ def _is_load_hooks_call(value: ast.expr) -> bool:
 
 
 def _assigned_rhs(stmt: ast.AST, name: str) -> ast.expr | None:
-    """The right-hand side of stmt, if it is a plain or annotated assignment to 'name'."""
+    """The right-hand side of stmt, if it is a plain, annotated, or augmented assignment to
+    'name'."""
     if isinstance(stmt, ast.Assign) and any(
         isinstance(t, ast.Name) and t.id == name for t in stmt.targets
     ):
@@ -589,7 +590,35 @@ def _assigned_rhs(stmt: ast.AST, name: str) -> ast.expr | None:
         and stmt.value is not None
     ):
         return stmt.value
+    if (
+        isinstance(stmt, ast.AugAssign)
+        and isinstance(stmt.target, ast.Name)
+        and stmt.target.id == name
+    ):
+        # 'hooks += [<request value>]' rebinds the local exactly as a plain assignment would, so
+        # it faces the same _load_hooks(...) check as any other assignment.
+        return stmt.value
     return None
+
+
+def _mentions_name_unsafely(stmt: ast.AST, name: str) -> bool:
+    """True if stmt could rebind or mutate 'name' in a shape _assigned_rhs can't verify: a
+    mutating method call ('hooks.append(...)') or a compound assignment target
+    ('hooks, other = ...') that _assigned_rhs's plain ast.Name check would skip over."""
+    if (
+        isinstance(stmt, ast.Call)
+        and isinstance(stmt.func, ast.Attribute)
+        and isinstance(stmt.func.value, ast.Name)
+        and stmt.func.value.id == name
+    ):
+        return True
+    if isinstance(stmt, ast.Assign):
+        for target in stmt.targets:
+            if isinstance(target, ast.Name):
+                continue
+            if any(isinstance(n, ast.Name) and n.id == name for n in ast.walk(target)):
+                return True
+    return False
 
 
 def test_hooks_construction_site_sources_only_from_load_hooks() -> None:
@@ -597,9 +626,10 @@ def test_hooks_construction_site_sources_only_from_load_hooks() -> None:
     # constructor-only, so a request- or config-sourced value could only reach a provider at its
     # one construction site instead: batch_bootstrap.register_batch_providers. Walk that module
     # and confirm 'hooks=' there is always _load_hooks(...)'s return value — directly, or via a
-    # local variable whose every assignment comes from it, so a later reassignment from a
-    # request- or config-sourced value can't slip past a check that only looked at one assignment.
-    # A hook spec is a 'module:factory' string that gets imported and called, so letting a request body
+    # local variable whose every plain/annotated/augmented assignment comes from it and that is
+    # never mutated or rebound any other way, so neither a later reassignment nor an appended
+    # entry from a request- or config-sourced value can slip past a narrower check. A hook spec
+    # is a 'module:factory' string that gets imported and called, so letting a request body
     # choose hooks would be arbitrary code execution in the process holding the run's AWS role
     # (BE-0435, the same trust boundary BE-0432 drew for pre_test_commands).
     tree = ast.parse(textwrap.dedent(inspect.getsource(batch_bootstrap)))
@@ -640,6 +670,12 @@ def test_hooks_construction_site_sources_only_from_load_hooks() -> None:
         assert all(_is_load_hooks_call(expr) for expr in assigned), (
             f"every assignment to hooks= local variable {value.id!r} must come from "
             "_load_hooks(...), never a request- or config-sourced value"
+        )
+        # A mutating call (hooks.append(...)) or a compound target (hooks, other = ...) rebinds
+        # or extends the local in a shape _assigned_rhs can't verify — treat either as unproven.
+        assert not any(_mentions_name_unsafely(stmt, value.id) for stmt in ast.walk(enclosing)), (
+            f"hooks= local variable {value.id!r} must never be mutated via a method call or "
+            "rebound via a compound assignment target — only assigned from _load_hooks(...)"
         )
 
 
