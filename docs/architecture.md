@@ -545,9 +545,13 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 - **Target groups** (BE-0437): pure authoring sugar over BE-0428's per-step `target` — a step's new
   `steps: list[Step]` field names one target once for a whole nested run of steps instead of
   repeating `target:` on each of them. A load-time pass (`_expand_target_groups`) replaces every
-  group with its own stamped, flat children before validation and execution ever see it, so the
-  runner, the report, and the CLI are unchanged: `bajutsu run` never observes a target group, only
-  the same per-step `target` form BE-0428 already runs
+  group with its own stamped, flat children before the per-step `target` rule validates them, so
+  nothing that executes a step learns the new shape: `bajutsu run` never observes a target group,
+  only the same per-step `target` form BE-0428 already runs. The pass runs at the same four points
+  `_check_target_requirements` does — `Scenario`'s own validator, plus `apply_setups`,
+  `expand_components`, and the pipeline's config-level `before`/`after` folding, none of which
+  Pydantic re-validates — and `bajutsu run`'s CLI compares its step-line count against the raw
+  YAML rather than a pre-expansion snapshot, since expansion changes a scenario's step count
 - Backend-crash recovery in the run pipeline: a mid-scenario backend crash
   (`base.BackendCrashError`, backend-agnostic) discards the dead lease and re-runs the whole
   scenario on a freshly respawned one, bounded by a retry count (`crash_retries`, default 1) and an
