@@ -5,8 +5,11 @@
 # id-parity claim proven directly, not by two coincidentally equal literals).
 #
 # Needs an iOS Simulator (showcase-swiftui) and an Android emulator (showcase-compose) leased at
-# once, so — like browser.yaml / app.yaml — it has its own lane and is excluded from each single-
-# platform bulk sweep by its `multi-target` tag: `make -C demos/showcase e2e-multi-target`.
+# once — no CI runner here brings up both together — so it is excluded from each single-platform
+# bulk sweep by its `multi-target` tag (see demos/showcase/Makefile's own comment on that tag) and
+# run directly instead, once both devices are up: `bajutsu run --scenario
+# demos/showcase/scenarios/cross_platform_search.yaml --config demos/showcase/showcase.config.yaml`
+# (self-declaring `targets`, so no `--target` is needed).
 - name: search narrows the catalog identically on iOS and Android
   tags: [multi-target]
   targets: [showcase-swiftui, showcase-compose]

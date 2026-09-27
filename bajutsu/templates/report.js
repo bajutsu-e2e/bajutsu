@@ -317,6 +317,33 @@
   ROOT.querySelectorAll('details.scn').forEach(function(d){
     d.addEventListener('toggle', function(){ if(d.open) syncResultHeight(d); });
   });
+  // Which declared target names this scenario's *other* players (BE-0428's extra targets, tagged
+  // on their own `Artifact`) already claim — everything a row could carry that is NOT the
+  // primary's own name. The primary's own player is always `data-target=""` (an `Artifact`'s
+  // `target` is only ever set for an *extra* target — see `artifact.py`), but a row's own
+  // `data-target` is the scenario's declared target name for every step, primary included, once
+  // the scenario declares two or more (`StepRunner` never leaves it blank past that point — only a
+  // scenario declaring none at all leaves every row `""` too, the case this set stays empty for).
+  // So a row belongs to the primary's player exactly when its own target is *not* one of these.
+  function ownedTargets(scn){
+    var owned = {};
+    if(scn){
+      scn.querySelectorAll('.player').forEach(function(q){
+        var t = q.getAttribute('data-target') || '';
+        if(t) owned[t] = true;
+      });
+    }
+    return owned;
+  }
+  function rowsFor(scn, target){
+    var owned = ownedTargets(scn);
+    return Array.prototype.slice.call(scn ? scn.querySelectorAll('tr.srow[data-target]') : []).filter(
+      function(r){
+        var rt = r.getAttribute('data-target') || '';
+        return target ? rt === target : !owned[rt];
+      }
+    );
+  }
   // Every scenario's videos share one group here (BE-0428): keyed by the `.scn` element, so a
   // click, seek, or play/pause on any one of a multi-target scenario's recordings can find its
   // siblings and follow — the group is looked up live inside each player's own listeners below,
@@ -334,15 +361,11 @@
     // video's own timeline" (BE-0428).
     var target = p.getAttribute('data-target') || '';
     var offset = parseFloat(p.getAttribute('data-offset')); if(isNaN(offset)) offset = 0;
-    // This player's own rows: every `tr.srow[data-t]` naming the same target, primary included (a
-    // single-target scenario's rows all carry `data-target=""`, matching its one player). Scoping
-    // ticks/bands/highlighting to these — instead of every row in the scenario — is what keeps a
-    // second target's steps off the first target's scrubber and vice versa.
-    function myRows(){
-      return Array.prototype.slice.call(scn ? scn.querySelectorAll('tr.srow[data-t]') : []).filter(
-        function(r){ return (r.getAttribute('data-target') || '') === target; }
-      );
-    }
+    // This player's own rows (`rowsFor`, above) — every row naming this exact target, or, for the
+    // primary's own player, every row no *other* player already claims. Scoping ticks/bands/
+    // highlighting to these — instead of every row in the scenario — is what keeps a second
+    // target's steps off the first target's scrubber and vice versa.
+    function myRows(){ return rowsFor(scn, target); }
     if(scn){
       var group = scnGroups.get(scn);
       if(!group){ group = []; scnGroups.set(scn, group); }
@@ -374,11 +397,16 @@
       if(!scn) return;
       var group = scnGroups.get(scn);
       if(!group || group.length < 2) return;
-      var refTime = v.currentTime - offset;
+      // A position is `wallClock - anchor` (the same subtraction `video_seconds` in panels.py
+      // uses for a step's own `data-t`), so the wall-clock instant behind *this* video's current
+      // position is `currentTime + offset` (offset already being `thisAnchor - referenceAnchor`),
+      // and a sibling's own position at that same instant is that instant minus the sibling's own
+      // offset — `currentTime + offset - sib.offset`, not the other sign.
+      var wallClock = v.currentTime + offset;
       var playing = !v.paused;
       group.forEach(function(sib){
         if(sib.v === v) return;
-        var t = refTime + sib.offset;
+        var t = wallClock - sib.offset;
         t = isFinite(sib.v.duration) && sib.v.duration > 0 ? Math.max(0, Math.min(sib.v.duration, t)) : Math.max(0, t);
         if(Math.abs(sib.v.currentTime - t) > 0.08){ sib.v._synced = true; sib.v.currentTime = t; }
         if(playing && sib.v.paused){ sib.v._synced = true; sib.v.play().catch(function(){}); }
@@ -562,14 +590,13 @@
     var box = scn.querySelector('.rich-scroll');
     // One pass per player rather than per scenario (BE-0428): each recording only ever seeks
     // itself and only ever highlights its own target's rows — a click on a web step never moves
-    // the iOS recording's playhead, only (via `syncSiblings` above) follows it there. A row's own
-    // target ("" included) is what ties it to the one player it belongs to.
+    // the iOS recording's playhead, only (via `syncSiblings` above) follows it there. `rowsFor`
+    // (above) is what ties a row to the one player it belongs to, including the primary's own,
+    // whose player carries no target name of its own to match against.
     scn.querySelectorAll('.player').forEach(function(p){
       var v = p.querySelector('video'); if(!v) return;
       var target = p.getAttribute('data-target') || '';
-      var rows = Array.prototype.slice.call(scn.querySelectorAll('tr.srow[data-target]')).filter(
-        function(r){ return r.getAttribute('data-target') === target; }
-      );
+      var rows = rowsFor(scn, target);
       if(!rows.length) return;
       var lastCur = null;
       rows.forEach(function(r){
