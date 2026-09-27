@@ -352,8 +352,8 @@ class PlaywrightDriver:
         # suppress above wouldn't cover it.
         # `_pw`/`_browser` are always set (or cleared) together — see the constructor and
         # `relaunch` — so this single check also covers `_pw`. Resolved only inside it: an injected
-        # test page has nothing to close and must not trigger Playwright's own lazy import (BE-0300
-        # invariant; see test_playwright.py's test_importing_module_does_not_load_playwright).
+        # test page has nothing to close and must not trigger Playwright's own lazy import (the
+        # invariant test_playwright.py's test_importing_module_does_not_load_playwright pins).
         if self._browser is not None:
             pw_errors = _playwright_error_types()
             with contextlib.suppress(*pw_errors):
