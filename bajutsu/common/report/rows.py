@@ -24,6 +24,20 @@ from bajutsu.common.report.richtext import (
     _step_desc_parts,
 )
 
+
+def _anchor_for(r: RunResult, target: str) -> float:
+    """Which video a step's own recording-relative offset is measured against (BE-0428).
+
+    `r.video_anchor_s` is the primary's own anchor and stays the answer for a step naming no target
+    (a single-target run), or naming the primary itself (its own video, no other target's own
+    anchor to prefer, and the key `target_video_anchors` never carries). Any other declared target
+    falls back the same way when it recorded no video of its own: better a step lining up on the
+    primary's timeline than a `0.0` anchor seeking every one of that target's steps to the very
+    start of a recording that documents a different device's screen entirely.
+    """
+    return r.target_video_anchors.get(target, r.video_anchor_s)
+
+
 # --- detail / row data (the merged Result table) ---
 
 
@@ -415,7 +429,7 @@ def _merged_rows(
         if out is None:
             skipped.append(_step_skip_row(i, step_def, shown_from[i], line(i)))
         else:
-            at = video_seconds(out.started_at, video_anchor_s=r.video_anchor_s)
+            at = video_seconds(out.started_at, video_anchor_s=_anchor_for(r, out.target))
             timed.append(
                 (at, 0, _step_run_row(i, step_def, out, run_dir, at, shown_from[i], line(i)))
             )
@@ -431,7 +445,7 @@ def _merged_rows(
 def _phase_rows(
     outcomes: list[Any],
     plan: list[dict[str, Any]],
-    video_anchor_s: float,
+    r: RunResult,
     run_dir: Path | None,
 ) -> list[dict[str, Any]]:
     """A `before` / `after` phase's step rows (BE-0392), in the order the phase ran them.
@@ -455,7 +469,7 @@ def _phase_rows(
         if out is None:
             rows.append(_step_skip_row(i, step_def, from_))
             continue
-        at = video_seconds(out.started_at, video_anchor_s=video_anchor_s)
+        at = video_seconds(out.started_at, video_anchor_s=_anchor_for(r, out.target))
         rows.append(_step_run_row(i, step_def, out, run_dir, at, from_))
     return rows
 
@@ -501,7 +515,7 @@ def _after_rows(
             else:
                 out = r.after_outcomes[cursor]
                 cursor += 1
-                at = video_seconds(out.started_at, video_anchor_s=r.video_anchor_s)
+                at = video_seconds(out.started_at, video_anchor_s=_anchor_for(r, out.target))
                 row = _step_run_row(i, step_def, out, run_dir, at, shown_from[i])
                 row["num"] = f"{on}·{out.index}"
                 stopped = not out.ok

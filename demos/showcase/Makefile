@@ -9,7 +9,7 @@
 	run-swiftui-noax run-uikit-noax doctor record ui-test ui-test-coverage \
 	vrt vrt-approve vrt-swiftui vrt-swiftui-approve vrt-uikit vrt-uikit-approve \
 	e2e-visual e2e-visual-approve e2e-network e2e-browser e2e-savepassword \
-	e2e-savepassword-native e2e-cross-app \
+	e2e-savepassword-native e2e-cross-app e2e-multi-target-web \
 	flutter-build flutter-android-build flutter-android-noax-build \
 	run-flutter run-flutter-android clean
 
@@ -142,6 +142,20 @@ runner-build-device:
 # `swiftui` (scenarios/picker_wheel.yaml), which drives the SHOWCASE_PICKERS wheel-picker screen only
 # the SwiftUI app renders; the SwiftUI lane keeps it. Backend preflight cannot stand in for the tag —
 # it rejects a backend that lacks a capability, not an app that lacks a screen.
+# `multi-target` (cross_platform_search.yaml, cross_platform_app_web.yaml, BE-0428) is excluded for
+# the same "this file has its own lane" reason: each declares `targets` beyond showcase-swiftui —
+# an Android emulator or the `web` target's own server, neither of which this bulk lane brings up —
+# and, unlike a single-target scenario, `--target showcase-swiftui` does not stop either from being
+# discovered and launched, since it only has to name one of the declared targets.
+# `e2e-multi-target-web` below names cross_platform_app_web.yaml explicitly, with the `web` server
+# it needs already up — a self-contained lane, one Mac, no second device. cross_platform_search.yaml
+# needs an Android emulator too, and no CI runner here brings up a Simulator and an emulator
+# together (the iOS lanes are macOS-only, the Android lane's own `android-e2e.yml` Linux-only), so it
+# has no lane of its own yet. With both devices already up, run it directly — `bajutsu run
+# --scenario demos/showcase/scenarios/cross_platform_search.yaml --config demos/showcase/
+# showcase.config.yaml` (self-declaring `targets`, so no `--target` is needed) — and see `bajutsu
+# run --help` / docs/cli.md for how to point each declared target's own actuator at its own device
+# when more than "whatever's already booted / the sole attached adb device" is needed.
 # Prereqs: a booted simulator, `make runner-build`.
 # Extracts the UDID from the parenthesized group immediately before "(Booted)" rather than the
 # first 36-char hex-ish run on the line: a device whose display name was rewritten to include a
@@ -156,9 +170,9 @@ SIM ?= $(shell xcrun simctl list devices booted | sed -nE 's/.*\(([0-9A-F-]{36})
 # channel to hide the markers for its capture, and one added here would fail until the build gains
 # the setting.
 run-swiftui: swiftui-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,browser,app --config $(CONFIG) --touch-markers
+	cd $(ROOT) && uv run bajutsu run --target showcase-swiftui --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,browser,app,multi-target --config $(CONFIG) --touch-markers
 run-uikit: uikit-build runner-build
-	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,swiftui,browser,app --config $(CONFIG) --touch-markers
+	cd $(ROOT) && uv run bajutsu run --target showcase-uikit --udid $(SIM) --backend ios --exclude xcuitest,systemalert,visual,android,swiftui,browser,app,multi-target --config $(CONFIG) --touch-markers
 
 # scenarios/tabs.yaml on its own, forced onto XCUITest (see the comment above run-swiftui/run-uikit).
 run-swiftui-tabs: swiftui-build runner-build
@@ -357,6 +371,28 @@ e2e-browser: swiftui-build uikit-build runner-build
 		--target showcase-swiftui --udid $(SIM) --backend ios --config $(CONFIG) && \
 	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/browser.yaml \
 		--target showcase-uikit --udid $(SIM) --backend ios --config $(CONFIG)
+
+# The multi-target app+web lane (BE-0428): a native target and a `web` target in one interleaved
+# run. Reuses demos/web's own static demo app as the `web` target's server (showcase.config.yaml's
+# `targets.web`, on its own port so it never collides with demos/web's own e2e) — see
+# cross_platform_app_web.yaml's own header for why the two sides assert independent facts rather
+# than a shared value. Self-declaring `targets`, so no `--target` / `--backend` is passed; `--udid`
+# still resolves the one Simulator this run's iOS leg needs.
+SHOWCASE_WEB_PORT ?= 8789
+
+e2e-multi-target-web: swiftui-build runner-build
+	@grep -q "http://127.0.0.1:$(SHOWCASE_WEB_PORT)/index.html" $(CONFIG) || \
+	  { echo "SHOWCASE_WEB_PORT=$(SHOWCASE_WEB_PORT) does not match targets.web's baseUrl in $(CONFIG)" >&2; exit 1; }
+	python3 -m http.server --directory $(ROOT)/demos/web/app $(SHOWCASE_WEB_PORT) >/dev/null 2>&1 & srv=$$!; \
+	trap 'kill $$srv 2>/dev/null' EXIT; \
+	ready=0; for i in $$(seq 1 100); do \
+	  if curl -sf --max-time 2 -o /dev/null "http://127.0.0.1:$(SHOWCASE_WEB_PORT)/index.html"; then ready=1; break; fi; \
+	  sleep 0.1; \
+	done; \
+	if [ "$$ready" -ne 1 ]; then \
+	  echo "port $(SHOWCASE_WEB_PORT) never served demos/web/app (already held by another server?)" >&2; exit 1; fi; \
+	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/cross_platform_app_web.yaml \
+		--udid $(SIM) --config $(CONFIG)
 
 # The `app:` lane: unlike `e2e-browser`, this drives a real second process (Safari.app),
 # so it needs no fixture server — Safari serves its own start page — and no showcase-side trigger.
