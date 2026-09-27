@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0436](BE-0436-primary-target-default.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0436") |
 | Topic | Scenario authoring features |
 | Related | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md) |
@@ -268,13 +268,13 @@ condition should poll.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Schema: `Scenario.primary_target`, `_check_primary_target` (unset or `targets[0]` only),
+- [x] Schema: `Scenario.primary_target`, `_check_primary_target` (unset or `targets[0]` only),
       `_check_target`'s new escape for an omitted `target` with a `default` on hand,
       `Step._resolved_target` / `resolved_target`, and `apply_setups` cloning its cached steps.
-- [ ] Runner: `_route` and `_steps_for_target` reading `step.resolved_target` in place of
+- [x] Runner: `_route` and `_steps_for_target` reading `step.resolved_target` in place of
       `step.target`.
-- [ ] Docs: `docs/dsl-grammar.md`, `docs/scenarios.md`, and their `docs/ja/` mirrors.
-- [ ] Tests: schema resolution across every step shape and declared-target count; the round-trip fix
+- [x] Docs: `docs/dsl-grammar.md`, `docs/scenarios.md`, and their `docs/ja/` mirrors.
+- [x] Tests: schema resolution across every step shape and declared-target count; the round-trip fix
       (`model_dump()` never emits a stamped `target`); the shared-setup cloning fix; the runner's
       `prev_after` reset on a return to the primary; the capability preflight's per-target grouping,
       including the known nested-wrapper limitation.

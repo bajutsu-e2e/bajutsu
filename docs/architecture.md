@@ -530,7 +530,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   against a different target in the same run). Every declared target launches together before the
   first step and tears down together after the last one; a step, an `if`/`forEach` condition, or an
   `expect` entry omitting `target` behaves exactly as it does today for a scenario declaring zero or
-  one targets, and is required once a scenario declares two or more. `--target` becomes optional once
+  one targets, and is required once a scenario declares two or more — unless the scenario declares a
+  `primaryTarget` (BE-0436, pinned to `targets[0]`), which an omitted `target` then resolves to via
+  `Step.resolved_target`, a private load-time value that never leaks into a re-serialized step.
+  `--target` becomes optional once
   a scenario is self-declaring this way (`--scenario` becomes mandatory in its place), and an explicit
   `--target` is checked for membership in `scenario.targets` rather than silently overridden.
   `RunResult.target_devices` and `StepOutcome.target` report which device and target produced each

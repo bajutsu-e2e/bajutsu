@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Self
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, PrivateAttr, field_validator, model_validator
 
 from bajutsu.common.scenario.models._base import (
     _CONTROL_FLOW_ACTIONS,
@@ -129,6 +129,19 @@ class Step(_Model):
     # rule `Step` itself cannot enforce since it cannot see the enclosing scenario
     # (`_check_target_requirements` does, from `Scenario`'s own validator).
     target: str | None = None
+    # The scenario's `primaryTarget` an omitted `target` resolved to at load time (BE-0436). Private
+    # rather than written back onto `target`, so `model_dump()` — the serve editor's splice and the
+    # run's `scenario.yaml` snapshot — keeps the step as terse as the author wrote it.
+    _resolved_target: str | None = PrivateAttr(default=None)
+
+    @property
+    def resolved_target(self) -> str | None:
+        """The target this step runs against: its own `target`, else the primary it resolved to."""
+        return self.target or self._resolved_target
+
+    def resolve_target(self, target: str) -> None:
+        """Record the primary target an omitted `target` defaults to (BE-0436)."""
+        self._resolved_target = target
 
     @field_validator("capture")
     @classmethod

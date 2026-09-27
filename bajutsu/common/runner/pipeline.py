@@ -1271,17 +1271,23 @@ def _steps_for_target(s: Scenario, target: str) -> Scenario:
     `None` too: a scenario declaring exactly one target may omit the name on every step and
     `expect` entry, and those still ran against that target — filtering them out would hand the
     preflight an empty scenario and skip BE-0082 for the whole single-declared-target shape.
+
+    A step or `expect` entry omitting `target` under a declared `primaryTarget` belongs to the
+    primary alone (BE-0436), so it reads its resolved target rather than falling into `None` and
+    being judged against every declared backend.
     """
     routed = {target, None}
     return s.model_copy(
         update={
-            "before": [st for st in s.before if st.target in routed],
-            "steps": [st for st in s.steps if st.target in routed],
+            "before": [st for st in s.before if st.resolved_target in routed],
+            "steps": [st for st in s.steps if st.resolved_target in routed],
             "after": [
-                rule.model_copy(update={"steps": [st for st in rule.steps if st.target in routed]})
+                rule.model_copy(
+                    update={"steps": [st for st in rule.steps if st.resolved_target in routed]}
+                )
                 for rule in s.after
             ],
-            "expect": [a for a in s.expect if a.target in routed],
+            "expect": [a for a in s.expect if (a.target or s.primary_target) in routed],
         }
     )
 

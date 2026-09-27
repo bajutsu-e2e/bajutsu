@@ -822,7 +822,8 @@ iOS の target と web の target は、その一例です。1つのシナリオ
 あります。2つの config ファイルを結合する仕組みはありません
 （[configuration](configuration.md#設定の階層defaults--targets)）。
 
-`targets` が2つ以上のエントリを持つと、すべてのステップが自分の `target` を設定しなければなりません。
+`targets` が2つ以上のエントリを持ち、`primaryTarget`（後述）を設定していないシナリオでは、
+すべてのステップが自分の `target` を設定しなければなりません。
 `if` / `forEach` / `web` のラッパーステップも対象で、末端のアクションだけではありません。トップレベルの
 `expect` エントリも同様で、それぞれが宣言済みのターゲットの1つを名指しします。
 
@@ -840,6 +841,39 @@ iOS の target と web の target は、その一例です。1つのシナリオ
     - target: showcase-web
       value: { sel: { id: "post.${vars.postId}.likeCount" }, equals: "1" }
 ```
+
+1つのターゲットの流れを軸にしたシナリオは、そのターゲットを `primaryTarget` として宣言できます
+（BE-0436）。宣言すると、ステップとトップレベルの `expect` エントリは `target` を省略でき、省略した
+ものは主ターゲットに対して走ります。`target` を書くのは別のターゲットを操作するステップだけになるので、
+読み手はそのステップをひと目で見分けられます。
+
+```yaml
+- name: liking a post on the app shows up on the web
+  targets: [showcase-app, showcase-web]
+  primaryTarget: showcase-app
+  steps:
+    - tap: { id: post.like }              # target を省略：showcase-app で走る
+      extract:
+        postId: { sel: { id: post.id } }
+    - target: showcase-web
+      wait: { for: { id: "post.${vars.postId}.likeCount" }, timeout: 10 }
+  expect:
+    - target: showcase-web
+      value: { sel: { id: "post.${vars.postId}.likeCount" }, equals: "1" }
+```
+
+`primaryTarget` には `targets` の先頭のエントリを指定しなければなりません。runner は、すでにその
+エントリを主ターゲットとして扱い、リース、復旧、エビデンスの基準にしています。`primaryTarget` を
+先頭のエントリに固定しておけば、ファイルと runner が主ターゲットについて食い違うことはありません。
+`primaryTarget` を直さずに `targets` の順序を入れ替えると、読み込み時のエラーになります。`targets` を
+宣言していないシナリオに `primaryTarget` を設定した場合も、読み込み時のエラーです。宣言済みの
+ターゲットが1つのときは、そのターゲットを `primaryTarget` に指定でき、挙動は変わりません。
+
+この省略時の解決は、入れ子の深さによらず同じように働きます。`if` や `forEach` の中のステップも
+`target` を省略でき、省略したステップは、囲んでいるラッパーがどのターゲットを指していても主ターゲット
+に対して走ります。ステップが主ターゲットを明示してもかまわず、どちらの書き方でも挙動は同じです。
+ローダーは、解決したターゲット名をステップに書き戻しません。serve のエディタと、run が保存する
+`scenario.yaml` のスナップショットは、作者が書いたとおりの簡潔なステップを保ちます。
 
 自分で `targets` を宣言するシナリオは、ターゲットを自力で解決します。`bajutsu run --scenario <file>`
 には `--target` がまったく要りません。そのシナリオに `--target` を明示して渡した場合、そのシナリオが

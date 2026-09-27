@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0436](BE-0436-primary-target-default-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0436") |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md) |
@@ -288,15 +288,15 @@ YAML へ再びシリアライズし直す既存の呼び出し箇所が2つあ�
 > 作業の進行に合わせて最新の状態を保つ。チェックリストは「詳細設計」の MECE な作業手順に対応する
 > (作業単位ごとに1つのチェック項目)。ログには、変更内容と時期を古い順に記録し、PR へリンクする。
 
-- [ ] スキーマ: `Scenario.primary_target`、`_check_primary_target`(未設定か `targets[0]` の
+- [x] スキーマ: `Scenario.primary_target`、`_check_primary_target`(未設定か `targets[0]` の
       どちらかだけを許します)、`target` の省略を合法にする `_check_target` の新しい逃げ道、
       `Step._resolved_target` / `resolved_target`、キャッシュしたステップを複製する
       `apply_setups` の変更を追加します。
-- [ ] ランナー: `_route` と `_steps_for_target` を、`step.target` の代わりに `step.resolved_target`
+- [x] ランナー: `_route` と `_steps_for_target` を、`step.target` の代わりに `step.resolved_target`
       を読むよう変更します。
-- [ ] ドキュメント: `docs/dsl-grammar.md`、`docs/scenarios.md`、およびそれぞれの `docs/ja/` 版を
+- [x] ドキュメント: `docs/dsl-grammar.md`、`docs/scenarios.md`、およびそれぞれの `docs/ja/` 版を
       更新します。
-- [ ] テスト: すべてのステップの形と宣言済みターゲット数にわたるスキーマの解決、往復の修正
+- [x] テスト: すべてのステップの形と宣言済みターゲット数にわたるスキーマの解決、往復の修正
       (`model_dump()` が `target` を出力しないこと)、共有セットアップの複製による修正、primary
       への復帰時のランナーの `prev_after` リセット、能力プリフライトのターゲットごとの分類と
       既知のネストしたラッパーの限界を検証します。
