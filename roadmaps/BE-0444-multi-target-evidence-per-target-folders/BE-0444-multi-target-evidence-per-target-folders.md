@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-multi-target-evidence-per-target-folders-ja.md)
+**English** · [日本語](BE-0444-multi-target-evidence-per-target-folders-ja.md)
 
-# BE-XXXX — Nest every declared target's evidence under its own folder
+# BE-0444 — Nest every declared target's evidence under its own folder
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-multi-target-evidence-per-target-folders.md) |
+| Proposal | [BE-0444](BE-0444-multi-target-evidence-per-target-folders.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0444") |
 | Implementing PR | [#2073](https://github.com/bajutsu-e2e/bajutsu/pull/2073) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
