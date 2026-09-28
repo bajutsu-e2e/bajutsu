@@ -86,7 +86,7 @@ Four mechanisms, in order of leverage.
 
 ### A. Scaffold a roadmap item — `make new-roadmap-item`
 
-`make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Proposal]` →
+`make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Approved]` →
 `scripts/new_roadmap_item.py`:
 
 - Creates `roadmaps/proposals/BE-0069-<slug>/` with both `BE-0069-<slug>.md` and
@@ -101,7 +101,7 @@ Four mechanisms, in order of leverage.
 - Validates `TOPIC` against the known section map in
   [`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py) so the item lands in a
   real section. (A `Topic` matching no section makes the index builder *crash* after CI numbers the
-  item — not merely drift — a sharp edge worth catching at creation.) Defaults: `Status=Proposal`,
+  item — not merely drift — a sharp edge worth catching at creation.) Defaults: `Status=Approved`,
   author resolved from `git config` (overridable via `HANDLE=`).
 - **Does not add a manual index row.** The generator skips `BE-0069` items, so the committed index
   stays row-free for the placeholder and `make check` is green locally; the `roadmap-id` workflow

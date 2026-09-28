@@ -139,7 +139,7 @@ gh pr create --reviewer bajutsu-e2e/steering-committee \
 次の空き ID を確保し、`BE-XXXX` を `BE-NNNN` に **すべての箇所** で（ディレクトリ、両ファイル、相互リンク）
 書き換えて、結果を `main` に直接コミットし、マージ済みの PR に割り当てた ID を知らせるコメントを付けます
 （[BE-0089](../../roadmaps/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md)）。
-これで項目は恒久的なパスに `Status: Proposal` で存在するようになり、番号が確定します。この番号がパート B の
+これで項目は恒久的なパスに `Status: Approved` で存在するようになり、番号が確定します。この番号がパート B の
 入力になります。
 
 ---
@@ -204,8 +204,10 @@ gh pr create --reviewer bajutsu-e2e/steering-committee \
 ```
 
 完全な ID、単なる番号（`300`）、slug の一部を受け付けます。まず項目を **あなたに説明し返します**。ID、
-タイトル、平易な言葉での要約、現在の状態です。それから、`Proposal` を実装することはそれを *受理* することだと
-述べます。この PR が項目を `Implemented` に切り替えます。
+タイトル、平易な言葉での要約、現在の状態です。それから、項目はすでに審査のゲートを通過した
+マージ（2人承認、または `single-approver proposal` の免除下では1人承認）の時点で受理されている
+ため、それを実装することは *着手する* ことだと述べます。この PR が項目を `Implemented` に
+切り替えます。
 
 ### 手順 B2 — トラッキング issue を確保する
 

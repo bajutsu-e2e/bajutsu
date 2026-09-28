@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Keep one GitHub tracking issue open per *open* roadmap item (BE-0109).
 
-An open item is one whose ``Status`` is ``Proposal`` or ``In progress`` — everything not yet
+An open item is one whose ``Status`` is ``Approved`` or ``In progress`` — everything not yet
 shipped (``Implemented``) or shelved (``Deferred`` / ``Rejected``). Each such item gets an issue the
 moment it exists, so an issue with **no** assignee is exactly the signal the roadmap lacks: nobody
 has picked it up yet. Assigned issues show who is on what; ``label:roadmap-tracking no:assignee`` is
@@ -16,7 +16,7 @@ Lifecycle — a pure function of each item's current ``Status`` (never a PR diff
 idempotent and self-healing (matching BE-0043 / BE-0061): running it twice, or against an
 already-consistent set, is a no-op.
 
-- open item (``Proposal`` / ``In progress``) with no matching open issue -> create one.
+- open item (``Approved`` / ``In progress``) with no matching open issue -> create one.
 - matching open issue whose item is now ``Implemented`` / ``Deferred`` / ``Rejected`` -> close it.
 
 It scans only numbered ``BE-NNNN`` items, so a ``BE-XXXX`` placeholder — which has no permanent
@@ -49,7 +49,7 @@ from roadmap_ids import iter_item_dirs, numbered_match
 ROADMAP = Path("roadmaps")
 # Only these statuses are "open" and get a tracking issue; the other three (Implemented, Deferred,
 # Rejected) are shipped or shelved.
-OPEN_STATUSES = frozenset({"Proposal", "In progress"})
+OPEN_STATUSES = frozenset({"Approved", "In progress"})
 LABEL = "roadmap-tracking"
 LABEL_COLOR = "0e8a16"
 LABEL_DESCRIPTION = "Ownership tracker for an open roadmap (BE) item (BE-0109)"
@@ -189,7 +189,7 @@ def issue_body(item: Item) -> str:
     """The issue body: a link back to the item's English file and a quote of its Introduction.
 
     The link is a flat ``roadmaps/BE-NNNN-<slug>/`` path (BE-0159), permanent for the item's whole
-    life — so an issue created while the item is a ``Proposal`` still resolves after it is promoted,
+    life — so an issue created while the item is ``Approved`` still resolves after it is promoted,
     closing the stale-link bug the status folders caused (a promotion no longer moves the file).
     """
     stem = f"{item.be_id}-{item.slug}"

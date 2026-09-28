@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0237](BE-0237-firebase-device-streaming-adapter.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Proposal** |
+| Status | **Approved** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0237") |
 | Topic | Device-cloud execution |
 <!-- /BE-METADATA -->

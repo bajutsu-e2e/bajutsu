@@ -20,7 +20,7 @@ the same whether a human or an agent walks it.
 
 ## The cycle
 
-![Cycle diagram: a rough idea goes into /ideation, which drafts a BE-XXXX proposal in both languages; CI allocates the real BE-NNNN id and sets Status: Proposal; the proposal is the spec that /implement-be plans, implements, and tests against; review and the gate flip the same item's Status to Implemented without ever moving its path.](assets/diagrams/roadmap-workflow-cycle.svg)
+![Cycle diagram: a rough idea goes into /ideation, which drafts a BE-XXXX proposal in both languages with Status: Approved; CI allocates the real BE-NNNN id; the proposal is the spec that /implement-be plans, implements, and tests against; review and the gate flip the same item's Status to Implemented without ever moving its path.](assets/diagrams/roadmap-workflow-cycle.svg)
 
 <details>
 <summary>Mermaid source</summary>
@@ -30,7 +30,7 @@ the same whether a human or an agent walks it.
 flowchart TB
     idea(["rough idea"])
     ideation["/ideation<br/>author + think<br/>never judge"]
-    proposal[["roadmaps/BE-NNNN-&lt;slug&gt;/<br/>Status: Proposal"]]
+    proposal[["roadmaps/BE-NNNN-&lt;slug&gt;/<br/>Status: Approved"]]
     implement["/implement-be<br/>implement<br/>gate is judge"]
     implemented[["roadmaps/BE-NNNN-&lt;slug&gt;/<br/>Status: Implemented"]]
 
@@ -95,8 +95,10 @@ Invoke it with `/implement-be BE-0066` (a full ID, a bare number, or a slug frag
 to turn an existing proposal into shipped code. The proposal's **Detailed design** is the spec; the
 deterministic gate (`make check`) is the judge — never an LLM.
 
-1. **Resolve the item** and read **both** language files. Implementing a `Proposal` *accepts* it —
-   this PR flips it to `Implemented` — so the skill says so up front. An already-`Implemented`, a
+1. **Resolve the item** and read **both** language files. An `Approved` item was already accepted
+   at its review-gated merge (two approvals, or one under the `single-approver proposal` waiver),
+   so implementing it *starts* it — this PR flips it to `Implemented` — and the skill says so up
+   front. An already-`Implemented`, a
    `Deferred`, or a `Rejected` item makes it stop and confirm what you actually want — for a
    `Rejected` one, that a human has explicitly overturned the decision.
 2. **Claim the tracking issue.** Every open item has a GitHub issue labeled `roadmap-tracking`; if

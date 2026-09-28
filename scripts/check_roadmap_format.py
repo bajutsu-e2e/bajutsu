@@ -78,7 +78,7 @@ DELIMITER = "|---|---|"
 STATUS_PAIR = {
     "Implemented": "実装済み",
     "In progress": "実装中",
-    "Proposal": "提案",
+    "Approved": "承認済み",
     "Deferred": "保留",
     "Rejected": "却下",
 }

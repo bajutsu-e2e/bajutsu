@@ -40,10 +40,10 @@ def _sample_item(title: str = "T", **over: Any) -> Any:
     return item_cls(
         id="BE-9999",
         slug="x",
-        bucket="Proposals",
+        bucket="Approved",
         topic=_ITEMS[0].topic,
         by_lang={
-            "en": entry_cls(id="BE-9999", slug="x", title=title, status="Proposal", origin=None)
+            "en": entry_cls(id="BE-9999", slug="x", title=title, status="Approved", origin=None)
         },
         **over,
     )
@@ -203,7 +203,7 @@ def test_shortcut_buttons_are_rendered_after_the_chips() -> None:
 
 
 def test_quickfilter_toggles_between_open_only_and_every_status() -> None:
-    """Clicking "Show open only" isolates Proposal/In progress; clicking it again restores all five.
+    """Clicking "Show open only" isolates Approved/In progress; clicking it again restores all five.
 
     ``OPEN_BUCKETS`` is a narrower set than ``_topic_progress``'s "outstanding" (which also counts
     Deferred): a parked item would dilute the shortcut's point of surfacing what's live right now.
@@ -218,7 +218,7 @@ def test_quickfilter_toggles_between_open_only_and_every_status() -> None:
     open_buckets = re.search(r"OPEN_BUCKETS=\[([^\]]*)\]", script)
     assert open_buckets, "the script must define OPEN_BUCKETS"
     open_names = {n.strip().strip("'\"") for n in open_buckets.group(1).split(",")}
-    assert open_names == {"Proposals", "In progress"}
+    assert open_names == {"Approved", "In progress"}
     assert open_names <= {name for name, _key in brd.bri.BUCKETS}
     assert "function isOpenOnlyState()" in script
     assert re.search(
@@ -487,10 +487,10 @@ def _card_for_origin(origin: str) -> str:
     sample = item_cls(
         id="BE-9999",
         slug="x",
-        bucket="Proposals",
+        bucket="Approved",
         topic=_ITEMS[0].topic,
         by_lang={
-            "en": entry_cls(id="BE-9999", slug="x", title="t", status="Proposal", origin=origin)
+            "en": entry_cls(id="BE-9999", slug="x", title="t", status="Approved", origin=origin)
         },
     )
     card = brd._card(sample)
@@ -583,9 +583,9 @@ def _linked_item(be_id: str, **relations: tuple[str, ...]) -> Any:
     return item_cls(
         id=be_id,
         slug="x",
-        bucket="Proposals",
+        bucket="Approved",
         topic=_ITEMS[0].topic,
-        by_lang={"en": entry_cls(id=be_id, slug="x", title="T", status="Proposal", origin=None)},
+        by_lang={"en": entry_cls(id=be_id, slug="x", title="T", status="Approved", origin=None)},
         **relations,
     )
 

@@ -16,7 +16,7 @@
 ## はじめに
 
 ロードマップ（BE）項目を `Status` で絞り込んで一覧する Claude Code スキルを追加します。これにより、
-AI セッションは `roadmaps/README.md` を全文読まなくても、「`Proposal` の項目すべて」（あるいは
+AI セッションは `roadmaps/README.md` を全文読まなくても、「`Approved` の項目すべて」（あるいは
 `In progress`、`Implemented`、`Deferred`、`Rejected`）を見渡せます。スキルは状態を引数に取り、`ID`、
 タイトル、`Topic`、項目ファイルのパスを 1 つの表で出力します。Claude はその表を見て、実際に必要な項目
 だけを開けます。
@@ -36,7 +36,7 @@ AI セッションは `roadmaps/README.md` を全文読まなくても、「`Pro
 索引は[`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py)が各項目自身のメタデータ
 （`Status`、`Topic`、タイトル）から生成しています（BE-0043、BE-0078）。状態フィルタが必要とするのも、
 その同じメタデータ、すなわち機械可読で権威のある情報源です。したがって AI セッションが欲しい射影
-（「`Proposal` の行をパス付きで」）は、リポジトリがすでに解析しているデータに対する小さな決定論的な
+（「`Approved` の行をパス付きで」）は、リポジトリがすでに解析しているデータに対する小さな決定論的な
 クエリであって、新たな情報源ではありません。
 
 引数で状態を指定する的の絞れたスキルがあれば、どのセッションもこの問いを一貫した低トークンの方法で投げ、
@@ -54,12 +54,12 @@ AI セッションは `roadmaps/README.md` を全文読まなくても、「`Pro
 すでに読み取っています。これをスキルが呼べる小さなクエリとして公開します。次のいずれかの形を取ります。
 
 - 共通の解析処理を `build_roadmap_index.py` から取り出してインポート可能なヘルパーにしたうえで、それを
-  呼ぶ薄い CLI エントリポイント（例 ： `python scripts/roadmap_query.py --status Proposal`）。
+  呼ぶ薄い CLI エントリポイント（例 ： `python scripts/roadmap_query.py --status Approved`）。
 - それを包む新しい `make` ターゲット。
 
 クエリの仕様は次のとおりです。
 
-- `Status` の値を 1 つ取ります（`Proposal`、`In progress`、`Implemented`、`Deferred`、`Rejected`）。
+- `Status` の値を 1 つ取ります（`Approved`、`In progress`、`Implemented`、`Deferred`、`Rejected`）。
   大文字小文字を区別せずに照合し、既知の集合に対して検証します（未知の状態のときは空の表ではなく、有効な
   値を表示して非ゼロで終了します）。
 - `ID`、`Item`（タイトル）、`Topic`、`Path`（項目の英語版 `.md` ファイルへの相対パス）を列に持つ

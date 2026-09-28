@@ -9,7 +9,7 @@
 # Since BE-0159 flattened the status folders, "a proposal" can no longer be a `roadmaps/proposals/`
 # path prefix — every item lives in one flat `roadmaps/BE-NNNN-<slug>/` directory. So the gate reads
 # the metadata `Status` of each item directory the PR touches (at the PR head) and applies when any
-# is `Proposal` (the same set the old path prefix selected).
+# is `Approved` (the same set the old path prefix selected).
 #
 # It re-runs on `pull_request_review` so a second approval flips it green, and — like pr-title — it
 # stays a step-level guard: a PR that changes no proposal item completes the job green (a no-op),
@@ -57,7 +57,7 @@ jobs:
         id: scope
         run: |
           # A proposal is identified by Status, not by folder (BE-0159): the two-approval bar applies
-          # when any BE item this PR adds or edits is `Status: Proposal`. Key the check on the item
+          # when any BE item this PR adds or edits is `Status: Approved`. Key the check on the item
           # *directory*, not the changed file, so a PR that edits only a proposal's `-ja` mirror still
           # resolves to its English sibling and is gated. Read each item's Status off the contents API
           # at the PR head — no checkout, so no PR-controlled code runs on the runner (this job's
@@ -85,7 +85,13 @@ jobs:
             fi
             status="$(printf '%s' "$content" | base64 -d 2>/dev/null \
               | sed -n '/<!-- BE-METADATA -->/,/<!-- \/BE-METADATA -->/ s/^| Status | \*\*\(.*\)\*\* |$/\1/p')"
-            if [ "$status" = "Proposal" ]; then
+            # Also match the retired literal `Proposal`, not just `Approved`: this workflow file is
+            # read from `main` at check time, not from the PR branch, so a proposal PR opened before
+            # the Proposal->Approved rename (still carrying `Status: Proposal` on its own head) would
+            # otherwise stop matching the moment this file merges — silently dropping its two-approval
+            # requirement on a `synchronize`/review rerun. Accepting both keeps every in-flight
+            # pre-rename proposal gated until it rebases past the migration.
+            if [ "$status" = "Approved" ] || [ "$status" = "Proposal" ]; then
               is_proposal=true   # decision can't change; stop making contents-API calls
               break
             fi
@@ -95,7 +101,7 @@ jobs:
           done <<< "$dirs"
           if [ "$is_proposal" = "false" ]; then
             echo "gated=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::PR #${PR} adds or edits no BE proposal (no changed item is Status: Proposal) — the two-approval rule does not apply. No-op."
+            echo "::notice::PR #${PR} adds or edits no BE proposal (no changed item is Status: Approved) — the two-approval rule does not apply. No-op."
             exit 0
           fi
           # A maintainer-applied waiver label drops the bar to the repo-wide single approval. Read

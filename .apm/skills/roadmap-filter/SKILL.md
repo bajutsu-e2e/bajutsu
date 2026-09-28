@@ -18,7 +18,7 @@ run past 127,000 lines. Grepping the item prose is no cheaper. Run the determini
 with the filter that matches your question:
 
 ```bash
-make roadmap-status STATUS="Proposal"                        # one status
+make roadmap-status STATUS="Approved"                        # one status
 make roadmap-find ARGS="--grep scroll"                       # is there already an item about X?
 make roadmap-find ARGS="--status Implemented --topic driver" # one topic within one status
 make roadmap-find ARGS="--id BE-0349"                        # one item, by id
@@ -26,7 +26,7 @@ make roadmap-find ARGS="--id BE-0349"                        # one item, by id
 
 `STATUS` is one of — matched case-insensitively:
 
-- `Proposal` — open, not yet started
+- `Approved` — reviewed, not yet started
 - `In progress` — being built
 - `Implemented` — shipped
 - `Deferred` — deliberately parked
@@ -43,13 +43,13 @@ An unknown status prints the valid values and exits non-zero, rather than an emp
 | `--topic` | a substring of the item's `Topic`, case-insensitively |
 | `--id` | one item, written as `BE-0349`, `0349`, `349`, or `BE-XXXX` for an in-flight proposal |
 
-The filters compose, so `--status Proposal --topic driver` returns the intersection. Give at least
+The filters compose, so `--status Approved --topic driver` returns the intersection. Give at least
 one filter. An unfiltered dump of every item is the cost the query exists to avoid.
 
 The query stays pure and offline. It reads each item's own metadata under `roadmaps/`, the source
 the index generator reads. No `gh`, no network, and no large language model (LLM) takes part.
 
-The script also runs directly: `python scripts/roadmap_query.py --status "Proposal"`.
+The script also runs directly: `python scripts/roadmap_query.py --status "Approved"`.
 A keyword search takes `python scripts/roadmap_query.py --grep scroll`.
 
 ## Output

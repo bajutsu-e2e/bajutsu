@@ -20,14 +20,14 @@ This is a **read-only, advisory** skill — it never implements features or crea
      ```bash
      gh issue list --state open --limit 50
      ```
-   - Check the roadmap for Proposal / In progress items:
+   - Check the roadmap for Approved / In progress items:
      use the `/roadmap-filter` skill or read `roadmaps/README.md` directly.
    - Check for in-flight work (open PRs, branches) to avoid conflicts:
      ```bash
      gh pr list --state open --limit 30
      ```
 
-2. **Filter** by the user's criteria if given (e.g. "Proposal status only",
+2. **Filter** by the user's criteria if given (e.g. "Approved status only",
    "exclude in-progress items", specific topics).
 
 3. **Rank candidates** considering:

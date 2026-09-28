@@ -7,7 +7,7 @@ proposals wants to read into context. This projects each item's own metadata (th
 source the dashboard itself reads) into just the rows the question needs, with the file path to
 open next::
 
-    python scripts/roadmap_query.py --status Proposal
+    python scripts/roadmap_query.py --status Approved
     python scripts/roadmap_query.py --grep scroll
     python scripts/roadmap_query.py --status Implemented --topic driver
     python scripts/roadmap_query.py --id BE-0349
@@ -123,7 +123,7 @@ def iter_rows(
     """Return the rows for the items matching every filter given, sorted by Topic then id.
 
     A filter left as ``None`` does not constrain the scan, so passing none of them returns the
-    whole roadmap. The filters compose: ``status="Proposal", topic="driver"`` is the intersection.
+    whole roadmap. The filters compose: ``status="Approved", topic="driver"`` is the intersection.
 
     Args:
         roadmap: the ``roadmaps/`` tree to scan.
