@@ -316,7 +316,7 @@ lint-skills:
 	uv run python scripts/audit_skills.py
 
 # Filter roadmap (BE) items by Status into one small table — ID / Item / Topic / Path — so an AI
-# session surveys just the rows it needs (e.g. every Approved) without paging through the dashboard's
+# session surveys just the rows it needs (e.g. every Approved item) without paging through the dashboard's
 # rendered HTML or opening each item file to check its `Status` (BE-0162). Pure and offline: reads
 # roadmaps/ metadata only. The `roadmap-filter` skill wraps this.
 #   make roadmap-status STATUS="Approved"

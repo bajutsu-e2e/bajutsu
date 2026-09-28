@@ -502,7 +502,7 @@ overridable:
   tier would be waste.
 - [`roadmap-filter`](../.claude/skills/roadmap-filter/SKILL.md) → `haiku` (Light) — a read-only
   survey of the roadmap by `Status` (BE-0162): it wraps `make roadmap-status STATUS="…"` so a
-  session lists just the items in one status (e.g. every open `Approved`), with each item's file
+  session lists just the items in one status (e.g. every `Approved` item), with each item's file
   path to open next, instead of paging through the dashboard's rendered HTML or opening each item
   file to check its `Status`.
 
