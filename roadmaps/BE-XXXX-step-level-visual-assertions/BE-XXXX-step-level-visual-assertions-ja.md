@@ -75,40 +75,65 @@ BE-0029、BE-0165、BE-0171がすでに用意した`VisualMatch`スキーマ、`
   経由で、`expect:`ブロックの評価前に1回だけ撮影します。`_poll_asserts`はすでに`visual`を
   `_READ_ONCE_KINDS`の1つとして扱っており、各ポーリングで再読み込みされるのはUIツリーだけです。
   そのため、ステップレベルの検証はティックごとに新しいスクリーンショットを必要としません。
+  撮影には、`_poll_asserts`が要素ツリーの問い合わせに使うのと同じdriver、すなわちそのステップ
+  自身のactive driverを使います。常に`cfg.driver`を使うわけではありません。要素スコープの
+  検証では、クロップの座標系を要素ツリーの座標系と一致させる必要があるためです。`web:`ブロック
+  の内側では、そのactive driverが`WebContextDriver`になり、その`screenshot`は
+  `UnsupportedAction`を送出します。そのブロックにネストした`visual`アサーションは、誤った画面を
+  サイレントに比較するのではなく、この撮影自体で明確に失敗します(詳細は後述)。
 - **ステップごとのスクリーンショットの保存先を、そのステップ自身のエビデンスprefixと
   outcomeインデックスに限定します。** `write_screenshot`はすでにステップの`after.png`に
   このprefixを使っていますが、ステップ名は一意である必要がありません。そのため`for_each`の
   中にある名前付きステップは、反復のたびに同じprefixを再利用してしまいます。`StepOutcome.index`
-  は、ステップ自身の`step_id`prefixの中で一意です。1つのカウンタが、ターゲットやネストした
-  ブロックをまたいで、フェーズ内のすべてのステップに番号を振っており、そのprefix自体がすでに
-  フェーズ名を含んでいるからです。このindexで保存先を1階層深くすることで、あるステップの
-  visualキャプチャは、シナリオ自身の`visual-actual.png`とも、同じステップの別の実行とも
-  衝突しません。1回の実行内でのリトライ(TipKitのリトライやalert guardのリトライ)は同じindex
-  を再利用するため、ステップが保持する結果は、その実行の最終試行のピクセルを指したままに
-  なります。
+  が一意なのは1つのフェーズの中だけです。実行全体では一意ではありません。`before`、シナリオ
+  自身の`steps`、`after`の各ディスパッチは、それぞれ自分専用の`_StepCounter`をゼロから
+  始めます。ただし、エビデンスprefix自体がすでにフェーズ名を含んでいるため、`before`フェーズの
+  `index == 0`とシナリオ自身の最初のステップの`index == 0`は、それでも別々のディレクトリに
+  収まります。prefixとindexを組み合わせることで、あるステップのvisualキャプチャは、シナリオ
+  自身の`visual-actual.png`とも、同じステップの別の実行とも衝突しません。1回の実行内での
+  リトライ(TipKitのリトライやalert guardのリトライ)は同じindexを再利用するため、ステップが
+  保持する結果は、その実行の最終試行のピクセルを指したままになります。
 - **`expect`のvisualキャプチャがすでに適用している、タッチマーカーの一時停止と通知バナーの
-  クリアを踏襲します。** キャプチャの前に、`_clear_notification_banner_before_visual_capture`
-  という expectフェーズ専用のラッパーではなく、`_clear_notification_banner`を直接呼びます。
-  このラッパーはexpectフェーズのアクチュエーション一覧へ排出してしまうためです。ステップは
-  すでに独自の末尾処理`drain_actuations`(`_StepRunner._handle_action`)を持っており、その
-  スワイプはそのステップ自身の`StepOutcome.actuations`や`dropped_actuations`に記録されます。
-  そのうえでキャプチャ自体を`_capture_visual_actual`経由にします。`_capture_visual_actual`は、
-  `_hides_touch_markers`がシナリオのタッチマーカー描画を検出した場合に、`capability_suspended`
-  でマーカーを一時停止します。しかし`_run_step_body`は、実行のcollectorである`channel`と
-  `hide_markers`フラグのどちらも現在は受け取っていません。現状はどちらも`run_scenario`だけが
-  持つローカル変数です。どちらも`_LoopConfig`(とターゲットごとの構築処理)まで届く必要が
-  あります。このマーカー一時停止中にcontrol channelが失敗した場合は、`expect`側で
-  `_capture_visual_actual`が同じ失敗を起こしたときと同じく、シナリオ全体を失敗させます。
-  ステップレベルの検証だからといって、それをそのステップだけの失敗に変える特別扱いは
-  しません。最後に、`run --touch-markers`がどのシナリオにマーカーチャンネルを与えるかを
-  決めている`_visual_asserting_scenarios`(`bajutsu/run/cli.py`)は、現在は`expect`とシナリオ
-  最上位の`steps`しか見ていません。あらゆるフェーズと、`if`、`for_each`にネストしたステップ
-  (`capability_preflight`自身の走査がすでに行っている範囲)に加えて、`app:`ブロックも
-  ステップツリーの走査対象に含める必要があります。`app:`ブロックはネイティブ側のdriverで
-  動くため、通常のステップと同様にキャプチャできるからです。一方、`web:`ブロックにネストした
-  `visual`アサーションは対象外のままとします。`web:`ステップが使うdriverは`WebContextDriver`
-  であり、その`screenshot`は無条件に`UnsupportedAction`を送出するため、そのような検証は
-  サイレントにではなく、そのエラーで明確に失敗します。
+  クリアの両方を踏襲します。マーカーの一時停止だけではありません。** `_capture_visual_actual`
+  自体は、`_hides_touch_markers`がシナリオのタッチマーカー描画を検出した場合に、
+  `capability_suspended`でマーカーを一時停止するだけです。バナーのクリアは別の呼び出しで、
+  `_evaluate_expect`がその直前に呼ぶ`_clear_notification_banner_before_visual_capture`が
+  行います。ステップレベルのキャプチャにも、`expect`とまったく同じく両方が必要です。バナーの
+  クリアを省くと、BE-0416 Unit 8が防ごうとしているのとまったく同じ画像破損を再現してしまいます。
+  ただし、このラッパーではなく素の`_clear_notification_banner`を再利用します。ラッパーは
+  スワイプをexpectフェーズのアクチュエーション一覧へ排出してしまうためです。ステップは
+  すでに独自の末尾処理`drain_actuations`(`_StepRunner._handle_action`)を持っており、driver
+  自身のログからスワイプを拾い上げて、そのステップ自身の`StepOutcome.actuations`や
+  `dropped_actuations`に、新たな配線なしで記録します。マーカーの一時停止のほうは、
+  `_run_step_body`が現在は受け取っていない入力を必要とします。実行のcollectorである`channel`
+  と`hide_markers`フラグです。現状はどちらも`run_scenario`だけが持つローカル変数です。
+  どちらも`_LoopConfig`(とターゲットごとの構築処理)まで届く必要があります。この一時停止中に
+  control channelが失敗した場合は、`expect`側で`_capture_visual_actual`が同じ失敗を起こした
+  ときと同じく、シナリオ全体を失敗させます。ステップレベルの検証だからといって、それをその
+  ステップだけの失敗に変える特別扱いはしません。
+- **マーカーチャンネルが必要なシナリオを判定するために、ステップツリー全体を走査します。**
+  `run --touch-markers`がどのシナリオにマーカーチャンネルを与えるかを決めている
+  `_visual_asserting_scenarios`(`bajutsu/run/cli.py`)は、現在は`expect`とシナリオ最上位の
+  `steps`しか見ていません。あらゆるフェーズ(`before`、`steps`、各`after`規則)と、`interrupts`
+  の各エントリが持つ復旧用`steps`も走査する必要があります。interruptの復旧ステップは、通常の
+  ステップとまったく同じ`exec_steps`の仕組みを通って実行されるため、そこに置いた
+  ステップレベルの`visual`アサーションも実際にキャプチャを行うからです。見落とすと、その
+  キャプチャのマーカーが隠されないままになります。それぞれのステップ一覧の中では、
+  `capability_preflight`自身の走査がすでに行っているのと同じように、`if`と`for_each`にネスト
+  したステップも走査し、さらに`app:`ブロックも対象に含めます。`app:`ブロックの内側は、その
+  走査が再帰しない箇所ですが、内部のステップは他のステップと同じネイティブ側のdriverで動き
+  ます。前項と一貫させ、`web:`ブロックは対象外とします。そこにネストした`visual`アサーションは、
+  マーカーチャンネルの有無にかかわらず、そもそも成功しえないからです。
+- **既知の制約: `app:`ブロックにネストしたステップレベルの`visual`アサーションは、マーカーの
+  一時停止が誤ったアプリへ向かう可能性があります。** `app:`はテスト対象とは別のアプリを前面に
+  出します。シナリオのメインアプリがタッチマーカーを描画している場合、そのアプリはネストした
+  キャプチャの一時停止コマンドが届く時点でバックグラウンドに回っており、バックグラウンドの
+  アプリはcontrol channelの応答を`capability_suspended`のackタイムアウト内に返せないことが
+  あります。これはコードを読んで導いた、もっともらしいタイミングリスクであり、実機で確認した
+  ものではありません。正しく直すには、ステップループが「今`app:`ブロックの内側にいるか」を
+  追跡し、その場合は一時停止をスキップする必要があり、これは実機での検証を要する別の変更です。
+  それまでは、マーカーを描画するシナリオと`app:`にネストした`visual`検証の組み合わせを避けて
+  ください。
 - **旧挙動を固定しているテストを更新します。** `tests/orchestrator/test_loop.py`の
   `test_step_level_assert_drops_visual_context`(BE-0250 Unit 2で追加)を、新しい挙動を検証する
   内容に更新します。ステップレベルの`visual`アサーションが実際に比較すること、
@@ -177,12 +202,13 @@ BE-0029、BE-0165、BE-0171がすでに用意した`VisualMatch`スキーマ、`
       ステップ自身の`drain_actuations`で`StepOutcome`に記録します。`channel`と`hide_markers`を
       `_LoopConfig`まで届くようにし、キャプチャが`_capture_visual_actual`のタッチマーカー
       一時停止を再利用できるようにします。
-- [x] `_visual_asserting_scenarios`(`bajutsu/run/cli.py`)が、あらゆるフェーズと、`if`、
-      `for_each`、`app`にネストしたステップを含む、ステップツリー全体を走査するようにします。
-      `run --touch-markers`が、ネストしたステップレベルの`visual`アサーションにもマーカー
-      チャンネルを与えられるようにするためです。`web:`ブロックにネストした`visual`アサーション
-      は対象外のままとし、`WebContextDriver.screenshot`の`UnsupportedAction`でサイレントに
-      ではなく明確に失敗させます。
+- [x] `_visual_asserting_scenarios`(`bajutsu/run/cli.py`)が、あらゆるフェーズと、各
+      `interrupts`エントリの復旧用`steps`、さらにその中の`if`、`for_each`、`app`にネストした
+      ステップも含めて走査するようにします。`run --touch-markers`が、ネストした、あるいは
+      復旧経路にあるステップレベルの`visual`アサーションにもマーカーチャンネルを与えられる
+      ようにするためです。`web:`ブロックにネストした`visual`アサーションは対象外のままとし、
+      `WebContextDriver.screenshot`の`UnsupportedAction`でサイレントにではなく明確に
+      失敗させます。
 - [x] `tests/orchestrator/test_loop.py`の`test_step_level_assert_drops_visual_context`を新しい
       挙動に合わせて更新します。単発撮影の挙動、indexによる保存先の切り分け、タッチマーカーと
       バナーの再利用、`responseSchema`が引き続き落とされることのテストを追加します。
@@ -196,11 +222,15 @@ BE-0029、BE-0165、BE-0171がすでに用意した`VisualMatch`スキーマ、`
   `StepOutcome.index`で保存先を限定するステップ専用`VisualContext`が、ステップレベルの
   `assert_`分岐にあった`visual=None`の強制を置き換えます。単発撮影の直前に
   `_clear_notification_banner`と`_capture_visual_actual`を実行し、そのために`channel`と
-  `hide_markers`を`_LoopConfig`まで届けます。`_visual_asserting_scenarios`はステップツリー
-  全体(`if`・`forEach`・`app`。`web`は対象外)を走査します。`responseSchema`は変更せず
-  引き続き落とします。*検討した代替案*のとおり、`bajutsu approve`とレポートのvisualストリップは
-  対象外のままとし、`docs/scenarios.md`と`docs/architecture.md`(および`docs/ja/`の対応する
-  ページ)に、この変更が残す手動baselineコピーの回避策を明記しました。
+  `hide_markers`を`_LoopConfig`まで届けます。`_visual_asserting_scenarios`は、あらゆるフェーズ、
+  各`interrupts`エントリの復旧用`steps`、そして`if`・`forEach`・`app`にネストしたステップ
+  (`web`は対象外)を走査します。復旧経路の走査は、最初のレビューラウンドの後になって
+  判明しました。interruptの復旧ステップも、通常のステップと同じ`exec_steps`の仕組みを通って
+  実行されるためです。`responseSchema`は変更せず引き続き落とします。*検討した代替案*のとおり、
+  `bajutsu approve`とレポートのvisualストリップは対象外のままとし、`docs/scenarios.md`と
+  `docs/architecture.md`(および`docs/ja/`の対応するページ)に、この変更が残す手動baseline
+  コピーの回避策と、`app:`にネストしたマーカー一時停止のタイミングに関する既知の制約(実機での
+  検証を伴う修正はまだ行っていません)を明記しました。
 
 ## 参考
 

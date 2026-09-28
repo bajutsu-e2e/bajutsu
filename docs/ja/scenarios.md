@@ -716,11 +716,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 
 ### `assert`（中間検証）
 
-ステップ途中での検証です。DSL（ドメイン固有言語）は `expect` と同一です（次節）。`visual`も
-例外ではありません。ステップ自身の`assert`に含めた`visual`エントリは、その場で新しい
-スクリーンショットを1回だけ撮影します。撮影先はそのステップ自身のエビデンスディレクトリに
-限定されるため、シナリオの`expect`フェーズの撮影とも、別のステップの撮影とも衝突しません。
-`assert`が実行しない種別が1つだけあります。`responseSchema`は引き続き`expect`専用です。
+ステップ途中での検証です。DSL（ドメイン固有言語）は `expect` と同一です（次節）。`visual` も例外ではありません。ステップ自身の `assert` に含めた `visual` エントリは、その場で新しいスクリーンショットを1回だけ撮影します。撮影先はそのステップ自身のエビデンスディレクトリに限定されるため、シナリオの `expect` フェーズの撮影とも、別のステップの撮影とも衝突しません。`responseSchema` だけは、ステップの `assert` では評価できません。そこでは常に「no schema context」で失敗するため、`expect` に置いてください。
 
 ```yaml
 - assert:
@@ -734,11 +730,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 - tap: { id: modal.dismiss }
 ```
 
-ステップレベルの検証の最初のbaselineは、`bajutsu approve`やserve UIのApproveボタンからはまだ
-届きません。どちらも、現状はシナリオの`expect`側の結果しか読みません。この対応が追いつくまでは、
-手動でbaselineを用意してください。失敗したステップ自身の`assertion_results`が実行の
-`manifest.json`に記録する`visual.actual`のパス(レポートのraw JSON表示でも確認できます)を、
-`baseline:`フィールドが指定する名前でbaselineディレクトリへコピーします。
+ステップレベルの検証の最初の baseline は、`bajutsu approve` や serve UI の Approve ボタンからはまだ届きません。どちらも、現状はシナリオの `expect` 側の結果しか読みません。この対応が追いつくまでは、手動で baseline を用意してください。失敗したステップ自身の `assertion_results` は、実行の `manifest.json` に `visual.actual` としてパスを記録します（レポートの raw JSON 表示でも確認できます）。そのパスが指すファイルを、`baseline:` フィールドが指定する名前で baseline ディレクトリへコピーします。
 
 ### `setLocation` / `push`（デバイス制御）
 

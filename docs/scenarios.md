@@ -1062,7 +1062,8 @@ Verification mid-step. The DSL is the same as `expect` (next section), `visual` 
 step's own `assert` can carry a `visual` entry. That entry takes its own fresh, single-shot
 screenshot right there. The capture is scoped to that step's own evidence directory, so it never
 collides with the scenario's own `expect`-phase capture, nor with another step's. `responseSchema`
-is the one kind `assert` does not run — it stays `expect`-only.
+is the one kind a step's `assert` cannot evaluate — it always fails there with "no schema context",
+so keep it in `expect`.
 
 ```yaml
 - assert:
@@ -1079,8 +1080,8 @@ is the one kind `assert` does not run — it stays `expect`-only.
 A step-level check's first baseline is not yet reachable from `bajutsu approve` or the serve UI's
 Approve button. Both read merely the scenario's `expect` results today. Until that catches up,
 promote one by hand instead. The failing step's own `assertion_results` records a `visual.actual`
-path in the run's `manifest.json` (the report's raw JSON view shows it too). Copy that path into the
-baselines directory, under the name the `baseline:` field gives.
+path in the run's `manifest.json` (the report's raw JSON view shows it too). Copy the file at that
+path into the baselines directory, under the name the `baseline:` field gives.
 
 ### `setLocation` / `push` (device control)
 

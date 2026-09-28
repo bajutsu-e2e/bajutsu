@@ -934,13 +934,20 @@ def _visual_asserting_scenarios(scenarios: list[Scenario]) -> set[int]:
     multi-file run (`_load_scenarios` just concatenates each file's own scenarios), and a
     name-keyed set would conflate two same-named scenarios that need different answers below.
 
-    Walks every lifecycle phase (`before`, `steps`, each `after` rule) and the full step tree within
-    each, not only the scenario's own top-level `steps` — a step-level `visual` assertion can sit
-    anywhere in that tree.
+    Walks every lifecycle phase (`before`, `steps`, each `after` rule), every `interrupts` entry's
+    own recovery `steps`, and the full step tree within each — not only the scenario's own top-level
+    `steps` — since a step-level `visual` assertion can sit anywhere in that tree. An interrupt's
+    recovery steps run through the same `exec_steps` machinery as any other step (`_run_recovery`),
+    so a `visual` assertion there takes a real step-level capture exactly like one in `steps` does.
     """
     visual = set()
     for s in scenarios:
-        all_steps = [*s.before, *s.steps, *(step for rule in s.after for step in rule.steps)]
+        all_steps = [
+            *s.before,
+            *s.steps,
+            *(step for rule in s.after for step in rule.steps),
+            *(step for entry in s.interrupts for step in entry.steps),
+        ]
         step_assertions = [a for step in _walk_visual_steps(all_steps) for a in step.assert_ or []]
         if any(a.visual is not None for a in [*s.expect, *step_assertions]):
             visual.add(id(s))

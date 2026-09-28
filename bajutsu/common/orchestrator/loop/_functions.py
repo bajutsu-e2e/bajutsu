@@ -453,6 +453,7 @@ def _run_step_body(
                 ctx is not None
                 and ctx.visual is not None
                 and step_id is not None
+                and step_index is not None
                 and any(a.visual is not None for a in step.assert_)
             ):
                 # A step-level visual entry gets its own fresh screenshot, taken once here rather
@@ -730,9 +731,10 @@ def run_scenario(  # noqa: PLR0915
     caller that has no collector, and that is *not* inert: the toggle is attempted whenever this
     scenario's effective launch env — `target_launch_env` merged with the scenario's own, the same
     order the launch itself merges them in — sets both `BAJUTSU_TOUCH_MARKERS` and
-    `BAJUTSU_CONTROL_CHANNEL` to `"1"` and its `expect` phase has a `visual` capture to take — which a
-    scenario or target pinning the pair reaches whether or not `run --touch-markers` was passed — so
-    a `None` channel there fails the scenario loudly rather than skipping the suspension.
+    `BAJUTSU_CONTROL_CHANNEL` to `"1"` and it has a `visual` capture to take — at `expect`, or in a
+    step's own `assert` — which a scenario or target pinning the pair reaches whether or not
+    `run --touch-markers` was passed — so a `None` channel there fails the scenario loudly rather
+    than skipping the suspension.
     `target_launch_env` is the target's own `launchEnv` (`Effective.launch_env`); a caller that omits
     it (a test constructing a scenario directly) sees only the scenario's own launch env, as before.
 
@@ -1110,10 +1112,12 @@ _BANNER_CLEARANCE_POLL = 0.1
 def _clear_notification_banner(driver: base.Driver, clock: Clock) -> None:
     """Swipe away a foreground notification banner if one is showing right now (BE-0416 Unit 8).
 
-    A single unconditional check, no rate limit: for the `expect`-phase visual capture, which this
-    backs directly and which pays this at most once or twice a scenario regardless of step count.
-    `_sweep_notification_banner` below is the rate-limited wrapper the per-step call site needs
-    instead, since that one runs on every step.
+    A single unconditional check, no rate limit: for the `expect`-phase visual capture and a
+    step-level `visual` assert's own capture, both of which call this directly and each of which
+    pays it once per capture — the `expect` one at most once or twice a scenario, a step-level one
+    once per step (or per `forEach` iteration) that carries a `visual` entry, regardless of the
+    scenario's total step count. `_sweep_notification_banner` below is the rate-limited wrapper the
+    per-step call site needs instead, since that one runs unconditionally on every step.
 
     The swipe's clearance is re-confirmed by a bounded poll before returning, mirroring the
     interruption monitor's own discipline (Unit 4's Swift path never claims a dismissal it has not

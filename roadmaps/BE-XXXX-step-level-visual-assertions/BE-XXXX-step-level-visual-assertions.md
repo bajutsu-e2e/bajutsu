@@ -16,8 +16,8 @@
 
 ## Introduction
 
-Extend the existing `visual` assertion (BE-0029) to a new evaluation site. Today it runs merely at
-a scenario's trailing `expect:` block. This proposal adds a step's own `assert:` block as a second
+Extend the existing `visual` assertion (BE-0029) to a new evaluation site. Today it runs only at a
+scenario's trailing `expect:` block. This proposal adds a step's own `assert:` block as a second
 site. The comparison stays a deterministic pixel diff against a stored baseline image. No AI enters
 the `run`/CI gate.
 
@@ -72,37 +72,58 @@ assertion kind. It needs no new `Driver` method.
   capture — exactly as the trailing `expect` block does today. `_evaluate_expect` already follows
   this pattern: it takes one screenshot via `_capture_visual_actual`, right before evaluating the
   trailing `expect:` block. `_poll_asserts` already treats `visual` as a `_READ_ONCE_KINDS` entry, so
-  a poll tick re-reads only the UI tree; a step-level check needs no fresh screenshot per tick.
+  a poll tick re-reads only the UI tree; a step-level check needs no fresh screenshot per tick. Shoot
+  it with the same driver `_poll_asserts` queries for that step — the step's own active driver, not
+  always `cfg.driver` — so an element-scoped check's crop stays in the same coordinate space as the
+  element tree that resolves it. Inside a `web:` block that active driver is a `WebContextDriver`,
+  whose `screenshot` raises `UnsupportedAction`; a `visual` assert nested there fails loudly on that
+  capture instead of silently comparing the wrong screen (more on this below).
 - **Scope the per-step screenshot's path to that step's own evidence prefix and outcome index.**
   `write_screenshot` already uses the evidence prefix for the step's `after.png`, but a step's name
   is not required to be unique, so a named step inside a `for_each` reuses the same prefix on every
-  iteration. Key the capture one level deeper by `StepOutcome.index` — unique within the step's own
-  `step_id` prefix, since one counter numbers every step of a phase, across targets and nested
-  blocks, and that prefix already carries the phase label — so a step's visual capture never
+  iteration. Key the capture one level deeper by `StepOutcome.index`. That index is unique only
+  within one phase, not across the whole run — `before`, the scenario's own `steps`, and each `after`
+  dispatch each start their own `_StepCounter` from zero — but the evidence prefix already carries
+  the phase label, so a `before`-phase `index == 0` and the scenario's own first step's `index == 0`
+  still land in different directories. Together, prefix and index mean a step's visual capture never
   collides with the scenario's own `visual-actual.png`, nor with another execution of the same step;
   a retry of one execution (the TipKit retry, the alert-guard retry) reuses that execution's own
   index, so the result the step keeps points at its own final attempt's pixels.
 - **Preserve the touch-marker suspension and notification-banner clearing that `expect`'s visual
-  capture already applies.** Precede the capture with `_clear_notification_banner` directly, not the
-  `_clear_notification_banner_before_visual_capture` wrapper, which drains into the expect-phase
-  actuations list; a step already has its own end-of-body `drain_actuations`
-  (`_StepRunner._handle_action`), which records the swipe on that step's own `StepOutcome.actuations`
-  / `dropped_actuations` instead. Then route the capture itself through `_capture_visual_actual`,
-  which suspends the in-app touch markers via `capability_suspended` whenever `_hides_touch_markers`
-  says the scenario draws them. Both need inputs `_run_step_body` does not carry today: the run's
-  collector `channel` and the `hide_markers` flag. Today both are locals of `run_scenario` alone.
-  Both must reach `_LoopConfig`, and its per-target construction, so the step loop can read them. A
-  control-channel failure during that suspension is left to fail the whole scenario, exactly as it
-  does today when `_capture_visual_actual` raises one at `expect`; a step-level check gets no special
-  handling that would turn it into a per-step failure instead. Finally, `_visual_asserting_scenarios`
-  (`bajutsu/run/cli.py`), which `run --touch-markers` uses to
-  decide which scenarios get the marker channel at all, reads only `expect` and each scenario's
-  top-level `steps` today; it must walk the full step tree instead — every phase, plus nested `if`
-  and `for_each` blocks the way `capability_preflight`'s own walk already does, and an `app:` block
-  too, which that walk does not recurse into but which runs on the native driver like any other step.
-  A step-level `visual` assertion nested inside a `web:` block stays out of scope: the driver a `web:`
-  step runs against is a `WebContextDriver`, whose `screenshot` unconditionally raises
-  `UnsupportedAction`, so such a check fails loudly with that error rather than silently.
+  capture already applies — both of them, not just the marker suspension.** `_capture_visual_actual`
+  itself only suspends the touch markers, via `capability_suspended`, whenever `_hides_touch_markers`
+  says the scenario draws them; the banner clear is the separate call `_evaluate_expect` makes right
+  before it, `_clear_notification_banner_before_visual_capture`. A step-level capture needs both,
+  precisely as `expect`'s does — dropping the banner clear reproduces the exact corruption BE-0416
+  Unit 8 exists to prevent. It reuses the plain `_clear_notification_banner` instead of that wrapper,
+  because the wrapper drains its swipe into the expect-phase actuations list; a step already has its
+  own end-of-body `drain_actuations` (`_StepRunner._handle_action`), which picks the swipe up from
+  the driver's own log and records it on that step's own `StepOutcome.actuations` /
+  `dropped_actuations` with no new bookkeeping. The marker suspension needs inputs `_run_step_body`
+  does not carry today: the run's collector `channel` and the `hide_markers` flag. Today both are
+  locals of `run_scenario` alone. Both must reach `_LoopConfig`, and its per-target construction, so
+  the step loop can read them. A control-channel failure during that suspension is left to fail the
+  whole scenario, exactly as it does today when `_capture_visual_actual` raises one at `expect`; a
+  step-level check gets no special handling that would turn it into a per-step failure instead.
+- **Walk the full step tree to decide which scenarios need the marker channel.**
+  `_visual_asserting_scenarios` (`bajutsu/run/cli.py`), which `run --touch-markers` uses to decide
+  which scenarios get the marker channel at all, reads only `expect` and each scenario's top-level
+  `steps` today; it must walk every phase (`before`, `steps`, each `after` rule) and every
+  `interrupts` entry's own recovery `steps` instead — a step-level `visual` assertion in an
+  interrupt's recovery runs through the same `exec_steps` machinery as any other step, so it takes a
+  real capture too, and missing it there leaves that capture's markers unhidden. Within each of those
+  step lists, walk nested `if` and `for_each` blocks the way `capability_preflight`'s own walk
+  already does, plus `app:` blocks, which that walk does not recurse into but which run inner steps
+  on the same native driver as any other step. `web:` blocks are excluded, consistent with the
+  previous bullet: a `visual` assertion nested there cannot succeed regardless of the marker channel.
+- **Known limitation: a step-level `visual` assertion nested inside an `app:` block may see the
+  marker suspension apply to the wrong app.** `app:` foregrounds a different app than the one under
+  test; if the scenario's primary app draws touch markers, the primary app is now backgrounded when
+  the nested capture's suspension command reaches it, and a backgrounded app's control channel may
+  not acknowledge in time (`capability_suspended`'s ack timeout). This is a plausible timing risk
+  read from the code, not one confirmed on a device — fixing it properly needs the step loop to track
+  "currently inside an `app:` block" and skip suspension there, which is a separate, device-verified
+  change. Until then, avoid pairing marker-drawing scenarios with an `app:`-nested `visual` check.
 - **Update the test that locks the old behavior.** `tests/orchestrator/test_loop.py` carries
   `test_step_level_assert_drops_visual_context`, added under BE-0250 Unit 2. Update it to assert
   the new behavior. A step-level `visual` assert now runs a real comparison. `responseSchema` still
@@ -168,11 +189,11 @@ assertion kind. It needs no new `Driver` method.
       step's own `StepOutcome` via its existing `drain_actuations`) and thread `channel` and
       `hide_markers` into `_LoopConfig` so the capture can reuse `_capture_visual_actual`'s
       touch-marker suspension.
-- [x] Make `_visual_asserting_scenarios` (`bajutsu/run/cli.py`) walk the full step tree — every
-      phase plus nested `if`, `for_each`, and `app` blocks — so `run --touch-markers` arms the marker
-      channel for a nested step-level `visual` assertion too; leave a `visual` assertion nested in a
-      `web:` block unsupported (it fails loudly on `WebContextDriver.screenshot`'s
-      `UnsupportedAction`).
+- [x] Make `_visual_asserting_scenarios` (`bajutsu/run/cli.py`) walk every phase, every `interrupts`
+      entry's own recovery `steps`, and nested `if`, `for_each`, and `app` blocks within each — so
+      `run --touch-markers` arms the marker channel for a nested or recovery-path step-level `visual`
+      assertion too; leave a `visual` assertion nested in a `web:` block unsupported (it fails loudly
+      on `WebContextDriver.screenshot`'s `UnsupportedAction`).
 - [x] Update `tests/orchestrator/test_loop.py`'s `test_step_level_assert_drops_visual_context` case
       for the new behavior. Add coverage for the single-shot capture, the index-scoped path, the
       touch-marker/banner reuse, and for `responseSchema` staying dropped.
@@ -187,10 +208,14 @@ assertion kind. It needs no new `Driver` method.
   prefix plus `StepOutcome.index`, replaces the forced `visual=None` in the step-level `assert_`
   branch. `_clear_notification_banner` and `_capture_visual_actual` run before the single-shot
   capture; `channel`/`hide_markers` reach `_LoopConfig` for that. `_visual_asserting_scenarios` walks
-  the full step tree (`if` / `forEach` / `app`, not `web`). `responseSchema` stays dropped, unchanged.
-  `bajutsu approve` and the report's visual strip stay out of scope, per *Alternatives considered*;
-  `docs/scenarios.md` and `docs/architecture.md` (and their `docs/ja/` mirrors) name the manual
-  baseline-copy workaround this leaves.
+  every phase, every `interrupts` entry's recovery `steps`, and nested `if` / `for_each` / `app`
+  blocks (not `web`) — the recovery-path case surfaced only after a first review round, since a
+  step-level `visual` assertion there runs through the same `exec_steps` machinery as any other step.
+  `responseSchema` stays dropped, unchanged. `bajutsu approve` and the report's visual strip stay out
+  of scope, per *Alternatives considered*; `docs/scenarios.md` and `docs/architecture.md` (and their
+  `docs/ja/` mirrors) name the manual baseline-copy workaround this leaves, alongside the known
+  `app:`-nested marker-suspension timing limitation this item ships without a device-verified fix
+  for.
 
 ## References
 

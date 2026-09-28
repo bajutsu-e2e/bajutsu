@@ -2383,6 +2383,25 @@ def test_visual_asserting_scenarios_finds_a_step_level_visual_nested_in_if_and_f
     assert visual == {id(nested_in_if), id(nested_in_for_each)}
 
 
+def test_visual_asserting_scenarios_finds_a_step_level_visual_in_an_interrupt_recovery() -> None:
+    """An `interrupts` entry's own recovery `steps` run through the same step machinery as any
+    other step (`_run_recovery`), so a step-level `visual` assertion there takes a real capture too.
+    """
+    in_recovery = Scenario.model_validate(
+        {
+            "name": "visual in interrupt recovery",
+            "steps": [],
+            "interrupts": [
+                {
+                    "condition": {"exists": {"id": "cookie.banner"}},
+                    "steps": [{"assert": [{"visual": {"baseline": "home.png"}}]}],
+                }
+            ],
+        }
+    )
+    assert _visual_asserting_scenarios([in_recovery]) == {id(in_recovery)}
+
+
 def test_visual_asserting_scenarios_finds_a_step_level_visual_in_before_and_after_phases() -> None:
     """The lifecycle phases (BE-0392) take the full step grammar, so they need the same walk."""
     in_before = Scenario.model_validate(

@@ -304,6 +304,60 @@ def test_step_level_assert_visual_scopes_capture_by_execution_index(tmp_path: Pa
     assert shots[0] != shots[1]
 
 
+def test_step_level_assert_visual_scopes_capture_end_to_end_through_a_passing_for_each(
+    tmp_path: Path,
+) -> None:
+    """The same collision the test above proves at the `_run_step_body` level, end to end.
+
+    A `forEach` over two rows, each passing its own `visual` check against a shared baseline, must
+    actually run both iterations through the real `_StepRunner` call sites — not just prove the two
+    calls differ when driven directly.
+    """
+    from PIL import Image
+
+    class _ScreenshottingDriver(FakeDriver):
+        def screenshot(self, path: str) -> None:
+            Image.new("RGBA", (4, 4), (10, 20, 30, 255)).save(path)
+            super().screenshot(path)
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    Image.new("RGBA", (4, 4), (10, 20, 30, 255)).save(baselines / "row.png")
+
+    driver = _ScreenshottingDriver([el("row.1", "", ["cell"]), el("row.2", "", ["cell"])])
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "step visual loop e2e",
+                "steps": [
+                    {
+                        "forEach": {
+                            "sel": {"traits": ["cell"]},
+                            "as": "row",
+                            "steps": [
+                                {
+                                    "name": "check row",
+                                    "assert": [{"visual": {"baseline": "row.png"}}],
+                                }
+                            ],
+                        }
+                    }
+                ],
+            }
+        ),
+        clock=FakeClock(),
+        ctx=_visual_ctx(tmp_path),
+    )
+    assert result.ok, result.failure
+    shots = [arg for k, arg in driver.actions if k == "screenshot"]
+    assert len(shots) == 2
+    assert shots[0] != shots[1]
+    for s in shots:
+        assert isinstance(s, str)
+        assert "visual-actual.png" in s
+
+
 def test_step_level_assert_visual_hides_the_touch_markers_and_restores_them(
     tmp_path: Path,
 ) -> None:
@@ -340,7 +394,7 @@ def test_step_level_assert_visual_clears_a_notification_banner_before_capturing(
     """
     driver = FakeDriver([el("home.title", "ホーム")])
     driver.notification_banner = (8.0, 58.7, 386.0, 78.7)
-    run_scenario(
+    result = run_scenario(
         driver,
         _scenario(
             {
@@ -351,6 +405,12 @@ def test_step_level_assert_visual_clears_a_notification_banner_before_capturing(
         clock=FakeClock(),
         ctx=_visual_ctx(tmp_path),
     )
+    # The fake driver's banner never clears, so both this step-level clear and the unconditional
+    # per-step sweep (which protects `after.png`) each swipe once — but both land on this step's own
+    # `StepOutcome`, not on `expect_actuations`, which is where the drop-in `expect`-phase wrapper
+    # would have sent the first one instead.
+    assert [a.gesture for a in result.steps[0].actuations] == ["swipe", "swipe"]
+    assert result.expect_actuations == []
     ordered = [k for k, _ in driver.actions if k in {"swipe", "screenshot"}]
     assert ordered[:2] == ["swipe", "screenshot"]
 
@@ -565,10 +625,13 @@ def test_a_visual_capture_hides_the_markers_on_the_post_alert_dismiss_retry_too(
 
 
 def test_step_level_assert_drops_schema_context() -> None:
-    """Sibling guard to the visual drop: a step-level `responseSchema` assert is context-less too,
-    so a run carrying a schema context does not forward it to step asserts (BE-0250 Unit 2). Were it
-    forwarded, the empty timeline would fail with "no matching exchange"; dropped, it fails earlier
-    with "no schema context" — so this pins the `schema=None` half of the drop, not just `visual`.
+    """A step-level `responseSchema` assert stays context-less, unlike `visual` (BE-0250 Unit 2).
+
+    `visual` now runs at step level (see `test_step_level_assert_runs_a_real_visual_comparison`
+    above), but `responseSchema` still does not: a run carrying a schema context does not forward it
+    to step asserts. Were it forwarded, the empty timeline would fail with "no matching exchange";
+    dropped, it fails earlier with "no schema context" — so this pins the `schema=None` half of the
+    drop that BE-0250 Unit 2 introduced for both kinds.
     """
     from pathlib import Path
 
