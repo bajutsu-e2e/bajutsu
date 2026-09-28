@@ -1103,16 +1103,22 @@ class _ScenarioRunner:
                 if extra.collector is not None:
                     extra.collector.clear()
             writer = self._artifacts()
+            # The primary's own evidence nests under its own name once a second target is declared,
+            # matching every other declared target's own `f"{sid}/{name}"` convention rather than
+            # leaving the primary's evidence bare at `sid`. `others` is empty for a zero/one-
+            # declared-target scenario, so this stays a no-op there.
+            primary_target = next(iter(self._routed(s)), "")
+            primary_prefix = f"{sid}/{primary_target}" if others else sid
             # Build visual context for scenario-level visual assertions (expect).
             vc: VisualContext | None = None
             if self.baselines_dir is not None and writer is not None:
                 vc = VisualContext(
                     # The driver writes this screenshot itself, so the sink reserves its path and
                     # `capture_actual` records the bytes as uninspected (BE-0331).
-                    screenshot_path=writer.reserve(f"{sid}/visual-actual.png"),
+                    screenshot_path=writer.reserve(f"{primary_prefix}/visual-actual.png"),
                     baselines_dir=self.baselines_dir,
                     writer=writer,
-                    prefix=sid,
+                    prefix=primary_prefix,
                     default_compare=self.eff.visual_compare,
                 )
             sc = (
@@ -1136,7 +1142,6 @@ class _ScenarioRunner:
             # and would also give the primary two different contexts depending on whether a step or
             # an `expect` entry reads it (BE-0428 review finding).
             primary_ctx = EvalContext(visual=vc, schema=sc, golden=gc_with_screen)
-            primary_target = next(iter(self._routed(s)), "")
             result = run_scenario(
                 lz.driver,
                 s,
@@ -1227,11 +1232,13 @@ class _ScenarioRunner:
             # Every declared target's own evidence gaps and network capture, not only the
             # primary's — an extra target's lease is exactly as capable of skipping a capture kind
             # or carrying `request`-asserted traffic as the primary's (BE-0428).
-            primary_name = s.targets[0] if s.targets else ""
-            for name, target_lz in {primary_name: lz, **others}.items():
+            for name, target_lz in {primary_target: lz, **others}.items():
                 result.skipped_captures += target_lz.skipped_captures
                 if target_lz.collector is not None and writer is not None:
-                    prefix = sid if name == primary_name else f"{sid}/{name}"
+                    # `others` empty (a zero/one-declared-target scenario) keeps the primary's own
+                    # `network.json` at bare `sid`; once a second target is declared, every name —
+                    # the primary included — nests under its own `<sid>/<name>/`.
+                    prefix = f"{sid}/{name}" if others else sid
                     art = _write_network(
                         target_lz.collector.snapshot_timed(),
                         writer,

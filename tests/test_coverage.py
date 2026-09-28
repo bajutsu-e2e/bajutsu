@@ -396,6 +396,44 @@ def test_cli_endpoint_coverage_with_runs(tmp_path: Path) -> None:
     assert data["endpoints"]["unasserted"] == ["POST /b"]
 
 
+def test_cli_endpoint_coverage_finds_a_non_primary_targets_own_network_json(
+    tmp_path: Path,
+) -> None:
+    # A multi-target scenario's non-primary targets each get their own `network.json`, nested one
+    # folder deeper than the primary's (`<sid>/<name>/network.json`) — a fixed-depth glob tuned to
+    # the primary's own depth would silently miss it.
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text(
+        "- name: x\n  steps:\n    - assert: [ { request: { path: /a } } ]\n", encoding="utf-8"
+    )
+    net = tmp_path / "runs" / "20260101-000000" / "00-x" / "web"
+    net.mkdir(parents=True)
+    (net / "network.json").write_text('[{"method":"GET","path":"/a"}]', encoding="utf-8")
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "coverage",
+            "--target",
+            "demo",
+            "--config",
+            str(config),
+            "--runs",
+            str(tmp_path / "runs"),
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0
+    data = json.loads(result.stdout)
+    assert data["endpoints"]["asserted"] == ["GET /a"]
+
+
 def test_cli_without_runs_omits_endpoint_section(tmp_path: Path) -> None:
     scn_dir = tmp_path / "scenarios"
     scn_dir.mkdir()
@@ -513,6 +551,42 @@ def test_cli_observed_id_coverage_with_runs(tmp_path: Path) -> None:
     assert obs["unobserved"] == ["cart"]  # declared but rendered in no run
     assert obs["namespaces"][0]["namespace"] == "home"
     assert obs["namespaces"][0]["ids"] == ["home.start"]  # null identifiers ignored
+
+
+def test_cli_observed_id_coverage_finds_elements_at_the_real_per_step_depth(
+    tmp_path: Path,
+) -> None:
+    # A run actually writes `elements.json` one folder deeper than the fixture above uses
+    # (`<runId>/<sid>/<stepId>/elements.json`, not `<runId>/<sid>/elements.json`) — a fixed-depth
+    # glob that only reaches the shallower layout would silently find nothing from a real run.
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text(
+        "- name: x\n  steps:\n    - tap: { id: home.start }\n", encoding="utf-8"
+    )
+    _write_elements(tmp_path / "runs" / "20260101-000000" / "00-x" / "step0", ["home.start"])
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home, auth]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "coverage",
+            "--target",
+            "demo",
+            "--config",
+            str(config),
+            "--runs",
+            str(tmp_path / "runs"),
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0
+    obs = json.loads(result.stdout)["observed_ids"]
+    assert obs["namespaces"][0]["ids"] == ["home.start"]
 
 
 def test_cli_observed_id_coverage_ignores_empty_identifiers(tmp_path: Path) -> None:
@@ -848,6 +922,55 @@ def test_cli_screen_coverage_with_crawl_and_runs(tmp_path: Path) -> None:
     screens = json.loads(result.stdout)["screens"]
     assert screens["covered"] == 1 and screens["total"] == 2
     assert screens["unvisited"][0]["label"] == "secret.panel"  # the discovered, unreached screen
+
+
+def test_cli_screen_coverage_finds_elements_at_the_real_per_step_depth(tmp_path: Path) -> None:
+    # A run actually writes `elements.json` one folder deeper than the fixture above uses
+    # (`<runId>/<sid>/<stepId>/elements.json`, not `<runId>/<sid>/elements.json`) — a fixed-depth
+    # glob that only reaches the shallower layout would silently find no visited screens at all.
+    scn_dir = tmp_path / "scenarios"
+    scn_dir.mkdir()
+    (scn_dir / "smoke.yaml").write_text("- name: x\n  steps:\n    - tap: { id: home.a }\n", "utf-8")
+    els: list[base.Element] = [
+        {
+            "identifier": "home.a",
+            "label": None,
+            "traits": [],
+            "value": None,
+            "frame": (0.0, 0.0, 1.0, 1.0),
+            "nativeZ": None,
+        }
+    ]
+    visited_fp = screen_fingerprint(els).value
+    step = tmp_path / "runs" / "20260101-000000" / "00-x" / "step0"
+    step.mkdir(parents=True)
+    (step / "elements.json").write_text(json.dumps(els), encoding="utf-8")
+    screenmap = tmp_path / "screenmap.json"
+    _screenmap(screenmap, [{"fingerprint": visited_fp, "kind": "id", "ids": ["home.a"]}])
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    bundleId: com.example.demo\n"
+        f"    scenarios: {scn_dir}\n    idNamespaces: [home]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "coverage",
+            "--target",
+            "demo",
+            "--config",
+            str(config),
+            "--runs",
+            str(tmp_path / "runs"),
+            "--crawl",
+            str(screenmap),
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0
+    screens = json.loads(result.stdout)["screens"]
+    assert screens["covered"] == 1 and screens["total"] == 1
 
 
 def test_cli_accepts_a_crawl_run_dir_for_screenmap(tmp_path: Path) -> None:

@@ -145,6 +145,79 @@ def test_steps_share_one_numbering_across_targets() -> None:
     assert [o.index for o in r.steps] == [0, 1, 2]
 
 
+class _StepIdSink(NullSink):
+    """Records every `step_id` `.capture()` is asked to write evidence under."""
+
+    def __init__(self) -> None:
+        self.step_ids: list[str] = []
+
+    def capture(
+        self,
+        driver: base.Driver,
+        step_id: str,
+        kinds: list[str],
+        *,
+        elements: list[base.Element] | None = None,
+        elements_source: str | None = None,
+        reuse_before_screenshot: Artifact | None = None,
+    ) -> list[Artifact]:
+        self.step_ids.append(step_id)
+        return []
+
+
+def test_every_targets_steps_nest_under_its_own_folder_once_two_targets_are_declared() -> None:
+    # Two or more declared targets means two or more devices' worth of screenshots would otherwise
+    # sit in the same flat `<sid>/<stepId>/` folders with nothing but `manifest.json`'s own
+    # `StepOutcome.target` to tell them apart. Once a second target is declared, every step's own
+    # evidence nests under its own routed target's folder instead — the primary included.
+    sink = _StepIdSink()
+    app, web = FakeDriver(screen=list(_APP_SCREEN)), FakeDriver(screen=list(_WEB_SCREEN))
+    r = run_scenario(
+        app,
+        _scenario(
+            {
+                "name": "nested",
+                "targets": ["app", "web"],
+                "steps": [
+                    {"target": "app", "tap": {"id": "app.button"}},
+                    {"target": "web", "tap": {"id": "web.button"}},
+                ],
+            }
+        ),
+        FakeClock(),
+        scenario_id="00-nested",
+        sink=sink,
+        target_runtimes={
+            "app": TargetRuntime(driver=app, sink=sink),
+            "web": TargetRuntime(driver=web, sink=sink),
+        },
+        primary_target="app",
+    )
+    assert r.ok, r.failure
+    assert any(sid.startswith("00-nested/app/") for sid in sink.step_ids)
+    assert any(sid.startswith("00-nested/web/") for sid in sink.step_ids)
+    # Neither target's steps land directly under the scenario dir once a second target exists.
+    assert not any(sid.startswith("00-nested/step") for sid in sink.step_ids)
+
+
+def test_one_declared_target_keeps_its_steps_flat() -> None:
+    # A scenario naming exactly one target has nothing to disambiguate from, so its steps keep
+    # today's flat `<sid>/<stepId>/` layout rather than gaining a same-named folder for no reason.
+    sink = _StepIdSink()
+    app = FakeDriver(screen=list(_APP_SCREEN))
+    r = run_scenario(
+        app,
+        _scenario({"name": "single", "targets": ["app"], "steps": [{"tap": {"id": "app.button"}}]}),
+        FakeClock(),
+        scenario_id="00-single",
+        sink=sink,
+        target_runtimes={"app": TargetRuntime(driver=app, sink=sink)},
+        primary_target="app",
+    )
+    assert r.ok, r.failure
+    assert set(sink.step_ids) == {"00-single/step0"}
+
+
 def test_a_value_one_target_extracts_reaches_an_assertion_on_another() -> None:
     # The motivation's own second claim: `live_bindings` is one dict per `run_scenario` call, shared
     # by every target's runner, so a value the app-side step captured names the record the web-side
@@ -631,6 +704,8 @@ def test_every_other_declared_targets_own_video_is_finalized_and_tagged() -> Non
     # the report at all, however its own config asked for video. Each other declared target's own
     # sink now gets the same start/finish lifecycle, its artifact tagged with its own name — and
     # namespaced under it (`{sid}/web/…`) so it cannot collide with the primary's `scenario.mp4`.
+    # The primary's own recording nests under its own name too, the same way, once a second target
+    # is declared — rather than staying bare at `{sid}/scenario.mp4`.
     app, web = FakeDriver(screen=list(_APP_SCREEN)), FakeDriver(screen=list(_WEB_SCREEN))
     app_sink, web_sink = _VideoTargetSink(), _VideoTargetSink()
     r = run_scenario(
@@ -660,10 +735,36 @@ def test_every_other_declared_targets_own_video_is_finalized_and_tagged() -> Non
     primary_video = next(a for a in videos if a.target == "")
     web_video = next(a for a in videos if a.target == "web")
     assert "/web/" in web_video.name
-    assert "/web/" not in primary_video.name
+    assert "/app/" in primary_video.name
     # The primary's own anchor is unaffected (unprefixed field); the extra target gets its own.
     assert "web" in r.target_video_anchors
     assert web_sink.finished_ids  # the web sink's own finish was actually called, not skipped
+
+
+def test_a_caller_that_omits_primary_target_never_nests_under_a_bare_slash() -> None:
+    # Review finding: `extra_runtimes` filters `target_runtimes` by `name != primary_target`, so a
+    # caller passing `target_runtimes` without `primary_target` (it defaults to `""`) makes every
+    # name count as "extra" (a pre-existing quirk of that filter, unrelated to this fix). Before
+    # this fix, the primary's own scenario-wide recording nested under a bare trailing slash
+    # (`<sid>//scenario.mp4`) in that same case — this only asserts that malformed name is gone,
+    # not the (separately pre-existing) double-counting itself.
+    app = FakeDriver(screen=list(_APP_SCREEN))
+    sink = _VideoTargetSink()
+    r = run_scenario(
+        app,
+        _scenario({"name": "x", "steps": [{"tap": {"id": "app.button"}}]}),
+        FakeClock(),
+        scenario_id="00-x",
+        sink=sink,
+        capture=["video"],
+        target_runtimes={"app": TargetRuntime(driver=app, sink=sink, capture=["video"])},
+        # primary_target intentionally omitted (defaults to "").
+    )
+    assert r.ok, r.failure
+    videos = [a for a in r.artifacts if a.kind == "video"]
+    assert videos  # sanity: the scenario did record something
+    assert all("//" not in a.name for a in videos)
+    assert any(a.name == "00-x/scenario.mp4" for a in videos)
 
 
 def test_a_target_that_declares_no_video_capture_gets_no_artifact_or_anchor() -> None:
@@ -889,8 +990,8 @@ def test_a_recovery_step_omitting_target_after_a_detour_reads_its_own_before() -
     assert r.ok, r.failure
     assert _taps(app) == [{"id": "app.button"}]
     assert _taps(web) == [{"id": "web.value"}, {"id": "ov.close"}, {"id": "web.button"}]
-    assert "actionLog" not in sink.kinds_by_step["rd/step2"]  # the no-op web tap
-    assert "actionLog" in sink.kinds_by_step["rd/step3"]  # the overlay's own clearing tap
+    assert "actionLog" not in sink.kinds_by_step["rd/web/step2"]  # the no-op web tap
+    assert "actionLog" in sink.kinds_by_step["rd/web/step3"]  # the overlay's own clearing tap
 
 
 class _DriverAfterSink(_ReuseTrackingSink):
@@ -967,7 +1068,7 @@ def test_a_recovery_naming_another_target_does_not_leak_into_the_next_step() -> 
     # The guard's bounded retries (`_INTERRUPT_MAX_FIRES` = 3) claim step ids "step1"-"step3" of
     # their own, numbered ahead of the main step0's own capture — sharing the one counter every
     # runner draws from — so the main steps land on "step0" and "step4".
-    step0_id, step1_id = "unwind/step0", "unwind/step4"
+    step0_id, step1_id = "unwind/app/step0", "unwind/web/step4"
     assert sink.driver_by_step[step0_id] is app
     assert sink.driver_by_step[step1_id] is web
     # web's own step must never reuse app's own after.png as a carried-over "before".

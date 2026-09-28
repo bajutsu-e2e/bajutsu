@@ -505,6 +505,12 @@ runs/<runId>/
     └── network.json
 ```
 
+シナリオが `targets` に2つ以上のエントリを宣言しているときは、primary を含む宣言済みの各ターゲットの証跡が、
+そのターゲット名のフォルダにまとまります。`<stepId>` の手前に `<target>/` の階層が入り、シナリオ全体の
+録画や `network.json` もそのターゲットのフォルダ直下に置かれます。ターゲットを0個または1個しか宣言しない
+シナリオは、上記のレイアウトのままです。詳細は [`docs/reporting.md`](docs/reporting.md#output-layout) を
+参照してください。
+
 `manifest.json` がレポートと CI（JUnit attachments）の単一の真実になります。
 
 ### バックエンド対応と能力差の吸収（actuator + フォールバック）

@@ -749,9 +749,20 @@ def _step_artifacts(
         if name is not None:
             artifacts_by_step_id[name.rsplit("/", 1)[0]] = dict_artifacts
 
+    # Reproduces the writer's own step-id convention: once the scenario declares two or more
+    # targets, every step's evidence nests under its own resolved target's folder, so the lookup
+    # key built here must carry the same segment or every multi-target run's step artifacts would
+    # resolve to nothing.
+    multi_target = len(matched.targets) >= 2
     result: list[dict[str, Any]] = []
     for idx, step in enumerate(matched.steps):
-        step_id = f"{sid}/{step.name or f'step{idx}'}"
+        flat_step_id = f"{sid}/{step.name or f'step{idx}'}"
+        target_dir = f"{step.resolved_target}/" if multi_target and step.resolved_target else ""
+        nested_step_id = f"{sid}/{target_dir}{step.name or f'step{idx}'}"
+        # A multi-target run recorded before per-target nesting shipped still has its evidence at
+        # the flat id; the writer never produces a flat id for a multi-target run today, so falling
+        # back to it only when the nested lookup misses keeps such an older run's picker working.
+        step_id = nested_step_id if nested_step_id in artifacts_by_step_id else flat_step_id
         action, fields = _step_action_fields(step)
         view = _artifact_names(
             artifacts_by_step_id.get(step_id, []),
