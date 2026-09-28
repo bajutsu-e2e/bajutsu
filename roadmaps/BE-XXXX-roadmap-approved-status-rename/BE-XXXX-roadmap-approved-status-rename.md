@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | [#2075](https://github.com/bajutsu-e2e/bajutsu/pull/2075) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -278,7 +279,8 @@ by growing the allocator's write surface is a worse trade than leaving it alone.
 
 Log:
 
-- Landed all twelve units in one PR. `make roadmap-status STATUS="Proposal"` now fails with
+- [#2075](https://github.com/bajutsu-e2e/bajutsu/pull/2075) landed all twelve units in one PR.
+  `make roadmap-status STATUS="Proposal"` now fails with
   "unknown status"; `make roadmap-status STATUS="Approved"` returns the 18 migrated items plus
   this one. A cold two-round self-review (BE-0347) surfaced two corrections beyond the plan this
   item's own text now reflects: the review-gate wording accounts for the `single-approver
