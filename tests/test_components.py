@@ -8,6 +8,8 @@ import pytest
 
 from bajutsu.common.scenario import (
     Component,
+    Step,
+    apply_setups,
     expand_components,
     load_component,
     load_scenarios,
@@ -75,6 +77,57 @@ def test_use_expansion_re_checks_target_requirements() -> None:
     )
     with pytest.raises(ValueError, match="does not match"):
         expand_components(scns, _resolver({"login.yaml": LOGIN_TARGETED_ELSEWHERE}))
+
+
+EXTRACT_DUP_PARAMS = load_component(
+    """
+params: [name1, name2]
+steps:
+  - http:
+      url: "https://api.test/data"
+      extractBody:
+        - { var: "${params.name1}", path: "a" }
+        - { var: "${params.name2}", path: "b" }
+"""
+)
+
+
+def test_use_expansion_re_checks_extract_body_var_collision() -> None:
+    # BE-0440: the component's two entries use distinct `${params.*}` tokens, so the raw
+    # component parses cleanly on its own — the collision exists only once `expand_components`
+    # substitutes both to the same caller-supplied name, which the load-time `Scenario` validator
+    # never sees (it runs before `use` is expanded).
+    scns = load_scenarios(
+        """
+- name: s
+  steps:
+    - use: { component: extract.yaml, with: { name1: token, name2: token } }
+"""
+    )
+    with pytest.raises(ValueError, match="token"):
+        expand_components(scns, _resolver({"extract.yaml": EXTRACT_DUP_PARAMS}))
+
+
+def test_apply_setups_re_checks_extract_body_var_collision() -> None:
+    # BE-0440: a `resolve` that hands back bare `Step`s never validated through a full
+    # `Scenario.model_validate` — unlike the CLI's own `_setup_steps`, which always loads a
+    # prelude as a scenario file first — is exactly what `apply_setups`'s own re-check defends
+    # against: its single `http` step already carries the collision, so this stands in for a
+    # prelude source that skipped validation.
+    steps = [
+        Step.model_validate(
+            {
+                "http": {
+                    "url": "https://api.test/data",
+                    "saveBody": "token",
+                    "extractBody": [{"var": "token", "path": "a"}],
+                }
+            }
+        )
+    ]
+    scns = load_scenarios("- name: s\n  steps:\n    - tap: { id: home.tab }\n")
+    with pytest.raises(ValueError, match="token"):
+        apply_setups(scns, "setup.yaml", lambda ref: steps)
 
 
 def test_nested_components_expand() -> None:

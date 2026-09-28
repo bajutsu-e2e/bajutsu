@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0440](BE-0440-http-step-field-extraction.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0440") |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
@@ -128,18 +128,18 @@ Prime directives preserved:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add the `extractBody` field to the `http` step's scenario model, alongside `saveBody`. Reject
+- [x] Add the `extractBody` field to the `http` step's scenario model, alongside `saveBody`. Reject
       a duplicate `var` across `extractBody` entries or a `var` colliding with `saveBody` in the
       scenario loader itself, never as `Step` model validation.
-- [ ] Add JSON parsing and path resolution to the runner's `http` handler, including a leading
+- [x] Add JSON parsing and path resolution to the runner's `http` handler, including a leading
       index and chained indexes. Fail the step on a parse error, a malformed path, or an unresolved
       path. Fail it too when a substituted value carries `.`, `[`, or `]`. Render a non-string
       resolved value with the existing `_json_text` helper
       (`bajutsu/common/assertions/evaluate/_functions.py`). Re-run the loader's duplicate-`var`
       check on the substituted step, and fail the step on a collision substitution alone reveals.
-- [ ] Document `extractBody` in `docs/scenarios.md` (beside `saveBody`) and in the `http` production
+- [x] Document `extractBody` in `docs/scenarios.md` (beside `saveBody`) and in the `http` production
       of `docs/dsl-grammar.md`, with both `docs/ja/` mirrors.
-- [ ] Add scenario-level tests covering:
+- [x] Add scenario-level tests covering:
       - a resolved nested field.
       - a path opening on an array index, and a chained index.
       - a non-string resolved value (`_json_text` rendering).

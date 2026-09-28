@@ -25,7 +25,22 @@ def _interp_step(step: Step, bindings: Mapping[str, str]) -> Step:
     dumped = step.model_dump(by_alias=True, exclude_none=True)
     if not interp.find_tokens(dumped) & bindings.keys():
         return step
-    return Step.model_validate(interp.interpolate(dumped, bindings))
+    # `extractBody`'s own `path` is a fixed grammar (BE-0440), not free text: the `http` handler
+    # substitutes each `${...}` token itself, one path segment at a time, and rejects a substituted
+    # value that would inject new `.`/`[`/`]` structure — a check this function's blind whole-string
+    # splice below cannot make once substitution and literal text are merged into one string.
+    # Popped out of the copy `interpolate()` walks, so the handler always sees the step's original,
+    # un-substituted `extractBody` — token included — regardless of what else on this step changed.
+    http = dumped.get("http")
+    if http is not None:
+        http.pop("extractBody", None)
+    result = Step.model_validate(interp.interpolate(dumped, bindings))
+    if step.http is not None and step.http.extract_body is not None:
+        assert result.http is not None  # the "http" key above was left in place, only trimmed
+        result = result.model_copy(
+            update={"http": result.http.model_copy(update={"extract_body": step.http.extract_body})}
+        )
+    return result
 
 
 def _resolve_system_alert(step: Step, locale: str | None) -> Step:

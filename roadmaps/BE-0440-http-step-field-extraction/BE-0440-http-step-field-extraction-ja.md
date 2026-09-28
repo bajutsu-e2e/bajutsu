@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0440](BE-0440-http-step-field-extraction-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0440") |
 | トピック | シナリオ記述機能 |
 <!-- /BE-METADATA -->
@@ -143,17 +143,17 @@ prime directive の保持：
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `http` ステップのシナリオモデルへ、`saveBody` と並ぶ形で `extractBody` フィールドを追加します。
+- [x] `http` ステップのシナリオモデルへ、`saveBody` と並ぶ形で `extractBody` フィールドを追加します。
       `extractBody` のエントリ同士で重複する `var` や、`saveBody` と衝突する `var` は、シナリオ
       ローダー自体で拒否します。`Step` のモデル検証としては行いません。
-- [ ] ランナーの `http` ハンドラへ、先頭添字と添字連鎖を含む JSON 解析とパスの解決を実装します。解析
+- [x] ランナーの `http` ハンドラへ、先頭添字と添字連鎖を含む JSON 解析とパスの解決を実装します。解析
       エラーや不正なパス（`.`、`[`、`]` を含む値に置換された場合を含む）、未解決のパスはステップ
       失敗にします。解決した値が文字列でなければ、既存の `_json_text` ヘルパー
       （`bajutsu/common/assertions/evaluate/_functions.py`）で文字列化します。ローダーの `var` 重複
       検証を置換後のステップにも再度実行し、置換だけで現れる衝突をステップ失敗にします。
-- [ ] `docs/scenarios.md`（`saveBody` の隣）と `docs/dsl-grammar.md` の `http` 生成規則へ
+- [x] `docs/scenarios.md`（`saveBody` の隣）と `docs/dsl-grammar.md` の `http` 生成規則へ
       `extractBody` を記載し、両方の `docs/ja/` 対訳も更新します。
-- [ ] シナリオレベルのテストを追加します。対象は次のとおりです。
+- [x] シナリオレベルのテストを追加します。対象は次のとおりです。
       - 解決できるネストしたフィールドです。
       - 配列添字から始まるパスと添字連鎖です。
       - 文字列以外の値です（`_json_text` による文字列化）。
