@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0440") |
+| Implementing PR | [#2074](https://github.com/bajutsu-e2e/bajutsu/pull/2074) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -150,6 +151,19 @@ Prime directives preserved:
       - a duplicate `var`: two entries sharing one name, and an entry colliding with `saveBody`.
       - a `path` and a `var` written with `${vars.*}`: a collision substitution alone reveals, and
         a substituted value carrying `.`/`[`/`]`.
+
+Log:
+
+- [#2074](https://github.com/bajutsu-e2e/bajutsu/pull/2074) — All four units, in one PR. Added
+  `HttpRequest.extract_body`, the `_check_http_extract_vars` scenario-loader validator (re-run
+  after `expand_components`/`apply_setups`), the handler's path tokenizer/resolver, and the
+  `docs`/`docs/ja` updates. Self-review (a fresh judge-only pass plus the `silent-failure-hunter`,
+  `type-design-analyzer`, and `pr-test-analyzer` lenses) surfaced and fixed three gaps the design
+  text implied but didn't spell out: an unresolved `${vars.*}`/`${secrets.*}` token in `var` or
+  `path` now fails the step instead of silently writing under the literal token text; a
+  substituted path value must be non-empty (an empty value would otherwise vanish from the path
+  rather than fail); and multiple `extractBody` entries resolve atomically — one entry's failure
+  never leaves an earlier entry's var already written to `vars.*`.
 
 ## References
 

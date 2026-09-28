@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0440") |
+| 実装 PR | [#2074](https://github.com/bajutsu-e2e/bajutsu/pull/2074) |
 | トピック | シナリオ記述機能 |
 <!-- /BE-METADATA -->
 
@@ -165,6 +166,10 @@ prime directive の保持：
         両方です。
       - `${vars.*}` で書いた `path` と `var` です。置換だけで現れる衝突と、`.`／`[`／`]` を含む
         値に置換される場合を含みます。
+
+ログ：
+
+- [#2074](https://github.com/bajutsu-e2e/bajutsu/pull/2074) — 4つの単位すべてを、1つの PR で実装しました。モデルには`HttpRequest.extract_body`を追加しました。シナリオローダーには`_check_http_extract_vars`を追加しました。`expand_components`と`apply_setups`のあとに再実行します。ハンドラにはパスのトークナイザとリゾルバを追加しました。`docs`と`docs/ja`も更新しました。セルフレビューでは、判定のみの新規パスに加え、`silent-failure-hunter`・`type-design-analyzer`・`pr-test-analyzer`の観点も適用しました。詳細設計が暗に求めながら明記していなかった3つの抜けを、そこで見つけて直しました。`var`と`path`の`${vars.*}`トークンが解決しない場合、その文字列をそのまま書き込まず、ステップを失敗させます。置換後のパスの値は、空であってはならないとしました。空の値は、失敗せずパスから消えてしまうためです。複数の`extractBody`エントリは、全体が成功して初めて反映します。1つが失敗しても、先に処理したエントリのvarが`vars.*`へ書き込まれたままにはなりません。
 
 ## 参考
 
