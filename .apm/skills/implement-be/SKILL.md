@@ -87,9 +87,9 @@ the first time.
 
 Then branch on its `Status` (the metadata field, not a directory — the layout is flat):
 
-- **`Proposal`** — the normal case. Note that implementing it *accepts* it: this PR moves it off
-  `Proposal` — to `Implemented` when your change completes the whole work breakdown, to
-  `In progress` when units remain (step 8). Say so.
+- **`Approved`** — the normal case. It was already accepted at its two-approval merge, so note that
+  implementing it *starts* it: this PR moves it off `Approved` — to `Implemented` when your change
+  completes the whole work breakdown, to `In progress` when units remain (step 8). Say so.
 - **`In progress`** — part of it has already shipped, so the `Progress` checklist, not the metadata
   row, is the real state. Read which units are ticked, and read the `Log` entries and the
   `Implementing PR` row to see what those PRs landed. Resolve the request to a **specific unticked
@@ -124,7 +124,7 @@ and a reshaped scope proposed from the item's text alone tends to re-propose it.
 
 ### 2. Claim the tracking issue
 
-Every open item (`Status: Proposal` or `Status: In progress`) has a GitHub tracking issue —
+Every open item (`Status: Approved` or `Status: In progress`) has a GitHub tracking issue —
 opened and labeled `roadmap-tracking` by the BE-0109 sync, titled `[BE-NNNN] <title>`. Its
 body says "self-assign this issue when you pick it up; leave it unassigned if it's up for
 grabs." Before claiming it, **check who is already assigned** — the issue is how parallel
@@ -175,7 +175,7 @@ Don't start typing from the title. Build the real picture first:
   **Implemented**; read the one covering your area rather than the whole section.
 - **Check dependencies.** If the References / design lean on another BE item, verify that
   item's status with `make roadmap-find ARGS="--id BE-NNNN"`, which answers in one row instead
-  of opening the item. A prerequisite still at `Status: Proposal` is a blocker — surface it and
+  of opening the item. A prerequisite still at `Status: Approved` is a blocker — surface it and
   ask how to proceed (build the prerequisite first? a thinner first slice?). For an `In progress`
   item the prerequisite is often **another unit of this same item**, whose state lives in the
   `Progress` checklist rather than in any metadata row `roadmap-find` can answer — read the
@@ -304,7 +304,7 @@ several units across several PRs — BE-0365, BE-0339, and BE-0381 each did:
   [BE-0407](../../../roadmaps/BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning.md)
   and [BE-0234](../../../roadmaps/BE-0234-adb-run-performance/BE-0234-adb-run-performance.md), are in
   [`docs/ai-development.md`](../../../docs/ai-development.md#roadmap-items-be-ids-strict).
-- **Units remain unticked** — leave `Status` at **In progress** (promote it from `Proposal` to that
+- **Units remain unticked** — leave `Status` at **In progress** (promote it from `Approved` to that
   if it was still a proposal). Announcing `Implemented` while units 4 and 5 are open misreports the
   item on the [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html), which
   reads the bucket straight from this field.
@@ -319,7 +319,7 @@ PR link both need a number that does not exist yet, so the ordinary path writes 
 the item legitimately carries a status with neither between steps 8 and 10.
 
 **The Japanese mirror uses Japanese field names and values**, so translate instead of copying the
-English across: `Status` → `状態`, `Proposal` → `提案`, `In progress` → `実装中`, `Implemented` →
+English across: `Status` → `状態`, `Approved` → `承認済み`, `In progress` → `実装中`, `Implemented` →
 `実装済み`, `Tracking issue` → `トラッキング Issue`, `Implementing PR` → `実装 PR`, `Progress` →
 `進捗`, `Log:` → `ログ：` (a fullwidth colon), `Unit N` → `単位 N`. Write the log entry as natural
 Japanese under the

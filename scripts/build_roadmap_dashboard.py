@@ -5,7 +5,7 @@ The roadmap's source of truth is the per-item metadata under ``roadmaps/<categor
 — read through the shared loader in ``build_roadmap_index.py``. This renders that live metadata as a
 single self-contained HTML dashboard, ``docs/api/roadmap.md``, that the existing MkDocs site
 publishes to GitHub Pages: cards grouped by category (Topic), each card carrying its own status
-(Implemented / In progress / Proposal / Deferred / Rejected) and linking to its item on GitHub. Each
+(Implemented / In progress / Approved / Deferred / Rejected) and linking to its item on GitHub. Each
 category shows a progress figure — the share of its outstanding items that are Implemented — and a
 stacked bar of that same outstanding composition (a Rejected item renders a card but no bar
 segment), and categories with no outstanding work are grouped separately under Completed.
@@ -54,12 +54,12 @@ DEFAULT_OUT = ROOT / "docs" / "api" / "roadmap.md"
 REPO_BLOB = "https://github.com/bajutsu-e2e/bajutsu/blob/main"
 
 # Bucket -> the accent colour its cards carry. Greens read as shipped, amber as in flight, indigo as
-# proposed, grey as parked, red as closed for good — the same lifecycle ordering the index uses
+# approved, grey as parked, red as closed for good — the same lifecycle ordering the index uses
 # (most-progressed first).
 BUCKET_COLOR: dict[str, str] = {
     "Implemented": "#3B6D11",
     "In progress": "#BA7517",
-    "Proposals": "#534AB7",
+    "Approved": "#534AB7",
     "Deferred": "#5F5E5A",
     "Rejected": "#8B3A3A",
 }
@@ -67,7 +67,7 @@ BUCKET_COLOR: dict[str, str] = {
 BUCKET_LABEL: dict[str, str] = {
     "Implemented": "Implemented",
     "In progress": "In progress",
-    "Proposals": "Proposal",
+    "Approved": "Approved",
     "Deferred": "Deferred",
     "Rejected": "Rejected",
 }
@@ -928,7 +928,7 @@ _SCRIPT = """
   // worked, as opposed to Deferred (parked on purpose) or Rejected (never coming back) — a
   // narrower set than _topic_progress's "outstanding" (Rejected only), chosen so a Deferred item
   // doesn't dilute the shortcut's whole point of surfacing what's live right now.
-  var OPEN_BUCKETS=['Proposals', 'In progress'];
+  var OPEN_BUCKETS=['Approved', 'In progress'];
   var on={};
   checks.forEach(function(c){ on[c.getAttribute('data-filter')]=c.checked; });
   // Each card and row carries its searchable text (id + title + topic + status, lower-cased) in
@@ -1410,7 +1410,7 @@ _SCRIPT = """
 _INTRO = (
     "# Roadmap status\n\n"
     '!!! warning "Ownership tracking lives in GitHub Issues, not on this page"\n'
-    "    Every open item (status `Proposal` or `In progress`) has a matching GitHub issue, and "
+    "    Every open item (status `Approved` or `In progress`) has a matching GitHub issue, and "
     "that issue's **Assignees — not this dashboard or any file in the repo — are the single "
     "source of truth** for who, if anyone, is working on it. Browse issues labeled "
     "[`roadmap-tracking`]"
@@ -1425,7 +1425,7 @@ _INTRO = (
     "progress overview — click a heading to expand it, toggle the status chips on and off, or type "
     "in the search box to narrow the "
     'cards by id, title, topic, or status. "Show open only" is a shortcut to that same narrowing — '
-    "Proposal and In progress on, everything else off, one click back to restore every status — and "
+    "Approved and In progress on, everything else off, one click back to restore every status — and "
     "Expand all / Collapse all open or close every category at once instead of one heading at a "
     "time. Switch between the card grid and a sortable table with the "
     "Cards / Table toggle — the table lists every item as a row with sortable Created and Updated "

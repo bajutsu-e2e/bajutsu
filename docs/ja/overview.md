@@ -53,7 +53,7 @@ swipe / wait）し、**機械チェック可能なアサーション**で結果�
 | 18 | [self-hosting](self-hosting.md) | `serve` を単一 Mac 上でトークン認証付き LaunchAgent として常駐させ、Tailscale 越しに公開します（BE-0016 段階 A） |
 | 19 | [vision](vision.md) | 成長の 3 軸（reach / scale / authoring）。各軸がすでにどこまで進んでいるかと、そのすべてが守る制約を扱います。reach のプラットフォーム可搬性設計（セレクタ、id 規約、段階分け）も自身の節にあります |
 | 20 | [ai-development](ai-development.md) | AI エージェントと人間が並行して開発するための運用規約（ゲート、ブランチ、pre-push フック、worktree）。[`CLAUDE.md`](../../CLAUDE.md) の詳細版です |
-| 21 | [roadmap-workflow](roadmap-workflow.md) | **着想から実装までの循環**：`ideation` スキルが BE 提案を起草し、`implement-be` スキルがそれを出荷します（プレースホルダー ID、Proposal → Implemented のライフサイクル） |
+| 21 | [roadmap-workflow](roadmap-workflow.md) | **着想から実装までの循環**：`ideation` スキルが BE 提案を起草し、`implement-be` スキルがそれを出荷します（プレースホルダー ID、Approved → Implemented のライフサイクル） |
 | 22 | [contributor-workflow-tutorial](contributor-workflow-tutorial.md) | その循環を **手を動かしながら** 辿る walkthrough：一つのアイデアを `/ideation` からマージ済みの提案へ、続いて `/implement-be` からマージ済みの PR へ。良い提案と悪い提案の実例、`propose-and-build` を使うときも扱います |
 
 ## クイックスタート

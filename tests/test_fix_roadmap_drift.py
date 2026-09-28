@@ -39,7 +39,7 @@ def test_a_valid_file_is_returned_unchanged() -> None:
 
 def test_drops_the_retired_track_field() -> None:
     text = _valid_en().replace(
-        "| Status | **Proposal** |\n", "| Status | **Proposal** |\n| Track | Something |\n"
+        "| Status | **Approved** |\n", "| Status | **Approved** |\n| Track | Something |\n"
     )
     fixed = fix_unknown_fields_and_missing_sections(text, lang="en")
     assert "| Track |" not in fixed
@@ -48,7 +48,7 @@ def test_drops_the_retired_track_field() -> None:
 
 def test_drops_the_retired_track_field_ja() -> None:
     text = _valid_ja().replace(
-        "| 状態 | **提案** |\n", "| 状態 | **提案** |\n| Track | Something |\n"
+        "| 状態 | **承認済み** |\n", "| 状態 | **承認済み** |\n| Track | Something |\n"
     )
     fixed = fix_unknown_fields_and_missing_sections(text, lang="ja")
     assert "| Track |" not in fixed
@@ -84,7 +84,7 @@ def test_inserts_a_missing_section_at_the_end_when_no_later_heading_survives() -
 def test_fixes_both_shapes_together() -> None:
     text = (
         _valid_en()
-        .replace("| Status | **Proposal** |\n", "| Status | **Proposal** |\n| Track | Old |\n")
+        .replace("| Status | **Approved** |\n", "| Status | **Approved** |\n| Track | Old |\n")
         .replace("## Progress\n\nTBD\n\n", "")
     )
     fixed = fix_unknown_fields_and_missing_sections(text, lang="en")

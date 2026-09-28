@@ -28,7 +28,7 @@ def _write_item(roadmap: Path, name: str, *, body: str = "", author: str = _AUTH
     """
     item = roadmap / name
     item.mkdir(parents=True)
-    for suffix, status in (("", "Proposal"), ("-ja", "提案")):
+    for suffix, status in (("", "Approved"), ("-ja", "承認済み")):
         meta = (
             f"# {name} — demo\n\n"
             "<!-- BE-METADATA -->\n| Field | Value |\n|---|---|\n"

@@ -16,7 +16,7 @@
 ## Introduction
 
 Add a Claude Code skill that lists roadmap (BE) items filtered by `Status`, so an AI
-session can survey "everything that is a `Proposal`" (or `In progress`, `Implemented`,
+session can survey "everything that is `Approved`" (or `In progress`, `Implemented`,
 `Deferred`, `Rejected`) without reading the full `roadmaps/README.md`. The skill takes a
 status argument and prints one table — `ID`, title, `Topic`, and the item's file path — so
 Claude can then open only the items it actually needs.
@@ -36,7 +36,7 @@ needs, say, the open proposals still has two poor options today:
 The index is *generated from each item's own metadata* (`Status` / `Topic` / title) by
 [`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py) (BE-0043 / BE-0078).
 That same metadata is the authoritative, machine-readable source a status filter needs — so
-the projection an AI session wants ("give me the `Proposal` rows with paths") is a small,
+the projection an AI session wants ("give me the `Approved` rows with paths") is a small,
 deterministic query over data the repo already parses, not a new source of truth.
 
 A focused, argument-driven skill gives every session one consistent, low-token way to ask
@@ -54,13 +54,13 @@ parser. `scripts/build_roadmap_index.py` (via `roadmap_ids.iter_item_dirs` +
 block for its `Status` and `Topic` and its H1 title. Expose that as a small query the skill
 can call — either:
 
-- a thin CLI entry point (e.g. `python scripts/roadmap_query.py --status Proposal`) that
+- a thin CLI entry point (e.g. `python scripts/roadmap_query.py --status Approved`) that
   factors the shared parsing out of `build_roadmap_index.py` into an importable helper, or
 - a new `make` target that wraps it.
 
 The query:
 
-- Takes one `Status` value — `Proposal` / `In progress` / `Implemented` / `Deferred` /
+- Takes one `Status` value — `Approved` / `In progress` / `Implemented` / `Deferred` /
   `Rejected` — matched case-insensitively, and validates it against the known set
   (an unknown status prints the valid values and exits non-zero, rather than an empty table).
 - Emits a Markdown table with columns `ID`, `Item` (title), `Topic`, and `Path` (the

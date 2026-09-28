@@ -106,7 +106,7 @@ def test_bucket_derives_classification_from_status() -> None:
     # (retired in BE-0078) — so folder and bucket can never disagree.
     assert bri.bucket("Implemented") == "Implemented"
     assert bri.bucket("In progress") == "In progress"
-    assert bri.bucket("Proposal") == "Proposals"
+    assert bri.bucket("Approved") == "Approved"
     assert bri.bucket("Deferred") == "Deferred"
     assert bri.bucket("Rejected") == "Rejected"
 

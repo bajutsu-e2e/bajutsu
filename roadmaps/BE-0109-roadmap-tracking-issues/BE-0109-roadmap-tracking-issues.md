@@ -15,7 +15,7 @@
 
 ## Introduction
 
-Open a GitHub Issue for every **open** roadmap item — one whose `Status` is `Proposal` or `In
+Open a GitHub Issue for every **open** roadmap item — one whose `Status` is `Approved` or `In
 progress`, i.e. everything not yet shipped or shelved — and let that issue's native **Assignees**
 be the single source of truth for "who, if anyone, is working on this." Because an item gets its
 issue the moment it exists as a proposal, an issue with **no** assignee is exactly the signal the
@@ -59,10 +59,10 @@ write` on the default token.
    the design avoid writing anything back to the repo — and it means the assignee, the one piece of
    state that changes most often, lives only where GitHub already manages it.
 2. **Lifecycle rule — a pure function of an item's current `Status`.** For every numbered item:
-   - `Status` is `Proposal` or `In progress` (an *open* item) and no matching open issue exists →
+   - `Status` is `Approved` or `In progress` (an *open* item) and no matching open issue exists →
      create one.
    - A matching open issue exists but the item's `Status` is `Implemented`, `Deferred`, or
-     `Rejected` (shipped, or shelved) → close it. Un-shelving (`Deferred` → `Proposal`) re-opens
+     `Rejected` (shipped, or shelved) → close it. Un-shelving (`Deferred` → `Approved`) re-opens
      the item, so the next run re-creates the issue.
    Deriving existence from current `Status` alone — never from a PR diff — makes the sync
    self-healing and idempotent, matching the rest of the roadmap tooling (BE-0043, BE-0061):

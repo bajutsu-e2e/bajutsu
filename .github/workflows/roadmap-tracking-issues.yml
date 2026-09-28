@@ -1,7 +1,7 @@
 # Keep one GitHub tracking issue open per *open* roadmap item (BE-0109).
 #
 # On every push to `main` that touches `roadmaps/**`, reconcile GitHub's open `roadmap-tracking`
-# issues with the tree: open an issue for each open item (Status `Proposal` / `In progress`) that
+# issues with the tree: open an issue for each open item (Status `Approved` / `In progress`) that
 # lacks one, and close the issue of any item that has since shipped or been shelved. GitHub is the
 # source of truth for both ownership (the issue's Assignees) and issue existence, so nothing is
 # written back to the repo — the job needs only `issues: write`, no commit to `main` and no bypass

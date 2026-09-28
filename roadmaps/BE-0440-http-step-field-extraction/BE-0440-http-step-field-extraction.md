@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0440](BE-0440-http-step-field-extraction.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Approved** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0440") |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->

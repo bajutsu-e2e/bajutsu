@@ -26,7 +26,7 @@ _TOPIC = "Contributor workflow"
 def _scaffold(tmp_path: Path, **kw: str) -> Path:
     roadmap = tmp_path / "roadmaps"
     roadmap.mkdir()
-    defaults = {"topic": _TOPIC, "status": "Proposal", "handle": "octocat"}
+    defaults = {"topic": _TOPIC, "status": "Approved", "handle": "octocat"}
     created = nri.scaffold(
         roadmap,
         kw.pop("slug", "demo-feature"),
@@ -51,7 +51,7 @@ def test_english_file_has_canonical_shape(tmp_path: Path) -> None:
     assert "# BE-XXXX — Demo feature" in text
     assert "| Proposal | [BE-XXXX](BE-XXXX-demo-feature.md) |" in text
     assert "| Author | [@octocat](https://github.com/octocat) |" in text
-    assert "| Status | **Proposal** |" in text
+    assert "| Status | **Approved** |" in text
     # Tracking issue (BE-0139): a search URL computed from the literal BE-XXXX placeholder, which
     # the CI allocator rewrites to the real id alongside the rest of the file.
     assert f"| Tracking issue | [Search]({nri._tracking_issue_url('BE-XXXX')}) |" in text
@@ -79,7 +79,7 @@ def test_japanese_file_has_canonical_shape(tmp_path: Path) -> None:
     text = (_scaffold(tmp_path) / "BE-XXXX-demo-feature-ja.md").read_text(encoding="utf-8")
     assert text.startswith("[English](BE-XXXX-demo-feature.md) · **日本語**\n")
     assert "| 提案者 | [@octocat](https://github.com/octocat) |" in text
-    assert "| 状態 | **提案** |" in text  # Proposal -> 提案
+    assert "| 状態 | **承認済み** |" in text  # Approved -> 承認済み
     assert f"| トラッキング Issue | [検索]({nri._tracking_issue_url('BE-XXXX')}) |" in text
     for section in ("はじめに", "動機", "詳細設計", "検討した代替案", "参考"):
         assert f"## {section}\n\nTBD" in text
@@ -112,7 +112,7 @@ def test_handle_is_stripped_of_leading_at(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "status", ["Proposal", "In progress", "Implemented", "Deferred", "Rejected"]
+    "status", ["Approved", "In progress", "Implemented", "Deferred", "Rejected"]
 )
 def test_item_lands_directly_under_roadmaps_regardless_of_status(
     tmp_path: Path, status: str

@@ -63,7 +63,7 @@ from roadmap_ids import is_item_dir
 
 # The Status that gets no topic label (BE-0156): a shipped item has no open PR left to triage, the
 # shipped-side boundary BE-0109 also draws. Since BE-0159 retired the per-Status folders this is read
-# from the item's head metadata, not an ``implemented/`` path — every other Status (Proposal /
+# from the item's head metadata, not an ``implemented/`` path — every other Status (Approved /
 # In progress / Deferred / Rejected) is in scope: a deferred item can still be un-deferred, and a
 # rejected item's file can still be edited by a PR worth triaging.
 SHIPPED_STATUS = "Implemented"

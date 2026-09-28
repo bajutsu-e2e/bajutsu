@@ -1,7 +1,7 @@
 """Tests for scripts/sync_roadmap_tracking_issues.py (BE-0109).
 
 The sync keeps one open GitHub ``roadmap-tracking`` issue per *open* roadmap item (Status
-``Proposal`` / ``In progress``) and closes an item's issue once it ships or is shelved. GitHub is
+``Approved`` / ``In progress``) and closes an item's issue once it ships or is shelved. GitHub is
 the source of truth, so the lifecycle decision (``plan``) is a pure function of the tree's Statuses
 plus the ids that currently have an open issue — that purity is what these tests pin. The ``gh``
 side effects are exercised through monkeypatched seams, never the network.
@@ -59,16 +59,16 @@ def _write_item(
 
 def test_scan_reads_id_slug_status_title_and_intro(tmp_path: Path) -> None:
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-9001-foo-bar", "Proposal", title="A thing", intro="Do the thing.")
+    _write_item(roadmap, "BE-9001-foo-bar", "Approved", title="A thing", intro="Do the thing.")
     (item,) = sync.scan_items(roadmap)
-    assert (item.be_id, item.slug, item.status) == ("BE-9001", "foo-bar", "Proposal")
+    assert (item.be_id, item.slug, item.status) == ("BE-9001", "foo-bar", "Approved")
     assert item.title == "A thing"
     assert item.intro == "Do the thing."
 
 
 def test_scan_skips_placeholder_and_statusless(tmp_path: Path) -> None:
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-9001-real", "Proposal")
+    _write_item(roadmap, "BE-9001-real", "Approved")
     # A BE-XXXX placeholder has no permanent number; it must never be scanned.
     placeholder = roadmap / "BE-XXXX-draft"
     placeholder.mkdir(parents=True)
@@ -86,7 +86,7 @@ def test_scan_sorts_by_id(tmp_path: Path) -> None:
     roadmap = tmp_path / "roadmaps"
     _write_item(roadmap, "BE-9001-earliest", "Deferred")
     _write_item(roadmap, "BE-9003-latest", "Implemented")
-    _write_item(roadmap, "BE-9002-middle", "Proposal")
+    _write_item(roadmap, "BE-9002-middle", "Approved")
     assert [i.be_id for i in sync.scan_items(roadmap)] == ["BE-9001", "BE-9002", "BE-9003"]
 
 
@@ -102,14 +102,14 @@ def _item(be_id: str, status: str) -> object:
 
 
 def test_plan_creates_for_open_items_without_an_issue() -> None:
-    items = [_item("BE-0001", "Proposal"), _item("BE-0002", "In progress")]
+    items = [_item("BE-0001", "Approved"), _item("BE-0002", "In progress")]
     result = sync.plan(items, existing_open_ids=set())
     assert [i.be_id for i in result.to_create] == ["BE-0001", "BE-0002"]
     assert result.to_close == []
 
 
 def test_plan_is_a_noop_when_open_item_already_has_an_issue() -> None:
-    items = [_item("BE-0001", "Proposal")]
+    items = [_item("BE-0001", "Approved")]
     result = sync.plan(items, existing_open_ids={"BE-0001"})
     assert result.to_create == []
     assert result.to_close == []
@@ -199,7 +199,7 @@ def test_ensure_label_reraises_other_failures(monkeypatch: pytest.MonkeyPatch) -
 
 def test_sync_creates_and_closes_via_seams(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-9001-open", "Proposal")  # open, no issue -> create
+    _write_item(roadmap, "BE-9001-open", "Approved")  # open, no issue -> create
     _write_item(roadmap, "BE-9002-done", "Implemented")  # shipped, has issue -> close
     created: list[str] = []
     closed: list[int] = []
@@ -231,7 +231,7 @@ def test_sync_noop_does_not_ensure_label(tmp_path: Path, monkeypatch: pytest.Mon
 
 def test_check_exit_codes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-9001-open", "Proposal")
+    _write_item(roadmap, "BE-9001-open", "Approved")
     monkeypatch.setattr(sync, "ROADMAP", roadmap)
     monkeypatch.setattr(sync, "existing_open_issues", dict)
     assert sync.main(["--check"]) == 1  # BE-9001 open but no issue -> drift
@@ -241,7 +241,7 @@ def test_check_exit_codes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_main_sync_runs_without_check(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-9001-open", "Proposal")
+    _write_item(roadmap, "BE-9001-open", "Approved")
     monkeypatch.setattr(sync, "ROADMAP", roadmap)
     monkeypatch.setattr(sync, "existing_open_issues", lambda: {"BE-9001": 1})  # already consistent
     monkeypatch.setattr(sync, "ensure_label", lambda: None)

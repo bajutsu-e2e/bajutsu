@@ -52,7 +52,7 @@ def _write_item(roadmap: Path, id_: str, slug: str, body: str) -> None:
 
 def test_resolve_status_is_case_insensitive() -> None:
     """A status is matched to its canonical form regardless of case."""
-    assert rq.resolve_status("proposal") == "Proposal"
+    assert rq.resolve_status("approved") == "Approved"
     assert rq.resolve_status("IN PROGRESS") == "In progress"
     assert rq.resolve_status("DEFERRED") == "Deferred"
     assert rq.resolve_status("rejected") == "Rejected"
@@ -60,20 +60,20 @@ def test_resolve_status_is_case_insensitive() -> None:
 
 def test_resolve_status_rejects_unknown() -> None:
     """An unknown status fails with the valid values named, rather than matching nothing."""
-    with pytest.raises(ValueError, match=r"In progress.*Proposal"):
+    with pytest.raises(ValueError, match=r"In progress.*Approved"):
         rq.resolve_status("done")
 
 
 def test_iter_rows_returns_only_matching_status(tmp_path: Path) -> None:
     """Filtering by a status returns exactly the items whose metadata carries it."""
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-0001", "alpha", _item("Proposal", "MCP", "Alpha", "alpha", "BE-0001"))
+    _write_item(roadmap, "BE-0001", "alpha", _item("Approved", "MCP", "Alpha", "alpha", "BE-0001"))
     _write_item(roadmap, "BE-0002", "beta", _item("Implemented", "MCP", "Beta", "beta", "BE-0002"))
     _write_item(
-        roadmap, "BE-0003", "gamma", _item("Proposal", "doctor", "Gamma", "gamma", "BE-0003")
+        roadmap, "BE-0003", "gamma", _item("Approved", "doctor", "Gamma", "gamma", "BE-0003")
     )
 
-    rows = rq.iter_rows(roadmap, "Proposal")
+    rows = rq.iter_rows(roadmap, "Approved")
 
     assert [row.id for row in rows] == ["BE-0001", "BE-0003"]
     assert [row.title for row in rows] == ["Alpha", "Gamma"]
@@ -82,11 +82,11 @@ def test_iter_rows_returns_only_matching_status(tmp_path: Path) -> None:
 def test_iter_rows_sorts_by_topic_then_id(tmp_path: Path) -> None:
     """Rows are ordered by Topic first, then ID, for stable output."""
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-0005", "e", _item("Proposal", "doctor", "E", "e", "BE-0005"))
-    _write_item(roadmap, "BE-0004", "d", _item("Proposal", "MCP", "D", "d", "BE-0004"))
-    _write_item(roadmap, "BE-0006", "f", _item("Proposal", "MCP", "F", "f", "BE-0006"))
+    _write_item(roadmap, "BE-0005", "e", _item("Approved", "doctor", "E", "e", "BE-0005"))
+    _write_item(roadmap, "BE-0004", "d", _item("Approved", "MCP", "D", "d", "BE-0004"))
+    _write_item(roadmap, "BE-0006", "f", _item("Approved", "MCP", "F", "f", "BE-0006"))
 
-    rows = rq.iter_rows(roadmap, "Proposal")
+    rows = rq.iter_rows(roadmap, "Approved")
 
     assert [(row.topic, row.id) for row in rows] == [
         ("MCP", "BE-0004"),
@@ -98,9 +98,9 @@ def test_iter_rows_sorts_by_topic_then_id(tmp_path: Path) -> None:
 def test_iter_rows_carries_relative_path(tmp_path: Path) -> None:
     """Each row's Path is the relative path to the item's English .md — what to Read next."""
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-0007", "gizmo", _item("Proposal", "MCP", "Gizmo", "gizmo", "BE-0007"))
+    _write_item(roadmap, "BE-0007", "gizmo", _item("Approved", "MCP", "Gizmo", "gizmo", "BE-0007"))
 
-    (row,) = rq.iter_rows(roadmap, "Proposal")
+    (row,) = rq.iter_rows(roadmap, "Approved")
 
     assert row.path == "roadmaps/BE-0007-gizmo/BE-0007-gizmo.md"
 
@@ -108,9 +108,9 @@ def test_iter_rows_carries_relative_path(tmp_path: Path) -> None:
 def test_iter_rows_includes_placeholder_item(tmp_path: Path) -> None:
     """An in-flight placeholder (BE-XXXX) is read for its Status like any numbered item."""
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-XXXX", "draft", _item("Proposal", "MCP", "Draft", "draft", "BE-XXXX"))
+    _write_item(roadmap, "BE-XXXX", "draft", _item("Approved", "MCP", "Draft", "draft", "BE-XXXX"))
 
-    (row,) = rq.iter_rows(roadmap, "Proposal")
+    (row,) = rq.iter_rows(roadmap, "Approved")
 
     assert row.id == "BE-XXXX"
     assert row.title == "Draft"
@@ -119,40 +119,40 @@ def test_iter_rows_includes_placeholder_item(tmp_path: Path) -> None:
 def test_iter_rows_rejects_malformed_heading_id(tmp_path: Path) -> None:
     """A matching item with a malformed id heading fails loudly, naming the offending file."""
     roadmap = tmp_path / "roadmaps"
-    body = _item("Proposal", "MCP", "Bad", "bad", "BE-0013").replace("# BE-0013 —", "# BE-13 —")
+    body = _item("Approved", "MCP", "Bad", "bad", "BE-0013").replace("# BE-0013 —", "# BE-13 —")
     _write_item(roadmap, "BE-0013", "bad", body)
 
     with pytest.raises(ValueError, match=r"BE-0013-bad\.md.*heading"):
-        rq.iter_rows(roadmap, "Proposal")
+        rq.iter_rows(roadmap, "Approved")
 
 
 def test_iter_rows_rejects_matching_item_missing_topic(tmp_path: Path) -> None:
     """A status-matched item without a Topic field fails with the offending file named."""
     roadmap = tmp_path / "roadmaps"
-    body = _item("Proposal", "MCP", "NoTopic", "notopic", "BE-0014").replace(
+    body = _item("Approved", "MCP", "NoTopic", "notopic", "BE-0014").replace(
         "| Topic | MCP |\n", ""
     )
     _write_item(roadmap, "BE-0014", "notopic", body)
 
     with pytest.raises(ValueError, match=r"BE-0014-notopic\.md.*Topic"):
-        rq.iter_rows(roadmap, "Proposal")
+        rq.iter_rows(roadmap, "Approved")
 
 
 def test_iter_rows_rejects_unknown_status(tmp_path: Path) -> None:
     """The filter validates its status argument before scanning."""
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-0008", "h", _item("Proposal", "MCP", "H", "h", "BE-0008"))
+    _write_item(roadmap, "BE-0008", "h", _item("Approved", "MCP", "H", "h", "BE-0008"))
 
-    with pytest.raises(ValueError, match="Proposal"):
+    with pytest.raises(ValueError, match="Approved"):
         rq.iter_rows(roadmap, "nonsense")
 
 
 def test_render_table_shape(tmp_path: Path) -> None:
     """The rendered table has the ID / Item / Topic / Path header and one row per item."""
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-0009", "i", _item("Proposal", "MCP", "Widget", "i", "BE-0009"))
+    _write_item(roadmap, "BE-0009", "i", _item("Approved", "MCP", "Widget", "i", "BE-0009"))
 
-    table = rq.render_table(rq.iter_rows(roadmap, "Proposal"))
+    table = rq.render_table(rq.iter_rows(roadmap, "Approved"))
     lines = table.splitlines()
 
     assert lines[0] == "| ID | Item | Topic | Path |"
@@ -165,21 +165,21 @@ def test_main_unknown_status_exits_nonzero(
 ) -> None:
     """An unknown status on the CLI prints the valid values and exits non-zero."""
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-0010", "j", _item("Proposal", "MCP", "J", "j", "BE-0010"))
+    _write_item(roadmap, "BE-0010", "j", _item("Approved", "MCP", "J", "j", "BE-0010"))
 
     code = rq.main(["--status", "bogus", "--roadmap", str(roadmap)])
 
     assert code != 0
-    assert "Proposal" in capsys.readouterr().err
+    assert "Approved" in capsys.readouterr().err
 
 
 def test_main_valid_status_prints_table(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """A valid status prints the filtered table and exits zero."""
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-0011", "k", _item("Proposal", "MCP", "Kappa", "k", "BE-0011"))
+    _write_item(roadmap, "BE-0011", "k", _item("Approved", "MCP", "Kappa", "k", "BE-0011"))
     _write_item(roadmap, "BE-0012", "l", _item("Implemented", "MCP", "Lambda", "l", "BE-0012"))
 
-    code = rq.main(["--status", "proposal", "--roadmap", str(roadmap)])
+    code = rq.main(["--status", "approved", "--roadmap", str(roadmap)])
 
     out = capsys.readouterr().out
     assert code == 0
@@ -207,9 +207,9 @@ def test_grep_matches_the_title(tmp_path: Path) -> None:
     """A keyword search finds an item whose title carries the word."""
     roadmap = tmp_path / "roadmaps"
     _write_item(
-        roadmap, "BE-0020", "a", _item("Proposal", "MCP", "Scroll to element", "a", "BE-0020")
+        roadmap, "BE-0020", "a", _item("Approved", "MCP", "Scroll to element", "a", "BE-0020")
     )
-    _write_item(roadmap, "BE-0021", "b", _item("Proposal", "MCP", "Tap fidelity", "b", "BE-0021"))
+    _write_item(roadmap, "BE-0021", "b", _item("Approved", "MCP", "Tap fidelity", "b", "BE-0021"))
 
     rows = rq.iter_rows(roadmap, grep="scroll")
 
@@ -220,7 +220,7 @@ def test_grep_matches_the_introduction_excerpt(tmp_path: Path) -> None:
     """A keyword search reaches the Introduction excerpt, not the title alone."""
     roadmap = tmp_path / "roadmaps"
     body = _item_with_intro(
-        "Proposal", "MCP", "Bounded safety net", "c", "BE-0022", "The step scrolls until it lands."
+        "Approved", "MCP", "Bounded safety net", "c", "BE-0022", "The step scrolls until it lands."
     )
     _write_item(roadmap, "BE-0022", "c", body)
 
@@ -232,7 +232,7 @@ def test_grep_is_case_insensitive(tmp_path: Path) -> None:
     """A keyword matches regardless of the case either side was written in."""
     roadmap = tmp_path / "roadmaps"
     _write_item(
-        roadmap, "BE-0023", "d", _item("Proposal", "MCP", "Scroll Fidelity", "d", "BE-0023")
+        roadmap, "BE-0023", "d", _item("Approved", "MCP", "Scroll Fidelity", "d", "BE-0023")
     )
 
     assert [row.id for row in rq.iter_rows(roadmap, grep="SCROLL")] == ["BE-0023"]
@@ -241,8 +241,8 @@ def test_grep_is_case_insensitive(tmp_path: Path) -> None:
 def test_topic_filter_matches_a_substring(tmp_path: Path) -> None:
     """A topic filter matches part of the Topic, case-insensitively."""
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-0024", "e", _item("Proposal", "Driver & backend", "E", "e", "BE-0024"))
-    _write_item(roadmap, "BE-0025", "f", _item("Proposal", "Platform support", "F", "f", "BE-0025"))
+    _write_item(roadmap, "BE-0024", "e", _item("Approved", "Driver & backend", "E", "e", "BE-0024"))
+    _write_item(roadmap, "BE-0025", "f", _item("Approved", "Platform support", "F", "f", "BE-0025"))
 
     assert [row.id for row in rq.iter_rows(roadmap, topic="driver")] == ["BE-0024"]
 
@@ -251,7 +251,7 @@ def test_id_filter_selects_one_item(tmp_path: Path) -> None:
     """An id filter returns that item alone, whatever its status."""
     roadmap = tmp_path / "roadmaps"
     _write_item(roadmap, "BE-0026", "g", _item("Implemented", "MCP", "G", "g", "BE-0026"))
-    _write_item(roadmap, "BE-0027", "h", _item("Proposal", "MCP", "H", "h", "BE-0027"))
+    _write_item(roadmap, "BE-0027", "h", _item("Approved", "MCP", "H", "h", "BE-0027"))
 
     rows = rq.iter_rows(roadmap, item_id="26")
 
@@ -261,11 +261,11 @@ def test_id_filter_selects_one_item(tmp_path: Path) -> None:
 def test_filters_compose(tmp_path: Path) -> None:
     """Two filters return the intersection, not the union."""
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-0028", "i", _item("Proposal", "Driver", "Scroll", "i", "BE-0028"))
+    _write_item(roadmap, "BE-0028", "i", _item("Approved", "Driver", "Scroll", "i", "BE-0028"))
     _write_item(roadmap, "BE-0029", "j", _item("Implemented", "Driver", "Scroll", "j", "BE-0029"))
-    _write_item(roadmap, "BE-0030", "k", _item("Proposal", "Serve", "Scroll", "k", "BE-0030"))
+    _write_item(roadmap, "BE-0030", "k", _item("Approved", "Serve", "Scroll", "k", "BE-0030"))
 
-    rows = rq.iter_rows(roadmap, "Proposal", topic="driver", grep="scroll")
+    rows = rq.iter_rows(roadmap, "Approved", topic="driver", grep="scroll")
 
     assert [row.id for row in rows] == ["BE-0028"]
 
@@ -273,7 +273,7 @@ def test_filters_compose(tmp_path: Path) -> None:
 def test_iter_rows_without_a_filter_returns_every_item(tmp_path: Path) -> None:
     """The function itself does not require a filter; only the CLI refuses an unfiltered dump."""
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-0031", "m", _item("Proposal", "MCP", "M", "m", "BE-0031"))
+    _write_item(roadmap, "BE-0031", "m", _item("Approved", "MCP", "M", "m", "BE-0031"))
     _write_item(roadmap, "BE-0032", "n", _item("Rejected", "MCP", "N", "n", "BE-0032"))
 
     assert [row.id for row in rq.iter_rows(roadmap)] == ["BE-0031", "BE-0032"]
@@ -297,7 +297,7 @@ def test_main_without_a_filter_exits_nonzero(
 ) -> None:
     """An unfiltered CLI call names the filters instead of dumping every item."""
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-0034", "p", _item("Proposal", "MCP", "P", "p", "BE-0034"))
+    _write_item(roadmap, "BE-0034", "p", _item("Approved", "MCP", "P", "p", "BE-0034"))
 
     code = rq.main(["--roadmap", str(roadmap)])
 
@@ -311,9 +311,9 @@ def test_main_status_query_keeps_the_four_column_table(
 ) -> None:
     """A --status query renders the original header, so the roadmap-filter skill's shape holds."""
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-0035", "q", _item("Proposal", "MCP", "Q", "q", "BE-0035"))
+    _write_item(roadmap, "BE-0035", "q", _item("Approved", "MCP", "Q", "q", "BE-0035"))
 
-    assert rq.main(["--status", "Proposal", "--roadmap", str(roadmap)]) == 0
+    assert rq.main(["--status", "Approved", "--roadmap", str(roadmap)]) == 0
     assert capsys.readouterr().out.splitlines()[0] == "| ID | Item | Topic | Path |"
 
 
@@ -333,7 +333,7 @@ def test_main_grep_query_shows_the_status_column(
 def test_main_bad_id_exits_nonzero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """An unparseable --id fails on the CLI with the accepted shapes named."""
     roadmap = tmp_path / "roadmaps"
-    _write_item(roadmap, "BE-0037", "s", _item("Proposal", "MCP", "S", "s", "BE-0037"))
+    _write_item(roadmap, "BE-0037", "s", _item("Approved", "MCP", "S", "s", "BE-0037"))
 
     code = rq.main(["--id", "banana", "--roadmap", str(roadmap)])
 

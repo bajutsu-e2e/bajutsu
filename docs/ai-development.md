@@ -502,7 +502,7 @@ overridable:
   tier would be waste.
 - [`roadmap-filter`](../.claude/skills/roadmap-filter/SKILL.md) → `haiku` (Light) — a read-only
   survey of the roadmap by `Status` (BE-0162): it wraps `make roadmap-status STATUS="…"` so a
-  session lists just the items in one status (e.g. every open `Proposal`), with each item's file
+  session lists just the items in one status (e.g. every open `Approved`), with each item's file
   path to open next, instead of paging through the dashboard's rendered HTML or opening each item
   file to check its `Status`.
 
@@ -910,7 +910,7 @@ When you add a roadmap item:
    ls -d roadmaps/BE-*/ | sort | tail -1
    ```
    Never reuse, skip, or guess a number.
-2. **Create the item directory and both language files** directly under `roadmaps/` with `Status: Proposal` (a new item is always a
+2. **Create the item directory and both language files** directly under `roadmaps/` with `Status: Approved` (a new item is always a
    proposal first) — `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
    (English) and `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). Nothing
    else needs editing: the [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html)
@@ -968,7 +968,7 @@ The workflow mints a short-lived (≈1 h) installation token from those secrets 
 
 #### Tracking issues: who owns an open item (BE-0109)
 
-Every **open** roadmap item — one whose `Status` is `Proposal` or `In progress` — has a GitHub
+Every **open** roadmap item — one whose `Status` is `Approved` or `In progress` — has a GitHub
 issue, and that issue's native **Assignees** are the single source of truth for who (if anyone) is
 working on it. Because an item gets its issue the moment it exists as a proposal, an issue with **no**
 assignee is exactly the "nobody has picked this up yet" signal the roadmap otherwise lacks. Two saved
@@ -1009,7 +1009,7 @@ collectively exhaustive), and **`Progress` is a living section** (BE-0100) — a
 that breakdown (one `- [ ]` box per unit of work, ticked `- [x]` as it lands) plus a short
 chronological PR-linked log — **kept current as work proceeds**: every PR that advances an item ticks
 its boxes and adds a log entry in the same change, exactly as it fills `Implementing PR`. A
-not-yet-started `Proposal` carries a single placeholder box; an `Implemented` item carries the
+not-yet-started `Approved` item carries a single placeholder box; an `Implemented` item carries the
 all-done checklist. A unit that closes without shipping code under this item still counts as
 ticked. This covers a unit the author investigated and decided against pursuing. It also covers a
 unit carved out to a follow-up item that delivers it. Name that follow-up item in the nested
@@ -1032,8 +1032,8 @@ on `Status` at all.
 | Status | Dashboard bucket |
 |---|---|
 | `Implemented` | Implemented — shipped |
-| `In progress` | In progress — accepted, actively being built |
-| `Proposal` | Proposals — under consideration |
+| `In progress` | In progress — actively being built |
+| `Approved` | Approved — reviewed, not yet started |
 | `Deferred` | Deferred — parked, with a named condition that would revive it |
 | `Rejected` | Rejected — decided against, with no condition expected to reopen it |
 
@@ -1045,12 +1045,12 @@ status table of their own; the dashboard is the one place an item's status is br
 
 **The code decides the Status — a hard rule.** An item's `Status` tracks whether its implementation
 exists, not a preference to keep the item reading as a forward-looking proposal. An item authored with
-no code is `Proposal`; the PR that **ships its code** sets `Status` to `Implemented` (or `In progress`
+no code is `Approved`; the PR that **ships its code** sets `Status` to `Implemented` (or `In progress`
 when it lands a partial slice) in that same PR, ticks the matching `Progress` boxes, and records the PR
-under `Implementing PR`. `Proposal` is never left standing on an item whose code has already shipped —
+under `Implementing PR`. `Approved` is never left standing on an item whose code has already shipped —
 that is exactly the promotion the [`implement-be`](../.apm/skills/implement-be/SKILL.md) skill
 performs, and it binds humans and agents alike. (The one exception is *authoring* a new item: an
-`ideation`-style proposal that ships no code stays `Proposal`, since there is nothing implemented yet.)
+`ideation`-style proposal that ships no code stays `Approved`, since there is nothing implemented yet.)
 
 As an item advances, **update its Status**; the dashboard picks up the new bucket on its next
 regeneration, with nothing else to edit. The directory never moves (BE-0159): the same

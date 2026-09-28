@@ -29,7 +29,7 @@ sys.modules[_spec.name] = labels
 _spec.loader.exec_module(labels)
 
 
-def _item_text(topic: str, *, status: str = "Proposal") -> str:
+def _item_text(topic: str, *, status: str = "Approved") -> str:
     """A minimal BE item file body carrying a Topic (and Status) in the fenced metadata block."""
     return (
         "# BE-9001 — demo item\n\n"
