@@ -82,6 +82,10 @@ summary::-webkit-details-marker{display:none}
 .vexpand{flex:none;width:1.7rem;height:1.7rem;border:0;border-radius:5px;background:#3a3a3c;color:#fff;
  cursor:pointer;font-size:.7rem;line-height:1;display:flex;align-items:center;justify-content:center}
 .vexpand:hover{background:#4a4d52}
+/* `display:flex` above outranks the UA stylesheet's `[hidden]{display:none}` whatever the
+   specificity (same reason `.sttbl>tbody>tr[hidden]` below restates it), so `vzMount`'s
+   `x.hidden = true` needs this rule to actually hide the moved bar's dead expand button. */
+.vexpand[hidden]{display:none}
 .vseekwrap{position:relative;flex:1;min-width:0;display:flex;align-items:center}
 .vseek{flex:1;min-width:0;height:.3rem;cursor:pointer;accent-color:#0a6cff}
 /* Hide the native thumb — `.vknob` below is the visible one, drawn on top of the tick/segment

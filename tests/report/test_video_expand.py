@@ -102,6 +102,27 @@ def test_video_expand_mount_moves_video_and_control_bar() -> None:
     assert "x.hidden = true" in mount
 
 
+def test_video_expand_clone_includes_steps_that_never_ran() -> None:
+    # A step that never ran (the plan outran the outcomes, `rows.py`'s `_step_skip_row`) renders
+    # as `tr.skip`, not `tr.srow`. `rowsFor` alone would silently drop it from the clone, unlike
+    # the compact table, which shows it inline (`class='skip'`, tests/report/test_html.py).
+    out = html_report("run1", [_passing()])
+    build = _function_body(out, "function vzBuildSteps(player)", "function vzMount(player)")
+    # Scoped to `[data-target]` on both halves — `rowsFor`'s own guard — so this never also
+    # matches a `tr.skip` the expectations table (`.extbl`) renders for an unevaluated `expect`,
+    # which carries no `data-target` and would otherwise be mislaid into the `.vz-sttbl` grid.
+    assert "scn.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')" in build
+    assert "r.classList.contains('skip')" in build
+    # A skip row carries no `data-target` of its own (rows.py never threads one through), so it
+    # cannot be scoped to one player's own tab — every skip row is kept, unconditionally.
+    assert "isMine = r.classList.contains('skip') || mine.indexOf(r) !== -1" in build
+    # It carries no `data-t` either, so it must never enter the highlight/seek array.
+    assert "if(r.classList.contains('srow')) cloneRows.push(clone);" in build
+    # A target whose every step was skipped (another target failed first) still has no `srow` of
+    # its own — the modal must still show the scenario's shared skip rows for it, not bail out.
+    assert "if(!tbody.children.length) return;" in build
+
+
 def test_video_expand_clone_empties_view_cell_and_strips_group_id() -> None:
     out = html_report("run1", [_passing()])
     # The screenshot/element-tree cell is emptied, not removed (removing it would shift the

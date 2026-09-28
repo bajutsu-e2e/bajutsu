@@ -115,8 +115,11 @@ videoHome.set(v, p);
 [report.js:746](../../bajutsu/templates/report.js)〜[report.js:771](../../bajutsu/templates/report.js)）
 は、要素を移動しただけでは外れないため、そのまま保たれます。移した`.vctl`が持つ`.vexpand`ボタンは、
 モーダルの中に移った時点で`closest('.player')`が`null`になり、押しても何も起きません。`vzMount`は
-このボタンに`hidden`を付け、何も起きないボタンをそのまま見せないようにします。両方の子要素が
-抜けた元の`.player`には`hidden`を付けます。
+このボタンに`hidden`を付け、何も起きないボタンをそのまま見せないようにします。`.vexpand`は自身の
+規則に`display:flex`を持つため、詳細度に関係なくUAスタイルシートの`[hidden]{display:none}`に勝って
+しまいます。`report.css`には`.vz-tabs[hidden]`や`.sttbl>tbody>tr[hidden]`と同じように、
+`.vexpand[hidden]{display:none}`という形でこの規則を書き直します。両方の子要素が抜けた元の
+`.player`には`hidden`を付けます。
 
 `vzRestore()`はこれを元へ戻します。`home.appendChild(vzActive)`で動画を戻し、続けて`.vz-video`に
 残っている`.vctl`の`.vexpand`から`hidden`を外してから、同じく`appendChild`で操作バーを戻します。
@@ -136,12 +139,31 @@ videoHome.set(v, p);
 
 ### ステップ一覧の複製
 
-`vzBuildSteps(player)`は、既存の`rowsFor(scn, target)`ヘルパー
-（[report.js:528](../../bajutsu/templates/report.js)）がすでにそのプレイヤー用に絞り込んでいる
-行を複製します。単一ターゲットのシナリオなら全行、マルチターゲットのシナリオなら該当ターゲットの
-行だけです。`rowsFor`が返すのは本体行（`tr.srow[data-target]`）だけであり、その行自身の付随行
-（`.alertrow` / `.actrow` / `.genrow`）は含みません。そのため`vzBuildSteps`は、返された各行の
-直後にある付随行も、あれば同様に複製します。
+`vzBuildSteps(player)`は、`scn.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')`で
+ドキュメント上の並び順をたどり、2種類の行を残します。1つはこのプレイヤー自身の`tr.srow`で、既存の`rowsFor(scn, target)`
+ヘルパー（[report.js:528](../../bajutsu/templates/report.js)）でどれが自分の行かを判定します。
+もう1つは`tr.skip`のすべてです。これは実行が途中で止まり、一度も走らなかったステップです
+（[rows.py](../../bajutsu/common/report/rows.py)の`_step_skip_row`）。`tr.skip`は自分の`target`を
+持ちません。そのステップを走らせるはずだった対象が、名乗る機会を得られなかったためです。そのため
+実行済みの行のようにプレイヤーへ絞り込めず、無条件にすべて残します。これは、次にどの対象が実行する
+予定だったかにかかわらず、コンパクト表示がすでに同じ未実行ステップを1回だけ見せているのと同じ挙動に
+合わせるためです。単一ターゲットのシナリオでは`rowsFor`が持っている全行を返し、マルチターゲットの
+シナリオでは該当ターゲットの行だけを返します。`rowsFor`が返すのは本体行（`tr.srow[data-target]`）
+だけであり、その行自身の付随行
+（`.alertrow` / `.actrow` / `.genrow`）は含みません。そのため`vzBuildSteps`は、残した各行の
+直後にある付随行も、あれば同様に複製します。`tr.skip`は`data-t`を持たないため、複製はしても
+ハイライトとシークの対象配列には加えません。
+
+セレクタの両側に`[data-target]`を付けているのは、`tr.srow`側だけの都合ではありません。検証結果
+テーブル（`.extbl`、`exrow`マクロ、[report.html.j2:61](../../bajutsu/templates/report.html.j2)）も、
+runが到達しなかった`expect`を同じ`class="skip"`で描画しますが、こちらには`data-target`が付きません。
+`tr.skip`側でこの絞り込みを外すと、この4列の行が7列の`.vz-sttbl`グリッドへ紛れ込み、レイアウトが
+崩れます。
+
+あるターゲットの全ステップが（別のターゲットのステップが先に失敗したことにより）未実行だった場合、
+そのプレイヤー自身の`tr.srow`はありませんが、シナリオ共有のスキップ行はそれでもそのモーダルに
+表示すべきものです。`vzBuildSteps`が処理を打ち切るのは、`mine`の件数だけで判断するのではなく、
+組み立てた`tbody`に子要素が1つもなかったときに限ります。
 
 複製先には、`<table class="sttbl vz-sttbl"><tbody></tbody></table>`のように、明示的な`tbody`を
 持つテーブルを作ります。単に`<tr>`を追加していくだけでは足りません。既存のステップ行の規則は

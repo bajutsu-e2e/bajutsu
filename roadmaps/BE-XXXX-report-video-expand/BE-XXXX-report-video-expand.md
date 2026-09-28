@@ -117,8 +117,11 @@ every listener already attached (`play` / `pause` / `timeupdate` / `syncSiblings
 [report.js:746](../../bajutsu/templates/report.js)–[report.js:771](../../bajutsu/templates/report.js))
 survive untouched — reparenting a node does not detach its listeners. The moved bar's own
 `.vexpand` button finds no `.player` ancestor to reopen once it sits inside the modal it already
-opened, so `vzMount` hides it there rather than leave a control that does nothing. `player` itself
-gets `hidden` once both children have moved out.
+opened, so `vzMount` hides it there rather than leave a control that does nothing. `.vexpand`
+carries its own `display:flex`, which outranks the UA stylesheet's `[hidden]{display:none}`
+regardless of specificity — `report.css` restates the rule as `.vexpand[hidden]{display:none}`, the
+same way `.vz-tabs[hidden]` and `.sttbl>tbody>tr[hidden]` already do for their own `display`
+declarations. `player` itself gets `hidden` once both children have moved out.
 
 `vzRestore()` reverses this: `home.appendChild(vzActive)` puts the video back, then the `.vctl`
 still sitting in `.vz-video` — its `.vexpand` unhidden first — goes back the same way. Appending
@@ -137,12 +140,32 @@ which parent holds it right now.
 
 ### Cloning the step list
 
-`vzBuildSteps(player)` clones the rows the existing `rowsFor(scn, target)` helper already scopes to
-this player ([report.js:528](../../bajutsu/templates/report.js)). A single-target scenario clones
-every row; a multi-target one clones the matching target's rows alone. `rowsFor` returns body rows
-alone (`tr.srow[data-target]`), never a row's own companion rows (`.alertrow` / `.actrow` /
-`.genrow` — a step can emit up to all three, [report.html.j2:45](../../bajutsu/templates/report.html.j2)).
-So `vzBuildSteps` also clones each returned row's own following companion rows, where any exist.
+`vzBuildSteps(player)` walks `scn.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')`
+in document order and keeps
+two kinds of row: this player's own `tr.srow`, using the existing `rowsFor(scn, target)` helper
+([report.js:528](../../bajutsu/templates/report.js)) to decide which ones are its own, and every
+`tr.skip` — a step that never ran (execution stopped at an earlier failure,
+[rows.py](../../bajutsu/common/report/rows.py)'s `_step_skip_row`). A skip row carries no `target`
+of its own (the step that would have run it never got the chance to name one), so it can't be
+scoped to one player's tab the way an executed row can; keeping every one, unconditionally, matches
+what the compact table already shows — the same skipped steps, once, regardless of which target
+was next in line. A single-target scenario's own `rowsFor` call returns every row it has; a
+multi-target one returns the matching target's own alone. `rowsFor` returns body rows alone
+(`tr.srow[data-target]`), never a row's own companion rows (`.alertrow` / `.actrow` / `.genrow` — a
+step can emit up to all three, [report.html.j2:45](../../bajutsu/templates/report.html.j2)). So
+`vzBuildSteps` also clones each kept row's own following companion rows, where any exist. A skip
+row carries no `data-t`. `vzBuildSteps` clones it, but never adds it to the highlight/seek array.
+
+`[data-target]` matters on both halves of the selector, not on `tr.srow`'s own alone. The
+expectations table (`.extbl`, the `exrow` macro,
+[report.html.j2:61](../../bajutsu/templates/report.html.j2)) renders the same `class="skip"` for
+an `expect` a run never reached, but never a `data-target`. Dropping the guard on `tr.skip` would
+put that four-column row into this seven-column `.vz-sttbl` grid, out of place.
+
+A target scenario can leave every step of one target skipped, when another target's step fails
+first. That target's own player has no `tr.srow` at all, yet the scenario's shared skip rows still
+belong in its modal. `vzBuildSteps` bails once the built `tbody` ends up with no children of its
+own — checking that count, not `mine`'s length alone.
 
 Building the clone needs an explicit `<table class="sttbl vz-sttbl"><tbody></tbody></table>`, not
 appended `<tr>`s alone. Every step-row rule scopes itself to `.sttbl>tbody>tr`

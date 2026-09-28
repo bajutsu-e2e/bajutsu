@@ -343,6 +343,7 @@ into view. A multi-target scenario has two or more recordings, each with its own
 Switching tabs swaps which recording the modal mounts. Every other target's player keeps playing,
 in sync, in its ordinary compact form. A backdrop click, the close button, or Escape all close the
 modal and return the recording to its own player.
+
 Device Log / App Trace remain separate tabs.
 
 Device Log / App Trace remain separate tabs.

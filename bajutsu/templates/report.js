@@ -348,8 +348,7 @@
     vzStepsEl.innerHTML = '';
     var scn = player.closest('.scn');
     var target = player.getAttribute('data-target') || '';
-    var rows = rowsFor(scn, target);
-    if(!rows.length) return;
+    var mine = rowsFor(scn, target);
     var table = document.createElement('table');
     table.className = 'sttbl vz-sttbl';
     var tbody = document.createElement('tbody');
@@ -358,7 +357,17 @@
     // A COMPANION_CLASSES row (alertrow/actrow/genrow) belongs to the srow it immediately
     // follows — clone it alongside, in the same order, or the clone loses that context.
     var COMPANION_CLASSES = ['alertrow', 'actrow', 'genrow'];
-    rows.forEach(function(r){
+    // A step that never ran (execution stopped at an earlier failure) renders as `tr.skip`, not
+    // `tr.srow` — `rowsFor` alone would silently drop it from the clone, unlike the compact table,
+    // which shows it inline. `rows.py` never threads a `target` through a skip row (it precedes
+    // whichever target would have run it), so it can't be scoped to one player's own tab; walking
+    // every `tr.srow` / `tr.skip` in the scenario's own document order — keeping this player's own
+    // `srow`s and every `skip` — reproduces what the compact view shows, just filtered to this
+    // player's own executed steps.
+    var candidates = scn ? Array.prototype.slice.call(scn.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')) : [];
+    candidates.forEach(function(r){
+      var isMine = r.classList.contains('skip') || mine.indexOf(r) !== -1;
+      if(!isMine) return;
       var clone = r.cloneNode(true);
       // Empty (not remove) the screenshot/element-tree cell: `.sttbl` lays its columns out by
       // `:nth-child`, so removing the cell would shift every later column into the wrong slot.
@@ -372,7 +381,7 @@
       // clone's rows too. Stripping it here (and below, on companion rows) rules that out.
       clone.removeAttribute('data-group-id');
       tbody.appendChild(clone);
-      cloneRows.push(clone);
+      if(r.classList.contains('srow')) cloneRows.push(clone);
       var sib = r.nextElementSibling;
       while(sib && COMPANION_CLASSES.some(function(c){ return sib.classList.contains(c); })){
         var sibClone = sib.cloneNode(true);
@@ -381,6 +390,11 @@
         sib = sib.nextElementSibling;
       }
     });
+    // Bail only once nothing at all was cloned — not on `!mine.length` alone. A target whose every
+    // step was skipped (another target failed first) still has no `srow` of its own, but the
+    // scenario's shared `skip` rows still belong in its modal, the same way the compact table
+    // shows them regardless of which target was next in line.
+    if(!tbody.children.length) return;
     vzStepsEl.appendChild(table);
     vzStepClick = function(e){
       if(!vzActive) return;
