@@ -9,7 +9,7 @@ from dataclasses import replace
 from typing import cast
 
 from bajutsu.common import assertions
-from bajutsu.common.assertions import AssertionResult, EvalContext
+from bajutsu.common.assertions import AssertionResult, EvalContext, VisualContext
 from bajutsu.common.cancellation import (
     CANCELLED_FAILURE,
     CancelSource,
@@ -376,6 +376,10 @@ def _run_step_body(
     transitions: TransitionSource = _no_transitions,
     on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
     cancelled: CancelSource = not_cancelled,
+    step_id: str | None = None,
+    step_index: int | None = None,
+    channel: Collector | None = None,
+    hide_markers: bool = False,
 ) -> tuple[bool, str, list[AssertionResult], list[base.Element] | None]:
     """Execute one step's effect, returning (ok, reason, assertion_results, snapshot).
 
@@ -393,7 +397,11 @@ def _run_step_body(
     wait step, is passed to ``_wait`` so a scenario's ``interrupts`` handlers can clear an
     interstitial screen mid-wait (BE-0314). ``cancelled`` reaches the four step kinds that poll —
     ``wait``, ``handleSystemAlert``, ``assert``, and ``email`` — so each notices a cancelled run
-    within one polling tick (BE-0370)."""
+    within one polling tick (BE-0370). ``step_id``/``step_index``/``channel``/``hide_markers``, when
+    given for an ``assert`` step whose block carries a ``visual`` entry, back that entry's own
+    single-shot screenshot: ``step_id`` and ``step_index`` scope the capture's evidence path to this
+    step's own execution, and ``channel``/``hide_markers`` back the same touch-marker suspension
+    ``expect``'s own visual capture already gets."""
     try:
         if kind == "wait":
             assert step.wait is not None
@@ -440,13 +448,46 @@ def _run_step_body(
         if kind == "assert_":
             assert step.assert_ is not None
             clip = _clipboard_for(step.assert_, control)
-            # A step-level assert sees only golden + clipboard: no per-step screenshot is taken, so
-            # `visual` / `responseSchema` have no fresh input here (they run at scenario `expect`).
-            # Drop them from the bundled context to preserve that behavior (BE-0250 Unit 2).
-            step_ctx = replace(ctx or EvalContext(), visual=None, schema=None, clipboard=clip)
+            visual_ctx: VisualContext | None = None
+            if (
+                ctx is not None
+                and ctx.visual is not None
+                and step_id is not None
+                and step_index is not None
+                and any(a.visual is not None for a in step.assert_)
+            ):
+                # A step-level visual entry gets its own fresh screenshot, taken once here rather
+                # than reused from `expect`'s own capture — scoped under this step's own evidence
+                # prefix and outcome index so it never collides with the scenario's own
+                # `visual-actual.png`, nor with another execution of the same step (a retry, a
+                # `for_each` iteration, both of which can share one step's `step_id`).
+                step_prefix = f"{step_id}/visual-{step_index}"
+                visual_ctx = replace(
+                    ctx.visual,
+                    prefix=step_prefix,
+                    screenshot_path=ctx.visual.writer.reserve(f"{step_prefix}/visual-actual.png"),
+                )
+                # The banner clear a step-level capture needs runs here, ahead of the shutter, not
+                # through `_clear_notification_banner_before_visual_capture`: that wrapper drains its
+                # swipe into the expect-phase actuations list, but this swipe belongs to this step —
+                # the ordinary end-of-step `drain_actuations` call already picks it up from the
+                # driver's own log, the same way it picks up every other actuation the step made.
+                _clear_notification_banner(driver, clock)
+                _capture_visual_actual(
+                    EvalContext(visual=visual_ctx),
+                    driver,
+                    channel=channel,
+                    hide_markers=hide_markers,
+                    cancelled=cancelled,
+                )
+            # `SchemaContext` stays dropped here: BE-0250 Unit 2 dropped it to preserve pre-refactor
+            # behavior, not because a step-level assert lacks the network exchange `responseSchema`
+            # reads — lifting that drop is a separate change this one leaves alone.
+            step_ctx = replace(ctx or EvalContext(), visual=visual_ctx, schema=None, clipboard=clip)
             # A condition wait, not a single snapshot: a value the prior action mirrors into the tree
             # a beat late is caught, the same race the trailing `expect` already closes (BE-0299
-            # Unit 2). Zero-budget (no wait floor) reads exactly once, as before.
+            # Unit 2). Zero-budget (no wait floor) reads exactly once, as before; `visual` is a
+            # `_READ_ONCE_KINDS` entry, so the poll never re-shoots the screenshot taken above.
             results, tree = _poll_asserts(
                 driver, step.assert_, network, clock, ctx=step_ctx, cancelled=cancelled
             )
@@ -690,9 +731,10 @@ def run_scenario(  # noqa: PLR0915
     caller that has no collector, and that is *not* inert: the toggle is attempted whenever this
     scenario's effective launch env — `target_launch_env` merged with the scenario's own, the same
     order the launch itself merges them in — sets both `BAJUTSU_TOUCH_MARKERS` and
-    `BAJUTSU_CONTROL_CHANNEL` to `"1"` and its `expect` phase has a `visual` capture to take — which a
-    scenario or target pinning the pair reaches whether or not `run --touch-markers` was passed — so
-    a `None` channel there fails the scenario loudly rather than skipping the suspension.
+    `BAJUTSU_CONTROL_CHANNEL` to `"1"` and it has a `visual` capture to take — at `expect`, or in a
+    step's own `assert` — which a scenario or target pinning the pair reaches whether or not
+    `run --touch-markers` was passed — so a `None` channel there fails the scenario loudly rather
+    than skipping the suspension.
     `target_launch_env` is the target's own `launchEnv` (`Effective.launch_env`); a caller that omits
     it (a test constructing a scenario directly) sees only the scenario's own launch env, as before.
 
@@ -821,6 +863,8 @@ def run_scenario(  # noqa: PLR0915
             counter,
             target_runtimes,
             primary_target,
+            channel,
+            hide_markers,
         )
 
     try:
@@ -1068,10 +1112,12 @@ _BANNER_CLEARANCE_POLL = 0.1
 def _clear_notification_banner(driver: base.Driver, clock: Clock) -> None:
     """Swipe away a foreground notification banner if one is showing right now (BE-0416 Unit 8).
 
-    A single unconditional check, no rate limit: for the `expect`-phase visual capture, which this
-    backs directly and which pays this at most once or twice a scenario regardless of step count.
-    `_sweep_notification_banner` below is the rate-limited wrapper the per-step call site needs
-    instead, since that one runs on every step.
+    A single unconditional check, no rate limit: for the `expect`-phase visual capture and a
+    step-level `visual` assert's own capture, both of which call this directly and each of which
+    pays it once per capture — the `expect` one at most once or twice a scenario, a step-level one
+    once per step (or per `forEach` iteration) that carries a `visual` entry, regardless of the
+    scenario's total step count. `_sweep_notification_banner` below is the rate-limited wrapper the
+    per-step call site needs instead, since that one runs unconditionally on every step.
 
     The swipe's clearance is re-confirmed by a bounded poll before returning, mirroring the
     interruption monitor's own discipline (Unit 4's Swift path never claims a dismissal it has not
@@ -1225,9 +1271,11 @@ def _config_for(cfg: _LoopConfig, rt: TargetRuntime) -> _LoopConfig:
     """*cfg* with every field one target's own runtime owns replaced (BE-0428).
 
     Everything not replaced here — the scenario, the clock, the anchor offset, the evidence sid,
-    the phase label, the cancel source — describes the *run*, not a target, so a per-target runner
-    inherits the primary's unchanged. The rest are each bound to one lease, and handing a step the
-    wrong one would read another target's screen or write into another target's evidence.
+    the phase label, the cancel source, ``hide_markers`` — describes the *run*, not a target, so a
+    per-target runner inherits the primary's unchanged (``hide_markers`` is a property of the whole
+    visual-capture group, not of one target — see `TargetRuntime`'s own docstring). The rest are
+    each bound to one lease, and handing a step the wrong one would read another target's screen or
+    write into another target's evidence.
     """
     return replace(
         cfg,
@@ -1244,6 +1292,7 @@ def _config_for(cfg: _LoopConfig, rt: TargetRuntime) -> _LoopConfig:
         interrupts=rt.interrupts,
         locale=rt.locale,
         capture=rt.capture,
+        channel=cast("Collector | None", rt.channel),
     )
 
 
@@ -1275,6 +1324,8 @@ def _run_steps(
     counter: _StepCounter | None = None,
     target_runtimes: Mapping[str, TargetRuntime] | None = None,
     primary_target: str = "",
+    channel: Collector | None = None,
+    hide_markers: bool = False,
 ) -> str | None:
     """Run one phase's step loop, appending outcomes; return the failure string or None.
 
@@ -1294,7 +1345,10 @@ def _run_steps(
     one is dispatched to a runner built over *that* target's driver and evidence. Every such runner
     shares this call's single ``StepLoopState``, so one numbering, one outcome list, and one
     ``bindings`` dict span every target — which is what lets a value one target's ``extract``
-    captured reach an assertion against another."""
+    captured reach an assertion against another.
+
+    ``channel``/``hide_markers`` back a step-level ``visual`` assert's own capture, the same two
+    inputs ``_capture_visual_actual`` already takes at ``expect``."""
     assert bindings is not None
     state = StepLoopState(counter=counter or _StepCounter(), outcomes=outcomes, bindings=bindings)
     cfg = _LoopConfig(
@@ -1319,6 +1373,8 @@ def _run_steps(
         capture=capture,
         phase=phase,
         cancelled=cancelled,
+        channel=channel,
+        hide_markers=hide_markers,
     )
     # Imported in the body, not at module load: `_StepRunner` calls six helpers from this module,
     # so rule 5 breaks the cycle the split creates on the single edge back into it.

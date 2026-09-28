@@ -711,6 +711,10 @@ class _StepRunner:
                     transitions=self.cfg.transitions,
                     on_interrupt_poll=tip_poll,
                     cancelled=self.cfg.cancelled,
+                    step_id=step_id,
+                    step_index=idx,
+                    channel=self.cfg.channel,
+                    hide_markers=self.cfg.hide_markers,
                 )
                 if guard is not None and guard.failure is not None:
                     # A mid-wait recovery failure is a decided outcome — fail on it now rather than
@@ -774,6 +778,10 @@ class _StepRunner:
                             transitions=self.cfg.transitions,
                             on_interrupt_poll=tip_poll,
                             cancelled=self.cfg.cancelled,
+                            step_id=step_id,
+                            step_index=idx,
+                            channel=self.cfg.channel,
+                            hide_markers=self.cfg.hide_markers,
                         )
                     # Re-read `guard.failure`: the tip retry above runs a whole step body, whose own
                     # mid-wait interrupt recovery can newly fail — and that is a decided outcome, so it
@@ -819,6 +827,10 @@ class _StepRunner:
                                 transitions=self.cfg.transitions,
                                 on_interrupt_poll=tip_poll,
                                 cancelled=self.cfg.cancelled,
+                                step_id=step_id,
+                                step_index=idx,
+                                channel=self.cfg.channel,
+                                hide_markers=self.cfg.hide_markers,
                             )
                         if not ok and note and note not in reason:
                             # Same as the `expect` site: an alert the guard could not fully clear
