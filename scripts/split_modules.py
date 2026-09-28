@@ -527,6 +527,20 @@ def _literal_string_list(statement: cst.SimpleStatementLine) -> list[str] | None
     return names
 
 
+def _type_checking_imports(block: cst.If) -> list[cst.SimpleStatementLine]:
+    """The import lines of an `if TYPE_CHECKING:` block, refusing any shape the split can't carry."""
+    if block.orelse is not None:
+        raise SplitError("a TYPE_CHECKING block with an `else` needs a runtime shim kept")
+    lines: list[cst.SimpleStatementLine] = []
+    for inner in block.body.body:
+        if not isinstance(inner, cst.SimpleStatementLine):
+            raise SplitError("a TYPE_CHECKING block holds more than plain imports")
+        if len(inner.body) != 1:
+            raise SplitError("a `;`-joined import line is ambiguous to split")
+        lines.append(inner)
+    return lines
+
+
 def _parse(source: str) -> _Parsed:
     module = cst.parse_module(source)
     parsed = _Parsed(module=module)
@@ -549,14 +563,7 @@ def _parse(source: str) -> _Parsed:
             continue
         if _is_type_checking_block(statement):
             assert isinstance(statement, cst.If)
-            if statement.orelse is not None:
-                raise SplitError("a TYPE_CHECKING block with an `else` needs a runtime shim kept")
-            for inner in statement.body.body:
-                if not isinstance(inner, cst.SimpleStatementLine):
-                    raise SplitError("a TYPE_CHECKING block holds more than plain imports")
-                if len(inner.body) != 1:
-                    raise SplitError("a `;`-joined import line is ambiguous to split")
-                parsed.type_checking.append(inner)
+            parsed.type_checking.extend(_type_checking_imports(statement))
             continue
         if not isinstance(statement, cst.SimpleStatementLine):
             raise SplitError(
@@ -857,6 +864,23 @@ def _render_file(
     return _render(body)
 
 
+def _trailing_imports(parsed: _Parsed, trailing: list[cst.SimpleStatementLine]) -> list[_Statement]:
+    """The module's own imports that the trailing statements read, each narrowed to those names.
+
+    A trailing statement reads the module's own imports as readily as its re-exports, so the
+    `__init__.py` has to carry the ones it uses.
+    """
+    reads = _References()
+    for trailer in trailing:
+        reads.all |= _references(trailer).all
+    header: list[_Statement] = []
+    for line in parsed.imports:
+        kept = _filter_import(_import_of(line), reads.all)
+        if kept is not None:
+            header.append(line.with_changes(body=[kept], leading_lines=[]))
+    return header
+
+
 def _render_init(
     parsed: _Parsed,
     stems: dict[str, str],
@@ -903,18 +927,9 @@ def _render_init(
     listed = ", ".join(f'"{name}"' for name in dunder_all)
     body.append(cst.parse_statement(f"__all__ = [{listed}]"))
     if trailing:
-        # A trailing statement reads the module's own imports as readily as its re-exports, so carry
-        # the ones it uses. They go above the re-exports, where ruff's E402 wants every import.
-        reads = _References()
-        for trailer in trailing:
-            reads.all |= _references(trailer).all
-        header: list[_Statement] = []
-        for line in parsed.imports:
-            kept = _filter_import(_import_of(line), reads.all)
-            if kept is not None:
-                header.append(line.with_changes(body=[kept], leading_lines=[]))
+        # The carried imports go above the re-exports, where ruff's E402 wants every import.
         start = 1 if parsed.docstring is not None else 0
-        body[start:start] = header
+        body[start:start] = _trailing_imports(parsed, trailing)
     body.extend(trailing)
     return _render(body)
 

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0386](BE-0386-cyclomatic-complexity-ceiling.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0386") |
 | Implementing PR | [#1790](https://github.com/bajutsu-e2e/bajutsu/pull/1790) |
 | Topic | Contributor workflow |
@@ -152,10 +152,10 @@ self-contained block resolving the screens dimension from `--crawl` evidence. Th
   targeted `# noqa: C901`), resolving the `_make_handler` / `make_app` folding question first.
 - [x] Add `PLR0911`, `PLR0912`, and `PLR0915` with `max-returns = 12`, `max-branches = 20`, and
   `max-statements = 80`; triage the 23 combined findings.
-- [ ] Ratchet `max-complexity` to 20; triage the 3 additional functions this flags.
-- [ ] Ratchet `max-complexity` to 15; triage the 6 additional functions this flags.
-- [ ] Ratchet `max-complexity` to 12; triage the 13 additional functions this flags.
-- [ ] Re-measure against ruff's default of 10; decide whether to ratchet further or stop there.
+- [x] Ratchet `max-complexity` to 20; triage the 3 additional functions this flags.
+- [x] Ratchet `max-complexity` to 15; triage the 14 additional functions this flags (6 planned).
+- [x] Ratchet `max-complexity` to 12; triage the 17 additional functions this flags (13 planned).
+- [x] Re-measure against ruff's default of 10; decide whether to ratchet further or stop there.
 
 Log:
 
@@ -168,6 +168,20 @@ Log:
   reflect genuine length — `_wait`, `_handle_action`, and `run_one` on the deterministic run path,
   plus the interactive `record` loop — carry a `# noqa` naming the ratchet steps below as where a
   split belongs, so that the PR setting the ceiling does not also change run-path behavior.
+- 2026-09-28 — Finished the ratchet, which leaves 12 as the final `max-complexity`. We triaged
+  every function each step brought into scope. The counts had drifted since the proposal. The step
+  to 20 flagged 3 more functions, as planned. The step to 15 flagged 14 more functions where the plan
+  expected 6 of them. The step to 12 flagged 17 more where the plan expected 13 of them. We split 12
+  of those 34 functions, each along a self-contained block moved into a private helper. The `doctor`
+  command and `wait_for_system_alert` are two of them. The other 22 functions took a targeted
+  exemption, each naming its reason. Some sum the counts of nested functions. Others dispatch over
+  every scenario step kind, or run validation guards in a request handler. The rest sit on the run
+  path, where a split carries behavioral risk. The function `start_run_set` took both treatments.
+  Moving its per-scenario resolution into a helper brought it under the ceiling of 20 in that step. Its
+  remaining guards took the exemption at the ceiling of 12 instead. At ruff's default of 10, another 51 functions fail. Each of
+  them scores 11 or 12, so the ratchet stops there. Exempting most of those 51 functions would dilute
+  the exemptions that mark the real outliers. The four long functions the first unit exempted keep
+  their exemption. The comment beside each now leaves their split to a refactor of its own.
 
 ## References
 

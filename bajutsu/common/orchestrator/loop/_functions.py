@@ -671,7 +671,7 @@ def _capture_visual_actual(
 # measures the closures defined below (`run_phase` among them), not genuine branching here — the
 # same reasoning `pool.py`'s own `lease()` exemption gives (BE-0386). BE-0428's own-target interval
 # start/finish loop pushed the plain statement count over the line for the first time.
-def run_scenario(  # noqa: PLR0915
+def run_scenario(  # noqa: C901, PLR0915
     driver: base.Driver,
     scenario: Scenario,
     clock: Clock | None = None,

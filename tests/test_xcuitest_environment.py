@@ -342,7 +342,10 @@ def _globals_plist(locale: str | None) -> str:
 DRIVER_KWARGS: list[dict[str, object]] = []
 
 
-def _fake_toolchain(
+# C901 folds each nested function's count into the function enclosing it, so this score measures
+# the fake simctl/driver closures defined below, not branching here. Ruff bounds each of those on
+# its own, so the exemption loses no signal (BE-0386).
+def _fake_toolchain(  # noqa: C901
     monkeypatch: pytest.MonkeyPatch,
     *,
     wedged: dict[str, bool] | None = None,

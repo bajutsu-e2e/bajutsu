@@ -270,7 +270,10 @@ class _AlertGuardGate:
         """
         return shows_app_ui(elements) and self._tree_gave_up_shape_matches(elements)
 
-    def _observe_native(self, elements: list[base.Element]) -> None:
+    # One branch per `probe_native` state, each with its own latch and note bookkeeping, on the
+    # run path's poll: splitting that shared state apart would change run-path risk, like
+    # `_wait`'s own exemption (BE-0386).
+    def _observe_native(self, elements: list[base.Element]) -> None:  # noqa: C901
         if (
             self._tree_gave_up
             and shows_app_ui(elements)
@@ -539,7 +542,9 @@ class _AlertGuardGate:
             return
         self.blocked_note = alert_block_note([])
 
-    def _dismiss_from_tree(self, elements: list[base.Element]) -> AlertEvent | None:
+    # Pacing guards, each with its own outcome (decline, retap, give up, not-tappable note): the
+    # count tracks those distinct cases on the run path, not tangled logic (BE-0386).
+    def _dismiss_from_tree(self, elements: list[base.Element]) -> AlertEvent | None:  # noqa: C901
         """Tap a scenario-named dismiss button already visible in this poll's own tree — no model call.
 
         Covers a system-owned prompt the native query cannot enumerate (BE-0315's `probe_native`

@@ -476,7 +476,7 @@ def _plan_goal(agent: Agent, goal: str, say: Reporter) -> list[str]:
 
 
 # Genuinely long: the interactive record loop. Splitting it carries real behavioral risk, so it
-# belongs to BE-0386's ratchet steps rather than the PR that sets the ceiling.
+# waits for a refactor of its own rather than riding a lint ceiling (BE-0386).
 def record(  # noqa: C901, PLR0912, PLR0915
     driver: base.Driver,
     goal: str,

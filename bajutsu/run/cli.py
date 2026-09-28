@@ -1145,20 +1145,33 @@ def _apply_touch_markers(
             f"{', '.join(unasked_names)}",
             err=True,
         )
+    _write_touch_marker_env(
+        scenarios,
+        # The merged env already pins the marker key to "1": a scenario's own pin makes `setdefault`
+        # a no-op, and a target-only pin needs nothing written to the scenario at all.
+        pinned_unhidden
+        | channel_less_will_fail
+        # No channel to hide the markers: no markers, matching the notes above.
+        | declines_channel
+        | channel_less
+        # Setting the marker key here is what would arm the channel: leave it unset.
+        | marker_would_arm_unasked
+        # The merged env already resolves the marker key to "0" — the scenario's own pin (a
+        # `setdefault` would be a no-op anyway) or, since BE-0365 unit 3, a target-level one with
+        # nothing of the scenario's own to make `setdefault` a no-op against.
+        | merged_off,
+        armed=armed,
+    )
+
+
+def _write_touch_marker_env(scenarios: list[Scenario], skip: set[int], *, armed: set[int]) -> None:
+    """Default `_apply_touch_markers`' launch-env keys onto every scenario not in *skip*.
+
+    Both sets hold scenario object ids (`id(s)`), for the same reason `_apply_touch_markers` keys
+    every partition that way. A scenario in *armed* also gets the control-channel key.
+    """
     for s in scenarios:
-        if id(s) in pinned_unhidden or id(s) in channel_less_will_fail:
-            # The merged env already pins the marker key to "1": a scenario's own pin makes
-            # `setdefault` below a no-op, and a target-only pin needs nothing written to the
-            # scenario at all, so either way there is nothing to do here.
-            continue
-        if id(s) in declines_channel or id(s) in channel_less:
-            continue  # no channel to hide the markers: no markers, matching the notes above
-        if id(s) in marker_would_arm_unasked:
-            continue  # setting the marker key here is what would arm the channel: leave it unset
-        if id(s) in merged_off:
-            # The merged env already resolves the marker key to "0" — the scenario's own pin (a
-            # `setdefault` below would be a no-op anyway) or, since BE-0365 unit 3, a target-level
-            # one with nothing of the scenario's own to make `setdefault` a no-op against.
+        if id(s) in skip:
             continue
         s.preconditions.launch_env.setdefault("BAJUTSU_TOUCH_MARKERS", "1")
         if id(s) in armed:

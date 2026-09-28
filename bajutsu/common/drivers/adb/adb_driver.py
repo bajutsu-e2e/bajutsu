@@ -1007,7 +1007,12 @@ class AdbDriver(CoordinateTreeDriver):
     # not a channel fault, so the attempts are few. Mirrors the XCUITest channel's own bound (BE-0289).
     _STALE_MAX_ATTEMPTS = 3
 
-    def _device_act(self, sel: base.Selector, kind: str, duration_ms: int | None = None) -> bool:
+    # Fallback guards, each a distinct reason the coordinate path takes the gesture, inside the
+    # bounded stale-retry loop on the actuation path: the count tracks those cases, and a split
+    # would change run-path risk (BE-0386).
+    def _device_act(  # noqa: C901
+        self, sel: base.Selector, kind: str, duration_ms: int | None = None
+    ) -> bool:
         """Perform `kind` on `sel` device-side, or return False to leave it to the coordinate path.
 
         Resolution stays here: `_resolve_frame_and_screen` settles the tree and `resolve_unique` picks

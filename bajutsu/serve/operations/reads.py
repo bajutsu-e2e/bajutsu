@@ -1035,8 +1035,8 @@ def respond_human(state: ServeState, job_id: str, body: dict[str, Any]) -> tuple
 
 
 # Each return is a distinct HTTP status from a validation guard — the early-return shape RET505
-# itself asks for (BE-0386).
-def resolve_scenario_pick(  # noqa: PLR0911
+# itself asks for, and the same guards are what the complexity count tallies (BE-0386).
+def resolve_scenario_pick(  # noqa: C901, PLR0911
     state: ServeState,
     body: dict[str, Any],
     *,

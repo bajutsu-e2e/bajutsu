@@ -195,16 +195,7 @@ def wait_for_system_alert(
         buttons `sel` did not name, one offering `sel`'s label twice, or — through the guard's own
         note — a prompt that held the screen and nothing could clear.
     """
-    if base.Capability.HANDLE_SYSTEM_ALERT not in driver.capabilities():
-        # Preflight rejects the step before any device work; this is the mid-run backstop, and it
-        # has to stay immediate. Polling a backend that can never see a system alert would spend
-        # the step's whole timeout to arrive at the same refusal. The driver's own message names
-        # the backend, so ask it first and only fall back to a generic refusal — a driver that
-        # returns here would otherwise pass a step nothing answered.
-        driver.handle_system_alert(sel, _STEP_TAP_TIMEOUT)
-        raise base.UnsupportedAction(
-            f"handleSystemAlert needs a backend advertising HANDLE_SYSTEM_ALERT: {sel!r}"
-        )
+    _require_system_alert_capability(driver, sel)
     deadline = clock.now() + timeout
     gate = (
         _AlertGuardGate(
@@ -265,34 +256,9 @@ def wait_for_system_alert(
                 # end, reintroduced by the mechanism meant to close it. A backend without the
                 # opt-in, or one nothing has pushed a policy to, drains nothing and falls through
                 # unchanged.
-                drained = driver.drain_interruptions()
-                matched = [label for label in drained.tapped if selector_names_button(sel, [label])]
-                if alerts is not None:
-                    # A tapped label that is not `sel`'s own is some other declared rule's alert,
-                    # resolved by the monitor while this step happened to be polling — draining it
-                    # here consumes it from the store, so it must be recorded now or the report
-                    # loses it entirely (the end-of-step drain will find nothing left to read). A
-                    # notification banner swiped away during the same poll is drained here too, for
-                    # the identical reason: it can never be `sel`'s own alert (BE-0416), so it always
-                    # belongs in `unrelated`'s company rather than the matched-alert branch below.
-                    unrelated = [label for label in drained.tapped if label not in matched]
-                    alerts.extend(AlertEvent(label=label) for label in unrelated)
-                    alerts.extend(
-                        AlertEvent(label=text, kind="notificationBanner")
-                        for text in drained.banners
-                    )
-                if matched:
-                    if alerts is not None:
-                        alerts.append(AlertEvent(label=matched[0]))
-                    return True, ""
-                if drained.declined:
-                    # Some other alert interrupted a query during this same wait and nothing
-                    # declared it — not this step's own prompt, but still a fact the run must not
-                    # swallow (BE-0406 Unit 2b): the step fails naming it, the same way any other
-                    # drain site does.
-                    return False, undeclared_interruption_note(
-                        [UndeclaredInterruption(buttons=buttons) for buttons in drained.declined]
-                    )
+                answered = _policy_answered_alert(driver, sel, alerts)
+                if answered is not None:
+                    return answered
         if gate is not None:
             gate.observe(driver.query())
         if cancelled():
@@ -302,6 +268,56 @@ def wait_for_system_alert(
                 _alert_timeout_reason(sel, timeout, seen, ambiguous), gate
             )
         _adaptive_sleep(clock, t0)
+
+
+def _require_system_alert_capability(driver: base.Driver, sel: base.Selector) -> None:
+    """Refuse `handleSystemAlert` at once on a backend that cannot see system alerts (BE-0386 split)."""
+    if base.Capability.HANDLE_SYSTEM_ALERT not in driver.capabilities():
+        # Preflight rejects the step before any device work; this is the mid-run backstop, and it
+        # has to stay immediate. Polling a backend that can never see a system alert would spend
+        # the step's whole timeout to arrive at the same refusal. The driver's own message names
+        # the backend, so ask it first and only fall back to a generic refusal — a driver that
+        # returns here would otherwise pass a step nothing answered.
+        driver.handle_system_alert(sel, _STEP_TAP_TIMEOUT)
+        raise base.UnsupportedAction(
+            f"handleSystemAlert needs a backend advertising HANDLE_SYSTEM_ALERT: {sel!r}"
+        )
+
+
+def _policy_answered_alert(
+    driver: base.InterruptionPolicyTarget, sel: base.Selector, alerts: list[AlertEvent] | None
+) -> tuple[bool, str] | None:
+    """Drain what a governing policy's monitor answered between polls; the verdict it settles, if any.
+
+    Split out of `wait_for_system_alert` (BE-0386); the reasoning for draining here at all lives at
+    its one call site.
+    """
+    drained = driver.drain_interruptions()
+    matched = [label for label in drained.tapped if selector_names_button(sel, [label])]
+    if alerts is not None:
+        # A tapped label that is not `sel`'s own is some other declared rule's alert,
+        # resolved by the monitor while this step happened to be polling — draining it
+        # here consumes it from the store, so it must be recorded now or the report
+        # loses it entirely (the end-of-step drain will find nothing left to read). A
+        # notification banner swiped away during the same poll is drained here too, for
+        # the identical reason: it can never be `sel`'s own alert (BE-0416), so it always
+        # belongs in `unrelated`'s company rather than the matched-alert branch below.
+        unrelated = [label for label in drained.tapped if label not in matched]
+        alerts.extend(AlertEvent(label=label) for label in unrelated)
+        alerts.extend(AlertEvent(label=text, kind="notificationBanner") for text in drained.banners)
+    if matched:
+        if alerts is not None:
+            alerts.append(AlertEvent(label=matched[0]))
+        return True, ""
+    if drained.declined:
+        # Some other alert interrupted a query during this same wait and nothing
+        # declared it — not this step's own prompt, but still a fact the run must not
+        # swallow (BE-0406 Unit 2b): the step fails naming it, the same way any other
+        # drain site does.
+        return False, undeclared_interruption_note(
+            [UndeclaredInterruption(buttons=buttons) for buttons in drained.declined]
+        )
+    return None
 
 
 def _alert_timeout_reason(
@@ -328,8 +344,8 @@ def _alert_timeout_reason(
 
 
 # Genuinely long: the wait state machine on the deterministic run path. Splitting it carries real
-# behavioral risk, so it belongs to BE-0386's ratchet steps rather than the PR that sets the
-# ceiling.
+# behavioral risk, so it waits for a refactor of its own rather than riding a lint ceiling
+# (BE-0386).
 def _wait(  # noqa: C901, PLR0912
     driver: base.Driver,
     w: Wait,
