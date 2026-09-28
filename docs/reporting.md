@@ -345,8 +345,6 @@ in sync, in its ordinary compact form. A backdrop click, the close button, or Es
 modal and return the recording to its own player.
 
 Device Log / App Trace remain separate tabs.
-
-Device Log / App Trace remain separate tabs.
 ## Write API
 
 ```python
