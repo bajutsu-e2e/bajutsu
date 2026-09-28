@@ -263,8 +263,7 @@ when either is already open. This item never opens more than one of the three at
 ### Out of scope
 
 - The Network / Device Log / App Trace tabs stay untouched. So does arrow-key step navigation, the
-  `.tv` viewer's own previous/next controls. So does any mobile-specific modal layout: the modal
-  reuses `.tv-box`'s own plain mobile behavior.
+  `.tv` viewer's own previous/next controls.
 - Preconditions and expectations do not clone into the modal. Neither one carries a recording
   offset. Neither one takes part in the synchronization this item adds.
 
