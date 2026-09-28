@@ -873,11 +873,19 @@ jobs:
           UDID: ${{ steps.toolchain.outputs.udid }}
         run: |
           echo "device udid: $UDID"
-          for f in ~/Library/Logs/DiagnosticReports/BajutsuShowcaseSwiftUI-*.ips; do
-            [ -e "$f" ] || { echo "no BajutsuShowcaseSwiftUI-*.ips report on the host"; break; }
-            echo "$f (mtime $(stat -f %m "$f"))"
-            grep -o 'procPath"[^,]*' "$f" | head -1 || true
-            grep -c "$UDID" "$f" || true
+          echo "now: $(date +%s)"
+          # Every crash-report-shaped file written in the last hour, wherever it landed — the sweep
+          # reads ~/Library/Logs/DiagnosticReports only, and a report elsewhere is the finding.
+          for dir in ~/Library/Logs/DiagnosticReports /Library/Logs/DiagnosticReports \
+            ~/Library/Logs/CoreSimulator/"$UDID" ~/Library/Developer/CoreSimulator/Devices/"$UDID"/data/Library/Logs; do
+            [ -d "$dir" ] || { echo "absent: $dir"; continue; }
+            find "$dir" -type f \( -name '*.ips' -o -name '*.crash' \) -mmin -60 2>/dev/null |
+              while read -r f; do
+                echo "$f (mtime $(stat -f %m "$f"))"
+                head -c 300 "$f" | head -1
+                echo
+                grep -o 'procPath"[^,]*' "$f" | head -1 || true
+              done
           done
 
       - name: Collect iOS diagnostics

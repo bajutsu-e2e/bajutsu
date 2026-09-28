@@ -330,9 +330,8 @@ def _reports_device(report: bytes, udid: str) -> bool:
     A report is rejected only on *positive* evidence that it names a different device, never for
     naming none: `ReportCrash` anonymizes paths under the user's home (`/Users/USER/*/…`), which can
     elide the `Devices/<udid>` component entirely, and requiring the udid would then reject the very
-    report the sweep is for. That is the leading explanation for the `app-crash (xcuitest)` job on
-    PR #2012 classifying the crash on every run yet never attaching its report, however long the
-    sweep waited. The executable-name and launch-time checks still bound what such a report matches.
+    report the sweep is for. The executable-name and launch-time checks still bound what such a
+    report matches.
     """
     named = {match.upper() for match in _SIMULATOR_DEVICE_PATH.findall(report)}
     return not named or udid.upper().encode() in named
