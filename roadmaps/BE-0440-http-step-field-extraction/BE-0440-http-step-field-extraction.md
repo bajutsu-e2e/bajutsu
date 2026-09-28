@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-http-step-field-extraction-ja.md)
+**English** · [日本語](BE-0440-http-step-field-extraction-ja.md)
 
-# BE-XXXX — Extract specific fields from the http step's response body
+# BE-0440 — Extract specific fields from the http step's response body
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-http-step-field-extraction.md) |
+| Proposal | [BE-0440](BE-0440-http-step-field-extraction.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Proposal** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0440") |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
