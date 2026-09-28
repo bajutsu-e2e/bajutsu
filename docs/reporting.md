@@ -340,7 +340,7 @@ screenshot/element-tree column stays empty in the clone. A click there would oth
 element viewer on top of this modal. Clicking a cloned step seeks the enlarged recording, the same
 way a click seeks it in the compact view. Playback highlights the row in progress and scrolls it
 into view. A multi-target scenario has two or more recordings, each with its own tab in the modal.
-Switching tabs swaps which recording the modal mounts. Every other target's player keeps playing,
+Switching tabs swaps which recording the modal shows. Every other target's player keeps playing,
 in sync, in its ordinary compact form. A backdrop click, the close button, or Escape all close the
 modal and return the recording to its own player.
 

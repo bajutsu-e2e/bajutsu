@@ -415,6 +415,11 @@
       }
       var table = document.createElement('table');
       table.className = 'sttbl vz-sttbl';
+      // `.sttbl`'s own `display:block` / `display:grid` rules (report.css) strip the implicit
+      // table roles, which is why report.html.j2 sets them explicitly — the clone must too, or
+      // the cloned rows' own `role="row"` ends up with no owner.
+      table.setAttribute('role', 'table');
+      tbody.setAttribute('role', 'rowgroup');
       table.appendChild(tbody);
       vzStepsEl.appendChild(table);
     });

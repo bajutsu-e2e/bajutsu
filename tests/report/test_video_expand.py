@@ -108,9 +108,10 @@ def test_video_expand_clone_includes_steps_that_never_ran() -> None:
     # the compact table, which shows it inline (`class='skip'`, tests/report/test_html.py).
     out = html_report("run1", [_passing()])
     build = _function_body(out, "function vzBuildSteps(player)", "function vzMount(player)")
-    # Scoped to `[data-target]` on both halves — `rowsFor`'s own guard — so this never also
-    # matches a `tr.skip` the expectations table (`.extbl`) renders for an unevaluated `expect`,
-    # which carries no `data-target` and would otherwise be mislaid into the `.vz-sttbl` grid.
+    # Scoped to `[data-target]` on both halves, the same guard `rowsFor` itself applies. What keeps
+    # an unevaluated `expect`'s own `tr.skip` (`.extbl`, `exrow`) out of the clone is not this
+    # attribute — that row carries none — but the `srcTable` scoping: `.extbl` sits outside every
+    # `.steps-sec`, a sibling of `.rich-scroll` (report.html.j2's `rich`), so it is never in scope.
     assert "srcTable.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')" in build
     assert "r.classList.contains('skip')" in build
     # A skip row carries no `data-target` of its own (rows.py never threads one through), so it
@@ -134,6 +135,12 @@ def test_video_expand_clone_builds_one_table_per_steps_section() -> None:
     assert "section.querySelector('table.sttbl')" in build
     assert "label.textContent = deflbl.textContent" in build
     assert "table.className = 'sttbl vz-sttbl'" in build
+    # report.css turns `.sttbl` into `display:block` / `tr` into `display:grid`, which strips the
+    # implicit table/rowgroup/row/cell roles — report.html.j2 restores them by hand on the real
+    # table, and `cloneNode(true)` carries every cloned row's own `role="row"` along regardless, so
+    # the clone needs the same explicit roles or those rows end up with no valid owner.
+    assert "table.setAttribute('role', 'table')" in build
+    assert "tbody.setAttribute('role', 'rowgroup')" in build
 
 
 def test_video_expand_clone_shows_folded_group_rows() -> None:
@@ -215,6 +222,11 @@ def test_video_expand_css_present() -> None:
     assert ".vz{position:fixed" in out
     assert ".vz-box{" in out
     assert ".vexpand{" in out
+    # `.vexpand`'s own `display:flex` outranks the UA `[hidden]{display:none}` whatever the
+    # specificity, so `vzMount`'s `x.hidden = true` does nothing without this restatement —
+    # the moved control bar would keep showing an expand button that cannot open anything.
+    assert ".vexpand[hidden]{display:none}" in out
+    assert ".vz-tabs[hidden]{display:none}" in out
     assert ".vz-tab{" in out
     # A fixed step column would squeeze the video to a sliver on a phone-width viewport — the
     # narrow-screen fallback stacks video-then-steps instead.

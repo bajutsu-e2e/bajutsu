@@ -155,11 +155,14 @@ if(v) videoHome.set(v, p);
 
 区分ごとのループの中では、その区分自身の`table.sttbl`（`section.querySelector('table.sttbl')`）
 から`srcTable.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')`を取り、
-ドキュメント上の並び順で行を集めます。セレクタの両側に`[data-target]`を付けているのは、`tr.srow`側
-だけの都合ではありません。検証結果テーブル（`.extbl`、`exrow`マクロ、
-[report.html.j2:61](../../bajutsu/templates/report.html.j2)）も、runが到達しなかった`expect`を
-同じ`class="skip"`で描画しますが、こちらには`data-target`が付きません。`tr.skip`側でこの絞り込みを
-外すと、この4列の行が7列の`.vz-sttbl`グリッドへ紛れ込み、レイアウトが崩れます。
+ドキュメント上の並び順で行を集めます。セレクタの両側に`[data-target]`を付けているのは、`rowsFor`
+自身が使うのと同じ絞り込みです。ただし、runが到達しなかった`expect`を同じ`class="skip"`で描画する
+検証結果テーブル（`.extbl`、`exrow`マクロ、[report.html.j2:61](../../bajutsu/templates/report.html.j2)）
+を排除しているのは、この属性ではありません。その行は`data-target`をそもそも持たないものの、`.extbl`
+自体が`rich()`の`.rich-scroll`と並ぶ兄弟要素であり、どの`.steps-sec`の外にもあります。そのため
+`srcTable`の絞り込みの時点で最初から対象外です。とはいえ`tr.skip`側の絞り込みを外してよいわけでは
+ありません。将来、`data-target`を持ち、かつ`.steps-sec`の内側に置かれる別の行種別が現れたとき、この
+絞り込みがなければそれが素通りしてしまいます。
 
 集めた行それぞれは、`r.classList.contains('skip') || mine.indexOf(r) !== -1`という条件で残すか
 どうかを判定します。`mine`は、区分のループが始まる前に一度だけ求めた既存の`rowsFor(scn, target)`

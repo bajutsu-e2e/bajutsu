@@ -158,11 +158,14 @@ whole scenario.
 Within each section's loop, `vzBuildSteps` reads that section's own `table.sttbl`
 (`section.querySelector('table.sttbl')`) and collects
 `srcTable.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')` in document order.
-`[data-target]` matters on both halves of the selector, not on `tr.srow`'s own alone. The
-expectations table (`.extbl`, the `exrow` macro,
-[report.html.j2:61](../../bajutsu/templates/report.html.j2)) renders the same `class="skip"` for
-an `expect` a run never reached, but never a `data-target`. Dropping the guard on `tr.skip` would
-put that four-column row into this seven-column `.vz-sttbl` grid, out of place.
+`[data-target]` matters on both halves of the selector, the same guard `rowsFor` itself applies —
+scoping `srcTable.querySelectorAll` to one `.steps-sec`'s own `table.sttbl` is what keeps an
+unevaluated `expect`'s own `tr.skip` (the expectations table's `.extbl`, the `exrow` macro,
+[report.html.j2:61](../../bajutsu/templates/report.html.j2)) out of the clone, not this attribute:
+that row carries no `data-target` of its own either way, but `.extbl` sits outside every
+`.steps-sec` — a sibling of `.rich-scroll` in `rich()` — so it is never in scope to begin with.
+Dropping the guard on `tr.skip` would still be wrong, though: without it, a future row type that
+does carry a `data-target` and does live inside a `.steps-sec` could reach this query unfiltered.
 
 `vzBuildSteps` keeps each candidate row when `r.classList.contains('skip') || mine.indexOf(r) !== -1`,
 where `mine` is the result of the existing `rowsFor(scn, target)` helper
