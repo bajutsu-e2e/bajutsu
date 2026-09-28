@@ -349,53 +349,80 @@
     var scn = player.closest('.scn');
     var target = player.getAttribute('data-target') || '';
     var mine = rowsFor(scn, target);
-    var table = document.createElement('table');
-    table.className = 'sttbl vz-sttbl';
-    var tbody = document.createElement('tbody');
-    table.appendChild(tbody);
     var cloneRows = [];
+    var anyCloned = false;
     // A COMPANION_CLASSES row (alertrow/actrow/genrow) belongs to the srow it immediately
     // follows — clone it alongside, in the same order, or the clone loses that context.
     var COMPANION_CLASSES = ['alertrow', 'actrow', 'genrow'];
-    // A step that never ran (execution stopped at an earlier failure) renders as `tr.skip`, not
-    // `tr.srow` — `rowsFor` alone would silently drop it from the clone, unlike the compact table,
-    // which shows it inline. `rows.py` never threads a `target` through a skip row (it precedes
-    // whichever target would have run it), so it can't be scoped to one player's own tab; walking
-    // every `tr.srow` / `tr.skip` in the scenario's own document order — keeping this player's own
-    // `srow`s and every `skip` — reproduces what the compact view shows, just filtered to this
-    // player's own executed steps.
-    var candidates = scn ? Array.prototype.slice.call(scn.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')) : [];
-    candidates.forEach(function(r){
-      var isMine = r.classList.contains('skip') || mine.indexOf(r) !== -1;
-      if(!isMine) return;
-      var clone = r.cloneNode(true);
-      // Empty (not remove) the screenshot/element-tree cell: `.sttbl` lays its columns out by
-      // `:nth-child`, so removing the cell would shift every later column into the wrong slot.
-      // Emptying it drops the `.shot`/`.treebtn` markers that would otherwise reopen the
-      // Element Viewer (`.tv`) on top of this modal, and the existing `td:empty{display:none}`
-      // rule hides the now-blank cell.
-      var evCell = clone.querySelector('td.ev');
-      if(evCell) evCell.textContent = '';
-      // `.grouptoggle`'s click handler is delegated globally by `data-group-id` — leaving this
-      // attribute on a clone would let a click on the compact view's fold heading toggle the
-      // clone's rows too. Stripping it here (and below, on companion rows) rules that out.
-      clone.removeAttribute('data-group-id');
-      tbody.appendChild(clone);
-      if(r.classList.contains('srow')) cloneRows.push(clone);
-      var sib = r.nextElementSibling;
-      while(sib && COMPANION_CLASSES.some(function(c){ return sib.classList.contains(c); })){
-        var sibClone = sib.cloneNode(true);
-        sibClone.removeAttribute('data-group-id');
-        tbody.appendChild(sibClone);
-        sib = sib.nextElementSibling;
+    // `rich()` (report.html.j2) renders up to three `.steps-sec` blocks per scenario — `before`,
+    // the scenario's own steps, `after` — each its own `.deflbl` heading and its own `.sttbl`
+    // whose row numbers restart at 0. Flattening all three into one table would run those numbers
+    // together (two different steps both "0") and drop which phase is which; cloning one
+    // `.vz-sttbl` per section, carrying its own `.deflbl` text, keeps that structure.
+    var sections = scn ? Array.prototype.slice.call(scn.querySelectorAll('.steps-sec')) : [];
+    sections.forEach(function(section){
+      var srcTable = section.querySelector('table.sttbl');
+      if(!srcTable) return;
+      // A step that never ran (execution stopped at an earlier failure) renders as `tr.skip`, not
+      // `tr.srow` — `rowsFor` alone would silently drop it from the clone, unlike the compact
+      // table, which shows it inline. `rows.py` never threads a `target` through a skip row (it
+      // precedes whichever target would have run it), so it can't be scoped to one player's own
+      // tab; walking every `tr.srow` / `tr.skip` in this section's own document order — keeping
+      // this player's own `srow`s and every `skip` — reproduces what the compact view shows, just
+      // filtered to this player's own executed steps.
+      var candidates = Array.prototype.slice.call(
+        srcTable.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')
+      );
+      var tbody = document.createElement('tbody');
+      candidates.forEach(function(r){
+        var isMine = r.classList.contains('skip') || mine.indexOf(r) !== -1;
+        if(!isMine) return;
+        var clone = r.cloneNode(true);
+        // Empty (not remove) the screenshot/element-tree cell: `.sttbl` lays its columns out by
+        // `:nth-child`, so removing the cell would shift every later column into the wrong slot.
+        // Emptying it drops the `.shot`/`.treebtn` markers that would otherwise reopen the
+        // Element Viewer (`.tv`) on top of this modal, and the existing `td:empty{display:none}`
+        // rule hides the now-blank cell.
+        var evCell = clone.querySelector('td.ev');
+        if(evCell) evCell.textContent = '';
+        // `.grouptoggle`'s click handler is delegated globally by `data-group-id` — leaving this
+        // attribute on a clone would let a click on the compact view's fold heading toggle the
+        // clone's rows too. Stripping it here (and below, on companion rows) rules that out.
+        clone.removeAttribute('data-group-id');
+        // The modal has no fold control of its own — `.grouphead` never clones (it carries
+        // neither `srow` nor `skip`), so a row left `hidden` here would be unreachable, not
+        // merely folded. Always show it, regardless of the compact view's own fold state.
+        clone.hidden = false;
+        tbody.appendChild(clone);
+        anyCloned = true;
+        if(r.classList.contains('srow')) cloneRows.push(clone);
+        var sib = r.nextElementSibling;
+        while(sib && COMPANION_CLASSES.some(function(c){ return sib.classList.contains(c); })){
+          var sibClone = sib.cloneNode(true);
+          sibClone.removeAttribute('data-group-id');
+          sibClone.hidden = false;
+          tbody.appendChild(sibClone);
+          sib = sib.nextElementSibling;
+        }
+      });
+      if(!tbody.children.length) return;
+      var deflbl = section.querySelector('.deflbl');
+      if(deflbl){
+        var label = document.createElement('span');
+        label.className = 'deflbl';
+        label.textContent = deflbl.textContent;
+        vzStepsEl.appendChild(label);
       }
+      var table = document.createElement('table');
+      table.className = 'sttbl vz-sttbl';
+      table.appendChild(tbody);
+      vzStepsEl.appendChild(table);
     });
     // Bail only once nothing at all was cloned — not on `!mine.length` alone. A target whose every
     // step was skipped (another target failed first) still has no `srow` of its own, but the
     // scenario's shared `skip` rows still belong in its modal, the same way the compact table
     // shows them regardless of which target was next in line.
-    if(!tbody.children.length) return;
-    vzStepsEl.appendChild(table);
+    if(!anyCloned) return;
     vzStepClick = function(e){
       if(!vzActive) return;
       var jump = e.target.closest('.stepjump');
@@ -414,11 +441,7 @@
     vzStepsEl.addEventListener('click', vzStepClick);
     var lastCur = null;
     vzTimeupdate = function(){
-      var ct = vzActive.currentTime + 0.001, cur = null;
-      for(var i = 0; i < cloneRows.length; i++){
-        var t = parseFloat(cloneRows[i].getAttribute('data-t'));
-        if(!isNaN(t) && t <= ct) cur = cloneRows[i];
-      }
+      var cur = pickPlayingRow(cloneRows, vzActive.currentTime);
       cloneRows.forEach(function(r){ r.classList.toggle('playing', r === cur); });
       if(cur !== lastCur){ lastCur = cur; if(cur) scrollIntoBox(vzStepsEl, cur); }
     };
@@ -582,8 +605,8 @@
       if(!knob || !isFinite(v.duration) || v.duration <= 0) return;
       knob.style.left = Math.max(0, Math.min(100, v.currentTime / v.duration * 100)) + '%';
     }
+    if(v) videoHome.set(v, p);   // WeakMap.set(null, …) throws, so guard the missing-video case
     if(!v || !btn || !seek || !time) return;
-    videoHome.set(v, p);
     // `.is-live` glows the player frame itself while its recording is actually playing. A
     // multi-target scenario's stacked recordings play in lockstep (`syncSiblings` below, BE-0428),
     // so several can glow at once — what it marks is a recording still running as opposed to one
@@ -807,6 +830,18 @@
     if(rr.top < cr.top) box.scrollTop -= (cr.top - rr.top) + 8;
     else if(rr.bottom > cr.bottom) box.scrollTop += (rr.bottom - cr.bottom) + 8;
   }
+  // The shared "which row is playing" rule: the last row (in array order) whose own `data-t` has
+  // already passed, as of `currentTime`. Both the compact view's own sync (below) and the video
+  // expand modal's clone (`vzBuildSteps`, above) use this same window on their own row set, so a
+  // later change to it — factoring in `data-t-end` too, say — only has to land here once.
+  function pickPlayingRow(rows, currentTime){
+    var ct = currentTime + 0.001, cur = null;
+    for(var i = 0; i < rows.length; i++){
+      var t = parseFloat(rows[i].getAttribute('data-t'));
+      if(!isNaN(t) && t <= ct) cur = rows[i];
+    }
+    return cur;
+  }
   ROOT.querySelectorAll('.scn').forEach(function(scn){
     var box = scn.querySelector('.rich-scroll');
     // One pass per player rather than per scenario (BE-0428): each recording only ever seeks
@@ -842,11 +877,7 @@
         });
       });
       v.addEventListener('timeupdate', function(){
-        var ct = v.currentTime + 0.001, cur = null;
-        for(var i=0;i<rows.length;i++){
-          var t = parseFloat(rows[i].getAttribute('data-t'));
-          if(!isNaN(t) && t <= ct) cur = rows[i];
-        }
+        var cur = pickPlayingRow(rows, v.currentTime);
         rows.forEach(function(r){ r.classList.toggle('playing', r===cur); });
         if(cur !== lastCur){ lastCur = cur; if(cur) scrollIntoBox(box, cur); }
       });

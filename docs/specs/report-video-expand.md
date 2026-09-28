@@ -73,17 +73,17 @@
 - `.vz-box`は横方向のflexにする。`.vz-video`が可変幅（`flex:1`）を受け持ち、`.vz-steps`が固定幅320〜360px程度を受け持つ。全体の大きさは`width:min(96vw,1400px);height:min(92vh,900px)`のようにする。`.tv-box`の`width:min(94vw,1040px)`（[report.css:195](../../bajutsu/templates/report.css)）よりも広い上限を持たせる。動画を大きく見せることが動機のため、`.tv-box`よりも広い枠を許す。
 - `.vz-video`は縦方向のflexにする。動画（可変の高さ）の下に、動画から移した`.vctl`操作バーを固定高さで置く（後述）。`.vz-video video`は`width:100%;height:100%;object-fit:contain`で、割り当てられた高さいっぱいに収まるだけ大きく表示する。
 - `.vz-tabs`は複数ターゲットのときだけ`hidden`を外し、`.vz-tab`という新しいクラスのボタンを並べる。見た目は`.tab`に似せるが、クラス名は共有しない。`.tab`のROOTへの委譲クリックハンドラは`t.closest('.scn')`を前提にしている（[report.js:9](../../bajutsu/templates/report.js)〜[report.js:14](../../bajutsu/templates/report.js)）。`.vz-tabs`は`.scn`の外、モーダル側にある。`.tab`のクラスをそのまま使うと、そのハンドラが誤って反応し、`closest('.scn')`が`null`になって例外になる。
-- 幅760px以下では、`.vz-box`を縦方向のflexに切り替え、`.vz-steps`の幅を`auto`にして高さ方向へ伸ばす。`.vz-steps`の固定幅320〜360pxをそのまま残すと、`.vz-box`自体が`96vw`まで縮む画面幅で動画の取り分がわずか数十pxまで潰れてしまう。これは既存の`.body`グリッドが同じ760pxの境界でカラム落ちする（[report.css:51](../../bajutsu/templates/report.css)）のと同じ考え方である。
+- 幅760px以下では、`.vz-box`を縦方向のflexに切り替え、`.vz-steps`の幅を`auto`にして高さ方向へ伸ばす。`.vz-steps`の固定幅320〜360pxをそのまま残すと、`.vz-box`自体が`96vw`まで縮む画面幅で動画の取り分がわずか数十ピクセルまで潰れてしまう。これは既存の`.body`グリッドが同じ760pxの境界でカラム落ちする（[report.css:51](../../bajutsu/templates/report.css)）のと同じ考え方である。
 
 ### 動画本体の移動と復元
 
-`report.js`の動画セットアップループ（各`.player`を`v` / `btn` / `seek` / …に分解する箇所、[report.js:545](../../bajutsu/templates/report.js)〜[report.js:772](../../bajutsu/templates/report.js)）がある。このループは`ROOT.querySelectorAll('.player').forEach(function(p){ ... })`という形をしている。その`forEach`の直前に、次の宣言を1つだけ追加する。
+`report.js`の動画セットアップループ（各`.player`を`v` / `btn` / `seek` / …に分解する箇所、[report.js:582](../../bajutsu/templates/report.js)〜[report.js:822](../../bajutsu/templates/report.js)）がある。このループは`ROOT.querySelectorAll('.player').forEach(function(p){ ... })`という形をしている。その`forEach`の直前に、次の宣言を1つだけ追加する。
 
 ```js
 var videoHome = new WeakMap();   // <video> -> its original .player element
 ```
 
-ループの中では、`var v = p.querySelector('video')`のすぐ後に`videoHome.set(v, p)`を追加する。動画要素から「元のプレイヤーdiv」への対応をこのWeakMapが持つため、動画がモーダルへ移ってプレイヤー内から消えても、閉じるときにどこへ戻すかをこれで引ける。
+ループの中では、`var v = p.querySelector('video')`のすぐ後、`if(!v || !btn || !seek || !time) return;`という早期リターンより前に`if(v) videoHome.set(v, p);`を追加する。動画要素から「元のプレイヤーdiv」への対応をこのWeakMapが持つため、動画がモーダルへ移ってプレイヤー内から消えても、閉じるときにどこへ戻すかをこれで引ける。`if(v)`で包むのは、`WeakMap.set`がオブジェクト以外のキーを受け付けず、`v`が`null`のとき例外になるためである。早期リターンより前に置くのは、`.vplay` / `.vseek` / `.vtime`のいずれかを欠く`.player`でも動画そのものは持ちうるためだ。登録をこの早期リターンの後ろに置くと、`vzMount`がそのような動画を戻す先を見失い、モーダルを閉じても録画が静かに消える。
 
 モーダル側は、要素への参照と状態を次の変数で持つ。
 
@@ -99,47 +99,62 @@ var vzTimeupdate = null;      // the timeupdate listener currently bound to vzAc
 `vzMount(player)`は、指定したプレイヤーの動画をモーダルへ移す。
 
 1. すでに別の動画がモーダル内にあれば、`vzRestore()`で元のプレイヤーへ戻す。
-2. `player.querySelector('video')`と`player.querySelector('.vctl')`を、両方ともモーダルの`.vz-video`へ`appendChild`する。これはDOMの移動であり、複製ではない。再生位置、一時停止状態、すでに張られているイベントリスナーは、どれもそのまま保たれる。対象は`play` / `pause` / `timeupdate` / `syncSiblings`などである（[report.js:746](../../bajutsu/templates/report.js)〜[report.js:771](../../bajutsu/templates/report.js)）。`.vctl`も一緒に移すのは、再生/一時停止ボタンとシークバーを拡大表示でも使えるようにするためである。動画だけを移すと、この操作バーが元のプレイヤーに取り残され、コントロールを持たない拡大動画になってしまう。
+2. `player.querySelector('video')`と`player.querySelector('.vctl')`を、両方ともモーダルの`.vz-video`へ`appendChild`する。これはDOMの移動であり、複製ではない。再生位置、一時停止状態、すでに張られているイベントリスナーは、どれもそのまま保たれる。対象は`play` / `pause` / `timeupdate` / `syncSiblings`などである（[report.js:796](../../bajutsu/templates/report.js)〜[report.js:822](../../bajutsu/templates/report.js)）。`.vctl`も一緒に移すのは、再生/一時停止ボタンとシークバーを拡大表示でも使えるようにするためである。動画だけを移すと、この操作バーが元のプレイヤーに取り残され、コントロールを持たない拡大動画になってしまう。
 3. 移した`.vctl`が持つ`.vexpand`ボタンには`hidden`を付ける。このボタンは`.player`を辿ってモーダルを開く仕組みのため、モーダルの中に移った状態では`closest('.player')`が`null`になり、押しても何も起きない。何も起きないボタンをそのまま見せずに隠す。`.vexpand`は`display:flex`を自身の規則に持つため、`report.css`には`.vexpand[hidden]{display:none}`を別途追加する。作者が指定した`display`は、詳細度に関係なくUAスタイルシートの`[hidden]{display:none}`に勝ってしまうためである。
-4. `player`自身に`hidden`属性を付ける。動画と`.vctl`の両方が抜けた元のプレイヤーは空になるため、プレイヤーごと隠す。マルチターゲットで他のプレイヤーが残っている場合、それらは今まで通りコンパクト表示のまま見える。再生も同期され続ける。`syncSiblings`（[report.js:589](../../bajutsu/templates/report.js)）は、`v`がどのDOM位置にあっても同じインスタンスを指し続けるため、この移動の影響を受けない。
+4. `player`自身に`hidden`属性を付ける。動画と`.vctl`の両方が抜けた元のプレイヤーは空になるため、プレイヤーごと隠す。マルチターゲットで他のプレイヤーが残っている場合、それらは今まで通りコンパクト表示のまま見える。再生も同期され続ける。`syncSiblings`（[report.js:639](../../bajutsu/templates/report.js)）は、`v`がどのDOM位置にあっても同じインスタンスを指し続けるため、この移動の影響を受けない。
 5. `vzActive = v`とし、`vzBuildSteps(player)`でステップ一覧を組み立てる。
 
-`vzRestore()`は、`vzActive`があれば`videoHome.get(vzActive)`で元のプレイヤーを引く。`home.appendChild(vzActive)`で動画を戻し、続けて`.vz-video`に残っている`.vctl`の`.vexpand`から`hidden`を外してから、同じく`home.appendChild`で操作バーを戻す。`appendChild`だけで正しい順序（動画の次に`.vctl`）に戻るのは、`player`要素にはこの2つ以外の子（マルチターゲットの`tgtlbl`ラベルを除く）がなく、末尾に追加するだけで元の並びを再現できるためである。`home.hidden = false`で再表示し、`vzActive`と結び付けていた`timeupdate`リスナーがあれば`removeEventListener`で外す。プレイヤーの`hidden`を切り替えると`.players`の高さも変わる。そのため、既存の`syncResultHeight(scn)`（[report.js:492](../../bajutsu/templates/report.js)〜[report.js:504](../../bajutsu/templates/report.js)）を呼び直す。Resultタブの高さ計算を、この時点のプレイヤー構成に合わせて更新するためである。
+`vzRestore()`は、`vzActive`があれば`videoHome.get(vzActive)`で元のプレイヤーを引く。`home.appendChild(vzActive)`で動画を戻し、続けて`.vz-video`に残っている`.vctl`の`.vexpand`から`hidden`を外してから、同じく`home.appendChild`で操作バーを戻す。`appendChild`だけで正しい順序（動画の次に`.vctl`）に戻るのは、`player`要素にはこの2つ以外の子（マルチターゲットの`tgtlbl`ラベルを除く）がなく、末尾に追加するだけで元の並びを再現できるためである。`home.hidden = false`で再表示し、`vzActive`と結び付けていた`timeupdate`リスナーがあれば`removeEventListener`で外す。プレイヤーの`hidden`を切り替えると`.players`の高さも変わる。そのため、既存の`syncResultHeight(scn)`（[report.js:529](../../bajutsu/templates/report.js)〜[report.js:541](../../bajutsu/templates/report.js)）を呼び直す。Resultタブの高さ計算を、この時点のプレイヤー構成に合わせて更新するためである。
 
 ### ステップ一覧の複製
 
-`vzBuildSteps(player)`は、そのプレイヤーが担当するターゲットのステップ行だけを複製する。行の所有判定には、既存の`rowsFor(scn, target)`（[report.js:528](../../bajutsu/templates/report.js)）をそのまま使う。この関数（[report.js:518](../../bajutsu/templates/report.js)〜[report.js:536](../../bajutsu/templates/report.js)のownedTargets/rowsFor）は、単一ターゲットシナリオでは全行を返す。複数ターゲットシナリオでは、対象ターゲットの行だけを返す。ただし`rowsFor`が返すのは本体行（`tr.srow[data-target]`）だけであり、`.alertrow` / `.actrow` / `.genrow`のような付随行は含まない。
+`vzBuildSteps(player)`は、そのプレイヤーが担当するターゲットのステップ行だけを複製する。行の所有判定には、既存の`rowsFor(scn, target)`（[report.js:565](../../bajutsu/templates/report.js)）をそのまま使う。この関数（[report.js:555](../../bajutsu/templates/report.js)〜[report.js:573](../../bajutsu/templates/report.js)のownedTargets/rowsFor）は、単一ターゲットシナリオでは全行を返す。複数ターゲットシナリオでは、対象ターゲットの行だけを返す。ただし`rowsFor`が返すのは本体行（`tr.srow[data-target]`）だけであり、`.alertrow` / `.actrow` / `.genrow`のような付随行は含まない。
 
-1. `vzSteps.innerHTML = ''`のあと、`<table class="sttbl vz-sttbl"><tbody></tbody></table>`を1つ作る。既存のステップ行の規則（[report.css:342](../../bajutsu/templates/report.css)〜[report.css:416](../../bajutsu/templates/report.css)）はすべて`.sttbl>tbody>tr`という形でスコープされているため、`tbody`を明示的に持たせる。ブラウザに`<tr>`をそのまま流し込んでも、HTMLパーサを介さない限り`tbody`は自動生成されない。
-2. `scn.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')`で、シナリオが持つ実行済み行と未実行行の両方を、ドキュメント上の並び順で集める。`[data-target]`を両方に付けるのは、`rowsFor`自身が使うのと同じ絞り込みである。検証結果テーブル（`.extbl`、`exrow`マクロ）も、評価されなかった`expect`を同じ`class="skip"`で描画するが、こちらには`data-target`が付かない。`[data-target]`を付けないと、この4列の行が7列の`.vz-sttbl`グリッドへ紛れ込み、レイアウトが崩れる。`rowsFor(scn, target)`が返す行（このプレイヤー自身の`tr.srow`）に加えて、`tr.skip[data-target]`の行（実行が途中で止まり、一度も走らなかったステップ。`rows.py`の`_step_skip_row`）もすべて複製する。`tr.skip`には`rows.py`側でそもそも`target`が渡されないため（そのステップを走らせるはずだった対象がまだ決まっていない）、`rowsFor`によるターゲット絞り込みができない。絞り込まずに全件を複製するのは、コンパクト表示の1つの`.sttbl`が最初からターゲットを問わず未実行行を並べて見せているのと同じ挙動に合わせるためである。各行を`cloneNode(true)`し、続けてその行の直後にある付随行（`.alertrow` / `.actrow` / `.genrow`）もあれば同様に複製する。1つのステップがこれらの付随行を出しうる仕組みは、[report.html.j2:45](../../bajutsu/templates/report.html.j2)にある。どれも、同じ順番で新しい`tbody`へ追加する。`tr.skip`は`data-t`を持たないため、次の手順で説明する`cloneRows`（ハイライトとシークの対象配列）には加えない。複製が1件もできなかった場合に限り、何も表示せず終える。あるターゲットの全ステップが（他のターゲットの失敗により）未実行だった場合でも、そのプレイヤー自身の`tr.srow`がゼロ件というだけで打ち切らない。シナリオ共有の`tr.skip`はまだ複製できる余地があるためである。
-3. 複製した行のうち、`class="ev"`のセル（screenshot / element tree列）は、複製後に中身を空にする（例:`clonedCell.textContent = ''`）。`.sttbl`の行は、列位置を`nth-child`で決めるCSSグリッドである（[report.css:383](../../bajutsu/templates/report.css)〜[report.css:416](../../bajutsu/templates/report.css)）。セルそのものを取り除くと、後続の列がひとつずつ前へずれて壊れる。空にするだけなら列は残り、既存の`table.sttbl>…>td:empty{display:none}`（[report.css:372](../../bajutsu/templates/report.css)）がその空セルを自然に隠す。中身を空にするのは、「やらないこと」に書いた、Element Viewerとの重なりを避けるためである。
-4. `hidden`属性を持つ行（折りたたまれた`group:`グループの中身）は、そのまま`hidden`を保持して複製する。既存の`.sttbl>tbody>tr[hidden]{display:none!important}`（[report.css:357](../../bajutsu/templates/report.css)）が`vz-sttbl`にもそのまま効く。そのため、追加のCSSはいらない。
-5. 複製した本体行と付随行から`data-group-id`属性を取り除く。この属性を残すと、次で説明する`.grouptoggle`の衝突が起こる。
+`rich()`（report.html.j2）は、1つのシナリオにつき`.steps-sec`ブロックを最大3つ描画する。`before` / シナリオ自身のステップ / `after`の3区分で、それぞれが自分の`.deflbl`見出しと自分の`.sttbl`を持ち、行番号は区分ごとに0から数え直す。この3区分を1つのテーブルへ平らに詰めると、別の区分にある「0番目」の行同士が番号で衝突し、どちらの区分の行かも失われる。そこで`vzBuildSteps`は、シナリオの`.steps-sec`を順に取り出し、区分ごとに1つの`.vz-sttbl`を組み立てる。
 
-複製した行への操作は、既存の`ROOT`委譲イベントには頼らない。`vzBuildSteps`の中で個別に配線する。理由は`.stepjump`ボタンの事情だ。このクリックは、そもそも`ROOT`への委譲ではない。ページ読み込み時に元の行だけへ直接`addEventListener`されている、一度限りの配線だ（[report.js:796](../../bajutsu/templates/report.js)〜[report.js:816](../../bajutsu/templates/report.js)）。複製した行には、最初から何も付いていない。
+1. 区分ごとのループの中で、その区分の`table.sttbl`（`section.querySelector('table.sttbl')`）から`srcTable.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')`を取り、実行済み行と未実行行をドキュメント上の並び順で集める。`[data-target]`を両方に付けるのは、`rowsFor`自身が使うのと同じ絞り込みである。検証結果テーブル（`.extbl`、`exrow`マクロ）も、評価されなかった`expect`を同じ`class="skip"`で描画するが、こちらには`data-target`が付かない。`[data-target]`を付けないと、この4列の行が7列の`.vz-sttbl`グリッドへ紛れ込み、レイアウトが崩れる。
+2. 集めた行それぞれについて、`r.classList.contains('skip') || mine.indexOf(r) !== -1`で複製するかどうかを判定する（`mine`は手順の冒頭で求めた`rowsFor(scn, target)`の戻り値）。`tr.skip`は無条件で複製する。`rows.py`側でそもそも`target`が渡されないため（そのステップを走らせるはずだった対象がまだ決まっていない）、`rowsFor`によるターゲット絞り込みができないからだ。絞り込まずに全件を複製するのは、コンパクト表示の1つの`.sttbl`が最初からターゲットを問わず未実行行を並べて見せているのと同じ挙動に合わせるためである。判定を通った行は`cloneNode(true)`で複製し、新しく作った`tbody`へ追加する。続けてその行の直後にある付随行（`.alertrow` / `.actrow` / `.genrow`）もあれば同様に複製する。1つのステップがこれらの付随行を出しうる仕組みは、[report.html.j2:45](../../bajutsu/templates/report.html.j2)にある。`tr.skip`は`data-t`を持たないため、ハイライトとシークの対象配列である`cloneRows`には、本体行（`r.classList.contains('srow')`）だけを加える。
+3. 複製した行のうち、`class="ev"`のセル（screenshot / element tree列）は、複製後に中身を空にする（`evCell.textContent = ''`）。`.sttbl`の行は、列位置を`nth-child`で決めるCSSグリッドである（[report.css:383](../../bajutsu/templates/report.css)〜[report.css:416](../../bajutsu/templates/report.css)）。セルそのものを取り除くと、後続の列がひとつずつ前へずれて壊れる。空にするだけなら列は残り、既存の`table.sttbl>…>td:empty{display:none}`（[report.css:372](../../bajutsu/templates/report.css)）がその空セルを自然に隠す。中身を空にするのは、「やらないこと」に書いた、Element Viewerとの重なりを避けるためである。
+4. 複製した本体行と付随行は、どちらも`hidden = false`を明示して`hidden`属性を落とす。コンパクト表示がデフォルトで畳む`group:`グループの中身は、元の行では`hidden`が付いている。モーダル自身には`.grouptoggle`のような開閉の手段がなく、`.grouphead`見出し行自体も（`srow`も`skip`も持たないため）複製されない。畳まれたままの行を複製すると、モーダルの中でその行へ二度と辿り着けなくなる。折りたたみ状態にかかわらず常に表示することで、この行き止まりを避ける。
+5. 複製した本体行と付随行から`data-group-id`属性を取り除く。`.grouptoggle`のクリックは`data-group-id`を手がかりにROOT全体から同じ値を持つ行を探して開閉する。この属性を複製へ残すと、コンパクト表示側の見出しをクリックしたときに複製の行まで一緒に開閉してしまう。
 
-`.grouphead`行自体（`.grouptoggle`ボタンを持つ見出し行）は`class="srow"`を持たず、`data-target`属性も持たない。そのため`rowsFor`は最初からこれを返さず、複製にも含まれない。ただし複製した本体行と付随行自身は、元の行と同じ`data-group-id`を引き継ぐ。ROOTへの委譲は、この属性を手がかりに拾う（[report.js:26](../../bajutsu/templates/report.js)〜[report.js:34](../../bajutsu/templates/report.js)）。クリックされた`.grouptoggle`と同じ`data-group-id`を持つ行を、ROOT全体から探して開閉する仕組みだ。複製の行がこの属性を持ったままだと、コンパクト表示側の見出しをクリックしたとき、複製の行まで一緒に開閉してしまう。上の手順5で`data-group-id`を取り除くのは、この衝突を防ぐためである。
+区分ごとのループを終えたら、その区分で1行でも複製できていれば（`tbody.children.length`）、区分の`.deflbl`の文字列を複製した`<span class="deflbl">`と、`class="sttbl vz-sttbl"`の新しい`<table>`を`.vz-steps`へ追加する。複製が0件だった区分（例えば`after`がないシナリオ）は、そのままスキップしてテーブルを作らない。全区分を通じて1件も複製できなかった場合に限り、`vzBuildSteps`は`.vz-steps`を空のまま何もせず終える。あるターゲットの全ステップが（他のターゲットの失敗により）未実行だった場合でも、そのプレイヤー自身の`tr.srow`がゼロ件というだけで打ち切らない。シナリオ共有の`tr.skip`はまだ複製できる余地があるためである。
 
-行クリックとstepjumpクリックの配線は、既存の該当箇所（[report.js:796](../../bajutsu/templates/report.js)〜[report.js:816](../../bajutsu/templates/report.js)）と同じ内容を、`v`を`vzActive`に読み替えて複製行に対して行う。
+複製した行への操作は、既存の`ROOT`委譲イベントには頼らない。`vzBuildSteps`の中で、`.vz-steps`自身への委譲クリックハンドラを1つだけ配線する。個別の行ではなくコンテナへ委譲するのは、区分ごとに新しい`<table>`をまるごと作り直す都合上、行1つずつへ`addEventListener`するより、複製のたびに張り直す配線を1箇所にまとめるほうが単純だからだ。このハンドラは`vzBuildSteps`が呼ばれるたびに一度`removeEventListener`で外してから張り直す。
 
 ```js
-clonedRow.addEventListener('click', function(e){
-  if(e.target.closest('a') || e.target.closest('.stepjump')) return;
-  var t = parseFloat(clonedRow.getAttribute('data-t'));
-  if(!isNaN(t)) vzActive.currentTime = t;
-});
-clonedRow.querySelectorAll('.stepjump').forEach(function(btn){
-  btn.addEventListener('click', function(e){
+vzStepClick = function(e){
+  if(!vzActive) return;
+  var jump = e.target.closest('.stepjump');
+  if(jump){
     e.stopPropagation();
-    var t = parseFloat(btn.getAttribute('data-t'));
-    if(!isNaN(t)) vzActive.currentTime = t;
-  });
-});
+    var jt = parseFloat(jump.getAttribute('data-t'));
+    if(!isNaN(jt)) vzActive.currentTime = jt;
+    return;
+  }
+  if(e.target.closest('a')) return;
+  var row = e.target.closest('tr.srow');
+  if(!row) return;
+  var t = parseFloat(row.getAttribute('data-t'));
+  if(!isNaN(t)) vzActive.currentTime = t;
+};
+vzStepsEl.addEventListener('click', vzStepClick);
 ```
 
-ハイライトと自動スクロールも、既存の`timeupdate`ハンドラ（[report.js:817](../../bajutsu/templates/report.js)〜[report.js:825](../../bajutsu/templates/report.js)）と同じ考え方を、複製行の配列に対して行う。この処理は、`vzMount`が`vzActive`を差し替えるたびに張り直す。そのため、`vzActive`に登録したリスナーへの参照を`vzTimeupdate`に保持し、`vzRestore`で確実に外す。
+`.stepjump`を先に判定して`e.stopPropagation()`で打ち切るのは、ステップの開始/終了ジャンプボタンを押したときに、続けて行本体のクリックが発火し、ジャンプ直後の位置へ再シークし直してしまう事故を防ぐためである。
 
-自動スクロールの対象は`.vz-steps`自身にする。既存の`scrollIntoBox`（[report.js:776](../../bajutsu/templates/report.js)）がそのまま使える。第一引数を`.vz-steps`に替えるだけでよい。畳まれた行が「実行中」と判定された瞬間は、その行が`hidden`のため、`scrollIntoBox`は座標0の矩形を受け取る。この場合の見た目の乱れは、コンパクト表示のスクロールでもすでに起きている既知の挙動であり、この項目で新たに直す対象ではない。
+ハイライトと自動スクロールも、コンパクト表示側の`timeupdate`ハンドラと同じ考え方を、`cloneRows`（本体行だけを集めた配列）に対して行う。「いま再生中の行はどれか」という判定そのものは、コンパクト表示・モーダルの双方で共有する`pickPlayingRow(rows, currentTime)`（[report.js:837](../../bajutsu/templates/report.js)〜[report.js:844](../../bajutsu/templates/report.js)）という関数へ切り出す。現在時刻以下の`data-t`を持つ行のうち、もっとも遅いものを返すだけの関数で、この判定基準を2箇所で書き分けると、片方だけ直して他方が古いままという食い違いが起こりうる。共有することでその心配をなくす。
+
+```js
+vzTimeupdate = function(){
+  var cur = pickPlayingRow(cloneRows, vzActive.currentTime);
+  cloneRows.forEach(function(r){ r.classList.toggle('playing', r === cur); });
+  if(cur !== lastCur){ lastCur = cur; if(cur) scrollIntoBox(vzStepsEl, cur); }
+};
+vzActive.addEventListener('timeupdate', vzTimeupdate);
+```
+
+この処理は、`vzMount`が`vzActive`を差し替えるたびに張り直す。そのため、`vzActive`に登録したリスナーへの参照を`vzTimeupdate`に保持し、`vzRestore`で確実に外す。自動スクロールの対象は`.vz-steps`自身にする。既存の`scrollIntoBox`（[report.js:826](../../bajutsu/templates/report.js)）がそのまま使える。第一引数を`.vz-steps`に替えるだけでよい。手順4のとおり、モーダルの複製行はどれも`hidden`を持たないため、「実行中」と判定された行が座標0の矩形しか持たない事態は起こらない。
 
 ### マルチターゲットのタブ
 

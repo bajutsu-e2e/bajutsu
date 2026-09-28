@@ -111,7 +111,7 @@ def test_video_expand_clone_includes_steps_that_never_ran() -> None:
     # Scoped to `[data-target]` on both halves — `rowsFor`'s own guard — so this never also
     # matches a `tr.skip` the expectations table (`.extbl`) renders for an unevaluated `expect`,
     # which carries no `data-target` and would otherwise be mislaid into the `.vz-sttbl` grid.
-    assert "scn.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')" in build
+    assert "srcTable.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')" in build
     assert "r.classList.contains('skip')" in build
     # A skip row carries no `data-target` of its own (rows.py never threads one through), so it
     # cannot be scoped to one player's own tab — every skip row is kept, unconditionally.
@@ -120,7 +120,31 @@ def test_video_expand_clone_includes_steps_that_never_ran() -> None:
     assert "if(r.classList.contains('srow')) cloneRows.push(clone);" in build
     # A target whose every step was skipped (another target failed first) still has no `srow` of
     # its own — the modal must still show the scenario's shared skip rows for it, not bail out.
-    assert "if(!tbody.children.length) return;" in build
+    assert "if(!anyCloned) return;" in build
+
+
+def test_video_expand_clone_builds_one_table_per_steps_section() -> None:
+    # `rich()` (report.html.j2) renders up to three `.steps-sec` blocks — before / steps / after —
+    # each with its own `.deflbl` heading and its own `.sttbl` whose row numbers restart at 0.
+    # Flattening them into one table would collide two different steps both numbered "0" and drop
+    # which phase is which, so the clone builds one `.vz-sttbl` per section instead.
+    out = html_report("run1", [_passing()])
+    build = _function_body(out, "function vzBuildSteps(player)", "function vzMount(player)")
+    assert "scn.querySelectorAll('.steps-sec')" in build
+    assert "section.querySelector('table.sttbl')" in build
+    assert "label.textContent = deflbl.textContent" in build
+    assert "table.className = 'sttbl vz-sttbl'" in build
+
+
+def test_video_expand_clone_shows_folded_group_rows() -> None:
+    # A passing `group:` block folds by default in the compact view (`_fold_groups`, rows.py) —
+    # its member rows carry `hidden`. The modal has no fold control of its own (`.grouphead` never
+    # clones: it carries neither `srow` nor `skip`), so a row left `hidden` here would be
+    # unreachable rather than merely folded — the clone always shows it instead.
+    out = html_report("run1", [_passing()])
+    build = _function_body(out, "function vzBuildSteps(player)", "function vzMount(player)")
+    assert "clone.hidden = false" in build
+    assert "sibClone.hidden = false" in build
 
 
 def test_video_expand_clone_empties_view_cell_and_strips_group_id() -> None:
@@ -133,6 +157,17 @@ def test_video_expand_clone_empties_view_cell_and_strips_group_id() -> None:
     # attribute).
     assert "clone.removeAttribute('data-group-id')" in out
     assert "sibClone.removeAttribute('data-group-id')" in out
+
+
+def test_video_expand_registers_video_home_before_the_missing_control_guard() -> None:
+    # A player missing `.vplay` / `.vseek` / `.vtime` still has a `<video>` that `vzMount` can
+    # move out (`vzMount` never consults those elements) — registering `videoHome` only after
+    # that guard would leave such a video with no way back to its own player, so the report
+    # silently drops the recording on close instead of failing loudly.
+    out = html_report("run1", [_passing()])
+    assert "if(v) videoHome.set(v, p);" in out
+    setup = _function_body(out, "if(v) videoHome.set(v, p);", "function ")
+    assert "if(!v || !btn || !seek || !time) return;" in setup
 
 
 def test_video_expand_clones_companion_rows() -> None:
@@ -156,6 +191,18 @@ def test_video_expand_escape_defers_to_tv_and_imgz() -> None:
     assert "tv && tv.classList.contains('open')) return" in keydown
     assert "imgz && imgz.classList.contains('open')) return" in keydown
     assert "vzClose()" in keydown
+
+
+def test_video_expand_shares_the_playing_row_rule_with_the_compact_view() -> None:
+    # The compact view's own sync and the modal's clone both need "which row is playing, given
+    # the current time" — a shared `pickPlayingRow` keeps that window defined in one place, so a
+    # later change (factoring in `data-t-end`, say) can't land in one view and not the other.
+    out = html_report("run1", [_passing()])
+    assert "function pickPlayingRow(rows, currentTime)" in out
+    build = _function_body(out, "function vzBuildSteps(player)", "function vzMount(player)")
+    assert "pickPlayingRow(cloneRows, vzActive.currentTime)" in build
+    sync = _function_body(out, "ROOT.querySelectorAll('.scn').forEach(function(scn){", "})();")
+    assert "pickPlayingRow(rows, v.currentTime)" in sync
 
 
 def test_video_expand_css_present() -> None:

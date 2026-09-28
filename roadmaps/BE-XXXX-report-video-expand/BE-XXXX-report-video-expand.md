@@ -33,7 +33,7 @@ The step list already carries the synchronization a reader needs. Each step row 
 offset in a `data-t` attribute. A click seeks the video there, and playback highlights the row in
 progress
 ([report.html.j2:45](../../bajutsu/templates/report.html.j2),
-[report.js:796](../../bajutsu/templates/report.js)–[report.js:825](../../bajutsu/templates/report.js)).
+[report.js:858](../../bajutsu/templates/report.js)–[report.js:885](../../bajutsu/templates/report.js)).
 Nothing in the report offers a place to view the recording larger without losing that context.
 
 After this item ships, pressing a recording's new expand button opens a modal with the recording
@@ -94,7 +94,7 @@ layout, and `.vz-steps` takes `width:auto` and grows to fill the remaining heigh
 ### Moving the video, not copying it
 
 report.js's per-player setup loop
-([report.js:545](../../bajutsu/templates/report.js)–[report.js:772](../../bajutsu/templates/report.js))
+([report.js:582](../../bajutsu/templates/report.js)–[report.js:822](../../bajutsu/templates/report.js))
 is a `ROOT.querySelectorAll('.player').forEach(function(p){ ... })`. Declare one new map right
 before that `forEach`:
 
@@ -102,19 +102,27 @@ before that `forEach`:
 var videoHome = new WeakMap();   // <video> -> its original .player element
 ```
 
-Inside the loop, right after it resolves each player's `<video>` into a variable `v`, record where
-that video came from:
+Inside the loop, right after it resolves each player's `<video>` into a variable `v`, and before the
+loop's own early return for a player missing `.vplay` / `.vseek` / `.vtime`, record where that video
+came from:
 
 ```js
-videoHome.set(v, p);
+if(v) videoHome.set(v, p);
 ```
+
+The `if(v)` guard matters: `WeakMap.set` takes an object key alone, and `v` is `null` on a player with
+no `<video>` at all — calling `set` on that key throws. Registering ahead of the early return matters
+too: a player can carry a `<video>` while missing one of the three controls the return checks for,
+and `vzMount` never consults those controls itself — it touches merely the video and its `.vctl`.
+Registering after the return would leave such a video with no recorded home. Closing the modal would
+then drop the recording instead of restoring it.
 
 `vzMount(player)` moves that player's `<video>` *and* its `.vctl` control bar into `.vz-video`,
 both with a plain `appendChild` — a DOM move, not a clone. Moving `.vctl` along with the video is
 what keeps play/pause and the scrubber usable at the enlarged size; moving the video alone would
 strand the controls on the now-empty player, behind the modal. Playback position, pause state, and
 every listener already attached (`play` / `pause` / `timeupdate` / `syncSiblings`,
-[report.js:746](../../bajutsu/templates/report.js)–[report.js:771](../../bajutsu/templates/report.js))
+[report.js:796](../../bajutsu/templates/report.js)–[report.js:822](../../bajutsu/templates/report.js))
 survive untouched — reparenting a node does not detach its listeners. The moved bar's own
 `.vexpand` button finds no `.player` ancestor to reopen once it sits inside the modal it already
 opened, so `vzMount` hides it there rather than leave a control that does nothing. `.vexpand`
@@ -129,86 +137,108 @@ both, in order, recreates `player`'s original child order. A video and its `.vct
 children `vzMount` ever takes out. Clearing `hidden` finishes the restore. Toggling a
 player's `hidden` changes `.players`' own height, so `vzRestore` also calls the existing
 `syncResultHeight(scn)`
-([report.js:492](../../bajutsu/templates/report.js)–[report.js:504](../../bajutsu/templates/report.js))
+([report.js:529](../../bajutsu/templates/report.js)–[report.js:541](../../bajutsu/templates/report.js))
 to keep the Result tab's height bound current.
 
 A multi-target scenario's other recordings
 ([BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md))
 stay where they are and keep playing in sync. `syncSiblings`
-([report.js:589](../../bajutsu/templates/report.js)) tracks the same `<video>` node, regardless of
+([report.js:639](../../bajutsu/templates/report.js)) tracks the same `<video>` node, regardless of
 which parent holds it right now.
 
 ### Cloning the step list
 
-`vzBuildSteps(player)` walks `scn.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')`
-in document order and keeps
-two kinds of row: this player's own `tr.srow`, using the existing `rowsFor(scn, target)` helper
-([report.js:528](../../bajutsu/templates/report.js)) to decide which ones are its own, and every
-`tr.skip` — a step that never ran (execution stopped at an earlier failure,
-[rows.py](../../bajutsu/common/report/rows.py)'s `_step_skip_row`). A skip row carries no `target`
-of its own (the step that would have run it never got the chance to name one), so it can't be
-scoped to one player's tab the way an executed row can; keeping every one, unconditionally, matches
-what the compact table already shows — the same skipped steps, once, regardless of which target
-was next in line. A single-target scenario's own `rowsFor` call returns every row it has; a
-multi-target one returns the matching target's own alone. `rowsFor` returns body rows alone
-(`tr.srow[data-target]`), never a row's own companion rows (`.alertrow` / `.actrow` / `.genrow` — a
-step can emit up to all three, [report.html.j2:45](../../bajutsu/templates/report.html.j2)). So
-`vzBuildSteps` also clones each kept row's own following companion rows, where any exist. A skip
-row carries no `data-t`. `vzBuildSteps` clones it, but never adds it to the highlight/seek array.
+`rich()` (report.html.j2) renders up to three `.steps-sec` blocks per scenario — `before`, the
+scenario's own steps, `after` — each with its own `.deflbl` heading and its own `.sttbl`, whose row
+numbers restart at 0. Flattening all three into one table would collide two different steps both
+numbered "0" and drop which phase a row belongs to. So `vzBuildSteps(player)` walks the scenario's
+own `.steps-sec` blocks and builds one `.vz-sttbl` per section instead of one shared table for the
+whole scenario.
 
+Within each section's loop, `vzBuildSteps` reads that section's own `table.sttbl`
+(`section.querySelector('table.sttbl')`) and collects
+`srcTable.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')` in document order.
 `[data-target]` matters on both halves of the selector, not on `tr.srow`'s own alone. The
 expectations table (`.extbl`, the `exrow` macro,
 [report.html.j2:61](../../bajutsu/templates/report.html.j2)) renders the same `class="skip"` for
 an `expect` a run never reached, but never a `data-target`. Dropping the guard on `tr.skip` would
 put that four-column row into this seven-column `.vz-sttbl` grid, out of place.
 
-A target scenario can leave every step of one target skipped, when another target's step fails
-first. That target's own player has no `tr.srow` at all, yet the scenario's shared skip rows still
-belong in its modal. `vzBuildSteps` bails once the built `tbody` ends up with no children of its
-own — checking that count, not `mine`'s length alone.
+`vzBuildSteps` keeps each candidate row when `r.classList.contains('skip') || mine.indexOf(r) !== -1`,
+where `mine` is the result of the existing `rowsFor(scn, target)` helper
+([report.js:565](../../bajutsu/templates/report.js)), called once before the section loop starts. It
+keeps a skip row — a step that never ran, execution stopped at an earlier failure
+([rows.py](../../bajutsu/common/report/rows.py)'s `_step_skip_row`) — unconditionally: the row
+carries no `target` of its own (the step that would have run it never got the chance to name one),
+which rules out scoping it to one player's tab the way an executed row can. Keeping every one matches
+what the compact table already shows — the same skipped steps, once, regardless of which target
+was next in line. A single-target scenario's own `rowsFor` call returns every row it has; a
+multi-target one returns the matching target's own alone. `rowsFor` returns body rows alone
+(`tr.srow[data-target]`), never a row's own companion rows (`.alertrow` / `.actrow` / `.genrow` — a
+step can emit up to all three, [report.html.j2:45](../../bajutsu/templates/report.html.j2)). So
+`vzBuildSteps` also clones each kept row's own following companion rows, where any exist. A skip
+row carries no `data-t`. `vzBuildSteps` clones it, but adds body rows alone
+(`r.classList.contains('srow')`) to `cloneRows`, the highlight/seek array.
 
-Building the clone needs an explicit `<table class="sttbl vz-sttbl"><tbody></tbody></table>`, not
-appended `<tr>`s alone. Every step-row rule scopes itself to `.sttbl>tbody>tr`
+A multi-target scenario can leave every step of one target skipped, when another target's step fails
+first. That target's own player has no `tr.srow` at all, yet the scenario's shared skip rows still
+belong in its modal. Within one section, `vzBuildSteps` skips building a table at all once that
+section's own `tbody` ends up with no children — checking that count, not `mine`'s length alone.
+Across every section, it bails out of the whole function purely once it has cloned nothing anywhere.
+
+Each section that did clone at least one row gets its own `<span class="deflbl">`, its text copied
+from the section's own heading, followed by its own
+`<table class="sttbl vz-sttbl"><tbody>…</tbody></table>`. Building the clone needs this explicit
+`tbody`, not appended `<tr>`s alone. Every step-row rule scopes itself to `.sttbl>tbody>tr`
 ([report.css:342](../../bajutsu/templates/report.css)–[report.css:416](../../bajutsu/templates/report.css)).
 The HTML parser is what inserts a `<tbody>` automatically; `appendChild`ing rows onto a bare
 `<table>` does not.
 
 The clone drops one thing and keeps another. It empties, rather than removes, the screenshot /
-element-tree cell (`class="ev"`) on every cloned row: `td.textContent = ''`, not `td.remove()`.
-`.sttbl`'s rows are a CSS grid keyed by `td:nth-child`
+element-tree cell (`class="ev"`) on every cloned row: `evCell.textContent = ''`, not
+`evCell.remove()`. `.sttbl`'s rows are a CSS grid keyed by `td:nth-child`
 ([report.css:383](../../bajutsu/templates/report.css)–[report.css:416](../../bajutsu/templates/report.css)).
 Removing the cell shifts every later column into the wrong grid slot; emptying it leaves the column
 in place, and the existing `table.sttbl>…>td:empty{display:none}` rule
 ([report.css:372](../../bajutsu/templates/report.css)) hides it. Emptying the cell also clears the
 `class="shot"` / `class="treebtn"` markers it carries, which would otherwise reopen the existing
-Element Viewer (`.tv`) on top of this modal
-([report.js:274](../../bajutsu/templates/report.js)).
+Element Viewer (`.tv`) on top of this modal.
 
-It keeps a folded group's rows, `hidden` attribute and all. A hidden row's presence in the clone
-matches what report.js's own `timeupdate` highlighter already does in the compact view: the
-highlighter can mark a hidden row "playing" and show no visible highlight until playback reaches
-the next visible row. The existing `.sttbl>tbody>tr[hidden]{display:none!important}` rule
-([report.css:357](../../bajutsu/templates/report.css)) already covers `.vz-sttbl` too.
+It always shows a folded `group:` block's rows, clearing `hidden` on every cloned body and companion
+row (`clone.hidden = false`). The compact view folds such a block by default; its member rows carry
+`hidden` there. The modal has no fold control of its own — `.grouphead`, the heading row carrying
+`.grouptoggle`, has neither `class="srow"` nor a `data-target`, which rules it out as a candidate — it
+never clones. A row left `hidden` in the clone would be unreachable rather than merely folded, since
+nothing in the modal can unfold it. Showing it unconditionally avoids that dead end.
 
-One more step matters: stripping `data-group-id` from every cloned row. A `.grouphead` row itself
-(the one carrying `.grouptoggle`) has neither `class="srow"` nor a `data-target`. `rowsFor` never
-returns it, so no `.grouptoggle` button ever reaches the clone. A cloned body or companion row does
-keep the `data-group-id` its original carries, though. The global delegated handler
-([report.js:26](../../bajutsu/templates/report.js)–[report.js:34](../../bajutsu/templates/report.js))
+One more step matters: stripping `data-group-id` from every cloned row. A cloned body or companion
+row keeps the `data-group-id` its original carries unless this step removes it. The global delegated
+handler ([report.js:26](../../bajutsu/templates/report.js)–[report.js:34](../../bajutsu/templates/report.js))
 matches every row sharing that id anywhere in `ROOT`, clone included. Left in place, that attribute
 would let a click on the compact view's fold heading fold or unfold the clone's rows along with the
-real ones. Stripping it rules that out. A fold the compact view toggles later, while the modal
-stays open, does not reach the clone until the reader reopens the modal.
+real ones. Stripping it rules that out.
 
-The clone gets its own click wiring, mirroring the existing per-row handlers
-([report.js:796](../../bajutsu/templates/report.js)–[report.js:816](../../bajutsu/templates/report.js))
-with `vzActive` standing in for the original `v`. A row click, or a `.stepjump` button inside it,
-seeks the mounted video. Highlighting and autoscroll mirror the existing `timeupdate` handler too
-([report.js:817](../../bajutsu/templates/report.js)–[report.js:825](../../bajutsu/templates/report.js)).
-They scroll within `.vz-steps`, through the existing `scrollIntoBox` helper
-([report.js:776](../../bajutsu/templates/report.js)). When playback marks a hidden, folded row
-"playing", that helper reads a zero-sized rect for it — the same quirk the compact view's own
-scrolling already has, and not something this item fixes.
+The clone gets its own click wiring: one delegated handler on `.vz-steps` itself, added once per
+`vzBuildSteps` call (and removed before the next one rebuilds the container). A single container
+listener, rather than one per row, follows from the per-section rebuild above — `vzBuildSteps`
+throws away and recreates every row's markup on each call, so wiring the container once is simpler
+than re-wiring every row. The handler checks `.stepjump` first and calls `e.stopPropagation()` before
+falling through to the row itself, the same ordering the compact view's own per-row handlers use, so
+a jump button's click never also re-seeks to the row's own start right after. A row click or a
+`.stepjump` button inside it seeks the mounted video (`vzActive`, standing in for the compact view's
+own `v`).
+
+Highlighting and autoscroll mirror the compact view's own `timeupdate` handler, applied to
+`cloneRows`. Which row counts as "playing" at a given time is itself shared: `pickPlayingRow(rows,
+currentTime)` ([report.js:837](../../bajutsu/templates/report.js)–[report.js:844](../../bajutsu/templates/report.js))
+returns the row with the latest `data-t` at or before `currentTime`, and both the compact view's own
+`timeupdate` handler and `vzBuildSteps`'s call the same function — keeping that rule in one place
+rules out the compact view and the modal drifting apart if it changes later. Autoscroll targets
+`.vz-steps` itself, through the existing `scrollIntoBox` helper
+([report.js:826](../../bajutsu/templates/report.js)), with `.vz-steps` in place of the compact
+view's own scroll container. `vzBuildSteps` clears every cloned row's `hidden`, so no row playback
+marks "playing" ever reads a zero-sized rect from `scrollIntoBox` — the quirk a hidden row would have
+caused does not arise here.
 
 ### Tabs for a multi-target scenario
 
