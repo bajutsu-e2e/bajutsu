@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-report-video-expand-ja.md)
+**English** · [日本語](BE-0442-report-video-expand-ja.md)
 
-# BE-XXXX — Expand the video and sync it with a step panel in report.html
+# BE-0442 — Expand the video and sync it with a step panel in report.html
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-report-video-expand.md) |
+| Proposal | [BE-0442](BE-0442-report-video-expand.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0442") |
 | Implementing PR | [#2071](https://github.com/bajutsu-e2e/bajutsu/pull/2071) |
 | Topic | Authoring experience |
 <!-- /BE-METADATA -->
