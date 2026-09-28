@@ -264,6 +264,46 @@ def test_the_udid_check_reads_the_payload_not_the_filename(tmp_path: Path) -> No
     assert _reports_device(payload, _OTHER_UDID) is False
 
 
+def test_the_udid_check_reads_the_json_escaped_install_path() -> None:
+    # A real `.ips` payload is JSON that escapes every `/` as `\\/`, so the device component has to
+    # be found in that form too — or another Simulator's report would slip past as "names none".
+    def escaped(udid: str) -> bytes:
+        return (
+            '{"header":1}\n'
+            '{"procPath":"\\/Users\\/USER\\/Library\\/Developer\\/CoreSimulator\\/Devices\\/'
+            f'{udid}\\/data\\/Containers\\/Bundle\\/Application\\/ABC\\/Showcase.app\\/Showcase"}}\n'
+        ).encode()
+
+    assert _reports_device(escaped(_UDID), _UDID) is True
+    assert _reports_device(escaped(_UDID.lower()), _UDID) is True
+    assert _reports_device(escaped(_OTHER_UDID), _UDID) is False
+
+
+def test_a_report_whose_install_path_was_anonymized_still_matches() -> None:
+    # `ReportCrash` anonymizes paths under the user's home, which can elide the `Devices/<udid>`
+    # component entirely. A report naming *no* device is not evidence it belongs to another one, so
+    # rejecting it would drop the very report the sweep exists to attach.
+    payload = b'{"header":1}\n{"procPath":"\\/Users\\/USER\\/*\\/Showcase.app\\/Showcase"}\n'
+    assert _reports_device(payload, _UDID) is True
+
+
+def test_the_sweep_attaches_an_anonymized_report_for_this_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reports = tmp_path / "DiagnosticReports"
+    reports.mkdir()
+    env = _xcuitest_env(tmp_path, monkeypatch, reports)
+    env._app_path = str(_app_bundle(tmp_path))
+    env._app_launched_at = 1000.0
+    path = reports / "Showcase-2026-09-16.ips"
+    path.write_text('{"app_name":"Showcase"}\n{"procPath":"/Users/USER/*/Showcase.app/Showcase"}\n')
+    import os
+
+    os.utime(path, (1005.0, 1005.0))
+
+    assert [name for name, _ in env.app_crash_artifacts()] == ["Showcase-2026-09-16.ips"]
+
+
 # --- iOS: the launch marker ------------------------------------------------------------------------
 
 

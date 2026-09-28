@@ -107,7 +107,9 @@ _MAX_CRASH_REPORTS = 3
 # out. No code-side cause was found on the crash-detection path itself; `ReportCrash` sharing that
 # degraded host's render/IPC contention is the remaining explanation, and this second bump is a
 # mitigation for a host that recovers within tens of seconds rather than a claim that 30s beats a
-# fully wedged one.
+# fully wedged one. A code-side cause was later found after all — the udid match rejected a report
+# whose anonymized install path names no device (`_reports_device`) — so this bound may be wider
+# than the host needs.
 _APP_CRASH_REPORT_TIMEOUT = 30.0
 _APP_CRASH_REPORT_POLL = 0.2
 

@@ -6,6 +6,7 @@ import contextlib
 import json
 import os
 import plistlib
+import re
 import shlex
 import signal
 import socket
@@ -309,22 +310,32 @@ def _reported_pid(report: bytes) -> int | None:
     return None
 
 
+# A Simulator install path's device component, in both the plain form and the `\/`-escaped one an
+# `.ips` payload's JSON writes (BE-0424).
+_SIMULATOR_DEVICE_PATH = re.compile(
+    rb"Devices\\?/([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})"
+)
+
+
 def _reports_device(report: bytes, udid: str) -> bool:
-    """Whether an `.ips` report's own payload names the Simulator *udid* it ran on (BE-0424).
+    """Whether an `.ips` report may belong to the Simulator *udid*: it names no other one (BE-0424).
 
     The app under test's report cannot be narrowed by pid the way BE-0421 narrows the runner's:
     XCTest's public `XCUIApplication` surface exposes none, and nothing in `BajutsuKit/` reads one.
     The Simulator's udid stands in — a Simulator app's executable lives under
-    `.../CoreSimulator/Devices/<udid>/data/Containers/Bundle/Application/…`, so the install path the
+    `.../CoreSimulator/Devices/<udid>/data/Containers/Bundle/Application/…`, so an install path the
     payload carries names the specific device the crashed process ran on. That is what tells two
     Simulators running the identical target binary apart, which `--workers 2` on one CI host produces.
 
-    Searched as raw bytes rather than through the parsed JSON: the path appears under several keys
-    across report formats, and a udid is specific enough that a substring match cannot collide. Only
-    the payload — the second of the file's two documents — carries it; the header names the process
-    and its version alone, which is why `_reported_pid` already parses the payload for the pid.
+    A report is rejected only on *positive* evidence that it names a different device, never for
+    naming none: `ReportCrash` anonymizes paths under the user's home (`/Users/USER/*/…`), which can
+    elide the `Devices/<udid>` component entirely, and requiring the udid would then reject the very
+    report the sweep is for. That is the leading explanation for the `app-crash (xcuitest)` job on
+    PR #2012 classifying the crash on every run yet never attaching its report, however long the
+    sweep waited. The executable-name and launch-time checks still bound what such a report matches.
     """
-    return udid.encode() in report
+    named = {match.upper() for match in _SIMULATOR_DEVICE_PATH.findall(report)}
+    return not named or udid.upper().encode() in named
 
 
 def _app_crash_reports(
