@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-roadmap-approved-status-rename-ja.md)
+**English** · [日本語](BE-0443-roadmap-approved-status-rename-ja.md)
 
-# BE-XXXX — Rename the roadmap Status value Proposal to Approved
+# BE-0443 — Rename the roadmap Status value Proposal to Approved
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-roadmap-approved-status-rename.md) |
+| Proposal | [BE-0443](BE-0443-roadmap-approved-status-rename.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0443") |
 | Implementing PR | [#2075](https://github.com/bajutsu-e2e/bajutsu/pull/2075) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
@@ -60,7 +60,7 @@ principle's axis is whether an item's implementation exists, not whether the ite
 reviewed. `Approved` is a new name for the same status — no implementation yet — not a new axis. A
 freshly scaffolded item, before its proposal PR has seen any review, also carries `Status: Approved`
 under this rule, and `roadmap-filter` ([`scripts/roadmap_query.py`](../../scripts/roadmap_query.py))
-reads a `BE-XXXX` placeholder on a local branch exactly like a numbered item, so a session working on
+reads a `BE-0443` placeholder on a local branch exactly like a numbered item, so a session working on
 an unreviewed proposal can see that value before review. That is not a new failure mode: the
 scaffolder's previous default, `Proposal`, was visible the same way on a local branch before this
 item shipped, and `Status` has never claimed to describe anything beyond "does this item's
@@ -312,7 +312,7 @@ Log:
   two corrections beyond the plan this item's own text now reflects: the review-gate wording
   accounts for the `single-approver proposal` waiver rather than assuming every merge cleared two
   full approvals, and a freshly scaffolded item's `Approved` default is explained as harmless
-  rather than claimed invisible pre-review (`roadmap-filter` reads a local `BE-XXXX` placeholder
+  rather than claimed invisible pre-review (`roadmap-filter` reads a local `BE-0443` placeholder
   exactly like a numbered item; see *Motivation* and the rejected pre-review-value alternative).
   The review also caught that `BE-0109`, `BE-0162`, `BE-0069`, and `BE-0216` name the retired
   literal in text this rename would otherwise leave stale or actively broken, so all four were
@@ -332,7 +332,7 @@ Log:
   — introduced the `Status`-to-bucket vocabulary one of whose values this item renames.
 - [BE-0089 — Merge-time BE-ID allocation on main](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md)
   — merge-time id allocation is why a freshly scaffolded item reaches review still carrying the
-  literal `BE-XXXX` placeholder, with whatever `Status` the scaffolder set — `Approved` by default,
+  literal `BE-0443` placeholder, with whatever `Status` the scaffolder set — `Approved` by default,
   once this item ships (see *Motivation*).
 - [`docs/ai-development.md`](../../docs/ai-development.md#roadmap-items-be-ids-strict) — the
   roadmap metadata rules and the "the code decides the Status" principle this item's *Motivation*

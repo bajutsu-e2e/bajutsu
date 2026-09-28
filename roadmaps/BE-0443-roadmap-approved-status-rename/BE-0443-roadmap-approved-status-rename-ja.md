@@ -1,14 +1,14 @@
-[English](BE-XXXX-roadmap-approved-status-rename.md) · **日本語**
+[English](BE-0443-roadmap-approved-status-rename.md) · **日本語**
 
-# BE-XXXX — ロードマップの状態「Proposal」を「Approved」に改称する
+# BE-0443 — ロードマップの状態「Proposal」を「Approved」に改称する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-roadmap-approved-status-rename-ja.md) |
+| 提案 | [BE-0443](BE-0443-roadmap-approved-status-rename-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0443") |
 | 実装 PR | [#2075](https://github.com/bajutsu-e2e/bajutsu/pull/2075) |
 | トピック | コントリビューターワークフロー |
 <!-- /BE-METADATA -->
@@ -62,7 +62,7 @@ STATUS="Approved"` は従来 `Proposal` を持っていた項目を返します�
 状態に付け替える新しい名前であって、軸そのものを変えるものではありません。新規に作成した直後の、
 レビューを受ける前の項目も、この原則どおり `状態` は `Approved` になります。
 `roadmap-filter`（[`scripts/roadmap_query.py`](../../scripts/roadmap_query.py)）は、ローカルの
-ブランチ上の `BE-XXXX` プレースホルダーも番号付きの項目と同じように読むため、未レビューの提案に
+ブランチ上の `BE-0443` プレースホルダーも番号付きの項目と同じように読むため、未レビューの提案に
 取り組んでいるセッションは、レビュー前にこの値を目にすることがあります。これは新しい問題ではあり
 ません。本項目が実装される前は、スキャフォールドの従来のデフォルト値である `Proposal` も、同じ
 ようにローカルブランチ上で見えていました。`状態` は「この項目の実装が存在するか」以上のことを
@@ -318,7 +318,7 @@ mermaid 図のノードの3箇所。このうちノードの書き換えだけ�
   1点目は、審査のゲートに関する記述を `single-approver proposal` の免除ラベルを考慮したものに
   直し、すべてのマージが2人承認を経たとは限らない点を正確にしました。2点目は、新規に
   スキャフォールドした項目が持つ `Approved` という既定値について、レビュー前には見えないという
-  誤った主張ではなく、無害であるという説明に改めました（`roadmap-filter` はローカルの `BE-XXXX`
+  誤った主張ではなく、無害であるという説明に改めました（`roadmap-filter` はローカルの `BE-0443`
   プレースホルダーを番号付きの項目と同じに読みます。「動機」と、却下したレビュー前専用値の
   代替案を参照）。レビューではさらに、BE-0109、BE-0162、BE-0069、BE-0216 が、この改称によって
   古くなる、あるいは実際に壊れてしまうリテラルを本文に持つことも指摘されたため、BE-0366の前例と
@@ -337,7 +337,7 @@ mermaid 図のノードの3箇所。このうちノードの書き換えだけ�
 - [BE-0078 — 状態駆動のロードマップフォルダ](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders-ja.md)
   — 本項目がその値の1つを改称する、`状態` と区分の対応関係を導入しました。
 - [BE-0089 — マージ時の BE ID 割り当て](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md)
-  — マージ時の ID 割り当てにより、新規に作成した項目は `BE-XXXX` のまま、スキャフォールドが
+  — マージ時の ID 割り当てにより、新規に作成した項目は `BE-0443` のまま、スキャフォールドが
   設定した `状態`（本項目の実装後はデフォルトで `Approved`）を持ってレビューに進みます
   （「動機」を参照）。
 - [`docs/ai-development.md`](../../docs/ai-development.md#roadmap-items-be-ids-strict) — 本項目の
