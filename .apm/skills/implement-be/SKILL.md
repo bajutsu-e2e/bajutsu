@@ -87,9 +87,10 @@ the first time.
 
 Then branch on its `Status` (the metadata field, not a directory — the layout is flat):
 
-- **`Approved`** — the normal case. It was already accepted at its two-approval merge, so note that
-  implementing it *starts* it: this PR moves it off `Approved` — to `Implemented` when your change
-  completes the whole work breakdown, to `In progress` when units remain (step 8). Say so.
+- **`Approved`** — the normal case. It was already accepted at its review-gated merge (two
+  approvals, or one under the `single-approver proposal` waiver), so note that implementing it
+  *starts* it: this PR moves it off `Approved` — to `Implemented` when your change completes the
+  whole work breakdown, to `In progress` when units remain (step 8). Say so.
 - **`In progress`** — part of it has already shipped, so the `Progress` checklist, not the metadata
   row, is the real state. Read which units are ticked, and read the `Log` entries and the
   `Implementing PR` row to see what those PRs landed. Resolve the request to a **specific unticked

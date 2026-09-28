@@ -208,7 +208,8 @@ is your spec; the deterministic gate is the judge, never an LLM.
 
 Accepts a full id, a bare number (`300`), or a slug fragment. First it **explains the item back to
 you** — id, title, a plain-language summary, and its current state — then it notes that the item was
-already accepted at its two-approval merge, so implementing it **starts** it: this PR will flip it
+already accepted at its review-gated merge (two approvals, or one under the
+`single-approver proposal` waiver), so implementing it **starts** it: this PR will flip it
 to `Implemented`.
 
 ### Step B2 — It claims the tracking issue

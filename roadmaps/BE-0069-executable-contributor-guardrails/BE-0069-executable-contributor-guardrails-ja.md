@@ -84,7 +84,7 @@ Bajutsu のガードレールは、人間が実行できるかどうかで、す
 
 ### A. roadmap 項目の雛形（`make new-roadmap-item`）
 
-`make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Proposal]` →
+`make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Approved]` →
 `scripts/new_roadmap_item.py`：
 
 - `roadmaps/proposals/BE-0069-<slug>/` を作り、`BE-0069-<slug>.md` と `BE-0069-<slug>-ja.md` の
@@ -97,7 +97,7 @@ Bajutsu のガードレールは、人間が実行できるかどうかで、す
 - `TOPIC` を [`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py) の既知の
   セクション対応表と突き合わせ、項目が実在するセクションに入るようにします。（どのセクションにも
   一致しない `Topic` は、CI が番号を振った後で、索引ビルダを単なるずれではなく*クラッシュ*させます。
-  作成時に捕まえる価値のある、鋭い角です。）既定値は `Status=Proposal`、author は
+  作成時に捕まえる価値のある、鋭い角です。）既定値は `Status=Approved`、author は
   `git config` から解決します（`HANDLE=` で上書き可）。
 - **索引の行は手で足しません。** 生成ツールは `BE-0069` の項目を飛ばすので、プレースホルダの間は
   索引に行が無いまま保たれ、ローカルの `make check` は緑のままです。`roadmap-id` ワークフローが項目に

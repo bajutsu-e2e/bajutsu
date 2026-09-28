@@ -175,13 +175,38 @@ mermaid 図のノードの3箇所。このうちノードの書き換えだけ�
 引いた線をそのまま踏襲します。過去の記録は、当時を正確に伝える記録としてそのまま残します
 （上の BE-0074 のテンプレート例示行と同じ扱いです）。改称するのは、出荷済みの項目の本文が
 **いまも動いている仕組み**を現在形で説明しており、本項目のマージ直後から内容が古くなって
-しまう場合だけです。この基準に当てはまるのは、まさに2件です。
+しまう場合だけです。この基準に当てはまるのは2件です。
 [BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues-ja.md)
 （トラッキング Issue のライフサイクル。「オープンな項目……`状態` が `Proposal`……」）と、
 [BE-0162](../BE-0162-roadmap-status-filter-skill/BE-0162-roadmap-status-filter-skill-ja.md)
 （`roadmap-filter` スキル自身が挙げる有効な `状態` の値）です。同じ理由で BE-0366 が改称した
 のと同じ2件です。どちらも（英語・日本語とも）本 PR の同じ変更のなかで `Proposal` を `Approved`
-に改称します。本項目の最後の `進捗` チェック項目にあるリポジトリ全体のグレップは、次の4種類の
+に改称します。
+
+さらに2件、
+[BE-0069](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails-ja.md)
+と
+[BE-0216](../BE-0216-propose-and-build-parallel-skill/BE-0216-propose-and-build-parallel-skill-ja.md)
+は、そのままコピー&ペーストして実行できるコマンド例（`make new-roadmap-item … [STATUS=Proposal]`、
+`Status: Proposal`）を引用しています。本項目の改称は、これらを単に古くするだけでなく
+**実際に壊れた例にしてしまいます**。`STATUS=Proposal` は、もはや `check_roadmap_format.py` が
+受理する値ではないため、どちらの例も、いまそのまま試すとフォーマットゲートに弾かれるファイルを
+作ってしまいます。これは、「いまも動いている仕組み」テストが狙う叙述的な陳腐化よりも強い
+失敗モードであり、他の点では過去の記録である項目であっても、直す価値があります。そのため、
+この2件も（英語・日本語とも）改称します。一方、古い語彙を**叙述するだけ**の候補、たとえば
+[BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard-ja.md) と
+[BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md)
+は、どちらもダッシュボードのライフサイクル区分を「実装済み・実装中・Proposals・保留」と4区分で
+列挙していますが、そのまま残します。この4区分の列挙は、
+[BE-0366](../BE-0366-roadmap-rejected-status/BE-0366-roadmap-rejected-status-ja.md) が5つ目の
+区分「却下」を追加した時点で、どちらの言及も更新されないままとっくに古くなっており、本項目の
+改称とは無関係に、すでに現行の語彙に追随できていません。この2件が共有している1語だけを改称
+しても、修正されるのは偶然の一致であって、実際の陳腐化ではありません。
+[BE-0100](../BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template-ja.md)
+と
+[BE-0139](../BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links-ja.md)
+も同じ種類の叙述的な記録であり、実行可能な例ではないため、同じく過去の記録のまま残します。
+本項目の最後の `進捗` チェック項目にあるリポジトリ全体のグレップは、次の4種類の
 `Proposal` を見つけても、それは指摘ではありません。メタデータのフィールド名、`class Proposal`
 エージェントデータクラスとそのドキュメント言及、BE-0074 のテンプレート例示行、そして他のすべての
 出荷済み項目にあるこの種の過去の記録です。
@@ -277,7 +302,9 @@ mermaid 図のノードの3箇所。このうちノードの書き換えだけ�
       （BE-0074 本文中の例示行は対象外）。
 - [x] *詳細設計* に挙げたドキュメントページを更新する（`docs/roadmap-workflow.md` の図の再生成を
       含む）。加えて、いまも動いている仕組みを説明している BE-0109 と BE-0162 自身の本文
-      （英語・日本語とも）のリテラルを改称する。
+      （英語・日本語とも）のリテラルを改称する。BE-0069 と BE-0216 の `make new-roadmap-item` /
+      `Status:` のコマンド例も改称する。放置すると、単に古くなるだけでなく実際に壊れた例に
+      なってしまうためです。
 - [x] 6件の APM スキルソースを改称し、`make skills` を実行する。
 - [x] 10件のテストファイルのリテラル（テスト名を含む）を改称する。
 - [x] `make check` と、旧リテラルが残っていないことのリポジトリ全体でのグレップで検証する。

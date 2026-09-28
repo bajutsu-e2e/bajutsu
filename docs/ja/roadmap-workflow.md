@@ -21,7 +21,7 @@ Bajutsu のロードマップは、ざっと眺めて通り過ぎるバックロ
 
 ## 循環の全体像
 
-![循環図。大まかなアイデアが /ideation に入り、両言語で BE-XXXX 提案を起草します。CI が正式な BE-NNNN の id を採番して Status を Approved にします。この提案が仕様となり、/implement-be がそれをもとに計画・実装・テストします。レビューとゲートを経て、同じ項目の Status を Implemented に変えるだけで、パスは動かしません。](assets/diagrams/roadmap-workflow-cycle-ja.svg)
+![循環図。大まかなアイデアが /ideation に入り、両言語で Status を Approved に持つ BE-XXXX 提案を起草します。CI が正式な BE-NNNN の id を採番します。この提案が仕様となり、/implement-be がそれをもとに計画・実装・テストします。レビューとゲートを経て、同じ項目の Status を Implemented に変えるだけで、パスは動かしません。](assets/diagrams/roadmap-workflow-cycle-ja.svg)
 
 <details>
 <summary>Mermaid ソース</summary>
@@ -92,8 +92,9 @@ flowchart TB
 コードに変えたいときに使います。提案の **Detailed design**（詳細設計）が仕様であり、判定するのは決定的な
 ゲート（`make check`）であって、LLM ではありません。
 
-1. **項目を特定する**：**両方** の言語ファイルを読みます。`Approved` の項目は、2人承認によるマージの
-   時点ですでに受理されているので、それを実装することは *着手する* ことを意味し、この PR が状態を
+1. **項目を特定する**：**両方** の言語ファイルを読みます。`Approved` の項目は、審査のゲートを
+   通過したマージ（2人承認、または `single-approver proposal` の免除下では1人承認）の時点で
+   すでに受理されているので、それを実装することは *着手する* ことを意味し、この PR が状態を
    `Implemented` に切り替えます。スキルはそれを最初に伝えます。すでに
    `Implemented` の項目、`Deferred`（保留）の項目、`Rejected`（却下）の項目では、いったん止まって本当に
    何を望むかを確認します。`Rejected` の場合は、人間がその却下を明示的に覆したかどうかを確認します。

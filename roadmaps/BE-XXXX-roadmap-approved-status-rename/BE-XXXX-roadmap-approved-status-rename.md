@@ -171,12 +171,36 @@ relitigating history it did not set out to touch. This item follows the same lin
 the same kind of rename: leave a historical account as the period-accurate record it is (the same
 treatment BE-0074's template example already gets above), and rename the literal only where an
 already-shipped item's prose describes a **still-operating mechanism** in the present tense, so
-that prose would otherwise go stale the moment this item merges. Exactly two items fit that test —
+that prose would otherwise go stale the moment this item merges. Two items fit that test —
 [BE-0109](../BE-0109-roadmap-tracking-issues/BE-0109-roadmap-tracking-issues.md) (the
 tracking-issue lifecycle: "an open item... is one whose `Status` is `Proposal`...") and
 [BE-0162](../BE-0162-roadmap-status-filter-skill/BE-0162-roadmap-status-filter-skill.md) (the
 `roadmap-filter` skill's own valid `Status` values) — the same two items BE-0366 renamed for
-identical reasons. Both (English and Japanese) rename `Proposal` to `Approved` in this same PR. The
+identical reasons. Both (English and Japanese) rename `Proposal` to `Approved` in this same PR.
+
+Two more items —
+[BE-0069](../BE-0069-executable-contributor-guardrails/BE-0069-executable-contributor-guardrails.md)
+and
+[BE-0216](../BE-0216-propose-and-build-parallel-skill/BE-0216-propose-and-build-parallel-skill.md)
+— quote a literal, copy-pasteable command (`make new-roadmap-item …
+[STATUS=Proposal]`, `Status: Proposal`) that this rename makes not merely stale but **actively
+wrong**: `STATUS=Proposal` is no longer a value `check_roadmap_format.py` accepts, so following
+either example today produces a file the format gate rejects. That is a stronger failure mode than
+the narrative drift the still-operating-mechanism test targets, and it is worth fixing even in an
+otherwise-historical item, so both (English and Japanese) are renamed too. Other candidates that
+merely *narrate* the old vocabulary — e.g.
+[BE-0094](../BE-0094-roadmap-status-dashboard/BE-0094-roadmap-status-dashboard.md) and
+[BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md),
+which both list the dashboard's lifecycle buckets as "Implemented / In progress / Proposals /
+Deferred" — are left alone: that four-item list has already read stale since
+[BE-0366](../BE-0366-roadmap-rejected-status/BE-0366-roadmap-rejected-status.md) added a fifth
+bucket, `Rejected`, without updating either mention, so neither item has been kept in step with the
+live vocabulary regardless of this rename, and renaming only the one token their text happens to
+share with this change would repair a coincidence, not the actual drift.
+[BE-0100](../BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template.md)
+and
+[BE-0139](../BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links.md)
+are the same kind of narrative account, not a runnable example, so they stay historical too. The
 repository-wide grep in this item's last `Progress` box is expected to still find `Proposal` in:
 the metadata field name, the `class Proposal` agent dataclass and its docs mentions, BE-0074's
 template example, and this kind of historical prose in every other already-shipped item — a residual
@@ -272,7 +296,9 @@ by growing the allocator's write surface is a worse trade than leaving it alone.
 - [x] Update the documentation pages listed in *Detailed design*, including the regenerated
       `docs/roadmap-workflow.md` diagrams, and rename the literal in BE-0109's and BE-0162's own
       body prose (English and Japanese), the two shipped items whose text describes a
-      still-operating mechanism.
+      still-operating mechanism, plus BE-0069's and BE-0216's literal `make new-roadmap-item` /
+      `Status:` examples, which the rename would otherwise leave actively broken rather than
+      merely stale.
 - [x] Rename the literal in the six APM skill sources and run `make skills`.
 - [x] Rename the literal across the ten test files, including any test name that encodes it.
 - [x] Verify with `make check` and a repository-wide grep for the retired literal.

@@ -114,7 +114,7 @@ ID 採番のタイミングから派生するものであって、正しさの�
    含む `description`、BE-0103 に沿った既定の `model:`）と、以下の各フェーズを構造とする本文を持たせます。
    `ideation` と `implement-be` の内容は複製せず、リンクで参照します。
 2. **フェーズ A — 提案を執筆する（`ideation` の規則に委譲）。** `claude/<topic>` を `origin/main` から
-   切り、`make new-roadmap-item` で `BE-XXXX-<slug>/` を `Status: Proposal` として scaffold し、内容を
+   切り、`make new-roadmap-item` で `BE-XXXX-<slug>/` を `Status: Approved` として scaffold し、内容を
    [`document-writing`](../../.claude/skills/document-writing/SKILL.md) スキルに従って埋め、日本語側を
    [`japanese-document-writing`](../../.claude/skills/japanese-document-writing/SKILL.md) に従って整えます。
    `ideation` と同一であり、スキルは再掲せずそう述べます。
