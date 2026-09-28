@@ -115,7 +115,7 @@ def test_video_expand_clone_includes_steps_that_never_ran() -> None:
     assert "r.classList.contains('skip')" in build
     # A skip row carries no `data-target` of its own (rows.py never threads one through), so it
     # cannot be scoped to one player's own tab — every skip row is kept, unconditionally.
-    assert "isMine = r.classList.contains('skip') || mine.indexOf(r) !== -1" in build
+    assert "mine.indexOf(r) !== -1" in build
     # It carries no `data-t` either, so it must never enter the highlight/seek array.
     assert "if(r.classList.contains('srow')) cloneRows.push(clone);" in build
     # A target whose every step was skipped (another target failed first) still has no `srow` of
@@ -172,7 +172,12 @@ def test_video_expand_registers_video_home_before_the_missing_control_guard() ->
 
 def test_video_expand_clones_companion_rows() -> None:
     out = html_report("run1", [_passing()])
-    assert "COMPANION_CLASSES = ['alertrow', 'actrow', 'genrow']" in out
+    build = _function_body(out, "function vzBuildSteps(player)", "function vzMount(player)")
+    assert "COMPANION_CLASSES = ['alertrow', 'actrow', 'genrow']" in build
+    # The constant alone would survive deleting the walk, so pin the walk and the append too.
+    assert "sib = r.nextElementSibling" in build
+    assert "sibClone = sib.cloneNode(true)" in build
+    assert "tbody.appendChild(sibClone)" in build
 
 
 def test_video_expand_tabs_use_their_own_class_not_tab() -> None:

@@ -184,7 +184,7 @@ A multi-target scenario can leave every step of one target skipped, when another
 first. That target's own player has no `tr.srow` at all, yet the scenario's shared skip rows still
 belong in its modal. Within one section, `vzBuildSteps` skips building a table at all once that
 section's own `tbody` ends up with no children — checking that count, not `mine`'s length alone.
-Across every section, it bails out of the whole function purely once it has cloned nothing anywhere.
+Across every section, it bails out of the whole function only when it has cloned nothing anywhere.
 
 Each section that did clone at least one row gets its own `<span class="deflbl">`, its text copied
 from the section's own heading, followed by its own
@@ -236,9 +236,9 @@ returns the row with the latest `data-t` at or before `currentTime`, and both th
 rules out the compact view and the modal drifting apart if it changes later. Autoscroll targets
 `.vz-steps` itself, through the existing `scrollIntoBox` helper
 ([report.js:826](../../bajutsu/templates/report.js)), with `.vz-steps` in place of the compact
-view's own scroll container. `vzBuildSteps` clears every cloned row's `hidden`, so no row playback
-marks "playing" ever reads a zero-sized rect from `scrollIntoBox` — the quirk a hidden row would have
-caused does not arise here.
+view's own scroll container. `vzBuildSteps` clears every cloned row's `hidden`, so no row that
+playback marks "playing" ever reads a zero-sized rect from `scrollIntoBox` — the quirk a hidden row
+would have caused does not arise here.
 
 ### Tabs for a multi-target scenario
 

@@ -119,7 +119,7 @@ if(v) videoHome.set(v, p);
 再生/一時停止ボタンとシークバーを使えるようにするためです。動画だけを移すと、この操作バーが元の
 プレイヤーに取り残されてしまいます。再生位置、一時停止状態、すでに張られているイベントリスナー
 （`play` / `pause` / `timeupdate` / `syncSiblings`、
-[report.js:796](../../bajutsu/templates/report.js)〜[report.js:822](../../bajutsu/templates/report.js)）。
+[report.js:796](../../bajutsu/templates/report.js)〜[report.js:822](../../bajutsu/templates/report.js)）
 は、要素を移動しただけでは外れないため、そのまま保たれます。移した`.vctl`が持つ`.vexpand`ボタンは、
 モーダルの中に移った時点で`closest('.player')`が`null`になり、押しても何も起きません。`vzMount`は
 このボタンに`hidden`を付け、何も起きないボタンをそのまま見せないようにします。`.vexpand`は自身の
@@ -135,11 +135,11 @@ if(v) videoHome.set(v, p);
 
 プレイヤーの`hidden`を切り替えると、`.players`の高さも変わります。そのため`vzRestore`は、既存の
 `syncResultHeight(scn)`
-（[report.js:529](../../bajutsu/templates/report.js)〜[report.js:541](../../bajutsu/templates/report.js)）。
+（[report.js:529](../../bajutsu/templates/report.js)〜[report.js:541](../../bajutsu/templates/report.js)）
 も呼び直します。Resultタブの高さ計算を、現在のプレイヤー構成に合わせるためです。
 
 マルチターゲットシナリオ
-（[BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md)）。
+（[BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md)）
 の他の録画は、元の場所に残ったまま同期再生を続けます。`syncSiblings`
 （[report.js:639](../../bajutsu/templates/report.js)）は、`<video>`要素がどの親の下にあっても、
 同じノードを追い続けます。
@@ -153,7 +153,7 @@ if(v) videoHome.set(v, p);
 `vzBuildSteps(player)`は、シナリオ自身の`.steps-sec`を区分ごとにたどり、シナリオ全体で1つの
 共有テーブルではなく、区分ごとに1つの`.vz-sttbl`を組み立てます。
 
-区分ごとのループの中では、その区分自身の`table.sttbl`（`section.querySelector('table.sttbl')`）。
+区分ごとのループの中では、その区分自身の`table.sttbl`（`section.querySelector('table.sttbl')`）
 から`srcTable.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')`を取り、
 ドキュメント上の並び順で行を集めます。セレクタの両側に`[data-target]`を付けているのは、`tr.srow`側
 だけの都合ではありません。検証結果テーブル（`.extbl`、`exrow`マクロ、
@@ -170,10 +170,10 @@ if(v) videoHome.set(v, p);
 実行済みの行のようにプレイヤーへ絞り込めません。無条件にすべて残すのは、次にどの対象が実行する
 予定だったかにかかわらず、コンパクト表示がすでに同じ未実行ステップを1回だけ見せているのと同じ挙動に
 合わせるためです。単一ターゲットのシナリオでは`rowsFor`が持っている全行を返し、マルチターゲットの
-シナリオでは該当ターゲットの行だけを返します。`rowsFor`が返すのは本体行（`tr.srow[data-target]`）。
+シナリオでは該当ターゲットの行だけを返します。`rowsFor`が返すのは本体行（`tr.srow[data-target]`）
 だけであり、その行自身の付随行（`.alertrow` / `.actrow` / `.genrow`）は含みません。そのため
 `vzBuildSteps`は、残した各行の直後にある付随行も、あれば同様に複製します。`tr.skip`は`data-t`を
-持たないため、ハイライトとシークの対象配列`cloneRows`には、本体行（`r.classList.contains('srow')`）。
+持たないため、ハイライトとシークの対象配列`cloneRows`には、本体行（`r.classList.contains('srow')`）
 だけを加えます。
 
 あるターゲットの全ステップが（別のターゲットのステップが先に失敗したことにより）未実行だった場合、
@@ -195,7 +195,7 @@ if(v) videoHome.set(v, p);
 `.sttbl`の行は、列位置を`nth-child`で決めるCSSグリッドです
 （[report.css:383](../../bajutsu/templates/report.css)〜[report.css:416](../../bajutsu/templates/report.css)）。
 セルそのものを取り除くと、後続の列がひとつずつ前へずれて壊れます。中身だけを空にすれば列は残り、
-既存の`table.sttbl>…>td:empty{display:none}`（[report.css:372](../../bajutsu/templates/report.css)）。
+既存の`table.sttbl>…>td:empty{display:none}`（[report.css:372](../../bajutsu/templates/report.css)）
 がその空セルを隠します。中身を空にすると、同じセルにある`class="shot"` / `class="treebtn"`も
 一緒に消えます。これらを残すと、既存のElement Viewer（`.tv`）がこのモーダルの上に開いてしまいます。
 
@@ -227,7 +227,7 @@ if(v) videoHome.set(v, p);
 ハイライトと自動スクロールも、コンパクト表示側の`timeupdate`ハンドラと同じ考え方を、本体行だけを
 集めた配列`cloneRows`に対して行います。「いま再生中の行はどれか」という判定そのものは、コンパクト
 表示・モーダルの双方で共有する`pickPlayingRow(rows, currentTime)`
-（[report.js:837](../../bajutsu/templates/report.js)〜[report.js:844](../../bajutsu/templates/report.js)）。
+（[report.js:837](../../bajutsu/templates/report.js)〜[report.js:844](../../bajutsu/templates/report.js)）
 という関数へ切り出します。現在時刻以下の`data-t`を持つ行のうち、もっとも遅いものを返すだけの関数
 です。この判定基準を2箇所で書き分けると、片方だけ直して他方が古いままという食い違いが起こりえます。
 共有することでその心配をなくします。スクロールには、既存の`scrollIntoBox`ヘルパー
@@ -248,7 +248,7 @@ if(v) videoHome.set(v, p);
 
 `vzClose()`は、動画を元に戻し、複製したステップとタブを消し、`.open`を外します。`.tv` /
 `.imgz`がすでに使っている3つの閉じ方
-（[report.js:278](../../bajutsu/templates/report.js)〜[report.js:308](../../bajutsu/templates/report.js)）。
+（[report.js:278](../../bajutsu/templates/report.js)〜[report.js:308](../../bajutsu/templates/report.js)）
 と同じ配線にします。背景クリック（`e.target === vz`）、閉じるボタン、Escapeキーです。Escapeは、
 `.tv` / `.imgz`のどちらかがすでに開いていれば、そちらを優先します。この項目では、3つのうち複数を
 同時に開く経路自体を作りません。
