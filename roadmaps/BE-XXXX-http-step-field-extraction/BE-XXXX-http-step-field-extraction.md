@@ -50,10 +50,11 @@ Fields and contract:
 
 - **`extractBody`** — a list of `{ var, path }` entries. Each parses the response body as JSON,
   walks `path`, and stores the value it finds as `vars.<var>`. `extractBody` stores a string value
-  as-is; it stores any other JSON value (number/boolean/null/object/array) as the compact JSON text
-  `json.dumps(value, separators=(",", ":"), ensure_ascii=False)` produces for it: `42`, `true`,
-  `null`, `{"id":42}`. A later `${vars.*}` comparison then reads the same shape the API returned,
-  never a Python-specific rendering like `None` or `True`.
+  as-is; it stores any other JSON value (number/boolean/null/object/array) as the same text
+  `_json_text` (`bajutsu/common/assertions/evaluate/_functions.py`) already produces for a captured
+  body field — `42`, `true`, `null`, `{"id":42}` — rather than defining a second renderer for the
+  same concept. A later `${vars.*}` comparison then reads the same shape the API returned, never a
+  Python-specific rendering like `None` or `True`.
 - **`path`** is a sequence of object keys and `[n]` (zero-based) array indexes, in any order and any
   number: an opening key carries no leading dot (`data.token`); an index may follow a key
   (`items[0].id`) or another index (`rows[0][1]`); and a path may open on an index
@@ -77,16 +78,22 @@ Fields and contract:
 - `extractBody` and `saveBody` read the same response body independently; setting both stores the
   whole text under `saveBody`'s name and the named fields under `extractBody`'s, from one request.
   Two `extractBody` entries with the same `var`, or an entry whose `var` equals `saveBody`, is a
-  scenario load error — never a silent overwrite decided by write order.
+  scenario load error — never a silent overwrite decided by write order. That check runs in the
+  scenario loader itself, never as `Step` model validation: a model validator would re-fire on the
+  substituted step below and raise an uncaught error, in place of the handler's own clean step
+  failure.
 - Like every other step field, a scenario may write `path` and `var` themselves with `${vars.*}` /
   `${secrets.*}` scenario-variable substitution (`path: "items[${vars.i}].id"`); the runner
   substitutes those tokens before parsing `path`, the same way it already does for `url` or
-  `saveBody`. "No computed segments" describes the grammar itself: it never branches on the
-  response body's own content. It says nothing about a scenario parameterizing a field with its own
-  declared variables. The path-grammar check runs purely on the substituted step, never on the
-  scenario as loaded, where `path` may still hold a raw `${vars.*}` token. The duplicate-`var` check
-  runs at load on the literal names and again on the substituted step; a collision that substitution
-  alone reveals fails the step at run time with the same error naming the `var`.
+  `saveBody`. A substituted value is one path segment, never new path structure: a value carrying
+  `.`, `[`, or `]` fails the step with the same malformed-path error, so a field name that reaches
+  the scenario from a response body can never redirect the walk to a different field. "No computed
+  segments" describes the grammar itself: it never branches on the response body's own content, and
+  says nothing about a scenario parameterizing a field with its own declared variables. The
+  path-grammar check runs purely on the substituted step, never on the scenario as loaded, where
+  `path` may still hold a raw `${vars.*}` token. The loader-level duplicate-`var` check above runs
+  again on the substituted step; a collision that substitution alone reveals fails the step at run
+  time with the same error naming the `var`.
 
 Prime directives preserved:
 
@@ -121,24 +128,28 @@ Prime directives preserved:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add the `extractBody` field to the `http` step's scenario model, alongside `saveBody`; reject
-      a duplicate `var` across `extractBody` entries or a `var` colliding with `saveBody` at load
-      time.
+- [ ] Add the `extractBody` field to the `http` step's scenario model, alongside `saveBody`. Reject
+      a duplicate `var` across `extractBody` entries or a `var` colliding with `saveBody` in the
+      scenario loader itself, never as `Step` model validation.
 - [ ] Add JSON parsing and path resolution to the runner's `http` handler, including a leading
       index and chained indexes. Fail the step on a parse error, a malformed path, or an unresolved
-      path. Render a non-string resolved value with
-      `json.dumps(value, separators=(",", ":"), ensure_ascii=False)`. Re-check duplicate `var` names
-      on the substituted step and fail the step on a collision.
+      path. Fail it too when a substituted value carries `.`, `[`, or `]`. Render a non-string
+      resolved value with the existing `_json_text` helper
+      (`bajutsu/common/assertions/evaluate/_functions.py`). Re-run the loader's duplicate-`var`
+      check on the substituted step, and fail the step on a collision substitution alone reveals.
 - [ ] Document `extractBody` in `docs/scenarios.md` (beside `saveBody`) and in the `http` production
       of `docs/dsl-grammar.md`, with both `docs/ja/` mirrors.
 - [ ] Add scenario-level tests covering:
-      - a resolved nested field
-      - a path opening on an array index, and a chained index
-      - a non-string resolved value (`json.dumps` rendering)
-      - a missing key and an out-of-range index
-      - a key applied to a non-object, or an index applied to a non-array (a string included)
-      - a malformed path (a negative index)
-      - a non-JSON body
+      - a resolved nested field.
+      - a path opening on an array index, and a chained index.
+      - a non-string resolved value (`_json_text` rendering).
+      - a missing key and an out-of-range index.
+      - a key applied to a non-object, or an index applied to a non-array (a string included).
+      - a malformed path (a negative index).
+      - a non-JSON body.
+      - a duplicate `var`: two entries sharing one name, and an entry colliding with `saveBody`.
+      - a `path` and a `var` written with `${vars.*}`: a collision substitution alone reveals, and
+        a substituted value carrying `.`/`[`/`]`.
 
 ## References
 
@@ -149,4 +160,7 @@ Prime directives preserved:
   considered* compares `extractBody` against.
 - [`docs/scenarios.md`](../../docs/scenarios.md), [`docs/dsl-grammar.md`](../../docs/dsl-grammar.md),
   `bajutsu/common/scenario/models/actions/http_request.py`,
-  `bajutsu/common/orchestrator/actions/handlers/http.py`
+  `bajutsu/common/orchestrator/actions/handlers/http.py`,
+  `bajutsu/common/assertions/evaluate/_functions.py` (`_json_text`, the existing renderer this item
+  reuses), `bajutsu/common/orchestrator/loop/_step_runner.py` (the `try`/`except` around
+  `${vars.*}` substitution that a duplicate-`var` check must not raise past)
