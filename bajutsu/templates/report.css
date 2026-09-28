@@ -77,6 +77,11 @@ summary::-webkit-details-marker{display:none}
 .vplay{flex:none;width:1.7rem;height:1.7rem;border:0;border-radius:5px;background:#3a3a3c;color:#fff;
  cursor:pointer;font-size:.66rem;line-height:1;display:flex;align-items:center;justify-content:center}
 .vplay:hover{background:#4a4d52}
+/* Opens the enlarged video + synced step list (`.vz`, below). Same size and
+   affordance as `.vplay`, just beside it, so the two read as a pair of player-level controls. */
+.vexpand{flex:none;width:1.7rem;height:1.7rem;border:0;border-radius:5px;background:#3a3a3c;color:#fff;
+ cursor:pointer;font-size:.7rem;line-height:1;display:flex;align-items:center;justify-content:center}
+.vexpand:hover{background:#4a4d52}
 .vseekwrap{position:relative;flex:1;min-width:0;display:flex;align-items:center}
 .vseek{flex:1;min-width:0;height:.3rem;cursor:pointer;accent-color:#0a6cff}
 /* Hide the native thumb — `.vknob` below is the visible one, drawn on top of the tick/segment
@@ -170,6 +175,45 @@ img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-ali
  justify-content:center;z-index:60;cursor:zoom-out}
 .imgz.open{display:flex}
 .imgz img{max-width:96vw;max-height:96vh;object-fit:contain;box-shadow:0 6px 30px rgba(0,0,0,.5)}
+/* Video expand overlay: the same fixed, full-screen backdrop as
+   `.tv`, but sized to show a recording large rather than a screenshot. */
+.vz{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;
+ justify-content:center;z-index:50}
+.vz.open{display:flex}
+/* Wider than `.tv-box`: showing the recording large is the point. The video takes the flexible
+   width; the step list beside it is a fixed column, the same idea as `.tv-shot` / `.tv-main`. */
+.vz-box{position:relative;background:var(--card);color:var(--ink);width:min(96vw,1400px);
+ height:min(92vh,900px);border-radius:10px;box-shadow:0 10px 50px rgba(0,0,0,.5);
+ display:flex;overflow:hidden}
+.vz-close{position:absolute;top:.35rem;right:.5rem;z-index:2;border:0;background:transparent;
+ color:#fff;font-size:1.05rem;line-height:1;cursor:pointer;mix-blend-mode:difference}
+.vz-close:hover{opacity:.8}
+/* One tab per target, shown only for a multi-target scenario. Styled like `.tab` (same look) but
+   its own class: `.tab`'s delegated click handler assumes an ancestor `.scn`
+   (report.js), which `.vz-tabs` — outside any `.scn` — does not have. */
+.vz-tabs{position:absolute;top:.4rem;left:.6rem;z-index:2;display:flex;gap:.3rem}
+.vz-tabs[hidden]{display:none}
+.vz-tab{font:600 .78rem -apple-system,system-ui,sans-serif;color:#fff;background:rgba(255,255,255,.12);
+ border:1px solid rgba(255,255,255,.25);border-radius:6px;padding:.2rem .6rem;cursor:pointer}
+.vz-tab.active{background:rgba(255,255,255,.28)}
+/* report.js moves the player's own `.vctl` bar in alongside its `<video>` (not just the video),
+   so the enlarged view keeps play/pause, the scrubber, and tick marks — the same reason `.player`
+   itself stacks a video over its own `.vctl` rather than this modal building new controls. */
+.vz-video{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;background:#000}
+.vz-video video{flex:1;min-height:0;width:100%;height:100%;object-fit:contain;display:block;cursor:pointer}
+.vz-video .vctl{flex:none}
+.vz-steps{flex:none;width:340px;border-left:1px solid var(--line);overflow:auto;padding:.4rem .6rem}
+/* The clone drops the screenshot/tree column's content (report.js empties `td.ev`) but keeps the
+   column itself — `.sttbl`'s grid is keyed by `:nth-child`, so removing the cell would shift every
+   later column instead of just leaving a blank one. */
+.vz-sttbl{width:100%}
+/* A fixed 340px step column leaves the video a sliver on a phone-width `.vz-box` (which itself
+   shrinks to `96vw`) — stack video-then-steps instead, the same fallback the `.body` grid above
+   already uses at this breakpoint. */
+@media(max-width:760px){
+ .vz-box{flex-direction:column}
+ .vz-steps{width:auto;flex:1;min-height:0;border-left:0;border-top:1px solid var(--line)}
+}
 .tv-box{position:relative;background:var(--card);color:var(--ink);width:min(94vw,1040px);max-height:84vh;border-radius:10px;
  box-shadow:0 10px 50px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden}
 /* ◀ / ▶ walk to the previous / next step's screenshot + elements (same as the arrow keys). */
