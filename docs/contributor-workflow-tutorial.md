@@ -141,7 +141,7 @@ It claims the next free id in merge order, renames `BE-XXXX` → `BE-NNNN` **eve
 directory, both files, cross-links), commits the result directly to `main`, and posts a comment on
 your merged PR announcing the allocated id
 ([BE-0089](../roadmaps/BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md)).
-The item now exists at its permanent path with `Status: Proposal`, and its number is allocated for
+The item now exists at its permanent path with `Status: Approved`, and its number is allocated for
 good. That number is the input to Part B.
 
 ---
@@ -207,8 +207,10 @@ is your spec; the deterministic gate is the judge, never an LLM.
 ```
 
 Accepts a full id, a bare number (`300`), or a slug fragment. First it **explains the item back to
-you** — id, title, a plain-language summary, and its current state — then it notes that implementing
-a `Proposal` *accepts* it: this PR will flip it to `Implemented`.
+you** — id, title, a plain-language summary, and its current state — then it notes that the item was
+already accepted at its review-gated merge (two approvals, or one under the
+`single-approver proposal` waiver), so implementing it **starts** it: this PR will flip it
+to `Implemented`.
 
 ### Step B2 — It claims the tracking issue
 

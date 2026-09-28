@@ -22,6 +22,8 @@ from bajutsu.common.scenario.models.mocks import Mock
 from bajutsu.common.scenario.models.steps import AfterRule, Interrupt, Step
 
 from ._functions import _coerce_system_alert_handling
+from ._group_nesting import _check_no_nested_group
+from ._targets import _check_target_requirements, _expand_target_groups
 from .preconditions import Preconditions
 from .system_alert_handling import SystemAlertHandling
 
@@ -51,6 +53,16 @@ class Scenario(_Model):
     # from. Authoring metadata only — `run` never reads it. Kept None (pruned) when unset.
     from_: str | None = Field(default=None, alias="from")
     tags: list[str] = Field(default_factory=list)
+    # Every target this scenario drives (BE-0428): each entry names a `targets.<name>` config unit,
+    # launched before the first step and torn down together with the rest after the last one. Empty
+    # (the default) is today's single-target scenario, resolved entirely from the CLI's `--target` —
+    # a per-step `target` is then optional and, if set, must name that one target.
+    targets: list[str] = Field(default_factory=list)
+    # The target a step or top-level `expect` entry runs against when it omits `target` under two
+    # or more declared `targets` (BE-0436). Pinned to `targets[0]`, the entry the runner already
+    # leases and resolves evidence for as the primary, so the file's "primary" and the runner's
+    # can never diverge. Unset keeps BE-0428's rule: every step names its own `target`.
+    primary_target: str | None = Field(default=None, alias="primaryTarget")
     # Per-scenario OS permission state (BE-0276), applied before the app process starts: grant or
     # revoke a permission up front so the runtime prompt never appears (iOS `simctl privacy`,
     # Android `pm grant`/`pm revoke`). Deterministic and AI-free, unlike the vision
@@ -143,4 +155,20 @@ class Scenario(_Model):
     def _one_data_source(self) -> Self:
         if self.data is not None and self.data_file is not None:
             raise ValueError("data and dataFile are mutually exclusive")
+        return self
+
+    @model_validator(mode="after")
+    def _target_requirements(self) -> Self:
+        # Extracted into `_check_target_requirements` (BE-0428) so `expand_components` and
+        # `with_lifecycle_phases` — which each rebuild an already-validated `Scenario` in a way
+        # Pydantic never re-validates — can run the same check again on their own result.
+        # `_expand_target_groups` (BE-0437) runs first, so a target group is already gone by the
+        # time the check walks the tree.
+        _expand_target_groups(self)
+        _check_target_requirements(self)
+        return self
+
+    @model_validator(mode="after")
+    def _no_nested_group(self) -> Self:
+        _check_no_nested_group(self)
         return self

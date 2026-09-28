@@ -21,7 +21,11 @@ from bajutsu.common.config import Effective, IosConfig, WebConfig, load_config, 
 from bajutsu.common.scenario import Scenario
 from bajutsu.common.scenario.models.assertions import Assertion, VisualMatch
 from bajutsu.common.scenario.models.steps import Step
-from bajutsu.run.cli import _apply_touch_markers, _channel_available_for
+from bajutsu.run.cli import (
+    _apply_touch_markers,
+    _channel_available_for,
+    _visual_asserting_scenarios,
+)
 from bajutsu.serve import _cli_flags as cli_flags
 
 runner = CliRunner()
@@ -761,6 +765,315 @@ def test_run_browsers_matrix_is_web_only(tmp_path: Path) -> None:
     )
     assert r.exit_code == 2
     assert "web-only" in r.output
+
+
+def test_check_target_membership_passes_a_targetless_scenario() -> None:
+    from bajutsu.run.cli import _check_target_membership
+
+    scenarios = [Scenario.model_validate({"name": "s", "steps": [{"tap": {"id": "a"}}]})]
+    _check_target_membership(scenarios, "demo", explicit=True)  # no exception
+
+
+def test_check_target_membership_passes_when_target_is_one_of_the_declared_names() -> None:
+    from bajutsu.run.cli import _check_target_membership
+
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "cross-target",
+                "targets": ["app", "web"],
+                "steps": [{"target": "app", "tap": {"id": "a"}}],
+            }
+        )
+    ]
+    _check_target_membership(scenarios, "web", explicit=True)  # matching any declared name is fine
+
+
+def test_check_target_membership_exits_2_on_a_stale_flag(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # A `--target` left over from editing the scenario must fail loudly rather than be ignored:
+    # silently selecting a target the file no longer expects is the outcome BE-0428 rules out.
+    import typer
+
+    from bajutsu.run.cli import _check_target_membership
+
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "cross-target",
+                "targets": ["app", "web"],
+                "steps": [{"target": "app", "tap": {"id": "a"}}],
+            }
+        )
+    ]
+    with pytest.raises(typer.Exit) as exc:
+        _check_target_membership(scenarios, "staging", explicit=True)
+    assert exc.value.exit_code == 2
+    out = capsys.readouterr().out
+    assert "cross-target" in out
+    assert "staging" in out
+
+
+def test_check_target_membership_skips_a_primary_this_command_derived() -> None:
+    # Only an *explicit* flag is checked. A batch's primary comes from the first file, and a later
+    # file may legitimately declare a disjoint target set, so checking it would reject a valid run.
+    from bajutsu.run.cli import _check_target_membership
+
+    scenarios = [
+        Scenario.model_validate(
+            {"name": "a", "targets": ["app"], "steps": [{"target": "app", "tap": {"id": "x"}}]}
+        ),
+        Scenario.model_validate(
+            {"name": "b", "targets": ["web"], "steps": [{"target": "web", "tap": {"id": "x"}}]}
+        ),
+    ]
+    _check_target_membership(scenarios, "app", explicit=False)  # no exception
+
+
+def test_reject_legacy_without_target_names_every_orphan(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Without `--target`, a scenario declaring no targets has nothing to resolve one from — it
+    # would otherwise silently borrow the primary another file declared.
+    import typer
+
+    from bajutsu.run.cli import _reject_legacy_without_target
+
+    scenarios = [
+        Scenario.model_validate(
+            {"name": "a-self", "targets": ["app"], "steps": [{"target": "app", "tap": {"id": "x"}}]}
+        ),
+        Scenario.model_validate({"name": "b-legacy", "steps": [{"tap": {"id": "x"}}]}),
+        Scenario.model_validate({"name": "c-legacy", "steps": [{"tap": {"id": "x"}}]}),
+    ]
+    with pytest.raises(typer.Exit) as exc:
+        _reject_legacy_without_target(scenarios, "app", explicit=False)
+    assert exc.value.exit_code == 2
+    out = capsys.readouterr().out
+    assert "b-legacy" in out
+    assert "c-legacy" in out
+    assert "a-self" not in out  # a self-declaring scenario is never an orphan
+
+
+def test_reject_legacy_without_target_is_inert_when_target_was_given() -> None:
+    # With `--target`, a legacy scenario resolves from it exactly as it always has.
+    from bajutsu.run.cli import _reject_legacy_without_target
+
+    scenarios = [Scenario.model_validate({"name": "b-legacy", "steps": [{"tap": {"id": "x"}}]})]
+    _reject_legacy_without_target(scenarios, "demo", explicit=True)  # no exception
+
+
+def test_run_rejects_a_stale_target_flag_end_to_end(tmp_path: Path) -> None:
+    # BE-0428 end to end: the run must stop before any device work when `--target` names a target
+    # the scenario's own `targets` no longer lists.
+    cfg, _ = _fake_run(tmp_path)
+    scn = tmp_path / "cross.yaml"
+    scn.write_text(
+        "- name: cross-target\n"
+        "  targets: [other]\n"
+        "  steps:\n"
+        "    - target: other\n"
+        "      tap: { id: home.title }\n",
+        encoding="utf-8",
+    )
+    r = runner.invoke(
+        app,
+        [
+            "run",
+            "--scenario",
+            str(scn),
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--config",
+            str(cfg),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "cross-target" in r.output
+    assert "demo" in r.output
+
+
+def test_a_pool_too_small_for_the_scenario_still_releases_every_device(tmp_path: Path) -> None:
+    # BE-0428 regression: `_resolve_multi_target_workers` can exit 2 well after every target's
+    # device was already acquired — that rejection must still release them, the same as any other
+    # error reached inside `run`'s own `try`, rather than leaking every one of them silently.
+    import bajutsu.common.runner.device_provider as dp
+    from bajutsu.common.platform_lifecycle import ProvisionProfile
+
+    released: list[str] = []
+
+    class _CountingLocal:
+        def acquire(self, eff: Effective, requested_udid: str) -> dp.DeviceLease:
+            name = eff.target
+
+            def _release() -> None:
+                released.append(name)
+
+            return dp.DeviceLease(
+                udid_spec=requested_udid, provision=ProvisionProfile(), release=_release
+            )
+
+    dp.register("counting-local", _CountingLocal())
+    try:
+        cfg = tmp_path / "bajutsu.config.yaml"
+        cfg.write_text(
+            "defaults: { backend: [fake] }\n"
+            "targets:\n"
+            "  app: { bundleId: com.example.app, deviceProvider: { kind: counting-local } }\n"
+            "  other: { bundleId: com.example.other, deviceProvider: { kind: counting-local } }\n",
+            encoding="utf-8",
+        )
+        scn = tmp_path / "cross.yaml"
+        scn.write_text(
+            "- name: cross-target\n"
+            "  targets: [app, other]\n"
+            "  steps:\n"
+            "    - target: app\n"
+            "      tap: { id: home.title }\n"
+            "    - target: other\n"
+            "      tap: { id: home.title }\n",
+            encoding="utf-8",
+        )
+        # Both targets resolve to the "fake" actuator and thus share one pool; a single `--udid`
+        # gives that pool exactly one lane for a scenario that needs two.
+        r = runner.invoke(
+            app,
+            [
+                "run",
+                "--scenario",
+                str(scn),
+                "--backend",
+                "fake",
+                "--udid",
+                "UD-1",
+                "--config",
+                str(cfg),
+                "--runs-dir",
+                str(tmp_path / "runs"),
+            ],
+        )
+        assert r.exit_code == 2
+        assert "--udid" in r.output
+        assert sorted(released) == ["app", "other"]
+    finally:
+        dp._PROVIDERS.pop("counting-local", None)
+
+
+def test_run_rejects_a_bad_target_config_hook_end_to_end(tmp_path: Path) -> None:
+    # BE-0428: a config-level `before` hook step carrying a `target` that a 0-target scenario in
+    # this suite would reject must exit 2 cleanly, not crash with a raw traceback from deep inside
+    # `run_all` — the multi-target guard above only covers `len(targets) >= 2`.
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake] }\n"
+        "targets:\n"
+        "  demo:\n"
+        "    bundleId: com.example.demo\n"
+        "    before:\n"
+        "      - target: web\n"
+        "        tap: { id: home.start }\n",
+        encoding="utf-8",
+    )
+    scn = tmp_path / "s.yaml"
+    scn.write_text("- name: demo\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
+    r = runner.invoke(
+        app,
+        [
+            "run",
+            "--scenario",
+            str(scn),
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--config",
+            str(cfg),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "config-level before/after hook" in r.output
+    assert "declares no targets" in r.output
+
+
+def test_run_tag_filtering_away_a_multi_target_scenario_lets_the_rest_run(
+    tmp_path: Path,
+) -> None:
+    # BE-0428: the guard runs after `_filter_scenarios`, so `--tag` selecting away the only
+    # multi-target scenario in a suite still lets an ordinary scenario in the same file run —
+    # rather than a suite-wide exit 2 just because *some* file in it declares `targets`.
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake] }\n"
+        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        encoding="utf-8",
+    )
+    scn = tmp_path / "s.yaml"
+    scn.write_text(
+        "- name: demo\n"
+        "  tags: [smoke]\n"
+        "  steps:\n"
+        "    - tap: { id: home.title }\n"
+        "- name: cross-target\n"
+        "  tags: [cross]\n"
+        "  targets: [demo, other]\n"
+        "  steps:\n"
+        "    - target: demo\n"
+        "      tap: { id: home.title }\n",
+        encoding="utf-8",
+    )
+    r = runner.invoke(
+        app,
+        [
+            "run",
+            "--scenario",
+            str(scn),
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--tag",
+            "smoke",
+            "--config",
+            str(cfg),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+        ],
+    )
+    # Reaches the fake driver's deterministic verdict (FAIL: `home.title` is absent from its empty
+    # screen) rather than being turned away at the multi-target guard (exit 2).
+    assert r.exit_code == 1
+    assert "not yet implemented" not in r.output
+
+
+def test_codegen_rejects_a_multi_target_scenario(tmp_path: Path) -> None:
+    # BE-0428: every generator emits against this run's single --target, so a multi-target
+    # scenario's step would silently lose which target it names — refused instead of emitting a
+    # plausible-looking test that acts on the wrong app.
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "targets:\n  demo: { bundleId: com.example.demo, idNamespaces: [home] }\n",
+        encoding="utf-8",
+    )
+    scn = tmp_path / "cross.yaml"
+    scn.write_text(
+        "- name: cross-target\n"
+        "  targets: [demo, other]\n"
+        "  steps:\n"
+        "    - target: demo\n"
+        "      tap: { id: home.title }\n",
+        encoding="utf-8",
+    )
+    r = runner.invoke(app, ["codegen", str(scn), "--target", "demo", "--config", str(cfg)])
+    assert r.exit_code == 2
+    assert "cannot emit a multi-target scenario" in r.output
+    assert "cross-target" in r.output
 
 
 def _web_eff(browser: str) -> Effective:
@@ -2031,6 +2344,127 @@ def test_touch_markers_arm_the_channel_for_a_scenario_that_compares_a_screenshot
     _apply_touch_markers([scenario], True, channel_available=_channel_always)
     assert scenario.preconditions.launch_env["BAJUTSU_TOUCH_MARKERS"] == "1"
     assert scenario.preconditions.launch_env["BAJUTSU_CONTROL_CHANNEL"] == "1"
+
+
+def test_visual_asserting_scenarios_finds_a_step_level_visual_nested_in_if_and_for_each() -> None:
+    """The walk this function does for a step-level `visual` reaches `if` and `forEach` bodies.
+
+    A scenario whose only `visual` sits inside a conditional or a loop must still arm the touch-
+    marker channel for it — the same reason a top-level step-level `visual` needs it.
+    """
+    nested_in_if = Scenario.model_validate(
+        {
+            "name": "visual in if",
+            "steps": [
+                {
+                    "if": {
+                        "condition": {"exists": {"id": "home.title"}},
+                        "then": [{"assert": [{"visual": {"baseline": "home.png"}}]}],
+                    }
+                }
+            ],
+        }
+    )
+    nested_in_for_each = Scenario.model_validate(
+        {
+            "name": "visual in forEach",
+            "steps": [
+                {
+                    "forEach": {
+                        "sel": {"id": "row"},
+                        "as": "row",
+                        "steps": [{"assert": [{"visual": {"baseline": "row.png"}}]}],
+                    }
+                }
+            ],
+        }
+    )
+    visual = _visual_asserting_scenarios([nested_in_if, nested_in_for_each])
+    assert visual == {id(nested_in_if), id(nested_in_for_each)}
+
+
+def test_visual_asserting_scenarios_finds_a_step_level_visual_in_an_interrupt_recovery() -> None:
+    """An `interrupts` entry's own recovery `steps` run through the same step machinery as any
+    other step (`_run_recovery`), so a step-level `visual` assertion there takes a real capture too.
+    """
+    in_recovery = Scenario.model_validate(
+        {
+            "name": "visual in interrupt recovery",
+            "steps": [],
+            "interrupts": [
+                {
+                    "condition": {"exists": {"id": "cookie.banner"}},
+                    "steps": [{"assert": [{"visual": {"baseline": "home.png"}}]}],
+                }
+            ],
+        }
+    )
+    assert _visual_asserting_scenarios([in_recovery]) == {id(in_recovery)}
+
+
+def test_visual_asserting_scenarios_finds_a_step_level_visual_in_before_and_after_phases() -> None:
+    """The lifecycle phases (BE-0392) take the full step grammar, so they need the same walk."""
+    in_before = Scenario.model_validate(
+        {
+            "name": "visual in before",
+            "before": [{"assert": [{"visual": {"baseline": "home.png"}}]}],
+            "steps": [],
+        }
+    )
+    in_after = Scenario.model_validate(
+        {
+            "name": "visual in after",
+            "steps": [],
+            "after": [
+                {"on": "always", "steps": [{"assert": [{"visual": {"baseline": "home.png"}}]}]}
+            ],
+        }
+    )
+    visual = _visual_asserting_scenarios([in_before, in_after])
+    assert visual == {id(in_before), id(in_after)}
+
+
+def test_visual_asserting_scenarios_finds_a_step_level_visual_nested_in_an_app_block() -> None:
+    """An `app:` block's inner steps run on the native driver, so a step-level `visual` there works.
+
+    Unlike `web:` (below), `app:` needs the same marker channel as any other step.
+    """
+    nested_in_app = Scenario.model_validate(
+        {
+            "name": "visual in app",
+            "steps": [
+                {
+                    "app": {
+                        "bundleId": "com.example.other",
+                        "steps": [{"assert": [{"visual": {"baseline": "other.png"}}]}],
+                    }
+                }
+            ],
+        }
+    )
+    assert _visual_asserting_scenarios([nested_in_app]) == {id(nested_in_app)}
+
+
+def test_visual_asserting_scenarios_ignores_a_step_level_visual_nested_in_a_web_block() -> None:
+    """A `web:` block's inner steps run against a `WebContextDriver`, which cannot take a screenshot.
+
+    A step-level `visual` assertion nested there fails loudly at run time on its own
+    (`UnsupportedAction`), not by arming a marker channel it has no way to use.
+    """
+    nested_in_web = Scenario.model_validate(
+        {
+            "name": "visual in web",
+            "steps": [
+                {
+                    "web": {
+                        "within": {"id": "webview"},
+                        "steps": [{"assert": [{"visual": {"baseline": "page.png"}}]}],
+                    }
+                }
+            ],
+        }
+    )
+    assert _visual_asserting_scenarios([nested_in_web]) == set()
 
 
 def test_touch_markers_stay_off_for_a_non_visual_scenario_that_pinned_the_channel(

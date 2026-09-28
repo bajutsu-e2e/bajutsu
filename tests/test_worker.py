@@ -477,6 +477,41 @@ def test_worker_leaves_a_transient_bundle_fetch_to_lapse(monkeypatch: pytest.Mon
     assert posted == []  # no /result call for a transient failure
 
 
+def test_worker_hands_the_leases_override_urls_to_the_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The lease signs `binary_url` / `scenarios_url` for a job naming overrides (BE-0431); dropping
+    # them here would fail every such job with "the lease signed no url".
+    leases = 0
+    seen: dict[str, Any] = {}
+
+    def fake_post(url: str, body: dict[str, Any], *, token: str | None = None) -> tuple[int, Any]:
+        nonlocal leases
+        if url.endswith("/lease"):
+            leases += 1
+            if leases == 1:
+                return 200, {
+                    "job_id": "j1",
+                    "spec": {"cmd": "run"},
+                    "binary_url": "https://signed/binary",
+                    "scenarios_url": "https://signed/scenarios",
+                }
+            raise _StopLoop
+        return 200, {}
+
+    def fake_run(*_a: Any, **kwargs: Any) -> tuple[dict[str, Any], bool, Path]:
+        seen.update(kwargs)
+        return {}, True, Path()
+
+    monkeypatch.setattr(worker_mod, "_post_json", fake_post)
+    monkeypatch.setattr(worker_mod, "_run_with_heartbeat", fake_run)
+
+    with pytest.raises(_StopLoop):
+        worker(server_url="http://cp", poll_interval=1, heartbeat_interval=1)
+    assert seen["override_urls"] == {
+        "binary": "https://signed/binary",
+        "scenarios": "https://signed/scenarios",
+    }
+
+
 # --- _run_with_heartbeat ------------------------------------------------------------------------
 
 

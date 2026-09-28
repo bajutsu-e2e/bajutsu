@@ -171,6 +171,33 @@ def test_http_codegen_malformed_scenario_is_a_clean_400(tmp_path: Path) -> None:
         server.server_close()
 
 
+def test_http_codegen_rejects_a_multi_target_scenario(tmp_path: Path) -> None:
+    # BE-0428: every generator emits against this one `target`, so a multi-target scenario's step
+    # would silently lose which target it names — refused with a clean 400 instead of emitting a
+    # plausible-looking test that acts on the wrong app.
+    scn_dir, cfg, runs = _project(tmp_path)
+    (scn_dir / "cross.yaml").write_text(
+        "- name: cross-target\n"
+        "  targets: [demo, site]\n"
+        "  steps:\n"
+        "    - target: demo\n"
+        "      tap: { id: home.title }\n",
+        encoding="utf-8",
+    )
+    state = srv.ServeState(scenarios_dir=scn_dir, config=cfg, runs_dir=runs, cwd=tmp_path)
+    server, port = _serve(state)
+    try:
+        status, body = _post(
+            port, "/api/codegen", {"target": "demo", "scenario": "cross.yaml", "emit": "xcuitest"}
+        )
+        assert status == 400
+        assert "cannot emit a multi-target scenario" in body["error"]
+        assert "cross-target" in body["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_http_codegen_missing_scenario(tmp_path: Path) -> None:
     # A scenario name with no matching file in the target's scenarios dir resolves to nothing -> 404.
     scn_dir, cfg, runs = _project(tmp_path)

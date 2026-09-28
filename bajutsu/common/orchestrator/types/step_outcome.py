@@ -15,6 +15,11 @@ from .alert_event import AlertEvent
 class StepOutcome:
     index: int
     action: str
+    # The declared target this step ran against (BE-0428). Empty for a scenario declaring none —
+    # the same "empty means not applicable" convention `RunResult.engine` uses for a single-engine
+    # run — and set for every step of a self-declaring scenario, including one that omitted the name
+    # because its scenario declares only one target.
+    target: str = ""
     ok: bool = True
     reason: str = ""
     duration_s: float = 0.0

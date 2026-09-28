@@ -92,7 +92,7 @@ def _write_failed_run(runs: Path) -> Path:
                         "index": 0,
                         "action": "tap",
                         "ok": False,
-                        "reason": "一致なし: log.intens",
+                        "reason": "no match: log.intens",
                         "artifacts": [
                             {
                                 "name": "00-s/step0/elements.json",
@@ -103,7 +103,7 @@ def _write_failed_run(runs: Path) -> Path:
                     }
                 ],
                 "expect_results": [],
-                "failure": "step0 tap: 一致なし: log.intens",
+                "failure": "step0 tap: no match: log.intens",
                 "artifacts": [],
             }
         ],

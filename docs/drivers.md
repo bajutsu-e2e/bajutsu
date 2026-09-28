@@ -162,6 +162,14 @@ than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
 - `pinch` / `rotate`: two-finger multi-touch gestures performed natively by the runner.
 - `select` / `copy`: native text selection on the focused field.
 - `screenshot`: `simctl io screenshot`.
+- `enter_app` / `leave_app`: the `app:` step. Unlike the `SFSafariViewController` merge
+  above, this never merges two trees — `enter_app` pushes a new `XCUIApplication(bundleIdentifier:)`
+  onto the runner's own app stack and `.activate()`s it, so every route above (`query()`, `tap`, …)
+  addresses that app exclusively until a matching `leave_app` pops back to the one beneath. Gated on
+  the `APP_CONTEXT` capability, XCUITest-only like `HANDLE_SYSTEM_ALERT` / `PICKER_WHEEL`: a
+  feasibility spike confirmed `activate()` reliably foregrounds an app the test target never
+  launched, with no per-app config or app-side cooperation
+  ([`docs/specs/ios-cross-app-ui-control-feasibility.md`](specs/ios-cross-app-ui-control-feasibility.md)).
 
 > The generic runner uses `XCUIApplication(bundleIdentifier:)`, so it drives any installed app with
 > no app-side cooperation. A Simulator run needs no runner config at all: when a target names neither
@@ -561,9 +569,12 @@ fits the same toolchain as `make check`. Implementation: `common/drivers/playwri
   scenario — both Playwright-native (no simctl), the web analogues of the iOS os_log / simctl video.
   The pool enables recording only when `video` is in the scenario's `capture` (the `BrowserContext`
   is created with `record_video_dir`), and the `video` interval finalizes it into
-  `<scenario>/scenario.mp4` (webm content) on close. The pool injects the driver's `driver_interval`
-  (the driver-supplied interval seam, shared with the adb backend) into the `FileSink`, so the same
-  backend-agnostic `capture` policy carries both.
+  `<scenario>/scenario.webm` on close — Playwright's recorder always writes Matroska/WebM, so
+  `PlaywrightDriver.video_extension` names the artifact after its real container rather than the
+  `.mp4` every other backend produces (simctl/adb write genuine ISO base media). The pool injects
+  the driver's `driver_interval` (the driver-supplied interval seam, shared with the adb backend)
+  and `video_extension` into the `FileSink`, so the same backend-agnostic `capture` policy carries
+  both while each artifact still names its own bytes honestly.
 
 > `playwright` is imported **lazily** (only when a browser is actually started), so it never loads on
 > the default CLI path (locked by `tests/serve/test_import_guard.py`). Install with

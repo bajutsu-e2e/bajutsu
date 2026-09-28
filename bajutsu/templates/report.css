@@ -56,12 +56,36 @@ summary::-webkit-details-marker{display:none}
 /* Custom player: a slim control bar sits BELOW the recording rather than overlaying it
    (the native HTML5 controls draw their bar across the bottom of the frame, covering the
    app's own bottom UI — e.g. a tab bar — which reads as "in the way"). */
-.player{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#000}
+/* A multi-target scenario's own videos (BE-0428) stack in the same 300px media column, each
+   labeled by its target so a reader can tell which device the frame below it shows. */
+.players{display:flex;flex-direction:column;gap:.6rem}
+.players .tgtlbl{margin:0 0 .2rem}
+.player{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#000;
+ transition:box-shadow .2s}
 .player video{display:block;width:100%;background:#000;cursor:pointer}
+/* The recording actually playing back right now (report.js toggles this on play/pause) — a
+   pulsing glow around the whole frame. A multi-target scenario's stacked recordings play in
+   lockstep (`syncSiblings`, report.js, BE-0428), so several players can glow at once: this marks
+   a recording still running, as opposed to one already ended or paused, alongside
+   tr.srow.playing's own pulse on the step row. */
+.player.is-live{box-shadow:0 0 0 2px #0a6cff;animation:playerPulse 1.6s ease-in-out infinite}
+@keyframes playerPulse{
+ 0%,100%{box-shadow:0 0 0 2px #0a6cff,0 0 10px rgba(10,108,255,.35)}
+ 50%{box-shadow:0 0 0 2px #0a6cff,0 0 20px rgba(10,108,255,.75)}
+}
 .vctl{display:flex;align-items:center;gap:.5rem;padding:.34rem .5rem;background:#1c1c1e;color:#e6e6e6}
 .vplay{flex:none;width:1.7rem;height:1.7rem;border:0;border-radius:5px;background:#3a3a3c;color:#fff;
  cursor:pointer;font-size:.66rem;line-height:1;display:flex;align-items:center;justify-content:center}
 .vplay:hover{background:#4a4d52}
+/* Opens the enlarged video + synced step list (`.vz`, below). Same size and
+   affordance as `.vplay`, just beside it, so the two read as a pair of player-level controls. */
+.vexpand{flex:none;width:1.7rem;height:1.7rem;border:0;border-radius:5px;background:#3a3a3c;color:#fff;
+ cursor:pointer;font-size:.7rem;line-height:1;display:flex;align-items:center;justify-content:center}
+.vexpand:hover{background:#4a4d52}
+/* `display:flex` above outranks the UA stylesheet's `[hidden]{display:none}` whatever the
+   specificity (same reason `.sttbl>tbody>tr[hidden]` below restates it), so `vzMount`'s
+   `x.hidden = true` needs this rule to actually hide the moved bar's dead expand button. */
+.vexpand[hidden]{display:none}
 .vseekwrap{position:relative;flex:1;min-width:0;display:flex;align-items:center}
 .vseek{flex:1;min-width:0;height:.3rem;cursor:pointer;accent-color:#0a6cff}
 /* Hide the native thumb — `.vknob` below is the visible one, drawn on top of the tick/segment
@@ -127,7 +151,18 @@ tr.srow{cursor:pointer}
    now, and a per-cell background would leave those gaps unpainted, breaking the highlight into
    visible patches instead of one continuous block. */
 tr.srow:hover{background:#eef4ff}
-tr.srow.playing{background:#fff3c4;box-shadow:inset 3px 0 0 #f0a500}
+/* The step whose time window the playhead is currently in (report.js, on `timeupdate`) — the
+   tint/ring is a static "this is where the playhead is" marker that stays put after a pause.
+   `timeupdate` never clears `.playing` itself (it only moves it to a new row), so the pulse below
+   is gated on `.scn.has-live` (report.js's `paint()`, toggled from every player's play/pause) —
+   without that, the last-matched row would keep animating forever once playback stops. Paired
+   with `.player.is-live`'s own pulse on the still-running recording. */
+tr.srow.playing{background:#fff3c4;box-shadow:inset 3px 0 0 #f0a500,0 0 0 1px rgba(240,165,0,.55)}
+.scn.has-live tr.srow.playing{animation:srowPulse 1.6s ease-in-out infinite}
+@keyframes srowPulse{
+ 0%,100%{box-shadow:inset 3px 0 0 #f0a500,0 0 0 1px rgba(240,165,0,.25)}
+ 50%{box-shadow:inset 3px 0 0 #f0a500,0 0 0 1px rgba(240,165,0,.75)}
+}
 td.ev{white-space:nowrap}
 img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-align:middle;
  cursor:pointer;background:#fafafa}
@@ -144,6 +179,45 @@ img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-ali
  justify-content:center;z-index:60;cursor:zoom-out}
 .imgz.open{display:flex}
 .imgz img{max-width:96vw;max-height:96vh;object-fit:contain;box-shadow:0 6px 30px rgba(0,0,0,.5)}
+/* Video expand overlay: the same fixed, full-screen backdrop as
+   `.tv`, but sized to show a recording large rather than a screenshot. */
+.vz{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;
+ justify-content:center;z-index:50}
+.vz.open{display:flex}
+/* Wider than `.tv-box`: showing the recording large is the point. The video takes the flexible
+   width; the step list beside it is a fixed column, the same idea as `.tv-shot` / `.tv-main`. */
+.vz-box{position:relative;background:var(--card);color:var(--ink);width:min(96vw,1400px);
+ height:min(92vh,900px);border-radius:10px;box-shadow:0 10px 50px rgba(0,0,0,.5);
+ display:flex;overflow:hidden}
+.vz-close{position:absolute;top:.35rem;right:.5rem;z-index:2;border:0;background:transparent;
+ color:#fff;font-size:1.05rem;line-height:1;cursor:pointer;mix-blend-mode:difference}
+.vz-close:hover{opacity:.8}
+/* One tab per target, shown only for a multi-target scenario. Styled like `.tab` (same look) but
+   its own class: `.tab`'s delegated click handler assumes an ancestor `.scn`
+   (report.js), which `.vz-tabs` — outside any `.scn` — does not have. */
+.vz-tabs{position:absolute;top:.4rem;left:.6rem;z-index:2;display:flex;gap:.3rem}
+.vz-tabs[hidden]{display:none}
+.vz-tab{font:600 .78rem -apple-system,system-ui,sans-serif;color:#fff;background:rgba(255,255,255,.12);
+ border:1px solid rgba(255,255,255,.25);border-radius:6px;padding:.2rem .6rem;cursor:pointer}
+.vz-tab.active{background:rgba(255,255,255,.28)}
+/* report.js moves the player's own `.vctl` bar in alongside its `<video>` (not just the video),
+   so the enlarged view keeps play/pause, the scrubber, and tick marks — the same reason `.player`
+   itself stacks a video over its own `.vctl` rather than this modal building new controls. */
+.vz-video{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;background:#000}
+.vz-video video{flex:1;min-height:0;width:100%;height:100%;object-fit:contain;display:block;cursor:pointer}
+.vz-video .vctl{flex:none}
+.vz-steps{flex:none;width:340px;border-left:1px solid var(--line);overflow:auto;padding:.4rem .6rem}
+/* The clone drops the screenshot/tree column's content (report.js empties `td.ev`) but keeps the
+   column itself — `.sttbl`'s grid is keyed by `:nth-child`, so removing the cell would shift every
+   later column instead of just leaving a blank one. */
+.vz-sttbl{width:100%}
+/* A fixed 340px step column leaves the video a sliver on a phone-width `.vz-box` (which itself
+   shrinks to `96vw`) — stack video-then-steps instead, the same fallback the `.body` grid above
+   already uses at this breakpoint. */
+@media(max-width:760px){
+ .vz-box{flex-direction:column}
+ .vz-steps{width:auto;flex:1;min-height:0;border-left:0;border-top:1px solid var(--line)}
+}
 .tv-box{position:relative;background:var(--card);color:var(--ink);width:min(94vw,1040px);max-height:84vh;border-radius:10px;
  box-shadow:0 10px 50px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden}
 /* ◀ / ▶ walk to the previous / next step's screenshot + elements (same as the arrow keys). */
@@ -210,7 +284,9 @@ img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-ali
 .deflbl{display:block;margin-top:.9rem;margin-bottom:.35rem;font-size:.72rem;font-weight:700;
  text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}
 .envsec{margin-bottom:.8rem}
-.envsec .pretbl{border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.envsec .pretbl{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:.4rem}
+.envsec .pretbl:last-child{margin-bottom:0}
+.tgtlbl{display:block;margin-bottom:.2rem;font:700 .74rem ui-monospace,Menlo,Consolas,monospace;color:var(--ink)}
 details.pre{margin-bottom:.6rem;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 details.pre>summary{display:block;cursor:pointer;padding:.32rem .6rem;background:#fafafb;
  font:700 .72rem -apple-system,system-ui,sans-serif;text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}
@@ -290,68 +366,79 @@ details.pre[open]>summary::before{transform:rotate(90deg)}
    top of this row's own spacing) and left to `row-gap`/`column-gap` and the row's own padding
    instead — the single place that now controls it. */
 .sttbl,.sttbl>tbody{display:block}
-.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow){
+.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow):not(.grouphead){
   display:grid;grid-template-columns:minmax(1.4rem,auto) auto auto minmax(3rem,1fr) auto;
   grid-template-rows:auto auto auto;column-gap:.7rem;row-gap:0;align-items:center;
   border-bottom:1px solid var(--line);padding:.4rem .6rem}
 /* Only `display` here: unlike the grid rows above, these rows' own `td` keeps its padding and
    its `th,td` bottom border (the `>td` reset below excludes them) — a border on the row box
    would double the separator, and padding on it would leave the cell's tint short of the row. */
-.sttbl>tbody>tr.nxdetail,.sttbl>tbody>tr.alertrow,.sttbl>tbody>tr.actrow,.sttbl>tbody>tr.genrow{
+.sttbl>tbody>tr.nxdetail,.sttbl>tbody>tr.alertrow,.sttbl>tbody>tr.actrow,.sttbl>tbody>tr.genrow,.sttbl>tbody>tr.grouphead{
   display:block}
 /* `hidden` on the collapsed exchange row (`tr.nxdetail`) is backed only by the UA stylesheet's
    `[hidden]{display:none}`, which any author `display` — including the block rule just above —
-   overrides regardless of specificity. Restore it explicitly. */
-.sttbl>tbody>tr[hidden]{display:none}
-.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow)>td{
+   overrides regardless of specificity. Restore it explicitly. `!important` because the grid rule
+   above is (0,6,2) (five `:not()` classes) — higher than this rule's own (0,2,2) — so an ordinary,
+   `hidden` `group:` member row would otherwise stay visible under that rule instead. */
+.sttbl>tbody>tr[hidden]{display:none!important}
+/* A `group:` fold's heading row (one per run of consecutive same-`group_id` rows, inserted by
+   `_fold_groups`). The button spans the row so the whole thing is clickable, not just the text. */
+.grouphead{background:var(--bg)}
+.grouptoggle{display:flex;align-items:center;gap:.5rem;width:100%;border:0;background:transparent;
+ font:inherit;color:var(--ink);cursor:pointer;padding:.3rem .1rem;text-align:left}
+.grouptoggle::before{content:"▸";display:inline-block;color:var(--mut);transition:transform .1s}
+.grouptoggle[aria-expanded="true"]::before{transform:rotate(90deg)}
+.groupname{font-weight:600}
+.groupcount{color:var(--mut);font-size:.78rem;font-weight:400}
+.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow):not(.grouphead)>td{
   display:block;width:auto;white-space:normal;border-bottom:0;padding:0}
 /* `table.sttbl`, not `.sttbl`: this has to outrank the per-cell `display:flex` rules below,
    which match at the same specificity and would otherwise win on source order — leaving a
    label-only cell (a request row's empty `result`, a not-run step's empty `at`) visible. */
-table.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow)>td:empty{display:none}
+table.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow):not(.grouphead)>td:empty{display:none}
 /* The label sits to the left of the value, not above it, so `display:flex` puts the `::before`
    label (generated first) and the cell's own child(ren) — one badge, or the `at` cell's two jump
    buttons — on one line. `detail` is the one cell excluded below: its content is several sibling
    tokens rather than one value, and flexing it would lay each one out as its own shrunk column
    (the same collapse a fixed-width table column once caused, one level down) — so it stays
    unlabeled and in normal block flow, per its own rule further down. */
-.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow)>td:not(:nth-child(4))::before{
+.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow):not(.grouphead)>td:not(:nth-child(4))::before{
   display:inline;flex:none;color:var(--mut);font:600 .64rem -apple-system,system-ui,sans-serif;
   text-transform:uppercase;letter-spacing:.04em}
 /* id: column 1, spanning (and centered across) all three rows. No label — position is one. */
-.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow)>td:nth-child(1){
+.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow):not(.grouphead)>td:nth-child(1){
   grid-column:1;grid-row:1/4;align-self:center;color:var(--mut);font-weight:600;overflow-wrap:anywhere}
 /* result / action / at: row 1, one column each, all on the same line — label then value. */
-.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow)>td:nth-child(2){
+.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow):not(.grouphead)>td:nth-child(2){
   grid-column:2;grid-row:1;display:flex;align-items:center;gap:.35rem;flex-wrap:wrap}
-.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow)>td:nth-child(2)::before{content:"result"}
-.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow)>td:nth-child(3){
+.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow):not(.grouphead)>td:nth-child(2)::before{content:"result"}
+.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow):not(.grouphead)>td:nth-child(3){
   grid-column:3;grid-row:1;display:flex;align-items:center;gap:.35rem;flex-wrap:wrap}
-.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow)>td:nth-child(3)::before{content:"action"}
-.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow)>td:nth-child(5){
+.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow):not(.grouphead)>td:nth-child(3)::before{content:"action"}
+.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow):not(.grouphead)>td:nth-child(5){
   grid-column:4;grid-row:1;display:flex;align-items:center;gap:.35rem;flex-wrap:wrap}
-.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow)>td:nth-child(5)::before{content:"at"}
+.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow):not(.grouphead)>td:nth-child(5)::before{content:"at"}
 /* detail: row 2, spanning the result/action/at columns (not `id`, not `view`) — unlabeled, and
    in normal block flow (see the ::before exclusion above). The gap above it is its own
    `margin-top`, not the row's `row-gap` (zeroed): a `margin` on a `display:none` cell — which
    is what an empty detail is, per the `:empty` rule above — collapses to nothing, while a
    `row-gap` would still open a blank track between `result`/`action`/`at` and nothing beneath
    it, pushing the centered `id` number below the visible content's true center. */
-.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow)>td:nth-child(4){
+.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow):not(.grouphead)>td:nth-child(4){
   grid-column:2/5;grid-row:2;margin-top:.2rem}
 /* view: its own trailing column — spanning (and centered across, like `id`'s leading column)
    all three rows, not just row 2 — three columns overall: id, the result/action/at + detail +
    reason stack, and view. Its own label sits to the left of it, the pair centered so a
    thumbnail narrower than the column doesn't hug the left edge. */
-.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow)>td:nth-child(6){
+.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow):not(.grouphead)>td:nth-child(6){
   grid-column:5;grid-row:1/4;align-self:center;display:flex;align-items:center;justify-content:center;gap:.35rem}
-.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow)>td:nth-child(6)::before{content:"view"}
+.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow):not(.grouphead)>td:nth-child(6)::before{content:"view"}
 /* reason: row 3, same span as detail — omitted (see `:empty` above) whenever the step has none.
    Label above, not beside: unlike result/action/at/view, its value is free text that can run to
    more than one line, where a leading label would read as part of the sentence. */
-.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow)>td:nth-child(7){
+.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow):not(.grouphead)>td:nth-child(7){
   grid-column:2/5;grid-row:3;margin-top:.2rem}
-.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow)>td:nth-child(7)::before{
+.sttbl>tbody>tr:not(.nxdetail):not(.alertrow):not(.actrow):not(.genrow):not(.grouphead)>td:nth-child(7)::before{
   content:"reason";display:block;margin-bottom:.12rem}
 /* Jump targets for a step's own start/end instant (its `before`/`after` moment, distinct from
    the scenario-level `before`/`after` phase tables this sits beside) — on one line. */
@@ -524,3 +611,12 @@ tr.visrow>td{background:#fafafb}
  .vcmp.mode-blend .vcmp-stage{background:#000}
  .vcmp-mode{background:#2a2f3a;border-color:#34353a}
 }
+/* The "now playing" pulses (tr.srow.playing, .player.is-live) are decorative motion, not the
+   signal itself — the row's background/border and the player's ring stay visible either way. */
+@media (prefers-reduced-motion: reduce){
+ .scn.has-live tr.srow.playing,.player.is-live{animation:none}
+}
+
+/* The declared target a step ran against (BE-0428): a quiet chip beside the action badge,
+   absent entirely on a scenario that declares no targets. */
+.tgt{display:inline-block;margin-left:.35em;padding:0 .35em;border-radius:3px;font-size:.78em;color:var(--muted);border:1px solid var(--line)}

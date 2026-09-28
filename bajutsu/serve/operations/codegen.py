@@ -11,7 +11,7 @@ from typing import Any
 
 from bajutsu.codegen import EMIT_TARGETS, CodegenError, generate_test
 from bajutsu.common.config import load_config, resolve
-from bajutsu.common.scenario import load_scenarios
+from bajutsu.common.scenario import _scenarios_declaring_targets, load_scenarios
 from bajutsu.serve.operations._common import _resolve_org_or_forbid
 from bajutsu.serve.state import ServeState
 
@@ -66,6 +66,15 @@ def generate_codegen(
         return {"error": f"could not parse scenario: {exc}"}, 400
     if not scenarios:
         return {"error": "no scenarios in file"}, 400
+    # Every generator emits against this one `target`: a multi-target scenario's step would
+    # silently lose which target it names, emitting a plausible-looking test that acts on the
+    # wrong app with no error or marker (BE-0428) — the same reason `bajutsu codegen` refuses it.
+    affected = _scenarios_declaring_targets(scenarios)
+    if affected:
+        return {
+            "error": "codegen cannot emit a multi-target scenario (targets:) yet (BE-0428); "
+            f"affected scenario(s): {', '.join(affected)}"
+        }, 400
 
     eff = resolve(config, target)
     stem = Path(str(body["scenario"])).stem

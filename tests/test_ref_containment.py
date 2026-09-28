@@ -46,6 +46,33 @@ def test_in_root_data_file_still_loads(tmp_path: Path) -> None:
     assert [s.steps[0].tap.id for s in out] == ["btn.a", "btn.b"]  # type: ignore[union-attr]
 
 
+def test_in_root_seed_photos_still_loads(tmp_path: Path) -> None:
+    # `preconditions.seedPhotos` resolves the same way `dataFile` does: file-relative, contained by
+    # the suite root — not the base a path joins against (roadmap item).
+    root = tmp_path / "suite"
+    _write(root / "fixtures" / "red.png", "not a real png, path resolution only")
+    scenario = _write(
+        root / "scenarios" / "s.yaml",
+        "- name: s\n  preconditions: { erase: true, seedPhotos: [../fixtures/red.png] }\n"
+        "  steps:\n    - tap: { id: a }\n",
+    )
+    out = load_expanded_scenarios(scenario, root=root)
+    resolved = out[0].preconditions.seed_photos
+    assert resolved == [str((root / "fixtures" / "red.png").resolve())]
+
+
+def test_parent_chain_seed_photos_rejected(tmp_path: Path) -> None:
+    _write(tmp_path / "secret.png", "TOPSECRET")
+    scenario = _write(
+        tmp_path / "suite" / "s.yaml",
+        "- name: s\n  preconditions: { erase: true, seedPhotos: [../secret.png] }\n"
+        "  steps:\n    - tap: { id: a }\n",
+    )
+    with pytest.raises(ValueError, match="outside the suite root") as ei:
+        load_expanded_scenarios(scenario)
+    assert "TOPSECRET" not in str(ei.value)
+
+
 def test_load_expanded_scenarios_sets_source_stem_from_the_file_name(tmp_path: Path) -> None:
     # BE-0417: every expanded scenario carries the loaded file's own stem, independent of its name:.
     scenario = _write(
@@ -192,3 +219,38 @@ def test_run_expand_file_in_root_component_loads(tmp_path: Path) -> None:
     )
     scenarios, _desc, _plan_sources = _expand_file(scenario, eff, root=root)
     assert scenarios[0].steps[0].tap.id == "login"  # type: ignore[union-attr]
+
+
+def test_run_expand_file_resolves_seed_photos(tmp_path: Path) -> None:
+    # `bajutsu run`'s own loader resolves `seedPhotos` the same way as the device-free readers
+    # (`contained_ref`, roadmap item) — not a second implementation that could drift from it.
+    from bajutsu.common.config import Effective, WebConfig
+    from bajutsu.common.scenario import Redact
+    from bajutsu.run.cli import _expand_file
+
+    root = tmp_path / "suite"
+    _write(root / "fixtures" / "red.png", "not a real png, path resolution only")
+    scenario = _write(
+        root / "scenarios" / "s.yaml",
+        "- name: s\n  preconditions: { erase: true, seedPhotos: [../fixtures/red.png] }\n"
+        "  steps:\n    - tap: { id: a }\n",
+    )
+    eff = Effective(
+        target="web",
+        platform_config=WebConfig(base_url=None),
+        backend=["playwright"],
+        device="",
+        locale="en_US",
+        launch_env={},
+        launch_args=[],
+        id_namespaces=[],
+        reserved_namespaces=[],
+        mock_server=None,
+        setup=None,
+        capture=[],
+        redact=Redact(),
+    )
+    scenarios, _desc, _plan_sources = _expand_file(scenario, eff, root=root)
+    assert scenarios[0].preconditions.seed_photos == [
+        str((root / "fixtures" / "red.png").resolve())
+    ]

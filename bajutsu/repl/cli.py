@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import atexit
+import sys
 
 import typer
 
@@ -26,6 +27,7 @@ from bajutsu.common.runner import launch_driver
 from bajutsu.common.scenario import Preconditions
 from bajutsu.repl.loop import repl_loop
 from bajutsu.repl.session import ReplSession
+from bajutsu.repl.tui import run as run_tui
 
 
 def _close_owned_session(env: Environment, driver: base.Driver, eff: Effective) -> None:
@@ -119,7 +121,12 @@ def repl(
         raise typer.Exit(2) from None
     say(f"✅ {target_name} is up on {actuator} — type `help` for the command set, `exit` to leave")
     try:
-        repl_loop(ReplSession(driver), input, say)
+        # The ncurses-style TUI needs a real terminal on both ends; piped input/output (a script, a
+        # test harness) falls back to the plain line-at-a-time loop, the way most terminal tools do.
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            run_tui(ReplSession(driver))
+        else:
+            repl_loop(ReplSession(driver), input, say)
     finally:
         # A teardown hiccup here must never replace a real bug propagating out of `repl_loop` —
         # `dispatch`'s own contract is that a genuine defect is *not* swallowed (COMMAND_ERRORS),

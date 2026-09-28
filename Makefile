@@ -262,7 +262,7 @@ lint-module-map:
 # Scaffold a new roadmap (BE) item — both language files in the canonical format, with the literal
 # BE-XXXX placeholder (CI allocates the real id). The error-prone item-authoring recipe as one
 # command (BE-0069). Usage:
-#   make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Proposal] [HANDLE=<handle>]
+#   make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Approved] [HANDLE=<handle>]
 new-roadmap-item:
 	uv run python scripts/new_roadmap_item.py --slug "$(SLUG)" --title "$(TITLE)" \
 	  $(if $(TOPIC),--topic "$(TOPIC)") $(if $(STATUS),--status "$(STATUS)") $(if $(HANDLE),--handle "$(HANDLE)")
@@ -316,11 +316,11 @@ lint-skills:
 	uv run python scripts/audit_skills.py
 
 # Filter roadmap (BE) items by Status into one small table — ID / Item / Topic / Path — so an AI
-# session surveys just the rows it needs (e.g. every Proposal) without paging through the dashboard's
+# session surveys just the rows it needs (e.g. every Approved item) without paging through the dashboard's
 # rendered HTML or opening each item file to check its `Status` (BE-0162). Pure and offline: reads
 # roadmaps/ metadata only. The `roadmap-filter` skill wraps this.
-#   make roadmap-status STATUS="Proposal"
-#   STATUS is one of: Proposal / In progress / Implemented / Deferred / Rejected
+#   make roadmap-status STATUS="Approved"
+#   STATUS is one of: Approved / In progress / Implemented / Deferred / Rejected
 roadmap-status:
 	uv run python scripts/roadmap_query.py --status "$(STATUS)"
 

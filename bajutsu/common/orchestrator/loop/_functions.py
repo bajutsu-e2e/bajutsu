@@ -6,9 +6,10 @@ import subprocess
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import replace
+from typing import cast
 
 from bajutsu.common import assertions
-from bajutsu.common.assertions import AssertionResult, EvalContext
+from bajutsu.common.assertions import AssertionResult, EvalContext, VisualContext
 from bajutsu.common.cancellation import (
     CANCELLED_FAILURE,
     CancelSource,
@@ -46,6 +47,7 @@ from bajutsu.common.orchestrator.types import (
     RunResult,
     SelectionState,
     StepOutcome,
+    TargetRuntime,
     UndeclaredInterruption,
     WallClock,
     _no_network,
@@ -162,14 +164,69 @@ def _evaluate_expect(
     clock: Clock,
     *,
     ctx: EvalContext,
-) -> list[AssertionResult]:
+    expect_actuations: list[Actuation],
+    control: DeviceControl | None = None,
+    channel: Collector | None = None,
+    hide_markers: bool = False,
+    cancelled: CancelSource = not_cancelled,
+    target_runtimes: Mapping[str, TargetRuntime] | None = None,
+    primary_target: str = "",
+) -> tuple[list[AssertionResult], int]:
     """Evaluate the trailing `expect` block as a condition wait (BE-0245), via `_poll_asserts`.
 
-    The scenario-level `expect` needs only the assertion results, not the settled tree, so it drops
-    the tree `_poll_asserts` also returns.
+    Entries are grouped by the target each names (BE-0428) and polled once per referenced target,
+    against that target's own driver and network source — one condition wait per target rather than
+    one per entry, so two assertions on the same target still settle together the way they do
+    today. The results merge back in the scenario's own declared order, so a reader of
+    `expect_results` sees the block as it was written rather than regrouped.
+
+    The pre-poll setup a `visual` or `clipboard` entry needs — clearing a notification banner,
+    shooting the actual screenshot, reading the pasteboard — runs once per referenced target here
+    too, against that target's own driver/context/control, rather than once up front against the
+    primary's: a `visual` entry naming a second target would otherwise read a screenshot that was
+    never captured, and a `clipboard` entry naming it would read the wrong device's pasteboard.
+    `control`/`channel`/`hide_markers`/`cancelled` describe the *primary* target only, exactly like
+    `driver`/`network`/`ctx`; a referenced `TargetRuntime` supplies its own `driver`/`ctx`/
+    `control`/`network`/`channel` for every other one. `expect_actuations` stays one flat list for
+    the whole phase regardless of which target's banner sweep drained into it — it is evidence
+    bookkeeping, not a per-target verdict input, so nothing needs it split apart.
+
+    Returns the merged results and how many actuations the banner sweep(s) this triggers had to
+    drop — the caller's own share of `RunResult.dropped_expect_actuations`.
     """
-    results, _ = _poll_asserts(driver, expect, network, clock, ctx=ctx)
-    return results
+    groups: dict[str, list[int]] = {}
+    for i, a in enumerate(expect):
+        groups.setdefault(a.target or primary_target, []).append(i)
+    merged: list[AssertionResult | None] = [None] * len(expect)
+    dropped = 0
+    for name, indexes in groups.items():
+        rt = (target_runtimes or {}).get(name)
+        group_driver = driver if rt is None else rt.driver
+        group_ctx = ctx if rt is None else (rt.ctx or ctx)
+        group_control = control if rt is None else rt.control
+        group_channel = channel if rt is None else cast("Collector | None", rt.channel)
+        group_entries = [expect[i] for i in indexes]
+        dropped += _clear_notification_banner_before_visual_capture(
+            group_ctx, group_driver, clock, expect_actuations
+        )
+        _capture_visual_actual(
+            group_ctx,
+            group_driver,
+            channel=group_channel,
+            hide_markers=hide_markers,
+            cancelled=cancelled,
+        )
+        clip = _clipboard_for(group_entries, group_control)
+        results, _ = _poll_asserts(
+            group_driver,
+            group_entries,
+            network if rt is None else rt.network,
+            clock,
+            ctx=replace(group_ctx, clipboard=clip),
+        )
+        for i, r in zip(indexes, results, strict=True):
+            merged[i] = replace(r, target=name)
+    return [r for r in merged if r is not None], dropped
 
 
 def _settle_extract_read(
@@ -320,6 +377,10 @@ def _run_step_body(
     transitions: TransitionSource = _no_transitions,
     on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
     cancelled: CancelSource = not_cancelled,
+    step_id: str | None = None,
+    step_index: int | None = None,
+    channel: Collector | None = None,
+    hide_markers: bool = False,
 ) -> tuple[bool, str, list[AssertionResult], list[base.Element] | None]:
     """Execute one step's effect, returning (ok, reason, assertion_results, snapshot).
 
@@ -337,7 +398,11 @@ def _run_step_body(
     wait step, is passed to ``_wait`` so a scenario's ``interrupts`` handlers can clear an
     interstitial screen mid-wait (BE-0314). ``cancelled`` reaches the four step kinds that poll —
     ``wait``, ``handleSystemAlert``, ``assert``, and ``email`` — so each notices a cancelled run
-    within one polling tick (BE-0370)."""
+    within one polling tick (BE-0370). ``step_id``/``step_index``/``channel``/``hide_markers``, when
+    given for an ``assert`` step whose block carries a ``visual`` entry, back that entry's own
+    single-shot screenshot: ``step_id`` and ``step_index`` scope the capture's evidence path to this
+    step's own execution, and ``channel``/``hide_markers`` back the same touch-marker suspension
+    ``expect``'s own visual capture already gets."""
     try:
         if kind == "wait":
             assert step.wait is not None
@@ -384,13 +449,46 @@ def _run_step_body(
         if kind == "assert_":
             assert step.assert_ is not None
             clip = _clipboard_for(step.assert_, control)
-            # A step-level assert sees only golden + clipboard: no per-step screenshot is taken, so
-            # `visual` / `responseSchema` have no fresh input here (they run at scenario `expect`).
-            # Drop them from the bundled context to preserve that behavior (BE-0250 Unit 2).
-            step_ctx = replace(ctx or EvalContext(), visual=None, schema=None, clipboard=clip)
+            visual_ctx: VisualContext | None = None
+            if (
+                ctx is not None
+                and ctx.visual is not None
+                and step_id is not None
+                and step_index is not None
+                and any(a.visual is not None for a in step.assert_)
+            ):
+                # A step-level visual entry gets its own fresh screenshot, taken once here rather
+                # than reused from `expect`'s own capture — scoped under this step's own evidence
+                # prefix and outcome index so it never collides with the scenario's own
+                # `visual-actual.png`, nor with another execution of the same step (a retry, a
+                # `for_each` iteration, both of which can share one step's `step_id`).
+                step_prefix = f"{step_id}/visual-{step_index}"
+                visual_ctx = replace(
+                    ctx.visual,
+                    prefix=step_prefix,
+                    screenshot_path=ctx.visual.writer.reserve(f"{step_prefix}/visual-actual.png"),
+                )
+                # The banner clear a step-level capture needs runs here, ahead of the shutter, not
+                # through `_clear_notification_banner_before_visual_capture`: that wrapper drains its
+                # swipe into the expect-phase actuations list, but this swipe belongs to this step —
+                # the ordinary end-of-step `drain_actuations` call already picks it up from the
+                # driver's own log, the same way it picks up every other actuation the step made.
+                _clear_notification_banner(driver, clock)
+                _capture_visual_actual(
+                    EvalContext(visual=visual_ctx),
+                    driver,
+                    channel=channel,
+                    hide_markers=hide_markers,
+                    cancelled=cancelled,
+                )
+            # `SchemaContext` stays dropped here: BE-0250 Unit 2 dropped it to preserve pre-refactor
+            # behavior, not because a step-level assert lacks the network exchange `responseSchema`
+            # reads — lifting that drop is a separate change this one leaves alone.
+            step_ctx = replace(ctx or EvalContext(), visual=visual_ctx, schema=None, clipboard=clip)
             # A condition wait, not a single snapshot: a value the prior action mirrors into the tree
             # a beat late is caught, the same race the trailing `expect` already closes (BE-0299
-            # Unit 2). Zero-budget (no wait floor) reads exactly once, as before.
+            # Unit 2). Zero-budget (no wait floor) reads exactly once, as before; `visual` is a
+            # `_READ_ONCE_KINDS` entry, so the poll never re-shoots the screenshot taken above.
             results, tree = _poll_asserts(
                 driver, step.assert_, network, clock, ctx=step_ctx, cancelled=cancelled
             )
@@ -570,7 +668,11 @@ def _capture_visual_actual(
         ctx.visual.capture_actual(driver)
 
 
-def run_scenario(
+# C901 and PLR0915 fold each nested function's count into the function enclosing it, so this score
+# measures the closures defined below (`run_phase` among them), not genuine branching here — the
+# same reasoning `pool.py`'s own `lease()` exemption gives (BE-0386). BE-0428's own-target interval
+# start/finish loop pushed the plain statement count over the line for the first time.
+def run_scenario(  # noqa: PLR0915
     driver: base.Driver,
     scenario: Scenario,
     clock: Clock | None = None,
@@ -593,6 +695,8 @@ def run_scenario(
     cancelled: CancelSource = not_cancelled,
     channel: Collector | None = None,
     target_launch_env: Mapping[str, str] | None = None,
+    target_runtimes: Mapping[str, TargetRuntime] | None = None,
+    primary_target: str = "",
     capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None = None,
     app_launch_unconfirmed: bool = False,
 ) -> RunResult:
@@ -630,9 +734,10 @@ def run_scenario(
     caller that has no collector, and that is *not* inert: the toggle is attempted whenever this
     scenario's effective launch env — `target_launch_env` merged with the scenario's own, the same
     order the launch itself merges them in — sets both `BAJUTSU_TOUCH_MARKERS` and
-    `BAJUTSU_CONTROL_CHANNEL` to `"1"` and its `expect` phase has a `visual` capture to take — which a
-    scenario or target pinning the pair reaches whether or not `run --touch-markers` was passed — so
-    a `None` channel there fails the scenario loudly rather than skipping the suspension.
+    `BAJUTSU_CONTROL_CHANNEL` to `"1"` and it has a `visual` capture to take — at `expect`, or in a
+    step's own `assert` — which a scenario or target pinning the pair reaches whether or not
+    `run --touch-markers` was passed — so a `None` channel there fails the scenario loudly rather
+    than skipping the suspension.
     `target_launch_env` is the target's own `launchEnv` (`Effective.launch_env`); a caller that omits
     it (a test constructing a scenario directly) sees only the scenario's own launch env, as before.
 
@@ -666,7 +771,32 @@ def run_scenario(
     ctx = ctx or EvalContext()
     sid = scenario_id or scenario_slug(scenario.name)
     hide_markers = _hides_touch_markers(scenario, target_launch_env)
-    recordings = sink.start_scenario_intervals(sid, requested_intervals(scenario, capture))
+    # Every *other* declared target gets its own scenario-wide recording too (BE-0428): the single
+    # `sink`/`capture` pair above describes the primary alone, so a second target's own video (or
+    # deviceLog/appTrace) would otherwise never start — its own lease records nothing, and a
+    # multi-target report showing only the primary's footage would look like the other target was
+    # never filmed rather than simply never asked to record. Each extra target's own `sid` is
+    # namespaced under its name (`{sid}/{name}/…`, the same convention a multi-target `visual`
+    # assertion's own evidence dir already uses) so its `scenario.mp4` cannot collide with the
+    # primary's file of the same name.
+    extra_runtimes = {
+        name: rt for name, rt in (target_runtimes or {}).items() if name != primary_target
+    }
+    # Once a second target exists, the primary's own scenario-wide recording nests under its own
+    # name too, the same way every other declared target's already does — rather than staying bare
+    # at `sid`, alongside `manifest.json` and the rest of the run-level files. `primary_target`
+    # must itself be truthy, not just `extra_runtimes`: a caller passing `target_runtimes` without
+    # `primary_target` (it defaults to `""`) would otherwise make every name in `target_runtimes`
+    # count as "extra" (none of them equals the empty string), nesting the primary's own artifacts
+    # under a bare trailing slash (`<sid>//scenario.mp4`) instead of leaving them at `sid`.
+    primary_sid = f"{sid}/{primary_target}" if primary_target and extra_runtimes else sid
+    recordings = sink.start_scenario_intervals(primary_sid, requested_intervals(scenario, capture))
+    extra_recordings = {
+        name: rt.sink.start_scenario_intervals(
+            f"{sid}/{name}", requested_intervals(scenario, rt.capture)
+        )
+        for name, rt in extra_runtimes.items()
+    }
     wants_screen_changed = any(r.on.event == "screenChanged" for r in scenario.capture_policy)
     outcomes: list[StepOutcome] = []
     before_outcomes: list[StepOutcome] = []
@@ -695,6 +825,10 @@ def run_scenario(
     expect_block_note = ""
     failure: str | None = None
     artifacts: list[Artifact] = []
+    # Every other declared target's own video anchor (BE-0428), filled in the `finally` below once
+    # its recording (if any) is finalized; absent for a target that recorded no video, the same
+    # "empty means not applicable" convention `target_devices` already uses.
+    target_video_anchors: dict[str, float] = {}
     # The anchor pair: a monotonic instant every in-run duration is measured from, and the wall-clock
     # instant it corresponds to. Read back to back so the two describe the same moment as closely as
     # the platform allows — `wall_offset_s` is their difference, and every recorded timestamp is
@@ -706,6 +840,10 @@ def run_scenario(
     # The offset this interval's recording implies is resolved once it is finalized, in the `finally`
     # below — the exact answer is the finished file's own duration, which does not exist yet here.
     video_interval = next((r for r in recordings if r.kind == "video"), None)
+    extra_video_intervals = {
+        name: next((r for r in recs if r.kind == "video"), None)
+        for name, recs in extra_recordings.items()
+    }
     # Mutable bindings: extract steps populate vars.* during the run; scenario-level
     # expect sees the accumulated values.
     live_bindings: dict[str, str] = dict(bindings or {})
@@ -749,6 +887,10 @@ def run_scenario(
             phase_cancelled,
             phase,
             counter,
+            target_runtimes,
+            primary_target,
+            channel,
+            hide_markers,
             app_crash_latches,
             capture_app_crash,
         )
@@ -767,19 +909,26 @@ def run_scenario(
                     failure = run_phase(scenario.steps, outcomes, "", cancelled)
                 if failure is None and scenario.expect:
                     expect = _interp_asserts(scenario.expect, live_bindings)
-                    clip = _clipboard_for(expect, control)
-                    # A banner nothing interacted with never reaches the step loop's own per-step
-                    # sweep — this phase runs after the last step's (BE-0416 Unit 8) — so it is
-                    # cleared here too, right before the capture the `visual` assertions read.
-                    expect_dropped_actuations += _clear_notification_banner_before_visual_capture(
-                        ctx, driver, clock, expect_actuations
+                    # The banner clear, visual capture, and clipboard read all run inside
+                    # `_evaluate_expect` now, once per referenced target (BE-0428) — a banner
+                    # nothing interacted with never reaches the step loop's own per-step sweep
+                    # (BE-0416 Unit 8), so each target still needs its own clear before the capture
+                    # its own `visual` assertions read.
+                    expect_results, dropped = _evaluate_expect(
+                        driver,
+                        expect,
+                        network,
+                        clock,
+                        ctx=ctx,
+                        control=control,
+                        channel=channel,
+                        hide_markers=hide_markers,
+                        cancelled=cancelled,
+                        expect_actuations=expect_actuations,
+                        target_runtimes=target_runtimes,
+                        primary_target=primary_target,
                     )
-                    _capture_visual_actual(
-                        ctx, driver, channel=channel, hide_markers=hide_markers, cancelled=cancelled
-                    )
-                    expect_results = _evaluate_expect(
-                        driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
-                    )
+                    expect_dropped_actuations += dropped
                     # A prompt the backend answered or declined while it was interrupting one of
                     # `expect`'s own queries. Outside the failure branch below: an `expect` that passed
                     # *because* the interruption was answered still has a dismissal to report, and a
@@ -819,17 +968,24 @@ def run_scenario(
                             driver, expect_actuations
                         )
                         if cleared:
-                            expect_results, dropped = _retry_expect_after_guard_dismiss(
-                                ctx,
+                            # Does not settle the screen itself, unlike an ordinary post-dismiss
+                            # retry (BE-0406): the guard's own multi-round call above already
+                            # settles after every round it dismisses something in (BE-0418), the
+                            # last one included, so settling again here would just repeat a
+                            # condition wait the guard's own call already resolved.
+                            expect_results, dropped = _evaluate_expect(
                                 driver,
-                                clock,
                                 expect,
                                 network,
-                                control,
-                                cancelled,
-                                channel,
-                                hide_markers,
-                                expect_actuations,
+                                clock,
+                                ctx=ctx,
+                                control=control,
+                                channel=channel,
+                                hide_markers=hide_markers,
+                                cancelled=cancelled,
+                                expect_actuations=expect_actuations,
+                                target_runtimes=target_runtimes,
+                                primary_target=primary_target,
                             )
                             expect_dropped_actuations += dropped
                         # The guard's own rounds just now, and the retry's queries when one ran, can
@@ -876,11 +1032,25 @@ def run_scenario(
                     cancelled,
                 )
         finally:
-            artifacts = sink.finish_scenario_intervals(sid, recordings)
+            artifacts = sink.finish_scenario_intervals(primary_sid, recordings)
             # After the finalize, not before it: stopping the recording is what lets its own duration
             # place its origin, which is a measurement rather than the start-confirmation proxy a
             # scenario-start resolution would have to settle for (the correction BE-0346 introduced).
             video_start_offset = _resolve_video_start_offset(video_interval, scenario_start)
+            # Every other declared target's own recording finalizes here too (BE-0428), tagged with
+            # its own name so the report can tell two scenario-wide videos apart and each gets its
+            # own anchor — a second target's video rarely starts at the same instant the primary's
+            # does (a browser context opens on a different schedule than a Simulator boot), so one
+            # shared anchor would seek it to the wrong frame.
+            for name, rt in extra_runtimes.items():
+                extra_artifacts = rt.sink.finish_scenario_intervals(
+                    f"{sid}/{name}", extra_recordings[name]
+                )
+                artifacts += [replace(a, target=name) for a in extra_artifacts]
+                if any(a.kind == "video" for a in extra_artifacts):
+                    target_video_anchors[name] = scenario_wall_start + _resolve_video_start_offset(
+                        extra_video_intervals[name], scenario_start
+                    )
     except base.BackendCrashError as crash:
         # The `finally` above already ran, so a recording that was in flight when the backend
         # died is already finalized on disk and named in `artifacts` — attach it to the crash
@@ -900,6 +1070,7 @@ def run_scenario(
         backend=getattr(driver, "name", ""),
         duration_s=max(0.0, clock.now() - scenario_start),
         video_anchor_s=scenario_wall_start + video_start_offset,
+        target_video_anchors=target_video_anchors,
         wall_offset_s=wall_offset_s,
         expect_alerts=expect_alerts,
         expect_actuations=expect_actuations,
@@ -969,10 +1140,12 @@ _BANNER_CLEARANCE_POLL = 0.1
 def _clear_notification_banner(driver: base.Driver, clock: Clock) -> None:
     """Swipe away a foreground notification banner if one is showing right now (BE-0416 Unit 8).
 
-    A single unconditional check, no rate limit: for the `expect`-phase visual capture, which this
-    backs directly and which pays this at most once or twice a scenario regardless of step count.
-    `_sweep_notification_banner` below is the rate-limited wrapper the per-step call site needs
-    instead, since that one runs on every step.
+    A single unconditional check, no rate limit: for the `expect`-phase visual capture and a
+    step-level `visual` assert's own capture, both of which call this directly and each of which
+    pays it once per capture — the `expect` one at most once or twice a scenario, a step-level one
+    once per step (or per `forEach` iteration) that carries a `visual` entry, regardless of the
+    scenario's total step count. `_sweep_notification_banner` below is the rate-limited wrapper the
+    per-step call site needs instead, since that one runs unconditionally on every step.
 
     The swipe's clearance is re-confirmed by a bounded poll before returning, mirroring the
     interruption monitor's own discipline (Unit 4's Swift path never claims a dismissal it has not
@@ -1054,51 +1227,6 @@ def _drain_into_expect_actuations(driver: base.Driver, expect_actuations: list[A
     return drained.dropped
 
 
-def _retry_expect_after_guard_dismiss(
-    ctx: EvalContext,
-    driver: base.Driver,
-    clock: Clock,
-    expect: list[Assertion],
-    network: NetworkSource,
-    control: DeviceControl | None,
-    cancelled: CancelSource,
-    channel: Collector | None,
-    hide_markers: bool,
-    expect_actuations: list[Actuation],
-) -> tuple[list[AssertionResult], int]:
-    """Re-evaluate `expect` once the alert guard has dismissed whatever blocked it the first time.
-
-    Extracted out of `run_scenario` (BE-0416 Unit 8's `dropped_expect_actuations` threading pushed
-    it over `PLR0915`'s statement cap) rather than folded into a smaller piece: everything here runs
-    only on the one path that reaches it — a guard dismissal — so splitting it further would just
-    scatter one retry's steps across more call sites.
-
-    Does not settle the screen itself, unlike an ordinary post-dismiss retry (BE-0406): the caller's
-    own multi-round guard call already settles after every round it dismisses something in
-    (BE-0418), the last one included, so settling again here would just repeat a condition wait the
-    guard's own call already resolved.
-
-    Returns:
-        The retried `expect` results, and how many actuations the banner sweep this triggers had to
-        drop (`_clear_notification_banner_before_visual_capture`'s own share of
-        `RunResult.dropped_expect_actuations` — the guard's own dismissing tap is the caller's
-        share, drained before this is called).
-    """
-    dropped = _clear_notification_banner_before_visual_capture(
-        ctx, driver, clock, expect_actuations
-    )
-    _capture_visual_actual(
-        ctx, driver, channel=channel, hide_markers=hide_markers, cancelled=cancelled
-    )
-    # Re-read the clipboard too: clearing the block may have let the app update the pasteboard, so
-    # the retry must compare against the fresh value, not the stale one.
-    clip = _clipboard_for(expect, control)
-    expect_results = _evaluate_expect(
-        driver, expect, network, clock, ctx=replace(ctx, clipboard=clip)
-    )
-    return expect_results, dropped
-
-
 def _sweep_notification_banner(
     driver: base.Driver, clock: Clock, alert_guard: AlertGuardConfig | None, state: StepLoopState
 ) -> None:
@@ -1167,6 +1295,35 @@ def _run_for_each(
     return True, ""
 
 
+def _config_for(cfg: _LoopConfig, rt: TargetRuntime) -> _LoopConfig:
+    """*cfg* with every field one target's own runtime owns replaced (BE-0428).
+
+    Everything not replaced here — the scenario, the clock, the anchor offset, the evidence sid,
+    the phase label, the cancel source, ``hide_markers`` — describes the *run*, not a target, so a
+    per-target runner inherits the primary's unchanged (``hide_markers`` is a property of the whole
+    visual-capture group, not of one target — see `TargetRuntime`'s own docstring). The rest are
+    each bound to one lease, and handing a step the wrong one would read another target's screen or
+    write into another target's evidence.
+    """
+    return replace(
+        cfg,
+        driver=rt.driver,
+        sink=rt.sink,
+        alert_guard=rt.alert_guard,
+        network=rt.network,
+        relaunch=rt.relaunch,
+        control=rt.control,
+        ctx=rt.ctx,
+        mailbox=rt.mailbox,
+        webview_bridge=rt.webview_bridge,
+        transitions=rt.transitions,
+        interrupts=rt.interrupts,
+        locale=rt.locale,
+        capture=rt.capture,
+        channel=cast("Collector | None", rt.channel),
+    )
+
+
 def _run_steps(
     driver: base.Driver,
     scenario: Scenario,
@@ -1193,6 +1350,10 @@ def _run_steps(
     cancelled: CancelSource = not_cancelled,
     phase: str = "",
     counter: _StepCounter | None = None,
+    target_runtimes: Mapping[str, TargetRuntime] | None = None,
+    primary_target: str = "",
+    channel: Collector | None = None,
+    hide_markers: bool = False,
     app_crash: AppCrashLatches | None = None,
     capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None = None,
 ) -> str | None:
@@ -1208,7 +1369,16 @@ def _run_steps(
 
     ``bindings`` is a mutable dict (guaranteed by ``run_scenario``) — extract
     steps add ``vars.*`` entries so that subsequent steps and scenario-level
-    ``expect`` can reference them."""
+    ``expect`` can reference them.
+
+    ``target_runtimes`` (BE-0428) is one live bundle per target the scenario declares; a step naming
+    one is dispatched to a runner built over *that* target's driver and evidence. Every such runner
+    shares this call's single ``StepLoopState``, so one numbering, one outcome list, and one
+    ``bindings`` dict span every target — which is what lets a value one target's ``extract``
+    captured reach an assertion against another.
+
+    ``channel``/``hide_markers`` back a step-level ``visual`` assert's own capture, the same two
+    inputs ``_capture_visual_actual`` already takes at ``expect``."""
     assert bindings is not None
     state = StepLoopState(
         counter=counter or _StepCounter(),
@@ -1241,12 +1411,26 @@ def _run_steps(
         capture_app_crash=capture_app_crash,
         phase=phase,
         cancelled=cancelled,
+        channel=channel,
+        hide_markers=hide_markers,
     )
     # Imported in the body, not at module load: `_StepRunner` calls six helpers from this module,
     # so rule 5 breaks the cycle the split creates on the single edge back into it.
     from ._step_runner import _StepRunner
 
-    result = _StepRunner(state, cfg).exec_steps(steps, driver)
+    primary = _StepRunner(state, cfg, primary_target)
+    if target_runtimes:
+        by_target = {
+            name: (
+                primary
+                if name == primary_target
+                else _StepRunner(state, _config_for(cfg, rt), name)
+            )
+            for name, rt in target_runtimes.items()
+        }
+        for runner in by_target.values():
+            runner.by_target = by_target
+    result = primary.exec_steps(steps, driver)
     _logger.debug("%s: %d runner-issued screen reads (BE-0234)", sid, state.total_reads)
     # No end-of-run safety capture here: every step that acts shoots its own `after.png` in
     # `_handle_action`, so the net only reached the step that returns before acting at all, where it

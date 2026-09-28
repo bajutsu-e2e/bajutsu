@@ -33,7 +33,7 @@ DSL は YAML ノードの木なので、文法は文字列ではなく **抽象�
 
 ## 2. 文法の全体像
 
-以下の **参照グラフ**は、どの非終端がどれを参照するかを示します。下の EBNF テキストが述べていても直接には見えない再帰と共有が、これで見て取れます。`Selector` の `within` が自分自身へループする点。`RequestMatch` を `request` アサーション、`until: { request }` 待機、`Mock.match` の三箇所が共有する点。`Web` と `Component` がそれぞれ新しい `Step` の列を内側に持つ点。`Component` へ `ScenarioFile` からも辺が伸びる点（シナリオファイルが自分のコンポーネントをインラインで宣言できるためです。§6.2）。そして制御フローの 2 つのステップ、すなわち `If` が `Assertion` の条件のもとに `then`/`else` を、`ForEach` が `Selector` のもとに `steps` を、それぞれ新しい `Step` の列として内側に持つ点です。図はいくつかの要素を省略しています。スカラのみを持ち共有の非終端を参照しないアクション（`relaunch`、`setLocation`、`push`、`http`、`setClipboard`、`foreground`、その他デバイス / ステータスバー系のステップ）です。ペイロードが単純なパスだけの `golden` アサーションも同様です。
+以下の **参照グラフ**は、どの非終端がどれを参照するかを示します。下の EBNF テキストが述べていても直接には見えない再帰と共有が、これで見て取れます。`Selector` の `within` が自分自身へループする点。`RequestMatch` を `request` アサーション、`until: { request }` 待機、`Mock.match` の三箇所が共有する点。`Web` と `App` と `Group` と `Component` がそれぞれ新しい `Step` の列を内側に持つ点（`App` 自身のフィールドは素の `bundleId` 文字列であり、`Web` の `within` のような `Selector` への辺は持ちません）。`Component` へ `ScenarioFile` からも辺が伸びる点（シナリオファイルが自分のコンポーネントをインラインで宣言できるためです。§6.2）。そして制御フローの 2 つのステップ、すなわち `If` が `Assertion` の条件のもとに `then`/`else` を、`ForEach` が `Selector` のもとに `steps` を、それぞれ新しい `Step` の列として内側に持つ点です。図はいくつかの要素を省略しています。スカラのみを持ち共有の非終端を参照しないアクション（`relaunch`、`setLocation`、`push`、`http`、`setClipboard`、`foreground`、その他デバイス / ステータスバー系のステップ）です。ペイロードが単純なパスだけの `golden` アサーションも同様です。
 
 ```mermaid
 graph LR
@@ -56,13 +56,17 @@ graph LR
   ST -->|wait| WT["Wait"]
   ST -->|assert| AS
   ST -->|use| CMP["Component"]
+  ST -->|group| GRP["Group"]
   ST -->|web| WEB["Web"]
+  ST -->|app| APP["App"]
   ST -->|capture| CT["CaptureToken"]
   ST -->|if| IF["If"]
   ST -->|forEach| FE["ForEach"]
   CMP -->|steps| ST
+  GRP -->|steps| ST
   WEB -->|within| SEL
   WEB -->|steps| ST
+  APP -->|steps| ST
   IR -->|condition| AS
   IR -->|steps| ST
   IF -->|condition| AS
@@ -109,6 +113,8 @@ Scenario ::= {
   description?:   string,                   # オーサリング用メタデータ。run は読まない
   from?:           string,                  # 由来: record がこのシナリオを起こした元の自然言語のゴール（BE-0044）
   tags?:           list(string),            # 既定 []  — 選択（§6.4）
+  targets?:        list(string),            # 既定 []  — このシナリオが操作するすべてのターゲット（BE-0428）。各エントリは `targets.<name>` の config ユニットを指す。run は宣言された各ターゲットを起動し、そのステップを1回の決定的な実行の中で組み合わせて実行する（§4）
+  primaryTarget?:  string,                  # `target` を省略したステップとトップレベルの `expect` エントリが走る先（BE-0436）。runner がすでに主ターゲットとして扱う `targets[0]` と一致しなければならない（§4）
   data?:           list(map(string,string)),# インライン行  ┐ XOR
   dataFile?:       string,                  # CSV パス      ┘ （§6.3）
   preconditions?:  <Preconditions>,         # 既定 {}
@@ -130,8 +136,9 @@ Component ::= { params?: list(string), steps: list(<Step>) }
 
 # 予測できないタイミングで現れる中断画面のハンドラです。ランナーは、ステップ列のどこで一致画面が現れても
 # 機会をとらえて `condition` をチェックし、`steps` で解消します（BE-0314）。`wait` のポーリングの各回は
-# 無料で済みますが、残りの `wait` 以外のステップは読み取りを 1 回余分に払います。
-Interrupt ::= { condition: <Assertion>, steps: list(<Step>) }
+# 無料で済みますが、残りの `wait` 以外のステップは読み取りを 1 回余分に払います。`target` は、エントリが
+# 監視する宣言済みターゲットを指定します。省略するとプライマリターゲットを監視します（BE-0438）。
+Interrupt ::= { condition: <Assertion>, steps: list(<Step>), target?: string }
 
 # ティアダウンのルール 1 件です（BE-0392）。答える結末と、その結末のときに走らせるステップを組にします。
 # 結末はシナリオ自身のマシンチェックされた判定であり、モデル呼び出しではありません。
@@ -167,10 +174,14 @@ PermissionAction  ::= "grant" | "revoke"
 
 # ── Step = ちょうど 1 アクション + 任意の修飾子 ─────────────────────────
 Step      ::= <Action> & <StepMods>
-StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string, from?: string }
+StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string, from?: string, target?: string }
                 # `from`: 由来。record がこのステップを正規化した元の自然言語の文（BE-0044）
                 # `name` はダウンストリームで実際のファイルシステムパスの一部になる（run の
                 # step_id、エディタの証跡参照）。パス区切り文字、または単独の「.」「..」はロードエラー
+                # `target`: このステップが scenario.targets のどれを操作するか（BE-0428）。要否は
+                # len(scenario.targets) と scenario.primaryTarget で決まる（§4）。web ブロック内に入れ子になったステップでは
+                # 拒まれる。そのステップは、囲んでいる web ステップがすでに解決したターゲットへ常に
+                # 走るため
 Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # 既定 "value"
 Action    ::=
     { tap:         <Selector> }
@@ -208,17 +219,25 @@ Action    ::=
   | { setClipboard:     { text: string } }                 # ペーストボードにテキストを書き込む（simctl pbcopy）。ペースト操作の準備用
   | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }
   | { clearStatusBar:   {} }                               # ライブのステータスバーに戻す
-  | { use:         { component: string, with?: map(string,string) } }   # マクロ（§6.2）
+  | { use:         { component: string, with?: map(string,string) } }   # マクロ（§6.2。修飾子不可）
+  | { group:       <Group> }                                            # ステップに名前を付け、report.htmlで折りたたむ（§6.2。capture/extract 不可。入れ子不可）
   | { if:          <If> }                                               # 条件分岐（capture/extract 不可）
   | { forEach:     <ForEach> }                                          # ループ（capture/extract 不可）
   | { web:         <Web> }                                              # WebView の DOM コンテキストに入る（BE-0037。capture/extract 不可）
+  | { app:         <App> }                                              # テスト対象アプリが起動していないアプリを起動してUIを操作する（iOS/XCUITest限定。capture/extract 不可）
   | { manual:      { label: string, bypass?: string } }                # `record` 中に記録される人による操作の引き取り（BE-0185）。決定的な等価物がないため、`bypass` を配線しない限り実行時に明示的に失敗する
 
+Group ::= { name: string, steps: list(<Step>) }   # どちらも必須、空を許さない。コンパイル時マクロで、runの前に消える（§6.2）
 If ::= { condition: <Assertion>, then: list(<Step>), else?: list(<Step>) }
 ForEach ::= { sel: <Selector>, as: string, steps: list(<Step>) }
 Web ::= { within: <Selector>, steps: list(<Step>) }
     # `within` はネイティブに解決してちょうど1つの WKWebView ホストを指す。内側の `steps` はネイティブの
     # アクセシビリティツリーではなく、正規化された DOM（`data-testid` → Element.identifier）を対象にする。
+App ::= { bundleId: string, steps: list(<Step>) }
+    # `bundleId` はインストール済みの任意のアプリを名指しする。テスト対象アプリの協力なしに起動（また
+    # は、すでに起動していればそれを活用）する。内側の `steps` はそのアプリ自身のアクセシビリティツリー
+    # を対象にする。ブロックを抜けると、`Web` と同じ入る・抜けるの契約で、直前にアクティブだったものへ
+    # 戻る。
 
 Swipe ::=
     { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # セレクタ形  ┐ XOR
@@ -297,6 +316,12 @@ VisualMatch ::= {                  # 画面をベースライン画像とピク�
 ExcludeRegion  ::= { x: number, y: number, w: number, h: number }   # スクリーンショットのピクセル
 SelectorRegion ::= { selector: <Selector> }   # 要素のフレームをマスクする（BE-0171）。曖昧なら失敗、不一致なら何もしない
 
+上記の `Assertion` はどの種類も、任意の `target?: string` を持ちます（BE-0428）。これは、チェックが
+`scenario.targets` のどれに対して走るかを名指しします。設定できるのは、トップレベルの `expect`
+エントリだけです。`Step` のインラインの `assert:` リストや `If` の `condition` を通して届く
+`Assertion` は、囲んでいるステップによってすでにターゲットが決まっています。そのため、そこでの
+`target` の指定は拒まれます（§4）。
+
 RequestMatch ::= {              # 下記マッチフィールドの 1 つ以上
   method?:      string,
   url?:         string,         # 完全一致 URL（エンドポイント）
@@ -363,6 +388,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 |---|---|---|
 | `Selector` | **1 条件以上** | `scenario/models/selector.py` |
 | `Step` | アクションキー（`tap` … `use`）**ちょうど 1 つ**。`capture`/`name` は修飾子でアクションではない | `scenario/models/steps.py` |
+| `Step.use` | **修飾子を取らない**。`capture` / `extract` / `name` / `from` / `target` を拒否する（展開が警告なく捨ててしまうため） | `scenario/models/steps/step.py` |
 | `Swipe` | 形は `{on,direction}` か `{from,to}` の **ちょうど 1 つ**（混在も片側だけの指定も不可） | `scenario/models/actions.py` |
 | `Pinch` | `scale` **> 0** | `scenario/models/actions.py` |
 | `HandleSystemAlert` | `sel` を `label` / `labelMatches` / `index` に限定（`id`/`idMatches`/`traits`/`value`/`within` を拒否） | `scenario/models/actions.py` |
@@ -377,6 +403,13 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Assertion.requestSequence` | **1 件以上** | `scenario/models/assertions.py` |
 | `Trigger`（`capturePolicy[].on`） | `action` / `event` / `result` の **ちょうど 1 つ**。`idMatches` は `action` と **併用時のみ** | `scenario/models/evidence.py` |
 | `Scenario` | `data` と `dataFile` は **両方不可** | `scenario/models/scenario.py` |
+| `Scenario.targets` | 同じ名前の重複不可（BE-0428） | `scenario/models/scenario/_targets.py` |
+| `Scenario.primaryTarget` | 省略するか、`targets[0]` と一致。`targets` が空なら**拒否**（BE-0436） | `scenario/models/scenario/_targets.py` |
+| `Step.target` / `Assertion.target`（`expect` のみ） | `len(targets) ≤ 1` なら省略可、または宣言済みの1つと一致。`len(targets) ≥ 2` で `primaryTarget` が未設定なら**必須**（`if`/`forEach`/`web` ラッパーも含み、末端のアクションだけではない）で、宣言済みターゲットの1つを名指し。`len(targets) ≥ 2` で `primaryTarget` を設定していれば**省略可**で、省略したものは入れ子の深さによらず主ターゲットに対して走る（BE-0436）。`web` ブロック内に入れ子になったステップと、インラインの `assert:` リスト・`if` の `condition`・`interrupts` エントリの `condition` を通して届く `Assertion` では**拒否**（BE-0428） | `scenario/models/scenario/_targets.py` |
+| `Step.use` / `Step.group`（`len(targets) ≥ 2` のみ） | **頭から拒否** — `use:` ステップ（`target` を取れないため。`Step.use` 行と §6.2 を参照）と `group:` ステップ（展開で自身の `target` が失われる）は、どちらも本アイテムが先送りにした未決問題であり、意味の不明確なまま受理せず拒否（BE-0428） | `scenario/models/scenario/_targets.py` |
+| `Interrupt.target` と、`interrupts` エントリの `steps` にある `Step.target` | `primaryTarget` の有無にかかわらず、`len(targets)` にかかわらず**省略可**。エントリの `target` を省略するとプライマリターゲットを監視し、リカバリ用ステップの `target` を省略するとエントリ自身のターゲットで実行する(ただし、`target` を指定した `if`/`forEach` ステップの内側では、そのステップのターゲットで実行する)。指定した値は、宣言済みターゲットの名指しについて上の `Step.target` の規則に従う（BE-0438） | `scenario/models/scenario/_targets.py` |
+| `targets.<name>.interrupts` の `Interrupt.target` と、その `steps` にある `Step.target` | **拒否**。エントリは、その config ブロックが設定するターゲットにすでに属している（BE-0438） | `config/schema/target_config.py` |
+| `Step.use`（`len(targets) ≥ 2` のみ） | `interrupts` エントリの `steps` の中でも**頭から拒否**。そもそも `target` を取れない（上の `Step.use` 行を参照）という、本アイテムが先送りにした未決問題であり、意味の不明確なまま受理せず拒否（BE-0428） | `scenario/models/scenario/_targets.py` |
 | すべてのマッピング | **未知キー不可**（`extra="forbid"`） | `scenario/models/_base.py` |
 
 `exists` は特別です。セレクタを **インライン**で書き（`exists: { id: home.title }`）、任意の `negate: true` で不在を確認します。ローダは検証前にこれを `{ sel, negate }` へ書き換えます（`Exists._inline`, `scenario/models/assertions.py`）。
@@ -466,6 +499,18 @@ scenarios:
 `components:` の有効範囲は1ファイルです。ファイルごとに読み、スイートディレクトリをまたいで統合しません。あるファイルで宣言した名前は、ほかのファイルからは見えません。コンポーネントファイルへ入ると `components:` は完全に外れます。コンポーネントファイルは自分の `components:` を持たないため、その中の素の `use` は常に未定義です。参照元のシナリオファイルが何を宣言していても変わりません。一方、ファイルスコープのコンポーネント自身の steps は、宣言元ファイルのスコープで展開されます。別のファイルスコープのコンポーネントを素の名前で `use` できますし、パスでファイルも `use` できます。ファイルをまたぐ再利用はパス参照の役目のままです。
 
 `expand_components`（`scenario/expand.py`）は各 `use` をコンポーネントの置換済みステップに **置き換えます**。展開は再帰的で、コンポーネントが別のコンポーネントを `use` でき、深さは 25 までです。params の不足、未知の params、未宣言を指す残留した `${params.*}`、未定義の素の名前、循環参照のいずれかがあるとエラーになります。`ComponentResolver`（`scenario/load_expanded.py`）は、`resolve` をファイルの `components:` とルートと基準ディレクトリに束ねる唯一の場所です。おかげで `run` とデバイス不要のリーダーは、同じファイルを同一に展開します。展開は純粋でコンパイル時に行われるため、**`use` は run に残らず**、決定性に影響しません。
+
+`use` ステップは修飾子を取りません。展開がステップ全体を置き換えるので、`capture` / `extract` / `name` / `from` / `target` を併記した `use` ステップはローダーが拒否します。警告なしに捨てると、これらのフィールドが効いていないことに作成者が気付けないからです。
+
+**`group` は `use` の身近な兄弟です。** `Group` は `name` と `steps` だけを持ち、params と
+別ファイルのどちらも持ちません。`expand_components` の同じ `expand()` 再帰が、`group` ステップを
+その場で自分自身の `steps` へ置き換えます。各ステップには `report_group` / `report_group_id`
+（内部フィールドで、書ける文法には含まれません）を付けます。これにより、`report.html` はそれらを
+1つにまとめて折りたためます（[reporting.md](../reporting.md#reporthtml)）。`expand()` は、すでに別の
+`group` の中にいる状態で `group` に出会うとエラーを送出します。これは、内側の `group` が直接
+書かれた場合も、`use` の呼び出しを経由して届いた場合も同じです。`Scenario` レベルのバリデータも、
+別の `group` の `steps` の中や、`if` / `forEach` / `web` / `app` ステップの入れ子の `steps` の中に
+直接書かれた `group` を、ロード時に拒否します。
 
 ### 6.3 データ駆動シナリオ（`data` / `dataFile`）
 

@@ -7,7 +7,7 @@ handle, and — the classic trap — the *literal* ``BE-XXXX`` placeholder rathe
 (IDs are permanent and monotonic; allocation is CI's atomic job, BE-0061). This turns that recipe
 into one command both a human and an AI invoke identically::
 
-    make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Proposal] [HANDLE=<handle>]
+    make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Approved] [HANDLE=<handle>]
 
 It writes ``roadmaps/BE-XXXX-<slug>/`` with ``BE-XXXX-<slug>.md`` and its ``-ja.md`` mirror,
 each pre-filled with the header link, the metadata block, and the six sections seeded with ``TBD`` —
@@ -210,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
         default="Miscellaneous / on hold",
         help="a known index topic (see the error list)",
     )
-    parser.add_argument("--status", default="Proposal", help="Proposal (default) / In progress / …")
+    parser.add_argument("--status", default="Approved", help="Approved (default) / In progress / …")
     parser.add_argument("--handle", default=None, help="GitHub handle for Author (else git config)")
     args = parser.parse_args(argv)
 

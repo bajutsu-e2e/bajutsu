@@ -24,6 +24,20 @@ from bajutsu.common.report.richtext import (
     _step_desc_parts,
 )
 
+
+def _anchor_for(r: RunResult, target: str) -> float:
+    """Which video a step's own recording-relative offset is measured against (BE-0428).
+
+    `r.video_anchor_s` is the primary's own anchor and stays the answer for a step naming no target
+    (a single-target run), or naming the primary itself (its own video, no other target's own
+    anchor to prefer, and the key `target_video_anchors` never carries). Any other declared target
+    falls back the same way when it recorded no video of its own: better a step lining up on the
+    primary's timeline than a `0.0` anchor seeking every one of that target's steps to the very
+    start of a recording that documents a different device's screen entirely.
+    """
+    return r.target_video_anchors.get(target, r.video_anchor_s)
+
+
 # --- detail / row data (the merged Result table) ---
 
 
@@ -159,11 +173,16 @@ def _step_run_row(
     at: float,
     from_: str | None = None,
     line: int | None = None,
+    group: str | None = None,
+    group_id: int | None = None,
 ) -> dict[str, Any]:
     """One executed step's row. `at` is its already-derived seconds into the recording (BE-0348).
 
     `line` is the step's original 1-based line number in the scenario file, when the caller could
-    recover one (`html.scenario_source_meta`) — None wherever it could not.
+    recover one (`html.scenario_source_meta`) — None wherever it could not. `group` / `group_id`
+    come from the step definition's own `_reportGroup` / `_reportGroupId` (set by `expand()` when
+    the step came from a `group:` block); `_fold_groups` below uses `group_id` to find a run of
+    consecutive rows to fold, and `group` to label the fold's heading.
     """
     at_text = f"{at:.1f}s"
     # The step's own end instant — its `before`/`after` moment in the recording, not the
@@ -188,6 +207,10 @@ def _step_run_row(
         "line": line,
         "result": {"cls": "ok" if out.ok else "ng", "text": "PASS" if out.ok else "FAIL"},
         "action": _action_data(step_def, out.action),
+        # Which declared target ran this step (BE-0428), shown beside the action so a reader of a
+        # cross-platform scenario can tell the app-side rows from the web-side ones. Empty — and so
+        # rendered as nothing at all — for a scenario that declares no targets.
+        "target": out.target,
         "detail": _step_detail(step_def, from_),
         "at": at_text,
         "elapsed": elapsed,
@@ -199,6 +222,8 @@ def _step_run_row(
         "actuations": _actuation_rows(out.actuations),
         "dropped_actuations": out.dropped_actuations,
         "generated": out.generated,
+        "group": group,
+        "group_id": group_id,
     }
 
 
@@ -251,7 +276,12 @@ def _actuation_rows(actuations: list[Actuation]) -> list[dict[str, Any]]:
 
 
 def _step_skip_row(
-    i: int, step_def: dict[str, Any] | None, from_: str | None = None, line: int | None = None
+    i: int,
+    step_def: dict[str, Any] | None,
+    from_: str | None = None,
+    line: int | None = None,
+    group: str | None = None,
+    group_id: int | None = None,
 ) -> dict[str, Any]:
     return {
         "rowcls": "skip",
@@ -270,6 +300,8 @@ def _step_skip_row(
         "view": None,
         "reason": None,
         "expand": None,
+        "group": group,
+        "group_id": group_id,
     }
 
 
@@ -375,6 +407,61 @@ def _response_row(d: dict[str, Any], at: float) -> dict[str, Any]:
     }
 
 
+def _row_failed(row: dict[str, Any]) -> bool:
+    result = row.get("result")
+    return isinstance(result, dict) and result.get("cls") == "ng"
+
+
+def _fold_groups(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Insert one heading row per run of consecutive rows sharing a `group_id`.
+
+    A row with no `group_id` (an ordinary step, or a network exchange row — never tagged, by
+    scope) passes through unchanged and ends any run in progress. A network exchange row or a
+    not-run step can therefore split one `group:` invocation into more than one run, each getting
+    its own heading — an accepted scope limit, not a bug: this function only ever sees the flat,
+    already-ordered row list the caller built, with no way to tell "this invocation, elsewhere in
+    the list" from "a different invocation that reused the same name".
+
+    A run containing a failing row (`_row_failed`) is marked open (`hidden` left unset on its
+    member rows and the heading); a run with no failure is marked closed (`hidden: True`), so
+    `report.html.j2` renders it collapsed until a reader opens it.
+    """
+    out: list[dict[str, Any]] = []
+    i, n = 0, len(rows)
+    while i < n:
+        gid = rows[i].get("group_id")
+        if gid is None:
+            out.append(rows[i])
+            i += 1
+            continue
+        j = i
+        while j < n and rows[j].get("group_id") == gid:
+            j += 1
+        run = rows[i:j]
+        open_ = any(_row_failed(row) for row in run)
+        # Keyed on this fragment's own occurrence, not the shared `gid`: two fragments split from
+        # one `group:` invocation (a network exchange row, or a not-run tail, breaking the run)
+        # would otherwise both carry the same `data-group-id`, and toggling one fragment's heading
+        # in `report.js` would then un-hide (or re-hide) the other fragment's rows too.
+        fold_id = f"{gid}-{len(out)}"
+        out.append(
+            {
+                "heading": {
+                    "name": run[0].get("group"),
+                    "count": len(run),
+                    "id": fold_id,
+                    "open": open_,
+                }
+            }
+        )
+        for row in run:
+            row["hidden"] = not open_
+            row["group_id"] = fold_id
+        out.extend(run)
+        i = j
+    return out
+
+
 def _merged_rows(
     r: RunResult,
     plan: list[dict[str, Any]],
@@ -403,17 +490,39 @@ def _merged_rows(
     def line(i: int) -> int | None:
         return step_lines[i] if step_lines and i < len(step_lines) else None
 
+    def group_of(i: int) -> str | None:
+        return plan[i].get("_reportGroup") if i < len(plan) else None
+
+    def group_id_of(i: int) -> int | None:
+        return plan[i].get("_reportGroupId") if i < len(plan) else None
+
     timed: list[tuple[float, int, dict[str, Any]]] = []
     skipped: list[dict[str, Any]] = []
     for i in range(total):
         step_def = plan[i] if i < len(plan) else None
         out = by_index.get(i)
         if out is None:
-            skipped.append(_step_skip_row(i, step_def, shown_from[i], line(i)))
+            skipped.append(
+                _step_skip_row(i, step_def, shown_from[i], line(i), group_of(i), group_id_of(i))
+            )
         else:
-            at = video_seconds(out.started_at, video_anchor_s=r.video_anchor_s)
+            at = video_seconds(out.started_at, video_anchor_s=_anchor_for(r, out.target))
             timed.append(
-                (at, 0, _step_run_row(i, step_def, out, run_dir, at, shown_from[i], line(i)))
+                (
+                    at,
+                    0,
+                    _step_run_row(
+                        i,
+                        step_def,
+                        out,
+                        run_dir,
+                        at,
+                        shown_from[i],
+                        line(i),
+                        group_of(i),
+                        group_id_of(i),
+                    ),
+                )
             )
     for d in exchanges:
         t0 = video_seconds(_as_float(d.get("startedAt")), video_anchor_s=r.video_anchor_s)
@@ -421,13 +530,13 @@ def _merged_rows(
         timed.append((t0, 1, _request_row(d, t0)))
         timed.append((t0 + dur_s, 2, _response_row(d, t0 + dur_s)))
     timed.sort(key=lambda x: (x[0], x[1]))
-    return [row for _, _, row in timed] + skipped
+    return _fold_groups([row for _, _, row in timed] + skipped)
 
 
 def _phase_rows(
     outcomes: list[Any],
     plan: list[dict[str, Any]],
-    video_anchor_s: float,
+    r: RunResult,
     run_dir: Path | None,
 ) -> list[dict[str, Any]]:
     """A `before` / `after` phase's step rows (BE-0392), in the order the phase ran them.
@@ -447,13 +556,17 @@ def _phase_rows(
     for i in range(max(len(plan), len(outcomes))):
         step_def = plan[i] if i < len(plan) else None
         from_ = shown_from[i] if i < len(shown_from) else None
+        group = step_def.get("_reportGroup") if step_def else None
+        group_id = step_def.get("_reportGroupId") if step_def else None
         out = by_index.get(i)
         if out is None:
-            rows.append(_step_skip_row(i, step_def, from_))
+            rows.append(_step_skip_row(i, step_def, from_, group=group, group_id=group_id))
             continue
-        at = video_seconds(out.started_at, video_anchor_s=video_anchor_s)
-        rows.append(_step_run_row(i, step_def, out, run_dir, at, from_))
-    return rows
+        at = video_seconds(out.started_at, video_anchor_s=_anchor_for(r, out.target))
+        rows.append(
+            _step_run_row(i, step_def, out, run_dir, at, from_, group=group, group_id=group_id)
+        )
+    return _fold_groups(rows)
 
 
 def _after_rows(
@@ -486,23 +599,27 @@ def _after_rows(
         shown_from = grouped_provenance([d.get("from") for d in steps])
         stopped = False
         for i, step_def in enumerate(steps):
+            group = step_def.get("_reportGroup")
+            group_id = step_def.get("_reportGroupId")
             # The `#` cell carries the rule's outcome word, so a reader can tell teardown that ran
             # unconditionally from teardown this run's verdict selected without a second table. An
             # executed step is numbered by its own outcome index — the phase numbers its steps once
             # across every rule — so the HTML, the JUnit body, and the evidence directory name the
             # same step. A step that never ran has no such number, and says so.
             if stopped or cursor >= len(r.after_outcomes):
-                row = _step_skip_row(i, step_def, shown_from[i])
+                row = _step_skip_row(i, step_def, shown_from[i], group=group, group_id=group_id)
                 row["num"] = f"{on}·—"
             else:
                 out = r.after_outcomes[cursor]
                 cursor += 1
-                at = video_seconds(out.started_at, video_anchor_s=r.video_anchor_s)
-                row = _step_run_row(i, step_def, out, run_dir, at, shown_from[i])
+                at = video_seconds(out.started_at, video_anchor_s=_anchor_for(r, out.target))
+                row = _step_run_row(
+                    i, step_def, out, run_dir, at, shown_from[i], group=group, group_id=group_id
+                )
                 row["num"] = f"{on}·{out.index}"
                 stopped = not out.ok
             rows.append(row)
-    return rows
+    return _fold_groups(rows)
 
 
 def _preconditions_rows(definition: dict[str, Any] | None) -> list[tuple[str, str]]:

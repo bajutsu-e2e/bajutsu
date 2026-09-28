@@ -25,6 +25,7 @@ Runs a scenario **deterministically**; pass/fail is machine-only, and since [BE-
 
 ```bash
 bajutsu run --target <name> [--scenario <file.yaml>] [options]
+bajutsu run --scenario <self-declaring.yaml> [options]          # --target optional
 ```
 
 By default `run` loads **every `*.yaml`** in the app's configured scenarios dir
@@ -32,9 +33,25 @@ By default `run` loads **every `*.yaml`** in the app's configured scenarios dir
 to run. Pass `--scenario <file>` to run one file instead, or repeat the flag to run several
 specific files in one process, sharing a single warm runner.
 
+### When `--target` is optional
+
+A scenario that declares its own
+[`targets`](scenarios.md#targets--target-multi-target-scenarios-be-0428) resolves every target it
+needs from the config. `--target` then has nothing left to decide. Four rules follow:
+
+| Rule | What happens |
+|---|---|
+| `--scenario` becomes required in its place | The whole-suite shorthand globs one target's configured scenarios dir. A scenario naming two or more targets belongs to no one such dir, so it names its files explicitly |
+| An explicit `--target` is checked, never ignored | Passed beside a self-declaring scenario, it must name one of that scenario's own declared targets. A stale flag left over from editing the file exits 2, instead of picking a target the file dropped |
+| The scenarios dir refuses a self-declaring file | A file carrying its own `targets` inside a target's configured dir fails at discovery. The error names the file and points at `--scenario` |
+| A batch mixing both shapes still needs `--target` | A file declaring no `targets` has nothing but the invocation's `--target` to resolve one from. Omitting the flag with even one such file in the batch fails, naming that file |
+
+Passing `--target` alongside a mix of both shapes keeps working. Each file declaring no targets
+uses it as always. Each self-declaring file has it checked for membership instead.
+
 | Option | Default | Description |
 |---|---|---|
-| `--target` | (required) | the target app (config's `targets.<name>`) |
+| `--target` | (required, unless every `--scenario` file declares its own `targets`) | the target app (config's `targets.<name>`); see [when `--target` is optional](#when---target-is-optional) |
 | `--scenario` | config's `scenarios` dir | run these `*.yaml` files instead of the app's whole scenarios dir; repeat the flag to run several in one process, sharing one warm runner |
 | `--backend` | config | actuator order (comma-separated; first usable wins) |
 | `--tag` | "" | comma list; run only scenarios carrying any of these tags |
@@ -47,7 +64,7 @@ specific files in one process, sharing a single warm runner.
 | `--log-predicate` | "" | an NSPredicate narrowing the `deviceLog` stream (e.g. subsystem) |
 | `--log-subsystem` | "" | the os_log subsystem for `appTrace` (defaults to the app's `bundleId`) |
 | `--network / --no-network` | config › on | collect the app's network exchanges for `request` assertions; omit and it resolves the target's `network` config, then on ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md)). iOS needs BajutsuKit in the app; web observes natively via Playwright, and stubs scenario `mocks` in-process |
-| `--workers` | 1 | parallel scenarios over a device pool. On iOS, needs `--udid u1,u2,…` and is capped to that pool size. On web, `--workers N` alone is N parallel browser-context lanes — no `--udid` needed ([BE-0054](../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)). Each lane carries its own network collector, interval recordings, and (iOS) device control, so network / video / `setLocation` / `push` work the same as a single-device run |
+| `--workers` | 1 | parallel scenarios over a device pool. A scenario declaring several targets holds one device per target for its whole length, so `run` caps this to what the pools can serve without starving a worker. On iOS, needs `--udid u1,u2,…` and is capped to that pool size. On web, `--workers N` alone is N parallel browser-context lanes — no `--udid` needed ([BE-0054](../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion.md)). Each lane carries its own network collector, interval recordings, and (iOS) device control, so network / video / `setLocation` / `push` work the same as a single-device run |
 | `--baselines` | config's `baselines`, then `baselines/` beside the scenario | directory of baseline images for `visual` assertions; `baseline: home.png` resolves inside it |
 | `--schemas` | config's `schemas`, then `schemas/` beside the scenario | directory of JSON Schema files for `responseSchema` assertions; `schema: items.json` resolves inside it (needs the `schema` extra) |
 | `--goldens` | config's `goldens`, then `goldens/` beside the scenario | directory of golden JSON files for `golden` assertions; `golden: response.json` resolves inside it |
@@ -75,6 +92,7 @@ specific files in one process, sharing a single warm runner.
 ```bash
 bajutsu run --target showcase-swiftui --udid <UDID> --backend ios --no-erase            # the app's whole scenarios dir
 bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --no-erase   # one file
+bajutsu run --scenario cross-platform.yaml --config both-targets.yaml                   # the file names its own targets
 ```
 
 ## `doctor`
@@ -700,7 +718,7 @@ bajutsu repl --target <name> [options]
 | `--target` | (required) | the target app |
 | `--udid` | `booted` | the target Simulator (or a WebDriver endpoint on the live route) |
 | `--backend` | config | actuator order |
-| `--erase / --no-erase` | `--erase` | erase before launch (the app must be installed) |
+| `--erase / --no-erase` | erase, except on the live route | erase before launch (the app must be installed); the live `--udid https://…` route rejects erase outright, so the default there is off, and an explicit `--erase` on that route exits with a CLI error instead |
 | `--headed / --no-headed` | app `headless` | web backend: inspect a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
 | `--browser` | app `browser` (chromium) | web backend: the Playwright rendering engine to inspect — `chromium` / `firefox` / `webkit`; omit to use the target's `browser` config |
 | `--config` | `bajutsu.config.yaml` | config |
@@ -712,28 +730,53 @@ Once the app is up, the shell prompts with `bajutsu>`:
 | `tree` | the current element tree, as an `id` / `label` / `traits` / `value` / `frame` table |
 | `tree --json` | the same tree verbatim, as JSON — for piping, diffing, or reading a frame exactly |
 | `find <substring>` | the same tree, filtered to rows whose `id` or `label` contains `<substring>` (case-sensitive, like every selector match) |
-| `tap <id>` | tap the element carrying that id |
-| `type <id> <text>` | focus that element, then type `<text>` (the id is everything up to the first space) |
+| `tap <target>` | tap the element `<target>` resolves to, or a raw coordinate (see *Targets*, below) |
+| `type <target> <text>` | focus `<target>`, then type `<text>` |
+| `scroll @<x1>,<y1> @<x2>,<y2>` | a raw one-shot drag/scroll gesture from one coordinate to another (`Driver.scroll`) |
 | `back` | navigate back one level, each backend using its platform-correct primitive |
 | `screenshot [path]` | write a screenshot; auto-named `repl-<UTC timestamp>.png` in the current directory when the path is omitted |
+| `step <yaml>` | run one scenario step verbatim — any one-shot action a scenario's own steps accept (`swipe`, `pinch`, `rotate`, `setPickerValue`, `selectOption`, and more), none of which has its own shortcut command (see *Steps*, below) |
 | `help` | list the commands above |
-| `exit` / `quit` | leave the shell (Ctrl-D does the same; Ctrl-C abandons the half-typed line) |
+| `exit` / `quit` | leave the shell |
+| `clear` | wipe the scroll pane's transcript — the ncurses shell only; the plain fallback (below) has no persistent transcript to wipe, so it reports `clear` as an unknown command |
+
+**Targets** (`tap`/`type`): the shell reaches the same `id` / `label` / `index` vocabulary a
+scenario selector does, plus a raw coordinate that `tap` alone accepts, bypassing selector
+resolution entirely, plus (`--sel`) the full selector grammar for anything the shortcut forms
+below cannot express:
+
+| Form | Matches |
+|---|---|
+| `<id>` | the element carrying that id, verbatim — may contain a space for `tap` (its whole remainder is the id); `type` needs a quoted target (below) for that |
+| `<id>#<index>` | the `<index>`-th (0-based; negative counts from the end) of several elements sharing that id |
+| `label:<text>` | an element carrying no `id`, addressed by its exact `label` |
+| `label:<text>#<index>` | the `<index>`-th of several elements sharing that label |
+| `@<x>,<y>` | `tap` only — a raw pixel coordinate, bypassing the element tree entirely (`Driver.tap_point`) |
+| `"<target with a space>"` | `type` only — quote a multi-word `label:` target so it can be told apart from the text that follows |
+| `--sel <yaml>` | a full [selector](glossary.md#scenario-authoring) — `--sel {idMatches: row.*, index: 1}`, `--sel {label: Sign in, within: {id: form.login}}` — the same `id` / `idMatches` / `label` / `labelMatches` / `traits` / `value` / `within` / `index` fields `run` accepts, parsed with the scenario's own `Selector` model. Must be one flow-style `{...}` mapping (block YAML needs newlines a single typed line cannot hold); the closing `}` is what tells `type`'s target from its text, the way a quote does for `"<target with a space>"` |
+
+The shortcut forms above cannot reach an id or label that itself ends in a literal `#<digits>`,
+or starts with `@` or `label:`, and none of them reaches `idMatches`, `labelMatches`, `traits`,
+`value`, or `within` — `--sel` is the escape hatch for all of these; the shortcuts exist because
+`--sel {id: ...}` is more to type than `tap <id>` for the common case.
 
 - **The columns are the fields a [selector](glossary.md#scenario-authoring) matches against**,
   normalized by the backend — not a platform inspector's own vocabulary. An id read off a `tree`
   row is the id `run` will resolve.
-- **Nothing is guessed.** A `tap` whose id matches nothing fails with `ElementNotFound`, and one
-  matching several elements fails with `AmbiguousSelector` — immediately, with the same message
-  `run` would raise. The shell prints the failure and reads the next line.
+- **Nothing is guessed.** A `tap` whose target matches no element fails with `ElementNotFound`, and
+  one matching several fails with `AmbiguousSelector` — immediately, with the same message `run`
+  would raise (add `#<index>` to disambiguate, or read the tree again). The shell prints the failure
+  and reads the next line. A raw `@<x>,<y>` coordinate tap skips this entirely, since it resolves
+  no selector at all.
 - **`tap` does not scroll a cover away.** `run` first retries a bounded scroll when another element
   obstructs the target; `repl` surfaces the driver's own `ElementNotTappable`, which names the
   covering element — the more useful answer while diagnosing a selector. The two can therefore
   disagree on a covered target; write the explicit `scroll` step in the scenario to get the recovery.
-- **Elements are addressed by `id` alone** in this first version, narrower than the full selector
-  syntax `run` accepts. `tree` already shows every element's `label` and `traits`, so the loop is:
-  read the row, type its id. An element carrying no `id` cannot be reached from the shell yet.
-- **Gestures** (`swipe`, `scroll`, `pinch`, `rotate`) and platform-specific actions
-  (`setPickerValue`, `selectOption`) are not in this version.
+- **`scroll` is a raw gesture, not "scroll until visible."** A scenario's own `scroll` step always
+  names a target and stops once it is on screen; this shortcut has no target, no stopping
+  condition, and no selector to fail on — it is the same one-shot primitive `Driver.scroll` is,
+  nothing more. Reach the target-seeking form, or any other gesture (`swipe`, `pinch`, `rotate`) or
+  platform-specific action (`setPickerValue`, `selectOption`), through `step` instead.
 - **Leaving the shell leaves the app running.** A Simulator- or device-backed app stays where you
   left it, so you can keep inspecting it by hand. The two sessions the command itself owns are
   closed: the web backend's browser, and the WebDriver session on the `--udid https://…` live route,
@@ -741,6 +784,43 @@ Once the app is up, the shell prompts with `bajutsu>`:
 - A target declaring `launchServer` has its server started before the shell opens and stopped when
   it exits — without that, a web target would open the browser on a host that is not listening and
   every `tree` would read the error page.
+
+**Steps** (`step <yaml>`): one flow-style `{...}` mapping, the exact `Step` model a scenario file's
+own steps validate against — `step {swipe: {on: {id: card}, direction: up}}`,
+`step {pinch: {sel: {id: map}, scale: 0.5}}`. Runs through the same dispatcher `run` uses for a
+one-shot action (`tap`, `type`, `scroll`, `swipe`, `drag`, `pinch`, `rotate`, `setPickerValue`,
+`selectOption`, `select`, `copy`, `handleSystemAlert`, and more), so a target it resolves fails the
+same way `tap`'s target does (`ElementNotFound` / `AmbiguousSelector`). `wait`, `assert`, and
+control flow (`if` / `forEach` / `web` / `app`) have no one-shot handler to run through — `step`
+reports the gap by name rather than attempting them; only a whole scenario run has the loop those
+need.
+
+**The shell itself** is an ncurses-style screen when both stdin and stdout are a real terminal —
+the command line stays pinned at the top; every command's answer accumulates in a scrollable pane
+below it, each answer closed by its own `-- EOL --` line so a long scrollback still shows where one
+command's output ends and the next begins. A banner on the line right below the input names the
+current mode; in the input line and the scroll pane it also spells out the `Tab` binding, so the
+mode switch stays visible without checking this table. The mouse wheel also scrolls the pane, in
+every mode, on a terminal that reports it — a keyboard-free alternative to the rows below. And
+because that same pane keeps drawing in every mode, a command's answer can land below the current
+view unnoticed — while scrolled up in the pane, or typing the next command without having Tab'd
+back down — so the banner grows a `[new output ↓]` suffix (in whichever mode's own text) the moment
+that happens, clearing again as soon as the view returns to the bottom:
+
+| Key | In the input line | In the scroll pane |
+|---|---|---|
+| `Tab` | switch to the scroll pane | switch back to the input line |
+| `↑` / `↓` | recall the previous/next command from history | scroll the output up/down one line |
+| `k` / `j` | typed as ordinary characters | scroll the output up/down one line (vim-style, alongside `↑`/`↓`) |
+| `PgUp` / `PgDn` | — | scroll the output up/down a full pane |
+| `←` / `→` / `t` / `b` | move the cursor left/right (`t`/`b` type as ordinary characters) | jump straight to the top/bottom |
+| `/` | — | open a filter prompt; `Enter` sets it (a case-insensitive substring over the whole transcript), an empty pattern clears it, `Esc` abandons the edit |
+| `Ctrl-C` | abandon the half-typed line | — |
+
+Piped stdin/stdout (a script, a test harness, `bajutsu repl < commands.txt`) falls back to a plain
+line-at-a-time shell instead — every command above except `clear` behaves identically either way,
+and `exit` / `quit` leave the shell in both (Ctrl-D also does, in the plain fallback only — curses
+has no Ctrl-D/EOF signal to read).
 
 ## `codegen`
 
@@ -952,6 +1032,12 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   surprising argv. This hardening is the prerequisite for hosting `serve` beyond loopback
   ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) / [BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md));
   it still binds `127.0.0.1` and has no auth, so don't expose it to an untrusted network yet.
+- **Per-job artifact overrides on `/api/run` (BE-0431).** Hosted, `POST /api/run` takes two
+  more fields. `binaryArtifact` and `scenariosArtifact` each hold the sha256 of an artifact stored
+  for the org. One job installs that binary at its target's `appPath`. The same job runs against
+  that scenarios zip. The org's active config keeps its binding. The run's `manifest.json` records
+  each overridden sha256 under `provenance`. A single-process `serve` refuses both fields. See
+  [self-hosting](self-hosting.md#per-job-artifact-overrides-for-a-ci-run-be-0431).
 
 ### Run limits, evidence, and hosting
 

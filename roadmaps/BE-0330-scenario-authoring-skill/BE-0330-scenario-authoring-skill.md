@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0330](BE-0330-scenario-authoring-skill.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Approved** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0330") |
 | Topic | Authoring experience |
 <!-- /BE-METADATA -->

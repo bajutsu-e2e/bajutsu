@@ -47,7 +47,7 @@ def test_placeholder_missing_progress_section_is_caught(tmp_path: Path) -> None:
 
 def test_placeholder_with_retired_track_field_is_caught(tmp_path: Path) -> None:
     en = _valid_en("BE-XXXX", "a-thing").replace(
-        "| Status | **Proposal** |\n", "| Status | **Proposal** |\n| Track | Something |\n"
+        "| Status | **Approved** |\n", "| Status | **Approved** |\n| Track | Something |\n"
     )
     _write_item(tmp_path, "BE-XXXX", "a-thing", en=en)
     problems = format_problems(tmp_path)

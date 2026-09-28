@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any, Literal, Self
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
@@ -23,6 +24,20 @@ from .xcuitest_config import XcuitestConfig
 # Playwright rendering engines a web target can drive (BE-0076). Chromium is the default,
 # preserving today's single-engine behaviour; all three run headless on Linux.
 WEB_ENGINES = ("chromium", "firefox", "webkit")
+
+
+def _nested_steps(steps: list[Step]) -> Iterator[Step]:
+    for step in steps:
+        yield step
+        if step.if_ is not None:
+            yield from _nested_steps(step.if_.then)
+            yield from _nested_steps(step.if_.else_ or [])
+        if step.for_each is not None:
+            yield from _nested_steps(step.for_each.steps)
+        if step.web is not None:
+            yield from _nested_steps(step.web.steps)
+        if step.app is not None:
+            yield from _nested_steps(step.app.steps)
 
 
 class TargetConfig(_Model):
@@ -164,21 +179,60 @@ class TargetConfig(_Model):
 
     @model_validator(mode="after")
     def _no_component_in_target_steps(self) -> Self:
-        # `use` is expanded when a *scenario* file loads, which a target config never passes through:
-        # an app-wide `use` would reach the step loop with no action on it and abort the whole run
-        # with an `AssertionError` rather than fail one scenario. Reject it here, loudly and at load
-        # time, until config-level component resolution exists. Every field that takes the step
-        # grammar is covered, not only the lifecycle phases (BE-0392): `interrupts` (BE-0314) skips
-        # the same expansion pass for the same reason.
-        groups = {
-            "before / after": [*self.before, *(s for rule in self.after for s in rule.steps)],
-            "interrupts": [s for entry in self.interrupts for s in entry.steps],
+        # `use` and `group` are both expanded when a *scenario* file loads, which a target config
+        # never passes through: an app-wide `use` or `group` would reach the step loop with no
+        # action on it and abort the whole run with an `AssertionError` rather than fail one
+        # scenario. Reject both here, loudly and at load time, until config-level component
+        # resolution exists. Every field that takes the step grammar is covered, not only the
+        # lifecycle phases (BE-0392): `interrupts` (BE-0314) skips the same expansion pass for the
+        # same reason. `_nested_steps` descends into `if` / `forEach` / `web` / `app` too, so a
+        # `use:`/`group:` nested inside one of those still loads cleanly rather than reaching the
+        # step loop unexpanded (BE-0438 review).
+        field_steps = {
+            "before / after": [
+                *_nested_steps(self.before),
+                *(s for rule in self.after for s in _nested_steps(rule.steps)),
+            ],
+            "interrupts": [s for entry in self.interrupts for s in _nested_steps(entry.steps)],
         }
-        for field, steps in groups.items():
-            if any(s.use is not None for s in steps):
+
+        def _nested(s: Step) -> list[Step]:
+            # A target group (BE-0437) is never flattened at `TargetConfig`-parse time — unlike a
+            # scenario's own top-level `use` or `group` — so a `use:` or `group:` hidden one level
+            # inside it (its own `steps`) is just as unresolvable here as a bare one.
+            return [s, *(s.steps or [])]
+
+        for field, steps in field_steps.items():
+            reachable = [c for s in steps for c in _nested(s)]
+            if any(s.use is not None for s in reachable):
                 raise ValueError(
                     f"targets.<name>.{field} cannot use a component (`use`): components are "
                     "expanded per scenario file, so an app-wide one is never resolved"
+                )
+            if any(s.group is not None for s in reachable):
+                raise ValueError(
+                    f"targets.<name>.{field} cannot use a group (`group`): groups are "
+                    "expanded per scenario file, so an app-wide one is never resolved"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _no_target_in_target_interrupts(self) -> Self:
+        # An entry here already belongs to the target this block configures, so a `target` on it
+        # could only repeat that name or contradict it (BE-0438). Its recovery steps are checked
+        # too, nested ones included: a target config never passes through the scenario-side
+        # `_check_target_requirements`, so an unchecked `steps[0].target: ios` under a web target
+        # would load cleanly and `_StepRunner._route` would then dispatch it to the ios runner.
+        for entry in self.interrupts:
+            if entry.target is not None:
+                raise ValueError(
+                    "targets.<name>.interrupts entries cannot set `target`: the entry already "
+                    "belongs to the target this block configures"
+                )
+            if any(s.target is not None for s in _nested_steps(entry.steps)):
+                raise ValueError(
+                    "a step under targets.<name>.interrupts cannot set `target`: recovery steps "
+                    "run on the target this block configures"
                 )
         return self
 

@@ -123,7 +123,7 @@ inherit that skill's own frontmatter model. Treat a failed or skipped checkpoint
 Author the BE proposal exactly as [`ideation`](../../../.apm/skills/ideation/SKILL.md) prescribes — this skill
 does not restate those rules, it runs them:
 
-- Scaffold `roadmaps/BE-XXXX-<slug>/` with `make new-roadmap-item` at `Status: Proposal`,
+- Scaffold `roadmaps/BE-XXXX-<slug>/` with `make new-roadmap-item` at `Status: Approved`,
   fill the `TBD` sections under the [`document-writing`](../../../.apm/skills/document-writing/SKILL.md) skill (the
   authoritative prose norm for both languages, invoked *before* drafting), and localize the
   Japanese side under the [`japanese-document-writing`](../../../.apm/skills/japanese-document-writing/SKILL.md) skill

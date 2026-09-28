@@ -1641,6 +1641,48 @@ def test_run_all_rejects_both_actuator_and_resolve_actuator() -> None:
         )
 
 
+def test_run_all_rejects_a_multi_target_scenario_with_no_targets_map() -> None:
+    # BE-0428: `run_all` is the one chokepoint every caller funnels through, so the guard against
+    # running a multi-target scenario with nothing to launch the second target lives here. A caller
+    # that supplies no `targets` map — `audit`, or a test driving one lease directly — would
+    # otherwise lease one device and run every step against it regardless of which target each step
+    # names.
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "cross-target",
+                "targets": ["app", "web"],
+                "steps": [{"target": "app", "tap": {"id": "ok"}}],
+            }
+        )
+    ]
+
+    def lease_must_not_run(eff: Effective, s: Scenario) -> Lease:
+        raise AssertionError("lease must not be called when the multi-target guard rejects it")
+
+    with pytest.raises(ValueError, match="needs a per-target lease"):
+        run_all(_eff(), scenarios, lease_must_not_run)
+
+
+def test_run_all_allows_a_scenario_declaring_one_target() -> None:
+    # A single declared target needs no `targets` map to be safe: every step must already omit
+    # `target` or match that one name, so the run's own `eff`/`lease` are the right ones. The guard
+    # is about *multi*-target execution, not the mere presence of a `targets` field.
+    scenarios = [
+        Scenario.model_validate(
+            {"name": "z", "targets": ["app"], "steps": [{"target": "app", "tap": {"id": "ok"}}]}
+        )
+    ]
+    leased: list[str] = []
+
+    def lease(eff: Effective, s: Scenario) -> Lease:
+        leased.append(s.name)
+        return _lease(eff, s)
+
+    run_all(_eff(), scenarios, lease)
+    assert leased == ["z"]
+
+
 def test_resolve_actuator_no_available_actuator_fails_cleanly() -> None:
     # BE-0240: when no iOS actuator is even available the resolver raises; the pipeline turns that
     # into a clean per-scenario failure (no lease, no crash aborting the whole run).

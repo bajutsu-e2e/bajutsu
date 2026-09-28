@@ -23,14 +23,31 @@
 
 ```bash
 bajutsu run --target <name> [--scenario <file.yaml>] [options]
+bajutsu run --scenario <self-declaring.yaml> [options]          # --target は省略可
 ```
 
 既定では、そのアプリの設定済みシナリオディレクトリ（`targets.<name>.scenarios`、[configuration](configuration.md) 参照）内の
 **すべての `*.yaml`** を読み込んで実行します。config だけで実行できます。1 ファイルだけ実行するには `--scenario <file>` を渡してください。このフラグを繰り返すと、指定した複数ファイルを1つの warm な runner を共有しながら1プロセスで実行できます。
 
+### `--target` を省略できる場合
+
+自分で [`targets`](scenarios.md#targets--target複数ターゲットシナリオbe-0428) を宣言するシナリオは、
+必要なターゲットをすべて config から解決します。`--target` が決めることは、もう残っていません。ここから
+規則が4つ導かれます。
+
+| 規則 | 何が起きるか |
+|---|---|
+| 代わりに `--scenario` が必須になります | スイート全体の短縮記法は、1つのターゲットの設定済みシナリオディレクトリを glob します。2つ以上のターゲットを名指しするシナリオは、そのどのディレクトリにも属しません。そのため、ファイルを明示的に名指しします |
+| `--target` を明示したら、無視せず検査します | 自分で宣言するシナリオに添えて渡した場合、そのシナリオが宣言しているターゲットのどれかを名指しする必要があります。ファイルを編集したあとに残った古いフラグは、ファイルが外したターゲットを選ばず、終了コード 2 で止まります |
+| シナリオディレクトリは、自分で宣言するファイルを拒みます | 自分の `targets` を持つファイルが、あるターゲットの設定済みディレクトリにあると、発見の時点で失敗します。エラーはそのファイルを名指しし、`--scenario` を指し示します |
+| 両方の形が混ざったバッチには、なお `--target` が要ります | `targets` を宣言しないファイルは、起動の `--target` 以外にターゲットを解決する手がかりを持ちません。そのファイルが1つでもバッチにあると、フラグの省略は失敗し、そのファイルを名指しします |
+
+両方の形が混ざっていても、`--target` を渡せば従来どおり動きます。ターゲットを宣言しないファイルは、
+これまでどおりそれを使います。自分で宣言するファイルは、代わりに所属を検査されます。
+
 | オプション | 既定 | 説明 |
 |---|---|---|
-| `--target` | （必須） | 対象アプリ（config の `targets.<name>`） |
+| `--target` | （必須。ただし `--scenario` のファイルがすべて自分の `targets` を宣言していれば省略可） | 対象アプリ（config の `targets.<name>`）。[`--target` を省略できる場合](#--target-を省略できる場合)を参照 |
 | `--scenario` | config の `scenarios` ディレクトリ | アプリのシナリオディレクトリ全体ではなく指定した `*.yaml` を実行。フラグを繰り返すと、複数ファイルを1つの warm な runner を共有しながら1プロセスで実行 |
 | `--backend` | config | actuator 順（カンマ区切り。先頭から最初に使えるもの） |
 | `--tag` | "" | カンマ区切り。これらの tag のいずれかを持つシナリオのみ実行 |
@@ -43,7 +60,7 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 | `--log-predicate` | "" | `deviceLog` ストリームを絞る NSPredicate（例 subsystem） |
 | `--log-subsystem` | "" | `appTrace` 用の os_log subsystem（既定はアプリの `bundleId`） |
 | `--network / --no-network` | config › ON | `request` アサーション用にアプリの通信を収集。省略時はターゲットの `network` config、次に ON の順で解決（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)）。iOS はアプリに BajutsuKit が必要。web は Playwright でネイティブに観測し、シナリオの `mocks` をその場でスタブします |
-| `--workers` | 1 | デバイスプール上で並列実行します。iOS では `--udid u1,u2,…` が必要で、そのプール数で上限になります。web では `--workers N` だけで N 本の並列ブラウザコンテキストレーンになります（`--udid` 不要、[BE-0054](../../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md)）。各レーンが自前のネットワークコレクタ、インターバル録画、（iOS では）デバイス制御を持つので、network / 動画 / `setLocation` / `push` はシングルデバイス実行と同じく機能します |
+| `--workers` | 1 | デバイスプール上で並列実行します。複数のターゲットを宣言するシナリオは、ターゲットごとに1台のデバイスをそのシナリオの全長にわたって保持します。そのため `run` は、ワーカーが互いのデバイスを奪い合わない範囲までこの値を抑えます。iOS では `--udid u1,u2,…` が必要で、そのプール数で上限になります。web では `--workers N` だけで N 本の並列ブラウザコンテキストレーンになります（`--udid` 不要、[BE-0054](../../roadmaps/BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md)）。各レーンが自前のネットワークコレクタ、インターバル録画、（iOS では）デバイス制御を持つので、network / 動画 / `setLocation` / `push` はシングルデバイス実行と同じく機能します |
 | `--baselines` | config の `baselines`、次にシナリオ隣の `baselines/` | `visual` アサーション用のベースライン画像ディレクトリ。`baseline: home.png` はこの中で解決されます |
 | `--schemas` | config の `schemas`、次にシナリオ隣の `schemas/` | `responseSchema` アサーション用の JSON Schema ファイルのディレクトリ。`schema: items.json` はこの中で解決されます（`schema` extra が必要です） |
 | `--goldens` | config の `goldens`、次にシナリオ隣の `goldens/` | `golden` アサーション用の golden JSON ファイルのディレクトリ。`golden: response.json` はこの中で解決されます |
@@ -70,6 +87,7 @@ bajutsu run --target <name> [--scenario <file.yaml>] [options]
 ```bash
 bajutsu run --target showcase-swiftui --udid <UDID> --backend ios --no-erase            # アプリのシナリオディレクトリ全体
 bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --no-erase   # 単一ファイル
+bajutsu run --scenario cross-platform.yaml --config both-targets.yaml                   # ファイルが自分でターゲットを名指しする
 ```
 
 ## `doctor`
@@ -499,7 +517,7 @@ bajutsu repl --target <name> [options]
 | `--target` | （必須） | 対象アプリ |
 | `--udid` | `booted` | 対象 Simulator（live 経路では WebDriver エンドポイント） |
 | `--backend` | config | actuator 順 |
-| `--erase / --no-erase` | `--erase` | 起動前に erase（アプリはインストール済みである必要） |
+| `--erase / --no-erase` | live 経路以外は erase | 起動前に erase（アプリはインストール済みである必要）。live の `--udid https://…` 経路は erase を受け付けないため、その経路の既定は off になり、そこで明示的に `--erase` を指定すると CLI エラーで終了します |
 | `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザを調べます。省略時はアプリの `headless` 設定に従います |
 | `--browser` | アプリの `browser`（既定 chromium） | web backend: 調べる対象の Playwright レンダリングエンジン。`chromium` / `firefox` / `webkit` から選びます。省略時はターゲットの `browser` config に従います |
 | `--config` | `bajutsu.config.yaml` | config |
@@ -511,29 +529,52 @@ bajutsu repl --target <name> [options]
 | `tree` | いまの要素ツリーを `id` / `label` / `traits` / `value` / `frame` の表として表示します |
 | `tree --json` | 同じツリーをそのまま JSON で表示します。パイプ、差分、frame の正確な読み取りに使えます |
 | `find <substring>` | 同じツリーを、`id` または `label` が `<substring>` を含む行だけに絞ります（セレクタの照合と同じく、大文字と小文字を区別します） |
-| `tap <id>` | その id を持つ要素をタップします |
-| `type <id> <text>` | その要素にフォーカスを当ててから `<text>` を入力します（id は最初の空白までです） |
+| `tap <target>` | `<target>` が指す要素をタップします。生の座標を指定することもできます（下の「ターゲットの指定」を参照） |
+| `type <target> <text>` | `<target>` にフォーカスを当ててから `<text>` を入力します |
+| `scroll @<x1>,<y1> @<x2>,<y2>` | 生の座標同士のあいだで、1回だけドラッグ／スクロールのジェスチャを実行します（`Driver.scroll`） |
 | `back` | 1 階層戻ります。backend ごとにプラットフォームとして正しい方法を使います |
 | `screenshot [path]` | スクリーンショットを書き出します。パスを省略するとカレントディレクトリに `repl-<UTC タイムスタンプ>.png` の名前で自動命名します |
+| `step <yaml>` | シナリオのステップを1つそのまま実行します。シナリオのステップが受け付ける一発アクションなら何でも（`swipe`、`pinch`、`rotate`、`setPickerValue`、`selectOption` など）、専用コマンドのないものを実行できます（下の「ステップの指定」を参照） |
 | `help` | 上のコマンド一覧を表示します |
-| `exit` / `quit` | シェルを抜けます（Ctrl-D も同じです。Ctrl-C は打ちかけの行を捨てます） |
+| `exit` / `quit` | シェルを抜けます |
+| `clear` | スクロール領域の記録を消去します。ncurses 版のシェル限定の機能で、記録を保持しないプレーンなフォールバックでは `clear` は未知のコマンドとして扱われます |
+
+**ターゲットの指定**（`tap` / `type` が受け取る値）は、シナリオのセレクタと同じ `id` / `label` / `index` の
+語彙に届きます。加えて、`tap` だけはセレクタを一切経由しない生の座標も受け付けます。さらに `--sel` を使えば、
+下の短縮形では表せない残り全部のセレクタ語彙にも届きます。
+
+| 形式 | 一致する対象 |
+|---|---|
+| `<id>` | その id を持つ要素本体。`tap` では空白を含む残り全体をそのまま id として扱います。`type` で空白を含む id を使うには、後述の引用符表記が必要です |
+| `<id>#<index>` | 同じ id を持つ複数要素のうち `<index>` 番目（0 始まり。負の値は末尾から数えます） |
+| `label:<text>` | `id` を持たない要素を、その `label` の完全一致で指定する形式 |
+| `label:<text>#<index>` | 同じ label を持つ複数要素のうち `<index>` 番目 |
+| `@<x>,<y>` | `tap` 専用。要素ツリーを経由しない生のピクセル座標（`Driver.tap_point`） |
+| `"<空白を含むターゲット>"` | `type` 専用。複数語からなる `label:` ターゲットを、後続のテキストと区別するための引用符表記 |
+| `--sel <yaml>` | 完全な[セレクタ](glossary.md#シナリオのオーサリング)。例: `--sel {idMatches: row.*, index: 1}`、`--sel {label: Sign in, within: {id: form.login}}`。`run` が受け付けるのと同じ `id` / `idMatches` / `label` / `labelMatches` / `traits` / `value` / `within` / `index` の各フィールドを、シナリオと同じ `Selector` モデルでそのまま解釈します。flow スタイルの `{ ... }` を1つだけ書く形式に限ります（block スタイルの YAML は改行を必要とし、1行のコマンドには収まりません）。閉じる `}` が、`"<空白を含むターゲット>"` における引用符と同じ役割を果たし、`type` のターゲットとテキストの境界になります |
+
+上の短縮形は、id や label 自体が `#<digits>` で終わっていたり、`@` や `label:` で始まっていたりする場合には
+届きません。また `idMatches`・`labelMatches`・`traits`・`value`・`within` のどれにも届きません。これらすべて
+の逃げ道が `--sel` です。短縮形が存在する理由は、よくある単純な場合には `tap <id>` のほうが
+`--sel {id: ...}` より短く打てるからです。
 
 - **表の列は[セレクタ](glossary.md#シナリオのオーサリング)が照合する対象のフィールドそのもの**で、backend が
   正規化した形です。プラットフォーム付属のインスペクタが持つ独自の語彙ではありません。`tree` の行から読んだ
   id は、`run` が解決する id と同じものです。
-- **推測はしません。** `tap` の id がどの要素にも一致しなければ `ElementNotFound` で、複数の要素に一致すれば
-  `AmbiguousSelector` で失敗します。いずれも即座に、`run` が送出するのと同じメッセージで失敗します。シェルは
-  その失敗を表示して次の行を読みます。
+- **推測はしません。** `tap` のターゲットがどの要素にも一致しなければ `ElementNotFound` で、複数の要素に一致
+  すれば `AmbiguousSelector` で失敗します。いずれも即座に、`run` が送出するのと同じメッセージで失敗します
+  （`#<index>` を添えて一意にするか、ツリーを読み直してください）。シェルはその失敗を表示して次の行を読みます。
+  生の `@<x>,<y>` 座標タップはセレクタを一切解決しないため、この失敗は起こりません。
 - **`tap` は覆っている要素をスクロールでどかしません。** 別の要素が対象を遮っているとき、`run` はまず範囲を
   限ったスクロールで再試行します。`repl` は driver 自身の `ElementNotTappable` をそのまま出し、その例外が
   遮っている要素を名指しします。セレクタを調べている最中には、こちらのほうが役に立つ答えだからです。その
   結果、覆われた対象については `run` と `repl` の判定が食い違うこともあります。スクロールによる回復が必要なら、
   シナリオに明示的な `scroll` ステップを書いてください。
-- **要素の指定はこの最初の版では `id` だけ**で、`run` が受け付ける完全なセレクタ構文より狭くなっています。
-  `tree` がすでに各要素の `label` と `traits` を見せているので、行を読んでその id を打つ、という流れになります。
-  `id` を持たない要素には、シェルからはまだ届きません。
-- **ジェスチャ**（`swipe`、`scroll`、`pinch`、`rotate`）とプラットフォーム固有のアクション
-  （`setPickerValue`、`selectOption`）は、この版には入っていません。
+- **`scroll` は生のジェスチャで、「見えるまでスクロール」ではありません。** シナリオ自身の `scroll`
+  ステップは必ずターゲットを指定し、それが画面に見えた時点で止まります。この短縮コマンドにはターゲットや
+  停止条件、失敗させるセレクタもありません。`Driver.scroll` そのものの一発ジェスチャです。ターゲットを
+  探すスクロールには `step` を使ってください。他のジェスチャ（`swipe`、`pinch`、`rotate`）やプラットフォーム
+  固有のアクション（`setPickerValue`、`selectOption`）も同様です。
 - **シェルを抜けてもアプリは動いたままです。** Simulator や実機の上のアプリは抜けた時点の状態で残るので、
   そのまま手で調べ続けられます。閉じるのは、このコマンド自身が持っている 2 つのセッションだけです。1 つは
   web backend のブラウザ、もう 1 つは `--udid https://…` の live 経路の WebDriver セッションです。この
@@ -541,6 +582,42 @@ bajutsu repl --target <name> [options]
 - `launchServer` を宣言しているターゲットでは、シェルを開く前にサーバを起動し、抜けるときに停止します。これが
   ないと、web ターゲットは待ち受けていないホストに対してブラウザを開き、`tree` のたびにエラーページを読むことに
   なります。
+
+**ステップの指定**（`step <yaml>`）は、flow スタイルの `{ ... }` を1つだけ書く形式で、シナリオファイル自身の
+ステップが検証されるのと同じ `Step` モデルです。`step {swipe: {on: {id: card}, direction: up}}`、
+`step {pinch: {sel: {id: map}, scale: 0.5}}` のように書きます。`run` の一発アクション用ディスパッチャを
+そのまま通るので、対応する動作は `tap`、`type`、`scroll`、`swipe`、`pinch`、`rotate` など、シナリオの
+一発アクション全般です。ターゲットの解決に失敗する場合も、`tap` のターゲットと同じ形で失敗します
+（`ElementNotFound` / `AmbiguousSelector`）。`wait`、`assert`、制御フロー（`if` / `forEach` / `web` /
+`app`）には実行できる一発ハンドラが存在しません。`step` はそれを試すのではなく、そのギャップを名指しで
+報告します。こうしたステップの実行には、シナリオ全体を走らせるループが必要です。
+
+**シェルそのもの**は、標準入力と標準出力の両方が実際の端末であるとき、ncurses 風の画面になります。コマンド
+行はつねに画面の一番上に固定され、各コマンドへの応答は下のスクロール可能な領域に積み重なります。各応答の
+末尾には `-- EOL --` の行が付くので、長い記録のなかでもどこまでが1つのコマンドの出力かが見分けられます。
+入力行のすぐ下の行には常にバナーが表示され、現在のモードを示します。入力行とスクロール領域では `Tab` による
+切り替えも併記されるので、この表を確認しなくてもモードの切り替え方が画面上でわかります。マウスホイールは、
+端末がそれを報告する場合、どのモードでもこの領域をスクロールします。下の表のキー操作をキーボードなしで
+代替する手段です。この領域はどのモードでも描画され続けます。そのため、スクロール領域を上にスクロールしている
+あいだや、下端まで `Tab` で戻らずに次のコマンドを入力しているあいだに、コマンドの応答が表示範囲の外に出ることが
+あります。そうなった瞬間にバナーへ `[new output ↓]` が付き（そのときのモードの文言はそのまま）、表示が下端に
+戻ると消えます。
+
+| キー | 入力行での動作 | スクロール領域での動作 |
+|---|---|---|
+| `Tab` | スクロール領域に切り替えます | 入力行に戻ります |
+| `↑` / `↓` | 直前や直後に入力したコマンドをヒストリから呼び出します | 出力を 1 行ずつ上下にスクロールします |
+| `k` / `j` | 文字としてそのまま入力されます | 出力を 1 行ずつ上下にスクロールします（vim 風、`↑`/`↓` と同じ動作） |
+| `PgUp` / `PgDn` | 動作しません | 出力を画面 1 枚分ずつ上下にスクロールします |
+| `←` / `→` / `t` / `b` | カーソルを左右に移動します（`t` / `b` は文字としてそのまま入力されます） | 最上位・最下位まで一気にジャンプします |
+| `/` | 動作しません | フィルタの入力欄を開きます。`Enter` で確定すると、大文字小文字を区別しない部分一致でこれまでの出力全体を絞り込みます。空のパターンで確定すると解除され、`Esc` は編集そのものを取り消します |
+| `Ctrl-C` | 打ちかけの行を捨てます | 動作しません |
+
+標準入力または標準出力がパイプされている場合（スクリプトやテストハーネス、`bajutsu repl < commands.txt` など）
+は、1 行ずつ読むプレーンなシェルにフォールバックします。`clear` を除くうえのコマンドはどちらの形でも同じように
+動作し、`exit` / `quit` はどちらの形でもシェルを抜けます。Ctrl-D はプレーンなフォールバックでのみ同じ働きを
+します。curses
+には読み取れる Ctrl-D / EOF の合図がありません。
 
 ## `codegen`
 
@@ -739,6 +816,13 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   これは `serve` を loopback を越えてホスティングするための前提です
   （[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) / [BE-0016](../../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）。
   現状は `127.0.0.1` バインドかつ認証なしなので、信頼できないネットワークにはまだ晒さないでください。
+
+- **`/api/run` での job 単位のアーティファクト差し替え（BE-0431）。** ホスト型デプロイの `POST /api/run` は、
+  `binaryArtifact` と `scenariosArtifact` も受け付けます。どちらも、org に保存済みのアーティファクトの sha256 です。
+  その job だけが、指定したバイナリを target の `appPath` に置き、指定した scenarios の zip で実行します。
+  org のアクティブな config は、バインドされたまま変わりません。run の `manifest.json` は、差し替えた sha256 を
+  `provenance` の下に記録します。単一プロセスの `serve` は、どちらのフィールドも拒否します。
+  詳しくは [self-hosting](self-hosting.md#ci-の-run-に-job-単位でアーティファクトを差し替えるbe-0431) を参照してください。
 
 ### 同時実行数、証跡、ホスティング
 

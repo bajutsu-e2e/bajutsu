@@ -8,7 +8,7 @@ the authoring counterpart to the advisory reviewer (BE-0203): an AI author that 
 Reconcile each roadmap item's **state metadata** with what has actually merged on `main`, so an item
 never silently lags the code:
 
-- **`Status`** — flip `Proposal` → `In progress` once a PR has started building the item, and
+- **`Status`** — flip `Approved` → `In progress` once a PR has started building the item, and
   `In progress` → `Implemented` once its implementing code has merged. (`Deferred` and `Rejected`
   are deliberate human decisions — never reopen either one here.)
 - **`Progress`** — tick the `- [ ]` boxes whose work has landed, and add a short chronological,

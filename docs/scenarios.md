@@ -65,6 +65,7 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `description` | str | none | Optional human description; shown on the scenario's report card and in the serve UI |
 | `from` | str | none | **Provenance** — the natural-language goal `record` authored this scenario from ([provenance](#from-provenance)). Authoring metadata only; `run` ignores it |
 | `tags` | list[str] | `[]` | Selection labels; the CLI `--tag` / `--exclude` flags pick which scenarios run ([reuse, data, and tags](#reuse-data-and-tags)) |
+| `targets` | list[str] | `[]` | Every [target](glossary.md#target-app-device) this scenario drives ([below](#targets--target-multi-target-scenarios-be-0428)). Each entry names a `targets.<name>` config unit, resolved from the config the run loads |
 | `data` / `dataFile` | list / str | none | Data-driven rows — inline `data`, or `dataFile` (a CSV path). Expands into one run per row, substituting `${row.col}`. Mutually exclusive ([reuse, data, and tags](#reuse-data-and-tags)) |
 | `preconditions` | object | `{}` | Per-test environment setup (below) |
 | `before` | list | `[]` | Setup steps run as their **own phase** ahead of `steps`; a failure there aborts the scenario ([below](#before--after-setup-and-teardown-phases)) |
@@ -224,14 +225,17 @@ Nothing about a banner is yours to declare. The banner path runs regardless of w
 No rule matched, so the step failed. Its reason named the notification's body text among the
 buttons the run had expected.
 
-That monitor only ever answers a banner that is *interrupting* something — a plain query never
-invokes it, so a banner sitting on screen with nothing tapping through it stays up. Left alone, it
+That monitor answers merely a banner that is *interrupting* something. A plain query never invokes
+it. A banner sitting on screen with nothing tapping through it therefore stays up. Left alone, it
 corrupts `after.png` and every visual-regression comparison built from it. A second, proactive
-sweep closes that gap: the runner looks for a banner and swipes it away before the shot starts —
-once per step, right before that screenshot, and once more before the `expect`-phase capture a
-`visual` assertion reads. The underlying query is rate-limited to `systemAlertHandling`'s own poll
-interval, so a passing scenario pays it once per interval, not once per step — and like the
-interruption path above, it runs with no scenario or CLI toggle of its own, on the iOS XCUITest
+sweep closes that gap: the runner looks for a banner and swipes it away before the shot starts. It
+does this at three sites — once per step, right before that step's own screenshot; once more before
+the `expect`-phase capture a `visual` assertion there reads; and once more before a step's own
+`assert` captures its own `visual` entry (below). The per-step sweep rate-limits its query to
+`systemAlertHandling`'s own poll interval, so a passing scenario pays it once per interval, not once
+per step. The `expect`-phase and step-level `visual` captures each pay their own query
+unconditionally instead, since either runs far less often than every step. Like the interruption
+path above, all three sites run with no scenario or CLI toggle of their own, on the iOS XCUITest
 backend alone.
 
 ### Answering more than one prompt differently: `rules`
@@ -553,6 +557,36 @@ the entry fires only a small bounded number of times per step and then the step 
 ordinary outcome (pass, fail, or timeout) — a mis-set entry fails the step cleanly rather than
 hanging the run.
 
+A scenario may declare two or more [targets](#targets--target-multi-target-scenarios-be-0428).
+Each `interrupts` entry then watches one of them, named by the entry's own `target` field. An entry
+without `target` watches the primary target, the first name in `targets`. A step's `target` becomes
+required at two declared targets. An entry's `target` never does. Most entries concern the primary
+target. Requiring the field would repeat one name on each of them. A recovery step in the entry's
+`steps` may omit `target` too. That step then runs on the target the entry watches, not on the
+primary.
+
+```yaml
+- name: a web consent banner during a cross-platform flow
+  targets: [showcase-app, showcase-web]
+  interrupts:
+    - condition: { exists: { id: onboarding.skip } }   # no target: watches showcase-app
+      steps:
+        - tap: { id: onboarding.skip }
+    - target: showcase-web
+      condition: { exists: { id: cookie.accept } }
+      steps:
+        - tap: { id: cookie.accept }                   # runs on showcase-web
+  steps:
+    - target: showcase-app
+      tap: { id: post.like }
+    - target: showcase-web
+      wait: { for: { id: post.likeCount }, timeout: 10 }
+```
+
+A config-level entry never names a target. The `targets.<name>` block that declares the entry
+already fixes its target. A `target` there would repeat that name or contradict it, and neither
+adds anything. The config load refuses `target` on such an entry and on any step in its `steps`.
+
 The check is the deterministic assertion DSL, never a model call, so `interrupts` adds no AI to the
 `run` verdict — and neither does `systemAlertHandling` since BE-0402. The difference between them is
 what they reach: the alert guard answers out-of-process system prompts the accessibility tree
@@ -744,14 +778,16 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `setClipboard` | `setClipboard: { text: "..." }` | seed the Simulator pasteboard for a paste flow |
 | `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | override the status bar for deterministic screenshots |
 | `clearStatusBar` | `clearStatusBar: {}` | remove status-bar overrides (restore the live bar) |
-| `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)) |
+| `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)); **takes no modifiers** — `capture` / `extract` / `name` / `from` / `target` are all rejected |
+| `group` | `group: { name: <str>, steps: [...] }` | name a run of consecutive steps — a compile-time macro, folded together in `report.html` ([below](#grouping-steps-group--folded-in-reporthtml)) |
 | `web` | `web: { within: <Selector>, steps: [...] }` | enter a WebView's DOM: `within` resolves the host `WKWebView` natively, and the nested `steps` address its normalized DOM instead of the native tree ([below](#web-entering-a-webviews-dom)) |
 
-Modifiers:
+Modifiers (none of them on a `use` step, which takes none — see the table row above):
 
 - `capture: [<token>...]` — evidence for this step only ([evidence](evidence.md#b-inline-evidence)).
 - `name: <str>` — the step id (the evidence output directory name · report label). Defaults to `step<i>`.
 - `from: <str>` — **provenance** ([below](#from-provenance)): the phrase this step was recorded from. Authoring metadata; `run` ignores it.
+- `target: <str>` — which of the scenario's own [`targets`](#targets--target-multi-target-scenarios-be-0428) this step runs against.
 
 ### `tap`
 
@@ -868,6 +904,29 @@ supports `tap` / `tapPoint` / `doubleTap` / `type` / `wait` / `assert` inside th
 `swipe` / `drag` / `clear` / `delete` / `select` / `copy` / `selectOption` / `scroll` / `back` /
 `pinch` / `rotate` / `handleSystemAlert` / `setPickerValue` are not reachable there, and each fails
 with a clear "not supported in web context" reason.
+
+### `app` (driving another app's UI, iOS only)
+
+```yaml
+- app:
+    bundleId: com.apple.mobilesafari
+    steps:
+      - assert:
+          - exists: { id: TabBarItemTitle }
+```
+
+`app` activates the named app by bundle id — installed but not yet running, and never launched by
+the test target — and runs the nested `steps` against that app's own accessibility tree, not the
+test target's. The feasibility findings behind this behavior are recorded in
+`docs/specs/ios-cross-app-ui-control-feasibility.md`.
+Control returns to whatever was active before the block once its steps finish, the same
+enter/leave contract `web` uses — nesting an `app` block inside another returns to the immediate
+parent, not unconditionally to the test target. `bundleId` is a plain string, not a value drawn
+from a fixed set: any installed app can be named, including one the test target has no way to open
+itself. iOS (XCUITest) only; a scenario using it against another backend fails preflight before any
+device work. `bundleId` must name an app already installed on the device — one that is slow to
+foreground (a cold launch, a permission prompt) fails the step with `ElementNotFound`, but one that
+is not installed at all is not guaranteed to fail this cleanly.
 
 ### `swipe`
 
@@ -999,12 +1058,30 @@ current screen (it does not fail).
 
 ### `assert` (mid-step verification)
 
-Verification mid-step. The DSL is the same as `expect` (next section).
+Verification mid-step. The DSL is the same as `expect` (next section), `visual` included. A
+step's own `assert` can carry a `visual` entry. That entry takes its own fresh, single-shot
+screenshot right there. The capture is scoped to that step's own evidence directory, so it never
+collides with the scenario's own `expect`-phase capture, nor with another step's. `responseSchema`
+is the one kind a step's `assert` cannot evaluate — it always fails there with "no schema context",
+so keep it in `expect`.
 
 ```yaml
 - assert:
     - disabled: { id: auth.submit }
 ```
+
+```yaml
+- tap: { id: modal.open }
+- assert:
+    - visual: { baseline: modal.png }   # verify the modal right after it opens
+- tap: { id: modal.dismiss }
+```
+
+A step-level check's first baseline is not yet reachable from `bajutsu approve` or the serve UI's
+Approve button. Both read merely the scenario's `expect` results today. Until that catches up,
+promote one by hand instead. The failing step's own `assertion_results` records a `visual.actual`
+path in the run's `manifest.json` (the report's raw JSON view shows it too). Copy the file at that
+path into the baselines directory, under the name the `baseline:` field gives.
 
 ### `setLocation` / `push` (device control)
 
@@ -1144,6 +1221,214 @@ before a screenshot or a `visual` assertion, to freeze the clock and signal bars
 `background` / `foreground` are the two halves of a background/foreground transition; `foreground`
 resumes the app without any settle sleep, so wait for a concrete element afterward if you need one.
 `setClipboard` seeds the pasteboard for a paste flow ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
+
+## `targets` / `target` (multi-target scenarios, BE-0428)
+
+A scenario's top-level `targets` field names every [target](glossary.md#target-app-device) it
+drives. An iOS target and a web target that are two clients of the same service are one example.
+One scenario can act on one target, then check the result on another. These interleave freely, in
+a single deterministic run with one verdict. Each entry names a `targets.<name>` config unit.
+`--target` already resolves that same unit. Naming the same target twice is a load error. A
+scenario that declares no `targets` (the default) keeps today's behavior unchanged. Every step in
+it must still omit `target`.
+
+`bajutsu run` launches every declared target before the scenario's first step. It tears them all
+down after the last one. No step waits for its target to launch. The interleaving above costs no
+extra startup. Each declared name resolves against the one config file the invocation loads. Both
+targets must appear side by side as `targets.<name>` entries there. Merging two config files has no
+support ([configuration](configuration.md#config-layering-defaults--targets)).
+
+Under two or more `targets` and no `primaryTarget` (below), every step must set its own `target`.
+That includes an `if` / `forEach` / `web` wrapper, not merely a leaf action. Every top-level
+`expect` entry must set one too, each naming one of the declared targets:
+
+```yaml
+- name: liking a post on the app shows up on the web
+  targets: [showcase-app, showcase-web]
+  steps:
+    - target: showcase-app
+      tap: { id: post.like }
+      extract:
+        postId: { sel: { id: post.id } }
+    - target: showcase-web
+      wait: { for: { id: "post.${vars.postId}.likeCount" }, timeout: 10 }
+  expect:
+    - target: showcase-web
+      value: { sel: { id: "post.${vars.postId}.likeCount" }, equals: "1" }
+```
+
+A scenario built around one target can declare that target as its `primaryTarget` (BE-0436).
+A step or top-level `expect` entry may then omit `target`, and it runs against the primary. A step
+names a target when it acts on another one. A reader spots those steps at a glance:
+
+```yaml
+- name: liking a post on the app shows up on the web
+  targets: [showcase-app, showcase-web]
+  primaryTarget: showcase-app
+  steps:
+    - tap: { id: post.like }              # target omitted: runs on showcase-app
+      extract:
+        postId: { sel: { id: post.id } }
+    - target: showcase-web
+      wait: { for: { id: "post.${vars.postId}.likeCount" }, timeout: 10 }
+  expect:
+    - target: showcase-web
+      value: { sel: { id: "post.${vars.postId}.likeCount" }, equals: "1" }
+```
+
+`primaryTarget` must name the first entry of `targets`. The runner already treats that entry as
+the primary for leasing, recovery, and evidence. Pinning the field to it keeps the file and the
+runner agreeing on one primary. Reordering `targets` without updating `primaryTarget` fails at load
+time. Setting `primaryTarget` on a scenario that declares no `targets` fails at load time too.
+With one declared target, `primaryTarget` may name that target and changes nothing.
+
+The default applies at every nesting depth. A nested step inside an `if` or `forEach` may omit
+`target`. It then runs against the primary, whatever target its wrapper names. A step may still name the primary
+explicitly; both spellings behave the same way. The loader never writes the resolved name back into
+the step. The serve editor and a run's `scenario.yaml` snapshot keep the step as terse as its author
+wrote it.
+
+A self-declaring scenario resolves its own targets. `bajutsu run --scenario <file>` then needs no
+`--target` at all. An explicit `--target` passed beside one must name a target that scenario
+declares. A stale flag left over from editing the file stops the run. It never picks a target the
+file dropped. [The command-line reference](cli.md#when---target-is-optional) has the full rule,
+including which invocations still require `--target`.
+
+With one declared target, a step may omit `target`. A step may also name that target directly, and
+both spellings behave the same way.
+
+`${vars.*}` carries across every declared target in one run. These are the same
+[runtime variables](#runtime-variables-vars) `extract` populates. A value one target's step captures
+is readable from an assertion against another target. A cross-platform check can thus name the
+record each side touched, not merely a changed count.
+
+A step nested inside a `web` or `app` block is the one exception. It must **omit** `target`
+outright. It always runs against the device the enclosing block already resolved. That is `web`'s
+own WebView bridge, or `app`'s unchanged native driver.
+
+### Target groups: naming one target once for a run of steps (BE-0437)
+
+The `target` rule above repeats the same value across a whole run of steps that act on one target.
+A **target group** removes that repetition. It sets `target` once. It lists every nested action
+under its own `steps`, instead of stamping `target` on each one by hand:
+
+```yaml
+- name: favorite a horse on the iOS showcase, then carry what it captured into the web demo
+  targets: [showcase-swiftui, web]
+  steps:
+    - target: showcase-swiftui
+      steps:
+        - wait: { for: { id: [stable.row.1, stable_row_1] }, timeout: 10 }
+        - tap: { id: [stable.row.1, stable_row_1] }
+        - wait: { for: { id: [horse.favorite, horse_favorite] }, timeout: 5 }
+        - tap: { id: [horse.favorite, horse_favorite] }
+          extract:
+            favorited: { sel: { id: [horse.favorite.value, horse_favorite_value] } }
+    - target: web
+      steps:
+        - tap: { id: onboarding.start }
+        - type: { text: "favorited-${vars.favorited}@example.com", into: { id: auth.email } }
+        - type: { text: "pw", into: { id: auth.password } }
+        - tap: { id: auth.submit }
+        - wait: { for: { id: home.title }, timeout: 5 }
+        - tap: { id: counter.increment }
+  expect:
+    - target: showcase-swiftui
+      value: { sel: { id: [horse.favorite.value, horse_favorite_value] }, equals: "on" }
+    - target: web
+      value: { sel: { id: counter.value }, equals: "1" }
+```
+
+Written the flat way, this same scenario needs ten `target:` lines to name the same two runs. Each
+group above names its target once. No `target:` line drifts out of sync with the one above it.
+
+A target group is pure authoring sugar. A load-time pass expands it before the rest of this
+section's rules run. It produces the same flat, per-step `target:` form a hand-written scenario
+already uses. `bajutsu run`, the report, and the CLI never see a target group. They see the
+expanded steps.
+
+A target group always requires its own `target`, whatever the scenario declares. This holds even
+for a scenario declaring zero or one target. It holds even for one declaring a `primaryTarget`
+(above). A leaf action's own `target` does not work that way — it may omit `target` and run against
+the primary. A group's purpose is fixing a target for its own nested steps, so it always needs one.
+It also refuses `capture`, `extract`, `name`, and `from`. Each of those four reads off the one step
+the runner executes. A target group never reaches the runner. Expansion replaces it with its own
+nested steps first. Expansion would otherwise drop any of those four with no warning.
+
+Every step nested directly inside a group's own `steps` must omit `target`. This covers a leaf
+action, an `if`, a `forEach`, and a `web`/`app` block alike. The group already fixed it. A child
+that sets one anyway hits a load-time error, not a silent override. A target group nested directly
+inside another one hits the same error. A nested group always sets its own `target`. An immediate
+child may never do that.
+
+The omission is shallow, not recursive. An `if` or `forEach` nested directly inside a group
+inherits the group's target for itself. A leaf action inherits it the same way. But the steps
+inside its own `then`, `else`, or body form a fresh scope. Each still needs its own explicit
+`target` or a target group of its own. That holds the same as outside any group. A `web` or `app`
+block nested directly inside a group inherits the group's target the same way. It opens its bridge
+against that target. The steps nested inside that block keep omitting `target` under the existing
+rule above. That rule has nothing to do with the group.
+
+A `web:` or `app:` block's own nested steps refuse a target group outright. Every step there
+already runs against one target. The block itself already resolved that target. A group there
+would merely repeat that target for no purpose. Or it would claim a different one with no driver
+open for it.
+
+### What a multi-target run does with the rest of a target's config
+
+Each declared target keeps its own config, not the primary target's. Resolution per target:
+
+| Reads that target's own config | Why |
+|---|---|
+| `before` / `after` lifecycle steps | Each target's own hooks fold in, in declared order, stamped with that target's name — so an app-side teardown and a web-side one each run against the right driver |
+| `mailbox` | An `email` or `totp` step polls the inbox its own target configured |
+| `locale`, `launchEnv`, `capture`, `interrupts` | Each is a property of the app under test, not of the run |
+| `baselines` / `schemas` / `goldens` | A `visual` or `golden` assertion compares against its own target's directory when that target configures one, else the run's |
+| Backend capabilities | Each target's steps are checked against its own backend before any device is leased, so a construct only one platform supports fails the right one |
+
+A nested `if` / `forEach` step from a target config's own `before` / `after` list omits `target`
+too. It resolves to that config's own target, never to the scenario's `primaryTarget`. The flat,
+every-nesting-depth default above applies to a scenario's own steps alone.
+
+Two run-wide values stay shared. The `redact` secret set unions every declared target's own
+secrets. That union scrubs every target's evidence, since scrubbing too widely is the safer error.
+The run directory is a run-level artifact, never per target.
+
+The web engine flags still apply to a run's single web target. Those flags are `--headed`,
+`--browser`, and `--browsers`. A scenario naming two web-platform targets refuses all three. Which
+of the two they mean has no answer. Extending the matrix across a multi-target run is separate
+work.
+
+### Limits
+
+One open question this item hasn't resolved fails closed instead of guessing. It applies once a
+scenario declares two or more targets. The loader refuses a `use:` step outright, including one in
+an [`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) entry's `steps`. A `use:`
+step takes no modifiers, so it cannot carry the `target` every step then needs.
+
+`Assertion.target` follows a narrower rule than `Step.target`. A top-level `expect` entry is the sole
+place it may appear. An assertion reached through a step's inline `assert:` list already has a
+target. So does one reached through an `if`'s `condition`. The enclosing step's own `target` fixed
+it in both cases. Setting `target` there would restate that value, or contradict it outright. The
+loader refuses an `interrupts` entry's `condition` the same way. The entry's own `target` fixes the
+tree that `condition` polls. The loader refuses `target` in all three places at load time.
+
+Two targets on the same backend share one device pool. A scenario holds every declared target's
+device for its whole length. Two iOS targets in one scenario thus need two devices: pass them with
+`--udid a,b`. `run` refuses the invocation up front when a pool has fewer devices than a scenario
+needs. Blocking on a queue that will never free one would be the alternative. `run` also caps
+`--workers`, keeping concurrent scenarios from starving each other the same way.
+
+### What the report shows
+
+Each step's row in the report names the target that ran it. A scenario declaring no targets leaves
+that label empty, as before. `manifest.json` carries the same name per step. It also carries one
+`target_devices` row per declared target. Each row holds that target's backend, device, model, and
+OS version.
+
+Four singular fields stay **empty** on a multi-target run. They are `backend`, `device`,
+`device_name`, and `device_runtime`. None of them describes the whole scenario any more. That matches the "empty means
+not applicable" rule `engine` uses. A single-target run's reader sees all four as before.
 
 ## Assertion DSL
 
@@ -1312,6 +1597,9 @@ A baseline is created or updated with the `approve` command
 ([cli](cli.md#approve)) or the `serve` UI; a missing baseline fails the assertion. Pair it with
 `overrideStatusBar` to keep the clock / battery deterministic. Diffs are surfaced in
 `report.html`; for `pixelmatch`, only the surviving (non-discounted) pixels appear in the diff.
+`approve` and the report's diff strip read merely the scenario's trailing `expect` results. A
+`visual` entry inside a step's own `assert` needs its first baseline promoted by hand instead (see
+[`assert`](#assert-mid-step-verification) above).
 
 **Element-scoped comparison (BE-0171).** By default `visual` compares the whole screen, so any
 unrelated change (a banner, a list that grew a row) fails the check and churns the baseline. Give
@@ -1366,6 +1654,8 @@ A small templating and macro layer wraps the core grammar. It runs **at load tim
 ### Components (`use` → reusable steps)
 
 A **component** is a list of `params` and a list of `steps` that reference them as `${params.<name>}`. A `use` step invokes it, binding params via `with`. `use` is a **compile-time macro**: `expand_components` (`scenario/expand.py`) replaces it with the component's substituted steps before the run. Expansion is recursive — a component may itself `use` another, up to depth 25. It raises an error on a missing or unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle. No `use` step survives into the run, so determinism is unaffected. Expansion reaches a scenario's own `steps` and the recovery `steps` of each [`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) entry.
+
+A `use` step takes no modifiers. The loader refuses a `use` step that also sets any of `capture` / `extract` / `name` / `from` / `target`. Expansion replaces the whole step, so it would otherwise drop those fields with no warning.
 
 A component lives in **a file of its own**, reusable across the whole suite:
 
@@ -1422,6 +1712,41 @@ A scenario file carries `components:` in its `{description, scenarios}` mapping 
 A bare name the map does not define is an error naming the ref. No fallback opens a file. The map is **scoped to one file**. The loader reads it per file and never merges it across a suite directory. A name declared in one file stays invisible from its siblings. Reuse that spans files stays the component file's job. Crossing into a component file drops the map entirely. A component file declares no `components:`, so a bare `use` inside one is always undefined. A file-scoped component's own steps expand in the declaring file's scope. One may `use` another by bare name, or `use` a file by path.
 
 A `setup` prelude is a scenario-file-shaped document, so it may carry its own `components:`. The loader expands a prelude's `use` steps in the prelude's own scope before prepending them. A same-named entry in the calling scenario file cannot capture them. A path ref inside a prelude resolves against the prelude's own directory too, not the calling scenario file's.
+
+### Grouping steps (`group:` → folded in report.html)
+
+A `group:` step names a run of consecutive steps. `expand_components` replaces it with its own
+`steps`, the same way it replaces a `use:` step. `run` never sees either — both are compile-time
+macros:
+
+```yaml
+steps:
+  - group:
+      name: ログイン
+      steps:
+        - tap: { id: auth.open }
+        - type: { text: "${vars.user}", into: { id: auth.user } }
+        - tap: { id: auth.submit }
+  - tap: { id: home.tab }
+```
+
+Unlike `use:`, `group:` takes no `params` and names no separate file. This is a purely local,
+one-off label for organizing one scenario's own `steps:`. It is not a mechanism for reuse across
+scenarios. A named `use:` / `components:` call is the right tool once the same run of steps is
+called from more than one place.
+
+`report.html` folds each group's steps into a collapsed section. A heading names the group and
+counts its steps. A group whose steps all pass stays collapsed. A group holding a failing step
+opens automatically. The existing "expand all" / "collapse all" controls open and close every
+group too. A network request/response row, or a step that never ran, can split one `group:`
+invocation into more than one fold in the report. Each fragment then gets its own heading, rather
+than one continuous fold.
+
+`group:` does not nest. A `group:` step inside another `group:`'s own `steps:` fails at load time.
+So does one inside an `if` / `forEach` / `web` / `app` step's nested `steps:`. A scenario declaring
+two or more [`targets`](#targets--target-multi-target-scenarios-be-0428) cannot use `group:`
+either. The reason matches `use:`'s own: expansion discards the step's own `target`, leaving a
+group's `target` to decide nothing.
 
 ### Data-driven scenarios (`data` / `dataFile`)
 
@@ -1556,9 +1881,9 @@ trigger key `on:` from becoming `True`, Bajutsu's YAML loader (`common/_yaml.py`
 ## `from` (provenance)
 
 `from:` records **which natural-language phrase a construct was recorded from** (BE-0044). It is an
-optional string attached at four levels — the scenario (the original goal), each step, each `expect`
-assertion, and each `capturePolicy` rule — so a reviewer can see *why* each part exists and judge
-whether `record` normalized the intent faithfully.
+optional string attached at four levels — the scenario (the original goal), each step but `use`
+(which takes no modifiers), each `expect` assertion, and each `capturePolicy` rule — so a reviewer
+can see *why* each part exists and judge whether `record` normalized the intent faithfully.
 
 ```yaml
 - name: open settings and reindex

@@ -191,6 +191,28 @@ def test_expand_file_setup_expansion_drops_step_lines(tmp_path: Path) -> None:
     assert "the scenario under test" in plan.text  # the comment survives
 
 
+def test_expand_file_target_group_drops_step_lines(tmp_path: Path) -> None:
+    # BE-0437: a target group expands one raw `steps:` item into several parsed steps, so the raw
+    # per-item line numbers no longer line up with the executed steps either — the same guard that
+    # catches a setup prelude's step-count change must catch this one too.
+    path = tmp_path / "s.yaml"
+    path.write_text(
+        "- name: demo\n"
+        "  targets: [x]\n"
+        "  steps:\n"
+        "    - target: x\n"
+        "      steps:\n"
+        "        - tap: { id: a }\n"
+        "        - tap: { id: b }\n",
+        encoding="utf-8",
+    )
+    scenarios, _description, plan_sources = _expand_file(path, _eff(), root=tmp_path)
+    assert len(scenarios[0].steps) == 2  # the group's two children, flattened
+    plan = plan_sources["demo"]
+    assert plan.step_lines == []
+    assert plan.text is not None
+
+
 def test_expand_file_data_driven_scenario_drops_verbatim_text(tmp_path: Path) -> None:
     # A `data:`-driven scenario expands into one Scenario per row with `${row.*}` substituted, but
     # `expand_data` never changes the step count — the guard above cannot catch this case. Every
@@ -278,9 +300,19 @@ def test_expand_file_missing_data_file_exits_2(tmp_path: Path) -> None:
 def test_resolve_secrets_binds_only_present_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TOKEN", "s3cr3t")
     monkeypatch.delenv("ABSENT", raising=False)
-    bindings, values = _resolve_secrets(_eff(secrets="[TOKEN, ABSENT]"))
+    bindings, values = _resolve_secrets([_eff(secrets="[TOKEN, ABSENT]")])
     assert bindings == {"secrets.TOKEN": "s3cr3t"}  # ABSENT is unbound, not an empty string
     assert values == ["s3cr3t"]
+
+
+def test_resolve_secrets_unions_across_declared_targets(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A step routed to a non-primary target may use a `${secrets.X}` declared only on that
+    # target's own config, not the primary's (BE-0428) — every declared target's names are read.
+    monkeypatch.setenv("APP_TOKEN", "app-secret")
+    monkeypatch.setenv("WEB_TOKEN", "web-secret")
+    bindings, values = _resolve_secrets([_eff(secrets="[APP_TOKEN]"), _eff(secrets="[WEB_TOKEN]")])
+    assert bindings == {"secrets.APP_TOKEN": "app-secret", "secrets.WEB_TOKEN": "web-secret"}
+    assert sorted(values) == ["app-secret", "web-secret"]
 
 
 # --- _load_scenarios: the --scenario file, or the target's configured dir

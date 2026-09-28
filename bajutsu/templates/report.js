@@ -21,6 +21,17 @@
       else { det.setAttribute('hidden',''); row.classList.remove('open'); }
     }
   });
+  // A `group:` fold's heading toggles every row sharing its `group_id` — the body row and any
+  // companion rows (alertrow/actrow/genrow) a member step also emitted.
+  ROOT.addEventListener('click', function(e){
+    var btn = e.target.closest('.grouptoggle'); if(!btn) return;
+    var gid = btn.getAttribute('data-group-id');
+    var open = btn.getAttribute('aria-expanded') !== 'true';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    ROOT.querySelectorAll('tr[data-group-id="'+gid+'"]:not(.grouphead)').forEach(function(row){
+      if(open){ row.removeAttribute('hidden'); } else { row.setAttribute('hidden',''); }
+    });
+  });
   // Visual-regression baseline approval. Only works when the report is served (so the
   // POST can reach the bajutsu serve endpoint); a report opened from disk hides the button.
   if (location.protocol === 'file:') {
@@ -113,6 +124,13 @@
   };
   window.toggleAll = function(open){
     ROOT.querySelectorAll('details.scn').forEach(function(d){ d.open = open; });
+    ROOT.querySelectorAll('.grouptoggle').forEach(function(btn){
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      var gid = btn.getAttribute('data-group-id');
+      ROOT.querySelectorAll('tr[data-group-id="'+gid+'"]:not(.grouphead)').forEach(function(row){
+        if(open){ row.removeAttribute('hidden'); } else { row.setAttribute('hidden',''); }
+      });
+    });
   };
   // Element viewer: clicking a step's screenshot (or its "tree" button) opens that step's
   // captured accessibility elements in an overlay — embedded inline, so it works offline
@@ -288,6 +306,220 @@
       else if(e.key === 'ArrowRight'){ e.preventDefault(); tvGo(1); imgzSync(); }
     });
   }
+  // Video expand overlay: enlarges a scenario's recording in a
+  // modal, with that scenario's step list cloned beside it, synced the same way the compact
+  // view already is. `videoHome` (declared with the per-player setup loop below) is how the
+  // moved <video> finds its way back to its own player on close.
+  var vz = ROOT.getElementById('vz');
+  var vzVideoSlot = vz && vz.querySelector('.vz-video');
+  var vzStepsEl = vz && vz.querySelector('.vz-steps');
+  var vzTabsEl = vz && vz.querySelector('.vz-tabs');
+  var vzActive = null;          // the <video> currently mounted inside the modal
+  var vzTimeupdate = null;      // the timeupdate listener bound to vzActive, removed on swap/close
+  var vzStepClick = null;       // the click listener bound to vzStepsEl, removed on rebuild/close
+  // Puts vzActive's video back in its own player and clears the modal's own listener/state.
+  // Idempotent (a no-op once vzActive is already null), so both vzMount and vzClose can call it.
+  function vzRestore(){
+    if(!vzActive) return;
+    if(vzTimeupdate){ vzActive.removeEventListener('timeupdate', vzTimeupdate); vzTimeupdate = null; }
+    var home = videoHome.get(vzActive);
+    if(home){
+      home.appendChild(vzActive);
+      // The player's own `.vctl` moved into the modal alongside its video (vzMount, below) so the
+      // enlarged view keeps play/pause and the scrubber — move it back too, in the same order.
+      var vctl = vzVideoSlot && vzVideoSlot.querySelector('.vctl');
+      if(vctl){
+        var x = vctl.querySelector('.vexpand'); if(x) x.hidden = false;
+        home.appendChild(vctl);
+      }
+      home.hidden = false;
+      // Hiding/showing a player changes `.players`' own height (BE-0428 stacks them), so the
+      // Result view's height bound (syncResultHeight, below) needs recomputing against it.
+      var scn = home.closest('.scn');
+      if(scn) syncResultHeight(scn);
+    }
+    vzActive = null;
+  }
+  // Clones this player's own step rows into `.vz-steps` and wires them to `vzActive`, mirroring
+  // the compact view's row-click-seeks and timeupdate-highlights behavior (below).
+  function vzBuildSteps(player){
+    if(!vzStepsEl) return;
+    if(vzStepClick){ vzStepsEl.removeEventListener('click', vzStepClick); vzStepClick = null; }
+    vzStepsEl.innerHTML = '';
+    var scn = player.closest('.scn');
+    var target = player.getAttribute('data-target') || '';
+    var mine = rowsFor(scn, target);
+    var cloneRows = [];
+    var anyCloned = false;
+    // A COMPANION_CLASSES row (alertrow/actrow/genrow) belongs to the srow it immediately
+    // follows — clone it alongside, in the same order, or the clone loses that context.
+    var COMPANION_CLASSES = ['alertrow', 'actrow', 'genrow'];
+    // `rich()` (report.html.j2) renders up to three `.steps-sec` blocks per scenario — `before`,
+    // the scenario's own steps, `after` — each its own `.deflbl` heading and its own `.sttbl`
+    // whose row numbers restart at 0. Flattening all three into one table would run those numbers
+    // together (two different steps both "0") and drop which phase is which; cloning one
+    // `.vz-sttbl` per section, carrying its own `.deflbl` text, keeps that structure.
+    var sections = scn ? Array.prototype.slice.call(scn.querySelectorAll('.steps-sec')) : [];
+    sections.forEach(function(section){
+      var srcTable = section.querySelector('table.sttbl');
+      if(!srcTable) return;
+      // A step that never ran (execution stopped at an earlier failure) renders as `tr.skip`, not
+      // `tr.srow` — `rowsFor` alone would silently drop it from the clone, unlike the compact
+      // table, which shows it inline. `rows.py` never threads a `target` through a skip row (it
+      // precedes whichever target would have run it), so it can't be scoped to one player's own
+      // tab; walking every `tr.srow` / `tr.skip` in this section's own document order — keeping
+      // this player's own `srow`s and every `skip` — reproduces what the compact view shows, just
+      // filtered to this player's own executed steps.
+      var candidates = Array.prototype.slice.call(
+        srcTable.querySelectorAll('tr.srow[data-target], tr.skip[data-target]')
+      );
+      var tbody = document.createElement('tbody');
+      candidates.forEach(function(r){
+        var isMine = r.classList.contains('skip') || mine.indexOf(r) !== -1;
+        if(!isMine) return;
+        var clone = r.cloneNode(true);
+        // Empty (not remove) the screenshot/element-tree cell: `.sttbl` lays its columns out by
+        // `:nth-child`, so removing the cell would shift every later column into the wrong slot.
+        // Emptying it drops the `.shot`/`.treebtn` markers that would otherwise reopen the
+        // Element Viewer (`.tv`) on top of this modal, and the existing `td:empty{display:none}`
+        // rule hides the now-blank cell.
+        var evCell = clone.querySelector('td.ev');
+        if(evCell) evCell.textContent = '';
+        // `.grouptoggle`'s click handler is delegated globally by `data-group-id` — leaving this
+        // attribute on a clone would let a click on the compact view's fold heading toggle the
+        // clone's rows too. Stripping it here (and below, on companion rows) rules that out.
+        clone.removeAttribute('data-group-id');
+        // The modal has no fold control of its own — `.grouphead` never clones (it carries
+        // neither `srow` nor `skip`), so a row left `hidden` here would be unreachable, not
+        // merely folded. Always show it, regardless of the compact view's own fold state.
+        clone.hidden = false;
+        tbody.appendChild(clone);
+        anyCloned = true;
+        if(r.classList.contains('srow')) cloneRows.push(clone);
+        var sib = r.nextElementSibling;
+        while(sib && COMPANION_CLASSES.some(function(c){ return sib.classList.contains(c); })){
+          var sibClone = sib.cloneNode(true);
+          sibClone.removeAttribute('data-group-id');
+          sibClone.hidden = false;
+          tbody.appendChild(sibClone);
+          sib = sib.nextElementSibling;
+        }
+      });
+      if(!tbody.children.length) return;
+      var deflbl = section.querySelector('.deflbl');
+      if(deflbl){
+        var label = document.createElement('span');
+        label.className = 'deflbl';
+        label.textContent = deflbl.textContent;
+        vzStepsEl.appendChild(label);
+      }
+      var table = document.createElement('table');
+      table.className = 'sttbl vz-sttbl';
+      // `.sttbl`'s own `display:block` / `display:grid` rules (report.css) strip the implicit
+      // table roles, which is why report.html.j2 sets them explicitly — the clone must too, or
+      // the cloned rows' own `role="row"` ends up with no owner.
+      table.setAttribute('role', 'table');
+      tbody.setAttribute('role', 'rowgroup');
+      table.appendChild(tbody);
+      vzStepsEl.appendChild(table);
+    });
+    // Bail only once nothing at all was cloned — not on `!mine.length` alone. A target whose every
+    // step was skipped (another target failed first) still has no `srow` of its own, but the
+    // scenario's shared `skip` rows still belong in its modal, the same way the compact table
+    // shows them regardless of which target was next in line.
+    if(!anyCloned) return;
+    vzStepClick = function(e){
+      if(!vzActive) return;
+      var jump = e.target.closest('.stepjump');
+      if(jump){
+        e.stopPropagation();
+        var jt = parseFloat(jump.getAttribute('data-t'));
+        if(!isNaN(jt)) vzActive.currentTime = jt;
+        return;
+      }
+      if(e.target.closest('a')) return;
+      var row = e.target.closest('tr.srow');
+      if(!row) return;
+      var t = parseFloat(row.getAttribute('data-t'));
+      if(!isNaN(t)) vzActive.currentTime = t;
+    };
+    vzStepsEl.addEventListener('click', vzStepClick);
+    var lastCur = null;
+    vzTimeupdate = function(){
+      var cur = pickPlayingRow(cloneRows, vzActive.currentTime);
+      cloneRows.forEach(function(r){ r.classList.toggle('playing', r === cur); });
+      if(cur !== lastCur){ lastCur = cur; if(cur) scrollIntoBox(vzStepsEl, cur); }
+    };
+    vzActive.addEventListener('timeupdate', vzTimeupdate);
+  }
+  // Moves `player`'s own <video> — and its `.vctl` control bar, so play/pause and the scrubber
+  // come along — into the modal, restoring whichever one was there before. Exactly one recording
+  // ever sits inside `.vz-video` at a time.
+  function vzMount(player){
+    vzRestore();
+    var v = player.querySelector('video'), vctl = player.querySelector('.vctl');
+    if(!v || !vzVideoSlot) return;
+    vzVideoSlot.appendChild(v);
+    if(vctl){
+      // The moved bar's own `.vexpand` would find no `.player` ancestor to open (it now sits in
+      // the modal it already opened) — hide it rather than leave a button that does nothing.
+      var x = vctl.querySelector('.vexpand'); if(x) x.hidden = true;
+      vzVideoSlot.appendChild(vctl);
+    }
+    player.hidden = true;
+    vzActive = v;
+    vzBuildSteps(player);
+  }
+  function vzClose(){
+    vzRestore();
+    if(vzStepClick && vzStepsEl){ vzStepsEl.removeEventListener('click', vzStepClick); vzStepClick = null; }
+    if(vzStepsEl) vzStepsEl.innerHTML = '';
+    if(vzTabsEl){ vzTabsEl.innerHTML = ''; vzTabsEl.hidden = true; }
+    if(vz) vz.classList.remove('open');
+  }
+  // A single-target scenario has one `.player`; a multi-target one (BE-0428) has several, and
+  // gets a tab per target so the modal can show one recording at a time.
+  function vzOpen(player){
+    if(!vz) return;
+    var scn = player.closest('.scn');
+    var players = scn ? Array.prototype.slice.call(scn.querySelectorAll('.player')) : [player];
+    if(vzTabsEl){
+      vzTabsEl.innerHTML = '';
+      if(players.length > 1){
+        vzTabsEl.hidden = false;
+        players.forEach(function(p){
+          var tab = document.createElement('button');
+          tab.type = 'button';
+          tab.className = 'vz-tab' + (p === player ? ' active' : '');
+          tab.textContent = p.getAttribute('data-target') || 'primary';
+          tab.addEventListener('click', function(){
+            vzTabsEl.querySelectorAll('.vz-tab').forEach(function(b){ b.classList.toggle('active', b === tab); });
+            vzMount(p);
+          });
+          vzTabsEl.appendChild(tab);
+        });
+      } else {
+        vzTabsEl.hidden = true;
+      }
+    }
+    vzMount(player);
+    vz.classList.add('open');
+  }
+  ROOT.addEventListener('click', function(e){
+    var b = e.target.closest('.vexpand'); if(!b) return;
+    var player = b.closest('.player'); if(!player) return;
+    vzOpen(player);
+  });
+  if(vz){
+    vz.addEventListener('click', function(e){ if(e.target === vz) vzClose(); });  // backdrop only
+    var vzX = vz.querySelector('.vz-close'); if(vzX) vzX.addEventListener('click', vzClose);
+    document.addEventListener('keydown', function(e){
+      if(!vz.classList.contains('open')) return;
+      if(tv && tv.classList.contains('open')) return;      // .tv handles its own Escape
+      if(imgz && imgz.classList.contains('open')) return;   // .imgz handles its own Escape
+      if(e.key === 'Escape') vzClose();
+    });
+  }
   // Custom player chrome: a slim bar below the recording (play/pause, scrubber, time),
   // so the controls never overlay the video frame the way the native HTML5 controls do.
   function fmtT(t){
@@ -300,7 +532,11 @@
   // expectations footer then pins to the bottom of that bound. Cleared when there is no
   // recording or the card is collapsed (so the layout falls back to its natural flow).
   function syncResultHeight(scn){
-    var player = scn.querySelector('.player'), wrap = scn.querySelector('.rich-wrap');
+    // `.players` (BE-0428) wraps every video a multi-target scenario shows, stacked — bound to its
+    // combined height, not just the first one's, so the steps list doesn't overflow past a second
+    // or third player underneath it.
+    var player = scn.querySelector('.players') || scn.querySelector('.player');
+    var wrap = scn.querySelector('.rich-wrap');
     if(!wrap) return;
     if(!player){ wrap.style.maxHeight = ''; return; }
     var pr = player.getBoundingClientRect();
@@ -313,18 +549,119 @@
   ROOT.querySelectorAll('details.scn').forEach(function(d){
     d.addEventListener('toggle', function(){ if(d.open) syncResultHeight(d); });
   });
+  // Which declared target names this scenario's *other* players (BE-0428's extra targets, tagged
+  // on their own `Artifact`) already claim — everything a row could carry that is NOT the
+  // primary's own name. The primary's own player is always `data-target=""` (an `Artifact`'s
+  // `target` is only ever set for an *extra* target — see `artifact.py`), but a row's own
+  // `data-target` is the scenario's declared target name for every step, primary included, once
+  // the scenario declares two or more (`StepRunner` never leaves it blank past that point — only a
+  // scenario declaring none at all leaves every row `""` too, the case this set stays empty for).
+  // So a row belongs to the primary's player exactly when its own target is *not* one of these.
+  function ownedTargets(scn){
+    var owned = {};
+    if(scn){
+      scn.querySelectorAll('.player').forEach(function(q){
+        var t = q.getAttribute('data-target') || '';
+        if(t) owned[t] = true;
+      });
+    }
+    return owned;
+  }
+  function rowsFor(scn, target){
+    var owned = ownedTargets(scn);
+    return Array.prototype.slice.call(scn ? scn.querySelectorAll('tr.srow[data-target]') : []).filter(
+      function(r){
+        var rt = r.getAttribute('data-target') || '';
+        return target ? rt === target : !owned[rt];
+      }
+    );
+  }
+  // Every scenario's videos share one group here (BE-0428): keyed by the `.scn` element, so a
+  // click, seek, or play/pause on any one of a multi-target scenario's recordings can find its
+  // siblings and follow — the group is looked up live inside each player's own listeners below,
+  // not captured at setup time, so it already holds every player by the time any of them fires.
+  var scnGroups = new Map();
+  // The expand overlay (`.vz` below) moves a player's own <video> out of it rather than cloning
+  // it, so it can find its way back on close — this map remembers each video's own home player.
+  var videoHome = new WeakMap();
   ROOT.querySelectorAll('.player').forEach(function(p){
     var v = p.querySelector('video'), btn = p.querySelector('.vplay');
     var seek = p.querySelector('.vseek'), time = p.querySelector('.vtime');
     var marks = p.querySelector('.vmarks'), segs = p.querySelector('.vsegs'), scn = p.closest('.scn');
     var knob = p.querySelector('.vknob');
+    // This player's own declared target ("" for the primary/single-target case) and how many
+    // seconds ahead of the *first* video in this scenario its own recording started — never the
+    // raw wall-clock instant itself (the server deliberately never sends one; see `_videos` in
+    // panels.py). `syncSiblings` below turns that small delta into "the same moment, on a sibling
+    // video's own timeline" (BE-0428).
+    var target = p.getAttribute('data-target') || '';
+    var offset = parseFloat(p.getAttribute('data-offset')); if(isNaN(offset)) offset = 0;
+    // This player's own rows (`rowsFor`, above) — every row naming this exact target, or, for the
+    // primary's own player, every row no *other* player already claims. Scoping ticks/bands/
+    // highlighting to these — instead of every row in the scenario — is what keeps a second
+    // target's steps off the first target's scrubber and vice versa.
+    function myRows(){ return rowsFor(scn, target); }
+    if(scn){
+      var group = scnGroups.get(scn);
+      if(!group){ group = []; scnGroups.set(scn, group); }
+      group.push({v: v, offset: offset});
+    }
     function moveKnob(){
       if(!knob || !isFinite(v.duration) || v.duration <= 0) return;
       knob.style.left = Math.max(0, Math.min(100, v.currentTime / v.duration * 100)) + '%';
     }
+    if(v) videoHome.set(v, p);   // WeakMap.set(null, …) throws, so guard the missing-video case
     if(!v || !btn || !seek || !time) return;
-    function paint(){ btn.textContent = v.paused ? '▶' : '❚❚'; }
+    // `.is-live` glows the player frame itself while its recording is actually playing. A
+    // multi-target scenario's stacked recordings play in lockstep (`syncSiblings` below, BE-0428),
+    // so several can glow at once — what it marks is a recording still running as opposed to one
+    // already ended or paused, alongside `.playing` on the step row.
+    function paint(){
+      btn.textContent = v.paused ? '▶' : '❚❚';
+      p.classList.toggle('is-live', !v.paused);
+      // `.has-live` on `.scn` just gates the step row's pulse (tr.srow.playing, report.css) to
+      // "some recording is actually running" — `.playing` itself is never cleared (it only moves
+      // to a new row on `timeupdate`), so without this the last-matched row would keep animating
+      // forever once every recording in the scenario has paused or ended.
+      if(scn) scn.classList.toggle('has-live',
+        Array.prototype.some.call(scn.querySelectorAll('.player video'), function(x){ return !x.paused; }));
+    }
     function clock(){ time.textContent = fmtT(v.currentTime) + ' / ' + fmtT(v.duration); }
+    // Carry this video's play/pause state and playhead onto every sibling recording in the same
+    // scenario (BE-0428): every player's own `offset` (server-computed, BE-0428's `_videos`) is
+    // relative to the same first video, so subtracting this one's own offset and adding a
+    // sibling's converts "this instant" into "the same moment, on the sibling's own timeline" —
+    // never by way of a raw wall-clock instant (see the `offset` field's own comment above).
+    //
+    // `v._synced` guards against exactly the feedback loop that clamping otherwise creates: two
+    // recordings rarely span the same wall-clock range (one target's steps often finish before the
+    // other's start), so a moment past a sibling's own end/start clamps to its boundary — a value
+    // that does *not* map back to the instant that produced it. Without the guard, that sibling's
+    // own `seeked` would call this function again, "correct" *this* video from the very position
+    // the viewer just set, and the two would fight over it. Marking a sibling `_synced` right before
+    // giving it a new position or play state means its own resulting event finds the flag, clears
+    // it, and returns without propagating — the sibling's echo is absorbed, not relayed.
+    function syncSiblings(){
+      if(v._synced){ v._synced = false; return; }
+      if(!scn) return;
+      var group = scnGroups.get(scn);
+      if(!group || group.length < 2) return;
+      // A position is `wallClock - anchor` (the same subtraction `video_seconds` in panels.py
+      // uses for a step's own `data-t`), so the wall-clock instant behind *this* video's current
+      // position is `currentTime + offset` (offset already being `thisAnchor - referenceAnchor`),
+      // and a sibling's own position at that same instant is that instant minus the sibling's own
+      // offset — `currentTime + offset - sib.offset`, not the other sign.
+      var wallClock = v.currentTime + offset;
+      var playing = !v.paused;
+      group.forEach(function(sib){
+        if(sib.v === v) return;
+        var t = wallClock - sib.offset;
+        t = isFinite(sib.v.duration) && sib.v.duration > 0 ? Math.max(0, Math.min(sib.v.duration, t)) : Math.max(0, t);
+        if(Math.abs(sib.v.currentTime - t) > 0.08){ sib.v._synced = true; sib.v.currentTime = t; }
+        if(playing && sib.v.paused){ sib.v._synced = true; sib.v.play().catch(function(){}); }
+        else if(!playing && !sib.v.paused){ sib.v._synced = true; sib.v.pause(); }
+      });
+    }
     function bands(){
       // The `before` band runs from the recording's start to the first main step (or, lacking
       // one, its own last step); the `after` band runs from its first step to the recording's
@@ -332,7 +669,7 @@
       // roughly where setup/teardown sit relative to the scenario's own steps.
       if(!segs || !scn || !isFinite(v.duration) || v.duration <= 0) return;
       var before = [], main = [], after = [];
-      scn.querySelectorAll('tr.srow[data-t]').forEach(function(r){
+      myRows().forEach(function(r){
         var t = parseFloat(r.getAttribute('data-t')); if(isNaN(t)) return;
         var phase = r.getAttribute('data-phase');
         (phase === 'before' ? before : phase === 'after' ? after : main).push(t);
@@ -359,7 +696,7 @@
       // number + time, or time range) and seeks to the start on click.
       if(!marks || !scn || !isFinite(v.duration) || v.duration <= 0) return;
       var html = '';
-      scn.querySelectorAll('tr.srow[data-t]').forEach(function(r){
+      myRows().forEach(function(r){
         var t = parseFloat(r.getAttribute('data-t')); if(isNaN(t)) return;
         var endAttr = r.getAttribute('data-t-end');
         var tEnd = endAttr !== null ? parseFloat(endAttr) : NaN;
@@ -405,6 +742,7 @@
         v.currentTime = t;
         if(!seek.matches(':active')) seek.value = t;
         moveKnob();
+        syncSiblings();
       }
       marks.addEventListener('pointerdown', function(e){
         var m = e.target.closest('.vmark');
@@ -462,13 +800,29 @@
     }
     v.addEventListener('play', paint);
     v.addEventListener('pause', paint);
+    // BE-0428: play and seek propagate to every sibling recording in the same scenario, once, at
+    // the moment they happen — never on every `timeupdate` tick. Two recordings are almost never
+    // the same length (one target's steps often finish well before the other's), so pinning them
+    // to march in lockstep the whole time would mean whichever is shorter keeps yanking the other
+    // back to a clamped boundary for as long as it plays, and would then stop it outright at its
+    // own end (see the `pause` handler below) — a sibling that starts in the right place is left to
+    // play on at its own native rate after that, exactly like an ordinary unsynced video would.
+    v.addEventListener('play', syncSiblings);
+    v.addEventListener('pause', function(){
+      // The shorter recording reaches `pause` via its own natural end (`v.ended`) before a longer
+      // sibling does — that must not stop the sibling early. Only a real pause (the button, or the
+      // frame click, both call `v.pause()` directly with `ended` still false) propagates.
+      if(v.ended) return;
+      syncSiblings();
+    });
+    v.addEventListener('seeked', syncSiblings);
     v.addEventListener('loadedmetadata', meta);
     v.addEventListener('timeupdate', function(){
       if(!seek.matches(':active')) seek.value = v.currentTime;   // don't fight an active drag
       clock();
       moveKnob();
     });
-    seek.addEventListener('input', function(){ v.currentTime = parseFloat(seek.value); moveKnob(); });
+    seek.addEventListener('input', function(){ v.currentTime = parseFloat(seek.value); moveKnob(); syncSiblings(); });
     paint(); meta();   // handle the case where metadata is already cached (event won't fire)
   });
   // Sync each scenario's recording with its step rows: click a step to seek there (or
@@ -481,39 +835,57 @@
     if(rr.top < cr.top) box.scrollTop -= (cr.top - rr.top) + 8;
     else if(rr.bottom > cr.bottom) box.scrollTop += (rr.bottom - cr.bottom) + 8;
   }
+  // The shared "which row is playing" rule: the last row (in array order) whose own `data-t` has
+  // already passed, as of `currentTime`. Both the compact view's own sync (below) and the video
+  // expand modal's clone (`vzBuildSteps`, above) use this same window on their own row set, so a
+  // later change to it — factoring in `data-t-end` too, say — only has to land here once.
+  function pickPlayingRow(rows, currentTime){
+    var ct = currentTime + 0.001, cur = null;
+    for(var i = 0; i < rows.length; i++){
+      var t = parseFloat(rows[i].getAttribute('data-t'));
+      if(!isNaN(t) && t <= ct) cur = rows[i];
+    }
+    return cur;
+  }
   ROOT.querySelectorAll('.scn').forEach(function(scn){
-    var v = scn.querySelector('video'); if(!v) return;
-    var rows = Array.prototype.slice.call(scn.querySelectorAll('tr.srow'));
-    if(!rows.length) return;
-    var box = scn.querySelector('.rich-scroll'), lastCur = null;
-    rows.forEach(function(r){
-      r.addEventListener('click', function(e){
-        // links / tree button / screenshot / the step's own jump buttons handled elsewhere
-        // (a jump button seeks to its own instant instead of the row's default start).
-        if(e.target.closest('a') || e.target.closest('.treebtn') || e.target.closest('.shot') || e.target.closest('.stepjump')) return;
-        var t = parseFloat(r.getAttribute('data-t'));
-        // Seek only: keep playing if already playing, stay paused if paused.
-        if(!isNaN(t)){ v.currentTime = t; }
+    var box = scn.querySelector('.rich-scroll');
+    // One pass per player rather than per scenario (BE-0428): each recording only ever seeks
+    // itself and only ever highlights its own target's rows — a click on a web step never moves
+    // the iOS recording's playhead, only (via `syncSiblings` above) follows it there. `rowsFor`
+    // (above) is what ties a row to the one player it belongs to, including the primary's own,
+    // whose player carries no target name of its own to match against.
+    scn.querySelectorAll('.player').forEach(function(p){
+      var v = p.querySelector('video'); if(!v) return;
+      var target = p.getAttribute('data-target') || '';
+      var rows = rowsFor(scn, target);
+      if(!rows.length) return;
+      var lastCur = null;
+      rows.forEach(function(r){
+        r.addEventListener('click', function(e){
+          // links / tree button / screenshot / the step's own jump buttons handled elsewhere
+          // (a jump button seeks to its own instant instead of the row's default start).
+          if(e.target.closest('a') || e.target.closest('.treebtn') || e.target.closest('.shot') || e.target.closest('.stepjump')) return;
+          var t = parseFloat(r.getAttribute('data-t'));
+          // Seek only: keep playing if already playing, stay paused if paused.
+          if(!isNaN(t)){ v.currentTime = t; }
+        });
+        // A step's own start/end jump buttons (its `before`/`after` moment) — stop the click from
+        // also firing the row handler above, which would otherwise re-seek to the row's start right
+        // after the end button just seeked past it. Scoped to this player's own rows, same as the
+        // row click above: a jump button always belongs to the row it is drawn inside of.
+        r.querySelectorAll('.stepjump').forEach(function(btn){
+          btn.addEventListener('click', function(e){
+            e.stopPropagation();
+            var t = parseFloat(btn.getAttribute('data-t'));
+            if(!isNaN(t)){ v.currentTime = t; }
+          });
+        });
       });
-    });
-    // A step's own start/end jump buttons (its `before`/`after` moment) — stop the click from
-    // also firing the row handler above, which would otherwise re-seek to the row's start right
-    // after the end button just seeked past it.
-    scn.querySelectorAll('.stepjump').forEach(function(btn){
-      btn.addEventListener('click', function(e){
-        e.stopPropagation();
-        var t = parseFloat(btn.getAttribute('data-t'));
-        if(!isNaN(t)){ v.currentTime = t; }
+      v.addEventListener('timeupdate', function(){
+        var cur = pickPlayingRow(rows, v.currentTime);
+        rows.forEach(function(r){ r.classList.toggle('playing', r===cur); });
+        if(cur !== lastCur){ lastCur = cur; if(cur) scrollIntoBox(box, cur); }
       });
-    });
-    v.addEventListener('timeupdate', function(){
-      var ct = v.currentTime + 0.001, cur = null;
-      for(var i=0;i<rows.length;i++){
-        var t = parseFloat(rows[i].getAttribute('data-t'));
-        if(!isNaN(t) && t <= ct) cur = rows[i];
-      }
-      rows.forEach(function(r){ r.classList.toggle('playing', r===cur); });
-      if(cur !== lastCur){ lastCur = cur; if(cur) scrollIntoBox(box, cur); }
     });
   });
 })();

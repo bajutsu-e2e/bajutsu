@@ -35,7 +35,7 @@ Every mapping rejects keys it does not declare (`_Model`, `scenario/models/_base
 
 ## 2. Grammar at a glance
 
-The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that the EBNF text below states but does not show directly: `Selector`'s `within` self-loop; `RequestMatch`, shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`; `Web` and `Component`, which both nest a fresh `Step` list; `Component` reached a second way from `ScenarioFile` itself (a file may declare its own components inline; §6.2); and the two control-flow steps — `If`, which nests `then`/`else` under an `Assertion` condition, and `ForEach`, which nests `steps` under a `Selector`. The diagram omits actions that carry only scalars and reference no shared non-terminal (`relaunch`, `setLocation`, `push`, `http`, `setClipboard`, `foreground`, and the remaining device / status-bar steps) and the `golden` assertion, whose payload is a bare path.
+The **reference graph** below shows which non-terminal references which. It makes visible the recursion and sharing that the EBNF text below states but does not show directly: `Selector`'s `within` self-loop; `RequestMatch`, shared by the `request` assertion, the `until: { request }` wait, and `Mock.match`; `Web`, `App`, `Group`, and `Component`, which all nest a fresh `Step` list (`App`'s own field is a bare `bundleId` string, not a `Selector`, so it has no edge into `Selector` the way `Web`'s `within` does); `Component` reached a second way from `ScenarioFile` itself (a file may declare its own components inline; §6.2); and the two control-flow steps — `If`, which nests `then`/`else` under an `Assertion` condition, and `ForEach`, which nests `steps` under a `Selector`. The diagram omits actions that carry only scalars and reference no shared non-terminal (`relaunch`, `setLocation`, `push`, `http`, `setClipboard`, `foreground`, and the remaining device / status-bar steps) and the `golden` assertion, whose payload is a bare path.
 
 ```mermaid
 graph LR
@@ -58,13 +58,17 @@ graph LR
   ST -->|wait| WT["Wait"]
   ST -->|assert| AS
   ST -->|use| CMP["Component"]
+  ST -->|group| GRP["Group"]
   ST -->|web| WEB["Web"]
+  ST -->|app| APP["App"]
   ST -->|capture| CT["CaptureToken"]
   ST -->|if| IF["If"]
   ST -->|forEach| FE["ForEach"]
   CMP -->|steps| ST
+  GRP -->|steps| ST
   WEB -->|within| SEL
   WEB -->|steps| ST
+  APP -->|steps| ST
   IR -->|condition| AS
   IR -->|steps| ST
   IF -->|condition| AS
@@ -111,6 +115,8 @@ Scenario ::= {
   description?:   string,                   # authoring metadata; `run` never reads it
   from?:           string,                  # provenance: the natural-language goal `record` authored this from (BE-0044)
   tags?:           list(string),            # default []  — selection (§6.4)
+  targets?:        list(string),            # default []  — every target this scenario drives (BE-0428); each name a `targets.<name>` config unit. `run` launches each declared target and interleaves their steps in one deterministic run (§4)
+  primaryTarget?:  string,                  # the target a step or top-level `expect` entry runs against when it omits `target` (BE-0436); must equal `targets[0]`, the entry the runner already treats as primary (§4)
   data?:           list(map(string,string)),# inline rows   ┐ XOR
   dataFile?:       string,                  # CSV path      ┘ (§6.3)
   preconditions?:  <Preconditions>,         # default {}
@@ -132,8 +138,9 @@ Component ::= { params?: list(string), steps: list(<Step>) }
 
 # A handler the runner checks opportunistically wherever in the step sequence the matching screen
 # surfaces, running `steps` to clear it (BE-0314). Free on a `wait`'s poll tick; every other
-# non-`wait` step pays one extra read.
-Interrupt ::= { condition: <Assertion>, steps: list(<Step>) }
+# non-`wait` step pays one extra read. `target` names the declared target the entry watches; omitted,
+# it watches the primary target (BE-0438).
+Interrupt ::= { condition: <Assertion>, steps: list(<Step>), target?: string }
 
 # One teardown rule (BE-0392): the outcome it answers, and the steps to run for that outcome. The
 # outcome is the scenario's own machine-checked verdict, never a model call.
@@ -169,10 +176,15 @@ PermissionAction  ::= "grant" | "revoke"
 
 # ── Step = exactly one Action + optional modifiers ─────────────────────
 Step      ::= <Action> & <StepMods>
-StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string, from?: string }
+StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>), name?: string, from?: string, target?: string }
                 # `from`: provenance, the natural-language phrase `record` normalized this step from (BE-0044)
                 # `name` becomes a real filesystem path segment (the run's step_id, the editor's
                 # artifact lookup) — a path separator, or a bare "." / "..", is a load error
+                # `target`: which of `scenario.targets` this step runs against (BE-0428); its
+                # requirement depends on `len(scenario.targets)` and on `scenario.primaryTarget`
+                # (§4). Rejected outright on a step
+                # nested inside a `web:` block, which always runs against the block's own
+                # resolved target
 Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # default "value"
 Action    ::=
     { tap:         <Selector> }
@@ -210,17 +222,24 @@ Action    ::=
   | { setClipboard:     { text: string } }                 # seed the pasteboard with text (simctl pbcopy), for paste flows
   | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }
   | { clearStatusBar:   {} }                               # restore the live status bar
-  | { use:         { component: string, with?: map(string,string) } }   # macro (§6.2)
+  | { use:         { component: string, with?: map(string,string) } }   # macro (§6.2; no modifiers)
+  | { group:       <Group> }                                            # named run of steps, folded in report.html (§6.2; no capture/extract; does not nest)
   | { if:          <If> }                                               # conditional (no capture/extract)
   | { forEach:     <ForEach> }                                          # loop (no capture/extract)
   | { web:         <Web> }                                              # enter a WebView's DOM context (BE-0037; no capture/extract)
+  | { app:         <App> }                                              # launch an app the test target never started and drive its UI (iOS/XCUITest only; no capture/extract)
   | { manual:      { label: string, bypass?: string } }                # human takeover recorded during `record` (BE-0185); fails loudly at run time — no deterministic equivalent unless `bypass` is wired
 
+Group ::= { name: string, steps: list(<Step>) }   # both required, non-empty; compile-time macro, gone before `run` (§6.2)
 If ::= { condition: <Assertion>, then: list(<Step>), else?: list(<Step>) }
 ForEach ::= { sel: <Selector>, as: string, steps: list(<Step>) }
 Web ::= { within: <Selector>, steps: list(<Step>) }
     # `within` resolves natively to exactly one WKWebView host; nested `steps` address the
     # normalized DOM (`data-testid` → Element.identifier), not the native accessibility tree.
+App ::= { bundleId: string, steps: list(<Step>) }
+    # `bundleId` names any installed app, launched (or already running) with no cooperation from
+    # the test target; nested `steps` address that app's own accessibility tree. Control returns to
+    # whatever was active before the block once it ends, the same enter/leave contract as `Web`.
 
 Swipe ::=
     { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # selector form  ┐ XOR
@@ -299,6 +318,12 @@ VisualMatch ::= {                  # pixel-compare the screen against a baseline
 ExcludeRegion  ::= { x: number, y: number, w: number, h: number }   # screenshot pixels
 SelectorRegion ::= { selector: <Selector> }   # mask the element's frame (BE-0171); ambiguous → fail, no match → no-op
 
+Every `Assertion` variant above also carries an optional `target?: string` (BE-0428), which
+names which of `scenario.targets` the check runs against. It is legal only on a top-level
+`expect` entry — an `Assertion` reached through a `Step`'s inline `assert:` list or an `If`'s
+`condition` already has its target fixed by the enclosing step, so `target` is rejected there
+outright (§4).
+
 RequestMatch ::= {              # ≥1 of the match fields below
   method?:      string,
   url?:         string,         # exact full URL (the endpoint)
@@ -373,6 +398,7 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 |---|---|---|
 | `Selector` | **≥ 1** field present | `scenario/models/selector.py` |
 | `Step` | **exactly one** action key (`tap` … `use`); `capture`/`name` are modifiers, not actions | `scenario/models/steps.py` |
+| `Step.use` | **no modifiers** — refuses `capture` / `extract` / `name` / `from` / `target`, which expansion would otherwise discard with no warning | `scenario/models/steps/step.py` |
 | `Swipe` | **exactly one** form: `{on,direction}` **or** `{from,to}` — never mixed, never half-specified | `scenario/models/actions.py` |
 | `Pinch` | `scale` **> 0** | `scenario/models/actions.py` |
 | `HandleSystemAlert` | `sel` restricted to `label` / `labelMatches` / `index` (rejects `id`/`idMatches`/`traits`/`value`/`within`) | `scenario/models/actions.py` |
@@ -387,6 +413,13 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 | `Assertion.requestSequence` | **≥ 1** item | `scenario/models/assertions.py` |
 | `Trigger` (`capturePolicy[].on`) | **exactly one** of `action` / `event` / `result`; `idMatches` only **with** `action` | `scenario/models/evidence.py` |
 | `Scenario` | `data` and `dataFile` **not both** | `scenario/models/scenario.py` |
+| `Scenario.targets` | no duplicate name (BE-0428) | `scenario/models/scenario/_targets.py` |
+| `Scenario.primaryTarget` | omitted, or equal to `targets[0]`; **rejected** when `targets` is empty (BE-0436) | `scenario/models/scenario/_targets.py` |
+| `Step.target` / `Assertion.target` (`expect` only) | omitted or matching the one entry when `len(targets) ≤ 1`; **required** — including on an `if`/`forEach`/`web` wrapper, not only a leaf action — naming a declared target, when `len(targets) ≥ 2` and `primaryTarget` is unset; **optional** when `len(targets) ≥ 2` and `primaryTarget` is set, an omitted one running against the primary at every nesting depth (BE-0436); **rejected** on a step nested inside `web:`, and on an `Assertion` reached through an inline `assert:` list, an `if`'s `condition`, or an `interrupts` entry's `condition` (BE-0428) | `scenario/models/scenario/_targets.py` |
+| `Step.use` / `Step.group` (`len(targets) ≥ 2` only) | **rejected outright** — a `use:` step (it takes no `target`; see the `Step.use` row and §6.2) and a `group:` step (its own `target` would be discarded by expansion) are both open questions this item defers, so neither is accepted rather than accepted with unclear semantics (BE-0428) | `scenario/models/scenario/_targets.py` |
+| `Interrupt.target`, and `Step.target` in an `interrupts` entry's `steps` | **optional** at any `len(targets)`, regardless of `primaryTarget`: an omitted entry `target` watches the primary target, and an omitted recovery-step `target` runs on the entry's own target (or an enclosing `if`/`forEach` step's when that step names one); a value that is set follows the `Step.target` rule above for naming a declared target (BE-0438) | `scenario/models/scenario/_targets.py` |
+| `Interrupt.target`, and `Step.target` in its `steps`, under `targets.<name>.interrupts` | **rejected** — the entry already belongs to the target that config block configures (BE-0438) | `config/schema/target_config.py` |
+| `Step.use` (`len(targets) ≥ 2` only) | **rejected outright**, in an `interrupts` entry's `steps` too — it takes no `target` at all (see the `Step.use` row above), an open question this item defers, so it is refused rather than accepted with unclear semantics (BE-0428) | `scenario/models/scenario/_targets.py` |
 | every mapping | **no unknown keys** (`extra="forbid"`) | `scenario/models/_base.py` |
 
 `exists` is special: its selector is written **inline** (`exists: { id: home.title }`), and an
@@ -503,6 +536,20 @@ a reference cycle. `ComponentResolver` (`scenario/load_expanded.py`) is the one 
 `resolve` to a file. It carries that file's map, the suite root, and the base directory refs
 resolve against, so `run` and every device-free reader expand a file identically. Because expansion is pure and compile-time, **no `use` survives into the
 run** — determinism holds.
+
+A `use` step takes no modifiers. The loader refuses one that also sets any of `capture` /
+`extract` / `name` / `from` / `target`. Expansion replaces the whole step, so it would otherwise
+drop those fields with no warning.
+
+**`group` is `use`'s local sibling.** A `Group` carries `name` and `steps` alone — no `params`, no
+separate file. The same `expand()` recursion in `expand_components` replaces a `group` step with
+its own `steps`, in place. It tags each with `report_group` / `report_group_id` — internal fields,
+not part of the authored grammar — so `report.html` can fold them back together
+([reporting.md](reporting.md#reporthtml)). `expand()` raises on a `group` reached while it is
+already inside another `group`. This covers an inner `group` written directly, and one arriving
+through a `use` call. A `Scenario`-level validator refuses a directly-nested `group` too — one
+written inside another `group`'s `steps`, or inside an `if` / `forEach` / `web` / `app` step's
+nested `steps` — at load time.
 
 ### 6.3 Data-driven scenarios (`data` / `dataFile`)
 

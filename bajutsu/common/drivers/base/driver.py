@@ -79,6 +79,12 @@ class Driver(Protocol):
     # UnsupportedAction. A value the wheel does not carry raises ElementNotFound rather than leaving
     # the wheel wherever it happened to stop.
     def set_picker_value(self, sel: Selector, value: str) -> None: ...
+    # Pick the grid cells at `indices` from an already-open `PHPickerViewController`, then tap the
+    # picker's confirm control. A backend without SELECT_PHOTOS raises UnsupportedAction; on the one
+    # that has it, `capabilities_for_run` has already dropped the token on an Apple Silicon
+    # Simulator, where the grid's cells cannot be tapped reliably (roadmap item) — this method's own
+    # actuation assumes that gate already ran.
+    def select_photos(self, indices: list[int], *, timeout: float) -> None: ...
     # Tap a button on an out-of-process iOS SpringBoard permission prompt (BE-0316), resolving `sel`
     # (label-based only) against the alert's buttons within `timeout`. A backend without the
     # HANDLE_SYSTEM_ALERT capability raises UnsupportedAction; preflight (capability_preflight.py)
@@ -111,3 +117,18 @@ class Driver(Protocol):
     def wait_for(self, sel: Selector) -> bool: ...
     def screenshot(self, path: str) -> None: ...
     def capabilities(self) -> set[str]: ...
+    # Activate the app named by `bundle_id` — installed but not yet running, and never launched by
+    # the test target — and make it the target of every method above until a matching
+    # `leave_app()`. Nests: entering a second app before leaving the first pushes onto
+    # it, and `leave_app` pops back to it, not past it. A backend without the APP_CONTEXT
+    # capability raises UnsupportedAction; preflight rejects the scenario before any device work,
+    # so this raise is only the mid-run backstop, mirroring `handle_system_alert`. `bundle_id`
+    # must name an app already installed on the device: an app that is slow to foreground (a cold
+    # launch, a permission prompt) raises ElementNotFound once the bounded poll gives up, but a
+    # bundle id that is not installed at all is not guaranteed to fail this cleanly — confirmed on
+    # real hardware to leave the runner unresponsive instead, because the handoff from the
+    # currently-foreground app never completes. Not fixed here; see the roadmap item's own Scope.
+    def enter_app(self, bundle_id: str) -> None: ...
+    # Leave the most recently entered app and re-activate the one beneath it — the test target
+    # itself, if this is the outermost `leave_app()`.
+    def leave_app(self) -> None: ...

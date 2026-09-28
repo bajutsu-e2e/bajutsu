@@ -400,7 +400,7 @@ def test_undeclared_interruptions_are_appended_to_a_step_s_own_failure_and_all_n
     result = run_scenario(driver, load_scenarios(_TAP_GO)[0])
     assert result.ok is False
     reason = result.steps[0].reason
-    assert "一致なし" in reason  # the original "no match" detail survives
+    assert "no match" in reason  # the original "no match" detail survives
     assert "undeclared system alert" in reason
     assert "Allow" in reason
     assert "Don't Allow" in reason

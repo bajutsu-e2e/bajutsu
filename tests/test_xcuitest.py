@@ -2508,6 +2508,268 @@ def test_set_picker_value_reports_an_unknown_status_as_a_channel_error() -> None
         _driver(transport).set_picker_value({"id": "form.school"}, "大学")
 
 
+def test_enter_app_posts_the_bundle_id() -> None:
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        sent.append((path, body))
+        return _Reply(status="ok")
+
+    _driver(transport).enter_app("com.apple.mobilesafari")
+    assert ("/app/enter", {"bundleId": "com.apple.mobilesafari"}) in sent
+
+
+def test_enter_app_raises_element_not_found_when_never_foreground() -> None:
+    # A `not-foreground` reply (a slow-to-launch installed app, most often) is a scenario mistake,
+    # not a channel failure — the same reading `set_picker_value`'s value-not-found reply gets. A
+    # bundle id that is not installed at all is not guaranteed to reach this reply rather than
+    # leaving the runner unresponsive (a real backend limitation, not modeled by this fake).
+    with pytest.raises(base.ElementNotFound, match=r"com\.example\.missing"):
+        _driver(lambda m, p, b: _Reply(status="not-foreground")).enter_app("com.example.missing")
+
+
+def test_enter_app_reports_an_unknown_status_as_a_channel_error() -> None:
+    with pytest.raises(XcuitestChannelError):
+        _driver(lambda m, p, b: _Reply(status="error")).enter_app("com.example")
+
+
+def test_leave_app_posts_an_empty_body() -> None:
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        sent.append((path, body))
+        return _Reply(status="ok")
+
+    _driver(transport).leave_app()
+    assert ("/app/leave", {}) in sent
+
+
+def test_leave_app_raises_element_not_found_when_never_foreground() -> None:
+    with pytest.raises(base.ElementNotFound):
+        _driver(lambda m, p, b: _Reply(status="not-foreground")).leave_app()
+
+
+def test_leave_app_reports_an_unknown_status_as_a_channel_error() -> None:
+    with pytest.raises(XcuitestChannelError):
+        _driver(lambda m, p, b: _Reply(status="error")).leave_app()
+
+
+# --- selectPhotos: pick grid cells, then confirm by elimination (roadmap item) ---
+
+
+def _grid_cell(handle: str, index: int) -> dict[str, Any]:
+    # Every cell shares one identifier; only `index` disambiguates them (BE-0356's `resolve_unique`
+    # precedent, reused rather than extended).
+    return _el_wire(
+        handle, "PXGGridLayout-Info", f"Photo {index}", None, ["image"],
+        frame=(0.0, 200.0 + index * 100.0, 100.0, 100.0),
+    )  # fmt: skip
+
+
+def _nav_bar(handle: str = "h-bar") -> dict[str, Any]:
+    return _el_wire(handle, None, None, None, ["navigationBar"], frame=(0.0, 0.0, 400.0, 100.0))
+
+
+def _cancel(handle: str = "h-cancel") -> dict[str, Any]:
+    return _el_wire(handle, "Cancel", "Cancel", None, ["button"], frame=(0.0, 0.0, 50.0, 44.0))
+
+
+def _done(handle: str = "h-done") -> dict[str, Any]:
+    # The confirm control carries no identifier — only a label, which changes with locale/iOS
+    # version — so it is never named directly, only found by elimination.
+    return _el_wire(handle, None, "Done", None, ["button"], frame=(350.0, 0.0, 50.0, 44.0))
+
+
+def test_select_photos_taps_each_cell_then_the_confirm_control() -> None:
+    # Each cell is tapped by coordinate at its resolved frame center, not by handle — measured
+    # (roadmap item) to be the one path that actually registers a selection against this picker's
+    # grid. The confirm control, static chrome rather than a recycled cell, is still tapped by
+    # handle (`_confirm_photo_selection`, unchanged).
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(
+                _grid_cell("h-0", 0), _grid_cell("h-1", 1), _nav_bar(), _cancel(), _done()
+            )
+        sent.append((path, body))
+        return _Reply(status="ok")
+
+    _driver(transport).select_photos([0, 1], timeout=10)
+    assert sent == [
+        ("/tap", {"point": [50.0, 250.0]}),
+        ("/tap", {"point": [50.0, 350.0]}),
+        ("/tap", {"handle": "h-done"}),
+    ]
+
+
+def test_select_photos_resolves_cells_by_ordinal_index() -> None:
+    # `indices` picks by position among the identical-id candidates, in the order they were found —
+    # not by any value on the cell itself.
+    sent: list[list[float]] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_grid_cell("h-0", 0), _grid_cell("h-1", 1), _grid_cell("h-2", 2))
+        assert isinstance(body, dict)
+        sent.append(list(body["point"]))
+        return _Reply(status="ok")
+
+    _driver(transport).select_photos([2, 0], timeout=10)
+    assert sent == [
+        [50.0, 450.0],
+        [50.0, 250.0],
+    ]  # no confirm control present -> no-op, not an error
+
+
+def test_select_photos_raises_when_the_coordinate_tap_is_refused() -> None:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_grid_cell("h-0", 0))
+        return _Reply(status="error")
+
+    with pytest.raises(base.ElementNotFound, match="coordinate tap failed"):
+        _driver(transport).select_photos([0], timeout=10)
+
+
+def _other_el(handle: str) -> dict[str, Any]:
+    # A collection-view cell that has not synced its identifier into the tree yet: untyped, no id.
+    return _el_wire(handle, None, None, None, ["other"], frame=(0.0, 200.0, 100.0, 100.0))
+
+
+def test_resolve_grid_cell_retries_past_a_transient_empty_snapshot() -> None:
+    # Measured on-device: right after the picker presents, a `PXGGridLayout-Info` query can find
+    # zero matches — every cell still reports as untyped `other` — even though the grid is already
+    # visible. The next query catches up.
+    query_count = 0
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        nonlocal query_count
+        if path == "/elements":
+            query_count += 1
+            if query_count == 1:
+                return _elements(_other_el("h-other"))
+            return _elements(_grid_cell("h-0", 0))
+        return _Reply(status="ok")
+
+    el = _driver(transport)._resolve_grid_cell({"id": "PXGGridLayout-Info", "index": 0}, timeout=10)
+    assert el["identifier"] == "PXGGridLayout-Info"
+    assert query_count == 2
+
+
+def test_resolve_grid_cell_raises_once_timeout_elapses() -> None:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_other_el("h-other"))
+        return _Reply(status="ok")
+
+    with pytest.raises(base.ElementNotFound):
+        _driver(transport)._resolve_grid_cell(
+            {"id": "PXGGridLayout-Info", "index": 0}, timeout=0.05
+        )
+
+
+def test_resolve_grid_cell_does_not_retry_an_ambiguous_match() -> None:
+    # Two content-distinct candidates is a real, non-transient failure (prime directive 2) — must
+    # not be treated the same as the zero-match transient case above.
+    calls: list[str] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        calls.append(path)
+        if path == "/elements":
+            return _elements(_grid_cell("h-0", 0), _grid_cell("h-1", 1))
+        return _Reply(status="ok")
+
+    with pytest.raises(base.AmbiguousSelector):
+        _driver(transport)._resolve_grid_cell({"id": "PXGGridLayout-Info"}, timeout=10)
+    assert calls == ["/elements"]  # one query only, no retry
+
+
+def test_confirm_photo_selection_is_a_noop_when_the_picker_already_dismissed_itself() -> None:
+    # A single-selection grid can auto-confirm on the one tap above; a navigation bar with no
+    # non-Cancel control (here: none at all) means there is nothing left to tap.
+    calls: list[str] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        calls.append(path)
+        if path == "/elements":
+            return _elements()
+        return _Reply(status="ok")
+
+    _driver(transport)._confirm_photo_selection()
+    assert calls == ["/elements"]  # queried once, tapped nothing
+
+
+def test_confirm_photo_selection_is_a_noop_when_only_the_apps_own_bar_remains() -> None:
+    # Found on-device (not by the mocked case above): a single-selection grid's auto-dismiss
+    # leaves the picker's own Cancel-bearing bar gone, but the app's underlying screen can still
+    # have its own `navigationBar`-trait element with its own non-Cancel content (a title). That
+    # bar must not be mistaken for the picker's — elimination requires a Cancel control in the bar
+    # first, so this stays a no-op instead of tapping the app's own UI.
+    calls: list[str] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        calls.append(path)
+        if path == "/elements":
+            return _elements(_nav_bar(), _done())  # non-Cancel content, but no Cancel control
+        return _Reply(status="ok")
+
+    _driver(transport)._confirm_photo_selection()
+    assert calls == ["/elements"]  # queried once, tapped nothing
+
+
+def test_confirm_photo_selection_ignores_the_apps_own_bar_when_the_picker_bar_is_still_present() -> (
+    None
+):
+    # `/elements` is one unsynchronized snapshot with no settle wait (BE-0087's settle is
+    # idb-only), so a query fired right after a selectionLimit=1 auto-confirm's *animated* dismiss
+    # can land mid-transition: the picker's own Cancel-bearing bar still in the tree alongside the
+    # app's own bar underneath. Candidates must come only from the bar(s) that themselves hold
+    # Cancel, so the app's own bar's content is never counted even while both are present at once.
+    app_bar = _el_wire(
+        "h-app-bar", None, None, None, ["navigationBar"], frame=(0.0, 200.0, 400.0, 100.0)
+    )
+    app_title = _el_wire(
+        "h-app-title", None, "Permissions", None, [], frame=(150.0, 220.0, 100.0, 20.0)
+    )
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_nav_bar(), _cancel(), _done(), app_bar, app_title)
+        sent.append((path, body))
+        return _Reply(status="ok")
+
+    _driver(transport)._confirm_photo_selection()
+    assert sent == [("/tap", {"handle": "h-done"})]  # the picker's Done, not the app's own title
+
+
+def test_confirm_photo_selection_raises_on_an_ambiguous_bar() -> None:
+    # Two non-Cancel candidates in the navigation bar: elimination cannot pick one, so this must
+    # fail loudly rather than guess (prime directive 2).
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_nav_bar(), _cancel(), _done("h-done-1"), _done("h-done-2"))
+        return _Reply(status="ok")
+
+    with pytest.raises(base.ElementNotFound, match="2 non-Cancel candidate"):
+        _driver(transport)._confirm_photo_selection()
+
+
+def test_confirm_photo_selection_raises_when_the_control_vanishes_before_tap() -> None:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(_nav_bar(), _cancel(), _done())
+        return _Reply(status="stale")
+
+    with pytest.raises(base.ElementNotFound, match="vanished before tap"):
+        _driver(transport)._confirm_photo_selection()
+
+
+def test_xcuitest_advertises_the_select_photos_capability() -> None:
+    assert base.Capability.SELECT_PHOTOS in XcuitestDriver.CAPABILITIES
+
+
 def test_set_interruption_policy_raises_when_the_runner_did_not_store_it() -> None:
     # `_decode` turns a non-200 into a `status="error"` reply rather than raising, so a runner build
     # without this route — a stale `runner-build`, a mixed-version device — would otherwise return

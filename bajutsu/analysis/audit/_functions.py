@@ -102,6 +102,18 @@ def _step_selectors(step: Step) -> Iterator[tuple[str, base.Selector]]:
             yield "extract", ex.sel.as_selector()
     for a in step.assert_ or []:
         yield from _assertion_selectors(a)
+    yield from _nested_step_selectors(step)
+
+
+def _nested_step_selectors(step: Step) -> Iterator[tuple[str, base.Selector]]:
+    """Selectors inside a step's own nested step list (`if` / `forEach` / `group`).
+
+    Split from `_step_selectors` to keep that function's branch count under the lint limit —
+    `group` is compile-time-only, like `use` (BE-0030), and gone by the time a scenario reaches
+    here through `load_expanded_scenarios`. This branch covers `load_scenario_file`'s
+    pre-expansion callers (the editor's live-content audit), so a `group`-wrapped selector still
+    counts.
+    """
     if step.if_ is not None:
         yield from _assertion_selectors(step.if_.condition)
         for nested in (*step.if_.then, *(step.if_.else_ or [])):
@@ -109,6 +121,9 @@ def _step_selectors(step: Step) -> Iterator[tuple[str, base.Selector]]:
     if step.for_each is not None:
         yield "forEach", step.for_each.sel.as_selector()
         for nested in step.for_each.steps:
+            yield from _step_selectors(nested)
+    if step.group is not None:
+        for nested in step.group.steps:
             yield from _step_selectors(nested)
 
 
@@ -211,6 +226,9 @@ def _step_findings(step: Step) -> Iterator[Finding]:
             yield from _step_findings(nested)
     if step.for_each is not None:
         for nested in step.for_each.steps:
+            yield from _step_findings(nested)
+    if step.group is not None:
+        for nested in step.group.steps:
             yield from _step_findings(nested)
 
 

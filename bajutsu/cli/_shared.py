@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, overload
 
@@ -21,6 +21,7 @@ from bajutsu.common.backends import ensure_web_runtime, select_actuator
 from bajutsu.common.config import (
     WEB_ENGINES,
     AiConfig,
+    Config,
     Effective,
     WebConfig,
     ios_bundle_id,
@@ -234,6 +235,33 @@ def _load_effective_with_source(
     `require_pinned`) a Git source that isn't pinned to a commit SHA. Other errors — YAML parse /
     schema validation from ``load_config`` — propagate as exceptions.
     """
+    loaded = _load_config_with_source(config, offline=offline, require_pinned=require_pinned)
+    return _effective_for(loaded, target_name), loaded.source, loaded.root
+
+
+@dataclass(frozen=True)
+class LoadedConfig:
+    """A parsed config file plus where it came from, ready to resolve any number of targets from.
+
+    Separated from `_load_effective_with_source` so a multi-target scenario resolves every name it
+    declares against the *same* materialized config and the same rebase root (BE-0428), instead of
+    re-materializing a Git source once per declared target.
+    """
+
+    config: Config
+    path: Path
+    source: dict[str, str] | None
+    root: Path | None
+
+
+def _load_config_with_source(
+    config: str, *, offline: bool = False, require_pinned: bool = False
+) -> LoadedConfig:
+    """Materialize and parse the config file, without resolving any target from it yet.
+
+    See `_load_effective_with_source` for what *config*, `offline`, and `require_pinned` mean and
+    which failures exit 2.
+    """
     spec = parse_config_spec(config)
     source: dict[str, str] | None = None
     if spec is None:
@@ -261,8 +289,18 @@ def _load_effective_with_source(
         typer.echo(f"config not found: {config}")
         raise typer.Exit(2)
     cfg = load_config(cfg_path.read_text(encoding="utf-8"))
+    return LoadedConfig(config=cfg, path=cfg_path, source=source, root=root)
+
+
+def _effective_for(loaded: LoadedConfig, target_name: str) -> Effective:
+    """Resolve one target out of an already-loaded config, rebased against the config's own root.
+
+    Split out of `_load_effective_with_source` so every target a multi-target scenario declares is
+    resolved — and rebased — exactly the same way the run's primary target is (BE-0428).
+    """
+    cfg_path, root = loaded.path, loaded.root
     try:
-        eff = resolve(cfg, target_name)
+        eff = resolve(loaded.config, target_name)
     except KeyError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
@@ -277,9 +315,9 @@ def _load_effective_with_source(
     # check applied regardless of bind source; see `Effective.rebased`'s docstring for the full
     # reasoning, including why this is independent of `build:` trust.
     if root is None:
-        return eff.rebased(cfg_path.resolve().parent, confine=False), source, None
+        return eff.rebased(cfg_path.resolve().parent, confine=False)
     try:
-        return eff.rebased(root), source, root
+        return eff.rebased(root)
     except ValueError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None

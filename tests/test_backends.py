@@ -507,9 +507,10 @@ def test_capabilities_for_run_drops_simctl_backed_caps_on_a_real_ios_device() ->
         assert cap in caps
 
 
-def test_capabilities_for_run_keeps_the_full_set_on_the_simulator() -> None:
-    # The Simulator default (no deviceType, or explicit "simulator") keeps every static capability:
-    # simctl reaches the Simulator, so DeviceControl / permissions still apply.
+def test_capabilities_for_run_keeps_the_full_set_on_a_simulator() -> None:
+    # The Simulator default (no deviceType, or explicit "simulator") keeps every static capability,
+    # including SELECT_PHOTOS: unlike the real-device and WebDriver narrowings above, nothing about
+    # a Simulator's host architecture changes what `select_photos` can actuate (roadmap item).
     from bajutsu.common.backends import capabilities_for
 
     for xcfg in (None, XcuitestConfig(testRunner="Runner.xctestrun", deviceType="simulator")):

@@ -68,7 +68,7 @@ Before ideating, pull in what already exists:
   expands `$(ARGS)` unquoted, so without them the shell splits the phrase and the parser rejects
   the stray word. This bites on the most natural query for a request, so reach for the quotes
   first rather than after the error.
-- `make roadmap-status STATUS="Proposal"` — the open backlog, when a keyword misses the framing.
+- `make roadmap-status STATUS="Approved"` — the open backlog, when a keyword misses the framing.
 - `make repo-map ARGS="--headings docs/architecture.md"` names the groups under **Implemented**.
   That section records what already exists. Read the group covering the area, not the whole
   section, so you never propose something shipped.
@@ -124,7 +124,7 @@ command rather than authoring the files by hand — it emits the literal `BE-XXX
 the exact canonical format, and skips the index (so the gate stays green locally):
 
 ```
-make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Proposal] [HANDLE=<handle>]
+make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Approved] [HANDLE=<handle>]
 ```
 
 This creates `roadmaps/BE-XXXX-<slug>/` with both `BE-XXXX-<slug>.md` and its `-ja.md`

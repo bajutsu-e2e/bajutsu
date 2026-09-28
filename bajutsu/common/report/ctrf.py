@@ -19,6 +19,7 @@ from bajutsu import __version__
 from bajutsu.common.orchestrator import RunResult, StepOutcome
 from bajutsu.common.report.manifest import _details, _matrix
 from bajutsu.common.run_meta.id import parse_run_id_timestamp
+from bajutsu.common.run_meta.object_store import content_type_for
 
 # The CTRF spec version this projection targets; the vendored test schema is pinned to it.
 SPEC_VERSION = "0.0.0"
@@ -26,7 +27,6 @@ SPEC_VERSION = "0.0.0"
 # Artifact `kind` → MIME content type. Unknown kinds fall back to a safe octet-stream, so a new
 # evidence kind still exports (as an opaque attachment) rather than breaking the document.
 _ARTIFACT_MIME = {
-    "video": "video/mp4",
     "screenshot": "image/png",
     "deviceLog": "text/plain",
     "elements": "application/json",
@@ -36,7 +36,12 @@ _ARTIFACT_MIME = {
 _DEFAULT_MIME = "application/octet-stream"
 
 
-def _content_type(kind: str) -> str:
+def _content_type(kind: str, name: str) -> str:
+    # `video` has no fixed MIME: the file's real extension names its actual container (mp4 for
+    # simctl/adb, webm for Playwright — see `_interval_filename`), so it is derived the same way
+    # `bajutsu serve` derives a served artifact's Content-Type, rather than assumed from the kind.
+    if kind == "video":
+        return content_type_for(name)
     return _ARTIFACT_MIME.get(kind, _DEFAULT_MIME)
 
 
@@ -65,11 +70,24 @@ def _test_name(r: RunResult) -> str:
     return f"{r.scenario} [{r.engine}]" if r.engine else r.scenario
 
 
+def _device_label(device_name: str, device_runtime: str) -> str:
+    """One device's model + runtime label, e.g. `iPhone 15 (iOS 17.2)`."""
+    if device_name and device_runtime:
+        return f"{device_name} ({device_runtime})"
+    return device_name or device_runtime
+
+
 def _device(r: RunResult) -> str:
-    """The model + runtime label for the CTRF `device` field, e.g. `iPhone 15 (iOS 17.2)`."""
-    if r.device_name and r.device_runtime:
-        return f"{r.device_name} ({r.device_runtime})"
-    return r.device_name or r.device_runtime
+    """The label for the CTRF `device` field.
+
+    CTRF names one device per test, and a multi-target scenario ran on several (BE-0428), so those
+    are joined into one label rather than dropped — an importer reading the field still learns
+    every device involved, and `extra.targets` below carries them apart.
+    """
+    if r.target_devices:
+        labels = [_device_label(d.device_name, d.device_runtime) for d in r.target_devices.values()]
+        return ", ".join(label for label in labels if label)
+    return _device_label(r.device_name, r.device_runtime)
 
 
 def _step(s: StepOutcome) -> dict[str, object]:
@@ -79,6 +97,8 @@ def _step(s: StepOutcome) -> dict[str, object]:
     assertions / artifacts (all richer than the schema's top level) are preserved under `extra`.
     """
     extra: dict[str, object] = {"index": s.index, "duration": _ms(s.duration_s)}
+    if s.target:
+        extra["target"] = s.target
     if s.reason:
         extra["reason"] = s.reason
     if s.assertion_results:
@@ -97,13 +117,27 @@ def _attachments(r: RunResult) -> list[dict[str, object]]:
     Paths stay run-directory relative, matching how `manifest.json` records them.
     """
     return [
-        {"name": a.name, "contentType": _content_type(a.kind), "path": a.name} for a in r.artifacts
+        {"name": a.name, "contentType": _content_type(a.kind, a.name), "path": a.name}
+        for a in r.artifacts
     ]
 
 
 def _test_extra(r: RunResult) -> dict[str, object]:
     """Bajutsu surplus with no first-class CTRF home, kept under the test's `extra`."""
     extra: dict[str, object] = {"backend": r.backend}
+    if r.target_devices:
+        # A multi-target scenario has no single backend (BE-0428): one entry per declared target
+        # instead, so an importer can still attribute a failure to a platform.
+        extra["targets"] = {
+            name: {
+                "backend": d.backend,
+                "device": d.device,
+                "deviceName": d.device_name,
+                "deviceRuntime": d.device_runtime,
+                **({"engine": d.engine} if d.engine else {}),
+            }
+            for name, d in r.target_devices.items()
+        }
     if r.sid:
         extra["sid"] = r.sid
     # The lifecycle phases (BE-0392) sit beside `steps` rather than inside it, so a consumer reading

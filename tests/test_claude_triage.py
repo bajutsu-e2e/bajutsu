@@ -34,8 +34,8 @@ def _el(identifier: str, label: str) -> base.Element:
 def _ctx(**over: Any) -> TriageContext:
     base_ctx: dict[str, Any] = {
         "scenario": "s",
-        "failure": "step0 tap: 一致なし",
-        "failed_step": FailedStep(0, "tap", "一致なし: home.titel"),
+        "failure": "step0 tap: no match",
+        "failed_step": FailedStep(0, "tap", "no match: home.titel"),
         "failed_expectations": [],
         "elements": [_el("home.title", "Home")],
         "scenario_yaml": "- name: s\n  steps:\n    - tap: { id: home.titel }\n",
@@ -79,7 +79,7 @@ def test_secret_in_context_is_masked_before_send() -> None:
     ctx = _ctx(
         failure="auth failed with token sk-secret-token",
         # `action` comes from the manifest and can embed typed text — it must be redacted too.
-        failed_step=FailedStep(0, "type into=auth.password text=sk-secret-token", "一致なし"),
+        failed_step=FailedStep(0, "type into=auth.password text=sk-secret-token", "no match"),
         elements=[
             {
                 "identifier": "tok",
@@ -128,7 +128,7 @@ def test_request_uses_forced_tool_choice() -> None:
 def test_render_carries_the_failure_context() -> None:
     text = _render(_ctx())
     assert "Scenario: s" in text
-    assert "Failed step: [0] tap — 一致なし: home.titel" in text
+    assert "Failed step: [0] tap — no match: home.titel" in text
     assert "Target id of the failed step: home.titel" in text
     assert "id='home.title'" in text  # the real screen (unified repr quoting, BE-0246)
     assert "Scenario definition (YAML):" in text
@@ -262,8 +262,8 @@ def _ev(ok: bool, **over: Any) -> RunEvidence:
     base_ev: dict[str, Any] = {
         "run_id": "r",
         "ok": ok,
-        "failure": "" if ok else "step0 tap: 一致なし",
-        "failed_step": None if ok else FailedStep(0, "tap", "一致なし: home.titel"),
+        "failure": "" if ok else "step0 tap: no match",
+        "failed_step": None if ok else FailedStep(0, "tap", "no match: home.titel"),
         "failed_expectations": [],
         "elements": [_el("home.title", "Home")],
         "screenshot": None,
@@ -342,7 +342,7 @@ def test_cross_run_render_contrasts_passing_and_failing() -> None:
     text = _render_cross_run(_cross_ctx())
     assert "Scenario: s" in text
     assert "Failing run" in text and "Passing run" in text
-    assert "一致なし: home.titel" in text  # the failure detail
+    assert "no match: home.titel" in text  # the failure detail
     assert "Scenario definition (YAML):" in text
     assert text.rstrip().endswith("Call the `diagnose` tool exactly once.")
 

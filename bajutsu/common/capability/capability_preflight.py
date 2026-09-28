@@ -22,6 +22,9 @@ The map gates only the **true hard requirements** the capability set cleanly dec
 - `setPickerValue` needs `pickerWheel` (BE-0356): a picker wheel is an iOS control, and only the
   resident-runner XCUITest backend can land on a named row deterministically, so a scenario setting
   a wheel's value is rejected up front on every other backend.
+- `selectPhotos` needs `selectPhotos` (roadmap item): a `PHPickerViewController` grid is an iOS
+  control, and only the resident-runner XCUITest backend can address it at all, so a scenario using
+  this step is rejected up front on every other backend.
 - `select` / `copy` need `textSelection` (BE-0280): select-all + clipboard copy on the focused
   field. A backend with no select-all handle raises `UnsupportedAction` and does not advertise the
   token, so a scenario selecting or copying is rejected up front. `delete` / `clear` are not gated:
@@ -87,6 +90,13 @@ def _walk_steps(steps: list[Step], prefix: str = "") -> Iterator[tuple[str, Step
             yield from _walk_steps(step.if_.else_ or [], f"{path} > if > else")
         if step.for_each is not None:
             yield from _walk_steps(step.for_each.steps, f"{path} > forEach")
+        # `web.steps` and `app.steps` are deliberately not recursed into. A `web:`/`app:` step
+        # itself is still walked and gated (its own `_Requirement` fires wherever it sits), but
+        # what happens *inside* the block is not separately visible here — a construct needing a
+        # capability neither backend today declares only alongside WEBVIEW/APP_CONTEXT does not
+        # currently exist, so this is a real but so-far harmless gap, not fixed here (this item
+        # keeps it rather than fixing `web:`'s pre-existing one as a drive-by, which is out of its
+        # lane).
 
 
 def _walk_scenario(sc: Scenario) -> Iterator[tuple[str, Step]]:
@@ -209,6 +219,11 @@ _REQUIREMENTS = (
         _step_locations(lambda s: s.set_picker_value is not None),
     ),
     _Requirement(
+        base.Capability.SELECT_PHOTOS,
+        "selectPhotos (iOS photo-picker selection; iOS XCUITest only)",
+        _step_locations(lambda s: s.select_photos is not None),
+    ),
+    _Requirement(
         base.Capability.TEXT_SELECTION,
         "select / copy (select-all + clipboard copy; not supported by this backend)",
         _text_selection_locations,
@@ -222,6 +237,11 @@ _REQUIREMENTS = (
         base.Capability.HANDLE_SYSTEM_ALERT,
         "handleSystemAlert (iOS system-alert tap; iOS XCUITest only)",
         _step_locations(lambda s: s.handle_system_alert is not None),
+    ),
+    _Requirement(
+        base.Capability.APP_CONTEXT,
+        "app (cross-app UI control; iOS XCUITest only)",
+        _step_locations(lambda s: s.app is not None),
     ),
     *(
         _Requirement(token, f"{label} (device control)", _step_locations(matches))

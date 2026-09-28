@@ -15,7 +15,13 @@ import pytest
 from bajutsu.common.assertions import AssertionResult, VisualEvidence
 from bajutsu.common.drivers.actuation import Actuation
 from bajutsu.common.evidence import Artifact
-from bajutsu.common.orchestrator import AlertEvent, RunResult, SkippedCapture, StepOutcome
+from bajutsu.common.orchestrator import (
+    AlertEvent,
+    RunResult,
+    SkippedCapture,
+    StepOutcome,
+    TargetDeviceInfo,
+)
 from bajutsu.common.report.load import load_run, results_from_manifest
 from bajutsu.common.report.manifest import manifest_dict
 
@@ -98,8 +104,8 @@ def test_round_trip_through_manifest_is_lossless() -> None:
 
 def test_manifest_carries_schema_version_and_source_name() -> None:
     data = manifest_dict("r1", [_result()], source_name="smoke.yaml")
-    # bumped for the optional top-level `target` / `label` stamps (BE-0404)
-    assert data["schemaVersion"] == 10
+    # bumped for the per-step `target` and per-scenario `target_devices` (BE-0428)
+    assert data["schemaVersion"] == 11
     assert data["sourceName"] == "smoke.yaml"
 
 
@@ -324,3 +330,64 @@ def test_one_malformed_record_does_not_fail_the_whole_render() -> None:
 
     assert restored.scenario == "checkout"
     assert restored.steps[0].actuations == []
+
+
+def _multi_target_result() -> RunResult:
+    """A multi-target scenario's result: no singular device, one row per declared target (BE-0428)."""
+    return RunResult(
+        scenario="cross-target",
+        ok=True,
+        steps=[
+            StepOutcome(index=0, action="tap post.like", target="app"),
+            StepOutcome(index=1, action="assert", target="web"),
+        ],
+        expect_results=[AssertionResult(ok=True, kind="value", detail="1", target="web")],
+        target_devices={
+            "app": TargetDeviceInfo(
+                backend="xcuitest",
+                device="UD-1",
+                device_name="iPhone 15",
+                device_runtime="iOS 17.2",
+            ),
+            "web": TargetDeviceInfo(backend="playwright", device="web-0"),
+        },
+    )
+
+
+def test_a_multi_target_result_round_trips_through_the_manifest() -> None:
+    # `target_devices` is a mapping of sub-dataclasses, which `_kw` alone would leave as plain
+    # dicts — the loader has to reconstruct it explicitly, and this is what catches a miss.
+    original = [_multi_target_result()]
+    data = json.loads(json.dumps(manifest_dict("r1", original)))
+    assert results_from_manifest(data) == original
+
+
+def test_a_step_and_an_expect_entry_keep_their_target_through_the_manifest() -> None:
+    # The per-step and per-assertion labels are what let a report say which platform produced each
+    # row, so they have to survive the run that wrote them.
+    data = json.loads(json.dumps(manifest_dict("r1", [_multi_target_result()])))
+    [r] = results_from_manifest(data)
+    assert [s.target for s in r.steps] == ["app", "web"]
+    assert [a.target for a in r.expect_results] == ["web"]
+
+
+def test_a_legacy_manifest_with_no_target_keys_loads_with_empty_ones() -> None:
+    # Version tolerance the other way: a run written before BE-0428 carries neither key, and must
+    # load as "this run declared no targets" rather than failing.
+    legacy = {
+        "runId": "old",
+        "ok": True,
+        "scenarios": [{"scenario": "smoke", "ok": True, "steps": [{"index": 0, "action": "tap"}]}],
+    }
+    [r] = results_from_manifest(legacy)
+    assert r.target_devices == {}
+    assert r.steps[0].target == ""
+
+
+def test_a_damaged_target_devices_entry_is_dropped_rather_than_crashing_the_render() -> None:
+    # The same untrusting read the actuation records get: a manifest is re-read long after the run
+    # that wrote it, so a non-object under a target name must cost that row, not the whole report.
+    data = json.loads(json.dumps(manifest_dict("r1", [_multi_target_result()])))
+    data["scenarios"][0]["target_devices"]["web"] = "not-an-object"
+    [r] = results_from_manifest(data)
+    assert sorted(r.target_devices) == ["app"]

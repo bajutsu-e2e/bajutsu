@@ -11,6 +11,7 @@ from bajutsu.common.evidence import Artifact
 from .alert_event import AlertEvent
 from .skipped_capture import SkippedCapture
 from .step_outcome import StepOutcome
+from .target_device_info import TargetDeviceInfo
 
 
 @dataclass
@@ -38,6 +39,13 @@ class RunResult:
     # report's Environment tab; empty when not resolvable (e.g. the fake driver).
     device_name: str = ""
     device_runtime: str = ""
+    # The four fields above, plus `backend`/`engine`, once per target a multi-target scenario
+    # declared (BE-0428) — each of them describes exactly one target, so on such a run they stay
+    # empty here rather than presenting one declared target's values as if they spoke for the whole
+    # scenario. The same "empty means not applicable" convention `engine` already uses. An existing
+    # reader compiled against today's shape — the JUnit and CTRF exports among them — therefore sees
+    # a single-target run exactly as before, and an empty value rather than a misleading one here.
+    target_devices: dict[str, TargetDeviceInfo] = field(default_factory=dict)
     # Wall-clock the scenario took end to end (steps + verification), for the report.
     duration_s: float = 0.0
     # The absolute wall-clock instant (epoch seconds) the scenario's video started, corrected by
@@ -45,6 +53,12 @@ class RunResult:
     # the seconds to seek the recording to (BE-0348); persisted, unlike the monotonic instant this
     # used to be, so that derivation survives the run that produced it.
     video_anchor_s: float = 0.0
+    # `video_anchor_s`'s counterpart for every *other* declared target's own scenario-wide video
+    # (BE-0428), keyed by target name; empty for a single-target run and absent for a target that
+    # recorded no video, the same "empty means not applicable" convention `target_devices` uses.
+    # `video_anchor_s` above stays the primary's own anchor, unprefixed, for the same reason
+    # `target_devices` leaves the singular device fields alone rather than moving them in here too.
+    target_video_anchors: dict[str, float] = field(default_factory=dict)
     # Added to a raw `time.monotonic()` instant from this run to get its wall-clock epoch
     # (`scenario_wall_start - scenario_start`). The network collector stamps monotonic receive times,
     # so `pipeline.py` converts them through this rather than sampling its own wall/monotonic pair at

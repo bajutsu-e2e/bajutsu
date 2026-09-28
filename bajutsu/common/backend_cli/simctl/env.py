@@ -8,11 +8,12 @@ import plistlib
 import subprocess
 import tempfile
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
 from ._functions import (
     _probe_timed_out,
+    addmedia_cmd,
     boot_cmd,
     child_env,
     clear_location_cmd,
@@ -294,3 +295,14 @@ class Env:
             self._run(push_cmd(self.udid, bundle_id, path), None)
         finally:
             Path(path).unlink()
+
+    def add_media(self, media_paths: Iterable[str]) -> None:
+        """Seed the photo library with each path, one `simctl addmedia` call per path, in order.
+
+        One call per path rather than one call for the whole list: `simctl addmedia` accepts several
+        paths at once, but nothing documents the relative order it assigns them, and a caller that
+        needs a reproducible grid order (`seed_photos`, `Preconditions`) can only rely on the order
+        of *separate* invocations, each landing before the next starts.
+        """
+        for path in media_paths:
+            self._run(addmedia_cmd(self.udid, path), None)

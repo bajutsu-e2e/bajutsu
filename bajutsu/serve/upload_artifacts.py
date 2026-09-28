@@ -13,9 +13,11 @@ not, here they are."
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -26,6 +28,54 @@ ArtifactKind = Literal["config", "scenarios", "binary"]
 # The three artifact kinds BE-0268 uploads independently. Order matters for nothing; it's a
 # closed set a caller can iterate to validate a triple's keys.
 ARTIFACT_KINDS: tuple[ArtifactKind, ...] = ("config", "scenarios", "binary")
+
+# The kinds a single `run` job may override on its own (BE-0431); `config` is not one of them.
+OVERRIDE_KINDS: tuple[ArtifactKind, ...] = ("binary", "scenarios")
+
+
+@dataclass(frozen=True)
+class ArtifactOverrides:
+    """The standalone artifacts one `run` job resolves against instead of its bound tree (BE-0431).
+
+    Only the job carries this — no binding or remembered configuration records it — so two jobs
+    naming different artifacts never contend. *target* is the one target the job runs, whose
+    `appPath` and scenarios directory alone receive the overrides. An absent leg (None) keeps
+    resolving through the org's binding; at least one leg is named, since a job naming none carries
+    no overrides at all.
+    """
+
+    target: str
+    binary: str | None = None
+    scenarios: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.target:
+            raise ValueError("artifact overrides need the target they apply to")
+        if self.binary is None and self.scenarios is None:
+            raise ValueError("artifact overrides need at least one named leg")
+
+    @property
+    def identity(self) -> str:
+        """A digest over the named legs, so two jobs whose overrides differ never share a tree.
+
+        Joined in a fixed kind order with an absent leg as an empty segment, like
+        `_composition_id`: a real 64-character digest can never collide with that empty segment.
+        """
+        return hashlib.sha256(f"{self.binary or ''}:{self.scenarios or ''}".encode()).hexdigest()
+
+    @property
+    def shas(self) -> dict[ArtifactKind, str]:
+        """The named legs, keyed by artifact kind."""
+        return {kind: sha for kind in OVERRIDE_KINDS if (sha := getattr(self, kind)) is not None}
+
+    @property
+    def provenance(self) -> dict[str, str]:
+        """The manifest `provenance` entries naming what this job installed, keyed like the request."""
+        return {f"{kind}Artifact": sha for kind, sha in self.shas.items()}
+
+    def to_spec(self) -> dict[str, str | None]:
+        """The JSON form a queued job spec carries to the worker."""
+        return {"target": self.target, "binary": self.binary, "scenarios": self.scenarios}
 
 
 def artifact_store_key(prefix: str, org: str, kind: ArtifactKind, sha256: str) -> str:

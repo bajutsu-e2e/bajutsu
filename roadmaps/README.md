@@ -4,7 +4,7 @@
 
 > [!IMPORTANT]
 > **Ownership of open items lives in GitHub Issues, not in this file.** Every open item (`Status`
-> `Proposal` or `In progress`) has a matching GitHub issue, and that issue's **Assignees** are the
+> `Approved` or `In progress`) has a matching GitHub issue, and that issue's **Assignees** are the
 > single source of truth for who, if anyone, is working on it — no field in this repo tracks that.
 > Browse [issues labeled `roadmap-tracking`](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap-tracking):
 > `no:assignee` for the unclaimed backlog, `assignee:<user>` for one person's plate. See
@@ -15,7 +15,7 @@
 > (one BE ID per item). Add unformed thoughts to [Unsorted ideas](#unsorted-ideas) first, then
 > promote them to a numbered item once the scope is clear.
 >
-> - **Every item's status** — Implemented, In progress, Proposal, Deferred, or Rejected — lives on
+> - **Every item's status** — Implemented, In progress, Approved, Deferred, or Rejected — lives on
 >   the [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html), not on this
 >   page: browse, filter, and search every item there, grouped by topic with live progress bars.
 >   This page covers what a roadmap item *is* and how to add one, never a snapshot of who stands

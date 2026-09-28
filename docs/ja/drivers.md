@@ -82,6 +82,14 @@ class Driver(Protocol):
 - `pinch` / `rotate`: runner がネイティブに実行する 2 本指の multi-touch ジェスチャです。
 - `select` / `copy`: フォーカス中フィールドのネイティブなテキスト選択です。
 - `screenshot`: `simctl io screenshot`。
+- `enter_app` / `leave_app`: `app:` ステップです。上の `SFSafariViewController` のマージとは違い、
+  2つのツリーをマージすることはありません。`enter_app` は新しい `XCUIApplication(bundleIdentifier:)` を
+  runner自身のappスタックへpushして`.activate()`し、上のすべてのルート（`query()`、`tap`、…）は、対応する
+  `leave_app` が1つ下のappへpopするまで、そのappだけを対象にします。`HANDLE_SYSTEM_ALERT` / `PICKER_WHEEL`
+  と同じくXCUITest限定の`APP_CONTEXT` capabilityで許可を得ます。実現可能性のスパイクにより、
+  `activate()`はテスト対象アプリが一度も起動していないアプリを、アプリ単位のconfigやアプリ側の協力なしに
+  確実に前面化することを確かめました
+  （[`docs/specs/ios-cross-app-ui-control-feasibility.md`](../specs/ios-cross-app-ui-control-feasibility.md)）。
 
 > 汎用の runner は `XCUIApplication(bundleIdentifier:)` を使うので、アプリ側の協力なしにインストール済みの任意のアプリを駆動します。Simulator の実行は runner の config を一切必要としません。target が `xcuitest.testRunner` も `xcuitest.build` も指定しないときは、wheel にパッケージデータとして同梱された Simulator 用 runner に解決します（BE-0292）。明示的な `testRunner` や `build` は依然としてこの既定より優先し、`deviceType: device` は引き続き明示的な署名済み runner を必要とします。署名済み runner はオペレーターのチーム向けに Bajutsu が同梱できないためです。この backend は `make -C demos/showcase run-swiftui` ＋ `ios-e2e.yml` CI ワークフローで**実機検証済みです**（iPhone 17 Pro、最近の iOS）。XCUITest backend は pip extra を必要とせず、`xcodebuild` は Xcode が供給します。
 
@@ -159,7 +167,7 @@ Playwright（Python）によるヘッドレス Chromium です。Mac も Simulat
 - **方向指定の `swipe` はスクロールになる**（BE-0227）: 方向指定形式 `swipe: { on, direction }` の意味は「スクロール」であり、マウスドラッグは web ページをスクロールしません。そこで web バックエンドは、実際にスクロールを起こす入力プリミティブへ、コンテキストの入力モード（上記の `deviceMode`）に応じて振り分けます。**デスクトップ**（ポインター）コンテキストでは、ジェスチャーの起点で `page.mouse.wheel(...)` を発火します。wheel の移動量は travel の符号を反転したものなので、`up` の swipe はページを**下へ**スクロールさせ、トラックパッドやホイールとまったく同じ挙動になります。**タッチ**コンテキスト（モバイルの `deviceMode`）では、CDP による 1 本指の本物のタッチドラッグ（`pinch` / `rotate` と同じ経路）を使い、ページのタッチリスナとスクロールリスナが発火します。**座標**形式 `swipe: { from, to }` は変わりません。canvas やマップのパン、ドラッグハンドルのための素のドラッグの最終手段として、`page.mouse` のドラッグのままです。`codegen` も方向指定形式にはデスクトップの wheel スクロールを出力するので、生成された Playwright テストは、従来の何も動かないドラッグではなく、物理的に正しい向きへスクロールします（codegen には `amount` を掛ける viewport がないため、距離は既定の固定値です）。別途用意した `drag` アクション（要素アンカーのポインタドラッグ。リサイズ用の仕切りやスライダーなど）はドライバーの `swipe` に振り分けられるので、web では掴んだ要素を実際に**動かす** `page.mouse` のドラッグになります。スクロールするだけの方向指定 `swipe` とは対照的です。
 - **マルチタッチ**（BE-0054）: `pinch` / `rotate` は Chromium DevTools プロトコル（`Input.dispatchTouchEvent`）で 2 本指のドラッグとして合成します。`mouse` は単一ポインタなので、ジェスチャは CDP 経由（実際のタッチと同じ経路）で送り、ページのタッチリスナが発火します。要素の中心を 2 本指の基準点とし、`scale` が指の間隔を広げ/狭め、`radians` がその中心まわりに回転させます。
 - **ネイティブネットワーク**（BE-0054）: Playwright はページが出すすべてのリクエストを見られるので、`--network` はアプリ側の協力なしに web でも動きます。`network_collector()` がページの `requestfinished` イベントを iOS と同じ `NetworkExchange` に変換するため、`request` アサーションも `network.json` 証跡もそのまま使えます。シナリオの `mocks` は `page.route` でその場で fulfill します。一致したリクエストには既定のレスポンスを返し、`mocked: true` を立てて記録します。一致判定は決定論的な `request` マッチャを再利用し、モデルは一切使いません。
-- **コンソール / ページエラー、動画の証跡**（BE-0054）: `deviceLog` キャプチャ種別はブラウザのコンソールと未捕捉のページエラーを `<scenario>/device.log` にストリームし、`video` はシナリオ全体を録画します。どちらも simctl ではなく Playwright ネイティブで、iOS の os_log / simctl 動画に相当します。録画はシナリオの `capture` に `video` がある時だけ有効化し（`BrowserContext` を `record_video_dir` 付きで生成）、`video` インターバルが context クローズ時に `<scenario>/scenario.mp4`（中身は webm）へ確定させます。プールがドライバの `driver_interval`（adb バックエンドと共有する、driver 供給の区間証跡 seam）を `FileSink` に注入するので、バックエンド非依存の同じ `capture` ポリシーが両方を運びます。
+- **コンソール / ページエラー、動画の証跡**（BE-0054）: `deviceLog` キャプチャ種別はブラウザのコンソールと未捕捉のページエラーを `<scenario>/device.log` にストリームし、`video` はシナリオ全体を録画します。どちらも simctl ではなく Playwright ネイティブで、iOS の os_log / simctl 動画に相当します。録画はシナリオの `capture` に `video` がある時だけ有効化し（`BrowserContext` を `record_video_dir` 付きで生成）、`video` インターバルが context クローズ時に `<scenario>/scenario.webm` へ確定させます。Playwright の録画機能は常に Matroska/WebM を書き出します。そのため `PlaywrightDriver.video_extension` は、他のバックエンドが使う `.mp4` を借用せず、実際のコンテナに合わせてアーティファクト名を決めます。simctl と adb は本物の mp4 を書き出すため、そちらは従来どおり `.mp4` のままです。プールはドライバの `driver_interval`（adb バックエンドと共有する、driver 供給の区間証跡 seam）を `FileSink` に注入します。`video_extension` も同様に注入するので、バックエンド非依存の同じ `capture` ポリシーが両方を運びつつ、各アーティファクトは自分の中身を正直に名乗ります。
 
 > `playwright` は**遅延 import** されます（実際にブラウザを起動するときだけ読み込む）。そのため既定の CLI パスには決して載りません（`tests/serve/test_import_guard.py` で固定）。インストールは `uv sync --extra web` ＋ `uv run playwright install chromium`。`demos/web` のデモ（`make -C demos/web e2e`）が小さな静的 web アプリを端から端まで駆動します。
 

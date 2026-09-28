@@ -302,6 +302,36 @@ targets:
 """
 
 
+_WEB_HOOKS_CONFIG = """
+targets:
+  app:
+    bundleId: com.example.app
+    before:
+      - tap: { id: a }
+    after:
+      - on: always
+        steps: [{ tap: { id: b } }]
+  web:
+    baseUrl: http://localhost:1/
+    before:
+      - tap: { id: w }
+    after:
+      - on: always
+        steps: [{ tap: { id: z } }]
+"""
+
+_STRAY_TARGET_HOOK_CONFIG = """
+targets:
+  app:
+    bundleId: com.example.app
+    before:
+      - target: staging
+        tap: { id: a }
+  web:
+    baseUrl: http://localhost:1/
+"""
+
+
 def _merged(scenario: dict[str, object]) -> Scenario:
     eff = resolve(load_config(_MERGE_CONFIG), "app")
     return with_lifecycle_phases(eff, [_scenario({"name": "s", **scenario})])[0]
@@ -341,6 +371,113 @@ def test_source_stem_survives_the_before_after_merge_copy() -> None:
     scenario.set_source_stem("login_flow")
     merged = with_lifecycle_phases(eff, [scenario])[0]
     assert merged.source_stem == "login_flow"
+
+
+def test_each_declared_targets_own_hooks_fold_in_stamped_with_its_name() -> None:
+    # BE-0428: a config-level hook is config on the target it acts on, so a two-target scenario
+    # folds in each declared target's own `before`/`after` — in declared order, each step stamped
+    # with that target's name, so an app-side hook and a web-side one never run against each other's
+    # driver. `_WEB_HOOKS_CONFIG` gives `web` its own pair with different ids, so the assertion
+    # below distinguishes "stamped correctly" from "the primary's hooks folded in twice".
+    cfg = load_config(_WEB_HOOKS_CONFIG)
+    effs = {"app": resolve(cfg, "app"), "web": resolve(cfg, "web")}
+    scenario = _scenario(
+        {"name": "s", "targets": ["app", "web"], "steps": [{"target": "app", "tap": {"id": "x"}}]}
+    )
+    merged = with_lifecycle_phases(effs["app"], [scenario], effs)[0]
+    assert [(s.target, s.tap.id) for s in merged.before if s.tap] == [("app", "a"), ("web", "w")]
+    assert [(s.target, s.tap.id) for rule in merged.after for s in rule.steps if s.tap] == [
+        ("app", "b"),
+        ("web", "z"),
+    ]
+
+
+def test_folding_config_hooks_re_checks_target_requirements() -> None:
+    # The re-check still has to run on the folded result: stamping fills a hook's blank `target`,
+    # but a hook that names a target *itself* is left alone, so one naming a target the scenario
+    # never declared has to be caught here — `model_copy(update=...)` never re-runs the load-time
+    # validator that would otherwise have rejected it.
+    cfg = load_config(_STRAY_TARGET_HOOK_CONFIG)
+    effs = {"app": resolve(cfg, "app"), "web": resolve(cfg, "web")}
+    scenario = _scenario(
+        {"name": "s", "targets": ["app", "web"], "steps": [{"target": "app", "tap": {"id": "x"}}]}
+    )
+    with pytest.raises(ValueError, match="is not one of the scenario's declared targets"):
+        with_lifecycle_phases(effs["app"], [scenario], effs)
+
+
+_NESTED_HOOK_CONFIG = """
+targets:
+  a:
+    bundleId: com.example.app
+  b:
+    baseUrl: http://localhost:1/
+    before:
+      - if:
+          condition: { exists: { id: x } }
+          then:
+            - tap: { id: omitted }
+            - target: a
+              tap: { id: named }
+          else:
+            - tap: { id: else_step }
+      - forEach:
+          sel: { idMatches: "row.*" }
+          as: row
+          steps:
+            - tap: { id: for_each_step }
+      - web:
+          within: { id: webview }
+          steps:
+            - tap: { id: web_step }
+"""
+
+
+def _fold_nested_hook(targets: list[str]) -> Scenario:
+    cfg = load_config(_NESTED_HOOK_CONFIG)
+    effs = {"a": resolve(cfg, "a"), "b": resolve(cfg, "b")}
+    scenario = _scenario(
+        {
+            "name": "s",
+            "targets": targets,
+            "primaryTarget": targets[0],
+            "steps": [{"tap": {"id": "x"}}],
+        }
+    )
+    return with_lifecycle_phases(effs[targets[0]], [scenario], effs)[0]
+
+
+def test_a_hooks_nested_steps_run_against_the_hooks_own_target() -> None:
+    # A nested step omitting `target` would otherwise resolve to each scenario's own primary, so
+    # `b`'s hook would run its body against `a` in the first scenario.
+    folded = [_fold_nested_hook(["a", "b"]), _fold_nested_hook(["b", "a"])]
+    nested = []
+    for merged in folded:
+        hook_if, hook_for_each, _ = merged.before
+        assert hook_if.if_ is not None
+        assert hook_if.resolved_target == "b"
+        assert hook_if.if_.then[0].resolved_target == "b"
+        assert hook_if.if_.else_ is not None
+        assert hook_if.if_.else_[0].resolved_target == "b"
+        assert hook_for_each.for_each is not None
+        assert hook_for_each.for_each.steps[0].resolved_target == "b"
+        nested.append(hook_if.if_.then[0])
+    assert nested[0] is not nested[1]
+
+
+def test_a_hooks_nested_step_naming_a_target_keeps_it() -> None:
+    hook_if, _, _ = _fold_nested_hook(["b", "a"]).before
+    assert hook_if.if_ is not None
+    assert hook_if.if_.then[1].target == "a"
+
+
+def test_a_hooks_web_body_is_left_out_of_the_target_fill() -> None:
+    # `_fill_target` must not descend into a `web:`/`app:` body — its nested steps still always
+    # run against the block's own device, and must keep omitting `target` outright.
+    _, _, hook_web = _fold_nested_hook(["b", "a"]).before
+    assert hook_web.web is not None
+    assert hook_web.web.steps[0].target is None
+    assert hook_web.web.steps[0].resolved_target is None
 
 
 def test_the_merged_phases_are_what_the_run_executes() -> None:
@@ -533,6 +670,61 @@ def test_an_app_wide_phase_cannot_use_a_component() -> None:
             "    after:\n"
             "      - on: always\n"
             "        steps: [{ use: { component: c } }]\n"
+        )
+
+
+def test_an_app_wide_phase_cannot_use_a_group() -> None:
+    # Same reason as `use:` above — `group` is expanded per scenario file too.
+    with pytest.raises(ValidationError, match="cannot use a group"):
+        load_config(
+            "targets:\n"
+            "  app:\n"
+            "    bundleId: com.example.app\n"
+            "    before:\n"
+            "      - group: { name: setup, steps: [{ tap: { id: a } }] }\n"
+        )
+
+
+def test_a_use_hidden_inside_an_app_wide_hooks_target_group_is_caught_too() -> None:
+    # BE-0437: a target group is never flattened at `TargetConfig`-parse time either, so a `use:`
+    # one level inside it is exactly as unresolvable as a bare one above — the same load-time
+    # refusal must see through it.
+    with pytest.raises(ValidationError, match="cannot use a component"):
+        load_config(
+            "targets:\n"
+            "  app:\n"
+            "    bundleId: com.example.app\n"
+            "    before:\n"
+            "      - target: app\n"
+            "        steps: [{ use: { component: c } }]\n"
+        )
+
+
+def test_a_group_hidden_inside_an_app_wide_hooks_target_group_is_caught_too() -> None:
+    # Same reason as the `use:` case above, symmetrically, for `group:`.
+    with pytest.raises(ValidationError, match="cannot use a group"):
+        load_config(
+            "targets:\n"
+            "  app:\n"
+            "    bundleId: com.example.app\n"
+            "    before:\n"
+            "      - target: app\n"
+            "        steps: [{ group: { name: setup, steps: [{ tap: { id: a } }] } }]\n"
+        )
+
+
+def test_an_app_wide_phase_rejects_use_nested_inside_if() -> None:
+    # BE-0438 review: the walker descends into `if`/`forEach`/`web`/`app` too, so a `use:` nested
+    # under one of those still loads cleanly rather than reaching the step loop unexpanded.
+    with pytest.raises(ValidationError, match="cannot use a component"):
+        load_config(
+            "targets:\n"
+            "  app:\n"
+            "    bundleId: com.example.app\n"
+            "    before:\n"
+            "      - if:\n"
+            "          condition: { exists: { id: a } }\n"
+            "          then: [{ use: { component: c } }]\n"
         )
 
 

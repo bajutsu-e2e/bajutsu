@@ -39,6 +39,22 @@ class Capability:
     # iOS control, and XCUITest's `adjust(toPickerWheelValue:)` is what makes landing on a named
     # row deterministic — the mirror image of SELECT_OPTION, which only the web backend can honor.
     PICKER_WHEEL = "pickerWheel"
+    # Activate an app the test target never started, by bundle id, and drive it until a matching
+    # leave (the `app:` step). Only the resident-runner XCUITest backend advertises it: a
+    # feasibility spike confirmed `XCUIApplication(bundleIdentifier:).activate()` reliably
+    # foregrounds an uncooperative app with no per-run configuration (unlike WEBVIEW, whose DOM
+    # bridge availability is a per-run fact, not a fixed backend property) — a real Simulator
+    # capability, not a live-grid one, so `xcuitest_live` does not advertise it either (first slice).
+    APP_CONTEXT = "appContext"
+    # Pick images from an open `PHPickerViewController` grid by ordinal position. Only the
+    # resident-runner XCUITest backend advertises it — the picker is an iOS system control, tapped
+    # the same handle-based way `tap` addresses any other element. `capabilities_for_run` narrows
+    # this static declaration further, dropping it on an Apple Silicon Simulator specifically: that
+    # one Simulator/host combination cannot register a synthetic tap against the grid's recycled
+    # cells (a measured, externally-corroborated platform limitation), while a real device or an
+    # Intel Simulator — indistinguishable from the driver's own host-architecture check — actuates
+    # through the identical mechanism every other element already uses.
+    SELECT_PHOTOS = "selectPhotos"
     # Dismiss a blocking Apple TipKit tip — an in-app popover the framework, not the app, builds —
     # by its TipKit-internal dismiss region. Only the XCUITest backend advertises it: TipKit is an
     # iOS framework, and the identifier it exposes is the driver's knowledge to hold, not the

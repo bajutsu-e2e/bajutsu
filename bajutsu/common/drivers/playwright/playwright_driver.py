@@ -38,6 +38,10 @@ class PlaywrightDriver:
     """Driver implementation for the web via Playwright."""
 
     name = "playwright"
+    # Playwright's own `record_video_dir` always writes Matroska/WebM (VP8/VP9), regardless of the
+    # target platform — unlike simctl/adb, which produce real ISO base media (mp4). The device pool
+    # reads this to reserve the scenario video's artifact under its actual extension (BE-0331).
+    video_extension = "webm"
 
     def __init__(
         self,
@@ -350,11 +354,14 @@ class PlaywrightDriver:
         # `launch_driver`'s contract) a genuine no-op instead of re-entering an already-stopped `pw`
         # — whose failure is a driver-connection error, not a `playwright.sync_api.Error`, so the
         # suppress above wouldn't cover it.
-        pw_errors = _playwright_error_types()
+        # `_pw`/`_browser` are always set (or cleared) together — see the constructor and
+        # `relaunch` — so this single check also covers `_pw`. Resolved only inside it: an injected
+        # test page has nothing to close and must not trigger Playwright's own lazy import (the
+        # invariant test_playwright.py's test_importing_module_does_not_load_playwright pins).
         if self._browser is not None:
+            pw_errors = _playwright_error_types()
             with contextlib.suppress(*pw_errors):
                 self._browser.close()
-        if self._pw is not None:
             with contextlib.suppress(*pw_errors):
                 self._pw.stop()
         self._pw = self._browser = self._context = None
@@ -750,12 +757,26 @@ class PlaywrightDriver:
             "setPickerValue is iOS-only; use selectOption for a web <select>"
         )
 
+    def select_photos(self, indices: list[int], *, timeout: float) -> None:  # noqa: ARG002  # Driver shape
+        raise base.UnsupportedAction(
+            "selectPhotos is iOS-only; the web has no PHPickerViewController"
+        )
+
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:  # noqa: ARG002  # Driver shape
         # BE-0316 is an iOS SpringBoard concept: the web backend has no OS-level permission prompt at
         # all, so it never advertises the capability and preflight rejects the step. Mid-run backstop.
         raise base.UnsupportedAction(
             "handleSystemAlert is iOS-only; the web backend has no OS-level permission prompt"
         )
+
+    def enter_app(self, bundle_id: str) -> None:  # noqa: ARG002  # Driver shape
+        # app: rests on XCUITest's own cross-app activate(); a browser has no bundle-id
+        # concept to switch to. Preflight rejects the step before any device work; this is the
+        # mid-run backstop.
+        raise base.UnsupportedAction("app is iOS XCUITest-only; the web backend has no bundle ids")
+
+    def leave_app(self) -> None:
+        raise base.UnsupportedAction("app is iOS XCUITest-only; the web backend has no bundle ids")
 
     def system_alert_labels(self) -> list[str]:
         # No OS-level SpringBoard prompt on the web; the reactive guard's native path never runs here.

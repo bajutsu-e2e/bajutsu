@@ -7,15 +7,22 @@ collect logic is exercised without the ``aws`` extra.
 
 from __future__ import annotations
 
+import ast
+import dataclasses
+import inspect
 import io
 import json
+import logging
+import textwrap
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
+from bajutsu.serve import batch_bootstrap
 from bajutsu.serve import batch_provider as bp
 
 
@@ -42,6 +49,41 @@ def test_resolve_fails_closed_on_an_unknown_provider() -> None:
     # cloud-batch job quietly vanish.
     with pytest.raises(ValueError, match="unknown batch provider 'nope'"):
         bp.resolve("nope")
+
+
+def _render_test_spec_calls(source: str) -> list[ast.Call]:
+    """Every `render_test_spec(...)` call node in `source` (a class method's own source has leading
+    indentation `ast.parse` rejects, hence the dedent)."""
+    tree = ast.parse(textwrap.dedent(source))
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "render_test_spec"
+    ]
+
+
+def test_provider_never_wires_a_request_into_the_pre_test_hook() -> None:
+    # render_test_spec's pre_test_commands hook (BE-0432) is Python-API-only: no request-sourced value
+    # may reach it, or a client body would hand a shell on the host holding the run's AWS role. Guard
+    # the one in-tree call site structurally (an AST walk, not a substring match on the source text) so
+    # a comment merely mentioning the parameter can't trip a false positive, and so a future
+    # `BatchRequest` field named anything (`setup_commands`, `device_setup`) wired into the hook still
+    # trips this, forcing a reviewer to confirm the change consciously.
+    calls = _render_test_spec_calls(inspect.getsource(bp.DeviceFarmBatchProvider.submit))
+    assert calls, "expected DeviceFarmBatchProvider.submit to call render_test_spec"
+    for call in calls:
+        keyword_names = {keyword.arg for keyword in call.keywords}
+        assert "pre_test_commands" not in keyword_names
+        # `render_test_spec`'s parameter is keyword-only (after the `*` in its signature), so mypy
+        # --strict already rejects passing it positionally — nothing to check there. A `**mapping`
+        # splat is the one way a keyword-only argument still slips in unnamed; reject one on this call
+        # (an `ast.keyword` with `arg is None` is a `**` unpack).
+        assert None not in keyword_names
+    # And, as documentation of the seam, the request today carries no field the call site could pass.
+    field_names = {field.name for field in dataclasses.fields(bp.BatchRequest)}
+    assert "pre_test_commands" not in field_names
 
 
 def _zip_bytes(members: dict[str, str]) -> bytes:
@@ -194,3 +236,581 @@ def test_devicefarm_provider_resumes_a_scheduled_run_without_resubmitting(tmp_pa
     assert len(transfer.uploaded) == uploads_after_first  # no re-upload on resume
     assert verdict.ok and verdict.passed == 1
     assert (tmp_path / "d2" / "runs" / "20260101-1" / "manifest.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# BatchLifecycleHook integration tests (BE-0435)
+# ---------------------------------------------------------------------------
+
+
+class _CapturingTransfer:
+    """Transfer stub that captures uploaded file bytes before temp dirs are cleaned up."""
+
+    def __init__(self, *, manifest_ok: bool) -> None:
+        self._ok = manifest_ok
+        self.uploaded: list[str] = []
+        self.packages: dict[str, bytes] = {}
+
+    def upload(self, url: str, path: Path) -> None:
+        self.uploaded.append(url)
+        self.packages[url] = path.read_bytes()
+
+    def download(self, url: str) -> bytes:
+        manifest = json.dumps(
+            {"ok": self._ok, "scenarios": [{"scenario": "alpha", "ok": self._ok}]}
+        )
+        return _zip_bytes({"runs/20260101-1/manifest.json": manifest})
+
+
+def _android_request_with_config(
+    tmp_path: Path,
+    *,
+    existing_launch_env: dict[str, str] | None = None,
+    scenario_preconditions_launch_env: dict[str, str] | None = None,
+) -> tuple[Path, bp.BatchRequest]:
+    """Like _android_request but creates bajutsu.config.yaml and a scenario with preconditions."""
+    work = tmp_path / "project"
+    work.mkdir()
+
+    config: dict[str, Any] = {
+        "targets": {
+            "demo": {
+                "platform": "android",
+                "package": "com.example.app",
+            }
+        }
+    }
+    if existing_launch_env:
+        config["targets"]["demo"]["launchEnv"] = existing_launch_env
+    (work / "bajutsu.config.yaml").write_text(
+        yaml.dump(config, allow_unicode=True), encoding="utf-8"
+    )
+
+    preconditions_block = ""
+    if scenario_preconditions_launch_env:
+        env_block = "\n".join(
+            f"      {k}: {v}" for k, v in scenario_preconditions_launch_env.items()
+        )
+        preconditions_block = f"\n  preconditions:\n    launchEnv:\n{env_block}"
+    (work / "smoke.yaml").write_text(
+        f"- name: alpha{preconditions_block}\n  steps: []\n", encoding="utf-8"
+    )
+
+    (tmp_path / "app.apk").write_bytes(b"apk")
+    request = bp.BatchRequest(
+        provider="devicefarm",
+        scenario="smoke.yaml",
+        target="demo",
+        config="bajutsu.config.yaml",
+        platform="android",
+        app_path=str(tmp_path / "app.apk"),
+    )
+    return work, request
+
+
+def _raw_config_bytes_from_package(packages: dict[str, bytes]) -> bytes:
+    """Find the test package zip and return bajutsu.config.yaml's raw member bytes, unparsed."""
+    for url, data in packages.items():
+        if not url.endswith(".zip") or "testspec" in url:
+            continue
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as zf:
+                if "bajutsu.config.yaml" in zf.namelist():
+                    return zf.read("bajutsu.config.yaml")
+        except zipfile.BadZipFile:
+            continue
+    raise AssertionError("bajutsu.config.yaml not found in any uploaded package zip")
+
+
+def _read_config_from_package(packages: dict[str, bytes]) -> dict[str, Any]:
+    """Find the test package zip and extract bajutsu.config.yaml from it."""
+    return yaml.safe_load(_raw_config_bytes_from_package(packages).decode()) or {}
+
+
+def _make_provider(
+    *,
+    client: _FakeClient | None = None,
+    transfer: _CapturingTransfer | None = None,
+    hooks: Sequence[bp.BatchLifecycleHook] = (),
+) -> bp.DeviceFarmBatchProvider:
+    return bp.DeviceFarmBatchProvider(
+        client=client or _FakeClient(),
+        transfer=transfer or _CapturingTransfer(manifest_ok=True),
+        project_arn="arn:project/1",
+        sleep=lambda _: None,
+        hooks=hooks,
+    )
+
+
+def test_no_launch_env_injection_preserves_existing_config(tmp_path: Path) -> None:
+    # Without a hook injecting launch_env, the packaged config retains its original values.
+    transfer = _CapturingTransfer(manifest_ok=True)
+    provider = _make_provider(transfer=transfer)
+    work, request = _android_request_with_config(tmp_path)
+    # Overwrite with formatting `yaml.dump`'s own re-serialization would never reproduce: a
+    # comment, and keys in genuinely non-sorted order (`yaml.dump` defaults to sort_keys=True, so
+    # launchEnv/package/platform *is* what it emits — sorted order distinguishes nothing). A
+    # byte-for-byte match below can then only mean the no-hooks path skipped the extra_texts
+    # overlay entirely, not that the overlay happened to re-serialize to equivalent-looking bytes.
+    non_canonical = (
+        "# operator note: demo target\n"
+        "targets:\n"
+        "  demo:\n"
+        "    platform: android\n"
+        "    package: com.example.app\n"
+        "    launchEnv:\n"
+        "      EXISTING: value\n"
+    )
+    (work / "bajutsu.config.yaml").write_text(non_canonical, encoding="utf-8")
+
+    provider.submit(request, work_dir=work, dest=tmp_path / "d")
+
+    config = _read_config_from_package(transfer.packages)
+    assert config["targets"]["demo"].get("launchEnv", {}).get("EXISTING") == "value"
+    # No hooks means ctx.launch_env stays empty, so the extra_texts overlay never fires
+    # (device_farm_batch_provider.py's `if ctx.launch_env:` guard) — the packaged bytes must be
+    # exactly the config as written on disk, not a re-serialization that happens to look
+    # equivalent. Compare against the literal above (captured before submit), not a re-read of
+    # work_dir afterward, so a provider that rewrote the file in place couldn't pass by moving
+    # both sides together.
+    assert _raw_config_bytes_from_package(transfer.packages) == non_canonical.encode("utf-8")
+    # work_dir is the shared package root concurrent batch jobs pack, so submit must never
+    # mutate it in place (BE-0435's "without mutating work_dir").
+    assert (work / "bajutsu.config.yaml").read_text(encoding="utf-8") == non_canonical
+
+
+def test_before_submit_launch_env_merged_into_packaged_config(tmp_path: Path) -> None:
+    # A hook that sets ctx.launch_env causes the packaged config to contain those keys.
+    class _ProxyHook(bp.BatchLifecycleHook):
+        def before_submit(self, ctx: bp.BatchContext) -> None:
+            ctx.launch_env["PROXY_HOST"] = "proxy.example.com"
+            ctx.launch_env["PROXY_PORT"] = "3128"
+
+    transfer = _CapturingTransfer(manifest_ok=True)
+    provider = _make_provider(transfer=transfer, hooks=[_ProxyHook()])
+    work, request = _android_request_with_config(tmp_path)
+    original = (work / "bajutsu.config.yaml").read_text(encoding="utf-8")
+
+    provider.submit(request, work_dir=work, dest=tmp_path / "d")
+
+    config = _read_config_from_package(transfer.packages)
+    launch_env = config["targets"]["demo"]["launchEnv"]
+    assert launch_env["PROXY_HOST"] == "proxy.example.com"
+    assert launch_env["PROXY_PORT"] == "3128"
+    # The merge lands via build_package's extra_texts overlay, never by rewriting work_dir — the
+    # shared package root concurrent batch jobs pack (BE-0435's "without mutating work_dir").
+    assert (work / "bajutsu.config.yaml").read_text(encoding="utf-8") == original
+
+
+def test_injected_keys_win_over_existing_config_launch_env(tmp_path: Path) -> None:
+    # ctx.launch_env wins over values already in the config's launchEnv on key collision.
+    class _OverrideHook(bp.BatchLifecycleHook):
+        def before_submit(self, ctx: bp.BatchContext) -> None:
+            ctx.launch_env["SHARED_KEY"] = "from_hook"
+
+    transfer = _CapturingTransfer(manifest_ok=True)
+    provider = _make_provider(transfer=transfer, hooks=[_OverrideHook()])
+    work, request = _android_request_with_config(
+        tmp_path, existing_launch_env={"SHARED_KEY": "from_config", "OTHER": "kept"}
+    )
+
+    provider.submit(request, work_dir=work, dest=tmp_path / "d")
+
+    config = _read_config_from_package(transfer.packages)
+    launch_env = config["targets"]["demo"]["launchEnv"]
+    assert launch_env["SHARED_KEY"] == "from_hook"
+    assert launch_env["OTHER"] == "kept"
+
+
+def test_config_not_duplicated_in_zip_when_overlay_applied(tmp_path: Path) -> None:
+    # The config arcname must appear exactly once in the package zip when overlaid.
+    class _Hook(bp.BatchLifecycleHook):
+        def before_submit(self, ctx: bp.BatchContext) -> None:
+            ctx.launch_env["K"] = "v"
+
+    transfer = _CapturingTransfer(manifest_ok=True)
+    provider = _make_provider(transfer=transfer, hooks=[_Hook()])
+    work, request = _android_request_with_config(tmp_path)
+
+    provider.submit(request, work_dir=work, dest=tmp_path / "d")
+
+    pkg_bytes = next(
+        data
+        for url, data in transfer.packages.items()
+        if url.endswith(".zip") and "testspec" not in url
+    )
+    with zipfile.ZipFile(io.BytesIO(pkg_bytes)) as zf:
+        config_count = zf.namelist().count("bajutsu.config.yaml")
+    assert config_count == 1
+
+
+def test_after_run_called_with_verdict_on_success(tmp_path: Path) -> None:
+    after_calls: list[Any] = []
+
+    class _RecordHook(bp.BatchLifecycleHook):
+        def after_run(self, ctx: bp.BatchContext, verdict: Any) -> None:
+            after_calls.append(verdict)
+
+    provider = _make_provider(hooks=[_RecordHook()])
+    work, request = _android_request_with_config(tmp_path)
+
+    verdict = provider.submit(request, work_dir=work, dest=tmp_path / "d")
+
+    assert len(after_calls) == 1
+    assert after_calls[0] is verdict
+    assert after_calls[0].ok
+
+
+def test_after_run_called_with_none_on_pre_verdict_failure(tmp_path: Path) -> None:
+    # When before_submit raises, after_run is called with verdict=None for ALL hooks (including
+    # the failing hook itself) and the original exception propagates.
+    after_calls: list[tuple[str, Any]] = []
+
+    class _RecordHook(bp.BatchLifecycleHook):
+        def after_run(self, ctx: bp.BatchContext, verdict: Any) -> None:
+            after_calls.append(("record", verdict))
+
+    class _FailHook(bp.BatchLifecycleHook):
+        def before_submit(self, ctx: bp.BatchContext) -> None:
+            raise RuntimeError("setup intentionally failed")
+
+        def after_run(self, ctx: bp.BatchContext, verdict: Any) -> None:
+            after_calls.append(("fail", verdict))
+
+    provider = _make_provider(hooks=[_RecordHook(), _FailHook()])
+    work, request = _android_request_with_config(tmp_path)
+
+    with pytest.raises(RuntimeError, match="setup intentionally failed"):
+        provider.submit(request, work_dir=work, dest=tmp_path / "d")
+
+    # Teardown is reverse order (FailHook then RecordHook), both with verdict=None.
+    assert after_calls == [("fail", None), ("record", None)]
+
+
+def test_after_run_called_on_checkpoint_resume(tmp_path: Path) -> None:
+    # The resume path (run already scheduled) skips before_submit but still calls after_run.
+    before_calls: list[str] = []
+    after_calls: list[Any] = []
+
+    class _RecordHook(bp.BatchLifecycleHook):
+        def before_submit(self, ctx: bp.BatchContext) -> None:
+            before_calls.append("called")
+
+        def after_run(self, ctx: bp.BatchContext, verdict: Any) -> None:
+            after_calls.append(verdict)
+
+    provider = _make_provider(hooks=[_RecordHook()])
+    work, request = _android_request_with_config(tmp_path)
+    checkpoint = _Checkpoint()
+    checkpoint.run_arn = "arn:run/existing"  # simulate already-scheduled run
+
+    verdict = provider.submit(request, work_dir=work, dest=tmp_path / "d", checkpoint=checkpoint)
+
+    assert before_calls == []  # before_submit skipped on resume
+    assert len(after_calls) == 1
+    assert after_calls[0] is verdict
+
+
+def test_teardown_order_is_reverse_of_setup(tmp_path: Path) -> None:
+    order: list[str] = []
+
+    class _HookA(bp.BatchLifecycleHook):
+        def before_submit(self, ctx: bp.BatchContext) -> None:
+            order.append("A:before")
+
+        def after_run(self, ctx: bp.BatchContext, verdict: Any) -> None:
+            order.append("A:after")
+
+    class _HookB(bp.BatchLifecycleHook):
+        def before_submit(self, ctx: bp.BatchContext) -> None:
+            order.append("B:before")
+
+        def after_run(self, ctx: bp.BatchContext, verdict: Any) -> None:
+            order.append("B:after")
+
+    provider = _make_provider(hooks=[_HookA(), _HookB()])
+    work, request = _android_request_with_config(tmp_path)
+
+    provider.submit(request, work_dir=work, dest=tmp_path / "d")
+
+    assert order == ["A:before", "B:before", "B:after", "A:after"]
+
+
+def test_launch_env_collision_with_scenario_preconditions_raises(tmp_path: Path) -> None:
+    # If a scenario's preconditions.launchEnv has a key that a hook injects, raise loudly at submit.
+    class _ProxyHook(bp.BatchLifecycleHook):
+        def before_submit(self, ctx: bp.BatchContext) -> None:
+            ctx.launch_env["PROXY_HOST"] = "proxy.example.com"
+
+    provider = _make_provider(hooks=[_ProxyHook()])
+    work, request = _android_request_with_config(
+        tmp_path, scenario_preconditions_launch_env={"PROXY_HOST": "other"}
+    )
+
+    # The key alone isn't enough to find the collision in a multi-scenario package — the message
+    # must also name the scenario and the file.
+    with pytest.raises(ValueError, match=r"PROXY_HOST.*alpha.*smoke\.yaml"):
+        provider.submit(request, work_dir=work, dest=tmp_path / "d")
+
+
+def test_hooks_never_sourced_from_a_batch_request_field() -> None:
+    # BatchRequest carries no hook-related field — hook identity is deploy-time only (BE-0435).
+    # An AST walk of submit() confirms that 'hooks' is never passed per-call (it is constructor-only).
+    request_fields = {f.name for f in dataclasses.fields(bp.BatchRequest)}
+    assert "hooks" not in request_fields, "BatchRequest must not carry a 'hooks' field"
+
+    submit_source = inspect.getsource(bp.DeviceFarmBatchProvider.submit)
+    tree = ast.parse(textwrap.dedent(submit_source))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            for kw in node.keywords:
+                assert kw.arg != "hooks", (
+                    "DeviceFarmBatchProvider.submit passes 'hooks' in a call — "
+                    "hooks must be wired at construction only, never per-submit"
+                )
+
+
+def _is_load_hooks_call(value: ast.expr) -> bool:
+    return isinstance(value, ast.Call) and (
+        (isinstance(value.func, ast.Name) and value.func.id == "_load_hooks")
+        or (isinstance(value.func, ast.Attribute) and value.func.attr == "_load_hooks")
+    )
+
+
+def _assigned_rhs(stmt: ast.AST, name: str) -> ast.expr | None:
+    """The right-hand side of stmt, if it is a plain, annotated, or augmented assignment to
+    'name'."""
+    if isinstance(stmt, ast.Assign) and any(
+        isinstance(t, ast.Name) and t.id == name for t in stmt.targets
+    ):
+        return stmt.value
+    if (
+        isinstance(stmt, ast.AnnAssign)
+        and isinstance(stmt.target, ast.Name)
+        and stmt.target.id == name
+        and stmt.value is not None
+    ):
+        return stmt.value
+    if (
+        isinstance(stmt, ast.AugAssign)
+        and isinstance(stmt.target, ast.Name)
+        and stmt.target.id == name
+    ):
+        # 'hooks += [<request value>]' rebinds the local exactly as a plain assignment would, so
+        # it faces the same _load_hooks(...) check as any other assignment.
+        return stmt.value
+    return None
+
+
+def _mentions_name_unsafely(stmt: ast.AST, name: str) -> bool:
+    """True if stmt could rebind or mutate 'name' in a shape _assigned_rhs can't verify: a
+    mutating method call ('hooks.append(...)') or a compound assignment target
+    ('hooks, other = ...') that _assigned_rhs's plain ast.Name check would skip over."""
+    if (
+        isinstance(stmt, ast.Call)
+        and isinstance(stmt.func, ast.Attribute)
+        and isinstance(stmt.func.value, ast.Name)
+        and stmt.func.value.id == name
+    ):
+        return True
+    if isinstance(stmt, ast.Assign):
+        for target in stmt.targets:
+            if isinstance(target, ast.Name):
+                continue
+            if any(isinstance(n, ast.Name) and n.id == name for n in ast.walk(target)):
+                return True
+    return False
+
+
+def test_hooks_construction_site_sources_only_from_load_hooks() -> None:
+    # The AST walk above proves submit() never re-passes 'hooks' per-call, but hooks are
+    # constructor-only, so a request- or config-sourced value could only reach a provider at its
+    # one construction site instead: batch_bootstrap.register_batch_providers. Walk that module
+    # and confirm 'hooks=' there is always _load_hooks(...)'s return value — directly, or via a
+    # local variable whose every plain/annotated/augmented assignment comes from it and that is
+    # never mutated or rebound any other way, so neither a later reassignment nor an appended
+    # entry from a request- or config-sourced value can slip past a narrower check. A hook spec
+    # is a 'module:factory' string that gets imported and called, so letting a request body
+    # choose hooks would be arbitrary code execution in the process holding the run's AWS role
+    # (BE-0435, the same trust boundary BE-0432 drew for pre_test_commands).
+    tree = ast.parse(textwrap.dedent(inspect.getsource(batch_bootstrap)))
+    functions = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
+
+    construction_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and (
+            (isinstance(node.func, ast.Name) and node.func.id == "DeviceFarmBatchProvider")
+            or (
+                isinstance(node.func, ast.Attribute) and node.func.attr == "DeviceFarmBatchProvider"
+            )
+        )
+    ]
+    assert construction_calls, "expected at least one DeviceFarmBatchProvider(...) construction"
+
+    for call in construction_calls:
+        hooks_kw = next((kw for kw in call.keywords if kw.arg == "hooks"), None)
+        assert hooks_kw is not None, "DeviceFarmBatchProvider(...) must pass hooks= explicitly"
+        value = hooks_kw.value
+        if _is_load_hooks_call(value):
+            continue
+        assert isinstance(value, ast.Name), (
+            f"hooks= must be _load_hooks(...) or a local variable assigned from it, "
+            f"got {ast.dump(value)}"
+        )
+        enclosing = next((fn for fn in functions if call in ast.walk(fn)), None)
+        assert enclosing is not None, "construction call must live inside a function"
+        assigned = [
+            rhs
+            for stmt in ast.walk(enclosing)
+            if (rhs := _assigned_rhs(stmt, value.id)) is not None
+        ]
+        assert assigned, f"hooks= local variable {value.id!r} is never assigned"
+        # Every assignment, not just one: a later `hooks = <request value>` must not slip through.
+        assert all(_is_load_hooks_call(expr) for expr in assigned), (
+            f"every assignment to hooks= local variable {value.id!r} must come from "
+            "_load_hooks(...), never a request- or config-sourced value"
+        )
+        # A mutating call (hooks.append(...)) or a compound target (hooks, other = ...) rebinds
+        # or extends the local in a shape _assigned_rhs can't verify — treat either as unproven.
+        assert not any(_mentions_name_unsafely(stmt, value.id) for stmt in ast.walk(enclosing)), (
+            f"hooks= local variable {value.id!r} must never be mutated via a method call or "
+            "rebound via a compound assignment target — only assigned from _load_hooks(...)"
+        )
+
+
+def test_job_id_reaches_batch_context(tmp_path: Path) -> None:
+    received_job_ids: list[str] = []
+
+    class _RecordJobId(bp.BatchLifecycleHook):
+        def before_submit(self, ctx: bp.BatchContext) -> None:
+            received_job_ids.append(ctx.job_id)
+
+    provider = _make_provider(hooks=[_RecordJobId()])
+    work, request = _android_request_with_config(tmp_path)
+
+    provider.submit(request, work_dir=work, dest=tmp_path / "d", job_id="job-abc-123")
+
+    assert received_job_ids == ["job-abc-123"]
+
+
+# ---------------------------------------------------------------------------
+# _check_launch_env_collisions: edge-case branches (BE-0435)
+# ---------------------------------------------------------------------------
+
+
+def test_after_run_hook_failure_does_not_skip_remaining_hooks(tmp_path: Path) -> None:
+    # Even when an earlier hook's after_run raises, all later hooks still run.
+    ran: list[str] = []
+
+    class _FailHook(bp.BatchLifecycleHook):
+        def after_run(self, ctx: bp.BatchContext, verdict: Any) -> None:
+            ran.append("fail")
+            raise RuntimeError("hook teardown error")
+
+    class _RecordHook(bp.BatchLifecycleHook):
+        def after_run(self, ctx: bp.BatchContext, verdict: Any) -> None:
+            ran.append("record")
+
+    provider = _make_provider(hooks=[_RecordHook(), _FailHook()])
+    work, request = _android_request_with_config(tmp_path)
+
+    verdict = provider.submit(request, work_dir=work, dest=tmp_path / "d")
+
+    assert verdict.ok
+    # Hooks run in reverse; FailHook is last → runs first in teardown → RecordHook still runs
+    assert ran == ["fail", "record"]
+
+
+class _TeardownFailHook(bp.BatchLifecycleHook):
+    def __init__(self, label: str) -> None:
+        self.label = label
+
+    def after_run(self, ctx: bp.BatchContext, verdict: Any) -> None:
+        raise RuntimeError(f"{self.label} failed to release its credential")
+
+
+def _teardown_messages(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        str(r.exc_info[1])
+        for r in caplog.records
+        if r.name == "bajutsu.serve.batch_provider.device_farm_batch_provider" and r.exc_info
+    ]
+
+
+def test_after_run_failures_after_a_collected_verdict_are_logged_not_raised(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A teardown failure must not replace the `return` of a collected run: raising there would
+    # make serve discard the run's artifacts and report FAIL for a run that finished (#2060).
+    provider = _make_provider(hooks=[_TeardownFailHook("A"), _TeardownFailHook("B")])
+    work, request = _android_request_with_config(tmp_path)
+
+    with caplog.at_level(logging.ERROR):
+        verdict = provider.submit(request, work_dir=work, dest=tmp_path / "d", job_id="job-1")
+
+    assert verdict.ok
+    assert _teardown_messages(caplog) == [
+        "B failed to release its credential",
+        "A failed to release its credential",
+    ]
+    assert all("job-1" in r.getMessage() for r in caplog.records if r.exc_info)
+
+
+def test_after_run_failures_before_a_verdict_raise_one_and_log_the_rest(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # With no verdict, the first teardown failure (last-registered hook) is still raised with the
+    # run's own exception as __context__; every other failure is logged, never dropped (#2060).
+    class _SetupFailHook(_TeardownFailHook):
+        def before_submit(self, ctx: bp.BatchContext) -> None:
+            raise ValueError("setup intentionally failed")
+
+    provider = _make_provider(hooks=[_TeardownFailHook("A"), _SetupFailHook("B")])
+    work, request = _android_request_with_config(tmp_path)
+
+    with (
+        caplog.at_level(logging.ERROR),
+        pytest.raises(RuntimeError, match="B failed to release its credential") as excinfo,
+    ):
+        provider.submit(request, work_dir=work, dest=tmp_path / "d")
+
+    assert isinstance(excinfo.value.__context__, ValueError)
+    assert _teardown_messages(caplog) == ["A failed to release its credential"]
+
+
+def test_collision_guard_skips_non_dict_preconditions(tmp_path: Path) -> None:
+    # preconditions that is not a mapping (e.g. a scalar) must not raise AttributeError.
+    from bajutsu.serve.batch_provider.device_farm_batch_provider import _check_launch_env_collisions
+
+    scenario = tmp_path / "scenario.yaml"
+    scenario.write_text("- name: s1\n  preconditions: true\n")
+    _check_launch_env_collisions(scenario, {"PROXY_HOST": "proxy.example.com"})
+
+
+def test_collision_guard_accepts_non_list_scenario_yaml(tmp_path: Path) -> None:
+    # If the scenario YAML root is not a list, the guard returns early without raising.
+    from bajutsu.serve.batch_provider.device_farm_batch_provider import _check_launch_env_collisions
+
+    scenario = tmp_path / "scenario.yaml"
+    scenario.write_text("not_a_list: true\n")
+    _check_launch_env_collisions(scenario, {"PROXY_HOST": "proxy.example.com"})
+
+
+def test_collision_guard_skips_non_dict_scenario_item(tmp_path: Path) -> None:
+    # A non-dict item in the scenario list (e.g. a bare string) is silently skipped.
+    from bajutsu.serve.batch_provider.device_farm_batch_provider import _check_launch_env_collisions
+
+    scenario = tmp_path / "scenario.yaml"
+    scenario.write_text("- just_a_string\n")
+    _check_launch_env_collisions(scenario, {"PROXY_HOST": "proxy.example.com"})
+
+
+def test_collision_guard_accepts_non_overlapping_keys(tmp_path: Path) -> None:
+    # A scenario with launchEnv keys that don't overlap with the injected dict must not raise.
+    from bajutsu.serve.batch_provider.device_farm_batch_provider import _check_launch_env_collisions
+
+    scenario = tmp_path / "scenario.yaml"
+    scenario.write_text("- name: s1\n  preconditions:\n    launchEnv:\n      OTHER_KEY: value\n")
+    _check_launch_env_collisions(scenario, {"PROXY_HOST": "proxy.example.com"})

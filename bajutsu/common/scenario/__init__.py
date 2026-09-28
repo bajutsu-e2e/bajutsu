@@ -27,6 +27,7 @@ from bajutsu.common.scenario.models import (
     ASSERTION_KINDS,
     STEP_ACTIONS,
     AfterRule,
+    App,
     Assertion,
     Background,
     CaptureRule,
@@ -51,6 +52,7 @@ from bajutsu.common.scenario.models import (
     Generate,
     GoldenMatch,
     Gone,
+    Group,
     HandleSystemAlert,
     HttpRequest,
     If,
@@ -78,6 +80,7 @@ from bajutsu.common.scenario.models import (
     SelectOption,
     Selector,
     SelectorRegion,
+    SelectPhotos,
     SetClipboard,
     SetLocation,
     SetPickerValue,
@@ -97,6 +100,11 @@ from bajutsu.common.scenario.models import (
     Wait,
     WaitRequest,
     Web,
+)
+from bajutsu.common.scenario.models import _check_target_requirements as _check_target_requirements
+from bajutsu.common.scenario.models import _expand_target_groups as _expand_target_groups
+from bajutsu.common.scenario.models import (
+    _scenarios_declaring_targets as _scenarios_declaring_targets,
 )
 from bajutsu.common.scenario.raw_source import RawScenario, scenario_sources
 from bajutsu.common.scenario.select import select_scenarios
@@ -125,6 +133,7 @@ __all__ = [
     "STEP_ACTIONS",
     "AfterRule",
     "AlertSurfaces",
+    "App",
     "Assertion",
     "Background",
     "CaptureRule",
@@ -150,6 +159,7 @@ __all__ = [
     "Generate",
     "GoldenMatch",
     "Gone",
+    "Group",
     "HandleSystemAlert",
     "HttpRequest",
     "If",
@@ -177,6 +187,7 @@ __all__ = [
     "ScenarioFile",
     "Scroll",
     "SelectOption",
+    "SelectPhotos",
     "Selector",
     "SelectorRegion",
     "SetClipboard",

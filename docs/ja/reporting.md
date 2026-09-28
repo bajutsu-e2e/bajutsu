@@ -28,6 +28,15 @@ runs/<runId>/
         └── device.log    # deviceLog（区間）
 ```
 
+シナリオの`targets`フィールド
+([BE-0428](../../roadmaps/BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md))
+が2つ以上のエントリを挙げているときは、primaryを含む宣言済みの各ターゲットの証跡を、そのターゲット
+名のフォルダにまとめます。上記のステップごとの証跡は`<sid>/<target>/<stepId>/…`になり、そのター
+ゲットのシナリオ全体の録画（`scenario.mp4`など）と`network.json`は`<sid>/<target>/`の直下に置かれ
+ます。
+
+ターゲットを0個または1個しか宣言しないシナリオは、上記の平坦なレイアウトのままです。
+
 `runId` は `YYYYMMDD-HHMMSS` の形式で、`bajutsu/common/run_meta/id.py`（[BE-0200](../../roadmaps/BE-0200-run-id-contract/BE-0200-run-id-contract-ja.md)）が一箇所で採番します。この形式は report、Web UI、その他すべての呼び出し元で共有する単一の契約です。`sid` は `{NN}-{slug}` の形式で、ゼロ埋めされた実行順の連番と、シナリオを読み込んだ元ファイルの語幹（`login_flow.yaml` なら `login_flow`）をつなげたものです。ファイルから読み込まれていないシナリオ（メモリ上で直接組み立てられたものなど、元ファイルが不明な場合）では、代わりにシナリオの `name:` フィールドをスラッグ化した値になります
 （[BE-0417](../../roadmaps/BE-0417-scenario-result-folder-naming/BE-0417-scenario-result-folder-naming-ja.md)）。`stepId` は `step.name` または `step<i>` です。
 
@@ -80,7 +89,7 @@ runs/<runId>/
 - `steps[].artifacts`: そのステップで取れた証跡の来歴です（[evidence](evidence.md#アーティファクトの来歴provider)）。
 - `steps[].actuations`: そのステップのあいだにドライバが画面に対して実際に行ったことです。タップが送った座標、スワイプが動いた端点、各ジェスチャを運んだ経路が入ります。これが `actionLog` の証跡種別で、ファイルではなく manifest に内在します（[evidence](evidence.md#各ステップが画面に対して実際に行ったことactionlog)）。`schemaVersion` 5 より前に記録された run は持ちません。`expect_actuations` はシナリオ末尾の `expect` の再チェックについて同じものを持ちます。そこではシステムアラートガードが、載せる先のステップなしに操作しうるからです。`schemaVersion` 7 からは、操作した要素がドライバの既定の規則の指す要素と異なる理由を `substitution` として持つことがあります。それより前の run は持たず、いまその項目がないのと同じに読めます。
 - `network.json`の`startedAt`（シナリオごとに1ファイルで、上のmanifestには出てきません）: 観測した各通信が始まった絶対的な実時刻です。`steps[].started_at`と同じ土俵に立ち、同じシナリオの基準時刻を通して導かれるので、描画する側は両方から`video_anchor_s`を引きます。両者がどのように1本のタイムラインへ織り込まれるかは[report.html](#reporthtml)を参照してください。
-- `failure`: 失敗時の要約です（例 `"step 3 (tap): 一致なし: {...}"`）。成功なら null です。
+- `failure`: 失敗時の要約です（例 `"step 3 (tap): no match: {...}"`）。成功なら null です。
 - `provenance`（トップ、任意）: run の同一性スタンプです（[BE-0049](../../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit-ja.md)）。`scenarioHash`（実行した `scenario.yaml` の `sha256:` フィンガープリント）、`toolVersion`（`bajutsu.__version__`）、`gitRevision`（コミット。git チェックアウト内の run のときだけ付く）、そして config が Git ソース由来のとき（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）は `configSource`（`{ host, owner, repo, ref, sha }`。ブランチ指定の run が実際に実行した正確なコミット）を持ちます。蓄積した run を同一性でグルーピングできるので、フィンガープリントが変わっていないのに判定が反転すれば、それは編集ではなく**真の flakiness** だと分かります。純粋なメタデータで、`ok` には一切入りません。（このブロックが出るようになった時点で `schemaVersion` は `3` 以上です。現在は `10` です。）
 - `target`（トップ、任意）: この run が実行した target です。「Android の target は通るのに iOS の target は落ちる」を、保存済みのデータから計算できます（[BE-0404](../../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer-ja.md)）。1 つの run が解決する target は 1 つなので、シナリオごとではなく `backend` の隣に置きます。`serve` はこれを run の行へ写し、target どうしを順位付けします。target を持たない run では省かれます。（この項目が出るようになった時点で `schemaVersion` は `10` 以上です。）
 - `label`（トップ、任意）: run 履歴の区切りです。bind している config 自身の名前か、運用者が `run --label` で上書きした値が入ります。不透明なメタデータで、解析も config との照合もせず、`ok` の入力にもなりません。`serve` を再起動したあとに 2 つの config の run を読み分けられるのは、この値のおかげです。label を持たない run では省かれます。（この項目が出るようになった時点で `schemaVersion` は `10` 以上です。）
@@ -97,7 +106,7 @@ CI 連携用です。**1 シナリオ = 1 `<testcase>`**。失敗シナリオに
   <testcase name="..." classname="bajutsu"/>
   <testcase name="..." classname="bajutsu">
     <failure message="step 1 (tap): ...">step 0 tap: ok
-step 1 tap: FAIL 一致なし: {...}</failure>
+step 1 tap: FAIL no match: {...}</failure>
   </testcase>
 </testsuite>
 ```
@@ -130,7 +139,7 @@ step 1 tap: FAIL 一致なし: {...}</failure>
 - `summary.duration` と各 `tests[].duration` はミリ秒（Σ／シナリオごとの `duration_s`）で、CTRF の消費側が拠り所にするフィールドであり、正確です。`summary.start` と文書の `timestamp` は `YYYYMMDD-HHMMSS` の runId から導出します。runId は UTC で採番されるため、UTC として解釈します。`stop = start + duration` です。テストごとの絶対 start/stop は、シナリオごとの絶対エポックが要る（オプションの後続作業）ため、近似せず省きます。実行時のホスト状態は一切載せないので、`bajutsu report` は同じ実行の `ctrf.json` をバイト単位で同一に再生成します。
 - `tests[].status` は `passed` / `failed` です。Bajutsu の run が出す状態はこの二つだけで、他の CTRF の集計は `0` のままです。
 - CTRF の `step` は `{ name, status, extra }` しか許さないので、ステップのより豊かなデータ（duration、reason、ステップごとのアサーション、アーティファクト）は `step.extra` に入れます。name／status だけを描画する消費側にはきれいな一覧が見え、Bajutsu を理解するツールは extra を読めます。
-- アタッチメントの `contentType` は、アーティファクトの `kind` → MIME の対応表（`video`→`video/mp4`、`screenshot`→`image/png`、`deviceLog`→`text/plain`、`elements`／`network`／`appTrace`→`application/json`）から決め、未知の kind には `application/octet-stream` を充てます。`path` は manifest と同じく実行ディレクトリからの相対パスです。
+- アタッチメントの `contentType` は、アーティファクトの `kind` → MIME の対応表（`screenshot`→`image/png`、`deviceLog`→`text/plain`、`elements`／`network`／`appTrace`→`application/json`）から決め、未知の kind には `application/octet-stream` を充てます。`path` は manifest と同じく実行ディレクトリからの相対パスです。`video` だけは例外で、固定の対応表ではなくアーティファクトの実際のファイル拡張子から MIME を求めます。web シナリオで Playwright が録画する動画は本物の WebM です（`video/webm`、`scenario.webm`）。simctl / adb の録画が使う `video/mp4` とは別物だからです。詳しくは [evidence](evidence.md) を参照してください。
 - `--browsers` のマトリクス run では、エンジン × シナリオの各セルが 1 つの CTRF テストになります。エンジンはテストの `name` と `browser` フィールドに入れ（JUnit の `classname` に倣います）、エンジン × シナリオのグリッドは `results.extra.matrix` に持ちます。Bajutsu のその他の余剰（`sid`、`expect` の結果、アラート、`skipped_captures`）は、テストごとの `extra` に入ります。
 - CTRF は秘匿処理済みの manifest から射影されるので、同じ秘匿処理を継承します（[BE-0047](../../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)）。生のシークレットは届きません。
 
@@ -186,6 +195,10 @@ detail 中の識別子（`#home.title`）と定数リテラル（`”text”` �
 描画します。ソリッドな action/assert バッジと視覚的に区別されるため、変数と定数を一目で識別できます。`assert` ステップの複数チェックはネストしたテーブルになり、1 アサーション 1 行で
 `kind` / `target` / `comparison` のセルに分割します（読みにくい `a; b; c` 形式を解消）。実行されなかった
 ステップ（失敗で停止）も skipped として残ります。
+[`group:`](scenarios.md#ステップのグループ化group--reporthtmlで折りたたむ) ステップの中身は、
+1つの折りたたみ区画にまとまります。見出しにはグループ名とステップ数が載ります。ステップがすべて
+成功しているグループはデフォルトで畳まれます。失敗したステップを含むグループは、自動で展開され
+ます。ヘッダーの「全展開」「全折りたたみ」ボタンは、シナリオと同じくグループも一緒に開閉します。
 
 観測した通信を時系列で steps に差し込みます（各々シナリオ開始からのオフセットで配置）。HTTP メソッドを中立バッジ、ステータスを `result` 列に置き、通信の設定（method / endpoint / status / duration / ヘッダ）を detail セル内のネストしたテーブルで表示します。どの通信を出すかはシナリオの `network.filter.domains`（URL ホスト）で絞ります。Network タブは引き続き全件を載せます。
 
@@ -219,7 +232,19 @@ baseline に重ねてクロスフェード）/ **Blend**（`mix-blend-mode: diff
 （停止中なら停止のまま、再生中なら再生を続けます）。シーク先は各ステップの`started_at`から`video_anchor_s`を引いた値（**steps**テーブルの`at`列）であり、シナリオのステップループが始まった生の瞬間ではなく、録画そのものから測った原点を基準にしています。原点を測れない場合は、分かっている範囲でもっとも確からしい動画の実際の開始時刻を基準にします（[evidence](evidence.md#区間証跡video--devicelog--apptrace)）。クリックした行が実際に示す瞬間にシークが着地するのは、この基準のためです。この結果、目に見える変化が1つあります。動画を録画するAndroidまたはWebのシナリオでは、この描画時に求めた動画基準の秒数（**steps**テーブルの`at`列）が、シナリオ自身の`duration_s`を超えることがあります。この2つは、そもそも別のものを測っているためです。動画のタイムラインは実行本体のステップループより前から始まりますが、`duration_s`はそのステップループ自体の長さを測ります。これは想定された挙動であり、どちらかの数値が誤っているわけではありません。ステップのスクリーンショットをクリックすると原寸ライトボックスが
 開き、**← / →**（または画面上の矢印）で run 内の全スクリーンショットを**シナリオをまたいで**順送りできます
 （キャプションにシナリオ、ステップ、位置を表示）。run のアクチュエータはヘッダの `driver: <backend>`
-チップと各シナリオ行の小バッジで表示します。Device Log / App Trace は別タブのままです。
+チップと各シナリオ行の小バッジで表示します。
+
+各録画には、再生/一時停止ボタンの横に**拡大**ボタンが付いています。押すと、その録画を大きく
+表示するモーダルが開き、そのシナリオの**steps**テーブルの行が複製されて横に並びます。複製の
+screenshot / element tree列は空にしてあります。ここにクリックできる要素を残すと、このモーダルの
+上にelement viewerがさらに開いてしまうためです。複製したステップをクリックすると、コンパクト
+表示のクリックと同じように、拡大した録画がその時刻へシークします。再生に合わせて実行中の行が
+ハイライトされ、表示範囲に自動でスクロールします。複数の録画を持つマルチターゲットシナリオでは、
+録画ごとにモーダル内のタブが並び、タブを切り替えるとモーダルに表示する録画が入れ替わります。
+切り替えていない他の録画は、通常のコンパクト表示のまま同期再生を続けます。背景クリック、閉じる
+ボタン、Escapeキーのいずれでもモーダルを閉じられ、録画は元のプレイヤーへ戻ります。
+
+Device Log / App Trace は別タブのままです。
 
 ## 書き出し API
 

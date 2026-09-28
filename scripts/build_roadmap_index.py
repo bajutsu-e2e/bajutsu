@@ -8,7 +8,7 @@ by a handful of other roadmap tools (topic-label sync, tracking-issue sync, the 
 scaffolding, format checking) that each need one slice of the same fields.
 
 Every item's bucket is **derived from its ``Status``** (BE-0078), not a hand-set ``Track`` field:
-Implemented / In progress / Proposals / Deferred / Rejected, most-progressed first. The roadmap's
+Implemented / In progress / Approved / Deferred / Rejected, most-progressed first. The roadmap's
 index pages (``roadmaps/README.md`` / ``README-ja.md``) used to carry a generated table per bucket;
 that table is retired in favor of the dashboard, which already lists every item — Implemented
 included — grouped by Topic with filterable status chips, so there is nothing left for this module
@@ -97,7 +97,7 @@ LANGS: tuple[Lang, ...] = (
 )
 
 
-# Status -> the classification bucket (Implemented / In progress / Proposals / Deferred / Rejected).
+# Status -> the classification bucket (Implemented / In progress / Approved / Deferred / Rejected).
 # Derived from Status, not a hand-set Track field (BE-0078): the lone lifecycle field decides an
 # item's bucket, so the two can never disagree. Order is most-progressed first; the dashboard
 # (``scripts/build_roadmap_dashboard.py``, which imports ``BUCKETS`` directly) classifies every item
@@ -105,14 +105,14 @@ LANGS: tuple[Lang, ...] = (
 STATUS_TO_BUCKET = {
     "Implemented": "Implemented",
     "In progress": "In progress",
-    "Proposal": "Proposals",
+    "Approved": "Approved",
     "Deferred": "Deferred",
     "Rejected": "Rejected",
 }
 BUCKETS: tuple[tuple[str, str], ...] = (
     ("Implemented", "implemented"),
     ("In progress", "in-progress"),
-    ("Proposals", "proposals"),
+    ("Approved", "approved"),
     ("Deferred", "deferred"),
     ("Rejected", "rejected"),
 )

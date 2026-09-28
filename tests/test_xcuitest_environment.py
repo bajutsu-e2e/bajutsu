@@ -629,6 +629,39 @@ def test_an_erasing_cold_prep_waits_for_the_boot_that_follows_the_erase(
     assert verbs[:4] == ["shutdown", "erase", "boot", "bootstatus"]
 
 
+def test_cold_erase_prep_seeds_the_photo_library_one_call_per_path_in_order(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `seedPhotos` requires `erase: true` (`Preconditions`'s own validator), and `_prepare_simulator`
+    # reuses that same wipe — one `simctl addmedia` per path, in the order given, never batched
+    # (roadmap item: nothing documents the relative order a batched call would assign several paths).
+    _, simctl_calls, run = _fake_toolchain(monkeypatch, system_locale={"v": "en_US"})
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(
+        _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US"),
+        Preconditions(erase=True, seedPhotos=["/fixtures/red.png", "/fixtures/green.png"]),
+    )
+
+    addmedia_calls = [c for c in simctl_calls if c[2:3] == ["addmedia"]]
+    assert addmedia_calls == [
+        ["xcrun", "simctl", "addmedia", "UDID", "/fixtures/red.png"],
+        ["xcrun", "simctl", "addmedia", "UDID", "/fixtures/green.png"],
+    ]
+
+
+def test_a_cold_prep_with_no_seed_photos_never_calls_addmedia(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Opt-in: an ordinary erase (or no erase at all) never touches the photo library.
+    _, simctl_calls, run = _fake_toolchain(monkeypatch, system_locale={"v": "en_US"})
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(
+        _sim_eff_locale(test_runner=str(_write_runner(tmp_path)), locale="en_US"),
+        Preconditions(erase=True),
+    )
+    assert "addmedia" not in _verbs(simctl_calls)
+
+
 def test_a_boot_that_never_completes_fails_the_run_loudly(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -523,6 +523,36 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   `selected` / `request` / `requestSequence` / `event` / `responseSchema` / `visual` / `clipboard` /
   `golden`)
 - The Tier 2 run loop (act → wait → verify), verified with `FakeDriver`
+- **Multi-target scenario execution** (BE-0428): a scenario's top-level `targets: list[str]` plus a
+  per-step `target: str` interleave steps across more than one declared target — an iOS target and a
+  web target, say — as one `bajutsu run` invocation with one pass/fail verdict, sharing `${vars.*}`
+  across all of them (a value one target's `extract` step captures is readable by an assertion
+  against a different target in the same run). Every declared target launches together before the
+  first step and tears down together after the last one; a step, an `if`/`forEach` condition, or an
+  `expect` entry omitting `target` behaves exactly as it does today for a scenario declaring zero or
+  one targets, and is required once a scenario declares two or more — unless the scenario declares a
+  `primaryTarget` (BE-0436, pinned to `targets[0]`), which an omitted `target` then resolves to via
+  the public `Step.resolved_target` property, backed by a private attribute that never reaches
+  `model_dump()` or a re-serialized step.
+  `--target` becomes optional once
+  a scenario is self-declaring this way (`--scenario` becomes mandatory in its place), and an explicit
+  `--target` is checked for membership in `scenario.targets` rather than silently overridden.
+  `RunResult.target_devices` and `StepOutcome.target` report which device and target produced each
+  step, leaving the existing single-target fields empty so an existing JUnit/CTRF reader parses a
+  single-target run unchanged. `bajutsu crawl`, `record`, and `serve`'s own dispatch UI each still
+  resolve one target, as before — carrying `targets`/`target` through them is a follow-up this item
+  does not cover
+- **Target groups** (BE-0437): pure authoring sugar over BE-0428's per-step `target` — a step's new
+  `steps: list[Step]` field names one target once for a whole nested run of steps instead of
+  repeating `target:` on each of them. A load-time pass (`_expand_target_groups`) replaces every
+  group with its own stamped, flat children before the per-step `target` rule validates them, so
+  nothing that executes a step learns the new shape: `bajutsu run` never observes a target group,
+  only the same per-step `target` form BE-0428 already runs. The pass runs at the same four points
+  `_check_target_requirements` does — `Scenario`'s own validator, plus `apply_setups`,
+  `expand_components`, and the pipeline's config-level `before`/`after` folding, none of which
+  Pydantic re-validates — and `bajutsu run`'s CLI matches its step-line count against the raw
+  YAML's one-entry-per-item count rather than a snapshot of its own, since a group is expanded
+  inside `Scenario`'s validator, before the CLI could take one
 - Backend-crash recovery in the run pipeline: a mid-scenario backend crash
   (`base.BackendCrashError`, backend-agnostic) discards the dead lease and re-runs the whole
   scenario on a freshly respawned one, bounded by a retry count (`crash_retries`, default 1) and an
@@ -727,6 +757,18 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   selector's existing `within`/`traits`/`index` fields, one step per component. Gated on the
   `PICKER_WHEEL` capability, which only the resident-runner XCUITest backend and `FakeDriver`
   declare, so Android and web are rejected at preflight before any device work
+- DSL `selectPhotos` (BE-0433): pick one or more images from an open `PHPickerViewController` grid by
+  ordinal `indices`, then tap the picker's confirm control — resolved structurally, by elimination
+  inside the picker's navigation bar, since the confirm control carries no identifier of its own.
+  Every cell in the grid shares one identifier (`PXGGridLayout-Info`), disambiguated by the existing
+  `index` selector field the same way `handleSystemAlert` addresses an unlabeled SpringBoard button;
+  actuation is a raw coordinate tap at the resolved cell's exact frame center, since a handle-based
+  tap on the same cell is measured to fail (`element vanished`/`ElementNotTappable`) against this
+  recycled collection view. A `seedPhotos` precondition (`Preconditions.seed_photos`) seeds the
+  Simulator's photo library with fixture images via `simctl addmedia` so the grid's content is
+  reproducible — requiring `erase: true` on the same preconditions, checked at load time, since a
+  reused library would otherwise seed nothing silently. Gated on the `SELECT_PHOTOS` capability,
+  which only the XCUITest backend declares; Android and web reject at preflight
 
 #### DSL system-alert and tip handling
 
@@ -991,9 +1033,11 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   own resolved `pollInterval` (BE-0315's default when the guard is off), so a passing scenario pays
   it once per interval rather than once per step.
   The `expect`-phase visual capture gets the same unconditional check immediately before it,
-  gated on an actual `visual` assertion being present. No scenario or CLI toggle: a scenario cannot
-  observe a banner, so none can be broken by clearing it — the same "no known use for a toggle"
-  the interruption path above already established
+  gated on an actual `visual` assertion being present — and so does a step-level `assert`'s own
+  `visual` entry, right before that step's own single-shot capture, since the rate-limited sweep
+  above runs only after the step body finishes, too late for a capture taken inside it. No scenario
+  or CLI toggle: a scenario cannot observe a banner, so none can be broken by clearing it — the same
+  "no known use for a toggle" the interruption path above already established
 - DSL `iosTipKitHandling` (BE-0389), an opt-in guard for a blocking Apple TipKit tip: TipKit's
   presentation marks the content it covers accessibility-hidden rather than merely occluding it, so a
   blocked tap can fail as `ElementNotFound`, not only `ElementNotTappable`. The XCUITest backend alone
@@ -1008,6 +1052,24 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   scenario sometimes asserts on the tip itself; `--ios-tipkit-handling`/`--no-ios-tipkit-handling`
   follows the same flag > scenario > target > default precedence as `systemAlertHandling`'s own
   on/off bit (BE-0177); `systemAlertHandling`'s policy keys compose by type instead (BE-0401)
+
+#### DSL cross-app control
+
+- DSL `app`: a deterministic, iOS-only step that activates an app the test target never
+  started — by bundle id, with no app-side cooperation — and runs nested `steps` against that
+  app's own accessibility tree. `XcuitestElementProvider` holds a stack of `XCUIApplication`
+  handles instead of one fixed one; entering the block pushes a new handle and `.activate()`s it,
+  and leaving pops back to the one beneath, so nesting an `app` block inside another returns to
+  the immediate parent rather than unconditionally to the test target. The Python driver reuses the
+  test target's own `XcuitestDriver` instance for the block — unlike the `web` step's separate
+  `WebContextDriver`, `app` needs the full native actuation surface (tap, type, gestures, picker
+  wheels), which reusing the same object gets for free. Gated on the `APP_CONTEXT` capability,
+  which only the resident-runner XCUITest backend and `FakeDriver` declare, so Android and web are
+  rejected at preflight before any device work — unlike `web`, whose WebView bridge availability is
+  a per-run fact rather than a fixed backend capability, so it fails at run time instead. A
+  feasibility spike measured `activate()` reliably foregrounding an uncooperative app (Safari,
+  Maps, Contacts) on Simulator before this step was designed
+  ([`docs/specs/ios-cross-app-ui-control-feasibility.md`](specs/ios-cross-app-ui-control-feasibility.md)).
 
 #### Evidence, network observation, and reporting
 
@@ -1090,6 +1152,19 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   artifact uploads, `POST /api/run`, and reading its own org's runs and the job it dispatched),
   revocable per repository and refused outright on a database-less deployment or
   a session store that cannot enforce a per-session expiry
+- **Per-job artifact overrides, independent of the active config binding**
+  ([BE-0431](../roadmaps/BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override.md)):
+  on a hosted deployment, `POST /api/run` accepts `binaryArtifact` and `scenariosArtifact`, each the
+  sha256 of an already-stored artifact (BE-0268). A named leg resolves against that artifact alone —
+  the binary placed at the job's own target `appPath`, a `scenarios` zip replacing that target's
+  scenarios directory — while an unnamed leg keeps resolving through the org's active config binding
+  untouched, so two concurrent CI dispatches against one deployment no longer contend for the
+  deployment's fallback binding or write the org's remembered configuration. The worker keys the
+  job's workspace by override identity so a later job on the same worker is never contaminated by it,
+  and reuses the cached bundle tree rather than re-fetching it. Refused on a single-process `serve`
+  (`LocalExecutor`, which owns no workspace to isolate the placement into) and on the cloud-batch
+  `run-set` fan-out, which does not run on the split worker topology this item targets; each
+  overridden sha256 is recorded on the run's manifest provenance
 - The **cross-target comparison dashboard** (BE-0226, repointed to the target axis by BE-0404): a `serve` **Comparison** tab that ranks the bound config's targets side by side — pass-rate, flaky-rate, and p50/p95 run duration, plus a per-target trend sparkline — reusing BE-0102's per-config aggregation computed once per target (`GET /api/metrics/targets`); read-only and advisory, like BE-0102. A row opens that target's run history read-only, by pointer or by keyboard. The view writes nothing: a target is not a binding, so there is nothing on it to activate
 - AI **crawl** (`crawl/`): autonomous breadth-first exploration of an app → a screen map (`screenmap.json`)
 - The `serve` local web UI (Tier 1): author (`record` / `crawl`), edit, and run scenarios; **open a `.zip` bundle** of config + scenarios + the built app binary as the active config the tabs run from (BE-0073) — the server also accepts those same three pieces as independent content-addressed artifacts and composes them into that tree at bind time (`POST /api/artifacts/{config,scenarios,binary}`, BE-0268), with a **Compose & load** panel in the UI — a drop zone per artifact, each hashed in the browser and uploaded only on a content miss, composed into a bound config on demand, reopening the panel pre-fills each zone from the active composition (with a per-zone **Clear**) so only the legs that changed need re-uploading, while `POST /api/compose` stays a pure function of its request body (`GET /api/compose/current`, BE-0325); browse reports and evidence; a per-row or bulk **delete** on the Replay or Crawl history list moves a run to a shared **Trash**, restorable within a retention window before permanent removal (BE-0239); a past crawl's screen map can also be **resumed live** — continuing its remaining frontier with the same budget and worker controls, or re-exploring one pruned branch with the same budget (BE-0181); a read-only aggregate **run-stats dashboard** across the run history (BE-0102), with every axis — date, backend, scenario, and step/assertion hotspot — now a deep link into the matching runs in the history list (BE-0241); a ranked **Flaky** tab surfacing the cross-run flakiness ranking, linking each row to its representative passing and failing run evidence (BE-0220); a read-only **Usage** dashboard over the attributed AI usage/cost ledger — token and dollar totals by provider, model, command, and scenario (BE-0195, BE-0196); a per-target **Coverage** map — id-namespace coverage against declared `idNamespaces`, the gap list, and off-namespace ids, folding in the endpoint/observed-id dimensions with a selected run set and the screens-visited dimension when a crawl is selected alongside those runs (BE-0146); each of Stats, Flaky, Usage, and Coverage also opens as its own linkable page (`GET /stats`, `/flakiness`, `/usage`, and — since the map needs a target the other three don't — `/coverage?target=<name>`); a pre-run **readiness panel** (`doctor`: environment runnability + the current screen's convention score) in the Record and Replay forms (BE-0148); a read-only **scenario viewer** in the Replay form that shows the selected scenario's raw YAML and its runner-parsed structured steps before a run — the scenario-level mirror of the config viewer, non-gating and AI-free (BE-0273); an **upload scenario** control in the same form that adds a local `.yaml` file (via the existing `POST /api/scenario`) or a `.zip` of more than one (`POST /api/scenarios/upload`) straight into the bound config's target scope with no config rebind — reporting a same-named file as overwritten rather than replacing it silently, and parsing every zip entry before writing any of them, so one bad entry aborts the whole upload rather than leaving a partial batch behind (BE-0340); a **scenario secrets** panel that provisions the bound config's declared `${secrets.X}` names as write-once values from the browser, inherited by a spawned Record / Replay / Crawl run (BE-0274); a read-only **Server** settings tab reporting the running server's resolved configuration (deployment mode, bound config provenance, backends, run-storage/retention/concurrency settings) plus whether this build ships the bundled iOS XCUITest Simulator runner and what toolchain it was built against (`GET /api/server`, BE-0318); a **pluggable theme system** — drop-in visual tokens + swappable transitions, a header picker, and an in-UI editor with live preview and local-draft/server-upload persistence (BE-0191); a header **version badge** reporting which build of bajutsu is serving the page — the version string always, plus a short commit SHA / branch / dirty flag when serve runs from a Git checkout, or a build-time-embedded commit (`BAJUTSU_BUILD_COMMIT`, surfaced with `source: "build-arg"`) for a self-hosted Docker image shipping no `.git` (the checkout detail admin-gated, since a branch name can encode an in-progress topic; `GET /api/version` open, `GET /api/version/checkout` admin, read fresh per request via `git` plumbing with an environment-variable fallback — no LLM; BE-0272, BE-0277); approve visual baselines; live job streaming — from a browser (not for CI)

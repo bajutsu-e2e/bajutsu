@@ -311,6 +311,29 @@ def test_apply_setups_default_is_shared_and_resolved_once() -> None:
     assert count == 1  # the shared default is resolved once and cached
 
 
+def test_apply_setups_re_checks_target_requirements() -> None:
+    # BE-0428: at load time, the scenario's own `steps` sets `target` correctly, so the initial
+    # validator never sees the prelude's own steps. Once `apply_setups` splices them in, the
+    # re-check must catch what the load-time pass could not — here, a prelude step whose own
+    # `target` doesn't match the scenario's one declared target.
+    scns = [
+        Scenario.model_validate(
+            {
+                "name": "a",
+                "targets": ["app"],
+                "preconditions": {"setup": "login.yaml"},
+                "steps": [{"target": "app", "tap": {"id": "x"}}],
+            }
+        )
+    ]
+
+    def resolve(ref: str) -> list[Step]:
+        return [Step.model_validate({"target": "other", "tap": {"id": "auth.submit"}})]
+
+    with pytest.raises(ValueError, match="does not match"):
+        apply_setups(scns, default_setup=None, resolve=resolve)
+
+
 def test_redact_totp_secrets_masks_a_literal_seed() -> None:
     # A literal base32 seed written straight into the scenario must not survive into an
     # evidence snapshot: it is masked with the fixed placeholder (BE-0152).

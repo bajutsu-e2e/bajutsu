@@ -76,9 +76,67 @@ class _StepRunner:
     they share one `StepLoopState`.
     """
 
-    def __init__(self, state: StepLoopState, cfg: _LoopConfig) -> None:
+    def __init__(self, state: StepLoopState, cfg: _LoopConfig, target: str = "") -> None:
         self.state = state
         self.cfg = cfg
+        # Which declared target this runner drives, "" for a scenario that declares none (BE-0428).
+        self.target = target
+        # Every declared target's runner, keyed by name and shared by all of them, so a step naming
+        # another target is dispatched to the runner holding *that* target's driver, sink, network
+        # source, and WebView bridge. Populated by `_run_steps` right after it builds them; a
+        # single-target run leaves it empty and every lookup below falls through to `self`.
+        self.by_target: dict[str, _StepRunner] = {}
+
+    def _route(self, step: Step, active_driver: base.Driver) -> tuple[_StepRunner, base.Driver]:
+        """The runner and driver this step executes against (BE-0428).
+
+        A step naming a different declared target switches to that target's own runner and its own
+        driver. Anything else keeps `active_driver` rather than falling back to `self.cfg.driver`:
+        a step nested inside a `web:` block carries no target of its own, and its active driver is
+        already the block's `WebContextDriver` — resetting it would silently run the step against
+        the app surface underneath the WebView instead of the WebView itself.
+        """
+        # `resolved_target`, not `target`: a step omitting `target` under a declared `primaryTarget`
+        # resolved to the primary at load time (BE-0436). This reads the step as loaded — never
+        # `_interp_step`'s rebuilt copy, which drops that private resolution.
+        target = step.resolved_target
+        if target and self.by_target:
+            other = self.by_target.get(target)
+            if other is None:
+                # The resolved target — the step's own `target` or the scenario's `primaryTarget` —
+                # was checked against `scenario.targets` at load time, so this is a wiring defect (a
+                # target the runner never brought up), not an authoring mistake — fail loudly rather
+                # than silently run the step against whichever driver happens to be active (prime
+                # directive 2).
+                raise RuntimeError(
+                    f"step target {target!r} has no live runtime; "
+                    f"declared targets: {sorted(self.by_target)}"
+                )
+            # Compared against the *previous* step's own target, tracked on the shared state — not
+            # against `self`, the runner driving *this* loop. `_run_steps` always starts the
+            # top-level loop on the primary, so `self` is the primary for every top-level step in
+            # it; comparing against `self` alone never resets on a switch *back* to the primary
+            # after a detour through another target (`app, web, app`), which would otherwise reuse
+            # the web device's tree/screenshot as the third step's `before` (BE-0428 review).
+            if other.target != self.state.last_target:
+                # A genuinely different device from the one the *previous* step ran on, unlike the
+                # same-driver `web:` bridge swap — so the "nothing actuated in between" premise
+                # `prev_after`/`prev_after_screenshot` rely on is false across this switch. Reset
+                # both, the same way `_handle_web` already does for its own context change.
+                self.state.prev_after = None
+                self.state.prev_after_screenshot = None
+            self.state.last_target = other.target
+            if other is not self:
+                return other, other.cfg.driver
+        elif self.by_target and self.target != self.state.last_target:
+            # A step with no resolved target at all stays on `self`, which can still be a
+            # different device from the previous step's: in an interrupt's recovery `steps`, a
+            # step naming another target can precede one that omits it and falls back to the
+            # entry's own runner (BE-0438).
+            self.state.prev_after = None
+            self.state.prev_after_screenshot = None
+            self.state.last_target = self.target
+        return self, active_driver
 
     def _run_recovery(self, steps: list[Step], active_driver: base.Driver) -> str | None:
         self.state.running_recovery = True
@@ -86,6 +144,15 @@ class _StepRunner:
             return self.exec_steps(steps, active_driver)
         finally:
             self.state.running_recovery = False
+            if self.by_target and self.target != self.state.last_target:
+                # The recovery's own last step can have named another target — its last `_route`
+                # call left `last_target` pointing there. The interrupted step resumes on `self`
+                # without going back through `_route`, so record `self` as the last-active runner
+                # here instead of leaving the next step's own routing match a stale value and skip
+                # its reset (BE-0438 review).
+                self.state.prev_after = None
+                self.state.prev_after_screenshot = None
+                self.state.last_target = self.target
 
     def exec_steps(self, steps: list[Step], active_driver: base.Driver) -> str | None:
         for step in steps:
@@ -93,7 +160,10 @@ class _StepRunner:
             # step has not acted yet, so nothing is left half-actuated and no artifact is half-written.
             if self.cfg.cancelled():
                 raise RunCancelled
-            failure = self._run_one(step, active_driver)
+            runner, step_driver = self._route(step, active_driver)
+            # Another instance of this same class, not another type's internals — SLF001's own
+            # rationale (reaching into a foreign object) does not apply to a sibling runner.
+            failure = runner._run_one(step, step_driver)  # noqa: SLF001
             if failure is not None:
                 return failure
         return None
@@ -107,7 +177,11 @@ class _StepRunner:
         """
         kind = _action_of(step)
         idx = self.state.counter.take()
-        outcome = StepOutcome(index=idx, action=kind)
+        # `self.target`, not `step.target`: a scenario declaring exactly one target lets its steps
+        # omit the name, and a step nested inside a `web:` block must omit it — both still ran
+        # against a named target, and a report that left them blank would look like a single-target
+        # run's (BE-0428).
+        outcome = StepOutcome(index=idx, action=kind, target=self.target)
         if self.cfg.progress is not None:
             label = f"{self.cfg.phase} step" if self.cfg.phase else "step"
             self.cfg.progress(f"{self.cfg.sid} · {label} {idx + 1}: {_step_label(step, kind)}")
@@ -127,6 +201,8 @@ class _StepRunner:
                 return self._handle_for_each(step, active_driver, idx, kind, outcome, start)
             if kind == "web":
                 return self._handle_web(step, active_driver, idx, kind, outcome, start)
+            if kind == "app":
+                return self._handle_app(step, active_driver, idx, kind, outcome, start)
             return self._handle_action(step, active_driver, idx, kind, outcome, start)
 
     def _finish_outcome(self, active_driver: base.Driver, outcome: StepOutcome) -> None:
@@ -388,6 +464,55 @@ class _StepRunner:
         self._finish_outcome(active_driver, outcome)
         return None if outcome.ok else f"step {idx} ({kind}): {outcome.reason}"
 
+    def _handle_app(
+        self,
+        step: Step,
+        active_driver: base.Driver,
+        idx: int,
+        kind: str,
+        outcome: StepOutcome,
+        start: float,
+    ) -> str | None:
+        assert step.app is not None
+        try:
+            bundle_id = interp.interpolate(step.app.bundle_id, self.state.bindings)
+            active_driver.enter_app(bundle_id)
+            # The inner steps read a different app's tree, so it must not seed a native step's
+            # `before` — reset around the block on both sides, the same `web:` reason
+            # (BE-0234 Unit 2).
+            self.state.prev_after = None
+            # `active_driver` is the *same* object throughout — unlike `web:`'s separate
+            # `WebContextDriver`, `app:` reuses the native driver's full actuation surface, so
+            # nesting (enter A, enter B, leave, leave) is Swift's own stack discipline on the
+            # runner side; this method's own nesting is just recursion.
+            try:
+                failure = self.exec_steps(step.app.steps, active_driver)
+            except BaseException:
+                # Always try to leave, even when a nested step raised: a failing `app:` block must
+                # not leave the device foregrounded on the wrong app for every step after it. A
+                # leave failure here is logged rather than raised — the same restore-after-failure
+                # reasoning `capability_suspended` uses (BE-0365) — because the nested step's own
+                # exception (a `RunCancelled` included) is what the caller must see, not whatever
+                # leaving the app raised on top of it.
+                try:
+                    active_driver.leave_app()
+                except Exception as exc:
+                    _logger.warning(
+                        "leaving app %r after a failure also failed: %s", bundle_id, exc
+                    )
+                self.state.prev_after = None
+                raise
+            active_driver.leave_app()
+            self.state.prev_after = None
+            ok, reason = failure is None, failure or ""
+        except (base.SelectorError, base.UnsupportedAction) as e:
+            ok, reason = False, str(e)
+        outcome.ok, outcome.reason = ok, reason
+        outcome.duration_s = self.cfg.clock.now() - start
+        self._drain_step_interruptions(active_driver, outcome)
+        self.state.outcomes.append(outcome)
+        return None if outcome.ok else f"step {idx} ({kind}): {outcome.reason}"
+
     def _seed_prev_after(
         self, active_driver: base.Driver, step_id: str, *, why: str, level: int
     ) -> bool:
@@ -417,7 +542,13 @@ class _StepRunner:
         start: float,
     ) -> str | None:
         prefix = f"{self.cfg.phase}-" if self.cfg.phase else ""
-        step_id = f"{self.cfg.sid}/{prefix}{step.name or f'step{idx}'}"
+        # Every declared target's own steps nest under its own name once the scenario declares a
+        # second one — otherwise two targets' steps would sit in the same flat `<sid>/<stepId>/`
+        # folders with nothing but `manifest.json`'s own `StepOutcome.target` to tell them apart.
+        # `self.by_target` is empty with no declared targets and holds exactly one entry with one,
+        # so the check is `>= 2` rather than plain truthiness.
+        target_dir = f"{self.target}/" if len(self.by_target) >= 2 else ""
+        step_id = f"{self.cfg.sid}/{target_dir}{prefix}{step.name or f'step{idx}'}"
         # The report's baseline: the screen this step is about to act on, captured before it acts
         # (BE-0341). It requests only the screenshot, never a tree (BE-0407 Units 3-4): the
         # post-step call below always re-reads and rewrites `elements.json` unconditionally
@@ -682,6 +813,10 @@ class _StepRunner:
                     transitions=self.cfg.transitions,
                     on_interrupt_poll=tip_poll,
                     cancelled=self.cfg.cancelled,
+                    step_id=step_id,
+                    step_index=idx,
+                    channel=self.cfg.channel,
+                    hide_markers=self.cfg.hide_markers,
                 )
                 if guard is not None and guard.failure is not None:
                     # A mid-wait recovery failure is a decided outcome — fail on it now rather than
@@ -745,6 +880,10 @@ class _StepRunner:
                             transitions=self.cfg.transitions,
                             on_interrupt_poll=tip_poll,
                             cancelled=self.cfg.cancelled,
+                            step_id=step_id,
+                            step_index=idx,
+                            channel=self.cfg.channel,
+                            hide_markers=self.cfg.hide_markers,
                         )
                     # Re-read `guard.failure`: the tip retry above runs a whole step body, whose own
                     # mid-wait interrupt recovery can newly fail — and that is a decided outcome, so it
@@ -790,6 +929,10 @@ class _StepRunner:
                                 transitions=self.cfg.transitions,
                                 on_interrupt_poll=tip_poll,
                                 cancelled=self.cfg.cancelled,
+                                step_id=step_id,
+                                step_index=idx,
+                                channel=self.cfg.channel,
+                                hide_markers=self.cfg.hide_markers,
                             )
                         if not ok and note and note not in reason:
                             # Same as the `expect` site: an alert the guard could not fully clear

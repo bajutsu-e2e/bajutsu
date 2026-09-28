@@ -339,6 +339,104 @@ def test_repeat_cli_requires_target(tmp_path: Path) -> None:
     assert result.exit_code == 2 and "--repeat needs --target" in result.output
 
 
+def test_repeat_cli_rejects_a_multi_target_scenario(tmp_path: Path) -> None:
+    # BE-0428: `run_all` itself refuses a scenario declaring 2+ targets too, but only after this
+    # command's own device/server startup already ran (a bare ValueError, uncaught here) — so
+    # `_repeat_audit` checks it first, exiting 2 cleanly before any of that startup cost.
+    scn = tmp_path / "cross.yaml"
+    scn.write_text(
+        "- name: cross-target\n"
+        "  targets: [demo, other]\n"
+        "  steps:\n"
+        "    - target: demo\n"
+        "      tap: { id: home.start }\n",
+        encoding="utf-8",
+    )
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n", encoding="utf-8")
+    result = runner.invoke(
+        app,
+        ["audit", str(scn), "--repeat", "2", "--target", "demo", "--config", str(cfg)],
+    )
+    assert result.exit_code == 2
+    assert "not yet implemented" in result.output
+    assert "cross-target" in result.output
+
+
+def test_repeat_cli_rejects_a_target_mismatched_single_declared_target(tmp_path: Path) -> None:
+    # BE-0428 regression: a scenario declaring exactly one target must run against that one — the
+    # multi-target guard above only covers two or more. Without this check, `--target web` on a
+    # scenario declaring `targets: [ios]` would pass every other check (a lone declared target's
+    # steps are always valid against it) and silently repeat-and-diff against the wrong platform.
+    scn = tmp_path / "single.yaml"
+    scn.write_text(
+        "- name: single-target\n"
+        "  targets: [ios]\n"
+        "  steps:\n"
+        "    - target: ios\n"
+        "      tap: { id: home.start }\n",
+        encoding="utf-8",
+    )
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "targets:\n  ios:\n    bundleId: com.example.ios\n  web: { baseUrl: 'http://x/' }\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        ["audit", str(scn), "--repeat", "2", "--target", "web", "--config", str(cfg)],
+    )
+    assert result.exit_code == 2
+    assert "web" in result.output
+    assert "single-target" in result.output
+
+
+def test_repeat_cli_allows_a_matching_single_declared_target(tmp_path: Path) -> None:
+    # The membership check must not reject the scenario's own declared target — only a mismatch.
+    scn = tmp_path / "single.yaml"
+    scn.write_text(
+        "- name: single-target\n"
+        "  targets: [demo]\n"
+        "  steps:\n"
+        "    - target: demo\n"
+        "      tap: { id: home.start }\n",
+        encoding="utf-8",
+    )
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text("targets:\n  demo:\n    bundleId: com.example.demo\n", encoding="utf-8")
+    result = runner.invoke(
+        app,
+        ["audit", str(scn), "--repeat", "2", "--target", "demo", "--config", str(cfg)],
+    )
+    # Fails past the membership check (no device on this gate) rather than being rejected by it.
+    assert "declared targets" not in result.output
+
+
+def test_repeat_cli_rejects_a_bad_target_config_hook(tmp_path: Path) -> None:
+    # BE-0428: a config-level `before` hook step carrying a `target` that a 0-target scenario
+    # would reject must exit 2 cleanly, not crash with a raw traceback from deep inside `run_all`
+    # — the multi-target guard above only covers `len(targets) >= 2`.
+    scn = tmp_path / "s.yaml"
+    scn.write_text("- name: x\n  steps:\n    - tap: { id: home.start }\n", encoding="utf-8")
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "targets:\n"
+        "  demo:\n"
+        "    bundleId: com.example.demo\n"
+        "    before:\n"
+        "      - target: web\n"
+        "        tap: { id: home.start }\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        ["audit", str(scn), "--repeat", "2", "--target", "demo", "--config", str(cfg)],
+    )
+    assert result.exit_code == 2
+    assert "config-level before/after hook" in result.output
+    assert "declares no targets" in result.output
+
+
 def test_repeat_cli_unavailable_backend_exits_two(tmp_path: Path) -> None:
     # An unknown / unavailable actuator fails the preflight (no simctl/browser) and exits 2.
     scn, cfg = _audit_project(tmp_path)
@@ -553,6 +651,24 @@ def test_referenced_ids_includes_scroll_targets_and_containers() -> None:
         "    - scroll: { to: { id: notice.row.20 }, within: { id: notice.list } }\n"
     )
     assert referenced_ids(scenarios[0]) == {"notice.row.20", "notice.list"}
+
+
+def test_referenced_ids_reaches_inside_a_group() -> None:
+    # A `group:` step is compile-time-only and gone by `run`, but the editor audits the scenario's
+    # live (unexpanded) text — an id reached only through a `group` must still register, or it
+    # escapes the audit the same way BE-0227's drag targets once did.
+    scenarios = load_scenarios(
+        "- name: x\n  steps:\n    - group: { name: login, steps: [{ tap: { id: auth.submit } }] }\n"
+    )
+    assert referenced_ids(scenarios[0]) == {"auth.submit"}
+
+
+def test_loose_wait_inside_a_group_is_flagged() -> None:
+    report = _audit(
+        "- name: x\n  steps:\n"
+        "    - group: { name: g, steps: [{ wait: { until: screenChanged, timeout: 5 } }] }\n"
+    )
+    assert any(f.kind == "loose-wait" for f in report.findings)
 
 
 def test_loose_wait_is_flagged() -> None:

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
+import zipfile
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from bajutsu.common.cloud.devicefarm import Platform
@@ -14,16 +15,24 @@ from bajutsu.serve import oplog
 from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.batch_provider import BatchRequest
 from bajutsu.serve.commands import _float, _int, crawl_command, record_command, run_command
+from bajutsu.serve.executor import LocalExecutor
 from bajutsu.serve.helpers import (
     target_batch_info,
     target_build_info,
     target_capabilities,
+    target_scenarios_dir,
     valid_relative_key,
     valid_run_id,
+    valid_scenario_ref,
+    valid_sha256,
 )
 from bajutsu.serve.operations._common import _device_args, _resolve_org_or_forbid
+from bajutsu.serve.operations.composition import scenarios_zip_strays
 from bajutsu.serve.operations.config import launch_label, resolve_provider_env
+from bajutsu.serve.operations.upload import _fetch_artifact, artifact_presence
+from bajutsu.serve.scenarios import Runnable
 from bajutsu.serve.state import ConfigBinding, Job, ServeState
+from bajutsu.serve.upload_artifacts import ArtifactKind, ArtifactOverrides
 
 _logger = logging.getLogger("bajutsu.serve.operations")
 
@@ -242,7 +251,118 @@ def _register_and_dispatch(
     return registered, None
 
 
-def start_run(
+# The request fields naming a per-job artifact override, and the artifact kind each one names.
+_OVERRIDE_FIELDS: dict[str, ArtifactKind] = {
+    "binaryArtifact": "binary",
+    "scenariosArtifact": "scenarios",
+}
+
+
+def _artifact_overrides(
+    state: ServeState, body: dict[str, Any], cfg: Path, target: str, org: str
+) -> tuple[ArtifactOverrides | None, tuple[Any, int] | None]:
+    """The request's per-job artifact overrides (BE-0431), or the error that refuses them.
+
+    None when the request names neither field, which leaves the job exactly as before. A named
+    artifact must already be stored for *org*: a confirmed miss is a 400 before any job exists, and
+    a store that could not answer is a retryable 503 rather than a claim the upload never happened.
+    """
+    named = {field: body[field] for field in _OVERRIDE_FIELDS if body.get(field) is not None}
+    if not named:
+        return None, None
+    # Only the HTTP-lease worker (`bajutsu worker`, which needs the jobs table) places overrides; an
+    # executor that runs `execute_job_spec` directly would install the bound binary while the manifest
+    # records the override. A single-process serve runs the job in the operator's own project
+    # directory, with no job-scoped workspace to place an override into at all.
+    if isinstance(state.executor, LocalExecutor) or state.repository is None:
+        return None, (
+            {
+                "error": f"{' and '.join(named)} require a hosted deployment's workers; a single-process "
+                "serve runs in your own project directory — point appPath/scenarios there instead"
+            },
+            400,
+        )
+    shas: dict[ArtifactKind, str] = {}
+    for field, raw in named.items():
+        kind = _OVERRIDE_FIELDS[field]
+        if not valid_sha256(raw):
+            return None, ({"error": f"{field} must be a full lowercase hex sha256 digest"}, 400)
+        present = artifact_presence(state, org, kind, raw)
+        if present is None:
+            return None, (
+                {"error": f"could not confirm {field} {raw} is stored; try again shortly"},
+                503,
+            )
+        if not present:
+            return None, ({"error": f"{field} {raw} is not stored for this org"}, 400)
+        shas[kind] = raw
+    if "binary" in shas and target_batch_info(cfg, target)[2] is None:
+        return None, ({"error": f"binaryArtifact needs target '{target}' to name an appPath"}, 400)
+    return ArtifactOverrides(
+        target, binary=shas.get("binary"), scenarios=shas.get("scenarios")
+    ), None
+
+
+def _override_runnable(
+    state: ServeState, org: str, cfg: Path, target: str, sha: str, scenario: str
+) -> tuple[Runnable | None, tuple[Any, int] | None]:
+    """Resolve *scenario* against the `scenarios` override's own entry listing (BE-0431).
+
+    The worker extracts the zip at the job's root, as compose does, so the scenario runs from
+    `<target's scenarios dir>/<name>` relative to the config. The client string is reduced to a
+    basename and matched against the listing, so it never becomes a path by itself (BE-0051). No
+    scenario text ships as materials: the worker places the whole artifact instead. Returns a None
+    runnable when the name matches no entry, for the caller's existing confinement error.
+    """
+    path, code = _fetch_artifact(state, org, "scenarios", sha)
+    if not isinstance(path, Path):
+        return None, (path, 400 if code == 404 else 503)
+    if not zipfile.is_zipfile(path):
+        # A single YAML carries no name here — the request holds only its digest — so it would land
+        # under a generated name the request's `scenario` could never match.
+        return None, ({"error": "scenariosArtifact must be a zip of the scenario tree"}, 400)
+    scenarios_dir = target_scenarios_dir(cfg, target)
+    rel = PurePosixPath(scenarios_dir.as_posix()) if scenarios_dir is not None else None
+    if rel is None or not rel.parts or rel.is_absolute() or ".." in rel.parts:
+        return None, (
+            {
+                "error": f"scenariosArtifact needs target '{target}' to name a scenarios dir "
+                "relative to its config"
+            },
+            400,
+        )
+    name = PurePosixPath(scenario.replace("\\", "/")).name
+    if not valid_scenario_ref(name):
+        return None, None
+    wanted = str(rel / name)
+    try:
+        with zipfile.ZipFile(path) as archive:
+            listed = {str(PurePosixPath(entry)) for entry in archive.namelist()}
+        strays = scenarios_zip_strays(path, rel)
+    except zipfile.BadZipFile:
+        return None, ({"error": "scenariosArtifact is not a readable zip"}, 400)
+    if strays:
+        return None, (
+            {"error": f"scenariosArtifact entries must all sit under {rel}/: {strays[:3]}"},
+            400,
+        )
+    return (Runnable(arg=wanted) if wanted in listed else None), None
+
+
+def _provenance(
+    binding: ConfigBinding, overrides: ArtifactOverrides | None
+) -> dict[str, str] | None:
+    """The manifest provenance a run records: the bound bundle's, plus each override it installed."""
+    merged = {
+        **(binding.upload.provenance if binding.upload is not None else {}),
+        **(overrides.provenance if overrides is not None else {}),
+    }
+    return merged or None
+
+
+# Each return is a distinct validation guard's HTTP status — the early-return shape RET505 asks for
+# (BE-0386), the same reason `start_run_set` below carries this suppression.
+def start_run(  # noqa: PLR0911
     state: ServeState,
     body: dict[str, Any],
     *,
@@ -260,16 +380,27 @@ def start_run(
     org, forbidden = _resolve_org_or_forbid(state, target, actor, session, machine_org)
     if forbidden:
         return forbidden
-    # Confine the scenario to the target's own scenarios dir: a serve client must not be able to run an
-    # arbitrary file path on the host (BE-0051 / BE-0015 / BE-0016 prerequisite). The scenario store
-    # is scoped to the actor's org so the run reads that org's scenarios.
-    scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
-    if scope is None:
-        return {"error": f"target '{target}' has no scenarios dir"}, 400
-    # The store resolves the client value to a trusted runnable — never the client string — so no
-    # client-controlled value reaches a filesystem path (BE-0051 arbitrary-path guard). On the
-    # server backend it also carries the scenario text as `materials` for a remote worker.
-    runnable = scope.runnable(str(body["scenario"]))
+    overrides, override_err = _artifact_overrides(state, body, cfg, target, org)
+    if override_err:
+        return override_err
+    runnable: Runnable | None
+    if overrides is not None and overrides.scenarios is not None:
+        runnable, scenario_err = _override_runnable(
+            state, org, cfg, target, overrides.scenarios, str(body["scenario"])
+        )
+        if scenario_err:
+            return scenario_err
+    else:
+        # Confine the scenario to the target's own scenarios dir: a serve client must not be able to
+        # run an arbitrary file path on the host (BE-0051 / BE-0015 / BE-0016 prerequisite). The
+        # scenario store is scoped to the actor's org so the run reads that org's scenarios.
+        scope = state.for_org(org).scenarios.scope(target, session=session, org=org)
+        if scope is None:
+            return {"error": f"target '{target}' has no scenarios dir"}, 400
+        # The store resolves the client value to a trusted runnable — never the client string — so
+        # no client-controlled value reaches a filesystem path (BE-0051 arbitrary-path guard). On
+        # the server backend it also carries the scenario text as `materials` for a remote worker.
+        runnable = scope.runnable(str(body["scenario"]))
     if runnable is None:
         return {
             "error": "scenario must be an existing .yaml inside the target's scenarios dir"
@@ -285,9 +416,10 @@ def start_run(
         return label_err
     # When the scenario ships as materials (server backend), the worker has no project on disk, so
     # the config travels too and the run uses workspace-relative paths; locally nothing materializes
-    # and the run uses the real config / baselines paths.
+    # and the run uses the real config / baselines paths. An override job is workspace-relative even
+    # with no scenario materials: only a worker ever runs it (BE-0431).
     materials = dict(runnable.materials)
-    on_worker = bool(materials)
+    on_worker = bool(materials) or overrides is not None
     config_arg = "bajutsu.config.yaml" if on_worker else str(cfg)
     if on_worker:
         materials[config_arg] = cfg.read_text(encoding="utf-8")
@@ -362,7 +494,8 @@ def start_run(
             # destination dir first, which would delete the bundle's. Same reasoning that omits
             # `--baselines` above: the bundle is self-contained (BE-0073).
             materialize_baselines=on_worker and binding.upload is None,
-            provenance=binding.upload.provenance if binding.upload is not None else None,
+            provenance=_provenance(binding, overrides),
+            overrides=overrides,
             actor=actor,
             org=org,
             evidence_prefix=evidence_prefix,
@@ -408,6 +541,11 @@ def start_run_set(  # noqa: PLR0911, PLR0912
         return {"error": "open a config first"}, 400
     if not body.get("target"):
         return {"error": "target is required"}, 400
+    # Refused rather than ignored: this fan-out does not run on the split serve/worker topology at
+    # all yet (`jobs.py`'s batch dispatcher), so an override here would silently install nothing.
+    for field in _OVERRIDE_FIELDS:
+        if body.get(field) is not None:
+            return {"error": f"{field} is not supported by run-set (BE-0431)"}, 400
     target = str(body["target"])
     org, forbidden = _resolve_org_or_forbid(state, target, actor, session)
     if forbidden:

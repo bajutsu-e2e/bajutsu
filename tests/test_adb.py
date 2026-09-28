@@ -267,6 +267,13 @@ def test_tap_resolves_frame_center() -> None:
     assert calls == [["adb", "-s", "U", "shell", "input", "tap", "100", "150"]]
 
 
+def test_select_photos_is_unsupported_on_android() -> None:
+    # `PHPickerViewController` is an iOS system control; Android has no equivalent (roadmap item).
+    driver = AdbDriver("U", run=lambda a: "")
+    with pytest.raises(base.UnsupportedAction):
+        driver.select_photos([0], timeout=10)
+
+
 def test_tap_on_ambiguous_selector_fails_fast() -> None:
     # Two buttons match `traits: [button]`; a single action must not tap "whatever matched first".
     driver = AdbDriver("U", run=lambda a: FIXTURE)
@@ -1051,6 +1058,15 @@ def test_select_option_unsupported() -> None:
         driver.select_option({"id": "nav.theme-picker"}, "midnight")
 
 
+def test_enter_app_and_leave_app_unsupported() -> None:
+    # app: rests on XCUITest's own cross-app activate(); Android has no equivalent.
+    driver = AdbDriver("U", run=lambda a: FIXTURE)
+    with pytest.raises(base.UnsupportedAction):
+        driver.enter_app("com.example")
+    with pytest.raises(base.UnsupportedAction):
+        driver.leave_app()
+
+
 def test_screenshot_writes_capture_bytes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[list[str]] = []
 
@@ -1380,7 +1396,7 @@ def test_scroll_on_empty_tree_fails_loudly_without_bogus_swipes() -> None:
 
     driver = AdbDriver("U", run=run)
     driver._RESOLVE_TIMEOUT_S = 0
-    with pytest.raises(base.ElementNotFound, match="空"):
+    with pytest.raises(base.ElementNotFound, match="empty"):
         driver.tap({"id": "target"})
     assert swipes["n"] == 0  # no bogus (0,0) swipe issued
 

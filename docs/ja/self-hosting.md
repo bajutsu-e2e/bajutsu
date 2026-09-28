@@ -324,6 +324,56 @@ serve ホストの `--root` を辿る**ファイルブラウザ**です。サー
   扱われます（前述の「リモート config のコマンド実行」を参照してください）。web（Playwright）backend には
   どちらの側にもバイナリという概念自体がなく、ブラウザエンジンがオンデマンドでインストールされるだけです。
 
+### CI の run に job 単位でアーティファクトを差し替える（BE-0431）
+
+プルリクエストの継続的インテグレーション（CI）が求める run は、多くの場合「このビルドのバイナリを、この
+ブランチのシナリオで」というものです。`POST /api/compose` でもこの組を渡せますが、org のアクティブな config を
+バインドし直すことになります。セッションを持たない呼び出し元は、この binding を共有しています。そのため、
+同時に走る2つの CI が同じ binding を奪い合い、バインドのたびに org の記憶された構成も動きます。代わりに、
+`POST /api/run` のボディは省略可能な2つのフィールドを受け付けます。どちらも、呼び出し元の org に保存済みの
+アーティファクトを sha256 で指します。
+
+| フィールド | job が受け取るもの |
+|---|---|
+| `binaryArtifact` | `binary` アーティファクト。指定した target の `appPath` だけに置きます |
+| `scenariosArtifact` | `scenarios` アーティファクト（zip）。その target の scenarios ディレクトリを置き換えます |
+
+リクエストが指定しなかった側は、これまでどおり org の binding から解決します。binding 自体には手を
+加えません。各アーティファクトは先に `POST /api/artifacts/binary` や `POST /api/artifacts/scenarios` で
+アップロードしておきます。保存済みのバイトは `GET /api/artifacts/exists` で確かめれば送り直さずに済みます。
+2つのフィールドに必要なロールは、`POST /api/run` がもともと要求する *editor* と同じです。
+
+```bash
+curl -X POST "$SERVER/api/run" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"scenario": "added.yaml", "target": "demo",
+       "binaryArtifact": "<sha256>", "scenariosArtifact": "<sha256>"}'
+```
+
+コントロールプレーンは、job を作る前にリクエストを検査します。
+
+- org が保持していないアーティファクトを指定すると `400` を返します。オブジェクトストアが応答できない
+  ときは、再試行できる `503` を返します。アップロードがなかったと告げる `400` は返しません。
+- `scenariosArtifact` を指定すると、`scenario` の値は zip 自身のエントリと、target の scenarios
+  ディレクトリの下で照合します。ほかのどこにもないシナリオでも実行できます。zip の構成は compose と同じで、
+  エントリは config からの相対パス（`scenarios/added.yaml`）です。エントリはすべて target の scenarios
+  ディレクトリの下に置きます。バインドしたバイナリやベースラインを差し替えで上書きしないためです。単一の YAML ファイルは拒否します。
+  ダイジェストにはファイル名がなく、`scenario` と照合できないためです。
+- `appPath` を持たない target（web の target）に `binaryArtifact` を指定すると `400` を返します。
+- 単一プロセスの `serve` は、どちらのフィールドも拒否します。その構成では job がオペレータ自身の
+  プロジェクトディレクトリで動くため、差し替えで上書きするわけにはいかないからです。
+- `POST /api/run-set` も、どちらのフィールドも拒否します。クラウドバッチのファンアウトは、serve と
+  worker を分けた構成ではまだ動かないためです。
+
+リースは、指定された差し替えごとに presigned GET（`binary_url`、`scenarios_url`）を、リースした job の
+org の下で署名します。worker は各ダウンロードを sha256 で検証し、その job 専用のツリーを組み立てます。
+このツリーは、差し替えのない job が使うツリーとは別になります。bundle の job では、差し替え用のツリーは
+キャッシュ済み bundle のローカルコピーなので、bundle の zip は一度しか取得しません。取得が `404` なら
+job を終了します。ダイジェストが一致しない場合はリースの失効に任せ、別の試行で成功できるようにします。
+run の `manifest.json` は、`provenance` の下に `binaryArtifact` / `scenariosArtifact` を記録します。
+バインドした bundle の識別子がある場合は、その隣に並びます。差し替え用のツリーは worker の `.overrides/`
+ディレクトリに置かれるので、`.bundles/` のキャッシュと一緒に整理してください。
+
 ### 1. コントロールプレーンを起動する
 
 ```bash

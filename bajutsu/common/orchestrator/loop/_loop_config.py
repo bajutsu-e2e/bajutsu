@@ -10,7 +10,7 @@ from bajutsu.common.cancellation import CancelSource, not_cancelled
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.webview import DomSource
 from bajutsu.common.evidence import EvidenceSink
-from bajutsu.common.evidence.network import TransitionSource
+from bajutsu.common.evidence.network import Collector, TransitionSource
 from bajutsu.common.orchestrator.types import (
     AlertGuardConfig,
     Clock,
@@ -70,3 +70,11 @@ class _LoopConfig:
     # to the poll loops that back `wait` / `assert`, so cancellation is noticed at a point the
     # pipeline already tolerates a pause rather than partway through an actuation.
     cancelled: CancelSource = not_cancelled
+    # The in-app control channel and whether this scenario hides touch markers (BE-0365), both read
+    # only by a step-level `visual` assert's capture — mirroring the same two inputs
+    # `_capture_visual_actual` already takes at `expect`. `channel` is per-target (BE-0428), replaced
+    # in `_config_for` from `TargetRuntime.channel`; `hide_markers` is a property of the whole
+    # visual-capture group, not of one target (see `TargetRuntime`'s own docstring), so it is read
+    # from the primary's launch env once and never replaced per target.
+    channel: Collector | None = None
+    hide_markers: bool = False

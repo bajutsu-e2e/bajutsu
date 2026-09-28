@@ -368,8 +368,14 @@ def device_pool(  # noqa: C901, PLR0915
             # capture is wired before launch (so the app's cold start is recorded): web binds it to
             # the browser context at creation, Android starts recording before the app
             # launches. Either way the temp dir must exist before the driver is built.
+            # `eff.capture` is BE-0028's third source (the config's `defaults.capture` baseline) —
+            # omitting it here left a scenario that requests video only through config defaults
+            # (never its own `capturePolicy` or an inline step `capture:`) recording nothing on an
+            # up-front recorder, unlike the interval path below, which already threads it through.
             record_video_dir: Path | None = None
-            if lease_env.records_video_up_front() and "video" in requested_intervals(scenario):
+            if lease_env.records_video_up_front() and "video" in requested_intervals(
+                scenario, eff.capture
+            ):
                 # The recorder writes into this staging dir itself, so the sink reserves it; the
                 # finished recording crosses redaction when the sink finalizes it (BE-0331).
                 record_video_dir = RunArtifactWriter(
@@ -454,6 +460,10 @@ def device_pool(  # noqa: C901, PLR0915
                 # Video the environment already began before the app launched (Android, so
                 # the cold start is recorded); the sink adopts it instead of starting one on demand.
                 prestarted_intervals=lease_env.prestarted_intervals(),
+                # The container the driver's recorder actually writes (default mp4 for
+                # simctl/adb's ISO base media; Playwright overrides it to webm — its native
+                # container), so the reserved filename never lies about the bytes behind it.
+                video_extension=getattr(driver, "video_extension", "mp4"),
                 # Carried so a first-wait timeout diagnostic can state whether the readiness gate had
                 # passed and on which signal, stamped with this scenario's BE-0049 provenance so the
                 # evidence survives a rerun-to-green (BE-0231 Unit 1). The `scenarioHash` here

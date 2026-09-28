@@ -34,6 +34,10 @@ _NOT_HITTABLE = "not-hittable"  # the element is live but not reachable at its o
 # it has no such row (BE-0356). Distinct from `_NOT_FOUND`, whose "no actuatable element" message
 # names the selector and would misreport a perfectly resolved, live wheel.
 _VALUE_NOT_FOUND = "value-not-found"
+# `/app/enter` and `/app/leave` only: `activate()` was called but the app never reached
+# `.runningForeground` within the runner's bounded poll — a wrong or uninstalled bundle
+# id, most often, for `enter_app`.
+_NOT_FOREGROUND = "not-foreground"
 
 # Bounded re-resolution retry for a STALE actuation handle (BE-0289), held separate from BE-0207's
 # transport retry above even though it starts at the same values: the two loops bound different
@@ -42,6 +46,12 @@ _VALUE_NOT_FOUND = "value-not-found"
 _STALE_MAX_ATTEMPTS = 3
 # exponential per retry: 0.5s, 1.0s, … between re-resolve attempts
 _STALE_BACKOFF_BASE_SECONDS = 0.5
+
+# `select_photos`'s pre-actuation grid-cell resolution (`_resolve_grid_cell`) is bounded by the
+# caller's own `timeout` rather than a fixed attempt count — held as a separate constant from the
+# stale-handle retry above even though both are BE-0289-flavored, since the two bound different
+# things (a wall-clock budget vs. a handful of post-actuation re-resolutions).
+_GRID_CELL_POLL_SECONDS = 0.3
 
 # iOS reports every frame and coordinate in points, so that is the space stamped on this backend's
 # actuation records.
@@ -58,10 +68,12 @@ class XcuitestDriver:
     # the app-side collector (BE-0020 boundary), not the actuator. The whole device-control family
     # (`DEVICE_CONTROL_ALL`) and the permission grants because xcuitest shares the iOS Simulator
     # lifecycle, which wires a real simctl-backed `DeviceControl` for its runs too (BE-0128;
-    # per-operation tokens since BE-0212). This is the *static* set; a real device (`deviceType:
-    # device`) drops the simctl-backed capabilities at run time via `backends.capabilities_for_run`,
-    # since simctl reaches only the Simulator (BE-0238). A class constant so the preflight (BE-0082)
-    # reads it via backends.capabilities_for without constructing a driver.
+    # per-operation tokens since BE-0212). This is the *static* set; `backends.capabilities_for_run`
+    # narrows it at run time in two directions: a real device (`deviceType: device`) drops the
+    # simctl-backed capabilities, since simctl reaches only the Simulator (BE-0238), while
+    # SELECT_PHOTOS is dropped the other way — present here, removed on an Apple Silicon Simulator
+    # specifically. A class constant so the preflight (BE-0082) reads it via backends.capabilities_for
+    # without constructing a driver.
     CAPABILITIES = (
         frozenset(
             {
@@ -74,6 +86,8 @@ class XcuitestDriver:
                 base.Capability.TEXT_SELECTION,
                 base.Capability.HANDLE_SYSTEM_ALERT,
                 base.Capability.PICKER_WHEEL,
+                base.Capability.APP_CONTEXT,
+                base.Capability.SELECT_PHOTOS,
                 base.Capability.HANDLE_TIPKIT_TIP,
                 base.Capability.HANDLE_NOTIFICATION_BANNER,
             }
@@ -566,7 +580,7 @@ class XcuitestDriver:
 
     def select_option(self, sel: base.Selector, option: str) -> None:  # noqa: ARG002  # Driver shape
         raise base.UnsupportedAction(
-            "selectOption は <select> を持つ web バックエンド専用; iOS ネイティブに <select> はない"
+            "selectOption is web-backend-only, for a <select>; iOS has no native <select>"
         )
 
     def set_picker_value(self, sel: base.Selector, value: str) -> None:
@@ -583,6 +597,146 @@ class XcuitestDriver:
             gesture="setPickerValue",
             element=el,
         )
+
+    def select_photos(self, indices: list[int], *, timeout: float) -> None:
+        """Pick the grid cells at `indices` from an open `PHPickerViewController`, then confirm.
+
+        Every cell shares one identifier, `PXGGridLayout-Info`, disambiguated by ordinal `index` —
+        the same "nth of multiple matches" mechanism `handle_system_alert` relies on for a
+        SpringBoard button no author-assignable identifier ever names. Each is tapped by raw
+        coordinate at its resolved frame's exact center (`base.frame_center`), not the ordinary
+        handle-based `/tap` every other element uses: measured against this picker's grid, a
+        handle-based tap is refused (`ElementNotTappable`) or reports the handle stale, while a
+        coordinate tap at the same cell's exact frame center lands and registers the selection —
+        a coordinate on the boundary shared with an adjacent cell can register that neighbor
+        instead, which is why the exact center, not an arbitrary point in the frame, is used
+        (roadmap item). Re-resolved fresh before every tap rather than once for the whole call:
+        nothing about this recycled collection view guarantees a cell's frame stays put while an
+        earlier index in the same call is still being tapped.
+
+        Resolution is bounded by `timeout` (BE-0289's stale-retry spirit, applied pre-actuation
+        rather than post-): observed on-device, a `PXGGridLayout-Info` query right after the
+        picker presents can transiently find zero matches even though the grid is already visible
+        — the collection view's cells can report as untyped `other` elements for a beat before
+        their identifier syncs into the accessibility tree. `_resolve_grid_cell` re-queries until
+        the selector resolves or `timeout` elapses, rather than failing on the first empty
+        snapshot.
+        """
+        for i in indices:
+            sel: base.Selector = {"id": "PXGGridLayout-Info", "index": i}
+            el = self._resolve_grid_cell(sel, timeout=timeout)
+            p = base.frame_center(el["frame"])
+            self._actuations.record(
+                Actuation(
+                    gesture="tap",
+                    via="coordinate",
+                    unit=_UNIT,
+                    points=(p,),
+                    frame=el["frame"],
+                    target=el["identifier"],
+                )
+            )
+            reply = self._transport("POST", "/tap", {"point": [p[0], p[1]]})
+            if reply.status != _OK:
+                raise base.ElementNotFound(
+                    f"coordinate tap failed (status={reply.status}) at {p} for {sel!r}"
+                )
+        self._confirm_photo_selection()
+
+    def _resolve_grid_cell(self, sel: base.Selector, *, timeout: float) -> base.Element:
+        """Re-query until `sel` resolves to exactly one element, or raise once `timeout` elapses.
+
+        Only a zero-match `ElementNotFound` is retried — the transient case where the cell has not
+        synced into the tree yet. An `AmbiguousSelector` (two-or-more matches) is a real,
+        non-transient failure (prime directive 2: an ambiguous selector fails immediately rather
+        than being retried into a guess) and propagates on the first query.
+
+        The first attempt runs immediately, with no upfront sleep, mirroring `_actuate`'s BE-0289
+        stale-retry (the re-query itself is the wait); `_GRID_CELL_POLL_SECONDS` only spaces
+        attempts after a miss, capped so the last sleep never overshoots the deadline.
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            elements, _ = self._query_with_handles(apply_native_z=False)
+            try:
+                return base.resolve_unique(elements, sel)
+            except base.ElementNotFound:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                self._sleep(min(_GRID_CELL_POLL_SECONDS, remaining))
+
+    def _confirm_photo_selection(self) -> None:
+        """Tap the picker's confirm control, resolved structurally rather than by its localized label.
+
+        The picker's dismiss control carries the stable identifier `Cancel`; the confirm control
+        carries none, only a label that changes with both locale and iOS version (`Done`, or a
+        checkmark glyph on newer releases) — naming it by label would need a per-locale lookup the
+        way `handle_system_alert` needs one for SpringBoard. Finding it by elimination inside the
+        picker's own navigation bar instead needs no such table: the confirm control's identifier
+        *absence*, not its label, is the stable fact.
+
+        A single-selection grid (`selectionLimit == 1`) auto-confirms on the one tap above and
+        dismisses the whole picker, so there is no confirm control left to tap — a no-op, not an
+        error. Measured on-device (not just against the mocked unit tests below): once the picker
+        is gone, the app's own screen can still have its own `navigationBar`-trait element (e.g. a
+        `.navigationTitle`), and *that* bar's own non-`Cancel` content (its title text) would
+        otherwise satisfy the same elimination this method uses for the picker's bar — mistakenly
+        tapping the app's own UI instead of recognizing the picker already closed. So a
+        `navigationBar` only counts as the picker's own when *that specific bar* contains a
+        `Cancel` control, not merely when some `Cancel` exists anywhere in the snapshot: the single
+        `/elements` query behind this method is an immediate, unsynchronized accessibility-tree
+        read (`XCUIApplication.snapshot()`, chosen for its cost over the query path that would
+        otherwise wait for the app to settle — see `XcuitestElementProvider.swift`), so a snapshot
+        taken right after the auto-dismissing tap can land mid-transition, observing the picker's
+        still-there `Cancel`-bearing bar *and* the app's own bar at once. Scoping candidates to only
+        the bar(s) that themselves hold a `Cancel` keeps the app's own bar out of the count in that
+        window too, not just once the picker's bar is fully gone.
+
+        Not routed through `_actuate`: its stale-retry re-resolves from a `Selector`, and this
+        control's resolution — elimination, not a field match — has no `Selector` to hand it. A
+        static navigation-bar control is not the recycled-cell case that retry exists for (the
+        `Cancel` measurement in the roadmap item confirms static chrome actuates fine on the first
+        try), so a single query-then-tap, mirroring `handle_system_alert`'s own shape, is enough.
+        """
+        elements, handles = self._query_with_handles(apply_native_z=False)
+        bars = base.find_all(elements, {"traits": ["navigationBar"]})
+        cancels = base.find_all(elements, {"id": "Cancel"})
+        picker_bars = [
+            b for b in bars if any(base.contains(b["frame"], c["frame"]) for c in cancels)
+        ]
+        if not picker_bars:
+            return
+        # Containment is reflexive — a bar's own element sits inside its own frame just as its
+        # children do — so a picker bar must be excluded from its own candidates by identity, not
+        # merely by lacking a `Cancel` identifier (BE-0355's `id(el)` keying, reused). Candidates are
+        # scoped to `picker_bars`' own frames specifically, not every `navigationBar` in the
+        # snapshot, so the app's own bar never contributes one even while both are present at once.
+        picker_bar_ids = {id(b) for b in picker_bars}
+        picker_bar_frames = [b["frame"] for b in picker_bars]
+        candidates = [
+            el
+            for el in elements
+            if id(el) not in picker_bar_ids
+            and el["identifier"] != "Cancel"
+            and any(base.contains(frame, el["frame"]) for frame in picker_bar_frames)
+        ]
+        if len(candidates) != 1:
+            raise base.ElementNotFound(
+                "could not resolve the picker's confirm control by elimination: "
+                f"{len(candidates)} non-Cancel candidate(s) in the navigation bar"
+            )
+        el = candidates[0]
+        self._actuations.record(
+            Actuation(
+                gesture="tap", via="handle", unit=_UNIT, frame=el["frame"], target=el["identifier"]
+            )
+        )
+        reply = self._transport("POST", "/tap", {"handle": handles[id(el)]})
+        if reply.status != _OK:
+            raise base.ElementNotFound(
+                f"the picker's confirm control vanished before tap (status={reply.status})"
+            )
 
     def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:  # noqa: ARG002  # Driver shape
         # Query the alert once and tap the button `sel` names (BE-0316). The alert is out-of-process,
@@ -819,6 +973,31 @@ class XcuitestDriver:
 
     def capabilities(self) -> set[str]:
         return set(self.CAPABILITIES)
+
+    def enter_app(self, bundle_id: str) -> None:
+        """Activate `bundle_id` and make it the target of every following call.
+
+        Never launched by the test target — the runner activates it directly, pushing it onto its
+        own app stack — so this works for any installed app, including one the scenario's own
+        target has no way to open itself.
+        """
+        reply = self._transport("POST", "/app/enter", {"bundleId": bundle_id})
+        if reply.status == _OK:
+            return
+        if reply.status == _NOT_FOREGROUND:
+            raise base.ElementNotFound(f"app did not reach the foreground: {bundle_id!r}")
+        raise XcuitestChannelError(
+            f"runner error entering app (status={reply.status}): {bundle_id!r}"
+        )
+
+    def leave_app(self) -> None:
+        """Leave the most recently entered app and re-activate the one beneath it."""
+        reply = self._transport("POST", "/app/leave", {})
+        if reply.status == _OK:
+            return
+        if reply.status == _NOT_FOREGROUND:
+            raise base.ElementNotFound("app did not reach the foreground while leaving")
+        raise XcuitestChannelError(f"runner error leaving app (status={reply.status})")
 
     # --- lifecycle ---
 

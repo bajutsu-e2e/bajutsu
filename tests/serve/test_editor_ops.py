@@ -296,7 +296,9 @@ SCENARIO_YAML = """\
 """
 
 
-def _write_run_with_steps(runs: Path, run_id: str, sid: str, step_ids: list[str]) -> None:
+def _write_run_with_steps(
+    runs: Path, run_id: str, sid: str, step_ids: list[str], *, scenario: str = "login"
+) -> None:
     """Write a minimal run with manifest + per-step artifacts.
 
     The manifest's own `artifacts` list is what `_step_artifacts` now resolves names from
@@ -311,7 +313,7 @@ def _write_run_with_steps(runs: Path, run_id: str, sid: str, step_ids: list[str]
         "ok": True,
         "scenarios": [
             {
-                "scenario": "login",
+                "scenario": scenario,
                 "ok": True,
                 "sid": sid,
                 "steps": [
@@ -371,6 +373,82 @@ def test_read_scenario_with_run_returns_steps(tmp_path: Path) -> None:
     assert steps[0]["stepId"] == "00-login/step0"
     assert steps[0]["screenshotUrl"].endswith("/before.png")
     assert steps[0]["elementsUrl"].endswith("/elements.json")
+
+
+MULTI_TARGET_SCENARIO_YAML = """\
+- name: cross
+  targets: [app, web]
+  steps:
+    - target: app
+      tap: { id: auth.email }
+    - target: web
+      tap: { id: auth.submit }
+"""
+
+
+def test_read_scenario_resolves_a_multi_target_runs_own_target_folders(tmp_path: Path) -> None:
+    # Once a scenario declares two or more targets, the writer nests every step's evidence under
+    # its own routed target's folder — the picker's own step-id reconstruction has to build the
+    # same key or every step resolves to no artifacts at all.
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "cross.yaml").write_text(MULTI_TARGET_SCENARIO_YAML, encoding="utf-8")
+    _write_run_with_steps(
+        runs,
+        "run1",
+        "00-cross",
+        ["00-cross/app/step0", "00-cross/web/step1"],
+        scenario="cross",
+    )
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "cross.yaml"),
+        run_id="run1",
+        scenario_name="cross",
+    )
+    assert status == 200
+    steps = payload["steps"]
+    assert len(steps) == 2
+    assert steps[0]["stepId"] == "00-cross/app/step0"
+    assert steps[1]["stepId"] == "00-cross/web/step1"
+    assert steps[0]["screenshotUrl"].endswith("/before.png")
+    assert steps[0]["elementsUrl"].endswith("/elements.json")
+    assert steps[1]["screenshotUrl"].endswith("/before.png")
+    assert steps[1]["elementsUrl"].endswith("/elements.json")
+
+
+def test_read_scenario_falls_back_to_a_flat_step_id_for_an_older_multi_target_run(
+    tmp_path: Path,
+) -> None:
+    # A multi-target run recorded before per-target nesting shipped has its evidence at the old
+    # flat id (`<sid>/<stepId>`, no target segment) — the picker must still find it rather than
+    # only ever looking up the new, nested key.
+    state, runs = _state(tmp_path)
+    scn_dir = tmp_path / "scenarios"
+    (scn_dir / "cross.yaml").write_text(MULTI_TARGET_SCENARIO_YAML, encoding="utf-8")
+    _write_run_with_steps(
+        runs,
+        "run1",
+        "00-cross",
+        ["00-cross/step0", "00-cross/step1"],
+        scenario="cross",
+    )
+
+    payload, status = ops.read_scenario(
+        state,
+        "demo",
+        str(scn_dir / "cross.yaml"),
+        run_id="run1",
+        scenario_name="cross",
+    )
+    assert status == 200
+    steps = payload["steps"]
+    assert steps[0]["stepId"] == "00-cross/step0"
+    assert steps[0]["screenshotUrl"].endswith("/before.png")
+    assert steps[1]["stepId"] == "00-cross/step1"
+    assert steps[1]["screenshotUrl"].endswith("/before.png")
 
 
 def test_read_scenario_prefers_the_post_action_screenshot_for_the_picker(tmp_path: Path) -> None:

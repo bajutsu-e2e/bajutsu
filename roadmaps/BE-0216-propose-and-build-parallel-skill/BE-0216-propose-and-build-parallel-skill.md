@@ -121,7 +121,7 @@ finished item.
    structured as the phases below. It links to `ideation` and `implement-be` rather than duplicating
    their content.
 2. **Phase A — author the proposal (delegates to `ideation`'s rules).** Branch `claude/<topic>` off
-   `origin/main`; scaffold `BE-XXXX-<slug>/` with `make new-roadmap-item` at `Status: Proposal`; fill
+   `origin/main`; scaffold `BE-XXXX-<slug>/` with `make new-roadmap-item` at `Status: Approved`; fill
    it under the [`document-writing`](../../.claude/skills/document-writing/SKILL.md) skill and
    localize the Japanese under [`japanese-document-writing`](../../.claude/skills/japanese-document-writing/SKILL.md).
    Identical to `ideation`, and the skill says so rather than restating it.

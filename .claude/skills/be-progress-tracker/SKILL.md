@@ -83,10 +83,10 @@ Field rules, all mandatory:
   template shows; no separator goes between the badge and the button. Nothing else is ever added.
   - `Status` — the roadmap item's own `Status:` field, copied verbatim, once
     `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md` exists; before allocation, literally
-    `Proposal (pre-allocation)`. Its badge gets exactly one of three classes, chosen only by the
+    `Approved (pre-allocation)`. Its badge gets exactly one of three classes, chosen only by the
     text itself — never a judgment call: `done` when `Status` is exactly `Implemented`, `progress`
-    when it is exactly `In progress`, `neutral` for every other value (`Proposal`,
-    `Proposal (pre-allocation)`, `Deferred`, `Rejected`).
+    when it is exactly `In progress`, `neutral` for every other value (`Approved`,
+    `Approved (pre-allocation)`, `Deferred`, `Rejected`).
   - `Workflow` — the name of the workflow making *this* call (`implement-be`, `ideation`, …), not
     the skill that ends up shipping the item — this field changes mid-page when
     `propose-and-build` hands off between the two.

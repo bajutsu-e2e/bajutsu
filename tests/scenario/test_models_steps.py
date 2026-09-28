@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from bajutsu.common.scenario import (
+    Group,
     HandleSystemAlert,
     Step,
 )
@@ -48,6 +49,36 @@ def test_step_rejects_unsafe_name(name: str) -> None:
 def test_step_accepts_ordinary_name(name: str) -> None:
     step = Step.model_validate({"tap": {"id": "a"}, "name": name})
     assert step.name == name
+
+
+# --- `use` expands away wholesale, so a modifier beside it would be silently dropped -------------
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("capture", ["screenshot"]),
+        ("extract", {"x": {"sel": {"id": "f"}}}),
+        ("name", "log in"),
+        ("from", "log in as alice"),
+        ("target", "app"),
+    ],
+)
+def test_use_step_rejects_modifier(key: str, value: object) -> None:
+    with pytest.raises(ValidationError, match=f"use steps take no modifiers, got {key} "):
+        Step.model_validate({"use": {"component": "login.yaml"}, key: value})
+
+
+def test_use_step_names_every_modifier_it_rejects() -> None:
+    with pytest.raises(ValidationError, match="got capture, name "):
+        Step.model_validate(
+            {"use": {"component": "login.yaml"}, "capture": ["screenshot"], "name": "x"}
+        )
+
+
+def test_use_step_without_modifiers_parses() -> None:
+    step = Step.model_validate({"use": {"component": "login.yaml", "with": {"user": "a"}}})
+    assert step.use is not None and step.use.with_ == {"user": "a"}
 
 
 def test_extract_on_step() -> None:
@@ -378,3 +409,93 @@ def test_handle_system_alert_rejects_an_unknown_prompt() -> None:
         Step.model_validate(
             {"handleSystemAlert": {"prompt": "camera", "choice": "grant", "timeout": 5}}
         )
+
+
+# --- group (a named run of steps, folded in report.html) ---
+
+
+def test_group_step_parses() -> None:
+    step = Step.model_validate(
+        {
+            "group": {
+                "name": "login",
+                "steps": [{"tap": {"id": "auth.open"}}, {"tap": {"id": "auth.submit"}}],
+            },
+        }
+    )
+    assert step.group is not None
+    assert step.group.name == "login"
+    assert len(step.group.steps) == 2
+
+
+def test_group_requires_a_non_empty_name() -> None:
+    with pytest.raises(ValidationError):
+        Group.model_validate({"name": "", "steps": [{"tap": {"id": "a"}}]})
+
+
+def test_group_requires_at_least_one_step() -> None:
+    with pytest.raises(ValidationError):
+        Group.model_validate({"name": "login", "steps": []})
+
+
+def test_group_is_one_action() -> None:
+    with pytest.raises(ValidationError):
+        Step.model_validate(
+            {
+                "group": {"name": "login", "steps": [{"tap": {"id": "a"}}]},
+                "tap": {"id": "b"},
+            }
+        )
+
+
+def test_group_rejects_capture_modifier() -> None:
+    with pytest.raises(ValidationError, match="capture"):
+        Step.model_validate(
+            {
+                "group": {"name": "login", "steps": [{"tap": {"id": "a"}}]},
+                "capture": ["screenshot.after"],
+            }
+        )
+
+
+def test_group_rejects_extract_modifier() -> None:
+    with pytest.raises(ValidationError, match="extract"):
+        Step.model_validate(
+            {
+                "group": {"name": "login", "steps": [{"tap": {"id": "a"}}]},
+                "extract": {"v": {"sel": {"id": "z"}}},
+            }
+        )
+
+
+def test_report_group_round_trips_through_dump_and_revalidate() -> None:
+    # `expand()` tags a flattened step via `model_copy(update=...)`, which makes `report_group` a
+    # *set*, non-default field — `exclude_defaults=True` keeps it in the dump, exactly what the
+    # fold needs (`rows.py` reads it back out of `scenario_dict`). The run path re-validates that
+    # same dump twice (`redact_totp_secrets`, and `load_run`'s reload of its own `scenario.yaml`),
+    # so this round trip must succeed rather than be rejected — see the field's own docstring.
+    step = Step.model_validate({"tap": {"id": "a"}})
+    tagged = step.model_copy(update={"report_group": "login", "report_group_id": 0})
+    dumped = tagged.model_dump(by_alias=True, exclude_none=True, exclude_defaults=True)
+    assert dumped["_reportGroup"] == "login"
+    assert dumped["_reportGroupId"] == 0
+    revalidated = Step.model_validate(dumped)
+    assert revalidated.report_group == "login"
+    assert revalidated.report_group_id == 0
+
+
+def test_report_group_survives_a_model_copy_update() -> None:
+    # `expand()` tags a flattened step this way; `model_copy(update=...)` bypasses field
+    # validators, unlike `model_validate`, so the internal write must still succeed.
+    step = Step.model_validate({"tap": {"id": "a"}})
+    tagged = step.model_copy(update={"report_group": "login", "report_group_id": 0})
+    assert tagged.report_group == "login"
+    assert tagged.report_group_id == 0
+
+
+def test_report_group_is_excluded_from_the_json_schema() -> None:
+    schema = Step.model_json_schema()
+    defs = schema["$defs"][schema["$ref"].rsplit("/", 1)[-1]]
+    assert "_reportGroup" not in defs["properties"]
+    assert "_reportGroupId" not in defs["properties"]
+    assert "group" in defs["properties"]

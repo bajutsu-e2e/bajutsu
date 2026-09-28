@@ -7,6 +7,7 @@ import logging
 import subprocess
 import threading
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -461,6 +462,10 @@ class _StubCollector(FakeNetworkCollector):
 
 class _FakeWeb(FakeDriver):
     """A fake web driver: a FakeDriver plus the web-only navigate()/close() lifecycle."""
+
+    # Mirrors PlaywrightDriver's own declaration (its recorder writes real WebM, not mp4) — proves
+    # the pool actually reads this attribute off the driver rather than hardcoding "mp4".
+    video_extension = "webm"
 
     def __init__(self, screen: list[base.Element], *, fail_collector_stop: bool = False) -> None:
         super().__init__(screen)
@@ -1842,12 +1847,52 @@ def test_device_pool_web_lease(monkeypatch: pytest.MonkeyPatch) -> None:
         assert leased.collector is None  # network off for web
         assert isinstance(leased.sink, FileSink)
         assert leased.sink.udid == "web"
+        # The pool reads the driver's own declared container (BE-0331) rather than assuming mp4;
+        # a typo in the getattr key here, or dropping the argument in a later refactor of the
+        # FileSink(...) call, would silently fall back to "mp4" with the rest of the suite green.
+        assert leased.sink.video_extension == "webm"
         assert fakes[0].navigated == 1  # launch == navigate to base_url
         assert leased.relaunch is not None
         leased.relaunch(Relaunch())  # re-navigate, no device restart
         assert fakes[0].navigated == 2
         leased.release()  # tears the browser down
         assert fakes[0].closed == 1
+    finally:
+        shutdown()
+
+
+def test_device_pool_web_lease_starts_video_from_config_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BE-0028's third source (the config's `defaults.capture` baseline) has to reach the up-front
+    recorders too: web binds video to the browser context at creation (`records_video_up_front`),
+    before any step's own `capture:` could fire — so a scenario that asks for video only through
+    that config baseline, never its own `capturePolicy` or an inline step `capture:`, must still
+    get one. (Regression: this leg of `lease()` used to call `requested_intervals(scenario)` with
+    no config baseline at all, unlike the interval-video path, which always threaded it through.)"""
+    captured: dict[str, object] = {}
+
+    def fake_make_driver(
+        actuator: str,
+        udid: str,
+        base_url: str | None = None,
+        headless: bool = True,
+        browser: str = "chromium",
+        device_mode: str = "desktop",
+        record_video_dir: object = None,
+    ) -> base.Driver:
+        captured["record_video_dir"] = record_video_dir
+        return _FakeWeb([_el("home", "H"), _el("ok", "OK")])
+
+    monkeypatch.setattr("bajutsu.common.backends.make_driver", fake_make_driver)
+    eff = replace(_eff_web(), capture=["screenshot.after", "video"])
+    lease, shutdown = device_pool(
+        ["web"], ["web"], eff, Path("runs"), network=False, available=lambda b: True
+    )
+    try:
+        leased = lease(eff, _scn("a"))  # the scenario itself declares no capture at all
+        assert captured["record_video_dir"] is not None
+        leased.release()
     finally:
         shutdown()
 

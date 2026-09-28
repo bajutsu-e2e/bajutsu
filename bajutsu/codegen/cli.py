@@ -8,7 +8,7 @@ import typer
 
 from bajutsu.cli._shared import DEFAULT_CONFIG, _load_effective
 from bajutsu.codegen import EMIT_TARGETS, CodegenError, generate_test
-from bajutsu.common.scenario import load_scenarios
+from bajutsu.common.scenario import _scenarios_declaring_targets, load_scenarios
 
 
 def codegen(
@@ -30,6 +30,17 @@ def codegen(
         typer.echo(f"scenario not found: {scenario}")
         raise typer.Exit(2)
     scenarios = load_scenarios(scenario_path.read_text(encoding="utf-8"))
+    # Every generator emits against this run's single --target: a multi-target scenario's step
+    # would silently lose which target it names, emitting a plausible-looking test that acts on
+    # the wrong app with no error or marker (BE-0428) — refuse it instead, until a later unit
+    # teaches codegen to emit per target.
+    affected = _scenarios_declaring_targets(scenarios)
+    if affected:
+        typer.echo(
+            "codegen cannot emit a multi-target scenario (targets:) yet (BE-0428); "
+            f"affected scenario(s): {', '.join(affected)}"
+        )
+        raise typer.Exit(2)
     stem = Path(out).stem if out != "-" else scenario_path.stem
     try:
         code, _filename = generate_test(emit, scenarios, stem, eff)

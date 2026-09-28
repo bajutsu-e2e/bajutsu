@@ -215,7 +215,7 @@ def test_ambiguous_state_fails() -> None:
     # State assertion on a selector that matches multiple -> cannot resolve uniquely.
     r = evaluate_one(SCREEN, _a({"enabled": {"idMatches": "result.row.*"}}))
     assert not r.ok
-    assert "件一致" in r.reason
+    assert "elements matched" in r.reason
 
 
 def test_evaluate_and_passed() -> None:

@@ -7,8 +7,10 @@ forward reference to `Step` is needed.
 
 from ._shared import _MODIFIERS as _MODIFIERS
 from .after_rule import AfterRule
+from .app import App
 from .extract import Extract
 from .for_each import ForEach
+from .group import Group
 from .if_ import If
 from .interrupt import Interrupt
 from .step import _STEP_ACTIONS as _STEP_ACTIONS
@@ -17,13 +19,26 @@ from .step import Step
 from .use import Use
 from .web import Web
 
-__all__ = ["AfterRule", "Extract", "ForEach", "If", "Interrupt", "Step", "Use", "Web"]
+__all__ = [
+    "AfterRule",
+    "App",
+    "Extract",
+    "ForEach",
+    "Group",
+    "If",
+    "Interrupt",
+    "Step",
+    "Use",
+    "Web",
+]
 
 
 If.model_rebuild()
 ForEach.model_rebuild()
+Group.model_rebuild()
 Interrupt.model_rebuild()
 Web.model_rebuild()
+App.model_rebuild()
 # `Step` joins them because the split made its own reference to `Web` a deferred one: the two
 # modules reference each other, so rule 5 broke that edge, and Pydantic resolves the annotation
 # here, where every name is in scope.

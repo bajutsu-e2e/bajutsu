@@ -216,7 +216,7 @@ def test_web_step_host_not_found_fails() -> None:
         webview_bridge=bridge,
     )
     assert not result.ok
-    assert "一致なし" in (result.failure or "")
+    assert "no match" in (result.failure or "")
 
 
 def test_web_step_no_bridge_fails() -> None:
