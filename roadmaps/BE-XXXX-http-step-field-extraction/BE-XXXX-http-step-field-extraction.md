@@ -60,7 +60,7 @@ Fields and contract:
   when the response body is itself a JSON array (`[0].id`). An index is a non-negative decimal
   integer: `[-1]` is a malformed path, never an index counted from the end the way Python's list
   indexing reads it. A malformed path — a negative or non-numeric index, an empty segment
-  (`a..b`), or a trailing dot — fails validation with an error naming the `var` and the `path`. The
+  (`a..b`), or a trailing dot — fails the step with an error naming the `var` and the `path`. The
   grammar stops there: no wildcards, no filters, no computed segments. BE-0036 already rejected a
   general `shell`/`exec` step on the same grounds (see its *Alternatives considered*): a small,
   fixed grammar stays auditable from the scenario file alone, where a general expression language
@@ -83,9 +83,10 @@ Fields and contract:
   substitutes those tokens before parsing `path`, the same way it already does for `url` or
   `saveBody`. "No computed segments" describes the grammar itself: it never branches on the
   response body's own content. It says nothing about a scenario parameterizing a field with its own
-  declared variables. The path-grammar and duplicate-`var` checks above apply to the substituted
-  step, so a malformed or colliding `path`/`var` fails the same way whether a scenario wrote it as a
-  fixed string or assembled it from `${vars.*}`.
+  declared variables. The path-grammar check runs purely on the substituted step, never on the
+  scenario as loaded, where `path` may still hold a raw `${vars.*}` token. The duplicate-`var` check
+  runs at load on the literal names and again on the substituted step; a collision that substitution
+  alone reveals fails the step at run time with the same error naming the `var`.
 
 Prime directives preserved:
 
@@ -126,7 +127,8 @@ Prime directives preserved:
 - [ ] Add JSON parsing and path resolution to the runner's `http` handler, including a leading
       index and chained indexes. Fail the step on a parse error, a malformed path, or an unresolved
       path. Render a non-string resolved value with
-      `json.dumps(value, separators=(",", ":"), ensure_ascii=False)`.
+      `json.dumps(value, separators=(",", ":"), ensure_ascii=False)`. Re-check duplicate `var` names
+      on the substituted step and fail the step on a collision.
 - [ ] Document `extractBody` in `docs/scenarios.md` (beside `saveBody`) and in the `http` production
       of `docs/dsl-grammar.md`, with both `docs/ja/` mirrors.
 - [ ] Add scenario-level tests covering:
