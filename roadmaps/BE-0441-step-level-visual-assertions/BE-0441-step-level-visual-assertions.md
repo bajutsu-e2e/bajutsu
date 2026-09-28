@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-step-level-visual-assertions-ja.md)
+**English** · [日本語](BE-0441-step-level-visual-assertions-ja.md)
 
-# BE-XXXX — Step-level visual regression assertions
+# BE-0441 — Step-level visual regression assertions
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-step-level-visual-assertions.md) |
+| Proposal | [BE-0441](BE-0441-step-level-visual-assertions.md) |
 | Author | [@handle](https://github.com/handle) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0441") |
 | Implementing PR | [#2069](https://github.com/bajutsu-e2e/bajutsu/pull/2069) |
 | Topic | Verification & coverage |
 | Related | [BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md), [BE-0165](../BE-0165-visual-compare-engines/BE-0165-visual-compare-engines.md), [BE-0171](../BE-0171-element-scoped-visual-assertions/BE-0171-element-scoped-visual-assertions.md), [BE-0250](../BE-0250-assertions-package-eval-context/BE-0250-assertions-package-eval-context.md) |
