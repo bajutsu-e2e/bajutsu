@@ -394,7 +394,10 @@
       knob.style.left = Math.max(0, Math.min(100, v.currentTime / v.duration * 100)) + '%';
     }
     if(!v || !btn || !seek || !time) return;
-    function paint(){ btn.textContent = v.paused ? '▶' : '❚❚'; }
+    // `.is-live` glows the player frame itself while its recording is actually playing, so a
+    // multi-target scenario's several stacked players (BE-0428) show at a glance which one is
+    // running right now — the same "currently executing" moment `.playing` marks on the step row.
+    function paint(){ btn.textContent = v.paused ? '▶' : '❚❚'; p.classList.toggle('is-live', !v.paused); }
     function clock(){ time.textContent = fmtT(v.currentTime) + ' / ' + fmtT(v.duration); }
     // Carry this video's play/pause state and playhead onto every sibling recording in the same
     // scenario (BE-0428): every player's own `offset` (server-computed, BE-0428's `_videos`) is

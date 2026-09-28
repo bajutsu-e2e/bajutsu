@@ -60,8 +60,18 @@ summary::-webkit-details-marker{display:none}
    labeled by its target so a reader can tell which device the frame below it shows. */
 .players{display:flex;flex-direction:column;gap:.6rem}
 .players .tgtlbl{margin:0 0 .2rem}
-.player{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#000}
+.player{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#000;
+ transition:box-shadow .2s}
 .player video{display:block;width:100%;background:#000;cursor:pointer}
+/* The recording actually playing back right now (report.js toggles this on play/pause) — a
+   pulsing glow around the whole frame, so a multi-target scenario's stacked players (BE-0428)
+   show which one is live without reading each one's own play/pause button. Paired with
+   tr.srow.playing's own pulse on the matching step row. */
+.player.is-live{box-shadow:0 0 0 2px #0a6cff;animation:playerPulse 1.6s ease-in-out infinite}
+@keyframes playerPulse{
+ 0%,100%{box-shadow:0 0 0 2px #0a6cff,0 0 10px rgba(10,108,255,.35)}
+ 50%{box-shadow:0 0 0 2px #0a6cff,0 0 20px rgba(10,108,255,.75)}
+}
 .vctl{display:flex;align-items:center;gap:.5rem;padding:.34rem .5rem;background:#1c1c1e;color:#e6e6e6}
 .vplay{flex:none;width:1.7rem;height:1.7rem;border:0;border-radius:5px;background:#3a3a3c;color:#fff;
  cursor:pointer;font-size:.66rem;line-height:1;display:flex;align-items:center;justify-content:center}
@@ -131,7 +141,16 @@ tr.srow{cursor:pointer}
    now, and a per-cell background would leave those gaps unpainted, breaking the highlight into
    visible patches instead of one continuous block. */
 tr.srow:hover{background:#eef4ff}
-tr.srow.playing{background:#fff3c4;box-shadow:inset 3px 0 0 #f0a500}
+/* The step whose time window the playhead is currently in (report.js, on `timeupdate`) — a
+   soft pulse (not a flicker on the text itself) keeps it findable in a long steps list without
+   fighting readability. `.player.is-live` (below) pulses the same way on the owning recording,
+   so the two read as one linked "now playing" pair rather than two unrelated highlights. */
+tr.srow.playing{background:#fff3c4;box-shadow:inset 3px 0 0 #f0a500,0 0 0 1px rgba(240,165,0,.55);
+ animation:srowPulse 1.6s ease-in-out infinite}
+@keyframes srowPulse{
+ 0%,100%{box-shadow:inset 3px 0 0 #f0a500,0 0 0 1px rgba(240,165,0,.25)}
+ 50%{box-shadow:inset 3px 0 0 #f0a500,0 0 0 1px rgba(240,165,0,.75)}
+}
 td.ev{white-space:nowrap}
 img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-align:middle;
  cursor:pointer;background:#fafafa}
@@ -540,6 +559,11 @@ tr.visrow>td{background:#fafafb}
  .vshot img,.vcmp-stage,.vcmp-base{background:#2a2b2f}
  .vcmp.mode-blend .vcmp-stage{background:#000}
  .vcmp-mode{background:#2a2f3a;border-color:#34353a}
+}
+/* The "now playing" pulses (tr.srow.playing, .player.is-live) are decorative motion, not the
+   signal itself — the row's background/border and the player's ring stay visible either way. */
+@media (prefers-reduced-motion: reduce){
+ tr.srow.playing,.player.is-live{animation:none}
 }
 
 /* The declared target a step ran against (BE-0428): a quiet chip beside the action badge,
