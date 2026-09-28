@@ -741,6 +741,32 @@ def test_every_other_declared_targets_own_video_is_finalized_and_tagged() -> Non
     assert web_sink.finished_ids  # the web sink's own finish was actually called, not skipped
 
 
+def test_a_caller_that_omits_primary_target_never_nests_under_a_bare_slash() -> None:
+    # Review finding: `extra_runtimes` filters `target_runtimes` by `name != primary_target`, so a
+    # caller passing `target_runtimes` without `primary_target` (it defaults to `""`) makes every
+    # name count as "extra" (a pre-existing quirk of that filter, unrelated to this fix). Before
+    # this fix, the primary's own scenario-wide recording nested under a bare trailing slash
+    # (`<sid>//scenario.mp4`) in that same case — this only asserts that malformed name is gone,
+    # not the (separately pre-existing) double-counting itself.
+    app = FakeDriver(screen=list(_APP_SCREEN))
+    sink = _VideoTargetSink()
+    r = run_scenario(
+        app,
+        _scenario({"name": "x", "steps": [{"tap": {"id": "app.button"}}]}),
+        FakeClock(),
+        scenario_id="00-x",
+        sink=sink,
+        capture=["video"],
+        target_runtimes={"app": TargetRuntime(driver=app, sink=sink, capture=["video"])},
+        # primary_target intentionally omitted (defaults to "").
+    )
+    assert r.ok, r.failure
+    videos = [a for a in r.artifacts if a.kind == "video"]
+    assert videos  # sanity: the scenario did record something
+    assert all("//" not in a.name for a in videos)
+    assert any(a.name == "00-x/scenario.mp4" for a in videos)
+
+
 def test_a_target_that_declares_no_video_capture_gets_no_artifact_or_anchor() -> None:
     # A target whose own resolved `capture` never asks for video (its config, unlike the primary's,
     # sets no `video` baseline) records nothing and stays absent from `target_video_anchors` — the

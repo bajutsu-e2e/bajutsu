@@ -325,6 +325,26 @@ def _evidence_files(runs_dir: Path, name: str, run_ids: Iterable[str] | None) ->
     return sorted(f for rid in run_ids for f in (runs_dir / rid).glob(f"**/{name}"))
 
 
+def read_element_lists(runs_dir: Path, run_ids: Iterable[str] | None = None) -> list[list[Any]]:
+    """Every ``elements.json`` recorded across the run set, parsed as a JSON list.
+
+    Shared by ``read_observed_ids`` (the id-coverage dimension) and the CLI's screens-visited
+    dimension (``bajutsu coverage --crawl``), so the two never disagree on how ``elements.json`` is
+    found or parsed — before this function existed, each carried its own copy of the same glob and
+    parse loop, and both were wrong in the same way (a fixed segment count one folder too shallow).
+    Read-only; an unreadable file, or one whose top level isn't a list, is skipped.
+    """
+    out: list[list[Any]] = []
+    for els in _evidence_files(runs_dir, "elements.json", run_ids):
+        try:
+            data = json.loads(els.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, list):
+            out.append(data)
+    return out
+
+
 def read_exchanges(runs_dir: Path, run_ids: Iterable[str] | None = None) -> list[NetworkExchange]:
     """Every network exchange recorded across the run set.
 
@@ -347,18 +367,12 @@ def read_exchanges(runs_dir: Path, run_ids: Iterable[str] | None = None) -> list
 def read_observed_ids(runs_dir: Path, run_ids: Iterable[str] | None = None) -> list[str]:
     """Every stable id rendered across the run set.
 
-    The union of each element's ``identifier`` from every per-step ``elements.json`` under *runs_dir*
-    (read-only; a malformed/partial file is skipped, not fatal). Null and empty identifiers are
-    dropped — only elements that carry a stable id contribute.
+    The union of each element's ``identifier`` from every ``elements.json`` `read_element_lists`
+    finds (read-only; a malformed/partial file is already skipped there). Null and empty
+    identifiers are dropped — only elements that carry a stable id contribute.
     """
     ids: list[str] = []
-    for els in _evidence_files(runs_dir, "elements.json", run_ids):
-        try:
-            data = json.loads(els.read_text(encoding="utf-8"))
-            if not isinstance(data, list):  # a scalar/object file isn't an element list — skip it
-                continue
-        except (OSError, ValueError):  # unreadable or invalid JSON — skip, like read_exchanges
-            continue
+    for data in read_element_lists(runs_dir, run_ids):
         ids.extend(
             e["identifier"]
             for e in data

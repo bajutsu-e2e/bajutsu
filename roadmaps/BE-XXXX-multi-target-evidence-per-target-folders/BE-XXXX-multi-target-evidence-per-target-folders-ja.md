@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| 実装 PR | _未定 — PRを開いたときに記入します_ |
+| 実装 PR | [#2073](https://github.com/bajutsu-e2e/bajutsu/pull/2073) |
 | トピック | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -144,9 +144,15 @@ Common Test Report Format(CTRF)・HTML生成、`report.html.j2`のアセット�
   このファイルはもう1段深い`<sid>/<stepId>/elements.json`にあり、今日の固定の段数では単一
   ターゲットの実行でも複数ターゲットの実行でも一切見つかりません。これは、上のマルチターゲット
   固有のギャップとは別の、このアイテムが持ち込んだわけではない既存の不具合ですが、同じ修正で
-  一緒に解消します。両方のグロブを、固定の段数ではなく任意の深さにマッチする`**/<name>`へ
-  広げます。これで、単一ターゲットの実行でも複数ターゲットの実行でも、宣言済みの各ターゲット
+  一緒に解消します。`_evidence_files()`は、固定の段数ではなく任意の深さにマッチする`**/<name>`
+  へ広げます。これで、単一ターゲットの実行でも複数ターゲットの実行でも、宣言済みの各ターゲット
   自身の`network.json`と、各ステップの`elements.json`を見つけられます。
+  `bajutsu/analysis/cli/coverage.py`自身のグロブは、並行して広げるのではなく廃止します。
+  `bajutsu/analysis/coverage/_functions.py`の`read_exchanges()`・`read_observed_ids()`の隣に
+  新設する`read_element_lists()`が、`elements.json`向けに`_evidence_files()`を一度だけ包み、
+  この列挙とパースを行う唯一の場所になります。`read_observed_ids()`とCLIの画面到達率の次元の
+  両方がこれを再利用するので、2つのコピーが同じ形で壊れていたという、そもそもの重複自体を
+  解消します。
 
 ### 対応しないこと
 
@@ -218,15 +224,22 @@ Common Test Report Format(CTRF)・HTML生成、`report.html.j2`のアセット�
 
 ログ:
 
-- 単位1〜4、このアイテムを完了しました。`pipeline.py`のprimary向け`VisualContext`・
+- [#2073](https://github.com/bajutsu-e2e/bajutsu/pull/2073) — 単位1〜4、このアイテムを完了しました。`pipeline.py`のprimary向け`VisualContext`・
   `_write_network`のプレフィックス、`_functions.py`のprimary向け`start_scenario_intervals`・
   `finish_scenario_intervals`呼び出し、`_step_runner.py`の`step_id`組み立てはすべて、シナリオが
   2つ以上のターゲットを宣言したときに、ルーティング先のターゲット自身のフォルダの下にまとまり
   ます。serveのステップピッカー(`reads.py`)は、`Step.resolved_target`から同じターゲット付きの
   idを組み立て直し、このアイテムより前に記録された複数ターゲットの実行に対しては古い平坦なid
-  へフォールバックします。`bajutsu coverage`の2つのグロブ(`_evidence_files`、`_element_lists`)
-  は、固定の段数から`**`へ広げました。これは既存の不具合も一緒に解消します。`elements.json`は
-  単一ターゲットの実行でも、どちらのグロブが届く段数よりさらに1段深いところにあったためです。
+  へフォールバックします。`_evidence_files()`は、固定の段数から`**`へ広げました。これは既存の
+  不具合も一緒に解消します。`elements.json`は単一ターゲットの実行でも、古い段数よりさらに1段
+  深いところにあったためです。セルフレビューの1ラウンドで、2箇所に重複したまま直すと再びずれ
+  かねないと判明したため、`bajutsu coverage`自身のグロブは廃止し、`read_exchanges()`・
+  `read_observed_ids()`の隣に新設した`read_element_lists()`を、観測id側と画面到達率側の両方が
+  再利用する形にしました。同じラウンドで、primaryをフォルダ分けする判定自身の実バグも見つかり
+  ました。`run_scenario`は公開関数であり、`target_runtimes`を渡しつつ`primary_target`(既定値は
+  `""`)を省略した呼び出しでは、この判定がprimary自身の証跡を`<sid>`直下ではなく末尾スラッシュ
+  付きの`<sid>//scenario.mp4`にまとめてしまっていました。この判定は、今後`primary_target`が
+  空でないことも要求します。
   `docs/reporting.md`・`docs/ja/reporting.md`の出力レイアウトの節には、新しい`<target>/`の段を
   加えました。
 

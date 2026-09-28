@@ -12,9 +12,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
 
 import typer
 
@@ -26,26 +24,11 @@ from bajutsu.common.scenario import load_scenarios_dir
 def _visited_screens(runs_dir: Path) -> frozenset[str]:
     """The screen fingerprints the run set rendered.
 
-    Each per-step `elements.json` under *runs_dir* is one rendered screen. Read-only; a
-    malformed/partial file is skipped, not fatal.
+    Each `elements.json` `read_element_lists` finds under *runs_dir* is one rendered screen —
+    shared with `read_observed_ids`'s own id-coverage dimension, so the two dimensions can never
+    disagree on how the run set's `elements.json` files are found or parsed.
     """
-    return _coverage.screen_fingerprints(_element_lists(runs_dir))
-
-
-def _element_lists(runs_dir: Path) -> Iterator[list[Any]]:
-    """Each per-step `elements.json` recorded anywhere under *runs_dir*, parsed as a JSON list.
-
-    An unreadable file, or one whose top level isn't a list, is skipped. A recursive glob rather
-    than a fixed segment count: `elements.json` sits at `<runId>/<sid>/<stepId>/elements.json`, one
-    folder deeper again when the scenario nests a declared target's own folder above `<stepId>/`.
-    """
-    for els in sorted(runs_dir.glob("**/elements.json")):
-        try:
-            data = json.loads(els.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if isinstance(data, list):
-            yield data
+    return _coverage.screen_fingerprints(_coverage.read_element_lists(runs_dir))
 
 
 def _discovered_screens(screenmap_path: Path) -> list[_coverage.ScreenRef] | None:

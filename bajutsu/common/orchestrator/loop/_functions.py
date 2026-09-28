@@ -728,8 +728,12 @@ def run_scenario(  # noqa: PLR0915
     }
     # Once a second target exists, the primary's own scenario-wide recording nests under its own
     # name too, the same way every other declared target's already does — rather than staying bare
-    # at `sid`, alongside `manifest.json` and the rest of the run-level files.
-    primary_sid = f"{sid}/{primary_target}" if extra_runtimes else sid
+    # at `sid`, alongside `manifest.json` and the rest of the run-level files. `primary_target`
+    # must itself be truthy, not just `extra_runtimes`: a caller passing `target_runtimes` without
+    # `primary_target` (it defaults to `""`) would otherwise make every name in `target_runtimes`
+    # count as "extra" (none of them equals the empty string), nesting the primary's own artifacts
+    # under a bare trailing slash (`<sid>//scenario.mp4`) instead of leaving them at `sid`.
+    primary_sid = f"{sid}/{primary_target}" if primary_target and extra_runtimes else sid
     recordings = sink.start_scenario_intervals(primary_sid, requested_intervals(scenario, capture))
     extra_recordings = {
         name: rt.sink.start_scenario_intervals(

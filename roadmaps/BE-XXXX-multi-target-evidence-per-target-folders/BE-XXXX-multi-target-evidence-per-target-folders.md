@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | _pending — filled in once the PR is opened_ |
+| Implementing PR | [#2073](https://github.com/bajutsu-e2e/bajutsu/pull/2073) |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -137,9 +137,15 @@ the writers above:
   target too. It misses `elements.json` far more broadly: that file lives one folder deeper still, at
   `<sid>/<stepId>/elements.json`, so today's fixed count never finds it at all, for a single-target
   run as much as a multi-target one — a pre-existing defect this item did not introduce, distinct
-  from the multi-target gap above, but one the same fix closes. Both globs widen to match any depth
-  (`**/<name>`) instead of a fixed count, which finds `network.json` for every declared target and
-  `elements.json` for every step, for a single-target run and a multi-target one alike.
+  from the multi-target gap above, but one the same fix closes. `_evidence_files()` widens to match
+  any depth (`**/<name>`) instead of a fixed count, which finds `network.json` for every declared
+  target and `elements.json` for every step, for a single-target run and a multi-target one alike.
+  `bajutsu/analysis/cli/coverage.py`'s own glob is retired rather than widened in parallel: a new
+  `read_element_lists()`, beside `read_exchanges()` and `read_observed_ids()` in
+  `bajutsu/analysis/coverage/_functions.py`, wraps `_evidence_files()` once for `elements.json` and
+  is now the one place that enumerates and parses it, reused by `read_observed_ids()` and by the
+  CLI's screens-visited dimension alike — closing the exact duplication that let the two copies go
+  wrong in the same way in the first place.
 
 ### Not doing
 
@@ -204,16 +210,23 @@ the writers above:
 
 Log:
 
-- Units 1-4, completing the item. `pipeline.py`'s primary `VisualContext`/`_write_network` prefix,
+- [#2073](https://github.com/bajutsu-e2e/bajutsu/pull/2073) — Units 1-4, completing the item. `pipeline.py`'s primary `VisualContext`/`_write_network` prefix,
   `_functions.py`'s primary `start_scenario_intervals`/`finish_scenario_intervals` calls, and
   `_step_runner.py`'s `step_id` construction all nest under the routed target's own folder once a
   scenario declares two or more targets. The serve step picker (`reads.py`) rebuilds the same
   target-qualified id from `Step.resolved_target`, falling back to the old flat id for a
-  multi-target run recorded before this item shipped. The two `bajutsu coverage` globs
-  (`_evidence_files`, `_element_lists`) widened from a fixed segment count to `**`, which also
-  closes a pre-existing gap: `elements.json` sits one folder deeper than either glob reached even
-  for a single-target run. `docs/reporting.md` / `docs/ja/reporting.md`'s Output layout section
-  gained the new `<target>/` level.
+  multi-target run recorded before this item shipped. `_evidence_files()` widened from a fixed
+  segment count to `**`, which also closes a pre-existing gap: `elements.json` sits one folder
+  deeper than the old count reached even for a single-target run. A self-review round found that
+  fixing it in two duplicated call sites left them free to drift again, so `bajutsu coverage`'s own
+  glob was retired in favor of a new `read_element_lists()` beside `read_exchanges()` /
+  `read_observed_ids()`, reused by both the id-coverage and screens-visited dimensions. The same
+  round also caught a real bug in the primary-nesting gate: `run_scenario` is a public function, and
+  a caller passing `target_runtimes` without `primary_target` (it defaults to `""`) made the gate
+  nest under a bare trailing slash (`<sid>//scenario.mp4`) instead of leaving the primary's own
+  artifacts at `<sid>`; the gate now also requires `primary_target` to be non-empty.
+  `docs/reporting.md` / `docs/ja/reporting.md`'s Output layout section gained the new `<target>/`
+  level.
 
 ## References
 
