@@ -550,8 +550,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   only the same per-step `target` form BE-0428 already runs. The pass runs at the same four points
   `_check_target_requirements` does — `Scenario`'s own validator, plus `apply_setups`,
   `expand_components`, and the pipeline's config-level `before`/`after` folding, none of which
-  Pydantic re-validates — and `bajutsu run`'s CLI compares its step-line count against the raw
-  YAML rather than a pre-expansion snapshot, since expansion changes a scenario's step count
+  Pydantic re-validates — and `bajutsu run`'s CLI matches its step-line count against the raw
+  YAML's one-entry-per-item count rather than a snapshot of its own, since a group is expanded
+  inside `Scenario`'s validator, before the CLI could take one
 - Backend-crash recovery in the run pipeline: a mid-scenario backend crash
   (`base.BackendCrashError`, backend-agnostic) discards the dead lease and re-runs the whole
   scenario on a freshly respawned one, bounded by a retry count (`crash_retries`, default 1) and an
