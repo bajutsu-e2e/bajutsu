@@ -394,7 +394,20 @@
       knob.style.left = Math.max(0, Math.min(100, v.currentTime / v.duration * 100)) + '%';
     }
     if(!v || !btn || !seek || !time) return;
-    function paint(){ btn.textContent = v.paused ? '▶' : '❚❚'; }
+    // `.is-live` glows the player frame itself while its recording is actually playing. A
+    // multi-target scenario's stacked recordings play in lockstep (`syncSiblings` below, BE-0428),
+    // so several can glow at once — what it marks is a recording still running as opposed to one
+    // already ended or paused, alongside `.playing` on the step row.
+    function paint(){
+      btn.textContent = v.paused ? '▶' : '❚❚';
+      p.classList.toggle('is-live', !v.paused);
+      // `.has-live` on `.scn` just gates the step row's pulse (tr.srow.playing, report.css) to
+      // "some recording is actually running" — `.playing` itself is never cleared (it only moves
+      // to a new row on `timeupdate`), so without this the last-matched row would keep animating
+      // forever once every recording in the scenario has paused or ended.
+      if(scn) scn.classList.toggle('has-live',
+        Array.prototype.some.call(scn.querySelectorAll('.player video'), function(x){ return !x.paused; }));
+    }
     function clock(){ time.textContent = fmtT(v.currentTime) + ' / ' + fmtT(v.duration); }
     // Carry this video's play/pause state and playhead onto every sibling recording in the same
     // scenario (BE-0428): every player's own `offset` (server-computed, BE-0428's `_videos`) is
