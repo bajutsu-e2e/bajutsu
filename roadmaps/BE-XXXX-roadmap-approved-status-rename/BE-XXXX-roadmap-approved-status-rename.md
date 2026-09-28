@@ -227,8 +227,8 @@ Ten test files assert against the literal `"Proposal"` value: `tests/conftest.py
 `tests/test_sync_roadmap_topic_labels.py`, and `tests/test_sync_roadmap_tracking_issues.py`. Each
 fixture, parametrization, and assertion updates to `"Approved"` (and, in the three files that also
 build a Japanese fixture — `test_lint_roadmap.py`, `test_fix_roadmap_drift.py`,
-`test_new_roadmap_item.py` — the Japanese value `提案` to `承認済み`); a test function named after
-the old value, such as `test_new_item_default_status_is_proposal`, is renamed to match.
+`test_new_roadmap_item.py` — the Japanese value `提案` to `承認済み`). No test function name
+encodes the old value, so none is renamed.
 `tests/test_allocate_roadmap_ids.py` also names `Proposal`, but only as the metadata field name
 (`* Proposal: [{be_id}]({name}.md)`) its fixture builds — the same field that stays as it is
 everywhere else, so this file is not part of the rename.
@@ -307,16 +307,21 @@ Log:
 
 - [#2075](https://github.com/bajutsu-e2e/bajutsu/pull/2075) landed all twelve units in one PR.
   `make roadmap-status STATUS="Proposal"` now fails with
-  "unknown status"; `make roadmap-status STATUS="Approved"` returns the 18 migrated items plus
-  this one. A cold two-round self-review (BE-0347) surfaced two corrections beyond the plan this
-  item's own text now reflects: the review-gate wording accounts for the `single-approver
-  proposal` waiver rather than assuming every merge cleared two full approvals, and a freshly
-  scaffolded item's `Approved` default is explained as harmless rather than claimed invisible
-  pre-review (`roadmap-filter` reads a local `BE-XXXX` placeholder exactly like a numbered item;
-  see *Motivation* and the rejected pre-review-value alternative). The review also caught that
-  `BE-0109` and `BE-0162` describe a still-operating mechanism in the present tense, so both were
-  renamed in this same PR under the narrow BE-0366 precedent — every other already-`Implemented`
-  item's mention of `Proposal` is left as period-accurate history.
+  "unknown status"; `make roadmap-status STATUS="Approved"` returns the 18 migrated items — not
+  this item itself, which ships as `Implemented`. A cold two-round self-review (BE-0347) surfaced
+  two corrections beyond the plan this item's own text now reflects: the review-gate wording
+  accounts for the `single-approver proposal` waiver rather than assuming every merge cleared two
+  full approvals, and a freshly scaffolded item's `Approved` default is explained as harmless
+  rather than claimed invisible pre-review (`roadmap-filter` reads a local `BE-XXXX` placeholder
+  exactly like a numbered item; see *Motivation* and the rejected pre-review-value alternative).
+  The review also caught that `BE-0109`, `BE-0162`, `BE-0069`, and `BE-0216` name the retired
+  literal in text this rename would otherwise leave stale or actively broken, so all four were
+  renamed in this same PR under the BE-0366 precedent and the "actively broken example" test —
+  every other already-`Implemented` item's mention of `Proposal` is left as period-accurate
+  history. A follow-up self-review against the live PR (Copilot, and the repository's own
+  automated review) caught a workflow migration gap — the two-approval gate needed to accept the
+  retired literal too, for any proposal PR still open on the pre-rename `main` — and several more
+  wording slips this log now reflects.
 
 ## References
 

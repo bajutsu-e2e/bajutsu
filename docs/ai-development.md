@@ -910,8 +910,8 @@ When you add a roadmap item:
    ls -d roadmaps/BE-*/ | sort | tail -1
    ```
    Never reuse, skip, or guess a number.
-2. **Create the item directory and both language files** directly under `roadmaps/` with `Status: Approved` (a new item is always a
-   proposal first) — `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
+2. **Create the item directory and both language files** directly under `roadmaps/` with `Status: Approved` (an item with no
+   code yet) — `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
    (English) and `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md` (Japanese, same ID & slug). Nothing
    else needs editing: the [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html)
    reads the item's `Status` + `Topic` straight off its metadata on every docs build, so there is no

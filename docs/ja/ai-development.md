@@ -836,7 +836,7 @@ pull request です。その標準装備のコストが、ときおり発生す�
    ls -d roadmaps/BE-*/ | sort | tail -1
    ```
    番号を再利用したり、飛ばしたり、当て推量したりしてはいけません。
-2. **項目ディレクトリと両言語のファイルを作成する**（新規項目はまず提案なので `roadmaps/` の直下に `状態: 承認済み` で置きます）。
+2. **項目ディレクトリと両言語のファイルを作成する**（新規項目はまだ実装がないので `roadmaps/` の直下に `状態: 承認済み` で置きます）。
    すなわち、`roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>.md`
    （英語）と `roadmaps/BE-NNNN-<slug>/BE-NNNN-<slug>-ja.md`（日本語、ID と slug は同一）です。ほかに編集する
    ものはありません。[ロードマップダッシュボード](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html)が
