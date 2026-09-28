@@ -279,12 +279,14 @@ def test_step_level_assert_visual_scopes_capture_by_execution_index(tmp_path: Pa
     let a full `forEach` run past its first (necessarily failing, for want of a real baseline image)
     iteration.
     """
-    from bajutsu.common.orchestrator.loop._functions import _no_network, _run_step_body
-    from bajutsu.common.scenario.models.assertions import Assertion, VisualMatch
-    from bajutsu.common.scenario.models.steps import Step
+    from bajutsu.common.orchestrator.loop._functions import _run_step_body
+    from bajutsu.common.orchestrator.types import _no_network
+    from bajutsu.common.scenario import Step
 
     driver = FakeDriver([el("home.title", "ホーム")])
-    step = Step(assert_=[Assertion(visual=VisualMatch(baseline="row.png"))], name="check row")
+    step = Step.model_validate(
+        {"name": "check row", "assert": [{"visual": {"baseline": "row.png"}}]}
+    )
     ctx = _visual_ctx(tmp_path)
     for index in (0, 1):
         _run_step_body(
