@@ -333,8 +333,18 @@ screenshot opens a full-size lightbox; **← / →** (or the on-screen arrows) t
 screenshot in the run, across scenario boundaries, with a caption showing the scenario, step, and
 position. The run's actuator backend is shown as a `driver: <backend>` chip in the header and a small
 badge on each scenario row.
-Device Log / App Trace remain separate tabs.
 
+Each recording carries its own **expand** button, beside its play/pause control. Pressing it opens
+a modal that shows that recording enlarged. The scenario's own **steps** rows clone beside it. The
+screenshot/element-tree column stays empty in the clone. A click there would otherwise reopen the
+element viewer on top of this modal. Clicking a cloned step seeks the enlarged recording, the same
+way a click seeks it in the compact view. Playback highlights the row in progress and scrolls it
+into view. A multi-target scenario has two or more recordings, each with its own tab in the modal.
+Switching tabs swaps which recording the modal shows. Every other target's player keeps playing,
+in sync, in its ordinary compact form. A backdrop click, the close button, or Escape all close the
+modal and return the recording to its own player.
+
+Device Log / App Trace remain separate tabs.
 ## Write API
 
 ```python
