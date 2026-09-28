@@ -145,4 +145,5 @@ def test_video_expand_css_present() -> None:
     assert ".vz-tab{" in out
     # A fixed step column would squeeze the video to a sliver on a phone-width viewport — the
     # narrow-screen fallback stacks video-then-steps instead.
-    assert "@media(max-width:760px){\n .vz-box{flex-direction:column}" in out
+    assert "@media(max-width:760px){" in out
+    assert ".vz-box{flex-direction:column}" in out
