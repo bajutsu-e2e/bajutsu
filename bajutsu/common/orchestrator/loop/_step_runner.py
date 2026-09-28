@@ -446,7 +446,13 @@ class _StepRunner:
         start: float,
     ) -> str | None:
         prefix = f"{self.cfg.phase}-" if self.cfg.phase else ""
-        step_id = f"{self.cfg.sid}/{prefix}{step.name or f'step{idx}'}"
+        # Every declared target's own steps nest under its own name once the scenario declares a
+        # second one — otherwise two targets' steps would sit in the same flat `<sid>/<stepId>/`
+        # folders with nothing but `manifest.json`'s own `StepOutcome.target` to tell them apart.
+        # `self.by_target` is empty with no declared targets and holds exactly one entry with one,
+        # so the check is `>= 2` rather than plain truthiness.
+        target_dir = f"{self.target}/" if len(self.by_target) >= 2 else ""
+        step_id = f"{self.cfg.sid}/{target_dir}{prefix}{step.name or f'step{idx}'}"
         # The report's baseline: the screen this step is about to act on, captured before it acts
         # (BE-0341). It requests only the screenshot, never a tree (BE-0407 Units 3-4): the
         # post-step call below always re-reads and rewrites `elements.json` unconditionally

@@ -33,11 +33,13 @@ def _visited_screens(runs_dir: Path) -> frozenset[str]:
 
 
 def _element_lists(runs_dir: Path) -> Iterator[list[Any]]:
-    """Each per-step `elements.json` under *runs_dir*, parsed as a JSON list.
+    """Each per-step `elements.json` recorded anywhere under *runs_dir*, parsed as a JSON list.
 
-    An unreadable file, or one whose top level isn't a list, is skipped.
+    An unreadable file, or one whose top level isn't a list, is skipped. A recursive glob rather
+    than a fixed segment count: `elements.json` sits at `<runId>/<sid>/<stepId>/elements.json`, one
+    folder deeper again when the scenario nests a declared target's own folder above `<stepId>/`.
     """
-    for els in sorted(runs_dir.glob("*/*/elements.json")):
+    for els in sorted(runs_dir.glob("**/elements.json")):
         try:
             data = json.loads(els.read_text(encoding="utf-8"))
         except (OSError, ValueError):

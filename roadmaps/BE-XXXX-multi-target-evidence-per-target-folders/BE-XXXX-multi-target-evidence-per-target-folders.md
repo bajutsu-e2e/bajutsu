@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-multi-target-evidence-per-target-folders.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | _pending — filled in once the PR is opened_ |
 | Topic | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -120,8 +121,12 @@ the writers above:
   the same target segment the writer now produces, read from the step's own `resolved_target`
   property (`Step`, BE-0436) — the writer names its own segment from the live `_StepRunner`'s
   `self.target` instead, which this static, run-less reader has no equivalent of — once the
-  scenario's own `targets` field names two or more entries; the Play/Replay step list this same
-  function seeds stays a flat, run-less list unaffected by any of this (BE-0262).
+  scenario's own `targets` field names two or more entries. A multi-target run recorded before this
+  item shipped still has its evidence at the old flat id, so a nested-key lookup that misses falls
+  back to the flat one rather than assuming every stored run already matches the new convention —
+  safe because the writer never produces a flat id for a multi-target run going forward, so the two
+  keys never both name a real, different step. The Play/Replay step list this same function seeds
+  stays a flat, run-less list unaffected by any of this (BE-0262).
 - `bajutsu/analysis/coverage/_functions.py`'s `_evidence_files()` and
   `bajutsu/analysis/cli/coverage.py`'s `_element_lists()` (the `bajutsu coverage` command) glob a
   fixed depth under the run set's own directory — `*/*/<name>` (two segments) from
@@ -168,7 +173,8 @@ the writers above:
    (primary and non-primary alike), at both the scenario level (video/deviceLog/network.json) and
    the step level (screenshots/elements.json); a zero- or one-declared-target scenario's evidence
    is byte-for-byte unchanged from today; the serve step-picker resolves a multi-target run's
-   per-step artifacts through the new, target-qualified id; the widened coverage globs find every
+   per-step artifacts through the new, target-qualified id, and falls back to the old flat id for a
+   multi-target run recorded before this item shipped; the widened coverage globs find every
    declared target's own `network.json` in a multi-target run, and — a fixture built from a real
    `<sid>/<stepId>/elements.json` layout, unlike today's flat test fixture — now find `elements.json`
    at all, in a single-target run as much as a multi-target one.
@@ -188,13 +194,26 @@ the writers above:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Writers: the primary target's scenario-level and per-step evidence nests under its own folder
+- [x] Writers: the primary target's scenario-level and per-step evidence nests under its own folder
       alongside every other declared target's, once a scenario declares two or more targets.
-- [ ] Readers: the serve step picker and the `bajutsu coverage` globs resolve a multi-target run's
+- [x] Readers: the serve step picker and the `bajutsu coverage` globs resolve a multi-target run's
       per-target evidence correctly.
-- [ ] Docs: `docs/reporting.md` and its `docs/ja/` mirror.
-- [ ] Tests: writer nesting (multi- and single/zero-target cases), the serve step picker, and the
+- [x] Docs: `docs/reporting.md` and its `docs/ja/` mirror.
+- [x] Tests: writer nesting (multi- and single/zero-target cases), the serve step picker, and the
       widened coverage globs.
+
+Log:
+
+- Units 1-4, completing the item. `pipeline.py`'s primary `VisualContext`/`_write_network` prefix,
+  `_functions.py`'s primary `start_scenario_intervals`/`finish_scenario_intervals` calls, and
+  `_step_runner.py`'s `step_id` construction all nest under the routed target's own folder once a
+  scenario declares two or more targets. The serve step picker (`reads.py`) rebuilds the same
+  target-qualified id from `Step.resolved_target`, falling back to the old flat id for a
+  multi-target run recorded before this item shipped. The two `bajutsu coverage` globs
+  (`_evidence_files`, `_element_lists`) widened from a fixed segment count to `**`, which also
+  closes a pre-existing gap: `elements.json` sits one folder deeper than either glob reached even
+  for a single-target run. `docs/reporting.md` / `docs/ja/reporting.md`'s Output layout section
+  gained the new `<target>/` level.
 
 ## References
 

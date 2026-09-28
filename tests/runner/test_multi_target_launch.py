@@ -350,6 +350,77 @@ def test_trace_driver_wraps_every_declared_targets_own_driver(tmp_path: Path) ->
     assert sum(1 for r in driver_records if r["name"] == "tap") == 2
 
 
+class _OneExchangeCollector(_ClearTrackingCollector):
+    """A `Collector` that reports one exchange, so `_write_network` actually writes a file."""
+
+    def snapshot_timed(self) -> list[tuple[NetworkExchange, float]]:
+        return [(NetworkExchange(method="GET", path="/a"), 0.0)]
+
+
+def test_the_primarys_own_network_json_nests_under_its_own_target_folder(
+    tmp_path: Path,
+) -> None:
+    # Every *other* declared target's own `network.json` already nests under its own name
+    # (`<sid>/<name>/network.json`); the primary's used to stay flat at bare `<sid>/network.json`
+    # instead. Once a second target is declared, the primary's own capture nests the same way.
+    app_collector = _OneExchangeCollector()
+    site_collector = _OneExchangeCollector()
+    targets = _pools(
+        app=TargetPool(_eff(), _recording_lease([], "app", collector=app_collector), "fake"),
+        site=TargetPool(
+            _web_eff(), _recording_lease([], "site", collector=site_collector), "playwright"
+        ),
+    )
+    run_dir = tmp_path / "runs" / "run1"
+    results = run_all(
+        _eff(), [_cross()], _recording_lease([], "x"), run_dir=run_dir, targets=targets
+    )
+    assert results[0].ok, results[0].failure
+    sid = results[0].sid
+    assert (run_dir / sid / "app" / "network.json").is_file()
+    assert (run_dir / sid / "site" / "network.json").is_file()
+    assert not (run_dir / sid / "network.json").exists()
+
+
+def test_the_primarys_own_visual_actual_nests_under_its_own_target_folder(
+    tmp_path: Path,
+) -> None:
+    # The primary's own scenario-level `expect` visual assertion used to capture straight into
+    # bare `<sid>/visual-actual.png`; once a second target is declared, it nests under its own
+    # target folder the same way every other declared target's own visual capture already does.
+    targets = _pools(
+        app=TargetPool(_eff(), _recording_lease([], "app"), "fake"),
+        site=TargetPool(_web_eff(), _recording_lease([], "site"), "playwright"),
+    )
+    run_dir = tmp_path / "runs" / "run1"
+    scenario = Scenario.model_validate(
+        {
+            "name": "cross-visual",
+            "targets": ["app", "site"],
+            "steps": [
+                {"target": "app", "tap": {"id": "ok"}},
+                {"target": "site", "tap": {"id": "other"}},
+            ],
+            "expect": [{"target": "app", "visual": {"baseline": "home.png"}}],
+        }
+    )
+    results = run_all(
+        _eff(),
+        [scenario],
+        _recording_lease([], "x"),
+        run_dir=run_dir,
+        targets=targets,
+        baselines_dir=tmp_path / "baselines",
+    )
+    ev = results[0].expect_results[0]
+    assert ev.kind == "visual"
+    sid = results[0].sid
+    # `FakeDriver.screenshot` only logs the call rather than writing real bytes, so the path
+    # recorded on the assertion's own evidence is what proves where it would have landed.
+    assert ev.visual is not None
+    assert ev.visual.actual == f"{sid}/app/visual-actual.png"
+
+
 def test_a_multi_target_scenario_clears_every_targets_own_collector(tmp_path: Path) -> None:
     # BE-0428: network collection is cleared per scenario so one scenario's traffic never leaks
     # into the next one's evidence — an extra target's own collector needs the same reset the

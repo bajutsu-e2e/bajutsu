@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-XXXX](BE-XXXX-multi-target-evidence-per-target-folders-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| 実装 PR | _未定 — PRを開いたときに記入します_ |
 | トピック | Codebase quality & technical debt |
 <!-- /BE-METADATA -->
 
@@ -128,8 +129,11 @@ Common Test Report Format(CTRF)・HTML生成、`report.html.j2`のアセット�
   ステップ自身の`resolved_target`プロパティ(`Step`、BE-0436)から読み取った、書き込み側と同じ
   ターゲットセグメントを受け取ります。書き込み側自身は、生きている`_StepRunner`自身の
   `self.target`からセグメントを取ります。この静的で実行前提のない読み取り側には、その代わりが
-  ないので、`resolved_target`を使います。同じ関数が用意する、実行前提のないPlay/Replay用の
-  ステップ一覧は平坦なままで、この変更の影響を受けません(BE-0262)。
+  ないので、`resolved_target`を使います。このアイテムより前に記録された複数ターゲットの実行は、
+  証跡が今も古い平坦なidのままです。ネスト済みキーでの検索が外れたときは、平坦なidへフォール
+  バックします。今後の書き込み側は複数ターゲットの実行に対して平坦なidを二度と生成しないので、
+  この2つのキーが同時に別々の実ステップを指すことはなく、安全です。同じ関数が用意する、実行前提
+  のないPlay/Replay用のステップ一覧は平坦なままで、この変更の影響を受けません(BE-0262)。
 - `bajutsu/analysis/coverage/_functions.py`の`_evidence_files()`と
   `bajutsu/analysis/cli/coverage.py`の`_element_lists()`(`bajutsu coverage`コマンド)は、
   実行セット自身のディレクトリの下にある`network.json`・`elements.json`を探すために、固定の
@@ -180,7 +184,9 @@ Common Test Report Format(CTRF)・HTML生成、`report.html.j2`のアセット�
    primaryと非primaryの両方について`<sid>/<target>/…`の下に置かれること。ターゲットを
    0個または1個しか宣言しないシナリオの証跡が、今日とバイト単位で変わらないこと。serveの
    ステップピッカーが、複数ターゲットの実行のステップごとの証跡を、新しいターゲット付きの
-   idで解決できること。広げたカバレッジ用グロブが、複数ターゲットの実行で宣言済みの各
+   idで解決できること。このアイテムより前に記録された複数ターゲットの実行に対しては、古い
+   平坦なidへフォールバックできること。広げたカバレッジ用グロブが、複数ターゲットの実行で
+   宣言済みの各
    ターゲット自身の`network.json`を見つけられること。加えて、今日の平坦なテスト用フィクス
    チャーではなく実際の`<sid>/<stepId>/elements.json`というレイアウトのフィクスチャーで、
    単一ターゲットの実行でも複数ターゲットの実行でも、`elements.json`をそもそも見つけられる
@@ -201,14 +207,28 @@ Common Test Report Format(CTRF)・HTML生成、`report.html.j2`のアセット�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 書き込み側:シナリオが2つ以上のターゲットを宣言したとき、primary自身のシナリオレベル・
+- [x] 書き込み側:シナリオが2つ以上のターゲットを宣言したとき、primary自身のシナリオレベル・
       ステップレベルの証跡が、他の宣言済みターゲットと同じように、それぞれ専用のフォルダの下に
       収まります。
-- [ ] 読み取り側:serveのステップピッカーと`bajutsu coverage`のグロブが、複数ターゲットの実行の
+- [x] 読み取り側:serveのステップピッカーと`bajutsu coverage`のグロブが、複数ターゲットの実行の
       ターゲットごとの証跡を正しく解決できます。
-- [ ] ドキュメント:`docs/reporting.md`とその`docs/ja/`対訳。
-- [ ] テスト:書き込み側のフォルダ分け(複数ターゲットと単一・0ターゲットの両方のケース)、serve
+- [x] ドキュメント:`docs/reporting.md`とその`docs/ja/`対訳。
+- [x] テスト:書き込み側のフォルダ分け(複数ターゲットと単一・0ターゲットの両方のケース)、serve
       のステップピッカー、広げたカバレッジ用グロブ。
+
+ログ:
+
+- 単位1〜4、このアイテムを完了しました。`pipeline.py`のprimary向け`VisualContext`・
+  `_write_network`のプレフィックス、`_functions.py`のprimary向け`start_scenario_intervals`・
+  `finish_scenario_intervals`呼び出し、`_step_runner.py`の`step_id`組み立てはすべて、シナリオが
+  2つ以上のターゲットを宣言したときに、ルーティング先のターゲット自身のフォルダの下にまとまり
+  ます。serveのステップピッカー(`reads.py`)は、`Step.resolved_target`から同じターゲット付きの
+  idを組み立て直し、このアイテムより前に記録された複数ターゲットの実行に対しては古い平坦なid
+  へフォールバックします。`bajutsu coverage`の2つのグロブ(`_evidence_files`、`_element_lists`)
+  は、固定の段数から`**`へ広げました。これは既存の不具合も一緒に解消します。`elements.json`は
+  単一ターゲットの実行でも、どちらのグロブが届く段数よりさらに1段深いところにあったためです。
+  `docs/reporting.md`・`docs/ja/reporting.md`の出力レイアウトの節には、新しい`<target>/`の段を
+  加えました。
 
 ## 参考
 

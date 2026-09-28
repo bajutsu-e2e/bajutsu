@@ -28,6 +28,15 @@ runs/<runId>/
         └── device.log    # deviceLog（区間）
 ```
 
+シナリオの`targets`フィールド
+([BE-0428](../../roadmaps/BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md))
+が2つ以上のエントリを挙げているときは、primaryを含む宣言済みの各ターゲットの証跡を、そのターゲット
+名のフォルダにまとめます。上記のステップごとの証跡は`<sid>/<target>/<stepId>/…`になり、そのター
+ゲットのシナリオ全体の録画（`scenario.mp4`など）と`network.json`は`<sid>/<target>/`の直下に置かれ
+ます。
+
+ターゲットを0個または1個しか宣言しないシナリオは、上記の平坦なレイアウトのままです。
+
 `runId` は `YYYYMMDD-HHMMSS` の形式で、`bajutsu/common/run_meta/id.py`（[BE-0200](../../roadmaps/BE-0200-run-id-contract/BE-0200-run-id-contract-ja.md)）が一箇所で採番します。この形式は report、Web UI、その他すべての呼び出し元で共有する単一の契約です。`sid` は `{NN}-{slug}` の形式で、ゼロ埋めされた実行順の連番と、シナリオを読み込んだ元ファイルの語幹（`login_flow.yaml` なら `login_flow`）をつなげたものです。ファイルから読み込まれていないシナリオ（メモリ上で直接組み立てられたものなど、元ファイルが不明な場合）では、代わりにシナリオの `name:` フィールドをスラッグ化した値になります
 （[BE-0417](../../roadmaps/BE-0417-scenario-result-folder-naming/BE-0417-scenario-result-folder-naming-ja.md)）。`stepId` は `step.name` または `step<i>` です。
 

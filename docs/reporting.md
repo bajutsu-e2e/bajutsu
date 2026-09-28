@@ -28,6 +28,13 @@ runs/<runId>/
         └── device.log    # deviceLog (interval)
 ```
 
+When a scenario's `targets` field
+([BE-0428](../roadmaps/BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md))
+names two or more entries, each declared target's evidence, the primary's included, nests under a
+folder named after it: `<sid>/<target>/<stepId>/…` for the per-step evidence above, and that
+target's scenario-wide recordings and `network.json` directly under `<sid>/<target>/`. A scenario
+declaring zero targets or exactly one keeps the flat layout above unchanged.
+
 The CLI assigns `runId` as `YYYYMMDD-HHMMSS`. `bajutsu/common/run_meta/id.py`
 ([BE-0200](../roadmaps/BE-0200-run-id-contract/BE-0200-run-id-contract.md)) mints it once, so every
 call site shares one format. `sid` is `{NN}-{slug}`: a zero-padded run-order index plus the stem of

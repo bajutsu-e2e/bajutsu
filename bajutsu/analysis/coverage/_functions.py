@@ -310,15 +310,19 @@ def render_screens(sc: ScreenCoverage) -> str:
 
 
 def _evidence_files(runs_dir: Path, name: str, run_ids: Iterable[str] | None) -> list[Path]:
-    """Every per-step ``<run>/<step>/<name>`` under *runs_dir*, optionally restricted to *run_ids*.
+    """Every ``<name>`` recorded anywhere under *runs_dir*, optionally restricted to *run_ids*.
 
     ``run_ids`` None reads the whole runs dir (the CLI's ``--runs <dir>``); a set restricts to those
     runs (the serve view's selected run set). Callers pass only validated single-segment run ids, so a
-    restricted read never globs outside a run's own tree.
+    restricted read never globs outside a run's own tree. A recursive glob rather than a fixed
+    segment count, since a scenario's own evidence directory nests a declared target's own folder
+    (and, beneath it, the step folders) only once it declares two or more targets — a fixed count
+    would silently miss both a non-primary target's own ``network.json`` and every ``elements.json``,
+    which always sits one folder deeper than ``network.json`` regardless of target count.
     """
     if run_ids is None:
-        return sorted(runs_dir.glob(f"*/*/{name}"))
-    return sorted(f for rid in run_ids for f in (runs_dir / rid).glob(f"*/{name}"))
+        return sorted(runs_dir.glob(f"**/{name}"))
+    return sorted(f for rid in run_ids for f in (runs_dir / rid).glob(f"**/{name}"))
 
 
 def read_exchanges(runs_dir: Path, run_ids: Iterable[str] | None = None) -> list[NetworkExchange]:
