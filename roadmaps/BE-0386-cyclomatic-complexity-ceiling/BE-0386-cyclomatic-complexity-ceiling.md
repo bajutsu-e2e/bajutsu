@@ -175,9 +175,10 @@ Log:
   functions. The step to 12 flagged 17 more, though the plan expected 13 such functions. We split 12
   of those 34 functions, each along a self-contained block moved into a private helper. The `doctor`
   command and `wait_for_system_alert` are two of them. The other 22 functions took a targeted
-  exemption, each naming its reason. Some sum the counts of nested functions. Others dispatch over
-  every scenario step kind, or run validation guards in a request handler. The rest sit on the run
-  path, where a split carries behavioral risk. The function `start_run_set` took both treatments.
+  exemption, each naming its reason. In some, mccabe folds a nested function's count into the
+  enclosing one. Others dispatch over every scenario step kind, or run validation guards in a
+  request handler. The rest sit on the run path, where a split carries behavioral risk. The
+  function `start_run_set` took both treatments.
   Moving its per-scenario resolution into a helper brought it under the ceiling of 20 in that step.
   Its remaining guards took the exemption at the ceiling of 12 instead. At ruff's default of 10,
   another 51 functions fail. Each of them scores 11 or 12, so the ratchet stops at a ceiling of 12
