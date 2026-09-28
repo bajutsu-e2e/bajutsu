@@ -554,6 +554,36 @@ the entry fires only a small bounded number of times per step and then the step 
 ordinary outcome (pass, fail, or timeout) — a mis-set entry fails the step cleanly rather than
 hanging the run.
 
+A scenario may declare two or more [targets](#targets--target-multi-target-scenarios-be-0428).
+Each `interrupts` entry then watches one of them, named by the entry's own `target` field. An entry
+without `target` watches the primary target, the first name in `targets`. A step's `target` becomes
+required at two declared targets. An entry's `target` never does. Most entries concern the primary
+target. Requiring the field would repeat one name on each of them. A recovery step in the entry's
+`steps` may omit `target` too. That step then runs on the target the entry watches, not on the
+primary.
+
+```yaml
+- name: a web consent banner during a cross-platform flow
+  targets: [showcase-app, showcase-web]
+  interrupts:
+    - condition: { exists: { id: onboarding.skip } }   # no target: watches showcase-app
+      steps:
+        - tap: { id: onboarding.skip }
+    - target: showcase-web
+      condition: { exists: { id: cookie.accept } }
+      steps:
+        - tap: { id: cookie.accept }                   # runs on showcase-web
+  steps:
+    - target: showcase-app
+      tap: { id: post.like }
+    - target: showcase-web
+      wait: { for: { id: post.likeCount }, timeout: 10 }
+```
+
+A config-level entry never names a target. The `targets.<name>` block that declares the entry
+already fixes its target. A `target` there would repeat that name or contradict it, and neither
+adds anything. The config load refuses `target` on such an entry and on any step in its `steps`.
+
 The check is the deterministic assertion DSL, never a model call, so `interrupts` adds no AI to the
 `run` verdict — and neither does `systemAlertHandling` since BE-0402. The difference between them is
 what they reach: the alert guard answers out-of-process system prompts the accessibility tree
@@ -1350,21 +1380,17 @@ work.
 
 ### Limits
 
-Two open questions this item hasn't resolved fail closed instead of guessing. Both apply once a
-scenario declares two or more targets. The loader refuses a `use:` step outright. A `use` step
-takes no modifiers, so it cannot carry the `target` every step then needs. The loader refuses a
-non-empty
-[`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) too. That holds regardless
-of whether its own `steps` and `condition` would otherwise pass. Which target its `condition` polls
-has no answer yet.
+One open question this item hasn't resolved fails closed instead of guessing. It applies once a
+scenario declares two or more targets. The loader refuses a `use:` step outright, including one in
+an [`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) entry's `steps`. A `use:`
+step takes no modifiers, so it cannot carry the `target` every step then needs.
 
 `Assertion.target` follows a narrower rule than `Step.target`. A top-level `expect` entry is the sole
 place it may appear. An assertion reached through a step's inline `assert:` list already has a
 target. So does one reached through an `if`'s `condition`. The enclosing step's own `target` fixed
 it in both cases. Setting `target` there would restate that value, or contradict it outright. The
-loader refuses an `interrupts` entry's `condition` the same way. The reason is simpler: it has no
-enclosing step to fix one for it in the first place. The loader refuses `target` in all three
-places at load time.
+loader refuses an `interrupts` entry's `condition` the same way. The entry's own `target` fixes the
+tree that `condition` polls. The loader refuses `target` in all three places at load time.
 
 Two targets on the same backend share one device pool. A scenario holds every declared target's
 device for its whole length. Two iOS targets in one scenario thus need two devices: pass them with

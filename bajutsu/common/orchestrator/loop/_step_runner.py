@@ -116,6 +116,14 @@ class _StepRunner:
             self.state.last_target = other.target
             if other is not self:
                 return other, other.cfg.driver
+        elif self.by_target and self.target != self.state.last_target:
+            # A step with no resolved target at all stays on `self`, which can still be a
+            # different device from the previous step's: in an interrupt's recovery `steps`, a
+            # step naming another target can precede one that omits it and falls back to the
+            # entry's own runner (BE-0438).
+            self.state.prev_after = None
+            self.state.prev_after_screenshot = None
+            self.state.last_target = self.target
         return self, active_driver
 
     def _run_recovery(self, steps: list[Step], active_driver: base.Driver) -> str | None:
@@ -124,6 +132,15 @@ class _StepRunner:
             return self.exec_steps(steps, active_driver)
         finally:
             self.state.running_recovery = False
+            if self.by_target and self.target != self.state.last_target:
+                # The recovery's own last step can have named another target — its last `_route`
+                # call left `last_target` pointing there. The interrupted step resumes on `self`
+                # without going back through `_route`, so record `self` as the last-active runner
+                # here instead of leaving the next step's own routing match a stale value and skip
+                # its reset (BE-0438 review).
+                self.state.prev_after = None
+                self.state.prev_after_screenshot = None
+                self.state.last_target = self.target
 
     def exec_steps(self, steps: list[Step], active_driver: base.Driver) -> str | None:
         for step in steps:

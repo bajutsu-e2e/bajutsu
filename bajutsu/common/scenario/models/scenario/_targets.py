@@ -15,13 +15,20 @@ author wrote it by hand or a group produced it.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from bajutsu.common.scenario.models.assertions import Assertion
     from bajutsu.common.scenario.models.steps import Step
 
     from .scenario import Scenario
+
+# How a step's own `target` is held, by where the step sits: "required" once two or more targets
+# are declared (a top-level step, or one under an `if`/`forEach`) — subject to the scenario's own
+# `primaryTarget` fallback (BE-0436); "forbidden" inside `web:`/`app:`; "optional" inside an
+# `interrupts` entry's recovery `steps`, where an omitted value stays on the runner whose interrupt
+# guard fired — the entry's own target, or an enclosing `if`/`forEach` step's (BE-0438).
+_StepTargetMode = Literal["required", "forbidden", "optional"]
 
 
 def _step_label(step: Step) -> str:
@@ -110,16 +117,26 @@ def _expand_target_groups(scenario: Scenario) -> None:
 
 
 def _check_target(
-    target: str | None, *, known: set[str], context: str, default: str | None = None
+    target: str | None,
+    *,
+    known: set[str],
+    context: str,
+    default: str | None = None,
+    required: bool = True,
 ) -> str | None:
-    # One rule for both surfaces that may select a target — a step and an `expect` entry — with
-    # *context* naming the offender ("step 'tap login'", "expect entry"). Returns the primary an
-    # omitted *target* resolved to under two or more declared targets (BE-0436), else None.
+    # One rule for every surface that may select a target — a step, an `expect` entry, and an
+    # `interrupts` entry — with *context* naming the offender ("step 'tap login'", "expect entry").
+    # Returns the primary an omitted *target* resolved to under two or more declared targets
+    # (BE-0436), else None. `required=False` additionally lets an omitted value through with no
+    # such resolution — used only where no step-level fallback applies (BE-0438's `interrupts`
+    # entries and their recovery steps); a named one is still checked either way.
     n = len(known)
     if n >= 2:
         if target is None:
             if default is not None:
                 return default
+            if not required:
+                return None
             raise ValueError(f"{context}: target is required — the scenario declares {n} targets")
         if target not in known:
             raise ValueError(
@@ -155,10 +172,10 @@ def _check_primary_target(scenario: Scenario) -> None:
 
 
 def _check_step_target(
-    step: Step, *, known: set[str], inside_web: bool, default: str | None
+    step: Step, *, known: set[str], mode: _StepTargetMode, default: str | None
 ) -> None:
     context = f"step {_step_label(step)}"
-    if inside_web:
+    if mode == "forbidden":
         if step.target is not None:
             raise ValueError(
                 f"{context}: target is not allowed on a step nested inside a "
@@ -185,15 +202,26 @@ def _check_step_target(
             f"{len(known)} targets — its own target would be discarded by expansion"
         )
     # Assigned even when None: a step copied from a scenario that resolved it (`apply_setups`'s
-    # deep-copied prelude) must not keep that scenario's primary.
-    step.resolve_target(_check_target(step.target, known=known, context=context, default=default))
+    # deep-copied prelude) must not keep that scenario's primary. A recovery step (`mode ==
+    # "optional"`) never resolves through `primaryTarget` — an omitted one stays on the runner
+    # whose interrupt guard fired, which `_StepRunner._route` reads off `step.target` directly
+    # (BE-0438) — so it always resolves to `None` here regardless of the scenario's own primary.
+    step.resolve_target(
+        _check_target(
+            step.target,
+            known=known,
+            context=context,
+            default=default if mode == "required" else None,
+            required=mode == "required",
+        )
+    )
 
 
 def _reject_assertion_target(a: Assertion, *, context: str) -> None:
     # Only an expect entry may set target — it would otherwise restate or contradict the target
     # the enclosing step already fixes for an inline `assert:` list or an `if`'s `condition`.
-    # `Interrupt.condition` carries no enclosing step of its own, but the proposal never names a
-    # way for it to select a target either, so it is held to the same rule for now (BE-0428).
+    # `Interrupt.condition` is held to the same rule: the entry itself carries `target`, which
+    # fixes the tree its condition polls (BE-0438).
     if a.target is not None:
         raise ValueError(f"{context}: target is only allowed on a top-level expect entry")
 
@@ -207,19 +235,24 @@ def _check_target_requirements(scenario: Scenario) -> None:
     explicitly, naming one of the declared targets. A step nested inside a `web:` or `app:` block
     is the one exception — it must omit `target` outright, since it always runs against the device
     the enclosing block already resolved (`web:`'s own `WebContextDriver`, or `app:`'s unchanged
-    native driver). An `Assertion` reached through an inline `assert:` list, an `if`'s
-    `condition`, or an `interrupts` entry's `condition` must never set `target` — only one reached
-    through the scenario's top-level `expect` block may. Three open questions this item has not yet
-    resolved fail closed instead of guessing: a `use:` step (it takes no modifiers, so it cannot
-    carry the `target` two targets require), a `group:` step (its own `target` would be discarded
-    by expansion), and a non-empty `interrupts` (its `condition` has no target of its own to poll)
-    are all refused outright once the scenario declares two or more targets.
+    native driver). An `interrupts` entry's own `target` is the one field that stays optional at
+    any count: an omitted value watches the primary target (BE-0438). A step in that entry's
+    recovery `steps` may omit `target` too, running on the entry's own target (or an enclosing
+    `if`/`forEach` step's), but one it does set must still name a declared target. An `Assertion`
+    reached through an inline `assert:` list, an `if`'s `condition`, or an `interrupts` entry's
+    `condition` must never set `target` — only one reached through the scenario's top-level
+    `expect` block may. Two open questions this item has not yet resolved fail closed instead of
+    guessing: a `use:` step (it takes no modifiers, so it cannot carry the `target` two targets
+    require) and a `group:` step (its own `target` would be discarded by expansion) are both
+    refused outright once the scenario declares two or more targets.
 
     A scenario that sets `primaryTarget` (which must be `targets[0]`) lifts the two-or-more
     requirement (BE-0436): a step or top-level `expect` entry that omits `target` runs against the
     primary. A step records that on its private `resolved_target`, never on `target` itself, so a
     re-serialized step stays as terse as its author wrote it. The resolution is flat — a nested
     `if` / `forEach` step that omits `target` resolves to the primary, never to its wrapper's own.
+    This fallback never reaches an `interrupts` recovery step, which resolves through its own
+    entry instead (the paragraph above), whether or not `primaryTarget` is set.
     """
     known = set(scenario.targets)
     if len(known) != len(scenario.targets):
@@ -227,9 +260,9 @@ def _check_target_requirements(scenario: Scenario) -> None:
     _check_primary_target(scenario)
     default = scenario.primary_target
 
-    def walk_steps(steps: list[Step], *, inside_web: bool) -> None:
+    def walk_steps(steps: list[Step], *, mode: _StepTargetMode) -> None:
         for step in steps:
-            _check_step_target(step, known=known, inside_web=inside_web, default=default)
+            _check_step_target(step, known=known, mode=mode, default=default)
             if step.assert_ is not None:
                 for a in step.assert_:
                     _reject_assertion_target(a, context=f"step {_step_label(step)}: assert")
@@ -237,40 +270,31 @@ def _check_target_requirements(scenario: Scenario) -> None:
                 _reject_assertion_target(
                     step.if_.condition, context=f"step {_step_label(step)}: if condition"
                 )
-                walk_steps(step.if_.then, inside_web=inside_web)
+                walk_steps(step.if_.then, mode=mode)
                 if step.if_.else_ is not None:
-                    walk_steps(step.if_.else_, inside_web=inside_web)
+                    walk_steps(step.if_.else_, mode=mode)
             if step.for_each is not None:
-                walk_steps(step.for_each.steps, inside_web=inside_web)
+                walk_steps(step.for_each.steps, mode=mode)
             if step.group is not None:
                 # Reached only when `known` has fewer than 2 targets — `_check_step_target` above
                 # already refuses a `group` step outright once the scenario declares 2 or more.
-                walk_steps(step.group.steps, inside_web=inside_web)
+                walk_steps(step.group.steps, mode=mode)
             if step.web is not None:
-                walk_steps(step.web.steps, inside_web=True)
+                walk_steps(step.web.steps, mode="forbidden")
             if step.app is not None:
                 # `app:` reuses the same native driver throughout, unlike `web:`'s separate
                 # `WebContextDriver` — but a nested step still always runs against the device the
                 # enclosing step already routed to, so the same omit-`target` rule applies
                 # (BE-0428).
-                walk_steps(step.app.steps, inside_web=True)
+                walk_steps(step.app.steps, mode="forbidden")
 
-    walk_steps(scenario.steps, inside_web=False)
-    walk_steps(scenario.before, inside_web=False)
+    walk_steps(scenario.steps, mode="required")
+    walk_steps(scenario.before, mode="required")
     for rule in scenario.after:
-        walk_steps(rule.steps, inside_web=False)
-    if scenario.interrupts and len(known) >= 2:
-        # An `Interrupt` carries no enclosing step of its own to fix a target for its `condition`
-        # the way an `if`'s condition has one — and its `condition` is barred from naming one
-        # itself, the same as every other non-`expect` assertion. Which target's tree it should
-        # poll is an open question a later BE-0428 unit resolves; refused outright for now rather
-        # than accepted with no way to express it.
-        raise ValueError(
-            f"interrupts is not yet supported when the scenario declares {len(known)} targets — "
-            "which target an interrupt's condition polls is an open question"
-        )
+        walk_steps(rule.steps, mode="required")
     for entry in scenario.interrupts:
-        walk_steps(entry.steps, inside_web=False)
+        _check_target(entry.target, known=known, context="interrupts entry", required=False)
+        walk_steps(entry.steps, mode="optional")
         _reject_assertion_target(entry.condition, context="interrupts entry: condition")
     for a in scenario.expect:
         # An omitted entry needs no stamp: `_evaluate_expect` already groups it under the run's

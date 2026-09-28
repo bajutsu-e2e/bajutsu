@@ -25,7 +25,7 @@ from bajutsu.common.evidence.intervals import Interval
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.orchestrator import AlertGuardConfig, RunResult, TargetRuntime, run_scenario
-from bajutsu.common.scenario import Scenario
+from bajutsu.common.scenario import Interrupt, Scenario
 
 _APP_SCREEN = [el("app.button", label="tap me"), el("app.value", value="7")]
 _WEB_SCREEN = [el("web.button", label="click me"), el("web.value", value="7")]
@@ -824,3 +824,151 @@ def test_an_expect_entry_omitting_target_never_polls_a_secondary() -> None:
     r = _primary_expect("web.value")
     assert not r.ok
     assert [a.ok for a in r.expect_results] == [False]
+
+
+class _KindsSink(NullSink):
+    """Records the capture kinds each step asked for, keyed by step id."""
+
+    def __init__(self) -> None:
+        self.kinds_by_step: dict[str, list[str]] = {}
+
+    def capture(
+        self,
+        driver: base.Driver,
+        step_id: str,
+        kinds: list[str],
+        *,
+        elements: list[base.Element] | None = None,
+        elements_source: str | None = None,
+        reuse_before_screenshot: Artifact | None = None,
+    ) -> list[Artifact]:
+        self.kinds_by_step.setdefault(step_id, []).extend(kinds)
+        return []
+
+
+def test_a_recovery_step_omitting_target_after_a_detour_reads_its_own_before() -> None:
+    # BE-0438 review: a recovery step naming another target can precede one that omits `target` and
+    # so stays on the entry's own runner. `_route` reset the carried-over tree only for a step that
+    # names a target, so the web step below took the app's post-step tree as its `before` and the
+    # `screenChanged` rule fired on a tap that changed nothing on the web screen.
+    def react(d: FakeDriver, kind: str, arg: object) -> None:
+        if kind == "tap" and arg == {"id": "ov.close"}:
+            d.screen = list(_WEB_SCREEN)
+
+    sink = _KindsSink()
+    app = FakeDriver(screen=list(_APP_SCREEN))
+    web = FakeDriver(screen=[el("ov.close", label="X"), *_WEB_SCREEN], react=react)
+    entry = Interrupt.model_validate(
+        {
+            "condition": {"exists": {"id": "ov.close"}},
+            "steps": [
+                {"target": "app", "tap": {"id": "app.button"}},
+                {"tap": {"id": "web.value"}},  # changes nothing on the web screen
+                {"tap": {"id": "ov.close"}},
+            ],
+        }
+    )
+    r = run_scenario(
+        app,
+        _scenario(
+            {
+                "name": "rd",
+                "targets": ["app", "web"],
+                "steps": [{"target": "web", "tap": {"id": "web.button"}}],
+                "capturePolicy": [{"on": {"event": "screenChanged"}, "capture": ["actionLog"]}],
+            }
+        ),
+        FakeClock(),
+        sink=sink,
+        target_runtimes={
+            "app": TargetRuntime(driver=app, sink=sink),
+            "web": TargetRuntime(driver=web, sink=sink, interrupts=[entry]),
+        },
+        primary_target="app",
+    )
+    assert r.ok, r.failure
+    assert _taps(app) == [{"id": "app.button"}]
+    assert _taps(web) == [{"id": "web.value"}, {"id": "ov.close"}, {"id": "web.button"}]
+    assert "actionLog" not in sink.kinds_by_step["rd/step2"]  # the no-op web tap
+    assert "actionLog" in sink.kinds_by_step["rd/step3"]  # the overlay's own clearing tap
+
+
+class _DriverAfterSink(_ReuseTrackingSink):
+    """`_ReuseTrackingSink` plus which driver produced each step's own `after.png`."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.driver_by_step: dict[str, base.Driver] = {}
+
+    def capture(
+        self,
+        driver: base.Driver,
+        step_id: str,
+        kinds: list[str],
+        *,
+        elements: list[base.Element] | None = None,
+        elements_source: str | None = None,
+        reuse_before_screenshot: Artifact | None = None,
+    ) -> list[Artifact]:
+        if "screenshot.after" in kinds:
+            self.driver_by_step[step_id] = driver
+        return super().capture(
+            driver,
+            step_id,
+            kinds,
+            elements=elements,
+            elements_source=elements_source,
+            reuse_before_screenshot=reuse_before_screenshot,
+        )
+
+
+def test_a_recovery_naming_another_target_does_not_leak_into_the_next_step() -> None:
+    # BE-0438 review, round 2: an entry watching the primary (app) whose own recovery names another
+    # target (web) leaves `last_target` pointing at "web" once the recovery returns — the
+    # interrupted step resumes on `self` (app) without going back through `_route`, so nothing
+    # restored it. The next top-level step naming "web" then matched that stale value, skipped its
+    # own reset, and reused app's own `after.png` as web's `before`.
+    sink = _DriverAfterSink()
+    app = FakeDriver(screen=[el("ov.close", label="X"), *_APP_SCREEN])
+    web = FakeDriver(screen=list(_WEB_SCREEN))
+    entry = Interrupt.model_validate(
+        {
+            "condition": {"exists": {"id": "ov.close"}},  # no target: watches app
+            "steps": [{"target": "web", "tap": {"id": "web.value"}}],
+        }
+    )
+    r = run_scenario(
+        app,
+        _scenario(
+            {
+                "name": "unwind",
+                "targets": ["app", "web"],
+                "steps": [
+                    {"target": "app", "tap": {"id": "app.button"}},
+                    {"target": "web", "tap": {"id": "web.button"}},
+                ],
+            }
+        ),
+        FakeClock(),
+        sink=sink,
+        # The primary's own `interrupts` come from this top-level argument, never from
+        # `target_runtimes[primary_target].interrupts` — `_run_steps` builds the primary's
+        # `_LoopConfig` from `run_scenario`'s own params and only reuses the `TargetRuntime`
+        # mapping for every *other* declared target (`pipeline.py` keeps the two in sync by
+        # construction; a hand-built low-level test like this one must do so itself).
+        interrupts=[entry],
+        target_runtimes={
+            "app": TargetRuntime(driver=app, sink=sink),
+            "web": TargetRuntime(driver=web, sink=sink),
+        },
+        primary_target="app",
+    )
+    assert r.ok, r.failure
+    # The guard's bounded retries (`_INTERRUPT_MAX_FIRES` = 3) claim step ids "step1"-"step3" of
+    # their own, numbered ahead of the main step0's own capture — sharing the one counter every
+    # runner draws from — so the main steps land on "step0" and "step4".
+    step0_id, step1_id = "unwind/step0", "unwind/step4"
+    assert sink.driver_by_step[step0_id] is app
+    assert sink.driver_by_step[step1_id] is web
+    # web's own step must never reuse app's own after.png as a carried-over "before".
+    assert sink.reuse_by_step[step1_id] is not sink.after_by_step[step0_id]

@@ -464,7 +464,7 @@ def test_the_primarys_own_target_runtime_reuses_primary_ctx_verbatim() -> None:
         release=lambda: None,
     )
     runtime = runner._runtime_for(
-        "app", lz, _cross(), None, None, "00-x", primary_ctx, primary=True
+        "app", lz, _cross(), None, None, "00-x", primary_ctx, primary_target="app"
     )
     assert runtime.ctx is primary_ctx
     assert runtime.ctx.schema is not None

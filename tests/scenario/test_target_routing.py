@@ -269,19 +269,87 @@ def test_group_steps_are_checked_under_one_target() -> None:
         )
 
 
-def test_interrupts_not_yet_supported_under_two_targets() -> None:
-    # BE-0428: which target an interrupt's condition polls is an open question, so a non-empty
-    # `interrupts` is refused outright once the scenario declares two or more targets — before the
-    # per-step/condition rules below even run, regardless of whether they would otherwise pass.
-    with pytest.raises(ValidationError, match="interrupts is not yet supported"):
+def _two_targets_with(entry: dict[str, object]) -> Scenario:
+    return Scenario.model_validate(
+        {
+            "name": "s",
+            "targets": ["app", "web"],
+            "steps": [_step(target="app")],
+            "interrupts": [{"condition": {"exists": {"id": "popup"}}, **entry}],
+        }
+    )
+
+
+def test_interrupts_entry_may_omit_target_under_two_targets() -> None:
+    # BE-0438: unlike a step's, an entry's `target` stays optional at any count — an omitted one
+    # watches the primary — and so does a recovery step's, which runs on the entry's own target.
+    s = _two_targets_with({"steps": [_step()]})
+    assert s.interrupts[0].target is None
+    assert s.interrupts[0].steps[0].target is None
+
+
+def test_interrupts_entry_may_name_a_declared_target() -> None:
+    s = _two_targets_with({"target": "web", "steps": [_step()]})
+    assert s.interrupts[0].target == "web"
+
+
+def test_interrupts_entry_naming_an_undeclared_target_rejected() -> None:
+    with pytest.raises(ValidationError, match="interrupts entry: target 'ios' is not one of"):
+        _two_targets_with({"target": "ios", "steps": [_step()]})
+
+
+def test_interrupts_recovery_step_may_name_another_declared_target() -> None:
+    s = _two_targets_with({"target": "web", "steps": [_step(target="app")]})
+    assert s.interrupts[0].steps[0].target == "app"
+
+
+def test_interrupts_recovery_step_naming_an_undeclared_target_rejected() -> None:
+    with pytest.raises(ValidationError, match="target 'ios' is not one of"):
+        _two_targets_with({"steps": [_step(target="ios")]})
+
+
+def test_interrupts_recovery_optional_mode_propagates_through_if() -> None:
+    # The optional mode reaches a nested `if` branch, which at the top level would require a
+    # target of its own under two targets.
+    s = _two_targets_with(
+        {"steps": [{"if": {"condition": {"exists": {"id": "a"}}, "then": [_step()]}}]}
+    )
+    assert s.interrupts[0].steps[0].if_ is not None
+
+
+def test_interrupts_recovery_step_inside_web_still_rejects_a_target() -> None:
+    with pytest.raises(ValidationError, match="nested inside a web: or app: block"):
+        _two_targets_with(
+            {"steps": [{"web": {"within": {"id": "wv"}, "steps": [_step(target="app")]}}]}
+        )
+
+
+def test_interrupts_recovery_use_still_refused_under_two_targets() -> None:
+    # A `use:` step takes no modifiers, so it cannot carry the `target` two targets require here
+    # just as at the top level.
+    with pytest.raises(ValidationError, match="use: is not yet supported"):
+        _two_targets_with({"steps": [{"use": {"component": "c.yaml", "with": {}}}]})
+
+
+def test_interrupts_entry_target_rejected_with_no_declared_targets() -> None:
+    with pytest.raises(ValidationError, match="interrupts entry: target is set"):
         Scenario.model_validate(
             {
                 "name": "s",
-                "targets": ["app", "web"],
-                "steps": [_step(target="app")],
-                "interrupts": [
-                    {"condition": {"exists": {"id": "popup"}}, "steps": [_step(target="app")]},
-                ],
+                "steps": [_step()],
+                "interrupts": [{"target": "app", "condition": {"exists": {"id": "popup"}}}],
+            }
+        )
+
+
+def test_interrupts_entry_target_must_match_the_one_declared_target() -> None:
+    with pytest.raises(ValidationError, match="does not match"):
+        Scenario.model_validate(
+            {
+                "name": "s",
+                "targets": ["app"],
+                "steps": [_step()],
+                "interrupts": [{"target": "web", "condition": {"exists": {"id": "popup"}}}],
             }
         )
 
