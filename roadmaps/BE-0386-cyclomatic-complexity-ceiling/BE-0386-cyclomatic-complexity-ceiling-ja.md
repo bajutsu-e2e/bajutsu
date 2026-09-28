@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0386") |
-| 実装 PR | [#1790](https://github.com/bajutsu-e2e/bajutsu/pull/1790) |
+| 実装 PR | [#1790](https://github.com/bajutsu-e2e/bajutsu/pull/1790)（単位 1〜2）、[#2077](https://github.com/bajutsu-e2e/bajutsu/pull/2077)（単位 3〜6） |
 | トピック | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -164,7 +164,8 @@ screens の次元を解決する独立したブロックが含まれています
   `_wait`、`_handle_action`、`run_one` と、対話的な `record` ループには、分割の場が下のラチェットの
   手順であることを名指しした `# noqa` を添えています。上限を定める PR が run の経路の振る舞いまで
   変えないためです。
-- 2026-09-28 — ラチェットを完了し、`max-complexity` は12になりました。各段階で新たに対象と
+- 2026-09-28 — [#2077](https://github.com/bajutsu-e2e/bajutsu/pull/2077) —
+  ラチェットを完了し、`max-complexity` は12になりました。各段階で新たに対象と
   なった関数は、すべて振り分けました。提案の時点から件数は変わっていました。20への段階は計画どおり
   3個でした。15への段階では6個ではなく14個、12への段階では13個ではなく17個が新たに対象に
   なりました。

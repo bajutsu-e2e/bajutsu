@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0386") |
-| Implementing PR | [#1790](https://github.com/bajutsu-e2e/bajutsu/pull/1790) |
+| Implementing PR | [#1790](https://github.com/bajutsu-e2e/bajutsu/pull/1790) (units 1–2), [#2077](https://github.com/bajutsu-e2e/bajutsu/pull/2077) (units 3–6) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -168,7 +168,8 @@ Log:
   reflect genuine length — `_wait`, `_handle_action`, and `run_one` on the deterministic run path,
   plus the interactive `record` loop — carry a `# noqa` naming the ratchet steps below as where a
   split belongs, so that the PR setting the ceiling does not also change run-path behavior.
-- 2026-09-28 — Finished the ratchet, which leaves 12 as the final `max-complexity`. We triaged
+- 2026-09-28 — [#2077](https://github.com/bajutsu-e2e/bajutsu/pull/2077) —
+  Finished the ratchet, which leaves 12 as the final `max-complexity`. We triaged
   every function each step brought into scope. The counts had drifted since the proposal. The step
   to 20 flagged 3 more functions, as planned. The step to 15 flagged 14 more functions where the plan
   expected 6 of them. The step to 12 flagged 17 more where the plan expected 13 of them. We split 12
