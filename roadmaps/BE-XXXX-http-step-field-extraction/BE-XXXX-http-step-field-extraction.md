@@ -24,11 +24,10 @@ the whole body; it names the field it needs.
 
 A test-data service commonly answers with a JSON object, not a bare scalar: a login endpoint
 returns `{"data": {"token": "...", "user": {"id": 42}}}`, not the token alone. `saveBody` stores
-that whole object as text, so a scenario that needs merely `data.token` still has to work around the
-wrapping object — by asking the service for a narrower response shape it may not offer, or by
-giving up on the field it needs — a field no step can reach today. Once `extractBody` ships, a
-scenario points an `http` step at a JSON API and reads a nested field directly into
-`${vars.token}`.
+that whole object as text, and no step can reach a field inside it today. A scenario that needs
+merely `data.token` must either ask the service for a narrower response shape, which it may not
+offer, or give up on the field. Once `extractBody` ships, a scenario points an `http` step at a
+JSON API and reads a nested field directly into `${vars.token}`.
 
 ## Detailed design
 
@@ -52,24 +51,41 @@ Fields and contract:
 - **`extractBody`** — a list of `{ var, path }` entries. Each parses the response body as JSON,
   walks `path`, and stores the value it finds as `vars.<var>`. `extractBody` stores a string value
   as-is; it stores any other JSON value (number/boolean/null/object/array) as the compact JSON text
-  `json.dumps` produces for it: `42`, `true`, `null`, `{"id":42}`. A later `${vars.*}` comparison
-  then reads the same shape the API returned, never a Python-specific rendering like `None` or
-  `True`.
+  `json.dumps(value, separators=(",", ":"), ensure_ascii=False)` produces for it: `42`, `true`,
+  `null`, `{"id":42}`. A later `${vars.*}` comparison then reads the same shape the API returned,
+  never a Python-specific rendering like `None` or `True`.
 - **`path`** is a sequence of object keys and `[n]` (zero-based) array indexes, in any order and any
-  number: a bare key starts the path (`data.token`), an index may follow a key (`items[0].id`) or
-  another index (`rows[0][1]`), and a path may open on an index when the response body is itself a
-  JSON array (`[0].id`). The grammar stops there: no wildcards, no filters, no computed segments.
-  BE-0036 already rejected a general `shell`/`exec` step on the same grounds (see its *Alternatives
-  considered*): a small, fixed grammar stays auditable from the scenario file alone, where a
-  general expression language would not.
-- A response body that fails to parse as JSON, or a `path` that does not resolve — a missing key, an
-  out-of-range index, or a key applied to an array (or an index applied to an object) — fails the
-  step with an error naming the `var` and the `path` that did not resolve. A scenario never reads a
-  placeholder or an empty value in place of the field it asked for.
+  number: an opening key carries no leading dot (`data.token`); an index may follow a key
+  (`items[0].id`) or another index (`rows[0][1]`); and a path may open on an index
+  when the response body is itself a JSON array (`[0].id`). An index is a non-negative decimal
+  integer: `[-1]` is a malformed path, never an index counted from the end the way Python's list
+  indexing reads it. A malformed path — a negative or non-numeric index, an empty segment
+  (`a..b`), or a trailing dot — fails validation with an error naming the `var` and the `path`. The
+  grammar stops there: no wildcards, no filters, no computed segments. BE-0036 already rejected a
+  general `shell`/`exec` step on the same grounds (see its *Alternatives considered*): a small,
+  fixed grammar stays auditable from the scenario file alone, where a general expression language
+  would not.
+- A response body that fails to parse as JSON, or a `path` that does not resolve, fails the step
+  with an error naming the `var` and the `path` that did not resolve. A `path` fails to resolve in
+  any of these cases:
+  - a missing key
+  - an out-of-range index
+  - a key applied to anything but an object
+  - an index applied to anything but an array (a string, number, boolean, or `null` included)
+
+  A scenario never reads a placeholder or an empty value in place of the field it asked for.
 - `extractBody` and `saveBody` read the same response body independently; setting both stores the
   whole text under `saveBody`'s name and the named fields under `extractBody`'s, from one request.
   Two `extractBody` entries with the same `var`, or an entry whose `var` equals `saveBody`, is a
   scenario load error — never a silent overwrite decided by write order.
+- Like every other step field, a scenario may write `path` and `var` themselves with `${vars.*}` /
+  `${secrets.*}` scenario-variable substitution (`path: "items[${vars.i}].id"`); the runner
+  substitutes those tokens before parsing `path`, the same way it already does for `url` or
+  `saveBody`. "No computed segments" describes the grammar itself: it never branches on the
+  response body's own content. It says nothing about a scenario parameterizing a field with its own
+  declared variables. The path-grammar and duplicate-`var` checks above apply to the substituted
+  step, so a malformed or colliding `path`/`var` fails the same way whether a scenario wrote it as a
+  fixed string or assembled it from `${vars.*}`.
 
 Prime directives preserved:
 
@@ -108,15 +124,18 @@ Prime directives preserved:
       a duplicate `var` across `extractBody` entries or a `var` colliding with `saveBody` at load
       time.
 - [ ] Add JSON parsing and path resolution to the runner's `http` handler, including a leading
-      index and chained indexes; fail the step on a parse error or an unresolved path, and render a
-      non-string resolved value with `json.dumps`.
-- [ ] Document `extractBody` in `docs/scenarios.md` and its `docs/ja/` mirror, beside `saveBody`.
+      index and chained indexes. Fail the step on a parse error, a malformed path, or an unresolved
+      path. Render a non-string resolved value with
+      `json.dumps(value, separators=(",", ":"), ensure_ascii=False)`.
+- [ ] Document `extractBody` in `docs/scenarios.md` (beside `saveBody`) and in the `http` production
+      of `docs/dsl-grammar.md`, with both `docs/ja/` mirrors.
 - [ ] Add scenario-level tests covering:
       - a resolved nested field
       - a path opening on an array index, and a chained index
       - a non-string resolved value (`json.dumps` rendering)
       - a missing key and an out-of-range index
-      - a key applied to an array, or an index applied to an object
+      - a key applied to a non-object, or an index applied to a non-array (a string included)
+      - a malformed path (a negative index)
       - a non-JSON body
 
 ## References
@@ -126,5 +145,6 @@ Prime directives preserved:
 - [BE-0046 — OTP & email side-channel steps](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) —
   the `email` step's `bodyMatches` regex extraction, the precedent this item's *Alternatives
   considered* compares `extractBody` against.
-- [`docs/scenarios.md`](../../docs/scenarios.md), `bajutsu/common/scenario/models/actions/http_request.py`,
+- [`docs/scenarios.md`](../../docs/scenarios.md), [`docs/dsl-grammar.md`](../../docs/dsl-grammar.md),
+  `bajutsu/common/scenario/models/actions/http_request.py`,
   `bajutsu/common/orchestrator/actions/handlers/http.py`
