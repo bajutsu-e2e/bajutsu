@@ -687,6 +687,14 @@ def test_substitute_var_fails_on_an_undeclared_token() -> None:
         _substitute_var("${vars.missing}", {})
 
 
+def test_substitute_var_fails_on_an_empty_substituted_name() -> None:
+    # An empty name would still resolve cleanly and pass the duplicate-var check, but no later
+    # `${vars.*}` reference could ever read it back — the same silent-dead-write finding as an
+    # unresolved token, just via an empty value instead of a missing binding.
+    with pytest.raises(base.SelectorError, match="empty name"):
+        _substitute_var("${vars.k}", {"vars.k": ""})
+
+
 def test_parse_path_fails_on_empty_path() -> None:
     with pytest.raises(base.SelectorError, match="malformed"):
         _parse_path("", "v")

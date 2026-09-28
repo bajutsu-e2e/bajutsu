@@ -76,6 +76,11 @@ def _substitute_var(var: str, bindings: dict[str, str]) -> str:
         raise base.SelectorError(
             f"http: extractBody var {var!r} did not fully resolve (still {substituted!r})"
         )
+    if not substituted:
+        raise base.SelectorError(
+            f"http: extractBody var {var!r} substituted to an empty name — no later "
+            "${vars.*} reference could read the value back"
+        )
     return substituted
 
 

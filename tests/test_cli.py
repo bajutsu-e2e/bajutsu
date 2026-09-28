@@ -1002,6 +1002,49 @@ def test_run_rejects_a_bad_target_config_hook_end_to_end(tmp_path: Path) -> None
     assert "declares no targets" in r.output
 
 
+def test_run_rejects_a_duplicate_extract_body_var_in_a_target_config_hook(tmp_path: Path) -> None:
+    # BE-0440: `with_lifecycle_phases` folds a target config's `before`/`after` hooks in via
+    # `model_copy`, which never re-runs `Scenario`'s own model_validator — and `_hooks_for` reads
+    # those hooks as a bare `list[Step]` straight off the target config, never through a full
+    # `Scenario.model_validate`. A duplicate `extractBody`/`saveBody` var inside one of a hook's own
+    # `http` steps must still fail at load time, the same as one written directly into the scenario.
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake] }\n"
+        "targets:\n"
+        "  demo:\n"
+        "    bundleId: com.example.demo\n"
+        "    before:\n"
+        "      - http:\n"
+        "          url: https://api.test/data\n"
+        "          extractBody:\n"
+        "            - { var: a, path: p1 }\n"
+        "            - { var: a, path: p2 }\n",
+        encoding="utf-8",
+    )
+    scn = tmp_path / "s.yaml"
+    scn.write_text("- name: demo\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
+    r = runner.invoke(
+        app,
+        [
+            "run",
+            "--scenario",
+            str(scn),
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--config",
+            str(cfg),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "'a'" in r.output
+    assert "extractBody" in r.output
+
+
 def test_run_tag_filtering_away_a_multi_target_scenario_lets_the_rest_run(
     tmp_path: Path,
 ) -> None:

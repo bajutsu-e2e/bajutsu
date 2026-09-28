@@ -1122,16 +1122,17 @@ leading dot (`data.token`); an index may follow a key or another index (`items[0
 and a path may open on an index when the body is itself a JSON array (`[0].id`). A string value is
 stored as-is; any other JSON value (number/boolean/null/object/array) renders as the same compact JSON
 text a captured event body field would (`42`, `true`, `null`, `{"id":42}`), so a later `${vars.*}`
-comparison reads the shape the API returned. A response body that fails to parse as JSON, or a `path`
-that does not resolve — a missing key, an out-of-range index, a key applied to anything but an object,
-or an index applied to anything but an array — fails the step with an error naming the `var` and the
-`path`; a malformed `path` (a negative or non-numeric index, an empty segment, a trailing dot) fails
-the same way. `path` and `var` may themselves use `${vars.*}` / `${secrets.*}` substitution
-(`path: "items[${vars.i}].id"`), but a substituted value must supply exactly one path segment — one
-carrying `.`, `[`, or `]` fails the step, so a field name arriving from a response body can never
-redirect the walk to a different field. Two `extractBody` entries sharing one `var`, or an entry whose
-`var` equals `saveBody`, is a scenario load error — or, when only a substitution reveals the
-collision, a step failure at run time — never a silent overwrite decided by write order.
+comparison reads the shape the API returned. A response body that fails to parse as JSON fails the
+step with the JSON parser's own message; a `path` that does not resolve — a missing key, an
+out-of-range index, a key applied to anything but an object, or an index applied to anything but an
+array — fails the step with an error naming the `var` and the `path`, as does a malformed `path` (a
+negative or non-numeric index, an empty segment, a trailing dot). `path` and `var` may themselves
+use `${vars.*}` / `${secrets.*}` substitution (`path: "items[${vars.i}].id"`), and a value
+substituted into a `path` must supply exactly one path segment — an empty one, or one carrying `.`,
+`[`, or `]`, fails the step, so a field name arriving from a response body can never redirect the
+walk to a different field. Two `extractBody` entries sharing one `var`, or an entry whose `var`
+equals `saveBody`, is a scenario load error — or, when only a substitution reveals the collision, a
+step failure at run time — never a silent overwrite decided by write order.
 
 ### `totp` (two-factor one-time password)
 

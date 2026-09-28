@@ -2,13 +2,16 @@
 
 `Scenario`'s own `model_validator` calls `_check_http_extract_vars` once at load time, walking the
 as-loaded step tree — the only place a directly-written duplicate is visible, since a `use:` step's
-own component body isn't resolved yet. `expand_components` and `apply_setups` (BE-0428's own
-`_check_target_requirements` precedent) each rebuild an already-validated `Scenario` in a way
-Pydantic never re-validates, so both call this check again on their own result — a `${params.*}`
-substitution or a prepended setup's steps can each reveal a collision the as-loaded tree never
-showed. `expand_data`'s per-row `${row.*}` substitution needs no such re-call: `_instantiate_rows`
-re-validates each row through `Scenario.model_validate`, which re-fires every `model_validator`
-including this one.
+own component body isn't resolved yet. BE-0428's own `_check_target_requirements` names three sites
+that each rebuild an already-validated `Scenario` in a way Pydantic never re-validates
+(`_targets.py`'s module docstring), and this check follows the same precedent at all three:
+`expand_components` (a `${params.*}` substitution can reveal a collision the as-loaded tree never
+showed), `apply_setups` (a prepended setup's own steps, read as a bare `list[Step]` that may never
+have passed through a full `Scenario.model_validate`), and `with_lifecycle_phases`
+(`bajutsu/common/runner/pipeline.py`; a target config's `before`/`after` hooks, read the same
+unvalidated way). `expand_data`'s per-row `${row.*}` substitution needs no such re-call:
+`_instantiate_rows` re-validates each row through `Scenario.model_validate`, which re-fires every
+`model_validator` including this one.
 
 This check never runs as `Step` model validation: a per-step validator would re-fire when the run
 loop rebuilds the step during `${vars.*}` / `${secrets.*}` substitution (`_interp_step`), raising an
