@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
@@ -907,17 +907,42 @@ def _apply_mocks(scenarios: list[Scenario], network: bool) -> None:
             s.preconditions.launch_env.setdefault("BAJUTSU_MOCKS", dump_mocks(s.mocks))
 
 
+def _walk_visual_steps(steps: list[Step]) -> Iterator[Step]:
+    """Every step reachable at runtime that a step-level `visual` assertion could sit in.
+
+    Recurses into `if` / `forEach` / `app` — `app:` blocks run inner steps on the native driver, the
+    same one a step-level `visual` capture reads. `web:` blocks are deliberately excluded: a `web:`
+    step's active driver is a `WebContextDriver`, whose `screenshot` always raises
+    `UnsupportedAction`, so a `visual` assertion nested there fails loudly rather than needing the
+    marker channel this function decides.
+    """
+    for step in steps:
+        yield step
+        if step.if_ is not None:
+            yield from _walk_visual_steps(step.if_.then)
+            yield from _walk_visual_steps(step.if_.else_ or [])
+        if step.for_each is not None:
+            yield from _walk_visual_steps(step.for_each.steps)
+        if step.app is not None:
+            yield from _walk_visual_steps(step.app.steps)
+
+
 def _visual_asserting_scenarios(scenarios: list[Scenario]) -> set[int]:
     """`id()`s of the scenarios whose verdict reads a screenshot, from `expect` or from any step.
 
     Keyed by object identity, not `.name`: nothing enforces unique scenario names across a
     multi-file run (`_load_scenarios` just concatenates each file's own scenarios), and a
     name-keyed set would conflate two same-named scenarios that need different answers below.
+
+    Walks every lifecycle phase (`before`, `steps`, each `after` rule) and the full step tree within
+    each, not only the scenario's own top-level `steps` — a step-level `visual` assertion can sit
+    anywhere in that tree.
     """
     visual = set()
     for s in scenarios:
-        assertions = [*s.expect, *(a for step in s.steps for a in step.assert_ or [])]
-        if any(a.visual is not None for a in assertions):
+        all_steps = [*s.before, *s.steps, *(step for rule in s.after for step in rule.steps)]
+        step_assertions = [a for step in _walk_visual_steps(all_steps) for a in step.assert_ or []]
+        if any(a.visual is not None for a in [*s.expect, *step_assertions]):
             visual.add(id(s))
     return visual
 

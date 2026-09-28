@@ -227,25 +227,27 @@ def test_type_and_swipe_actions() -> None:
     assert [a[0] for a in driver.actions] == ["tap", "type", "scroll", "swipe"]
 
 
-def test_step_level_assert_drops_visual_context(tmp_path: Path) -> None:
-    """A step-level `assert` never runs the `visual` / `responseSchema` kinds: no per-step
-    screenshot is taken, so those inputs are dropped there even when the run carries a visual
-    context (they run only at scenario `expect`). Locks the intentional asymmetry (BE-0250 Unit 2).
+def test_step_level_assert_runs_a_real_visual_comparison(tmp_path: Path) -> None:
+    """A step-level `assert` now runs the `visual` kind against a fresh, single-shot capture,
+    instead of dropping the context the way BE-0250 Unit 2 made it drop. `responseSchema` still gets
+    dropped at the same branch — see `test_step_level_assert_drops_schema_context` below.
     """
     from bajutsu.common.assertions import EvalContext, VisualContext
     from bajutsu.common.evidence.redaction import Redactor
     from bajutsu.common.evidence.sink import RunArtifactWriter
 
-    # A context whose screenshot/baseline paths do not exist: were it forwarded, `_eval_visual`
-    # would fail with "baseline not found"; dropped, it fails with "no visual context" instead.
+    # A context whose baseline does not exist on disk: were the context still dropped, the failure
+    # would read "no visual context provided"; forwarded, the comparison itself runs and fails on
+    # the missing baseline instead, which is what this test locks in as the new behavior.
     vc = VisualContext(
         screenshot_path=tmp_path / "00-s" / "shot.png",
         baselines_dir=tmp_path / "baselines",
         writer=RunArtifactWriter(tmp_path, Redactor(None)),
         prefix="00-s",
     )
+    driver = FakeDriver([el("home.title", "ホーム")])
     result = run_scenario(
-        FakeDriver([el("home.title", "ホーム")]),
+        driver,
         _scenario(
             {
                 "name": "step visual",
@@ -256,7 +258,99 @@ def test_step_level_assert_drops_visual_context(tmp_path: Path) -> None:
         ctx=EvalContext(visual=vc),
     )
     assert not result.ok
-    assert result.failure is not None and "no visual context" in result.failure
+    assert result.failure is not None and "baseline not found" in result.failure
+    # The capture lands under this step's own evidence prefix, not the scenario-level path `vc`
+    # itself names — `expect`'s own `visual-actual.png` and a step's must never collide.
+    shots = [arg for k, arg in driver.actions if k == "screenshot"]
+    assert len(shots) == 1
+    assert isinstance(shots[0], str)
+    assert str(tmp_path / "00-s" / "shot.png") not in shots[0]
+    assert "visual-actual.png" in shots[0]
+
+
+def test_step_level_assert_visual_scopes_capture_by_execution_index(tmp_path: Path) -> None:
+    """Two executions of the same *named* step must not overwrite each other's capture.
+
+    A named step's evidence `step_id` does not vary with the run's step counter (only an unnamed
+    step's does, via its `step{idx}` fallback), so a `forEach` iterating a named step twice — each
+    iteration passing its own check, so the loop reaches the next one — would collide on one path
+    without the execution index this test locks in. Exercised by calling `_run_step_body` directly,
+    once per simulated execution, since a `FakeDriver` cannot produce a real pixel match that would
+    let a full `forEach` run past its first (necessarily failing, for want of a real baseline image)
+    iteration.
+    """
+    from bajutsu.common.orchestrator.loop._functions import _no_network, _run_step_body
+    from bajutsu.common.scenario.models.assertions import Assertion, VisualMatch
+    from bajutsu.common.scenario.models.steps import Step
+
+    driver = FakeDriver([el("home.title", "ホーム")])
+    step = Step(assert_=[Assertion(visual=VisualMatch(baseline="row.png"))], name="check row")
+    ctx = _visual_ctx(tmp_path)
+    for index in (0, 1):
+        _run_step_body(
+            driver,
+            step,
+            "assert_",
+            FakeClock(),
+            _no_network,
+            ctx=ctx,
+            step_id="sid/check row",
+            step_index=index,
+        )
+    shots = [arg for k, arg in driver.actions if k == "screenshot"]
+    assert len(shots) == 2
+    assert shots[0] != shots[1]
+
+
+def test_step_level_assert_visual_hides_the_touch_markers_and_restores_them(
+    tmp_path: Path,
+) -> None:
+    """The step-level capture goes through the same suspend/shutter/restore triple `expect` gets."""
+    driver = FakeDriver([el("home.title", "ホーム")])
+    run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "step visual markers",
+                "preconditions": {
+                    "launchEnv": {"BAJUTSU_TOUCH_MARKERS": "1", "BAJUTSU_CONTROL_CHANNEL": "1"}
+                },
+                "steps": [{"assert": [{"visual": {"baseline": "home.png"}}]}],
+            }
+        ),
+        clock=FakeClock(),
+        ctx=_visual_ctx(tmp_path),
+        channel=_RecordingChannel(driver),
+    )
+    ordered = [k for k, _ in driver.actions if k in {"command", "screenshot"}]
+    assert ordered == ["command", "screenshot", "command"]
+    assert [arg for k, arg in driver.actions if k == "command"] == [False, True]
+
+
+def test_step_level_assert_visual_clears_a_notification_banner_before_capturing(
+    tmp_path: Path,
+) -> None:
+    """A banner sitting on screen when the step's own capture fires must not reach that screenshot.
+
+    Unlike the unconditional per-step sweep that protects `after.png` (BE-0416 Unit 8), this clear
+    runs *inside* the step body, before the poll that evaluates the `visual` entry — earlier than
+    the per-step sweep ever runs.
+    """
+    driver = FakeDriver([el("home.title", "ホーム")])
+    driver.notification_banner = (8.0, 58.7, 386.0, 78.7)
+    run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "step visual banner",
+                "steps": [{"assert": [{"visual": {"baseline": "home.png"}}]}],
+            }
+        ),
+        clock=FakeClock(),
+        ctx=_visual_ctx(tmp_path),
+    )
+    ordered = [k for k, _ in driver.actions if k in {"swipe", "screenshot"}]
+    assert ordered[:2] == ["swipe", "screenshot"]
 
 
 class _RecordingChannel:

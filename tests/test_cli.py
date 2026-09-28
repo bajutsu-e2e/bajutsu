@@ -21,7 +21,11 @@ from bajutsu.common.config import Effective, IosConfig, WebConfig, load_config, 
 from bajutsu.common.scenario import Scenario
 from bajutsu.common.scenario.models.assertions import Assertion, VisualMatch
 from bajutsu.common.scenario.models.steps import Step
-from bajutsu.run.cli import _apply_touch_markers, _channel_available_for
+from bajutsu.run.cli import (
+    _apply_touch_markers,
+    _channel_available_for,
+    _visual_asserting_scenarios,
+)
 from bajutsu.serve import _cli_flags as cli_flags
 
 runner = CliRunner()
@@ -2340,6 +2344,108 @@ def test_touch_markers_arm_the_channel_for_a_scenario_that_compares_a_screenshot
     _apply_touch_markers([scenario], True, channel_available=_channel_always)
     assert scenario.preconditions.launch_env["BAJUTSU_TOUCH_MARKERS"] == "1"
     assert scenario.preconditions.launch_env["BAJUTSU_CONTROL_CHANNEL"] == "1"
+
+
+def test_visual_asserting_scenarios_finds_a_step_level_visual_nested_in_if_and_for_each() -> None:
+    """The walk this function does for a step-level `visual` reaches `if` and `forEach` bodies.
+
+    A scenario whose only `visual` sits inside a conditional or a loop must still arm the touch-
+    marker channel for it — the same reason a top-level step-level `visual` needs it.
+    """
+    nested_in_if = Scenario.model_validate(
+        {
+            "name": "visual in if",
+            "steps": [
+                {
+                    "if": {
+                        "condition": {"exists": {"id": "home.title"}},
+                        "then": [{"assert": [{"visual": {"baseline": "home.png"}}]}],
+                    }
+                }
+            ],
+        }
+    )
+    nested_in_for_each = Scenario.model_validate(
+        {
+            "name": "visual in forEach",
+            "steps": [
+                {
+                    "forEach": {
+                        "sel": {"id": "row"},
+                        "as": "row",
+                        "steps": [{"assert": [{"visual": {"baseline": "row.png"}}]}],
+                    }
+                }
+            ],
+        }
+    )
+    visual = _visual_asserting_scenarios([nested_in_if, nested_in_for_each])
+    assert visual == {id(nested_in_if), id(nested_in_for_each)}
+
+
+def test_visual_asserting_scenarios_finds_a_step_level_visual_in_before_and_after_phases() -> None:
+    """The lifecycle phases (BE-0392) take the full step grammar, so they need the same walk."""
+    in_before = Scenario.model_validate(
+        {
+            "name": "visual in before",
+            "before": [{"assert": [{"visual": {"baseline": "home.png"}}]}],
+            "steps": [],
+        }
+    )
+    in_after = Scenario.model_validate(
+        {
+            "name": "visual in after",
+            "steps": [],
+            "after": [
+                {"on": "always", "steps": [{"assert": [{"visual": {"baseline": "home.png"}}]}]}
+            ],
+        }
+    )
+    visual = _visual_asserting_scenarios([in_before, in_after])
+    assert visual == {id(in_before), id(in_after)}
+
+
+def test_visual_asserting_scenarios_finds_a_step_level_visual_nested_in_an_app_block() -> None:
+    """An `app:` block's inner steps run on the native driver, so a step-level `visual` there works.
+
+    Unlike `web:` (below), `app:` needs the same marker channel as any other step.
+    """
+    nested_in_app = Scenario.model_validate(
+        {
+            "name": "visual in app",
+            "steps": [
+                {
+                    "app": {
+                        "bundleId": "com.example.other",
+                        "steps": [{"assert": [{"visual": {"baseline": "other.png"}}]}],
+                    }
+                }
+            ],
+        }
+    )
+    assert _visual_asserting_scenarios([nested_in_app]) == {id(nested_in_app)}
+
+
+def test_visual_asserting_scenarios_ignores_a_step_level_visual_nested_in_a_web_block() -> None:
+    """A `web:` block's inner steps run against a `WebContextDriver`, which cannot take a screenshot.
+
+    A step-level `visual` assertion nested there fails loudly at run time on its own
+    (`UnsupportedAction`), not by arming a marker channel it has no way to use.
+    """
+    nested_in_web = Scenario.model_validate(
+        {
+            "name": "visual in web",
+            "steps": [
+                {
+                    "web": {
+                        "within": {"id": "webview"},
+                        "steps": [{"assert": [{"visual": {"baseline": "page.png"}}]}],
+                    }
+                }
+            ],
+        }
+    )
+    assert _visual_asserting_scenarios([nested_in_web]) == set()
 
 
 def test_touch_markers_stay_off_for_a_non_visual_scenario_that_pinned_the_channel(

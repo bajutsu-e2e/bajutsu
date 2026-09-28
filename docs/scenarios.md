@@ -225,14 +225,17 @@ Nothing about a banner is yours to declare. The banner path runs regardless of w
 No rule matched, so the step failed. Its reason named the notification's body text among the
 buttons the run had expected.
 
-That monitor only ever answers a banner that is *interrupting* something — a plain query never
-invokes it, so a banner sitting on screen with nothing tapping through it stays up. Left alone, it
+That monitor answers merely a banner that is *interrupting* something. A plain query never invokes
+it. A banner sitting on screen with nothing tapping through it therefore stays up. Left alone, it
 corrupts `after.png` and every visual-regression comparison built from it. A second, proactive
-sweep closes that gap: the runner looks for a banner and swipes it away before the shot starts —
-once per step, right before that screenshot, and once more before the `expect`-phase capture a
-`visual` assertion reads. The underlying query is rate-limited to `systemAlertHandling`'s own poll
-interval, so a passing scenario pays it once per interval, not once per step — and like the
-interruption path above, it runs with no scenario or CLI toggle of its own, on the iOS XCUITest
+sweep closes that gap: the runner looks for a banner and swipes it away before the shot starts. It
+does this at three sites — once per step, right before that step's own screenshot; once more before
+the `expect`-phase capture a `visual` assertion there reads; and once more before a step's own
+`assert` captures its own `visual` entry (below). The per-step sweep rate-limits its query to
+`systemAlertHandling`'s own poll interval, so a passing scenario pays it once per interval, not once
+per step. The `expect`-phase and step-level `visual` captures each pay their own query
+unconditionally instead, since either runs far less often than every step. Like the interruption
+path above, all three sites run with no scenario or CLI toggle of their own, on the iOS XCUITest
 backend alone.
 
 ### Answering more than one prompt differently: `rules`
@@ -1055,12 +1058,29 @@ current screen (it does not fail).
 
 ### `assert` (mid-step verification)
 
-Verification mid-step. The DSL is the same as `expect` (next section).
+Verification mid-step. The DSL is the same as `expect` (next section), `visual` included. A
+step's own `assert` can carry a `visual` entry. That entry takes its own fresh, single-shot
+screenshot right there. The capture is scoped to that step's own evidence directory, so it never
+collides with the scenario's own `expect`-phase capture, nor with another step's. `responseSchema`
+is the one kind `assert` does not run — it stays `expect`-only.
 
 ```yaml
 - assert:
     - disabled: { id: auth.submit }
 ```
+
+```yaml
+- tap: { id: modal.open }
+- assert:
+    - visual: { baseline: modal.png }   # verify the modal right after it opens
+- tap: { id: modal.dismiss }
+```
+
+A step-level check's first baseline is not yet reachable from `bajutsu approve` or the serve UI's
+Approve button. Both read merely the scenario's `expect` results today. Until that catches up,
+promote one by hand instead. The failing step's own `assertion_results` records a `visual.actual`
+path in the run's `manifest.json` (the report's raw JSON view shows it too). Copy that path into the
+baselines directory, under the name the `baseline:` field gives.
 
 ### `setLocation` / `push` (device control)
 
@@ -1576,6 +1596,9 @@ A baseline is created or updated with the `approve` command
 ([cli](cli.md#approve)) or the `serve` UI; a missing baseline fails the assertion. Pair it with
 `overrideStatusBar` to keep the clock / battery deterministic. Diffs are surfaced in
 `report.html`; for `pixelmatch`, only the surviving (non-discounted) pixels appear in the diff.
+`approve` and the report's diff strip read merely the scenario's trailing `expect` results. A
+`visual` entry inside a step's own `assert` needs its first baseline promoted by hand instead (see
+[`assert`](#assert-mid-step-verification) above).
 
 **Element-scoped comparison (BE-0171).** By default `visual` compares the whole screen, so any
 unrelated change (a banner, a list that grew a row) fails the check and churns the baseline. Give

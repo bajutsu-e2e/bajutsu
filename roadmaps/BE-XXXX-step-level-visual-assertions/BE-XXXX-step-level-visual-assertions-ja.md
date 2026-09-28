@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-XXXX](BE-XXXX-step-level-visual-assertions-ja.md) |
 | 提案者 | [@handle](https://github.com/handle) |
-| 状態 | **提案** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| 実装 PR | [#2069](https://github.com/bajutsu-e2e/bajutsu/pull/2069) |
 | トピック | Verification & coverage |
 | 関連 | [BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions-ja.md)、[BE-0165](../BE-0165-visual-compare-engines/BE-0165-visual-compare-engines-ja.md)、[BE-0171](../BE-0171-element-scoped-visual-assertions/BE-0171-element-scoped-visual-assertions-ja.md)、[BE-0250](../BE-0250-assertions-package-eval-context/BE-0250-assertions-package-eval-context-ja.md) |
 <!-- /BE-METADATA -->
@@ -163,30 +164,43 @@ BE-0029、BE-0165、BE-0171がすでに用意した`VisualMatch`スキーマ、`
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] ステップレベルの`assert_`分岐で`visual=None`を強制するのをやめます。ステップのエビデンス
+- [x] ステップレベルの`assert_`分岐で`visual=None`を強制するのをやめます。ステップのエビデンス
       prefixと`StepOutcome.index`を、`_StepRunner._handle_action`から`_run_step_body`へ渡します。
       ステップの`assert:`リストに`visual`エントリがある場合、ルーティング先の実行が持つ
       `cfg.ctx`から、ステップ専用の`VisualContext`を構築します。
-- [ ] `visual`エントリを含むステップの`assert:`ブロックごとに、`_poll_asserts`の実行直前に
+- [x] `visual`エントリを含むステップの`assert:`ブロックごとに、`_poll_asserts`の実行直前に
       スクリーンショットをちょうど1回だけ撮影します。
-- [ ] ステップごとのスクリーンショットの保存先を、そのステップ自身のエビデンスprefixと
+- [x] ステップごとのスクリーンショットの保存先を、そのステップ自身のエビデンスprefixと
       `StepOutcome.index`に限定し、シナリオの`visual-actual.png`や別の実行のキャプチャと
       衝突しないようにします。
-- [ ] ステップレベルのキャプチャの前に`_clear_notification_banner`を直接呼び、そのスワイプを
+- [x] ステップレベルのキャプチャの前に`_clear_notification_banner`を直接呼び、そのスワイプを
       ステップ自身の`drain_actuations`で`StepOutcome`に記録します。`channel`と`hide_markers`を
       `_LoopConfig`まで届くようにし、キャプチャが`_capture_visual_actual`のタッチマーカー
       一時停止を再利用できるようにします。
-- [ ] `_visual_asserting_scenarios`(`bajutsu/run/cli.py`)が、あらゆるフェーズと、`if`、
+- [x] `_visual_asserting_scenarios`(`bajutsu/run/cli.py`)が、あらゆるフェーズと、`if`、
       `for_each`、`app`にネストしたステップを含む、ステップツリー全体を走査するようにします。
       `run --touch-markers`が、ネストしたステップレベルの`visual`アサーションにもマーカー
       チャンネルを与えられるようにするためです。`web:`ブロックにネストした`visual`アサーション
       は対象外のままとし、`WebContextDriver.screenshot`の`UnsupportedAction`でサイレントに
       ではなく明確に失敗させます。
-- [ ] `tests/orchestrator/test_loop.py`の`test_step_level_assert_drops_visual_context`を新しい
+- [x] `tests/orchestrator/test_loop.py`の`test_step_level_assert_drops_visual_context`を新しい
       挙動に合わせて更新します。単発撮影の挙動、indexによる保存先の切り分け、タッチマーカーと
       バナーの再利用、`responseSchema`が引き続き落とされることのテストを追加します。
-- [ ] `docs/scenarios.md`(`assert`、`visual`、バナー捕捉箇所一覧)と`docs/architecture.md`に、
+- [x] `docs/scenarios.md`(`assert`、`visual`、バナー捕捉箇所一覧)と`docs/architecture.md`に、
       変更内容と手動baselineコピーのギャップを記載し、`docs/ja/`の対応するページも更新します。
+
+### ログ
+
+- [#2069](https://github.com/bajutsu-e2e/bajutsu/pull/2069) — 上記の提案を実装しました。
+  `_StepRunner`が持つルーティング先の`cfg.ctx`から構築し、ステップのエビデンスprefixと
+  `StepOutcome.index`で保存先を限定するステップ専用`VisualContext`が、ステップレベルの
+  `assert_`分岐にあった`visual=None`の強制を置き換えます。単発撮影の直前に
+  `_clear_notification_banner`と`_capture_visual_actual`を実行し、そのために`channel`と
+  `hide_markers`を`_LoopConfig`まで届けます。`_visual_asserting_scenarios`はステップツリー
+  全体(`if`・`forEach`・`app`。`web`は対象外)を走査します。`responseSchema`は変更せず
+  引き続き落とします。*検討した代替案*のとおり、`bajutsu approve`とレポートのvisualストリップは
+  対象外のままとし、`docs/scenarios.md`と`docs/architecture.md`(および`docs/ja/`の対応する
+  ページ)に、この変更が残す手動baselineコピーの回避策を明記しました。
 
 ## 参考
 

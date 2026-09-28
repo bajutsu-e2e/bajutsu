@@ -1010,9 +1010,11 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   own resolved `pollInterval` (BE-0315's default when the guard is off), so a passing scenario pays
   it once per interval rather than once per step.
   The `expect`-phase visual capture gets the same unconditional check immediately before it,
-  gated on an actual `visual` assertion being present. No scenario or CLI toggle: a scenario cannot
-  observe a banner, so none can be broken by clearing it — the same "no known use for a toggle"
-  the interruption path above already established
+  gated on an actual `visual` assertion being present — and so does a step-level `assert`'s own
+  `visual` entry, right before that step's own single-shot capture, since no per-step screenshot
+  exists yet at that point in the loop for the rate-limited sweep above to have protected. No
+  scenario or CLI toggle: a scenario cannot observe a banner, so none can be broken by clearing it —
+  the same "no known use for a toggle" the interruption path above already established
 - DSL `iosTipKitHandling` (BE-0389), an opt-in guard for a blocking Apple TipKit tip: TipKit's
   presentation marks the content it covers accessibility-hidden rather than merely occluding it, so a
   blocked tap can fail as `ElementNotFound`, not only `ElementNotTappable`. The XCUITest backend alone

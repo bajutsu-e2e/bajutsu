@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-step-level-visual-assertions.md) |
 | Author | [@handle](https://github.com/handle) |
-| Status | **Proposal** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | [#2069](https://github.com/bajutsu-e2e/bajutsu/pull/2069) |
 | Topic | Verification & coverage |
 | Related | [BE-0029](../BE-0029-visual-regression-assertions/BE-0029-visual-regression-assertions.md), [BE-0165](../BE-0165-visual-compare-engines/BE-0165-visual-compare-engines.md), [BE-0171](../BE-0171-element-scoped-visual-assertions/BE-0171-element-scoped-visual-assertions.md), [BE-0250](../BE-0250-assertions-package-eval-context/BE-0250-assertions-package-eval-context.md) |
 <!-- /BE-METADATA -->
@@ -154,30 +155,42 @@ assertion kind. It needs no new `Driver` method.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Stop forcing `visual=None` in the step-level `assert_` branch. Thread the step's evidence
+- [x] Stop forcing `visual=None` in the step-level `assert_` branch. Thread the step's evidence
       prefix and `StepOutcome.index` from `_StepRunner._handle_action` into `_run_step_body`, and
       build a per-step `VisualContext` from the routing runner's own `cfg.ctx` when the step's
       `assert:` list carries a `visual` entry.
-- [ ] Capture exactly one screenshot per step `assert:` block that carries a `visual` entry, right
+- [x] Capture exactly one screenshot per step `assert:` block that carries a `visual` entry, right
       before `_poll_asserts` runs.
-- [ ] Scope the per-step screenshot's path to that step's own evidence prefix and `StepOutcome.index`,
+- [x] Scope the per-step screenshot's path to that step's own evidence prefix and `StepOutcome.index`,
       so it never collides with the scenario's `visual-actual.png` or with another execution's
       capture.
-- [ ] Precede the step-level capture with `_clear_notification_banner` (recording the swipe on the
+- [x] Precede the step-level capture with `_clear_notification_banner` (recording the swipe on the
       step's own `StepOutcome` via its existing `drain_actuations`) and thread `channel` and
       `hide_markers` into `_LoopConfig` so the capture can reuse `_capture_visual_actual`'s
       touch-marker suspension.
-- [ ] Make `_visual_asserting_scenarios` (`bajutsu/run/cli.py`) walk the full step tree — every
+- [x] Make `_visual_asserting_scenarios` (`bajutsu/run/cli.py`) walk the full step tree — every
       phase plus nested `if`, `for_each`, and `app` blocks — so `run --touch-markers` arms the marker
       channel for a nested step-level `visual` assertion too; leave a `visual` assertion nested in a
       `web:` block unsupported (it fails loudly on `WebContextDriver.screenshot`'s
       `UnsupportedAction`).
-- [ ] Update `tests/orchestrator/test_loop.py`'s `test_step_level_assert_drops_visual_context` case
+- [x] Update `tests/orchestrator/test_loop.py`'s `test_step_level_assert_drops_visual_context` case
       for the new behavior. Add coverage for the single-shot capture, the index-scoped path, the
       touch-marker/banner reuse, and for `responseSchema` staying dropped.
-- [ ] Document the change, and the manual-baseline-copy gap. Update `docs/scenarios.md`'s `assert`
+- [x] Document the change, and the manual-baseline-copy gap. Update `docs/scenarios.md`'s `assert`
       section, its `visual` section, and its banner capture-site list; update `docs/architecture.md`
       too; and update their `docs/ja/` mirrors.
+
+### Log
+
+- [#2069](https://github.com/bajutsu-e2e/bajutsu/pull/2069) — Ship the proposal above: a per-step
+  `VisualContext`, built from the routing runner's own `cfg.ctx` and scoped by the step's evidence
+  prefix plus `StepOutcome.index`, replaces the forced `visual=None` in the step-level `assert_`
+  branch. `_clear_notification_banner` and `_capture_visual_actual` run before the single-shot
+  capture; `channel`/`hide_markers` reach `_LoopConfig` for that. `_visual_asserting_scenarios` walks
+  the full step tree (`if` / `forEach` / `app`, not `web`). `responseSchema` stays dropped, unchanged.
+  `bajutsu approve` and the report's visual strip stay out of scope, per *Alternatives considered*;
+  `docs/scenarios.md` and `docs/architecture.md` (and their `docs/ja/` mirrors) name the manual
+  baseline-copy workaround this leaves.
 
 ## References
 
