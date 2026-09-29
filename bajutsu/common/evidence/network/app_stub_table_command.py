@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict
 
 from bajutsu.common.scenario.models.mocks import Mock
 
+from .app_command import AppCommand
 from .in_app_capability import InAppCapability
 
 
@@ -24,5 +25,12 @@ class AppStubTableCommand(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     id: str
+    # Defaulted because the Literal already pins it; the field exists for the app's wire dispatch.
     capability: Literal[InAppCapability.STUB_TABLE] = InAppCapability.STUB_TABLE
-    mocks: list[Mock]
+    # A tuple so `frozen` holds for the table too, not only for the reference to it.
+    mocks: tuple[Mock, ...]
+
+
+# Every command the collector can queue — what `drain_commands` hands the app. Never parsed back,
+# so no discriminator is declared; a new command kind extends this one alias.
+PendingCommand = AppCommand | AppStubTableCommand

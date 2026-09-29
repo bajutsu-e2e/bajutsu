@@ -20,6 +20,7 @@ from bajutsu.common.evidence.network import (
     NetworkCollector,
     NetworkExchange,
     ScreenTransition,
+    ToggleCapability,
 )
 from bajutsu.common.orchestrator.control_channel import (
     ControlChannelError,
@@ -29,7 +30,7 @@ from bajutsu.common.orchestrator.control_channel import (
 )
 from bajutsu.common.scenario import Mock
 
-_TOUCH = InAppCapability.TOUCH_VISUALIZATION
+_TOUCH: ToggleCapability = InAppCapability.TOUCH_VISUALIZATION
 # Short enough that the timeout case costs the fast suite nothing, and still a real monotonic
 # deadline rather than a stubbed clock — `deadline_ticks` owns the wait, and stubbing it out would
 # test the stub.

@@ -239,6 +239,9 @@ enum BajutsuControlChannel {
             guard let mocks = command.payload["mocks"] as? [[String: Any]] else {
                 return .refused("\(stubTableCapability) command carries no 'mocks' array of objects")
             }
+            if let problem = BajutsuMocks.problem(in: mocks) {
+                return .refused("\(stubTableCapability) \(problem)")
+            }
             BajutsuMocks.shared.replace(with: mocks)
             return .accepted
         case "":

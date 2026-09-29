@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
 from _orch import FakeClock, _scenario
@@ -23,7 +24,7 @@ from bajutsu.common.evidence.network import (
 from bajutsu.common.orchestrator import AlertGuardConfig, RunResult, run_scenario
 from bajutsu.common.orchestrator.waits import WaitTrace
 from bajutsu.common.report.format import video_seconds
-from bajutsu.common.scenario import Interrupt, Relaunch, Scenario
+from bajutsu.common.scenario import Interrupt, Mock, Relaunch, Scenario
 
 
 class _QueryLoggingDriver(FakeDriver):
@@ -1721,7 +1722,7 @@ def test_set_mocks_sends_the_table_between_the_steps_around_it() -> None:
     assert result.ok, result.failure
     ordered = [(k, a) for k, a in driver.actions if k in {"tap", "stub_table"}]
     assert [k for k, _ in ordered] == ["tap", "stub_table", "tap", "stub_table"]
-    first, second = (a for k, a in ordered if k == "stub_table")
+    first, second = (cast("list[Mock]", a) for k, a in ordered if k == "stub_table")
     assert [m.match.path for m in first] == ["/me"] and first[0].respond.status == 500
     assert second == []  # an empty table is sent, not skipped
 

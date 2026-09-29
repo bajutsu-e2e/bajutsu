@@ -142,6 +142,27 @@ final class BajutsuControlChannelTests: XCTestCase {
         XCTAssertEqual(BajutsuMocks.shared.rules.map(\.path), ["/kept"])
     }
 
+    func testAStubTableWithAnyRuleTheAppCannotInstallAsWrittenIsRefusedWhole() {
+        BajutsuMocks.shared.replace(with: [["match": ["path": "/kept"]]])
+        let bad: [(Any, String)] = [
+            ([["respond": ["status": 500]]], "mocks[0]: no 'match' object"),
+            ([["match": ["path": "/ok"]], ["match": ["pathMatches": "("]]], "mocks[1]: match.pathMatches"),
+            ([["match": ["path": 7]]], "match.path is not a string"),
+            ([["match": ["path": "/a"], "respond": ["status": "500"]]], "respond.status"),
+        ]
+        for (mocks, expected) in bad {
+            let outcome = BajutsuControlChannel.apply(
+                BajutsuAppCommand(
+                    id: "c1", capability: "stub_table",
+                    payload: ["id": "c1", "capability": "stub_table", "mocks": mocks]
+                )
+            )
+            XCTAssertFalse(outcome.applied)
+            XCTAssertTrue(outcome.reason.contains(expected), "got: \(outcome.reason)")
+        }
+        XCTAssertEqual(BajutsuMocks.shared.rules.map(\.path), ["/kept"], "no partial install")
+    }
+
     // --- the acknowledgement ---
 
     func testTheReportCarriesTheThreeFieldsTheCollectorReads() {

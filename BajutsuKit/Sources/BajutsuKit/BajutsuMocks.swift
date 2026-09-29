@@ -71,6 +71,44 @@ final class BajutsuMocks {
         lock.unlock()
     }
 
+    /// Why `objects` is not a table the app can install as written, or nil when it is.
+    ///
+    /// `parse` is lenient on purpose for the launch env, defaulting whatever it cannot read. A table
+    /// arriving on the control channel is acknowledged back to bajutsu, though, and "applied" there
+    /// has to mean the rules the scenario wrote: a missing `match` would otherwise install a stub
+    /// answering every request, and a pattern ICU cannot compile would never match, both reported
+    /// as success (BE-0365 unit 4).
+    static func problem(in objects: [[String: Any]]) -> String? {
+        for (index, object) in objects.enumerated() {
+            if let reason = problem(inRule: object) { return "mocks[\(index)]: \(reason)" }
+        }
+        return nil
+    }
+
+    private static func problem(inRule object: [String: Any]) -> String? {
+        guard let match = object["match"] as? [String: Any] else { return "no 'match' object" }
+        for key in ["method", "url", "urlMatches", "path", "pathMatches", "bodyMatches"] {
+            if let value = match[key], !(value is String) { return "match.\(key) is not a string" }
+        }
+        for key in ["urlMatches", "pathMatches", "bodyMatches"] {
+            guard let pattern = match[key] as? String else { continue }
+            do {
+                _ = try NSRegularExpression(pattern: pattern)
+            } catch {
+                return "match.\(key) is not a valid pattern: \(pattern)"
+            }
+        }
+        guard let respondValue = object["respond"] else { return nil }
+        guard let respond = respondValue as? [String: Any] else { return "'respond' is not an object" }
+        if let status = respond["status"], !(status is NSNumber) { return "respond.status is not a number" }
+        if let headers = respond["headers"], !(headers is [String: String]) {
+            return "respond.headers is not a map of strings"
+        }
+        if let body = respond["body"], !(body is String) { return "respond.body is not a string" }
+        if let delay = respond["delayMs"], !(delay is NSNumber) { return "respond.delayMs is not a number" }
+        return nil
+    }
+
     func stub(for request: URLRequest, body: Data?) -> BajutsuMockRule? {
         rules.first { $0.matches(request, body: body) }
     }

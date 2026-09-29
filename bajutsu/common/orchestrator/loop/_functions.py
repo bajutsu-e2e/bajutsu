@@ -400,9 +400,10 @@ def _run_step_body(
     for a ``wait`` or ``handleSystemAlert`` step, drive the alert guard while that step's own wait
     runs (BE-0269, BE-0406); other step kinds ignore them. ``on_interrupt_poll``, when given for a
     wait step, is passed to ``_wait`` so a scenario's ``interrupts`` handlers can clear an
-    interstitial screen mid-wait (BE-0314). ``cancelled`` reaches the four step kinds that poll —
+    interstitial screen mid-wait (BE-0314). ``cancelled`` reaches the step kinds that poll —
     ``wait``, ``handleSystemAlert``, ``assert``, and ``email`` — so each notices a cancelled run
-    within one polling tick (BE-0370). ``step_id``/``step_index``/``channel``/``hide_markers``, when
+    within one polling tick (BE-0370), as does ``setMocks``, whose acknowledgement wait also reads
+    ``channel`` (BE-0365 unit 4). ``step_id``/``step_index``/``channel``/``hide_markers``, when
     given for an ``assert`` step whose block carries a ``visual`` entry, back that entry's own
     single-shot screenshot: ``step_id`` and ``step_index`` scope the capture's evidence path to this
     step's own execution, and ``channel``/``hide_markers`` back the same touch-marker suspension

@@ -2885,7 +2885,7 @@ def test_run_hands_the_pipeline_a_live_cancellation_source(
 
 
 def _swapping_scenario(name: str = "swap", *, nested: bool = False) -> Scenario:
-    step = {"setMocks": []}
+    step: dict[str, list[object]] = {"setMocks": []}
     steps = [{"if": {"condition": {"exists": {"id": "a"}}, "then": [step]}}] if nested else [step]
     return Scenario.model_validate({"name": name, "steps": steps})
 
@@ -2937,3 +2937,81 @@ def test_set_mocks_is_refused_where_the_scenario_or_its_target_declined_the_chan
             target_launch_env={"BAJUTSU_CONTROL_CHANNEL": "0"},
         )
     assert "BAJUTSU_CONTROL_CHANNEL" not in by_target.preconditions.launch_env
+
+
+_SWAP: dict[str, list[object]] = {"setMocks": []}
+
+
+@pytest.mark.parametrize(
+    "placement",
+    [
+        {"before": [_SWAP], "steps": []},
+        {"steps": [], "after": [{"on": "always", "steps": [_SWAP]}]},
+        {
+            "steps": [],
+            "interrupts": [{"condition": {"exists": {"id": "banner"}}, "steps": [_SWAP]}],
+        },
+        {"steps": [{"if": {"condition": {"exists": {"id": "a"}}, "else": [_SWAP]}}]},
+        {"steps": [{"forEach": {"sel": {"id": "row"}, "as": "r", "steps": [_SWAP]}}]},
+    ],
+    ids=["before", "after", "interrupts", "if-else", "forEach"],
+)
+def test_set_mocks_is_found_in_every_phase_and_container(placement: dict[str, object]) -> None:
+    """A swap the walk missed would launch the app without the channel key, and the step would
+    then fail mid-journey on the acknowledgement timeout — the outcome the pre-run check exists
+    to prevent."""
+    scenario = Scenario.model_validate({"name": "swap", **placement})
+    _arm_mock_swaps([scenario], channel_available=_channel_always)
+    assert scenario.preconditions.launch_env["BAJUTSU_CONTROL_CHANNEL"] == "1"
+
+
+@pytest.mark.parametrize(
+    ("steps", "expected"),
+    [
+        (
+            [{"web": {"within": {"id": "wv"}, "steps": [_SWAP]}}],
+            "setMocks nested in web:",
+        ),
+        ([{"app": {"bundleId": "com.other", "steps": [_SWAP]}}], "setMocks nested in app:"),
+    ],
+    ids=["web", "app"],
+)
+def test_set_mocks_off_the_primary_app_is_refused_before_the_run(
+    steps: list[object], expected: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import typer
+
+    scenario = Scenario.model_validate({"name": "swap", "steps": steps})
+    with pytest.raises(typer.Exit):
+        _arm_mock_swaps([scenario], channel_available=_channel_always)
+    assert expected in capsys.readouterr().err
+    assert "BAJUTSU_CONTROL_CHANNEL" not in scenario.preconditions.launch_env
+
+
+def test_set_mocks_naming_a_non_primary_target_is_refused(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import typer
+
+    scenario = Scenario.model_validate(
+        {
+            "name": "cross",
+            "targets": ["app", "site"],
+            "steps": [{"target": "app", "setMocks": []}, {"target": "site", "setMocks": []}],
+        }
+    )
+    with pytest.raises(typer.Exit):
+        _arm_mock_swaps([scenario], channel_available=_channel_always)
+    assert "non-primary target (site)" in capsys.readouterr().err
+
+
+def test_a_scenarios_own_channel_key_overrides_a_target_level_decline() -> None:
+    """The scenario's launch env merges over the target's, as the launch itself merges them."""
+    scenario = _swapping_scenario()
+    scenario.preconditions.launch_env["BAJUTSU_CONTROL_CHANNEL"] = "1"
+    _arm_mock_swaps(
+        [scenario],
+        channel_available=_channel_always,
+        target_launch_env={"BAJUTSU_CONTROL_CHANNEL": "0"},
+    )
+    assert scenario.preconditions.launch_env["BAJUTSU_CONTROL_CHANNEL"] == "1"

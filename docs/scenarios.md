@@ -1705,7 +1705,8 @@ launch-time `mocks` again.
 `setMocks` has three requirements. `run` checks the first two before it touches a device.
 
 - The run uses the `xcuitest` backend with network collection on. Web, Android, and `fake` cannot
-  carry the channel.
+  carry the channel. The step addresses the scenario's primary app. It cannot sit inside a `web:`
+  or `app:` block, and it cannot name another target.
 - Neither the scenario nor its target pins `BAJUTSU_CONTROL_CHANNEL` to a value other than `"1"`.
   `run` writes `"1"` itself.
 - The app's build passes `-DBAJUTSU_ENABLE_CONTROL_CHANNEL` to BajutsuKit. Without that flag the

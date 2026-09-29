@@ -1178,30 +1178,55 @@ def _write_touch_marker_env(scenarios: list[Scenario], skip: set[int], *, armed:
             s.preconditions.launch_env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
 
 
-def _walk_all_steps(steps: list[Step]) -> Iterator[Step]:
-    """Every step reachable at runtime, recursing into `if` / `forEach` / `app` / `web` blocks."""
+def _mock_swaps(steps: list[Step], block: str | None = None) -> Iterator[tuple[Step, str | None]]:
+    """Every `setMocks` step under *steps*, with the `web:` / `app:` block it sits in, if any.
+
+    Recurses into `if` / `forEach` like the run loop does. A `web:` or `app:` block drives a context
+    other than the app BajutsuKit runs in — a page's DOM, or a second app — so the block is what
+    `_mock_swap_problem` refuses on.
+    """
     for step in steps:
-        yield step
+        if step.set_mocks is not None:
+            yield step, block
         if step.if_ is not None:
-            yield from _walk_all_steps(step.if_.then)
-            yield from _walk_all_steps(step.if_.else_ or [])
+            yield from _mock_swaps(step.if_.then, block)
+            yield from _mock_swaps(step.if_.else_ or [], block)
         if step.for_each is not None:
-            yield from _walk_all_steps(step.for_each.steps)
+            yield from _mock_swaps(step.for_each.steps, block)
         if step.app is not None:
-            yield from _walk_all_steps(step.app.steps)
+            yield from _mock_swaps(step.app.steps, block or "app")
         if step.web is not None:
-            yield from _walk_all_steps(step.web.steps)
+            yield from _mock_swaps(step.web.steps, block or "web")
 
 
-def _swaps_mocks(s: Scenario) -> bool:
-    """Whether any phase of *s* — `interrupts` recovery steps included — holds a `setMocks` step."""
+def _scenario_mock_swaps(s: Scenario) -> list[tuple[Step, str | None]]:
+    """`_mock_swaps` over every phase of *s*, `interrupts` recovery steps included."""
     phases = [
         *s.before,
         *s.steps,
         *(step for rule in s.after for step in rule.steps),
         *(step for entry in s.interrupts for step in entry.steps),
     ]
-    return any(step.set_mocks is not None for step in _walk_all_steps(phases))
+    return list(_mock_swaps(phases))
+
+
+def _mock_swap_problem(s: Scenario, swaps: list[tuple[Step, str | None]]) -> str | None:
+    """Why one of *s*'s `setMocks` steps cannot reach the app it means, or None when all can.
+
+    The channel reaches the scenario's primary app alone — the one launched with the collector and
+    the channel key — so a swap inside a `web:` / `app:` block, or naming another of the scenario's
+    `targets`, is refused rather than sent somewhere no stub table lives.
+    """
+    blocks = sorted({block for _, block in swaps if block})
+    if blocks:
+        return f"setMocks nested in {' / '.join(f'{b}:' for b in blocks)}"
+    primary = s.targets[0] if s.targets else None
+    others = sorted(
+        {step.target for step, _ in swaps if primary and step.target and step.target != primary}
+    )
+    if others:
+        return f"setMocks naming a non-primary target ({', '.join(others)})"
+    return None
 
 
 def _arm_mock_swaps(
@@ -1214,7 +1239,8 @@ def _arm_mock_swaps(
 
     The step replaces the app's stub table over the channel, so the app has to be launched with
     `BAJUTSU_CONTROL_CHANNEL=1` — defaulted here like every other key bajutsu writes, never
-    overriding one the scenario set. A scenario that cannot carry the channel is refused before any
+    overriding one the scenario set. The channel reaches the scenario's primary app alone, so a swap
+    placed anywhere else is refused too (`_mock_swap_problem`). A scenario that cannot carry the channel is refused before any
     device is touched rather than left to fail mid-journey: `channel_available` says no for the web
     backend (whose collector carries no channel), for `adb` / `fake` (nothing polls theirs), and
     under `--no-network`; a scenario or target that pinned the key to anything but `"1"` has
@@ -1228,7 +1254,11 @@ def _arm_mock_swaps(
     target_env = target_launch_env or {}
     refused: list[str] = []
     for s in scenarios:
-        if not _swaps_mocks(s):
+        swaps = _scenario_mock_swaps(s)
+        if not swaps:
+            continue
+        if problem := _mock_swap_problem(s, swaps):
+            refused.append(f"{s.name} ({problem})")
             continue
         pinned = {**target_env, **s.preconditions.launch_env}.get("BAJUTSU_CONTROL_CHANNEL", "1")
         if pinned != "1":
@@ -1250,7 +1280,8 @@ def _arm_mock_swaps(
 def _channel_available_for(
     backends: list[str], network: bool, available: Callable[[str], bool] = default_available
 ) -> Callable[[Scenario], bool]:
-    """`_apply_touch_markers`'s `channel_available`: can *this* scenario carry BE-0365's channel?
+    """`channel_available` for `_apply_touch_markers` / `_arm_mock_swaps`: can *this* scenario carry
+    BE-0365's channel?
 
     The channel rides the network collector and the app-side poll loop BajutsuKit ships only for a
     real Simulator process — the `xcuitest` actuator, not `fake`, whose collector nothing ever

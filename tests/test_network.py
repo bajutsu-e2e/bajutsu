@@ -1118,3 +1118,16 @@ def test_start_bridgeable_reraises_a_non_occupancy_error(monkeypatch: pytest.Mon
         NetworkCollector().start_bridgeable()
     assert exc.value.errno == errno.EACCES  # the real error, not the band-exhausted one
     assert attempts == 1  # gave up on the first port rather than walking the band
+
+
+def test_every_in_app_capability_has_exactly_one_command_shape() -> None:
+    """`InAppCapability` is closed on purpose, and this is what enforces it: a member added without
+    a command shape would have no way to be enqueued, and nothing else would notice."""
+    from typing import get_args
+
+    from bajutsu.common.evidence.network import ToggleCapability
+
+    toggles = set(get_args(ToggleCapability))
+    tables = {InAppCapability.STUB_TABLE}
+    assert toggles.isdisjoint(tables)
+    assert set(InAppCapability) == toggles | tables

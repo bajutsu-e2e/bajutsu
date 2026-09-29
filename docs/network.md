@@ -122,8 +122,8 @@ same channel as observation, so they need `--network`. On iOS, the rules reach t
 
 On iOS, a `setMocks` step replaces the stub table while the app runs (BE-0365). The collector
 queues the new table, and the app drains it over the in-app control channel. The step waits until
-the app confirms the new table. The web backend does not support `setMocks` yet. `run` refuses such
-a scenario before it starts. [scenarios](scenarios.md#changing-the-mocks-mid-scenario-setmocks)
+the app confirms the new table. Only the `xcuitest` backend with network collection on can carry
+`setMocks`. `run` refuses a scenario using it anywhere else before the scenario starts. [scenarios](scenarios.md#changing-the-mocks-mid-scenario-setmocks)
 covers the step in full.
 
 ## Timing

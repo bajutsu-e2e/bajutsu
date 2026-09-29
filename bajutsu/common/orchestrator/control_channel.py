@@ -153,7 +153,8 @@ def _await_acknowledgement(
     raise ControlChannelError(
         f"the app did not acknowledge {what} (command {command_id}) within {timeout:g}s. The "
         "channel is gated twice: BajutsuKit must be compiled with -DBAJUTSU_ENABLE_CONTROL_CHANNEL, "
-        "and the app must be launched with BAJUTSU_CONTROL_CHANNEL=1."
+        "and the app must be launched with BAJUTSU_CONTROL_CHANNEL=1. An app past both gates stops "
+        "polling for good once the collector rejects its token or does not know its path."
     )
 
 

@@ -15,7 +15,7 @@ from pydantic import ValidationError
 from ._functions import _make_handler
 from .app_command import AppCommand
 from .app_command_report import AppCommandReport
-from .app_stub_table_command import AppStubTableCommand
+from .app_stub_table_command import AppStubTableCommand, PendingCommand
 from .in_app_capability import ToggleCapability
 from .network_exchange import NetworkExchange
 from .screen_transition import ScreenTransition
@@ -56,7 +56,7 @@ class NetworkCollector:
         self.token = ""
         # The control channel (BE-0365): commands waiting for the app to drain, every id issued,
         # and the subset the app has reported applying.
-        self._commands: list[AppCommand | AppStubTableCommand] = []
+        self._commands: list[PendingCommand] = []
         self._issued: set[str] = set()
         self._reports: dict[str, AppCommandReport] = {}
         # Monotonic for this collector's whole life and deliberately *not* reset by `clear()`: a
@@ -120,7 +120,7 @@ class NetworkCollector:
         """
         with self._lock:
             command_id = self._next_id()
-            self._commands.append(AppStubTableCommand(id=command_id, mocks=list(mocks)))
+            self._commands.append(AppStubTableCommand(id=command_id, mocks=tuple(mocks)))
             self._issued.add(command_id)
             return command_id
 
@@ -129,7 +129,7 @@ class NetworkCollector:
         self._issued_count += 1
         return f"c{self._issued_count}"
 
-    def drain_commands(self) -> list[AppCommand | AppStubTableCommand]:
+    def drain_commands(self) -> list[PendingCommand]:
         """Take every pending command, leaving the queue empty.
 
         Draining under the lock bounds delivery at *at most* once: two polls racing cannot both take

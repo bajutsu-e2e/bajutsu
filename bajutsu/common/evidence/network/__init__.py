@@ -38,7 +38,7 @@ from ._functions import _no_transitions as _no_transitions
 from ._shared import TransitionSource
 from .app_command import AppCommand
 from .app_command_report import AppCommandReport
-from .app_stub_table_command import AppStubTableCommand
+from .app_stub_table_command import AppStubTableCommand, PendingCommand
 from .collector import Collector
 from .control_channel import ControlChannel
 from .in_app_capability import InAppCapability, ToggleCapability
@@ -57,6 +57,7 @@ __all__ = [
     "InAppCapability",
     "NetworkCollector",
     "NetworkExchange",
+    "PendingCommand",
     "ScreenTransition",
     "ToggleCapability",
     "TransitionSource",

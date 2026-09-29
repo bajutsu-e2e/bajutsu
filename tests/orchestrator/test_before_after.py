@@ -763,3 +763,17 @@ def test_an_interval_capture_on_a_hook_step_opens_its_interval() -> None:
         }
     )
     assert set(requested_intervals(scenario)) == {"video", "deviceLog"}
+
+
+@pytest.mark.parametrize("field", ["before", "interrupts"])
+def test_an_app_wide_phase_cannot_replace_the_stub_table(field: str) -> None:
+    # `run` arms the control channel from a scenario's own steps (BE-0365 unit 4), so an app-wide
+    # swap would reach the app unarmed; refused at load instead of timing out mid-run.
+    step = "{ setMocks: [] }"
+    block = (
+        f"    before:\n      - {step}\n"
+        if field == "before"
+        else f"    interrupts:\n      - condition: {{ exists: {{ id: x }} }}\n        steps: [{step}]\n"
+    )
+    with pytest.raises(ValidationError, match="cannot use setMocks"):
+        load_config("targets:\n  app:\n    bundleId: com.example.app\n" + block)

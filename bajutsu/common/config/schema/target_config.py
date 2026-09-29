@@ -214,6 +214,14 @@ class TargetConfig(_Model):
                     f"targets.<name>.{field} cannot use a group (`group`): groups are "
                     "expanded per scenario file, so an app-wide one is never resolved"
                 )
+            if any(s.set_mocks is not None for s in reachable):
+                # `run` arms the control channel per scenario, from the scenario's own steps
+                # (BE-0365 unit 4); an app-wide swap would reach the app unarmed and fail on its
+                # acknowledgement timeout instead of being refused before the run.
+                raise ValueError(
+                    f"targets.<name>.{field} cannot use setMocks: a stub table belongs to one "
+                    "scenario, so replace it from that scenario's own steps"
+                )
         return self
 
     @model_validator(mode="after")
