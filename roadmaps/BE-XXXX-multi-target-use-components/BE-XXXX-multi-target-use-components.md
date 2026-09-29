@@ -153,9 +153,10 @@ at load time.
 
 `expand_components` walks the top of each step list today. It never descends into an `if` / `else`
 branch, a `forEach` body, or a `web:` / `app:` block. A `use:` step in one of those bodies thus
-stays unexpanded. Under two or more targets, the load-time refusal hides this gap. Under zero or
-one target, the scenario loads, and the unexpanded `use:` step reaches the run loop as a step with
-no action. The run loop then aborts the whole run with an `AssertionError`, not one failed
+stays unexpanded. Under two or more targets, the load-time refusal hides this gap inside an `if` / `forEach`
+body. The refusal does not reach a `web:` / `app:` block, whose steps skip it. Wherever the
+refusal does not apply, the scenario loads. The unexpanded `use:` step then reaches the run loop
+as a step with no action. The run loop then aborts the whole run with an `AssertionError`, not one failed
 scenario. [BE-0439](../BE-0439-step-groups-report-folding/BE-0439-step-groups-report-folding.md)
 records the same gap for a `group:` routed into such a body through a component.
 
@@ -169,7 +170,11 @@ branch. This item thus makes `expand()` recurse into each body it can hold:
   nesting rule of BE-0439 already forbids a `group:` there, and this error extends that rule to a
   `group:` a component carries in.
 
-The recursion also fixes the single-target case, where the same `use:` step aborts a run today.
+The recursion also fixes each case where the same `use:` step aborts a run today:
+
+- any body under zero or one target;
+- a `web:` / `app:` block under two or more targets.
+
 Scenarios that already load and run keep their behavior, since none of them can hold an unexpanded
 `use:` step without aborting.
 
@@ -213,11 +218,13 @@ later passes see.
 
 At point 2, `expand_components` stamps each expanded step before the existing check runs. The check
 then applies the ordinary per-step rule to every step: required under two or more targets, resolved
-through `primaryTarget` when omitted, and forbidden inside `web:` / `app:`. `expand_components` is
-the one path that loads scenarios for `run` and for every other consumer, through
+through `primaryTarget` when omitted, and forbidden inside `web:` / `app:`. `expand_components` is the one path that loads scenarios for `run` and every other consumer that
+runs them, through
 [`load_expanded.py`](../../bajutsu/common/scenario/load_expanded.py) and
 [`run/cli.py`](../../bajutsu/run/cli.py). With the recursion above, no `use:` step
 leaves that path unexpanded, so lifting the refusal adds no unexpanded route to the runner.
+Static readers such as `lint` and serve's audit parse the unexpanded file. They will now see a
+`use:` or `group:` step carrying `target`, and their tests should cover that shape.
 
 ### Interrupt recovery steps and lifecycle phases
 
