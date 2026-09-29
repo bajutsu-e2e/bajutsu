@@ -221,7 +221,22 @@ private final class _BridgeServer {
                     accept(fd, sockPtr, &addrLen)
                 }
             }
-            guard clientFD >= 0 else { break }
+            if clientFD < 0 {
+                // EINTR is routine on a device under test (signals, the debugger attaching); any
+                // other error means the listening socket is gone (`stop()`'s `close` gives EBADF).
+                if errno == EINTR { continue }
+                break
+            }
+            // A client gone silent must not wedge this single-threaded loop via an unbounded `recv`
+            // in `_readRequest`: loopback is not isolated between apps, so a peer here is not
+            // necessarily bajutsu's own driver. Same bound as `_ZOrderServer`.
+            var timeout = timeval(tv_sec: 2, tv_usec: 0)
+            setsockopt(clientFD, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+            // Without this, replying to a peer that already hung up raises SIGPIPE, whose default
+            // action terminates the whole app under test. The handlers wait on the main thread with
+            // no deadline, so a driver giving up on a busy or resuming app is the realistic trigger.
+            var noSigPipe: Int32 = 1
+            setsockopt(clientFD, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
             _handleConnection(clientFD)
             close(clientFD)
         }
@@ -451,7 +466,10 @@ private final class _BridgeServer {
             guard var base = ptr.baseAddress else { return }
             var remaining = data.count
             while remaining > 0 {
-                let n = send(fd, base, remaining, 0)
+                // MSG_NOSIGNAL, not only the connection's SO_NOSIGPIPE: setting that option fails
+                // (EINVAL) on a peer that reset before `_acceptLoop` reached it, which is exactly
+                // the peer whose write would raise SIGPIPE.
+                let n = send(fd, base, remaining, MSG_NOSIGNAL)
                 if n <= 0 { break }
                 base += n
                 remaining -= n
