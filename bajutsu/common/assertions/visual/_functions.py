@@ -26,7 +26,9 @@ def _visual_scale(
     """
     from bajutsu.common.drivers.elements import screen_size_from_elements
 
-    sw, sh = viewport if viewport is not None else screen_size_from_elements(elements)
+    sw, sh = viewport if viewport is not None else (0.0, 0.0)
+    if sw <= 0 or sh <= 0:
+        sw, sh = screen_size_from_elements(elements)
     if sw <= 0 or sh <= 0:
         return None
     from PIL import Image

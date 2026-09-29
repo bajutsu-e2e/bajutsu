@@ -631,6 +631,19 @@ def test_visual_element_scoped_scales_by_the_backend_viewport(tmp_path: Path) ->
     assert r.visual.diff_pct == 0.0
 
 
+def test_visual_scale_falls_back_to_the_extent_on_a_degenerate_viewport(tmp_path: Path) -> None:
+    """A zero-sized viewport is no screen size at all, so the element extent sizes the screen."""
+    from PIL import Image
+
+    from bajutsu.common.assertions.visual._functions import _visual_scale
+
+    shot = tmp_path / "shot.png"
+    Image.new("RGBA", (200, 200)).save(shot)
+    screen = [el(None, frame=(0.0, 0.0, 100.0, 100.0))]
+    assert _visual_scale(shot, screen, (0.0, 0.0)) == (2.0, 2.0)
+    assert _visual_scale(shot, [], (0.0, 0.0)) is None
+
+
 def test_visual_element_scoped_missing_baseline_reports_the_crop(tmp_path: Path) -> None:
     """On the first run (no baseline) the reported actual is the element crop, so the first
     `approve` stores an element-sized baseline — not the whole screen."""
