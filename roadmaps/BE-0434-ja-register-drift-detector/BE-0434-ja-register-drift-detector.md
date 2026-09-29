@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0434](BE-0434-ja-register-drift-detector.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0434") |
 | Topic | Contributor workflow |
 | Related | [BE-0278](../BE-0278-tech-writing-skill/BE-0278-tech-writing-skill.md) |
@@ -205,14 +205,14 @@ item, since no converted file has drifted back yet to show which of the two is w
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add `scripts/ja_register_check.py` — the exclusion-based detector, its ephemeral
+- [x] Add `scripts/ja_register_check.py` — the exclusion-based detector, its ephemeral
       `sudachipy` dependency via PEP 723, the `[[tool.mypy.overrides]]` entry, and the
       `make ja-register-check` wrapper.
-- [ ] Amend three sentences in `japanese-document-writing` — the textlint bullet-list line, the
+- [x] Amend three sentences in `japanese-document-writing` — the textlint bullet-list line, the
       sentence right after it that names a 常体 or 体言止め bullet a violation, and the 文体
       no-mixing sentence — to exempt `## Progress` / `## 進捗` checklist bullets from 敬体,
       alongside the existing heading and 体言止め-label exemption.
-- [ ] Convert [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md)'s
+- [x] Convert [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md)'s
       Japanese side to 敬体 completely, checked against the detector's report, as the first proof
       of the recipe.
 

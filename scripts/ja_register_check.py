@@ -86,14 +86,16 @@ _LINK_DEF = re.compile(r"^\[[^\]]+\]:\s")
 _HEADING = re.compile(r"^(#{1,6})(?:\s|$)")
 # A line opening with a block-level HTML tag. Autolinks (`<https://…>`) and inline tags such as
 # `<kbd>` open prose lines too, so a bare leading `<` is not enough to drop one; a block tag name
-# never starts either, so matching the opening tag alone is safe for `<summary>…</summary>` lines.
+# never starts either. Such a line is still prose when text sits between its tags (`<p>本文。</p>`).
 _HTML_BLOCK = re.compile(
-    r"^</?(?:details|summary|div|p|img|picture|source|video|table|thead|tbody|tr|td|th|br|hr"
+    r"^</?(details|summary|div|p|img|picture|source|video|table|thead|tbody|tr|td|th|br|hr"
     r"|section|figure|figcaption|center)\b",
     re.IGNORECASE,
 )
 _FENCE = re.compile(r"^(`{3,}|~{3,})")
 _INLINE_COMMENT = re.compile(r"<!--.*?-->")
+_CODE_SPAN = re.compile(r"`[^`]*`")
+_TAG = re.compile(r"<[^>]+>")
 # The `[English](…) · **日本語**` language switch atop every bilingual page: navigation, not prose.
 _NAV_ITEM = r"(?:\*\*[^*]+\*\*|\[[^\]]+\]\([^)]*\))"
 _NAV_LINE = re.compile(rf"^{_NAV_ITEM}(?:\s*·\s*{_NAV_ITEM})+$")
@@ -174,9 +176,16 @@ class _Scanner:
         return rest if rest.strip() else None
 
     def _drop_comments(self, raw: str) -> str:
-        """Remove comments inside a prose line, and cut at one that opens here and runs on."""
-        raw = _INLINE_COMMENT.sub("", raw)
-        opened = raw.find("<!--")
+        """Remove comments inside a prose line, and cut at one that opens here and runs on.
+
+        A `<!--` inside inline code is text, not a comment, so the search runs on a copy with code
+        spans blanked out, and the cuts are applied to the original at the same offsets.
+        """
+        masked = _CODE_SPAN.sub(lambda m: "_" * len(m.group()), raw)
+        for match in reversed(list(_INLINE_COMMENT.finditer(masked))):
+            raw = raw[: match.start()] + raw[match.end() :]
+            masked = masked[: match.start()] + masked[match.end() :]
+        opened = masked.find("<!--")
         if opened != -1:
             self._in_comment = True
             raw = raw[:opened]
@@ -192,9 +201,17 @@ class _Scanner:
         return (
             stripped.startswith(("|", ">"))
             or bool(_LINK_DEF.match(stripped))
-            or bool(_HTML_BLOCK.match(stripped))
+            or self._is_html_only(stripped)
             or bool(_NAV_LINE.match(stripped))
         )
+
+    @staticmethod
+    def _is_html_only(stripped: str) -> bool:
+        """A block-tag line holding no text outside its tags, or a `<summary>` label."""
+        tag = _HTML_BLOCK.match(stripped)
+        if not tag:
+            return False
+        return tag.group(1).lower() == "summary" or not _TAG.sub("", stripped).strip()
 
     def _flush(self) -> None:
         if self._current.text:
@@ -270,7 +287,7 @@ def strip_trailing(sentence: str) -> str:
 
     A trailing item reference in brackets would otherwise hide the predicate before it from the morpheme walk.
     """
-    text = _LINK.sub(r"\1", _IMAGE.sub("", sentence))
+    text = _TAG.sub("", _LINK.sub(r"\1", _IMAGE.sub("", sentence)))
     while True:
         text = text.rstrip(_TRAILING)
         if not text or text[-1] not in _PAIRS:

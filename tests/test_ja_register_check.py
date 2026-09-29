@@ -182,6 +182,16 @@ def test_comments_spanning_or_inside_a_line_hide_only_themselves() -> None:
     ]
 
 
+def test_a_comment_opener_inside_inline_code_is_text() -> None:
+    markdown = "コメントは `<!--` で始めます。\n\n後の本文である。\n"
+    assert _texts(markdown) == ["コメントは `<!--` で始めます。", "後の本文である。"]
+
+
+def test_text_inside_block_html_is_still_prose() -> None:
+    found = find_candidates("<p>段落の本文である。</p>\n\n<br>続きである。\n", _fake)
+    assert [c.sentence for c in found] == ["<p>段落の本文である。", "<br>続きである。"]
+
+
 def test_the_untracked_fallback_also_splits_inside_balanced_groups() -> None:
     # A known over-flag, pinned so a change to it is deliberate.
     assert _split("`stray（注。補足）の文である。") == ["`stray（注。", "補足）の文である。"]

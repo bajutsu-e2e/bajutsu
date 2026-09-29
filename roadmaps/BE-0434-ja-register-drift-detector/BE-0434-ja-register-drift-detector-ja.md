@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0434](BE-0434-ja-register-drift-detector-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0434") |
 | トピック | コントリビューターワークフロー |
 | 関連 | [BE-0278](../BE-0278-tech-writing-skill/BE-0278-tech-writing-skill-ja.md) |
@@ -196,14 +196,14 @@ BE-0089の一部を変換した試みは、一貫して常体だった文書を�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `scripts/ja_register_check.py`を追加します。除外方式の検出ツール本体、一時的な
+- [x] `scripts/ja_register_check.py`を追加します。除外方式の検出ツール本体、一時的な
       `sudachipy`依存（PEP 723経由）、`[[tool.mypy.overrides]]`の追加、`make ja-register-check`
       ラッパーを含みます。
-- [ ] `japanese-document-writing`の3つの文を改訂します。textlint節の箇条書きの行、その直後の
+- [x] `japanese-document-writing`の3つの文を改訂します。textlint節の箇条書きの行、その直後の
       違反を名指しする文、そして文体節の混在禁止の一文です。改訂によって、`## Progress` /
       `## 進捗`のチェックリスト項目を、既存の見出しや体言止めラベルの免除と並ぶ形で敬体から
       免除します。
-- [ ] [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md)
+- [x] [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md)
       の日本語版を敬体へ完全に変換し、検出ツールで確認してから、手順の最初の実証とします。
 
 ## 参考
