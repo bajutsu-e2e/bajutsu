@@ -2,21 +2,22 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from bajutsu.common.drivers import base
 from bajutsu.common.evidence.sink import RunArtifactWriter
 
 
-@dataclass(frozen=True)
+@dataclass
 class VisualContext:
     """What a visual assertion reads, and where the images it produces go.
 
     `screenshot_path` is the run's captured screenshot and `baselines_dir` the project's stored
     baselines, which live outside the run directory and are only ever read. Everything written goes
     through `writer` under `prefix` — the scenario's evidence dir — so this holds no writable handle
-    into the run directory (BE-0331).
+    into the run directory (BE-0331). `viewport` is the backend-reported screen size read alongside
+    that screenshot; `capture_actual` is its only writer.
     """
 
     screenshot_path: Path
@@ -24,6 +25,7 @@ class VisualContext:
     writer: RunArtifactWriter
     prefix: str
     default_compare: str = "exact"
+    viewport: base.Point | None = field(default=None, init=False)
 
     @property
     def actual_name(self) -> str:
@@ -38,3 +40,6 @@ class VisualContext:
         """
         driver.screenshot(str(self.screenshot_path))
         self.writer.record_unmasked(self.actual_name)
+        # The queried tree of a scrollable screen keeps off-screen children, so its extent
+        # overshoots the screen and would mis-scale element frames onto these pixels (BE-0326).
+        self.viewport = driver.viewport() if isinstance(driver, base.ViewportProvider) else None

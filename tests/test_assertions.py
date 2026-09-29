@@ -596,6 +596,41 @@ def test_visual_element_scoped_pass(tmp_path: Path) -> None:
     assert actual_size == (40, 30)
 
 
+def test_visual_element_scoped_scales_by_the_backend_viewport(tmp_path: Path) -> None:
+    """A scrollable screen keeps off-screen children in the tree, so the crop must scale by the
+    backend-reported viewport rather than the tree's extent (BE-0326)."""
+    from PIL import Image
+
+    from bajutsu.common.drivers.fake import FakeDriver
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    Image.new("RGBA", (40, 30), (0, 255, 0, 255)).save(baselines / "card.png")
+    actual = Image.new("RGBA", (100, 100), (255, 0, 0, 255))
+    _paint(actual, (10, 10, 40, 30), (0, 255, 0, 255))
+    shot = tmp_path / "shot.png"
+    actual.save(shot)
+    screen = [
+        *_framed_screen(),
+        # A horizontal carousel wider than the viewport, and content below the fold.
+        el(None, frame=(0.0, 60.0, 300.0, 20.0)),
+        el(None, frame=(0.0, 0.0, 100.0, 400.0)),
+    ]
+    assertion = _a({"visual": {"baseline": "card.png", "element": {"id": "card"}}})
+
+    # The tree's extent (300x400) alone mis-scales the crop onto the wrong pixels.
+    r = evaluate_one(screen, assertion, ctx=EvalContext(visual=_vc(tmp_path, shot)))
+    assert not r.ok
+
+    vc = _vc(tmp_path, shot)
+    vc.capture_actual(FakeDriver(screen, viewport=(100.0, 100.0)))
+    assert vc.viewport == (100.0, 100.0)
+    r = evaluate_one(screen, assertion, ctx=EvalContext(visual=vc))
+    assert r.ok
+    assert r.visual is not None
+    assert r.visual.diff_pct == 0.0
+
+
 def test_visual_element_scoped_missing_baseline_reports_the_crop(tmp_path: Path) -> None:
     """On the first run (no baseline) the reported actual is the element crop, so the first
     `approve` stores an element-sized baseline — not the whole screen."""

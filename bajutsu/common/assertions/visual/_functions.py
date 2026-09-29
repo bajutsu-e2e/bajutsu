@@ -14,18 +14,19 @@ from .visual_evidence import VisualEvidence
 
 
 def _visual_scale(
-    screenshot_path: Path, elements: list[base.Element]
+    screenshot_path: Path, elements: list[base.Element], viewport: base.Point | None = None
 ) -> tuple[float, float] | None:
     """The screenshot-pixel per element-point scale, or None if it can't be derived.
 
     Element frames are in points; the screenshot is in device pixels (2x/3x on retina). The scale
-    is the screenshot's pixel size over the point-space screen size (the element extent), so a
-    resolved frame maps onto the actual image. Returns None when there are no elements to size the
-    screen from — the caller then can't resolve any selector to a frame.
+    is the screenshot's pixel size over the point-space screen size, so a resolved frame maps onto
+    the actual image. The screen size is the backend-reported `viewport` when there is one, else the
+    element extent. Returns None when neither can size the screen — the caller then can't resolve
+    any selector to a frame.
     """
     from bajutsu.common.drivers.elements import screen_size_from_elements
 
-    sw, sh = screen_size_from_elements(elements)
+    sw, sh = viewport if viewport is not None else screen_size_from_elements(elements)
     if sw <= 0 or sh <= 0:
         return None
     from PIL import Image
@@ -89,7 +90,7 @@ def _prepare_visual_comparison(
         return AssertionResult(
             False, "visual", detail, "visual assertions need the 'visual' extra (Pillow)"
         )
-    scale = _visual_scale(ctx.screenshot_path, elements)
+    scale = _visual_scale(ctx.screenshot_path, elements, ctx.viewport)
     if scale is None:
         return AssertionResult(
             False, "visual", detail, "cannot resolve selectors: no elements on screen"
