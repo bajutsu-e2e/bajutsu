@@ -875,7 +875,13 @@ class _StepRunner:
                     # behalf, the very prompt it was placed to answer, and discard the specific reason
                     # (no alert / an unmatched alert / an ambiguous one) for the generic timeout a doomed
                     # retry against an now-cleared screen produces instead.
-                    guard_done = kind == "handle_system_alert"
+                    #
+                    # A step answering by position (BE-0445) did not drive that guard: it waits without
+                    # the gate, so here is the only place a failed one can learn what blocked the
+                    # screen. Nothing it could tap is lost — the rule runs only under a language no
+                    # guard rule can cover.
+                    hsa = interp_step.handle_system_alert
+                    guard_done = hsa is not None and hsa.role() is None
                     # The dismiss can refuse loudly: `AmbiguousSelector` on two dismiss regions, or
                     # `ElementNotTappable` when something covers the scrim itself — which is exactly the
                     # tip-plus-system-alert case below. `ElementNotTappable` is not a `SelectorError`

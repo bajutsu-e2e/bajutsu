@@ -538,3 +538,28 @@ def test_a_tap_the_monitor_made_for_the_step_still_reports_it() -> None:
     tap = result.steps[0].system_alert
     assert tap is not None
     assert (tap.label, tap.rule) == ("Allow", "sel")
+
+
+def test_a_failed_position_rule_step_still_gets_the_end_of_step_guards_note() -> None:
+    # The rule's wait runs without the guard's gate, so the end-of-step guard is what names a screen
+    # the step could not see past — the note a label-path step gets from its own wait.
+    class _SpyGuard(AlertGuardConfig):
+        calls = 0
+
+        def __call__(self, *args: object, **kwargs: object) -> bool:
+            type(self).calls += 1
+            return False
+
+    driver = _fake_with_alert("Einmal erlauben", "Beim Verwenden erlauben", "Nicht erlauben")
+    result = run_scenario(
+        driver, _grant_scenario(), clock=FakeClock(), locale="de_DE", alert_guard=_SpyGuard()
+    )
+    assert not result.ok
+    assert _SpyGuard.calls == 1
+
+    _SpyGuard.calls = 0
+    driver = _fake_with_alert("Allow Once", "Allow While Using", "Don’t Allow")
+    run_scenario(
+        driver, _grant_scenario(), clock=FakeClock(), locale="en_US", alert_guard=_SpyGuard()
+    )
+    assert _SpyGuard.calls == 0  # the label path's own wait already drove the guard

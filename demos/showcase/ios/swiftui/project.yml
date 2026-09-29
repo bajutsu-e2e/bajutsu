@@ -87,6 +87,7 @@ targets:
           - CFBundleURLName: com.bajutsu.showcase.ios.swiftui.noax
             CFBundleURLSchemes: [showcaseswiftuinoax]
         NSLocationWhenInUseUsageDescription: "Showcase's Permissions tab exercises the location-authorization flow."
+        NSUserTrackingUsageDescription: "Showcase's Permissions tab exercises the tracking-authorization flow."
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.ios.swiftui.noax
