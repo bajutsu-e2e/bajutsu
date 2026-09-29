@@ -42,7 +42,7 @@ re-checks open PRs against the template. What none of these can cover is the con
 - **BE item `Status` / `Progress` / `Implementing PR`.** The working agreement says a PR that
   advances an item ticks its `Progress` boxes and fills `Implementing PR` in the same change, and
   that `Status` is flipped when work starts or ships. In practice a PR sometimes lands code without
-  updating the item, so an item stays `Proposal` after its code merged, or its `Progress` checklist
+  updating the item, so an item stays `Approved` after its code merged, or its `Progress` checklist
   lags the real state. Nothing catches this — it is prose-and-state reconciliation, not a format
   check.
 - **`docs/architecture.md#implementation-status`** — the stated source of truth for "what already

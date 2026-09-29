@@ -37,7 +37,7 @@ path.
 ## Motivation
 
 The roadmap is the project's shared planning surface, but it answers "is this done?" only at the two
-extremes its `Status` encodes — `Proposal` (nothing) and `Implemented` (everything). An item
+extremes its `Status` encodes — `Approved` (nothing) and `Implemented` (everything). An item
 mid-flight has no structured place to say *which* part shipped. The consequences are concrete:
 
 - **Progress is invisible or bespoke.** A reader cannot tell from an `In progress` item how much of
@@ -94,9 +94,9 @@ Two rules go into `CLAUDE.md`, `roadmaps/README.md` (+ `-ja`), and `docs/ai-deve
 - **`Detailed design` enumerates the work MECE** — mutually exclusive, collectively exhaustive — so
   the checklist has a complete, non-overlapping set to mirror.
 - **`Progress` is kept current as work proceeds.** Every PR that advances an item ticks its boxes and
-  adds a log entry in the same change, exactly as it fills the `Implementing PR` row. A not-yet
-  -started `Proposal` carries a single placeholder box; an `Implemented` item carries the all-done
-  checklist pointing at its `Implementing PR`.
+  adds a log entry in the same change, exactly as it fills the `Implementing PR` row. A
+  not-yet-started `Approved` item carries a single placeholder box; an `Implemented` item carries
+  the all-done checklist pointing at its `Implementing PR`.
 
 These are review-enforced, not machine-enforced: a checker can confirm the section *exists* (below)
 but not that a prose breakdown is genuinely exhaustive or that the boxes are honest.

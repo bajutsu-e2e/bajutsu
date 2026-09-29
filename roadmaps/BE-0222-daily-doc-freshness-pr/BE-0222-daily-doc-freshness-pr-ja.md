@@ -42,7 +42,7 @@ roadmap-index` が索引を再生成し、コミット済みの表がずれれ�
 - **BE 項目の `Status` / `Progress` / `Implementing PR`。** 作業合意では、項目を前進させた PR は
   同じ変更のなかで `Progress` のチェックを付け、`Implementing PR` を埋め、作業の開始や出荷に
   合わせて `Status` を切り替えることになっています。しかし実際には、コードだけがマージされて項目が
-  更新されないことがあり、コードがマージ済みなのに項目が `Proposal` のまま残ったり、`Progress` の
+  更新されないことがあり、コードがマージ済みなのに項目が `Approved` のまま残ったり、`Progress` の
   チェックリストが実態に遅れたりします。これはフォーマット検査ではなく文章と状態の照合なので、
   何も検知できません。
 - **`docs/architecture.md#implementation-status`。** 「すでに何が存在するか」の拠り所とされている

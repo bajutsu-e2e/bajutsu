@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0443") |
-| 実装 PR | [#2075](https://github.com/bajutsu-e2e/bajutsu/pull/2075) |
+| 実装 PR | [#2075](https://github.com/bajutsu-e2e/bajutsu/pull/2075), [#2079](https://github.com/bajutsu-e2e/bajutsu/pull/2079) |
 | トピック | コントリビューターワークフロー |
 <!-- /BE-METADATA -->
 
@@ -202,10 +202,15 @@ mermaid 図のノードの3箇所。このうちノードの書き換えだけ�
 区分「却下」を追加した時点で、どちらの言及も更新されないままとっくに古くなっており、本項目の
 改称とは無関係に、すでに現行の語彙に追随できていません。この2件が共有している1語だけを改称
 しても、修正されるのは偶然の一致であって、実際の陳腐化ではありません。
+その後のフォローアップ [#2079](https://github.com/bajutsu-e2e/bajutsu/pull/2079) で「いまも動いている仕組み」テストをもう一度適用し、
+過去の値ではなく現在も有効なライフサイクルの規則を述べている項目をさらに4件見つけました。
 [BE-0100](../BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template-ja.md)
-と
-[BE-0139](../BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links-ja.md)
-も同じ種類の叙述的な記録であり、実行可能な例ではないため、同じく過去の記録のまま残します。
+（未着手の項目の `進捗` チェックリスト）、
+[BE-0139](../BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links-ja.md) と
+[BE-0156](../BE-0156-roadmap-topic-label-sync/BE-0156-roadmap-topic-label-sync-ja.md)
+（トラッキング Issue を開いたままにする状態）、
+[BE-0222](../BE-0222-daily-doc-freshness-pr/BE-0222-daily-doc-freshness-pr-ja.md)
+（コードのマージ後も未完了の状態に残る項目）です。これらの言及は `承認済み` に改めました。
 本項目の最後の `進捗` チェック項目にあるリポジトリ全体のグレップは、次の4種類の
 `Proposal` を見つけても、それは指摘ではありません。メタデータのフィールド名、`class Proposal`
 エージェントデータクラスとそのドキュメント言及、BE-0074 のテンプレート例示行、そして他のすべての
@@ -328,6 +333,9 @@ mermaid 図のノードの3箇所。このうちノードの書き換えだけ�
   レビュー）では、ワークフローの移行漏れ（改称前の `main` から分岐したままの提案 PR のために、
   2人承認ゲートが旧リテラルも受理する必要があった点）と、いくつかの言い回しの誤りをさらに
   見つけ、このログに反映しています。
+- [#2079](https://github.com/bajutsu-e2e/bajutsu/pull/2079) で、現在も有効なライフサイクルの規則を述べている BE-0100、BE-0139、BE-0156、
+  BE-0222 の状態の表記を改称し、*詳細設計* で過去の記録として残す項目の列挙もそれに合わせて
+  絞りました。
 
 ## 参考
 

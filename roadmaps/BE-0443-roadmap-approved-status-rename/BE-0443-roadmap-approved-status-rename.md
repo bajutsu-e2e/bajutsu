@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0443") |
-| Implementing PR | [#2075](https://github.com/bajutsu-e2e/bajutsu/pull/2075) |
+| Implementing PR | [#2075](https://github.com/bajutsu-e2e/bajutsu/pull/2075), [#2079](https://github.com/bajutsu-e2e/bajutsu/pull/2079) |
 | Topic | Contributor workflow |
 <!-- /BE-METADATA -->
 
@@ -197,10 +197,15 @@ Deferred" — are left alone: that four-item list has already read stale since
 bucket, `Rejected`, without updating either mention, so neither item has been kept in step with the
 live vocabulary regardless of this rename, and renaming only the one token their text happens to
 share with this change would repair a coincidence, not the actual drift.
+A follow-up, [#2079](https://github.com/bajutsu-e2e/bajutsu/pull/2079), applied the still-operating-mechanism test a second time and caught four
+more items whose prose states a lifecycle rule still in force rather than a past value:
 [BE-0100](../BE-0100-roadmap-progress-tracking-template/BE-0100-roadmap-progress-tracking-template.md)
-and
-[BE-0139](../BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links.md)
-are the same kind of narrative account, not a runnable example, so they stay historical too. The
+(the `Progress` checklist of a not-yet-started item),
+[BE-0139](../BE-0139-roadmap-dashboard-issue-links/BE-0139-roadmap-dashboard-issue-links.md) and
+[BE-0156](../BE-0156-roadmap-topic-label-sync/BE-0156-roadmap-topic-label-sync.md) (which statuses
+keep a tracking issue open), and
+[BE-0222](../BE-0222-daily-doc-freshness-pr/BE-0222-daily-doc-freshness-pr.md) (an item left at the
+open status after its code merged). Those mentions now name `Approved`. The
 repository-wide grep in this item's last `Progress` box is expected to still find `Proposal` in:
 the metadata field name, the `class Proposal` agent dataclass and its docs mentions, BE-0074's
 template example, and this kind of historical prose in every other already-shipped item — a residual
@@ -322,6 +327,9 @@ Log:
   automated review) caught a workflow migration gap — the two-approval gate needed to accept the
   retired literal too, for any proposal PR still open on the pre-rename `main` — and several more
   wording slips this log now reflects.
+- [#2079](https://github.com/bajutsu-e2e/bajutsu/pull/2079) renamed the status in BE-0100, BE-0139, BE-0156, and BE-0222, whose prose states a
+  lifecycle rule still in force, and narrowed *Detailed design*'s list of items left as history to
+  match.
 
 ## References
 
