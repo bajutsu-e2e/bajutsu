@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0434") |
+| Implementing PR | [#2089](https://github.com/bajutsu-e2e/bajutsu/pull/2089) |
 | Topic | Contributor workflow |
 | Related | [BE-0278](../BE-0278-tech-writing-skill/BE-0278-tech-writing-skill.md) |
 <!-- /BE-METADATA -->
@@ -215,6 +216,16 @@ item, since no converted file has drifted back yet to show which of the two is w
 - [x] Convert [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md)'s
       Japanese side to 敬体 completely, checked against the detector's report, as the first proof
       of the recipe.
+
+Log:
+
+- [#2089](https://github.com/bajutsu-e2e/bajutsu/pull/2089) — Units 1–3. Added `scripts/ja_register_check.py`, an exclusion-based detector
+  that flags a sentence unless its trailing auxiliary chain holds a です / ます lemma or it ends in
+  ください, with sudachipy as a PEP 723 dependency and `make ja-register-check` outside `make check`.
+  Exempted `## Progress` / `## 進捗` checklist bullets in `japanese-document-writing`, and added the
+  same carve-out to `document-writing`'s register line so the umbrella norm does not contradict it.
+  Converted BE-0089's Japanese side: the detector's candidates fell from 166 to 3, each a bold
+  inline label kept on purpose. The whole ja corpus reports 6,487 candidates in 465 files.
 
 ## References
 
