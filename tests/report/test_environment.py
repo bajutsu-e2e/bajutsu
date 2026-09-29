@@ -10,6 +10,7 @@ from bajutsu.common.orchestrator import (
     RunResult,
     SkippedCapture,
     StepOutcome,
+    SystemAlertTap,
     TargetDeviceInfo,
 )
 from bajutsu.common.report import html_report, manifest_dict
@@ -155,6 +156,32 @@ def test_html_shows_the_value_a_generate_step_produced() -> None:
     )
     two_planned = {"name": "s2", "steps": [{"tap": {"id": "a"}}, {"tap": {"id": "b"}}]}
     assert "class='genrow'" not in html_report("run2", [skipped], definitions=[two_planned])
+
+
+def test_html_shows_the_button_a_handle_system_alert_step_tapped() -> None:
+    # BE-0445: a run under a language the label table does not cover shows what its position rule
+    # landed on, and why.
+    tap = SystemAlertTap(label="Erlauben", rule="position: button 2 of 2")
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[
+            StepOutcome(
+                index=0, action="handle_system_alert", ok=True, started_at=0.0, system_alert=tap
+            )
+        ],
+        expect_results=[],
+        artifacts=[],
+    )
+    definition = {
+        "name": "s1",
+        "steps": [
+            {"handleSystemAlert": {"prompt": "notifications", "choice": "grant", "timeout": 5}}
+        ],
+    }
+    out = html_report("run1", [r], definitions=[definition])
+    assert '<span class="tk str">“Erlauben”</span> by position: button 2 of 2' in out
+    assert "by position" not in html_report("run1", [_passing()])
 
 
 def test_html_shows_what_the_step_actuated() -> None:

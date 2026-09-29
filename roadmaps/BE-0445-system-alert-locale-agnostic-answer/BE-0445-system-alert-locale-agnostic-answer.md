@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0445](BE-0445-system-alert-locale-agnostic-answer.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0445") |
 | Topic | Platform support |
 | Related | [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules.md), [BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md) |
@@ -53,11 +53,59 @@ This item does not change the Simulator language pinning of BE-0320 and adds no 
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1: measure which button properties stay identical across languages and iOS versions.
-- [ ] Unit 2: resolve a role from a stable property, and extend the Driver seam to carry it.
-- [ ] Unit 3: use the role on the `handleSystemAlert` step, with the label table as fallback; the guard keeps the label table and its loud failure.
-- [ ] Unit 4: report the tapped label and the chosen rule on the step's outcome.
-- [ ] Unit 5: verify under four languages on a real Simulator and update the documentation.
+- [x] Unit 1: measure which button properties stay identical across languages and iOS versions.
+  - Measured with an opt-in probe, `SystemAlertProbeUITests` in the showcase's UI-test target, run by
+    [`misc/measure.sh`](misc/measure.sh) on a freshly created, language-pinned Simulator per
+    combination. Each run tapped one ordinal and read the authorization status the app was left
+    with, so each ordinal is tied to its role without trusting a label. The raw records are in
+    [`misc/results.jsonl`](misc/results.jsonl). The showcase gained a `perm.requestTracking` button,
+    since it had no way to raise the ATT prompt.
+  - Scope deviation: English and Japanese on iOS 18.6 and 26.5, plus Arabic on 26.5 as the one
+    right-to-left language, rather than five languages. The maintainer narrowed the matrix to English
+    and Japanese; Arabic was added because a mirrored layout is the case most likely to swap the two
+    choices.
+
+    | Property | notifications | tracking | paste | Stable across languages? |
+    |---|---|---|---|---|
+    | Button count | 2 | 2 | 2 | Yes |
+    | Ordinal of deny / grant | 0 / 1 | 0 / 1 | 0 / 1 | Yes, in all 30 records |
+    | Frame | side by side | stacked | stacked | No: Arabic draws the notification prompt's deny button on the right |
+    | Identifier | empty | empty | empty | Empty, so unusable |
+    | Value | empty | empty | empty | Empty, so unusable |
+    | Element type | button | button | button | Yes, but identical for both buttons |
+
+    The ordinal is the one property that both stays the same and tells the two buttons apart, so
+    the rule is "deny is button 1 of 2, grant is button 2 of 2".
+- [x] Unit 2: resolve a role from a stable property, and extend the Driver seam to carry it.
+  - `SystemAlertRole` and `system_alert_role()` sit next to `system_alert_label`. The Driver seam
+    needed no change: the step's wait already reads the live alert's labels in order through
+    `system_alert_labels()`, so the rule picks the label at its ordinal on each read (only when the
+    alert shows exactly two buttons) and taps it through the existing selector path. The step keeps
+    `prompt`/`choice` unresolved at interpolation time and resolves the rule after the live query.
+- [x] Unit 3: use the role on the `handleSystemAlert` step, with the label table as fallback; the guard keeps the label table and its loud failure.
+  - Order deviation: the label table is used first where it covers the language and the position
+    rule otherwise, rather than the rule first. Under English and Japanese the label names the prompt
+    as well as the button, so the step keeps refusing to tap a different two-button alert that
+    appears while it waits; the rule adds coverage without weakening the covered case. `record`'s
+    replay, which has no locale, now answers by position instead of failing.
+- [x] Unit 4: report the tapped label and the chosen rule on the step's outcome.
+  - `StepOutcome.system_alert` records `label` and `rule` (`sel`, `label table: <locale>`, or
+    `position: button 2 of 2`); the manifest moves to `schemaVersion` 12 and the report shows one row.
+- [x] Unit 5: verify under four languages on a real Simulator and update the documentation.
+  - Ran a notification grant and deny scenario through `bajutsu run` on an iOS 26.5 Simulator under
+    `en_US`, `ja_JP`, `fr_FR`, and `ar_SA`; each left the matching authorization status, and under
+    `fr_FR` and `ar_SA` the step reported `position: button 2 of 2` (grant) and
+    `position: button 1 of 2` (deny). The `fr_FR` pair passed again with the reactive guard left on,
+    its default. A `systemAlertHandling.rules` entry under `fr_FR` still failed
+    the scenario before any device work. Updated `docs/scenarios.md`, `docs/configuration.md`,
+    `docs/dsl-grammar.md`, `docs/reporting.md`, and `docs/architecture.md` with their Japanese
+    mirrors.
+
+Log:
+
+- Units 1–5. Measured the SpringBoard prompts' buttons, answered a `handleSystemAlert` step under a
+  language the label table does not cover by the measured position rule, recorded the tapped button
+  and rule on the step's outcome, and verified the change on a Simulator under four languages.
 
 ## References
 

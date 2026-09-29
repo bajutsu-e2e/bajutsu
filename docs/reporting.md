@@ -130,6 +130,11 @@ means the same thing after the run that produced it exits
   `schemaVersion` 7 a record may also carry `substitution`, naming why the element actuated is not
   the one the driver's default rule would have named; an older run carries none, which reads the
   same way as its absence today.
+- `steps[].system_alert`: for a `handleSystemAlert` step, the button it tapped (`label`) and the rule
+  that chose it (`rule`: `sel`, `label table: <locale>`, or `position: button 2 of 2`), so a run under
+  a language the label table does not cover still shows what was tapped and why
+  ([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)).
+  Absent on every other action, and on every run recorded before `schemaVersion` 12.
 - `network.json`'s `startedAt` (one file per scenario, not shown in the manifest above): each
   observed exchange's absolute start, on the same footing as `steps[].started_at` and derived
   through the same scenario anchor, so a viewer subtracts `video_anchor_s` from both — see
@@ -142,7 +147,7 @@ means the same thing after the run that produced it exits
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It groups accumulated runs by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — it never enters
-  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `10` today.)
+  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `12` today.)
 - `target` (top, optional): the target the run ran, so "the Android target passes while the iOS
   target fails" is computable from stored data ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)).
   One run resolves one target, so it sits beside `backend` rather than on each scenario. `serve`

@@ -11,12 +11,15 @@ from __future__ import annotations
 from collections.abc import Sequence
 from unittest.mock import patch
 
+import pytest
 from _orch import FakeClock, _scenario
 from conftest import el
 
+from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.orchestrator import AlertEvent, AlertGuardConfig, run_scenario
-from bajutsu.common.scenario import ResolvedAlertShape, Scenario
+from bajutsu.common.orchestrator.actions import handle_system_alert_selector
+from bajutsu.common.scenario import ResolvedAlertShape, Scenario, Step, SystemAlertRole
 
 
 def _fake_with_alert(*labels: str) -> FakeDriver:
@@ -281,7 +284,10 @@ def test_a_foreach_body_is_resolved_too() -> None:
     assert driver.actions == [("handle_system_alert", ({"label": "許可"}, 0.0))]
 
 
+@pytest.mark.usefixtures("no_position_rules")
 def test_an_uncovered_language_fails_the_step_instead_of_guessing() -> None:
+    # Only for a prompt with no position rule (the fixture clears them all): one that has a rule is
+    # answered by position instead, below.
     driver = _fake_with_alert("Erlauben")
     result = run_scenario(driver, _grant_scenario(), clock=FakeClock(), locale="de_DE")
 
@@ -293,6 +299,7 @@ def test_an_uncovered_language_fails_the_step_instead_of_guessing() -> None:
     assert [(o.index, o.action, o.ok) for o in result.steps] == [(0, "handle_system_alert", False)]
 
 
+@pytest.mark.usefixtures("no_position_rules")
 def test_an_uncovered_language_still_reports_an_interruption_the_baseline_capture_met() -> None:
     # `UncoveredSystemAlertLocale` raises before anything actuates, but the pre-step baseline
     # capture just above it is itself a query the runner's interruption monitor can meet — the one
@@ -310,12 +317,224 @@ def test_an_uncovered_language_still_reports_an_interruption_the_baseline_captur
     assert "Not Now" in result.failure
 
 
+@pytest.mark.usefixtures("no_position_rules")
 def test_a_run_with_no_locale_fails_the_step_loudly() -> None:
-    # A caller that supplies no locale (`record`'s replay) cannot know the label; the step fails
-    # rather than being silently skipped.
+    # A caller that supplies no locale (`record`'s replay) cannot know the label; for a prompt with
+    # no position rule the step fails rather than being silently skipped.
     driver = _fake_with_alert("Allow")
     result = run_scenario(driver, _grant_scenario(), clock=FakeClock())
 
     assert not result.ok
     assert result.failure is not None and "locale" in result.failure
     assert driver.actions == []
+
+
+def _answer(choice: str) -> Scenario:
+    return _grant_scenario(
+        [{"handleSystemAlert": {"prompt": "notifications", "choice": choice, "timeout": 5}}]
+    )
+
+
+@pytest.mark.parametrize(
+    ("choice", "tapped", "rule"),
+    [("grant", "Erlauben", "button 2 of 2"), ("deny", "Nicht erlauben", "button 1 of 2")],
+)
+def test_an_uncovered_language_answers_by_position(choice: str, tapped: str, rule: str) -> None:
+    # BE-0445: the deny button comes first and the grant button second in every language measured,
+    # so a language the label table has never seen is still answered — and the report says how.
+    driver = _fake_with_alert("Nicht erlauben", "Erlauben")
+    result = run_scenario(driver, _answer(choice), clock=FakeClock(), locale="de_DE")
+
+    assert result.ok, result.failure
+    assert driver.actions == [("handle_system_alert", ({"label": tapped}, 0.0))]
+    tap = result.steps[0].system_alert
+    assert tap is not None
+    assert (tap.label, tap.rule) == (tapped, f"position: {rule}")
+
+
+def test_a_position_rule_never_taps_an_alert_of_another_size() -> None:
+    # A three-button alert is not the prompt the rule was measured on: the step waits it out and
+    # names the rule and what was on screen, rather than tapping the second button of it.
+    driver = _fake_with_alert("Einmal erlauben", "Beim Verwenden erlauben", "Nicht erlauben")
+    result = run_scenario(driver, _grant_scenario(), clock=FakeClock(), locale="de_DE")
+
+    assert not result.ok
+    assert driver.actions == []
+    assert result.failure is not None
+    assert "button 2 of 2" in result.failure
+    assert "Einmal erlauben" in result.failure
+    assert "add index" not in result.failure  # an `index` is no fix a rule's author can make
+
+
+def test_a_position_rule_times_out_naming_itself_when_no_alert_appears() -> None:
+    driver = FakeDriver([el("home.title", "home")])
+    result = run_scenario(driver, _grant_scenario(), clock=FakeClock(), locale="de_DE")
+
+    assert not result.ok
+    assert result.failure is not None
+    assert "no system alert appeared" in result.failure
+    assert "button 2 of 2" in result.failure
+
+
+def test_a_run_with_no_locale_answers_by_position() -> None:
+    # `record`'s replay supplies no locale; the rule needs none.
+    driver = _fake_with_alert("Don’t Allow", "Allow")
+    result = run_scenario(driver, _grant_scenario(), clock=FakeClock())
+
+    assert result.ok, result.failure
+    assert driver.actions == [("handle_system_alert", ({"label": "Allow"}, 0.0))]
+
+
+def test_an_uncovered_language_with_the_guard_on_reserves_nothing() -> None:
+    # The reservation needs the prompt's labels, which only the label table knows; under a language
+    # it does not cover the step behaves like a `sel`-form step rather than failing on the lookup.
+    driver = _fake_with_alert("Nicht erlauben", "Erlauben")
+    result = run_scenario(
+        driver, _grant_scenario(), clock=FakeClock(), locale="de_DE", alert_guard=AlertGuardConfig()
+    )
+
+    assert result.ok, result.failure
+    # `run_scenario` pushes only the step's own reservation (the steady-state push is the
+    # pipeline's), so nothing reaching the monitor here means nothing was reserved.
+    assert driver.interruption_policy is None
+
+
+def test_a_covered_language_reports_the_label_table_as_its_rule() -> None:
+    driver = _fake_with_alert("許可しない", "許可")
+    result = run_scenario(driver, _grant_scenario(), clock=FakeClock(), locale="ja_JP")
+
+    assert result.ok, result.failure
+    tap = result.steps[0].system_alert
+    assert tap is not None
+    assert (tap.label, tap.rule) == ("許可", "label table: ja_JP")
+
+
+def test_a_sel_form_step_reports_its_own_selector_as_its_rule() -> None:
+    driver = _fake_with_alert("Don’t Allow", "Allow")
+    scenario = _grant_scenario([{"handleSystemAlert": {"sel": {"label": "Allow"}, "timeout": 5}}])
+    result = run_scenario(driver, scenario, clock=FakeClock(), locale="en_US")
+
+    assert result.ok, result.failure
+    tap = result.steps[0].system_alert
+    assert tap is not None
+    assert (tap.label, tap.rule) == ("Allow", "sel")
+
+
+def test_a_position_rule_keeps_its_own_button_when_both_share_a_label() -> None:
+    # The rule knows its ordinal, so two buttons reading the same text are not ambiguous to it.
+    driver = FakeDriver([el("home.title", "home")])
+    driver.system_alert_buttons = [
+        el(None, "OK", ["button"], frame=(0.0, 0.0, 10.0, 10.0)),
+        el(None, "OK", ["button"], frame=(20.0, 0.0, 10.0, 10.0)),
+    ]
+    result = run_scenario(driver, _grant_scenario(), clock=FakeClock(), locale="de_DE")
+
+    assert result.ok, result.failure
+    assert driver.actions == [("handle_system_alert", ({"label": "OK", "index": 1}, 0.0))]
+
+
+def test_a_position_rule_timeout_says_why_it_named_nothing() -> None:
+    driver = _fake_with_alert("Einmal erlauben", "Beim Verwenden erlauben", "Nicht erlauben")
+    result = run_scenario(driver, _grant_scenario(), clock=FakeClock(), locale="de_DE")
+
+    assert result.failure is not None
+    assert "offering 3" in result.failure
+    assert "sel.label" in result.failure
+
+
+def test_a_step_that_tapped_and_then_failed_still_records_its_tap() -> None:
+    # A later check failing the step is exactly where a reader needs to know what was pressed.
+    driver = _fake_with_alert("Nicht erlauben", "Erlauben")
+    driver.interruptions_declined_to_drain = [["Save", "Not Now"]]
+    result = run_scenario(driver, _grant_scenario(), clock=FakeClock(), locale="de_DE")
+
+    assert not result.ok
+    tap = result.steps[0].system_alert
+    assert tap is not None
+    assert (tap.label, tap.rule) == ("Erlauben", "position: button 2 of 2")
+
+
+def test_a_monitor_tap_before_any_read_is_not_the_position_rules_own() -> None:
+    # With no alert read yet the rule names no label, and nothing reserved one for the monitor, so a
+    # label the monitor tapped is recorded as some other alert rather than credited to this step.
+    driver = FakeDriver([el("home.title", "home")])
+    driver.interruptions_to_drain = ["Erlauben"]
+    result = run_scenario(driver, _grant_scenario(), clock=FakeClock(), locale="de_DE")
+
+    assert not result.ok
+    assert AlertEvent(label="Erlauben") in result.steps[0].alerts
+    assert result.steps[0].system_alert is None
+
+
+def test_a_sel_with_an_index_reports_the_button_it_tapped() -> None:
+    driver = FakeDriver([el("home.title", "home")])
+    driver.system_alert_buttons = [
+        el(None, "Allow Once", ["button"], frame=(0.0, 0.0, 10.0, 10.0)),
+        el(None, "Allow", ["button"], frame=(20.0, 0.0, 10.0, 10.0)),
+    ]
+    step: dict[str, object] = {
+        "handleSystemAlert": {"sel": {"labelMatches": "^Allow", "index": 1}, "timeout": 5}
+    }
+    result = run_scenario(driver, _grant_scenario([step]), clock=FakeClock(), locale="en_US")
+
+    assert result.ok, result.failure
+    tap = result.steps[0].system_alert
+    assert tap is not None
+    assert (tap.label, tap.rule) == ("Allow", "sel")
+
+
+def _step(hsa: dict[str, object]) -> Step:
+    return Step.model_validate({"handleSystemAlert": hsa})
+
+
+def test_the_registry_path_answers_a_prompt_step_by_its_position_rule() -> None:
+    # `record`'s replay dispatches through the action registry, with no locale to resolve a label.
+    step = _step({"prompt": "notifications", "choice": "deny", "timeout": 0})
+    assert handle_system_alert_selector(step) == SystemAlertRole(ordinal=0, count=2)
+    assert handle_system_alert_selector(_step({"sel": {"label": "Allow"}, "timeout": 0})) == {
+        "label": "Allow"
+    }
+
+
+@pytest.mark.usefixtures("no_position_rules")
+def test_the_registry_path_refuses_a_prompt_with_no_position_rule() -> None:
+    step = _step({"prompt": "notifications", "choice": "grant", "timeout": 0})
+    with pytest.raises(base.UnsupportedAction):
+        handle_system_alert_selector(step)
+
+
+def test_a_position_rule_waits_without_querying_the_app_tree() -> None:
+    # Under an uncovered language no guard rule can exist, so the gate's per-poll app query could
+    # only meet the step's own prompt first and hand it to the unreserved monitor (BE-0445).
+    class _CountingDriver(FakeDriver):
+        queries = 0
+
+        def query(self) -> list[base.Element]:
+            type(self).queries += 1
+            return super().query()
+
+    driver = _CountingDriver([el("home.title", "home")])  # no alert ever appears
+    run_scenario(
+        driver, _grant_scenario(), clock=FakeClock(), locale="de_DE", alert_guard=AlertGuardConfig()
+    )
+    during_wait = _CountingDriver.queries
+    _CountingDriver.queries = 0
+    run_scenario(
+        driver, _grant_scenario(), clock=FakeClock(), locale="en_US", alert_guard=AlertGuardConfig()
+    )
+    # The label path's gate queries the tree on every poll; the rule's wait does not.
+    assert during_wait < _CountingDriver.queries
+
+
+def test_a_tap_the_monitor_made_for_the_step_still_reports_it() -> None:
+    # The interruption monitor can answer the step's own alert between two polls; the report must
+    # still show which button was pressed, as it does for the step's own tap.
+    driver = FakeDriver([el("home.title", "home")])
+    driver.interruptions_to_drain = ["Allow"]
+    step: dict[str, object] = {"handleSystemAlert": {"sel": {"label": "Allow"}, "timeout": 5}}
+    result = run_scenario(driver, _grant_scenario([step]), clock=FakeClock(), locale="en_US")
+
+    assert result.ok, result.failure
+    tap = result.steps[0].system_alert
+    assert tap is not None
+    assert (tap.label, tap.rule) == ("Allow", "sel")

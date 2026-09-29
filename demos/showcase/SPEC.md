@@ -226,6 +226,8 @@ flow is reached directly — plus a System section with a pasteboard round-trip.
 - `perm.notif.authorized` — element shown only once granted (gives the run a positive condition to wait for)
 - `perm.requestLocation` — button → `CLLocationManager.requestWhenInUseAuthorization`. Raises the **system location prompt** (also SpringBoard).
 - `perm.location.value` — `notDetermined`/`authorizedWhenInUse`/`denied`
+- `perm.requestTracking` — button → `ATTrackingManager.requestTrackingAuthorization`, the last row of the form. Raises the **App Tracking Transparency prompt** (SpringBoard), which BE-0445's probe measures beside the notification and paste prompts.
+- `perm.tracking.value` — `notDetermined`/`authorized`/`denied`
 
 **Password AutoFill** — iOS's *real* "Save Password" alert, with the notification request stacked on
 top of it: the pair whose ordering the reactive guard has to get right. Nothing here is simulated.

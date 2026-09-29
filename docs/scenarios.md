@@ -443,9 +443,26 @@ author transcribing either language's text — worth having even for English alo
 spell their apostrophe typographically (`Don’t Allow`, `Don’t Allow Paste`), not as the ASCII
 character a hand-typed label carries.
 
-A locale whose language the lookup does not cover (today: English and Japanese) fails the step
-loudly, naming what is covered, rather than tapping a guessed button. Every other alert keeps naming
-its button through `sel`, unchanged.
+The label table covers English and Japanese. Under any other language the step answers by the
+button's position instead
+([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)):
+on all three prompts SpringBoard lists the deny button first and the grant button second, which was
+measured under English and Japanese on iOS 18.6 and 26.5, and under Arabic on 26.5, by tapping each
+button and reading the authorization status the app was left with. The order is the order
+SpringBoard reports, not the order on screen: Arabic draws the notification prompt's deny button on
+the right, and it is still the first button. So `choice: grant` taps button 2 of 2 and `choice: deny` taps button 1 of 2. The rule
+names nothing on an alert with any other number of buttons, and the step then waits out its timeout
+and names the buttons it saw, rather than tapping by position on an alert the rule was never
+measured against. The rule names a button, not a prompt: SpringBoard's own title and message are
+localized too, so nothing language-independent tells one two-button prompt from another, and any
+two-button SpringBoard alert up while the step waits is answered by position. Place the step
+right after the action that raises its prompt. A run with no locale at all (`record`'s replay) answers the same way. The step's
+report row shows the button it tapped and the rule that chose it — `sel`, `label table: <locale>`,
+or `position: button 2 of 2`. Every other alert keeps naming its button through `sel`, unchanged.
+
+The position rule belongs to this step alone. A `systemAlertHandling.rules` entry must first tell
+which declared prompt is on screen, which a position cannot do, so under a language the label table
+does not cover it still fails the scenario loudly before any device work, naming what is covered.
 
 Two limits are worth knowing before reaching for it:
 
@@ -760,7 +777,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `back` | `back: {}` | navigate back one level, each backend using its platform-correct primitive — the Android system back key, the iOS OS-provided back button, or web history ([BE-0210](../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity.md)) |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | two-finger magnify; `scale > 0` (`>1` zooms in, `<1` out) |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | two-finger rotation; `>0` is clockwise |
-| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | tap a button on an iOS SpringBoard permission prompt, deterministically ([below](#handlesystemalert-the-deterministic-system-alert-step)); iOS (XCUITest) only. `sel` accepts only `label` / `labelMatches` / `index`, and resolves against the system language the run pins the Simulator to. In place of `sel`, `prompt: notifications\|tracking\|paste` + `choice: grant\|deny` names the button by meaning and lets the run resolve its label (BE-0320) |
+| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | tap a button on an iOS SpringBoard permission prompt, deterministically ([below](#handlesystemalert-the-deterministic-system-alert-step)); iOS (XCUITest) only. `sel` accepts only `label` / `labelMatches` / `index`, and resolves against the system language the run pins the Simulator to. In place of `sel`, `prompt: notifications\|tracking\|paste` + `choice: grant\|deny` names the button by meaning and lets the run resolve its label (BE-0320), or its position under a language the label table does not cover (BE-0445) |
 | `wait` | `wait: { for\|until: ..., timeout: <sec> }` | condition wait (below) |
 | `assert` | `assert: [ <Assertion>... ]` | mid-step verification |
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | terminate + relaunch the app (re-applying launch env/args, plus the given overrides), then wait until ready |

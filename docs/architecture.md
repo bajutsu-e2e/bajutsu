@@ -794,7 +794,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   prompts `permissions` cannot pre-answer (notification authorization, ATT, and the cross-process
   paste consent — BE-0369), the step also takes
   `prompt` + `choice` in place of `sel` and the run resolves the label the pinned locale renders
-  (BE-0320). The step's *wait* for that prompt is the orchestrator's, not the driver's (BE-0406):
+  (BE-0320). Under a language that label table does not cover, the step keeps `prompt` + `choice`
+  and answers by the button's position instead — SpringBoard lists deny first and grant second
+  on all three prompts, measured across languages including a right-to-left one — resolved
+  against each live read of the alert, never on an alert with another button count (BE-0445). The step's *wait* for that prompt is the orchestrator's, not the driver's (BE-0406):
   the driver queries SpringBoard once and taps, and `wait_for_system_alert` polls to the step's own
   deadline, reading the step's target first and then driving the reactive guard below on the same
   poll. Keeping the wait here is what lets the guard clear an interruption while the step waits —

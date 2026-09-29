@@ -13,12 +13,17 @@ import pytest
 
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.scenario import (
+    HandleSystemAlert,
+    Selector,
     SystemAlertChoice,
     SystemAlertPrompt,
+    SystemAlertRole,
     UncoveredSystemAlertLocale,
     alert_surfaces,
     covered_languages,
+    labels_cover,
     system_alert_label,
+    system_alert_role,
     system_alert_shapes,
 )
 
@@ -170,3 +175,61 @@ def test_save_password_is_reachable_only_in_the_tree() -> None:
     # step cannot name it, the native probe cannot answer it, and the in-tree dismissal is the whole
     # mechanism it has.
     assert alert_surfaces("savePassword") == {"step": False, "native": False, "in_tree": True}
+
+
+@pytest.mark.parametrize("prompt", ["notifications", "tracking", "paste"])
+def test_every_springboard_prompt_has_the_measured_position_rule(prompt: SystemAlertPrompt) -> None:
+    # BE-0445 Unit 1 read deny first and grant second, two buttons, on every run of all three.
+    assert system_alert_role(prompt, "deny") == SystemAlertRole(ordinal=0, count=2)
+    assert system_alert_role(prompt, "grant") == SystemAlertRole(ordinal=1, count=2)
+
+
+def test_a_prompt_the_step_cannot_reach_has_no_position_rule() -> None:
+    # iOS draws the save-password prompt inside the application, where the measurement says nothing.
+    assert system_alert_role("savePassword", "grant") is None
+
+
+def test_every_step_capable_prompt_has_a_position_rule() -> None:
+    # A step-capable prompt without one would fail the step under every uncovered language again.
+    for prompt in get_args(SystemAlertPrompt):
+        if alert_surfaces(prompt)["step"]:
+            for choice in get_args(SystemAlertChoice):
+                assert system_alert_role(prompt, choice) is not None, (prompt, choice)
+
+
+def test_a_position_rule_names_a_button_only_on_an_alert_of_its_own_size() -> None:
+    role = SystemAlertRole(ordinal=1, count=2)
+    assert role.pick(["Nicht erlauben", "Erlauben"]) == "Erlauben"
+    # Any other size is not the prompt the rule was measured on, so it names nothing.
+    assert role.pick(["Erlauben"]) is None
+    assert role.pick(["A", "B", "C"]) is None
+    assert role.pick([]) is None
+    assert role.describe() == "button 2 of 2"
+
+
+def test_labels_cover_reads_the_language_subtag() -> None:
+    assert labels_cover("notifications", "ja_JP")
+    assert labels_cover("notifications", "en")
+    assert not labels_cover("notifications", "de_DE")
+
+
+def test_an_uncovered_language_leaves_a_prompt_with_a_position_rule_unresolved() -> None:
+    # The rule is resolved against the live alert, since its label is what this run cannot know.
+    step = HandleSystemAlert(prompt="notifications", choice="grant", timeout=5)
+    assert step.resolved("de_DE") == step
+    assert step.role() == SystemAlertRole(ordinal=1, count=2)
+
+
+def test_a_covered_language_still_resolves_through_the_label_table() -> None:
+    step = HandleSystemAlert(prompt="notifications", choice="deny", timeout=5).resolved("ja_JP")
+    assert step.sel == Selector(label="許可しない")
+    assert step.prompt is None
+    assert step.role() is None
+
+
+def test_every_springboard_prompt_covers_the_same_languages() -> None:
+    # The step skips its reservation wherever the table misses its own prompt's language, which is
+    # safe only while a guard rule for any other SpringBoard prompt is refused under that same
+    # language. A language added for one prompt alone would break that, so pin them together.
+    springboard = [p for p in get_args(SystemAlertPrompt) if alert_surfaces(p)["native"]]
+    assert len({covered_languages(p) for p in springboard}) == 1

@@ -43,6 +43,7 @@ from .run_result import RunResult
 from .selection_state import SelectionState
 from .skipped_capture import SkippedCapture
 from .step_outcome import StepOutcome
+from .system_alert_tap import SystemAlertTap
 from .target_device_info import TargetDeviceInfo
 
 # Imported after the plain result types above: `TargetRuntime` carries the live driver and evidence
@@ -70,6 +71,7 @@ __all__ = [
     "SelectionState",
     "SkippedCapture",
     "StepOutcome",
+    "SystemAlertTap",
     "TargetDeviceInfo",
     "TargetRuntime",
     "UndeclaredInterruption",

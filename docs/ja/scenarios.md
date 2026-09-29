@@ -298,7 +298,9 @@ BE-0401 と BE-0406 は下記のキーをエイリアスなしで削除しまし
 
 `prompt` は `notifications`、`tracking`、`paste` のいずれかで、`choice` は `grant` か `deny` です。ガード自身の `rules` は、このステップが取れない 4 つ目のプロンプト `savePassword` も取ります。ステップのほうは解析時にこれを拒否します（上記の[面の一覧](#複数のプロンプトに違う答えを返す-rules)を参照）。ボタンを意味で指定するため、同じファイルが `en_US` でも `ja_JP` でもプロンプトを許可します。どちらの言語のテキストも作者が書き写す必要はありません。これは英語だけを使う場合にも役立ちます。英語の拒否ボタンのアポストロフィは、手で打った label が持つ ASCII 文字ではなく、活字体のアポストロフィ（`Don’t Allow`、`Don’t Allow Paste`）だからです。
 
-この対応表がまだ扱っていない言語（現時点では英語と日本語のみ）の locale を指定した場合、推測した label を tap するのではなく、扱える言語を名指ししてステップが明示的に失敗します。ほかのアラートは、これまでどおり `sel` でボタンを指定します。
+label の対応表が扱う言語は英語と日本語です。それ以外の言語では、ステップはボタンの位置で答えます（[BE-0445](../../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer-ja.md)）。3 つのプロンプトのどれでも、SpringBoard は拒否側のボタンを 1 番目に、許可側のボタンを 2 番目に並べます。この並びは、英語と日本語では iOS 18.6 と 26.5 で、アラビア語では 26.5 で、各ボタンを実際に押してアプリに残る許可状態を読み取って確かめたものです。ここでいう並びは SpringBoard が報告する順序で、画面上の左右ではありません。アラビア語では通知プロンプトの拒否側のボタンが右側に描かれますが、報告される順序ではやはり 1 番目です。したがって `choice: grant` は 2 つのうち 2 番目のボタンを、`choice: deny` は 1 番目のボタンを押します。ボタンの数が 2 つでないアラートには、この規則は何も指しません。その場合ステップはタイムアウトまで待ち、見えたボタンを挙げて失敗します。規則を測っていないアラートで、位置だけを頼りに押すわけにはいかないからです。この規則が指すのはボタンで、プロンプトではありません。SpringBoard のタイトルとメッセージも言語ごとに訳されるので、言語が変わっても 2 ボタンのプロンプト同士を見分けられる手がかりはありません。ステップが待っているあいだに出た 2 ボタンの SpringBoard アラートは、どれも位置で答えられます。ステップは、プロンプトを出す操作の直後に置いてください。locale を持たない呼び出し（`record` の再生）も同じ規則で答えます。ステップのレポート行には、押したボタンと、それを選んだ規則（`sel`、`label table: <locale>`、`position: button 2 of 2` のいずれか）が出ます。ほかのアラートは、これまでどおり `sel` でボタンを指定します。
+
+位置の規則を使うのはこのステップだけです。`systemAlertHandling.rules` の規則は、宣言したどのプロンプトが画面に出ているかを先に見分ける必要があり、位置からはそれを見分けられません。そのため対応表にない言語では、ガードの規則はこれまでどおり、デバイスを操作する前に扱える言語を名指ししてシナリオを失敗させます。
 
 使う前に知っておきたい制限が 2 つあります。
 
@@ -520,7 +522,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `back` | `back: {}` | 1 階層戻ります。各バックエンドがプラットフォームに合った手段（Android のシステム戻るキー、iOS の OS 提供の戻るボタン、web の履歴）を使います（[BE-0210](../../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)） |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | 2 本指の拡縮。`scale > 0`（`>1` で拡大, `<1` で縮小） |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | 2 本指の回転。`>0` で時計回り |
-| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | iOS SpringBoard の権限プロンプトのボタンを決定的に tap する（[下記](#handlesystemalert決定的なシステムアラートステップ)）。iOS（XCUITest）専用。`sel` は `label` / `labelMatches` / `index` のみ受け付け、run が Simulator を固定するシステム言語に対して解決する。`sel` の代わりに `prompt: notifications\|tracking\|paste` と `choice: grant\|deny` を指定すると、ボタンを意味で指定でき、run がその label を解決する（BE-0320） |
+| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | iOS SpringBoard の権限プロンプトのボタンを決定的に tap する（[下記](#handlesystemalert決定的なシステムアラートステップ)）。iOS（XCUITest）専用。`sel` は `label` / `labelMatches` / `index` のみ受け付け、run が Simulator を固定するシステム言語に対して解決する。`sel` の代わりに `prompt: notifications\|tracking\|paste` と `choice: grant\|deny` を指定すると、ボタンを意味で指定でき、run がその label を解決する（BE-0320）。label の対応表にない言語では、ボタンの位置で解決する（BE-0445） |
 | `wait` | `wait: { for\|until: ..., timeout: <sec> }` | 条件待機（下記） |
 | `assert` | `assert: [ <Assertion>... ]` | ステップ途中の中間検証 |
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | アプリを terminate + 再起動し（launch env/args を再適用し、指定分で上書き）、ready まで待つ |

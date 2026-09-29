@@ -223,6 +223,8 @@ Log から到達するモーダル（5 つの提示様式）：
 - `perm.notif.authorized` — 許可後にのみ表示される要素（run が待てる肯定条件を与える）
 - `perm.requestLocation` — ボタン → `CLLocationManager.requestWhenInUseAuthorization`。**システムの位置情報プロンプト**を上げる（同じく SpringBoard）。
 - `perm.location.value` — `notDetermined`/`authorizedWhenInUse`/`denied`
+- `perm.requestTracking` — ボタン → `ATTrackingManager.requestTrackingAuthorization`。フォームの最後の行に置く。**App Tracking Transparency のプロンプト**（SpringBoard）を上げる。BE-0445 のプローブは、このプロンプトを通知とペーストのプロンプトと並べて測る。
+- `perm.tracking.value` — `notDetermined`/`authorized`/`denied`
 
 **Password AutoFill** — iOS 本物の「パスワードを保存」アラートの上に、通知の要求が重なった組です。
 反応的なガードが答える順序を問われる場面で、ここに模造品はありません。アプリ内ブラウザが読み込む

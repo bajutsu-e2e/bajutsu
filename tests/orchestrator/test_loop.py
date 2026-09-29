@@ -919,6 +919,7 @@ def test_final_capture_does_not_duplicate_a_rule_fired_after_png(tmp_path: Path)
     assert len(after_artifacts) == 1
 
 
+@pytest.mark.usefixtures("no_position_rules")
 def test_a_step_that_fails_before_it_acts_keeps_a_matched_pre_action_pair(
     tmp_path: Path,
 ) -> None:
@@ -960,6 +961,7 @@ def test_a_step_that_fails_before_it_acts_keeps_a_matched_pre_action_pair(
     assert not any(name.endswith("after.png") for name in step0_names)
 
 
+@pytest.mark.usefixtures("no_position_rules")
 def test_a_step_that_fails_before_it_acts_skips_the_tree_when_the_fallback_query_fails(
     tmp_path: Path,
 ) -> None:
@@ -1002,6 +1004,7 @@ def test_a_step_that_fails_before_it_acts_skips_the_tree_when_the_fallback_query
     assert not any(name.endswith("after.png") for name in step0_names)
 
 
+@pytest.mark.usefixtures("no_position_rules")
 def test_a_step_that_fails_before_it_acts_never_writes_a_stale_cached_tree(
     tmp_path: Path,
 ) -> None:
@@ -1052,6 +1055,7 @@ def test_a_step_that_fails_before_it_acts_never_writes_a_stale_cached_tree(
     assert not any(name.endswith("elements.json") for name in step1_names)
 
 
+@pytest.mark.usefixtures("no_position_rules")
 def test_a_step_that_fails_before_it_acts_queries_fresh_even_with_a_cached_tree(
     tmp_path: Path,
 ) -> None:
