@@ -177,8 +177,14 @@ The recursion also fixes each case where the same `use:` step aborts a run today
 - any body under zero or one target;
 - a `web:` / `app:` block under two or more targets.
 
-Scenarios that already load and run keep their behavior, since none of them can hold an unexpanded
-`use:` step without aborting.
+A scenario that already loads and runs keeps its runtime behavior. An unexpanded `use:` that the
+run loop reaches always aborts today, so no passing run depends on one. Load time does change in
+one case: a `use:` inside a branch the run never takes, such as an `if` whose condition is false
+or a `forEach` over an empty list. Such a `use:` never reaches the run loop, so it never aborts
+today. Expanding it at load time turns a broken reference there into a load-time failure for a
+scenario that passes now. Examples are an unknown component, a missing or unknown param, and a
+cycle. This item accepts that trade: an error at load time on a reference that was never valid
+beats hiding it behind an untaken branch.
 
 ### How far a caller's target reaches
 
@@ -215,17 +221,21 @@ stands, since that folding reads the tags expansion already writes.
 
 At point 1, the check stops refusing a `use:` or `group:` step. Its own `target`, when present, must
 still name a declared target. When absent, the step raises no error, and the step does not resolve
-to the primary target either. Resolution belongs to the steps the expansion produces, which the
-later passes see.
+to the primary target either. The walk also stops descending into a `group:` step's own `steps`
+at this point. Expansion has not yet stamped the caller's target onto those children, so checking
+them here would reject a valid `group:` that names `target`. Point 2 checks them instead.
+Resolution belongs to the steps the expansion produces, which the later passes see.
 
 At point 2, `expand_components` stamps each expanded step before the existing check runs. The check
 then applies the ordinary per-step rule to every step: required under two or more targets, resolved
 through `primaryTarget` when omitted, and forbidden inside `web:` / `app:`. An interrupt recovery
-step keeps its own rule, described in the next section. `expand_components` is the one path that loads scenarios for `run` and every other consumer that
-runs them, through
-[`load_expanded.py`](../../bajutsu/common/scenario/load_expanded.py) and
-[`run/cli.py`](../../bajutsu/run/cli.py). With the recursion above, no `use:` step
-leaves that path unexpanded, so lifting the refusal adds no unexpanded route to the runner.
+step keeps its own rule, described in the next section.
+
+Every consumer that runs a scenario loads it through
+[`load_expanded.py`](../../bajutsu/common/scenario/load_expanded.py) or
+[`run/cli.py`](../../bajutsu/run/cli.py), and both call `expand_components`. With the recursion
+above, no `use:` step leaves that path unexpanded, so lifting the refusal adds no unexpanded route
+to the runner.
 Static readers such as `lint` and serve's audit parse the unexpanded file. They will now see a
 `use:` or `group:` step carrying `target`, and their tests should cover that shape.
 
@@ -284,7 +294,9 @@ single-target and multi-target scenarios alike.
    - both rows of the table, with a conflicting and an equal value;
    - the depth rule, including the stop at `web:` / `app:`;
    - nested components and a parameterized target;
-   - recovery steps and the `primaryTarget` fallback.
+   - recovery steps and the `primaryTarget` fallback;
+   - a `group:` naming `target` under two targets with no `primaryTarget`;
+   - a broken `use:` inside an untaken branch, which now fails at load time.
 6. **Docs and demo.** The pages listed under *Docs*, in both languages, and the showcase scenario.
 
 ## Alternatives considered
