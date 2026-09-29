@@ -216,8 +216,10 @@ final class HTTPServer {
     /// it. That race is routine here rather than exotic: the driver's read and actuation windows are
     /// tighter than a contended host's slowest operation, and `APIHandler` deliberately queues handlers
     /// behind one main-thread lock. The option turns such a write into a plain `EPIPE`, which
-    /// `sendAll` already treats as "stop writing". The timeouts then bound the two blocking calls a
-    /// handler makes, so a peer that vanishes without closing cannot hold a connection slot for ever.
+    /// `sendAll` already treats as "stop writing". Setting the option fails (`EINVAL`) on a peer that
+    /// already reset, though, so `sendAll` also passes `MSG_NOSIGNAL` on every write. The timeouts
+    /// then bound the two blocking calls a handler makes, so a peer that vanishes without closing
+    /// cannot hold a connection slot for ever.
     ///
     /// Internal rather than private so a test can read the options back off a socket it owns, which
     /// is the only way to assert the timeouts landed at all.
@@ -393,7 +395,8 @@ final class HTTPServer {
             guard var base = ptr.baseAddress else { return false }
             var remaining = data.count
             while remaining > 0 {
-                let n = send(fd, base, remaining, 0)
+                // MSG_NOSIGNAL too: `configureConnection` says why SO_NOSIGPIPE alone is not enough.
+                let n = send(fd, base, remaining, MSG_NOSIGNAL)
                 if n <= 0 { return false }
                 base += n
                 remaining -= n

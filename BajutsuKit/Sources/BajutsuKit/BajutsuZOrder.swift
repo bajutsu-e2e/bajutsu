@@ -284,7 +284,10 @@ private final class _ZOrderServer {
             guard var base = ptr.baseAddress else { return }
             var remaining = data.count
             while remaining > 0 {
-                let n = send(fd, base, remaining, 0)
+                // MSG_NOSIGNAL, not only the connection's SO_NOSIGPIPE: setting that option fails
+                // (EINVAL) on a peer that reset before `_acceptLoop` reached it, which is exactly
+                // the peer whose write would raise SIGPIPE.
+                let n = send(fd, base, remaining, MSG_NOSIGNAL)
                 if n <= 0 { break }
                 base += n
                 remaining -= n

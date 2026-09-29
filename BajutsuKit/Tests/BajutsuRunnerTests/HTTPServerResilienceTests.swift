@@ -94,6 +94,32 @@ final class HTTPServerResilienceTests: XCTestCase {
         )
     }
 
+    /// A peer that resets before the accept loop configures its socket used to kill the process.
+    /// `setsockopt(SO_NOSIGPIPE)` fails with `EINVAL` on an already-reset connection, so the option
+    /// never lands on exactly the socket whose reply raises `SIGPIPE`; only `MSG_NOSIGNAL` on the
+    /// `send` itself covers it. The partial request line is what earns a reply at all: a peer that
+    /// sent nothing reads as a closed keep-alive connection and is never answered. Whether the reset
+    /// beats `configureConnection` is a race the accept loop usually wins, so the test makes two
+    /// hundred attempts. Handlers run concurrently, so the final `/health` shows the server is still
+    /// serving rather than that every reset connection has drained. Without the fix this test does
+    /// not fail — it kills the test process.
+    func testAPeerThatResetsBeforeTheReplyDoesNotKillTheProcess() throws {
+        let server = HTTPServer { _ in .json(200, ["status": "ready"]) }
+        let port = try server.start()
+        defer { server.stop() }
+
+        for _ in 0..<200 {
+            let fd = try Self.connect(port: port)
+            Self.write(fd, "GET /health")
+            Self.resetAndClose(fd)
+        }
+
+        XCTAssertEqual(
+            Self.get(port: port, path: "/health"), 200,
+            "the server must keep serving after a peer reset before its reply"
+        )
+    }
+
     /// Nine silent peers — one more than the eight concurrent handler slots — so an unbounded read
     /// would occupy every slot and leave `/health` unanswerable for as long as they stayed connected.
     func testSilentPeersCannotStarveTheServerOfConnectionSlots() throws {
