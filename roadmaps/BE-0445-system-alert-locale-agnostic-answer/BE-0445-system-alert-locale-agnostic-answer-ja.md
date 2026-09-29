@@ -1,14 +1,14 @@
-[English](BE-XXXX-system-alert-locale-agnostic-answer.md) · **日本語**
+[English](BE-0445-system-alert-locale-agnostic-answer.md) · **日本語**
 
-# BE-XXXX — システムアラートをボタンの役割で答え、Simulator の言語を問わないようにする
+# BE-0445 — システムアラートをボタンの役割で答え、Simulator の言語を問わないようにする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-system-alert-locale-agnostic-answer-ja.md) |
+| 提案 | [BE-0445](BE-0445-system-alert-locale-agnostic-answer-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0445") |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)、[BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)、[BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)、[BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules-ja.md)、[BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md) |
 <!-- /BE-METADATA -->

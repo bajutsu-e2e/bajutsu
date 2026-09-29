@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-system-alert-locale-agnostic-answer-ja.md)
+**English** · [日本語](BE-0445-system-alert-locale-agnostic-answer-ja.md)
 
-# BE-XXXX — Answer a system alert by button role, so no Simulator language is uncovered
+# BE-0445 — Answer a system alert by button role, so no Simulator language is uncovered
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-system-alert-locale-agnostic-answer.md) |
+| Proposal | [BE-0445](BE-0445-system-alert-locale-agnostic-answer.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0445") |
 | Topic | Platform support |
 | Related | [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules.md), [BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md) |
 <!-- /BE-METADATA -->
