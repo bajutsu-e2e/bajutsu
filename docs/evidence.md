@@ -521,7 +521,7 @@ a fault in the *test infrastructure*, this one a likely defect in the app a team
 
 | Backend | What lands in `app-crash/` | How the crash is confirmed |
 |---|---|---|
-| iOS (XCUITest), **Simulator only** | the `.ips` report macOS's `ReportCrash` wrote for the faulting process, under its own name | `XCUIApplication.state` answering `notRunning`. On a real device (`xcuitest.deviceType: device`) nothing is confirmed: the same answer can mean an OS memory-pressure kill, and the device's reports never reach this host |
+| iOS (XCUITest), **Simulator only** | the `.ips` report macOS's `ReportCrash` wrote for the faulting process, under its own name. Where no report exists, `unified-log.txt` instead: the Simulator's own unified log for the app's launch window, bounded to its last 256 KB. On the GitHub-hosted macOS runner, `ReportCrash` writes no report for a Simulator app at all | `XCUIApplication.state` answering `notRunning`. On a real device (`xcuitest.deviceType: device`) nothing is confirmed: the same answer can mean an OS memory-pressure kill, and the device's reports never reach this host |
 | Android (adb), **API 30 and above** | `logcat-crash.txt`, the crash buffer's own block for this process — managed (`FATAL EXCEPTION`) or native (`Fatal signal`) — plus `tombstone_NN` where the device allows `adb root` | `pidof` reporting no process, corroborated by `dumpsys activity exit-info` reporting `CRASH` / `CRASH_NATIVE` at or after this launch. Below API 30 `ApplicationExitInfo` does not exist, so nothing is confirmed |
 | web (Playwright) | nothing | left to a follow-up item |
 

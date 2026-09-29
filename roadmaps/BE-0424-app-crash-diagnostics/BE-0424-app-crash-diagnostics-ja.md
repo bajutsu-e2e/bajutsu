@@ -1813,6 +1813,16 @@ fake backend の実行が収集する内容は変わりません。
   加えて、プロトコルの isinstance に関する不備も見つけました。`TracingDriver` を通しても
   exit-info ポーリングのリセットが機能し続けるよう、`AppCrashPollResettable` を追加して直して
   います。詳しい経緯は PR 本文を参照してください。
+- [#2012](https://github.com/bajutsu-e2e/bajutsu/pull/2012) — iOS の証跡の代替経路。CI の
+  `app-crash (xcuitest)` ジョブは、毎回クラッシュを分類できていたのに、レポートを一度も取得できて
+  いませんでした。ジョブに追加した一覧ステップで、原因がわかりました。GitHub がホストする macOS
+  ランナーでは、`ReportCrash` がシミュレータのアプリについて `.ips` を一切書きません。一覧ステップは
+  2つの `DiagnosticReports` と、デバイス自身の CoreSimulator のログとデータのディレクトリを調べました。
+  `.ips` の掃引で何も見つからないとき、`XcuitestEnvironment` は代わりに `unified-log.txt` を添付する
+  ようになりました。中身は、アプリの起動以降についてシミュレータ自身が記録したユニファイドログです。
+  `simctl spawn … log show` でアプリのプロセスと、バンドル ID を含む行に絞り、末尾 256 KB に制限します。
+  xcresult を使わなかったのは、`xcodebuild` が終了して初めて作られ、クラッシュの確定よりずっと後に
+  なるからです。
 
 ## 参考
 

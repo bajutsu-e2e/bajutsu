@@ -10,6 +10,7 @@ correctly.
 from __future__ import annotations
 
 import subprocess
+import time
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +18,7 @@ from types import SimpleNamespace
 import pytest
 from conftest import el as _el
 
+from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import AndroidConfig, Effective, IosConfig
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.platform_lifecycle import AndroidEnvironment
@@ -302,6 +304,122 @@ def test_the_sweep_attaches_an_anonymized_report_for_this_launch(
     os.utime(path, (1005.0, 1005.0))
 
     assert [name for name, _ in env.app_crash_artifacts()] == ["Showcase-2026-09-16.ips"]
+
+
+def _logging_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, run: Callable[..., str]
+) -> xcuitest_environment.XcuitestEnvironment:
+    reports = tmp_path / "DiagnosticReports"
+    reports.mkdir()
+    env = xcuitest_environment.XcuitestEnvironment("xcuitest", _UDID, run)
+    monkeypatch.setattr(xcuitest_environment, "_diagnostic_reports_dir", lambda: reports)
+    monkeypatch.setattr(xcuitest_environment, "_APP_CRASH_REPORT_TIMEOUT", 0.05)
+    monkeypatch.setattr(xcuitest_environment, "_APP_CRASH_REPORT_POLL", 0.001)
+    env._app_path = str(_app_bundle(tmp_path))
+    env._bundle_id = "com.example.Showcase"
+    return env
+
+
+def test_no_report_falls_back_to_the_simulators_own_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Measured on the GitHub-hosted runner: `ReportCrash` writes no `.ips` for a Simulator app at
+    # all, so the guest's unified log is the evidence that remains.
+    calls: list[list[str]] = []
+
+    def run(args: list[str], extra_env: object = None) -> str:
+        calls.append(args)
+        return "Showcase: Fatal error: SHOWCASE_CRASH\nrunningboardd: termination reported\n"
+
+    env = _logging_env(tmp_path, monkeypatch, run)
+    env._app_launched_at = time.time() - 90
+
+    found = env.app_crash_artifacts()
+
+    assert [name for name, _ in found] == ["unified-log.txt"]
+    assert b"SHOWCASE_CRASH" in found[0][1]
+    (cmd,) = calls
+    assert cmd[:6] == ["xcrun", "simctl", "spawn", _UDID, "log", "show"]
+    # 90s since launch rounds up to 2 minutes, plus one of slack for the minute boundary.
+    assert cmd[cmd.index("--last") + 1] == "3m"
+    predicate = cmd[cmd.index("--predicate") + 1]
+    assert 'process == "Showcase"' in predicate
+    assert 'eventMessage CONTAINS "com.example.Showcase"' in predicate
+
+
+def test_a_report_found_skips_the_log_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def run(args: list[str], extra_env: object = None) -> str:
+        raise AssertionError("the log fallback must not run when a report exists")
+
+    env = _logging_env(tmp_path, monkeypatch, run)
+    env._app_launched_at = 1000.0
+    _report(tmp_path / "DiagnosticReports", "Showcase-2026-09-16.ips", _UDID, mtime=1005.0)
+
+    assert [name for name, _ in env.app_crash_artifacts()] == ["Showcase-2026-09-16.ips"]
+
+
+@pytest.mark.parametrize("output", ["", "   \n"])
+def test_an_empty_log_excerpt_captures_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, output: str
+) -> None:
+    env = _logging_env(tmp_path, monkeypatch, lambda args, extra_env=None: output)
+    env._app_launched_at = time.time()
+
+    assert env.app_crash_artifacts() == []
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        subprocess.CalledProcessError(1, ["xcrun"]),
+        simctl.DeviceTimeout("timed out"),
+        FileNotFoundError("xcrun"),
+    ],
+)
+def test_a_failing_log_read_captures_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    def run(args: list[str], extra_env: object = None) -> str:
+        raise error
+
+    env = _logging_env(tmp_path, monkeypatch, run)
+    env._app_launched_at = time.time()
+
+    assert env.app_crash_artifacts() == []
+
+
+def test_the_log_excerpt_keeps_the_bounded_tail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(xcuitest_environment, "_APP_LOG_EXCERPT_BYTES", 8)
+    env = _logging_env(tmp_path, monkeypatch, lambda args, extra_env=None: "0123456789FAULT!")
+    env._app_launched_at = time.time()
+
+    assert env.app_crash_artifacts() == [("unified-log.txt", b"89FAULT!")]
+
+
+def test_the_log_fallback_needs_a_bundle_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def run(args: list[str], extra_env: object = None) -> str:
+        raise AssertionError("no bundle id, no predicate to build")
+
+    env = _logging_env(tmp_path, monkeypatch, run)
+    env._bundle_id = None
+    env._app_launched_at = time.time()
+
+    assert env.app_crash_artifacts() == []
+
+
+def test_the_log_command_rejects_a_name_that_could_break_the_predicate() -> None:
+    with pytest.raises(ValueError, match="log predicate"):
+        simctl.app_log_cmd(_UDID, 'Show"case', "com.example.Showcase", 1)
+    with pytest.raises(ValueError, match="log predicate"):
+        simctl.app_log_cmd(_UDID, "Showcase", "com.example.Show case", 1)
+    cmd = simctl.app_log_cmd(_UDID, "Showcase", "com.example.Showcase", 0)
+    assert cmd[cmd.index("--last") + 1] == "1m"
 
 
 # --- iOS: the launch marker ------------------------------------------------------------------------

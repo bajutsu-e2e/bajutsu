@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import math
 import os
 import shutil
 import signal
@@ -94,22 +95,17 @@ _MAX_CRASH_REPORTS = 3
 
 # How long the app's own `.ips` sweep waits for `ReportCrash` to finish writing, and how often it
 # re-looks (BE-0424). A condition wait, not a fixed sleep: it returns the instant a matching report
-# appears, so a generous bound costs nothing on the common case where the report is already there.
-# Bounded rather than unbounded because the scenario has already failed by the time this runs — the
-# wait buys evidence, never a different verdict. Raised twice on PR #2012. First 5s → 15s, after two
-# consecutive `app-crash (xcuitest)` CI runs each classified the crash correctly (`app_crashed:
-# true`) yet swept no report inside the old bound, while the same scenario against a freshly built
-# app on an uncontended local Simulator captures one every time. Then 15s → 30s, once the job's own
-# diagnostics-upload gap that had made that first bump circumstantial was fixed (the job now uploads
-# `render-probe.txt` and the BE-0361 stall captures alongside the run) and four further recurrences
-# all carried direct evidence of the same host degradation recorded before any scenario ran — a
-# screenshot probe killed for not answering, and a `backboardd` telemetry sample that itself timed
-# out. No code-side cause was found on the crash-detection path itself; `ReportCrash` sharing that
-# degraded host's render/IPC contention is the remaining explanation, and this second bump is a
-# mitigation for a host that recovers within tens of seconds rather than a claim that 30s beats a
-# fully wedged one.
+# appears, so a generous bound costs nothing where the report lands. It was raised 5s → 15s → 30s on
+# PR #2012 on the theory that a contended CI host wrote the report late; the job's own listing later
+# showed the GitHub-hosted runner writes none at all for a Simulator app, which is what the
+# unified-log fallback (`_app_log_excerpt`) exists for.
 _APP_CRASH_REPORT_TIMEOUT = 30.0
 _APP_CRASH_REPORT_POLL = 0.2
+
+# The unified-log fallback's file name and size bound (BE-0424). Bounded like the report count above:
+# one scenario's evidence must stay small whatever the app logged across its launch window.
+_APP_LOG_EXCERPT_NAME = "unified-log.txt"
+_APP_LOG_EXCERPT_BYTES = 256 * 1024
 
 
 # Probing a *warm* runner before reuse (BE-0291): a live runner answers /health at once, so this only
@@ -1433,9 +1429,33 @@ class XcuitestEnvironment(_DeviceEnvironment):
             self._udid,
             base.deadline_ticks(_APP_CRASH_REPORT_TIMEOUT, _APP_CRASH_REPORT_POLL),
         )
-        return [(path.name, content) for path in paths if (content := _read_report(path))][
+        reports = [(path.name, content) for path in paths if (content := _read_report(path))][
             :_MAX_CRASH_REPORTS
         ]
+        return reports or self._app_log_excerpt(executable)
+
+    def _app_log_excerpt(self, executable: str) -> list[tuple[str, bytes]]:
+        """The Simulator's own unified log for the crashed app, when no `.ips` report exists (BE-0424).
+
+        Measured on PR #2012: on the GitHub-hosted macOS runner, `ReportCrash` writes no report at
+        all for a Simulator app's fault — every host and device report store came back empty an hour
+        after it — so the sweep above has nothing to find there however long it waits. The guest's
+        log still carries the app's last lines and the system's record of its termination, and is
+        readable the moment the crash is confirmed, unlike the xcresult, which only exists once
+        `xcodebuild` exits. The tail is kept, bounded, since the fault is at the end of the window.
+        """
+        if self._bundle_id is None or self._app_launched_at is None:
+            return []
+        minutes = math.ceil((time.time() - self._app_launched_at) / 60) + 1
+        try:
+            text = self._run(
+                simctl.app_log_cmd(self._udid, executable, self._bundle_id, minutes), None
+            )
+        except (OSError, subprocess.CalledProcessError, simctl.DeviceTimeout, ValueError) as exc:
+            _logger.debug("xcuitest: the app's unified-log excerpt failed (%s)", exc)
+            return []
+        excerpt = text.encode()[-_APP_LOG_EXCERPT_BYTES:]
+        return [(_APP_LOG_EXCERPT_NAME, excerpt)] if excerpt.strip() else []
 
     def _discard_runner(self, *, warn_on_crash: bool = True, keep_log: bool = False) -> None:
         """Terminate the runner process and remove its patched .xctestrun (kills the warm resident).

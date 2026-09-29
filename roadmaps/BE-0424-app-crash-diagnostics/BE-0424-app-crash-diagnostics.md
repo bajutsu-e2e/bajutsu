@@ -1543,6 +1543,15 @@ Log:
   crash-block match window that could absorb a neighboring process's crash) and a protocol-isinstance
   gap (`AppCrashPollResettable`, added to keep the exit-info poll's reset working through
   `TracingDriver`) — see the PR body for the full account.
+- [#2012](https://github.com/bajutsu-e2e/bajutsu/pull/2012) — iOS evidence fallback. The
+  `app-crash (xcuitest)` CI job classified the crash on every run yet never captured a report. A
+  listing step in the job then showed why: on the GitHub-hosted macOS runner, `ReportCrash` writes no
+  `.ips` for a Simulator app at all. It searched both `DiagnosticReports` stores and the device's own
+  CoreSimulator log and data directories. When the `.ips` sweep finds nothing,
+  `XcuitestEnvironment` now attaches `unified-log.txt` instead: the Simulator's own unified log for
+  the app's launch window (`simctl spawn … log show`, filtered to the app's process and to lines
+  naming its bundle id), bounded to its last 256 KB. The xcresult was not used: `xcodebuild` writes it
+  on exit, well after the step loop confirms the crash.
 
 ## References
 

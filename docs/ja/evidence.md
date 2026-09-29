@@ -326,7 +326,7 @@ class EvidenceSink(Protocol):
 
 | バックエンド | `app-crash/` に入るもの | クラッシュの確認方法 |
 |---|---|---|
-| iOS（XCUITest）、**シミュレータのみ** | macOS の `ReportCrash` が異常終了したプロセスに対して書いた `.ips` レポート（ファイル名はそのまま） | `XCUIApplication.state` が `notRunning` を返すこと。実機（`xcuitest.deviceType: device`）では何も確認しません。同じ答えが OS のメモリ逼迫による kill を意味することがあり、実機のレポートはこのホストに届かないためです |
+| iOS（XCUITest）、**シミュレータのみ** | macOS の `ReportCrash` が異常終了したプロセスに対して書いた `.ips` レポート（ファイル名はそのまま）。レポートがないときは、代わりに `unified-log.txt` を保存します。中身は、アプリの起動以降についてシミュレータ自身が記録したユニファイドログで、末尾 256 KB に制限します。GitHub がホストする macOS ランナーがこの場合に当たり、`ReportCrash` はシミュレータのアプリについてレポートを書きません | `XCUIApplication.state` が `notRunning` を返すこと。実機（`xcuitest.deviceType: device`）では何も確認しません。同じ答えが OS のメモリ逼迫による kill を意味することがあり、実機のレポートはこのホストに届かないためです |
 | Android（adb）、**API 30 以上** | `logcat-crash.txt`（このプロセス向けのクラッシュバッファのブロック。マネージド `FATAL EXCEPTION` またはネイティブ `Fatal signal`）と、デバイスが `adb root` を許すときは `tombstone_NN` | `pidof` がプロセスを報告せず、かつ `dumpsys activity exit-info` がこの起動以降の `CRASH` / `CRASH_NATIVE` を報告すること。API 30 未満では `ApplicationExitInfo` が存在しないので、何も確認しません |
 | web（Playwright） | なし | 後続の項目に委ねています |
 
