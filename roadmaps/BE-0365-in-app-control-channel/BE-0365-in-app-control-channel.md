@@ -168,7 +168,7 @@ tested and splitting it changes what is under test.
 - [x] Unit 1 — the collector's command queue, authenticated drain, and acknowledgement endpoint
 - [x] Unit 2 — the app-side poll loop and command dispatch, env-gated and inert by default
 - [x] Unit 3 — the acknowledgement condition wait, and the touch-visualization toggle as the first command
-- [ ] Unit 4 — mid-scenario stub-table replacement as the second command
+- [x] Unit 4 — mid-scenario stub-table replacement as the second command
 - [ ] Unit 5 — bilingual documentation, including the release-build gating this makes mandatory
 
 Log:

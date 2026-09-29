@@ -1263,6 +1263,33 @@ expect:
 
 モックは `BAJUTSU_MOCKS` env で BajutsuKit に渡されます（`dump_mocks`, `scenario/serialize.py`）。形式的な形は [dsl-grammar](dsl-grammar.md#2-文法の全体像) にあります。
 
+### シナリオの途中でモックを変える（`setMocks`）
+
+シナリオレベルの `mocks` は、アプリの起動時に固定されます。最初は成功し、次の更新では失敗するといったように、途中で別のレスポンスが必要になるシナリオでは `setMocks` ステップを使います。`setMocks` はアプリのスタブテーブル全体を、自分が持つリストで置き換えます。リストの各要素は `mocks` と同じ `{ match, respond }` の形です。新しいテーブルは古いテーブルに追加されるのではなく、置き換わります。`setMocks: []` はすべてのスタブを外します。
+
+```yaml
+- name: profile refresh fails after a first success
+  mocks:
+    - match: { path: /api/profile }
+      respond: { status: 200, body: '{"name":"A"}' }
+  steps:
+    - tap: { id: profile.refresh }
+    - wait: { until: { request: { path: /api/profile, status: 200 } }, timeout: 6 }
+    - setMocks:
+        - match: { path: /api/profile }
+          respond: { status: 500 }
+    - tap: { id: profile.refresh }
+    - wait: { until: { request: { path: /api/profile, status: 500 } }, timeout: 6 }
+```
+
+新しいテーブルは、アプリ内制御チャネル（BE-0365）を通って実行中のアプリへ届きます。`setMocks` ステップは、アプリがテーブルの適用を確認するまで待ちます。そのため、`setMocks` の後のステップが古いスタブのまま実行されることはありません。アプリがテーブルを拒否した場合や、5 秒以内に応答しない場合は、`setMocks` ステップが理由付きで失敗します。`relaunch` ステップでアプリを再起動すると、アプリは起動時の `mocks` を読み直します。
+
+`setMocks` を使うには、次の 3 つの条件を満たす必要があります。`run` は最初の 2 つを、デバイスを操作する前に確認します。
+
+- `xcuitest` バックエンドで、ネットワーク収集が有効であること（Web、Android、`fake` はチャネルを運べません）。
+- シナリオとターゲットのどちらでも、`BAJUTSU_CONTROL_CHANNEL` を `"1"` 以外に固定していないこと（`run` が自分で `"1"` を設定します）。
+- アプリの BajutsuKit が `-DBAJUTSU_ENABLE_CONTROL_CHANNEL` 付きでコンパイルされていること。このフラグがないとアプリは応答せず、ステップはタイムアウトで失敗します。
+
 ## 再利用とデータ駆動とタグ
 
 コア文法の周りには、小さなテンプレートとマクロの層があります。これはロード時、決定的 run の **前**に実行されるため、ランナーは常に展開済みのプレーンなシナリオだけを見ます。展開順、`${ns.key}` 補間、深さ制限といった規範的な規則は [dsl-grammar](dsl-grammar.md#6-テンプレートとマクロ層) にあります。ここではオーサリングの視点から説明します。

@@ -1674,6 +1674,43 @@ a canned response instead of hitting the network. Each mock is `{ match, respond
 Mocks are handed to BajutsuKit via the `BAJUTSU_MOCKS` env (`dump_mocks`, `scenario/serialize.py`). The formal
 shape is in [dsl-grammar](dsl-grammar.md#2-grammar-at-a-glance).
 
+### Changing the mocks mid-scenario (`setMocks`)
+
+The app reads the scenario-level `mocks` once, at launch. Some journeys need a different response
+later on: the profile loads, then the next refresh fails. A `setMocks` step covers that case. The
+step replaces the app's whole stub table with its own list of `{ match, respond }` entries. The new
+table does not extend the old one, and `setMocks: []` removes every stub.
+
+```yaml
+- name: profile refresh fails after a first success
+  mocks:
+    - match: { path: /api/profile }
+      respond: { status: 200, body: '{"name":"A"}' }
+  steps:
+    - tap: { id: profile.refresh }
+    - wait: { until: { request: { path: /api/profile, status: 200 } }, timeout: 6 }
+    - setMocks:
+        - match: { path: /api/profile }
+          respond: { status: 500 }
+    - tap: { id: profile.refresh }
+    - wait: { until: { request: { path: /api/profile, status: 500 } }, timeout: 6 }
+```
+
+The new table travels to the running app over the in-app control channel (BE-0365). The step then
+waits until the app confirms it installed the table. No later step runs against the
+old stubs. The step fails with a reason when the app refuses the table. It also fails when the app
+stays silent for five seconds. A `relaunch` step restarts the app, and the app then reads the
+launch-time `mocks` again.
+
+`setMocks` has three requirements. `run` checks the first two before it touches a device.
+
+- The run uses the `xcuitest` backend with network collection on. Web, Android, and `fake` cannot
+  carry the channel.
+- Neither the scenario nor its target pins `BAJUTSU_CONTROL_CHANNEL` to a value other than `"1"`.
+  `run` writes `"1"` itself.
+- The app's build passes `-DBAJUTSU_ENABLE_CONTROL_CHANNEL` to BajutsuKit. Without that flag the
+  app never answers, and the step fails on its timeout.
+
 ## Reuse, data, and tags
 
 A small templating and macro layer wraps the core grammar. It runs **at load time, before the deterministic run**, so the runner only ever sees plain, fully-expanded scenarios. The normative rules (expansion order, `${ns.key}` interpolation, depth limits) are in [dsl-grammar](dsl-grammar.md#6-the-templating--macro-layer). This section covers the authoring perspective.

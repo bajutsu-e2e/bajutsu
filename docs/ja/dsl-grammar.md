@@ -62,6 +62,7 @@ graph LR
   ST -->|capture| CT["CaptureToken"]
   ST -->|if| IF["If"]
   ST -->|forEach| FE["ForEach"]
+  ST -->|setMocks| MK
   CMP -->|steps| ST
   GRP -->|steps| ST
   WEB -->|within| SEL
@@ -217,6 +218,7 @@ Action    ::=
   | { clearKeychain:    {} }                               # 保存済みパスワード / 証明書をリセット
   | { clearClipboard:   {} }                               # ペーストボードをクリア
   | { setClipboard:     { text: string } }                 # ペーストボードにテキストを書き込む（simctl pbcopy）。ペースト操作の準備用
+  | { setMocks:         list(<Mock>) }                     # シナリオの途中でアプリのスタブテーブル全体を置き換える（[] はすべてのスタブを外す）。iOS/XCUITest かつネットワーク収集が有効な場合のみ（BE-0365）
   | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }
   | { clearStatusBar:   {} }                               # ライブのステータスバーに戻す
   | { use:         { component: string, with?: map(string,string) } }   # マクロ（§6.2。修飾子不可）
