@@ -6,7 +6,7 @@
 | Field | Value |
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-multi-target-use-components.md) |
-| Author | [@handle](https://github.com/handle) |
+| Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Scenario authoring features |
