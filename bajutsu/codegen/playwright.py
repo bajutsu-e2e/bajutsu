@@ -448,7 +448,7 @@ def _emit_wait(w: Wait) -> list[str]:
 
 # One branch per assertion kind: the count tracks the schema's size, not tangled logic, and a split
 # would leave no single place a new assertion kind clearly belongs (BE-0386).
-def _emit_assertion(a: Assertion) -> list[str]:  # noqa: PLR0911
+def _emit_assertion(a: Assertion) -> list[str]:  # noqa: C901, PLR0911
     if a.exists is not None:
         sel = a.exists.sel.as_selector()
         loc = _locator(sel)

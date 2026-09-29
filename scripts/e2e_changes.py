@@ -524,7 +524,10 @@ def _is_pool_guard(line: str) -> bool:
     return not line.lstrip().startswith("#") and _POOL_GUARD_RE.search(line) is not None
 
 
-def job_scenario_map(workflow_text: str) -> dict[str, set[str]]:
+# One pass of a line-scanning state machine (jobs block, current job, folded block scalar); its
+# branches share that mutable state, so splitting it would thread the state through helpers and
+# read less clearly than the scan itself (BE-0386).
+def job_scenario_map(workflow_text: str) -> dict[str, set[str]]:  # noqa: C901
     """Map each job to the scenario files it declares, read from a lane's workflow file (BE-0322).
 
     Reads the ``scenarios:`` inputs already present in the workflow, so the map is a lookup over the

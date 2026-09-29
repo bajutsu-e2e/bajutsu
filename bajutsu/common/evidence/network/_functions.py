@@ -24,7 +24,10 @@ def _no_transitions() -> list[tuple[ScreenTransition, float]]:
     return []
 
 
-def _make_handler(collector: NetworkCollector) -> type[BaseHTTPRequestHandler]:
+# C901 folds every method of the nested `Handler` class into this factory, so the score measures
+# those request handlers, not branching here. Ruff bounds each method on its own, so the exemption
+# loses no signal (BE-0386).
+def _make_handler(collector: NetworkCollector) -> type[BaseHTTPRequestHandler]:  # noqa: C901
     class Handler(BaseHTTPRequestHandler):
         def _authenticated(self) -> bool:
             """True when the request bears this run's token; answers 401 itself when it does not.

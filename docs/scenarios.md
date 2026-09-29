@@ -766,7 +766,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | terminate + relaunch the app (re-applying launch env/args, plus the given overrides), then wait until ready |
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | override the simulated GPS location (`simctl location set`) |
 | `push` | `push: { payload: {...} }` | deliver a simulated push notification (`simctl push`) with this APNs (Apple Push Notification service) payload |
-| `http` | `http: { method?, url, headers?, body?, status?, saveBody? }` | issue an HTTP request (test-data setup / webhook / API); checks `status`, stores the body as `${vars.<saveBody>}` |
+| `http` | `http: { method?, url, headers?, body?, status?, saveBody?, extractBody?: [{ var, path }] }` | issue an HTTP request (test-data setup / webhook / API); checks `status`, stores the body as `${vars.<saveBody>}`, and/or pulls named JSON fields into `${vars.<var>}` by `path` ([below](#http-request-for-test-data-setup)) |
 | `totp` | `totp: { secret, into: { var } }` | generate an RFC 6238 time-based one-time password (2FA) locally into `${vars.<var>}` |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | poll the configured mailbox until a matching message arrives, extract a code into `${vars.<var>}` |
 | `generate` | `generate: { random\|datetime: {...}, into: { var } }` | compute a random or current-datetime value at run time into `${vars.<var>}` ([below](#generate-a-value-computed-at-run-time)) |
@@ -1099,6 +1099,14 @@ its `payload` as the APNs JSON to the app under test.
 ```yaml
 - http: { method: POST, url: "https://api.test/seed", body: '{"n":1}', status: 200 }   # fails if status != 200
 - http: { url: "https://api.test/token", saveBody: token }   # vars.token ← response body text
+- http:
+    method: POST
+    url: "${secrets.API}/login"
+    body: '{"user": "e2e"}'
+    status: 200
+    extractBody:
+      - { var: token, path: "data.token" }        # vars.token ← the nested field, not the whole body
+      - { var: userId, path: "data.user.id" }
 - assert:
     - exists: { id: home.title }
 ```
@@ -1106,6 +1114,25 @@ its `payload` as the APNs JSON to the app under test.
 `http` issues the request from the runner over HTTP — it does **not** go through the UI driver — so a
 `status` mismatch fails the step, and `saveBody` stores the response body text as `${vars.<name>}` for
 later steps. Touching no device, it is the one device-independent action here.
+
+`extractBody` (BE-0440) sits beside `saveBody` on the same step, and a step may set either, both, or
+neither: each entry parses the response body as JSON, walks a `path` of object keys and `[n]`
+(zero-based) array indexes, and stores the value it finds as `vars.<var>`. An opening key carries no
+leading dot (`data.token`); an index may follow a key or another index (`items[0].id`, `rows[0][1]`);
+and a path may open on an index when the body is itself a JSON array (`[0].id`). A string value is
+stored as-is; any other JSON value (number/boolean/null/object/array) renders as the same compact JSON
+text a captured event body field would (`42`, `true`, `null`, `{"id":42}`), so a later `${vars.*}`
+comparison reads the shape the API returned. A response body that fails to parse as JSON fails the
+step with the JSON parser's own message; a `path` that does not resolve — a missing key, an
+out-of-range index, a key applied to anything but an object, or an index applied to anything but an
+array — fails the step with an error naming the `var` and the `path`, as does a malformed `path` (a
+negative or non-numeric index, an empty segment, a trailing dot). `path` and `var` may themselves
+use `${vars.*}` / `${secrets.*}` substitution (`path: "items[${vars.i}].id"`), and a value
+substituted into a `path` must supply exactly one path segment — an empty one, or one carrying `.`,
+`[`, or `]`, fails the step, so a field name arriving from a response body can never redirect the
+walk to a different field. Two `extractBody` entries sharing one `var`, or an entry whose `var`
+equals `saveBody`, is a scenario load error — or, when only a substitution reveals the collision, a
+step failure at run time — never a silent overwrite decided by write order.
 
 ### `totp` (two-factor one-time password)
 

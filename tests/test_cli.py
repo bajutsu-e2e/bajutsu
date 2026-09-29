@@ -1002,6 +1002,49 @@ def test_run_rejects_a_bad_target_config_hook_end_to_end(tmp_path: Path) -> None
     assert "declares no targets" in r.output
 
 
+def test_run_rejects_a_duplicate_extract_body_var_in_a_target_config_hook(tmp_path: Path) -> None:
+    # BE-0440: `with_lifecycle_phases` folds a target config's `before`/`after` hooks in via
+    # `model_copy`, which never re-runs `Scenario`'s own model_validator — and `_hooks_for` reads
+    # those hooks as a bare `list[Step]` straight off the target config, never through a full
+    # `Scenario.model_validate`. A duplicate `extractBody`/`saveBody` var inside one of a hook's own
+    # `http` steps must still fail at load time, the same as one written directly into the scenario.
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "defaults: { backend: [fake] }\n"
+        "targets:\n"
+        "  demo:\n"
+        "    bundleId: com.example.demo\n"
+        "    before:\n"
+        "      - http:\n"
+        "          url: https://api.test/data\n"
+        "          extractBody:\n"
+        "            - { var: a, path: p1 }\n"
+        "            - { var: a, path: p2 }\n",
+        encoding="utf-8",
+    )
+    scn = tmp_path / "s.yaml"
+    scn.write_text("- name: demo\n  steps:\n    - tap: { id: home.title }\n", encoding="utf-8")
+    r = runner.invoke(
+        app,
+        [
+            "run",
+            "--scenario",
+            str(scn),
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--config",
+            str(cfg),
+            "--runs-dir",
+            str(tmp_path / "runs"),
+        ],
+    )
+    assert r.exit_code == 2
+    assert "'a'" in r.output
+    assert "extractBody" in r.output
+
+
 def test_run_tag_filtering_away_a_multi_target_scenario_lets_the_rest_run(
     tmp_path: Path,
 ) -> None:
@@ -1723,6 +1766,21 @@ def test_serve_config_from_git_binds_checkout(
     assert r.exit_code == 0
     assert captured["config"] == cfg  # bound to the checkout's config
     assert captured["cwd"] == checkout  # served from the checkout root
+
+
+def test_serve_config_from_git_failure_exits_2(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A Git source that can't be materialized fails startup with a clean one-line error naming the
+    # `--config` value, not a traceback, and never reaches the server.
+    def fail(spec: object, **kw: object) -> object:
+        raise OSError("network unreachable")
+
+    monkeypatch.setattr("bajutsu.common.config_source.materialize", fail)
+    started: list[object] = []
+    monkeypatch.setattr("bajutsu.serve.serve", lambda **kw: started.append(kw))
+    r = runner.invoke(app, ["serve", "--config", "github:acme/repo@main"])
+    assert r.exit_code == 2
+    assert "--config github:acme/repo@main: network unreachable" in r.output
+    assert started == []
 
 
 def test_serve_local_config_binds_the_config_directory(

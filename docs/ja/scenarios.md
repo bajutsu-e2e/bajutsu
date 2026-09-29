@@ -526,7 +526,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | アプリを terminate + 再起動し（launch env/args を再適用し、指定分で上書き）、ready まで待つ |
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | シミュレータの GPS 位置を上書きする（`simctl location set`） |
 | `push` | `push: { payload: {...} }` | この APNs（Apple Push Notification service）ペイロードで疑似プッシュ通知を配信する（`simctl push`） |
-| `http` | `http: { method?, url, headers?, body?, status?, saveBody? }` | HTTP リクエストを送る（テストデータ準備 / Webhook / API）。`status` を検証し、ボディを `${vars.<saveBody>}` に保存する |
+| `http` | `http: { method?, url, headers?, body?, status?, saveBody?, extractBody?: [{ var, path }] }` | HTTP リクエストを送る（テストデータ準備 / Webhook / API）。`status` を検証し、ボディを `${vars.<saveBody>}` に保存する、または `path` で指定した JSON のフィールドを `${vars.<var>}` に取り出す（[後述](#httpテストデータ準備用のリクエスト)） |
 | `totp` | `totp: { secret, into: { var } }` | RFC 6238 の時刻ベースワンタイムパスワード（2FA）をローカルで生成し `${vars.<var>}` に入れる |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | 設定したメールボックスを一致するメッセージが届くまでポーリングし、コードを `${vars.<var>}` に取り出す |
 | `generate` | `generate: { random\|datetime: {...}, into: { var } }` | 乱数または現在日時の値を実行時に計算し、`${vars.<var>}` に保存する（[後述](#generate実行時に計算する値)） |
@@ -746,11 +746,31 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 ```yaml
 - http: { method: POST, url: "https://api.test/seed", body: '{"n":1}', status: 200 }   # status が 200 以外なら失敗
 - http: { url: "https://api.test/token", saveBody: token }   # vars.token ← レスポンスボディのテキスト
+- http:
+    method: POST
+    url: "${secrets.API}/login"
+    body: '{"user": "e2e"}'
+    status: 200
+    extractBody:
+      - { var: token, path: "data.token" }        # vars.token ← ボディ全体ではなくネストしたフィールド
+      - { var: userId, path: "data.user.id" }
 - assert:
     - exists: { id: home.title }
 ```
 
 `http` はリクエストを runner から HTTP で送ります。UI ドライバは経由しません。そのため `status` の不一致はステップ失敗になり、`saveBody` はレスポンスボディのテキストを `${vars.<name>}` に保存して後続ステップで使えます。デバイスに触れない、ここで唯一のデバイス非依存アクションです。
+
+`extractBody`（BE-0440）は、同じステップで `saveBody` と併用できます。片方だけの指定、両方の指定、どちらも指定しない場合のいずれも許されます。各エントリはレスポンスボディを JSON として解析し、`path` をたどって見つけた値を `vars.<var>` に保存します。
+
+`path` はオブジェクトのキーと、`[n]`（0 始まり）の配列インデックスからなります。先頭のキーに `.` は付けません（`data.token`）。インデックスは、キーの後にも別のインデックスの後にも続けられます（`items[0].id`、`rows[0][1]`）。ボディ自体が JSON 配列なら、`path` はインデックスから始めても構いません（`[0].id`）。
+
+文字列の値はそのまま保存します。それ以外の JSON の値（数値、真偽値、null、オブジェクト、配列）は、キャプチャしたイベントボディのフィールドと同じ形式で保存します。具体的には、コンパクトな JSON テキスト（`42`、`true`、`null`、`{"id":42}`）です。後続の `${vars.*}` 比較が、API の返した形をそのまま読めるようにするためです。
+
+レスポンスボディが JSON として解析できない場合は、JSON パーサーのメッセージのままステップが失敗します。`path` が解決できない場合は、`var` と `path` を含むエラーで失敗します。キーが見つからない場合、インデックスが範囲外の場合が、これにあたります。オブジェクト以外にキーを適用する場合、配列以外にインデックスを適用する場合も同様です。不正な `path`（負のインデックス、数値でないインデックス、空のセグメント、末尾のドット）も同じく失敗します。
+
+`path` と `var` はそれ自体に `${vars.*}` / `${secrets.*}` 置換を使えます（`path: "items[${vars.i}].id"`）。ただし `path` に差し込む値は、1 つのパスセグメントだけを供給しなければなりません。空の値や、`.`、`[`、`]` を含む値はステップを失敗させます。レスポンスボディ由来のフィールド名で、たどり先を別のフィールドへすり替えることを防ぐためです。
+
+`extractBody` の 2 つのエントリが同じ `var` を持つ場合、または `var` が `saveBody` と一致する場合は、シナリオの読み込みでエラーになります。置換によって初めて衝突が判明する場合は、実行時のステップ失敗になります。どちらの場合も、書き込む順序によって片方が黙って上書きされることはありません。
 
 ### `totp`（二要素認証のワンタイムパスワード）
 

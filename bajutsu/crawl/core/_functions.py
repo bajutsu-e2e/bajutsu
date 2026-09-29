@@ -604,7 +604,10 @@ def crawl(  # noqa: C901, PLR0915
             on_node(d, node)
         return node, actions
 
-    def _worker(
+    # The count folds in the nested `_give_back`, and the loop has one arm per distinct outcome of
+    # performing an action (stale replay, lost selector, device fault, crash, new or known screen);
+    # a split would scatter the pool's fault-isolation state across helpers (BE-0386).
+    def _worker(  # noqa: C901
         d: base.Driver, rst: Reset, current_fp: str | None, lane: str, capture: AppCrashCapture
     ) -> None:
         errors = 0  # consecutive device faults → retire so a wedged device can't busy-loop

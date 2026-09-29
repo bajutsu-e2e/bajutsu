@@ -23,6 +23,7 @@ from bajutsu.common.scenario.models.steps import AfterRule, Interrupt, Step
 
 from ._functions import _coerce_system_alert_handling
 from ._group_nesting import _check_no_nested_group
+from ._http_extract import _check_http_extract_vars
 from ._targets import _check_target_requirements, _expand_target_groups
 from .preconditions import Preconditions
 from .system_alert_handling import SystemAlertHandling
@@ -171,4 +172,9 @@ class Scenario(_Model):
     @model_validator(mode="after")
     def _no_nested_group(self) -> Self:
         _check_no_nested_group(self)
+        return self
+
+    @model_validator(mode="after")
+    def _http_extract_vars(self) -> Self:
+        _check_http_extract_vars(self)
         return self

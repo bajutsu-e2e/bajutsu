@@ -25,6 +25,36 @@ def _is_loopback(host: str) -> bool:
         return False  # a hostname we can't classify — treat as non-loopback (needs a token)
 
 
+def _bind_startup_config(config: str) -> tuple[Path | None, Path | None, dict[str, str] | None]:
+    """Resolve `--config` to the served config path, its working directory, and its provenance.
+
+    `--config github:…` binds a Git source at startup (BE-0063), the same way a local path does:
+    materialize the checkout and serve from its root, so the config's relative scenarios/build/
+    baselines resolve against the fetched tree. A non-spec value stays a local path.
+    """
+    if not config:
+        return None, None, None
+    from bajutsu.common.config_source import materialize, parse_config_spec, source_provenance
+
+    spec = parse_config_spec(config)
+    if spec is not None:
+        try:
+            mat = materialize(spec)
+        except (OSError, ValueError) as e:
+            typer.echo(f"--config {config}: {e}")
+            raise typer.Exit(2) from None
+        # Stamp the resolved commit so the UI's "view config" can show which commit this opaque
+        # cache-path config was materialized from, not just the path (BE-0063).
+        return mat.config_path, mat.root, source_provenance(spec, mat)
+    # A local config's relative paths resolve from its own directory, so the served config behaves
+    # the same wherever serve was started, matching the CLI and the Git bind (BE-0242). Resolve
+    # config_path itself too — a run job passes it as `--config` to a subprocess launched with
+    # cwd=cwd (the config's directory); left relative to the original launch cwd, that argument
+    # would no longer resolve once cwd moves.
+    config_path = Path(config).resolve()
+    return config_path, config_path.parent, None
+
+
 def serve(
     port: int = typer.Option(8765, "--port"),
     config: str = typer.Option(
@@ -168,35 +198,7 @@ def serve(
         )
         return
 
-    # `--config github:…` binds a Git source at startup (BE-0063), the same way a local path does:
-    # materialize the checkout and serve from its root, so the config's relative scenarios/build/
-    # baselines resolve against the fetched tree. A non-spec value stays a local path.
-    config_path = Path(config) if config else None
-    cwd: Path | None = None
-    config_provenance: dict[str, str] | None = None
-    if config:
-        from bajutsu.common.config_source import materialize, parse_config_spec, source_provenance
-
-        spec = parse_config_spec(config)
-        if spec is not None:
-            try:
-                mat = materialize(spec)
-            except (OSError, ValueError) as e:
-                typer.echo(f"--config {config}: {e}")
-                raise typer.Exit(2) from None
-            config_path, cwd = mat.config_path, mat.root
-            # Stamp the resolved commit so the UI's "view config" can show which commit this opaque
-            # cache-path config was materialized from, not just the path (BE-0063).
-            config_provenance = source_provenance(spec, mat)
-        else:
-            # A local config's relative paths resolve from its own directory, so the served config
-            # behaves the same wherever serve was started, matching the CLI and the Git bind (BE-0242).
-            # Resolve config_path itself too — a run job passes it as `--config` to a subprocess
-            # launched with cwd=cwd (the config's directory); left relative to the original launch
-            # cwd, that argument would no longer resolve once cwd moves.
-            assert config_path is not None  # set above from a truthy `config`
-            config_path = config_path.resolve()
-            cwd = config_path.parent
+    config_path, cwd, config_provenance = _bind_startup_config(config)
 
     # The initial theme selection is a serve-only `ui.default_theme` key, read from the startup
     # config here (the core Config never models it — BE-0191). None follows the OS as before.

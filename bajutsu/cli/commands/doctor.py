@@ -162,6 +162,48 @@ def xcuitest_runner_summary(eff: Effective, actuator: str) -> list[str]:
     return lines
 
 
+def _capability_preflight(scenario: str, actuator: str, eff: Effective, udid: str) -> bool:
+    """Print the scenario's capability preflight and report whether it failed; exit 2 if missing.
+
+    When a scenario file is provided, check whether it uses constructs the chosen backend can't
+    perform — pure, no device needed (BE-0024). The live-route narrowing (BE-0238) keys on the raw
+    `--udid`: doctor is informational and never resolves the device provider, so `--udid https://…`
+    discloses the live set, while an `appium` provider's endpoint (resolved only at run time) is
+    not reflected here.
+    """
+    if not scenario:
+        return False
+    scenario_path = Path(scenario)
+    if not scenario_path.is_file():
+        typer.echo(f"scenario not found: {scenario}")
+        raise typer.Exit(2)
+    cap_reasons = check_scenarios(scenario_path, capabilities_for_run(actuator, eff, udid))
+    if not cap_reasons:
+        return False
+    typer.echo("capability preflight:")
+    for reason in cap_reasons:
+        typer.echo(f"  ✘ {reason}")
+    typer.echo("")
+    return True
+
+
+def _print_disclosures(eff: Effective, backends: list[str], udid: str, actuator: str) -> None:
+    """Print doctor's informational, device-free, non-gating disclosures."""
+    # Per-scenario actuator resolution disclosure (BE-0240): when the ladder has more than one iOS
+    # actuator, show how the target's scenarios split across them.
+    summary = actuator_resolution_summary(eff, backends, udid)
+    if summary:
+        for line in summary:
+            typer.echo(line)
+        typer.echo("")
+
+    # Which runner tier an xcuitest target resolves to (BE-0292): bundled, testRunner, or build.
+    if runner_summary := xcuitest_runner_summary(eff, actuator):
+        for line in runner_summary:
+            typer.echo(line)
+        typer.echo("")
+
+
 def doctor(
     target_name: str = typer.Option(..., "--target"),
     udid: str = typer.Option("booted"),
@@ -202,39 +244,8 @@ def doctor(
         typer.echo(preflight.render(cfg_checks))
         raise typer.Exit(2)
 
-    # Capability preflight: when a scenario file is provided, check whether it uses constructs
-    # the chosen backend can't perform — pure, no device needed (BE-0024). The live-route narrowing
-    # (BE-0238) keys on the raw `--udid`: doctor is informational and never resolves the device
-    # provider, so `--udid https://…` discloses the live set, while an `appium` provider's endpoint
-    # (resolved only at run time) is not reflected here.
-    cap_failed = False
-    if scenario:
-        scenario_path = Path(scenario)
-        if not scenario_path.is_file():
-            typer.echo(f"scenario not found: {scenario}")
-            raise typer.Exit(2)
-        cap_reasons = check_scenarios(scenario_path, capabilities_for_run(actuator, eff, udid))
-        if cap_reasons:
-            cap_failed = True
-            typer.echo("capability preflight:")
-            for reason in cap_reasons:
-                typer.echo(f"  ✘ {reason}")
-            typer.echo("")
-
-    # Per-scenario actuator resolution disclosure (BE-0240): when the ladder has more than one iOS
-    # actuator, show how the target's scenarios split across them — informational, no device, no gate.
-    summary = actuator_resolution_summary(eff, backends, udid)
-    if summary:
-        for line in summary:
-            typer.echo(line)
-        typer.echo("")
-
-    # Which runner tier an xcuitest target resolves to (BE-0292): bundled, testRunner, or build —
-    # informational, no device, no gate.
-    if runner_summary := xcuitest_runner_summary(eff, actuator):
-        for line in runner_summary:
-            typer.echo(line)
-        typer.echo("")
+    cap_failed = _capability_preflight(scenario, actuator, eff, udid)
+    _print_disclosures(eff, backends, udid, actuator)
 
     # Runnability gate: the CLIs (+ a booted Simulator) the actuator needs. Fail fast here
     # with a fixable checklist instead of crashing later on a missing tool / no device. The

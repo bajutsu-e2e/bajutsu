@@ -195,23 +195,15 @@ def _luminance(r: int, g: int, b: int) -> float:
     return r * _Y_R + g * _Y_G + b * _Y_B
 
 
-def _is_antialiased(
-    buf: bytes, pixel_idx: int, w: int, h: int, other_buf: bytes, max_delta: float
-) -> bool:
-    """Whether the pixel at *pixel_idx* in *buf* is likely anti-aliased.
+def _neighbor_luminance_range(buf: bytes, x0: int, y0: int, w: int, h: int) -> tuple[float, float]:
+    """The most negative and most positive luminance step from (x0, y0) to an in-bounds neighbor.
 
-    A pixel is anti-aliased if it sits on a high-contrast luminance edge in *buf*
-    and the corresponding pixel in *other_buf* also has a neighbor that is close in
-    color to the candidate.
+    Both start at 0.0, so a pixel with no darker (or brighter) neighbor reports 0.0 on that side.
     """
-    x0 = pixel_idx % w
-    y0 = pixel_idx // w
-    off0 = pixel_idx * 4
+    off0 = (y0 * w + x0) * 4
     lum0 = _luminance(buf[off0], buf[off0 + 1], buf[off0 + 2])
-
     min_d = 0.0
     max_d = 0.0
-
     for dy in (-1, 0, 1):
         ny = y0 + dy
         if ny < 0 or ny >= h:
@@ -229,6 +221,22 @@ def _is_antialiased(
                 min_d = d
             if d > max_d:
                 max_d = d
+    return min_d, max_d
+
+
+def _is_antialiased(
+    buf: bytes, pixel_idx: int, w: int, h: int, other_buf: bytes, max_delta: float
+) -> bool:
+    """Whether the pixel at *pixel_idx* in *buf* is likely anti-aliased.
+
+    A pixel is anti-aliased if it sits on a high-contrast luminance edge in *buf*
+    and the corresponding pixel in *other_buf* also has a neighbor that is close in
+    color to the candidate.
+    """
+    x0 = pixel_idx % w
+    y0 = pixel_idx // w
+    off0 = pixel_idx * 4
+    min_d, max_d = _neighbor_luminance_range(buf, x0, y0, w, h)
 
     if max_d - min_d < 40 or not (abs(min_d) > 25 or abs(max_d) > 25):
         return False

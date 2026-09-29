@@ -140,7 +140,9 @@ def _directional_parts(payload: dict[str, Any]) -> list[Part]:
     return parts
 
 
-def _step_desc_parts(action: str, payload: Any) -> list[Part]:
+# One branch per step action: the count tracks the schema's size, not tangled logic, and a split
+# would leave no single place a new step action's rendering clearly belongs (BE-0386).
+def _step_desc_parts(action: str, payload: Any) -> list[Part]:  # noqa: C901
     """The tokenized detail for a single (non-assert) step action."""
     if action in ("tap", "doubleTap"):
         return _sel_parts(payload)

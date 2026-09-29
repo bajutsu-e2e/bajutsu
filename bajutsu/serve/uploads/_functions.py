@@ -149,6 +149,30 @@ def _scenario_entry_name(name: str) -> str | None:
     return pure.name
 
 
+def _read_scenario_entry(archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
+    """Stream one scenario entry, refusing it past `MAX_SCENARIO_ENTRY_BYTES` before it is buffered."""
+    try:
+        with archive.open(info) as src:
+            chunks = []
+            size = 0
+            while chunk := src.read(_CHUNK):
+                size += len(chunk)
+                if size > MAX_SCENARIO_ENTRY_BYTES:
+                    raise BundleError(
+                        f"scenario entry too large: {info.filename!r} "
+                        f"(max {MAX_SCENARIO_ENTRY_BYTES} bytes)"
+                    )
+                chunks.append(chunk)
+    except (OSError, RuntimeError, zlib.error, zipfile.BadZipFile) as e:
+        # Wider than BadZipFile alone (like `extract_bundle` above): `ZipFile.open` raises
+        # RuntimeError for a password-encrypted entry and NotImplementedError (a RuntimeError
+        # subclass) for an unsupported compression method; a corrupted DEFLATE stream raises
+        # zlib.error mid-read, independent of the CRC check that raises BadZipFile. All three are
+        # driven by client-controlled entry data — a rejected zip is a 400, never a 500.
+        raise BundleError(f"could not read {info.filename!r}: {e}") from e
+    return b"".join(chunks)
+
+
 def read_scenario_zip(zip_path: Path) -> dict[str, str]:
     """Read a ``.zip``'s flat top-level ``*.yaml`` entries into ``{name: text}`` (BE-0340).
 
@@ -183,31 +207,12 @@ def read_scenario_zip(zip_path: Path) -> dict[str, str]:
             # No ratio pre-check (unlike `extract_bundle`): a scenario entry is text whose absolute
             # size the streamed `MAX_SCENARIO_ENTRY_BYTES` / total checks below already bound, so the
             # bundle-sized 200:1 bound would only turn a legitimately repetitive scenario away.
-            try:
-                with archive.open(info) as src:
-                    chunks = []
-                    size = 0
-                    while chunk := src.read(_CHUNK):
-                        size += len(chunk)
-                        if size > MAX_SCENARIO_ENTRY_BYTES:
-                            raise BundleError(
-                                f"scenario entry too large: {info.filename!r} "
-                                f"(max {MAX_SCENARIO_ENTRY_BYTES} bytes)"
-                            )
-                        chunks.append(chunk)
-            except (OSError, RuntimeError, zlib.error, zipfile.BadZipFile) as e:
-                # Wider than BadZipFile alone (like `extract_bundle` above): `ZipFile.open` raises
-                # RuntimeError for a password-encrypted entry and NotImplementedError (a
-                # RuntimeError subclass) for an unsupported compression method; a corrupted DEFLATE
-                # stream raises zlib.error mid-read, independent of the CRC check that raises
-                # BadZipFile. All three are driven by client-controlled entry data — a rejected zip
-                # is a 400, never a 500.
-                raise BundleError(f"could not read {info.filename!r}: {e}") from e
-            total += size
+            data = _read_scenario_entry(archive, info)
+            total += len(data)
             if total > MAX_SCENARIO_ZIP_TOTAL_BYTES:
                 raise BundleError(f"zip exceeds {MAX_SCENARIO_ZIP_TOTAL_BYTES} bytes uncompressed")
             try:
-                out[name] = b"".join(chunks).decode("utf-8")
+                out[name] = data.decode("utf-8")
             except UnicodeDecodeError as e:
                 raise BundleError(f"{info.filename!r} is not valid UTF-8 text: {e}") from e
     if not out:

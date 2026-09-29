@@ -375,7 +375,7 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
 
 # One branch per assertion kind: the count tracks the schema's size, not tangled logic, and a split
 # would leave no single place a new assertion kind clearly belongs (BE-0386).
-def _emit_assertion(a: Assertion) -> list[str]:  # noqa: PLR0911
+def _emit_assertion(a: Assertion) -> list[str]:  # noqa: C901, PLR0911
     if a.exists is not None:
         element = _element(a.exists.sel.as_selector())
         check = "XCTAssertFalse" if a.exists.negate else "XCTAssertTrue"

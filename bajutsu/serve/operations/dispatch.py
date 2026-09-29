@@ -30,7 +30,7 @@ from bajutsu.serve.operations._common import _device_args, _resolve_org_or_forbi
 from bajutsu.serve.operations.composition import scenarios_zip_strays
 from bajutsu.serve.operations.config import launch_label, resolve_provider_env
 from bajutsu.serve.operations.upload import _fetch_artifact, artifact_presence
-from bajutsu.serve.scenarios import Runnable
+from bajutsu.serve.scenarios import Runnable, ScenarioScope
 from bajutsu.serve.state import ConfigBinding, Job, ServeState
 from bajutsu.serve.upload_artifacts import ArtifactKind, ArtifactOverrides
 
@@ -361,8 +361,9 @@ def _provenance(
 
 
 # Each return is a distinct validation guard's HTTP status — the early-return shape RET505 asks for
-# (BE-0386), the same reason `start_run_set` below carries this suppression.
-def start_run(  # noqa: PLR0911
+# (BE-0386), the same reason `start_run_set` below carries this suppression. Those same guards are
+# what push the complexity count past the ceiling, so C901 is exempted for the same reason.
+def start_run(  # noqa: C901, PLR0911
     state: ServeState,
     body: dict[str, Any],
     *,
@@ -520,9 +521,64 @@ def start_run(  # noqa: PLR0911
     return {"jobId": job.id}, 200
 
 
+def _batch_requests(
+    scope: ScenarioScope,
+    names: list[str],
+    *,
+    work_dir: Path,
+    provider: str,
+    target: str,
+    config_arg: str,
+    platform: Platform,
+    app_path: str,
+) -> tuple[list[BatchRequest], tuple[Any, int] | None]:
+    """Resolve every named scenario to a packageable `BatchRequest`, or the first refusal.
+
+    All-or-nothing, so `start_run_set` never dispatches a partial fan-out for a set that names one
+    bad scenario.
+    """
+    requests: list[BatchRequest] = []
+    for name in names:
+        runnable = scope.runnable(name)
+        if runnable is None:
+            return [], (
+                {
+                    "error": f"scenario '{name}' must be an existing .yaml inside the target's scenarios dir"
+                },
+                400,
+            )
+        if runnable.materials:
+            # The batch provider packages work_dir at the zip root; a scenario whose text travels as
+            # out-of-band materials (the server-backed store) can't be packaged from an on-disk path.
+            return [], (
+                {
+                    "error": (
+                        f"scenario '{name}' is not an on-disk file — cloud-batch fan-out requires "
+                        "scenarios to be on the local filesystem (materials not supported)"
+                    )
+                },
+                400,
+            )
+        scenario_arg = os.path.relpath(runnable.arg, work_dir)
+        if _escapes(scenario_arg):
+            return [], ({"error": f"scenario '{name}' is not under the run directory"}, 400)
+        requests.append(
+            BatchRequest(
+                provider=provider,
+                scenario=scenario_arg,
+                target=target,
+                config=config_arg,
+                platform=platform,
+                app_path=app_path,
+            )
+        )
+    return requests, None
+
+
 # Each return is a distinct HTTP status from a validation guard — the early-return shape RET505
-# itself asks for (BE-0386) — and each branch is one more such guard, not tangled logic.
-def start_run_set(  # noqa: PLR0911, PLR0912
+# itself asks for (BE-0386). Those guards are also what the complexity count tallies, so C901 is
+# exempted for the same reason; the one self-contained step, `_batch_requests`, is already split.
+def start_run_set(  # noqa: C901, PLR0911
     state: ServeState, body: dict[str, Any], *, actor: str | None = None, session: str | None = None
 ) -> tuple[Any, int]:
     """Fan out a scenario-set request into one cloud-batch job per scenario (BE-0336 Unit 3).
@@ -597,35 +653,18 @@ def start_run_set(  # noqa: PLR0911, PLR0912
                 "the config and its scenarios must live inside that directory"
             )
         }, 400
-    requests: list[BatchRequest] = []
-    for name in names:
-        runnable = scope.runnable(name)
-        if runnable is None:
-            return {
-                "error": f"scenario '{name}' must be an existing .yaml inside the target's scenarios dir"
-            }, 400
-        if runnable.materials:
-            # The batch provider packages work_dir at the zip root; a scenario whose text travels as
-            # out-of-band materials (the server-backed store) can't be packaged from an on-disk path.
-            return {
-                "error": (
-                    f"scenario '{name}' is not an on-disk file — cloud-batch fan-out requires "
-                    "scenarios to be on the local filesystem (materials not supported)"
-                )
-            }, 400
-        scenario_arg = os.path.relpath(runnable.arg, work_dir)
-        if _escapes(scenario_arg):
-            return {"error": f"scenario '{name}' is not under the run directory"}, 400
-        requests.append(
-            BatchRequest(
-                provider=provider,
-                scenario=scenario_arg,
-                target=target,
-                config=config_arg,
-                platform=batch_platform,
-                app_path=app_path,
-            )
-        )
+    requests, requests_err = _batch_requests(
+        scope,
+        names,
+        work_dir=work_dir,
+        provider=provider,
+        target=target,
+        config_arg=config_arg,
+        platform=batch_platform,
+        app_path=app_path,
+    )
+    if requests_err:
+        return requests_err
     label, label_err = _run_label(binding, body)
     if label_err:
         return label_err
