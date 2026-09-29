@@ -56,6 +56,22 @@ from ._shared import _logger
 from .step_loop_state import StepLoopState
 
 
+def _probe_app_crash(active_driver: base.Driver) -> str | None:
+    """A capable driver's app-crash signal, or None when it has none or cannot answer (BE-0424)."""
+    if not isinstance(active_driver, base.AppCrashSignal):
+        return None
+    try:
+        return active_driver.app_crash_signal()
+    except base.BackendCrashError:
+        raise  # a dead backend still belongs to the recovery path that already owns it
+    except Exception as exc:
+        # A diagnostic probe on an already-failed step must never abort the run: `run_scenario`
+        # converts only `ControlChannelError` / `RunCancelled`, so anything else here escapes
+        # `run_all` and discards every scenario's result.
+        _logger.debug("the app-crash probe failed (%s)", exc, exc_info=True)
+        return None
+
+
 def _with_crash_note(reason: str, signal: str) -> str:
     """Name the app's crash in a step's failure, without losing the failure the step itself saw.
 
@@ -227,13 +243,7 @@ class _StepRunner:
         """
         latches = self.state.app_crash
         if outcome.ok:
-            if outcome.action == app_crash_latches.RELAUNCH:
-                # Re-arms rather than clears: `relaunch`'s own closure discards the `ReadinessResult`
-                # `await_ready` hands it, and `await_ready` never raises — so a `relaunch` reporting
-                # `ok=True` says nothing about whether the app it just launched came up at all.
-                latches.unconfirmed_launch = True
-            elif outcome.action in app_crash_latches.OBSERVES_APP:
-                latches.unconfirmed_launch = False
+            self._track_launch(outcome)
             return
         if outcome.action == app_crash_latches.RELAUNCH:
             # The one step that deliberately terminates the app. Latched before any probe, and it
@@ -256,18 +266,7 @@ class _StepRunner:
             return
         if latches.deliberate_termination or latches.unconfirmed_launch:
             return
-        if not isinstance(active_driver, base.AppCrashSignal):
-            return
-        try:
-            signal = active_driver.app_crash_signal()
-        except base.BackendCrashError:
-            raise  # a dead backend still belongs to the recovery path that already owns it
-        except Exception as exc:
-            # A diagnostic probe on an already-failed step must never abort the run: `run_scenario`
-            # converts only `ControlChannelError` / `RunCancelled`, so anything else here escapes
-            # `run_all` and discards every scenario's result.
-            _logger.debug("the app-crash probe failed (%s)", exc, exc_info=True)
-            return
+        signal = _probe_app_crash(active_driver)
         if signal is None:
             # Deliberately not latched: a "cannot confirm" answer for this step teaches nothing about
             # whether the *next* step's own failure is a crash, so latching here would risk missing a
@@ -288,6 +287,17 @@ class _StepRunner:
                 # teardown `relaunch` in this scenario's own `after` phase re-stamps the launch marker
                 # the sweep matches against, so a later read would sweep past the crash it is for.
                 outcome.app_crash_artifacts = tuple(self.cfg.capture_app_crash())
+
+    def _track_launch(self, outcome: StepOutcome) -> None:
+        """Keep the unconfirmed-launch latch in step with a successful step (BE-0424)."""
+        latches = self.state.app_crash
+        if outcome.action == app_crash_latches.RELAUNCH:
+            # Re-arms rather than clears: `relaunch`'s own closure discards the `ReadinessResult`
+            # `await_ready` hands it, and `await_ready` never raises — so a `relaunch` reporting
+            # `ok=True` says nothing about whether the app it just launched came up at all.
+            latches.unconfirmed_launch = True
+        elif outcome.action in app_crash_latches.OBSERVES_APP:
+            latches.unconfirmed_launch = False
 
     def _drain_step_interruptions(self, driver: base.Driver, outcome: StepOutcome) -> None:
         """Drain what interrupted this step, and fail it unconditionally on an undeclared one.

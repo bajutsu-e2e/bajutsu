@@ -13,11 +13,13 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
 from _runner import _eff, _el, _fake_driver
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import NullSink
+from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.platform_lifecycle.protocols import ReadinessResult
 from bajutsu.common.report import manifest_dict, results_from_manifest
 from bajutsu.common.runner import Lease, LeaseFn, run_all
@@ -321,3 +323,29 @@ def test_the_fake_driver_is_not_an_app_crash_signal() -> None:
     # fast-suite failure above would be classified as a crash.
     assert not isinstance(FakeDriver([]), base.AppCrashSignal)
     assert isinstance(_CrashingAppDriver([]), base.AppCrashSignal)
+
+
+def test_a_run_with_no_run_directory_writes_nothing_and_pulls_no_tombstone() -> None:
+    # No run directory means no writer: nothing to write the report into, so the tombstone pull —
+    # whose `adb root` is the costly half — is skipped too, and the failure keeps no dangling pointer.
+    calls: list[str] = []
+    results = run_all(_eff(), [_scenario()], _app_crash_lease(tombstone=[_TOMBSTONE], calls=calls))
+
+    assert calls == ["artifacts"]
+    assert not results[0].ok
+    assert "crash report is in" not in (results[0].failure or "")
+
+
+def test_an_unwritable_report_leaves_the_failure_without_a_pointer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A write that fails is logged, never raised: the scenario still reports its own failure, but it
+    # must not name a directory that holds nothing.
+    def refuse(self: RunArtifactWriter, name: str, text: str) -> Path:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(RunArtifactWriter, "write_text", refuse)
+    results = run_all(_eff(), [_scenario()], _app_crash_lease(), run_dir=tmp_path / "runs" / "run1")
+
+    assert not results[0].ok
+    assert "crash report is in" not in (results[0].failure or "")

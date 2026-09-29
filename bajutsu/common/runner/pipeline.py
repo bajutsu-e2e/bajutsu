@@ -1138,6 +1138,28 @@ class _ScenarioRunner:
             caps=capabilities_for_run(pool.actuator, pool.eff, pool.udid_spec),
         )
 
+    def _attach_app_crash(self, lz: Lease, result: RunResult, s: Scenario, sid: str) -> None:
+        """Write the confirmed app crash's evidence and point the scenario's failure at it (BE-0424)."""
+        crashed = next(
+            (
+                o
+                for o in (*result.before_outcomes, *result.steps, *result.after_outcomes)
+                if o.app_crashed
+            ),
+            None,
+        )
+        if crashed is not None:
+            trailer = self._write_app_crash_artifacts(lz, crashed, s, sid)
+            # `result.ok` is already fixed by `run_scenario` (`ok=failure is None`) before this
+            # scan ever runs, so an empty trailer here cannot flip it — but `result.failure` would
+            # still silently become `""` instead of staying `None`, a stale non-`None`-yet-empty
+            # value nothing downstream expects. An `app_crashed` outcome always carries a failure
+            # by construction (the confirming driver call only runs on a step that already
+            # failed), so `result.failure` is never actually `None` here — guarded anyway, since
+            # nothing enforces that invariant at this call site.
+            if trailer:
+                result.failure = (result.failure or "") + trailer
+
     def _run_on_lease(
         self,
         lz: Lease,
@@ -1325,25 +1347,7 @@ class _ScenarioRunner:
             # break a channel a later step needs. A plain post-return check, not a new `except`
             # branch: the scenario's own retry behavior is already settled by the time it runs, since
             # an app crash is classified in-band and never escapes as an exception (BE-0424).
-            crashed = next(
-                (
-                    o
-                    for o in (*result.before_outcomes, *result.steps, *result.after_outcomes)
-                    if o.app_crashed
-                ),
-                None,
-            )
-            if crashed is not None:
-                trailer = self._write_app_crash_artifacts(lz, crashed, s, sid)
-                # `result.ok` is already fixed by `run_scenario` (`ok=failure is None`) before this
-                # scan ever runs, so an empty trailer here cannot flip it — but `result.failure` would
-                # still silently become `""` instead of staying `None`, a stale non-`None`-yet-empty
-                # value nothing downstream expects. An `app_crashed` outcome always carries a failure
-                # by construction (the confirming driver call only runs on a step that already
-                # failed), so `result.failure` is never actually `None` here — guarded anyway, since
-                # nothing enforces that invariant at this call site.
-                if trailer:
-                    result.failure = (result.failure or "") + trailer
+            self._attach_app_crash(lz, result, s, sid)
             if self.progress is not None:
                 mark = "✔" if result.ok else "✘"
                 self.progress(
