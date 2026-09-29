@@ -1,14 +1,14 @@
-[English](BE-XXXX-multi-target-use-components.md) · **日本語**
+[English](BE-0446-multi-target-use-components.md) · **日本語**
 
-# BE-XXXX — マルチターゲットのシナリオで use: コンポーネントと group: セクションを使えるようにする
+# BE-0446 — マルチターゲットのシナリオで use: コンポーネントと group: セクションを使えるようにする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-multi-target-use-components-ja.md) |
+| 提案 | [BE-0446](BE-0446-multi-target-use-components-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0446") |
 | トピック | シナリオの記述機能 |
 | 関連 | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md)、[BE-0436](../BE-0436-primary-target-default/BE-0436-primary-target-default-ja.md)、[BE-0437](../BE-0437-multi-target-step-groups/BE-0437-multi-target-step-groups-ja.md)、[BE-0438](../BE-0438-multi-target-interrupts/BE-0438-multi-target-interrupts-ja.md)、[BE-0439](../BE-0439-step-groups-report-folding/BE-0439-step-groups-report-folding-ja.md) |
 <!-- /BE-METADATA -->

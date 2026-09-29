@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-multi-target-use-components-ja.md)
+**English** · [日本語](BE-0446-multi-target-use-components-ja.md)
 
-# BE-XXXX — Let a multi-target scenario call use: components and group: sections
+# BE-0446 — Let a multi-target scenario call use: components and group: sections
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-multi-target-use-components.md) |
+| Proposal | [BE-0446](BE-0446-multi-target-use-components.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0446") |
 | Topic | Scenario authoring features |
 | Related | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md), [BE-0436](../BE-0436-primary-target-default/BE-0436-primary-target-default.md), [BE-0437](../BE-0437-multi-target-step-groups/BE-0437-multi-target-step-groups.md), [BE-0438](../BE-0438-multi-target-interrupts/BE-0438-multi-target-interrupts.md), [BE-0439](../BE-0439-step-groups-report-folding/BE-0439-step-groups-report-folding.md) |
 <!-- /BE-METADATA -->
