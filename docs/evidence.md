@@ -82,6 +82,13 @@ A `capture:` token is `<kind>[.<modifier>]` ([scenarios](scenarios.md#capture-to
 > layouts an investigator opens the evidence for, such as an Android view whose `elevation` lifts it
 > above a sibling declared after it.
 >
+> **Inside an iOS `app:` block, every element reads `null`.** The responder runs in the test target,
+> and while another app owns the screen the test target sits suspended in the background: its
+> positions would describe a tree the block is not reading, and requests queued to a suspended app
+> were measured to kill it with `SIGPIPE` once it resumed
+> ([the Home Screen widget spike](specs/ios-home-screen-widget-feasibility.md)). The driver skips the
+> round trip until the block ends.
+>
 > **On Android the target must also ask for it, with `nativeZ: true` under its `targets.<name>`
 > entry.** The reading comes from a walk the resident server performs over every node on every screen
 > read, and that walk costs 20-100 milliseconds whether or not the app opted a single view in
