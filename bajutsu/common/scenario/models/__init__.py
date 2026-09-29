@@ -91,6 +91,9 @@ from bajutsu.common.scenario.models.scenario import (
     SystemAlertRule,
 )
 from bajutsu.common.scenario.models.scenario import (
+    _check_http_extract_vars as _check_http_extract_vars,
+)
+from bajutsu.common.scenario.models.scenario import (
     _check_target_requirements as _check_target_requirements,
 )
 from bajutsu.common.scenario.models.scenario import (

@@ -16,6 +16,7 @@ from bajutsu.common.scenario.models import (
     Component,
     Scenario,
     Step,
+    _check_http_extract_vars,
     _check_target_requirements,
     _expand_target_groups,
 )
@@ -180,9 +181,11 @@ def expand_components(  # noqa: C901
         # The assignments above are plain attribute writes, which Pydantic never re-runs a
         # `model_validator` against — so a component's own steps would otherwise splice in a
         # `target` the load-time pass never saw (BE-0428), or a target group it never expanded
-        # (BE-0437; see `models/scenario/_targets.py`).
+        # (BE-0437; see `models/scenario/_targets.py`), or an `extractBody` `var` collision only a
+        # `${params.*}` substitution reveals (BE-0440; see `models/scenario/_http_extract.py`).
         _expand_target_groups(scenario)
         _check_target_requirements(scenario)
+        _check_http_extract_vars(scenario)
 
 
 def read_csv(text: str) -> list[dict[str, str]]:
@@ -302,6 +305,12 @@ def apply_setups(
         # A plain attribute write, which Pydantic never re-runs a `model_validator` against — a
         # prelude's own steps, authored with no notion of this scenario's `targets`, would
         # otherwise splice in a `target` the load-time pass never saw (BE-0428), or a target group
-        # it never expanded (BE-0437; see `models/scenario/_targets.py`).
+        # it never expanded (BE-0437; see `models/scenario/_targets.py`). The `extractBody`/
+        # `saveBody` re-check (BE-0440; see `models/scenario/_http_extract.py`) is the same
+        # defense for a `resolve` that hands back steps no full `Scenario.model_validate` ever
+        # saw: the check is purely intra-step, so it can never fire *between* the prelude and this
+        # scenario's own steps — only against a `var` collision inside one of the prelude's own
+        # `http` steps that skipped validation this way.
         _expand_target_groups(scenario)
         _check_target_requirements(scenario)
+        _check_http_extract_vars(scenario)

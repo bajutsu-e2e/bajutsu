@@ -78,6 +78,7 @@ from bajutsu.common.scenario import (
     Scenario,
     Step,
     UncoveredSystemAlertLocale,
+    _check_http_extract_vars,
     _check_target_requirements,
     _expand_target_groups,
     _scenarios_declaring_targets,
@@ -1472,10 +1473,14 @@ def with_lifecycle_phases(
     # `model_copy(update=...)` never re-runs a `model_validator` — so a config-level `before`/`after`
     # hook would otherwise splice in steps the load-time pass never saw, each free to omit the
     # `target` its scenario requires (BE-0428), or a target group it never expanded (BE-0437; see
-    # `scenario/models/scenario/_targets.py`).
+    # `scenario/models/scenario/_targets.py`). `_hooks_for` reads these hooks as a bare `list[Step]`
+    # straight off the target config, never through a `Scenario.model_validate` (BE-0440; see
+    # `scenario/models/scenario/_http_extract.py`), so an `extractBody`/`saveBody` `var` collision
+    # inside one of a hook's own `http` steps would otherwise reach this scenario unchecked too.
     for s in folded:
         _expand_target_groups(s)
         _check_target_requirements(s)
+        _check_http_extract_vars(s)
     return folded
 
 
