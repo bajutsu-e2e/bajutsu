@@ -596,6 +596,58 @@ def test_visual_element_scoped_pass(tmp_path: Path) -> None:
     assert actual_size == (40, 30)
 
 
+def test_visual_element_scoped_scales_by_the_backend_viewport(tmp_path: Path) -> None:
+    """A scrollable screen keeps off-screen children in the tree, so the crop must scale by the
+    backend-reported viewport rather than the tree's extent (BE-0326)."""
+    from PIL import Image
+
+    from bajutsu.common.drivers.fake import FakeDriver
+
+    baselines = tmp_path / "baselines"
+    baselines.mkdir()
+    Image.new("RGBA", (40, 30), (0, 255, 0, 255)).save(baselines / "card.png")
+    actual = Image.new("RGBA", (100, 100), (255, 0, 0, 255))
+    _paint(actual, (10, 10, 40, 30), (0, 255, 0, 255))
+    shot = tmp_path / "shot.png"
+    actual.save(shot)
+    screen = [
+        *_framed_screen(),
+        # A horizontal carousel wider than the viewport, and content below the fold.
+        el(None, frame=(0.0, 60.0, 300.0, 20.0)),
+        el(None, frame=(0.0, 0.0, 100.0, 400.0)),
+    ]
+    assertion = _a({"visual": {"baseline": "card.png", "element": {"id": "card"}}})
+
+    # The tree's extent (300x400) alone mis-scales the crop onto the wrong pixels.
+    r = evaluate_one(screen, assertion, ctx=EvalContext(visual=_vc(tmp_path, shot)))
+    assert not r.ok
+    assert r.visual is not None
+    # Scaled by the tree extent, the 40x30 card crops to a differently sized rectangle entirely.
+    with Image.open(tmp_path / r.visual.actual) as crop:
+        assert crop.size != (40, 30)
+
+    vc = _vc(tmp_path, shot)
+    vc.capture_actual(FakeDriver(screen, viewport=(100.0, 100.0)))
+    assert vc.viewport == (100.0, 100.0)
+    r = evaluate_one(screen, assertion, ctx=EvalContext(visual=vc))
+    assert r.ok
+    assert r.visual is not None
+    assert r.visual.diff_pct == 0.0
+
+
+def test_visual_scale_falls_back_to_the_extent_on_a_degenerate_viewport(tmp_path: Path) -> None:
+    """A zero-sized viewport is no screen size at all, so the element extent sizes the screen."""
+    from PIL import Image
+
+    from bajutsu.common.assertions.visual._functions import _visual_scale
+
+    shot = tmp_path / "shot.png"
+    Image.new("RGBA", (200, 200)).save(shot)
+    screen = [el(None, frame=(0.0, 0.0, 100.0, 100.0))]
+    assert _visual_scale(shot, screen, (0.0, 0.0)) == (2.0, 2.0)
+    assert _visual_scale(shot, [], (0.0, 0.0)) is None
+
+
 def test_visual_element_scoped_missing_baseline_reports_the_crop(tmp_path: Path) -> None:
     """On the first run (no baseline) the reported actual is the element crop, so the first
     `approve` stores an element-sized baseline — not the whole screen."""
