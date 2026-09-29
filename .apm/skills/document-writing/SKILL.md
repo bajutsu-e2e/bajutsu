@@ -213,8 +213,9 @@ ends the loop on a fact instead.
 - **Clear what you introduced**, and **leave what you inherited** — pre-existing findings in a file
   you are touching in part are outside your lane, and clearing them widens the diff.
 - **A repository norm outranks a textlint rule where the two cannot both hold.** The live case is
-  register: CLAUDE.md puts every `*-ja.md` in 敬体, **bullet lists included** — so unify the whole
-  document, never just its running prose, and leave the `no-mix-dearu-desumasu` findings that
+  register: CLAUDE.md puts every `*-ja.md` in 敬体, **bullet lists included** (a `## Progress` /
+  `## 進捗` checklist bullet excepted, like a heading — BE-0434) — so unify the whole document,
+  never just its running prose, and leave the `no-mix-dearu-desumasu` findings that
   unification leaves behind. Switching the file to である調 to clear them inverts the hierarchy.
 - **Everywhere else textlint wins**: clear the finding by revising the prose, never by loosening the
   config or raising a threshold to dodge it.
