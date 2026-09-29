@@ -1,16 +1,20 @@
-"""The inbound half of a collector: the two calls a mid-scenario command needs (BE-0365)."""
+"""The inbound half of a collector: the calls a mid-scenario command needs (BE-0365)."""
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from .app_command_report import AppCommandReport
-from .in_app_capability import InAppCapability
+from .in_app_capability import ToggleCapability
+
+if TYPE_CHECKING:
+    from bajutsu.common.scenario.models.mocks import Mock
 
 
 @runtime_checkable
 class ControlChannel(Protocol):
-    """The inbound half of a collector: the two calls a mid-scenario command needs (BE-0365).
+    """The inbound half of a collector: the calls a mid-scenario command needs (BE-0365).
 
     Deliberately a sibling of `Collector` rather than more methods on it. Which collectors carry a
     channel is the question unit 3 has to answer, and answering it structurally means a collector
@@ -25,5 +29,6 @@ class ControlChannel(Protocol):
     the command from being issued there is the caller's job, not this protocol's.
     """
 
-    def enqueue_command(self, capability: InAppCapability, *, enabled: bool) -> str: ...
+    def enqueue_command(self, capability: ToggleCapability, *, enabled: bool) -> str: ...
+    def enqueue_stub_table(self, mocks: Sequence[Mock]) -> str: ...
     def report_for(self, command_id: str) -> AppCommandReport | None: ...

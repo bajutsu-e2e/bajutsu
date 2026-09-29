@@ -433,6 +433,11 @@ class _RecordingChannel:
         self._driver.actions.append(("command", enabled))
         return f"c{self._issued}"
 
+    def enqueue_stub_table(self, mocks: object) -> str:
+        self._issued += 1
+        self._driver.actions.append(("stub_table", mocks))
+        return f"c{self._issued}"
+
     def report_for(self, command_id: str) -> AppCommandReport:
         return AppCommandReport(id=command_id, applied=self._applies, reason=self._reason)
 
@@ -1687,3 +1692,57 @@ def test_an_unmeasurable_recording_keeps_the_proxy_anchor() -> None:
     # finalize, a container this build cannot parse) leaves every run exactly where BE-0346 left it.
     result = _run_with_video(true_start=-2.5, measured_start=None)
     assert result.video_anchor_s == _WALL - 2.5
+
+
+# --- setMocks: the mid-scenario stub table (BE-0365 unit 4) -------------------------------------
+
+
+def _set_mocks_scenario() -> Scenario:
+    return _scenario(
+        {
+            "name": "stub swap",
+            "steps": [
+                {"tap": {"id": "refresh"}},
+                {"setMocks": [{"match": {"path": "/me"}, "respond": {"status": 500}}]},
+                {"tap": {"id": "refresh"}},
+                {"setMocks": []},
+            ],
+        }
+    )
+
+
+def test_set_mocks_sends_the_table_between_the_steps_around_it() -> None:
+    """The table reaches the app after the step before it and before the step after it — the
+    acknowledgement is what orders the swap, not a sleep."""
+    driver = FakeDriver([el("refresh", "Refresh")])
+    result = run_scenario(
+        driver, _set_mocks_scenario(), clock=FakeClock(), channel=_RecordingChannel(driver)
+    )
+    assert result.ok, result.failure
+    ordered = [(k, a) for k, a in driver.actions if k in {"tap", "stub_table"}]
+    assert [k for k, _ in ordered] == ["tap", "stub_table", "tap", "stub_table"]
+    first, second = (a for k, a in ordered if k == "stub_table")
+    assert [m.match.path for m in first] == ["/me"] and first[0].respond.status == 500
+    assert second == []  # an empty table is sent, not skipped
+
+
+def test_a_refused_stub_table_fails_its_own_step_and_stops_the_scenario() -> None:
+    driver = FakeDriver([el("refresh", "Refresh")])
+    result = run_scenario(
+        driver,
+        _set_mocks_scenario(),
+        clock=FakeClock(),
+        channel=_RecordingChannel(driver, applies=False, reason="stub table compiled out"),
+    )
+    assert not result.ok
+    assert [s.ok for s in result.steps] == [True, False]
+    assert "control channel" in result.steps[1].reason
+    assert "stub table compiled out" in result.steps[1].reason
+    assert [k for k, _ in driver.actions].count("tap") == 1  # the step after never ran
+
+
+def test_set_mocks_without_a_collector_fails_the_step_loudly() -> None:
+    driver = FakeDriver([el("refresh", "Refresh")])
+    result = run_scenario(driver, _set_mocks_scenario(), clock=FakeClock())
+    assert not result.ok
+    assert "no collector at all" in result.steps[1].reason

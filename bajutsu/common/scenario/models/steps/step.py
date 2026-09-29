@@ -48,6 +48,7 @@ from bajutsu.common.scenario.models.actions import (
     TypeText,
 )
 from bajutsu.common.scenario.models.assertions import Assertion, Wait
+from bajutsu.common.scenario.models.mocks import Mock
 from bajutsu.common.scenario.models.selector import Selector
 
 from ._shared import _MODIFIERS
@@ -106,6 +107,10 @@ class Step(_Model):
     clear_keychain: ClearKeychain | None = Field(default=None, alias="clearKeychain")
     clear_clipboard: ClearClipboard | None = Field(default=None, alias="clearClipboard")
     set_clipboard: SetClipboard | None = Field(default=None, alias="setClipboard")
+    # Replaces the app's whole stub table mid-scenario over the in-app control channel (BE-0365
+    # unit 4); `[]` removes every stub. A list rather than a wrapper model, so each entry is exactly
+    # a scenario-level `mocks` entry.
+    set_mocks: list[Mock] | None = Field(default=None, alias="setMocks")
     background: Background | None = None
     foreground: Foreground | None = None
     override_status_bar: OverrideStatusBar | None = Field(default=None, alias="overrideStatusBar")

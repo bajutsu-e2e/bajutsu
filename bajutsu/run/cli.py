@@ -1178,6 +1178,75 @@ def _write_touch_marker_env(scenarios: list[Scenario], skip: set[int], *, armed:
             s.preconditions.launch_env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
 
 
+def _walk_all_steps(steps: list[Step]) -> Iterator[Step]:
+    """Every step reachable at runtime, recursing into `if` / `forEach` / `app` / `web` blocks."""
+    for step in steps:
+        yield step
+        if step.if_ is not None:
+            yield from _walk_all_steps(step.if_.then)
+            yield from _walk_all_steps(step.if_.else_ or [])
+        if step.for_each is not None:
+            yield from _walk_all_steps(step.for_each.steps)
+        if step.app is not None:
+            yield from _walk_all_steps(step.app.steps)
+        if step.web is not None:
+            yield from _walk_all_steps(step.web.steps)
+
+
+def _swaps_mocks(s: Scenario) -> bool:
+    """Whether any phase of *s* — `interrupts` recovery steps included — holds a `setMocks` step."""
+    phases = [
+        *s.before,
+        *s.steps,
+        *(step for rule in s.after for step in rule.steps),
+        *(step for entry in s.interrupts for step in entry.steps),
+    ]
+    return any(step.set_mocks is not None for step in _walk_all_steps(phases))
+
+
+def _arm_mock_swaps(
+    scenarios: list[Scenario],
+    *,
+    channel_available: Callable[[Scenario], bool],
+    target_launch_env: Mapping[str, str] | None = None,
+) -> None:
+    """Arm the in-app control channel for every scenario holding a `setMocks` step (BE-0365 unit 4).
+
+    The step replaces the app's stub table over the channel, so the app has to be launched with
+    `BAJUTSU_CONTROL_CHANNEL=1` — defaulted here like every other key bajutsu writes, never
+    overriding one the scenario set. A scenario that cannot carry the channel is refused before any
+    device is touched rather than left to fail mid-journey: `channel_available` says no for the web
+    backend (whose collector carries no channel), for `adb` / `fake` (nothing polls theirs), and
+    under `--no-network`; a scenario or target that pinned the key to anything but `"1"` has
+    declined the channel its own step needs. Runs after `_apply_touch_markers`, so that function's
+    partitions still see only the keys the author pinned.
+
+    Raises:
+        typer.Exit: With code 2, naming each scenario that uses `setMocks` where the channel cannot
+            reach the app.
+    """
+    target_env = target_launch_env or {}
+    refused: list[str] = []
+    for s in scenarios:
+        if not _swaps_mocks(s):
+            continue
+        pinned = {**target_env, **s.preconditions.launch_env}.get("BAJUTSU_CONTROL_CHANNEL", "1")
+        if pinned != "1":
+            refused.append(f"{s.name} (BAJUTSU_CONTROL_CHANNEL is pinned to {pinned!r})")
+        elif not channel_available(s):
+            refused.append(s.name)
+        else:
+            s.preconditions.launch_env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
+    if refused:
+        typer.echo(
+            "error: setMocks replaces the app's stub table over the in-app control channel, which "
+            "only the xcuitest backend with network collection on can carry (and the app must be "
+            "built with -DBAJUTSU_ENABLE_CONTROL_CHANNEL): " + ", ".join(refused),
+            err=True,
+        )
+        raise typer.Exit(2)
+
+
 def _channel_available_for(
     backends: list[str], network: bool, available: Callable[[str], bool] = default_available
 ) -> Callable[[Scenario], bool]:
@@ -2062,6 +2131,11 @@ def run(
         _apply_touch_markers(
             scenarios,
             touch_markers,
+            channel_available=_channel_available_for(backends, network),
+            target_launch_env=eff.launch_env,
+        )
+        _arm_mock_swaps(
+            scenarios,
             channel_available=_channel_available_for(backends, network),
             target_launch_env=eff.launch_env,
         )

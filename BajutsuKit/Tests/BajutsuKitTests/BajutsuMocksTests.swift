@@ -77,6 +77,17 @@ final class BajutsuMocksTests: XCTestCase {
         XCTAssertNil(mocks.stub(for: request("GET", "https://example.com/b"), body: nil))
     }
 
+    func testReplaceSwapsTheWholeTableRatherThanMerging() {
+        let mocks = BajutsuMocks()
+        mocks.load(["BAJUTSU_MOCKS": #"[{"match": {"path": "/a"}, "respond": {"status": 201}}]"#])
+        mocks.replace(with: [["match": ["path": "/b"], "respond": ["status": 503]]])
+        XCTAssertNil(mocks.stub(for: request("GET", "https://example.com/a"), body: nil))
+        XCTAssertEqual(mocks.stub(for: request("GET", "https://example.com/b"), body: nil)?.status, 503)
+
+        mocks.replace(with: [])
+        XCTAssertTrue(mocks.rules.isEmpty)
+    }
+
     func testLoadIgnoresMissingOrMalformedEnv() {
         let mocks = BajutsuMocks()
         mocks.load([:])

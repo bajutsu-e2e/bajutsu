@@ -14,6 +14,7 @@ final class BajutsuControlChannelTests: XCTestCase {
     override func tearDown() {
         BajutsuControlChannel.stop()
         BajutsuTouch.setMarkersVisible(true)
+        BajutsuMocks.shared.replace(with: [])
         super.tearDown()
     }
 
@@ -69,8 +70,8 @@ final class BajutsuControlChannelTests: XCTestCase {
     }
 
     func testACommandInAShapeThisBuildPredatesSurvivesDecoding() {
-        // The mid-scenario stub table (unit 4) carries no `enabled`. Decoding keeps it so `apply`
-        // can refuse it by name; dropping it here would leave bajutsu's wait timing out blind.
+        // A capability newer than this build, in a shape carrying no `enabled`. Decoding keeps it so
+        // `apply` can refuse it by name; dropping it here would leave bajutsu's wait timing out blind.
         let commands = drained(#"[{"id": "c1", "capability": "request_stubs", "rules": []}]"#)
         XCTAssertEqual(commands.map(\.capability), ["request_stubs"])
     }
@@ -106,6 +107,39 @@ final class BajutsuControlChannelTests: XCTestCase {
         XCTAssertFalse(outcome.applied)
         XCTAssertFalse(outcome.reason.isEmpty)
         XCTAssertFalse(BajutsuTouch.markersVisible, "a refused command must change nothing")
+    }
+
+    func testAStubTableCommandReplacesTheWholeSharedTable() {
+        BajutsuMocks.shared.replace(with: [["match": ["path": "/old"], "respond": ["status": 200]]])
+        let table: [[String: Any]] = [["match": ["path": "/me"], "respond": ["status": 500]]]
+        let swap = BajutsuAppCommand(
+            id: "c2", capability: "stub_table",
+            payload: ["id": "c2", "capability": "stub_table", "mocks": table]
+        )
+        XCTAssertTrue(BajutsuControlChannel.apply(swap).applied)
+        XCTAssertEqual(BajutsuMocks.shared.rules.map(\.path), ["/me"], "replaced, never merged")
+
+        let clear = BajutsuAppCommand(
+            id: "c3", capability: "stub_table",
+            payload: ["id": "c3", "capability": "stub_table", "mocks": [[String: Any]]()]
+        )
+        XCTAssertTrue(BajutsuControlChannel.apply(clear).applied)
+        XCTAssertTrue(BajutsuMocks.shared.rules.isEmpty, "an empty table removes every stub")
+    }
+
+    func testAStubTableCommandWithoutAnArrayOfObjectsIsRefusedAndChangesNothing() {
+        BajutsuMocks.shared.replace(with: [["match": ["path": "/kept"]]])
+        for payload: [String: Any] in [
+            ["id": "c1", "capability": "stub_table"],
+            ["id": "c1", "capability": "stub_table", "mocks": ["not an object"]],
+        ] {
+            let outcome = BajutsuControlChannel.apply(
+                BajutsuAppCommand(id: "c1", capability: "stub_table", payload: payload)
+            )
+            XCTAssertFalse(outcome.applied)
+            XCTAssertTrue(outcome.reason.contains("mocks"), "got: \(outcome.reason)")
+        }
+        XCTAssertEqual(BajutsuMocks.shared.rules.map(\.path), ["/kept"])
     }
 
     // --- the acknowledgement ---

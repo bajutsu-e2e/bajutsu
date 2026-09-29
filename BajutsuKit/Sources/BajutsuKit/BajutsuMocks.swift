@@ -36,18 +36,39 @@ struct BajutsuMockRule {
     }
 }
 
-/// Holds the stub rules for the process. Loaded once from the launch env; the first
-/// matching rule wins (declaration order).
+/// Holds the stub rules for the process. Loaded from the launch env, and replaced whole when the
+/// control channel delivers a mid-scenario stub table (BE-0365 unit 4); the first matching rule
+/// wins (declaration order).
+///
+/// Locked because the two sides run on different threads: `stub(for:body:)` is called from
+/// URLProtocol's loading threads while a replacement lands on the main thread, and a request must
+/// see either the old table or the new one, never a torn read.
 final class BajutsuMocks {
     static let shared = BajutsuMocks()
-    private(set) var rules: [BajutsuMockRule] = []
+    private let lock = NSLock()
+    private var storage: [BajutsuMockRule] = []
+
+    var rules: [BajutsuMockRule] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
 
     func load(_ environment: [String: String] = ProcessInfo.processInfo.environment) {
         guard let raw = environment["BAJUTSU_MOCKS"],
               let data = raw.data(using: .utf8),
               let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
         else { return }
-        rules = array.compactMap(Self.parse)
+        replace(with: array)
+    }
+
+    /// Replace the whole table — never merge — so the rules after the call are exactly `objects`,
+    /// in the same wire shape `BAJUTSU_MOCKS` carries; an empty array removes every stub.
+    func replace(with objects: [[String: Any]]) {
+        let parsed = objects.compactMap(Self.parse)
+        lock.lock()
+        storage = parsed
+        lock.unlock()
     }
 
     func stub(for request: URLRequest, body: Data?) -> BajutsuMockRule? {

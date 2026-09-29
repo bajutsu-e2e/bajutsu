@@ -535,3 +535,30 @@ def test_group_nested_inside_an_interrupts_entrys_steps_is_rejected() -> None:
                 ],
             }
         )
+
+
+def test_set_mocks_takes_scenario_mock_entries_and_an_empty_table() -> None:
+    """`setMocks` (BE-0365 unit 4) reuses the scenario-level `mocks` entry shape, and `[]` — remove
+    every stub — is a valid table rather than a missing action."""
+    s = Scenario.model_validate(
+        {
+            "name": "x",
+            "steps": [
+                {"setMocks": [{"match": {"path": "/me"}, "respond": {"status": 500}}]},
+                {"setMocks": []},
+            ],
+        }
+    )
+    assert s.steps[0].set_mocks is not None and s.steps[0].set_mocks[0].respond.status == 500
+    assert s.steps[1].set_mocks == []
+    # Round-trips under its DSL name.
+    assert load_scenarios(dump_scenarios([s]))[0].steps[1].set_mocks == []
+
+
+def test_set_mocks_obeys_the_one_action_rule_and_validates_its_entries() -> None:
+    with pytest.raises(ValidationError, match="exactly one"):
+        Scenario.model_validate({"name": "x", "steps": [{"setMocks": [], "tap": {"id": "a"}}]})
+    with pytest.raises(ValidationError):
+        Scenario.model_validate(
+            {"name": "x", "steps": [{"setMocks": [{"respond": {"status": 500}}]}]}
+        )

@@ -125,7 +125,12 @@ def _make_handler(collector: NetworkCollector) -> type[BaseHTTPRequestHandler]: 
         def _send_pending_commands(self) -> None:
             """Hand the app every pending command, emptying the queue in the same step."""
             body = json.dumps(
-                [command.model_dump(mode="json") for command in collector.drain_commands()]
+                [
+                    # Alias keys without unset fields: a stub table's mocks then match the
+                    # `BAJUTSU_MOCKS` shape BajutsuKit already parses (`dump_mocks`).
+                    command.model_dump(mode="json", by_alias=True, exclude_none=True)
+                    for command in collector.drain_commands()
+                ]
             ).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

@@ -23,6 +23,7 @@ from bajutsu.common.scenario.models.assertions import Assertion, VisualMatch
 from bajutsu.common.scenario.models.steps import Step
 from bajutsu.run.cli import (
     _apply_touch_markers,
+    _arm_mock_swaps,
     _channel_available_for,
     _visual_asserting_scenarios,
 )
@@ -2878,3 +2879,61 @@ def test_run_hands_the_pipeline_a_live_cancellation_source(
     assert seen == [False, True]
     assert r.exit_code == 1  # a cancelled run is a failed run
     assert r.output.startswith(f"FAIL  {manifest}")
+
+
+# --- setMocks arms the control channel (BE-0365 unit 4) -----------------------------------------
+
+
+def _swapping_scenario(name: str = "swap", *, nested: bool = False) -> Scenario:
+    step = {"setMocks": []}
+    steps = [{"if": {"condition": {"exists": {"id": "a"}}, "then": [step]}}] if nested else [step]
+    return Scenario.model_validate({"name": name, "steps": steps})
+
+
+def test_set_mocks_arms_the_channel_where_it_can_be_carried() -> None:
+    swapping, nested, plain = (
+        _swapping_scenario(),
+        _swapping_scenario("nested", nested=True),
+        _touch_marker_scenario(),
+    )
+    _arm_mock_swaps([swapping, nested, plain], channel_available=_channel_always)
+    assert swapping.preconditions.launch_env["BAJUTSU_CONTROL_CHANNEL"] == "1"
+    assert nested.preconditions.launch_env["BAJUTSU_CONTROL_CHANNEL"] == "1"
+    # A scenario that swaps nothing never starts the app-side poll timer.
+    assert "BAJUTSU_CONTROL_CHANNEL" not in plain.preconditions.launch_env
+
+
+def test_set_mocks_where_the_channel_cannot_reach_the_app_is_refused_before_the_run(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Web, adb, fake, and `--no-network` all answer no; the run stops before any device work
+    rather than failing mid-journey on a wait nothing will ever answer."""
+    import typer
+
+    with pytest.raises(typer.Exit) as exc:
+        _arm_mock_swaps(
+            [_swapping_scenario("swap"), _touch_marker_scenario()], channel_available=_channel_never
+        )
+    assert exc.value.exit_code == 2
+    assert "swap" in capsys.readouterr().err
+
+
+def test_set_mocks_is_refused_where_the_scenario_or_its_target_declined_the_channel(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import typer
+
+    own = _swapping_scenario("own")
+    own.preconditions.launch_env["BAJUTSU_CONTROL_CHANNEL"] = "0"
+    with pytest.raises(typer.Exit):
+        _arm_mock_swaps([own], channel_available=_channel_always)
+    assert "own (BAJUTSU_CONTROL_CHANNEL is pinned to '0')" in capsys.readouterr().err
+
+    by_target = _swapping_scenario("by-target")
+    with pytest.raises(typer.Exit):
+        _arm_mock_swaps(
+            [by_target],
+            channel_available=_channel_always,
+            target_launch_env={"BAJUTSU_CONTROL_CHANNEL": "0"},
+        )
+    assert "BAJUTSU_CONTROL_CHANNEL" not in by_target.preconditions.launch_env

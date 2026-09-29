@@ -19,7 +19,8 @@ as documented.
 The same receiver also carries the in-app control channel (BE-0365): bajutsu queues a command
 naming one piece of its own in-app instrumentation and the state that piece should take, the app
 drains the queue over an authenticated `GET /commands`, and reports back on `/commands/ack` whether
-it applied the command.
+it applied the command. A command either toggles one piece of that instrumentation or, for the stub
+table, replaces the whole table the app launched with.
 That direction is what lets a capability change *within* a scenario rather than only at launch, and
 it needs no new server, port, or authentication scheme — the app opens no socket, and the per-run
 token above guards the commands exactly as it guards the reports. The channel carries no judgement:
@@ -37,9 +38,10 @@ from ._functions import _no_transitions as _no_transitions
 from ._shared import TransitionSource
 from .app_command import AppCommand
 from .app_command_report import AppCommandReport
+from .app_stub_table_command import AppStubTableCommand
 from .collector import Collector
 from .control_channel import ControlChannel
-from .in_app_capability import InAppCapability
+from .in_app_capability import InAppCapability, ToggleCapability
 from .network_collector import _BRIDGE_PORT_BASE as _BRIDGE_PORT_BASE
 from .network_collector import _BRIDGE_PORT_SPAN as _BRIDGE_PORT_SPAN
 from .network_collector import NetworkCollector
@@ -49,11 +51,13 @@ from .screen_transition import ScreenTransition
 __all__ = [
     "AppCommand",
     "AppCommandReport",
+    "AppStubTableCommand",
     "Collector",
     "ControlChannel",
     "InAppCapability",
     "NetworkCollector",
     "NetworkExchange",
     "ScreenTransition",
+    "ToggleCapability",
     "TransitionSource",
 ]
