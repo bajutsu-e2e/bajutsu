@@ -17,7 +17,7 @@ class VisualContext:
     baselines, which live outside the run directory and are only ever read. Everything written goes
     through `writer` under `prefix` — the scenario's evidence dir — so this holds no writable handle
     into the run directory (BE-0331). `viewport` is the backend-reported screen size read alongside
-    that screenshot; `capture_actual` is its only writer.
+    that screenshot; only `capture_actual` sets it, and `dataclasses.replace` resets it to `None`.
     """
 
     screenshot_path: Path
@@ -25,6 +25,9 @@ class VisualContext:
     writer: RunArtifactWriter
     prefix: str
     default_compare: str = "exact"
+    # `dataclasses.replace` cannot carry an `init=False` field, so a derived context (the
+    # step-level one in `loop/_functions.py`) starts at `None` and must re-run `capture_actual`
+    # before any element-scoped comparison reads it.
     viewport: base.Point | None = field(default=None, init=False)
 
     @property
@@ -42,4 +45,6 @@ class VisualContext:
         self.writer.record_unmasked(self.actual_name)
         # The queried tree of a scrollable screen keeps off-screen children, so its extent
         # overshoots the screen and would mis-scale element frames onto these pixels (BE-0326).
+        # A failing read propagates, as in `scroll`'s `_viewport`: only a backend without the
+        # provider falls back to the extent, never one whose provider errored.
         self.viewport = driver.viewport() if isinstance(driver, base.ViewportProvider) else None
