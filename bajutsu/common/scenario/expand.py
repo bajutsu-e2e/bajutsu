@@ -60,7 +60,9 @@ def _interp_steps(steps: list[Step], bindings: dict[str, str]) -> list[Step]:
     return out
 
 
-def expand_components(
+# The count folds in the nested `expand` recursion, which closes over `max_depth`; the outer body
+# only drives it over each scenario's step lists (BE-0386).
+def expand_components(  # noqa: C901
     scenarios: list[Scenario],
     resolve: Callable[[str], Component],
     max_depth: int = 25,

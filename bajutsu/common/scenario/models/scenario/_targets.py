@@ -226,7 +226,9 @@ def _reject_assertion_target(a: Assertion, *, context: str) -> None:
         raise ValueError(f"{context}: target is only allowed on a top-level expect entry")
 
 
-def _check_target_requirements(scenario: Scenario) -> None:
+# The count folds in the nested `walk_steps` recursion, which needs this scope's `known` and
+# `default`; the outer body itself is a flat pass over the scenario's step lists (BE-0386).
+def _check_target_requirements(scenario: Scenario) -> None:  # noqa: C901
     """Enforce `target`'s requirement against `len(scenario.targets)`, recursively.
 
     Zero or one declared targets: every step's/assertion's `target` must be omitted, or must name

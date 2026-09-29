@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from bajutsu.common.config import load_config, resolve
+from bajutsu.common.config import Config, load_config, resolve
 from bajutsu.common.scenario import load_scenario_file
 from bajutsu.serve.operations._common import (
     _default_driver_factory,
@@ -13,6 +13,33 @@ from bajutsu.serve.operations._common import (
     _session_effective,
 )
 from bajutsu.serve.state import ServeState
+
+if TYPE_CHECKING:
+    from bajutsu.common.agents.protocols import EnrichmentAgent
+
+
+def _enrichment_agent(
+    config: Config, target: str, agent_factory: Any | None
+) -> EnrichmentAgent | tuple[Any, int]:
+    """The injected agent, else one built from the target's AI settings — or the 400 refusing it."""
+    if agent_factory is not None:
+        agent: EnrichmentAgent = agent_factory()
+        return agent
+    from bajutsu.common.agents import availability as ai_availability
+    from bajutsu.common.agents.factory import make_enrichment_agent
+    from bajutsu.common.ai import credential_gap
+
+    eff = resolve(config, target)
+    gap = credential_gap(eff.ai)
+    if gap:
+        # The phrased message, not the raw token: `ai.provider: none` (BE-0394) is a deliberate
+        # setting, so "requires a credential" would send the reader to Settings to save a key
+        # that can never lift it. The same mapping `claudeHint` renders.
+        return (
+            {"error": f"enrichment cannot run: {ai_availability.message(gap, eff.ai)}"},
+            400,
+        )
+    return make_enrichment_agent(ai=eff.ai)
 
 
 def start_enrich(
@@ -57,21 +84,9 @@ def start_enrich(
     if matched is None:
         return {"error": f"scenario '{name}' not found in file"}, 404
 
-    if agent_factory is None:
-        from bajutsu.common.agents import availability as ai_availability
-        from bajutsu.common.agents.factory import make_enrichment_agent
-        from bajutsu.common.ai import credential_gap
-
-        eff = resolve(config, target)
-        gap = credential_gap(eff.ai)
-        if gap:
-            # The phrased message, not the raw token: `ai.provider: none` (BE-0394) is a deliberate
-            # setting, so "requires a credential" would send the reader to Settings to save a key
-            # that can never lift it. The same mapping `claudeHint` renders.
-            return {"error": f"enrichment cannot run: {ai_availability.message(gap, eff.ai)}"}, 400
-        agent = make_enrichment_agent(ai=eff.ai)
-    else:
-        agent = agent_factory()
+    agent = _enrichment_agent(config, target, agent_factory)
+    if isinstance(agent, tuple):
+        return agent
 
     backend, udid, err = _device_args(body)
     if err:

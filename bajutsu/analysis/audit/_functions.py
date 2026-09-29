@@ -66,7 +66,9 @@ def _assertion_selectors(a: Assertion) -> Iterator[tuple[str, base.Selector]]:
         yield "expect: selected", a.selected.as_selector()
 
 
-def _step_selectors(step: Step) -> Iterator[tuple[str, base.Selector]]:
+# One branch per selector-bearing scenario step kind: the count tracks the schema's size, not tangled
+# logic, and a split would leave no single place a new step kind clearly belongs (BE-0386).
+def _step_selectors(step: Step) -> Iterator[tuple[str, base.Selector]]:  # noqa: C901
     """Every selector a step addresses, recursing into control-flow steps.
 
     Action fields are enumerated by hand (not derived from the Step model), so a new
@@ -293,6 +295,42 @@ def _verdicts(oks: list[bool]) -> list[str]:
     return ["pass" if o else "fail" for o in oks]
 
 
+def _step_divergences(results: list[RunResult]) -> list[str]:
+    """Which shared step, or step assertion, flips across runs — over the common step prefix."""
+    divergences: list[str] = []
+    common = min(len(r.steps) for r in results)
+    for i in range(common):
+        if len({r.steps[i].ok for r in results}) > 1:
+            action = results[0].steps[i].action
+            divergences.append(
+                f"step {i} ({action}) verdict varied: {_verdicts([r.steps[i].ok for r in results])}"
+            )
+        acounts = {len(r.steps[i].assertion_results) for r in results}
+        if len(acounts) == 1:
+            for j in range(next(iter(acounts))):
+                aoks = [r.steps[i].assertion_results[j].ok for r in results]
+                if len(set(aoks)) > 1:
+                    kind = results[0].steps[i].assertion_results[j].kind
+                    divergences.append(f"step {i} assertion {j} ({kind}) varied: {_verdicts(aoks)}")
+        else:
+            divergences.append(f"step {i} assertion count varied across runs: {sorted(acounts)}")
+    return divergences
+
+
+def _expect_divergences(results: list[RunResult]) -> list[str]:
+    """Which scenario-level `expect` assertion flips across runs, or that their count varied."""
+    ecounts = {len(r.expect_results) for r in results}
+    if len(ecounts) != 1:
+        return [f"expect-assertion count varied across runs: {sorted(ecounts)}"]
+    divergences: list[str] = []
+    for j in range(next(iter(ecounts))):
+        eoks = [r.expect_results[j].ok for r in results]
+        if len(set(eoks)) > 1:
+            kind = results[0].expect_results[j].kind
+            divergences.append(f"expect {j} ({kind}) varied: {_verdicts(eoks)}")
+    return divergences
+
+
 def repeat_diff(results: list[RunResult]) -> RepeatReport:
     """Classify K runs of one scenario as deterministic or flaky by diffing their outcomes.
 
@@ -326,32 +364,8 @@ def repeat_diff(results: list[RunResult]) -> RepeatReport:
 
     # Compare step- and assertion-level pass/fail over the common prefix (a varying step count is
     # already reported above; here we surface *which* shared step or assertion flips).
-    common = min(len(r.steps) for r in results)
-    for i in range(common):
-        if len({r.steps[i].ok for r in results}) > 1:
-            action = results[0].steps[i].action
-            divergences.append(
-                f"step {i} ({action}) verdict varied: {_verdicts([r.steps[i].ok for r in results])}"
-            )
-        acounts = {len(r.steps[i].assertion_results) for r in results}
-        if len(acounts) == 1:
-            for j in range(next(iter(acounts))):
-                aoks = [r.steps[i].assertion_results[j].ok for r in results]
-                if len(set(aoks)) > 1:
-                    kind = results[0].steps[i].assertion_results[j].kind
-                    divergences.append(f"step {i} assertion {j} ({kind}) varied: {_verdicts(aoks)}")
-        else:
-            divergences.append(f"step {i} assertion count varied across runs: {sorted(acounts)}")
-
-    ecounts = {len(r.expect_results) for r in results}
-    if len(ecounts) == 1:
-        for j in range(next(iter(ecounts))):
-            eoks = [r.expect_results[j].ok for r in results]
-            if len(set(eoks)) > 1:
-                kind = results[0].expect_results[j].kind
-                divergences.append(f"expect {j} ({kind}) varied: {_verdicts(eoks)}")
-    else:
-        divergences.append(f"expect-assertion count varied across runs: {sorted(ecounts)}")
+    divergences.extend(_step_divergences(results))
+    divergences.extend(_expect_divergences(results))
 
     # The signatures differed but none of the above pinpointed it — a step's action name or an
     # assertion kind changed between runs while every verdict and count matched. Still flaky, so

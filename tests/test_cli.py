@@ -1725,6 +1725,21 @@ def test_serve_config_from_git_binds_checkout(
     assert captured["cwd"] == checkout  # served from the checkout root
 
 
+def test_serve_config_from_git_failure_exits_2(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A Git source that can't be materialized fails startup with a clean one-line error naming the
+    # `--config` value, not a traceback, and never reaches the server.
+    def fail(spec: object, **kw: object) -> object:
+        raise OSError("network unreachable")
+
+    monkeypatch.setattr("bajutsu.common.config_source.materialize", fail)
+    started: list[object] = []
+    monkeypatch.setattr("bajutsu.serve.serve", lambda **kw: started.append(kw))
+    r = runner.invoke(app, ["serve", "--config", "github:acme/repo@main"])
+    assert r.exit_code == 2
+    assert "--config github:acme/repo@main: network unreachable" in r.output
+    assert started == []
+
+
 def test_serve_local_config_binds_the_config_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

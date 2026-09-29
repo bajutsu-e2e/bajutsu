@@ -123,6 +123,18 @@ def save_snapshot(path: Path, current: dict[str, float]) -> None:
     path.write_text(json.dumps(body, indent=2, sort_keys=True) + "\n")
 
 
+def _write(snapshot: Path, current: dict[str, float], floors: dict[str, float]) -> int:
+    """Rewrite the snapshot to `current` and print how each floor moved against `floors`."""
+    changes = render(current, floors)
+    save_snapshot(snapshot, current)
+    print(f"coverage-floors: wrote {len(current)} floor(s) to {snapshot}")
+    for line in changes:
+        print(line)
+    if not changes:
+        print("  (no change)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Check or rewrite the per-file coverage floors.")
     parser.add_argument("--coverage", type=Path, default=DEFAULT_COVERAGE)
@@ -176,14 +188,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if args.write:
-        changes = render(current, floors)
-        save_snapshot(args.snapshot, current)
-        print(f"coverage-floors: wrote {len(current)} floor(s) to {args.snapshot}")
-        for line in changes:
-            print(line)
-        if not changes:
-            print("  (no change)")
-        return 0
+        return _write(args.snapshot, current, floors)
 
     drops, notes = compare(current, floors)
     if drops:

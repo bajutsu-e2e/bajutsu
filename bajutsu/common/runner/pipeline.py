@@ -388,8 +388,8 @@ class _ScenarioRunner:
                         )
 
     # Genuinely long: the per-scenario run on the deterministic run path. Splitting it carries real
-    # behavioral risk, so it belongs to BE-0386's ratchet steps rather than the PR that sets the
-    # ceiling.
+    # behavioral risk, so it waits for a refactor of its own rather than riding a lint ceiling
+    # (BE-0386).
     def _run_one_impl(  # noqa: C901, PLR0912, PLR0915
         self, i: int, s: Scenario, sid: str
     ) -> RunResult:

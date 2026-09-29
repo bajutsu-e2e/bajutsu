@@ -68,6 +68,68 @@ def _screens_coverage(crawl: str, runs_path: Path | None) -> _coverage.ScreenCov
     return _coverage.screen_coverage(discovered, _visited_screens(runs_path))
 
 
+def _write_html(
+    html: str,
+    report: _coverage.Coverage,
+    endpoints: _coverage.EndpointCoverage | None,
+    observed_ids: _coverage.ObservedIdCoverage | None,
+    screens: _coverage.ScreenCoverage | None,
+    target_name: str,
+) -> None:
+    """Write the `--html` report, confirming on stderr; exit 2 on an unwritable location.
+
+    The stdout (text or JSON) stays the same with or without it, so the confirmation goes to stderr
+    rather than polluting a piped `--json` payload. Creates the parents of a nested path, and fails
+    cleanly (exit 2, like the command's other errors) rather than crashing with a traceback.
+    """
+    html_path = Path(html)
+    try:
+        html_path.parent.mkdir(parents=True, exist_ok=True)
+        html_path.write_text(
+            _coverage.render_html(
+                report,
+                endpoints=endpoints,
+                observed=observed_ids,
+                screens=screens,
+                target=target_name,
+            ),
+            encoding="utf-8",
+        )
+    except OSError as e:
+        typer.echo(f"failed to write HTML report to {html_path}: {e}", err=True)
+        raise typer.Exit(2) from None
+    typer.echo(f"wrote HTML coverage report: {html_path}", err=True)
+
+
+def _emit_report(
+    report: _coverage.Coverage,
+    endpoints: _coverage.EndpointCoverage | None,
+    observed_ids: _coverage.ObservedIdCoverage | None,
+    screens: _coverage.ScreenCoverage | None,
+    *,
+    as_json: bool,
+) -> None:
+    """Print the report and whichever evidence dimensions are present, as text or JSON."""
+    if as_json:
+        out: dict[str, object] = dataclasses.asdict(report)
+        if endpoints is not None:
+            out["endpoints"] = dataclasses.asdict(endpoints)
+        if observed_ids is not None:
+            out["observed_ids"] = dataclasses.asdict(observed_ids)
+        if screens is not None:
+            out["screens"] = dataclasses.asdict(screens)
+        typer.echo(json.dumps(out, indent=2))
+        return
+    text = _coverage.render(report)
+    if endpoints is not None:
+        text += "\n" + _coverage.render_endpoints(endpoints)
+    if observed_ids is not None:
+        text += "\n" + _coverage.render_observed_ids(observed_ids)
+    if screens is not None:
+        text += "\n" + _coverage.render_screens(screens)
+    typer.echo(text)
+
+
 def coverage(
     target_name: str = typer.Option(..., "--target"),
     config: str = typer.Option(DEFAULT_CONFIG),
@@ -130,45 +192,8 @@ def coverage(
     if crawl:
         screens = _screens_coverage(crawl, runs_path)
     if html:
-        # Write the report first; the stdout below (text or JSON) stays the same with or without it,
-        # so a confirmation goes to stderr rather than polluting a piped `--json` payload. Create the
-        # parents of a nested path, and fail cleanly (exit 2, like the errors above) on an unwritable
-        # location rather than crashing with a traceback.
-        html_path = Path(html)
-        try:
-            html_path.parent.mkdir(parents=True, exist_ok=True)
-            html_path.write_text(
-                _coverage.render_html(
-                    report,
-                    endpoints=endpoints,
-                    observed=observed_ids,
-                    screens=screens,
-                    target=target_name,
-                ),
-                encoding="utf-8",
-            )
-        except OSError as e:
-            typer.echo(f"failed to write HTML report to {html_path}: {e}", err=True)
-            raise typer.Exit(2) from None
-        typer.echo(f"wrote HTML coverage report: {html_path}", err=True)
-    if as_json:
-        out: dict[str, object] = dataclasses.asdict(report)
-        if endpoints is not None:
-            out["endpoints"] = dataclasses.asdict(endpoints)
-        if observed_ids is not None:
-            out["observed_ids"] = dataclasses.asdict(observed_ids)
-        if screens is not None:
-            out["screens"] = dataclasses.asdict(screens)
-        typer.echo(json.dumps(out, indent=2))
-    else:
-        text = _coverage.render(report)
-        if endpoints is not None:
-            text += "\n" + _coverage.render_endpoints(endpoints)
-        if observed_ids is not None:
-            text += "\n" + _coverage.render_observed_ids(observed_ids)
-        if screens is not None:
-            text += "\n" + _coverage.render_screens(screens)
-        typer.echo(text)
+        _write_html(html, report, endpoints, observed_ids, screens, target_name)
+    _emit_report(report, endpoints, observed_ids, screens, as_json=as_json)
 
 
 def register(app: typer.Typer) -> None:

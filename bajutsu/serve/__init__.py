@@ -357,7 +357,9 @@ def _build_state(
     )
 
 
-def _build_server_state(
+# The count folds in the nested closures below (`_warn`, `make_bundle` and its org-store helpers),
+# which ruff checks on their own, plus a flat run of independent startup checks (BE-0386).
+def _build_server_state(  # noqa: C901
     *,
     runs_dir: Path,
     config: Path | None,

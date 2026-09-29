@@ -923,7 +923,10 @@ class AlertGuardConfig:
             return NotTappable(label=label, shape=rule.identifying_labels), buttons, signature
         return AlertEvent(label=label), buttons, signature
 
-    def __call__(
+    # One branch per `probe_native` state inside a round-bounded loop on the run path: the count
+    # tracks that closed state set, and splitting the rounds' shared bookkeeping apart would change
+    # run-path risk, like `_wait`'s own exemption (BE-0386).
+    def __call__(  # noqa: C901
         self,
         driver: base.Driver,
         alerts: list[AlertEvent],

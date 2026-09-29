@@ -116,7 +116,9 @@ def impact(index: ReverseIndex, changed: list[ChangedFile]) -> Impact:
     )
 
 
-def parse_diff(text: str) -> list[ChangedFile]:
+# The count folds in the nested `flush`, plus one arm per unified-diff line kind: a closed format,
+# so the dispatch reads best as one chain over the shared per-file parse state (BE-0386).
+def parse_diff(text: str) -> list[ChangedFile]:  # noqa: C901
     """Parse a unified (`git`) diff into per-file added/removed line bodies. Pure.
 
     Reads each file's path from its `+++ b/<path>` header (falling back to `--- a/<path>` for a
