@@ -2,7 +2,7 @@
         lock-check lint-sh lint-actions lint-js lint-roadmap lint-pr lint-secrets skills lint-skills \
         lint-coverage-floors coverage-floors \
         check new-roadmap-item \
-        roadmap-status roadmap-dashboard docs docs-serve docs-diagrams runner-bundle
+        roadmap-status ja-register-check roadmap-dashboard docs docs-serve docs-diagrams runner-bundle
 
 # One-command bootstrap for a fresh clone (cross-platform; the dev gate needs no
 # Simulator). Installs the Python toolchain, wires the tracked git hooks, and best-effort
@@ -333,6 +333,16 @@ roadmap-status:
 #   make roadmap-find ARGS="--id BE-0349"
 roadmap-find:
 	uv run python scripts/roadmap_query.py $(ARGS)
+
+# BE-0434: list candidate 敬体 register drift in `*-ja.md` roadmap items and `docs/ja/` pages, by
+# file and line. A review aid, not a gate — it always exits 0 and stays out of `check`, because the
+# corpus still carries thousands of candidates. `uv run <script>` (no `python`) is what reads the
+# script's PEP 723 block and installs the morphological analyzer for this one invocation, keeping it
+# out of pyproject and uv.lock. No ARGS scans the whole ja corpus.
+#   make ja-register-check ARGS="roadmaps/BE-0089-merge-time-be-id-allocation/"
+#   make ja-register-check ARGS="--summary docs/ja"
+ja-register-check:
+	uv run scripts/ja_register_check.py $(ARGS)
 
 # Map the repository for a session that does not yet know where something lives: one line per
 # docs/ page, or per bajutsu/ package and top-level module, or per heading of one file with its
