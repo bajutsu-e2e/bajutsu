@@ -137,6 +137,8 @@ def test_prose_blocks_drop_everything_the_register_rule_exempts() -> None:
             "コメント -->",
             "<!-- 一行のコメント -->",
             "<details>",
+            "<summary>ソース</summary>",
+            '<p align="center"><img src="a.png"></p>',
             "[ref]: https://example.com",
             "本文です。",
         ]
@@ -158,6 +160,31 @@ def test_prose_blocks_keep_prose_that_only_looks_structural() -> None:
         "Issue #1842 で計測した。<https://example.com> を参照する。<kbd>Ctrl</kbd> を押す。",
         "本文である。",
     ]
+
+
+def test_comments_spanning_or_inside_a_line_hide_only_themselves() -> None:
+    markdown = "\n".join(
+        [
+            "<!-- 複数行の",
+            "注 --> 閉じた後の本文である。",
+            "",
+            "<!-- a --> 前の本文である。<!-- b",
+            "まだコメント",
+            "-->",
+            "",
+            "文中 <!-- c --> の本文である。",
+        ]
+    )
+    assert _texts(markdown) == [
+        "閉じた後の本文である。",
+        "前の本文である。",
+        "文中  の本文である。",
+    ]
+
+
+def test_the_untracked_fallback_also_splits_inside_balanced_groups() -> None:
+    # A known over-flag, pinned so a change to it is deliberate.
+    assert _split("`stray（注。補足）の文である。") == ["`stray（注。", "補足）の文である。"]
 
 
 def test_a_fence_closes_only_on_a_bare_run_at_least_as_long() -> None:

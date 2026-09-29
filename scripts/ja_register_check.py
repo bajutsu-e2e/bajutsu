@@ -84,14 +84,16 @@ _LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 _CHECKBOX = re.compile(r"^\[[ xX]\]")
 _LINK_DEF = re.compile(r"^\[[^\]]+\]:\s")
 _HEADING = re.compile(r"^(#{1,6})(?:\s|$)")
-# A line that is wholly a block-level HTML tag. Autolinks (`<https://…>`) and inline tags such as
-# `<kbd>` open prose lines too, so a bare leading `<` is not enough to drop one.
+# A line opening with a block-level HTML tag. Autolinks (`<https://…>`) and inline tags such as
+# `<kbd>` open prose lines too, so a bare leading `<` is not enough to drop one; a block tag name
+# never starts either, so matching the opening tag alone is safe for `<summary>…</summary>` lines.
 _HTML_BLOCK = re.compile(
     r"^</?(?:details|summary|div|p|img|picture|source|video|table|thead|tbody|tr|td|th|br|hr"
-    r"|section|figure|figcaption|center)\b[^>]*>$",
+    r"|section|figure|figcaption|center)\b",
     re.IGNORECASE,
 )
 _FENCE = re.compile(r"^(`{3,}|~{3,})")
+_INLINE_COMMENT = re.compile(r"<!--.*?-->")
 # The `[English](…) · **日本語**` language switch atop every bilingual page: navigation, not prose.
 _NAV_ITEM = r"(?:\*\*[^*]+\*\*|\[[^\]]+\]\([^)]*\))"
 _NAV_LINE = re.compile(rf"^{_NAV_ITEM}(?:\s*·\s*{_NAV_ITEM})+$")
@@ -159,15 +161,26 @@ class _Scanner:
         if stripped.startswith("<!--"):
             self._flush()
             return self._after_comment(raw[raw.index("<!--") + 4 :])
-        return raw
+        return self._drop_comments(raw)
 
     def _after_comment(self, raw: str) -> str | None:
         """Prose may follow a comment's `-->` on the same line; keep scanning it."""
         end = raw.find("-->")
-        self._in_comment = end == -1
-        if self._in_comment or not raw[end + 3 :].strip():
+        if end == -1:
+            self._in_comment = True
             return None
-        return raw[end + 3 :]
+        self._in_comment = False
+        rest = self._drop_comments(raw[end + 3 :])
+        return rest if rest.strip() else None
+
+    def _drop_comments(self, raw: str) -> str:
+        """Remove comments inside a prose line, and cut at one that opens here and runs on."""
+        raw = _INLINE_COMMENT.sub("", raw)
+        opened = raw.find("<!--")
+        if opened != -1:
+            self._in_comment = True
+            raw = raw[:opened]
+        return raw
 
     def _is_structural(self, stripped: str) -> bool:
         heading = _HEADING.match(stripped)
@@ -210,6 +223,8 @@ def split_sentences(block: _Block) -> list[Candidate]:
     bracket would otherwise hide every sentence after it inside one, so an unbalanced block is split
     again with no tracking at all.
     """
+    # The untracked fallback also splits inside the block's balanced groups, over-flagging
+    # a fragment cut at a mark inside brackets — a noisier report beats a silently hidden sentence.
     sentences, balanced = _split(block, track=True)
     return sentences if balanced else _split(block, track=False)[0]
 
