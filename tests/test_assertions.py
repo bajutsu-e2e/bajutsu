@@ -623,7 +623,8 @@ def test_visual_element_scoped_scales_by_the_backend_viewport(tmp_path: Path) ->
     assert not r.ok
     assert r.visual is not None
     # Scaled by the tree extent, the 40x30 card crops to a differently sized rectangle entirely.
-    assert Image.open(tmp_path / r.visual.actual).size != (40, 30)
+    with Image.open(tmp_path / r.visual.actual) as crop:
+        assert crop.size != (40, 30)
 
     vc = _vc(tmp_path, shot)
     vc.capture_actual(FakeDriver(screen, viewport=(100.0, 100.0)))
