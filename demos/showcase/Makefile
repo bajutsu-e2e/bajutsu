@@ -50,12 +50,15 @@ uikit-noax-build:
 # by the forwarded BAJUTSU_BUNDLE_ID, so this serves every target's `xcuitest.testRunner`. The
 # built name carries the SDK version, so copy it to a stable name in the same dir (its __TESTROOT__
 # must stay beside the built products). This is the `xcuitest.build` fallback in showcase.config.yaml.
+# The previous SDK's `BajutsuRunner_<sdk>.xctestrun` survives an Xcode upgrade beside the new one, so
+# the recipe deletes every one before building: the glob in `cp` then matches exactly the fresh file.
 RUNNER_PRODUCTS := $(RUNNER)/build/dd/Build/Products
 # `-skipPackagePluginValidation` is required, not tidiness: BajutsuRunner applies the Swift OpenAPI
 # Generator build-tool plugin, and Xcode gates an unapproved package plugin behind an interactive
 # trust prompt it cannot show under `xcodebuild`, failing the build outright with
 # `Validate plug-in "OpenAPIGenerator"`. Accepting it is bounded by the manifest's `exact:` pins.
 runner-build:
+	rm -f $(RUNNER_PRODUCTS)/BajutsuRunner_*.xctestrun
 	cd $(RUNNER) && xcodegen generate
 	cd $(RUNNER) && xcodebuild build-for-testing -project BajutsuRunner.xcodeproj -scheme BajutsuRunner \
 		-destination 'generic/platform=iOS Simulator' -derivedDataPath build/dd \
@@ -105,8 +108,10 @@ swiftui-ipa-device: swiftui-archive-device
 # for the Simulator; a real device requires signing, so override it here only. A separate derivedData
 # path keeps the device .xctestrun from colliding with the Simulator one under the glob below. The
 # .xctestrun's __TESTROOT__ points beside the built products, so package the whole Products dir.
+# Stale per-SDK .xctestrun files are deleted before the build for the same reason as runner-build.
 runner-build-device:
 	$(require_team)
+	rm -f $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner_*.xctestrun
 	cd $(RUNNER) && xcodegen generate
 	cd $(RUNNER) && xcodebuild build-for-testing -project BajutsuRunner.xcodeproj -scheme BajutsuRunner \
 		-destination 'generic/platform=iOS' -derivedDataPath build/dd-device -skipPackagePluginValidation \
