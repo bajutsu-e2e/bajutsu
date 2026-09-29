@@ -553,6 +553,18 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   Pydantic re-validates — and `bajutsu run`'s CLI matches its step-line count against the raw
   YAML's one-entry-per-item count rather than a snapshot of its own, since a group is expanded
   inside `Scenario`'s validator, before the CLI could take one
+- **Report step grouping** (BE-0439): a step's own `group: { name, steps }` field names a stretch
+  of consecutive steps as one section, purely for `report.html` — `expand_components` replaces a
+  `group` step with its flattened `steps`, tagging each with the group's `name` and a run-wide
+  `group_id` (`report_group`/`report_group_id` on the expanded step) that `rows.py`'s
+  `_fold_groups` uses to insert one heading row per such stretch; `run` never observes `group`
+  itself, the same load-time-only treatment `use` (BE-0030) already gets. A `group` nested
+  directly inside another `group`, an `if`, a `forEach`, a `web`, or an `app` body — or reached by
+  a `use` call made from inside a `group` — is rejected at load time, and a `group` is rejected
+  the same way `use` is once the scenario declares two or more targets (BE-0428). A stretch
+  containing a failing step opens its section by default; one with no failure renders collapsed
+  until a reader opens it, and the existing "expand all"/"collapse all" controls toggle every
+  scenario's groups too
 - Backend-crash recovery in the run pipeline: a mid-scenario backend crash
   (`base.BackendCrashError`, backend-agnostic) discards the dead lease and re-runs the whole
   scenario on a freshly respawned one, bounded by a retry count (`crash_retries`, default 1) and an
