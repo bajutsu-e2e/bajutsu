@@ -931,7 +931,7 @@ is not installed at all is not guaranteed to fail this cleanly.
 #### Driving the Home Screen (`com.apple.springboard`)
 
 SpringBoard, the process that draws the Home Screen, is one more bundle id to `app`. A scenario can
-long-press into edit mode, open the widget gallery, and add a widget with no other step and no
+long-press into edit mode, open the widget gallery, and add a widget with no new step and no
 runner change. `demos/showcase/scenarios/widget.yaml` does that, asserts the new widget, and then
 taps the widget to open its host app. The measurements behind it are in
 `docs/specs/ios-home-screen-widget-feasibility.md`: each screen's labels in `en_US` and `ja_JP`, and

@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.elements import screen_size_from_elements
+from bajutsu.common.drivers.elements import screen_size
 from bajutsu.common.orchestrator.actions._registry import _handler
 from bajutsu.common.orchestrator.actions.handlers._gesture_math import (
     _SWIPE_FRACTION,
@@ -116,15 +116,9 @@ class _RegionView(NamedTuple):
 
 
 def _viewport(driver: base.Driver, elements: list[base.Element]) -> base.Point:
-    """The true viewport size for the stop condition.
-
-    A `ViewportProvider` (web, fake) reports it directly, since its queried tree keeps off-screen
-    nodes and so overshoots the viewport. Any other backend queries only on-screen elements, so the
-    screen extent is the viewport.
-    """
-    if isinstance(driver, base.ViewportProvider):
-        return driver.viewport()
-    return screen_size_from_elements(elements)
+    """The true viewport size for the stop condition — the one screen-size definition every
+    coordinate path shares (`screen_size`)."""
+    return screen_size(driver, elements)
 
 
 def _center_in_viewport(frame: base.Frame, viewport: base.Point) -> bool:

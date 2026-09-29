@@ -5,9 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from bajutsu.common.drivers import base
+from bajutsu.common.drivers.elements import screen_size
 from bajutsu.common.orchestrator.actions._registry import _handler
 from bajutsu.common.orchestrator.actions.handlers._gesture_math import _scroll_gesture
-from bajutsu.common.orchestrator.actions.handlers.scroll import _viewport, scroll_until_tappable
+from bajutsu.common.orchestrator.actions.handlers.scroll import scroll_until_tappable
 from bajutsu.common.orchestrator.types import RealClock
 from bajutsu.common.orchestrator.waits import wait_for_system_alert
 from bajutsu.common.scenario import Step
@@ -108,10 +109,9 @@ def _do_tap(driver: base.Driver, step: Step, _r: object, _c: object, _b: object)
 @_handler("tap_point")
 def _do_tap_point(driver: base.Driver, step: Step, _r: object, _c: object, _b: object) -> None:
     assert step.tap_point is not None
-    # Scale the normalized [0,1] point by the live screen size, read the way `scroll` reads it
-    # (BE-0326): a tree's extent can overshoot the screen — SpringBoard's carries pixel-sized and
-    # off-screen popover nodes, which tripled the point and tapped past the right edge.
-    w, h = _viewport(driver, driver.query())
+    # Scale the normalized [0,1] point by the one screen-size definition every coordinate tap shares
+    # — the alert guard's and the crawl's replay included.
+    w, h = screen_size(driver)
     driver.tap_point((step.tap_point.x * w, step.tap_point.y * h))
 
 
@@ -239,7 +239,7 @@ def _directional_endpoints(
     )
     el = base.resolve_unique(elements, sel)
     return _scroll_gesture(
-        base.frame_center(el["frame"]), direction, amount, _viewport(driver, elements)
+        base.frame_center(el["frame"]), direction, amount, screen_size(driver, elements)
     )
 
 

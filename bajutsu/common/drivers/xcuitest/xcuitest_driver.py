@@ -999,10 +999,14 @@ class XcuitestDriver:
 
     def leave_app(self) -> None:
         """Leave the most recently entered app and re-activate the one beneath it."""
-        reply = self._transport("POST", "/app/leave", {})
-        # The runner pops its stack before re-activating what is beneath, so the block is closed
-        # whether or not that app then reaches the foreground.
-        self._entered_apps = max(0, self._entered_apps - 1)
+        try:
+            reply = self._transport("POST", "/app/leave", {})
+        finally:
+            # The runner pops its stack before re-activating what is beneath, so the block is closed
+            # whether or not that app then reaches the foreground. A channel fault closes it too: the
+            # run loop only logs a failed leave and carries on, and a stuck count would silence
+            # `nativeZ` for the rest of the lease.
+            self._entered_apps = max(0, self._entered_apps - 1)
         if reply.status == _OK:
             return
         if reply.status == _NOT_FOREGROUND:

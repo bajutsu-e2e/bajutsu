@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.elements import screen_size_from_elements
+from bajutsu.common.drivers.elements import screen_size
 from bajutsu.common.evidence.redaction import PLACEHOLDER
 
 
@@ -90,7 +90,7 @@ class Action:
                 driver.type_text(self._replay_value(driver, sel, val, hint=fid))
             return
         if self.kind == "tap_point" and self.point is not None:
-            w, h = screen_size_from_elements(driver.query())
+            w, h = screen_size(driver)
             driver.tap_point((self.point[0] * w, self.point[1] * h))
             return
         driver.tap(self.as_selector())

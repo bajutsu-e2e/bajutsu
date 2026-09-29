@@ -300,6 +300,25 @@ def test_xcuitest_resumes_the_zorder_read_after_a_leave_that_missed_the_foregrou
     assert zorder.calls == 1
 
 
+def test_xcuitest_resumes_the_zorder_read_after_a_leave_that_faulted_the_channel() -> None:
+    # The run loop only logs a failed leave and carries on, so a transport fault must close the
+    # block as well — a stuck count would read `nativeZ: null` for the rest of the lease.
+    zorder = _FakeZOrder({"ok": 1.0})
+
+    def transport(method: str, path: str, body: Any) -> Any:
+        if path == "/app/leave":
+            raise OSError("runner went away")
+        if path == "/app/enter":
+            return _Reply(status="ok")
+        return _Reply(status="ok", elements=[_runner_item("ok", "h1")], raw=b"")
+
+    driver = XcuitestDriver(transport=transport, zorder=zorder)
+    driver.enter_app("com.apple.springboard")
+    with pytest.raises(OSError, match="runner went away"):
+        driver.leave_app()
+    assert driver.query()[0]["nativeZ"] == 1.0
+
+
 def test_zorder_responder_drops_an_identifier_the_app_repeated() -> None:
     payload = {
         "elements": [

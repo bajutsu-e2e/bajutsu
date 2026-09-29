@@ -74,8 +74,9 @@
           # leaves no single "Don't Allow" to tap — so they are left up: they belong to Calendar and
           # go with it when the showcase app returns to the front.
           - wait: { until: { gone: { id: "Home screen icons" } }, timeout: 10 }
-    # Calendar is already in front, so entering it only reads its tree: its own Day view, which
-    # renders under the prompts.
+    # Leaving the block above re-activated the showcase app (the runner activates its stack's new
+    # top), so this block activates Calendar again — the widget tap's own proof is the `gone` wait
+    # above, not this read. Calendar's Day view renders under the prompts left up.
     - app:
         bundleId: com.apple.mobilecal
         steps:

@@ -18,6 +18,20 @@ def screen_size_from_elements(elements: list[base.Element]) -> tuple[float, floa
     return (w, h)
 
 
+def screen_size(driver: base.Driver, elements: list[base.Element] | None = None) -> base.Point:
+    """The screen size a normalized point or a screen fraction scales by.
+
+    A `ViewportProvider` reports it directly (BE-0326). The tree's extent overshoots it wherever the
+    tree keeps off-screen or oversized nodes — a lazy list's buffered rows, the web DOM, and
+    SpringBoard's pixel-sized containers, which tripled every coordinate tap on the Home Screen
+    (docs/specs/ios-home-screen-widget-feasibility.md). Any other backend falls back to that extent,
+    read from *elements* when the caller already holds a tree.
+    """
+    if isinstance(driver, base.ViewportProvider):
+        return driver.viewport()
+    return screen_size_from_elements(driver.query() if elements is None else elements)
+
+
 def shows_app_ui(elements: list[base.Element]) -> bool:
     """Whether the tree shows the app's own UI (rather than being collapsed under a system overlay).
 
