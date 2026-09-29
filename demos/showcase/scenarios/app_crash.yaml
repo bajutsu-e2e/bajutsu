@@ -1,0 +1,36 @@
+# App-crash detection and capture (BE-0424). **This scenario is expected to fail.** The CI wrapper
+# around it asserts the failure carries the new app-crash classification and that the scenario's own
+# `app-crash/` directory holds the platform's report — the same way `fault-injection (xcuitest)`
+# asserts a diagnosed failure shape rather than a green run (docs/ci.md).
+#
+# It exists because no unit test can prove what this depends on. A stubbed `DiagnosticReports`, or a
+# fake `logcat` dump, exercises the parsing; only a real fault shows that macOS's `ReportCrash`
+# actually writes the `.ips`, that `logcat`'s crash buffer actually carries the `FATAL EXCEPTION`
+# block, and that `XCUIApplication.state` / `pidof` + `dumpsys activity exit-info` then report the
+# crash the detection keys off.
+#
+# The SHOWCASE_CRASH launch env swaps the app for a flat screen whose one button faults the process
+# (see the iOS CrashView and the Compose CrashScreen), mirroring the SHOWCASE_CONFORMANCE affordance.
+# Gated behind a launch env rather than a build configuration: a Release build would compile a
+# debug-only affordance out, and this scenario would then fail on a missing selector rather than on a
+# crash — the exact misdiagnosis BE-0424 exists to remove.
+#
+# The `tap crash.alive` step after the trigger is load-bearing, not filler. The detection is reactive:
+# a driver is asked whether the app crashed only once a step has *already* failed. The trigger tap
+# itself is delivered before the app dies, so it reports success and is never probed — a scenario
+# ending on the trigger would stay green with no evidence at all (docs/evidence.md, "App-crash
+# evidence"). It is the step after it, failing against the now-dead app, that gets probed.
+#
+# One file for both backends: the affordance and its ids are identical on iOS and Android, so the iOS
+# lane runs it with `--backend xcuitest` and the Android lane with `--backend android`, unchanged.
+- name: a crash in the app under test is diagnosed and its report captured
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_CRASH: "1" }
+  steps:
+    - wait: { for: { id: crash.trigger }, timeout: 10 }
+    - assert:
+        - exists: { sel: { id: crash.alive } }
+    # Faults the process. Reports success: the tap lands before the app goes down.
+    - tap: { id: crash.trigger }
+    # Fails against the dead app, and *this* failure is what carries the app-crash classification.
+    - tap: { id: crash.alive }

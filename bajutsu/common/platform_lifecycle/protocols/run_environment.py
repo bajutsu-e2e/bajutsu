@@ -205,6 +205,41 @@ class RunEnvironment(Protocol):
         per-platform branch.
         """
 
+    def app_crash_artifacts(self) -> list[tuple[str, bytes]]:
+        """The platform's own report for a crash of the *app under test* (BE-0424).
+
+        The app-side counterpart to `take_crash_snapshot` above, and plainer in two ways. It returns
+        the bytes rather than a thunk: the step loop calls it synchronously the moment a driver
+        confirms the crash, so nothing is deferred past a point the environment's launch marker could
+        move — which a teardown `relaunch` in the same scenario's own `after` phase would otherwise
+        do, widening the sweep past the crash it is meant to attribute. And it needs no ownership
+        move, because that call site is strictly inside the scenario the evidence belongs to.
+
+        Each pair is an artifact name and its bytes, written under that scenario's `app-crash/`. Any
+        failure reaching this method resolves to `[]`: a diagnostic capture must never turn an
+        already-decided failure into a different one.
+
+        Default: `[]`. Only XCUITest (the `.ips` report) and adb (`logcat`'s crash buffer) capture
+        anything; `RunEnvironment` is a structural protocol no concrete class subclasses, so each of
+        the others declares its own one-line no-op rather than inheriting one.
+        """
+
+    def app_crash_tombstone(self) -> list[tuple[str, bytes]]:
+        """Android's root-gated tombstone for the same crash, pulled after the scenario has ended.
+
+        Split out of `app_crash_artifacts` above because Android alone needs two call sites with
+        different timing constraints. The pull needs `adb root`, which restarts `adbd` and kills the
+        resident server's `am instrument -w` session outright — so firing it mid-scenario would make
+        every wrapping outcome, `expect`, and `after` rule still to come raise `BackendCrashError`
+        against a dead channel, discarding the very `RunResult` this item exists to produce. Called
+        only from `pipeline.py`'s post-return scan, where the scenario is genuinely over. Reading the
+        launch marker that late is safe here in a way it is not for the other layer: a teardown only
+        moves the marker *forward*, so the worst this bound can do is miss a tombstone, never attach
+        an older one under the wrong name.
+
+        Default: `[]` — every backend but adb, for the same structural-protocol reason as above.
+        """
+
     def replaced_device(self) -> str | None:
         """The device this environment moved to when `start` replaced a vanished one, else None.
 

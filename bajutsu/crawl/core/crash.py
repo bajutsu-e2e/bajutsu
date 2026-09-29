@@ -20,3 +20,12 @@ class Crash:
 
     path: tuple[str, ...]
     actions: tuple[Action, ...] = ()
+    # The platform's own report for this crash — the `.ips` macOS wrote, Android's `logcat` crash
+    # block (BE-0424). Captured only when the driver positively confirmed the event, so a UI-tree
+    # false positive records a `Crash` with no artifacts rather than paying a full-timeout sweep.
+    #
+    # In-memory only, and deliberately left out of `serialize.py`'s round trip in both directions:
+    # raw `bytes` has no JSON encoding, and base64-widening every other field's dump to carry it
+    # would cost more than it buys. Nothing durably persists it before `write_repros` writes it to
+    # disk at the end of a completed crawl, so a `--resume` loses nothing it could have kept.
+    artifacts: tuple[tuple[str, bytes], ...] = ()

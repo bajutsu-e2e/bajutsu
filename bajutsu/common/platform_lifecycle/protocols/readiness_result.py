@@ -12,8 +12,13 @@ class ReadinessResult:
 
     When the first scenario `wait` times out, this says whether the gate had declared the app ready
     and on which signal — the evidence that separates "the gate returned before the content the
-    scenario needs" from "the content rendered, then the awaited element didn't". Pure diagnosis: it
-    never enters a verdict (prime directive 1).
+    scenario needs" from "the content rendered, then the awaited element didn't".
+
+    BE-0424 added a second consumer, and it is the first to *decide* from this rather than word a
+    message: the step loop reads `ready` and `signal` to tell an app that never reached the
+    foreground from one that was running and then crashed, which decides whether its reactive
+    app-crash probe runs on a scenario's very first failing step. Still not a verdict (prime
+    directive 1) — it gates a diagnostic probe, and the probe itself never decides pass/fail either.
     """
 
     ready: bool

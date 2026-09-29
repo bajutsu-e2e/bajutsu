@@ -122,6 +122,15 @@ class WebEnvironment:
         # there is no separately captured runner output or host crash report to copy (BE-0421).
         return list
 
+    def app_crash_artifacts(self) -> list[tuple[str, bytes]]:
+        # A page's own crash surfaces through the driver, and this backend's signals for it are left
+        # to a follow-up item — `PlaywrightDriver` implements no `AppCrashSignal`, so nothing here is
+        # ever asked for evidence in the first place (BE-0424).
+        return []
+
+    def app_crash_tombstone(self) -> list[tuple[str, bytes]]:
+        return []  # no device behind a browser lane, so no tombstone to pull (BE-0424)
+
     def end_lease(self, driver: base.Driver, eff: Effective) -> None:
         self.teardown(driver, eff)  # no warm resident: a lease's end is its full teardown
 

@@ -73,6 +73,7 @@ final class APIHandlerConcurrencyTests: XCTestCase {
         func screenshot() -> Data? { nil }
         func enterApp(bundleId: String) -> AppActivationResult { .ok }
         func leaveApp() -> AppActivationResult { .ok }
+        func appState() -> AppRunState { .runningForeground }
     }
 
     func testAReadOccupiesTheQueue() {

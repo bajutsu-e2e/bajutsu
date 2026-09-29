@@ -153,6 +153,14 @@ def write_repros(writer: RunArtifactWriter, screen_map: ScreenMap) -> list[str]:
     written: list[str] = []
     for i, crash in enumerate(screen_map.crashes, start=1):
         name = f"crash-{i:03d}"
+        # Before the `continue` below, deliberately: a crash whose path cannot be faithfully replayed
+        # is exactly the one whose platform report is worth the most, since there is no repro to run
+        # instead. Written through the same redacting text path as the repro beside it, and as a
+        # sibling directory of it, so the two are found and sorted together (BE-0424).
+        for artifact_name, content in crash.artifacts:
+            writer.write_text(
+                f"crashes/{name}/app-crash/{artifact_name}", content.decode(errors="replace")
+            )
         scenario = crash_scenario(crash, name, writer.redactor)
         if scenario is None:
             continue

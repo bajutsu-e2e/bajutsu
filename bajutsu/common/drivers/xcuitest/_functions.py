@@ -149,7 +149,15 @@ def _decode(path: str, status_code: int, body: bytes) -> _Reply:
     # `GET /screen` (BE-0326) carries the viewport as width/height; absent on every other endpoint.
     width, height = data.get("width"), data.get("height")
     size = (float(width), float(height)) if width is not None and height is not None else None
-    return _Reply(status=str(status), elements=elements, size=size, raw=body)
+    # `POST /app/state` (BE-0424) carries the target app's process state; absent everywhere else.
+    app_state = data.get("state")
+    return _Reply(
+        status=str(status),
+        elements=elements,
+        size=size,
+        app_state=str(app_state) if app_state is not None else None,
+        raw=body,
+    )
 
 
 def _string_list(value: object) -> list[str]:

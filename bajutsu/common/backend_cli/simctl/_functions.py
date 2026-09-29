@@ -169,6 +169,38 @@ def export_globals_cmd(udid: str) -> list[str]:
     ]
 
 
+# A process or bundle name spliced into a `log show` predicate. Constrained to the characters a
+# `CFBundleExecutable` or bundle id actually uses, so a name can never close the predicate's quote.
+_LOG_PREDICATE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def app_log_cmd(udid: str, process: str, bundle_id: str, minutes: int) -> list[str]:
+    """`simctl spawn <udid> log show` for one app's own lines and the system's lines naming it (BE-0424).
+
+    The guest's unified log, not the host's: an app's own lines and the `runningboardd` /
+    `SpringBoard` lines recording its termination log to the device's store alone. `--last` takes
+    whole minutes, so the window is rounded up by the caller rather than computed from a local
+    timestamp, which would have to agree with the guest's timezone.
+    """
+    for name in (process, bundle_id):
+        if not _LOG_PREDICATE_NAME_RE.match(name):
+            raise ValueError(f"not a valid process or bundle name for a log predicate: {name!r}")
+    return [
+        "xcrun",
+        "simctl",
+        "spawn",
+        validated_udid(udid),
+        "log",
+        "show",
+        "--style",
+        "compact",
+        "--last",
+        f"{max(1, minutes)}m",
+        "--predicate",
+        f'process == "{process}" OR eventMessage CONTAINS "{bundle_id}"',
+    ]
+
+
 def system_locale_cmds(udid: str, locale: str) -> list[list[str]]:
     """The `defaults write` argvs that pin the Simulator's system-wide language and locale (BE-0320)."""
     checked_udid, checked_locale = validated_udid(udid), validated_locale(locale)

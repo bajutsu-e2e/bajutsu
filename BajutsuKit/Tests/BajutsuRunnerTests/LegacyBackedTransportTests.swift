@@ -35,6 +35,7 @@ final class LegacyBackedTransportTests: XCTestCase {
                 "POST /systemAlert/query", "POST /systemAlert/tap",
                 "POST /notificationBanner/query",
                 "POST /interruptionPolicy", "POST /interruptionPolicy/drain",
+                "POST /app/state",
                 "POST /app/enter", "POST /app/leave",
             ]
         )

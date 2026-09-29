@@ -181,7 +181,16 @@ there.
   report store, which cannot say which crash belongs to which of a dozen scenarios, and runs in CI
   only — a developer reproducing the crash with a local `bajutsu run` got nothing from it at all.
   Both halves are best-effort: a report `ReportCrash` never wrote, or a `DiagnosticReports`
-  directory this host does not have, leaves that entry out rather than failing anything. The runner
+  directory this host does not have, leaves that entry out rather than failing anything.
+  A crash of the **app under test** is a separate directory with a separate cause: `app-crash/`,
+  written for any scenario whose app went down mid-run, holding the platform's own report for it
+  ([`docs/evidence.md`](evidence.md#app-crash-evidence-be-0424), BE-0424). The two never overlap —
+  `crash-diagnostics/` names a fault in the test infrastructure, `app-crash/` a likely defect in the
+  app being tested — and the app-crash path deliberately triggers no retry. Both iOS and Android
+  lanes carry a non-gating `app-crash` job driving a showcase affordance that crashes on demand,
+  next to `actuation (xcuitest)` and `golden (adb)`: newly wired on-device coverage earns its
+  stability as a per-PR signal before any promotion into the required aggregators, the same path
+  every other new signal in those lanes has taken. Back in `crash-diagnostics/`, the runner
   output is collected for the two crash shapes the runner's own liveness signals name — `xcodebuild`
   exited, or it lingers past a test run its capture says has ended. A channel that simply stopped
   answering while the process runs on and writes no such marker is the wedged-Simulator shape

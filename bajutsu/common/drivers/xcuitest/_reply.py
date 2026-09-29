@@ -23,4 +23,8 @@ class _Reply:
     elements: list[dict[str, Any]] | None = None
     png: bytes | None = field(default=None, repr=False)
     size: base.Point | None = None  # the `GET /screen` viewport (w, h), BE-0326
+    # `XCUIApplication.state` from `/app/state` (BE-0424), absent on every other endpoint. Carried as
+    # the runner's own spelling rather than a bool, so the driver decides what counts as a crash and
+    # `unknown` stays distinguishable from a confirmed answer either way.
+    app_state: str | None = None
     raw: bytes | None = field(default=None, repr=False)

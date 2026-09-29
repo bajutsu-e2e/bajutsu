@@ -82,6 +82,7 @@ from bajutsu.common.scenario import (
 from ._loop_config import _LoopConfig
 from ._shared import _ExecSteps, _logger
 from ._step_counter import _StepCounter
+from .app_crash_latches import AppCrashLatches
 from .step_loop_state import StepLoopState
 
 # How often `email` re-polls the mailbox. Unlike the UI's 50 ms `_POLL`, each tick is a remote HTTP
@@ -696,6 +697,8 @@ def run_scenario(  # noqa: C901, PLR0915
     target_launch_env: Mapping[str, str] | None = None,
     target_runtimes: Mapping[str, TargetRuntime] | None = None,
     primary_target: str = "",
+    capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None = None,
+    app_launch_unconfirmed: bool = False,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -744,6 +747,17 @@ def run_scenario(  # noqa: C901, PLR0915
     deliberately left to finish — a scenario whose every step passed gets its real verdict rather
     than a cancellation label, and that block is bounded by the wait floor (zero on every lane that
     doesn't raise it).
+
+    `capture_app_crash` (BE-0424) is the lease's sweep for the platform's own report of a crash of the
+    *app under test*, called from inside the step loop the moment a driver confirms one. Unlike
+    `base.BackendCrashError` below, that event is classified in-band: it fails the step that observed
+    it, and this function's ordinary `RunResult` assembly — the steps, the artifacts, the running
+    video, the `after: on: error` dispatch — finishes exactly as it would for an `ElementNotFound`.
+    `app_launch_unconfirmed` says the lease's readiness gate never established that the app reached
+    the foreground, which suppresses the probe until a step succeeds against the app: without it a
+    scenario's very first failing step, having no earlier step to have observed the app running, would
+    read an app that never launched as one that crashed. Both default to the inert value, so a caller
+    with no lease behind it (a test constructing a scenario directly) sees the unchanged behavior.
 
     Unlike every other exception this catches, `base.BackendCrashError` is never turned into a
     `failure` here — it propagates, so the run pipeline's own crash-retry loop can see it. The
@@ -833,6 +847,10 @@ def run_scenario(  # noqa: C901, PLR0915
     # Mutable bindings: extract steps populate vars.* during the run; scenario-level
     # expect sees the accumulated values.
     live_bindings: dict[str, str] = dict(bindings or {})
+    # Scenario-scoped, and shared across every phase for the same reason `live_bindings` is: what a
+    # failing `relaunch` in `steps` latched must still suppress the probe for an `after: on: error`
+    # rule dispatched afterward, which runs through its own freshly built `StepLoopState` (BE-0424).
+    app_crash_latches = AppCrashLatches(unconfirmed_launch=app_launch_unconfirmed)
 
     def run_phase(
         steps: list[Step],
@@ -873,6 +891,8 @@ def run_scenario(  # noqa: C901, PLR0915
             primary_target,
             channel,
             hide_markers,
+            app_crash_latches,
+            capture_app_crash,
         )
 
     try:
@@ -1334,6 +1354,8 @@ def _run_steps(
     primary_target: str = "",
     channel: Collector | None = None,
     hide_markers: bool = False,
+    app_crash: AppCrashLatches | None = None,
+    capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None = None,
 ) -> str | None:
     """Run one phase's step loop, appending outcomes; return the failure string or None.
 
@@ -1358,7 +1380,14 @@ def _run_steps(
     ``channel``/``hide_markers`` back a step-level ``visual`` assert's own capture, the same two
     inputs ``_capture_visual_actual`` already takes at ``expect``."""
     assert bindings is not None
-    state = StepLoopState(counter=counter or _StepCounter(), outcomes=outcomes, bindings=bindings)
+    state = StepLoopState(
+        counter=counter or _StepCounter(),
+        outcomes=outcomes,
+        bindings=bindings,
+        # Scenario-scoped like `bindings`: a caller that builds no shared object (a test driving one
+        # phase directly) gets a fresh one, which simply starts every latch cleared.
+        app_crash=app_crash if app_crash is not None else AppCrashLatches(),
+    )
     cfg = _LoopConfig(
         driver=driver,
         scenario=scenario,
@@ -1379,6 +1408,7 @@ def _run_steps(
         interrupts=interrupts,
         locale=locale,
         capture=capture,
+        capture_app_crash=capture_app_crash,
         phase=phase,
         cancelled=cancelled,
         channel=channel,

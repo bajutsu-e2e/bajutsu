@@ -280,7 +280,9 @@ class _CrawlPlan:
     upload_exec: str
 
 
-def _build_lane(plan: _CrawlPlan, udid: str) -> tuple[base.Driver, crawl_engine.Reset]:
+def _build_lane(
+    plan: _CrawlPlan, udid: str
+) -> tuple[base.Driver, crawl_engine.Reset, crawl_engine.AppCrashCapture]:
     """Bring one crawl lane up and pair its driver with the platform's `reset`.
 
     The crawl `reset` (revisit a known screen from a clean start) is the platform's, behind the
@@ -297,7 +299,10 @@ def _build_lane(plan: _CrawlPlan, udid: str) -> tuple[base.Driver, crawl_engine.
     )
     # After the launch, deliberately: `crawl_reset` snapshots `simctl.Env(self._udid)` eagerly, so a
     # reset built ahead of it would bind the udid the launch may have just replaced.
-    return driver, env.crawl_reset(plan.eff)
+    # This lane's own environment, not `plan.environment`: that one is built with an empty udid
+    # purely to wire the health seams, so its sweep would name the wrong device — or none — on a
+    # multi-lane crawl (BE-0424).
+    return driver, env.crawl_reset(plan.eff), env.app_crash_artifacts
 
 
 def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> crawl_engine.ScreenMap:
@@ -334,7 +339,9 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
             "(this can take a moment) …"
         )
 
-    def build_lane(u: str) -> tuple[base.Driver, crawl_engine.Reset]:
+    def build_lane(
+        u: str,
+    ) -> tuple[base.Driver, crawl_engine.Reset, crawl_engine.AppCrashCapture]:
         return _build_lane(plan, u)
 
     try:
@@ -383,6 +390,7 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
             on_node=on_node,
             recover=recover,  # web: relaunch a wedged browser so its lane keeps crawling (BE-0077)
             extra_workers=extra_factories,  # built on their own threads (BE-0064 sims / BE-0077 browsers)
+            app_crash_artifacts=primary[2],
         )
     except device_errors.DeviceError as e:
         typer.echo(str(e))

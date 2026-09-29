@@ -37,6 +37,12 @@ fun RootScreen(model: AppModel) {
         GestureScreen()
         return
     }
+    // BE-0424: the SHOWCASE_CRASH launch env swaps the whole five-tab UI for the crash fixture
+    // (mirroring the iOS RootView). Otherwise the normal tab app (BE-0079) is untouched.
+    if (model.crashMode) {
+        CrashScreen()
+        return
+    }
     Scaffold(
         modifier = Modifier
             .fillMaxSize()

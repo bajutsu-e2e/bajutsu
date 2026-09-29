@@ -6,13 +6,14 @@ import contextlib
 import json
 import os
 import plistlib
+import re
 import shlex
 import signal
 import socket
 import subprocess
 import tempfile
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -307,6 +308,89 @@ def _reported_pid(report: bytes) -> int | None:
         if isinstance(parsed, dict) and isinstance(pid := parsed.get("pid"), int):
             return pid
     return None
+
+
+# A Simulator install path's device component, in both the plain form and the `\/`-escaped one an
+# `.ips` payload's JSON writes (BE-0424).
+_SIMULATOR_DEVICE_PATH = re.compile(
+    rb"Devices\\?/([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})"
+)
+
+
+def _reports_device(report: bytes, udid: str) -> bool:
+    """Whether an `.ips` report may belong to the Simulator *udid*: it names no other one (BE-0424).
+
+    The app under test's report cannot be narrowed by pid the way BE-0421 narrows the runner's:
+    XCTest's public `XCUIApplication` surface exposes none, and nothing in `BajutsuKit/` reads one.
+    The Simulator's udid stands in — a Simulator app's executable lives under
+    `.../CoreSimulator/Devices/<udid>/data/Containers/Bundle/Application/…`, so an install path the
+    payload carries names the specific device the crashed process ran on. That is what tells two
+    Simulators running the identical target binary apart, which `--workers 2` on one CI host produces.
+
+    A report is rejected only on *positive* evidence that it names a different device, never for
+    naming none: `ReportCrash` anonymizes paths under the user's home (`/Users/USER/*/…`), which can
+    elide the `Devices/<udid>` component entirely, and requiring the udid would then reject the very
+    report the sweep is for. The executable-name and launch-time checks still bound what such a
+    report matches.
+    """
+    named = {match.upper() for match in _SIMULATOR_DEVICE_PATH.findall(report)}
+    return not named or udid.upper().encode() in named
+
+
+def _app_crash_reports(
+    reports_dir: Path, pattern: str, since: float, udid: str, ticks: Iterator[None]
+) -> list[Path]:
+    """The app's own `.ips` reports for this launch on this device, newest first (BE-0424).
+
+    The app-side sibling of BE-0421's `XcuitestEnvironment._crash_reports`, reusing the same
+    `_reports_since` name-and-time match rather than writing a second sweep over the same directory:
+    a fix to one match rule — a new `.ips` header format, a `DiagnosticReports` relocation — would
+    otherwise silently leave the other wrong.
+
+    Polled rather than read once, because `ReportCrash` may not have finished writing when the app
+    dies. `ticks` bounds that wait — `base.deadline_ticks`, so it is a condition wait rather than a
+    fixed sleep — and it never retries the scenario: the scenario has already failed by the time this
+    runs, whatever this finds.
+    """
+    for _ in ticks:
+        matched = [
+            path
+            for path in _reports_since(reports_dir, pattern, since)
+            if _reports_device(_read_report(path), udid)
+        ]
+        if matched:
+            return matched
+    return []
+
+
+def _read_report(path: Path) -> bytes:
+    """One crash report's bytes, empty when it cannot be read (BE-0424).
+
+    A report store is a live directory: `ReportCrash` can still be writing, and a file listed a
+    moment ago can be gone. Neither is evidence about the app, so both read as "no match" rather than
+    failing the sweep that is already running on an already-failed scenario.
+    """
+    try:
+        return path.read_bytes()
+    except OSError:
+        return b""
+
+
+def _bundle_executable(app_path: str) -> str | None:
+    """`CFBundleExecutable` from an installed app's `Info.plist`, or None when it cannot be read.
+
+    The sweep matches on filename, and an `.ips` report's filename names the *process* that crashed
+    (`Showcase-2026-…ips`), never the bundle id — so `ios.bundle_id`, the one name the environment
+    already holds, never matches one. This is the one plist key every iOS bundle is required to
+    declare, which makes it the executable name the report will carry (BE-0424).
+    """
+    try:
+        with (Path(app_path) / "Info.plist").open("rb") as handle:
+            parsed = plistlib.load(handle)
+    except (OSError, ValueError):
+        return None
+    name = parsed.get("CFBundleExecutable")
+    return str(name) if isinstance(name, str) and name else None
 
 
 def _run_ended_probe(log_path: Path | None) -> Callable[[], str | None]:

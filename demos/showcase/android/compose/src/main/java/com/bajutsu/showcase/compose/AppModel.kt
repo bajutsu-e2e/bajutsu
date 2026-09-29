@@ -42,6 +42,12 @@ class AppModel(env: Map<String, String>) {
     // rooted `sendevent` sweep.
     val gesturesMode: Boolean = env["SHOWCASE_GESTURES"] != null
 
+    // App-crash fixture mode (BE-0424): a test-only affordance gated on the SHOWCASE_CRASH launch
+    // env, mirroring the iOS AppModel. When set, RootScreen swaps the whole five-tab UI for a flat
+    // screen whose one button faults the process on demand, so the on-device `app-crash` run proves
+    // the `logcat` crash buffer and `ApplicationExitInfo` really carry what the capture reads.
+    val crashMode: Boolean = env["SHOWCASE_CRASH"] != null
+
     // Driver-conformance mode (BE-0114 / BE-0270): a test-only affordance gated on the
     // SHOWCASE_CONFORMANCE launch env, mirroring the iOS AppModel. null (env absent) = the normal
     // observe-only app (BE-0079, untouched); non-null = render exactly these identifiers (duplicates

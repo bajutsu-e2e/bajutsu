@@ -412,6 +412,9 @@ def test_build_lane_gives_the_launch_and_the_reset_one_environment(
             order.append("reset")
             return lambda: None
 
+        def app_crash_artifacts(self) -> list[tuple[str, bytes]]:
+            return []
+
     def fake_environment_for(actuator: str, udid: str, *a: object, **k: object) -> _Env:
         env = _Env(udid)
         built.append(env)

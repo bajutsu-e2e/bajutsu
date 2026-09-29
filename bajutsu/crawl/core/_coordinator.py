@@ -161,10 +161,20 @@ class _Coordinator:
         with self._cond:
             self._sm.alerts.append(Alert(tuple(a.describe() for a in path), tuple(dismissed)))
 
-    def record_crash(self, path: list[Action]) -> None:
-        """Record a crash (with its replayable action path), release the reservation, notify."""
+    def record_crash(
+        self, path: list[Action], artifacts: tuple[tuple[str, bytes], ...] = ()
+    ) -> None:
+        """Record a crash (with its replayable action path), release the reservation, notify.
+
+        `artifacts` arrives already resolved, swept off-lock by the caller (BE-0424). This body holds
+        `self._cond` throughout, and that same lock serializes `on_event` and every other worker's
+        `record_crash` / `record_edge` — so a multi-second `.ips` poll run in here would stall every
+        other crawl lane for its duration. Handed in resolved, it costs the lock a list append.
+        """
         with self._cond:
-            self._sm.crashes.append(Crash(tuple(a.describe() for a in path), tuple(path)))
+            self._sm.crashes.append(
+                Crash(tuple(a.describe() for a in path), tuple(path), artifacts)
+            )
             self._active -= 1
             self._emit()
             self._cond.notify_all()

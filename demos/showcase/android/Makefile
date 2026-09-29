@@ -5,7 +5,7 @@
 # `run` / `doctor` land with the BE-0007 adb backend; until then these targets only build.
 .PHONY: build-all wrapper \
 	compose-build compose-noax-build views-build views-noax-build e2e e2e-pool e2e-network e2e-golden \
-	e2e-fallback e2e-visual e2e-conformance e2e-fault-injection e2e-codegen clean
+	e2e-fallback e2e-visual e2e-conformance e2e-fault-injection e2e-app-crash e2e-codegen clean
 
 HERE := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 GRADLEW := $(HERE)/gradlew
@@ -398,6 +398,38 @@ e2e-fault-injection: compose-build
 	cd $(ROOT) && BAJUTSU_FAULT_INJECTION_SERIAL=$(SERIAL) \
 		uv run pytest tests/test_fault_injection_ondevice_android.py -m ondevice -n0 -v
 
+# BE-0424: crash the app under test on purpose and assert the run diagnosed it. The scenario is
+# *expected* to fail — `||:` keeps that from ending the recipe — so the verdict comes from the
+# assertion script, which reads the finished run's manifest and its `app-crash/` directory. A green
+# `bajutsu run` fails the assertion too: it would mean the SHOWCASE_CRASH affordance never faulted.
+# The fast suite covers the parsing against stubbed `adb` output; only a real crash shows that
+# `logcat`'s crash buffer carries the `FATAL EXCEPTION` block and that `pidof` plus
+# `dumpsys activity exit-info` then report it. Not part of `make check`: it needs a booted AVD, so
+# android-e2e.yml drives it in its own `app-crash (adb)` job.
+#
+# `bajutsu run` mints its own timestamped run id (there is no `--run-id` override), so `--runs-dir`
+# points at a directory this target creates fresh and owns alone, and the one run inside it is found
+# the same way `scripts/android_pool_e2e.sh` finds its own single run directory. Gitignored `tmp/`,
+# not the repo root, and removed first: `make lint-secrets` runs `gitleaks dir .`, a directory scan
+# that does not consult .gitignore, so a leftover run tree at the repo root would redden the gate —
+# the same reasoning `NET_RUNS` documents for its own run directory (demos/showcase/Makefile).
+APP_CRASH_RUNS := $(ROOT)/tmp/showcase-android-app-crash-runs
+e2e-app-crash: compose-build
+	$(ANR_QUIET)
+	$(TOUCH_DEBUG_OFF)
+	rm -rf $(APP_CRASH_RUNS)
+	cd $(ROOT) && $(E2E_ENV) uv run bajutsu run \
+		--scenario demos/showcase/scenarios/app_crash.yaml \
+		--runs-dir $(APP_CRASH_RUNS) \
+		--target showcase-compose --udid $(SERIAL) --backend android --config $(CONFIG) ||:
+	run_dir_count="$$(find $(APP_CRASH_RUNS) -mindepth 1 -maxdepth 1 -type d | wc -l)"; \
+		if [ "$$run_dir_count" -ne 1 ]; then \
+			echo "expected exactly one run directory under $(APP_CRASH_RUNS)/, found $$run_dir_count" >&2; \
+			exit 1; \
+		fi
+	cd $(ROOT) && uv run python scripts/assert_app_crash_evidence.py \
+		"$$(find $(APP_CRASH_RUNS) -mindepth 1 -maxdepth 1 -type d)"
+
 # The codegen output path: a scenario -> native UI Automator (Kotlin) test, compiled and run by
 # Gradle's connectedAndroidTest with no bajutsu runtime / adb driver / AI at test time (BE-0294) —
 # the Android twin of the iOS `make -C demos/showcase ui-test` target. Re-generates the checked-in
@@ -476,5 +508,8 @@ e2e-codegen:
 	( cd $(HERE) && $(GRADLEW) :compose:connectedA11yDebugAndroidTest ); rc=$$?; \
 	exit "$$rc"
 
+# $(APP_CRASH_RUNS) is gitignored but still swept: `make lint-secrets` runs `gitleaks dir .`, and a
+# directory scan does not consult .gitignore — the same reasoning demos/showcase/Makefile documents
+# for its own $(NET_RUNS).
 clean:
-	rm -rf $(HERE)/build $(HERE)/compose/build $(HERE)/views/build $(HERE)/.gradle
+	rm -rf $(HERE)/build $(HERE)/compose/build $(HERE)/views/build $(HERE)/.gradle $(APP_CRASH_RUNS)

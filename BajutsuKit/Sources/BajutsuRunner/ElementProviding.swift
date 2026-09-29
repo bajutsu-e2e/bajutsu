@@ -143,4 +143,22 @@ public protocol ElementProviding: AnyObject {
     /// `enterApp()` is a caller error the implementation tolerates rather than traps: it leaves the
     /// stack at its seed and reports `.ok`.
     func leaveApp() -> AppActivationResult
+
+    /// The target app's own process state, so the driver can tell a crash from a missing element.
+    ///
+    /// `XCUIApplication.state` answers this directly, which the element tree cannot: an empty or
+    /// unexpected tree is equally consistent with a system alert covering the app or a deliberate
+    /// `background` step, while a backgrounded-but-alive app reports a running state here and never
+    /// `notRunning` (BE-0424).
+    func appState() -> AppRunState
+}
+
+/// `XCUIApplication.State`, mirrored into the runner's own vocabulary so `ElementProviding` stays
+/// free of XCTest — the same separation every other type on this protocol keeps (BE-0424).
+public enum AppRunState: String, Sendable {
+    case unknown
+    case notRunning
+    case runningBackgroundSuspended
+    case runningBackground
+    case runningForeground
 }

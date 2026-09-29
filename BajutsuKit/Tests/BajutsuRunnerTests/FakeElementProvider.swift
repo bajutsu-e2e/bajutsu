@@ -35,6 +35,9 @@ final class FakeElementProvider: ElementProviding {
     // The SpringBoard alert buttons `/systemAlert/query` returns, and the taps it records (BE-0316).
     var systemAlertButtons: [ElementSnapshot] = []
     var systemAlertTapCalls: [AnyObject] = []
+    // What `/app/state` reports (BE-0424). A live app by default, so every existing test keeps the
+    // behavior it had before this route existed.
+    var appRunState: AppRunState = .runningForeground
     // The notification banner `/notificationBanner/query` returns, empty when none is up (BE-0416).
     var notificationBanner: [ElementSnapshot] = []
     // What `enterApp`/`leaveApp` report, and the bundle ids `enterApp` was called with.
@@ -134,4 +137,6 @@ final class FakeElementProvider: ElementProviding {
         leaveAppCalls += 1
         return leaveAppResult
     }
+
+    func appState() -> AppRunState { appRunState }
 }

@@ -556,8 +556,8 @@ def _pool(
 
     def worker(
         driver: FakeDriver,
-    ) -> Callable[[], tuple[FakeDriver, Callable[[base.Driver], None]]]:
-        return lambda: (driver, reset)
+    ) -> Callable[[], tuple[FakeDriver, Callable[[base.Driver], None], crawl.AppCrashCapture]]:
+        return lambda: (driver, reset, list)
 
     return drivers, [worker(d) for d in drivers[1:]]
 
@@ -624,7 +624,7 @@ def test_parallel_crawl_isolates_a_wedged_device() -> None:
 
     healthy = FakeDriver(screen=list(home), react=react)
     bad = FakeDriver(screen=list(home), react=wedged)
-    sm = crawl.crawl(healthy, reset, extra_workers=[lambda: (bad, reset)])
+    sm = crawl.crawl(healthy, reset, extra_workers=[lambda: (bad, reset, list)])
 
     assert len(sm.nodes) == 7  # home + 6 leaves, all found by the healthy device
     assert sm.stop_reason == "completed"
@@ -660,9 +660,9 @@ def test_parallel_crawl_says_when_it_absorbs_a_device_fault_and_retires_the_devi
             budget_spent.set()
         raise device_errors.DeviceError("simulator wedged: simctl exceeded its deadline")
 
-    def healthy_lane() -> tuple[FakeDriver, crawl.Reset]:
+    def healthy_lane() -> tuple[FakeDriver, crawl.Reset, crawl.AppCrashCapture]:
         assert budget_spent.wait(timeout=30), "the wedged device never used up its fault budget"
-        return FakeDriver(screen=list(home), react=react), reset
+        return FakeDriver(screen=list(home), react=react), reset, list
 
     with caplog.at_level(logging.WARNING, logger="bajutsu.crawl.core"):
         sm = crawl.crawl(
@@ -736,7 +736,7 @@ def test_parallel_crawl_recovers_a_wedged_lane_instead_of_retiring() -> None:
 
     drivers = [FakeDriver(screen=list(home), react=flaky) for _ in range(2)]
     sm = crawl.crawl(
-        drivers[0], reset, recover=recover, extra_workers=[lambda: (drivers[1], reset)]
+        drivers[0], reset, recover=recover, extra_workers=[lambda: (drivers[1], reset, list)]
     )
 
     assert len(sm.nodes) == 7  # home + 6 leaves — nothing lost, the lane was not retired
@@ -802,7 +802,11 @@ def test_parallel_crawl_retires_a_lane_that_never_heals_instead_of_looping() -> 
     primary = FakeDriver(screen=list(home), react=always_wedged)
     healthy = FakeDriver(screen=list(home), react=react)
     sm = crawl.crawl(
-        primary, reset, recover=recover, settle=settle, extra_workers=[lambda: (healthy, reset)]
+        primary,
+        reset,
+        recover=recover,
+        settle=settle,
+        extra_workers=[lambda: (healthy, reset, list)],
     )
 
     assert len(sm.nodes) == 7  # the healthy worker maps everything despite the unhealable lane
@@ -829,9 +833,9 @@ def test_extra_worker_driver_is_built_on_its_own_thread() -> None:
     main_ident = threading.get_ident()
     built_on: list[int] = []
 
-    def factory() -> tuple[FakeDriver, crawl.Reset]:
+    def factory() -> tuple[FakeDriver, crawl.Reset, crawl.AppCrashCapture]:
         built_on.append(threading.get_ident())
-        return FakeDriver(screen=list(home), react=react), reset
+        return FakeDriver(screen=list(home), react=react), reset, list
 
     primary = FakeDriver(screen=list(home), react=react)
     crawl.crawl(primary, reset, extra_workers=[factory])
