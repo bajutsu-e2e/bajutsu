@@ -1252,13 +1252,16 @@ def _arm_mock_swaps(
             reach the app.
     """
     target_env = target_launch_env or {}
+    # Kept apart so each refusal names its own cause: a misplaced step on a run that could carry the
+    # channel must not send its author to check the backend or the build flags.
+    misplaced: list[str] = []
     refused: list[str] = []
     for s in scenarios:
         swaps = _scenario_mock_swaps(s)
         if not swaps:
             continue
         if problem := _mock_swap_problem(s, swaps):
-            refused.append(f"{s.name} ({problem})")
+            misplaced.append(f"{s.name} ({problem})")
             continue
         pinned = {**target_env, **s.preconditions.launch_env}.get("BAJUTSU_CONTROL_CHANNEL", "1")
         if pinned != "1":
@@ -1267,6 +1270,12 @@ def _arm_mock_swaps(
             refused.append(s.name)
         else:
             s.preconditions.launch_env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
+    if misplaced:
+        typer.echo(
+            "error: setMocks reaches the scenario's primary app alone, so it cannot sit in a web: / "
+            "app: block or name another target: " + ", ".join(misplaced),
+            err=True,
+        )
     if refused:
         typer.echo(
             "error: setMocks replaces the app's stub table over the in-app control channel, which "
@@ -1274,6 +1283,7 @@ def _arm_mock_swaps(
             "built with -DBAJUTSU_ENABLE_CONTROL_CHANNEL): " + ", ".join(refused),
             err=True,
         )
+    if misplaced or refused:
         raise typer.Exit(2)
 
 

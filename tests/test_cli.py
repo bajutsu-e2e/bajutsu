@@ -3015,3 +3015,16 @@ def test_a_scenarios_own_channel_key_overrides_a_target_level_decline() -> None:
         target_launch_env={"BAJUTSU_CONTROL_CHANNEL": "0"},
     )
     assert scenario.preconditions.launch_env["BAJUTSU_CONTROL_CHANNEL"] == "1"
+
+
+def test_a_misplaced_swap_is_not_blamed_on_the_backend(capsys: pytest.CaptureFixture[str]) -> None:
+    """On a run that can carry the channel, the refusal names the placement, not the backend."""
+    import typer
+
+    scenario = Scenario.model_validate(
+        {"name": "swap", "steps": [{"web": {"within": {"id": "wv"}, "steps": [_SWAP]}}]}
+    )
+    with pytest.raises(typer.Exit):
+        _arm_mock_swaps([scenario], channel_available=_channel_always)
+    err = capsys.readouterr().err
+    assert "primary app" in err and "xcuitest" not in err
