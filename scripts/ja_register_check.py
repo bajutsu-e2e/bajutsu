@@ -83,7 +83,15 @@ class _Block:
 _LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 _CHECKBOX = re.compile(r"^\[[ xX]\]")
 _LINK_DEF = re.compile(r"^\[[^\]]+\]:\s")
-_HTML_TAG = re.compile(r"^</?[A-Za-z]")
+_HEADING = re.compile(r"^(#{1,6})(?:\s|$)")
+# A line that is wholly a block-level HTML tag. Autolinks (`<https://…>`) and inline tags such as
+# `<kbd>` open prose lines too, so a bare leading `<` is not enough to drop one.
+_HTML_BLOCK = re.compile(
+    r"^</?(?:details|summary|div|p|img|picture|source|video|table|thead|tbody|tr|td|th|br|hr"
+    r"|section|figure|figcaption|center)\b[^>]*>$",
+    re.IGNORECASE,
+)
+_FENCE = re.compile(r"^(`{3,}|~{3,})")
 # The `[English](…) · **日本語**` language switch atop every bilingual page: navigation, not prose.
 _NAV_ITEM = r"(?:\*\*[^*]+\*\*|\[[^\]]+\]\([^)]*\))"
 _NAV_LINE = re.compile(rf"^{_NAV_ITEM}(?:\s*·\s*{_NAV_ITEM})+$")
@@ -100,15 +108,17 @@ class _Scanner:
     def __init__(self) -> None:
         self.blocks: list[_Block] = []
         self._current = _Block()
-        self._fence: str | None = None
+        self._fence: str | None = None  # the opening run of backticks or tildes
         self._in_comment = False
         self._in_progress = False
         self._in_checklist_item = False
 
     def feed(self, line: int, raw: str) -> None:
-        stripped = raw.strip()
-        if self._skip_verbatim(stripped):
+        remainder = self._skip_verbatim(raw)
+        if remainder is None:
             return
+        raw = remainder
+        stripped = raw.strip()
         if not stripped or self._is_structural(stripped):
             self._flush()
             self._in_checklist_item = False
@@ -128,35 +138,48 @@ class _Scanner:
         self._flush()
         return self.blocks
 
-    def _skip_verbatim(self, stripped: str) -> bool:
-        """Consume code fences and HTML comments, which may span many lines."""
+    def _skip_verbatim(self, raw: str) -> str | None:
+        """Consume code fences and HTML comments, which may span many lines.
+
+        Returns the part of the line left to scan as prose, or None when all of it is verbatim.
+        """
+        stripped = raw.strip()
         if self._fence is not None:
-            if stripped.startswith(self._fence):
+            # CommonMark closes a fence only on a bare run of the same char, at least as long.
+            if stripped.rstrip(self._fence[0]) == "" and len(stripped) >= len(self._fence):
                 self._fence = None
-            return True
+            return None
         if self._in_comment:
-            self._in_comment = "-->" not in stripped
-            return True
-        if stripped.startswith(("```", "~~~")):
+            return self._after_comment(raw)
+        fence = _FENCE.match(stripped)
+        if fence:
             self._flush()
-            self._fence = stripped[:3]
-            return True
+            self._fence = fence.group(1)
+            return None
         if stripped.startswith("<!--"):
             self._flush()
-            self._in_comment = "-->" not in stripped
-            return True
-        return False
+            return self._after_comment(raw[raw.index("<!--") + 4 :])
+        return raw
+
+    def _after_comment(self, raw: str) -> str | None:
+        """Prose may follow a comment's `-->` on the same line; keep scanning it."""
+        end = raw.find("-->")
+        self._in_comment = end == -1
+        if self._in_comment or not raw[end + 3 :].strip():
+            return None
+        return raw[end + 3 :]
 
     def _is_structural(self, stripped: str) -> bool:
-        if stripped.startswith("#"):
-            level = len(stripped) - len(stripped.lstrip("#"))
-            if level <= 2:
-                self._in_progress = stripped.lstrip("#").strip() in _PROGRESS_HEADINGS
+        heading = _HEADING.match(stripped)
+        if heading:
+            # A wrapped `#1842 …` line is prose: a heading needs whitespace after its hashes.
+            if len(heading.group(1)) <= 2:
+                self._in_progress = stripped[heading.end() :].strip() in _PROGRESS_HEADINGS
             return True
         return (
             stripped.startswith(("|", ">"))
             or bool(_LINK_DEF.match(stripped))
-            or bool(_HTML_TAG.match(stripped))
+            or bool(_HTML_BLOCK.match(stripped))
             or bool(_NAV_LINE.match(stripped))
         )
 
@@ -176,15 +199,22 @@ def prose_blocks(text: str) -> list[_Block]:
 
 _OPENERS = "「『（"
 _CLOSERS = "」』）"
-_TERMINALS = "。！？"
+_TERMINALS = "。．！？"
 
 
 def split_sentences(block: _Block) -> list[Candidate]:
     """Split a block on the fullwidth terminal marks, never inside brackets or inline code.
 
     A tail with no terminal mark (a 体言止め label, most often) counts as one sentence. Returns each
-    sentence with the line it starts on, as a ``Candidate`` used as a plain pair.
+    sentence with the line it starts on, as a ``Candidate`` used as a plain pair. A stray backtick or
+    bracket would otherwise hide every sentence after it inside one, so an unbalanced block is split
+    again with no tracking at all.
     """
+    sentences, balanced = _split(block, track=True)
+    return sentences if balanced else _split(block, track=False)[0]
+
+
+def _split(block: _Block, *, track: bool) -> tuple[list[Candidate], bool]:
     sentences: list[Candidate] = []
     text = block.text
     depth, in_code, start = 0, False, 0
@@ -196,15 +226,13 @@ def split_sentences(block: _Block) -> list[Candidate]:
             sentences.append(Candidate(block.line_of[first], chunk.strip()))
 
     for i, ch in enumerate(text):
-        if ch == "`":
+        if track and ch == "`":
             in_code = not in_code
-        elif in_code:
-            continue
-        elif ch in _OPENERS:
+        elif track and not in_code and ch in _OPENERS:
             depth += 1
-        elif ch in _CLOSERS:
+        elif track and not in_code and ch in _CLOSERS:
             depth = max(0, depth - 1)
-        elif ch in _TERMINALS and depth == 0:
+        elif ch in _TERMINALS and depth == 0 and not in_code:
             # Emphasis closing right after the mark (`**…します。**`) belongs to this sentence.
             end = i + 1
             while end < len(text) and text[end] in "*_":
@@ -212,7 +240,7 @@ def split_sentences(block: _Block) -> list[Candidate]:
             emit(end)
             start = end
     emit(len(text))
-    return sentences
+    return sentences, depth == 0 and not in_code
 
 
 _IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
@@ -237,7 +265,8 @@ def strip_trailing(sentence: str) -> str:
         for i in range(len(text) - 1, -1, -1):
             depth += (text[i] == closer) - (text[i] == opener)
             if depth == 0:
-                text = text[:i]
+                # A sentence that is wholly a parenthetical is checked on what the brackets hold.
+                text = text[:i] if text[:i].strip(" *_") else text[i + 1 : -1]
                 break
         else:
             return text  # unbalanced: leave it rather than guess where the group opens
@@ -245,6 +274,7 @@ def strip_trailing(sentence: str) -> str:
 
 _SKIPPED_POS = frozenset({"補助記号", "空白", "記号"})
 _KEITAI_LEMMAS = frozenset({"です", "ます"})
+_REQUEST_FORMS = frozenset({"ください", "下さい"})
 
 
 def is_keitai(morphemes: list[Morpheme]) -> bool:
@@ -252,7 +282,8 @@ def is_keitai(morphemes: list[Morpheme]) -> bool:
 
     Walks back past symbols and sentence-final particles (か, ね, よ), then accepts the sentence
     when the trailing auxiliary chain holds a です / ます lemma — ました splits into まし + た, so a
-    suffix match would miss it — or the sentence ends in ください.
+    suffix match would miss it — or the sentence ends in the request form ください (the plain
+    くださる is 常体, so the surface is matched, not the lemma).
     """
     end = len(morphemes)
     while end and (
@@ -260,7 +291,7 @@ def is_keitai(morphemes: list[Morpheme]) -> bool:
         or morphemes[end - 1].pos[:2] == ("助詞", "終助詞")
     ):
         end -= 1
-    if end and morphemes[end - 1].normalized == "下さる":
+    if end and morphemes[end - 1].surface in _REQUEST_FORMS:
         return True
     start = end
     while start and morphemes[start - 1].pos[0] == "助動詞":

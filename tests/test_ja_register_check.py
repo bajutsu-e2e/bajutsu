@@ -70,6 +70,8 @@ def _fake(text: str) -> list[Morpheme]:
         ([_noun("結果"), _aux("です", "です"), _FINAL_KA], True),
         ([_noun("登録"), _verb("し", "する"), _aux("ます", "ます"), _PERIOD], True),
         ([_verb("読ん", "読む"), _verb("ください", "くださる", "下さる")], True),
+        # The plain くださる shares the lemma but is 常体.
+        ([_noun("先生"), _verb("くださる", "くださる", "下さる")], False),
         ([_noun("結果"), _aux("で", "だ"), _verb("ある", "ある")], False),
         ([_noun("変更"), _verb("する", "する")], False),
         ([_noun("変更"), _verb("し", "する"), _aux("た", "た")], False),
@@ -101,6 +103,9 @@ def test_is_keitai_only_reads_the_trailing_auxiliary_chain() -> None:
         ("[リンク](https://example.com)を参照します。", "リンクを参照します"),
         ("![図](a.png)図を参照します。", "図を参照します"),
         ("閉じていない）", "閉じていない）"),
+        # A sentence that is wholly a parenthetical is judged on its content, not dropped.
+        ("（これは補足である。）", "これは補足である"),
+        ("**（補足です）**。", "補足です"),
         ("。", ""),
     ],
 )
@@ -137,6 +142,32 @@ def test_prose_blocks_drop_everything_the_register_rule_exempts() -> None:
         ]
     )
     assert _texts(markdown) == ["本文です。"]
+
+
+def test_prose_blocks_keep_prose_that_only_looks_structural() -> None:
+    markdown = "\n".join(
+        [
+            "Issue",
+            "#1842 で計測した。",
+            "<https://example.com> を参照する。",
+            "<kbd>Ctrl</kbd> を押す。",
+            "<!-- 注 --> 本文である。",
+        ]
+    )
+    assert _texts(markdown) == [
+        "Issue #1842 で計測した。<https://example.com> を参照する。<kbd>Ctrl</kbd> を押す。",
+        "本文である。",
+    ]
+
+
+def test_a_fence_closes_only_on_a_bare_run_at_least_as_long() -> None:
+    markdown = "\n".join(["````md", "```", "中のコードである", "```", "````", "外の本文である。"])
+    assert _texts(markdown) == ["外の本文である。"]
+
+
+def test_a_wrapped_hash_line_does_not_end_the_progress_section() -> None:
+    markdown = "## 進捗\n\n前置きの\n#12 を参照します。\n\n- [ ] 検出器を追加する\n"
+    assert _texts(markdown) == ["前置きの#12 を参照します。"]
 
 
 def test_prose_blocks_join_hard_wraps_and_keep_the_source_line() -> None:
@@ -196,6 +227,10 @@ def _split(text: str) -> list[str]:
         ("括弧（注。補足）の中も分けません。", ["括弧（注。補足）の中も分けません。"]),
         ("`a。b` の中も分けません。", ["`a。b` の中も分けません。"]),
         ("**強調します。** 次の文です。", ["**強調します。**", "次の文です。"]),
+        ("全角ピリオドである．次の文です。", ["全角ピリオドである．", "次の文です。"]),
+        # A stray backtick or bracket must not fold the rest of the block into one sentence.
+        ("`a を使う。次に b を使う。最後です。", ["`a を使う。", "次に b を使う。", "最後です。"]),
+        ("（注 を使う。次に b を使う。", ["（注 を使う。", "次に b を使う。"]),
     ],
 )
 def test_split_sentences(text: str, expected: list[str]) -> None:
