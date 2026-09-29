@@ -289,17 +289,22 @@ def test_a_stub_table_round_trips_through_the_real_collector() -> None:
     """Against `NetworkCollector` itself: the wait releases only once a report for the id the
     collector minted arrives, which is the contract unit 3's toggle already relies on."""
     import threading
+    import time
 
     collector = NetworkCollector()
 
     def app() -> None:
-        # Stand in for BajutsuKit's poll: drain, then acknowledge what was drained.
+        # Stand in for BajutsuKit's poll: drain, then acknowledge what was drained. Bounded, so a
+        # regression that never enqueues fails this test instead of spinning past it.
+        deadline = time.monotonic() + 5.0
         while not (drained := collector.drain_commands()):
+            if time.monotonic() > deadline:
+                return
             threading.Event().wait(0.01)
         for command in drained:
             collector.record_report({"id": command.id, "applied": True})
 
-    worker = threading.Thread(target=app)
+    worker = threading.Thread(target=app, daemon=True)
     worker.start()
     replace_stub_table(collector, _table(), timeout=5.0)
     worker.join()

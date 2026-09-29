@@ -1722,7 +1722,7 @@ def test_set_mocks_sends_the_table_between_the_steps_around_it() -> None:
     assert result.ok, result.failure
     ordered = [(k, a) for k, a in driver.actions if k in {"tap", "stub_table"}]
     assert [k for k, _ in ordered] == ["tap", "stub_table", "tap", "stub_table"]
-    first, second = (cast("list[Mock]", a) for k, a in ordered if k == "stub_table")
+    first, second = (cast(list[Mock], a) for k, a in ordered if k == "stub_table")
     assert [m.match.path for m in first] == ["/me"] and first[0].respond.status == 500
     assert second == []  # an empty table is sent, not skipped
 

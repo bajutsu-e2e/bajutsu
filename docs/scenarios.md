@@ -776,6 +776,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `clearKeychain` | `clearKeychain: {}` | reset the Simulator keychain (saved passwords / certificates) |
 | `clearClipboard` | `clearClipboard: {}` | clear the Simulator pasteboard |
 | `setClipboard` | `setClipboard: { text: "..." }` | seed the Simulator pasteboard for a paste flow |
+| `setMocks` | `setMocks: [ { match, respond }... ]` | replace the app's whole stub table mid-scenario over the in-app control channel ([below](#changing-the-mocks-mid-scenario-setmocks)); `[]` removes every stub. iOS (XCUITest) with network collection on ([BE-0365](../roadmaps/BE-0365-in-app-control-channel/BE-0365-in-app-control-channel.md)) |
 | `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | override the status bar for deterministic screenshots |
 | `clearStatusBar` | `clearStatusBar: {}` | remove status-bar overrides (restore the live bar) |
 | `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)); **takes no modifiers** — `capture` / `extract` / `name` / `from` / `target` are all rejected |

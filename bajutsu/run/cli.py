@@ -1178,54 +1178,59 @@ def _write_touch_marker_env(scenarios: list[Scenario], skip: set[int], *, armed:
             s.preconditions.launch_env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
 
 
-def _mock_swaps(steps: list[Step], block: str | None = None) -> Iterator[tuple[Step, str | None]]:
-    """Every `setMocks` step under *steps*, with the `web:` / `app:` block it sits in, if any.
+# One `setMocks` step, the `web:` / `app:` block it sits in (if any), and the target it runs on.
+_MockSwap = tuple[Step, str | None, str | None]
+
+
+def _mock_swaps(
+    steps: list[Step], block: str | None = None, target: str | None = None
+) -> Iterator[_MockSwap]:
+    """Every `setMocks` step under *steps*, with its enclosing block and the target it runs on.
 
     Recurses into `if` / `forEach` like the run loop does. A `web:` or `app:` block drives a context
     other than the app BajutsuKit runs in — a page's DOM, or a second app — so the block is what
-    `_mock_swap_problem` refuses on.
+    `_mock_swap_problem` refuses on. *target* is the one a step omitting its own inherits: an
+    `interrupts` entry's watched target, or an enclosing `if` / `forEach` step's (BE-0438).
     """
     for step in steps:
+        runs_on = step.target or target
         if step.set_mocks is not None:
-            yield step, block
+            yield step, block, runs_on
         if step.if_ is not None:
-            yield from _mock_swaps(step.if_.then, block)
-            yield from _mock_swaps(step.if_.else_ or [], block)
+            yield from _mock_swaps(step.if_.then, block, runs_on)
+            yield from _mock_swaps(step.if_.else_ or [], block, runs_on)
         if step.for_each is not None:
-            yield from _mock_swaps(step.for_each.steps, block)
+            yield from _mock_swaps(step.for_each.steps, block, runs_on)
         if step.app is not None:
-            yield from _mock_swaps(step.app.steps, block or "app")
+            yield from _mock_swaps(step.app.steps, block or "app", runs_on)
         if step.web is not None:
-            yield from _mock_swaps(step.web.steps, block or "web")
+            yield from _mock_swaps(step.web.steps, block or "web", runs_on)
 
 
-def _scenario_mock_swaps(s: Scenario) -> list[tuple[Step, str | None]]:
+def _scenario_mock_swaps(s: Scenario) -> list[_MockSwap]:
     """`_mock_swaps` over every phase of *s*, `interrupts` recovery steps included."""
-    phases = [
-        *s.before,
-        *s.steps,
-        *(step for rule in s.after for step in rule.steps),
-        *(step for entry in s.interrupts for step in entry.steps),
-    ]
-    return list(_mock_swaps(phases))
+    swaps = list(
+        _mock_swaps([*s.before, *s.steps, *(step for rule in s.after for step in rule.steps)])
+    )
+    for entry in s.interrupts:
+        swaps.extend(_mock_swaps(entry.steps, target=entry.target))
+    return swaps
 
 
-def _mock_swap_problem(s: Scenario, swaps: list[tuple[Step, str | None]]) -> str | None:
+def _mock_swap_problem(s: Scenario, swaps: list[_MockSwap]) -> str | None:
     """Why one of *s*'s `setMocks` steps cannot reach the app it means, or None when all can.
 
     The channel reaches the scenario's primary app alone — the one launched with the collector and
-    the channel key — so a swap inside a `web:` / `app:` block, or naming another of the scenario's
-    `targets`, is refused rather than sent somewhere no stub table lives.
+    the channel key — so a swap inside a `web:` / `app:` block, or running on another of the
+    scenario's `targets`, is refused rather than sent somewhere no stub table lives.
     """
-    blocks = sorted({block for _, block in swaps if block})
+    blocks = sorted({block for _, block, _ in swaps if block})
     if blocks:
         return f"setMocks nested in {' / '.join(f'{b}:' for b in blocks)}"
     primary = s.targets[0] if s.targets else None
-    others = sorted(
-        {step.target for step, _ in swaps if primary and step.target and step.target != primary}
-    )
+    others = sorted({t for _, _, t in swaps if primary and t and t != primary})
     if others:
-        return f"setMocks naming a non-primary target ({', '.join(others)})"
+        return f"setMocks running on a non-primary target ({', '.join(others)})"
     return None
 
 
@@ -1256,6 +1261,8 @@ def _arm_mock_swaps(
     # channel must not send its author to check the backend or the build flags.
     misplaced: list[str] = []
     refused: list[str] = []
+    marker_pair: list[str] = []
+    visual = _visual_asserting_scenarios(scenarios)
     for s in scenarios:
         swaps = _scenario_mock_swaps(s)
         if not swaps:
@@ -1270,6 +1277,20 @@ def _arm_mock_swaps(
             refused.append(s.name)
         else:
             s.preconditions.launch_env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
+            # The key is also half of the pair `_hides_touch_markers` reads, so a scenario that
+            # pinned BAJUTSU_TOUCH_MARKERS itself and compares a screenshot now has its markers
+            # hidden for that capture. The channel is armed anyway, so hiding them is correct;
+            # it is announced because the author asked for neither.
+            merged = {**target_env, **s.preconditions.launch_env}
+            if id(s) in visual and merged.get("BAJUTSU_TOUCH_MARKERS") == "1":
+                marker_pair.append(s.name)
+    if marker_pair:
+        typer.echo(
+            "note: setMocks arms the in-app control channel, so these scenario(s), which draw "
+            "touch markers, also have them hidden for each screenshot their verdict compares: "
+            + ", ".join(marker_pair),
+            err=True,
+        )
     if misplaced:
         typer.echo(
             "error: setMocks reaches the scenario's primary app alone, so it cannot sit in a web: / "

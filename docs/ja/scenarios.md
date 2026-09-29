@@ -536,6 +536,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `clearKeychain` | `clearKeychain: {}` | Simulator のキーチェーンをリセットする（保存済みパスワード / 証明書） |
 | `clearClipboard` | `clearClipboard: {}` | Simulator のペーストボードをクリアする |
 | `setClipboard` | `setClipboard: { text: "..." }` | ペースト操作のため Simulator のペーストボードにテキストを投入する |
+| `setMocks` | `setMocks: [ { match, respond }... ]` | アプリ内制御チャネルを通して、シナリオの途中でアプリのスタブテーブル全体を置き換える（[後述](#シナリオの途中でモックを変えるsetmocks)）。`[]` はすべてのスタブを外す。iOS（XCUITest）かつネットワーク収集が有効な場合のみ（[BE-0365](../../roadmaps/BE-0365-in-app-control-channel/BE-0365-in-app-control-channel-ja.md)） |
 | `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | 決定的なスクリーンショットのためステータスバーを上書きする |
 | `clearStatusBar` | `clearStatusBar: {}` | ステータスバーの上書きを解除する（ライブ表示に戻す） |
 | `use` | `use: { component: <file>, with?: {...} }` | 再利用コンポーネントの steps を展開する。コンパイル時マクロ（[再利用](#再利用とデータ駆動とタグ)）。**修飾子を取らない**：`capture` / `extract` / `name` / `from` / `target` はいずれも拒否される |

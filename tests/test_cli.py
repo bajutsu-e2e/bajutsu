@@ -3028,3 +3028,44 @@ def test_a_misplaced_swap_is_not_blamed_on_the_backend(capsys: pytest.CaptureFix
         _arm_mock_swaps([scenario], channel_available=_channel_always)
     err = capsys.readouterr().err
     assert "primary app" in err and "xcuitest" not in err
+
+
+def test_set_mocks_in_an_interrupt_watching_a_non_primary_target_is_refused(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A recovery step that omits `target` runs on the target its entry watches (BE-0438), so the
+    entry's own `target` decides where the swap would land."""
+    import typer
+
+    scenario = Scenario.model_validate(
+        {
+            "name": "swap",
+            "targets": ["ios", "site"],
+            "primaryTarget": "ios",
+            "interrupts": [
+                {"target": "site", "condition": {"exists": {"id": "banner"}}, "steps": [_SWAP]}
+            ],
+            "steps": [{"target": "ios", "tap": {"id": "go"}}],
+        }
+    )
+    with pytest.raises(typer.Exit):
+        _arm_mock_swaps([scenario], channel_available=_channel_always)
+    assert "non-primary target (site)" in capsys.readouterr().err
+
+
+def test_arming_a_swap_announces_markers_it_now_hides(capsys: pytest.CaptureFixture[str]) -> None:
+    """The channel key completes the pair `_hides_touch_markers` reads for a scenario that pinned
+    its own markers and compares a screenshot; that change is announced rather than silent."""
+    shows_markers = Scenario.model_validate(
+        {
+            "name": "marked",
+            "preconditions": {"launchEnv": {"BAJUTSU_TOUCH_MARKERS": "1"}},
+            "steps": [_SWAP],
+            "expect": [{"visual": {"baseline": "home.png"}}],
+        }
+    )
+    no_visual = _swapping_scenario("plain")
+    no_visual.preconditions.launch_env["BAJUTSU_TOUCH_MARKERS"] = "1"
+    _arm_mock_swaps([shows_markers, no_visual], channel_available=_channel_always)
+    err = capsys.readouterr().err
+    assert "hidden for each screenshot" in err and "marked" in err and "plain" not in err
