@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Literal
 
 
 class InAppCapability(StrEnum):
@@ -15,3 +16,9 @@ class InAppCapability(StrEnum):
     """
 
     TOUCH_VISUALIZATION = "touch_visualization"  # the touch markers BE-0371 draws
+    STUB_TABLE = "stub_table"  # the mocked responses BajutsuKit serves (`BAJUTSU_MOCKS`)
+
+
+# The capabilities whose whole state is on/off, so `enqueue_command(..., enabled=)` can address them.
+# A capability outside it carries a state of its own shape and has its own enqueue call.
+ToggleCapability = Literal[InAppCapability.TOUCH_VISUALIZATION]

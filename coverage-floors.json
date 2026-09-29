@@ -195,6 +195,7 @@
     "bajutsu/common/evidence/media.py": 99.11,
     "bajutsu/common/evidence/network/__init__.py": 100.0,
     "bajutsu/common/evidence/network/_functions.py": 94.56,
+    "bajutsu/common/evidence/network/app_stub_table_command.py": 100.0,
     "bajutsu/common/evidence/network/network_collector.py": 98.38,
     "bajutsu/common/evidence/network/network_exchange.py": 100.0,
     "bajutsu/common/evidence/redaction.py": 94.75,

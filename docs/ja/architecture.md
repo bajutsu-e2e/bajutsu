@@ -431,7 +431,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
 #### 証跡、ネットワーク観測、レポート
 
 - 証跡: 瞬時（`screenshot`/`elements`/`actionLog`/`rawTree`。`actionLog` はステップごとの具体的な actuation、つまり送った座標、ジェスチャの形状、それを運んだ経路を持ち、`rawTree` は `elements` の元になった生ダンプで、opt-in、adb と XCUITest が対応します）+ 区間（`video`/`deviceLog`/`appTrace`）+ ネットワーク collector（`network.json`）+ **ビジュアルリグレッション**（baseline に対する `visual`。`approve` コマンドで baseline を昇格）+ `capturePolicy` 発火 + 書き出し前の **redaction 適用** + `bajutsu run --touch-markers`（BE-0371、iOS 限定、`BajutsuKit` をリンクするアプリが必要。アプリの `UIEvent` キューが実際に配送した各タッチをマーカーとして録画と各ステップのスクリーンショットへ描画、ジェスチャが実際に届いた証跡。既定では無効、リポジトリ自身の iOS CI レーンでは有効、`visual` アサーションが比較する 1 回の撮影のあいだだけアプリ内制御チャネル（BE-0365）で非表示）
-- ネットワーク観測 + **決定的モック**（シナリオ `mocks` → プロトコル内スタブ、実機検証済み）: `request` アサーション、`wait: { until: request }`、オフラインのスタブ応答
+- ネットワーク観測 + **決定的モック**（シナリオ `mocks` → プロトコル内スタブ、実機検証済み）: `request` アサーション、`wait: { until: request }`、オフラインのスタブ応答。iOS では `setMocks` ステップが、アプリ内制御チャネル（BE-0365）を通してシナリオの途中でアプリのスタブテーブルを置き換えます
 - **画面遷移シグナル**（BE-0310、iOS）: `BajutsuKit` のオプトインの `BajutsuScreen` が
   `UIViewController.viewDidAppear(_:)` を swizzle し、完了したビューコントローラの出現をそれぞれ
   コレクタの `/transitions` エンドポイントへ報告します。`NavigationStack` の push、シートの提示、タブの

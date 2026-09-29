@@ -1178,10 +1178,141 @@ def _write_touch_marker_env(scenarios: list[Scenario], skip: set[int], *, armed:
             s.preconditions.launch_env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
 
 
+# One `setMocks` step, the `web:` / `app:` block it sits in (if any), and the target it runs on.
+_MockSwap = tuple[Step, str | None, str | None]
+
+
+def _mock_swaps(
+    steps: list[Step], block: str | None = None, target: str | None = None
+) -> Iterator[_MockSwap]:
+    """Every `setMocks` step under *steps*, with its enclosing block and the target it runs on.
+
+    Recurses into `if` / `forEach` like the run loop does. A `web:` or `app:` block drives a context
+    other than the app BajutsuKit runs in — a page's DOM, or a second app — so the block is what
+    `_mock_swap_problem` refuses on. *target* is the one a step omitting its own inherits: an
+    `interrupts` entry's watched target, or an enclosing `if` / `forEach` step's (BE-0438).
+    """
+    for step in steps:
+        runs_on = step.target or target
+        if step.set_mocks is not None:
+            yield step, block, runs_on
+        if step.if_ is not None:
+            yield from _mock_swaps(step.if_.then, block, runs_on)
+            yield from _mock_swaps(step.if_.else_ or [], block, runs_on)
+        if step.for_each is not None:
+            yield from _mock_swaps(step.for_each.steps, block, runs_on)
+        if step.app is not None:
+            yield from _mock_swaps(step.app.steps, block or "app", runs_on)
+        if step.web is not None:
+            yield from _mock_swaps(step.web.steps, block or "web", runs_on)
+
+
+def _scenario_mock_swaps(s: Scenario) -> list[_MockSwap]:
+    """`_mock_swaps` over every phase of *s*, `interrupts` recovery steps included."""
+    swaps = list(
+        _mock_swaps([*s.before, *s.steps, *(step for rule in s.after for step in rule.steps)])
+    )
+    for entry in s.interrupts:
+        swaps.extend(_mock_swaps(entry.steps, target=entry.target))
+    return swaps
+
+
+def _mock_swap_problem(s: Scenario, swaps: list[_MockSwap]) -> str | None:
+    """Why one of *s*'s `setMocks` steps cannot reach the app it means, or None when all can.
+
+    The channel reaches the scenario's primary app alone — the one launched with the collector and
+    the channel key — so a swap inside a `web:` / `app:` block, or running on another of the
+    scenario's `targets`, is refused rather than sent somewhere no stub table lives.
+    """
+    blocks = sorted({block for _, block, _ in swaps if block})
+    if blocks:
+        return f"setMocks nested in {' / '.join(f'{b}:' for b in blocks)}"
+    primary = s.targets[0] if s.targets else None
+    others = sorted({t for _, _, t in swaps if primary and t and t != primary})
+    if others:
+        return f"setMocks running on a non-primary target ({', '.join(others)})"
+    return None
+
+
+def _arm_mock_swaps(
+    scenarios: list[Scenario],
+    *,
+    channel_available: Callable[[Scenario], bool],
+    target_launch_env: Mapping[str, str] | None = None,
+) -> None:
+    """Arm the in-app control channel for every scenario holding a `setMocks` step (BE-0365 unit 4).
+
+    The step replaces the app's stub table over the channel, so the app has to be launched with
+    `BAJUTSU_CONTROL_CHANNEL=1` — defaulted here like every other key bajutsu writes, never
+    overriding one the scenario set. The channel reaches the scenario's primary app alone, so a swap
+    placed anywhere else is refused too (`_mock_swap_problem`). A scenario that cannot carry the channel is refused before any
+    device is touched rather than left to fail mid-journey: `channel_available` says no for the web
+    backend (whose collector carries no channel), for `adb` / `fake` (nothing polls theirs), and
+    under `--no-network`; a scenario or target that pinned the key to anything but `"1"` has
+    declined the channel its own step needs. Runs after `_apply_touch_markers`, so that function's
+    partitions still see only the keys the author pinned.
+
+    Raises:
+        typer.Exit: With code 2, naming each scenario that uses `setMocks` where the channel cannot
+            reach the app.
+    """
+    target_env = target_launch_env or {}
+    # Kept apart so each refusal names its own cause: a misplaced step on a run that could carry the
+    # channel must not send its author to check the backend or the build flags.
+    misplaced: list[str] = []
+    refused: list[str] = []
+    marker_pair: list[str] = []
+    visual = _visual_asserting_scenarios(scenarios)
+    for s in scenarios:
+        swaps = _scenario_mock_swaps(s)
+        if not swaps:
+            continue
+        if problem := _mock_swap_problem(s, swaps):
+            misplaced.append(f"{s.name} ({problem})")
+            continue
+        pinned = {**target_env, **s.preconditions.launch_env}.get("BAJUTSU_CONTROL_CHANNEL", "1")
+        if pinned != "1":
+            refused.append(f"{s.name} (BAJUTSU_CONTROL_CHANNEL is pinned to {pinned!r})")
+        elif not channel_available(s):
+            refused.append(s.name)
+        else:
+            s.preconditions.launch_env.setdefault("BAJUTSU_CONTROL_CHANNEL", "1")
+            # The key is also half of the pair `_hides_touch_markers` reads, so a scenario that
+            # pinned BAJUTSU_TOUCH_MARKERS itself and compares a screenshot now has its markers
+            # hidden for that capture. The channel is armed anyway, so hiding them is correct;
+            # it is announced because the author asked for neither.
+            merged = {**target_env, **s.preconditions.launch_env}
+            if id(s) in visual and merged.get("BAJUTSU_TOUCH_MARKERS") == "1":
+                marker_pair.append(s.name)
+    if marker_pair:
+        typer.echo(
+            "note: setMocks arms the in-app control channel, so these scenario(s), which draw "
+            "touch markers, also have them hidden for each screenshot their verdict compares: "
+            + ", ".join(marker_pair),
+            err=True,
+        )
+    if misplaced:
+        typer.echo(
+            "error: setMocks reaches the scenario's primary app alone, so it cannot sit in a web: / "
+            "app: block or name another target: " + ", ".join(misplaced),
+            err=True,
+        )
+    if refused:
+        typer.echo(
+            "error: setMocks replaces the app's stub table over the in-app control channel, which "
+            "only the xcuitest backend with network collection on can carry (and the app must be "
+            "built with -DBAJUTSU_ENABLE_CONTROL_CHANNEL): " + ", ".join(refused),
+            err=True,
+        )
+    if misplaced or refused:
+        raise typer.Exit(2)
+
+
 def _channel_available_for(
     backends: list[str], network: bool, available: Callable[[str], bool] = default_available
 ) -> Callable[[Scenario], bool]:
-    """`_apply_touch_markers`'s `channel_available`: can *this* scenario carry BE-0365's channel?
+    """`channel_available` for `_apply_touch_markers` / `_arm_mock_swaps`: can *this* scenario carry
+    BE-0365's channel?
 
     The channel rides the network collector and the app-side poll loop BajutsuKit ships only for a
     real Simulator process — the `xcuitest` actuator, not `fake`, whose collector nothing ever
@@ -2062,6 +2193,11 @@ def run(
         _apply_touch_markers(
             scenarios,
             touch_markers,
+            channel_available=_channel_available_for(backends, network),
+            target_launch_env=eff.launch_env,
+        )
+        _arm_mock_swaps(
+            scenarios,
             channel_available=_channel_available_for(backends, network),
             target_launch_env=eff.launch_env,
         )

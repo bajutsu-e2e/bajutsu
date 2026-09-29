@@ -120,6 +120,12 @@ same channel as observation, so they need `--network`. On iOS, the rules reach t
 `BAJUTSU_MOCKS` launch env (like `BAJUTSU_COLLECTOR`); on web there is no app to launch into, so
 `network_collector()` takes the scenario's `mocks` directly and fulfills them in-process.
 
+On iOS, a `setMocks` step replaces the stub table while the app runs (BE-0365). The collector
+queues the new table, and the app drains it over the in-app control channel. The step waits until
+the app confirms the new table. `setMocks` needs the `xcuitest` backend with network collection on.
+`run` refuses a scenario using it anywhere else before the scenario starts. [scenarios](scenarios.md#changing-the-mocks-mid-scenario-setmocks)
+covers the step in full.
+
 ## Timing
 
 Network I/O is asynchronous, so a step can run before the response lands. Bridge the gap with a wait

@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0365") |
-| Implementing PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699) (unit 1), [#1788](https://github.com/bajutsu-e2e/bajutsu/pull/1788) (unit 2), [#1916](https://github.com/bajutsu-e2e/bajutsu/pull/1916) (unit 3), [#1922](https://github.com/bajutsu-e2e/bajutsu/pull/1922) (unit 3 follow-up) |
+| Implementing PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699) (unit 1), [#1788](https://github.com/bajutsu-e2e/bajutsu/pull/1788) (unit 2), [#1916](https://github.com/bajutsu-e2e/bajutsu/pull/1916) (unit 3), [#1922](https://github.com/bajutsu-e2e/bajutsu/pull/1922) (unit 3 follow-up), [#2088](https://github.com/bajutsu-e2e/bajutsu/pull/2088) (unit 4) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0364](../BE-0364-in-app-control-channel/BE-0364-in-app-control-channel.md) |
 <!-- /BE-METADATA -->
@@ -168,7 +168,7 @@ tested and splitting it changes what is under test.
 - [x] Unit 1 — the collector's command queue, authenticated drain, and acknowledgement endpoint
 - [x] Unit 2 — the app-side poll loop and command dispatch, env-gated and inert by default
 - [x] Unit 3 — the acknowledgement condition wait, and the touch-visualization toggle as the first command
-- [ ] Unit 4 — mid-scenario stub-table replacement as the second command
+- [x] Unit 4 — mid-scenario stub-table replacement as the second command
 - [ ] Unit 5 — bilingual documentation, including the release-build gating this makes mandatory
 
 Log:
@@ -220,6 +220,18 @@ Log:
   the app drawing markers the run loop never hid for a `visual` capture. A new
   `target_launch_env` parameter carries the target's `launchEnv` into both functions, merged the
   same way the launch itself merges it.
+
+- [#2088](https://github.com/bajutsu-e2e/bajutsu/pull/2088) — unit 4: a `setMocks` step replaces the
+  running app's whole stub table mid-scenario. The table travels as `AppStubTableCommand`. That
+  model is a sibling of the toggle `AppCommand`, told apart by `capability`. Its wire shape matches
+  `BAJUTSU_MOCKS`. The run loop waits on the app's acknowledgement as unit 3's toggle does. A
+  refusal or a timeout fails the `setMocks` step itself. `run` writes `BAJUTSU_CONTROL_CHANNEL=1`
+  for every scenario that swaps its mocks. Where the channel cannot reach the app, `run` stops
+  before any device work. Web, Android, `fake`, and `--no-network` all stop there. So do a
+  declined channel key and a swap placed off the primary app. A target's app-wide phases refuse
+  `setMocks` at config load. BajutsuKit now locks its stub table. It refuses a delivered table
+  whole when any rule would not match as written, so a catch-all or never-matching stub never reads as
+  applied.
 
 ## References
 

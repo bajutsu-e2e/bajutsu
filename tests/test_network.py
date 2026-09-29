@@ -13,12 +13,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from bajutsu.common.assertions import EvalContext, evaluate, evaluate_one
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import network
 from bajutsu.common.evidence.network import (
+    AppCommand,
     AppCommandReport,
+    AppStubTableCommand,
     InAppCapability,
     NetworkCollector,
     NetworkExchange,
@@ -29,6 +32,7 @@ from bajutsu.common.scenario import (
     Assertion,
     CountOp,
     EventMatch,
+    Mock,
     RequestMatch,
     ResponseSchemaMatch,
     dump_mocks,
@@ -950,6 +954,64 @@ def test_get_on_any_other_path_is_a_404_behind_the_token() -> None:
         c.stop()
 
 
+def _mocks(yaml_list: str) -> list[Mock]:
+    return [Mock.model_validate(m) for m in json.loads(yaml_list)]
+
+
+def test_stub_table_drains_in_the_shape_the_app_reads_from_its_launch_env() -> None:
+    """A mid-scenario table reaches the app in exactly the `BAJUTSU_MOCKS` wire shape, so BajutsuKit
+    parses one format whether the table arrived at launch or on the channel (BE-0365 unit 4)."""
+    mocks = _mocks(
+        '[{"match": {"method": "GET", "path": "/me"},'
+        ' "respond": {"status": 500, "body": "{}", "delayMs": 10}}]'
+    )
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        command_id = c.enqueue_stub_table(mocks)
+        status, body = _get_commands(port, c.token)
+        assert status == 200
+        assert body == [
+            {"id": command_id, "capability": "stub_table", "mocks": json.loads(dump_mocks(mocks))}
+        ]
+    finally:
+        c.stop()
+
+
+def test_an_empty_stub_table_is_sent_rather_than_omitted() -> None:
+    """An empty table is the command "remove every stub", so it must reach the app as an explicit
+    empty list — never dropped as an unset field the app would read as a malformed command."""
+    c = NetworkCollector()
+    command_id = c.enqueue_stub_table([])
+    assert [
+        cmd.model_dump(mode="json", by_alias=True, exclude_none=True) for cmd in c.drain_commands()
+    ] == [{"id": command_id, "capability": "stub_table", "mocks": []}]
+
+
+def test_toggle_and_stub_table_commands_share_one_id_sequence_in_order() -> None:
+    """Both command kinds draw from the one counter, so an acknowledgement can never match a command
+    of the other kind, and they drain in the order they were issued."""
+    c = NetworkCollector()
+    first = c.enqueue_command(InAppCapability.TOUCH_VISUALIZATION, enabled=False)
+    second = c.enqueue_stub_table([])
+    third = c.enqueue_command(InAppCapability.TOUCH_VISUALIZATION, enabled=True)
+    drained = c.drain_commands()
+    assert [cmd.id for cmd in drained] == [first, second, third]
+    assert len({first, second, third}) == 3
+    assert [type(cmd) for cmd in drained] == [AppCommand, AppStubTableCommand, AppCommand]
+
+
+def test_a_toggle_command_cannot_name_the_stub_table() -> None:
+    """The union rules out the cross-product structurally: a toggle addressed at the stub table (a
+    table with no table) is not representable, rather than caught by a validator later."""
+    with pytest.raises(ValidationError):
+        AppCommand.model_validate({"id": "c1", "capability": "stub_table", "enabled": True})
+    with pytest.raises(ValidationError):
+        AppStubTableCommand.model_validate(
+            {"id": "c1", "capability": "touch_visualization", "mocks": []}
+        )
+
+
 def test_orchestrator_request_assertion_step() -> None:
     scn = load_scenarios(
         "- name: net\n"
@@ -1056,3 +1118,16 @@ def test_start_bridgeable_reraises_a_non_occupancy_error(monkeypatch: pytest.Mon
         NetworkCollector().start_bridgeable()
     assert exc.value.errno == errno.EACCES  # the real error, not the band-exhausted one
     assert attempts == 1  # gave up on the first port rather than walking the band
+
+
+def test_every_in_app_capability_has_exactly_one_command_shape() -> None:
+    """`InAppCapability` is closed on purpose, and this is what enforces it: a member added without
+    a command shape would have no way to be enqueued, and nothing else would notice."""
+    from typing import get_args
+
+    from bajutsu.common.evidence.network import ToggleCapability
+
+    toggles = set(get_args(ToggleCapability))
+    tables = {InAppCapability.STUB_TABLE}
+    assert toggles.isdisjoint(tables)
+    assert set(InAppCapability) == toggles | tables

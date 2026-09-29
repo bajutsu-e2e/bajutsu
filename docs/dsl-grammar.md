@@ -64,6 +64,7 @@ graph LR
   ST -->|capture| CT["CaptureToken"]
   ST -->|if| IF["If"]
   ST -->|forEach| FE["ForEach"]
+  ST -->|setMocks| MK
   CMP -->|steps| ST
   GRP -->|steps| ST
   WEB -->|within| SEL
@@ -220,6 +221,7 @@ Action    ::=
   | { clearKeychain:    {} }                               # reset saved passwords / certificates
   | { clearClipboard:   {} }                               # clear the pasteboard
   | { setClipboard:     { text: string } }                 # seed the pasteboard with text (simctl pbcopy), for paste flows
+  | { setMocks:         list(<Mock>) }                     # replace the app's whole stub table mid-scenario ([] removes every stub); iOS/XCUITest with network on (BE-0365)
   | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }
   | { clearStatusBar:   {} }                               # restore the live status bar
   | { use:         { component: string, with?: map(string,string) } }   # macro (§6.2; no modifiers)

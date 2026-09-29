@@ -14,12 +14,21 @@ instrumentation and the state it should take, and no assertion sees this module.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from typing import TYPE_CHECKING
 
 from bajutsu.common.cancellation import CancelSource, RunCancelled, not_cancelled
 from bajutsu.common.drivers.base import deadline_ticks
-from bajutsu.common.evidence.network import Collector, ControlChannel, InAppCapability
+from bajutsu.common.evidence.network import (
+    Collector,
+    ControlChannel,
+    InAppCapability,
+    ToggleCapability,
+)
+
+if TYPE_CHECKING:
+    from bajutsu.common.scenario.models.mocks import Mock
 
 _logger = logging.getLogger(__name__)
 
@@ -37,7 +46,7 @@ class ControlChannelError(RuntimeError):
 
 def apply_capability(
     channel: Collector | None,
-    capability: InAppCapability,
+    capability: ToggleCapability,
     *,
     enabled: bool,
     timeout: float = ACK_TIMEOUT,
@@ -62,22 +71,72 @@ def apply_capability(
             proceeding on an app state it never established.
         RunCancelled: The run was cancelled while this wait was still polling.
     """
-    if not isinstance(channel, ControlChannel):
-        # `None` is the `--no-network` shape — no collector at all, rather than one of the wrong
-        # kind — so naming its type would put a bare "NoneType" in the scenario's own failure,
-        # which reads as a bajutsu bug rather than as "network collection is off".
-        which = (
-            "this run has no collector at all"
-            if channel is None
-            else f"this run's collector ({type(channel).__name__}) carries no control channel"
-        )
-        raise ControlChannelError(
-            f"cannot set {capability.value}={str(enabled).lower()}: {which}. The channel rides "
-            "the HTTP collector the app POSTs to, so it reaches an app bajutsu launched with "
-            "BAJUTSU_COLLECTOR — never a collector that observes network through the driver "
-            "instead, as the web backend's does."
-        )
-    command_id = channel.enqueue_command(capability, enabled=enabled)
+    what = f"{capability.value}={str(enabled).lower()}"
+    live = _require_channel(channel, f"set {what}")
+    _await_acknowledgement(
+        live, live.enqueue_command(capability, enabled=enabled), what, timeout, cancelled
+    )
+
+
+def replace_stub_table(
+    channel: Collector | None,
+    mocks: Sequence[Mock],
+    *,
+    timeout: float = ACK_TIMEOUT,
+    cancelled: CancelSource = not_cancelled,
+) -> None:
+    """Replace the running app's whole stub table with `mocks`, and wait for it to confirm.
+
+    The table the app launched with (`BAJUTSU_MOCKS`) is replaced rather than extended, so the app
+    serves exactly `mocks` from the next request on — an empty sequence removes every stub. Once
+    this returns, a request the app issues is answered from the new table; one already in flight may
+    have been answered from the old one.
+
+    Args:
+        channel: The run's collector; one that carries no channel is an error, as in
+            `apply_capability`.
+        mocks: The table the app should serve from now on.
+        timeout: Seconds to wait for the app's acknowledgement.
+        cancelled: The run's own cancel source (BE-0370).
+
+    Raises:
+        ControlChannelError: The collector carries no channel, the app never acknowledged, or it
+            refused the table — a step after this one would otherwise run against stubs it never
+            installed.
+        RunCancelled: The run was cancelled while this wait was still polling.
+    """
+    what = f"{InAppCapability.STUB_TABLE.value} ({len(mocks)} mock{'' if len(mocks) == 1 else 's'})"
+    live = _require_channel(channel, f"replace the {what}")
+    _await_acknowledgement(live, live.enqueue_stub_table(mocks), what, timeout, cancelled)
+
+
+def _require_channel(channel: Collector | None, action: str) -> ControlChannel:
+    """The collector as a channel, or a loud failure naming why this run has none."""
+    if isinstance(channel, ControlChannel):
+        return channel
+    # `None` is the `--no-network` shape — no collector at all, rather than one of the wrong kind —
+    # so naming its type would put a bare "NoneType" in the scenario's own failure, which reads as a
+    # bajutsu bug rather than as "network collection is off".
+    which = (
+        "this run has no collector at all"
+        if channel is None
+        else f"this run's collector ({type(channel).__name__}) carries no control channel"
+    )
+    raise ControlChannelError(
+        f"cannot {action}: {which}. The channel rides the HTTP collector the app POSTs to, so it "
+        "reaches an app bajutsu launched with BAJUTSU_COLLECTOR — never a collector that observes "
+        "network through the driver instead, as the web backend's does."
+    )
+
+
+def _await_acknowledgement(
+    channel: ControlChannel,
+    command_id: str,
+    what: str,
+    timeout: float,
+    cancelled: CancelSource,
+) -> None:
+    """Condition-wait for the app's report on one command, keeping its three answers distinct."""
     for _ in deadline_ticks(timeout, _ACK_POLL_INIT, _ACK_POLL_MAX):
         report = channel.report_for(command_id)
         if report is None:
@@ -87,23 +146,22 @@ def apply_capability(
         if report.applied:
             return
         raise ControlChannelError(
-            f"the app refused to set {capability.value}={str(enabled).lower()}: {report.reason}"
+            f"the app refused {what}: {report.reason}"
             if report.reason
-            else f"the app refused to set {capability.value}={str(enabled).lower()}, "
-            "without saying why"
+            else f"the app refused {what}, without saying why"
         )
     raise ControlChannelError(
-        f"the app did not acknowledge {capability.value}={str(enabled).lower()} "
-        f"(command {command_id}) within {timeout:g}s. The channel is gated twice: BajutsuKit must be "
-        "compiled with -DBAJUTSU_ENABLE_CONTROL_CHANNEL, and the app must be launched with "
-        "BAJUTSU_CONTROL_CHANNEL=1."
+        f"the app did not acknowledge {what} (command {command_id}) within {timeout:g}s. The "
+        "channel is gated twice: BajutsuKit must be compiled with -DBAJUTSU_ENABLE_CONTROL_CHANNEL, "
+        "and the app must be launched with BAJUTSU_CONTROL_CHANNEL=1. An app past both gates stops "
+        "polling for good once the collector rejects its token or does not know its path."
     )
 
 
 @contextmanager
 def capability_suspended(
     channel: Collector | None,
-    capability: InAppCapability,
+    capability: ToggleCapability,
     *,
     timeout: float = ACK_TIMEOUT,
     cancelled: CancelSource = not_cancelled,

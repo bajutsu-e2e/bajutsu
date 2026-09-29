@@ -69,6 +69,9 @@ enum BajutsuControlChannel {
     /// without the other makes every command land in `apply`'s unsupported branch.
     static let touchVisualizationCapability = "touch_visualization"
 
+    /// The wire spelling of `InAppCapability.STUB_TABLE`, under the same contract as the one above.
+    static let stubTableCapability = "stub_table"
+
     /// How long the app waits between drains.
     ///
     /// Polling buys the absence of a listener at the price of latency: a command takes effect no
@@ -228,6 +231,18 @@ enum BajutsuControlChannel {
                 return .refused("\(touchVisualizationCapability) command carries no boolean 'enabled'")
             }
             BajutsuTouch.setMarkersVisible(enabled)
+            return .accepted
+        case stubTableCapability:
+            // The whole table or nothing: a payload whose `mocks` is not an array of objects is
+            // refused rather than applied in part, so bajutsu never proceeds on a table the app
+            // only half installed.
+            guard let mocks = command.payload["mocks"] as? [[String: Any]] else {
+                return .refused("\(stubTableCapability) command carries no 'mocks' array of objects")
+            }
+            if let problem = BajutsuMocks.problem(in: mocks) {
+                return .refused("\(stubTableCapability) \(problem)")
+            }
+            BajutsuMocks.shared.replace(with: mocks)
             return .accepted
         case "":
             return .refused("command names no capability")

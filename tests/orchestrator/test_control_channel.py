@@ -8,6 +8,7 @@ any two of them is what would let a run proceed on an app state bajutsu never es
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 
 import pytest
 
@@ -19,14 +20,17 @@ from bajutsu.common.evidence.network import (
     NetworkCollector,
     NetworkExchange,
     ScreenTransition,
+    ToggleCapability,
 )
 from bajutsu.common.orchestrator.control_channel import (
     ControlChannelError,
     apply_capability,
     capability_suspended,
+    replace_stub_table,
 )
+from bajutsu.common.scenario import Mock
 
-_TOUCH = InAppCapability.TOUCH_VISUALIZATION
+_TOUCH: ToggleCapability = InAppCapability.TOUCH_VISUALIZATION
 # Short enough that the timeout case costs the fast suite nothing, and still a real monotonic
 # deadline rather than a stubbed clock — `deadline_ticks` owns the wait, and stubbing it out would
 # test the stub.
@@ -45,10 +49,15 @@ class _FakeChannel:
     def __init__(self, reply: tuple[bool, str] | None = (True, "")) -> None:
         self.reply = reply
         self.issued: list[tuple[InAppCapability, bool]] = []
+        self.tables: list[list[Mock]] = []
 
     def enqueue_command(self, capability: InAppCapability, *, enabled: bool) -> str:
         self.issued.append((capability, enabled))
         return f"c{len(self.issued)}"
+
+    def enqueue_stub_table(self, mocks: Sequence[Mock]) -> str:
+        self.tables.append(list(mocks))
+        return f"t{len(self.tables)}"
 
     def report_for(self, command_id: str) -> AppCommandReport | None:
         if self.reply is None:
@@ -230,3 +239,72 @@ def test_a_failed_restore_after_a_clean_body_is_raised() -> None:
         capability_suspended(_OnlyOffWorks(), _TOUCH, timeout=_QUICK),
     ):
         pass
+
+
+# --- the stub table (BE-0365 unit 4) ------------------------------------------------------------
+
+
+def _table() -> list[Mock]:
+    return [Mock.model_validate({"match": {"path": "/me"}, "respond": {"status": 500}})]
+
+
+def test_a_stub_table_the_app_applied_releases_the_wait_with_the_whole_table_sent() -> None:
+    channel = _FakeChannel()
+    replace_stub_table(channel, _table(), timeout=_QUICK)
+    assert channel.tables == [_table()]
+    assert channel.issued == []  # never routed through the toggle call
+
+
+def test_a_refused_stub_table_fails_at_once_naming_the_table_and_the_apps_reason() -> None:
+    channel = _FakeChannel(reply=(False, "mock 0 has no match"))
+    with pytest.raises(ControlChannelError) as err:
+        replace_stub_table(channel, _table(), timeout=_QUICK)
+    assert "stub_table (1 mock)" in str(err.value)
+    assert "mock 0 has no match" in str(err.value)
+
+
+def test_an_unanswered_stub_table_times_out_naming_both_gates() -> None:
+    with pytest.raises(ControlChannelError) as err:
+        replace_stub_table(_FakeChannel(reply=None), [], timeout=_QUICK)
+    message = str(err.value)
+    assert "stub_table (0 mocks)" in message
+    assert "BAJUTSU_ENABLE_CONTROL_CHANNEL" in message and "BAJUTSU_CONTROL_CHANNEL=1" in message
+
+
+def test_a_stub_table_against_no_channel_fails_loudly() -> None:
+    from bajutsu.common.drivers.fake import FakeNetworkCollector
+
+    with pytest.raises(ControlChannelError, match="no collector at all"):
+        replace_stub_table(None, _table(), timeout=_QUICK)
+    with pytest.raises(ControlChannelError, match="carries no control channel"):
+        replace_stub_table(FakeNetworkCollector([]), _table(), timeout=_QUICK)
+
+
+def test_a_cancelled_run_stops_the_stub_table_wait() -> None:
+    with pytest.raises(RunCancelled):
+        replace_stub_table(_FakeChannel(reply=None), _table(), timeout=5.0, cancelled=lambda: True)
+
+
+def test_a_stub_table_round_trips_through_the_real_collector() -> None:
+    """Against `NetworkCollector` itself: the wait releases only once a report for the id the
+    collector minted arrives, which is the contract unit 3's toggle already relies on."""
+    import threading
+    import time
+
+    collector = NetworkCollector()
+
+    def app() -> None:
+        # Stand in for BajutsuKit's poll: drain, then acknowledge what was drained. Bounded, so a
+        # regression that never enqueues fails this test instead of spinning past it.
+        deadline = time.monotonic() + 5.0
+        while not (drained := collector.drain_commands()):
+            if time.monotonic() > deadline:
+                return
+            threading.Event().wait(0.01)
+        for command in drained:
+            collector.record_report({"id": command.id, "applied": True})
+
+    worker = threading.Thread(target=app, daemon=True)
+    worker.start()
+    replace_stub_table(collector, _table(), timeout=5.0)
+    worker.join()

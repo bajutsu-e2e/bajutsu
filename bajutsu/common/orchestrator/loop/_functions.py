@@ -30,7 +30,11 @@ from bajutsu.common.evidence.network import (
 )
 from bajutsu.common.mailbox import extract_value, select
 from bajutsu.common.orchestrator.actions import _do_action, handle_system_alert_selector
-from bajutsu.common.orchestrator.control_channel import ControlChannelError, capability_suspended
+from bajutsu.common.orchestrator.control_channel import (
+    ControlChannelError,
+    capability_suspended,
+    replace_stub_table,
+)
 from bajutsu.common.orchestrator.evidence_rules import _extract_stable_key, requested_intervals
 from bajutsu.common.orchestrator.substitution import _interp_asserts
 from bajutsu.common.orchestrator.types import (
@@ -396,9 +400,10 @@ def _run_step_body(
     for a ``wait`` or ``handleSystemAlert`` step, drive the alert guard while that step's own wait
     runs (BE-0269, BE-0406); other step kinds ignore them. ``on_interrupt_poll``, when given for a
     wait step, is passed to ``_wait`` so a scenario's ``interrupts`` handlers can clear an
-    interstitial screen mid-wait (BE-0314). ``cancelled`` reaches the four step kinds that poll —
+    interstitial screen mid-wait (BE-0314). ``cancelled`` reaches the step kinds that poll —
     ``wait``, ``handleSystemAlert``, ``assert``, and ``email`` — so each notices a cancelled run
-    within one polling tick (BE-0370). ``step_id``/``step_index``/``channel``/``hide_markers``, when
+    within one polling tick (BE-0370), as does ``setMocks``, whose acknowledgement wait also reads
+    ``channel`` (BE-0365 unit 4). ``step_id``/``step_index``/``channel``/``hide_markers``, when
     given for an ``assert`` step whose block carries a ``visual`` entry, back that entry's own
     single-shot screenshot: ``step_id`` and ``step_index`` scope the capture's evidence path to this
     step's own execution, and ``channel``/``hide_markers`` back the same touch-marker suspension
@@ -442,6 +447,17 @@ def _run_step_body(
                 # invalidation when its handler raises.
                 selection.invalidate()
             return ok, reason, [], None
+        if kind == "set_mocks":
+            assert step.set_mocks is not None
+            # Here rather than through `_do_action`, like `wait`: the command rides the collector
+            # and waits on the app's acknowledgement, and the action-handler signature carries
+            # neither the channel nor the cancel source (BE-0365 unit 4). A table the app never
+            # confirmed fails this step, so the next one never runs against stubs it lacks.
+            try:
+                replace_stub_table(channel, step.set_mocks, cancelled=cancelled)
+            except ControlChannelError as exc:
+                return False, f"control channel: {exc}", [], None
+            return True, "", [], None
         if kind == "email":
             assert step.email is not None
             ok, reason = _do_email(step.email, clock, mailbox, bindings, cancelled)

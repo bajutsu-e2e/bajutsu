@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0365") |
-| 実装 PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699)（単位 1）、[#1788](https://github.com/bajutsu-e2e/bajutsu/pull/1788)（単位 2）、[#1916](https://github.com/bajutsu-e2e/bajutsu/pull/1916)（単位 3）、[#1922](https://github.com/bajutsu-e2e/bajutsu/pull/1922)（単位 3 の追補） |
+| 実装 PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699)（単位 1）、[#1788](https://github.com/bajutsu-e2e/bajutsu/pull/1788)（単位 2）、[#1916](https://github.com/bajutsu-e2e/bajutsu/pull/1916)（単位 3）、[#1922](https://github.com/bajutsu-e2e/bajutsu/pull/1922)（単位 3 の追補）、[#2088](https://github.com/bajutsu-e2e/bajutsu/pull/2088)（単位 4） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0364](../BE-0364-in-app-control-channel/BE-0364-in-app-control-channel-ja.md) |
 <!-- /BE-METADATA -->
@@ -161,7 +161,7 @@ bajutsu が走っているアプリへコマンドを届ける経路であり、
 - [x] 単位 1 — コレクタのコマンドキュー、認証付きの引き取り、完了報告のエンドポイント
 - [x] 単位 2 — アプリ側のポーリングとコマンド振り分け。起動環境キーで有効化し、既定では何もしない
 - [x] 単位 3 — 完了報告の条件待ちと、最初のコマンドとしてのタッチ可視化の切り替え
-- [ ] 単位 4 — 2 つめのコマンドとして、シナリオ途中でのスタブ表の差し替え
+- [x] 単位 4 — 2 つめのコマンドとして、シナリオ途中でのスタブ表の差し替え
 - [ ] 単位 5 — 日英両言語のドキュメント。この経路が必須にするリリースビルドの締め出しを含む
 
 ログ：
@@ -218,6 +218,18 @@ bajutsu が走っているアプリへコマンドを届ける経路であり、
   `visual` の撮影に対して実行ループがそれを隠すことはありませんでした。新設した
   `target_launch_env` という引数が、起動処理と同じ順序でターゲットの `launchEnv` を
   両方の関数に渡します。
+
+- [#2088](https://github.com/bajutsu-e2e/bajutsu/pull/2088)：単位 4 です。`setMocks` ステップが、
+  シナリオの途中で実行中のアプリのスタブ表全体を置き換えます。スタブ表は `AppStubTableCommand` として
+  送ります。このモデルはトグル用の `AppCommand` と `capability` で区別する兄弟のモデルで、ワイヤ上の形は
+  `BAJUTSU_MOCKS` と同じです。run ループは単位 3 のトグルと同じくアプリの確認応答を待ち、拒否や
+  タイムアウトは `setMocks` ステップ自身の失敗になります。`run` はモックを差し替えるシナリオに
+  `BAJUTSU_CONTROL_CHANNEL=1` を設定します。チャネルがアプリに届かない場合は、デバイスに触れる前に実行を
+  拒否します。該当するのは Web、Android、`fake`、`--no-network`、チャネルのキーを無効に固定した場合、
+  プライマリアプリ以外に置いた差し替えです。ターゲットのアプリ全体のフックに置いた `setMocks` は、
+  設定の読み込み時に拒否します。BajutsuKit はスタブ表をロックで保護し、届いた表に書かれたとおり適用
+  できないルールが 1 つでもあれば、表全体を拒否します。すべての要求に一致するスタブや決して一致しない
+  スタブを、適用済みとして応答することはありません。
 
 ## 参考
 

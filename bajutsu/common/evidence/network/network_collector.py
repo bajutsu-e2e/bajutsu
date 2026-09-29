@@ -6,18 +6,22 @@ import errno
 import secrets
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from http.server import ThreadingHTTPServer
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
 from ._functions import _make_handler
 from .app_command import AppCommand
 from .app_command_report import AppCommandReport
-from .in_app_capability import InAppCapability
+from .app_stub_table_command import AppStubTableCommand, PendingCommand
+from .in_app_capability import ToggleCapability
 from .network_exchange import NetworkExchange
 from .screen_transition import ScreenTransition
+
+if TYPE_CHECKING:
+    from bajutsu.common.scenario.models.mocks import Mock
 
 # The band `start_bridgeable` draws the collector's port from — below both the host's and the
 # emulator's ephemeral ranges, and beside the resident UI Automator server's device port
@@ -52,7 +56,7 @@ class NetworkCollector:
         self.token = ""
         # The control channel (BE-0365): commands waiting for the app to drain, every id issued,
         # and the subset the app has reported applying.
-        self._commands: list[AppCommand] = []
+        self._commands: list[PendingCommand] = []
         self._issued: set[str] = set()
         self._reports: dict[str, AppCommandReport] = {}
         # Monotonic for this collector's whole life and deliberately *not* reset by `clear()`: a
@@ -88,7 +92,7 @@ class NetworkCollector:
         with self._lock:
             self._transitions.append((transition, self._now()))
 
-    def enqueue_command(self, capability: InAppCapability, *, enabled: bool) -> str:
+    def enqueue_command(self, capability: ToggleCapability, *, enabled: bool) -> str:
         """Queue one command for the app to drain, and return the id that identifies it.
 
         Args:
@@ -99,13 +103,33 @@ class NetworkCollector:
             The command's id, to condition-wait on through `report_for` (BE-0365 unit 3).
         """
         with self._lock:
-            self._issued_count += 1
-            command_id = f"c{self._issued_count}"
+            command_id = self._next_id()
             self._commands.append(AppCommand(id=command_id, capability=capability, enabled=enabled))
             self._issued.add(command_id)
             return command_id
 
-    def drain_commands(self) -> list[AppCommand]:
+    def enqueue_stub_table(self, mocks: Sequence[Mock]) -> str:
+        """Queue a replacement of the app's whole stub table, and return the id that identifies it.
+
+        Args:
+            mocks: the table the app should serve from now on, replacing the one it launched with;
+                empty removes every stub.
+
+        Returns:
+            The command's id, to condition-wait on through `report_for` (BE-0365 unit 4).
+        """
+        with self._lock:
+            command_id = self._next_id()
+            self._commands.append(AppStubTableCommand(id=command_id, mocks=tuple(mocks)))
+            self._issued.add(command_id)
+            return command_id
+
+    def _next_id(self) -> str:
+        # Caller holds `_lock`; one counter across every command kind keeps ids unique run-wide.
+        self._issued_count += 1
+        return f"c{self._issued_count}"
+
+    def drain_commands(self) -> list[PendingCommand]:
         """Take every pending command, leaving the queue empty.
 
         Draining under the lock bounds delivery at *at most* once: two polls racing cannot both take

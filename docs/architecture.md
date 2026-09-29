@@ -1098,7 +1098,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   hidden for the one capture a `visual` assertion compares, over the in-app control channel
   (BE-0365)
 - Network observation + **deterministic mocks** (scenario `mocks` → in-protocol stubs, validated
-  on-device): `request` assertions, `wait: { until: request }`, and offline stubbed responses
+  on-device): `request` assertions, `wait: { until: request }`, and offline stubbed responses; on
+  iOS, a `setMocks` step replaces the app's stub table mid-scenario over the in-app control channel
+  (BE-0365)
 - The **screen-transition signal** (BE-0310, iOS): an opt-in `BajutsuScreen` in `BajutsuKit`
   swizzles `UIViewController.viewDidAppear(_:)` and reports each completed view-controller
   appearance to the collector's `/transitions` endpoint (UIKit and SwiftUI alike, since
