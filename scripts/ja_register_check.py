@@ -93,7 +93,9 @@ _HTML_BLOCK = re.compile(
     re.IGNORECASE,
 )
 _FENCE = re.compile(r"^(`{3,}|~{3,})")
-_INLINE_COMMENT = re.compile(r"<!--.*?-->")
+# Lines arrive one at a time and the scanner carries a multi-line comment as state, so DOTALL
+# changes nothing here; it keeps the pattern correct if a caller ever hands it a joined block.
+_INLINE_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _CODE_SPAN = re.compile(r"`[^`]*`")
 _TAG = re.compile(r"<[^>]+>")
 # The `[English](…) · **日本語**` language switch atop every bilingual page: navigation, not prose.
