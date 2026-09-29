@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0365") |
-| Implementing PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699) (unit 1), [#1788](https://github.com/bajutsu-e2e/bajutsu/pull/1788) (unit 2), [#1916](https://github.com/bajutsu-e2e/bajutsu/pull/1916) (unit 3), [#1922](https://github.com/bajutsu-e2e/bajutsu/pull/1922) (unit 3 follow-up), [#2088](https://github.com/bajutsu-e2e/bajutsu/pull/2088) (unit 4) |
+| Implementing PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699) (unit 1), [#1788](https://github.com/bajutsu-e2e/bajutsu/pull/1788) (unit 2), [#1916](https://github.com/bajutsu-e2e/bajutsu/pull/1916) (unit 3), [#1922](https://github.com/bajutsu-e2e/bajutsu/pull/1922) (unit 3 follow-up), [#2088](https://github.com/bajutsu-e2e/bajutsu/pull/2088) (unit 4), [#2092](https://github.com/bajutsu-e2e/bajutsu/pull/2092) (unit 4 follow-up) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0364](../BE-0364-in-app-control-channel/BE-0364-in-app-control-channel.md) |
 <!-- /BE-METADATA -->
