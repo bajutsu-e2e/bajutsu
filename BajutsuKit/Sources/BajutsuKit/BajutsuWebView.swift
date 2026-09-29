@@ -216,16 +216,28 @@ private final class _BridgeServer {
             guard fd >= 0 else { break }
             var clientAddr = sockaddr_in()
             var addrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
+            var failure: Int32 = 0
             let clientFD = withUnsafeMutablePointer(to: &clientAddr) { ptr in
-                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
-                    accept(fd, sockPtr, &addrLen)
+                ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr -> Int32 in
+                    let result = accept(fd, sockPtr, &addrLen)
+                    failure = errno
+                    return result
                 }
             }
             if clientFD < 0 {
-                // EINTR is routine on a device under test (signals, the debugger attaching); any
-                // other error means the listening socket is gone (`stop()`'s `close` gives EBADF).
-                if errno == EINTR { continue }
-                break
+                // Only a failure of the listening socket itself (`stop()`'s `close` gives EBADF) may
+                // end the loop; a per-connection one — a peer that reset while still queued gives
+                // ECONNABORTED — must not leave the bridge deaf for the rest of the app's life.
+                // Same classification as the runner's `HTTPServer.acceptRetryDelay`.
+                switch failure {
+                case EINTR, ECONNABORTED, EAGAIN, EPROTO:
+                    continue
+                case EMFILE, ENFILE, ENOMEM, ENOBUFS:
+                    Thread.sleep(forTimeInterval: 0.05)
+                    continue
+                default:
+                    return
+                }
             }
             // A client gone silent must not wedge this single-threaded loop via an unbounded `recv`
             // in `_readRequest`: loopback is not isolated between apps, so a peer here is not

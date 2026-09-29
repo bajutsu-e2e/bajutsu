@@ -83,6 +83,7 @@ final class BajutsuWebViewTests: XCTestCase {
         if connected != 0 {
             close(fd)
             XCTFail("could not connect to the bridge on port \(port)")
+            throw POSIXError(.ECONNREFUSED)
         }
         return fd
     }
