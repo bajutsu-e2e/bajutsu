@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0445") |
+| Implementing PR | [#2090](https://github.com/bajutsu-e2e/bajutsu/pull/2090) (units 1–5, completing the item) |
 | Topic | Platform support |
 | Related | [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling.md), [BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md), [BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules.md), [BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md) |
 <!-- /BE-METADATA -->
@@ -103,7 +104,7 @@ This item does not change the Simulator language pinning of BE-0320 and adds no 
 
 Log:
 
-- Units 1–5. Measured the SpringBoard prompts' buttons, answered a `handleSystemAlert` step under a
+- [#2090](https://github.com/bajutsu-e2e/bajutsu/pull/2090) — Units 1–5. Measured the SpringBoard prompts' buttons, answered a `handleSystemAlert` step under a
   language the label table does not cover by the measured position rule, recorded the tapped button
   and rule on the step's outcome, and verified the change on a Simulator under four languages.
 

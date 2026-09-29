@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0445") |
+| 実装 PR | [#2090](https://github.com/bajutsu-e2e/bajutsu/pull/2090)（作業単位 1〜5。項目を完了） |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)、[BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)、[BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)、[BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules-ja.md)、[BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md) |
 <!-- /BE-METADATA -->
@@ -78,7 +79,7 @@ BE-0320 は、位置による選択を唯一の仕組みにすることを退け
 
 ログ：
 
-- 単位 1〜5。SpringBoard のプロンプトのボタンを実測しました。ラベルの表が扱わない言語の `handleSystemAlert` ステップは、実測した位置の規則で答えるようにしました。押したボタンと規則をステップの結果に記録し、4 言語の Simulator で動作を確かめました。
+- [#2090](https://github.com/bajutsu-e2e/bajutsu/pull/2090)：単位 1〜5。SpringBoard のプロンプトのボタンを実測しました。ラベルの表が扱わない言語の `handleSystemAlert` ステップは、実測した位置の規則で答えるようにしました。押したボタンと規則をステップの結果に記録し、4 言語の Simulator で動作を確かめました。
 
 ## 参考
 
