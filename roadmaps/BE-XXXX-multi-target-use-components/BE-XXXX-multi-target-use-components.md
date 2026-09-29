@@ -47,8 +47,9 @@ BE-0428 validates, so the runner, the report, and the Command Line Interface (CL
 
 ## Motivation
 
-Once a scenario declares two or more targets, every step must name the target it runs against. A
-`use:` step cannot meet that rule. Expansion replaces the `use:` step wholesale with the component's
+Once a scenario declares two or more targets, every step must name the target it runs against,
+unless the scenario declares a `primaryTarget` for steps that omit one. A `use:` step meets neither
+form of that rule. Expansion replaces the `use:` step wholesale with the component's
 own steps, so expansion would drop any modifier on it without a word. The `Step` model thus refuses
 every modifier on a `use:` step, `target` included
 ([`step.py`](../../bajutsu/common/scenario/models/steps/step.py)). A `group:` step accepts a
@@ -86,8 +87,9 @@ We will know this item landed when three observable facts hold:
 
 - The multi-target showcase scenario calls its web sign-in as a component through `use:` and
   `target: web`, instead of spelling out the steps inline.
-- A two-target scenario that calls `use:` or `group:` loads cleanly. It no longer fails with
-  `use: is not yet supported when the scenario declares 2 targets`.
+- A two-target scenario that calls `use:` or `group:` with valid routing loads cleanly. The load no
+  longer fails with `use: is not yet supported when the scenario declares 2 targets`. A missing or
+  conflicting target still fails, but on its own terms rather than the construct itself.
 - Neither the *Limits* section nor the `group:` paragraph of [`docs/scenarios.md`](../../docs/scenarios.md)
   lists `use:` or `group:` among the constructs a multi-target scenario refuses.
 
@@ -101,7 +103,7 @@ one.
 | Caller (`use:` / `group:` step) | Expanded step omits `target` | Expanded step names `target` |
 |---|---|---|
 | Names `target: X` | Stamped with `X` | Accepted when it equals `X`; refused at load time otherwise |
-| Omits `target` | Resolves as a hand-written step does: `primaryTarget` if declared, otherwise a load-time error | Kept as written, then checked against the declared targets |
+| Omits `target` | Resolves as a hand-written step in the same position does: `primaryTarget` if declared, otherwise a load-time error; an interrupt recovery step instead stays on the runner whose guard fired | Kept as written, then checked against the declared targets |
 
 The first row covers a single-target component: a sign-in, a navigation helper, or any sequence
 that knows nothing about which device calls it. The second row covers a cross-target component,
@@ -197,8 +199,8 @@ second target inside a branch is a cross-target component and belongs in the sec
 
 A `group:` step already accepts `target`. It now means the same as on a `use:` step: expansion
 stamps the value onto every step the group produces, with the same depth and the same conflict rule.
-A `group:` step that omits `target` leaves each child to name its own or fall back to
-`primaryTarget`. This item leaves the report folding of
+A `group:` step that omits `target` leaves each child to resolve as a hand-written step in the same
+position would. This item leaves the report folding of
 [BE-0439](../BE-0439-step-groups-report-folding/BE-0439-step-groups-report-folding.md) as it
 stands, since that folding reads the tags expansion already writes.
 
@@ -218,7 +220,8 @@ later passes see.
 
 At point 2, `expand_components` stamps each expanded step before the existing check runs. The check
 then applies the ordinary per-step rule to every step: required under two or more targets, resolved
-through `primaryTarget` when omitted, and forbidden inside `web:` / `app:`. `expand_components` is the one path that loads scenarios for `run` and every other consumer that
+through `primaryTarget` when omitted, and forbidden inside `web:` / `app:`. An interrupt recovery
+step keeps its own rule, described in the next section. `expand_components` is the one path that loads scenarios for `run` and every other consumer that
 runs them, through
 [`load_expanded.py`](../../bajutsu/common/scenario/load_expanded.py) and
 [`run/cli.py`](../../bajutsu/run/cli.py). With the recursion above, no `use:` step
@@ -241,9 +244,13 @@ pass through component expansion), and this item leaves it in place.
 
 ### Scenarios with zero or one declared target
 
-Nothing changes for them beyond the new field. A `use:` step's `target` follows the rule for any step. The author omits it when the scenario
-declares no targets, and either omits it or names that one target when the scenario declares one.
-Stamping then writes that same value onto each expanded step, which the existing checks accept.
+Their target routing changes in one way alone: the new field. A `use:` step's `target` follows the
+rule for any step. The author omits it when the scenario declares no targets, and either omits it
+or names that one target when the scenario declares one. When the caller names that target,
+stamping writes the same value onto each expanded step, which the existing checks accept. When the
+caller omits it, expansion stamps nothing. These scenarios still gain the recursion described
+under *Expanding inside control-flow bodies*, so a `use:` inside a body expands instead of aborting
+the run.
 
 ### What stays unchanged
 
