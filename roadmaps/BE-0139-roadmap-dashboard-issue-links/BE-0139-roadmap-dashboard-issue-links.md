@@ -27,7 +27,7 @@ depends on network access, a GitHub token, or state that changes after the file 
 
 BE-0094 already renders one link per dashboard card, to the item's Markdown proposal on GitHub.
 BE-0109 separately opens a GitHub issue titled `[BE-NNNN] <title>` for every item that is or was
-`Proposal` / `In progress`, and makes that issue's Assignees the sole source of truth for who, if
+`Approved` / `In progress`, and makes that issue's Assignees the sole source of truth for who, if
 anyone, is working on it. Nothing today points from an item to that issue: a reader has to leave
 wherever they're looking, open the repository's Issues tab, and either already know the
 `roadmap-tracking` label and the `in:title BE-NNNN` search convention, or reconstruct it by hand.
@@ -51,7 +51,7 @@ next to the proposal link it already shows.
    issue number:
    `https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-NNNN"`.
    The query has no `is:open` filter, so it finds the issue whether it is still open or was later
-   closed (an item that shipped after being `Proposal` / `In progress` keeps its issue, closed).
+   closed (an item that shipped after being `Approved` / `In progress` keeps its issue, closed).
    Building the URL needs only the id string — no `gh` call, no GitHub token, no network access, at
    build time or at authoring time.
 2. **Dashboard: a card change.** `scripts/build_roadmap_dashboard.py`'s `_card()` gains a second,
@@ -89,7 +89,7 @@ next to the proposal link it already shows.
    and the fixed title/label convention BE-0109 already guarantees; nothing needs to be read back
    from GitHub, so `sync_roadmap_tracking_issues.py` and `roadmap-tracking-issues.yml` are untouched.
 8. **The link can legitimately return zero results.** BE-0109 only opens an issue for an item that
-   was, at some point, `Proposal` or `In progress` when the sync ran. An item shipped as
+   was, at some point, `Approved` or `In progress` when the sync ran. An item shipped as
    `Implemented` in the same PR that introduced it — "born implemented" — never passes through an
    open status, so it never gets an issue, and its search link shows no results. Neither the
    dashboard nor the item file can know this in advance without querying GitHub, which would

@@ -49,7 +49,7 @@ labeling has to track edits, not just additions.
 is no more open PR left to triage by topic, and further prose edits to a shipped item's
 file are not the kind of routing decision this label exists to surface. This mirrors the
 open/shipped boundary [`roadmap-tracking-issues.yml`](../../.github/workflows/roadmap-tracking-issues.yml)
-(BE-0109) already draws: it keeps a tracking issue open for `Proposal` / `In progress`
+(BE-0109) already draws: it keeps a tracking issue open for `Approved` / `In progress`
 items and closes it once an item ships, never touching `Implemented` items.
 
 This is pure PR triage tooling — it never influences `run`, the deterministic gate, or any
