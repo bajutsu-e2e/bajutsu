@@ -49,7 +49,7 @@ final class HTTPServerResilienceTests: XCTestCase {
 
         XCTAssertEqual(
             Self.intOption(fd, SO_NOSIGPIPE), 1,
-            "without SO_NOSIGPIPE a reply to a departed peer kills the whole runner process"
+            "SO_NOSIGPIPE is the backstop beside sendAll's MSG_NOSIGNAL for a reply to a departed peer"
         )
         XCTAssertEqual(Self.timeoutOption(fd, SO_RCVTIMEO), 3, accuracy: 0.01)
         XCTAssertEqual(Self.timeoutOption(fd, SO_SNDTIMEO), 7, accuracy: 0.01)

@@ -209,17 +209,19 @@ final class HTTPServer {
 
     /// Apply the socket options every accepted connection needs, before any handler touches it.
     ///
-    /// `SO_NOSIGPIPE` is the load-bearing one. Darwin raises `SIGPIPE` on a write to a socket whose
-    /// peer has closed, and the signal's default disposition terminates the process — so a driver-side
-    /// timeout that closes the connection while the handler is still blocked on the main thread would
-    /// kill the whole XCTest host the moment that handler finally replied, taking the runner down with
-    /// it. That race is routine here rather than exotic: the driver's read and actuation windows are
-    /// tighter than a contended host's slowest operation, and `APIHandler` deliberately queues handlers
-    /// behind one main-thread lock. The option turns such a write into a plain `EPIPE`, which
-    /// `sendAll` already treats as "stop writing". Setting the option fails (`EINVAL`) on a peer that
-    /// already reset, though, so `sendAll` also passes `MSG_NOSIGNAL` on every write. The timeouts
-    /// then bound the two blocking calls a handler makes, so a peer that vanishes without closing
-    /// cannot hold a connection slot for ever.
+    /// Suppressing `SIGPIPE` is the load-bearing part, and `sendAll`'s `MSG_NOSIGNAL` is what
+    /// guarantees it; `SO_NOSIGPIPE` here is the backstop. Darwin raises `SIGPIPE` on a write to a
+    /// socket whose peer has closed, and the signal's default disposition terminates the process —
+    /// so a driver-side timeout that closes the connection while the handler is still blocked on
+    /// the main thread would kill the whole XCTest host the moment that handler finally replied,
+    /// taking the runner down with it. That race is routine here rather than exotic: the driver's
+    /// read and actuation windows are tighter than a contended host's slowest operation, and
+    /// `APIHandler` deliberately queues handlers behind one main-thread lock. The option turns such
+    /// a write into a plain `EPIPE`, which `sendAll` already treats as "stop writing" — but only
+    /// where the option actually landed: `setsockopt` fails with `EINVAL` on a peer that already
+    /// reset, which is why `sendAll` passes `MSG_NOSIGNAL` on every write and this option is the
+    /// backstop, not the guarantee. The timeouts then bound the two blocking calls a handler makes,
+    /// so a peer that vanishes without closing cannot hold a connection slot for ever.
     ///
     /// Internal rather than private so a test can read the options back off a socket it owns, which
     /// is the only way to assert the timeouts landed at all.
