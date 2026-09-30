@@ -108,7 +108,7 @@ it. `targets` keeps the grammar above.
 | Any other group of one member (a bare name) | The member installs at the start, as today. Listing it is optional. |
 | Any other group of two or more members | The scenario must list at least one member. A group with none listed fails to load, so the choice is never implicit where the primary does not anchor it. |
 | A listed member | Installs its `appPath` before the first step and launches at the start, like any declared target. |
-| A member left out | The later member: it installs and launches nothing at the start. It comes alive through an `installApp` step and a `foreground` step, below. |
+| Any other member of a group of two or more, left out of `installs` | The later member: it installs and launches nothing at the start. It comes alive through an `installApp` step and a `foreground` step, below. |
 
 Every name in `installs` is a member of `targets`. Members that start in one group must not share a
 bundle identifier or package, since installing both would leave one build on the device. That check
@@ -275,23 +275,19 @@ flowchart TD
   D -- no --> E1["load error"]
   D -- yes --> R1["run on that target"]
   W -- no --> N{"one declared target or fewer?"}
-  N -- yes --> R2["run on the only target"]
+  N -- yes --> R2["run on the scenario's single target"]
   N -- no --> P{"primaryTarget set?"}
   P -- yes --> R3["run on the current primary"]
   P -- no --> E2["load error: target required"]
 ```
 
-The primary is the first member of the first group until a `setPrimaryTarget` step moves it. A device
-group gives one device to several targets, and a bare name keeps its own device:
+The primary is the first member of the first group until a `setPrimaryTarget` step moves it. A device group gives one device to several targets:
 
 ```mermaid
 flowchart LR
   subgraph D1["Device 1 (group 1)"]
     A["showcase-previous: primary, starts"]
     B["showcase: later member"]
-  end
-  subgraph D2["Device 2 (group 2)"]
-    C["showcase-web: starts"]
   end
 ```
 
@@ -307,6 +303,7 @@ resolves to, and the last two columns show the state of the two members.
 | 5 | `foreground` | `showcase` | retired | running |
 | 6 | `assert` | `showcase` | retired | running |
 | – | top-level `expect` | `showcase`, the primary in force after the last step | retired | running |
+| – | an `after` step | `showcase-previous`, the declared primary, so it names `target: showcase` | retired | running |
 
 Without the `setPrimaryTarget` step, steps 5 and 6 resolve to the retired member and fail, so every
 later step, assertion, and interrupt must write `target: showcase`:
@@ -320,7 +317,8 @@ flowchart LR
 ```
 
 Inside a component, the caller's `target` and the expanded step's own `target` combine as follows
-(BE-0446). `setPrimaryTarget` is the one step that expansion never stamps:
+(BE-0446). `setPrimaryTarget` is the one step kind that expansion never stamps, wherever it sits (steps inside a
+`web:` or `app:` block receive the target through their block):
 
 ```mermaid
 flowchart TD
@@ -344,6 +342,7 @@ A step writes `target` only in the cases below:
 | Two or more targets, no `primaryTarget` | Every step and every `expect` entry |
 | After a `setPrimaryTarget` | Only a step for a member other than the new primary |
 | Driving a companion app in the same group | Yes: its `foreground` and the steps that drive it name it |
+| A `before` or `after` step once the declared primary is retired | Yes |
 | Inside a component | A single-target component: no, the caller's `target` is stamped. A cross-target component: yes, each step names its own |
 
 ### Backend behavior
@@ -412,7 +411,7 @@ records the component chain.
 | Drive a companion app only through the `app: { bundleId, steps }` block | Changes nothing, but the block is iOS only and puts a bundle identifier in the scenario, against prime directive 3. Android could not drive a companion app at all. |
 | `installApp: { path }` with the path written in the step | The scenario would carry a build artifact path. That leaks a per-app detail into the scenario, breaks on another machine, and violates the app-agnostic principle. |
 | Two scenarios run in sequence with `reinstall: overwrite` | No DSL change, but the journey splits in two, the run order becomes an unwritten contract, and a failure no longer reads as one journey. |
-| List both builds in a group and install both at the start | The second install overwrites the first, so the scenario could never begin on the old build. `installs` holds the new build back, and preflight refuses two starting members with one identifier. |
+| List both builds in a group and install both at the start | The second install overwrites the first, so the scenario could never begin on the old build. Only the primary and the members `installs` lists start, so the new build waits for its `installApp`, and preflight refuses two starting members with one identifier. |
 | Name the installed member on every step after an update | Correct, but every later step, assertion, and interrupt repeats the same name, and a forgotten one resolves to the retired member and fails. |
 | Let `installApp` switch the primary target by itself, explicitly (`becomes: primary`) or when the identifiers match | Hides the point where routing changes inside a step that reads as an install, and an identifier match cannot express a companion. A separate `setPrimaryTarget` step names the switch on its own line, and needs no mid-run config swap because each member already owns its config, driver, and environment. |
 
