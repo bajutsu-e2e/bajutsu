@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
+| 実装 PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)（単位 1） |
 | トピック | シナリオの記述機能 |
 <!-- /BE-METADATA -->
 
@@ -288,7 +289,7 @@ flowchart TD
 
 ログ：
 
-- 単位 1。`Scenario.targets` は、名前に加えて 2 つ以上の名前の配列（デバイスグループ）を受け付けるように
+- [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)：単位 1。`Scenario.targets` は、名前に加えて 2 つ以上の名前の配列（デバイスグループ）を受け付けるように
   なりました。新しい `installs` キーには、primary と一緒に最初から起動するメンバーを挙げます。シナリオの
   モデルは次の 6 つを拒否します。
   - グループをまたいで重複する名前

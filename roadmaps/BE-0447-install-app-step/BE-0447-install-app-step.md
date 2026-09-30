@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
+| Implementing PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) (unit 1) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -561,7 +562,7 @@ so the deterministic gate stays untouched.
 
 Log:
 
-- Unit 1. `Scenario.targets` accepts a device group, an array of two or more names, beside a bare
+- [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) — Unit 1. `Scenario.targets` accepts a device group, an array of two or more names, beside a bare
   name, and a new `installs` key names the members that start with the primary. The scenario
   model refuses a name repeated across groups, an array of fewer than two names, a `primaryTarget`
   other than the first member of the first group, an `installs` entry that is not a declared name,
