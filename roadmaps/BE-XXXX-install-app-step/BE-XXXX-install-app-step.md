@@ -1,6 +1,6 @@
 **English** · [日本語](BE-XXXX-install-app-step-ja.md)
 
-# BE-XXXX — Reproduce an app update and drive a companion app within one scenario
+# BE-XXXX — Let a scenario install several apps
 
 <!-- BE-METADATA -->
 | Field | Value |
