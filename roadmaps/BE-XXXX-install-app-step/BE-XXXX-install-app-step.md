@@ -18,7 +18,7 @@ A Bajutsu target is one app plus the settings that drive it, and a scenario give
 declares its own device. This item adds four constructs to the scenario. A nested array in
 `targets` lists targets that share one device. An `installs` key names which of them install
 before the first step. An `installApp` step installs the others later, at the point where the journey
-needs them, and a `setPrimaryTarget` step moves the default target to the member it brought up. Two journeys become expressible that are not today: a companion app, such as a
+needs them, and a `setPrimaryTarget` step moves the default target to another member, such as the build an `installApp` step installed. Two journeys become expressible that are not today: a companion app, such as a
 multi-factor authentication (MFA) app that shares the device with the app under test, and an app
 update, where an old build creates data and a new build is installed over it. The config schema does
 not change, so every existing config and scenario keeps working unchanged.
@@ -198,24 +198,36 @@ recovery, since those are fixed at the start (BE-0428). Each member keeps its ow
 environment, so nothing is swapped mid-run: the step moves the default to a member whose `launchEnv`,
 `locale`, `ready_when`, and baselines already applied to the steps that named it.
 
-The step is allowed only among a scenario's top-level `steps`, never inside `if`, `forEach`, `group`,
+The step is allowed only among a scenario's top-level `steps`, never inside `if`, `forEach`, a target group (BE-0437),
 `web:`, `app:`, or an `interrupts` entry. That lets the scenario model follow the current primary in
-order and check every later omitted `target` and every `installApp.from` statically. Like `installApp` and
+order and check every later omitted `target` and every `installApp.from` statically. The exception is an
+`installApp` in an `interrupts` entry's recovery steps, whose group depends on when the entry fires:
+once a scenario contains a `setPrimaryTarget`, such a step must name its device explicitly, on the step
+or on the entry, or the load fails. Like `installApp` and
 `foreground`, the step is exempt from the not-installed rule, so it can precede the member's
 `foreground`. A top-level `expect` entry that omits `target` resolves to the primary in force after the
-last step.
+last step. An `interrupts` entry that omits `target` follows the current primary at run time, and an
+entry that resolves to a later member is not polled until that member's `foreground`. The `before`
+and `after` rules resolve an omitted `target` to the declared primary, since teardown runs wherever
+the run stopped. In an update scenario that primary is the retired member, so its `after` steps name
+their target.
 
 ### Using these steps inside components
 
 `use:` and `group:` expand at load time, and expansion stamps the caller's `target` onto expanded
 steps that omit one (BE-0446). Three rules keep the new steps consistent with that. `setPrimaryTarget`
-takes its target as an argument, not as the step modifier, so expansion never stamps it, and the
-loader rejects a modifier `target` on it. The top-level-only rule for `setPrimaryTarget` is judged
+takes its target as an argument, not as the step modifier, so it needs an explicit exemption: both
+stamping points (a `use:` or `group:` caller's and a target group's) skip it, and a caller's `target`
+never reaches it. The loader rejects a modifier `target` written on it by hand. The top-level-only rule for `setPrimaryTarget` is judged
 after expansion: a component's `setPrimaryTarget` is valid when the `use:` or `group:` that calls it
 is itself among the top-level `steps`, and refused when the call sits inside `if` or `forEach`. An
 `installApp` inside a component names `from` and leaves the device to the step's `target`, stamped or
 resolved like any expanded step. Whether `from` belongs to that target's group is checked after
-expansion, at the call site, and the error names the component chain and the step.
+expansion, at the call site, and the error names the component chain and the step. Expansion records the component chain on each
+step it produces, so the post-expansion check can name it. Before expansion, the load-time pass
+cannot see a component's `setPrimaryTarget`, so after the first top-level `use:` or `group:` step it
+stops resolving omitted targets and checking `installApp.from`, and leaves both to the pass that runs
+after expansion.
 
 ### Switching between apps on one device
 
@@ -283,7 +295,7 @@ An `installApp` step never moves the primary by itself. The scenario says so wit
 the point where routing changes is a line the reader can see. Until then, steps that omit `target`
 resolve to the primary the scenario declared, and when the `installApp` replaced that primary's own build,
 the primary is the retired member. A step after the install therefore either names the installed member
-or follows a `setPrimaryTarget`. It does
+or follows a `setPrimaryTarget`. This item does
 not add an Android downgrade path beyond `keepData: false`. It does not remove or rename any config
 field, and it does not change the `app:` block. The step never chooses a verdict, so the
 deterministic gate is untouched.
@@ -292,7 +304,11 @@ deterministic gate is untouched.
 
 1. Scenario model: the nested `targets` form, `installs`, their rules, and the flattening accessor every reader of `targets` moves to.
 2. Lease and lifecycle: one device per group, the device count per backend, one device-wide preparation per group, each listed member's environment started on the shared device by a path that repeats no destructive precondition, a later member's environment started at its first `foreground`, and the current primary that `setPrimaryTarget` moves at run time. This unit opens with the on-device checks above.
-3. Scenario model: the `installApp` step's shape, and its check that `from` is a member of the step target's group, including its placement rules inside `web:`/`app:` and `interrupts`, and the `setPrimaryTarget` step, with its top-level-only placement and the in-order tracking of the current primary, and how both steps behave when a component or group expands them.
+3. Scenario model: the `installApp` step's shape, and its check that `from` is a member of the step target's group, including its placement rules inside `web:`/`app:` and `interrupts`, and the `setPrimaryTarget` step, with its top-level-only placement and the in-order tracking of the current primary, and how both steps behave when a component or group expands them. The tracked primary is a local of
+the walk, never a write to `primary_target`, since `primaryTarget` is checked against the first entry
+at several points. Top-level `expect` entries that omit `target` are resolved with it, where today
+they group under the run's fixed primary. Both stamping points skip `setPrimaryTarget`, and expansion
+records the component chain.
 4. Run preflight: check each `installApp.from` target against the config (its `appPath` exists, building it where the run already builds one), refuse listed members of one group that share an identifier, and refuse a group whose members differ in backend platform, device route, or system locale.
 5. XCUITest environment and driver: the install action, the digest reset, the terminate, `foreground`'s launch, readiness wait, and launch marker, built beside the relauncher that already holds the effective config, scenario, and driver, and the front-app check in `xcuitest_driver`.
 6. Android environment and driver: the install action with the downgrade error, `foreground`'s launch, readiness wait, and launch marker built beside the relauncher, the front-app check in `adb_driver`, and the split of `deviceControl.appLifecycle`.
@@ -307,7 +323,7 @@ deterministic gate is untouched.
 | An `apps` map inside each target, with `primaryApp` and a `startApp` precondition | Builds a second, per-target registry of apps beside `targets`. Identifiers belong to apps, so `bundleId` and `appPath` would move off the target, which breaks every existing config and touches more than 90 files, and it adds a primary rule beside `primaryTarget`. |
 | A header list of build sources outside the groups, `installSources: [showcase]` | Cannot say which device receives the build once a scenario holds more than one. Making the install sources members of a device group ties each build to its device. |
 | Members written as `{ start, later }` objects inside `targets` | Gives `targets` three shapes (a name, an array, an object) and changes every reader. A separate `installs` key leaves `targets` as the flat-or-nested list it already is. |
-| An `on: <target>` key that makes one declared target share another's device | Adds a keyword and needs a lazy-launch rule for a target that has not been installed yet. The nested array states the same fact with no new key. |
+| An `on: <target>` key that makes one declared target share another's device | Adds a keyword beside `targets`. The nested array states the same fact with no new key. |
 | Drive a companion app only through the `app: { bundleId, steps }` block | Changes nothing, but the block is iOS only and puts a bundle identifier in the scenario, against prime directive 3. Android could not drive a companion app at all. |
 | `installApp: { path }` with the path written in the step | The scenario would carry a build artifact path. That leaks a per-app detail into the scenario, breaks on another machine, and violates the app-agnostic principle. |
 | Two scenarios run in sequence with `reinstall: overwrite` | No DSL change, but the journey splits in two, the run order becomes an unwritten contract, and a failure no longer reads as one journey. |
