@@ -1,6 +1,6 @@
 **English** · [日本語](BE-XXXX-install-app-step-ja.md)
 
-# BE-XXXX — Share one device among scenario targets and install a group member's build from a step
+# BE-XXXX — Reproduce an app update and drive a companion app within one scenario
 
 <!-- BE-METADATA -->
 | Field | Value |
