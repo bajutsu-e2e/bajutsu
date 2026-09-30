@@ -38,6 +38,26 @@ def _anchor_for(r: RunResult, target: str) -> float:
     return r.target_video_anchors.get(target, r.video_anchor_s)
 
 
+def _acted_at(actuations: list[Actuation]) -> float | None:
+    """The absolute instant a step's action reached the device, or None when it recorded none.
+
+    The first record the platform did not refuse: a stale-retried XCUITest tap records its refused
+    attempt first, and only the accepted one changes the screen. Falls back to the first stamped
+    record when every attempt was refused, since that is still when the step tried to act. None for
+    a step that never actuated (`wait`, `assert`) and for every run recorded before `Actuation.at`.
+    """
+    stamped = [a for a in actuations if a.at is not None]
+    landed = next((a for a in stamped if a.accepted is not False), None)
+    chosen = landed or (stamped[0] if stamped else None)
+    return chosen.at if chosen is not None else None
+
+
+def _acted_seconds(out: Any, anchor: float) -> float | None:
+    """Seconds into the recording where `out`'s action landed, or None when it recorded no instant."""
+    acted = _acted_at(out.actuations)
+    return None if acted is None else video_seconds(acted, video_anchor_s=anchor)
+
+
 # --- detail / row data (the merged Result table) ---
 
 
@@ -175,8 +195,14 @@ def _step_run_row(
     line: int | None = None,
     group: str | None = None,
     group_id: int | None = None,
+    act: float | None = None,
 ) -> dict[str, Any]:
     """One executed step's row. `at` is its already-derived seconds into the recording (BE-0348).
+
+    `act` is where in that recording the step's action landed (`_acted_seconds`), or None for a step
+    that recorded no actuation instant. It becomes the row's `data-t-act`, the instant the report
+    highlights the row at and seeks a row click to, because the screen changes once the action
+    lands — on a backend that reads the tree first, seconds after `at`.
 
     `line` is the step's original 1-based line number in the scenario file, when the caller could
     recover one (`html.scenario_source_meta`) — None wherever it could not. `group` / `group_id`
@@ -197,11 +223,17 @@ def _step_run_row(
     # recording. Gated the same way as `at_end`: a near-instant step would otherwise show a noisy
     # "(0.0s)" on every row.
     elapsed = f"{end_s - at:.1f}s" if end_text != at_text else None
+    # Where a click on the row lands: its action instant when it has one (report.js's
+    # `rowSwitchTime`), so the hover title names the same place the click then seeks to.
+    click_s = max(at, act) if act is not None else at
     return {
         "rowcls": f"srow {'ok' if out.ok else 'ng'}",
         "data_t": f"{at:.3f}",
         "data_t_end": f"{end_s:.3f}" if end_text != at_text else None,
-        "title": f"jump to {at:.1f}s in the recording",
+        # Never before `at`: the report's own zero clamp can lift `at` past an action that landed
+        # before the recording's first frame, and the pair must still read in order.
+        "data_t_act": f"{click_s:.3f}" if act is not None else None,
+        "title": f"jump to {click_s:.1f}s in the recording",
         "num": str(i),
         "numcls": None,
         "line": line,
@@ -219,7 +251,7 @@ def _step_run_row(
         "reason": out.reason if (not out.ok and out.reason) else None,
         "expand": None,
         "alerts": _alert_rows(out.alerts),
-        "actuations": _actuation_rows(out.actuations),
+        "actuations": _actuation_rows(out.actuations, out.started_at),
         "dropped_actuations": out.dropped_actuations,
         "generated": out.generated,
         "system_alert": (
@@ -237,12 +269,17 @@ def _alert_rows(alerts: list[AlertEvent]) -> list[dict[str, Any]]:
     return [{"label": a.label, "kind": a.kind} for a in alerts]
 
 
-def _actuation_rows(actuations: list[Actuation]) -> list[dict[str, Any]]:
+def _actuation_rows(
+    actuations: list[Actuation], started_at: float | None = None
+) -> list[dict[str, Any]]:
     """One display row per actuation: the gesture, its geometry, and the channel that carried it.
 
     A record with no coordinate (a handle-based iOS tap, an Android device-side gesture) shows its
     resolved frame instead, so a reader always sees *where* — and `via` says whether the number is the
     point that was sent or the bounds the far side resolved from.
+
+    `started_at`, when given, is the owning step's start: each record then shows how long after it
+    the action went out, which is the gap between a row's `at` and the moment the recording changes.
     """
     rows = []
     for a in actuations:
@@ -275,6 +312,11 @@ def _actuation_rows(actuations: list[Actuation]) -> list[dict[str, Any]]:
                 # Why this element rather than the one the selector named. Empty on the ordinary
                 # path, so a reader sees the token only where a driver really substituted.
                 "substitution": a.substitution or "",
+                "lag": (
+                    f"+{max(0.0, a.at - started_at):.2f}s"
+                    if a.at is not None and started_at is not None
+                    else ""
+                ),
             }
         )
     return rows
@@ -511,7 +553,8 @@ def _merged_rows(
                 _step_skip_row(i, step_def, shown_from[i], line(i), group_of(i), group_id_of(i))
             )
         else:
-            at = video_seconds(out.started_at, video_anchor_s=_anchor_for(r, out.target))
+            anchor = _anchor_for(r, out.target)
+            at = video_seconds(out.started_at, video_anchor_s=anchor)
             timed.append(
                 (
                     at,
@@ -526,6 +569,7 @@ def _merged_rows(
                         line(i),
                         group_of(i),
                         group_id_of(i),
+                        act=_acted_seconds(out, anchor),
                     ),
                 )
             )
@@ -567,9 +611,20 @@ def _phase_rows(
         if out is None:
             rows.append(_step_skip_row(i, step_def, from_, group=group, group_id=group_id))
             continue
-        at = video_seconds(out.started_at, video_anchor_s=_anchor_for(r, out.target))
+        anchor = _anchor_for(r, out.target)
+        at = video_seconds(out.started_at, video_anchor_s=anchor)
         rows.append(
-            _step_run_row(i, step_def, out, run_dir, at, from_, group=group, group_id=group_id)
+            _step_run_row(
+                i,
+                step_def,
+                out,
+                run_dir,
+                at,
+                from_,
+                group=group,
+                group_id=group_id,
+                act=_acted_seconds(out, anchor),
+            )
         )
     return _fold_groups(rows)
 
@@ -617,9 +672,18 @@ def _after_rows(
             else:
                 out = r.after_outcomes[cursor]
                 cursor += 1
-                at = video_seconds(out.started_at, video_anchor_s=_anchor_for(r, out.target))
+                anchor = _anchor_for(r, out.target)
+                at = video_seconds(out.started_at, video_anchor_s=anchor)
                 row = _step_run_row(
-                    i, step_def, out, run_dir, at, shown_from[i], group=group, group_id=group_id
+                    i,
+                    step_def,
+                    out,
+                    run_dir,
+                    at,
+                    shown_from[i],
+                    group=group,
+                    group_id=group_id,
+                    act=_acted_seconds(out, anchor),
                 )
                 row["num"] = f"{on}·{out.index}"
                 stopped = not out.ok

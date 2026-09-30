@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import replace
 
 from .actuation import Actuation
@@ -24,12 +26,25 @@ class ActuationLog:
     exactly what "the scroll never reached its target" needs to show.
     """
 
-    def __init__(self, maxlen: int = MAX_RECORDS) -> None:
+    def __init__(
+        self, maxlen: int = MAX_RECORDS, *, now: Callable[[], float] = time.monotonic
+    ) -> None:
         self._records: deque[Actuation] = deque(maxlen=maxlen)
         self._dropped = 0
+        # Injectable so a test can put the stamp on the same epoch as its fake runner clock. The
+        # default must stay `time.monotonic`: the runner converts the stamp with the scenario's
+        # `wall_offset_s`, which is only meaningful against `RealClock`'s own epoch.
+        self._now = now
 
     def record(self, actuation: Actuation) -> None:
-        """Append one actuation, discarding the oldest if the log is already full."""
+        """Append one actuation, discarding the oldest if the log is already full.
+
+        Stamps `Actuation.at` here, the one place every driver's actuation passes through, so no
+        backend has to remember to time its own gestures. A record arriving with `at` already set
+        keeps it.
+        """
+        if actuation.at is None:
+            actuation = replace(actuation, at=self._now())
         if len(self._records) == self._records.maxlen:
             self._dropped += 1
         self._records.append(actuation)

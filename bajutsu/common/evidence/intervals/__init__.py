@@ -37,6 +37,7 @@ from ._functions import (
     start_screenrecord,
     start_video,
 )
+from ._functions import _await_screenrecord_first_bytes as _await_screenrecord_first_bytes
 from ._functions import _await_screenrecord_growing as _await_screenrecord_growing
 from ._functions import _await_screenrecord_started as _await_screenrecord_started
 from ._functions import _await_screenrecord_stopped as _await_screenrecord_stopped

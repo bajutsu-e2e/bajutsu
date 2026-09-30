@@ -95,7 +95,11 @@ def _run_backend(results: list[RunResult]) -> str:
 # v12 (BE-0445): a step may carry "system_alert" — the button a `handleSystemAlert` step tapped
 #   ("label") and the rule that chose it ("rule"). Absent on every other action and on every older
 #   run, so a reader shows no tapped-button row for it rather than failing to load.
-SCHEMA_VERSION = 12
+# v13: an actuation may carry "at" — the absolute epoch instant the driver handed it to its
+#   transport, on the same footing as the step's "started_at". A report switches the highlighted step
+#   row at it, since the recording only changes once the action lands. Absent on every older run,
+#   which reads as "no actuation instant": the row switches at the step's own "started_at" as before.
+SCHEMA_VERSION = 13
 
 
 def _matrix(results: list[RunResult]) -> dict[str, object] | None:

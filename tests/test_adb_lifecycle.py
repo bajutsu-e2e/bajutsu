@@ -129,6 +129,20 @@ def test_file_size_cmd_quotes_the_device_path() -> None:
     assert "'/sdcard/a b; rm -rf /'" in adb.file_size_cmd("S", "/sdcard/a b; rm -rf /")[4]
 
 
+def test_await_file_bytes_cmd_is_a_bounded_device_side_wait() -> None:
+    # One `adb shell` waits on the device rather than the host polling it, and `adb` itself has no
+    # timeout, so the loop must count its own sleeps against the deadline — including on an image
+    # whose `sleep` only takes whole seconds, where each fallback sleep is worth twenty polls.
+    cmd = adb.await_file_bytes_cmd("S", "/sdcard/a b.mp4", 5.0)
+    assert cmd[:4] == ["adb", "-s", "S", "shell"]
+    script = cmd[4]
+    assert "[ ! -s '/sdcard/a b.mp4' ]" in script  # quoted: interpolated into a shell string
+    assert "[ $i -lt 100 ]" in script
+    assert "if sleep 0.05 2>/dev/null; then i=$((i+1)); else sleep 1; i=$((i+20)); fi" in script
+    # Always exits 0, answering on stdout instead, since the RunFn raises on a non-zero exit.
+    assert script.endswith("then echo 1; else echo 0; fi")
+
+
 def test_parse_file_size_reads_both_answer_shapes() -> None:
     assert adb.parse_file_size("4096\n") == 4096  # `stat -c %s`: the size alone
     # toybox `ls -l`: mode, links, owner, group, size, then the date and name.

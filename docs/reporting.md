@@ -129,7 +129,10 @@ means the same thing after the run that produced it exits
   re-check, where the system-alert guard can actuate with no step to attribute it to. From
   `schemaVersion` 7 a record may also carry `substitution`, naming why the element actuated is not
   the one the driver's default rule would have named; an older run carries none, which reads the
-  same way as its absence today.
+  same way as its absence today. From `schemaVersion` 13 a record also carries `at`, the absolute
+  instant the driver sent it, on the same footing as `started_at`. A viewer subtracts
+  `video_anchor_s` from it the same way. An older run carries no `at`, and a viewer then falls back to
+  the step's `started_at`.
 - `steps[].system_alert`: for a `handleSystemAlert` step, the button it tapped (`label`) and the rule
   that chose it (`rule`: `sel`, `label table: <locale>`, or `position: button 2 of 2`), so a run under
   a language the label table does not cover still shows what was tapped and why
@@ -147,7 +150,7 @@ means the same thing after the run that produced it exits
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It groups accumulated runs by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — it never enters
-  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `12` today.)
+  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `13` today.)
 - `target` (top, optional): the target the run ran, so "the Android target passes while the iOS
   target fails" is computable from stored data ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)).
   One run resolves one target, so it sits beside `backend` rather than on each scenario. `serve`
@@ -331,11 +334,26 @@ not pass, an **Approve as baseline** button promotes the captured screenshot int
 it `POST`s `/api/approve` and so works only when the report is opened through `bajutsu serve` (it is
 hidden for a report opened from disk). The CLI twin is [`bajutsu approve`](cli.md#approve).
 
-Failing rows have a red background. Clicking a step seeks the recording to that step **without
-auto-playing** (a paused video stays paused; a playing one keeps playing) — the seek target is the
-step's `started_at` minus `video_anchor_s` (the **steps** table's `at` column). That anchor is the
-recording's own measured origin, or its best-known real start where no measurement was possible —
-not the raw moment the scenario's step loop began — so the seek lands on what the row shows
+Failing rows have a red background. During playback the report highlights the row whose action is
+on screen. It also scrolls that row into view. A row takes over at its first accepted
+actuation's `at`, and never ahead of its own `at` column. The reason is where a step
+stamps `started_at`. The stamp comes before the step screenshots, reads the tree, and resolves its
+target. The screen then changes up to seconds later. A highlight switched at `started_at` would
+lead the picture by that whole lead-in. Some rows carry no actuation instant:
+
+- a step that never actuates, such as `wait` or `assert`
+- every step of a run recorded before `schemaVersion` 13
+
+Such a row switches at its `at` column instead. The report reads the playhead on every presented
+frame, not merely on the coarse `timeupdate` event. The scrubber marks where inside each step's bar
+its action landed.
+
+Clicking a step seeks the recording to that same switch instant **without auto-playing**. A paused
+video stays paused. A playing one keeps playing. The clicked row is then the highlighted one. Its
+action appears a moment later. The screen answers a sent gesture within a fraction of a second. The row's start button still seeks to the `at` column. That
+column is `started_at` minus `video_anchor_s`. The anchor is the recording's measured origin. Where
+no measurement was possible, the anchor is the recording's best-known real start. The anchor is
+not the raw moment the step loop began. The seek thus lands on what the row shows
 ([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)). One visible consequence: for
 a video-capturing Android or web scenario, that derived seconds-into-the-recording value can exceed
 the scenario's own `duration_s`, because the two measure different things on purpose — the video's

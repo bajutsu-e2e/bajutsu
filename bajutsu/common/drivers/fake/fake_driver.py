@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Sequence
 
 from bajutsu.common.drivers import base
@@ -30,6 +31,7 @@ class FakeDriver:
         react: React | None = None,
         exchanges: Sequence[NetworkExchange] | None = None,
         viewport: base.Point | None = None,
+        now: Callable[[], float] = time.monotonic,
     ) -> None:
         self.screen: list[base.Element] = list(screen) if screen is not None else []
         # A minimal scrollable-viewport model (BE-0326): given a `viewport`, `screen` holds elements
@@ -83,7 +85,9 @@ class FakeDriver:
         # The concrete actuations this driver performed, drained per step by the run loop. The fake
         # chooses its own touch points (its device is memory), so it records real coordinates rather
         # than stubs — which is what lets the deterministic suite assert exact geometry with no device.
-        self._actuations = ActuationLog()
+        # `now` stamps each record's `at`; a test passes its fake clock's `now` so the stamps share
+        # the runner's epoch, the way `time.monotonic` shares `RealClock`'s in production.
+        self._actuations = ActuationLog(now=now)
         # When given (even empty), this fake is a network-capable evidence provider (BE-0020): it
         # advertises NETWORK and serves these exchanges via network_collector(). None = no network.
         self._exchanges: list[NetworkExchange] | None = (

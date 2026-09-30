@@ -39,8 +39,9 @@ class Interval:
     # step/network report timestamps to instead of the moment the process was merely spawned. The
     # confirmation strength differs by provider: iOS takes simctl at its word when it reports its
     # first frame processed (`Recording started` on stderr, the signal its own `--help` names);
-    # Android confirms only that the device-side process exists yet (a weaker signal, but still real
-    # and much earlier than a guess — the app hasn't launched at that point either). None when no
+    # Android waits for the device-side file's first byte, written when the muxer starts on the first
+    # encoded frame, and falls back to the device-side process merely existing (a weaker signal, but
+    # still real and much earlier than a guess) when that wait cannot answer. None when no
     # confirmation was attempted or it never succeeded — callers must treat that as "no better
     # information than before", not as zero.
     true_start: float | None = None
@@ -67,6 +68,16 @@ class Interval:
     # records right up to the context close that `stop()` performs. The two need different end
     # instants, and using one for the other shifts `measured_start` by that whole tail.
     stops_when_stop_returns: bool = False
+    # Whether `stop()` derives `measured_start` from the finished file's duration. That subtraction
+    # names the first frame only when the file runs all the way to the stop. simctl's mp4 does: its
+    # movie duration spans spawn to SIGINT even over a static screen. Playwright's webm does too,
+    # repeating the last frame until the context closes. Android's `screenrecord` does not: it
+    # encodes a frame only when the screen changes and its mp4 ends at the last one, so a static
+    # tail before the stop makes the subtraction late by the whole tail — measured at 0.8s on an
+    # emulator, well inside the window `_measured_start` checks. Still, a late measurement beats a
+    # pid instant stamped after a timed-out wait, so `start_screenrecord` turns this off only once
+    # its first-byte wait anchored the start, the one signal better than both.
+    measure_origin: bool = True
     _proc: Proc = field(repr=False, default_factory=_NullProc)
     _stop_signal: int = signal.SIGTERM
     _stop_timeout: float = _STOP_TIMEOUT
@@ -77,7 +88,7 @@ class Interval:
         self._proc.stop(self._stop_signal, self._stop_timeout)
         ended_at = time.monotonic() if self.stops_when_stop_returns else before
         path = self._transform(self.path) if self._transform is not None else self.path
-        if self.kind == "video":
+        if self.kind == "video" and self.measure_origin:
             # Imported in the method, not at module load: `_functions` builds intervals from this
             # class, and rule 5 breaks the cycle the split creates on this side.
             from ._functions import _measured_start

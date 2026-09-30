@@ -105,8 +105,8 @@ def test_round_trip_through_manifest_is_lossless() -> None:
 
 def test_manifest_carries_schema_version_and_source_name() -> None:
     data = manifest_dict("r1", [_result()], source_name="smoke.yaml")
-    # bumped for the per-step `target` and per-scenario `target_devices` (BE-0428)
-    assert data["schemaVersion"] == 12
+    # bumped for each actuation's own `at` instant (v13), after BE-0445's `system_alert` (v12)
+    assert data["schemaVersion"] == 13
     assert data["sourceName"] == "smoke.yaml"
 
 
@@ -209,6 +209,32 @@ def test_a_malformed_substitution_degrades_without_dropping_the_record() -> None
 
     assert len(restored.steps[0].actuations) == 1
     assert restored.steps[0].actuations[0].substitution is None
+
+
+def test_an_actuation_instant_survives_the_round_trip() -> None:
+    # The report re-renders from the manifest on every view, so the instant a row's highlight
+    # switches at has to come back from it unchanged.
+    original = [_result()]
+    original[0].steps[0].actuations.append(
+        Actuation(gesture="tap", via="handle", unit="point", at=1_700_000_002.85)
+    )
+    data = json.loads(json.dumps(manifest_dict("r1", original)))
+    assert results_from_manifest(data) == original
+
+
+def test_an_older_or_damaged_actuation_instant_loads_as_none_and_keeps_the_record() -> None:
+    # v11 and earlier carry no instant, which reads as "switch at the step's start" — and a damaged
+    # one must not cost the record's geometry either.
+    data = manifest_dict("r1", [_result()])
+    step = data["scenarios"][0]["steps"][0]  # type: ignore[index]
+    step["actuations"] = [
+        {"gesture": "tap", "via": "handle", "unit": "point"},
+        {"gesture": "tap", "via": "handle", "unit": "point", "at": "soon"},
+    ]
+
+    [restored] = results_from_manifest(data)
+
+    assert [a.at for a in restored.steps[0].actuations] == [None, None]
 
 
 def test_a_generated_value_survives_the_round_trip() -> None:

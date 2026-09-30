@@ -389,7 +389,7 @@ def test_the_swipe_is_drained_from_the_expect_phase_at_once(tmp_path: object) ->
         "the expect-phase swipe was never drained into the scenario's own result"
     )
     # Nothing left behind in the driver's own log for a later step or scenario to misattribute.
-    assert drain_actuations(driver).records == []
+    assert drain_actuations(driver, 0.0).records == []
 
 
 def test_the_expect_phase_sweeps_dropped_actuations_are_disclosed(tmp_path: object) -> None:

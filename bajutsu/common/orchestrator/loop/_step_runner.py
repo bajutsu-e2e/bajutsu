@@ -674,7 +674,7 @@ class _StepRunner:
             # baseline capture has run), but leaving the one early return as the single path that
             # skips the drain is how a record would later be stranded into the *next* step's
             # outcome, silently and only for this failure.
-            drained = drain_actuations(active_driver)
+            drained = drain_actuations(active_driver, self.cfg.wall_offset_s)
             outcome.actuations, outcome.dropped_actuations = drained.records, drained.dropped
             # Drained for the same reason, one step further: the pre-step baseline capture just
             # above is itself an XCUITest query that can be interrupted, and this early return is
@@ -1036,9 +1036,9 @@ class _StepRunner:
         # native step drains it as a phantom actuation of its own (BE-0416 Unit 8). The sweep's own
         # record is appended last, not prepended: it is the one thing in this step that actuates
         # after the body itself, so it belongs after everything `active_driver` just recorded.
-        drained = drain_actuations(active_driver)
+        drained = drain_actuations(active_driver, self.cfg.wall_offset_s)
         if active_driver is not self.cfg.driver:
-            swept = drain_actuations(self.cfg.driver)
+            swept = drain_actuations(self.cfg.driver, self.cfg.wall_offset_s)
             drained = replace(
                 drained,
                 records=drained.records + swept.records,

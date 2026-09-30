@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Sequence
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from bajutsu.common.drivers import base
@@ -303,15 +304,27 @@ def drain_interruptions(driver: base.Driver) -> DrainedInterruptionEvents:
     )
 
 
-def drain_actuations(driver: base.Driver) -> Drained:
+def drain_actuations(driver: base.Driver, wall_offset_s: float) -> Drained:
     """The actuations `driver` has performed since the last drain, or an empty drain if it reports none.
 
     The one place the `ActuationReporter` opt-in is read, so a backend that does not implement it
     simply contributes nothing rather than needing a stub.
+
+    Args:
+        driver: The driver whose log to empty.
+        wall_offset_s: The scenario's monotonic-to-epoch offset. Each record's `at` leaves the
+            driver as a monotonic instant and leaves here on the same absolute footing as
+            `StepOutcome.started_at` (BE-0348), so a report can subtract the video anchor from both.
     """
-    if isinstance(driver, ActuationReporter):
-        return driver.drain_actuations()
-    return Drained(records=[], dropped=0)
+    if not isinstance(driver, ActuationReporter):
+        return Drained(records=[], dropped=0)
+    drained = driver.drain_actuations()
+    return replace(
+        drained,
+        records=[
+            a if a.at is None else replace(a, at=a.at + wall_offset_s) for a in drained.records
+        ],
+    )
 
 
 # The budget both evidence-dir slugs share (BE-0420). Counted in characters, not bytes: a

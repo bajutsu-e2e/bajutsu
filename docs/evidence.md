@@ -137,6 +137,7 @@ tree cannot: *where did this tap land, and how far did this swipe travel*.
 | `accepted` | whether the platform accepted this attempt, on the two channels that answer (XCUITest's handle actuation, Android's device-side endpoint). A refused attempt is shown struck through, so a stale-retried tap does not read as several taps; `None` means the channel gave no separate answer |
 | `substitution` | why the element actuated is not the one the driver's default rule would have named — `soleHittableDescendant` when a refused tap was redirected to the one reachable named descendant inside its frame. Both readers show it: the report as a badge beside `via`, the `trace` timeline as `↷<token>`. Absent on the ordinary path, and on every run recorded before `schemaVersion` 7, which reads the same way: no substitution happened |
 | `duration_s` · `scale` · `radians` | the gesture's non-positional parameters, where it has any |
+| `at` | the absolute wall-clock instant (epoch seconds) the driver sent the gesture, on the same footing as the step's `started_at`. A step stamps `started_at` before it screenshots, reads the tree, and resolves its target, so the recording changes only at `at` — up to seconds later on Android. The report highlights a step row from this instant, and both readers show the lag after the step's start: the report beside the gesture, the `trace` timeline as `+0.85s`. Absent on every run recorded before `schemaVersion` 13 |
 
 Three rules bound what a record may say, and every backend honors them:
 
@@ -297,11 +298,15 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
 - **A confirmed start time corrects the report's step/network timestamps to the video's real
   origin, not the moment recording was merely requested.** `start_video` (iOS) and
   `start_screenrecord` (Android), passed `confirm_started=True` at their production call sites,
-  wait on a real signal after spawning — iOS the `Recording started` line `simctl io recordVideo`
-  writes to its own stderr once the first frame has been processed, Android the device-side process
-  appearing (a weaker guarantee: a process existing is not proof its encoder is yet emitting frames,
-  but still real and earlier than a guess) — and store the confirmed `time.monotonic()` instant on
-  `Interval.true_start`. `intervals.adopt` carries `true_start`
+  wait on a real signal after spawning, and store the confirmed `time.monotonic()` instant on
+  `Interval.true_start`. iOS waits for the `Recording started` line on the recorder's stderr.
+  `simctl io recordVideo` writes that line once it has processed the first frame. Android waits for
+  the device-side file's first byte. `screenrecord` opens its output empty and writes nothing until
+  its muxer starts on the first encoded frame. That first byte thus marks the recording's origin. The
+  wait runs on the device, in one bounded `adb shell` loop. The run clears the file before the
+  spawn, so a leftover recording cannot answer the wait. Where the wait cannot answer, Android falls
+  back to the device-side process appearing. A running process is no proof its encoder emits frames
+  yet, so that signal is weaker. It still beats a guess. `intervals.adopt` carries `true_start`
   forward unchanged when it relocates a prestarted interval, so Android's confirmation (made before
   `adopt` even runs) is not lost. The web actuator stamps `true_start` right after the recording
   page is created, with no poll: `record_video_dir` enables recording for the pages in a context,
@@ -348,6 +353,18 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   itself: Android's `screenrecord` quits at its own `SCREENRECORD_TIME_LIMIT_S` ceiling, so a
   scenario outlasting that ceiling signals a recorder that stopped minutes earlier, putting the
   origin *after* the first frame by that whole gap.
+
+  A third issue sits in the recorder rather than in either input. The clip may stop short of the
+  stop signal. The `simctl` movie header spans spawn to stop, even over a static screen. Playwright
+  repeats its last frame until the context closes. Android's `screenrecord` behaves differently. It
+  encodes a frame merely when the screen changes, and its file ends at the last one. A still screen
+  before the stop thus makes the measured origin late by that whole stretch. One emulator
+  run measured 0.8 seconds. That error sits well inside the window below, so no bound could catch
+  it. `Interval.measure_origin` decides whether `stop()` runs the subtraction at all. On Android
+  the first byte is the best anchor. The late measurement comes next, and a pid instant last. `start_screenrecord` turns the measurement off once the first-byte wait
+  confirmed the start. That recording keeps its first-byte `true_start` anchor. Where the wait could
+  not answer, the measurement stays on and still outranks the pid instant. `intervals.adopt`
+  carries the flag along.
 
   `Interval.spawned_at` bounds both, because it is the one instant that needs no confirmation. A
   recording opens on its first frame somewhere between that spawn and `_ORIGIN_STARTUP_CEILING`,

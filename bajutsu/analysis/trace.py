@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 from bajutsu.common.evidence.intervals import INTERVAL_KINDS
 from bajutsu.common.report.from_grouping import grouped_provenance
@@ -186,6 +186,10 @@ def _at(value: Any) -> float:
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
 
 
+def _is_number(value: Any) -> TypeGuard[float]:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
 def _video_at(value: Any, *, video_anchor_s: float) -> float:
     """A recorded absolute instant as seconds into the scenario's recording (BE-0348).
 
@@ -232,8 +236,13 @@ def _actuation_summary(step: dict[str, Any]) -> str:
         # Guarded like the loader's `_typed`: a damaged token degrades to no segment rather than
         # printing whatever the manifest held.
         sub = f" ↷{token}" if isinstance(token := a.get("substitution"), str) and token else ""
+        # How long after the step began this went out: the gap between the step's own timeline
+        # offset and the moment its recording changes. Absent on an older run's records.
+        lag = ""
+        if _is_number(sent := a.get("at")) and _is_number(began := step.get("started_at")):
+            lag = f" +{max(0.0, sent - began):.2f}s"
         out.append(
-            f"{a.get('gesture', '')}{f' {where}' if where else ''} [{a.get('via', '')}]{sub}{refused}"
+            f"{a.get('gesture', '')}{f' {where}' if where else ''} [{a.get('via', '')}]{sub}{refused}{lag}"
         )
     if dropped := step.get("dropped_actuations"):
         out.append(f"(+{dropped} missing)")
