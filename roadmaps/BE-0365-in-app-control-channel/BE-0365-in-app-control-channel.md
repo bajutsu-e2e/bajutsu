@@ -233,6 +233,12 @@ Log:
   whole when any rule would not match as written, so a catch-all or never-matching stub never reads as
   applied.
 
+- [#2092](https://github.com/bajutsu-e2e/bajutsu/pull/2092) — unit 4 follow-up: BajutsuKit's
+  `replace(with:)` releases the stub-table lock with `defer`, as the `rules` getter already did, so a
+  later early return inside the critical section cannot leave the table locked. A comment in
+  `_mock_swap_problem` records why `targets[0]` is the primary: BE-0436 rejects a `primaryTarget`
+  that names any other entry.
+
 ## References
 
 - [`BajutsuKit/README.md`](../../BajutsuKit/README.md) — the in-app package this channel extends, and
