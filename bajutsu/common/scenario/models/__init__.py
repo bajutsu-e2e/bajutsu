@@ -102,6 +102,9 @@ from bajutsu.common.scenario.models.scenario import (
 from bajutsu.common.scenario.models.scenario import (
     _scenarios_declaring_targets as _scenarios_declaring_targets,
 )
+from bajutsu.common.scenario.models.scenario import (
+    _scenarios_with_device_groups as _scenarios_with_device_groups,
+)
 from bajutsu.common.scenario.models.selector import Selector
 from bajutsu.common.scenario.models.steps import _STEP_ACTIONS as STEP_ACTIONS
 from bajutsu.common.scenario.models.steps import (

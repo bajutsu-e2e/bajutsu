@@ -107,6 +107,9 @@ from bajutsu.common.scenario.models import _expand_target_groups as _expand_targ
 from bajutsu.common.scenario.models import (
     _scenarios_declaring_targets as _scenarios_declaring_targets,
 )
+from bajutsu.common.scenario.models import (
+    _scenarios_with_device_groups as _scenarios_with_device_groups,
+)
 from bajutsu.common.scenario.raw_source import RawScenario, scenario_sources
 from bajutsu.common.scenario.select import select_scenarios
 from bajutsu.common.scenario.serialize import (

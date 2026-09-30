@@ -60,6 +60,7 @@ from bajutsu.common.scenario import (
     SystemAlertHandlingField,
     SystemAlertRule,
     _scenarios_declaring_targets,
+    _scenarios_with_device_groups,
     apply_setups,
     contained_ref,
     declared_name,
@@ -148,7 +149,7 @@ def _declared_targets_in(path: Path) -> list[str]:
         raise typer.Exit(2) from None
     seen: dict[str, None] = {}
     for s in scenarios:
-        seen.update(dict.fromkeys(s.targets))
+        seen.update(dict.fromkeys(s.target_names))
     return list(seen)
 
 
@@ -462,10 +463,10 @@ def _check_target_membership(
     if not explicit:
         return
     for s in scenarios:
-        if s.targets and target_name not in s.targets:
+        if s.target_names and target_name not in s.target_names:
             typer.echo(
                 f"--target '{target_name}' is not one of scenario '{s.name}'s declared targets "
-                f"{s.targets} — drop --target, or name one of them"
+                f"{s.target_names} — drop --target, or name one of them"
             )
             raise typer.Exit(2)
 
@@ -514,7 +515,7 @@ def _resolve_target_effs(
     """
     effs = {primary: primary_eff}
     for s in scenarios:
-        for name in s.targets:
+        for name in s.target_names:
             if name not in effs:
                 effs[name] = _resolve_browser(
                     _with_headed(_effective_for(loaded, name), headed), browser
@@ -560,6 +561,23 @@ def _reject_cross_browser_matrix_with_targets(
     if affected:
         typer.echo(
             "--browsers cannot fan out a scenario declaring targets: (BE-0428); "
+            f"affected scenario(s): {', '.join(affected)}"
+        )
+        raise typer.Exit(2)
+
+
+def _reject_device_groups(scenarios: list[Scenario]) -> None:
+    """Refuse a scenario declaring a device group of two or more, with a clean exit 2 (BE-0447).
+
+    `run_all` refuses the same scenarios too, before its own lease callback, but only after this
+    command has already acquired its device pools and would surface a bare `ValueError`; this
+    catches them before any device work, with the clean exit 2 every other multi-target refusal
+    here gives.
+    """
+    affected = _scenarios_with_device_groups(scenarios)
+    if affected:
+        typer.echo(
+            "device groups in targets: are not yet implemented (BE-0447); "
             f"affected scenario(s): {', '.join(affected)}"
         )
         raise typer.Exit(2)
@@ -1229,8 +1247,9 @@ def _mock_swap_problem(s: Scenario, swaps: list[_MockSwap]) -> str | None:
     blocks = sorted({block for _, block, _ in swaps if block})
     if blocks:
         return f"setMocks nested in {' / '.join(f'{b}:' for b in blocks)}"
-    # `targets[0]` is the primary: a declared `primaryTarget` is validated to equal it (BE-0436).
-    primary = s.targets[0] if s.targets else None
+    # The first declared name is the primary: a declared `primaryTarget` is validated to equal it
+    # (BE-0436).
+    primary = s.target_names[0] if s.target_names else None
     others = sorted({t for _, _, t in swaps if primary and t and t != primary})
     if others:
         return f"setMocks running on a non-primary target ({', '.join(others)})"
@@ -1435,7 +1454,7 @@ def _pool_demand(scenarios: list[Scenario], setups: Mapping[str, _TargetSetup]) 
     demand: dict[str, int] = {}
     for s in scenarios:
         per_pool: dict[str, int] = {}
-        for name in s.targets:
+        for name in s.target_names:
             key = setups[name].actuator
             per_pool[key] = per_pool.get(key, 0) + 1
         for key, n in per_pool.items():
@@ -2147,6 +2166,7 @@ def run(
     # — these checks speak about the scenarios this run will actually attempt.
     _check_target_membership(scenarios, target_name, explicit=explicit_target)
     _reject_legacy_without_target(scenarios, target_name, explicit=explicit_target)
+    _reject_device_groups(scenarios)
     target_effs = _resolve_target_effs(
         loaded, scenarios, target_name, eff, headed=headed, browser=browser
     )

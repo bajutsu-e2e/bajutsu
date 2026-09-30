@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0447](BE-0447-install-app-step.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
+| Implementing PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) (unit 1) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -549,7 +550,7 @@ so the deterministic gate stays untouched.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1: nested `targets` form, `installs`, and flattening accessor
+- [x] Unit 1: nested `targets` form, `installs`, and flattening accessor
 - [ ] Unit 2: device-group lease and lifecycle, after the on-device checks
 - [ ] Unit 3: `installApp` and `setPrimaryTarget` steps
 - [ ] Unit 4: run preflight and validation
@@ -558,6 +559,19 @@ so the deterministic gate stays untouched.
 - [ ] Unit 7: backend handling
 - [ ] Unit 8: documentation in both languages
 - [ ] Unit 9: showcase demo, update and companion scenarios
+
+Log:
+
+- [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) — Unit 1. `Scenario.targets` now accepts a
+  device group (an array of two or more names) alongside a bare name, and a new `installs` key
+  names the members that start with the primary. The scenario model refuses six things: a name
+  repeated anywhere in `targets`, an array of fewer than two names, a `primaryTarget` that is not
+  the first member of the first group, an `installs` entry naming no declared target, a repeated
+  `installs` entry, and a group outside the primary's that lists none of its own members. Two
+  accessors, `device_groups` and `target_names`, replace direct reads of `targets` in the runner
+  pipeline, the `run` and `audit` CLIs, and the serve evidence lookup. Until unit 2 leases one
+  device per group, `run_all` and the `run` CLI refuse a scenario that declares a device group,
+  since a flattened run would lease a device per member and start every one of them.
 
 ## References
 
