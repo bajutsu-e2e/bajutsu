@@ -1,0 +1,85 @@
+# Home Screen widget: background the showcase app, enter SpringBoard's edit mode, open the widget
+# gallery, search for a system widget, pick a size, add it, assert it is on the Home Screen, then tap
+# it and assert its host app came to the front.
+#
+# SpringBoard is just another bundle id to `app:` — no new step and no runner change — so every step
+# below addresses SpringBoard's own accessibility tree (docs/specs/ios-home-screen-widget-feasibility.md
+# records what each screen exposes on iPhone 17 Pro, iOS 26.5, Xcode 27.0). Calendar is the widget
+# because it ships on every Simulator runtime and needs no data or permission to render.
+#
+# `erase: true` is what makes the Home Screen deterministic: it resets the layout to the runtime's
+# default (the Home Screen opens on the page the test targets were installed to, which has free
+# space in the top rows), and it drops the widgets an earlier run added — without it, a second
+# Calendar widget would make the final assertion ambiguous rather than proving this run added one.
+#
+# Every label and value below is SpringBoard's own text, so it follows the Simulator's system
+# language. `locale: en_US` pins that language for the run (BE-0320) so the English strings hold on
+# any host; the spec above lists the ja_JP rendering of each one, measured the same way.
+#
+# The one coordinate step is the gallery's search result: once the search field has taken text,
+# `XCUIApplication.snapshot()` reports the gallery's collection view as an empty container, although
+# the row is on screen and a direct query still finds it (the spec above has the measurement). The
+# result list's first row sits at a fixed place under the search field, so `tapPoint` targets it —
+# the stability-ladder rung for a control the tree does not expose (DESIGN §7).
+#
+# Tagged `app` and excluded from the bulk lanes for the same reason as app.yaml: it hands the
+# foreground to other processes (SpringBoard, then Calendar), which those lanes never expect.
+# `make -C demos/showcase e2e-springboard-widget` runs it.
+- name: add a Calendar widget from the Home Screen gallery and open it
+  tags: [app, springboard]
+  preconditions:
+    erase: true
+    locale: en_US
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - wait: { for: { id: stable.row.1 }, timeout: 10 }
+    - background: {}
+    - app:
+        bundleId: com.apple.springboard
+        steps:
+          # A long press on the icon grid's own container lands on empty wallpaper — the grid's
+          # centre, which the erased layout leaves free — and puts the Home Screen into edit mode.
+          - wait: { for: { id: "Home screen icons" }, timeout: 10 }
+          - longPress: { sel: { id: "Home screen icons" }, duration: 2 }
+          - wait: { for: { label: "Edit", traits: [button] }, timeout: 5 }
+          - tap: { label: "Edit", traits: [button] }
+          - wait: { for: { label: "Add Widget", traits: [button] }, timeout: 5 }
+          - tap: { label: "Add Widget", traits: [button] }
+          - wait: { for: { label: "Search Widgets", traits: [searchField] }, timeout: 10 }
+          - type: { text: "Calendar", into: { label: "Search Widgets", traits: [searchField] } }
+          - wait: { until: settled, timeout: 5 }
+          - tapPoint: { x: 0.5, y: 0.29 }
+          # The widget's detail sheet: one page per size, starting at Small. `drag` rather than
+          # `swipe`, because the size carousel pages only on a flick; `swipe`'s non-inertial scroll
+          # (BE-0400) settles back onto the page it started from.
+          - wait: { for: { label: "Calendar, Up Next", value: "Widget, Small" }, timeout: 10 }
+          - drag: { on: { label: "Calendar, Up Next", value: "Widget, Small" }, direction: left, amount: 0.6 }
+          - wait: { for: { label: "Calendar, Up Next", value: "Widget, Medium" }, timeout: 5 }
+          - wait: { until: settled, timeout: 5 }
+          # The sheet's own add button carries a leading symbol glyph in its label, so anchor only the
+          # end; the edit menu's "Add Widget" is gone by now, so this cannot match twice.
+          - tap: { labelMatches: "Add Widget$", traits: [button] }
+          - wait: { for: { label: "Done", traits: [button] }, timeout: 10 }
+          - tap: { label: "Done", traits: [button] }
+          - wait: { until: { gone: { label: "Done", traits: [button] } }, timeout: 5 }
+          # A placed widget reads as an icon whose value is exactly "Widget"; the runtime's default
+          # Calendar widget sits in a stack ("Widget, Stack") and the Calendar app icon's value is
+          # today's date, so this matches only the widget this run added.
+          - assert:
+              - exists: { id: Calendar, value: Widget }
+          - tap: { id: Calendar, value: Widget }
+          # The tap launched the widget's host app: Calendar now owns the screen, so SpringBoard's
+          # icon grid leaves SpringBoard's own tree. Calendar's first launch after `erase` also
+          # raises its location and notifications prompts — in either order, or both at once, which
+          # leaves no single "Don't Allow" to tap — so they are left up: they belong to Calendar and
+          # go with it when the showcase app returns to the front.
+          - wait: { until: { gone: { id: "Home screen icons" } }, timeout: 10 }
+    # Leaving the block above re-activated the showcase app (the runner activates its stack's new
+    # top), so this block activates Calendar again — the widget tap's own proof is the `gone` wait
+    # above, not this read. Calendar's Day view renders under the prompts left up.
+    - app:
+        bundleId: com.apple.mobilecal
+        steps:
+          - wait: { for: { id: add-plus-button }, timeout: 10 }
+  expect:
+    - exists: { id: stable.row.1 }

@@ -298,6 +298,30 @@ def test_drag_is_a_real_pointer_drag_not_a_scroll() -> None:
     assert to[0] > frm[0] and to[1] == frm[1]  # travels right, level
 
 
+def test_drag_amount_is_a_fraction_of_the_reported_viewport() -> None:
+    # SpringBoard's tree carries nodes sized in pixels (1206 wide on a 402-point screen), so the
+    # tree's extent is no screen size: the driver's own viewport (BE-0326) scales `amount` instead.
+    class _PointViewport(FakeDriver):
+        def viewport(self) -> base.Point:
+            return (402.0, 874.0)
+
+    oversized: base.Element = {"identifier": None, "label": None, "traits": ["other"], "value": None,
+                               "frame": (0.0, 0.0, 1206.0, 2622.0), "nativeZ": None}  # fmt: skip
+    card: base.Element = {"identifier": "card", "label": None, "traits": [], "value": None,
+                          "frame": (119.0, 430.0, 164.0, 164.0), "nativeZ": None}  # fmt: skip
+    driver = _PointViewport(screen=[oversized, card])
+    result = run_scenario(
+        driver,
+        load_scenarios(
+            "- name: s\n  steps:\n    - drag: { on: { id: card }, direction: left, amount: 0.5 }\n"
+        )[0],
+    )
+    assert result.ok, result.failure
+    [(_, arg)] = driver.actions
+    frm, to = _points(arg)
+    assert frm[0] - to[0] == pytest.approx(201.0)  # half of 402 points, not of 1206
+
+
 def test_drag_amount_must_be_a_screen_fraction() -> None:
     with pytest.raises(ValueError, match=r"within 0"):
         load_scenarios(

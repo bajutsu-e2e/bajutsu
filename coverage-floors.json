@@ -211,7 +211,7 @@
     "bajutsu/common/orchestrator/actions/handlers/_gesture_math.py": 100.0,
     "bajutsu/common/orchestrator/actions/handlers/device.py": 89.39,
     "bajutsu/common/orchestrator/actions/handlers/generate.py": 100.0,
-    "bajutsu/common/orchestrator/actions/handlers/gestures.py": 97.04,
+    "bajutsu/common/orchestrator/actions/handlers/gestures.py": 97.02,
     "bajutsu/common/orchestrator/actions/handlers/http.py": 100.0,
     "bajutsu/common/orchestrator/actions/handlers/manual.py": 100.0,
     "bajutsu/common/orchestrator/actions/handlers/scroll.py": 97.78,

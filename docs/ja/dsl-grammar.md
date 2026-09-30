@@ -240,6 +240,9 @@ App ::= { bundleId: string, steps: list(<Step>) }
     # は、すでに起動していればそれを活用）する。内側の `steps` はそのアプリ自身のアクセシビリティツリー
     # を対象にする。ブロックを抜けると、`Web` と同じ入る・抜けるの契約で、直前にアクティブだったものへ
     # 戻る。
+    # `com.apple.springboard` はホーム画面そのもの（編集モード、ウィジェットギャラリー）を名指しする。
+    # 実測した制約（`erase`、`locale` の固定、ギャラリー検索結果の行がツリーに現れないこと）は
+    # scenarios.md にある。
 
 Swipe ::=
     { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # セレクタ形  ┐ XOR

@@ -929,6 +929,44 @@ device work. `bundleId` must name an app already installed on the device — one
 foreground (a cold launch, a permission prompt) fails the step with `ElementNotFound`, but one that
 is not installed at all is not guaranteed to fail this cleanly.
 
+#### Driving the Home Screen (`com.apple.springboard`)
+
+SpringBoard, the process that draws the Home Screen, is one more bundle id to `app`. A scenario can
+long-press into edit mode, open the widget gallery, and add a widget with no new step and no
+runner change. `demos/showcase/scenarios/widget.yaml` does that, asserts the new widget, and then
+taps the widget to open its host app. The measurements behind it are in
+`docs/specs/ios-home-screen-widget-feasibility.md`: each screen's labels in `en_US` and `ja_JP`, and
+every gap below.
+
+```yaml
+- background: {}                       # hand the screen to the Home Screen first
+- app:
+    bundleId: com.apple.springboard
+    steps:
+      - longPress: { sel: { id: "Home screen icons" }, duration: 2 }   # empty wallpaper → edit mode
+      - tap: { label: "Edit", traits: [button] }
+      - tap: { label: "Add Widget", traits: [button] }
+```
+
+The constraints come from driving an operating-system screen the scenario does not own:
+
+- **Measured on the iOS Simulator, iOS 26.5.** We checked no real device and no other runtime.
+- **Pin the layout with `erase: true`.** The long press lands on the icon grid's centre, which must
+  be empty wallpaper. After an erase and reinstall, SpringBoard opens on the page that holds the
+  test apps, and that page leaves its lower half free. Erasing also removes the widgets an earlier
+  run added, so the assertion on the new widget stays unambiguous.
+- **Pin the language with `preconditions.locale`.** Every label is SpringBoard's own text. Even an
+  icon's `identifier` is its localized name: `Calendar` in English, `カレンダー` in Japanese.
+- **A search result row is absent from the tree.** Once the gallery's search field holds text,
+  SpringBoard's snapshot reports the result list as an empty container. The row still shows on
+  screen. Tap the first row with `tapPoint` at its fixed place under the search field; on an iPhone
+  17 Pro that place is `{ x: 0.5, y: 0.29 }`.
+- **Pick a size with `drag`, not `swipe`.** The size carousel pages on a flick alone. The
+  non-inertial scroll behind `swipe` settles back onto the page it started from.
+- **A host app's first launch can raise prompts.** Calendar asks for location and notifications
+  access, in either order or both at once. Two prompts leave no single button to tap, so
+  `widget.yaml` leaves them up; its next run's `erase` clears them.
+
 ### `swipe`
 
 ```yaml

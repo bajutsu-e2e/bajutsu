@@ -9,7 +9,7 @@
 	run-swiftui-noax run-uikit-noax doctor record ui-test ui-test-coverage \
 	vrt vrt-approve vrt-swiftui vrt-swiftui-approve vrt-uikit vrt-uikit-approve \
 	e2e-visual e2e-visual-approve e2e-network e2e-browser e2e-savepassword \
-	e2e-savepassword-native e2e-cross-app e2e-multi-target-web \
+	e2e-savepassword-native e2e-cross-app e2e-springboard-widget e2e-multi-target-web \
 	flutter-build flutter-android-build flutter-android-noax-build \
 	run-flutter run-flutter-android clean
 
@@ -403,6 +403,13 @@ e2e-cross-app: swiftui-build uikit-build runner-build
 		--target showcase-swiftui --udid $(SIM) --backend ios --config $(CONFIG) && \
 	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/app.yaml \
 		--target showcase-uikit --udid $(SIM) --backend ios --config $(CONFIG)
+
+# The Home Screen widget lane: `app:` on SpringBoard itself — edit mode, the widget gallery, add a
+# Calendar widget, then tap it open. Its own lane because the scenario erases the device to pin the
+# Home Screen layout, and leaves Calendar's first-launch prompts up for that next erase to clear.
+e2e-springboard-widget: swiftui-build runner-build
+	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/widget.yaml \
+		--target showcase-swiftui --udid $(SIM) --backend ios --config $(CONFIG)
 
 # The save-password lane: iOS's *real* "Save Password" alert, raised by signing in to a page the
 # in-app browser loads. Its own target rather than a line in `e2e-browser` because it needs

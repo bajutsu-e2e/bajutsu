@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.elements import screen_size_from_elements
+from bajutsu.common.drivers.elements import screen_size
 from bajutsu.common.orchestrator import AlertEvent
 from bajutsu.common.screenshots import screenshot_bytes
 
@@ -43,7 +43,7 @@ class SystemAlertGuard:
             return None
         if not decision.present:
             return None
-        width, height = screen_size_from_elements(driver.query())
+        width, height = screen_size(driver)
         if width <= 0 or height <= 0:
             return None
         driver.tap_point((decision.x * width, decision.y * height))

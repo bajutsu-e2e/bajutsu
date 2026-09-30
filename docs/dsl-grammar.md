@@ -242,6 +242,9 @@ App ::= { bundleId: string, steps: list(<Step>) }
     # `bundleId` names any installed app, launched (or already running) with no cooperation from
     # the test target; nested `steps` address that app's own accessibility tree. Control returns to
     # whatever was active before the block once it ends, the same enter/leave contract as `Web`.
+    # `com.apple.springboard` names the Home Screen itself (edit mode, the widget gallery); its
+    # measured constraints — `erase`, a pinned `locale`, no tree rows for gallery search results —
+    # are in scenarios.md.
 
 Swipe ::=
     { on: <Selector>, direction: ("up"|"down"|"left"|"right"), amount?: number }   # selector form  ┐ XOR

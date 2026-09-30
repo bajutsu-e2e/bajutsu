@@ -267,6 +267,58 @@ def test_xcuitest_pays_the_zorder_round_trip_on_the_public_query() -> None:
     assert zorder.calls == 1
 
 
+def test_xcuitest_skips_the_zorder_round_trip_while_another_app_is_entered() -> None:
+    # The responder lives in the test target. Inside an `app:` block the tree is another app's, and
+    # the test target is suspended in the background: asking it both mislabels the foreign tree and
+    # queues requests that killed the backgrounded app with SIGPIPE when it resumed.
+    zorder = _FakeZOrder({"ok": 1.0})
+    driver = _xcuitest_driver(zorder, [_runner_item("ok", "h1")])
+    driver.enter_app("com.apple.springboard")
+    assert driver.query()[0]["nativeZ"] is None
+    assert zorder.calls == 0
+    driver.leave_app()
+    assert driver.query()[0]["nativeZ"] == 1.0
+    assert zorder.calls == 1
+
+
+def test_xcuitest_resumes_the_zorder_read_after_a_leave_that_missed_the_foreground() -> None:
+    # The runner pops its app stack before re-activating what lies beneath, so a `not-foreground`
+    # leave still closes the block; the next query reads the test target again.
+    zorder = _FakeZOrder({"ok": 1.0})
+    statuses = iter(["ok", "not-foreground"])
+
+    def transport(method: str, path: str, body: Any) -> Any:
+        if path in ("/app/enter", "/app/leave"):
+            return _Reply(status=next(statuses))
+        return _Reply(status="ok", elements=[_runner_item("ok", "h1")], raw=b"")
+
+    driver = XcuitestDriver(transport=transport, zorder=zorder)
+    driver.enter_app("com.apple.springboard")
+    with pytest.raises(base.ElementNotFound):
+        driver.leave_app()
+    driver.query()
+    assert zorder.calls == 1
+
+
+def test_xcuitest_resumes_the_zorder_read_after_a_leave_that_faulted_the_channel() -> None:
+    # The run loop only logs a failed leave and carries on, so a transport fault must close the
+    # block as well — a stuck count would read `nativeZ: null` for the rest of the lease.
+    zorder = _FakeZOrder({"ok": 1.0})
+
+    def transport(method: str, path: str, body: Any) -> Any:
+        if path == "/app/leave":
+            raise OSError("runner went away")
+        if path == "/app/enter":
+            return _Reply(status="ok")
+        return _Reply(status="ok", elements=[_runner_item("ok", "h1")], raw=b"")
+
+    driver = XcuitestDriver(transport=transport, zorder=zorder)
+    driver.enter_app("com.apple.springboard")
+    with pytest.raises(OSError, match="runner went away"):
+        driver.leave_app()
+    assert driver.query()[0]["nativeZ"] == 1.0
+
+
 def test_zorder_responder_drops_an_identifier_the_app_repeated() -> None:
     payload = {
         "elements": [

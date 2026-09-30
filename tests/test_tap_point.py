@@ -71,6 +71,22 @@ def test_dispatch_scales_by_the_screen_extent_shared_helper() -> None:
     assert driver.actions == [("tap_point", (55.0, 110.0))]
 
 
+def test_dispatch_prefers_the_reported_viewport_over_the_tree_extent() -> None:
+    # A tree whose extent overshoots the screen — SpringBoard's carries nodes sized in pixels, not
+    # points — must not scale the point: the driver's own viewport (BE-0326) wins.
+    oversized: base.Element = {"identifier": None, "label": None, "traits": ["other"], "value": None,
+                               "frame": (0.0, 0.0, 1206.0, 2622.0), "nativeZ": None}  # fmt: skip
+
+    class _PointViewport(FakeDriver):
+        def viewport(self) -> base.Point:
+            return (402.0, 874.0)
+
+    driver = _PointViewport(screen=[_app(402.0, 874.0), oversized])
+    scenario = load_scenarios("- name: t\n  steps:\n    - tapPoint: { x: 0.5, y: 0.5 }\n")[0]
+    assert run_scenario(driver, scenario).ok
+    assert driver.actions == [("tap_point", (201.0, 437.0))]
+
+
 # --- Agent: the tool `record` emits it from ---
 
 

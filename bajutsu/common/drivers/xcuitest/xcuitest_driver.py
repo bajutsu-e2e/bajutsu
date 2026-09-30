@@ -217,6 +217,12 @@ class XcuitestDriver:
         # The in-app responder that measures `nativeZ` (BE-0355). None when the run allocated no
         # port, or when the app never links BajutsuKit — either way every element keeps `None`.
         self._zorder = zorder
+        # How many `app:` blocks are open (`enter_app` not yet matched by `leave_app`). The z-order
+        # responder lives in the test target, so while another app is in front its positions
+        # describe the wrong tree — and asking them hits a suspended process: the queued requests,
+        # answered on resume, killed a backgrounded showcase app with SIGPIPE
+        # (docs/specs/ios-home-screen-widget-feasibility.md).
+        self._entered_apps = 0
 
     # --- the channel ---
 
@@ -253,7 +259,7 @@ class XcuitestDriver:
         position: the alternative is handing one element another's reading, which is exactly the
         wrong-but-authoritative value this field exists to avoid.
         """
-        if self._zorder is None:
+        if self._zorder is None or self._entered_apps:
             return
         positions = self._zorder.positions()
         if not positions:
@@ -983,6 +989,7 @@ class XcuitestDriver:
         """
         reply = self._transport("POST", "/app/enter", {"bundleId": bundle_id})
         if reply.status == _OK:
+            self._entered_apps += 1
             return
         if reply.status == _NOT_FOREGROUND:
             raise base.ElementNotFound(f"app did not reach the foreground: {bundle_id!r}")
@@ -992,7 +999,14 @@ class XcuitestDriver:
 
     def leave_app(self) -> None:
         """Leave the most recently entered app and re-activate the one beneath it."""
-        reply = self._transport("POST", "/app/leave", {})
+        try:
+            reply = self._transport("POST", "/app/leave", {})
+        finally:
+            # The runner pops its stack before re-activating what is beneath, so the block is closed
+            # whether or not that app then reaches the foreground. A channel fault closes it too: the
+            # run loop only logs a failed leave and carries on, and a stuck count would silence
+            # `nativeZ` for the rest of the lease.
+            self._entered_apps = max(0, self._entered_apps - 1)
         if reply.status == _OK:
             return
         if reply.status == _NOT_FOREGROUND:
