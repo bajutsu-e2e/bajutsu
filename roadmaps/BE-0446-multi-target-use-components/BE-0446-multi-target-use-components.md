@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0446") |
+| Implementing PR | [#2097](https://github.com/bajutsu-e2e/bajutsu/pull/2097) |
 | Topic | Scenario authoring features |
 | Related | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md), [BE-0436](../BE-0436-primary-target-default/BE-0436-primary-target-default.md), [BE-0437](../BE-0437-multi-target-step-groups/BE-0437-multi-target-step-groups.md), [BE-0438](../BE-0438-multi-target-interrupts/BE-0438-multi-target-interrupts.md), [BE-0439](../BE-0439-step-groups-report-folding/BE-0439-step-groups-report-folding.md) |
 <!-- /BE-METADATA -->
@@ -336,6 +337,16 @@ single-target and multi-target scenarios alike.
 - [x] Stamping: carry and stamp the caller target, and raise the conflict error.
 - [x] Tests for every case listed in the work breakdown.
 - [x] Docs (both languages) and the showcase demo.
+
+Log:
+
+- [#2097](https://github.com/bajutsu-e2e/bajutsu/pull/2097) — Implemented the whole item. `Step` now accepts `target` on a `use:` step. The load-time
+  check replaces the `use:` / `group:` refusals with a membership check, and it walks a `group:`'s
+  children with the group's target as their caller, so `bajutsu lint` still catches errors inside
+  a group. `expand()` recurses into every `if` / `forEach` / `web:` / `app:` body and refuses a
+  `group:` a component carries there. It stamps a caller target down to any depth, stopping at
+  `web:` / `app:`, and refuses a conflicting target with the component chain in the message. Docs
+  in both languages and the showcase `cross_platform_app_web.yaml` demo moved with it.
 
 ## References
 

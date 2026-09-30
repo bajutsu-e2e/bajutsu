@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0446") |
+| 実装 PR | [#2097](https://github.com/bajutsu-e2e/bajutsu/pull/2097) |
 | トピック | シナリオの記述機能 |
 | 関連 | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md)、[BE-0436](../BE-0436-primary-target-default/BE-0436-primary-target-default-ja.md)、[BE-0437](../BE-0437-multi-target-step-groups/BE-0437-multi-target-step-groups-ja.md)、[BE-0438](../BE-0438-multi-target-interrupts/BE-0438-multi-target-interrupts-ja.md)、[BE-0439](../BE-0439-step-groups-report-folding/BE-0439-step-groups-report-folding-ja.md) |
 <!-- /BE-METADATA -->
@@ -347,6 +348,16 @@ use: web-login > step 'submit': target 'showcase-swiftui' conflicts with the cal
 - [x] 刻み込み：呼び出し側のターゲットを引き継いで刻み込み、衝突エラーを出します。
 - [x] 作業分解に挙げたすべての場合のテストを書きます。
 - [x] ドキュメント（両言語）と showcase のデモを更新します。
+
+ログ：
+
+- [#2097](https://github.com/bajutsu-e2e/bajutsu/pull/2097)：項目全体を実装しました。`Step` は `use:` ステップの `target` を受け付けるようになりました。
+  読み込み時の検査は `use:` / `group:` の拒否をターゲットの照合に置き換え、`group:` の子ステップを
+  グループのターゲットを呼び出し側として検査します。そのため `bajutsu lint` も、グループ内の誤りを
+  引き続き検出します。`expand()` は `if` / `forEach` / `web:` / `app:` のすべての本体へ再帰し、
+  コンポーネントがそこへ持ち込んだ `group:` を拒否します。呼び出し側のターゲットは深さを問わず刻み込み、
+  `web:` / `app:` で止めます。食い違うターゲットは、コンポーネントの連鎖を含むメッセージで拒否します。
+  両言語のドキュメントと、showcase の `cross_platform_app_web.yaml` デモも合わせて更新しました。
 
 ## 参考
 
