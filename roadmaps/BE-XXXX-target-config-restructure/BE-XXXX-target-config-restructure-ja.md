@@ -18,7 +18,7 @@
 
 現在、target の設定（`targets.<name>`）は、約50個のキーを1階層に並べています。`browser`と`deviceMode`は Web 専用、`nativeZ`は Android 専用、`bundleId`と`xcuitest`は iOS 専用のキーですが、これらも同じ階層に並んでいます。しかしスキーマは、キーとプラットフォームの対応を持っていません。また、target が想定する端末とオペレーティングシステム（OS）を書くキーもありません。
 
-この項目では、1階層の並びを12個のキーに置き換えます。各キーが受け持つ用途は1つだけです。たとえば`app`はテスト対象のアプリを、`runsOn`は動かす端末を、`driver`は Bajutsu の駆動方法を受け持ちます。12個のうち`app`、`runsOn`、`driver`の3つは、`platform`の値によって形が変わります。残りの9つは、どのプラットフォームでも同じ形です。`runsOn`には、target を動かす端末、OS、ブラウザを書きます。run は最初のステップの前に、`runsOn`の宣言と実際に割り当てられた端末を照らし合わせ、食い違えば止まります。後方互換は意図して持ちません。旧形式の設定は読み込み時に失敗し、エラーには受け付けなくなったキーの名前が出ます。
+この項目では、1階層の並びを12個のキーに置き換えます。各キーが受け持つ用途は1つだけです。たとえば`app`はテスト対象のアプリを、`runsOn`は動かす端末を、`driver`は Bajutsu の駆動方法を受け持ちます。12個のうち`app`、`runsOn`、`driver`、`run`の4つは、`platform`の値によって形が変わります（`run`は iOS で1項目増えます）。残りの8つは、どのプラットフォームでも同じ形です。`runsOn`には、target を動かす端末、OS、ブラウザを書きます。run は最初のステップの前に、`runsOn`の宣言と実際に割り当てられた端末を照らし合わせ、食い違えば止まります。後方互換は意図して持ちません。旧形式の設定は読み込み時に失敗し、エラーには受け付けなくなったキーの名前が出ます。
 
 ## 動機
 
@@ -104,7 +104,7 @@ targets:
 
 | グループ | iOS | Android | Web |
 |---|---|---|---|
-| `app` | `id`、`path`、`build`、`deeplink`、`launch.env`、`launch.args` | `id`、`grantPermissions` | `url`、`server` |
+| `app` | `id`、`path`、`build`、`deeplink`、`launch.env`、`launch.args` | `id`、`path`、`build`、`grantPermissions` | `url`、`server` |
 | `app`（全プラットフォーム共通） | `readyWhen`、`idNamespaces` | 同左 | 同左 |
 | `runsOn` | `model`、`os`、`kind`、`locale` | `avd`、`apiLevel` | `browser.engine`、`browser.version`、`emulate`、`host.os` |
 | `driver` | `runner.testRunner`、`runner.build` | `nativeZ` | `headless` |
@@ -119,7 +119,7 @@ targets:
 
 ### プラットフォームのスキーマのレジストリ
 
-各バックエンドは、`app`、`runsOn`、`driver`、`run`の追加分のモデルを、`bajutsu/common/config/schema/platform/`のレジストリに登録します。`TargetConfig`は`platform`を読んでレジストリを引き、登録されたモデルで4つのグループを検証します。どのモデルも未知のキーを禁じるため、他のプラットフォームのキーは未知のキーとして失敗します。レジストリがあれば、設定の読み込みは Playwright や simctl を import せずに済みます。現在`deviceMode`を遅延解決できているのと同じ性質です。core はスキーマの中でプラットフォームを名指ししなくなるので、Flutter を足すときはエントリを1つ登録するだけになります。
+各バックエンドは、`app`、`runsOn`、`driver`、`run`の追加分のモデルを、`bajutsu/common/config/schema/platform/`のレジストリに登録します。`TargetConfig`は`platform`を読んでレジストリを引き、登録されたモデルで4つのグループを検証します。どのモデルも未知のキーを禁じるため、他のプラットフォームのキーは未知のキーとして失敗します。Pydantic のエラーは未知のキーを示しますが、使えるキーは示しません。そこで`TargetConfig`がこのエラーを、モデルのフィールド一覧を含むメッセージに書き換えます。メッセージは作業単位3のテストで固定します。レジストリがあれば、設定の読み込みは Playwright や simctl を import せずに済みます。現在`deviceMode`を遅延解決できているのと同じ性質です。core はスキーマの中でプラットフォームを名指ししなくなるので、Flutter を足すときはエントリを1つ登録するだけになります。
 
 明示の`platform`が優先順位の連鎖に取って代わります。`backend`は廃止します。どのプラットフォームも現在 actuator は1つなので、順序つきのフォールバックのリストには選ぶ対象がありません。`_effective_platform`、`_PLATFORM_IDENTIFIER`、`Config`の突き合わせも一緒に消えます。各`app`モデルが自分の識別子を必須にするためです。あるプラットフォームが2つ目の actuator を持った場合は、`driver`に`actuator`フィールドを足します。
 
@@ -136,7 +136,7 @@ targets:
 | Android の`runsOn.apiLevel` | `ro.build.version.sdk` | 整数の範囲 |
 | Android の`runsOn.avd` | エミュレータの Android Virtual Device（AVD）名 | 完全一致。実機は一致しない |
 | Web の`runsOn.browser.version` | Playwright の`browser.version` | 範囲 |
-| Web の`runsOn.host.os` | `platform.system()` | 完全一致 |
+| Web の`runsOn.host.os` | `platform.system()`を正規化した値（`Darwin`は`macos`、`Linux`は`linux`、`Windows`は`windows`） | 完全一致 |
 
 範囲は比較子の論理積で書きます。比較子は`>=`、`>`、`<=`、`<`、`==`、または演算子のない裸の版です。裸の`18`は18.x のどのリリースにも一致します。範囲の解析と比較は、新しい`bajutsu/common/devices/version.py`の`VersionSpec`が担います。`DeviceOS`は意図して比較演算子を持たないままにします。この項目が足すのは宣言の照合であり、OS ごとの分岐ではないためです。食い違いは`DeviceError`（[BE-0260](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation-ja.md)）の新しいサブクラス`RunsOnRequirementError`として送出します。そのため`run`は、端末が見つからないときと同じ経路で非ゼロ終了します。`bajutsu doctor`は、端末を解決できるときに同じ照合をして、結果を情報として示します。
 
@@ -144,7 +144,7 @@ targets:
 
 ### defaults
 
-`defaults`は target と同じ形をとります。プラットフォームで形が変わるグループは`defaults.platforms.<platform>`の下に書き、そのプラットフォームの target にだけ重なります。これで1つのファイルに複数のプラットフォームのデフォルトを同時に持てます。辞書はキー単位で重ね、target の値が勝ちます。リストは置き換えます。例外は`evidence.redact`と`dispatch.requires`で、現行どおり和集合をとります。`ai`は現行どおりフィールド単位で重ねます。
+`defaults`には、target のキーのうち`platform`以外を書きます。共通のグループは`defaults`の直下に書きます。プラットフォームで形が変わるグループ（`app`、`runsOn`、`driver`と、`run`の iOS の項目）は`defaults.platforms.<platform>`の下に書き、そのプラットフォームの target にだけ重なります。これで1つのファイルに複数のプラットフォームのデフォルトを同時に持てます。辞書はキー単位で重ね、target の値が勝ちます。リストは置き換えます。例外は`evidence.redact`と`dispatch.requires`で、現行どおり和集合をとります。`ai`は現行どおりフィールド単位で重ねます。
 
 組み込みのデフォルト`device: "iPhone 15"`は廃止します。`runsOn.model`のデフォルトとして残すと、`defaults`を書かない全設定が気づかないうちにこの値を要件として課すことになります。`model`を宣言しないまま置き換えの Simulator を作るときは、現行のフォールバックが最新の iPhone を選びます。
 
@@ -165,7 +165,7 @@ targets:
 | `setup`、`before`、`after`、`interrupts` | `hooks.before`（`setup`を吸収）、`hooks.before`、`hooks.after`、`hooks.interrupts` |
 | `capture`、`redact` | `evidence.*` |
 | `scenarios`、`baselines`、`schemas`、`goldens` | `paths.*` |
-| `defaults.reservedNamespaces`、`defaults.doctor` | `defaults.app.reservedNamespaces`、トップレベルの`doctor` |
+| `defaults.reservedNamespaces`、`defaults.doctor` | トップレベルの`reservedNamespaces`と`doctor`。どちらも target ごとではなくチーム全体の値なので、`defaults`には置かない |
 
 解決後の`Effective`は属性名を変えません。属性名を変えると呼び出し箇所が数百に及び、しかも設定の形とは別に進められます。そのため`resolve`が、新しい辞書から現行の`Effective`を組み立てます。
 

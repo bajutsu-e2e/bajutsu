@@ -24,8 +24,8 @@ expects.
 
 This item replaces the flat list with twelve keys. Each key covers one purpose. For example, `app`
 covers the app under test, `runsOn` the device it runs on, and `driver` how Bajutsu drives it.
-The value of `platform` decides the shape of three of them — `app`, `runsOn`, and `driver` — and
-the other nine keep one shape across platforms. `runsOn` declares the device, OS, and browser a
+The value of `platform` decides the shape of four of them — `app`, `runsOn`, `driver`, and `run`,
+which gains one field on iOS — and the other eight keep one shape across platforms. `runsOn` declares the device, OS, and browser a
 target runs on. Before the first step, a run checks the declaration against the device it got and
 stops when the two disagree. The change drops backward compatibility on purpose: an old config
 fails to load and names the key it no longer accepts.
@@ -45,9 +45,9 @@ different name because `device` was already taken.
 No key says where a target is meant to run. The Simulator chosen by `--udid` decides the iOS
 version, and the adb serial decides the Android application programming interface (API) level. `device` takes effect in one case alone:
 creating a replacement for a Simulator that vanished mid-run. A run records the OS it observed as
-`device_runtime` ([BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md)),
-A scenario that fails on an unintended OS surfaces after the run, not before it, and the result
-then lands in the flakiness history as noise.
+`device_runtime` ([BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md)).
+A scenario that fails on an unintended OS therefore surfaces after the run, not before it, and the
+result then lands in the flakiness history as noise.
 
 Settings for one purpose are scattered, too. Launching the app spans `launchEnv`, `launchArgs`,
 and `readyWhen`. Sourcing a device spans `deviceProvider`, `cloudBatch`, and `requires`. Steps that
@@ -131,7 +131,7 @@ The same `site` target in today's notation reads as follows:
 
 | Group | iOS | Android | Web |
 |---|---|---|---|
-| `app` | `id`, `path`, `build`, `deeplink`, `launch.env`, `launch.args` | `id`, `grantPermissions` | `url`, `server` |
+| `app` | `id`, `path`, `build`, `deeplink`, `launch.env`, `launch.args` | `id`, `path`, `build`, `grantPermissions` | `url`, `server` |
 | `app`, all platforms | `readyWhen`, `idNamespaces` | same | same |
 | `runsOn` | `model`, `os`, `kind`, `locale` | `avd`, `apiLevel` | `browser.engine`, `browser.version`, `emulate`, `host.os` |
 | `driver` | `runner.testRunner`, `runner.build` | `nativeZ` | `headless` |
@@ -157,7 +157,9 @@ Four placements needed a judgment call:
 Each backend registers the models for its `app`, `runsOn`, `driver`, and `run` extension in a
 registry under `bajutsu/common/config/schema/platform/`. `TargetConfig` reads `platform`, looks up
 the registry, and validates the four groups with the registered models. Every model forbids extra
-keys, so a key from another platform fails as unknown. The registry keeps config loading free of
+keys, so a key from another platform fails as unknown. Pydantic's own error names the unknown
+key but not the allowed ones, so `TargetConfig` rewrites that error into one that lists the model's
+fields, and unit 3 pins the message in a test. The registry keeps config loading free of
 Playwright and simctl imports, the same property that lets `deviceMode` resolve lazily today. The
 core stops naming platforms in its schema, so adding Flutter means registering one more entry.
 
@@ -182,7 +184,7 @@ or browser, and before the first step, the run compares each declared value with
 | Android `runsOn.apiLevel` | `ro.build.version.sdk` | integer range |
 | Android `runsOn.avd` | the emulator's Android Virtual Device (AVD) name | exact; a physical device never matches |
 | Web `runsOn.browser.version` | Playwright's `browser.version` | version range |
-| Web `runsOn.host.os` | `platform.system()` | exact |
+| Web `runsOn.host.os` | `platform.system()`, normalized (`Darwin` → `macos`, `Linux` → `linux`, `Windows` → `windows`) | exact |
 
 A version range is a conjunction of comparators: `>=`, `>`, `<=`, `<`, `==`, or a bare version. A
 bare `18` means any 18.x release. A new `VersionSpec` in `bajutsu/common/devices/version.py` parses
@@ -199,9 +201,10 @@ stays out of scope (see *Alternatives considered*).
 
 ### Defaults
 
-`defaults` takes the same shape as a target. The platform-shaped groups go under
-`defaults.platforms.<platform>`, which applies to targets of that platform alone, so one file can
-hold defaults for several platforms at once. Dictionaries merge key by key, with the target
+`defaults` holds a target's keys other than `platform`. The shared groups go directly under
+`defaults`. The platform-shaped groups (`app`, `runsOn`, `driver`, and the iOS field of `run`) go
+under `defaults.platforms.<platform>`, which applies to targets of that platform alone, so one file
+can hold defaults for several platforms at once. Dictionaries merge key by key, with the target
 winning. Lists replace, except `evidence.redact` and `dispatch.requires`, which keep today's union.
 `ai` keeps today's field-by-field merge.
 
@@ -227,7 +230,7 @@ iPhone, as it does today.
 | `setup`, `before`, `after`, `interrupts` | `hooks.before` (absorbing `setup`), `hooks.before`, `hooks.after`, `hooks.interrupts` |
 | `capture`, `redact` | `evidence.*` |
 | `scenarios`, `baselines`, `schemas`, `goldens` | `paths.*` |
-| `defaults.reservedNamespaces`, `defaults.doctor` | `defaults.app.reservedNamespaces`, top-level `doctor` |
+| `defaults.reservedNamespaces`, `defaults.doctor` | top-level `reservedNamespaces` and `doctor`; both are team-wide, not per target, so neither belongs in `defaults` |
 
 The resolved `Effective` keeps its attribute names. Renaming them would touch several hundred call
 sites and can proceed apart from the config's shape, so `resolve` builds today's `Effective` from
