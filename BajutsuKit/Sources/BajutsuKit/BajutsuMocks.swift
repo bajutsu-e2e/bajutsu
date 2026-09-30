@@ -67,8 +67,8 @@ final class BajutsuMocks {
     func replace(with objects: [[String: Any]]) {
         let parsed = objects.compactMap(Self.parse)
         lock.lock()
+        defer { lock.unlock() }
         storage = parsed
-        lock.unlock()
     }
 
     /// Why `objects` is not a table the app can install as written, or nil when it is.
