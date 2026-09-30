@@ -109,6 +109,25 @@ def test_html_embeds_one_player_per_declared_targets_video() -> None:
     assert " data-target='app'" in out and " data-target='web'" in out
 
 
+def test_html_colors_each_stacked_recording_and_its_own_rows_apart() -> None:
+    # Two stacked recordings each highlight their own target's step at once; one shared tint left
+    # two identical rows with no way to tell which video each followed. The page ships the per-
+    # player lane assignment and one color per lane, and pairs the row tint with the lane's color.
+    r = RunResult(
+        scenario="s1",
+        ok=True,
+        steps=[StepOutcome(index=0, action="tap", target="app", ok=True, started_at=100.0)],
+        expect_results=[],
+        artifacts=[Artifact("00-s1/scenario.mp4", "video", "simctl")],
+        video_anchor_s=100.0,
+    )
+    out = html_report("run1", [r])
+    assert "function assignLanes(scn)" in out and "assignLanes(scn);" in out
+    for lane in range(4):
+        assert f":is(tr.srow.lane-{lane},.lane-{lane} .tgtlbl){{--lane:" in out
+    assert "tr.srow.playing{background:var(--lane-bg)" in out
+
+
 def test_html_discloses_why_the_video_is_missing_on_a_backend_crash() -> None:
     # A scenario whose backend crashed mid-run and never recovered carries no video artifact
     # (the recording died with the lease), but the pipeline discloses the gap as a `SkippedCapture`

@@ -847,7 +847,33 @@
     }
     return cur;
   }
+  // A multi-target scenario's players each highlight their own step at once, so one shared tint
+  // would leave two identical rows with no way to tell which recording each follows. Each player
+  // takes a `lane-N` color (report.css) and hands it to its own rows — label, row tint, and the
+  // row's target chip then all read as one pair. A single-player scenario stays unlaned and
+  // keeps the plain default look.
+  var LANES = 4;
+  function assignLanes(scn){
+    var players = scn.querySelectorAll('.player');
+    if(players.length < 2) return;
+    Array.prototype.forEach.call(players, function(p, i){
+      var lane = 'lane-' + (i % LANES), target = p.getAttribute('data-target') || '';
+      var rows = rowsFor(scn, target);
+      p.classList.add(lane);
+      rows.forEach(function(r){ r.classList.add(lane); });
+      // The primary's own player carries no target name (see `ownedTargets`), yet its rows do —
+      // borrow that name so every stacked recording is labeled, not all but the first.
+      var named = rows.filter(function(r){ return r.getAttribute('data-target'); })[0];
+      if(!p.querySelector('.tgtlbl') && named){
+        var lbl = document.createElement('span');
+        lbl.className = 'tgtlbl';
+        lbl.textContent = named.getAttribute('data-target');
+        p.insertBefore(lbl, p.firstChild);
+      }
+    });
+  }
   ROOT.querySelectorAll('.scn').forEach(function(scn){
+    assignLanes(scn);
     var box = scn.querySelector('.rich-scroll');
     // One pass per player rather than per scenario (BE-0428): each recording only ever seeks
     // itself and only ever highlights its own target's rows — a click on a web step never moves
