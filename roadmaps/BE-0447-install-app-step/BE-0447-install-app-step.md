@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-install-app-step-ja.md)
+**English** · [日本語](BE-0447-install-app-step-ja.md)
 
-# BE-XXXX — Let a scenario install several apps
+# BE-0447 — Let a scenario install several apps
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-install-app-step.md) |
+| Proposal | [BE-0447](BE-0447-install-app-step.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
