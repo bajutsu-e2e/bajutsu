@@ -359,6 +359,14 @@ screenshot in the run, across scenario boundaries, with a caption showing the sc
 position. The run's actuator backend is shown as a `driver: <backend>` chip in the header and a small
 badge on each scenario row.
 
+A multi-target scenario stacks one recording per target that captured video, and each recording
+highlights its own target's step while it plays, so two rows can be highlighted at once. When two or
+more recordings stack, each gets a color to keep them apart: its target label, its steps' highlight,
+and the target chip on those steps all share it. The colors are amber, blue, pink, and green in
+stacking order, repeating from the fifth recording on. A target that recorded no video has no player
+of its own; its steps seek the first recording and take that recording's color. Every recording's
+frame stays the same blue. A scenario with a single recording keeps the default look.
+
 Each recording carries its own **expand** button, beside its play/pause control. Pressing it opens
 a modal that shows that recording enlarged. The scenario's own **steps** rows clone beside it. The
 screenshot/element-tree column stays empty in the clone. A click there would otherwise reopen the
