@@ -1,6 +1,6 @@
 [English](BE-XXXX-target-config-restructure.md) · **日本語**
 
-# BE-XXXX — flat な target の設定を用途別のグループに分け、必要な端末、OS、ブラウザを宣言できるようにする
+# BE-XXXX — target の設定を用途別に整理し、動作環境（端末、OS、ブラウザ）を宣言できるようにする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -16,21 +16,24 @@
 
 ## はじめに
 
-現在、`targets.<name>`の target は約50個のキーを1階層に並べています。全プラットフォームのキーが隣り合っており、`browser`と`deviceMode`は Web のバックエンドだけが、`nativeZ`は Android だけが、`bundleId`と`xcuitest`は iOS だけが読みます。スキーマはどのキーがどのプラットフォームに属するかを知りません。また、target がどの端末とオペレーティングシステム（OS）を想定するかを書くキーもありません。
+現在、target の設定（`targets.<name>`）は、約50個のキーを1階層に並べています。`browser`と`deviceMode`は Web 専用、`nativeZ`は Android 専用、`bundleId`と`xcuitest`は iOS 専用のキーですが、これらも同じ階層に並んでいます。しかしスキーマは、キーとプラットフォームの対応を持っていません。また、target が想定する端末とオペレーティングシステム（OS）を書くキーもありません。
 
-この項目では、flat な並びを12個のキーに置き換えます。各キーは、テスト対象のアプリ、動かす端末、Bajutsu の駆動方法といった、1つの用途だけを受け持ちます。`platform`の値が`app`、`runsOn`、`driver`の3つの形を決め、残りの9つはプラットフォームによらず同じ形を持ちます。`runsOn`には、target が動く端末、OS、ブラウザを宣言します。run は最初のステップの前に、宣言と実際に得た端末を照らし合わせ、食い違えば止まります。後方互換は意図して持ちません。旧形式の設定は読み込みに失敗し、受け付けなくなったキーを名指しします。
+この項目では、1階層の並びを12個のキーに置き換えます。各キーが受け持つ用途は1つだけです。たとえば`app`はテスト対象のアプリを、`runsOn`は動かす端末を、`driver`は Bajutsu の駆動方法を受け持ちます。12個のうち`app`、`runsOn`、`driver`の3つは、`platform`の値によって形が変わります。残りの9つは、どのプラットフォームでも同じ形です。`runsOn`には、target を動かす端末、OS、ブラウザを書きます。run は最初のステップの前に、`runsOn`の宣言と実際に割り当てられた端末を照らし合わせ、食い違えば止まります。後方互換は意図して持ちません。旧形式の設定は読み込み時に失敗し、エラーには受け付けなくなったキーの名前が出ます。
 
 ## 動機
 
-別のプラットフォームのキーを書いても、読み込みは黙って通り、何も起きません。`browser: firefox`と書いた iOS の target は検証を通り、run はこの設定を無視します。[`docs/configuration.md`](../../docs/configuration.md)は、キーの表で「iOS ignores it」を繰り返してこの穴を補っています。キーが効くかどうかを知るには、この表を引く必要があります。
+target に別のプラットフォームのキーを書いても、設定はエラーなく読み込まれ、そのキーは何の効果も持ちません。たとえば iOS の target に`browser: firefox`と書くと、検証は通り、run はこの設定を無視します。[`docs/configuration.md`](../../docs/configuration.md)は、キーの表に「iOS ignores it」という注記を繰り返し書いて、この欠落を補っています。利用者は、キーが効くかどうかをこの表で調べるしかありません。
 
-名前空間を共有しているため、名前にも無理が出ています。[`defaults.py`](../../bajutsu/common/config/schema/defaults.py)の`device`は iOS Simulator の機種名ですが、デフォルト値として Web や Android の target にも重なります。Web のバックエンドの`deviceMode`が別名になったのは、`device`がすでに使われていたためです。
+全プラットフォームが1つの名前空間を共有しているため、キーの名前にも無理が出ています。[`defaults.py`](../../bajutsu/common/config/schema/defaults.py)の`device`は iOS Simulator の機種名です。それなのに、デフォルト値として Web や Android の target にも重なります。Web のバックエンドの端末設定が`deviceMode`という別名になったのは、`device`という名前がすでに使われていたためです。
 
-target をどこで動かすつもりなのかを示すキーもありません。iOS のバージョンは`--udid`で選んだ Simulator が決め、Android の application programming interface（API）レベルは adb のシリアルが決めます。`device`が効くのは、実行中に消えた Simulator の置き換えを作る場面だけです。run は観測した OS を`device_runtime`として記録します（[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)）。そのため、想定外の OS で落ちたシナリオには実行後に気づくことになり、その結果は flakiness の履歴に雑音として入ります。
+target を動かす環境を指定するキーもありません。iOS のバージョンは、`--udid`で選んだ Simulator によって決まります。Android の application programming interface（API）レベルは、adb のシリアルで選んだ端末によって決まります。`device`が効くのは、実行中に消えた Simulator の代わりを作る場面だけです。run は、実際に動いた OS を`device_runtime`として記録します（[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)）。そのため、シナリオが想定外の OS で落ちても、気づくのは実行後です。しかもその失敗は、flakiness の履歴に雑音として混ざります。
 
-1つの用途の設定も散らばっています。アプリの起動は`launchEnv`、`launchArgs`、`readyWhen`にまたがり、端末の調達は`deviceProvider`、`cloudBatch`、`requires`にまたがります。全シナリオの前に走る手順は`setup`と`before`の2つのキーから来ており、文書はその違いを説明し続けています。プラットフォームの判定には、`platform`、`backend`、存在する識別子を順に見る優先順位の連鎖が要ります（[`resolve.py`](../../bajutsu/common/config/resolve.py)の`_effective_platform`）。Flutter のようなバックエンドを足せば、flat なキーも連鎖の分岐も増えます。
+同じ用途の設定が、複数のキーに散らばってもいます。アプリの起動に関わる設定は`launchEnv`、`launchArgs`、`readyWhen`の3つです。端末の調達に関わる設定は`deviceProvider`、`cloudBatch`、`requires`の3つです。全シナリオの前に走る手順は`setup`と`before`のどちらでも書けてしまい、文書は両者の違いを説明し続けています。プラットフォームの判定も複雑です。[`resolve.py`](../../bajutsu/common/config/resolve.py)の`_effective_platform`は、`platform`、`backend`、識別子の有無を優先順位の順に調べて、プラットフォームを推論します。Flutter のようなバックエンドを足すと、1階層のキーも推論の分岐も増えます。
 
-この項目が入ると、次の2つの結果を確かめられます。誤ったプラットフォームに書いたキーは設定の読み込み時に失敗し、そのプラットフォームが持つフィールドを示します。`runsOn`が選ばれた端末と合わない target は、最初のステップの前に止まり、宣言した値と観測した値を並べて表示します。
+この項目の実装後は、次の2点で効果を確かめられます。
+
+- 別のプラットフォームのキーを書くと、設定の読み込み時に失敗します。エラーには、そのプラットフォームで使えるフィールドの一覧が出ます。
+- `runsOn`と割り当てられた端末が食い違うと、target は最初のステップの前に止まります。エラーには、宣言した値と観測した値が並びます。
 
 ## 詳細設計
 

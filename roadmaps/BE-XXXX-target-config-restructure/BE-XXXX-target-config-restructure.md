@@ -1,6 +1,6 @@
 **English** · [日本語](BE-XXXX-target-config-restructure-ja.md)
 
-# BE-XXXX — Group the flat target config by purpose, and declare the device, OS, and browser a target needs
+# BE-XXXX — Reorganize target settings by purpose, and declare each target's runtime environment
 
 <!-- BE-METADATA -->
 | Field | Value |
@@ -22,8 +22,8 @@ Android alone, and `bundleId` and `xcuitest` by iOS alone. The schema does not k
 belong to which platform, and no key can state which device or operating system (OS) a target
 expects.
 
-This item replaces the flat list with twelve keys, each covering one purpose: the app under test,
-the device it runs on, how Bajutsu drives it, and so on.
+This item replaces the flat list with twelve keys. Each key covers one purpose. For example, `app`
+covers the app under test, `runsOn` the device it runs on, and `driver` how Bajutsu drives it.
 The value of `platform` decides the shape of three of them — `app`, `runsOn`, and `driver` — and
 the other nine keep one shape across platforms. `runsOn` declares the device, OS, and browser a
 target runs on. Before the first step, a run checks the declaration against the device it got and
