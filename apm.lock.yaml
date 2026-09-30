@@ -82,7 +82,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:22616d0f3a666bf494849d2820ff2a3bda140f0ca92ba31a528d1e47ccd3aa0f
+  content_hash: sha256:f77da87d4864c3177b3135b89af4f8114d92e7b8f02b607179d1b21ced442828
 - kind: project-relative
   target: claude
   value: .claude/skills/english-document-writing
@@ -253,7 +253,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:c5a47c20deca8a59009ab6549adead673f4c90c0830d3c6a23c12a8f07dd50b9
+  content_hash: sha256:29879cfdbe9e0990c618223ccd68ea146a13bce7cf79c124cf411f7377498cb9
 - kind: project-relative
   target: claude
   value: .claude/skills/japanese-document-writing/references/argument.md
@@ -418,7 +418,7 @@ local_deployed_file_hashes:
   .claude/skills/be-progress-tracker/references/template.html: sha256:3123ba2f3926a994dec11121e6051afeec5fc44e5b3d1e23c7bcf6c3f16feb5c
   .claude/skills/claude-review/SKILL.md: sha256:a1243fbf22501b3777e51febdd0ca5b063593ccc1117d0690cc0a597297779a3
   .claude/skills/cleanup/SKILL.md: sha256:23ba7b078cec388b2a16b3029e554cebdd6410b0dd7b703802ce194e6553f5ca
-  .claude/skills/document-writing/SKILL.md: sha256:22616d0f3a666bf494849d2820ff2a3bda140f0ca92ba31a528d1e47ccd3aa0f
+  .claude/skills/document-writing/SKILL.md: sha256:f77da87d4864c3177b3135b89af4f8114d92e7b8f02b607179d1b21ced442828
   .claude/skills/english-document-writing/SKILL.md: sha256:00fcaa5bf91eb3a05a58bd4f729ad43e42bf010ee7bead75db4fdfe741060afa
   .claude/skills/fix-issue/SKILL.md: sha256:e313f73c60b2811be0843ecfdec9e95805aca1da2a23cd165ef377d507903957
   .claude/skills/git-sync/SKILL.md: sha256:f9c2eb3a39c02a4a415294e9874c7dca8feb1654ffc5950d1705f84fe68970ea
@@ -429,7 +429,7 @@ local_deployed_file_hashes:
   .claude/skills/investigate-ci-failure/SKILL.md: sha256:0e495a1ec2f9ff4c6ede8c666b5091efb235f3a115b9d4377386c2ddcf6ed057
   .claude/skills/investigate-ci-failure/references/known-ci-failure-patterns.md: sha256:f097a37319d95e9c52824caf18ea49ba213d419d75fd62515e189e6518ee68aa
   .claude/skills/investigate-scenario-flakiness/SKILL.md: sha256:7bc61965a17fad81ed516248e966ac64980d0d6a34039477d27dc0320a2f9810
-  .claude/skills/japanese-document-writing/SKILL.md: sha256:c5a47c20deca8a59009ab6549adead673f4c90c0830d3c6a23c12a8f07dd50b9
+  .claude/skills/japanese-document-writing/SKILL.md: sha256:29879cfdbe9e0990c618223ccd68ea146a13bce7cf79c124cf411f7377498cb9
   .claude/skills/japanese-document-writing/references/argument.md: sha256:34a642cd51b155203f6be2342db2b6ae5a96a7a40ee7c400001560f16d89a3cf
   .claude/skills/japanese-document-writing/references/expression.md: sha256:a9868652cdd9fcf00a2604b1536b0876795709b779523acd9b0522b979ffa9ae
   .claude/skills/japanese-document-writing/references/formatting.md: sha256:5c4d212825292359f062a55d4e5993d65b5fd0cdd00a8f28dc742cd747e84103

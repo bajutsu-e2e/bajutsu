@@ -308,6 +308,13 @@ module = [
 ]
 ignore_missing_imports = true
 
+# BE-0434: scripts/ja_register_check.py declares its morphological analyzer in a PEP 723 block, so
+# `uv run` installs it per invocation and the dev environment never does. Resolve the lazy import
+# loosely, as above; the script's tokenizer seam is typed and tested against a fake.
+[[tool.mypy.overrides]]
+module = ["sudachipy", "sudachipy.*"]
+ignore_missing_imports = true
+
 # BE-0112: the core / contract / periphery layer model as an executable contract. `make lint-imports`
 # (part of `make check`) fails when a deterministic-core module imports the periphery, keeping the
 # verdict/evidence path free of the serve, AI and codegen stacks. Static analysis on the import
