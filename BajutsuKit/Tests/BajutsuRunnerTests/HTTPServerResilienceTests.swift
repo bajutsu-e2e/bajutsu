@@ -49,7 +49,7 @@ final class HTTPServerResilienceTests: XCTestCase {
 
         XCTAssertEqual(
             Self.intOption(fd, SO_NOSIGPIPE), 1,
-            "without SO_NOSIGPIPE a reply to a departed peer kills the whole runner process"
+            "SO_NOSIGPIPE is the backstop beside sendAll's MSG_NOSIGNAL for a reply to a departed peer"
         )
         XCTAssertEqual(Self.timeoutOption(fd, SO_RCVTIMEO), 3, accuracy: 0.01)
         XCTAssertEqual(Self.timeoutOption(fd, SO_SNDTIMEO), 7, accuracy: 0.01)
@@ -91,6 +91,25 @@ final class HTTPServerResilienceTests: XCTestCase {
         XCTAssertEqual(
             Self.get(port: port, path: "/fast"), 200,
             "the server must keep serving after a peer vanished mid-reply"
+        )
+    }
+
+    /// A reply to a peer that already hung up must not raise `SIGPIPE`, even on a socket that never
+    /// got `SO_NOSIGPIPE`: `configureConnection`'s `setsockopt` fails with `EINVAL` on a peer that
+    /// reset before the accept loop reached it, so only `MSG_NOSIGNAL` on the `send` itself covers
+    /// that socket. Writing straight to a socket pair whose other end is closed reaches that path on
+    /// every run rather than on the attempts where a reset wins a race. Without the flag this test
+    /// does not fail — it kills the test process.
+    func testAReplyToAClosedPeerDoesNotRaiseSigpipe() throws {
+        let server = HTTPServer { _ in .json(200, [:]) }
+        var fds: [Int32] = [-1, -1]
+        try XCTSkipIf(socketpair(AF_UNIX, SOCK_STREAM, 0, &fds) != 0, "no socket pair available")
+        close(fds[1])
+        defer { close(fds[0]) }
+
+        XCTAssertFalse(
+            server.sendAll(fds[0], Data("HTTP/1.1 200 OK\r\n\r\n".utf8)),
+            "a write to a departed peer must report failure rather than signal"
         )
     }
 

@@ -50,6 +50,21 @@ final class BajutsuZOrderTests: XCTestCase {
         XCTAssertEqual(status(port: port, token: "secret", path: "/elements"), 404)
     }
 
+    /// A reply to a peer that already hung up must not raise SIGPIPE, even on a socket that never
+    /// got `SO_NOSIGPIPE` — the accept loop's `setsockopt` fails (EINVAL) on a peer that reset
+    /// before it, so only the send's own `MSG_NOSIGNAL` covers that socket. Writing straight to a
+    /// socket pair whose other end is closed reaches that path on every run rather than on the
+    /// attempts where a reset wins a race. Without the flag this test does not fail — it kills the
+    /// test process.
+    func testAReplyToAClosedPeerDoesNotRaiseSigpipe() throws {
+        var fds: [Int32] = [-1, -1]
+        try XCTSkipIf(socketpair(AF_UNIX, SOCK_STREAM, 0, &fds) != 0, "no socket pair available")
+        close(fds[1])
+        defer { close(fds[0]) }
+
+        _ZOrderServer._sendAll(fds[0], Data("HTTP/1.1 400 Bad Request\r\n\r\n".utf8))
+    }
+
     // MARK: - Helpers
 
     /// The HTTP status of one `/zorder` request, or nil when nothing is listening on *port*.

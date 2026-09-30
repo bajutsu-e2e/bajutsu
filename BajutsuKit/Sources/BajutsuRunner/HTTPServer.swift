@@ -209,15 +209,19 @@ final class HTTPServer {
 
     /// Apply the socket options every accepted connection needs, before any handler touches it.
     ///
-    /// `SO_NOSIGPIPE` is the load-bearing one. Darwin raises `SIGPIPE` on a write to a socket whose
-    /// peer has closed, and the signal's default disposition terminates the process — so a driver-side
-    /// timeout that closes the connection while the handler is still blocked on the main thread would
-    /// kill the whole XCTest host the moment that handler finally replied, taking the runner down with
-    /// it. That race is routine here rather than exotic: the driver's read and actuation windows are
-    /// tighter than a contended host's slowest operation, and `APIHandler` deliberately queues handlers
-    /// behind one main-thread lock. The option turns such a write into a plain `EPIPE`, which
-    /// `sendAll` already treats as "stop writing". The timeouts then bound the two blocking calls a
-    /// handler makes, so a peer that vanishes without closing cannot hold a connection slot for ever.
+    /// Suppressing `SIGPIPE` is the load-bearing part, and `sendAll`'s `MSG_NOSIGNAL` is what
+    /// guarantees it; `SO_NOSIGPIPE` here is the backstop. Darwin raises `SIGPIPE` on a write to a
+    /// socket whose peer has closed, and the signal's default disposition terminates the process —
+    /// so a driver-side timeout that closes the connection while the handler is still blocked on
+    /// the main thread would kill the whole XCTest host the moment that handler finally replied,
+    /// taking the runner down with it. That race is routine here rather than exotic: the driver's
+    /// read and actuation windows are tighter than a contended host's slowest operation, and
+    /// `APIHandler` deliberately queues handlers behind one main-thread lock. The option turns such
+    /// a write into a plain `EPIPE`, which `sendAll` already treats as "stop writing" — but only
+    /// where the option actually landed: `setsockopt` fails with `EINVAL` on a peer that already
+    /// reset, which is why `sendAll` passes `MSG_NOSIGNAL` on every write and this option is the
+    /// backstop, not the guarantee. The timeouts then bound the two blocking calls a handler makes,
+    /// so a peer that vanishes without closing cannot hold a connection slot for ever.
     ///
     /// Internal rather than private so a test can read the options back off a socket it owns, which
     /// is the only way to assert the timeouts landed at all.
@@ -387,13 +391,15 @@ final class HTTPServer {
     /// client is still reading toward the truncated reply's own declared `Content-Length`. Not
     /// `@discardableResult`, for the same reason as `writeResponse`: both its own callers use the
     /// result (the `&&` in `writeResponse`), so nothing here should ever need to silence the check.
-    private func sendAll(_ fd: Int32, _ data: Data) -> Bool {
+    /// Internal rather than private so a test can write to a socket whose peer is already gone.
+    func sendAll(_ fd: Int32, _ data: Data) -> Bool {
         guard !data.isEmpty else { return true }
         return data.withUnsafeBytes { ptr in
             guard var base = ptr.baseAddress else { return false }
             var remaining = data.count
             while remaining > 0 {
-                let n = send(fd, base, remaining, 0)
+                // MSG_NOSIGNAL too: `configureConnection` says why SO_NOSIGPIPE alone is not enough.
+                let n = send(fd, base, remaining, MSG_NOSIGNAL)
                 if n <= 0 { return false }
                 base += n
                 remaining -= n
