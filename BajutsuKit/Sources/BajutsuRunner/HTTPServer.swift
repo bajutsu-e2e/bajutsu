@@ -389,7 +389,8 @@ final class HTTPServer {
     /// client is still reading toward the truncated reply's own declared `Content-Length`. Not
     /// `@discardableResult`, for the same reason as `writeResponse`: both its own callers use the
     /// result (the `&&` in `writeResponse`), so nothing here should ever need to silence the check.
-    private func sendAll(_ fd: Int32, _ data: Data) -> Bool {
+    /// Internal rather than private so a test can write to a socket whose peer is already gone.
+    func sendAll(_ fd: Int32, _ data: Data) -> Bool {
         guard !data.isEmpty else { return true }
         return data.withUnsafeBytes { ptr in
             guard var base = ptr.baseAddress else { return false }

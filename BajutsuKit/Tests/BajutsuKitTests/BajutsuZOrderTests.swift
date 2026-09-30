@@ -50,23 +50,19 @@ final class BajutsuZOrderTests: XCTestCase {
         XCTAssertEqual(status(port: port, token: "secret", path: "/elements"), 404)
     }
 
-    func testAPeerThatResetsBeforeTheReplyDoesNotKillTheProcess() throws {
-        let port = try freePort()
-        BajutsuZOrder.startIfEnabled(
-            environment: ["BAJUTSU_ZORDER_PORT": String(port), "BAJUTSU_ZORDER_TOKEN": "secret"])
-        // An abortive close (linger 0) resets the connection, so the responder's 400 reply is
-        // written to a dead peer. That reset can land before the accept loop sets SO_NOSIGPIPE,
-        // which then fails with EINVAL, so the write raises SIGPIPE and ends this test process
-        // unless the send itself passes MSG_NOSIGNAL. The reset wins that race only on some
-        // attempts, so the test makes twenty. The responder serves one connection at a time, so
-        // the next answer proves every reset one was already handled.
-        for _ in 0..<20 {
-            let fd = try connect(port: port)
-            var linger = Darwin.linger(l_onoff: 1, l_linger: 0)
-            setsockopt(fd, SOL_SOCKET, SO_LINGER, &linger, socklen_t(MemoryLayout<Darwin.linger>.size))
-            close(fd)
-        }
-        XCTAssertEqual(status(port: port, token: "secret"), 200)
+    /// A reply to a peer that already hung up must not raise SIGPIPE, even on a socket that never
+    /// got `SO_NOSIGPIPE` — the accept loop's `setsockopt` fails (EINVAL) on a peer that reset
+    /// before it, so only the send's own `MSG_NOSIGNAL` covers that socket. Writing straight to a
+    /// socket pair whose other end is closed reaches that path on every run rather than on the
+    /// attempts where a reset wins a race. Without the flag this test does not fail — it kills the
+    /// test process.
+    func testAReplyToAClosedPeerDoesNotRaiseSigpipe() throws {
+        var fds: [Int32] = [-1, -1]
+        try XCTSkipIf(socketpair(AF_UNIX, SOCK_STREAM, 0, &fds) != 0, "no socket pair available")
+        close(fds[1])
+        defer { close(fds[0]) }
+
+        _ZOrderServer._sendAll(fds[0], Data("HTTP/1.1 400 Bad Request\r\n\r\n".utf8))
     }
 
     // MARK: - Helpers
@@ -84,29 +80,6 @@ final class BajutsuZOrderTests: XCTestCase {
         }.resume()
         wait(for: [done], timeout: 10)
         return code
-    }
-
-    private struct ConnectFailed: Error { let port: UInt16 }
-
-    /// A raw loopback connection to *port*, for peers `URLSession` will not impersonate.
-    private func connect(port: UInt16) throws -> Int32 {
-        let fd = socket(AF_INET, SOCK_STREAM, 0)
-        try XCTSkipIf(fd < 0, "no socket available")
-        var addr = sockaddr_in()
-        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-        addr.sin_family = sa_family_t(AF_INET)
-        addr.sin_port = port.bigEndian
-        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
-        let connected = withUnsafePointer(to: &addr) { ptr in
-            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
-            }
-        }
-        guard connected == 0 else {
-            close(fd)
-            throw ConnectFailed(port: port)
-        }
-        return fd
     }
 
     /// An ephemeral loopback port, closed again so the responder can bind it.

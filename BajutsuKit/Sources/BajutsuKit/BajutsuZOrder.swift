@@ -111,7 +111,8 @@ public enum BajutsuZOrder {
 
 // MARK: - Minimal HTTP server
 
-private final class _ZOrderServer {
+// Internal rather than private only so a test can call `_sendAll` on a socket it owns.
+final class _ZOrderServer {
     private var listenFD: Int32 = -1
     private let lock = NSLock()
     private let queue = DispatchQueue(label: "bajutsu.zorder.responder")
@@ -187,10 +188,13 @@ private final class _ZOrderServer {
             // between apps, so a connection here is not necessarily bajutsu's own driver.
             var timeout = timeval(tv_sec: 2, tv_usec: 0)
             setsockopt(clientFD, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
-            // Without this, writing a reply to a peer that has already hung up raises SIGPIPE,
-            // whose default action terminates the whole app under test — not this responder —
-            // over a diagnostic write. A client racing this responder's own 2s main-thread
-            // deadline (`_handleZOrder`) with its own timeout is the realistic way that happens.
+            // Defense in depth beside `_sendAll`'s `MSG_NOSIGNAL`: writing a reply to a peer that
+            // has already hung up raises SIGPIPE, whose default action terminates the whole app
+            // under test — not this responder — over a diagnostic write. This option cannot be the
+            // only guard, since it fails (EINVAL) on a peer that reset before this line, which is
+            // why the send carries the flag itself; where it does land it also covers a future
+            // write that forgets it. A client racing this responder's own 2s main-thread deadline
+            // (`_handleZOrder`) with its own timeout is the realistic way that happens.
             var noSigPipe: Int32 = 1
             setsockopt(clientFD, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
             _handleConnection(clientFD)
@@ -275,11 +279,11 @@ private final class _ZOrderServer {
         header += "Content-Type: application/json\r\n"
         header += "Content-Length: \(data.count)\r\n"
         header += "Connection: close\r\n\r\n"
-        _sendAll(fd, Data(header.utf8))
-        _sendAll(fd, data)
+        Self._sendAll(fd, Data(header.utf8))
+        Self._sendAll(fd, data)
     }
 
-    private func _sendAll(_ fd: Int32, _ data: Data) {
+    static func _sendAll(_ fd: Int32, _ data: Data) {
         data.withUnsafeBytes { ptr in
             guard var base = ptr.baseAddress else { return }
             var remaining = data.count

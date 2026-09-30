@@ -94,29 +94,22 @@ final class HTTPServerResilienceTests: XCTestCase {
         )
     }
 
-    /// A peer that resets before the accept loop configures its socket used to kill the process.
-    /// `setsockopt(SO_NOSIGPIPE)` fails with `EINVAL` on an already-reset connection, so the option
-    /// never lands on exactly the socket whose reply raises `SIGPIPE`; only `MSG_NOSIGNAL` on the
-    /// `send` itself covers it. The partial request line is what earns a reply at all: a peer that
-    /// sent nothing reads as a closed keep-alive connection and is never answered. Whether the reset
-    /// beats `configureConnection` is a race the accept loop usually wins, so the test makes two
-    /// hundred attempts. Handlers run concurrently, so the final `/health` shows the server is still
-    /// serving rather than that every reset connection has drained. Without the fix this test does
-    /// not fail — it kills the test process.
-    func testAPeerThatResetsBeforeTheReplyDoesNotKillTheProcess() throws {
-        let server = HTTPServer { _ in .json(200, ["status": "ready"]) }
-        let port = try server.start()
-        defer { server.stop() }
+    /// A reply to a peer that already hung up must not raise `SIGPIPE`, even on a socket that never
+    /// got `SO_NOSIGPIPE`: `configureConnection`'s `setsockopt` fails with `EINVAL` on a peer that
+    /// reset before the accept loop reached it, so only `MSG_NOSIGNAL` on the `send` itself covers
+    /// that socket. Writing straight to a socket pair whose other end is closed reaches that path on
+    /// every run rather than on the attempts where a reset wins a race. Without the flag this test
+    /// does not fail — it kills the test process.
+    func testAReplyToAClosedPeerDoesNotRaiseSigpipe() throws {
+        let server = HTTPServer { _ in .json(200, [:]) }
+        var fds: [Int32] = [-1, -1]
+        try XCTSkipIf(socketpair(AF_UNIX, SOCK_STREAM, 0, &fds) != 0, "no socket pair available")
+        close(fds[1])
+        defer { close(fds[0]) }
 
-        for _ in 0..<200 {
-            let fd = try Self.connect(port: port)
-            Self.write(fd, "GET /health")
-            Self.resetAndClose(fd)
-        }
-
-        XCTAssertEqual(
-            Self.get(port: port, path: "/health"), 200,
-            "the server must keep serving after a peer reset before its reply"
+        XCTAssertFalse(
+            server.sendAll(fds[0], Data("HTTP/1.1 200 OK\r\n\r\n".utf8)),
+            "a write to a departed peer must report failure rather than signal"
         )
     }
 
