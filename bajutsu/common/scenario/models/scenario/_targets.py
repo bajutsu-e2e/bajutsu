@@ -157,19 +157,61 @@ def _check_target(
 
 
 def _check_primary_target(scenario: Scenario) -> None:
-    # Pinned to `targets[0]` rather than any declared target: `_lease_set` / `_target_runtimes`
-    # already treat that entry as the primary for leasing, crash recovery, and evidence context, so
-    # allowing another would let the file's "primary" and the runner's diverge silently (BE-0436).
+    # Pinned to the first declared name rather than any declared target: `_lease_set` /
+    # `_target_runtimes` already treat that entry as the primary for leasing, crash recovery, and
+    # evidence context, so allowing another would let the file's "primary" and the runner's diverge
+    # silently (BE-0436). Under a device group that name is the first member of the first group
+    # (BE-0447).
     primary = scenario.primary_target
     if primary is None:
         return
-    if not scenario.targets:
+    names = scenario.target_names
+    if not names:
         raise ValueError("primaryTarget is set but the scenario declares no targets")
-    if primary != scenario.targets[0]:
+    if primary != names[0]:
         raise ValueError(
-            f"primaryTarget {primary!r} must be the first entry of targets "
-            f"({scenario.targets[0]!r})"
+            f"primaryTarget {primary!r} must be the first entry of targets ({names[0]!r})"
         )
+
+
+def _repeated(names: list[str]) -> list[str]:
+    return sorted({n for n in names if names.count(n) > 1})
+
+
+def _check_device_groups(scenario: Scenario) -> None:
+    """Enforce the device-group and `installs` rules a scenario alone can decide (BE-0447).
+
+    A name appears once across every group, and an array holds two or more names, since a
+    one-name array adds nothing over a bare name. Every `installs` entry is a declared name. A
+    group of two or more that does not hold the primary lists at least one member in `installs`:
+    with no primary to anchor it, which member starts on the device must never be implicit.
+    Whether a group's members can actually share one device needs the config, so run preflight
+    checks that instead.
+    """
+    groups = scenario.device_groups
+    names = scenario.target_names
+    if dupes := _repeated(names):
+        raise ValueError(f"targets contains a duplicate name {dupes}: {scenario.targets}")
+    for group in scenario.targets:
+        if isinstance(group, list) and len(group) < 2:
+            raise ValueError(
+                f"targets group {group} holds fewer than two names — write a single target as a "
+                "bare name, not an array"
+            )
+    unknown = [name for name in scenario.installs if name not in names]
+    if unknown:
+        raise ValueError(
+            f"installs names {unknown}, which are not among the scenario's declared targets {names}"
+        )
+    if dupes := _repeated(scenario.installs):
+        raise ValueError(f"installs contains a duplicate name {dupes}: {scenario.installs}")
+    listed = set(scenario.installs)
+    for group in groups[1:]:
+        if len(group) >= 2 and not listed.intersection(group):
+            raise ValueError(
+                f"targets group {group} names none of its members in installs — list the member "
+                "that starts on the device, so the others install only through installApp"
+            )
 
 
 def _check_step_target(
@@ -244,7 +286,7 @@ def _reject_assertion_target(a: Assertion, *, context: str) -> None:
 # The count folds in the nested `walk_steps` recursion, which needs this scope's `known` and
 # `default`; the outer body itself is a flat pass over the scenario's step lists (BE-0386).
 def _check_target_requirements(scenario: Scenario) -> None:  # noqa: C901
-    """Enforce `target`'s requirement against `len(scenario.targets)`, recursively.
+    """Enforce `target`'s requirement against the number of declared target names, recursively.
 
     Zero or one declared targets: every step's/assertion's `target` must be omitted, or must name
     that one target. Two or more: every step — including an `if` / `forEach` / `web` / `app`
@@ -264,17 +306,18 @@ def _check_target_requirements(scenario: Scenario) -> None:  # noqa: C901
     (BE-0446). A `group:` step's own `steps` are walked with its `target` as their caller: a
     child omitting `target` needs none of its own, and one naming a different target is refused.
 
-    A scenario that sets `primaryTarget` (which must be `targets[0]`) lifts the two-or-more
-    requirement (BE-0436): a step or top-level `expect` entry that omits `target` runs against the
-    primary. A step records that on its private `resolved_target`, never on `target` itself, so a
+    A scenario that sets `primaryTarget` (which must be the first declared name) lifts the
+    two-or-more requirement (BE-0436): a step or top-level `expect` entry that omits `target` runs
+    against the primary. A step records that on its private `resolved_target`, never on `target` itself, so a
     re-serialized step stays as terse as its author wrote it. The resolution is flat — a nested
     `if` / `forEach` step that omits `target` resolves to the primary, never to its wrapper's own.
     This fallback never reaches an `interrupts` recovery step, which resolves through its own
     entry instead (the paragraph above), whether or not `primaryTarget` is set.
     """
-    known = set(scenario.targets)
-    if len(known) != len(scenario.targets):
-        raise ValueError(f"targets contains a duplicate name: {scenario.targets}")
+    # Routing sees the flattened names: a device group changes which device a member runs on,
+    # never which names a step may address (BE-0447).
+    known = set(scenario.target_names)
+    _check_device_groups(scenario)
     _check_primary_target(scenario)
     default = scenario.primary_target
 
@@ -338,4 +381,16 @@ def _scenarios_declaring_targets(scenarios: list[Scenario]) -> list[str]:
     running (or emitting) every step against it regardless of which target each step actually
     declared.
     """
-    return sorted({s.name for s in scenarios if len(s.targets) >= 2})
+    return sorted({s.name for s in scenarios if len(s.target_names) >= 2})
+
+
+def _scenarios_with_device_groups(scenarios: list[Scenario]) -> list[str]:
+    """The names of every scenario in *scenarios* declaring a device group of two or more (BE-0447).
+
+    A device group gives its members one device, and only the members `installs` names start on it.
+    The runner cannot yet lease one device per group or hold a later member back until its
+    `installApp`, so a flattened run would lease a device per member and launch every one of them
+    at the start: the opposite of what the scenario says. Until the lease-and-lifecycle unit lands,
+    `run_all` refuses a scenario this names rather than running it that way.
+    """
+    return sorted({s.name for s in scenarios if any(len(g) >= 2 for g in s.device_groups)})

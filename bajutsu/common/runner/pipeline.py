@@ -83,6 +83,7 @@ from bajutsu.common.scenario import (
     _check_target_requirements,
     _expand_target_groups,
     _scenarios_declaring_targets,
+    _scenarios_with_device_groups,
     dump_scenario_file,
     redact_totp_secrets,
 )
@@ -322,7 +323,7 @@ class _ScenarioRunner:
         that one target, so the run's own `eff` and `lease` are the right ones. `run_all` refuses
         the two-or-more case outright rather than letting it reach here.
         """
-        return list(s.targets) if s.targets and self.targets else []
+        return list(s.target_names) if s.target_names and self.targets else []
 
     def _preflight_targets(self, s: Scenario) -> str | None:
         """Why one declared target cannot run the steps routed to it, or None (BE-0428).
@@ -1317,7 +1318,7 @@ class _ScenarioRunner:
                         device_name=target_lz.device_name,
                         device_runtime=target_lz.device_runtime,
                     )
-                    for name, target_lz in {s.targets[0]: lz, **others}.items()
+                    for name, target_lz in {s.target_names[0]: lz, **others}.items()
                 }
             else:
                 result.device = lz.udid  # attribute the scenario to the device that ran it
@@ -1502,7 +1503,7 @@ def _hooks_for(
         return list(eff.run_defaults.before), list(eff.run_defaults.after)
     before: list[Step] = []
     after: list[AfterRule] = []
-    for name in s.targets:
+    for name in s.target_names:
         target_eff = (target_effs or {}).get(name, eff)
         before += [_stamped(h, name) for h in target_eff.run_defaults.before]
         after += [
@@ -1710,6 +1711,14 @@ def run_all(
     # the resolver win and discarding the fixed actuator/caps (prime directive 2).
     if actuator is not None and resolve_actuator is not None:
         raise ValueError("pass either actuator or resolve_actuator to run_all, not both")
+    # A device group needs one lease per group and a later member held back until its `installApp`
+    # (BE-0447), which the lease path does not do yet, so refuse rather than lease a device per
+    # member. Checked ahead of the per-target guard below, since it names the more specific cause.
+    if affected := _scenarios_with_device_groups(scenarios):
+        raise ValueError(
+            "device groups in targets: are not yet implemented (BE-0447); "
+            f"affected scenario(s): {', '.join(affected)}"
+        )
     # A scenario declaring two or more `targets` needs one launched driver per declared name to
     # route its steps (BE-0428), which only a caller that resolved and pooled them can supply. A
     # caller that passes no `targets` map — `audit`, or a test driving one

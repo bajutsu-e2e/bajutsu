@@ -157,7 +157,7 @@ def _repeat_audit(
     # [ios]` would pass every check (a lone declared target's steps are always valid against it)
     # and silently run the whole repeat-and-diff against the wrong platform (BE-0428) — the same
     # membership check `run`'s CLI applies to an explicit `--target`.
-    mismatched = [s.name for s in scenarios if s.targets and s.targets != [target_name]]
+    mismatched = [s.name for s in scenarios if s.target_names and s.target_names != [target_name]]
     if mismatched:
         typer.echo(
             f"--target '{target_name}' is not one of the declared targets for scenario(s): "
