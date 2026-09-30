@@ -15,10 +15,10 @@
 ## Introduction
 
 A Bajutsu target is one app plus the settings that drive it, and a scenario gives each target it
-declares its own device. This item adds three constructs to the scenario. A nested array in
+declares its own device. This item adds four constructs to the scenario. A nested array in
 `targets` lists targets that share one device. An `installs` key names which of them install
-before the first step. An `install` step installs the others later, at the point where the journey
-needs them. Two journeys become expressible that are not today: a companion app, such as a
+before the first step. An `installApp` step installs the others later, at the point where the journey
+needs them, and a `setPrimaryTarget` step moves the default target to the member it brought up. Two journeys become expressible that are not today: a companion app, such as a
 multi-factor authentication (MFA) app that shares the device with the app under test, and an app
 update, where an old build creates data and a new build is installed over it. The config schema does
 not change, so every existing config and scenario keeps working unchanged.
@@ -105,7 +105,7 @@ keeps the grammar above.
 | A group of one member (a bare name) | The member installs at the start, as today. Listing it is optional. |
 | A group of two or more members | The scenario must list at least one member. A group with none listed fails to load, so the choice is never implicit. |
 | A listed member | Installs its `appPath` before the first step and launches at the start, like any declared target. |
-| A member left out | The later member: it installs and launches nothing at the start. It comes alive through an `install` step and a `foreground` step, below. |
+| A member left out | The later member: it installs and launches nothing at the start. It comes alive through an `installApp` step and a `foreground` step, below. |
 
 Every name in `installs` is a member of `targets`. Members listed for one group must not share
 a bundle identifier or package, since installing both would leave one build on the device. That check
@@ -124,11 +124,10 @@ An update scenario starts on the old build and holds the new one back:
   steps:
     - tap: { id: notes.add }
     - type: { text: hello, into: { id: notes.field } }
-    - install: { from: showcase }
-    - target: showcase
-      foreground: {}
-    - target: showcase
-      assert:
+    - installApp: { from: showcase }
+    - setPrimaryTarget: { target: showcase }
+    - foreground: {}                 # the omitted target is now showcase
+    - assert:
         - exists: { id: notes.item, label: hello }
 ```
 
@@ -160,19 +159,19 @@ member: booting, the erase, the system locale pin, and seeded photos. It uses th
 preconditions. Each member then takes a per-member path that only installs, attaches its driver, and
 launches. That path never repeats `erase`, and it never applies `reinstall: clean` to an app it did
 not install itself. A listed member's install at the start follows `reinstall` for that member. A
-later member's `foreground` never uninstalls or clears the build an `install` step just put there. In
+later member's `foreground` never uninstalls or clears the build an `installApp` step just put there. In
 a companion group with `erase: true`, the device is wiped once before any member installs, so the
 second listed member does not wipe the first.
 
-### The `install` step
+### The `installApp` step
 
 | Step | Meaning |
 |---|---|
-| `install: { from: <target>, keepData?: boolean }` | Installs the build of the group member `from` onto the device the step runs against. The step's own `target` modifier picks the device through its group, and an omitted one means the primary. `keepData` defaults to `true`: the build installs over an existing one and the data container survives. `false` uninstalls the same identifier first. |
+| `installApp: { from: <target>, keepData?: boolean }` | Installs the build of the group member `from` onto the device the step runs against. The step's own `target` modifier picks the device through its group, and an omitted one means the primary. `keepData` defaults to `true`: the build installs over an existing one and the data container survives. `false` uninstalls the same identifier first. |
 
 `from` names a member of the same group as the step's target. The scenario model checks that from the
 scenario alone, since `targets` and the routing rule already live there, so the reader sees every
-build a scenario can install in its header. An `install` step is refused inside a `web:` or `app:`
+build a scenario can install in its header. An `installApp` step is refused inside a `web:` or `app:`
 block. In an `interrupts` entry's recovery steps, an omitted `target` resolves the group through the
 entry's own `target`, or the primary when the entry omits one. `run` preflight checks the rest against the config: the
 target defines an `appPath` that exists, it is not a web target, and on a Git-sourced config the
@@ -183,8 +182,40 @@ The step terminates any running app with `from`'s identifier, installs the build
 launch to the scenario. A `foreground` step for the member follows, as in the examples. When `from`
 shares an identifier with a member that already runs, the install replaces that member's app, so the
 older member is retired: a step addressed to it afterwards fails with a named cause instead of
-reaching the new build. A step other than `install` or `foreground` that is addressed to a later member before that
-member's `install` and `foreground` fails the same way, saying the member is not installed yet.
+reaching the new build. A step other than `installApp`, `foreground`, or `setPrimaryTarget` that is addressed to a later member before that
+member's `installApp` and `foreground` fails the same way, saying the member is not installed yet.
+
+### Moving the default target: `setPrimaryTarget`
+
+| Step | Meaning |
+|---|---|
+| `setPrimaryTarget: { target: <target> }` | From this step on, a step, an `interrupts` entry, or a top-level `expect` entry that omits `target` resolves to the named target. |
+
+After an update, the declared primary is the retired member, so without this step every later step, assertion, and
+interrupt would name the installed member. The step changes routing only. `target` names any declared
+target. The first member of the first group still governs leasing, evidence directories, and crash
+recovery, since those are fixed at the start (BE-0428). Each member keeps its own config, driver, and
+environment, so nothing is swapped mid-run: the step moves the default to a member whose `launchEnv`,
+`locale`, `ready_when`, and baselines already applied to the steps that named it.
+
+The step is allowed only among a scenario's top-level `steps`, never inside `if`, `forEach`, `group`,
+`web:`, `app:`, or an `interrupts` entry. That lets the scenario model follow the current primary in
+order and check every later omitted `target` and every `installApp.from` statically. Like `installApp` and
+`foreground`, the step is exempt from the not-installed rule, so it can precede the member's
+`foreground`. A top-level `expect` entry that omits `target` resolves to the primary in force after the
+last step.
+
+### Using these steps inside components
+
+`use:` and `group:` expand at load time, and expansion stamps the caller's `target` onto expanded
+steps that omit one (BE-0446). Three rules keep the new steps consistent with that. `setPrimaryTarget`
+takes its target as an argument, not as the step modifier, so expansion never stamps it, and the
+loader rejects a modifier `target` on it. The top-level-only rule for `setPrimaryTarget` is judged
+after expansion: a component's `setPrimaryTarget` is valid when the `use:` or `group:` that calls it
+is itself among the top-level `steps`, and refused when the call sits inside `if` or `forEach`. An
+`installApp` inside a component names `from` and leaves the device to the step's `target`, stamped or
+resolved like any expanded step. Whether `from` belongs to that target's group is checked after
+expansion, at the call site, and the error names the component chain and the step.
 
 ### Switching between apps on one device
 
@@ -200,7 +231,7 @@ capability preflight gates `background` and `foreground` under one token,
 adb backend advertises `foreground` alone.
 
 `foreground` also gains a second behavior on both platforms. When it launches an app that was not
-running, as after an `install`, it performs `relaunch`'s launch without the terminate: the same
+running, as after an `installApp`, it performs `relaunch`'s launch without the terminate: the same
 launch environment and arguments (config, scenario preconditions, locale, and the environment's own
 extra environment such as the collector URL), the same launch-marker stamp for crash attribution
 (BE-0424), the readiness wait, and, on Android, the settle-cache and exit-info resets. When the app
@@ -222,7 +253,7 @@ by that record. The device check covers members with distinct identifiers.
 
 | Backend | Behavior |
 |---|---|
-| XCUITest (iOS Simulator) | `simctl install` over the existing bundle keeps the data container, which `reinstall: overwrite` already relies on (`xcuitest_environment.py:974`). Digest skipping stays a precondition optimization and never applies to the step, since the step is explicit. An `install` step resets the tracked digest on every member's environment on that device, not only on the member it installed, since each member tracks device-scoped state of its own. A later `reinstall: overwrite` precondition therefore never skips installing over a build the step put there. |
+| XCUITest (iOS Simulator) | `simctl install` over the existing bundle keeps the data container, which `reinstall: overwrite` already relies on (`xcuitest_environment.py:974`). Digest skipping stays a precondition optimization and never applies to the step, since the step is explicit. An `installApp` step resets the tracked digest on every member's environment on that device, not only on the member it installed, since each member tracks device-scoped state of its own. A later `reinstall: overwrite` precondition therefore never skips installing over a build the step put there. |
 | Android (adb) | `adb install -r` keeps app data. Going to an older build fails on Android, so a downgrade needs `keepData: false`, and the environment names that cause in the error. |
 | Web | Rejected before any device is leased, through the capability check each target's steps already pass. |
 | Device-cloud lease that hands over an installed build | Rejected with a named cause, since the provider holds the binary and the local path does not exist (BE-0236). |
@@ -243,17 +274,16 @@ above stays the same in both cases, and only the lifecycle inside a group change
 The same check covers four more facts: that the new Android `foreground` brings a member's app to the
 front, how each platform reports which app is in front (the driver check above depends on it), how
 `foreground` tells a not-running app from a backgrounded one, and when a later member's driver starts
-(at its first `foreground` after the `install`, if the two-driver case holds). It also confirms that a companion group with `erase: true` keeps both apps, and that data
-survives an `install` followed by `foreground`.
+(at its first `foreground` after the `installApp`, if the two-driver case holds). It also confirms that a companion group with `erase: true` keeps both apps, and that data
+survives an `installApp` followed by `foreground`.
 
 ### Scope
 
-This item does not switch the scenario's primary target when an `install` step replaces the build.
-After an update, the steps that omit `target` still resolve to the primary the scenario declared, so
-that target's `launchEnv`, `locale`, `ready_when`, `interrupts`, baselines, and report label stay in
-force. When the `install` replaced the primary's own build, the primary is the retired member, so
-every step after that install, and every `interrupts` entry that omits `target`, must name the
-installed member, as the update example does. It does
+An `installApp` step never moves the primary by itself. The scenario says so with `setPrimaryTarget`, so
+the point where routing changes is a line the reader can see. Until then, steps that omit `target`
+resolve to the primary the scenario declared, and when the `installApp` replaced that primary's own build,
+the primary is the retired member. A step after the install therefore either names the installed member
+or follows a `setPrimaryTarget`. It does
 not add an Android downgrade path beyond `keepData: false`. It does not remove or rename any config
 field, and it does not change the `app:` block. The step never chooses a verdict, so the
 deterministic gate is untouched.
@@ -261,9 +291,9 @@ deterministic gate is untouched.
 ### Work breakdown
 
 1. Scenario model: the nested `targets` form, `installs`, their rules, and the flattening accessor every reader of `targets` moves to.
-2. Lease and lifecycle: one device per group, the device count per backend, one device-wide preparation per group, each listed member's environment started on the shared device by a path that repeats no destructive precondition, and a later member's environment started at its first `foreground`. This unit opens with the on-device checks above.
-3. Scenario model: the `install` step's shape, and its check that `from` is a member of the step target's group, including its placement rules inside `web:`/`app:` and `interrupts`.
-4. Run preflight: check each `install.from` target against the config (its `appPath` exists, building it where the run already builds one), refuse listed members of one group that share an identifier, and refuse a group whose members differ in backend platform, device route, or system locale.
+2. Lease and lifecycle: one device per group, the device count per backend, one device-wide preparation per group, each listed member's environment started on the shared device by a path that repeats no destructive precondition, a later member's environment started at its first `foreground`, and the current primary that `setPrimaryTarget` moves at run time. This unit opens with the on-device checks above.
+3. Scenario model: the `installApp` step's shape, and its check that `from` is a member of the step target's group, including its placement rules inside `web:`/`app:` and `interrupts`, and the `setPrimaryTarget` step, with its top-level-only placement and the in-order tracking of the current primary, and how both steps behave when a component or group expands them.
+4. Run preflight: check each `installApp.from` target against the config (its `appPath` exists, building it where the run already builds one), refuse listed members of one group that share an identifier, and refuse a group whose members differ in backend platform, device route, or system locale.
 5. XCUITest environment and driver: the install action, the digest reset, the terminate, `foreground`'s launch, readiness wait, and launch marker, built beside the relauncher that already holds the effective config, scenario, and driver, and the front-app check in `xcuitest_driver`.
 6. Android environment and driver: the install action with the downgrade error, `foreground`'s launch, readiness wait, and launch marker built beside the relauncher, the front-app check in `adb_driver`, and the split of `deviceControl.appLifecycle`.
 7. Backend handling: web and device-cloud rejection, and the code-generation marker.
@@ -282,7 +312,8 @@ deterministic gate is untouched.
 | `installApp: { path }` with the path written in the step | The scenario would carry a build artifact path. That leaks a per-app detail into the scenario, breaks on another machine, and violates the app-agnostic principle. |
 | Two scenarios run in sequence with `reinstall: overwrite` | No DSL change, but the journey splits in two, the run order becomes an unwritten contract, and a failure no longer reads as one journey. |
 | List both builds in a group and install both at the start | The second install overwrites the first, so the scenario could never begin on the old build. `installs` holds the new build back, and preflight refuses two listed members with one identifier. |
-| Let `install` switch the primary target to the installed member, explicitly or when the identifiers match | Would let the updated build run under its own config and label with no `target` on later steps. It needs the runner to swap the effective config mid-run (`interrupts`, `ready_when`, `redact`, evidence directories), which breaks BE-0428's rule that targets are fixed at the start. The data-migration check does not need it, so it waits for a scenario that does. |
+| Name the installed member on every step after an update | Correct, but every later step, assertion, and interrupt repeats the same name, and a forgotten one resolves to the retired member and fails. |
+| Let `installApp` switch the primary target by itself, explicitly (`becomes: primary`) or when the identifiers match | Hides the point where routing changes inside a step that reads as an install, and an identifier match cannot express a companion. A separate `setPrimaryTarget` step names the switch on its own line, and needs no mid-run config swap because each member already owns its config, driver, and environment. |
 
 ## Progress
 
@@ -292,7 +323,7 @@ deterministic gate is untouched.
 
 - [ ] Unit 1: nested `targets` form, `installs`, and flattening accessor
 - [ ] Unit 2: device-group lease and lifecycle, after the on-device checks
-- [ ] Unit 3: `install` step shape and group-membership check
+- [ ] Unit 3: `installApp` and `setPrimaryTarget` steps
 - [ ] Unit 4: run preflight and validation
 - [ ] Unit 5: XCUITest environment and driver
 - [ ] Unit 6: Android environment, driver, and `foreground`
