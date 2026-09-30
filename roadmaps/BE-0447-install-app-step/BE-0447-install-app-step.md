@@ -562,15 +562,16 @@ so the deterministic gate stays untouched.
 
 Log:
 
-- [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) — Unit 1. `Scenario.targets` accepts a device group, an array of two or more names, beside a bare
-  name, and a new `installs` key names the members that start with the primary. The scenario
-  model refuses a name repeated across groups, an array of fewer than two names, a `primaryTarget`
-  other than the first member of the first group, an `installs` entry that is not a declared name,
-  an `installs` entry repeated, and a group the primary does not anchor that lists none of its members. Two accessors,
-  `device_groups` and `target_names`, replace direct reads of `targets` in the runner pipeline,
-  the `run` and `audit` CLIs, and the serve evidence lookup. Until unit 2 leases one device per
-  group, `run_all` and the `run` CLI refuse a scenario that declares a device group, since a
-  flattened run would lease a device per member and start every one of them.
+- [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) — Unit 1. `Scenario.targets` now accepts a
+  device group (an array of two or more names) alongside a bare name, and a new `installs` key
+  names the members that start with the primary. The scenario model refuses six things: a name
+  repeated anywhere in `targets`, an array of fewer than two names, a `primaryTarget` that is not
+  the first member of the first group, an `installs` entry naming no declared target, a repeated
+  `installs` entry, and a group outside the primary's that lists none of its own members. Two
+  accessors, `device_groups` and `target_names`, replace direct reads of `targets` in the runner
+  pipeline, the `run` and `audit` CLIs, and the serve evidence lookup. Until unit 2 leases one
+  device per group, `run_all` and the `run` CLI refuse a scenario that declares a device group,
+  since a flattened run would lease a device per member and start every one of them.
 
 ## References
 
