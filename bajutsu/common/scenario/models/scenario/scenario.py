@@ -59,8 +59,10 @@ class Scenario(_Model):
     # (the default) is today's single-target scenario, resolved entirely from the CLI's `--target` —
     # a per-step `target` is then optional and, if set, must name that one target. An element may
     # also be an array of two or more names, a device group whose members share one device
-    # (BE-0447); a bare name is a group of one. Code that needs the names alone reads
-    # `target_names`, never this field, since an element may be a list.
+    # (BE-0447); a bare name is a group of one. Inside a group, only the primary and the members
+    # `installs` lists launch before the first step; the others wait for an `installApp` step, so
+    # the launch-everything rule above holds for a bare name alone. Code that needs the names alone
+    # reads `target_names`, never this field, since an element may be a list.
     targets: list[str | list[str]] = Field(default_factory=list)
     # The target a step or top-level `expect` entry runs against when it omits `target` under two
     # or more declared `targets` (BE-0436). Pinned to the first member of the first group, the entry

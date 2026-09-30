@@ -569,9 +569,10 @@ def _reject_cross_browser_matrix_with_targets(
 def _reject_device_groups(scenarios: list[Scenario]) -> None:
     """Refuse a scenario declaring a device group of two or more, with a clean exit 2 (BE-0447).
 
-    `run_all` refuses the same scenarios with a bare `ValueError`, well after every device was
-    already leased; this catches them before any device work, the way every other multi-target
-    refusal here does.
+    `run_all` refuses the same scenarios too, before its own lease callback, but only after this
+    command has already acquired its device pools and would surface a bare `ValueError`; this
+    catches them before any device work, with the clean exit 2 every other multi-target refusal
+    here gives.
     """
     affected = _scenarios_with_device_groups(scenarios)
     if affected:
