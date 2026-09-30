@@ -43,6 +43,26 @@ public enum BajutsuWebView {
         server = nil
     }
 
+    /// How long `_acceptLoop` waits before retrying `accept()` after it failed with *code*, or `nil`
+    /// when the failure is terminal and the loop must end.
+    ///
+    /// Only a failure of the listening socket itself (`stop()`'s `close` gives `EBADF`) may end the
+    /// loop; a per-connection one — a peer that reset while still queued gives `ECONNABORTED` — must
+    /// not leave the bridge deaf for the rest of the app's life. Same classification as the runner's
+    /// `HTTPServer.acceptRetryDelay`; internal so a test can enumerate it, since no test can reliably
+    /// provoke these failures against a real listening socket.
+    static func acceptRetryDelay(_ code: Int32) -> TimeInterval? {
+        switch code {
+        case EINTR, ECONNABORTED, EAGAIN, EPROTO:
+            return 0
+        // Transient exhaustion: retrying at once would spin against a condition only time relieves.
+        case EMFILE, ENFILE, ENOMEM, ENOBUFS:
+            return 0.05
+        default:
+            return nil
+        }
+    }
+
     // MARK: - JS
 
     /// The same page-walk JavaScript the Playwright backend uses (bajutsu/common/drivers/dom.py QUERY_JS).
@@ -225,19 +245,9 @@ private final class _BridgeServer {
                 }
             }
             if clientFD < 0 {
-                // Only a failure of the listening socket itself (`stop()`'s `close` gives EBADF) may
-                // end the loop; a per-connection one — a peer that reset while still queued gives
-                // ECONNABORTED — must not leave the bridge deaf for the rest of the app's life.
-                // Same classification as the runner's `HTTPServer.acceptRetryDelay`.
-                switch failure {
-                case EINTR, ECONNABORTED, EAGAIN, EPROTO:
-                    continue
-                case EMFILE, ENFILE, ENOMEM, ENOBUFS:
-                    Thread.sleep(forTimeInterval: 0.05)
-                    continue
-                default:
-                    return
-                }
+                guard let delay = BajutsuWebView.acceptRetryDelay(failure) else { return }
+                if delay > 0 { Thread.sleep(forTimeInterval: delay) }
+                continue
             }
             // A client gone silent must not wedge this single-threaded loop via an unbounded `recv`
             // in `_readRequest`: loopback is not isolated between apps, so a peer here is not

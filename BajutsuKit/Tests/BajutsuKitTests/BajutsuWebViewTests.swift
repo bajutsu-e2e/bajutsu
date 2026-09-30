@@ -26,6 +26,29 @@ final class BajutsuWebViewTests: XCTestCase {
         XCTAssertEqual(status(port: port), 200)
     }
 
+    func testPerConnectionAcceptFailuresRetryWhileListenerFailuresEndTheLoop() {
+        for code in [EINTR, ECONNABORTED, EAGAIN, EPROTO] {
+            XCTAssertEqual(
+                BajutsuWebView.acceptRetryDelay(code), 0,
+                "errno \(code) concerns one connection, so the loop must retry at once"
+            )
+        }
+        for code in [EMFILE, ENFILE, ENOMEM, ENOBUFS] {
+            guard let delay = BajutsuWebView.acceptRetryDelay(code) else {
+                XCTFail("errno \(code) is transient exhaustion, so the loop must keep going")
+                continue
+            }
+            XCTAssertGreaterThan(
+                delay, 0, "errno \(code) needs a pause, or the retry spins against the exhaustion"
+            )
+        }
+        XCTAssertNil(
+            BajutsuWebView.acceptRetryDelay(EBADF),
+            "a listening socket closed by stop() cannot serve again, so the loop must end"
+        )
+        XCTAssertNil(BajutsuWebView.acceptRetryDelay(EINVAL))
+    }
+
     func testAPeerThatResetsBeforeTheReplyDoesNotKillTheProcess() throws {
         let port = try start()
         // An abortive close (linger 0) resets the connection, so the bridge's 400 reply is written
