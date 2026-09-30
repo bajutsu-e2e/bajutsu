@@ -130,11 +130,10 @@ A request opts in with a `check` object, and a request without one behaves exact
 session whose identity names the repository in the verified OIDC `repository` claim. Serve writes
 the check run to that repository alone. A body field naming the repository would let one workflow
 write checks on another repository the App can reach. A human session carries no repository, so a
-human request with `check` is refused with 400. A request with `check` on a `cloudBatch` target is refused with 400 as well: a machine session exists only on a database-backed serve, and cloud-batch jobs do not yet run from its worker queue (`_run_batch_job` in `bajutsu/serve/jobs.py`).
+human request with `check` is refused with 400. A request with `check` on a `cloudBatch` target is refused with 400 as well: a machine session exists only on a database-backed serve, and cloud-batch jobs do not yet run from its worker queue (`_run_batch_job` in `bajutsu/serve/jobs.py`). A request with `check` on a SQLite-backed serve is refused with 400 too: SQLite takes no row lock, and Unit 4 takes its claim under one. The refusal sits in the dispatch handler alone; the state derivation and the sweep run on any dialect, which is how Unit 5 tests them on the SQLite gate.
 
 Serve records the set in a new `check_runs` table before any job registers. The row holds the org,
-the repository, the head SHA, the name, and the GitHub check run id. It also holds each member as a
-scenario name paired with its job id, still empty at this point. An Alembic revision under
+the repository, the head SHA, the name, and the GitHub check run id. It also holds each member as a scenario name paired with its job id, still empty at this point. The row carries the state the later units need as well: an open or closed flag, which is the predicate of the partial unique index; the state GitHub last confirmed; the time of the next attempt; a claim expiry (Unit 4); the count of consecutive client-error refusals, which survives a restart and resets on a success; a creation timestamp; and the time the dispatch last recorded a job id (Unit 3). An Alembic revision under
 `bajutsu/serve/server/migrations/versions/` creates the table.
 
 **A check-bearing set dispatches whole or not at all.** `start_run_set` stops part-way today when
@@ -176,8 +175,7 @@ Serve derives the check run's state from its members, and nothing else sets it:
 | every member's job finished, a job failed without a run | `completed` | `failure` |
 
 The first row that matches decides the state. A member not yet enqueued counts as unfinished. The enqueue loop runs within one dispatch request,
-so a member that still has no job id once its row is older than the lease timeout (120 seconds by
-default) means the control plane stopped part-way through that loop. Serve concludes the row as
+so a member that still has no job id once the dispatch has recorded no new job id for the lease timeout (120 seconds by default) means the control plane stopped part-way through that loop. The clock starts when the row is created and restarts each time the request records a job id, so a slow but healthy dispatch of a large set never trips it. Serve concludes the row as
 `failure` and names the unenqueued members in the summary. It neither re-enqueues them nor waits for
 them. The pipeline can dispatch the set again, and the 409 rule admits it once this row has
 concluded. Jobs already enqueued keep running, and their verdicts stay visible in the reports.
@@ -188,12 +186,12 @@ in `bajutsu/serve/operations/worker.py` records a failed scenario through `fail_
 the same `failed` status a reclaim past the cap writes, and which keeps only the error and drops the
 run id. This unit therefore keeps the worker's `runId` on a failed job's row, so serve finds each
 member's run and verdict from its job. The summary names that cause separately from a scenario failure, since each calls for a different
-fix. Every input to the table is a stored job status, a stored run verdict, or a row's age, so the
+fix. Every input to the table is a stored job status, a stored run verdict, or a stored timestamp (the row's creation or its last recorded job id), so the
 derivation is deterministic and involves no LLM.
 
 Serve stores no derived state. Each delivery derives the state afresh from the member jobs' stored
 rows, so a restart loses nothing that a later derivation cannot recover. One job transition needs a
-hook all the same: after `worker_result` commits a result, it claims that set's row directly, under the same row lock and without the general due-walk, and sends the row's state. Without it, a pool that drains after its last result, such as an on-demand Mac that exits once its queue empties, sees no further lease poll or heartbeat, and the `completed` update waits for the periodic task in Unit 4. One rule keeps the status from moving backward. A job that
+hook all the same: after `worker_result` commits a result, it claims that set's row directly, the same way a sweep claims a row and without the general due-walk, and sends the row's state. Without it, a pool that drains after its last result, such as an on-demand Mac that exits once its queue empties, sees no further lease poll or heartbeat, and the `completed` update waits for the periodic task in Unit 4. One rule keeps the status from moving backward. A job that
 `reclaim_expired_leases` returns to the queue would make a set derive `queued` again, so serve never
 sends a status earlier than the one GitHub last confirmed.
 
@@ -273,31 +271,26 @@ each token until shortly before its one-hour expiry.
 
 **Creation is synchronous and fails the request.** Serve creates the check run as `queued` during
 the dispatch request, after registering the whole set and before enqueuing any job. The GitHub
-response supplies the check run id, which the row stores. The creation call carries the same short timeout as every GitHub call in a sweep, so it returns well before the lease timeout lets a sweep delete a row with no check run id, and a sweep sends nothing for a row that has no check run id yet. When creation fails, serve releases the
+response supplies the check run id, which the row stores. The creation call carries the same short timeout as every GitHub call in a sweep, so it returns well before the lease timeout lets a sweep delete a row that has no check run id. A sweep sends nothing for such a row either. When creation fails, serve releases the
 registrations, deletes the row, and refuses the request with 502, so no job enters the queue. Every
 creation failure is refused this way, a transient GitHub error included, and the pipeline may retry.
 The two failures a pipeline most needs to see are misconfigurations — the App is not installed on
 the repository, or the permission is unapproved — and the 502 shows either one at once, instead of a
 PR whose required check never appears.
 
-**Updates reach GitHub in order, across restarts.** Every update is sent under the row lock, by one of two senders: a sweep that `lease_job` runs beside `reclaim_expired_leases` and that `heartbeat_job` runs after its lease renewal commits. The other is `worker_result`, which sends its own row directly after a result commits, without the walk. A small periodic task in the database-backed control plane runs the same sweep every recheck
+**Updates reach GitHub in order, across restarts.** Every update is sent under a claim on its row, by one of two senders: a sweep that `lease_job` runs beside `reclaim_expired_leases` and that `heartbeat_job` runs after its lease renewal commits. The other is `worker_result`, which sends its own row directly after a result commits, without the walk. That send carries the same short timeout as a sweep's calls, and its failure is logged and never raised: the result is already committed, so the response to the worker does not depend on GitHub, and the row stays due for the next sweep. A small periodic task in the database-backed control plane runs the same sweep every recheck
 interval as well, so the grace-period failure, the removal of a row without a check run id, and a
 retry of a refused send all happen even when no worker polls. The worker-triggered sweeps keep an
-update prompt, and the periodic one makes it certain. Each replica runs the task, and the row lock
-keeps their sends in order as it does for every other sender. The `check_runs` row keeps the state GitHub
+update prompt, and the periodic one makes it certain. Each replica runs the task, and the claim keeps their sends in order as it does for every other sender. The `check_runs` row keeps the state GitHub
 last confirmed and the time of the next attempt.
 
-A sweep walks the open rows that are due, oldest attempt first. It claims each row with `SELECT …
-FOR UPDATE SKIP LOCKED` and derives the row's state. After each row it visits, the sweep records the
+A sweep walks the open rows that are due, oldest attempt first. It claims each row with `SELECT … FOR UPDATE SKIP LOCKED` in a short transaction that stamps a claim expiry, the send timeout plus a margin, and commits, then derives the row's state. After each row it visits, the sweep records the
 row's next attempt one recheck interval ahead, a few seconds by default, so an idle row is visited
-once per interval however many workers poll. A row whose state matches the confirmed one, or whose status is earlier than the confirmed status, costs that single row update, and the sweep moves on. A set whose job `reclaim_expired_leases` returned to the queue derives `queued` while GitHub confirmed `in_progress`, and Unit 3 forbids sending that. The first remaining row whose state differs gets the full state sent, and the sweep stops there. Before it releases that row, it records the confirmation, or a
-backed-off next attempt after a refused send. Latency therefore grows with the rows that changed,
+once per interval however many workers poll. A row whose state matches the confirmed one, or whose status is earlier than the confirmed status, costs that single row update, and the sweep moves on. A set whose job `reclaim_expired_leases` returned to the queue derives `queued` while GitHub confirmed `in_progress`, and Unit 3 forbids sending that. The first remaining row whose state differs gets the full state sent, and the sweep stops there. It sends with no transaction open, then records the confirmation, or a backed-off next attempt after a refused send, in a second short transaction that clears the claim. Latency therefore grows with the rows that changed,
 not with the rows that are open. The update load is bounded by the open rows per recheck interval,
 not by the number of idle workers.
 
-The row lock serializes each row's sends across control-plane replicas. A second replica skips a row
-that another replica is sending. The next sender derives the state after taking the lock, so it never
-sends a state older than the last one sent. Because a sweep sends for one row at most, a GitHub outage
+The claim serializes each row's sends across control-plane replicas. A second replica skips a row whose claim has not expired. The next sender derives the state after taking the claim, so it never sends a state older than the last one sent. A crash mid-send leaves the claim to expire, and a later sweep takes the row over. No database connection is held across a GitHub call, so a slow GitHub cannot exhaust the pool that lease polls share. Because a sweep sends for one row at most, a GitHub outage
 delays a worker's lease poll or heartbeat by one bounded send at most. The cost is latency: an update
 reaches GitHub not at the job transition itself but at the next sweep, which a lease poll, a heartbeat, or the periodic task triggers. A committed result is the exception: `worker_result` sends its own row at once. The recheck interval adds at most its own length to that wait. A worker running a job sends a heartbeat every 30 seconds by default, but the periodic task keeps sweeping even when every worker is busy, so an update waits a few seconds by default, not a heartbeat interval. Each GitHub call inside a sweep carries a short timeout, so a heartbeat
 interval plus one send stays well under the 120-second lease timeout.
@@ -313,10 +306,8 @@ A delivery that GitHub keeps refusing is logged with the repository and the chec
 
 - **Tests.** A fake GitHub transport replaces `app.py`'s `fetch` seam, the same seam BE-0224's tests
   use. The tests cover the dispatch branches, each row of Unit 3's table, and the all-or-nothing
-  registration. They also cover the repository bound, the 409 on a duplicate triple, and the 502 on a failed creation. A restart test
-  drops a send and checks that the next sweep delivers it. A test without any worker checks that the periodic task concludes a row and retries a refused send, and that the attempt cap closes a row and frees the triple. A drained-pool test checks that a result's own row reaches `completed` from `worker_result` even while another open row with a pending change is due. A two-sender test checks that
-  one row's sends stay in order. It runs in the Postgres lane (BE-0309), because SQLite takes no row
-  lock and would pass it vacuously.
+  registration. They also cover the repository bound, the 409 on a duplicate triple, the 400 on SQLite, and the 502 on a failed creation. A restart test
+  drops a send and checks that the next sweep delivers it. A test without any worker checks that the periodic task concludes a row and retries a refused send, and that the attempt cap closes a row and frees the triple. A drained-pool test checks that a result's own row reaches `completed` from `worker_result` even while another open row with a pending change is due. The derivation, sweep, restart, worker-less, and drained-pool tests drive the repository and the sweep directly, below the dispatch handler's SQLite refusal, so they run on the SQLite `make check` gate. The dispatch-branch and 409 tests, and a two-sender test that checks one row's sends stay in order, run in the Postgres lane (BE-0309), because SQLite refuses a check-bearing dispatch and takes no row lock.
 - **Documentation.** `docs/self-hosting.md` and its `docs/ja/` mirror rewrite the sign-in section to
   recommend a GitHub App, with an OAuth App as the alternative, and tell an operator moving from an
   OAuth App to confirm that `/user/orgs` and `/user/teams` return its organizations before cutting
