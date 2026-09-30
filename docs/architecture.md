@@ -682,7 +682,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   reuse; every other non-`wait` step pays one extra `driver.query()`, a step reusing a carried-over
   `prev_after` (BE-0234) included. On a match, the runner runs the entry's `steps` and then resumes
   the interrupted step (a `wait` keeps its original deadline; an act step retries once), with a
-  re-entrancy cap falling back to the step's ordinary outcome
+  re-entrancy cap falling back to the step's ordinary outcome. In a scenario declaring two or more
+  targets (BE-0428), an entry's own `target` field names which target it watches — unlike a `Step`'s
+  own `target`, this stays optional even then, defaulting to the primary target (BE-0438)
 - DSL `before` / `after` (BE-0392): a scenario's setup and teardown as their own phases, tracked
   apart from `steps` rather than spliced into it. `before` is an ordered step list that runs first
   and aborts the scenario when it fails; `after` is a list of `{ on, steps }` rules keyed to the
@@ -770,7 +772,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   read-back since no backend exposes selection as queryable state
 - DSL device & system actions (iOS): `background`, `clearKeychain`, `clearClipboard`,
   `overrideStatusBar` / `clearStatusBar` (deterministic status bar), and the `http` action for
-  test-data setup / webhooks
+  test-data setup / webhooks — `saveBody` stores the whole response body, and `extractBody`
+  (BE-0440) pulls one or more named fields out of a JSON body by a fixed key/index `path` grammar,
+  straight into `${vars.*}`
 - DSL `setPickerValue` (BE-0356): move a wheel-style picker (`UIPickerView`, or a `UIDatePicker`
   switched to a wheel-only mode) to a named row by calling XCUITest's own
   `adjust(toPickerWheelValue:)` on the resolved wheel — handle-based like `tap`, not
