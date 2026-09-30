@@ -57,13 +57,22 @@ class Scenario(_Model):
     # Every target this scenario drives (BE-0428): each entry names a `targets.<name>` config unit,
     # launched before the first step and torn down together with the rest after the last one. Empty
     # (the default) is today's single-target scenario, resolved entirely from the CLI's `--target` —
-    # a per-step `target` is then optional and, if set, must name that one target.
-    targets: list[str] = Field(default_factory=list)
+    # a per-step `target` is then optional and, if set, must name that one target. An element may
+    # also be an array of two or more names, a device group whose members share one device
+    # (BE-0447); a bare name is a group of one. Code that needs the names alone reads
+    # `target_names`, never this field, since an element may be a list.
+    targets: list[str | list[str]] = Field(default_factory=list)
     # The target a step or top-level `expect` entry runs against when it omits `target` under two
-    # or more declared `targets` (BE-0436). Pinned to `targets[0]`, the entry the runner already
-    # leases and resolves evidence for as the primary, so the file's "primary" and the runner's
-    # can never diverge. Unset keeps BE-0428's rule: every step names its own `target`.
+    # or more declared `targets` (BE-0436). Pinned to the first member of the first group, the entry
+    # the runner already leases and resolves evidence for as the primary, so the file's "primary"
+    # and the runner's can never diverge. Unset keeps BE-0428's rule: every step names its own
+    # `target`.
     primary_target: str | None = Field(default=None, alias="primaryTarget")
+    # The members of a device group that install and launch before the first step besides the
+    # primary, which always does (BE-0447). A member of a group of two or more left out of this list
+    # is a later member: it comes alive only through an `installApp` step. Empty (the default)
+    # prunes from a dump.
+    installs: list[str] = Field(default_factory=list)
     # Per-scenario OS permission state (BE-0276), applied before the app process starts: grant or
     # revoke a permission up front so the runtime prompt never appears (iOS `simctl privacy`,
     # Android `pm grant`/`pm revoke`). Deterministic and AI-free, unlike the vision
@@ -122,6 +131,16 @@ class Scenario(_Model):
     # Load-time provenance (BE-0417), set by a file loader after parsing. A `PrivateAttr` rather
     # than an ordinary field so it never leaks into `model_dump()` as part of the authored schema.
     _source_stem: str | None = PrivateAttr(default=None)
+
+    @property
+    def device_groups(self) -> list[list[str]]:
+        """Every device group in declared order, a bare name read as a group of one (BE-0447)."""
+        return [[t] if isinstance(t, str) else list(t) for t in self.targets]
+
+    @property
+    def target_names(self) -> list[str]:
+        """Every declared target name in declared order, device groups flattened (BE-0447)."""
+        return [name for group in self.device_groups for name in group]
 
     @property
     def source_stem(self) -> str | None:

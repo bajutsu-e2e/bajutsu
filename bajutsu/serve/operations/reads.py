@@ -753,7 +753,7 @@ def _step_artifacts(
     # targets, every step's evidence nests under its own resolved target's folder, so the lookup
     # key built here must carry the same segment or every multi-target run's step artifacts would
     # resolve to nothing.
-    multi_target = len(matched.targets) >= 2
+    multi_target = len(matched.target_names) >= 2
     result: list[dict[str, Any]] = []
     for idx, step in enumerate(matched.steps):
         flat_step_id = f"{sid}/{step.name or f'step{idx}'}"

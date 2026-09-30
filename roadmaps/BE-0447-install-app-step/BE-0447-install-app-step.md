@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0447](BE-0447-install-app-step.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
@@ -549,7 +549,7 @@ so the deterministic gate stays untouched.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1: nested `targets` form, `installs`, and flattening accessor
+- [x] Unit 1: nested `targets` form, `installs`, and flattening accessor
 - [ ] Unit 2: device-group lease and lifecycle, after the on-device checks
 - [ ] Unit 3: `installApp` and `setPrimaryTarget` steps
 - [ ] Unit 4: run preflight and validation
@@ -558,6 +558,18 @@ so the deterministic gate stays untouched.
 - [ ] Unit 7: backend handling
 - [ ] Unit 8: documentation in both languages
 - [ ] Unit 9: showcase demo, update and companion scenarios
+
+Log:
+
+- Unit 1. `Scenario.targets` accepts a device group, an array of two or more names, beside a bare
+  name, and a new `installs` key names the members that start with the primary. The scenario
+  model refuses a name repeated across groups, an array of fewer than two names, a `primaryTarget`
+  other than the first member of the first group, an `installs` entry that is not a declared name,
+  an `installs` entry repeated, and a group the primary does not anchor that lists none of its members. Two accessors,
+  `device_groups` and `target_names`, replace direct reads of `targets` in the runner pipeline,
+  the `run` and `audit` CLIs, and the serve evidence lookup. Until unit 2 leases one device per
+  group, `run_all` and the `run` CLI refuse a scenario that declares a device group, since a
+  flattened run would lease a device per member and start every one of them.
 
 ## References
 

@@ -93,8 +93,8 @@ def _videos(r: RunResult) -> list[dict[str, Any]]:
     reference = anchor_of(video_arts[0])
     # The primary's own video carries no `target` (only an extra target's does), but the primary
     # is still one named target of a multi-target run: `target_devices` is keyed primary first
-    # (`{s.targets[0]: lz, **others}` in the runner's pipeline), so its first key names it. Only
-    # a stack of two or more videos needs the name, to tell the recordings apart.
+    # (`{s.target_names[0]: lz, **others}` in the runner's pipeline), so its first key names it.
+    # Only a stack of two or more videos needs the name, to tell the recordings apart.
     primary = next(iter(r.target_devices), "") if len(video_arts) > 1 else ""
     return [
         {
