@@ -16,8 +16,8 @@
 
 A Bajutsu target is one app plus the settings that drive it, and a scenario gives each target it
 declares its own device. This item adds four constructs to the scenario. A nested array in
-`targets` lists targets that share one device. An `installs` key names which of them install
-before the first step. An `installApp` step installs the others later, at the point where the journey
+`targets` lists targets that share one device. An `installs` key names the members that install
+before the first step besides the primary, which always does. An `installApp` step installs the others later, at the point where the journey
 needs them, and a `setPrimaryTarget` step moves the default target to another member, such as the build an `installApp` step installed. Two journeys become expressible that are not today: a companion app, such as a
 multi-factor authentication (MFA) app that shares the device with the app under test, and an app
 update, where an old build creates data and a new build is installed over it. The config schema does
@@ -97,22 +97,23 @@ itself, since a flattened list could not reject an invalid group.
 ### Choosing what installs first: `installs`
 
 A group can hold several app targets, and only some of them belong on the device at the start. The
-scenario says which with a separate top-level key, `installs`, a list of target names. `targets`
-keeps the grammar above.
+primary, the first member of the first group, always installs and launches at the start, whether or
+not `primaryTarget` is declared, since the runner treats it as the primary in either case. A
+separate top-level key, `installs`, a list of target names, adds the other members that start with
+it. `targets` keeps the grammar above.
 
 | Situation | Rule |
 |---|---|
-| A group of one member (a bare name) | The member installs at the start, as today. Listing it is optional. |
-| A group of two or more members | The scenario must list at least one member. A group with none listed fails to load, so the choice is never implicit. |
+| The primary (the first member of the first group) | Installs its `appPath` before the first step and launches at the start. Listing it in `installs` is optional. |
+| Any other group of one member (a bare name) | The member installs at the start, as today. Listing it is optional. |
+| Any other group of two or more members | The scenario must list at least one member. A group with none listed fails to load, so the choice is never implicit where the primary does not anchor it. |
 | A listed member | Installs its `appPath` before the first step and launches at the start, like any declared target. |
 | A member left out | The later member: it installs and launches nothing at the start. It comes alive through an `installApp` step and a `foreground` step, below. |
 
-Every name in `installs` is a member of `targets`. Members listed for one group must not share
-a bundle identifier or package, since installing both would leave one build on the device. That check
-needs the config, so the run's preflight makes it. Listed members launch in reverse declared order, so
-each group's first listed member is in front when the first step runs. The first member of the first
-group, which the runner treats as the primary whether or not `primaryTarget` is declared, must be
-listed when its group has two or more members.
+Every name in `installs` is a member of `targets`. Members that start in one group must not share a
+bundle identifier or package, since installing both would leave one build on the device. That check
+needs the config, so the run's preflight makes it. Members that start launch in reverse declared
+order, so each group's first starting member is in front when the first step runs.
 
 An update scenario starts on the old build and holds the new one back:
 
@@ -120,7 +121,6 @@ An update scenario starts on the old build and holds the new one back:
 - name: notes survive the 1 to 2 update
   targets: [[showcase-previous, showcase]]
   primaryTarget: showcase-previous
-  installs: [showcase-previous]
   steps:
     - tap: { id: notes.add }
     - type: { text: hello, into: { id: notes.field } }
@@ -131,7 +131,8 @@ An update scenario starts on the old build and holds the new one back:
         - exists: { id: notes.item, label: hello }
 ```
 
-A companion scenario lists both members and keeps a second device for a web client:
+A companion scenario adds the authenticator to the primary's start and keeps a second device for a web
+client:
 
 ```yaml
 - name: read the code in the authenticator, enter it in the app
@@ -139,7 +140,7 @@ A companion scenario lists both members and keeps a second device for a web clie
     - [showcase, authenticator]     # one device holding both apps
     - showcase-web                  # a separate device
   primaryTarget: showcase
-  installs: [showcase, authenticator]
+  installs: [authenticator]
   steps:
     - target: authenticator
       foreground: {}
@@ -158,10 +159,10 @@ A group's members share one device, so device-wide preparation runs once per gro
 member: booting, the erase, the system locale pin, and seeded photos. It uses the scenario's
 preconditions. Each member then takes a per-member path that only installs, attaches its driver, and
 launches. That path never repeats `erase`, and it never applies `reinstall: clean` to an app it did
-not install itself. A listed member's install at the start follows `reinstall` for that member. A
+not install itself. A starting member's install at the start follows `reinstall` for that member. A
 later member's `foreground` never uninstalls or clears the build an `installApp` step just put there. In
 a companion group with `erase: true`, the device is wiped once before any member installs, so the
-second listed member does not wipe the first.
+second starting member does not wipe the first.
 
 ### The `installApp` step
 
@@ -303,13 +304,13 @@ deterministic gate is untouched.
 ### Work breakdown
 
 1. Scenario model: the nested `targets` form, `installs`, their rules, and the flattening accessor every reader of `targets` moves to.
-2. Lease and lifecycle: one device per group, the device count per backend, one device-wide preparation per group, each listed member's environment started on the shared device by a path that repeats no destructive precondition, a later member's environment started at its first `foreground`, and the current primary that `setPrimaryTarget` moves at run time. This unit opens with the on-device checks above.
+2. Lease and lifecycle: one device per group, the device count per backend, one device-wide preparation per group, each starting member's environment started on the shared device by a path that repeats no destructive precondition, a later member's environment started at its first `foreground`, and the current primary that `setPrimaryTarget` moves at run time. This unit opens with the on-device checks above.
 3. Scenario model: the `installApp` step's shape, and its check that `from` is a member of the step target's group, including its placement rules inside `web:`/`app:` and `interrupts`, and the `setPrimaryTarget` step, with its top-level-only placement and the in-order tracking of the current primary, and how both steps behave when a component or group expands them. The tracked primary is a local of
 the walk, never a write to `primary_target`, since `primaryTarget` is checked against the first entry
 at several points. Top-level `expect` entries that omit `target` are resolved with it, where today
 they group under the run's fixed primary. Both stamping points skip `setPrimaryTarget`, and expansion
 records the component chain.
-4. Run preflight: check each `installApp.from` target against the config (its `appPath` exists, building it where the run already builds one), refuse listed members of one group that share an identifier, and refuse a group whose members differ in backend platform, device route, or system locale.
+4. Run preflight: check each `installApp.from` target against the config (its `appPath` exists, building it where the run already builds one), refuse starting members of one group that share an identifier, and refuse a group whose members differ in backend platform, device route, or system locale.
 5. XCUITest environment and driver: the install action, the digest reset, the terminate, `foreground`'s launch, readiness wait, and launch marker, built beside the relauncher that already holds the effective config, scenario, and driver, and the front-app check in `xcuitest_driver`.
 6. Android environment and driver: the install action with the downgrade error, `foreground`'s launch, readiness wait, and launch marker built beside the relauncher, the front-app check in `adb_driver`, and the split of `deviceControl.appLifecycle`.
 7. Backend handling: web and device-cloud rejection, and the code-generation marker.
@@ -327,7 +328,7 @@ records the component chain.
 | Drive a companion app only through the `app: { bundleId, steps }` block | Changes nothing, but the block is iOS only and puts a bundle identifier in the scenario, against prime directive 3. Android could not drive a companion app at all. |
 | `installApp: { path }` with the path written in the step | The scenario would carry a build artifact path. That leaks a per-app detail into the scenario, breaks on another machine, and violates the app-agnostic principle. |
 | Two scenarios run in sequence with `reinstall: overwrite` | No DSL change, but the journey splits in two, the run order becomes an unwritten contract, and a failure no longer reads as one journey. |
-| List both builds in a group and install both at the start | The second install overwrites the first, so the scenario could never begin on the old build. `installs` holds the new build back, and preflight refuses two listed members with one identifier. |
+| List both builds in a group and install both at the start | The second install overwrites the first, so the scenario could never begin on the old build. `installs` holds the new build back, and preflight refuses two starting members with one identifier. |
 | Name the installed member on every step after an update | Correct, but every later step, assertion, and interrupt repeats the same name, and a forgotten one resolves to the retired member and fails. |
 | Let `installApp` switch the primary target by itself, explicitly (`becomes: primary`) or when the identifiers match | Hides the point where routing changes inside a step that reads as an install, and an identifier match cannot express a companion. A separate `setPrimaryTarget` step names the switch on its own line, and needs no mid-run config swap because each member already owns its config, driver, and environment. |
 
