@@ -1,0 +1,233 @@
+[English](BE-XXXX-target-config-restructure.md) · **日本語**
+
+# BE-XXXX — target の設定を問いごとに組み直し、実行環境を宣言できるようにする
+
+<!-- BE-METADATA -->
+| 項目 | 値 |
+|---|---|
+| 提案 | [BE-XXXX](BE-XXXX-target-config-restructure-ja.md) |
+| 提案者 | [@0x0c](https://github.com/0x0c) |
+| 状態 | **承認済み** |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| 実装 PR | — |
+| トピック | ドライバとバックエンドのアーキテクチャ |
+| 関連 | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)、[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)、[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md) |
+<!-- /BE-METADATA -->
+
+## はじめに
+
+現在、`targets.<name>`の target は約50個のキーを1階層に並べています。全プラットフォームのキーが隣り合っており、`browser`と`deviceMode`は Web のバックエンドだけが、`nativeZ`は Android だけが、`bundleId`と`xcuitest`は iOS だけが読みます。スキーマはどのキーがどのプラットフォームに属するかを知りません。また、target がどの端末とオペレーティングシステム（OS）を想定するかを書くキーもありません。
+
+この項目では、flat な並びを12個のキーに置き換えます。各キーは1つの問いにだけ答えます。`platform`の値が`app`、`runsOn`、`driver`の3つの形を決め、残りの9つはプラットフォームによらず同じ形を持ちます。`runsOn`には、target が動く端末、OS、ブラウザを宣言します。run は最初のステップの前に、宣言と実際に得た端末を照らし合わせ、食い違えば止まります。後方互換は意図して持ちません。旧形式の設定は読み込みに失敗し、受け付けなくなったキーを名指しします。
+
+## 動機
+
+別のプラットフォームのキーを書いても、読み込みは黙って通り、何も起きません。`browser: firefox`と書いた iOS の target は検証を通り、run はこの設定を無視します。[`docs/configuration.md`](../../docs/configuration.md)は、キーの表で「iOS ignores it」を繰り返してこの穴を補っています。キーが効くかどうかを知るには、この表を引く必要があります。
+
+名前空間を共有しているため、名前にも無理が出ています。[`defaults.py`](../../bajutsu/common/config/schema/defaults.py)の`device`は iOS Simulator の機種名ですが、デフォルト値として Web や Android の target にも重なります。Web のバックエンドの`deviceMode`が別名になったのは、`device`がすでに使われていたためです。
+
+target をどこで動かすつもりなのかを示すキーもありません。iOS のバージョンは`--udid`で選んだ Simulator が決め、Android の application programming interface（API）レベルは adb のシリアルが決めます。`device`が効くのは、実行中に消えた Simulator の置き換えを作る場面だけです。run は観測した OS を`device_runtime`として記録します（[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)）。そのため、想定外の OS で落ちたシナリオには実行後に気づくことになり、その結果は flakiness の履歴に雑音として入ります。
+
+1つの問いの答えも散らばっています。アプリの起動は`launchEnv`、`launchArgs`、`readyWhen`にまたがり、端末の調達は`deviceProvider`、`cloudBatch`、`requires`にまたがります。全シナリオの前に走る手順は`setup`と`before`の2つのキーから来ており、文書はその違いを説明し続けています。プラットフォームの判定には、`platform`、`backend`、存在する識別子を順に見る優先順位の連鎖が要ります（[`resolve.py`](../../bajutsu/common/config/resolve.py)の`_effective_platform`）。Flutter のようなバックエンドを足せば、flat なキーも連鎖の分岐も増えます。
+
+この項目が入ると、次の2つの結果を確かめられます。誤ったプラットフォームに書いたキーは設定の読み込み時に失敗し、そのプラットフォームが持つフィールドを示します。`runsOn`が選ばれた端末と合わない target は、最初のステップの前に止まり、宣言した値と観測した値を並べて表示します。
+
+## 詳細設計
+
+### 12個のキー
+
+target は次のキーだけを受け付けます。
+
+| キー | 答える問い | 形が`platform`で変わるか |
+|---|---|---|
+| `platform` | どのバックエンドで動かすか | —（判別子） |
+| `app` | 何をテストするか（識別子、入手と起動の方法、起動待ち、id の約束） | 変わる |
+| `runsOn` | 何の上で動くか（端末と OS の要件、ブラウザ、言語） | 変わる |
+| `driver` | Bajutsu がどう駆動するか | 変わる |
+| `dispatch` | 端末をどこから得て、実行をどこへ振るか | 変わらない |
+| `services` | アプリが話す代替サービスは何か | 変わらない |
+| `run` | 実行の方針は何か | iOS だけ1項目増える |
+| `hooks` | 全シナリオを包むステップ列は何か | 変わらない |
+| `evidence` | 何を残し、何を隠すか | 変わらない |
+| `paths` | ファイルをどこに置くか | 変わらない |
+| `ai` | AI の経路をどの提供元で動かすか | 変わらない |
+| `notify` | 結果をどこへ知らせるか | 変わらない |
+
+キーは、どのプラットフォームが使うかではなく、答える問いで置き場所を決めます。たとえば`nativeZ`は Android 固有ですが、Bajutsu が端末をどう駆動するかを答えるので`driver`に入ります。
+
+```yaml
+targets:
+  showcase-swiftui:
+    platform: ios
+    app:
+      id: com.bajutsu.showcase.ios.swiftui
+      path: build/Showcase.app
+      build: make -C demos/showcase swiftui-build
+      launch: { env: { SHOWCASE_UITEST: "1" } }
+      readyWhen: { id: home.title }
+    runsOn:   { model: iPhone 15, os: ">=17 <19", kind: simulator, locale: en_US }
+    driver:   { runner: { testRunner: build/Runner.xctestrun } }
+    dispatch: { live: { kind: local }, batch: { kind: devicefarm, budget: 2 } }
+    run:      { erase: true, secrets: [LOGIN_PASSWORD], tipKitHandling: true }
+    hooks:    { before: [{ use: login }] }
+    paths:    { scenarios: demos/showcase/scenarios }
+
+  site:
+    platform: web
+    app:    { url: "http://127.0.0.1:8787/index.html" }
+    runsOn: { browser: { engine: webkit, version: ">=18" }, emulate: iPhone 13, host: { os: macos } }
+    driver: { headless: false }
+
+  showcase-android:
+    platform: android
+    app:    { id: com.example.showcase, grantPermissions: [android.permission.POST_NOTIFICATIONS] }
+    runsOn: { avd: Pixel_8, apiLevel: ">=33" }
+    driver: { nativeZ: true }
+```
+
+同じ`site`を現行の記法で書くと、次のようになります。
+
+```yaml
+  site:
+    platform: web
+    backend: [web]
+    baseUrl: "http://127.0.0.1:8787/index.html"
+    browser: webkit
+    deviceMode: "iPhone 13"
+    headless: false
+```
+
+### プラットフォームで形が変わるグループ
+
+| グループ | iOS | Android | Web |
+|---|---|---|---|
+| `app` | `id`、`path`、`build`、`deeplink`、`launch.env`、`launch.args` | `id`、`grantPermissions` | `url`、`server` |
+| `app`（全プラットフォーム共通） | `readyWhen`、`idNamespaces` | 同左 | 同左 |
+| `runsOn` | `model`、`os`、`kind`、`locale` | `avd`、`apiLevel` | `browser.engine`、`browser.version`、`emulate`、`host.os` |
+| `driver` | `runner.testRunner`、`runner.build` | `nativeZ` | `headless` |
+| `run`（追加分） | `tipKitHandling` | — | — |
+
+判断が分かれた置き場所は4つあります。
+
+- **`locale`は`runsOn`に置きます。** iOS では Simulator 自体のシステム言語を固定するため（[BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）、起動引数ではなく端末の状態にあたります。
+- **Web のブラウザと`emulate`は`runsOn`に置きます。** Web の target にとって、ブラウザが「何の上で動くか」にあたります。`headless`は`driver`に置きます。表示の有無は Bajutsu がブラウザをどう見せるかを変えるだけで、何の上で動くかは変えません。
+- **`secrets`は`run`に置きます。** シークレットは`${secrets.X}`として注入する入力であり、証跡で値を伏せるのはその役割から来る結果です。
+- **`setup`は廃止し、`hooks.before`に統合します。** 1つの問いに2つのキーが答える重複こそ、この項目が取り除くものです。代償として、これまで`setup`がシナリオの`steps`に差し込んでいた手順は report の`before`フェーズとして走り、そこでの失敗は`before`の失敗として数えます。
+
+### プラットフォームのスキーマのレジストリ
+
+各バックエンドは、`app`、`runsOn`、`driver`、`run`の追加分のモデルを、`bajutsu/common/config/schema/platform/`のレジストリに登録します。`TargetConfig`は`platform`を読んでレジストリを引き、登録されたモデルで4つのグループを検証します。どのモデルも未知のキーを禁じるため、他のプラットフォームのキーは未知のキーとして失敗します。レジストリがあれば、設定の読み込みは Playwright や simctl を import せずに済みます。現在`deviceMode`を遅延解決できているのと同じ性質です。core はスキーマの中でプラットフォームを名指ししなくなるので、Flutter を足すときはエントリを1つ登録するだけになります。
+
+明示の`platform`が優先順位の連鎖に取って代わります。`backend`は廃止します。どのプラットフォームも現在 actuator は1つなので、順序つきのフォールバックのリストには選ぶ対象がありません。`_effective_platform`、`_PLATFORM_IDENTIFIER`、`Config`の突き合わせも一緒に消えます。各`app`モデルが自分の識別子を必須にするためです。あるプラットフォームが2つ目の actuator を持った場合は、`driver`に`actuator`フィールドを足します。
+
+`bajutsu config schema`は、レジストリから生成した JavaScript Object Notation（JSON）Schema を出力します。`platform`を`oneOf`の判別子にするので、エディタはプラットフォームごとにキーを補完できます。
+
+### `runsOn`と端末の照合
+
+`runsOn`は要件を宣言するだけで、端末を作りません。環境が端末またはブラウザを解決したあと、最初のステップの前に、run は宣言した値を観測した値と比べます。
+
+| 宣言 | 観測元 | 比較 |
+|---|---|---|
+| iOS の`runsOn.os` | Simulator の runtime ラベルを`DeviceOS`で解析した値 | `major.minor`での範囲 |
+| iOS の`runsOn.model` | 選ばれた udid の simctl のデバイスタイプ名 | 完全一致 |
+| Android の`runsOn.apiLevel` | `ro.build.version.sdk` | 整数の範囲 |
+| Android の`runsOn.avd` | エミュレータの Android Virtual Device（AVD）名 | 完全一致。実機は一致しない |
+| Web の`runsOn.browser.version` | Playwright の`browser.version` | 範囲 |
+| Web の`runsOn.host.os` | `platform.system()` | 完全一致 |
+
+範囲は比較子の論理積で書きます。比較子は`>=`、`>`、`<=`、`<`、`==`、または演算子のない裸の版です。裸の`18`は18.x のどのリリースにも一致します。範囲の解析と比較は、新しい`bajutsu/common/devices/version.py`の`VersionSpec`が担います。`DeviceOS`は意図して比較演算子を持たないままにします。この項目が足すのは宣言の照合であり、OS ごとの分岐ではないためです。食い違いは`DeviceError`（[BE-0260](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation-ja.md)）の新しいサブクラス`RunsOnRequirementError`として送出します。そのため`run`は、端末が見つからないときと同じ経路で非ゼロ終了します。`bajutsu doctor`は、端末を解決できるときに同じ照合をして、結果を情報として示します。
+
+照合は決定的で、モデルの呼び出しを含みません。判定の経路に加わるのは機械的な検査が1つ増えることだけです。合う端末をその場で作ることと、警告して続けることは範囲外です（「検討した代替案」を参照）。
+
+### defaults
+
+`defaults`は target と同じ形をとります。プラットフォームで形が変わるグループは`defaults.platforms.<platform>`の下に書き、そのプラットフォームの target にだけ重なります。これで1つのファイルに複数のプラットフォームのデフォルトを同時に持てます。辞書はキー単位で重ね、target の値が勝ちます。リストは置き換えます。例外は`evidence.redact`と`dispatch.requires`で、現行どおり和集合をとります。`ai`は現行どおりフィールド単位で重ねます。
+
+組み込みのデフォルト`device: "iPhone 15"`は廃止します。`runsOn.model`のデフォルトとして残すと、`defaults`を書かない全設定が気づかないうちにこの値を要件として課すことになります。`model`を宣言しないまま置き換えの Simulator を作るときは、現行のフォールバックが最新の iPhone を選びます。
+
+### 旧キーの移行先
+
+| 旧キー | 新しい位置 |
+|---|---|
+| `backend` | 廃止。`platform`が actuator を決める |
+| `bundleId`、`package` / `baseUrl`、`launchServer` | `app.id` / `app.url`、`app.server` |
+| `appPath`、`build`、`deeplinkScheme`、`launchEnv`、`launchArgs` | `app.path`、`app.build`、`app.deeplink`、`app.launch.env`、`app.launch.args` |
+| `readyWhen`、`idNamespaces`、`grantPermissions` | `app.readyWhen`、`app.idNamespaces`、`app.grantPermissions` |
+| `device`、`locale`、`xcuitest.deviceType` | `runsOn.model`、`runsOn.locale`、`runsOn.kind` |
+| `browser`、`deviceMode` | `runsOn.browser.engine`、`runsOn.emulate`（省略で desktop） |
+| `headless`、`nativeZ`、`xcuitest.testRunner`、`xcuitest.build` | `driver.headless`、`driver.nativeZ`、`driver.runner.*` |
+| `deviceProvider`、`cloudBatch`、`cloudBatchBudget`、`requires` | `dispatch.live`、`dispatch.batch.kind`、`dispatch.batch.budget`、`dispatch.requires` |
+| `mockServer`、`mailbox` | `services.*` |
+| `erase`、`network`、`visualCompare`、`secrets`、`systemAlertHandling`、`iosTipKitHandling` | `run.*`（最後は`run.tipKitHandling`） |
+| `setup`、`before`、`after`、`interrupts` | `hooks.before`（`setup`を吸収）、`hooks.before`、`hooks.after`、`hooks.interrupts` |
+| `capture`、`redact` | `evidence.*` |
+| `scenarios`、`baselines`、`schemas`、`goldens` | `paths.*` |
+| `defaults.reservedNamespaces`、`defaults.doctor` | `defaults.app.reservedNamespaces`、トップレベルの`doctor` |
+
+解決後の`Effective`は属性名を変えません。属性名を変えると呼び出し箇所が数百に及び、しかも設定の形とは別に進められます。そのため`resolve`が、新しい辞書から現行の`Effective`を組み立てます。
+
+### 範囲外
+
+- 旧キーの読み替えと、移行コマンド。
+- 1つの target が複数のプラットフォームにまたがること。この用途は、引き続き複数 target のシナリオで扱います。
+- エントリポイントを通じた、外部パッケージからのプラットフォームの登録。
+- 宣言した範囲の run マニフェストへの記録。マニフェストは引き続き観測した OS を記録します。
+- Playwright が起動したもの以外のブラウザのバージョンやホスト OS を選ぶこと。
+- `runsOn`から`dispatch.requires`のタグを導くこと。対応づけは hosted の worker が能力をどう広告するかに依存し、この項目はそこを変えません。
+
+### 作業の分解
+
+1. **`VersionSpec`。** `bajutsu/common/devices/version.py`で、版の範囲を解析し比較します。
+2. **未確定の置き場所の確認。** `deeplinkScheme`、`launchEnv`、`launchArgs`、`locale`を読むバックエンドを洗い出します。AVD 名が対応する API レベル全体で読めるか（たとえば`ro.boot.qemu.avd_name`で）を確かめます。`setup`が`steps`に差し込まれることに依存するシナリオがないかを調べます。コードを入れる前に、置き場所の表を更新します。
+3. **プラットフォームのレジストリとモデル。** レジストリとプラットフォームごとのモデルを追加します。レジストリのキーが`backends.PLATFORMS`と一致することをテストで固定します。
+4. **スキーマの切り替え。** `TargetConfig`、`Defaults`、`Config`、`resolve`を置き換え、テストの固定データと`demos/`の設定ファイル10個を1つの変更で変換します。切り替えを分けると、読み込み側と全設定ファイルが同時に壊れるので、コミットの間でゲートが赤になります。
+5. **`setup`の`hooks.before`への統合。** runner から`setup`の経路を取り除きます。
+6. **コマンドラインインターフェイス（CLI）。** `--backend`は、`platform`と食い違えば終了コード2で終わる検査になります。`--browser`と`--headed`は、`runsOn.browser.engine`と`driver.headless`を上書きします。
+7. **iOS の要件の照合。** `os`と`model`を照合し、`RunsOnRequirementError`を追加します。
+8. **Android の要件の照合。** `apiLevel`と`avd`を照合します。
+9. **Web の要件の照合。** `browser.version`と`host.os`を照合します。
+10. **`doctor`。** 端末を解決できるとき、要件の食い違いを情報として報告します。
+11. **`bajutsu config schema`。**
+12. **文書。** `docs/configuration.md`、`docs/drivers.md`、`docs/cli.md`、`docs/architecture.md`、`DESIGN.md`、`docs/glossary.md`と、それぞれの`docs/ja/`版を更新します。
+
+## 検討した代替案
+
+| 代替案 | 採らなかった理由 |
+|---|---|
+| flat な並びのまま、他プラットフォームのキーを拒否する | 書き間違いは捕まえられますが、`device`の名前の衝突が残り、要件の置き場所も増えず、1つの問いの答えは散らばったままです |
+| プラットフォーム名をキーにする（`ios: {…}`などのうち、ちょうど1つ） | `targets.web.web:`のように同じ語が二重に入れ子になります。キー名が可変なので、JSON Schema では「ちょうど1つ」を別の規則で表す必要があります |
+| `platform`と、プラットフォーム固有のキーをすべて入れる`configuration`を組にする | 問いではなく性質でキーをまとめるため、アプリ、端末、駆動方法の設定が1つのブロックに混ざり、入れ子も一段深くなります |
+| `driver: { kind: xcuitest \| adb \| playwright }`の判別共用体 | 現在はどのプラットフォームも actuator が1つで、2層目を設けても得るものがありません。2つ目の actuator を持つプラットフォームが出たら見直します |
+| core にプラットフォームのモデルの閉じた共用体を持たせる | バックエンドを足すたびに core のスキーマを編集することになり、バックエンドに依存しない設計と矛盾します |
+| 全プラットフォームで共通の`runsOn`の形 | iOS のブラウザや Web の AVD のように、どのプラットフォームも使えないフィールドが残り、flat な並びの問題が再び生じます |
+| `setup`と`before`を両方残す | 現行の挙動を保てますが、1つの問いに2つのキーが答えたままになります |
+| 食い違ったら合う端末を作る、または警告して続ける | 端末を作ると、ランタイムの導入、時間、後片付けを Bajutsu が負います。警告だけでは、誤った環境での結果が flakiness の履歴に入ります |
+| 範囲なしの前方一致 | `>=17 <19`のような互換の範囲を1行で書けません |
+
+## 進捗
+
+> 作業の進行に合わせて更新してください。チェックリストは「詳細設計」の MECE な作業分解を
+> 反映し（作業単位ごとに1つ）、ログは何がいつ変わったかを（古い順に）PR へのリンクつきで
+> 記録します。
+
+- [ ] 作業単位 1: `VersionSpec`
+- [ ] 作業単位 2: 未確定の置き場所の確認
+- [ ] 作業単位 3: プラットフォームのレジストリとモデル
+- [ ] 作業単位 4: スキーマの切り替え、固定データ、`demos/`の設定ファイル
+- [ ] 作業単位 5: `setup`の`hooks.before`への統合
+- [ ] 作業単位 6: CLI
+- [ ] 作業単位 7: iOS の要件の照合
+- [ ] 作業単位 8: Android の要件の照合
+- [ ] 作業単位 9: Web の要件の照合
+- [ ] 作業単位 10: `doctor`
+- [ ] 作業単位 11: `bajutsu config schema`
+- [ ] 作業単位 12: 文書
+
+## 参考
+
+- [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)：解決後の`Effective`のプラットフォーム別の分割。
+- [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)：`DeviceOS`と、記録される`device_runtime`。
+- [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)と[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)：`runsOn`へ移る`deviceMode`と`browser`。
+- [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)：`hooks`が持つ`before`と`after`のフェーズ。
+- [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)：`dispatch.live`になる`deviceProvider`。
+- `bajutsu/common/config/schema/target_config.py`と`bajutsu/common/config/resolve.py`：この項目が置き換えるスキーマと解決処理。
