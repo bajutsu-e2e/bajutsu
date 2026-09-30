@@ -174,7 +174,7 @@ tr.srow.playing{background:var(--lane-bg);box-shadow:inset 3px 0 0 var(--lane),0
 :is(tr.srow.lane-1,.lane-1 .tgtlbl){--lane:#0a6cff;--lane-bg:#dbe9ff}
 :is(tr.srow.lane-2,.lane-2 .tgtlbl){--lane:#d6336c;--lane-bg:#ffe0ea}
 :is(tr.srow.lane-3,.lane-3 .tgtlbl){--lane:#2f9e44;--lane-bg:#dcf5e0}
-.player[class*="lane-"] .tgtlbl{margin:0;padding:.15rem .5rem;background:var(--lane);color:#fff}
+.player[class*="lane-"] .tgtlbl{margin:0;padding:.15rem .5rem;background:var(--lane-bg);color:var(--ink);box-shadow:inset 3px 0 0 var(--lane)}
 tr.srow[class*="lane-"] .tgt{border-color:var(--lane);box-shadow:inset 3px 0 0 var(--lane);padding-left:.55em}
 td.ev{white-space:nowrap}
 img.shot{height:52px;border:1px solid var(--line);border-radius:4px;vertical-align:middle;

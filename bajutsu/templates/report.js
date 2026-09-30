@@ -857,19 +857,10 @@
     var players = scn.querySelectorAll('.player');
     if(players.length < 2) return;
     Array.prototype.forEach.call(players, function(p, i){
-      var lane = 'lane-' + (i % LANES), target = p.getAttribute('data-target') || '';
-      var rows = rowsFor(scn, target);
+      var lane = 'lane-' + (i % LANES);
+      var rows = rowsFor(scn, p.getAttribute('data-target') || '');
       p.classList.add(lane);
       rows.forEach(function(r){ r.classList.add(lane); });
-      // The primary's own player carries no target name (see `ownedTargets`), yet its rows do —
-      // borrow that name so every stacked recording is labeled, not all but the first.
-      var named = rows.filter(function(r){ return r.getAttribute('data-target'); })[0];
-      if(!p.querySelector('.tgtlbl') && named){
-        var lbl = document.createElement('span');
-        lbl.className = 'tgtlbl';
-        lbl.textContent = named.getAttribute('data-target');
-        p.insertBefore(lbl, p.firstChild);
-      }
     });
   }
   ROOT.querySelectorAll('.scn').forEach(function(scn){

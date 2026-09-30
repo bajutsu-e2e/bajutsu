@@ -8,7 +8,7 @@ from pathlib import Path
 from _report import _el, _passing
 
 from bajutsu.common.evidence import Artifact
-from bajutsu.common.orchestrator import RunResult, SkippedCapture, StepOutcome
+from bajutsu.common.orchestrator import RunResult, SkippedCapture, StepOutcome, TargetDeviceInfo
 from bajutsu.common.report import html_report
 
 
@@ -109,23 +109,32 @@ def test_html_embeds_one_player_per_declared_targets_video() -> None:
     assert " data-target='app'" in out and " data-target='web'" in out
 
 
-def test_html_colors_each_stacked_recording_and_its_own_rows_apart() -> None:
-    # Two stacked recordings each highlight their own target's step at once; one shared tint left
-    # two identical rows with no way to tell which video each followed. The page ships the per-
-    # player lane assignment and one color per lane, and pairs the row tint with the lane's color.
+def test_html_labels_the_primary_recording_once_videos_stack() -> None:
+    # The primary's own video carries no `target`, so a stack of recordings would leave the first
+    # one unlabeled; its name comes from `target_devices`, which the runner keys primary first. The
+    # player's `data-target` stays empty, since the page's `rowsFor` reads that as "the primary".
+    # Which rows land in which color lane is checked by running the page (test_report_lanes_web.py).
     r = RunResult(
         scenario="s1",
         ok=True,
         steps=[StepOutcome(index=0, action="tap", target="app", ok=True, started_at=100.0)],
-        expect_results=[],
-        artifacts=[Artifact("00-s1/scenario.mp4", "video", "simctl")],
+        artifacts=[
+            Artifact("00-s1/app/scenario.mp4", "video", "simctl"),
+            Artifact("00-s1/web/scenario.webm", "video", "playwright", target="web"),
+        ],
         video_anchor_s=100.0,
+        target_video_anchors={"web": 101.0},
+        target_devices={"app": TargetDeviceInfo(), "web": TargetDeviceInfo()},
     )
     out = html_report("run1", [r])
-    assert "function assignLanes(scn)" in out and "assignLanes(scn);" in out
-    for lane in range(4):
-        assert f":is(tr.srow.lane-{lane},.lane-{lane} .tgtlbl){{--lane:" in out
-    assert "tr.srow.playing{background:var(--lane-bg)" in out
+    assert (
+        '<div class="player" data-target="" data-offset="0.0"><span class="tgtlbl">app</span>'
+        in out
+    )
+    assert (
+        '<div class="player" data-target="web" data-offset="1.0"><span class="tgtlbl">web</span>'
+        in out
+    )
 
 
 def test_html_discloses_why_the_video_is_missing_on_a_backend_crash() -> None:
