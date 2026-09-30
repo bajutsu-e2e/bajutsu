@@ -1,6 +1,6 @@
 [English](BE-XXXX-worker-capability.md) · **日本語**
 
-# BE-XXXX — ドライバーごとの worker capability の宣言：ホスト対応とデバイス台数の上限
+# BE-XXXX — worker が実行できる範囲の宣言：ホスト対応とデバイス台数の上限
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -38,10 +38,11 @@ target の数にも同じ欠落があります。複数 target のシナリオ�
 
 **worker** はシナリオを実行するマシンであり、**target** はシナリオが操作するアプリを指します。この 2 つは、書き手も寿命も異なります。target は、アプリのチームが `bajutsu.config.yaml` に書きます。マシンが何を扱えるかを知っているのは、運用者です。したがって worker capability は、`bajutsu.config.yaml` には置かず、専用のファイル `worker.yaml` に置きます。プロジェクトの設定は、server の worker がジョブを lease したあとでしか届かないので、lease を受けるために広告する内容を、その設定で述べることもできません。
 
-1 つの `worker.yaml` は、1 台の worker を述べます。worker のホストも環境も 1 つなので、どちらにも一覧は要りません。ファイルの最上位キーは 4 つです。
+1 つの `worker.yaml` は、1 台の worker を述べます。worker のホストも環境も 1 つなので、どちらにも一覧は要りません。ファイルの最上位キーは 5 つです。
 
 | キー | 型 | 意味 |
 |---|---|---|
+| `version` | 整数 | ファイルのスキーマのバージョン。現在、ローダーは `1` を受け付け、それ以外の値は拒否します。 |
 | `environment` | 文字列 | この worker がジョブを実行する場所です。`local`（開発者のマシン、または自分のホストでデバイスを操作する worker）か、`devicefarm` のようなデバイスクラウドのプロバイダー名です。省略は `local` を表します |
 | `maxJobConcurrency` | 正の整数（省略可） | この worker が同時に進行できるジョブの数です。省略は 1 を表します。満杯のあいだ、worker は lease の要求を送りません |
 | `maxTargetsPerJob` | 正の整数（省略可） | 1 つのシナリオが宣言できる target の数で、つまり同時に保持するデバイス数です。ドライバーをまたいで数え、Simulator、エミュレーター、実機、ブラウザの target がそれぞれ 1 と数えられます。省略は上限なしを表します |
@@ -109,7 +110,7 @@ drivers: [adb, xcuitest]
 
 worker が広告するのは、次の情報源の和集合です。`--platform` の `platform:*` トークン、Simulator の一覧から導くトークン、動いている OS の `host:<os>`、環境が `local` でないときの `environment:<name>` です。環境が `local` でない worker は、自分のホストではデバイスを操作しないので、`platform:*` トークンを広告せず、`--platform` の既定値を使わず、明示された `--platform` は環境を名指ししたメッセージで拒否します。`local` の worker は、起動時に `--platform` をファイルとホストに照らして検査します。ファイルが省いているか、ホストが動かせないときは、提供できない platform を広告せず、ドライバーを名指ししたメッセージで終了します。既定の `--platform ios` のまま起動した Linux のマシンは、何もせず待ち続ける状態から起動時のエラーに変わります。これは正しい失敗です。
 
-`--capabilities`、`$BAJUTSU_WORKER_CAPABILITIES`、`requires` は、1 リリースのあいだ非推奨とし、次のリリースで削除します。非推奨の期間は、引き続き受け付け、通知を一度だけ出します（`warn_once`、[`deprecations.py`](../../bajutsu/common/deprecations.py)）。フラグと環境変数の通知は、トークンが今後、一覧とファイルから得られると伝えます。`requires` の通知は、iOS の runtime や機種を要求することが、target の `device` から要求を導けるようになるまでサポートされないと伝えます。削除後も同じ理由で失敗しますが、`requires` には置き換え先のキーがないので、置き換え先を名指ししない削除のエラーを使います。これらが有効なあいだ、3 つのどれかに予約された接頭辞 `environment:` のトークンがあれば、その予約を名指ししたメッセージで、起動時または config の読み込み時に拒否します。この接頭辞を広告できるのは、登録済みのプロバイダーだけだからです。`--platform` は残します。ドライバーを選ぶ指定であり、capability トークンではないからです。
+`--capabilities`、`$BAJUTSU_WORKER_CAPABILITIES`、`requires` は、1 リリースのあいだ非推奨とします。`--capabilities` と環境変数は次のリリースで削除し、`requires` は、target の `device` から要求を導く項目が入ってから削除します。それより前に削除すると、`ios18` や `ipad` を要求するジョブが、対応する worker に届く手段を失うからです。非推奨の期間は、引き続き受け付け、通知を一度だけ出します（`warn_once`、[`deprecations.py`](../../bajutsu/common/deprecations.py)）。フラグと環境変数の通知は、トークンが今後、一覧とファイルから得られると伝えます。`requires` の通知は、iOS の runtime や機種を要求することが、target の `device` から要求を導けるようになるまでサポートされないと伝えます。削除後の `requires` も同じ理由で失敗しますが、`requires` には置き換え先のキーがないので、置き換え先を名指ししない削除のエラーを使います。これらが有効なあいだ、3 つのどれかに予約された接頭辞 `environment:` のトークンがあれば、その予約を名指ししたメッセージで、起動時または config の読み込み時に拒否します。この接頭辞を広告できるのは、登録済みのプロバイダーだけだからです。`--platform` は残します。ドライバーを選ぶ指定であり、capability トークンではないからです。
 
 ### シナリオの要求の導出
 
@@ -132,7 +133,7 @@ worker が広告するのは、次の情報源の和集合です。`--platform` 
 
 検査は 2 か所に置きます。どちらも、ファイルを持つのが worker だけなので、worker の側です。
 
-- **`bajutsu run`**：規則 1 と 2 は、`select_actuator` を呼ぶ前に、`_select_actuator_or_exit`（[`cli/_shared.py`](../../bajutsu/cli/_shared.py)）の中で実行します。この関数は、要求されたアクチュエーターのうち、ホストが動かせないドライバーと、worker の `drivers` が省いたドライバーを候補から外し、外したものを除いたバックエンドの一覧を返します。したがって `runner/pool.py` のシナリオごとの選択が、それを再び選ぶことはありません。終了コード 2 になるのは、候補が残らないときだけです。名指しした理由で、名指しした理由で終了コード 2 になります。したがって `[ios, web]` のようなフォールバックの一覧は、Linux でも `playwright` に解決されます。`record`、`crawl`、`audit`、`repl` も同じ関数を共有するので、同じメッセージを得ます。この位置に置かないと、Linux ホストは、ランナーの preflight が始まる前に、汎用の `no available actuator` で終了コード 2 のまま終わります。`run` は、`_resolve_target_effs` より前に、読み込んだシナリオに対して `worker_capability_unsupported()` を評価し、違反したシナリオを接頭辞付きの理由で報告して、以降に渡す一覧から外します。したがって、違反したシナリオだけが宣言する target にはデバイスを取得せず、`_pool_demand` もそれを数えません。`_select_actuator_or_exit` が終了コード 2 になるのは、残るすべてのシナリオが使う primary の target に候補が残らないときだけです。`_acquire_targets` を分け、宣言されたすべての target のアクチュエーターを、最初の `acquire_device` の呼び出しより前に選んで検査します。
+- **`bajutsu run`**：規則 1 と 2 は、`select_actuator` を呼ぶ前に、`_select_actuator_or_exit`（[`cli/_shared.py`](../../bajutsu/cli/_shared.py)）の中で実行します。この関数は、要求されたアクチュエーターのうち、ホストが動かせないドライバーと、worker の `drivers` が省いたドライバーを候補から外し、外したものを除いたバックエンドの一覧を返します。したがって `runner/pool.py` のシナリオごとの選択が、それを再び選ぶことはありません。候補が残らないときにだけ、名指しした理由で終了コード 2 になります。したがって `[ios, web]` のようなフォールバックの一覧は、Linux でも `playwright` に解決されます。`record`、`crawl`、`audit`、`repl` も同じ関数を共有するので、同じメッセージを得ます。この位置に置かないと、Linux ホストは、ランナーの preflight が始まる前に、汎用の `no available actuator` で終了コード 2 のまま終わります。`run` は、`_resolve_target_effs` より前に、読み込んだシナリオに対して `worker_capability_unsupported()` を評価し、違反したシナリオを接頭辞付きの理由で報告して、以降に渡す一覧から外します。したがって、違反したシナリオだけが宣言する target にはデバイスを取得せず、`_pool_demand` もそれを数えません。この検査は、各シナリオが宣言する target を、デバイスを取得せずに設定から読んで判定します。そのため、推論した target の一括実行で、最初のファイルと target が重ならない後続のシナリオも、そのシナリオ自身の target で判定されます。`_select_actuator_or_exit` が終了コード 2 になるのは、実行できるシナリオが 1 つも残らないときだけです。`_acquire_targets` を分け、宣言されたすべての target のアクチュエーターを、最初の `acquire_device` の呼び出しより前に選んで検査します。
 - **lease したジョブ、または `bajutsu worker --once`**：クラウドへの依頼を持つジョブ（1 ジョブに 1 シナリオ）では、worker は何かを投入する前に同じ関数を実行し、既存の結果の経路で、名指しした理由を付けてジョブを失敗させます。ローカルのジョブでは、検査は上の `run` の経路の中でシナリオごとに実行されるので、失敗するのは該当のシナリオだけです。worker は、起動する内部の run の入口に、`--worker-config` のパスを絶対パスにして渡します。したがって、その子プロセスの検査も同じファイルを読みます。
 
 server は、ルーティングにとどまります。単一のホスト OS だけで動くドライバーは、対応する `host:<os>` トークンをジョブの必須集合に加えます。ルーティングの判定は全要素を要求する部分集合の検査（[`serve/capabilities.py`](../../bajutsu/serve/capabilities.py)）なので、複数のホストで動くドライバーは `host:` 要件を加えません。`environment:*` トークンを広告する worker は、それを要求するジョブだけを担当します。この規則は Device Farm の投入の項目が `can_serve` に加え、クラウドのジョブの必須集合もそちらが作ります。クラウドへの依頼（`Job.batch`）を持つジョブは例外で、`environment:<name>` だけを要求し、`platform:*` も `host:*` も要求しません。端末とそのホストは、プロバイダーのものだからです。クラウドへの依頼を持たないジョブは、`cloudBatch` を設定した target のものでも、ローカルの要求のままです。接続中のどの worker にも合致しないジョブは、BE-0166 と同じく待機します。worker の構成は時間とともに変わるため、worker がまだ揃っていない起動直後に現在の構成で拒否すると、有効なジョブまで拒否してしまうからです。
