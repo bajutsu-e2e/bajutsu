@@ -37,17 +37,28 @@ class FakeProc:
 
 
 class FakeDevice:
-    """An `adb` runner answering the two distinct probes `start_screenrecord` makes.
+    """An `adb` runner answering the distinct probes `start_screenrecord` makes.
 
     "Is the recording process there?" (`pgrep`) and "is it producing bytes?" (the file's size) are
     different questions with different answers, so a fake serving one canned string for both would
     let a pid be read as a byte count. Each sequence serves its entries in order and then holds its
-    last, the same shape the driver-side act fakes use.
+    last, the same shape the driver-side act fakes use. `first_bytes` answers the device-side
+    first-bytes wait (`0` by default: never, so the pid path decides), and `rm_fails` makes the
+    pre-spawn clear raise, the way a vanished device does.
     """
 
-    def __init__(self, *, pids: list[str] | None = None, sizes: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        pids: list[str] | None = None,
+        sizes: list[str] | None = None,
+        first_bytes: str = "0",
+        rm_fails: bool = False,
+    ) -> None:
         self._pids = list(pids or [""])
         self._sizes = list(sizes or ["0"])
+        self._first_bytes = first_bytes
+        self._rm_fails = rm_fails
         self.calls: list[list[str]] = []
 
     @staticmethod
@@ -61,10 +72,17 @@ class FakeDevice:
             return self._next(self._pids)
         if "stat -c" in tail:
             return self._next(self._sizes)
+        if "while [ ! -s" in tail:
+            return self._first_bytes
+        if argv[-3:-1] == ["rm", "-f"] and self._rm_fails:
+            raise subprocess.CalledProcessError(1, argv)
         return ""
 
     def size_probes(self) -> list[list[str]]:
         return [argv for argv in self.calls if "stat -c" in argv[-1]]
+
+    def first_bytes_waits(self) -> list[list[str]]:
+        return [argv for argv in self.calls if "while [ ! -s" in argv[-1]]
 
 
 def test_record_video_cmd() -> None:
@@ -614,11 +632,12 @@ def test_start_screenrecord_growth_is_confirmed_only_past_the_pre_spawn_baseline
 ) -> None:
     # A crash-retry (BE-0049) reuses the scenario id and so the one fixed device-side path, so a
     # finalized earlier attempt's leftover mp4 already has bytes. Without the baseline those bytes
-    # would confirm growth that never happened — the same trap the iOS video baseline guards.
+    # would confirm growth that never happened — the same trap the iOS video baseline guards. The
+    # pre-spawn clear normally removes them; this is the path where that clear failed.
     monkeypatch.setenv(intervals._VIDEO_START_TIMEOUT_ENV, "0.01")
     monkeypatch.setattr(time, "sleep", lambda _s: None)
     monkeypatch.setattr(stall_diagnostics, "capture", lambda reason, probes: None)
-    device = FakeDevice(pids=["", "1234"], sizes=["4096"])  # leftover bytes, never growing
+    device = FakeDevice(pids=["", "1234"], sizes=["4096"], rm_fails=True)  # leftover, never growing
 
     with caplog.at_level("WARNING"):
         intervals.start_screenrecord(
@@ -636,7 +655,8 @@ def test_start_screenrecord_growth_check_is_skipped_when_no_process_appeared(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     # With no process there is nothing to produce bytes, that path already warned, and a second full
-    # timeout would buy no new fact — so only the pre-spawn baseline probe should have run.
+    # timeout would buy no new fact — so no size probe runs at all (the cleared target needs no
+    # pre-spawn baseline either).
     monkeypatch.setenv(intervals._VIDEO_START_TIMEOUT_ENV, "0.01")
     monkeypatch.setattr(time, "sleep", lambda _s: None)
     captured: list[str] = []
@@ -655,9 +675,111 @@ def test_start_screenrecord_growth_check_is_skipped_when_no_process_appeared(
         )
 
     assert interval.true_start is None
-    assert len(device.size_probes()) == 1
+    assert device.size_probes() == []
     assert not any("produced no new bytes" in r.message for r in caplog.records)
     assert captured == []
+
+
+def test_start_screenrecord_anchors_on_the_recordings_first_bytes(tmp_path: Path) -> None:
+    # screenrecord's mp4 ends at its last encoded frame, not at the stop, so its duration cannot
+    # place its origin; the first byte the device writes — the muxer starting on the first frame —
+    # is the anchor instead, and it answers the growth question too, so no size probe follows.
+    device = FakeDevice(pids=["", "1234"], first_bytes="1")
+    before = time.monotonic()
+
+    interval = intervals.start_screenrecord(
+        "SER",
+        tmp_path / "scenario.mp4",
+        spawn=lambda a, o: FakeProc(),
+        run=device,
+        confirm_started=True,
+    )
+
+    assert interval.true_start is not None and interval.true_start >= before
+    assert interval.start_confirmed is True
+    assert interval.duration_spans_stop is False
+    # Cleared before the spawn, so a leftover file cannot satisfy the wait; then waited on once.
+    rm_at = next(i for i, argv in enumerate(device.calls) if argv[-3:-1] == ["rm", "-f"])
+    wait_at = device.calls.index(device.first_bytes_waits()[0])
+    assert rm_at < wait_at
+    assert device.size_probes() == []
+    assert not any("pgrep" in argv[-1] for argv in device.calls[wait_at:])
+
+
+def test_start_screenrecord_falls_back_to_the_pid_when_its_first_bytes_never_come(
+    tmp_path: Path,
+) -> None:
+    device = FakeDevice(pids=["", "1234"], sizes=["0", "512"], first_bytes="0")
+
+    interval = intervals.start_screenrecord(
+        "SER",
+        tmp_path / "scenario.mp4",
+        spawn=lambda a, o: FakeProc(),
+        run=device,
+        confirm_started=True,
+    )
+
+    assert isinstance(interval.true_start, float)
+    assert len(device.first_bytes_waits()) == 1
+
+
+def test_start_screenrecord_skips_the_first_bytes_wait_when_the_clear_failed(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A leftover file that could not be removed would satisfy the wait before this recording wrote
+    # anything, so the pid confirmation — which a stale file cannot fool — decides instead.
+    device = FakeDevice(pids=["", "1234"], sizes=["0", "512"], first_bytes="1", rm_fails=True)
+
+    with caplog.at_level("WARNING"):
+        interval = intervals.start_screenrecord(
+            "SER",
+            tmp_path / "scenario.mp4",
+            spawn=lambda a, o: FakeProc(),
+            run=device,
+            confirm_started=True,
+        )
+
+    assert device.first_bytes_waits() == []
+    assert isinstance(interval.true_start, float)
+    assert any("could not clear" in r.message for r in caplog.records)
+
+
+def test_await_screenrecord_first_bytes_reads_only_the_last_line_and_survives_a_probe_error() -> (
+    None
+):
+    def banner_then_answer(argv: list[str]) -> str:
+        return "WARNING: linker banner 1\n0\n"
+
+    def failing(argv: list[str]) -> str:
+        raise OSError("device offline")
+
+    assert (
+        intervals._await_screenrecord_first_bytes("SER", banner_then_answer, "/x.mp4", 1.0) is None
+    )
+    assert intervals._await_screenrecord_first_bytes("SER", failing, "/x.mp4", 1.0) is None
+
+
+def test_a_recorder_whose_file_ends_at_its_last_frame_is_not_measured(tmp_path: Path) -> None:
+    # A readable mp4 inside the origin window would otherwise be trusted — and for screenrecord it
+    # is late by however long the screen sat still before the stop.
+    path = tmp_path / "v.mp4"
+    path.write_bytes(_mp4_bytes(2.5))
+    interval = intervals.Interval(
+        kind="video",
+        path=path,
+        spawned_at=time.monotonic() - 2.6,
+        duration_spans_stop=False,
+        _proc=FakeProc(),
+    )
+    interval.stop()
+    assert interval.measured_start is None
+
+
+def test_adopt_keeps_the_recorders_own_duration_semantics(tmp_path: Path) -> None:
+    # The production Android path adopts a prestarted recording; dropping the flag there would
+    # quietly turn the end-based measurement back on for exactly the recorder it is wrong for.
+    inner = intervals.Interval(kind="video", path=tmp_path / "pre.mp4", duration_spans_stop=False)
+    assert intervals.adopt(inner, tmp_path / "out.mp4").duration_spans_stop is False
 
 
 def test_start_screenrecord_makes_no_size_probe_without_confirm_started(tmp_path: Path) -> None:

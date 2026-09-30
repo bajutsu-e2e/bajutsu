@@ -7,6 +7,7 @@ from pathlib import Path
 
 from _report import _el, _passing
 
+from bajutsu.common.drivers.actuation import Actuation
 from bajutsu.common.evidence import Artifact
 from bajutsu.common.orchestrator import RunResult, SkippedCapture, StepOutcome
 from bajutsu.common.report import html_report
@@ -151,7 +152,7 @@ def test_html_step_rows_carry_video_offset() -> None:
     assert "data-t='1.500'" in out
     # …and the JS seeks the video and highlights the playing step.
     assert "v.currentTime = t" in out
-    assert "timeupdate" in out and "playing" in out
+    assert "trackPlayhead" in out and "playing" in out
 
 
 def test_html_step_row_carries_its_own_end_instant_when_it_differs_from_the_start() -> None:
@@ -260,6 +261,176 @@ def test_html_step_offsets_survive_a_run_recorded_before_the_anchor_was_persiste
         artifacts=[Artifact("00-s1/scenario.mp4", "video", "simctl")],
     )
     assert "data-t='1.500'" in html_report("run1", [r])
+
+
+_ANCHOR = 1_700_000_000.0
+
+
+def _tap(at: float | None, *, accepted: bool | None = None) -> Actuation:
+    return Actuation(gesture="tap", via="handle", unit="pt", at=at, accepted=accepted)
+
+
+def _acted_run(*steps: StepOutcome) -> RunResult:
+    return RunResult(
+        scenario="s1",
+        ok=True,
+        steps=list(steps),
+        expect_results=[],
+        artifacts=[Artifact("00-s1/scenario.mp4", "video", "simctl")],
+        video_anchor_s=_ANCHOR,
+    )
+
+
+def test_html_step_row_carries_the_instant_its_action_landed() -> None:
+    # A tap reads the tree and resolves its target before it acts, so the recording changes well
+    # after the step's own start. The row carries that later instant, relative to the same anchor,
+    # for the report to switch the highlight at instead of `data-t`.
+    out = html_report(
+        "run1",
+        [
+            _acted_run(
+                StepOutcome(
+                    index=0,
+                    action="tap",
+                    duration_s=1.2,
+                    started_at=_ANCHOR + 2.0,
+                    actuations=[_tap(_ANCHOR + 2.85)],
+                )
+            )
+        ],
+    )
+    assert "data-t='2.000' data-t-end='3.200' data-t-act='2.850'" in out
+    # The actuation's own row shows how long after the step began it went out.
+    assert '<span class="actn-t"' in out and "+0.85s" in out
+
+
+def test_html_step_row_without_an_actuation_instant_has_no_act_attribute() -> None:
+    # `wait` / `assert` never actuate, and a run recorded before actuations carried an instant has
+    # none to offer: both keep switching at `data-t`, exactly as before.
+    out = html_report(
+        "run1",
+        [
+            _acted_run(
+                StepOutcome(index=0, action="wait", duration_s=0.4, started_at=_ANCHOR + 1.0),
+                StepOutcome(
+                    index=1,
+                    action="tap",
+                    duration_s=0.4,
+                    started_at=_ANCHOR + 2.0,
+                    actuations=[_tap(None)],
+                ),
+            )
+        ],
+    )
+    assert "data-t-act=" not in out
+    assert '<span class="actn-t"' not in out
+
+
+def test_html_step_row_takes_the_accepted_attempt_over_a_refused_one() -> None:
+    # A stale-retried tap records its refused attempt first; only the accepted retry changes the
+    # screen, so that is the instant the row switches at.
+    out = html_report(
+        "run1",
+        [
+            _acted_run(
+                StepOutcome(
+                    index=0,
+                    action="tap",
+                    duration_s=2.0,
+                    started_at=_ANCHOR + 1.0,
+                    actuations=[
+                        _tap(_ANCHOR + 1.4, accepted=False),
+                        _tap(_ANCHOR + 1.9, accepted=True),
+                    ],
+                )
+            )
+        ],
+    )
+    assert "data-t-act='1.900'" in out
+
+
+def test_html_step_row_falls_back_to_the_first_attempt_when_every_one_was_refused() -> None:
+    out = html_report(
+        "run1",
+        [
+            _acted_run(
+                StepOutcome(
+                    index=0,
+                    action="tap",
+                    ok=False,
+                    duration_s=2.0,
+                    started_at=_ANCHOR + 1.0,
+                    actuations=[
+                        _tap(_ANCHOR + 1.4, accepted=False),
+                        _tap(_ANCHOR + 1.9, accepted=False),
+                    ],
+                )
+            )
+        ],
+    )
+    assert "data-t-act='1.400'" in out
+
+
+def test_html_step_row_action_instant_never_reads_before_its_start() -> None:
+    # A step that began before the recording's first frame has its `data-t` clamped to 0.0; an
+    # action that also landed before it must not read as earlier than the row's own start.
+    out = html_report(
+        "run1",
+        [
+            _acted_run(
+                StepOutcome(
+                    index=0,
+                    action="tap",
+                    duration_s=0.5,
+                    started_at=_ANCHOR - 0.6,
+                    actuations=[_tap(_ANCHOR - 0.3)],
+                )
+            )
+        ],
+    )
+    assert "data-t='0.000'" in out and "data-t-act='0.000'" in out
+
+
+def test_html_before_and_after_phase_rows_carry_their_action_instant() -> None:
+    step = StepOutcome(
+        index=0,
+        action="tap",
+        duration_s=1.0,
+        started_at=_ANCHOR + 0.5,
+        actuations=[_tap(_ANCHOR + 1.1)],
+    )
+    r = _acted_run()
+    r.before_outcomes = [step]
+    r.after_outcomes = [
+        StepOutcome(
+            index=0,
+            action="tap",
+            duration_s=1.0,
+            started_at=_ANCHOR + 5.0,
+            actuations=[_tap(_ANCHOR + 5.7)],
+        )
+    ]
+    definition = {
+        "before": [{"tap": {"id": "a"}}],
+        "after": [{"on": "always", "steps": [{"tap": {"id": "b"}}]}],
+        "steps": [],
+    }
+    out = html_report("run1", [r], definitions=[definition])
+    assert "data-t-act='1.100'" in out
+    assert "data-t-act='5.700'" in out
+
+
+def test_html_highlight_switches_at_the_action_and_row_clicks_seek_just_before_it() -> None:
+    out = html_report("run1", [_passing()])
+    # One rule decides both where a row lights up and where a click on it seeks.
+    assert "function rowSwitchTime(row)" in out
+    assert "var t = rowSwitchTime(rows[i]);" in out  # inside pickPlayingRow
+    assert "var t = rowSwitchTime(r);" in out  # compact row click
+    assert "return isNaN(a) ? t : Math.max(t, a - ACT_LEAD);" in out
+    # The playhead is read per presented frame, not only on the coarse `timeupdate` cadence.
+    assert "requestVideoFrameCallback" in out and "requestAnimationFrame" in out
+    # The seekbar marks where inside a step's bar the action landed.
+    assert "vmark-act" in out
 
 
 def test_html_shows_step_screenshot_and_tree(tmp_path: Path) -> None:

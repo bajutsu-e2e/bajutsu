@@ -315,13 +315,13 @@
   var vzStepsEl = vz && vz.querySelector('.vz-steps');
   var vzTabsEl = vz && vz.querySelector('.vz-tabs');
   var vzActive = null;          // the <video> currently mounted inside the modal
-  var vzTimeupdate = null;      // the timeupdate listener bound to vzActive, removed on swap/close
+  var vzUntrack = null;         // unbinds vzActive's playhead tracker (trackPlayhead) on swap/close
   var vzStepClick = null;       // the click listener bound to vzStepsEl, removed on rebuild/close
   // Puts vzActive's video back in its own player and clears the modal's own listener/state.
   // Idempotent (a no-op once vzActive is already null), so both vzMount and vzClose can call it.
   function vzRestore(){
     if(!vzActive) return;
-    if(vzTimeupdate){ vzActive.removeEventListener('timeupdate', vzTimeupdate); vzTimeupdate = null; }
+    if(vzUntrack){ vzUntrack(); vzUntrack = null; }
     var home = videoHome.get(vzActive);
     if(home){
       home.appendChild(vzActive);
@@ -440,17 +440,22 @@
       if(e.target.closest('a')) return;
       var row = e.target.closest('tr.srow');
       if(!row) return;
-      var t = parseFloat(row.getAttribute('data-t'));
+      // Same target as the compact view's row click: just before the step's action.
+      var t = rowSwitchTime(row);
       if(!isNaN(t)) vzActive.currentTime = t;
     };
     vzStepsEl.addEventListener('click', vzStepClick);
     var lastCur = null;
-    vzTimeupdate = function(){
-      var cur = pickPlayingRow(cloneRows, vzActive.currentTime);
+    // Toggles every clone on each call rather than only on a change: a clone copies the compact
+    // row's own `playing` class, so the first call has to clear it even when nothing is playing.
+    vzUntrack = trackPlayhead(vzActive, function(t){
+      var cur = pickPlayingRow(cloneRows, t);
       cloneRows.forEach(function(r){ r.classList.toggle('playing', r === cur); });
       if(cur !== lastCur){ lastCur = cur; if(cur) scrollIntoBox(vzStepsEl, cur); }
-    };
-    vzActive.addEventListener('timeupdate', vzTimeupdate);
+    });
+    // Paint the current position straight away, rather than waiting for the first frame or event.
+    var initial = pickPlayingRow(cloneRows, vzActive.currentTime);
+    cloneRows.forEach(function(r){ r.classList.toggle('playing', r === initial); });
   }
   // Moves `player`'s own <video> — and its `.vctl` control bar, so play/pause and the scrubber
   // come along — into the modal, restoring whichever one was there before. Exactly one recording
@@ -705,9 +710,17 @@
         if(!isNaN(tEnd) && tEnd > t){
           var pctEnd = Math.max(0, Math.min(100, tEnd / v.duration * 100));
           var w = Math.max(0.5, pctEnd - pct);   // floor so a short step's bar stays visible/clickable
+          // The notch where the step's action landed, placed within the bar itself — `left` is a
+          // fraction of the step's own span, so it stays put however wide the bar is drawn.
+          var act = parseFloat(r.getAttribute('data-t-act'));
+          var notch = '', actTip = '';
+          if(!isNaN(act) && act > t && act <= tEnd){
+            notch = '<span class="vmark-act" style="left:' + ((act - t) / (tEnd - t) * 100).toFixed(3) + '%"></span>';
+            actTip = ' (acted ' + fmtT(act) + ')';
+          }
           html += '<span class="vmark vmark-range" data-t="' + t + '" data-t-end="' + tEnd
-            + '" style="left:' + pct.toFixed(3) + '%;width:' + w.toFixed(3) + '%">'
-            + '<span class="vmtip">Step ' + esc(num) + ' · ' + fmtT(t) + '–' + fmtT(tEnd) + '</span></span>';
+            + '" style="left:' + pct.toFixed(3) + '%;width:' + w.toFixed(3) + '%">' + notch
+            + '<span class="vmtip">Step ' + esc(num) + ' · ' + fmtT(t) + '–' + fmtT(tEnd) + actTip + '</span></span>';
         } else {
           html += '<span class="vmark" data-t="' + t + '" style="left:' + pct.toFixed(3) + '%">'
             + '<span class="vmtip">Step ' + esc(num) + ' · ' + fmtT(t) + '</span></span>';
@@ -835,17 +848,65 @@
     if(rr.top < cr.top) box.scrollTop -= (cr.top - rr.top) + 8;
     else if(rr.bottom > cr.bottom) box.scrollTop += (rr.bottom - cr.bottom) + 8;
   }
-  // The shared "which row is playing" rule: the last row (in array order) whose own `data-t` has
+  // How far ahead of its action a row lights up, and where a row click seeks to. A step's own
+  // `data-t` is stamped before it screenshots, reads the tree and resolves its target — up to
+  // seconds before the recording changes — so switching there ran the highlight ahead of the
+  // picture. `data-t-act` is when the action actually went out; this small lead keeps the row
+  // on screen for a beat before the change it caused, rather than exactly on it.
+  var ACT_LEAD = 0.3;
+  // The instant a row takes over the highlight: its action, less `ACT_LEAD`, but never before the
+  // step began; its start alone for a step that recorded no action (`wait`, `assert`) or a run
+  // recorded before actions carried an instant. Monotonic across a scenario's rows, because every
+  // step acts after it starts and starts after the previous one ended.
+  function rowSwitchTime(row){
+    var t = parseFloat(row.getAttribute('data-t'));
+    var a = parseFloat(row.getAttribute('data-t-act'));
+    return isNaN(a) ? t : Math.max(t, a - ACT_LEAD);
+  }
+  // The shared "which row is playing" rule: the last row (in array order) whose `rowSwitchTime` has
   // already passed, as of `currentTime`. Both the compact view's own sync (below) and the video
   // expand modal's clone (`vzBuildSteps`, above) use this same window on their own row set, so a
-  // later change to it — factoring in `data-t-end` too, say — only has to land here once.
+  // later change to it only has to land here once.
   function pickPlayingRow(rows, currentTime){
     var ct = currentTime + 0.001, cur = null;
     for(var i = 0; i < rows.length; i++){
-      var t = parseFloat(rows[i].getAttribute('data-t'));
+      var t = rowSwitchTime(rows[i]);
       if(!isNaN(t) && t <= ct) cur = rows[i];
     }
     return cur;
+  }
+  // Calls `onTime` with `v`'s playhead on every presented frame while it plays, and once on each
+  // pause/seek/end. `timeupdate` alone fires only every quarter second or so, which left the
+  // highlight trailing the frame that changed; `requestVideoFrameCallback` reports the presented
+  // frame's own `mediaTime`, and a browser without it falls back to one read per animation frame.
+  // `timeupdate` stays bound as the paused-scrub path and as a safety net. Returns an unbind
+  // function, since the expand modal rebinds its tracker on every mount.
+  function trackPlayhead(v, onTime){
+    var rvfc = 0, raf = 0;
+    function cancel(){
+      if(rvfc && v.cancelVideoFrameCallback) v.cancelVideoFrameCallback(rvfc);
+      if(raf) cancelAnimationFrame(raf);
+      rvfc = 0; raf = 0;
+    }
+    function tick(_now, meta){
+      rvfc = 0; raf = 0;
+      onTime(meta && typeof meta.mediaTime === 'number' ? meta.mediaTime : v.currentTime);
+      if(!v.paused && !v.ended) arm();
+    }
+    function arm(){
+      if(rvfc || raf) return;
+      if(typeof v.requestVideoFrameCallback === 'function') rvfc = v.requestVideoFrameCallback(tick);
+      else raf = requestAnimationFrame(function(){ tick(); });
+    }
+    function onPlay(){ cancel(); arm(); }
+    function onStill(){ if(v.paused || v.ended) cancel(); onTime(v.currentTime); }
+    var events = { play: onPlay, playing: onPlay, pause: onStill, ended: onStill, seeked: onStill, timeupdate: onStill };
+    Object.keys(events).forEach(function(k){ v.addEventListener(k, events[k]); });
+    if(!v.paused && !v.ended) arm();
+    return function(){
+      cancel();
+      Object.keys(events).forEach(function(k){ v.removeEventListener(k, events[k]); });
+    };
   }
   ROOT.querySelectorAll('.scn').forEach(function(scn){
     var box = scn.querySelector('.rich-scroll');
@@ -865,8 +926,11 @@
           // links / tree button / screenshot / the step's own jump buttons handled elsewhere
           // (a jump button seeks to its own instant instead of the row's default start).
           if(e.target.closest('a') || e.target.closest('.treebtn') || e.target.closest('.shot') || e.target.closest('.stepjump')) return;
-          var t = parseFloat(r.getAttribute('data-t'));
-          // Seek only: keep playing if already playing, stay paused if paused.
+          // Seek to just before the step's action, not to its start: from there the row the viewer
+          // clicked is the one lit, and what it did is on screen within `ACT_LEAD`. The row's own
+          // start stays one click away on its `.stepjump` button. Seek only: keep playing if
+          // already playing, stay paused if paused.
+          var t = rowSwitchTime(r);
           if(!isNaN(t)){ v.currentTime = t; }
         });
         // A step's own start/end jump buttons (its `before`/`after` moment) — stop the click from
@@ -881,10 +945,11 @@
           });
         });
       });
-      v.addEventListener('timeupdate', function(){
-        var cur = pickPlayingRow(rows, v.currentTime);
+      trackPlayhead(v, function(t){
+        var cur = pickPlayingRow(rows, t);
+        if(cur === lastCur) return;
         rows.forEach(function(r){ r.classList.toggle('playing', r===cur); });
-        if(cur !== lastCur){ lastCur = cur; if(cur) scrollIntoBox(box, cur); }
+        lastCur = cur; if(cur) scrollIntoBox(box, cur);
       });
     });
   });

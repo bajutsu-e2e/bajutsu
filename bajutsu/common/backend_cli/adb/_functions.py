@@ -233,6 +233,31 @@ def file_size_cmd(serial: str, device_path: str) -> list[str]:
     )
 
 
+def await_file_bytes_cmd(
+    serial: str, device_path: str, timeout_s: float, poll_s: float = 0.05
+) -> list[str]:
+    """Block device-side until `device_path` holds a byte, then print `1`; print `0` at the deadline.
+
+    One `adb shell` that waits on the device, rather than a host loop of `adb shell` round trips:
+    the round trip is what would dominate the wait's resolution, and each one spawns a device-side
+    shell competing with an app's cold start. Bounded on the device, because `adb`'s own run
+    carries no timeout — the loop counts its sleeps against `timeout_s`. An image whose `sleep` takes
+    whole seconds only still honours that bound: the fallback `sleep 1` advances the count by the
+    polls one second is worth. Always exits 0, so the answer is read from stdout (the `RunFn` raises
+    on a non-zero exit).
+    """
+    quoted = shlex.quote(device_path)
+    polls = max(1, math.ceil(timeout_s / poll_s))
+    per_second = max(1, round(1 / poll_s))
+    return _adb(
+        serial,
+        "shell",
+        f"i=0; while [ ! -s {quoted} ] && [ $i -lt {polls} ]; do "
+        f"if sleep {poll_s:g} 2>/dev/null; then i=$((i+1)); else sleep 1; i=$((i+{per_second})); fi; "
+        f"done; if [ -s {quoted} ]; then echo 1; else echo 0; fi",
+    )
+
+
 def parse_file_size(text: str) -> int | None:
     """The byte size in `file_size_cmd`'s output, or None when neither form answered.
 

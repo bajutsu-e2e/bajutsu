@@ -119,6 +119,10 @@ summary::-webkit-details-marker{display:none}
 .vmark-range{margin-left:0;justify-content:stretch}
 .vmark-range::after{width:100%;height:6px;border-radius:3px}
 .vmark-range:hover::after{height:8px}
+/* Where inside a step's bar its action landed — the instant the row lights up at — drawn as a
+   brighter notch so the lead-in the step spent reading the screen stays visible beside it. */
+.vmark-act{position:absolute;top:50%;width:2px;height:12px;margin-left:-1px;transform:translateY(-50%);
+ background:#fff;border-radius:1px;box-shadow:0 0 0 1px rgba(0,0,0,.45);pointer-events:none}
 .vmtip{position:absolute;bottom:calc(100% + 5px);left:50%;transform:translateX(-50%);
  background:#000;color:#fff;white-space:nowrap;font:600 .66rem -apple-system,system-ui,sans-serif;
  padding:.14rem .44rem;border-radius:5px;opacity:0;pointer-events:none;transition:opacity .12s;
@@ -480,6 +484,7 @@ tr.actrow>td{display:block;background:var(--card);border-top:1px dashed var(--li
 .actn-no{opacity:.6;text-decoration:line-through}
 .actn-r,.actn-drop{color:var(--ng)}
 .actn-s{opacity:.85;font-style:italic}
+.actn-t{opacity:.75;font-variant-numeric:tabular-nums}
 /* The value a `generate` step produced for ${vars.*} (a sub-row under the step). */
 tr.genrow>td{display:block;background:var(--card);border-top:1px dashed var(--line);color:var(--mut);
  font:.76rem/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;padding:.18rem .7rem}

@@ -39,6 +39,13 @@ class Actuation:
         substitution: Why the element actuated is not the one the driver's default rule would have
             named, from `SUBSTITUTIONS`; absent on the ordinary path. Rule 3 holds: a fixed token,
             never a string a scenario authored.
+        at: The instant the driver handed this primitive to its transport. A monotonic instant while
+            the record sits in the driver's `ActuationLog`, and absolute epoch seconds — the same
+            footing as `StepOutcome.started_at` — once the runner drains it into a step. A report
+            switches the highlighted step row at this instant rather than at the step's start,
+            because the recording only changes once the action lands, which on a backend that reads
+            the tree first is seconds after the step began. `None` on every run recorded before it
+            existed.
     """
 
     gesture: str
@@ -52,3 +59,4 @@ class Actuation:
     scale: float | None = None
     radians: float | None = None
     substitution: str | None = None
+    at: float | None = None

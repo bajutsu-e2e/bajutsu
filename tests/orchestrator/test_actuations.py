@@ -304,6 +304,94 @@ def test_a_truncated_log_reports_what_it_dropped() -> None:
     assert log.drain().dropped == 0
 
 
+# --- timing: when each actuation went out, on the same footing as the step's own start ---
+
+
+def test_record_stamps_the_instant_it_was_handed_the_actuation() -> None:
+    ticks = iter([10.0, 11.5])
+    log = ActuationLog(now=lambda: next(ticks))
+    log.record(Actuation(gesture="tap", via="handle", unit="point"))
+    log.record(Actuation(gesture="tap", via="handle", unit="point"))
+
+    assert [a.at for a in log.drain().records] == [10.0, 11.5]
+
+
+def test_record_keeps_an_instant_the_driver_already_stamped() -> None:
+    log = ActuationLog(now=lambda: 99.0)
+    log.record(Actuation(gesture="tap", via="handle", unit="point", at=3.0))
+
+    assert log.drain().records[0].at == 3.0
+
+
+def test_settle_keeps_the_attempts_own_instant() -> None:
+    # Settling rewrites only the platform's answer; when the attempt went out is still what it was.
+    log = ActuationLog(now=lambda: 4.0)
+    log.record(Actuation(gesture="tap", via="handle", unit="point"))
+    log.settle(True)
+
+    (record,) = log.drain().records
+    assert (record.accepted, record.at) == (True, 4.0)
+
+
+_WALL = 1_700_000_000.0
+
+
+def test_a_steps_actuations_carry_absolute_instants_after_its_own_start() -> None:
+    # The driver stamps on the run's monotonic clock; the drain converts with the scenario's own
+    # anchor pair, so an actuation's `at` and its step's `started_at` subtract meaningfully — the
+    # report derives the lag between a step's start and its action from exactly that.
+    clock = FakeClock()
+
+    def react(_d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "tap":  # the step spends time after acting, before the next one starts
+            clock.sleep(0.4)
+
+    driver = FakeDriver([_BUTTON, _TITLE], react=react, now=clock.now)
+    clock.sleep(2.0)  # a lease that has been up a while: the monotonic epoch is not the run's start
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "timed",
+                "steps": [{"tap": {"id": "settings.open"}}, {"tap": {"id": "home.title"}}],
+            }
+        ),
+        clock=clock,
+        wall_clock=lambda: _WALL,
+    )
+
+    first, second = (step.actuations[0] for step in result.steps)
+    assert first.at == result.steps[0].started_at == _WALL
+    assert second.at == result.steps[1].started_at == _WALL + 0.4
+
+
+def test_the_expect_phase_actuation_carries_an_absolute_instant() -> None:
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "tap":
+            d.screen = [el("verified", frame=(0.0, 0.0, 5.0, 5.0))]
+
+    clock = FakeClock()
+    prompt = el(None, "OK", ["button"], frame=(10.0, 10.0, 30.0, 30.0))
+    driver = FakeDriver([prompt], react=react, now=clock.now)
+
+    result = run_scenario(
+        driver,
+        _scenario(
+            {
+                "name": "expect retry",
+                "steps": [{"assert": [{"exists": {"label": "OK"}}]}],
+                "expect": [{"exists": {"id": "verified"}}],
+            }
+        ),
+        clock=clock,
+        wall_clock=lambda: _WALL,
+        alert_guard=AlertGuardConfig(rules=[guard_rule("OK")]),
+    )
+
+    (tap,) = result.expect_actuations
+    assert tap.at is not None and tap.at >= _WALL
+
+
 def test_the_default_cap_is_far_above_a_real_step() -> None:
     # A `scroll` step spends up to `maxScrolls` gestures (default 15, author-settable); the cap must
     # sit well clear of that, or an ordinary run would start losing records.

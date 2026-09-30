@@ -147,6 +147,25 @@ def test_trace_shows_what_each_step_actually_actuated(tmp_path: Path) -> None:
     assert "typeText [focused]" in out  # no point to show, so the channel alone
 
 
+def test_trace_shows_how_long_after_the_step_began_each_actuation_went_out(tmp_path: Path) -> None:
+    # The step's own offset is stamped before it reads the screen; the recording changes when its
+    # action goes out, so the line carries that lag beside the gesture.
+    run = _write_run(tmp_path, "20250101-000000")
+    manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+    step = manifest["scenarios"][0]["steps"][0]
+    step["actuations"] = [
+        {"gesture": "tap", "via": "handle", "unit": "pt", "at": step["started_at"] + 0.85},
+        {"gesture": "tap", "via": "handle", "unit": "pt", "at": "not-a-number"},
+    ]
+    (run / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    out = trace.trace_run(run)
+
+    assert "tap [handle] +0.85s" in out
+    # A damaged instant degrades to no lag rather than a made-up one.
+    assert "tap [handle] +0.85s   · tap [handle]\n" in out
+
+
 def test_trace_names_a_substituted_element_on_the_step_line(tmp_path: Path) -> None:
     # The timeline is where a failure gets triaged, so a tap that reached an element the selector
     # never named must not print like an ordinary one. A damaged token degrades to no segment

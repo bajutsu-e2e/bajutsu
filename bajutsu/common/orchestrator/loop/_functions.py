@@ -169,6 +169,7 @@ def _evaluate_expect(
     *,
     ctx: EvalContext,
     expect_actuations: list[Actuation],
+    wall_offset_s: float,
     control: DeviceControl | None = None,
     channel: Collector | None = None,
     hide_markers: bool = False,
@@ -211,7 +212,7 @@ def _evaluate_expect(
         group_channel = channel if rt is None else cast("Collector | None", rt.channel)
         group_entries = [expect[i] for i in indexes]
         dropped += _clear_notification_banner_before_visual_capture(
-            group_ctx, group_driver, clock, expect_actuations
+            group_ctx, group_driver, clock, expect_actuations, wall_offset_s
         )
         _capture_visual_actual(
             group_ctx,
@@ -537,7 +538,9 @@ def _resolve_video_start_offset(
     an early step on the recording.
 
     `video_interval.true_start` (confirmed or driver-stamped) is the fallback for a recording whose
-    duration could not be read. It may precede or follow `scenario_start` — a prestarted device
+    duration could not be read, and the only answer for one whose duration does not run to the stop
+    (`Interval.duration_spans_stop` — Android's `screenrecord`, whose confirmation is its first
+    muxed bytes). It may precede or follow `scenario_start` — a prestarted device
     recording begins before it, an on-demand iOS recording's confirmation wait completes just
     before it — so this offset places the anchor near the video's origin instead of at the moment
     `scenario_start` happened to be stamped. `0.0` (no correction) both when no confirmed
@@ -941,6 +944,7 @@ def run_scenario(  # noqa: C901, PLR0915
                         hide_markers=hide_markers,
                         cancelled=cancelled,
                         expect_actuations=expect_actuations,
+                        wall_offset_s=wall_offset_s,
                         target_runtimes=target_runtimes,
                         primary_target=primary_target,
                     )
@@ -981,7 +985,7 @@ def run_scenario(  # noqa: C901, PLR0915
                         # `RunResult.dropped_expect_actuations` the same way the banner sweep's does
                         # (BE-0416 Unit 8).
                         expect_dropped_actuations += _drain_into_expect_actuations(
-                            driver, expect_actuations
+                            driver, expect_actuations, wall_offset_s
                         )
                         if cleared:
                             # Does not settle the screen itself, unlike an ordinary post-dismiss
@@ -1000,6 +1004,7 @@ def run_scenario(  # noqa: C901, PLR0915
                                 hide_markers=hide_markers,
                                 cancelled=cancelled,
                                 expect_actuations=expect_actuations,
+                                wall_offset_s=wall_offset_s,
                                 target_runtimes=target_runtimes,
                                 primary_target=primary_target,
                             )
@@ -1209,7 +1214,11 @@ def _clear_notification_banner(driver: base.Driver, clock: Clock) -> None:
 
 
 def _clear_notification_banner_before_visual_capture(
-    ctx: EvalContext, driver: base.Driver, clock: Clock, expect_actuations: list[Actuation]
+    ctx: EvalContext,
+    driver: base.Driver,
+    clock: Clock,
+    expect_actuations: list[Actuation],
+    wall_offset_s: float,
 ) -> int:
     """`_clear_notification_banner`, gated on an actual `visual` assertion being present.
 
@@ -1228,17 +1237,19 @@ def _clear_notification_banner_before_visual_capture(
     if ctx.visual is None:
         return 0
     _clear_notification_banner(driver, clock)
-    return _drain_into_expect_actuations(driver, expect_actuations)
+    return _drain_into_expect_actuations(driver, expect_actuations, wall_offset_s)
 
 
-def _drain_into_expect_actuations(driver: base.Driver, expect_actuations: list[Actuation]) -> int:
+def _drain_into_expect_actuations(
+    driver: base.Driver, expect_actuations: list[Actuation], wall_offset_s: float
+) -> int:
     """Drain `driver`'s actuation log into `expect_actuations`, returning its own `dropped` count.
 
     The one place this phase's two drain sites (the guard's dismissing tap, the banner sweep above)
     share the disclosure `RunResult.dropped_expect_actuations` needs — neither has a `StepOutcome`
     of its own to carry a truncated drain the way `outcome.dropped_actuations` does.
     """
-    drained = drain_actuations(driver)
+    drained = drain_actuations(driver, wall_offset_s)
     expect_actuations.extend(drained.records)
     return drained.dropped
 

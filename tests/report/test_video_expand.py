@@ -212,9 +212,21 @@ def test_video_expand_shares_the_playing_row_rule_with_the_compact_view() -> Non
     out = html_report("run1", [_passing()])
     assert "function pickPlayingRow(rows, currentTime)" in out
     build = _function_body(out, "function vzBuildSteps(player)", "function vzMount(player)")
-    assert "pickPlayingRow(cloneRows, vzActive.currentTime)" in build
+    assert "vzUntrack = trackPlayhead(vzActive, function(t){" in build
+    assert "pickPlayingRow(cloneRows, t)" in build
+    # A modal row click seeks where a compact row click does: just before the step's action.
+    assert "var t = rowSwitchTime(row);" in build
     sync = _function_body(out, "ROOT.querySelectorAll('.scn').forEach(function(scn){", "})();")
-    assert "pickPlayingRow(rows, v.currentTime)" in sync
+    assert "trackPlayhead(v, function(t){" in sync
+    assert "pickPlayingRow(rows, t)" in sync
+
+
+def test_video_expand_unbinds_its_playhead_tracker_when_the_video_leaves_the_modal() -> None:
+    # The modal binds a fresh tracker on every mount; one left bound after the video moved home
+    # would keep toggling the previous clone set's rows on every frame for as long as it plays.
+    out = html_report("run1", [_passing()])
+    restore = _function_body(out, "function vzRestore(){", "function vzBuildSteps(player)")
+    assert "if(vzUntrack){ vzUntrack(); vzUntrack = null; }" in restore
 
 
 def test_video_expand_css_present() -> None:

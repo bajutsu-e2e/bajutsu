@@ -92,7 +92,11 @@ def _run_backend(results: list[RunResult]) -> str:
 #   singular "backend"/"device"/"device_name"/"device_runtime" left empty there because none of them
 #   describes the whole scenario any more. Absent on every older run and on every single-target run,
 #   where the singular fields still say everything there is to say.
-SCHEMA_VERSION = 11
+# v12: an actuation may carry "at" — the absolute epoch instant the driver handed it to its
+#   transport, on the same footing as the step's "started_at". A report switches the highlighted step
+#   row at it, since the recording only changes once the action lands. Absent on every older run,
+#   which reads as "no actuation instant": the row switches at the step's own "started_at" as before.
+SCHEMA_VERSION = 12
 
 
 def _matrix(results: list[RunResult]) -> dict[str, object] | None:

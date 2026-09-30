@@ -150,6 +150,7 @@ def _actuation(d: dict[str, Any]) -> Actuation | None:
         scale=_scalar(known.get("scale")),
         radians=_scalar(known.get("radians")),
         substitution=_typed(known.get("substitution"), str),
+        at=_scalar(known.get("at")),
     )
 
 

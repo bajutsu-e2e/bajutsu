@@ -67,6 +67,15 @@ class Interval:
     # records right up to the context close that `stop()` performs. The two need different end
     # instants, and using one for the other shifts `measured_start` by that whole tail.
     stops_when_stop_returns: bool = False
+    # Whether the finished file's duration runs all the way to the stop, which is what makes
+    # `ended_at - duration` the first frame. simctl's mp4 does: its movie duration spans spawn to
+    # SIGINT even over a static screen. Playwright's webm does too, repeating the last frame until
+    # the context closes. Android's `screenrecord` does not: it encodes a frame only when the screen
+    # changes and its mp4 ends at the last one, so a static tail before the stop makes that
+    # subtraction late by the whole tail — measured at 0.8s on an emulator, well inside the window
+    # `_measured_start` checks, so nothing downstream could catch it. Such a recorder leaves
+    # `measured_start` unset and anchors on its start confirmation instead.
+    duration_spans_stop: bool = True
     _proc: Proc = field(repr=False, default_factory=_NullProc)
     _stop_signal: int = signal.SIGTERM
     _stop_timeout: float = _STOP_TIMEOUT
@@ -77,7 +86,7 @@ class Interval:
         self._proc.stop(self._stop_signal, self._stop_timeout)
         ended_at = time.monotonic() if self.stops_when_stop_returns else before
         path = self._transform(self.path) if self._transform is not None else self.path
-        if self.kind == "video":
+        if self.kind == "video" and self.duration_spans_stop:
             # Imported in the method, not at module load: `_functions` builds intervals from this
             # class, and rule 5 breaks the cycle the split creates on this side.
             from ._functions import _measured_start
