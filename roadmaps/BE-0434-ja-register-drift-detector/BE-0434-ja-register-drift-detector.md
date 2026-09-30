@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0434](BE-0434-ja-register-drift-detector.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0434") |
+| Implementing PR | [#2089](https://github.com/bajutsu-e2e/bajutsu/pull/2089) |
 | Topic | Contributor workflow |
 | Related | [BE-0278](../BE-0278-tech-writing-skill/BE-0278-tech-writing-skill.md) |
 <!-- /BE-METADATA -->
@@ -123,10 +124,12 @@ either. It is dev tooling, reached only by a contributor who runs it directly.
 
 `mypy` runs in strict mode over the whole repository, `scripts/` included, so an unresolved
 `sudachipy` import still needs an answer. A `[[tool.mypy.overrides]]` entry —
-`ignore_missing_imports = true` for `sudachipy` and its dictionary package — uses the same
+`ignore_missing_imports = true` for `sudachipy` — uses the same
 mechanism `boto3` and `google-cloud-storage` already rely on, there because those SDKs ship no type
 stubs. That mechanism works the same way for a package `make check` never installs at all: it keeps
-the `typecheck` step green without installing the analyzer into the pinned dev environment.
+the `typecheck` step green without installing the analyzer into the pinned dev environment. The
+dictionary package gets no entry: the script never imports it by name, since `sudachipy` loads it,
+and strict mypy's `warn_unused_configs` rejects an override section that matches no import.
 
 The same absence shapes how the script is tested. The dev environment never installs `sudachipy`,
 so the analyzer sits behind a lazily imported seam, called only from the one function that walks a
@@ -205,16 +208,26 @@ item, since no converted file has drifted back yet to show which of the two is w
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add `scripts/ja_register_check.py` — the exclusion-based detector, its ephemeral
+- [x] Add `scripts/ja_register_check.py` — the exclusion-based detector, its ephemeral
       `sudachipy` dependency via PEP 723, the `[[tool.mypy.overrides]]` entry, and the
       `make ja-register-check` wrapper.
-- [ ] Amend three sentences in `japanese-document-writing` — the textlint bullet-list line, the
+- [x] Amend three sentences in `japanese-document-writing` — the textlint bullet-list line, the
       sentence right after it that names a 常体 or 体言止め bullet a violation, and the 文体
       no-mixing sentence — to exempt `## Progress` / `## 進捗` checklist bullets from 敬体,
       alongside the existing heading and 体言止め-label exemption.
-- [ ] Convert [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md)'s
+- [x] Convert [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md)'s
       Japanese side to 敬体 completely, checked against the detector's report, as the first proof
       of the recipe.
+
+Log:
+
+- [#2089](https://github.com/bajutsu-e2e/bajutsu/pull/2089) — Units 1–3. Added `scripts/ja_register_check.py`, an exclusion-based detector
+  that flags a sentence unless its trailing auxiliary chain holds a です / ます lemma or it ends in
+  ください, with sudachipy as a PEP 723 dependency and `make ja-register-check` outside `make check`.
+  Exempted `## Progress` / `## 進捗` checklist bullets in `japanese-document-writing`, and added the
+  same carve-out to `document-writing`'s register line so the umbrella norm does not contradict it.
+  Converted BE-0089's Japanese side: the detector's candidates fell from 166 to 3, each a bold
+  inline label kept on purpose. The whole ja corpus reports 6,487 candidates in 465 files.
 
 ## References
 

@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0434](BE-0434-ja-register-drift-detector-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0434") |
+| 実装 PR | [#2089](https://github.com/bajutsu-e2e/bajutsu/pull/2089) |
 | トピック | コントリビューターワークフロー |
 | 関連 | [BE-0278](../BE-0278-tech-writing-skill/BE-0278-tech-writing-skill-ja.md) |
 <!-- /BE-METADATA -->
@@ -118,11 +119,14 @@ BE-0089の一部を変換した試みは、一貫して常体だった文書を�
 
 `mypy`はリポジトリ全体をstrictモードで検査しており、`scripts/`も対象に含まれます。そのため、
 解決できない`sudachipy`のインポートにも対応が必要です。`[[tool.mypy.overrides]]`に
-`sudachipy`と辞書パッケージの`ignore_missing_imports = true`を追加します。`boto3`や
+`sudachipy`の`ignore_missing_imports = true`を追加します。`boto3`や
 `google-cloud-storage`が、型スタブを持たない外部ライブラリとしてすでに受けている扱いと同じ
 仕組みです。
 この仕組みは、`make check`がそもそもインストールしないパッケージに対しても同じように働き、
 解析器を固定の開発環境にインストールしなくても、`typecheck`ステップは通ります。
+辞書パッケージには項目を設けません。辞書は`sudachipy`が読み込むので、スクリプトが名前で
+インポートすることはありません。strict の`mypy`は`warn_unused_configs`により、どのインポートにも
+一致しない override の節をエラーにします。
 
 この不在は、テストの形にも影響します。開発環境に`sudachipy`は入らないため、解析器は遅延
 インポートの層の奥に置き、文末の形態素を遡る1つの関数からだけ呼び出します。
@@ -196,15 +200,25 @@ BE-0089の一部を変換した試みは、一貫して常体だった文書を�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] `scripts/ja_register_check.py`を追加します。除外方式の検出ツール本体、一時的な
+- [x] `scripts/ja_register_check.py`を追加します。除外方式の検出ツール本体、一時的な
       `sudachipy`依存（PEP 723経由）、`[[tool.mypy.overrides]]`の追加、`make ja-register-check`
       ラッパーを含みます。
-- [ ] `japanese-document-writing`の3つの文を改訂します。textlint節の箇条書きの行、その直後の
+- [x] `japanese-document-writing`の3つの文を改訂します。textlint節の箇条書きの行、その直後の
       違反を名指しする文、そして文体節の混在禁止の一文です。改訂によって、`## Progress` /
       `## 進捗`のチェックリスト項目を、既存の見出しや体言止めラベルの免除と並ぶ形で敬体から
       免除します。
-- [ ] [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md)
+- [x] [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation-ja.md)
       の日本語版を敬体へ完全に変換し、検出ツールで確認してから、手順の最初の実証とします。
+
+ログ：
+
+- [#2089](https://github.com/bajutsu-e2e/bajutsu/pull/2089)：単位 1〜3。`scripts/ja_register_check.py` を追加しました。文末の助動詞の連なりに
+  「です」「ます」を含まず「ください」でも終わらない文を候補として挙げる、除外方式の検出器です。
+  sudachipy は PEP 723 で宣言し、`make ja-register-check` は `make check` の外に置きました。
+  `japanese-document-writing` で `## Progress` / `## 進捗` のチェックリストを敬体の対象外にし、
+  上位規範と食い違わないよう `document-writing` の文体の行にも同じ例外を加えました。BE-0089 の
+  日本語側を変換し、検出器の候補は 166 件から 3 件になりました。残る 3 件は、意図して残した太字の
+  ラベルです。ja コーパス全体では、465 ファイルで 6,487 件の候補が挙がります。
 
 ## 参考
 

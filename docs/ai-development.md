@@ -1128,7 +1128,10 @@ apply equally when reporting on or summarizing work.
   under `docs/ja/` and every roadmap `*-ja.md` is written in 敬体, never the plain *da/dearu* style
   (常体). Keep the whole document consistent: only sentence-final predicates take the polite form —
   embedded clauses, conditionals, and connective forms (連体修飾・〜すると・〜であり) stay plain as
-  usual, and headings or pure noun-phrase labels (体言止め) need no copula.
+  usual, and headings or pure noun-phrase labels (体言止め) need no copula. A checklist bullet
+  (`- [ ]` / `- [x]`) under a roadmap item's `## Progress` / `## 進捗` heading is exempt on the same
+  footing (BE-0434): it names a work item rather than prose a reader follows, so it may take any
+  register without counting as mixing.
 
 The short form of these rules is in [`CLAUDE.md`](../CLAUDE.md).
 
