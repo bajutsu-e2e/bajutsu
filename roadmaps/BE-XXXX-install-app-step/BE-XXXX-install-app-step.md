@@ -173,8 +173,9 @@ second starting member does not wipe the first.
 
 `from` names a later member of the same group as the step's target: one that is neither the primary
 nor listed in `installs`, and that does not sit in a group of one. The scenario model rejects a `from`
-that names a starting member, so this step never reinstalls a member that is running. A later member
-installs once per scenario, and a second `installApp` for it fails with a named error. The scenario model checks that from the
+that names a starting member, so this step never reinstalls a member that is running. A later member installs once per scenario: the scenario model rejects two top-level `installApp`
+steps for one member, and one inside `forEach`, `if`, or an `interrupts` recovery that runs a second
+time fails at run time with a named error. The scenario model checks that from the
 scenario alone, since `targets` and the routing rule already live there, so the reader sees every
 build a scenario can install in its header. An `installApp` step is refused inside a `web:` or `app:`
 block. In an `interrupts` entry's recovery steps, an omitted `target` resolves the group through the
@@ -191,8 +192,12 @@ step addressed to it afterwards fails with a named cause instead of reaching the
 and both stay addressable by `target`. A later member has three states: not installed, installed but not launched, and running. Until this
 scenario has run its `installApp`, only `installApp` and `setPrimaryTarget` may address the member,
 and `foreground` fails with a named not-installed error, so it never launches a stale build that an
-earlier scenario left on a reused device. Between the install and its `foreground`, only
-`foreground` and `setPrimaryTarget` may address the member. Any other step fails the same way.
+earlier scenario left on a reused device. Between the install and its `foreground`, only `foreground` and `setPrimaryTarget` may address the
+member. Any other step fails with a named error saying the member has not been launched yet and
+pointing at `foreground`. Like a starting member, a running later member retires when another member
+with its identifier installs. The retired rule, like the not-installed rule, does not apply to an
+`installApp` step's `target`, which only picks the device, and a `setPrimaryTarget` that names a
+retired member is refused at load.
 
 ### Moving the default target: `setPrimaryTarget`
 
@@ -217,9 +222,12 @@ once a scenario contains a `setPrimaryTarget`, such a step must name its device 
 or on the entry, or the load fails. The step is exempt from the not-installed rule, so it can precede the member's `installApp` and
 `foreground`. A top-level `expect` entry that omits `target` resolves to the primary in force after the
 last step. Every top-level `expect` entry, whether it omits `target` or names one, is subject to the
-same installed-and-running guard as a step: an entry that resolves to a member that is not installed
-or not running fails with the named error instead of polling a stale or background app. An `interrupts` entry that omits `target` follows the current primary at run time, and an
-entry that resolves to a later member is not polled until that member's `foreground`. The `before`
+same installed-and-running guard as a step: an entry that resolves to a member that is not installed, retired, or not in front fails with the
+named error, pointing at `foreground` for a backgrounded member, instead of polling a stale or
+background app. A grouped scenario can therefore assert the end state only of the member in front
+after the last step. An `interrupts` entry that omits `target` follows the current primary at run time, and an
+entry that resolves to a later member is not polled until that member's `foreground`, and an entry that
+resolves to a retired member is no longer polled. The `before`
 and `after` rules resolve an omitted `target` to the declared primary, since teardown runs wherever
 the run stopped. In an update scenario that primary is the retired member, so its `after` steps name
 their target.
@@ -234,7 +242,7 @@ never reaches it. The loader rejects a modifier `target` written on it by hand. 
 after expansion: a component's `setPrimaryTarget` is valid when the `use:` or `group:` that calls it
 is itself among the top-level `steps`, and refused when the call sits inside `if` or `forEach`. An
 `installApp` inside a component names `from` and leaves the device to the step's `target`, stamped or
-resolved like any expanded step. Whether `from` belongs to that target's group is checked after
+resolved like any expanded step. Whether `from` is a later member of that target's group is checked after
 expansion, at the call site, and the error names the component chain and the step. Expansion records the component chain on each
 step it produces, so the post-expansion check can name it. Before expansion, the load-time pass
 cannot see a component's `setPrimaryTarget`, so after the first top-level `use:` or `group:` step it
@@ -356,6 +364,7 @@ A step writes `target` only in the cases below:
 | After a `setPrimaryTarget` | Only a step for a member other than the new primary |
 | Driving a companion app in the same group | Yes: its `foreground` and the steps that drive it name it |
 | A `before` or `after` step once the declared primary is retired | Yes |
+| A top-level `expect` entry in a scenario with a device group | Name the member; it can assert only what is in front after the last step |
 | Inside a component | A single-target component: no, the caller's `target` is stamped. A cross-target component: yes, each step names its own |
 
 ### Backend behavior
@@ -409,7 +418,7 @@ the walk, never a write to `primary_target`, since `primaryTarget` is checked ag
 at several points. Top-level `expect` entries that omit `target` are resolved with it, where today
 they group under the run's fixed primary. Both stamping points skip `setPrimaryTarget`, and expansion
 records the component chain.
-4. Run preflight: check each `installApp.from` target against the config (its `appPath` exists, building it where the run already builds one), refuse starting members of one group that share an identifier, and refuse a group whose members differ in backend platform, device route, or system locale.
+4. Run preflight: check each `installApp.from` target against the config (its `appPath` exists, building it where the run already builds one), refuse starting members of one group that share an identifier, and refuse a group whose members differ in backend platform, device route, or system locale, and refuse any web target in a group of two or more.
 5. XCUITest environment and driver: the install action, the digest reset, the terminate, `foreground`'s launch, readiness wait, and launch marker, built beside the relauncher that already holds the effective config, scenario, and driver, and the front-app check in `xcuitest_driver`.
 6. Android environment and driver: the install action with the downgrade error, `foreground`'s launch, readiness wait, and launch marker built beside the relauncher, the front-app check in `adb_driver`, and the split of `deviceControl.appLifecycle`.
 7. Backend handling: web and device-cloud rejection, and the code-generation marker.
