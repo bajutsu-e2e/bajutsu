@@ -78,7 +78,8 @@ The scenario model enforces three rules, and run preflight a fourth. A name appe
 whole list, as today. A group holds two or more names, since a one-name array adds nothing over a
 bare name. `primaryTarget` still must equal the first entry, which now means the first member of the
 first group. Run preflight, which sees the config, checks that the members of a group can share one
-device: the same backend platform (so a web target cannot share a device with an iOS one), the same
+device: the same native backend platform (a web target has no device to share, so it cannot belong to a
+group of two or more), the same
 device route (`deviceProvider`, `device`, and `xcuitest.deviceType`), and the same effective `locale`,
 since iOS pins the Simulator's system locale. It rejects a group whose members disagree before any
 device is acquired. The device count a run needs is the number of groups per backend, so the
@@ -170,7 +171,10 @@ second starting member does not wipe the first.
 |---|---|
 | `installApp: { from: <target>, keepData?: boolean }` | Installs the build of the group member `from` onto the device the step runs against. The step's own `target` modifier picks the device through its group, and an omitted one means the primary. `keepData` defaults to `true`: the build installs over an existing one and the data container survives. `false` uninstalls the same identifier first. |
 
-`from` names a member of the same group as the step's target. The scenario model checks that from the
+`from` names a later member of the same group as the step's target: one that is neither the primary
+nor listed in `installs`, and that does not sit in a group of one. The scenario model rejects a `from`
+that names a starting member, so this step never reinstalls a member that is running. A later member
+installs once per scenario, and a second `installApp` for it fails with a named error. The scenario model checks that from the
 scenario alone, since `targets` and the routing rule already live there, so the reader sees every
 build a scenario can install in its header. An `installApp` step is refused inside a `web:` or `app:`
 block. In an `interrupts` entry's recovery steps, an omitted `target` resolves the group through the
@@ -184,8 +188,11 @@ launch to the scenario. A `foreground` step for the member follows, as in the ex
 member that already runs, the install replaces that member's app, so the older member is retired: a
 step addressed to it afterwards fails with a named cause instead of reaching the new build. When
 `from` has a different identifier, the install adds a second app beside the first, no member retires,
-and both stay addressable by `target`. A step other than `installApp`, `foreground`, or `setPrimaryTarget` that is addressed to a later member before that
-member's `installApp` and `foreground` fails the same way, saying the member is not installed yet.
+and both stay addressable by `target`. A later member has three states: not installed, installed but not launched, and running. Until this
+scenario has run its `installApp`, only `installApp` and `setPrimaryTarget` may address the member,
+and `foreground` fails with a named not-installed error, so it never launches a stale build that an
+earlier scenario left on a reused device. Between the install and its `foreground`, only
+`foreground` and `setPrimaryTarget` may address the member. Any other step fails the same way.
 
 ### Moving the default target: `setPrimaryTarget`
 
@@ -194,7 +201,9 @@ member's `installApp` and `foreground` fails the same way, saying the member is 
 | `setPrimaryTarget: { target: <target> }` | From this step on, a step, an `interrupts` entry, or a top-level `expect` entry that omits `target` resolves to the named target. |
 
 After an update whose builds share one identifier, the declared primary is the retired member, so without this step every later step, assertion, and
-interrupt would name the installed member. The step changes routing only. `target` names any declared
+interrupt would name the installed member. The step changes routing only, which includes which member each `interrupts` entry that omits
+`target` guards. The runner assigns those entries once from the initial primary today, so this item
+makes the assignment follow the current primary. `target` names any declared
 target. The first member of the first group still governs leasing, evidence directories, and crash
 recovery, since those are fixed at the start (BE-0428). Each member keeps its own config, driver, and
 environment, so nothing is swapped mid-run: the step moves the default to a member whose `launchEnv`,
@@ -205,10 +214,11 @@ The step is allowed only among a scenario's top-level `steps`, never inside `if`
 order and check every later omitted `target` and every `installApp.from` statically. The exception is an
 `installApp` in an `interrupts` entry's recovery steps, whose group depends on when the entry fires:
 once a scenario contains a `setPrimaryTarget`, such a step must name its device explicitly, on the step
-or on the entry, or the load fails. Like `installApp` and
-`foreground`, the step is exempt from the not-installed rule, so it can precede the member's
+or on the entry, or the load fails. The step is exempt from the not-installed rule, so it can precede the member's `installApp` and
 `foreground`. A top-level `expect` entry that omits `target` resolves to the primary in force after the
-last step. An `interrupts` entry that omits `target` follows the current primary at run time, and an
+last step. Every top-level `expect` entry, whether it omits `target` or names one, is subject to the
+same installed-and-running guard as a step: an entry that resolves to a member that is not installed
+or not running fails with the named error instead of polling a stale or background app. An `interrupts` entry that omits `target` follows the current primary at run time, and an
 entry that resolves to a later member is not polled until that member's `foreground`. The `before`
 and `after` rules resolve an omitted `target` to the declared primary, since teardown runs wherever
 the run stopped. In an update scenario that primary is the retired member, so its `after` steps name
@@ -390,8 +400,11 @@ deterministic gate is untouched.
 ### Work breakdown
 
 1. Scenario model: the nested `targets` form, `installs`, their rules, and the flattening accessor every reader of `targets` moves to.
-2. Lease and lifecycle: one device per group, the device count per backend, one device-wide preparation per group, each starting member's environment started on the shared device by a path that repeats no destructive precondition, a later member's environment started at its first `foreground`, and the current primary that `setPrimaryTarget` moves at run time. This unit opens with the on-device checks above.
-3. Scenario model: the `installApp` step's shape, and its check that `from` is a member of the step target's group, including its placement rules inside `web:`/`app:` and `interrupts`, and the `setPrimaryTarget` step, with its top-level-only placement and the in-order tracking of the current primary, and how both steps behave when a component or group expands them. The tracked primary is a local of
+2. Lease and lifecycle: one device per group, the device count per backend, one device-wide preparation per group, each starting member's environment started on the shared device by a path that repeats no destructive precondition, a later member's environment started at its first `foreground`, the current primary that
+`setPrimaryTarget` moves at run time, and the reassignment of omitted-target `interrupts` entries when it
+moves (today each entry is assigned once from the initial primary), with polling suppressed until a
+later member's `foreground` and a regression test for both. This unit opens with the on-device checks above.
+3. Scenario model: the `installApp` step's shape, and its check that `from` is a later member of the step target's group, including its placement rules inside `web:`/`app:` and `interrupts`, and the `setPrimaryTarget` step, with its top-level-only placement and the in-order tracking of the current primary, and how both steps behave when a component or group expands them. The tracked primary is a local of
 the walk, never a write to `primary_target`, since `primaryTarget` is checked against the first entry
 at several points. Top-level `expect` entries that omit `target` are resolved with it, where today
 they group under the run's fixed primary. Both stamping points skip `setPrimaryTarget`, and expansion
