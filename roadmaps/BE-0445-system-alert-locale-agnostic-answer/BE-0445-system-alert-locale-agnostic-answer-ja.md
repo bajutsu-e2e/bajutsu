@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0445](BE-0445-system-alert-locale-agnostic-answer-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0445") |
+| 実装 PR | [#2090](https://github.com/bajutsu-e2e/bajutsu/pull/2090)（作業単位 1〜5。項目を完了） |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0315](../BE-0315-ios-native-system-alert-handling/BE-0315-ios-native-system-alert-handling-ja.md)、[BE-0316](../BE-0316-ios-permission-alert-step/BE-0316-ios-permission-alert-step-ja.md)、[BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)、[BE-0382](../BE-0382-system-alert-per-prompt-rules/BE-0382-system-alert-per-prompt-rules-ja.md)、[BE-0406](../BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md) |
 <!-- /BE-METADATA -->
@@ -53,11 +54,32 @@ BE-0320 は、位置による選択を唯一の仕組みにすることを退け
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 作業単位1：言語と iOS バージョンをまたいで同一のボタンの性質を計測します。
-- [ ] 作業単位2：安定した性質から役割を解決し、Driver の境界をそれを運べるように拡張します。
-- [ ] 作業単位3：`handleSystemAlert` ステップで役割を使い、ラベルの表をフォールバックにします。ガードはラベルの表と明示的な失敗を保ちます。
-- [ ] 作業単位4：タップしたラベルと選んだ規則を、ステップの結果に報告します。
-- [ ] 作業単位5：実機の Simulator で4言語を検証し、ドキュメントを更新します。
+- [x] 作業単位1：言語と iOS バージョンをまたいで同一のボタンの性質を計測します。
+  - 実測には、プローブ `SystemAlertProbeUITests` を使いました。showcase の UI テストターゲットに置き、有効化したときだけ動きます。実行は [`misc/measure.sh`](misc/measure.sh) から行いました。組み合わせごとに、新しく作って言語を固定した Simulator を使います。各回は 1 つの ordinal を押し、アプリに残った許可状態を読み取ります。こうして、ラベルに依存せず各 ordinal と役割を対応づけました。生の記録は [`misc/results.jsonl`](misc/results.jsonl) にあります。showcase には ATT のプロンプトを出す手段がなかったので、`perm.requestTracking` ボタンを追加しました。
+  - 範囲の変更：5 言語ではなく、英語と日本語を iOS 18.6 と 26.5 で、右から左に書く言語としてアラビア語を 26.5 で測りました。メンテナが対象を英語と日本語に絞り、左右が反転するレイアウトは 2 つの選択を取り違える危険がもっとも大きいので、アラビア語を加えました。
+
+    | 性質 | notifications | tracking | paste | 言語をまたいで同じか |
+    |---|---|---|---|---|
+    | ボタンの数 | 2 | 2 | 2 | 同じ |
+    | deny と grant の ordinal | 0 と 1 | 0 と 1 | 0 と 1 | 30 件すべてで同じ |
+    | frame | 横並び | 縦並び | 縦並び | 違う。アラビア語では通知プロンプトの拒否側のボタンが右に来る |
+    | identifier | 空 | 空 | 空 | 空なので使えない |
+    | value | 空 | 空 | 空 | 空なので使えない |
+    | 要素の種類 | button | button | button | 同じだが、2 つのボタンで区別がつかない |
+
+    言語をまたいで変わらず、しかも 2 つのボタンを区別できる性質は ordinal だけです。そこで規則は「拒否は 2 つのうち 1 番目、許可は 2 番目」としました。
+- [x] 作業単位2：安定した性質から役割を解決し、Driver の境界をそれを運べるように拡張します。
+  - `SystemAlertRole` と `system_alert_role()` を `system_alert_label` の隣に置きました。Driver の境界は変えずに済みました。ステップの待機は、すでに `system_alert_labels()` で画面上のアラートのラベルを順に読んでいます。規則は読むたびにその ordinal のラベルを選び、既存のセレクタの経路で押します。ラベルを選ぶのは、ボタンがちょうど 2 つのときだけです。ステップは補間の時点では `prompt` と `choice` を解決せずに残し、画面上のアラートを照会したあとで規則を解決します。
+- [x] 作業単位3：`handleSystemAlert` ステップで役割を使い、ラベルの表をフォールバックにします。ガードはラベルの表と明示的な失敗を保ちます。
+  - 順序の変更：規則を先に使うのではなく、ラベルの表が言語を扱える場合は表を、扱えない場合は位置の規則を使います。英語と日本語では、ラベルがボタンだけでなくプロンプトも特定します。そのため、待っているあいだに別の 2 ボタンのアラートが出ても、ステップはそれを押しません。規則は、扱える言語の場合を弱めずに、扱える範囲だけを広げます。locale を持たない `record` の再生も、失敗せずに位置で答えるようになりました。
+- [x] 作業単位4：タップしたラベルと選んだ規則を、ステップの結果に報告します。
+  - `StepOutcome.system_alert` に `label` と `rule` を記録します。`rule` は `sel`、`label table: <locale>`、`position: button 2 of 2` のいずれかです。manifest は `schemaVersion` 12 になり、レポートに 1 行が出ます。
+- [x] 作業単位5：実機の Simulator で4言語を検証し、ドキュメントを更新します。
+  - 通知の許可と拒否のシナリオを、iOS 26.5 の Simulator で `bajutsu run` から流しました。言語は `en_US`、`ja_JP`、`fr_FR`、`ar_SA` です。どれも対応する許可状態が残りました。`fr_FR` と `ar_SA` では、ステップが許可で `position: button 2 of 2` を、拒否で `position: button 1 of 2` を報告しました。`fr_FR` の 2 件は、リアクティブなガードを既定のオンのままにしても通りました。`fr_FR` のもとの `systemAlertHandling.rules` の規則は、これまでどおりデバイスを操作する前にシナリオを失敗させました。ドキュメントは `docs/` の 5 ページ（scenarios、configuration、dsl-grammar、reporting、architecture）と、その日本語版を更新しました。
+
+ログ：
+
+- [#2090](https://github.com/bajutsu-e2e/bajutsu/pull/2090)：単位 1〜5。SpringBoard のプロンプトのボタンを実測しました。ラベルの表が扱わない言語の `handleSystemAlert` ステップは、実測した位置の規則で答えるようにしました。押したボタンと規則をステップの結果に記録し、4 言語の Simulator で動作を確かめました。
 
 ## 参考
 

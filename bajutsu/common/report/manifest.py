@@ -92,7 +92,10 @@ def _run_backend(results: list[RunResult]) -> str:
 #   singular "backend"/"device"/"device_name"/"device_runtime" left empty there because none of them
 #   describes the whole scenario any more. Absent on every older run and on every single-target run,
 #   where the singular fields still say everything there is to say.
-SCHEMA_VERSION = 11
+# v12 (BE-0445): a step may carry "system_alert" — the button a `handleSystemAlert` step tapped
+#   ("label") and the rule that chose it ("rule"). Absent on every other action and on every older
+#   run, so a reader shows no tapped-button row for it rather than failing to load.
+SCHEMA_VERSION = 12
 
 
 def _matrix(results: list[RunResult]) -> dict[str, object] | None:

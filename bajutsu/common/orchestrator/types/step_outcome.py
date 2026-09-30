@@ -9,6 +9,7 @@ from bajutsu.common.drivers.actuation import Actuation
 from bajutsu.common.evidence import Artifact
 
 from .alert_event import AlertEvent
+from .system_alert_tap import SystemAlertTap
 
 
 @dataclass
@@ -47,6 +48,9 @@ class StepOutcome:
     # actually used. Evidence only — nothing on the verdict path reads it. None for every other
     # action, and for a `generate` step that failed before it wrote its var.
     generated: str | None = None
+    # The button a `handleSystemAlert` step tapped and the rule that chose it (BE-0445). Evidence
+    # only. None for every other action, and for a `handleSystemAlert` step that tapped nothing.
+    system_alert: SystemAlertTap | None = None
     # Set by the step loop's reactive check when a driver positively confirmed the app under test had
     # crashed while settling this step (BE-0424). `pipeline.py` scans every phase's outcomes for it to
     # decide whether to write an `app-crash/` directory. At most one outcome per scenario carries it:

@@ -377,6 +377,7 @@ def _run_step_body(
     selection: SelectionState | None = None,
     alert_guard: AlertGuardConfig | None = None,
     alerts: list[AlertEvent] | None = None,
+    system_alert_taps: list[str] | None = None,
     on_wait_tick: WaitTick | None = None,
     transitions: TransitionSource = _no_transitions,
     on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
@@ -398,7 +399,8 @@ def _run_step_body(
     calling this function. ``wait_trace``, when given for a wait step, records the poll timeline so a
     timeout is diagnosable from artifacts (BE-0231 Unit 1). ``alert_guard``/``alerts``, when given
     for a ``wait`` or ``handleSystemAlert`` step, drive the alert guard while that step's own wait
-    runs (BE-0269, BE-0406); other step kinds ignore them. ``on_interrupt_poll``, when given for a
+    runs (BE-0269, BE-0406); other step kinds ignore them. ``system_alert_taps`` receives the label
+    a ``handleSystemAlert`` step tapped, for the report (BE-0445). ``on_interrupt_poll``, when given for a
     wait step, is passed to ``_wait`` so a scenario's ``interrupts`` handlers can clear an
     interstitial screen mid-wait (BE-0314). ``cancelled`` reaches the step kinds that poll —
     ``wait``, ``handleSystemAlert``, ``assert``, and ``email`` — so each notices a cancelled run
@@ -437,6 +439,7 @@ def _run_step_body(
                 clock,
                 alert_guard=alert_guard,
                 alerts=alerts,
+                tapped=system_alert_taps,
                 cancelled=cancelled,
             )
             if ok and selection is not None:

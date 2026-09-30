@@ -43,6 +43,8 @@ targets:
         # after `simctl privacy grant location` (BE-0276) — since the system withholds the real
         # status from an app that couldn't show a consent string if it were asked for one.
         NSLocationWhenInUseUsageDescription: "Showcase's Permissions tab exercises the location-authorization flow."
+        # ATT raises no prompt at all for an app without a usage string (BE-0445's tracking probe).
+        NSUserTrackingUsageDescription: "Showcase's Permissions tab exercises the tracking-authorization flow."
     # Password AutoFill's *native* route (the in-app browser's needs none of this): iOS offers to
     # save a credential typed into the app's own fields only for an app with a verified
     # `webcredentials:` associated domain. Declared on the a11y target alone, since
@@ -85,6 +87,7 @@ targets:
           - CFBundleURLName: com.bajutsu.showcase.ios.swiftui.noax
             CFBundleURLSchemes: [showcaseswiftuinoax]
         NSLocationWhenInUseUsageDescription: "Showcase's Permissions tab exercises the location-authorization flow."
+        NSUserTrackingUsageDescription: "Showcase's Permissions tab exercises the tracking-authorization flow."
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.ios.swiftui.noax

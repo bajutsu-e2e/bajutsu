@@ -1,3 +1,4 @@
+import AppTrackingTransparency
 import CoreLocation
 import PhotosUI
 import SafariServices
@@ -17,6 +18,7 @@ struct PermissionsView: View {
     @StateObject private var location = LocationAuth()
     @StateObject private var browser = BrowserPresenter()
     @State private var notifStatus = "notDetermined"
+    @State private var trackingStatus = "notDetermined"
     @State private var pasted = ""
     @State private var photoPickerMode: PhotoPickerMode?
     @State private var selectedPhotoCount = 0
@@ -87,6 +89,18 @@ struct PermissionsView: View {
                         .accessibilityID("perm.photos.value")
                         .accessibilityStateValue(String(selectedPhotoCount))
                 }
+
+                // App Tracking Transparency: the third SpringBoard prompt `handleSystemAlert` names
+                // (`prompt: tracking`), which no `simctl` command can pre-answer. BE-0445 measures its
+                // buttons alongside the notification and paste prompts.
+                Section("Tracking") {
+                    Button("Request Tracking") { requestTracking() }
+                        .accessibilityID("perm.requestTracking")
+                    Text("Tracking: \(trackingStatus)")
+                        .foregroundStyle(.secondary)
+                        .accessibilityID("perm.tracking.value")
+                        .accessibilityStateValue(trackingStatus)
+                }
             }
             .navigationTitle("Permissions")
             .sheet(item: $photoPickerMode) { mode in
@@ -127,6 +141,18 @@ struct PermissionsView: View {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge]) { granted, _ in
             Task { @MainActor in
                 notifStatus = granted ? "authorized" : "denied"
+            }
+        }
+    }
+
+    private func requestTracking() {
+        ATTrackingManager.requestTrackingAuthorization { status in
+            Task { @MainActor in
+                switch status {
+                case .authorized: trackingStatus = "authorized"
+                case .denied, .restricted: trackingStatus = "denied"
+                default: trackingStatus = "notDetermined"
+                }
             }
         }
     }

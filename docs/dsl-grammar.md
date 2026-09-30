@@ -206,7 +206,7 @@ Action    ::=
   | { pinch:       { sel: <Selector>, scale: number } }    # scale > 0  (>1 in, <1 out)
   | { rotate:      { sel: <Selector>, radians: number } }  # >0 clockwise
   | { handleSystemAlert: { sel: <Selector>, timeout: number } }  # tap an iOS SpringBoard permission prompt (iOS/XCUITest only); sel accepts only label/labelMatches/index
-  | { handleSystemAlert: { prompt: notifications|tracking|paste, choice: grant|deny, timeout: number } }  # same step, label resolved from the run's locale (BE-0320); savePassword is not nameable here (BE-0406)
+  | { handleSystemAlert: { prompt: notifications|tracking|paste, choice: grant|deny, timeout: number } }  # same step, label resolved from the run's locale (BE-0320), or by position under an uncovered language (BE-0445); savePassword is not nameable here (BE-0406)
   | { wait:        <Wait> }
   | { assert:      list(<Assertion>) }
   | { relaunch:    { env?: map(string,string), args?: list(string) } }

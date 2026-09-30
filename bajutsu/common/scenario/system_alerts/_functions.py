@@ -10,6 +10,7 @@ from ._prompts import _Prompts
 from ._shape import _Shape
 from .alert_surfaces import AlertSurfaces
 from .resolved_alert_shape import ResolvedAlertShape
+from .system_alert_role import SystemAlertRole
 from .uncovered_system_alert_locale import UncoveredSystemAlertLocale
 
 # The prompts this table covers. `notifications` matches the permission vocabulary's spelling
@@ -145,20 +146,45 @@ _SURFACES: _PromptSurfaces = {
 }
 
 
+# The language-independent rule for each SpringBoard prompt (BE-0445). Measured, not assumed: the
+# probe in roadmaps/BE-0445-system-alert-locale-agnostic-answer/misc/ read every button of these
+# three prompts under English and Japanese on iOS 18.6 and 26.5, and under Arabic on 26.5, and tapped
+# each ordinal to read the authorization status the app was left with. The deny button came first and
+# the grant button second in every run, while the identifier and value SpringBoard exposes were empty
+# throughout. The ordinal, not the frame: under Arabic the notification prompt draws its deny button
+# on the right, so a rule reading screen position would have swapped the two choices. `savePassword` has no entry: iOS draws it
+# inside the application, where this measurement says nothing, so it keeps the label table alone.
+_DENY_THEN_GRANT: dict[SystemAlertChoice, SystemAlertRole] = {
+    "deny": SystemAlertRole(ordinal=0, count=2),
+    "grant": SystemAlertRole(ordinal=1, count=2),
+}
+_ROLES: dict[SystemAlertPrompt, dict[SystemAlertChoice, SystemAlertRole]] = {
+    "notifications": _DENY_THEN_GRANT,
+    "tracking": _DENY_THEN_GRANT,
+    "paste": _DENY_THEN_GRANT,
+}
+
+
 def alert_surfaces(prompt: SystemAlertPrompt) -> AlertSurfaces:
     """Which answer paths `prompt` reaches — see `AlertSurfaces`."""
     return _SURFACES[prompt]
 
 
-def _shapes(prompt: SystemAlertPrompt, locale: str) -> list[_Shape]:
+def _language(locale: str) -> str:
     # The same subtag `simctl.language_of` derives for the app's `-AppleLanguages` launch argument
     # and the Simulator's pinned system language; split here rather than imported, so the scenario
     # schema stays a portable inner contract that pulls in no device layer. A test pins the two
     # together so they cannot drift.
-    language = re.split(r"[_-]", locale, maxsplit=1)[0]
+    return re.split(r"[_-]", locale, maxsplit=1)[0]
+
+
+def _shapes(prompt: SystemAlertPrompt, locale: str) -> list[_Shape]:
+    language = _language(locale)
     shapes = _LABELS[prompt].get(language)
     if shapes is None:
         # Built from the exported helper, so the message and the documented surface cannot drift.
+        # Worded for the step, which reaches here only for a prompt with no position rule (BE-0445);
+        # the guard's caller (`run/cli.py`) re-scopes it to `systemAlertHandling.rules`.
         covered = ", ".join(covered_languages(prompt))
         raise UncoveredSystemAlertLocale(
             f"handleSystemAlert prompt: {prompt} has no known button labels for language "
@@ -211,3 +237,20 @@ def system_alert_shapes(
 def covered_languages(prompt: SystemAlertPrompt) -> tuple[str, ...]:
     """The language subtags this table covers for `prompt`, sorted — the documented, testable surface."""
     return tuple(sorted(_LABELS[prompt]))
+
+
+def labels_cover(prompt: SystemAlertPrompt, locale: str) -> bool:
+    """Whether the label table knows `prompt`'s buttons under `locale`'s language."""
+    return _language(locale) in _LABELS[prompt]
+
+
+def system_alert_role(
+    prompt: SystemAlertPrompt, choice: SystemAlertChoice
+) -> SystemAlertRole | None:
+    """The language-independent rule naming `prompt`'s `choice` button, or None where none holds.
+
+    For the `handleSystemAlert` step under a language the label table does not cover (BE-0445). The
+    reactive guard never uses it: a guard rule must first recognize which declared prompt is on
+    screen, and a position says nothing about that.
+    """
+    return _ROLES.get(prompt, {}).get(choice)

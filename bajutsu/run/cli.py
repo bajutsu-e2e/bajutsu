@@ -688,8 +688,10 @@ def _resolve_rules(rules: list[SystemAlertRule], locale: str) -> list[ResolvedAl
             covered = ", ".join(covered_languages(rule.prompt))
             raise UncoveredSystemAlertLocale(
                 f"systemAlertHandling.rules prompt: {rule.prompt} has no known button labels for "
-                f"locale {locale!r}; covered: {covered}. Add the language to "
-                "bajutsu/common/scenario/system_alerts.py, or pin a locale the table covers"
+                f"locale {locale!r}; covered: {covered}. Answer that prompt with a "
+                "handleSystemAlert step instead, which falls back to the button's position "
+                "(BE-0445), add the language to bajutsu/common/scenario/system_alerts.py, or pin a "
+                "locale the table covers"
             ) from exc
         surfaces = alert_surfaces(rule.prompt)
         resolved.extend(

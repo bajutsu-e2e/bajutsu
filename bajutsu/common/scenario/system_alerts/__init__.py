@@ -13,6 +13,11 @@ arbitrary SpringBoard text, and only the languages whose values have been read b
 Simulator. Every other alert keeps using the literal `label` / `labelMatches` a scenario supplies,
 unchanged.
 
+A language outside the table no longer fails the `handleSystemAlert` step (BE-0445): each SpringBoard
+prompt also carries a position rule (`system_alert_role`), measured to hold whatever language the
+prompt renders in, which the step falls back to. The reactive guard does not, since a position cannot
+tell it which declared prompt is on screen; its rules still need this table's labels.
+
 This is a source of button *labels*, not a claim about which process owns the alert: `savePassword`
 is raised into the application's own process, and BE-0406 added it here anyway because the path that
 taps a label is chosen separately, by whether the SpringBoard query can see the alert. `_SURFACES`
@@ -35,13 +40,16 @@ contents to `plutil` rather than to a plain-text search.
 """
 
 from ._functions import _LABELS as _LABELS
+from ._functions import _ROLES as _ROLES
 from ._functions import _SURFACES as _SURFACES
 from ._functions import (
     SystemAlertChoice,
     SystemAlertPrompt,
     alert_surfaces,
     covered_languages,
+    labels_cover,
     system_alert_label,
+    system_alert_role,
     system_alert_shapes,
 )
 from ._functions import _shapes as _shapes
@@ -50,6 +58,7 @@ from ._prompts import _Prompts as _Prompts
 from ._shape import _Shape as _Shape
 from .alert_surfaces import AlertSurfaces
 from .resolved_alert_shape import ResolvedAlertShape
+from .system_alert_role import SystemAlertRole
 from .uncovered_system_alert_locale import UncoveredSystemAlertLocale
 
 __all__ = [
@@ -57,9 +66,12 @@ __all__ = [
     "ResolvedAlertShape",
     "SystemAlertChoice",
     "SystemAlertPrompt",
+    "SystemAlertRole",
     "UncoveredSystemAlertLocale",
     "alert_surfaces",
     "covered_languages",
+    "labels_cover",
     "system_alert_label",
+    "system_alert_role",
     "system_alert_shapes",
 ]

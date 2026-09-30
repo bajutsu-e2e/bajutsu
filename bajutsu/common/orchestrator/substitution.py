@@ -50,11 +50,13 @@ def _resolve_system_alert(step: Step, locale: str | None) -> Step:
     the intent form can only be resolved once the run's locale is known. Every other step — and a
     `handleSystemAlert` that already names its button through `sel` — returns unchanged.
 
-    A caller with no locale (`record`'s replay) leaves the step unresolved; the handler then fails it
-    loudly, rather than this guessing at a language.
+    A caller with no locale (`record`'s replay) leaves the step unresolved, rather than this guessing
+    at a language; the handler then answers by the prompt's position rule (BE-0445), or fails the
+    step loudly for a prompt that has none.
 
     Raises:
-        UncoveredSystemAlertLocale: no labels are known for that locale's language.
+        UncoveredSystemAlertLocale: no labels are known for that locale's language, and the prompt
+            has no position rule to fall back to.
     """
     hsa = step.handle_system_alert
     if hsa is None or hsa.prompt is None or locale is None:
