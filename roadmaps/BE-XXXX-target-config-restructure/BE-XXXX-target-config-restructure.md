@@ -1,6 +1,6 @@
 **English** · [日本語](BE-XXXX-target-config-restructure-ja.md)
 
-# BE-XXXX — Restructure the target config by question, and declare where a target runs
+# BE-XXXX — Group the flat target config by purpose, and declare the device, OS, and browser a target needs
 
 <!-- BE-METADATA -->
 | Field | Value |
@@ -22,7 +22,8 @@ Android alone, and `bundleId` and `xcuitest` by iOS alone. The schema does not k
 belong to which platform, and no key can state which device or operating system (OS) a target
 expects.
 
-This item replaces the flat list with twelve keys, each of which answers exactly one question.
+This item replaces the flat list with twelve keys, each covering one purpose: the app under test,
+the device it runs on, how Bajutsu drives it, and so on.
 The value of `platform` decides the shape of three of them — `app`, `runsOn`, and `driver` — and
 the other nine keep one shape across platforms. `runsOn` declares the device, OS, and browser a
 target runs on. Before the first step, a run checks the declaration against the device it got and
@@ -48,7 +49,7 @@ creating a replacement for a Simulator that vanished mid-run. A run records the 
 A scenario that fails on an unintended OS surfaces after the run, not before it, and the result
 then lands in the flakiness history as noise.
 
-The answers to one question are scattered, too. Launching the app spans `launchEnv`, `launchArgs`,
+Settings for one purpose are scattered, too. Launching the app spans `launchEnv`, `launchArgs`,
 and `readyWhen`. Sourcing a device spans `deviceProvider`, `cloudBatch`, and `requires`. Steps that
 run before every scenario come from two keys, `setup` and `before`, whose difference the docs keep
 explaining. Deciding the platform takes a precedence chain over `platform`, `backend`, and whichever
@@ -66,7 +67,7 @@ device stops before its first step, printing the declared and the observed value
 
 A target accepts these keys and no others.
 
-| Key | Question it answers | Shape depends on `platform` |
+| Key | Purpose | Shape depends on `platform` |
 |---|---|---|
 | `platform` | Which backend drives the target | — (the discriminator) |
 | `app` | What is under test: identifier, how to obtain and launch it, readiness, and id contract | Yes |
@@ -81,7 +82,7 @@ A target accepts these keys and no others.
 | `ai` | Which provider backs the AI paths | No |
 | `notify` | Where results are reported | No |
 
-A key goes where its question points, whatever platform uses it. `nativeZ`, for example, is
+A key goes into the group for its purpose, whatever platform uses it. `nativeZ`, for example, is
 Android-specific, yet it answers how Bajutsu drives the device, so it lives in `driver`.
 
 ```yaml
@@ -146,7 +147,7 @@ Four placements needed a judgment call:
   not what the target runs on.
 - **`secrets` sits in `run`.** A secret is an input injected as `${secrets.X}`; masking the value in
   evidence follows from that role.
-- **`setup` is removed and folded into `hooks.before`.** Two keys answering one question is the
+- **`setup` is removed and folded into `hooks.before`.** Two keys serving one purpose is the
   duplication this item removes. The cost: steps that `setup` used to splice onto a scenario's
   `steps` now run as the report's own `before` phase, and a failure there counts as a `before`
   failure.
@@ -269,13 +270,13 @@ the new dictionary.
 
 | Alternative | Why we did not take it |
 |---|---|
-| Keep the flat list and reject keys from another platform | Catches typos, yet leaves the `device` name clash, adds no place for requirements, and keeps one question's answers scattered |
+| Keep the flat list and reject keys from another platform | Catches typos, yet leaves the `device` name clash, adds no place for requirements, and keeps the settings for one purpose scattered |
 | Make the platform name the key (`ios: {…}`, exactly one) | Nests the same word twice, as in `targets.web.web:`. A variable key name also forces the JSON Schema to express "exactly one" through a separate rule |
-| Pair `platform` with a `configuration` block holding every platform-specific key | Groups keys by a property rather than by a question, so app, device, and driver settings mix inside one block, one level deeper |
+| Pair `platform` with a `configuration` block holding every platform-specific key | Groups keys by which platform uses them rather than by purpose, so app, device, and driver settings mix inside one block, one level deeper |
 | A `driver: { kind: xcuitest \| adb \| playwright }` union | Each platform has one actuator today, so a second layer buys nothing. Revisit if a platform gains a second actuator |
 | A closed union of platform models in the core | Every new backend would edit the core schema, which contradicts the backend-agnostic design |
 | One shared `runsOn` shape for all platforms | Leaves fields no platform can use — a browser on iOS, an AVD on the web — which recreates the flat-list problem |
-| Keep both `setup` and `before` | Preserves today's behavior, at the cost of two keys answering one question |
+| Keep both `setup` and `before` | Preserves today's behavior, at the cost of two keys serving one purpose |
 | Create a matching device on mismatch, or warn and continue | Creating a device makes Bajutsu own runtime installation, time, and cleanup. Warning lets results from the wrong environment into the flakiness history |
 | Prefix matching with no ranges | Cannot express a compatibility window such as `>=17 <19` on one line |
 
