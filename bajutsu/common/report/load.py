@@ -173,10 +173,11 @@ def _system_alert(stored: object) -> SystemAlertTap | None:
     # way, but says so, as the actuation loader does for a record it has to drop.
     if stored is None:
         return None
-    if not isinstance(stored, dict):
+    label, rule = (stored.get(k) if isinstance(stored, dict) else None for k in ("label", "rule"))
+    if not (isinstance(label, str) and label and isinstance(rule, str) and rule):
         _logger.warning("dropped a malformed system_alert record while loading a run")
         return None
-    return SystemAlertTap(**_kw(SystemAlertTap, stored))
+    return SystemAlertTap(label=label, rule=rule)
 
 
 def _step(d: dict[str, Any]) -> StepOutcome:

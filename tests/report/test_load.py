@@ -243,7 +243,18 @@ def test_a_system_alert_tap_survives_the_round_trip() -> None:
     assert results_from_manifest(data) == original
 
 
-@pytest.mark.parametrize("stored", ["absent", None, "not-a-record"])
+@pytest.mark.parametrize(
+    "stored",
+    [
+        "absent",
+        None,
+        "not-a-record",
+        {},
+        {"label": "Allow"},
+        {"label": "", "rule": "sel"},
+        {"label": 7, "rule": "sel"},
+    ],
+)
 def test_a_manifest_without_a_system_alert_tap_loads_as_none(stored: object) -> None:
     # v11 and earlier carry no such key; a damaged value reads the same way rather than failing the load.
     data = manifest_dict("r1", [_result()])

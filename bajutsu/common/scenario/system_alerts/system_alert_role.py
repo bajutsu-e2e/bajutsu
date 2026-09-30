@@ -15,6 +15,10 @@ class SystemAlertRole:
     the rule rather than a detail of it — an alert offering any other number of buttons is not the
     prompt the rule describes, so the rule names no button on it instead of tapping by position on
     an alert it was never measured against.
+
+    The count is over the buttons `Driver.system_alert_labels` reports, which leaves out a button
+    with no label. Every button of every measured prompt carried one, so the rule is as strong as
+    that measurement: an alert padded to the right size by an unlabeled button would pass it.
     """
 
     ordinal: int

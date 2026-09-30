@@ -450,7 +450,7 @@ on all three prompts SpringBoard lists the deny button first and the grant butto
 measured under English and Japanese on iOS 18.6 and 26.5, and under Arabic on 26.5, by tapping each
 button and reading the authorization status the app was left with. The order is the order
 SpringBoard reports, not the order on screen: Arabic draws the notification prompt's deny button on
-the right, and it is still the first button. So `choice: grant` taps button 2 of 2 and `choice: deny` taps button 1 of 2. The rule
+the right, and it is still the first button. `choice: grant` taps button 2 of 2 and `choice: deny` taps button 1 of 2. The rule
 names nothing on an alert with any other number of buttons, and the step then waits out its timeout
 and names the buttons it saw, rather than tapping by position on an alert the rule was never
 measured against. The rule names a button, not a prompt: SpringBoard's own title and message are

@@ -67,7 +67,9 @@ final class SystemAlertProbeUITests: XCTestCase {
 
         let value = app.descendants(matching: .any)[result]
         let settled = NSPredicate(format: "value != %@ AND value != %@", "notDetermined", "")
-        _ = XCTWaiter().wait(for: [expectation(for: settled, evaluatedWith: value)], timeout: 10)
+        // An unsettled status would record an ordinal with no role behind it, so it fails the probe.
+        let waited = XCTWaiter().wait(for: [expectation(for: settled, evaluatedWith: value)], timeout: 10)
+        XCTAssertEqual(waited, .completed, "\(prompt): authorization status never settled after the tap")
 
         let record: [String: Any] = [
             "prompt": prompt,
