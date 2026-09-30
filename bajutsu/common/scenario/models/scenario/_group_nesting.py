@@ -4,10 +4,9 @@
 as-loaded step tree — the only place a directly-written nesting is visible, since a `use:` step's
 own component body isn't resolved yet. A `group` that arrives at a nested position only through a
 `use:` call (the component's steps aren't visible here) is instead caught at expansion time, by
-`expand()`'s own `group_ctx` check in `bajutsu/common/scenario/expand.py` — the two together cover
-every route `expand_components` itself never recurses into (`if.then` / `if.else_` /
-`for_each.steps` / `web.steps` / `app.steps`), plus a `group` written directly inside another
-`group.steps`.
+`expand()`'s own checks in `bajutsu/common/scenario/expand.py` (`_check_group_position`) — the two
+together cover every body a `group` cannot sit in (`if.then` / `if.else_` / `for_each.steps` /
+`web.steps` / `app.steps`), plus a `group` written directly inside another `group.steps`.
 """
 
 from __future__ import annotations
@@ -42,9 +41,9 @@ def _walk_no_nested_group(steps: list[Step], container: str | None) -> None:
 def _check_no_nested_group(scenario: Scenario) -> None:
     """Reject a `group` written directly inside another `group`, `if`, `forEach`, `web`, or `app`.
 
-    Neither shape can ever expand: `expand()` only recurses into `scenario.steps` /
-    `scenario.before` / each `after` rule's `steps` / each `interrupts` entry's `steps`, never into
-    a control-flow step's own nested list.
+    Neither shape has a report fold to become: a `group` inside a body would tag steps the report
+    renders as part of their enclosing control-flow step, and a nested one has no outer fold to
+    split. `expand()` refuses the same shapes when a component carries them in (BE-0446).
     """
     _walk_no_nested_group(scenario.steps, None)
     _walk_no_nested_group(scenario.before, None)

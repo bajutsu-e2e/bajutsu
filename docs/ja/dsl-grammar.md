@@ -221,7 +221,7 @@ Action    ::=
   | { setMocks:         list(<Mock>) }                     # シナリオの途中でアプリのスタブテーブル全体を置き換える（[] はすべてのスタブを外す）。iOS/XCUITest かつネットワーク収集が有効な場合のみ（BE-0365）
   | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }
   | { clearStatusBar:   {} }                               # ライブのステータスバーに戻す
-  | { use:         { component: string, with?: map(string,string) } }   # マクロ（§6.2。修飾子不可）
+  | { use:         { component: string, with?: map(string,string) } }   # マクロ（§6.2。修飾子は target のみ）
   | { group:       <Group> }                                            # ステップに名前を付け、report.htmlで折りたたむ（§6.2。capture/extract 不可。入れ子不可）
   | { if:          <If> }                                               # 条件分岐（capture/extract 不可）
   | { forEach:     <ForEach> }                                          # ループ（capture/extract 不可）
@@ -393,7 +393,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 |---|---|---|
 | `Selector` | **1 条件以上** | `scenario/models/selector.py` |
 | `Step` | アクションキー（`tap` … `use`）**ちょうど 1 つ**。`capture`/`name` は修飾子でアクションではない | `scenario/models/steps.py` |
-| `Step.use` | **修飾子を取らない**。`capture` / `extract` / `name` / `from` / `target` を拒否する（展開が警告なく捨ててしまうため） | `scenario/models/steps/step.py` |
+| `Step.use` | **取れる修飾子は `target` だけ**。`capture` / `extract` / `name` / `from` を拒否する（展開が警告なく捨ててしまうため）。`target` は展開後のステップへ刻印する（BE-0446） | `scenario/models/steps/step.py` |
 | `Swipe` | 形は `{on,direction}` か `{from,to}` の **ちょうど 1 つ**（混在も片側だけの指定も不可） | `scenario/models/actions.py` |
 | `Pinch` | `scale` **> 0** | `scenario/models/actions.py` |
 | `HandleSystemAlert` | `sel` を `label` / `labelMatches` / `index` に限定（`id`/`idMatches`/`traits`/`value`/`within` を拒否） | `scenario/models/actions.py` |
@@ -411,10 +411,9 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Scenario.targets` | 同じ名前の重複不可（BE-0428） | `scenario/models/scenario/_targets.py` |
 | `Scenario.primaryTarget` | 省略するか、`targets[0]` と一致。`targets` が空なら**拒否**（BE-0436） | `scenario/models/scenario/_targets.py` |
 | `Step.target` / `Assertion.target`（`expect` のみ） | `len(targets) ≤ 1` なら省略可、または宣言済みの1つと一致。`len(targets) ≥ 2` で `primaryTarget` が未設定なら**必須**（`if`/`forEach`/`web` ラッパーも含み、末端のアクションだけではない）で、宣言済みターゲットの1つを名指し。`len(targets) ≥ 2` で `primaryTarget` を設定していれば**省略可**で、省略したものは入れ子の深さによらず主ターゲットに対して走る（BE-0436）。`web` ブロック内に入れ子になったステップと、インラインの `assert:` リスト・`if` の `condition`・`interrupts` エントリの `condition` を通して届く `Assertion` では**拒否**（BE-0428） | `scenario/models/scenario/_targets.py` |
-| `Step.use` / `Step.group`（`len(targets) ≥ 2` のみ） | **頭から拒否** — `use:` ステップ（`target` を取れないため。`Step.use` 行と §6.2 を参照）と `group:` ステップ（展開で自身の `target` が失われる）は、どちらも本アイテムが先送りにした未決問題であり、意味の不明確なまま受理せず拒否（BE-0428） | `scenario/models/scenario/_targets.py` |
+| `use:` / `group:` ステップの `Step.target` | `len(targets)` によらず、`primaryTarget` がなくても**省略可**で、ステップ自身は解決しない。指定した値は宣言済みターゲットを名指しする。展開は、呼び出しが生むステップのうち `target` を省略したものへその値を刻印し、異なるターゲットを名指しするステップを拒否する（BE-0446） | `scenario/models/scenario/_targets.py`、`scenario/expand.py` |
 | `Interrupt.target` と、`interrupts` エントリの `steps` にある `Step.target` | `primaryTarget` の有無にかかわらず、`len(targets)` にかかわらず**省略可**。エントリの `target` を省略するとプライマリターゲットを監視し、リカバリ用ステップの `target` を省略するとエントリ自身のターゲットで実行する(ただし、`target` を指定した `if`/`forEach` ステップの内側では、そのステップのターゲットで実行する)。指定した値は、宣言済みターゲットの名指しについて上の `Step.target` の規則に従う（BE-0438） | `scenario/models/scenario/_targets.py` |
 | `targets.<name>.interrupts` の `Interrupt.target` と、その `steps` にある `Step.target` | **拒否**。エントリは、その config ブロックが設定するターゲットにすでに属している（BE-0438） | `config/schema/target_config.py` |
-| `Step.use`（`len(targets) ≥ 2` のみ） | `interrupts` エントリの `steps` の中でも**頭から拒否**。そもそも `target` を取れない（上の `Step.use` 行を参照）という、本アイテムが先送りにした未決問題であり、意味の不明確なまま受理せず拒否（BE-0428） | `scenario/models/scenario/_targets.py` |
 | すべてのマッピング | **未知キー不可**（`extra="forbid"`） | `scenario/models/_base.py` |
 
 `exists` は特別です。セレクタを **インライン**で書き（`exists: { id: home.title }`）、任意の `negate: true` で不在を確認します。ローダは検証前にこれを `{ sel, negate }` へ書き換えます（`Exists._inline`, `scenario/models/assertions.py`）。
@@ -503,9 +502,9 @@ scenarios:
 
 `components:` の有効範囲は1ファイルです。ファイルごとに読み、スイートディレクトリをまたいで統合しません。あるファイルで宣言した名前は、ほかのファイルからは見えません。コンポーネントファイルへ入ると `components:` は完全に外れます。コンポーネントファイルは自分の `components:` を持たないため、その中の素の `use` は常に未定義です。参照元のシナリオファイルが何を宣言していても変わりません。一方、ファイルスコープのコンポーネント自身の steps は、宣言元ファイルのスコープで展開されます。別のファイルスコープのコンポーネントを素の名前で `use` できますし、パスでファイルも `use` できます。ファイルをまたぐ再利用はパス参照の役目のままです。
 
-`expand_components`（`scenario/expand.py`）は各 `use` をコンポーネントの置換済みステップに **置き換えます**。展開は再帰的で、コンポーネントが別のコンポーネントを `use` でき、深さは 25 までです。params の不足、未知の params、未宣言を指す残留した `${params.*}`、未定義の素の名前、循環参照のいずれかがあるとエラーになります。`ComponentResolver`（`scenario/load_expanded.py`）は、`resolve` をファイルの `components:` とルートと基準ディレクトリに束ねる唯一の場所です。おかげで `run` とデバイス不要のリーダーは、同じファイルを同一に展開します。展開は純粋でコンパイル時に行われるため、**`use` は run に残らず**、決定性に影響しません。
+`expand_components`（`scenario/expand.py`）は各 `use` をコンポーネントの置換済みステップに **置き換えます**。展開は再帰的で、コンポーネントが別のコンポーネントを `use` でき、深さは 25 までです。params の不足、未知の params、未宣言を指す残留した `${params.*}`、未定義の素の名前、循環参照のいずれかがあるとエラーになります。`ComponentResolver`（`scenario/load_expanded.py`）は、`resolve` をファイルの `components:` とルートと基準ディレクトリに束ねる唯一の場所です。おかげで `run` とデバイス不要のリーダーは、同じファイルを同一に展開します。展開は `if` / `else` の分岐、`forEach` の本体、`web:` / `app:` ブロックにも降ります。そのため run が通らない分岐の `use` も展開され、壊れていればロードが失敗します。展開は純粋でコンパイル時に行われるため、**`use` は run に残らず**、決定性に影響しません。
 
-`use` ステップは修飾子を取りません。展開がステップ全体を置き換えるので、`capture` / `extract` / `name` / `from` / `target` を併記した `use` ステップはローダーが拒否します。警告なしに捨てると、これらのフィールドが効いていないことに作成者が気付けないからです。
+`use` ステップが取れる修飾子は `target` だけです。展開がステップ全体を置き換えるので、`capture` / `extract` / `name` / `from` を併記した `use` ステップはローダーが拒否します。警告なしに捨てると、これらのフィールドが効いていないことに作成者が気付けないからです。`target` については、展開が捨てずに引き継ぎます（BE-0446）。展開は、生じたステップのうち `target` を省略したものへ値を刻印します。刻印は `if` / `forEach` の本体と入れ子の `use` 呼び出しへ降り、`web:` / `app:` ブロックで止まります。同じターゲットを名指しするステップは受け入れ、異なるターゲットを名指しするステップはロードを失敗させます。エラーメッセージにはコンポーネントの連鎖が入ります。
 
 **`group` は `use` の身近な兄弟です。** `Group` は `name` と `steps` だけを持ち、params と
 別ファイルのどちらも持ちません。`expand_components` の同じ `expand()` 再帰が、`group` ステップを
@@ -515,7 +514,8 @@ scenarios:
 `group` の中にいる状態で `group` に出会うとエラーを送出します。これは、内側の `group` が直接
 書かれた場合も、`use` の呼び出しを経由して届いた場合も同じです。`Scenario` レベルのバリデータも、
 別の `group` の `steps` の中や、`if` / `forEach` / `web` / `app` ステップの入れ子の `steps` の中に
-直接書かれた `group` を、ロード時に拒否します。
+直接書かれた `group` を、ロード時に拒否します。コンポーネントがそれらの本体へ持ち込んだ `group` も、
+`expand()` が拒否します。`group` ステップ自身の `target` は、上の `use` の規則に従います。
 
 ### 6.3 データ駆動シナリオ（`data` / `dataFile`）
 
