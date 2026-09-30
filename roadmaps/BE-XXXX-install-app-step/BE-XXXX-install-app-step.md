@@ -262,6 +262,90 @@ today. Members that share an identifier cannot be told apart on the device, so t
 own record of which member's build was installed last, and a step addressed to a retired member fails
 by that record. The device check covers members with distinct identifiers.
 
+### Worked example: how `target` resolves
+
+This section gathers the resolution rules in one place and follows the update scenario through them.
+The first diagram is the rule that exists today (BE-0428, BE-0436). This item changes only what "the
+current primary" means.
+
+```mermaid
+flowchart TD
+  S["step"] --> W{"target written?"}
+  W -- yes --> D{"declared name?"}
+  D -- no --> E1["load error"]
+  D -- yes --> R1["run on that target"]
+  W -- no --> N{"one declared target or fewer?"}
+  N -- yes --> R2["run on the only target"]
+  N -- no --> P{"primaryTarget set?"}
+  P -- yes --> R3["run on the current primary"]
+  P -- no --> E2["load error: target required"]
+```
+
+The primary is the first member of the first group until a `setPrimaryTarget` step moves it. A device
+group gives one device to several targets, and a bare name keeps its own device:
+
+```mermaid
+flowchart LR
+  subgraph D1["Device 1 (group 1)"]
+    A["showcase-previous: primary, starts"]
+    B["showcase: later member"]
+  end
+  subgraph D2["Device 2 (group 2)"]
+    C["showcase-web: starts"]
+  end
+```
+
+The table follows the update scenario step by step. The third column shows what an omitted `target`
+resolves to, and the last two columns show the state of the two members.
+
+| # | Step | Omitted `target` resolves to | `showcase-previous` | `showcase` |
+|---|---|---|---|---|
+| 1 | `tap` | `showcase-previous` | running | not installed |
+| 2 | `type` | `showcase-previous` | running | not installed |
+| 3 | `installApp: { from: showcase }` | `showcase-previous` | retired | installed, not launched |
+| 4 | `setPrimaryTarget: { target: showcase }` | `showcase` | retired | installed, not launched |
+| 5 | `foreground` | `showcase` | retired | running |
+| 6 | `assert` | `showcase` | retired | running |
+| – | top-level `expect` | `showcase`, the primary in force after the last step | retired | running |
+
+Without the `setPrimaryTarget` step, steps 5 and 6 resolve to the retired member and fail, so every
+later step, assertion, and interrupt must write `target: showcase`:
+
+```mermaid
+flowchart LR
+  I["step 3: installApp"] --> Q{"setPrimaryTarget placed?"}
+  Q -- yes --> Y["omitted target = showcase"]
+  Q -- no --> N["omitted target = showcase-previous: retired, fails"]
+  N --> M["later steps write target: showcase"]
+```
+
+Inside a component, the caller's `target` and the expanded step's own `target` combine as follows
+(BE-0446). `setPrimaryTarget` is the one step that expansion never stamps:
+
+```mermaid
+flowchart TD
+  E["expanded step"] --> C{"caller's use has a target?"}
+  C -- yes --> X{"step writes a target?"}
+  X -- no --> S1["stamp the caller's target"]
+  X -- yes --> Q{"same name as the caller's?"}
+  Q -- yes --> S2["accept"]
+  Q -- no --> E1["load error: conflict"]
+  C -- no --> Y{"step writes a target?"}
+  Y -- yes --> V["keep it, check it is declared"]
+  Y -- no --> Z["resolve as a hand-written step would"]
+```
+
+A step writes `target` only in the cases below:
+
+| Situation | Must the step write `target`? |
+|---|---|
+| A scenario with one target | No |
+| Two or more targets, `primaryTarget` set | Only a step for a member other than the current primary |
+| Two or more targets, no `primaryTarget` | Every step and every `expect` entry |
+| After a `setPrimaryTarget` | Only a step for a member other than the new primary |
+| Driving a companion app in the same group | Yes: its `foreground` and the steps that drive it name it |
+| Inside a component | A single-target component: no, the caller's `target` is stamped. A cross-target component: yes, each step names its own |
+
 ### Backend behavior
 
 | Backend | Behavior |
