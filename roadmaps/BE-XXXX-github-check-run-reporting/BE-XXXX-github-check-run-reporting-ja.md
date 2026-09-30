@@ -10,7 +10,7 @@
 | 状態 | **承認済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | 外部サービスとの連携 |
-| 関連 | [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md)、[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)、[BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth-ja.md)、[BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md)、[BE-0431](../BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override-ja.md)、[BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md)、[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md) |
+| 関連 | [BE-0170](../BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch-ja.md)、[BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md)、[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)、[BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth-ja.md)、[BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md)、[BE-0431](../BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override-ja.md)、[BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md)、[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -124,11 +124,14 @@ machine principal もこの endpoint を使えるようにします。`bajutsu/s
 
 - **`headSha`**：必須です。workflow は `github.event.pull_request.head.sha` を渡します。
   `pull_request` イベントの `GITHUB_SHA` は merge commit を指し、その commit に付けた check run は
-  PR に表示されないからです。serve は値の形式を検査しますが、値の出どころは保証しません。誤った値が
-  及ぼしうる影響は、後述するリポジトリの限定で抑えます。
+  PR に表示されないからです。serve は値の形式を検査しますが、値の出どころは保証しません。誤った値は、
+  後述するリポジトリの限定により、呼び出し側自身のリポジトリの中にとどまります。そこに残るリスクは
+  「対象外とするもの」に明記します。
 - **`name`**：既定値は `Bajutsu / <target>` です。1つの target を Actions の matrix で分割する
-  パイプラインは、分割した部分ごとに名前を付けます。こうすると、同じ commit 上で2つのリクエストが
-  同じ名前の check run を共有することはありません。
+  パイプラインは、分割した部分ごとに名前を付けます。serve は、この区別を前提にせず強制します。
+  未完了の集合のあいだは、`check_runs` の行が (リポジトリ, head SHA, 名前) で一意になるように、部分
+  一意インデックスを張ります。同じ組を持つ check 付きの2つ目のリクエストは、1つ目の集合が完了する
+  まで 409 で拒否します。集合が完了した後の再実行は、新しい行として記録します。行は、GitHub が `completed` を受け付けるまで未完了のままです。lease のタイムアウトより古くなっても check run の id を持たない行は、作成の応答を受け取る前に control plane が止まったものです。完了させる check run がないので、掃き出しはその行を削除し、組を解放します。
 
 **リポジトリはリクエスト本文ではなく machine session から取ります。** BE-0414 が発行する machine
 session の identity は、検証済みの OIDC の `repository` claim が示すリポジトリを名指しています。
@@ -151,10 +154,19 @@ job だけを返します。そのような一部だけの集合で check run �
 集合が上限に収まらない場合、serve は行を削除し、check run を作る前に 429 を返します。パイプラインは
 再試行できます。ただし、集合の大きさが上限そのものを超える場合は、queue で待つ job も枠を占めるので、
 いつまでも収まりません。この場合、serve は行を削除し、上限を名指しして 400 で拒否します。成功しえない
-リクエストを、パイプラインが再試行し続けないようにするためです。
+リクエストを、パイプラインが再試行し続けないようにするためです。400 のメッセージには、超えた上限の名前と、集合に必要な大きさを示します。
+今の上限は低く設定されています。全体の上限（`--max-concurrent-runs`）の既定は4で、実行中の job
+だけでなく queue で待つ job も数えます。そのため、既定のままでは5本の集合は収まりません。この上限は、
+queue で待てる job の数と、同時に実行できる job の数という、2つの意味を兼ねています。データベースを使うデプロイでは、worker はそれぞれ一度に1つの job だけを lease するので、worker の数が後者をすでに決めます。実際に効くのは前者だけです。
+投入時の queue の深さの上限と、worker が job を lease するときに判定する同時実行数の上限に分けることは、
+[BE-0170](../BE-0170-weighted-fair-org-dispatch/BE-0170-weighted-fair-org-dispatch-ja.md)
+に任せます。BE-0170 は、上限を超えた job を拒否せずに保留することを計画しています。それが入るまで、
+より大きな集合を使いたい運用者は、`--max-concurrent-runs` と、設定している場合は
+`BAJUTSU_MAX_CONCURRENT_PER_ORG` を、最大の集合の大きさ以上に上げてください。
 
 dispatch の順序は、この規則から決まります。serve は、行を記録し、集合全体を登録し、check run を
-作成し（単位4）、最後に job を queue に入れます。
+作成し（単位4）、最後に job を queue に入れます。queue に入れる途中で control plane が止まると、
+job の id を持たない scenario が行に残ります。この行は単位3で完了させます。
 
 ### 単位3：check run の状態を、構成する job から導く
 
@@ -162,19 +174,35 @@ serve は、check run の状態を、構成する job だけから導きます�
 
 | 構成する job | check run の `status` | `conclusion` |
 |---|---|---|
-| dispatch したすべての job が `queued` | `queued` | — |
-| 少なくとも1つが lease 済みか終了済みで、未完了のものがある | `in_progress` | — |
-| すべて終了し、各 run が通過した | `completed` | `success` |
-| すべて終了し、失敗した run がある | `completed` | `failure` |
-| すべて終了し、run を残さずに失敗した job がある | `completed` | `failure` |
+| 猶予の後も job の id を持たない scenario がある | `completed` | `failure` |
+| すべての scenario が `queued` か、まだ queue に入っていない | `queued` | — |
+| 少なくとも1つの job が lease 済みか終了済みで、未完了の scenario がある | `in_progress` | — |
+| すべての scenario の job が終了し、各 run が通過した | `completed` | `success` |
+| すべての scenario の job が終了し、失敗した run がある | `completed` | `failure` |
+| すべての scenario の job が終了し、run を残さずに失敗した job がある | `completed` | `failure` |
 
-最後の行は、lease の試行回数の上限を超えた job のように、`failed` の status で終わった job を扱います。現状の jobs テーブルでは、失敗を表す2つの行を区別できません。`bajutsu/serve/operations/worker.py` の `worker_result` は、scenario が失敗した job を `fail_job` で記録します。これは、試行回数の上限を超えて回収された job と同じ `failed` の status です。しかも `fail_job` はエラーだけを保存し、run の id を捨てます。そこで本単位では、失敗した job の行にも worker が返した `runId` を残し、構成する job から run とその判定を引けるようにします。summary では、この原因を scenario の失敗とは区別して書きます。直し方が異なるからです。
-表の入力はどれも、保存済みの job の status か、保存済みの run の判定です。そのため導出は決定的で、
-LLM は関与しません。
+表は上から照合し、最初に当てはまる行で状態を決めます。まだ queue に入っていない scenario は、未完了として数えます。queue に入れる処理は1回の dispatch
+リクエストの中で終わります。そのため、行が lease のタイムアウト（既定で120秒）より古いのに job の id
+を持たない scenario が残っていれば、control plane がその処理の途中で止まったことになります。serve は
+その行を `failure` で完了させ、summary に、queue に入らなかった scenario を名指しします。再投入も
+待機もしません。パイプラインは集合を dispatch し直せて、この行が完了した後であれば、409 の規則にも
+当たりません。すでに queue に入った job は実行を続け、その判定はレポートから見られます。
 
-serve は、導いた状態を保存しません。配信のたびに、構成する job の保存済みの行から状態を導き直します。
-そのため、job の遷移にフックは不要で、新たに書き込むものもありません。jobs テーブルはすでに永続化
-されているので、再起動で失われるものは、後の導出で取り戻せます。status が後戻りしないように、規則を
+run を残さずに失敗した job の行は、lease の試行回数の上限を超えた job のように、`failed` の status
+で終わった job を扱います。表のうち、失敗した run がある行と、run を残さずに失敗した job がある行の
+2つは、現状の jobs テーブルでは区別できません。`bajutsu/serve/operations/worker.py` の
+`worker_result` は、scenario が失敗した job を `fail_job` で記録します。これは、試行回数の上限を
+超えて回収された job と同じ `failed` の status です。しかも `fail_job` はエラーだけを保存し、run の id
+を捨てます。そこで本単位では、失敗した job の行にも worker が返した `runId` を残し、構成する job から
+run とその判定を引けるようにします。summary では、この原因を scenario の失敗とは区別して書きます。
+直し方が異なるからです。
+表の入力はどれも、保存済みの job の status、保存済みの run の判定、行の経過時間のいずれかです。そのため導出は決定的で、LLM は関与しません。
+serve は、導いた状態を保存しません。配信のたびに、構成する job の保存済みの行から状態を導き直すので、
+再起動で失われるものは、後の導出で取り戻せます。ただし、job の遷移のうち1つだけは、フックを必要とします。
+`worker_result` は、結果をコミットするトランザクションの中で、その集合の行の次の試行時刻を現在時刻にし、
+コミットの後で、その行から掃き出しを実行します。これがないと、worker のプールが空になる場合、たとえば queue が
+空になると終了するオンデマンドの Mac では、最後の結果の後に lease のポーリングも heartbeat も
+起きません。そのため `completed` の更新は、単位4の定期タスクを待つことになります。status が後戻りしないように、規則を
 1つ置きます。`reclaim_expired_leases` が job を queue に戻すと、集合からは再び `queued` が導かれます。
 そのため serve は、GitHub が最後に受け付けた status より前の status を送りません。
 
@@ -257,7 +285,7 @@ App から移るデプロイは、それでも自身の org に対して先に�
 
 **作成は同期的に行い、失敗したらリクエストを拒否します。** serve は、dispatch リクエストの処理中に、
 集合全体を登録した後、job を queue に入れる前に、check run を `queued` で作成します。GitHub の
-応答から check run の id を得て、行に保存します。作成に失敗した場合、serve は登録を解放し、行を
+応答から check run の id を得て、行に保存します。作成の呼び出しにも、掃き出しの中の GitHub への呼び出しと同じ短いタイムアウトを付けます。そのため作成は、lease のタイムアウトを過ぎて掃き出しが check run の id を持たない行を削除するより十分前に終わります。掃き出しは、check run の id をまだ持たない行には何も送りません。作成に失敗した場合、serve は登録を解放し、行を
 削除して、リクエストを 502 で拒否します。そのため、job は1つも queue に入りません。GitHub の一時的な
 エラーを含め、作成の失敗はすべてこの扱いになり、パイプラインは再試行できます。パイプラインが最も
 知る必要がある失敗は、設定の誤りである次の2つです。App がリポジトリにインストールされていない場合と、
@@ -265,24 +293,27 @@ App から移るデプロイは、それでも自身の org に対して先に�
 現れない PR を後から見つける、という事態を避けられます。
 
 **更新は、再起動を越えて順序どおりに届けます。** すべての更新は、1つの送り手が届けます。
-`lease_job` が `reclaim_expired_leases` と並べて実行する掃き出しで、`heartbeat_job` も lease の
-更新をコミットした後に同じ掃き出しを実行します。新しいバックグラウンドプロセスは必要ありません。
-`check_runs` の行には、GitHub が最後に受け付けた状態と、次に試みる時刻を持たせます。
+`lease_job` が `reclaim_expired_leases` と並べて実行する掃き出しで、`heartbeat_job` は lease の更新をコミットした後に、`worker_result` は結果をコミットした後に、同じ掃き出しを実行します。データベースを使う control plane では、小さな定期タスクも、確認の間隔ごとに同じ掃き出しを実行します。
+そのため、猶予の後の `failure`、check run の id を持たない行の削除、拒否された送信の再試行は、どの
+worker もポーリングしないときにも実行されます。worker が引き金になる掃き出しは更新を速く届け、定期の
+掃き出しは更新を確実に届けます。定期タスクは各 replica で動きますが、ほかの送り手と同じく、行の
+ロックが送信の順序を保ちます。`check_runs` の行には、GitHub が最後に受け付けた状態と、次に試みる時刻を持たせます。
 
 掃き出しは、試行時刻を迎えた未完了の行を、試行時刻の古い順にたどります。各行を
-`SELECT … FOR UPDATE SKIP LOCKED` で確保し、その行の状態を導きます。状態が受け付け済みのものと同じ
-行にかかるのは、データベースの読み出しだけです。掃き出しは次の試行時刻として現在時刻を記録し、次の
-行へ進みます。状態が異なる最初の行には状態全体を送り、掃き出しはそこで止まります。その行を解放する
-前に、受け付けられた状態を記録します。送信を拒否された場合は、間隔を空けた次の試行時刻を記録します。
-そのため、遅延は未完了の行の数ではなく、状態が変わった行の数に応じて伸びます。
+`SELECT … FOR UPDATE SKIP LOCKED` で確保し、その行の状態を導きます。訪れた行ごとに、掃き出しは
+次の試行時刻を、確認の間隔（既定で数秒）だけ先に記録します。そのため、手の空いた worker が何台
+ポーリングしても、動きのない行への訪問は間隔ごとに1回で済みます。状態が受け付け済みのものと同じ
+行にかかるのは、その1回の行の更新だけで、掃き出しは次の行へ進みます。状態が異なる最初の行には
+状態全体を送り、掃き出しはそこで止まります。その行を解放する前に、受け付けられた状態を記録します。
+送信を拒否された場合は、間隔を空けた次の試行時刻を記録します。そのため、遅延は未完了の行の数では
+なく、状態が変わった行の数に応じて伸びます。更新の負荷も、手の空いた worker の数ではなく、未完了の
+行を確認の間隔で割った数に収まります。
 
 行のロックによって、1つの行への送信は control plane の replica をまたいでも直列になります。別の
 replica が送信中の行は、2つ目の replica が飛ばします。次の送り手はロックを取ってから状態を導くので、
 最後に送られた状態より古い状態を送ることはありません。1回の掃き出しで送るのは1行までなので、
 GitHub が障害を起こしても、worker の lease のポーリングや heartbeat が遅れるのは、上限のある送信
-1回分までです。代償は遅延です。更新が GitHub に届くのは、job の遷移の時点ではなく、次の lease の
-ポーリングか heartbeat の時点です。job を実行中の worker は既定で30秒ごとに heartbeat を送るので、
-すべての worker が実行中でも、更新の待ち時間はおよそ30秒です。掃き出しの中の GitHub への呼び出しには
+1回分までです。代償は遅延です。更新が GitHub に届くのは、job の遷移の時点ではなく、次の掃き出しの時点、つまり lease のポーリング、heartbeat、コミット済みの結果、定期タスクのいずれかが引き金になる時点です。確認の間隔は、その待ち時間に最大でその長さだけを足します。job を実行中の worker が heartbeat を送るのは既定で30秒ごとですが、すべての worker が実行中でも定期タスクが掃き出しを続けるので、更新の待ち時間は heartbeat の間隔ではなく、既定で数秒に収まります。掃き出しの中の GitHub への呼び出しには
 短いタイムアウトを付けます。そのため、heartbeat の間隔と送信1回分を足しても、120秒の lease の
 タイムアウトを十分に下回ります。
 
@@ -298,8 +329,8 @@ job の判定や run の記録に触れることはありません。
 
 - **テスト**：`app.py` の `fetch` の差し替え口を、偽の GitHub transport に置き換えます。BE-0224 の
   テストと同じ差し替え口です。テストでは、dispatch の2つの分岐と、単位3の表の各行、全体か無しかの
-  登録を確かめます。リポジトリの限定と、作成に失敗したときの 502 も確かめます。再起動のテストでは、
-  送信を落とし、次の掃き出しで届くことを確かめます。送り手が2つあるテストは、SQLite では行がロックされないので Postgres の lane（BE-0309）で実行し、1つの行への送信が順序どおりに進むことを確かめます。
+  登録を確かめます。リポジトリの限定、同じ組への2つ目のリクエストに対する 409、作成に失敗したときの 502 も確かめます。再起動のテストでは、
+  送信を落とし、次の掃き出しで届くことを確かめます。worker のいないテストでは、定期タスクが行を完了させ、拒否された送信を再試行することを確かめます。送り手が2つあるテストは、SQLite では行がロックされないので Postgres の lane（BE-0309）で実行し、1つの行への送信が順序どおりに進むことを確かめます。
 - **ドキュメント**：`docs/self-hosting.md` と `docs/ja/` のミラーでは、ログインの節を GitHub App
   推奨に書き換え、OAuth App を代替として残します。OAuth App から移る運用者には、切り替える前に
   `/user/orgs` と `/user/teams` が自身の org を返すことを確かめるよう案内し、`read:org` スコープの記述は
@@ -317,6 +348,13 @@ job の判定や run の記録に触れることはありません。
 - **fork からの pull request**：fork の workflow には secret が渡らず、`GITHUB_TOKEN` も読み取り専用
   です。このような workflow が serve 向けの OIDC トークンを発行できるかは、まだ確認していません。
 - **新しい push の後で、古い commit の check run を取り消すこと。**
+- **`headSha` を workflow 自身の commit と照合すること。** 呼び出し側の workflow は信頼の境界の内側に
+  あります。この立場は、[BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md)
+  が、受け入れるリポジトリについてとっているものと同じです。OIDC のトークンを取得できる workflow は、
+  自身のリポジトリの任意の commit を名指しできます。そのため、意図した scenario を実行しないまま、別の
+  pull request の必須 check を green にできます。呼び出し側は scenario の列挙も決められるので、SHA を
+  照合しても、workflow が自身の commit に対して必ず通る集合を dispatch するのは防げません。serve は
+  値の形式だけを検査します。このリスクを受け入れられないデプロイは、BE-0414 の `allowedRepositories` の項目を `job_workflow_ref` か `environment` で絞り込んでください。そうすると、トークンを取得できるのは、レビュー済みの workflow か、Environment のレビュアーが承認した job だけになります。
 
 ## 検討した代替案
 
@@ -324,7 +362,7 @@ job の判定や run の記録に触れることはありません。
 |---|---|
 | target ごとに1つの check run | `POST /api/run` は1回に1つの scenario しか運ばないので、serve はどのリクエストが target の最後なのかを判断できず、check run を完了させられません。 |
 | job ごとに1つの check run | branch protection rule にすべての scenario を並べる必要があり、scenario を追加するたびに rule を編集することになります。 |
-| 複数のリクエストにまたがる group を開いて最後に閉じる | 閉じる前に workflow が落ちると check run が保留のまま残り、後始末にタイムアウトが必要になります。 |
+| 複数のリクエストにまたがる group を開いて最後に閉じる | 閉じる前に workflow が落ちると check run が保留のまま残ります。後始末には、serve が知りえない、最も遅いパイプラインの dispatch の繰り返しに見合うタイムアウトが必要です。本項目の猶予は、1回の dispatch リクエストの長さで上限が決まります。 |
 | check run を作らず、Actions の job が完了までポーリングする | serve の変更は不要ですが、queue の待ち時間のあいだ課金される runner を占有し、PR からのリンク先もレポートではなく Actions のログになります。 |
 | Commit Status API | App は不要ですが、status には短い説明とリンクが1つずつしかなく、scenario ごとの summary を載せられません。 |
 | check の書き込み専用に別の App を用意する | App の権限を分けられますが、serve が持つ App の資格情報は1つなので、その App が config source も引き受けることになります。`permissions` と `repositories` で絞ったトークンなら、運用する App を1つにしたまま、トークン単位の最小権限を得られます。 |
