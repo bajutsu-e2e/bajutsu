@@ -10,7 +10,7 @@
 | Status | **Approved** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Integration with external services |
-| Related | [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md), [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md), [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md), [BE-0431](../BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md) |
+| Related | [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md), [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md), [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md), [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md), [BE-0431](../BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -28,8 +28,11 @@ request that names a set of scenarios and a commit becomes **one GitHub check ru
 Serve creates the check run as `queued` before any job enters the queue. The check run moves to
 `in_progress` when a worker leases the first job, and to `completed` once every job has finished.
 Its conclusion aggregates the jobs' deterministic verdicts. Serve writes the check run through the
-GitHub App it already holds for the private-repository config source
-([BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md)).
+GitHub App the deployment already signs people in with
+([BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md)). Serve reaches that App
+through the App credential setting that
+[BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md)
+introduced for the private-repository config source.
 To carry a whole set in one request, the existing `POST /api/run-set` endpoint grows beyond its
 cloud-batch origin ([BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md))
 to the ordinary worker queue.
@@ -45,7 +48,8 @@ leaves the PR with no signal at all, so a branch protection rule has nothing to 
 
 GitHub's answer for an external system is the Checks API. A check run is attached to a commit,
 carries a status and a conclusion, and can be named in a branch protection rule as a required check.
-Only a GitHub App may create one, and serve already holds an App credential (BE-0224). Serve also
+Only a GitHub App may create one. A deployment that signs people in with a GitHub App already has one
+registered, and serve already mints installation tokens from an App credential (BE-0224). Serve also
 already knows every state a check run needs, because the jobs table records `queued`, `leased`,
 `done`, and `failed` for every job
 ([BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues.md)). The missing
@@ -172,12 +176,62 @@ check run is left for later.
 
 ### Unit 4 — Serve delivers the state to GitHub, durably
 
-**The token.** Serve reuses the BE-0224 App credential (`BAJUTSU_GITHUB_APP_ID` and its private
-key). The App gains the `checks: write` repository permission, and each installation owner must
-approve it before a check write succeeds. The App must also be installed on the repository the check
-runs land on, which may differ from the config repository. Serve therefore resolves the installation
-from that repository rather than from the pinned `BAJUTSU_GITHUB_APP_INSTALLATION_ID`, which names the
-config repository's installation. `installation_token` in `bajutsu/common/github/app.py` grows the
+**Which GitHub App writes the check runs.** Serve reads GitHub credentials from two setting groups,
+which are independent today:
+
+| Setting group | Settings | What serve does with it today |
+|---|---|---|
+| Sign-in (BE-0313) | `BAJUTSU_OAUTH_GITHUB_CLIENT_ID`, `_CLIENT_SECRET`, `_REDIRECT_URI` | signs a person in, then reads the person's organizations and teams with the user token |
+| App credential (BE-0224) | `BAJUTSU_GITHUB_APP_ID`, its private key, and an optional `BAJUTSU_GITHUB_APP_INSTALLATION_ID` | mints installation tokens for the private-repository config source |
+
+Check writes use the App credential group, because GitHub accepts a check run from a GitHub App's
+installation token alone. A GitHub App registration carries a client ID and secret as well as an App
+ID and a private key, so one registration can fill both groups. An OAuth App carries a client ID and
+secret alone, and it can never write a check run.
+
+This item assumes the deployment signs people in with a GitHub App, and makes that App the writer of
+check runs. The operator sets the sign-in App's App ID and private key as the App credential. A
+deployment can take one of these shapes:
+
+| Shape | Sign-in with | App credential names | Check runs written by | Private config source read through |
+|---|---|---|---|---|
+| **One App (this item's premise)** | GitHub App A | A | A | A |
+| Sign-in on an OAuth App | OAuth App | GitHub App B, possibly the config-source App | B | B |
+| Two GitHub Apps | GitHub App A | GitHub App B, the config-source App | B | B |
+
+The last row shows a limit. Serve holds a single App credential, so the App that writes check runs is
+always the App that reads the config source. Writing check runs with the sign-in App while a separate
+App keeps the config source would need a second credential group, which this item leaves out.
+
+**Setting the App credential moves the config source onto the App as well.** The config source in
+`bajutsu/common/config_source/_functions.py` prefers an App installation token over a personal access
+token (PAT) whenever `BAJUTSU_GITHUB_APP_ID` is set. A deployment that reads a private config
+repository with a PAT today must therefore install App A on that repository with `contents: read`.
+Otherwise its config source stops resolving once the App credential is set.
+
+Under the one-App shape, App A carries these permissions and installations:
+
+| Purpose | Repository permission | Installed on |
+|---|---|---|
+| Sign-in: organization and team mapping | none; GitHub lists no permission for `/user/orgs` or `/user/teams` | every organization that `githubOrgs`, `githubTeams`, `editorTeams`, or `BAJUTSU_OAUTH_ADMIN_TEAMS` names |
+| Config source | `contents: read` | the config repository |
+| Check runs | `checks: write` | every repository whose workflows dispatch check-bearing runs |
+
+Adding `checks: write` to an installed App needs each installation owner's approval before any check
+write succeeds.
+
+Two sign-in behaviors need confirming on a real deployment before this premise holds. Sign-in reads
+`/user/orgs` and `/user/teams`, and GitHub lists both as available to a GitHub App user access token.
+The `/user/orgs` reference also says that a fine-grained access token receives an empty list, and it
+does not say whether a GitHub App user access token counts as one. GitHub further limits such a token
+to accounts where the App is installed. A deployment already signing people in with a GitHub App has
+confirmed both in practice. A deployment moving from an OAuth App must confirm them first, because an
+empty organization list would admit nobody.
+
+**The token.** Serve mints each check-write token from the App credential. The check-run repository
+may differ from the config repository. Serve therefore resolves the installation from the check-run
+repository rather than from the pinned `BAJUTSU_GITHUB_APP_INSTALLATION_ID`, which names the config
+repository's installation. `installation_token` in `bajutsu/common/github/app.py` grows the
 `permissions` and `repositories` request fields, and its `Fetch` seam gains the JSON request body it lacks today. The check-run writes go through the same seam, authenticated with the installation token instead of the App JWT. A token minted for a check write carries
 `checks: write` on that one repository, so reusing the App does not widen any token. Serve caches
 each token until shortly before its one-hour expiry.
@@ -228,8 +282,8 @@ touches a job's verdict or a run's record.
   drops a send and checks that the next sweep delivers it. A two-sender test checks that
   one row's sends stay in order. It runs in the Postgres lane (BE-0309), because SQLite takes no row
   lock and would pass it vacuously.
-- **Documentation.** `docs/self-hosting.md` and its `docs/ja/` mirror gain the App permission and
-  installation steps, plus a workflow example. `docs/architecture.md` records the `check_runs` table
+- **Documentation.** `docs/self-hosting.md` and its `docs/ja/` mirror gain the GitHub App shapes,
+  the one-App permission and installation steps, and a workflow example. `docs/architecture.md` records the `check_runs` table
   and the delivery path.
 
 ### Out of scope
@@ -252,7 +306,7 @@ touches a job's verdict or a run's record.
 | An open-then-seal group across requests | A workflow that dies before sealing leaves the check run pending forever, and reaping it needs a timeout. |
 | The Actions job polls until done, with no check run | Needs no serve change, but holds a billed runner for the whole queue wait and links the PR to Actions logs rather than the report. |
 | The Commit Status API | Needs no App, but a status carries one short description and one link, with no room for a per-scenario summary. |
-| A separate App for check writes | Keeps App permissions apart, but a token scoped by `permissions` and `repositories` gives the same per-token least privilege with one App to operate. |
+| A separate App for check writes | Keeps App permissions apart, but serve holds one App credential, so that App would take over the config source too. A token scoped by `permissions` and `repositories` already gives per-token least privilege with one App to operate. |
 | Extending `POST /api/run` to take a list | Adds a second set-shaped surface beside `POST /api/run-set`, which already validates a set before dispatching any of it. |
 
 ## Progress
@@ -281,7 +335,15 @@ touches a job's verdict or a run's record.
 - [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md) — the machine
   session and its repository identity.
 - [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md) —
-  the GitHub App credential this item reuses.
+  the App credential setting this item reuses.
+- [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md) — GitHub sign-in and
+  the organization and team mapping the sign-in App serves.
+- GitHub Docs, [Authenticating with a GitHub App on behalf of a user](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-with-a-github-app-on-behalf-of-a-user)
+  — a user access token reaches only accounts where the App is installed.
+- GitHub Docs, [Endpoints available for GitHub App user access tokens](https://docs.github.com/en/rest/authentication/endpoints-available-for-github-app-user-access-tokens)
+  — lists `/user/orgs` and `/user/teams`.
+- GitHub Docs, [List organizations for the authenticated user](https://docs.github.com/en/rest/orgs/orgs#list-organizations-for-the-authenticated-user)
+  — a fine-grained access token receives an empty list.
 - [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md)
   — the origin of `POST /api/run-set`.
 - [BE-0431](../BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override.md) — the

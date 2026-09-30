@@ -10,7 +10,7 @@
 | 状態 | **承認済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | 外部サービスとの連携 |
-| 関連 | [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md)、[BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth-ja.md)、[BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md)、[BE-0431](../BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override-ja.md)、[BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md)、[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md) |
+| 関連 | [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md)、[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)、[BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth-ja.md)、[BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md)、[BE-0431](../BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override-ja.md)、[BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md)、[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -29,8 +29,11 @@ scenario の集合と commit を指定した1回の dispatch リクエストが�
 **1つの GitHub check run** になります。serve は、job を queue に入れる前に check run を `queued`
 で作成します。worker が最初の job を lease すると check run は `in_progress` に、すべての job が
 終わると `completed` になります。conclusion は、各 job の決定的な判定を集約したものです。serve は、
-非公開リポジトリの config source のためにすでに持っている GitHub App を使って check run を書き込みます
-（[BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth-ja.md)）。
+デプロイがすでにログインに使っている GitHub App で check run を書き込みます
+（[BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)）。serve からその App
+を使うには、非公開リポジトリの config source のために
+[BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth-ja.md)
+が導入した App の資格情報の設定を用います。
 集合を1回のリクエストで運ぶために、既存の `POST /api/run-set` を cloud-batch 専用
 （[BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md)）
 から通常の worker の queue にも広げます。
@@ -47,7 +50,9 @@ Simulator の実行時間を何もせずに過ごし、GitHub がホストする
 
 外部システム向けに GitHub が用意している仕組みは Checks API です。check run は commit に付き、status と
 conclusion を持ち、branch protection rule で必須の check として名前で指定できます。check run を作成
-できるのは GitHub App だけで、serve はすでに App の資格情報を持っています（BE-0224）。check run に
+できるのは GitHub App だけです。ログインに GitHub App を使うデプロイは、その App をすでに登録して
+います。App の資格情報から installation のトークンを発行する処理も、serve はすでに持っています
+（BE-0224）。check run に
 必要な状態も、serve はすでに把握しています。jobs テーブルがすべての job について `queued`、`leased`、
 `done`、`failed` を記録しているからです
 （[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md)）。
@@ -179,13 +184,63 @@ worker のなかに capability を満たすものがなく queue に残り続け
 
 ### 単位4：serve が状態を GitHub に確実に届ける
 
-**トークン。** serve は BE-0224 の App の資格情報（`BAJUTSU_GITHUB_APP_ID` とその秘密鍵）を
-再利用します。App には `checks: write` のリポジトリ権限を加えます。check の書き込みが成功するには、
-各 installation の所有者がこの権限を承認している必要があります。App は、check run を付ける先の
-リポジトリにもインストールされている必要があります。このリポジトリは config のリポジトリと異なる
-ことがあります。そのため serve は、config のリポジトリの installation を指す
-`BAJUTSU_GITHUB_APP_INSTALLATION_ID` の固定値を使わず、書き込み先のリポジトリから installation を
-解決します。`bajutsu/common/github/app.py` の `installation_token` には、`permissions` と
+**check run を書き込む GitHub App。** serve は、GitHub の資格情報を2つの設定群から読みます。現状では、
+2つの設定群は互いに独立しています。
+
+| 設定群 | 設定 | 現状の serve での用途 |
+|---|---|---|
+| ログイン（BE-0313） | `BAJUTSU_OAUTH_GITHUB_CLIENT_ID`、`_CLIENT_SECRET`、`_REDIRECT_URI` | 利用者をログインさせ、ユーザーのトークンで所属する org と team を読みます |
+| App の資格情報（BE-0224） | `BAJUTSU_GITHUB_APP_ID`、その秘密鍵、任意の `BAJUTSU_GITHUB_APP_INSTALLATION_ID` | 非公開リポジトリの config source 用に installation のトークンを発行します |
+
+check の書き込みには App の資格情報の設定群を使います。GitHub が check run を受け付けるのは、GitHub
+App の installation のトークンからだけだからです。GitHub App の登録は、client ID と secret に加えて、
+App ID と秘密鍵も持ちます。そのため、1つの登録で両方の設定群を埋められます。OAuth App が持つのは
+client ID と secret だけなので、OAuth App が check run を書き込むことはできません。
+
+本項目では、デプロイが GitHub App でログインしていることを前提にし、その App に check run を書き込ませ
+ます。運用者は、ログイン用の App の App ID と秘密鍵を、App の資格情報として設定します。デプロイが
+とりうる形態は次のとおりです。
+
+| 形態 | ログインに使うもの | App の資格情報が指すもの | check run を書き込む App | 非公開の config source を読む App |
+|---|---|---|---|---|
+| **1つの App（本項目の前提）** | GitHub App A | A | A | A |
+| OAuth App でログイン | OAuth App | GitHub App B（config source 用の App でもよい） | B | B |
+| 2つの GitHub App | GitHub App A | config source 用の GitHub App B | B | B |
+
+最後の行は制約を示しています。serve が持つ App の資格情報は1つだけなので、check run を書き込む App は
+常に config source を読む App と同じになります。config source を別の App に任せたまま、ログイン用の
+App で check run を書き込むには、2つ目の資格情報の設定群が必要です。本項目ではこれを扱いません。
+
+**App の資格情報を設定すると、config source も App 経由に切り替わります。**
+`bajutsu/common/config_source/_functions.py` の config source は、`BAJUTSU_GITHUB_APP_ID` が設定されて
+いれば、personal access token（PAT）より App の installation のトークンを優先します。現状 PAT で非公開の
+config リポジトリを読んでいるデプロイは、そのリポジトリにも App A を `contents: read` でインストール
+する必要があります。インストールしないと、App の資格情報を設定した時点で config source を解決できなく
+なります。
+
+1つの App の形態では、App A に次の権限とインストール先を持たせます。
+
+| 用途 | リポジトリ権限 | インストール先 |
+|---|---|---|
+| ログイン：org と team の対応づけ | 不要（GitHub は `/user/orgs` と `/user/teams` に権限を定めていません） | `githubOrgs`、`githubTeams`、`editorTeams`、`BAJUTSU_OAUTH_ADMIN_TEAMS` が指すすべての org |
+| config source | `contents: read` | config のリポジトリ |
+| check run | `checks: write` | check を伴う run を dispatch する workflow を持つすべてのリポジトリ |
+
+インストール済みの App に `checks: write` を加えると、各 installation の所有者が承認するまで、check の
+書き込みは成功しません。
+
+この前提が成り立つには、ログインの挙動を2つ、実際のデプロイで確かめる必要があります。ログインは
+`/user/orgs` と `/user/teams` を読み、GitHub はどちらも GitHub App のユーザーのトークンで使えると
+しています。一方で `/user/orgs` のリファレンスには、fine-grained なアクセストークンでは空のリストが
+返るとあり、GitHub App のユーザーのトークンがそれに当たるかは書かれていません。さらに GitHub は、
+このトークンが届く範囲を、App がインストールされたアカウントに限っています。GitHub App ですでに
+ログインしているデプロイは、どちらも実運用で確かめ済みです。OAuth App から移るデプロイは、先に
+確かめる必要があります。org のリストが空になると、誰もログインできなくなるからです。
+
+**トークン。** serve は、check の書き込み用のトークンを App の資格情報から発行します。check run を
+付けるリポジトリは、config のリポジトリと異なることがあります。そのため serve は、config のリポジトリ
+の installation を指す `BAJUTSU_GITHUB_APP_INSTALLATION_ID` の固定値を使わず、check run を付ける
+リポジトリから installation を解決します。`bajutsu/common/github/app.py` の `installation_token` には、`permissions` と
 `repositories` のリクエストフィールドを加えます。現状の `Fetch` の差し替え口はリクエスト本文を持たないので、JSON の本文を渡せるように広げます。check run の書き込みも同じ差し替え口を通し、App の JWT ではなく installation のトークンで認証します。check の書き込み用に発行するトークンは、対象の
 1つのリポジトリに対する `checks: write` だけを持ちます。そのため App を使い回しても、どのトークンの
 権限も広がりません。serve は、各トークンを1時間の有効期限の少し前までキャッシュします。
@@ -235,8 +290,8 @@ job の判定や run の記録に触れることはありません。
   テストと同じ差し替え口です。テストでは、dispatch の2つの分岐と、単位3の表の各行、全体か無しかの
   登録を確かめます。リポジトリの限定と、作成に失敗したときの 502 も確かめます。再起動のテストでは、
   送信を落とし、次の掃き出しで届くことを確かめます。送り手が2つあるテストは、SQLite では行がロックされないので Postgres の lane（BE-0309）で実行し、1つの行への送信が順序どおりに進むことを確かめます。
-- **ドキュメント**：`docs/self-hosting.md` と `docs/ja/` のミラーに、App の権限とインストールの
-  手順、および workflow の例を加えます。`docs/architecture.md` には、`check_runs` テーブルと配信の
+- **ドキュメント**：`docs/self-hosting.md` と `docs/ja/` のミラーに、GitHub App のとりうる形態、
+  1つの App の形態での権限とインストールの手順、および workflow の例を加えます。`docs/architecture.md` には、`check_runs` テーブルと配信の
   経路を記録します。
 
 ### 対象外とするもの
@@ -259,7 +314,7 @@ job の判定や run の記録に触れることはありません。
 | 複数のリクエストにまたがる group を開いて最後に閉じる | 閉じる前に workflow が落ちると check run が保留のまま残り、後始末にタイムアウトが必要になります。 |
 | check run を作らず、Actions の job が完了までポーリングする | serve の変更は不要ですが、queue の待ち時間のあいだ課金される runner を占有し、PR からのリンク先もレポートではなく Actions のログになります。 |
 | Commit Status API | App は不要ですが、status には短い説明とリンクが1つずつしかなく、scenario ごとの summary を載せられません。 |
-| check の書き込み専用に別の App を用意する | App の権限を分けられますが、`permissions` と `repositories` で絞ったトークンでも、トークン単位では同じ最小権限を得られ、運用する App は1つで済みます。 |
+| check の書き込み専用に別の App を用意する | App の権限を分けられますが、serve が持つ App の資格情報は1つなので、その App が config source も引き受けることになります。`permissions` と `repositories` で絞ったトークンなら、運用する App を1つにしたまま、トークン単位の最小権限を得られます。 |
 | `POST /api/run` を拡張してリストを受け取る | 集合を dispatch する前に全体を検証する `POST /api/run-set` がすでにあり、集合を扱う口が2つに増えます。 |
 
 ## 進捗
@@ -288,7 +343,15 @@ job の判定や run の記録に触れることはありません。
 - [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md)：machine
   session と、そのリポジトリの identity。
 - [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth-ja.md)：
-  本項目が再利用する GitHub App の資格情報。
+  本項目が再利用する App の資格情報の設定。
+- [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)：GitHub のログインと、
+  ログイン用の App が担う org と team の対応づけ。
+- GitHub Docs「[Authenticating with a GitHub App on behalf of a user](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-with-a-github-app-on-behalf-of-a-user)」：
+  ユーザーのトークンが届くのは、App がインストールされたアカウントだけです。
+- GitHub Docs「[Endpoints available for GitHub App user access tokens](https://docs.github.com/en/rest/authentication/endpoints-available-for-github-app-user-access-tokens)」：
+  `/user/orgs` と `/user/teams` が載っています。
+- GitHub Docs「[List organizations for the authenticated user](https://docs.github.com/en/rest/orgs/orgs#list-organizations-for-the-authenticated-user)」：
+  fine-grained なアクセストークンでは空のリストが返ります。
 - [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md)：
   `POST /api/run-set` の出自。
 - [BE-0431](../BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override-ja.md)：
