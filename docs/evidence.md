@@ -360,9 +360,11 @@ app's os_log subsystem, paired into timed intervals by `parse_app_trace`.)
   encodes a frame merely when the screen changes, and its file ends at the last one. A still screen
   before the stop thus makes the measured origin late by that whole stretch. One emulator
   run measured 0.8 seconds. That error sits well inside the window below, so no bound could catch
-  it. A provider declares this shape through `Interval.duration_spans_stop`. `start_screenrecord`
-  sets the flag to `False`, and `intervals.adopt` carries the flag along. An Android recording thus
-  never gets a `measured_start` and keeps its first-byte `true_start` anchor.
+  it. `Interval.measure_origin` decides whether `stop()` runs the subtraction at all. On Android
+  the first byte is the best anchor. The late measurement comes next, and a pid instant last. `start_screenrecord` turns the measurement off once the first-byte wait
+  confirmed the start. That recording keeps its first-byte `true_start` anchor. Where the wait could
+  not answer, the measurement stays on and still outranks the pid instant. `intervals.adopt`
+  carries the flag along.
 
   `Interval.spawned_at` bounds both, because it is the one instant that needs no confirmation. A
   recording opens on its first frame somewhere between that spawn and `_ORIGIN_STARTUP_CEILING`,

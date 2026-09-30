@@ -201,8 +201,14 @@ def test_confirming_starters_resolve_the_timeout_per_call(
 
     monkeypatch.setattr(
         intervals._functions,
+        "_await_screenrecord_first_bytes",
+        lambda serial, run, path, timeout: record(timeout),
+    )
+    pid_budgets: list[float] = []
+    monkeypatch.setattr(
+        intervals._functions,
         "_await_screenrecord_started",
-        lambda serial, run, baseline, timeout: record(timeout),
+        lambda serial, run, baseline, timeout: pid_budgets.append(timeout),
     )
     intervals.start_screenrecord(
         "SER",
@@ -212,6 +218,8 @@ def test_confirming_starters_resolve_the_timeout_per_call(
         confirm_started=True,
     )
     assert seen == [0.01, 0.01]
+    # The pid fallback spends what is left of that same deadline, floored at one probe.
+    assert pid_budgets == [intervals._functions._SCREENRECORD_PID_POLL]
 
 
 def test_start_video_separates_an_unconfirmed_start_from_an_unattempted_one(
@@ -566,14 +574,13 @@ def test_start_screenrecord_confirm_started_ignores_a_leaked_pid_from_a_stale_re
     # the same device, must not confirm a start that never happened — only a *new* pid, absent from
     # the pre-spawn baseline, counts.
     #
-    # `_await_screenrecord_started`'s 5s timeout is a default argument bound at import, so patching
-    # `_VIDEO_START_TIMEOUT` cannot shorten it — drive its deadline instead: one real poll (which
-    # must see only the leaked pid), then a jump past the deadline.
-    monotonic_calls: list[int] = []
+    # Drive the start waits' shared deadline with a clock that advances a second per read, so every
+    # wait makes real probes (which must see only the leaked pid) and still reaches its deadline
+    # however many reads the confirmation sequence takes.
+    ticks = iter(range(10_000))
 
     def monotonic() -> float:
-        monotonic_calls.append(1)
-        return 0.0 if len(monotonic_calls) <= 2 else 1e6
+        return float(next(ticks))
 
     monkeypatch.setattr(time, "monotonic", monotonic)
     monkeypatch.setattr(time, "sleep", lambda _s: None)
@@ -697,7 +704,8 @@ def test_start_screenrecord_anchors_on_the_recordings_first_bytes(tmp_path: Path
 
     assert interval.true_start is not None and interval.true_start >= before
     assert interval.start_confirmed is True
-    assert interval.duration_spans_stop is False
+    # The first byte outranks the end-based measurement, which is late by any static tail.
+    assert interval.measure_origin is False
     # Cleared before the spawn, so a leftover file cannot satisfy the wait; then waited on once.
     rm_at = next(i for i, argv in enumerate(device.calls) if argv[-3:-1] == ["rm", "-f"])
     wait_at = device.calls.index(device.first_bytes_waits()[0])
@@ -721,6 +729,50 @@ def test_start_screenrecord_falls_back_to_the_pid_when_its_first_bytes_never_com
 
     assert isinstance(interval.true_start, float)
     assert len(device.first_bytes_waits()) == 1
+    # A pid instant stamped after the first-bytes wait gave up is a worse anchor than the finished
+    # file's own duration, so that measurement stays on for this fallback.
+    assert interval.measure_origin is True
+
+
+def test_start_screenrecord_budgets_both_start_waits_against_one_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A slow device that times out the first-bytes wait must not then pay a second full timeout for
+    # the pid before the app launches — yet the pid still gets its one probe, since whether the
+    # process exists is what BE-0354's recovery rung reads.
+    budgets: list[float] = []
+
+    def fake_started(serial: str, run: object, baseline: object, timeout: float) -> float:
+        budgets.append(timeout)
+        return 1.0
+
+    monkeypatch.setattr(intervals._functions, "_await_screenrecord_started", fake_started)
+    monkeypatch.setattr(intervals._functions, "_confirm_screenrecord_growing", lambda *a: None)
+    clock = iter([0.0, 0.0, 100.0, 100.0, 100.0])
+    monkeypatch.setattr(time, "monotonic", lambda: next(clock, 100.0))
+    device = FakeDevice(first_bytes="0")
+
+    interval = intervals.start_screenrecord(
+        "SER",
+        tmp_path / "scenario.mp4",
+        spawn=lambda a, o: FakeProc(),
+        run=device,
+        confirm_started=True,
+    )
+
+    assert budgets == [intervals._functions._SCREENRECORD_PID_POLL]
+    assert interval.start_confirmed is True
+
+
+def test_await_screenrecord_first_bytes_discloses_a_wait_that_gave_up(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level("WARNING"):
+        assert (
+            intervals._await_screenrecord_first_bytes("SER", lambda argv: "0\n", "/x.mp4", 5.0)
+            is None
+        )
+    assert any("wrote no bytes within" in r.message for r in caplog.records)
 
 
 def test_start_screenrecord_skips_the_first_bytes_wait_when_the_clear_failed(
@@ -759,7 +811,7 @@ def test_await_screenrecord_first_bytes_reads_only_the_last_line_and_survives_a_
     assert intervals._await_screenrecord_first_bytes("SER", failing, "/x.mp4", 1.0) is None
 
 
-def test_a_recorder_whose_file_ends_at_its_last_frame_is_not_measured(tmp_path: Path) -> None:
+def test_an_interval_whose_origin_is_not_measured_keeps_no_measured_start(tmp_path: Path) -> None:
     # A readable mp4 inside the origin window would otherwise be trusted — and for screenrecord it
     # is late by however long the screen sat still before the stop.
     path = tmp_path / "v.mp4"
@@ -768,18 +820,18 @@ def test_a_recorder_whose_file_ends_at_its_last_frame_is_not_measured(tmp_path: 
         kind="video",
         path=path,
         spawned_at=time.monotonic() - 2.6,
-        duration_spans_stop=False,
+        measure_origin=False,
         _proc=FakeProc(),
     )
     interval.stop()
     assert interval.measured_start is None
 
 
-def test_adopt_keeps_the_recorders_own_duration_semantics(tmp_path: Path) -> None:
+def test_adopt_keeps_whether_the_origin_is_measured(tmp_path: Path) -> None:
     # The production Android path adopts a prestarted recording; dropping the flag there would
-    # quietly turn the end-based measurement back on for exactly the recorder it is wrong for.
-    inner = intervals.Interval(kind="video", path=tmp_path / "pre.mp4", duration_spans_stop=False)
-    assert intervals.adopt(inner, tmp_path / "out.mp4").duration_spans_stop is False
+    # quietly turn the end-based measurement back on after the first byte already anchored it.
+    inner = intervals.Interval(kind="video", path=tmp_path / "pre.mp4", measure_origin=False)
+    assert intervals.adopt(inner, tmp_path / "out.mp4").measure_origin is False
 
 
 def test_start_screenrecord_makes_no_size_probe_without_confirm_started(tmp_path: Path) -> None:

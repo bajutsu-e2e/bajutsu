@@ -79,6 +79,10 @@ Spawn = Callable[[list[str], "Path | None"], Proc]
 # shell spawn competing with a cold start on a two-core emulator. One second resolves "is it
 # producing?" just as well as a fifth of one, at a fifth of the traffic.
 _SCREENRECORD_GROWTH_POLL = 1.0
+# How often `_await_screenrecord_started` asks the device for a new `screenrecord` pid. Also the
+# smallest budget that wait is handed, so it always makes at least one probe even when the
+# first-bytes wait before it spent their shared deadline.
+_SCREENRECORD_PID_POLL = 0.2
 
 
 # --- appTrace: pair start/finish log markers into timed intervals ---
@@ -233,8 +237,8 @@ def adopt(interval: Interval, target: Path) -> Interval:
     shape. Carries `interval`'s `true_start` and `start_confirmed` forward unchanged: the wrapped
     interval already settled when — and whether — it actually began, and neither answer moves just
     because its file is later relocated — nor does `spawned_at`, the span bound `stop()` checks the
-    relocated file's duration against, or `duration_spans_stop`, which is a property of the recorder
-    and decides whether that check runs at all. `measured_start` is deliberately *not* carried: it is
+    relocated file's duration against, or `measure_origin`, which the wrapped interval's own start
+    settled and which decides whether that check runs at all. `measured_start` is deliberately *not* carried: it is
     settled by a `stop()`, and this wrapper's own stop is the one that sees the relocated file.
     """
 
@@ -251,7 +255,7 @@ def adopt(interval: Interval, target: Path) -> Interval:
         true_start=interval.true_start,
         start_confirmed=interval.start_confirmed,
         spawned_at=interval.spawned_at,
-        duration_spans_stop=interval.duration_spans_stop,
+        measure_origin=interval.measure_origin,
         _transform=relocate,
     )
 
@@ -410,7 +414,17 @@ def _await_screenrecord_first_bytes(
         return None
     # The last line, not the whole output: an image can print a banner ahead of the command's own.
     lines = answer.strip().splitlines()
-    return time.monotonic() if lines and lines[-1].strip() == "1" else None
+    if lines and lines[-1].strip() == "1":
+        return time.monotonic()
+    # Disclosed like the sibling waits' own give-ups: without a line here, a run whose anchor fell
+    # back to the weaker pid signal looks identical to one that never needed the fallback.
+    _logger.warning(
+        "screenrecord on %s wrote no bytes within %ss; its start is confirmed by the device-side "
+        "process instead of its first bytes",
+        serial,
+        timeout,
+    )
+    return None
 
 
 def _await_screenrecord_started(
@@ -418,7 +432,7 @@ def _await_screenrecord_started(
     run: adb.RunFn,
     baseline_pids: frozenset[str],
     timeout: float = _VIDEO_START_TIMEOUT,
-    poll: float = 0.2,
+    poll: float = _SCREENRECORD_PID_POLL,
 ) -> float | None:
     """Wait until the device-side `screenrecord` process exists, not merely spawned locally.
 
@@ -574,9 +588,10 @@ def start_screenrecord(
     finalize into a truncated, unplayable file. `confirm_started`, when set, clears the device-side
     path and waits for the recording's first bytes, so the returned `Interval.true_start` is the
     moment the muxer started on the first frame — the anchor the report seeks against, since this
-    recorder's own duration ends at its last frame rather than at the stop (`duration_spans_stop`).
-    Where that wait cannot answer, it polls for the device-side process instead (a weaker signal,
-    but still real and earlier than the local client merely returning).
+    recorder's own duration ends at its last frame rather than at the stop (`measure_origin`). Where
+    that wait cannot answer, it polls for the device-side process instead, sharing the same deadline
+    (a weaker signal, but still real and earlier than the local client merely returning), and the
+    finished file's duration stays available to outrank that pid instant.
 
     `time_limit`/`size`/`bit_rate` forward to `adb.screenrecord_cmd` (see its docstring) for a caller
     whose recording window and artifact-size budget need bounding, e.g. an install+test window run
@@ -603,16 +618,24 @@ def start_screenrecord(
         None,
     )
     # Resolved per call for the same reason as `start_video`'s (BE-0348). The first bytes are the
-    # anchor: this recorder's own duration cannot place its origin (`duration_spans_stop` below), so
-    # this instant is what every seek offset in the report is measured from. They also answer the
+    # anchor: this recorder's own duration cannot place its origin exactly (`measure_origin` below),
+    # so this instant is what every seek offset in the report is measured from. They also answer the
     # growth question outright, so a recording confirmed this way skips that probe.
-    true_start = (
+    #
+    # One deadline covers both start waits, so a slow device that times out the first-bytes wait
+    # pays no second full timeout for the pid before the app even launches. The pid still gets one
+    # probe: whether the process exists is what BE-0354's recovery rung reads, and a spent budget
+    # must not turn a live recording into an unconfirmed one.
+    deadline = time.monotonic() + _video_start_timeout()
+    first_bytes_at = (
         _await_screenrecord_first_bytes(serial, run, device_path, _video_start_timeout())
         if cleared
         else None
     )
+    true_start = first_bytes_at
     if confirm_started and true_start is None:
-        true_start = _await_screenrecord_started(serial, run, baseline_pids, _video_start_timeout())
+        remaining = max(_SCREENRECORD_PID_POLL, deadline - time.monotonic())
+        true_start = _await_screenrecord_started(serial, run, baseline_pids, remaining)
         # Only worth asking once the process is known to exist: with no process there is nothing
         # to produce bytes, that path already warned, and a second full timeout would buy no new
         # fact. This one separates a live-but-producing-nothing recording — a wedged renderer —
@@ -639,7 +662,9 @@ def start_screenrecord(
         true_start=true_start,
         start_confirmed=(true_start is not None) if confirm_started else None,
         spawned_at=spawned_at,
-        duration_spans_stop=False,
+        # Only the first-byte anchor outranks the end-based measurement; a pid instant stamped after
+        # a timed-out wait does not, so the measurement stays on for that fallback.
+        measure_origin=first_bytes_at is None,
         _proc=proc,
         _stop_signal=signal.SIGINT,
         _stop_timeout=_VIDEO_FINALIZE_TIMEOUT,

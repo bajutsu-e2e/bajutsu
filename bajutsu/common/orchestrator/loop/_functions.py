@@ -538,9 +538,9 @@ def _resolve_video_start_offset(
     an early step on the recording.
 
     `video_interval.true_start` (confirmed or driver-stamped) is the fallback for a recording whose
-    duration could not be read, and the only answer for one whose duration does not run to the stop
-    (`Interval.duration_spans_stop` — Android's `screenrecord`, whose confirmation is its first
-    muxed bytes). It may precede or follow `scenario_start` — a prestarted device
+    duration could not be read, and the only answer where a better start signal switched the
+    measurement off (`Interval.measure_origin` — Android's `screenrecord` once its first muxed
+    bytes confirmed the start). It may precede or follow `scenario_start` — a prestarted device
     recording begins before it, an on-demand iOS recording's confirmation wait completes just
     before it — so this offset places the anchor near the video's origin instead of at the moment
     `scenario_start` happened to be stamped. `0.0` (no correction) both when no confirmed

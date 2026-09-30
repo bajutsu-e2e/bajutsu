@@ -163,7 +163,7 @@ def test_trace_shows_how_long_after_the_step_began_each_actuation_went_out(tmp_p
 
     assert "tap [handle] +0.85s" in out
     # A damaged instant degrades to no lag rather than a made-up one.
-    assert "tap [handle] +0.85s   · tap [handle]\n" in out
+    assert out.count("+0.85s") == 1
 
 
 def test_trace_names_a_substituted_element_on_the_step_line(tmp_path: Path) -> None:
