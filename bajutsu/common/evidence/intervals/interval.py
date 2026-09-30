@@ -39,8 +39,9 @@ class Interval:
     # step/network report timestamps to instead of the moment the process was merely spawned. The
     # confirmation strength differs by provider: iOS takes simctl at its word when it reports its
     # first frame processed (`Recording started` on stderr, the signal its own `--help` names);
-    # Android confirms only that the device-side process exists yet (a weaker signal, but still real
-    # and much earlier than a guess — the app hasn't launched at that point either). None when no
+    # Android waits for the device-side file's first byte, written when the muxer starts on the first
+    # encoded frame, and falls back to the device-side process merely existing (a weaker signal, but
+    # still real and much earlier than a guess) when that wait cannot answer. None when no
     # confirmation was attempted or it never succeeded — callers must treat that as "no better
     # information than before", not as zero.
     true_start: float | None = None

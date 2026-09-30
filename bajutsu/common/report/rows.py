@@ -223,14 +223,17 @@ def _step_run_row(
     # recording. Gated the same way as `at_end`: a near-instant step would otherwise show a noisy
     # "(0.0s)" on every row.
     elapsed = f"{end_s - at:.1f}s" if end_text != at_text else None
+    # Where a click on the row lands: its action instant when it has one (report.js's
+    # `rowSwitchTime`), so the hover title names the same place the click then seeks to.
+    click_s = max(at, act) if act is not None else at
     return {
         "rowcls": f"srow {'ok' if out.ok else 'ng'}",
         "data_t": f"{at:.3f}",
         "data_t_end": f"{end_s:.3f}" if end_text != at_text else None,
         # Never before `at`: the report's own zero clamp can lift `at` past an action that landed
         # before the recording's first frame, and the pair must still read in order.
-        "data_t_act": f"{max(at, act):.3f}" if act is not None else None,
-        "title": f"jump to {at:.1f}s in the recording",
+        "data_t_act": f"{click_s:.3f}" if act is not None else None,
+        "title": f"jump to {click_s:.1f}s in the recording",
         "num": str(i),
         "numcls": None,
         "line": line,

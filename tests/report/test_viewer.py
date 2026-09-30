@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from _report import _el, _passing
@@ -300,6 +301,9 @@ def test_html_step_row_carries_the_instant_its_action_landed() -> None:
         ],
     )
     assert "data-t='2.000' data-t-end='3.200' data-t-act='2.850'" in out
+    # The hover title names where a click on the row seeks: the action, not the step's start.
+    assert "title='jump to 2.0s in the recording'" not in out
+    assert re.search(r"title='jump to 2\.[89]s in the recording'", out)
     # The actuation's own row shows how long after the step began it went out.
     assert '<span class="actn-t"' in out and "+0.85s" in out
 
