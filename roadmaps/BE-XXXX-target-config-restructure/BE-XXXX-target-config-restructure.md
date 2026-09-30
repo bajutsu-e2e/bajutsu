@@ -137,6 +137,10 @@ The same `site` target in today's notation reads as follows:
 | `driver` | `runner.testRunner`, `runner.build` | `nativeZ` | `headless` |
 | `run`, extra field | `tipKitHandling` | — | — |
 
+The test-only `fake` platform registers minimal models. Its `app` takes an optional `id` and
+nothing else, and its `runsOn` and `driver` take no fields, so a `fake` target declares no
+requirement to check. A `fake` target still resolves to the iOS-shaped `Effective`, as it does today.
+
 Four placements needed a judgment call:
 
 - **`locale` sits in `runsOn`.** On iOS it pins the Simulator's own system language
@@ -187,7 +191,8 @@ or browser, and before the first step, the run compares each declared value with
 | Web `runsOn.host.os` | `platform.system()`, normalized (`Darwin` → `macos`, `Linux` → `linux`, `Windows` → `windows`) | exact |
 
 A version range is a conjunction of comparators: `>=`, `>`, `<=`, `<`, `==`, or a bare version. A
-bare `18` means any 18.x release. A new `VersionSpec` in `bajutsu/common/devices/version.py` parses
+bare `18` means any 18.x release. `==` compares after zero-padding, so `==18` matches 18.0 alone;
+the bare form is the one that covers the whole 18.x window. A new `VersionSpec` in `bajutsu/common/devices/version.py` parses
 and compares ranges; `DeviceOS` keeps its deliberate lack of comparison operators, because this item
 adds declaration checks, not per-OS branching. A mismatch raises `RunsOnRequirementError`, a new
 subclass of `DeviceError`

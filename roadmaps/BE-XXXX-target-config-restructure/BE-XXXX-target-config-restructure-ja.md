@@ -110,6 +110,8 @@ targets:
 | `driver` | `runner.testRunner`、`runner.build` | `nativeZ` | `headless` |
 | `run`（追加分） | `tipKitHandling` | — | — |
 
+テスト用の`fake`プラットフォームは、最小限のモデルを登録します。`fake`の`app`は任意の`id`だけを持ち、`runsOn`と`driver`はフィールドを持ちません。そのため、`fake`の target には照合する要件がありません。`fake`の target は、現在と同じく iOS の形の`Effective`に解決されます。
+
 判断が分かれた置き場所は4つあります。
 
 - **`locale`は`runsOn`に置きます。** iOS では Simulator 自体のシステム言語を固定するため（[BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）、起動引数ではなく端末の状態にあたります。
@@ -138,7 +140,7 @@ targets:
 | Web の`runsOn.browser.version` | Playwright の`browser.version` | 範囲 |
 | Web の`runsOn.host.os` | `platform.system()`を正規化した値（`Darwin`は`macos`、`Linux`は`linux`、`Windows`は`windows`） | 完全一致 |
 
-範囲は比較子の論理積で書きます。比較子は`>=`、`>`、`<=`、`<`、`==`、または演算子のない裸の版です。裸の`18`は18.x のどのリリースにも一致します。範囲の解析と比較は、新しい`bajutsu/common/devices/version.py`の`VersionSpec`が担います。`DeviceOS`は意図して比較演算子を持たないままにします。この項目が足すのは宣言の照合であり、OS ごとの分岐ではないためです。食い違いは`DeviceError`（[BE-0260](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation-ja.md)）の新しいサブクラス`RunsOnRequirementError`として送出します。そのため`run`は、端末が見つからないときと同じ経路で非ゼロ終了します。`bajutsu doctor`は、端末を解決できるときに同じ照合をして、結果を情報として示します。
+範囲は比較子の論理積で書きます。比較子は`>=`、`>`、`<=`、`<`、`==`、または演算子のない裸の版です。裸の`18`は18.x のどのリリースにも一致します。`==`は0で埋めてから比べるので、`==18`が一致するのは18.0だけです。18.x 全体に一致させるには裸の形を使います。範囲の解析と比較は、新しい`bajutsu/common/devices/version.py`の`VersionSpec`が担います。`DeviceOS`は意図して比較演算子を持たないままにします。この項目が足すのは宣言の照合であり、OS ごとの分岐ではないためです。食い違いは`DeviceError`（[BE-0260](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation-ja.md)）の新しいサブクラス`RunsOnRequirementError`として送出します。そのため`run`は、端末が見つからないときと同じ経路で非ゼロ終了します。`bajutsu doctor`は、端末を解決できるときに同じ照合をして、結果を情報として示します。
 
 照合は決定的で、モデルの呼び出しを含みません。判定の経路に加わるのは機械的な検査が1つ増えることだけです。合う端末をその場で作ることと、警告して続けることは範囲外です（「検討した代替案」を参照）。
 
