@@ -203,6 +203,13 @@ The last row shows a limit. Serve holds a single App credential, so the App that
 always the App that reads the config source. Writing check runs with the sign-in App while a separate
 App keeps the config source would need a second credential group, which this item leaves out.
 
+**The sign-in documentation recommends a GitHub App.** The "2. Add GitHub OAuth (optional)" section of `docs/self-hosting.md` tells an
+operator to create an OAuth App today. GitHub's own guidance prefers a GitHub App, for its
+fine-grained permissions, per-repository access, and short-lived tokens. GitHub recommends an OAuth App
+only for enterprise-level resources, which sign-in does not read. This item therefore rewrites that
+section to register a GitHub App for sign-in, and keeps the OAuth App as a supported alternative.
+The same registration then serves the config source and check runs without a second App.
+
 **Setting the App credential moves the config source onto the App as well.** The config source in
 `bajutsu/common/config_source/_functions.py` prefers an App installation token over a personal access
 token (PAT) whenever `BAJUTSU_GITHUB_APP_ID` is set. A deployment that reads a private config
@@ -224,9 +231,11 @@ Two sign-in behaviors need confirming on a real deployment before this premise h
 `/user/orgs` and `/user/teams`, and GitHub lists both as available to a GitHub App user access token.
 The `/user/orgs` reference also says that a fine-grained access token receives an empty list, and it
 does not say whether a GitHub App user access token counts as one. GitHub further limits such a token
-to accounts where the App is installed. A deployment already signing people in with a GitHub App has
-confirmed both in practice. A deployment moving from an OAuth App must confirm them first, because an
-empty organization list would admit nobody.
+to accounts where the App is installed. The author's deployment signs people in with a GitHub App, and
+its organization and team mapping works, which confirms both there. A deployment moving from an OAuth
+App must still confirm them against its own organizations first, because an empty organization list
+would admit nobody. Sign-in keeps no GitHub token after the callback (`bajutsu/serve/authz.py`), so
+the eight-hour expiry of a GitHub App user access token does not affect it.
 
 **The token.** Serve mints each check-write token from the App credential. The check-run repository
 may differ from the config repository. Serve therefore resolves the installation from the check-run
@@ -282,7 +291,10 @@ touches a job's verdict or a run's record.
   drops a send and checks that the next sweep delivers it. A two-sender test checks that
   one row's sends stay in order. It runs in the Postgres lane (BE-0309), because SQLite takes no row
   lock and would pass it vacuously.
-- **Documentation.** `docs/self-hosting.md` and its `docs/ja/` mirror gain the GitHub App shapes,
+- **Documentation.** `docs/self-hosting.md` and its `docs/ja/` mirror rewrite the sign-in section to
+  recommend a GitHub App, with an OAuth App as the alternative, and tell an operator moving from an
+  OAuth App to confirm that `/user/orgs` and `/user/teams` return its organizations before cutting
+  over. The `read:org` scope sentence applies to the OAuth App path only. They also gain the GitHub App shapes,
   the one-App permission and installation steps, and a workflow example. `docs/architecture.md` records the `check_runs` table
   and the delivery path.
 
@@ -338,6 +350,8 @@ touches a job's verdict or a run's record.
   the App credential setting this item reuses.
 - [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md) — GitHub sign-in and
   the organization and team mapping the sign-in App serves.
+- GitHub Docs, [Differences between GitHub Apps and OAuth apps](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/differences-between-github-apps-and-oauth-apps)
+  — "In general, GitHub Apps are preferred over OAuth apps", except for enterprise-level resources.
 - GitHub Docs, [Authenticating with a GitHub App on behalf of a user](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-with-a-github-app-on-behalf-of-a-user)
   — a user access token reaches only accounts where the App is installed.
 - GitHub Docs, [Endpoints available for GitHub App user access tokens](https://docs.github.com/en/rest/authentication/endpoints-available-for-github-app-user-access-tokens)

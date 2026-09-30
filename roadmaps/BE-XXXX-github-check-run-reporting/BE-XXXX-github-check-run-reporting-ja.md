@@ -211,6 +211,13 @@ client ID と secret だけなので、OAuth App が check run を書き込む�
 常に config source を読む App と同じになります。config source を別の App に任せたまま、ログイン用の
 App で check run を書き込むには、2つ目の資格情報の設定群が必要です。本項目ではこれを扱いません。
 
+**ログインの手順書では GitHub App を推奨します。** 現状の `docs/self-hosting.md` の「2. Add GitHub OAuth (optional)」節は、運用者に
+OAuth App を作るよう案内しています。GitHub 自身の指針は、細かな権限、リポジトリ単位のアクセス、
+短命なトークンを理由に、GitHub App を推奨しています。GitHub が OAuth App を勧めるのは enterprise
+単位のリソースを扱う場合で、ログインはそのリソースを読みません。そこで本項目では、この節を、ログインに
+GitHub App を登録する手順へ書き換え、OAuth App は引き続き使える代替として残します。こうすると、同じ
+登録が config source と check run も担い、2つ目の App は要りません。
+
 **App の資格情報を設定すると、config source も App 経由に切り替わります。**
 `bajutsu/common/config_source/_functions.py` の config source は、`BAJUTSU_GITHUB_APP_ID` が設定されて
 いれば、personal access token（PAT）より App の installation のトークンを優先します。現状 PAT で非公開の
@@ -233,9 +240,12 @@ config リポジトリを読んでいるデプロイは、そのリポジトリ�
 `/user/orgs` と `/user/teams` を読み、GitHub はどちらも GitHub App のユーザーのトークンで使えると
 しています。一方で `/user/orgs` のリファレンスには、fine-grained なアクセストークンでは空のリストが
 返るとあり、GitHub App のユーザーのトークンがそれに当たるかは書かれていません。さらに GitHub は、
-このトークンが届く範囲を、App がインストールされたアカウントに限っています。GitHub App ですでに
-ログインしているデプロイは、どちらも実運用で確かめ済みです。OAuth App から移るデプロイは、先に
-確かめる必要があります。org のリストが空になると、誰もログインできなくなるからです。
+このトークンが届く範囲を、App がインストールされたアカウントに限っています。著者のデプロイは GitHub App で
+ログインしており、org と team の対応づけも働いているので、そこではどちらも確かめられています。OAuth
+App から移るデプロイは、それでも自身の org に対して先に確かめる必要があります。org のリストが空になると、
+誰もログインできなくなるからです。ログインはコールバックの後に GitHub のトークンを保持しません
+（`bajutsu/serve/authz.py`）。そのため、GitHub App のユーザーのトークンが8時間で失効しても、ログインには
+影響しません。
 
 **トークン。** serve は、check の書き込み用のトークンを App の資格情報から発行します。check run を
 付けるリポジトリは、config のリポジトリと異なることがあります。そのため serve は、config のリポジトリ
@@ -290,8 +300,11 @@ job の判定や run の記録に触れることはありません。
   テストと同じ差し替え口です。テストでは、dispatch の2つの分岐と、単位3の表の各行、全体か無しかの
   登録を確かめます。リポジトリの限定と、作成に失敗したときの 502 も確かめます。再起動のテストでは、
   送信を落とし、次の掃き出しで届くことを確かめます。送り手が2つあるテストは、SQLite では行がロックされないので Postgres の lane（BE-0309）で実行し、1つの行への送信が順序どおりに進むことを確かめます。
-- **ドキュメント**：`docs/self-hosting.md` と `docs/ja/` のミラーに、GitHub App のとりうる形態、
-  1つの App の形態での権限とインストールの手順、および workflow の例を加えます。`docs/architecture.md` には、`check_runs` テーブルと配信の
+- **ドキュメント**：`docs/self-hosting.md` と `docs/ja/` のミラーでは、ログインの節を GitHub App
+  推奨に書き換え、OAuth App を代替として残します。OAuth App から移る運用者には、切り替える前に
+  `/user/orgs` と `/user/teams` が自身の org を返すことを確かめるよう案内し、`read:org` スコープの記述は
+  OAuth App の経路に限ります。あわせて、GitHub App のとりうる形態、1つの App の
+  形態での権限とインストールの手順、および workflow の例を加えます。`docs/architecture.md` には、`check_runs` テーブルと配信の
   経路を記録します。
 
 ### 対象外とするもの
@@ -346,6 +359,8 @@ job の判定や run の記録に触れることはありません。
   本項目が再利用する App の資格情報の設定。
 - [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)：GitHub のログインと、
   ログイン用の App が担う org と team の対応づけ。
+- GitHub Docs「[Differences between GitHub Apps and OAuth apps](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/differences-between-github-apps-and-oauth-apps)」：
+  「In general, GitHub Apps are preferred over OAuth apps」とあり、例外は enterprise 単位のリソースです。
 - GitHub Docs「[Authenticating with a GitHub App on behalf of a user](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-with-a-github-app-on-behalf-of-a-user)」：
   ユーザーのトークンが届くのは、App がインストールされたアカウントだけです。
 - GitHub Docs「[Endpoints available for GitHub App user access tokens](https://docs.github.com/en/rest/authentication/endpoints-available-for-github-app-user-access-tokens)」：
