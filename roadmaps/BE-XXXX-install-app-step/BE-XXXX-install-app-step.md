@@ -74,18 +74,25 @@ target names. An array is a device group: its members can run on one device, and
 one device for the group instead of one per member. A bare name is a group of one, so a scenario
 that writes no array behaves exactly as before.
 
-The scenario model enforces three rules, and run preflight a fourth. A name appears once across the whole list, as today. A group holds
-two or more names, since a one-name array adds nothing over a bare name. `primaryTarget`
-still must equal the first entry, which now means the first member of the first group. The device
-count a run needs is the number of groups per backend, so the up-front check that refuses a pool
-with too few devices counts groups, and `--udid a,b` supplies one device per group. Run preflight, which sees the config, checks that every
-member of a group has the same backend platform, so a web target cannot share a device with an iOS
-one.
+The scenario model enforces three rules, and run preflight a fourth. A name appears once across the
+whole list, as today. A group holds two or more names, since a one-name array adds nothing over a
+bare name. `primaryTarget` still must equal the first entry, which now means the first member of the
+first group. Run preflight, which sees the config, checks that the members of a group can share one
+device: the same backend platform (so a web target cannot share a device with an iOS one), the same
+device route (`deviceProvider`, `device`, and `xcuitest.deviceType`), and the same effective `locale`,
+since iOS pins the Simulator's system locale. It rejects a group whose members disagree before any
+device is acquired. The device count a run needs is the number of groups per backend, so the
+up-front check that refuses a pool with too few devices counts groups, and `--udid a,b` supplies one
+device per group.
 
-Code that reads `Scenario.targets` as a flat list of names
-(`bajutsu/common/scenario/models/scenario/_targets.py`, `bajutsu/common/runner/pipeline.py`,
-`bajutsu/run/cli.py`, `bajutsu/serve/operations/reads.py`, `bajutsu/analysis/cli/audit.py`) reads it
-through one flattening accessor, and only the lease step reads the group structure.
+Once the flattened list holds two or more names, the existing rule applies: a step that omits
+`target` needs `primaryTarget`. A grouped scenario therefore sets it, as both examples below do.
+
+Existing code that reads `Scenario.targets` (`bajutsu/common/scenario/models/scenario/_targets.py`,
+`bajutsu/common/runner/pipeline.py`, `bajutsu/run/cli.py`, `bajutsu/serve/operations/reads.py`,
+`bajutsu/analysis/cli/audit.py`) reads it through one flattening accessor when it needs only the
+names. Validation in the scenario model, run preflight, and the lease step read the group structure
+itself, since a flattened list could not reject an invalid group.
 
 ### Choosing what installs first: `installs`
 
@@ -146,6 +153,17 @@ A companion scenario lists both members and keeps a second device for a web clie
       type: { text: "${vars.code}", into: { id: login.otp } }
 ```
 
+### Preparing a group's device
+
+A group's members share one device, so device-wide preparation runs once per group, not once per
+member: booting, the erase, the system locale pin, and seeded photos. It uses the scenario's
+preconditions. Each member then takes a per-member path that only installs, attaches its driver, and
+launches. That path never repeats `erase`, and it never applies `reinstall: clean` to an app it did
+not install itself. A listed member's install at the start follows `reinstall` for that member. A
+later member's `foreground` never uninstalls or clears the build an `install` step just put there. In
+a companion group with `erase: true`, the device is wiped once before any member installs, so the
+second listed member does not wipe the first.
+
 ### The `install` step
 
 | Step | Meaning |
@@ -196,13 +214,15 @@ states of the other members. A step addressed to a member whose app does not com
 that wait fails with a named cause pointing at `foreground`, never against another app's tree, since
 resolving there would act on an element the step never meant (prime directive 2). A device that holds
 one target skips the check, so existing scenarios, the `app:` block, and system dialogs behave as
-today.
+today. Members that share an identifier cannot be told apart on the device, so the runner keeps its
+own record of which member's build was installed last, and a step addressed to a retired member fails
+by that record. The device check covers members with distinct identifiers.
 
 ### Backend behavior
 
 | Backend | Behavior |
 |---|---|
-| XCUITest (iOS Simulator) | `simctl install` over the existing bundle keeps the data container, which `reinstall: overwrite` already relies on (`xcuitest_environment.py:974`). Digest skipping stays a precondition optimization and never applies to the step, since the step is explicit. An `install` step resets the tracked digest, so a later `reinstall: overwrite` precondition never skips installing over a build the step put there. |
+| XCUITest (iOS Simulator) | `simctl install` over the existing bundle keeps the data container, which `reinstall: overwrite` already relies on (`xcuitest_environment.py:974`). Digest skipping stays a precondition optimization and never applies to the step, since the step is explicit. An `install` step resets the tracked digest on every member's environment on that device, not only on the member it installed, since each member tracks device-scoped state of its own. A later `reinstall: overwrite` precondition therefore never skips installing over a build the step put there. |
 | Android (adb) | `adb install -r` keeps app data. Going to an older build fails on Android, so a downgrade needs `keepData: false`, and the environment names that cause in the error. |
 | Web | Rejected before any device is leased, through the capability check each target's steps already pass. |
 | Device-cloud lease that hands over an installed build | Rejected with a named cause, since the provider holds the binary and the local path does not exist (BE-0236). |
@@ -223,14 +243,17 @@ above stays the same in both cases, and only the lifecycle inside a group change
 The same check covers four more facts: that the new Android `foreground` brings a member's app to the
 front, how each platform reports which app is in front (the driver check above depends on it), how
 `foreground` tells a not-running app from a backgrounded one, and when a later member's driver starts
-(at its first `foreground` after the `install`, if the two-driver case holds).
+(at its first `foreground` after the `install`, if the two-driver case holds). It also confirms that a companion group with `erase: true` keeps both apps, and that data
+survives an `install` followed by `foreground`.
 
 ### Scope
 
 This item does not switch the scenario's primary target when an `install` step replaces the build.
-After an update, the steps that omit `target` keep running against the primary the scenario declared,
-so that target's `launchEnv`, `locale`, `ready_when`, `interrupts`, baselines, and report label stay
-in force. A step that wants the new build's settings names it, as the update example does. It does
+After an update, the steps that omit `target` still resolve to the primary the scenario declared, so
+that target's `launchEnv`, `locale`, `ready_when`, `interrupts`, baselines, and report label stay in
+force. When the `install` replaced the primary's own build, the primary is the retired member, so
+every step after that install, and every `interrupts` entry that omits `target`, must name the
+installed member, as the update example does. It does
 not add an Android downgrade path beyond `keepData: false`. It does not remove or rename any config
 field, and it does not change the `app:` block. The step never chooses a verdict, so the
 deterministic gate is untouched.
@@ -238,9 +261,9 @@ deterministic gate is untouched.
 ### Work breakdown
 
 1. Scenario model: the nested `targets` form, `installs`, their rules, and the flattening accessor every reader of `targets` moves to.
-2. Lease and lifecycle: one device per group, the device count per backend, each listed member's environment started on the shared device, and a later member's environment started at its first `foreground`. This unit opens with the on-device checks above.
+2. Lease and lifecycle: one device per group, the device count per backend, one device-wide preparation per group, each listed member's environment started on the shared device by a path that repeats no destructive precondition, and a later member's environment started at its first `foreground`. This unit opens with the on-device checks above.
 3. Scenario model: the `install` step's shape, and its check that `from` is a member of the step target's group, including its placement rules inside `web:`/`app:` and `interrupts`.
-4. Run preflight: check each `install.from` target against the config (its `appPath` exists, building it where the run already builds one), refuse listed members of one group that share an identifier, and refuse a group whose members differ in backend platform.
+4. Run preflight: check each `install.from` target against the config (its `appPath` exists, building it where the run already builds one), refuse listed members of one group that share an identifier, and refuse a group whose members differ in backend platform, device route, or system locale.
 5. XCUITest environment and driver: the install action, the digest reset, the terminate, `foreground`'s launch, readiness wait, and launch marker, built beside the relauncher that already holds the effective config, scenario, and driver, and the front-app check in `xcuitest_driver`.
 6. Android environment and driver: the install action with the downgrade error, `foreground`'s launch, readiness wait, and launch marker built beside the relauncher, the front-app check in `adb_driver`, and the split of `deviceControl.appLifecycle`.
 7. Backend handling: web and device-cloud rejection, and the code-generation marker.
