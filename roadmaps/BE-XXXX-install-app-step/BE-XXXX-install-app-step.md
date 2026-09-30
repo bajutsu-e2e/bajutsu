@@ -180,10 +180,11 @@ binary builds on demand, as it does for the primary target today. The scenario n
 a path, so the build artifact stays in config (prime directive 3).
 
 The step terminates any running app with `from`'s identifier, installs the build, and leaves the
-launch to the scenario. A `foreground` step for the member follows, as in the examples. When `from`
-shares an identifier with a member that already runs, the install replaces that member's app, so the
-older member is retired: a step addressed to it afterwards fails with a named cause instead of
-reaching the new build. A step other than `installApp`, `foreground`, or `setPrimaryTarget` that is addressed to a later member before that
+launch to the scenario. A `foreground` step for the member follows, as in the examples. Retirement follows the identifier alone. When `from` has the same bundle identifier or package as a
+member that already runs, the install replaces that member's app, so the older member is retired: a
+step addressed to it afterwards fails with a named cause instead of reaching the new build. When
+`from` has a different identifier, the install adds a second app beside the first, no member retires,
+and both stay addressable by `target`. A step other than `installApp`, `foreground`, or `setPrimaryTarget` that is addressed to a later member before that
 member's `installApp` and `foreground` fails the same way, saying the member is not installed yet.
 
 ### Moving the default target: `setPrimaryTarget`
@@ -192,7 +193,7 @@ member's `installApp` and `foreground` fails the same way, saying the member is 
 |---|---|
 | `setPrimaryTarget: { target: <target> }` | From this step on, a step, an `interrupts` entry, or a top-level `expect` entry that omits `target` resolves to the named target. |
 
-After an update, the declared primary is the retired member, so without this step every later step, assertion, and
+After an update whose builds share one identifier, the declared primary is the retired member, so without this step every later step, assertion, and
 interrupt would name the installed member. The step changes routing only. `target` names any declared
 target. The first member of the first group still governs leasing, evidence directories, and crash
 recovery, since those are fixed at the start (BE-0428). Each member keeps its own config, driver, and
@@ -292,7 +293,9 @@ flowchart LR
 ```
 
 The table follows the update scenario step by step. The third column shows what an omitted `target`
-resolves to, and the last two columns show the state of the two members.
+resolves to, and the last two columns show the state of the two members. Both builds here share one bundle
+identifier, so the install retires `showcase-previous`; a build with another identifier would install
+beside it and retire nothing.
 
 | # | Step | Omitted `target` resolves to | `showcase-previous` | `showcase` |
 |---|---|---|---|---|
@@ -377,7 +380,7 @@ survives an `installApp` followed by `foreground`.
 
 An `installApp` step never moves the primary by itself. The scenario says so with `setPrimaryTarget`, so
 the point where routing changes is a line the reader can see. Until then, steps that omit `target`
-resolve to the primary the scenario declared, and when the `installApp` replaced that primary's own build,
+resolve to the primary the scenario declared, and when the `installApp` replaced that primary's own build (the same identifier),
 the primary is the retired member. A step after the install therefore either names the installed member
 or follows a `setPrimaryTarget`. This item does
 not add an Android downgrade path beyond `keepData: false`. It does not remove or rename any config
