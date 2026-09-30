@@ -214,7 +214,7 @@ def test_video_expand_shares_the_playing_row_rule_with_the_compact_view() -> Non
     build = _function_body(out, "function vzBuildSteps(player)", "function vzMount(player)")
     assert "vzUntrack = trackPlayhead(vzActive, function(t){" in build
     assert "pickPlayingRow(cloneRows, t)" in build
-    # A modal row click seeks where a compact row click does: just before the step's action.
+    # A modal row click seeks where a compact row click does: to the step's action.
     assert "var t = rowSwitchTime(row);" in build
     sync = _function_body(out, "ROOT.querySelectorAll('.scn').forEach(function(scn){", "})();")
     assert "trackPlayhead(v, function(t){" in sync

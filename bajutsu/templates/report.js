@@ -440,7 +440,7 @@
       if(e.target.closest('a')) return;
       var row = e.target.closest('tr.srow');
       if(!row) return;
-      // Same target as the compact view's row click: just before the step's action.
+      // Same target as the compact view's row click: the step's action.
       var t = rowSwitchTime(row);
       if(!isNaN(t)) vzActive.currentTime = t;
     };
@@ -848,20 +848,19 @@
     if(rr.top < cr.top) box.scrollTop -= (cr.top - rr.top) + 8;
     else if(rr.bottom > cr.bottom) box.scrollTop += (rr.bottom - cr.bottom) + 8;
   }
-  // How far ahead of its action a row lights up, and where a row click seeks to. A step's own
-  // `data-t` is stamped before it screenshots, reads the tree and resolves its target — up to
-  // seconds before the recording changes — so switching there ran the highlight ahead of the
-  // picture. `data-t-act` is when the action actually went out; this small lead keeps the row
-  // on screen for a beat before the change it caused, rather than exactly on it.
-  var ACT_LEAD = 0.3;
-  // The instant a row takes over the highlight: its action, less `ACT_LEAD`, but never before the
-  // step began; its start alone for a step that recorded no action (`wait`, `assert`) or a run
-  // recorded before actions carried an instant. Monotonic across a scenario's rows, because every
-  // step acts after it starts and starts after the previous one ended.
+  // The instant a row takes over the highlight, and where a click on it seeks: the moment its
+  // action went out (`data-t-act`), never before the step began (`data-t`). A step stamps its own
+  // `data-t` before it screenshots, reads the tree and resolves its target — up to seconds before
+  // the recording changes — so switching there ran the highlight ahead of the picture. No lead is
+  // subtracted from the action: the screen answers a sent gesture a tenth or two of a second
+  // later, so the action instant is already just ahead of the change it causes. A step that
+  // recorded no action (`wait`, `assert`), or a run recorded before actions carried an instant,
+  // switches at its start. Monotonic across a scenario's rows, because every step acts after it
+  // starts and starts after the previous one ended.
   function rowSwitchTime(row){
     var t = parseFloat(row.getAttribute('data-t'));
     var a = parseFloat(row.getAttribute('data-t-act'));
-    return isNaN(a) ? t : Math.max(t, a - ACT_LEAD);
+    return isNaN(a) ? t : Math.max(t, a);
   }
   // The shared "which row is playing" rule: the last row (in array order) whose `rowSwitchTime` has
   // already passed, as of `currentTime`. Both the compact view's own sync (below) and the video
@@ -875,34 +874,28 @@
     }
     return cur;
   }
-  // Calls `onTime` with `v`'s playhead on every presented frame while it plays, and once on each
+  // Calls `onTime` with `v`'s playhead once per display frame while it plays, and once on each
   // pause/seek/end. `timeupdate` alone fires only every quarter second or so, which left the
-  // highlight trailing the frame that changed; `requestVideoFrameCallback` reports the presented
-  // frame's own `mediaTime`, and a browser without it falls back to one read per animation frame.
-  // `timeupdate` stays bound as the paused-scrub path and as a safety net. Returns an unbind
-  // function, since the expand modal rebinds its tracker on every mount.
+  // highlight trailing the change on screen. `requestVideoFrameCallback` would be the obvious
+  // clock but is the wrong one here: every recorder writes a variable frame rate and stops
+  // emitting frames while the screen is still, so it fires rarely during a static stretch and
+  // reports the shown frame's own timestamp, which can be seconds behind the playhead. Reading
+  // `currentTime` each animation frame tracks the playhead itself. `timeupdate` stays bound as the
+  // paused-scrub path and as a safety net. Returns an unbind function, since the expand modal
+  // rebinds its tracker on every mount.
   function trackPlayhead(v, onTime){
-    var rvfc = 0, raf = 0;
-    function cancel(){
-      if(rvfc && v.cancelVideoFrameCallback) v.cancelVideoFrameCallback(rvfc);
-      if(raf) cancelAnimationFrame(raf);
-      rvfc = 0; raf = 0;
+    var raf = 0;
+    function cancel(){ if(raf) cancelAnimationFrame(raf); raf = 0; }
+    function tick(){
+      raf = 0;
+      onTime(v.currentTime);
+      if(!v.paused && !v.ended) raf = requestAnimationFrame(tick);
     }
-    function tick(_now, meta){
-      rvfc = 0; raf = 0;
-      onTime(meta && typeof meta.mediaTime === 'number' ? meta.mediaTime : v.currentTime);
-      if(!v.paused && !v.ended) arm();
-    }
-    function arm(){
-      if(rvfc || raf) return;
-      if(typeof v.requestVideoFrameCallback === 'function') rvfc = v.requestVideoFrameCallback(tick);
-      else raf = requestAnimationFrame(function(){ tick(); });
-    }
-    function onPlay(){ cancel(); arm(); }
+    function onPlay(){ if(!raf) raf = requestAnimationFrame(tick); }
     function onStill(){ if(v.paused || v.ended) cancel(); onTime(v.currentTime); }
     var events = { play: onPlay, playing: onPlay, pause: onStill, ended: onStill, seeked: onStill, timeupdate: onStill };
     Object.keys(events).forEach(function(k){ v.addEventListener(k, events[k]); });
-    if(!v.paused && !v.ended) arm();
+    if(!v.paused && !v.ended) onPlay();
     return function(){
       cancel();
       Object.keys(events).forEach(function(k){ v.removeEventListener(k, events[k]); });
@@ -926,9 +919,9 @@
           // links / tree button / screenshot / the step's own jump buttons handled elsewhere
           // (a jump button seeks to its own instant instead of the row's default start).
           if(e.target.closest('a') || e.target.closest('.treebtn') || e.target.closest('.shot') || e.target.closest('.stepjump')) return;
-          // Seek to just before the step's action, not to its start: from there the row the viewer
-          // clicked is the one lit, and what it did is on screen within `ACT_LEAD`. The row's own
-          // start stays one click away on its `.stepjump` button. Seek only: keep playing if
+          // Seek to the step's action, not to its start: from there the row the viewer clicked is
+          // the one lit, and what it did appears a moment later. The row's own start stays one
+          // click away on its `.stepjump` button. Seek only: keep playing if
           // already playing, stay paused if paused.
           var t = rowSwitchTime(r);
           if(!isNaN(t)){ v.currentTime = t; }

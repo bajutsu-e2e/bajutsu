@@ -201,7 +201,7 @@ def _step_run_row(
 
     `act` is where in that recording the step's action landed (`_acted_seconds`), or None for a step
     that recorded no actuation instant. It becomes the row's `data-t-act`, the instant the report
-    highlights the row at and seeks a row click to, because the screen only changes once the action
+    highlights the row at and seeks a row click to, because the screen changes once the action
     lands — on a backend that reads the tree first, seconds after `at`.
 
     `line` is the step's original 1-based line number in the scenario file, when the caller could

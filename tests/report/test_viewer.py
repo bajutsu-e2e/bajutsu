@@ -426,9 +426,12 @@ def test_html_highlight_switches_at_the_action_and_row_clicks_seek_just_before_i
     assert "function rowSwitchTime(row)" in out
     assert "var t = rowSwitchTime(rows[i]);" in out  # inside pickPlayingRow
     assert "var t = rowSwitchTime(r);" in out  # compact row click
-    assert "return isNaN(a) ? t : Math.max(t, a - ACT_LEAD);" in out
-    # The playhead is read per presented frame, not only on the coarse `timeupdate` cadence.
-    assert "requestVideoFrameCallback" in out and "requestAnimationFrame" in out
+    assert "return isNaN(a) ? t : Math.max(t, a);" in out
+    # The playhead is read every animation frame, not only on the coarse `timeupdate` cadence —
+    # and from `currentTime`, never a video-frame callback, whose timestamp lags on a recording
+    # that emits no frames while the screen is still.
+    assert "raf = requestAnimationFrame(tick)" in out and "onTime(v.currentTime)" in out
+    assert "v.requestVideoFrameCallback(" not in out
     # The seekbar marks where inside a step's bar the action landed.
     assert "vmark-act" in out
 

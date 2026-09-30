@@ -330,8 +330,8 @@ it `POST`s `/api/approve` and so works only when the report is opened through `b
 hidden for a report opened from disk). The CLI twin is [`bajutsu approve`](cli.md#approve).
 
 Failing rows have a red background. During playback the report highlights the row whose action is
-on screen. It also scrolls that row into view. A row takes over 0.3 seconds ahead of its first
-actuation's `at`. It never takes over ahead of its own `at` column. The reason is where a step
+on screen. It also scrolls that row into view. A row takes over at its first accepted
+actuation's `at`, and never ahead of its own `at` column. The reason is where a step
 stamps `started_at`. The stamp comes before the step screenshots, reads the tree, and resolves its
 target. The screen then changes up to seconds later. A highlight switched at `started_at` would
 lead the picture by that whole lead-in. Some rows carry no actuation instant:
@@ -345,7 +345,7 @@ its action landed.
 
 Clicking a step seeks the recording to that same switch instant **without auto-playing**. A paused
 video stays paused. A playing one keeps playing. The clicked row is then the highlighted one. Its
-action follows within 0.3 seconds. The row's start button still seeks to the `at` column. That
+action appears a moment later. The screen answers a sent gesture within a fraction of a second. The row's start button still seeks to the `at` column. That
 column is `started_at` minus `video_anchor_s`. The anchor is the recording's measured origin. Where
 no measurement was possible, the anchor is the recording's best-known real start. The anchor is
 not the raw moment the step loop began. The seek thus lands on what the row shows
