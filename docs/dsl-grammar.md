@@ -224,7 +224,7 @@ Action    ::=
   | { setMocks:         list(<Mock>) }                     # replace the app's whole stub table mid-scenario ([] removes every stub); iOS/XCUITest with network on (BE-0365)
   | { overrideStatusBar: { time?: string, batteryLevel?: integer, batteryState?: string, cellularBars?: integer, wifiBars?: integer } }
   | { clearStatusBar:   {} }                               # restore the live status bar
-  | { use:         { component: string, with?: map(string,string) } }   # macro (§6.2; no modifiers)
+  | { use:         { component: string, with?: map(string,string) } }   # macro (§6.2; no modifier but target)
   | { group:       <Group> }                                            # named run of steps, folded in report.html (§6.2; no capture/extract; does not nest)
   | { if:          <If> }                                               # conditional (no capture/extract)
   | { forEach:     <ForEach> }                                          # loop (no capture/extract)
@@ -403,7 +403,7 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 |---|---|---|
 | `Selector` | **≥ 1** field present | `scenario/models/selector.py` |
 | `Step` | **exactly one** action key (`tap` … `use`); `capture`/`name` are modifiers, not actions | `scenario/models/steps.py` |
-| `Step.use` | **no modifiers** — refuses `capture` / `extract` / `name` / `from` / `target`, which expansion would otherwise discard with no warning | `scenario/models/steps/step.py` |
+| `Step.use` | **no modifier but `target`** — refuses `capture` / `extract` / `name` / `from`, which expansion would otherwise discard with no warning; expansion stamps `target` onto the steps it produces instead (BE-0446) | `scenario/models/steps/step.py` |
 | `Swipe` | **exactly one** form: `{on,direction}` **or** `{from,to}` — never mixed, never half-specified | `scenario/models/actions.py` |
 | `Pinch` | `scale` **> 0** | `scenario/models/actions.py` |
 | `HandleSystemAlert` | `sel` restricted to `label` / `labelMatches` / `index` (rejects `id`/`idMatches`/`traits`/`value`/`within`) | `scenario/models/actions.py` |
@@ -421,10 +421,9 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 | `Scenario.targets` | no duplicate name (BE-0428) | `scenario/models/scenario/_targets.py` |
 | `Scenario.primaryTarget` | omitted, or equal to `targets[0]`; **rejected** when `targets` is empty (BE-0436) | `scenario/models/scenario/_targets.py` |
 | `Step.target` / `Assertion.target` (`expect` only) | omitted or matching the one entry when `len(targets) ≤ 1`; **required** — including on an `if`/`forEach`/`web` wrapper, not only a leaf action — naming a declared target, when `len(targets) ≥ 2` and `primaryTarget` is unset; **optional** when `len(targets) ≥ 2` and `primaryTarget` is set, an omitted one running against the primary at every nesting depth (BE-0436); **rejected** on a step nested inside `web:`, and on an `Assertion` reached through an inline `assert:` list, an `if`'s `condition`, or an `interrupts` entry's `condition` (BE-0428) | `scenario/models/scenario/_targets.py` |
-| `Step.use` / `Step.group` (`len(targets) ≥ 2` only) | **rejected outright** — a `use:` step (it takes no `target`; see the `Step.use` row and §6.2) and a `group:` step (its own `target` would be discarded by expansion) are both open questions this item defers, so neither is accepted rather than accepted with unclear semantics (BE-0428) | `scenario/models/scenario/_targets.py` |
+| `Step.target` on a `use:` / `group:` step | **optional** at any `len(targets)`, even with no `primaryTarget`, and never resolved itself; one that is set must name a declared target. Expansion stamps it onto every step the call produces that omits one, and refuses a produced step naming a different target (BE-0446) | `scenario/models/scenario/_targets.py`, `scenario/expand.py` |
 | `Interrupt.target`, and `Step.target` in an `interrupts` entry's `steps` | **optional** at any `len(targets)`, regardless of `primaryTarget`: an omitted entry `target` watches the primary target, and an omitted recovery-step `target` runs on the entry's own target (or an enclosing `if`/`forEach` step's when that step names one); a value that is set follows the `Step.target` rule above for naming a declared target (BE-0438) | `scenario/models/scenario/_targets.py` |
 | `Interrupt.target`, and `Step.target` in its `steps`, under `targets.<name>.interrupts` | **rejected** — the entry already belongs to the target that config block configures (BE-0438) | `config/schema/target_config.py` |
-| `Step.use` (`len(targets) ≥ 2` only) | **rejected outright**, in an `interrupts` entry's `steps` too — it takes no `target` at all (see the `Step.use` row above), an open question this item defers, so it is refused rather than accepted with unclear semantics (BE-0428) | `scenario/models/scenario/_targets.py` |
 | every mapping | **no unknown keys** (`extra="forbid"`) | `scenario/models/_base.py` |
 
 `exists` is special: its selector is written **inline** (`exists: { id: home.title }`), and an
@@ -539,12 +538,19 @@ steps, recursively (a component may itself `use` another, depth ≤ 25). It rais
 unknown param, a residual `${params.*}` referencing something undeclared, an undefined bare name, or
 a reference cycle. `ComponentResolver` (`scenario/load_expanded.py`) is the one place binding a
 `resolve` to a file. It carries that file's map, the suite root, and the base directory refs
-resolve against, so `run` and every device-free reader expand a file identically. Because expansion is pure and compile-time, **no `use` survives into the
-run** — determinism holds.
+resolve against, so `run` and every device-free reader expand a file identically. Expansion
+descends into every `if` / `else` branch and `forEach` body. It descends into every `web:` / `app:`
+block too. A `use` in a branch the run never takes thus still expands, and a broken one fails the
+load. Because expansion is
+pure and compile-time, **no `use` survives into the run** — determinism holds.
 
-A `use` step takes no modifiers. The loader refuses one that also sets any of `capture` /
-`extract` / `name` / `from` / `target`. Expansion replaces the whole step, so it would otherwise
-drop those fields with no warning.
+A `use` step takes one modifier alone: `target`. The loader refuses one that also sets any of
+`capture` / `extract` / `name` / `from`. Expansion replaces the whole step, so it would otherwise
+drop those fields with no warning. Expansion carries `target` forward instead (BE-0446). It stamps
+the value onto every produced step that omits one. The stamp descends through `if` / `forEach`
+bodies and nested `use` calls. It stops at a `web:` / `app:` block. The loader accepts a produced
+step naming the same target. A produced step naming a different target fails the load. The message
+names the component chain.
 
 **`group` is `use`'s local sibling.** A `Group` carries `name` and `steps` alone — no `params`, no
 separate file. The same `expand()` recursion in `expand_components` replaces a `group` step with
@@ -554,7 +560,8 @@ not part of the authored grammar — so `report.html` can fold them back togethe
 already inside another `group`. This covers an inner `group` written directly, and one arriving
 through a `use` call. A `Scenario`-level validator refuses a directly-nested `group` too — one
 written inside another `group`'s `steps`, or inside an `if` / `forEach` / `web` / `app` step's
-nested `steps` — at load time.
+nested `steps` — at load time. `expand()` also raises on a `group` a component carries into one of
+those bodies. A `group` step's own `target` follows the `use` rule above.
 
 ### 6.3 Data-driven scenarios (`data` / `dataFile`)
 

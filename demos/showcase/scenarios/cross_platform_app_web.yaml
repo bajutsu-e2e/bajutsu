@@ -8,36 +8,44 @@
 # Needs a booted iOS Simulator (showcase-swiftui) and the `web` target's static server running, so
 # — like cross_platform_search.yaml — it has its own lane and is excluded from the iOS bulk sweep
 # by its `multi-target` tag: `make -C demos/showcase e2e-multi-target-web`.
-- name: search narrows the iOS catalog while the web counter increments independently
-  tags: [multi-target]
-  targets: [showcase-swiftui, web]
-  preconditions:
-    launchEnv: { SHOWCASE_UITEST: "1" }
-  steps:
-    - target: showcase-swiftui
-      tap: { label: "Search", traits: [button] }
-    - target: showcase-swiftui
-      wait: { for: { id: [search.field, search_field] }, timeout: 10 }
-    - target: showcase-swiftui
-      type: { text: "Horse 3", into: { id: [search.field, search_field] } }
-    - target: showcase-swiftui
-      wait: { for: { id: [search.row.3, search_row_3] }, timeout: 5 }
-    - target: web
-      tap: { id: onboarding.start }
-    - target: web
-      type: { text: "a@b.com", into: { id: auth.email } }
-    - target: web
-      type: { text: "pw", into: { id: auth.password } }
-    - target: web
-      tap: { id: auth.submit }
-    - target: web
-      wait: { for: { id: home.title }, timeout: 5 }
-    - target: web
-      tap: { id: counter.increment }
-    - target: web
-      tap: { id: counter.increment }
-  expect:
-    - target: showcase-swiftui
-      count: { sel: { idMatches: ["search.row.*", "search_row_*"] }, equals: 1 }
-    - target: web
-      value: { sel: { id: counter.value }, equals: "2" }
+#
+# The web sign-in is a file-scoped component (BE-0422) the scenario calls with `target: web`, so
+# its steps name no target of their own and read the same as they would in a single-target file.
+description: A native target and a web target interleaved in one run (BE-0428).
+components:
+  web-sign-in:
+    params: [email, password]
+    steps:
+      - tap: { id: onboarding.start }
+      - type: { text: "${params.email}", into: { id: auth.email } }
+      - type: { text: "${params.password}", into: { id: auth.password } }
+      - tap: { id: auth.submit }
+      - wait: { for: { id: home.title }, timeout: 5 }
+
+scenarios:
+  - name: search narrows the iOS catalog while the web counter increments independently
+    tags: [multi-target]
+    targets: [showcase-swiftui, web]
+    preconditions:
+      launchEnv: { SHOWCASE_UITEST: "1" }
+    steps:
+      - target: showcase-swiftui
+        tap: { label: "Search", traits: [button] }
+      - target: showcase-swiftui
+        wait: { for: { id: [search.field, search_field] }, timeout: 10 }
+      - target: showcase-swiftui
+        type: { text: "Horse 3", into: { id: [search.field, search_field] } }
+      - target: showcase-swiftui
+        wait: { for: { id: [search.row.3, search_row_3] }, timeout: 5 }
+      # The caller fixes the target: every step of `web-sign-in` runs against `web` (BE-0446).
+      - use: { component: web-sign-in, with: { email: a@b.com, password: pw } }
+        target: web
+      - target: web
+        tap: { id: counter.increment }
+      - target: web
+        tap: { id: counter.increment }
+    expect:
+      - target: showcase-swiftui
+        count: { sel: { idMatches: ["search.row.*", "search_row_*"] }, equals: 1 }
+      - target: web
+        value: { sel: { id: counter.value }, equals: "2" }

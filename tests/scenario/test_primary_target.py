@@ -2,7 +2,7 @@
 
 Covers the `primaryTarget` constraint (unset, or equal to `targets[0]`), the omitted-`target`
 escape it opens under two or more declared targets on every step shape and on a top-level `expect`
-entry, the zero/one-target shapes it leaves unchanged, the `web:` / `app:` / `use:` rules it leaves
+entry, the zero/one-target shapes it leaves unchanged, the `web:` / `app:` rules it leaves
 in force, `interrupts`' own independence from it (BE-0438), the round-trip guarantee (the resolved
 name never reaches `model_dump()`), and `apply_setups` cloning its cached steps so scenarios
 sharing a setup resolve independently.
@@ -172,12 +172,14 @@ def test_one_target_still_rejects_a_mismatched_step_target() -> None:
         _scenario(targets=["app"], primaryTarget="app", steps=[_step(target="web")])
 
 
-# --- what stays refused under two or more targets ---------------------------------------------
+# --- use: left to the post-expansion pass (BE-0446) -------------------------------------------
 
 
-def test_use_still_rejected_with_a_primary() -> None:
-    with pytest.raises(ValidationError, match="use: is not yet supported"):
-        _scenario(**_TWO, steps=[{"use": {"component": "login.yaml", "with": {}}}])
+def test_use_is_left_unresolved_with_a_primary() -> None:
+    # BE-0446: the steps the `use:` expands to resolve through the primary instead, after
+    # `expand_components` runs.
+    s = _scenario(**_TWO, steps=[{"use": {"component": "login.yaml", "with": {}}}])
+    assert s.steps[0].resolved_target is None
 
 
 # --- interrupts: unaffected by primaryTarget (BE-0438) -----------------------------------------

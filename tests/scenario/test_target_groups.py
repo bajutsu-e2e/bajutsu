@@ -460,8 +460,8 @@ LOGIN_GROUP = Component(
 
 
 def test_expand_components_expands_a_group_the_component_carries() -> None:
-    # `use:` is refused outright once a scenario declares two or more targets (BE-0428), so this
-    # exercises the one-target path, matching `test_use_expansion_re_checks_target_requirements`.
+    # The one-target path, matching `test_use_expansion_re_checks_target_requirements`; the
+    # two-target routing of `use:` lives in `test_multi_target_use.py` (BE-0446).
     scns = load_scenarios(
         """
 - name: s

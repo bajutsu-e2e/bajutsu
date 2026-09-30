@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0446](BE-0446-multi-target-use-components.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0446") |
 | Topic | Scenario authoring features |
 | Related | [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md), [BE-0436](../BE-0436-primary-target-default/BE-0436-primary-target-default.md), [BE-0437](../BE-0437-multi-target-step-groups/BE-0437-multi-target-step-groups.md), [BE-0438](../BE-0438-multi-target-interrupts/BE-0438-multi-target-interrupts.md), [BE-0439](../BE-0439-step-groups-report-folding/BE-0439-step-groups-report-folding.md) |
@@ -330,12 +330,12 @@ single-target and multi-target scenarios alike.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Schema: exempt `target` from the `use:` modifier refusal.
-- [ ] Load-time check: replace the `use:` / `group:` refusals with a membership check.
-- [ ] Recursion: expand `use:` inside control-flow bodies, and refuse a `group:` there.
-- [ ] Stamping: carry and stamp the caller target, and raise the conflict error.
-- [ ] Tests for every case listed in the work breakdown.
-- [ ] Docs (both languages) and the showcase demo.
+- [x] Schema: exempt `target` from the `use:` modifier refusal.
+- [x] Load-time check: replace the `use:` / `group:` refusals with a membership check.
+- [x] Recursion: expand `use:` inside control-flow bodies, and refuse a `group:` there.
+- [x] Stamping: carry and stamp the caller target, and raise the conflict error.
+- [x] Tests for every case listed in the work breakdown.
+- [x] Docs (both languages) and the showcase demo.
 
 ## References
 

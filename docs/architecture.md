@@ -553,6 +553,17 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   Pydantic re-validates — and `bajutsu run`'s CLI matches its step-line count against the raw
   YAML's one-entry-per-item count rather than a snapshot of its own, since a group is expanded
   inside `Scenario`'s validator, before the CLI could take one
+- **Components in multi-target scenarios** (BE-0446): a `use:` or `group:` step may carry
+  `target`, and `expand_components` stamps it onto every step the expansion produces that omits one,
+  descending through `if`/`forEach` bodies and nested `use` calls and stopping at a `web:`/`app:`
+  block; a produced step naming a different target fails the load with the component chain in the
+  message, and a caller omitting `target` leaves each produced step to resolve as a hand-written one
+  would. The load-time `_check_target_requirements` pass checks a `use:`/`group:` step's `target`
+  for membership alone. It walks a `group`'s own children with that `target` as their caller: a
+  child omitting `target` needs none, and one naming a different target fails the load. `expand()`
+  itself now recurses into every `if`/`else`, `forEach`, `web:`, and `app:` body, so no `use` step
+  reaches the run loop unexpanded at any target count. The runner, the report, and the CLI still see
+  nothing but the flat per-step `target:` form
 - **Report step grouping** (BE-0439): a step's own `group: { name, steps }` field names a stretch
   of consecutive steps as one section, purely for `report.html` — `expand_components` replaces a
   `group` step with its flattened `steps`, tagging each with the group's `name` and a run-wide
@@ -560,8 +571,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   `_fold_groups` uses to insert one heading row per such stretch; `run` never observes `group`
   itself, the same load-time-only treatment `use` (BE-0030) already gets. A `group` nested
   directly inside another `group`, an `if`, a `forEach`, a `web`, or an `app` body — or reached by
-  a `use` call made from inside a `group` — is rejected at load time, and a `group` is rejected
-  the same way `use` is once the scenario declares two or more targets (BE-0428). A stretch
+  a `use` call made from inside a `group`, or carried into such a body by a component — fails the
+  load. Expansion stamps a `group` step's own `target` onto the steps it produces, the same way it
+  stamps a `use` step's (BE-0446). A stretch
   containing a failing step opens its section by default; one with no failure renders collapsed
   until a reader opens it, and the existing "expand all"/"collapse all" controls toggle every
   scenario's groups too

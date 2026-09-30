@@ -61,7 +61,6 @@ def test_step_accepts_ordinary_name(name: str) -> None:
         ("extract", {"x": {"sel": {"id": "f"}}}),
         ("name", "log in"),
         ("from", "log in as alice"),
-        ("target", "app"),
     ],
 )
 def test_use_step_rejects_modifier(key: str, value: object) -> None:

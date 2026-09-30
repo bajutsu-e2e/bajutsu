@@ -779,11 +779,11 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `setMocks` | `setMocks: [ { match, respond }... ]` | replace the app's whole stub table mid-scenario over the in-app control channel ([below](#changing-the-mocks-mid-scenario-setmocks)); `[]` removes every stub. iOS (XCUITest) with network collection on ([BE-0365](../roadmaps/BE-0365-in-app-control-channel/BE-0365-in-app-control-channel.md)) |
 | `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | override the status bar for deterministic screenshots |
 | `clearStatusBar` | `clearStatusBar: {}` | remove status-bar overrides (restore the live bar) |
-| `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)); **takes no modifiers** — `capture` / `extract` / `name` / `from` / `target` are all rejected |
+| `use` | `use: { component: <file>, with?: {...} }` | expand a reusable component's steps — a compile-time macro ([reuse](#reuse-data-and-tags)); **takes no modifier but `target`** — `capture` / `extract` / `name` / `from` are rejected, and a `target` is stamped onto every step the component expands to ([multi-target](#components-in-a-multi-target-scenario)) |
 | `group` | `group: { name: <str>, steps: [...] }` | name a run of consecutive steps — a compile-time macro, folded together in `report.html` ([below](#grouping-steps-group--folded-in-reporthtml)) |
 | `web` | `web: { within: <Selector>, steps: [...] }` | enter a WebView's DOM: `within` resolves the host `WKWebView` natively, and the nested `steps` address its normalized DOM instead of the native tree ([below](#web-entering-a-webviews-dom)) |
 
-Modifiers (none of them on a `use` step, which takes none — see the table row above):
+Modifiers (a `use` step takes `target` alone — see the table row above):
 
 - `capture: [<token>...]` — evidence for this step only ([evidence](evidence.md#b-inline-evidence)).
 - `name: <str>` — the step id (the evidence output directory name · report label). Defaults to `step<i>`.
@@ -1467,11 +1467,6 @@ work.
 
 ### Limits
 
-One open question this item hasn't resolved fails closed instead of guessing. It applies once a
-scenario declares two or more targets. The loader refuses a `use:` step outright, including one in
-an [`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) entry's `steps`. A `use:`
-step takes no modifiers, so it cannot carry the `target` every step then needs.
-
 `Assertion.target` follows a narrower rule than `Step.target`. A top-level `expect` entry is the sole
 place it may appear. An assertion reached through a step's inline `assert:` list already has a
 target. So does one reached through an `if`'s `condition`. The enclosing step's own `target` fixed
@@ -1757,9 +1752,9 @@ A small templating and macro layer wraps the core grammar. It runs **at load tim
 
 ### Components (`use` → reusable steps)
 
-A **component** is a list of `params` and a list of `steps` that reference them as `${params.<name>}`. A `use` step invokes it, binding params via `with`. `use` is a **compile-time macro**: `expand_components` (`scenario/expand.py`) replaces it with the component's substituted steps before the run. Expansion is recursive — a component may itself `use` another, up to depth 25. It raises an error on a missing or unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle. No `use` step survives into the run, so determinism is unaffected. Expansion reaches a scenario's own `steps` and the recovery `steps` of each [`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) entry.
+A **component** is a list of `params` and a list of `steps` that reference them as `${params.<name>}`. A `use` step invokes it, binding params via `with`. `use` is a **compile-time macro**: `expand_components` (`scenario/expand.py`) replaces it with the component's substituted steps before the run. Expansion is recursive — a component may itself `use` another, up to depth 25. It raises an error on a missing or unknown param, a residual `${params.*}` referencing something undeclared, or a reference cycle. No `use` step survives into the run, so determinism is unaffected. Expansion reaches a scenario's own `steps` and the recovery `steps` of each [`interrupts`](#interrupts-handling-unpredictable-interstitial-screens) entry. It also reaches every `if` / `else` branch and `forEach` body inside them. It reaches every `web:` / `app:` block too. A `use` in any of these bodies expands at load time. A broken `use` in a branch the run never takes still fails the load.
 
-A `use` step takes no modifiers. The loader refuses a `use` step that also sets any of `capture` / `extract` / `name` / `from` / `target`. Expansion replaces the whole step, so it would otherwise drop those fields with no warning.
+A `use` step takes one modifier alone: `target`. The loader refuses a `use` step that also sets any of `capture` / `extract` / `name` / `from`. Expansion replaces the whole step, so it would otherwise drop those fields with no warning. Expansion carries `target` forward instead, as [the multi-target rule below](#components-in-a-multi-target-scenario) describes.
 
 A component lives in **a file of its own**, reusable across the whole suite:
 
@@ -1817,6 +1812,66 @@ A bare name the map does not define is an error naming the ref. No fallback open
 
 A `setup` prelude is a scenario-file-shaped document, so it may carry its own `components:`. The loader expands a prelude's `use` steps in the prelude's own scope before prepending them. A same-named entry in the calling scenario file cannot capture them. A path ref inside a prelude resolves against the prelude's own directory too, not the calling scenario file's.
 
+#### Components in a multi-target scenario
+
+A scenario declaring two or more [targets](#targets--target-multi-target-scenarios-be-0428) calls
+components the same way ([BE-0446](../roadmaps/BE-0446-multi-target-use-components/BE-0446-multi-target-use-components.md)).
+Each step a component expands to needs a target, and it receives one from one of two sources:
+
+| Caller (`use:` step) | Expanded step omits `target` | Expanded step names `target` |
+|---|---|---|
+| Names `target: X` | Stamped with `X` | Accepted when it equals `X`; refused at load time otherwise |
+| Omits `target` | Resolves as a hand-written step in the same position would: through `primaryTarget` if declared, otherwise a load-time error | Kept as written, then checked against the declared targets |
+
+The first row suits a single-target component. A sign-in is one example: it knows nothing about
+the device that calls it. The second row suits a cross-target component, whose own steps route across the
+scenario's targets:
+
+```yaml
+components:
+  web-sign-in:
+    params: [email]
+    steps:
+      - tap: { id: onboarding.start }
+      - type: { text: "${params.email}", into: { id: auth.email } }
+      - tap: { id: auth.submit }
+  like-and-verify:
+    steps:
+      - target: showcase-swiftui
+        tap: { id: horse.favorite }
+      - target: web
+        wait: { for: { id: favorites.updated }, timeout: 5 }
+
+scenarios:
+  - name: sign in on the web, then like on the app
+    targets: [showcase-swiftui, web]
+    steps:
+      # The caller fixes the target: every step of `web-sign-in` runs against `web`.
+      - use: { component: web-sign-in, with: { email: a@b.com } }
+        target: web
+      # The component routes its own steps across both targets.
+      - use: { component: like-and-verify }
+```
+
+A conflicting target fails the load rather than letting either side win. Overriding the component
+would send a step to a device its author never wrote it for. Letting the component win would break
+the caller's request without notice. The error names the component chain and the step:
+
+```text
+use: web-sign-in > step 'submit': target 'showcase-swiftui' conflicts with the caller's target 'web'
+```
+
+A caller's target reaches every step the expansion produces, at any depth. It descends into `if` /
+`else` branches, `forEach` bodies, and nested `use` calls. It stops at a `web:` or `app:` block. The
+block itself receives the target. The steps inside the block keep omitting `target`. A component
+can also take its target as a param (`target: ${params.device}`). Param substitution runs before
+any target check. A `use` step inside a [target group](#target-groups-naming-one-target-once-for-a-run-of-steps-be-0437)
+receives the group's target as its caller target.
+
+An `interrupts` entry's recovery `use` follows the same table, with one difference. Consider an
+expanded recovery step that omits `target`. It stays on the runner whose interrupt guard fired. It
+never resolves through `primaryTarget`.
+
 ### Grouping steps (`group:` → folded in report.html)
 
 A `group:` step names a run of consecutive steps. `expand_components` replaces it with its own
@@ -1847,10 +1902,13 @@ invocation into more than one fold in the report. Each fragment then gets its ow
 than one continuous fold.
 
 `group:` does not nest. A `group:` step inside another `group:`'s own `steps:` fails at load time.
-So does one inside an `if` / `forEach` / `web` / `app` step's nested `steps:`. A scenario declaring
-two or more [`targets`](#targets--target-multi-target-scenarios-be-0428) cannot use `group:`
-either. The reason matches `use:`'s own: expansion discards the step's own `target`, leaving a
-group's `target` to decide nothing.
+So does one inside an `if` / `forEach` / `web` / `app` step's nested `steps:`. A `group:` that a
+component carries into such a body through `use` fails the same way.
+
+A `group:` step's own `target` works as on a `use:` step, in a scenario declaring two or more
+[`targets`](#targets--target-multi-target-scenarios-be-0428). Expansion stamps it onto every step
+the group produces, with the [same depth and conflict rule](#components-in-a-multi-target-scenario).
+A `group:` step that omits `target` leaves each child to resolve as a hand-written step would.
 
 ### Data-driven scenarios (`data` / `dataFile`)
 
@@ -1986,7 +2044,7 @@ trigger key `on:` from becoming `True`, Bajutsu's YAML loader (`common/_yaml.py`
 
 `from:` records **which natural-language phrase a construct was recorded from** (BE-0044). It is an
 optional string attached at four levels — the scenario (the original goal), each step but `use`
-(which takes no modifiers), each `expect` assertion, and each `capturePolicy` rule — so a reviewer
+(whose one modifier is `target`), each `expect` assertion, and each `capturePolicy` rule — so a reviewer
 can see *why* each part exists and judge whether `record` normalized the intent faithfully.
 
 ```yaml
