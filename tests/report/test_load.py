@@ -20,6 +20,7 @@ from bajutsu.common.orchestrator import (
     RunResult,
     SkippedCapture,
     StepOutcome,
+    SystemAlertTap,
     TargetDeviceInfo,
 )
 from bajutsu.common.report.load import load_run, results_from_manifest
@@ -104,8 +105,8 @@ def test_round_trip_through_manifest_is_lossless() -> None:
 
 def test_manifest_carries_schema_version_and_source_name() -> None:
     data = manifest_dict("r1", [_result()], source_name="smoke.yaml")
-    # bumped for each actuation's own `at` instant
-    assert data["schemaVersion"] == 12
+    # bumped for each actuation's own `at` instant (v13), after BE-0445's `system_alert` (v12)
+    assert data["schemaVersion"] == 13
     assert data["sourceName"] == "smoke.yaml"
 
 
@@ -255,6 +256,43 @@ def test_an_older_manifest_without_generated_loads_as_none() -> None:
     [restored] = results_from_manifest(data)
 
     assert restored.steps[0].generated is None
+
+
+def test_a_system_alert_tap_survives_the_round_trip() -> None:
+    # Which button a `handleSystemAlert` step tapped and why (BE-0445): the only record of what a
+    # position rule landed on under a language the label table does not cover.
+    original = [_result()]
+    original[0].steps[0].system_alert = SystemAlertTap(
+        label="Erlauben", rule="position: button 2 of 2"
+    )
+    data = json.loads(json.dumps(manifest_dict("r1", original)))
+    assert results_from_manifest(data) == original
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        "absent",
+        None,
+        "not-a-record",
+        {},
+        {"label": "Allow"},
+        {"label": "", "rule": "sel"},
+        {"label": 7, "rule": "sel"},
+    ],
+)
+def test_a_manifest_without_a_system_alert_tap_loads_as_none(stored: object) -> None:
+    # v11 and earlier carry no such key; a damaged value reads the same way rather than failing the load.
+    data = manifest_dict("r1", [_result()])
+    step = data["scenarios"][0]["steps"][0]  # type: ignore[index]
+    if stored == "absent":
+        del step["system_alert"]
+    else:
+        step["system_alert"] = stored
+
+    [restored] = results_from_manifest(data)
+
+    assert restored.steps[0].system_alert is None
 
 
 def test_a_loader_side_drop_is_disclosed_through_dropped_actuations() -> None:

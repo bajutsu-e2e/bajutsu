@@ -598,6 +598,7 @@ def test_a_failing_inner_web_step_never_probes_but_the_wrapping_web_step_does() 
     assert web_outcomes[0].app_crashed is True
 
 
+@pytest.mark.usefixtures("no_position_rules")
 def test_an_uncovered_system_alert_locale_still_settles_through_the_shared_check() -> None:
     # `_handle_action`'s `UncoveredSystemAlertLocale` early return is the one exit this file's own
     # comments already single out as the exit an earlier draft's shared-settle refactor missed —

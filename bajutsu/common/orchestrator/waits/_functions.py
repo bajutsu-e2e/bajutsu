@@ -19,7 +19,7 @@ from bajutsu.common.orchestrator.types import (
     selector_names_button,
     undeclared_interruption_note,
 )
-from bajutsu.common.scenario import Gone, Wait, WaitRequest
+from bajutsu.common.scenario import Gone, SystemAlertRole, Wait, WaitRequest
 
 from ._alert_guard_gate import _AlertGuardGate
 from ._heartbeat import _Heartbeat
@@ -151,14 +151,15 @@ def _adaptive_sleep(clock: Clock, before: float) -> None:
         clock.sleep(remaining)
 
 
-def wait_for_system_alert(
+def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (BE-0386)
     driver: base.Driver,
-    sel: base.Selector,
+    target: base.Selector | SystemAlertRole,
     timeout: float,
     clock: Clock,
     *,
     alert_guard: AlertGuardConfig | None = None,
     alerts: list[AlertEvent] | None = None,
+    tapped: list[str] | None = None,
     cancelled: CancelSource = not_cancelled,
 ) -> tuple[bool, str]:
     """Wait for the system alert `sel` names and tap it, clearing declared interruptions meanwhile.
@@ -176,11 +177,16 @@ def wait_for_system_alert(
     given `sel` and declines an alert `sel` names (`probe_native`'s `"reserved"`).
 
     Args:
+        target: The button to tap — a selector, or a position rule (BE-0445) that each read turns
+            into a label selector for the button it names on the alert then on screen. A rule names
+            nothing on an alert offering a different number of buttons, so the step keeps waiting
+            rather than tapping by position on an alert the rule was never measured against.
         timeout: The step's own deadline. Zero reads once and gives up, so a caller that already
             knows a prompt is up pays no poll.
         alert_guard: The scenario's reactive guard, when the run has one. Without it this is a plain
             condition wait — the shape `record`'s replay gets.
         alerts: The step's outcome list, which the guard appends each prompt it dismissed to.
+        tapped: Receives the label of the button the step itself tapped, for the report.
         cancelled: Consulted once per poll, right where the deadline is, so a cancelled run is
             noticed within one tick instead of actuating the device for the rest of the timeout
             (BE-0370). It raises rather than returning a verdict: the prompt neither appeared nor
@@ -195,7 +201,20 @@ def wait_for_system_alert(
         buttons `sel` did not name, one offering `sel`'s label twice, or — through the guard's own
         note — a prompt that held the screen and nothing could clear.
     """
+    # A rule's label is unknown until an alert is read, so the capability refusal gets the position
+    # alone. A rule also runs without the guard's gate: it is used only under a language the label
+    # table does not cover, where no guard rule can exist (one fails before any device work), so the
+    # gate has nothing to answer — while its per-poll app query is one more read that could meet the
+    # step's own prompt first and hand it to the interruption monitor, which has no reservation for a
+    # label nobody knows yet (BE-0445).
+    role: SystemAlertRole | None
+    sel: base.Selector | None
+    if isinstance(target, SystemAlertRole):
+        role, sel = target, {"index": target.ordinal}
+    else:
+        role, sel = None, target
     _require_system_alert_capability(driver, sel)
+    wanted = role.describe() if role is not None else repr(sel)
     deadline = clock.now() + timeout
     gate = (
         _AlertGuardGate(
@@ -205,7 +224,7 @@ def wait_for_system_alert(
             alerts=alerts if alerts is not None else [],
             reserved=sel,
         )
-        if alert_guard is not None
+        if alert_guard is not None and role is None
         else None
     )
     last_read: float | None = None
@@ -225,10 +244,14 @@ def wait_for_system_alert(
             last_read = t0
             seen = driver.system_alert_labels()
             ambiguous = False
+            picked: str | None = None
+            if role is not None:
+                picked = role.pick(seen)
+                sel = _role_selector(picked, role, seen) if picked is not None else None
             # Decided from the labels already in hand: `handle_system_alert` issues its own
             # cross-process query, so tapping speculatively would double this step's query rate for
             # the whole time an interruption the step is not waiting for holds the screen.
-            if selector_names_button(sel, seen):
+            if sel is not None and selector_names_button(sel, seen):
                 try:
                     driver.handle_system_alert(sel, _STEP_TAP_TIMEOUT)
                 except base.ElementNotFound:
@@ -243,6 +266,9 @@ def wait_for_system_alert(
                     # is named in the timeout below.
                     ambiguous = True
                 else:
+                    label = picked if picked is not None else _tapped_label(sel, seen)
+                    if tapped is not None and label:
+                        tapped.append(label)
                     return True, ""
             elif isinstance(driver, base.InterruptionPolicyTarget):
                 # `sel`'s alert is not the one this read just saw — but a governing policy's
@@ -256,7 +282,7 @@ def wait_for_system_alert(
                 # end, reintroduced by the mechanism meant to close it. A backend without the
                 # opt-in, or one nothing has pushed a policy to, drains nothing and falls through
                 # unchanged.
-                answered = _policy_answered_alert(driver, sel, alerts)
+                answered = _policy_answered_alert(driver, sel, alerts, tapped)
                 if answered is not None:
                     return answered
         if gate is not None:
@@ -265,7 +291,7 @@ def wait_for_system_alert(
             raise RunCancelled
         if clock.now() >= deadline:
             return False, _with_block_note(
-                _alert_timeout_reason(sel, timeout, seen, ambiguous), gate
+                _alert_timeout_reason(wanted, timeout, seen, ambiguous, role=role), gate
             )
         _adaptive_sleep(clock, t0)
 
@@ -285,7 +311,10 @@ def _require_system_alert_capability(driver: base.Driver, sel: base.Selector) ->
 
 
 def _policy_answered_alert(
-    driver: base.InterruptionPolicyTarget, sel: base.Selector, alerts: list[AlertEvent] | None
+    driver: base.InterruptionPolicyTarget,
+    sel: base.Selector | None,
+    alerts: list[AlertEvent] | None,
+    tapped: list[str] | None = None,
 ) -> tuple[bool, str] | None:
     """Drain what a governing policy's monitor answered between polls; the verdict it settles, if any.
 
@@ -293,7 +322,13 @@ def _policy_answered_alert(
     its one call site.
     """
     drained = driver.drain_interruptions()
-    matched = [label for label in drained.tapped if selector_names_button(sel, [label])]
+    # A position rule with no alert read yet names no label, and nothing reserved one for the
+    # monitor either, so no label it tapped can be the step's own.
+    matched = (
+        []
+        if sel is None
+        else [label for label in drained.tapped if selector_names_button(sel, [label])]
+    )
     if alerts is not None:
         # A tapped label that is not `sel`'s own is some other declared rule's alert,
         # resolved by the monitor while this step happened to be polling — draining it
@@ -308,6 +343,8 @@ def _policy_answered_alert(
     if matched:
         if alerts is not None:
             alerts.append(AlertEvent(label=matched[0]))
+        if tapped is not None:
+            tapped.append(matched[0])
         return True, ""
     if drained.declined:
         # Some other alert interrupted a query during this same wait and nothing
@@ -321,26 +358,60 @@ def _policy_answered_alert(
 
 
 def _alert_timeout_reason(
-    sel: base.Selector, timeout: float, seen: Sequence[str], ambiguous: bool
+    wanted: str,
+    timeout: float,
+    seen: Sequence[str],
+    ambiguous: bool,
+    *,
+    role: SystemAlertRole | None = None,
 ) -> str:
     """What the `handleSystemAlert` step saw, for the timeout it is about to report (BE-0406).
 
     `seen` is the step's latest read of the alert's buttons, so an empty one means no alert was up
     at the deadline rather than that none ever was — the guard's own note, appended by the caller,
-    is what names a prompt that came and went or one nothing could clear.
+    is what names a prompt that came and went or one nothing could clear. A position rule (BE-0445)
+    gets its own wording, since its author can add no `index` and the way out is naming the label.
     """
     if not seen:
-        return f"no system alert appeared within {timeout}s: {sel!r}"
+        return f"no system alert appeared within {timeout}s: {wanted}"
     offered = ", ".join(seen)
-    if ambiguous:
+    if role is not None and len(seen) != role.count:
         return (
-            f"system alert button {sel!r} is ambiguous and stayed ambiguous for {timeout}s "
-            f"(the alert on screen offered: {offered}) — add index to pick one"
+            f"position rule {wanted} names no button on an alert offering {len(seen)} "
+            f"({offered}) within {timeout}s; this run's language is outside the label table, so "
+            "name the button with sel.label instead"
+        )
+    if ambiguous:
+        fix = " — add index to pick one" if role is None else ""
+        return (
+            f"system alert button {wanted} is ambiguous and stayed ambiguous for {timeout}s "
+            f"(the alert on screen offered: {offered}){fix}"
         )
     return (
-        f"no system alert button matching {sel!r} appeared within {timeout}s "
+        f"no system alert button matching {wanted} appeared within {timeout}s "
         f"(the alert on screen offered: {offered})"
     )
+
+
+def _role_selector(picked: str, role: SystemAlertRole, seen: Sequence[str]) -> base.Selector:
+    """The selector that taps the button a position rule picked, on the alert it was picked from.
+
+    The tap resolves on the driver's own fresh query, so the rule is carried as a label; the index
+    keeps it on its own button when both buttons carry that label. Between this read and that query
+    the alert could be replaced by one offering the same label, which the label alone cannot tell
+    apart — the same window every label-named tap has.
+    """
+    duplicates_before = seen[: role.ordinal].count(picked)
+    if seen.count(picked) > 1:
+        return {"label": picked, "index": duplicates_before}
+    return {"label": picked}
+
+
+def _tapped_label(sel: base.Selector, seen: Sequence[str]) -> str:
+    """The label of the button a successful tap landed on, read from the alert the tap resolved on."""
+    named = [label for label in seen if selector_names_button(sel, [label])]
+    index = sel.get("index", 0)
+    return named[index] if -len(named) <= index < len(named) else ""
 
 
 # Genuinely long: the wait state machine on the deterministic run path. Splitting it carries real

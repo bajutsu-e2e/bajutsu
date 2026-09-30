@@ -473,6 +473,22 @@ pytest_plugins = ["pytester", "backend_crash_recovery", "ondevice_evidence"]
 
 
 @pytest.fixture
+def no_position_rules() -> Iterator[None]:
+    """Clear BE-0445's position rules for the test's duration.
+
+    Every step-capable prompt has one today, so an uncovered language never reaches the step's loud
+    `UncoveredSystemAlertLocale` failure any more. That failure still guards a prompt with no rule,
+    and this is how a test drives it.
+    """
+    from unittest.mock import patch
+
+    from bajutsu.common.scenario.system_alerts import _ROLES
+
+    with patch.dict(_ROLES, clear=True):
+        yield
+
+
+@pytest.fixture
 def run_sink(tmp_path: Path) -> RunArtifactWriter:
     """A run-directory sink over `tmp_path` with an unconfigured redactor (BE-0331).
 

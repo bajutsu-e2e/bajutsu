@@ -19,6 +19,7 @@ from bajutsu.common.orchestrator.types import (
     AlertEvent,
     ResolvedAlertRule,
     StepOutcome,
+    SystemAlertTap,
     UndeclaredInterruption,
     drain_actuations,
     drain_interruptions,
@@ -32,10 +33,12 @@ from bajutsu.common.orchestrator.waits import (
     settle_after_alert_dismiss,
 )
 from bajutsu.common.scenario import (
+    HandleSystemAlert,
     Selector,
     Step,
     UncoveredSystemAlertLocale,
     interp,
+    labels_cover,
     system_alert_shapes,
 )
 
@@ -70,6 +73,23 @@ def _probe_app_crash(active_driver: base.Driver) -> str | None:
         # `run_all` and discards every scenario's result.
         _logger.debug("the app-crash probe failed (%s)", exc, exc_info=True)
         return None
+
+
+def _system_alert_rule(authored: HandleSystemAlert, ran: Step, locale: str | None) -> str:
+    """How a `handleSystemAlert` step chose its button, in the words the report shows (BE-0445).
+
+    Read off the step as it ran: `_resolve_system_alert` turns `prompt`/`choice` into a `sel` only
+    through the label table, and leaves it for the position rule otherwise.
+    """
+    if authored.sel is not None:
+        return "sel"
+    assert ran.handle_system_alert is not None
+    role = ran.handle_system_alert.role()
+    if role is not None:
+        return f"position: {role.describe()}"
+    # Only a known locale resolves `prompt`/`choice` through the table; with none it keeps the rule.
+    assert locale is not None
+    return f"label table: {locale}"
 
 
 def _with_crash_note(reason: str, signal: str) -> str:
@@ -350,12 +370,15 @@ class _StepRunner:
             or hsa.prompt is None
             or hsa.choice is None
             or self.cfg.locale is None
+            # A position rule (BE-0445) knows no label to reserve with the monitor until an alert is
+            # read, so it keeps a `sel`-form step's behavior: a query before the step's own read that
+            # meets its prompt still reaches the monitor unreserved, the exposure a `sel`-form step
+            # has always had.
+            or not labels_cover(hsa.prompt, self.cfg.locale)
             or not isinstance(driver, base.InterruptionPolicyTarget)
         ):
             return False, [], []
-        # Resolvable without raising: the caller reaches this method only once
-        # `_resolve_system_alert` has already resolved this same prompt/choice/locale triple for
-        # `interp_step`, so the locale is known-covered.
+        # Resolvable without raising: the label table covers this locale, checked just above.
         shape = system_alert_shapes(hsa.prompt, hsa.choice, self.cfg.locale)[0]
         if shape.excluded_labels:
             # `push_interruption_policy` refuses outright to push a native-reachable rule that
@@ -637,8 +660,9 @@ class _StepRunner:
         # choice into the concrete button label this run's locale renders (BE-0320). Resolving
         # here rather than per action kind means nested steps — `if` / `forEach` branches and an
         # interrupt's recovery — all arrive already resolved, since they come back through here.
-        # A locale the lookup does not cover fails this step loudly, like the blocks above; it
-        # never falls back to a guessed label.
+        # A locale the lookup does not cover leaves the step for its prompt's position rule
+        # (BE-0445); for a prompt with none it fails this step loudly, like the blocks above,
+        # rather than falling back to a guessed label.
         try:
             interp_step = _resolve_system_alert(
                 _interp_step(step, self.state.bindings), self.cfg.locale
@@ -778,6 +802,8 @@ class _StepRunner:
         # so the merge below is a no-op there.
         reserved_alerts: list[AlertEvent] = []
         reserved_undeclared: list[UndeclaredInterruption] = []
+        # The label a `handleSystemAlert` step tapped, for `outcome.system_alert` (BE-0445).
+        system_alert_taps: list[str] = []
         if guard is not None and guard.failure is not None:
             # The pre-act clear already decided the outcome (a recovery step failed): skip the
             # step's own action rather than poke a screen the failed recovery left broken —
@@ -819,6 +845,7 @@ class _StepRunner:
                     selection=self.state.selection,
                     alert_guard=self.cfg.alert_guard,
                     alerts=outcome.alerts,
+                    system_alert_taps=system_alert_taps,
                     on_wait_tick=wait_tick,
                     transitions=self.cfg.transitions,
                     on_interrupt_poll=tip_poll,
@@ -848,7 +875,13 @@ class _StepRunner:
                     # behalf, the very prompt it was placed to answer, and discard the specific reason
                     # (no alert / an unmatched alert / an ambiguous one) for the generic timeout a doomed
                     # retry against an now-cleared screen produces instead.
-                    guard_done = kind == "handle_system_alert"
+                    #
+                    # A step answering by position (BE-0445) did not drive that guard: it waits without
+                    # the gate, so here is the only place a failed one can learn what blocked the
+                    # screen. Nothing it could tap is lost — the rule runs only under a language no
+                    # guard rule can cover.
+                    hsa = interp_step.handle_system_alert
+                    guard_done = hsa is not None and hsa.role() is None
                     # The dismiss can refuse loudly: `AmbiguousSelector` on two dismiss regions, or
                     # `ElementNotTappable` when something covers the scrim itself — which is exactly the
                     # tip-plus-system-alert case below. `ElementNotTappable` is not a `SelectorError`
@@ -886,6 +919,7 @@ class _StepRunner:
                             self.cfg.ctx,
                             wait_trace=wait_trace,
                             selection=self.state.selection,
+                            system_alert_taps=system_alert_taps,
                             on_wait_tick=wait_tick,
                             transitions=self.cfg.transitions,
                             on_interrupt_poll=tip_poll,
@@ -935,6 +969,7 @@ class _StepRunner:
                                 self.cfg.ctx,
                                 wait_trace=wait_trace,
                                 selection=self.state.selection,
+                                system_alert_taps=system_alert_taps,
                                 on_wait_tick=wait_tick,
                                 transitions=self.cfg.transitions,
                                 on_interrupt_poll=tip_poll,
@@ -1131,6 +1166,16 @@ class _StepRunner:
             # unchanged either way.
             if outcome.ok and interp_step.generate is not None:
                 outcome.generated = self.state.bindings.get(f"vars.{interp_step.generate.into.var}")
+
+            # Which button a `handleSystemAlert` step tapped and why (BE-0445), so a run under a
+            # language the label table does not cover still shows what its position rule landed on.
+            # Recorded on a failed step too: a step that tapped and then failed on a later check is
+            # exactly where a reader needs to know what was pressed.
+            if system_alert_taps and step.handle_system_alert is not None:
+                outcome.system_alert = SystemAlertTap(
+                    label=system_alert_taps[-1],
+                    rule=_system_alert_rule(step.handle_system_alert, interp_step, self.cfg.locale),
+                )
 
             # This call records the post-action *tree*: `_collect_captures` always leads with
             # `elements`, so every step keeps one whatever the scenario asked for. The screenshot

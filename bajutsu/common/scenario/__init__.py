@@ -122,10 +122,13 @@ from bajutsu.common.scenario.system_alerts import (
     ResolvedAlertShape,
     SystemAlertChoice,
     SystemAlertPrompt,
+    SystemAlertRole,
     UncoveredSystemAlertLocale,
     alert_surfaces,
     covered_languages,
+    labels_cover,
     system_alert_label,
+    system_alert_role,
     system_alert_shapes,
 )
 
@@ -200,6 +203,7 @@ __all__ = [
     "SystemAlertHandling",
     "SystemAlertHandlingField",
     "SystemAlertPrompt",
+    "SystemAlertRole",
     "SystemAlertRule",
     "TapPoint",
     "TextMatch",
@@ -224,6 +228,7 @@ __all__ = [
     "dump_scenarios",
     "expand_components",
     "expand_data",
+    "labels_cover",
     "load_component",
     "load_expanded_scenarios",
     "load_scenario_file",
@@ -236,5 +241,6 @@ __all__ = [
     "scenario_sources",
     "select_scenarios",
     "system_alert_label",
+    "system_alert_role",
     "system_alert_shapes",
 ]

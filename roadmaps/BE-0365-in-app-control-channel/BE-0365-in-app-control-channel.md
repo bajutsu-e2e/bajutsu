@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0365") |
-| Implementing PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699) (unit 1), [#1788](https://github.com/bajutsu-e2e/bajutsu/pull/1788) (unit 2), [#1916](https://github.com/bajutsu-e2e/bajutsu/pull/1916) (unit 3), [#1922](https://github.com/bajutsu-e2e/bajutsu/pull/1922) (unit 3 follow-up), [#2088](https://github.com/bajutsu-e2e/bajutsu/pull/2088) (unit 4) |
+| Implementing PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699) (unit 1), [#1788](https://github.com/bajutsu-e2e/bajutsu/pull/1788) (unit 2), [#1916](https://github.com/bajutsu-e2e/bajutsu/pull/1916) (unit 3), [#1922](https://github.com/bajutsu-e2e/bajutsu/pull/1922) (unit 3 follow-up), [#2088](https://github.com/bajutsu-e2e/bajutsu/pull/2088) (unit 4), [#2092](https://github.com/bajutsu-e2e/bajutsu/pull/2092) (unit 4 follow-up) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0364](../BE-0364-in-app-control-channel/BE-0364-in-app-control-channel.md) |
 <!-- /BE-METADATA -->
@@ -232,6 +232,12 @@ Log:
   `setMocks` at config load. BajutsuKit now locks its stub table. It refuses a delivered table
   whole when any rule would not match as written, so a catch-all or never-matching stub never reads as
   applied.
+
+- [#2092](https://github.com/bajutsu-e2e/bajutsu/pull/2092) — unit 4 follow-up: BajutsuKit's
+  `replace(with:)` releases the stub-table lock with `defer`, as the `rules` getter already did, so a
+  later early return inside the critical section cannot leave the table locked. A comment in
+  `_mock_swap_problem` records why `targets[0]` is the primary: BE-0436 rejects a `primaryTarget`
+  that names any other entry.
 
 ## References
 

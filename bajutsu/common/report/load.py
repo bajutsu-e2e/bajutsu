@@ -29,6 +29,7 @@ from bajutsu.common.orchestrator import (
     RunResult,
     SkippedCapture,
     StepOutcome,
+    SystemAlertTap,
     TargetDeviceInfo,
 )
 from bajutsu.common.report.html import html_report, scenario_render_inputs, write_html_and_junit
@@ -168,6 +169,18 @@ def _actuations(entries: Any) -> tuple[list[Actuation], int]:
     return out, dropped
 
 
+def _system_alert(stored: object) -> SystemAlertTap | None:
+    # Absent on every run before schemaVersion 12. A present value of the wrong shape reads the same
+    # way, but says so, as the actuation loader does for a record it has to drop.
+    if stored is None:
+        return None
+    label, rule = (stored.get(k) if isinstance(stored, dict) else None for k in ("label", "rule"))
+    if not (isinstance(label, str) and label and isinstance(rule, str) and rule):
+        _logger.warning("dropped a malformed system_alert record while loading a run")
+        return None
+    return SystemAlertTap(label=label, rule=rule)
+
+
 def _step(d: dict[str, Any]) -> StepOutcome:
     actuations, dropped = _actuations(d.get("actuations"))
     kw = _kw(StepOutcome, d)
@@ -177,6 +190,7 @@ def _step(d: dict[str, Any]) -> StepOutcome:
             "assertion_results": [_assertion(a) for a in d.get("assertion_results") or []],
             "artifacts": [Artifact(**_kw(Artifact, a)) for a in d.get("artifacts") or []],
             "alerts": [AlertEvent(**_kw(AlertEvent, a)) for a in d.get("alerts") or []],
+            "system_alert": _system_alert(d.get("system_alert")),
             "actuations": actuations,
             # `dropped` is the loader's own casualty, on top of whatever the run itself already
             # disclosed (a driver-side truncation) in the same field — a run that also loads with a

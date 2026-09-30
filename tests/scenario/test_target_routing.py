@@ -193,26 +193,38 @@ def test_after_walked_the_same_way() -> None:
         )
 
 
-def test_use_not_yet_supported_under_two_targets() -> None:
-    # BE-0428: a `use:` step cannot carry the `target` two targets require (expansion would
-    # discard it), so it is refused outright rather than failing as a missing target.
-    with pytest.raises(ValidationError, match="use: is not yet supported"):
+def test_use_may_omit_target_under_two_targets() -> None:
+    # BE-0446: the expanded steps resolve for themselves, after `expand_components`, so the `use:`
+    # step itself is neither required to name a target nor resolved to one.
+    s = Scenario.model_validate(
+        {
+            "name": "s",
+            "targets": ["app", "web"],
+            "steps": [{"use": {"component": "login.yaml", "with": {}}}],
+        }
+    )
+    assert s.steps[0].target is None
+    assert s.steps[0].resolved_target is None
+
+
+def test_use_may_name_a_declared_target_under_two_targets() -> None:
+    s = Scenario.model_validate(
+        {
+            "name": "s",
+            "targets": ["app", "web"],
+            "steps": [{"target": "app", "use": {"component": "login.yaml", "with": {}}}],
+        }
+    )
+    assert s.steps[0].target == "app"
+
+
+def test_use_naming_an_undeclared_target_rejected() -> None:
+    with pytest.raises(ValidationError, match="target 'ios' is not one of"):
         Scenario.model_validate(
             {
                 "name": "s",
                 "targets": ["app", "web"],
-                "steps": [{"use": {"component": "login.yaml", "with": {}}}],
-            }
-        )
-
-
-def test_use_with_target_refused_under_two_targets() -> None:
-    with pytest.raises(ValidationError, match="use steps take no modifiers, got target"):
-        Scenario.model_validate(
-            {
-                "name": "s",
-                "targets": ["app", "web"],
-                "steps": [{"target": "app", "use": {"component": "login.yaml", "with": {}}}],
+                "steps": [{"target": "ios", "use": {"component": "login.yaml", "with": {}}}],
             }
         )
 
@@ -228,17 +240,28 @@ def test_use_allowed_under_one_target() -> None:
     assert s.steps[0].use is not None
 
 
-def test_group_not_yet_supported_under_two_targets() -> None:
-    # Same reason as `use:` above — `expand()` discards a `group:` step's own `target` — and the
-    # message names `group:`, not the fixed `use:` wording, so the author sees their own action.
-    with pytest.raises(ValidationError, match="group: is not yet supported"):
+def test_group_naming_target_loads_under_two_targets_with_no_primary() -> None:
+    # BE-0446: the group's children are left to the post-expansion pass, which sees them stamped
+    # with the group's target; checking them here would reject this valid group.
+    s = Scenario.model_validate(
+        {
+            "name": "s",
+            "targets": ["app", "web"],
+            "steps": [
+                {"target": "app", "group": {"name": "login", "steps": [_step()]}},
+            ],
+        }
+    )
+    assert s.steps[0].target == "app"
+
+
+def test_group_naming_an_undeclared_target_rejected() -> None:
+    with pytest.raises(ValidationError, match="target 'ios' is not one of"):
         Scenario.model_validate(
             {
                 "name": "s",
                 "targets": ["app", "web"],
-                "steps": [
-                    {"target": "app", "group": {"name": "login", "steps": [_step()]}},
-                ],
+                "steps": [{"target": "ios", "group": {"name": "login", "steps": [_step()]}}],
             }
         )
 
@@ -255,8 +278,8 @@ def test_group_allowed_under_one_target() -> None:
 
 
 def test_group_steps_are_checked_under_one_target() -> None:
-    # A `group`'s own inner steps are ordinary steps once `known` has fewer than 2 targets, so the
-    # usual per-step target rule still reaches them.
+    # A `group`'s own inner steps are walked at load time too (BE-0446), so a static reader that
+    # never expands (`bajutsu lint`) still sees the usual per-step target rule.
     with pytest.raises(ValidationError, match="does not match"):
         Scenario.model_validate(
             {
@@ -264,6 +287,30 @@ def test_group_steps_are_checked_under_one_target() -> None:
                 "targets": ["app"],
                 "steps": [
                     {"group": {"name": "login", "steps": [_step(target="other")]}},
+                ],
+            }
+        )
+
+
+def test_group_omitting_target_still_requires_one_on_its_children() -> None:
+    with pytest.raises(ValidationError, match="target is required"):
+        Scenario.model_validate(
+            {
+                "name": "s",
+                "targets": ["app", "web"],
+                "steps": [{"group": {"name": "login", "steps": [_step()]}}],
+            }
+        )
+
+
+def test_group_child_naming_a_different_target_rejected_at_load_time() -> None:
+    with pytest.raises(ValidationError, match="conflicts with the enclosing group's target 'app'"):
+        Scenario.model_validate(
+            {
+                "name": "s",
+                "targets": ["app", "web"],
+                "steps": [
+                    {"target": "app", "group": {"name": "login", "steps": [_step(target="web")]}}
                 ],
             }
         )
@@ -324,11 +371,10 @@ def test_interrupts_recovery_step_inside_web_still_rejects_a_target() -> None:
         )
 
 
-def test_interrupts_recovery_use_still_refused_under_two_targets() -> None:
-    # A `use:` step takes no modifiers, so it cannot carry the `target` two targets require here
-    # just as at the top level.
-    with pytest.raises(ValidationError, match="use: is not yet supported"):
-        _two_targets_with({"steps": [{"use": {"component": "c.yaml", "with": {}}}]})
+def test_interrupts_recovery_use_loads_under_two_targets() -> None:
+    # BE-0446: a recovery `use:` may omit `target`, like any recovery step.
+    s = _two_targets_with({"steps": [{"use": {"component": "c.yaml", "with": {}}}]})
+    assert s.interrupts[0].steps[0].use is not None
 
 
 def test_interrupts_entry_target_rejected_with_no_declared_targets() -> None:

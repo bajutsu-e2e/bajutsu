@@ -688,8 +688,10 @@ def _resolve_rules(rules: list[SystemAlertRule], locale: str) -> list[ResolvedAl
             covered = ", ".join(covered_languages(rule.prompt))
             raise UncoveredSystemAlertLocale(
                 f"systemAlertHandling.rules prompt: {rule.prompt} has no known button labels for "
-                f"locale {locale!r}; covered: {covered}. Add the language to "
-                "bajutsu/common/scenario/system_alerts.py, or pin a locale the table covers"
+                f"locale {locale!r}; covered: {covered}. Answer that prompt with a "
+                "handleSystemAlert step instead, which falls back to the button's position "
+                "(BE-0445), add the language to bajutsu/common/scenario/system_alerts.py, or pin a "
+                "locale the table covers"
             ) from exc
         surfaces = alert_surfaces(rule.prompt)
         resolved.extend(
@@ -1227,6 +1229,7 @@ def _mock_swap_problem(s: Scenario, swaps: list[_MockSwap]) -> str | None:
     blocks = sorted({block for _, block, _ in swaps if block})
     if blocks:
         return f"setMocks nested in {' / '.join(f'{b}:' for b in blocks)}"
+    # `targets[0]` is the primary: a declared `primaryTarget` is validated to equal it (BE-0436).
     primary = s.targets[0] if s.targets else None
     others = sorted({t for _, _, t in swaps if primary and t and t != primary})
     if others:

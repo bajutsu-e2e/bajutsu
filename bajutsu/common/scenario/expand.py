@@ -61,6 +61,77 @@ def _interp_steps(steps: list[Step], bindings: dict[str, str]) -> list[Step]:
     return out
 
 
+def _check_group_position(name: str, body: str | None, group_ctx: str | None) -> None:
+    """Refuse a `group` that expansion reached inside a body or another `group`."""
+    if body is not None:
+        # The load-time nesting rule (`models/scenario/_group_nesting.py`) catches a `group`
+        # written in a body; this is the one a component carries in (BE-0446).
+        raise ValueError(f"group {name!r} must not nest inside {body}")
+    if group_ctx is not None:
+        # A `group` reached while already inside another `group` — directly nested, or arriving
+        # through a `use` call made from inside a `group`. A load-time validator
+        # (`models/scenario/`) catches the directly-nested case statically; this is the only place
+        # that sees the `use`-mediated one, since a `Scenario` as loaded holds no component bodies
+        # to walk.
+        raise ValueError(f"group {name!r} is nested inside group {group_ctx!r}")
+
+
+def _merge_target(
+    caller: str | None, own: str | None, path: tuple[str, ...], what: str
+) -> str | None:
+    """The target a step resolves to under *caller*, refusing one naming another (BE-0446).
+
+    An equal value is accepted — a shared component may name its target so its file stands on
+    its own — but a different one is a guess either way, so it fails at load time instead.
+    """
+    if caller is None or own is None or own == caller:
+        return caller if caller is not None else own
+    raise ValueError(
+        f"{' > '.join((*path, what))}: target {own!r} conflicts with the caller's target {caller!r}"
+    )
+
+
+def _stamp(step: Step, caller: str | None, path: tuple[str, ...]) -> Step:
+    """*step* with *caller*'s target stamped on when it omits its own (BE-0446)."""
+    label = f"step {step.name!r}" if step.name is not None else "step <unnamed step>"
+    target = _merge_target(caller, step.target, path, label)
+    return step if target == step.target else step.model_copy(update={"target": target})
+
+
+def _expand_bodies(
+    step: Step,
+    expand_body: Callable[[list[Step], str, str | None], list[Step]],
+    body_target: str | None,
+) -> dict[str, object]:
+    """The `model_copy` updates that expand every body *step* holds (BE-0446).
+
+    An `if` / `forEach` body carries *body_target* down; a `web:` / `app:` block stops it, since
+    each step there must omit `target` and runs against the block's own device.
+    """
+    updates: dict[str, object] = {}
+    if step.if_ is not None:
+        else_ = step.if_.else_
+        updates["if_"] = step.if_.model_copy(
+            update={
+                "then": expand_body(step.if_.then, "if", body_target),
+                "else_": expand_body(else_, "if", body_target) if else_ is not None else None,
+            }
+        )
+    if step.for_each is not None:
+        updates["for_each"] = step.for_each.model_copy(
+            update={"steps": expand_body(step.for_each.steps, "forEach", body_target)}
+        )
+    if step.web is not None:
+        updates["web"] = step.web.model_copy(
+            update={"steps": expand_body(step.web.steps, "web", None)}
+        )
+    if step.app is not None:
+        updates["app"] = step.app.model_copy(
+            update={"steps": expand_body(step.app.steps, "app", None)}
+        )
+    return updates
+
+
 # The count folds in the nested `expand` recursion, which closes over `max_depth`; the outer body
 # only drives it over each scenario's step lists (BE-0386).
 def expand_components(  # noqa: C901
@@ -71,7 +142,10 @@ def expand_components(  # noqa: C901
     """Replace every `use` step with the referenced component's steps, recursively and in place.
 
     Pure compile-time expansion: a component may itself `use` another, and after this no `use`
-    steps remain, so the run loop is unaffected.
+    steps remain — inside an `if` / `forEach` / `web` / `app` body too — so the run loop is
+    unaffected. A `use:` or `group:` step naming `target` stamps it onto every step it produces
+    that omits its own, down through `if` / `forEach` bodies and nested calls, stopping at a
+    `web:` / `app:` block (BE-0446).
 
     Args:
         scenarios: The scenarios to expand; their `steps`, their `before` / `after` lifecycle
@@ -83,61 +157,98 @@ def expand_components(  # noqa: C901
 
     Raises:
         ValueError: A required param is missing, an unknown param is passed, a `${params.*}` token
-            references an undeclared param, a reference cycle is detected, or nesting exceeds
-            `max_depth`.
+            references an undeclared param, a reference cycle is detected, nesting exceeds
+            `max_depth`, an expanded step names a target other than its caller's, or a `group`
+            lands inside a body or another `group`.
     """
 
     def expand(
         steps: list[Step],
         stack: list[str],
         resolve: Callable[[str], Component],
+        *,
         group_ctx: str | None = None,
         group_id: int | None = None,
+        level_target: str | None = None,
+        body_target: str | None = None,
+        path: tuple[str, ...] = (),
+        body: str | None = None,
     ) -> list[Step]:
+        # *level_target* is the caller target (BE-0446) stamped onto each step of this list;
+        # *body_target* is the one handed to an `if` / `forEach` body below it. The two differ only
+        # among a target group's direct children, whose bodies keep the enclosing caller's target
+        # rather than the group's (BE-0437 leaves a body a fresh scope). *path* names the chain a
+        # caller target came through, for the conflict error; *body* names the `if` / `forEach` /
+        # `web` / `app` body this list sits in, if any.
         if len(stack) > max_depth:
             raise ValueError(f"component nesting too deep (>{max_depth}): {' -> '.join(stack)}")
         out: list[Step] = []
         for st in steps:
             if st.group is not None:
-                if group_ctx is not None:
-                    # A `group` reached while already inside another `group` — directly nested, or
-                    # arriving through a `use` call made from inside a `group`. A load-time
-                    # validator (`models/scenario/`) catches the directly-nested case statically;
-                    # this is the only place that sees the `use`-mediated one, since a `Scenario`
-                    # as loaded holds no component bodies to walk.
-                    raise ValueError(
-                        f"group {st.group.name!r} is nested inside group {group_ctx!r}"
-                    )
-                new_id = next(_group_id_counter)
+                _check_group_position(st.group.name, body, group_ctx)
+                label = f"group: {st.group.name!r}"
+                target = _merge_target(level_target, st.target, path, label)
                 out.extend(
-                    expand(st.group.steps, stack, resolve, group_ctx=st.group.name, group_id=new_id)
+                    expand(
+                        st.group.steps,
+                        stack,
+                        resolve,
+                        group_ctx=st.group.name,
+                        group_id=next(_group_id_counter),
+                        level_target=target,
+                        body_target=target,
+                        path=(*path, label) if target is not None else path,
+                    )
                 )
                 continue
             if st.steps is not None:
                 # A target group (BE-0437) a component's own steps carry is never flattened at
                 # `Component`-parse time the way a `Scenario`'s own top-level group already is —
                 # `Component` carries no such validator — so it can still hold an unexpanded
-                # `use:` by the time it lands here. Expand its own children first (so a `use:`
-                # inside it resolves the same as one anywhere else, and a `group:` nested inside
-                # it still inherits this call's own `group_ctx` / `group_id` when the target group
-                # itself sits inside a `group:`), then stamp the group's target onto whichever
-                # ones `Step`'s own validator left blank.
+                # `use:` by the time it lands here. Its target becomes the caller target of its
+                # direct children, a nested `use:` included, so a step that expansion produces
+                # there naming another target fails instead of silently keeping it.
+                if body in ("web", "app"):
+                    raise ValueError(
+                        "a target group is not allowed nested inside a web: or app: block — every "
+                        "step there already runs against the block's own device"
+                    )
+                label = f"target group {st.target!r}"
+                target = _merge_target(level_target, st.target, path, label)
                 out.extend(
-                    child
-                    if child.target is not None
-                    else child.model_copy(update={"target": st.target})
-                    for child in expand(
-                        st.steps, stack, resolve, group_ctx=group_ctx, group_id=group_id
+                    expand(
+                        st.steps,
+                        stack,
+                        resolve,
+                        group_ctx=group_ctx,
+                        group_id=group_id,
+                        level_target=target,
+                        body_target=body_target,
+                        path=(*path, label),
+                        body=body,
                     )
                 )
                 continue
             if st.use is None:
-                tagged = (
-                    st.model_copy(update={"report_group": group_ctx, "report_group_id": group_id})
-                    if group_ctx is not None
-                    else st
+                stamped = _stamp(st, level_target, path)
+                updates = _expand_bodies(
+                    stamped,
+                    # An `if` / `forEach` nested in a `web:` / `app:` block keeps naming that block,
+                    # so a target group anywhere inside it is refused as the load-time pass does.
+                    lambda sub, kind, t: expand(
+                        sub,
+                        stack,
+                        resolve,
+                        level_target=t,
+                        body_target=t,
+                        path=path,
+                        body=body if body in ("web", "app") else kind,
+                    ),
+                    body_target,
                 )
-                out.append(tagged)
+                if group_ctx is not None:
+                    updates |= {"report_group": group_ctx, "report_group_id": group_id}
+                out.append(stamped.model_copy(update=updates) if updates else stamped)
                 continue
             ref = st.use.component
             if ref in stack:
@@ -160,10 +271,23 @@ def expand_components(  # noqa: C901
             # (BE-0422). Still this same recursion, so `stack` and `max_depth` keep accounting for
             # the whole chain and a real cycle raises cleanly instead of blowing the Python stack.
             nested = resolve.scope_for(ref) if isinstance(resolve, ScopedResolve) else resolve
+            label = f"use: {ref}"
+            target = _merge_target(level_target, st.target, path, label)
             # `group_ctx` / `group_id` carry forward unchanged, so a `use` called from inside a
-            # `group` tags every step the component expands to with that same group.
+            # `group` tags every step the component expands to with that same group; `body` does
+            # too, since the component's steps land in the same body the `use` step sat in.
             out.extend(
-                expand(substituted, [*stack, ref], nested, group_ctx=group_ctx, group_id=group_id)
+                expand(
+                    substituted,
+                    [*stack, ref],
+                    nested,
+                    group_ctx=group_ctx,
+                    group_id=group_id,
+                    level_target=target,
+                    body_target=target,
+                    path=(*path, label),
+                    body=body,
+                )
             )
         return out
 

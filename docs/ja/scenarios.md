@@ -298,7 +298,9 @@ BE-0401 と BE-0406 は下記のキーをエイリアスなしで削除しまし
 
 `prompt` は `notifications`、`tracking`、`paste` のいずれかで、`choice` は `grant` か `deny` です。ガード自身の `rules` は、このステップが取れない 4 つ目のプロンプト `savePassword` も取ります。ステップのほうは解析時にこれを拒否します（上記の[面の一覧](#複数のプロンプトに違う答えを返す-rules)を参照）。ボタンを意味で指定するため、同じファイルが `en_US` でも `ja_JP` でもプロンプトを許可します。どちらの言語のテキストも作者が書き写す必要はありません。これは英語だけを使う場合にも役立ちます。英語の拒否ボタンのアポストロフィは、手で打った label が持つ ASCII 文字ではなく、活字体のアポストロフィ（`Don’t Allow`、`Don’t Allow Paste`）だからです。
 
-この対応表がまだ扱っていない言語（現時点では英語と日本語のみ）の locale を指定した場合、推測した label を tap するのではなく、扱える言語を名指ししてステップが明示的に失敗します。ほかのアラートは、これまでどおり `sel` でボタンを指定します。
+label の対応表が扱う言語は英語と日本語です。それ以外の言語では、ステップはボタンの位置で答えます（[BE-0445](../../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer-ja.md)）。3 つのプロンプトのどれでも、SpringBoard は拒否側のボタンを 1 番目に、許可側のボタンを 2 番目に並べます。この並びは、英語と日本語では iOS 18.6 と 26.5 で、アラビア語では 26.5 で、各ボタンを実際に押してアプリに残る許可状態を読み取って確かめたものです。ここでいう並びは SpringBoard が報告する順序で、画面上の左右ではありません。アラビア語では通知プロンプトの拒否側のボタンが右側に描かれますが、報告される順序ではやはり 1 番目です。したがって `choice: grant` は 2 つのうち 2 番目のボタンを、`choice: deny` は 1 番目のボタンを押します。ボタンの数が 2 つでないアラートには、この規則は何も指しません。その場合ステップはタイムアウトまで待ち、見えたボタンを挙げて失敗します。規則を測っていないアラートで、位置だけを頼りに押すわけにはいかないからです。この規則が指すのはボタンで、プロンプトではありません。SpringBoard のタイトルとメッセージも言語ごとに訳されるので、言語が変わっても 2 ボタンのプロンプト同士を見分けられる手がかりはありません。ステップが待っているあいだに出た 2 ボタンの SpringBoard アラートは、どれも位置で答えられます。ステップは、プロンプトを出す操作の直後に置いてください。locale を持たない呼び出し（`record` の再生）も同じ規則で答えます。ステップのレポート行には、押したボタンと、それを選んだ規則（`sel`、`label table: <locale>`、`position: button 2 of 2` のいずれか）が出ます。ほかのアラートは、これまでどおり `sel` でボタンを指定します。
+
+位置の規則を使うのはこのステップだけです。`systemAlertHandling.rules` の規則は、宣言したどのプロンプトが画面に出ているかを先に見分ける必要があり、位置からはそれを見分けられません。そのため対応表にない言語では、ガードの規則はこれまでどおり、デバイスを操作する前に扱える言語を名指ししてシナリオを失敗させます。
 
 使う前に知っておきたい制限が 2 つあります。
 
@@ -520,7 +522,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `back` | `back: {}` | 1 階層戻ります。各バックエンドがプラットフォームに合った手段（Android のシステム戻るキー、iOS の OS 提供の戻るボタン、web の履歴）を使います（[BE-0210](../../roadmaps/BE-0210-android-actuation-fidelity/BE-0210-android-actuation-fidelity-ja.md)） |
 | `pinch` | `pinch: { sel: <Selector>, scale: <num> }` | 2 本指の拡縮。`scale > 0`（`>1` で拡大, `<1` で縮小） |
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | 2 本指の回転。`>0` で時計回り |
-| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | iOS SpringBoard の権限プロンプトのボタンを決定的に tap する（[下記](#handlesystemalert決定的なシステムアラートステップ)）。iOS（XCUITest）専用。`sel` は `label` / `labelMatches` / `index` のみ受け付け、run が Simulator を固定するシステム言語に対して解決する。`sel` の代わりに `prompt: notifications\|tracking\|paste` と `choice: grant\|deny` を指定すると、ボタンを意味で指定でき、run がその label を解決する（BE-0320） |
+| `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | iOS SpringBoard の権限プロンプトのボタンを決定的に tap する（[下記](#handlesystemalert決定的なシステムアラートステップ)）。iOS（XCUITest）専用。`sel` は `label` / `labelMatches` / `index` のみ受け付け、run が Simulator を固定するシステム言語に対して解決する。`sel` の代わりに `prompt: notifications\|tracking\|paste` と `choice: grant\|deny` を指定すると、ボタンを意味で指定でき、run がその label を解決する（BE-0320）。label の対応表にない言語では、ボタンの位置で解決する（BE-0445） |
 | `wait` | `wait: { for\|until: ..., timeout: <sec> }` | 条件待機（下記） |
 | `assert` | `assert: [ <Assertion>... ]` | ステップ途中の中間検証 |
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | アプリを terminate + 再起動し（launch env/args を再適用し、指定分で上書き）、ready まで待つ |
@@ -539,11 +541,11 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `setMocks` | `setMocks: [ { match, respond }... ]` | アプリ内制御チャネルを通して、シナリオの途中でアプリのスタブテーブル全体を置き換える（[後述](#シナリオの途中でモックを変えるsetmocks)）。`[]` はすべてのスタブを外す。iOS（XCUITest）かつネットワーク収集が有効な場合のみ（[BE-0365](../../roadmaps/BE-0365-in-app-control-channel/BE-0365-in-app-control-channel-ja.md)） |
 | `overrideStatusBar` | `overrideStatusBar: { time?, batteryLevel?, batteryState?, cellularBars?, wifiBars? }` | 決定的なスクリーンショットのためステータスバーを上書きする |
 | `clearStatusBar` | `clearStatusBar: {}` | ステータスバーの上書きを解除する（ライブ表示に戻す） |
-| `use` | `use: { component: <file>, with?: {...} }` | 再利用コンポーネントの steps を展開する。コンパイル時マクロ（[再利用](#再利用とデータ駆動とタグ)）。**修飾子を取らない**：`capture` / `extract` / `name` / `from` / `target` はいずれも拒否される |
+| `use` | `use: { component: <file>, with?: {...} }` | 再利用コンポーネントの steps を展開する。コンパイル時マクロ（[再利用](#再利用とデータ駆動とタグ)）。**取れる修飾子は `target` だけ**：`capture` / `extract` / `name` / `from` は拒否され、`target` は展開後の全ステップに刻印される（[複数ターゲット](#複数ターゲットシナリオでのコンポーネント)） |
 | `group` | `group: { name: <str>, steps: [...] }` | 連続するステップに名前を付ける。コンパイル時マクロで、report.html では折りたたんで表示する（[後述](#ステップのグループ化group--reporthtmlで折りたたむ)） |
 | `web` | `web: { within: <Selector>, steps: [...] }` | WebView の DOM コンテキストに入ります。`within` がホストの `WKWebView` をネイティブに解決し、入れ子の `steps` はネイティブツリーではなく正規化された DOM を対象にします（[後述](#webwebview-の-dom-コンテキストに入る)） |
 
-修飾子（`use` ステップには付きません。上表のとおり修飾子を取りません）:
+修飾子（`use` ステップに付けられるのは `target` だけです。上表を参照）:
 
 - `capture: [<token>...]`：このステップだけの証跡（[evidence](evidence.md#b-インライン証跡)）。
 - `name: <str>`：ステップ ID（証跡の出力先ディレクトリ名やレポート表示に使う）。省略時は `step<i>`。
@@ -1084,11 +1086,6 @@ run へ広げるのは、別の作業です。
 
 ### 制限
 
-このアイテムには、まだ解決していない未決問題が1つあります。推測せず拒む形にしてあります。
-シナリオが2つ以上のターゲットを宣言すると、`use:` ステップは頭から拒まれます。
-[`interrupts`](#interrupts予測できない差し込み画面への対処) エントリの `steps` にある `use:` ステップも同じです。
-`use` ステップは修飾子を取らないため、各ステップに必要な `target` を持てません。
-
 `Assertion.target` は `Step.target` より狭い規則に従います。トップレベルの `expect` エントリだけが、
 これを設定できます。ステップのインラインの `assert:` リストを通して届くアサーションは、囲んでいる
 ステップ自身の `target` によって、すでにターゲットが決まっています。`if` の `condition` を通して届く
@@ -1325,9 +1322,9 @@ expect:
 
 ### コンポーネント（`use` → 再利用ステップ）
 
-**コンポーネント**は、`params` のリストと、それを `${params.<name>}` で参照する `steps` のリストからなります。`use` ステップが `with` で params を束縛して呼び出します。`use` は **コンパイル時マクロ**であり、`expand_components`（`scenario/expand.py`）が run の前に、コンポーネントの置換済みステップへ置き換えます。展開は再帰的で、コンポーネントが別のコンポーネントを `use` でき、深さは 25 までです。params 不足、未知の params、未宣言を指す残留 `${params.*}`、循環参照ではエラーになります。`use` は run に残らないため、決定性には影響しません。展開の対象は、シナリオ自身の `steps` と、[`interrupts`](#interrupts予測できない差し込み画面への対処) の各エントリの回復用 `steps` です。
+**コンポーネント**は、`params` のリストと、それを `${params.<name>}` で参照する `steps` のリストからなります。`use` ステップが `with` で params を束縛して呼び出します。`use` は **コンパイル時マクロ**であり、`expand_components`（`scenario/expand.py`）が run の前に、コンポーネントの置換済みステップへ置き換えます。展開は再帰的で、コンポーネントが別のコンポーネントを `use` でき、深さは 25 までです。params 不足、未知の params、未宣言を指す残留 `${params.*}`、循環参照ではエラーになります。`use` は run に残らないため、決定性には影響しません。展開の対象は、シナリオ自身の `steps` と、[`interrupts`](#interrupts予測できない差し込み画面への対処) の各エントリの回復用 `steps` です。その中にある `if` / `else` の分岐、`forEach` の本体、`web:` / `app:` ブロックにも展開は及ぶので、そこに書いた `use` もロード時に展開されます。run が一度も通らない分岐にある壊れた `use` も、ロードを失敗させます。
 
-`use` ステップは修飾子を取りません。`capture` / `extract` / `name` / `from` / `target` を併記した `use` ステップは、ローダーが拒否します。展開はステップ全体を置き換えるので、拒否しなければこれらのフィールドは警告なく失われます。
+`use` ステップが取れる修飾子は `target` だけです。`capture` / `extract` / `name` / `from` を併記した `use` ステップは、ローダーが拒否します。展開はステップ全体を置き換えるので、拒否しなければこれらのフィールドは警告なく失われます。`target` については、展開が捨てずに引き継ぎます。その規則は[後述の複数ターゲットの節](#複数ターゲットシナリオでのコンポーネント)で説明します。
 
 コンポーネントは**専用のファイル**に置けます。スイート全体から再利用できます。
 
@@ -1385,6 +1382,66 @@ scenarios:
 
 `setup` プレリュードもシナリオファイルと同じ形をした文書なので、自分の `components:` を持てます。プレリュードの `use` ステップは、steps が前置される前に、プレリュード自身のスコープで展開されます。呼び出す側のシナリオファイルに同じ名前のエントリがあっても、そちらへ横取りされません。プレリュードの中のパス参照も、呼び出す側ではなくプレリュード自身のディレクトリを基準に解決します。
 
+#### 複数ターゲットシナリオでのコンポーネント
+
+2つ以上の[ターゲット](#targets--target複数ターゲットシナリオbe-0428)を宣言したシナリオでも、
+コンポーネントは同じように呼び出せます（[BE-0446](../../roadmaps/BE-0446-multi-target-use-components/BE-0446-multi-target-use-components-ja.md)）。
+展開後の各ステップにはターゲットが必要で、次の2つのどちらかから受け取ります。
+
+| 呼び出し側（`use:` ステップ） | 展開後のステップが `target` を省略 | 展開後のステップが `target` を指定 |
+|---|---|---|
+| `target: X` を指定 | `X` が刻印されます | `X` と等しければ受け入れ、異なればロード時に拒否します |
+| `target` を省略 | 同じ位置に手書きしたステップと同じく解決します。`primaryTarget` があればそれに、なければロード時エラーになります | 書かれたまま残し、宣言済みターゲットと照合します |
+
+1行目は、単一ターゲット向けのコンポーネントに向いています。たとえば、呼び出し元のデバイスを
+問わないサインイン処理です。2行目は、ターゲット横断のコンポーネントに向いています。
+コンポーネント自身が、各ステップをシナリオのターゲットへ振り分けます。
+
+```yaml
+components:
+  web-sign-in:
+    params: [email]
+    steps:
+      - tap: { id: onboarding.start }
+      - type: { text: "${params.email}", into: { id: auth.email } }
+      - tap: { id: auth.submit }
+  like-and-verify:
+    steps:
+      - target: showcase-swiftui
+        tap: { id: horse.favorite }
+      - target: web
+        wait: { for: { id: favorites.updated }, timeout: 5 }
+
+scenarios:
+  - name: web でサインインし、アプリでいいねする
+    targets: [showcase-swiftui, web]
+    steps:
+      # 呼び出し側がターゲットを決める。`web-sign-in` の全ステップが `web` で動く
+      - use: { component: web-sign-in, with: { email: a@b.com } }
+        target: web
+      # コンポーネント自身が、両ターゲットへステップを振り分ける
+      - use: { component: like-and-verify }
+```
+
+ターゲットが食い違うと、どちらかを優先させずにロードを失敗させます。コンポーネントの指定を上書きすると、
+作者が想定していないデバイスへステップを送ることになります。コンポーネントを優先すると、
+呼び出し側の指定が気付かれないまま破られます。エラーは、コンポーネントの連鎖とステップを名指しします。
+
+```text
+use: web-sign-in > step 'submit': target 'showcase-swiftui' conflicts with the caller's target 'web'
+```
+
+呼び出し側のターゲットは、展開で生じるすべてのステップへ、深さを問わず届きます。`if` / `else` の分岐、
+`forEach` の本体、入れ子の `use` 呼び出しにも降りていきます。`web:` / `app:` ブロックでは止まります。
+ブロック自体はターゲットを受け取り、その内側のステップは引き続き `target` を省略します。
+コンポーネントはターゲットを param で受け取ることもできます（`target: ${params.device}`）。
+param の置換は、どのターゲット検査よりも先に走るからです。
+[ターゲットグループ](#ターゲットグループ連続するステップに対してターゲットを1回だけ書くbe-0437)の中の
+`use` ステップは、グループのターゲットを呼び出し側のターゲットとして受け取ります。
+
+`interrupts` エントリの回復用 `use` も同じ表に従いますが、1点だけ異なります。展開後の回復ステップが
+`target` を省略した場合、そのステップは割り込みを検知したランナーの上に残り、`primaryTarget` には解決されません。
+
 ### ステップのグループ化（`group:` → report.htmlで折りたたむ）
 
 `group` ステップは、連続するステップに名前を付けます。`expand_components` は `use` ステップと同じ
@@ -1414,9 +1471,12 @@ report内で複数の折りたたみに分かれることがあります。そ�
 
 `group:` は入れ子にできません。別の `group:` の `steps:` の中に書いた `group:` は、ロード時に
 失敗します。`if` / `forEach` / `web` / `app` の入れ子の `steps:` の中に書いた場合も同様です。
+コンポーネントが `use` 経由でそこへ持ち込んだ `group:` も、同じく失敗します。
+
 [`targets`](#targets--target複数ターゲットシナリオbe-0428) を2つ以上宣言したシナリオでは、
-`group:` も使えません。理由は `use:` と同じです。展開がステップ自身の `target` を捨ててしまい、
-グループの `target` が何も決めなくなるからです。
+`group:` ステップの `target` は `use:` ステップと同じ働きをします。展開はその値を、グループが生む
+すべてのステップへ刻印します。深さと食い違いの規則も[同じ](#複数ターゲットシナリオでのコンポーネント)です。
+`target` を省略した `group:` ステップでは、各子ステップが手書きのステップと同じように解決します。
 
 ### データ駆動シナリオ（`data` / `dataFile`）
 
@@ -1533,7 +1593,7 @@ PyYAML（YAML 1.1）は `on`/`off`/`yes`/`no` を真偽値に解決します。`
 
 ## `from`（来歴）
 
-`from:` は、**ある構成要素がどの自然言語フレーズから記録されたか**を残します（BE-0044）。任意の文字列で、シナリオ（元のゴール）、`use` を除く各ステップ（`use` は修飾子を取りません）、各 `expect` アサーション、各 `capturePolicy` ルールという 4 つのレベルに付きます。これにより、レビュアーは各部分が*なぜ*存在するのかを見て、`record` が意図を忠実に正規化できているかを判断できます。
+`from:` は、**ある構成要素がどの自然言語フレーズから記録されたか**を残します（BE-0044）。任意の文字列で、シナリオ（元のゴール）、`use` を除く各ステップ、各 `expect` アサーション、各 `capturePolicy` ルールという 4 つのレベルに付きます。`use` ステップが取れる修飾子は `target` だけなので、`from:` は付きません。これにより、レビュアーは各部分が*なぜ*存在するのかを見て、`record` が意図を忠実に正規化できているかを判断できます。
 
 ```yaml
 - name: 設定を開いて再生成する

@@ -232,11 +232,13 @@ class Step(_Model):
 
     @model_validator(mode="after")
     def _no_modifiers_on_use(self) -> Self:
+        # `target` is the one exception: expansion stamps it onto every step the component
+        # produces instead of dropping it (BE-0446).
         if self.use is not None:
             present = [
                 (field.alias or name)
                 for name, field in type(self).model_fields.items()
-                if name in _MODIFIERS and getattr(self, name) is not None
+                if name in _MODIFIERS and name != "target" and getattr(self, name) is not None
             ]
             if present:
                 raise ValueError(

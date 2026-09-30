@@ -19,6 +19,34 @@ def test_valid_scenario_passes() -> None:
     assert errors == []
 
 
+def test_multi_target_use_and_group_carrying_target_pass() -> None:
+    # BE-0446: lint parses the unexpanded file, so it now sees a `use:` / `group:` step naming a
+    # target under two declared targets — and must accept it rather than the old refusal.
+    text = (
+        "- name: a\n  targets: [app, web]\n  steps:\n"
+        "    - use: { component: login.yaml }\n      target: web\n"
+        "    - group: { name: g, steps: [{ tap: { id: ok } }] }\n      target: app\n"
+    )
+    assert lint_text(text) == []
+
+
+def test_a_bad_target_inside_a_group_is_still_linted() -> None:
+    # Lint never expands, so a `group`'s children must be checked on the unexpanded file.
+    text = (
+        "- name: a\n  targets: [app]\n  steps:\n"
+        "    - group: { name: g, steps: [{ tap: { id: ok }, target: ios }] }\n"
+    )
+    assert any("does not match" in e for e in lint_text(text))
+
+
+def test_multi_target_use_naming_an_undeclared_target_fails() -> None:
+    text = (
+        "- name: a\n  targets: [app, web]\n  steps:\n"
+        "    - use: { component: login.yaml }\n      target: ios\n"
+    )
+    assert any("target 'ios' is not one of" in e for e in lint_text(text))
+
+
 def test_provenance_coverage_counts_steps_with_from() -> None:
     # Advisory only (BE-0044): how many top-level steps carry `from:`.
     text = (

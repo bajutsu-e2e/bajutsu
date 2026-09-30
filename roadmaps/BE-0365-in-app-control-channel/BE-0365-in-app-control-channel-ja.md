@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0365") |
-| 実装 PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699)（単位 1）、[#1788](https://github.com/bajutsu-e2e/bajutsu/pull/1788)（単位 2）、[#1916](https://github.com/bajutsu-e2e/bajutsu/pull/1916)（単位 3）、[#1922](https://github.com/bajutsu-e2e/bajutsu/pull/1922)（単位 3 の追補）、[#2088](https://github.com/bajutsu-e2e/bajutsu/pull/2088)（単位 4） |
+| 実装 PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699)（単位 1）、[#1788](https://github.com/bajutsu-e2e/bajutsu/pull/1788)（単位 2）、[#1916](https://github.com/bajutsu-e2e/bajutsu/pull/1916)（単位 3）、[#1922](https://github.com/bajutsu-e2e/bajutsu/pull/1922)（単位 3 の追補）、[#2088](https://github.com/bajutsu-e2e/bajutsu/pull/2088)（単位 4）、[#2092](https://github.com/bajutsu-e2e/bajutsu/pull/2092)（単位 4 の追補） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0364](../BE-0364-in-app-control-channel/BE-0364-in-app-control-channel-ja.md) |
 <!-- /BE-METADATA -->
@@ -230,6 +230,12 @@ bajutsu が走っているアプリへコマンドを届ける経路であり、
   設定の読み込み時に拒否します。BajutsuKit はスタブ表をロックで保護し、届いた表に書かれたとおり適用
   できないルールが 1 つでもあれば、表全体を拒否します。すべての要求に一致するスタブや決して一致しない
   スタブを、適用済みとして応答することはありません。
+
+- [#2092](https://github.com/bajutsu-e2e/bajutsu/pull/2092)：単位 4 の追補です。BajutsuKit の
+  `replace(with:)` は、`rules` ゲッターと同じく `defer` でスタブ表のロックを解放するようになりました。
+  今後、ロックの内側に早期リターンを加えても、スタブ表がロックされたまま残ることはありません。
+  あわせて `_mock_swap_problem` に、`targets[0]` をプライマリとみなせる理由をコメントで残しました。
+  BE-0436 は、先頭以外の要素を指す `primaryTarget` を拒否します。
 
 ## 参考
 

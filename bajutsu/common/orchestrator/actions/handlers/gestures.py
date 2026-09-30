@@ -11,7 +11,7 @@ from bajutsu.common.orchestrator.actions.handlers._gesture_math import _scroll_g
 from bajutsu.common.orchestrator.actions.handlers.scroll import scroll_until_tappable
 from bajutsu.common.orchestrator.types import RealClock
 from bajutsu.common.orchestrator.waits import wait_for_system_alert
-from bajutsu.common.scenario import Step
+from bajutsu.common.scenario import Step, SystemAlertRole
 
 # The recovery scroll's step bound: small, well under `scroll`'s own default of 15, for the first
 # direction tried below. A later direction gets a multiple of this bound, since it must first undo
@@ -283,23 +283,30 @@ def _do_rotate(driver: base.Driver, step: Step, _r: object, _c: object, _b: obje
     driver.rotate(step.rotate.sel.as_selector(), step.rotate.radians)
 
 
-def handle_system_alert_selector(step: Step) -> base.Selector:
-    """The button selector a `handleSystemAlert` step names, for whoever runs its wait.
+def handle_system_alert_selector(step: Step) -> base.Selector | SystemAlertRole:
+    """The button a `handleSystemAlert` step names, for whoever runs its wait.
+
+    A selector where the step carries one, or where the run's locale resolved `prompt`/`choice`
+    through the label table (BE-0320). Otherwise the prompt's position rule (BE-0445), which names
+    the button on the live alert without knowing the language it is drawn in — the case of a locale
+    the table does not cover, and of a caller that supplies no locale at all (`record`'s replay).
 
     Raises:
-        base.UnsupportedAction: the step carries the `prompt`/`choice` form, which is resolved
-            against the run's locale before dispatch (BE-0320). Reaching here means a caller ran the
-            step without that resolution (`record`'s replay), and the label it needs is unknowable
-            from the step alone — fail loudly rather than skip a tap.
+        base.UnsupportedAction: the step carries the `prompt`/`choice` form for a prompt with no
+            position rule, and no locale resolved it — the label it needs is unknowable from the
+            step alone, so fail loudly rather than skip a tap.
     """
-    assert step.handle_system_alert is not None
-    sel = step.handle_system_alert.sel
-    if sel is None:
+    hsa = step.handle_system_alert
+    assert hsa is not None
+    if hsa.sel is not None:
+        return hsa.sel.as_selector()
+    role = hsa.role()
+    if role is None:
         raise base.UnsupportedAction(
             "handleSystemAlert prompt/choice needs the run's locale to resolve its button label; "
             "this caller does not supply one — name the button with sel.label instead (BE-0320)"
         )
-    return sel.as_selector()
+    return role
 
 
 @_handler("handle_system_alert")

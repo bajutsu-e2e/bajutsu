@@ -129,10 +129,15 @@ means the same thing after the run that produced it exits
   re-check, where the system-alert guard can actuate with no step to attribute it to. From
   `schemaVersion` 7 a record may also carry `substitution`, naming why the element actuated is not
   the one the driver's default rule would have named; an older run carries none, which reads the
-  same way as its absence today. From `schemaVersion` 12 a record also carries `at`, the absolute
+  same way as its absence today. From `schemaVersion` 13 a record also carries `at`, the absolute
   instant the driver sent it, on the same footing as `started_at`. A viewer subtracts
   `video_anchor_s` from it the same way. An older run carries no `at`, and a viewer then falls back to
   the step's `started_at`.
+- `steps[].system_alert`: for a `handleSystemAlert` step, the button it tapped (`label`) and the rule
+  that chose it (`rule`: `sel`, `label table: <locale>`, or `position: button 2 of 2`), so a run under
+  a language the label table does not cover still shows what was tapped and why
+  ([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)).
+  Absent on every other action, and on every run recorded before `schemaVersion` 12.
 - `network.json`'s `startedAt` (one file per scenario, not shown in the manifest above): each
   observed exchange's absolute start, on the same footing as `steps[].started_at` and derived
   through the same scenario anchor, so a viewer subtracts `video_anchor_s` from both — see
@@ -145,7 +150,7 @@ means the same thing after the run that produced it exits
   `configSource` (`{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed).
   It groups accumulated runs by identity, so a verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. Pure metadata — it never enters
-  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `12` today.)
+  `ok`. (`schemaVersion` is `3` or higher once this block can appear — it is `13` today.)
 - `target` (top, optional): the target the run ran, so "the Android target passes while the iOS
   target fails" is computable from stored data ([BE-0404](../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer.md)).
   One run resolves one target, so it sits beside `backend` rather than on each scenario. `serve`
@@ -337,7 +342,7 @@ target. The screen then changes up to seconds later. A highlight switched at `st
 lead the picture by that whole lead-in. Some rows carry no actuation instant:
 
 - a step that never actuates, such as `wait` or `assert`
-- every step of a run recorded before `schemaVersion` 12
+- every step of a run recorded before `schemaVersion` 13
 
 Such a row switches at its `at` column instead. The report reads the playhead on every presented
 frame, not merely on the coarse `timeupdate` event. The scrubber marks where inside each step's bar

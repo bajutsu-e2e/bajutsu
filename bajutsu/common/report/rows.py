@@ -254,6 +254,11 @@ def _step_run_row(
         "actuations": _actuation_rows(out.actuations, out.started_at),
         "dropped_actuations": out.dropped_actuations,
         "generated": out.generated,
+        "system_alert": (
+            {"label": out.system_alert.label, "rule": out.system_alert.rule}
+            if out.system_alert is not None
+            else None
+        ),
         "group": group,
         "group_id": group_id,
     }

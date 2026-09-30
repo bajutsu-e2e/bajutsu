@@ -129,7 +129,8 @@ def _check_target(
     # Returns the primary an omitted *target* resolved to under two or more declared targets
     # (BE-0436), else None. `required=False` additionally lets an omitted value through with no
     # such resolution — used only where no step-level fallback applies (BE-0438's `interrupts`
-    # entries and their recovery steps); a named one is still checked either way.
+    # entries and their recovery steps, and a `use:` / `group:` step whose expansion resolves
+    # instead, BE-0446); a named one is still checked either way.
     n = len(known)
     if n >= 2:
         if target is None:
@@ -172,8 +173,16 @@ def _check_primary_target(scenario: Scenario) -> None:
 
 
 def _check_step_target(
-    step: Step, *, known: set[str], mode: _StepTargetMode, default: str | None
+    step: Step,
+    *,
+    known: set[str],
+    mode: _StepTargetMode,
+    default: str | None,
+    caller: str | None = None,
 ) -> None:
+    # *caller* is an enclosing `group:` step's own `target`, which expansion will stamp onto this
+    # step when it omits one (BE-0446): the step then needs no target of its own, and one it names
+    # must agree.
     context = f"step {_step_label(step)}"
     if mode == "forbidden":
         if step.target is not None:
@@ -183,24 +192,20 @@ def _check_step_target(
             )
         step.resolve_target(None)
         return
-    if step.use is not None and len(known) >= 2:
-        # `expand_components` replaces this step wholesale with the component's own steps, so
-        # `Step` refuses a `target` on it — yet two or more targets make one required. Refused
-        # until a later BE-0428 unit decides whether/how `target` propagates into an expansion.
-        raise ValueError(
-            f"{context}: use: is not yet supported when the scenario declares "
-            f"{len(known)} targets — a use: step cannot carry the target they require"
-        )
-    if step.group is not None and len(known) >= 2:
-        # `expand_components` replaces this step wholesale with the group's own steps too, but
-        # `Step` does not refuse `target` on a `group:` step the way it now does on `use:` — a
-        # `group` still discards it silently at expansion time, rather than the required field it
-        # looks like. Refused until a later BE-0428 unit decides whether/how `target` propagates
-        # into an expansion.
-        raise ValueError(
-            f"{context}: group: is not yet supported when the scenario declares "
-            f"{len(known)} targets — its own target would be discarded by expansion"
-        )
+    if step.use is not None or step.group is not None:
+        # `expand_components` replaces this step with the steps it produces and stamps its own
+        # `target` onto each one that omits it (BE-0446), so only membership is checked here. An
+        # omitted one resolves nothing: the expanded steps resolve for themselves, at the
+        # post-expansion pass.
+        _check_target(step.target, known=known, context=context, required=False)
+        _check_caller_agrees(step.target, caller, context=context)
+        step.resolve_target(None)
+        return
+    if caller is not None:
+        _check_target(step.target, known=known, context=context, required=False)
+        _check_caller_agrees(step.target, caller, context=context)
+        step.resolve_target(None)
+        return
     # Assigned even when None: a step copied from a scenario that resolved it (`apply_setups`'s
     # deep-copied prelude) must not keep that scenario's primary. A recovery step (`mode ==
     # "optional"`) never resolves through `primaryTarget` — an omitted one stays on the runner
@@ -215,6 +220,16 @@ def _check_step_target(
             required=mode == "required",
         )
     )
+
+
+def _check_caller_agrees(target: str | None, caller: str | None, *, context: str) -> None:
+    # The same equal-accepted, different-refused rule `expand_components` applies to what it
+    # stamps (BE-0446), raised here too so a static reader that never expands (`bajutsu lint`, the
+    # serve editor) still sees it.
+    if caller is not None and target is not None and target != caller:
+        raise ValueError(
+            f"{context}: target {target!r} conflicts with the enclosing group's target {caller!r}"
+        )
 
 
 def _reject_assertion_target(a: Assertion, *, context: str) -> None:
@@ -243,10 +258,11 @@ def _check_target_requirements(scenario: Scenario) -> None:  # noqa: C901
     `if`/`forEach` step's), but one it does set must still name a declared target. An `Assertion`
     reached through an inline `assert:` list, an `if`'s `condition`, or an `interrupts` entry's
     `condition` must never set `target` — only one reached through the scenario's top-level
-    `expect` block may. Two open questions this item has not yet resolved fail closed instead of
-    guessing: a `use:` step (it takes no modifiers, so it cannot carry the `target` two targets
-    require) and a `group:` step (its own `target` would be discarded by expansion) are both
-    refused outright once the scenario declares two or more targets.
+    `expect` block may. A `use:` or `group:` step is checked only for membership, never required
+    or resolved: expansion replaces it with the steps it produces, stamping its `target` onto them,
+    and the pass `expand_components` runs afterwards holds each of those to the rule above
+    (BE-0446). A `group:` step's own `steps` are walked with its `target` as their caller: a
+    child omitting `target` needs none of its own, and one naming a different target is refused.
 
     A scenario that sets `primaryTarget` (which must be `targets[0]`) lifts the two-or-more
     requirement (BE-0436): a step or top-level `expect` entry that omits `target` runs against the
@@ -262,9 +278,11 @@ def _check_target_requirements(scenario: Scenario) -> None:  # noqa: C901
     _check_primary_target(scenario)
     default = scenario.primary_target
 
-    def walk_steps(steps: list[Step], *, mode: _StepTargetMode) -> None:
+    def walk_steps(steps: list[Step], *, mode: _StepTargetMode, caller: str | None = None) -> None:
+        # *caller* reaches through `if` / `forEach` bodies the way expansion's stamp does, and a
+        # `web:` / `app:` block drops it, whose steps must omit `target` anyway (BE-0446).
         for step in steps:
-            _check_step_target(step, known=known, mode=mode, default=default)
+            _check_step_target(step, known=known, mode=mode, default=default, caller=caller)
             if step.assert_ is not None:
                 for a in step.assert_:
                     _reject_assertion_target(a, context=f"step {_step_label(step)}: assert")
@@ -272,15 +290,16 @@ def _check_target_requirements(scenario: Scenario) -> None:  # noqa: C901
                 _reject_assertion_target(
                     step.if_.condition, context=f"step {_step_label(step)}: if condition"
                 )
-                walk_steps(step.if_.then, mode=mode)
+                walk_steps(step.if_.then, mode=mode, caller=caller)
                 if step.if_.else_ is not None:
-                    walk_steps(step.if_.else_, mode=mode)
+                    walk_steps(step.if_.else_, mode=mode, caller=caller)
             if step.for_each is not None:
-                walk_steps(step.for_each.steps, mode=mode)
+                walk_steps(step.for_each.steps, mode=mode, caller=caller)
             if step.group is not None:
-                # Reached only when `known` has fewer than 2 targets — `_check_step_target` above
-                # already refuses a `group` step outright once the scenario declares 2 or more.
-                walk_steps(step.group.steps, mode=mode)
+                # Expansion has not yet stamped the group's `target` onto its children, so it is
+                # passed down as their caller rather than checking them as bare steps, which would
+                # reject a valid `group:` naming one under two targets (BE-0446).
+                walk_steps(step.group.steps, mode=mode, caller=step.target or caller)
             if step.web is not None:
                 walk_steps(step.web.steps, mode="forbidden")
             if step.app is not None:

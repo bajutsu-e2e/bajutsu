@@ -11,8 +11,11 @@ from bajutsu.common.scenario.models.selector import Selector
 from bajutsu.common.scenario.system_alerts import (
     SystemAlertChoice,
     SystemAlertPrompt,
+    SystemAlertRole,
     alert_surfaces,
+    labels_cover,
     system_alert_label,
+    system_alert_role,
 )
 
 # The label-based Selector fields a SpringBoard alert button can actually carry (Python field
@@ -95,15 +98,27 @@ class HandleSystemAlert(_Model):
         """This step with `prompt`/`choice` turned into the `sel` the locale's SpringBoard renders.
 
         A `sel` form returns unchanged, so the resolution is a no-op for every alert outside the
-        prompts the lookup covers.
+        prompts the lookup covers. Under a language the label table does not cover, a prompt with a
+        position rule (`role`) also returns unchanged: that rule is resolved against the live alert
+        instead, since the label it lands on is exactly what this run cannot know in advance
+        (BE-0445).
 
         Raises:
-            UncoveredSystemAlertLocale: the lookup has no labels for the locale's language — the
-                step fails loudly rather than tapping a guessed button.
+            UncoveredSystemAlertLocale: the lookup has no labels for the locale's language and the
+                prompt has no position rule either — the step fails loudly rather than tapping a
+                guessed button.
         """
         if self.prompt is None or self.choice is None:
+            return self
+        if not labels_cover(self.prompt, locale) and self.role() is not None:
             return self
         label = system_alert_label(self.prompt, self.choice, locale)
         return self.model_copy(
             update={"sel": Selector(label=label), "prompt": None, "choice": None}
         )
+
+    def role(self) -> SystemAlertRole | None:
+        """The position rule naming this step's button, for a `prompt`/`choice` step that has one."""
+        if self.prompt is None or self.choice is None:
+            return None
+        return system_alert_role(self.prompt, self.choice)
