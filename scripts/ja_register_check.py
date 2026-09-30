@@ -1,6 +1,8 @@
 # /// script
 # requires-python = ">=3.13"
-# dependencies = ["sudachipy>=0.6.9", "sudachidict-core>=20240409"]
+# # The tested pair, pinned exactly: tokenization decides the candidate count a conversion is
+# # proven by, and sudachipy's 0.x releases may break it even in a patch release.
+# dependencies = ["sudachipy==0.7.0", "sudachidict-core==20260723.1"]
 # ///
 """Report candidate 敬体 register drift in Japanese docs (BE-0434).
 
@@ -17,8 +19,9 @@ purpose — a 体言止め label is a candidate too — and a human discards the
 It is a review aid, not a gate: it always exits 0 once it has scanned, and stays out of
 ``make check``, because the corpus still carries thousands of candidates. The morphological analyzer
 (``sudachipy``) is an ephemeral dependency declared in the PEP 723 block above, so ``uv run`` builds
-an isolated environment for it and the project's own dependencies never change. Deterministic and
-offline, with no model anywhere near it.
+an isolated environment for it and the project's own dependencies never change. The first run
+downloads the analyzer and its dictionary; after that a scan needs no network. Deterministic, with
+no model anywhere near it.
 
 Usage::
 

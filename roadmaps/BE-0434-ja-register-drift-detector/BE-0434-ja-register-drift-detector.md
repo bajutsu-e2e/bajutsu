@@ -124,10 +124,12 @@ either. It is dev tooling, reached only by a contributor who runs it directly.
 
 `mypy` runs in strict mode over the whole repository, `scripts/` included, so an unresolved
 `sudachipy` import still needs an answer. A `[[tool.mypy.overrides]]` entry —
-`ignore_missing_imports = true` for `sudachipy` and its dictionary package — uses the same
+`ignore_missing_imports = true` for `sudachipy` — uses the same
 mechanism `boto3` and `google-cloud-storage` already rely on, there because those SDKs ship no type
 stubs. That mechanism works the same way for a package `make check` never installs at all: it keeps
-the `typecheck` step green without installing the analyzer into the pinned dev environment.
+the `typecheck` step green without installing the analyzer into the pinned dev environment. The
+dictionary package gets no entry: the script never imports it by name, since `sudachipy` loads it,
+and strict mypy's `warn_unused_configs` rejects an override section that matches no import.
 
 The same absence shapes how the script is tested. The dev environment never installs `sudachipy`,
 so the analyzer sits behind a lazily imported seam, called only from the one function that walks a
