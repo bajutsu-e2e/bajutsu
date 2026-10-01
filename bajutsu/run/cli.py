@@ -29,6 +29,7 @@ from bajutsu.cli._shared import (
 )
 from bajutsu.common.assertions import GoldenContext
 from bajutsu.common.backends import (
+    capabilities_for,
     default_available,
     select_actuator,
     select_actuator_for_scenario,
@@ -37,6 +38,7 @@ from bajutsu.common.cancellation import CancelSource, graceful_sigterm
 from bajutsu.common.config import WEB_ENGINES, Effective, IosConfig
 from bajutsu.common.deprecations import warn_once
 from bajutsu.common.devices import errors as device_errors
+from bajutsu.common.drivers import base
 from bajutsu.common.github import actions as github_actions
 from bajutsu.common.orchestrator import DEFAULT_ALERT_POLL_INTERVAL, AlertGuardConfig, RunResult
 from bajutsu.common.orchestrator.types import ResolvedAlertRule
@@ -1388,6 +1390,29 @@ class _TargetSetup:
     workers: int
 
 
+def _reject_unshareable_groups(
+    scenarios: list[Scenario],
+    target_effs: Mapping[str, Effective],
+    backend: str,
+    engines: list[str],
+) -> None:
+    """Refuse a device group on a backend that cannot share a device, before any device work.
+
+    The pipeline refuses the same group in its own preflight (BE-0447), but only once the run has
+    reserved devices and opened pools; this answers from each member's resolved actuator alone, so
+    a cloud device is never reserved for a group that could not run on it.
+    """
+    grouped = {name for s in scenarios for g in s.device_groups if len(g) >= 2 for name in g}
+    for name in sorted(grouped):
+        actuator, _ = _select_actuator(backend, target_effs[name], engines)
+        if base.Capability.DEVICE_GROUP not in capabilities_for(actuator):
+            typer.echo(
+                f"target '{name}' is in a device group, but backend '{actuator}' cannot share a "
+                "device between two apps yet (BE-0447)"
+            )
+            raise typer.Exit(2)
+
+
 def _acquire_targets(
     target_effs: Mapping[str, Effective],
     backend: str,
@@ -1433,7 +1458,8 @@ def _pool_demand(scenarios: list[Scenario], setups: Mapping[str, _TargetSetup]) 
     Targets sharing a pool share its device queue, and a scenario holds every declared target's
     lease for its whole length, so two targets on one pool need two devices from it. A device group
     is one device however many members it holds (BE-0447), so the count is per group, keyed by the
-    group's first member — run preflight refuses a group whose members differ in backend.
+    group's first member; a group whose members differ in backend is refused by the
+    config-aware group preflight (BE-0447 unit 4).
     """
     demand: dict[str, int] = {}
     for s in scenarios:
@@ -2170,6 +2196,7 @@ def run(
     # idb, `--udid` is a concrete comma list capped to the pool size. (The "booted" default is
     # unused on web.) How a device handle resolves is the platform's, behind the Environment seam
     # (BE-0256): Android via adb, the iOS family via simctl — no `actuator == "adb"` branch here.
+    _reject_unshareable_groups(scenarios, target_effs, backend, engines)
     setups = _acquire_targets(target_effs, backend, engines, udid, workers)
     primary = setups[target_name]
     actuator, backends = primary.actuator, primary.backends

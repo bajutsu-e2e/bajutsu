@@ -201,6 +201,10 @@ def test_the_pool_joins_a_member_on_the_same_device(monkeypatch: pytest.MonkeyPa
         "bajutsu.common.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
     )
+    monkeypatch.setattr(
+        "bajutsu.common.platform_lifecycle.environments.fake.FakeEnvironment.take_crash_snapshot",
+        lambda self: lambda: [("runner.log", b"crashed")],
+    )
     lease, shutdown = device_pool(
         ["UDID-A"], ["fake"], _eff(), Path("runs"), available=lambda b: True
     )
@@ -213,11 +217,13 @@ def test_the_pool_joins_a_member_on_the_same_device(monkeypatch: pytest.MonkeyPa
         # Device-scoped recovery reads the device the anchor holds, so a crash retry judged on a
         # member still escalates and still finds the runner's evidence.
         assert member.request_device_replacement == anchor.request_device_replacement
-        assert member.crash_artifacts() == anchor.crash_artifacts()
         assert member.join is None  # only the device's own lease hosts more apps
         assert member.driver is not anchor.driver
         member.release()
         anchor.release()
+        # The anchor's release moved the device's crash evidence onto the lease; the member reads
+        # that same evidence, since a crash retry may be judged on it.
+        assert member.crash_artifacts() == [("runner.log", b"crashed")]
         # The device went back to the pool through the anchor alone, so it can be leased again.
         again = lease(_app_eff("com.example.app"), scn)
         again.release()
@@ -377,3 +383,17 @@ class _OneCollector:
 
     def stop(self) -> None:
         pass
+
+
+def test_a_later_member_that_never_came_up_still_reports_its_device() -> None:
+    device = _Device()
+    s = _scenario(
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "steps": [{"tap": {"id": "ok"}}],
+        }
+    )
+    results = run_all(_eff(), [s], device.pool("unused"), targets=_pools(device, "app", "auth"))
+    assert results[0].ok, results[0].failure
+    assert list(results[0].target_devices) == ["app", "auth"]

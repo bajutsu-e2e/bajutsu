@@ -67,7 +67,6 @@ class RunEnvironment(Protocol):
                 Preflight refuses a device group on a backend without `Capability.DEVICE_GROUP`, so
                 this is only the runtime backstop.
         """
-        ...
 
     def end_member(self, driver: base.Driver, eff: Effective) -> None:
         """Release one member `start_member` brought up: stop its app, keep the device (BE-0447).
@@ -75,7 +74,6 @@ class RunEnvironment(Protocol):
         The group's device and its shared automation session stay with the lease that started them,
         which releases both through `teardown` / `end_lease` once every member has ended.
         """
-        ...
 
     def resolve_device(self, udid: str) -> str:
         """Resolve *udid* to a concrete device handle for this platform.

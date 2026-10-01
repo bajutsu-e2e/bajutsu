@@ -9,6 +9,10 @@ from enum import Enum
 from bajutsu.common.orchestrator.types import TargetRuntime
 from bajutsu.common.scenario import Interrupt
 
+# The step kind that installs a later member (BE-0447 unit 3), named here so the one lifecycle rule
+# that exempts it reads as intent.
+_INSTALL_APP = "install_app"
+
 
 class MemberStatus(Enum):
     """A declared target's lifecycle on the device it shares with its device group (BE-0447).
@@ -76,7 +80,9 @@ class TargetRoster:
         to the front, fails with a cause naming the step it is missing instead.
         """
         status = self.status_of(name)
-        if status is MemberStatus.RUNNING:
+        if status is MemberStatus.RUNNING or action == _INSTALL_APP:
+            # An `installApp` step's own target only picks the device, so neither the retired nor
+            # the not-installed rule applies to it.
             return None
         if status is MemberStatus.RETIRED:
             return (

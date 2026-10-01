@@ -592,7 +592,19 @@ def device_pool(  # noqa: C901, PLR0915
                     )
 
                 try:
-                    member_readiness = await_ready(member_driver, ready_sel=member_eff.ready_when)
+                    # The member's own namespaces and the device's transition signal, as the lease's
+                    # own readiness gate reads them: without them a member with no `readyWhen`
+                    # could pass on the tree of the app that was in front before it.
+                    member_readiness = await_ready(
+                        member_driver,
+                        ready_sel=member_eff.ready_when,
+                        id_namespaces=member_eff.id_namespaces,
+                        transitions=(
+                            collector.transitions_snapshot_timed
+                            if isinstance(collector, NetworkCollector)
+                            else _no_transitions
+                        ),
+                    )
                     member_sink = FileSink(
                         run_dir,
                         udid=udid,
@@ -606,6 +618,8 @@ def device_pool(  # noqa: C901, PLR0915
                         provenance=run_provenance(
                             dump_scenario_file([redact_totp_secrets(member)]), git_revision=git_rev
                         ),
+                        # The device's one stall flag, which the member lease also forwards.
+                        on_video_start_stall=note_video_start_stall,
                     )
                     return Lease(
                         driver=member_driver,
