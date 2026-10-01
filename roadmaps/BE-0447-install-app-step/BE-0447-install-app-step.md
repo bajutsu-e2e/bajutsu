@@ -553,7 +553,7 @@ so the deterministic gate stays untouched.
 - [x] Unit 1: nested `targets` form, `installs`, and flattening accessor
 - [x] Unit 2: device-group lease and lifecycle, after the on-device checks
 - [x] Unit 3: `installApp` and `setPrimaryTarget` steps
-- [ ] Unit 4: run preflight and validation
+- [x] Unit 4: run preflight and validation
 - [ ] Unit 5: XCUITest environment and driver
 - [ ] Unit 6: Android environment, driver, and `foreground`
 - [ ] Unit 7: backend handling
@@ -602,6 +602,16 @@ Log:
   expansion records only the former on a step. And whether a `setPrimaryTarget` names a retired
   member depends on identifiers, which only the config holds, so the run refuses it with a named
   cause instead of the load; unit 4's preflight can add the static check.
+- Unit 4. `run` checks every device group against the config before any device is acquired, and
+  exits 2 with each cause named. A group's members must share one platform, one device route
+  (`deviceProvider`, `device`, `xcuitest.deviceType`), and one effective system locale, and none
+  may be a web target. Starting members of one group must not share a bundle identifier or
+  package. Each `installApp.from` target must define an `appPath` that exists, and a Git-sourced
+  config builds it on demand, as it already does for the primary. The check also closes unit 3's
+  deviation as a `run` preflight rather than at load, since the identifier lives in config: walking
+  `before` and the top-level steps in order, it refuses a `setPrimaryTarget` that names a member an
+  earlier `installApp` retired. Each build is checked once for the whole run. `Effective.app_identifier` names the identifier both this
+  check and the runner's retirement read.
 
 ## References
 

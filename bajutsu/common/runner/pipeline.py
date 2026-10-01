@@ -1155,11 +1155,9 @@ class _ScenarioRunner:
                 )
             member_eff = self.targets[member].eff
             lease.install(member_eff, keep_data)
-            identifier = _app_identifier(member_eff)
+            identifier = member_eff.app_identifier
             return [
-                m
-                for m in group
-                if m != member and _app_identifier(self.targets[m].eff) == identifier
+                m for m in group if m != member and self.targets[m].eff.app_identifier == identifier
             ]
 
         return TargetRoster(
@@ -1556,16 +1554,6 @@ def _record_target_evidence(
         )
         if art is not None:
             result.artifacts.append(art)
-
-
-def _app_identifier(eff: Effective) -> str | None:
-    """The bundle identifier or package *eff*'s app installs under, or None for a web target.
-
-    Two members sharing one are two builds of one app: installing either replaces the other on the
-    device (BE-0447).
-    """
-    config = eff.platform_config
-    return getattr(config, "bundle_id", None) or getattr(config, "package", None)
 
 
 def _join(

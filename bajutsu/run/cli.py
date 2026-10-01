@@ -565,6 +565,157 @@ def _reject_cross_browser_matrix_with_targets(
         raise typer.Exit(2)
 
 
+def _reject_bad_device_groups(
+    scenarios: list[Scenario], target_effs: Mapping[str, Effective], *, checkout_root: Path | None
+) -> None:
+    """Refuse, before any device work, a device group the config cannot honor (BE-0447).
+
+    The scenario model checks a group's shape; only the config can say whether its members can
+    actually share one device and whether the builds it installs exist. Each refusal names its
+    cause and exits 2, the way every other multi-target refusal here does.
+    """
+    problems = [
+        f"scenario '{s.name}': {problem}"
+        for s in scenarios
+        for problem in _device_group_problems(s, target_effs)
+    ]
+    # Each build once for the whole run, however many scenarios install it: a failing Git build
+    # would otherwise be retried once per scenario.
+    members = sorted(
+        {
+            step.install_app.from_
+            for s in scenarios
+            for step in _install_steps(s)
+            if step.install_app and target_effs[step.install_app.from_].platform != "web"
+        }
+    )
+    for member in members:
+        problems += _build_problems(member, target_effs[member], checkout_root=checkout_root)
+    if problems:
+        typer.echo("device group preflight failed (BE-0447):\n  " + "\n  ".join(problems))
+        raise typer.Exit(2)
+
+
+def _device_group_problems(s: Scenario, effs: Mapping[str, Effective]) -> Iterator[str]:
+    later = set(s.later_targets)
+    for group in s.device_groups:
+        if len(group) < 2:
+            continue
+        yield from _sharing_problems(s, group, effs)
+        starting = [m for m in group if m not in later]
+        seen: dict[str, str] = {}
+        for member in starting:
+            identifier = effs[member].app_identifier
+            if identifier is not None and identifier in seen:
+                yield (
+                    f"starting members {seen[identifier]!r} and {member!r} share the identifier "
+                    f"{identifier!r}, so installing both would leave one build on the device — "
+                    "start one and install the other with installApp"
+                )
+            elif identifier is not None:
+                seen[identifier] = member
+    yield from _retired_primary_problems(s, effs)
+
+
+def _sharing_problems(
+    s: Scenario, group: list[str], effs: Mapping[str, Effective]
+) -> Iterator[str]:
+    # Members share one device, so they need one platform, one route to the device, and one
+    # system locale, which iOS pins Simulator-wide.
+    for member in group:
+        if effs[member].platform == "web":
+            yield f"web target {member!r} has no device to share, so it cannot join a device group"
+            return
+    first, *rest = group
+
+    def route(eff: Effective) -> tuple[object, ...]:
+        xcuitest = getattr(eff.platform_config, "xcuitest", None)
+        return (
+            eff.platform,
+            eff.device_provider,
+            eff.device,
+            xcuitest.device_type if xcuitest is not None else None,
+        )
+
+    def locale(eff: Effective) -> str:
+        return s.preconditions.resolved_locale(eff.locale)
+
+    for member in rest:
+        if route(effs[member]) != route(effs[first]):
+            yield (
+                f"device group [{', '.join(group)}]: {member!r} differs from {first!r} in platform or device "
+                "route (deviceProvider, device, xcuitest.deviceType), so they cannot share a device"
+            )
+        if locale(effs[member]) != locale(effs[first]):
+            yield (
+                f"device group [{', '.join(group)}]: {member!r} runs under locale {locale(effs[member])!r} but "
+                f"{first!r} under {locale(effs[first])!r}, and a shared device has one system locale"
+            )
+
+
+def _build_problems(member: str, eff: Effective, *, checkout_root: Path | None) -> Iterator[str]:
+    # The scenario names a target, never a path, so the build an `installApp` puts on the device
+    # is that target's `appPath`, built on demand where the run already builds the primary's.
+    config = eff.platform_config
+    app_path = getattr(config, "app_path", None)
+    if app_path is None:
+        yield f"installApp from {member!r}: that target defines no appPath to install"
+        return
+    if checkout_root is not None and isinstance(config, IosConfig):
+        try:
+            build_if_missing(config.build, app_path, cwd=checkout_root)
+        except BuildError as e:
+            yield f"installApp from {member!r}: {e}"
+            return
+    if not Path(app_path).exists():
+        yield f"installApp from {member!r}: its appPath {app_path!r} does not exist"
+
+
+def _retired_primary_problems(s: Scenario, effs: Mapping[str, Effective]) -> Iterator[str]:
+    # Retirement follows the identifier, which only the config holds, so the scenario model left
+    # this to run time; walked here in step order, it is refused before any device is leased.
+    installed = {m for m in s.target_names if m not in set(s.later_targets)}
+    retired: set[str] = set()
+    # `before` runs ahead of `steps`, so an install there retires a member just the same.
+    for step in [*s.before, *s.steps]:
+        if step.install_app is not None:
+            member = step.install_app.from_
+            identifier = effs[member].app_identifier
+            group = next(g for g in s.device_groups if member in g)
+            retired |= {
+                m
+                for m in group
+                if m != member and m in installed and effs[m].app_identifier == identifier
+            }
+            installed.add(member)
+        elif step.set_primary_target is not None and step.set_primary_target.target in retired:
+            yield (
+                f"setPrimaryTarget {step.set_primary_target.target!r}: an earlier installApp "
+                "retired that member, so name the member that installed its replacement"
+            )
+
+
+def _install_steps(s: Scenario) -> Iterator[Step]:
+    """Every `installApp` step *s* holds, nested ones included."""
+
+    def walk(steps: list[Step]) -> Iterator[Step]:
+        for step in steps:
+            if step.install_app is not None:
+                yield step
+            if step.if_ is not None:
+                yield from walk(step.if_.then)
+                yield from walk(step.if_.else_ or [])
+            if step.for_each is not None:
+                yield from walk(step.for_each.steps)
+
+    yield from walk(s.steps)
+    yield from walk(s.before)
+    for rule in s.after:
+        yield from walk(rule.steps)
+    for entry in s.interrupts:
+        yield from walk(entry.steps)
+
+
 def _reject_bad_target_config_hooks(
     target_effs: Mapping[str, Effective], scenarios: list[Scenario], primary: str
 ) -> None:
@@ -2159,6 +2310,7 @@ def run(
     _reject_web_flags_across_targets(target_effs, headed=headed, browser=browser, browsers=browsers)
     _reject_cross_browser_matrix_with_targets(scenarios, engines)
     _reject_bad_target_config_hooks(target_effs, scenarios, target_name)
+    _reject_bad_device_groups(scenarios, target_effs, checkout_root=loaded.root)
     # Where this target's devices come from is a seam (BE-0236): the provider `acquire` returns the
     # udid spec the lanes resolve against (the `--udid` flag verbatim for the default local provider,
     # a reserved serial / endpoint for a device cloud) plus what it already did to the device
