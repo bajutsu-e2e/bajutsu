@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
-| 実装 PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)（単位 1）、[#2110](https://github.com/bajutsu-e2e/bajutsu/pull/2110)（単位 2）、[#2111](https://github.com/bajutsu-e2e/bajutsu/pull/2111)（単位 3）、[#2112](https://github.com/bajutsu-e2e/bajutsu/pull/2112)（単位 4）、[#2113](https://github.com/bajutsu-e2e/bajutsu/pull/2113)（単位 7） |
+| 実装 PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)（単位 1）、[#2110](https://github.com/bajutsu-e2e/bajutsu/pull/2110)（単位 2）、[#2111](https://github.com/bajutsu-e2e/bajutsu/pull/2111)（単位 3）、[#2112](https://github.com/bajutsu-e2e/bajutsu/pull/2112)（単位 4）、[#2113](https://github.com/bajutsu-e2e/bajutsu/pull/2113)（単位 7）、[#2114](https://github.com/bajutsu-e2e/bajutsu/pull/2114)（単位 6） |
 | トピック | シナリオの記述機能 |
 <!-- /BE-METADATA -->
 
@@ -363,7 +363,7 @@ flowchart TD
   デバイスを確保したあと、すべての確保を解放する範囲の中で行います。XCUITest、UI Automator、
   Playwright のコード生成は、`installApp` と `setPrimaryTarget` をラベル付きの `// TODO` にします。
   ただし `codegen` は、ターゲットを 2 つ以上宣言したシナリオをその手前で拒否します。
-- 単位 6。Android で、グループのメンバーが 1 台のデバイスを共有できるようにしました。エミュレーターの
+- [#2114](https://github.com/bajutsu-e2e/bajutsu/pull/2114)：単位 6。Android で、グループのメンバーが 1 台のデバイスを共有できるようにしました。エミュレーターの
   環境は、1 つの resident チャネルの上に、メンバーごとの `AdbDriver` を作ります。起動メンバーは
   デバイス全体の消去をせずに自分の再インストール方式でインストールし、後から入るメンバーは起動だけを
   行います。`installApp` はアプリを止めて `install -r` を実行し、`keepData: false` なら先にアンインストール

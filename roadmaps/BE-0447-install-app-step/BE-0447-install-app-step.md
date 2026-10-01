@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
-| Implementing PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) (unit 1), [#2110](https://github.com/bajutsu-e2e/bajutsu/pull/2110) (unit 2), [#2111](https://github.com/bajutsu-e2e/bajutsu/pull/2111) (unit 3), [#2112](https://github.com/bajutsu-e2e/bajutsu/pull/2112) (unit 4), [#2113](https://github.com/bajutsu-e2e/bajutsu/pull/2113) (unit 7) |
+| Implementing PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) (unit 1), [#2110](https://github.com/bajutsu-e2e/bajutsu/pull/2110) (unit 2), [#2111](https://github.com/bajutsu-e2e/bajutsu/pull/2111) (unit 3), [#2112](https://github.com/bajutsu-e2e/bajutsu/pull/2112) (unit 4), [#2113](https://github.com/bajutsu-e2e/bajutsu/pull/2113) (unit 7), [#2114](https://github.com/bajutsu-e2e/bajutsu/pull/2114) (unit 6) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -619,7 +619,7 @@ Log:
   so there is no local build to install beside it. Every code generator (XCUITest, UI Automator,
   Playwright) renders `installApp` and `setPrimaryTarget` as a labeled `// TODO`, though `codegen`
   already refuses any scenario declaring two or more targets before it reaches them.
-- Unit 6. Android shares a device between a group's members. The emulator environment gives each
+- [#2114](https://github.com/bajutsu-e2e/bajutsu/pull/2114) — Unit 6. Android shares a device between a group's members. The emulator environment gives each
   member its own `AdbDriver` over the one resident channel. A starting member installs under its
   own reinstall mode without the device-wide clears, and a later member starts launch-only.
   `installApp` force-stops the app and runs `install -r`, uninstalling first for
