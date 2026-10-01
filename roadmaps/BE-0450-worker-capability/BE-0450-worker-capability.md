@@ -154,8 +154,8 @@ this item has landed. It touches six parts of this item.
   and the host rule applies to the local targets alone. Every command that drives a device (`run`, `record`, `crawl`,
   `repl`, `audit`, and `doctor`), and the MCP server, accepts `--worker-config` with it, replacing
   today's URL udid; this item gives the flag to `worker` and `run` alone, so the restructure extends
-  it, and rejects every other non-local environment for those commands. An `appium` worker drives a
-  remote device, so the host rule does not apply to it. It advertises `environment:appium` alone,
+  it, and rejects every other non-local environment for those commands. An `appium` worker drives its grid
+  targets remotely, so the host rule does not apply to them. It advertises `environment:appium` alone,
   and a job that requires it carries no `platform:*` or `host:*` token, as for a Device Farm job.
 - **The runtime and device-class source moves.** This item keeps `requires` for now.
   It waits for a later item to derive the iOS runtime and device class from the target's `device`.

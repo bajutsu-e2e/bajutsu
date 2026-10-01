@@ -83,8 +83,9 @@ Once this item ships, a reader can check three outcomes:
 ### Prerequisites
 
 This item starts after [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md)
-and [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) have landed. Those items
-provide the worker capability file, `worker.yaml`, and the `environment:<name>` routing that the
+and [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) have landed. Landed
+means Implemented, with `cloudBatchBudget` and `requires` deprecated but still accepted; unit 4 of
+this item removes them. Those items provide the worker capability file, `worker.yaml`, and the `environment:<name>` routing that the
 keys leaving the target move onto (see *Where a run happens*). Starting earlier would leave
 `deviceProvider` and `cloudBatch` with no destination at the atomic schema switch-over.
 
@@ -222,20 +223,27 @@ the scenario's value replaces the target's. Both keys go away:
 - A target's hook steps (`setup`, `cleanup`, and `interrupts`) may call a component with
   `use: { component: <file>, with: … }`. Components are resolved at config load for target hooks,
   which lifts today's rule that target hooks reject `use:`. The component path resolves against the config file and must stay inside
-  the suite root: the materialized checkout for a Git source, or the config file's directory for a
-  local file. A reference outside it fails with the same error `contained_ref` raises today
+  the suite root: the materialized checkout for a Git source, the bundle root for an upload or a
+  composition, or the config file's directory for a local file. A reference outside it fails with the same error `contained_ref` raises today
   ([BE-0174](../BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md)), so a
   config that serve receives untrusted cannot read beyond its tree. Loading therefore takes the
-  config's path along with its text. `with` values substitute at load; `${secrets.*}` and `${vars.*}` still resolve when the step runs. `group:` and
+  config's path and the suite root along with its text. `with` values substitute at load; `${secrets.*}` and `${vars.*}` still resolve when the step runs. `group:` and
   `setMocks` stay rejected there.
 - A scenario calls a component with `use:` inside its own `setup`, as it can today.
-- A scenario that must not run the target's setup sets `preconditions.run.inheritSetup: false`.
-  It skips the target's setup alone; the target's cleanup still runs, since cleanup runs on every
+- Every target the scenario declares contributes its setup. Today only the primary target's prelude
+  is spliced in, so a multi-target scenario now also runs the preludes of its other targets. The
+  change is intended: a target's setup is what using that target needs.
+- A scenario that must not run the targets' setup sets `preconditions.run.inheritSetup: false`.
+  It skips the setup of every target the scenario declares; the target's cleanup still runs, since cleanup runs on every
   path. Today a scenario can replace the target's prelude while keeping the target's `before`; that
   combination goes away.
 - Each prelude file is rewritten once as a component file, since the two formats differ. A prelude
   that uses `group:`, `setMocks`, or data-row placeholders cannot become a target-hook component;
   each scenario that needs it calls it with `use:` in its own `setup`. Unit 2 finds these preludes.
+- The prelude's reference base changes. Today a target's `setup:` resolves against each scenario
+  file's directory, so one reference can name different preludes in different directories; the
+  component path resolves against the config file. Unit 2 finds such targets, and each affected
+  scenario calls its own prelude with `use:` instead.
 - The prelude's place in the order changes. Today it splices onto `steps`, so it runs after the
   scenario's `before`. As a component appended last to the target's `setup`, after the target's
   former `before` steps, it runs before the scenario's `setup`. A scenario's own prelude, converted
@@ -368,7 +376,7 @@ two targets.
 `runsOn` describes the environments a scenario runs in. It never creates a device, with one
 exception: a replacement for a Simulator that vanished mid-run, which keeps the vanished device's
 model and runtime (see *Defaults*). Bajutsu reads each available device: every udid of a `--udid`
-pool, every emulator serial, or the browser a web lane launched. The default `--udid booted` names
+pool, every serial of the `--udid` pool on Android, or the browser a web lane launched. The default `--udid booted` names
 the one Simulator simctl resolves, so its pool has one device. A URL is no longer accepted as a udid;
 the `appium` environment of *Where a run happens* replaces that path. A physical Android device in
 the pool is matched like an emulator: its API level is read through `getprop`, and it never
@@ -518,7 +526,8 @@ never multiply runs; they take the first run's coordinates, which are the first 
 the newest major version the pool has within the range, and fail when no device fits. Code generation emits no
 device conditions: a generated test runs wherever it is launched, which the codegen documentation
 states. `bajutsu doctor` lists, for each scenario, its runs and the
-available devices that fit each one. With no pool to read, it reports the declared runs alone.
+available devices that fit each one. With no pool to read, it reports the declared runs alone, and lists an open range as "one run per
+available major version", since those runs depend on the pool.
 
 The comparison, the run counts, and the eligible sets are deterministic and involve no model call.
 Creating a matching device on demand stays out of scope (see *Alternatives considered*).
@@ -552,7 +561,9 @@ the host rule of BE-0450 applies to the local targets alone. Each grid target op
 on the endpoint, so two iOS targets of one scenario take two grid devices. Every
 command that drives a device (`run`, `record`, `crawl`, `repl`, `audit`, and `doctor`), and the
 Model Context Protocol (MCP) server at startup, accepts `--worker-config` with that environment, so
-each can still reach a grid as the URL udid lets it today. This item rejects every other non-local
+each can still reach a grid as the URL udid lets it today. Commands other than `run` turn
+`Effective.device_provider` into the udid spec through the same `acquire_device` that `run` uses,
+and run BE-0450's capability check on drivers and host, as `run` does. This item rejects every other non-local
 environment for these commands. A hosted job routes by `environment:appium` alone, so a scenario
 that mixes a grid target with a local target is refused at dispatch; it runs through
 `--worker-config` on a machine that has both. An `appium` worker advertises
@@ -627,7 +638,7 @@ the new dictionary. The fields new at target level (`app.reinstall`, `app.launch
 unit 4, since today's names have no slot for them. A few readers use the raw schema instead of `Effective`, such as
 `serve/operations/reads.py`, `capture.py`, `enrich.py`, `doctor.py`, `config.py`, and `codegen.py`,
 `serve/helpers.py`, the Device Farm
-batch provider that packages `launchEnv`, `report/rows.py`, `templates/serve.html.j2`, and
+batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/serve.html.j2`, and
 `analysis/impact`, and `triage/cli.py`, which builds an `Effective` directly. Unit 4 updates them.
 
 ### Command-line flags
@@ -680,7 +691,8 @@ batch provider that packages `launchEnv`, `report/rows.py`, `templates/serve.htm
    `bajutsu/common/devices/version.py`.
 2. **Confirm the open facts.** Confirm that the AVD name is readable (for example through
    `ro.boot.qemu.avd_name`) across supported API levels, and check which scenarios and demos depend
-   on a prelude splicing onto `steps`. Update the tables before code lands.
+   on a prelude splicing onto `steps`, and which target `setup:` references resolve to different files
+   from different scenario directories. Update the tables before code lands.
 3. **Platform registry and models.** Add the registry and the per-platform models, rewrite the
    extra-field error to list the allowed fields, and pin in a test that the registry's keys equal
    `backends.PLATFORMS`.
@@ -692,8 +704,9 @@ batch provider that packages `launchEnv`, `report/rows.py`, `templates/serve.htm
    the MCP server. Resolve components in target hooks, rewrite
    the prelude files as components, map the target's `hooks.setup` and `hooks.cleanup` onto today's
    `before` and `after` phases, and apply the `--backend` rules of *Command-line flags*, including
-   the serve request body. Change the config loader to take the config's path, and update its callers (the MCP tools,
-   `provision`, serve's uploads and helpers, and `cli/_shared.py`). A target prelude that cannot
+   the serve request body. Change the config loader to take the config's path and suite root, and update every caller (about
+   twenty, among them the MCP tools, `provision`, serve's uploads, orgs, compositions, and
+   operations, triage, coverage, and `cli/_shared.py`). A target prelude that cannot
    become a target-hook component gets a `use:` in the `before` of every scenario of that target.
    Remove the scenario's `preconditions.setup` here too, converting each use to a `use:` appended to
    the scenario's `before`. Add `preconditions.run.inheritSetup`, the first field of the
@@ -703,7 +716,8 @@ batch provider that packages `launchEnv`, `report/rows.py`, `templates/serve.htm
    the `Effective` attributes for the new target-level fields and apply their target-level values,
    leaving scenario overrides to unit 7, and drop the replacement Simulator's
    configured-`device` and newest-iPhone fallbacks and its unpinned retry. Remove the URL form of
-   the command-line `--udid`, fill `Effective.device_provider` from `--worker-config`, and turn
+   the command-line `--udid`, fill `Effective.device_provider` from `--worker-config`, route every device-driving command
+   through `acquire_device`, and turn
    `demos/showcase/live/showcase.live.config.yaml` into a target plus a `worker.yaml` with an `appium`
    environment. Until unit 5, `hooks.cleanup` keeps `on: error`. Convert the test fixtures, the
    nine `demos/` configs, and the root `bajutsu.config.yaml`; a `device:` key there becomes nothing, since `model` is now a condition. Until
@@ -733,10 +747,12 @@ batch provider that packages `launchEnv`, `report/rows.py`, `templates/serve.htm
    with its migration, and key the flakiness history by them. Until unit 10, the console and the
    manifest list not-applicable records, and other outputs show each run as its own entry, named by the scenario with its coordinates appended
    so JUnit and CTRF test names stay unique. Then give `record`, `crawl`, and `repl` the first run, let `audit` and the MCP tools form runs as `run`
-   does, and lift unit 4's "not yet supported" check.
+   does, and lift unit 4's "not yet supported" check for every command except `doctor`, whose device path
+   keeps it until unit 11.
 10. **Reporting.** Show the run matrix and the not-applicable status in the HTML report, JUnit and
     CTRF output, notification payloads, and the serve Web UI.
-11. **`doctor`.** List each scenario's runs and the devices that fit them.
+11. **`doctor`.** List each scenario's runs and the devices that fit them, and lift the remaining
+    "not yet supported" check on its device path.
 12. **`bajutsu config schema`.** Add a `config` command group whose `schema` command prints the
     config's JSON Schema from the registry, and update the
     existing `bajutsu schema` command, whose scenario schema changes shape with `preconditions`,
@@ -744,7 +760,8 @@ batch provider that packages `launchEnv`, `report/rows.py`, `templates/serve.htm
 13. **Docs.** Update `docs/configuration.md`, `docs/scenarios.md`, `docs/drivers.md`, `docs/cli.md`,
     `docs/run-loop.md`, `docs/reporting.md`, `docs/evidence.md`, `docs/dsl-grammar.md`,
     `docs/codegen.md`, `docs/cookbook.md`, `docs/showcase.md`, `docs/devicefarm.md`,
-    `docs/ios-device-cloud.md`, `docs/self-hosting.md`, `docs/architecture.md`, `DESIGN.md`,
+    `docs/ios-device-cloud.md`, `docs/self-hosting.md`, `docs/ci.md`, `docs/recording.md`,
+    `docs/selectors.md`, `docs/web-ui.md`, `docs/developer-guide.md`, `docs/architecture.md`, `DESIGN.md`,
     `docs/glossary.md`, and their `docs/ja/` mirrors, as well as `README.md`,
     `deploy/self-host/README.md`, and the demos' READMEs.
 

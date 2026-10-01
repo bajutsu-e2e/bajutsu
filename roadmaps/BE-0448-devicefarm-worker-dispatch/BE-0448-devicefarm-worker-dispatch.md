@@ -131,8 +131,8 @@ Three parts of this item change when it lands.
   read before a Device Farm run, so a scenario whose effective `runsOn` declares conditions fails on the worker, through
   the existing result route, before anything is submitted. The `bajutsu run` on the Device Farm
   host stays unaware of where it runs.
-- **`cloudBatchBudget` disappears from the schema.** This item lands first, so the deprecation
-  of unit 5 has started by then. The restructure's new target schema then has no
+- **`cloudBatchBudget` disappears from the schema.** This item lands first, so by then
+  unit 5 has deprecated `cloudBatchBudget` without yet removing it. The restructure's new target schema then has no
   `cloudBatchBudget` at all, and the key fails at load as unknown.
 
 The restructure item's schema switch-over unit carries the coordination. Once it lands, the
