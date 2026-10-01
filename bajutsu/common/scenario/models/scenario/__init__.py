@@ -9,7 +9,6 @@ from ._http_extract import _check_http_extract_vars as _check_http_extract_vars
 from ._targets import _check_target_requirements as _check_target_requirements
 from ._targets import _expand_target_groups as _expand_target_groups
 from ._targets import _scenarios_declaring_targets as _scenarios_declaring_targets
-from ._targets import _scenarios_with_device_groups as _scenarios_with_device_groups
 from .component import Component
 from .preconditions import Preconditions
 from .scenario import _PERMISSION_ACTIONS as _PERMISSION_ACTIONS

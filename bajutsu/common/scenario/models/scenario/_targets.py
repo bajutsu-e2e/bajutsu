@@ -55,6 +55,11 @@ def _expand_steps(steps: list[Step], *, group_target: str | None, inside_web: bo
                 )
             out.extend(_expand_steps(step.steps, group_target=step.target, inside_web=False))
             continue
+        if group_target is not None and step.set_primary_target is not None:
+            raise ValueError(
+                f"{_step_label(step)}: setPrimaryTarget is not allowed inside a target group — "
+                "it moves the primary for every later step, which a group names once for its own"
+            )
         stamped = (
             step.model_copy(update={"target": group_target}) if group_target is not None else step
         )
@@ -226,6 +231,11 @@ def _check_step_target(
     # step when it omits one (BE-0446): the step then needs no target of its own, and one it names
     # must agree.
     context = f"step {_step_label(step)}"
+    if step.set_primary_target is not None:
+        # A routing-only step runs on no device, so it resolves to none; its argument is checked by
+        # the walk, which also moves the primary from it on (BE-0447).
+        step.resolve_target(None)
+        return
     if mode == "forbidden":
         if step.target is not None:
             raise ValueError(
@@ -262,6 +272,128 @@ def _check_step_target(
             required=mode == "required",
         )
     )
+
+
+class _LifecycleChecks:
+    """The load-time rules for `installApp` and `setPrimaryTarget` (BE-0447).
+
+    One instance per pass of `_check_target_requirements`, holding what the pass has seen so far:
+    the later members a top-level `installApp` already installed, and whether a `use:` / `group:`
+    step has hidden the primary from this pass.
+    """
+
+    def __init__(self, scenario: Scenario) -> None:
+        self._later = set(scenario.later_targets)
+        self._groups = scenario.device_groups
+        self._declared_primary = scenario.target_names[0] if scenario.target_names else None
+        self._moves_primary = _sets_primary_target(scenario)
+        self._installed: set[str] = set()
+        self._hidden = False
+
+    def check_step(
+        self,
+        step: Step,
+        *,
+        known: set[str],
+        mode: _StepTargetMode,
+        primary: str | None,
+        caller: str | None,
+        top: bool,
+        entry_target: str | None,
+    ) -> None:
+        """Hold *step* to whichever lifecycle rule applies to it, if any."""
+        if top and step.group is not None:
+            # A component may move the primary anywhere inside the group, so from here on the
+            # device an `installApp` runs on is left to the post-expansion pass.
+            self.hide()
+        if step.set_primary_target is not None:
+            self.check_set_primary_target(step, known=known, top=top)
+        if step.install_app is not None:
+            self.check_install_app(
+                step, mode=mode, primary=primary, caller=caller, entry_target=entry_target
+            )
+
+    def check_set_primary_target(self, step: Step, *, known: set[str], top: bool) -> None:
+        context = f"step {_where(step)}"
+        if not top:
+            raise ValueError(
+                f"{context}: setPrimaryTarget is allowed only among a scenario's top-level steps — "
+                "not inside if, forEach, a target group, web:, app:, before, after, or interrupts"
+            )
+        assert step.set_primary_target is not None
+        _check_target(
+            step.set_primary_target.target, known=known, context=f"{context}: setPrimaryTarget"
+        )
+
+    def check_install_app(
+        self,
+        step: Step,
+        *,
+        mode: _StepTargetMode,
+        primary: str | None,
+        caller: str | None,
+        entry_target: str | None,
+    ) -> None:
+        context = f"step {_where(step)}"
+        if mode == "forbidden":
+            raise ValueError(
+                f"{context}: installApp is not allowed inside a web: or app: block — "
+                "it installs on a device, which a block's steps never pick"
+            )
+        assert step.install_app is not None
+        device = step.target or caller
+        if device is None and mode == "optional":
+            if entry_target is None and self._moves_primary:
+                # Which member is the primary when the entry fires depends on when it fires.
+                raise ValueError(
+                    f"{context}: an installApp in an interrupts entry's recovery steps must name "
+                    "its device (on the step or on the entry) once the scenario moves its primary "
+                    "with setPrimaryTarget"
+                )
+            device = entry_target or self._declared_primary
+        elif device is None:
+            device = primary
+        if self._hidden:
+            return
+        member = step.install_app.from_
+        group = next((g for g in self._groups if device in g), []) if device else []
+        if member not in self._later or member not in group:
+            raise ValueError(
+                f"{context}: installApp from {member!r} must name a later member of the device group "
+                f"{device!r} belongs to — one neither the primary nor listed in installs, in a "
+                "group of two or more"
+                if device
+                else f"{context}: installApp from {member!r} has no device group to install into — "
+                "the scenario declares none"
+            )
+
+    def hide(self) -> None:
+        """Stop checking `installApp.from` for the rest of this pass: a component hides the primary."""
+        self._hidden = True
+
+    def note_top_level(self, step: Step) -> None:
+        if step.use is not None or step.group is not None:
+            self.hide()
+        if step.install_app is None:
+            return
+        member = step.install_app.from_
+        if member in self._installed:
+            raise ValueError(
+                f"step {_where(step)}: {member!r} is already installed by an earlier top-level "
+                "installApp — a later member installs once per scenario"
+            )
+        self._installed.add(member)
+
+
+def _where(step: Step) -> str:
+    # The component a step came from, when expansion pulled it out of one, so a rule broken
+    # inside a `use:` / `group:` names the call site's component (BE-0447).
+    label = _step_label(step)
+    return f"{label} (from {step.report_group!r})" if step.report_group else label
+
+
+def _sets_primary_target(scenario: Scenario) -> bool:
+    return any(step.set_primary_target is not None for step in scenario.steps)
 
 
 def _check_caller_agrees(target: str | None, caller: str | None, *, context: str) -> None:
@@ -320,12 +452,33 @@ def _check_target_requirements(scenario: Scenario) -> None:  # noqa: C901
     _check_device_groups(scenario)
     _check_primary_target(scenario)
     default = scenario.primary_target
+    lifecycle = _LifecycleChecks(scenario)
 
-    def walk_steps(steps: list[Step], *, mode: _StepTargetMode, caller: str | None = None) -> None:
+    def walk_steps(
+        steps: list[Step],
+        *,
+        mode: _StepTargetMode,
+        caller: str | None = None,
+        primary: str | None = default,
+        top: bool = False,
+        entry_target: str | None = None,
+    ) -> None:
         # *caller* reaches through `if` / `forEach` bodies the way expansion's stamp does, and a
         # `web:` / `app:` block drops it, whose steps must omit `target` anyway (BE-0446).
+        # *primary* is the one in force where these steps sit (BE-0447): the top-level walk below
+        # moves it at each `setPrimaryTarget`, and a nested body inherits the value at its wrapper.
+        # *top* allows a `setPrimaryTarget`; *entry_target* is an `interrupts` entry's own target.
         for step in steps:
-            _check_step_target(step, known=known, mode=mode, default=default, caller=caller)
+            lifecycle.check_step(
+                step,
+                known=known,
+                mode=mode,
+                primary=primary,
+                caller=caller,
+                top=top,
+                entry_target=entry_target,
+            )
+            _check_step_target(step, known=known, mode=mode, default=primary, caller=caller)
             if step.assert_ is not None:
                 for a in step.assert_:
                     _reject_assertion_target(a, context=f"step {_step_label(step)}: assert")
@@ -333,16 +486,32 @@ def _check_target_requirements(scenario: Scenario) -> None:  # noqa: C901
                 _reject_assertion_target(
                     step.if_.condition, context=f"step {_step_label(step)}: if condition"
                 )
-                walk_steps(step.if_.then, mode=mode, caller=caller)
-                if step.if_.else_ is not None:
-                    walk_steps(step.if_.else_, mode=mode, caller=caller)
+                for body in (step.if_.then, step.if_.else_ or []):
+                    walk_steps(
+                        body, mode=mode, caller=caller, primary=primary, entry_target=entry_target
+                    )
             if step.for_each is not None:
-                walk_steps(step.for_each.steps, mode=mode, caller=caller)
+                walk_steps(
+                    step.for_each.steps,
+                    mode=mode,
+                    caller=caller,
+                    primary=primary,
+                    entry_target=entry_target,
+                )
             if step.group is not None:
                 # Expansion has not yet stamped the group's `target` onto its children, so it is
                 # passed down as their caller rather than checking them as bare steps, which would
-                # reject a valid `group:` naming one under two targets (BE-0446).
-                walk_steps(step.group.steps, mode=mode, caller=step.target or caller)
+                # reject a valid `group:` naming one under two targets (BE-0446). Its children
+                # splice into the caller's own list, so a top-level group may hold a
+                # `setPrimaryTarget` (BE-0447).
+                walk_steps(
+                    step.group.steps,
+                    mode=mode,
+                    caller=step.target or caller,
+                    primary=primary,
+                    top=top,
+                    entry_target=entry_target,
+                )
             if step.web is not None:
                 walk_steps(step.web.steps, mode="forbidden")
             if step.app is not None:
@@ -352,18 +521,29 @@ def _check_target_requirements(scenario: Scenario) -> None:  # noqa: C901
                 # (BE-0428).
                 walk_steps(step.app.steps, mode="forbidden")
 
-    walk_steps(scenario.steps, mode="required")
+    # The top-level steps one at a time, so a `setPrimaryTarget` moves the primary every later step
+    # that omits `target` resolves to — statically, in order (BE-0447). A `use:` / `group:` step
+    # can hide one, so from the first such step on the device an `installApp` runs on is left to
+    # the pass `expand_components` runs after expansion, which sees every step in its place.
+    primary = default
+    for step in scenario.steps:
+        walk_steps([step], mode="required", primary=primary, top=True)
+        lifecycle.note_top_level(step)
+        if step.set_primary_target is not None:
+            primary = step.set_primary_target.target
+    # `before` / `after` resolve to the declared primary: teardown runs wherever the run stopped.
     walk_steps(scenario.before, mode="required")
     for rule in scenario.after:
         walk_steps(rule.steps, mode="required")
     for entry in scenario.interrupts:
         _check_target(entry.target, known=known, context="interrupts entry", required=False)
-        walk_steps(entry.steps, mode="optional")
+        walk_steps(entry.steps, mode="optional", entry_target=entry.target)
         _reject_assertion_target(entry.condition, context="interrupts entry: condition")
     for a in scenario.expect:
-        # An omitted entry needs no stamp: `_evaluate_expect` already groups it under the run's
-        # primary, which `_check_primary_target` just pinned to this same name.
-        _check_target(a.target, known=known, context="expect entry", default=default)
+        # An omitted entry needs no stamp: `_evaluate_expect` groups it under the primary in force
+        # after the last step, which is the one this walk ended on (BE-0447).
+        _check_target(a.target, known=known, context="expect entry", default=primary)
+    scenario.record_final_primary(primary)
 
 
 def _scenarios_declaring_targets(scenarios: list[Scenario]) -> list[str]:
@@ -382,15 +562,3 @@ def _scenarios_declaring_targets(scenarios: list[Scenario]) -> list[str]:
     declared.
     """
     return sorted({s.name for s in scenarios if len(s.target_names) >= 2})
-
-
-def _scenarios_with_device_groups(scenarios: list[Scenario]) -> list[str]:
-    """The names of every scenario in *scenarios* declaring a device group of two or more (BE-0447).
-
-    A device group gives its members one device, and only the members `installs` names start on it.
-    The runner cannot yet lease one device per group or hold a later member back until its
-    `installApp`, so a flattened run would lease a device per member and launch every one of them
-    at the start: the opposite of what the scenario says. Until the lease-and-lifecycle unit lands,
-    `run_all` refuses a scenario this names rather than running it that way.
-    """
-    return sorted({s.name for s in scenarios if any(len(g) >= 2 for g in s.device_groups)})

@@ -144,6 +144,17 @@ class AndroidEnvironment:
         # A device provider's readiness report (BE-0236); the inert default is a locally-attached
         # device, so `start` runs the full boot wait / install unless a cloud provider says otherwise.
         self._provision = provision or ProvisionProfile()
+        # A device group's members on this device (BE-0447): each package's driver, its own launch
+        # marker, and the resident channel `start` opened, which every member's driver shares. The
+        # launch inputs `start` was given are kept too, so a member's `foreground` launches it the way
+        # `relaunch` would.
+        self._channel: ResidentChannel | None = None
+        self._drivers: dict[str, base.Driver] = {}
+        # Every driver handed out to a member, including one a same-package member displaced from
+        # `_drivers`, so the front check reaches all of them (BE-0447).
+        self._group_drivers: list[base.Driver] = []
+        self._member_markers: dict[str, tuple[float, str] | None] = {}
+        self._launch_inputs: tuple[Preconditions, Mapping[str, str]] = (Preconditions(), {})
 
     def resolve_device(self, udid: str) -> str:
         return adb.resolve_serial(udid, self._run)
@@ -161,6 +172,7 @@ class AndroidEnvironment:
         permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
         android = require_android(eff)
+        self._launch_inputs = (pre, dict(extra_env or {}))
         # `app_crash_artifacts()` takes no arguments, so this is the only route the `logcat` extraction
         # has to the package it must bound itself to (BE-0424).
         self._package = android.package
@@ -230,21 +242,27 @@ class AndroidEnvironment:
             ) from exc
         # The resident read channel drives whatever app is now on screen (BE-0245); a startup failure
         # degrades to `uiautomator dump` rather than failing the lease.
-        channel = self._begin_resident(native_z=android.native_z)
-        fetch = channel.fetch if channel is not None else None
-        clock = channel.clock if channel is not None else None
-        act = channel.act if channel is not None else None
+        self._channel = self._begin_resident(native_z=android.native_z)
+        # A live read, not a value frozen at construction — the same seam `fetch_clock` uses — so a
+        # mid-scenario `relaunch` moves the bound the driver compares against (BE-0424).
+        driver = self._driver_for(android.package, launched_at=lambda: self._launch_marker)
+        self._drivers = {android.package: driver}
+        self._group_drivers = []
+        return driver
+
+    def _driver_for(
+        self, package: str, *, launched_at: Callable[[], tuple[float, str] | None]
+    ) -> base.Driver:
+        channel = self._channel
         return backends.make_driver(
             self._actuator,
             self._serial,
-            fetch_hierarchy=fetch,
-            fetch_clock=clock,
-            act=act,
-            package=android.package,
+            fetch_hierarchy=channel.fetch if channel is not None else None,
+            fetch_clock=channel.clock if channel is not None else None,
+            act=channel.act if channel is not None else None,
+            package=package,
             api_level=self._read_api_level(),
-            # A live read, not a value frozen at construction — the same seam `fetch_clock` uses —
-            # so a mid-scenario `relaunch` moves the bound the driver compares against (BE-0424).
-            launched_at=lambda: self._launch_marker,
+            launched_at=launched_at,
         )
 
     def _read_api_level(self) -> int | None:
@@ -267,20 +285,21 @@ class AndroidEnvironment:
         rather than three, and why no rendering is derived from another on the host. A read that
         fails leaves the marker unset, which makes every consumer answer "cannot confirm" (BE-0424).
         """
+        self._launch_marker, self._logcat_marker = self._read_launch_marker()
+
+    def _read_launch_marker(self) -> tuple[tuple[float, str] | None, str | None]:
+        """One device-clock read, as `(launch marker, logcat marker)`; both None when it fails."""
         try:
             fields = self._run(adb.launch_marker_cmd(self._serial)).strip().split("|")
         except (subprocess.CalledProcessError, OSError):
-            fields = []
+            return None, None
         if len(fields) != _LAUNCH_MARKER_FIELDS:
-            self._launch_marker, self._logcat_marker = None, None
-            return
+            return None, None
         epoch, exit_info_stamp, logcat_stamp = fields
         try:
-            self._launch_marker = (float(epoch), exit_info_stamp)
+            return (float(epoch), exit_info_stamp), logcat_stamp
         except ValueError:
-            self._launch_marker, self._logcat_marker = None, None
-            return
-        self._logcat_marker = logcat_stamp
+            return None, None
 
     def _begin_resident(self, *, native_z: bool = False) -> ResidentChannel | None:
         """Start the resident server for this lease, or None to read via `uiautomator dump`."""
@@ -458,7 +477,12 @@ class AndroidEnvironment:
                 **(extra_env or {}),
                 **(opts.env or {}),
             }
-            self._stamp_launch_marker()  # before the launch, per `start` (BE-0424)
+            # Before the launch, per `start` (BE-0424) — and this app's own bound: a device-group
+            # member's relaunch must not move the primary's (BE-0447).
+            if package == self._package:
+                self._stamp_launch_marker()
+            else:
+                self._member_markers[package] = self._read_launch_marker()[0]
             e.launch(package, launch_env)
             # `force_stop`/`launch` replace the screen through `adb.Env`, never through the driver's
             # own actuators — the one door `AdbDriver._settled_key` needs closed that its actuators
@@ -475,10 +499,61 @@ class AndroidEnvironment:
 
     def controller(self, eff: Effective) -> DeviceControl | None:
         # The emulator-backed subset (setLocation over the console + clipboard over the app's in-app
-        # receiver, BE-0233); the rest of the family raises UnsupportedAction, and preflight (BE-0212)
+        # receiver, BE-0233, + `foreground` through this environment, BE-0447); the rest of the
+        # family raises UnsupportedAction, and preflight (BE-0212)
         # rejects it up front from the adb capability set. Clipboard addresses its broadcast at the
         # app under test, so the package is threaded through.
-        return android_device_control(self._serial, require_android(eff).package, self._run)
+        return android_device_control(
+            self._serial,
+            require_android(eff).package,
+            self._run,
+            foreground=lambda: self._foreground(eff),
+        )
+
+    def _foreground(self, eff: Effective) -> None:
+        """Bring *eff*'s app to the front, launching it the way `relaunch` would if it is not running.
+
+        A running app is only brought forward (`am start` resumes its task, clearing nothing). One
+        that is not running gets `relaunch`'s launch without the terminate: the same launch env,
+        a fresh launch marker, and the settle-cache and exit-info resets. Either way the step waits,
+        on a condition, until the app's own tree is the one on screen (BE-0447).
+        """
+        package = require_android(eff).package
+        e = adb.Env(self._serial, run=self._run)
+        driver = self._drivers.get(package)
+        try:
+            if self._running(package):
+                e.launch(package, {})
+            elif package == self._package:
+                pre, extra_env = self._launch_inputs
+                self._stamp_launch_marker()
+                e.launch(package, {**eff.launch_env, **pre.launch_env, **extra_env})
+                if driver is not None:
+                    _reset_exit_info_poll(driver)
+            else:
+                self._launch_member(e, eff, package)
+                if driver is not None:
+                    _reset_exit_info_poll(driver)
+        except subprocess.CalledProcessError as exc:
+            raise adb.device_error(exc) from exc
+        if driver is None:
+            return
+        if isinstance(driver, base.SettledCacheInvalidator):
+            driver.invalidate_settled_cache()
+        result = readiness.await_ready(
+            driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces
+        )
+        if not result.ready:
+            # The step that was to bring the app up fails itself, rather than passing and leaving
+            # the next step to fail against whatever is in front.
+            raise base.AppNotInFront(f"foreground: {package} did not come to the front in time")
+
+    def _running(self, package: str) -> bool:
+        # toybox `pidof` exits 1 on no match, so "not running" arrives as an error (`pidof_cmd`).
+        try:
+            return bool(self._run(adb.pidof_cmd(self._serial, package)).strip())
+        except (subprocess.CalledProcessError, OSError):
+            return False
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
         # Stop the resident server first (BE-0245) so no instrumentation is left running on the device,
@@ -487,6 +562,98 @@ class AndroidEnvironment:
             self._resident.stop()
             self._resident = None
         adb.Env(self._serial, run=self._run).force_stop(require_android(eff).package)
+
+    def start_member(
+        self,
+        eff: Effective,  # Environment shape
+        pre: Preconditions,
+        *,
+        extra_env: Mapping[str, str] | None = None,  # noqa: ARG002
+        permissions: Mapping[str, str] | None = None,
+        install: bool = True,
+    ) -> base.Driver:
+        # The resident channel dumps whichever app is in front, so one channel serves every member:
+        # each gets its own driver over it, bound to its own package (BE-0447). `start` already ran
+        # the device-wide part (boot, the erase-equivalent clears of the first member), so this
+        # never clears an app it did not install itself.
+        android = require_android(eff)
+        e = adb.Env(self._serial, run=self._run)
+        try:
+            if install:
+                self._install_for_start(e, android.package, android.app_path, pre)
+                e.force_stop(android.package)  # a fresh launch, so readiness reflects this start
+            e.grant_permissions(android.package, android.grant_permissions)
+            if permissions:
+                e.apply_permissions(android.package, permissions)
+            self._launch_member(e, eff, android.package)
+        except subprocess.CalledProcessError as exc:
+            raise adb.device_error(exc) from exc
+        package = android.package
+        driver = self._driver_for(package, launched_at=lambda: self._member_markers.get(package))
+        # Two builds of one app share a package, so the driver this one displaces from the map is
+        # still the one its own lease reads through: it is remembered, and takes the check too.
+        if (displaced := self._drivers.get(package)) is not None:
+            self._group_drivers.append(displaced)
+        self._drivers[package] = driver
+        self._group_drivers.append(driver)
+        # Two apps now share the screen: every member's driver must refuse a read of another's tree.
+        for member in [*self._group_drivers, *self._drivers.values()]:
+            _require_front_app(member)
+        return driver
+
+    def _install_for_start(
+        self, e: adb.Env, package: str, app_path: str | None, pre: Preconditions
+    ) -> None:
+        # Android has no device-wide wipe: `erase` is each app's own uninstall and `pm clear`, as in
+        # `start`. Clearing this member's package never touches another member's data.
+        fresh = pre.erase or pre.reinstall == "clean"
+        if app_path and not self._provision.app_preinstalled:
+            if not Path(app_path).exists():
+                raise adb.DeviceError(f"appPath not found: {app_path} (build the app first)")
+            if fresh:
+                e.uninstall(package)
+            e.install(app_path)
+        if fresh:
+            e.clear(package)
+
+    def _launch_member(self, e: adb.Env, eff: Effective, package: str) -> None:
+        pre, extra_env = self._launch_inputs
+        launch_env = {**eff.launch_env, **pre.launch_env, **extra_env}
+        # Stamped before the launch, per `start` (BE-0424): this member's own crash bound.
+        self._member_markers[package] = self._read_launch_marker()[0]
+        e.launch(package, launch_env)
+
+    def install_member(self, eff: Effective, *, keep_data: bool) -> None:  # Environment shape
+        # Explicit, so never skipped: the scenario asked for this build now (BE-0447). The running
+        # process stops first, so the step's outcome does not depend on whether the install kills it.
+        android = require_android(eff)
+        if not android.app_path or not Path(android.app_path).exists():
+            raise adb.DeviceError(f"appPath not found: {android.app_path} (build the app first)")
+        e = adb.Env(self._serial, run=self._run)
+        try:
+            e.force_stop(android.package)
+            if not keep_data:
+                e.uninstall(android.package)
+            e.install(android.app_path)
+            if not keep_data:
+                # The uninstall took the config's runtime grants with it; re-grant them the way
+                # `start` does after `pm clear`, so no prompt blocks a later step (BE-0210).
+                e.grant_permissions(android.package, android.grant_permissions)
+        except subprocess.CalledProcessError as exc:
+            error = adb.device_error(exc)
+            if "INSTALL_FAILED_VERSION_DOWNGRADE" in f"{exc.output or ''}{exc.stderr or ''}":
+                raise adb.DeviceError(
+                    f"installApp {android.package}: Android refuses to install an older build over "
+                    "a newer one while keeping its data — use keepData: false for a downgrade"
+                ) from exc
+            raise error from exc
+
+    def end_member(self, driver: base.Driver, eff: Effective) -> None:
+        package = require_android(eff).package
+        # Two builds of one app share a package, so only this member's own driver leaves the map.
+        if self._drivers.get(package) is driver:
+            del self._drivers[package]
+        adb.Env(self._serial, run=self._run).force_stop(package)
 
     def has_reusable_resident(self) -> bool:
         # The UI Automator read channel (BE-0245) is torn down per lease; amortizing it across leases
@@ -663,3 +830,10 @@ class AndroidEnvironment:
 
     def crawl_dialog_clearer(self) -> ClearBlocking | None:
         return None  # OS prompts are handled by the optional alert guard, wired by the CLI
+
+
+def _require_front_app(driver: base.Driver) -> None:
+    """Make *driver* refuse a read of another app's tree, where its backend can tell (BE-0447)."""
+    require = getattr(driver, "require_front_app", None)
+    if callable(require):
+        require()

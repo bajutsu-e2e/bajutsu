@@ -195,14 +195,16 @@ def test_android_control_unsupported_operations_raise(
 # --- capability declaration + preflight (BE-0212 tokens) ---
 
 
-def test_adb_advertises_setlocation_and_clipboard_only() -> None:
+def test_adb_advertises_setlocation_clipboard_and_foreground() -> None:
     caps = AdbDriver("E", run=lambda a: "").capabilities()
     assert base.Capability.DC_SET_LOCATION in caps
     assert base.Capability.DC_CLIPBOARD in caps
-    # The rest of the family stays unadvertised — the emulator has no faithful equivalent.
+    assert base.Capability.DC_FOREGROUND in caps
+    # The rest of the family stays unadvertised — `background`, push, keychain, and the status bar
+    # have no faithful emulator equivalent.
     assert base.Capability.DC_PUSH not in caps
     assert base.Capability.DC_CLEAR_KEYCHAIN not in caps
-    assert base.Capability.DC_APP_LIFECYCLE not in caps
+    assert base.Capability.DC_BACKGROUND not in caps
     assert base.Capability.DC_STATUS_BAR not in caps
 
 

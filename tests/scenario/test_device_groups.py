@@ -4,8 +4,7 @@ Covers the nested `targets` form and its two accessors (`device_groups`, `target
 the scenario model enforces on it (a name once across every group, an array of two or more, the
 primary as the first member of the first group, `installs` naming declared members, and a group
 the primary does not anchor naming at least one starting member), routing through the flattened
-names, the round trip through `model_dump()`, and the staged guard that refuses a device group at
-run time until the lease-and-lifecycle unit lands.
+names, the round trip through `model_dump()`, and which members start with the scenario.
 """
 
 from __future__ import annotations
@@ -16,20 +15,12 @@ import pytest
 import typer
 from pydantic import ValidationError
 
-from bajutsu.common.config import Effective, load_config, resolve
-from bajutsu.common.runner import run_all
-from bajutsu.common.runner.types import Lease
 from bajutsu.common.scenario import (
     Scenario,
     _scenarios_declaring_targets,
-    _scenarios_with_device_groups,
     scenario_dict,
 )
-from bajutsu.run.cli import (
-    _check_target_membership,
-    _declared_targets_in,
-    _reject_device_groups,
-)
+from bajutsu.run.cli import _check_target_membership, _declared_targets_in
 
 
 def _step(**overrides: object) -> dict[str, object]:
@@ -164,15 +155,7 @@ def test_the_first_group_needs_no_installs_entry_even_without_primary_target() -
     assert s.installs == []
 
 
-# --- the staged run-time guard ------------------------------------------------------------------
-
-
-def test_device_groups_are_named_only_for_a_group_of_two_or_more() -> None:
-    grouped = _scenario(**_UPDATE)
-    flat = Scenario.model_validate(
-        {"name": "flat", "targets": ["app", "web"], "primaryTarget": "app", "steps": [_step()]}
-    )
-    assert _scenarios_with_device_groups([grouped, flat]) == ["s"]
+# --- which members start ------------------------------------------------------------------------
 
 
 def test_a_single_group_counts_as_multi_target() -> None:
@@ -180,29 +163,18 @@ def test_a_single_group_counts_as_multi_target() -> None:
     assert _scenarios_declaring_targets([_scenario(**_UPDATE)]) == ["s"]
 
 
-def test_run_all_refuses_a_device_group_before_any_lease() -> None:
-    eff: Effective = resolve(
-        load_config("targets:\n  old: { backend: [fake], bundleId: com.example.app }\n"), "old"
+def test_later_targets_are_the_group_members_neither_primary_nor_listed() -> None:
+    s = _scenario(
+        targets=[["app", "auth", "beta"], "web", ["b1", "b2"]],
+        primaryTarget="app",
+        installs=["auth", "b2"],
     )
-
-    def lease_must_not_run(eff: Effective, s: Scenario) -> Lease:
-        raise AssertionError("lease must not be called when the device-group guard rejects it")
-
-    with pytest.raises(ValueError, match=r"device groups in targets: are not yet implemented"):
-        run_all(eff, [_scenario(**_UPDATE)], lease_must_not_run)
+    assert s.later_targets == ["beta", "b1"]
 
 
-def test_the_run_cli_refuses_a_device_group_with_exit_2(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    with pytest.raises(typer.Exit) as exc:
-        _reject_device_groups([_scenario(**_UPDATE)])
-    assert exc.value.exit_code == 2
-    assert "affected scenario(s): s" in capsys.readouterr().out
-
-
-def test_the_run_cli_passes_a_scenario_without_groups() -> None:
-    _reject_device_groups([_scenario(targets=["app", "web"], primaryTarget="app")])
+def test_a_flat_scenario_has_no_later_targets() -> None:
+    assert _scenario(targets=["app", "web"], primaryTarget="app").later_targets == []
+    assert _scenario().later_targets == []
 
 
 # --- the run CLI reads the flattened names -------------------------------------------------------

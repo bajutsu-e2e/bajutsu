@@ -50,6 +50,7 @@ final class RouterConcurrencyTests: XCTestCase {
         func screenshot() -> Data? { nil }
         func enterApp(bundleId: String) -> AppActivationResult { .ok }
         func leaveApp() -> AppActivationResult { .ok }
+        func targetApp(bundleId: String) {}
         func appState() -> AppRunState { .runningForeground }
     }
 

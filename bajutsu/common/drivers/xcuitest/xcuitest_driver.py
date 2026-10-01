@@ -25,6 +25,7 @@ from ._functions import (
 from ._health_wait import _HealthWait
 from ._reply import _Reply
 from ._shared import _OK, _TIPKIT_DISMISS_REGION, TransportFn
+from .runner_target import RunnerTarget
 from .xcuitest_channel_error import XcuitestChannelError
 
 _STALE = "stale"  # the resolved handle no longer maps to a live element (the screen changed)
@@ -90,6 +91,9 @@ class XcuitestDriver:
                 base.Capability.SELECT_PHOTOS,
                 base.Capability.HANDLE_TIPKIT_TIP,
                 base.Capability.HANDLE_NOTIFICATION_BANNER,
+                # Members of a device group share this runner, each retargeting it to its own app
+                # (BE-0447); a real device drops it, since nothing installs a second build there.
+                base.Capability.DEVICE_GROUP,
             }
         )
         | base.DEVICE_CONTROL_ALL
@@ -223,6 +227,39 @@ class XcuitestDriver:
         # answered on resume, killed a backgrounded showcase app with SIGPIPE
         # (docs/specs/ios-home-screen-widget-feasibility.md).
         self._entered_apps = 0
+        # The app this driver addresses on a runner a device group shares (BE-0447), None while it
+        # drives the runner alone. Set by `bind_to_member`, which also turns on the front check.
+        self._member_bundle: str | None = None
+
+    def bind_to_member(self, bundle_id: str, target: RunnerTarget) -> None:
+        """Address *bundle_id* on a runner other device-group members share (BE-0447).
+
+        Every request first retargets the runner's base app to *bundle_id* when *target* says another
+        member was the last to address it — `/app/target`, which activates nothing, so the scenario's
+        own `foreground` steps stay the only way the app in front changes. Every read then checks
+        that this app is the one in front (`AppNotInFront` otherwise), so no step resolves a selector
+        against another member's tree.
+        """
+        inner = self._transport
+
+        def _member_transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+            # `/health` asks about the runner, not an app, and the crash-recovery layer passes it
+            # straight through; a retarget ahead of it would route the probe through recovery.
+            if path != "/health" and target.current != bundle_id:
+                _post_target(inner, bundle_id)
+                target.current = bundle_id
+            return inner(method, path, body)
+
+        self._transport = _member_transport
+        self._member_bundle = bundle_id
+
+    def retarget(self, bundle_id: str) -> None:
+        """Point the runner's base app at *bundle_id*, activating nothing (`/app/target`, BE-0447)."""
+        _post_target(self._transport, bundle_id)
+
+    def app_state(self) -> str:
+        """The addressed app's process state as the runner reports it (`/app/state`)."""
+        return str(self._transport("POST", "/app/state", {}).app_state)
 
     # --- the channel ---
 
@@ -243,6 +280,13 @@ class XcuitestDriver:
                 `False` for those internal resolutions; `True` (the default) for `query()`, whose
                 result reaches evidence and the serve read API.
         """
+        if self._member_bundle is not None and (state := self.app_state()) != "runningForeground":
+            # Another member's app holds the screen: raised, never read as an empty tree, so no
+            # check can pass on a screen it was not looking at (BE-0447).
+            raise base.AppNotInFront(
+                f"{self._member_bundle} is not in front (its state is {state}) — bring it up with a "
+                "foreground step addressed to its target"
+            )
         reply = self._transport("GET", "/elements", None)
         self._raw_bytes = reply.raw
         elements, handles = self._parse_elements(reply)
@@ -1040,3 +1084,14 @@ class XcuitestDriver:
         which transport errors read as not-ready — rather than restating it.
         """
         return _await_health(self._probe_transport, timeout=0.0) is _HealthWait.READY
+
+
+def _post_target(transport: TransportFn, bundle_id: str) -> None:
+    """Send `/app/target` for *bundle_id* over *transport*, raising on anything but `ok`."""
+    reply = transport("POST", "/app/target", {"bundleId": bundle_id})
+    if reply.status != _OK:
+        # The runner reports a raised handler as `not-foreground`, its activation fallback; here
+        # nothing was activated, so name it as the failure it is.
+        raise XcuitestChannelError(
+            f"runner could not retarget to {bundle_id!r}: the handler raised (status={reply.status})"
+        )

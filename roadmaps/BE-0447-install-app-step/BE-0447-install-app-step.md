@@ -337,8 +337,9 @@ own meaning, including its `env` and `args`, for scenarios that restart a runnin
 On a device shared by two or more members, each member's driver checks that its own app, not
 another member's, is in front. The check runs before the driver resolves a selector, as part of
 that step's existing condition wait. On Android the check reads the packages on the dump's nodes.
-On iOS it reads the application states of the other members. A step addressed to a member whose
-app does not come to the front within that wait fails with a named cause pointing at `foreground`.
+On iOS it reads its own app's state after pointing the shared runner at that app. A step addressed
+to a member whose app does not come to the front within that wait fails with a named cause
+pointing at `foreground`.
 The step never runs against another app's tree, since resolving there would act on an element the
 step never meant (prime directive 2). A device that holds one target skips the check. Existing
 scenarios, the `app:` block, and system dialogs thus behave as today.
@@ -551,12 +552,12 @@ so the deterministic gate stays untouched.
 > (oldest first), linking the PRs.
 
 - [x] Unit 1: nested `targets` form, `installs`, and flattening accessor
-- [ ] Unit 2: device-group lease and lifecycle, after the on-device checks
-- [ ] Unit 3: `installApp` and `setPrimaryTarget` steps
-- [ ] Unit 4: run preflight and validation
-- [ ] Unit 5: XCUITest environment and driver
-- [ ] Unit 6: Android environment, driver, and `foreground`
-- [ ] Unit 7: backend handling
+- [x] Unit 2: device-group lease and lifecycle, after the on-device checks
+- [x] Unit 3: `installApp` and `setPrimaryTarget` steps
+- [x] Unit 4: run preflight and validation
+- [x] Unit 5: XCUITest environment and driver
+- [x] Unit 6: Android environment, driver, and `foreground`
+- [x] Unit 7: backend handling
 - [ ] Unit 8: documentation in both languages
 - [ ] Unit 9: showcase demo, update and companion scenarios
 
@@ -572,6 +573,89 @@ Log:
   pipeline, the `run` and `audit` CLIs, and the serve evidence lookup. Until unit 2 leases one
   device per group, `run_all` and the `run` CLI refuse a scenario that declares a device group,
   since a flattened run would lease a device per member and start every one of them.
+- Unit 2. The members of a device group share one driver, the fallback the design names for
+  devices that cannot serve two drivers. The code already settles that question without a device
+  run: the XCUITest runner's discard terminates the XCTRunner bundle every runner shares, and the
+  Android resident server is one per device with a fixed device port. The environment seam gains
+  `start_member` / `end_member`, the pool's lease gains `join`, and a new `deviceGroup` capability
+  gates a group in preflight; only the fake backend advertises it until units 5 and 6. The
+  pipeline leases one device per group for its last starting member, joins the others in reverse
+  declared order, and stops every member's app before the device returns to the pool. `run`
+  counts devices per group. A `TargetRoster` holds each later member's lifecycle and the current
+  primary: a step addressed to a member that is not running fails with a named cause, a later
+  member comes up at its first `foreground`, and an `interrupts` entry that omits `target` polls
+  on the current primary, while a member that is not running polls nothing. The members share
+  the group's network collector, so its traffic is written once; telling one member's requests
+  from another's waits for units 5 and 6.
+- Unit 3. The `installApp: { from, keepData }` and `setPrimaryTarget: { target }` steps. The
+  scenario model follows the current primary through the top-level steps in order, so every later
+  step and `expect` entry that omits `target` resolves to it. It refuses a `setPrimaryTarget` off
+  the top level, an `installApp.from` that is not a later member of the step's own device group,
+  a member installed twice at the top level, an `installApp` inside `web:` / `app:`, and a
+  recovery `installApp` that leaves its device implicit once the primary moves. Expansion never
+  stamps a caller's `target` onto `setPrimaryTarget` and refuses one inside a target group. At run
+  time the step loop drives the target roster: `installApp` installs through the environment's new
+  `install_member` (the fake backend only until units 5 and 6), retires every installed member
+  sharing the build's identifier, and refuses a second install of one member; `setPrimaryTarget`
+  moves the primary that `interrupts` entries omitting `target` and the final `expect` follow, and
+  an `expect` entry resolving to a member that is not running fails by name. Two deviations. An
+  error inside an expanded component names the `group:` it came from but not a `use:` chain, since
+  expansion records only the former on a step. And whether a `setPrimaryTarget` names a retired
+  member depends on identifiers, which only the config holds, so the run refuses it with a named
+  cause instead of the load; unit 4's preflight can add the static check.
+- Unit 4. `run` checks every device group against the config before any device is acquired, and
+  exits 2 with each cause named. A group's members must share one platform, one device route
+  (`deviceProvider`, `device`, `xcuitest.deviceType`), and one effective system locale, and none
+  may be a web target. Starting members of one group must not share a bundle identifier or
+  package. Each `installApp.from` target must define an `appPath` that exists, and a Git-sourced
+  config builds it on demand, as it already does for the primary. The check also closes unit 3's
+  deviation as a `run` preflight rather than at load, since the identifier lives in config: walking
+  `before` and the top-level steps in order, it refuses a `setPrimaryTarget` that names a member an
+  earlier `installApp` retired. Each build is checked once for the whole run. `Effective.app_identifier` names the identifier both this
+  check and the runner's retirement read.
+- Unit 7. A web target in a device group is already refused before any device is leased, by unit
+  4's preflight and by the `deviceGroup` capability web never advertises. A device provider that
+  hands its device over with the app preinstalled now refuses a group on it, once the device is
+  reserved and inside the region that releases every reservation: the provider holds the binary,
+  so there is no local build to install beside it. Every code generator (XCUITest, UI Automator,
+  Playwright) renders `installApp` and `setPrimaryTarget` as a labeled `// TODO`, though `codegen`
+  already refuses any scenario declaring two or more targets before it reaches them.
+- Unit 6. Android shares a device between a group's members. The emulator environment gives each
+  member its own `AdbDriver` over the one resident channel. A starting member installs under its
+  own reinstall mode without the device-wide clears, and a later member starts launch-only.
+  `installApp` force-stops the app and runs `install -r`, uninstalling first for
+  `keepData: false`; it names the cause when Android refuses a downgrade that keeps data.
+  `foreground` resumes a running app, and launches one that is not running the way `relaunch`
+  would, without the terminate: launch env, launch marker, settle-cache and exit-info resets, and
+  the readiness wait. Once a device holds a second member, each member's driver reads the
+  packages on the dump's nodes and raises a named `AppNotInFront` for another app's tree, never an
+  empty one, so no check can pass on a screen it was not looking at. The readiness wait treats it
+  as transient. `deviceControl.appLifecycle` splits into `deviceControl.background` and
+  `deviceControl.foreground`, and adb advertises `foreground` and `deviceGroup`. One deviation: a
+  step addressed to a member that is not in front fails at its first read rather than polling
+  within its condition wait, since every action settles through that read; the `foreground` that
+  brings a member up does wait, and fails by name if the app never reaches the front. Two gaps
+  remain: the app-crash sweeps (exit-info aside) still read the primary's app, so a member's
+  native crash can be attributed to the primary; and on the `uiautomator dump` fallback, which
+  reads the active window alone, a system dialog over a member reads as another app in front. And
+  an `installApp` with `keepData: false` re-grants the config's `grantPermissions` but not the
+  scenario's own `permissions`.
+- Unit 5. iOS shares a Simulator between a group's members through the lease's one XCUITest
+  runner. The runner gains `/app/target`, which replaces the base of its app stack with another
+  bundle and activates nothing; an `/app/enter` block stays above the new base. Each member's
+  driver retargets the runner to its own app only when another member was the last to address it,
+  and once a second member joins, every member's read first asks `/app/state` and raises a named
+  `AppNotInFront` unless its own app is `runningForeground`. `start_member` installs a member under
+  its own reinstall mode (the device-wide erase already ran), applies its permissions, and
+  launches it with its own launch env; a later member starts launch-only. `installApp`
+  terminates, installs over the existing bundle (uninstalling first for `keepData: false`), and
+  resets the tracked digest, so a later lease's `reinstall: overwrite` never skips its own
+  install. `foreground` resumes a running app as before and launches one that is not running with
+  `relaunch`'s env and args and a fresh launch marker; on a shared device it then waits for the
+  app to reach the front and fails by name if it never does. A warm runner a previous lease's
+  group retargeted is pointed back at the next lease's app. A real iPhone drops `deviceGroup`,
+  since nothing installs a second build there. The same two gaps as Android hold: the `.ips` crash
+  sweep still reads the lease's own app, and a member's driver carries no `nativeZ` responder.
 
 ## References
 

@@ -217,7 +217,13 @@ def _parse_tap_drain_fold(raw: bytes | None) -> base.DrainedInterruptions | None
     return _parse_drain_fold(raw)
 
 
-def _is_retry_eligible(method: str, *, delivered: bool) -> bool:
+# The two `POST` routes that change nothing a repeat could double (BE-0447): `/app/state` reads, and
+# `/app/target` assigns the same base app however many times it arrives. A device group sends one of
+# them before each member read, so a blip there must ride the same retry a `GET` read would.
+_IDEMPOTENT_POSTS = frozenset({"/app/state", "/app/target"})
+
+
+def _is_retry_eligible(method: str, *, delivered: bool, path: str = "") -> bool:
     """Whether a failed attempt is safe to re-issue (BE-0207, BE-0287).
 
     A failure before the request reached the runner is safe for any method — the runner never acted.
@@ -225,9 +231,10 @@ def _is_retry_eligible(method: str, *, delivered: bool) -> bool:
     write after a response timeout could double-apply the action. Idempotency is keyed on the HTTP
     method: the runner's channel is REST-shaped, so every read is a `GET` (`/elements`, `/screenshot`,
     `/health`) and every actuation a `POST` — and the conservative direction is safe, since a request
-    wrongly judged non-idempotent merely fails loudly instead of risking a double actuation.
+    wrongly judged non-idempotent merely fails loudly instead of risking a double actuation. The two
+    exceptions are named one by one (`_IDEMPOTENT_POSTS`).
     """
-    return not delivered or method == "GET"
+    return not delivered or method == "GET" or path in _IDEMPOTENT_POSTS
 
 
 def _with_retry(inner: TransportFn, *, sleep: Callable[[float], None] = time.sleep) -> TransportFn:
@@ -248,7 +255,7 @@ def _with_retry(inner: TransportFn, *, sleep: Callable[[float], None] = time.sle
                 return inner(method, path, body)
             except _TransportFailure as exc:
                 if attempt == _MAX_ATTEMPTS or not _is_retry_eligible(
-                    method, delivered=exc.delivered
+                    method, delivered=exc.delivered, path=path
                 ):
                     # A blip outlived the transient budget (or a delivered write cannot be re-issued):
                     # signal it as a crash, tagged so the BE-0287 recovery layer can decide whether the
@@ -436,7 +443,7 @@ def _with_crash_recovery(
                 )
                 if on_stall is not None:
                     _observe_stall(on_stall, logger)
-                if not _is_retry_eligible(method, delivered=crash.delivered):
+                if not _is_retry_eligible(method, delivered=crash.delivered, path=path):
                     raise XcuitestRunnerCrashError(
                         f"runner channel {method} {path} failed after delivery: the runner did not confirm "
                         "the write, which may have been lost and cannot be safely re-applied (mid-run crash)",

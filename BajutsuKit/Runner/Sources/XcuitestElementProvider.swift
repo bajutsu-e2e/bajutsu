@@ -33,8 +33,9 @@ private final class NotificationBannerBacking {}
 
 final class XcuitestElementProvider: ElementProviding {
     // The app every other method addresses: the test target, seeded in `init`, with one more
-    // `XCUIApplication` pushed for each `enterApp` not yet matched by a `leaveApp`.
-    // `enterApp`/`leaveApp` are the stack's only mutators; every existing method below still just
+    // `XCUIApplication` pushed for each `enterApp` not yet matched by a `leaveApp`. `targetApp`
+    // swaps the base for a device-group member's app (BE-0447); `enterApp`/`leaveApp` are the only
+    // mutators above it; every existing method below still just
     // reads `app` and is unaffected by which bundle id that resolves to right now.
     private var appStack: [XCUIApplication]
     private var app: XCUIApplication { appStack[appStack.count - 1] }
@@ -419,7 +420,12 @@ final class XcuitestElementProvider: ElementProviding {
     }
 
     func screenshot() -> Data? {
-        app.screenshot().pngRepresentation
+        // A device-group member that is not in front still gets the screen as it is (BE-0447): the
+        // evidence for its `AppNotInFront` failure is whatever app was in front instead.
+        guard app.state == .runningForeground else {
+            return XCUIScreen.main.screenshot().pngRepresentation
+        }
+        return app.screenshot().pngRepresentation
     }
 
     func enterApp(bundleId: String) -> AppActivationResult {
@@ -442,6 +448,12 @@ final class XcuitestElementProvider: ElementProviding {
         appStack.removeLast()
         app.activate()
         return waitForForeground(app) ? .ok : .notForeground
+    }
+
+    func targetApp(bundleId: String) {
+        // The base only: an open `enterApp` block keeps addressing its own app above it, and
+        // nothing is activated, so the app in front is still whatever the scenario put there.
+        appStack[0] = XCUIApplication(bundleIdentifier: bundleId)
     }
 
     /// Poll `target.state` for the bounded window the spike measured as generous —

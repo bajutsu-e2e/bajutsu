@@ -95,6 +95,19 @@ class Effective:
             return "web"
         return "android"
 
+    @property
+    def app_identifier(self) -> str | None:
+        """The bundle identifier or package the app installs under, or None for a web target.
+
+        Two targets sharing one are two builds of one app: installing either replaces the other on
+        a device they share (BE-0447).
+        """
+        if isinstance(self.platform_config, IosConfig):
+            return self.platform_config.bundle_id or None
+        if isinstance(self.platform_config, WebConfig):
+            return None
+        return self.platform_config.package or None
+
     def rebased(
         self, root: Path, *, confine: bool = True, confine_to: Path | None = None
     ) -> Effective:

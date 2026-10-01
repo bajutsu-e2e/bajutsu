@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import importlib
+
+import pytest
+
 from bajutsu.codegen.common import (
     class_name,
+    device_group_todo,
     ident,
     is_plain_substring,
     manual_todo,
     ms,
     network_unsupported,
 )
+from bajutsu.common.scenario import Step
 
 
 def test_ident_sanitizes_and_prefixes() -> None:
@@ -79,3 +85,24 @@ def test_manual_todo_collapses_every_line_terminator_to_stay_on_the_comment_line
     assert todo == (
         "solve the CAPTCHA now next end — wire a deterministic bypass: flip the flag; not generated"
     )
+
+
+@pytest.mark.parametrize("module", ["xcuitest", "uiautomator", "playwright"])
+def test_device_group_steps_are_labeled_todos_on_every_generator(module: str) -> None:
+    # A generated test drives one app on one device, so neither BE-0447 lifecycle step has a form
+    # there; each renders as a labeled comment naming what it would have done, never a silent skip.
+    emit = importlib.import_module(f"bajutsu.codegen.{module}")._emit_step
+    install = Step.model_validate({"installApp": {"from": "new"}})
+    move = Step.model_validate({"setPrimaryTarget": {"target": "new"}})
+    assert emit(install) == [
+        "// TODO: installApp(from: new) — installs another target's build on a shared device; "
+        "not generated"
+    ]
+    assert emit(move) == [
+        "// TODO: setPrimaryTarget(target: new) — moves the default target across targets; "
+        "not generated"
+    ]
+
+
+def test_device_group_todo_is_none_for_every_other_step() -> None:
+    assert device_group_todo(Step.model_validate({"tap": {"id": "a"}})) is None

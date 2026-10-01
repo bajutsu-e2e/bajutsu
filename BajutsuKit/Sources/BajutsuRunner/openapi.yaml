@@ -381,6 +381,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ActuationReply"
+  /app/target:
+    post:
+      operationId: targetApp
+      summary: Make another app the base every following route addresses, without activating it.
+      description: >-
+        Replaces the bottom of the runner's app stack — the test target the runner launched — with
+        the named app, so `/elements`, `/tap`, `/app/state`, and every other route address it from
+        now on, until the next `/app/target`. Unlike `/app/enter`, nothing is activated: whichever
+        app is in front stays in front. Device-group members that share one runner (BE-0447) each
+        retarget it to their own app before they act, so a step addressed to a member that is not
+        in front is caught by `/app/state` rather than brought forward behind the scenario's back.
+        An `/app/enter` block stays above the new base and still pops back to it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppRequest"
+      responses:
+        "200":
+          description: The base was replaced.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActuationReply"
+        "400":
+          $ref: "#/components/responses/BadRequest"
   /notificationBanner/query:
     post:
       operationId: queryNotificationBanner

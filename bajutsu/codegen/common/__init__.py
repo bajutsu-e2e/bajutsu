@@ -22,6 +22,7 @@ from ._functions import _reject_runtime_only as _reject_runtime_only
 from ._functions import _scenario_lines as _scenario_lines
 from ._functions import (
     class_name,
+    device_group_todo,
     ident,
     indent_lines,
     interrupts_setup_lines,
@@ -41,6 +42,7 @@ __all__ = [
     "CodeGenerator",
     "CodegenError",
     "class_name",
+    "device_group_todo",
     "ident",
     "indent_lines",
     "interrupts_setup_lines",

@@ -46,6 +46,8 @@ final class FakeElementProvider: ElementProviding {
     var leaveAppResult: AppActivationResult = .ok
     var enterAppCalls: [String] = []
     var leaveAppCalls = 0
+    // The bundle ids `targetApp` was called with (BE-0447).
+    var targetAppCalls: [String] = []
 
     func queryElements() -> [ElementSnapshot] {
         beforeQueryElements?()
@@ -136,6 +138,10 @@ final class FakeElementProvider: ElementProviding {
     func leaveApp() -> AppActivationResult {
         leaveAppCalls += 1
         return leaveAppResult
+    }
+
+    func targetApp(bundleId: String) {
+        targetAppCalls.append(bundleId)
     }
 
     func appState() -> AppRunState { appRunState }

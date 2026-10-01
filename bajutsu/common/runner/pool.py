@@ -41,7 +41,7 @@ from bajutsu.common.platform_lifecycle import (
     environment_for,
 )
 from bajutsu.common.report import git_revision, run_provenance
-from bajutsu.common.runner.launch import launch_driver
+from bajutsu.common.runner.launch import await_ready, launch_driver
 from bajutsu.common.runner.recovery import guarded_teardown
 from bajutsu.common.runner.types import Lease, LeaseFn, _no_crash_artifacts
 from bajutsu.common.scenario import Scenario, dump_scenario_file, redact_totp_secrets
@@ -569,6 +569,91 @@ def device_pool(  # noqa: C901, PLR0915
                 )
                 free.put(udid)
 
+            def install(member_eff: Effective, keep_data: bool) -> None:
+                lease_env.install_member(member_eff, keep_data=keep_data)
+
+            def join(member_eff: Effective, member: Scenario, fresh: bool) -> Lease:
+                """One more device-group member on this lease's device (BE-0447).
+
+                The member reuses this lease's collector and launch env (one device, one receiver),
+                and gets its own sink so its evidence carries its own redaction. Its release stops
+                its app alone; the device returns to the pool only through this lease's `release`.
+                """
+                member_driver = lease_env.start_member(
+                    member_eff,
+                    member.preconditions,
+                    extra_env=extra_env,
+                    permissions=member.permissions,
+                    install=fresh,
+                )
+
+                def end_member() -> None:
+                    guarded_teardown(
+                        lambda: lease_env.end_member(member_driver, member_eff),
+                        mid_run=True,
+                        what=f"stopping a device-group member's app on {udid}",
+                    )
+
+                try:
+                    # The member's own namespaces and the device's transition signal, as the lease's
+                    # own readiness gate reads them: without them a member with no `readyWhen`
+                    # could pass on the tree of the app that was in front before it.
+                    member_readiness = await_ready(
+                        member_driver,
+                        ready_sel=member_eff.ready_when,
+                        id_namespaces=member_eff.id_namespaces,
+                        transitions=(
+                            collector.transitions_snapshot_timed
+                            if isinstance(collector, NetworkCollector)
+                            else _no_transitions
+                        ),
+                    )
+                    member_sink = FileSink(
+                        run_dir,
+                        udid=udid,
+                        log_predicate=log_predicate,
+                        log_subsystem=log_subsystem,
+                        redact=member_eff.redact,
+                        secrets=secret_values,
+                        driver_interval=getattr(member_driver, "driver_interval", None),
+                        video_extension=getattr(member_driver, "video_extension", "mp4"),
+                        readiness=member_readiness,
+                        provenance=run_provenance(
+                            dump_scenario_file([redact_totp_secrets(member)]), git_revision=git_rev
+                        ),
+                        # The device's one stall flag, which the member lease also forwards.
+                        on_video_start_stall=note_video_start_stall,
+                    )
+                    return Lease(
+                        driver=member_driver,
+                        sink=member_sink,
+                        relaunch=lease_env.relauncher(
+                            member_eff, member, member_driver, extra_env=extra_env
+                        ),
+                        control=lease_env.controller(member_eff),
+                        collector=collector,
+                        release=end_member,
+                        udid=udid,
+                        device_name=catalog.get(udid, {}).get("name", ""),
+                        device_runtime=catalog.get(udid, {}).get("runtime", ""),
+                        collector_provider=collector_provider,
+                        readiness=member_readiness,
+                        # Device-scoped, so a member reads its group's device the way the lease that
+                        # holds it does: a crash retry judged on a member (the group's primary is
+                        # one whenever another member starts with it) must still escalate to a
+                        # replacement device and find the runner's crash evidence. The app-scoped
+                        # crash sweeps stay at their no-op defaults: each backend's sweep reads the
+                        # lease's own app, and attributing a member's crash to the member is a
+                        # recorded gap of BE-0447.
+                        request_device_replacement=lease_env.request_device_replacement,
+                        video_start_stalled=lambda: video_start_stalled,
+                        crash_artifacts=lambda: crash_evidence(),  # noqa: PLW0108
+                        install=install,
+                    )
+                except BaseException:
+                    end_member()
+                    raise
+
             meta = catalog.get(udid, {})
             return Lease(
                 driver=driver,
@@ -601,6 +686,8 @@ def device_pool(  # noqa: C901, PLR0915
                 app_crash_artifacts=lease_env.app_crash_artifacts,
                 app_crash_tombstone=lease_env.app_crash_tombstone,
                 readiness=readiness,
+                join=join,
+                install=install,
             )
         except BaseException:
             # A failed launch must not leak the collector tunnel (BE-0283) or the collector itself —

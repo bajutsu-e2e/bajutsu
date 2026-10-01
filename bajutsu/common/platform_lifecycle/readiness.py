@@ -158,10 +158,11 @@ def await_ready(
                     driver, timeout, poll_init, poll_max, start, first=_tree_signature(elements)
                 )
                 return ReadinessResult(True, signal, time.monotonic() - start, settled)
-        except (OSError, subprocess.CalledProcessError, ValueError):
+        except (OSError, subprocess.CalledProcessError, ValueError, base.AppNotInFront):
             # The app is still coming up: a query before the UI exists can fail (no device
-            # yet / empty tree / CLI hiccup). These are expected transient startup errors —
-            # swallow them and keep polling until the deadline.
+            # yet / empty tree / CLI hiccup), and a device-group member's read shows another app
+            # until this one reaches the front (BE-0447). These are expected transient startup
+            # errors — swallow them and keep polling until the deadline.
             pass
     # Explicit rather than the field's `True` default: a gate that never became ready observed no
     # settled screen either, and `launch_driver` carries this result through to the first-wait

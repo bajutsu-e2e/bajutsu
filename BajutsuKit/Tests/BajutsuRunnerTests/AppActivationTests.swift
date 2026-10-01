@@ -75,4 +75,31 @@ final class AppActivationTests: XCTestCase {
 
         XCTAssertEqual(try statusJSON(output), "not-foreground")
     }
+
+    private func statusJSON(_ output: Operations.targetApp.Output) throws -> String {
+        guard case .ok(let ok) = output, case .json(let payload) = ok.body else {
+            XCTFail("unexpected targetApp output: \(output)")
+            throw UnexpectedShape.output
+        }
+        return try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: JSONEncoder().encode(payload)
+            ) as? [String: Any]
+        )["status"] as? String ?? "missing"
+    }
+
+    /// BE-0447: a device-group member retargets the shared runner to its own app; the route only
+    /// hands the bundle id to the provider, which activates nothing.
+    func testTargetAppSendsTheBundleIdToTheProviderAndReportsOk() async throws {
+        let provider = FakeElementProvider()
+        let handler = APIHandler(provider: provider)
+
+        let output = try await handler.targetApp(
+            .init(body: .json(.init(bundleId: "com.example.authenticator")))
+        )
+
+        XCTAssertEqual(try statusJSON(output), "ok")
+        XCTAssertEqual(provider.targetAppCalls, ["com.example.authenticator"])
+        XCTAssertEqual(provider.enterAppCalls, [])
+    }
 }

@@ -91,8 +91,21 @@ def _merge_target(
     )
 
 
+def _refuse_set_primary_target(steps: list[Step], path: tuple[str, ...]) -> None:
+    # A target group names one target for its run of steps; a routing move inside it would change
+    # the target every later step follows (BE-0447), as the scenario-level expansion also refuses.
+    if any(step.set_primary_target is not None for step in steps):
+        raise ValueError(
+            f"{' > '.join(path)}: setPrimaryTarget is not allowed inside a target group"
+        )
+
+
 def _stamp(step: Step, caller: str | None, path: tuple[str, ...]) -> Step:
     """*step* with *caller*'s target stamped on when it omits its own (BE-0446)."""
+    if step.set_primary_target is not None:
+        # Takes its target as an argument; a stamped modifier would name a device it has none of
+        # (BE-0447).
+        return step
     label = f"step {step.name!r}" if step.name is not None else "step <unnamed step>"
     target = _merge_target(caller, step.target, path, label)
     return step if target == step.target else step.model_copy(update={"target": target})
@@ -214,6 +227,7 @@ def expand_components(  # noqa: C901
                         "step there already runs against the block's own device"
                     )
                 label = f"target group {st.target!r}"
+                _refuse_set_primary_target(st.steps, (*path, label))
                 target = _merge_target(level_target, st.target, path, label)
                 out.extend(
                     expand(
