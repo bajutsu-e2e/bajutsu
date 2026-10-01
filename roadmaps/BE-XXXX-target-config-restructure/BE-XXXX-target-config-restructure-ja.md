@@ -72,7 +72,7 @@ targets:
     runsOn:   { model: iPhone 15, os: ">=17 <19", kind: simulator, locale: en_US }
     driver:   { runner: { testRunner: build/Runner.xctestrun } }
     run:      { erase: true, secrets: [LOGIN_PASSWORD], tipKitHandling: true }
-    hooks:    { before: [{ use: login }] }
+    hooks:    { setup: [{ http: { method: POST, url: "https://api.test/seed" } }] }
     paths:    { scenarios: demos/showcase/scenarios }
 
   site:
@@ -119,7 +119,9 @@ targets:
 - **`locale`は`runsOn`に置きます。** iOS では Simulator 自体のシステム言語を固定するため（[BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）、起動引数ではなく端末の状態にあたります。
 - **Web のブラウザと`emulate`は`runsOn`に置きます。** Web の target にとって、ブラウザが「何の上で動くか」にあたります。`headless`は`driver`に置きます。表示の有無は Bajutsu がブラウザをどう見せるかを変えるだけで、何の上で動くかは変えません。
 - **`secrets`は`run`に置きます。** シークレットは`${secrets.X}`として注入する入力であり、証跡で値を伏せるのはその役割から来る結果です。
-- **`setup`は廃止し、`hooks.before`に統合します。** 1つの用途を2つのキーが受け持つ重複こそ、この項目が取り除くものです。代償として、これまで`setup`がシナリオの`steps`に差し込んでいた手順は report の`before`フェーズとして走り、そこでの失敗は`before`の失敗として数えます。
+- **前置きの`setup`は`hooks.setup`に統合します。** 1つの用途を2つのキーが受け持つ重複こそ、この項目が取り除くものです。代償として、これまで前置きがシナリオの`steps`に差し込んでいた手順は、report の setup フェーズとして走り、そこでの失敗は setup の失敗として数えます。
+
+`hooks`は`setup`、`cleanup`、`interrupts`を持ちます。`setup`と`cleanup`は`before`と`after`を置き換えるもので、target とシナリオの両方で同じ名前を使います。これで、2つのフェーズを両方の階層で同じ語で呼べます。`cleanup`は、現在の`after`の規則をそのまま引き継ぎます。各項目は`on`と手順の組で、`on`は`always`、`success`、`failure`のいずれかです。`failure`は`error`を置き換えます。cleanup は、setup が失敗したとき、手順が失敗したとき、run がキャンセルされたときを含め、シナリオを抜けるどの経路でも走ります。前置きのファイルを指すシナリオの`preconditions.setup`も廃止します。前置きを再利用するシナリオは、自分の`setup`の中でコンポーネント（`use:`）として呼びます。report は、2つのフェーズを`setup`と`cleanup`と表示します。
 
 ### プラットフォームのスキーマのレジストリ
 
@@ -268,7 +270,9 @@ target は、どこで実行するかを持たなくなります。target が書
 | `deviceProvider`、`cloudBatch`、`cloudBatchBudget`、`requires` | target から外す（「どこで実行するか」を参照） |
 | `mockServer`、`mailbox` | `services.*` |
 | `erase`、`network`、`visualCompare`、`secrets`、`systemAlertHandling`、`iosTipKitHandling` | `run.*`（最後は`run.tipKitHandling`） |
-| `setup`、`before`、`after`、`interrupts` | `hooks.before`（`setup`を吸収）、`hooks.before`、`hooks.after`、`hooks.interrupts` |
+| `setup`、`before`、`after`、`interrupts` | `hooks.setup`（前置きの`setup`を吸収）、`hooks.setup`、`hooks.cleanup`（`on: error`は`on: failure`になる）、`hooks.interrupts` |
+| シナリオの`before`、`after` | シナリオの`setup`、`cleanup` |
+| シナリオの`preconditions.setup` | 廃止。シナリオの`setup`の中で`use:`として前置きを呼ぶ |
 | `capture`、`redact` | `evidence.*` |
 | シナリオの`preconditions.locale` | シナリオの`preconditions.runsOn.<platform>.locale` |
 | `scenarios`、`baselines`、`schemas`、`goldens` | `paths.*` |
@@ -292,7 +296,7 @@ target は、どこで実行するかを持たなくなります。target が書
 2. **未確定の置き場所の確認。** `deeplinkScheme`、`launchEnv`、`launchArgs`、`locale`を読むバックエンドを洗い出します。AVD 名が対応する API レベル全体で読めるか（たとえば`ro.boot.qemu.avd_name`で）を確かめます。`setup`が`steps`に差し込まれることに依存するシナリオがないかを調べます。コードを入れる前に、置き場所の表を更新します。
 3. **プラットフォームのレジストリとモデル。** レジストリとプラットフォームごとのモデルを追加します。レジストリのキーが`backends.PLATFORMS`と一致することをテストで固定します。
 4. **スキーマの切り替え。** `TargetConfig`、`Defaults`、`Config`、`resolve`を置き換え、テストの固定データと`demos/`の設定ファイル10個を1つの変更で変換します。切り替えを分けると、読み込み側と全設定ファイルが同時に壊れるので、コミットの間でゲートが赤になります。
-5. **`setup`の`hooks.before`への統合。** runner から`setup`の経路を取り除きます。
+5. **setup と cleanup。** target とシナリオの両方で、`before`と`after`を`setup`と`cleanup`に改め、`on: error`を`on: failure`に改めます。target の前置きの`setup`と、シナリオの`preconditions.setup`を`setup`に統合し、report のフェーズの表示を改めます。
 6. **コマンドラインインターフェイス（CLI）。** `--backend`は、`platform`と食い違えば終了コード2で終わる検査になります。`--browser`、`--browsers`、`--headed`は、`runsOn.browser.engine`と`driver.headless`を上書きします。
 7. **シナリオの`runsOn`。** プラットフォームごとに分けた`preconditions.runsOn`を足し、登録済みのモデルで検証します。`preconditions.locale`をその中へ移し、target の`runsOn`の上に重ねます。
 8. **端末の読み取り。** 手元の各端末から、機種と OS（iOS）、API レベルと AVD 名（Android）、ブラウザのバージョン（Web）を読みます。
@@ -314,6 +318,7 @@ target は、どこで実行するかを持たなくなります。target が書
 | core にプラットフォームのモデルの閉じた共用体を持たせる | バックエンドを足すたびに core のスキーマを編集することになり、バックエンドに依存しない設計と矛盾します |
 | 全プラットフォームで共通の`runsOn`の形 | iOS のブラウザや Web の AVD のように、どのプラットフォームも使えないフィールドが残り、flat な並びの問題が再び生じます |
 | `dispatch`（`deviceProvider`、`cloudBatch`）を target に残す | BE-0448 と BE-0450 が worker と実行の要求へ移す判断と重複し、どこで実行するかを target を書くチームに決めさせることになります |
+| target の hook の名前だけを変える | シナリオは同じフェーズを`before`と`after`のまま持つので、1つの概念が2つの名前を持つことになります |
 | `setup`と`before`を両方残す | 現行の挙動を保てますが、1つの用途を2つのキーが受け持ったままになります |
 | 端末が合わなければ run を失敗させる | 複数の OS で同じ一式を回すと、OS 専用のシナリオが、対象でない OS の側で毎回失敗します |
 | 合う端末をその場で作る | ランタイムの導入、時間、後片付けを Bajutsu が負います |
@@ -337,7 +342,7 @@ target は、どこで実行するかを持たなくなります。target が書
 - [ ] 作業単位 2: 未確定の置き場所の確認
 - [ ] 作業単位 3: プラットフォームのレジストリとモデル
 - [ ] 作業単位 4: スキーマの切り替え、固定データ、`demos/`の設定ファイル
-- [ ] 作業単位 5: `setup`の`hooks.before`への統合
+- [ ] 作業単位 5: setup と cleanup
 - [ ] 作業単位 6: CLI
 - [ ] 作業単位 7: シナリオの`runsOn`
 - [ ] 作業単位 8: 端末の読み取り
@@ -353,7 +358,7 @@ target は、どこで実行するかを持たなくなります。target が書
 - [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)：解決後の`Effective`のプラットフォーム別の分割。
 - [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)：`DeviceOS`と、記録される`device_runtime`。
 - [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)と[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)：`runsOn`へ移る`deviceMode`と`browser`。
-- [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)：`hooks`が持つ`before`と`after`のフェーズ。
+- [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)：`setup`と`cleanup`になる`before`と`after`のフェーズ。
 - [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)：target から外れ、`worker.yaml`の`appium`の environment へ移る`deviceProvider`。
 - `bajutsu/common/config/schema/target_config.py`と`bajutsu/common/config/resolve.py`：この項目が置き換えるスキーマと解決処理。
 - [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)と[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)：どこで実行するかを引き受ける、worker capability のファイルと Device Farm の worker。

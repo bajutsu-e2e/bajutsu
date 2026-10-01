@@ -106,7 +106,7 @@ targets:
     runsOn:   { model: iPhone 15, os: ">=17 <19", kind: simulator, locale: en_US }
     driver:   { runner: { testRunner: build/Runner.xctestrun } }
     run:      { erase: true, secrets: [LOGIN_PASSWORD], tipKitHandling: true }
-    hooks:    { before: [{ use: login }] }
+    hooks:    { setup: [{ http: { method: POST, url: "https://api.test/seed" } }] }
     paths:    { scenarios: demos/showcase/scenarios }
 
   site:
@@ -165,10 +165,18 @@ Four placements needed a judgment call:
   not what the target runs on.
 - **`secrets` sits in `run`.** A secret is an input injected as `${secrets.X}`; masking the value in
   evidence follows from that role.
-- **`setup` is removed and folded into `hooks.before`.** Two keys serving one purpose is the
-  duplication this item removes. The cost: steps that `setup` used to splice onto a scenario's
-  `steps` now run as the report's own `before` phase, and a failure there counts as a `before`
-  failure.
+- **The prelude `setup` folds into `hooks.setup`.** Two keys serving one purpose is the
+  duplication this item removes. The cost: steps that the prelude used to splice onto a scenario's
+  `steps` now run as the report's own setup phase, and a failure there counts as a setup failure.
+
+`hooks` holds `setup`, `cleanup`, and `interrupts`. `setup` and `cleanup` replace `before` and
+`after`, in the target and in the scenario alike, so one pair of words names the phases at both
+levels. `cleanup` keeps the rules `after` has today. Each entry pairs `on` with steps, and `on`
+takes `always`, `success`, or `failure`, which replaces `error`. Cleanup runs on every path out of
+a scenario: after a failed setup, after a failed step, and after a cancelled run. The scenario's
+`preconditions.setup`, which names a prelude file, goes away as well. A scenario that reuses a
+prelude calls it as a component (`use:`) inside its own `setup`. The report labels the two phases
+`setup` and `cleanup`.
 
 ### A registry of platform schemas
 
@@ -387,7 +395,9 @@ iPhone, as it does today.
 | `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, `requires` | removed from the target (see *Where a run happens*) |
 | `mockServer`, `mailbox` | `services.*` |
 | `erase`, `network`, `visualCompare`, `secrets`, `systemAlertHandling`, `iosTipKitHandling` | `run.*` (the last as `run.tipKitHandling`) |
-| `setup`, `before`, `after`, `interrupts` | `hooks.before` (absorbing `setup`), `hooks.before`, `hooks.after`, `hooks.interrupts` |
+| `setup`, `before`, `after`, `interrupts` | `hooks.setup` (absorbing the prelude `setup`), `hooks.setup`, `hooks.cleanup` (`on: error` becomes `on: failure`), `hooks.interrupts` |
+| scenario `before`, `after` | scenario `setup`, `cleanup` |
+| scenario `preconditions.setup` | removed; call the prelude with `use:` inside the scenario's `setup` |
 | `capture`, `redact` | `evidence.*` |
 | scenario `preconditions.locale` | scenario `preconditions.runsOn.<platform>.locale` |
 | `scenarios`, `baselines`, `schemas`, `goldens` | `paths.*` |
@@ -424,7 +434,9 @@ the new dictionary.
 4. **Schema switch-over.** Replace `TargetConfig`, `Defaults`, `Config`, and `resolve`, and convert
    the test fixtures and the ten `demos/` configs in one change. Splitting the switch-over would
    leave the gate red between commits, because the loader and every config break together.
-5. **Fold `setup` into `hooks.before`.** Remove the `setup` path from the runner.
+5. **Setup and cleanup.** Rename `before` and `after` to `setup` and `cleanup` in the target and
+   the scenario, and rename `on: error` to `on: failure`. Fold the target's prelude `setup` and the
+   scenario's `preconditions.setup` into `setup`, and relabel the report phases.
 6. **Command-line interface (CLI).** `--backend` becomes a check that exits 2 on a mismatch with `platform`. `--browser`,
    `--browsers`, and `--headed` override `runsOn.browser.engine` and `driver.headless`.
 7. **Scenario `runsOn`.** Add `preconditions.runsOn` keyed by platform and validated by the
@@ -457,6 +469,7 @@ the new dictionary.
 | A closed union of platform models in the core | Every new backend would edit the core schema, which contradicts the backend-agnostic design |
 | One shared `runsOn` shape for all platforms | Leaves fields no platform can use — a browser on iOS, an AVD on the web — which recreates the flat-list problem |
 | Keep `dispatch` (`deviceProvider`, `cloudBatch`) in the target | Duplicates what BE-0448 and BE-0450 move onto the worker and the run request, and makes the target team decide where a run happens |
+| Rename the target's hooks alone | The scenario would keep `before` and `after` for the same phases, so one concept would carry two names |
 | Keep both `setup` and `before` | Preserves today's behavior, at the cost of two keys serving one purpose |
 | Fail the run when the device does not match | Running one suite across several OS versions would fail every OS-specific scenario on the versions it does not target |
 | Create a matching device on demand | Bajutsu would own runtime installation, time, and cleanup |
@@ -480,7 +493,7 @@ the new dictionary.
 - [ ] Unit 2: confirm the open placements
 - [ ] Unit 3: platform registry and models
 - [ ] Unit 4: schema switch-over, fixtures, and `demos/` configs
-- [ ] Unit 5: fold `setup` into `hooks.before`
+- [ ] Unit 5: setup and cleanup
 - [ ] Unit 6: CLI
 - [ ] Unit 7: scenario `runsOn`
 - [ ] Unit 8: reading devices
@@ -496,7 +509,7 @@ the new dictionary.
 - [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md): the per-platform split of the resolved `Effective`.
 - [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md): `DeviceOS` and the recorded `device_runtime`.
 - [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md) and [BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md): `deviceMode` and `browser`, which move into `runsOn`.
-- [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md): the `before` and `after` phases that `hooks` holds.
+- [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md): the `before` and `after` phases that become `setup` and `cleanup`.
 - [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md): `deviceProvider`, which moves out of the target into an `appium` environment of `worker.yaml`.
 - `bajutsu/common/config/schema/target_config.py` and `bajutsu/common/config/resolve.py`: the schema and resolution this item replaces.
 - [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md) and [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md): the worker capability file and the Device Farm worker, which take over where a run happens.
