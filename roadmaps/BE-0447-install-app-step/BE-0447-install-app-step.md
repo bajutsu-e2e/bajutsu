@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
-| Implementing PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) (unit 1) |
+| Implementing PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) (unit 1), [#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116) (units 2–7) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -573,7 +573,7 @@ Log:
   pipeline, the `run` and `audit` CLIs, and the serve evidence lookup. Until unit 2 leases one
   device per group, `run_all` and the `run` CLI refuse a scenario that declares a device group,
   since a flattened run would lease a device per member and start every one of them.
-- Unit 2. The members of a device group share one driver, the fallback the design names for
+- [#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116) — Unit 2. The members of a device group share one driver, the fallback the design names for
   devices that cannot serve two drivers. The code already settles that question without a device
   run: the XCUITest runner's discard terminates the XCTRunner bundle every runner shares, and the
   Android resident server is one per device with a fixed device port. The environment seam gains
@@ -587,7 +587,7 @@ Log:
   on the current primary, while a member that is not running polls nothing. The members share
   the group's network collector, so its traffic is written once; telling one member's requests
   from another's waits for units 5 and 6.
-- Unit 3. The `installApp: { from, keepData }` and `setPrimaryTarget: { target }` steps. The
+- [#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116) — Unit 3. The `installApp: { from, keepData }` and `setPrimaryTarget: { target }` steps. The
   scenario model follows the current primary through the top-level steps in order, so every later
   step and `expect` entry that omits `target` resolves to it. It refuses a `setPrimaryTarget` off
   the top level, an `installApp.from` that is not a later member of the step's own device group,
@@ -603,7 +603,7 @@ Log:
   expansion records only the former on a step. And whether a `setPrimaryTarget` names a retired
   member depends on identifiers, which only the config holds, so the run refuses it with a named
   cause instead of the load; unit 4's preflight can add the static check.
-- Unit 4. `run` checks every device group against the config before any device is acquired, and
+- [#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116) — Unit 4. `run` checks every device group against the config before any device is acquired, and
   exits 2 with each cause named. A group's members must share one platform, one device route
   (`deviceProvider`, `device`, `xcuitest.deviceType`), and one effective system locale, and none
   may be a web target. Starting members of one group must not share a bundle identifier or
@@ -615,7 +615,7 @@ Log:
   starting members, which install at lease time, have theirs built and checked too. A member with
   no identifier retires nothing. `Effective.app_identifier` names the identifier both this check
   and the runner's retirement read.
-- Unit 7. A web target in a device group is already refused before any device is leased, by unit
+- [#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116) — Unit 7. A web target in a device group is already refused before any device is leased, by unit
   4's preflight and by the `deviceGroup` capability web never advertises. `run` now refuses a group
   whose member comes from a device provider that hands its device over with the app preinstalled:
   the provider holds the binary, so there is no local build to install beside it. The check runs
@@ -623,7 +623,7 @@ Log:
   generator (XCUITest, UI Automator,
   Playwright) renders `installApp` and `setPrimaryTarget` as a labeled `// TODO`, though `codegen`
   already refuses any scenario declaring two or more targets before it reaches them.
-- Unit 6. Android shares a device between a group's members. The emulator environment gives each
+- [#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116) — Unit 6. Android shares a device between a group's members. The emulator environment gives each
   member its own `AdbDriver` over the one resident channel. A starting member installs under its
   own reinstall mode without the device-wide clears, and a later member starts launch-only.
   `installApp` force-stops the app and runs `install -r`, uninstalling first for
@@ -643,7 +643,7 @@ Log:
   reads the active window alone, a system dialog over a member reads as another app in front. And
   an `installApp` with `keepData: false` re-grants the config's `grantPermissions` but not the
   scenario's own `permissions`.
-- Unit 5. iOS shares a Simulator between a group's members through the lease's one XCUITest
+- [#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116) — Unit 5. iOS shares a Simulator between a group's members through the lease's one XCUITest
   runner. The runner gains `/app/target`, which replaces the base of its app stack with another
   bundle and activates nothing; an `/app/enter` block stays above the new base. Each member's
   driver retargets the runner to its own app only when another member was the last to address it,

@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
-| 実装 PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)（単位 1） |
+| 実装 PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)（単位 1）、[#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116)（単位 2〜7） |
 | トピック | シナリオの記述機能 |
 <!-- /BE-METADATA -->
 
@@ -304,7 +304,7 @@ flowchart TD
   グループごとに 1 台のデバイスをリースするまでは、`run_all` と `run` の CLI が、デバイスグループを
   宣言したシナリオを拒否します。そのまま平らにして実行すると、メンバーごとにデバイスをリースし、
   全メンバーを最初に起動してしまうからです。
-- 単位 2。デバイスグループのメンバーは、1 つのドライバーを共有します。2 つのドライバーを置けない
+- [#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116)：単位 2。デバイスグループのメンバーは、1 つのドライバーを共有します。2 つのドライバーを置けない
   デバイス向けに設計が挙げていた代わりの方式です。この点は実機を動かさなくてもコードから決まりました。
   XCUITest の runner を片付ける処理は、すべての runner が共有する XCTRunner の bundle を止めます。
   Android の resident server はデバイスごとに 1 つで、デバイス側のポートも固定です。環境の境界へ
@@ -320,7 +320,7 @@ flowchart TD
   現在の primary で監視し、起動していないメンバーは何も監視しません。メンバーはグループのネットワーク
   collector を共有するので、その通信は 1 回だけ書き出します。どのメンバーの通信かを区別するのは、
   単位 5 と 6 で扱います。
-- 単位 3。`installApp: { from, keepData }` と `setPrimaryTarget: { target }` の 2 つのステップを
+- [#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116)：単位 3。`installApp: { from, keepData }` と `setPrimaryTarget: { target }` の 2 つのステップを
   追加しました。シナリオのモデルは、トップレベルのステップを順にたどって現在の primary を追います。
   そのため、`target` を省いた後続のステップと `expect` の項目は、その primary に解決します。
   モデルは次の 5 つを拒否します。
@@ -342,7 +342,7 @@ flowchart TD
   前者だけだからです。もう 1 つとして、退役したメンバーを指す
   `setPrimaryTarget` かどうかは識別子で決まり、識別子は config にしかありません。そのため読み込み時
   ではなく、実行時に原因を明示して拒否します。静的な検査は、単位 4 の事前検査で加えられます。
-- 単位 4。`run` は、デバイスを確保する前に、デバイスグループを config と突き合わせて検査します。
+- [#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116)：単位 4。`run` は、デバイスを確保する前に、デバイスグループを config と突き合わせて検査します。
   問題があれば、原因を示して exit 2 で終了します。検査するのは次の 4 点です。
 
   - グループのメンバーが、プラットフォーム、デバイスへの経路、実際に効くシステムのロケールを
@@ -358,7 +358,7 @@ flowchart TD
   リースのときにインストールされる、グループのほかの開始時に入れるメンバーも、ビルドを作って
   検査します。識別子を持たないメンバーは、何も退役させません。この検査と runner の
   退役の判定は、どちらも `Effective.app_identifier` から識別子を読みます。
-- 単位 7。デバイスグループの web ターゲットは、すでにデバイスをリースする前に拒否されます。単位 4 の
+- [#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116)：単位 7。デバイスグループの web ターゲットは、すでにデバイスをリースする前に拒否されます。単位 4 の
   事前検査と、web が持たない `deviceGroup` capability の両方が止めるからです。アプリを
   インストール済みの状態でデバイスを渡すデバイスプロバイダーのターゲットがグループに含まれる場合は、
   `run` の事前検査が拒否するようにしました。バイナリはプロバイダー側にあり、同じデバイスへ併せて
@@ -366,7 +366,7 @@ flowchart TD
   すべての確保を解放する範囲の中で行います。XCUITest、UI Automator、
   Playwright のコード生成は、`installApp` と `setPrimaryTarget` をラベル付きの `// TODO` にします。
   ただし `codegen` は、ターゲットを 2 つ以上宣言したシナリオをその手前で拒否します。
-- 単位 6。Android で、グループのメンバーが 1 台のデバイスを共有できるようにしました。エミュレーターの
+- [#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116)：単位 6。Android で、グループのメンバーが 1 台のデバイスを共有できるようにしました。エミュレーターの
   環境は、1 つの resident チャネルの上に、メンバーごとの `AdbDriver` を作ります。開始時に入れるメンバーは
   自分の消去と再インストールの方式でインストールし、あとから入れるメンバーは起動だけを行います。`installApp` はアプリを止めて `install -r` を実行し、`keepData: false` なら先にアンインストール
   します。データを残したままのダウングレードを Android が拒否したときは、その原因を示します。
@@ -387,7 +387,7 @@ flowchart TD
   のフォールバックでは、メンバーの上に出たシステムのダイアログが、別のアプリが前面にあるように見えます。
   さらに、`keepData: false` の `installApp` は config の `grantPermissions` を付け直しますが、シナリオの
   `permissions` までは付け直しません。
-- 単位 5。iOS では、リースが持つ 1 つの XCUITest runner を通じて、グループのメンバーが 1 台の
+- [#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116)：単位 5。iOS では、リースが持つ 1 つの XCUITest runner を通じて、グループのメンバーが 1 台の
   Simulator を共有します。runner に `/app/target` を加えました。これはアプリスタックの基点を別の
   bundle に差し替えるだけで、アプリを前面に出しません。`/app/enter` のブロックは新しい基点の上に
   残ります。各メンバーのドライバーは、直前に別のメンバーが runner を使ったときだけ、runner の対象を
