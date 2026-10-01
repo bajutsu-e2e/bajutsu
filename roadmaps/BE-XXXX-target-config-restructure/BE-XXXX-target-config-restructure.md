@@ -221,8 +221,12 @@ the scenario's value replaces the target's. Both keys go away:
 
 - A target's hook steps (`setup`, `cleanup`, and `interrupts`) may call a component with
   `use: { component: <file>, with: … }`. Components are resolved at config load for target hooks,
-  which lifts today's rule that target hooks reject `use:`. The component path resolves against the config file, and `with` values
-  substitute at load; `${secrets.*}` and `${vars.*}` still resolve when the step runs. `group:` and
+  which lifts today's rule that target hooks reject `use:`. The component path resolves against the config file and must stay inside
+  the suite root: the materialized checkout for a Git source, or the config file's directory for a
+  local file. A reference outside it fails with the same error `contained_ref` raises today
+  ([BE-0174](../BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md)), so a
+  config that serve receives untrusted cannot read beyond its tree. Loading therefore takes the
+  config's path along with its text. `with` values substitute at load; `${secrets.*}` and `${vars.*}` still resolve when the step runs. `group:` and
   `setMocks` stay rejected there.
 - A scenario calls a component with `use:` inside its own `setup`, as it can today.
 - A scenario that must not run the target's setup sets `preconditions.run.inheritSetup: false`.
@@ -303,10 +307,11 @@ timeline shows, an evidence setting, while the target's `run.network` turns coll
 `tipKitHandling`. It does not accept `secrets`, which stays a target-level union.
 
 `runsOn` alone is keyed by platform, because its fields differ by platform. The fields of
-`app.launch` keep one meaning wherever they apply, so `app` is not keyed. When a scenario sets an
-`app.launch` field that the platform of the target it runs against does not have, such as
-`launch.args` on a web target, the run fails before any device work, naming the field and the
-platform. It never ignores the field. A scenario cannot set a field that identifies or builds the
+`app.launch` keep one meaning wherever they apply, so `app` is not keyed. Each target of a
+scenario applies the `app` fields its platform has, so an iOS-and-web scenario can still set
+`launch.args` for its iOS side. When no target the scenario drives has the field, such as
+`launch.args` in a web-only scenario or `reinstall` against a web target alone, the run fails before
+any device work, naming the field. It never ignores the field. A scenario cannot set a field that identifies or builds the
 app, such as `id`, `path`, `build`, `startWhen`, or `idNamespaces`; the target owns those.
 
 `seedPhotos` paths resolve against the file that declares them: the scenario file, or the config
@@ -380,7 +385,7 @@ matches an `avd`.
 Matching covers devices the invocation drives on its own host. A target whose `runsOn.kind` is
 `device` (a physical iPhone), or a run that goes to a device cloud or an Appium grid, has no pool
 to read before the run. Such a target may not declare `model`, `os`, or a list; the loader rejects them for
-`kind: device`. A scenario whose effective `runsOn` declares conditions, from the target or from the
+`kind: device`, after merging defaults. A scenario whose effective `runsOn` declares conditions, from the target or from the
 scenario, and that runs against such a target or in a remote environment, fails before any device
 work and names the field; it is never ignored. For a remote
 environment the check runs where the job is dispatched: the worker of BE-0448 fails such a scenario
@@ -567,7 +572,8 @@ match that routing uses today, so the derivation stays with that later item.
 `defaults`. The platform-shaped groups (`app`, `runsOn`, `driver`, and the iOS fields of `run`) go
 under `defaults.platforms.<platform>`, which applies to targets of that platform alone, so one file
 can hold defaults for several platforms at once. Dictionaries merge key by key, with the target
-winning. Lists replace, except two that keep today's union: `evidence.redact` and `run.secrets`.
+winning, and a target clears an inherited value by writing `null`; a physical-device target clears
+a team-wide `model` default that way. Lists replace, except two that keep today's union: `evidence.redact` and `run.secrets`.
 Replacing `run.secrets` would let a target that adds one secret stop masking every team-wide one.
 `ai` keeps today's field-by-field merge. `evidence.capture` and `app.reinstall` become target-level
 fields; today `capture` lives in `defaults` alone and `reinstall` in the scenario alone. A
@@ -622,7 +628,7 @@ unit 4, since today's names have no slot for them. A few readers use the raw sch
 `serve/operations/reads.py`, `capture.py`, `enrich.py`, `doctor.py`, `config.py`, and `codegen.py`,
 `serve/helpers.py`, the Device Farm
 batch provider that packages `launchEnv`, `report/rows.py`, `templates/serve.html.j2`, and
-`analysis/impact`. Unit 4 updates them.
+`analysis/impact`, and `triage/cli.py`, which builds an `Effective` directly. Unit 4 updates them.
 
 ### Command-line flags
 
@@ -631,7 +637,7 @@ batch provider that packages `launchEnv`, `report/rows.py`, `templates/serve.htm
   fallback list and the cost-ordered actuator selection in `backends.py` go away with `backend`.
   `fake` stays allowed as an override, so any target can still run on the fake driver. Under `fake`,
   conditions are not evaluated and runs do not multiply, because the fake driver has no device to
-  read. The same rule holds for the commands that drive a target: `record`, `crawl`, `repl`,
+  read; the invocation prints one notice saying so, the single place where a condition is skipped. The same rule holds for the commands that drive a target: `record`, `crawl`, `repl`,
   `triage --rerun`, `audit`, the Model Context Protocol (MCP) tools, and the `backend` of a serve
   request body. `serve --backend`, which picks the server's seams, and `provision --backend`, which
   forces a backend for installing dependencies, name no target and keep their meaning. A scenario whose
@@ -686,20 +692,26 @@ batch provider that packages `launchEnv`, `report/rows.py`, `templates/serve.htm
    the MCP server. Resolve components in target hooks, rewrite
    the prelude files as components, map the target's `hooks.setup` and `hooks.cleanup` onto today's
    `before` and `after` phases, and apply the `--backend` rules of *Command-line flags*, including
-   the serve request body. Remove the scenario's `preconditions.setup` here too, converting each use to a
-   `use:` in the scenario's `before`. Add `preconditions.run.inheritSetup`, the first field of the
+   the serve request body. Change the config loader to take the config's path, and update its callers (the MCP tools,
+   `provision`, serve's uploads and helpers, and `cli/_shared.py`). A target prelude that cannot
+   become a target-hook component gets a `use:` in the `before` of every scenario of that target.
+   Remove the scenario's `preconditions.setup` here too, converting each use to a `use:` appended to
+   the scenario's `before`. Add `preconditions.run.inheritSetup`, the first field of the
    scenario's `run` group, and set it to `false` where the scenario replaced the target's prelude, copying the target's former
-   `before` steps into that scenario's `before` so the scenario keeps them, so no scenario points at a prelude file after this unit. Add
-   the `Effective` attributes for the new target-level fields, and drop the replacement Simulator's
+   `before` steps to the front of that scenario's `before` so the scenario keeps them in today's
+   order, so no scenario points at a prelude file after this unit. Add
+   the `Effective` attributes for the new target-level fields and apply their target-level values,
+   leaving scenario overrides to unit 7, and drop the replacement Simulator's
    configured-`device` and newest-iPhone fallbacks and its unpinned retry. Remove the URL form of
    the command-line `--udid`, fill `Effective.device_provider` from `--worker-config`, and turn
    `demos/showcase/live/showcase.live.config.yaml` into a target plus a `worker.yaml` with an `appium`
-   environment. Until unit 5, `hooks.cleanup` keeps `on: error`. Convert the test fixtures and the
-   nine `demos/` configs; a `device:` key there becomes nothing, since `model` is now a condition. Until
+   environment. Until unit 5, `hooks.cleanup` keeps `on: error`. Convert the test fixtures, the
+   nine `demos/` configs, and the root `bajutsu.config.yaml`; a `device:` key there becomes nothing, since `model` is now a condition. Until
    unit 9 lands, a run of `run`, `record`, `crawl`, `repl`, `audit`, or the MCP tools, and the device
    path of `doctor`, fails with "not yet supported" when its effective `runsOn` holds a condition (`model`, `os`, `avd`, `apiLevel`, `browser.version`, or a
    list), so no condition is written and ignored. The check is skipped under `--backend fake`, which
-   evaluates no condition.
+   evaluates no condition, and an engine list formed by `--browsers` keeps today's matrix path
+   outside the check.
    Splitting the switch-over would leave the gate red between commits, because the loader and every
    config break together.
 5. **Setup and cleanup.** Rename the phases and the scenario's `before` and `after` to `setup` and
@@ -719,7 +731,8 @@ batch provider that packages `launchEnv`, `report/rows.py`, `templates/serve.htm
    no device, record not applicable for an open range, and exit 1 when no run executed. Store each
    run's coordinates and verdict in the run manifest and in a new column of the hosted runs table,
    with its migration, and key the flakiness history by them. Until unit 10, the console and the
-   manifest list not-applicable records, and other outputs show each run as its own entry. Then give `record`, `crawl`, and `repl` the first run, let `audit` and the MCP tools form runs as `run`
+   manifest list not-applicable records, and other outputs show each run as its own entry, named by the scenario with its coordinates appended
+   so JUnit and CTRF test names stay unique. Then give `record`, `crawl`, and `repl` the first run, let `audit` and the MCP tools form runs as `run`
    does, and lift unit 4's "not yet supported" check.
 10. **Reporting.** Show the run matrix and the not-applicable status in the HTML report, JUnit and
     CTRF output, notification payloads, and the serve Web UI.

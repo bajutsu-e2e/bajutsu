@@ -162,8 +162,8 @@ this item has landed. It touches six parts of this item.
   The restructure replaces that field with `runsOn.model` and `runsOn.os`, and a scenario can
   override both. The later derivation reads each scenario's effective `runsOn`, the merge of the
   target's and the scenario's values.
-- **`requires` goes earlier.** The restructure drops `requires` with no deprecation release.
-  The key disappears with the new target schema. Until the derivation lands, a hosted job cannot
+- **`requires` goes earlier.** This item deprecates `requires` with a notice, and the restructure cuts that window short: the key
+  disappears with the new target schema. Until the derivation lands, a hosted job cannot
   ask for an iOS runtime or a device class. The restructure accepts that gap, which this item
   avoids by keeping `requires` until the derivation lands.
 - **A not-applicable status appears.** A scenario whose open condition, such as `>=18`, no
