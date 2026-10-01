@@ -258,10 +258,24 @@ non-zero with "no scenario ran", so an empty run never reports green. [BE-0450](
 status because a misconfigured worker would skip everything and still pass; this guard answers that
 concern. `bajutsu doctor` lists, for each scenario, the available devices that meet it.
 
-A version range is a conjunction of comparators: `>=`, `>`, `<=`, `<`, `==`, or a bare version. A
-bare `18` means any 18.x release. `==` compares after zero-padding, so `==18` matches 18.0 alone;
-the bare form is the one that covers the whole 18.x window. A new `VersionSpec` in
-`bajutsu/common/devices/version.py` parses and compares ranges. `DeviceOS` keeps its deliberate lack
+A version range uses npm's [node-semver range grammar](https://github.com/npm/node-semver#ranges) in full, rather than a notation of Bajutsu's own. Many teams
+already write it, and adopting all of it leaves nothing Bajutsu-specific to explain:
+
+| Form | Example | Meaning |
+|---|---|---|
+| comparators, space-separated for "and" | `>=17 <19` | 17.0 up to, not including, 19 |
+| x-range or partial version | `18`, `18.x` | any 18.x release |
+| hyphen range | `33 - 35` | 33 through 35 inclusive |
+| caret | `^17` | at least 17, below 18 |
+| tilde | `~17.4` | at least 17.4, below 17.5 |
+| union | `17 \|\| 19` | 17 or 19 |
+
+Versions compare on their first three components. A shorter version, such as iOS `18.2` or the
+Android API level `34`, gains zeros. A longer one, such as Chrome's `130.0.6723.31`, drops the rest;
+runs are formed per major version, so a dropped fourth component never changes which runs happen. A
+new `VersionSpec` in `bajutsu/common/devices/version.py` parses and compares ranges. Unit 1 either
+adopts a maintained Python implementation of the grammar or implements it, and pins npm's own
+examples in tests. `DeviceOS` keeps its deliberate lack
 of comparison operators, because this item selects devices by declaration and adds no per-OS
 branching.
 
@@ -300,7 +314,8 @@ The major versions a range covers come from two sources:
 |---|---|
 | bounded above, such as `>=17 <19` | every major version in the range, 17 and 18 here; a major with no available device is not applicable |
 | open above, such as `>=17` | the major versions the available devices have within the range, since an open range cannot be listed |
-| a bare version, such as `18` or `18.2` | that one major version |
+| a partial version or x-range, such as `18`, `18.x`, or `~18.2` | that one major version |
+| a union, such as `17 \|\| 19` | the major versions of each side, 17 and 19 here |
 
 Minor and patch releases never add runs. Within one major version, a run takes the available device
 with the newest release that still falls in the range, and pool order breaks a tie. A range such as
@@ -391,7 +406,8 @@ the new dictionary.
 
 ### Work breakdown
 
-1. **`VersionSpec`.** Parse and compare version ranges in `bajutsu/common/devices/version.py`.
+1. **`VersionSpec`.** Parse npm range syntax and compare versions on three components in
+   `bajutsu/common/devices/version.py`, and list the major versions a range covers.
 2. **Confirm the open placements.** Find which backends read `deeplinkScheme`, `launchEnv`,
    `launchArgs`, and `locale`; confirm that the AVD name is readable (for example through
    `ro.boot.qemu.avd_name`) across supported API levels; and check whether any scenario depends on
@@ -443,6 +459,8 @@ the new dictionary.
 | A separate `matrix` key beside the narrowing fields | Tells the two meanings apart by key, at the cost of one more key; one list field per platform already leaves no ambiguity |
 | Key a scenario's conditions by target name | The key's shape would change with whether `targets` is declared, and a scenario run against an iOS target and an Android target could not state both |
 | List a scenario's condition fields flat | The file would not show which field applies to which platform, which brings back the flat config's written-but-ignored problem |
+| A notation of Bajutsu's own (a subset of comparators) | Readers would have to learn which forms work; npm's grammar is already known and documented |
+| PEP 440 specifiers (`>=17,<19`, `==18.*`) | Python's `packaging` handles them, including four-component versions, yet app teams rarely know them, and "the 18 line" needs `==18.*` |
 | Prefix matching with no ranges | Cannot express a compatibility window such as `>=17 <19` on one line |
 
 ## Progress
