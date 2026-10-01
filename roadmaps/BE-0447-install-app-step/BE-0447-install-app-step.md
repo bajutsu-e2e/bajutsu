@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
-| Implementing PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) (unit 1) |
+| Implementing PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) (unit 1), [#2110](https://github.com/bajutsu-e2e/bajutsu/pull/2110) (unit 2) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -572,7 +572,7 @@ Log:
   pipeline, the `run` and `audit` CLIs, and the serve evidence lookup. Until unit 2 leases one
   device per group, `run_all` and the `run` CLI refuse a scenario that declares a device group,
   since a flattened run would lease a device per member and start every one of them.
-- Unit 2. The members of a device group share one driver, the fallback the design names for
+- [#2110](https://github.com/bajutsu-e2e/bajutsu/pull/2110) — Unit 2. The members of a device group share one driver, the fallback the design names for
   devices that cannot serve two drivers. The code already settles that question without a device
   run: the XCUITest runner's discard terminates the XCTRunner bundle every runner shares, and the
   Android resident server is one per device with a fixed device port. The environment seam gains

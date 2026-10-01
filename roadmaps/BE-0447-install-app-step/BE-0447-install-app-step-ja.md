@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
-| 実装 PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)（単位 1） |
+| 実装 PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)（単位 1）、[#2110](https://github.com/bajutsu-e2e/bajutsu/pull/2110)（単位 2） |
 | トピック | シナリオの記述機能 |
 <!-- /BE-METADATA -->
 
@@ -304,7 +304,7 @@ flowchart TD
   グループごとに 1 台のデバイスをリースするまでは、`run_all` と `run` の CLI が、デバイスグループを
   宣言したシナリオを拒否します。そのまま平らにして実行すると、メンバーごとにデバイスをリースし、
   全メンバーを最初に起動してしまうからです。
-- 単位 2。デバイスグループのメンバーは、1 つのドライバーを共有します。2 つのドライバーを置けない
+- [#2110](https://github.com/bajutsu-e2e/bajutsu/pull/2110)：単位 2。デバイスグループのメンバーは、1 つのドライバーを共有します。2 つのドライバーを置けない
   デバイス向けに設計が挙げていた代わりの方式です。この点は実機を動かさなくてもコードから決まりました。
   XCUITest の runner を片付ける処理は、すべての runner が共有する XCTRunner の bundle を止めます。
   Android の resident server はデバイスごとに 1 つで、デバイス側のポートも固定です。環境の境界へ
