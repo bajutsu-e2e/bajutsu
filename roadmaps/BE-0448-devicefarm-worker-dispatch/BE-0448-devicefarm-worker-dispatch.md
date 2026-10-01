@@ -128,7 +128,7 @@ Two parts of this item change when it lands.
   Device Farm today, so no CLI option is added. A job with `Job.batch` derives `environment:<name>` from that request, not from the
   target. The rest of *Routing* stays as written.
 - **`cloudBatchBudget` disappears from the schema.** This item lands first, so the deprecation
-  window of unit 5 runs its course. The restructure's new target schema then has no
+  of unit 5 has started by then. The restructure's new target schema then has no
   `cloudBatchBudget` at all, and the key fails at load as unknown.
 
 The restructure item's schema switch-over unit carries the coordination. Once it lands, the

@@ -11,14 +11,14 @@
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | 実装 PR | — |
 | トピック | ドライバとバックエンドのアーキテクチャ |
-| 関連 | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)、[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)、[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md) |
+| 関連 | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)、[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)、[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)、[BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
 
 現在、target の設定（`targets.<name>`）は、40を超えるキーを1階層に並べています。`browser`と`deviceMode`は Web 専用、`nativeZ`は Android 専用、`bundleId`と`xcuitest`は iOS 専用のキーですが、これらも同じ階層に並んでいます。しかしスキーマは、キーとプラットフォームの対応を持っていません。また、target が想定する端末とオペレーティングシステム（OS）を書くキーもありません。
 
-この項目では、1階層の並びを11個のキーに置き換えます。各キーが受け持つ用途は1つだけです。たとえば`app`はテスト対象のアプリを、`runsOn`は動かす端末を、`driver`は Bajutsu の駆動方法を受け持ちます。11個のうち`app`、`runsOn`、`driver`、`run`の4つは、`platform`の値によって形が変わります（`run`は iOS で項目が増えます）。残りの7つは、どのプラットフォームでも同じ形です。
+この項目では、1階層の並びを11個のキーに置き換えます。各キーが受け持つ用途は1つだけです。たとえば`app`はテスト対象のアプリを、`runsOn`は動かす端末を、`driver`は Bajutsu の駆動方法を受け持ちます。11個のうち`app`、`runsOn`、`driver`、`run`の4つは、`platform`の値によって形が変わります（`run`は iOS で項目が増えます）。`platform`を含む残りの7つは、どのプラットフォームでも同じ形です。
 
 `runsOn`には、target を実施する環境（端末、OS、ブラウザ）を書きます。シナリオも`preconditions`の下に自分の`runsOn`を書け、シナリオの値が target の値より優先されます。機種のリストや、上限と下限の両方がある版の範囲は、値ごと、メジャーバージョンごとに1回ずつの実行を求め、手元の端末で引き受けられない回は失敗します。`>=18`のような片側が開いた条件を満たす端末が手元にないシナリオは、走らせずに「対象外」として記録します。後方互換は意図して持ちません。旧形式の設定は読み込み時に失敗し、エラーには受け付けなくなったキーの名前が出ます。
 
@@ -158,7 +158,7 @@ hook のフェーズについては、2つの階層の順序を現在のまま�
 
 各バックエンドは、`app`、`runsOn`、`driver`、`run`の追加分のモデルを、`bajutsu/common/config/schema/platform/`のレジストリに登録します。`TargetConfig`は`platform`を読んでレジストリを引き、登録されたモデルで4つのグループを検証します。どのモデルも未知のキーを禁じるため、他のプラットフォームのキーは未知のキーとして失敗します。Pydantic のエラーは未知のキーを示しますが、使えるキーは示しません。そこで`TargetConfig`がこのエラーを、モデルのフィールド一覧を含むメッセージに書き換えます。メッセージは作業単位3のテストで固定します。レジストリがあれば、設定の読み込みは Playwright や simctl を import せずに済みます。現在`deviceMode`を遅延解決できているのと同じ性質です。core はスキーマの中でプラットフォームを名指ししなくなるので、Flutter を足すときはエントリを1つ登録するだけになります。
 
-明示の`platform`が優先順位の連鎖に取って代わります。`backend`は廃止します。どのプラットフォームも現在 actuator は1つなので、順序つきのフォールバックのリストには選ぶ対象がありません。`_effective_platform`、`_PLATFORM_IDENTIFIER`、`Config`の突き合わせも一緒に消えます。各`app`モデルが自分の識別子を必須にするためです。あるプラットフォームが2つ目の actuator を持った場合は、`driver`に`actuator`フィールドを足します。
+明示の`platform`が優先順位の連鎖に取って代わります。`backend`は廃止します。どのプラットフォームも現在 actuator は1つなので、順序つきのフォールバックのリストには、プラットフォームの中で選ぶ対象がありません。Linux のホストで`[ios, web]`が`playwright`に解決されるような、プラットフォームをまたぐフォールバックのリストは、意図してなくします。target は1つのプラットフォームを名指しし、Web も回したい run は2つ目の target を使います。`_effective_platform`、`_PLATFORM_IDENTIFIER`、`Config`の突き合わせも一緒に消えます。各`app`モデルが自分の識別子を必須にするためです。あるプラットフォームが2つ目の actuator を持った場合は、`driver`に`actuator`フィールドを足します。
 
 `bajutsu config schema`は、レジストリから生成した JavaScript Object Notation（JSON）Schema を出力します。`platform`を`oneOf`の判別子にするので、エディタはプラットフォームごとにキーを補完できます。
 
@@ -228,7 +228,7 @@ preconditions:
 
 ### 端末との照合
 
-`runsOn`は、シナリオを実施する環境を表します。端末を作ることはありません。例外は1つだけで、実行中に消えた Simulator の置き換えです。置き換えは、消えた端末の機種と runtime を引き継ぎます（「defaults」を参照）。Bajutsu は手元の端末を1台ずつ読みます。手元の端末とは、`--udid`の端末群の各 udid、各エミュレータのシリアル、Web のレーンが起動したブラウザです。デフォルトの`--udid booted`は simctl が解決する1台の Simulator を指すので、端末群は1台です。udid として渡した URL はリモートの endpoint を指し、リモートの環境として扱います。
+`runsOn`は、シナリオを実施する環境を表します。端末を作ることはありません。例外は1つだけで、実行中に消えた Simulator の置き換えです。置き換えは、消えた端末の機種と runtime を引き継ぎます（「defaults」を参照）。Bajutsu は手元の端末を1台ずつ読みます。手元の端末とは、`--udid`の端末群の各 udid、各エミュレータのシリアル、Web のレーンが起動したブラウザです。デフォルトの`--udid booted`は simctl が解決する1台の Simulator を指すので、端末群は1台です。URL を udid として渡すことは、今後は受け付けません。「どこで実行するか」で述べる`appium`の environment が、この経路を置き換えます。
 
 | 条件 | 読み取り元 | 比較 |
 |---|---|---|
@@ -263,10 +263,10 @@ preconditions:
 | `os`（iOS）や`apiLevel`（Android）の、上限と下限の両方がある範囲（`>=17 <19`、`18`、`^17`、`33 - 35`など） | 範囲に含まれるメジャーバージョンごとに1回。`>=17 <19`なら17と18 | そのメジャーバージョンを示して**失敗** |
 | 片側が開いた範囲（`>=18`、`<19`、`<=17.4`など） | 手元の端末が持つ、範囲内のメジャーバージョンごとに1回 | 範囲に入る端末がなければ、**対象外**の記録を1つ |
 | 和（`17 \|\| >=19`など） | 両側をそれぞれの規則で扱い、メジャーバージョンを合わせる | 両側の規則に従う |
-| いずれでもなく、単一の`model`や`avd`がある | 1回 | 合う端末がなければ**失敗** |
+| 単一の`model`や`avd`（単独でも、範囲と一緒でも） | 回を増やさない | その機種の端末がなければ**失敗**。対象外になり得るのは、回の版の部分だけ |
 | 条件がまったくない | 1回 | 現在と同じく、端末群のどの端末でも走れる。後述の候補の集合は当てはめない |
 
-Android では、API レベル1つを1つのメジャーバージョンとして数えます。Web の`browser.version`の範囲は回数を増やしません。Playwright はエンジンごとに1つの版しか持たないためです。この範囲は絞り込みとして働き、結果の扱いは範囲の形に応じて上の規則に従います。エンジンごとに版の付け方が違うので、`browser.version`の範囲とエンジンのリストを一緒に書くと、読み込み時に失敗します。Web のバックエンドは足りないエンジンをその場で入れるので、エンジンのリストで端末が足りないことはありません。複数 target のシナリオでは、各 target の回の組み合わせをすべて走らせます。`>=17 <19 || >=18`のように両側が重なる和では、各メジャーバージョンを1回だけ走らせます。`*`や`>=0`のようにすべてに一致する範囲は、端末群が持つメジャーバージョンごとに1回走ります。
+Android では、API レベル1つを1つのメジャーバージョンとして数えます。Web の`browser.version`の範囲は回数を増やしません。Playwright はエンジンごとに1つの版しか持たないためです。この範囲は絞り込みとして働き、結果の扱いは範囲の形に応じて上の規則に従います。エンジンごとに版の付け方が違うので、`browser.version`の範囲とエンジンのリストを一緒に書くと、読み込み時に失敗します。Web のバックエンドは足りないエンジンをその場で入れるので、エンジンのリストで端末が足りないことはありません。複数 target のシナリオでは、各 target の回の組み合わせをすべて走らせます。`>=17 <19 || >=18`のように両側が重なる和では、各メジャーバージョンを1回だけ走らせ、境界のある側が含むメジャーバージョンは「必ず走らせる」扱いを保ちます。組み合わせは、いずれかの target の回が失敗すれば失敗とし、失敗がなくいずれかが対象外なら対象外とします。`*`や`>=0`のようにすべてに一致する範囲は、端末群が持つメジャーバージョンごとに1回走ります。
 
 ```yaml
 preconditions:
@@ -289,7 +289,7 @@ checkout          fail          fail          pass                pass
 **各回が使う端末。** 条件を1つでも持つ回は、候補の集合から端末をとります。候補は次の3段階で決めます。
 
 1. 回の条件を満たす手元の端末を残します。版の範囲があるときは、リリースが範囲に入り、かつその回のメジャーバージョンに属する端末を残します。
-2. 回が`model`（iOS）や`avd`（Android）を決めていないときは、端末群の並び順で、残った中の最初の機種の端末だけを残します。
+2. 回が`model`（iOS）や`avd`（Android）を決めていないときは、端末群の並び順で、残った中の最初の機種の端末だけを残します。ただし、その機種の台数は、この候補を使う target の数以上でなければなりません。
 3. 残った中で最も新しいリリースの端末だけを残します。
 
 これで候補はすべて同じ機種、同じリリースになります。そのため、空いている候補ならどれでもその回を引き受けられ、`--workers`は、回が観測する内容を変えずに、同じ端末へ回を分散できます。[BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step-ja.md)のデバイスグループ（メンバーの target が1台の端末を共有するもの）は、1つの単位として回を作ります。メンバーの有効な条件は一致している必要があり、食い違えばシナリオの読み込み時に失敗します。同じ actuator の target は、現在と同じく1つの端末群を共有します。`--browser`と`--browsers`は、1回の実行に限って Web のリストを上書きします。フラグはシナリオより優先され、シナリオは target より優先されます。
@@ -301,9 +301,9 @@ not applicable: showcase/ipad-split-view
   runsOn.ios.os  ">=18"  available: iOS 17.5 "iPhone 15" (5A3F...), iOS 17.5 "iPhone 16" (7B21...)
 ```
 
-report では対象外を別に並べ、flakiness の履歴からは除きます。1回も走らなかったときは、「no run executed」として run を非ゼロで終了します。空の実行が緑になることはありません。すべての回が対象外になった serve のジョブも、同じ理由で失敗したジョブとして報告します。列挙した値に端末がない回を失敗させることと合わせて、これが[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)の懸念に応えます。設定を誤った端末群で一式を飛ばしても、緑にはなりません。
+report では対象外を別に並べ、flakiness の履歴からは除きます。1回も走らなかったときは、「no run executed」として、失敗した run と同じ終了コード1で終了します。空の実行が緑になることはありません。シナリオを1つも選ばない絞り込みは、現在の挙動のままです。すべての回が対象外になった serve のジョブも、同じ理由で失敗したジョブとして報告します。列挙した値に端末がない回を失敗させることと合わせて、これが[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)の懸念に応えます。設定を誤った端末群で一式を飛ばしても、緑にはなりません。
 
-**履歴とほかのコマンド。** 現在、flakiness の履歴は、判定をシナリオの内容の指紋と端末の OS の組で記録しています。新しい組には、target と回の座標（target ごとの列挙した値とメジャーバージョン）が加わります。そのため、ある機種でのレイアウトの失敗が、不安定なシナリオとして数えられることはありません。これまでの履歴は座標を持たないので、新しい組で記録し直します。run のマニフェストには、各回の座標と、観測した OS を記録します。`record`、`crawl`、`repl`は回数を増やしません。これらは最初の回の座標、つまり最初に列挙した値と、範囲の中で最も新しいメジャーバージョンを使い、合う端末がなければ失敗します。コード生成は端末の条件を出力しません。生成したテストは起動された場所で走ります。このことはコード生成の文書に書きます。`bajutsu doctor`は、シナリオごとに、その回と、各回に合う手元の端末を一覧にします。読める端末群がないときは、宣言された回だけを報告します。
+**履歴とほかのコマンド。** 現在、flakiness の履歴は、判定をシナリオの内容の指紋と端末の OS の組で記録しています。新しい組には、target と回の座標（target ごとの列挙した値とメジャーバージョン）が加わります。そのため、ある機種でのレイアウトの失敗が、不安定なシナリオとして数えられることはありません。これまでの履歴は座標を持たないので、新しい組で記録し直します。run のマニフェストには、各回の座標と、観測した OS を記録します。`record`、`crawl`、`repl`は回数を増やしません。これらは最初の回の座標、つまり最初に列挙した値と、範囲の中で端末群が持つ最も新しいメジャーバージョンを使い、合う端末がなければ失敗します。コード生成は端末の条件を出力しません。生成したテストは起動された場所で走ります。このことはコード生成の文書に書きます。`bajutsu doctor`は、シナリオごとに、その回と、各回に合う手元の端末を一覧にします。読める端末群がないときは、宣言された回だけを報告します。
 
 比較、回数、候補の集合は決定的で、モデルの呼び出しを含みません。合う端末をその場で作ることは範囲外です（「検討した代替案」を参照）。
 
@@ -314,11 +314,11 @@ target は、どこで実行するかを持たなくなります。target が書
 | 旧キー | 移る先 | 理由 |
 |---|---|---|
 | `cloudBatchBudget` | `worker.yaml`の`maxJobConcurrency` | [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)が置き換えます。端末を確保する worker が予算を数えるためです |
-| `cloudBatch` | 実行の要求の`environment`（serve の fan-out の要求と、対応する CLI のオプション） | BE-0448 では同じ target がローカルでも Device Farm でも走るため、送り先は target の性質ではなく実行ごとの選択です |
+| `cloudBatch` | serve の fan-out の要求の`environment` | BE-0448 では同じ target がローカルでも Device Farm でも走るため、送り先は target の性質ではなく実行ごとの選択です |
 | `deviceProvider` | `worker.yaml`の`appium`という environment と、グリッドの`endpoint` | どのグリッドが端末を出すかは、device cloud と同じくインフラの選択です |
 | `requires` | 廃止 | BE-0450 は、自由記述の振り分けタグを、worker が在庫として持つものに置き換えます |
 
-この項目のスキーマの外にも、3つの変更が要ります。作業単位4が、BE-0448 と BE-0450 と調整しながら、スキーマの切り替えと一緒に入れます。serve の fan-out の要求に`environment`を足し、BE-0448 の`environment:<name>`による振り分けにつなぎます。現在、Device Farm に送るコマンドラインのコマンドはないので、CLI のオプションは足しません。`worker.yaml`は、`appium`を`endpoint`つきの environment として受け付けます。これは BE-0450 の environment の語彙を、batch provider の外へ広げる変更です。`bajutsu run --worker-config`もこの`appium`の environment を受け付けるので、通常のローカルの run からも引き続きグリッドに届きます。BE-0450 は、`run`ではほかのローカル以外の environment をすべて拒否します。
+この項目のスキーマの外にも、3つの変更が要ります。作業単位4が、BE-0448 と BE-0450 と調整しながら、スキーマの切り替えと一緒に入れます。serve の fan-out の要求に`environment`を足し、BE-0448 の`environment:<name>`による振り分けにつなぎます。Device Farm の batch に限らず、`environment`を持つ実行の要求はすべて、そのトークンを求めます。現在、Device Farm に送るコマンドラインのコマンドはないので、CLI のオプションは足しません。`worker.yaml`は、`appium`を`endpoint`つきの environment として受け付けます。これは BE-0450 の environment の語彙を、batch provider の外へ広げる変更です。`bajutsu run --worker-config`もこの`appium`の environment を受け付けるので、通常のローカルの run からも引き続きグリッドに届きます。BE-0450 は、`run`ではほかのローカル以外の environment をすべて拒否します。`appium`の worker は`environment:appium`だけを広告し、それを求めるジョブは`platform:*`や`host:*`のトークンを持ちません。Device Farm のジョブと同じく、端末とそのホストはグリッドのものだからです。
 
 `requires`を取り除くことには代償があり、この項目はそれを受け入れます。BE-0450 は、後続の項目が振り分けのための iOS のランタイムと端末の種類の要件を導くまで、`requires`を残します。この項目は新しいスキーマとともに`requires`を取り除くので、導出が入るまで、hosted のジョブは iOS のランタイムや端末の種類を要件にできません。導出が読むのは、各シナリオの有効な`runsOn`、つまり target とシナリオの`os`と`model`を合わせたものです。`>=17 <19`のような範囲は、現在の振り分けが使う「すべてを含む」タグの照合では表せません。そのため導出は、その後続の項目に残します。
 
@@ -348,15 +348,16 @@ target は、どこで実行するかを持たなくなります。target が書
 | `setup`、`before`、`after`、`interrupts` | `hooks.setup`（前置きは`use:`で呼ぶコンポーネントになる）、`hooks.setup`、`hooks.cleanup`（`on: error`は`on: failure`になる）、`hooks.interrupts` |
 | `capture`、`redact` | `evidence.*` |
 | `scenarios`、`baselines`、`schemas`、`goldens` | `paths.*` |
+| `defaults.device`、`defaults.locale` | `defaults.platforms.ios.runsOn.model`、`defaults.platforms.ios.runsOn.locale` |
 | `ai`、`notify` | 変更なし |
 | `defaults.reservedNamespaces`、`defaults.doctor` | トップレベルの`reservedNamespaces`と`doctor`。どちらも target ごとではなくチーム全体の値 |
 | シナリオのフィールド | 「シナリオの preconditions」を参照 |
 
-解決後の`Effective`は属性名を変えません。属性名を変えると呼び出し箇所が数百に及び、しかも設定の形とは別に進められます。そのため`resolve`が、新しい辞書から現在の`Effective`を組み立てます。`Effective`ではなく生のスキーマを読む箇所もいくつかあります（`serve/operations/reads.py`、`capture.py`、`enrich.py`、`analysis/impact`など）。作業単位4でこれらも更新します。
+解決後の`Effective`は属性名を変えません。属性名を変えると呼び出し箇所が数百に及び、しかも設定の形とは別に進められます。そのため`resolve`が、新しい辞書から現在の`Effective`を組み立てます。target の階層で新しく書けるフィールド（`app.reinstall`、`app.launch.deeplink`、`runsOn.seedPhotos`、target の`evidence.capture`、`startWhen`）は、現在の名前に置き場所がないので、作業単位4で`Effective`に属性を足します。`Effective`ではなく生のスキーマを読む箇所もいくつかあります（`serve/operations/reads.py`、`capture.py`、`enrich.py`、`analysis/impact`など）。作業単位4でこれらも更新します。
 
 ### コマンドラインのフラグ
 
-- `--backend`は検査になります。受け付けるのは、target の`platform`、そのプラットフォームの actuator の名前（`xcuitest`など）、`fake`です。それ以外の値やカンマ区切りの並びを渡すと、終了コード2で終わります。順序つきのフォールバックのリストと、`backends.py`のコスト順の actuator の選択は、`backend`とともになくなります。`fake`は上書きとして引き続き認めるので、どの target も fake のドライバで走らせられます。fake のドライバには読む端末がないので、`fake`のときは条件を評価せず、回も増やしません。`record`、`repl`、`serve`、`triage`、`audit`、Model Context Protocol（MCP）のツールの`--backend`と、serve の要求本文の`backend`にも、同じ規則を当てはめます。`provision`は、`backend`の代わりに、`platform`が決める actuator を読みます。
+- `--backend`は検査になります。受け付けるのは、target の`platform`、そのプラットフォームの actuator の名前（`xcuitest`など）、`fake`です。それ以外の値やカンマ区切りの並びを渡すと、終了コード2で終わります。順序つきのフォールバックのリストと、`backends.py`のコスト順の actuator の選択は、`backend`とともになくなります。`fake`は上書きとして引き続き認めるので、どの target も fake のドライバで走らせられます。fake のドライバには読む端末がないので、`fake`のときは条件を評価せず、回も増やしません。`record`、`crawl`、`repl`、`serve`、`triage`、`audit`、Model Context Protocol（MCP）のツールの`--backend`と、serve の要求本文の`backend`にも、同じ規則を当てはめます。`provision`は、`backend`の代わりに、`platform`が決める actuator を読みます。
 - `--browser`、`--browsers`、`--headed`は、`runsOn.browser.engine`と`driver.headless`を上書きします。
 - `--erase`、`--system-alert-handling`、`--ios-tipkit-handling`は名前を変えず、対応する`run`のフィールドを上書きします。フラグはシナリオより、シナリオは target より優先されます。
 - `--scenarios`、`--baselines`、`--goldens`は、引き続き対応する`paths`のフィールドを上書きします。
@@ -385,15 +386,15 @@ target は、どこで実行するかを持たなくなります。target が書
 1. **`VersionSpec`。** `bajutsu/common/devices/version.py`で、npm の範囲の記法を解析し、版を先頭3成分で比べ、プレリリースのタグを拒否し、範囲に含まれるメジャーバージョンを列挙します。
 2. **未確定の事実の確認。** AVD 名が対応する API レベル全体で読めるか（たとえば`ro.boot.qemu.avd_name`で）を確かめます。前置きが`steps`に差し込まれることに依存するシナリオとデモを洗い出します。コードを入れる前に、表を更新します。
 3. **プラットフォームのレジストリとモデル。** レジストリとプラットフォームごとのモデルを追加し、未知のキーのエラーを使えるフィールドの一覧つきに書き換えます。レジストリのキーが`backends.PLATFORMS`と一致することをテストで固定します。
-4. **スキーマの切り替え。** `TargetConfig`、`Defaults`、`Config`、`resolve`を置き換え、`redact`と`secrets`の和集合を保ち、生のスキーマを読む箇所を更新します。実行場所の移行も一緒に入れます。`deviceProvider`、`cloudBatch`、`cloudBatchBudget`、`requires`を外し、serve の fan-out の要求と CLI に`environment`を足し、`worker.yaml`と`bajutsu run --worker-config`で`appium`の environment を受け付けます。target の hook のコンポーネントを解決し、前置きのファイルをコンポーネントの形式に書き換え、target の`hooks.setup`と`hooks.cleanup`を現在の`before`と`after`のフェーズに対応づけます。serve の要求本文を含め、「コマンドラインのフラグ」の`--backend`の規則も当てはめます。作業単位5までは、シナリオの`preconditions.setup`が target の`hooks.setup`を抑えます。現在の上書きと同じ挙動です。テストの固定データと`demos/`の設定ファイル10個を変換します。作業単位9が入るまでは、`runsOn`の条件（`model`、`os`、`avd`、`apiLevel`、`browser.version`、リスト）に出会った run を「not yet supported」で失敗させ、書いたのに効かない条件を作りません。切り替えを分けると、読み込み側と全設定ファイルが同時に壊れるので、コミットの間でゲートが赤になります。
-5. **setup と cleanup。** フェーズと、シナリオの`before`と`after`を`setup`と`cleanup`に改め、`on: error`と capturePolicy の`result: error`を`failure`に改めます。シナリオの`preconditions.setup`を取り除き、`inheritSetup`を足し、report のフェーズの表示を改めます。
+4. **スキーマの切り替え。** `TargetConfig`、`Defaults`、`Config`、`resolve`を置き換え、`redact`と`secrets`の和集合を保ち、生のスキーマを読む箇所を更新します。実行場所の移行も一緒に入れます。`deviceProvider`、`cloudBatch`、`cloudBatchBudget`、`requires`を外し、serve の fan-out の要求に`environment`を足して、すべての要求の`environment`を振り分けに使い、`worker.yaml`と`bajutsu run --worker-config`で`appium`の environment を受け付けます。target の hook のコンポーネントを解決し、前置きのファイルをコンポーネントの形式に書き換え、target の`hooks.setup`と`hooks.cleanup`を現在の`before`と`after`のフェーズに対応づけます。serve の要求本文を含め、「コマンドラインのフラグ」の`--backend`の規則も当てはめます。シナリオの`preconditions.setup`もここで取り除き、各利用をシナリオの`before`の中の`use:`に変換します。これで、この作業単位のあとに前置きのファイルを指すシナリオは残りません。target の階層の新しいフィールドのために`Effective`の属性を足し、置き換えの Simulator の、設定の`device`と最新の iPhone へのフォールバックを外します。テストの固定データと`demos/`の設定ファイル9個を変換します。そこにある`device:`キーは、`model`が条件になったので何にも変換しません。作業単位9が入るまでは、`runsOn`の条件（`model`、`os`、`avd`、`apiLevel`、`browser.version`、リスト）に出会った run を「not yet supported」で失敗させ、書いたのに効かない条件を作りません。切り替えを分けると、読み込み側と全設定ファイルが同時に壊れるので、コミットの間でゲートが赤になります。
+5. **setup と cleanup。** フェーズと、シナリオの`before`と`after`を`setup`と`cleanup`に改め、`on: error`と capturePolicy の`result: error`を`failure`に改め、report のフェーズの表示を改めます。
 6. **コマンドラインのフラグ。** 「コマンドラインのフラグ」の残りの規則を、`run`、`record`、`crawl`、`repl`、`serve`、`triage`、`audit`、`provision`、MCP のツールに当てはめます。
-7. **シナリオの preconditions。** `preconditions`を`app`、`runsOn`、`run`のグループに組み直し、トップレベルの実行の方針のフィールドを`run`の下へ移し、`runsOn`をプラットフォームごとに分け、各グループを target の値の上に重ねます。`app.launch`のフィールドと`seedPhotos`の消去の条件を、run の解決時に target のプラットフォームと照らします。
+7. **シナリオの preconditions。** `preconditions`を`app`、`runsOn`、`run`のグループに組み直し、トップレベルの実行の方針のフィールドを`run`の下へ移し、`inheritSetup`を足し、`runsOn`をプラットフォームごとに分け、各グループを target の値の上に重ねます。`app.launch`のフィールドと`seedPhotos`の消去の条件を、run の解決時に target のプラットフォームと照らします。
 8. **端末の読み取り。** 手元の各端末から、機種と OS（iOS）、API レベルと AVD 名（Android）、ブラウザのバージョン（Web）を読みます。`kind: device`とリモートの環境では、条件を拒否します。
 9. **回と結果。** リストと範囲から回を作り、複数 target のシナリオとデバイスグループでは組み合わせ、各回をその候補の集合から割り当てます。端末のない回を失敗させ、片側が開いた範囲では対象外を記録し、1回も走らなかったときは非ゼロで終了します。flakiness の履歴を回の座標で記録し、`record`、`crawl`、`repl`には最初の回を渡し、作業単位4の「not yet supported」の検査を外します。
 10. **報告。** 回の結果表と対象外の状態を、HTML の report、JUnit と CTRF の出力、通知の本文、serve の Web UI に表示し、run のマニフェストに各回の座標を記録します。
 11. **`doctor`。** シナリオごとに、その回と各回に合う端末を一覧にします。
-12. **`bajutsu config schema`。**
+12. **`bajutsu config schema`。** レジストリから設定の JSON Schema を出力します。あわせて、既存の`bajutsu schema`コマンドを更新します。シナリオのスキーマが、`preconditions`、`setup`、`cleanup`によって形を変えるためです。
 13. **文書。** `docs/configuration.md`、`docs/scenarios.md`、`docs/drivers.md`、`docs/cli.md`、`docs/run-loop.md`、`docs/reporting.md`、`docs/evidence.md`、`docs/dsl-grammar.md`、`docs/codegen.md`、`docs/cookbook.md`、`docs/showcase.md`、`docs/devicefarm.md`、`docs/ios-device-cloud.md`、`docs/self-hosting.md`、`docs/architecture.md`、`DESIGN.md`、`docs/glossary.md`と、それぞれの`docs/ja/`版、そして`README.md`、`deploy/self-host/README.md`、デモの README を更新します。
 
 ## 検討した代替案

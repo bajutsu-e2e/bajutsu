@@ -142,7 +142,7 @@ The server keeps to routing. A driver that runs on a single host operating syste
 
 The proposed target-config restructure item has the slug `target-config-restructure`. It takes
 the choice of where a run happens out of the target, relies on this item instead, and starts after
-this item has landed. It touches five parts of this item.
+this item has landed. It touches six parts of this item.
 
 - **`environment` accepts `appium`.** The restructure moves the target's `deviceProvider` into
   `worker.yaml`. It becomes an `appium` environment that carries the grid's `endpoint`. The
@@ -150,8 +150,8 @@ this item has landed. It touches five parts of this item.
   with a required `endpoint`, and refuses `endpoint` on any other environment. `bajutsu run
   --worker-config` accepts the `appium` environment too, so a plain local run can still reach a
   grid; every other non-local environment stays rejected for `run`. An `appium` worker drives a
-  remote device. That coordination decides how the host rule applies to it, and which
-  `platform:*` tokens it advertises.
+  remote device, so the host rule does not apply to it. It advertises `environment:appium` alone,
+  and a job that requires it carries no `platform:*` or `host:*` token, as for a Device Farm job.
 - **The runtime and device-class source moves.** This item keeps `requires` for now.
   It waits for a later item to derive the iOS runtime and device class from the target's `device`.
   The restructure replaces that field with `runsOn.model` and `runsOn.os`, and a scenario can
@@ -168,6 +168,10 @@ this item has landed. It touches five parts of this item.
   The restructure answers that with the failing runs and with a guard: a run in which no run
   executed exits non-zero. The worker capability check keeps failing a scenario the worker cannot
   run, so the two outcomes stay apart.
+- **Cross-platform fallback lists go away.** The restructure removes `backend`, so a list such as
+  `[ios, web]` no longer resolves to `playwright` on a Linux host, as *The check* describes for
+  `bajutsu run`. A target names one platform; a run that should also cover the web uses a second
+  target.
 - **The host stays a fact about the machine.** The restructure weighed a target-side
   `runsOn.host.os` and dropped it. `host:<os>` stays the single host constraint.
 
