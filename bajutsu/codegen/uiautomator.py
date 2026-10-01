@@ -38,6 +38,7 @@ from bajutsu.codegen.common import (
     permissions_setup_lines,
     render_test_file,
     sleep_comment,
+    sleep_ms,
 )
 from bajutsu.common.assertions import request_label
 from bajutsu.common.drivers import base
@@ -197,7 +198,7 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
     if step.double_tap is not None:
         return ["// TODO: doubleTap — UI Automator has no double-tap gesture; not generated"]
     if step.sleep is not None:
-        return [sleep_comment(step.sleep.reason), f"Thread.sleep({ms(step.sleep.seconds)})"]
+        return [sleep_comment(step.sleep.reason), f"Thread.sleep({sleep_ms(step.sleep.seconds)})"]
     if step.back is not None:
         # UI Automator has a native system back — the peer of the adb driver's `keyevent 4` — so
         # codegen emits it faithfully rather than an unlabeled TODO (BE-0210).

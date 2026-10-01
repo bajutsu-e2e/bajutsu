@@ -1131,8 +1131,8 @@ shows, use `sleep`. Typical cases are a server-side retry throttle, or an animat
   pause within a quarter of a second.
 - `bajutsu audit` lists every `sleep` as a `fixed-sleep` finding. More than 10 seconds of fixed
   pause in one scenario grades it `Moderate`.
-- `record` and `crawl` never offer `sleep` to the model, so a fixed pause is always a human
-  decision.
+- `record` and `crawl` never offer `sleep` to the model, and `triage --ai` flags a fix that adds
+  one. Scenarios authored through the MCP server are not guarded, so review a `sleep` there by hand.
 
 ### `assert` (mid-step verification)
 

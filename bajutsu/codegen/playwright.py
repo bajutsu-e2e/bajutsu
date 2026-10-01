@@ -31,6 +31,7 @@ from bajutsu.codegen.common import (
     permissions_setup_lines,
     render_test_file,
     sleep_comment,
+    sleep_ms,
 )
 from bajutsu.common.assertions import request_label
 from bajutsu.common.drivers import base
@@ -346,7 +347,7 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
     if step.sleep is not None:
         return [
             sleep_comment(step.sleep.reason),
-            f"await page.waitForTimeout({ms(step.sleep.seconds)});",
+            f"await page.waitForTimeout({sleep_ms(step.sleep.seconds)});",
         ]
     if step.back is not None:
         # The web's `back` is browser history — the same primitive the driver's `back()` uses

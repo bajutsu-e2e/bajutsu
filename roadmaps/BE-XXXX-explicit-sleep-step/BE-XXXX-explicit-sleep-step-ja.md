@@ -56,7 +56,7 @@ run loop は、driver のハンドラではなく `wait` と並べて `sleep` �
 
 - **report。** step の進捗ラベルと `report.html` の行は `sleep 2s — <reason>` と表示します。行は step 自身の定義から組み立て、定義はすでに `seconds` を持ちます。そのため `StepOutcome` にフィールドを足さなくても、ツールは 1 回の run の固定時間を合計できます。
 - **決定性の監査。** [`audit/_functions.py`](../../bajutsu/analysis/audit/_functions.py) に、`loose-wait` の隣へ `fixed-sleep` finding を足します。`sleep` 1 つにつき 1 件で、reason を添えます。audit はシナリオのモデル全体をたどって `sleep` を探すので、`before`、`after`、`interrupts`、`web` や `app` のブロック内の待機も列挙します。固定待機の合計が 10 秒を超えるシナリオは、loose wait と同じ moderate 階層に入ります。
-- **AI による執筆。** `record` と `crawl` はモデルに `sleep` を提示しません。手書きで足すのは作者に限り、モデルが flaky な step の回避策として固定待機を選ぶことはありません。記録エージェントのツール一覧は `STEP_ACTIONS` から導出せず手書きしているため、もともと `sleep` を含みません。その状態をテストで固定します。モデルが待機を足しうる経路はもう 1 つ、`triage --ai` の修正案です。そのため、検証を緩める変更を警告する仕組みは、`sleep` を足す修正案にも警告を出します。
+- **AI による執筆。** `record` と `crawl` はモデルに `sleep` を提示しません。手書きで足すのは作者に限り、モデルが flaky な step の回避策として固定待機を選ぶことはありません。記録エージェントのツール一覧は `STEP_ACTIONS` から導出せず手書きしているため、もともと `sleep` を含みません。その状態をテストで固定します。モデルが待機を足しうる経路はもう 1 つ、`triage --ai` の修正案です。そのため、検証を緩める変更を警告する仕組みは、`sleep` を足す修正案にも警告を出します。MCP サーバー経由の執筆は、これらの歯止めの対象外です。そこではクライアントが他の step と同じように `sleep` を送れるので、audit の finding で検出します。
 
 ### codegen
 
@@ -107,7 +107,7 @@ Web UI の Author エディタ（[`serve.author.mjs`](../../bajutsu/templates/se
 | reason なしの `sleep: 2` | 数値だけを書く。 | レビューで、正当な待機と flaky な step の回避策を区別できません。audit も示す説明を持てません。1 行の追加が、例外の代価です。 |
 | config で opt-in したときだけ許可 | プロジェクトが `allowFixedSleep: true` を設定しない限り `sleep` を拒否する。 | 歯止めとしては実効的ですが、reason、上限、audit の finding をすでに備えた step に設定をもう 1 つ足すことになります。audit で濫用が見えた段階で、後から採用できます。 |
 | 痕跡なしで許可 | reason も finding もない単なる待機。 | 例外が見えなくなり、曲げた原則が誰にも気付かれないまま崩れていきます。 |
-| step を作らず `until: request` と `settled` で済ませる | すべての待機を条件で表す。 | ネットワークと settle の条件は多くの待機をすでに表せますが、本項目はそれを置き換えません。サーバーの再試行制限や、意図した画面の見せ止めにはそのような条件がなく、表せない待機が残ります。 |
+| step を作らず `until: request` と `settled` で済ませる | すべての待機を条件で表す。 | ネットワークと settle の条件は多くの待機をすでに表せますが、本項目はそれを置き換えません。サーバーの再試行制限や、画面を一定時間表示し続けたい場合にはそのような条件がなく、表せない待機が残ります。 |
 
 ## 進捗
 

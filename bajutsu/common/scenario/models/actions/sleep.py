@@ -21,7 +21,9 @@ class Sleep(_Model):
     """
 
     # Strict, so a YAML `true` or `"2"` is refused rather than coerced past the cap's intent.
-    seconds: float = Field(gt=0, strict=True)
+    # `maximum` is published for schema-driven clients; the validator below enforces it with an
+    # error that points at `wait`, which a plain `le=` constraint would replace with a generic one.
+    seconds: float = Field(gt=0, strict=True, json_schema_extra={"maximum": MAX_SLEEP_SECONDS})
     reason: str
 
     @field_validator("seconds")

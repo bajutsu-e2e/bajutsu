@@ -33,6 +33,7 @@ from ._functions import (
     permissions_setup_lines,
     render_test_file,
     sleep_comment,
+    sleep_ms,
 )
 from .after_emission import AfterEmission
 from .code_generator import CodeGenerator
@@ -54,4 +55,5 @@ __all__ = [
     "permissions_setup_lines",
     "render_test_file",
     "sleep_comment",
+    "sleep_ms",
 ]

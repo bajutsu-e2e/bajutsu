@@ -19,10 +19,11 @@ from bajutsu.common.orchestrator.actions._registry import _step_label
 from bajutsu.common.orchestrator.loop._functions import _do_sleep
 from bajutsu.common.report.rows import _action_data, _step_detail
 from bajutsu.common.scenario import STEP_ACTIONS, Scenario, Step, load_scenarios
-from bajutsu.common.scenario.models.actions import MAX_SLEEP_SECONDS
+from bajutsu.common.scenario.models.actions import MAX_SLEEP_SECONDS, Sleep
 from bajutsu.record.loop import execute
 from bajutsu.triage import heuristic as triage
 from bajutsu.triage.heuristic import Fix
+from bajutsu.triage.heuristic._shared import FIX_KINDS
 
 
 class FakeClock:
@@ -145,6 +146,15 @@ def test_record_replay_honors_the_pause() -> None:
     assert clock.slept == [3]
 
 
+def test_a_named_sleep_keeps_its_details_in_the_label() -> None:
+    step = Step.model_validate({**_sleep(2, "throttle"), "name": "cool-down"})
+    assert _step_label(step, "sleep") == "cool-down (sleep 2s — throttle)"
+
+
+def test_the_schema_publishes_the_cap() -> None:
+    assert Sleep.model_json_schema()["properties"]["seconds"]["maximum"] == MAX_SLEEP_SECONDS
+
+
 def test_the_progress_label_carries_the_reason() -> None:
     step = Step.model_validate(_sleep(2.5, "animation outlives settle"))
     assert _step_label(step, "sleep") == "sleep 2.5s — animation outlives settle"
@@ -216,13 +226,12 @@ def test_every_written_sleep_is_found_wherever_it_sits() -> None:
 
 
 def test_a_triage_fix_adding_a_sleep_is_flagged_as_laxer() -> None:
-    yaml = "- name: s\n  steps:\n    - tap: { id: submit }\n"
-    fix = Fix(
-        "addStep",
-        "pause",
-        "    - tap: { id: submit }\n",
-        "    - sleep: { seconds: 2, reason: flaky }\n    - tap: { id: submit }\n",
-    )
+    # `raiseTimeout` is a kind `triage --ai` accepts, and its replacement text is unconstrained, so a
+    # proposal can slip a fixed pause in front of the wait it claims to lengthen.
+    wait = "    - wait: { for: { id: home }, timeout: 5 }\n"
+    yaml = "- name: s\n  steps:\n    - tap: { id: submit }\n" + wait
+    fix = Fix("raiseTimeout", "pause", wait, "    - sleep: { seconds: 2, reason: flaky }\n" + wait)
+    assert "raiseTimeout" in FIX_KINDS
     assert any("sleep" in w for w in triage.flag_laxer(yaml, fix))
 
 
@@ -258,3 +267,9 @@ def test_playwright_emits_a_fixed_pause_with_its_reason() -> None:
     out = to_playwright(load_scenarios(_CODEGEN), "demo", "http://localhost")
     assert "// fixed pause: server throttle" in out
     assert "await page.waitForTimeout(1500);" in out
+
+
+def test_a_sub_millisecond_pause_never_generates_a_no_op_wait() -> None:
+    text = "- name: p\n  steps:\n    - sleep: { seconds: 0.0005, reason: tiny }\n"
+    assert "Thread.sleep(1)" in to_uiautomator(load_scenarios(text), "DemoUITest", "com.example")
+    assert "waitForTimeout(1);" in to_playwright(load_scenarios(text), "demo", "http://localhost")
