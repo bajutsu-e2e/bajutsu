@@ -68,7 +68,7 @@ targets:
       path: build/Showcase.app
       build: make -C demos/showcase swiftui-build
       launch: { env: { SHOWCASE_UITEST: "1" } }
-      readyWhen: { id: home.title }
+      startWhen: { exists: { id: home.title } }
     runsOn:   { model: iPhone 15, os: ">=17 <19", kind: simulator, locale: en_US }
     driver:   { runner: { testRunner: build/Runner.xctestrun } }
     run:      { erase: true, secrets: [LOGIN_PASSWORD], tipKitHandling: true }
@@ -105,12 +105,14 @@ targets:
 | グループ | iOS | Android | Web |
 |---|---|---|---|
 | `app` | `id`、`path`、`build`、`deeplink`、`launch.env`、`launch.args` | `id`、`path`、`build`、`grantPermissions` | `url`、`server` |
-| `app`（全プラットフォーム共通） | `readyWhen`、`idNamespaces` | 同左 | 同左 |
+| `app`（全プラットフォーム共通） | `startWhen`、`idNamespaces` | 同左 | 同左 |
 | `runsOn` | `model`、`os`、`kind`、`locale` | `avd`、`apiLevel` | `browser.engine`、`browser.version`、`emulate` |
 | `driver` | `runner.testRunner`、`runner.build` | `nativeZ` | `headless` |
 | `run`（追加分） | `tipKitHandling` | — | — |
 
 テスト用の`fake`プラットフォームは、最小限のモデルを登録します。`fake`の`app`は任意の`id`だけを持ち、`runsOn`と`driver`はフィールドを持ちません。そのため、`fake`の target には照合する要件がありません。`fake`の target は、現在と同じく iOS の形の`Effective`に解決されます。
+
+`startWhen`は`readyWhen`を置き換えます。値は、`interrupts`の各項目が`condition`に書くのと同じ形の条件です。これで、「この要素が画面にある」を表す書き方が、設定全体で1つになります。たとえば`startWhen: { exists: { id: home.title } }`と書きます。run は最初のステップの前に、条件が成り立つまで待ちます。この待ちは条件を繰り返し確かめるもので、固定の sleep は使いません。`startWhen`を省くと、現在の要素数による推定のままです。この項目が受け付けるのは`exists`だけです。現在の起動待ちの仕組みが評価できるのが、この条件だからです。ほかの条件は、仕組みが対応したあとで加えられます。
 
 判断が分かれた置き場所は4つあります。
 
@@ -259,7 +261,7 @@ target は、どこで実行するかを持たなくなります。target が書
 | `backend` | 廃止。`platform`が actuator を決める |
 | `bundleId`、`package` / `baseUrl`、`launchServer` | `app.id` / `app.url`、`app.server` |
 | `appPath`、`build`、`deeplinkScheme`、`launchEnv`、`launchArgs` | `app.path`、`app.build`、`app.deeplink`、`app.launch.env`、`app.launch.args` |
-| `readyWhen`、`idNamespaces`、`grantPermissions` | `app.readyWhen`、`app.idNamespaces`、`app.grantPermissions` |
+| `readyWhen`、`idNamespaces`、`grantPermissions` | `app.startWhen`（selector は`exists`の下へ移る）、`app.idNamespaces`、`app.grantPermissions` |
 | `device`、`locale`、`xcuitest.deviceType` | `runsOn.model`、`runsOn.locale`、`runsOn.kind` |
 | `browser`、`deviceMode` | `runsOn.browser.engine`、`runsOn.emulate`（省略で desktop） |
 | `headless`、`nativeZ`、`xcuitest.testRunner`、`xcuitest.build` | `driver.headless`、`driver.nativeZ`、`driver.runner.*` |

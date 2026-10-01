@@ -102,7 +102,7 @@ targets:
       path: build/Showcase.app
       build: make -C demos/showcase swiftui-build
       launch: { env: { SHOWCASE_UITEST: "1" } }
-      readyWhen: { id: home.title }
+      startWhen: { exists: { id: home.title } }
     runsOn:   { model: iPhone 15, os: ">=17 <19", kind: simulator, locale: en_US }
     driver:   { runner: { testRunner: build/Runner.xctestrun } }
     run:      { erase: true, secrets: [LOGIN_PASSWORD], tipKitHandling: true }
@@ -139,7 +139,7 @@ The same `site` target in today's notation reads as follows:
 | Group | iOS | Android | Web |
 |---|---|---|---|
 | `app` | `id`, `path`, `build`, `deeplink`, `launch.env`, `launch.args` | `id`, `path`, `build`, `grantPermissions` | `url`, `server` |
-| `app`, all platforms | `readyWhen`, `idNamespaces` | same | same |
+| `app`, all platforms | `startWhen`, `idNamespaces` | same | same |
 | `runsOn` | `model`, `os`, `kind`, `locale` | `avd`, `apiLevel` | `browser.engine`, `browser.version`, `emulate` |
 | `driver` | `runner.testRunner`, `runner.build` | `nativeZ` | `headless` |
 | `run`, extra field | `tipKitHandling` | — | — |
@@ -147,6 +147,13 @@ The same `site` target in today's notation reads as follows:
 The test-only `fake` platform registers minimal models. Its `app` takes an optional `id` and
 nothing else, and its `runsOn` and `driver` take no fields, so a `fake` target declares no
 requirement to check. A `fake` target still resolves to the iOS-shaped `Effective`, as it does today.
+
+`startWhen` replaces `readyWhen`. It takes a condition in the form an `interrupts` entry already
+uses for its `condition`, so the config has one way to say "this element is on screen":
+`startWhen: { exists: { id: home.title } }`. Before the first step, the run waits until the
+condition holds; the wait polls the condition and uses no fixed sleep. Leaving `startWhen` out keeps
+today's element-count heuristic. This item accepts `exists`, which is what today's readiness gate
+evaluates; other conditions can follow once the gate learns them.
 
 Four placements needed a judgment call:
 
@@ -373,7 +380,7 @@ iPhone, as it does today.
 | `backend` | removed; `platform` decides the actuator |
 | `bundleId`, `package` / `baseUrl`, `launchServer` | `app.id` / `app.url`, `app.server` |
 | `appPath`, `build`, `deeplinkScheme`, `launchEnv`, `launchArgs` | `app.path`, `app.build`, `app.deeplink`, `app.launch.env`, `app.launch.args` |
-| `readyWhen`, `idNamespaces`, `grantPermissions` | `app.readyWhen`, `app.idNamespaces`, `app.grantPermissions` |
+| `readyWhen`, `idNamespaces`, `grantPermissions` | `app.startWhen` (the selector moves under `exists`), `app.idNamespaces`, `app.grantPermissions` |
 | `device`, `locale`, `xcuitest.deviceType` | `runsOn.model`, `runsOn.locale`, `runsOn.kind` |
 | `browser`, `deviceMode` | `runsOn.browser.engine`, `runsOn.emulate` (omitted means desktop) |
 | `headless`, `nativeZ`, `xcuitest.testRunner`, `xcuitest.build` | `driver.headless`, `driver.nativeZ`, `driver.runner.*` |
