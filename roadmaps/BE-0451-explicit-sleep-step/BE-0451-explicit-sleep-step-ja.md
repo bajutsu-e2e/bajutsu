@@ -1,14 +1,14 @@
-[English](BE-XXXX-explicit-sleep-step.md) · **日本語**
+[English](BE-0451-explicit-sleep-step.md) · **日本語**
 
-# BE-XXXX — 条件で観測できない待機のための明示的な `sleep` step
+# BE-0451 — 条件で観測できない待機のための明示的な `sleep` step
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-explicit-sleep-step-ja.md) |
+| 提案 | [BE-0451](BE-0451-explicit-sleep-step-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0451") |
 | 実装 PR | [#2120](https://github.com/bajutsu-e2e/bajutsu/pull/2120) |
 | トピック | Scenario authoring features |
 <!-- /BE-METADATA -->

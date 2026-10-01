@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-explicit-sleep-step-ja.md)
+**English** · [日本語](BE-0451-explicit-sleep-step-ja.md)
 
-# BE-XXXX — An explicit `sleep` step for waits that no condition can observe
+# BE-0451 — An explicit `sleep` step for waits that no condition can observe
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-explicit-sleep-step.md) |
+| Proposal | [BE-0451](BE-0451-explicit-sleep-step.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0451") |
 | Implementing PR | [#2120](https://github.com/bajutsu-e2e/bajutsu/pull/2120) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
