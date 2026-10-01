@@ -29,7 +29,7 @@ which gains fields on iOS. The other seven, `platform` among them, keep one shap
 
 `runsOn` states the environments a target runs in: device, OS, and browser. A scenario can state
 its own `runsOn` under `preconditions`, and the scenario's value takes precedence over the
-target's. A list of models, or a version range bounded on both sides, asks for one run per value or
+target's. A list (of models, AVDs, or browser engines), or a version range bounded on both sides, asks for one run per value or
 per major version, and a run that no available device can take fails. A scenario whose open condition, such
 as `>=18`, no available device meets is recorded as not applicable instead of being run. The change
 drops backward compatibility on purpose: an old config fails to load and names the key it no longer
@@ -85,7 +85,9 @@ Once this item ships, a reader can check three outcomes:
 This item starts after [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md)
 and [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) have landed. Landed
 means every unit of those items has merged except the final removal of `cloudBatchBudget` and
-`requires`, which stay deprecated but accepted; unit 4 of this item removes them. Those items provide the worker capability file, `worker.yaml`, and the `environment:<name>` routing that the
+`requires`, which stay deprecated but accepted; unit 4 of this item removes them, together with the server-side
+budget machinery that still honors `cloudBatchBudget` (`deviceBudget`, `max_concurrent_batch`, and
+`try_register(device_budget=…)`). Those items provide the worker capability file, `worker.yaml`, and the `environment:<name>` routing that the
 keys leaving the target move onto (see *Where a run happens*). Starting earlier would leave
 `deviceProvider` and `cloudBatch` with no destination at the atomic schema switch-over.
 
@@ -162,7 +164,7 @@ for that target, as today.
 | Group | iOS | Android | Web |
 |---|---|---|---|
 | `app` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.args`, `launch.deeplink` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.deeplink`, `grantPermissions` | `url`, `launch.env` |
-| `app`, all platforms | `startWhen`, `idNamespaces` | same | same |
+| `app`, iOS, Android, and web | `startWhen`, `idNamespaces` | same | same |
 | `runsOn` | `model`, `os`, `kind`, `locale`, `seedPhotos` | `avd`, `apiLevel` | `browser.engine`, `browser.version`, `emulate` |
 | `driver` | `runner.testRunner`, `runner.build` | `nativeZ` | `headless` |
 | `run`, extra fields | `tipKitHandling` | — | — |
@@ -234,7 +236,8 @@ the scenario's value replaces the target's. Both keys go away:
   is spliced in, so a multi-target scenario now also runs the preludes of its other targets. The
   change is intended: a target's setup is what using that target needs.
 - A scenario that must not run the targets' setup sets `preconditions.run.inheritSetup: false`.
-  It skips the setup of every target the scenario declares; the target's cleanup still runs, since cleanup runs on every
+  It skips the setup of every target the scenario declares; a scenario that declares no `targets`
+  counts the target it runs against as declared; the target's cleanup still runs, since cleanup runs on every
   path. Today a scenario can replace the target's prelude while keeping the target's `before`; that
   combination goes away.
 - Each prelude file is rewritten once as a component file, since the two formats differ. A prelude
@@ -267,7 +270,9 @@ fields, and unit 3 pins the message in a test. The registry keeps config loading
 Playwright and simctl imports, the same property that lets `deviceMode` resolve lazily today. The
 core stops naming platforms in its schema, so adding Flutter means registering one more entry.
 
-Explicit `platform` replaces the precedence chain. `backend` goes away: every platform has a single
+`Config` merges `defaults` into each target before validating it with the registered models, so a
+required field such as `app.id` may come from `defaults.platforms.<platform>`. Explicit `platform`
+replaces the precedence chain. `backend` goes away: every platform has a single
 actuator today, so the ordered fallback list has nothing to choose between within a platform. A
 list that falls back across platforms, such as `[ios, web]` resolving to `playwright` on a Linux
 host, goes away deliberately: a target names one platform, and a run that should also cover the
@@ -445,7 +450,8 @@ happens when a run finds no device. Two kinds of field multiply runs, and nothin
 
 On Android each API level counts as one major version. A web `browser.version` range never
 multiplies runs, because Playwright brings one version per engine. It narrows instead, and it
-follows the same outcome rule by its shape. Engines number their versions differently, so a
+follows the same outcome rule by its shape; a run that a range bounded on both sides excludes
+fails once, naming the range and the launched version. Engines number their versions differently, so a
 `browser.version` range together with an engine list fails at load, and the same pair formed at
 run time by `--browsers` fails before any device work with exit code 2. The web backend installs a
 missing engine on demand, so an engine list never lacks a device. A multi-target scenario runs every
@@ -488,8 +494,8 @@ set, formed in three steps:
 1. Keep the available devices that meet the run's conditions. For a version range, keep those whose
    release falls in the range and in the run's major version.
 2. If the run fixes no `model` (iOS) or `avd` (Android), keep the devices of the first remaining
-   model in pool order that still has as many devices as the scenario has targets drawing on this
-   set. A fixed model must meet the same count.
+   model in pool order that still has as many devices as the targets of one combination that
+   draw on this set, that is, the same-platform targets whose run coordinates are equal. A fixed model must meet the same count.
 3. Keep the devices at the newest remaining release that still has that many devices.
 
 When a step leaves fewer devices than targets, the run fails like a missing device.
@@ -544,16 +550,17 @@ it keeps `worker.yaml` out of `bajutsu.config.yaml`. Four of today's keys leave 
 | Old key | Where it goes | Why |
 |---|---|---|
 | `cloudBatchBudget` | `maxJobConcurrency` in `worker.yaml` | [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md) replaces it, because the worker that reserves the device counts the budget |
-| `cloudBatch` | an `environment` on the serve fan-out request | BE-0448 runs the same target locally or on Device Farm, so the destination is a choice per run, not a property of the target |
+| `cloudBatch` | an `environment` on the serve fan-out request (`run-set`) | BE-0448 runs the same target locally or on Device Farm, so the destination is a choice per run, not a property of the target |
 | `deviceProvider` | an `appium` environment in `worker.yaml`, carrying the grid's `endpoint` | Which grid serves the devices is infrastructure, like a device cloud |
 | `requires` | removed | BE-0450 replaces free-form routing tokens with what a worker's inventory has |
 
 Three changes outside this item's schema follow, and unit 4 lands them with the switch-over, in
-coordination with BE-0448 and BE-0450. The serve fan-out request gains an `environment`, which feeds the `environment:<name>` routing of
-BE-0448; any run request with an `environment` requires that token, not only a Device Farm batch.
-No command-line command dispatches Device Farm today, so no CLI option is added. The server
-accepts as `environment` a batch-provider kind that Bajutsu can register, or `appium`, and rejects any other value
-with a 400 response. `worker.yaml` accepts `appium` as an environment with an
+coordination with BE-0448 and BE-0450. Two serve endpoints take an `environment`, which feeds the `environment:<name>` routing of
+BE-0448. The fan-out request (`run-set`) keeps today's role: it accepts a batch-provider kind alone,
+and rejects `appium` or a missing value with a 400 response, since it packages the app for a device
+cloud. The plain run request gains an optional `environment` that accepts `appium` alone; a job made
+from it requires `environment:appium`, and a request without it stays local, as today.
+No command-line command dispatches Device Farm today, so no CLI option is added. Any other value is rejected with a 400 response. `worker.yaml` accepts `appium` as an environment with an
 `endpoint`, which widens BE-0450's environment vocabulary beyond batch providers. The
 `appium` environment names the platform its grid serves (`platform: ios`, the one value today).
 Targets of that platform go to the grid, and other targets of the same scenario stay local. In
@@ -645,7 +652,8 @@ unit 7 those three fail at load as unknown keys, so none of them is written and 
 `serve/operations/reads.py`, `capture.py`, `enrich.py`, `doctor.py`, `config.py`, and `codegen.py`,
 `serve/helpers.py`, the Device Farm
 batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/serve.html.j2`, and
-`analysis/impact`, and `triage/cli.py`, which builds an `Effective` directly. Unit 4 updates them.
+`analysis/impact`, `serve/operations/dispatch.py`, which reads and reports `cloudBatch` and
+`cloudBatchBudget`, and `triage/cli.py`, which builds an `Effective` directly. Unit 4 updates them.
 
 ### Command-line flags
 
@@ -699,13 +707,16 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
    `ro.boot.qemu.avd_name`) across supported API levels, and check which scenarios and demos depend
    on a prelude splicing onto `steps`, and which target `setup:` references resolve to different files
    from different scenario directories. Update the tables before code lands.
-3. **Platform registry and models.** Add the registry and the per-platform models, rewrite the
+3. **Platform registry and models.** Add the registry and the per-platform models, leaving out the three
+   target-level fields that unit 7 adds (`app.reinstall`, `app.launch.deeplink`, and
+   `runsOn.seedPhotos`), rewrite the
    extra-field error to list the allowed fields, and pin in a test that the registry's keys equal
    `backends.PLATFORMS`.
 4. **Schema switch-over.** Replace `TargetConfig`, `Defaults`, `Config`, and `resolve`, keep the
    `redact` and `secrets` unions, and update the raw-schema readers. Land the execution placement
    with it: remove `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, and `requires`, add
-   `environment` to the serve fan-out request, route any request's `environment`, and accept an `appium` environment in
+   `environment` to the serve fan-out request (batch kinds) and to the plain run request (`appium`),
+   route both, and accept an `appium` environment in
    `worker.yaml` and in `--worker-config` on `run`, `record`, `crawl`, `repl`, `audit`, `doctor`, and
    the MCP server. Resolve components in target hooks, rewrite
    the prelude files as components, map the target's `hooks.setup` and `hooks.cleanup` onto today's
@@ -718,7 +729,8 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
    Remove the scenario's `preconditions.setup` here too, converting each use to a `use:` appended to
    the scenario's `before`. Add `preconditions.run.inheritSetup`, the first field of the
    scenario's `run` group, and set it to `false` where the scenario replaced the target's prelude, copying every declared target's
-   former `before` steps, each stamped with its `target:`, to the front of that scenario's `before`
+   former `before` steps (or, for a scenario that declares no `targets`, the steps of each target
+   whose `paths.scenarios` holds it, in a copy of the scenario per such target when they differ), each stamped with its `target:`, to the front of that scenario's `before`
    so the scenario keeps them in today's order, so no scenario points at a prelude file after this unit. Add
    the `Effective` attributes for `startWhen` and a target's `evidence.capture`, and drop the replacement Simulator's
    configured-`device` and newest-iPhone fallbacks and its unpinned retry. Remove the URL form of
@@ -735,12 +747,14 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
    Splitting the switch-over would leave the gate red between commits, because the loader and every
    config break together.
 5. **Setup and cleanup.** Rename the phases and the scenario's `before` and `after` to `setup` and
-   `cleanup`, rename `on: error` and capturePolicy's `result: error` to `failure`, and relabel the
-   report phases.
+   `cleanup`, rename `on: error` and capturePolicy's `result: error` to `failure`, convert the
+   scenario files and test fixtures that use them (such as
+   `demos/showcase/scenarios/before_after.yaml`), and relabel the report phases.
 6. **Command-line flags.** Point `--browser`, `--browsers`, and `--headed` at `runsOn.browser.engine`
    and `driver.headless`; `--erase`, `--system-alert-handling`, and `--ios-tipkit-handling` at the
-   `run` fields; and `--scenarios`, `--baselines`, and `--goldens` at `paths`. Add the one-line notice
-   under `--backend fake`. These apply to `run`, `record`, `crawl`, `repl`, `triage --rerun`, `audit`,
+   `run` fields; and `--scenarios`, `--baselines`, and `--goldens` at `paths`. Unit 4 keeps these flags working through the
+   unchanged `Effective` names; this unit moves their parsing onto the new fields and their help
+   text. These apply to `run`, `record`, `crawl`, `repl`, `triage --rerun`, `audit`,
    and the MCP tools.
 7. **Scenario preconditions.** Regroup `preconditions` into `app`, `runsOn`, and `run`, move the
    top-level run-policy fields under `run`, key `runsOn` by platform, and merge every group over the

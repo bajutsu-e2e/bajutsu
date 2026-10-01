@@ -121,7 +121,7 @@ worker は、実行のツリーを一時ディレクトリにダウンロード�
 
 提案中の、target の設定を再構成する項目があります（slug `target-config-restructure`）。この項目は、どこで実行するかの選択を target から外し、本項目が入ってから着手します。この項目が入ると、本項目の次の3点が変わります。
 
-- **`cloudBatch` が target から外れます。** 再構成の項目は、Device Farm への送り先を実行の要求へ移します。serve の fan-out の要求が `environment` フィールドを持ちます。現在、Device Farm に送るコマンドラインのコマンドはないので、CLI のオプションは足しません。`Job.batch` を持つジョブは、`environment:<name>` を target ではなくこの要求から導きます。「ルーティング」も広がります。本項目の作業単位2が扱うのは `Job.batch` だけですが、batch を持たない `appium` のジョブを含め、`environment` を持つ要求はすべてそのトークンを求めるようになります。
+- **`cloudBatch` が target から外れます。** 再構成の項目は、Device Farm への送り先を実行の要求へ移します。serve の fan-out の要求が `environment` フィールドを持ちます。現在、Device Farm に送るコマンドラインのコマンドはないので、CLI のオプションは足しません。`Job.batch` を持つジョブは、`environment:<name>` を target ではなくこの要求から導きます。fan-out の要求（`run-set`）は、引き続き batch provider の種類だけを受け付けます。「ルーティング」も広がります。通常の run の要求が `appium` を受け付ける `environment` を持つようになり、そこから作るジョブはそのトークンを求めます。本項目の作業単位2が扱うのは `Job.batch` だけです。
 - **worker が投入の前に `runsOn` の条件を確かめます。** 再構成の項目には、Device Farm の実行の前に読める端末がありません。そのため、有効な `runsOn` が条件を持つシナリオは、何かを投入する前に worker の側で、既存の結果の経路を通じて失敗します。Device Farm のホスト上の `bajutsu run` は、自分がどこで動いているかを知る必要がありません。
 - **`cloudBatchBudget` がスキーマから消えます。** 本項目が先に入るので、その時点で作業単位5は `cloudBatchBudget` を非推奨にしていますが、まだ取り除いていません。そのあと再構成の項目の新しい target のスキーマには `cloudBatchBudget` がなく、このキーは未知のキーとして読み込みに失敗します。
 
