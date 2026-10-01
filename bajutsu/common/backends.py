@@ -234,7 +234,13 @@ def capabilities_for_run(
 
             return XcuitestLiveDriver.CAPABILITIES
         if xcuitest_targets_real_device(eff):
-            return caps - base.DEVICE_CONTROL_ALL - base.IOS_PERMISSION_CAPABILITIES
+            # Nothing installs a second build on a real iPhone, so it cannot share it either.
+            return (
+                caps
+                - base.DEVICE_CONTROL_ALL
+                - base.IOS_PERMISSION_CAPABILITIES
+                - {base.Capability.DEVICE_GROUP}
+            )
     return caps
 
 

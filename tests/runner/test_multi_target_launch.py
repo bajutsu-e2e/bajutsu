@@ -540,3 +540,31 @@ def test_the_primarys_own_target_runtime_reuses_primary_ctx_verbatim() -> None:
     assert runtime.ctx is primary_ctx
     assert runtime.ctx.schema is not None
     assert runtime.ctx.schema.schemas_dir == flag_dir
+
+
+def test_a_collector_that_saw_nothing_writes_no_network_json(tmp_path: Path) -> None:
+    # A shared device-group collector with no traffic still goes through the write once (BE-0447),
+    # and an empty capture adds no artifact rather than an empty `network.json`.
+    from bajutsu.common.evidence.redaction import Redactor
+    from bajutsu.common.evidence.sink import RunArtifactWriter
+    from bajutsu.common.orchestrator import RunResult
+    from bajutsu.common.runner.pipeline import _record_target_evidence
+
+    shared = _ClearTrackingCollector()
+    leases = {
+        name: Lease(
+            driver=FakeDriver([]),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=shared,
+            release=lambda: None,
+        )
+        for name in ("old", "new")
+    }
+    result = RunResult(scenario="s", ok=True, steps=[])
+    _record_target_evidence(
+        result, leases, RunArtifactWriter(tmp_path, Redactor(None)), "00-s", multi=True
+    )
+    assert result.artifacts == []
+    assert not (tmp_path / "00-s").exists()

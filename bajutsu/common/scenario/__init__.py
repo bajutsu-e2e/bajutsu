@@ -56,6 +56,7 @@ from bajutsu.common.scenario.models import (
     HandleSystemAlert,
     HttpRequest,
     If,
+    InstallApp,
     Interrupt,
     LongPress,
     Manual,
@@ -84,6 +85,7 @@ from bajutsu.common.scenario.models import (
     SetClipboard,
     SetLocation,
     SetPickerValue,
+    SetPrimaryTarget,
     Step,
     Swipe,
     SystemAlertHandling,
@@ -106,9 +108,6 @@ from bajutsu.common.scenario.models import _check_target_requirements as _check_
 from bajutsu.common.scenario.models import _expand_target_groups as _expand_target_groups
 from bajutsu.common.scenario.models import (
     _scenarios_declaring_targets as _scenarios_declaring_targets,
-)
-from bajutsu.common.scenario.models import (
-    _scenarios_with_device_groups as _scenarios_with_device_groups,
 )
 from bajutsu.common.scenario.raw_source import RawScenario, scenario_sources
 from bajutsu.common.scenario.select import select_scenarios
@@ -170,6 +169,7 @@ __all__ = [
     "HandleSystemAlert",
     "HttpRequest",
     "If",
+    "InstallApp",
     "Interrupt",
     "LongPress",
     "Manual",
@@ -200,6 +200,7 @@ __all__ = [
     "SetClipboard",
     "SetLocation",
     "SetPickerValue",
+    "SetPrimaryTarget",
     "Step",
     "Swipe",
     "SystemAlertChoice",

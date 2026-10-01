@@ -12,7 +12,7 @@ directly — are re-exported here, so `from bajutsu.common.orchestrator import .
 from __future__ import annotations
 
 from bajutsu.common.orchestrator.actions import _action_of, _do_action
-from bajutsu.common.orchestrator.loop import run_scenario
+from bajutsu.common.orchestrator.loop import MemberStatus, TargetRoster, run_scenario
 from bajutsu.common.orchestrator.substitution import _interp_asserts, _interp_step
 from bajutsu.common.orchestrator.types import (
     DEFAULT_ALERT_POLL_INTERVAL,
@@ -48,6 +48,7 @@ __all__ = [
     "Clock",
     "DeviceControl",
     "MailboxReader",
+    "MemberStatus",
     "NetworkSource",
     "ProgressFn",
     "RealClock",
@@ -57,6 +58,7 @@ __all__ = [
     "StepOutcome",
     "SystemAlertTap",
     "TargetDeviceInfo",
+    "TargetRoster",
     "TargetRuntime",
     "_action_of",
     "_do_action",

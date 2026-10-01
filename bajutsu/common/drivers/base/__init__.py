@@ -46,6 +46,7 @@ from .ambiguous_selector import AmbiguousSelector
 from .app_crash_poll_resettable import AppCrashPollResettable
 from .app_crash_signal import AppCrashSignal
 from .app_crashed_error import AppCrashedError
+from .app_not_in_front import AppNotInFront
 from .backend_crash_error import BackendCrashError
 from .backend_lifecycle import BackendLifecycle
 from .background_screenshot_provider import BackgroundScreenshotProvider
@@ -84,6 +85,7 @@ __all__ = [
     "AppCrashPollResettable",
     "AppCrashSignal",
     "AppCrashedError",
+    "AppNotInFront",
     "BackendCrashError",
     "BackendLifecycle",
     "BackgroundScreenshotProvider",

@@ -34,3 +34,23 @@ class FakeEnvironment(_DeviceEnvironment):
         if permissions:
             raise base.UnsupportedAction("permissions is not supported on the fake driver")
         return backends.make_driver(self._actuator, self._udid)
+
+    def start_member(
+        self,
+        eff: Effective,
+        pre: Preconditions,
+        *,
+        extra_env: Mapping[str, str] | None = None,
+        permissions: Mapping[str, str] | None = None,
+        install: bool = True,  # noqa: ARG002  # nothing is ever installed on the fake backend
+    ) -> base.Driver:
+        # No device to share, so a member comes up exactly as the group's first one did; the fake
+        # backend advertises `Capability.DEVICE_GROUP` so the runner's group path runs end to end.
+        return self.start(eff, pre, extra_env=extra_env, permissions=permissions)
+
+    def install_member(self, eff: Effective, *, keep_data: bool) -> None:  # noqa: ARG002  # Environment shape
+        return None  # no device, so nothing to install; the step's lifecycle bookkeeping still runs
+
+    def end_member(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
+        # Nothing was launched on a device, so there is nothing to stop.
+        return None

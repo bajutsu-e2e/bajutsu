@@ -9,6 +9,7 @@ stands in for a real one, and the device provider is the inert local one.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -26,7 +27,9 @@ from bajutsu.run.cli import (
     _declared_targets_in,
     _pool_demand,
     _reject_incompatible_actuator_sharing,
+    _reject_preinstalled_group_builds,
     _reject_self_declaring_in_dir,
+    _reject_unshareable_groups,
     _reject_web_flags_across_targets,
     _release_devices,
     _resolve_multi_target_workers,
@@ -386,6 +389,27 @@ def test_two_targets_on_one_pool_demand_two_devices() -> None:
     assert _pool_demand(scenarios, setups) == {"fake": 2}
 
 
+def test_a_device_group_demands_one_device_however_many_members() -> None:
+    # The members of a device group share one device, so the group counts once (BE-0447).
+    released: list[str] = []
+    setups = {
+        "app": _setup("app", "fake", ["UD-1"], released),
+        "site": _setup("site", "fake", ["UD-1"], released),
+    }
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "grouped",
+                "targets": [["app", "site"]],
+                "primaryTarget": "app",
+                "steps": [{"tap": {"id": "a"}}],
+            }
+        )
+    ]
+    assert _pool_demand(scenarios, setups) == {"fake": 1}
+    assert _resolve_multi_target_workers(scenarios, setups, 4) == 1
+
+
 def test_two_targets_on_two_pools_demand_one_device_each() -> None:
     released: list[str] = []
     setups = {
@@ -546,3 +570,92 @@ def test_close_pools_never_masks_an_exception_already_propagating(
     with pytest.raises(ValueError, match="the real failure"):
         _raise_the_real_failure()
     assert "teardown defect" in capsys.readouterr().err
+
+
+def test_a_device_group_on_a_backend_that_cannot_share_is_refused_before_acquisition(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Refused from the resolved actuator alone, before any device is reserved (BE-0447).
+    monkeypatch.setattr(
+        "bajutsu.run.cli._select_actuator", lambda backend, eff, engines: ("playwright", [])
+    )
+    grouped = Scenario.model_validate(
+        {
+            "name": "grouped",
+            "targets": [["app", "site"]],
+            "primaryTarget": "app",
+            "installs": ["site"],
+            "steps": [{"tap": {"id": "a"}}],
+        }
+    )
+    with pytest.raises(typer.Exit):
+        _reject_unshareable_groups([grouped], _effs(), "", [], "booted")
+    assert "backend 'playwright' cannot share a device" in capsys.readouterr().out
+    monkeypatch.setattr(
+        "bajutsu.run.cli._select_actuator", lambda backend, eff, engines: ("fake", [])
+    )
+    _reject_unshareable_groups([grouped], _effs(), "", [], "booted")
+
+
+def test_a_device_group_on_a_preinstalled_provider_is_refused(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # The provider holds the build, so there is no local one to install beside it (BE-0447).
+    released: list[str] = []
+    setups = {
+        "app": _setup("app", "fake", ["UD-1"], released),
+        "site": _setup("site", "fake", ["UD-1"], released),
+    }
+    grouped = Scenario.model_validate(
+        {
+            "name": "grouped",
+            "targets": [["app", "site"]],
+            "primaryTarget": "app",
+            "installs": ["site"],
+            "steps": [{"tap": {"id": "a"}}],
+        }
+    )
+    _reject_preinstalled_group_builds([grouped], setups)
+    preinstalled = DeviceLease(
+        udid_spec="booted",
+        provision=ProvisionProfile(app_preinstalled=True),
+        release=lambda: None,
+    )
+    setups["site"] = replace(setups["site"], device=preinstalled)
+    # Outside a group the provider's own build is the one that runs, so nothing is refused.
+    flat = Scenario.model_validate(
+        {
+            "name": "flat",
+            "targets": ["app", "site"],
+            "primaryTarget": "app",
+            "steps": [{"tap": {"id": "a"}}],
+        }
+    )
+    _reject_preinstalled_group_builds([flat], setups)
+    with pytest.raises(typer.Exit):
+        _reject_preinstalled_group_builds([grouped], setups)
+    assert "target 'site' is in a device group" in capsys.readouterr().out
+
+
+def test_a_real_iphone_group_is_refused_before_acquisition(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "bajutsu.run.cli._select_actuator", lambda backend, eff, engines: ("xcuitest", [])
+    )
+    monkeypatch.setattr(
+        "bajutsu.run.cli.capabilities_for_run",
+        lambda actuator, eff, udid: frozenset(),  # what a real iPhone reports for deviceGroup
+    )
+    grouped = Scenario.model_validate(
+        {
+            "name": "grouped",
+            "targets": [["app", "site"]],
+            "primaryTarget": "app",
+            "installs": ["site"],
+            "steps": [{"tap": {"id": "a"}}],
+        }
+    )
+    with pytest.raises(typer.Exit):
+        _reject_unshareable_groups([grouped], _effs(), "", [], "booted")
+    assert "backend 'xcuitest' cannot share a device" in capsys.readouterr().out

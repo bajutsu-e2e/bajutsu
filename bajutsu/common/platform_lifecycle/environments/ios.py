@@ -17,7 +17,7 @@ from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.platform_lifecycle import readiness
 from bajutsu.common.platform_lifecycle.device_control import device_control
 from bajutsu.common.platform_lifecycle.relaunchers import device_relauncher
-from bajutsu.common.scenario import Scenario
+from bajutsu.common.scenario import Preconditions, Scenario
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 
 
@@ -86,6 +86,28 @@ class _DeviceEnvironment:
         return device_control(self._udid, require_ios(eff).bundle_id, self._run)
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
+        simctl.Env(self._udid, run=self._run).terminate(require_ios(eff).bundle_id)
+
+    def start_member(
+        self,
+        eff: Effective,  # noqa: ARG002  # Environment shape
+        pre: Preconditions,  # noqa: ARG002
+        *,
+        extra_env: Mapping[str, str] | None = None,  # noqa: ARG002
+        permissions: Mapping[str, str] | None = None,  # noqa: ARG002
+        install: bool = True,  # noqa: ARG002
+    ) -> base.Driver:
+        # `XcuitestEnvironment` overrides this to share its runner between members (BE-0447); the
+        # live WebDriver route drives a device it does not own and the fake backend overrides it, so
+        # this is the backstop for a route preflight already refuses.
+        raise base.UnsupportedAction(f"device groups are not supported on {self._actuator}")
+
+    def install_member(self, eff: Effective, *, keep_data: bool) -> None:  # noqa: ARG002  # Environment shape
+        # `XcuitestEnvironment` installs over simctl (BE-0447); a device this environment does not
+        # own has no local build to install.
+        raise base.UnsupportedAction(f"installApp is not supported on {self._actuator}")
+
+    def end_member(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
         simctl.Env(self._udid, run=self._run).terminate(require_ios(eff).bundle_id)
 
     def has_reusable_resident(self) -> bool:

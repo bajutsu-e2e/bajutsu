@@ -88,6 +88,7 @@ from ._shared import _ExecSteps, _logger
 from ._step_counter import _StepCounter
 from .app_crash_latches import AppCrashLatches
 from .step_loop_state import StepLoopState
+from .target_roster import TargetRoster
 
 # How often `email` re-polls the mailbox. Unlike the UI's 50 ms `_POLL`, each tick is a remote HTTP
 # request to a (often rate-limited / metered) provider, so it polls about once a second.
@@ -721,6 +722,7 @@ def run_scenario(  # noqa: C901, PLR0915
     primary_target: str = "",
     capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None = None,
     app_launch_unconfirmed: bool = False,
+    roster: TargetRoster | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -811,7 +813,10 @@ def run_scenario(  # noqa: C901, PLR0915
     # `primary_target` (it defaults to `""`) would otherwise make every name in `target_runtimes`
     # count as "extra" (none of them equals the empty string), nesting the primary's own artifacts
     # under a bare trailing slash (`<sid>//scenario.mp4`) instead of leaving them at `sid`.
-    primary_sid = f"{sid}/{primary_target}" if primary_target and extra_runtimes else sid
+    # A roster tracking a later member counts as a second target too: that member is declared but
+    # has no runtime until its `foreground`, and every other evidence path already nests (BE-0447).
+    nests = bool(extra_runtimes) or (roster is not None and bool(roster.status))
+    primary_sid = f"{sid}/{primary_target}" if primary_target and nests else sid
     recordings = sink.start_scenario_intervals(primary_sid, requested_intervals(scenario, capture))
     extra_recordings = {
         name: rt.sink.start_scenario_intervals(
@@ -915,6 +920,7 @@ def run_scenario(  # noqa: C901, PLR0915
             hide_markers,
             app_crash_latches,
             capture_app_crash,
+            roster,
         )
 
     try:
@@ -929,6 +935,11 @@ def run_scenario(  # noqa: C901, PLR0915
                         failure = "before: " + reason
                 if failure is None:
                     failure = run_phase(scenario.steps, outcomes, "", cancelled)
+                if failure is None and roster is not None:
+                    # An entry naming a member that is not running would otherwise poll a retired
+                    # build's replacement or another app's tree (BE-0447).
+                    blocked = _expect_blocked(roster, scenario.expect)
+                    failure = f"expect: {blocked}" if blocked is not None else None
                 if failure is None and scenario.expect:
                     expect = _interp_asserts(scenario.expect, live_bindings)
                     # The banner clear, visual capture, and clipboard read all run inside
@@ -948,8 +959,12 @@ def run_scenario(  # noqa: C901, PLR0915
                         cancelled=cancelled,
                         expect_actuations=expect_actuations,
                         wall_offset_s=wall_offset_s,
-                        target_runtimes=target_runtimes,
-                        primary_target=primary_target,
+                        target_runtimes=(
+                            roster.live(target_runtimes) if roster is not None else target_runtimes
+                        ),
+                        # The primary in force after the last step: a `setPrimaryTarget` may have
+                        # moved it (BE-0447).
+                        primary_target=roster.primary if roster is not None else primary_target,
                     )
                     expect_dropped_actuations += dropped
                     # A prompt the backend answered or declined while it was interrupting one of
@@ -1008,8 +1023,14 @@ def run_scenario(  # noqa: C901, PLR0915
                                 cancelled=cancelled,
                                 expect_actuations=expect_actuations,
                                 wall_offset_s=wall_offset_s,
-                                target_runtimes=target_runtimes,
-                                primary_target=primary_target,
+                                target_runtimes=(
+                                    roster.live(target_runtimes)
+                                    if roster is not None
+                                    else target_runtimes
+                                ),
+                                primary_target=(
+                                    roster.primary if roster is not None else primary_target
+                                ),
                             )
                             expect_dropped_actuations += dropped
                         # The guard's own rounds just now, and the retry's queries when one ran, can
@@ -1325,6 +1346,15 @@ def _run_for_each(
     return True, ""
 
 
+def _expect_blocked(roster: TargetRoster, expect: list[Assertion]) -> str | None:
+    """Why a top-level `expect` entry cannot run against the member it resolves to, or None."""
+    for a in expect:
+        problem = roster.unavailable(a.target or roster.primary, "assert")
+        if problem is not None:
+            return problem
+    return None
+
+
 def _config_for(cfg: _LoopConfig, rt: TargetRuntime) -> _LoopConfig:
     """*cfg* with every field one target's own runtime owns replaced (BE-0428).
 
@@ -1386,6 +1416,7 @@ def _run_steps(
     hide_markers: bool = False,
     app_crash: AppCrashLatches | None = None,
     capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None = None,
+    roster: TargetRoster | None = None,
 ) -> str | None:
     """Run one phase's step loop, appending outcomes; return the failure string or None.
 
@@ -1417,6 +1448,7 @@ def _run_steps(
         # Scenario-scoped like `bindings`: a caller that builds no shared object (a test driving one
         # phase directly) gets a fresh one, which simply starts every latch cleared.
         app_crash=app_crash if app_crash is not None else AppCrashLatches(),
+        roster=roster,
     )
     cfg = _LoopConfig(
         driver=driver,
@@ -1449,6 +1481,8 @@ def _run_steps(
     from ._step_runner import _StepRunner
 
     primary = _StepRunner(state, cfg, primary_target)
+    if roster is not None:
+        target_runtimes = roster.live(target_runtimes)
     if target_runtimes:
         by_target = {
             name: (

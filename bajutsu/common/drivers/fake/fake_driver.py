@@ -361,6 +361,7 @@ class FakeDriver:
             base.Capability.SELECT_PHOTOS,
             base.Capability.HANDLE_TIPKIT_TIP,
             base.Capability.HANDLE_NOTIFICATION_BANNER,
+            base.Capability.DEVICE_GROUP,
         }
     )
 

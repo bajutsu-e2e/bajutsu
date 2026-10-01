@@ -34,5 +34,6 @@ from ._shared import _logger as _logger
 from ._step_counter import _StepCounter as _StepCounter
 from ._step_runner import _StepRunner as _StepRunner
 from .step_loop_state import StepLoopState
+from .target_roster import MemberStatus, TargetRoster
 
-__all__ = ["StepLoopState", "run_scenario"]
+__all__ = ["MemberStatus", "StepLoopState", "TargetRoster", "run_scenario"]

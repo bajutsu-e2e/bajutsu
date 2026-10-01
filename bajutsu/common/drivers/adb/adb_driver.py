@@ -238,6 +238,11 @@ class AdbDriver(CoordinateTreeDriver):
         # has nothing new to wait out. `run` builds a fresh driver per lease, but `crawl` builds one
         # for the whole walk, which is why `reset_exit_info_poll()` exists to clear it.
         self._exit_info_exhausted = False
+        # Whether this driver shares its device with another device-group member (BE-0447): then
+        # a read that does not show this driver's own package is another app's tree, never one to
+        # resolve a selector against. Off on a device that holds one target, so an ordinary run, the
+        # `app:` block, and a system dialog read exactly as before.
+        self._front_check = False
         self.serial = adb.checked_serial(serial)
         # BE-0415: a driver built while a trace is open times every subprocess call `run` issues and
         # every resident-channel round trip these three callables make. Checked once here, not on
@@ -448,6 +453,10 @@ class AdbDriver(CoordinateTreeDriver):
                 )
             return
         root = read.root if read.root is not None else slice_hierarchy_root(read.text)
+        if self._other_app_in_front(root) is not None:
+            # A gesture that opened another member's app carried that app's tree back; reading
+            # instead lets the read raise `AppNotInFront` rather than answer from it (BE-0447).
+            return
         # `read.native_z`, not `self._native_z`: the reply's own measurements belong to the reply's
         # own tree, and this runs before the driver adopts them.
         els, identities = elements_with_identities(root, read.native_z)
@@ -466,9 +475,34 @@ class AdbDriver(CoordinateTreeDriver):
         self._record_tree(els)
         self._seeded_tree = els
 
+    def _other_app_in_front(self, root: ET.Element | None) -> list[str] | None:
+        """The packages *root* shows when it is not this driver's own app's tree, else None."""
+        if not self._front_check or root is None or not self._package:
+            return None
+        shown = sorted({p for n in root.iter() if (p := n.get("package"))})
+        # Empty means the tree named no package at all — the mid-transition dump
+        # `_read_settled_tree`'s transient-empty retry exists to ride out — so "cannot tell", not
+        # "another app": raising here would escape that retry on its first read.
+        return None if not shown or self._package in shown else shown
+
+    def require_front_app(self) -> None:
+        """Refuse every read that does not show this driver's own app (BE-0447).
+
+        Called once the device holds a second device-group member: the shared resident channel then
+        dumps whichever app is in front, and a selector resolved against another member's tree would
+        act on an element the step never meant (prime directive 2).
+        """
+        self._front_check = True
+
     def _describe(self) -> list[base.Element]:
         # `_read_source` refreshes `_native_z` for this read, so it is read after, never before.
         root = self._read_source()
+        if (shown := self._other_app_in_front(root)) is not None:
+            # Another member's tree: raised, never returned empty, so no check can pass on it.
+            raise base.AppNotInFront(
+                f"{self._package} is not in front ({', '.join(shown) or 'no app'} is) — bring "
+                "it up with a foreground step addressed to its target"
+            )
         els, identities = elements_with_identities(root, self._native_z)
         self._identities = {id(el): ident for el, ident in zip(els, identities, strict=True)}
         # The tree the identity map above describes. `_device_act` counts an element's peers against
@@ -923,6 +957,10 @@ class AdbDriver(CoordinateTreeDriver):
         tree = self._settle()
         try:
             el, tree = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
+        except base.AppNotInFront:
+            # Another app's tree is never "absent here": it must not read as untappable or be
+            # scrolled through, so it fails the step by name instead (BE-0447).
+            raise
         except base.ElementNotFound:
             # Not in the current viewport — scroll toward it and re-query (BE-0210). An ambiguous
             # match still fails fast: only not-found triggers a scroll, so `resolve_unique`'s
@@ -964,6 +1002,10 @@ class AdbDriver(CoordinateTreeDriver):
         tree = self._settle()
         try:
             el, tree = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
+        except base.AppNotInFront:
+            # Another app's tree is never "absent here": it must not read as untappable or be
+            # scrolled through, so it fails the step by name instead (BE-0447).
+            raise
         except base.ElementNotFound:
             return False
         return base.topmost_at_point(tree, base.frame_center(el["frame"]), el) is None
@@ -1073,6 +1115,10 @@ class AdbDriver(CoordinateTreeDriver):
             tree = self._settle()
             try:
                 el, tree = self._resolve(sel, timeout=self._RESOLVE_TIMEOUT_S, initial_tree=tree)
+            except base.AppNotInFront:
+                # Another app's tree is never "absent here": it must not read as untappable or be
+                # scrolled through, so it fails the step by name instead (BE-0447).
+                raise
             except base.ElementNotFound:
                 el, tree = self._scroll_into_view(sel, tree)
             base.raise_if_covered(tree, el, sel)
@@ -1736,6 +1782,11 @@ class AdbDriver(CoordinateTreeDriver):
                 base.Capability.TEXT_SELECTION,
                 base.Capability.DC_SET_LOCATION,
                 base.Capability.DC_CLIPBOARD,
+                # `am start` brings a member's app to the front, launching it when it is not running;
+                # and the shared resident channel lets members of a device group share one device
+                # (BE-0447).
+                base.Capability.DC_FOREGROUND,
+                base.Capability.DEVICE_GROUP,
             }
         )
         | base.ANDROID_PERMISSION_CAPABILITIES

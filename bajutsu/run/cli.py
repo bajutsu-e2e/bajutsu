@@ -29,14 +29,16 @@ from bajutsu.cli._shared import (
 )
 from bajutsu.common.assertions import GoldenContext
 from bajutsu.common.backends import (
+    capabilities_for_run,
     default_available,
     select_actuator,
     select_actuator_for_scenario,
 )
 from bajutsu.common.cancellation import CancelSource, graceful_sigterm
-from bajutsu.common.config import WEB_ENGINES, Effective, IosConfig
+from bajutsu.common.config import WEB_ENGINES, AndroidConfig, Effective, IosConfig
 from bajutsu.common.deprecations import warn_once
 from bajutsu.common.devices import errors as device_errors
+from bajutsu.common.drivers import base
 from bajutsu.common.github import actions as github_actions
 from bajutsu.common.orchestrator import DEFAULT_ALERT_POLL_INTERVAL, AlertGuardConfig, RunResult
 from bajutsu.common.orchestrator.types import ResolvedAlertRule
@@ -60,7 +62,6 @@ from bajutsu.common.scenario import (
     SystemAlertHandlingField,
     SystemAlertRule,
     _scenarios_declaring_targets,
-    _scenarios_with_device_groups,
     apply_setups,
     contained_ref,
     declared_name,
@@ -566,21 +567,196 @@ def _reject_cross_browser_matrix_with_targets(
         raise typer.Exit(2)
 
 
-def _reject_device_groups(scenarios: list[Scenario]) -> None:
-    """Refuse a scenario declaring a device group of two or more, with a clean exit 2 (BE-0447).
+def _reject_bad_device_groups(
+    scenarios: list[Scenario], target_effs: Mapping[str, Effective], *, checkout_root: Path | None
+) -> None:
+    """Refuse, before any device work, a device group the config cannot honor (BE-0447).
 
-    `run_all` refuses the same scenarios too, before its own lease callback, but only after this
-    command has already acquired its device pools and would surface a bare `ValueError`; this
-    catches them before any device work, with the clean exit 2 every other multi-target refusal
-    here gives.
+    The scenario model checks a group's shape; only the config can say whether its members can
+    actually share one device and whether the builds it installs exist. Each refusal names its
+    cause and exits 2, the way every other multi-target refusal here does.
     """
-    affected = _scenarios_with_device_groups(scenarios)
-    if affected:
-        typer.echo(
-            "device groups in targets: are not yet implemented (BE-0447); "
-            f"affected scenario(s): {', '.join(affected)}"
+    problems = [
+        f"scenario '{s.name}': {problem}"
+        for s in scenarios
+        for problem in _device_group_problems(s, target_effs)
+    ]
+    # Each build once for the whole run, however many scenarios install it: a failing Git build
+    # would otherwise be retried once per scenario.
+    members = sorted(
+        {
+            step.install_app.from_
+            for s in scenarios
+            for step in _install_steps(s)
+            if step.install_app and target_effs[step.install_app.from_].platform != "web"
+        }
+    )
+    for member in members:
+        problems += _build_problems(
+            target_effs[member],
+            checkout_root=checkout_root,
+            label=f"installApp from {member!r}",
         )
+    # A group's other starting members install at lease time too, so their builds are made and
+    # checked here as well; the run's primary already was. One that names no `appPath` is expected
+    # on the device already, as for any target (BE-0447).
+    starting = sorted(
+        {
+            name
+            for s in scenarios
+            for g in s.device_groups
+            if len(g) >= 2
+            for name in g
+            if name != s.target_names[0] and name not in set(s.later_targets)
+        }
+        - set(members)
+    )
+    for member in starting:
+        if _app_path(target_effs[member]) is not None:
+            problems += _build_problems(
+                target_effs[member],
+                checkout_root=checkout_root,
+                label=f"starting member {member!r}",
+            )
+    if problems:
+        typer.echo("device group preflight failed (BE-0447):\n  " + "\n  ".join(problems))
         raise typer.Exit(2)
+
+
+def _device_group_problems(s: Scenario, effs: Mapping[str, Effective]) -> Iterator[str]:
+    later = set(s.later_targets)
+    for group in s.device_groups:
+        if len(group) < 2:
+            continue
+        yield from _sharing_problems(s, group, effs)
+        starting = [m for m in group if m not in later]
+        seen: dict[str, str] = {}
+        for member in starting:
+            identifier = effs[member].app_identifier
+            if identifier is not None and identifier in seen:
+                yield (
+                    f"starting members {seen[identifier]!r} and {member!r} share the identifier "
+                    f"{identifier!r}, so installing both would leave one build on the device — "
+                    "start one and install the other with installApp"
+                )
+            elif identifier is not None:
+                seen[identifier] = member
+    yield from _retired_primary_problems(s, effs)
+
+
+def _sharing_problems(
+    s: Scenario, group: list[str], effs: Mapping[str, Effective]
+) -> Iterator[str]:
+    # Members share one device, so they need one platform, one route to the device, and one
+    # system locale, which iOS pins Simulator-wide.
+    for member in group:
+        if effs[member].platform == "web":
+            yield f"web target {member!r} has no device to share, so it cannot join a device group"
+            return
+    first, *rest = group
+
+    def route(eff: Effective) -> tuple[object, ...]:
+        config = eff.platform_config
+        xcuitest = config.xcuitest if isinstance(config, IosConfig) else None
+        return (
+            eff.platform,
+            # One device answers to one backend: `_pool_demand` charges the group to its first
+            # member's pool, so a member resolving to another actuator would draw from a pool
+            # nothing counted.
+            tuple(eff.backend),
+            eff.device_provider,
+            eff.device,
+            xcuitest.device_type if xcuitest is not None else None,
+        )
+
+    def locale(eff: Effective) -> str:
+        return s.preconditions.resolved_locale(eff.locale)
+
+    for member in rest:
+        if route(effs[member]) != route(effs[first]):
+            yield (
+                f"device group [{', '.join(group)}]: {member!r} differs from {first!r} in platform, "
+                "backend, or device route (deviceProvider, device, xcuitest.deviceType), so they "
+                "cannot share a device"
+            )
+        if locale(effs[member]) != locale(effs[first]):
+            yield (
+                f"device group [{', '.join(group)}]: {member!r} runs under locale {locale(effs[member])!r} but "
+                f"{first!r} under {locale(effs[first])!r}, and a shared device has one system locale"
+            )
+
+
+def _app_path(eff: Effective) -> str | None:
+    """*eff*'s `appPath`, or None for a target that names none (a web target included)."""
+    config = eff.platform_config
+    return config.app_path if isinstance(config, IosConfig | AndroidConfig) else None
+
+
+def _build_problems(eff: Effective, *, checkout_root: Path | None, label: str) -> Iterator[str]:
+    # The scenario names a target, never a path, so the build a member puts on the device is that
+    # target's `appPath`, built on demand where the run already builds the primary's.
+    config = eff.platform_config
+    app_path = _app_path(eff)
+    if app_path is None:
+        yield f"{label}: that target defines no appPath to install"
+        return
+    if checkout_root is not None and isinstance(config, IosConfig):
+        try:
+            build_if_missing(config.build, app_path, cwd=checkout_root)
+        except BuildError as e:
+            yield f"{label}: {e}"
+            return
+    if not Path(app_path).exists():
+        yield f"{label}: its appPath {app_path!r} does not exist"
+
+
+def _retired_primary_problems(s: Scenario, effs: Mapping[str, Effective]) -> Iterator[str]:
+    # Retirement follows the identifier, which only the config holds, so the scenario model left
+    # this to run time; walked here in step order, it is refused before any device is leased.
+    installed = {m for m in s.target_names if m not in set(s.later_targets)}
+    retired: set[str] = set()
+    # `before` runs ahead of `steps`, so an install there retires a member just the same.
+    for step in [*s.before, *s.steps]:
+        if step.install_app is not None:
+            member = step.install_app.from_
+            identifier = effs[member].app_identifier
+            group = next(g for g in s.device_groups if member in g)
+            retired |= (
+                set()
+                if identifier is None
+                else {
+                    m
+                    for m in group
+                    if m != member and m in installed and effs[m].app_identifier == identifier
+                }
+            )
+            installed.add(member)
+        elif step.set_primary_target is not None and step.set_primary_target.target in retired:
+            yield (
+                f"setPrimaryTarget {step.set_primary_target.target!r}: an earlier installApp "
+                "retired that member, so name the member that installed its replacement"
+            )
+
+
+def _install_steps(s: Scenario) -> Iterator[Step]:
+    """Every `installApp` step *s* holds, nested ones included."""
+
+    def walk(steps: list[Step]) -> Iterator[Step]:
+        for step in steps:
+            if step.install_app is not None:
+                yield step
+            if step.if_ is not None:
+                yield from walk(step.if_.then)
+                yield from walk(step.if_.else_ or [])
+            if step.for_each is not None:
+                yield from walk(step.for_each.steps)
+
+    yield from walk(s.steps)
+    yield from walk(s.before)
+    for rule in s.after:
+        yield from walk(rule.steps)
+    for entry in s.interrupts:
+        yield from walk(entry.steps)
 
 
 def _reject_bad_target_config_hooks(
@@ -1406,6 +1582,55 @@ class _TargetSetup:
     workers: int
 
 
+def _reject_preinstalled_group_builds(
+    scenarios: list[Scenario], setups: Mapping[str, _TargetSetup]
+) -> None:
+    """Refuse a device group whose builds a device provider already holds (BE-0447, BE-0236).
+
+    A provider that hands its device over with the app already installed keeps the binary itself,
+    so the local `appPath` a later member's `installApp` or a joining member's install reads does
+    not exist there. Only known once the device is reserved, so this runs inside the region that
+    releases every reservation on exit.
+    """
+    for s in scenarios:
+        grouped = {name for g in s.device_groups if len(g) >= 2 for name in g}
+        for name in sorted(grouped):
+            if setups[name].device.provision.app_preinstalled:
+                typer.echo(
+                    f"scenario '{s.name}': target '{name}' is in a device group, but its device "
+                    "provider hands the device over with the app preinstalled, so there is no local "
+                    "build to install beside it (BE-0447)"
+                )
+                raise typer.Exit(2)
+
+
+def _reject_unshareable_groups(
+    scenarios: list[Scenario],
+    target_effs: Mapping[str, Effective],
+    backend: str,
+    engines: list[str],
+    udid: str,
+) -> None:
+    """Refuse a device group on a backend that cannot share a device, before any device work.
+
+    The pipeline refuses the same group in its own preflight (BE-0447), but only once the run has
+    reserved devices and opened pools; this answers from each member's resolved actuator alone, so
+    a cloud device is never reserved for a group that could not run on it.
+    """
+    grouped = {name for s in scenarios for g in s.device_groups if len(g) >= 2 for name in g}
+    for name in sorted(grouped):
+        actuator, _ = _select_actuator(backend, target_effs[name], engines)
+        # The run-aware set: a real iPhone and a WebDriver endpoint drop `deviceGroup` there.
+        if base.Capability.DEVICE_GROUP not in capabilities_for_run(
+            actuator, target_effs[name], udid
+        ):
+            typer.echo(
+                f"target '{name}' is in a device group, but backend '{actuator}' cannot share a "
+                "device between two apps yet (BE-0447)"
+            )
+            raise typer.Exit(2)
+
+
 def _acquire_targets(
     target_effs: Mapping[str, Effective],
     backend: str,
@@ -1449,13 +1674,16 @@ def _pool_demand(scenarios: list[Scenario], setups: Mapping[str, _TargetSetup]) 
     """The most devices any one scenario needs from each pool at once (BE-0428).
 
     Targets sharing a pool share its device queue, and a scenario holds every declared target's
-    lease for its whole length, so two targets on one pool need two devices from it.
+    lease for its whole length, so two targets on one pool need two devices from it. A device group
+    is one device however many members it holds (BE-0447), so the count is per group, keyed by the
+    group's first member; a group whose members differ in backend is refused by the
+    config-aware group preflight (BE-0447 unit 4).
     """
     demand: dict[str, int] = {}
     for s in scenarios:
         per_pool: dict[str, int] = {}
-        for name in s.target_names:
-            key = setups[name].actuator
+        for group in s.device_groups:
+            key = setups[group[0]].actuator
             per_pool[key] = per_pool.get(key, 0) + 1
         for key, n in per_pool.items():
             demand[key] = max(demand.get(key, 0), n)
@@ -1478,7 +1706,7 @@ def _resolve_multi_target_workers(
         lanes = next(len(s.udids) for s in setups.values() if s.actuator == actuator)
         if needed > lanes:
             typer.echo(
-                f"a scenario declares {needed} targets served by the {actuator} pool, but only "
+                f"a scenario needs {needed} devices from the {actuator} pool, but only "
                 f"{lanes} device lane(s) are available there — pass more devices via --udid, or "
                 "raise --workers to widen a web pool"
             )
@@ -2166,7 +2394,6 @@ def run(
     # — these checks speak about the scenarios this run will actually attempt.
     _check_target_membership(scenarios, target_name, explicit=explicit_target)
     _reject_legacy_without_target(scenarios, target_name, explicit=explicit_target)
-    _reject_device_groups(scenarios)
     target_effs = _resolve_target_effs(
         loaded, scenarios, target_name, eff, headed=headed, browser=browser
     )
@@ -2176,6 +2403,7 @@ def run(
     _reject_web_flags_across_targets(target_effs, headed=headed, browser=browser, browsers=browsers)
     _reject_cross_browser_matrix_with_targets(scenarios, engines)
     _reject_bad_target_config_hooks(target_effs, scenarios, target_name)
+    _reject_bad_device_groups(scenarios, target_effs, checkout_root=loaded.root)
     # Where this target's devices come from is a seam (BE-0236): the provider `acquire` returns the
     # udid spec the lanes resolve against (the `--udid` flag verbatim for the default local provider,
     # a reserved serial / endpoint for a device cloud) plus what it already did to the device
@@ -2187,6 +2415,7 @@ def run(
     # idb, `--udid` is a concrete comma list capped to the pool size. (The "booted" default is
     # unused on web.) How a device handle resolves is the platform's, behind the Environment seam
     # (BE-0256): Android via adb, the iOS family via simctl — no `actuator == "adb"` branch here.
+    _reject_unshareable_groups(scenarios, target_effs, backend, engines, udid)
     setups = _acquire_targets(target_effs, backend, engines, udid, workers)
     primary = setups[target_name]
     actuator, backends = primary.actuator, primary.backends
@@ -2197,6 +2426,7 @@ def run(
         # still release them — including this one, which can exit 2 on a pool too small for the
         # scenario's own target count (BE-0428).
         _reject_incompatible_actuator_sharing(setups)
+        _reject_preinstalled_group_builds(scenarios, setups)
         workers = _resolve_multi_target_workers(scenarios, setups, primary.workers)
         _apply_system_alert_handling(
             scenarios, resolve_system_alert_handling_flag(system_alert_handling)

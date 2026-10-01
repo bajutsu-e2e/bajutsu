@@ -329,6 +329,20 @@ final class APIHandler: APIProtocol {
         return .ok(.init(body: .json(appActivationReply(result))))
     }
 
+    /// Make a named app the base every following route addresses, without activating it (BE-0447).
+    func targetApp(
+        _ input: Operations.targetApp.Input
+    ) async throws -> Operations.targetApp.Output {
+        let request: Components.Schemas.AppRequest
+        switch input.body { case .json(let body): request = body }
+        let bundleId = request.bundleId
+        let result = await caught(AppActivationResult.notForeground) {
+            self.provider.targetApp(bundleId: bundleId)
+            return AppActivationResult.ok
+        }
+        return .ok(.init(body: .json(appActivationReply(result))))
+    }
+
     // MARK: - Notification banner
 
     /// The notification-banner presence query (BE-0416): the same element+handle contract as

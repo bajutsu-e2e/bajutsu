@@ -130,6 +130,29 @@ def manual_todo(label: str, bypass: str | None) -> str:
     return f"{safe_label} — {bypass_hint(safe_bypass)}; not generated"
 
 
+def device_group_todo(step: Step) -> str | None:
+    """The `// TODO` for an `installApp` or `setPrimaryTarget` step (BE-0447), else None.
+
+    `installApp` installs another device-group member's build on a shared device; `setPrimaryTarget`
+    only moves the target later steps follow, and is legal with a single declared target, the one
+    shape that reaches these generators today. A generated test drives one app on one device, so
+    neither has a form there; like the device-control TODOs, each renders as a labeled comment,
+    never a silent skip.
+    """
+    if step.install_app is not None:
+        return (
+            f"// TODO: installApp(from: {_collapse_line_terminators(step.install_app.from_)}) — "
+            "installs another target's build on a shared device; not generated"
+        )
+    if step.set_primary_target is not None:
+        return (
+            "// TODO: setPrimaryTarget(target: "
+            f"{_collapse_line_terminators(step.set_primary_target.target)}) — "
+            "moves the default target across targets; not generated"
+        )
+    return None
+
+
 def permissions_setup_lines(scenario: Scenario) -> list[str]:
     """The `// TODO` lines naming each `permissions` entry (BE-0276), one per service.
 

@@ -281,3 +281,22 @@ def test_focus_tap_also_recovers_through_the_same_wrapper(
     ok, reason, gestures = _run(driver, step)
     assert (ok, reason) == (True, "")
     assert gestures == expected_gestures
+
+
+class _SwitchedAwayDriver(FakeDriver):
+    """A member whose app left the front mid-recovery: every read now names that (BE-0447)."""
+
+    def query(self) -> list[base.Element]:
+        raise base.AppNotInFront("com.example.auth is not in front")
+
+
+def test_a_recovery_scroll_fails_by_name_once_another_app_holds_the_screen() -> None:
+    from bajutsu.common.orchestrator.actions.handlers.gestures import _tap_with_recovery
+
+    def actuate() -> None:
+        raise base.ElementNotTappable("covered")
+
+    # The first direction's scroll hits the switch; no later direction is tried against the app
+    # now in front, and the cause is not reworded into "never became tappable".
+    with pytest.raises(base.AppNotInFront, match="is not in front"):
+        _tap_with_recovery(actuate, _SwitchedAwayDriver([]), {"id": "ok"})

@@ -181,11 +181,8 @@ _DEVICE_CONTROL_OPS: tuple[tuple[str, str, Callable[[Step], bool]], ...] = (
     ),
     (base.Capability.DC_PUSH, "push", lambda s: s.push is not None),
     (base.Capability.DC_CLEAR_KEYCHAIN, "clearKeychain", lambda s: s.clear_keychain is not None),
-    (
-        base.Capability.DC_APP_LIFECYCLE,
-        "background / foreground",
-        lambda s: s.background is not None or s.foreground is not None,
-    ),
+    (base.Capability.DC_BACKGROUND, "background", lambda s: s.background is not None),
+    (base.Capability.DC_FOREGROUND, "foreground", lambda s: s.foreground is not None),
     (
         base.Capability.DC_STATUS_BAR,
         "status-bar override / clear",

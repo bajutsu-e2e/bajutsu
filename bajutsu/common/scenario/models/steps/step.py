@@ -28,6 +28,7 @@ from bajutsu.common.scenario.models.actions import (
     Generate,
     HandleSystemAlert,
     HttpRequest,
+    InstallApp,
     LongPress,
     Manual,
     OverrideStatusBar,
@@ -42,6 +43,7 @@ from bajutsu.common.scenario.models.actions import (
     SetClipboard,
     SetLocation,
     SetPickerValue,
+    SetPrimaryTarget,
     Swipe,
     TapPoint,
     Totp,
@@ -113,6 +115,11 @@ class Step(_Model):
     set_mocks: list[Mock] | None = Field(default=None, alias="setMocks")
     background: Background | None = None
     foreground: Foreground | None = None
+    # Install another device-group member's build on the step's device, and move the target an
+    # omitted `target` resolves to (BE-0447). Both answer to a scenario's device groups, which the
+    # scenario's own validator checks; `Step` alone cannot see them.
+    install_app: InstallApp | None = Field(default=None, alias="installApp")
+    set_primary_target: SetPrimaryTarget | None = Field(default=None, alias="setPrimaryTarget")
     override_status_bar: OverrideStatusBar | None = Field(default=None, alias="overrideStatusBar")
     clear_status_bar: ClearStatusBar | None = Field(default=None, alias="clearStatusBar")
     handle_system_alert: HandleSystemAlert | None = Field(default=None, alias="handleSystemAlert")
@@ -229,6 +236,17 @@ class Step(_Model):
                     "steps: a step nested directly inside a target group must omit target — "
                     "the group already fixed it (§6.2)"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _no_target_on_set_primary_target(self) -> Self:
+        # `setPrimaryTarget` takes its target as an argument, never as the step modifier: a modifier
+        # would say which device the step runs on, which a routing-only step has none of (BE-0447).
+        if self.set_primary_target is not None and self.target is not None:
+            raise ValueError(
+                "setPrimaryTarget takes its target as an argument — "
+                "write setPrimaryTarget: { target: ... }, not a target modifier"
+            )
         return self
 
     @model_validator(mode="after")

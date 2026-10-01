@@ -184,8 +184,8 @@ _DEVICE_CONTROL_STEPS: tuple[tuple[dict[str, object], str], ...] = (
     ({"clearKeychain": {}}, base.Capability.DC_CLEAR_KEYCHAIN),
     ({"clearClipboard": {}}, base.Capability.DC_CLIPBOARD),
     ({"setClipboard": {"text": "x"}}, base.Capability.DC_CLIPBOARD),
-    ({"background": {}}, base.Capability.DC_APP_LIFECYCLE),
-    ({"foreground": {}}, base.Capability.DC_APP_LIFECYCLE),
+    ({"background": {}}, base.Capability.DC_BACKGROUND),
+    ({"foreground": {}}, base.Capability.DC_FOREGROUND),
     ({"overrideStatusBar": {"time": "9:41"}}, base.Capability.DC_STATUS_BAR),
     ({"clearStatusBar": {}}, base.Capability.DC_STATUS_BAR),
 )
@@ -269,8 +269,8 @@ def test_subset_backend_admits_its_supported_operations(step: dict[str, object])
     [
         ({"push": {"payload": {"aps": {"alert": "hi"}}}}, base.Capability.DC_PUSH),
         ({"clearKeychain": {}}, base.Capability.DC_CLEAR_KEYCHAIN),
-        ({"background": {}}, base.Capability.DC_APP_LIFECYCLE),
-        ({"foreground": {}}, base.Capability.DC_APP_LIFECYCLE),
+        ({"background": {}}, base.Capability.DC_BACKGROUND),
+        ({"foreground": {}}, base.Capability.DC_FOREGROUND),
         ({"overrideStatusBar": {"time": "9:41"}}, base.Capability.DC_STATUS_BAR),
         ({"clearStatusBar": {}}, base.Capability.DC_STATUS_BAR),
     ],

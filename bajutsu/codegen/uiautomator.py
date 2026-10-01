@@ -27,6 +27,7 @@ import re
 from bajutsu.codegen.common import (
     AfterEmission,
     class_name,
+    device_group_todo,
     ident,
     indent_lines,
     interrupts_setup_lines,
@@ -301,6 +302,8 @@ def _device_control_todo(step: Step) -> str:
     if step.manual is not None:
         # A human takeover (BE-0185): no generated-test equivalent — a labeled TODO, not a silent skip.
         return f"// TODO: manual step — {manual_todo(step.manual.label, step.manual.bypass)}"
+    if (todo := device_group_todo(step)) is not None:
+        return todo
     if step.handle_system_alert is not None:
         # An iOS SpringBoard prompt (BE-0316); no Android equivalent — a system dialog is reached by
         # an ordinary tap there. A labeled TODO, consistent with the device-family fallbacks above.

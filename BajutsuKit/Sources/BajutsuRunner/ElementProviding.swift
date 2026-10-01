@@ -144,6 +144,11 @@ public protocol ElementProviding: AnyObject {
     /// stack at its seed and reports `.ok`.
     func leaveApp() -> AppActivationResult
 
+    /// Make the app named by `bundleId` the base every other method addresses, replacing the test
+    /// target at the bottom of the stack, without activating it (BE-0447). Whichever app is in front
+    /// stays in front; an `enterApp` block above the base is left where it is.
+    func targetApp(bundleId: String)
+
     /// The target app's own process state, so the driver can tell a crash from a missing element.
     ///
     /// `XCUIApplication.state` answers this directly, which the element tree cannot: an empty or

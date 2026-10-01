@@ -133,6 +133,9 @@ class Scenario(_Model):
     # Load-time provenance (BE-0417), set by a file loader after parsing. A `PrivateAttr` rather
     # than an ordinary field so it never leaks into `model_dump()` as part of the authored schema.
     _source_stem: str | None = PrivateAttr(default=None)
+    # The primary in force after the last top-level step, which a `setPrimaryTarget` may have moved
+    # (BE-0447); recorded by the target walk, never authored.
+    _final_primary: str | None = PrivateAttr(default=None)
 
     @property
     def device_groups(self) -> list[list[str]]:
@@ -143,6 +146,32 @@ class Scenario(_Model):
     def target_names(self) -> list[str]:
         """Every declared target name in declared order, device groups flattened (BE-0447)."""
         return [name for group in self.device_groups for name in group]
+
+    @property
+    def later_targets(self) -> list[str]:
+        """The device-group members that start with nothing installed, in declared order (BE-0447).
+
+        A member of a group of two or more that is neither the primary (the first declared name) nor
+        listed in `installs`: it comes alive only through an `installApp` step and a `foreground`.
+        """
+        names = self.target_names
+        starting = {names[0], *self.installs} if names else set()
+        return [
+            name
+            for group in self.device_groups
+            if len(group) >= 2
+            for name in group
+            if name not in starting
+        ]
+
+    @property
+    def final_primary(self) -> str | None:
+        """The primary in force after the last top-level step: what an omitted `expect` target names."""
+        return self._final_primary or self.primary_target
+
+    def record_final_primary(self, name: str | None) -> None:
+        """Record the primary the target walk ended on (BE-0447)."""
+        self._final_primary = name
 
     @property
     def source_stem(self) -> str | None:

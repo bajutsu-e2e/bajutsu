@@ -58,6 +58,7 @@ from ._shared import _OK as _OK
 from ._shared import _TIPKIT_DISMISS_REGION as _TIPKIT_DISMISS_REGION
 from ._shared import TransportFn
 from ._transport_failure import _TransportFailure as _TransportFailure
+from .runner_target import RunnerTarget
 from .xcuitest_channel_error import XcuitestChannelError
 from .xcuitest_driver import _NOT_FOUND as _NOT_FOUND
 from .xcuitest_driver import _NOT_HITTABLE as _NOT_HITTABLE
@@ -69,4 +70,10 @@ from .xcuitest_driver import _VALUE_NOT_FOUND as _VALUE_NOT_FOUND
 from .xcuitest_driver import XcuitestDriver
 from .xcuitest_runner_crash_error import XcuitestRunnerCrashError
 
-__all__ = ["TransportFn", "XcuitestChannelError", "XcuitestDriver", "XcuitestRunnerCrashError"]
+__all__ = [
+    "RunnerTarget",
+    "TransportFn",
+    "XcuitestChannelError",
+    "XcuitestDriver",
+    "XcuitestRunnerCrashError",
+]

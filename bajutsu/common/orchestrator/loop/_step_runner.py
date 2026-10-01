@@ -34,6 +34,7 @@ from bajutsu.common.orchestrator.waits import (
 )
 from bajutsu.common.scenario import (
     HandleSystemAlert,
+    Interrupt,
     Selector,
     Step,
     UncoveredSystemAlertLocale,
@@ -44,6 +45,7 @@ from bajutsu.common.scenario import (
 
 from . import app_crash_latches
 from ._functions import (
+    _config_for,
     _dismiss_blocking_tip,
     _run_for_each,
     _run_if,
@@ -57,6 +59,7 @@ from ._loop_config import _LoopConfig
 from ._screen_read import _ScreenRead
 from ._shared import _logger
 from .step_loop_state import StepLoopState
+from .target_roster import MemberStatus
 
 
 def _probe_app_crash(active_driver: base.Driver) -> str | None:
@@ -103,6 +106,10 @@ def _with_crash_note(reason: str, signal: str) -> str:
     return f"{reason} — {note}" if reason else note
 
 
+class _TargetUnavailable(Exception):
+    """A step addressed a device-group member that cannot take it now (BE-0447)."""
+
+
 class _StepRunner:
     """Drives a scenario's steps over shared `state` and run-invariant `cfg`.
 
@@ -123,6 +130,36 @@ class _StepRunner:
         # single-target run leaves it empty and every lookup below falls through to `self`.
         self.by_target: dict[str, _StepRunner] = {}
 
+    def _interrupts(self) -> list[Interrupt]:
+        """The `interrupts` entries this runner polls now (BE-0447).
+
+        Without a roster the list is fixed for the run, as before. With one, an entry omitting
+        `target` follows the current primary, and a member that is not running polls nothing.
+        """
+        pinned = self.cfg.interrupts or []
+        roster = self.state.roster
+        return roster.interrupts_for(self.target, pinned) if roster is not None else pinned
+
+    def _bring_up(self, target: str) -> None:
+        """Start a later device-group member at its first `foreground` and route to it (BE-0447)."""
+        roster = self.state.roster
+        if roster is None or roster.activate is None:
+            raise RuntimeError(f"target {target!r} has no way to start: no activation was wired")
+        try:
+            runtime = roster.activate(target)
+        except (base.BackendCrashError, RunCancelled):
+            raise  # the crash retry and the cancel path own these, as for any other step
+        except Exception as exc:
+            # A member that cannot start fails its own `foreground` step, with the cause, rather
+            # than aborting the run and every verdict already earned in it.
+            raise _TargetUnavailable(f"target {target!r} could not start: {exc}") from exc
+        roster.runtimes[target] = runtime
+        runner = _StepRunner(self.state, _config_for(self.cfg, runtime), target)
+        runner.by_target = self.by_target
+        # One dict shared by every runner, so the new member is routable from all of them at once.
+        self.by_target[target] = runner
+        roster.mark(target, MemberStatus.RUNNING)
+
     def _route(self, step: Step, active_driver: base.Driver) -> tuple[_StepRunner, base.Driver]:
         """The runner and driver this step executes against (BE-0428).
 
@@ -136,6 +173,17 @@ class _StepRunner:
         # resolved to the primary at load time (BE-0436). This reads the step as loaded — never
         # `_interp_step`'s rebuilt copy, which drops that private resolution.
         target = step.resolved_target
+        roster = self.state.roster
+        if target and roster is not None:
+            if (problem := roster.unavailable(target, _action_of(step))) is not None:
+                raise _TargetUnavailable(problem)
+            if target not in self.by_target:
+                if _action_of(step) == "install_app":
+                    # Only picks the device, which needs no runner of its own: the install goes
+                    # through the roster to whichever lease holds that member's group device.
+                    return self, active_driver
+                if roster.status_of(target) is MemberStatus.INSTALLED:
+                    self._bring_up(target)
         if target and self.by_target:
             other = self.by_target.get(target)
             if other is None:
@@ -196,13 +244,30 @@ class _StepRunner:
             # step has not acted yet, so nothing is left half-actuated and no artifact is half-written.
             if self.cfg.cancelled():
                 raise RunCancelled
-            runner, step_driver = self._route(step, active_driver)
+            try:
+                runner, step_driver = self._route(step, active_driver)
+            except _TargetUnavailable as exc:
+                return self._fail_unrouted(step, str(exc))
             # Another instance of this same class, not another type's internals — SLF001's own
             # rationale (reaching into a foreign object) does not apply to a sibling runner.
             failure = runner._run_one(step, step_driver)  # noqa: SLF001
             if failure is not None:
                 return failure
         return None
+
+    def _fail_unrouted(self, step: Step, reason: str) -> str:
+        """Record *step* as failed before it reached any driver, and return *reason* (BE-0447)."""
+        kind = _action_of(step)
+        self.state.outcomes.append(
+            StepOutcome(
+                index=self.state.counter.take(),
+                action=kind,
+                target=step.resolved_target or self.target,
+                ok=False,
+                reason=reason,
+            )
+        )
+        return reason
 
     def _run_one(self, step: Step, active_driver: base.Driver) -> str | None:
         """Prepare the step's outcome, then dispatch to the handler for its kind.
@@ -239,16 +304,20 @@ class _StepRunner:
                 return self._handle_web(step, active_driver, idx, kind, outcome, start)
             if kind == "app":
                 return self._handle_app(step, active_driver, idx, kind, outcome, start)
+            if kind in ("install_app", "set_primary_target"):
+                return self._handle_lifecycle(step, active_driver, idx, kind, outcome, start)
             return self._handle_action(step, active_driver, idx, kind, outcome, start)
 
     def _finish_outcome(self, active_driver: base.Driver, outcome: StepOutcome) -> None:
         """Settle one step's outcome: classify an app crash behind it, then record it.
 
-        The one place every handler appends through, so a step kind added later is covered with no
+        The place every handler appends through, so a step kind added later is covered with no
         wiring of its own — the same property `_drain_step_interruptions` already gives the
-        interruption check it shares across the same four handlers (BE-0424). All five append sites
-        call it, including `_handle_action`'s `UncoveredSystemAlertLocale` early return, the one exit
-        this file's own comments already single out as the exit that skips every other shared step.
+        interruption check it shares across the handlers (BE-0424). That includes `_handle_action`'s
+        `UncoveredSystemAlertLocale` early return, the exit this file's own comments single out as
+        skipping every other shared step. The one append site that bypasses it is `_fail_unrouted`:
+        its step never reached a driver, so there is no crash to classify and no driver to ask
+        (BE-0447).
         """
         self._classify_app_crash(active_driver, outcome)
         self.state.outcomes.append(outcome)
@@ -403,6 +472,44 @@ class _StepRunner:
         drained = drain_interruptions(driver)
         push_interruption_policy(driver, replace(guard, rules=[*guard.rules, reservation]))
         return True, drained.alerts, drained.undeclared
+
+    def _handle_lifecycle(
+        self,
+        step: Step,
+        active_driver: base.Driver,
+        idx: int,
+        kind: str,
+        outcome: StepOutcome,
+        start: float,
+    ) -> str | None:
+        """Run an `installApp` or `setPrimaryTarget` step against the run's roster (BE-0447).
+
+        Neither touches the screen, so no screenshot or tree read is taken; both change only which
+        build is on a group's device and which target an omitted `target` follows.
+        """
+        roster = self.state.roster
+        if roster is None:
+            outcome.ok, outcome.reason = False, f"{kind}: the scenario declares no targets"
+        elif step.install_app is not None:
+            member = step.install_app.from_
+            try:
+                problem = roster.install_member(
+                    step.resolved_target or self.target,
+                    member,
+                    keep_data=step.install_app.keep_data,
+                )
+            except (base.BackendCrashError, RunCancelled):
+                raise
+            except Exception as exc:
+                problem = f"installApp from {member!r}: {exc}"
+            outcome.ok, outcome.reason = problem is None, problem or ""
+        else:
+            assert step.set_primary_target is not None
+            problem = roster.move_primary(step.set_primary_target.target)
+            outcome.ok, outcome.reason = problem is None, problem or ""
+        outcome.duration_s = self.cfg.clock.now() - start
+        self._finish_outcome(active_driver, outcome)
+        return None if outcome.ok else f"step {idx} ({kind}): {outcome.reason}"
 
     def _handle_if(
         self,
@@ -579,8 +686,11 @@ class _StepRunner:
         # second one — otherwise two targets' steps would sit in the same flat `<sid>/<stepId>/`
         # folders with nothing but `manifest.json`'s own `StepOutcome.target` to tell them apart.
         # `self.by_target` is empty with no declared targets and holds exactly one entry with one,
-        # so the check is `>= 2` rather than plain truthiness.
-        target_dir = f"{self.target}/" if len(self.by_target) >= 2 else ""
+        # so the check is `>= 2` rather than plain truthiness. A roster tracking a later member counts
+        # too: that member is declared but has no runner until its `foreground` (BE-0447).
+        roster = self.state.roster
+        multi = len(self.by_target) >= 2 or (roster is not None and bool(roster.status))
+        target_dir = f"{self.target}/" if multi else ""
         step_id = f"{self.cfg.sid}/{target_dir}{prefix}{step.name or f'step{idx}'}"
         # The report's baseline: the screen this step is about to act on, captured before it acts
         # (BE-0341). It requests only the screenshot, never a tree (BE-0407 Units 3-4): the
@@ -643,7 +753,7 @@ class _StepRunner:
             if (
                 self.state.running_recovery
                 or kind == "handle_system_alert"
-                or self.cfg.interrupts
+                or self._interrupts()
                 or self.cfg.alert_guard is not None
             )
             else self.state.prev_after_screenshot
@@ -752,15 +862,16 @@ class _StepRunner:
         # into its own polling (`on_interrupt_poll` below), riding the poll tree at zero extra cost.
         # Only the step guard queries here; the recovery `steps` it runs go through `exec_steps`,
         # sharing the counter/outcomes/bindings like `if`'s branches.
+        interrupts = self._interrupts()
         guard = (
             _InterruptGuard(
-                self.cfg.interrupts,
+                interrupts,
                 active_driver,
                 self.cfg.network,
                 self.state.bindings,
                 self._run_recovery,
             )
-            if self.cfg.interrupts and not self.state.running_recovery
+            if interrupts and not self.state.running_recovery
             else None
         )
         # The mid-wait TipKit dismiss rides the same poll hook, so a wait blocked behind a tip clears

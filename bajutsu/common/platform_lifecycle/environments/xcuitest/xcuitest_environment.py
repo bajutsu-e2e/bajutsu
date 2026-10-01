@@ -14,7 +14,7 @@ import time
 from collections import deque
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import IO, cast
+from typing import IO, TYPE_CHECKING, cast
 
 from bajutsu.common import backends, stall_diagnostics
 from bajutsu.common.backend_cli import simctl
@@ -23,13 +23,18 @@ from bajutsu.common.devices import os as device_os
 from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.zorder import ZOrderSource
-from bajutsu.common.orchestrator import RelaunchFn
+from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
+from bajutsu.common.platform_lifecycle import readiness
+from bajutsu.common.platform_lifecycle.device_control import device_control
 from bajutsu.common.platform_lifecycle.environments._bundled_runner import _products_digest
 from bajutsu.common.platform_lifecycle.environments.ios import _DeviceEnvironment
 from bajutsu.common.scenario import Preconditions, Relaunch, Scenario
 from bajutsu.crawl import Reset
 
 from ._attempt_failure import _AttemptFailure
+
+if TYPE_CHECKING:
+    from bajutsu.common.drivers.xcuitest import RunnerTarget
 from ._functions import (
     _allocate_port,
     _app_crash_reports,
@@ -235,8 +240,44 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # next bring-up's discard would otherwise re-capture the same dead runner — regenerating
         # evidence the releasing lease has already taken ownership of, for a later scenario to inherit.
         self._crash_snapshotted = False
+        # A device group on this Simulator (BE-0447): the lease's own driver, every member's driver
+        # by bundle id, the shared runner's current target (None until a second member joins), and
+        # the launch inputs `start` was given, so a member's `foreground` launches it the way
+        # `relaunch` would.
+        self._lease_driver: base.Driver | None = None
+        self._member_drivers: dict[str, base.Driver] = {}
+        self._group: RunnerTarget | None = None
+        self._launch_inputs: tuple[Preconditions, Mapping[str, str]] = (Preconditions(), {})
 
     def start(
+        self,
+        eff: Effective,
+        pre: Preconditions,
+        *,
+        extra_env: Mapping[str, str] | None = None,
+        record_video_dir: Path | None = None,
+        permissions: Mapping[str, str] | None = None,
+    ) -> base.Driver:
+        stale = self._group
+        driver = self._start(
+            eff,
+            pre,
+            extra_env=extra_env,
+            record_video_dir=record_video_dir,
+            permissions=permissions,
+        )
+        bundle_id = require_ios(eff).bundle_id
+        if stale is not None and stale.current != bundle_id:
+            # A warm runner a previous lease's device group retargeted still addresses that lease's
+            # last member; point it back at this lease's own app before any step reads (BE-0447).
+            _retarget(driver, bundle_id)
+        self._lease_driver = driver
+        self._member_drivers = {}
+        self._group = None
+        self._launch_inputs = (pre, dict(extra_env or {}))
+        return driver
+
+    def _start(
         self,
         eff: Effective,
         pre: Preconditions,
@@ -1351,6 +1392,149 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 break
         return reports
 
+    def start_member(
+        self,
+        eff: Effective,
+        pre: Preconditions,
+        *,
+        extra_env: Mapping[str, str] | None = None,
+        permissions: Mapping[str, str] | None = None,
+        install: bool = True,
+    ) -> base.Driver:
+        """One more device-group member on this Simulator, driven through the lease's own runner.
+
+        `start` already ran the device-wide part (erase, boot, locale pin, seeded photos), so this
+        installs the member's app under its own reinstall mode, applies its permissions, and
+        launches it with its own launch env. Its driver shares the runner's port and retargets the
+        runner to its own app before each request; it is the second member that turns the front
+        check on for every member, the lease's own driver included (BE-0447).
+        """
+        ios = require_ios(eff)
+        if self._lease_driver is None or self._is_real_device or self._bundle_id is None:
+            raise base.UnsupportedAction("device groups need a Simulator this environment started")
+        e = simctl.Env(self._udid, run=self._run)
+        try:
+            if install:
+                self._install_member_build(e, ios.bundle_id, ios.app_path, pre)
+            if permissions:
+                e.apply_permissions(ios.bundle_id, permissions)
+            launch_env, launch_args = self._launch_params(eff, pre, extra_env)
+            e.launch(ios.bundle_id, launch_args, launch_env)
+        except subprocess.CalledProcessError as exc:
+            raise simctl.device_error(exc) from exc
+        group = self._group_target()
+        driver = backends.make_driver(
+            self._actuator,
+            self._udid,
+            runner_port=self._runner_port,
+            runner_alive=self._runner_alive,
+            on_stall=self._capture_stall,
+            device_os=self._device_os(),
+            # The `nativeZ` responder lives in the lease's own app, never in a member's.
+            zorder=None,
+        )
+        _bind_member(driver, ios.bundle_id, group)
+        self._member_drivers[ios.bundle_id] = driver
+        return driver
+
+    def _group_target(self) -> RunnerTarget:
+        # The runner was seeded with the lease's own app, so that is the target until a member
+        # retargets it; the lease's own driver joins the group here, with its own front check.
+        if self._group is None:
+            from bajutsu.common.drivers.xcuitest import RunnerTarget
+
+            assert self._bundle_id is not None and self._lease_driver is not None
+            self._group = RunnerTarget(current=self._bundle_id)
+            _bind_member(self._lease_driver, self._bundle_id, self._group)
+            self._member_drivers[self._bundle_id] = self._lease_driver
+        return self._group
+
+    def _install_member_build(
+        self, e: simctl.Env, bundle_id: str, app_path: str | None, pre: Preconditions
+    ) -> None:
+        # The member's own reinstall mode; `erase` is device-wide and `start` already ran it.
+        if not app_path:
+            return
+        if not Path(app_path).exists():
+            raise simctl.DeviceError(f"appPath not found: {app_path} (build the app first)")
+        if pre.reinstall == "clean":
+            e.uninstall(bundle_id)
+        e.install(app_path)
+        if pre.reinstall == "clean":
+            e.reset_permissions(bundle_id)
+
+    def install_member(self, eff: Effective, *, keep_data: bool) -> None:
+        """Install *eff*'s build for an `installApp` step: terminate, then install over (BE-0447).
+
+        Explicit, so the digest that lets a precondition skip a byte-identical install never applies
+        here, and is reset afterwards: the next lease's `reinstall: overwrite` must not skip putting
+        its own build back over the one this step installed.
+        """
+        ios = require_ios(eff)
+        if not ios.app_path or not Path(ios.app_path).exists():
+            raise simctl.DeviceError(f"appPath not found: {ios.app_path} (build the app first)")
+        e = simctl.Env(self._udid, run=self._run)
+        try:
+            e.terminate(ios.bundle_id)
+            if not keep_data:
+                e.uninstall(ios.bundle_id)
+            e.install(ios.app_path)
+        except subprocess.CalledProcessError as exc:
+            raise simctl.device_error(exc) from exc
+        self._installed_app_digest = None
+
+    def end_member(self, driver: base.Driver, eff: Effective) -> None:
+        bundle_id = require_ios(eff).bundle_id
+        # Two builds of one app share a bundle id, so only this member's own driver leaves the map.
+        if self._member_drivers.get(bundle_id) is driver:
+            del self._member_drivers[bundle_id]
+        super().end_member(driver, eff)
+
+    def controller(self, eff: Effective) -> DeviceControl | None:
+        return device_control(
+            self._udid,
+            require_ios(eff).bundle_id,
+            self._run,
+            foreground=lambda: self._foreground(eff),
+        )
+
+    def _foreground(self, eff: Effective) -> None:
+        """Bring *eff*'s app to the front, launching it the way `relaunch` would if it is not running.
+
+        A running app (or one no driver can report on) is resumed with `simctl launch`, as before.
+        One that is not running gets `relaunch`'s launch without the terminate: its launch env and
+        args, and a fresh launch marker for the lease's own app. On a device a group shares, the
+        step then waits until the app's own tree is the one in front, and fails by name if it never
+        is (BE-0447).
+        """
+        bundle_id = require_ios(eff).bundle_id
+        driver = self._member_drivers.get(bundle_id) or (
+            self._lease_driver if bundle_id == self._bundle_id else None
+        )
+        e = simctl.Env(self._udid, run=self._run)
+        launched = False
+        try:
+            if driver is None or _app_state(driver) != "notRunning":
+                e.foreground(bundle_id)
+            else:
+                launched = True
+                pre, extra_env = self._launch_inputs
+                launch_env, launch_args = self._launch_params(eff, pre, extra_env)
+                if bundle_id == self._bundle_id:
+                    self._app_launched_at = time.time()  # before the launch, per `_spawn_cold`
+                e.launch(bundle_id, launch_args, launch_env)
+        except subprocess.CalledProcessError as exc:
+            raise simctl.device_error(exc) from exc
+        # A launch waits for the app to be ready, as `relaunch` does; a resumed app on a device no
+        # group shares keeps the old behaviour, with no wait at all.
+        if driver is None or (self._group is None and not launched):
+            return
+        result = readiness.await_ready(
+            driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces
+        )
+        if not result.ready and self._group is not None:
+            raise base.AppNotInFront(f"foreground: {bundle_id} did not come to the front in time")
+
     def relauncher(
         self,
         eff: Effective,
@@ -1368,9 +1552,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
         Stamped *before* the call, the same ordering `_spawn_cold` uses and for the same reason.
         """
         inner = super().relauncher(eff, scenario, driver, extra_env=extra_env)
+        # The marker bounds the lease's own app; a device-group member's relaunch must not move it.
+        own = self._bundle_id is None or require_ios(eff).bundle_id == self._bundle_id
 
         def relaunch(step: Relaunch) -> None:
-            self._app_launched_at = time.time()
+            if own:
+                self._app_launched_at = time.time()
             inner(step)
 
         return relaunch
@@ -1623,3 +1810,23 @@ class XcuitestEnvironment(_DeviceEnvironment):
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
         self._discard_runner()
         super().teardown(driver, eff)
+
+
+def _bind_member(driver: base.Driver, bundle_id: str, target: RunnerTarget) -> None:
+    """Point *driver* at *bundle_id* on the runner a device group shares (BE-0447)."""
+    bind = getattr(driver, "bind_to_member", None)
+    if callable(bind):
+        bind(bundle_id, target)
+
+
+def _retarget(driver: base.Driver, bundle_id: str) -> None:
+    """Point a warm runner's base app back at *bundle_id*, where *driver* can (BE-0447)."""
+    retarget = getattr(driver, "retarget", None)
+    if callable(retarget):
+        retarget(bundle_id)
+
+
+def _app_state(driver: base.Driver) -> str:
+    """*driver*'s app's process state, or "unknown" where it cannot report one."""
+    state = getattr(driver, "app_state", None)
+    return str(state()) if callable(state) else "unknown"

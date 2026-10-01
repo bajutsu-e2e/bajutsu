@@ -10,6 +10,7 @@ from bajutsu.common.orchestrator.types import SelectionState, StepOutcome
 
 from ._step_counter import _StepCounter
 from .app_crash_latches import AppCrashLatches
+from .target_roster import TargetRoster
 
 
 @dataclass
@@ -68,3 +69,6 @@ class StepLoopState:
     # to the resolved poll interval, decoupled from how often a step runs, the same way
     # `_AlertGuardGate` rate-limits its own native probe (BE-0315).
     last_notification_banner_poll_at: float | None = None
+    # Which declared targets can take a step and which one is the primary now (BE-0447). Shared by
+    # every phase like `app_crash`; `None` for a scenario declaring no targets.
+    roster: TargetRoster | None = None
