@@ -83,7 +83,11 @@ class Capability:
     DC_CLIPBOARD = "deviceControl.clipboard"  # setClipboard / getClipboard / clearClipboard
     DC_PUSH = "deviceControl.push"
     DC_CLEAR_KEYCHAIN = "deviceControl.clearKeychain"
-    DC_APP_LIFECYCLE = "deviceControl.appLifecycle"  # background / foreground
+    # `background` and `foreground` were one `deviceControl.appLifecycle` token until BE-0447: a
+    # device group's later member comes up at its `foreground`, which the Android emulator backs
+    # (`am start`) while it still has no faithful `background`, so each gates its own step.
+    DC_BACKGROUND = "deviceControl.background"
+    DC_FOREGROUND = "deviceControl.foreground"
     DC_STATUS_BAR = "deviceControl.statusBar"  # overrideStatusBar / clearStatusBar
     # `permissions` (BE-0276) is gated per-service, not by one token: iOS and Android honor
     # different subsets of the shared vocabulary (iOS has no TCC service for `notifications`), so a

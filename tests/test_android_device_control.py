@@ -202,7 +202,7 @@ def test_adb_advertises_setlocation_and_clipboard_only() -> None:
     # The rest of the family stays unadvertised — the emulator has no faithful equivalent.
     assert base.Capability.DC_PUSH not in caps
     assert base.Capability.DC_CLEAR_KEYCHAIN not in caps
-    assert base.Capability.DC_APP_LIFECYCLE not in caps
+    assert base.Capability.DC_BACKGROUND not in caps
     assert base.Capability.DC_STATUS_BAR not in caps
 
 

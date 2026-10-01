@@ -16,13 +16,12 @@ from pathlib import Path
 import pytest
 from _runner import _eff, _el, _web_eff
 
-from bajutsu.common.config import AndroidConfig, Effective, IosConfig, require_ios
+from bajutsu.common.config import Effective, IosConfig, require_ios
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import NullSink
 from bajutsu.common.evidence.network import NetworkExchange, ScreenTransition
 from bajutsu.common.orchestrator import run_scenario
-from bajutsu.common.platform_lifecycle import AndroidEnvironment
 from bajutsu.common.platform_lifecycle.environments.web import WebEnvironment
 from bajutsu.common.platform_lifecycle.environments.xcuitest import XcuitestEnvironment
 from bajutsu.common.runner import Lease, device_pool, run_all
@@ -316,21 +315,6 @@ def test_the_web_environment_refuses_a_member() -> None:
     env.end_member(FakeDriver([]), _web_eff())  # no member ever started, so nothing to stop
 
 
-def test_the_android_environment_refuses_a_member_and_stops_one_by_package() -> None:
-    calls: list[list[str]] = []
-
-    def run(argv: list[str]) -> str:
-        calls.append(argv)
-        return ""
-
-    eff = replace(_eff(), platform_config=AndroidConfig(package="com.example.auth"))
-    env = AndroidEnvironment("adb", "emulator-5554", adb_run=run)
-    with pytest.raises(base.UnsupportedAction, match="device groups are not supported"):
-        env.start_member(eff, Preconditions())
-    env.end_member(FakeDriver([]), eff)
-    assert any("force-stop" in argv and "com.example.auth" in argv for argv in calls)
-
-
 def test_a_groups_shared_collector_is_written_once(tmp_path: Path) -> None:
     # One device, one receiver: the members' traffic is the same capture, so it lands in one
     # `network.json`, not one per member that would each claim every request.
@@ -385,15 +369,13 @@ class _OneCollector:
         pass
 
 
-def test_only_the_fake_backend_installs_a_member_mid_scenario(
+def test_ios_and_web_refuse_to_install_a_member_mid_scenario(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with pytest.raises(base.UnsupportedAction, match="installApp is not supported on xcuitest"):
         XcuitestEnvironment("xcuitest", "UDID-1").install_member(_eff(), keep_data=True)
     with pytest.raises(base.UnsupportedAction, match="installApp is not supported on a web"):
         WebEnvironment("playwright").install_member(_web_eff(), keep_data=True)
-    with pytest.raises(base.UnsupportedAction, match="installApp is not supported on adb"):
-        AndroidEnvironment("adb", "emulator-5554").install_member(_eff(), keep_data=True)
     monkeypatch.setattr(
         "bajutsu.common.backends.make_driver",
         lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),

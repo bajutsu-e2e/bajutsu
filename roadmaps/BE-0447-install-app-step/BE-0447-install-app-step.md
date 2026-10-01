@@ -555,7 +555,7 @@ so the deterministic gate stays untouched.
 - [x] Unit 3: `installApp` and `setPrimaryTarget` steps
 - [x] Unit 4: run preflight and validation
 - [ ] Unit 5: XCUITest environment and driver
-- [ ] Unit 6: Android environment, driver, and `foreground`
+- [x] Unit 6: Android environment, driver, and `foreground`
 - [x] Unit 7: backend handling
 - [ ] Unit 8: documentation in both languages
 - [ ] Unit 9: showcase demo, update and companion scenarios
@@ -619,6 +619,24 @@ Log:
   so there is no local build to install beside it. Every code generator (XCUITest, UI Automator,
   Playwright) renders `installApp` and `setPrimaryTarget` as a labeled `// TODO`, though `codegen`
   already refuses any scenario declaring two or more targets before it reaches them.
+- Unit 6. Android shares a device between a group's members. The emulator environment gives each
+  member its own `AdbDriver` over the one resident channel. A starting member installs under its
+  own reinstall mode without the device-wide clears, and a later member starts launch-only.
+  `installApp` force-stops the app and runs `install -r`, uninstalling first for
+  `keepData: false`; it names the cause when Android refuses a downgrade that keeps data.
+  `foreground` resumes a running app, and launches one that is not running the way `relaunch`
+  would, without the terminate: launch env, launch marker, settle-cache and exit-info resets, and
+  the readiness wait. Once a device holds a second member, each member's driver reads the
+  packages on the dump's nodes and raises a named `AppNotInFront` for another app's tree, never an
+  empty one, so no check can pass on a screen it was not looking at. The readiness wait treats it
+  as transient. `deviceControl.appLifecycle` splits into `deviceControl.background` and
+  `deviceControl.foreground`, and adb advertises `foreground` and `deviceGroup`. One deviation: a
+  step addressed to a member that is not in front fails at its first read rather than polling
+  within its condition wait, since every action settles through that read; the `foreground` that
+  brings a member up does wait, and fails by name if the app never reaches the front. Two gaps
+  remain: the app-crash sweeps (exit-info aside) still read the primary's app, so a member's
+  native crash can be attributed to the primary; and on the `uiautomator dump` fallback, which
+  reads the active window alone, a system dialog over a member reads as another app in front.
 
 ## References
 

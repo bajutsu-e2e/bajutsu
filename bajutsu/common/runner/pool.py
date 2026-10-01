@@ -642,8 +642,9 @@ def device_pool(  # noqa: C901, PLR0915
                         # holds it does: a crash retry judged on a member (the group's primary is
                         # one whenever another member starts with it) must still escalate to a
                         # replacement device and find the runner's crash evidence. The app-scoped
-                        # crash sweeps stay at their no-op defaults until each backend can tell
-                        # one member's app from another's (BE-0447 units 5 and 6).
+                        # crash sweeps stay at their no-op defaults: each backend's sweep reads the
+                        # lease's own app, and attributing a member's crash to the member is a
+                        # recorded gap of BE-0447.
                         request_device_replacement=lease_env.request_device_replacement,
                         video_start_stalled=lambda: video_start_stalled,
                         crash_artifacts=lambda: crash_evidence(),  # noqa: PLW0108

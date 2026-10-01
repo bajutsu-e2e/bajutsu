@@ -39,7 +39,8 @@ DEVICE_CONTROL_ALL = frozenset(
         Capability.DC_CLIPBOARD,
         Capability.DC_PUSH,
         Capability.DC_CLEAR_KEYCHAIN,
-        Capability.DC_APP_LIFECYCLE,
+        Capability.DC_BACKGROUND,
+        Capability.DC_FOREGROUND,
         Capability.DC_STATUS_BAR,
     }
 )

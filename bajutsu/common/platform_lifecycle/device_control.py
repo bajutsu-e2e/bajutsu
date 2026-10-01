@@ -7,6 +7,8 @@ rather than in the per-platform environment modules.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from bajutsu.common.backend_cli import adb, simctl
 from bajutsu.common.drivers import base
 from bajutsu.common.orchestrator import DeviceControl
@@ -63,7 +65,11 @@ def device_control(
 
 
 def android_device_control(
-    serial: str, package: str, env_run: adb.RunFn = adb.real_run
+    serial: str,
+    package: str,
+    env_run: adb.RunFn = adb.real_run,
+    *,
+    foreground: Callable[[], None] | None = None,
 ) -> DeviceControl:
     """A `DeviceControl` for the Android emulator, backing only the operations it can honor.
 
@@ -78,11 +84,15 @@ def android_device_control(
         serial: The target emulator/device serial.
         package: The app under test's package, addressed by the clipboard broadcast.
         env_run: The subprocess runner for adb, injectable for tests.
+        foreground: The environment's own `foreground` (BE-0447), which launches the app when it
+            is not running and waits for it; None leaves `foreground` unsupported.
     """
     e = adb.Env(serial, run=env_run)
 
     def _unsupported(op: str) -> base.UnsupportedAction:
         return base.UnsupportedAction(f"{op} is not supported on the Android emulator")
+
+    bring_forward = _android_foreground(foreground)
 
     class _Control:
         def set_location(self, lat: float, lon: float) -> None:
@@ -107,7 +117,7 @@ def android_device_control(
             raise _unsupported("background")
 
         def foreground(self) -> None:
-            raise _unsupported("foreground")
+            bring_forward()
 
         def override_status_bar(self, **kwargs: str | int) -> None:  # noqa: ARG002  # DeviceControl shape
             raise _unsupported("overrideStatusBar")
@@ -116,3 +126,14 @@ def android_device_control(
             raise _unsupported("clearStatusBar")
 
     return _Control()
+
+
+def _android_foreground(foreground: Callable[[], None] | None) -> Callable[[], None]:
+    """The emulator control's `foreground`: the environment's own, else an `UnsupportedAction`."""
+    if foreground is not None:
+        return foreground
+
+    def unsupported() -> None:
+        raise base.UnsupportedAction("foreground is not supported on the Android emulator")
+
+    return unsupported

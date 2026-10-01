@@ -30,9 +30,7 @@ def _fake_foregrounds(monkeypatch: pytest.MonkeyPatch) -> None:
     # The fake driver advertises no app-lifecycle control (its environment's control is simctl's),
     # so these runs grant it here: each lease below carries its own in-memory `foreground` double.
     def caps(actuator: str, eff: Effective, udid: str = "booted") -> frozenset[str]:
-        return backends.capabilities_for_run(actuator, eff, udid) | {
-            base.Capability.DC_APP_LIFECYCLE
-        }
+        return backends.capabilities_for_run(actuator, eff, udid) | {base.Capability.DC_FOREGROUND}
 
     monkeypatch.setattr("bajutsu.common.runner.pipeline.capabilities_for_run", caps)
 

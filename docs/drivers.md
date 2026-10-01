@@ -64,22 +64,27 @@ resolution, and the **preflight capability check** (below).
 | `deviceControl.clipboard` | read / write / clear the clipboard | ✅ | ✅ | — | — |
 | `deviceControl.push` | deliver a push notification | ✅ | — | — | — |
 | `deviceControl.clearKeychain` | clear the keychain | ✅ | — | — | — |
-| `deviceControl.appLifecycle` | background / foreground the app | ✅ | — | — | — |
+| `deviceControl.background` | send the app to the background | ✅ | — | — | — |
+| `deviceControl.foreground` | bring the app to the front, launching it if needed | ✅ | ✅ | — | — |
 | `deviceControl.statusBar` | override / clear the status bar | ✅ | — | — | — |
+| `deviceGroup` | share one device between the targets of a device group (BE-0447) | — | ✅ | — | ✅ |
 
 > The `deviceControl.*` tokens are the `DeviceControl` family split per operation (BE-0212, from the
 > coarse `deviceControl` of BE-0128), so a backend can advertise exactly the operations it can
 > honor. XCUITest backs the whole family through `simctl`; the Android emulator backs
-> `setLocation` + `clipboard` only (its `push` / keychain / status-bar / app-lifecycle operations have
-> no faithful equivalent), which the split makes expressible without green-lighting the rest.
+> `setLocation`, `clipboard`, and `foreground` (its `push` / keychain / status-bar / `background`
+> operations have no faithful equivalent), which the split makes expressible without
+> green-lighting the rest. `background` and `foreground` were one `appLifecycle` token until
+> BE-0447 split them, since a device group's later member comes up at its `foreground`.
 
 > adb sits at the **lean end**, actuating by **frame-center coordinates** — it exposes no semantic
 > tap, so the run loop resolves a unique element via `query()` and taps its center. XCUITest, by
 > contrast, sits at the rich end: it taps directly by identifier, waits on native conditions, and
 > performs `pinch` / `rotate` natively. adb advertises `query` / `elements` / `screenshot`,
 > `multiTouch` (a rooted-device `sendevent` two-finger sweep; BE-0232), plus the emulator-backed
-> device-control subset `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211); the rest
-> of the device-control family has no faithful emulator equivalent and stays unadvertised. The
+> device-control subset `deviceControl.setLocation` + `deviceControl.clipboard` (BE-0211) +
+> `deviceControl.foreground`, and `deviceGroup` (BE-0447); the rest of the device-control family has
+> no faithful emulator equivalent and stays unadvertised. The
 > `fake` driver advertises a richer capability set (semanticTap / conditionWait / multiTouch) purely
 > to exercise those code paths in tests. The `playwright` (web) driver advertises `semanticTap` /
 > `conditionWait` (Playwright has both natively), `network` — the **first backend with native
@@ -117,8 +122,8 @@ the app-side collector despite not advertising `network`, so `request` / `event`
 `_require_multi_touch` stays as a defense-in-depth check at gesture time, and `_need_control` stays
 as the equivalent for device-control steps — catching the case where the specific run has no
 `DeviceControl` wired at all, e.g. a parallel run with no pinned device. Because the tokens are
-per-operation, a backend that supports only part of the family (the Android emulator: `setLocation`
-+ `clipboard`) passes preflight for what it advertises and fails fast for the rest, each unsupported
+per-operation, a backend that supports only part of the family (the Android emulator: `setLocation`,
+`clipboard`, and `foreground`) passes preflight for what it advertises and fails fast for the rest, each unsupported
 step named individually — rather than the family being all-or-nothing.
 
 ## XCUITest (iOS)
