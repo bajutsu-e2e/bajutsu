@@ -7,6 +7,7 @@ from conftest import el
 from pydantic import ValidationError
 
 from bajutsu.analysis.audit import audit_scenario
+from bajutsu.analysis.audit._functions import _sleeps
 from bajutsu.codegen.playwright import to_playwright
 from bajutsu.codegen.uiautomator import to_uiautomator
 from bajutsu.codegen.xcuitest import to_xcuitest
@@ -273,3 +274,10 @@ def test_a_sub_millisecond_pause_never_generates_a_no_op_wait() -> None:
     text = "- name: p\n  steps:\n    - sleep: { seconds: 0.0005, reason: tiny }\n"
     assert "Thread.sleep(1)" in to_uiautomator(load_scenarios(text), "DemoUITest", "com.example")
     assert "waitForTimeout(1);" in to_playwright(load_scenarios(text), "demo", "http://localhost")
+
+
+def test_the_audit_walk_reaches_a_sleep_held_in_a_mapping() -> None:
+    # No scenario field maps names to steps today, but `components` already uses that shape, so a
+    # future dict-valued container must not hide a pause from the audit.
+    pause = Sleep(seconds=1, reason="x")
+    assert list(_sleeps({"name": [pause]})) == [pause]

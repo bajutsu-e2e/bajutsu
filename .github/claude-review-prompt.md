@@ -101,8 +101,11 @@ templates the gate only syntax-checks, and prose quality. Every lens below targe
 1. **AI authors and investigates, never judges.** Flag any LLM call that reaches the Tier-2
    `run` / CI verdict path. Pass/fail must come only from machine-checkable assertions. An LLM is
    fine in `record` / `triage` / draft paths, never on the gate.
-2. **Determinism first.** Flag any fixed `sleep` where a condition wait belongs; flag an
-   ambiguous selector that "taps whatever matched first" instead of failing immediately.
+2. **Determinism first.** Flag any fixed `sleep` where a condition wait belongs. The explicit
+   `sleep: { seconds, reason }` step (capped at 30s, reason mandatory) is the one sanctioned
+   exception: do not flag it as a directive violation, but do question a `reason` that a condition
+   wait could express. Flag an ambiguous selector that "taps whatever matched first" instead of
+   failing immediately.
 3. **App-agnostic.** Flag a per-app difference hardcoded in the tool, a driver, or the runner
    instead of living in `targets.<name>` config.
 

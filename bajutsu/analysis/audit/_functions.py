@@ -255,6 +255,9 @@ def _sleeps(node: object) -> Iterator[Sleep]:
     elif isinstance(node, list | tuple):
         for item in node:
             yield from _sleeps(item)
+    elif isinstance(node, dict):
+        for item in node.values():
+            yield from _sleeps(item)
 
 
 def _sleep_finding(sleep: Sleep) -> Finding:
@@ -307,7 +310,7 @@ def audit_scenario(scenario: Scenario) -> AuditReport:
     )
 
 
-def _grade(tiers: Counter[str], gesture_findings: list[Finding], sleep_total: float = 0.0) -> str:
+def _grade(tiers: Counter[str], gesture_findings: list[Finding], sleep_total: float) -> str:
     if tiers["fragile"] or any(f.kind == "coordinate-gesture" for f in gesture_findings):
         return "Fragile"
     if (
