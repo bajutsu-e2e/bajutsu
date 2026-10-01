@@ -76,12 +76,11 @@ final class XcuitestElementProvider: ElementProviding {
         // loudly downstream when nothing resolves.
         guard let root = try? app.snapshot() else { return [] }
         let rootNode = SnapshotNodeAdapter(root)
-        // `safariViewService.state` is a cross-process (XPC) query, paid even when the app under
-        // test never opens a browser. The app's own snapshot already answers, for free, whether a
-        // browser boundary is even on screen right now (BE-0407 Unit 9) — only when one is does the
-        // XPC probe below get a chance to matter.
-        guard containsBrowserViewBoundary(in: rootNode), safariViewService.state == .runningForeground
-        else {
+        // `safariViewService.state` is a cross-process (XPC) query paid on every read, browser or
+        // not. BE-0407 Unit 9 gated it on the app's own snapshot carrying the remote-view boundary
+        // node, but measured on an iOS 26.5 Simulator that node never reaches the app's snapshot at
+        // all — only the service's — so the gate kept every browser element out of the tree there.
+        guard safariViewService.state == .runningForeground else {
             return flattenSnapshot(root: rootNode)
         }
         // A presented `SFSafariViewController` is drawn by another process, and the app's own

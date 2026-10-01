@@ -10,6 +10,12 @@
   steps:
     - tap: { label: "Permissions", traits: [button] }
     - wait: { for: { id: perm.openPhotoPicker }, timeout: 10 }
+    # The button resolves at the very bottom of the screen, behind the floating tab bar, on an
+    # iPhone 17 Pro (iOS 26.5): frame y 850 of 874. Without this scroll the runner accepted the tap
+    # there with no refusal and no recovery retry, the list ended up scrolled, and in 2 of 3 runs the
+    # picker never opened. Scrolling first centers the button on screen before the tap, as
+    # select_photo_single.yaml and tipkit.yaml already do.
+    - scroll: { to: { id: perm.openPhotoPicker }, direction: down }
     - tap: { id: perm.openPhotoPicker }
     - wait: { for: { id: "PXGGridLayout-Info" }, timeout: 10 }
     # The grid can render before the freshly-`erase`d + `seedPhotos`-ed library has finished its own

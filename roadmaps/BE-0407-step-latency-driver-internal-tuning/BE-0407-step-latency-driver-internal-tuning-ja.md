@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0407") |
-| 実装 PR | [#1897](https://github.com/bajutsu-e2e/bajutsu/pull/1897)（グループ 1、作業単位 1、3〜5）、[#1912](https://github.com/bajutsu-e2e/bajutsu/pull/1912)（グループ 1 の作業単位 6、グループ 2 の作業単位 7、9、10、11、12、13、そして 14 の半分）、[#1925](https://github.com/bajutsu-e2e/bajutsu/pull/1925)（グループ 1 の作業単位 2。グループ 1 の完了）、[#1938](https://github.com/bajutsu-e2e/bajutsu/pull/1938)（グループ 3 の作業単位 16、18、19、21、22、23）、[#1944](https://github.com/bajutsu-e2e/bajutsu/pull/1944)（作業単位 8、14 の半分、15、17、20、24 を判断によって閉じ、項目を完了） |
+| 実装 PR | [#1897](https://github.com/bajutsu-e2e/bajutsu/pull/1897)（グループ 1、作業単位 1、3〜5）、[#1912](https://github.com/bajutsu-e2e/bajutsu/pull/1912)（グループ 1 の作業単位 6、グループ 2 の作業単位 7、9、10、11、12、13、そして 14 の半分）、[#1925](https://github.com/bajutsu-e2e/bajutsu/pull/1925)（グループ 1 の作業単位 2。グループ 1 の完了）、[#1938](https://github.com/bajutsu-e2e/bajutsu/pull/1938)（グループ 3 の作業単位 16、18、19、21、22、23）、[#2117](https://github.com/bajutsu-e2e/bajutsu/pull/2117)（作業単位 9 の差し戻し）、[#1944](https://github.com/bajutsu-e2e/bajutsu/pull/1944)（作業単位 8、14 の半分、15、17、20、24 を判断によって閉じ、項目を完了） |
 | トピック | Platform support |
 | 関連 | [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query-ja.md)、[BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite-ja.md)、[BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance-ja.md)、[BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse-ja.md)、[BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)、[BE-0341](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture-ja.md)、[BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree-ja.md)、[BE-0408](../BE-0408-step-latency-device-executor-protocol/BE-0408-step-latency-device-executor-protocol-ja.md)、[BE-0409](../BE-0409-step-latency-ios-device-executor/BE-0409-step-latency-ios-device-executor-ja.md)、[BE-0410](../BE-0410-step-latency-android-device-executor/BE-0410-step-latency-android-device-executor-ja.md) |
 <!-- /BE-METADATA -->
@@ -145,7 +145,9 @@ driver conformance suite
    どうかにかかわらず、すべての query がこの XPC（プロセス間通信）による確認を
    払っています——
    [`XcuitestElementProvider.swift:50`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift)。
-   期待される削減量は query 1 回あたり 5〜50 ミリ秒です。
+   期待される削減量は query 1 回あたり 5〜50 ミリ秒です。この作業単位は
+   [#2117](https://github.com/bajutsu-e2e/bajutsu/pull/2117) で差し戻しました。iOS 26 では、境界ノードがサービス側の
+   スナップショットにだけ現れ、アプリ側には現れません。そのため、この条件は成り立ちません。
 10. **`/zorder` の第 2 往復を遅延評価にする。** セレクタが実際に曖昧で、その解決が
     必要なときだけ z 順を取得します——
     [`xcuitest.py:744-768`](../../bajutsu/common/drivers/xcuitest.py)。期待される
@@ -319,9 +321,15 @@ driver conformance suite
     たびにツリーを読み直す（この作業単位が削ろうとしていた往復そのものを復活させて
     しまいます）かのどちらかしか道がなく、2 つの点を整合させる設計は成り立ちません。
     Safari 限定の経路を維持し、この項目内ではこれ以上追わないと判断しました。
-- [x] グループ 2、作業単位 9——`safariViewService.state` の XPC プローブを条件付きに
-  します。アプリ自身のスナップショットにブラウザのリモートビュー境界ノードが現れている
-  ときだけ行います。
+- [x] ~~グループ 2、作業単位 9。`safariViewService.state` の XPC プローブをアプリ側の
+  スナップショットで条件付ける。~~
+  - #1912 で着地させたあと、[#2117](https://github.com/bajutsu-e2e/bajutsu/pull/2117) で差し戻しました。
+    iOS 26.5 の Simulator では、
+    境界ノードはサービス側のスナップショットにだけ現れ、アプリ側には現れません。そのため
+    条件が一度も成り立たず、`SFSafariViewController` の要素がすべてツリーから消えました。
+    シナリオはアプリ内ブラウザを操作できず、ガードもその上に出る Save Password アラートを
+    見つけられませんでした。より安価な条件にするには、iOS 26 のアプリ側スナップショットが
+    実際に持つ手がかりが必要ですが、まだ見つかっていません。
 - [x] グループ 2、作業単位 10——`/zorder` を遅延評価にします。詳細設計の記述からの逸脱：
   `nativeZ` は診断専用の値で、セレクタの曖昧性解決には一切使われていません
   （`resolve_unique` の `_collapse_identical_duplicates` はこのキーを意図的に除外して
@@ -541,6 +549,10 @@ driver conformance suite
   取り消し線を引いて理由をその下にネストしました。状態を実装済みに移します。この項目
   自身が掲げるレイテンシ目標への残りのギャップは、BE-0408 から BE-0410 で追跡している
   端末側実行機の役割です。
+- [#2117](https://github.com/bajutsu-e2e/bajutsu/pull/2117) — 実機での二分探索で iOS 26 の退行の原因を作業単位 9 と特定し、差し戻しました。
+  条件があるあいだは、アプリ内ブラウザの要素がツリーに届かず、`save_password_browser.yaml`
+  が毎回失敗していました。ツリーの読み取りは #1912 以前と同じく、query のたびに
+  `safariViewService.state` を確認します。
 
 ## 参考
 
