@@ -141,29 +141,33 @@ The server keeps to routing. A driver that runs on a single host operating syste
 ### Interaction with the target-config restructure item
 
 The proposed target-config restructure item has the slug `target-config-restructure`. It takes
-the choice of where a run happens out of the target, and it relies on this item instead. If it
-lands, it touches five parts of this item.
+the choice of where a run happens out of the target, relies on this item instead, and starts after
+this item has landed. It touches five parts of this item.
 
 - **`environment` accepts `appium`.** The restructure moves the target's `deviceProvider` into
   `worker.yaml`. It becomes an `appium` environment that carries the grid's `endpoint`. The
   vocabulary of `environment` then reaches beyond batch-provider kinds. The loader accepts `appium`
-  with a required `endpoint`, and refuses `endpoint` on any other environment. An `appium` worker
-  drives a remote device. That coordination decides how the host rule applies to it, and which
+  with a required `endpoint`, and refuses `endpoint` on any other environment. `bajutsu run
+  --worker-config` accepts the `appium` environment too, so a plain local run can still reach a
+  grid; every other non-local environment stays rejected for `run`. An `appium` worker drives a
+  remote device. That coordination decides how the host rule applies to it, and which
   `platform:*` tokens it advertises.
 - **The runtime and device-class source moves.** This item keeps `requires` for now.
   It waits for a later item to derive the iOS runtime and device class from the target's `device`.
-  The restructure replaces that field with `runsOn.model` and `runsOn.os`. `runsOn.os` takes a
-  version range. The later
-  derivation reads those two fields.
+  The restructure replaces that field with `runsOn.model` and `runsOn.os`, and a scenario can
+  override both. The later derivation reads each scenario's effective `runsOn`, the merge of the
+  target's and the scenario's values.
 - **`requires` goes earlier.** The restructure drops `requires` with no deprecation release.
-  The key disappears with the new target schema. If the restructure lands before the derivation, a job cannot ask for an iOS
-  runtime or a device class in the meantime. This item keeps `requires` to avoid that gap.
-- **A not-applicable status appears.** A scenario can state its own `runsOn`, and a scenario that
-  no available device meets is recorded as not applicable instead of being run. This item's
-  *Boundaries* rejects a skipped status, because a misconfigured worker would skip everything and
-  still pass. The restructure answers that with a guard: a run whose every scenario is not applicable
-  exits non-zero. The worker capability check keeps failing a scenario the worker cannot run, so the
-  two statuses stay apart.
+  The key disappears with the new target schema. Until the derivation lands, a hosted job cannot
+  ask for an iOS runtime or a device class. The restructure accepts that gap, which this item
+  avoids by keeping `requires` until the derivation lands.
+- **A not-applicable status appears.** A scenario whose open condition, such as `>=18`, no
+  available device meets is recorded as not applicable instead of being run. A run that a list or
+  a bounded range asks for, and that no device can take, fails instead. This item's *Boundaries*
+  rejects a skipped status, because a misconfigured worker would skip everything and still pass.
+  The restructure answers that with the failing runs and with a guard: a run in which no run
+  executed exits non-zero. The worker capability check keeps failing a scenario the worker cannot
+  run, so the two outcomes stay apart.
 - **The host stays a fact about the machine.** The restructure weighed a target-side
   `runsOn.host.os` and dropped it. `host:<os>` stays the single host constraint.
 

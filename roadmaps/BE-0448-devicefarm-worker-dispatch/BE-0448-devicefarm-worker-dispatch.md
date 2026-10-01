@@ -120,17 +120,18 @@ The worker downloads the run tree under a temporary directory and lands it, then
 ### Interaction with the target-config restructure item
 
 The proposed target-config restructure item has the slug `target-config-restructure`. It takes
-the choice of where a run happens out of the target. If it lands, two parts of this item change.
+the choice of where a run happens out of the target, and it starts after this item has landed.
+Two parts of this item change when it lands.
 
 - **`cloudBatch` leaves the target.** The Device Farm destination moves to the run request.
-  Both the serve fan-out request and the matching command-line option gain an `environment` field. A job with `Job.batch` derives `environment:<name>` from that request, not
-  from the target. The rest of *Routing* stays as written.
-- **`cloudBatchBudget` has no deprecation release.** The restructure keeps no backward
-  compatibility in the target schema. From the release that ships it, `cloudBatchBudget` fails at load as
-  an unknown key. The deprecation window of unit 5 matters if this item lands first.
+  Both the serve fan-out request and the matching command-line option gain an `environment`
+  field. A job with `Job.batch` derives `environment:<name>` from that request, not from the
+  target. The rest of *Routing* stays as written.
+- **`cloudBatchBudget` disappears from the schema.** This item lands first, so the deprecation
+  window of unit 5 runs its course. The restructure's new target schema then has no
+  `cloudBatchBudget` at all, and the key fails at load as unknown.
 
-The item that lands second adapts to the first. The restructure item's execution-placement unit
-carries that coordination.
+The restructure item's execution-placement unit carries the coordination.
 
 ### Boundaries
 
