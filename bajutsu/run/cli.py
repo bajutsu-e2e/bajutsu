@@ -35,7 +35,7 @@ from bajutsu.common.backends import (
     select_actuator_for_scenario,
 )
 from bajutsu.common.cancellation import CancelSource, graceful_sigterm
-from bajutsu.common.config import WEB_ENGINES, Effective, IosConfig
+from bajutsu.common.config import WEB_ENGINES, AndroidConfig, Effective, IosConfig
 from bajutsu.common.deprecations import warn_once
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
@@ -592,7 +592,32 @@ def _reject_bad_device_groups(
         }
     )
     for member in members:
-        problems += _build_problems(member, target_effs[member], checkout_root=checkout_root)
+        problems += _build_problems(
+            target_effs[member],
+            checkout_root=checkout_root,
+            label=f"installApp from {member!r}",
+        )
+    # A group's other starting members install at lease time too, so their builds are made and
+    # checked here as well; the run's primary already was. One that names no `appPath` is expected
+    # on the device already, as for any target (BE-0447).
+    starting = sorted(
+        {
+            name
+            for s in scenarios
+            for g in s.device_groups
+            if len(g) >= 2
+            for name in g
+            if name != s.target_names[0] and name not in set(s.later_targets)
+        }
+        - set(members)
+    )
+    for member in starting:
+        if _app_path(target_effs[member]) is not None:
+            problems += _build_problems(
+                target_effs[member],
+                checkout_root=checkout_root,
+                label=f"starting member {member!r}",
+            )
     if problems:
         typer.echo("device group preflight failed (BE-0447):\n  " + "\n  ".join(problems))
         raise typer.Exit(2)
@@ -631,9 +656,14 @@ def _sharing_problems(
     first, *rest = group
 
     def route(eff: Effective) -> tuple[object, ...]:
-        xcuitest = getattr(eff.platform_config, "xcuitest", None)
+        config = eff.platform_config
+        xcuitest = config.xcuitest if isinstance(config, IosConfig) else None
         return (
             eff.platform,
+            # One device answers to one backend: `_pool_demand` charges the group to its first
+            # member's pool, so a member resolving to another actuator would draw from a pool
+            # nothing counted.
+            tuple(eff.backend),
             eff.device_provider,
             eff.device,
             xcuitest.device_type if xcuitest is not None else None,
@@ -645,8 +675,9 @@ def _sharing_problems(
     for member in rest:
         if route(effs[member]) != route(effs[first]):
             yield (
-                f"device group [{', '.join(group)}]: {member!r} differs from {first!r} in platform or device "
-                "route (deviceProvider, device, xcuitest.deviceType), so they cannot share a device"
+                f"device group [{', '.join(group)}]: {member!r} differs from {first!r} in platform, "
+                "backend, or device route (deviceProvider, device, xcuitest.deviceType), so they "
+                "cannot share a device"
             )
         if locale(effs[member]) != locale(effs[first]):
             yield (
@@ -655,22 +686,28 @@ def _sharing_problems(
             )
 
 
-def _build_problems(member: str, eff: Effective, *, checkout_root: Path | None) -> Iterator[str]:
-    # The scenario names a target, never a path, so the build an `installApp` puts on the device
-    # is that target's `appPath`, built on demand where the run already builds the primary's.
+def _app_path(eff: Effective) -> str | None:
+    """*eff*'s `appPath`, or None for a target that names none (a web target included)."""
     config = eff.platform_config
-    app_path = getattr(config, "app_path", None)
+    return config.app_path if isinstance(config, IosConfig | AndroidConfig) else None
+
+
+def _build_problems(eff: Effective, *, checkout_root: Path | None, label: str) -> Iterator[str]:
+    # The scenario names a target, never a path, so the build a member puts on the device is that
+    # target's `appPath`, built on demand where the run already builds the primary's.
+    config = eff.platform_config
+    app_path = _app_path(eff)
     if app_path is None:
-        yield f"installApp from {member!r}: that target defines no appPath to install"
+        yield f"{label}: that target defines no appPath to install"
         return
     if checkout_root is not None and isinstance(config, IosConfig):
         try:
             build_if_missing(config.build, app_path, cwd=checkout_root)
         except BuildError as e:
-            yield f"installApp from {member!r}: {e}"
+            yield f"{label}: {e}"
             return
     if not Path(app_path).exists():
-        yield f"installApp from {member!r}: its appPath {app_path!r} does not exist"
+        yield f"{label}: its appPath {app_path!r} does not exist"
 
 
 def _retired_primary_problems(s: Scenario, effs: Mapping[str, Effective]) -> Iterator[str]:
@@ -684,11 +721,15 @@ def _retired_primary_problems(s: Scenario, effs: Mapping[str, Effective]) -> Ite
             member = step.install_app.from_
             identifier = effs[member].app_identifier
             group = next(g for g in s.device_groups if member in g)
-            retired |= {
-                m
-                for m in group
-                if m != member and m in installed and effs[m].app_identifier == identifier
-            }
+            retired |= (
+                set()
+                if identifier is None
+                else {
+                    m
+                    for m in group
+                    if m != member and m in installed and effs[m].app_identifier == identifier
+                }
+            )
             installed.add(member)
         elif step.set_primary_target is not None and step.set_primary_target.target in retired:
             yield (

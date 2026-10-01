@@ -388,7 +388,7 @@ def test_a_backend_crash_during_an_install_reaches_the_crash_retry() -> None:
             roster=TargetRoster(
                 primary="old",
                 status={"new": MemberStatus.NOT_INSTALLED},
-                install=cast("Callable[[str, str, bool], list[str]]", _crash),
+                install=cast(Callable[[str, str, bool], list[str]], _crash),
             ),
         )
 
@@ -412,6 +412,6 @@ def test_a_backend_crash_during_a_bring_up_reaches_the_crash_retry() -> None:
             roster=TargetRoster(
                 primary="old",
                 status={"new": MemberStatus.INSTALLED},
-                activate=cast("Callable[[str], TargetRuntime]", _crash),
+                activate=cast(Callable[[str], TargetRuntime], _crash),
             ),
         )

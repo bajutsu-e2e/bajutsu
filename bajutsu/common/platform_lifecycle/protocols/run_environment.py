@@ -79,7 +79,6 @@ class RunEnvironment(Protocol):
         Raises:
             base.UnsupportedAction: This platform cannot install a second build mid-scenario yet.
         """
-        ...
 
     def end_member(self, driver: base.Driver, eff: Effective) -> None:
         """Release one member `start_member` brought up: stop its app, keep the device (BE-0447).

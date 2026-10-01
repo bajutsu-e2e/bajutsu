@@ -131,11 +131,13 @@ def manual_todo(label: str, bypass: str | None) -> str:
 
 
 def device_group_todo(step: Step) -> str | None:
-    """The `// TODO` for a device-group lifecycle step (BE-0447), or None for any other step.
+    """The `// TODO` for an `installApp` or `setPrimaryTarget` step (BE-0447), else None.
 
-    `installApp` and `setPrimaryTarget` move a build onto a device another target shares and the
-    target later steps follow. A generated test drives one app on one device, so neither has a form
-    there; like the device-control TODOs, each renders as a labeled comment, never a silent skip.
+    `installApp` installs another device-group member's build on a shared device; `setPrimaryTarget`
+    only moves the target later steps follow, and is legal with a single declared target, the one
+    shape that reaches these generators today. A generated test drives one app on one device, so
+    neither has a form there; like the device-control TODOs, each renders as a labeled comment,
+    never a silent skip.
     """
     if step.install_app is not None:
         return (

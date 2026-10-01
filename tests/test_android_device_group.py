@@ -18,8 +18,7 @@ import pytest
 from bajutsu.common.backend_cli import adb
 from bajutsu.common.config import AndroidConfig, Effective
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.adb import AdbDriver, HierarchyRead
-from bajutsu.common.drivers.adb.adb_driver import slice_hierarchy_root as slice_root
+from bajutsu.common.drivers.adb import AdbDriver, HierarchyRead, slice_hierarchy_root
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.platform_lifecycle import AndroidEnvironment
 from bajutsu.common.platform_lifecycle.protocols import ReadinessResult
@@ -356,7 +355,7 @@ def test_a_tree_naming_no_package_is_not_another_app() -> None:
         package=_AUTH,
     )
     driver.require_front_app()
-    assert driver._other_app_in_front(slice_root("<hierarchy/>")) is None
+    assert driver._other_app_in_front(slice_hierarchy_root("<hierarchy/>")) is None
 
 
 def test_another_apps_tree_is_never_read_as_untappable() -> None:

@@ -1157,6 +1157,9 @@ class _ScenarioRunner:
             member_eff = self.targets[member].eff
             lease.install(member_eff, keep_data)
             identifier = member_eff.app_identifier
+            if identifier is None:
+                # No identifier names no app to replace, so the install retires nothing.
+                return []
             return [
                 m for m in group if m != member and self.targets[m].eff.app_identifier == identifier
             ]

@@ -91,8 +91,8 @@ def test_a_web_target_cannot_join_a_group(
 @pytest.mark.parametrize(
     ("other", "cause"),
     [
-        ("droid", "platform or device route"),
-        ("phone", "platform or device route"),
+        ("droid", "or device route"),
+        ("phone", "or device route"),
         ("ja", "locale"),
     ],
 )
@@ -233,3 +233,94 @@ def test_a_shared_build_is_checked_once_for_the_whole_run(
     with pytest.raises(typer.Exit):
         _reject_bad_device_groups([one, two], effs, checkout_root=None)
     assert capsys.readouterr().out.count("that target defines no appPath") == 1
+
+
+@pytest.mark.parametrize(
+    "placement",
+    [
+        {
+            "steps": [
+                {
+                    "forEach": {
+                        "sel": {"id": "row"},
+                        "as": "r",
+                        "steps": [{"installApp": {"from": "gone"}}],
+                    }
+                }
+            ]
+        },
+        {"after": [{"on": "always", "steps": [{"installApp": {"from": "gone"}}]}]},
+        {
+            "steps": [
+                {
+                    "if": {
+                        "condition": {"exists": {"id": "x"}},
+                        "then": [{"tap": {"id": "a"}}],
+                        "else": [{"installApp": {"from": "gone"}}],
+                    }
+                }
+            ]
+        },
+    ],
+    ids=["forEach", "after", "if-else"],
+)
+def test_a_nested_install_still_needs_its_build(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], placement: dict[str, object]
+) -> None:
+    effs = _effs(tmp_path)
+    cfg = load_config(
+        f"defaults: {{ backend: [fake] }}\ntargets:\n  gone: {{ bundleId: com.example.showcase, "
+        f"appPath: {tmp_path / 'Gone.app'} }}\n"
+    )
+    effs["gone"] = resolve(cfg, "gone")
+    s = _scenario(targets=[["old", "gone"]], primaryTarget="old", **placement)
+    with pytest.raises(typer.Exit):
+        _reject_bad_device_groups([s], effs, checkout_root=None)
+    assert "does not exist" in capsys.readouterr().out
+
+
+def test_a_starting_members_missing_build_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    effs = _effs(tmp_path)
+    cfg = load_config(
+        f"defaults: {{ backend: [fake] }}\ntargets:\n  auth2: {{ bundleId: com.example.auth2, "
+        f"appPath: {tmp_path / 'Auth2.app'} }}\n"
+    )
+    effs["auth2"] = resolve(cfg, "auth2")
+    s = _scenario(targets=[["old", "auth2"]], primaryTarget="old", installs=["auth2"])
+    with pytest.raises(typer.Exit):
+        _reject_bad_device_groups([s], effs, checkout_root=None)
+    assert "starting member 'auth2': its appPath" in capsys.readouterr().out
+
+
+def test_members_on_different_backends_cannot_share_a_device(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    effs = _effs(tmp_path)
+    cfg = load_config(
+        "defaults: { backend: [xcuitest] }\ntargets:\n  other: { bundleId: com.example.other }\n"
+    )
+    effs["other"] = resolve(cfg, "other")
+    s = _scenario(targets=[["auth", "other"]], primaryTarget="auth", installs=["other"])
+    with pytest.raises(typer.Exit):
+        _reject_bad_device_groups([s], effs, checkout_root=None)
+    assert "platform, backend, or device route" in capsys.readouterr().out
+
+
+def test_an_install_with_no_identifier_retires_nothing(tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    from bajutsu.common.config import IosConfig
+
+    effs = _effs(tmp_path)
+    effs["anon"] = replace(
+        effs["new"], platform_config=IosConfig(app_path=str(tmp_path / "New.app"))
+    )
+    effs["anon2"] = replace(effs["old"], platform_config=IosConfig())
+    s = _scenario(
+        targets=[["anon2", "anon"]],
+        primaryTarget="anon2",
+        steps=[{"installApp": {"from": "anon"}}, {"setPrimaryTarget": {"target": "anon2"}}],
+    )
+    _reject_bad_device_groups([s], effs, checkout_root=None)

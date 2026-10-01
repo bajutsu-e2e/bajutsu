@@ -611,13 +611,16 @@ Log:
   config builds it on demand, as it already does for the primary. The check also closes unit 3's
   deviation as a `run` preflight rather than at load, since the identifier lives in config: walking
   `before` and the top-level steps in order, it refuses a `setPrimaryTarget` that names a member an
-  earlier `installApp` retired. Each build is checked once for the whole run. `Effective.app_identifier` names the identifier both this
-  check and the runner's retirement read.
+  earlier `installApp` retired. Each build is checked once for the whole run, and a group's other
+  starting members, which install at lease time, have theirs built and checked too. A member with
+  no identifier retires nothing. `Effective.app_identifier` names the identifier both this check
+  and the runner's retirement read.
 - Unit 7. A web target in a device group is already refused before any device is leased, by unit
-  4's preflight and by the `deviceGroup` capability web never advertises. A device provider that
-  hands its device over with the app preinstalled now refuses a group on it, once the device is
-  reserved and inside the region that releases every reservation: the provider holds the binary,
-  so there is no local build to install beside it. Every code generator (XCUITest, UI Automator,
+  4's preflight and by the `deviceGroup` capability web never advertises. `run` now refuses a group
+  whose member comes from a device provider that hands its device over with the app preinstalled:
+  the provider holds the binary, so there is no local build to install beside it. The check runs
+  once the device is reserved, inside the region that releases every reservation. Every code
+  generator (XCUITest, UI Automator,
   Playwright) renders `installApp` and `setPrimaryTarget` as a labeled `// TODO`, though `codegen`
   already refuses any scenario declaring two or more targets before it reaches them.
 - Unit 6. Android shares a device between a group's members. The emulator environment gives each
