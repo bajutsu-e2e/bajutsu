@@ -138,9 +138,9 @@ The same `site` target in today's notation reads as follows:
 
 | Group | iOS | Android | Web |
 |---|---|---|---|
-| `app` | `id`, `path`, `build`, `deeplink`, `launch.env`, `launch.args` | `id`, `path`, `build`, `grantPermissions` | `url`, `server` |
+| `app` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.args`, `launch.deeplink` | `id`, `path`, `build`, `reinstall`, `grantPermissions` | `url`, `server` |
 | `app`, all platforms | `startWhen`, `idNamespaces` | same | same |
-| `runsOn` | `model`, `os`, `kind`, `locale` | `avd`, `apiLevel` | `browser.engine`, `browser.version`, `emulate` |
+| `runsOn` | `model`, `os`, `kind`, `locale`, `seedPhotos` | `avd`, `apiLevel` | `browser.engine`, `browser.version`, `emulate` |
 | `driver` | `runner.testRunner`, `runner.build` | `nativeZ` | `headless` |
 | `run`, extra field | `tipKitHandling` | — | — |
 
@@ -198,6 +198,36 @@ field.
 `bajutsu config schema` prints a JavaScript Object Notation (JSON) Schema generated from the registry, with `platform` as the
 discriminator of a `oneOf`, so an editor can complete keys per platform.
 
+### A scenario's preconditions
+
+A scenario's `preconditions` uses the target's group names, so a field has one spelling at both
+levels. It holds three groups: `app`, `runsOn`, and `run`. A field written in a scenario overrides
+the same field in the target, with two exceptions kept from today: `launch.env` merges key by key,
+and `launch.args` appends the scenario's arguments after the target's.
+
+```yaml
+preconditions:
+  app:
+    reinstall: overwrite
+    launch: { env: { FEATURE_X: "1" }, args: ["-debug"], deeplink: "showcase://cart" }
+  runsOn:
+    ios: { model: iPhone 16, os: ">=18", locale: ja_JP, seedPhotos: [photos/cat.jpg] }
+  run: { erase: true }
+```
+
+| Today's scenario field | New location |
+|---|---|
+| `preconditions.launchEnv`, `launchArgs`, `deeplink` | `preconditions.app.launch.env`, `.args`, `.deeplink` |
+| `preconditions.reinstall` | `preconditions.app.reinstall` |
+| `preconditions.erase` | `preconditions.run.erase` |
+| `preconditions.locale`, `seedPhotos` | `preconditions.runsOn.<platform>.locale`, `preconditions.runsOn.ios.seedPhotos` |
+| `preconditions.setup` | removed (see *Setup and cleanup* above) |
+
+`runsOn` alone is keyed by platform, because its fields differ by platform. The fields of
+`app.launch` are the same wherever they apply, so `app` is not keyed. A scenario cannot set a field
+that identifies or builds the app, such as `id`, `path`, `build`, `startWhen`, or `idNamespaces`.
+The target owns those.
+
 ### A scenario's own `runsOn`
 
 A scenario declares its own conditions under `preconditions.runsOn`, keyed by platform. Each block
@@ -235,7 +265,7 @@ platforms. Two targets of one platform on different devices share the block; a s
 different conditions for them splits into two scenarios.
 
 A scenario block accepts the condition fields (`model`, `os`, `avd`, `apiLevel`,
-`browser.engine`, and `browser.version`) and `locale`. `locale` replaces today's
+`browser.engine`, and `browser.version`), `locale`, and, on iOS, `seedPhotos`. `locale` replaces today's
 `preconditions.locale`, so both levels keep it in one place. `kind` and `emulate` stay on the
 target.
 [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md) keeps the
@@ -387,7 +417,8 @@ iPhone, as it does today.
 |---|---|
 | `backend` | removed; `platform` decides the actuator |
 | `bundleId`, `package` / `baseUrl`, `launchServer` | `app.id` / `app.url`, `app.server` |
-| `appPath`, `build`, `deeplinkScheme`, `launchEnv`, `launchArgs` | `app.path`, `app.build`, `app.deeplink`, `app.launch.env`, `app.launch.args` |
+| `appPath`, `build`, `launchEnv`, `launchArgs` | `app.path`, `app.build`, `app.launch.env`, `app.launch.args` |
+| `deeplinkScheme` | removed; no code reads it today |
 | `readyWhen`, `idNamespaces`, `grantPermissions` | `app.startWhen` (the selector moves under `exists`), `app.idNamespaces`, `app.grantPermissions` |
 | `device`, `locale`, `xcuitest.deviceType` | `runsOn.model`, `runsOn.locale`, `runsOn.kind` |
 | `browser`, `deviceMode` | `runsOn.browser.engine`, `runsOn.emulate` (omitted means desktop) |
@@ -399,7 +430,7 @@ iPhone, as it does today.
 | scenario `before`, `after` | scenario `setup`, `cleanup` |
 | scenario `preconditions.setup` | removed; call the prelude with `use:` inside the scenario's `setup` |
 | `capture`, `redact` | `evidence.*` |
-| scenario `preconditions.locale` | scenario `preconditions.runsOn.<platform>.locale` |
+| scenario `preconditions.*` | the scenario's `app`, `runsOn`, and `run` groups (see *A scenario's preconditions*) |
 | `scenarios`, `baselines`, `schemas`, `goldens` | `paths.*` |
 | `defaults.reservedNamespaces`, `defaults.doctor` | top-level `reservedNamespaces` and `doctor`; both are team-wide, not per target, so neither belongs in `defaults` |
 
@@ -425,8 +456,8 @@ the new dictionary.
 
 1. **`VersionSpec`.** Parse npm range syntax and compare versions on three components in
    `bajutsu/common/devices/version.py`, and list the major versions a range covers.
-2. **Confirm the open placements.** Find which backends read `deeplinkScheme`, `launchEnv`,
-   `launchArgs`, and `locale`; confirm that the AVD name is readable (for example through
+2. **Confirm the open placements.** Find which backends read `launchEnv`, `launchArgs`,
+   `deeplink`, and `locale`; confirm that the AVD name is readable (for example through
    `ro.boot.qemu.avd_name`) across supported API levels; and check whether any scenario depends on
    `setup` splicing onto `steps`. Update the placement tables before code lands.
 3. **Platform registry and models.** Add the registry and the per-platform models, and pin in a test
@@ -439,8 +470,9 @@ the new dictionary.
    scenario's `preconditions.setup` into `setup`, and relabel the report phases.
 6. **Command-line interface (CLI).** `--backend` becomes a check that exits 2 on a mismatch with `platform`. `--browser`,
    `--browsers`, and `--headed` override `runsOn.browser.engine` and `driver.headless`.
-7. **Scenario `runsOn`.** Add `preconditions.runsOn` keyed by platform and validated by the
-   registered models. Move `preconditions.locale` into it, and merge it over the target's `runsOn`.
+7. **Scenario preconditions.** Regroup `preconditions` into `app`, `runsOn`, and `run`. Key
+   `runsOn` by platform, validate each block with the registered models, and merge every group over
+   the target's.
 8. **Reading devices.** Read the model and OS (iOS), the API level and AVD name (Android), and the
    browser version (web) from each available device.
 9. **Assignment and the not-applicable status.** Hand each scenario a device that meets its
@@ -495,7 +527,7 @@ the new dictionary.
 - [ ] Unit 4: schema switch-over, fixtures, and `demos/` configs
 - [ ] Unit 5: setup and cleanup
 - [ ] Unit 6: CLI
-- [ ] Unit 7: scenario `runsOn`
+- [ ] Unit 7: scenario preconditions
 - [ ] Unit 8: reading devices
 - [ ] Unit 9: assignment and the not-applicable status
 - [ ] Unit 10: runs per value and per major version

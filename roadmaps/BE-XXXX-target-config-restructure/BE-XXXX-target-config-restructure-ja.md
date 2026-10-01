@@ -104,9 +104,9 @@ targets:
 
 | グループ | iOS | Android | Web |
 |---|---|---|---|
-| `app` | `id`、`path`、`build`、`deeplink`、`launch.env`、`launch.args` | `id`、`path`、`build`、`grantPermissions` | `url`、`server` |
+| `app` | `id`、`path`、`build`、`reinstall`、`launch.env`、`launch.args`、`launch.deeplink` | `id`、`path`、`build`、`reinstall`、`grantPermissions` | `url`、`server` |
 | `app`（全プラットフォーム共通） | `startWhen`、`idNamespaces` | 同左 | 同左 |
-| `runsOn` | `model`、`os`、`kind`、`locale` | `avd`、`apiLevel` | `browser.engine`、`browser.version`、`emulate` |
+| `runsOn` | `model`、`os`、`kind`、`locale`、`seedPhotos` | `avd`、`apiLevel` | `browser.engine`、`browser.version`、`emulate` |
 | `driver` | `runner.testRunner`、`runner.build` | `nativeZ` | `headless` |
 | `run`（追加分） | `tipKitHandling` | — | — |
 
@@ -130,6 +130,30 @@ targets:
 明示の`platform`が優先順位の連鎖に取って代わります。`backend`は廃止します。どのプラットフォームも現在 actuator は1つなので、順序つきのフォールバックのリストには選ぶ対象がありません。`_effective_platform`、`_PLATFORM_IDENTIFIER`、`Config`の突き合わせも一緒に消えます。各`app`モデルが自分の識別子を必須にするためです。あるプラットフォームが2つ目の actuator を持った場合は、`driver`に`actuator`フィールドを足します。
 
 `bajutsu config schema`は、レジストリから生成した JavaScript Object Notation（JSON）Schema を出力します。`platform`を`oneOf`の判別子にするので、エディタはプラットフォームごとにキーを補完できます。
+
+### シナリオの preconditions
+
+シナリオの`preconditions`は、target と同じグループ名を使います。これで、1つのフィールドを両方の階層で同じ書き方にできます。`preconditions`が持つグループは、`app`、`runsOn`、`run`の3つです。シナリオに書いたフィールドは、target の同じフィールドを上書きします。例外は現在の規則を引き継ぐ2つで、`launch.env`はキー単位で重ね、`launch.args`は target の引数の後ろにシナリオの引数を足します。
+
+```yaml
+preconditions:
+  app:
+    reinstall: overwrite
+    launch: { env: { FEATURE_X: "1" }, args: ["-debug"], deeplink: "showcase://cart" }
+  runsOn:
+    ios: { model: iPhone 16, os: ">=18", locale: ja_JP, seedPhotos: [photos/cat.jpg] }
+  run: { erase: true }
+```
+
+| 現在のシナリオのフィールド | 新しい位置 |
+|---|---|
+| `preconditions.launchEnv`、`launchArgs`、`deeplink` | `preconditions.app.launch.env`、`.args`、`.deeplink` |
+| `preconditions.reinstall` | `preconditions.app.reinstall` |
+| `preconditions.erase` | `preconditions.run.erase` |
+| `preconditions.locale`、`seedPhotos` | `preconditions.runsOn.<platform>.locale`、`preconditions.runsOn.ios.seedPhotos` |
+| `preconditions.setup` | 廃止（前述の setup と cleanup を参照） |
+
+プラットフォーム名で分けるのは`runsOn`だけです。`runsOn`のフィールドはプラットフォームごとに違うためです。`app.launch`のフィールドは、対応するどのプラットフォームでも同じなので、`app`は分けません。アプリを識別したりビルドしたりするフィールド（`id`、`path`、`build`、`startWhen`、`idNamespaces`など）は、シナリオでは書けません。これらは target が持ちます。
 
 ### シナリオ自身の`runsOn`
 
@@ -161,7 +185,7 @@ preconditions:
 
 シナリオが動かす target ごとに、有効な`runsOn`は target の`runsOn`から始まります。そこへ、その target のプラットフォームに対応するシナリオのブロックを、フィールド単位で上書きします。つまりシナリオの値が勝ちます。run が動かさないプラットフォームのブロックは効果を持たないので、1つのシナリオで複数のプラットフォームに対応できます。同じプラットフォームの target 2つを別の端末で動かす場合、両者は同じブロックを共有します。別々の条件が要るなら、シナリオを2つに分けます。
 
-シナリオのブロックが受け付けるのは、条件のフィールド（`model`、`os`、`avd`、`apiLevel`、`browser.engine`、`browser.version`）と`locale`です。`locale`は現在の`preconditions.locale`を置き換えるもので、target とシナリオの両方で同じ場所に置くことになります。`kind`と`emulate`は target に残します。[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)は、端末モードを target をどう駆動するかの性質としています。両方の見た目が要るシナリオは、2つの target で回します。
+シナリオのブロックが受け付けるのは、条件のフィールド（`model`、`os`、`avd`、`apiLevel`、`browser.engine`、`browser.version`）、`locale`、そして iOS では`seedPhotos`です。`locale`は現在の`preconditions.locale`を置き換えるもので、target とシナリオの両方で同じ場所に置くことになります。`kind`と`emulate`は target に残します。[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)は、端末モードを target をどう駆動するかの性質としています。両方の見た目が要るシナリオは、2つの target で回します。
 
 ### シナリオを走らせる端末の選び方
 
@@ -262,7 +286,8 @@ target は、どこで実行するかを持たなくなります。target が書
 |---|---|
 | `backend` | 廃止。`platform`が actuator を決める |
 | `bundleId`、`package` / `baseUrl`、`launchServer` | `app.id` / `app.url`、`app.server` |
-| `appPath`、`build`、`deeplinkScheme`、`launchEnv`、`launchArgs` | `app.path`、`app.build`、`app.deeplink`、`app.launch.env`、`app.launch.args` |
+| `appPath`、`build`、`launchEnv`、`launchArgs` | `app.path`、`app.build`、`app.launch.env`、`app.launch.args` |
+| `deeplinkScheme` | 廃止。現在このフィールドを読むコードはない |
 | `readyWhen`、`idNamespaces`、`grantPermissions` | `app.startWhen`（selector は`exists`の下へ移る）、`app.idNamespaces`、`app.grantPermissions` |
 | `device`、`locale`、`xcuitest.deviceType` | `runsOn.model`、`runsOn.locale`、`runsOn.kind` |
 | `browser`、`deviceMode` | `runsOn.browser.engine`、`runsOn.emulate`（省略で desktop） |
@@ -274,7 +299,7 @@ target は、どこで実行するかを持たなくなります。target が書
 | シナリオの`before`、`after` | シナリオの`setup`、`cleanup` |
 | シナリオの`preconditions.setup` | 廃止。シナリオの`setup`の中で`use:`として前置きを呼ぶ |
 | `capture`、`redact` | `evidence.*` |
-| シナリオの`preconditions.locale` | シナリオの`preconditions.runsOn.<platform>.locale` |
+| シナリオの`preconditions.*` | シナリオの`app`、`runsOn`、`run`のグループ（「シナリオの preconditions」を参照） |
 | `scenarios`、`baselines`、`schemas`、`goldens` | `paths.*` |
 | `defaults.reservedNamespaces`、`defaults.doctor` | トップレベルの`reservedNamespaces`と`doctor`。どちらも target ごとではなくチーム全体の値なので、`defaults`には置かない |
 
@@ -293,12 +318,12 @@ target は、どこで実行するかを持たなくなります。target が書
 ### 作業の分解
 
 1. **`VersionSpec`。** `bajutsu/common/devices/version.py`で、npm の範囲の記法を解析し、版を先頭3成分で比べ、範囲に含まれるメジャーバージョンを列挙します。
-2. **未確定の置き場所の確認。** `deeplinkScheme`、`launchEnv`、`launchArgs`、`locale`を読むバックエンドを洗い出します。AVD 名が対応する API レベル全体で読めるか（たとえば`ro.boot.qemu.avd_name`で）を確かめます。`setup`が`steps`に差し込まれることに依存するシナリオがないかを調べます。コードを入れる前に、置き場所の表を更新します。
+2. **未確定の置き場所の確認。** `launchEnv`、`launchArgs`、`deeplink`、`locale`を読むバックエンドを洗い出します。AVD 名が対応する API レベル全体で読めるか（たとえば`ro.boot.qemu.avd_name`で）を確かめます。`setup`が`steps`に差し込まれることに依存するシナリオがないかを調べます。コードを入れる前に、置き場所の表を更新します。
 3. **プラットフォームのレジストリとモデル。** レジストリとプラットフォームごとのモデルを追加します。レジストリのキーが`backends.PLATFORMS`と一致することをテストで固定します。
 4. **スキーマの切り替え。** `TargetConfig`、`Defaults`、`Config`、`resolve`を置き換え、テストの固定データと`demos/`の設定ファイル10個を1つの変更で変換します。切り替えを分けると、読み込み側と全設定ファイルが同時に壊れるので、コミットの間でゲートが赤になります。
 5. **setup と cleanup。** target とシナリオの両方で、`before`と`after`を`setup`と`cleanup`に改め、`on: error`を`on: failure`に改めます。target の前置きの`setup`と、シナリオの`preconditions.setup`を`setup`に統合し、report のフェーズの表示を改めます。
 6. **コマンドラインインターフェイス（CLI）。** `--backend`は、`platform`と食い違えば終了コード2で終わる検査になります。`--browser`、`--browsers`、`--headed`は、`runsOn.browser.engine`と`driver.headless`を上書きします。
-7. **シナリオの`runsOn`。** プラットフォームごとに分けた`preconditions.runsOn`を足し、登録済みのモデルで検証します。`preconditions.locale`をその中へ移し、target の`runsOn`の上に重ねます。
+7. **シナリオの preconditions。** `preconditions`を`app`、`runsOn`、`run`のグループに組み直します。`runsOn`をプラットフォームごとに分け、各ブロックを登録済みのモデルで検証し、各グループを target の値の上に重ねます。
 8. **端末の読み取り。** 手元の各端末から、機種と OS（iOS）、API レベルと AVD 名（Android）、ブラウザのバージョン（Web）を読みます。
 9. **割り当てと「対象外」の状態。** 有効な`runsOn`を満たす端末を各シナリオに割り当てます。対象外を理由つきで記録し、flakiness の履歴から除き、何も走らなかったときは非ゼロで終了します。
 10. **値ごと、メジャーバージョンごとの実行。** `model`、`avd`、`browser.engine`でリストを受け付けます。列挙した値ごと、範囲に含まれるメジャーバージョンごとに1回ずつ走らせ、複数 target のシナリオでは target 間の組み合わせを走らせます。値 × シナリオの結果表を出し、flakiness の履歴をシナリオ、値、メジャーバージョンの組で記録します。
@@ -344,7 +369,7 @@ target は、どこで実行するかを持たなくなります。target が書
 - [ ] 作業単位 4: スキーマの切り替え、固定データ、`demos/`の設定ファイル
 - [ ] 作業単位 5: setup と cleanup
 - [ ] 作業単位 6: CLI
-- [ ] 作業単位 7: シナリオの`runsOn`
+- [ ] 作業単位 7: シナリオの preconditions
 - [ ] 作業単位 8: 端末の読み取り
 - [ ] 作業単位 9: 割り当てと「対象外」の状態
 - [ ] 作業単位 10: 値ごと、メジャーバージョンごとの実行
