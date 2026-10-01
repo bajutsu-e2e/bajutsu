@@ -9,7 +9,11 @@
       - fixtures/photos/fixture-green.png
   steps:
     - tap: { label: "Permissions", traits: [button] }
-    - wait: { for: { id: perm.openPhotoPicker }, timeout: 10 }
+    # The button sits below the fold, under the floating tab bar, on an iPhone 17 Pro (iOS 26.5): it
+    # exists in the tree from the start, so the wait alone passes while a tap there can land on the
+    # bar instead and the picker never opens. Scrolling to it first, as select_photo_single.yaml does,
+    # brings it clear of the bar.
+    - scroll: { to: { id: perm.openPhotoPicker }, direction: down }
     - tap: { id: perm.openPhotoPicker }
     - wait: { for: { id: "PXGGridLayout-Info" }, timeout: 10 }
     # The grid can render before the freshly-`erase`d + `seedPhotos`-ed library has finished its own
