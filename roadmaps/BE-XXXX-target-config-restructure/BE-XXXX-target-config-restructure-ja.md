@@ -11,14 +11,14 @@
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | 実装 PR | — |
 | トピック | ドライバとバックエンドのアーキテクチャ |
-| 関連 | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)、[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)、[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md) |
+| 関連 | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config-ja.md)、[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)、[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)、[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
 
 現在、target の設定（`targets.<name>`）は、約50個のキーを1階層に並べています。`browser`と`deviceMode`は Web 専用、`nativeZ`は Android 専用、`bundleId`と`xcuitest`は iOS 専用のキーですが、これらも同じ階層に並んでいます。しかしスキーマは、キーとプラットフォームの対応を持っていません。また、target が想定する端末とオペレーティングシステム（OS）を書くキーもありません。
 
-この項目では、1階層の並びを12個のキーに置き換えます。各キーが受け持つ用途は1つだけです。たとえば`app`はテスト対象のアプリを、`runsOn`は動かす端末を、`driver`は Bajutsu の駆動方法を受け持ちます。12個のうち`app`、`runsOn`、`driver`、`run`の4つは、`platform`の値によって形が変わります（`run`は iOS で1項目増えます）。残りの8つは、どのプラットフォームでも同じ形です。`runsOn`には、target を動かす端末、OS、ブラウザを書きます。run は最初のステップの前に、`runsOn`の宣言と実際に割り当てられた端末を照らし合わせ、食い違えば止まります。後方互換は意図して持ちません。旧形式の設定は読み込み時に失敗し、エラーには受け付けなくなったキーの名前が出ます。
+この項目では、1階層の並びを11個のキーに置き換えます。各キーが受け持つ用途は1つだけです。たとえば`app`はテスト対象のアプリを、`runsOn`は動かす端末を、`driver`は Bajutsu の駆動方法を受け持ちます。11個のうち`app`、`runsOn`、`driver`、`run`の4つは、`platform`の値によって形が変わります（`run`は iOS で1項目増えます）。残りの7つは、どのプラットフォームでも同じ形です。`runsOn`には、target を動かす端末、OS、ブラウザを書きます。run は最初のステップの前に、`runsOn`の宣言と実際に割り当てられた端末を照らし合わせ、食い違えば止まります。後方互換は意図して持ちません。旧形式の設定は読み込み時に失敗し、エラーには受け付けなくなったキーの名前が出ます。
 
 ## 動機
 
@@ -28,7 +28,7 @@ target に別のプラットフォームのキーを書いても、設定はエ�
 
 target を動かす環境を指定するキーもありません。iOS のバージョンは、`--udid`で選んだ Simulator によって決まります。Android の application programming interface（API）レベルは、adb のシリアルで選んだ端末によって決まります。`device`が効くのは、実行中に消えた Simulator の代わりを作る場面だけです。run は、実際に動いた OS を`device_runtime`として記録します（[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)）。そのため、シナリオが想定外の OS で落ちても、気づくのは実行後です。しかもその失敗は、flakiness の履歴に雑音として混ざります。
 
-同じ用途の設定が、複数のキーに散らばってもいます。アプリの起動に関わる設定は`launchEnv`、`launchArgs`、`readyWhen`の3つです。端末の調達に関わる設定は`deviceProvider`、`cloudBatch`、`requires`の3つです。全シナリオの前に走る手順は`setup`と`before`のどちらでも書けてしまい、文書は両者の違いを説明し続けています。プラットフォームの判定も複雑です。[`resolve.py`](../../bajutsu/common/config/resolve.py)の`_effective_platform`は、`platform`、`backend`、識別子の有無を優先順位の順に調べて、プラットフォームを推論します。Flutter のようなバックエンドを足すと、1階層のキーも推論の分岐も増えます。
+同じ用途の設定が、複数のキーに散らばってもいます。アプリの起動に関わる設定は`launchEnv`、`launchArgs`、`readyWhen`の3つです。どこで実行するかに関わる設定は`deviceProvider`、`cloudBatch`、`cloudBatchBudget`、`requires`の4つです。しかも、どこで実行するかは target を書くチームではなく、マシンを運用する人が決めることです。全シナリオの前に走る手順は`setup`と`before`のどちらでも書けてしまい、文書は両者の違いを説明し続けています。プラットフォームの判定も複雑です。[`resolve.py`](../../bajutsu/common/config/resolve.py)の`_effective_platform`は、`platform`、`backend`、識別子の有無を優先順位の順に調べて、プラットフォームを推論します。Flutter のようなバックエンドを足すと、1階層のキーも推論の分岐も増えます。
 
 この項目の実装後は、次の2点で効果を確かめられます。
 
@@ -37,7 +37,7 @@ target を動かす環境を指定するキーもありません。iOS のバー
 
 ## 詳細設計
 
-### 12個のキー
+### 11個のキー
 
 target は次のキーだけを受け付けます。
 
@@ -47,7 +47,6 @@ target は次のキーだけを受け付けます。
 | `app` | 何をテストするか（識別子、入手と起動の方法、起動待ち、id の約束） | 変わる |
 | `runsOn` | 何の上で動くか（端末と OS の要件、ブラウザ、言語） | 変わる |
 | `driver` | Bajutsu がどう駆動するか | 変わる |
-| `dispatch` | 端末をどこから得て、実行をどこへ振るか | 変わらない |
 | `services` | アプリが話す代替サービスは何か | 変わらない |
 | `run` | 実行の方針は何か | iOS だけ1項目増える |
 | `hooks` | 全シナリオを包むステップ列は何か | 変わらない |
@@ -70,7 +69,6 @@ targets:
       readyWhen: { id: home.title }
     runsOn:   { model: iPhone 15, os: ">=17 <19", kind: simulator, locale: en_US }
     driver:   { runner: { testRunner: build/Runner.xctestrun } }
-    dispatch: { live: { kind: local }, batch: { kind: devicefarm, budget: 2 } }
     run:      { erase: true, secrets: [LOGIN_PASSWORD], tipKitHandling: true }
     hooks:    { before: [{ use: login }] }
     paths:    { scenarios: demos/showcase/scenarios }
@@ -144,9 +142,24 @@ targets:
 
 照合は決定的で、モデルの呼び出しを含みません。判定の経路に加わるのは機械的な検査が1つ増えることだけです。合う端末をその場で作ることと、警告して続けることは範囲外です（「検討した代替案」を参照）。
 
+### どこで実行するか
+
+target は、どこで実行するかを持たなくなります。target が書くのは、何をテストし、何の上で動かし、Bajutsu がどう駆動するかです。どこで実行するかはマシンの性質であり、知っているのはマシンの運用者です。[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)も、worker capability のファイル`worker.yaml`を`bajutsu.config.yaml`に入れない理由として、同じ線を引いています。そのため、現在のキーのうち4つを target から外します。
+
+| 旧キー | 移る先 | 理由 |
+|---|---|---|
+| `cloudBatchBudget` | `worker.yaml`の`maxJobConcurrency` | [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)がすでに置き換えています。端末を確保する worker が予算を数えるためです |
+| `requires` | 廃止 | [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)が自由記述の振り分けタグを廃止します。worker は、持っているものを在庫から広告します |
+| `cloudBatch` | 実行の要求の`environment`（serve の fan-out の要求と、対応する CLI のオプション） | [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)では同じ target がローカルでも Device Farm でも走るため、送り先は target の性質ではなく実行ごとの選択です |
+| `deviceProvider` | `worker.yaml`の`appium`という environment と、グリッドの`endpoint` | どのグリッドが端末を出すかは、device cloud と同じくインフラの選択です |
+
+この項目のスキーマの外にも、2つの変更が要ります。serve の fan-out の要求に`environment`フィールドを足し、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)の`environment:<name>`による振り分けにつなぎます。また、`worker.yaml`が`appium`を`endpoint`つきの environment として受け付けるようにします。これは[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)の environment の語彙を、batch provider の外へ広げる変更です。どちらも、作業単位12で両項目と調整します。
+
+`runsOn`は、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)が残した穴も埋めます。`requires`がなくなると、後続の項目が target から要件を導くまで、ジョブは iOS のランタイムや端末の種類を要件にできません。その導出が読む宣言が、`runsOn.os`と`runsOn.model`です。
+
 ### defaults
 
-`defaults`には、target のキーのうち`platform`以外を書きます。共通のグループは`defaults`の直下に書きます。プラットフォームで形が変わるグループ（`app`、`runsOn`、`driver`と、`run`の iOS の項目）は`defaults.platforms.<platform>`の下に書き、そのプラットフォームの target にだけ重なります。これで1つのファイルに複数のプラットフォームのデフォルトを同時に持てます。辞書はキー単位で重ね、target の値が勝ちます。リストは置き換えます。例外は`evidence.redact`と`dispatch.requires`で、現行どおり和集合をとります。`ai`は現行どおりフィールド単位で重ねます。
+`defaults`には、target のキーのうち`platform`以外を書きます。共通のグループは`defaults`の直下に書きます。プラットフォームで形が変わるグループ（`app`、`runsOn`、`driver`と、`run`の iOS の項目）は`defaults.platforms.<platform>`の下に書き、そのプラットフォームの target にだけ重なります。これで1つのファイルに複数のプラットフォームのデフォルトを同時に持てます。辞書はキー単位で重ね、target の値が勝ちます。リストは置き換えます。例外は`evidence.redact`で、現行どおり和集合をとります。`ai`は現行どおりフィールド単位で重ねます。
 
 組み込みのデフォルト`device: "iPhone 15"`は廃止します。`runsOn.model`のデフォルトとして残すと、`defaults`を書かない全設定が気づかないうちにこの値を要件として課すことになります。`model`を宣言しないまま置き換えの Simulator を作るときは、現行のフォールバックが最新の iPhone を選びます。
 
@@ -161,7 +174,7 @@ targets:
 | `device`、`locale`、`xcuitest.deviceType` | `runsOn.model`、`runsOn.locale`、`runsOn.kind` |
 | `browser`、`deviceMode` | `runsOn.browser.engine`、`runsOn.emulate`（省略で desktop） |
 | `headless`、`nativeZ`、`xcuitest.testRunner`、`xcuitest.build` | `driver.headless`、`driver.nativeZ`、`driver.runner.*` |
-| `deviceProvider`、`cloudBatch`、`cloudBatchBudget`、`requires` | `dispatch.live`、`dispatch.batch.kind`、`dispatch.batch.budget`、`dispatch.requires` |
+| `deviceProvider`、`cloudBatch`、`cloudBatchBudget`、`requires` | target から外す（「どこで実行するか」を参照） |
 | `mockServer`、`mailbox` | `services.*` |
 | `erase`、`network`、`visualCompare`、`secrets`、`systemAlertHandling`、`iosTipKitHandling` | `run.*`（最後は`run.tipKitHandling`） |
 | `setup`、`before`、`after`、`interrupts` | `hooks.before`（`setup`を吸収）、`hooks.before`、`hooks.after`、`hooks.interrupts` |
@@ -178,7 +191,7 @@ targets:
 - エントリポイントを通じた、外部パッケージからのプラットフォームの登録。
 - 宣言した範囲の run マニフェストへの記録。マニフェストは引き続き観測した OS を記録します。
 - Playwright が起動したもの以外のブラウザのバージョンやホスト OS を選ぶこと。
-- `runsOn`から`dispatch.requires`のタグを導くこと。対応づけは hosted の worker が能力をどう広告するかに依存し、この項目はそこを変えません。
+- `runsOn`から振り分けの要件を導くこと。`>=17 <19`のような範囲は、現在の振り分けが使う「すべてを含む」タグの照合では表せません。そのため導出は、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)が挙げる後続の項目に残します。
 
 ### 作業の分解
 
@@ -193,7 +206,8 @@ targets:
 9. **Web の要件の照合。** `browser.version`と`host.os`を照合します。
 10. **`doctor`。** 端末を解決できるとき、要件の食い違いを情報として報告します。
 11. **`bajutsu config schema`。**
-12. **文書。** `docs/configuration.md`、`docs/drivers.md`、`docs/cli.md`、`docs/architecture.md`、`DESIGN.md`、`docs/glossary.md`と、それぞれの`docs/ja/`版を更新します。
+12. **実行場所の移行。** target から`deviceProvider`、`cloudBatch`、`cloudBatchBudget`、`requires`を外します。serve の fan-out の要求と CLI に`environment`を足し、`worker.yaml`で`endpoint`つきの`appium`の environment を受け付けます。BE-0448 と BE-0450 と調整して進めます。
+13. **文書。** `docs/configuration.md`、`docs/drivers.md`、`docs/cli.md`、`docs/architecture.md`、`DESIGN.md`、`docs/glossary.md`と、それぞれの`docs/ja/`版を更新します。
 
 ## 検討した代替案
 
@@ -205,6 +219,7 @@ targets:
 | `driver: { kind: xcuitest \| adb \| playwright }`の判別共用体 | 現在はどのプラットフォームも actuator が1つで、2層目を設けても得るものがありません。2つ目の actuator を持つプラットフォームが出たら見直します |
 | core にプラットフォームのモデルの閉じた共用体を持たせる | バックエンドを足すたびに core のスキーマを編集することになり、バックエンドに依存しない設計と矛盾します |
 | 全プラットフォームで共通の`runsOn`の形 | iOS のブラウザや Web の AVD のように、どのプラットフォームも使えないフィールドが残り、flat な並びの問題が再び生じます |
+| `dispatch`（`deviceProvider`、`cloudBatch`）を target に残す | BE-0448 と BE-0450 が worker と実行の要求へ移す判断と重複し、どこで実行するかを target を書くチームに決めさせることになります |
 | `setup`と`before`を両方残す | 現行の挙動を保てますが、1つの用途を2つのキーが受け持ったままになります |
 | 食い違ったら合う端末を作る、または警告して続ける | 端末を作ると、ランタイムの導入、時間、後片付けを Bajutsu が負います。警告だけでは、誤った環境での結果が flakiness の履歴に入ります |
 | 範囲なしの前方一致 | `>=17 <19`のような互換の範囲を1行で書けません |
@@ -226,7 +241,8 @@ targets:
 - [ ] 作業単位 9: Web の要件の照合
 - [ ] 作業単位 10: `doctor`
 - [ ] 作業単位 11: `bajutsu config schema`
-- [ ] 作業単位 12: 文書
+- [ ] 作業単位 12: 実行場所の移行
+- [ ] 作業単位 13: 文書
 
 ## 参考
 
@@ -234,5 +250,6 @@ targets:
 - [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)：`DeviceOS`と、記録される`device_runtime`。
 - [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)と[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)：`runsOn`へ移る`deviceMode`と`browser`。
 - [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)：`hooks`が持つ`before`と`after`のフェーズ。
-- [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)：`dispatch.live`になる`deviceProvider`。
+- [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)：target から外れ、`worker.yaml`の`appium`の environment へ移る`deviceProvider`。
 - `bajutsu/common/config/schema/target_config.py`と`bajutsu/common/config/resolve.py`：この項目が置き換えるスキーマと解決処理。
+- [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)と[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)：どこで実行するかを引き受ける、worker capability のファイルと Device Farm の worker。

@@ -11,7 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Implementing PR | — |
 | Topic | Driver & backend architecture |
-| Related | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md), [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md), [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md), [BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md) |
+| Related | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md), [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md), [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md), [BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -22,10 +22,10 @@ Android alone, and `bundleId` and `xcuitest` by iOS alone. The schema does not k
 belong to which platform, and no key can state which device or operating system (OS) a target
 expects.
 
-This item replaces the flat list with twelve keys. Each key covers one purpose. For example, `app`
+This item replaces the flat list with eleven keys. Each key covers one purpose. For example, `app`
 covers the app under test, `runsOn` the device it runs on, and `driver` how Bajutsu drives it.
 The value of `platform` decides the shape of four of them — `app`, `runsOn`, `driver`, and `run`,
-which gains one field on iOS — and the other eight keep one shape across platforms. `runsOn` declares the device, OS, and browser a
+which gains one field on iOS — and the other seven keep one shape across platforms. `runsOn` declares the device, OS, and browser a
 target runs on. Before the first step, a run checks the declaration against the device it got and
 stops when the two disagree. The change drops backward compatibility on purpose: an old config
 fails to load and names the key it no longer accepts.
@@ -50,7 +50,8 @@ A scenario that fails on an unintended OS therefore surfaces after the run, not 
 result then lands in the flakiness history as noise.
 
 Settings for one purpose are scattered, too. Launching the app spans `launchEnv`, `launchArgs`,
-and `readyWhen`. Sourcing a device spans `deviceProvider`, `cloudBatch`, and `requires`. Steps that
+and `readyWhen`. Where a run happens spans `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, and `requires`, although
+that choice belongs to whoever operates the machines, not to the team that writes the target. Steps that
 run before every scenario come from two keys, `setup` and `before`, whose difference the docs keep
 explaining. Deciding the platform takes a precedence chain over `platform`, `backend`, and whichever
 identifier is present (`_effective_platform` in
@@ -63,7 +64,7 @@ device stops before its first step, printing the declared and the observed value
 
 ## Detailed design
 
-### The twelve keys
+### The eleven keys
 
 A target accepts these keys and no others.
 
@@ -73,7 +74,6 @@ A target accepts these keys and no others.
 | `app` | What is under test: identifier, how to obtain and launch it, readiness, and id contract | Yes |
 | `runsOn` | What the target runs on: device and OS requirements, browser, and locale | Yes |
 | `driver` | How Bajutsu drives the target | Yes |
-| `dispatch` | Where devices come from, and where runs are sent | No |
 | `services` | Which stand-in services the app talks to | No |
 | `run` | The policy of a run | iOS adds one field |
 | `hooks` | Steps that wrap every scenario | No |
@@ -97,7 +97,6 @@ targets:
       readyWhen: { id: home.title }
     runsOn:   { model: iPhone 15, os: ">=17 <19", kind: simulator, locale: en_US }
     driver:   { runner: { testRunner: build/Runner.xctestrun } }
-    dispatch: { live: { kind: local }, batch: { kind: devicefarm, budget: 2 } }
     run:      { erase: true, secrets: [LOGIN_PASSWORD], tipKitHandling: true }
     hooks:    { before: [{ use: login }] }
     paths:    { scenarios: demos/showcase/scenarios }
@@ -204,13 +203,36 @@ The comparison is deterministic and involves no model call, so it adds nothing t
 beyond one more machine check. Creating a matching device on demand, or warning and continuing,
 stays out of scope (see *Alternatives considered*).
 
+### Where a run happens
+
+A target no longer says where it runs. The target states what is under test, what it runs on, and
+how Bajutsu drives it. Where the run happens is a fact about the machines, which their operator
+knows. [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) draws the same line when it keeps the worker capability file, `worker.yaml`, out of
+`bajutsu.config.yaml`. Four of today's keys leave the target as a result:
+
+| Old key | Where it goes | Why |
+|---|---|---|
+| `cloudBatchBudget` | `maxJobConcurrency` in `worker.yaml` | [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md) already replaces it, because the worker that reserves the device counts the budget |
+| `requires` | removed | [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) abolishes free-form routing tokens; the worker advertises what its inventory has |
+| `cloudBatch` | an `environment` on the run request (the serve fan-out request, and the matching CLI option) | [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md) runs the same target locally or on Device Farm, so the destination is a choice per run, not a property of the target |
+| `deviceProvider` | an `appium` environment in `worker.yaml`, carrying the grid's `endpoint` | Which grid serves the devices is infrastructure, like a device cloud |
+
+Two changes outside this item's schema follow. The serve fan-out request gains an `environment`
+field, which feeds the `environment:<name>` routing of [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md). `worker.yaml` accepts `appium` as an
+environment with an `endpoint`, which widens [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md)'s environment vocabulary beyond batch providers.
+Unit 12 coordinates both with those items.
+
+`runsOn` also supplies what [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) leaves open. With `requires` gone, a job cannot require an iOS
+runtime or a device class until a later item derives that requirement from the target. `runsOn.os`
+and `runsOn.model` are the declarations that derivation reads.
+
 ### Defaults
 
 `defaults` holds a target's keys other than `platform`. The shared groups go directly under
 `defaults`. The platform-shaped groups (`app`, `runsOn`, `driver`, and the iOS field of `run`) go
 under `defaults.platforms.<platform>`, which applies to targets of that platform alone, so one file
 can hold defaults for several platforms at once. Dictionaries merge key by key, with the target
-winning. Lists replace, except `evidence.redact` and `dispatch.requires`, which keep today's union.
+winning. Lists replace, except `evidence.redact`, which keeps today's union.
 `ai` keeps today's field-by-field merge.
 
 The built-in `device: "iPhone 15"` default goes away. Kept as a `runsOn.model` default, the value
@@ -229,7 +251,7 @@ iPhone, as it does today.
 | `device`, `locale`, `xcuitest.deviceType` | `runsOn.model`, `runsOn.locale`, `runsOn.kind` |
 | `browser`, `deviceMode` | `runsOn.browser.engine`, `runsOn.emulate` (omitted means desktop) |
 | `headless`, `nativeZ`, `xcuitest.testRunner`, `xcuitest.build` | `driver.headless`, `driver.nativeZ`, `driver.runner.*` |
-| `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, `requires` | `dispatch.live`, `dispatch.batch.kind`, `dispatch.batch.budget`, `dispatch.requires` |
+| `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, `requires` | removed from the target (see *Where a run happens*) |
 | `mockServer`, `mailbox` | `services.*` |
 | `erase`, `network`, `visualCompare`, `secrets`, `systemAlertHandling`, `iosTipKitHandling` | `run.*` (the last as `run.tipKitHandling`) |
 | `setup`, `before`, `after`, `interrupts` | `hooks.before` (absorbing `setup`), `hooks.before`, `hooks.after`, `hooks.interrupts` |
@@ -248,8 +270,9 @@ the new dictionary.
 - Registering a platform from an external package through an entry point.
 - Recording the declared range in the run manifest, which keeps recording the observed OS.
 - Picking a browser version or host OS outside what Playwright launched.
-- Deriving `dispatch.requires` tags from `runsOn`; the mapping depends on how hosted workers
-  advertise capabilities, which this item does not change.
+- Deriving a routing requirement from `runsOn`. A range such as `>=17 <19` cannot be expressed by
+  the all-of token match that routing uses today, so the derivation stays with the later item that
+  {B450} names.
 
 ### Work breakdown
 
@@ -271,7 +294,10 @@ the new dictionary.
 9. **Web requirement check** for `browser.version` and `host.os`.
 10. **`doctor`.** Report requirement mismatches as information when a device resolves.
 11. **`bajutsu config schema`.**
-12. **Docs.** Update `docs/configuration.md`, `docs/drivers.md`, `docs/cli.md`,
+12. **Execution placement.** Remove `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, and
+    `requires` from the target; add `environment` to the serve fan-out request and the CLI; and accept
+    an `appium` environment with an `endpoint` in `worker.yaml`, coordinated with BE-0448 and BE-0450.
+13. **Docs.** Update `docs/configuration.md`, `docs/drivers.md`, `docs/cli.md`,
     `docs/architecture.md`, `DESIGN.md`, `docs/glossary.md`, and their `docs/ja/` mirrors.
 
 ## Alternatives considered
@@ -284,6 +310,7 @@ the new dictionary.
 | A `driver: { kind: xcuitest \| adb \| playwright }` union | Each platform has one actuator today, so a second layer buys nothing. Revisit if a platform gains a second actuator |
 | A closed union of platform models in the core | Every new backend would edit the core schema, which contradicts the backend-agnostic design |
 | One shared `runsOn` shape for all platforms | Leaves fields no platform can use — a browser on iOS, an AVD on the web — which recreates the flat-list problem |
+| Keep `dispatch` (`deviceProvider`, `cloudBatch`) in the target | Duplicates what BE-0448 and BE-0450 move onto the worker and the run request, and makes the target team decide where a run happens |
 | Keep both `setup` and `before` | Preserves today's behavior, at the cost of two keys serving one purpose |
 | Create a matching device on mismatch, or warn and continue | Creating a device makes Bajutsu own runtime installation, time, and cleanup. Warning lets results from the wrong environment into the flakiness history |
 | Prefix matching with no ranges | Cannot express a compatibility window such as `>=17 <19` on one line |
@@ -305,7 +332,8 @@ the new dictionary.
 - [ ] Unit 9: web requirement check
 - [ ] Unit 10: `doctor`
 - [ ] Unit 11: `bajutsu config schema`
-- [ ] Unit 12: docs
+- [ ] Unit 12: execution placement
+- [ ] Unit 13: docs
 
 ## References
 
@@ -313,5 +341,6 @@ the new dictionary.
 - [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md): `DeviceOS` and the recorded `device_runtime`.
 - [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md) and [BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md): `deviceMode` and `browser`, which move into `runsOn`.
 - [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md): the `before` and `after` phases that `hooks` holds.
-- [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md): `deviceProvider`, which becomes `dispatch.live`.
+- [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md): `deviceProvider`, which moves out of the target into an `appium` environment of `worker.yaml`.
 - `bajutsu/common/config/schema/target_config.py` and `bajutsu/common/config/resolve.py`: the schema and resolution this item replaces.
+- [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md) and [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md): the worker capability file and the Device Farm worker, which take over where a run happens.
