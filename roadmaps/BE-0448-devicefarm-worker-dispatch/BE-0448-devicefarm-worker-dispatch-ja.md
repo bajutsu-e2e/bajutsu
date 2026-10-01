@@ -117,6 +117,15 @@ lease のハートビートは待ちの間も動くので、150 分続く実行�
 
 worker は、実行のツリーを一時ディレクトリにダウンロードして取り込み、結果の送信と証跡のアップロードを、通常の worker の経路で行います。server は Device Farm の実行を自分で取り込まなくなります。worker capability の検査に通らないシナリオは、何かを投入する前に、同じ結果の経路で、名指しした理由を付けて送信します。
 
+### target の設定を再構成する項目との関係
+
+提案中の、target の設定を再構成する項目があります（slug `target-config-restructure`）。この項目は、どこで実行するかの選択を target から外します。この項目が入ると、本項目の次の2点が変わります。
+
+- **`cloudBatch` が target から外れます。** 再構成の項目は、Device Farm への送り先を実行の要求へ移します。serve の fan-out の要求と、対応するコマンドラインのオプションが、`environment` フィールドを持ちます。`Job.batch` を持つジョブは、`environment:<name>` を target ではなくこの要求から導きます。「ルーティング」のそれ以外の部分は変わりません。
+- **`cloudBatchBudget` には非推奨の期間がありません。** 再構成の項目は、target のスキーマ全体で後方互換を持ちません。新しいスキーマを出すリリースから、`cloudBatchBudget` は未知のキーとして読み込みに失敗します。作業単位5の非推奨の期間が意味を持つのは、本項目が先に入る場合です。
+
+後から入る項目が、先行する項目へ合わせます。この調整は、再構成の項目の「実行場所の移行」という作業単位が受け持ちます。
+
 ### 境界
 
 本項目は、server のプロセス内の投入（`_run_batch_job` と、server による `register_batch_providers` の呼び出し）を取り除きます。これは、server がジョブを実行しないようにする項目の `run-set` の段階です。本項目は、BE-0431 のアーティファクトの上書きも、`run-set` で拒否したままにします。各上書きを Device Farm の依頼に対応づける作業は、別の作業です。Device Farm のホスト、テストの仕様、`manifest.json` から判定を読む方法は変えません。コマンドの名前は `bajutsu serve` のままで、本項目は概念を server と呼びます。
@@ -176,3 +185,4 @@ worker は、実行のツリーを一時ディレクトリにダウンロード�
 - [BE-0413](../BE-0413-worker-app-binary-delivery/BE-0413-worker-app-binary-delivery-ja.md)：worker へのアプリのバイナリの受け渡し。
 - [BE-0432](../BE-0432-devicefarm-pretest-extension-hook/BE-0432-devicefarm-pretest-extension-hook-ja.md)：AWS のロールを囲む信頼の境界。
 - [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md)：worker の lease モデル。
+- target の設定を再構成する項目（slug `target-config-restructure`）：`cloudBatch` を実行の要求へ移します。また、新しい target のスキーマとともに `cloudBatchBudget` を取り除きます。

@@ -138,6 +138,29 @@ The check lands at two points, both on the worker, since the worker alone holds 
 
 The server keeps to routing. A driver that runs on a single host operating system adds the matching `host:<os>` token to the job's required set, and the routing test is an all-of subset check ([`serve/capabilities.py`](../../bajutsu/serve/capabilities.py)), so a driver that runs on several hosts adds no `host:` requirement. A worker that advertises an `environment:*` token serves only jobs that require it; the Device Farm dispatch item adds that rule to `can_serve`, and it also builds the cloud job's required set. A job that carries a cloud request (`Job.batch`) is the exception: it requires exactly `environment:<name>`, with no `platform:*` and no `host:*` token, since the device and its host belong to the provider. A job without a cloud request, even from a target that sets `cloudBatch`, keeps its local requirement. A job that no connected worker matches keeps waiting as in BE-0166, because the worker fleet changes over time and a refusal against the current fleet would reject valid jobs during start-up.
 
+### Interaction with the target-config restructure item
+
+The proposed target-config restructure item has the slug `target-config-restructure`. It takes
+the choice of where a run happens out of the target, and it relies on this item instead. If it
+lands, it touches four parts of this item.
+
+- **`environment` accepts `appium`.** The restructure moves the target's `deviceProvider` into
+  `worker.yaml`. It becomes an `appium` environment that carries the grid's `endpoint`. The
+  vocabulary of `environment` then reaches beyond batch-provider kinds. The loader accepts `appium`
+  with a required `endpoint`, and refuses `endpoint` on any other environment. An `appium` worker
+  drives a remote device. That coordination decides how the host rule applies to it, and which
+  `platform:*` tokens it advertises.
+- **The runtime and device-class source moves.** This item keeps `requires` for now.
+  It waits for a later item to derive the iOS runtime and device class from the target's `device`.
+  The restructure replaces that field with `runsOn.model` and `runsOn.os`. `runsOn.os` takes a
+  version range. The later
+  derivation reads those two fields.
+- **`requires` goes earlier.** The restructure drops `requires` with no deprecation release.
+  The key disappears with the new target schema. If the restructure lands before the derivation, a job cannot ask for an iOS
+  runtime or a device class in the meantime. This item keeps `requires` to avoid that gap.
+- **The host stays a fact about the machine.** The restructure weighed a target-side
+  `runsOn.host.os` and dropped it. `host:<os>` stays the single host constraint.
+
 ### Boundaries
 
 The item is a decision about *runnability*, not about capability of a step, so the existing token gates stay as they are. It adds no skipped status: an unrunnable scenario is a failure, since a silent skip would let a misconfigured worker report green. It does not probe Device Farm quota; the target limit is a fact the operator states, and quota stays the concern of the job-concurrency budget of the Device Farm dispatch item. The server does not check a job against the workers' limits at dispatch. The worker fails such a job at lease, and a later item can have workers advertise their limits so that the server refuses earlier. Deriving an iOS runtime or device-class requirement from the target's `device`, now that `requires` is gone, is likewise a later item. The server adds `host:<os>` to a job whose driver runs on one host only, so workers should be upgraded before the server.
@@ -193,3 +216,4 @@ The item is a decision about *runnability*, not about capability of a step, so t
 - [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md): Device Farm dispatch and the device budget.
 - [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md): multi-target scenarios and the device pool rule.
 - [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md): device-cloud providers.
+- `target-config-restructure` (the target-config restructure item): adds an `appium` environment to `worker.yaml`. It replaces the target's `device` with `runsOn.model` and `runsOn.os`. It also drops `requires` with the new target schema.

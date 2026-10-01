@@ -138,6 +138,15 @@ worker が広告するのは、次の情報源の和集合です。`--platform` 
 
 server は、ルーティングにとどまります。単一のホスト OS だけで動くドライバーは、対応する `host:<os>` トークンをジョブの必須集合に加えます。ルーティングの判定は全要素を要求する部分集合の検査（[`serve/capabilities.py`](../../bajutsu/serve/capabilities.py)）なので、複数のホストで動くドライバーは `host:` 要件を加えません。`environment:*` トークンを広告する worker は、それを要求するジョブだけを担当します。この規則は Device Farm の投入の項目が `can_serve` に加え、クラウドのジョブの必須集合もそちらが作ります。クラウドへの依頼（`Job.batch`）を持つジョブは例外で、`environment:<name>` だけを要求し、`platform:*` も `host:*` も要求しません。端末とそのホストは、プロバイダーのものだからです。クラウドへの依頼を持たないジョブは、`cloudBatch` を設定した target のものでも、ローカルの要求のままです。接続中のどの worker にも合致しないジョブは、BE-0166 と同じく待機します。worker の構成は時間とともに変わるため、worker がまだ揃っていない起動直後に現在の構成で拒否すると、有効なジョブまで拒否してしまうからです。
 
+### target の設定を再構成する項目との関係
+
+提案中の、target の設定を再構成する項目があります（slug `target-config-restructure`）。この項目は、どこで実行するかの選択を target から外し、その受け皿を本項目に求めます。この項目が入ると、本項目の次の4点に影響します。
+
+- **`environment` が `appium` を受け付けます。** 再構成の項目は、target の `deviceProvider` を `worker.yaml` へ移します。移った先は、グリッドの `endpoint` を持つ `appium` という environment です。これで `environment` の語彙は、batch provider の種類の外へ広がります。ローダーは `endpoint` を必須として `appium` を受け付け、ほかの environment では `endpoint` を拒否します。`appium` の worker はリモートの端末を駆動します。ホストの規則の当てはめ方と、広告する `platform:*` トークンは、その調整の中で決めます。
+- **ランタイムと端末の種類の出どころが変わります。** 本項目は、後続の項目が target の `device` から iOS のランタイムと端末の種類を導くまで、`requires` を残します。再構成の項目は、このフィールドを `runsOn.model` と `runsOn.os` に置き換えます。`runsOn.os` は版の範囲をとります。後続の導出が読むのは、この2つのフィールドです。
+- **`requires` が早く消えます。** 再構成の項目は、非推奨のリリースを置かずに、新しい target のスキーマとともに `requires` を取り除きます。再構成が導出より先に入ると、その間ジョブは iOS のランタイムや端末の種類を要件にできません。本項目が `requires` を残すのは、この空白を避けるためです。
+- **ホストはマシンの事実のままです。** 再構成の項目は、target 側の `runsOn.host.os` を検討して取り下げました。ホストの制約は `host:<os>` だけのままです。
+
 ### 境界
 
 本項目が決めるのは、ステップの capability ではなく実行可否です。したがって既存のトークンによる判定は変えません。skipped という状態も足しません。実行できないシナリオは失敗として扱います。黙ってスキップすると、設定を誤った worker が緑のまま報告されてしまうからです。Device Farm のクォータも調べません。target の上限は運用者が述べる事実であり、クォータは Device Farm の dispatch の項目のジョブ同時実行の予算が引き続き扱います。server は、dispatch のときに、worker の上限に対してジョブを検査しません。worker が lease のときにそのようなジョブを失敗させます。worker が自分の上限を広告して、server がより早く拒否できるようにする作業は、後の項目で行えます。`requires` がなくなったあと、target の `device` から iOS の runtime や機種の要求を導く作業も、後の項目です。server は、単一のホスト OS でしか動かないドライバーのジョブに `host:<os>` を加えるので、server より先に worker を更新します。
@@ -193,3 +202,4 @@ server は、ルーティングにとどまります。単一のホスト OS だ
 - [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md)：Device Farm の dispatch とデバイス予算。
 - [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md)：複数 target のシナリオとデバイスプールの規則。
 - [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)：デバイスクラウドのプロバイダー。
+- target の設定を再構成する項目（slug `target-config-restructure`）：`worker.yaml` に `appium` の environment を加えます。また、target の `device` を `runsOn.model` と `runsOn.os` に置き換え、新しい target のスキーマとともに `requires` を取り除きます。
