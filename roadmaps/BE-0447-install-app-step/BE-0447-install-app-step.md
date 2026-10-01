@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
-| Implementing PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) (unit 1), [#2110](https://github.com/bajutsu-e2e/bajutsu/pull/2110) (unit 2), [#2111](https://github.com/bajutsu-e2e/bajutsu/pull/2111) (unit 3), [#2112](https://github.com/bajutsu-e2e/bajutsu/pull/2112) (unit 4) |
+| Implementing PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) (unit 1), [#2110](https://github.com/bajutsu-e2e/bajutsu/pull/2110) (unit 2), [#2111](https://github.com/bajutsu-e2e/bajutsu/pull/2111) (unit 3), [#2112](https://github.com/bajutsu-e2e/bajutsu/pull/2112) (unit 4), [#2113](https://github.com/bajutsu-e2e/bajutsu/pull/2113) (unit 7) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -612,7 +612,7 @@ Log:
   `before` and the top-level steps in order, it refuses a `setPrimaryTarget` that names a member an
   earlier `installApp` retired. Each build is checked once for the whole run. `Effective.app_identifier` names the identifier both this
   check and the runner's retirement read.
-- Unit 7. A web target in a device group is already refused before any device is leased, by unit
+- [#2113](https://github.com/bajutsu-e2e/bajutsu/pull/2113) — Unit 7. A web target in a device group is already refused before any device is leased, by unit
   4's preflight and by the `deviceGroup` capability web never advertises. A device provider that
   hands its device over with the app preinstalled now refuses a group on it, once the device is
   reserved and inside the region that releases every reservation: the provider holds the binary,

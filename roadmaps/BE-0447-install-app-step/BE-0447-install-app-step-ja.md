@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
-| 実装 PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)（単位 1）、[#2110](https://github.com/bajutsu-e2e/bajutsu/pull/2110)（単位 2）、[#2111](https://github.com/bajutsu-e2e/bajutsu/pull/2111)（単位 3）、[#2112](https://github.com/bajutsu-e2e/bajutsu/pull/2112)（単位 4） |
+| 実装 PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)（単位 1）、[#2110](https://github.com/bajutsu-e2e/bajutsu/pull/2110)（単位 2）、[#2111](https://github.com/bajutsu-e2e/bajutsu/pull/2111)（単位 3）、[#2112](https://github.com/bajutsu-e2e/bajutsu/pull/2112)（単位 4）、[#2113](https://github.com/bajutsu-e2e/bajutsu/pull/2113)（単位 7） |
 | トピック | シナリオの記述機能 |
 <!-- /BE-METADATA -->
 
@@ -356,7 +356,7 @@ flowchart TD
   config にあるからです。`before` とトップレベルのステップを順にたどり、それより前の `installApp`
   が退役させたメンバーを指す `setPrimaryTarget` を拒否します。各ビルドの検査は、実行全体で 1 回です。この検査と runner の
   退役の判定は、どちらも `Effective.app_identifier` から識別子を読みます。
-- 単位 7。デバイスグループの web ターゲットは、すでにデバイスをリースする前に拒否されます。単位 4 の
+- [#2113](https://github.com/bajutsu-e2e/bajutsu/pull/2113)：単位 7。デバイスグループの web ターゲットは、すでにデバイスをリースする前に拒否されます。単位 4 の
   事前検査と、web が持たない `deviceGroup` capability の両方が止めるからです。アプリを
   インストール済みの状態でデバイスを渡すデバイスプロバイダーでは、グループを拒否するようにしました。
   プロバイダーがバイナリを持っているので、隣に入れるローカルのビルドがないためです。この検査は
