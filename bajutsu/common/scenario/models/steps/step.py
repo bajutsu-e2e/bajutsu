@@ -138,8 +138,9 @@ class Step(_Model):
     # the one-action rule; allowed on every step but `use`, control-flow included.
     from_: str | None = Field(default=None, alias="from")
     # Which of the enclosing scenario's `targets` this step runs against (BE-0428). A modifier, not
-    # an action, like `from_` above — required or optional depending on `len(scenario.targets)`, a
-    # rule `Step` itself cannot enforce since it cannot see the enclosing scenario
+    # an action, like `from_` above — required or optional depending on how many names
+    # `scenario.target_names` holds, a rule `Step` itself cannot enforce since it cannot see the
+    # enclosing scenario
     # (`_check_target_requirements` does, from `Scenario`'s own validator).
     target: str | None = None
     # Report-internal: which `group` (and which occurrence of it) `expand()` pulled this step out
