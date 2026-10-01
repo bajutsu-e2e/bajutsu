@@ -142,7 +142,7 @@ The server keeps to routing. A driver that runs on a single host operating syste
 
 The proposed target-config restructure item has the slug `target-config-restructure`. It takes
 the choice of where a run happens out of the target, and it relies on this item instead. If it
-lands, it touches four parts of this item.
+lands, it touches five parts of this item.
 
 - **`environment` accepts `appium`.** The restructure moves the target's `deviceProvider` into
   `worker.yaml`. It becomes an `appium` environment that carries the grid's `endpoint`. The
@@ -158,6 +158,12 @@ lands, it touches four parts of this item.
 - **`requires` goes earlier.** The restructure drops `requires` with no deprecation release.
   The key disappears with the new target schema. If the restructure lands before the derivation, a job cannot ask for an iOS
   runtime or a device class in the meantime. This item keeps `requires` to avoid that gap.
+- **A not-applicable status appears.** A scenario can state its own `runsOn`, and a scenario that
+  no available device meets is recorded as not applicable instead of being run. This item's
+  *Boundaries* rejects a skipped status, because a misconfigured worker would skip everything and
+  still pass. The restructure answers that with a guard: a run whose every scenario is not applicable
+  exits non-zero. The worker capability check keeps failing a scenario the worker cannot run, so the
+  two statuses stay apart.
 - **The host stays a fact about the machine.** The restructure weighed a target-side
   `runsOn.host.os` and dropped it. `host:<os>` stays the single host constraint.
 

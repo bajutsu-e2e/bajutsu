@@ -18,7 +18,7 @@
 
 現在、target の設定（`targets.<name>`）は、約50個のキーを1階層に並べています。`browser`と`deviceMode`は Web 専用、`nativeZ`は Android 専用、`bundleId`と`xcuitest`は iOS 専用のキーですが、これらも同じ階層に並んでいます。しかしスキーマは、キーとプラットフォームの対応を持っていません。また、target が想定する端末とオペレーティングシステム（OS）を書くキーもありません。
 
-この項目では、1階層の並びを11個のキーに置き換えます。各キーが受け持つ用途は1つだけです。たとえば`app`はテスト対象のアプリを、`runsOn`は動かす端末を、`driver`は Bajutsu の駆動方法を受け持ちます。11個のうち`app`、`runsOn`、`driver`、`run`の4つは、`platform`の値によって形が変わります（`run`は iOS で1項目増えます）。残りの7つは、どのプラットフォームでも同じ形です。`runsOn`には、target を動かす端末、OS、ブラウザを書きます。run は最初のステップの前に、`runsOn`の宣言と実際に割り当てられた端末を照らし合わせ、食い違えば止まります。後方互換は意図して持ちません。旧形式の設定は読み込み時に失敗し、エラーには受け付けなくなったキーの名前が出ます。
+この項目では、1階層の並びを11個のキーに置き換えます。各キーが受け持つ用途は1つだけです。たとえば`app`はテスト対象のアプリを、`runsOn`は動かす端末を、`driver`は Bajutsu の駆動方法を受け持ちます。11個のうち`app`、`runsOn`、`driver`、`run`の4つは、`platform`の値によって形が変わります（`run`は iOS で1項目増えます）。残りの7つは、どのプラットフォームでも同じ形です。`runsOn`には、target を実施する環境（端末、OS、ブラウザ）を書きます。シナリオも`preconditions`の下に自分の`runsOn`を書け、シナリオの値が target の値より優先されます。Bajutsu は、手元の端末のうち、合わせた条件を満たす端末で各シナリオを走らせます。条件を満たす端末がないシナリオは、走らせずに「対象外」として記録します。後方互換は意図して持ちません。旧形式の設定は読み込み時に失敗し、エラーには受け付けなくなったキーの名前が出ます。
 
 ## 動機
 
@@ -28,12 +28,14 @@ target に別のプラットフォームのキーを書いても、設定はエ�
 
 target を動かす環境を指定するキーもありません。iOS のバージョンは、`--udid`で選んだ Simulator によって決まります。Android の application programming interface（API）レベルは、adb のシリアルで選んだ端末によって決まります。`device`が効くのは、実行中に消えた Simulator の代わりを作る場面だけです。run は、実際に動いた OS を`device_runtime`として記録します（[BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact-ja.md)）。そのため、シナリオが想定外の OS で落ちても、気づくのは実行後です。しかもその失敗は、flakiness の履歴に雑音として混ざります。
 
+シナリオの側にも、どこで実施するかを書く手段がありません。たとえば、iOS 18 の機能を試すシナリオや、iPad にしかない画面のシナリオです。これらを他の端末で走らせないようにするには、現在は target を`showcase-iphone`と`showcase-ipad`に分けるか、シナリオの一覧を手で分けて管理するしかありません。iOS 17 と iOS 18 で同じ一式を回すときも、回すたびにシナリオを選び直すことになります。
+
 同じ用途の設定が、複数のキーに散らばってもいます。アプリの起動に関わる設定は`launchEnv`、`launchArgs`、`readyWhen`の3つです。どこで実行するかに関わる設定は`deviceProvider`、`cloudBatch`、`cloudBatchBudget`、`requires`の4つです。しかも、どこで実行するかは target を書くチームではなく、マシンを運用する人が決めることです。全シナリオの前に走る手順は`setup`と`before`のどちらでも書けてしまい、文書は両者の違いを説明し続けています。プラットフォームの判定も複雑です。[`resolve.py`](../../bajutsu/common/config/resolve.py)の`_effective_platform`は、`platform`、`backend`、識別子の有無を優先順位の順に調べて、プラットフォームを推論します。Flutter のようなバックエンドを足すと、1階層のキーも推論の分岐も増えます。
 
 この項目の実装後は、次の2点で効果を確かめられます。
 
 - 別のプラットフォームのキーを書くと、設定の読み込み時に失敗します。エラーには、そのプラットフォームで使えるフィールドの一覧が出ます。
-- `runsOn`と割り当てられた端末が食い違うと、target は最初のステップの前に止まります。エラーには、宣言した値と観測した値が並びます。
+- iOS 17 と iOS 18 が混ざった端末群で一式を回すと、各シナリオは自分の`runsOn`が許す端末で走ります。許す端末がないシナリオは「対象外」と報告され、満たせなかった条件が示されます。
 
 ## 詳細設計
 
@@ -125,21 +127,62 @@ targets:
 
 `bajutsu config schema`は、レジストリから生成した JavaScript Object Notation（JSON）Schema を出力します。`platform`を`oneOf`の判別子にするので、エディタはプラットフォームごとにキーを補完できます。
 
-### `runsOn`と端末の照合
+### シナリオ自身の`runsOn`
 
-`runsOn`は要件を宣言するだけで、端末を作りません。環境が端末またはブラウザを解決したあと、最初のステップの前に、run は宣言した値を観測した値と比べます。
+シナリオは、自分の条件を`preconditions.runsOn`の下に、プラットフォームごとに書きます。各ブロックは target と同じ登録済みの`runsOn`モデルで検証するため、フィールド名の書き間違いは読み込み時に失敗します。
 
-| 宣言 | 観測元 | 比較 |
+```yaml
+# iPad にしかない画面のシナリオ
+preconditions:
+  runsOn:
+    ios: { model: "iPad Pro 13-inch (M4)", os: ">=18" }
+```
+
+```yaml
+# iOS の target と Android の target の両方で回すシナリオ
+preconditions:
+  runsOn:
+    ios:     { os: ">=18" }
+    android: { apiLevel: ">=34" }
+```
+
+```yaml
+# 複数 target のシナリオ（showcase は iOS、site は Web）
+targets: [showcase, site]
+preconditions:
+  runsOn:
+    ios: { os: ">=18" }
+    web: { browser: { version: ">=120" } }
+```
+
+シナリオが動かす target ごとに、有効な`runsOn`は target の`runsOn`から始まります。そこへ、その target のプラットフォームに対応するシナリオのブロックを、フィールド単位で上書きします。つまりシナリオの値が勝ちます。run が動かさないプラットフォームのブロックは効果を持たないので、1つのシナリオで複数のプラットフォームに対応できます。同じプラットフォームの target 2つを別の端末で動かす場合、両者は同じブロックを共有します。別々の条件が要るなら、シナリオを2つに分けます。
+
+シナリオのブロックが受け付けるのは、条件のフィールド（`model`、`os`、`avd`、`apiLevel`、`browser.version`）と`locale`です。`locale`は現在の`preconditions.locale`を置き換えるもので、target とシナリオの両方で同じ場所に置くことになります。`kind`、`browser.engine`、`emulate`は target に残します。[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)は、端末モードを target をどう駆動するかの性質としています。両方の見た目が要るシナリオは、2つの target で回します。
+
+### シナリオを走らせる端末の選び方
+
+`runsOn`は、シナリオを実施する環境を表します。端末を作ることはありません。Bajutsu は手元の端末を1台ずつ読みます。手元の端末とは、`--udid`の端末群の各 udid と、Web のレーンが起動したブラウザです。そのうえで、各端末をシナリオの有効な`runsOn`と比べます。
+
+| 条件 | 読み取り元 | 比較 |
 |---|---|---|
 | iOS の`runsOn.os` | Simulator の runtime ラベルを`DeviceOS`で解析した値 | `major.minor`での範囲 |
-| iOS の`runsOn.model` | 選ばれた udid の simctl のデバイスタイプ名 | 完全一致 |
+| iOS の`runsOn.model` | その udid の simctl のデバイスタイプ名 | 完全一致 |
 | Android の`runsOn.apiLevel` | `ro.build.version.sdk` | 整数の範囲 |
 | Android の`runsOn.avd` | エミュレータの Android Virtual Device（AVD）名 | 完全一致。実機は一致しない |
 | Web の`runsOn.browser.version` | Playwright の`browser.version` | 範囲 |
 
-範囲は比較子の論理積で書きます。比較子は`>=`、`>`、`<=`、`<`、`==`、または演算子のない裸の版です。裸の`18`は18.x のどのリリースにも一致します。`==`は0で埋めてから比べるので、`==18`が一致するのは18.0だけです。18.x 全体に一致させるには裸の形を使います。範囲の解析と比較は、新しい`bajutsu/common/devices/version.py`の`VersionSpec`が担います。`DeviceOS`は意図して比較演算子を持たないままにします。この項目が足すのは宣言の照合であり、OS ごとの分岐ではないためです。食い違いは`DeviceError`（[BE-0260](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation-ja.md)）の新しいサブクラス`RunsOnRequirementError`として送出します。そのため`run`は、端末が見つからないときと同じ経路で非ゼロ終了します。`bajutsu doctor`は、端末を解決できるときに同じ照合をして、結果を情報として示します。
+runner は、各シナリオに条件を満たす端末を割り当てます。端末群を順にたどるので、割り当ては決定的です。条件を満たす端末がないシナリオは走らせません。run はそのシナリオを新しい「**対象外**」（not applicable）の状態で記録し、満たせなかったフィールドと、見た端末を理由として示します。
 
-照合は決定的で、モデルの呼び出しを含みません。判定の経路に加わるのは機械的な検査が1つ増えることだけです。合う端末をその場で作ることと、警告して続けることは範囲外です（「検討した代替案」を参照）。
+```
+not applicable: showcase/ipad-split-view
+  runsOn.ios.model  "iPad Pro 13-inch (M4)"  available: "iPhone 15" (5A3F...), "iPhone 16" (7B21...)
+```
+
+対象外のシナリオは、成功でも失敗でもありません。report では別に並べ、flakiness の履歴からは除きます。選んだシナリオがすべて対象外のときは、「何も走らなかった」として run を非ゼロで終了します。空の実行が緑になることはありません。[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)は、設定を誤った worker がすべてを飛ばしても成功に見えることを理由に、スキップの状態を退けています。この終了の規則が、その懸念に応えます。`bajutsu doctor`は、シナリオごとに条件を満たす手元の端末を一覧にします。
+
+範囲は比較子の論理積で書きます。比較子は`>=`、`>`、`<=`、`<`、`==`、または演算子のない裸の版です。裸の`18`は18.x のどのリリースにも一致します。`==`は0で埋めてから比べるので、`==18`が一致するのは18.0だけです。18.x 全体に一致させるには裸の形を使います。範囲の解析と比較は、新しい`bajutsu/common/devices/version.py`の`VersionSpec`が担います。`DeviceOS`は意図して比較演算子を持たないままにします。この項目は宣言で端末を選ぶだけで、OS ごとの分岐を足さないためです。
+
+比較と割り当ては決定的で、モデルの呼び出しを含みません。合う端末をその場で作ることは範囲外です（「検討した代替案」を参照）。
 
 ### どこで実行するか
 
@@ -154,7 +197,7 @@ target は、どこで実行するかを持たなくなります。target が書
 
 この項目のスキーマの外にも、2つの変更が要ります。serve の fan-out の要求に`environment`フィールドを足し、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)の`environment:<name>`による振り分けにつなぎます。また、`worker.yaml`が`appium`を`endpoint`つきの environment として受け付けるようにします。これは[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)の environment の語彙を、batch provider の外へ広げる変更です。どちらも、作業単位12で両項目と調整します。
 
-`runsOn`は、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)が残した穴も埋めます。`requires`がなくなると、後続の項目が target から要件を導くまで、ジョブは iOS のランタイムや端末の種類を要件にできません。その導出が読む宣言が、`runsOn.os`と`runsOn.model`です。
+`runsOn`は、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)が残した穴も埋めます。`requires`がなくなると、後続の項目が target から要件を導くまで、ジョブは iOS のランタイムや端末の種類を要件にできません。その導出が読むのは、各シナリオの有効な`runsOn`です。有効な`runsOn`は、target とシナリオの`os`と`model`を合わせたものです。
 
 ### defaults
 
@@ -178,6 +221,7 @@ target は、どこで実行するかを持たなくなります。target が書
 | `erase`、`network`、`visualCompare`、`secrets`、`systemAlertHandling`、`iosTipKitHandling` | `run.*`（最後は`run.tipKitHandling`） |
 | `setup`、`before`、`after`、`interrupts` | `hooks.before`（`setup`を吸収）、`hooks.before`、`hooks.after`、`hooks.interrupts` |
 | `capture`、`redact` | `evidence.*` |
+| シナリオの`preconditions.locale` | シナリオの`preconditions.runsOn.<platform>.locale` |
 | `scenarios`、`baselines`、`schemas`、`goldens` | `paths.*` |
 | `defaults.reservedNamespaces`、`defaults.doctor` | トップレベルの`reservedNamespaces`と`doctor`。どちらも target ごとではなくチーム全体の値なので、`defaults`には置かない |
 
@@ -201,10 +245,10 @@ target は、どこで実行するかを持たなくなります。target が書
 4. **スキーマの切り替え。** `TargetConfig`、`Defaults`、`Config`、`resolve`を置き換え、テストの固定データと`demos/`の設定ファイル10個を1つの変更で変換します。切り替えを分けると、読み込み側と全設定ファイルが同時に壊れるので、コミットの間でゲートが赤になります。
 5. **`setup`の`hooks.before`への統合。** runner から`setup`の経路を取り除きます。
 6. **コマンドラインインターフェイス（CLI）。** `--backend`は、`platform`と食い違えば終了コード2で終わる検査になります。`--browser`と`--headed`は、`runsOn.browser.engine`と`driver.headless`を上書きします。
-7. **iOS の要件の照合。** `os`と`model`を照合し、`RunsOnRequirementError`を追加します。
-8. **Android の要件の照合。** `apiLevel`と`avd`を照合します。
-9. **Web の要件の照合。** `browser.version`を照合します。
-10. **`doctor`。** 端末を解決できるとき、要件の食い違いを情報として報告します。
+7. **シナリオの`runsOn`。** プラットフォームごとに分けた`preconditions.runsOn`を足し、登録済みのモデルで検証します。`preconditions.locale`をその中へ移し、target の`runsOn`の上に重ねます。
+8. **端末の読み取り。** 手元の各端末から、機種と OS（iOS）、API レベルと AVD 名（Android）、ブラウザのバージョン（Web）を読みます。
+9. **割り当てと「対象外」の状態。** 有効な`runsOn`を満たす端末を各シナリオに割り当てます。対象外を理由つきで記録し、flakiness の履歴から除き、何も走らなかったときは非ゼロで終了します。
+10. **`doctor`。** シナリオごとに、条件を満たす手元の端末を一覧にします。
 11. **`bajutsu config schema`。**
 12. **実行場所の移行。** target から`deviceProvider`、`cloudBatch`、`cloudBatchBudget`、`requires`を外します。serve の fan-out の要求と CLI に`environment`を足し、`worker.yaml`で`endpoint`つきの`appium`の environment を受け付けます。BE-0448 と BE-0450 と調整して進めます。
 13. **文書。** `docs/configuration.md`、`docs/drivers.md`、`docs/cli.md`、`docs/architecture.md`、`DESIGN.md`、`docs/glossary.md`と、それぞれの`docs/ja/`版を更新します。
@@ -221,7 +265,10 @@ target は、どこで実行するかを持たなくなります。target が書
 | 全プラットフォームで共通の`runsOn`の形 | iOS のブラウザや Web の AVD のように、どのプラットフォームも使えないフィールドが残り、flat な並びの問題が再び生じます |
 | `dispatch`（`deviceProvider`、`cloudBatch`）を target に残す | BE-0448 と BE-0450 が worker と実行の要求へ移す判断と重複し、どこで実行するかを target を書くチームに決めさせることになります |
 | `setup`と`before`を両方残す | 現行の挙動を保てますが、1つの用途を2つのキーが受け持ったままになります |
-| 食い違ったら合う端末を作る、または警告して続ける | 端末を作ると、ランタイムの導入、時間、後片付けを Bajutsu が負います。警告だけでは、誤った環境での結果が flakiness の履歴に入ります |
+| 端末が合わなければ run を失敗させる | 複数の OS で同じ一式を回すと、OS 専用のシナリオが、対象でない OS の側で毎回失敗します |
+| 合う端末をその場で作る | ランタイムの導入、時間、後片付けを Bajutsu が負います |
+| シナリオの条件を target 名で分ける | `targets`を宣言するかどうかでキーの形が変わります。また、iOS の target と Android の target の両方で回すシナリオでは、両方の条件を書けません |
+| シナリオの条件のフィールドを平たく並べる | どのフィールドがどのプラットフォームに効くかがファイルから読めず、flat な設定の「書いたのに効かない」問題が戻ります |
 | 範囲なしの前方一致 | `>=17 <19`のような互換の範囲を1行で書けません |
 
 ## 進捗
@@ -236,9 +283,9 @@ target は、どこで実行するかを持たなくなります。target が書
 - [ ] 作業単位 4: スキーマの切り替え、固定データ、`demos/`の設定ファイル
 - [ ] 作業単位 5: `setup`の`hooks.before`への統合
 - [ ] 作業単位 6: CLI
-- [ ] 作業単位 7: iOS の要件の照合
-- [ ] 作業単位 8: Android の要件の照合
-- [ ] 作業単位 9: Web の要件の照合
+- [ ] 作業単位 7: シナリオの`runsOn`
+- [ ] 作業単位 8: 端末の読み取り
+- [ ] 作業単位 9: 割り当てと「対象外」の状態
 - [ ] 作業単位 10: `doctor`
 - [ ] 作業単位 11: `bajutsu config schema`
 - [ ] 作業単位 12: 実行場所の移行

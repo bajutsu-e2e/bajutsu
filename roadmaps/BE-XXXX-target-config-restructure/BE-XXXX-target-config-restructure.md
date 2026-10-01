@@ -25,9 +25,11 @@ expects.
 This item replaces the flat list with eleven keys. Each key covers one purpose. For example, `app`
 covers the app under test, `runsOn` the device it runs on, and `driver` how Bajutsu drives it.
 The value of `platform` decides the shape of four of them — `app`, `runsOn`, `driver`, and `run`,
-which gains one field on iOS — and the other seven keep one shape across platforms. `runsOn` declares the device, OS, and browser a
-target runs on. Before the first step, a run checks the declaration against the device it got and
-stops when the two disagree. The change drops backward compatibility on purpose: an old config
+which gains one field on iOS — and the other seven keep one shape across platforms. `runsOn` states the environments a target runs in:
+device, OS, and browser. A scenario can state its own `runsOn` under `preconditions`, and the
+scenario's value takes precedence over the target's. Bajutsu runs each scenario on an available
+device that meets the merged conditions. A scenario that no available device meets is recorded as
+not applicable instead of being run. The change drops backward compatibility on purpose: an old config
 fails to load and names the key it no longer accepts.
 
 ## Motivation
@@ -49,6 +51,11 @@ creating a replacement for a Simulator that vanished mid-run. A run records the 
 A scenario that fails on an unintended OS therefore surfaces after the run, not before it, and the
 result then lands in the flakiness history as noise.
 
+Nor can a scenario say where it applies. Take a scenario that exercises an iOS 18 feature, or a
+screen that exists on iPad alone. Today the way to keep it off other devices is to split the target
+into `showcase-iphone` and `showcase-ipad`, or to keep separate scenario lists by hand. Running one
+suite across iOS 17 and iOS 18 then means choosing the scenarios for each run.
+
 Settings for one purpose are scattered, too. Launching the app spans `launchEnv`, `launchArgs`,
 and `readyWhen`. Where a run happens spans `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, and `requires`, although
 that choice belongs to whoever operates the machines, not to the team that writes the target. Steps that
@@ -59,8 +66,9 @@ identifier is present (`_effective_platform` in
 more flat keys and another branch in that chain.
 
 Once this item ships, a reader can check two outcomes. A key written under the wrong platform fails
-at config load, naming the platform's own fields. A target whose `runsOn` does not match the chosen
-device stops before its first step, printing the declared and the observed values side by side.
+at config load, naming the platform's own fields. A suite run over a device pool that
+mixes iOS 17 and iOS 18 puts each scenario on a device its `runsOn` allows. A scenario with no
+allowed device is reported as not applicable, with the unmet condition named.
 
 ## Detailed design
 
@@ -175,32 +183,88 @@ field.
 `bajutsu config schema` prints a JavaScript Object Notation (JSON) Schema generated from the registry, with `platform` as the
 discriminator of a `oneOf`, so an editor can complete keys per platform.
 
-### Checking `runsOn` against the device
+### A scenario's own `runsOn`
 
-`runsOn` declares requirements. It never creates a device. After the environment resolves a device
-or browser, and before the first step, the run compares each declared value with an observed one:
+A scenario declares its own conditions under `preconditions.runsOn`, keyed by platform. Each block
+goes through the same registered `runsOn` model as the target's, so a misspelled field fails at
+load.
 
-| Declared | Observed from | Comparison |
+```yaml
+# a scenario for a screen that iPad alone has
+preconditions:
+  runsOn:
+    ios: { model: "iPad Pro 13-inch (M4)", os: ">=18" }
+```
+
+```yaml
+# one scenario run against an iOS target and against an Android target
+preconditions:
+  runsOn:
+    ios:     { os: ">=18" }
+    android: { apiLevel: ">=34" }
+```
+
+```yaml
+# a multi-target scenario: showcase runs on iOS, site on the web
+targets: [showcase, site]
+preconditions:
+  runsOn:
+    ios: { os: ">=18" }
+    web: { browser: { version: ">=120" } }
+```
+
+For each target a scenario drives, the effective `runsOn` starts from the target's `runsOn`. The
+scenario's block for that target's platform then overrides it field by field, so the scenario wins.
+A block for a platform the run does not drive has no effect, which lets one scenario serve several
+platforms. Two targets of one platform on different devices share the block; a scenario that needs
+different conditions for them splits into two scenarios.
+
+A scenario block accepts the condition fields (`model`, `os`, `avd`, `apiLevel`, and
+`browser.version`) and `locale`. `locale` replaces today's `preconditions.locale`, so both levels
+keep it in one place. `kind`, `browser.engine`, and `emulate` stay on the target.
+[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md) keeps the
+device mode a property of how a target is driven; a scenario that needs both faces runs under two
+targets.
+
+### Choosing where a scenario runs
+
+`runsOn` describes the environments a scenario runs in. It never creates a device. Bajutsu reads
+each available device, which means every udid of a `--udid` pool, or the browser a web lane
+launched. It then compares the device with a scenario's effective `runsOn`:
+
+| Condition | Read from | Comparison |
 |---|---|---|
 | iOS `runsOn.os` | the Simulator's runtime label, parsed by `DeviceOS` | version range on `major.minor` |
-| iOS `runsOn.model` | the simctl device-type name of the chosen udid | exact |
+| iOS `runsOn.model` | the simctl device-type name of the udid | exact |
 | Android `runsOn.apiLevel` | `ro.build.version.sdk` | integer range |
 | Android `runsOn.avd` | the emulator's Android Virtual Device (AVD) name | exact; a physical device never matches |
 | Web `runsOn.browser.version` | Playwright's `browser.version` | version range |
 
+The runner hands each scenario a device that meets its conditions. It walks the pool in order, so
+the assignment is deterministic. A scenario that no available device meets does not run. The run
+records it with a new **not applicable** status and a reason that names the unmet field and the
+devices it saw:
+
+```
+not applicable: showcase/ipad-split-view
+  runsOn.ios.model  "iPad Pro 13-inch (M4)"  available: "iPhone 15" (5A3F...), "iPhone 16" (7B21...)
+```
+
+A not-applicable scenario is neither a pass nor a failure. The report lists it apart, and the
+flakiness history leaves it out. When every selected scenario is not applicable, the run exits
+non-zero with "no scenario ran", so an empty run never reports green. [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) rejects a skipped
+status because a misconfigured worker would skip everything and still pass; this guard answers that
+concern. `bajutsu doctor` lists, for each scenario, the available devices that meet it.
+
 A version range is a conjunction of comparators: `>=`, `>`, `<=`, `<`, `==`, or a bare version. A
 bare `18` means any 18.x release. `==` compares after zero-padding, so `==18` matches 18.0 alone;
-the bare form is the one that covers the whole 18.x window. A new `VersionSpec` in `bajutsu/common/devices/version.py` parses
-and compares ranges; `DeviceOS` keeps its deliberate lack of comparison operators, because this item
-adds declaration checks, not per-OS branching. A mismatch raises `RunsOnRequirementError`, a new
-subclass of `DeviceError`
-([BE-0260](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation.md)), so `run`
-exits non-zero on the same path as a missing device. `bajutsu doctor` runs the same check as
-information when it can resolve a device.
+the bare form is the one that covers the whole 18.x window. A new `VersionSpec` in
+`bajutsu/common/devices/version.py` parses and compares ranges. `DeviceOS` keeps its deliberate lack
+of comparison operators, because this item selects devices by declaration and adds no per-OS
+branching.
 
-The comparison is deterministic and involves no model call, so it adds nothing to the verdict path
-beyond one more machine check. Creating a matching device on demand, or warning and continuing,
-stays out of scope (see *Alternatives considered*).
+The comparison and the assignment are deterministic and involve no model call. Creating a matching
+device on demand stays out of scope (see *Alternatives considered*).
 
 ### Where a run happens
 
@@ -222,8 +286,8 @@ environment with an `endpoint`, which widens [BE-0450](../BE-0450-worker-capabil
 Unit 12 coordinates both with those items.
 
 `runsOn` also supplies what [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) leaves open. With `requires` gone, a job cannot require an iOS
-runtime or a device class until a later item derives that requirement from the target. `runsOn.os`
-and `runsOn.model` are the declarations that derivation reads.
+runtime or a device class until a later item derives that requirement. The derivation reads each
+scenario's effective `runsOn`, which merges the target's and the scenario's `os` and `model`.
 
 ### Defaults
 
@@ -255,6 +319,7 @@ iPhone, as it does today.
 | `erase`, `network`, `visualCompare`, `secrets`, `systemAlertHandling`, `iosTipKitHandling` | `run.*` (the last as `run.tipKitHandling`) |
 | `setup`, `before`, `after`, `interrupts` | `hooks.before` (absorbing `setup`), `hooks.before`, `hooks.after`, `hooks.interrupts` |
 | `capture`, `redact` | `evidence.*` |
+| scenario `preconditions.locale` | scenario `preconditions.runsOn.<platform>.locale` |
 | `scenarios`, `baselines`, `schemas`, `goldens` | `paths.*` |
 | `defaults.reservedNamespaces`, `defaults.doctor` | top-level `reservedNamespaces` and `doctor`; both are team-wide, not per target, so neither belongs in `defaults` |
 
@@ -291,10 +356,14 @@ the new dictionary.
 5. **Fold `setup` into `hooks.before`.** Remove the `setup` path from the runner.
 6. **Command-line interface (CLI).** `--backend` becomes a check that exits 2 on a mismatch with `platform`. `--browser` and
    `--headed` override `runsOn.browser.engine` and `driver.headless`.
-7. **iOS requirement check** for `os` and `model`, with `RunsOnRequirementError`.
-8. **Android requirement check** for `apiLevel` and `avd`.
-9. **Web requirement check** for `browser.version`.
-10. **`doctor`.** Report requirement mismatches as information when a device resolves.
+7. **Scenario `runsOn`.** Add `preconditions.runsOn` keyed by platform and validated by the
+   registered models. Move `preconditions.locale` into it, and merge it over the target's `runsOn`.
+8. **Reading devices.** Read the model and OS (iOS), the API level and AVD name (Android), and the
+   browser version (web) from each available device.
+9. **Assignment and the not-applicable status.** Hand each scenario a device that meets its
+   effective `runsOn`. Record not applicable with a reason, keep it out of the flakiness history, and
+   exit non-zero when nothing ran.
+10. **`doctor`.** List the available devices that meet each scenario.
 11. **`bajutsu config schema`.**
 12. **Execution placement.** Remove `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, and
     `requires` from the target; add `environment` to the serve fan-out request and the CLI; and accept
@@ -314,7 +383,10 @@ the new dictionary.
 | One shared `runsOn` shape for all platforms | Leaves fields no platform can use — a browser on iOS, an AVD on the web — which recreates the flat-list problem |
 | Keep `dispatch` (`deviceProvider`, `cloudBatch`) in the target | Duplicates what BE-0448 and BE-0450 move onto the worker and the run request, and makes the target team decide where a run happens |
 | Keep both `setup` and `before` | Preserves today's behavior, at the cost of two keys serving one purpose |
-| Create a matching device on mismatch, or warn and continue | Creating a device makes Bajutsu own runtime installation, time, and cleanup. Warning lets results from the wrong environment into the flakiness history |
+| Fail the run when the device does not match | Running one suite across several OS versions would fail every OS-specific scenario on the versions it does not target |
+| Create a matching device on demand | Bajutsu would own runtime installation, time, and cleanup |
+| Key a scenario's conditions by target name | The key's shape would change with whether `targets` is declared, and a scenario run against an iOS target and an Android target could not state both |
+| List a scenario's condition fields flat | The file would not show which field applies to which platform, which brings back the flat config's written-but-ignored problem |
 | Prefix matching with no ranges | Cannot express a compatibility window such as `>=17 <19` on one line |
 
 ## Progress
@@ -329,9 +401,9 @@ the new dictionary.
 - [ ] Unit 4: schema switch-over, fixtures, and `demos/` configs
 - [ ] Unit 5: fold `setup` into `hooks.before`
 - [ ] Unit 6: CLI
-- [ ] Unit 7: iOS requirement check
-- [ ] Unit 8: Android requirement check
-- [ ] Unit 9: web requirement check
+- [ ] Unit 7: scenario `runsOn`
+- [ ] Unit 8: reading devices
+- [ ] Unit 9: assignment and the not-applicable status
 - [ ] Unit 10: `doctor`
 - [ ] Unit 11: `bajutsu config schema`
 - [ ] Unit 12: execution placement
