@@ -180,11 +180,11 @@ condition to check. A `fake` target still resolves to the iOS-shaped `Effective`
 
 `startWhen` replaces `readyWhen`. It takes a condition in the form an `interrupts` entry already
 uses for its `condition`, so the config has one way to say "this element is on screen":
-`startWhen: { exists: { id: home.title } }`. Before the first step, the run waits until the
-condition holds; the wait polls the condition and uses no fixed sleep. Leaving `startWhen` out keeps
+`startWhen: { exists: { id: home.title } }`. Before the first step, and again whenever a
+run relaunches the app mid-scenario, the run waits until the condition holds; the wait polls the condition and uses no fixed sleep. Leaving `startWhen` out keeps
 today's readiness chain: screen transitions first, then `idNamespaces`, then the element count. This
 item accepts `exists` without `negate`, which is what today's readiness gate evaluates. When the
-wait times out, the invocation continues as it does today when the gate reports not ready.
+wait times out, the run continues as it does today when the gate reports not ready.
 
 Four placements needed a judgment call:
 
@@ -378,8 +378,9 @@ matches an `avd`.
 Matching covers devices the invocation drives on its own host. A target whose `runsOn.kind` is
 `device` (a physical iPhone), or a run that goes to a device cloud or an Appium grid, has no pool
 to read before the run. Such a target may not declare `model`, `os`, or a list; the loader rejects them for
-`kind: device`. A scenario that declares conditions and runs against such a target, or in a remote
-environment, fails before any device work and names the field; it is never ignored. For a remote
+`kind: device`. A scenario whose effective `runsOn` declares conditions, from the target or from the
+scenario, and that runs against such a target or in a remote environment, fails before any device
+work and names the field; it is never ignored. For a remote
 environment the check runs where the job is dispatched: the worker of BE-0448 fails such a scenario
 before it submits anything, so the plain `bajutsu run` on the Device Farm host never needs to know
 where it runs. `locale` and
@@ -529,13 +530,18 @@ it keeps `worker.yaml` out of `bajutsu.config.yaml`. Four of today's keys leave 
 Three changes outside this item's schema follow, and unit 4 lands them with the switch-over, in
 coordination with BE-0448 and BE-0450. The serve fan-out request gains an `environment`, which feeds the `environment:<name>` routing of
 BE-0448; any run request with an `environment` requires that token, not only a Device Farm batch.
-No command-line command dispatches Device Farm today, so no CLI option is added. `worker.yaml` accepts `appium` as an environment with an
+No command-line command dispatches Device Farm today, so no CLI option is added. The server
+accepts as `environment` a registered batch-provider kind or `appium`, and rejects any other value
+with a 400 response. `worker.yaml` accepts `appium` as an environment with an
 `endpoint`, which widens BE-0450's environment vocabulary beyond batch providers. The
 `appium` environment names the platform its grid serves (`platform: ios`, the one value today).
 Targets of that platform go to the grid, and other targets of the same scenario stay local. Every
-command that drives a device (`run`, `record`, `crawl`, `repl`, `audit`, and `doctor`) accepts
-`--worker-config` with that environment, so each can still reach a grid as the URL udid lets it
-today. BE-0450 rejects every other non-local environment for these commands. An `appium` worker advertises
+command that drives a device (`run`, `record`, `crawl`, `repl`, `audit`, and `doctor`), and the
+Model Context Protocol (MCP) server at startup, accepts `--worker-config` with that environment, so
+each can still reach a grid as the URL udid lets it today. This item rejects every other non-local
+environment for these commands. A hosted job routes by `environment:appium` alone, so a scenario
+that mixes a grid target with a local target is refused at dispatch; it runs through
+`--worker-config` on a machine that has both. An `appium` worker advertises
 `environment:appium` alone, and a job that requires it carries no `platform:*` or `host:*` token,
 since the grid owns the device and its host, as for a Device Farm job.
 
@@ -590,7 +596,10 @@ the model a run observes. A replacement that cannot keep the type and runtime fa
 | `defaults.reservedNamespaces`, `defaults.doctor` | top-level `reservedNamespaces` and `doctor`; both are team-wide, not per target |
 | scenario fields | see *A scenario's preconditions* |
 
-The resolved `Effective` keeps its attribute names. Renaming them would touch several hundred call
+The resolved `Effective` keeps its attribute names, with two exceptions. `Effective.device` goes
+away, because the replacement Simulator now reads the vanished device's own type. `Effective.backend`
+stays, derived from `platform` as a one-entry list, so its readers (`provision`,
+`serve/operations/doctor.py`, and the actuator selection) keep working. Renaming them would touch several hundred call
 sites and can proceed apart from the config's shape, so `resolve` builds today's `Effective` from
 the new dictionary. The fields new at target level (`app.reinstall`, `app.launch.deeplink`,
 `runsOn.seedPhotos`, a target's `evidence.capture`, and `startWhen`) gain `Effective` attributes in
@@ -607,8 +616,8 @@ batch provider that packages `launchEnv`, `report/rows.py`, `templates/serve.htm
   `fake` stays allowed as an override, so any target can still run on the fake driver. Under `fake`,
   conditions are not evaluated and runs do not multiply, because the fake driver has no device to
   read. The same rule holds for the `--backend` of `record`, `crawl`, `repl`, `serve`, `triage`, `audit`, and
-  the Model Context Protocol (MCP) tools, and for the `backend` of a serve request body. `provision`
-  reads the actuator that `platform` decides, in place of `backend`.
+  the Model Context Protocol (MCP) tools, and for the `backend` of a serve request body. A scenario whose
+  targets span platforms therefore accepts `fake` alone as `--backend`, which is intended.
 - `--browser`, `--browsers`, and `--headed` override `runsOn.browser.engine` and `driver.headless`.
 - `--erase`, `--system-alert-handling`, and `--ios-tipkit-handling` keep their names and override
   the matching `run` fields; a flag wins over the scenario, and the scenario over the target.
@@ -655,19 +664,23 @@ batch provider that packages `launchEnv`, `report/rows.py`, `templates/serve.htm
    `redact` and `secrets` unions, and update the raw-schema readers. Land the execution placement
    with it: remove `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, and `requires`, add
    `environment` to the serve fan-out request, route any request's `environment`, and accept an `appium` environment in
-   `worker.yaml` and in `bajutsu run --worker-config`. Resolve components in target hooks, rewrite
+   `worker.yaml` and in `--worker-config` on `run`, `record`, `crawl`, `repl`, `audit`, `doctor`, and
+   the MCP server. Resolve components in target hooks, rewrite
    the prelude files as components, map the target's `hooks.setup` and `hooks.cleanup` onto today's
    `before` and `after` phases, and apply the `--backend` rules of *Command-line flags*, including
    the serve request body. Remove the scenario's `preconditions.setup` here too, converting each use to a
    `use:` in the scenario's `before`. Add `preconditions.run.inheritSetup`, the first field of the
-   scenario's `run` group, and set it to `false` where the scenario replaced the target's prelude, so no scenario points at a prelude file after this unit. Add
+   scenario's `run` group, and set it to `false` where the scenario replaced the target's prelude, copying the target's former
+   `before` steps into that scenario's `before` so the scenario keeps them, so no scenario points at a prelude file after this unit. Add
    the `Effective` attributes for the new target-level fields, and drop the replacement Simulator's
    configured-`device` and newest-iPhone fallbacks. Remove URL-udid support, and turn
    `demos/showcase/live/showcase.live.config.yaml` into a target plus a `worker.yaml` with an `appium`
    environment. Until unit 5, `hooks.cleanup` keeps `on: error`. Convert the test fixtures and the
    nine `demos/` configs; a `device:` key there becomes nothing, since `model` is now a condition. Until
-   unit 9 lands, a run fails with "not yet supported" when it meets a `runsOn` condition (`model`,
-   `os`, `avd`, `apiLevel`, `browser.version`, or a list), so no condition is written and ignored.
+   unit 9 lands, a run of `run`, `record`, `crawl`, or `repl` fails with "not yet supported" when its
+   effective `runsOn` holds a condition (`model`, `os`, `avd`, `apiLevel`, `browser.version`, or a
+   list), so no condition is written and ignored. The check is skipped under `--backend fake`, which
+   evaluates no condition.
    Splitting the switch-over would leave the gate red between commits, because the loader and every
    config break together.
 5. **Setup and cleanup.** Rename the phases and the scenario's `before` and `after` to `setup` and

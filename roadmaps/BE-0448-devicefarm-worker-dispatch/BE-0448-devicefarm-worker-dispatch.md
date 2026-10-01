@@ -128,7 +128,7 @@ Three parts of this item change when it lands.
   Device Farm today, so no CLI option is added. A job with `Job.batch` derives `environment:<name>` from that request, not from the
   target. The rest of *Routing* stays as written.
 - **The worker checks `runsOn` conditions before it submits.** The restructure has no device to
-  read before a Device Farm run, so a scenario that declares conditions fails on the worker, through
+  read before a Device Farm run, so a scenario whose effective `runsOn` declares conditions fails on the worker, through
   the existing result route, before anything is submitted. The `bajutsu run` on the Device Farm
   host stays unaware of where it runs.
 - **`cloudBatchBudget` disappears from the schema.** This item lands first, so the deprecation

@@ -150,8 +150,9 @@ this item has landed. It touches six parts of this item.
   with a required `endpoint`, and refuses `endpoint` on any other environment. The `appium`
   environment names the platform its grid serves (`ios` today); targets of that platform go to the
   grid, and other targets stay local. Every command that drives a device (`run`, `record`, `crawl`,
-  `repl`, `audit`, and `doctor`) accepts `--worker-config` with it, replacing today's URL udid;
-  every other non-local environment stays rejected for these commands. An `appium` worker drives a
+  `repl`, `audit`, and `doctor`), and the MCP server, accepts `--worker-config` with it, replacing
+  today's URL udid; this item gives the flag to `worker` and `run` alone, so the restructure extends
+  it, and rejects every other non-local environment for those commands. An `appium` worker drives a
   remote device, so the host rule does not apply to it. It advertises `environment:appium` alone,
   and a job that requires it carries no `platform:*` or `host:*` token, as for a Device Farm job.
 - **The runtime and device-class source moves.** This item keeps `requires` for now.
@@ -167,7 +168,7 @@ this item has landed. It touches six parts of this item.
   available device meets is recorded as not applicable instead of being run. A run that a list or
   a range bounded on both sides asks for, and that no device can take, fails instead. This item's *Boundaries*
   rejects a skipped status, because a misconfigured worker would skip everything and still pass.
-  The restructure answers that with the failing runs and with a guard: a run in which no run
+  The restructure answers that with the failing runs and with a guard: an invocation in which no run
   executed exits non-zero. The worker capability check keeps failing a scenario the worker cannot
   run, so the two outcomes stay apart.
 - **Cross-platform fallback lists go away.** The restructure removes `backend`, so a list such as
