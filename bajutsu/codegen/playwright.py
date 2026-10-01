@@ -23,6 +23,7 @@ import re
 
 from bajutsu.codegen.common import (
     AfterEmission,
+    device_group_todo,
     indent_lines,
     interrupts_setup_lines,
     manual_todo,
@@ -421,6 +422,8 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         # A human takeover (BE-0185): an operation only a human can perform, rendered as a labeled
         # TODO rather than a silent skip — the same honest boundary the device-control TODOs keep.
         return [f"// TODO: manual step — {manual_todo(step.manual.label, step.manual.bypass)}"]
+    if (todo := device_group_todo(step)) is not None:
+        return [todo]
     return ["// TODO: unsupported step"]
 
 

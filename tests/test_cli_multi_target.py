@@ -9,6 +9,7 @@ stands in for a real one, and the device provider is the inert local one.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,7 @@ from bajutsu.run.cli import (
     _declared_targets_in,
     _pool_demand,
     _reject_incompatible_actuator_sharing,
+    _reject_preinstalled_group_builds,
     _reject_self_declaring_in_dir,
     _reject_unshareable_groups,
     _reject_web_flags_across_targets,
@@ -593,3 +595,43 @@ def test_a_device_group_on_a_backend_that_cannot_share_is_refused_before_acquisi
         "bajutsu.run.cli._select_actuator", lambda backend, eff, engines: ("fake", [])
     )
     _reject_unshareable_groups([grouped], _effs(), "", [])
+
+
+def test_a_device_group_on_a_preinstalled_provider_is_refused(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # The provider holds the build, so there is no local one to install beside it (BE-0447).
+    released: list[str] = []
+    setups = {
+        "app": _setup("app", "fake", ["UD-1"], released),
+        "site": _setup("site", "fake", ["UD-1"], released),
+    }
+    grouped = Scenario.model_validate(
+        {
+            "name": "grouped",
+            "targets": [["app", "site"]],
+            "primaryTarget": "app",
+            "installs": ["site"],
+            "steps": [{"tap": {"id": "a"}}],
+        }
+    )
+    _reject_preinstalled_group_builds([grouped], setups)
+    preinstalled = DeviceLease(
+        udid_spec="booted",
+        provision=ProvisionProfile(app_preinstalled=True),
+        release=lambda: None,
+    )
+    setups["site"] = replace(setups["site"], device=preinstalled)
+    # Outside a group the provider's own build is the one that runs, so nothing is refused.
+    flat = Scenario.model_validate(
+        {
+            "name": "flat",
+            "targets": ["app", "site"],
+            "primaryTarget": "app",
+            "steps": [{"tap": {"id": "a"}}],
+        }
+    )
+    _reject_preinstalled_group_builds([flat], setups)
+    with pytest.raises(typer.Exit):
+        _reject_preinstalled_group_builds([grouped], setups)
+    assert "target 'site' is in a device group" in capsys.readouterr().out

@@ -1541,6 +1541,28 @@ class _TargetSetup:
     workers: int
 
 
+def _reject_preinstalled_group_builds(
+    scenarios: list[Scenario], setups: Mapping[str, _TargetSetup]
+) -> None:
+    """Refuse a device group whose builds a device provider already holds (BE-0447, BE-0236).
+
+    A provider that hands its device over with the app already installed keeps the binary itself,
+    so the local `appPath` a later member's `installApp` or a joining member's install reads does
+    not exist there. Only known once the device is reserved, so this runs inside the region that
+    releases every reservation on exit.
+    """
+    for s in scenarios:
+        grouped = {name for g in s.device_groups if len(g) >= 2 for name in g}
+        for name in sorted(grouped):
+            if setups[name].device.provision.app_preinstalled:
+                typer.echo(
+                    f"scenario '{s.name}': target '{name}' is in a device group, but its device "
+                    "provider hands the device over with the app preinstalled, so there is no local "
+                    "build to install beside it (BE-0447)"
+                )
+                raise typer.Exit(2)
+
+
 def _reject_unshareable_groups(
     scenarios: list[Scenario],
     target_effs: Mapping[str, Effective],
@@ -2359,6 +2381,7 @@ def run(
         # still release them — including this one, which can exit 2 on a pool too small for the
         # scenario's own target count (BE-0428).
         _reject_incompatible_actuator_sharing(setups)
+        _reject_preinstalled_group_builds(scenarios, setups)
         workers = _resolve_multi_target_workers(scenarios, setups, primary.workers)
         _apply_system_alert_handling(
             scenarios, resolve_system_alert_handling_flag(system_alert_handling)

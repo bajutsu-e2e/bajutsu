@@ -556,7 +556,7 @@ so the deterministic gate stays untouched.
 - [x] Unit 4: run preflight and validation
 - [ ] Unit 5: XCUITest environment and driver
 - [ ] Unit 6: Android environment, driver, and `foreground`
-- [ ] Unit 7: backend handling
+- [x] Unit 7: backend handling
 - [ ] Unit 8: documentation in both languages
 - [ ] Unit 9: showcase demo, update and companion scenarios
 
@@ -612,6 +612,13 @@ Log:
   `before` and the top-level steps in order, it refuses a `setPrimaryTarget` that names a member an
   earlier `installApp` retired. Each build is checked once for the whole run. `Effective.app_identifier` names the identifier both this
   check and the runner's retirement read.
+- Unit 7. A web target in a device group is already refused before any device is leased, by unit
+  4's preflight and by the `deviceGroup` capability web never advertises. A device provider that
+  hands its device over with the app preinstalled now refuses a group on it, once the device is
+  reserved and inside the region that releases every reservation: the provider holds the binary,
+  so there is no local build to install beside it. Every code generator (XCUITest, UI Automator,
+  Playwright) renders `installApp` and `setPrimaryTarget` as a labeled `// TODO`, though `codegen`
+  already refuses any scenario declaring two or more targets before it reaches them.
 
 ## References
 
