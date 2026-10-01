@@ -157,7 +157,7 @@ preconditions:
 
 シナリオが動かす target ごとに、有効な`runsOn`は target の`runsOn`から始まります。そこへ、その target のプラットフォームに対応するシナリオのブロックを、フィールド単位で上書きします。つまりシナリオの値が勝ちます。run が動かさないプラットフォームのブロックは効果を持たないので、1つのシナリオで複数のプラットフォームに対応できます。同じプラットフォームの target 2つを別の端末で動かす場合、両者は同じブロックを共有します。別々の条件が要るなら、シナリオを2つに分けます。
 
-シナリオのブロックが受け付けるのは、条件のフィールド（`model`、`os`、`avd`、`apiLevel`、`browser.version`）と`locale`です。`locale`は現在の`preconditions.locale`を置き換えるもので、target とシナリオの両方で同じ場所に置くことになります。`kind`、`browser.engine`、`emulate`は target に残します。[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)は、端末モードを target をどう駆動するかの性質としています。両方の見た目が要るシナリオは、2つの target で回します。
+シナリオのブロックが受け付けるのは、条件のフィールド（`model`、`os`、`avd`、`apiLevel`、`browser.engine`、`browser.version`）と`locale`です。`locale`は現在の`preconditions.locale`を置き換えるもので、target とシナリオの両方で同じ場所に置くことになります。`kind`と`emulate`は target に残します。[BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)は、端末モードを target をどう駆動するかの性質としています。両方の見た目が要るシナリオは、2つの target で回します。
 
 ### シナリオを走らせる端末の選び方
 
@@ -184,6 +184,30 @@ not applicable: showcase/ipad-split-view
 
 比較と割り当ては決定的で、モデルの呼び出しを含みません。合う端末をその場で作ることは範囲外です（「検討した代替案」を参照）。
 
+### 列挙した値ごとの実行
+
+プラットフォームごとに1つのフィールドが、リストを受け付けます。iOS は`model`、Android は`avd`、Web は`browser.engine`です。リストは「それぞれで実行する」を意味します。シナリオは列挙した値ごとに1回ずつ走り、report には値 × シナリオの結果表が出ます。`--browsers`がすでに出している表と同じ形です（[BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)）。ほかのフィールドは、そのすべての回を絞り込みます。たとえば`os: ">=18"`は、列挙した各機種の回に効きます。
+
+```yaml
+preconditions:
+  runsOn:
+    ios:
+      model: ["iPhone SE (3rd generation)", "iPhone 16 Pro Max", "iPad Pro 13-inch (M4)"]
+      os: ">=18"
+```
+
+```
+                  iPhone SE   iPhone 16 Pro Max   iPad Pro 13-inch (M4)
+login             pass        pass                pass
+split-view        n/a         n/a                 pass
+```
+
+リストと範囲は、意図して意味を分けています。リストは値ごとに回を増やし、範囲や単一の値は、回が使える端末を絞り込みます。範囲は回を増やしません。`os: ">=17"`は1回だけ走り、端末群の順で最初に範囲に入る OS の端末を使います。マイナーやパッチのリリースで回が増えることもありません。`os`はリストを受け付けないので、回数が増えるのは機種を列挙したときだけです。列挙した各回は、その値の端末を端末群から1台とります。その値の端末が手元にない回は対象外となり、ほかの回はそのまま走ります。Web のバックエンドは足りないエンジンをその場で入れるので、エンジンのリストで対象外は生じません。
+
+複数 target のシナリオでは、各 target のリストの組み合わせをすべて走らせます。iOS の機種3つと Web のエンジン2つなら、6回です。runner は各回を独立したシナリオと同じように割り当てるので、`--workers`で端末群に分散できます。flakiness の履歴は、判定をシナリオと値の組で記録します。そのため、ある機種でのレイアウトの失敗が、不安定なシナリオとして数えられることはありません。
+
+`--browser`と`--browsers`は意味を変えず、1回の実行に限って Web のリストを上書きします。フラグはシナリオより優先され、シナリオは target より優先されます。
+
 ### どこで実行するか
 
 target は、どこで実行するかを持たなくなります。target が書くのは、何をテストし、何の上で動かし、Bajutsu がどう駆動するかです。どこで実行するかはマシンの性質であり、知っているのはマシンの運用者です。[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)も、worker capability のファイル`worker.yaml`を`bajutsu.config.yaml`に入れない理由として、同じ線を引いています。そのため、現在のキーのうち4つを target から外します。
@@ -195,7 +219,7 @@ target は、どこで実行するかを持たなくなります。target が書
 | `cloudBatch` | 実行の要求の`environment`（serve の fan-out の要求と、対応する CLI のオプション） | [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)では同じ target がローカルでも Device Farm でも走るため、送り先は target の性質ではなく実行ごとの選択です |
 | `deviceProvider` | `worker.yaml`の`appium`という environment と、グリッドの`endpoint` | どのグリッドが端末を出すかは、device cloud と同じくインフラの選択です |
 
-この項目のスキーマの外にも、2つの変更が要ります。serve の fan-out の要求に`environment`フィールドを足し、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)の`environment:<name>`による振り分けにつなぎます。また、`worker.yaml`が`appium`を`endpoint`つきの environment として受け付けるようにします。これは[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)の environment の語彙を、batch provider の外へ広げる変更です。どちらも、作業単位12で両項目と調整します。
+この項目のスキーマの外にも、2つの変更が要ります。serve の fan-out の要求に`environment`フィールドを足し、[BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch-ja.md)の`environment:<name>`による振り分けにつなぎます。また、`worker.yaml`が`appium`を`endpoint`つきの environment として受け付けるようにします。これは[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)の environment の語彙を、batch provider の外へ広げる変更です。どちらも、作業単位14で両項目と調整します。
 
 `runsOn`は、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)が残した穴も埋めます。`requires`がなくなると、後続の項目が target から要件を導くまで、ジョブは iOS のランタイムや端末の種類を要件にできません。その導出が読むのは、各シナリオの有効な`runsOn`です。有効な`runsOn`は、target とシナリオの`os`と`model`を合わせたものです。
 
@@ -244,14 +268,15 @@ target は、どこで実行するかを持たなくなります。target が書
 3. **プラットフォームのレジストリとモデル。** レジストリとプラットフォームごとのモデルを追加します。レジストリのキーが`backends.PLATFORMS`と一致することをテストで固定します。
 4. **スキーマの切り替え。** `TargetConfig`、`Defaults`、`Config`、`resolve`を置き換え、テストの固定データと`demos/`の設定ファイル10個を1つの変更で変換します。切り替えを分けると、読み込み側と全設定ファイルが同時に壊れるので、コミットの間でゲートが赤になります。
 5. **`setup`の`hooks.before`への統合。** runner から`setup`の経路を取り除きます。
-6. **コマンドラインインターフェイス（CLI）。** `--backend`は、`platform`と食い違えば終了コード2で終わる検査になります。`--browser`と`--headed`は、`runsOn.browser.engine`と`driver.headless`を上書きします。
+6. **コマンドラインインターフェイス（CLI）。** `--backend`は、`platform`と食い違えば終了コード2で終わる検査になります。`--browser`、`--browsers`、`--headed`は、`runsOn.browser.engine`と`driver.headless`を上書きします。
 7. **シナリオの`runsOn`。** プラットフォームごとに分けた`preconditions.runsOn`を足し、登録済みのモデルで検証します。`preconditions.locale`をその中へ移し、target の`runsOn`の上に重ねます。
 8. **端末の読み取り。** 手元の各端末から、機種と OS（iOS）、API レベルと AVD 名（Android）、ブラウザのバージョン（Web）を読みます。
 9. **割り当てと「対象外」の状態。** 有効な`runsOn`を満たす端末を各シナリオに割り当てます。対象外を理由つきで記録し、flakiness の履歴から除き、何も走らなかったときは非ゼロで終了します。
-10. **`doctor`。** シナリオごとに、条件を満たす手元の端末を一覧にします。
-11. **`bajutsu config schema`。**
-12. **実行場所の移行。** target から`deviceProvider`、`cloudBatch`、`cloudBatchBudget`、`requires`を外します。serve の fan-out の要求と CLI に`environment`を足し、`worker.yaml`で`endpoint`つきの`appium`の environment を受け付けます。BE-0448 と BE-0450 と調整して進めます。
-13. **文書。** `docs/configuration.md`、`docs/drivers.md`、`docs/cli.md`、`docs/architecture.md`、`DESIGN.md`、`docs/glossary.md`と、それぞれの`docs/ja/`版を更新します。
+10. **列挙した値。** `model`、`avd`、`browser.engine`でリストを受け付けます。値ごとに1回ずつ走らせ、複数 target のシナリオでは target 間の組み合わせを走らせます。値 × シナリオの結果表を出し、flakiness の履歴をシナリオと値の組で記録します。
+11. **`doctor`。** シナリオごとに、条件を満たす手元の端末を一覧にします。
+12. **`bajutsu config schema`。**
+13. **実行場所の移行。** target から`deviceProvider`、`cloudBatch`、`cloudBatchBudget`、`requires`を外します。serve の fan-out の要求と CLI に`environment`を足し、`worker.yaml`で`endpoint`つきの`appium`の environment を受け付けます。BE-0448 と BE-0450 と調整して進めます。
+14. **文書。** `docs/configuration.md`、`docs/drivers.md`、`docs/cli.md`、`docs/architecture.md`、`DESIGN.md`、`docs/glossary.md`と、それぞれの`docs/ja/`版を更新します。
 
 ## 検討した代替案
 
@@ -267,6 +292,8 @@ target は、どこで実行するかを持たなくなります。target が書
 | `setup`と`before`を両方残す | 現行の挙動を保てますが、1つの用途を2つのキーが受け持ったままになります |
 | 端末が合わなければ run を失敗させる | 複数の OS で同じ一式を回すと、OS 専用のシナリオが、対象でない OS の側で毎回失敗します |
 | 合う端末をその場で作る | ランタイムの導入、時間、後片付けを Bajutsu が負います |
+| 列挙した`model`を「どれか1台」として扱う | 範囲の絞り込みと意味はそろいますが、複数の画面サイズでテストするという、機種を列挙する目的を果たせません |
+| 絞り込みのフィールドとは別に`matrix`キーを設ける | キーで2つの意味を区別できますが、キーが1つ増えます。リストを受け付けるフィールドはプラットフォームごとに1つなので、曖昧さは生じません |
 | シナリオの条件を target 名で分ける | `targets`を宣言するかどうかでキーの形が変わります。また、iOS の target と Android の target の両方で回すシナリオでは、両方の条件を書けません |
 | シナリオの条件のフィールドを平たく並べる | どのフィールドがどのプラットフォームに効くかがファイルから読めず、flat な設定の「書いたのに効かない」問題が戻ります |
 | 範囲なしの前方一致 | `>=17 <19`のような互換の範囲を1行で書けません |
@@ -286,10 +313,11 @@ target は、どこで実行するかを持たなくなります。target が書
 - [ ] 作業単位 7: シナリオの`runsOn`
 - [ ] 作業単位 8: 端末の読み取り
 - [ ] 作業単位 9: 割り当てと「対象外」の状態
-- [ ] 作業単位 10: `doctor`
-- [ ] 作業単位 11: `bajutsu config schema`
-- [ ] 作業単位 12: 実行場所の移行
-- [ ] 作業単位 13: 文書
+- [ ] 作業単位 10: 列挙した値
+- [ ] 作業単位 11: `doctor`
+- [ ] 作業単位 12: `bajutsu config schema`
+- [ ] 作業単位 13: 実行場所の移行
+- [ ] 作業単位 14: 文書
 
 ## 参考
 

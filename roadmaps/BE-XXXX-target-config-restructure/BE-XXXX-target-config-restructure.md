@@ -219,9 +219,10 @@ A block for a platform the run does not drive has no effect, which lets one scen
 platforms. Two targets of one platform on different devices share the block; a scenario that needs
 different conditions for them splits into two scenarios.
 
-A scenario block accepts the condition fields (`model`, `os`, `avd`, `apiLevel`, and
-`browser.version`) and `locale`. `locale` replaces today's `preconditions.locale`, so both levels
-keep it in one place. `kind`, `browser.engine`, and `emulate` stay on the target.
+A scenario block accepts the condition fields (`model`, `os`, `avd`, `apiLevel`,
+`browser.engine`, and `browser.version`) and `locale`. `locale` replaces today's
+`preconditions.locale`, so both levels keep it in one place. `kind` and `emulate` stay on the
+target.
 [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md) keeps the
 device mode a property of how a target is driven; a scenario that needs both faces runs under two
 targets.
@@ -266,6 +267,44 @@ branching.
 The comparison and the assignment are deterministic and involve no model call. Creating a matching
 device on demand stays out of scope (see *Alternatives considered*).
 
+### Running once per listed value
+
+One field per platform takes a list: `model` on iOS, `avd` on Android, and `browser.engine` on the
+web. A list means "run on each". The scenario runs once per listed value, and the report shows a
+value × scenario matrix, the same shape `--browsers` already produces ([BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)). The other fields
+narrow every one of those runs, so `os: ">=18"` applies to each listed model.
+
+```yaml
+preconditions:
+  runsOn:
+    ios:
+      model: ["iPhone SE (3rd generation)", "iPhone 16 Pro Max", "iPad Pro 13-inch (M4)"]
+      os: ">=18"
+```
+
+```
+                  iPhone SE   iPhone 16 Pro Max   iPad Pro 13-inch (M4)
+login             pass        pass                pass
+split-view        n/a         n/a                 pass
+```
+
+A list and a range mean different things on purpose. A list multiplies runs, one per value, while a
+range or a single value narrows the devices a run may use. A range never multiplies runs:
+`os: ">=17"` runs once, on the first device in pool order whose OS falls in the range, and minor
+and patch releases add no runs. `os` takes no list, so the number of runs grows with listed models
+alone. Each listed run takes a device of its own
+value from the pool. A run whose value no available device has is not applicable, and the other
+runs go ahead. The web backend installs a missing engine on demand, so an engine list never yields
+not applicable.
+
+A multi-target scenario runs every combination of its targets' lists, so three iOS models and two
+web engines make six runs. The runner schedules each run like a scenario of its own, so `--workers`
+spreads them over the pool. The flakiness history keys a verdict by scenario and value, so a
+layout failure on one model never reads as a flaky scenario.
+
+`--browser` and `--browsers` keep their meaning and override the web list for one run: the flag
+wins over the scenario, and the scenario wins over the target.
+
 ### Where a run happens
 
 A target no longer says where it runs. The target states what is under test, what it runs on, and
@@ -283,7 +322,7 @@ knows. [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) draw
 Two changes outside this item's schema follow. The serve fan-out request gains an `environment`
 field, which feeds the `environment:<name>` routing of [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md). `worker.yaml` accepts `appium` as an
 environment with an `endpoint`, which widens [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md)'s environment vocabulary beyond batch providers.
-Unit 12 coordinates both with those items.
+Unit 14 coordinates both with those items.
 
 `runsOn` also supplies what [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) leaves open. With `requires` gone, a job cannot require an iOS
 runtime or a device class until a later item derives that requirement. The derivation reads each
@@ -354,8 +393,8 @@ the new dictionary.
    the test fixtures and the ten `demos/` configs in one change. Splitting the switch-over would
    leave the gate red between commits, because the loader and every config break together.
 5. **Fold `setup` into `hooks.before`.** Remove the `setup` path from the runner.
-6. **Command-line interface (CLI).** `--backend` becomes a check that exits 2 on a mismatch with `platform`. `--browser` and
-   `--headed` override `runsOn.browser.engine` and `driver.headless`.
+6. **Command-line interface (CLI).** `--backend` becomes a check that exits 2 on a mismatch with `platform`. `--browser`,
+   `--browsers`, and `--headed` override `runsOn.browser.engine` and `driver.headless`.
 7. **Scenario `runsOn`.** Add `preconditions.runsOn` keyed by platform and validated by the
    registered models. Move `preconditions.locale` into it, and merge it over the target's `runsOn`.
 8. **Reading devices.** Read the model and OS (iOS), the API level and AVD name (Android), and the
@@ -363,12 +402,15 @@ the new dictionary.
 9. **Assignment and the not-applicable status.** Hand each scenario a device that meets its
    effective `runsOn`. Record not applicable with a reason, keep it out of the flakiness history, and
    exit non-zero when nothing ran.
-10. **`doctor`.** List the available devices that meet each scenario.
-11. **`bajutsu config schema`.**
-12. **Execution placement.** Remove `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, and
+10. **Listed values.** Accept a list for `model`, `avd`, and `browser.engine`. Run once per value,
+    and combinations across a multi-target scenario's targets. Print the value × scenario matrix, and
+    key the flakiness history by scenario and value.
+11. **`doctor`.** List the available devices that meet each scenario.
+12. **`bajutsu config schema`.**
+13. **Execution placement.** Remove `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, and
     `requires` from the target; add `environment` to the serve fan-out request and the CLI; and accept
     an `appium` environment with an `endpoint` in `worker.yaml`, coordinated with BE-0448 and BE-0450.
-13. **Docs.** Update `docs/configuration.md`, `docs/drivers.md`, `docs/cli.md`,
+14. **Docs.** Update `docs/configuration.md`, `docs/drivers.md`, `docs/cli.md`,
     `docs/architecture.md`, `DESIGN.md`, `docs/glossary.md`, and their `docs/ja/` mirrors.
 
 ## Alternatives considered
@@ -385,6 +427,8 @@ the new dictionary.
 | Keep both `setup` and `before` | Preserves today's behavior, at the cost of two keys serving one purpose |
 | Fail the run when the device does not match | Running one suite across several OS versions would fail every OS-specific scenario on the versions it does not target |
 | Create a matching device on demand | Bajutsu would own runtime installation, time, and cleanup |
+| Treat a listed `model` as any one of the values | Matches the narrowing meaning of a range, yet cannot test several screen sizes, which is the reason to list models |
+| A separate `matrix` key beside the narrowing fields | Tells the two meanings apart by key, at the cost of one more key; one list field per platform already leaves no ambiguity |
 | Key a scenario's conditions by target name | The key's shape would change with whether `targets` is declared, and a scenario run against an iOS target and an Android target could not state both |
 | List a scenario's condition fields flat | The file would not show which field applies to which platform, which brings back the flat config's written-but-ignored problem |
 | Prefix matching with no ranges | Cannot express a compatibility window such as `>=17 <19` on one line |
@@ -404,10 +448,11 @@ the new dictionary.
 - [ ] Unit 7: scenario `runsOn`
 - [ ] Unit 8: reading devices
 - [ ] Unit 9: assignment and the not-applicable status
-- [ ] Unit 10: `doctor`
-- [ ] Unit 11: `bajutsu config schema`
-- [ ] Unit 12: execution placement
-- [ ] Unit 13: docs
+- [ ] Unit 10: listed values
+- [ ] Unit 11: `doctor`
+- [ ] Unit 12: `bajutsu config schema`
+- [ ] Unit 13: execution placement
+- [ ] Unit 14: docs
 
 ## References
 
