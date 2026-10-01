@@ -126,7 +126,8 @@ Three parts of this item change when it lands.
 - **`cloudBatch` leaves the target.** The Device Farm destination moves to the run request.
   The serve fan-out request gains an `environment` field; no command-line command dispatches
   Device Farm today, so no CLI option is added. A job with `Job.batch` derives `environment:<name>` from that request, not from the
-  target. The rest of *Routing* stays as written.
+  target. *Routing* also widens: any request that carries an `environment`, including an `appium` job with
+  no batch, requires that token, where unit 2 here covers `Job.batch` alone.
 - **The worker checks `runsOn` conditions before it submits.** The restructure has no device to
   read before a Device Farm run, so a scenario whose effective `runsOn` declares conditions fails on the worker, through
   the existing result route, before anything is submitted. The `bajutsu run` on the Device Farm

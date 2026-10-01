@@ -84,8 +84,8 @@ Once this item ships, a reader can check three outcomes:
 
 This item starts after [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md)
 and [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) have landed. Landed
-means Implemented, with `cloudBatchBudget` and `requires` deprecated but still accepted; unit 4 of
-this item removes them. Those items provide the worker capability file, `worker.yaml`, and the `environment:<name>` routing that the
+means every unit of those items has merged except the final removal of `cloudBatchBudget` and
+`requires`, which stay deprecated but accepted; unit 4 of this item removes them. Those items provide the worker capability file, `worker.yaml`, and the `environment:<name>` routing that the
 keys leaving the target move onto (see *Where a run happens*). Starting earlier would leave
 `deviceProvider` and `cloudBatch` with no destination at the atomic schema switch-over.
 
@@ -312,7 +312,9 @@ The scenario's top-level `network` stays where it is. It filters which requests 
 timeline shows, an evidence setting, while the target's `run.network` turns collection on or off.
 
 `preconditions.run` accepts `erase`, `systemAlertHandling`, `inheritSetup`, and, on iOS,
-`tipKitHandling`. It does not accept `secrets`, which stays a target-level union.
+`tipKitHandling`. It does not accept `secrets`, which stays a target-level union. An iOS-only field
+such as `tipKitHandling` in a scenario that drives no iOS target fails before any device work, by
+the same rule as an `app` field no driven target has.
 
 `runsOn` alone is keyed by platform, because its fields differ by platform. The fields of
 `app.launch` keep one meaning wherever they apply, so `app` is not keyed. Each target of a
@@ -436,7 +438,7 @@ happens when a run finds no device. Two kinds of field multiply runs, and nothin
 |---|---|---|
 | a list on `model` (iOS), `avd` (Android), or `browser.engine` (web) | one per listed value | the run **fails**, naming the value |
 | a range on `os` (iOS) or `apiLevel` (Android) bounded on both sides, such as `>=17 <19`, `18`, `^17`, or `33 - 35` | one per major version the range covers, 17 and 18 for `>=17 <19` | the run **fails**, naming the major version |
-| a range open on either side, such as `>=18`, `<19`, or `<=17.4` | one per major version the available devices have within the range; beside a model list, computed per listed value from that model's devices | when no device is in range, one **not applicable** record |
+| a range open on either side, such as `>=18`, `<19`, or `<=17.4` | one per major version the available devices have within the range; beside a model list, computed per listed value from that model's devices, and a listed model with no device at all fails | when no device is in range, one **not applicable** record |
 | a union, such as `17 \|\| >=19` | each side by its own rule, with the major versions combined | as for each side |
 | a single `model` or `avd`, alone or beside a range | does not add runs | the run **fails** when no device has that model; only the version part of a run can be not applicable |
 | no condition at all | one | any device of the pool may run it, as today; the eligible set below does not apply |
@@ -561,7 +563,8 @@ the host rule of BE-0450 applies to the local targets alone. Each grid target op
 on the endpoint, so two iOS targets of one scenario take two grid devices. Every
 command that drives a device (`run`, `record`, `crawl`, `repl`, `audit`, and `doctor`), and the
 Model Context Protocol (MCP) server at startup, accepts `--worker-config` with that environment, so
-each can still reach a grid as the URL udid lets it today. Commands other than `run` turn
+each can still reach a grid as the URL udid lets it today. `triage --rerun` forwards
+`--worker-config` to the `run` it starts, as it forwards `--udid` today. Commands other than `run` turn
 `Effective.device_provider` into the udid spec through the same `acquire_device` that `run` uses,
 and run BE-0450's capability check on drivers and host, as `run` does. This item rejects every other non-local
 environment for these commands. A hosted job routes by `environment:appium` alone, so a scenario
@@ -624,7 +627,9 @@ OS a matched run sees. A replacement that cannot keep the type and runtime fails
 | scenario fields | see *A scenario's preconditions* |
 
 The resolved `Effective` keeps its attribute names, except those whose source key goes away:
-`device`, `cloud_batch`, `cloud_batch_budget`, `requires`, `setup`, and `IosConfig.deeplink_scheme`.
+`device`, `cloud_batch`, `cloud_batch_budget`, `requires`, `setup`, `ready_when`, and
+`IosConfig.deeplink_scheme`. Readiness reads the selector under `startWhen`'s `exists` in place of
+`ready_when`.
 Their readers move with the keys, so `serve/helpers.py` reads the request's `environment` instead.
 `Effective.device_provider` stays: the `--worker-config` of an `appium` environment fills it for
 the targets of the grid's platform, so `acquire_device` keeps handing the endpoint to the run as its
@@ -633,9 +638,10 @@ the live driver as today. `Effective.backend` stays as well, derived from `platf
 list, so its readers (`provision`, `serve/operations/doctor.py`, and the actuator selection) keep
 working. Renaming them would touch several hundred call
 sites and can proceed apart from the config's shape, so `resolve` builds today's `Effective` from
-the new dictionary. The fields new at target level (`app.reinstall`, `app.launch.deeplink`,
-`runsOn.seedPhotos`, a target's `evidence.capture`, and `startWhen`) gain `Effective` attributes in
-unit 4, since today's names have no slot for them. A few readers use the raw schema instead of `Effective`, such as
+the new dictionary. The fields new at target level gain `Effective` attributes, since today's names have no slot for
+them: `startWhen` and a target's `evidence.capture` in unit 4, and `app.reinstall`,
+`app.launch.deeplink`, and `runsOn.seedPhotos` in unit 7, together with their scenario merge. Until
+unit 7 those three fail at load as unknown keys, so none of them is written and ignored. A few readers use the raw schema instead of `Effective`, such as
 `serve/operations/reads.py`, `capture.py`, `enrich.py`, `doctor.py`, `config.py`, and `codegen.py`,
 `serve/helpers.py`, the Device Farm
 batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/serve.html.j2`, and
@@ -707,17 +713,17 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
    the serve request body. Change the config loader to take the config's path and suite root, and update every caller (about
    twenty, among them the MCP tools, `provision`, serve's uploads, orgs, compositions, and
    operations, triage, coverage, and `cli/_shared.py`). A target prelude that cannot
-   become a target-hook component gets a `use:` in the `before` of every scenario of that target.
+   become a target-hook component gets a `use:` in the `before` of every scenario under that target's
+   `paths.scenarios`.
    Remove the scenario's `preconditions.setup` here too, converting each use to a `use:` appended to
    the scenario's `before`. Add `preconditions.run.inheritSetup`, the first field of the
-   scenario's `run` group, and set it to `false` where the scenario replaced the target's prelude, copying the target's former
-   `before` steps to the front of that scenario's `before` so the scenario keeps them in today's
-   order, so no scenario points at a prelude file after this unit. Add
-   the `Effective` attributes for the new target-level fields and apply their target-level values,
-   leaving scenario overrides to unit 7, and drop the replacement Simulator's
+   scenario's `run` group, and set it to `false` where the scenario replaced the target's prelude, copying every declared target's
+   former `before` steps, each stamped with its `target:`, to the front of that scenario's `before`
+   so the scenario keeps them in today's order, so no scenario points at a prelude file after this unit. Add
+   the `Effective` attributes for `startWhen` and a target's `evidence.capture`, and drop the replacement Simulator's
    configured-`device` and newest-iPhone fallbacks and its unpinned retry. Remove the URL form of
    the command-line `--udid`, fill `Effective.device_provider` from `--worker-config`, route every device-driving command
-   through `acquire_device`, and turn
+   through `acquire_device`, update `scripts/serve.sh`, which loads the config to stage the runner, and turn
    `demos/showcase/live/showcase.live.config.yaml` into a target plus a `worker.yaml` with an `appium`
    environment. Until unit 5, `hooks.cleanup` keeps `on: error`. Convert the test fixtures, the
    nine `demos/` configs, and the root `bajutsu.config.yaml`; a `device:` key there becomes nothing, since `model` is now a condition. Until
@@ -731,12 +737,18 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
 5. **Setup and cleanup.** Rename the phases and the scenario's `before` and `after` to `setup` and
    `cleanup`, rename `on: error` and capturePolicy's `result: error` to `failure`, and relabel the
    report phases.
-6. **Command-line flags.** Apply the remaining rules of *Command-line flags* to `run`, `record`,
-   `crawl`, `repl`, `triage --rerun`, `audit`, and the MCP tools.
+6. **Command-line flags.** Point `--browser`, `--browsers`, and `--headed` at `runsOn.browser.engine`
+   and `driver.headless`; `--erase`, `--system-alert-handling`, and `--ios-tipkit-handling` at the
+   `run` fields; and `--scenarios`, `--baselines`, and `--goldens` at `paths`. Add the one-line notice
+   under `--backend fake`. These apply to `run`, `record`, `crawl`, `repl`, `triage --rerun`, `audit`,
+   and the MCP tools.
 7. **Scenario preconditions.** Regroup `preconditions` into `app`, `runsOn`, and `run`, move the
    top-level run-policy fields under `run`, key `runsOn` by platform, and merge every group over the
-   target's. Check the `app.launch` fields and the `seedPhotos` erase rule against the target's
-   platform at run resolution.
+   target's. Add the target-level `app.reinstall`, `app.launch.deeplink`, and `runsOn.seedPhotos`
+   with their `Effective` attributes, make the scenario's `reinstall` unset by default, and check the
+   merged `seedPhotos` erase rule. Check `app` fields and iOS-only `run` fields against the driven
+   targets' platforms at run resolution. Update the scenario readers: the Device Farm batch provider's
+   `launchEnv`, the `analysis/impact` deeplink reads, and code generation.
 8. **Reading devices.** Read the model and OS (iOS), the API level and AVD name (Android), and the
    browser version (web) from each available device, and reject conditions for `kind: device` and
    remote environments.
