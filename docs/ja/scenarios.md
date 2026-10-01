@@ -524,6 +524,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | 2 本指の回転。`>0` で時計回り |
 | `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | iOS SpringBoard の権限プロンプトのボタンを決定的に tap する（[下記](#handlesystemalert決定的なシステムアラートステップ)）。iOS（XCUITest）専用。`sel` は `label` / `labelMatches` / `index` のみ受け付け、run が Simulator を固定するシステム言語に対して解決する。`sel` の代わりに `prompt: notifications\|tracking\|paste` と `choice: grant\|deny` を指定すると、ボタンを意味で指定でき、run がその label を解決する（BE-0320）。label の対応表にない言語では、ボタンの位置で解決する（BE-0445） |
 | `wait` | `wait: { for\|until: ..., timeout: <sec> }` | 条件待機（下記） |
+| `sleep` | `sleep: { seconds: <sec>, reason: "..." }` | どの条件でも観測できない遅延のための固定の待機。上限 30 秒、理由は必須（[下記](#sleep固定の待機)） |
 | `assert` | `assert: [ <Assertion>... ]` | ステップ途中の中間検証 |
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | アプリを terminate + 再起動し（launch env/args を再適用し、指定分で上書き）、ready まで待つ |
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | シミュレータの GPS 位置を上書きする（`simctl location set`） |
@@ -733,7 +734,7 @@ assertするまで、新しいステップもランナーの変更も要りま�
 
 ### `wait`（条件待機）
 
-固定 sleep はサポートしていません。**`timeout` は必須**です（無限待ちはできません）。
+`wait` が固定時間だけ待つことはありません（固定の待機は別の [`sleep`](#sleep固定の待機) ステップが担います）。**`timeout` は必須**です（無限待ちはできません）。
 
 ```yaml
 - wait: { for: { id: home.title }, timeout: 5 }            # until an element appears
@@ -744,6 +745,20 @@ assertするまで、新しいステップもランナーの変更も要りま�
 ```
 
 `for` と `until` は排他です（片方のみ）。`until` の値は `screenChanged` / `settled` / `{ gone: <Selector> }` / `{ request: <RequestMatch> }` のいずれかです。`request` 形式はネットワーク collector（[evidence](evidence.md)、`--network` 実行フラグ）をポーリングし、観測した通信が 1 件でも一致するまで待ちます。マッチャは [`request` アサーション](#requestネットワークアサーション)と同じで、`method` / `url` / `urlMatches` / `path` / `pathMatches` / `status` / `bodyMatches` を AND で評価し、`count` で閾値を上げられます。エンドポイントは `url`（完全一致の URL）か `urlMatches`（正規表現/部分一致）、または `path` だけで指定します。タイムアウトの扱いは種別で異なります（[run-loop](run-loop.md#待機条件待機)）。`for` / `gone` / `screenChanged` / `request` はタイムアウトするとステップ失敗になります。`settled` は安定化のヒントなので、タイムアウトしても現在の画面で続行し、失敗にはなりません。
+
+### `sleep`（固定の待機）
+
+`wait` が固定時間だけ待つことはありません。画面、ツリー、ネットワークログのどの条件でも観測できない、まれな遅延には `sleep` を使います。典型は、サーバー側の再試行制限や、`until: settled` より長く続くアニメーションです。
+
+```yaml
+- sleep: { seconds: 2, reason: "the server throttles a retry for two seconds" }
+```
+
+- `seconds` は 0 より大きく 30 以下です。これより長い固定の待機はほぼ確実に条件の書き漏れなので、読み込み時に拒否し、`wait` を案内します。
+- `reason` は必須で、空白だけにはできません。どの `wait` の条件でも表せない理由を書きます。進捗ログ、`report.html`、生成コードのコメントに表示されます。
+- このステップはツリーを読まず、入力も送りません。すべてのバックエンドで動き、run をキャンセルすると 0.25 秒以内に待機を抜けます。
+- `bajutsu audit` はすべての `sleep` を `fixed-sleep` の finding として列挙します。1 つのシナリオで固定の待機の合計が 10 秒を超えると `Moderate` と評価します。
+- `record` と `crawl` はモデルに `sleep` を提示せず、`triage --ai` は `sleep` を足す修正案に警告を出します。MCP サーバー経由で書いたシナリオは対象外なので、そこでの `sleep` は人が確認してください。
 
 ### `assert`（中間検証）
 

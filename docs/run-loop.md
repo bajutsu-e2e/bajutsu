@@ -130,7 +130,10 @@ For each step `i` (in `orchestrator/loop.py`):
 ## Waits (condition waits only)
 
 `_wait(driver, w, clock) -> (ok, reason)`. No fixed sleep. It polls `query()` at `_POLL = 0.05s`
-intervals until the condition holds or `timeout` is reached.
+intervals until the condition holds or `timeout` is reached. The one fixed pause is the separate
+`sleep` step. `_do_sleep` runs it in quarter-second slices, so a cancelled run stops
+within one slice. The step reads no tree, and the determinism audit lists every one
+([scenarios](scenarios.md#sleep-fixed-pause)).
 
 | Form | Condition met | On timeout |
 |---|---|---|

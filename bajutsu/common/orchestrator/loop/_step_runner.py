@@ -881,7 +881,8 @@ class _StepRunner:
             self.cfg.scenario,
             guard.observe if guard is not None else None,
         )
-        if guard is not None and kind != "wait":
+        # A `sleep` acts on nothing, so it has no screen to clear an interstitial from first.
+        if guard is not None and kind not in ("wait", "sleep"):
             # Re-baseline `before` from the settled post-recovery tree either way, so a cleared
             # interstitial's own screen change is not later misattributed to this step's action by
             # the `screenChanged` capture decision.

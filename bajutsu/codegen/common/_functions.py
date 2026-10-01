@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 
 from bajutsu.common.scenario import Scenario, Step
@@ -45,6 +46,19 @@ _RUNTIME_ONLY_HINT = "codegen has no runtime to evaluate it; run the scenario wi
 def _collapse_line_terminators(text: str) -> str:
     """Fold any run of line terminators into a single space so text stays on one `//` comment line."""
     return _LINE_TERMINATORS.sub(" ", text)
+
+
+def sleep_ms(seconds: float) -> int:
+    """A `sleep` step's pause in whole milliseconds, rounded up so it never emits a no-op wait.
+
+    `ms` truncates, which suits a gesture duration but would turn a sub-millisecond pause into zero.
+    """
+    return max(1, math.ceil(seconds * 1000))
+
+
+def sleep_comment(reason: str) -> str:
+    """The `//` comment carrying a `sleep` step's reason, so a generated fixed pause stays reviewable."""
+    return f"// fixed pause: {_collapse_line_terminators(reason)}"
 
 
 def ident(name: str) -> str:

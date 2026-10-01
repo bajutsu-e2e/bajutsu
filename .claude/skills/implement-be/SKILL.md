@@ -30,7 +30,8 @@ and you must stop and flag — not silently work around — anything that brushe
    `run`/CI gate. Pass/fail comes only from machine-checkable assertions. AI belongs in
    `record` / `triage` / draft paths. If the item's design seems to need a model in the
    verdict, you've misread it — re-read, then ask.
-2. **Determinism first.** No fixed `sleep` (condition waits only); an ambiguous selector
+2. **Determinism first.** Condition waits only (the one fixed pause is the capped, reasoned `sleep`
+   step); an ambiguous selector
    fails immediately rather than tapping the first match.
 3. **App-agnostic.** Per-app differences live in config (`targets.<name>`); the tool,
    drivers, and runner stay unchanged across targets.
@@ -237,7 +238,7 @@ Build to the Detailed design, matching the codebase's grain:
 - **Match surrounding style.** Comments explain **why**, not what, at the surrounding
   density — no narration. `mypy` is **strict** and `ruff` is configured in
   [`pyproject.toml`](../../../pyproject.toml); fullwidth/Japanese strings are intentional.
-- **Honor the directives in the code itself** — determinism (condition waits, no `sleep`;
+- **Honor the directives in the code itself** — determinism (condition waits, no fixed pause outside a reasoned `sleep` step;
   ambiguous selectors fail), app-agnostic (new knobs go in `targets.<name>` config), and no
   LLM anywhere on the `run`/CI path.
 - **Tests are the regression net.** If you change behavior, a test changes with it. The

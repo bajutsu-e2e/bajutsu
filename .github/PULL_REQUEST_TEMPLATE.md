@@ -59,7 +59,7 @@
 -->
 
 - **AI never judges** — no LLM is consulted on the verdict; the `run` / CI gate stays deterministic.
-- **Determinism first** — no fixed `sleep` (condition waits only); an ambiguous selector still fails immediately.
+- **Determinism first** — condition waits only (a fixed pause only through a capped, reasoned `sleep` step); an ambiguous selector still fails immediately.
 - **App-agnostic** — per-target differences stay in `targets.<name>` config; tool, drivers, and runner are unchanged.
 
 ## Verification

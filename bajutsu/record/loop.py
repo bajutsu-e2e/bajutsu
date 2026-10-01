@@ -375,6 +375,10 @@ def execute(
         ok, reason, _ = _wait(driver, step.wait, clock)
         if not ok and on_wait_failure is not None:
             on_wait_failure(reason)
+    elif kind == "sleep":
+        assert step.sleep is not None
+        # The pause stands in for a delay nothing on screen shows, so a replay honors it too.
+        clock.sleep(step.sleep.seconds)
     elif kind == "assert_":
         return  # assertions are checks, not actions to perform while recording
     else:

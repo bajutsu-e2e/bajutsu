@@ -16,3 +16,4 @@ class _LaxMetrics:
     id_selectors: int  # selectors anchored on an `id`, the uniqueness anchor
     waits: int  # bounded condition waits
     wait_timeout_total: float  # summed wait budget; a raise grows it, a lowering shrinks it
+    sleeps: int = 0  # fixed `sleep` pauses — each one a timing workaround a human must justify

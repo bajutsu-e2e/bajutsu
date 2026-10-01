@@ -779,6 +779,7 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `rotate` | `rotate: { sel: <Selector>, radians: <num> }` | two-finger rotation; `>0` is clockwise |
 | `handleSystemAlert` | `handleSystemAlert: { sel: <Selector>, timeout: <sec> }` | tap a button on an iOS SpringBoard permission prompt, deterministically ([below](#handlesystemalert-the-deterministic-system-alert-step)); iOS (XCUITest) only. `sel` accepts only `label` / `labelMatches` / `index`, and resolves against the system language the run pins the Simulator to. In place of `sel`, `prompt: notifications\|tracking\|paste` + `choice: grant\|deny` names the button by meaning and lets the run resolve its label (BE-0320), or its position under a language the label table does not cover (BE-0445) |
 | `wait` | `wait: { for\|until: ..., timeout: <sec> }` | condition wait (below) |
+| `sleep` | `sleep: { seconds: <sec>, reason: "..." }` | fixed pause for a delay no condition can observe; at most 30s, reason mandatory ([below](#sleep-fixed-pause)) |
 | `assert` | `assert: [ <Assertion>... ]` | mid-step verification |
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | terminate + relaunch the app (re-applying launch env/args, plus the given overrides), then wait until ready |
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | override the simulated GPS location (`simctl location set`) |
@@ -1091,7 +1092,7 @@ overshoots anyway is caught rather than assumed away, by the look-back above.
 
 ### `wait` (condition wait)
 
-Fixed sleeps are not supported. **`timeout` is mandatory** (no infinite waits).
+A `wait` never sleeps for a fixed time (the one fixed pause is the separate [`sleep`](#sleep-fixed-pause) step). **`timeout` is mandatory** (no infinite waits).
 
 ```yaml
 - wait: { for: { id: home.title }, timeout: 5 }            # until an element appears
@@ -1111,6 +1112,27 @@ threshold). The endpoint is pinned by `url`
 ([run-loop](run-loop.md#waits-condition-waits-only)): `for` / `gone` / `screenChanged` / `request`
 time out = step failure; `settled` is a stabilization hint, so a timeout just proceeds with the
 current screen (it does not fail).
+
+### `sleep` (fixed pause)
+
+A `wait` never sleeps for a fixed time. For a rare delay that nothing on screen or in the network log
+shows, use `sleep`. Typical cases are a server-side retry throttle, or an animation that outlives
+`until: settled`.
+
+```yaml
+- sleep: { seconds: 2, reason: "the server throttles a retry for two seconds" }
+```
+
+- `seconds` must be above 0 and at most 30 seconds. A longer pause almost always hides a missing
+  condition, so loading refuses it and points at `wait`.
+- `reason` is mandatory and must not be blank. It states why no `wait` condition can express the
+  pause. The progress log and `report.html` show the reason, and generated code keeps it as a comment.
+- The step reads no tree and sends no input. It runs on every backend, and a cancelled run stops the
+  pause within a quarter of a second.
+- `bajutsu audit` lists every `sleep` as a `fixed-sleep` finding. More than 10 seconds of fixed
+  pause in one scenario grades it `Moderate`.
+- `record` and `crawl` never offer `sleep` to the model, and `triage --ai` flags a fix that adds
+  one. Scenarios authored through the MCP server are not guarded, so review a `sleep` there by hand.
 
 ### `assert` (mid-step verification)
 

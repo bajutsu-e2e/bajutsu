@@ -53,6 +53,11 @@ def _selector_hint(obj: object) -> str:
 def _step_label(step: Step, kind: str) -> str:
     """A concise description of a step for progress output: the step's own `name` if set,
     otherwise the action kind plus its target id/label (e.g. "tap home.title")."""
+    if step.sleep is not None:
+        # The reason is the whole point of a fixed pause, so the live log always shows it (e.g.
+        # "sleep 2s — the server throttles retries"), after the step's own `name` when it has one.
+        pause = f"sleep {step.sleep.seconds:g}s — {step.sleep.reason}"
+        return f"{step.name} ({pause})" if step.name else pause
     if step.name:
         return step.name
     hint = _selector_hint(getattr(step, kind))

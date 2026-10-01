@@ -588,6 +588,7 @@ NARROW_MQ.addEventListener('change',applyLayoutTier);
       return 'type '+sel+' = "'+(f.text||'')+'"';
     }
     if(a==='wait')return 'wait';
+    if(a==='sleep')return 'sleep '+(f.seconds??'?')+'s — '+(f.reason||'');
     if(a==='assert')return 'assert';
     return a;
   }

@@ -31,7 +31,8 @@ The fix must honor all three directives, and a fix that brushes any of them is a
 1. **AI authors and investigates, never judges.** Never add an LLM call to the Tier-2 `run` / CI
    gate ([`docs/glossary.md`](../../../docs/glossary.md#the-two-tiers)). Pass/fail comes only from
    machine-checkable assertions.
-2. **Determinism first.** No fixed `sleep` (condition waits only); an ambiguous selector fails
+2. **Determinism first.** Condition waits only (the one fixed pause is the capped, reasoned `sleep`
+   step); an ambiguous selector fails
    immediately rather than tapping the first match.
 3. **App-agnostic.** Per-app differences live in config (`targets.<name>`); the tool, drivers, and
    runner stay unchanged across targets.

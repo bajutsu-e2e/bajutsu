@@ -205,6 +205,7 @@ Action    ::=
   | { handleSystemAlert: { sel: <Selector>, timeout: number } }  # iOS SpringBoard の権限プロンプトを tap（iOS/XCUITest 専用）。sel は label/labelMatches/index のみ
   | { handleSystemAlert: { prompt: notifications|tracking|paste, choice: grant|deny, timeout: number } }  # 同じステップ。label は run の locale から解決し、対応表にない言語ではボタンの位置で解決する（BE-0320、BE-0445）。savePassword はここでは名指しできない（BE-0406）
   | { wait:        <Wait> }
+  | { sleep:       { seconds: number, reason: string } }  # 固定の待機: 0 < seconds <= 30、reason は空白不可。条件待機の唯一の例外
   | { assert:      list(<Assertion>) }
   | { relaunch:    { env?: map(string,string), args?: list(string) } }
   | { setLocation: { lat: number, lon: number } }

@@ -33,6 +33,7 @@ from bajutsu.codegen.common import (
     network_unsupported,
     permissions_setup_lines,
     render_test_file,
+    sleep_comment,
 )
 from bajutsu.common.assertions import request_label
 from bajutsu.common.drivers import base
@@ -288,6 +289,11 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         return [f"{target}.tap()", f'{target}.typeKey("a", modifierFlags: .command)']
     if step.copy_ is not None:
         return ['app.typeKey("c", modifierFlags: .command)']
+    if step.sleep is not None:
+        return [
+            sleep_comment(step.sleep.reason),
+            f"Thread.sleep(forTimeInterval: {step.sleep.seconds:g})",
+        ]
     if step.back is not None:
         # iOS has no hardware back; the generated XCUITest taps the OS navigation back button, the
         # same element the XCUITest driver taps at runtime. Reuse the shared constant so codegen

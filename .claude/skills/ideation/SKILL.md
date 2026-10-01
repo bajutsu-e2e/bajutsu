@@ -35,7 +35,8 @@ a boundary:
 
 1. **AI authors and investigates, never judges.** Nothing you propose may put an LLM call
    into the Tier‑2 `run`/CI gate. AI-flavored ideas live in `record`/`triage`/draft paths.
-2. **Determinism first.** No fixed `sleep`; ambiguous selectors fail rather than guess.
+2. **Determinism first.** Condition waits only (a fixed pause only through the capped, reasoned
+   `sleep` step); ambiguous selectors fail rather than guess.
 3. **App-agnostic.** Per-app differences belong in config, not the tool/drivers/runner.
 
 If an idea conflicts (e.g. "auto-heal locators mid-run", "AI decides pass/fail"), don't

@@ -208,6 +208,7 @@ Action    ::=
   | { handleSystemAlert: { sel: <Selector>, timeout: number } }  # tap an iOS SpringBoard permission prompt (iOS/XCUITest only); sel accepts only label/labelMatches/index
   | { handleSystemAlert: { prompt: notifications|tracking|paste, choice: grant|deny, timeout: number } }  # same step, label resolved from the run's locale (BE-0320), or by position under an uncovered language (BE-0445); savePassword is not nameable here (BE-0406)
   | { wait:        <Wait> }
+  | { sleep:       { seconds: number, reason: string } }  # fixed pause: 0 < seconds <= 30, reason non-blank; the one exception to condition waits
   | { assert:      list(<Assertion>) }
   | { relaunch:    { env?: map(string,string), args?: list(string) } }
   | { setLocation: { lat: number, lon: number } }
@@ -408,6 +409,7 @@ error). This table is the **authoritative list of "exactly one / at least one / 
 | `Pinch` | `scale` **> 0** | `scenario/models/actions.py` |
 | `HandleSystemAlert` | `sel` restricted to `label` / `labelMatches` / `index` (rejects `id`/`idMatches`/`traits`/`value`/`within`) | `scenario/models/actions.py` |
 | `Wait` | **exactly one** of `for` / `until` | `scenario/models/assertions.py` |
+| `Sleep` | `seconds` a number **> 0** and **≤ 30**; `reason` **not blank** | `scenario/models/actions/sleep.py` |
 | `Assertion` | **exactly one** kind (`exists` … `request` … `visual`) | `scenario/models/assertions.py` |
 | `TextMatch` (`value`/`label`) | **exactly one** of `equals` / `contains` / `matches` | `scenario/models/assertions.py` |
 | `CountMatch` (`count`) | **exactly one** of `equals` / `atLeast` / `atMost` | `scenario/models/assertions.py` |
