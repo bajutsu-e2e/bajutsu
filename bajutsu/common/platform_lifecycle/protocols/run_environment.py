@@ -42,6 +42,41 @@ class RunEnvironment(Protocol):
         permissions: Mapping[str, str] | None = None,
     ) -> base.Driver: ...
 
+    def start_member(
+        self,
+        eff: Effective,
+        pre: Preconditions,
+        *,
+        extra_env: Mapping[str, str] | None = None,
+        permissions: Mapping[str, str] | None = None,
+        install: bool = True,
+    ) -> base.Driver:
+        """Bring one more device-group member's app up on this already-started device (BE-0447).
+
+        `start` has already prepared the device for the group's first member, so this does only the
+        per-app part for *eff*'s app: install it under `pre`'s reinstall mode, apply `permissions`,
+        and launch it. `install=False` skips the install and the reinstall mode entirely: a later
+        member's `foreground` launches the build its `installApp` step already put on the device,
+        and must never uninstall or clear it. It never repeats a device-wide step — no erase, no reboot, no locale pin —
+        since that would wipe or restart the members already running. The returned driver shares the
+        group's one automation session and is bound to this member's app; it is not yet polled for
+        readiness, the same contract as `start`.
+
+        Raises:
+            base.UnsupportedAction: This platform cannot share a device between two apps yet.
+                Preflight refuses a device group on a backend without `Capability.DEVICE_GROUP`, so
+                this is only the runtime backstop.
+        """
+        ...
+
+    def end_member(self, driver: base.Driver, eff: Effective) -> None:
+        """Release one member `start_member` brought up: stop its app, keep the device (BE-0447).
+
+        The group's device and its shared automation session stay with the lease that started them,
+        which releases both through `teardown` / `end_lease` once every member has ended.
+        """
+        ...
+
     def resolve_device(self, udid: str) -> str:
         """Resolve *udid* to a concrete device handle for this platform.
 

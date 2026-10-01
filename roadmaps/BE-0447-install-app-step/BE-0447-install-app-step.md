@@ -551,7 +551,7 @@ so the deterministic gate stays untouched.
 > (oldest first), linking the PRs.
 
 - [x] Unit 1: nested `targets` form, `installs`, and flattening accessor
-- [ ] Unit 2: device-group lease and lifecycle, after the on-device checks
+- [x] Unit 2: device-group lease and lifecycle, after the on-device checks
 - [ ] Unit 3: `installApp` and `setPrimaryTarget` steps
 - [ ] Unit 4: run preflight and validation
 - [ ] Unit 5: XCUITest environment and driver
@@ -572,6 +572,20 @@ Log:
   pipeline, the `run` and `audit` CLIs, and the serve evidence lookup. Until unit 2 leases one
   device per group, `run_all` and the `run` CLI refuse a scenario that declares a device group,
   since a flattened run would lease a device per member and start every one of them.
+- Unit 2. The members of a device group share one driver, the fallback the design names for
+  devices that cannot serve two drivers. The code already settles that question without a device
+  run: the XCUITest runner's discard terminates the XCTRunner bundle every runner shares, and the
+  Android resident server is one per device with a fixed device port. The environment seam gains
+  `start_member` / `end_member`, the pool's lease gains `join`, and a new `deviceGroup` capability
+  gates a group in preflight; only the fake backend advertises it until units 5 and 6. The
+  pipeline leases one device per group for its last starting member, joins the others in reverse
+  declared order, and stops every member's app before the device returns to the pool. `run`
+  counts devices per group. A `TargetRoster` holds each later member's lifecycle and the current
+  primary: a step addressed to a member that is not running fails with a named cause, a later
+  member comes up at its first `foreground`, and an `interrupts` entry that omits `target` polls
+  on the current primary, while a member that is not running polls nothing. The members share
+  the group's network collector, so its traffic is written once; telling one member's requests
+  from another's waits for units 5 and 6.
 
 ## References
 

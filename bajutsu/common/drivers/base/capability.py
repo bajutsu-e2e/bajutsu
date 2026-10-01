@@ -69,6 +69,11 @@ class Capability:
     # the element XCUITest handed it — so this token gates only the proactive presence query and the
     # swipe it feeds (Units 2/3/8), used opportunistically between interactions.
     HANDLE_NOTIFICATION_BANNER = "handleNotificationBanner"
+    # Bring a second app up on a device another target already holds, and drive it through the same
+    # driver (BE-0447): what a device group in a scenario's `targets` needs from every member's
+    # backend. A token rather than a runtime refusal so preflight names the group before any device is
+    # leased; a backend advertises it once its environment implements `start_member`.
+    DEVICE_GROUP = "deviceGroup"
     # The `DeviceControl` family, one token per operation (BE-0212, split from the coarse
     # `deviceControl` of BE-0128). A backend advertises exactly the operations it can honor, so
     # preflight gates each device-control step on its own operation — the Android emulator backs

@@ -88,6 +88,7 @@ from ._shared import _ExecSteps, _logger
 from ._step_counter import _StepCounter
 from .app_crash_latches import AppCrashLatches
 from .step_loop_state import StepLoopState
+from .target_roster import TargetRoster
 
 # How often `email` re-polls the mailbox. Unlike the UI's 50 ms `_POLL`, each tick is a remote HTTP
 # request to a (often rate-limited / metered) provider, so it polls about once a second.
@@ -721,6 +722,7 @@ def run_scenario(  # noqa: C901, PLR0915
     primary_target: str = "",
     capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None = None,
     app_launch_unconfirmed: bool = False,
+    roster: TargetRoster | None = None,
 ) -> RunResult:
     """Run one scenario deterministically, firing capturePolicy rules into `sink`.
 
@@ -915,6 +917,7 @@ def run_scenario(  # noqa: C901, PLR0915
             hide_markers,
             app_crash_latches,
             capture_app_crash,
+            roster,
         )
 
     try:
@@ -948,7 +951,9 @@ def run_scenario(  # noqa: C901, PLR0915
                         cancelled=cancelled,
                         expect_actuations=expect_actuations,
                         wall_offset_s=wall_offset_s,
-                        target_runtimes=target_runtimes,
+                        target_runtimes=(
+                            roster.live(target_runtimes) if roster is not None else target_runtimes
+                        ),
                         primary_target=primary_target,
                     )
                     expect_dropped_actuations += dropped
@@ -1008,7 +1013,11 @@ def run_scenario(  # noqa: C901, PLR0915
                                 cancelled=cancelled,
                                 expect_actuations=expect_actuations,
                                 wall_offset_s=wall_offset_s,
-                                target_runtimes=target_runtimes,
+                                target_runtimes=(
+                                    roster.live(target_runtimes)
+                                    if roster is not None
+                                    else target_runtimes
+                                ),
                                 primary_target=primary_target,
                             )
                             expect_dropped_actuations += dropped
@@ -1386,6 +1395,7 @@ def _run_steps(
     hide_markers: bool = False,
     app_crash: AppCrashLatches | None = None,
     capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None = None,
+    roster: TargetRoster | None = None,
 ) -> str | None:
     """Run one phase's step loop, appending outcomes; return the failure string or None.
 
@@ -1417,6 +1427,7 @@ def _run_steps(
         # Scenario-scoped like `bindings`: a caller that builds no shared object (a test driving one
         # phase directly) gets a fresh one, which simply starts every latch cleared.
         app_crash=app_crash if app_crash is not None else AppCrashLatches(),
+        roster=roster,
     )
     cfg = _LoopConfig(
         driver=driver,
@@ -1449,6 +1460,8 @@ def _run_steps(
     from ._step_runner import _StepRunner
 
     primary = _StepRunner(state, cfg, primary_target)
+    if roster is not None:
+        target_runtimes = roster.live(target_runtimes)
     if target_runtimes:
         by_target = {
             name: (

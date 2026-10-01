@@ -145,6 +145,23 @@ class Scenario(_Model):
         return [name for group in self.device_groups for name in group]
 
     @property
+    def later_targets(self) -> list[str]:
+        """The device-group members that start with nothing installed, in declared order (BE-0447).
+
+        A member of a group of two or more that is neither the primary (the first declared name) nor
+        listed in `installs`: it comes alive only through an `installApp` step and a `foreground`.
+        """
+        names = self.target_names
+        starting = {names[0], *self.installs} if names else set()
+        return [
+            name
+            for group in self.device_groups
+            if len(group) >= 2
+            for name in group
+            if name not in starting
+        ]
+
+    @property
     def source_stem(self) -> str | None:
         """The stem of the file this scenario was loaded from, or `None` outside a file loader."""
         return self._source_stem

@@ -108,6 +108,22 @@ class WebEnvironment:
     def teardown(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
         cast(base.BackendLifecycle, driver).close()  # web-only lifecycle, confined to this env
 
+    def start_member(
+        self,
+        eff: Effective,  # noqa: ARG002  # Environment shape
+        pre: Preconditions,  # noqa: ARG002
+        *,
+        extra_env: Mapping[str, str] | None = None,  # noqa: ARG002
+        permissions: Mapping[str, str] | None = None,  # noqa: ARG002
+        install: bool = True,  # noqa: ARG002
+    ) -> base.Driver:
+        # A browser lane has no device for a second app to share; run preflight refuses a web target
+        # in a device group before this is reached (BE-0447).
+        raise base.UnsupportedAction("a web target cannot share a device with another target")
+
+    def end_member(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
+        return None  # `start_member` never succeeds here, so no member is ever left to end
+
     def has_reusable_resident(self) -> bool:
         return False  # a browser context per lease, no cross-lease resident to amortize (BE-0291)
 

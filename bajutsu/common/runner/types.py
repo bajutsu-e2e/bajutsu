@@ -99,6 +99,14 @@ class Lease:
     # scenario's very first failing step, which has no earlier step to have observed it running
     # (BE-0424). `None` where no gate ran.
     readiness: ReadinessResult | None = None
+    # Bring another member of this lease's device group up on the same device (BE-0447): it
+    # installs and launches that member's app through the environment's `start_member` and returns
+    # a lease whose `release()` stops only that app. The device itself stays with this lease and
+    # returns to the pool on this lease's own `release()`, so every member lease must be released
+    # first. The third argument is `start_member`'s `install`: False for a later member, whose build
+    # an `installApp` step already put there. `None` on a lease that cannot host a second app (a
+    # caller-built test lease).
+    join: Callable[[Effective, Scenario, bool], Lease] | None = None
 
 
 # Leases a free device for one scenario (blocking until one frees up): launches the app

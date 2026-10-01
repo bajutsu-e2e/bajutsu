@@ -488,6 +488,22 @@ class AndroidEnvironment:
             self._resident = None
         adb.Env(self._serial, run=self._run).force_stop(require_android(eff).package)
 
+    def start_member(
+        self,
+        eff: Effective,  # noqa: ARG002  # Environment shape
+        pre: Preconditions,  # noqa: ARG002
+        *,
+        extra_env: Mapping[str, str] | None = None,  # noqa: ARG002
+        permissions: Mapping[str, str] | None = None,  # noqa: ARG002
+        install: bool = True,  # noqa: ARG002
+    ) -> base.Driver:
+        # Sharing the one resident server between packages lands with BE-0447 unit 6; the adb driver
+        # does not advertise `Capability.DEVICE_GROUP` until then, so preflight refuses first.
+        raise base.UnsupportedAction("device groups are not supported on adb")
+
+    def end_member(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
+        adb.Env(self._serial, run=self._run).force_stop(require_android(eff).package)
+
     def has_reusable_resident(self) -> bool:
         # The UI Automator read channel (BE-0245) is torn down per lease; amortizing it across leases
         # is out of scope for BE-0291 (which targets the XCUITest runner's cold startup).

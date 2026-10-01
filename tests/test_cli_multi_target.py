@@ -386,6 +386,27 @@ def test_two_targets_on_one_pool_demand_two_devices() -> None:
     assert _pool_demand(scenarios, setups) == {"fake": 2}
 
 
+def test_a_device_group_demands_one_device_however_many_members() -> None:
+    # The members of a device group share one device, so the group counts once (BE-0447).
+    released: list[str] = []
+    setups = {
+        "app": _setup("app", "fake", ["UD-1"], released),
+        "site": _setup("site", "fake", ["UD-1"], released),
+    }
+    scenarios = [
+        Scenario.model_validate(
+            {
+                "name": "grouped",
+                "targets": [["app", "site"]],
+                "primaryTarget": "app",
+                "steps": [{"tap": {"id": "a"}}],
+            }
+        )
+    ]
+    assert _pool_demand(scenarios, setups) == {"fake": 1}
+    assert _resolve_multi_target_workers(scenarios, setups, 4) == 1
+
+
 def test_two_targets_on_two_pools_demand_one_device_each() -> None:
     released: list[str] = []
     setups = {

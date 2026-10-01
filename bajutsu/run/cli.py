@@ -60,7 +60,6 @@ from bajutsu.common.scenario import (
     SystemAlertHandlingField,
     SystemAlertRule,
     _scenarios_declaring_targets,
-    _scenarios_with_device_groups,
     apply_setups,
     contained_ref,
     declared_name,
@@ -561,23 +560,6 @@ def _reject_cross_browser_matrix_with_targets(
     if affected:
         typer.echo(
             "--browsers cannot fan out a scenario declaring targets: (BE-0428); "
-            f"affected scenario(s): {', '.join(affected)}"
-        )
-        raise typer.Exit(2)
-
-
-def _reject_device_groups(scenarios: list[Scenario]) -> None:
-    """Refuse a scenario declaring a device group of two or more, with a clean exit 2 (BE-0447).
-
-    `run_all` refuses the same scenarios too, before its own lease callback, but only after this
-    command has already acquired its device pools and would surface a bare `ValueError`; this
-    catches them before any device work, with the clean exit 2 every other multi-target refusal
-    here gives.
-    """
-    affected = _scenarios_with_device_groups(scenarios)
-    if affected:
-        typer.echo(
-            "device groups in targets: are not yet implemented (BE-0447); "
             f"affected scenario(s): {', '.join(affected)}"
         )
         raise typer.Exit(2)
@@ -1449,13 +1431,15 @@ def _pool_demand(scenarios: list[Scenario], setups: Mapping[str, _TargetSetup]) 
     """The most devices any one scenario needs from each pool at once (BE-0428).
 
     Targets sharing a pool share its device queue, and a scenario holds every declared target's
-    lease for its whole length, so two targets on one pool need two devices from it.
+    lease for its whole length, so two targets on one pool need two devices from it. A device group
+    is one device however many members it holds (BE-0447), so the count is per group, keyed by the
+    group's first member — run preflight refuses a group whose members differ in backend.
     """
     demand: dict[str, int] = {}
     for s in scenarios:
         per_pool: dict[str, int] = {}
-        for name in s.target_names:
-            key = setups[name].actuator
+        for group in s.device_groups:
+            key = setups[group[0]].actuator
             per_pool[key] = per_pool.get(key, 0) + 1
         for key, n in per_pool.items():
             demand[key] = max(demand.get(key, 0), n)
@@ -1478,7 +1462,7 @@ def _resolve_multi_target_workers(
         lanes = next(len(s.udids) for s in setups.values() if s.actuator == actuator)
         if needed > lanes:
             typer.echo(
-                f"a scenario declares {needed} targets served by the {actuator} pool, but only "
+                f"a scenario needs {needed} devices from the {actuator} pool, but only "
                 f"{lanes} device lane(s) are available there — pass more devices via --udid, or "
                 "raise --workers to widen a web pool"
             )
@@ -2166,7 +2150,6 @@ def run(
     # — these checks speak about the scenarios this run will actually attempt.
     _check_target_membership(scenarios, target_name, explicit=explicit_target)
     _reject_legacy_without_target(scenarios, target_name, explicit=explicit_target)
-    _reject_device_groups(scenarios)
     target_effs = _resolve_target_effs(
         loaded, scenarios, target_name, eff, headed=headed, browser=browser
     )

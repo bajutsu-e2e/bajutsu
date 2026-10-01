@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from bajutsu.common.doctor import Score
-    from bajutsu.common.drivers import base
 
 from bajutsu.common.assertions import (
     AssertionResult,
@@ -32,7 +31,7 @@ from bajutsu.common.cancellation import CANCELLED_FAILURE, CancelSource, not_can
 from bajutsu.common.capability import capability_preflight
 from bajutsu.common.config import Effective, web_engine
 from bajutsu.common.devices import errors as device_errors
-from bajutsu.common.drivers import tracing
+from bajutsu.common.drivers import base, tracing
 from bajutsu.common.drivers.base import BackendCrashError
 from bajutsu.common.evidence import Artifact
 from bajutsu.common.evidence.network import NetworkExchange, _no_transitions
@@ -42,10 +41,12 @@ from bajutsu.common.orchestrator import (
     AlertGuardConfig,
     Clock,
     MailboxReader,
+    MemberStatus,
     ProgressFn,
     RunResult,
     SkippedCapture,
     TargetDeviceInfo,
+    TargetRoster,
     TargetRuntime,
     push_interruption_policy,
     run_scenario,
@@ -83,7 +84,6 @@ from bajutsu.common.scenario import (
     _check_target_requirements,
     _expand_target_groups,
     _scenarios_declaring_targets,
-    _scenarios_with_device_groups,
     dump_scenario_file,
     redact_totp_secrets,
 )
@@ -334,9 +334,17 @@ class _ScenarioRunner:
         on an iOS target are each supported by exactly one of them, which a single shared set could
         not express.
         """
+        grouped = {name for g in s.device_groups if len(g) >= 2 for name in g}
         for name in self._routed(s):
             pool = self.targets[name]
             caps = capabilities_for_run(pool.actuator, pool.eff, pool.udid_spec)
+            if name in grouped and base.Capability.DEVICE_GROUP not in caps:
+                # Refused before any device is leased: sharing a device needs the backend to start a
+                # second app beside the first (BE-0447).
+                return (
+                    f"unsupported on backend '{pool.actuator}' (target '{name}'): a device group "
+                    "(this backend cannot share a device between two apps yet)"
+                )
             if reasons := capability_preflight.unsupported(_steps_for_target(s, name), caps):
                 return f"unsupported on backend '{pool.actuator}' (target '{name}'): {'; '.join(reasons)}"
         return None
@@ -354,12 +362,25 @@ class _ScenarioRunner:
         The same `launch_scenario` — the crash-retry loop's possibly erase-forced copy — goes to
         every target, since `preconditions` and `permissions` are scenario-level and each backend
         already interprets only the parts that apply to it.
+
+        A device group takes one lease, for its last starting member, which prepares the device once;
+        the group's other starting members then join it in reverse declared order, so the group's
+        first starting member is the one in front when the first step runs (BE-0447). A later member
+        joins nobody here: it comes up at its first `foreground`. Each anchor goes into `held` ahead
+        of the members that joined it, so `_release_all`'s reverse walk stops every member's app
+        before the anchor hands the device back.
         """
+        later = set(s.later_targets)
+        groups = [[n for n in g if n not in later] for g in s.device_groups]
         held: dict[str, Lease] = {}
         try:
-            for name in sorted(self._routed(s), key=lambda n: (self.targets[n].actuator, n)):
-                pool = self.targets[name]
-                held[name] = pool.lease(pool.eff, launch_scenario)
+            for group in sorted(groups, key=lambda g: (self.targets[g[0]].actuator, g[0])):
+                anchor, *joining = reversed(group)
+                pool = self.targets[anchor]
+                lease = pool.lease(pool.eff, launch_scenario)
+                held[anchor] = lease
+                for name in joining:
+                    held[name] = _join(lease, name, self.targets[name].eff, launch_scenario)
         except BaseException:
             _release_all(held)
             raise
@@ -1071,6 +1092,8 @@ class _ScenarioRunner:
         if not routed:
             return None
         leases = {routed[0]: lz, **others}
+        # A later device-group member has no lease yet; its runtime is built when it comes up at its
+        # first `foreground` (BE-0447).
         return {
             name: self._runtime_for(
                 name,
@@ -1083,7 +1106,51 @@ class _ScenarioRunner:
                 primary_target=routed[0],
             )
             for name in routed
+            if name in leases
         }
+
+    def _roster_for(
+        self,
+        s: Scenario,
+        lz: Lease,
+        others: dict[str, Lease],
+        handler: AlertGuardConfig | None,
+        writer: RunArtifactWriter | None,
+        sid: str,
+        primary_ctx: EvalContext,
+        primary_target: str,
+    ) -> TargetRoster | None:
+        """The run's `TargetRoster`, or None for a scenario declaring no targets (BE-0447).
+
+        A later member's activation joins it to the lease holding its group's device and files the
+        new lease in *others*, so the scenario's ordinary teardown stops its app before that device
+        goes back to the pool.
+        """
+        if not primary_target:
+            return None
+        later = s.later_targets
+
+        def activate(name: str) -> TargetRuntime:
+            group = next(g for g in s.device_groups if name in g)
+            held = {primary_target: lz, **others}
+            anchor = next((held[m] for m in group if m in held and held[m].join is not None), None)
+            # Launch only: the member's `installApp` step already installed its build.
+            member = _join(anchor, name, self.targets[name].eff, s, install=False)
+            others[name] = member
+            # The per-scenario setup every other lease got before the first step.
+            push_interruption_policy(member.driver, handler)
+            if self.trace_driver:
+                member.driver = tracing.TracingDriver(member.driver)
+            return self._runtime_for(
+                name, member, s, handler, writer, sid, primary_ctx, primary_target=primary_target
+            )
+
+        return TargetRoster(
+            primary=primary_target,
+            entries=list(s.interrupts),
+            status=dict.fromkeys(later, MemberStatus.NOT_INSTALLED),
+            activate=activate if later else None,
+        )
 
     def _runtime_for(
         self,
@@ -1129,10 +1196,10 @@ class _ScenarioRunner:
             transitions=(
                 collector.transitions_snapshot_timed if collector is not None else _no_transitions
             ),
-            interrupts=[
-                *pool.eff.run_defaults.interrupts,
-                *_scenario_interrupts_for(s, name, primary_target),
-            ],
+            # The target config's own entries only: the scenario's own are resolved per step by the
+            # run's `TargetRoster`, since an entry omitting `target` follows the current primary,
+            # which a `setPrimaryTarget` step can move mid-run (BE-0447).
+            interrupts=list(pool.eff.run_defaults.interrupts),
             locale=s.preconditions.resolved_locale(pool.eff.locale),
             capture=list(pool.eff.capture),
             channel=collector,
@@ -1198,7 +1265,10 @@ class _ScenarioRunner:
             # leaving the primary's evidence bare at `sid`. `others` is empty for a zero/one-
             # declared-target scenario, so this stays a no-op there.
             primary_target = next(iter(self._routed(s)), "")
-            primary_prefix = f"{sid}/{primary_target}" if others else sid
+            # Two or more declared names, not "a second lease exists": a device group whose later
+            # member has not come up yet still names its evidence per target (BE-0447).
+            multi = len(self._routed(s)) >= 2
+            primary_prefix = f"{sid}/{primary_target}" if multi else sid
             # Build visual context for scenario-level visual assertions (expect).
             vc: VisualContext | None = None
             if self.baselines_dir is not None and writer is not None:
@@ -1256,10 +1326,16 @@ class _ScenarioRunner:
                 # interstitial handler composes with a per-scenario addition, the config-then-scenario
                 # order the systemAlertHandling default already follows. The scenario's own are
                 # narrowed to the entries the primary watches (BE-0438).
-                interrupts=[
-                    *self.eff.run_defaults.interrupts,
-                    *_scenario_interrupts_for(s, primary_target, primary_target),
-                ],
+                interrupts=(
+                    # A self-declaring scenario's own entries reach the step loop through its
+                    # roster instead, resolved against the primary in force at each step (BE-0447).
+                    list(self.eff.run_defaults.interrupts)
+                    if primary_target
+                    else [
+                        *self.eff.run_defaults.interrupts,
+                        *_scenario_interrupts_for(s, primary_target, primary_target),
+                    ]
+                ),
                 # The locale this scenario runs under — the same value the lease pinned the
                 # Simulator's system language to, so a `handleSystemAlert` naming a prompt and a
                 # choice resolves to the label SpringBoard is actually rendering (BE-0320).
@@ -1290,9 +1366,12 @@ class _ScenarioRunner:
                 # phase can re-stamp the launch marker it matches against (BE-0424).
                 capture_app_crash=lz.app_crash_artifacts,
                 app_launch_unconfirmed=_launch_unconfirmed(lz.readiness),
+                roster=self._roster_for(
+                    s, lz, others, handler, writer, sid, primary_ctx, primary_target
+                ),
             )
             result.sid = sid  # the evidence-dir slug, so the matrix links to the real dir (BE-0076)
-            if others:
+            if multi:
                 # A multi-target run has no single device to attribute the scenario to, so the
                 # singular fields stay empty and each declared target gets its own row instead
                 # (BE-0428). `backend` is left as the run set it for the same reason it is here at
@@ -1327,22 +1406,9 @@ class _ScenarioRunner:
             # Every declared target's own evidence gaps and network capture, not only the
             # primary's — an extra target's lease is exactly as capable of skipping a capture kind
             # or carrying `request`-asserted traffic as the primary's (BE-0428).
-            for name, target_lz in {primary_target: lz, **others}.items():
-                result.skipped_captures += target_lz.skipped_captures
-                if target_lz.collector is not None and writer is not None:
-                    # `others` empty (a zero/one-declared-target scenario) keeps the primary's own
-                    # `network.json` at bare `sid`; once a second target is declared, every name —
-                    # the primary included — nests under its own `<sid>/<name>/`.
-                    prefix = f"{sid}/{name}" if others else sid
-                    art = _write_network(
-                        target_lz.collector.snapshot_timed(),
-                        writer,
-                        prefix,
-                        wall_offset_s=result.wall_offset_s,
-                        provider=target_lz.collector_provider,
-                    )
-                    if art is not None:
-                        result.artifacts.append(art)
+            _record_target_evidence(
+                result, {primary_target: lz, **others}, writer, sid, multi=multi
+            )
             # Still holding the lease this scenario ran on, before the `finally` below releases it —
             # and genuinely after `run_scenario`, so the tombstone layer's `adb root` can no longer
             # break a channel a later step needs. A plain post-return check, not a new `except`
@@ -1358,8 +1424,16 @@ class _ScenarioRunner:
         finally:
             # The extra targets first, best-effort, so one failing release cannot strand the
             # others' devices; the primary's own release then propagates exactly as it always has.
-            _release_all(others)
-            lz.release()
+            # The one exception is a primary that joined a device another lease holds (BE-0447):
+            # its app must stop before that lease hands the device back, so it goes first.
+            if lz.join is None and any(o.join is not None for o in others.values()):
+                try:
+                    lz.release()
+                finally:
+                    _release_all(others)
+            else:
+                _release_all(others)
+                lz.release()
 
 
 def _dir_or(configured: str | None, fallback: Path | None) -> Path | None:
@@ -1428,6 +1502,53 @@ def _scenario_interrupts_for(s: Scenario, name: str, primary_target: str) -> lis
     if not primary_target:
         return list(s.interrupts)
     return [e for e in s.interrupts if (e.target or primary_target) == name]
+
+
+def _record_target_evidence(
+    result: RunResult,
+    leases: Mapping[str, Lease],
+    writer: RunArtifactWriter | None,
+    sid: str,
+    *,
+    multi: bool,
+) -> None:
+    """Fold every declared target's capture gaps and network traffic into *result* (BE-0428).
+
+    Once a second target is declared, every name — the primary included — nests its
+    `network.json` under its own `<sid>/<name>/`; a zero/one-target scenario keeps it at bare `sid`.
+    A device group's members share one collector (one device, one receiver — BE-0447), so its
+    traffic is written once, under the first member that reaches it, rather than credited to every
+    member; telling one member's requests from another's is left to the backends that can (BE-0447
+    units 5 and 6).
+    """
+    written: set[int] = set()
+    for name, target_lz in leases.items():
+        result.skipped_captures += target_lz.skipped_captures
+        collector = target_lz.collector
+        if collector is None or writer is None or id(collector) in written:
+            continue
+        written.add(id(collector))
+        art = _write_network(
+            collector.snapshot_timed(),
+            writer,
+            f"{sid}/{name}" if multi else sid,
+            wall_offset_s=result.wall_offset_s,
+            provider=target_lz.collector_provider,
+        )
+        if art is not None:
+            result.artifacts.append(art)
+
+
+def _join(
+    anchor: Lease | None, name: str, eff: Effective, scenario: Scenario, *, install: bool = True
+) -> Lease:
+    """*name*'s lease on the device *anchor* holds for its device group (BE-0447)."""
+    if anchor is None or anchor.join is None:
+        raise RuntimeError(
+            f"target {name!r} shares a device with its group, but that device's lease cannot host "
+            "a second app"
+        )
+    return anchor.join(eff, scenario, install)
 
 
 def _release_all(leases: Mapping[str, Lease]) -> None:
@@ -1711,14 +1832,6 @@ def run_all(
     # the resolver win and discarding the fixed actuator/caps (prime directive 2).
     if actuator is not None and resolve_actuator is not None:
         raise ValueError("pass either actuator or resolve_actuator to run_all, not both")
-    # A device group needs one lease per group and a later member held back until its `installApp`
-    # (BE-0447), which the lease path does not do yet, so refuse rather than lease a device per
-    # member. Checked ahead of the per-target guard below, since it names the more specific cause.
-    if affected := _scenarios_with_device_groups(scenarios):
-        raise ValueError(
-            "device groups in targets: are not yet implemented (BE-0447); "
-            f"affected scenario(s): {', '.join(affected)}"
-        )
     # A scenario declaring two or more `targets` needs one launched driver per declared name to
     # route its steps (BE-0428), which only a caller that resolved and pooled them can supply. A
     # caller that passes no `targets` map — `audit`, or a test driving one

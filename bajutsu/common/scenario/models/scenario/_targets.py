@@ -382,15 +382,3 @@ def _scenarios_declaring_targets(scenarios: list[Scenario]) -> list[str]:
     declared.
     """
     return sorted({s.name for s in scenarios if len(s.target_names) >= 2})
-
-
-def _scenarios_with_device_groups(scenarios: list[Scenario]) -> list[str]:
-    """The names of every scenario in *scenarios* declaring a device group of two or more (BE-0447).
-
-    A device group gives its members one device, and only the members `installs` names start on it.
-    The runner cannot yet lease one device per group or hold a later member back until its
-    `installApp`, so a flattened run would lease a device per member and launch every one of them
-    at the start: the opposite of what the scenario says. Until the lease-and-lifecycle unit lands,
-    `run_all` refuses a scenario this names rather than running it that way.
-    """
-    return sorted({s.name for s in scenarios if any(len(g) >= 2 for g in s.device_groups)})

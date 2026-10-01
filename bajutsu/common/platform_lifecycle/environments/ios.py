@@ -17,7 +17,7 @@ from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.platform_lifecycle import readiness
 from bajutsu.common.platform_lifecycle.device_control import device_control
 from bajutsu.common.platform_lifecycle.relaunchers import device_relauncher
-from bajutsu.common.scenario import Scenario
+from bajutsu.common.scenario import Preconditions, Scenario
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
 
 
@@ -86,6 +86,23 @@ class _DeviceEnvironment:
         return device_control(self._udid, require_ios(eff).bundle_id, self._run)
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
+        simctl.Env(self._udid, run=self._run).terminate(require_ios(eff).bundle_id)
+
+    def start_member(
+        self,
+        eff: Effective,  # noqa: ARG002  # Environment shape
+        pre: Preconditions,  # noqa: ARG002
+        *,
+        extra_env: Mapping[str, str] | None = None,  # noqa: ARG002
+        permissions: Mapping[str, str] | None = None,  # noqa: ARG002
+        install: bool = True,  # noqa: ARG002
+    ) -> base.Driver:
+        # The simctl family shares a Simulator between apps once the XCUITest runner can retarget
+        # its one session per member (BE-0447 unit 5); until then no subclass advertises
+        # `Capability.DEVICE_GROUP`, so preflight refuses before this runs.
+        raise base.UnsupportedAction(f"device groups are not supported on {self._actuator}")
+
+    def end_member(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
         simctl.Env(self._udid, run=self._run).terminate(require_ios(eff).bundle_id)
 
     def has_reusable_resident(self) -> bool:
