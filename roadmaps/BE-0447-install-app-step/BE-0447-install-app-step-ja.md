@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
-| 実装 PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)（単位 1）、[#2110](https://github.com/bajutsu-e2e/bajutsu/pull/2110)（単位 2）、[#2111](https://github.com/bajutsu-e2e/bajutsu/pull/2111)（単位 3） |
+| 実装 PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)（単位 1）、[#2110](https://github.com/bajutsu-e2e/bajutsu/pull/2110)（単位 2）、[#2111](https://github.com/bajutsu-e2e/bajutsu/pull/2111)（単位 3）、[#2112](https://github.com/bajutsu-e2e/bajutsu/pull/2112)（単位 4） |
 | トピック | シナリオの記述機能 |
 <!-- /BE-METADATA -->
 
@@ -342,7 +342,7 @@ flowchart TD
   前者だけだからです。もう 1 つとして、退役したメンバーを指す
   `setPrimaryTarget` かどうかは識別子で決まり、識別子は config にしかありません。そのため読み込み時
   ではなく、実行時に原因を明示して拒否します。静的な検査は、単位 4 の事前検査で加えられます。
-- 単位 4。`run` は、デバイスを確保する前に、デバイスグループを config と突き合わせて検査します。
+- [#2112](https://github.com/bajutsu-e2e/bajutsu/pull/2112)：単位 4。`run` は、デバイスを確保する前に、デバイスグループを config と突き合わせて検査します。
   問題があれば、原因を示して exit 2 で終了します。検査するのは次の 4 点です。
 
   - グループのメンバーが、プラットフォーム、デバイスへの経路、実際に効くシステムのロケールを

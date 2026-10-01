@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
-| Implementing PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) (unit 1), [#2110](https://github.com/bajutsu-e2e/bajutsu/pull/2110) (unit 2), [#2111](https://github.com/bajutsu-e2e/bajutsu/pull/2111) (unit 3) |
+| Implementing PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) (unit 1), [#2110](https://github.com/bajutsu-e2e/bajutsu/pull/2110) (unit 2), [#2111](https://github.com/bajutsu-e2e/bajutsu/pull/2111) (unit 3), [#2112](https://github.com/bajutsu-e2e/bajutsu/pull/2112) (unit 4) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -602,7 +602,7 @@ Log:
   expansion records only the former on a step. And whether a `setPrimaryTarget` names a retired
   member depends on identifiers, which only the config holds, so the run refuses it with a named
   cause instead of the load; unit 4's preflight can add the static check.
-- Unit 4. `run` checks every device group against the config before any device is acquired, and
+- [#2112](https://github.com/bajutsu-e2e/bajutsu/pull/2112) — Unit 4. `run` checks every device group against the config before any device is acquired, and
   exits 2 with each cause named. A group's members must share one platform, one device route
   (`deviceProvider`, `device`, `xcuitest.deviceType`), and one effective system locale, and none
   may be a web target. Starting members of one group must not share a bundle identifier or
