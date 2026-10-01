@@ -149,7 +149,9 @@ this item has landed. It touches six parts of this item.
   vocabulary of `environment` then reaches beyond batch-provider kinds. The loader accepts `appium`
   with a required `endpoint`, and refuses `endpoint` on any other environment. The `appium`
   environment names the platform its grid serves (`ios` today); targets of that platform go to the
-  grid, and other targets stay local. Every command that drives a device (`run`, `record`, `crawl`,
+  grid, and other targets stay local. It behaves like a device-cloud environment: `maxJobConcurrency`
+  may exceed one, `drivers` lists the drivers its local targets need along with the grid's driver,
+  and the host rule applies to the local targets alone. Every command that drives a device (`run`, `record`, `crawl`,
   `repl`, `audit`, and `doctor`), and the MCP server, accepts `--worker-config` with it, replacing
   today's URL udid; this item gives the flag to `worker` and `run` alone, so the restructure extends
   it, and rejects every other non-local environment for those commands. An `appium` worker drives a

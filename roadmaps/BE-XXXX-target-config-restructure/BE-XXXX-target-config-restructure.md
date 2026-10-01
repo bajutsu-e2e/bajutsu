@@ -233,8 +233,10 @@ the scenario's value replaces the target's. Both keys go away:
   that uses `group:`, `setMocks`, or data-row placeholders cannot become a target-hook component;
   each scenario that needs it calls it with `use:` in its own `setup`. Unit 2 finds these preludes.
 - The prelude's place in the order changes. Today it splices onto `steps`, so it runs after the
-  scenario's `before`. As a component in the target's `setup`, it runs before the scenario's
-  `setup`.
+  scenario's `before`. As a component appended last to the target's `setup`, after the target's
+  former `before` steps, it runs before the scenario's `setup`. A scenario's own prelude, converted
+  to `use:`, is appended last to the scenario's `setup`, which keeps it after that scenario's
+  former `before` steps as today.
 
 A scenario keeps `setup`, `cleanup`, and `interrupts` at its top level, beside `steps`, while a
 target groups them under `hooks`; the field names are the same at both levels.
@@ -429,7 +431,8 @@ happens when a run finds no device. Two kinds of field multiply runs, and nothin
 On Android each API level counts as one major version. A web `browser.version` range never
 multiplies runs, because Playwright brings one version per engine. It narrows instead, and it
 follows the same outcome rule by its shape. Engines number their versions differently, so a
-`browser.version` range together with an engine list fails at load. The web backend installs a
+`browser.version` range together with an engine list fails at load, and the same pair formed at
+run time by `--browsers` fails before any device work with exit code 2. The web backend installs a
 missing engine on demand, so an engine list never lacks a device. A multi-target scenario runs every
 combination of its targets' runs. A union whose sides overlap, such as `>=17 <19 || >=18`, runs each
 major version once, and a major version that a bounded side covers keeps the must-run outcome.
@@ -470,9 +473,11 @@ set, formed in three steps:
 1. Keep the available devices that meet the run's conditions. For a version range, keep those whose
    release falls in the range and in the run's major version.
 2. If the run fixes no `model` (iOS) or `avd` (Android), keep the devices of the first remaining
-   model in pool order that has at least as many devices as the scenario has targets drawing on
-   this set.
-3. Keep the devices at the newest remaining release.
+   model in pool order that still has as many devices as the scenario has targets drawing on this
+   set. A fixed model must meet the same count.
+3. Keep the devices at the newest remaining release that still has that many devices.
+
+When a step leaves fewer devices than targets, the run fails like a missing device.
 
 Every member of the set then shares model and release, so any idle member may take the run, and
 `--workers` spreads runs over identical devices without changing what a run observes. A device
@@ -531,11 +536,15 @@ Three changes outside this item's schema follow, and unit 4 lands them with the 
 coordination with BE-0448 and BE-0450. The serve fan-out request gains an `environment`, which feeds the `environment:<name>` routing of
 BE-0448; any run request with an `environment` requires that token, not only a Device Farm batch.
 No command-line command dispatches Device Farm today, so no CLI option is added. The server
-accepts as `environment` a registered batch-provider kind or `appium`, and rejects any other value
+accepts as `environment` a batch-provider kind that Bajutsu can register, or `appium`, and rejects any other value
 with a 400 response. `worker.yaml` accepts `appium` as an environment with an
 `endpoint`, which widens BE-0450's environment vocabulary beyond batch providers. The
 `appium` environment names the platform its grid serves (`platform: ios`, the one value today).
-Targets of that platform go to the grid, and other targets of the same scenario stay local. Every
+Targets of that platform go to the grid, and other targets of the same scenario stay local. In
+`worker.yaml` the `appium` environment behaves like a device-cloud one: `maxJobConcurrency` may
+exceed one, `drivers` lists the drivers its local targets need along with the grid's driver, and
+the host rule of BE-0450 applies to the local targets alone. Each grid target opens its own session
+on the endpoint, so two iOS targets of one scenario take two grid devices. Every
 command that drives a device (`run`, `record`, `crawl`, `repl`, `audit`, and `doctor`), and the
 Model Context Protocol (MCP) server at startup, accepts `--worker-config` with that environment, so
 each can still reach a grid as the URL udid lets it today. This item rejects every other non-local
@@ -569,7 +578,8 @@ The built-in `device: "iPhone 15"` default goes away. Kept as a `runsOn.model` d
 would turn into a requirement that every config without `defaults` silently enforces. A replacement
 Simulator keeps the vanished device's own device type and runtime, which is today's first choice.
 Today's later fallbacks go away: the configured `device`, and the newest iPhone. They could change
-the model a run observes. A replacement that cannot keep the type and runtime fails the run. The built-in `locale: en_US` stays, as `runsOn.locale` on iOS.
+the model a run observes. So does today's retry without a pinned runtime, which could change the
+OS a matched run sees. A replacement that cannot keep the type and runtime fails the run. The built-in `locale: en_US` stays, as `runsOn.locale` on iOS.
 
 ### Where each old key goes
 
@@ -596,15 +606,21 @@ the model a run observes. A replacement that cannot keep the type and runtime fa
 | `defaults.reservedNamespaces`, `defaults.doctor` | top-level `reservedNamespaces` and `doctor`; both are team-wide, not per target |
 | scenario fields | see *A scenario's preconditions* |
 
-The resolved `Effective` keeps its attribute names, with two exceptions. `Effective.device` goes
-away, because the replacement Simulator now reads the vanished device's own type. `Effective.backend`
-stays, derived from `platform` as a one-entry list, so its readers (`provision`,
-`serve/operations/doctor.py`, and the actuator selection) keep working. Renaming them would touch several hundred call
+The resolved `Effective` keeps its attribute names, except those whose source key goes away:
+`device`, `cloud_batch`, `cloud_batch_budget`, `requires`, `setup`, and `IosConfig.deeplink_scheme`.
+Their readers move with the keys, so `serve/helpers.py` reads the request's `environment` instead.
+`Effective.device_provider` stays: the `--worker-config` of an `appium` environment fills it for
+the targets of the grid's platform, so `acquire_device` keeps handing the endpoint to the run as its
+udid spec. Only the command-line `--udid` stops taking a URL; inside, the endpoint still routes to
+the live driver as today. `Effective.backend` stays as well, derived from `platform` as a one-entry
+list, so its readers (`provision`, `serve/operations/doctor.py`, and the actuator selection) keep
+working. Renaming them would touch several hundred call
 sites and can proceed apart from the config's shape, so `resolve` builds today's `Effective` from
 the new dictionary. The fields new at target level (`app.reinstall`, `app.launch.deeplink`,
 `runsOn.seedPhotos`, a target's `evidence.capture`, and `startWhen`) gain `Effective` attributes in
 unit 4, since today's names have no slot for them. A few readers use the raw schema instead of `Effective`, such as
-`serve/operations/reads.py`, `capture.py`, and `enrich.py`, `serve/helpers.py`, the Device Farm
+`serve/operations/reads.py`, `capture.py`, `enrich.py`, `doctor.py`, `config.py`, and `codegen.py`,
+`serve/helpers.py`, the Device Farm
 batch provider that packages `launchEnv`, `report/rows.py`, `templates/serve.html.j2`, and
 `analysis/impact`. Unit 4 updates them.
 
@@ -615,8 +631,10 @@ batch provider that packages `launchEnv`, `report/rows.py`, `templates/serve.htm
   fallback list and the cost-ordered actuator selection in `backends.py` go away with `backend`.
   `fake` stays allowed as an override, so any target can still run on the fake driver. Under `fake`,
   conditions are not evaluated and runs do not multiply, because the fake driver has no device to
-  read. The same rule holds for the `--backend` of `record`, `crawl`, `repl`, `serve`, `triage`, `audit`, and
-  the Model Context Protocol (MCP) tools, and for the `backend` of a serve request body. A scenario whose
+  read. The same rule holds for the commands that drive a target: `record`, `crawl`, `repl`,
+  `triage --rerun`, `audit`, the Model Context Protocol (MCP) tools, and the `backend` of a serve
+  request body. `serve --backend`, which picks the server's seams, and `provision --backend`, which
+  forces a backend for installing dependencies, name no target and keep their meaning. A scenario whose
   targets span platforms therefore accepts `fake` alone as `--backend`, which is intended.
 - `--browser`, `--browsers`, and `--headed` override `runsOn.browser.engine` and `driver.headless`.
 - `--erase`, `--system-alert-handling`, and `--ios-tipkit-handling` keep their names and override
@@ -673,12 +691,13 @@ batch provider that packages `launchEnv`, `report/rows.py`, `templates/serve.htm
    scenario's `run` group, and set it to `false` where the scenario replaced the target's prelude, copying the target's former
    `before` steps into that scenario's `before` so the scenario keeps them, so no scenario points at a prelude file after this unit. Add
    the `Effective` attributes for the new target-level fields, and drop the replacement Simulator's
-   configured-`device` and newest-iPhone fallbacks. Remove URL-udid support, and turn
+   configured-`device` and newest-iPhone fallbacks and its unpinned retry. Remove the URL form of
+   the command-line `--udid`, fill `Effective.device_provider` from `--worker-config`, and turn
    `demos/showcase/live/showcase.live.config.yaml` into a target plus a `worker.yaml` with an `appium`
    environment. Until unit 5, `hooks.cleanup` keeps `on: error`. Convert the test fixtures and the
    nine `demos/` configs; a `device:` key there becomes nothing, since `model` is now a condition. Until
-   unit 9 lands, a run of `run`, `record`, `crawl`, or `repl` fails with "not yet supported" when its
-   effective `runsOn` holds a condition (`model`, `os`, `avd`, `apiLevel`, `browser.version`, or a
+   unit 9 lands, a run of `run`, `record`, `crawl`, `repl`, `audit`, or the MCP tools, and the device
+   path of `doctor`, fails with "not yet supported" when its effective `runsOn` holds a condition (`model`, `os`, `avd`, `apiLevel`, `browser.version`, or a
    list), so no condition is written and ignored. The check is skipped under `--backend fake`, which
    evaluates no condition.
    Splitting the switch-over would leave the gate red between commits, because the loader and every
@@ -687,7 +706,7 @@ batch provider that packages `launchEnv`, `report/rows.py`, `templates/serve.htm
    `cleanup`, rename `on: error` and capturePolicy's `result: error` to `failure`, and relabel the
    report phases.
 6. **Command-line flags.** Apply the remaining rules of *Command-line flags* to `run`, `record`,
-   `crawl`, `repl`, `serve`, `triage`, `audit`, `provision`, and the MCP tools.
+   `crawl`, `repl`, `triage --rerun`, `audit`, and the MCP tools.
 7. **Scenario preconditions.** Regroup `preconditions` into `app`, `runsOn`, and `run`, move the
    top-level run-policy fields under `run`, key `runsOn` by platform, and merge every group over the
    target's. Check the `app.launch` fields and the `seedPhotos` erase rule against the target's
@@ -700,7 +719,8 @@ batch provider that packages `launchEnv`, `report/rows.py`, `templates/serve.htm
    no device, record not applicable for an open range, and exit 1 when no run executed. Store each
    run's coordinates and verdict in the run manifest and in a new column of the hosted runs table,
    with its migration, and key the flakiness history by them. Until unit 10, the console and the
-   manifest list not-applicable records, and other outputs show each run as its own entry. Then give `record`, `crawl`, and `repl` the first run, and lift unit 4's "not yet supported" check.
+   manifest list not-applicable records, and other outputs show each run as its own entry. Then give `record`, `crawl`, and `repl` the first run, let `audit` and the MCP tools form runs as `run`
+   does, and lift unit 4's "not yet supported" check.
 10. **Reporting.** Show the run matrix and the not-applicable status in the HTML report, JUnit and
     CTRF output, notification payloads, and the serve Web UI.
 11. **`doctor`.** List each scenario's runs and the devices that fit them.
