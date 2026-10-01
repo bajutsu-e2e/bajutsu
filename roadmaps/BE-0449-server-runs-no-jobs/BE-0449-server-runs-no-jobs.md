@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-server-runs-no-jobs-ja.md)
+**English** · [日本語](BE-0449-server-runs-no-jobs-ja.md)
 
-# BE-XXXX — The server queues jobs and workers run every one
+# BE-0449 — The server queues jobs and workers run every one
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-server-runs-no-jobs.md) |
+| Proposal | [BE-0449](BE-0449-server-runs-no-jobs.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0449") |
 | Topic | Hosting the web UI |
 <!-- /BE-METADATA -->
 

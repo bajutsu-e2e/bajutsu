@@ -1,14 +1,14 @@
-[English](BE-XXXX-worker-capability.md) · **日本語**
+[English](BE-0450-worker-capability.md) · **日本語**
 
-# BE-XXXX — worker が実行できる範囲の宣言：ホスト対応とデバイス台数の上限
+# BE-0450 — worker が実行できる範囲の宣言：ホスト対応とデバイス台数の上限
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-worker-capability-ja.md) |
+| 提案 | [BE-0450](BE-0450-worker-capability-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0450") |
 | トピック | Driver & backend architecture |
 <!-- /BE-METADATA -->
 

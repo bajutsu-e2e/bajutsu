@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-worker-capability-ja.md)
+**English** · [日本語](BE-0450-worker-capability-ja.md)
 
-# BE-XXXX — Declare what one worker can run: host support and device limits
+# BE-0450 — Declare what one worker can run: host support and device limits
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-worker-capability.md) |
+| Proposal | [BE-0450](BE-0450-worker-capability.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0450") |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
