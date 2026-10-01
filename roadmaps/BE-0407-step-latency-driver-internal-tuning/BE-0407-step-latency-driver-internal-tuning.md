@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0407") |
-| Implementing PR | [#1897](https://github.com/bajutsu-e2e/bajutsu/pull/1897) (Group 1, units 1, 3-5), [#1912](https://github.com/bajutsu-e2e/bajutsu/pull/1912) (Group 1 unit 6, Group 2 units 7, 9, 10, 11, 12, 13, and half of 14), [#1925](https://github.com/bajutsu-e2e/bajutsu/pull/1925) (Group 1 unit 2, completing Group 1), [#1938](https://github.com/bajutsu-e2e/bajutsu/pull/1938) (Group 3 units 16, 18, 19, 21, 22, 23), [#1944](https://github.com/bajutsu-e2e/bajutsu/pull/1944) (closes units 8, half of 14, 15, 17, 20, 24 by decision, completing the item) |
+| Implementing PR | [#1897](https://github.com/bajutsu-e2e/bajutsu/pull/1897) (Group 1, units 1, 3-5), [#1912](https://github.com/bajutsu-e2e/bajutsu/pull/1912) (Group 1 unit 6, Group 2 units 7, 9, 10, 11, 12, 13, and half of 14), [#1925](https://github.com/bajutsu-e2e/bajutsu/pull/1925) (Group 1 unit 2, completing Group 1), [#1938](https://github.com/bajutsu-e2e/bajutsu/pull/1938) (Group 3 units 16, 18, 19, 21, 22, 23), [#2117](https://github.com/bajutsu-e2e/bajutsu/pull/2117) (reverts unit 9), [#1944](https://github.com/bajutsu-e2e/bajutsu/pull/1944) (closes units 8, half of 14, 15, 17, 20, 24 by decision, completing the item) |
 | Topic | Platform support |
 | Related | [BE-0105](../BE-0105-xcuitest-single-snapshot-query/BE-0105-xcuitest-single-snapshot-query.md), [BE-0114](../BE-0114-driver-conformance-suite/BE-0114-driver-conformance-suite.md), [BE-0234](../BE-0234-adb-run-performance/BE-0234-adb-run-performance.md), [BE-0259](../BE-0259-assert-query-snapshot-reuse/BE-0259-assert-query-snapshot-reuse.md), [BE-0310](../BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness.md), [BE-0341](../BE-0341-pre-action-evidence-capture/BE-0341-pre-action-evidence-capture.md), [BE-0396](../BE-0396-ios-sfsafariviewcontroller-tree/BE-0396-ios-sfsafariviewcontroller-tree.md), [BE-0408](../BE-0408-step-latency-device-executor-protocol/BE-0408-step-latency-device-executor-protocol.md), [BE-0409](../BE-0409-step-latency-ios-device-executor/BE-0409-step-latency-ios-device-executor.md), [BE-0410](../BE-0410-step-latency-android-device-executor/BE-0410-step-latency-android-device-executor.md) |
 <!-- /BE-METADATA -->
@@ -132,7 +132,8 @@ half alone; *Progress* below records the measurement behind dropping its `elemen
    boundary node.** Every query pays this Cross-Process Communication (XPC) probe today regardless of
    whether the app under test embeds a web view —
    [`XcuitestElementProvider.swift:50`](../../BajutsuKit/Runner/Sources/XcuitestElementProvider.swift).
-   Expected saving: 5–50 milliseconds per query.
+   Expected saving: 5–50 milliseconds per query. [#2117](https://github.com/bajutsu-e2e/bajutsu/pull/2117) reverts this unit. On iOS 26 the
+   boundary node reaches the service's snapshot alone, never the app's. The gate never opens there.
 10. **Make the `/zorder` second round trip lazy.** Fetch z-order only when a selector is actually
     ambiguous and needs it resolved —
     [`xcuitest.py:744-768`](../../bajutsu/common/drivers/xcuitest.py). Expected saving: 5–30
@@ -290,8 +291,12 @@ half alone; *Progress* below records the measurement behind dropping its `elemen
     without either accepting that risk or re-querying the tree at tap time — which would undo the
     round trip this unit exists to save. Decided: keep the Safari-only route; not pursued further
     within this item.
-- [x] Group 2, unit 9 — skip the `safariViewService.state` XPC probe unless the app's own
-  snapshot shows a browser remote-view boundary node.
+- [x] ~~Group 2, unit 9 — gate the `safariViewService.state` XPC probe on the app's snapshot.~~
+  - Landed in #1912; [#2117](https://github.com/bajutsu-e2e/bajutsu/pull/2117) reverts it. On an iOS 26.5 Simulator the boundary node
+    appears in the service's snapshot alone. The app's own snapshot never carries it. The gate
+    never opened, and every `SFSafariViewController` element dropped out of the tree. A scenario
+    could not drive the in-app browser. The guard could not see the Save Password alert over it.
+    A cheaper gate needs a signal the iOS 26 app snapshot carries. We have found none yet.
 - [x] Group 2, unit 10 — make `/zorder` lazy. Deviation from the literal design: `nativeZ` is
   diagnostic only and is never read for selector-ambiguity resolution
   (`resolve_unique`'s `_collapse_identical_duplicates` deliberately excludes it), so "only when a
@@ -483,6 +488,10 @@ Log:
   closed by decision carry a strikethrough, with the reason nested beneath. Status moves to
   Implemented. The remaining gap toward this item's own latency targets is the device-side
   executor, tracked in BE-0408–BE-0410.
+- [#2117](https://github.com/bajutsu-e2e/bajutsu/pull/2117) — Reverted the unit 9 gate.
+  An on-device bisect traced an iOS 26 regression to that gate. Under the gate, no in-app browser
+  element reached the tree. `save_password_browser.yaml` broke on every run. The tree read again
+  probes `safariViewService.state` on every query, as before #1912.
 
 ## References
 
