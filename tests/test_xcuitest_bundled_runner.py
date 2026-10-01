@@ -340,9 +340,22 @@ def test_materialize_reraises_a_real_failure(
     assert not list(cache.glob(f"*{_bundled_runner._PARTIAL_MARKER}*"))
 
 
-def test_bundled_products_dir_absent_by_default() -> None:
-    # A source checkout / Linux wheel ships no compiled runner, so resolution treats it as absent.
+def test_bundled_products_dir_absent_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A Linux wheel ships no compiled runner, so resolution treats it as absent. Point at an empty
+    # directory rather than the real package one: `make runner-bundle` stages the gitignored
+    # products into a dev checkout, which would otherwise fail this test on that developer's Mac.
+    monkeypatch.setattr(_bundled_runner, "_BUNDLE_DIR", tmp_path / "_xcuitest_runner")
     assert _bundled_runner.bundled_products_dir() is None
+
+
+def test_bundled_products_dir_found_when_staged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle = _products(tmp_path / "_xcuitest_runner")
+    monkeypatch.setattr(_bundled_runner, "_BUNDLE_DIR", bundle)
+    assert _bundled_runner.bundled_products_dir() == bundle
 
 
 # --- source_hash / runner_source_present: detecting a dev checkout and its freshness --- #
