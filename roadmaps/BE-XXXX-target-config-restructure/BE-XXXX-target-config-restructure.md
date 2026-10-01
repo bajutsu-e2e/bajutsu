@@ -11,7 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Implementing PR | — |
 | Topic | Driver & backend architecture |
-| Related | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md), [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md), [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md), [BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step.md) |
+| Related | [BE-0126](../BE-0126-per-platform-effective-config/BE-0126-per-platform-effective-config.md), [BE-0358](../BE-0358-device-os-as-a-first-class-fact/BE-0358-device-os-as-a-first-class-fact.md), [BE-0228](../BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation.md), [BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0447](../BE-0447-install-app-step/BE-0447-install-app-step.md), [BE-0320](../BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -183,7 +183,8 @@ uses for its `condition`, so the config has one way to say "this element is on s
 `startWhen: { exists: { id: home.title } }`. Before the first step, the run waits until the
 condition holds; the wait polls the condition and uses no fixed sleep. Leaving `startWhen` out keeps
 today's readiness chain: screen transitions first, then `idNamespaces`, then the element count. This
-item accepts `exists`, which is what today's readiness gate evaluates.
+item accepts `exists` without `negate`, which is what today's readiness gate evaluates. When the
+wait times out, the invocation continues as it does today when the gate reports not ready.
 
 Four placements needed a judgment call:
 
@@ -218,9 +219,9 @@ The prelude files fold into `setup` as components. Today the target's `setup` an
 `preconditions.setup` each name a prelude scenario file, whose steps are spliced onto `steps`, and
 the scenario's value replaces the target's. Both keys go away:
 
-- A target's `hooks.setup` may call a component with `use: { component: <file>, with: … }`.
-  Components are resolved at config load for target hooks, which lifts today's rule that target
-  hooks reject `use:`. The component path resolves against the config file, and `with` values
+- A target's hook steps (`setup`, `cleanup`, and `interrupts`) may call a component with
+  `use: { component: <file>, with: … }`. Components are resolved at config load for target hooks,
+  which lifts today's rule that target hooks reject `use:`. The component path resolves against the config file, and `with` values
   substitute at load; `${secrets.*}` and `${vars.*}` still resolve when the step runs. `group:` and
   `setMocks` stay rejected there.
 - A scenario calls a component with `use:` inside its own `setup`, as it can today.
@@ -313,8 +314,8 @@ that the effective `run.erase` is true; a target-level `erase: true` satisfies i
 ### A scenario's own `runsOn`
 
 A scenario declares its own conditions under `preconditions.runsOn`, keyed by platform. Each block
-goes through the same registered `runsOn` model as the target's, so a misspelled field fails at
-load.
+goes through the platform's registered `runsOn` model, restricted to the fields a scenario may set
+(listed below), so a misspelled field fails at load.
 
 ```yaml
 # a scenario for a screen that iPad alone has
@@ -362,7 +363,9 @@ exception: a replacement for a Simulator that vanished mid-run, which keeps the 
 model and runtime (see *Defaults*). Bajutsu reads each available device: every udid of a `--udid`
 pool, every emulator serial, or the browser a web lane launched. The default `--udid booted` names
 the one Simulator simctl resolves, so its pool has one device. A URL is no longer accepted as a udid;
-the `appium` environment of *Where a run happens* replaces that path.
+the `appium` environment of *Where a run happens* replaces that path. A physical Android device in
+the pool is matched like an emulator: its API level is read through `getprop`, and it never
+matches an `avd`.
 
 | Condition | Read from | Comparison |
 |---|---|---|
@@ -372,15 +375,17 @@ the `appium` environment of *Where a run happens* replaces that path.
 | Android `runsOn.avd` | the emulator's Android Virtual Device (AVD) name | exact; a physical device never matches |
 | Web `runsOn.browser.version` | Playwright's `browser.version` | version range |
 
-Matching covers devices the run drives on its own host. A target whose `runsOn.kind` is `device`
-(a physical iPhone), or a run that goes to a device cloud or an Appium grid, has no pool to read
-before the run. Such a target may not declare `model`, `os`, or a list; the loader rejects them for
+Matching covers devices the invocation drives on its own host. A target whose `runsOn.kind` is
+`device` (a physical iPhone), or a run that goes to a device cloud or an Appium grid, has no pool
+to read before the run. Such a target may not declare `model`, `os`, or a list; the loader rejects them for
 `kind: device`. A scenario that declares conditions and runs against such a target, or in a remote
-environment, fails before any device work and names the field; the run never ignores it. The run
-that a Device Farm host starts on its reserved phone counts as such a run. `locale` and
+environment, fails before any device work and names the field; it is never ignored. For a remote
+environment the check runs where the job is dispatched: the worker of BE-0448 fails such a scenario
+before it submits anything, so the plain `bajutsu run` on the Device Farm host never needs to know
+where it runs. `locale` and
 `seedPhotos` are device state rather than conditions, so they stay allowed there. Reading facts off
 a reserved remote device is left to a later item. Until then, a suite that adopts conditions cannot
-run on Device Farm or on a physical device, which is a cost this item accepts.
+run on Device Farm or on a physical iPhone, which is a cost this item accepts.
 
 A version range uses npm's [node-semver range grammar](https://github.com/npm/node-semver#ranges)
 in full, rather than a notation of Bajutsu's own. Many teams already write it, and adopting all of
@@ -407,14 +412,15 @@ declaration and adds no per-OS branching.
 
 ### Runs and their outcomes
 
-A scenario's effective `runsOn` decides how many runs it makes, and what happens when a run finds
-no device. Two kinds of field multiply runs, and nothing else does:
+Below, a *run* is one cell of the matrix: a scenario on one set of coordinates. The command as a
+whole is the *invocation*. A scenario's effective `runsOn` decides how many runs it makes, and what
+happens when a run finds no device. Two kinds of field multiply runs, and nothing else does:
 
 | Field | Runs | When no available device fits a run |
 |---|---|---|
 | a list on `model` (iOS), `avd` (Android), or `browser.engine` (web) | one per listed value | the run **fails**, naming the value |
 | a range on `os` (iOS) or `apiLevel` (Android) bounded on both sides, such as `>=17 <19`, `18`, `^17`, or `33 - 35` | one per major version the range covers, 17 and 18 for `>=17 <19` | the run **fails**, naming the major version |
-| a range open on either side, such as `>=18`, `<19`, or `<=17.4` | one per major version the available devices have within the range | when no device is in range, one **not applicable** record |
+| a range open on either side, such as `>=18`, `<19`, or `<=17.4` | one per major version the available devices have within the range; beside a model list, computed per listed value from that model's devices | when no device is in range, one **not applicable** record |
 | a union, such as `17 \|\| >=19` | each side by its own rule, with the major versions combined | as for each side |
 | a single `model` or `avd`, alone or beside a range | does not add runs | the run **fails** when no device has that model; only the version part of a run can be not applicable |
 | no condition at all | one | any device of the pool may run it, as today; the eligible set below does not apply |
@@ -483,9 +489,10 @@ not applicable: showcase/ipad-split-view
   runsOn.ios.os  ">=18"  available: iOS 17.5 "iPhone 15" (5A3F...), iOS 17.5 "iPhone 16" (7B21...)
 ```
 
-The report lists it apart, and the flakiness history leaves it out. When no run executes at all,
-the run exits with code 1, as a failed run does, with "no run executed", so an empty run never
-reports green. A filter that selects no scenario keeps today's behavior. A serve job
+The report lists it apart, and the flakiness history leaves it out. When every record is not
+applicable and no run executes, the invocation exits with code 1, as a failed invocation does, with
+"no run executed", so an empty invocation never reports green. Failures, including preflight and
+capability failures, already exit 1. A filter that selects no scenario keeps today's behavior. A serve job
 whose every run is not applicable reports a failed job for the same reason. Together with the
 failure of a missing listed value, this answers the concern of
 [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md): a misconfigured pool cannot
@@ -523,9 +530,12 @@ Three changes outside this item's schema follow, and unit 4 lands them with the 
 coordination with BE-0448 and BE-0450. The serve fan-out request gains an `environment`, which feeds the `environment:<name>` routing of
 BE-0448; any run request with an `environment` requires that token, not only a Device Farm batch.
 No command-line command dispatches Device Farm today, so no CLI option is added. `worker.yaml` accepts `appium` as an environment with an
-`endpoint`, which widens BE-0450's environment vocabulary beyond batch providers. `bajutsu run
---worker-config` accepts that `appium` environment, so a plain local run can still reach a grid;
-BE-0450 rejects every other non-local environment for `run`. An `appium` worker advertises
+`endpoint`, which widens BE-0450's environment vocabulary beyond batch providers. The
+`appium` environment names the platform its grid serves (`platform: ios`, the one value today).
+Targets of that platform go to the grid, and other targets of the same scenario stay local. Every
+command that drives a device (`run`, `record`, `crawl`, `repl`, `audit`, and `doctor`) accepts
+`--worker-config` with that environment, so each can still reach a grid as the URL udid lets it
+today. BE-0450 rejects every other non-local environment for these commands. An `appium` worker advertises
 `environment:appium` alone, and a job that requires it carries no `platform:*` or `host:*` token,
 since the grid owns the device and its host, as for a Device Farm job.
 
@@ -545,7 +555,9 @@ can hold defaults for several platforms at once. Dictionaries merge key by key, 
 winning. Lists replace, except two that keep today's union: `evidence.redact` and `run.secrets`.
 Replacing `run.secrets` would let a target that adds one secret stop masking every team-wide one.
 `ai` keeps today's field-by-field merge. `evidence.capture` and `app.reinstall` become target-level
-fields; today `capture` lives in `defaults` alone and `reinstall` in the scenario alone.
+fields; today `capture` lives in `defaults` alone and `reinstall` in the scenario alone. A
+scenario's `app.reinstall` is unset unless written, and the built-in `clean` applies last, so a
+target-level value takes effect.
 
 The built-in `device: "iPhone 15"` default goes away. Kept as a `runsOn.model` default, the value
 would turn into a requirement that every config without `defaults` silently enforces. A replacement
@@ -583,8 +595,9 @@ sites and can proceed apart from the config's shape, so `resolve` builds today's
 the new dictionary. The fields new at target level (`app.reinstall`, `app.launch.deeplink`,
 `runsOn.seedPhotos`, a target's `evidence.capture`, and `startWhen`) gain `Effective` attributes in
 unit 4, since today's names have no slot for them. A few readers use the raw schema instead of `Effective`, such as
-`serve/operations/reads.py`, `capture.py`, and `enrich.py`, and `analysis/impact`. Unit 4 updates
-them.
+`serve/operations/reads.py`, `capture.py`, and `enrich.py`, `serve/helpers.py`, the Device Farm
+batch provider that packages `launchEnv`, `report/rows.py`, `templates/serve.html.j2`, and
+`analysis/impact`. Unit 4 updates them.
 
 ### Command-line flags
 
@@ -624,7 +637,7 @@ them.
 - Declaring the host OS in the target. BE-0450 reads the host from the machine, lets each driver
   state which hosts it runs on, and routes on `host:<os>`, so a target-side declaration would be a
   second source for the same fact.
-- Matching a physical device or a remote environment by `runsOn` conditions.
+- Matching a physical iPhone or a remote environment by `runsOn` conditions.
 - Deriving a routing requirement from `runsOn` (see *Where a run happens*).
 
 ### Work breakdown
@@ -646,10 +659,13 @@ them.
    the prelude files as components, map the target's `hooks.setup` and `hooks.cleanup` onto today's
    `before` and `after` phases, and apply the `--backend` rules of *Command-line flags*, including
    the serve request body. Remove the scenario's `preconditions.setup` here too, converting each use to a
-   `use:` in the scenario's `before`, so no scenario points at a prelude file after this unit. Add
+   `use:` in the scenario's `before`. Add `preconditions.run.inheritSetup`, the first field of the
+   scenario's `run` group, and set it to `false` where the scenario replaced the target's prelude, so no scenario points at a prelude file after this unit. Add
    the `Effective` attributes for the new target-level fields, and drop the replacement Simulator's
-   configured-`device` and newest-iPhone fallbacks. Convert the test fixtures and the nine `demos/`
-   configs; a `device:` key there becomes nothing, since `model` is now a condition. Until
+   configured-`device` and newest-iPhone fallbacks. Remove URL-udid support, and turn
+   `demos/showcase/live/showcase.live.config.yaml` into a target plus a `worker.yaml` with an `appium`
+   environment. Until unit 5, `hooks.cleanup` keeps `on: error`. Convert the test fixtures and the
+   nine `demos/` configs; a `device:` key there becomes nothing, since `model` is now a condition. Until
    unit 9 lands, a run fails with "not yet supported" when it meets a `runsOn` condition (`model`,
    `os`, `avd`, `apiLevel`, `browser.version`, or a list), so no condition is written and ignored.
    Splitting the switch-over would leave the gate red between commits, because the loader and every
@@ -660,7 +676,7 @@ them.
 6. **Command-line flags.** Apply the remaining rules of *Command-line flags* to `run`, `record`,
    `crawl`, `repl`, `serve`, `triage`, `audit`, `provision`, and the MCP tools.
 7. **Scenario preconditions.** Regroup `preconditions` into `app`, `runsOn`, and `run`, move the
-   top-level run-policy fields under `run`, add `inheritSetup`, key `runsOn` by platform, and merge every group over the
+   top-level run-policy fields under `run`, key `runsOn` by platform, and merge every group over the
    target's. Check the `app.launch` fields and the `seedPhotos` erase rule against the target's
    platform at run resolution.
 8. **Reading devices.** Read the model and OS (iOS), the API level and AVD name (Android), and the
@@ -668,14 +684,15 @@ them.
    remote environments.
 9. **Runs and outcomes.** Form runs from lists and ranges, combine them across a multi-target
    scenario's targets and device groups, and assign each run from its eligible set. Fail a run with
-   no device, record not applicable for an open range, exit non-zero when no run executed, key the
-   flakiness history by run coordinates, give `record`, `crawl`, and `repl` the first run, and lift
-   unit 4's "not yet supported" check.
+   no device, record not applicable for an open range, and exit 1 when no run executed. Store each
+   run's coordinates and verdict in the run manifest and in a new column of the hosted runs table,
+   with its migration, and key the flakiness history by them. Until unit 10, the console and the
+   manifest list not-applicable records, and other outputs show each run as its own entry. Then give `record`, `crawl`, and `repl` the first run, and lift unit 4's "not yet supported" check.
 10. **Reporting.** Show the run matrix and the not-applicable status in the HTML report, JUnit and
-    CTRF output, notification payloads, and the serve Web UI, and record per-run coordinates in the
-    run manifest.
+    CTRF output, notification payloads, and the serve Web UI.
 11. **`doctor`.** List each scenario's runs and the devices that fit them.
-12. **`bajutsu config schema`.** Print the config's JSON Schema from the registry, and update the
+12. **`bajutsu config schema`.** Add a `config` command group whose `schema` command prints the
+    config's JSON Schema from the registry, and update the
     existing `bajutsu schema` command, whose scenario schema changes shape with `preconditions`,
     `setup`, and `cleanup`.
 13. **Docs.** Update `docs/configuration.md`, `docs/scenarios.md`, `docs/drivers.md`, `docs/cli.md`,

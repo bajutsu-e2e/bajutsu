@@ -147,9 +147,11 @@ this item has landed. It touches six parts of this item.
 - **`environment` accepts `appium`.** The restructure moves the target's `deviceProvider` into
   `worker.yaml`. It becomes an `appium` environment that carries the grid's `endpoint`. The
   vocabulary of `environment` then reaches beyond batch-provider kinds. The loader accepts `appium`
-  with a required `endpoint`, and refuses `endpoint` on any other environment. `bajutsu run
-  --worker-config` accepts the `appium` environment too, so a plain local run can still reach a
-  grid; every other non-local environment stays rejected for `run`. An `appium` worker drives a
+  with a required `endpoint`, and refuses `endpoint` on any other environment. The `appium`
+  environment names the platform its grid serves (`ios` today); targets of that platform go to the
+  grid, and other targets stay local. Every command that drives a device (`run`, `record`, `crawl`,
+  `repl`, `audit`, and `doctor`) accepts `--worker-config` with it, replacing today's URL udid;
+  every other non-local environment stays rejected for these commands. An `appium` worker drives a
   remote device, so the host rule does not apply to it. It advertises `environment:appium` alone,
   and a job that requires it carries no `platform:*` or `host:*` token, as for a Device Farm job.
 - **The runtime and device-class source moves.** This item keeps `requires` for now.

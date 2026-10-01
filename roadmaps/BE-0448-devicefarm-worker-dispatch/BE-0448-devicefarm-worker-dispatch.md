@@ -121,12 +121,16 @@ The worker downloads the run tree under a temporary directory and lands it, then
 
 The proposed target-config restructure item has the slug `target-config-restructure`. It takes
 the choice of where a run happens out of the target, and it starts after this item has landed.
-Two parts of this item change when it lands.
+Three parts of this item change when it lands.
 
 - **`cloudBatch` leaves the target.** The Device Farm destination moves to the run request.
   The serve fan-out request gains an `environment` field; no command-line command dispatches
   Device Farm today, so no CLI option is added. A job with `Job.batch` derives `environment:<name>` from that request, not from the
   target. The rest of *Routing* stays as written.
+- **The worker checks `runsOn` conditions before it submits.** The restructure has no device to
+  read before a Device Farm run, so a scenario that declares conditions fails on the worker, through
+  the existing result route, before anything is submitted. The `bajutsu run` on the Device Farm
+  host stays unaware of where it runs.
 - **`cloudBatchBudget` disappears from the schema.** This item lands first, so the deprecation
   of unit 5 has started by then. The restructure's new target schema then has no
   `cloudBatchBudget` at all, and the key fails at load as unknown.
