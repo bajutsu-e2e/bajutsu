@@ -501,6 +501,10 @@ class AndroidEnvironment:
         # does not advertise `Capability.DEVICE_GROUP` until then, so preflight refuses first.
         raise base.UnsupportedAction("device groups are not supported on adb")
 
+    def install_member(self, eff: Effective, *, keep_data: bool) -> None:  # noqa: ARG002  # Environment shape
+        # The `adb install -r` action lands with BE-0447 unit 6.
+        raise base.UnsupportedAction("installApp is not supported on adb")
+
     def end_member(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
         adb.Env(self._serial, run=self._run).force_stop(require_android(eff).package)
 

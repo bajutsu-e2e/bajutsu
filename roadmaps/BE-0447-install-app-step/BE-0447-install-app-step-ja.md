@@ -279,7 +279,7 @@ flowchart TD
 
 - [x] 単位 1：`targets` の入れ子の形、`installs`、平らにするアクセサ
 - [x] 単位 2：デバイスグループのリースとライフサイクル（実機での確認のあと）
-- [ ] 単位 3：`installApp` と `setPrimaryTarget` ステップ
+- [x] 単位 3：`installApp` と `setPrimaryTarget` ステップ
 - [ ] 単位 4：run の事前検査と検証
 - [ ] 単位 5：XCUITest の環境とドライバー
 - [ ] 単位 6：Android の環境、ドライバー、`foreground`
@@ -320,6 +320,28 @@ flowchart TD
   現在の primary で監視し、起動していないメンバーは何も監視しません。メンバーはグループのネットワーク
   collector を共有するので、その通信は 1 回だけ書き出します。どのメンバーの通信かを区別するのは、
   単位 5 と 6 で扱います。
+- 単位 3。`installApp: { from, keepData }` と `setPrimaryTarget: { target }` の 2 つのステップを
+  追加しました。シナリオのモデルは、トップレベルのステップを順にたどって現在の primary を追います。
+  そのため、`target` を省いた後続のステップと `expect` の項目は、その primary に解決します。
+  モデルは次の 5 つを拒否します。
+
+  - トップレベル以外に置いた `setPrimaryTarget`
+  - ステップ自身のデバイスグループの「後から入るメンバー」ではない `installApp.from`
+  - トップレベルで同じメンバーを 2 回インストールすること
+  - `web:` や `app:` の中の `installApp`
+  - primary が動いたあとも、デバイスを明示しない `interrupts` の `installApp`
+
+  展開は、`setPrimaryTarget` に呼び出し側の `target` を刻まず、ターゲットグループの中では拒否します。
+  実行時は、step loop が roster を動かします。`installApp` は環境に新しく加えた `install_member`
+  でインストールします。単位 5 と 6 までは、fake バックエンドだけが対応します。インストールすると、
+  同じ識別子を持つインストール済みのメンバーを退役させ、同じメンバーの 2 回目のインストールは
+  拒否します。`setPrimaryTarget` は primary を動かし、`target` を省いた `interrupts` の項目と最後の
+  `expect` がそれに従います。起動していないメンバーに解決する `expect` の項目は、原因を明示して
+  失敗します。設計から外れた点は 2 つあります。展開したコンポーネントの中のエラーは、取り出し元の
+  `group:` を示しますが、`use:` の呼び出しの連鎖は示しません。展開がステップに記録するのは
+  前者だけだからです。もう 1 つとして、退役したメンバーを指す
+  `setPrimaryTarget` かどうかは識別子で決まり、識別子は config にしかありません。そのため読み込み時
+  ではなく、実行時に原因を明示して拒否します。静的な検査は、単位 4 の事前検査で加えられます。
 
 ## 参考
 

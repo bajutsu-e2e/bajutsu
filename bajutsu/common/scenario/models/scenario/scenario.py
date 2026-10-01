@@ -133,6 +133,9 @@ class Scenario(_Model):
     # Load-time provenance (BE-0417), set by a file loader after parsing. A `PrivateAttr` rather
     # than an ordinary field so it never leaks into `model_dump()` as part of the authored schema.
     _source_stem: str | None = PrivateAttr(default=None)
+    # The primary in force after the last top-level step, which a `setPrimaryTarget` may have moved
+    # (BE-0447); recorded by the target walk, never authored.
+    _final_primary: str | None = PrivateAttr(default=None)
 
     @property
     def device_groups(self) -> list[list[str]]:
@@ -160,6 +163,15 @@ class Scenario(_Model):
             for name in group
             if name not in starting
         ]
+
+    @property
+    def final_primary(self) -> str | None:
+        """The primary in force after the last top-level step: what an omitted `expect` target names."""
+        return self._final_primary or self.primary_target
+
+    def record_final_primary(self, name: str | None) -> None:
+        """Record the primary the target walk ended on (BE-0447)."""
+        self._final_primary = name
 
     @property
     def source_stem(self) -> str | None:

@@ -107,6 +107,10 @@ class Lease:
     # an `installApp` step already put there. `None` on a lease that cannot host a second app (a
     # caller-built test lease).
     join: Callable[[Effective, Scenario, bool], Lease] | None = None
+    # Install a device-group member's build on this lease's device for an `installApp` step
+    # (BE-0447): `(eff, keep_data)`. Every lease on a shared device carries it, so the step can run
+    # against any member of the group. `None` on a lease that cannot install mid-scenario.
+    install: Callable[[Effective, bool], None] | None = None
 
 
 # Leases a free device for one scenario (blocking until one frees up): launches the app

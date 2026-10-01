@@ -25,6 +25,7 @@ from .generate import Generate
 from .handle_system_alert import _SYSTEM_ALERT_SEL_FIELDS as _SYSTEM_ALERT_SEL_FIELDS
 from .handle_system_alert import HandleSystemAlert
 from .http_request import HttpRequest
+from .install_app import InstallApp
 from .long_press import LongPress
 from .manual import Manual
 from .override_status_bar import OverrideStatusBar
@@ -44,6 +45,7 @@ from .select_text import SelectText
 from .set_clipboard import SetClipboard
 from .set_location import SetLocation
 from .set_picker_value import SetPickerValue
+from .set_primary_target import SetPrimaryTarget
 from .swipe import Swipe
 from .tap_point import TapPoint
 from .totp import Totp
@@ -68,6 +70,7 @@ __all__ = [
     "Generate",
     "HandleSystemAlert",
     "HttpRequest",
+    "InstallApp",
     "LongPress",
     "Manual",
     "OverrideStatusBar",
@@ -87,6 +90,7 @@ __all__ = [
     "SetClipboard",
     "SetLocation",
     "SetPickerValue",
+    "SetPrimaryTarget",
     "Swipe",
     "TapPoint",
     "Totp",

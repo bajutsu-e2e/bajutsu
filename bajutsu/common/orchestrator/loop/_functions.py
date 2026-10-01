@@ -932,6 +932,11 @@ def run_scenario(  # noqa: C901, PLR0915
                         failure = "before: " + reason
                 if failure is None:
                     failure = run_phase(scenario.steps, outcomes, "", cancelled)
+                if failure is None and roster is not None:
+                    # An entry naming a member that is not running would otherwise poll a retired
+                    # build's replacement or another app's tree (BE-0447).
+                    blocked = _expect_blocked(roster, scenario.expect)
+                    failure = f"expect: {blocked}" if blocked is not None else None
                 if failure is None and scenario.expect:
                     expect = _interp_asserts(scenario.expect, live_bindings)
                     # The banner clear, visual capture, and clipboard read all run inside
@@ -954,7 +959,9 @@ def run_scenario(  # noqa: C901, PLR0915
                         target_runtimes=(
                             roster.live(target_runtimes) if roster is not None else target_runtimes
                         ),
-                        primary_target=primary_target,
+                        # The primary in force after the last step: a `setPrimaryTarget` may have
+                        # moved it (BE-0447).
+                        primary_target=roster.primary if roster is not None else primary_target,
                     )
                     expect_dropped_actuations += dropped
                     # A prompt the backend answered or declined while it was interrupting one of
@@ -1018,7 +1025,9 @@ def run_scenario(  # noqa: C901, PLR0915
                                     if roster is not None
                                     else target_runtimes
                                 ),
-                                primary_target=primary_target,
+                                primary_target=(
+                                    roster.primary if roster is not None else primary_target
+                                ),
                             )
                             expect_dropped_actuations += dropped
                         # The guard's own rounds just now, and the retry's queries when one ran, can
@@ -1332,6 +1341,15 @@ def _run_for_each(
         if failure is not None:
             return False, failure
     return True, ""
+
+
+def _expect_blocked(roster: TargetRoster, expect: list[Assertion]) -> str | None:
+    """Why a top-level `expect` entry cannot run against the member it resolves to, or None."""
+    for a in expect:
+        problem = roster.unavailable(a.target or roster.primary, "assert")
+        if problem is not None:
+            return problem
+    return None
 
 
 def _config_for(cfg: _LoopConfig, rt: TargetRuntime) -> _LoopConfig:

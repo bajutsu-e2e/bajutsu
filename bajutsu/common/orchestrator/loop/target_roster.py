@@ -51,6 +51,10 @@ class TargetRoster:
     status: dict[str, MemberStatus] = field(default_factory=dict)
     activate: Callable[[str], TargetRuntime] | None = None
     runtimes: dict[str, TargetRuntime] = field(default_factory=dict)
+    # Installs a later member's build for an `installApp` step: `(device target, member,
+    # keep_data)`, returning the group's other members whose app shares the member's identifier —
+    # which only the pipeline, holding each target's config, can tell. The roster retires those.
+    install: Callable[[str, str, bool], list[str]] | None = None
 
     def live(self, started: Mapping[str, TargetRuntime] | None) -> dict[str, TargetRuntime]:
         """*started* plus every member brought up since, the map a phase routes through."""
@@ -76,7 +80,9 @@ class TargetRoster:
         to the front, fails with a cause naming the step it is missing instead.
         """
         status = self.status_of(name)
-        if status is MemberStatus.RUNNING:
+        if status is MemberStatus.RUNNING or action == "install_app":
+            # An `installApp` step's own target only picks the device, so neither the retired nor
+            # the not-installed rule applies to it.
             return None
         if status is MemberStatus.RETIRED:
             return (
@@ -94,6 +100,36 @@ class TargetRoster:
             f"target {name!r} has not launched yet: bring it up with a foreground step addressed "
             "to it first"
         )
+
+    def install_member(self, device: str, member: str, *, keep_data: bool) -> str | None:
+        """Install *member*'s build on *device*'s group device, or why it cannot (BE-0447).
+
+        A member installs once per scenario: an `installApp` inside a loop or a recovery that runs
+        a second time fails rather than reinstall a member the scenario may already be driving.
+        """
+        if self.status_of(member) is not MemberStatus.NOT_INSTALLED:
+            return (
+                f"installApp from {member!r}: it was already installed in this scenario "
+                f"(now {self.status_of(member).value}) — a later member installs once"
+            )
+        if self.install is None:
+            raise RuntimeError(f"installApp from {member!r}: no install was wired")
+        for other in self.install(device, member, keep_data):
+            # A member whose build was never installed has no app to replace.
+            if self.status_of(other) is not MemberStatus.NOT_INSTALLED:
+                self.mark(other, MemberStatus.RETIRED)
+        self.mark(member, MemberStatus.INSTALLED)
+        return None
+
+    def move_primary(self, name: str) -> str | None:
+        """Make *name* the primary, or why it cannot be: a retired member answers to nothing."""
+        if self.status_of(name) is MemberStatus.RETIRED:
+            return (
+                f"setPrimaryTarget {name!r}: that member is retired — another member's build "
+                "replaced its app, so name the member that installed it"
+            )
+        self.set_primary(name)
+        return None
 
     def polls(self, name: str) -> bool:
         """Whether *name*'s runner may poll its `interrupts` entries now (BE-0447).

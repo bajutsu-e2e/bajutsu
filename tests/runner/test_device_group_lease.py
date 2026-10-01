@@ -377,3 +377,28 @@ class _OneCollector:
 
     def stop(self) -> None:
         pass
+
+
+def test_only_the_fake_backend_installs_a_member_mid_scenario(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(base.UnsupportedAction, match="installApp is not supported on xcuitest"):
+        XcuitestEnvironment("xcuitest", "UDID-1").install_member(_eff(), keep_data=True)
+    with pytest.raises(base.UnsupportedAction, match="installApp is not supported on a web"):
+        WebEnvironment("playwright").install_member(_web_eff(), keep_data=True)
+    with pytest.raises(base.UnsupportedAction, match="installApp is not supported on adb"):
+        AndroidEnvironment("adb", "emulator-5554").install_member(_eff(), keep_data=True)
+    monkeypatch.setattr(
+        "bajutsu.common.backends.make_driver",
+        lambda actuator, udid: FakeDriver([_el("home", "H"), _el("ok", "OK")]),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"], ["fake"], _eff(), Path("runs"), available=lambda b: True
+    )
+    try:
+        anchor = lease(_app_eff("com.example.app"), _scenario({"steps": [{"tap": {"id": "ok"}}]}))
+        assert anchor.install is not None
+        anchor.install(_app_eff("com.example.auth"), False)  # the fake has nothing to install
+        anchor.release()
+    finally:
+        shutdown()

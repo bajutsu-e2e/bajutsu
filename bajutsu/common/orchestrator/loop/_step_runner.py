@@ -177,8 +177,13 @@ class _StepRunner:
         if target and roster is not None:
             if (problem := roster.unavailable(target, _action_of(step))) is not None:
                 raise _TargetUnavailable(problem)
-            if target not in self.by_target and roster.status_of(target) is MemberStatus.INSTALLED:
-                self._bring_up(target)
+            if target not in self.by_target:
+                if _action_of(step) == "install_app":
+                    # Only picks the device, which needs no runner of its own: the install goes
+                    # through the roster to whichever lease holds that member's group device.
+                    return self, active_driver
+                if roster.status_of(target) is MemberStatus.INSTALLED:
+                    self._bring_up(target)
         if target and self.by_target:
             other = self.by_target.get(target)
             if other is None:
@@ -299,6 +304,8 @@ class _StepRunner:
                 return self._handle_web(step, active_driver, idx, kind, outcome, start)
             if kind == "app":
                 return self._handle_app(step, active_driver, idx, kind, outcome, start)
+            if kind in ("install_app", "set_primary_target"):
+                return self._handle_lifecycle(step, active_driver, idx, kind, outcome, start)
             return self._handle_action(step, active_driver, idx, kind, outcome, start)
 
     def _finish_outcome(self, active_driver: base.Driver, outcome: StepOutcome) -> None:
@@ -463,6 +470,44 @@ class _StepRunner:
         drained = drain_interruptions(driver)
         push_interruption_policy(driver, replace(guard, rules=[*guard.rules, reservation]))
         return True, drained.alerts, drained.undeclared
+
+    def _handle_lifecycle(
+        self,
+        step: Step,
+        active_driver: base.Driver,
+        idx: int,
+        kind: str,
+        outcome: StepOutcome,
+        start: float,
+    ) -> str | None:
+        """Run an `installApp` or `setPrimaryTarget` step against the run's roster (BE-0447).
+
+        Neither touches the screen, so no screenshot or tree read is taken; both change only which
+        build is on a group's device and which target an omitted `target` follows.
+        """
+        roster = self.state.roster
+        if roster is None:
+            outcome.ok, outcome.reason = False, f"{kind}: the scenario declares no targets"
+        elif step.install_app is not None:
+            member = step.install_app.from_
+            try:
+                problem = roster.install_member(
+                    step.resolved_target or self.target,
+                    member,
+                    keep_data=step.install_app.keep_data,
+                )
+            except (base.BackendCrashError, RunCancelled):
+                raise
+            except Exception as exc:
+                problem = f"installApp from {member!r}: {exc}"
+            outcome.ok, outcome.reason = problem is None, problem or ""
+        else:
+            assert step.set_primary_target is not None
+            problem = roster.move_primary(step.set_primary_target.target)
+            outcome.ok, outcome.reason = problem is None, problem or ""
+        outcome.duration_s = self.cfg.clock.now() - start
+        self._finish_outcome(active_driver, outcome)
+        return None if outcome.ok else f"step {idx} ({kind}): {outcome.reason}"
 
     def _handle_if(
         self,

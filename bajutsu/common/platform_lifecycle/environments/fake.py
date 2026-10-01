@@ -48,6 +48,9 @@ class FakeEnvironment(_DeviceEnvironment):
         # backend advertises `Capability.DEVICE_GROUP` so the runner's group path runs end to end.
         return self.start(eff, pre, extra_env=extra_env, permissions=permissions)
 
+    def install_member(self, eff: Effective, *, keep_data: bool) -> None:  # noqa: ARG002  # Environment shape
+        return None  # no device, so nothing to install; the step's lifecycle bookkeeping still runs
+
     def end_member(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
         # Nothing was launched on a device, so there is nothing to stop.
         return None

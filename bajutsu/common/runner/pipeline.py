@@ -1145,11 +1145,29 @@ class _ScenarioRunner:
                 name, member, s, handler, writer, sid, primary_ctx, primary_target=primary_target
             )
 
+        def install(device: str, member: str, keep_data: bool) -> list[str]:
+            group = next(g for g in s.device_groups if device in g)
+            held = {primary_target: lz, **others}
+            lease = next((held[m] for m in group if m in held and held[m].install), None)
+            if lease is None or lease.install is None:
+                raise RuntimeError(
+                    f"no lease on {device!r}'s device can install a build mid-scenario"
+                )
+            member_eff = self.targets[member].eff
+            lease.install(member_eff, keep_data)
+            identifier = _app_identifier(member_eff)
+            return [
+                m
+                for m in group
+                if m != member and _app_identifier(self.targets[m].eff) == identifier
+            ]
+
         return TargetRoster(
             primary=primary_target,
             entries=list(s.interrupts),
             status=dict.fromkeys(later, MemberStatus.NOT_INSTALLED),
             activate=activate if later else None,
+            install=install if later else None,
         )
 
     def _runtime_for(
@@ -1486,7 +1504,8 @@ def _steps_for_target(s: Scenario, target: str) -> Scenario:
                 )
                 for rule in s.after
             ],
-            "expect": [a for a in s.expect if (a.target or s.primary_target) in routed],
+            # The primary in force after the last step, which a `setPrimaryTarget` may have moved.
+            "expect": [a for a in s.expect if (a.target or s.final_primary) in routed],
         }
     )
 
@@ -1537,6 +1556,16 @@ def _record_target_evidence(
         )
         if art is not None:
             result.artifacts.append(art)
+
+
+def _app_identifier(eff: Effective) -> str | None:
+    """The bundle identifier or package *eff*'s app installs under, or None for a web target.
+
+    Two members sharing one are two builds of one app: installing either replaces the other on the
+    device (BE-0447).
+    """
+    config = eff.platform_config
+    return getattr(config, "bundle_id", None) or getattr(config, "package", None)
 
 
 def _join(

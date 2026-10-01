@@ -569,7 +569,10 @@ def device_pool(  # noqa: C901, PLR0915
                 )
                 free.put(udid)
 
-            def join(member_eff: Effective, member: Scenario, install: bool) -> Lease:
+            def install(member_eff: Effective, keep_data: bool) -> None:
+                lease_env.install_member(member_eff, keep_data=keep_data)
+
+            def join(member_eff: Effective, member: Scenario, fresh: bool) -> Lease:
                 """One more device-group member on this lease's device (BE-0447).
 
                 The member reuses this lease's collector and launch env (one device, one receiver),
@@ -581,7 +584,7 @@ def device_pool(  # noqa: C901, PLR0915
                     member.preconditions,
                     extra_env=extra_env,
                     permissions=member.permissions,
-                    install=install,
+                    install=fresh,
                 )
 
                 def end_member() -> None:
@@ -630,6 +633,7 @@ def device_pool(  # noqa: C901, PLR0915
                         request_device_replacement=lease_env.request_device_replacement,
                         video_start_stalled=lambda: video_start_stalled,
                         crash_artifacts=lambda: crash_evidence(),  # noqa: PLW0108
+                        install=install,
                     )
                 except BaseException:
                     end_member()
@@ -668,6 +672,7 @@ def device_pool(  # noqa: C901, PLR0915
                 app_crash_tombstone=lease_env.app_crash_tombstone,
                 readiness=readiness,
                 join=join,
+                install=install,
             )
         except BaseException:
             # A failed launch must not leak the collector tunnel (BE-0283) or the collector itself —

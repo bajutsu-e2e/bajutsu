@@ -10,12 +10,14 @@ with.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import cast
 
 import pytest
 from _orch import FakeClock, _scenario
 from conftest import el
 
+from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import NullSink
 from bajutsu.common.orchestrator import (
@@ -23,9 +25,10 @@ from bajutsu.common.orchestrator import (
     MemberStatus,
     TargetRoster,
     TargetRuntime,
+    _do_action,
     run_scenario,
 )
-from bajutsu.common.scenario import Interrupt
+from bajutsu.common.scenario import Interrupt, Step
 
 
 def _interrupt(target: str | None = None, ident: str = "popup") -> Interrupt:
@@ -285,3 +288,130 @@ def test_a_member_that_cannot_start_fails_its_foreground_step() -> None:
     )
     assert not r.ok
     assert "target 'new' could not start: the app never reached the foreground" in (r.failure or "")
+
+
+# --- installApp and setPrimaryTarget bookkeeping -------------------------------------------------
+
+
+def test_installing_a_member_retires_its_running_namesakes_only() -> None:
+    calls: list[tuple[str, str, bool]] = []
+
+    def install(device: str, member: str, keep_data: bool) -> list[str]:
+        calls.append((device, member, keep_data))
+        return ["old", "beta"]  # both share the identifier; `beta` was never installed
+
+    roster = TargetRoster(
+        primary="old",
+        status={"new": MemberStatus.NOT_INSTALLED, "beta": MemberStatus.NOT_INSTALLED},
+        install=install,
+    )
+    assert roster.install_member("old", "new", keep_data=False) is None
+    assert calls == [("old", "new", False)]
+    assert roster.status_of("new") is MemberStatus.INSTALLED
+    assert roster.status_of("old") is MemberStatus.RETIRED
+    assert roster.status_of("beta") is MemberStatus.NOT_INSTALLED
+
+
+def test_a_member_installs_once() -> None:
+    roster = TargetRoster(
+        primary="old", status={"new": MemberStatus.NOT_INSTALLED}, install=lambda *a: []
+    )
+    assert roster.install_member("old", "new", keep_data=True) is None
+    problem = roster.install_member("old", "new", keep_data=True)
+    assert problem is not None and "already installed in this scenario" in problem
+
+
+def test_an_install_with_no_wiring_fails_loudly() -> None:
+    roster = TargetRoster(primary="old", status={"new": MemberStatus.NOT_INSTALLED})
+    with pytest.raises(RuntimeError, match="no install was wired"):
+        roster.install_member("old", "new", keep_data=True)
+
+
+def test_install_app_ignores_its_own_targets_lifecycle() -> None:
+    roster = TargetRoster(primary="new", status={"old": MemberStatus.RETIRED})
+    assert roster.unavailable("old", "install_app") is None
+
+
+def test_the_primary_cannot_move_to_a_retired_member() -> None:
+    roster = TargetRoster(primary="new", status={"old": MemberStatus.RETIRED})
+    problem = roster.move_primary("old")
+    assert problem is not None and "retired" in problem
+    assert roster.primary == "new"
+    assert roster.move_primary("other") is None
+    assert roster.primary == "other"
+
+
+def test_lifecycle_steps_fail_outside_a_multi_target_run() -> None:
+    for data in ({"installApp": {"from": "new"}}, {"setPrimaryTarget": {"target": "new"}}):
+        with pytest.raises(base.UnsupportedAction, match="runs only in `bajutsu run`"):
+            _do_action(FakeDriver(screen=[]), Step.model_validate(data))
+
+
+def test_a_lifecycle_step_without_a_roster_fails_its_step() -> None:
+    old = FakeDriver(screen=list(_OLD))
+    r = run_scenario(
+        old,
+        _scenario(
+            {
+                "name": "pair",
+                "targets": ["old", "new"],
+                "primaryTarget": "old",
+                "steps": [{"setPrimaryTarget": {"target": "new"}}],
+            }
+        ),
+        FakeClock(),
+    )
+    assert not r.ok
+    assert "the scenario declares no targets" in (r.failure or "")
+
+
+def _crash(*args: object) -> object:
+    raise base.BackendCrashError("the runner died")
+
+
+def test_a_backend_crash_during_an_install_reaches_the_crash_retry() -> None:
+    old = FakeDriver(screen=list(_OLD))
+    with pytest.raises(base.BackendCrashError):
+        run_scenario(
+            old,
+            _scenario(
+                {
+                    "name": "group",
+                    "targets": [["old", "new"]],
+                    "primaryTarget": "old",
+                    "steps": [{"installApp": {"from": "new"}}],
+                }
+            ),
+            FakeClock(),
+            target_runtimes={"old": TargetRuntime(driver=old, sink=NullSink())},
+            primary_target="old",
+            roster=TargetRoster(
+                primary="old",
+                status={"new": MemberStatus.NOT_INSTALLED},
+                install=cast("Callable[[str, str, bool], list[str]]", _crash),
+            ),
+        )
+
+
+def test_a_backend_crash_during_a_bring_up_reaches_the_crash_retry() -> None:
+    old = FakeDriver(screen=list(_OLD))
+    with pytest.raises(base.BackendCrashError):
+        run_scenario(
+            old,
+            _scenario(
+                {
+                    "name": "group",
+                    "targets": [["old", "new"]],
+                    "primaryTarget": "old",
+                    "steps": [{"target": "new", "foreground": {}}],
+                }
+            ),
+            FakeClock(),
+            target_runtimes={"old": TargetRuntime(driver=old, sink=NullSink())},
+            primary_target="old",
+            roster=TargetRoster(
+                primary="old",
+                status={"new": MemberStatus.INSTALLED},
+                activate=cast("Callable[[str], TargetRuntime]", _crash),
+            ),
+        )

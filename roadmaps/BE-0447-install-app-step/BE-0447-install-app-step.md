@@ -552,7 +552,7 @@ so the deterministic gate stays untouched.
 
 - [x] Unit 1: nested `targets` form, `installs`, and flattening accessor
 - [x] Unit 2: device-group lease and lifecycle, after the on-device checks
-- [ ] Unit 3: `installApp` and `setPrimaryTarget` steps
+- [x] Unit 3: `installApp` and `setPrimaryTarget` steps
 - [ ] Unit 4: run preflight and validation
 - [ ] Unit 5: XCUITest environment and driver
 - [ ] Unit 6: Android environment, driver, and `foreground`
@@ -586,6 +586,22 @@ Log:
   on the current primary, while a member that is not running polls nothing. The members share
   the group's network collector, so its traffic is written once; telling one member's requests
   from another's waits for units 5 and 6.
+- Unit 3. The `installApp: { from, keepData }` and `setPrimaryTarget: { target }` steps. The
+  scenario model follows the current primary through the top-level steps in order, so every later
+  step and `expect` entry that omits `target` resolves to it. It refuses a `setPrimaryTarget` off
+  the top level, an `installApp.from` that is not a later member of the step's own device group,
+  a member installed twice at the top level, an `installApp` inside `web:` / `app:`, and a
+  recovery `installApp` that leaves its device implicit once the primary moves. Expansion never
+  stamps a caller's `target` onto `setPrimaryTarget` and refuses one inside a target group. At run
+  time the step loop drives the target roster: `installApp` installs through the environment's new
+  `install_member` (the fake backend only until units 5 and 6), retires every installed member
+  sharing the build's identifier, and refuses a second install of one member; `setPrimaryTarget`
+  moves the primary that `interrupts` entries omitting `target` and the final `expect` follow, and
+  an `expect` entry resolving to a member that is not running fails by name. Two deviations. An
+  error inside an expanded component names the `group:` it came from but not a `use:` chain, since
+  expansion records only the former on a step. And whether a `setPrimaryTarget` names a retired
+  member depends on identifiers, which only the config holds, so the run refuses it with a named
+  cause instead of the load; unit 4's preflight can add the static check.
 
 ## References
 

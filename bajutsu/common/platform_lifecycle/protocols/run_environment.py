@@ -69,6 +69,19 @@ class RunEnvironment(Protocol):
         """
         ...
 
+    def install_member(self, eff: Effective, *, keep_data: bool) -> None:
+        """Install *eff*'s build on this device mid-scenario, for an `installApp` step (BE-0447).
+
+        Terminates any running app with *eff*'s identifier first, then installs over it, keeping
+        its data container when *keep_data* is true and uninstalling that identifier first when it
+        is false. Launches nothing: the member's `foreground` does. Explicit, so it never skips an
+        install the way a precondition's digest check may.
+
+        Raises:
+            base.UnsupportedAction: This platform cannot install a second build mid-scenario yet.
+        """
+        ...
+
     def end_member(self, driver: base.Driver, eff: Effective) -> None:
         """Release one member `start_member` brought up: stop its app, keep the device (BE-0447).
 

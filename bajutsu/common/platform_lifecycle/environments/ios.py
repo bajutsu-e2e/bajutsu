@@ -102,6 +102,10 @@ class _DeviceEnvironment:
         # `Capability.DEVICE_GROUP`, so preflight refuses before this runs.
         raise base.UnsupportedAction(f"device groups are not supported on {self._actuator}")
 
+    def install_member(self, eff: Effective, *, keep_data: bool) -> None:  # noqa: ARG002  # Environment shape
+        # The simctl install action lands with BE-0447 unit 5.
+        raise base.UnsupportedAction(f"installApp is not supported on {self._actuator}")
+
     def end_member(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
         simctl.Env(self._udid, run=self._run).terminate(require_ios(eff).bundle_id)
 

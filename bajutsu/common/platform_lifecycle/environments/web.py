@@ -121,6 +121,9 @@ class WebEnvironment:
         # in a device group before this is reached (BE-0447).
         raise base.UnsupportedAction("a web target cannot share a device with another target")
 
+    def install_member(self, eff: Effective, *, keep_data: bool) -> None:  # noqa: ARG002  # Environment shape
+        raise base.UnsupportedAction("installApp is not supported on a web target")
+
     def end_member(self, driver: base.Driver, eff: Effective) -> None:  # noqa: ARG002  # Environment shape
         return None  # `start_member` never succeeds here, so no member is ever left to end
 
