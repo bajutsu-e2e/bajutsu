@@ -55,6 +55,10 @@ def _step_label(step: Step, kind: str) -> str:
     otherwise the action kind plus its target id/label (e.g. "tap home.title")."""
     if step.name:
         return step.name
+    if step.sleep is not None:
+        # The reason is the whole point of a fixed pause, so the live log shows it (e.g. "sleep 2s —
+        # the server throttles retries").
+        return f"sleep {step.sleep.seconds:g}s — {step.sleep.reason}"
     hint = _selector_hint(getattr(step, kind))
     pretty = kind.rstrip("_").replace("_", " ")
     return f"{pretty} {hint}".strip()

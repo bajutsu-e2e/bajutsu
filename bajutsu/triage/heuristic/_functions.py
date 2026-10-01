@@ -18,6 +18,7 @@ from bajutsu.common.scenario import (
     Assertion,
     Gone,
     Selector,
+    Sleep,
     Step,
     TextMatch,
     Wait,
@@ -115,6 +116,7 @@ def _measure(scenarios: list[Any]) -> _LaxMetrics:
         id_selectors=sum(isinstance(m, Selector) and m.id is not None for m in models),
         waits=len(waits),
         wait_timeout_total=sum(w.timeout for w in waits),
+        sleeps=sum(isinstance(m, Sleep) for m in models),
     )
 
 
@@ -156,6 +158,10 @@ def flag_laxer(scenario_yaml: str, fix: Fix | None) -> list[str]:
         warnings.append("drops a wait — a timing guard is removed")
     elif after.wait_timeout_total < before.wait_timeout_total:
         warnings.append("lowers a wait timeout — could mask slower behavior")
+    if after.sleeps > before.sleeps:
+        # A fixed pause makes a timing failure pass without naming what it waited for; the
+        # `sleep` step exists for a delay no condition can observe, never as a flakiness fix.
+        warnings.append("adds a fixed `sleep` — a timing workaround a human must justify")
     # Selector / matcher relaxations only count when no check was removed outright, so a removed
     # assertion's own selectors and matchers aren't double-reported as a widening or loosening.
     if after.assertions == before.assertions:

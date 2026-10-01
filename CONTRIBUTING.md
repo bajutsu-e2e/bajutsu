@@ -84,7 +84,7 @@ These are the design invariants the whole project rests on; the full list is in
 1. **AI is the author and the failure investigator, never the judge.** A `run` is fully
    deterministic — pass/fail comes only from machine-checkable assertions. Never introduce an LLM
    call into the Tier-2 run/CI gate.
-2. **Determinism first.** No fixed `sleep` (condition waits only); an ambiguous selector fails
-   immediately rather than tapping whatever matched first.
+2. **Determinism first.** Condition waits only, save one capped `sleep` step that states its reason.
+   An ambiguous selector fails immediately rather than tapping whatever matched first.
 3. **App-agnostic.** Per-app differences live in config (`targets.<name>`); the tool, drivers, and
    runner stay unchanged across targets.

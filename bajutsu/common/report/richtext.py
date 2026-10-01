@@ -142,7 +142,7 @@ def _directional_parts(payload: dict[str, Any]) -> list[Part]:
 
 # One branch per step action: the count tracks the schema's size, not tangled logic, and a split
 # would leave no single place a new step action's rendering clearly belongs (BE-0386).
-def _step_desc_parts(action: str, payload: Any) -> list[Part]:  # noqa: C901
+def _step_desc_parts(action: str, payload: Any) -> list[Part]:  # noqa: C901, PLR0911
     """The tokenized detail for a single (non-assert) step action."""
     if action in ("tap", "doubleTap"):
         return _sel_parts(payload)
@@ -179,6 +179,13 @@ def _step_desc_parts(action: str, payload: Any) -> list[Part]:  # noqa: C901
         return parts
     if action == "wait":
         return _wait_parts(payload)
+    if action == "sleep":
+        # The reason is what a reviewer weighs a fixed pause by, so it renders beside the length.
+        return [
+            ("num", f"{_gnum(payload['seconds'])}s"),
+            ("", " — "),
+            ("str", str(payload["reason"])),
+        ]
     if action == "relaunch":
         return [("", "relaunch")]
     return []

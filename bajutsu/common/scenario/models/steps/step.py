@@ -44,6 +44,7 @@ from bajutsu.common.scenario.models.actions import (
     SetLocation,
     SetPickerValue,
     SetPrimaryTarget,
+    Sleep,
     Swipe,
     TapPoint,
     Totp,
@@ -97,6 +98,9 @@ class Step(_Model):
     pinch: Pinch | None = None
     rotate: Rotate | None = None
     wait: Wait | None = None
+    # A fixed pause, the one exception to condition-only waits: capped, with a mandatory reason, and
+    # surfaced in the report and the determinism audit (`Sleep`).
+    sleep: Sleep | None = None
     assert_: list[Assertion] | None = Field(default=None, alias="assert")
     relaunch: Relaunch | None = None
     set_location: SetLocation | None = Field(default=None, alias="setLocation")

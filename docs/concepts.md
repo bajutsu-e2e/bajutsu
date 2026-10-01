@@ -53,8 +53,11 @@ The structure of the code enforces Bajutsu's "deterministic" behavior.
    elements, Bajutsu raises `AmbiguousSelector` instead of tapping whatever matched first
    ([selectors](selectors.md#resolution-semantics)). Of these four mechanisms, ruling out
    non-determinism structurally matters most.
-2. **Condition waits only; no fixed sleep.** Waiting polls `query()` until a condition holds.
+2. **Condition waits only.** Waiting polls `query()` until a condition holds.
    A `timeout` is mandatory (no infinite waits) ([run-loop](run-loop.md#waits-condition-waits-only)).
+   The one exception is the explicit `sleep` step, for a delay no condition can observe. A `sleep`
+   lasts at most 30 seconds and must state its reason. The determinism audit lists every one
+   ([scenarios](scenarios.md#sleep-fixed-pause)).
 3. **Start from a clean environment.** Each test, by default, `simctl erase`s before boot/launch,
    cutting off contamination from the previous test. State is injected via launch env / deeplink
    ([drivers](drivers.md#environment-management-simctl)).

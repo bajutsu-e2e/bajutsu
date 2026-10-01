@@ -32,6 +32,7 @@ from ._functions import (
     network_unsupported,
     permissions_setup_lines,
     render_test_file,
+    sleep_comment,
 )
 from .after_emission import AfterEmission
 from .code_generator import CodeGenerator
@@ -52,4 +53,5 @@ __all__ = [
     "network_unsupported",
     "permissions_setup_lines",
     "render_test_file",
+    "sleep_comment",
 ]

@@ -103,6 +103,7 @@ the selector at `el("UNSUPPORTED_SELECTOR")` — an honest gap, not a wrong gues
 | `select` | `.tap()` + select-all (BE-0265) |
 | `copy` | `app.typeKey("c", modifierFlags: .command)` |
 | `back` | taps the OS navigation back button — the same element (and shared constant) the XCUITest driver taps at run time (BE-0210) |
+| `sleep` | `// fixed pause: <reason>` + `Thread.sleep(forTimeInterval: <seconds>)` |
 | `swipe { on, direction }` | `.swipeUp/Down/Left/Right()` |
 | `swipe { from, to }` | `coord(x1, y1).press(forDuration: 0.1, thenDragTo: coord(x2, y2))` — an `XCUICoordinate` drag (BE-0025) |
 | `drag { on, direction }` | the same primitive as a directional `swipe` (`.swipeUp/Down/Left/Right()`) — a real drag both scrolls and moves handles on iOS (BE-0227) |
@@ -216,6 +217,7 @@ test.describe('Components', () => {
 | `select` | `await loc.selectText()` — the web peer of select-all (BE-0265) |
 | `copy` | `await page.keyboard.press('Control+c')` |
 | `back` | `await page.goBack()` — browser history, the same primitive the driver's `back()` uses (BE-0210) |
+| `sleep` | `// fixed pause: <reason>` + `await page.waitForTimeout(<milliseconds>)` |
 | `swipe { on, direction }` | a `page.mouse.wheel` scroll from the element center in the direction (BE-0227) |
 | `swipe { from, to }` | `// TODO` (coordinate swipes are not generated) |
 | `drag { on, direction }` | a real pointer drag of the element (move → down → move → up) from its center, in the direction — the web driver drags for `drag` where it wheels for a directional `swipe` (BE-0227) |
@@ -642,6 +644,7 @@ same limit the XCUITest emitter hits for NSPredicate `MATCHES`), so it stays a `
 | `select` | `.click()` + `device.pressKeyCode(KeyEvent.KEYCODE_A, KeyEvent.META_CTRL_ON)` (BE-0265) |
 | `copy` | `device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)` |
 | `back` | `device.pressBack()` — UI Automator's native system back, the peer of the adb driver's `keyevent 4` (BE-0210) |
+| `sleep` | `// fixed pause: <reason>` + `Thread.sleep(<milliseconds>)` |
 | `swipe { on, direction }` | `.swipe(Direction.<UP/DOWN/LEFT/RIGHT>, 0.75f)` |
 | `swipe { from, to }` | `// TODO` (coordinate swipes are not generated) |
 | `drag { on, direction }` | the same primitive as `swipe { on, direction }` — `UiObject2.swipe` is a real drag, so an element-anchored `drag` both scrolls and moves handles on Android (BE-0227) |

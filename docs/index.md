@@ -18,7 +18,8 @@ swapping that seam runs the same scenario, unchanged, on a different target.
   assertions, never a model.
 - **Two tiers.** Tier 1 is AI live operation (exploration and authoring); Tier 2 is the
   deterministic runner that gates CI.
-- **Determinism first.** No fixed `sleep` (condition waits only); an ambiguous selector fails
+- **Determinism first.** Condition waits only (the one fixed pause is an explicit, capped `sleep`
+  step that must state its reason); an ambiguous selector fails
   immediately instead of tapping whatever matched first.
 - **A platform is a backend.** The deterministic core names no platform; add or swap a backend and
   the same scenario format, runner, and CLI target a new platform unchanged.

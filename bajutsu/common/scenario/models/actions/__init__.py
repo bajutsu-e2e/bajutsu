@@ -46,6 +46,7 @@ from .set_clipboard import SetClipboard
 from .set_location import SetLocation
 from .set_picker_value import SetPickerValue
 from .set_primary_target import SetPrimaryTarget
+from .sleep import MAX_SLEEP_SECONDS, Sleep
 from .swipe import Swipe
 from .tap_point import TapPoint
 from .totp import Totp
@@ -53,6 +54,7 @@ from .type_text import TypeText
 from .var_target import VarTarget
 
 __all__ = [
+    "MAX_SLEEP_SECONDS",
     "Back",
     "Background",
     "Clear",
@@ -91,6 +93,7 @@ __all__ = [
     "SetLocation",
     "SetPickerValue",
     "SetPrimaryTarget",
+    "Sleep",
     "Swipe",
     "TapPoint",
     "Totp",

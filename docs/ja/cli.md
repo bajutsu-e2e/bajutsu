@@ -115,7 +115,7 @@ bajutsu doctor --target <name> [--udid booted] [--backend ...] [--config ...] [-
 bajutsu audit <scenario.yaml> [--json]
 ```
 
-- 各セレクタを**安定度ラダー**（[selectors](selectors.md)）で採点します。一意な `id` / `idMatches` は **stable**、`label` / `labelMatches` / `traits` / `value` は **moderate**（id を伴わない補助的指定）、`index`（複数一致の n 番目）は **fragile** です。加えて、**座標ジェスチャ**（`swipe {from,to}`。安定した id で置き換えられる）と**緩すぎる wait**（`until: screenChanged` / `settled`。具体的な条件を待たない）を指摘します。
+- 各セレクタを**安定度ラダー**（[selectors](selectors.md)）で採点します。一意な `id` / `idMatches` は **stable**、`label` / `labelMatches` / `traits` / `value` は **moderate**（id を伴わない補助的指定）、`index`（複数一致の n 番目）は **fragile** です。加えて、**座標ジェスチャ**（`swipe {from,to}`。安定した id で置き換えられる）と**緩すぎる wait**（`until: screenChanged` / `settled`。具体的な条件を待たない）も指摘します。さらに、すべての**固定の待機**（`sleep`。理由も示す）を指摘します。1 つのシナリオで固定の待機の合計が 10 秒を超えると `Moderate` と評価します。
 - シナリオごとに `grade`（`Stable` / `Moderate` / `Fragile`）、安定度の割合、位置付きの findings を出力します。テキスト、または `--json` で機械可読に出せます。
 - **助言的かつ read-only** です。シナリオを実行も編集もせず、**CI ゲートにもなりません**。成功した監査は **finding があっても終了 0**（シナリオファイルが無い/読めないときだけ終了 2）です。finding は直すべき箇所であって判定ではありません。flake を隠す retry-to-pass の逆の発想です。
 

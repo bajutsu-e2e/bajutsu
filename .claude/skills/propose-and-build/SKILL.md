@@ -76,7 +76,8 @@ touch code. Phase A is authoring-only (`ideation`'s rules); product code appears
 Phase B, under `implement-be`'s rules:
 
 1. **AI authors and investigates, never judges.** No LLM call on the Tier‑2 `run`/CI gate.
-2. **Determinism first.** No fixed `sleep` (condition waits only); an ambiguous selector
+2. **Determinism first.** Condition waits only (the one fixed pause is the capped, reasoned `sleep`
+   step); an ambiguous selector
    fails immediately rather than tapping the first match.
 3. **App-agnostic.** Per-app differences live in config (`targets.<name>`); the tool, drivers,
    and runner stay unchanged across targets.

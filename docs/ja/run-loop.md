@@ -104,7 +104,7 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 
 ## 待機（条件待機）
 
-`_wait(driver, w, clock) -> (ok, reason)`。固定 sleep はありません。`query()` を `_POLL = 0.05s` 間隔でポーリングし、条件成立か `timeout` 到達まで繰り返します。
+`_wait(driver, w, clock) -> (ok, reason)`。固定 sleep はありません。`query()` を `_POLL = 0.05s` 間隔でポーリングし、条件成立か `timeout` 到達まで繰り返します。固定の待機は別の `sleep` ステップだけが担います。`_do_sleep` が `clock.sleep` を 0.25 秒ずつ区切って呼ぶので、キャンセルされた run は 1 区切り以内に抜けます。ツリーは読まず、決定性の監査がすべての `sleep` を列挙します（[scenarios](scenarios.md#sleep固定の待機)）。
 
 | 形 | 成立条件 | タイムアウト時 |
 |---|---|---|

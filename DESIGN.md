@@ -41,7 +41,7 @@ Bajutsu の **dogfood 対象**は、リポジトリ同梱のショーケース�
 | 2 層構成 | Tier1 = AI ライブ操作（探索 / オーサリング）、Tier2 = 決定的ランナー（CI 回帰） | 探索の柔軟性と再現性を両取り |
 | セレクタ | `accessibilityIdentifier`（非ローカライズ、一意、データ由来）優先、座標は最終手段 | レイアウト変更・翻訳・座標ズレ由来のフレーキーを除去 |
 | 合否判定 | AI の主観でなく **機械チェック可能なアサーション**（要素存在 / 値一致） | レポートの信頼性。「成功した気がする」を排除 |
-| 待機 | 固定 sleep 禁止。条件待機（`wait element` / `screenChanged`）のみ | タイミング起因フレーキーの除去 |
+| 待機 | 条件待機（`wait element` / `screenChanged`）が原則。固定の待機は、上限と理由を備え監査に列挙される `sleep` ステップに限る | タイミング起因フレーキーの除去 |
 | 環境 | 各テスト前にクリーン化、状態は deeplink / launch args で注入 | 再現性。前テストの汚染を断つ |
 | 証跡指示 | 自然言語の指示を **構造化ルールへ正規化** して保存 | 決定的に再実行でき、二度目以降は AI 不要 |
 
@@ -238,7 +238,8 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 | `type` | `type: { text: "...", into?: <Selector>, submit?: <bool> }` | `into` 指定時は先にフォーカス、`submit` で改行 / 確定 |
 | `clear` / `delete` / `select` / `copy` | `clear: { into: <Selector> }` ほか（BE-0265） | テキスト編集。`clear` は全消去、`delete` は末尾から `count` 文字、`select` は全選択、`copy` は選択内容をクリップボードへ（要 `select` 先行）。`select` / `copy` は web コンテキスト非対応で codegen 経由の XCUITest に誘導。`clear` / `delete` も web コンテキスト非対応 |
 | `swipe` | `swipe: { on: <Selector>, direction: up\|down\|left\|right }` / `swipe: { from: <Point>, to: <Point> }` | セレクタ指定は frame 中心 → 座標へ解決 |
-| `wait` | `wait: { ... }`（§6.3） | 固定 sleep の代替。唯一の待機手段 |
+| `wait` | `wait: { ... }`（§6.3） | 固定 sleep の代替。条件で待つ唯一の手段 |
+| `sleep` | `sleep: { seconds, reason }` | どの条件でも観測できない遅延のための固定の待機。上限 30 秒、理由は必須で、決定性の監査が列挙します |
 | `assert` | `assert: [ <Assertion>... ]` | ステップ途中の中間検証（DSL は §6.4 と同一） |
 
 > `launch` / `deeplink` / `erase` は基本 `preconditions` で宣言しますが、シナリオ途中で再起動や再注入をしたい場合はステップとしても書けます（`relaunch: { env: {...} }`）。
@@ -252,7 +253,7 @@ UI 操作は **最も安定する選択手段から順に試し、成立した�
 - wait: { until: { request: { method: GET, url: "https://api/items", status: 200 } }, timeout: 8 }  # 指定エンドポイントへの通信が観測されるまで（§9 collector）
 ```
 
-`timeout` は必須です（無限待ちは禁止です）。タイムアウトはステップ失敗として扱い、`result:error` 安全網（§9 A）が発火します。固定 sleep は文法として持ちません（§10）。
+`timeout` は必須です（無限待ちは禁止です）。タイムアウトはステップ失敗として扱い、`result:error` 安全網（§9 A）が発火します。`wait` が固定時間だけ待つことはありません。固定の待機は別の `sleep` ステップだけが担い、上限と必須の理由と監査の finding によって例外であることを可視に保ちます（§10）。
 
 ### 6.4 アサーション DSL（機械チェック）
 
@@ -542,7 +543,7 @@ runs/<runId>/
 
 ## 10. フレーキー対策（出荷基準チェックリスト）
 
-- [ ] 固定 sleep ゼロ（すべて条件待機）
+- [ ] 固定の待機は理由つきの `sleep` ステップだけ（それ以外はすべて条件待機）
 - [ ] セレクタはローカライズ文言に依存しない
 - [ ] 各テストはクリーン環境から開始
 - [ ] 合否はすべて機械チェック可能なアサーション

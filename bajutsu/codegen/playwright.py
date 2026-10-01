@@ -30,6 +30,7 @@ from bajutsu.codegen.common import (
     ms,
     permissions_setup_lines,
     render_test_file,
+    sleep_comment,
 )
 from bajutsu.common.assertions import request_label
 from bajutsu.common.drivers import base
@@ -342,6 +343,11 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         return _act(step.tap.as_selector(), "click()")
     if step.double_tap is not None:
         return _act(step.double_tap.as_selector(), "dblclick()")
+    if step.sleep is not None:
+        return [
+            sleep_comment(step.sleep.reason),
+            f"await page.waitForTimeout({ms(step.sleep.seconds)});",
+        ]
     if step.back is not None:
         # The web's `back` is browser history — the same primitive the driver's `back()` uses
         # (`page.go_back()`), so codegen emits it faithfully rather than an unlabeled TODO (BE-0210).

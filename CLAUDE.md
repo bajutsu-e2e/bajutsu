@@ -45,7 +45,8 @@ on each later turn, so one needless read keeps costing.
 1. **AI is the author and the failure investigator, never the judge.** `run` is fully
    deterministic — pass/fail comes only from machine-checkable assertions, never an LLM.
    Never introduce an LLM call into the Tier‑2 run/CI gate.
-2. **Determinism first.** No fixed `sleep` (condition waits only); an ambiguous selector
+2. **Determinism first.** Condition waits only — the one fixed pause is the explicit `sleep` step,
+   capped, with a mandatory reason, and listed by the determinism audit; an ambiguous selector
    fails immediately rather than "tapping whatever matched first".
 3. **App-agnostic.** Per-app differences live in config (`targets.<name>`); the tool, drivers,
    and runner stay unchanged across targets.

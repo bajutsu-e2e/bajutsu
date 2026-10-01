@@ -93,6 +93,8 @@ from .target_roster import TargetRoster
 # How often `email` re-polls the mailbox. Unlike the UI's 50 ms `_POLL`, each tick is a remote HTTP
 # request to a (often rate-limited / metered) provider, so it polls about once a second.
 _EMAIL_POLL = 1.0
+# How often a `sleep` step looks up from its pause to notice a cancelled run.
+_SLEEP_SLICE = 0.25
 
 
 # Assertion kinds whose result a tree re-read cannot change: the clipboard and screenshot are read
@@ -364,6 +366,19 @@ def _do_email(
         clock.sleep(min(_EMAIL_POLL, deadline - clock.now()))
 
 
+def _do_sleep(seconds: float, clock: Clock, cancelled: CancelSource) -> None:
+    """Pause for `seconds` in slices, so a cancelled run leaves within one slice (BE-0370).
+
+    The one fixed pause the loop takes; everywhere else it waits on a condition. It reads no tree and
+    sends no input, so neither the `BAJUTSU_MIN_WAIT_TIMEOUT` floor nor the alert guard applies.
+    """
+    deadline = clock.now() + seconds
+    while (remaining := deadline - clock.now()) > 0:
+        if cancelled():
+            raise RunCancelled
+        clock.sleep(min(_SLEEP_SLICE, remaining))
+
+
 def _run_step_body(
     driver: base.Driver,
     step: Step,
@@ -462,6 +477,12 @@ def _run_step_body(
                 replace_stub_table(channel, step.set_mocks, cancelled=cancelled)
             except ControlChannelError as exc:
                 return False, f"control channel: {exc}", [], None
+            return True, "", [], None
+        if kind == "sleep":
+            assert step.sleep is not None
+            # Here rather than through `_do_action`, like `wait`: the pause needs the clock and the
+            # cancel source, which the action-handler signature carries neither of.
+            _do_sleep(step.sleep.seconds, clock, cancelled)
             return True, "", [], None
         if kind == "email":
             assert step.email is not None

@@ -47,6 +47,11 @@ def _collapse_line_terminators(text: str) -> str:
     return _LINE_TERMINATORS.sub(" ", text)
 
 
+def sleep_comment(reason: str) -> str:
+    """The `//` comment carrying a `sleep` step's reason, so a generated fixed pause stays reviewable."""
+    return f"// fixed pause: {_collapse_line_terminators(reason)}"
+
+
 def ident(name: str) -> str:
     """Turn a scenario name into a test-method identifier (`test_`-prefixed, digit-safe).
 

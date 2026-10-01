@@ -56,7 +56,8 @@ under [`docs/ja/`](docs/ja/README.md).
 
 ## Core principles
 
-- **Determinism first.** No fixed `sleep` (condition waits only); an ambiguous selector
+- **Determinism first.** Condition waits only (the one fixed pause is an explicit, capped `sleep`
+  step that must state its reason); an ambiguous selector
   fails immediately instead of "tapping whatever matched first"; each test starts from a
   clean environment.
 - **Stable selectors.** Prefer a non-localized, data-derived id — `accessibilityIdentifier`

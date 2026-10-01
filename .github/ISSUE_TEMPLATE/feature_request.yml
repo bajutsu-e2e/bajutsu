@@ -43,7 +43,7 @@ body:
       options:
         - label: "Doesn't make an LLM decide pass/fail — `run` stays fully deterministic (AI authors and investigates, never judges)."
           required: true
-        - label: "Determinism first — no fixed sleeps; ambiguous selectors fail rather than guessing."
+        - label: "Determinism first — condition waits only (a fixed pause only through a capped, reasoned `sleep` step); ambiguous selectors fail rather than guessing."
           required: true
         - label: "App-agnostic — per-target differences belong in config (`targets.<name>`), not the tool/runner."
           required: true

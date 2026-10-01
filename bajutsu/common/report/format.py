@@ -101,6 +101,7 @@ _ACTION_META = {
     "drag": ("drag", "act-move"),
     "scroll": ("scroll", "act-move"),
     "wait": ("wait", "act-wait"),
+    "sleep": ("sleep", "act-wait"),
     "assert": ("assert", "act-assert"),
     "relaunch": ("relaunch", "act-wait"),
 }

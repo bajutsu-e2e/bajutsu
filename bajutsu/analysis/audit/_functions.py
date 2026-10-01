@@ -7,10 +7,12 @@ from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel
+
 from bajutsu.common.devices import os as device_os
 from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers import base
-from bajutsu.common.scenario import Assertion, Gone, Scenario, Step
+from bajutsu.common.scenario import Assertion, Gone, Scenario, Sleep, Step
 
 from .audit_report import AuditReport
 from .finding import Finding
@@ -24,6 +26,10 @@ if TYPE_CHECKING:
 # `until` conditions that wait for no concrete element / event — best-effort settles, not a
 # condition the run can prove was met, so they are a determinism risk worth surfacing.
 _LOOSE_UNTIL = {"screenChanged", "settled"}
+
+# Total fixed `sleep` time above which a scenario stops grading Stable: a few short pauses for
+# genuinely unobservable delays are tolerable, but past this the scenario leans on wall-clock time.
+_FIXED_SLEEP_MODERATE_S = 10.0
 
 
 def _tier(sel: base.Selector) -> str:
@@ -234,6 +240,32 @@ def _step_findings(step: Step) -> Iterator[Finding]:
             yield from _step_findings(nested)
 
 
+def _sleeps(node: object) -> Iterator[Sleep]:
+    """Every `sleep` written anywhere in a scenario, nested blocks included.
+
+    Covers `before`, `steps`, `after`, `interrupts`, and the insides of `if` / `forEach` / `group` /
+    `web` / `app`, by walking the model tree rather than naming each container, so a new nesting
+    construct cannot hide a fixed pause from the audit.
+    """
+    if isinstance(node, Sleep):
+        yield node
+    elif isinstance(node, BaseModel):
+        for name in type(node).model_fields:
+            yield from _sleeps(getattr(node, name))
+    elif isinstance(node, list | tuple):
+        for item in node:
+            yield from _sleeps(item)
+
+
+def _sleep_finding(sleep: Sleep) -> Finding:
+    return Finding(
+        "sleep",
+        "fixed-sleep",
+        f"pauses a fixed {sleep.seconds:g}s ({sleep.reason}); "
+        "replace with a `wait` once a condition can observe it",
+    )
+
+
 def _selector_finding(where: str, sel: base.Selector, tier: str) -> Finding:
     if tier == "fragile":
         return Finding(
@@ -252,12 +284,17 @@ def audit_scenario(scenario: Scenario) -> AuditReport:
     graded = [(where, sel, _tier(sel)) for where, sel in located]
     tiers = Counter(tier for _, _, tier in graded)
     gesture_findings = [f for step in scenario.steps for f in _step_findings(step)]
+    # Counted per written `sleep`, not per execution: a static audit cannot know how often a
+    # `forEach` body runs or which `if` branch is taken, and each written pause is one a reviewer
+    # has to justify either way.
+    sleeps = list(_sleeps(scenario))
     findings = [
         *(_selector_finding(w, sel, tier) for w, sel, tier in graded if tier != "stable"),
         *gesture_findings,
+        *(_sleep_finding(s) for s in sleeps),
     ]
     total = len(located)
-    grade = _grade(tiers, gesture_findings)
+    grade = _grade(tiers, gesture_findings, sum(s.seconds for s in sleeps))
     return AuditReport(
         scenario=scenario.name,
         selectors=total,
@@ -270,10 +307,14 @@ def audit_scenario(scenario: Scenario) -> AuditReport:
     )
 
 
-def _grade(tiers: Counter[str], gesture_findings: list[Finding]) -> str:
+def _grade(tiers: Counter[str], gesture_findings: list[Finding], sleep_total: float = 0.0) -> str:
     if tiers["fragile"] or any(f.kind == "coordinate-gesture" for f in gesture_findings):
         return "Fragile"
-    if tiers["moderate"] or any(f.kind == "loose-wait" for f in gesture_findings):
+    if (
+        tiers["moderate"]
+        or any(f.kind == "loose-wait" for f in gesture_findings)
+        or sleep_total > _FIXED_SLEEP_MODERATE_S
+    ):
         return "Moderate"
     return "Stable"
 
