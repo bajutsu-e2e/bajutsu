@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
-| 実装 PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)（単位 1）、[#2110](https://github.com/bajutsu-e2e/bajutsu/pull/2110)（単位 2） |
+| 実装 PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)（単位 1）、[#2110](https://github.com/bajutsu-e2e/bajutsu/pull/2110)（単位 2）、[#2111](https://github.com/bajutsu-e2e/bajutsu/pull/2111)（単位 3） |
 | トピック | シナリオの記述機能 |
 <!-- /BE-METADATA -->
 
@@ -320,7 +320,7 @@ flowchart TD
   現在の primary で監視し、起動していないメンバーは何も監視しません。メンバーはグループのネットワーク
   collector を共有するので、その通信は 1 回だけ書き出します。どのメンバーの通信かを区別するのは、
   単位 5 と 6 で扱います。
-- 単位 3。`installApp: { from, keepData }` と `setPrimaryTarget: { target }` の 2 つのステップを
+- [#2111](https://github.com/bajutsu-e2e/bajutsu/pull/2111)：単位 3。`installApp: { from, keepData }` と `setPrimaryTarget: { target }` の 2 つのステップを
   追加しました。シナリオのモデルは、トップレベルのステップを順にたどって現在の primary を追います。
   そのため、`target` を省いた後続のステップと `expect` の項目は、その primary に解決します。
   モデルは次の 5 つを拒否します。
