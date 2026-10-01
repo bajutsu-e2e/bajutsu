@@ -76,7 +76,7 @@ targets:
   site:
     platform: web
     app:    { url: "http://127.0.0.1:8787/index.html" }
-    runsOn: { browser: { engine: webkit, version: ">=18" }, emulate: iPhone 13, host: { os: macos } }
+    runsOn: { browser: { engine: webkit, version: ">=18" }, emulate: iPhone 13 }
     driver: { headless: false }
 
   showcase-android:
@@ -104,7 +104,7 @@ targets:
 |---|---|---|---|
 | `app` | `id`、`path`、`build`、`deeplink`、`launch.env`、`launch.args` | `id`、`path`、`build`、`grantPermissions` | `url`、`server` |
 | `app`（全プラットフォーム共通） | `readyWhen`、`idNamespaces` | 同左 | 同左 |
-| `runsOn` | `model`、`os`、`kind`、`locale` | `avd`、`apiLevel` | `browser.engine`、`browser.version`、`emulate`、`host.os` |
+| `runsOn` | `model`、`os`、`kind`、`locale` | `avd`、`apiLevel` | `browser.engine`、`browser.version`、`emulate` |
 | `driver` | `runner.testRunner`、`runner.build` | `nativeZ` | `headless` |
 | `run`（追加分） | `tipKitHandling` | — | — |
 
@@ -136,7 +136,6 @@ targets:
 | Android の`runsOn.apiLevel` | `ro.build.version.sdk` | 整数の範囲 |
 | Android の`runsOn.avd` | エミュレータの Android Virtual Device（AVD）名 | 完全一致。実機は一致しない |
 | Web の`runsOn.browser.version` | Playwright の`browser.version` | 範囲 |
-| Web の`runsOn.host.os` | `platform.system()`を正規化した値（`Darwin`は`macos`、`Linux`は`linux`、`Windows`は`windows`） | 完全一致 |
 
 範囲は比較子の論理積で書きます。比較子は`>=`、`>`、`<=`、`<`、`==`、または演算子のない裸の版です。裸の`18`は18.x のどのリリースにも一致します。`==`は0で埋めてから比べるので、`==18`が一致するのは18.0だけです。18.x 全体に一致させるには裸の形を使います。範囲の解析と比較は、新しい`bajutsu/common/devices/version.py`の`VersionSpec`が担います。`DeviceOS`は意図して比較演算子を持たないままにします。この項目が足すのは宣言の照合であり、OS ごとの分岐ではないためです。食い違いは`DeviceError`（[BE-0260](../BE-0260-cli-bringup-consolidation/BE-0260-cli-bringup-consolidation-ja.md)）の新しいサブクラス`RunsOnRequirementError`として送出します。そのため`run`は、端末が見つからないときと同じ経路で非ゼロ終了します。`bajutsu doctor`は、端末を解決できるときに同じ照合をして、結果を情報として示します。
 
@@ -190,7 +189,8 @@ target は、どこで実行するかを持たなくなります。target が書
 - 1つの target が複数のプラットフォームにまたがること。この用途は、引き続き複数 target のシナリオで扱います。
 - エントリポイントを通じた、外部パッケージからのプラットフォームの登録。
 - 宣言した範囲の run マニフェストへの記録。マニフェストは引き続き観測した OS を記録します。
-- Playwright が起動したもの以外のブラウザのバージョンやホスト OS を選ぶこと。
+- Playwright が起動したもの以外のブラウザのバージョンを選ぶこと。
+- target でホスト OS を宣言すること。BE-0450 はホストをマシンから読み、各 driver が動けるホストを宣言し、`host:<os>`で振り分けます。target でも宣言すると、同じ事実を書く場所が2つになります。
 - `runsOn`から振り分けの要件を導くこと。`>=17 <19`のような範囲は、現在の振り分けが使う「すべてを含む」タグの照合では表せません。そのため導出は、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)が挙げる後続の項目に残します。
 
 ### 作業の分解
@@ -203,7 +203,7 @@ target は、どこで実行するかを持たなくなります。target が書
 6. **コマンドラインインターフェイス（CLI）。** `--backend`は、`platform`と食い違えば終了コード2で終わる検査になります。`--browser`と`--headed`は、`runsOn.browser.engine`と`driver.headless`を上書きします。
 7. **iOS の要件の照合。** `os`と`model`を照合し、`RunsOnRequirementError`を追加します。
 8. **Android の要件の照合。** `apiLevel`と`avd`を照合します。
-9. **Web の要件の照合。** `browser.version`と`host.os`を照合します。
+9. **Web の要件の照合。** `browser.version`を照合します。
 10. **`doctor`。** 端末を解決できるとき、要件の食い違いを情報として報告します。
 11. **`bajutsu config schema`。**
 12. **実行場所の移行。** target から`deviceProvider`、`cloudBatch`、`cloudBatchBudget`、`requires`を外します。serve の fan-out の要求と CLI に`environment`を足し、`worker.yaml`で`endpoint`つきの`appium`の environment を受け付けます。BE-0448 と BE-0450 と調整して進めます。

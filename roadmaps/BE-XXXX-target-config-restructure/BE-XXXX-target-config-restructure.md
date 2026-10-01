@@ -104,7 +104,7 @@ targets:
   site:
     platform: web
     app:    { url: "http://127.0.0.1:8787/index.html" }
-    runsOn: { browser: { engine: webkit, version: ">=18" }, emulate: iPhone 13, host: { os: macos } }
+    runsOn: { browser: { engine: webkit, version: ">=18" }, emulate: iPhone 13 }
     driver: { headless: false }
 
   showcase-android:
@@ -132,7 +132,7 @@ The same `site` target in today's notation reads as follows:
 |---|---|---|---|
 | `app` | `id`, `path`, `build`, `deeplink`, `launch.env`, `launch.args` | `id`, `path`, `build`, `grantPermissions` | `url`, `server` |
 | `app`, all platforms | `readyWhen`, `idNamespaces` | same | same |
-| `runsOn` | `model`, `os`, `kind`, `locale` | `avd`, `apiLevel` | `browser.engine`, `browser.version`, `emulate`, `host.os` |
+| `runsOn` | `model`, `os`, `kind`, `locale` | `avd`, `apiLevel` | `browser.engine`, `browser.version`, `emulate` |
 | `driver` | `runner.testRunner`, `runner.build` | `nativeZ` | `headless` |
 | `run`, extra field | `tipKitHandling` | — | — |
 
@@ -187,7 +187,6 @@ or browser, and before the first step, the run compares each declared value with
 | Android `runsOn.apiLevel` | `ro.build.version.sdk` | integer range |
 | Android `runsOn.avd` | the emulator's Android Virtual Device (AVD) name | exact; a physical device never matches |
 | Web `runsOn.browser.version` | Playwright's `browser.version` | version range |
-| Web `runsOn.host.os` | `platform.system()`, normalized (`Darwin` → `macos`, `Linux` → `linux`, `Windows` → `windows`) | exact |
 
 A version range is a conjunction of comparators: `>=`, `>`, `<=`, `<`, `==`, or a bare version. A
 bare `18` means any 18.x release. `==` compares after zero-padding, so `==18` matches 18.0 alone;
@@ -269,7 +268,10 @@ the new dictionary.
 - One target spanning several platforms; a multi-target scenario still covers that case.
 - Registering a platform from an external package through an entry point.
 - Recording the declared range in the run manifest, which keeps recording the observed OS.
-- Picking a browser version or host OS outside what Playwright launched.
+- Picking a browser version outside what Playwright launched.
+- Declaring the host OS in the target. BE-0450 reads the host from the machine, lets each driver
+  state which hosts it runs on, and routes on `host:<os>`, so a target-side declaration would be a
+  second source for the same fact.
 - Deriving a routing requirement from `runsOn`. A range such as `>=17 <19` cannot be expressed by
   the all-of token match that routing uses today, so the derivation stays with the later item that
   {B450} names.
@@ -291,7 +293,7 @@ the new dictionary.
    `--headed` override `runsOn.browser.engine` and `driver.headless`.
 7. **iOS requirement check** for `os` and `model`, with `RunsOnRequirementError`.
 8. **Android requirement check** for `apiLevel` and `avd`.
-9. **Web requirement check** for `browser.version` and `host.os`.
+9. **Web requirement check** for `browser.version`.
 10. **`doctor`.** Report requirement mismatches as information when a device resolves.
 11. **`bajutsu config schema`.**
 12. **Execution placement.** Remove `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, and
