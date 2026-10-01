@@ -27,6 +27,7 @@ from bajutsu.run.cli import (
     _pool_demand,
     _reject_incompatible_actuator_sharing,
     _reject_self_declaring_in_dir,
+    _reject_unshareable_groups,
     _reject_web_flags_across_targets,
     _release_devices,
     _resolve_multi_target_workers,
@@ -567,3 +568,28 @@ def test_close_pools_never_masks_an_exception_already_propagating(
     with pytest.raises(ValueError, match="the real failure"):
         _raise_the_real_failure()
     assert "teardown defect" in capsys.readouterr().err
+
+
+def test_a_device_group_on_a_backend_that_cannot_share_is_refused_before_acquisition(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Refused from the resolved actuator alone, before any device is reserved (BE-0447).
+    monkeypatch.setattr(
+        "bajutsu.run.cli._select_actuator", lambda backend, eff, engines: ("xcuitest", [])
+    )
+    grouped = Scenario.model_validate(
+        {
+            "name": "grouped",
+            "targets": [["app", "site"]],
+            "primaryTarget": "app",
+            "installs": ["site"],
+            "steps": [{"tap": {"id": "a"}}],
+        }
+    )
+    with pytest.raises(typer.Exit):
+        _reject_unshareable_groups([grouped], _effs(), "", [])
+    assert "backend 'xcuitest' cannot share a device" in capsys.readouterr().out
+    monkeypatch.setattr(
+        "bajutsu.run.cli._select_actuator", lambda backend, eff, engines: ("fake", [])
+    )
+    _reject_unshareable_groups([grouped], _effs(), "", [])

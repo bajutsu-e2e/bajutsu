@@ -67,7 +67,6 @@ class RunEnvironment(Protocol):
                 Preflight refuses a device group on a backend without `Capability.DEVICE_GROUP`, so
                 this is only the runtime backstop.
         """
-        ...
 
     def install_member(self, eff: Effective, *, keep_data: bool) -> None:
         """Install *eff*'s build on this device mid-scenario, for an `installApp` step (BE-0447).
@@ -88,7 +87,6 @@ class RunEnvironment(Protocol):
         The group's device and its shared automation session stay with the lease that started them,
         which releases both through `teardown` / `end_lease` once every member has ended.
         """
-        ...
 
     def resolve_device(self, udid: str) -> str:
         """Resolve *udid* to a concrete device handle for this platform.
