@@ -54,8 +54,8 @@ final class XcuitestElementProvider: ElementProviding {
     // re-reading it live on every `tap` / `isHittable` bought nothing but a repeated round trip.
     // Guarded against caching `.zero`, though: `app.frame` reads `.zero` while the app is not yet
     // (or no longer) foreground, and this provider outlives a warm resume's own terminate + launch
-    // — locking in a `.zero` seen at the wrong moment would poison `screenSize()` and permanently
-    // defeat the `isHittable` guard below for the rest of the lease, where a live read self-corrects
+    // — locking in a `.zero` seen at the wrong moment would poison `screenSize()` and make
+    // `isReachable` below refuse every tap for the rest of the lease, where a live read self-corrects
     // on the very next call. Read live until a genuine frame is observed once, then fixed forever.
     private var _appFrame: CGRect?
     private var appFrame: CGRect {
@@ -141,28 +141,31 @@ final class XcuitestElementProvider: ElementProviding {
         (Double(appFrame.width), Double(appFrame.height))
     }
 
-    // `isHittable` reads `false` both for "covered" and for "offscreen" (Apple's own docs say so) —
-    // but only the former is `tap` / `isHittable(backingElement:)`'s question; a not-yet-scrolled-to
-    // target is a `scroll` question (docs/drivers.md), not this one. Tested on the same point a
-    // following tap would actually land on (the frame's center), matching the web guard's own
-    // point-based question (`_point_hits`, playwright.py) rather than a frame-overlap test:
-    // `intersects` would still guard a target straddling the fold whose center has already scrolled
-    // off, reaching `isHittable` for a question this check does not ask, and reading differently
-    // from web for the identical screen. `appFrame` is the stable window/screen bounds
-    // `screenSize()` above already uses for the same viewport-vs-content-extent distinction. A
-    // single shared predicate, not one copy per caller, so `tap` and `isHittable(backingElement:)` —
+    // Whether a tap would reach `el` right now: its frame's center — the point a following tap
+    // actually lands on, matching the web guard's own point-based question (`_point_hits`,
+    // playwright.py) — must be inside `appFrame`, the stable window/screen bounds `screenSize()`
+    // above already uses, *and* XCUITest's own `isHittable` must agree nothing covers it.
+    //
+    // A center past the screen edge is refused rather than handed to `XCUIElement.tap()`, whose own
+    // scroll-into-view then taps at the end of a scroll it does not let settle. Measured on an
+    // iPhone 17 Pro iOS 26.5 Simulator: a List row whose center sat 2 pt below the 874-pt screen,
+    // behind the floating tab bar, was scrolled ~400 pt by XCUITest and the tap was lost in 2 of 3
+    // runs, while the manifest recorded one accepted tap. Refused here, the driver's bounded
+    // scroll-and-retry (`_tap_with_recovery`, which already stops only on a center inside the
+    // viewport) reaches the same row deterministically — the path an on-screen, covered target
+    // already takes, so the two cases no longer depend on where the fold happens to fall.
+    //
+    // One shared predicate, not one copy per caller, so `tap` and `isHittable(backingElement:)` —
     // which the recovery loop requires to agree — cannot drift apart on this question.
-    private func centerIsOnScreen(_ el: XCUIElement) -> Bool {
+    private func isReachable(_ el: XCUIElement) -> Bool {
         let f = el.frame
-        return appFrame.contains(CGPoint(x: f.midX, y: f.midY))
+        return appFrame.contains(CGPoint(x: f.midX, y: f.midY)) && el.isHittable
     }
 
     func tap(backingElement: AnyObject, taps: Int, duration: TimeInterval) -> TapResult {
         guard let backing = backingElement as? PositionPathBacking else { return .notFound }
         guard let el = liveElement(for: backing) else { return .stale }
-        if centerIsOnScreen(el) {
-            guard el.isHittable else { return .notHittable }
-        }
+        guard isReachable(el) else { return .notHittable }
         // A browser element is actuated at its own point rather than through the element (BE-0396).
         // `XCUIElement.tap()` reaches the page content across the process boundary but is silently
         // dropped by the browser's own chrome — a resolved, hittable Close button simply does not
@@ -196,8 +199,7 @@ final class XcuitestElementProvider: ElementProviding {
     func isHittable(backingElement: AnyObject) -> TapResult {
         guard let backing = backingElement as? PositionPathBacking else { return .notFound }
         guard let el = liveElement(for: backing) else { return .stale }
-        guard centerIsOnScreen(el) else { return .ok }
-        return el.isHittable ? .ok : .notHittable
+        return isReachable(el) ? .ok : .notHittable
     }
 
     func tapPoint(x: Double, y: Double) -> TapResult {
