@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | [#2120](https://github.com/bajutsu-e2e/bajutsu/pull/2120) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -125,7 +126,7 @@ The Web UI's Author editor ([`serve.author.mjs`](../../bajutsu/templates/serve.a
 
 Log:
 
-- Proposal and implementation landed together: the model, run-loop execution, report row, audit finding, codegen, Author editor label, tests, and documentation.
+- [#2120](https://github.com/bajutsu-e2e/bajutsu/pull/2120): proposal and implementation landed together: the model, run-loop execution, report row, audit finding, codegen, Author editor label, tests, and documentation.
 
 ## References
 

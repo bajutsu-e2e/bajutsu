@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| 実装 PR | [#2120](https://github.com/bajutsu-e2e/bajutsu/pull/2120) |
 | トピック | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -124,7 +125,7 @@ Web UI の Author エディタ（[`serve.author.mjs`](../../bajutsu/templates/se
 
 ログ：
 
-- 提案と実装を 1 つの変更にまとめました。モデル、run loop での実行、report の行、audit の finding、codegen、Author エディタのラベル、テスト、ドキュメントを含みます。
+- [#2120](https://github.com/bajutsu-e2e/bajutsu/pull/2120)：提案と実装を 1 つの変更にまとめました。モデル、run loop での実行、report の行、audit の finding、codegen、Author エディタのラベル、テスト、ドキュメントを含みます。
 
 ## 参考
 
