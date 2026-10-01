@@ -544,6 +544,8 @@ class XcuitestDriver:
         """
         try:
             handle, _el = self._resolve_handle(sel)
+        except base.AppNotInFront:
+            raise  # another app's screen is never "not tappable here" (BE-0447)
         except base.ElementNotFound:
             return False
         reply = self._transport("POST", "/isHittable", {"handle": handle})

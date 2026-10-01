@@ -195,7 +195,7 @@ def test_foreground_relaunches_the_primary_like_relaunch_without_terminating() -
     env = _env(run)
     env.start(_eff(_PRIMARY), Preconditions())
     # A screen that is ready at once, so the readiness wait the launch ends with returns at once.
-    env._drivers[_PRIMARY] = FakeDriver([_el("home"), _el("ok")])
+    env._drivers[_PRIMARY] = env._primary_driver = FakeDriver([_el("home"), _el("ok")])
     run.calls.clear()
     control = env.controller(_eff(_PRIMARY))
     assert control is not None
@@ -417,3 +417,24 @@ def test_an_app_switching_away_mid_resolve_fails_the_tap_by_name(act: bool) -> N
 def test_an_app_switching_away_mid_resolve_is_never_untappable() -> None:
     with pytest.raises(base.AppNotInFront):
         _switching_driver(act=False).is_tappable(base.Selector(id="missing"))
+
+
+def test_a_same_package_members_relaunch_moves_only_its_own_crash_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An update journey's new build shares the old one's package. Relaunching the new member must
+    # refresh the bound its own driver reads, and leave the primary's alone (BE-0447).
+    from bajutsu.common.scenario import Relaunch, Scenario
+
+    monkeypatch.setattr(
+        "bajutsu.common.platform_lifecycle.readiness.await_ready", lambda *a, **k: None
+    )
+    stamps = iter(range(1, 10))
+    env = _env(_Adb())
+    monkeypatch.setattr(env, "_read_launch_marker", lambda: ((float(next(stamps)), "x"), "l"))
+    env.start(_eff(_PRIMARY), Preconditions())
+    member = env.start_member(_eff(_PRIMARY), Preconditions(), install=False)
+    primary_bound = env._launch_marker
+    env.relauncher(_eff(_PRIMARY), Scenario(name="s", steps=[]), member)(Relaunch())
+    assert env._launch_marker == primary_bound
+    assert env._member_markers[_PRIMARY] == (3.0, "x")

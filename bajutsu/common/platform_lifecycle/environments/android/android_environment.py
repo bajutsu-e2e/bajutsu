@@ -150,6 +150,9 @@ class AndroidEnvironment:
         # `relaunch` would.
         self._channel: ResidentChannel | None = None
         self._drivers: dict[str, base.Driver] = {}
+        # The driver `start` returned: the one whose bound is `_launch_marker`. Told apart by identity,
+        # not package, since an update journey's two builds share one package (BE-0447).
+        self._primary_driver: base.Driver | None = None
         # Every driver handed out to a member, including one a same-package member displaced from
         # `_drivers`, so the front check reaches all of them (BE-0447).
         self._group_drivers: list[base.Driver] = []
@@ -248,6 +251,7 @@ class AndroidEnvironment:
         driver = self._driver_for(android.package, launched_at=lambda: self._launch_marker)
         self._drivers = {android.package: driver}
         self._group_drivers = []
+        self._primary_driver = driver
         return driver
 
     def _driver_for(
@@ -477,9 +481,10 @@ class AndroidEnvironment:
                 **(extra_env or {}),
                 **(opts.env or {}),
             }
-            # Before the launch, per `start` (BE-0424) — and this app's own bound: a device-group
-            # member's relaunch must not move the primary's (BE-0447).
-            if package == self._package:
+            # Before the launch, per `start` (BE-0424) — and this driver's own bound: a device-group
+            # member's relaunch must not move the primary's, even when the two share a package
+            # (BE-0447).
+            if driver is self._primary_driver:
                 self._stamp_launch_marker()
             else:
                 self._member_markers[package] = self._read_launch_marker()[0]
@@ -524,7 +529,7 @@ class AndroidEnvironment:
         try:
             if self._running(package):
                 e.launch(package, {})
-            elif package == self._package:
+            elif driver is self._primary_driver:
                 pre, extra_env = self._launch_inputs
                 self._stamp_launch_marker()
                 e.launch(package, {**eff.launch_env, **pre.launch_env, **extra_env})

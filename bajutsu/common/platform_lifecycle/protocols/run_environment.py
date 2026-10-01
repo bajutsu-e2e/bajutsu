@@ -67,6 +67,7 @@ class RunEnvironment(Protocol):
                 Preflight refuses a device group on a backend without `Capability.DEVICE_GROUP`, so
                 this is only the runtime backstop.
         """
+        ...
 
     def install_member(self, eff: Effective, *, keep_data: bool) -> None:
         """Install *eff*'s build on this device mid-scenario, for an `installApp` step (BE-0447).

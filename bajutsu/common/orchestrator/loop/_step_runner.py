@@ -311,11 +311,13 @@ class _StepRunner:
     def _finish_outcome(self, active_driver: base.Driver, outcome: StepOutcome) -> None:
         """Settle one step's outcome: classify an app crash behind it, then record it.
 
-        The one place every handler appends through, so a step kind added later is covered with no
+        The place every handler appends through, so a step kind added later is covered with no
         wiring of its own — the same property `_drain_step_interruptions` already gives the
-        interruption check it shares across the same four handlers (BE-0424). All five append sites
-        call it, including `_handle_action`'s `UncoveredSystemAlertLocale` early return, the one exit
-        this file's own comments already single out as the exit that skips every other shared step.
+        interruption check it shares across the handlers (BE-0424). That includes `_handle_action`'s
+        `UncoveredSystemAlertLocale` early return, the exit this file's own comments single out as
+        skipping every other shared step. The one append site that bypasses it is `_fail_unrouted`:
+        its step never reached a driver, so there is no crash to classify and no driver to ask
+        (BE-0447).
         """
         self._classify_app_crash(active_driver, outcome)
         self.state.outcomes.append(outcome)

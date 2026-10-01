@@ -603,6 +603,8 @@ def scroll_until_tappable(
                 _center_in_viewport(frame, viewport) and driver.is_tappable(sel)
             ),
         )
+    except base.AppNotInFront:
+        raise  # fails by name rather than reworded as untappability (BE-0447)
     except base.ElementNotFound as exc:
         raise base.ElementNotFound(
             f"scroll: {sel!r} never became tappable within {max_scrolls} scroll(s) ({exc})"

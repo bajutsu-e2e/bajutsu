@@ -124,6 +124,15 @@ def test_a_member_in_the_background_refuses_to_read_by_name() -> None:
     assert ("GET", "/elements") not in runner.calls  # never read another app's tree
 
 
+def test_a_member_in_the_background_is_never_read_as_untappable() -> None:
+    # `is_tappable` folds a missing element into False; another app's screen must fail by name
+    # instead, or a scroll's stop condition would scroll through the app now in front.
+    runner = _Runner(front=_APP)
+    auth = _member(runner, _AUTH, RunnerTarget(current=_APP))
+    with pytest.raises(base.AppNotInFront):
+        auth.is_tappable({"id": "ok"})
+
+
 def test_a_lone_driver_reads_without_the_state_check() -> None:
     runner = _Runner(front=_AUTH)
     XcuitestDriver(transport=runner.transport).query()

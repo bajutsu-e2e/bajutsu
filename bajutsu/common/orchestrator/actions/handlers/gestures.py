@@ -70,6 +70,8 @@ def _tap_with_recovery(
         # those steps before it makes any net progress of its own — hence the widened bound.
         try:
             scroll_until_tappable(driver, sel, direction, None, _TAP_RECOVERY_MAX_SCROLLS * (i + 1))
+        except base.AppNotInFront:
+            raise  # another app took the screen: no other direction can recover that (BE-0447)
         except base.ElementNotFound as exc:
             exhausted = exc
             continue
