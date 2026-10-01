@@ -1029,10 +1029,6 @@ class AdbDriver(CoordinateTreeDriver):
             tree = self._settle()
             try:
                 el = base.resolve_unique(tree, sel)
-            except base.AppNotInFront:
-                # Another app's tree is never "absent here": it must not read as untappable or be
-                # scrolled through, so it fails the step by name instead (BE-0447).
-                raise
             except base.ElementNotFound:
                 logger.debug(
                     "scroll %d/%d: %r still not in the tree", attempt, self._SCROLL_RETRIES, sel

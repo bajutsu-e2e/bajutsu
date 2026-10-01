@@ -18,7 +18,7 @@ import pytest
 from bajutsu.common.backend_cli import adb
 from bajutsu.common.config import AndroidConfig, Effective
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.adb import AdbDriver, HierarchyRead, slice_hierarchy_root
+from bajutsu.common.drivers.adb import ActOutcome, AdbDriver, HierarchyRead, slice_hierarchy_root
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.platform_lifecycle import AndroidEnvironment
 from bajutsu.common.platform_lifecycle.protocols import ReadinessResult
@@ -378,3 +378,42 @@ def test_a_fresh_install_re_grants_the_configs_permissions(tmp_path: Path) -> No
     )
     _env(run).install_member(eff, keep_data=False)
     assert run.ran("pm", "grant", _PRIMARY, "android.permission.CAMERA")
+
+
+def _switching_driver(*, act: bool) -> AdbDriver:
+    """A member driver whose settle sees its own app, and whose next read sees another's."""
+    flipped: list[bool] = []
+
+    def fetch(_since: float | None) -> HierarchyRead:
+        return HierarchyRead(_screen(_PRIMARY if flipped else _AUTH, rows=2))
+
+    driver = AdbDriver(
+        "emulator-5554",
+        run=lambda args: "",
+        fetch_hierarchy=fetch,
+        act=(lambda _req: ActOutcome(acted=True, published_mark=None)) if act else None,
+        package=_AUTH,
+    )
+    driver.require_front_app()
+    settle = driver._settle
+
+    def settle_then_switch() -> list[base.Element]:
+        tree = settle()
+        flipped.append(True)
+        return tree
+
+    driver._settle = settle_then_switch  # type: ignore[method-assign]
+    return driver
+
+
+@pytest.mark.parametrize("act", [False, True], ids=["coordinate", "device-act"])
+def test_an_app_switching_away_mid_resolve_fails_the_tap_by_name(act: bool) -> None:
+    # The settle saw this app, but the retry read sees another: never scrolled through as if the
+    # element were merely off screen (BE-0447).
+    with pytest.raises(base.AppNotInFront):
+        _switching_driver(act=act).tap(base.Selector(id="missing"))
+
+
+def test_an_app_switching_away_mid_resolve_is_never_untappable() -> None:
+    with pytest.raises(base.AppNotInFront):
+        _switching_driver(act=False).is_tappable(base.Selector(id="missing"))
