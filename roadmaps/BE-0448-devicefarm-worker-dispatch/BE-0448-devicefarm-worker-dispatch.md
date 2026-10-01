@@ -131,7 +131,9 @@ Two parts of this item change when it lands.
   window of unit 5 runs its course. The restructure's new target schema then has no
   `cloudBatchBudget` at all, and the key fails at load as unknown.
 
-The restructure item's execution-placement unit carries the coordination.
+The restructure item's schema switch-over unit carries the coordination. Once it lands, the
+*Prime-directive compliance* line here that names `cloudBatch` as a per-target difference no longer
+applies: the destination becomes a per-run choice.
 
 ### Boundaries
 
