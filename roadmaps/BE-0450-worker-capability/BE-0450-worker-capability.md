@@ -163,7 +163,7 @@ this item has landed. It touches five parts of this item.
   avoids by keeping `requires` until the derivation lands.
 - **A not-applicable status appears.** A scenario whose open condition, such as `>=18`, no
   available device meets is recorded as not applicable instead of being run. A run that a list or
-  a bounded range asks for, and that no device can take, fails instead. This item's *Boundaries*
+  a range bounded on both sides asks for, and that no device can take, fails instead. This item's *Boundaries*
   rejects a skipped status, because a misconfigured worker would skip everything and still pass.
   The restructure answers that with the failing runs and with a guard: a run in which no run
   executed exits non-zero. The worker capability check keeps failing a scenario the worker cannot
