@@ -68,9 +68,22 @@ def _elements(*els: dict[str, Any]) -> _Reply:
     return _Reply(status="ok", elements=list(els))
 
 
+# An iPhone 17 Pro's screen, in points: what a fake runner reports for GET /screen unless the test's
+# own transport answers it.
+_SCREEN = (402.0, 874.0)
+
+
 def _driver(transport: TransportFn) -> XcuitestDriver:
+    # A refused tap asks for the screen size to tell an off-screen target from a covered one, so a
+    # transport written before that question gets a real screen rather than a channel error.
+    def with_screen(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        reply = transport(method, path, body)
+        if path == "/screen" and reply.size is None:
+            return _Reply(status="ok", size=_SCREEN)
+        return reply
+
     # No-op sleep so the BE-0289 stale re-resolution backoff adds no wall time on the gate.
-    return XcuitestDriver(transport=transport, sleep=lambda _s: None)
+    return XcuitestDriver(transport=with_screen, sleep=lambda _s: None)
 
 
 def test_driver_satisfies_the_protocol() -> None:
@@ -492,6 +505,8 @@ def test_a_not_hittable_taps_fold_survives_its_own_internal_redirect_lookup() ->
                 status="not-hittable",
                 raw=json.dumps({"labels": ["Not Now"], "unmatched": []}).encode(),
             )
+        if path == "/screen":
+            return _Reply(status="ok", size=_SCREEN)
         assert path == "/interruptionPolicy/drain"
         return _Reply(status="ok", raw=json.dumps({"labels": [], "unmatched": []}).encode())
 
@@ -572,6 +587,37 @@ def test_a_refused_tap_with_no_reachable_descendant_keeps_the_original_failure()
 
     with pytest.raises(base.ElementNotTappable, match="not hittable"):
         driver.tap({"id": "log.count"})
+
+
+def test_a_refused_tap_past_the_screen_edge_skips_the_descendant_redirect() -> None:
+    # A row straddling the fold: its center is below the 874-pt screen, but one named child sits in
+    # the strip still visible above the edge and is reachable. A scroll fixes this shape, so the
+    # refusal goes to the orchestrator's recovery instead of tapping the child the selector never named.
+    sent: list[tuple[str, Mapping[str, Any] | None]] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        if path == "/elements":
+            return _elements(
+                _el_wire("h-row", "row", "Row", traits=["other"], frame=(16.0, 840.0, 370.0, 80.0)),
+                _el_wire(
+                    "h-child",
+                    "row.info",
+                    "Info",
+                    traits=["button"],
+                    frame=(300.0, 845.0, 40.0, 20.0),
+                ),
+            )
+        sent.append((path, body))
+        if path == "/isHittable":
+            return _Reply(status="ok")
+        return _Reply(status="not-hittable")
+
+    driver = _driver(transport)
+    with pytest.raises(base.ElementNotTappable, match=r"^element resolved but not hittable"):
+        driver.tap({"id": "row"})
+
+    assert [path for path, _ in sent if path != "/screen"] == ["/tap"]
+    assert not any(a.substitution for a in driver.drain_actuations().records)
 
 
 def test_a_refused_tap_on_a_container_with_no_named_descendant_re_raises_unchanged() -> None:

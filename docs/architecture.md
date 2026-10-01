@@ -752,7 +752,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
 - Tap-target tappability check with a bounded scroll safety net (BE-0349): before `tap` /
   `double_tap` / `long_press` (and the focus-tap inside `type`/`clear`/`delete`/`select`) act, each
   backend asks, in its own idiomatic way, whether the resolved element is reachable at its own point
-  — the local XCUITest route's native `isHittable`, web's `document.elementFromPoint`
+  — the local XCUITest route's native `isHittable`, asked once the element's center is on-screen
+  (the runner refuses a center past the screen edge outright, so the scroll below reaches it rather
+  than XCUITest's own unsettled scroll-into-view), web's `document.elementFromPoint`
   ancestor-chain hit test, and a document-order `topmost_at_point` geometric proxy on both adb and
   the live XCUITest route, which has no `isHittable` to read over Appium (the proxy is correct for
   Compose's `zIndex`, with known blind spots on View `elevation` and a stale-bounds case under a
@@ -761,8 +763,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   then a wider `up` fallback for a top-anchored obstruction) and re-checks before retrying the
   actuation once; if the target is still unreachable, the step fails with a dedicated
   `ElementNotTappable` error instead of the misleading `ElementNotFound`. On the XCUITest backend the
-  driver acts before that scroll: when a `tap` is refused — the shape a scroll cannot fix, since the
-  target is already on screen, as when iOS inflates a container's accessibility element over the
+  driver acts before that scroll: when a `tap` is refused on a target whose center is on screen —
+  the shape a scroll cannot fix, as when iOS inflates a container's accessibility element over the
   control it wraps — it examines the target's named descendants, and where exactly one is reachable
   it taps that one and records `substitution: soleHittableDescendant`; where none or several are, it
   fails naming the candidates rather than choosing between them (BE-0373)
