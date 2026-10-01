@@ -813,7 +813,10 @@ def run_scenario(  # noqa: C901, PLR0915
     # `primary_target` (it defaults to `""`) would otherwise make every name in `target_runtimes`
     # count as "extra" (none of them equals the empty string), nesting the primary's own artifacts
     # under a bare trailing slash (`<sid>//scenario.mp4`) instead of leaving them at `sid`.
-    primary_sid = f"{sid}/{primary_target}" if primary_target and extra_runtimes else sid
+    # A roster tracking a later member counts as a second target too: that member is declared but
+    # has no runtime until its `foreground`, and every other evidence path already nests (BE-0447).
+    nests = bool(extra_runtimes) or (roster is not None and bool(roster.status))
+    primary_sid = f"{sid}/{primary_target}" if primary_target and nests else sid
     recordings = sink.start_scenario_intervals(primary_sid, requested_intervals(scenario, capture))
     extra_recordings = {
         name: rt.sink.start_scenario_intervals(

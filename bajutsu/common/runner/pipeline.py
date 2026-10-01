@@ -1413,7 +1413,7 @@ class _ScenarioRunner:
                         device_name=target_lz.device_name,
                         device_runtime=target_lz.device_runtime,
                     )
-                    for name, target_lz in {s.target_names[0]: lz, **others}.items()
+                    for name, target_lz in _device_leases(s, {s.target_names[0]: lz, **others})
                 }
             else:
                 result.device = lz.udid  # attribute the scenario to the device that ran it
@@ -1519,6 +1519,23 @@ def _scenario_interrupts_for(s: Scenario, name: str, primary_target: str) -> lis
     if not primary_target:
         return list(s.interrupts)
     return [e for e in s.interrupts if (e.target or primary_target) == name]
+
+
+def _device_leases(s: Scenario, held: Mapping[str, Lease]) -> list[tuple[str, Lease]]:
+    """Every declared target paired with the lease of the device it ran on, in declared order.
+
+    A later device-group member that never came up holds no lease of its own, but it is still a
+    declared target with a row of its own (BE-0428); it reports the device its group shares
+    (BE-0447).
+    """
+    rows: list[tuple[str, Lease]] = []
+    for name in s.target_names:
+        lease = held.get(name)
+        if lease is None:
+            group = next(g for g in s.device_groups if name in g)
+            lease = next(held[m] for m in group if m in held)
+        rows.append((name, lease))
+    return rows
 
 
 def _record_target_evidence(
