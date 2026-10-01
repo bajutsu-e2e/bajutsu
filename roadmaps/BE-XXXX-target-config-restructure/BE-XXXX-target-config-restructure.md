@@ -241,8 +241,9 @@ launched. It then compares the device with a scenario's effective `runsOn`:
 | Android `runsOn.avd` | the emulator's Android Virtual Device (AVD) name | exact; a physical device never matches |
 | Web `runsOn.browser.version` | Playwright's `browser.version` | version range |
 
-The runner hands each scenario a device that meets its conditions. It walks the pool in order, so
-the assignment is deterministic. A scenario that no available device meets does not run. The run
+The runner hands each run a device that meets its conditions; *How many times a scenario runs*
+below says how runs are formed and which device a run takes. The assignment is deterministic. A run
+that no available device meets does not run. The run
 records it with a new **not applicable** status and a reason that names the unmet field and the
 devices it saw:
 
@@ -267,43 +268,51 @@ branching.
 The comparison and the assignment are deterministic and involve no model call. Creating a matching
 device on demand stays out of scope (see *Alternatives considered*).
 
-### Running once per listed value
+### How many times a scenario runs
 
-One field per platform takes a list: `model` on iOS, `avd` on Android, and `browser.engine` on the
-web. A list means "run on each". The scenario runs once per listed value, and the report shows a
-value × scenario matrix, the same shape `--browsers` already produces ([BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)). The other fields
-narrow every one of those runs, so `os: ">=18"` applies to each listed model.
+Two kinds of field multiply runs, and nothing else does.
+
+- **A list.** One field per platform takes a list: `model` on iOS, `avd` on Android, and
+  `browser.engine` on the web. The scenario runs once per listed value.
+- **A version range.** `os` on iOS, `apiLevel` on Android, and `browser.version` on the web run once
+  per major version the range covers. On Android each API level counts as one major version.
 
 ```yaml
 preconditions:
   runsOn:
     ios:
-      model: ["iPhone SE (3rd generation)", "iPhone 16 Pro Max", "iPad Pro 13-inch (M4)"]
-      os: ">=18"
+      model: ["iPhone SE (3rd generation)", "iPad Pro 13-inch (M4)"]
+      os: ">=17 <19"
 ```
 
+This block makes four runs, one for each model on iOS 17 and on iOS 18. The report shows a matrix
+of those runs against scenarios, the same shape `--browsers` already produces ([BE-0076](../BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines.md)):
+
 ```
-                  iPhone SE   iPhone 16 Pro Max   iPad Pro 13-inch (M4)
-login             pass        pass                pass
-split-view        n/a         n/a                 pass
+                  SE / iOS 17   SE / iOS 18   iPad Pro / iOS 17   iPad Pro / iOS 18
+login             pass          pass          pass                pass
+split-view        n/a           n/a           n/a                 pass
 ```
 
-A list and a range mean different things on purpose. A list multiplies runs, one per value, while a
-range or a single value narrows the devices a run may use. A range never multiplies runs:
-`os: ">=17"` runs once, on the first device in pool order whose OS falls in the range, and minor
-and patch releases add no runs. `os` takes no list, so the number of runs grows with listed models
-alone. Each listed run takes a device of its own
-value from the pool. A run whose value no available device has is not applicable, and the other
-runs go ahead. The web backend installs a missing engine on demand, so an engine list never yields
-not applicable.
+The major versions a range covers come from two sources:
 
-A multi-target scenario runs every combination of its targets' lists, so three iOS models and two
-web engines make six runs. The runner schedules each run like a scenario of its own, so `--workers`
-spreads them over the pool. The flakiness history keys a verdict by scenario and value, so a
-layout failure on one model never reads as a flaky scenario.
+| Range | Major versions run |
+|---|---|
+| bounded above, such as `>=17 <19` | every major version in the range, 17 and 18 here; a major with no available device is not applicable |
+| open above, such as `>=17` | the major versions the available devices have within the range, since an open range cannot be listed |
+| a bare version, such as `18` or `18.2` | that one major version |
 
-`--browser` and `--browsers` keep their meaning and override the web list for one run: the flag
-wins over the scenario, and the scenario wins over the target.
+Minor and patch releases never add runs. Within one major version, a run takes the available device
+with the newest release that still falls in the range, and pool order breaks a tie. A range such as
+`>=17.4 <19` therefore runs on 17 (17.4 or later) and on 18. The web backend has one version per
+engine, so a `browser.version` range yields one run in practice, and an engine list never yields
+not applicable because the backend installs a missing engine on demand.
+
+A multi-target scenario runs every combination of its targets' runs. The runner schedules each run
+like a scenario of its own, so `--workers` spreads them over the pool. The flakiness history keys a
+verdict by scenario, value, and major version, so a layout failure on one model never reads as a
+flaky scenario. `--browser` and `--browsers` keep their meaning and override the web list for one
+run: the flag wins over the scenario, and the scenario wins over the target.
 
 ### Where a run happens
 
@@ -402,9 +411,10 @@ the new dictionary.
 9. **Assignment and the not-applicable status.** Hand each scenario a device that meets its
    effective `runsOn`. Record not applicable with a reason, keep it out of the flakiness history, and
    exit non-zero when nothing ran.
-10. **Listed values.** Accept a list for `model`, `avd`, and `browser.engine`. Run once per value,
-    and combinations across a multi-target scenario's targets. Print the value × scenario matrix, and
-    key the flakiness history by scenario and value.
+10. **Runs per value and per major version.** Accept a list for `model`, `avd`, and
+    `browser.engine`. Run once per listed value and per major version a range covers, and run
+    combinations across a multi-target scenario's targets. Print the value × scenario matrix, and
+    key the flakiness history by scenario, value, and major version.
 11. **`doctor`.** List the available devices that meet each scenario.
 12. **`bajutsu config schema`.**
 13. **Execution placement.** Remove `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, and
@@ -427,6 +437,8 @@ the new dictionary.
 | Keep both `setup` and `before` | Preserves today's behavior, at the cost of two keys serving one purpose |
 | Fail the run when the device does not match | Running one suite across several OS versions would fail every OS-specific scenario on the versions it does not target |
 | Create a matching device on demand | Bajutsu would own runtime installation, time, and cleanup |
+| A range narrows to one device and runs once | Leaves no way to cover several OS versions in one run, which is the reason to write a range |
+| Run every minor and patch release a range covers | Multiplies runs by releases that rarely differ in behavior; one run per major version keeps the count bounded |
 | Treat a listed `model` as any one of the values | Matches the narrowing meaning of a range, yet cannot test several screen sizes, which is the reason to list models |
 | A separate `matrix` key beside the narrowing fields | Tells the two meanings apart by key, at the cost of one more key; one list field per platform already leaves no ambiguity |
 | Key a scenario's conditions by target name | The key's shape would change with whether `targets` is declared, and a scenario run against an iOS target and an Android target could not state both |
@@ -448,7 +460,7 @@ the new dictionary.
 - [ ] Unit 7: scenario `runsOn`
 - [ ] Unit 8: reading devices
 - [ ] Unit 9: assignment and the not-applicable status
-- [ ] Unit 10: listed values
+- [ ] Unit 10: runs per value and per major version
 - [ ] Unit 11: `doctor`
 - [ ] Unit 12: `bajutsu config schema`
 - [ ] Unit 13: execution placement
