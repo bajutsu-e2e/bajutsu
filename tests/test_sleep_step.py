@@ -12,6 +12,7 @@ from bajutsu.codegen.uiautomator import to_uiautomator
 from bajutsu.codegen.xcuitest import to_xcuitest
 from bajutsu.common.agents.claude import TOOLS
 from bajutsu.common.cancellation import RunCancelled
+from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.orchestrator import run_scenario
 from bajutsu.common.orchestrator.actions._registry import _step_label
@@ -94,6 +95,34 @@ def test_run_pauses_for_the_stated_seconds_and_passes() -> None:
     assert result.ok, result.failure
     # The pause is the run's only sleep, delivered in quarter-second slices.
     assert clock.slept == [0.25] * 8
+
+
+class CountingDriver(FakeDriver):
+    def __init__(self, elements: list[base.Element]) -> None:
+        super().__init__(elements)
+        self.queries = 0
+
+    def query(self) -> list[base.Element]:
+        self.queries += 1
+        return super().query()
+
+
+def _queries(step: dict[str, object], *, guarded: bool) -> int:
+    interrupt = {"condition": {"exists": {"id": "never"}}, "steps": [{"tap": {"id": "x"}}]}
+    scenario = Scenario.model_validate(
+        {"name": "p", "steps": [step], "interrupts": [interrupt] if guarded else []}
+    )
+    driver = CountingDriver([el("x", "X")])
+    # `runner.pipeline` passes the scenario's interrupts explicitly; `run_scenario` does not read them.
+    result = run_scenario(driver, scenario, clock=FakeClock(), interrupts=scenario.interrupts)
+    assert result.ok, result.failure
+    return driver.queries
+
+
+def test_a_pause_skips_the_interrupt_check_an_act_pays_for() -> None:
+    tap: dict[str, object] = {"tap": {"id": "x"}}
+    assert _queries(tap, guarded=True) == _queries(tap, guarded=False) + 1
+    assert _queries(_sleep(1), guarded=True) == _queries(_sleep(1), guarded=False)
 
 
 def test_the_pause_is_sliced_and_sums_to_the_requested_seconds() -> None:
