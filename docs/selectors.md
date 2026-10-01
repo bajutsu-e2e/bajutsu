@@ -190,6 +190,13 @@ transient overlay, a sticky header settling into place) — it is not a substitu
 [`scroll` action](scenarios.md#scroll). An author who already knows a target starts off-screen
 still writes `scroll` themselves; this check only ever fires on a target that already resolved.
 
+On XCUITest, the runner also refuses a target whose frame center sits past the screen edge. iOS 26
+reports list rows below the fold in the tree. Such a row often sits behind the floating tab bar.
+XCUITest's own `tap()` scrolls that row into view. It then taps before the scroll settles. On an iOS
+26.5 Simulator, two of three such taps never reached the row. Every run still recorded its own tap
+as accepted. The refusal sends the row through the bounded scroll above instead. The retried tap
+lands once the row is in view.
+
 ### Centralized regardless of backend
 
 adb (Android), playwright (web), and the fake driver have no semantic tap, so each **always

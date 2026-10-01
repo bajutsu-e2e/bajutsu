@@ -457,6 +457,14 @@ class XcuitestDriver:
         try:
             self._actuate("/tap", {"handle": handle}, sel, gesture="tap", element=el)
         except base.ElementNotTappable as refused:
+            # The runner also refuses a target whose center sits past the screen edge. A scroll fixes
+            # that shape, so it goes straight to the orchestrator's recovery: redirecting to a child
+            # still visible above the fold would tap a different control than the one the selector
+            # named (the redirect is for a container inflated over an on-screen control, BE-0373).
+            cx, cy = base.frame_center(el["frame"])
+            vw, vh = self.viewport()
+            if not (0.0 <= cx <= vw and 0.0 <= cy <= vh):
+                raise
             self._tap_sole_reachable_descendant(sel, refused)
 
     def _tap_sole_reachable_descendant(
