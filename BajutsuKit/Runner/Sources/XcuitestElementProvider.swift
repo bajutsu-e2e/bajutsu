@@ -141,19 +141,22 @@ final class XcuitestElementProvider: ElementProviding {
         (Double(appFrame.width), Double(appFrame.height))
     }
 
-    // Whether a tap would reach `el` right now: its frame's center — the point a following tap
-    // actually lands on, matching the web guard's own point-based question (`_point_hits`,
+    // Whether a tap would reach `el` right now: its frame's center — the point the orchestrator's
+    // own on-screen test aims at, matching the web guard's point-based question (`_point_hits`,
     // playwright.py) — must be inside `appFrame`, the stable window/screen bounds `screenSize()`
-    // above already uses, *and* XCUITest's own `isHittable` must agree nothing covers it.
+    // above already uses, *and* XCUITest's own `isHittable` must agree nothing covers it. (Only the
+    // browser route below taps that geometric center; `el.tap()` uses XCUITest's own hit point, as
+    // `tap`'s BE-0407 Unit 8 note records.)
     //
     // A center past the screen edge is refused rather than handed to `XCUIElement.tap()`, whose own
     // scroll-into-view then taps at the end of a scroll it does not let settle. Measured on an
     // iPhone 17 Pro iOS 26.5 Simulator: a List row whose center sat 2 pt below the 874-pt screen,
     // behind the floating tab bar, was scrolled ~400 pt by XCUITest and the tap was lost in 2 of 3
     // runs, while the manifest recorded one accepted tap. Refused here, the driver's bounded
-    // scroll-and-retry (`_tap_with_recovery`, which already stops only on a center inside the
-    // viewport) reaches the same row deterministically — the path an on-screen, covered target
-    // already takes, so the two cases no longer depend on where the fold happens to fall.
+    // scroll-and-retry (`_tap_with_recovery`, whose `scroll_until_tappable` stop condition already
+    // requires a center inside the viewport) reaches the same row deterministically — the path an
+    // on-screen, covered target already takes, so the two cases no longer depend on where the fold
+    // happens to fall.
     //
     // One shared predicate, not one copy per caller, so `tap` and `isHittable(backingElement:)` —
     // which the recovery loop requires to agree — cannot drift apart on this question.
