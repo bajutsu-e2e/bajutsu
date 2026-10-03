@@ -129,11 +129,12 @@ def _exists(elements: list[base.Element], sel: base.Selector) -> bool:
 
 
 def _stuck_reason(what: str, start: float, clock: Clock, gate: _AlertGuardGate) -> str:
-    """A `for` wait's reason for stopping before its deadline on the gate's `stuck_note`.
+    """A `for` or `screenChanged` wait's reason for stopping before its deadline on `stuck_note`.
 
-    Only `for` stops early. It waits for an element the stuck screen will never show, whereas `gone`
-    already holds on an empty tree, and a `handleSystemAlert` step waits on SpringBoard, which can
-    still raise the prompt it names however long the app's tree stays empty.
+    Both wait for the app's tree to change in a way the frozen screen never will. The other guarded
+    waits do not stop early: `gone` already holds on an empty tree, `settled` already holds on an
+    unchanging one, and a `handleSystemAlert` step waits on SpringBoard, which can still raise the
+    prompt it names however long the app's tree stays empty.
     """
     return f"wait stopped: {what} after {clock.now() - start:.1f}s \u2014 {gate.stuck_note}"
 
@@ -427,7 +428,7 @@ def _tapped_label(sel: base.Selector, seen: Sequence[str]) -> str:
 # Genuinely long: the wait state machine on the deterministic run path. Splitting it carries real
 # behavioral risk, so it waits for a refactor of its own rather than riding a lint ceiling
 # (BE-0386).
-def _wait(  # noqa: C901, PLR0912
+def _wait(  # noqa: C901, PLR0911, PLR0912
     driver: base.Driver,
     w: Wait,
     clock: Clock,
@@ -602,6 +603,8 @@ def _wait(  # noqa: C901, PLR0912
             return True, "", current
         if gate is not None:
             gate.observe(current)
+            if gate.stuck_note:
+                return False, _stuck_reason("screenChanged", start, clock, gate), current
         if on_interrupt_poll is not None and on_interrupt_poll(current):
             return False, "interrupt recovery failed", current
         if cancelled():

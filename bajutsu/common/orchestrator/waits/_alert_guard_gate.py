@@ -87,8 +87,10 @@ class _AlertGuardGate:
     _native: bool = field(init=False)
     _last_native: float | None = None
     _collapsed_polls: int = 0
-    # When the current unbroken run of collapsed polls began, on a native backend only — reset with
-    # `_collapsed_polls` everywhere a probe finds a SpringBoard alert to explain the collapse.
+    # When the current unbroken run of collapsed polls began, on a native backend only — cleared with
+    # `_collapsed_polls` by `_reset_collapse` wherever something accounts for the collapse, and on its
+    # own in the `_native_unhandled` and `_tree_gave_up` branches below, which keep their debounce
+    # count running while the block they already named explains the empty tree.
     _collapsed_since: float | None = None
     # Whether the most recent native probe found an alert it could not name. The native query runs
     # once per `poll_interval` while the collapsed-tree proxy below samples every `_POLL`, so without

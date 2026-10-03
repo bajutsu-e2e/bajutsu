@@ -2473,6 +2473,16 @@ def test_wait_stops_on_a_native_collapse_no_alert_explains() -> None:
     assert driver.actions == []
 
 
+def test_a_screen_changed_wait_stops_on_a_native_collapse_too() -> None:
+    """`screenChanged` waits for the tree to differ, which a frozen screen never does."""
+    clock = _LogicalClock()
+    w = Wait.model_validate({"until": "screenChanged", "timeout": 60.0})
+    ok, reason, _tree = _wait(FakeDriver([]), w, clock, alert_guard=_SAVE_PASSWORD_GUARD, alerts=[])
+    assert not ok
+    assert reason.startswith("wait stopped: screenChanged")
+    assert clock.now() < 60.0
+
+
 def test_a_native_collapse_shorter_than_the_bound_does_not_stop_the_wait() -> None:
     clock = _LogicalClock()
 
