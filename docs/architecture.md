@@ -577,6 +577,25 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   containing a failing step opens its section by default; one with no failure renders collapsed
   until a reader opens it, and the existing "expand all"/"collapse all" controls toggle every
   scenario's groups too
+- **Device groups and `installApp`/`setPrimaryTarget`** (BE-0447): a `targets` entry may be a nested
+  array of two or more names — a device group — whose members share one device instead of each
+  taking its own; a bare name stays a group of one, so an ungrouped scenario is unchanged. A
+  top-level `installs` list names which non-primary members install and launch at the start; any
+  other member stays a later one, installed by an `installApp: { from, keepData }` step and brought
+  up by `foreground`, which this item ports to Android (previously iOS-only) and, on both
+  platforms, extends to also launch a member that is not yet running rather than only bring a
+  running one to front. A `setPrimaryTarget: { target }` step — top-level-only — moves which member
+  an omitted `target` resolves to from that point on, including for `interrupts` entries and the top-level `expect`
+  block; the scenario model tracks the current primary through the step list to check every omitted
+  `target` and `installApp.from` statically. A group's members must share one native backend
+  platform, device route, and effective locale (refused by `run` preflight before any device is
+  leased, along with a web target in a group of two or more and two starting members sharing a
+  bundle identifier); each member's driver checks its own app is in front before acting, raising a
+  named `AppNotInFront` otherwise, since a device shows one app at a time. XCUITest shares the
+  lease's one resident runner across a group's members (`/app/target` swaps its base bundle);
+  adb gives each member its own driver over the one resident channel. A web target, a device-cloud
+  lease that hands over a preinstalled binary, and code generation (XCUITest, UI Automator,
+  Playwright — each emits a labeled `// TODO`) all reject the two new steps
 - Backend-crash recovery in the run pipeline: a mid-scenario backend crash
   (`base.BackendCrashError`, backend-agnostic) discards the dead lease and re-runs the whole
   scenario on a freshly respawned one, bounded by a retry count (`crash_retries`, default 1) and an
@@ -673,6 +692,18 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   An unrenderable `format` or an unknown `timezone` is rejected when the scenario loads, so an
   accepted step always executes and always succeeds; the produced value is recorded on the step's
   manifest entry and shown in the report, and every codegen target emits a labeled `// TODO`
+- DSL `sleep` step (BE-0451): the one sanctioned exception to condition waits only — a fixed pause
+  for a wait no condition on the screen, the tree, or the network log can observe (a server-side
+  throttle, an animation that outlives `until: settled`). `seconds` (strict, `0 < seconds ≤ 30`) and
+  a non-blank `reason` are both required, so the loader rejects a longer or unexplained pause and
+  points at `wait` instead. The run loop executes it beside `wait`, through the injected `Clock` in
+  quarter-second slices so a cancelled run leaves promptly and a fake-clock test advances time with
+  no wall-clock wait; it touches no driver and needs no capability token. The exception stays
+  countable: the progress label and `report.html` show `sleep Ns — reason`, the determinism audit
+  (BE-0049) lists every one as a `fixed-sleep` finding (walking `before`/`after`/`interrupts`/`web`/
+  `app` too) and grades a scenario Moderate past ten seconds of total fixed pause, `triage`'s laxer
+  guard warns on a fix that adds one, every codegen emitter translates it with the reason as a
+  comment, and `record`/`crawl` never offer it to the authoring model
 - DSL `interrupts` (BE-0314): a config-level (app-wide default) and scenario-level (appended) list
   of `{ condition, steps }` entries, checked opportunistically — reusing the assertion-DSL
   `condition` shape `if` already uses — for a screen that can surface at an unpredictable point (an
