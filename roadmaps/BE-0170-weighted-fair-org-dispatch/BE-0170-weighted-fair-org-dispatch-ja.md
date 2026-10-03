@@ -10,7 +10,7 @@
 | 状態 | **承認済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0170") |
 | トピック | Web UI のホスティング |
-| 関連 | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) |
+| 関連 | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md), [BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md), [BE-0309](../BE-0309-serve-postgres-ci-lane/BE-0309-serve-postgres-ci-lane-ja.md), [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md) |
 | 由来 | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) |
 <!-- /BE-METADATA -->
 
@@ -39,6 +39,15 @@ Simulator を増やすことはできません。純粋な先入れ先出し（F
 使い果たされるのではなく、組織間で分け合われるべきです。そのためには、まだ受け入れられないジョブを
 制御プレーンが*保留*し、到着順ではなく公平さに基づいて次のジョブを選ぶ必要があります。
 
+パイプラインがスイート全体を一度に投入すると、もう一つの欠落が表に出ます。データベースを使うデプロイでは、
+同じ上限が、*実行中*のジョブ数ではなく、*投入済みで未完了*のジョブ数を抑えています。キューで待つジョブも
+上限の枠を占め、実行中のジョブ数はワーカーの数がすでに抑えているからです。全体上限の既定値は4なので、
+ほかの4つと一緒に投入した5つ目の scenario は、手の空いたワーカーが5台待っていても 429 で拒否されます。
+そのため、pull request の scenario を1つの集合として dispatch するパイプラインは、もっとも小さい上限より多くの
+scenario を投入できません。CI から dispatch した run の集合を GitHub の check run として報告する関連提案は、
+まさにこの使い方を前提にしています。プールは順番にすべてを実行できるはずです。このデプロイで
+保留を実現するには、拒否をやめるだけでなく、2つの上限を分ける必要があります。
+
 ## 詳細設計
 
 この設計は、新しいサブシステムを足すのではなく、既存の受け入れ判定の継ぎ目を拡張します。現在は
@@ -61,11 +70,84 @@ Simulator を増やすことはできません。純粋な先入れ先出し（F
    ただの FIFO に縮退するため、単一テナントのデプロイは従来どおりです。組織単位上限の既定値 `0`（無制限）も
    同様に、運用者が設定するまで既存の挙動を変えません。
 
+### データベースを使うキューでの保留
+
+単位1から4は、ローカルの `serve` だけに当てはまります。これらはプロセス内の registry（`JobRegistry`）
+の中でジョブを保留し、ローカルではこの形が合います。ローカルでは、ジョブは登録された時点で
+実行を始めるので、受け入れと開始が同じ出来事になります。データベースを使うデプロイは、すでに
+別の場所でジョブを保留しています。`DbQueueExecutor`
+（`bajutsu/serve/server/db_executor.py`、[BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md)）は
+`jobs` テーブルに `queued` の行を挿入します。手の空いたワーカーは、自分の処理できるもっとも古い行を
+lease します。
+registry（`bajutsu/serve/state/job_registry.py`）は、dispatch したジョブを、jobs テーブルで完了が
+わかるまで各上限に数えます。そのため、このデプロイの上限は投入済みの作業を測り、実行中の作業は、一度に
+1つのジョブだけを lease するワーカーの数が抑えます。次の単位は、このデプロイで2つの上限を分け、ジョブを
+jobs テーブルそのものの中で保留します。メモリ上に2つ目のキューを持つことはありません。
+
+5. **受け入れ時のキューの深さの上限。** 新しい上限で、受け入れる未完了のジョブ（queued か leased の
+   もの）の数を、全体と組織単位で抑えます。データベースを使うデプロイでは、この上限が `try_register`
+   の中で同時実行数の上限の役割を引き継ぎ、上限に達すると 429 を返します。既定値は大きく取ります（未完了の
+   ジョブ500件、`0` は無制限）。この上限の目的はスケジューリングではなく、濫用の防止だからです。
+   リクエスト自体の大きさが上限を超える場合は、どれだけ待っても受け入れられないので、上限を名指しして
+   400 で拒否します。
+   cloud-batch の device budget
+   （[BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md)）
+   は受け入れ時に残します。cloud-batch の dispatch が現在動くのは、プロセス内の経路だけです。
+   ワーカーのキューに入った batch のジョブは、ワーカー上で provider のパッケージ検証に失敗します
+   （`bajutsu/serve/jobs.py` の `_run_batch_job`）。そのため、これらの単位は device budget を動かさず、
+   budget に達した run-set は、これまでどおり集合の一部だけを dispatch します。device budget は、
+   ワーカーの経路が cloud-batch のジョブを実行できるようになった時点で、lease 時の判定に移します。
+6. **lease 時の同時実行数の上限。** `bajutsu/serve/server/db/sql_repository.py` の `lease_job` は、
+   すでに queued の行を古い順にたどり、lease するワーカーが処理できない行を飛ばしています
+   （[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md)）。この単位では
+   飛ばす条件を1つ加えます。組織か actor の lease 済みジョブが上限に達している行と、lease 済みの合計が
+   全体上限に達した後のすべての行です。そのため上限を超えたジョブは `queued` のまま、拒否ではなく
+   保留され、枠が空くとワーカーが lease します。新しいジョブの状態も、昇格の処理も要りません。
+   ユーザー単位の上限は actor ごとに数えますが、現状の actor は JSON の `spec`
+   （`bajutsu/serve/server/worker_job.py` の `job_spec`）の中にしかありません。JSON の中の値での集計は
+   SQLite と Postgres のあいだで移植しにくいので、jobs の行に `actor` カラムを加え、投入時に書き込みます。
+
+   数えることと lease することは、アトミックでなければなりません。そうでないと、上限4のもとで2台の
+   ワーカーがどちらも「組織 A は3件 lease 済み」と読み、両方が lease してしまいます。Postgres では、
+   lease の経路が、たどり始める前に固定のキー1つで transaction 単位の advisory lock
+   （`pg_advisory_xact_lock`）を取り、更新の直後に commit します。組織ごとのキーでは足りません。
+   transaction 単位のロックは途中で外せないので、上限に達した組織を飛ばしたたどり方は、出会った順に
+   2つの組織のキーを保持します。逆の順で出会った2台のワーカーは deadlock します。キーを1つにすれば、
+   単位7のたどり方もすべての組織の lease 済みの件数を一貫して読めます。lease は手の空いたワーカー
+   1台につき、ポーリング間隔ごとに高々1回なので、直列化の費用は小さくなります。SQLite は `make check` の
+   ゲートが使うエンジンで（`sql_repository.py`）、制御プレーンのプロセスは1つだけです。そのため、
+   たどる処理と更新をプロセス内のロックで囲めば足ります。
+7. **lease の順序としての公平さ。** 単位2と3の重み付きラウンドロビンを、`lease_job` が処理できる行を
+   たどる順序にします。古い順だけでたどる代わりに、重みに対する lease 済みジョブの数がもっとも少ない組織を
+   先に取り、その組織の中ではもっとも古い queued のジョブを取ります。その比率が等しい組織は、
+   もっとも古い queued のジョブの順に並べるので、たどる順序は一意に決まります。
+   単位3の優先度ティアは、組織の設定で与える組織ごとの重みとします。そのため、jobs の行に優先度の
+   カラムは要りません。同じ組織の中のジョブは、投入順を保ちます。こうすると、ラウンドロビンの
+   カーソルが保持するはずの状態は、jobs テーブルがすでに持っている lease 済みの件数になります。
+   そのため順序は再起動を越えて保たれ、制御プレーンの replica のあいだでも一致します。組織が1つなら
+   順序は古い順になり、単位4の単一テナントの FIFO を保ちます。
+8. **運用者から見た上限の意味。** `--max-concurrent-runs`、`BAJUTSU_MAX_CONCURRENT_PER_ORG`、
+   `BAJUTSU_MAX_CONCURRENT_PER_USER` は名前を変えず、どちらのデプロイでも実行中のジョブ数を抑える
+   ようになります。ローカルの `serve` の挙動は変わりません。ローカルでは2つの上限が一致するからです。
+   `docs/self-hosting.md` と `docs/ja/` のミラーには、キューの深さの上限と、変わった意味を記載し、
+   設定したキューの深さの上限を示すゲージを `bajutsu_max_concurrent` と並べて加えます（2つの件数は、
+   既存の組織単位の `bajutsu_queue_depth` と `bajutsu_leased_jobs` がすでに報告しています）。
+
 **検証。** これは残るプール化作業のうち、機械的に検証できる契約を持つ唯一の部分です。そのため（組織単位
 上限のテストと同じく）**Simulator を使わず** `ServeState` に対して単体テストします。二つの組織が競合する
 状況で受け入れられるジョブが公平に交互になること、どの組織も自分の上限を超えないこと、単一テナントの
 デプロイが FIFO のままであること、優先度ティアが重みに比例して多く受け入れられることを固定します。これらの
 不変条件はすべて Python の制御プレーン内にあり、Linux の `make check` ゲートで動きます。
+
+データベースを使うデプロイの単位には、観察できる成果が加わります。
+`--max-concurrent-runs 4` とワーカー6台の構成で、ワーカーのキューで動く target への
+10個の scenario の投入が、丸ごと受け入れられます。2台のワーカーが手すきのままでも、その
+ジョブが同時に5件以上 lease されることはありません。重みの等しい2つの組織がどちらも queued の
+ジョブを持つあいだ、両者の lease 済みの件数の差は1を超えません。順序は jobs テーブルから計算するので、
+制御プレーンを再起動しても、次に lease されるジョブは変わりません。
+lease の順序と上限による飛ばしの判定は、SQLite のゲートで動きます。
+数えることと lease することのアトミック性は、実際に並行して lease するワーカーと advisory lock を
+必要とするので、Postgres の lane（[BE-0309](../BE-0309-serve-postgres-ci-lane/BE-0309-serve-postgres-ci-lane-ja.md)）で動きます。
 
 **調整メモ。** この変更は `bajutsu/serve/operations.py` と `jobs.py` に入ります。進行中のほかの serve 作業が
 触る面と同じであるため、そのファイルを編集中の未マージ PR がマージされたあとに入れるか、コンフリクトを
@@ -80,6 +162,12 @@ Simulator を増やすことはできません。純粋な先入れ先出し（F
 - **全組織を通じた純粋な FIFO。** 却下します。これは組織単位上限がすでに回避策を講じなければならなかった
   現状そのものであり、FIFO では一つの組織の集中投入が希少な Mac プールを独占できます。組織単位の待機キューと
   上限を尊重するラウンドロビンが、その解決策です。
+- **ジョブが完了するたびに、保留中のジョブを昇格させる。** データベースを使うデプロイでは却下します。
+  `held` のジョブの状態と、lease の回収を含むすべての完了の経路での昇格の処理が必要になります。lease 時に
+  絞り込めば、すでに `queued` の行から同じ保留が得られます。
+- **データベースを使うデプロイでも、組織単位の待機キューをメモリ上に持つ。** 却下します。メモリ上の
+  キューは、制御プレーンの replica をまたげず、再起動も越えられません。しかも、jobs テーブルがすでに
+  担っているキューと重複します。
 - **公平さのラウンドロビンとは別に優先度スケジューラを設ける。** 不要として却下します。優先度を重みとして
   ラウンドロビンに畳み込めば、相互作用する二つの経路ではなく単一の分配経路で済み、推論もテストも容易に
   なります。
@@ -94,6 +182,10 @@ Simulator を増やすことはできません。純粋な先入れ先出し（F
 - [ ] 待機中の作業を持つ組織を巡回し、上限未満の組織だけを受け入れるラウンドロビンのディスパッチャ。
 - [ ] 同じラウンドロビン上で優先度ティアを重みとして扱う。
 - [ ] 単一テナント・無制限上限の経路が FIFO のままであることの検証。
+- [ ] データベースを使うデプロイでの、受け入れ時のキューの深さの上限。
+- [ ] lease 時の同時実行数の上限（アトミックな数え上げと lease、`actor` カラム）。
+- [ ] lease の順序としての公平さと優先度の重み。
+- [ ] 分けた上限についての運用者向けドキュメントとメトリクス。
 
 ## 参考
 
@@ -102,3 +194,10 @@ Simulator を増やすことはできません。純粋な先入れ先出し（F
 ホストのアンブレラ。土台となる組織単位上限は [#367](https://github.com/bajutsu-e2e/bajutsu/pull/367) で
 出荷済み）、[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)（マネージド
 クラウド側の対応項目）。
+
+データベースを使うデプロイの単位は、コード（`bajutsu/serve/server/db_executor.py` の
+`DbQueueExecutor`、`bajutsu/serve/state/job_registry.py` の `try_register` と `_release_finished`、
+`bajutsu/serve/server/db/sql_repository.py` の `lease_job`）を土台にします。ロードマップでは、
+[BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md)、
+[BE-0166](../BE-0166-capability-routed-queues/BE-0166-capability-routed-queues-ja.md)、
+[BE-0309](../BE-0309-serve-postgres-ci-lane/BE-0309-serve-postgres-ci-lane-ja.md) を土台にします。
