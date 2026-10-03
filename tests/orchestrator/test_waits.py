@@ -13,7 +13,12 @@ from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import FileSink
 from bajutsu.common.evidence.network import ScreenTransition
-from bajutsu.common.orchestrator import AlertGuardConfig, _wait, run_scenario
+from bajutsu.common.orchestrator import (
+    DEFAULT_FROZEN_SCREEN_TIMEOUT,
+    AlertGuardConfig,
+    _wait,
+    run_scenario,
+)
 from bajutsu.common.orchestrator.waits import _TRANSITION_QUIESCENCE
 from bajutsu.common.scenario import Wait
 
@@ -2456,10 +2461,8 @@ _SAVE_PASSWORD_GUARD = AlertGuardConfig(rules=[guard_rule("Not Now", native=Fals
 def test_wait_stops_on_a_native_collapse_no_alert_explains() -> None:
     """A native backend's probe rules a SpringBoard alert out, yet the tree stays empty: measured on
     iOS 26.5, a Save Password alert left mid-presentation does exactly this, modal over the app and
-    reachable by nothing. The wait stops once that has held for `_COLLAPSED_STUCK_AFTER` and says so,
+    reachable by nothing. The wait stops once that has held for `frozen_screen_timeout` and says so,
     rather than polling the rest of its timeout."""
-    from bajutsu.common.orchestrator.waits._alert_guard_gate import _COLLAPSED_STUCK_AFTER
-
     driver = FakeDriver(
         []
     )  # advertises HANDLE_SYSTEM_ALERT, no SpringBoard alert, nothing labelled
@@ -2469,7 +2472,7 @@ def test_wait_stops_on_a_native_collapse_no_alert_explains() -> None:
     assert not ok
     assert reason.startswith("wait stopped: for")
     assert "label or identifier" in reason
-    assert _COLLAPSED_STUCK_AFTER <= clock.now() < 60.0
+    assert DEFAULT_FROZEN_SCREEN_TIMEOUT <= clock.now() < 60.0
     assert driver.actions == []
 
 
@@ -2508,6 +2511,31 @@ def test_a_native_collapse_stops_only_on_a_fresh_negative_probe() -> None:
     assert not ok
     assert reason.startswith("wait stopped: for")
     assert clock.now() >= 30.0  # the second probe, not the 10s bound, is what latched it
+
+
+def test_a_frozen_screen_timeout_of_zero_turns_the_stop_off() -> None:
+    clock = _LogicalClock()
+    guard = AlertGuardConfig(rules=[guard_rule("Not Now", native=False)], frozen_screen_timeout=0.0)
+    w = Wait.model_validate({"for": {"id": "never"}, "timeout": 30.0})
+    ok, reason, _tree = _wait(FakeDriver([]), w, clock, alert_guard=guard, alerts=[])
+    assert not ok
+    assert reason.startswith("wait timeout: for")
+
+
+def test_a_raised_frozen_screen_timeout_lets_a_slower_load_through() -> None:
+    """An app whose own unlabelled loading screen outlasts the default raises the bound."""
+    clock = _LogicalClock()
+
+    class _LoadsIn15s(FakeDriver):
+        def query(self) -> list[base.Element]:
+            return [el("home", "Home")] if clock.now() >= 15.0 else []
+
+    guard = AlertGuardConfig(
+        rules=[guard_rule("Not Now", native=False)], frozen_screen_timeout=20.0
+    )
+    w = Wait.model_validate({"for": {"id": "home"}, "timeout": 60.0})
+    ok, reason, _tree = _wait(_LoadsIn15s([]), w, clock, alert_guard=guard, alerts=[])
+    assert ok and reason == ""
 
 
 def test_a_native_collapse_without_an_in_tree_rule_runs_to_the_timeout() -> None:

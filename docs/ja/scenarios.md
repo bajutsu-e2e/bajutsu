@@ -126,7 +126,7 @@ XCUITest バックエンドでは、画面が止まったときに `for` と `sc
 wait stopped: for {'id': 'Close'} after 10.4s — no element below the application has carried a label or identifier for 10s while no system alert is up — …
 ```
 
-この打ち切りは、`rules` に `savePassword` のようなアプリ内のプロンプトを宣言したシナリオに限ります。それ以外のシナリオでは、長く空のツリーがアプリ自身のラベルのない読み込み画面である可能性があるため、wait は従来どおり自身のタイムアウトまで待ちます。`gone` と `settled` の wait は、止まったツリーで条件を満たしてしまうため、この打ち切りの対象外です。`handleSystemAlert` ステップも対象外です。このステップは SpringBoard を待っており、プロンプトがあとから出る可能性があるためです。
+この打ち切りは、`rules` に `savePassword` のようなアプリ内のプロンプトを宣言したシナリオに限ります。それ以外のシナリオでは、長く空のツリーがアプリ自身のラベルのない読み込み画面である可能性があるため、wait は従来どおり自身のタイムアウトまで待ちます。ラベルのない読み込み画面が 10 秒を超えうるアプリでは、`frozenScreenTimeout` で上限を延ばせます。`0` を指定すると打ち切りは無効になります。`gone` と `settled` の wait は、止まったツリーで条件を満たしてしまうため、この打ち切りの対象外です。`handleSystemAlert` ステップも対象外です。このステップは SpringBoard を待っており、プロンプトがあとから出る可能性があるためです。
 
 これは **既定で ON** で、**ステップ（または `expect`）がブロックされたとき、あるいはガード対象の `wait` でネイティブのポーリングがアラートを見つけたとき**に発火します。そのため、成功するシナリオは余計な処理をしません。`ANTHROPIC_API_KEY` は**不要**で、参照もしません。シナリオごとに動作を変えるには `systemAlertHandling` を使います。
 
@@ -139,6 +139,7 @@ wait stopped: for {'id': 'Close'} after 10.4s — no element below the applicati
 | `systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` | ON。**名指しした対応済みプロンプト**に、他のプロンプトとどのラベルを共有していても、その規則自身の選択で答える |
 | `systemAlertHandling: { visionInstruction: "tap Allow" }` | **どのコマンドにも届きません。** `run` は黙って無視せず、**どのシナリオも実行する前に失敗します**（[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。`record` と `crawl` はシナリオのこのキーを読みません。スキーマが残しているのは、書いてしまったファイルにこのメッセージを返すためだけです |
 | `systemAlertHandling: { pollInterval: 2 }` | ON。ネイティブの presence 照会を既定の 1 秒ではなく 2 秒間隔でポーリングする |
+| `systemAlertHandling: { frozenScreenTimeout: 30 }` | ON。ガード対象の wait が止まった画面で打ち切るまでの時間を、デフォルトの 10 秒ではなく 30 秒にする（`0` で打ち切りを無効にする） |
 
 ```yaml
 - name: grant notification permission
@@ -233,6 +234,7 @@ CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**�
 |---|---|---|
 | `rules` | リスト | 内側の層から順に連結：シナリオ、次にターゲット |
 | `pollInterval` | スカラー | 値を持つもっとも内側の層が勝つ：シナリオ、無ければコマンドライン、無ければターゲット |
+| `frozenScreenTimeout` | スカラー | 値を持つもっとも内側の層が勝つ：シナリオ、無ければターゲット |
 | ON / OFF | スカラー | `--system-alert-handling` / `--no-system-alert-handling`、無ければシナリオ、無ければターゲット、無ければ ON |
 
 リストを連結にするのは、両方の層のエントリが残るからです。シナリオの答えを先に試し、シナリオが答えなかったものにはターゲットの答えが届きます。スカラーは値を 1 つしか持てないので、もっとも内側の層が勝ちます。どの層の宣言も他の層に消されません。BE-0401 が確立しようとした性質はここにあります。`rules` が 2 層しか使えないのは、プロンプトと選択の組をフラグの値 1 つで読みやすく運べないからです。

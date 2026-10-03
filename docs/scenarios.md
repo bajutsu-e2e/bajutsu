@@ -136,7 +136,7 @@ On the XCUITest backend, a frozen screen stops a `for` or `screenChanged` wait b
 wait stopped: for {'id': 'Close'} after 10.4s — no element below the application has carried a label or identifier for 10s while no system alert is up — …
 ```
 
-A scenario opts into this stop by declaring an in-app prompt such as `savePassword` in its `rules`. Without one, a long empty tree may be the app's own unlabelled loading screen. The wait then keeps its own timeout. A `gone` or `settled` wait never stops this way, because a frozen tree already satisfies it. A `handleSystemAlert` step does not either: it waits on SpringBoard, which can still raise its prompt.
+A scenario opts into this stop by declaring an in-app prompt such as `savePassword` in its `rules`. Without one, a long empty tree may be the app's own unlabelled loading screen. The wait then keeps its own timeout. An app with a slower unlabelled loading screen raises the bound with `frozenScreenTimeout`. A value of `0` turns the stop off. A `gone` or `settled` wait never stops this way, because a frozen tree already satisfies it. A `handleSystemAlert` step does not either: it waits on SpringBoard, which can still raise its prompt.
 
 It is **on by default** and fires **only when a step (or `expect`) is blocked, or — for a guarded `wait` — the native poll finds an alert**, so a passing scenario does no extra work. It needs **no `ANTHROPIC_API_KEY`** and consults none. Use `systemAlertHandling` to change the behavior per scenario:
 
@@ -157,6 +157,7 @@ application vocabulary, so a label licensed a tap on a screen no scenario had de
 | `systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` | on; answer a **named, covered prompt** by its own choice, regardless of which label it shares with another prompt |
 | `systemAlertHandling: { visionInstruction: "tap Allow" }` | **reaches no command.** `run` **fails before any scenario starts** rather than ignoring it ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)); `record` / `crawl` never read a scenario's key. The schema keeps it only so a file carrying it gets that message |
 | `systemAlertHandling: { pollInterval: 2 }` | on; poll the native presence query every 2 s instead of the one-second default |
+| `systemAlertHandling: { frozenScreenTimeout: 30 }` | on; tolerate a frozen screen for 30 s instead of the 10-second default before a guarded wait stops (`0` turns the stop off) |
 
 ```yaml
 - name: grant notification permission
@@ -320,6 +321,7 @@ Two rules cover every key, chosen by whether it holds a list or a scalar:
 |---|---|---|
 | `rules` | list | concatenated, innermost layer first: scenario, then target |
 | `pollInterval` | scalar | the innermost layer that supplies one wins: scenario, else command line, else target |
+| `frozenScreenTimeout` | scalar | the innermost layer that supplies one wins: scenario, else target |
 | on / off | scalar | `--system-alert-handling` / `--no-system-alert-handling`, else the scenario, else the target, else on |
 
 A list composes because concatenation keeps both layers' entries: the scenario's answers are tried

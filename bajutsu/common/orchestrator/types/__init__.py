@@ -30,6 +30,7 @@ from .alert_event import AlertEvent
 from .alert_guard_config import _NATIVE_TAP_TIMEOUT as _NATIVE_TAP_TIMEOUT
 from .alert_guard_config import (
     DEFAULT_ALERT_POLL_INTERVAL,
+    DEFAULT_FROZEN_SCREEN_TIMEOUT,
     AlertGuardConfig,
     NativeAlertState,
     NotTappable,
@@ -54,6 +55,7 @@ from .undeclared_interruption import UndeclaredInterruption
 
 __all__ = [
     "DEFAULT_ALERT_POLL_INTERVAL",
+    "DEFAULT_FROZEN_SCREEN_TIMEOUT",
     "AlertEvent",
     "AlertGuardConfig",
     "BlockedHandler",

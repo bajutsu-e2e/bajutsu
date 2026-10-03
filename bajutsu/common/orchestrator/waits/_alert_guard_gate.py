@@ -27,11 +27,6 @@ from ._shared import _logger
 # BE-0402 a trip costs no model call, only the note a timeout would then carry, and a note naming a
 # block that was never there is the one wrong answer this path can still give.
 _GUARD_DEBOUNCE_POLLS = 3  # consecutive collapsed polls before recording the note
-# How long a native backend's tree may stay collapsed, with no SpringBoard alert to explain it and an
-# in-tree rule declared, before the wait stops on `stuck_note` instead of spending the rest of its
-# timeout. Well past the sub-second collapse a sheet's own dismiss animation causes (measured: under a
-# second on iOS 26.5), and short enough to leave a typical wait's budget unspent.
-_COLLAPSED_STUCK_AFTER = 10.0
 
 
 # Min seconds before `_dismiss_from_tree` re-taps a label its own tap left still showing. A tap the
@@ -112,7 +107,7 @@ class _AlertGuardGate:
     # What this gate last saw blocking the screen and could not clear (BE-0402), for `_wait` to
     # append to a timeout it is about to report. Empty whenever the latest poll showed no block.
     blocked_note: str = ""
-    # Set once `_collapsed_since` is `_COLLAPSED_STUCK_AFTER` old: no alert any answer path can see
+    # Set once `_collapsed_since` is `guard.frozen_screen_timeout` old: no alert any answer path can see
     # is up, yet the tree has stayed empty, so the wait running this gate stops on this note rather
     # than polling a screen nothing here can clear until its own deadline.
     stuck_note: str = ""
@@ -558,7 +553,8 @@ class _AlertGuardGate:
             self.blocked_note = ""
             return
         self._collapsed_polls += 1
-        if self._native and self.guard.tree_rules:
+        bound = self.guard.frozen_screen_timeout
+        if self._native and self.guard.tree_rules and bound > 0:
             # Only where a probe can rule a SpringBoard alert out — on a backend without that query, a
             # lasting collapse is as consistent with an alert nobody can see as with anything else —
             # and only for a scenario that declared an in-app prompt such as `savePassword`, the one
@@ -573,7 +569,7 @@ class _AlertGuardGate:
             now = self.clock.now()
             if self._collapsed_since is None:
                 self._collapsed_since = now
-            elif probed_absent and now - self._collapsed_since >= _COLLAPSED_STUCK_AFTER:
+            elif probed_absent and now - self._collapsed_since >= bound:
                 self.stuck_note = collapsed_tree_note(now - self._collapsed_since)
         if self._collapsed_polls < _GUARD_DEBOUNCE_POLLS:
             return

@@ -165,7 +165,8 @@ Preconditions ::= {
 SystemAlertHandling ::= boolean                                   # true = on with no rules, false = off
                | { rules?: [<SystemAlertRule>],             # the guard's whole declaration (BE-0406)
                    visionInstruction?: string,              # free text; reaches no command — `run` rejects it
-                   pollInterval?: number }                   # native poll cadence, seconds (default 1)
+                   pollInterval?: number,                    # native poll cadence, seconds (default 1)
+                   frozenScreenTimeout?: number }            # frozen-screen stop, seconds (default 10, 0 = off)
 SystemAlertRule ::= { prompt: notifications|tracking|paste|savePassword, choice: grant|deny }  # unique prompt per list
                 # savePassword is guard-only: iOS raises it in-process, so the in-tree dismissal
                 # alone answers it and the handleSystemAlert step below rejects it (BE-0406)
