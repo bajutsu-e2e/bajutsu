@@ -498,6 +498,11 @@ set, formed in three steps:
    draw on this set, that is, the same-platform targets whose run coordinates are equal. A fixed model must meet the same count.
 3. Keep the devices at the newest remaining release that still has that many devices.
 
+A device's *model* is its simctl device-type name on iOS. On Android it is the AVD name for an
+emulator and `ro.product.model` for a physical device, which has no AVD. A device's *release* is
+its runtime label on iOS and its API level on Android. A web lane's engine and version are fixed by
+the invocation, so steps 2 and 3 do not narrow web lanes.
+
 When a step leaves fewer devices than targets, the run fails like a missing device.
 
 Every member of the set then shares model and release, so any idle member may take the run, and
@@ -521,9 +526,11 @@ applicable and no run executes, the invocation exits with code 1, as a failed in
 "no run executed", so an empty invocation never reports green. Failures, including preflight and
 capability failures, already exit 1. A filter that selects no scenario keeps today's behavior. A serve job
 whose every run is not applicable reports a failed job for the same reason. Together with the
-failure of a missing listed value, this answers the concern of
+failure of a missing listed value, this answers the main concern of
 [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md): a misconfigured pool cannot
-turn a suite green by skipping it.
+turn an entire invocation green by skipping it. A pool that lacks one OS version can still leave some
+scenarios not applicable while the rest pass, so the summary line prints the count of not-applicable
+records beside the passes and failures.
 
 **History and other commands.** Today the flakiness history keys a verdict by the scenario's
 content fingerprint and the device OS. The new key adds the target and the run's coordinates: the
@@ -714,7 +721,8 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
    `backends.PLATFORMS`.
 4. **Schema switch-over.** Replace `TargetConfig`, `Defaults`, `Config`, and `resolve`, keep the
    `redact` and `secrets` unions, and update the raw-schema readers. Land the execution placement
-   with it: remove `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, and `requires`, add
+   with it: remove `deviceProvider`, `cloudBatch`, `cloudBatchBudget`, and `requires`, and the server-side budget
+   machinery (`deviceBudget`, `max_concurrent_batch`, and `try_register(device_budget=…)`), add
    `environment` to the serve fan-out request (batch kinds) and to the plain run request (`appium`),
    route both, and accept an `appium` environment in
    `worker.yaml` and in `--worker-config` on `run`, `record`, `crawl`, `repl`, `audit`, `doctor`, and
