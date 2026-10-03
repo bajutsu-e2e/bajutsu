@@ -573,8 +573,9 @@ No command-line command dispatches Device Farm today, so no CLI option is added.
 Targets of that platform go to the grid, and other targets of the same scenario stay local. In
 `worker.yaml` the `appium` environment behaves like a device-cloud one: `maxJobConcurrency` may
 exceed one, `drivers` lists the drivers its local targets need along with the grid's driver, and
-the host rule of BE-0450 applies to the local targets alone. Each grid target opens its own session
-on the endpoint, so two iOS targets of one scenario take two grid devices. Every
+the host rule of BE-0450 applies to the local targets alone. The endpoint counts as one
+device, as the URL udid does today, so a scenario with more than one grid target is rejected at
+load. Defining how many sessions one endpoint can hold is left to a later item. Every
 command that drives a device (`run`, `record`, `crawl`, `repl`, `audit`, and `doctor`), and the
 Model Context Protocol (MCP) server at startup, accepts `--worker-config` with that environment, so
 each can still reach a grid as the URL udid lets it today. `triage --rerun` forwards

@@ -151,7 +151,8 @@ this item has landed. It touches six parts of this item.
   environment names the platform its grid serves (`ios` today); targets of that platform go to the
   grid, and other targets stay local. It behaves like a device-cloud environment: `maxJobConcurrency`
   may exceed one, `drivers` lists the drivers its local targets need along with the grid's driver,
-  and the host rule applies to the local targets alone. Every command that drives a device (`run`, `record`, `crawl`,
+  and the host rule applies to the local targets alone. The endpoint counts as one device, so a
+  scenario with more than one grid target is rejected at load. Every command that drives a device (`run`, `record`, `crawl`,
   `repl`, `audit`, and `doctor`), and the MCP server, accepts `--worker-config` with it, replacing
   today's URL udid; this item gives the flag to `worker` and `run` alone, so the restructure extends
   it, and rejects every other non-local environment for those commands. It advertises `environment:appium` alone,
