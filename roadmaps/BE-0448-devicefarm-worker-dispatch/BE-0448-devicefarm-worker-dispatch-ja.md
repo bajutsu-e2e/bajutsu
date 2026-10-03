@@ -121,9 +121,9 @@ worker は、実行のツリーを一時ディレクトリにダウンロード�
 
 提案中の、target の設定を再構成する項目があります（slug `target-config-restructure`）。この項目は、どこで実行するかの選択を target から外し、本項目が入ってから着手します。この項目が入ると、本項目の次の3点が変わります。
 
-- **`cloudBatch` が target から外れます。** 再構成の項目は、Device Farm への送り先を実行の要求へ移します。serve の fan-out の要求が `environment` フィールドを持ちます。現在、Device Farm に送るコマンドラインのコマンドはないので、CLI のオプションは足しません。`Job.batch` を持つジョブは、`environment:<name>` を target ではなくこの要求から導きます。fan-out の要求（`run-set`）は、引き続き batch provider の種類だけを受け付けます。「ルーティング」も広がります。通常の run の要求が `appium` を受け付ける `environment` を持つようになり、そこから作るジョブはそのトークンを求めます。本項目の作業単位2が扱うのは `Job.batch` だけです。
+- **`cloudBatch` が target から外れます。** 再構成の項目は、Device Farm への送り先を実行の要求へ移します。serve の fan-out の要求が `environment` フィールドを持ちます。現在、Device Farm に送るコマンドラインのコマンドはないので、CLI のオプションは足しません。`Job.batch` を持つジョブは、`environment:<name>` を target ではなくこの要求から導きます。fan-out の要求（`run-set`）は、引き続き batch provider の種類だけを受け付けます。「ルーティング」も広がります。通常の run の要求が `appium` を受け付ける `environment` を持つようになり、そこから作るジョブはそのトークンを求めます。本項目の作業単位2が扱うのは `Job.batch` だけです。worker はそうしたジョブを、Device Farm に投入する代わりに `--worker-config` をつけたローカルの `bajutsu run` を起動するスロットで走らせます。
 - **worker が投入の前に `runsOn` の条件を確かめます。** 再構成の項目には、Device Farm の実行の前に読める端末がありません。そのため、有効な `runsOn` が条件を持つシナリオは、何かを投入する前に worker の側で、既存の結果の経路を通じて失敗します。Device Farm のホスト上の `bajutsu run` は、自分がどこで動いているかを知る必要がありません。
-- **`cloudBatchBudget` がスキーマから消えます。** 本項目が先に入るので、その時点で作業単位5は `cloudBatchBudget` を非推奨にしていますが、まだ取り除いていません。そのあと再構成の項目の新しい target のスキーマには `cloudBatchBudget` がなく、このキーは未知のキーとして読み込みに失敗します。
+- **作業単位5の削除を再構成の項目が引き継ぎます。** 本項目が先に入るので、その時点で作業単位5は `cloudBatchBudget`、`deviceBudget`、`max_concurrent_batch`、`try_register(device_budget=…)` を非推奨にしていますが、まだ取り除いていません。再構成の項目のスキーマの切り替えが、この4つをすべて取り除きます。新しい target のスキーマには `cloudBatchBudget` がないので、このキーは未知のキーとして読み込みに失敗します。`deviceBudget` をまだ送る fan-out の要求は拒否されます。そのため `deviceBudget` の非推奨期間はその切り替えの時点で終わり、作業単位5が取り除くはずだった時期より早まることがあります。
 
 この調整は、再構成の項目の「スキーマの切り替え」という作業単位が受け持ちます。この項目が入ると、本項目の「プライムディレクティブへの適合」で `cloudBatch` を target ごとの違いとして挙げている箇所は当てはまらなくなります。送り先は実行ごとの選択になるためです。
 

@@ -128,14 +128,19 @@ Three parts of this item change when it lands.
   Device Farm today, so no CLI option is added. A job with `Job.batch` derives `environment:<name>` from that request, not from the
   target. The fan-out request (`run-set`) keeps accepting batch-provider kinds alone. *Routing* also
   widens: the plain run request gains an `environment` that accepts `appium`, and a job made from
-  it requires that token, where unit 2 here covers `Job.batch` alone.
+  it requires that token, where unit 2 here covers `Job.batch` alone. The worker runs such a job in
+  a slot that starts a local `bajutsu run` with `--worker-config` instead of submitting to Device Farm.
 - **The worker checks `runsOn` conditions before it submits.** The restructure has no device to
   read before a Device Farm run, so a scenario whose effective `runsOn` declares conditions fails on the worker, through
   the existing result route, before anything is submitted. The `bajutsu run` on the Device Farm
   host stays unaware of where it runs.
-- **`cloudBatchBudget` disappears from the schema.** This item lands first, so by then
-  unit 5 has deprecated `cloudBatchBudget` without yet removing it. The restructure's new target schema then has no
-  `cloudBatchBudget` at all, and the key fails at load as unknown.
+- **The restructure takes over unit 5's removals.** This item lands first, so by then unit 5 has
+  deprecated `cloudBatchBudget`, `deviceBudget`, `max_concurrent_batch`, and
+  `try_register(device_budget=…)` without yet removing them. The restructure's schema switch-over
+  removes all four. Its new target schema has no `cloudBatchBudget`, so the key fails at load as
+  unknown, and a fan-out request that still sends `deviceBudget` is rejected. The deprecation
+  window of `deviceBudget` therefore ends at that switch-over, which may come before unit 5 would
+  have removed it.
 
 The restructure item's schema switch-over unit carries the coordination. Once it lands, the
 *Prime-directive compliance* line here that names `cloudBatch` as a per-target difference no longer

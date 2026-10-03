@@ -154,7 +154,9 @@ this item has landed. It touches six parts of this item.
   and the host rule applies to the local targets alone. The endpoint counts as one device, so a
   scenario with more than one grid target is rejected at load. Every command that drives a device (`run`, `record`, `crawl`,
   `repl`, `audit`, and `doctor`), and the MCP server, accepts `--worker-config` with it, replacing
-  today's URL udid; this item gives the flag to `worker` and `run` alone, so the restructure extends
+  today's URL udid. *The worker capability file* has `run` reject a file whose `environment` is not
+  `local`; the restructure relaxes that rule for `appium`, since `run` still drives the grid itself
+  and submits nothing to a cloud. This item gives the flag to `worker` and `run` alone, so the restructure extends
   it, and rejects every other non-local environment for those commands. It advertises `environment:appium` alone,
   and a job that requires it carries no `platform:*` or `host:*` token, as for a Device Farm job.
 - **The runtime and device-class source moves.** This item keeps `requires` for now.

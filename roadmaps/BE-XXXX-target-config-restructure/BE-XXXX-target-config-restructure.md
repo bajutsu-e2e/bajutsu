@@ -84,10 +84,11 @@ Once this item ships, a reader can check three outcomes:
 
 This item starts after [BE-0448](../BE-0448-devicefarm-worker-dispatch/BE-0448-devicefarm-worker-dispatch.md)
 and [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md) have landed. Landed
-means every unit of those items has merged except the final removal of `cloudBatchBudget` and
-`requires`, which stay deprecated but accepted; unit 4 of this item removes them, together with the server-side
-budget machinery that still honors `cloudBatchBudget` (`deviceBudget`, `max_concurrent_batch`, and
-`try_register(device_budget=…)`). Those items provide the worker capability file, `worker.yaml`, and the `environment:<name>` routing that the
+means every unit of those items has merged except two final removals, which stay deprecated but
+accepted: unit 5 of BE-0448 removing `cloudBatchBudget` and the server-side budget machinery
+(`deviceBudget`, `max_concurrent_batch`, and `try_register(device_budget=…)`), and BE-0450 removing
+`requires`. Unit 4 of this item removes them all. This ends the deprecation window of `deviceBudget`
+on the fan-out request at the switch-over, earlier than BE-0448 alone would. Those items provide the worker capability file, `worker.yaml`, and the `environment:<name>` routing that the
 keys leaving the target move onto (see *Where a run happens*). Starting earlier would leave
 `deviceProvider` and `cloudBatch` with no destination at the atomic schema switch-over.
 
@@ -326,7 +327,14 @@ the same rule as an `app` field no driven target has.
 scenario applies the `app` fields its platform has, so an iOS-and-web scenario can still set
 `launch.args` for its iOS side. When no target the scenario drives has the field, such as
 `launch.args` in a web-only scenario or `reinstall` against a web target alone, the run fails before
-any device work, naming the field. It never ignores the field. A scenario cannot set a field that identifies or builds the
+any device work, naming the field. It never ignores the field. This differs on purpose from
+`runsOn`, whose block for a platform the run does not drive has no effect: a `runsOn` block is keyed
+by platform and so says which platform it is for, while an unkeyed `app` or `run` field reads as
+meant for every target the scenario drives. The cost is accepted. A scenario file that several
+single-platform targets pick up through `paths.scenarios`, such as an iOS scenario with
+`tipKitHandling` in a directory an Android target also reads, fails on the target that lacks the
+field, where today that target ignores it. Such a scenario names its `targets`, or moves to a
+directory that only the matching targets read. A scenario cannot set a field that identifies or builds the
 app, such as `id`, `path`, `build`, `startWhen`, or `idNamespaces`; the target owns those.
 
 `seedPhotos` paths resolve against the file that declares them: the scenario file, or the config
@@ -402,7 +410,9 @@ Matching covers devices the invocation drives on its own host. A target whose `r
 to read before the run. Such a target may not declare `model`, `os`, or a list; the loader rejects them for
 `kind: device`, after merging defaults. A scenario whose effective `runsOn` declares conditions, from the target or from the
 scenario, and that runs against such a target or in a remote environment, fails before any device
-work and names the field; it is never ignored. For a remote
+work and names the field; it is never ignored. The check is per target: in a scenario that mixes a
+grid target with a local target, it looks only at the grid target's effective `runsOn`, and the local
+target's conditions are matched as usual. For a remote
 environment the check runs where the job is dispatched: the worker of BE-0448 fails such a scenario
 before it submits anything, so the plain `bajutsu run` on the Device Farm host never needs to know
 where it runs. `locale` and
@@ -524,7 +534,8 @@ not applicable: showcase/ipad-split-view
 The report lists it apart, and the flakiness history leaves it out. When every record is not
 applicable and no run executes, the invocation exits with code 1, as a failed invocation does, with
 "no run executed", so an empty invocation never reports green. Failures, including preflight and
-capability failures, already exit 1. A filter that selects no scenario keeps today's behavior. A serve job
+capability failures, already exit non-zero: 1, or 2 when the capability check of BE-0450 leaves no
+scenario runnable. A filter that selects no scenario keeps today's behavior. A serve job
 whose every run is not applicable reports a failed job for the same reason. Together with the
 failure of a missing listed value, this answers the main concern of
 [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md): a misconfigured pool cannot
@@ -586,7 +597,9 @@ environment for these commands. A hosted job routes by `environment:appium` alon
 that mixes a grid target with a local target is refused at dispatch; it runs through
 `--worker-config` on a machine that has both. An `appium` worker advertises
 `environment:appium` alone, and a job that requires it carries no `platform:*` or `host:*` token,
-since the grid owns the device and its host, as for a Device Farm job.
+since the grid owns the device and its host, as for a Device Farm job. The worker runs such a job
+through the slot model of BE-0448, but a slot starts a local `bajutsu run` with `--worker-config`
+instead of submitting to Device Farm, and reports the result through the same route.
 
 Removing `requires` has a cost that this item accepts. BE-0450 keeps `requires` until a later item
 derives the iOS runtime and device-class requirement for routing. This item removes it with the new
@@ -671,7 +684,7 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
   `fake` stays allowed as an override, so any target can still run on the fake driver. Under `fake`,
   conditions are not evaluated and runs do not multiply, because the fake driver has no device to
   read; the invocation prints one notice saying so, the single place where a condition is skipped. The same rule holds for the commands that drive a target: `record`, `crawl`, `repl`,
-  `triage --rerun`, `audit`, the Model Context Protocol (MCP) tools, and the `backend` of a serve
+  `triage --rerun`, `audit`, the MCP tools, and the `backend` of a serve
   request body. `serve --backend`, which picks the server's seams, and `provision --backend`, which
   forces a backend for installing dependencies, name no target and keep their meaning. A scenario whose
   targets span platforms therefore accepts `fake` alone as `--backend`, which is intended.
@@ -738,8 +751,11 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
    Remove the scenario's `preconditions.setup` here too, converting each use to a `use:` appended to
    the scenario's `before`. Add `preconditions.run.inheritSetup`, the first field of the
    scenario's `run` group, and set it to `false` where the scenario replaced the target's prelude, copying every declared target's
-   former `before` steps (or, for a scenario that declares no `targets`, the steps of each target
-   whose `paths.scenarios` holds it, in a copy of the scenario per such target when they differ), each stamped with its `target:`, to the front of that scenario's `before`
+   former `before` steps, each stamped with its `target:`, to the front of that scenario's `before`.
+   A scenario that declares no `targets` takes the steps of the target whose `paths.scenarios` holds
+   it without a `target:`, since such a scenario cannot name one and today's hooks run unstamped
+   there. When several targets with different steps hold it, the migration stops and names the
+   scenario for a hand fix
    so the scenario keeps them in today's order, so no scenario points at a prelude file after this unit. Add
    the `Effective` attributes for `startWhen` and a target's `evidence.capture`, and drop the replacement Simulator's
    configured-`device` and newest-iPhone fallbacks and its unpinned retry. Remove the URL form of
@@ -758,7 +774,9 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
 5. **Setup and cleanup.** Rename the phases and the scenario's `before` and `after` to `setup` and
    `cleanup`, rename `on: error` and capturePolicy's `result: error` to `failure`, convert the
    scenario files and test fixtures that use them (such as
-   `demos/showcase/scenarios/before_after.yaml`), and relabel the report phases.
+   `demos/showcase/scenarios/before_after.yaml`), and relabel the report phases. Rename the stored
+   `after_verdict` value `error` to `failure`, and have `report/load.py` read `error` from older
+   manifests as `failure`, so earlier runs still load.
 6. **Command-line flags.** Point `--browser`, `--browsers`, and `--headed` at `runsOn.browser.engine`
    and `driver.headless`; `--erase`, `--system-alert-handling`, and `--ios-tipkit-handling` at the
    `run` fields; and `--scenarios`, `--baselines`, and `--goldens` at `paths`. Unit 4 keeps these flags working through the
@@ -797,8 +815,10 @@ batch provider that packages `launchEnv`, `common/report/rows.py`, `templates/se
     `docs/codegen.md`, `docs/cookbook.md`, `docs/showcase.md`, `docs/devicefarm.md`,
     `docs/ios-device-cloud.md`, `docs/self-hosting.md`, `docs/ci.md`, `docs/recording.md`,
     `docs/selectors.md`, `docs/web-ui.md`, `docs/developer-guide.md`, `docs/architecture.md`, `DESIGN.md`,
-    `docs/glossary.md`, and their `docs/ja/` mirrors, as well as `README.md`,
-    `deploy/self-host/README.md`, and the demos' READMEs.
+    `docs/glossary.md`, `docs/getting-started/index.md`, `docs/getting-started/web.md`,
+    `docs/api/scenario.md`, `docs/ai-development.md`, and their `docs/ja/` mirrors, as well as
+    `README.md`, `README.ja.md`, `deploy/self-host/README.md`, and the demos' READMEs. In
+    `DESIGN.md` this includes the `deeplinkScheme` examples.
 
 ## Alternatives considered
 
