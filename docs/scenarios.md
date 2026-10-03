@@ -130,6 +130,14 @@ the launch sequence ([run-loop](run-loop.md#runner-the-run-pipeline)).
 
 The iOS backend cannot see or tap **SpringBoard-level prompts** (a notification or App Tracking Transparency request, "Allow Paste"). These prompts cover the app and collapse its element tree, silently blocking a step. The **alert guard** clears them reactively. On the iOS XCUITest backend it takes a **deterministic native path** (BE-0315): reusing BE-0316's SpringBoard query, it reads which buttons the alert offers and taps the one a rule names — no screenshot and no model round trip, so it clears the common prompts in well under a tenth of a second and runs **without `ANTHROPIC_API_KEY`**. Where nothing deterministic can act — a backend without the capability, an alert no rule of yours identifies, or a non-SpringBoard surface the query cannot enumerate that no rule identifies either (the in-tree path below clears the ones a rule does identify) — **the guard does nothing** ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)). The blocked step or `wait` runs on to its own timeout, exactly as it would with no guard configured, and that timeout **names what the guard saw**: `wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)`, or the hedged `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view` where nothing enumerated it. Before BE-0402 that case fell back to an AI-vision guard reading a screenshot; `run` no longer does, so **no flag of `run`'s reaches a model at all**. (`record` and `crawl` keep that guard for authoring — [details](recording.md#dismissing-system-alerts-automatically).) For a `wait` step (`for`/`gone`/`settled`/`screenChanged`), the guard fires **mid-wait**: the native path polls SpringBoard on its own interval (default one second), recovering before the wait's own timeout elapses rather than waiting for the step to fail first (BE-0269).
 
+On the XCUITest backend, a frozen screen stops a `for` or `screenChanged` wait before its deadline. A screen counts as frozen when both conditions below hold. A fresh SpringBoard check finds no alert. Yet for 10 seconds, no element below the application has carried a label or an identifier. We measured such a screen on an iOS 26.5 Simulator. A notification request can land while iOS presents its Save Password alert. That alert then halts mid-presentation. It never draws and is in no process's accessibility tree, yet it stays modal over the app. Nothing the guard can reach clears it, so the wait fails at that point with a reason like this:
+
+```text
+wait stopped: for {'id': 'Close'} after 10.4s — no element below the application has carried a label or identifier for 10s while no system alert is up — …
+```
+
+A scenario opts into this stop by declaring an in-app prompt such as `savePassword` in its `rules`. Without one, a long empty tree may be the app's own unlabelled loading screen. The wait then keeps its own timeout. An app with a slower unlabelled loading screen raises the bound with `frozenScreenTimeout`. A value of `0` turns the stop off. A `gone` or `settled` wait never stops this way, because a frozen tree already satisfies it. A `handleSystemAlert` step does not either: it waits on SpringBoard, which can still raise its prompt.
+
 It is **on by default** and fires **only when a step (or `expect`) is blocked, or — for a guarded `wait` — the native poll finds an alert**, so a passing scenario does no extra work. It needs **no `ANTHROPIC_API_KEY`** and consults none. Use `systemAlertHandling` to change the behavior per scenario:
 
 **`rules` is the guard's whole declaration**
@@ -149,6 +157,7 @@ application vocabulary, so a label licensed a tap on a screen no scenario had de
 | `systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` | on; answer a **named, covered prompt** by its own choice, regardless of which label it shares with another prompt |
 | `systemAlertHandling: { visionInstruction: "tap Allow" }` | **reaches no command.** `run` **fails before any scenario starts** rather than ignoring it ([BE-0402](../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback.md)); `record` / `crawl` never read a scenario's key. The schema keeps it only so a file carrying it gets that message |
 | `systemAlertHandling: { pollInterval: 2 }` | on; poll the native presence query every 2 s instead of the one-second default |
+| `systemAlertHandling: { frozenScreenTimeout: 30 }` | on; tolerate a frozen screen for 30 s instead of the 10-second default before a guarded wait stops (`0` turns the stop off) |
 
 ```yaml
 - name: grant notification permission
@@ -312,6 +321,7 @@ Two rules cover every key, chosen by whether it holds a list or a scalar:
 |---|---|---|
 | `rules` | list | concatenated, innermost layer first: scenario, then target |
 | `pollInterval` | scalar | the innermost layer that supplies one wins: scenario, else command line, else target |
+| `frozenScreenTimeout` | scalar | the innermost layer that supplies one wins: scenario, else target |
 | on / off | scalar | `--system-alert-handling` / `--no-system-alert-handling`, else the scenario, else the target, else on |
 
 A list composes because concatenation keeps both layers' entries: the scenario's answers are tried

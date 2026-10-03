@@ -872,8 +872,8 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   `instruction` key to expose. BE-0406 then made `rules` the guard's whole declaration and removed
   `labels`: a button label named a button, never the alert it sat on, so it licensed a tap on a
   screen no scenario had described. `rules` composes across two layers (scenario, then target) by
-  concatenation, innermost-first, and the sole remaining scalar, `pollInterval`, takes the
-  innermost layer that supplies one; no flag carries a prompt paired with a choice legibly, so the
+  concatenation, innermost-first, and each of the two scalars, `pollInterval` and
+  `frozenScreenTimeout`, takes the innermost layer that supplies one; no flag carries a prompt paired with a choice legibly, so the
   command line supplies `pollInterval` alone. A prompt's entry records which of the three answer
   surfaces it reaches — the `handleSystemAlert` step, the native SpringBoard probe, and the in-tree
   dismissal — so `savePassword`, which iOS raises inside the application's own process, is

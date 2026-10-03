@@ -24,6 +24,12 @@ from .resolved_alert_rule import ResolvedAlertRule
 # target / flag via `systemAlertHandling.pollInterval` (BE-0315, riding the BE-0177 precedence).
 DEFAULT_ALERT_POLL_INTERVAL = 1.0
 
+# How long a guarded wait tolerates a frozen screen before it stops, overridable the same way via
+# `systemAlertHandling.frozenScreenTimeout`; 0 turns the stop off. Well past the sub-second collapse a
+# sheet's own dismiss animation causes (measured: under a second on iOS 26.5), and short enough to
+# leave a typical wait's budget unspent.
+DEFAULT_FROZEN_SCREEN_TIMEOUT = 10.0
+
 # The timeout the reactive guard passes `handle_system_alert` for its tap (BE-0315): 0 means "query
 # SpringBoard once and tap if the button is present, else fail fast" — the guard has already observed
 # the alert via `system_alert_labels`, so it never waits for one to appear (that is the proactive
@@ -667,6 +673,7 @@ class AlertGuardConfig:
 
     rules: list[ResolvedAlertRule] = field(default_factory=list)
     poll_interval: float = DEFAULT_ALERT_POLL_INTERVAL
+    frozen_screen_timeout: float = DEFAULT_FROZEN_SCREEN_TIMEOUT
     # What the most recent `__call__` saw blocking the screen and could not clear, for the end-of-step
     # and `expect` retry to append to the step's own failure reason (BE-0402). Rewritten on every
     # call, never accumulated across calls: it states what this call's rounds (BE-0418) saw, not that

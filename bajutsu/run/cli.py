@@ -40,7 +40,12 @@ from bajutsu.common.deprecations import warn_once
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
 from bajutsu.common.github import actions as github_actions
-from bajutsu.common.orchestrator import DEFAULT_ALERT_POLL_INTERVAL, AlertGuardConfig, RunResult
+from bajutsu.common.orchestrator import (
+    DEFAULT_ALERT_POLL_INTERVAL,
+    DEFAULT_FROZEN_SCREEN_TIMEOUT,
+    AlertGuardConfig,
+    RunResult,
+)
 from bajutsu.common.orchestrator.types import ResolvedAlertRule
 from bajutsu.common.platform_lifecycle import ProvisionProfile, environment_for
 from bajutsu.common.report import ScenarioPlanSource
@@ -1079,7 +1084,18 @@ def _alert_guard_factory(
         locale = s.preconditions.resolved_locale(eff.locale)
         rules = _resolve_rules([*scenario_rules, *target_rules], locale)
 
-        return AlertGuardConfig(rules=rules, poll_interval=poll_interval)
+        frozen_screen_timeout = next(
+            (
+                layer.frozen_screen_timeout
+                for layer in layers
+                if layer.frozen_screen_timeout is not None
+            ),
+            DEFAULT_FROZEN_SCREEN_TIMEOUT,
+        )
+
+        return AlertGuardConfig(
+            rules=rules, poll_interval=poll_interval, frozen_screen_timeout=frozen_screen_timeout
+        )
 
     return _guard_for
 

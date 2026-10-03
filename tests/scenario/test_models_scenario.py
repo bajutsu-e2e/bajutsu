@@ -178,6 +178,28 @@ def test_system_alert_handling_poll_interval() -> None:
         )
 
 
+def test_system_alert_handling_frozen_screen_timeout() -> None:
+    # 0 is allowed (it turns the frozen-screen stop off); a negative value is rejected.
+    for value in (20, 0):
+        s = Scenario.model_validate(
+            {
+                "name": "x",
+                "systemAlertHandling": {"frozenScreenTimeout": value},
+                "steps": [{"tap": {"id": "a"}}],
+            }
+        )
+        assert isinstance(s.system_alert_handling, SystemAlertHandling)
+        assert s.system_alert_handling.frozen_screen_timeout == value
+    with pytest.raises(ValidationError, match="frozenScreenTimeout"):
+        Scenario.model_validate(
+            {
+                "name": "x",
+                "systemAlertHandling": {"frozenScreenTimeout": -1},
+                "steps": [{"tap": {"id": "a"}}],
+            }
+        )
+
+
 def test_system_alert_handling_rules_default_empty_and_pruned() -> None:
     s = Scenario.model_validate({"name": "x", "steps": [{"tap": {"id": "a"}}]})
     assert s.system_alert_handling is None  # unset entirely, same as today

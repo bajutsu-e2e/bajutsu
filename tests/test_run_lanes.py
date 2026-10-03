@@ -9,7 +9,7 @@ import pytest
 import typer
 
 from bajutsu.common.config import Effective, load_config, resolve
-from bajutsu.common.orchestrator import DEFAULT_ALERT_POLL_INTERVAL
+from bajutsu.common.orchestrator import DEFAULT_ALERT_POLL_INTERVAL, DEFAULT_FROZEN_SCREEN_TIMEOUT
 from bajutsu.common.orchestrator.types import ResolvedAlertRule, matching_alert_rule
 from bajutsu.common.scenario import (
     Scenario,
@@ -636,6 +636,19 @@ def test_alert_guard_factory_poll_interval_precedence() -> None:
         _alert_guard_factory([s_plain], _eff(), None)(s_plain).poll_interval  # type: ignore[misc,union-attr]
         == DEFAULT_ALERT_POLL_INTERVAL
     )
+
+
+def test_alert_guard_factory_frozen_screen_timeout_precedence() -> None:
+    # The same innermost-wins walk as `pollInterval`: scenario > target > built-in default.
+    eff = _eff(systemAlertHandling="{ frozenScreenTimeout: 30 }")
+    s_override = _tap_scenario("a", {"frozenScreenTimeout": 0})
+    guard = _alert_guard_factory([s_override], eff, None)(s_override)  # type: ignore[misc]
+    assert guard is not None and guard.frozen_screen_timeout == 0.0
+    s_plain = _tap_scenario("b")
+    guard = _alert_guard_factory([s_plain], eff, None)(s_plain)  # type: ignore[misc]
+    assert guard is not None and guard.frozen_screen_timeout == 30.0
+    guard = _alert_guard_factory([s_plain], _eff(), None)(s_plain)  # type: ignore[misc]
+    assert guard is not None and guard.frozen_screen_timeout == DEFAULT_FROZEN_SCREEN_TIMEOUT
 
 
 def test_apply_system_alert_handling_off_replaces_the_whole_field() -> None:

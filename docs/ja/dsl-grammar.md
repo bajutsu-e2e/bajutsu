@@ -163,7 +163,8 @@ Preconditions ::= {
 SystemAlertHandling ::= boolean                              # true=規則なしで ON、false=OFF
                | { rules?: [<SystemAlertRule>],             # ガードの宣言のすべて（BE-0406）
                    visionInstruction?: string,              # 自由記述。どのコマンドにも届かない。run は拒否する
-                   pollInterval?: number }                   # ネイティブのポーリング間隔・秒（既定 1）
+                   pollInterval?: number,                    # ネイティブのポーリング間隔・秒（既定 1）
+                   frozenScreenTimeout?: number }            # 止まった画面での打ち切り・秒（既定 10、0 で無効）
 SystemAlertRule ::= { prompt: notifications|tracking|paste|savePassword, choice: grant|deny }  # 1リストにつきプロンプトは一意
                 # savePassword はガード専用。iOS がプロセス内に出すため、ツリー内タップだけが答えられる。
                 # 後述の handleSystemAlert ステップはこれを拒否する（BE-0406）
