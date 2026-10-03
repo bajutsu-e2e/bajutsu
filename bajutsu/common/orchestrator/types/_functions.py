@@ -69,6 +69,25 @@ def alert_block_note(buttons: Sequence[str]) -> str:
     return _BLOCKED_SCREEN_NOTE
 
 
+def collapsed_tree_note(seconds: float) -> str:
+    """A screen the guard has positively ruled a SpringBoard alert out of, yet that still shows no
+    labelled element after *seconds* — for a wait to stop on rather than spend its whole timeout.
+
+    Distinct from `alert_block_note`'s hedged form, which reads a collapsed tree as *possibly* an
+    alert: here a native probe has just reported none, so what holds the screen is something outside
+    the tree no answer path reaches. Measured on an iOS 26.5 Simulator, iOS's Save Password alert can
+    be left mid-presentation this way when a notification request lands at the same moment — never
+    drawn, absent from every process's accessibility tree, yet modal over the app — and neither
+    backgrounding the app, a hardware Escape, nor a tap on a control that is still enumerable cleared
+    it.
+    """
+    return (
+        f"the app's element tree has shown no labelled element for {seconds:.0f}s while no system "
+        "alert is up — something outside the tree, such as a system prompt left mid-presentation, "
+        "is holding the screen and nothing the guard can reach clears it"
+    )
+
+
 def uncleared_prompt_note(label: str) -> str:
     """A give-up on a prompt a rule named but could not clear (BE-0402): the in-tree dismiss's own
     `NotTappable`, `AlertGuardConfig.__call__` spending its whole round bound with the shape it

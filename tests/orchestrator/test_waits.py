@@ -2449,6 +2449,70 @@ def test_wait_guard_reports_a_persistent_collapse_it_cannot_clear() -> None:
     assert driver.actions == []  # and the guard actuated nothing on the way there
 
 
+# An in-tree-only rule, the way `savePassword` resolves: what arms the stuck-screen stop at all.
+_SAVE_PASSWORD_GUARD = AlertGuardConfig(rules=[guard_rule("Not Now", native=False)])
+
+
+def test_wait_stops_on_a_native_collapse_no_alert_explains() -> None:
+    """A native backend's probe rules a SpringBoard alert out, yet the tree stays empty: measured on
+    iOS 26.5, a Save Password alert left mid-presentation does exactly this, modal over the app and
+    reachable by nothing. The wait stops once that has held for `_COLLAPSED_STUCK_AFTER` and says so,
+    rather than polling the rest of its timeout."""
+    from bajutsu.common.orchestrator.waits._alert_guard_gate import _COLLAPSED_STUCK_AFTER
+
+    driver = FakeDriver(
+        []
+    )  # advertises HANDLE_SYSTEM_ALERT, no SpringBoard alert, nothing labelled
+    clock = _LogicalClock()
+    w = Wait.model_validate({"for": {"id": "never"}, "timeout": 60.0})
+    ok, reason, _tree = _wait(driver, w, clock, alert_guard=_SAVE_PASSWORD_GUARD, alerts=[])
+    assert not ok
+    assert reason.startswith("wait stopped: for")
+    assert "no labelled element" in reason
+    assert _COLLAPSED_STUCK_AFTER <= clock.now() < 60.0
+    assert driver.actions == []
+
+
+def test_a_native_collapse_shorter_than_the_bound_does_not_stop_the_wait() -> None:
+    clock = _LogicalClock()
+
+    class _RecoversAt5s(FakeDriver):
+        def query(self) -> list[base.Element]:
+            return [el("row", "Row")] if clock.now() >= 5.0 else []
+
+    w = Wait.model_validate({"for": {"id": "row"}, "timeout": 60.0})
+    ok, reason, _tree = _wait(
+        _RecoversAt5s([]), w, clock, alert_guard=AlertGuardConfig(), alerts=[]
+    )
+    assert ok and reason == ""
+
+
+def test_a_native_collapse_without_an_in_tree_rule_runs_to_the_timeout() -> None:
+    """With no in-app prompt declared, a long empty tree may be the app's own unlabelled splash or
+    loading screen, so the wait keeps its own timeout as it always has."""
+    clock = _LogicalClock()
+    w = Wait.model_validate({"for": {"id": "never"}, "timeout": 30.0})
+    ok, reason, _tree = _wait(FakeDriver([]), w, clock, alert_guard=AlertGuardConfig(), alerts=[])
+    assert not ok
+    assert reason.startswith("wait timeout: for")
+    assert clock.now() >= 30.0
+
+
+def test_a_collapse_an_unhandled_springboard_alert_explains_runs_to_the_timeout() -> None:
+    """The collapse is no mystery while a probe names the alert behind it, so the wait keeps its own
+    timeout and names that alert instead (BE-0402)."""
+    driver = FakeDriver([])
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    clock = _LogicalClock()
+    w = Wait.model_validate({"for": {"id": "never"}, "timeout": 30.0})
+    ok, reason, _tree = _wait(
+        driver, w, clock, alert_guard=AlertGuardConfig(rules=[guard_rule("Allow")]), alerts=[]
+    )
+    assert not ok
+    assert reason.startswith("wait timeout: for")
+    assert "Weird Button" in reason
+
+
 def test_wait_guard_never_fires_while_app_ui_is_visible() -> None:
     """BE-0269 Unit 1: the deterministic pre-check (`shows_app_ui`) — not a blind timer — is the
     trigger, so a wait whose tree always shows app content never asks the guard to look."""

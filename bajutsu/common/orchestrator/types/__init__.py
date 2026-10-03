@@ -12,6 +12,7 @@ from ._functions import _alert_button as _alert_button
 from ._functions import _no_network as _no_network
 from ._functions import (
     alert_block_note,
+    collapsed_tree_note,
     drain_actuations,
     drain_interruptions,
     identified_alert_rules,
@@ -77,6 +78,7 @@ __all__ = [
     "UndeclaredInterruption",
     "WallClock",
     "alert_block_note",
+    "collapsed_tree_note",
     "drain_actuations",
     "drain_interruptions",
     "identified_alert_rules",

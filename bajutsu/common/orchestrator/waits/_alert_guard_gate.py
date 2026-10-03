@@ -11,6 +11,7 @@ from bajutsu.common.orchestrator.types import (
     AlertGuardConfig,
     Clock,
     alert_block_note,
+    collapsed_tree_note,
     identified_alert_rules,
     matching_alert_rule,
     subtract_labels,
@@ -26,6 +27,11 @@ from ._shared import _logger
 # BE-0402 a trip costs no model call, only the note a timeout would then carry, and a note naming a
 # block that was never there is the one wrong answer this path can still give.
 _GUARD_DEBOUNCE_POLLS = 3  # consecutive collapsed polls before recording the note
+# How long a native backend's tree may stay collapsed, with no SpringBoard alert to explain it and an
+# in-tree rule declared, before the wait stops on `stuck_note` instead of spending the rest of its
+# timeout. Well past the sub-second collapse a sheet's own dismiss animation causes (measured: under a
+# second on iOS 26.5), and short enough to leave a typical wait's budget unspent.
+_COLLAPSED_STUCK_AFTER = 10.0
 
 
 # Min seconds before `_dismiss_from_tree` re-taps a label its own tap left still showing. A tap the
@@ -81,6 +87,9 @@ class _AlertGuardGate:
     _native: bool = field(init=False)
     _last_native: float | None = None
     _collapsed_polls: int = 0
+    # When the current unbroken run of collapsed polls began, on a native backend only — reset with
+    # `_collapsed_polls` everywhere a probe finds a SpringBoard alert to explain the collapse.
+    _collapsed_since: float | None = None
     # Whether the most recent native probe found an alert it could not name. The native query runs
     # once per `poll_interval` while the collapsed-tree proxy below samples every `_POLL`, so without
     # this the proxy would overwrite the probe's own button-naming note with its hedged one on every
@@ -101,6 +110,10 @@ class _AlertGuardGate:
     # What this gate last saw blocking the screen and could not clear (BE-0402), for `_wait` to
     # append to a timeout it is about to report. Empty whenever the latest poll showed no block.
     blocked_note: str = ""
+    # Set once `_collapsed_since` is `_COLLAPSED_STUCK_AFTER` old: no alert any answer path can see
+    # is up, yet the tree has stayed empty, so the wait running this gate stops on this note rather
+    # than polling a screen nothing here can clear until its own deadline.
+    stuck_note: str = ""
     _tree_dismiss_pending: str | None = None
     _tree_tapped_at: float | None = None
     _tree_signature: tuple[tuple[str | None, str | None], ...] | None = None
@@ -356,7 +369,7 @@ class _AlertGuardGate:
                 # A SpringBoard alert was up and tapped natively — no model. Clear the proxy debounce
                 # so a later collapse starts fresh.
                 self.alerts.append(event)
-                self._collapsed_polls = 0
+                self._reset_collapse()
                 self._withhold_tree_tap_licence()
                 return
             if state == "unhandled":
@@ -375,7 +388,7 @@ class _AlertGuardGate:
                 # with `_leftover_note` (`types/_functions.py`): a button nothing accounts for still
                 # outranks the ambiguous rule's own diagnosis, since something else is demonstrably
                 # unhandled either way (BE-0418 review finding).
-                self._collapsed_polls = 0
+                self._reset_collapse()
                 # Computed regardless of `_tree_gave_up`, unlike the write to `blocked_note` below:
                 # the give-up's own retirement needs this diagnosis intact even on a poll where the
                 # give-up deferred writing it (BE-0418 review finding) -- see `_native_unhandled_note`
@@ -469,7 +482,7 @@ class _AlertGuardGate:
                     # alone, not `_tree_gave_up_shape_still_shown`, since there is no fresher
                     # diagnosis competing for the note here for that check to arbitrate between.
                     self.blocked_note = self._tree_gave_up_note if self._tree_gave_up else ""
-                self._collapsed_polls = 0
+                self._reset_collapse()
                 self._withhold_tree_tap_licence()
                 return
             # Only a genuinely empty "absent" falls through to the in-tree dismiss below; "reserved"
@@ -492,7 +505,7 @@ class _AlertGuardGate:
             event = self._dismiss_from_tree(elements)
             if event is not None:
                 self.alerts.append(event)
-                self._collapsed_polls = 0
+                self._reset_collapse()
                 self.blocked_note = ""
                 return
         if self._native_reserved:
@@ -505,18 +518,21 @@ class _AlertGuardGate:
             # `probed_absent` is False for however long the step's own alert stays up, which can be
             # the step's entire timeout — so the not-tappable horizon must not count that time
             # against a scrim it never got to retry through (BE-0418 review finding).
-            self._collapsed_polls = 0
+            self._reset_collapse()
             self._withhold_tree_tap_licence()
             return
         if self._native_unhandled:
             # The last probe named an alert nothing will clear, and the proxy can only say less about
-            # the same block. Keep the specific note until a probe reports the screen unblocked.
+            # the same block. Keep the specific note until a probe reports the screen unblocked. That
+            # alert also explains the collapse, so it is no time towards `stuck_note`.
+            self._collapsed_since = None
             return
         if self._tree_gave_up:
             # The in-tree path spent its tap budget on a prompt still showing, and said so in the
             # note. Keep it: an app-attached sheet does *not* collapse the tree, so the proxy below
             # would read the screen as unblocked and erase the one disclosure the eventual timeout
             # has (BE-0402). It lifts on its own once the label stops matching the tree.
+            self._collapsed_since = None
             return
         # Every `_POLL`, whether or not the native query ran this tick, drive the debounced collapsed-
         # tree proxy: `system_alert_labels()` only sees `springboard.alerts`, so an action sheet or a
@@ -534,13 +550,31 @@ class _AlertGuardGate:
         records the hedged, label-less note rather than one claiming a system alert (BE-0402).
         """
         if shows_app_ui(elements):
-            self._collapsed_polls = 0
+            self._reset_collapse()
             self.blocked_note = ""
             return
         self._collapsed_polls += 1
+        if self._native and self.guard.tree_rules:
+            # Only where a probe can rule a SpringBoard alert out — on a backend without that query, a
+            # lasting collapse is as consistent with an alert nobody can see as with anything else —
+            # and only for a scenario that declared an in-app prompt such as `savePassword`, the one
+            # kind measured to leave the screen this way. An app whose own splash or loading screen
+            # carries no labelled element for a while would otherwise have a wait it used to pass
+            # stop instead.
+            now = self.clock.now()
+            if self._collapsed_since is None:
+                self._collapsed_since = now
+            elif now - self._collapsed_since >= _COLLAPSED_STUCK_AFTER:
+                self.stuck_note = collapsed_tree_note(now - self._collapsed_since)
         if self._collapsed_polls < _GUARD_DEBOUNCE_POLLS:
             return
         self.blocked_note = alert_block_note([])
+
+    def _reset_collapse(self) -> None:
+        """End the current run of collapsed polls: something on screen accounts for it, or the tree
+        shows the app again."""
+        self._collapsed_polls = 0
+        self._collapsed_since = None
 
     # Pacing guards, each with its own outcome (decline, retap, give up, not-tappable note): the
     # count tracks those distinct cases on the run path, not tangled logic (BE-0386).

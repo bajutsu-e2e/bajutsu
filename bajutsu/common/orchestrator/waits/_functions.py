@@ -128,6 +128,16 @@ def _exists(elements: list[base.Element], sel: base.Selector) -> bool:
     return len(base.find_all(elements, sel)) >= 1
 
 
+def _stuck_reason(what: str, start: float, clock: Clock, gate: _AlertGuardGate) -> str:
+    """A `for` wait's reason for stopping before its deadline on the gate's `stuck_note`.
+
+    Only `for` stops early. It waits for an element the stuck screen will never show, whereas `gone`
+    already holds on an empty tree, and a `handleSystemAlert` step waits on SpringBoard, which can
+    still raise the prompt it names however long the app's tree stays empty.
+    """
+    return f"wait stopped: {what} after {clock.now() - start:.1f}s \u2014 {gate.stuck_note}"
+
+
 def _with_block_note(reason: str, gate: _AlertGuardGate | None) -> str:
     """The wait's timeout reason, plus what the guard last saw blocking the screen (BE-0402).
 
@@ -521,6 +531,8 @@ def _wait(  # noqa: C901, PLR0912
                 return True, "", elements
             if gate is not None:
                 gate.observe(elements)
+                if gate.stuck_note:
+                    return False, _stuck_reason(f"for {target}", start, clock, gate), elements
             if on_interrupt_poll is not None and on_interrupt_poll(elements):
                 return False, "interrupt recovery failed", elements
             if cancelled():
