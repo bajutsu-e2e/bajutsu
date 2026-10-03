@@ -2468,7 +2468,7 @@ def test_wait_stops_on_a_native_collapse_no_alert_explains() -> None:
     ok, reason, _tree = _wait(driver, w, clock, alert_guard=_SAVE_PASSWORD_GUARD, alerts=[])
     assert not ok
     assert reason.startswith("wait stopped: for")
-    assert "no labelled element" in reason
+    assert "label or identifier" in reason
     assert _COLLAPSED_STUCK_AFTER <= clock.now() < 60.0
     assert driver.actions == []
 
@@ -2476,15 +2476,28 @@ def test_wait_stops_on_a_native_collapse_no_alert_explains() -> None:
 def test_a_native_collapse_shorter_than_the_bound_does_not_stop_the_wait() -> None:
     clock = _LogicalClock()
 
-    class _RecoversAt5s(FakeDriver):
+    class _RecoversJustUnderTheBound(FakeDriver):
         def query(self) -> list[base.Element]:
-            return [el("row", "Row")] if clock.now() >= 5.0 else []
+            return [el("row", "Row")] if clock.now() >= 9.5 else []
 
     w = Wait.model_validate({"for": {"id": "row"}, "timeout": 60.0})
     ok, reason, _tree = _wait(
-        _RecoversAt5s([]), w, clock, alert_guard=AlertGuardConfig(), alerts=[]
+        _RecoversJustUnderTheBound([]), w, clock, alert_guard=_SAVE_PASSWORD_GUARD, alerts=[]
     )
     assert ok and reason == ""
+
+
+def test_a_native_collapse_stops_only_on_a_fresh_negative_probe() -> None:
+    """With a long `pollInterval`, the bound can pass between two probes; a remembered negative may
+    predate an alert the next probe would answer, so the stop waits for that next probe."""
+    driver = FakeDriver([])
+    clock = _LogicalClock()
+    guard = AlertGuardConfig(rules=[guard_rule("Not Now", native=False)], poll_interval=30.0)
+    w = Wait.model_validate({"for": {"id": "never"}, "timeout": 90.0})
+    ok, reason, _tree = _wait(driver, w, clock, alert_guard=guard, alerts=[])
+    assert not ok
+    assert reason.startswith("wait stopped: for")
+    assert clock.now() >= 30.0  # the second probe, not the 10s bound, is what latched it
 
 
 def test_a_native_collapse_without_an_in_tree_rule_runs_to_the_timeout() -> None:

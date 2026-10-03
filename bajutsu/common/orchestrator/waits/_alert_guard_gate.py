@@ -539,9 +539,11 @@ class _AlertGuardGate:
         # WKWebView JS dialog reads as absent yet still collapses the tree, and only this proxy
         # notices those (BE-0269). Sampling every `_POLL` (not once per `poll_interval`) keeps its
         # latency at ~`_GUARD_DEBOUNCE_POLLS * _POLL`; the debounce filters transient frames.
-        self._observe_collapsed(elements)
+        self._observe_collapsed(elements, probed_absent=probed_absent)
 
-    def _observe_collapsed(self, elements: list[base.Element]) -> None:
+    def _observe_collapsed(
+        self, elements: list[base.Element], *, probed_absent: bool = False
+    ) -> None:
         """The collapsed-tree proxy: for a backend without the native capability, and for a native
         backend's `"absent"` polls, where a non-SpringBoard surface the native query cannot enumerate
         may still be blocking.
@@ -561,10 +563,15 @@ class _AlertGuardGate:
             # kind measured to leave the screen this way. An app whose own splash or loading screen
             # carries no labelled element for a while would otherwise have a wait it used to pass
             # stop instead.
+            #
+            # The note latches only on a poll whose own probe just answered a genuinely empty
+            # "absent": the probe runs once per `poll_interval`, which has no upper bound, so a
+            # remembered negative could be older than an alert that has since arrived and that the
+            # next probe would answer.
             now = self.clock.now()
             if self._collapsed_since is None:
                 self._collapsed_since = now
-            elif now - self._collapsed_since >= _COLLAPSED_STUCK_AFTER:
+            elif probed_absent and now - self._collapsed_since >= _COLLAPSED_STUCK_AFTER:
                 self.stuck_note = collapsed_tree_note(now - self._collapsed_since)
         if self._collapsed_polls < _GUARD_DEBOUNCE_POLLS:
             return

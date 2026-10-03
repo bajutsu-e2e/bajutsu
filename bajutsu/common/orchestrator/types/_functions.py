@@ -70,8 +70,9 @@ def alert_block_note(buttons: Sequence[str]) -> str:
 
 
 def collapsed_tree_note(seconds: float) -> str:
-    """A screen the guard has positively ruled a SpringBoard alert out of, yet that still shows no
-    labelled element after *seconds* — for a wait to stop on rather than spend its whole timeout.
+    """A screen the guard has positively ruled a SpringBoard alert out of, yet whose tree still fails
+    `shows_app_ui` after *seconds* — no element other than the application itself carries a label or
+    an identifier — for a wait to stop on rather than spend its whole timeout.
 
     Distinct from `alert_block_note`'s hedged form, which reads a collapsed tree as *possibly* an
     alert: here a native probe has just reported none, so what holds the screen is something outside
@@ -82,9 +83,9 @@ def collapsed_tree_note(seconds: float) -> str:
     it.
     """
     return (
-        f"the app's element tree has shown no labelled element for {seconds:.0f}s while no system "
-        "alert is up — something outside the tree, such as a system prompt left mid-presentation, "
-        "is holding the screen and nothing the guard can reach clears it"
+        f"no element below the application has carried a label or identifier for {seconds:.0f}s "
+        "while no system alert is up — something outside the tree, such as a system prompt left "
+        "mid-presentation, is holding the screen and nothing the guard can reach clears it"
     )
 
 
