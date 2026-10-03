@@ -117,6 +117,35 @@ The lease heartbeat runs during the poll, so a run that lasts 150 minutes holds 
 
 The worker downloads the run tree under a temporary directory and lands it, then posts the result and uploads the evidence through the ordinary worker path. The server stops landing Device Farm runs itself. A scenario that fails the worker capability check is posted through the same result route with the named reason, before anything is submitted.
 
+### Interaction with the target-config restructure item
+
+The proposed target-config restructure item has the slug `target-config-restructure`. It takes
+the choice of where a run happens out of the target, and it starts after this item has landed.
+Three parts of this item change when it lands.
+
+- **`cloudBatch` leaves the target.** The Device Farm destination moves to the run request.
+  The serve fan-out request gains an `environment` field; no command-line command dispatches
+  Device Farm today, so no CLI option is added. A job with `Job.batch` derives `environment:<name>` from that request, not from the
+  target. The fan-out request (`run-set`) keeps accepting batch-provider kinds alone. *Routing* also
+  widens: the plain run request gains an `environment` that accepts `appium`, and a job made from
+  it requires that token, where unit 2 here covers `Job.batch` alone. The worker runs such a job in
+  a slot that starts a local `bajutsu run` with `--worker-config` instead of submitting to Device Farm.
+- **The worker checks `runsOn` conditions before it submits.** The restructure has no device to
+  read before a Device Farm run, so a scenario whose effective `runsOn` declares conditions fails on the worker, through
+  the existing result route, before anything is submitted. The `bajutsu run` on the Device Farm
+  host stays unaware of where it runs.
+- **The restructure takes over unit 5's removals.** This item lands first, so by then unit 5 has
+  deprecated `cloudBatchBudget`, `deviceBudget`, `max_concurrent_batch`, and
+  `try_register(device_budget=…)` without yet removing them. The restructure's schema switch-over
+  removes all four. Its new target schema has no `cloudBatchBudget`, so the key fails at load as
+  unknown, and a fan-out request that still sends `deviceBudget` is rejected. The deprecation
+  window of `deviceBudget` therefore ends at that switch-over, which may come before unit 5 would
+  have removed it.
+
+The restructure item's schema switch-over unit carries the coordination. Once it lands, the
+*Prime-directive compliance* line here that names `cloudBatch` as a per-target difference no longer
+applies: the destination becomes a per-run choice.
+
 ### Boundaries
 
 This item removes the in-process dispatch of the server (`_run_batch_job` and the server's call to `register_batch_providers`); it is the `run-set` step of the item that stops the server from executing jobs. This item leaves the artifact overrides of BE-0431 refused on `run-set`; mapping each override onto a Device Farm request is separate work. It does not change the Device Farm host, the test spec, or how the verdict is read from `manifest.json`. The command keeps its name, `bajutsu serve`; this item calls the concept the server.
@@ -176,3 +205,4 @@ This item removes the in-process dispatch of the server (`_run_batch_job` and th
 - [BE-0413](../BE-0413-worker-app-binary-delivery/BE-0413-worker-app-binary-delivery.md): application binary delivery to a worker.
 - [BE-0432](../BE-0432-devicefarm-pretest-extension-hook/BE-0432-devicefarm-pretest-extension-hook.md): the trust boundary around the AWS role.
 - [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md): the worker lease model.
+- `target-config-restructure` (the target-config restructure item): moves `cloudBatch` to the run request. It also removes `cloudBatchBudget` with the new target schema.

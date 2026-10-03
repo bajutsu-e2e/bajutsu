@@ -138,6 +138,50 @@ The check lands at two points, both on the worker, since the worker alone holds 
 
 The server keeps to routing. A driver that runs on a single host operating system adds the matching `host:<os>` token to the job's required set, and the routing test is an all-of subset check ([`serve/capabilities.py`](../../bajutsu/serve/capabilities.py)), so a driver that runs on several hosts adds no `host:` requirement. A worker that advertises an `environment:*` token serves only jobs that require it; the Device Farm dispatch item adds that rule to `can_serve`, and it also builds the cloud job's required set. A job that carries a cloud request (`Job.batch`) is the exception: it requires exactly `environment:<name>`, with no `platform:*` and no `host:*` token, since the device and its host belong to the provider. A job without a cloud request, even from a target that sets `cloudBatch`, keeps its local requirement. A job that no connected worker matches keeps waiting as in BE-0166, because the worker fleet changes over time and a refusal against the current fleet would reject valid jobs during start-up.
 
+### Interaction with the target-config restructure item
+
+The proposed target-config restructure item has the slug `target-config-restructure`. It takes
+the choice of where a run happens out of the target, relies on this item instead, and starts after
+this item has landed. It touches six parts of this item.
+
+- **`environment` accepts `appium`.** The restructure moves the target's `deviceProvider` into
+  `worker.yaml`. It becomes an `appium` environment that carries the grid's `endpoint`. The
+  vocabulary of `environment` then reaches beyond batch-provider kinds. The loader accepts `appium`
+  with a required `endpoint`, and refuses `endpoint` on any other environment. The `appium`
+  environment names the platform its grid serves (`ios` today); targets of that platform go to the
+  grid, and other targets stay local. It behaves like a device-cloud environment: `maxJobConcurrency`
+  may exceed one, `drivers` lists the drivers its local targets need along with the grid's driver,
+  and the host rule applies to the local targets alone. The endpoint counts as one device, so a
+  scenario with more than one grid target is rejected at load. Every command that drives a device (`run`, `record`, `crawl`,
+  `repl`, `audit`, and `doctor`), and the MCP server, accepts `--worker-config` with it, replacing
+  today's URL udid. *The worker capability file* has `run` reject a file whose `environment` is not
+  `local`; the restructure relaxes that rule for `appium`, since `run` still drives the grid itself
+  and submits nothing to a cloud. This item gives the flag to `worker` and `run` alone, so the restructure extends
+  it, and rejects every other non-local environment for those commands. It advertises `environment:appium` alone,
+  and a job that requires it carries no `platform:*` or `host:*` token, as for a Device Farm job.
+- **The runtime and device-class source moves.** This item keeps `requires` for now.
+  It waits for a later item to derive the iOS runtime and device class from the target's `device`.
+  The restructure replaces that field with `runsOn.model` and `runsOn.os`, and a scenario can
+  override both. The later derivation reads each scenario's effective `runsOn`, the merge of the
+  target's and the scenario's values.
+- **`requires` goes earlier.** This item deprecates `requires` with a notice, and the restructure cuts that window short: the key
+  disappears with the new target schema. Until the derivation lands, a hosted job cannot
+  ask for an iOS runtime or a device class. The restructure accepts that gap, which this item
+  avoids by keeping `requires` until the derivation lands.
+- **A not-applicable status appears.** A scenario whose open condition, such as `>=18`, no
+  available device meets is recorded as not applicable instead of being run. A run that a list or
+  a range bounded on both sides asks for, and that no device can take, fails instead. This item's *Boundaries*
+  rejects a skipped status, because a misconfigured worker would skip everything and still pass.
+  The restructure answers that with the failing runs and with a guard: an invocation in which no run
+  executed exits non-zero. The worker capability check keeps failing a scenario the worker cannot
+  run, so the two outcomes stay apart.
+- **Cross-platform fallback lists go away.** The restructure removes `backend`, so a list such as
+  `[ios, web]` no longer resolves to `playwright` on a Linux host, as *The check* describes for
+  `bajutsu run`. A target names one platform; a run that should also cover the web uses a second
+  target.
+- **The host stays a fact about the machine.** The restructure weighed a target-side
+  `runsOn.host.os` and dropped it. `host:<os>` stays the single host constraint.
+
 ### Boundaries
 
 The item is a decision about *runnability*, not about capability of a step, so the existing token gates stay as they are. It adds no skipped status: an unrunnable scenario is a failure, since a silent skip would let a misconfigured worker report green. It does not probe Device Farm quota; the target limit is a fact the operator states, and quota stays the concern of the job-concurrency budget of the Device Farm dispatch item. The server does not check a job against the workers' limits at dispatch. The worker fails such a job at lease, and a later item can have workers advertise their limits so that the server refuses earlier. Deriving an iOS runtime or device-class requirement from the target's `device`, now that `requires` is gone, is likewise a later item. The server adds `host:<os>` to a job whose driver runs on one host only, so workers should be upgraded before the server.
@@ -193,3 +237,4 @@ The item is a decision about *runnability*, not about capability of a step, so t
 - [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md): Device Farm dispatch and the device budget.
 - [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md): multi-target scenarios and the device pool rule.
 - [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md): device-cloud providers.
+- `target-config-restructure` (the target-config restructure item): adds an `appium` environment to `worker.yaml`. It replaces the target's `device` with `runsOn.model` and `runsOn.os`. It also drops `requires` with the new target schema.

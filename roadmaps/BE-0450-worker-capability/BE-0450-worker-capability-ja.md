@@ -138,6 +138,17 @@ worker が広告するのは、次の情報源の和集合です。`--platform` 
 
 server は、ルーティングにとどまります。単一のホスト OS だけで動くドライバーは、対応する `host:<os>` トークンをジョブの必須集合に加えます。ルーティングの判定は全要素を要求する部分集合の検査（[`serve/capabilities.py`](../../bajutsu/serve/capabilities.py)）なので、複数のホストで動くドライバーは `host:` 要件を加えません。`environment:*` トークンを広告する worker は、それを要求するジョブだけを担当します。この規則は Device Farm の投入の項目が `can_serve` に加え、クラウドのジョブの必須集合もそちらが作ります。クラウドへの依頼（`Job.batch`）を持つジョブは例外で、`environment:<name>` だけを要求し、`platform:*` も `host:*` も要求しません。端末とそのホストは、プロバイダーのものだからです。クラウドへの依頼を持たないジョブは、`cloudBatch` を設定した target のものでも、ローカルの要求のままです。接続中のどの worker にも合致しないジョブは、BE-0166 と同じく待機します。worker の構成は時間とともに変わるため、worker がまだ揃っていない起動直後に現在の構成で拒否すると、有効なジョブまで拒否してしまうからです。
 
+### target の設定を再構成する項目との関係
+
+提案中の、target の設定を再構成する項目があります（slug `target-config-restructure`）。この項目は、どこで実行するかの選択を target から外し、その受け皿を本項目に求め、本項目が入ってから着手します。本項目の次の6点に影響します。
+
+- **`environment` が `appium` を受け付けます。** 再構成の項目は、target の `deviceProvider` を `worker.yaml` へ移します。移った先は、グリッドの `endpoint` を持つ `appium` という environment です。これで `environment` の語彙は、batch provider の種類の外へ広がります。ローダーは `endpoint` を必須として `appium` を受け付け、ほかの environment では `endpoint` を拒否します。`appium` の environment は、グリッドが受け持つプラットフォーム（現在は `ios`）を書きます。そのプラットフォームの target はグリッドへ行き、ほかの target はローカルに残ります。この environment は device cloud のものと同じく振る舞い、`maxJobConcurrency` は1を超えてもよく、`drivers` にはローカルの target が使うドライバとグリッドのドライバを並べ、ホストの規則はローカルの target にだけ当てはめます。endpoint は1台の端末として数えるので、グリッドの target を2つ以上持つシナリオは読み込み時に拒否します。端末を動かすコマンド（`run`、`record`、`crawl`、`repl`、`audit`、`doctor`）と MCP のサーバーはどれも、`--worker-config` でこの environment を受け付け、今の URL の udid を置き換えます。本項目の「worker capability のファイル」では、`run` は `environment` が `local` でないファイルを拒否します。再構成の項目は `appium` についてこの規則を緩めます。`run` はグリッドを自分で動かし、クラウドには何も投入しないためです。本項目がこのフラグを与えるのは `worker` と `run` だけなので、再構成の項目がそれを広げ、これらのコマンドでほかのローカル以外の environment を拒否します。`environment:appium` だけを広告し、それを求めるジョブは、Device Farm のジョブと同じく `platform:*` や `host:*` のトークンを持ちません。
+- **ランタイムと端末の種類の出どころが変わります。** 本項目は、後続の項目が target の `device` から iOS のランタイムと端末の種類を導くまで、`requires` を残します。再構成の項目は、このフィールドを `runsOn.model` と `runsOn.os` に置き換え、シナリオがどちらも上書きできるようにします。後続の導出が読むのは、各シナリオの有効な `runsOn`、つまり target とシナリオの値を合わせたものです。
+- **`requires` が早く消えます。** 本項目は通知つきで `requires` を非推奨にしますが、再構成の項目はその期間を途中で打ち切り、新しい target のスキーマとともに `requires` を取り除きます。導出が入るまで、hosted のジョブは iOS のランタイムや端末の種類を要件にできません。再構成の項目はこの空白を受け入れます。本項目は、導出まで `requires` を残すことで、この空白を避けています。
+- **「対象外」の状態が生まれます。** `>=18` のような片側が開いた条件を満たす端末が手元にないシナリオは、走らせずに「対象外」と記録されます。リストや両側に境界のある範囲が求める回を引き受けられる端末がない場合は、対象外ではなく失敗になります。本項目の「境界」は、設定を誤った worker がすべてを飛ばしても成功に見えることを理由に、スキップの状態を退けています。再構成の項目は、この失敗と、1回も走らなかった invocation を非ゼロで終了させる規則で、この懸念に応えます。worker capability の検査は、worker が実行できないシナリオを引き続き失敗させるので、2つの結果は混ざりません。
+- **プラットフォームをまたぐフォールバックのリストがなくなります。** 再構成の項目は `backend` を取り除くので、「検査」で `bajutsu run` について述べている、Linux のホストで `[ios, web]` が `playwright` に解決される挙動はなくなります。target は1つのプラットフォームを名指しし、Web も回したい run は2つ目の target を使います。
+- **ホストはマシンの事実のままです。** 再構成の項目は、target 側の `runsOn.host.os` を検討して取り下げました。ホストの制約は `host:<os>` だけのままです。
+
 ### 境界
 
 本項目が決めるのは、ステップの capability ではなく実行可否です。したがって既存のトークンによる判定は変えません。skipped という状態も足しません。実行できないシナリオは失敗として扱います。黙ってスキップすると、設定を誤った worker が緑のまま報告されてしまうからです。Device Farm のクォータも調べません。target の上限は運用者が述べる事実であり、クォータは Device Farm の dispatch の項目のジョブ同時実行の予算が引き続き扱います。server は、dispatch のときに、worker の上限に対してジョブを検査しません。worker が lease のときにそのようなジョブを失敗させます。worker が自分の上限を広告して、server がより早く拒否できるようにする作業は、後の項目で行えます。`requires` がなくなったあと、target の `device` から iOS の runtime や機種の要求を導く作業も、後の項目です。server は、単一のホスト OS でしか動かないドライバーのジョブに `host:<os>` を加えるので、server より先に worker を更新します。
@@ -193,3 +204,4 @@ server は、ルーティングにとどまります。単一のホスト OS だ
 - [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out-ja.md)：Device Farm の dispatch とデバイス予算。
 - [BE-0428](../BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md)：複数 target のシナリオとデバイスプールの規則。
 - [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)：デバイスクラウドのプロバイダー。
+- target の設定を再構成する項目（slug `target-config-restructure`）：`worker.yaml` に `appium` の environment を加えます。また、target の `device` を `runsOn.model` と `runsOn.os` に置き換え、新しい target のスキーマとともに `requires` を取り除きます。
