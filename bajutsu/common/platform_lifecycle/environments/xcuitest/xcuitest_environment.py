@@ -939,6 +939,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
         as-is; the app-readiness wait is launch_driver's, the same as the cold path.
         """
         ios = require_ios(eff)
+        # The lease's own app, as `_spawn_cold` records it: a device group's next lease can own a
+        # different app than the one this runner was spawned for, and a stale id would seed the
+        # group's runner target with the wrong app (BE-0447).
+        self._bundle_id = ios.bundle_id
+        self._app_path = ios.app_path
         self._prepare_simulator(eff, pre, permissions, cold=False)
         launch_env, launch_args = self._launch_params(eff, pre, extra_env)
         e = simctl.Env(self._udid, run=self._run)
@@ -1529,8 +1534,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # group shares keeps the old behaviour, with no wait at all.
         if driver is None or (self._group is None and not launched):
             return
+        # `readyWhen` names the app's launch screen, so it gates a launch alone: a resumed app comes
+        # back on whatever screen it left, and waiting there for the launch screen would time out.
         result = readiness.await_ready(
-            driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces
+            driver,
+            ready_sel=eff.ready_when if launched else None,
+            id_namespaces=eff.id_namespaces,
         )
         if not result.ready and self._group is not None:
             raise base.AppNotInFront(f"foreground: {bundle_id} did not come to the front in time")

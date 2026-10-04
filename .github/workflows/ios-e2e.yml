@@ -1485,11 +1485,113 @@ jobs:
             runs/
           if-no-files-found: ignore
 
+  # BE-0447's device-group lane (`make -C demos/showcase e2e-device-group`): two apps on one
+  # Simulator. device_group_update.yaml starts on the previous SwiftUI build and installs the current
+  # one over it with its data kept; device_group_companion.yaml runs the SwiftUI and UIKit apps side by
+  # side and switches between them with `foreground`. Self-contained like `network`: the `make` target
+  # builds what it needs (both SwiftUI builds, UIKit, and the runner), so it runs on a developer's Mac
+  # unchanged. Deliberately NOT in the `E2E` gate's `needs:` below, the same signal-first path every
+  # newly-wired lane takes.
+  device-group:
+    name: device-group (xcuitest)
+    needs: changes
+    # BE-0338: runs on a shared-code change, or when one of its two scenarios changed — both are
+    # declared in demos/showcase/Makefile's `e2e-device-group` target, which scripts/e2e_changes.py
+    # folds into `affected`.
+    if: >-
+      needs.changes.outputs.relevant == 'true' &&
+      (needs.changes.outputs.shared == 'true' ||
+      contains(fromJSON(needs.changes.outputs.affected), 'device-group'))
+    runs-on: macos-latest
+    timeout-minutes: 60
+    # The same cold-boot wait floor `network` raises; a condition wait returns the instant its target
+    # appears, so this is a ceiling, not a fixed sleep (prime directive 2).
+    env:
+      BAJUTSU_MIN_WAIT_TIMEOUT: "20"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up the iOS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-ios-toolchain
+
+      # The `build` job's three DerivedData caches (and keys), so this job's builds are incremental.
+      # The previous SwiftUI build shares the app cache: it is a second scheme of the same project.
+      - name: Cache DerivedData (app)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: demos/showcase/ios/swiftui/build/dd
+          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('Package.swift', 'BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          restore-keys: |
+            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
+
+      - name: Cache DerivedData (uikit)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: demos/showcase/ios/uikit/build/dd
+          key: xcode-dd-uikit-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('Package.swift', 'BajutsuKit/**/*.swift', 'demos/showcase/ios/uikit/**/*.swift', 'demos/showcase/ios/uikit/**/project.yml') }}
+          restore-keys: |
+            xcode-dd-uikit-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
+
+      - name: Cache DerivedData (runner)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: BajutsuKit/Runner/build/dd
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('Package.swift', 'BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml', 'Package.resolved', 'BajutsuKit/Sources/BajutsuRunner/openapi.yaml', 'BajutsuKit/Sources/BajutsuRunner/openapi-generator-config.yaml') }}
+          restore-keys: |
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
+
+      - name: Build the apps + runner (fetch Python deps concurrently)
+        run: |
+          uv sync --no-dev &
+          sync_pid=$!
+          trap 'kill "$sync_pid" 2>/dev/null || true' EXIT
+          make -C demos/showcase swiftui-build
+          make -C demos/showcase swiftui-previous-build
+          make -C demos/showcase uikit-build
+          make -C demos/showcase runner-build
+          wait "$sync_pid"
+          trap - EXIT
+
+      - name: Wait for the Simulator
+        run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
+
+      # This job drives `make`, not the bajutsu-e2e action, so it wires the BE-0361 diagnostics itself.
+      - name: Start iOS diagnostics
+        # An observer may never decide this job — see the `visual` job's own note.
+        continue-on-error: true
+        uses: ./.github/actions/collect-ios-diagnostics
+        with:
+          phase: start
+          udid: ${{ steps.toolchain.outputs.udid }}
+
+      - name: Run the device-group lane
+        id: device-group
+        run: make -C demos/showcase e2e-device-group SIM=${{ steps.toolchain.outputs.udid }}
+
+      - name: Collect iOS diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/collect-ios-diagnostics
+        with:
+          phase: collect
+          udid: ${{ steps.toolchain.outputs.udid }}
+          failed: ${{ steps.device-group.outcome != 'success' }}
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ios-e2e-device-group-run
+          path: runs/
+          if-no-files-found: ignore
+
   # Single required status check for E2E. Always runs so it reports even when the macOS
   # jobs are skipped (docs-only PRs) — a skipped dependency is a pass; only a real
-  # failure or cancellation fails the gate. `actuation`, `golden`, `visual`, and `network` are
-  # deliberately excluded from `needs:` (see each job's comment) so newly-wired actuation (BE-0281),
-  # a host-specific pixel drift, or the newly-wired network lane (BE-0282) never blocks a merge. Make
+  # failure or cancellation fails the gate. `actuation`, `golden`, `visual`, `network`, and
+  # `device-group` are deliberately excluded from `needs:` (see each job's comment) so newly-wired
+  # actuation (BE-0281), a host-specific pixel drift, or the newly-wired network (BE-0282) and
+  # device-group (BE-0447) lanes never block a merge. Make
   # `E2E` the required check, not the path-gated macOS jobs.
   #
   # `fault-injection` was in that excluded list and is now in `needs:`, completing BE-0305's

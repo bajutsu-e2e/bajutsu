@@ -1,0 +1,85 @@
+# Companion app (BE-0447): two apps with different bundle ids / packages share one device, and the
+# scenario hops between them the way a user reading a one-time code from an authenticator would. The
+# other toolkit's showcase app plays the companion (UIKit beside SwiftUI on iOS, Views beside Compose
+# on Android): same SPEC ids, a bundle id of its own, so no extra build is needed.
+#
+# `installs` starts the companion beside the primary, and every hop is an explicit `foreground` —
+# the runner never switches apps on its own. The primary flips Intense on first: that state is
+# in-memory (scenarios/relaunch.yaml), so reading it back as `on` after the round trip proves
+# `foreground` brought the running app back rather than relaunching it. The companion's Log counter
+# is raised from 1 to 3 and `extract`ed, and the primary searches for "Horse <count>": only the value
+# read in the companion finds `search.row.3`. The counter's selector is extract.yaml's, for the
+# reason that file gives.
+#
+# One scenario per platform, tagged `ios` / `android` so each lane selects its own with `--tag`; see
+# device_group_update.yaml for the two lanes. Ids list both the dotted SPEC form and the underscore
+# Android Views form (BE-0221).
+- name: a value read in the companion app is entered in the primary (iOS)
+  tags: [multi-target, ios]
+  targets: [[showcase-swiftui, showcase-uikit]]
+  primaryTarget: showcase-swiftui
+  installs: [showcase-uikit]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - foreground: {}
+    - tap: { label: "Log", traits: [button] }
+    - wait: { for: { id: [log.intense, log_intense] }, timeout: 10 }
+    - tap: { id: [log.intense, log_intense] }
+    - assert:
+        - value: { sel: { id: [log.intense.value, log_intense_value] }, equals: "on" }
+    - target: showcase-uikit
+      foreground: {}
+    - target: showcase-uikit
+      tap: { label: "Log", traits: [button] }
+    - target: showcase-uikit
+      wait: { for: { id: [log.count-Increment, log.count, log_count], traits: [button] }, timeout: 10 }
+    - target: showcase-uikit
+      tap: { id: [log.count-Increment, log.count, log_count], traits: [button] }
+    - target: showcase-uikit
+      tap: { id: [log.count-Increment, log.count, log_count], traits: [button] }
+      extract: { count: { sel: { id: [log.count.value, log_count_value] } } }
+    - foreground: {}
+    - assert:
+        - value: { sel: { id: [log.intense.value, log_intense_value] }, equals: "on" }
+    - tap: { label: "Search", traits: [button] }
+    - wait: { for: { id: [search.field, search_field] }, timeout: 10 }
+    - type: { text: "Horse ${vars.count}", into: { id: [search.field, search_field] } }
+    - wait: { for: { id: [search.row.3, search_row_3] }, timeout: 5 }
+  expect:
+    - value: { sel: { id: [search.count, search_count] }, equals: "1" }
+
+- name: a value read in the companion app is entered in the primary (Android)
+  tags: [multi-target, android]
+  targets: [[showcase-compose, showcase-views]]
+  primaryTarget: showcase-compose
+  installs: [showcase-views]
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - foreground: {}
+    - tap: { label: "Log", traits: [button] }
+    - wait: { for: { id: [log.intense, log_intense] }, timeout: 10 }
+    - tap: { id: [log.intense, log_intense] }
+    - assert:
+        - value: { sel: { id: [log.intense.value, log_intense_value] }, equals: "on" }
+    - target: showcase-views
+      foreground: {}
+    - target: showcase-views
+      tap: { label: "Log", traits: [button] }
+    - target: showcase-views
+      wait: { for: { id: [log.count-Increment, log.count, log_count], traits: [button] }, timeout: 10 }
+    - target: showcase-views
+      tap: { id: [log.count-Increment, log.count, log_count], traits: [button] }
+    - target: showcase-views
+      tap: { id: [log.count-Increment, log.count, log_count], traits: [button] }
+      extract: { count: { sel: { id: [log.count.value, log_count_value] } } }
+    - foreground: {}
+    - assert:
+        - value: { sel: { id: [log.intense.value, log_intense_value] }, equals: "on" }
+    - tap: { label: "Search", traits: [button] }
+    - wait: { for: { id: [search.field, search_field] }, timeout: 10 }
+    - type: { text: "Horse ${vars.count}", into: { id: [search.field, search_field] } }
+    - wait: { for: { id: [search.row.3, search_row_3] }, timeout: 5 }
+  expect:
+    - value: { sel: { id: [search.count, search_count] }, equals: "1" }

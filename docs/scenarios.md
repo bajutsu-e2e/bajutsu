@@ -1348,6 +1348,8 @@ freeze the clock and signal bars for a stable image.
 - An app that is not running, as after an `installApp`, launches the way `relaunch` would launch it.
   `foreground` then waits on a condition until the app is ready.
 - On Android, and on iOS inside a device group, a running app gets the same condition wait. When the app never reaches the front, the step fails with `AppNotInFront`.
+  The wait looks for the app's own screen, not the target's `readyWhen`: `readyWhen` names the
+  screen a launch lands on, and a resumed app comes back on whatever screen it left.
 
 `setClipboard` seeds the pasteboard for a paste flow ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 
@@ -1715,6 +1717,12 @@ device of its own:
     - target: showcase-web
       wait: { for: { id: session.active }, timeout: 10 }
 ```
+
+The showcase demo runs both journeys on iOS and on Android (real files:
+[`demos/showcase/scenarios/device_group_update.yaml`](../demos/showcase/scenarios/device_group_update.yaml),
+[`demos/showcase/scenarios/device_group_companion.yaml`](../demos/showcase/scenarios/device_group_companion.yaml)).
+There, the update reads back a note saved on a screen that persists it across installs, and the
+companion is the other toolkit's showcase app, which has a bundle id of its own.
 
 ### Limits
 

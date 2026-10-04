@@ -929,6 +929,8 @@ iOS では、これらのステップは `setLocation` / `push` と同じく `si
 - iOS でデバイスグループに入っていない場合、動いているアプリはまったく待たずに復帰します。必要なら直後に具体的な要素を待ってください。
 - `installApp` の直後のように動いていないアプリは、`relaunch` と同じように起動します。`foreground` はその後、アプリの準備が整うまで条件待ちをします。
 - Android と、デバイスグループ内の iOS では、動いているアプリにも条件待ちをします。アプリが前面に来なければ、ステップは `AppNotInFront` で失敗します。
+  この待ちは、ターゲットの `readyWhen` ではなく、そのアプリ自身の画面が出るのを待ちます。`readyWhen` は
+  起動直後の画面を指しますが、再開したアプリは離れたときの画面に戻るからです。
 
 `setClipboard` はペースト操作のためペーストボードに値を投入します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
 
@@ -1313,6 +1315,15 @@ iPhone は対応していません。コード生成は、`installApp` と `setP
     - target: showcase-web
       wait: { for: { id: session.active }, timeout: 10 }
 ```
+
+showcase のデモは、この 2 つの流れを iOS と Android の両方で実行します。実物は次の 2 つのファイルです。
+
+- [`demos/showcase/scenarios/device_group_update.yaml`](../../demos/showcase/scenarios/device_group_update.yaml)
+- [`demos/showcase/scenarios/device_group_companion.yaml`](../../demos/showcase/scenarios/device_group_companion.yaml)
+
+デモのアップデートのシナリオは、インストールをまたいで内容が残る画面にメモを保存し、新ビルドを
+インストールしたあとでそのメモを読み戻します。コンパニオンアプリには、bundle id が異なるもう一方の
+ツールキットの showcase アプリを使います。
 
 ### 制限
 

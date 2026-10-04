@@ -54,6 +54,8 @@ def test_dedicated_lane_scenarios_carry_their_exclusion_tag() -> None:
         ("save_password_native.yaml", "systemalert"),
         ("tabs.yaml", "xcuitest"),
         ("select_photos.yaml", "swiftui"),
+        ("device_group_update.yaml", "multi-target"),
+        ("device_group_companion.yaml", "multi-target"),
     ):
         for s in load_scenarios((SCENARIO_DIR / name).read_text(encoding="utf-8")):
             assert tag in s.tags, f"{name}: {s.name!r} is missing the `{tag}` tag"
@@ -66,14 +68,16 @@ def test_showcase_config_resolves() -> None:
     assert isinstance(ios, IosConfig)
     assert ios.bundle_id == "com.bajutsu.showcase.ios.swiftui"
     assert ios.deeplink_scheme == "showcaseswiftui"
-    assert set(eff.id_namespaces) == NAMESPACES
+    # BE-0447: plus `saved`, the SHOWCASE_SAVED_NOTE screen (SPEC §5.6) the menu scenarios never visit.
+    assert set(eff.id_namespaces) == NAMESPACES | {"saved"}
 
     # BE-0231: the smoke lane's target gates readiness on the very element its first `wait` needs
     # (the first Stable row), so `await_ready` can't return early on some other in-namespace node
     # and let the first scenario step race a not-yet-rendered row on a cold-boot CI Simulator. The
     # candidate list mirrors the scenario selector (BE-0221): dotted iOS form first, underscore form
-    # second.
-    assert eff.ready_when == {"id": ["stable.row.1", "stable_row_1"]}
+    # second. `saved.build` is the saved-note screen's launch element, which device_group_update.yaml's
+    # `foreground` waits on after installing this build (BE-0447).
+    assert eff.ready_when == {"id": ["stable.row.1", "stable_row_1", "saved.build"]}
 
     # Guard the platform-scoped id rename (com.bajutsu.showcase.<platform>.<toolkit>) on the
     # other two toolkits, not just showcase-swiftui above.

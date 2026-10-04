@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -308,6 +309,30 @@ def test_foreground_launches_a_member_that_is_not_running_with_its_launch_env(
     assert run.ran("launch", _AUTH, "SIMCTL_CHILD_FROM_CONFIG=1")
 
 
+@pytest.mark.parametrize(("running", "expected"), [(True, None), (False, {"id": "home"})])
+def test_foreground_waits_for_ready_when_only_after_a_launch(
+    monkeypatch: pytest.MonkeyPatch, running: bool, expected: dict[str, str] | None
+) -> None:
+    # `readyWhen` is the launch screen: a resumed app returns on whatever screen it left, so waiting
+    # for the launch screen there would time out on an app that is already in front.
+    run, runner = _Simctl(), _Runner(front=_AUTH)
+    env = _started(run, runner, monkeypatch)
+    env.start_member(_eff(_AUTH), Preconditions(), install=False)
+    if not running:
+        runner.running.discard(_AUTH)
+    seen: list[object] = []
+
+    def await_ready(*_a: object, ready_sel: object = None, **_k: object) -> ReadinessResult:
+        seen.append(ready_sel)
+        return ReadinessResult(True, "count", 0.0)
+
+    monkeypatch.setattr("bajutsu.common.platform_lifecycle.readiness.await_ready", await_ready)
+    control = env.controller(replace(_eff(_AUTH), ready_when={"id": "home"}))
+    assert control is not None
+    control.foreground()
+    assert seen == [expected]
+
+
 def test_a_foreground_that_never_reaches_the_front_fails_its_step(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -346,6 +371,31 @@ def test_a_warm_runner_a_group_retargeted_points_back_at_the_next_lease(
     env.start(_eff(_APP), Preconditions())
     assert runner.base == _APP
     assert env._member_drivers == {}  # the previous lease's group is gone
+
+
+def test_a_warm_lease_on_another_app_seeds_its_group_with_that_app(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The lease after an update scenario can own another app (a companion) than the one the warm
+    # runner was spawned for. The group it starts must record that app, or a member addressing the
+    # earlier app skips its retarget and reads the companion's state as its own.
+    runner = _Runner()
+    env = _started(_Simctl(), runner, monkeypatch)
+    env.start_member(_eff(_AUTH), Preconditions(), install=False)
+    env._lease_driver.query()  # type: ignore[union-attr]  # the previous lease's group ends on _APP
+    fresh = XcuitestDriver(transport=runner.transport)
+    monkeypatch.setattr(
+        env, "_start", lambda eff, pre, **_k: env._resume_warm(eff, pre, None, None, fresh)
+    )
+    app = tmp_path / "Auth.app"
+    app.mkdir()
+    env.start(_eff(_AUTH, str(app)), Preconditions())
+    assert runner.base == _AUTH
+    assert env._app_path == str(app)  # the crash sweep matches this lease's executable
+    member = env.start_member(_eff(_APP), Preconditions(), install=False)
+    runner.front = _APP
+    member.query()
+    assert runner.base == _APP
 
 
 # --- the edges -----------------------------------------------------------------------------------

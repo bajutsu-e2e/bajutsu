@@ -54,10 +54,10 @@ Alongside ``relevant`` the module emits two more outputs the lane's jobs read: `
 whole lane fires) and ``affected`` (a JSON array of the scenario-keyed jobs a scenario-only change
 reached). A scenario-keyed job runs when ``relevant`` is true and (``shared`` is true, or the job is
 in ``affected``); a dimension job that declares no scenario runs whenever ``relevant`` is true. On
-iOS the ``codegen``, ``visual``, and ``network`` jobs are scenario-keyed too (BE-0338): they declare
-their scenarios in ``demos/showcase/Makefile`` targets rather than a workflow input, so
-``job_scenario_map`` never sees them — ``lane_job_scenario_map`` folds those Makefile-declared
-scenarios into the map. What the ``affected`` narrowing then leaves on iOS is ``conformance`` and
+iOS the ``codegen``, ``visual``, ``network``, and ``device-group`` jobs are scenario-keyed too
+(BE-0338): they declare their scenarios in ``demos/showcase/Makefile`` targets rather than a workflow
+input, so ``job_scenario_map`` never sees them — ``lane_job_scenario_map`` folds those
+Makefile-declared scenarios into the map. What the ``affected`` narrowing then leaves on iOS is ``conformance`` and
 ``fault-injection``, which declare no scenario subset (each drives its own whole suite) and so fire
 whenever ``relevant`` is true; and ``build``, which stages the products every consumer job installs,
 on the same bare guard. The decision over-selects toward the whole lane — a shared-code change, an
@@ -603,7 +603,8 @@ def job_scenario_map(workflow_text: str) -> dict[str, set[str]]:  # noqa: C901
 # These jobs declare their scenarios in `demos/showcase/Makefile` targets, not in a workflow
 # `scenarios:` input (BE-0338). `codegen` codegens and runs the `ui-test` + `ui-test-coverage`
 # targets; `visual` runs the `e2e-visual` pixel VRT; `network` runs the `e2e-network` capture / mock /
-# redaction lane (BE-0282). Their attribution is read from those recipes — the one place the scenarios
+# redaction lane (BE-0282); `device-group` runs the `e2e-device-group` two-apps-on-one-Simulator lane
+# (BE-0447). Their attribution is read from those recipes — the one place the scenarios
 # are named — so it cannot be a second copy that a Makefile edit outdates.
 # `test_makefile_declared_scenarios_match_the_targets` pins the extracted set, so a target gaining or
 # losing a scenario fails `make check` unless the attribution moves with it, the same no-drift
@@ -613,6 +614,7 @@ _MAKEFILE_JOB_TARGETS: dict[str, tuple[str, ...]] = {
     "codegen": ("ui-test", "ui-test-coverage"),
     "visual": ("e2e-visual",),
     "network": ("e2e-network",),
+    "device-group": ("e2e-device-group",),
 }
 
 # A `demos/showcase/scenarios/…` YAML path as it appears literally in a Makefile recipe — the same
@@ -710,7 +712,8 @@ def lane_job_scenario_map(lane: str, workflow_text: str) -> dict[str, set[str]]:
     """The full job-to-scenario map for ``lane`` (BE-0322 + BE-0338).
 
     The workflow's own ``scenarios:`` declarations (``job_scenario_map``), plus — on the iOS lane
-    only — the scenarios the showcase Makefile declares for ``codegen`` / ``visual`` / ``network``,
+    only — the scenarios the showcase Makefile declares for ``codegen`` / ``visual`` / ``network`` /
+    ``device-group``,
     folded in so a change to one of them names its job in ``affected``. Android and web key no jobs on
     scenarios, so their map is the workflow map unchanged.
 

@@ -1,0 +1,59 @@
+# App update (BE-0447): one scenario that starts on the previous build, saves a note, installs the
+# current build over it with the data container kept, and asserts the note survived. The two builds
+# share a bundle id / package (SPEC §5.6), so the nested `targets` array puts them on one device; only
+# the primary starts, and the current build waits for its `installApp`.
+#
+# The install retires the previous member, so `setPrimaryTarget` moves the omitted `target` onto the
+# current build before its `foreground` launches it. `saved.build` reading `current` is what proves
+# the install replaced the app rather than the old process still answering; `saved.value` is the
+# data that had to survive. The starting member installs under the default `reinstall: clean`, so
+# the note starts at `none` whatever an earlier run left on the device.
+#
+# One scenario per platform, tagged `ios` / `android` so each lane selects its own with `--tag`:
+# `make -C demos/showcase e2e-device-group` (iOS) and `make -C demos/showcase/android
+# e2e-device-group`. Both carry `multi-target`, which keeps the bulk iOS lanes from discovering them.
+- name: a saved note survives the update from the previous build (iOS)
+  tags: [multi-target, ios]
+  targets: [[showcase-swiftui-previous, showcase-swiftui]]
+  primaryTarget: showcase-swiftui-previous
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_SAVED_NOTE: "1" }
+  steps:
+    - wait: { for: { id: saved.build }, timeout: 10 }
+    - assert:
+        - value: { sel: { id: saved.build }, equals: previous }
+        - value: { sel: { id: saved.value }, equals: none }
+    - type: { text: hello, into: { id: saved.field } }
+    - tap: { id: saved.save }
+    - assert:
+        - value: { sel: { id: saved.value }, equals: hello }
+    - installApp: { from: showcase-swiftui }
+    - setPrimaryTarget: { target: showcase-swiftui }
+    - foreground: {}
+    - wait: { for: { id: saved.build }, timeout: 10 }
+  expect:
+    - value: { sel: { id: saved.build }, equals: current }
+    - value: { sel: { id: saved.value }, equals: hello }
+
+- name: a saved note survives the update from the previous build (Android)
+  tags: [multi-target, android]
+  targets: [[showcase-compose-previous, showcase-compose]]
+  primaryTarget: showcase-compose-previous
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1", SHOWCASE_SAVED_NOTE: "1" }
+  steps:
+    - wait: { for: { id: saved.build }, timeout: 10 }
+    - assert:
+        - value: { sel: { id: saved.build }, equals: previous }
+        - value: { sel: { id: saved.value }, equals: none }
+    - type: { text: hello, into: { id: saved.field } }
+    - tap: { id: saved.save }
+    - assert:
+        - value: { sel: { id: saved.value }, equals: hello }
+    - installApp: { from: showcase-compose }
+    - setPrimaryTarget: { target: showcase-compose }
+    - foreground: {}
+    - wait: { for: { id: saved.build }, timeout: 10 }
+  expect:
+    - value: { sel: { id: saved.build }, equals: current }
+    - value: { sel: { id: saved.value }, equals: hello }

@@ -2,14 +2,14 @@
 # (UIKit × SwiftUI, each in an accessibility-on / -off variant). See SPEC.md.
 # Invoke from anywhere with `make -C demos/showcase <target>`.
 .PHONY: build-all \
-	swiftui-gen swiftui-build swiftui-noax-build \
+	swiftui-gen swiftui-build swiftui-noax-build swiftui-previous-build \
 	uikit-gen uikit-build uikit-noax-build runner-build \
 	swiftui-archive-device swiftui-ipa-device runner-build-device \
 	run-swiftui run-uikit run-swiftui-tabs run-uikit-tabs \
 	run-swiftui-noax run-uikit-noax doctor record ui-test ui-test-coverage \
 	vrt vrt-approve vrt-swiftui vrt-swiftui-approve vrt-uikit vrt-uikit-approve \
 	e2e-visual e2e-visual-approve e2e-network e2e-browser e2e-savepassword \
-	e2e-savepassword-native e2e-cross-app e2e-springboard-widget e2e-multi-target-web \
+	e2e-savepassword-native e2e-cross-app e2e-springboard-widget e2e-multi-target-web e2e-device-group \
 	flutter-build flutter-android-build flutter-android-noax-build \
 	run-flutter run-flutter-android clean
 
@@ -38,6 +38,10 @@ swiftui-build:
 	$(call build_scheme,$(SWIFTUI),BajutsuShowcaseSwiftUI,BajutsuShowcaseSwiftUI)
 swiftui-noax-build:
 	$(call build_scheme,$(SWIFTUI),BajutsuShowcaseSwiftUI,BajutsuShowcaseSwiftUINoAx)
+# The same app under the same bundle id, built as the "previous" release the BE-0447 update
+# scenario starts on (scenarios/device_group_update.yaml) before installing swiftui-build over it.
+swiftui-previous-build:
+	$(call build_scheme,$(SWIFTUI),BajutsuShowcaseSwiftUI,BajutsuShowcaseSwiftUIPrevious)
 
 uikit-gen:
 	cd $(UIKIT) && xcodegen generate
@@ -147,9 +151,10 @@ runner-build-device:
 # `swiftui` (scenarios/picker_wheel.yaml), which drives the SHOWCASE_PICKERS wheel-picker screen only
 # the SwiftUI app renders; the SwiftUI lane keeps it. Backend preflight cannot stand in for the tag —
 # it rejects a backend that lacks a capability, not an app that lacks a screen.
-# `multi-target` (cross_platform_search.yaml, cross_platform_app_web.yaml, BE-0428) is excluded for
-# the same "this file has its own lane" reason: each declares `targets` beyond showcase-swiftui —
-# an Android emulator or the `web` target's own server, neither of which this bulk lane brings up —
+# `multi-target` (cross_platform_search.yaml, cross_platform_app_web.yaml, BE-0428; the two
+# device_group_*.yaml files, BE-0447) is excluded for the same "this file has its own lane" reason:
+# each declares `targets` beyond showcase-swiftui — an Android emulator, the `web` target's own
+# server, or a second app built for a device group, none of which this bulk lane brings up —
 # and, unlike a single-target scenario, `--target showcase-swiftui` does not stop either from being
 # discovered and launched, since it only has to name one of the declared targets.
 # `e2e-multi-target-web` below names cross_platform_app_web.yaml explicitly, with the `web` server
@@ -408,6 +413,16 @@ e2e-cross-app: swiftui-build uikit-build runner-build
 		--target showcase-swiftui --udid $(SIM) --backend ios --config $(CONFIG) && \
 	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/app.yaml \
 		--target showcase-uikit --udid $(SIM) --backend ios --config $(CONFIG)
+
+# The device-group lane (BE-0447): two apps on one Simulator. device_group_update.yaml starts on the
+# previous SwiftUI build and installs the current one over it; device_group_companion.yaml runs the
+# SwiftUI and UIKit apps side by side and switches between them with `foreground`. `--tag ios` picks
+# each file's iOS scenario; the Android twins run from android/Makefile's own `e2e-device-group`. Both
+# files declare their own `targets`, so no `--target` is passed, and each group needs one device.
+e2e-device-group: swiftui-build swiftui-previous-build uikit-build runner-build
+	cd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/device_group_update.yaml \
+		--scenario demos/showcase/scenarios/device_group_companion.yaml \
+		--tag ios --udid $(SIM) --config $(CONFIG)
 
 # The Home Screen widget lane: `app:` on SpringBoard itself — edit mode, the widget gallery, add a
 # Calendar widget, then tap it open. Its own lane because the scenario erases the device to pin the

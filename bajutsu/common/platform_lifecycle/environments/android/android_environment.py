@@ -526,8 +526,9 @@ class AndroidEnvironment:
         package = require_android(eff).package
         e = adb.Env(self._serial, run=self._run)
         driver = self._drivers.get(package)
+        resumed = self._running(package)
         try:
-            if self._running(package):
+            if resumed:
                 e.launch(package, {})
             elif driver is self._primary_driver:
                 pre, extra_env = self._launch_inputs
@@ -545,8 +546,12 @@ class AndroidEnvironment:
             return
         if isinstance(driver, base.SettledCacheInvalidator):
             driver.invalidate_settled_cache()
+        # `readyWhen` names the app's launch screen, so it gates a launch alone: a resumed app comes
+        # back on whatever screen it left, and waiting there for the launch screen would time out.
         result = readiness.await_ready(
-            driver, ready_sel=eff.ready_when, id_namespaces=eff.id_namespaces
+            driver,
+            ready_sel=None if resumed else eff.ready_when,
+            id_namespaces=eff.id_namespaces,
         )
         if not result.ready:
             # The step that was to bring the app up fails itself, rather than passing and leaving
