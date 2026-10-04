@@ -51,6 +51,12 @@ class SystemAlertHandling(_Model):
     # heuristic trading detection latency against runner load, so it is a knob rather than hard-coded;
     # None inherits the built-in default (one second).
     poll_interval: float | None = Field(default=None, alias="pollInterval")
+    # How long (seconds) a guarded `for` / `screenChanged` wait tolerates a frozen screen — no system
+    # alert up, yet no element below the application carrying a label or an identifier — before it
+    # stops instead of polling to its own deadline. Armed only for a scenario that declares an in-app
+    # prompt such as `savePassword`; an app whose own unlabelled loading screen can outlast the
+    # default raises it, and 0 turns the stop off. None inherits the built-in default (10 seconds).
+    frozen_screen_timeout: float | None = Field(default=None, alias="frozenScreenTimeout")
 
     @model_validator(mode="before")
     @classmethod
@@ -94,6 +100,13 @@ class SystemAlertHandling(_Model):
     def _positive_interval(cls, v: float | None) -> float | None:
         if v is not None and v <= 0:
             raise ValueError("pollInterval must be positive")
+        return v
+
+    @field_validator("frozen_screen_timeout")
+    @classmethod
+    def _non_negative_frozen_timeout(cls, v: float | None) -> float | None:
+        if v is not None and v < 0:
+            raise ValueError("frozenScreenTimeout must not be negative (0 turns the stop off)")
         return v
 
     @field_validator("rules")

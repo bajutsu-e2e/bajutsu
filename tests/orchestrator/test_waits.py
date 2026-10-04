@@ -13,7 +13,12 @@ from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import FileSink
 from bajutsu.common.evidence.network import ScreenTransition
-from bajutsu.common.orchestrator import AlertGuardConfig, _wait, run_scenario
+from bajutsu.common.orchestrator import (
+    DEFAULT_FROZEN_SCREEN_TIMEOUT,
+    AlertGuardConfig,
+    _wait,
+    run_scenario,
+)
 from bajutsu.common.orchestrator.waits import _TRANSITION_QUIESCENCE
 from bajutsu.common.scenario import Wait
 
@@ -2447,6 +2452,116 @@ def test_wait_guard_reports_a_persistent_collapse_it_cannot_clear() -> None:
     assert "the screen appears blocked" in reason
     assert "buttons:" not in reason  # nothing enumerated it, so nothing is named
     assert driver.actions == []  # and the guard actuated nothing on the way there
+
+
+# An in-tree-only rule, the way `savePassword` resolves: what arms the stuck-screen stop at all.
+_SAVE_PASSWORD_GUARD = AlertGuardConfig(rules=[guard_rule("Not Now", native=False)])
+
+
+def test_wait_stops_on_a_native_collapse_no_alert_explains() -> None:
+    """A native backend's probe rules a SpringBoard alert out, yet the tree stays empty: measured on
+    iOS 26.5, a Save Password alert left mid-presentation does exactly this, modal over the app and
+    reachable by nothing. The wait stops once that has held for `frozen_screen_timeout` and says so,
+    rather than polling the rest of its timeout."""
+    driver = FakeDriver(
+        []
+    )  # advertises HANDLE_SYSTEM_ALERT, no SpringBoard alert, nothing labelled
+    clock = _LogicalClock()
+    w = Wait.model_validate({"for": {"id": "never"}, "timeout": 60.0})
+    ok, reason, _tree = _wait(driver, w, clock, alert_guard=_SAVE_PASSWORD_GUARD, alerts=[])
+    assert not ok
+    assert reason.startswith("wait stopped: for")
+    assert "label or identifier" in reason
+    assert DEFAULT_FROZEN_SCREEN_TIMEOUT <= clock.now() < 60.0
+    assert driver.actions == []
+
+
+def test_a_screen_changed_wait_stops_on_a_native_collapse_too() -> None:
+    """`screenChanged` waits for the tree to differ, which a frozen screen never does."""
+    clock = _LogicalClock()
+    w = Wait.model_validate({"until": "screenChanged", "timeout": 60.0})
+    ok, reason, _tree = _wait(FakeDriver([]), w, clock, alert_guard=_SAVE_PASSWORD_GUARD, alerts=[])
+    assert not ok
+    assert reason.startswith("wait stopped: screenChanged")
+    assert clock.now() < 60.0
+
+
+def test_a_native_collapse_shorter_than_the_bound_does_not_stop_the_wait() -> None:
+    clock = _LogicalClock()
+
+    class _RecoversJustUnderTheBound(FakeDriver):
+        def query(self) -> list[base.Element]:
+            return [el("row", "Row")] if clock.now() >= 9.5 else []
+
+    w = Wait.model_validate({"for": {"id": "row"}, "timeout": 60.0})
+    ok, reason, _tree = _wait(
+        _RecoversJustUnderTheBound([]), w, clock, alert_guard=_SAVE_PASSWORD_GUARD, alerts=[]
+    )
+    assert ok and reason == ""
+
+
+def test_a_native_collapse_stops_only_on_a_fresh_negative_probe() -> None:
+    """With a long `pollInterval`, the bound can pass between two probes; a remembered negative may
+    predate an alert the next probe would answer, so the stop waits for that next probe."""
+    driver = FakeDriver([])
+    clock = _LogicalClock()
+    guard = AlertGuardConfig(rules=[guard_rule("Not Now", native=False)], poll_interval=30.0)
+    w = Wait.model_validate({"for": {"id": "never"}, "timeout": 90.0})
+    ok, reason, _tree = _wait(driver, w, clock, alert_guard=guard, alerts=[])
+    assert not ok
+    assert reason.startswith("wait stopped: for")
+    assert clock.now() >= 30.0  # the second probe, not the 10s bound, is what latched it
+
+
+def test_a_frozen_screen_timeout_of_zero_turns_the_stop_off() -> None:
+    clock = _LogicalClock()
+    guard = AlertGuardConfig(rules=[guard_rule("Not Now", native=False)], frozen_screen_timeout=0.0)
+    w = Wait.model_validate({"for": {"id": "never"}, "timeout": 30.0})
+    ok, reason, _tree = _wait(FakeDriver([]), w, clock, alert_guard=guard, alerts=[])
+    assert not ok
+    assert reason.startswith("wait timeout: for")
+
+
+def test_a_raised_frozen_screen_timeout_lets_a_slower_load_through() -> None:
+    """An app whose own unlabelled loading screen outlasts the default raises the bound."""
+    clock = _LogicalClock()
+
+    class _LoadsIn15s(FakeDriver):
+        def query(self) -> list[base.Element]:
+            return [el("home", "Home")] if clock.now() >= 15.0 else []
+
+    guard = AlertGuardConfig(
+        rules=[guard_rule("Not Now", native=False)], frozen_screen_timeout=20.0
+    )
+    w = Wait.model_validate({"for": {"id": "home"}, "timeout": 60.0})
+    ok, reason, _tree = _wait(_LoadsIn15s([]), w, clock, alert_guard=guard, alerts=[])
+    assert ok and reason == ""
+
+
+def test_a_native_collapse_without_an_in_tree_rule_runs_to_the_timeout() -> None:
+    """With no in-app prompt declared, a long empty tree may be the app's own unlabelled splash or
+    loading screen, so the wait keeps its own timeout as it always has."""
+    clock = _LogicalClock()
+    w = Wait.model_validate({"for": {"id": "never"}, "timeout": 30.0})
+    ok, reason, _tree = _wait(FakeDriver([]), w, clock, alert_guard=AlertGuardConfig(), alerts=[])
+    assert not ok
+    assert reason.startswith("wait timeout: for")
+    assert clock.now() >= 30.0
+
+
+def test_a_collapse_an_unhandled_springboard_alert_explains_runs_to_the_timeout() -> None:
+    """The collapse is no mystery while a probe names the alert behind it, so the wait keeps its own
+    timeout and names that alert instead (BE-0402)."""
+    driver = FakeDriver([])
+    driver.system_alert_buttons = [el(None, "Weird Button", ["button"])]
+    clock = _LogicalClock()
+    w = Wait.model_validate({"for": {"id": "never"}, "timeout": 30.0})
+    ok, reason, _tree = _wait(
+        driver, w, clock, alert_guard=AlertGuardConfig(rules=[guard_rule("Allow")]), alerts=[]
+    )
+    assert not ok
+    assert reason.startswith("wait timeout: for")
+    assert "Weird Button" in reason
 
 
 def test_wait_guard_never_fires_while_app_ui_is_visible() -> None:

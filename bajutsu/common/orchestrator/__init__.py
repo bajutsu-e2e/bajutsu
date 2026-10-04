@@ -16,6 +16,7 @@ from bajutsu.common.orchestrator.loop import MemberStatus, TargetRoster, run_sce
 from bajutsu.common.orchestrator.substitution import _interp_asserts, _interp_step
 from bajutsu.common.orchestrator.types import (
     DEFAULT_ALERT_POLL_INTERVAL,
+    DEFAULT_FROZEN_SCREEN_TIMEOUT,
     AlertEvent,
     AlertGuardConfig,
     BlockedHandler,
@@ -41,6 +42,7 @@ from bajutsu.common.orchestrator.waits import _POLL, _wait
 
 __all__ = [
     "DEFAULT_ALERT_POLL_INTERVAL",
+    "DEFAULT_FROZEN_SCREEN_TIMEOUT",
     "_POLL",
     "AlertEvent",
     "AlertGuardConfig",

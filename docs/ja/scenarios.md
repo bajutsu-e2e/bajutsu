@@ -120,6 +120,14 @@ scenarios:
 
 iOS バックエンドは **SpringBoard レベルのプロンプト**（通知や App Tracking Transparency のリクエスト、"Allow Paste" など）を見ることも tap することもできません。これらのプロンプトはアプリを覆って要素ツリーを潰し、ステップを静かにブロックします。**アラートガード**がこれをリアクティブに片付けます。iOS の XCUITest バックエンドでは**決定論的なネイティブ経路**をとります（BE-0315）。BE-0316 の SpringBoard 照会を再利用してアラートが提示するボタンを把握し、規則が名指しするボタンを押します。スクリーンショットもモデルへの往復も使わないため、頻出するプロンプトを 0.1 秒を大きく下回る時間で片付け、`ANTHROPIC_API_KEY` が**なくても**動作します。決定論的な経路がどれも対処できない場合（capability を持たないバックエンド、どの規則も同定しないアラート、SpringBoard の照会が列挙できず、しかもどの規則も同定しない画面。規則が同定するものは、後述のツリー内の経路が片付けます）、**ガードは何もしません**（[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。ブロックされたステップまたは `wait` は、ガードを設定していないときとまったく同じように自身のタイムアウトまで進み、そのタイムアウトが**ガードの見たものを名指しします**。`wait timeout: for {'id': 'submit'} (10.0s) — an unhandled system alert is blocking the screen (buttons: Allow, Don't Allow)` の形、何も列挙できなかった場合は `… — the screen appears blocked, possibly by a system alert or another overlay outside the app's view` という曖昧な形です。BE-0402 より前は、この場合にスクリーンショットを読む AI 視覚ガードへフォールバックしていました。`run` はもうそれをしないため、**どのフラグを付けてもモデルに到達しません**。（`record` と `crawl` はオーサリング向けにそのガードを保持します。[詳細](recording.md#システムアラートの自動対処)）`wait` ステップ（`for`/`gone`/`settled`/`screenChanged`）では、ガードは **wait の途中でも**発火します。ネイティブ経路が独自の間隔（既定は 1 秒）で SpringBoard をポーリングするため、wait 自体のタイムアウトを待たず、ステップが失敗する前に回復できます（BE-0269）。
 
+XCUITest バックエンドでは、画面が止まったときに `for` と `screenChanged` の wait を早めに打ち切ります。止まった画面とは、ガードの SpringBoard 照会が直前の確認でアラートなしと答えているのに、アプリケーション自身を除くどの要素も、ラベルと識別子のどちらも 10 秒間持たない状態です。iOS 26.5 の Simulator で、この状態を計測しました。iOS が Save Password アラートを提示する瞬間に通知の許諾リクエストが重なると、このアラートが提示の途中で止まることがあります。止まったアラートは描画されず、どのプロセスのアクセシビリティツリーにも現れませんが、アプリの上でモーダルのまま残ります。ガードが届く手段ではこのアラートを閉じられないため、wait は自身のタイムアウトまで待たずに、次の理由で失敗します。
+
+```text
+wait stopped: for {'id': 'Close'} after 10.4s — no element below the application has carried a label or identifier for 10s while no system alert is up — …
+```
+
+この打ち切りは、`rules` に `savePassword` のようなアプリ内のプロンプトを宣言したシナリオに限ります。それ以外のシナリオでは、長く空のツリーがアプリ自身のラベルのない読み込み画面である可能性があるため、wait は従来どおり自身のタイムアウトまで待ちます。ラベルのない読み込み画面が 10 秒を超えうるアプリでは、`frozenScreenTimeout` で上限を延ばせます。`0` を指定すると打ち切りは無効になります。`gone` と `settled` の wait は、止まったツリーで条件を満たしてしまうため、この打ち切りの対象外です。`handleSystemAlert` ステップも対象外です。このステップは SpringBoard を待っており、プロンプトがあとから出る可能性があるためです。
+
 これは **既定で ON** で、**ステップ（または `expect`）がブロックされたとき、あるいはガード対象の `wait` でネイティブのポーリングがアラートを見つけたとき**に発火します。そのため、成功するシナリオは余計な処理をしません。`ANTHROPIC_API_KEY` は**不要**で、参照もしません。シナリオごとに動作を変えるには `systemAlertHandling` を使います。
 
 **`rules` がガードの宣言のすべてです**（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。シナリオは、現れると見込むプロンプトと、それぞれに返す選択を書きます。どの応答経路も、その宣言だけを見て一致を判定します。BE-0401 が導入した順序付きの `labels` は BE-0406 で削除しました。ボタンのラベルが名指しするのはボタンであって、そのボタンが載っているアラートではありません。「Cancel」も「Close」もアプリの通常の語彙ですから、ラベルはシナリオが記述していない画面へのタップまで許してしまっていたのです。`visionInstruction` は vision フォールバックを方向づけていましたが、いまはどのコマンドにも届きません。**`run` はこれを拒否し**（後述）、`record` と `crawl` は自由記述を自身の `--alert-vision-instruction` フラグからだけ読み、シナリオからは読みません。ON と OFF は真偽値が担うので、マッピングを書けば常に ON です。
@@ -131,6 +139,7 @@ iOS バックエンドは **SpringBoard レベルのプロンプト**（通知�
 | `systemAlertHandling: { rules: [{ prompt: notifications, choice: grant }] }` | ON。**名指しした対応済みプロンプト**に、他のプロンプトとどのラベルを共有していても、その規則自身の選択で答える |
 | `systemAlertHandling: { visionInstruction: "tap Allow" }` | **どのコマンドにも届きません。** `run` は黙って無視せず、**どのシナリオも実行する前に失敗します**（[BE-0402](../../roadmaps/BE-0402-run-alert-guard-drop-vision-fallback/BE-0402-run-alert-guard-drop-vision-fallback-ja.md)）。`record` と `crawl` はシナリオのこのキーを読みません。スキーマが残しているのは、書いてしまったファイルにこのメッセージを返すためだけです |
 | `systemAlertHandling: { pollInterval: 2 }` | ON。ネイティブの presence 照会を既定の 1 秒ではなく 2 秒間隔でポーリングする |
+| `systemAlertHandling: { frozenScreenTimeout: 30 }` | ON。ガード対象の wait が止まった画面で打ち切るまでの時間を、デフォルトの 10 秒ではなく 30 秒にする（`0` で打ち切りを無効にする） |
 
 ```yaml
 - name: grant notification permission
@@ -225,6 +234,7 @@ CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**�
 |---|---|---|
 | `rules` | リスト | 内側の層から順に連結：シナリオ、次にターゲット |
 | `pollInterval` | スカラー | 値を持つもっとも内側の層が勝つ：シナリオ、無ければコマンドライン、無ければターゲット |
+| `frozenScreenTimeout` | スカラー | 値を持つもっとも内側の層が勝つ：シナリオ、無ければターゲット |
 | ON / OFF | スカラー | `--system-alert-handling` / `--no-system-alert-handling`、無ければシナリオ、無ければターゲット、無ければ ON |
 
 リストを連結にするのは、両方の層のエントリが残るからです。シナリオの答えを先に試し、シナリオが答えなかったものにはターゲットの答えが届きます。スカラーは値を 1 つしか持てないので、もっとも内側の層が勝ちます。どの層の宣言も他の層に消されません。BE-0401 が確立しようとした性質はここにあります。`rules` が 2 層しか使えないのは、プロンプトと選択の組をフラグの値 1 つで読みやすく運べないからです。
