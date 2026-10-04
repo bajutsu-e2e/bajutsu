@@ -19,7 +19,7 @@ from bajutsu.common import backends
 from bajutsu.common.config import Effective, IosConfig, require_ios
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
-from bajutsu.common.evidence import FileSink, NullSink
+from bajutsu.common.evidence import Artifact, FileSink, NullSink
 from bajutsu.common.orchestrator import DeviceControl
 from bajutsu.common.runner import Lease, run_all
 from bajutsu.common.runner.types import LeaseFn, TargetPool
@@ -520,3 +520,198 @@ def test_a_background_step_passes_though_its_evidence_read_finds_another_app(
         },
     )
     assert results[0].ok, results[0].failure  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("with_files", [False, True], ids=["null-sink", "file-sink"])
+def test_a_tap_point_on_a_backgrounded_member_fails_without_tapping(
+    tmp_path: Path, with_files: bool
+) -> None:
+    # No `interrupts` and no capture policy: the member's own pre-act read is all that stands
+    # between a `tapPoint` and the other app's screen, under a sink that reads nothing afterwards too.
+    bundles = {"app": "com.example.app", "auth": "com.example.auth"}
+    device = _CompanionDevice(bundles, tmp_path if with_files else None)
+    results = _run(
+        device,
+        bundles,
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "installs": ["auth"],
+            "steps": [{"target": "auth", "tapPoint": {"x": 0.5, "y": 0.5}}],
+        },
+    )
+    assert not results[0].ok  # type: ignore[attr-defined]
+    assert "auth is not in front" in (results[0].failure or "")  # type: ignore[attr-defined]
+    assert not any(a[0] == "tap_point" for a in device.drivers["auth"].actions)
+
+
+class _Counting(FakeDriver):
+    reads = 0
+
+    def query(self) -> list[base.Element]:
+        self.reads += 1
+        return super().query()
+
+
+class _CountingDevice(_Device):
+    def _lease(self, name: str, *, joinable: bool) -> Lease:
+        lease = super()._lease(name, joinable=joinable)
+        driver = _Counting(list(_SCREEN))
+        self.drivers[name] = driver
+        return replace(lease, driver=driver)
+
+
+def test_a_target_alone_on_its_device_pays_no_pre_act_read() -> None:
+    # The front check is for a shared device only: a single target's `tapPoint` reads nothing.
+    bundles = {"app": "com.example.app"}
+    device = _CountingDevice(bundles)
+    results = _run(
+        device, bundles, {"targets": ["app"], "steps": [{"tapPoint": {"x": 0.5, "y": 0.5}}]}
+    )
+    assert results[0].ok, results[0].failure  # type: ignore[attr-defined]
+    assert cast(_Counting, device.drivers["app"]).reads == 0
+
+
+_AWAY_SCREEN = [*_SCREEN, _el("away", "Away", ["button"])]
+
+
+class _LeavesOnTap(_Backgrounded):
+    """Tapping `away` hands the screen to another app: at once, or only after the next read."""
+
+    def __init__(self, *, after_read: bool) -> None:
+        super().__init__(list(_AWAY_SCREEN))
+        self._after_read = after_read
+        self._leaving = False
+
+    def tap(self, sel: base.Selector) -> None:
+        super().tap(sel)
+        if self.actions[-1] == ("tap", {"id": "away"}):
+            if self._after_read:
+                self._leaving = True
+            else:
+                self.in_front = False
+
+    def query(self) -> list[base.Element]:
+        tree = super().query()
+        if self._leaving:
+            self._leaving, self.in_front = False, False
+        return tree
+
+
+class _RecordingSink(FileSink):
+    """A `FileSink` that also keeps the capture kinds each call asked for."""
+
+    def __init__(self, run_dir: Path) -> None:
+        super().__init__(run_dir)
+        self.calls: list[tuple[str, list[str]]] = []
+
+    def capture(
+        self, driver: base.Driver, step_id: str, kinds: list[str], **kwargs: object
+    ) -> list[Artifact]:
+        self.calls.append((step_id, list(kinds)))
+        return super().capture(driver, step_id, kinds, **kwargs)  # type: ignore[arg-type]
+
+
+class _LeavingDevice(_CompanionDevice):
+    def __init__(self, bundles: dict[str, str], run_dir: Path, *, after_read: bool) -> None:
+        super().__init__(bundles)
+        self._after_read = after_read
+        self.sink = _RecordingSink(run_dir)
+
+    def _lease(self, name: str, *, joinable: bool) -> Lease:
+        lease = super()._lease(name, joinable=joinable)
+        if name != "auth":
+            return lease
+        driver = _LeavesOnTap(after_read=self._after_read)
+        self.drivers[name] = driver
+        return replace(
+            lease, driver=driver, sink=self.sink, control=cast(DeviceControl, _BringsUp(driver))
+        )
+
+
+def test_a_verdict_flipped_by_the_evidence_read_fires_error_captures(tmp_path: Path) -> None:
+    # The tap passes, then the evidence read finds another app in front and fails it: the capture
+    # set is chosen again for that failure, and the other app's tree is written in no form.
+    bundles = {"app": "com.example.app", "auth": "com.example.auth"}
+    device = _LeavingDevice(bundles, tmp_path, after_read=False)
+    results = _run(
+        device,
+        bundles,
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "installs": ["auth"],
+            "capturePolicy": [{"on": {"result": "error"}, "capture": ["actionLog", "rawTree"]}],
+            "steps": [
+                {"target": "auth", "foreground": {}},
+                {"target": "auth", "tap": {"id": "away"}},
+            ],
+        },
+    )
+    assert not results[0].ok  # type: ignore[attr-defined]
+    assert "auth is not in front" in (results[0].failure or "")  # type: ignore[attr-defined]
+    kinds = [k for step_id, k in device.sink.calls if step_id.endswith("step1")][-1]
+    assert "actionLog" in kinds
+    assert "rawTree" not in kinds
+    assert "elements" not in kinds
+
+
+def test_a_guarded_step_after_its_app_left_fails_by_name(tmp_path: Path) -> None:
+    # The previous step's tree is carried over as `before`, then the guard's own read finds another
+    # app in front: the step fails by name, and the `screenChanged` comparison never re-reads.
+    bundles = {"app": "com.example.app", "auth": "com.example.auth"}
+    device = _LeavingDevice(bundles, tmp_path, after_read=True)
+    device.sink = cast(_RecordingSink, NullSink())
+    results = _run(
+        device,
+        bundles,
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "installs": ["auth"],
+            "capturePolicy": [{"on": {"event": "screenChanged"}, "capture": ["actionLog"]}],
+            "interrupts": [
+                {
+                    "target": "auth",
+                    "condition": {"exists": {"id": "popup"}},
+                    "steps": [{"tap": {"id": "dismiss"}}],
+                }
+            ],
+            "steps": [
+                {"target": "auth", "foreground": {}},
+                {"target": "auth", "tap": {"id": "away"}},
+                {"target": "auth", "assert": [{"exists": {"id": "ok"}}]},
+            ],
+        },
+    )
+    assert not results[0].ok  # type: ignore[attr-defined]
+    assert "(assert_): auth is not in front" in (results[0].failure or "")  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("extract", [False, True], ids=["plain", "with-extract"])
+def test_a_step_that_hands_the_screen_away_fails_on_its_screen_changed_read(
+    tmp_path: Path, extract: bool
+) -> None:
+    # The `screenChanged` comparison is the first read to find another app in front; it fails the
+    # step there, so a later `extract` never re-reads that screen outside the step and aborts the run.
+    bundles = {"app": "com.example.app", "auth": "com.example.auth"}
+    tap: dict[str, object] = {"target": "auth", "tap": {"id": "away"}}
+    if extract:
+        tap["extract"] = {"x": {"sel": {"id": "ok"}, "prop": "label"}}
+    results = _run(
+        _LeavingDevice(bundles, tmp_path, after_read=False),
+        bundles,
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "installs": ["auth"],
+            "capturePolicy": [{"on": {"event": "screenChanged"}, "capture": ["actionLog"]}],
+            "steps": [
+                {"target": "auth", "foreground": {}},
+                {"target": "auth", "tap": {"id": "ok"}},
+                tap,
+            ],
+        },
+    )
+    assert not results[0].ok  # type: ignore[attr-defined]
+    assert "(tap): auth is not in front" in (results[0].failure or "")  # type: ignore[attr-defined]

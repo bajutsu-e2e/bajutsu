@@ -106,6 +106,34 @@ def _with_crash_note(reason: str, signal: str) -> str:
     return f"{reason} — {note}" if reason else note
 
 
+# The step kinds that actuate the app's screen. Some of them never read it first (a `tapPoint`, a
+# coordinate `swipe`, `type` with no `into`, `back`), so on a device a group shares they would land
+# on whichever member is in front (BE-0447). A reading step (`assert`, `wait`) fails on its own read
+# instead, and a step that drives no screen (`http`, `setClipboard`, `foreground`) has nothing to aim.
+_SCREEN_ACTIONS = frozenset(
+    {
+        "tap",
+        "tap_point",
+        "double_tap",
+        "long_press",
+        "type",
+        "select",
+        "clear",
+        "delete",
+        "copy_",
+        "select_option",
+        "select_photos",
+        "set_picker_value",
+        "swipe",
+        "drag",
+        "scroll",
+        "back",
+        "pinch",
+        "rotate",
+    }
+)
+
+
 class _TargetUnavailable(Exception):
     """A step addressed a device-group member that cannot take it now (BE-0447)."""
 
@@ -129,6 +157,12 @@ class _StepRunner:
         # source, and WebView bridge. Populated by `_run_steps` right after it builds them; a
         # single-target run leaves it empty and every lookup below falls through to `self`.
         self.by_target: dict[str, _StepRunner] = {}
+
+    def _shares_device(self) -> bool:
+        """Whether this runner's target sits in a device group of two or more (BE-0447)."""
+        return bool(self.target) and any(
+            len(group) >= 2 and self.target in group for group in self.cfg.scenario.device_groups
+        )
 
     def _interrupts(self) -> list[Interrupt]:
         """The `interrupts` entries this runner polls now (BE-0447).
@@ -669,6 +703,38 @@ class _StepRunner:
         self.state.total_reads += 1
         return True
 
+    def _instant_captures(
+        self,
+        step: Step,
+        kind: str,
+        ok: bool,
+        screen_changed: bool,
+        active_driver: base.Driver,
+    ) -> list[str]:
+        """The per-step capture tokens for a step whose verdict is *ok*, ready for the sink."""
+        fired = _collect_captures(
+            self.cfg.scenario, step, kind, ok, screen_changed, self.cfg.capture
+        )
+        # Interval kinds are recorded scenario-wide (run_scenario), so only the
+        # instant kinds are captured per step here. A `web` block captures against the native
+        # `driver`, so it must read the active (web) tree here rather than let the native writer
+        # fall back to a mismatched tree (BE-0234 Unit 2).
+        instant = [t for t in fired if _kind_of(t) not in intervals.INTERVAL_KINDS]
+        if active_driver is not self.cfg.driver:
+            # A `web` block's post-step capture call always targets the native `self.cfg.driver` (a
+            # `WebContextDriver` cannot screenshot), but `write_raw_tree` would then ask that native
+            # driver for `last_raw_source()` — whatever adb/XCUITest read before this block began,
+            # an unrelated backend entirely, next to this step's *web* `elements.json`. Drop the
+            # request rather than pair the two: no artifact beats a mismatched one.
+            instant = [t for t in instant if _kind_of(t) != "rawTree"]
+        # `_handle_action` already started `screenshot.after` right after the action; re-taking it
+        # would write the same path while that shot may still be in flight (BE-0407 Unit 2), and
+        # leave a duplicate entry in the manifest. This also swallows a scenario's own request for
+        # it (a bare `screenshot`, normalized in `_collect_captures`, or a `capturePolicy` rule's
+        # `screenshot.after`) — that shutter already satisfied it, from a moment closer to the
+        # action than the post-step capture could manage.
+        return [t for t in instant if t != "screenshot.after"]
+
     # Genuinely long: the per-action dispatch on the deterministic run path. Splitting it carries
     # real behavioral risk, so it waits for a refactor of its own rather than riding a lint ceiling
     # (BE-0386).
@@ -865,6 +931,27 @@ class _StepRunner:
             else:
                 self.state.total_reads += 1
                 before_is_fresh = True
+        # A device-group member checks its app is in front before a screen action, whatever the
+        # capture and `interrupts` settings: otherwise a `tapPoint` lands on another member's screen
+        # and, under a `NullSink` that never reads afterwards, passes. One read, reused as `before`
+        # and by the guard below; a target alone on its device never pays it.
+        front_tree: list[base.Element] | None = None
+        if (
+            front_failure is None
+            and not before_is_fresh
+            and kind in _SCREEN_ACTIONS
+            and active_driver is self.cfg.driver
+            and self._shares_device()
+        ):
+            try:
+                front_tree = active_driver.query()
+            except base.AppNotInFront as exc:
+                front_failure = str(exc)
+                before = None
+            else:
+                self.state.total_reads += 1
+                if before is not None:
+                    before, before_is_fresh = front_tree, True
         # A fresh interrupt guard per step (BE-0314), so its re-entrancy cap resets each step. A
         # bare act clears any interstitial up front — reusing `before` only when it is a tree just
         # read this iteration (zero extra cost); a carried-over `prev_after` snapshot, or no tree
@@ -900,6 +987,8 @@ class _StepRunner:
             # the `screenChanged` capture decision.
             if before is not None and before_is_fresh:
                 before = guard.clear_before_act(before)
+            elif front_tree is not None:
+                guard.clear_before_act(front_tree)
             else:
                 try:
                     before_read = guard.clear_before_act(active_driver.query())
@@ -912,6 +1001,9 @@ class _StepRunner:
                     # the run.
                     if kind != "foreground":
                         front_failure = str(exc)
+                    # A carried-over `prev_after` is another moment's tree: compared against the
+                    # post-step read below, that read would raise again, outside any step.
+                    before = None
                 else:
                     self.state.total_reads += 1
                     if before is not None:
@@ -1269,7 +1361,15 @@ class _StepRunner:
                         active_driver, interp_step.extract, self.cfg.clock, initial=snapshot
                     )
             screen = _ScreenRead(active_driver, seed=snapshot, read=read)
-            screen_changed = before is not None and screen.get() != before
+            try:
+                screen_changed = before is not None and screen.get() != before
+            except base.AppNotInFront as exc:
+                # Another member holds the screen now, so it did change — and, as at the evidence
+                # read below, a step that did not send its app away on purpose fails here, before an
+                # `extract` re-reads the same screen outside any step.
+                screen_changed = True
+                if outcome.ok and kind != "background":
+                    outcome.ok, outcome.reason = False, str(exc)
 
             # An unconditional first-wait diagnostic on a `for`-wait timeout: capturePolicy may not
             # request an element dump on failure, so without this the timeout leaves no evidence to
@@ -1281,12 +1381,13 @@ class _StepRunner:
                     art = self.cfg.sink.wait_diagnostic(
                         step_id, trace=wait_trace, elements=screen.get()
                     )
-                except OSError as exc:
-                    # Best-effort evidence: a disk/permission failure writing the diagnostic must not
+                except (OSError, base.AppNotInFront) as exc:
+                    # Best-effort evidence (another device-group member in front leaves no tree of
+                    # this app's to show): a disk/permission failure writing the diagnostic must not
                     # mask the real timeout with an I/O traceback — keep the timeout as the failure and
                     # disclose the lost evidence loudly. A genuine bug (e.g. a redaction error) still
                     # surfaces rather than being swallowed here.
-                    _logger.warning("dropping wait-timeout diagnostic: write failed: %s", exc)
+                    _logger.warning("dropping wait-timeout diagnostic: %s", exc)
                 else:
                     if art is not None:
                         outcome.artifacts.append(art)
@@ -1322,28 +1423,7 @@ class _StepRunner:
             # `screenshot.before` is excluded for the mirror-image reason (BE-0341): the baseline
             # above wrote that file from the true pre-action state, so re-taking it here would
             # silently mislabel a post-action pixel as `before.png`.
-            fired = _collect_captures(
-                self.cfg.scenario, step, kind, outcome.ok, screen_changed, self.cfg.capture
-            )
-            # Interval kinds are recorded scenario-wide (run_scenario), so only the
-            # instant kinds are captured per step here. A `web` block captures against the native
-            # `driver`, so it must read the active (web) tree here rather than let the native writer
-            # fall back to a mismatched tree (BE-0234 Unit 2).
-            instant = [t for t in fired if _kind_of(t) not in intervals.INTERVAL_KINDS]
-            if active_driver is not self.cfg.driver:
-                # A `web` block's capture call below always targets the native `self.cfg.driver` (a
-                # `WebContextDriver` cannot screenshot), but `write_raw_tree` would then ask that native
-                # driver for `last_raw_source()` — whatever adb/XCUITest read before this block began,
-                # an unrelated backend entirely, next to this step's *web* `elements.json`. Drop the
-                # request rather than pair the two: no artifact beats a mismatched one.
-                instant = [t for t in instant if _kind_of(t) != "rawTree"]
-            # `screenshot.after` was already started above, right after the action; re-taking it here
-            # would write the same path while that shot may still be in flight (BE-0407 Unit 2), and
-            # leave a duplicate entry in the manifest. This also swallows a scenario's own request for
-            # it (a bare `screenshot`, normalized in `_collect_captures`, or a `capturePolicy` rule's
-            # `screenshot.after`) — the shutter above already satisfied it, from a moment closer to
-            # the action than this call could manage.
-            instant = [t for t in instant if t != "screenshot.after"]
+            instant = self._instant_captures(step, kind, outcome.ok, screen_changed, active_driver)
             # The tree read goes through `screen.get()` rather than being left to the sink's own writer
             # (`write_elements`, when `elements=None`): a read issued inside the sink is invisible to
             # `_ScreenRead`, so it is neither counted in `total_reads` nor carried into `prev_after` —
@@ -1368,9 +1448,15 @@ class _StepRunner:
                 # device group switches apps only through an explicit `foreground`. A `background`
                 # sends its app away on purpose.
                 els = None
-                instant = [t for t in instant if _kind_of(t) != "elements"]
                 if outcome.ok and kind != "background":
                     outcome.ok, outcome.reason = False, str(exc)
+                    # The captures were chosen for a passing step; choose again so an
+                    # `on: { result: error }` rule fires on the failure this read just found.
+                    instant = self._instant_captures(
+                        step, kind, False, screen_changed, active_driver
+                    )
+                # `rawTree` would persist that same other app's read, so it goes with `elements`.
+                instant = [t for t in instant if _kind_of(t) not in ("elements", "rawTree")]
             outcome.artifacts.extend(
                 self.cfg.sink.capture(
                     self.cfg.driver,

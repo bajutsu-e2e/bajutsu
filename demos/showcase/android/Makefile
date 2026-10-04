@@ -445,7 +445,7 @@ e2e-device-group: compose-build compose-previous-build views-build
 	cd $(ROOT) && $(E2E_ENV) uv run bajutsu run \
 		--scenario demos/showcase/scenarios/device_group_update.yaml \
 		--scenario demos/showcase/scenarios/device_group_companion.yaml \
-		--tag android --udid $(SERIAL) --config $(CONFIG)
+		--tag android --udid $(SERIAL) --backend android --config $(CONFIG)
 
 # The codegen output path: a scenario -> native UI Automator (Kotlin) test, compiled and run by
 # Gradle's connectedAndroidTest with no bajutsu runtime / adb driver / AI at test time (BE-0294) —
