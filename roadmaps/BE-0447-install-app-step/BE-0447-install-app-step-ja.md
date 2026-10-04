@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
-| 実装 PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)（単位 1）、[#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116)（単位 2〜7） |
+| 実装 PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)（単位 1）、[#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116)（単位 2〜7）、[#2126](https://github.com/bajutsu-e2e/bajutsu/pull/2126)（単位 8） |
 | トピック | シナリオの記述機能 |
 <!-- /BE-METADATA -->
 
@@ -408,6 +408,12 @@ flowchart TD
   実機の iPhone では、2 つ目のビルドを入れる手段がないため `deviceGroup` を外します。Android と
   同じ 2 つの制約が残ります。`.ips` のクラッシュ収集はリース自身のアプリを読み、メンバーの
   ドライバーは `nativeZ` の応答役を持ちません。
+- [#2126](https://github.com/bajutsu-e2e/bajutsu/pull/2126) — 単位 8。`docs/scenarios.md` にデバイスグループの節を
+  加えました。入れ子の `targets`、`installs`、`installApp`、`setPrimaryTarget`、`foreground` による切り替えと
+  `AppNotInFront`、後から入るメンバーの状態と退役、`run` の事前検査で拒む場合、アップデートとコンパニオンの
+  例を説明しています。トップレベルとステップの表、デバイス制御の説明、「制限」のデバイス数もあわせて
+  更新しました。`docs/dsl-grammar.md` には生成規則と §4 の制約を加え、`docs/architecture.md` では Android
+  の `foreground` を未対応の一覧から外しました。どの変更にも `docs/ja/` の日本語版があります。
 
 ## 参考
 
