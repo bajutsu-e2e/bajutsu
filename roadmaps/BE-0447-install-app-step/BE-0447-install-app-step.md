@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
-| Implementing PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) (unit 1), [#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116) (units 2–7) |
+| Implementing PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) (unit 1), [#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116) (units 2–7), [#2126](https://github.com/bajutsu-e2e/bajutsu/pull/2126) (unit 8) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -558,7 +558,7 @@ so the deterministic gate stays untouched.
 - [x] Unit 5: XCUITest environment and driver
 - [x] Unit 6: Android environment, driver, and `foreground`
 - [x] Unit 7: backend handling
-- [ ] Unit 8: documentation in both languages
+- [x] Unit 8: documentation in both languages
 - [ ] Unit 9: showcase demo, update and companion scenarios
 
 Log:
@@ -659,6 +659,13 @@ Log:
   group retargeted is pointed back at the next lease's app. A real iPhone drops `deviceGroup`,
   since nothing installs a second build there. The same two gaps as Android hold: the `.ips` crash
   sweep still reads the lease's own app, and a member's driver carries no `nativeZ` responder.
+- [#2126](https://github.com/bajutsu-e2e/bajutsu/pull/2126) — Unit 8. `docs/scenarios.md` gains a
+  device-group section: the nested `targets` form, `installs`, `installApp`, `setPrimaryTarget`,
+  `foreground` switching and `AppNotInFront`, the later-member states and retirement, the `run`
+  preflight refusals, and an update and a companion example. Its top-level and step tables, the
+  device-control prose, and the device count under "Limits" follow. `docs/dsl-grammar.md` adds the
+  productions and the §4 constraints, and `docs/architecture.md` drops Android `foreground` from the
+  unsupported list. Each change has a Japanese mirror under `docs/ja/`.
 
 ## References
 

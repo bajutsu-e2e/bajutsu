@@ -114,8 +114,9 @@ Scenario ::= {
   description?:   string,                   # オーサリング用メタデータ。run は読まない
   from?:           string,                  # 由来: record がこのシナリオを起こした元の自然言語のゴール（BE-0044）
   tags?:           list(string),            # 既定 []  — 選択（§6.4）
-  targets?:        list(string),            # 既定 []  — このシナリオが操作するすべてのターゲット（BE-0428）。各エントリは `targets.<name>` の config ユニットを指す。run は宣言された各ターゲットを起動し、そのステップを1回の決定的な実行の中で組み合わせて実行する（§4）
-  primaryTarget?:  string,                  # `target` を省略したステップとトップレベルの `expect` エントリが走る先（BE-0436）。runner がすでに主ターゲットとして扱う `targets[0]` と一致しなければならない（§4）
+  targets?:        list(string | list(string)),  # 既定 []  — このシナリオが操作するすべてのターゲット（BE-0428）。各エントリは `targets.<name>` の config ユニットを指す。run は宣言された各ターゲットを起動し、そのステップを1回の決定的な実行の中で組み合わせて実行する（§4）。2つ以上の名前を持つ内側の list は、メンバーが1台のデバイスを共有するデバイスグループ（BE-0447）
+  primaryTarget?:  string,                  # `target` を省略したステップとトップレベルの `expect` エントリが走る先（BE-0436）。runner がすでに主ターゲットとして扱う `targets` の最初の名前（最初のグループの最初のメンバー）と一致しなければならない（§4）
+  installs?:       list(string),            # 既定 []  — プライマリと並んで開始時にインストールして起動するデバイスグループのメンバー（BE-0447）。2つ以上のメンバーを持つグループのそれ以外のメンバーは後から入るメンバーで、`installApp` と `foreground` が立ち上げる（§4）
   data?:           list(map(string,string)),# インライン行  ┐ XOR
   dataFile?:       string,                  # CSV パス      ┘ （§6.3）
   preconditions?:  <Preconditions>,         # 既定 {}
@@ -181,7 +182,7 @@ StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>)
                 # `name` はダウンストリームで実際のファイルシステムパスの一部になる（run の
                 # step_id、エディタの証跡参照）。パス区切り文字、または単独の「.」「..」はロードエラー
                 # `target`: このステップが scenario.targets のどれを操作するか（BE-0428）。要否は
-                # len(scenario.targets) と scenario.primaryTarget で決まる（§4）。web ブロック内に入れ子になったステップでは
+                # len(scenario.target_names) と scenario.primaryTarget で決まる（§4）。web ブロック内に入れ子になったステップでは
                 # 拒まれる。そのステップは、囲んでいる web ステップがすでに解決したターゲットへ常に
                 # 走るため
 Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # 既定 "value"
@@ -216,7 +217,9 @@ Action    ::=
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # メールボックスをポーリング → vars.<var>
   | { generate:    <Generate> }                            # 実行時に計算した乱数または現在日時の値 → vars.<var>（BE-0377）
   | { background:       {} }                               # Home ボタン（SpringBoard 経由でバックグラウンド化。終了はしない）
-  | { foreground:       {} }                               # バックグラウンド化したアプリを前面に戻す（simctl launch、終了なし）。background の対
+  | { foreground:       {} }                               # アプリを終了させずに前面に出す。動いていないアプリは `relaunch` と同じように起動し、準備が整うまで待つ（iOS と Android、BE-0447）。background の対
+  | { installApp:       { from: string, keepData?: boolean } }  # 後から入るデバイスグループのメンバーのビルドをステップのデバイスにインストールする。keepData 既定 true（上書きでデータを保持）、false は先にアンインストール。何も起動しない（BE-0447）
+  | { setPrimaryTarget: { target: string } }               # 以降、省略した `target`（ステップ、`interrupts` エントリ、トップレベルの `expect`）を `target` に解決する。トップレベルの `steps` だけ（BE-0447）
   | { clearKeychain:    {} }                               # 保存済みパスワード / 証明書をリセット
   | { clearClipboard:   {} }                               # ペーストボードをクリア
   | { setClipboard:     { text: string } }                 # ペーストボードにテキストを書き込む（simctl pbcopy）。ペースト操作の準備用
@@ -410,11 +413,14 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Assertion.requestSequence` | **1 件以上** | `scenario/models/assertions.py` |
 | `Trigger`（`capturePolicy[].on`） | `action` / `event` / `result` の **ちょうど 1 つ**。`idMatches` は `action` と **併用時のみ** | `scenario/models/evidence.py` |
 | `Scenario` | `data` と `dataFile` は **両方不可** | `scenario/models/scenario.py` |
-| `Scenario.targets` | 同じ名前の重複不可（BE-0428） | `scenario/models/scenario/_targets.py` |
-| `Scenario.primaryTarget` | 省略するか、`targets[0]` と一致。`targets` が空なら**拒否**（BE-0436） | `scenario/models/scenario/_targets.py` |
-| `Step.target` / `Assertion.target`（`expect` のみ） | `len(targets) ≤ 1` なら省略可、または宣言済みの1つと一致。`len(targets) ≥ 2` で `primaryTarget` が未設定なら**必須**（`if`/`forEach`/`web` ラッパーも含み、末端のアクションだけではない）で、宣言済みターゲットの1つを名指し。`len(targets) ≥ 2` で `primaryTarget` を設定していれば**省略可**で、省略したものは入れ子の深さによらず主ターゲットに対して走る（BE-0436）。`web` ブロック内に入れ子になったステップと、インラインの `assert:` リスト・`if` の `condition`・`interrupts` エントリの `condition` を通して届く `Assertion` では**拒否**（BE-0428） | `scenario/models/scenario/_targets.py` |
-| `use:` / `group:` ステップの `Step.target` | `len(targets)` によらず、`primaryTarget` がなくても**省略可**で、ステップ自身は解決しない。指定した値は宣言済みターゲットを名指しする。展開は、呼び出しが生むステップのうち `target` を省略したものへその値を刻印し、異なるターゲットを名指しするステップを拒否する（BE-0446） | `scenario/models/scenario/_targets.py`、`scenario/expand.py` |
-| `Interrupt.target` と、`interrupts` エントリの `steps` にある `Step.target` | `primaryTarget` の有無にかかわらず、`len(targets)` にかかわらず**省略可**。エントリの `target` を省略するとプライマリターゲットを監視し、リカバリ用ステップの `target` を省略するとエントリ自身のターゲットで実行する(ただし、`target` を指定した `if`/`forEach` ステップの内側では、そのステップのターゲットで実行する)。指定した値は、宣言済みターゲットの名指しについて上の `Step.target` の規則に従う（BE-0438） | `scenario/models/scenario/_targets.py` |
+| `Scenario.targets` | 入れ子かどうかにかかわらず、一覧全体で同じ名前の重複不可（BE-0428）。内側の list は**2つ以上**の名前を持つ（BE-0447）。以下の `target_names` は、グループをまたいで平坦化した宣言済みの全名前（BE-0447） | `scenario/models/scenario/_targets.py` |
+| `Scenario.primaryTarget` | 省略するか、`targets` の最初の名前（最初のグループの最初のメンバー）と一致。`targets` が空なら**拒否**（BE-0436） | `scenario/models/scenario/_targets.py` |
+| `Scenario.installs` | 各エントリは宣言済みのターゲットで、重複不可。プライマリを含まない、2つ以上のメンバーを持つグループは、自分のメンバーを**1つ以上**書く（BE-0447） | `scenario/models/scenario/_targets.py` |
+| `installApp` | `from` は、ステップのデバイスを持つグループの**後から入るメンバー**（プライマリでも `installs` 記載でもない、2つ以上のメンバーを持つグループのメンバー）を指す。トップレベルの `installApp` は1つのメンバーにつき**1つまで**。`web:` / `app:` の中では**拒否**。シナリオが `setPrimaryTarget` を含むとき、デバイスを明示しない `interrupts` の復旧ステップでも**拒否**（BE-0447） | `scenario/models/scenario/_targets.py` |
+| `setPrimaryTarget` | `target` は宣言済みのターゲットを指す。**トップレベルの `steps` だけ**に書ける。`if`、`forEach`、ターゲットグループ、`web:`、`app:`、`interrupts` エントリ、`before`、`after` の中では拒否。コンポーネント内のものは、呼び出す `use:` / `group:` がトップレベルにあれば有効で、展開は呼び出し側の `target` をこのステップに刻まない（BE-0447） | `scenario/models/scenario/_targets.py`、`scenario/expand.py` |
+| `Step.target` / `Assertion.target`（`expect` のみ） | `len(target_names) ≤ 1` なら省略可、または宣言済みの1つと一致。`len(target_names) ≥ 2` で `primaryTarget` が未設定なら**必須**（`if`/`forEach`/`web` ラッパーも含み、末端のアクションだけではない）で、宣言済みターゲットの1つを名指し。`len(target_names) ≥ 2` で `primaryTarget` を設定していれば**省略可**で、省略したものは入れ子の深さによらず主ターゲットに対して走る（BE-0436）。この主ターゲットは現在のプライマリで、`setPrimaryTarget` ステップが移す（BE-0447）。`web` ブロック内に入れ子になったステップと、インラインの `assert:` リスト・`if` の `condition`・`interrupts` エントリの `condition` を通して届く `Assertion` では**拒否**（BE-0428） | `scenario/models/scenario/_targets.py` |
+| `use:` / `group:` ステップの `Step.target` | `len(target_names)` によらず、`primaryTarget` がなくても**省略可**で、ステップ自身は解決しない。指定した値は宣言済みターゲットを名指しする。展開は、呼び出しが生むステップのうち `target` を省略したものへその値を刻印し、異なるターゲットを名指しするステップを拒否する（BE-0446） | `scenario/models/scenario/_targets.py`、`scenario/expand.py` |
+| `Interrupt.target` と、`interrupts` エントリの `steps` にある `Step.target` | `primaryTarget` の有無にかかわらず、`len(target_names)` にかかわらず**省略可**。エントリの `target` を省略するとプライマリターゲットを監視し、リカバリ用ステップの `target` を省略するとエントリ自身のターゲットで実行する(ただし、`target` を指定した `if`/`forEach` ステップの内側では、そのステップのターゲットで実行する)。指定した値は、宣言済みターゲットの名指しについて上の `Step.target` の規則に従う（BE-0438） | `scenario/models/scenario/_targets.py` |
 | `targets.<name>.interrupts` の `Interrupt.target` と、その `steps` にある `Step.target` | **拒否**。エントリは、その config ブロックが設定するターゲットにすでに属している（BE-0438） | `config/schema/target_config.py` |
 | すべてのマッピング | **未知キー不可**（`extra="forbid"`） | `scenario/models/_base.py` |
 

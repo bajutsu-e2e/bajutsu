@@ -489,8 +489,9 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   runtime-permission grants (BE-0210); a device-control subset — `setLocation` and clipboard
   read/write/clear, gated by per-operation capability tokens (BE-0211 / BE-0212), the clipboard
   through an in-app receiver (`BajutsuAndroid`, BE-0233) since a shell process cannot reach the
-  clipboard on Android 10+, while `push` / `clearKeychain` / status-bar overrides / `background` /
-  `foreground` stay unsupported (no emulator equivalent); the per-scenario `permissions` field
+  clipboard on Android 10+, plus `foreground` (BE-0447), which starts the launcher activity without
+  clearing the app's state, while `push` / `clearKeychain` / status-bar overrides / `background`
+  stay unsupported (no emulator equivalent); the per-scenario `permissions` field
   (`pm grant`/`pm revoke`, BE-0276) backs the whole permission vocabulary, including `notifications`
   (`POST_NOTIFICATIONS`, API 33+) — unlike iOS's `simctl privacy`, which has no TCC (Transparency,
   Consent, and Control) service for it; `pinch`/`rotate` two-finger multi-touch
