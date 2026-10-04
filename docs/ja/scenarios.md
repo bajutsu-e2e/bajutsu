@@ -56,7 +56,9 @@ scenarios:
 | `description` | str | なし | 任意の説明文。シナリオの report カードと serve UI に表示 |
 | `from` | str | なし | **来歴（provenance）**：`record` がこのシナリオを書き起こした元の自然言語ゴール（[来歴](#from来歴)）。オーサリング用のメタデータで、`run` は読みません |
 | `tags` | list[str] | `[]` | 選択ラベル。CLI の `--tag` / `--exclude` で実行対象を絞る（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
-| `targets` | list[str] | `[]` | このシナリオが操作する [target](glossary.md#target-app-device) の一覧（[下記](#targets--target複数ターゲットシナリオbe-0428)）。各エントリは `targets.<name>` の config ユニットを指し、run が読み込む config から解決されます |
+| `targets` | list[str \| list[str]] | `[]` | このシナリオが操作する [target](glossary.md#target-app-device) の一覧（[下記](#targets--target複数ターゲットシナリオbe-0428)）。各エントリは `targets.<name>` の config ユニットを指し、run が読み込む config から解決されます。1台のデバイスを共有する2つ以上の名前の配列も書けます（[デバイスグループ](#デバイスグループ1台のデバイスで複数のアプリを動かすbe-0447)） |
+| `primaryTarget` | str | なし | `target` を省略したステップやトップレベルの `expect` エントリが動くターゲット。`targets` の最初の名前（最初のグループの最初のメンバー）と一致する必要があります（[下記](#targets--target複数ターゲットシナリオbe-0428)） |
+| `installs` | list[str] | `[]` | プライマリと並んで開始時にインストールして起動するデバイスグループのメンバー。グループのそれ以外のメンバーは、後から `installApp` ステップでインストールします（[デバイスグループ](#デバイスグループ1台のデバイスで複数のアプリを動かすbe-0447)） |
 | `data` / `dataFile` | list / str | なし | データ駆動の行。インライン `data` か `dataFile`（CSV パス）で指定する。1 行 1 run に展開し `${row.col}` を置換する。両者は排他（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
 | `preconditions` | object | `{}` | テスト前の環境準備（下記） |
 | `before` | list | `[]` | `steps` の前に**独立したフェーズ**として走るセットアップのステップ列。ここで失敗するとシナリオを打ち切る（[下記](#before--afterセットアップとティアダウンのフェーズ)） |
@@ -545,7 +547,9 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `generate` | `generate: { random\|datetime: {...}, into: { var } }` | 乱数または現在日時の値を実行時に計算し、`${vars.<var>}` に保存する（[後述](#generate実行時に計算する値)） |
 | `manual` | `manual: { label: "...", bypass?: "..." }` | `record` 中に記録される人による操作の引き取り（BE-0185）。決定的な実行時の等価物がないため、`run` 時に**明示的に失敗する**——合格を偽装しない |
 | `background` | `background: {}` | アプリをバックグラウンドへ送る（Home ボタン） |
-| `foreground` | `foreground: {}` | バックグラウンドのアプリを前面へ復帰する（`simctl launch`。settle 用の sleep なし） |
+| `foreground` | `foreground: {}` | ステップのターゲットのアプリを、終了させずに前面へ出す。動いていないアプリは、終了を除いて `relaunch` と同じように起動し、準備が整うまで待つ。iOS と Android |
+| `installApp` | `installApp: { from: <target>, keepData?: bool }` | 後から入るデバイスグループのメンバーのビルドを、ステップのデバイスにインストールする。同じ識別子の既存ビルドの上に入れる（`keepData`、デフォルト `true`）か、先にアンインストールする（`false`）。何も起動しない（[デバイスグループ](#デバイスグループ1台のデバイスで複数のアプリを動かすbe-0447)） |
+| `setPrimaryTarget` | `setPrimaryTarget: { target: <target> }` | このステップ以降、`target` を省略したステップ、`interrupts` エントリ、トップレベルの `expect` エントリを `target` で動かす。トップレベルの `steps` にだけ書ける（[デバイスグループ](#デバイスグループ1台のデバイスで複数のアプリを動かすbe-0447)） |
 | `clearKeychain` | `clearKeychain: {}` | Simulator のキーチェーンをリセットする（保存済みパスワード / 証明書） |
 | `clearClipboard` | `clearClipboard: {}` | Simulator のペーストボードをクリアする |
 | `setClipboard` | `setClipboard: { text: "..." }` | ペースト操作のため Simulator のペーストボードにテキストを投入する |
@@ -910,7 +914,7 @@ run ごとに違うのは生成された値だけで、これは `totp` の時�
 
 ```yaml
 - background: {}                                                        # Home ボタン（SpringBoard 経由でバックグラウンド化。終了はしない）
-- foreground: {}                                                        # バックグラウンドのアプリを前面へ復帰（simctl launch）
+- foreground: {}                                                        # アプリを前面に出す。動いていなければ起動する
 - clearKeychain: {}                                                     # 保存済みパスワード / 証明書をリセット
 - clearClipboard: {}                                                    # ペーストボードをクリア
 - setClipboard: { text: "COUPON123" }                                   # ペーストボードに投入（ペースト操作用）
@@ -918,7 +922,7 @@ run ごとに違うのは生成された値だけで、これは `totp` の時�
 - clearStatusBar: {}                                                    # ライブのステータスバーに戻す
 ```
 
-`setLocation` / `push` と同様、これらは `simctl` 経由で Simulator を操作するため、デバイスごとの制御チャネルが必要で、fake ドライバや並列実行ではクリーンに失敗します。`overrideStatusBar` は、スクリーンショットや `visual` アサーションの直前に時計や電波表示を固定して画像を安定させる用途に向きます。`background` / `foreground` はバックグラウンド/フォアグラウンド遷移の対で、`foreground` は settle 用の sleep を入れずに復帰するので、必要なら直後に具体的な要素を待ってください。`setClipboard` はペースト操作のためペーストボードに値を投入します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
+`setLocation` / `push` と同様、これらは `simctl` 経由で Simulator を操作するため、デバイスごとの制御チャネルが必要で、fake ドライバや並列実行ではクリーンに失敗します。`overrideStatusBar` は、スクリーンショットや `visual` アサーションの直前に時計や電波表示を固定して画像を安定させる用途に向きます。`background` / `foreground` はバックグラウンド/フォアグラウンド遷移の対です。動いているアプリは settle 用の sleep を入れずに復帰します。必要なら直後に具体的な要素を待ってください。`installApp` の直後のように動いていないアプリは、`relaunch` と同じように起動します。`foreground` はその後、終了を挟まずにアプリの準備が整うまで待ちます。`foreground` は Android でも動きます（`setClipboard` と `clearClipboard` も同様です）。この一覧のそれ以外は iOS 専用です。`setClipboard` はペースト操作のためペーストボードに値を投入します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
 
 ## `targets` / `target`（複数ターゲットシナリオ、BE-0428）
 
@@ -1109,6 +1113,199 @@ web エンジンのフラグは、run の単一の web ターゲットに対し�
 をすべて拒みます。どちらを指しているのかに答えがないためです。クロスブラウザマトリックスを複数ターゲットの
 run へ広げるのは、別の作業です。
 
+### デバイスグループ（1台のデバイスで複数のアプリを動かす、BE-0447）
+
+宣言した各ターゲットは、デフォルトではそれぞれ専用のデバイスを持ちます。しかし、1台のデバイスに2つの
+アプリが要る流れもあります。
+
+- アプリのアップデート：旧ビルドの上に新ビルドをインストールします。そのうえで、旧ビルドの書いた
+  データが残っているかを確かめます。
+- コンパニオンアプリ：テスト対象のアプリの隣で動き、コードを渡します。多要素認証（MFA）アプリが一例です。
+
+**デバイスグループ**は、このどちらも表せます。デバイスグループとは、2つ以上の名前を持つ `targets` の
+エントリのことで、そのメンバーは1台のデバイスを共有します。
+
+config は変わりません。1つのアプリの2つのビルドは、2つのターゲットになります。2つのターゲットは
+バンドル識別子（Android ではパッケージ）を共有し、それぞれ自分の `appPath` を持ちます。コンパニオン
+アプリは、独立した1つのターゲットです。
+
+```yaml
+targets:
+  showcase-previous:                      # シナリオの開始時に動かす旧ビルド
+    backend: xcuitest
+    bundleId: com.example.showcase
+    appPath: build/Showcase-1.app
+  showcase:                               # 現行ビルド
+    backend: xcuitest
+    bundleId: com.example.showcase
+    appPath: build/Showcase-2.app
+```
+
+`targets` に書いた素の名前は、メンバーが1つのグループとして扱います。配列を書かないシナリオは、
+これまでどおりに動きます。ローダーは一覧に次の3つの規則を課します。
+
+- 名前は、入れ子かどうかにかかわらず、一覧全体で一度だけ現れます。
+- 配列は2つ以上の名前を持ちます。ターゲットが1つなら素の名前で書きます。
+- `primaryTarget` は、最初のグループの最初のメンバーを指します。
+
+#### 開始時に動かすメンバー（`installs`）
+
+グループのすべてのメンバーが、開始時からデバイスに載っているとは限りません。アップデートのシナリオは
+旧ビルドで始まり、新ビルドを後に取っておきます。トップレベルの `installs` 一覧は、プライマリと並んで
+開始時に動かすメンバーを指定します。
+
+| メンバー | 開始時の扱い |
+|---|---|
+| プライマリ（最初のグループの最初のメンバー） | `appPath` をインストールして起動します。`installs` への記載は任意です |
+| メンバーが1つのグループ（素の名前） | 複数ターゲットシナリオと同じく、インストールして起動します |
+| `installs` に書いたメンバー | インストールして起動します |
+| 2つ以上のメンバーを持つグループの、それ以外のメンバー | **後から入るメンバー**です。`installApp` ステップと `foreground` ステップが立ち上げるまで、インストールも起動もしません |
+
+プライマリを含まないグループは、自分のメンバーを少なくとも1つ `installs` に書く必要があります。
+そうすれば、どのメンバーで始めるかをローダーが推測せずに済みます。
+
+デバイス全体の準備は、グループごとに一度だけ走ります。対象は消去（erase）、システムロケールの固定、
+写真の投入です。2つ目に開始するメンバーは消去を繰り返さずにインストールするので、最初のメンバーを
+消すことはありません。
+
+#### 後から入るメンバーのインストール（`installApp`）
+
+`installApp: { from: <target> }` は、後から入るメンバー `from` のビルドをインストールします。
+インストール先は、ステップ自身の `target` のデバイスです。`target` を省略したステップは、プライマリの
+デバイスにインストールします。ステップはまず、同じ識別子で動いているアプリを終了させます。その後に
+ビルドをインストールします。
+
+- `keepData: true`（デフォルト）では、既存のビルドの上にインストールします。データコンテナは残ります。
+- `keepData: false` では、先にその識別子のアプリをアンインストールします。
+
+このステップは何も起動しません。メンバーに宛てた `foreground` ステップがビルドを起動します。
+
+ローダーは、次の場合の `installApp` を拒みます。
+
+- `from` が、開始時に動かすメンバーを指しています。
+- `from` が、ステップのデバイスを持つグループとは別のグループに属しています。
+- トップレベルの2つ目の `installApp` が、同じメンバーを指しています。メンバーのインストールは
+  シナリオにつき一度です。
+- ステップが `web:` や `app:` ブロックの中にあります。ブロックはデバイスを選ばないためです。
+- ステップが `interrupts` の復旧ステップの中にあり、ステップとエントリのどちらにも
+  `target` を書いていません。この規則は、シナリオが `setPrimaryTarget` を含むときに適用されます。
+
+ループや復旧が同じ `installApp` へ二度目に到達した場合は、実行時に名前付きのエラーで失敗します。
+シナリオが指すのはターゲットであってパスではないので、ビルド成果物は config に留まります。
+
+#### デフォルトのターゲットの移動（`setPrimaryTarget`）
+
+`setPrimaryTarget: { target: <target> }` は、デフォルトのターゲットを移します。このステップ以降、
+`target` を省略したステップは、指定したターゲットで動きます。`interrupts` エントリとトップレベルの
+`expect` エントリも同じです。
+
+このステップが変えるのはルーティングだけです。デバイスの確保、証跡のディレクトリ、クラッシュからの
+復旧は、宣言したプライマリのままです。`before` と `after` のフェーズでも、省略した `target` は宣言した
+プライマリに解決します。後片付けは、run が止まった場所で走るためです。
+
+`setPrimaryTarget` を書けるのは、シナリオのトップレベルの `steps` だけです。ローダーは、次の構文の
+中にある `setPrimaryTarget` を拒みます。
+
+- `if` や `forEach`
+- ターゲットグループ、`web:`、`app:`
+- `interrupts` エントリ
+- `before` や `after`
+
+この配置の制限があるので、ローダーはステップを順にたどって現在のプライマリを追えます。コンポーネントの
+中の `setPrimaryTarget` は、そのコンポーネントを呼ぶ `use:` や `group:` がトップレベルにあれば有効です。
+展開は、呼び出し側の `target` を `setPrimaryTarget` に刻みません。
+
+#### アプリの切り替えと、退いたメンバー
+
+デバイスが前面に出せるアプリは一度に1つなので、シナリオは明示的に切り替えます。メンバーに宛てた
+`foreground` ステップは、そのメンバーのアプリを前面に出します。アプリがまだ動いていなければ、
+`foreground` はアプリを起動し、準備が整うまで待ちます。ランナーが、ステップの間で勝手にアプリを
+切り替えることはありません。
+
+1台のデバイスが2つ以上のメンバーを持つ場合、各メンバーのドライバは、まず自分のアプリが前面にあるかを
+確かめます。アプリが別のアプリの裏にあるメンバーへのステップは、`AppNotInFront` で失敗します。この
+エラーは原因を名指しし、`foreground` を案内します。ステップが別のアプリのツリーに対してセレクタを
+解決することはありません。
+
+後から入るメンバーは、3つの状態を順に進みます。状態が許していないステップをメンバーに宛てると、
+名前付きのエラーで失敗します。
+
+| 状態 | メンバーに宛てられるステップ |
+|---|---|
+| 未インストール | `installApp` と `setPrimaryTarget` |
+| インストール済み、未起動 | `foreground` と `setPrimaryTarget` |
+| 実行中 | すべてのステップ |
+
+インストールは、ビルドと識別子を共有するすべてのメンバーを退かせます。アップデートのシナリオでは、
+新ビルドが上書きインストールされた時点で、旧ビルドのメンバーが退きます。退いたメンバーに宛てた
+ステップは、名前付きのエラーで失敗し、新ビルドには届きません。コンパニオンアプリは識別子が異なるので、
+インストールしても最初のアプリの隣に2つ目のアプリが加わるだけで、どのメンバーも退きません。
+
+#### デバイスを確保する前に `run` が確かめること
+
+`run` は、デバイスを確保する前に、すべてのデバイスグループを config と照合します。拒んだ場合、
+`run` は終了コード 2 で終わります。拒むのは次の場合です。
+
+- 1つのグループのメンバーの間で、プラットフォーム、バックエンド、デバイスの経路、実効 `locale` の
+  いずれかが異なります。デバイスの経路とは `deviceProvider`、`device`、`xcuitest.deviceType` のことです。
+- 2つ以上のメンバーを持つグループに web ターゲットがあります。ブラウザには共有するデバイスがないためです。
+- 1つのグループで開始時に動かす2つのメンバーが、識別子を共有しています。2つ目のインストールが
+  1つ目を置き換えてしまいます。
+- `installApp.from` のターゲットに `appPath` がないか、その `appPath` が存在しません。Git から
+  取得する config では、プライマリと同じく必要なときにバイナリをビルドします。
+- `setPrimaryTarget` が、先行する `installApp` で退いたメンバーを指しています。
+
+デバイスプロバイダによっては、アプリをインストール済みの状態でデバイスを渡してきます。`run` は
+そうしたデバイスを予約した時点で、そのプロバイダから来たメンバーを含むグループを拒みます。バイナリを
+持っているのはプロバイダなので、手元のビルドを隣にインストールできないためです。
+
+iOS Simulator（XCUITest）と Android（adb）のバックエンドがデバイスグループに対応しています。実機の
+iPhone は対応していません。コード生成は、`installApp` と `setPrimaryTarget` をラベル付きの
+`// TODO` として出力します。
+
+#### 2つの例
+
+アップデートのシナリオは、旧ビルドで始めてデータを作ります。その上に新ビルドをインストールし、
+データが残っているかを確かめます。
+
+```yaml
+- name: notes survive the update
+  targets: [[showcase-previous, showcase]]
+  primaryTarget: showcase-previous
+  steps:
+    - tap: { id: notes.add }
+    - type: { text: hello, into: { id: notes.field } }
+    - installApp: { from: showcase }          # showcase-previous が退く
+    - setPrimaryTarget: { target: showcase }
+    - foreground: {}                          # プライマリになった showcase を起動する
+    - wait: { for: { id: notes.item }, timeout: 10 }
+  expect:
+    - exists: { id: notes.item, label: hello }   # showcase に解決する
+```
+
+コンパニオンのシナリオは、1台のデバイスでアプリと並べて認証アプリを開始します。web クライアントは
+別のデバイスを使います。
+
+```yaml
+- name: read the code in the authenticator, enter it in the app
+  targets:
+    - [showcase, authenticator]     # 2つのアプリを載せる1台のデバイス
+    - showcase-web                  # 専用のデバイス
+  primaryTarget: showcase
+  installs: [authenticator]
+  steps:
+    - target: authenticator
+      foreground: {}
+    - target: authenticator
+      tap: { id: code.show }
+      extract:
+        code: { sel: { id: code.value } }
+    - foreground: {}                # showcase に戻る
+    - type: { text: "${vars.code}", into: { id: login.otp } }
+    - target: showcase-web
+      wait: { for: { id: session.active }, timeout: 10 }
+```
+
 ### 制限
 
 `Assertion.target` は `Step.target` より狭い規則に従います。トップレベルの `expect` エントリだけが、
@@ -1119,9 +1316,10 @@ run へ広げるのは、別の作業です。
 ツリーは、エントリ自身の `target` が決めます。ローダーは、以上の3か所すべてで、読み込むときに `target` を
 拒みます。
 
-同じバックエンドの2つのターゲットは、1つのデバイスプールを共有します。シナリオは、宣言済みの各ターゲット
-のデバイスを、そのシナリオの全長にわたって保持します。1つのシナリオに iOS のターゲットが2つあれば、
-デバイスも2台必要です。`--udid a,b` の形で渡してください。プールのデバイス数がシナリオの必要数に満た
+同じバックエンドの2つのターゲットは、1つのデバイスプールを共有します。シナリオは、デバイスグループ
+ごとに1台のデバイスを、そのシナリオの全長にわたって保持します。素の名前は、メンバーが1つのグループと
+数えます。グループに入れていない iOS のターゲットが2つあれば、デバイスも2台必要です。`--udid a,b` の
+形で、グループごとに1台ずつ渡してください。プールのデバイス数がシナリオの必要数に満た
 ないとき、`run` は起動の時点で拒みます。空きが永久に出ないキューで待ち続ける代わりです。`run` は
 `--workers` も抑えます。同時に走るシナリオが互いのデバイスを奪い合わないようにするためです。
 

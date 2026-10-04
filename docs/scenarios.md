@@ -65,7 +65,9 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `description` | str | none | Optional human description; shown on the scenario's report card and in the serve UI |
 | `from` | str | none | **Provenance** — the natural-language goal `record` authored this scenario from ([provenance](#from-provenance)). Authoring metadata only; `run` ignores it |
 | `tags` | list[str] | `[]` | Selection labels; the CLI `--tag` / `--exclude` flags pick which scenarios run ([reuse, data, and tags](#reuse-data-and-tags)) |
-| `targets` | list[str] | `[]` | Every [target](glossary.md#target-app-device) this scenario drives ([below](#targets--target-multi-target-scenarios-be-0428)). Each entry names a `targets.<name>` config unit, resolved from the config the run loads |
+| `targets` | list[str \| list[str]] | `[]` | Every [target](glossary.md#target-app-device) this scenario drives ([below](#targets--target-multi-target-scenarios-be-0428)). Each entry names a `targets.<name>` config unit, resolved from the config the run loads, or is an array of two or more names that share one device ([device groups](#device-groups-several-apps-on-one-device-be-0447)) |
+| `primaryTarget` | str | none | The target a step or top-level `expect` entry runs against when it omits `target`; must be the first name in `targets`, the first member of the first group ([below](#targets--target-multi-target-scenarios-be-0428)) |
+| `installs` | list[str] | `[]` | The device-group members that install and launch at the start beside the primary; every other member of a group installs later through an `installApp` step ([device groups](#device-groups-several-apps-on-one-device-be-0447)) |
 | `data` / `dataFile` | list / str | none | Data-driven rows — inline `data`, or `dataFile` (a CSV path). Expands into one run per row, substituting `${row.col}`. Mutually exclusive ([reuse, data, and tags](#reuse-data-and-tags)) |
 | `preconditions` | object | `{}` | Per-test environment setup (below) |
 | `before` | list | `[]` | Setup steps run as their **own phase** ahead of `steps`; a failure there aborts the scenario ([below](#before--after-setup-and-teardown-phases)) |
@@ -800,7 +802,9 @@ actions in one step is a validation error (`scenario/models/steps.py` `_one_acti
 | `generate` | `generate: { random\|datetime: {...}, into: { var } }` | compute a random or current-datetime value at run time into `${vars.<var>}` ([below](#generate-a-value-computed-at-run-time)) |
 | `manual` | `manual: { label: "...", bypass?: "..." }` | a human takeover recorded during `record` (BE-0185); has no deterministic run-time equivalent, so it **fails loudly** at `run` time — never a silent pass |
 | `background` | `background: {}` | send the app to the background (Home button) |
-| `foreground` | `foreground: {}` | resume a backgrounded app (`simctl launch`, no settle sleep) |
+| `foreground` | `foreground: {}` | bring the step's target app to the front without terminating it; an app that is not running launches the way `relaunch` would, minus the terminate, then waits until ready. iOS and Android |
+| `installApp` | `installApp: { from: <target>, keepData?: bool }` | install a later device-group member's build onto the step's device, over an existing build of the same identifier (`keepData`, default `true`) or after uninstalling it (`false`); launches nothing ([device groups](#device-groups-several-apps-on-one-device-be-0447)) |
+| `setPrimaryTarget` | `setPrimaryTarget: { target: <target> }` | from this step on, a step, `interrupts` entry, or top-level `expect` entry that omits `target` runs on `target`; top-level `steps` only ([device groups](#device-groups-several-apps-on-one-device-be-0447)) |
 | `clearKeychain` | `clearKeychain: {}` | reset the Simulator keychain (saved passwords / certificates) |
 | `clearClipboard` | `clearClipboard: {}` | clear the Simulator pasteboard |
 | `setClipboard` | `setClipboard: { text: "..." }` | seed the Simulator pasteboard for a paste flow |
@@ -1322,7 +1326,7 @@ the `manual` step with the deterministic action — is the author's path to a re
 
 ```yaml
 - background: {}                                                        # Home button (backgrounds via SpringBoard, no terminate)
-- foreground: {}                                                        # resume the backgrounded app (simctl launch)
+- foreground: {}                                                        # bring the app to the front, launching it if it is not running
 - clearKeychain: {}                                                     # reset saved passwords / certificates
 - clearClipboard: {}                                                    # clear the pasteboard
 - setClipboard: { text: "COUPON123" }                                   # seed the pasteboard (paste flows)
@@ -1333,8 +1337,12 @@ the `manual` step with the deterministic action — is the author's path to a re
 Like `setLocation` / `push`, these drive the Simulator via `simctl`, so they need a per-device control
 channel and fail cleanly on the fake driver / in parallel runs. `overrideStatusBar` is most useful right
 before a screenshot or a `visual` assertion, to freeze the clock and signal bars for a stable image.
-`background` / `foreground` are the two halves of a background/foreground transition; `foreground`
-resumes the app without any settle sleep, so wait for a concrete element afterward if you need one.
+`background` / `foreground` are the two halves of a background/foreground transition. A running app
+resumes without any settle sleep. Wait for a concrete element afterward when a step needs one.
+An app that is not running, as after an `installApp`, launches the way `relaunch` would launch it.
+`foreground` then waits until the app is ready, and terminates nothing first.
+`foreground` also runs on Android, as do `setClipboard` and `clearClipboard`. Every other step in this list
+runs on iOS alone.
 `setClipboard` seeds the pasteboard for a paste flow ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 
 ## `targets` / `target` (multi-target scenarios, BE-0428)
@@ -1514,6 +1522,194 @@ The web engine flags still apply to a run's single web target. Those flags are `
 of the two they mean has no answer. Extending the matrix across a multi-target run is separate
 work.
 
+### Device groups: several apps on one device (BE-0447)
+
+Each declared target holds a device of its own by default. Some journeys need two apps on one
+device instead:
+
+- An app update installs a new build over an old one. The scenario then checks that the old data
+  survived.
+- A companion app runs beside the app under test and hands it a code. A multi-factor authentication
+  (MFA) app is one example.
+
+A **device group** expresses both. A device group is an entry of `targets` that holds two or more
+names. Its members share one device.
+
+The config does not change. Two builds of one app become two targets. They share a bundle identifier
+or an Android package, and each has its own `appPath`. A companion app is a target of its own:
+
+```yaml
+targets:
+  showcase-previous:                      # the old build the scenario starts on
+    backend: xcuitest
+    bundleId: com.example.showcase
+    appPath: build/Showcase-1.app
+  showcase:                               # the current build
+    backend: xcuitest
+    bundleId: com.example.showcase
+    appPath: build/Showcase-2.app
+```
+
+A bare name in `targets` stays a group of one. A scenario that writes no array runs as before. The
+loader enforces three rules on the list:
+
+- A name appears once across the whole list, nested or not.
+- An array holds two or more names. Write a single target as a bare name.
+- `primaryTarget` names the first member of the first group.
+
+#### Which members start: `installs`
+
+Not every member of a group belongs on the device at the start. An update scenario starts on the old
+build and holds the new one back. The top-level `installs` list names the members that start beside
+the primary:
+
+| Member | At the start |
+|---|---|
+| The primary (the first member of the first group) | Installs its `appPath` and launches. Listing it in `installs` is optional |
+| A group of one (a bare name) | Installs and launches, as in any multi-target scenario |
+| A member listed in `installs` | Installs and launches |
+| Any other member of a group of two or more | A **later member**: nothing installs or launches until an `installApp` step and a `foreground` step bring it up |
+
+A group outside the primary's must list at least one of its members in `installs`. The loader then
+never guesses which member starts.
+
+Device-wide preparation runs once per group. That covers the erase, the system-locale pin, and the
+seeded photos. A second starting member installs without repeating the erase, so it never wipes the
+first.
+
+#### Installing a later member: `installApp`
+
+`installApp: { from: <target> }` installs the build of the later member `from`. The build lands on
+the device of the step's own `target`. A step that omits `target` installs on the primary's device. The step
+first terminates any running app with the same identifier. Then the build installs:
+
+- With `keepData: true`, the default, it installs over the existing build. The data container
+  survives.
+- With `keepData: false`, the step uninstalls the identifier first.
+
+The step launches nothing. A `foreground` step addressed to the member launches the build.
+
+The loader refuses an `installApp` in these cases:
+
+- `from` names a starting member.
+- `from` belongs to a group other than the one holding the step's device.
+- A second top-level `installApp` names the same member. A member installs once per scenario.
+- The step sits inside a `web:` or `app:` block, which never picks a device.
+- The step sits in an `interrupts` recovery and names no `target`, on the step or on its entry. This
+  case applies once the scenario contains a `setPrimaryTarget`.
+
+A loop or a recovery that reaches an `installApp` a second time fails at run time by name. The
+scenario names a target, never a path, so the build artifact stays in config.
+
+#### Moving the default target: `setPrimaryTarget`
+
+`setPrimaryTarget: { target: <target> }` moves the default target. From that step on, a step that
+omits `target` runs on the named target. The same holds for an `interrupts` entry and a top-level
+`expect` entry.
+
+The step changes routing and nothing else. Leasing, the evidence directories, and crash recovery stay
+with the declared primary. In the `before` and `after` phases, an omitted `target` still resolves
+to the declared primary. Teardown runs wherever the run stopped.
+
+`setPrimaryTarget` belongs among a scenario's top-level `steps` alone. The loader refuses it inside
+these constructs:
+
+- `if` or `forEach`
+- a target group, `web:`, or `app:`
+- an `interrupts` entry
+- `before` or `after`
+
+That placement lets the loader follow the current primary through the steps in order. A component
+may contain a `setPrimaryTarget` when its `use:` or `group:` call is a top-level step. Expansion never
+stamps a caller's `target` onto it.
+
+#### Switching between apps, and retired members
+
+A device shows one app at a time, so the scenario switches explicitly. A `foreground` step addressed
+to a member brings that member's app to the front. When the app is not running yet, `foreground`
+launches the app and waits until the app is ready. The runner never switches apps on its own between steps.
+
+A device can hold two or more members. Each member's driver then checks that its own app is in
+front. A step for a member whose app sits behind another fails with `AppNotInFront`. That error names
+the cause and points at `foreground`. The step never resolves a selector against another app's tree.
+
+A later member moves through three states. A step addressed to it fails by name unless the state
+allows that step:
+
+| State | Steps that may address the member |
+|---|---|
+| Not installed | `installApp` and `setPrimaryTarget` |
+| Installed, not launched | `foreground` and `setPrimaryTarget` |
+| Running | Any step |
+
+An install retires every member that shares the build's identifier. In an update scenario, the old
+build's member retires when the new build installs over it. A step addressed to a retired member
+fails by name and never reaches the new build. A companion app has another identifier. Its install
+adds a second app beside the first and retires nothing.
+
+#### What `run` checks before leasing a device
+
+`run` checks every device group against the config before it acquires any device. On a refusal,
+`run` exits with status 2. The check refuses these cases:
+
+- Members of one group differ in platform, backend, device route, or effective `locale`. The device route is
+  `deviceProvider`, `device`, and `xcuitest.deviceType`.
+- A web target sits in a group of two or more, since a browser has no device to share.
+- Two starting members of one group share an identifier. The second install would replace the first.
+- An `installApp.from` target has no `appPath`, or its `appPath` does not exist. A Git-sourced config
+  builds the binary on demand, as it does for the primary.
+- A `setPrimaryTarget` names a member that an earlier `installApp` retired.
+
+Some device providers hand a device over with the app preinstalled. Once it reserves such a device,
+`run` refuses a group whose member comes from that provider. The provider holds the binary, so no
+local build can install beside it.
+
+The iOS Simulator (XCUITest) and Android (adb) backends support device groups. A physical iPhone
+does not. Code generation emits a labeled `// TODO` for `installApp` and `setPrimaryTarget`.
+
+#### Two examples
+
+An update scenario starts on the old build and creates data. It installs the new build over the old
+one and checks that the data survived:
+
+```yaml
+- name: notes survive the update
+  targets: [[showcase-previous, showcase]]
+  primaryTarget: showcase-previous
+  steps:
+    - tap: { id: notes.add }
+    - type: { text: hello, into: { id: notes.field } }
+    - installApp: { from: showcase }          # retires showcase-previous
+    - setPrimaryTarget: { target: showcase }
+    - foreground: {}                          # launches showcase, the primary now
+    - wait: { for: { id: notes.item }, timeout: 10 }
+  expect:
+    - exists: { id: notes.item, label: hello }   # resolves to showcase
+```
+
+A companion scenario starts the authenticator beside the app on one device. A web client keeps a
+device of its own:
+
+```yaml
+- name: read the code in the authenticator, enter it in the app
+  targets:
+    - [showcase, authenticator]     # one device holding both apps
+    - showcase-web                  # a device of its own
+  primaryTarget: showcase
+  installs: [authenticator]
+  steps:
+    - target: authenticator
+      foreground: {}
+    - target: authenticator
+      tap: { id: code.show }
+      extract:
+        code: { sel: { id: code.value } }
+    - foreground: {}                # back to showcase
+    - type: { text: "${vars.code}", into: { id: login.otp } }
+    - target: showcase-web
+      wait: { for: { id: session.active }, timeout: 10 }
+```
+
 ### Limits
 
 `Assertion.target` follows a narrower rule than `Step.target`. A top-level `expect` entry is the sole
@@ -1523,11 +1719,11 @@ it in both cases. Setting `target` there would restate that value, or contradict
 loader refuses an `interrupts` entry's `condition` the same way. The entry's own `target` fixes the
 tree that `condition` polls. The loader refuses `target` in all three places at load time.
 
-Two targets on the same backend share one device pool. A scenario holds every declared target's
-device for its whole length. Two iOS targets in one scenario thus need two devices: pass them with
-`--udid a,b`. `run` refuses the invocation up front when a pool has fewer devices than a scenario
-needs. Blocking on a queue that will never free one would be the alternative. `run` also caps
-`--workers`, keeping concurrent scenarios from starving each other the same way.
+Two targets on the same backend share one device pool. A scenario holds one device per device group
+for its whole length. A bare name counts as a group of one. Two ungrouped iOS targets thus need
+two devices: pass them with `--udid a,b`, one device per group. `run` refuses the invocation up
+front when a pool has fewer devices than a scenario needs. Blocking on a queue that will never free
+one would be the alternative. `run` also caps `--workers`, keeping concurrent scenarios from starving each other the same way.
 
 ### What the report shows
 
