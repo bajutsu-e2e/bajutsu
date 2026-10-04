@@ -798,3 +798,43 @@ def test_a_background_keeps_its_verdict_under_a_screen_changed_policy(
         },
     )
     assert results[0].ok, results[0].failure  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {"capturePolicy": [{"on": {"event": "screenChanged"}, "capture": ["actionLog"]}]},
+        {
+            "interrupts": [
+                {
+                    "target": "auth",
+                    "condition": {"exists": {"id": "popup"}},
+                    "steps": [{"tap": {"id": "dismiss"}}],
+                }
+            ]
+        },
+    ],
+)
+def test_a_tap_point_on_a_member_in_front_reuses_its_pre_act_read(
+    tmp_path: Path, policy: dict[str, object]
+) -> None:
+    # Once the member is in front, the pre-act read succeeds and serves as the `screenChanged`
+    # baseline or the guard's tree, so the action runs on its own app.
+    bundles = {"app": "com.example.app", "auth": "com.example.auth"}
+    device = _CompanionDevice(bundles, tmp_path)
+    results = _run(
+        device,
+        bundles,
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "installs": ["auth"],
+            **policy,
+            "steps": [
+                {"target": "auth", "foreground": {}},
+                {"target": "auth", "tapPoint": {"x": 0.5, "y": 0.5}},
+            ],
+        },
+    )
+    assert results[0].ok, results[0].failure  # type: ignore[attr-defined]
+    assert any(a[0] == "tap_point" for a in device.drivers["auth"].actions)

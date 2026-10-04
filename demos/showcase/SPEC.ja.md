@@ -331,7 +331,7 @@ associated domain の仕掛けも要ります。無ければ iOS は何も申し
 この画面を実装しているのは `showcase-swiftui` と `showcase-compose`、およびそれぞれの旧ビルドだけです。
 旧ビルドは bundle id（Android では package）が現行ビルドと同じで、ソースも共通です。iOS の旧ビルドは
 `SHOWCASE_PREVIOUS` を定義した `BajutsuShowcaseSwiftUIPrevious` です。Android の旧ビルドは Compose の
-`previous` フレーバーです。このフラグが変えるのは `saved.build` の値だけです。
+`previous` フレーバーです。どちらも、現行ビルドとの違いが変えるのは `saved.build` の値だけです。
 [`device_group_update.yaml`](scenarios/device_group_update.yaml) は旧ビルドで起動してメモを保存し、
 現行ビルドを上書きインストールしてから、メモを読み戻します。
 

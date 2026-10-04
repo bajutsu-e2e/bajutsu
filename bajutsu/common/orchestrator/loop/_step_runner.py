@@ -106,9 +106,8 @@ def _with_crash_note(reason: str, signal: str) -> str:
     return f"{reason} — {note}" if reason else note
 
 
-# The step kinds that actuate the app's screen. Some of them never read it first (a `tapPoint`, a
-# coordinate `swipe`, `type` with no `into`, `back`), so on a device a group shares they would land
-# on whichever member is in front (BE-0447). A reading step (`assert`, `wait`) fails on its own read
+# The step kinds that actuate the app's screen, so one that passed while another device-group member
+# took the screen handed it away (BE-0447). A reading step (`assert`, `wait`) fails on its own read
 # instead, and a step that drives no screen (`http`, `setClipboard`, `foreground`) has nothing to aim.
 _SCREEN_ACTIONS = frozenset(
     {
@@ -132,6 +131,14 @@ _SCREEN_ACTIONS = frozenset(
         "rotate",
     }
 )
+
+# The screen actions that resolve no selector before they act — a `tapPoint`, a coordinate `swipe`,
+# `type` with no `into`, `back`, `copy` — so on a device a group shares they would land on whichever
+# member is in front (BE-0447). Every other screen action resolves a required selector through a read
+# that raises `AppNotInFront`, a `SelectorError` the step body already turns into a named failure
+# before anything actuates. `swipe` and `type` stay whole: their selector-free forms are not
+# distinguishable by kind alone.
+_UNRESOLVED_ACTIONS = frozenset({"tap_point", "type", "copy_", "swipe", "back"})
 
 
 class _TargetUnavailable(Exception):
@@ -932,15 +939,16 @@ class _StepRunner:
             else:
                 self.state.total_reads += 1
                 before_is_fresh = True
-        # A device-group member checks its app is in front before a screen action, whatever the
-        # capture and `interrupts` settings: otherwise a `tapPoint` lands on another member's screen
-        # and, under a `NullSink` that never reads afterwards, passes. One read, reused as `before`
-        # and by the guard below; a target alone on its device never pays it.
+        # A device-group member checks its app is in front before an action that resolves nothing,
+        # whatever the capture and `interrupts` settings: otherwise a `tapPoint` lands on another
+        # member's screen and, under a `NullSink` that never reads afterwards, passes. The read
+        # doubles as `before` and the guard's tree when a `screenChanged` policy or `interrupts`
+        # wants one; a target alone on its device never pays it.
         front_tree: list[base.Element] | None = None
         if (
             front_failure is None
             and not before_is_fresh
-            and kind in _SCREEN_ACTIONS
+            and kind in _UNRESOLVED_ACTIONS
             and active_driver is self.cfg.driver
             and self._shares_device()
         ):
@@ -996,10 +1004,10 @@ class _StepRunner:
                 except base.AppNotInFront:
                     # Another device-group member holds the screen (BE-0447) — or, on Android, a
                     # system dialog the front check cannot attribute to this app — so there is
-                    # nothing of this app's to clear. A screen action never gets here: the pre-act
-                    # read above already failed it. A step that reads fails on its own read, and one
-                    # that drives no screen (`foreground`, `background`) proceeds, so the verdict
-                    # never hangs on whether a target declares `interrupts`.
+                    # nothing of this app's to clear. An action that resolves nothing never gets
+                    # here: the pre-act read above already failed it. Any other step fails on its own
+                    # read or resolve, and one that drives no screen (`foreground`, `background`)
+                    # proceeds, so the verdict never hangs on whether a target declares `interrupts`.
                     # A carried-over `prev_after` is another moment's tree: compared against the
                     # post-step read below, that read would raise again, outside any step.
                     before = None
