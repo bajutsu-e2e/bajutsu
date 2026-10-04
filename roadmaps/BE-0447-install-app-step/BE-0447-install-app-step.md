@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
-| Implementing PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) (unit 1), [#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116) (units 2–7), [#2126](https://github.com/bajutsu-e2e/bajutsu/pull/2126) (unit 8) |
+| Implementing PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) (unit 1), [#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116) (units 2–7), [#2126](https://github.com/bajutsu-e2e/bajutsu/pull/2126) (unit 8), [#2127](https://github.com/bajutsu-e2e/bajutsu/pull/2127) (unit 9) |
 | Topic | Scenario authoring features |
 <!-- /BE-METADATA -->
 
@@ -666,7 +666,7 @@ Log:
   device-control prose, and the device count under "Limits" follow. `docs/dsl-grammar.md` adds the
   productions and the §4 constraints, and `docs/architecture.md` drops Android `foreground` from the
   unsupported list. Each change has a Japanese mirror under `docs/ja/`.
-- Unit 9. The showcase demo runs both journeys on iOS and Android. A previous build of the SwiftUI
+- [#2127](https://github.com/bajutsu-e2e/bajutsu/pull/2127) — Unit 9. The showcase demo runs both journeys on iOS and Android. A previous build of the SwiftUI
   app (an XcodeGen target with `SHOWCASE_PREVIOUS`) and of the Compose app (a `previous` flavor)
   keeps the bundle id or package, and each is a target of its own. A `SHOWCASE_SAVED_NOTE` screen,
   on SwiftUI and Compose only, is the one place a note survives the process.

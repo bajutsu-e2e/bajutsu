@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
-| 実装 PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)（単位 1）、[#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116)（単位 2〜7）、[#2126](https://github.com/bajutsu-e2e/bajutsu/pull/2126)（単位 8） |
+| 実装 PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)（単位 1）、[#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116)（単位 2〜7）、[#2126](https://github.com/bajutsu-e2e/bajutsu/pull/2126)（単位 8）、[#2127](https://github.com/bajutsu-e2e/bajutsu/pull/2127)（単位 9） |
 | トピック | シナリオの記述機能 |
 <!-- /BE-METADATA -->
 
@@ -414,7 +414,7 @@ flowchart TD
   例を説明しています。トップレベルとステップの表、デバイス制御の説明、「制限」のデバイス数もあわせて
   更新しました。`docs/dsl-grammar.md` には生成規則と §4 の制約を加え、`docs/architecture.md` では Android
   の `foreground` を未対応の一覧から外しました。どの変更にも `docs/ja/` の日本語版があります。
-- 単位 9。showcase のデモで、2 つの流れを iOS と Android の両方で実行します。SwiftUI アプリの旧ビルド
+- [#2127](https://github.com/bajutsu-e2e/bajutsu/pull/2127) — 単位 9。showcase のデモで、2 つの流れを iOS と Android の両方で実行します。SwiftUI アプリの旧ビルド
   は、`SHOWCASE_PREVIOUS` を定義した XcodeGen ターゲットです。Compose アプリの旧ビルドは `previous`
   フレーバーです。どちらも bundle id やパッケージ名を現行ビルドと共有し、それぞれ独立したターゲットです。
   `SHOWCASE_SAVED_NOTE` で開く画面は SwiftUI と Compose だけにあり、プロセスが終わってもメモが残る
