@@ -715,3 +715,25 @@ def test_a_step_that_hands_the_screen_away_fails_on_its_screen_changed_read(
     )
     assert not results[0].ok  # type: ignore[attr-defined]
     assert "(tap): auth is not in front" in (results[0].failure or "")  # type: ignore[attr-defined]
+
+
+def test_a_step_that_drives_no_screen_keeps_its_verdict_on_a_backgrounded_member(
+    tmp_path: Path,
+) -> None:
+    # The evidence read still finds another app in front, but a step that aims at no screen lost
+    # only a tree it never needed: it keeps its verdict, and no other app's tree is written.
+    bundles = {"app": "com.example.app", "auth": "com.example.auth"}
+    results = _run(
+        _CompanionDevice(bundles, tmp_path),
+        bundles,
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "installs": ["auth"],
+            "steps": [
+                {"target": "auth", "sleep": {"seconds": 0.01, "reason": "aims at no screen"}}
+            ],
+        },
+    )
+    assert results[0].ok, results[0].failure  # type: ignore[attr-defined]
+    assert not list((tmp_path / "auth").rglob("elements.json"))

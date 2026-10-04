@@ -1364,11 +1364,12 @@ class _StepRunner:
             try:
                 screen_changed = before is not None and screen.get() != before
             except base.AppNotInFront as exc:
-                # Another member holds the screen now, so it did change — and, as at the evidence
-                # read below, a step that did not send its app away on purpose fails here, before an
-                # `extract` re-reads the same screen outside any step.
+                # Another member holds the screen now, so it did change. As at the evidence read
+                # below, a step that acted on the screen fails here; so does one with an `extract`,
+                # which would otherwise re-read this same screen outside any step. A step that
+                # drives no screen (`http`, `background`) only lost a tree it never needed.
                 screen_changed = True
-                if outcome.ok and kind != "background":
+                if outcome.ok and (kind in _SCREEN_ACTIONS or interp_step.extract):
                     outcome.ok, outcome.reason = False, str(exc)
 
             # An unconditional first-wait diagnostic on a `for`-wait timeout: capturePolicy may not
@@ -1442,13 +1443,12 @@ class _StepRunner:
                 )
             except base.AppNotInFront as exc:
                 # This app is no longer in front: another device-group member holds the screen
-                # (BE-0447), so its tree is not this step's and the screenshot stands alone. A step
-                # that passed fails here: either it acted without reading its own screen (a
-                # `tapPoint` on the other app's), or it handed the screen to another app, and a
-                # device group switches apps only through an explicit `foreground`. A `background`
-                # sends its app away on purpose.
+                # (BE-0447), so its tree is not this step's and the screenshot stands alone. A
+                # screen action that passed fails here: it handed the screen to another app, and a
+                # device group switches apps only through an explicit `foreground`. A step that
+                # drives no screen (`http`, `setClipboard`, `background`) keeps its verdict.
                 els = None
-                if outcome.ok and kind != "background":
+                if outcome.ok and kind in _SCREEN_ACTIONS:
                     outcome.ok, outcome.reason = False, str(exc)
                     # The captures were chosen for a passing step; choose again so an
                     # `on: { result: error }` rule fires on the failure this read just found.
