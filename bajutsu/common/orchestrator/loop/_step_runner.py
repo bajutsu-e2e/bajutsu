@@ -923,9 +923,10 @@ class _StepRunner:
             try:
                 before = active_driver.query()
             except base.AppNotInFront as exc:
-                # The app a `foreground` is about to bring up has no screen yet (BE-0447); any
-                # other step fails by name without acting, as at the guard's read below.
-                if kind != "foreground":
+                # Another member holds the screen (BE-0447). A screen action fails by name without
+                # acting, as at the guard's read below; a step that reads fails on its own read, and
+                # one that drives no screen (`foreground`, `background`, `http`) has nothing to aim.
+                if kind in _SCREEN_ACTIONS:
                     front_failure = str(exc)
                 before = None
             else:
@@ -994,12 +995,14 @@ class _StepRunner:
                     before_read = guard.clear_before_act(active_driver.query())
                 except base.AppNotInFront as exc:
                     # Another device-group member holds the screen (BE-0447) — or, on Android, a
-                    # system dialog the front check cannot attribute to this app. A `foreground` is
-                    # the step that brings this app up, so its guard has nothing to clear yet. Any
-                    # other step fails here by name: not every action reads before it acts (a
-                    # `tapPoint` would land on the other app's screen), and an escape would abort
-                    # the run.
-                    if kind != "foreground":
+                    # system dialog the front check cannot attribute to this app — so there is
+                    # nothing of this app's to clear. A screen action fails here by name: not every
+                    # action reads before it acts (a `tapPoint` would land on the other app's
+                    # screen), and an escape would abort the run. A step that reads fails on its own
+                    # read; one that drives no screen (`foreground`, `background`) proceeds, the
+                    # same rule the post-step reads apply, so the verdict never hangs on whether a
+                    # target declares `interrupts`.
+                    if kind in _SCREEN_ACTIONS:
                         front_failure = str(exc)
                     # A carried-over `prev_after` is another moment's tree: compared against the
                     # post-step read below, that read would raise again, outside any step.

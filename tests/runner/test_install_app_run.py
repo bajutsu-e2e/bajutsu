@@ -737,3 +737,37 @@ def test_a_step_that_drives_no_screen_keeps_its_verdict_on_a_backgrounded_member
     )
     assert results[0].ok, results[0].failure  # type: ignore[attr-defined]
     assert not list((tmp_path / "auth").rglob("elements.json"))
+
+
+def test_a_background_to_a_member_already_behind_passes_whatever_its_interrupts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A `background` drives no screen, so a pre-act read that finds another member in front does not
+    # fail it — the same rule the post-step reads apply, so a target's `interrupts` (the ANR guard
+    # every Android showcase target declares) cannot flip the verdict.
+    def caps(actuator: str, eff: Effective, udid: str = "booted") -> frozenset[str]:
+        return backends.capabilities_for_run(actuator, eff, udid) | {
+            base.Capability.DC_FOREGROUND,
+            base.Capability.DC_BACKGROUND,
+        }
+
+    monkeypatch.setattr("bajutsu.common.runner.pipeline.capabilities_for_run", caps)
+    bundles = {"app": "com.example.app", "auth": "com.example.auth"}
+    results = _run(
+        _HomingDevice(bundles, tmp_path),
+        bundles,
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "installs": ["auth"],
+            "interrupts": [
+                {
+                    "target": "auth",
+                    "condition": {"exists": {"id": "popup"}},
+                    "steps": [{"tap": {"id": "dismiss"}}],
+                }
+            ],
+            "steps": [{"target": "auth", "background": {}}],
+        },
+    )
+    assert results[0].ok, results[0].failure  # type: ignore[attr-defined]
