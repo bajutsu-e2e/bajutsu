@@ -771,3 +771,30 @@ def test_a_background_to_a_member_already_behind_passes_whatever_its_interrupts(
         },
     )
     assert results[0].ok, results[0].failure  # type: ignore[attr-defined]
+
+
+def test_a_background_keeps_its_verdict_under_a_screen_changed_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The `screenChanged` comparison after a `background` finds another app in front: the screen
+    # did change, and the step that sent its app away on purpose still passes.
+    def caps(actuator: str, eff: Effective, udid: str = "booted") -> frozenset[str]:
+        return backends.capabilities_for_run(actuator, eff, udid) | {
+            base.Capability.DC_FOREGROUND,
+            base.Capability.DC_BACKGROUND,
+        }
+
+    monkeypatch.setattr("bajutsu.common.runner.pipeline.capabilities_for_run", caps)
+    bundles = {"app": "com.example.app", "auth": "com.example.auth"}
+    results = _run(
+        _HomingDevice(bundles, tmp_path),
+        bundles,
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "installs": ["auth"],
+            "capturePolicy": [{"on": {"event": "screenChanged"}, "capture": ["actionLog"]}],
+            "steps": [{"target": "auth", "foreground": {}}, {"target": "auth", "background": {}}],
+        },
+    )
+    assert results[0].ok, results[0].failure  # type: ignore[attr-defined]

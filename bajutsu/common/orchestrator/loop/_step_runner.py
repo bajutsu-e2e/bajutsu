@@ -993,17 +993,13 @@ class _StepRunner:
             else:
                 try:
                     before_read = guard.clear_before_act(active_driver.query())
-                except base.AppNotInFront as exc:
+                except base.AppNotInFront:
                     # Another device-group member holds the screen (BE-0447) — or, on Android, a
                     # system dialog the front check cannot attribute to this app — so there is
-                    # nothing of this app's to clear. A screen action fails here by name: not every
-                    # action reads before it acts (a `tapPoint` would land on the other app's
-                    # screen), and an escape would abort the run. A step that reads fails on its own
-                    # read; one that drives no screen (`foreground`, `background`) proceeds, the
-                    # same rule the post-step reads apply, so the verdict never hangs on whether a
-                    # target declares `interrupts`.
-                    if kind in _SCREEN_ACTIONS:
-                        front_failure = str(exc)
+                    # nothing of this app's to clear. A screen action never gets here: the pre-act
+                    # read above already failed it. A step that reads fails on its own read, and one
+                    # that drives no screen (`foreground`, `background`) proceeds, so the verdict
+                    # never hangs on whether a target declares `interrupts`.
                     # A carried-over `prev_after` is another moment's tree: compared against the
                     # post-step read below, that read would raise again, outside any step.
                     before = None
