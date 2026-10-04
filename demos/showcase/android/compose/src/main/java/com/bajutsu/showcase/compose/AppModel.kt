@@ -48,6 +48,11 @@ class AppModel(env: Map<String, String>) {
     // the `logcat` crash buffer and `ApplicationExitInfo` really carry what the capture reads.
     val crashMode: Boolean = env["SHOWCASE_CRASH"] != null
 
+    // Saved-note mode (BE-0447): gated on the SHOWCASE_SAVED_NOTE launch env, mirroring the iOS
+    // AppModel. When set, RootScreen swaps the whole five-tab UI for the one screen whose note persists
+    // across launches and installs — the update scenario's fixture.
+    val savedNoteMode: Boolean = env["SHOWCASE_SAVED_NOTE"] != null
+
     // Driver-conformance mode (BE-0114 / BE-0270): a test-only affordance gated on the
     // SHOWCASE_CONFORMANCE launch env, mirroring the iOS AppModel. null (env absent) = the normal
     // observe-only app (BE-0079, untouched); non-null = render exactly these identifiers (duplicates

@@ -107,6 +107,7 @@ Compose の testTag はドット区切り id をそのまま再現するので�
 | `SHOWCASE_API_URL` | カタログ GET（`/horses`）の base URL | `https://example.com` |
 | `SHOWCASE_HTTP_BASE` | エコー用 POST/DELETE エンドポイントの base | `https://httpbin.org` |
 | `SHOWCASE_BROWSER_URL` | アプリ内ブラウザが開くページ（§5.4） | `https://example.com` |
+| `SHOWCASE_SAVED_NOTE` | タブ UI を永続化される保存メモ画面に差し替える（§5.6。SwiftUI と Compose のみ） | 未設定 |
 
 > **認証ゲートはありません**。アプリは起動直後からタブ UI に入り、つねに Stable タブに着地します。
 > ほかのタブへは、ネイティブのタブバーをタップして移動します（XCUITest バックエンドがラベルで
@@ -318,6 +319,27 @@ associated domain の仕掛けも要ります。無ければ iOS は何も申し
 - `notice.detail.body` — notice の本文
 - **戻る** — 標準のシステム戻るボタン。バックエンドは OS 由来の id `BackButton` で引きます（§5.1 参照）。
 
+### 5.6 保存メモ（`saved` 名前空間。`SHOWCASE_SAVED_NOTE`、SwiftUI と Compose のみ）
+
+アプリ更新のフィクスチャです（[BE-0447](../../roadmaps/BE-0447-install-app-step/BE-0447-install-app-step-ja.md)）。
+アプリのほかの状態はすべてメモリ上にあり、[`relaunch.yaml`](scenarios/relaunch.yaml) はその前提に
+依存しています。そのため、プロセスが終わっても値が残るのはこの平坦な画面だけです。メモはアプリの
+データコンテナに同期的に書き込みます（iOS は Documents 内のファイル、Android は `commit` した
+`SharedPreferences`）。データを残したままアプリを上書きインストールしても、メモは消えません。
+`SHOWCASE_SIGNIN` と同じく起動環境で画面を差し替えるので、ほかのシナリオが操作するタブ UI は変わりません。
+
+この画面を実装しているのは `showcase-swiftui` と `showcase-compose`、およびそれぞれの旧ビルドだけです。
+旧ビルドは bundle id（Android では package）が現行ビルドと同じで、ソースも共通です。iOS の旧ビルドは
+`SHOWCASE_PREVIOUS` を定義した `BajutsuShowcaseSwiftUIPrevious` です。Android の旧ビルドは Compose の
+`previous` フレーバーです。このフラグが変えるのは `saved.build` の値だけです。
+[`device_group_update.yaml`](scenarios/device_group_update.yaml) は旧ビルドで起動してメモを保存し、
+現行ビルドを上書きインストールしてから、メモを読み戻します。
+
+- `saved.build` — 動作中のビルド。`previous` または `current` をミラーします
+- `saved.field` — メモの入力欄
+- `saved.save` — 入力欄の文字列を保存するボタン
+- `saved.value` — 保存済みのメモをミラーします（保存するまでは `none`）
+
 ## 6. 通信
 
 アプリ内コレクタ連携を用います（iOS は BajutsuKit、Android は BajutsuAndroid）。
@@ -432,6 +454,8 @@ extension UIAlertAction {
 ```
 stable, horse, search, log, notice, perm, sys, net
 ```
+
+`showcase-swiftui` と `showcase-compose`、およびそれぞれの旧ビルドは、`saved` も宣言します（§5.6）。
 
 `-noax` アプリは **空の** `idNamespaces: []` を宣言します。そのビルドが識別子を一切露出しないという
 正直な宣言であり、これが `doctor --target showcase-…-noax` を `idCoverage` で **Blocked** にする（「通った

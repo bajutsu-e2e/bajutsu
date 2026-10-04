@@ -1374,6 +1374,11 @@ e2e-network: swiftui-build runner-build
 \t\t--scenario demos/showcase/scenarios/network_mock.yaml \\
 \t\t--scenario demos/showcase/scenarios/network_live.yaml \\
 \t\t--target showcase-swiftui --udid $(SIM)
+
+e2e-device-group: swiftui-build swiftui-previous-build uikit-build runner-build
+\tcd $(ROOT) && uv run bajutsu run --scenario demos/showcase/scenarios/device_group_update.yaml \\
+\t\t--scenario demos/showcase/scenarios/device_group_companion.yaml \\
+\t\t--tag ios --udid $(SIM) --config $(CONFIG)
 """
 
 
@@ -1402,7 +1407,7 @@ def test_makefile_target_scenarios_reads_a_targets_recipe() -> None:
 
 def test_makefile_job_scenarios_folds_a_jobs_targets() -> None:
     job_scenarios = makefile_job_scenarios(_MAKEFILE_SAMPLE)
-    # `codegen` unions its two targets; `visual` and `network` each have one.
+    # `codegen` unions its two targets; `visual`, `network`, and `device-group` each have one.
     assert job_scenarios["codegen"] == {
         "demos/showcase/scenarios/components.yaml",
         "demos/showcase/scenarios/text_editing.yaml",
@@ -1412,6 +1417,10 @@ def test_makefile_job_scenarios_folds_a_jobs_targets() -> None:
     assert job_scenarios["network"] == {
         "demos/showcase/scenarios/network_mock.yaml",
         "demos/showcase/scenarios/network_live.yaml",
+    }
+    assert job_scenarios["device-group"] == {
+        "demos/showcase/scenarios/device_group_update.yaml",
+        "demos/showcase/scenarios/device_group_companion.yaml",
     }
 
 
@@ -1496,6 +1505,10 @@ def test_makefile_declared_scenarios_match_the_targets() -> None:
             "demos/showcase/scenarios/network_mock.yaml",
             "demos/showcase/scenarios/network_live.yaml",
         },
+        "device-group": {
+            "demos/showcase/scenarios/device_group_update.yaml",
+            "demos/showcase/scenarios/device_group_companion.yaml",
+        },
     }
 
 
@@ -1514,6 +1527,7 @@ def test_lane_job_scenario_map_folds_the_makefile_jobs_on_ios_only() -> None:
         "codegen",
         "visual",
         "network",
+        "device-group",
     }
     assert ios_map["codegen"] == {
         "demos/showcase/scenarios/components.yaml",
@@ -1545,9 +1559,9 @@ def test_the_makefile_declared_jobs_carry_the_scenario_keyed_guard() -> None:
 
 def test_makefile_target_job_map_covers_only_the_makefile_declared_jobs() -> None:
     # `conformance` stays a dimension job (it drives the whole harness, declaring no scenario subset),
-    # so only `codegen`, `visual`, and `network` are Makefile-keyed. Pin the mapping so a future
-    # addition is a conscious edit here.
-    assert set(_MAKEFILE_JOB_TARGETS) == {"codegen", "visual", "network"}
+    # so only `codegen`, `visual`, `network`, and `device-group` are Makefile-keyed. Pin the mapping
+    # so a future addition is a conscious edit here.
+    assert set(_MAKEFILE_JOB_TARGETS) == {"codegen", "visual", "network", "device-group"}
 
 
 def test_makefile_job_targets_match_the_workflow_make_invocations() -> None:

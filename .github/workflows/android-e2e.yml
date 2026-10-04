@@ -862,6 +862,78 @@ jobs:
           path: tmp/showcase-android-app-crash-runs
           if-no-files-found: ignore
 
+  # BE-0447: two apps on one emulator. The Android twin of ios-e2e.yml's `device-group (xcuitest)`:
+  # device_group_update.yaml starts on the `previous` Compose flavor and installs the a11y build over
+  # it with its data kept; device_group_companion.yaml runs Compose and Views side by side and switches
+  # between them with `foreground`. Deliberately NOT part of `E2E (android)`'s `needs:`: newly-wired
+  # on-device coverage lands as a per-PR signal first, the same boundary `app-crash` sits on.
+  device-group:
+    name: device-group (adb)
+    needs: *warm-cache-consumer-needs
+    # Same soft dependency as `smoke` above (aliased) — see its comment for why.
+    if: *warm-cache-consumer-if
+    runs-on: ubuntu-latest
+    # A cold AVD boot + two short scenarios; the three APK builds run in their own step, outside this
+    # window, like every sibling job's.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up the Android toolchain
+        uses: ./.github/actions/setup-android-toolchain
+
+      - name: Install the base package (no dev)
+        run: uv sync --no-dev
+
+      # Built outside the emulator session, like every sibling job's own APK build step.
+      - name: Build the Compose (current and previous) and Views showcase APKs
+        run: |
+          make -C demos/showcase/android compose-build
+          make -C demos/showcase/android compose-previous-build
+          make -C demos/showcase/android views-build
+
+      - name: Cache AVD
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-api34-x86_64-pixel6-mem8192-cores2
+
+      - name: Create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+
+      - name: Run the device-group lane
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          script: make -C demos/showcase/android e2e-device-group
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: android-e2e-device-group-run
+          path: runs/
+          if-no-files-found: ignore
+
   # The pixel VRT (BE-0208 unit 4 visual dimension): pixel-compare the Stable catalog against the
   # CI-recorded baseline (demos/showcase/scenarios/visual/baselines_android/). A pixel baseline is
   # host-specific — the CI x86_64 software renderer (swiftshader) and a local arm64 emulator diverge

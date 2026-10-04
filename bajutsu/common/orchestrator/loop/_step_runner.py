@@ -841,6 +841,9 @@ class _StepRunner:
         # BE-0234's "nothing we actuated in between" assumption, not proof against an interstitial
         # that appeared asynchronously since (a timer/network overlay), which is exactly the case
         # `interrupts` exists to catch.
+        # Set when the step's own app is not in front before it acts (BE-0447): the step fails
+        # without acting, the way a failed pre-act recovery short-circuits it below.
+        front_failure: str | None = None
         before_is_fresh = False
         if not self.cfg.wants_screen_changed:
             before = None
@@ -851,9 +854,17 @@ class _StepRunner:
             # so the interrupt guard below skips its own redundant re-query of the same tree.
             before_is_fresh = pre_query_was_fresh
         else:
-            before = active_driver.query()
-            self.state.total_reads += 1
-            before_is_fresh = True
+            try:
+                before = active_driver.query()
+            except base.AppNotInFront as exc:
+                # The app a `foreground` is about to bring up has no screen yet (BE-0447); any
+                # other step fails by name without acting, as at the guard's read below.
+                if kind != "foreground":
+                    front_failure = str(exc)
+                before = None
+            else:
+                self.state.total_reads += 1
+                before_is_fresh = True
         # A fresh interrupt guard per step (BE-0314), so its re-entrancy cap resets each step. A
         # bare act clears any interstitial up front — reusing `before` only when it is a tree just
         # read this iteration (zero extra cost); a carried-over `prev_after` snapshot, or no tree
@@ -882,17 +893,29 @@ class _StepRunner:
             guard.observe if guard is not None else None,
         )
         # A `sleep` acts on nothing, so it has no screen to clear an interstitial from first.
-        if guard is not None and kind not in ("wait", "sleep"):
+        # A step already failed on its own app not being in front has nothing for the guard to clear.
+        if guard is not None and kind not in ("wait", "sleep") and front_failure is None:
             # Re-baseline `before` from the settled post-recovery tree either way, so a cleared
             # interstitial's own screen change is not later misattributed to this step's action by
             # the `screenChanged` capture decision.
             if before is not None and before_is_fresh:
                 before = guard.clear_before_act(before)
             else:
-                before_read = guard.clear_before_act(active_driver.query())
-                self.state.total_reads += 1
-                if before is not None:
-                    before = before_read
+                try:
+                    before_read = guard.clear_before_act(active_driver.query())
+                except base.AppNotInFront as exc:
+                    # Another device-group member holds the screen (BE-0447) — or, on Android, a
+                    # system dialog the front check cannot attribute to this app. A `foreground` is
+                    # the step that brings this app up, so its guard has nothing to clear yet. Any
+                    # other step fails here by name: not every action reads before it acts (a
+                    # `tapPoint` would land on the other app's screen), and an escape would abort
+                    # the run.
+                    if kind != "foreground":
+                        front_failure = str(exc)
+                else:
+                    self.state.total_reads += 1
+                    if before is not None:
+                        before = before_read
         # A `for` wait records its poll timeline so a timeout is diagnosable from artifacts
         # (BE-0231 Unit 1); the alert_guard retry gets a fresh trace so the diagnostic reflects the
         # attempt that actually failed.
@@ -916,13 +939,15 @@ class _StepRunner:
         reserved_undeclared: list[UndeclaredInterruption] = []
         # The label a `handleSystemAlert` step tapped, for `outcome.system_alert` (BE-0445).
         system_alert_taps: list[str] = []
-        if guard is not None and guard.failure is not None:
-            # The pre-act clear already decided the outcome (a recovery step failed): skip the
-            # step's own action rather than poke a screen the failed recovery left broken —
-            # symmetric with how a wait's `on_interrupt_poll` aborts the poll instead of running
-            # on. The rest of the pipeline below (evidence capture, outcome bookkeeping) still
-            # runs unchanged, exactly as it does for any other failed step.
-            ok, reason, snapshot = False, guard.failure, None
+        if front_failure is not None or (guard is not None and guard.failure is not None):
+            # The pre-act clear already decided the outcome (a recovery step failed, or the app is
+            # behind another member's): skip the step's own action rather than poke a screen that
+            # is broken or not this app's — symmetric with how a wait's `on_interrupt_poll` aborts
+            # the poll instead of running on. The rest of the pipeline below (evidence capture,
+            # outcome bookkeeping) still runs unchanged, exactly as it does for any other failed
+            # step.
+            ok, snapshot = False, None
+            reason = front_failure or (guard.failure if guard is not None else None) or ""
             results: list[AssertionResult] = []
         else:
             # Push the interruption monitor this step's own declared alert for the
@@ -1329,11 +1354,23 @@ class _StepRunner:
             writes_elements = any(_kind_of(t) == "elements" for t in instant) and not isinstance(
                 self.cfg.sink, NullSink
             )
-            els = (
-                screen.get()
-                if active_driver is not self.cfg.driver or writes_elements
-                else screen.cached
-            )
+            try:
+                els = (
+                    screen.get()
+                    if active_driver is not self.cfg.driver or writes_elements
+                    else screen.cached
+                )
+            except base.AppNotInFront as exc:
+                # This app is no longer in front: another device-group member holds the screen
+                # (BE-0447), so its tree is not this step's and the screenshot stands alone. A step
+                # that passed fails here: either it acted without reading its own screen (a
+                # `tapPoint` on the other app's), or it handed the screen to another app, and a
+                # device group switches apps only through an explicit `foreground`. A `background`
+                # sends its app away on purpose.
+                els = None
+                instant = [t for t in instant if _kind_of(t) != "elements"]
+                if outcome.ok and kind != "background":
+                    outcome.ok, outcome.reason = False, str(exc)
             outcome.artifacts.extend(
                 self.cfg.sink.capture(
                     self.cfg.driver,

@@ -82,6 +82,11 @@ final class AppModel: ObservableObject {
     /// expected-to-fail scenario would then fail on a missing selector rather than on a crash.
     let crashMode: Bool
 
+    /// Swaps the whole UI for the saved-note screen (`SHOWCASE_SAVED_NOTE`, BE-0447), the one note
+    /// that persists across launches and installs. A launch-env swap like `SHOWCASE_SIGNIN`, so the
+    /// in-memory tab app every other scenario drives stays untouched.
+    let savedNoteMode: Bool
+
     /// A test-only affordance gated on the SHOWCASE_NOTIFICATION_BANNER launch env, mirroring
     /// gestures above (BE-0416 Unit 5). When set, the app renders a flat screen with one target
     /// pinned at a known point near the top of the screen — inside the frame Unit 1 measured for a
@@ -103,6 +108,7 @@ final class AppModel: ObservableObject {
         pickersMode = env["SHOWCASE_PICKERS"] != nil
         signInMode = env["SHOWCASE_SIGNIN"] != nil
         crashMode = env["SHOWCASE_CRASH"] != nil
+        savedNoteMode = env["SHOWCASE_SAVED_NOTE"] != nil
         notificationBannerMode = env["SHOWCASE_NOTIFICATION_BANNER"] != nil
         tipKitMode = env["SHOWCASE_TIPKIT"] != nil
         conformanceIDs = Self.conformanceIDs(env["SHOWCASE_CONFORMANCE"])

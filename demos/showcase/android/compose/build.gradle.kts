@@ -31,6 +31,7 @@ android {
         create("a11y") {
             dimension = "accessibility"
             buildConfigField("boolean", "ACCESSIBLE", "true")
+            buildConfigField("String", "SHOWCASE_BUILD", "\"current\"")
             manifestPlaceholders["appLabel"] = "Showcase Compose"
             manifestPlaceholders["deeplinkScheme"] = "showcasecompose"
         }
@@ -38,8 +39,22 @@ android {
             dimension = "accessibility"
             applicationIdSuffix = ".noax"
             buildConfigField("boolean", "ACCESSIBLE", "false")
+            buildConfigField("String", "SHOWCASE_BUILD", "\"current\"")
             manifestPlaceholders["appLabel"] = "Showcase Compose (no a11y)"
             manifestPlaceholders["deeplinkScheme"] = "showcasecomposenoax"
+        }
+        // BE-0447: the a11y app under the SAME applicationId, built as the "previous" release the
+        // update scenario starts on before `installApp` puts the a11y build over it. It shares this
+        // dimension rather than adding a second one, which would rename every existing APK path. The
+        // versionCode stays equal to a11y's: `adb install -r` refuses a downgrade, never a same-code
+        // reinstall, so only versionName marks it older.
+        create("previous") {
+            dimension = "accessibility"
+            versionName = "0.9"
+            buildConfigField("boolean", "ACCESSIBLE", "true")
+            buildConfigField("String", "SHOWCASE_BUILD", "\"previous\"")
+            manifestPlaceholders["appLabel"] = "Showcase Compose"
+            manifestPlaceholders["deeplinkScheme"] = "showcasecompose"
         }
     }
 

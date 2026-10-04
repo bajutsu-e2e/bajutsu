@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0447](BE-0447-install-app-step.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
 | Implementing PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104) (unit 1), [#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116) (units 2–7), [#2126](https://github.com/bajutsu-e2e/bajutsu/pull/2126) (unit 8) |
 | Topic | Scenario authoring features |
@@ -559,7 +559,7 @@ so the deterministic gate stays untouched.
 - [x] Unit 6: Android environment, driver, and `foreground`
 - [x] Unit 7: backend handling
 - [x] Unit 8: documentation in both languages
-- [ ] Unit 9: showcase demo, update and companion scenarios
+- [x] Unit 9: showcase demo, update and companion scenarios
 
 Log:
 
@@ -666,6 +666,23 @@ Log:
   device-control prose, and the device count under "Limits" follow. `docs/dsl-grammar.md` adds the
   productions and the §4 constraints, and `docs/architecture.md` drops Android `foreground` from the
   unsupported list. Each change has a Japanese mirror under `docs/ja/`.
+- Unit 9. The showcase demo runs both journeys on iOS and Android. A previous build of the SwiftUI
+  app (an XcodeGen target with `SHOWCASE_PREVIOUS`) and of the Compose app (a `previous` flavor)
+  keeps the bundle id or package, and each is a target of its own. A `SHOWCASE_SAVED_NOTE` screen,
+  on SwiftUI and Compose only, is the one place a note survives the process.
+  `device_group_update.yaml` saves a note on the previous build, installs the current one over it,
+  and reads the note back. `device_group_companion.yaml` pairs SwiftUI with UIKit, and Compose with
+  Views. It carries a value read in the companion into the primary, and checks that the primary's
+  in-memory state survived the round trip. `make e2e-device-group` runs each platform's pair, and
+  both workflows run it as a signal job outside the `E2E` gate. Running the scenarios on a Simulator
+  and an emulator surfaced three defects from units 5 and 6, fixed here:
+  - `foreground` on a resumed app waited for the target's `readyWhen` launch screen, which a
+    resumed app need not show.
+  - A warm XCUITest runner kept the previous lease's bundle id, so a next lease owning another app
+    seeded its group's runner target with the wrong one.
+  - `AppNotInFront` raised outside a step's own action aborted the whole run. The interrupt guard's
+    pre-act read, the `screenChanged` baseline, and the post-step evidence read now fail the step by
+    name, except for the `foreground` that brings the app up.
 
 ## References
 

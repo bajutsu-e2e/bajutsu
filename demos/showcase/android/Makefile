@@ -4,8 +4,9 @@
 #
 # `run` / `doctor` land with the BE-0007 adb backend; until then these targets only build.
 .PHONY: build-all wrapper \
-	compose-build compose-noax-build views-build views-noax-build e2e e2e-pool e2e-network e2e-golden \
-	e2e-fallback e2e-visual e2e-conformance e2e-fault-injection e2e-app-crash e2e-codegen clean
+	compose-build compose-noax-build compose-previous-build views-build views-noax-build e2e e2e-pool e2e-network e2e-golden \
+	e2e-fallback e2e-visual e2e-conformance e2e-fault-injection e2e-app-crash e2e-codegen e2e-device-group \
+	clean
 
 HERE := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 GRADLEW := $(HERE)/gradlew
@@ -150,6 +151,9 @@ compose-build:
 	cd $(HERE) && $(GRADLEW) :compose:assembleA11yDebug
 compose-noax-build:
 	cd $(HERE) && $(GRADLEW) :compose:assembleNoaxDebug
+# The "previous" release of showcase-compose under the same applicationId (BE-0447's update scenario).
+compose-previous-build:
+	cd $(HERE) && $(GRADLEW) :compose:assemblePreviousDebug
 views-build:
 	cd $(HERE) && $(GRADLEW) :views:assembleA11yDebug
 views-noax-build:
@@ -429,6 +433,19 @@ e2e-app-crash: compose-build
 		fi
 	cd $(ROOT) && uv run python scripts/assert_app_crash_evidence.py \
 		"$$(find $(APP_CRASH_RUNS) -mindepth 1 -maxdepth 1 -type d)"
+
+# The device-group lane (BE-0447), the Android twin of demos/showcase/Makefile's `e2e-device-group`:
+# two apps on one emulator. device_group_update.yaml starts on the `previous` Compose flavor and
+# installs the a11y build over it with its data kept; device_group_companion.yaml runs Compose and
+# Views side by side and switches between them with `foreground`. `--tag android` picks each file's
+# Android scenario. Both files declare their own `targets`, so no `--target` is passed.
+e2e-device-group: compose-build compose-previous-build views-build
+	$(ANR_QUIET)
+	$(TOUCH_DEBUG_ON)
+	cd $(ROOT) && $(E2E_ENV) uv run bajutsu run \
+		--scenario demos/showcase/scenarios/device_group_update.yaml \
+		--scenario demos/showcase/scenarios/device_group_companion.yaml \
+		--tag android --udid $(SERIAL) --config $(CONFIG)
 
 # The codegen output path: a scenario -> native UI Automator (Kotlin) test, compiled and run by
 # Gradle's connectedAndroidTest with no bajutsu runtime / adb driver / AI at test time (BE-0294) —

@@ -296,6 +296,29 @@ def test_an_erase_clears_a_starting_member_too(tmp_path: Path) -> None:
     assert run.ran("force-stop", _AUTH)
 
 
+@pytest.mark.parametrize(("running", "expected"), [(True, None), (False, {"id": "home"})])
+def test_foreground_waits_for_ready_when_only_after_a_launch(
+    monkeypatch: pytest.MonkeyPatch, running: bool, expected: dict[str, str] | None
+) -> None:
+    # `readyWhen` is the launch screen: a resumed app returns on whatever screen it left, so waiting
+    # for the launch screen there would time out on an app that is already in front.
+    seen: list[object] = []
+
+    def await_ready(*_a: object, ready_sel: object = None, **_k: object) -> ReadinessResult:
+        seen.append(ready_sel)
+        return ReadinessResult(True, "count", 0.0)
+
+    monkeypatch.setattr("bajutsu.common.platform_lifecycle.readiness.await_ready", await_ready)
+    run = _Adb(running={_AUTH} if running else set())
+    env = _env(run)
+    env.start(_eff(_PRIMARY), Preconditions())
+    env._drivers[_AUTH] = FakeDriver([_el("home"), _el("ok")])
+    control = env.controller(replace(_eff(_AUTH), ready_when={"id": "home"}))
+    assert control is not None
+    control.foreground()
+    assert seen == [expected]
+
+
 def test_a_foreground_that_never_reaches_the_front_fails_its_step(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

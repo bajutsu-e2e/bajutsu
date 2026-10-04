@@ -91,6 +91,40 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.ios.swiftui.noax
+  # The "previous" build (BE-0447): the a11y app under the SAME bundle identifier, with
+  # SHOWCASE_PREVIOUS defined so the saved-note screen reports `previous`. The update scenario
+  # starts on this build, then installs BajutsuShowcaseSwiftUI over it with the data container
+  # kept. A distinct product name keeps the two .app bundles side by side in build/dd.
+  BajutsuShowcaseSwiftUIPrevious:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    dependencies:
+      - package: BajutsuKit
+    info:
+      path: Info-Previous.plist
+      properties:
+        UILaunchScreen:
+          UIColorName: ""
+        CFBundleDisplayName: Showcase SwiftUI
+        CFBundleShortVersionString: "0.9"
+        UIRequiredDeviceCapabilities: [arm64]
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        CFBundleURLTypes:
+          - CFBundleURLName: com.bajutsu.showcase.ios.swiftui
+            CFBundleURLSchemes: [showcaseswiftui]
+        NSLocationWhenInUseUsageDescription: "Showcase's Permissions tab exercises the location-authorization flow."
+        NSUserTrackingUsageDescription: "Showcase's Permissions tab exercises the tracking-authorization flow."
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bajutsu.showcase.ios.swiftui
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: ACCESSIBLE SHOWCASE_PREVIOUS
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGNING_ALLOWED: YES
+        CODE_SIGNING_REQUIRED: YES
   # Native XCUITest host for the codegen output (SPEC §5.4): `bajutsu codegen` writes
   # UITests/ComponentsUITests.swift, which runs against the a11y app via the `UITests`
   # scheme below — no bajutsu runtime or AI at test time.
@@ -114,6 +148,10 @@ schemes:
     build:
       targets:
         BajutsuShowcaseSwiftUINoAx: all
+  BajutsuShowcaseSwiftUIPrevious:
+    build:
+      targets:
+        BajutsuShowcaseSwiftUIPrevious: all
   UITests:
     build:
       targets:

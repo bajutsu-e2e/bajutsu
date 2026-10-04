@@ -9,6 +9,7 @@ and releases is checkable without a Simulator.
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -18,7 +19,7 @@ from bajutsu.common import backends
 from bajutsu.common.config import Effective, IosConfig, require_ios
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
-from bajutsu.common.evidence import NullSink
+from bajutsu.common.evidence import FileSink, NullSink
 from bajutsu.common.orchestrator import DeviceControl
 from bajutsu.common.runner import Lease, run_all
 from bajutsu.common.runner.types import LeaseFn, TargetPool
@@ -258,3 +259,264 @@ def test_an_expect_entry_on_the_retired_build_fails_by_name() -> None:
     )
     assert not results[0].ok  # type: ignore[attr-defined]
     assert "expect: target 'old' is retired" in (results[0].failure or "")  # type: ignore[attr-defined]
+
+
+class _Backgrounded(FakeDriver):
+    """A member's driver whose app is behind another member's until its `foreground` runs."""
+
+    in_front = False
+
+    def query(self) -> list[base.Element]:
+        if not self.in_front:
+            raise base.AppNotInFront("auth is not in front")
+        return super().query()
+
+    def tap(self, sel: base.Selector) -> None:
+        # A real driver resolves the selector through the same read, so it fails the same way.
+        self.query()
+        super().tap(sel)
+
+
+class _BringsUp:
+    """A `DeviceControl` double whose `foreground()` brings *driver*'s app to the front."""
+
+    def __init__(self, driver: _Backgrounded) -> None:
+        self._driver = driver
+
+    def foreground(self) -> None:
+        self._driver.in_front = True
+
+
+class _CompanionDevice(_Device):
+    """The companion's lease answers with a backgrounded driver until its `foreground`.
+
+    With *run_dir*, every lease writes real evidence, so each step reads its tree afterwards.
+    """
+
+    def __init__(self, bundles: dict[str, str], run_dir: Path | None = None) -> None:
+        super().__init__(bundles)
+        self._run_dir = run_dir
+
+    def _lease(self, name: str, *, joinable: bool) -> Lease:
+        lease = super()._lease(name, joinable=joinable)
+        if self._run_dir is not None:
+            lease = replace(lease, sink=FileSink(self._run_dir / name))
+        if name != "auth":
+            return lease
+        driver = _Backgrounded(list(_SCREEN))
+        self.drivers[name] = driver
+        return replace(lease, driver=driver, control=cast(DeviceControl, _BringsUp(driver)))
+
+
+def test_a_foreground_to_a_backgrounded_member_passes_its_interrupt_guard() -> None:
+    # The guard reads the step's own app before acting, and before a `foreground` that app is behind
+    # another member's: the read has nothing to clear, so it must not fail the step that brings the
+    # app up (an Android target's config-level ANR `interrupts` hit this on every hop).
+    bundles = {"app": "com.example.app", "auth": "com.example.auth"}
+    device = _CompanionDevice(bundles)
+    results = _run(
+        device,
+        bundles,
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "installs": ["auth"],
+            "interrupts": [
+                {
+                    "target": "auth",
+                    "condition": {"exists": {"id": "popup"}},
+                    "steps": [{"tap": {"id": "dismiss"}}],
+                }
+            ],
+            "steps": [
+                {"target": "auth", "foreground": {}},
+                {"target": "auth", "tap": {"id": "ok"}},
+            ],
+        },
+    )
+    assert results[0].ok, results[0].failure  # type: ignore[attr-defined]
+    assert ("tap", {"id": "ok"}) in device.drivers["auth"].actions
+
+
+def test_any_other_step_to_a_backgrounded_member_still_fails() -> None:
+    bundles = {"app": "com.example.app", "auth": "com.example.auth"}
+    results = _run(
+        _CompanionDevice(bundles),
+        bundles,
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "installs": ["auth"],
+            "interrupts": [
+                {
+                    "target": "auth",
+                    "condition": {"exists": {"id": "popup"}},
+                    "steps": [{"tap": {"id": "dismiss"}}],
+                }
+            ],
+            "steps": [{"target": "auth", "tap": {"id": "ok"}}],
+        },
+    )
+    # A step failure naming the cause, not an escape that aborts the run.
+    assert not results[0].ok  # type: ignore[attr-defined]
+    assert "auth is not in front" in (results[0].failure or "")  # type: ignore[attr-defined]
+
+
+def test_a_step_that_acts_without_reading_fails_on_a_backgrounded_member() -> None:
+    # A `tapPoint` resolves nothing, so it never reads its own screen: without the guard's pre-act
+    # read failing it by name, it would tap whatever the member in front shows and pass.
+    bundles = {"app": "com.example.app", "auth": "com.example.auth"}
+    device = _CompanionDevice(bundles)
+    results = _run(
+        device,
+        bundles,
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "installs": ["auth"],
+            "interrupts": [
+                {
+                    "target": "auth",
+                    "condition": {"exists": {"id": "popup"}},
+                    "steps": [{"tap": {"id": "dismiss"}}],
+                }
+            ],
+            "steps": [{"target": "auth", "tapPoint": {"x": 0.5, "y": 0.5}}],
+        },
+    )
+    assert not results[0].ok  # type: ignore[attr-defined]
+    assert "auth is not in front" in (results[0].failure or "")  # type: ignore[attr-defined]
+    assert not any(a[0] == "tap_point" for a in device.drivers["auth"].actions)
+
+
+def test_a_step_that_passes_without_its_app_in_front_fails_on_its_evidence_read(
+    tmp_path: Path,
+) -> None:
+    # No `interrupts`, so nothing reads before the `tapPoint` acts; the post-step evidence read is
+    # the first to see another app in front, and it fails the step rather than aborting the run.
+    bundles = {"app": "com.example.app", "auth": "com.example.auth"}
+    device = _CompanionDevice(bundles, tmp_path)
+    results = _run(
+        device,
+        bundles,
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "installs": ["auth"],
+            "steps": [{"target": "auth", "tapPoint": {"x": 0.5, "y": 0.5}}],
+        },
+    )
+    assert not results[0].ok  # type: ignore[attr-defined]
+    assert "auth is not in front" in (results[0].failure or "")  # type: ignore[attr-defined]
+
+
+def test_a_foreground_hop_passes_under_a_screen_changed_policy(tmp_path: Path) -> None:
+    # A `screenChanged` policy reads a fresh `before` on a target switch; for the `foreground` that
+    # brings a backgrounded member up there is no screen yet, and that is not a failure.
+    bundles = {"app": "com.example.app", "auth": "com.example.auth"}
+    device = _CompanionDevice(bundles, tmp_path)
+    results = _run(
+        device,
+        bundles,
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "installs": ["auth"],
+            "capturePolicy": [{"on": {"event": "screenChanged"}, "capture": ["actionLog"]}],
+            "steps": [
+                {"tap": {"id": "ok"}},
+                {"target": "auth", "foreground": {}},
+                {"target": "auth", "tap": {"id": "ok"}},
+            ],
+        },
+    )
+    assert results[0].ok, results[0].failure  # type: ignore[attr-defined]
+    assert ("tap", {"id": "ok"}) in device.drivers["auth"].actions
+
+
+def test_a_non_foreground_hop_to_a_backgrounded_member_fails_under_a_screen_changed_policy(
+    tmp_path: Path,
+) -> None:
+    # The `screenChanged` baseline read on a target switch is the first to see another app in
+    # front: it fails the step by name without acting, never escaping the run.
+    bundles = {"app": "com.example.app", "auth": "com.example.auth"}
+    device = _CompanionDevice(bundles, tmp_path)
+    results = _run(
+        device,
+        bundles,
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "installs": ["auth"],
+            "capturePolicy": [{"on": {"event": "screenChanged"}, "capture": ["actionLog"]}],
+            "steps": [{"tap": {"id": "ok"}}, {"target": "auth", "tap": {"id": "ok"}}],
+        },
+    )
+    assert not results[0].ok  # type: ignore[attr-defined]
+    assert "auth is not in front" in (results[0].failure or "")  # type: ignore[attr-defined]
+    assert ("tap", {"id": "ok"}) not in device.drivers["auth"].actions
+
+
+def test_a_failed_step_on_a_backgrounded_member_writes_no_other_apps_tree(tmp_path: Path) -> None:
+    # The evidence read after a step that already failed keeps the step's own reason and writes no
+    # `elements.json`: the tree on screen belongs to another member, not to this step.
+    bundles = {"app": "com.example.app", "auth": "com.example.auth"}
+    results = _run(
+        _CompanionDevice(bundles, tmp_path),
+        bundles,
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "installs": ["auth"],
+            "steps": [{"target": "auth", "tap": {"id": "ok"}}],
+        },
+    )
+    assert not results[0].ok  # type: ignore[attr-defined]
+    assert "auth is not in front" in (results[0].failure or "")  # type: ignore[attr-defined]
+    assert not list((tmp_path / "auth").rglob("elements.json"))
+
+
+class _Homes(_BringsUp):
+    """`foreground()` brings the member's app up, and `home()` sends it away again."""
+
+    def __init__(self, driver: _Backgrounded) -> None:
+        super().__init__(driver)
+        self._member = driver
+
+    def home(self) -> None:
+        self._member.in_front = False
+
+
+class _HomingDevice(_CompanionDevice):
+    def _lease(self, name: str, *, joinable: bool) -> Lease:
+        lease = super()._lease(name, joinable=joinable)
+        if name != "auth":
+            return lease
+        driver = cast(_Backgrounded, lease.driver)
+        return replace(lease, control=cast(DeviceControl, _Homes(driver)))
+
+
+def test_a_background_step_passes_though_its_evidence_read_finds_another_app(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `background` sends its own app away on purpose, so the evidence read that then finds another
+    # app in front is the step's expected outcome, not a failure.
+    def caps(actuator: str, eff: Effective, udid: str = "booted") -> frozenset[str]:
+        return backends.capabilities_for_run(actuator, eff, udid) | {
+            base.Capability.DC_FOREGROUND,
+            base.Capability.DC_BACKGROUND,
+        }
+
+    monkeypatch.setattr("bajutsu.common.runner.pipeline.capabilities_for_run", caps)
+    bundles = {"app": "com.example.app", "auth": "com.example.auth"}
+    results = _run(
+        _HomingDevice(bundles, tmp_path),
+        bundles,
+        {
+            "targets": [["app", "auth"]],
+            "primaryTarget": "app",
+            "installs": ["auth"],
+            "steps": [{"target": "auth", "foreground": {}}, {"target": "auth", "background": {}}],
+        },
+    )
+    assert results[0].ok, results[0].failure  # type: ignore[attr-defined]

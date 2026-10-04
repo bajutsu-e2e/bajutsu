@@ -30,13 +30,17 @@ targets:
     bundleId: com.bajutsu.showcase.ios.swiftui
     deeplinkScheme: showcaseswiftui
     launchEnv: { SHOWCASE_UITEST: "1" }
-    idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    # `saved`: the SHOWCASE_SAVED_NOTE screen (SPEC §5.6), which this app and showcase-compose alone
+    # implement.
+    idNamespaces: [stable, horse, search, log, notice, perm, sys, net, saved]
     # BE-0231: gate readiness on the first Stable row — the element the smoke scenario's opening
     # `wait` needs — not on any in-namespace node. On a cold-boot CI Simulator some other namespace
     # element can render first, letting `_await_ready` return early and the first step race the row.
     # Both id forms (BE-0221) to mirror the scenario's own selector and the `showcase-views`
-    # precedent; this iOS target's tree only ever renders the dotted form.
-    readyWhen: { id: [stable.row.1, stable_row_1] }
+    # precedent; this iOS target's tree only ever renders the dotted form. `saved.build` is the one
+    # launch element of the SHOWCASE_SAVED_NOTE screen (SPEC §5.6), which shows no Stable row:
+    # device_group_update.yaml's `foreground` waits on it after installing this build.
+    readyWhen: { id: [stable.row.1, stable_row_1, saved.build] }
     appPath: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app
     build: make swiftui-build
     scenarios: scenarios
@@ -102,6 +106,23 @@ targets:
       testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
       build: make runner-build
 
+  # ---- SwiftUI, the "previous" release of showcase-swiftui (BE-0447) -----------
+  # The same bundle id built with SHOWCASE_PREVIOUS (SPEC §5.6). Only device_group_update.yaml drives
+  # it: the scenario starts here and installs showcase-swiftui over it, so the two never start
+  # together. No `scenarios:` dir, so no bulk lane picks it up.
+  showcase-swiftui-previous:
+    bundleId: com.bajutsu.showcase.ios.swiftui
+    deeplinkScheme: showcaseswiftui
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    idNamespaces: [saved]
+    readyWhen: { id: [saved.build] }
+    appPath: ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUIPrevious.app
+    build: make swiftui-previous-build
+    backend: [ios]
+    xcuitest:
+      testRunner: ../../BajutsuKit/Runner/build/dd/Build/Products/BajutsuRunner.xctestrun
+      build: make runner-build
+
   # ---- UIKit, accessibility ON (same identifier contract as showcase-swiftui) ----
   showcase-uikit:
     bundleId: com.bajutsu.showcase.ios.uikit
@@ -154,7 +175,8 @@ targets:
     # (BE-0210); the shared permission.yaml relies on this on Android to stay deterministic — no dialog
     # appears, so its `systemAlertHandling` guard no-ops (on iOS, which can't pre-grant, that guard grants).
     grantPermissions: [android.permission.POST_NOTIFICATIONS]
-    idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    # `saved`: the SHOWCASE_SAVED_NOTE screen (SPEC §5.6), as on showcase-swiftui.
+    idNamespaces: [stable, horse, search, log, notice, perm, sys, net, saved]
     appPath: android/compose/build/outputs/apk/a11y/debug/compose-a11y-debug.apk
     build: make -C android compose-build
     backend: [android]
@@ -202,6 +224,24 @@ targets:
     # driver reports, stripped of the `android:id/` prefix a uiautomator dump shows. Same interrupts
     # block on every Android target below: the dialog is OS-owned, not app-specific.
     interrupts:
+      - condition: { exists: { id: [aerr_wait] } }
+        steps:
+          - tap: { id: [aerr_close] }
+
+  # ---- Compose, the "previous" release of showcase-compose (BE-0447) ------------
+  # The `previous` flavor under the same package (SPEC §5.6), the Android twin of
+  # showcase-swiftui-previous: only device_group_update.yaml drives it.
+  showcase-compose-previous:
+    package: com.bajutsu.showcase.android.compose
+    deeplinkScheme: showcasecompose
+    launchEnv: { SHOWCASE_UITEST: "1" }
+    grantPermissions: [android.permission.POST_NOTIFICATIONS]
+    idNamespaces: [saved]
+    readyWhen: { id: [saved.build] }
+    appPath: android/compose/build/outputs/apk/previous/debug/compose-previous-debug.apk
+    build: make -C android compose-previous-build
+    backend: [android]
+    interrupts:   # ANR-dialog dismissal — see showcase-compose above
       - condition: { exists: { id: [aerr_wait] } }
         steps:
           - tap: { id: [aerr_close] }

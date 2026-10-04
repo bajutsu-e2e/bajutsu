@@ -109,6 +109,7 @@ Driven via `launchEnv` ([DESIGN §6.1](../../DESIGN.md)). All are read once at l
 | `SHOWCASE_API_URL` | base URL for the catalog GET (`/horses`) | `https://example.com` |
 | `SHOWCASE_HTTP_BASE` | base for the echo POST/DELETE endpoints | `https://httpbin.org` |
 | `SHOWCASE_BROWSER_URL` | page the in-app browser opens (§5.4) | `https://example.com` |
+| `SHOWCASE_SAVED_NOTE` | swap the tab UI for the persisted saved-note screen (§5.6; SwiftUI and Compose only) | unset |
 
 > There is **no auth gate**: the app launches straight into the tab UI, always on the Stable tab.
 > Every other tab is reached by tapping the native tab bar, which the XCUITest backend does by
@@ -324,6 +325,25 @@ navigation, scroll, and crawl scenarios.
 - `notice.detail.body` — the notice's body text
 - **Back** — the standard system back button; the backend drives it by its OS-provided id `BackButton` (see §5.1).
 
+### 5.6 Saved note — `saved` namespace (`SHOWCASE_SAVED_NOTE`, SwiftUI and Compose only)
+
+The fixture for an app update ([BE-0447](../../roadmaps/BE-0447-install-app-step/BE-0447-install-app-step.md)).
+Everything else in the app is in-memory, which [`relaunch.yaml`](scenarios/relaunch.yaml) relies on,
+so this flat screen is the one place a value outlives the process. The note is written synchronously
+to the app's data container (a file in Documents on iOS, `SharedPreferences` committed on Android),
+so it survives an install over the app that keeps its data. Like `SHOWCASE_SIGNIN`, it swaps the UI
+at launch, so the tab app every other scenario drives is untouched. Only `showcase-swiftui` and
+`showcase-compose` implement it, together with their "previous" builds: the same bundle id or
+package, built from the same sources with one flag that changes `saved.build`
+(`BajutsuShowcaseSwiftUIPrevious` with `SHOWCASE_PREVIOUS`, and the Compose `previous` flavor).
+[`device_group_update.yaml`](scenarios/device_group_update.yaml) starts on the previous build, saves
+a note, installs the current build over it, and reads the note back.
+
+- `saved.build` — which build is running, mirrored as `previous` or `current`
+- `saved.field` — text field for the note
+- `saved.save` — button that persists the field's text
+- `saved.value` — the persisted note, mirrored (`none` until one is saved)
+
 ## 6. Networking
 
 Uses the standard in-app collector integration (iOS: BajutsuKit; Android: BajutsuAndroid):
@@ -443,6 +463,8 @@ reserved (shared cross-screen) namespaces; the back control is the OS-provided s
 ```
 stable, horse, search, log, notice, perm, sys, net
 ```
+
+`showcase-swiftui` and `showcase-compose`, with their previous builds, also declare `saved` (§5.6).
 
 The `-noax` apps declare an **empty** `idNamespaces: []` — an honest declaration that the build
 exposes no identifiers, which is what makes `doctor --target showcase-…-noax` grade **Blocked** on

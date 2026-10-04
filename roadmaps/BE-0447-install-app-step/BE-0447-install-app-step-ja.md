@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0447](BE-0447-install-app-step-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0447") |
 | 実装 PR | [#2104](https://github.com/bajutsu-e2e/bajutsu/pull/2104)（単位 1）、[#2116](https://github.com/bajutsu-e2e/bajutsu/pull/2116)（単位 2〜7）、[#2126](https://github.com/bajutsu-e2e/bajutsu/pull/2126)（単位 8） |
 | トピック | シナリオの記述機能 |
@@ -285,7 +285,7 @@ flowchart TD
 - [x] 単位 6：Android の環境、ドライバー、`foreground`
 - [x] 単位 7：バックエンドごとの扱い
 - [x] 単位 8：両言語のドキュメント
-- [ ] 単位 9：showcase デモ、アップデートと補助アプリのシナリオ
+- [x] 単位 9：showcase デモ、アップデートと補助アプリのシナリオ
 
 ログ：
 
@@ -414,6 +414,26 @@ flowchart TD
   例を説明しています。トップレベルとステップの表、デバイス制御の説明、「制限」のデバイス数もあわせて
   更新しました。`docs/dsl-grammar.md` には生成規則と §4 の制約を加え、`docs/architecture.md` では Android
   の `foreground` を未対応の一覧から外しました。どの変更にも `docs/ja/` の日本語版があります。
+- 単位 9。showcase のデモで、2 つの流れを iOS と Android の両方で実行します。SwiftUI アプリの旧ビルド
+  は、`SHOWCASE_PREVIOUS` を定義した XcodeGen ターゲットです。Compose アプリの旧ビルドは `previous`
+  フレーバーです。どちらも bundle id やパッケージ名を現行ビルドと共有し、それぞれ独立したターゲットです。
+  `SHOWCASE_SAVED_NOTE` で開く画面は SwiftUI と Compose だけにあり、プロセスが終わってもメモが残る
+  唯一の場所です。`device_group_update.yaml` は旧ビルドでメモを保存し、現行ビルドを上書きインストール
+  してから、メモを読み戻します。`device_group_companion.yaml` は SwiftUI と UIKit、Compose と Views を
+  組み合わせます。コンパニオンアプリで読んだ値を主アプリへ渡し、往復のあとも主アプリのメモリ上の状態が
+  残っていることを確かめます。`make e2e-device-group` が各プラットフォームの組を実行し、両方の
+  ワークフローが `E2E` ゲートの外の signal ジョブとして実行します。Simulator とエミュレータで実行した
+  結果、単位 5 と 6 の不具合が 3 件見つかり、ここで直しました。
+  - 再開したアプリへの `foreground` が、ターゲットの `readyWhen`（起動直後の画面）を待っていました。
+    再開したアプリはその画面を表示しているとは限りません。
+  - warm な XCUITest の runner が前のリースの bundle id を保持していました。そのため、別のアプリを持つ
+    次のリースが、グループの runner の向き先を誤った id で初期化していました。
+  - ステップ自身のアクションの外で送出された `AppNotInFront` が、run 全体を中断させていました。
+    いまは次の 3 つの読み取りで、ステップを原因付きで失敗させます。例外は、アプリを前面に出す
+    `foreground` です。
+    - 割り込みガードがアクションの前に行う読み取り
+    - `screenChanged` の基準を得る読み取り
+    - ステップ後に証跡を残す読み取り
 
 ## 参考
 

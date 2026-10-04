@@ -43,6 +43,12 @@ fun RootScreen(model: AppModel) {
         CrashScreen()
         return
     }
+    // BE-0447: the SHOWCASE_SAVED_NOTE launch env swaps the whole five-tab UI for the persisted
+    // saved-note screen (mirroring the iOS RootView). Otherwise the normal tab app (BE-0079) is untouched.
+    if (model.savedNoteMode) {
+        SavedNoteScreen()
+        return
+    }
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
