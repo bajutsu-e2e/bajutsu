@@ -58,7 +58,7 @@ scenarios:
 | `tags` | list[str] | `[]` | 選択ラベル。CLI の `--tag` / `--exclude` で実行対象を絞る（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
 | `targets` | list[str \| list[str]] | `[]` | このシナリオが操作する [target](glossary.md#target-app-device) の一覧（[下記](#targets--target複数ターゲットシナリオbe-0428)）。各エントリは `targets.<name>` の config ユニットを指し、run が読み込む config から解決されます。1台のデバイスを共有する2つ以上の名前の配列も書けます（[デバイスグループ](#デバイスグループ1台のデバイスで複数のアプリを動かすbe-0447)） |
 | `primaryTarget` | str | なし | `target` を省略したステップやトップレベルの `expect` エントリが動くターゲット。`targets` の最初の名前（最初のグループの最初のメンバー）と一致する必要があります（[下記](#targets--target複数ターゲットシナリオbe-0428)） |
-| `installs` | list[str] | `[]` | プライマリと並んで開始時にインストールして起動するデバイスグループのメンバー。グループのそれ以外のメンバーは、後から `installApp` ステップでインストールします（[デバイスグループ](#デバイスグループ1台のデバイスで複数のアプリを動かすbe-0447)） |
+| `installs` | list[str] | `[]` | プライマリと並んで開始時にインストールして起動するデバイスグループのメンバー。2つ以上のメンバーを持つグループのそれ以外のメンバーは、後から `installApp` ステップでインストールします（[デバイスグループ](#デバイスグループ1台のデバイスで複数のアプリを動かすbe-0447)） |
 | `data` / `dataFile` | list / str | なし | データ駆動の行。インライン `data` か `dataFile`（CSV パス）で指定する。1 行 1 run に展開し `${row.col}` を置換する。両者は排他（[再利用とデータ駆動とタグ](#再利用とデータ駆動とタグ)） |
 | `preconditions` | object | `{}` | テスト前の環境準備（下記） |
 | `before` | list | `[]` | `steps` の前に**独立したフェーズ**として走るセットアップのステップ列。ここで失敗するとシナリオを打ち切る（[下記](#before--afterセットアップとティアダウンのフェーズ)） |
@@ -910,7 +910,7 @@ run ごとに違うのは生成された値だけで、これは `totp` の時�
 
 `record` は、詰まりが AI に実行できない**操作**そのもの——CAPTCHA、生体認証のプロンプト、AI が繰り返し解けないジェスチャ——であるとき `manual` ステップを出します。人が実際のデバイスを操作して制御を返し（`acted` ハンドオフ、[recording](recording.md#human-in-the-loop-ハンドオフbe-0179)）、ステップは生のジェスチャではなく観測した遷移のマーカーを記録します。`bypass` を設定すると、そのステップを再生可能にするために作者が配線できるテストビルド用のフラグ、あるいは device-control / device-state プリミティブ（BE-0035 / BE-0052）を名指しします。省略すると、そうした等価物のない引き取り（本物の CAPTCHA）であることを示します。どの codegen ターゲットもこれをラベル付きの `// TODO` として描画します。`manual` ステップは**決して黙って合格しません**。決定的な実行時の等価物がないため、`run` 時には `label` と bypass のヒントを示して `ManualStepRequired` で明示的に失敗します（原則 1・2）。名指しした `bypass` を配線し——そのうえで `manual` ステップを決定的なアクションに置き換え——ることが、作者にとって再生可能なシナリオへの道です（[BE-0185](../../roadmaps/BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step-ja.md)）。
 
-### デバイス / システム制御（iOS）
+### デバイス / システム制御
 
 ```yaml
 - background: {}                                                        # Home ボタン（SpringBoard 経由でバックグラウンド化。終了はしない）
@@ -922,7 +922,15 @@ run ごとに違うのは生成された値だけで、これは `totp` の時�
 - clearStatusBar: {}                                                    # ライブのステータスバーに戻す
 ```
 
-`setLocation` / `push` と同様、これらは `simctl` 経由で Simulator を操作するため、デバイスごとの制御チャネルが必要で、fake ドライバや並列実行ではクリーンに失敗します。`overrideStatusBar` は、スクリーンショットや `visual` アサーションの直前に時計や電波表示を固定して画像を安定させる用途に向きます。`background` / `foreground` はバックグラウンド/フォアグラウンド遷移の対です。動いているアプリは settle 用の sleep を入れずに復帰します。必要なら直後に具体的な要素を待ってください。`installApp` の直後のように動いていないアプリは、`relaunch` と同じように起動します。`foreground` はその後、終了を挟まずにアプリの準備が整うまで待ちます。`foreground` は Android でも動きます（`setClipboard` と `clearClipboard` も同様です）。この一覧のそれ以外は iOS 専用です。`setClipboard` はペースト操作のためペーストボードに値を投入します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
+iOS では、これらのステップは `setLocation` / `push` と同じく `simctl` 経由で Simulator を操作します。そのためデバイスごとの制御チャネルが必要で、fake ドライバや並列実行ではクリーンに失敗します。このうち `foreground`、`setClipboard`、`clearClipboard` の3つは Android でも動き、それ以外は iOS 専用です。`overrideStatusBar` は、スクリーンショットや `visual` アサーションの直前に時計や電波表示を固定して画像を安定させる用途に向きます。
+
+`background` / `foreground` はバックグラウンド/フォアグラウンド遷移の対で、`foreground` は何も終了させません。`foreground` が待つかどうかは場合によって異なります。
+
+- iOS でデバイスグループに入っていない場合、動いているアプリはまったく待たずに復帰します。必要なら直後に具体的な要素を待ってください。
+- `installApp` の直後のように動いていないアプリは、`relaunch` と同じように起動します。`foreground` はその後、アプリの準備が整うまで条件待ちをします。
+- Android と、デバイスグループ内の iOS では、動いているアプリにも条件待ちをします。アプリが前面に来なければ、ステップは `AppNotInFront` で失敗します。
+
+`setClipboard` はペースト操作のためペーストボードに値を投入します（[BE-0052](../../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake-ja.md)）。
 
 ## `targets` / `target`（複数ターゲットシナリオ、BE-0428）
 
@@ -1141,7 +1149,7 @@ targets:
     appPath: build/Showcase-2.app
 ```
 
-`targets` に書いた素の名前は、メンバーが1つのグループとして扱います。配列を書かないシナリオは、
+`targets` に書いた素の名前は、メンバーが1つだけのグループとして扱われます。配列を書かないシナリオは、
 これまでどおりに動きます。ローダーは一覧に次の3つの規則を課します。
 
 - 名前は、入れ子かどうかにかかわらず、一覧全体で一度だけ現れます。
@@ -1201,7 +1209,7 @@ targets:
 
 このステップが変えるのはルーティングだけです。デバイスの確保、証跡のディレクトリ、クラッシュからの
 復旧は、宣言したプライマリのままです。`before` と `after` のフェーズでも、省略した `target` は宣言した
-プライマリに解決します。後片付けは、run が止まった場所で走るためです。
+プライマリに解決します。後片付けは run がどこで止まっても走る必要があるためです。
 
 `setPrimaryTarget` を書けるのは、シナリオのトップレベルの `steps` だけです。ローダーは、次の構文の
 中にある `setPrimaryTarget` を拒みます。

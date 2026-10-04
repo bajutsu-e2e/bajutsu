@@ -67,7 +67,7 @@ misinterpret rather than merely reject; a purely additive optional field needs n
 | `tags` | list[str] | `[]` | Selection labels; the CLI `--tag` / `--exclude` flags pick which scenarios run ([reuse, data, and tags](#reuse-data-and-tags)) |
 | `targets` | list[str \| list[str]] | `[]` | Every [target](glossary.md#target-app-device) this scenario drives ([below](#targets--target-multi-target-scenarios-be-0428)). Each entry names a `targets.<name>` config unit, resolved from the config the run loads, or is an array of two or more names that share one device ([device groups](#device-groups-several-apps-on-one-device-be-0447)) |
 | `primaryTarget` | str | none | The target a step or top-level `expect` entry runs against when it omits `target`; must be the first name in `targets`, the first member of the first group ([below](#targets--target-multi-target-scenarios-be-0428)) |
-| `installs` | list[str] | `[]` | The device-group members that install and launch at the start beside the primary; every other member of a group installs later through an `installApp` step ([device groups](#device-groups-several-apps-on-one-device-be-0447)) |
+| `installs` | list[str] | `[]` | The device-group members that install and launch at the start beside the primary; every other member of a group of two or more installs later through an `installApp` step ([device groups](#device-groups-several-apps-on-one-device-be-0447)) |
 | `data` / `dataFile` | list / str | none | Data-driven rows — inline `data`, or `dataFile` (a CSV path). Expands into one run per row, substituting `${row.col}`. Mutually exclusive ([reuse, data, and tags](#reuse-data-and-tags)) |
 | `preconditions` | object | `{}` | Per-test environment setup (below) |
 | `before` | list | `[]` | Setup steps run as their **own phase** ahead of `steps`; a failure there aborts the scenario ([below](#before--after-setup-and-teardown-phases)) |
@@ -1322,7 +1322,7 @@ has no deterministic run-time equivalent, so at `run` time it fails loudly with 
 surfacing `label` and the bypass hint (directives 1 and 2). Wiring the named `bypass` — then replacing
 the `manual` step with the deterministic action — is the author's path to a replayable scenario ([BE-0185](../roadmaps/BE-0185-record-human-takeover-step/BE-0185-record-human-takeover-step.md)).
 
-### Device & system control (iOS)
+### Device & system control
 
 ```yaml
 - background: {}                                                        # Home button (backgrounds via SpringBoard, no terminate)
@@ -1334,15 +1334,21 @@ the `manual` step with the deterministic action — is the author's path to a re
 - clearStatusBar: {}                                                    # restore the live status bar
 ```
 
-Like `setLocation` / `push`, these drive the Simulator via `simctl`, so they need a per-device control
-channel and fail cleanly on the fake driver / in parallel runs. `overrideStatusBar` is most useful right
-before a screenshot or a `visual` assertion, to freeze the clock and signal bars for a stable image.
-`background` / `foreground` are the two halves of a background/foreground transition. A running app
-resumes without any settle sleep. Wait for a concrete element afterward when a step needs one.
-An app that is not running, as after an `installApp`, launches the way `relaunch` would launch it.
-`foreground` then waits until the app is ready, and terminates nothing first.
-`foreground` also runs on Android, as do `setClipboard` and `clearClipboard`. Every other step in this list
-runs on iOS alone.
+On iOS, these steps drive the Simulator through `simctl`, like `setLocation` / `push`. They need a
+per-device control channel and fail cleanly on the fake driver / in parallel runs. Three of them also
+run on Android: `foreground`, `setClipboard`, and `clearClipboard`. Every other step in this list runs
+on iOS alone. `overrideStatusBar` is most useful right before a screenshot or a `visual` assertion, to
+freeze the clock and signal bars for a stable image.
+
+`background` / `foreground` are the two halves of a background/foreground transition.
+`foreground` terminates nothing. Whether `foreground` waits depends on the case:
+
+- On iOS outside a device group, a running app resumes with no wait at all. Wait for a concrete
+  element afterward when a step needs one.
+- An app that is not running, as after an `installApp`, launches the way `relaunch` would launch it.
+  `foreground` then waits on a condition until the app is ready.
+- On Android, and on iOS inside a device group, a running app gets the same condition wait. When the app never reaches the front, the step fails with `AppNotInFront`.
+
 `setClipboard` seeds the pasteboard for a paste flow ([BE-0052](../roadmaps/BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md)).
 
 ## `targets` / `target` (multi-target scenarios, BE-0428)
@@ -1609,7 +1615,7 @@ omits `target` runs on the named target. The same holds for an `interrupts` entr
 
 The step changes routing and nothing else. Leasing, the evidence directories, and crash recovery stay
 with the declared primary. In the `before` and `after` phases, an omitted `target` still resolves
-to the declared primary. Teardown runs wherever the run stopped.
+to the declared primary, since teardown has to run no matter where the run stopped.
 
 `setPrimaryTarget` belongs among a scenario's top-level `steps` alone. The loader refuses it inside
 these constructs:

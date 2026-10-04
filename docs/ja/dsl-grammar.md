@@ -182,7 +182,7 @@ StepMods  ::= { capture?: list(<CaptureToken>), extract?: map(string, <Extract>)
                 # `name` はダウンストリームで実際のファイルシステムパスの一部になる（run の
                 # step_id、エディタの証跡参照）。パス区切り文字、または単独の「.」「..」はロードエラー
                 # `target`: このステップが scenario.targets のどれを操作するか（BE-0428）。要否は
-                # len(scenario.targets) と scenario.primaryTarget で決まる（§4）。web ブロック内に入れ子になったステップでは
+                # len(scenario.target_names) と scenario.primaryTarget で決まる（§4）。web ブロック内に入れ子になったステップでは
                 # 拒まれる。そのステップは、囲んでいる web ステップがすでに解決したターゲットへ常に
                 # 走るため
 Extract   ::= { sel: <Selector>, prop?: ("value"|"label"|"identifier") }   # 既定 "value"
@@ -413,14 +413,14 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Assertion.requestSequence` | **1 件以上** | `scenario/models/assertions.py` |
 | `Trigger`（`capturePolicy[].on`） | `action` / `event` / `result` の **ちょうど 1 つ**。`idMatches` は `action` と **併用時のみ** | `scenario/models/evidence.py` |
 | `Scenario` | `data` と `dataFile` は **両方不可** | `scenario/models/scenario.py` |
-| `Scenario.targets` | 入れ子かどうかにかかわらず、一覧全体で同じ名前の重複不可（BE-0428）。内側の list は**2つ以上**の名前を持つ（BE-0447） | `scenario/models/scenario/_targets.py` |
+| `Scenario.targets` | 入れ子かどうかにかかわらず、一覧全体で同じ名前の重複不可（BE-0428）。内側の list は**2つ以上**の名前を持つ（BE-0447）。以下の `target_names` は、グループをまたいで平坦化した宣言済みの全名前（BE-0447） | `scenario/models/scenario/_targets.py` |
 | `Scenario.primaryTarget` | 省略するか、`targets` の最初の名前（最初のグループの最初のメンバー）と一致。`targets` が空なら**拒否**（BE-0436） | `scenario/models/scenario/_targets.py` |
 | `Scenario.installs` | 各エントリは宣言済みのターゲットで、重複不可。プライマリを含まない、2つ以上のメンバーを持つグループは、自分のメンバーを**1つ以上**書く（BE-0447） | `scenario/models/scenario/_targets.py` |
 | `installApp` | `from` は、ステップのデバイスを持つグループの**後から入るメンバー**（プライマリでも `installs` 記載でもない、2つ以上のメンバーを持つグループのメンバー）を指す。トップレベルの `installApp` は1つのメンバーにつき**1つまで**。`web:` / `app:` の中では**拒否**。シナリオが `setPrimaryTarget` を含むとき、デバイスを明示しない `interrupts` の復旧ステップでも**拒否**（BE-0447） | `scenario/models/scenario/_targets.py` |
 | `setPrimaryTarget` | `target` は宣言済みのターゲットを指す。**トップレベルの `steps` だけ**に書ける。`if`、`forEach`、ターゲットグループ、`web:`、`app:`、`interrupts` エントリ、`before`、`after` の中では拒否。コンポーネント内のものは、呼び出す `use:` / `group:` がトップレベルにあれば有効で、展開は呼び出し側の `target` をこのステップに刻まない（BE-0447） | `scenario/models/scenario/_targets.py`、`scenario/expand.py` |
-| `Step.target` / `Assertion.target`（`expect` のみ） | `len(targets) ≤ 1` なら省略可、または宣言済みの1つと一致。`len(targets) ≥ 2` で `primaryTarget` が未設定なら**必須**（`if`/`forEach`/`web` ラッパーも含み、末端のアクションだけではない）で、宣言済みターゲットの1つを名指し。`len(targets) ≥ 2` で `primaryTarget` を設定していれば**省略可**で、省略したものは入れ子の深さによらず主ターゲットに対して走る（BE-0436）。この主ターゲットは現在のプライマリで、`setPrimaryTarget` ステップが移す（BE-0447）。`web` ブロック内に入れ子になったステップと、インラインの `assert:` リスト・`if` の `condition`・`interrupts` エントリの `condition` を通して届く `Assertion` では**拒否**（BE-0428） | `scenario/models/scenario/_targets.py` |
-| `use:` / `group:` ステップの `Step.target` | `len(targets)` によらず、`primaryTarget` がなくても**省略可**で、ステップ自身は解決しない。指定した値は宣言済みターゲットを名指しする。展開は、呼び出しが生むステップのうち `target` を省略したものへその値を刻印し、異なるターゲットを名指しするステップを拒否する（BE-0446） | `scenario/models/scenario/_targets.py`、`scenario/expand.py` |
-| `Interrupt.target` と、`interrupts` エントリの `steps` にある `Step.target` | `primaryTarget` の有無にかかわらず、`len(targets)` にかかわらず**省略可**。エントリの `target` を省略するとプライマリターゲットを監視し、リカバリ用ステップの `target` を省略するとエントリ自身のターゲットで実行する(ただし、`target` を指定した `if`/`forEach` ステップの内側では、そのステップのターゲットで実行する)。指定した値は、宣言済みターゲットの名指しについて上の `Step.target` の規則に従う（BE-0438） | `scenario/models/scenario/_targets.py` |
+| `Step.target` / `Assertion.target`（`expect` のみ） | `len(target_names) ≤ 1` なら省略可、または宣言済みの1つと一致。`len(target_names) ≥ 2` で `primaryTarget` が未設定なら**必須**（`if`/`forEach`/`web` ラッパーも含み、末端のアクションだけではない）で、宣言済みターゲットの1つを名指し。`len(target_names) ≥ 2` で `primaryTarget` を設定していれば**省略可**で、省略したものは入れ子の深さによらず主ターゲットに対して走る（BE-0436）。この主ターゲットは現在のプライマリで、`setPrimaryTarget` ステップが移す（BE-0447）。`web` ブロック内に入れ子になったステップと、インラインの `assert:` リスト・`if` の `condition`・`interrupts` エントリの `condition` を通して届く `Assertion` では**拒否**（BE-0428） | `scenario/models/scenario/_targets.py` |
+| `use:` / `group:` ステップの `Step.target` | `len(target_names)` によらず、`primaryTarget` がなくても**省略可**で、ステップ自身は解決しない。指定した値は宣言済みターゲットを名指しする。展開は、呼び出しが生むステップのうち `target` を省略したものへその値を刻印し、異なるターゲットを名指しするステップを拒否する（BE-0446） | `scenario/models/scenario/_targets.py`、`scenario/expand.py` |
+| `Interrupt.target` と、`interrupts` エントリの `steps` にある `Step.target` | `primaryTarget` の有無にかかわらず、`len(target_names)` にかかわらず**省略可**。エントリの `target` を省略するとプライマリターゲットを監視し、リカバリ用ステップの `target` を省略するとエントリ自身のターゲットで実行する(ただし、`target` を指定した `if`/`forEach` ステップの内側では、そのステップのターゲットで実行する)。指定した値は、宣言済みターゲットの名指しについて上の `Step.target` の規則に従う（BE-0438） | `scenario/models/scenario/_targets.py` |
 | `targets.<name>.interrupts` の `Interrupt.target` と、その `steps` にある `Step.target` | **拒否**。エントリは、その config ブロックが設定するターゲットにすでに属している（BE-0438） | `config/schema/target_config.py` |
 | すべてのマッピング | **未知キー不可**（`extra="forbid"`） | `scenario/models/_base.py` |
 
