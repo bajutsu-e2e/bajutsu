@@ -558,7 +558,7 @@ so the deterministic gate stays untouched.
 - [x] Unit 5: XCUITest environment and driver
 - [x] Unit 6: Android environment, driver, and `foreground`
 - [x] Unit 7: backend handling
-- [ ] Unit 8: documentation in both languages
+- [x] Unit 8: documentation in both languages
 - [ ] Unit 9: showcase demo, update and companion scenarios
 
 Log:
