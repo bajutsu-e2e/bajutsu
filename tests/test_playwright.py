@@ -958,7 +958,14 @@ def test_importing_module_does_not_load_playwright() -> None:
     # A fresh interpreter keeps the check order-independent: sys.modules is process-wide, so any
     # earlier test on this xdist worker that resolves the real error types would leak it (#2121).
     probe = "import sys, bajutsu.common.drivers.playwright; assert 'playwright' not in sys.modules"
-    subprocess.run([sys.executable, "-c", probe], check=True)
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, timeout=60, check=False
+    )
+    assert result.returncode == 0, (
+        f"importing the driver module loaded playwright (exit {result.returncode}).\n"
+        f"stderr: {result.stderr.strip() or '(none)'}\n"
+        "Keep `from playwright.sync_api import …` lazy, inside the call that starts a browser."
+    )
 
 
 # --- web health / dialog signals (the crawl crash-detection seam, BE-0066) ---
