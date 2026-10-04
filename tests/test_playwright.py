@@ -7,6 +7,7 @@ launching Chromium.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from typing import Any
 
@@ -915,8 +916,8 @@ def test_close_does_not_resolve_playwright_errors_for_an_injected_page(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # An injected page has nothing to close, so close() must not resolve the error types: that
-    # memoizes a real `from playwright.sync_api import …` process-wide and breaks
-    # test_importing_module_does_not_load_playwright wherever the `web` extra is installed.
+    # memoizes a real `from playwright.sync_api import …` process-wide wherever the `web` extra
+    # is installed, loading the package with no browser ever started.
     drv, _ = _driver([])
     calls = 0
 
@@ -954,7 +955,10 @@ def test_notification_banner_frame_is_none() -> None:
 
 def test_importing_module_does_not_load_playwright() -> None:
     # The playwright package must stay off the import path until a browser is actually started.
-    assert "playwright" not in sys.modules
+    # A fresh interpreter keeps the check order-independent: sys.modules is process-wide, so any
+    # earlier test on this xdist worker that resolves the real error types would leak it (#2121).
+    probe = "import sys, bajutsu.common.drivers.playwright; assert 'playwright' not in sys.modules"
+    subprocess.run([sys.executable, "-c", probe], check=True)
 
 
 # --- web health / dialog signals (the crawl crash-detection seam, BE-0066) ---
