@@ -239,6 +239,18 @@ def manifest_dict(
     return manifest
 
 
+def scenario_result_dict(r: RunResult) -> dict[str, object]:
+    """Build one finished scenario's `<sid>/result.json`, written the moment that scenario ends.
+
+    The runner writes `manifest.json` only once every scenario has finished, so a run killed midway
+    would otherwise leave no verdict for the scenarios it did complete. The entry is the same shape
+    `manifest.json` carries for the scenario under `scenarios`, stamped with the manifest's
+    `schemaVersion` so a reader knows which shape it holds. `manifest.json` stays the run's single
+    source of truth; this file is the partial record a crashed run leaves behind.
+    """
+    return {"schemaVersion": SCHEMA_VERSION, "scenario": _scenario_dict(r)}
+
+
 def _scenario_dict(r: RunResult) -> dict[str, object]:
     """`asdict(r)`, minus `wall_offset_s` and every outcome's `app_crash_artifacts`.
 

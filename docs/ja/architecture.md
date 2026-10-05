@@ -481,6 +481,9 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   タイミングとステップ／試行（`attempt`）の帰属つきで、そのシナリオの他の証跡と並べて `driver_trace.json` に書き出します。
   `--score`/`--zip` と同じく診断専用です。`transport`／`subprocess` の往復の記録は XCUITest と adb だけが対象ですが、
   フラグ自体はバックエンドで切り替わらないため、web（Playwright）のランでも `driver` 階層のレコードは書き出されます。
+- シナリオごとの `result.json`: ランナーは各シナリオが終わった時点で、その判定を `<sid>/result.json` に書き出します。
+  中身は `manifest.json` がそのシナリオについて持つものと同じエントリです。途中で強制終了された実行でも、完了した
+  シナリオの判定は残ります。書き出しに失敗したときは警告して実行を続け、`manifest.json` が引き続き唯一の情報源です。
 - レポート（`manifest.json` / `junit.xml` / `ctrf.json` / `report.html`）
 - config 解決（defaults × targets、redact マージ）と actuator 選択
 - `simctl` コマンド層、XCUITest のオートメーションスナップショットのパーサ、`doctor` スコア + バックエンド別の実行可能ゲート（`preflight.py`: iOS は必須 CLI + 起動済みシミュレータ、web は Playwright とその Chromium ブラウザ）

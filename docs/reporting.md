@@ -20,6 +20,7 @@ runs/<runId>/
 ├── ctrf.json         # Common Test Report Format (richer CI consumers: PR comments, dashboards)
 ├── report.html       # self-contained HTML (no external assets)
 └── <sid>/            # one scenario's evidence (when using FileSink)
+    ├── result.json   # this scenario's verdict, written the moment it finishes
     └── <stepId>/     # per-step evidence
         ├── before.png    # screenshot, before the step acts
         ├── after.png     # screenshot, after it acts
@@ -27,6 +28,16 @@ runs/<runId>/
         ├── segment.mp4   # video (interval)
         └── device.log    # deviceLog (interval)
 ```
+
+The runner writes `manifest.json`, `junit.xml`, `ctrf.json`, and `report.html` only after every
+scenario has finished. A run killed partway through a suite (a crashed host, a CI job timeout)
+would otherwise leave no verdict at all. Each `<sid>/result.json` closes that gap: the runner writes
+it as soon as that scenario ends, before the next scenario starts. The file holds the manifest's
+`schemaVersion` and, under `scenario`, the same entry `manifest.json` lists for that scenario under
+`scenarios`, masked for secret values exactly as the manifest is. In a cross-browser matrix run the
+file sits under `<engine>/<sid>/`: the parent directory names the engine, the entry's `engine` is
+empty, and artifact paths are relative to `<engine>/`. `manifest.json` remains the single source of
+truth for a run that completes.
 
 When a scenario's `targets` field
 ([BE-0428](../roadmaps/BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md))

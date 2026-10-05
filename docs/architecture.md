@@ -1176,6 +1176,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   (BE-0415's "Not doing"), but the flag itself is not backend-gated: a web (Playwright) run still
   writes `driver_trace.json` with the `driver`-level records, since the pipeline wraps whatever
   driver the lease returns.
+- Per-scenario `result.json`: the runner writes each scenario's verdict to `<sid>/result.json` the
+  moment that scenario finishes — the same entry `manifest.json` lists for it — so a run killed
+  midway still keeps the verdicts of the scenarios it completed. A failed write warns and the run
+  continues; `manifest.json` stays the single source of truth.
 - Reporting (`manifest.json` / `junit.xml` / `ctrf.json` / `report.html`)
 - Config resolution (defaults × targets, redact merge) and actuator selection
 - The `simctl` command layer · the XCUITest automation-snapshot parser · the `doctor` score + per-backend runnability

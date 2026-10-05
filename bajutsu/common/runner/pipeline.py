@@ -61,6 +61,7 @@ from bajutsu.common.report import (
     git_revision,
     run_provenance,
     scenario_render_inputs,
+    scenario_result_dict,
     scenario_source_meta,
     write_report,
 )
@@ -277,6 +278,10 @@ class _ScenarioRunner:
     # `bajutsu run --trace-driver` (BE-0415): opens a `tracing` context per scenario and writes
     # `<sid>/driver_trace.json`. Diagnostic only, off by default, never on the verdict path.
     trace_driver: bool = False
+    # The redactor `<sid>/result.json` is written with: the same one `manifest.json` gets (secret
+    # values only), so the file's entry matches the manifest's. The run's `redactor` would also
+    # apply the config's `redact.fields` to keys, masking the entry's own schema keys (BE-0331).
+    result_redactor: Redactor = field(default_factory=lambda: Redactor(None))
     # Latches once `_maybe_emit_score` has fired, so a backend-crash retry of scenario 0 (which
     # re-enters `_run_on_lease` on a respawned app — BE-0049) does not re-score and emit a second
     # grade: the score is a once-per-run tell, not a per-attempt one. A mutable field on a frozen
@@ -406,17 +411,48 @@ class _ScenarioRunner:
             s: The scenario to run.
         """
         sid = _evidence_sid(i, s)
-        if not self.trace_driver:
-            return self._run_one_impl(i, s, sid)
+        if self.trace_driver:
+            return self._run_one_traced(i, s, sid)
+        return self._run_one_recorded(i, s, sid)
+
+    def _run_one_recorded(self, i: int, s: Scenario, sid: str) -> RunResult:
+        """`_run_one_impl`, then its verdict persisted to `<sid>/result.json` straight away."""
+        result = self._run_one_impl(i, s, sid)
+        self._write_result(s, sid, result)
+        return result
+
+    def _write_result(self, s: Scenario, sid: str, result: RunResult) -> None:
+        """Persist the finished scenario's verdict to `<sid>/result.json` before the next one starts.
+
+        `manifest.json` is written only after the whole run, so this is what survives a run killed
+        midway. Each worker writes its own `<sid>`, so parallel workers never share a file.
+        """
+        if self.run_dir is None:
+            return
+        try:
+            RunArtifactWriter(self.run_dir, self.result_redactor).write_json(
+                f"{sid}/result.json", scenario_result_dict(result)
+            )
+        except (OSError, TypeError) as exc:
+            # A partial-progress record, not the verdict: `manifest.json` still carries the result,
+            # so a failed write is warned about rather than allowed to end the run. `TypeError`
+            # covers a `RunResult` field JSON cannot encode (the BE-0424 `bytes` case) — that still
+            # fails loudly when `manifest.json` is written, but must not abort the suite here.
+            _logger.warning("scenario %s: writing result.json failed (%s)", s.name, exc)
+
+    def _run_one_traced(self, i: int, s: Scenario, sid: str) -> RunResult:
+        """`_run_one_impl` under an open driver trace, flushed to `<sid>/driver_trace.json`."""
         # BE-0415: opened *before* `_run_one_impl` leases a device, so the driver it constructs
         # (`self.lease(...)` -> `launch_driver` -> `backends.make_driver`) sees a trace already open
         # at construction time — see `tracing`'s module docstring and `XcuitestDriver`/`AdbDriver`'s
         # own construction-time checks. Flushed once per scenario, across every crash-recovery
         # retry, in a `finally` so a scenario that raises past `_run_one_impl` still leaves its
         # partial trace on disk — exactly the crash case this feature exists to help diagnose.
+        # The verdict is persisted inside the `try`, ahead of the trace flush, so a process killed
+        # while serializing the (diagnostic) trace still leaves the finished scenario's result.
         with tracing.open_trace() as trace_ctx:
             try:
-                return self._run_one_impl(i, s, sid)
+                return self._run_one_recorded(i, s, sid)
             finally:
                 writer = self._artifacts()
                 if writer is not None:
@@ -1946,6 +1982,7 @@ def run_all(
         force_erase_on_retry=force_erase_on_retry,
         cancelled=cancelled,
         trace_driver=trace_driver,
+        result_redactor=Redactor(None, values=secret_values),
     )
     if workers > 1:
         # >1 hands each worker its own device + per-device resources; the runner is frozen and
