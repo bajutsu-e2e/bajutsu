@@ -433,9 +433,11 @@ class _ScenarioRunner:
             RunArtifactWriter(self.run_dir, self.result_redactor).write_json(
                 f"{sid}/result.json", scenario_result_dict(result)
             )
-        except OSError as exc:
+        except (OSError, TypeError) as exc:
             # A partial-progress record, not the verdict: `manifest.json` still carries the result,
-            # so a failed write is warned about rather than allowed to end the run.
+            # so a failed write is warned about rather than allowed to end the run. `TypeError`
+            # covers a `RunResult` field JSON cannot encode (the BE-0424 `bytes` case) — that still
+            # fails loudly when `manifest.json` is written, but must not abort the suite here.
             _logger.warning("scenario %s: writing result.json failed (%s)", s.name, exc)
 
     def _run_one_traced(self, i: int, s: Scenario, sid: str) -> RunResult:

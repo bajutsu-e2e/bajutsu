@@ -97,6 +97,35 @@ def test_crash_recovered_scenario_records_the_final_attempt(tmp_path: Path) -> N
     assert _read(run_dir, results[0].sid)["scenario"]["ok"] is True
 
 
+def test_secret_values_are_masked_in_result_json(tmp_path: Path) -> None:
+    # `result.json` carries the same result text `manifest.json` does, so the run-level scrub must
+    # reach it too — otherwise a dropped `result_redactor` writes the secret to disk in cleartext.
+    secret = "S3CR3T-TOKEN"
+    scenario = Scenario.model_validate(
+        {
+            "name": "a",
+            "steps": [{"tap": {"id": "ok"}}],
+            "expect": [{"value": {"sel": {"id": "ok"}, "equals": "${secrets.token}"}}],
+        }
+    )
+    run_dir = tmp_path / "runs" / "run1"
+    results = run_all(
+        _eff(),
+        [scenario],
+        _lease,
+        run_dir=run_dir,
+        bindings={"secrets.token": secret},
+        secret_values=[secret],
+    )
+
+    # The assertion failed, so the secret really did reach the in-memory result text...
+    assert not results[0].ok
+    assert secret in (results[0].failure or "")
+    # ...but not the file.
+    written = (run_dir / results[0].sid / "result.json").read_text(encoding="utf-8")
+    assert secret not in written
+
+
 def test_result_json_is_on_disk_before_the_next_scenario_starts(tmp_path: Path) -> None:
     # The point of the file: a run killed during scenario N still leaves scenarios 1..N-1's verdicts.
     run_dir = tmp_path / "runs" / "run1"
@@ -151,6 +180,20 @@ def test_no_run_dir_writes_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 
     assert results[0].ok, results[0].failure
     assert not list(tmp_path.rglob("result.json"))
+
+
+def test_unencodable_result_is_warned_about_not_raised(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A `RunResult` field JSON cannot encode must not abort the suite at its first scenario.
+    from bajutsu.common.runner import pipeline
+
+    monkeypatch.setattr(pipeline, "scenario_result_dict", lambda r: {"blob": b"\x00"})
+    run_dir = tmp_path / "runs" / "run1"
+    results = run_all(_eff(), [_scenario("a"), _scenario("b")], _lease, run_dir=run_dir)
+
+    assert [r.ok for r in results] == [True, True]
+    assert "writing result.json failed" in caplog.text
 
 
 def test_write_failure_is_warned_about_not_raised(

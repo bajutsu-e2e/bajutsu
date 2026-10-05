@@ -37,8 +37,8 @@ problem. A cancel request lets the scenario loop finish in order, so the run sti
 report. That path needs the process to cooperate. A `SIGKILL` or an out-of-memory termination
 gives it no chance.
 
-The observable outcome follows. Stop a run during its Nth scenario. The run directory then holds a
-`result.json` for each of the first N−1 scenarios, each stating that scenario's verdict.
+The observable outcome: a run stopped during its Nth scenario leaves a `result.json` for each of
+the first N−1 scenarios, each stating that scenario's verdict.
 
 ## Detailed design
 
