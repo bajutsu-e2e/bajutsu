@@ -127,6 +127,24 @@ def test_trace_driver_run_still_writes_result_json(tmp_path: Path) -> None:
     assert (run_dir / results[0].sid / "driver_trace.json").is_file()
 
 
+def test_trace_driver_run_writes_result_json_before_the_trace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The verdict must not wait on the diagnostic trace's serialization: a process killed while
+    # writing `driver_trace.json` would otherwise lose a scenario that had already finished.
+    written: list[str] = []
+    original = RunArtifactWriter.write_json
+
+    def _record(self: RunArtifactWriter, name: str, data: object) -> Path:
+        written.append(Path(name).name)
+        return original(self, name, data)
+
+    monkeypatch.setattr(RunArtifactWriter, "write_json", _record)
+    run_all(_eff(), [_scenario("a")], _lease, run_dir=tmp_path / "run1", trace_driver=True)
+
+    assert written.index("result.json") < written.index("driver_trace.json")
+
+
 def test_no_run_dir_writes_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     results = run_all(_eff(), [_scenario("a")], _lease)

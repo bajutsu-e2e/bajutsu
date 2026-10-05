@@ -411,9 +411,13 @@ class _ScenarioRunner:
             s: The scenario to run.
         """
         sid = _evidence_sid(i, s)
-        result = (
-            self._run_one_traced(i, s, sid) if self.trace_driver else self._run_one_impl(i, s, sid)
-        )
+        if self.trace_driver:
+            return self._run_one_traced(i, s, sid)
+        return self._run_one_recorded(i, s, sid)
+
+    def _run_one_recorded(self, i: int, s: Scenario, sid: str) -> RunResult:
+        """`_run_one_impl`, then its verdict persisted to `<sid>/result.json` straight away."""
+        result = self._run_one_impl(i, s, sid)
         self._write_result(s, sid, result)
         return result
 
@@ -442,9 +446,11 @@ class _ScenarioRunner:
         # own construction-time checks. Flushed once per scenario, across every crash-recovery
         # retry, in a `finally` so a scenario that raises past `_run_one_impl` still leaves its
         # partial trace on disk — exactly the crash case this feature exists to help diagnose.
+        # The verdict is persisted inside the `try`, ahead of the trace flush, so a process killed
+        # while serializing the (diagnostic) trace still leaves the finished scenario's result.
         with tracing.open_trace() as trace_ctx:
             try:
-                return self._run_one_impl(i, s, sid)
+                return self._run_one_recorded(i, s, sid)
             finally:
                 writer = self._artifacts()
                 if writer is not None:

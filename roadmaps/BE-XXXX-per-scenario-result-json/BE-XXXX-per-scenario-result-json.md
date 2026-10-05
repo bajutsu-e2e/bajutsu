@@ -107,6 +107,12 @@ configuration.
 - [x] Tests cover serial, parallel, crash-recovery, `--trace-driver`, and failed-write runs
 - [x] `docs/reporting.md`, `docs/architecture.md`, and their Japanese mirrors document the file
 
+Log:
+
+- [#2128](https://github.com/bajutsu-e2e/bajutsu/pull/2128) — Proposal and implementation together,
+  completing the item. With `--trace-driver` on, the verdict is written before the trace is flushed,
+  so a process killed while serializing the trace still keeps the finished scenario's result.
+
 ## References
 
 - [BE-0370 — Finish a cancelled run gracefully](../BE-0370-graceful-run-cancel/BE-0370-graceful-run-cancel.md)

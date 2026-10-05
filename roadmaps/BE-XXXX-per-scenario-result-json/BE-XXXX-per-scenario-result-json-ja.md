@@ -102,6 +102,12 @@ JSONのキーをマスクする設定）は適用しません。適用すると�
 - [x] 逐次実行、並列実行、クラッシュからの復旧、`--trace-driver`、書き出し失敗の各場合をテストで確かめる
 - [x] `docs/reporting.md`、`docs/architecture.md`とそれぞれの日本語版にファイルを記載する
 
+ログ：
+
+- [#2128](https://github.com/bajutsu-e2e/bajutsu/pull/2128) — 提案と実装を1つのPRにまとめ、本項目を完成させました。
+  `--trace-driver`を有効にした場合も、トレースを書き出す前に判定を書き出します。そのため、トレースの
+  書き出し中にプロセスが強制終了されても、完了したシナリオの結果は残ります。
+
 ## 参考
 
 - [BE-0370 — キャンセルされた run を正常に終了させる](../BE-0370-graceful-run-cancel/BE-0370-graceful-run-cancel-ja.md)
