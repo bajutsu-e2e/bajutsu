@@ -34,7 +34,10 @@ scenario has finished. A run killed partway through a suite (a crashed host, a C
 would otherwise leave no verdict at all. Each `<sid>/result.json` closes that gap: the runner writes
 it as soon as that scenario ends, before the next scenario starts. The file holds the manifest's
 `schemaVersion` and, under `scenario`, the same entry `manifest.json` lists for that scenario under
-`scenarios`. `manifest.json` remains the single source of truth for a run that completes.
+`scenarios`, masked for secret values exactly as the manifest is. In a cross-browser matrix run the
+file sits under `<engine>/<sid>/`: the parent directory names the engine, the entry's `engine` is
+empty, and artifact paths are relative to `<engine>/`. `manifest.json` remains the single source of
+truth for a run that completes.
 
 When a scenario's `targets` field
 ([BE-0428](../roadmaps/BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution.md))

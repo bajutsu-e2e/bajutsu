@@ -34,7 +34,9 @@ runs/<runId>/
 判定は何も残りません。`<sid>/result.json`は、この欠落を埋めるファイルです。ランナーは、各シナリオが
 終わった時点で、次のシナリオを始める前に書き出します。中身は、manifestと同じ`schemaVersion`と、
 `scenario`キーの下に置いた、`manifest.json`の`scenarios`がそのシナリオについて持つものと同じエントリ
-です。最後まで完了した実行では、引き続き`manifest.json`が唯一の情報源です。
+です。シークレットの値は、manifestと同じくマスクします。クロスブラウザのマトリックス実行では、ファイルは
+`<engine>/<sid>/`の下に置かれます。親ディレクトリがエンジンを表し、エントリの`engine`は空で、成果物の
+パスは`<engine>/`からの相対パスです。最後まで完了した実行では、引き続き`manifest.json`が唯一の情報源です。
 
 シナリオの`targets`フィールド
 ([BE-0428](../../roadmaps/BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md))

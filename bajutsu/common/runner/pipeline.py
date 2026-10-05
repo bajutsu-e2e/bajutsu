@@ -278,6 +278,10 @@ class _ScenarioRunner:
     # `bajutsu run --trace-driver` (BE-0415): opens a `tracing` context per scenario and writes
     # `<sid>/driver_trace.json`. Diagnostic only, off by default, never on the verdict path.
     trace_driver: bool = False
+    # The redactor `<sid>/result.json` is written with: the same one `manifest.json` gets (secret
+    # values only), so the file's entry matches the manifest's. The run's `redactor` would also
+    # apply the config's `redact.fields` to keys, masking the entry's own schema keys (BE-0331).
+    result_redactor: Redactor = field(default_factory=lambda: Redactor(None))
     # Latches once `_maybe_emit_score` has fired, so a backend-crash retry of scenario 0 (which
     # re-enters `_run_on_lease` on a respawned app — BE-0049) does not re-score and emit a second
     # grade: the score is a once-per-run tell, not a per-attempt one. A mutable field on a frozen
@@ -419,11 +423,12 @@ class _ScenarioRunner:
         `manifest.json` is written only after the whole run, so this is what survives a run killed
         midway. Each worker writes its own `<sid>`, so parallel workers never share a file.
         """
-        writer = self._artifacts()
-        if writer is None:
+        if self.run_dir is None:
             return
         try:
-            writer.write_json(f"{sid}/result.json", scenario_result_dict(result))
+            RunArtifactWriter(self.run_dir, self.result_redactor).write_json(
+                f"{sid}/result.json", scenario_result_dict(result)
+            )
         except OSError as exc:
             # A partial-progress record, not the verdict: `manifest.json` still carries the result,
             # so a failed write is warned about rather than allowed to end the run.
@@ -1969,6 +1974,7 @@ def run_all(
         force_erase_on_retry=force_erase_on_retry,
         cancelled=cancelled,
         trace_driver=trace_driver,
+        result_redactor=Redactor(None, values=secret_values),
     )
     if workers > 1:
         # >1 hands each worker its own device + per-device resources; the runner is frozen and

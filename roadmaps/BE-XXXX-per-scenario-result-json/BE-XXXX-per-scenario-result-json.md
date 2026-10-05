@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-per-scenario-result-json.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | TBD — filled in once the PR is opened |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
 
@@ -33,8 +34,8 @@ finished.
 
 [BE-0370](../BE-0370-graceful-run-cancel/BE-0370-graceful-run-cancel.md) handles one case of the
 problem. A cancel request lets the scenario loop finish in order, so the run still writes its
-report. That path needs the process to cooperate. A `SIGKILL`, an out-of-memory termination, or a
-power loss gives it no chance.
+report. That path needs the process to cooperate. A `SIGKILL` or an out-of-memory termination
+gives it no chance.
 
 The observable outcome follows. Stop a run during its Nth scenario. The run directory then holds a
 `result.json` for each of the first N−1 scenarios, each stating that scenario's verdict.
@@ -59,15 +60,21 @@ completes. `result.json` is the partial record an interrupted run leaves behind.
 
 The scenario runner's per-scenario entry point writes the file once the scenario's result is
 final. A crash-recovery retry counts as part of the same scenario, so the file holds the last
-attempt's result. The write happens with `--trace-driver` on or off. The run's artifact writer
-performs the write, so the file gets the same masking as every other artifact. A run with no run
-directory writes nothing.
+attempt's result. The write happens with `--trace-driver` on or off. The write masks secret values
+exactly as `manifest.json` does. It does not apply the config's `redact.fields`, which masks
+matching JSON keys: the entry's own keys, such as `reason`, would then differ from the manifest's.
+A run with no run directory writes nothing.
 
 ### Parallel and cross-browser runs
 
 With `--workers`, each worker writes the file of the scenario it ran. Every scenario has its own
-`<sid>`, so no two workers share a file and the runner takes no lock. A cross-browser matrix run
-writes under `<run_dir>/<engine>/<sid>/`, beside the rest of that scenario's evidence.
+`<sid>`, so no two workers share a file and the runner takes no lock.
+
+A cross-browser matrix run writes under `<run_dir>/<engine>/<sid>/`, beside the rest of that
+scenario's evidence. The matrix tags each result with its engine only after the engine's whole pass
+ends. In this file, then, the parent directory names the engine, the entry's `engine` is empty, and
+artifact paths are relative to `<run_dir>/<engine>/`. The finished `manifest.json` carries the
+tagged form.
 
 ### A failed write
 
@@ -95,10 +102,10 @@ configuration.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] The runner writes `<sid>/result.json` as each scenario finishes
-- [ ] An error on the write logs a warning instead of ending the run
-- [ ] Tests cover serial, parallel, `--trace-driver`, and failed-write runs
-- [ ] `docs/reporting.md` and its Japanese mirror document the file
+- [x] The runner writes `<sid>/result.json` as each scenario finishes
+- [x] An error on the write logs a warning instead of ending the run
+- [x] Tests cover serial, parallel, crash-recovery, `--trace-driver`, and failed-write runs
+- [x] `docs/reporting.md`, `docs/architecture.md`, and their Japanese mirrors document the file
 
 ## References
 

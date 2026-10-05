@@ -3,18 +3,23 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
-from _runner import _eff, _failing_lease, _lease
+from _runner import _eff, _el, _failing_lease, _lease
 
 from bajutsu.common.config import Effective
+from bajutsu.common.drivers import base
+from bajutsu.common.drivers.base import BackendCrashError
+from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.evidence import NullSink
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.report import manifest_dict
 from bajutsu.common.report.manifest import SCHEMA_VERSION
 from bajutsu.common.runner import Lease, run_all
-from bajutsu.common.scenario import Scenario
+from bajutsu.common.scenario import Redact, Scenario
 
 
 def _scenario(name: str) -> Scenario:
@@ -48,6 +53,48 @@ def test_result_json_matches_the_manifest_entry(tmp_path: Path) -> None:
     assert doc["scenario"]["failure"]
     manifest_entry = json.loads(json.dumps(manifest_dict("run1", results)["scenarios"]))[0]
     assert doc["scenario"] == manifest_entry
+
+
+def test_config_redact_fields_do_not_mask_the_entrys_own_keys(tmp_path: Path) -> None:
+    # `redact.fields` masks matching JSON keys in app evidence; `manifest.json` is written without
+    # it, so `result.json` must be too, or a field named like an entry key (`reason`) would be
+    # masked in one record and not the other.
+    eff = replace(_eff(), redact=Redact(fields=["reason"]))
+    run_dir = tmp_path / "runs" / "run1"
+    results = run_all(eff, [_scenario("a")], _failing_lease, run_dir=run_dir)
+
+    doc = _read(run_dir, results[0].sid)
+    assert "reason" in doc["scenario"]["steps"][0]
+    manifest_entry = json.loads(json.dumps(manifest_dict("run1", results)["scenarios"]))[0]
+    assert doc["scenario"] == manifest_entry
+
+
+class _Crashing(FakeDriver):
+    def tap(self, sel: base.Selector) -> None:
+        raise BackendCrashError("runner crashed mid-run (test)")
+
+
+def test_crash_recovered_scenario_records_the_final_attempt(tmp_path: Path) -> None:
+    calls = {"n": 0}
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        calls["n"] += 1
+        driver = (_Crashing if calls["n"] == 1 else FakeDriver)([_el("ok", "OK", ["button"])])
+        return Lease(
+            driver=driver,
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+        )
+
+    run_dir = tmp_path / "runs" / "run1"
+    results = run_all(_eff(), [_scenario("a")], lease, run_dir=run_dir, crash_retries=1)
+
+    assert calls["n"] == 2
+    assert results[0].ok, results[0].failure
+    assert _read(run_dir, results[0].sid)["scenario"]["ok"] is True
 
 
 def test_result_json_is_on_disk_before_the_next_scenario_starts(tmp_path: Path) -> None:
