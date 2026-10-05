@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-per-scenario-result-json-ja.md)
+**English** · [日本語](BE-0453-per-scenario-result-json-ja.md)
 
-# BE-XXXX — Persist each scenario's result as soon as it finishes
+# BE-0453 — Persist each scenario's result as soon as it finishes
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-per-scenario-result-json.md) |
+| Proposal | [BE-0453](BE-0453-per-scenario-result-json.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0453") |
 | Implementing PR | [#2128](https://github.com/bajutsu-e2e/bajutsu/pull/2128) |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
