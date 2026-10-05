@@ -20,6 +20,7 @@ runs/<runId>/
 ├── ctrf.json         # Common Test Report Format（PR コメントやダッシュボードなど、より豊かな CI の消費側向け）
 ├── report.html       # 自己完結 HTML（外部アセット無し）
 └── <sid>/            # シナリオ単位の証跡（FileSink 使用時）
+    ├── result.json   # このシナリオの判定（シナリオが終わった時点で書き出す）
     └── <stepId>/     # ステップごとの証跡
         ├── before.png    # screenshot（ステップが動作する前）
         ├── after.png     # screenshot（動作したあと）
@@ -27,6 +28,13 @@ runs/<runId>/
         ├── segment.mp4   # video（区間）
         └── device.log    # deviceLog（区間）
 ```
+
+ランナーが`manifest.json`、`junit.xml`、`ctrf.json`、`report.html`を書き出すのは、すべてのシナリオが
+終わった後です。そのため、ホストのクラッシュやCIジョブのタイムアウトでスイートの途中で実行が止まると、
+判定は何も残りません。`<sid>/result.json`は、この欠落を埋めるファイルです。ランナーは、各シナリオが
+終わった時点で、次のシナリオを始める前に書き出します。中身は、manifestと同じ`schemaVersion`と、
+`scenario`キーの下に置いた、`manifest.json`の`scenarios`がそのシナリオについて持つものと同じエントリ
+です。最後まで完了した実行では、引き続き`manifest.json`が唯一の情報源です。
 
 シナリオの`targets`フィールド
 ([BE-0428](../../roadmaps/BE-0428-multi-target-scenario-execution/BE-0428-multi-target-scenario-execution-ja.md))

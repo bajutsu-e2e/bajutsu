@@ -17,7 +17,13 @@ from bajutsu.common.report.html import (
     write_report,
 )
 from bajutsu.common.report.load import load_run, rebake, rerender_html, results_from_manifest
-from bajutsu.common.report.manifest import git_revision, junit_xml, manifest_dict, run_provenance
+from bajutsu.common.report.manifest import (
+    git_revision,
+    junit_xml,
+    manifest_dict,
+    run_provenance,
+    scenario_result_dict,
+)
 
 __all__ = [
     "ScenarioPlanSource",
@@ -32,6 +38,7 @@ __all__ = [
     "results_from_manifest",
     "run_provenance",
     "scenario_render_inputs",
+    "scenario_result_dict",
     "scenario_source_meta",
     "write_html_and_junit",
     "write_report",

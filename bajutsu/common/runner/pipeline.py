@@ -61,6 +61,7 @@ from bajutsu.common.report import (
     git_revision,
     run_provenance,
     scenario_render_inputs,
+    scenario_result_dict,
     scenario_source_meta,
     write_report,
 )
@@ -406,8 +407,30 @@ class _ScenarioRunner:
             s: The scenario to run.
         """
         sid = _evidence_sid(i, s)
-        if not self.trace_driver:
-            return self._run_one_impl(i, s, sid)
+        result = (
+            self._run_one_traced(i, s, sid) if self.trace_driver else self._run_one_impl(i, s, sid)
+        )
+        self._write_result(s, sid, result)
+        return result
+
+    def _write_result(self, s: Scenario, sid: str, result: RunResult) -> None:
+        """Persist the finished scenario's verdict to `<sid>/result.json` before the next one starts.
+
+        `manifest.json` is written only after the whole run, so this is what survives a run killed
+        midway. Each worker writes its own `<sid>`, so parallel workers never share a file.
+        """
+        writer = self._artifacts()
+        if writer is None:
+            return
+        try:
+            writer.write_json(f"{sid}/result.json", scenario_result_dict(result))
+        except OSError as exc:
+            # A partial-progress record, not the verdict: `manifest.json` still carries the result,
+            # so a failed write is warned about rather than allowed to end the run.
+            _logger.warning("scenario %s: writing result.json failed (%s)", s.name, exc)
+
+    def _run_one_traced(self, i: int, s: Scenario, sid: str) -> RunResult:
+        """`_run_one_impl` under an open driver trace, flushed to `<sid>/driver_trace.json`."""
         # BE-0415: opened *before* `_run_one_impl` leases a device, so the driver it constructs
         # (`self.lease(...)` -> `launch_driver` -> `backends.make_driver`) sees a trace already open
         # at construction time — see `tracing`'s module docstring and `XcuitestDriver`/`AdbDriver`'s
