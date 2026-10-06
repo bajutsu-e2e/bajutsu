@@ -98,7 +98,7 @@ bajutsu run --scenario cross-platform.yaml --config both-targets.yaml           
 `--step`、`--break`、`--break-on-fail` を指定すると、ステップループを `step>` プロンプトで止め、
 ステップの合間にアプリの状態を確認できます。プロンプトは stderr に出るため、stdout は従来どおり
 `PASS|FAIL` の 1 行です。`--step` は最初のステップの前と、その後のすべてのステップの前で止まります。
-`--break` は指定したステップに達するまで止まらず実行します。`--break-on-fail` は失敗したステップで 1 回だけ止まります。
+`--break` は指定したステップに達するまで止まらず実行します。`--break-on-fail` は失敗したステップで 1 回だけ止まります。シナリオ単位の `expect` の不一致では止まりません。
 
 | コマンド | 動作 |
 |---|---|
@@ -110,7 +110,7 @@ bajutsu run --scenario cross-platform.yaml --config both-targets.yaml           
 | `tap`、`type`、`scroll`、`back`、`step <yaml>` | `repl` と同じく、アプリを操作します |
 
 アプリを操作するコマンドを 1 つでも実行すると、その run は手動操作を含むものになります。アサーションの結果にかかわらず、
-シナリオは `interactive: <最初に実行したコマンド>` で失敗し、`result.json` の `interactive` にそのコマンドが残ります。
+シナリオは `interactive: <動詞>` で失敗します。`<動詞>` は最初に実行した操作コマンドの動詞で、`result.json` の `interactive` にも動詞だけが残ります。行の残りは、手で入力した値を含みうるため保存しません。
 読み取りとステップ送りだけの run は、通常どおりアサーションで判定します。ただし、セッションのタイムアウトのように時間に反応するアプリでは、長い停止が結果を変えることがあります。`interrupts` の規則が実行するステップでは、プロンプトに止まりません。プロンプトには stdin と stderr が端末である
 ことが必要なため、パイプや CI での実行は終了コード 2 で拒否します。複数のシナリオ、`--browsers` のマトリックス、
 1 を超える `--workers` も同様に拒否します。

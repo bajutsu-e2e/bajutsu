@@ -6,6 +6,8 @@ stays the scenario's own assertions, so a hand-driven run is failed rather than 
 
 from __future__ import annotations
 
+import inspect
+import re
 from collections.abc import Iterable
 from dataclasses import replace
 
@@ -14,11 +16,14 @@ import typer
 from _orch import FakeClock, _scenario
 from conftest import el
 
-from bajutsu.common.cancellation import CANCELLED_FAILURE
+from bajutsu.common.cancellation import CANCELLED_FAILURE, RunCancelled
 from bajutsu.common.drivers.fake import FakeDriver
+from bajutsu.common.drivers.xcuitest import XcuitestRunnerCrashError
 from bajutsu.common.orchestrator import run_scenario
 from bajutsu.common.orchestrator.types import RunResult, StepPause
 from bajutsu.common.report.manifest import scenario_result_dict
+from bajutsu.common.runner import run_all
+from bajutsu.repl.session import ACTUATING_VERBS, ReplSession
 from bajutsu.run.cli import _build_step_gate
 from bajutsu.run.step_gate import PromptStepGate
 
@@ -149,16 +154,16 @@ def test_acting_on_the_app_fails_a_run_whose_assertions_all_passed() -> None:
     gate = _gate(term, pause_first=True)
     result = _run(gate)
     assert not result.ok
-    assert result.interactive == "tap b"
-    assert result.failure == "interactive: tap b"
+    assert result.interactive == "tap"
+    assert result.failure == "interactive: tap"
     # Every step itself ran and passed; the failure is the stamp, not an assertion.
     assert [o.ok for o in result.steps] == [True, True]
 
 
 def test_the_first_manual_command_is_the_one_recorded() -> None:
-    term = _Terminal(["tap a", "tap b", "c"])
+    term = _Terminal(["back", "tap b", "c"])
     result = _run(_gate(term, pause_first=True))
-    assert result.interactive == "tap a"
+    assert result.interactive == "back"
 
 
 def test_a_real_failure_keeps_its_own_reason_over_the_interactive_stamp() -> None:
@@ -166,7 +171,7 @@ def test_a_real_failure_keeps_its_own_reason_over_the_interactive_stamp() -> Non
     scenario: dict[str, object] = {"name": "x", "steps": [{"tap": {"id": "missing"}}]}
     result = _run(_gate(term, pause_first=True), scenario)
     assert not result.ok
-    assert result.interactive == "tap b"
+    assert result.interactive == "tap"
     assert result.failure is not None
     assert not result.failure.startswith("interactive:")
 
@@ -178,7 +183,7 @@ def test_a_command_the_shell_rejects_is_reported_and_the_prompt_stays_open() -> 
     assert any(line.startswith("error:") for line in term.said)
     assert term.prompts == 2
     # The attempt is recorded even though it raised: a tap that errored may still have moved the app.
-    assert result.interactive == "tap nope"
+    assert result.interactive == "tap"
 
 
 def test_break_on_fail_stops_once_on_the_failed_step() -> None:
@@ -254,6 +259,66 @@ def test_before_step_reports_whether_it_held_the_loop() -> None:
     assert gate.before_step(replace(pause, index=1)) is True
 
 
+def test_a_value_typed_at_the_prompt_never_reaches_the_result() -> None:
+    # `type` can carry a credential typed in by hand that is no configured secret; the result is
+    # persisted and uploaded, so it records the verb alone.
+    result = _run(_gate(_Terminal(["type a hunter2", "c"]), pause_first=True))
+    assert result.interactive == "type"
+    assert "hunter2" not in (result.failure or "")
+
+
+class _CrashingDriver(FakeDriver):
+    def tap(self, target: object) -> None:
+        raise XcuitestRunnerCrashError("runner gone")
+
+
+def test_a_dead_backend_at_the_prompt_propagates_instead_of_prompting_again() -> None:
+    gate = _gate(_Terminal(["tap a", "c"]), pause_first=True)
+    driver = _CrashingDriver([el("a", "A", ["button"])])
+    with pytest.raises(XcuitestRunnerCrashError):
+        gate.before_step(StepPause(index=0, name=None, label="tap a", driver=driver))
+
+
+class _InterruptingDriver(FakeDriver):
+    def tap(self, target: object) -> None:
+        raise KeyboardInterrupt
+
+
+def test_ctrl_c_during_a_command_ends_the_run() -> None:
+    gate = _gate(_Terminal(["tap a"]), pause_first=True)
+    driver = _InterruptingDriver([el("a", "A", ["button"])])
+    with pytest.raises(RunCancelled):
+        gate.before_step(StepPause(index=0, name=None, label="tap a", driver=driver))
+
+
+def test_ctrl_c_during_a_command_at_a_failure_keeps_the_failure() -> None:
+    gate = _gate(_Terminal(["tap a"]), break_on_fail=True)
+    driver = _InterruptingDriver([el("a", "A", ["button"])])
+    pause = StepPause(index=0, name=None, label="tap a", driver=driver, failure="step 0 (tap): x")
+    gate.after_failure(pause)  # returns rather than raising RunCancelled
+
+
+def test_every_repl_verb_is_classified_as_acting_or_reading() -> None:
+    # A new `repl` verb lands in `dispatch` and fails this until it is classified: an acting verb left
+    # out of ACTUATING_VERBS would let a hand-driven run pass.
+    source = inspect.getsource(ReplSession.dispatch)
+    case_lines = [ln for ln in source.splitlines() if ln.strip().startswith("case ")]
+    verbs = {v for ln in case_lines for v in re.findall(r'"([a-z]+)"', ln)}
+    reading = {"tree", "find", "screenshot", "help", "exit", "quit"}
+    assert verbs == ACTUATING_VERBS | reading
+    assert not (ACTUATING_VERBS & reading)
+
+
+def test_run_all_refuses_a_shared_gate_across_scenarios() -> None:
+    with pytest.raises(ValueError, match="exactly one scenario"):
+        run_all(
+            None,  # type: ignore[arg-type]
+            [_scenario(_TWO_TAPS), _scenario(_TWO_TAPS)],
+            lambda *_a, **_k: None,  # type: ignore[arg-type]
+            step_gate=_gate(_Terminal([])),
+        )
+
+
 def test_no_gate_changes_nothing() -> None:
     driver = FakeDriver([el("a", "A", ["button"]), el("b", "B", ["button"])])
     result = run_scenario(driver, _scenario(_TWO_TAPS), clock=FakeClock())
@@ -265,7 +330,7 @@ def test_result_json_carries_the_interactive_command() -> None:
     plain = _run(_gate(_Terminal(["c"]), pause_first=True))
     driven = _run(_gate(_Terminal(["tap a", "c"]), pause_first=True))
     assert scenario_result_dict(plain)["scenario"]["interactive"] == ""  # type: ignore[index]
-    assert scenario_result_dict(driven)["scenario"]["interactive"] == "tap a"  # type: ignore[index]
+    assert scenario_result_dict(driven)["scenario"]["interactive"] == "tap"  # type: ignore[index]
 
 
 def test_the_flags_build_no_gate_when_none_is_given() -> None:

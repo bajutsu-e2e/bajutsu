@@ -56,8 +56,10 @@ assertions as the same scenario without the flags.
    reported as `cancelled`, its evidence is finalized by the existing unwind, and the run exits 1.
    At a failure pause, `quit` returns instead, so the scenario keeps the reason it failed with.
 5. **Verdict.** A command that acts on the app (`tap`, `type`, `scroll`, `back`, `step <yaml>`) makes the
-   run hand-driven. The first such command is recorded in `RunResult.interactive` and in `result.json`.
-   A scenario whose steps all passed then fails with `interactive: <command>`. A scenario that already
+   run hand-driven. The first such command's verb is recorded in `RunResult.interactive` and in
+   `result.json`. The rest of the line is never kept: `type` and `step` can carry a value typed in by
+   hand that is no configured secret, and the result is persisted and uploaded.
+   A scenario whose steps all passed then fails with `interactive: <verb>`. A scenario that already
    failed keeps its own reason. Reads (`tree`, `find`, `screenshot`) and stepping leave the verdict alone.
    The command is recorded before it runs, because an actuation that raised may still have moved the app.
 6. **Refusals.** Before any device is leased, `run` exits 2 when stdin or stderr is not a terminal, when
@@ -98,6 +100,8 @@ protocol, which is how `cancelled` and `progress` already reach it.
 - Retrying a step, rewinding, or editing the scenario at the prompt. A retry would repeat a step's side
   effects and break the counters and the report.
 - Stepping through a suite, a `--browsers` matrix, or a worker pool.
+- Stopping on a scenario-level `expect` mismatch. `--break-on-fail` covers step failures; `expect`
+  runs after the step loop has finished, outside the boundary the gate hooks into.
 - Any model call. The prompt and the stop rules read no model.
 
 ## Alternatives considered
@@ -121,6 +125,10 @@ protocol, which is how `cancelled` and `progress` already reach it.
 - [x] Add the `PromptStepGate` prompt and the `--step` / `--break` / `--break-on-fail` flags with their refusals.
 - [x] Record `interactive` in `result.json` and fail a hand-driven run.
 - [x] Add tests, and document the flags in `docs/cli.md` and `docs/architecture.md` in both languages.
+
+Log:
+
+- [#2131](https://github.com/bajutsu-e2e/bajutsu/pull/2131): proposal and implementation landed together: the step gate, the prompt and its flags, the `interactive` verdict stamp, tests, and documentation.
 
 ## References
 

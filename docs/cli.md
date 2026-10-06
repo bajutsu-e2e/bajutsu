@@ -103,7 +103,7 @@ bajutsu run --scenario cross-platform.yaml --config both-targets.yaml           
 These flags hold the step loop at a `step>` prompt, so an operator can look at the app between steps.
 The prompt goes to stderr, and stdout stays the `PASS|FAIL` line. `--step` stops before every step.
 `--break` runs freely until it reaches the named step. `--break-on-fail` stops once, on the step that
-fails.
+fails; a scenario-level `expect` mismatch does not stop.
 
 | Command | Effect |
 |---|---|
@@ -115,8 +115,8 @@ fails.
 | `tap`, `type`, `scroll`, `back`, `step <yaml>` | act on the app, exactly as in `repl` |
 
 A command that acts on the app makes the run hand-driven. Whatever its assertions say, the scenario
-then fails with `interactive: <the first such command>`. `result.json` records that command under
-`interactive`. Assertions judge a run that reads or steps, as usual. A long pause can still change the outcome for an app that reacts to time, such as a session timeout. Steps an `interrupts` rule runs never stop at the prompt. The prompt needs a terminal on
+then fails with `interactive: <verb>`, naming the first such command's verb. `result.json` records
+that verb under `interactive`; the rest of the line is never kept, since it can hold a typed value. Assertions judge a run that reads or steps, as usual. A long pause can still change the outcome for an app that reacts to time, such as a session timeout. Steps an `interrupts` rule runs never stop at the prompt. The prompt needs a terminal on
 stdin and stderr, so a piped or CI run exits 2. A run with more than one scenario, a `--browsers`
 matrix, or `--workers` above 1 exits 2 as well.
 

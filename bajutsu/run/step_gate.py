@@ -6,7 +6,7 @@ from collections.abc import Callable, Collection
 
 from bajutsu.common.cancellation import RunCancelled
 from bajutsu.common.orchestrator.types import StepPause
-from bajutsu.repl.session import ACTUATING_VERBS, COMMAND_ERRORS, ReplSession
+from bajutsu.repl.session import ACTUATING_VERBS, COMMAND_ERRORS, FATAL_ERRORS, ReplSession
 
 PROMPT = "step> "
 
@@ -61,7 +61,7 @@ class PromptStepGate:
 
     @property
     def manual_action(self) -> str | None:
-        """The first command that acted on the app during a pause, or `None` if none did."""
+        """The verb of the first command that acted on the app during a pause, or `None`."""
         return self._manual_action
 
     def before_step(self, pause: StepPause) -> bool:
@@ -93,25 +93,10 @@ class PromptStepGate:
         return self._breaks & keys
 
     def _prompt(self, pause: StepPause, *, at_failure: bool) -> None:
-        """Read commands until one lets the run go on; `quit` or end of input ends it.
-
-        At a failure, ending the run is a plain return: the failure already ends it, and raising
-        `RunCancelled` would report the scenario as cancelled instead of what actually failed.
-        """
+        """Read commands until one lets the run go on; `quit` or end of input ends it."""
         while True:
-            try:
-                line = self._read_line(PROMPT).strip()
-            except EOFError:
-                self._say("")
-                verb = "quit"
-            except KeyboardInterrupt:
-                # Not "abandon the half-typed line" as in `repl`: the terminal delivers Ctrl-C to the
-                # run's whole process group, so the screen recorder, the device-log stream, and a
-                # Playwright browser have already been interrupted. Ending the run says so honestly.
-                self._say("")
-                verb = "quit"
-            else:
-                verb = line.split(maxsplit=1)[0] if line else ""
+            line = self._read_command()
+            verb = line.split(maxsplit=1)[0] if line else ""
             if verb in ("", "next", "n"):
                 self._stepping = True
                 return
@@ -119,23 +104,59 @@ class PromptStepGate:
                 self._stepping = False
                 return
             if verb in ("quit", "q", "exit"):
-                if at_failure:
-                    self._stepping = False
-                    return
-                self._say("run ended at the prompt")
-                raise RunCancelled
+                self._end(at_failure=at_failure)
+                return
             if verb == "help":
                 for out in _HELP:
                     self._say(out)
-            self._run_command(pause, line, verb)
+            try:
+                self._run_command(pause, line, verb)
+            except KeyboardInterrupt:
+                # Ctrl-C mid-command ends the run the same way it does at the prompt, so the run
+                # still unwinds through `RunCancelled` (or keeps its failure) and writes its report.
+                self._say("")
+                self._end(at_failure=at_failure)
+                return
+
+    def _read_command(self) -> str:
+        """One typed line; end of input and Ctrl-C both read as `quit`."""
+        try:
+            return self._read_line(PROMPT).strip()
+        except EOFError:
+            self._say("")
+            return "quit"
+        except KeyboardInterrupt:
+            # Not "abandon the half-typed line" as in `repl`: the terminal delivers Ctrl-C to the
+            # run's whole process group, so the screen recorder, the device-log stream, and a
+            # Playwright browser have already been interrupted. Ending the run says so honestly.
+            self._say("")
+            return "quit"
+
+    def _end(self, *, at_failure: bool) -> None:
+        """End the run from the prompt.
+
+        At a failure this is a plain return: the failure already ends the run, and raising
+        `RunCancelled` would report the scenario as cancelled instead of what actually failed.
+        """
+        if at_failure:
+            self._stepping = False
+            return
+        self._say("run ended at the prompt")
+        raise RunCancelled
 
     def _run_command(self, pause: StepPause, line: str, verb: str) -> None:
         if verb in ACTUATING_VERBS and self._manual_action is None:
-            # Recorded before the command runs: a tap that raised may still have moved the app.
-            self._manual_action = line
+            # Recorded before the command runs: a tap that raised may still have moved the app. The
+            # verb alone, never the line: `type` / `step` can carry a value typed in by hand that is
+            # no configured secret, and the result is persisted, reported, and uploaded.
+            self._manual_action = verb
         try:
             for out in self._shell(pause).dispatch(line):
                 self._say(out)
+        except FATAL_ERRORS:
+            # Ahead of COMMAND_ERRORS, which would swallow this subclass: the backend is gone, so the
+            # pipeline's crash recovery has to see it rather than the operator typing into a dead driver.
+            raise
         except COMMAND_ERRORS as exc:
             self._say(f"error: {exc}")
 

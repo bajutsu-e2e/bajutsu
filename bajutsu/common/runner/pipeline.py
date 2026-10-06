@@ -1909,6 +1909,10 @@ def run_all(
     Returns:
         One result per scenario, in the same order as `scenarios`.
     """
+    if step_gate is not None and (len(scenarios) != 1 or workers > 1):
+        # The gate is one operator's prompt and carries per-run state (stepping, breakpoints hit, the
+        # first manual action), so a second scenario would inherit it and a worker pool would race it.
+        raise ValueError("step_gate needs exactly one scenario and one worker")
     # `actuator` (one fixed actuator) and `resolve_actuator` (per-scenario, BE-0240) are two ways to
     # answer the same question; passing both is a caller bug. Fail loudly rather than silently letting
     # the resolver win and discarding the fixed actuator/caps (prime directive 2).

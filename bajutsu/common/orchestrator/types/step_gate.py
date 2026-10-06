@@ -33,8 +33,7 @@ class StepGate(Protocol):
 
     @property
     def manual_action(self) -> str | None:
-        """The first command that acted on the app during a pause, or `None` if none did."""
-        ...
+        """The verb of the first command that acted on the app during a pause, or `None`."""
 
     def before_step(self, pause: StepPause) -> bool:
         """Called before a step runs; may block, and raises `RunCancelled` to end the run.
@@ -43,7 +42,6 @@ class StepGate(Protocol):
             Whether the gate held the loop. The app may have changed while it waited, so the loop
             then reads the next step's `before` fresh instead of reusing the previous `after`.
         """
-        ...
 
     def after_failure(self, pause: StepPause) -> None:
         """Called once a step has failed, before the failure ends the scenario.
@@ -51,4 +49,3 @@ class StepGate(Protocol):
         Never ends the run itself: the failure already does, and replacing its reason with
         `cancelled` would hide the very failure the operator stopped to look at.
         """
-        ...
