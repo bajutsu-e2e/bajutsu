@@ -1288,6 +1288,19 @@ def test_ios_actuation_job_still_declares_the_paste_consent_scenario() -> None:
     )
 
 
+def test_ios_actuation_job_still_declares_the_reactive_alert_scenarios() -> None:
+    # The same coverage pin for the reactive guard: `system_alert_handling.yaml` is the only place a
+    # `systemAlertHandling.rules` entry for `tracking` or `paste`, or a `deny` choice, meets a real
+    # Simulator, and the non-gating `actuation` job shows no red X if it is dropped.
+    text = lane_workflow_text("ios")
+    assert text is not None
+    declared = job_scenario_map(text)["actuation"]
+    assert "demos/showcase/scenarios/system_alert_handling.yaml" in declared, (
+        "the `actuation` job no longer declares system_alert_handling.yaml — the only on-device "
+        "coverage of the reactive guard's tracking, paste, and deny rules"
+    )
+
+
 def test_ios_actuation_job_still_declares_the_authoring_scenarios() -> None:
     # A coverage pin, not a narrowing one (hence its own test): BE-0285 brought `extract`, `forEach`,
     # data-driven rows, and `relaunch` to iOS on the non-gating `actuation` job, which is the only

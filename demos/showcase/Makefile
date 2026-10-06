@@ -128,13 +128,13 @@ runner-build-device:
 # stays tagged `xcuitest` and excluded here — a legacy split from when a coordinate backend could not
 # reach the tab bar — and `run-swiftui-tabs`/`run-uikit-tabs` below run it on its own; both paths run
 # on XCUITest now. `permission_system_alert.yaml` (BE-0316), `paste_system_alert.yaml` (BE-0369),
-# and push.yaml's second scenario (BE-0416) are tagged `systemalert` and excluded too: these bulk
-# runs discover every scenario file and do not reset per-scenario device state, so the
-# `notDetermined` prompt each one's own handleSystemAlert step needs is not guaranteed here (and
+# `system_alert_handling.yaml`, and push.yaml's second scenario (BE-0416) are tagged `systemalert` and
+# excluded too: these bulk runs discover every scenario file and do not reset per-scenario device
+# state, so the `notDetermined` prompt each one answers is not guaranteed here (and
 # paste_system_alert.yaml's own decline leaves the pasteboard holding its own string for whatever
 # scenario the lane discovers next); push.yaml's banner scenario also needs a screen
 # (SHOWCASE_NOTIFICATION_BANNER) that exists on the SwiftUI target only. Each runs instead on a
-# named iOS CI scenario list (`run` for the first, `actuation` for the second and third), where
+# named iOS CI scenario list (`run` for the first, `actuation` for the rest), where
 # what precedes it is controlled rather than discovered. A dedicated tag keeps them out without
 # riding the legacy `xcuitest` tag.
 # `browser` (scenarios/browser.yaml, the SFSafariViewController flow) is excluded for the same

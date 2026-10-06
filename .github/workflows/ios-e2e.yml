@@ -585,6 +585,9 @@ jobs:
   #     and denied, each under the target's locale and again under `locale: ja_JP`. It lands
   #     here rather than beside permission_system_alert.yaml in `run` for this job's own reason: it
   #     is new on-device coverage, so it earns its stability as a per-PR signal first.
+  #   - system_alert_handling.yaml: the reactive `systemAlertHandling.rules` counterpart — the guard,
+  #     not a step, answers the notification, tracking, and paste prompts, each by the choice its
+  #     rule names. New on-device coverage too, so it starts here for the same reason.
   # Deliberately NOT in the `E2E` gate's `needs:` below (like `golden` / `visual`): the Simulator lane
   # has a flakiness history (BE-0218), so new coverage lands as a per-PR signal first and is promoted
   # to the gate only once it proves stable. It installs the prebuilt products from the `build` job and
@@ -598,16 +601,19 @@ jobs:
     name: actuation (xcuitest)
     needs: [changes, build]
     # BE-0322: runs on a shared-code change, or when one of its scenarios (navigation / extract /
-    # foreach / data_driven / relaunch / device / push / text_editing / paste_system_alert) changed.
+    # foreach / data_driven / relaunch / device / push / text_editing / system_alert_handling /
+    # paste_system_alert) changed.
     if: >-
       needs.changes.outputs.relevant == 'true' &&
       (needs.changes.outputs.shared == 'true' ||
       contains(fromJSON(needs.changes.outputs.affected), 'actuation'))
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the 6h
-    # default. Install (no build) + the fourteen scenario runs the nine files below produce (each file
-    # holds one scenario; data_driven.yaml's three `${row.*}` rows expand to three, and
-    # paste_system_alert.yaml holds four) is ~25min — the dominant term is seven cold XCTest-host
+    # default. Install (no build) + the twenty scenario runs the ten files below produce (each file
+    # holds one scenario except: data_driven.yaml's three `${row.*}` rows expand to three, push.yaml
+    # holds two since BE-0416's foreground-banner scenario, system_alert_handling.yaml holds five, and
+    # paste_system_alert.yaml holds four) is ~33min — the
+    # dominant term is ten cold XCTest-host
     # startups, one per two runs at this lane's warm-reuse cap — so 60 catches a real hang with
     # headroom rather than reddening a healthy run. Of those startups only the first carries the 300s
     # cold ceiling (the rest take the 90s respawn one), and one pays a shutdown-and-boot cycle on top:
@@ -617,7 +623,7 @@ jobs:
     # timeout ending attempt 1 in ~40s, repaired by a reboot whose re-prep is cheap enough to leave
     # uncounted — costs ~40s + 180s + 300s ≈ 9min and fits; the worst case the arithmetic block allows
     # (a first bring-up that burns the full 300s, repaired by a replacement and its re-prep: ~15min)
-    # puts this job at ~40min, which 60 also clears with room to spare — the cap now backs a genuine
+    # puts this job at ~48min, which 60 also clears with room to spare — the cap now backs a genuine
     # hang rather than bounding the recovery arithmetic itself.
     timeout-minutes: 60
     # Raise the wait floor so a cold-boot Simulator has budget to render the first Stable row before
@@ -668,6 +674,11 @@ jobs:
       #     equivalent, so it lives apart from the cross-backend device.yaml).
       #   - text_editing.yaml (iOS-only): `select` + `copy` round-trip the Search field's text, then
       #     `delete` + `clear` — the four editing actuators no other scenario drove (Search tab).
+      #   - system_alert_handling.yaml: the reactive `systemAlertHandling.rules` guard answering each
+      #     covered SpringBoard prompt with no `handleSystemAlert` step — notifications denied, and
+      #     tracking and paste each granted and denied. The deny scenarios are what prove the rule
+      #     answered, since XCUITest's own fallback handler would tap the default button instead.
+      #     Listed before paste_system_alert.yaml so it runs under the target's own locale.
       #   - paste_system_alert.yaml (BE-0369): `setClipboard` seeds the pasteboard from outside the
       #     app, so the app's own read raises iOS's cross-process paste-consent prompt, which
       #     `handleSystemAlert: { prompt: paste }` answers by a native query. Four scenarios: `grant`
@@ -691,6 +702,7 @@ jobs:
             demos/showcase/scenarios/device.yaml
             demos/showcase/scenarios/push.yaml
             demos/showcase/scenarios/text_editing.yaml
+            demos/showcase/scenarios/system_alert_handling.yaml
             demos/showcase/scenarios/paste_system_alert.yaml
           target: showcase-swiftui
           backend: xcuitest

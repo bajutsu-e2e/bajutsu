@@ -1,0 +1,110 @@
+# The reactive `systemAlertHandling.rules` guard (BE-0315 / BE-0406), on every SpringBoard prompt the
+# label table covers. Each scenario raises one prompt and then only waits: no `handleSystemAlert`
+# step, so the declared rule is the one thing that can answer the prompt. The guard's native poll sees
+# the prompt during the `wait` and taps the button the rule's `choice` names, by an accessibility
+# query on SpringBoard: no screenshot, no vision model, no Claude API key (prime directive 1).
+#
+# permission.yaml already grants the notification prompt this way on the gating `run` job. This file
+# covers the rest of the matrix, which no other scenario reaches: denying notifications, and both
+# choices on the tracking and paste prompts. The paste prompt is the one paste_system_alert.yaml
+# answers only through the proactive step, with the guard switched off.
+#
+# Every prompt is covered under both choices because a deny is what proves the rule did the work. A
+# prompt left unanswered falls back to XCUITest's own default handler at the next interaction, and
+# that handler taps the prompt's default button. A grant alone could pass on that fallback. A deny
+# waits for a state only the rule's own button can produce, so it fails when the rule is ignored.
+#
+# The tracking pair is repeatable on one device only because each scenario starts from a clean
+# install, whose `simctl privacy reset all` returns ATT to "not determined" as well, though the help
+# text lists no tracking service (observed on iOS 26.5: the deny scenario still sees the prompt after
+# the grant). Reinstalling alone would not do it, since TCC survives a reinstall
+# (`simctl/env.py`'s `reset_permissions`), so a `reinstall: overwrite` here would leave the second
+# scenario waiting on a prompt that never comes. The pre-assert reads only app-local state and cannot
+# catch that. The paste prompt needs no reset at all, since iOS asks it on every read.
+#
+# Each scenario waits on a positive condition rather than racing an assertion (prime directive 2).
+# The showcase app publishes "denied" for a refused notification or tracking request and "(none)" for
+# a refused pasteboard read (see paste_system_alert.yaml for why the marker exists).
+#
+# iOS (XCUITest) only, and kept off every other lane the way paste_system_alert.yaml is: Android's
+# `smoke (adb)` job runs a fixed list that never names this file, and the `systemalert` tag keeps it
+# out of the local bulk run-swiftui / run-uikit runs, which do not reset per-scenario device state.
+- name: deny the notification prompt through systemAlertHandling rules
+  tags: [systemalert]
+  systemAlertHandling: { rules: [{ prompt: notifications, choice: deny }] }
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Permissions", traits: [button] }
+    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+    - assert:
+        - value: { sel: { id: perm.notif.value }, equals: "notDetermined" }
+    - tap: { id: perm.requestNotif }
+    - wait: { for: { id: perm.notif.value, value: "denied" }, timeout: 10 }
+  expect:
+    - value: { sel: { id: perm.notif.value }, equals: "denied" }
+
+- name: grant the tracking prompt through systemAlertHandling rules
+  tags: [systemalert]
+  systemAlertHandling: { rules: [{ prompt: tracking, choice: grant }] }
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Permissions", traits: [button] }
+    # The tab transition is asynchronous, so wait for the tab's first control before scrolling.
+    # Otherwise the scroll can swipe the launch tab.
+    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+    - scroll: { to: { id: perm.tracking.value }, direction: down }
+    - assert:
+        - value: { sel: { id: perm.tracking.value }, equals: "notDetermined" }
+    - tap: { id: perm.requestTracking }
+    - wait: { for: { id: perm.tracking.value, value: "authorized" }, timeout: 10 }
+  expect:
+    - value: { sel: { id: perm.tracking.value }, equals: "authorized" }
+
+- name: deny the tracking prompt through systemAlertHandling rules
+  tags: [systemalert]
+  systemAlertHandling: { rules: [{ prompt: tracking, choice: deny }] }
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - tap: { label: "Permissions", traits: [button] }
+    - wait: { for: { id: perm.requestNotif }, timeout: 10 }
+    - scroll: { to: { id: perm.tracking.value }, direction: down }
+    - assert:
+        - value: { sel: { id: perm.tracking.value }, equals: "notDetermined" }
+    - tap: { id: perm.requestTracking }
+    - wait: { for: { id: perm.tracking.value, value: "denied" }, timeout: 10 }
+  expect:
+    - value: { sel: { id: perm.tracking.value }, equals: "denied" }
+
+- name: grant the paste-consent prompt through systemAlertHandling rules
+  tags: [systemalert]
+  systemAlertHandling: { rules: [{ prompt: paste, choice: grant }] }
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    # Written from outside the app, so the app's own read raises the cross-process consent prompt.
+    - setClipboard: { text: "bajutsu-cross-clip" }
+    - tap: { label: "Permissions", traits: [button] }
+    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
+    - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
+    - tap: { id: [sys.paste, sys_paste] }
+    - wait: { for: { id: [sys.paste.value, sys_paste_value], value: "bajutsu-cross-clip" }, timeout: 10 }
+  expect:
+    - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "bajutsu-cross-clip" }
+
+- name: deny the paste-consent prompt through systemAlertHandling rules
+  tags: [systemalert]
+  systemAlertHandling: { rules: [{ prompt: paste, choice: deny }] }
+  preconditions:
+    launchEnv: { SHOWCASE_UITEST: "1" }
+  steps:
+    - setClipboard: { text: "bajutsu-cross-clip" }
+    - tap: { label: "Permissions", traits: [button] }
+    - wait: { for: { id: [perm.requestNotif, perm_requestNotif] }, timeout: 10 }
+    - scroll: { to: { id: [sys.paste.value, sys_paste_value] }, direction: down }
+    - tap: { id: [sys.paste, sys_paste] }
+    - wait: { for: { id: [sys.paste.value, sys_paste_value], value: "(none)" }, timeout: 10 }
+  expect:
+    - value: { sel: { id: [sys.paste.value, sys_paste_value] }, equals: "(none)" }
