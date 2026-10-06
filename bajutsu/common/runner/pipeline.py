@@ -54,7 +54,7 @@ from bajutsu.common.orchestrator import (
     scenario_slug,
 )
 from bajutsu.common.orchestrator.evidence_rules import requested_intervals
-from bajutsu.common.orchestrator.types import StepOutcome, _no_network
+from bajutsu.common.orchestrator.types import StepGate, StepOutcome, _no_network
 from bajutsu.common.platform_lifecycle.protocols import ReadinessResult
 from bajutsu.common.report import (
     ScenarioPlanSource,
@@ -278,6 +278,9 @@ class _ScenarioRunner:
     # `bajutsu run --trace-driver` (BE-0415): opens a `tracing` context per scenario and writes
     # `<sid>/driver_trace.json`. Diagnostic only, off by default, never on the verdict path.
     trace_driver: bool = False
+    # `bajutsu run --step`: the pause hook handed to the step
+    # loop. A single scenario on a single device only — `run` rejects the flag beside anything wider.
+    step_gate: StepGate | None = None
     # The redactor `<sid>/result.json` is written with: the same one `manifest.json` gets (secret
     # values only), so the file's entry matches the manifest's. The run's `redactor` would also
     # apply the config's `redact.fields` to keys, masking the entry's own schema keys (BE-0331).
@@ -1402,6 +1405,7 @@ class _ScenarioRunner:
                 # A cancel request reaches the step loop and its condition waits (BE-0370), so this
                 # scenario stops at its next safe boundary and comes back as an ordinary failure.
                 cancelled=self.cancelled,
+                step_gate=self.step_gate,
                 # The collector itself, not one of its callables: the control channel (BE-0365) is
                 # the one direction that runs *into* the app, so it has no snapshot to hand over.
                 # A collector that carries no channel is caught at the command, not skipped here.
@@ -1805,6 +1809,7 @@ def run_all(
     force_erase_on_retry: bool = True,
     cancelled: CancelSource = not_cancelled,
     trace_driver: bool = False,
+    step_gate: StepGate | None = None,
 ) -> list[RunResult]:
     """Run every scenario, each on a freshly leased device, and return one result per scenario.
 
@@ -1897,6 +1902,9 @@ def run_all(
             host-device round trips, and (on Android) which fell back to a subprocess — attributed
             to the step it happened during. False (the default) writes nothing; diagnostic only,
             never on the verdict path.
+        step_gate: `bajutsu run --step`: the pause hook the step loop calls at each step boundary.
+            It may raise `RunCancelled` to end the run and never chooses a verdict. None (the
+            default) never pauses.
 
     Returns:
         One result per scenario, in the same order as `scenarios`.
@@ -1982,6 +1990,7 @@ def run_all(
         force_erase_on_retry=force_erase_on_retry,
         cancelled=cancelled,
         trace_driver=trace_driver,
+        step_gate=step_gate,
         result_redactor=Redactor(None, values=secret_values),
     )
     if workers > 1:
@@ -2022,6 +2031,7 @@ def run_and_report(
     force_erase_on_retry: bool = True,
     cancelled: CancelSource = not_cancelled,
     trace_driver: bool = False,
+    step_gate: StepGate | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios, then write the run's artifacts under `runs_dir/run_id`.
 
@@ -2065,6 +2075,7 @@ def run_and_report(
         force_erase_on_retry=force_erase_on_retry,
         cancelled=cancelled,
         trace_driver=trace_driver,
+        step_gate=step_gate,
     )
     manifest = _assemble_report(
         # The same fold `run_all` already applied, over the same per-target config, so the report

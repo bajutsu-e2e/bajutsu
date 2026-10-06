@@ -70,6 +70,9 @@ bajutsu run --scenario <self-declaring.yaml> [options]          # --target は�
 | `--progress / --no-progress` | off | シナリオ / ステップごとの進捗を stderr に流します（`serve` UI が消費します） |
 | `--score / --no-score` | off | アプリの入口画面の規約スコア（doctor の Ready/Partial/Blocked グレード）を、この run 自身の最初の起動から算出して stderr に出力します。2 つめの XCUITest ランナーをコールド起動する別立ての `doctor` を挟まずに、CI がこの目印を読み取れます。診断専用で、pass/fail には一切影響しません |
 | `--trace-driver` | off | シナリオごとに `<sid>/driver_trace.json` を書き出します。呼び出されたドライバーのメソッド、ホストとデバイス間の各ラウンドトリップ、Android ではそのうちどれがサブプロセスにフォールバックしたかといった、Python とドライバー間のすべての呼び出しを、開始時刻と所要時間つきで、発生したステップに紐づけて記録します（[BE-0415](../../roadmaps/BE-0415-driver-call-trace-per-scenario/BE-0415-driver-call-trace-per-scenario-ja.md)）。診断専用で、pass/fail には一切影響しません |
+| `--step` | off | 1 つのシナリオをデバッグします。各ステップの前で `step>` プロンプトに停止します（[シナリオをステップ実行する](#シナリオをステップ実行する)）。端末、シナリオ 1 つ、エンジン 1 つ、ワーカー 1 つが必要です |
+| `--break` | — | 指定したステップで停止します。ステップは `name`、または失敗理由に表示されるインデックス（`step 3 (tap): …` ならインデックス 3）で指定します。そこまでは止まらず実行します。複数回指定でき、プロンプトを有効にします |
+| `--break-on-fail` | off | ステップが失敗した時点で、その画面が残ったままプロンプトに停止します。プロンプトを有効にします |
 | `--zip` | off | run の後に `runs/<id>.zip` も書き出します。レポートと証跡をまとめた1つの可搬な成果物で、CI アップロードや共有に使えます。**判定の後**に走るので pass/fail に影響しません。[`export`](#export) 参照 |
 | `--runs-dir` | `runs` | run ツリーを書き出すディレクトリ。作業ディレクトリと出力先を分けられる。`serve` は、アクティブな config が別のツリー（Git チェックアウトやアップロードされたバンドル）からバインドされているとき、そのツリーで走らせつつ run を `serve` のストアに残すためにこれを使います（[BE-0073](../../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload-ja.md)） |
 | `--evidence-store` | "" (環境変数 `BAJUTSU_EVIDENCE_STORE` も可) | run の後に、run ツリー全体をこの URI のオブジェクトストレージへアップロードします。`s3://bucket/prefix`（AWS / R2 / MinIO）または `gs://bucket/prefix`（Google Cloud Storage）を指定します。リモートのレイアウトはローカルと同じ構造を prefix 配下に再現するので（`<prefix><runId>/…`）、アップロード先のパスによってクラウドのライフサイクルポリシーが切り替わります（main ブランチの証跡は保持し、feature ブランチの証跡は短期で失効させる、など）。**判定の後**に走るので、アップロードが失敗しても警告を出すだけで pass/fail には影響しません。`s3` または `gcs` の extra が必要です（[BE-0110](../../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)） |
@@ -89,6 +92,28 @@ bajutsu run --target showcase-swiftui --udid <UDID> --backend ios --no-erase    
 bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --no-erase   # 単一ファイル
 bajutsu run --scenario cross-platform.yaml --config both-targets.yaml                   # ファイルが自分でターゲットを名指しする
 ```
+
+### シナリオをステップ実行する
+
+`--step`、`--break`、`--break-on-fail` を指定すると、ステップループを `step>` プロンプトで止め、
+ステップの合間にアプリの状態を確認できます。プロンプトは stderr に出るため、stdout は従来どおり
+`PASS|FAIL` の 1 行です。`--step` は最初のステップの前と、その後のすべてのステップの前で止まります。
+`--break` は指定したステップに達するまで止まらず実行します。`--break-on-fail` は失敗したステップで 1 回だけ止まります。
+
+| コマンド | 動作 |
+|---|---|
+| `next`（`n`、または空行） | ステップを実行し、次のステップの前で止まります |
+| `continue`（`c`） | 次のブレークポイントか終端まで止まらず実行します |
+| `quit`（`q`、`exit`、または入力の終端） | ここで run を終了します。シナリオは `cancelled` として報告し、終了コードは 1 です。失敗で止まっているときは、失敗理由をそのまま残します |
+| Ctrl-C | `quit` と同じく run を終了します。端末は run の録画やブラウザにも割り込むため、続行できません |
+| `tree`、`find`、`screenshot` | [`repl`](#repl) と同じく、動作中のアプリを読み取ります |
+| `tap`、`type`、`scroll`、`back`、`step <yaml>` | `repl` と同じく、アプリを操作します |
+
+アプリを操作するコマンドを 1 つでも実行すると、その run は手動操作を含むものになります。アサーションの結果にかかわらず、
+シナリオは `interactive: <最初に実行したコマンド>` で失敗し、`result.json` の `interactive` にそのコマンドが残ります。
+読み取りとステップ送りだけの run は、通常どおりアサーションで判定します。ただし、セッションのタイムアウトのように時間に反応するアプリでは、長い停止が結果を変えることがあります。`interrupts` の規則が実行するステップでは、プロンプトに止まりません。プロンプトには stdin と stderr が端末である
+ことが必要なため、パイプや CI での実行は終了コード 2 で拒否します。複数のシナリオ、`--browsers` のマトリックス、
+1 を超える `--workers` も同様に拒否します。
 
 ## `doctor`
 

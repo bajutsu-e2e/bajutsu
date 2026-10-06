@@ -74,6 +74,9 @@ uses it as always. Each self-declaring file has it checked for membership instea
 | `--progress / --no-progress` | off | stream per-scenario / per-step progress lines to stderr (the `serve` UI consumes these) |
 | `--score / --no-score` | off | print the app's entry-screen convention score (doctor's Ready/Partial/Blocked grade) to stderr, computed from this run's own first launch — so CI reads the tell without a separate `doctor` step that cold-spawns a second runner. Diagnostic only; never affects pass/fail |
 | `--trace-driver` | off | write `<sid>/driver_trace.json` per scenario, recording every Python↔driver call — the driver method invoked, its host-device round trips, and (on Android) which of those fell back to a subprocess — with a start time and an elapsed duration, attributed to the step it happened during ([BE-0415](../roadmaps/BE-0415-driver-call-trace-per-scenario/BE-0415-driver-call-trace-per-scenario.md)). Diagnostic only; never affects pass/fail |
+| `--step` | off | debug one scenario: stop before each step at a `step>` prompt (see [Stepping through a scenario](#stepping-through-a-scenario)). Needs a terminal, exactly one scenario, one engine, and one worker |
+| `--break` | — | stop at a step, by its `name` or its index as a failure reason shows it (`step 3 (tap): …` is index 3), and run freely until then. Repeatable; implies the prompt |
+| `--break-on-fail` | off | stop at the prompt when a step fails, while its screen is still up; implies the prompt |
 | `--zip` | off | after the run, also write `runs/<id>.zip` — one portable artifact (report + evidence) for CI upload or sharing. Runs **after** the verdict, so it can't affect pass/fail; see [`export`](#export) |
 | `--runs-dir` | `runs` | directory to write the run tree into. Lets a caller run from one working directory but persist the run elsewhere — `serve` uses it when the active config is bound from a different tree (a Git checkout or an uploaded bundle) to run from that tree while keeping the run in `serve`'s store ([BE-0073](../roadmaps/BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)) |
 | `--evidence-store` | "" (also `BAJUTSU_EVIDENCE_STORE`) | after the run, upload the whole run tree to object storage at this URI — `s3://bucket/prefix` (AWS / R2 / MinIO) or `gs://bucket/prefix` (Google Cloud Storage). The remote layout mirrors the local one under the prefix (`<prefix><runId>/…`), so the upload path selects the cloud lifecycle policy (retain main-branch evidence, expire feature-branch evidence). Runs **after** the verdict, so an upload failure is reported as a warning and can't affect pass/fail. Needs the `s3` or `gcs` extra ([BE-0110](../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md)) |
@@ -94,6 +97,28 @@ bajutsu run --target showcase-swiftui --udid <UDID> --backend ios --no-erase    
 bajutsu run --scenario demos/showcase/scenarios/smoke.yaml --target showcase-swiftui --no-erase   # one file
 bajutsu run --scenario cross-platform.yaml --config both-targets.yaml                   # the file names its own targets
 ```
+
+### Stepping through a scenario
+
+These flags hold the step loop at a `step>` prompt, so an operator can look at the app between steps.
+The prompt goes to stderr, and stdout stays the `PASS|FAIL` line. `--step` stops before every step.
+`--break` runs freely until it reaches the named step. `--break-on-fail` stops once, on the step that
+fails.
+
+| Command | Effect |
+|---|---|
+| `next` (or `n`, or an empty line) | run the step, then stop before the next one |
+| `continue` (or `c`) | run on until the next breakpoint, or the end |
+| `quit` (or `q`, `exit`, or end of input) | end the run here; the scenario is reported as `cancelled` and the run exits 1. At a failure pause, the failure keeps its own reason |
+| Ctrl-C | ends the run like `quit`: the terminal also interrupts the run's recorder and browser, so the run cannot go on |
+| `tree`, `find`, `screenshot` | read the live app, exactly as in [`repl`](#repl) |
+| `tap`, `type`, `scroll`, `back`, `step <yaml>` | act on the app, exactly as in `repl` |
+
+A command that acts on the app makes the run hand-driven. Whatever its assertions say, the scenario
+then fails with `interactive: <the first such command>`. `result.json` records that command under
+`interactive`. Assertions judge a run that reads or steps, as usual. A long pause can still change the outcome for an app that reacts to time, such as a session timeout. Steps an `interrupts` rule runs never stop at the prompt. The prompt needs a terminal on
+stdin and stderr, so a piped or CI run exits 2. A run with more than one scenario, a `--browsers`
+matrix, or `--workers` above 1 exits 2 as well.
 
 ## `doctor`
 

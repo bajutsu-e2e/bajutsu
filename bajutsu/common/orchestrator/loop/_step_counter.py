@@ -18,3 +18,7 @@ class _StepCounter:
         idx = self._next
         self._next += 1
         return idx
+
+    def peek(self) -> int:
+        """The index the next `take()` will return, without advancing."""
+        return self._next

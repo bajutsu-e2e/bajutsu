@@ -86,3 +86,7 @@ class RunResult:
     # also carry a cleanup step's own reason: without it a report cannot tell which rules ran, and
     # so cannot line an outcome up with the rule that produced it.
     after_verdict: str = ""
+    # The first command an operator ran against the app while a `bajutsu run --step` pause held the
+    # loop. Non-empty makes the result a failure whatever the assertions said: a hand-driven run is
+    # a debugging aid, and its verdict is not evidence the scenario passes on its own.
+    interactive: str = ""

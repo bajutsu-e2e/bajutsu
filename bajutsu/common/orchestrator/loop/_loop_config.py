@@ -19,6 +19,7 @@ from bajutsu.common.orchestrator.types import (
     NetworkSource,
     ProgressFn,
     RelaunchFn,
+    StepGate,
 )
 from bajutsu.common.scenario import Interrupt, Scenario
 
@@ -78,3 +79,7 @@ class _LoopConfig:
     # from the primary's launch env once and never replaced per target.
     channel: Collector | None = None
     hide_markers: bool = False
+    # The `run --step` pause hook. Consulted at each boundary of the scenario's own steps — never a
+    # `before` / `after` hook phase — right beside the `cancelled` check above, for the same reason:
+    # nothing has acted yet, so an operator looking at the app sees a settled screen.
+    step_gate: StepGate | None = None

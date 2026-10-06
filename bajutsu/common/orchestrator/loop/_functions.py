@@ -50,6 +50,7 @@ from bajutsu.common.orchestrator.types import (
     RelaunchFn,
     RunResult,
     SelectionState,
+    StepGate,
     StepOutcome,
     TargetRuntime,
     UndeclaredInterruption,
@@ -737,6 +738,7 @@ def run_scenario(  # noqa: C901, PLR0915
     wall_clock: WallClock = time.time,
     capture: list[str] | None = None,
     cancelled: CancelSource = not_cancelled,
+    step_gate: StepGate | None = None,
     channel: Collector | None = None,
     target_launch_env: Mapping[str, str] | None = None,
     target_runtimes: Mapping[str, TargetRuntime] | None = None,
@@ -942,6 +944,7 @@ def run_scenario(  # noqa: C901, PLR0915
             app_crash_latches,
             capture_app_crash,
             roster,
+            step_gate,
         )
 
     try:
@@ -1126,6 +1129,11 @@ def run_scenario(  # noqa: C901, PLR0915
         crash.partial_artifacts = artifacts
         raise
 
+    # An operator who actuated the app during a `--step` pause has made this a hand-driven run: it
+    # fails whatever the assertions said, so it cannot be mistaken for evidence the scenario passes.
+    manual_action = step_gate.manual_action if step_gate is not None else None
+    if manual_action and failure is None:
+        failure = f"interactive: {manual_action}"
     return RunResult(
         scenario=scenario.name,
         ok=failure is None,
@@ -1144,6 +1152,7 @@ def run_scenario(  # noqa: C901, PLR0915
         before_outcomes=before_outcomes,
         after_outcomes=after_outcomes,
         after_verdict=after_verdict,
+        interactive=manual_action or "",
     )
 
 
@@ -1438,6 +1447,7 @@ def _run_steps(
     app_crash: AppCrashLatches | None = None,
     capture_app_crash: Callable[[], list[tuple[str, bytes]]] | None = None,
     roster: TargetRoster | None = None,
+    step_gate: StepGate | None = None,
 ) -> str | None:
     """Run one phase's step loop, appending outcomes; return the failure string or None.
 
@@ -1494,6 +1504,7 @@ def _run_steps(
         capture_app_crash=capture_app_crash,
         phase=phase,
         cancelled=cancelled,
+        step_gate=step_gate,
         channel=channel,
         hide_markers=hide_markers,
     )

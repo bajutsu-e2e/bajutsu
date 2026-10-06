@@ -46,7 +46,7 @@ from bajutsu.common.orchestrator import (
     AlertGuardConfig,
     RunResult,
 )
-from bajutsu.common.orchestrator.types import ResolvedAlertRule
+from bajutsu.common.orchestrator.types import ResolvedAlertRule, StepGate
 from bajutsu.common.platform_lifecycle import ProvisionProfile, environment_for
 from bajutsu.common.report import ScenarioPlanSource
 from bajutsu.common.report.archive import archive_run_dir
@@ -85,6 +85,7 @@ from bajutsu.common.scenario.system_alerts import (
     covered_languages,
     system_alert_shapes,
 )
+from bajutsu.run.step_gate import PromptStepGate
 
 
 def _parse_browsers(browsers: str) -> list[str]:
@@ -548,6 +549,53 @@ def _reject_web_flags_across_targets(
             "config instead"
         )
         raise typer.Exit(2)
+
+
+def _read_step_line(prompt: str) -> str:
+    """One line for the `--step` prompt, written to stderr so stdout stays the PASS/FAIL line."""
+    typer.echo(prompt, nl=False, err=True)
+    line = sys.stdin.readline()
+    if not line:
+        raise EOFError
+    return line
+
+
+def _build_step_gate(
+    *,
+    step: bool,
+    break_at: list[str],
+    break_on_fail: bool,
+    scenarios: list[Scenario],
+    engines: list[str],
+    workers: int,
+) -> PromptStepGate | None:
+    """The prompt `--step` / `--break` / `--break-on-fail` ask for, or `None` when none was given.
+
+    Refused with exit 2 before any device is leased when the run could not honor it: a prompt needs
+    a person at a terminal, and it holds one scenario on one device, so a suite, a cross-browser
+    matrix, or several workers would leave all but one of them waiting on a prompt nobody sees.
+    """
+    if not (step or break_at or break_on_fail):
+        return None
+    problems: list[str] = []
+    if not (sys.stdin.isatty() and sys.stderr.isatty()):
+        problems.append("needs an interactive terminal on stdin and stderr")
+    if len(scenarios) != 1:
+        problems.append(f"needs exactly one scenario (this run has {len(scenarios)})")
+    if len(engines) > 1:
+        problems.append("cannot combine with a --browsers matrix")
+    if workers > 1:
+        problems.append("cannot combine with --workers > 1")
+    if problems:
+        typer.echo("--step / --break / --break-on-fail " + "; ".join(problems))
+        raise typer.Exit(2)
+    return PromptStepGate(
+        pause_first=step,
+        breaks=break_at,
+        break_on_fail=break_on_fail,
+        read_line=_read_step_line,
+        say=lambda line: typer.echo(line, err=True),
+    )
 
 
 def _reject_cross_browser_matrix_with_targets(
@@ -1844,6 +1892,8 @@ class _RunPlan:
     # `--trace-driver` (BE-0415): one `<sid>/driver_trace.json` per scenario, recording every
     # Python<->driver call. Diagnostic only, off by default, never on the verdict path.
     trace_driver: bool
+    # `--step` / `--break` / `--break-on-fail`: the prompt that holds the step loop at a boundary.
+    step_gate: StepGate | None = None
 
 
 def _print_score(score: Score) -> None:
@@ -2023,6 +2073,7 @@ def _dispatch_single(
             trace_driver=plan.trace_driver,
             force_erase_on_retry=plan.force_erase_on_retry,
             cancelled=plan.cancelled,
+            step_gate=plan.step_gate,
         )
     finally:
         _close_pools(pools)
@@ -2264,6 +2315,26 @@ def run(
         "to a subprocess — attributed to the step it happened during. Diagnostic only; never "
         "affects pass/fail",
     ),
+    step: bool = typer.Option(
+        False,
+        "--step",
+        help="debug one scenario: stop before each step at a prompt (next / continue / quit, plus "
+        "`repl` commands such as tree and tap). A command that acts on the app makes the run fail "
+        "whatever its assertions say. Needs a terminal, one scenario, and one engine",
+    ),
+    break_at: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--break",
+            help="stop at this step — its `name`, or its index as a failure reason shows it "
+            "(`step 3 (tap): …`) — and run freely until then. Repeatable; implies the prompt",
+        ),
+    ] = None,
+    break_on_fail: bool = typer.Option(
+        False,
+        "--break-on-fail",
+        help="stop at the prompt when a step fails, while its screen is still up; implies the prompt",
+    ),
     touch_markers: bool = typer.Option(
         False,
         "--touch-markers/--no-touch-markers",
@@ -2405,6 +2476,14 @@ def run(
         ios_tipkit_handling,
         eff.run_defaults.ios_tip_kit_handling,
     )
+    step_gate = _build_step_gate(
+        step=step,
+        break_at=break_at or [],
+        break_on_fail=break_on_fail,
+        scenarios=scenarios,
+        engines=engines,
+        workers=workers,
+    )
     # After filtering, so `--tag`/`--exclude` selecting away a self-declaring scenario in a suite
     # leaves the rest of the suite resolving exactly as it did before that file was added (BE-0428)
     # — these checks speak about the scenarios this run will actually attempt.
@@ -2512,6 +2591,7 @@ def run(
                 upload_exec=upload_exec,
                 score=score,
                 trace_driver=trace_driver,
+                step_gate=step_gate,
                 # `erase` is the pre-`_filter_scenarios` CLI flag: None (unset) and explicit `--erase` both
                 # mean "no operator opt-out", only `--no-erase` (False) does.
                 force_erase_on_retry=erase is not False,
@@ -2520,6 +2600,9 @@ def run(
             # No usage ledger and no token accounting here: since BE-0402 removed the alert guard's
             # vision fallback, nothing in `run` can reach a model, so there is nothing to attribute.
             results, manifest = _dispatch(plan)
+            if step_gate is not None:
+                for unreached in step_gate.unreached_breaks():
+                    typer.echo(f"breakpoint never reached: {unreached}", err=True)
             _finish(plan, results, manifest)
     finally:
         # Hand every target's device back to its provider (a no-op for the local one), even on
