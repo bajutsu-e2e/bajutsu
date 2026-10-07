@@ -671,11 +671,8 @@ exchange itself writes an `oidc.exchange` entry with the same record.
 {
   "repository": "acme/app",
   "actor": {
-    "repository": "acme/app",
     "jobUrl": "https://github.com/acme/app/actions/runs/123/job/456",
-    "runId": "123",
     "runAttempt": "1",
-    "checkRunId": "456",
     "ref": "refs/heads/main",
     "workflowRef": "acme/app/.github/workflows/e2e.yml@refs/heads/main",
     "sha": "…",
@@ -684,8 +681,9 @@ exchange itself writes an `oidc.exchange` entry with the same record.
 }
 ```
 
-`jobUrl` opens the job's own page. A claim the token lacks is left out of the record rather than
-written as null.
+`jobUrl` opens the job's own page. The record leaves out the repository, the run id, and the job id,
+because `jobUrl` already contains all three. `runAttempt` stays, since a rerun keeps the same URL. A
+claim the token lacks is left out of the record rather than written as null.
 
 **Ending a machine session.** A GitHub-issued token runs until it expires, whatever you do. A
 machine session is one `serve` minted, and `serve` can revoke it:

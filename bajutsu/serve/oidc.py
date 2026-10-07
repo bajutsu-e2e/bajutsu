@@ -98,14 +98,12 @@ class WorkloadClaims:
         """The job this workload names, as the audit trail records it in place of a user.
 
         Absent fields are left out rather than written as null, so the record carries only what the
-        token asserted.
+        token asserted. The repository and both ids are left out too: `jobUrl` already spells them,
+        and the audit entry names the repository on its own.
         """
         fields = {
-            "repository": self.repository,
             "jobUrl": self.job_url,
-            "runId": self.run_id,
             "runAttempt": self.run_attempt,
-            "checkRunId": self.check_run_id,
             "ref": self.ref,
             "workflowRef": self.workflow_ref,
             "sha": self.sha,

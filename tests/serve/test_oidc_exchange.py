@@ -939,7 +939,7 @@ def test_a_machine_upload_audits_the_job_passed_with_it(
     state = _state(serve_engine, tmp_path, key)
     source = tmp_path / "app.zip"
     source.write_bytes(b"binary")
-    job = {"repository": "acme/app", "jobUrl": _JOB_URL}
+    job = {"jobUrl": _JOB_URL}
     ops.bind_artifact(
         state,
         "binary",

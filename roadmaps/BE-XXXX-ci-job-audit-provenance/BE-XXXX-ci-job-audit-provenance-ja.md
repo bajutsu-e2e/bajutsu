@@ -79,9 +79,14 @@ serve 自身の `jobId` を返すので、監査に同じ名前のキーがあ�
 
 ### 単位 2 — ジョブをマシンセッションに持たせる
 
-交換は、claim を1つのジョブ記録にまとめます。ジョブ記録は camelCase のキーから文字列への写像で、
-値のないフィールドは省きます。キーは `repository`、`jobUrl`、`runId`、`runAttempt`、`checkRunId`、
-`workflowRef`、`ref`、`sha`、`environment`、`triggeredBy` です。
+交換は、claim を1つのジョブ記録にまとめます。ジョブ記録は camelCase のキーから文字列への写像で、値の
+ないフィールドは省きます。キーは `jobUrl`、`runAttempt`、`workflowRef`、`ref`、`sha`、`environment`、
+`triggeredBy` です。
+
+ジョブ記録には、リポジトリ、`run_id`、`check_run_id` を入れません。3つとも `jobUrl` に含まれており、
+リポジトリは監査エントリ自身も名指しするからです。再実行でも URL は変わらないので、`runAttempt` は残します。
+代わりに、実行の id で探すときは、専用のキーではなく `jobUrl` の中を照合することになります。現在、監査ログを
+読み出すコードはないので、この不便を被る呼び出し元はまだありません。
 
 セッションは、すでに持つ `org` と `kind` の隣にジョブ記録を保存します。
 
@@ -120,11 +125,8 @@ serve 自身の `jobId` を返すので、監査に同じ名前のキーがあ�
 {
   "repository": "acme/app",
   "actor": {
-    "repository": "acme/app",
     "jobUrl": "https://github.com/acme/app/actions/runs/123/job/456",
-    "runId": "123",
     "runAttempt": "1",
-    "checkRunId": "456",
     "ref": "refs/heads/main",
     "sha": "...",
     "triggeredBy": "octocat"

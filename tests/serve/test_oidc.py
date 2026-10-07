@@ -334,12 +334,10 @@ def test_a_github_token_names_the_job_that_presented_it() -> None:
         key, run_id="123", run_attempt="2", check_run_id="456", sha="abc", actor="octocat"
     )
     workload = verify(token, _config(), cache).workload
+    # The repository and both ids are already in the URL, so the record does not repeat them.
     assert workload.ci_job() == {
-        "repository": "acme/app",
         "jobUrl": "https://github.com/acme/app/actions/runs/123/job/456",
-        "runId": "123",
         "runAttempt": "2",
-        "checkRunId": "456",
         "ref": "refs/heads/main",
         "workflowRef": "acme/app/.github/workflows/e2e.yml@refs/heads/main",
         "sha": "abc",
@@ -352,11 +350,8 @@ def test_a_token_without_job_claims_still_verifies_and_names_no_job_url() -> Non
     nothing — and a link missing either id would open the wrong page."""
     key = _key()
     cache = JwksCache(ISSUER, fetch=_fetcher(key))
-    workload = verify(_token(key, run_id="123"), _config(), cache).workload
-    record = workload.ci_job()
-    assert record["runId"] == "123"
+    record = verify(_token(key, run_id="123"), _config(), cache).workload.ci_job()
     assert "jobUrl" not in record
-    assert "checkRunId" not in record
 
 
 def test_numeric_job_ids_still_link_the_job() -> None:

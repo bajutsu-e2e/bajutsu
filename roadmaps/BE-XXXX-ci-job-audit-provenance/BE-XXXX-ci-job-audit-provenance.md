@@ -81,8 +81,13 @@ reason the claim names do: a later provider differs in that one string alone.
 ### Unit 2 — Carry the job on the machine session
 
 The exchange flattens the claims into one job record. The record maps camel-case keys to strings
-and omits each absent field. Its keys are `repository`, `jobUrl`, `runId`, `runAttempt`, `checkRunId`,
-`workflowRef`, `ref`, `sha`, `environment`, and `triggeredBy`.
+and omits each absent field. Its keys are `jobUrl`, `runAttempt`, `workflowRef`, `ref`, `sha`,
+`environment`, and `triggeredBy`.
+
+The record leaves out the repository, `run_id`, and `check_run_id`, because `jobUrl` already spells
+all three, and the audit entry names the repository on its own. `runAttempt` stays, since a rerun
+keeps the same URL. The cost is that a lookup by run id matches inside `jobUrl` rather than on a key
+of its own. No code reads the audit log back today, so that cost has no caller yet.
 
 The session stores the record beside the `org` and `kind` it already carries.
 
@@ -120,11 +125,8 @@ fills the role `actor_id` fills for a person, in the one place a pipeline can ca
 {
   "repository": "acme/app",
   "actor": {
-    "repository": "acme/app",
     "jobUrl": "https://github.com/acme/app/actions/runs/123/job/456",
-    "runId": "123",
     "runAttempt": "1",
-    "checkRunId": "456",
     "ref": "refs/heads/main",
     "sha": "...",
     "triggeredBy": "octocat"

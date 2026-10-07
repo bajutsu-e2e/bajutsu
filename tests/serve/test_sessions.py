@@ -275,7 +275,7 @@ def test_every_store_carries_the_ci_job_a_machine_session_was_minted_for(
     serve_engine: Callable[..., Engine],
 ) -> None:
     expires = datetime.now(UTC) + timedelta(minutes=15)
-    job = {"repository": "acme/app", "runId": "123", "checkRunId": "456"}
+    job = {"jobUrl": "https://github.com/acme/app/actions/runs/123/job/456", "runAttempt": "1"}
     for store in _stores(serve_engine):
         sid = store.issue("repo:acme/app", expires_at=expires, org="acme", kind=MACHINE, ci_job=job)
         principal = store.principal(sid)
@@ -284,7 +284,9 @@ def test_every_store_carries_the_ci_job_a_machine_session_was_minted_for(
         assert human is not None and human.ci_job is None, type(store)
 
 
-@pytest.mark.parametrize("stored", [None, "123", ["123"], {"runId": 123}, {1: "123"}, {}], ids=repr)
+@pytest.mark.parametrize(
+    "stored", [None, "123", ["123"], {"runAttempt": 1}, {1: "123"}, {}], ids=repr
+)
 def test_a_stored_ci_job_that_is_not_a_string_mapping_reads_as_absent(stored: object) -> None:
     principal = Principal.from_stored("repo:acme/app", "acme", MACHINE, stored)
     assert principal.ci_job is None
