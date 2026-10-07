@@ -875,7 +875,12 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   screen no scenario had described. `rules` composes across two layers (scenario, then target) by
   concatenation, innermost-first, and each of the two scalars, `pollInterval` and
   `frozenScreenTimeout`, takes the innermost layer that supplies one; no flag carries a prompt paired with a choice legibly, so the
-  command line supplies `pollInterval` alone. A prompt's entry records which of the three answer
+  command line supplies `pollInterval` alone. On the XCUITest backend, `frozenScreenTimeout`
+  (default 10s, `0` disables it) also bounds a second stop: a `for` or `screenChanged` wait gives
+  up early when a fresh SpringBoard check finds no alert yet no element below the application has
+  carried a label or an identifier for that long — a scenario opts in by declaring an in-tree
+  prompt such as `savePassword` in `rules`, and a `gone`/`settled` wait never stops this way since a
+  frozen tree already satisfies it. A prompt's entry records which of the three answer
   surfaces it reaches — the `handleSystemAlert` step, the native SpringBoard probe, and the in-tree
   dismissal — so `savePassword`, which iOS raises inside the application's own process, is
   declarable as a rule and answered by the in-tree dismissal alone, and the step rejects it at
