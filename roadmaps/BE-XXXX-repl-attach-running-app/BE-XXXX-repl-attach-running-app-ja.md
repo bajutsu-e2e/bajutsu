@@ -45,10 +45,10 @@
 
 `XcuitestEnvironment`（`bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py`）に attach 用の起動経路を加えます。端末の解決後、spawn の前に、次の順で実行します。
 
-1. 端末が boot 済みかを確認します。boot 済みの端末が 1 台もなければ、`repl: no booted Simulator; boot one first` を出して終了コード 2 で終わります。udid を指定した端末が shutdown 状態なら、その udid と同じ案内を出して終了コード 2 で終わります。boot は端末全体に及ぶ手順なので、attach は端末を boot しません。
+1. 端末が boot 済みかを確認します。boot 済みの端末が 1 台もなければ、起動経路が `simctl.DeviceError`（「no booted Simulator; boot one first」）を送出します。`repl` の既存の `except DeviceError` がこれを表示し、終了コード 2 に変えます。udid を指定した端末が shutdown 状態なら、その udid を示す同じエラーを送出します。boot は端末全体に及ぶ手順なので、attach は端末を boot しません。コマンド名の接頭辞と終了コードは環境に持たせません。`run`、`record`、`crawl` が同じ環境を共有するためです。
 2. target の bundle id にプロセスが動作中かを判定します。新設する `simctl.Env.is_app_running(bundle_id)` が `xcrun simctl spawn <udid> launchctl list` を読み、`UIKitApplication:<bundle id>` の項目を探します。このコマンドは他の `simctl` 呼び出しと同じ注入可能な `RunFn` を通るので、テストは出力を差し替えられます。
 3. アプリが動作中なら、`BAJUTSU_ATTACH=1` を付けてランナーを spawn し、`_prepare_simulator` を丸ごと省きます。erase、boot、ロケールの固定、install、権限の付与、ディープリンクはいずれも行いません。
-4. アプリが動作中でなければ、`<bundle id> was not running; launching it` と表示し、この変数なしでランナーを spawn します。ランナーは従来どおりアプリを起動します。この起動も、erase、install、その他の端末全体の手順を省きます。spawn の前に、install 済みかを新設の `simctl.Env.app_container_exists(bundle_id)` で確かめ、未 install なら bundle id を示す `DeviceError` で失敗して終了コード 2 で終わります。ランナー自身の `app.launch()` は未 install の bundle id をきれいに失敗させないため、この確認を `app.launch()` に任せることはできません。
+4. アプリが動作中でなければ、この変数なしでランナーを spawn し、環境は結果（`attached` か `launched`）を呼び出し元へ返します。`repl` が、`launched` のときに `<bundle id> was not running; launching it` と表示します。ランナーは従来どおりアプリを起動します。この起動も、erase、install、その他の端末全体の手順を省きます。spawn の前に、install 済みかを新設の `simctl.Env.app_container_exists(bundle_id)` で確かめ、未 install なら bundle id を示す `DeviceError` で失敗して終了コード 2 で終わります。ランナー自身の `app.launch()` は未 install の bundle id をきれいに失敗させないため、この確認を `app.launch()` に任せることはできません。
 
 既存の `simctl.Env.is_installed` は流用しません。`DeviceTimeout` のときも `False` を返すため、応答が止まった Simulator を「未 install」と誤って報告してしまうからです。`app_container_exists` は、アプリのコンテナがないこと（`get_app_container` が `CalledProcessError` で終わること）だけを `False` とし、`DeviceTimeout` と端末のエラーはそのまま送出します。
 

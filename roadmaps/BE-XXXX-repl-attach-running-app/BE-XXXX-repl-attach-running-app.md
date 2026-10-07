@@ -76,9 +76,11 @@ adb error. The check reads only the raw `--udid` value (whether it is a URL) and
 receives an attach start path. It runs after the device is resolved and before any spawn, in this
 order:
 
-1. Confirm the device is booted. When none is, the command exits 2 with `repl: no booted
-   Simulator; boot one first`. A named udid that is shut down exits 2 with that udid and the same
-   hint. Attach never boots a device, because booting is a device-wide step.
+1. Confirm the device is booted. When none is, the start path raises a `simctl.DeviceError`
+   ("no booted Simulator; boot one first"), which the existing `except DeviceError` handler in
+   `repl` prints and turns into exit 2. A named udid that is shut down raises the same error naming
+   that udid. Attach never boots a device, because booting is a device-wide step. The environment
+   owns neither a command-name prefix nor an exit code, because `run`, `record`, and `crawl` share it.
 2. Probe whether the target's bundle id has a running process. A new
    `simctl.Env.is_app_running(bundle_id)` reads `xcrun simctl spawn <udid> launchctl list` and
    looks for the `UIKitApplication:<bundle id>` entry. The command goes through the same injectable
@@ -86,8 +88,9 @@ order:
 3. If the app is running, spawn the runner with `BAJUTSU_ATTACH=1` and skip
    `_prepare_simulator` entirely: no erase, boot, locale pin, install, permission grant, or
    deeplink.
-4. If the app is not running, print `<bundle id> was not running; launching it` and spawn the
-   runner without the variable. The runner launches the app as it does today. The launch still
+4. If the app is not running, spawn the runner without the variable, and the environment reports
+   the outcome (`attached` or `launched`) to its caller. `repl` prints
+   `<bundle id> was not running; launching it` for the `launched` outcome. The runner launches the app as it does today. The launch still
    skips erase, install, and every other device-wide step. Before that spawn, a new
    `simctl.Env.app_container_exists(bundle_id)` check fails with a `DeviceError` naming the bundle
    id when the app is not installed, and the command exits 2. The runner's own `app.launch()` does
