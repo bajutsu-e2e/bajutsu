@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-scenario-step-through-debug-ja.md)
+**English** · [日本語](BE-0454-scenario-step-through-debug-ja.md)
 
-# BE-XXXX — Step through a scenario at a prompt, with breakpoints and quit
+# BE-0454 — Step through a scenario at a prompt, with breakpoints and quit
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-scenario-step-through-debug.md) |
+| Proposal | [BE-0454](BE-0454-scenario-step-through-debug.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0454") |
 | Implementing PR | [#2131](https://github.com/bajutsu-e2e/bajutsu/pull/2131) |
 | Topic | Authoring experience |
 <!-- /BE-METADATA -->

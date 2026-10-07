@@ -1,14 +1,14 @@
-[English](BE-XXXX-scenario-step-through-debug.md) · **日本語**
+[English](BE-0454-scenario-step-through-debug.md) · **日本語**
 
-# BE-XXXX — シナリオをプロンプトでステップ実行し、ブレークポイントと終了コマンドを使えるようにする
+# BE-0454 — シナリオをプロンプトでステップ実行し、ブレークポイントと終了コマンドを使えるようにする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-scenario-step-through-debug-ja.md) |
+| 提案 | [BE-0454](BE-0454-scenario-step-through-debug-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0454") |
 | 実装 PR | [#2131](https://github.com/bajutsu-e2e/bajutsu/pull/2131) |
 | トピック | オーサリング体験 |
 <!-- /BE-METADATA -->
