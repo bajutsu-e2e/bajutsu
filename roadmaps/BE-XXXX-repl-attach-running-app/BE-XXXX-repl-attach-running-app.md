@@ -60,12 +60,15 @@ namespaces come from the target's config, not from the screen.
 | Combination | Result |
 |---|---|
 | `--attach` with the `xcuitest` backend on a local Simulator | The attach path below |
-| `--attach` with `playwright`, `adb`, or the `--udid https://…` live route | Exit 2 with `repl: --attach is only supported on the local iOS Simulator (xcuitest)` |
+| `--attach` with `playwright`, `adb`, the `--udid https://…` live route, or a target with `xcuitest.deviceType: device` | Exit 2 with `repl: --attach is only supported on the local iOS Simulator (xcuitest)` |
 | `--attach --erase` | Exit 2 with a message that the two flags contradict each other |
 | `--attach` without `--erase` | `erase` is forced off, unlike the local default of on |
 
-The check sits next to the existing live-route `--erase` check in `bajutsu/repl/cli.py`, so every
-unsupported combination fails before the shell touches a device.
+The check runs in `bajutsu/repl/cli.py` right after the actuator is selected and before
+`resolve_device`. The existing live-route `--erase` check sits after `resolve_device`, so placing
+the new check beside it would let an unsupported `adb` invocation query adb first and exit with an
+adb error. The check reads only the raw `--udid` value (whether it is a URL) and the target config
+(`deviceType`), so every unsupported combination exits 2 before any device is touched.
 
 ### Python side: probe, then attach or launch
 
@@ -86,21 +89,35 @@ order:
 4. If the app is not running, print `<bundle id> was not running; launching it` and spawn the
    runner without the variable. The runner launches the app as it does today. The launch still
    skips erase, install, and every other device-wide step. Before that spawn, a new
-   `simctl.Env.is_installed(bundle_id)` check fails with a `DeviceError` naming the bundle id when
-   the app is not installed, and the command exits 2. The runner's own `app.launch()` does not
-   fail cleanly on an uninstalled bundle id, so the check cannot be left to it.
+   `simctl.Env.app_container_exists(bundle_id)` check fails with a `DeviceError` naming the bundle
+   id when the app is not installed, and the command exits 2. The runner's own `app.launch()` does
+   not fail cleanly on an uninstalled bundle id, so the check cannot be left to it.
 
-Both paths spawn the runner with no recovery, the way the real-device route does (`_no_recovery`).
-The cold-spawn retry discards each failed attempt with `_discard_runner`, which terminates the app
-under test, and its recovery ladder reboots the device and re-runs the prep. Either would destroy
-the app the operator asked to keep. A failed attach spawn therefore fails once, loudly, with the
-runner's captured log tail, and never terminates the target app.
+The existing `simctl.Env.is_installed` is not reused: it also returns `False` on a
+`DeviceTimeout`, which would report a wedged Simulator as "not installed". `app_container_exists`
+returns `False` only when the app container is absent (`get_app_container` ends in a
+`CalledProcessError`) and propagates `DeviceTimeout` and every other device error unchanged.
+
+Both paths spawn the runner with `attempts=1` and no recovery (`_no_recovery`). `_no_recovery`
+stops only the recovery callback; `_spawn_cold_with_retry` still defaults to two attempts, so
+`attempts=1` is needed as well. The cold-spawn retry discards each failed attempt with
+`_discard_runner`, which terminates the app under test, and the recovery ladder reboots the device
+and re-runs the prep. Either would destroy the app the operator asked to keep. A failed attach
+spawn therefore fails once, loudly, with the runner's captured log tail, and never terminates the
+target app. To that end, the discard of a failed attempt uses a new `_discard_runner` keyword,
+`keep_app`, that skips `_terminate_app_under_test`.
 
 Launch env and arguments from the target's config are forwarded on the fallback path only. An
 attached app already started with whatever env it has, and the shell cannot change that after the
-fact. Readiness is also skipped on the attach path: `readyWhen` names a launch screen, and the app
-is wherever the operator left it, so waiting for that screen would time out
-(`_foreground` in the same file already makes this distinction).
+fact.
+
+Readiness is skipped on the attach path as well. `readyWhen` names a launch screen, and the app is
+wherever the operator left it, so waiting for that screen would time out. But `launch_driver`
+(`bajutsu/common/runner/launch.py`) always calls `await_ready(..., ready_sel=eff.ready_when)`
+right after `env.start`. So `launch_driver` gains a keyword argument, `skip_readiness: bool =
+False`, and only the attach path of `repl` passes `True`. Every other caller keeps the default and
+its behavior. With `skip_readiness` set, `launch_driver` returns a readiness outcome that records
+the wait was skipped.
 
 ### Runner side: attach mode
 
@@ -124,13 +141,19 @@ operator's running app is unaffected by the runner's own start.
 ### Exit and warm reuse
 
 Leaving the shell already keeps the app alive: `_close_owned_session` in `bajutsu/repl/cli.py`
-terminates only a session this process owns, and the local `xcuitest` teardown is deliberately not
-run. An attach session adds nothing to that rule. The runner process itself is discarded on exit,
-as it is today.
+deliberately skips the local `xcuitest` teardown, because that teardown terminates the target app.
+
+The current exit path does not discard the runner, though. `_spawn_runner` starts `xcodebuild` in
+its own session (`start_new_session`), so leaving the shell alone leaves the runner behind, still
+holding the device's automation session. An attach session therefore gets a runner-only exit:
+a new `XcuitestEnvironment.release_runner()` calls `_discard_runner(keep_app=True)`, which stops
+the `xcodebuild` process group and the runner app and never calls `_terminate_app_under_test`.
+`_close_owned_session` calls `release_runner()` for an attach session only; every other path is
+unchanged.
 
 An attach start does not enter the warm-reuse path (`_resume_warm`), which terminates and
 relaunches the app. The attach path returns a fresh driver and records that the lease did not own
-the app, so a later `_discard_runner` does not terminate it either.
+the app, so no path other than the `keep_app=True` discards above can terminate it.
 
 ### Out of scope
 
@@ -146,7 +169,8 @@ the app, so a later `_discard_runner` does not terminate it either.
 
 ### Verification
 
-The fast suite covers the Python side with fakes: flag validation, the booted check, the probe
+The fast suite covers the Python side with fakes: flag and `deviceType` validation before
+`resolve_device`, the booted check, the `skip_readiness` branch, the runner-only exit, the probe
 parser against recorded `launchctl list` output, the attach-versus-fallback decision, the
 not-installed check, and that neither path calls erase, install, terminate, or the recovery ladder,
 including after a failed spawn. The Swift runner change compiles only in the `xcodebuild`
@@ -174,10 +198,14 @@ already in use for other work.
 - [ ] Spike: confirm an unlaunched `XCUIApplication` reads and taps a running app (or that
   `activate()` is needed), on a dedicated Simulator.
 - [ ] Runner attach mode (`BAJUTSU_ATTACH`, `RunnerServer.forwardedAttach`, the skipped launch).
-- [ ] `simctl.Env.is_app_running` and `simctl.Env.is_installed` use, with their tests.
+- [ ] `simctl.Env.is_app_running` and `simctl.Env.app_container_exists` (a strict probe that
+  propagates `DeviceTimeout`), with their tests.
 - [ ] `XcuitestEnvironment` attach start path: booted check, probe, installed check, attach or
-  fallback launch, and a spawn with no recovery that never terminates the target app.
-- [ ] `--attach` flag, its combination checks, and the fallback notice in `bajutsu repl`.
+  fallback launch, a spawn with `attempts=1` and no recovery, and `_discard_runner(keep_app=True)`.
+- [ ] `launch_driver`'s `skip_readiness`, and the runner-only exit through
+  `XcuitestEnvironment.release_runner()`.
+- [ ] `--attach` flag, its combination checks before `resolve_device` (real devices included), and
+  the fallback notice in `bajutsu repl`.
 - [ ] End-to-end case comparing the process id before and after attach.
 - [ ] `docs/cli.md` and `docs/ja/cli.md` flag reference, plus the `repl` description in
   `docs/architecture.md`.
