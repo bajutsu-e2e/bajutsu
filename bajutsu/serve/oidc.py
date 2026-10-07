@@ -147,8 +147,8 @@ class OidcProvider:
         repository = _text(claims.get(self.repository_claim))
         if repository is None:
             raise OidcError(f"the token carries no {self.repository_claim!r} claim")
-        run_id = self._claim(claims, self.run_id_claim)
-        check_run_id = self._claim(claims, self.check_run_id_claim)
+        run_id = self._id(claims, self.run_id_claim)
+        check_run_id = self._id(claims, self.check_run_id_claim)
         job_url = None
         if self.job_url_template and run_id and check_run_id:
             job_url = self.job_url_template.format(
@@ -160,7 +160,7 @@ class OidcProvider:
             ref=self._claim(claims, self.ref_claim),
             workflow_ref=self._claim(claims, self.workflow_ref_claim),
             run_id=run_id,
-            run_attempt=self._claim(claims, self.run_attempt_claim),
+            run_attempt=self._id(claims, self.run_attempt_claim),
             check_run_id=check_run_id,
             sha=self._claim(claims, self.sha_claim),
             triggered_by=self._claim(claims, self.triggered_by_claim),
@@ -170,6 +170,16 @@ class OidcProvider:
     @staticmethod
     def _claim(claims: Mapping[str, Any], name: str | None) -> str | None:
         return _text(claims.get(name)) if name else None
+
+    @staticmethod
+    def _id(claims: Mapping[str, Any], name: str | None) -> str | None:
+        """A numeric id claim as text. Unlike `_text`, a number is accepted: these ids only describe
+        the job and are never matched against a bound, and GitHub documents no type for them, so a
+        number left out would silently drop the job link rather than refuse anything."""
+        value = claims.get(name) if name else None
+        if isinstance(value, int) and not isinstance(value, bool):
+            return str(value)
+        return _text(value)
 
 
 GITHUB_ACTIONS = OidcProvider(

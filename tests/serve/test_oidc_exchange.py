@@ -832,11 +832,39 @@ def test_the_exchange_is_audited_with_the_job_that_presented_the_token(
     assert row.detail["actor"]["triggeredBy"] == "octocat"
 
 
+def _zip_bytes() -> bytes:
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("app.txt", "binary")
+    return buffer.getvalue()
+
+
+def _post_raw(port: int, path: str, data: bytes, *, cookie: str) -> int:
+    import urllib.error
+    import urllib.request
+
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}",
+        data=data,
+        headers={"Cookie": f"bajutsu_session={cookie}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request) as response:
+            return int(response.status)
+    except urllib.error.HTTPError as e:
+        return e.code
+
+
 def test_every_backend_audits_a_machine_call_with_the_job_its_session_was_minted_for(
     tmp_path: Path,
 ) -> None:
     """Two jobs of one repository share its identity, so the job record on the session is the one
-    thing that tells their audit entries apart."""
+    thing that tells their audit entries apart. The probe goes through `RequestCtx` and the upload
+    through each backend's raw-body handler, so both carriers are covered."""
     from fastapi.testclient import TestClient
 
     from bajutsu.serve.server.app import make_app
@@ -845,23 +873,63 @@ def test_every_backend_audits_a_machine_call_with_the_job_its_session_was_minted
     state = _state(_threaded(tmp_path), tmp_path, key)
     sid = _machine(state, key, "acme", **_JOB_CLAIMS)
     probe = "/api/artifacts/exists?kind=binary&sha256=" + "e" * 64
+    upload = "/api/artifacts/binary"
 
     client = TestClient(make_app(state))
     client.cookies.set("bajutsu_session", sid)
     assert client.get(probe).status_code == 200
+    assert client.post(upload, content=_zip_bytes()).status_code == 200
 
     server, port = _serve(state)
     try:
         assert _get(port, probe, cookie=sid)[0] == 200
+        assert _post_raw(port, upload, _zip_bytes(), cookie=sid) == 200
     finally:
         server.shutdown()
         server.server_close()
 
-    rows = [row for row in _audit_rows(state) if row.action == "artifact:binary:exists"]
-    assert len(rows) == 2, "both backends must audit the probe"
-    for row in rows:
-        assert row.detail["repository"] == "acme/app"
-        assert row.detail["actor"]["jobUrl"] == _JOB_URL
+    for action in ("artifact:binary:exists", "artifact:binary"):
+        rows = [row for row in _audit_rows(state) if row.action == action]
+        assert len(rows) == 2, f"both backends must audit {action}"
+        for row in rows:
+            assert row.detail["repository"] == "acme/app"
+            assert row.detail["actor"]["jobUrl"] == _JOB_URL
+
+
+def test_every_backend_hands_the_job_to_a_machine_dispatched_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from bajutsu.serve import operations
+    from bajutsu.serve.server.app import make_app
+
+    seen: list[dict[str, str] | None] = []
+
+    def fake_start_run(_state: Any, _body: Any, **kwargs: Any) -> tuple[Any, int]:
+        seen.append(kwargs["ci_job"])
+        return {"jobId": "j"}, 200
+
+    monkeypatch.setattr(operations, "start_run", fake_start_run)
+    key = _key()
+    state = _state(_threaded(tmp_path), tmp_path, key)
+    sid = _machine(state, key, "acme", **_JOB_CLAIMS)
+    body = {"scenario": "smoke.yaml", "target": "demo"}
+
+    client = TestClient(make_app(state))
+    client.cookies.set("bajutsu_session", sid)
+    assert client.post("/api/run", json=body).status_code == 200
+
+    server, port = _serve(state)
+    try:
+        assert _post(port, "/api/run", body, cookie=sid)[0] == 200
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert len(seen) == 2
+    for job in seen:
+        assert job is not None and job["jobUrl"] == _JOB_URL
 
 
 def test_a_machine_upload_audits_the_job_passed_with_it(

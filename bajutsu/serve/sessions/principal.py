@@ -104,7 +104,7 @@ class Principal:
 
         One place for the whole read-side narrowing, rather than one check per store: a session
         row reaches this from a JSON blob (Redis) or from bare `String` columns with no CHECK
-        constraint behind them (SQL), so nothing upstream of here proves any of the three fields
+        constraint behind them (SQL), so nothing upstream of here proves any field
         has the type the dataclass declares.
 
         A value of any other type reads as absent rather than being coerced — the same rule

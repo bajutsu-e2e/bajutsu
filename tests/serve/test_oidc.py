@@ -359,6 +359,16 @@ def test_a_token_without_job_claims_still_verifies_and_names_no_job_url() -> Non
     assert "checkRunId" not in record
 
 
+def test_numeric_job_ids_still_link_the_job() -> None:
+    """GitHub documents no type for the id claims; a number must not silently drop the link."""
+    key = _key()
+    cache = JwksCache(ISSUER, fetch=_fetcher(key))
+    token = _token(key, run_id=123, run_attempt=1, check_run_id=456)
+    record = verify(token, _config(), cache).workload.ci_job()
+    assert record["jobUrl"] == "https://github.com/acme/app/actions/runs/123/job/456"
+    assert record["runAttempt"] == "1"
+
+
 def test_github_actions_is_the_registered_default_provider() -> None:
     assert PROVIDERS["github-actions"] is GITHUB_ACTIONS
     assert GITHUB_ACTIONS.issuer == ISSUER

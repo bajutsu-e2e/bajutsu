@@ -377,6 +377,24 @@ def test_redis_reads_a_pre_be_0414_bare_identity_value(serve_engine: Callable[..
     assert store.revoke_identities(["dana"]) == 1
 
 
+def test_a_machine_session_written_before_the_ci_job_existed_still_reads_as_its_machine(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    """A session minted before the job record existed keeps its org and kind, so an upgrade
+    neither signs a running pipeline out nor widens what it may reach."""
+    redis = FakeRedis()
+    redis.setex(
+        "bajutsu:session:old",
+        60,
+        json.dumps({"identity": "repo:acme/app", "org": "acme", "kind": MACHINE}),
+    )
+    machine = Principal(identity="repo:acme/app", org="acme", kind=MACHINE)
+    assert RedisSessionStore(redis).principal("old") == machine
+
+    sql = _sql_store(serve_engine)  # a NULL `ci_job`, as migration 0021 leaves an existing row
+    assert sql.principal(sql.issue("repo:acme/app", org="acme", kind=MACHINE)) == machine
+
+
 def test_a_corrupted_redis_record_is_refused_as_a_machine_not_read_as_a_human() -> None:
     """A record that looks like one but will not parse must not fall through the legacy
     bare-identity branch: that would make it a *human* session carrying the blob as its identity,

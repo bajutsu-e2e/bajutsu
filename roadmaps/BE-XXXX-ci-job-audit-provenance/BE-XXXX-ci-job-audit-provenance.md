@@ -53,8 +53,9 @@ session, and the audit entry. The units below follow that path in order.
 
 ### Unit 1 — Read the job's claims at the exchange
 
-The provider-independent `WorkloadClaims` (in `bajutsu/serve/oidc.py`) gains five fields. They
-follow the existing optional ones (`environment`, `ref`, and `workflow_ref`).
+The provider-independent `WorkloadClaims` (in `bajutsu/serve/oidc.py`) gains five fields read from
+claims, plus a sixth, `job_url`, derived from them below. They follow the existing optional ones
+(`environment`, `ref`, and `workflow_ref`).
 
 | Field | GitHub Actions claim | Meaning |
 |---|---|---|
@@ -67,7 +68,9 @@ follow the existing optional ones (`environment`, `ref`, and `workflow_ref`).
 The field keeps GitHub's name `check_run_id` rather than a neutral `job_id`. `POST /api/run` answers
 with serve's own `jobId`, so an audit key of that name would invite joining the two. Each field stays optional. A provider that emits no such claim, or a GitHub token minted before a
 claim existed, maps it to `None`. The exchange never refuses a token for lacking one, because these
-fields describe the job rather than authorize it.
+fields describe the job rather than authorize it. For the same reason the three ids accept a number
+as well as a string: GitHub documents no type for them, and dropping a number would silently drop
+the job link.
 
 `OidcProvider` names each claim, the same way it already names `repository_claim`. It also carries
 a `job_url` template, which turns the fields into the job page's URL. For GitHub Actions the template is

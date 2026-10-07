@@ -130,7 +130,9 @@ def oidc_exchange(state: ServeState, token: str, org: str) -> tuple[Any, int, st
         job_url=ci_job.get("jobUrl"),
     )
     # Audited as well as logged: each later entry this session writes names the same job, and this
-    # entry is the one that ties it back to the moment the session began.
+    # entry is the one that ties it back to the moment the session began. Not guarded against a
+    # failed write: like every other audit call it fails the request loudly, since an exchange that
+    # answered 200 with no trace of it is the gap the audit trail exists to close.
     _record_audit(state, identity, org, "oidc.exchange", workload.repository, {}, ci_job=ci_job)
     return {"ok": True, "org": org, "repository": workload.repository}, 200, sid
 
