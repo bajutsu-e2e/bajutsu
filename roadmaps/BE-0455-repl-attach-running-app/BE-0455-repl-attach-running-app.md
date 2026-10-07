@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-repl-attach-running-app-ja.md)
+**English** · [日本語](BE-0455-repl-attach-running-app-ja.md)
 
-# BE-XXXX — Attach the REPL to an already-running Simulator app
+# BE-0455 — Attach the REPL to an already-running Simulator app
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-repl-attach-running-app.md) |
+| Proposal | [BE-0455](BE-0455-repl-attach-running-app.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0455") |
 | Topic | Authoring experience |
 <!-- /BE-METADATA -->
 
