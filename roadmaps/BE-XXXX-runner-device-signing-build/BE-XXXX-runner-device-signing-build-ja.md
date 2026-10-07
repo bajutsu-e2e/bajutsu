@@ -69,7 +69,8 @@ Bajutsu は次の順で探し、最初に見つかったものを使います。
 profile 名が指す鍵と profile は、Keychain と `~/Library/MobileDevice/Provisioning Profiles/` に残ります。
 
 ```yaml
-bundleIdPrefix: com.acme.bajutsu   # 必須。ホスト = <prefix>.host、テスト = <prefix>.uitests
+bundleIdPrefix: com.acme           # 必須。ランナーのホストアプリ = <prefix>.bajutsu.runner-host、
+                                   # UI テストバンドル = <prefix>.bajutsu.runner-uitests
 teamId: ABCDE12345                 # 必須
 signing: automatic                 # automatic（既定）| manual
 manual:                            # signing: manual のとき必須
@@ -109,9 +110,9 @@ XcodeGen（`xcodegen`）が `project.yml` から Xcode プロジェクトを生�
 コマンドライン設定ではできないことです。変更するのはステージング先のコピーで、コミット済みのファイルは
 変えません。
 
-| 設定 | ホストターゲット | UI テストターゲット |
+| 設定 | ランナーのホストアプリのターゲット | UI テストターゲット |
 |---|---|---|
-| `PRODUCT_BUNDLE_IDENTIFIER` | `<prefix>.host` | `<prefix>.uitests` |
+| `PRODUCT_BUNDLE_IDENTIFIER` | `<prefix>.bajutsu.runner-host` | `<prefix>.bajutsu.runner-uitests` |
 | `DEVELOPMENT_TEAM` | `teamId` | `teamId` |
 | `CODE_SIGNING_ALLOWED` | `YES` | `YES` |
 | `CODE_SIGN_STYLE` | `Automatic` または `Manual` | 同左 |

@@ -69,7 +69,8 @@ certificate names, and profile names identify keys and profiles that stay in the
 `~/Library/MobileDevice/Provisioning Profiles/`.
 
 ```yaml
-bundleIdPrefix: com.acme.bajutsu   # required; host = <prefix>.host, tests = <prefix>.uitests
+bundleIdPrefix: com.acme           # required; runner host app = <prefix>.bajutsu.runner-host,
+                                   # UI-test bundle = <prefix>.bajutsu.runner-uitests
 teamId: ABCDE12345                 # required
 signing: automatic                 # automatic (default) | manual
 manual:                            # required when signing: manual
@@ -109,9 +110,9 @@ XcodeGen (`xcodegen`) turns `project.yml` into the Xcode project. The command lo
 `project.yml` and overrides settings per target before generating, which `xcodebuild` command-line
 settings cannot do. The staged copy changes, never the committed file.
 
-| Setting | Host target | UI-test target |
+| Setting | Runner host app target | UI-test target |
 |---|---|---|
-| `PRODUCT_BUNDLE_IDENTIFIER` | `<prefix>.host` | `<prefix>.uitests` |
+| `PRODUCT_BUNDLE_IDENTIFIER` | `<prefix>.bajutsu.runner-host` | `<prefix>.bajutsu.runner-uitests` |
 | `DEVELOPMENT_TEAM` | `teamId` | `teamId` |
 | `CODE_SIGNING_ALLOWED` | `YES` | `YES` |
 | `CODE_SIGN_STYLE` | `Automatic` or `Manual` | same |
