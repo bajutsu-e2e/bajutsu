@@ -18,7 +18,9 @@ from bajutsu.common.orchestrator.substitution import _interp_step, _resolve_syst
 from bajutsu.common.orchestrator.types import (
     AlertEvent,
     ResolvedAlertRule,
+    StepGate,
     StepOutcome,
+    StepPause,
     SystemAlertTap,
     UndeclaredInterruption,
     drain_actuations,
@@ -291,10 +293,51 @@ class _StepRunner:
                 return self._fail_unrouted(step, str(exc))
             # Another instance of this same class, not another type's internals — SLF001's own
             # rationale (reaching into a foreign object) does not apply to a sibling runner.
+            pause = runner._pause_before(step, step_driver)  # noqa: SLF001
             failure = runner._run_one(step, step_driver)  # noqa: SLF001
             if failure is not None:
+                runner._pause_after_failure(pause, failure)  # noqa: SLF001
                 return failure
         return None
+
+    def _gate(self) -> StepGate | None:
+        """The `run --step` gate, for the scenario's own steps only.
+
+        Never a `before` / `after` hook phase, and never an interrupt's recovery steps: those run
+        from inside a step already under way (its clock started, or its wait polling), so a pause
+        there would spend that step's own timeout and number a step the scenario never wrote.
+        """
+        if self.cfg.phase != "" or self.state.running_recovery:
+            return None
+        return self.cfg.step_gate
+
+    def _pause_before(self, step: Step, active_driver: base.Driver) -> StepPause | None:
+        """Hold the loop before *step* when a gate asks to, returning the pause for a later failure."""
+        gate = self._gate()
+        if gate is None:
+            return None
+        pause = StepPause(
+            index=self.state.counter.peek(),
+            name=step.name,
+            # Unnamed, so the label says what the step does while `name` sits beside it: a named
+            # step's own label is just its name, which the prompt already prints.
+            label=_step_label(step.model_copy(update={"name": None}), _action_of(step)),
+            driver=active_driver,
+        )
+        if gate.before_step(pause):
+            # The operator may have acted, or the app moved on its own while the loop waited, so the
+            # previous step's `after` no longer describes the screen this step starts from.
+            self.state.prev_after = None
+            self.state.prev_after_screenshot = None
+        return pause
+
+    def _pause_after_failure(self, pause: StepPause | None, failure: str) -> None:
+        """Hold the loop once a step has failed, while the failing screen is still up."""
+        gate = self._gate()
+        if gate is None or pause is None or self.state.failure_paused:
+            return
+        self.state.failure_paused = True
+        gate.after_failure(replace(pause, failure=failure))
 
     def _fail_unrouted(self, step: Step, reason: str) -> str:
         """Record *step* as failed before it reached any driver, and return *reason* (BE-0447)."""

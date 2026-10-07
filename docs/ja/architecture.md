@@ -481,6 +481,12 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   タイミングとステップ／試行（`attempt`）の帰属つきで、そのシナリオの他の証跡と並べて `driver_trace.json` に書き出します。
   `--score`/`--zip` と同じく診断専用です。`transport`／`subprocess` の往復の記録は XCUITest と adb だけが対象ですが、
   フラグ自体はバックエンドで切り替わらないため、web（Playwright）のランでも `driver` 階層のレコードは書き出されます。
+- `bajutsu run --step` / `--break` / `--break-on-fail`（デフォルトでは無効）: ステップループを止める step gate です。
+  gate は、キャンセル判定の隣にあるステップの境界（`_StepRunner.exec_steps`）で呼ばれます。止めているあいだ、
+  オペレーターは `repl` と同じコマンド群で動作中のアプリを読み取れます。gate が行うのは、実行を続けさせることと、
+  `quit` で `RunCancelled` を送出することで、判定は決めません。アプリを操作するコマンドを実行すると、
+  `RunResult.interactive` に記録してシナリオを失敗にします。手動操作を含む実行は、成功として通りません。
+  対象は、シナリオ 1 つ、エンジン 1 つ、ワーカー 1 つ、対話端末の実行です。
 - シナリオごとの `result.json`: ランナーは各シナリオが終わった時点で、その判定を `<sid>/result.json` に書き出します。
   中身は `manifest.json` がそのシナリオについて持つものと同じエントリです。途中で強制終了された実行でも、完了した
   シナリオの判定は残ります。書き出しに失敗したときは警告して実行を続け、`manifest.json` が引き続き唯一の情報源です。

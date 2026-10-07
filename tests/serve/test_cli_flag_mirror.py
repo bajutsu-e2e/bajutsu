@@ -30,7 +30,17 @@ def test_run_flag_surface_is_fully_classified() -> None:
     # trace_driver (BE-0415) is the same kind of investigator-only diagnostic as score, not an
     # artifact serve's UI offers a download for the way --zip's runs/<id>.zip is; wiring it through
     # would add commands.py/dispatch.py plumbing this item's own design never asked for.
-    not_serve_exposed = {"evidence_store", "score", "ios_tipkit_handling", "trace_driver"}
+    # step / break_at / break_on_fail open an interactive terminal prompt, and a serve-spawned run has
+    # no terminal, so `run` would refuse them with exit 2; serve's own live view is a separate surface.
+    not_serve_exposed = {
+        "evidence_store",
+        "score",
+        "ios_tipkit_handling",
+        "trace_driver",
+        "step",
+        "break_at",
+        "break_on_fail",
+    }
     pass_through = {
         "backend",
         "udid",

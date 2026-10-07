@@ -72,3 +72,7 @@ class StepLoopState:
     # Which declared targets can take a step and which one is the primary now (BE-0447). Shared by
     # every phase like `app_crash`; `None` for a scenario declaring no targets.
     roster: TargetRoster | None = None
+    # Whether a `run --step` gate has already stopped on this run's failure. A failing step inside an
+    # `if` / `forEach` / `web` block hands its reason back through every enclosing step, so without
+    # this latch the operator would be stopped once per level for the one failure that ends the run.
+    failure_paused: bool = False

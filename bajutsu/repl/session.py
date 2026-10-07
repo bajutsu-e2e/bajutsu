@@ -95,6 +95,11 @@ _HELP = (
 )
 
 
+# The verbs that act on the app, as opposed to reading it. `run --step` reads this to tell a
+# hand-driven run from one that only looked, so a new actuating verb belongs here as well.
+ACTUATING_VERBS = frozenset({"tap", "type", "scroll", "back", "step"})
+
+
 class ReplSession:
     """One shell against one launched app: run a typed line against the driver, render the answer.
 

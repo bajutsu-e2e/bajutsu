@@ -1176,6 +1176,12 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   (BE-0415's "Not doing"), but the flag itself is not backend-gated: a web (Playwright) run still
   writes `driver_trace.json` with the `driver`-level records, since the pipeline wraps whatever
   driver the lease returns.
+- `bajutsu run --step` / `--break` / `--break-on-fail`, off by default: a step gate holds the step loop
+  at a boundary (`_StepRunner.exec_steps`, beside the cancellation check). The operator reads the live
+  app with the `repl` command set. The gate lets the run continue, or raises `RunCancelled` on `quit`;
+  it never chooses a verdict. A command that acts on the app stamps `RunResult.interactive` and fails
+  the scenario, so a hand-driven run cannot pass as a green one. It covers one scenario, one engine,
+  one worker, and an interactive terminal.
 - Per-scenario `result.json`: the runner writes each scenario's verdict to `<sid>/result.json` the
   moment that scenario finishes — the same entry `manifest.json` lists for it — so a run killed
   midway still keeps the verdicts of the scenarios it completed. A failed write warns and the run

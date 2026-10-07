@@ -44,6 +44,7 @@ from .resolved_alert_rule import ResolvedAlertRule
 from .run_result import RunResult
 from .selection_state import SelectionState
 from .skipped_capture import SkippedCapture
+from .step_gate import StepGate, StepPause
 from .step_outcome import StepOutcome
 from .system_alert_tap import SystemAlertTap
 from .target_device_info import TargetDeviceInfo
@@ -73,7 +74,9 @@ __all__ = [
     "RunResult",
     "SelectionState",
     "SkippedCapture",
+    "StepGate",
     "StepOutcome",
+    "StepPause",
     "SystemAlertTap",
     "TargetDeviceInfo",
     "TargetRuntime",
