@@ -635,6 +635,30 @@ job の id と見分けがつきません。「権限がない」と返せば、
 埋めるために合成のユーザーを作れば、`/api/orgs` が開示する名簿にパイプラインが並んでしまいます。有無を問う
 呼び出しも publish と並べて監査します。ビルドがすでにあると判明して終えたパイプラインも、記録を残します。
 
+**監査エントリはジョブも名指しします。** 1つのリポジトリは多くのジョブを動かすので、リポジトリだけでは
+再実行と元の実行を区別できません。交換はトークンにあるジョブの claim をセッションに保存し、そのセッションが
+書くすべてのエントリは、detail の `actor` の下にジョブの記録を持ちます。交換そのものも、同じ記録を持つ
+`oidc.exchange` のエントリを書きます。
+
+```json
+{
+  "repository": "acme/app",
+  "actor": {
+    "repository": "acme/app",
+    "jobUrl": "https://github.com/acme/app/actions/runs/123/job/456",
+    "runId": "123",
+    "runAttempt": "1",
+    "checkRunId": "456",
+    "ref": "refs/heads/main",
+    "workflowRef": "acme/app/.github/workflows/e2e.yml@refs/heads/main",
+    "sha": "…",
+    "triggeredBy": "octocat"
+  }
+}
+```
+
+`jobUrl` はジョブ自身のページを開きます。トークンにない claim は、null として書かずに記録から省きます。
+
 **マシンセッションを終わらせる。** GitHub が発行したトークンは、何をしても期限まで生き続けます。マシン
 セッションは `serve` 自身が発行したものなので、`serve` から失効させられます。
 

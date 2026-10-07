@@ -327,6 +327,38 @@ def test_the_provider_table_maps_claim_names_without_touching_verification() -> 
     assert workload.workflow_ref.endswith(".gitlab-ci.yml@refs/heads/main")  # type: ignore[union-attr]
 
 
+def test_a_github_token_names_the_job_that_presented_it() -> None:
+    key = _key()
+    cache = JwksCache(ISSUER, fetch=_fetcher(key))
+    token = _token(
+        key, run_id="123", run_attempt="2", check_run_id="456", sha="abc", actor="octocat"
+    )
+    workload = verify(token, _config(), cache).workload
+    assert workload.ci_job() == {
+        "repository": "acme/app",
+        "jobUrl": "https://github.com/acme/app/actions/runs/123/job/456",
+        "runId": "123",
+        "runAttempt": "2",
+        "checkRunId": "456",
+        "ref": "refs/heads/main",
+        "workflowRef": "acme/app/.github/workflows/e2e.yml@refs/heads/main",
+        "sha": "abc",
+        "triggeredBy": "octocat",
+    }
+
+
+def test_a_token_without_job_claims_still_verifies_and_names_no_job_url() -> None:
+    """The job claims describe the caller rather than authorize it, so their absence refuses
+    nothing — and a link missing either id would open the wrong page."""
+    key = _key()
+    cache = JwksCache(ISSUER, fetch=_fetcher(key))
+    workload = verify(_token(key, run_id="123"), _config(), cache).workload
+    record = workload.ci_job()
+    assert record["runId"] == "123"
+    assert "jobUrl" not in record
+    assert "checkRunId" not in record
+
+
 def test_github_actions_is_the_registered_default_provider() -> None:
     assert PROVIDERS["github-actions"] is GITHUB_ACTIONS
     assert GITHUB_ACTIONS.issuer == ISSUER

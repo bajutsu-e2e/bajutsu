@@ -130,6 +130,7 @@ ROUTES: tuple[Route, ...] = (
             ctx.query("sha256"),
             actor=ctx.actor(),
             machine_org=ctx.machine_org(),
+            ci_job=ctx.ci_job(),
         ),
     ),
     Route(
@@ -294,6 +295,7 @@ ROUTES: tuple[Route, ...] = (
             actor=ctx.actor(),
             session=ctx.session(),
             machine_org=ctx.machine_org(),
+            ci_job=ctx.ci_job(),
         ),
     ),
     Route(

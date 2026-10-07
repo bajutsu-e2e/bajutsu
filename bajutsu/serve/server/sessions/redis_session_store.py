@@ -42,6 +42,7 @@ class RedisSessionStore:
         expires_at: datetime | None = None,
         org: str | None = None,
         kind: PrincipalKind = HUMAN,
+        ci_job: dict[str, str] | None = None,
     ) -> str:
         sid = secrets.token_urlsafe(32)
         ttl = self._ttl
@@ -57,7 +58,7 @@ class RedisSessionStore:
             # live session. Redis rejects a non-positive TTL outright, and rounding one up would
             # hand back a credential the cap said not to mint. `SessionStore.issue` documents it.
             return sid
-        value = json.dumps({"identity": identity, "org": org, "kind": kind})
+        value = json.dumps({"identity": identity, "org": org, "kind": kind, "ciJob": ci_job})
         self._redis.setex(f"{_SESSION}{sid}", ttl, value)
         return sid
 
@@ -136,4 +137,6 @@ def _principal(value: str) -> Principal:
     # is a row written before these existed, but a value that is JSON at all was written by this
     # code, which always records one. Its absence is corruption, so it meets the narrower gate.
     kind = stored.get("kind", MACHINE)
-    return Principal.from_stored(stored.get("identity"), stored.get("org"), kind)
+    return Principal.from_stored(
+        stored.get("identity"), stored.get("org"), kind, stored.get("ciJob")
+    )

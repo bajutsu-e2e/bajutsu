@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-XXXX](BE-XXXX-ci-job-audit-provenance-ja.md) |
 | 提案者 | [@paihu](https://github.com/paihu) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| 実装 PR | TBD（PR を開いたら記入します） |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md)、[BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md) |
 <!-- /BE-METADATA -->
@@ -57,24 +58,26 @@ run を dispatch したジョブのページへのリンクを持ちます。リ
 |---|---|---|
 | `run_id` | `run_id` | ワークフローの実行 |
 | `run_attempt` | `run_attempt` | その実行の何回目の試行か。再実行は同じ `run_id` を使います |
-| `job_id` | `check_run_id` | 実行の中のジョブ |
+| `check_run_id` | `check_run_id` | 実行の中のジョブ |
 | `sha` | `sha` | 実行がビルドしたコミット |
 | `triggered_by` | `actor` | 実行を開始した GitHub アカウント |
 
+`check_run_id` は、中立な `job_id` ではなく GitHub の名前のままにします。`POST /api/run` は
+serve 自身の `jobId` を返すので、監査に同じ名前のキーがあると両者を結合したくなるからです。
 どのフィールドも任意のままです。claim を出さないプロバイダや、claim が加わる前に発行された GitHub の
 トークンでは、そのフィールドを `None` に写します。claim がないことを理由に、交換がトークンを拒むことは
 ありません。これらのフィールドはジョブを記述するもので、認可には使わないからです。
 
 `OidcProvider` は、`repository_claim` と同じように各 claim の名前を持ちます。さらに `job_url` の
 テンプレートを持ち、フィールドからジョブのページの URL を組み立てます。GitHub Actions のテンプレートは
-`https://github.com/{repository}/actions/runs/{run_id}/job/{job_id}` です。URL を組み立てるのは、
-`run_id` と `job_id` が両方そろうときに限ります。テンプレートをプロバイダの表に置く理由は、claim の
+`https://github.com/{repository}/actions/runs/{run_id}/job/{check_run_id}` です。URL を組み立てるのは、
+`run_id` と `check_run_id` が両方そろうときに限ります。テンプレートをプロバイダの表に置く理由は、claim の
 名前を置く理由と同じです。将来のプロバイダとの違いは、この文字列1つだけに収まります。
 
 ### 単位 2 — ジョブをマシンセッションに持たせる
 
-交換は、claim を1つのジョブ記録に平らに展開します。ジョブ記録は camelCase のキーから文字列への写像で、
-値のないフィールドは省きます。キーは `repository`、`jobUrl`、`runId`、`runAttempt`、`jobId`、
+交換は、claim を1つのジョブ記録にまとめます。ジョブ記録は camelCase のキーから文字列への写像で、
+値のないフィールドは省きます。キーは `repository`、`jobUrl`、`runId`、`runAttempt`、`checkRunId`、
 `workflowRef`、`ref`、`sha`、`environment`、`triggeredBy` です。
 
 セッションは、すでに持つ `org` と `kind` の隣にジョブ記録を保存します。
@@ -95,15 +98,20 @@ run を dispatch したジョブのページへのリンクを持ちます。リ
 ### 単位 3 — ジョブを監査エントリに書く
 
 2つのリクエストバックエンドは、マシンプリンシパルの org をゲートで一度だけ解決し、マシンの許可リストの
-背後にある操作へ `machine_org` として渡しています。ジョブ記録も同じ経路で運びます。`RequestCtx` に
-`ci_job()` を足し、両バックエンドはゲートがすでに読んだプリンシパルから答えます。現在 `machine_org` を
-渡しているルートは、`ci_job` も渡します。対象は、3種類の成果物のアップロード、成果物の存在確認、
-`POST /api/run` です。
+背後にある操作へ `machine_org` として渡しています。ジョブ記録も同じ経路で運び、両バックエンドはゲートがすでに読んだプリンシパルから答えます。監査エントリを
+書くマシンの呼び出しは、すべてジョブを運びます。
+
+- **`POST /api/run` と成果物の存在確認。** どちらも `RequestCtx` を通るので、`RequestCtx` に `ci_job()` を足します。
+- **3種類の成果物のアップロード。** 各バックエンドは、`RequestCtx` の外にある raw-body のハンドラで
+  受け取ります。このハンドラが、`machine_org` と並べてジョブを `bind_artifact` に渡します。
+
+`GET /api/runs` とジョブのポーリングも `machine_org` を受け取りますが、監査エントリを書かないので、
+ジョブは要りません。
 
 `_record_audit`（`bajutsu/serve/authz.py`）は、ジョブ記録を任意の引数 `ci_job` として受け取ります。
 マシンプリンシパルについては、BE-0414 が文書化した `repository` を detail に書き続けたうえで、
 ジョブ記録を `actor` キーの下に足します。`actor` というキー名は、この記録が何の代わりかを示します。
-人間について `actor_id` が担う役割を、パイプラインが持ち込める唯一の場所で担います。
+この記録は、人間について `actor_id` が担う役割を、パイプラインが持ち込める唯一の場所で担います。
 
 ```json
 {
@@ -113,7 +121,7 @@ run を dispatch したジョブのページへのリンクを持ちます。リ
     "jobUrl": "https://github.com/acme/app/actions/runs/123/job/456",
     "runId": "123",
     "runAttempt": "1",
-    "jobId": "456",
+    "checkRunId": "456",
     "ref": "refs/heads/main",
     "sha": "...",
     "triggeredBy": "octocat"
@@ -156,13 +164,14 @@ run の監査 detail を確かめます。4つ目は `oidc.exchange` のエン�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 単位 1 — 交換の時点でジョブの claim を読む
-- [ ] 単位 2 — ジョブをマシンセッションに持たせる
-- [ ] 単位 3 — ジョブを監査エントリに書く
-- [ ] 単位 4 — テストとドキュメント
+- [x] 単位 1 — 交換の時点でジョブの claim を読む
+- [x] 単位 2 — ジョブをマシンセッションに持たせる
+- [x] 単位 3 — ジョブを監査エントリに書く
+- [x] 単位 4 — テストとドキュメント
 
 ## 参考
 
 - [BE-0414 — GitHub Actions の OIDC トークンで CI のジョブを serve に認証させる](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md)
-- [GitHub Docs — OpenID Connect reference](https://docs.github.com/en/actions/reference/security/oidc)
+- [GitHub Docs — OpenID Connect reference](https://docs.github.com/en/actions/reference/security/oidc) (the claim table, `check_run_id` included)
+- [GitHub Docs — OpenID Connect](https://docs.github.com/en/actions/concepts/security/openid-connect) (an example token payload, `sha` included)
 - `bajutsu/serve/oidc.py`、`bajutsu/serve/operations/oidc.py`、`bajutsu/serve/authz.py`

@@ -23,6 +23,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from bajutsu.serve import oplog
+from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.oidc import JwksCache, OidcError, verify
 from bajutsu.serve.orgs import orgs_from_db
 from bajutsu.serve.sessions import MACHINE, machine_identity
@@ -116,14 +117,21 @@ def oidc_exchange(state: ServeState, token: str, org: str) -> tuple[Any, int, st
     # non-None at all for the session to be revocable: `revoke_identities` works by identity, and
     # never touches a session carrying none.
     identity = machine_identity(workload.repository)
-    sid = state.auth.issue_session(identity, expires_at=expires_at, org=org, kind=MACHINE)
+    ci_job = workload.ci_job()
+    sid = state.auth.issue_session(
+        identity, expires_at=expires_at, org=org, kind=MACHINE, ci_job=ci_job
+    )
     oplog.log_event(
         _logger,
         "oidc.exchange",
         f"minted a machine session for {identity} as {org}",
         repository=workload.repository,
         org=org,
+        job_url=ci_job.get("jobUrl"),
     )
+    # Audited as well as logged: each later entry this session writes names the same job, and this
+    # entry is the one that ties it back to the moment the session began.
+    _record_audit(state, identity, org, "oidc.exchange", workload.repository, {}, ci_job=ci_job)
     return {"ok": True, "org": org, "repository": workload.repository}, 200, sid
 
 

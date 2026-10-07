@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-ci-job-audit-provenance.md) |
 | Author | [@paihu](https://github.com/paihu) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | TBD — filled in once the PR is open |
 | Topic | Hosting the web UI |
 | Related | [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
 <!-- /BE-METADATA -->
@@ -59,24 +60,25 @@ follow the existing optional ones (`environment`, `ref`, and `workflow_ref`).
 |---|---|---|
 | `run_id` | `run_id` | The workflow run |
 | `run_attempt` | `run_attempt` | Which attempt of that run; a rerun reuses the `run_id` |
-| `job_id` | `check_run_id` | The job inside the run |
+| `check_run_id` | `check_run_id` | The job inside the run |
 | `sha` | `sha` | The commit the run built |
 | `triggered_by` | `actor` | The GitHub account that started the run |
 
-Each field stays optional. A provider that emits no such claim, or a GitHub token minted before a
+The field keeps GitHub's name `check_run_id` rather than a neutral `job_id`. `POST /api/run` answers
+with serve's own `jobId`, so an audit key of that name would invite joining the two. Each field stays optional. A provider that emits no such claim, or a GitHub token minted before a
 claim existed, maps it to `None`. The exchange never refuses a token for lacking one, because these
 fields describe the job rather than authorize it.
 
 `OidcProvider` names each claim, the same way it already names `repository_claim`. It also carries
 a `job_url` template, which turns the fields into the job page's URL. For GitHub Actions the template is
-`https://github.com/{repository}/actions/runs/{run_id}/job/{job_id}`. The exchange leaves the URL
-out unless `run_id` and `job_id` are both present. A template belongs on the provider table for the same
+`https://github.com/{repository}/actions/runs/{run_id}/job/{check_run_id}`. The exchange leaves the URL
+out unless `run_id` and `check_run_id` are both present. A template belongs on the provider table for the same
 reason the claim names do: a later provider differs in that one string alone.
 
 ### Unit 2 — Carry the job on the machine session
 
 The exchange flattens the claims into one job record. The record maps camel-case keys to strings
-and omits each absent field. Its keys are `repository`, `jobUrl`, `runId`, `runAttempt`, `jobId`,
+and omits each absent field. Its keys are `repository`, `jobUrl`, `runId`, `runAttempt`, `checkRunId`,
 `workflowRef`, `ref`, `sha`, `environment`, and `triggeredBy`.
 
 The session stores the record beside the `org` and `kind` it already carries.
@@ -96,10 +98,15 @@ request presents the session cookie, never the token. A human session never carr
 ### Unit 3 — Write the job into the audit entry
 
 Both request backends already resolve a machine principal's org once, at the gate, and hand it to
-the operations behind the machine allowlist as `machine_org`. The job record travels the same way.
-`RequestCtx` gains `ci_job()`, and both backends answer it from the principal the gate already read.
-The routes that pass `machine_org` today also pass `ci_job`. Those routes cover the three artifact
-uploads, the artifact probe, and `POST /api/run`.
+the operations behind the machine allowlist as `machine_org`. The job record travels the same way, and both backends answer it from the principal the gate
+already read. Every machine call that writes an audit entry carries the job.
+
+- **`POST /api/run` and the artifact probe.** Both go through `RequestCtx`, which gains `ci_job()`.
+- **The three artifact uploads.** Each backend streams these through a raw-body handler outside
+  `RequestCtx`, and that handler passes the job to `bind_artifact` beside `machine_org`.
+
+`GET /api/runs` and the job poll also take `machine_org`, but they write no audit entry and need no
+job.
 
 `_record_audit` (in `bajutsu/serve/authz.py`) takes the record as an optional `ci_job` argument. For
 a machine principal it keeps writing `repository` into the detail payload, which BE-0414 documents,
@@ -114,7 +121,7 @@ fills the role `actor_id` fills for a person, in the one place a pipeline can ca
     "jobUrl": "https://github.com/acme/app/actions/runs/123/job/456",
     "runId": "123",
     "runAttempt": "1",
-    "jobId": "456",
+    "checkRunId": "456",
     "ref": "refs/heads/main",
     "sha": "...",
     "triggeredBy": "octocat"
@@ -158,13 +165,14 @@ record, and `docs/ja/self-hosting.md` mirrors the change.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — Read the job's claims at the exchange
-- [ ] Unit 2 — Carry the job on the machine session
-- [ ] Unit 3 — Write the job into the audit entry
-- [ ] Unit 4 — Tests and documentation
+- [x] Unit 1 — Read the job's claims at the exchange
+- [x] Unit 2 — Carry the job on the machine session
+- [x] Unit 3 — Write the job into the audit entry
+- [x] Unit 4 — Tests and documentation
 
 ## References
 
 - [BE-0414 — Authenticate a CI job to serve with a GitHub Actions OIDC token](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md)
-- [GitHub Docs — OpenID Connect reference](https://docs.github.com/en/actions/reference/security/oidc)
+- [GitHub Docs — OpenID Connect reference](https://docs.github.com/en/actions/reference/security/oidc) (the claim table, `check_run_id` included)
+- [GitHub Docs — OpenID Connect](https://docs.github.com/en/actions/concepts/security/openid-connect) (an example token payload, `sha` included)
 - `bajutsu/serve/oidc.py`, `bajutsu/serve/operations/oidc.py`, `bajutsu/serve/authz.py`

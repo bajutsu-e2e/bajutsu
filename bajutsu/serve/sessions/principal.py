@@ -87,14 +87,19 @@ class Principal:
             rather than re-derived per request. None for a human session, whose org comes from
             their persisted user row instead.
         kind: Which gate governs this session.
+        ci_job: The CI job a machine session was minted for, as `WorkloadClaims.ci_job` records
+            it — what the audit trail writes in place of a user. None for a human session.
     """
 
     identity: str | None
     org: str | None = None
     kind: PrincipalKind = HUMAN
+    ci_job: dict[str, str] | None = None
 
     @classmethod
-    def from_stored(cls, identity: object, org: object, kind: object) -> Principal:
+    def from_stored(
+        cls, identity: object, org: object, kind: object, ci_job: object = None
+    ) -> Principal:
         """Narrow a principal read back out of a store, whose fields arrive untyped.
 
         One place for the whole read-side narrowing, rather than one check per store: a session
@@ -110,7 +115,16 @@ class Principal:
             identity=identity if isinstance(identity, str) and identity else None,
             org=org if isinstance(org, str) and org else None,
             kind=kind_from_stored(kind),
+            ci_job=_ci_job_from_stored(ci_job),
         )
+
+
+def _ci_job_from_stored(value: object) -> dict[str, str] | None:
+    if not isinstance(value, dict) or not value:
+        return None
+    if not all(isinstance(k, str) and isinstance(v, str) for k, v in value.items()):
+        return None
+    return value
 
 
 def kind_from_stored(value: object) -> PrincipalKind:

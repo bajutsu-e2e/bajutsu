@@ -401,7 +401,14 @@ def _target_forbidden(state: ServeState, org: str, target: str, session: str | N
 
 
 def _record_audit(
-    state: ServeState, actor: str | None, org: str, action: str, target: str, detail: dict[str, Any]
+    state: ServeState,
+    actor: str | None,
+    org: str,
+    action: str,
+    target: str,
+    detail: dict[str, Any],
+    *,
+    ci_job: dict[str, str] | None = None,
 ) -> None:
     """Append an audit entry (who did what, when) when a database is wired and the actor is known.
     A no-op otherwise — local, no database, or a shared-token request with no identity (BE-0015 7c-1).
@@ -410,17 +417,22 @@ def _record_audit(
     A machine principal (BE-0414 unit 3) keeps its entry but writes a null `actor_id`: that column is
     a foreign key to `users.id`, and a pipeline has no user row — minting a synthetic one would put
     the machine in the roster `/api/orgs` discloses and give it a role column besides. The repository
-    goes into *detail* instead, so "which pipeline did this" is still answerable.
+    goes into *detail* instead, so "which pipeline did this" is still answerable, and *ci_job* goes
+    in under `actor`, so "which job of that pipeline" is too.
     """
     if state.repository is None or not actor:
         return
     repository = machine_repository(actor)
+    if repository is not None:
+        detail = {**detail, "repository": repository}
+        if ci_job:
+            detail["actor"] = ci_job
     state.repository.record_audit(
         org_id=org,
         actor_id=None if repository is not None else actor,
         action=action,
         target=target,
-        detail=detail if repository is None else {**detail, "repository": repository},
+        detail=detail,
     )
 
 

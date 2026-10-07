@@ -52,3 +52,11 @@ class RequestCtx(Protocol):
         from here and only falls back to `org_of` when this is None.
         """
         ...
+
+    def ci_job(self) -> dict[str, str] | None:
+        """The CI job a machine principal's session was minted for, or None for every other caller.
+
+        Read at the gate alongside `machine_org`, so an operation behind the machine allowlist can
+        audit which job acted rather than only which repository.
+        """
+        ...

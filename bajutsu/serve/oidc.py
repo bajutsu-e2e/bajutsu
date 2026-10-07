@@ -74,12 +74,45 @@ class WorkloadClaims:
         ref: The git ref the run was triggered on.
         workflow_ref: The workflow definition the job ran from (GitHub Actions'
             `job_workflow_ref`), which pins the file rather than the repository.
+        run_id: The pipeline run the job belongs to.
+        run_attempt: Which attempt of that run; a rerun keeps the `run_id`.
+        check_run_id: The job itself within the run. Named after GitHub Actions' claim rather than
+            `job_id`, which would read as serve's own job id beside it in an audit entry.
+        sha: The commit the run built.
+        triggered_by: The account that started the run.
+        job_url: The job's own page, when the provider knows how to link it.
     """
 
     repository: str
     environment: str | None = None
     ref: str | None = None
     workflow_ref: str | None = None
+    run_id: str | None = None
+    run_attempt: str | None = None
+    check_run_id: str | None = None
+    sha: str | None = None
+    triggered_by: str | None = None
+    job_url: str | None = None
+
+    def ci_job(self) -> dict[str, str]:
+        """The job this workload names, as the audit trail records it in place of a user.
+
+        Absent fields are left out rather than written as null, so the record carries only what the
+        token asserted.
+        """
+        fields = {
+            "repository": self.repository,
+            "jobUrl": self.job_url,
+            "runId": self.run_id,
+            "runAttempt": self.run_attempt,
+            "checkRunId": self.check_run_id,
+            "ref": self.ref,
+            "workflowRef": self.workflow_ref,
+            "sha": self.sha,
+            "environment": self.environment,
+            "triggeredBy": self.triggered_by,
+        }
+        return {key: value for key, value in fields.items() if value is not None}
 
 
 @dataclass(frozen=True)
@@ -96,6 +129,13 @@ class OidcProvider:
     environment_claim: str | None = None
     ref_claim: str | None = None
     workflow_ref_claim: str | None = None
+    run_id_claim: str | None = None
+    run_attempt_claim: str | None = None
+    check_run_id_claim: str | None = None
+    sha_claim: str | None = None
+    triggered_by_claim: str | None = None
+    #: Formatted with `repository`, `run_id`, and `check_run_id`; used only when both ids are present.
+    job_url_template: str | None = None
 
     def workload(self, claims: Mapping[str, Any]) -> WorkloadClaims:
         """Map this provider's raw claims onto the provider-independent shape.
@@ -107,16 +147,29 @@ class OidcProvider:
         repository = _text(claims.get(self.repository_claim))
         if repository is None:
             raise OidcError(f"the token carries no {self.repository_claim!r} claim")
+        run_id = self._claim(claims, self.run_id_claim)
+        check_run_id = self._claim(claims, self.check_run_id_claim)
+        job_url = None
+        if self.job_url_template and run_id and check_run_id:
+            job_url = self.job_url_template.format(
+                repository=repository, run_id=run_id, check_run_id=check_run_id
+            )
         return WorkloadClaims(
             repository=repository,
-            environment=_text(claims.get(self.environment_claim))
-            if self.environment_claim
-            else None,
-            ref=_text(claims.get(self.ref_claim)) if self.ref_claim else None,
-            workflow_ref=(
-                _text(claims.get(self.workflow_ref_claim)) if self.workflow_ref_claim else None
-            ),
+            environment=self._claim(claims, self.environment_claim),
+            ref=self._claim(claims, self.ref_claim),
+            workflow_ref=self._claim(claims, self.workflow_ref_claim),
+            run_id=run_id,
+            run_attempt=self._claim(claims, self.run_attempt_claim),
+            check_run_id=check_run_id,
+            sha=self._claim(claims, self.sha_claim),
+            triggered_by=self._claim(claims, self.triggered_by_claim),
+            job_url=job_url,
         )
+
+    @staticmethod
+    def _claim(claims: Mapping[str, Any], name: str | None) -> str | None:
+        return _text(claims.get(name)) if name else None
 
 
 GITHUB_ACTIONS = OidcProvider(
@@ -129,6 +182,12 @@ GITHUB_ACTIONS = OidcProvider(
     environment_claim="environment",
     ref_claim="ref",
     workflow_ref_claim="job_workflow_ref",
+    run_id_claim="run_id",
+    run_attempt_claim="run_attempt",
+    check_run_id_claim="check_run_id",
+    sha_claim="sha",
+    triggered_by_claim="actor",
+    job_url_template="https://github.com/{repository}/actions/runs/{run_id}/job/{check_run_id}",
 )
 
 #: Every CI platform `serve` can verify a token from, by the name `BAJUTSU_OIDC_PROVIDER` selects.
