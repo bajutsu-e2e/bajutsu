@@ -710,6 +710,12 @@ jobs:
           udid: ${{ steps.toolchain.outputs.udid }}
           artifact-name: actuation-run
 
+      # `bajutsu repl --attach` (BE-0455): launch the app, attach the shell, and compare the app's pid
+      # before and after. Here rather than in `run` for the reason every step in this job is: new
+      # on-device coverage earns its stability first. After the scenarios step, which synced the venv.
+      - name: Attach the REPL to the running app (BE-0455)
+        run: scripts/repl_attach_e2e.sh "${{ steps.toolchain.outputs.udid }}"
+
   # The BE-0006 element-tree golden over XCUITest: pins the normalized accessibility tree for the
   # Stable catalog's list rows, reached on the launch tab. Runs golden.yaml per PR — the iOS twin of
   # android-e2e.yml's `golden (adb)` job. Deliberately NOT in the `e2e` gate's `needs:` (like

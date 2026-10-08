@@ -205,6 +205,15 @@ def test_the_ios_toolchain_composite_fires_its_own_lane() -> None:
     assert is_relevant([android], "ios") is False
 
 
+def test_the_repl_attach_e2e_script_fires_the_ios_lane_alone() -> None:
+    # The `actuation` job runs it (BE-0455); without a claim, a PR editing only the script would
+    # leave the required aggregator green having never executed it.
+    script = "scripts/repl_attach_e2e.sh"
+    assert is_relevant([script], "ios") is True
+    assert is_relevant([script], "android") is False
+    assert is_relevant([script], "web") is False
+
+
 def test_only_e2e_workflow_is_relevant() -> None:
     assert is_relevant([".github/workflows/ios-e2e.yml"]) is True
     assert is_relevant([".github/workflows/ci.yml"]) is False

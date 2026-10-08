@@ -14,7 +14,7 @@ import time
 from collections import deque
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, cast
+from typing import IO, TYPE_CHECKING, Literal, cast
 
 from bajutsu.common import backends, stall_diagnostics
 from bajutsu.common.backend_cli import simctl
@@ -248,6 +248,28 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self._member_drivers: dict[str, base.Driver] = {}
         self._group: RunnerTarget | None = None
         self._launch_inputs: tuple[Preconditions, Mapping[str, str]] = (Preconditions(), {})
+        # `repl --attach` (BE-0455): set by `request_attach` before `start`, which then drives the
+        # app the operator already has open instead of preparing the device; `attach_outcome` says
+        # whether that app was running (`attached`) or had to be launched (`launched`). The app is
+        # never this environment's to terminate in either case, so every discard keeps it.
+        self._attach = False
+        self._attach_outcome: Literal["attached", "launched"] | None = None
+
+    def request_attach(self) -> None:
+        """Make the next `start` attach to the target app's running process (BE-0455).
+
+        The attach start touches nothing device-wide — no erase, boot, install, locale pin,
+        permission grant, or deeplink — and spawns the runner once, with no recovery ladder, because
+        every retry or repair path terminates the app or reboots the device it runs on. When the app
+        is not running it is launched instead, still without any device prep. Exiting goes through
+        `release_runner`, and `teardown` routes there too, so nothing terminates the app.
+        """
+        self._attach = True
+
+    @property
+    def attach_outcome(self) -> Literal["attached", "launched"] | None:
+        """What the attach `start` found: `attached`, `launched`, or None before one ran."""
+        return self._attach_outcome
 
     def start(
         self,
@@ -303,6 +325,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # before the rung and has no simctl to mint a device through anyway.
         replace_device = self._replacement_requested
         self._replacement_requested = False
+
+        if self._attach:
+            return self._start_attached(eff, pre, device_type, extra_env, permissions)
 
         if device_type == "device":
             # A real device is not managed through simctl: it is already powered on, its build is
@@ -379,6 +404,86 @@ class XcuitestEnvironment(_DeviceEnvironment):
             return self._resume_warm(eff, pre, extra_env, permissions, driver)
         self._discard_runner()  # drop any dead / lingering / reuse-spent runner before a fresh spawn
         return self._spawn_cold(eff, pre, device_type, extra_env, permissions)
+
+    def _start_attached(
+        self,
+        eff: Effective,
+        pre: Preconditions,
+        device_type: str,
+        extra_env: Mapping[str, str] | None,
+        permissions: Mapping[str, str] | None,
+    ) -> base.Driver:
+        """Bring the runner up over the app the operator left running, or launch it bare (BE-0455)."""
+        # The CLI rejects these combinations before any device is touched; repeated here so no other
+        # caller can reach a path that would wipe or miss the device the operator is looking at.
+        if device_type == "device":
+            raise simctl.DeviceError("attach is only supported on the local iOS Simulator")
+        if pre.erase:
+            raise simctl.DeviceError("attach never erases the device it attaches to")
+        # Neither is applied on attach, so a caller asking for one is refused rather than left to run
+        # against an app whose deeplink never opened or whose grant never landed.
+        if pre.deeplink is not None:
+            raise simctl.DeviceError("attach never opens a deeplink in the app it attaches to")
+        if permissions:
+            raise simctl.DeviceError(
+                "attach never changes the permissions of the app it attaches to"
+            )
+        # Attach never boots a device, because booting is device-wide. The listing is read first so a
+        # wedged CoreSimulator is not reported as "nothing booted": `resolve_udid` leaves the `booted`
+        # alias unresolved on both, and only a listing that did answer tells them apart.
+        booted = simctl.device_booted(self._udid, self._run)
+        if booted is None:
+            raise simctl.DeviceError(f"could not read whether Simulator {self._udid} is booted")
+        if self._udid == "booted":
+            raise simctl.DeviceError("no booted Simulator; boot one first")
+        if not booted:
+            raise simctl.DeviceError(f"Simulator {self._udid} is not booted; boot it first")
+        ios = require_ios(eff)
+        e = simctl.Env(self._udid, run=self._run)
+        try:
+            running = e.is_app_running(ios.bundle_id)
+            # `XCUIApplication.launch()` does not fail cleanly on a bundle id with nothing installed,
+            # so the fallback launch checks first.
+            if not running and not e.app_container_exists(ios.bundle_id):
+                raise simctl.DeviceError(
+                    f"{ios.bundle_id} is not installed on Simulator {self._udid}; install it first"
+                )
+        except subprocess.CalledProcessError as exc:
+            raise simctl.device_error(exc) from exc
+        self._bundle_id = ios.bundle_id
+        self._app_path = ios.app_path
+        forwarded_base: dict[str, str] = {"BAJUTSU_BUNDLE_ID": ios.bundle_id}
+        if running:
+            # An attached app already started with whatever env it has; there is nothing to forward.
+            forwarded_base["BAJUTSU_ATTACH"] = "1"
+        else:
+            launch_env, launch_args = self._launch_params(eff, pre, extra_env)
+            forwarded_base.update({f"BAJUTSU_LAUNCH_ENV_{k}": v for k, v in launch_env.items()})
+            forwarded_base["BAJUTSU_LAUNCH_ARGS"] = json.dumps(launch_args)
+            self._app_launched_at = time.time()
+        runner_path = _resolve_runner(ios.xcuitest, device_type)
+
+        def spawn() -> _Spawned:
+            return self._spawn_runner(runner_path, forwarded_base, device_type)
+
+        # One attempt and no recovery: the retry's discard and the ladder's reboot would each destroy
+        # the app this start exists to keep, so a failed spawn fails once, with the runner's log tail.
+        spawned = _spawn_cold_with_retry(
+            spawn, timeout=_runner_startup_timeout(), recover=_no_recovery, attempts=1
+        )
+        self._cold_spawned_before = True
+        # Warm reuse terminates and relaunches the app, so an attached runner is never offered to it.
+        self._reusable = False
+        self._attach_outcome = "attached" if running else "launched"
+        return spawned.driver
+
+    def release_runner(self) -> None:
+        """Stop the runner and leave the app under test running — the attach session's exit (BE-0455).
+
+        `xcodebuild` runs in its own session (`_spawn_runner`), so a shell that merely exits would
+        leave it behind, still holding the device's automation session.
+        """
+        self._discard_runner()
 
     def _spawn_cold(
         self,
@@ -1718,7 +1823,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # discard's own bookkeeping — the capture, the patched .xctestrun, the reuse flag — must
         # still complete, or surfacing a wedged device would cost a leaked temp file each time.
         try:
-            self._terminate_app_under_test()
+            # An attach session's app is the operator's, not this run's (BE-0455): keyed on the mode
+            # rather than passed per call, so no discard reached in attach mode can terminate it.
+            if not self._attach:
+                self._terminate_app_under_test()
             self._terminate_runner_app()
         finally:
             self._release_log(keep=keep_log or crashed)  # after the hint above has read the tail
@@ -1817,6 +1925,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         super().teardown(driver, eff)
 
     def teardown(self, driver: base.Driver, eff: Effective) -> None:
+        if self._attach:
+            # The base teardown terminates the app, which an attach session must never do (BE-0455).
+            self.release_runner()
+            return
         self._discard_runner()
         super().teardown(driver, eff)
 

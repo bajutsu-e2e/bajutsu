@@ -3351,3 +3351,263 @@ def test_the_report_store_is_located_on_demand_and_tolerates_an_unresolvable_hom
 
     monkeypatch.setattr(Path, "home", classmethod(no_home))
     assert _diagnostic_reports_dir() is None  # reads as "no reports", never as a failure
+
+
+# --- `repl --attach`: drive the app the operator already has open (BE-0455) --- #
+#
+# The attach start must touch nothing device-wide and must never terminate the app, on any path —
+# the happy one, the fallback launch, a failed spawn, and the exit. Same fake points as above, plus a
+# guest `launchctl list` and app-container answer the probe reads.
+
+
+def _attach_toolchain(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    running: bool = True,
+    installed: bool = True,
+    booted: bool = True,
+) -> tuple[list[list[str]], list[dict[str, str]], list[list[str]], simctl.RunFn]:
+    """`_fake_toolchain` plus the attach probe; return (popen argv, popen env, simctl log, run)."""
+    popen_argvs, simctl_calls, base_run = _fake_toolchain(monkeypatch)
+    popen_envs: list[dict[str, str]] = []
+    fake_popen = subprocess.Popen
+
+    def _popen(argv: list[str], **kw: Any) -> Any:
+        popen_envs.append(dict(kw.get("env") or {}))
+        return fake_popen(argv, **kw)
+
+    monkeypatch.setattr(subprocess, "Popen", _popen)
+    pid = "4242" if running else "-"
+    jobs = f"PID\tStatus\tLabel\n{pid}\t0\tUIKitApplication:com.x[2f1a][rb-legacy]\n"
+
+    def _run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
+        if argv[4:6] == ["launchctl", "list"]:
+            simctl_calls.append(argv)
+            return jobs
+        if argv[2:3] == ["get_app_container"] and not installed:
+            simctl_calls.append(argv)
+            raise subprocess.CalledProcessError(2, argv, stderr="No such file or directory")
+        if argv[2:5] == ["list", "devices", "booted"] and not booted:
+            simctl_calls.append(argv)
+            return _device_json([])
+        return base_run(argv, env)
+
+    return popen_argvs, popen_envs, simctl_calls, _run
+
+
+def _assert_read_only(simctl_calls: list[list[str]]) -> None:
+    """An allowlist, not a denylist: the attach start may only read the device (BE-0455).
+
+    `spawn` is allowed for the `launchctl list` probe alone, so a regression that pinned the locale
+    through `spawn … defaults write` fails here just as an `erase` or an `openurl` would.
+    """
+    assert set(_verbs(simctl_calls)) <= {"list", "spawn", "get_app_container"}
+    assert all(c[4:6] == ["launchctl", "list"] for c in simctl_calls if c[2:3] == ["spawn"])
+
+
+# A scenario locale the cold path pins through `spawn … defaults write`; the attach start must not.
+_RICH_PRE = Preconditions(erase=False, locale="ja_JP")
+
+
+def _attach_env(run: simctl.RunFn, udid: str = "UDID") -> XcuitestEnvironment:
+    env = XcuitestEnvironment("xcuitest", udid, env_run=run)
+    env.request_attach()
+    return env
+
+
+def test_attach_drives_the_running_app_without_touching_the_device(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    popen_argvs, popen_envs, simctl_calls, run = _attach_toolchain(monkeypatch)
+    env = _attach_env(run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+    env.start(eff, _RICH_PRE)
+
+    assert env.attach_outcome == "attached"
+    assert len(popen_argvs) == 1
+    assert popen_envs[0]["BAJUTSU_ATTACH"] == "1"
+    assert popen_envs[0]["BAJUTSU_BUNDLE_ID"] == "com.x"
+    # Nothing is launched, so the target's launch env/args have nowhere to go.
+    assert "BAJUTSU_LAUNCH_ARGS" not in popen_envs[0]
+    _assert_read_only(simctl_calls)
+    # Warm reuse terminates and relaunches the app, so the attached runner is never offered to it.
+    assert not env.has_reusable_resident()
+
+
+def test_attach_launches_an_installed_app_that_is_not_running(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    popen_argvs, popen_envs, simctl_calls, run = _attach_toolchain(monkeypatch, running=False)
+    env = _attach_env(run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), _RICH_PRE)
+
+    assert env.attach_outcome == "launched"
+    assert len(popen_argvs) == 1
+    # The runner launches it, with the target's launch env/args, and still erases nothing.
+    assert "BAJUTSU_ATTACH" not in popen_envs[0]
+    assert "BAJUTSU_LAUNCH_ARGS" in popen_envs[0]
+    _assert_read_only(simctl_calls)
+
+
+def test_attach_fails_before_spawning_when_the_app_is_not_installed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    popen_argvs, _, _, run = _attach_toolchain(monkeypatch, running=False, installed=False)
+    env = _attach_env(run)
+    with pytest.raises(simctl.DeviceError, match=r"com\.x is not installed"):
+        env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions(erase=False))
+    assert popen_argvs == []
+
+
+def test_attach_propagates_a_wedged_install_probe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A probe timeout is a wedged Simulator, not an uninstalled app, and must not be reported as one.
+    _, _, _, run = _attach_toolchain(monkeypatch, running=False)
+
+    def _wedged(argv: list[str], env: Mapping[str, str] | None = None) -> str:
+        if argv[2:3] == ["get_app_container"]:
+            raise simctl.DeviceTimeout("xcrun simctl get_app_container timed out")
+        return run(argv, env)
+
+    env = _attach_env(_wedged)
+    with pytest.raises(simctl.DeviceTimeout):
+        env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions(erase=False))
+
+
+def test_attach_turns_a_failed_probe_into_a_device_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `launchctl list` failing (a half-booted device) exits the CLI 2 rather than a traceback.
+    popen_argvs, _, _, run = _attach_toolchain(monkeypatch)
+
+    def _failing(argv: list[str], env: Mapping[str, str] | None = None) -> str:
+        if argv[4:6] == ["launchctl", "list"]:
+            raise subprocess.CalledProcessError(1, argv, stderr="Unable to lookup in current state")
+        return run(argv, env)
+
+    env = _attach_env(_failing)
+    with pytest.raises(simctl.DeviceError):
+        env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions(erase=False))
+    assert popen_argvs == []
+
+
+@pytest.mark.parametrize("udid", ["UDID", "booted"])
+def test_attach_reports_an_unreadable_boot_state_as_such(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, udid: str
+) -> None:
+    # Including the unresolved `booted` alias: a wedged listing is not "nothing booted".
+    popen_argvs, _, _, run = _attach_toolchain(monkeypatch)
+
+    def _unreadable(argv: list[str], env: Mapping[str, str] | None = None) -> str:
+        if argv[2:5] == ["list", "devices", "booted"]:
+            raise subprocess.CalledProcessError(1, argv, stderr="CoreSimulatorService")
+        return run(argv, env)
+
+    with pytest.raises(simctl.DeviceError, match=f"could not read whether Simulator {udid} is"):
+        _attach_env(_unreadable, udid).start(
+            _sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions(erase=False)
+        )
+    assert popen_argvs == []
+
+
+@pytest.mark.parametrize(
+    ("udid", "message"),
+    [("booted", "no booted Simulator"), ("UDID", "Simulator UDID is not booted")],
+)
+def test_attach_never_boots_a_device(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, udid: str, message: str
+) -> None:
+    popen_argvs, _, simctl_calls, run = _attach_toolchain(monkeypatch, booted=False)
+    env = _attach_env(run, udid)
+    with pytest.raises(simctl.DeviceError, match=message):
+        env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions(erase=False))
+    assert popen_argvs == []
+    assert "boot" not in _verbs(simctl_calls)
+
+
+@pytest.mark.parametrize(
+    ("pre", "permissions", "message"),
+    [
+        (Preconditions(erase=False, deeplink="app://x"), None, "never opens a deeplink"),
+        (Preconditions(erase=False), {"camera": "grant"}, "never changes the permissions"),
+    ],
+)
+def test_attach_refuses_inputs_it_cannot_apply(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    pre: Preconditions,
+    permissions: dict[str, str] | None,
+    message: str,
+) -> None:
+    # Dropping either in silence would leave a caller running against an app whose deeplink never
+    # opened or whose grant never landed.
+    popen_argvs, _, _, run = _attach_toolchain(monkeypatch)
+    with pytest.raises(simctl.DeviceError, match=message):
+        _attach_env(run).start(
+            _sim_eff(test_runner=str(_write_runner(tmp_path))), pre, permissions=permissions
+        )
+    assert popen_argvs == []
+
+
+def test_attach_refuses_erase_and_a_real_device(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The CLI rejects both first; the environment backstops any other caller.
+    _, _, _, run = _attach_toolchain(monkeypatch)
+    runner = str(_write_runner(tmp_path))
+    with pytest.raises(simctl.DeviceError, match="never erases"):
+        _attach_env(run).start(_sim_eff(test_runner=runner), Preconditions(erase=True))
+    with pytest.raises(simctl.DeviceError, match="only supported on the local iOS Simulator"):
+        _attach_env(run, _DEVICE_UDID).start(
+            _device_eff(test_runner=runner), Preconditions(erase=False)
+        )
+
+
+def test_a_failed_attach_spawn_fails_once_and_keeps_the_app(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The retry's discard terminates the app and the recovery ladder reboots the device; an attach
+    # start takes neither, so one dead runner fails the start and the app is left alone.
+    popen_argvs, _, simctl_calls, run = _attach_toolchain(monkeypatch)
+    fake_popen = subprocess.Popen
+
+    def _dying(argv: list[str], **kw: Any) -> Any:
+        proc: Any = fake_popen(argv, **kw)
+        proc.alive = False
+        return proc
+
+    class _NeverReady:
+        def health_ready(self) -> bool:
+            return False  # the runner exits before /health ever answers
+
+    monkeypatch.setattr(subprocess, "Popen", _dying)
+    monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _NeverReady())
+    env = _attach_env(run)
+    with pytest.raises(XcuitestChannelError, match="did not come up"):
+        env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions(erase=False))
+    assert len(popen_argvs) == 1
+    _assert_read_only(simctl_calls)
+
+
+@pytest.mark.parametrize("running", [True, False], ids=["attached", "launched"])
+@pytest.mark.parametrize("exit_path", ["release_runner", "teardown"])
+def test_an_attach_session_exits_by_stopping_only_the_runner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, exit_path: str, running: bool
+) -> None:
+    # Kept in the fallback too, where the runner itself launched the app: it is still the operator's.
+    _, _, simctl_calls, run = _attach_toolchain(monkeypatch, running=running)
+    env = _attach_env(run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path, host_bundle_id="com.x.runner")))
+    driver = env.start(eff, Preconditions(erase=False))
+    proc = env._runner_proc
+    assert proc is not None
+
+    if exit_path == "release_runner":
+        env.release_runner()
+    else:
+        env.teardown(driver, eff)
+
+    assert proc.poll() is not None  # the runner's process group was stopped
+    terminated = [c[-1] for c in simctl_calls if c[2:3] == ["terminate"]]
+    assert terminated == ["com.x.runner"]  # the XCTRunner app, never the app under test

@@ -117,7 +117,7 @@ flowchart TB
 | `run/` | `bajutsu run` の CLI コマンド（`cli.py`）: target/backend 解決、デバイスの lease 取得、plan 構築、決定的な run/report ディスパッチ | [cli](cli.md) |
 | `record/` | record ループ（observe → 提案 → 実行 → 書き出し）（パッケージ: `loop.py`、加えて `capture.py` ── tap/type/swipe のプロキシ actuation をシナリオステップに解決、および `cli.py` ── その CLI コマンド） | [recording](recording.md#record-ループ) |
 | `crawl/` | 自律的な幅優先クロール → スクリーンマップ：`core` エンジン + `serialize`、`guide` / `tabs` / `report` / `repro` / `flows`、加えてその CLI コマンド（`cli.py`） | [recording](recording.md) |
-| `repl/` | AI を使わない手動シェル（BE-0423）：`render.py` が要素ツリーを表示し、`session.py` がコマンド集合（`tree` / `find` / `tap` / `type` / `back` / `screenshot`）、`loop.py` が `bajutsu>` のプロンプトループ、`cli.py` がその CLI コマンド | [cli](cli.md#repl) |
+| `repl/` | AI を使わない手動シェル（BE-0423）：`render.py` が要素ツリーを表示し、`session.py` がコマンド集合（`tree` / `find` / `tap` / `type` / `back` / `screenshot`）、`loop.py` が `bajutsu>` のプロンプトループ、`cli.py` がその CLI コマンドです。`cli.py` の `--attach`（BE-0455）は、起動済みの Simulator で動いているアプリを再起動せずに操作します | [cli](cli.md#repl) |
 | `codegen/` | シナリオ → ネイティブテスト生成: XCUITest（Swift）、Playwright（TypeScript）、UI Automator（Kotlin）、加えてその CLI コマンド（`cli.py`） | [codegen](codegen.md) |
 | `triage/` | M4 自己修復: ルールベース `HeuristicTriageAgent` + 構造化 fix（`renameId`/`addIndex`/`raiseTimeout`）、`--apply`/`--write`/`--rerun`（パッケージ: `heuristic.py`、加えて `cli.py` ── その CLI コマンド） | [cli](cli.md) |
 | `common/github/` | GitHub ヘルパ：`actions`（CI、アノテーション + ジョブサマリ）、`app`（プライベートリポジトリの config source 向けの App インストールトークン）、`errors`（共有するアクセスエラー） | [ci](ci.md) |

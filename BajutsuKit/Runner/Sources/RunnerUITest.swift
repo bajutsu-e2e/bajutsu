@@ -196,6 +196,19 @@ final class RunnerUITest: XCTestCase {
         } else {
             app = XCUIApplication()
         }
+        if RunnerServer.forwardedAttach {
+            // BE-0455: drive the process the operator already has open. No launch, so no launch env
+            // or arguments to apply and no launch hang for the watchdog below to catch. An app that
+            // exited after Python's probe, or sits in the background, would serve an empty tree under
+            // a healthy runner; failing before the server binds exits through `record(_:)` instead,
+            // so the one attach spawn fails loudly with this line in its log tail.
+            guard app.state == .runningForeground else {
+                XCTFail("bajutsu attach: \(RunnerServer.forwardedBundleId ?? "the app") is not running in the foreground (XCUIApplication.State \(app.state.rawValue))")
+                return
+            }
+            try serve(app)
+            return
+        }
         for (key, value) in RunnerServer.forwardedLaunchEnvironment {
             app.launchEnvironment[key] = value
         }
@@ -213,7 +226,11 @@ final class RunnerUITest: XCTestCase {
         let launchWatchdog = LaunchWatchdog(timeout: 90)
         app.launch()
         launchWatchdog.disarm()
+        try serve(app)
+    }
 
+    /// Serve the loopback endpoints over `app` until Python terminates the process at teardown.
+    private func serve(_ app: XCUIApplication) throws {
         let provider = XcuitestElementProvider(app: app)
         let server = RunnerServer(provider: provider)
         let port = try server.startFromEnvironment()

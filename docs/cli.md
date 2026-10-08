@@ -748,6 +748,7 @@ bajutsu repl --target <name> [options]
 | `--erase / --no-erase` | erase, except on the live route | erase before launch (the app must be installed); the live `--udid https://…` route rejects erase outright, so the default there is off, and an explicit `--erase` on that route exits with a CLI error instead |
 | `--headed / --no-headed` | app `headless` | web backend: inspect a visible (headed, slow-motion) browser instead of headless; omit to use the app's `headless` config |
 | `--browser` | app `browser` (chromium) | web backend: the Playwright rendering engine to inspect — `chromium` / `firefox` / `webkit`; omit to use the target's `browser` config |
+| `--attach` | off | local iOS Simulator (`xcuitest`) alone: connect to the app already running on the booted Simulator and leave it as it is — no erase, install, or relaunch (see *Attaching to a running app*, below) |
 | `--config` | `bajutsu.config.yaml` | config |
 
 Once the app is up, the shell prompts with `bajutsu>`:
@@ -848,6 +849,43 @@ Piped stdin/stdout (a script, a test harness, `bajutsu repl < commands.txt`) fal
 line-at-a-time shell instead — every command above except `clear` behaves identically either way,
 and `exit` / `quit` leave the shell in both (Ctrl-D also does, in the plain fallback only — curses
 has no Ctrl-D/EOF signal to read).
+
+### Attaching to a running app
+
+`--attach` connects the shell to the target app on a booted Simulator, as the operator left it. [BE-0455](../roadmaps/BE-0455-repl-attach-running-app/BE-0455-repl-attach-running-app.md)
+records the design. Without the flag, the shell starts by launching the app. That launch replaces a
+running process with a fresh one. The operator loses the screen they reached and the logged-in state.
+A debugger attached from Xcode detaches too. With `--attach`, the XCUITest runner drives the existing
+process. The first `tree` prints the screen already in front. The app keeps its process id.
+
+The attach start touches nothing device-wide:
+
+- **No device prep.** The shell never erases, boots, or installs anything. It also skips the locale
+  pin, the permission grants, and the deeplink. `--attach` turns `--erase` off by default.
+  `--attach --erase` exits 2.
+- **No readiness wait.** The app sits wherever the operator left it. The shell does not wait for the
+  target's `readyWhen` screen.
+- **No retry.** The runner starts once, with no recovery ladder. A retry or a repair would end the app
+  or reboot the Simulator. A runner that does not come up exits 2 with its log tail.
+- **No app teardown.** Leaving the shell stops the runner and leaves the app running.
+
+Before the runner starts, the shell checks the device. Before it serves, the runner checks the app:
+
+| Situation | Result |
+|---|---|
+| No Simulator is booted, or the named `--udid` is shut down | exit 2: attach never boots a device |
+| The target's bundle id has a live process | the runner attaches to that process |
+| The app is running, but in the background | exit 2 with the runner's log tail; bring the app to the front first |
+| The app is installed but not running | the shell prints `<bundle id> was not running; launching it`. The runner launches the app with the target's launch env and arguments, without erase or install |
+| The app is not installed | exit 2, naming the bundle id |
+
+On every other route, `--attach` exits 2 before touching any device. Those routes are:
+
+- the `playwright` and `adb` backends;
+- the live `--udid https://…` route;
+- a target with `xcuitest.deviceType: device`.
+
+`--target` stays required. The bundle id and the id namespaces come from the target's config.
 
 ## `codegen`
 
