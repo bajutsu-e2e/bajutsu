@@ -34,6 +34,7 @@ no login, no AI runtime. Clone the repo and it works immediately.
 | | `doctor` | check the environment is runnable and score the current screen |
 | | `repl` | open a manual shell against the running app: read the element tree, act on an id |
 | | `codegen` | generate native XCUITest source from a scenario |
+| | `runner` | build the generic XCUITest runner, signed for a real iPhone or iPad |
 | | `trace` | print a text timeline over a saved run |
 | | `lint` / `schema` | validate scenarios / emit the JSON Schema, without running |
 | | `approve` | promote a run's screenshots to visual baselines |
