@@ -82,6 +82,57 @@ def test_is_installed_reflects_get_app_container() -> None:
     assert simctl.Env("U", run=absent).is_installed("com.x") is False  # missing -> False, no raise
 
 
+def test_app_container_exists_is_false_only_for_an_absent_container() -> None:
+    import subprocess
+
+    def absent(args: list[str], e: Mapping[str, str] | None = None) -> str:
+        raise subprocess.CalledProcessError(2, args, stderr="No such file or directory")
+
+    assert simctl.Env("U", run=lambda a, e: "/path/to.app").app_container_exists("com.x") is True
+    assert simctl.Env("U", run=absent).app_container_exists("com.x") is False
+    # Unlike `is_installed`, a wedged device is not reported as "not installed" (BE-0455).
+    with pytest.raises(simctl.DeviceTimeout):
+        simctl.Env("U", run=_timing_out).app_container_exists("com.x")
+
+
+# Recorded shape of `xcrun simctl spawn <udid> launchctl list` (iOS 26): header, a running app, an
+# exited app whose job is still listed, a system daemon, and a bundle id sharing the target's prefix.
+_LAUNCHCTL_LIST = (
+    "PID\tStatus\tLabel\n"
+    "4242\t0\tUIKitApplication:com.example.demo[2f1a][rb-legacy]\n"
+    "-\t0\tUIKitApplication:com.example.gone[9c3e][rb-legacy]\n"
+    "311\t0\tcom.apple.springboard\n"
+    "5151\t0\tUIKitApplication:com.example.demo.widget[77aa][rb-legacy]\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("bundle_id", "running"),
+    [
+        ("com.example.demo", True),
+        ("com.example.gone", False),  # listed, but its PID column is `-`
+        ("com.example.demo.wid", False),  # a prefix of another app's id is not that app
+        ("com.example.absent", False),
+    ],
+)
+def test_is_app_running_reads_a_numeric_pid_off_the_apps_launchd_job(
+    bundle_id: str, running: bool
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(args: list[str], e: Mapping[str, str] | None = None) -> str:
+        calls.append(args)
+        return _LAUNCHCTL_LIST
+
+    assert simctl.Env("UDID", run=run).is_app_running(bundle_id) is running
+    assert calls == [["xcrun", "simctl", "spawn", "UDID", "launchctl", "list"]]
+
+
+def test_is_app_running_propagates_a_device_failure() -> None:
+    with pytest.raises(simctl.DeviceTimeout):
+        simctl.Env("UDID", run=_timing_out).is_app_running("com.x")
+
+
 def test_booted_udids_parses_simctl() -> None:
     import json
 

@@ -15,10 +15,17 @@ from bajutsu.cli._shared import (
     _start_launch_server_or_exit,
     _with_headed,
 )
-from bajutsu.common.config import WEB_ENGINES, Effective
+from bajutsu.common.config import WEB_ENGINES, Effective, IosConfig, require_ios
 from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.drivers import base
-from bajutsu.common.platform_lifecycle import Environment, WebEnvironment, environment_for
+from bajutsu.common.drivers.xcuitest import XcuitestChannelError
+from bajutsu.common.platform_lifecycle import (
+    Environment,
+    WebEnvironment,
+    XcuitestEnvironment,
+    environment_for,
+)
+from bajutsu.common.platform_lifecycle.environments.xcuitest import effective_device_type
 from bajutsu.common.platform_lifecycle.environments.xcuitest_live import (
     XcuitestLiveEnvironment,
     is_webdriver_endpoint,
@@ -42,6 +49,31 @@ def _close_owned_session(env: Environment, driver: base.Driver, eff: Effective) 
     """
     if isinstance(env, WebEnvironment | XcuitestLiveEnvironment):
         env.teardown(driver, eff)
+    elif isinstance(env, XcuitestEnvironment) and env.attach_outcome is not None:
+        # An attach session still owns a runner; its teardown stops that and keeps the app (BE-0455).
+        env.teardown(driver, eff)
+
+
+def _check_attach_or_exit(actuator: str, udid: str, eff: Effective, erase: bool | None) -> None:
+    """Exit 2 on an `--attach` combination it cannot honor, before any device is touched (BE-0455).
+
+    Reads only the raw `--udid` and the target config, so an unsupported backend never gets as far as
+    querying its own device tooling — `resolve_device` for `adb` would, and fail with an adb error.
+    """
+    platform = eff.platform_config
+    if (
+        actuator != "xcuitest"
+        or is_webdriver_endpoint(udid)
+        or not isinstance(platform, IosConfig)
+        or effective_device_type(platform.xcuitest) == "device"
+    ):
+        typer.echo("repl: --attach is only supported on the local iOS Simulator (xcuitest)")
+        raise typer.Exit(2)
+    if erase:
+        typer.echo(
+            "repl: --attach and --erase contradict each other: attach never erases the device"
+        )
+        raise typer.Exit(2)
 
 
 def repl(
@@ -66,6 +98,13 @@ def repl(
         help=f"web backend: rendering engine to inspect — {' / '.join(WEB_ENGINES)}; "
         "default leaves the target's `browser` config (chromium)",
     ),
+    attach: bool = typer.Option(
+        False,
+        "--attach",
+        help="iOS Simulator (xcuitest): connect to the target app already running on the booted "
+        "Simulator without erasing, installing, or relaunching it; an app that is not running is "
+        "launched, still without erasing or installing anything",
+    ),
     config: str = typer.Option(DEFAULT_CONFIG),
 ) -> None:
     """Open a manual shell against the running app: read the element tree, act on an id.
@@ -80,6 +119,9 @@ def repl(
     eff = _with_headed(eff, headed)
     eff = _resolve_browser(eff, browser)
     actuator, _ = _select_actuator_or_exit(backend, eff, [])
+    if attach:
+        _check_attach_or_exit(actuator, udid, eff, erase)
+        erase = False
     # Resolve through the selected environment's own device lookup — ios/fake via simctl, adb via
     # its serial resolver, web and the live `--udid https://…` route passing the value straight
     # through — rather than hard-coding simctl here, which would shell out to `simctl`/`xcodebuild`
@@ -112,13 +154,25 @@ def repl(
     # one built from the raw udid would close whichever device that udid still names, which stops
     # being the device that came up as soon as the launch had to replace a vanished Simulator.
     env = environment_for(actuator, udid)
+    if attach:
+        # `_check_attach_or_exit` admitted only the local xcuitest route, which this environment is.
+        assert isinstance(env, XcuitestEnvironment)
+        env.request_attach()
     try:
         driver, _readiness = launch_driver(
-            udid, eff, actuator, Preconditions(erase=erase), environment=env
+            udid,
+            eff,
+            actuator,
+            Preconditions(erase=erase),
+            environment=env,
+            # The attached app is wherever the operator left it, not on the `readyWhen` screen.
+            skip_readiness=attach,
         )
-    except device_errors.DeviceError as e:
+    except (device_errors.DeviceError, XcuitestChannelError) as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
+    if isinstance(env, XcuitestEnvironment) and env.attach_outcome == "launched":
+        say(f"{require_ios(eff).bundle_id} was not running; launching it")
     say(f"✅ {target_name} is up on {actuator} — type `help` for the command set, `exit` to leave")
     try:
         # The ncurses-style TUI needs a real terminal on both ends; piped input/output (a script, a

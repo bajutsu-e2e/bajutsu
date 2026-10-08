@@ -35,6 +35,7 @@ def launch_driver(
     environment: RunEnvironment | None = None,
     permissions: Mapping[str, str] | None = None,
     transitions: TransitionSource = _no_transitions,
+    skip_readiness: bool = False,
 ) -> tuple[base.Driver, ReadinessResult]:
     """Bring a device up, launch the app under config + scenario env, and return a ready driver.
 
@@ -67,6 +68,9 @@ def launch_driver(
         transitions: The screen-transition signal (BE-0310) `await_ready` consults as its strongest
             readiness rung; the default reports none, so a caller that doesn't pass one keeps the
             unchanged BE-0218 fallback ladder.
+        skip_readiness: Return as soon as the environment has started, recording the wait as
+            `skipped`. For `repl --attach` (BE-0455), whose app is wherever the operator left it, so
+            waiting for the launch screen `readyWhen` names would only time out.
 
     Returns:
         The driver bound to the launched app (already polled until its UI has rendered), paired with
@@ -96,7 +100,11 @@ def launch_driver(
             record_video_dir=record_video_dir,
             permissions=permissions,
         )
-        readiness = await_ready(driver, ready_sel=eff.ready_when, transitions=transitions)
+        readiness = (
+            ReadinessResult(True, "skipped", 0.0)
+            if skip_readiness
+            else await_ready(driver, ready_sel=eff.ready_when, transitions=transitions)
+        )
     except BaseException:
         if driver is not None:
             started = driver

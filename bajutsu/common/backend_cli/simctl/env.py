@@ -26,6 +26,7 @@ from ._functions import (
     keychain_reset_cmd,
     language_of,
     launch_cmd,
+    launchctl_list_cmd,
     openurl_cmd,
     pbcopy_cmd,
     pbpaste_cmd,
@@ -157,6 +158,34 @@ class Env:
             return False
         else:
             return True
+
+    def app_container_exists(self, bundle_id: str) -> bool:
+        """Whether `bundle_id` is installed, failing loudly on a device that cannot answer (BE-0455).
+
+        The strict sibling of `is_installed`: only an absent container (`CalledProcessError`) reads
+        as "not installed". A `DeviceTimeout` propagates, because `repl --attach` turns `False` into
+        an "install it first" error, and telling an operator to install an app on a wedged Simulator
+        would send them after the wrong fault.
+        """
+        try:
+            self._run(get_app_container_cmd(self.udid, bundle_id), None)
+        except subprocess.CalledProcessError:
+            return False
+        return True
+
+    def is_app_running(self, bundle_id: str) -> bool:
+        """Whether `bundle_id` has a live process on this device, read from the guest `launchd` (BE-0455).
+
+        `launchctl list` prints `PID<TAB>Status<TAB>Label`; an app's job is labelled
+        `UIKitApplication:<bundle id>[<instance>]…`, and its PID column reads `-` once the process
+        has exited while the job is still listed. Only a numeric PID counts as running.
+        """
+        prefix = f"UIKitApplication:{bundle_id}["
+        for line in self._run(launchctl_list_cmd(self.udid), None).splitlines():
+            fields = line.split(None, 2)
+            if len(fields) == 3 and fields[2].startswith(prefix) and fields[0].isdigit():
+                return True
+        return False
 
     def install(self, app_path: str) -> None:
         self._run(install_cmd(self.udid, app_path), None)

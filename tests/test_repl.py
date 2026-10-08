@@ -25,8 +25,14 @@ from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.drivers.xcuitest import XcuitestChannelError, XcuitestRunnerCrashError
 from bajutsu.common.drivers.xcuitest_live import WebDriverError
-from bajutsu.common.platform_lifecycle import Environment, FakeEnvironment, WebEnvironment
+from bajutsu.common.platform_lifecycle import (
+    Environment,
+    FakeEnvironment,
+    WebEnvironment,
+    XcuitestEnvironment,
+)
 from bajutsu.common.platform_lifecycle.environments.xcuitest_live import XcuitestLiveEnvironment
+from bajutsu.common.runner import launch as launch_module
 from bajutsu.common.scenario import Preconditions
 from bajutsu.repl.loop import PROMPT, repl_loop
 from bajutsu.repl.render import _display_width, render_json, render_table
@@ -1234,3 +1240,195 @@ def test_a_teardown_failure_never_masks_a_real_bug_from_the_session(
         app, ["repl", "--target", "demo", "--config", str(_fake_config(tmp_path))], input="back\n"
     )
     assert isinstance(result.exception, ZeroDivisionError)
+
+
+# --- `--attach`: connect to the app already running on a booted Simulator (BE-0455) -----------
+
+
+def _attach_config(tmp_path: Path, xcuitest: str = "") -> Path:
+    cfg = tmp_path / "bajutsu.config.yaml"
+    extra = f", xcuitest: {{ {xcuitest} }}" if xcuitest else ""
+    cfg.write_text(
+        f"targets:\n  demo: {{ bundleId: com.example.demo, idNamespaces: [home]{extra} }}\n",
+        encoding="utf-8",
+    )
+    return cfg
+
+
+class _AttachEnv(XcuitestEnvironment):
+    """The real attach bookkeeping, minus the runner: records what the shell asked of it."""
+
+    def __init__(self, outcome: str = "attached") -> None:
+        super().__init__("xcuitest", "FAKE-UDID")
+        self.outcome = outcome
+        self.released = 0
+
+    def release_runner(self) -> None:
+        self.released += 1
+
+
+def _stub_attach(
+    monkeypatch: pytest.MonkeyPatch, env: _AttachEnv, *, error: Exception | None = None
+) -> dict[str, object]:
+    """Route `repl --attach` onto `env`, stubbing the launch; return what the launch was handed."""
+    monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: "xcuitest")
+    monkeypatch.setattr(
+        "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
+    )
+    monkeypatch.setattr(
+        repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: ((lambda: None), None)
+    )
+    monkeypatch.setattr(repl_cli, "environment_for", lambda *a, **k: env)
+    captured: dict[str, object] = {}
+
+    def launch(
+        _udid: str, _eff: object, _actuator: str, pre: Preconditions, **kw: object
+    ) -> tuple[FakeDriver, None]:
+        captured.update(kw, erase=pre.erase, attach_requested=env._attach)
+        if error is not None:
+            raise error
+        env._attach_outcome = env.outcome  # type: ignore[assignment]
+        return FakeDriver(), None
+
+    monkeypatch.setattr(repl_cli, "launch_driver", launch)
+    return captured
+
+
+def test_attach_skips_erase_and_readiness_and_releases_only_the_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env = _AttachEnv()
+    captured = _stub_attach(monkeypatch, env)
+    result = runner.invoke(
+        app,
+        ["repl", "--target", "demo", "--attach", "--config", str(_attach_config(tmp_path))],
+        input="exit\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["attach_requested"] is True
+    assert captured["erase"] is False  # forced off, unlike the local default of on
+    assert captured["skip_readiness"] is True
+    assert "was not running" not in result.output
+    assert env.released == 1  # the runner is stopped on the way out; the app is not touched
+
+
+def test_attach_announces_the_launch_of_an_app_that_was_not_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_attach(monkeypatch, _AttachEnv("launched"))
+    result = runner.invoke(
+        app,
+        ["repl", "--target", "demo", "--attach", "--config", str(_attach_config(tmp_path))],
+        input="exit\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert "com.example.demo was not running; launching it" in result.output
+
+
+def test_a_session_without_attach_never_releases_the_runner_or_skips_readiness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env = _AttachEnv()
+    captured = _stub_attach(monkeypatch, env)
+    monkeypatch.setattr(
+        repl_cli,
+        "launch_driver",
+        lambda *_a, **kw: (captured.update(kw), (FakeDriver(), None))[1],
+    )
+    result = runner.invoke(
+        app, ["repl", "--target", "demo", "--config", str(_attach_config(tmp_path))], input="exit\n"
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["skip_readiness"] is False
+    assert env.released == 0
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        device_errors.DeviceError("no booted Simulator; boot one first"),
+        XcuitestChannelError("xcuitest runner did not come up: attempt 1/1"),
+    ],
+)
+def test_a_failed_attach_exits_2_with_the_reason(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    _stub_attach(monkeypatch, _AttachEnv(), error=error)
+    result = runner.invoke(
+        app, ["repl", "--target", "demo", "--attach", "--config", str(_attach_config(tmp_path))]
+    )
+    assert result.exit_code == 2
+    assert str(error) in result.output
+
+
+def _refuse_device_access(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail the test if any device tooling or launch is reached."""
+
+    def unexpected(*_a: object, **_k: object) -> object:
+        raise AssertionError("an unsupported --attach must exit before touching any device")
+
+    for name in (
+        "bajutsu.common.backend_cli.simctl.resolve_udid",
+        "bajutsu.common.backend_cli.adb.resolve_serial",
+    ):
+        monkeypatch.setattr(name, unexpected)
+    monkeypatch.setattr(repl_cli, "launch_driver", unexpected)
+    monkeypatch.setattr(repl_cli, "_start_launch_server_or_exit", unexpected)
+
+
+@pytest.mark.parametrize(
+    ("actuator", "args", "xcuitest"),
+    [
+        ("adb", [], ""),
+        ("playwright", [], ""),
+        ("xcuitest", ["--udid", "https://grid.example/wd/hub"], ""),
+        ("xcuitest", [], "deviceType: device"),
+    ],
+)
+def test_attach_outside_the_local_simulator_exits_2_before_any_device_is_touched(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    actuator: str,
+    args: list[str],
+    xcuitest: str,
+) -> None:
+    monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: actuator)
+    _refuse_device_access(monkeypatch)
+    cfg = _attach_config(tmp_path, xcuitest)
+    result = runner.invoke(
+        app, ["repl", "--target", "demo", "--attach", *args, "--config", str(cfg)]
+    )
+    assert result.exit_code == 2, result.output
+    assert "only supported on the local iOS Simulator (xcuitest)" in result.output
+
+
+def test_attach_with_erase_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: "xcuitest")
+    _refuse_device_access(monkeypatch)
+    result = runner.invoke(
+        app,
+        [
+            "repl",
+            "--target",
+            "demo",
+            "--attach",
+            "--erase",
+            "--config",
+            str(_attach_config(tmp_path)),
+        ],
+    )
+    assert result.exit_code == 2
+    assert "--attach and --erase contradict each other" in result.output
+
+
+def test_launch_driver_skips_the_readiness_wait_on_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unexpected(*_a: object, **_k: object) -> object:
+        raise AssertionError("skip_readiness must not wait for readyWhen")
+
+    monkeypatch.setattr(launch_module, "await_ready", unexpected)
+    env = FakeEnvironment("fake", "FAKE-UDID")
+    _driver, readiness = launch_module.launch_driver(
+        "FAKE-UDID", _EFF, "fake", environment=env, skip_readiness=True
+    )
+    assert readiness.signal == "skipped"
+    assert readiness.ready

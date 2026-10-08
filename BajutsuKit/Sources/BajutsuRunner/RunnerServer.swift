@@ -97,6 +97,15 @@ public final class RunnerServer {
         ProcessInfo.processInfo.environment["BAJUTSU_BUNDLE_ID"]
     }
 
+    /// Whether to attach to an already-running app instead of launching it, forwarded via
+    /// `BAJUTSU_ATTACH=1` (BE-0455).
+    ///
+    /// `bajutsu repl --attach` sets it only after confirming the app has a live process, so the
+    /// runner drives that process as the operator left it rather than replacing it with a fresh one.
+    public static var forwardedAttach: Bool {
+        ProcessInfo.processInfo.environment["BAJUTSU_ATTACH"] == "1"
+    }
+
     /// Stop the server and close the listening socket.
     public func stop() {
         httpServer.stop()

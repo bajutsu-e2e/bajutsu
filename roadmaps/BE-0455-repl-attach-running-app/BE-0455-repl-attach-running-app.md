@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0455](BE-0455-repl-attach-running-app.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0455") |
 | Topic | Authoring experience |
 <!-- /BE-METADATA -->
@@ -198,20 +198,43 @@ already in use for other work.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Spike: confirm an unlaunched `XCUIApplication` reads and taps a running app (or that
+- [x] Spike: confirm an unlaunched `XCUIApplication` reads and taps a running app (or that
   `activate()` is needed), on a dedicated Simulator.
-- [ ] Runner attach mode (`BAJUTSU_ATTACH`, `RunnerServer.forwardedAttach`, the skipped launch).
-- [ ] `simctl.Env.is_app_running` and `simctl.Env.app_container_exists` (a strict probe that
+- [x] Runner attach mode (`BAJUTSU_ATTACH`, `RunnerServer.forwardedAttach`, the skipped launch).
+- [x] `simctl.Env.is_app_running` and `simctl.Env.app_container_exists` (a strict probe that
   propagates `DeviceTimeout`), with their tests.
-- [ ] `XcuitestEnvironment` attach start path: booted check, probe, installed check, attach or
+- [x] `XcuitestEnvironment` attach start path: booted check, probe, installed check, attach or
   fallback launch, a spawn with `attempts=1` and no recovery, and `_discard_runner(keep_app=True)`.
-- [ ] `launch_driver`'s `skip_readiness`, and the runner-only exit through
+- [x] `launch_driver`'s `skip_readiness`, and the runner-only exit through
   `XcuitestEnvironment.release_runner()`.
-- [ ] `--attach` flag, its combination checks before `resolve_device` (real devices included), and
+- [x] `--attach` flag, its combination checks before `resolve_device` (real devices included), and
   the fallback notice in `bajutsu repl`.
-- [ ] End-to-end case comparing the process id before and after attach.
-- [ ] `docs/cli.md` and `docs/ja/cli.md` flag reference, plus the `repl` description in
+- [x] End-to-end case comparing the process id before and after attach.
+- [x] `docs/cli.md` and `docs/ja/cli.md` flag reference, plus the `repl` description in
   `docs/architecture.md`.
+
+Log:
+
+- Units 1-8, the whole item. The spike, on a dedicated iOS 26.5 Simulator, showed that an
+  `XCUIApplication` the runner never launched reads the running app's tree and taps it, with the
+  app's process id unchanged; `activate()` was not needed. The runner gained the `BAJUTSU_ATTACH`
+  mode (`RunnerServer.forwardedAttach`), which skips `launch()` and the watchdog. It fails before
+  binding unless the app is `runningForeground`. A backgrounded app, or one that exited after the
+  probe, then fails the start with a log line instead of serving an empty tree. `simctl.Env` gained `is_app_running` and
+  `app_container_exists`. `XcuitestEnvironment` gained `request_attach`, an attach start path that
+  runs the booted check, the probe, and the installed check, and spawns once with no recovery, plus
+  `release_runner`. `launch_driver` gained `skip_readiness`, recorded as a `skipped` readiness
+  signal. `bajutsu repl --attach` checks its combinations before any device lookup.
+  `scripts/repl_attach_e2e.sh` runs in `ios-e2e.yml`'s `actuation` job. It compares the process id
+  before and after attaching, and checks that the fallback launch announces itself and outlives the
+  shell. `docs/cli.md`, `docs/architecture.md`, and their translations document the flag. Three
+  deviations from the design:
+  - `_discard_runner` keys app protection on the environment's attach mode instead of a per-call
+    `keep_app` keyword. No discard reached in attach mode can end the app.
+  - The fallback launch also skips readiness. `env.start` picks attach or launch, and
+    `launch_driver` calls it before any readiness wait.
+  - `repl` exits 2 on a runner that never came up (`XcuitestChannelError`), as it does on a
+    `DeviceError`.
 
 ## References
 

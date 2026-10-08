@@ -322,6 +322,11 @@ def get_app_container_cmd(udid: str, bundle_id: str) -> list[str]:
     return ["xcrun", "simctl", "get_app_container", validated_udid(udid), bundle_id, "app"]
 
 
+def launchctl_list_cmd(udid: str) -> list[str]:
+    """The guest `launchd`'s job table; a running app appears as `UIKitApplication:<bundle id>[…]`."""
+    return ["xcrun", "simctl", "spawn", validated_udid(udid), "launchctl", "list"]
+
+
 def data_container_cmd(udid: str, bundle_id: str) -> list[str]:
     """Path of the app's data container (its sandbox home) — succeeds only if the app is installed."""
     return ["xcrun", "simctl", "get_app_container", validated_udid(udid), bundle_id, "data"]
