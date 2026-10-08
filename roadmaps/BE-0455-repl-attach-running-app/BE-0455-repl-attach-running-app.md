@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0455") |
+| Implementing PR | [#2138](https://github.com/bajutsu-e2e/bajutsu/pull/2138) |
 | Topic | Authoring experience |
 <!-- /BE-METADATA -->
 
@@ -215,7 +216,7 @@ already in use for other work.
 
 Log:
 
-- Units 1-8, the whole item. The spike, on a dedicated iOS 26.5 Simulator, showed that an
+- [#2138](https://github.com/bajutsu-e2e/bajutsu/pull/2138) — Units 1-8, the whole item. The spike, on a dedicated iOS 26.5 Simulator, showed that an
   `XCUIApplication` the runner never launched reads the running app's tree and taps it, with the
   app's process id unchanged; `activate()` was not needed. The runner gained the `BAJUTSU_ATTACH`
   mode (`RunnerServer.forwardedAttach`), which skips `launch()` and the watchdog. It fails before

@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0455") |
+| 実装 PR | [#2138](https://github.com/bajutsu-e2e/bajutsu/pull/2138) |
 | トピック | オーサリング体験 |
 <!-- /BE-METADATA -->
 
@@ -113,7 +114,7 @@ attach の起動は、アプリを terminate して再起動するウォーム�
 
 ログ：
 
-- 単位 1〜8、項目全体。専用の iOS 26.5 Simulator でスパイクを行い、ランナーが起動していない
+- [#2138](https://github.com/bajutsu-e2e/bajutsu/pull/2138) — 単位 1〜8、項目全体。専用の iOS 26.5 Simulator でスパイクを行い、ランナーが起動していない
   `XCUIApplication` でも動作中のアプリのツリーを読み、tap できることを確かめました。アプリのプロセス ID
   は変わらず、`activate()` は不要でした。ランナーには `BAJUTSU_ATTACH` モード
   （`RunnerServer.forwardedAttach`）を加えました。このモードは `launch()` とウォッチドッグを飛ばし、アプリが
