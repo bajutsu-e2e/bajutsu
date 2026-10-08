@@ -133,7 +133,11 @@ def oidc_exchange(state: ServeState, token: str, org: str) -> tuple[Any, int, st
     # entry is the one that ties it back to the moment the session began. Not guarded against a
     # failed write: like every other audit call it fails the request loudly, since an exchange that
     # answered 200 with no trace of it is the gap the audit trail exists to close.
-    _record_audit(state, identity, org, "oidc.exchange", workload.repository, {}, ci_job=ci_job)
+    # The target is folded like the session's own entries' `repository` key, so one repository's
+    # history is not split by the casing of the claim it happened to present.
+    _record_audit(
+        state, identity, org, "oidc.exchange", workload.repository.lower(), {}, ci_job=ci_job
+    )
     return {"ok": True, "org": org, "repository": workload.repository}, 200, sid
 
 

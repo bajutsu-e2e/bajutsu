@@ -136,10 +136,10 @@ def test_stdlib_ctx_decodes_a_path_param_exactly_once() -> None:
         {"name": "a%2520b"},
         {},
         lambda _key: None,
-        lambda: None,
-        lambda: None,
-        lambda: None,
-        lambda: None,
+        actor=lambda: None,
+        session=lambda: None,
+        machine_org=lambda: None,
+        ci_job=lambda: None,
     )
     assert ctx.path_param("name") == "a%20b"
 
@@ -148,7 +148,14 @@ def test_fastapi_ctx_returns_the_starlette_decoded_param_without_re_decoding() -
     # Starlette already decoded "a%2520b" down to "a%20b" once; the ctx must not unquote again (that
     # would give "a b"), so both backends deliver the same decoded value to a closure.
     request = Request({"type": "http", "path_params": {"name": "a%20b"}, "query_string": b""})
-    ctx = _FastapiCtx(request, {}, lambda: None, lambda: None, lambda: None, lambda: None)
+    ctx = _FastapiCtx(
+        request,
+        {},
+        actor=lambda: None,
+        session=lambda: None,
+        machine_org=lambda: None,
+        ci_job=lambda: None,
+    )
     assert ctx.path_param("name") == "a%20b"
 
 

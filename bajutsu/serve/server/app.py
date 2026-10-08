@@ -98,6 +98,7 @@ class _FastapiCtx:
         self,
         request: Request,
         body: dict[str, Any],
+        *,
         actor: Callable[[], str | None],
         session: Callable[[], str | None],
         machine_org: Callable[[], str | None],
@@ -604,10 +605,10 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
             ctx = _FastapiCtx(
                 request,
                 body,
-                lambda: _actor(request),
-                lambda: _session(request),
-                lambda: _machine_org(request),
-                lambda: _ci_job(request),
+                actor=lambda: _actor(request),
+                session=lambda: _session(request),
+                machine_org=lambda: _machine_org(request),
+                ci_job=lambda: _ci_job(request),
             )
             # The `ops` call blocks (disk / network / subprocess), so run it off the event loop —
             # uniformly, so a route like the from-Git config bind or compose stays non-blocking

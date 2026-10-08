@@ -78,6 +78,7 @@ class _StdlibCtx:
         params: dict[str, str],
         body: dict[str, Any],
         qs: Callable[[str], str | None],
+        *,
         actor: Callable[[], str | None],
         session: Callable[[], str | None],
         machine_org: Callable[[], str | None],
@@ -394,10 +395,10 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                 params,
                 body,
                 self._qs,
-                self._actor,
-                self._session_id,
-                lambda: self._machine_org,
-                lambda: self._ci_job,
+                actor=self._actor,
+                session=self._session_id,
+                machine_org=lambda: self._machine_org,
+                ci_job=lambda: self._ci_job,
             )
             payload, code = route.handle(state, ctx)
             if route.content_type is not None:

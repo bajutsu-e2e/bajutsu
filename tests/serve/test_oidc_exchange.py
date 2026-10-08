@@ -859,6 +859,20 @@ def _post_raw(port: int, path: str, data: bytes, *, cookie: str) -> int:
         return e.code
 
 
+def test_the_exchange_audit_names_the_repository_the_way_its_session_does(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    """The roster matches case-insensitively, so `Acme/App` is admitted — and the session's own
+    entries fold it. An exchange row keeping the claim's casing would split one repository's
+    history in two for anyone filtering the audit log by repository."""
+    key = _key()
+    state = _state(serve_engine, tmp_path, key)
+    _machine(state, key, "acme", repository="Acme/App")
+
+    (row,) = _audit_rows(state)
+    assert row.target == "acme/app"
+
+
 def test_every_backend_audits_a_machine_call_with_the_job_its_session_was_minted_for(
     tmp_path: Path,
 ) -> None:
