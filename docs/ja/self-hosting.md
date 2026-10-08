@@ -644,8 +644,9 @@ job の id と見分けがつきません。「権限がない」と返せば、
 {
   "repository": "acme/app",
   "actor": {
-    "jobUrl": "https://github.com/acme/app/actions/runs/123/job/456",
+    "runId": "123",
     "runAttempt": "1",
+    "checkRunId": "456",
     "ref": "refs/heads/main",
     "workflowRef": "acme/app/.github/workflows/e2e.yml@refs/heads/main",
     "sha": "…",
@@ -654,9 +655,10 @@ job の id と見分けがつきません。「権限がない」と返せば、
 }
 ```
 
-`jobUrl` はジョブ自身のページを開きます。リポジトリ、実行の id、ジョブの id は `jobUrl` に含まれるので、
-記録には重ねて書きません。再実行でも URL は変わらないので、`runAttempt` は残します。トークンにない claim は、
-null として書かずに記録から省きます。
+`runId` と `checkRunId` の組で1つのジョブが決まり、`runAttempt` で再実行と元の実行を区別します。github.com
+では、ジョブのページは `https://github.com/<repository>/actions/runs/<runId>/job/<checkRunId>` です。
+GitHub Enterprise Server では、同じパスを自身のホストで提供します。トークンにはホストが含まれないので、`serve` は
+リンクを保存せず、リンクを組み立てる id を個別に保存します。トークンにない claim は、null として書かずに記録から省きます。
 
 **マシンセッションを終わらせる。** GitHub が発行したトークンは、何をしても期限まで生き続けます。マシン
 セッションは `serve` 自身が発行したものなので、`serve` から失効させられます。

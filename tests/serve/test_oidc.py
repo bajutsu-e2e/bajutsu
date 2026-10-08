@@ -334,10 +334,11 @@ def test_a_github_token_names_the_job_that_presented_it() -> None:
         key, run_id="123", run_attempt="2", check_run_id="456", sha="abc", actor="octocat"
     )
     workload = verify(token, _config(), cache).workload
-    # The repository and both ids are already in the URL, so the record does not repeat them.
+    # The repository is left out: the audit entry names it beside the record already.
     assert workload.ci_job() == {
-        "jobUrl": "https://github.com/acme/app/actions/runs/123/job/456",
+        "runId": "123",
         "runAttempt": "2",
+        "checkRunId": "456",
         "ref": "refs/heads/main",
         "workflowRef": "acme/app/.github/workflows/e2e.yml@refs/heads/main",
         "sha": "abc",
@@ -345,23 +346,26 @@ def test_a_github_token_names_the_job_that_presented_it() -> None:
     }
 
 
-def test_a_token_without_job_claims_still_verifies_and_names_no_job_url() -> None:
+def test_a_token_without_job_claims_still_verifies() -> None:
     """The job claims describe the caller rather than authorize it, so their absence refuses
-    nothing — and a link missing either id would open the wrong page."""
+    nothing, and the record keeps whichever of them the token did assert."""
     key = _key()
     cache = JwksCache(ISSUER, fetch=_fetcher(key))
     record = verify(_token(key, run_id="123"), _config(), cache).workload.ci_job()
-    assert "jobUrl" not in record
+    assert record == {
+        "runId": "123",
+        "ref": "refs/heads/main",
+        "workflowRef": "acme/app/.github/workflows/e2e.yml@refs/heads/main",
+    }
 
 
-def test_numeric_job_ids_still_link_the_job() -> None:
-    """GitHub documents no type for the id claims; a number must not silently drop the link."""
+def test_numeric_job_ids_are_recorded_as_text() -> None:
+    """GitHub documents no type for the id claims; a number must not silently drop the job."""
     key = _key()
     cache = JwksCache(ISSUER, fetch=_fetcher(key))
     token = _token(key, run_id=123, run_attempt=1, check_run_id=456)
     record = verify(token, _config(), cache).workload.ci_job()
-    assert record["jobUrl"] == "https://github.com/acme/app/actions/runs/123/job/456"
-    assert record["runAttempt"] == "1"
+    assert (record["runId"], record["runAttempt"], record["checkRunId"]) == ("123", "1", "456")
 
 
 def test_github_actions_is_the_registered_default_provider() -> None:

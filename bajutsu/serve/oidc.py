@@ -80,7 +80,6 @@ class WorkloadClaims:
             `job_id`, which would read as serve's own job id beside it in an audit entry.
         sha: The commit the run built.
         triggered_by: The account that started the run.
-        job_url: The job's own page, when the provider knows how to link it.
     """
 
     repository: str
@@ -92,18 +91,21 @@ class WorkloadClaims:
     check_run_id: str | None = None
     sha: str | None = None
     triggered_by: str | None = None
-    job_url: str | None = None
 
     def ci_job(self) -> dict[str, str]:
         """The job this workload names, as the audit trail records it in place of a user.
 
         Absent fields are left out rather than written as null, so the record carries only what the
-        token asserted. The repository and both ids are left out too: `jobUrl` already spells them,
-        and the audit entry names the repository on its own.
+        token asserted. The repository is left out, since the audit entry names it on its own.
+
+        The ids are kept as parts rather than folded into a link to the job's page: the link's host
+        is not in the token (GitHub Enterprise Server runs on its own), and a link built from one id
+        alone opens the wrong page, while the parts stay true in both cases.
         """
         fields = {
-            "jobUrl": self.job_url,
+            "runId": self.run_id,
             "runAttempt": self.run_attempt,
+            "checkRunId": self.check_run_id,
             "ref": self.ref,
             "workflowRef": self.workflow_ref,
             "sha": self.sha,
@@ -132,8 +134,6 @@ class OidcProvider:
     check_run_id_claim: str | None = None
     sha_claim: str | None = None
     triggered_by_claim: str | None = None
-    #: Formatted with `repository`, `run_id`, and `check_run_id`; used only when both ids are present.
-    job_url_template: str | None = None
 
     def workload(self, claims: Mapping[str, Any]) -> WorkloadClaims:
         """Map this provider's raw claims onto the provider-independent shape.
@@ -145,24 +145,16 @@ class OidcProvider:
         repository = _text(claims.get(self.repository_claim))
         if repository is None:
             raise OidcError(f"the token carries no {self.repository_claim!r} claim")
-        run_id = self._id(claims, self.run_id_claim)
-        check_run_id = self._id(claims, self.check_run_id_claim)
-        job_url = None
-        if self.job_url_template and run_id and check_run_id:
-            job_url = self.job_url_template.format(
-                repository=repository, run_id=run_id, check_run_id=check_run_id
-            )
         return WorkloadClaims(
             repository=repository,
             environment=self._claim(claims, self.environment_claim),
             ref=self._claim(claims, self.ref_claim),
             workflow_ref=self._claim(claims, self.workflow_ref_claim),
-            run_id=run_id,
+            run_id=self._id(claims, self.run_id_claim),
             run_attempt=self._id(claims, self.run_attempt_claim),
-            check_run_id=check_run_id,
+            check_run_id=self._id(claims, self.check_run_id_claim),
             sha=self._claim(claims, self.sha_claim),
             triggered_by=self._claim(claims, self.triggered_by_claim),
-            job_url=job_url,
         )
 
     @staticmethod
@@ -173,7 +165,7 @@ class OidcProvider:
     def _id(claims: Mapping[str, Any], name: str | None) -> str | None:
         """A numeric id claim as text. Unlike `_text`, a number is accepted: these ids only describe
         the job and are never matched against a bound, and GitHub documents no type for them, so a
-        number left out would silently drop the job link rather than refuse anything."""
+        number left out would silently drop the job from the record rather than refuse anything."""
         value = claims.get(name) if name else None
         if isinstance(value, int) and not isinstance(value, bool):
             return str(value)
@@ -195,7 +187,6 @@ GITHUB_ACTIONS = OidcProvider(
     check_run_id_claim="check_run_id",
     sha_claim="sha",
     triggered_by_claim="actor",
-    job_url_template="https://github.com/{repository}/actions/runs/{run_id}/job/{check_run_id}",
 )
 
 #: Every CI platform `serve` can verify a token from, by the name `BAJUTSU_OIDC_PROVIDER` selects.

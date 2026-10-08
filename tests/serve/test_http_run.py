@@ -72,7 +72,7 @@ def test_a_machine_dispatched_run_audits_the_ci_job(tmp_path: Path) -> None:
         repository=repository,
         popen=fake_popen(["PASS  runs/done-1/manifest.json\n"]),
     )
-    job = {"jobUrl": "https://github.com/acme/app/actions/runs/1/job/2"}
+    job = {"runId": "1", "checkRunId": "2"}
     _payload, status = start_run(
         state,
         {"scenario": "smoke.yaml", "target": "demo"},

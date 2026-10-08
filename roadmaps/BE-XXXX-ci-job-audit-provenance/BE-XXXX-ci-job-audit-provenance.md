@@ -20,7 +20,7 @@ A continuous-integration (CI) job authenticates to a hosted `bajutsu serve` by e
 OpenID Connect (OIDC) token GitHub Actions issues it for a short-lived machine session
 ([BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md)). Each audit
 entry that session writes names the repository and nothing narrower. This item records the GitHub
-Actions job as well: the workflow run, its attempt, the job, and a link to that job's page. The
+Actions job as well: the workflow run, its attempt, and the job within it. The
 audit trail then answers "which job did this", where today it stops at "some job in this
 repository".
 
@@ -42,9 +42,10 @@ token's signature at the exchange, so these claims are as trustworthy as the rep
 discards them today.
 
 The outcome a later reader can check is the audit entry itself. An entry a machine session writes
-for `POST /api/run` carries a link of the form
-`https://github.com/<owner>/<repo>/actions/runs/<run_id>/job/<check_run_id>`. That link opens the
-exact job that dispatched the run, so two jobs from one repository write two distinguishable entries.
+for `POST /api/run` carries the run id and the check-run id of the job that dispatched the run. On
+github.com the two open that job's page at
+`https://github.com/<owner>/<repo>/actions/runs/<run_id>/job/<check_run_id>`, so two jobs from one
+repository write two distinguishable entries.
 
 ## Detailed design
 
@@ -53,8 +54,8 @@ session, and the audit entry. The units below follow that path in order.
 
 ### Unit 1 — Read the job's claims at the exchange
 
-The provider-independent `WorkloadClaims` (in `bajutsu/serve/oidc.py`) gains five fields read from
-claims, plus a sixth, `job_url`, derived from them below. They follow the existing optional ones
+The provider-independent `WorkloadClaims` (in `bajutsu/serve/oidc.py`) gains five fields. They
+follow the existing optional ones
 (`environment`, `ref`, and `workflow_ref`).
 
 | Field | GitHub Actions claim | Meaning |
@@ -66,28 +67,28 @@ claims, plus a sixth, `job_url`, derived from them below. They follow the existi
 | `triggered_by` | `actor` | The GitHub account that started the run |
 
 The field keeps GitHub's name `check_run_id` rather than a neutral `job_id`. `POST /api/run` answers
-with serve's own `jobId`, so an audit key of that name would invite joining the two. Each field stays optional. A provider that emits no such claim, or a GitHub token minted before a
+with serve's own `jobId`, so an audit key of that name would invite joining the two.
+
+Each field stays optional. A provider that emits no such claim, or a GitHub token minted before a
 claim existed, maps it to `None`. The exchange never refuses a token for lacking one, because these
 fields describe the job rather than authorize it. For the same reason the three ids accept a number
 as well as a string: GitHub documents no type for them, and dropping a number would silently drop
-the job link.
+the job from the record.
 
-`OidcProvider` names each claim, the same way it already names `repository_claim`. It also carries
-a `job_url` template, which turns the fields into the job page's URL. For GitHub Actions the template is
-`https://github.com/{repository}/actions/runs/{run_id}/job/{check_run_id}`. The exchange leaves the URL
-out unless `run_id` and `check_run_id` are both present. A template belongs on the provider table for the same
-reason the claim names do: a later provider differs in that one string alone.
+`OidcProvider` names each claim, the same way it already names `repository_claim`.
 
 ### Unit 2 — Carry the job on the machine session
 
 The exchange flattens the claims into one job record. The record maps camel-case keys to strings
-and omits each absent field. Its keys are `jobUrl`, `runAttempt`, `workflowRef`, `ref`, `sha`,
-`environment`, and `triggeredBy`.
+and omits each absent field. Its keys are `runId`, `runAttempt`, `checkRunId`, `workflowRef`,
+`ref`, `sha`, `environment`, and `triggeredBy`. The record leaves out the repository, because the
+audit entry names it on its own.
 
-The record leaves out the repository, `run_id`, and `check_run_id`, because `jobUrl` already spells
-all three, and the audit entry names the repository on its own. `runAttempt` stays, since a rerun
-keeps the same URL. The cost is that a lookup by run id matches inside `jobUrl` rather than on a key
-of its own. No code reads the audit log back today, so that cost has no caller yet.
+The record keeps the ids as parts rather than a link to the job's page. The link's host is not in
+the token: GitHub Enterprise Server serves the same path on its own host, so a link built for
+github.com would open a different repository's page, or none. A link built from one id alone would
+open the wrong page too. The parts stay true in both cases, and a reader that wants the link builds
+it from them.
 
 The session stores the record beside the `org` and `kind` it already carries.
 
@@ -125,8 +126,9 @@ fills the role `actor_id` fills for a person, in the one place a pipeline can ca
 {
   "repository": "acme/app",
   "actor": {
-    "jobUrl": "https://github.com/acme/app/actions/runs/123/job/456",
+    "runId": "123",
     "runAttempt": "1",
+    "checkRunId": "456",
     "ref": "refs/heads/main",
     "sha": "...",
     "triggeredBy": "octocat"

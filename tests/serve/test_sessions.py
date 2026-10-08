@@ -275,7 +275,7 @@ def test_every_store_carries_the_ci_job_a_machine_session_was_minted_for(
     serve_engine: Callable[..., Engine],
 ) -> None:
     expires = datetime.now(UTC) + timedelta(minutes=15)
-    job = {"jobUrl": "https://github.com/acme/app/actions/runs/123/job/456", "runAttempt": "1"}
+    job = {"runId": "123", "runAttempt": "1", "checkRunId": "456"}
     for store in _stores(serve_engine):
         sid = store.issue("repo:acme/app", expires_at=expires, org="acme", kind=MACHINE, ci_job=job)
         principal = store.principal(sid)

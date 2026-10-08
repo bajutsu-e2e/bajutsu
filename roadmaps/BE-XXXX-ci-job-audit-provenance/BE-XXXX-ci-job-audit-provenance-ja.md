@@ -20,7 +20,7 @@
 GitHub Actions が発行する OpenID Connect（OIDC）トークンを、短命のマシンセッションに交換する仕組みです
 （[BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md)）。
 このセッションが書く監査エントリは、リポジトリまでしか名指ししません。本項目では、GitHub Actions の
-ジョブも記録します。記録するのは、ワークフローの実行、その試行回数、ジョブ、ジョブのページへのリンクです。
+ジョブも記録します。記録するのは、ワークフローの実行、その試行回数、その中のジョブです。
 監査ログは現状、「このリポジトリのどれかのジョブ」までしか答えられません。本項目の後は、「どのジョブが
 操作したか」まで答えられます。
 
@@ -40,9 +40,9 @@ null のままにし、代わりにリポジトリをエントリの detail に�
 これらの claim を捨てています。
 
 後から確かめられる成果は、監査エントリそのものです。マシンセッションが `POST /api/run` で書くエントリは、
-run を dispatch したジョブのページへのリンクを持ちます。リンクの形は
-`https://github.com/<owner>/<repo>/actions/runs/<run_id>/job/<check_run_id>` です。同じリポジトリの
-2つのジョブは、区別できる2つのエントリを書きます。
+run を dispatch したジョブの実行 id と check run の id を持ちます。github.com では、この2つで
+`https://github.com/<owner>/<repo>/actions/runs/<run_id>/job/<check_run_id>` のジョブのページを開けます。
+同じリポジトリの2つのジョブは、区別できる2つのエントリを書きます。
 
 ## 詳細設計
 
@@ -52,8 +52,7 @@ run を dispatch したジョブのページへのリンクを持ちます。リ
 ### 単位 1 — 交換の時点でジョブの claim を読む
 
 プロバイダに依存しない `WorkloadClaims`（`bajutsu/serve/oidc.py`）に、5つのフィールドを足します。
-既存の任意フィールド（`environment`、`ref`、`workflow_ref`）の後に並べます。claim から読む5つに加え、
-それらから組み立てる6つ目の `job_url` も持ちます。
+既存の任意フィールド（`environment`、`ref`、`workflow_ref`）の後に並べます。
 
 | フィールド | GitHub Actions の claim | 意味 |
 |---|---|---|
@@ -65,28 +64,25 @@ run を dispatch したジョブのページへのリンクを持ちます。リ
 
 `check_run_id` は、中立な `job_id` ではなく GitHub の名前のままにします。`POST /api/run` は
 serve 自身の `jobId` を返すので、監査に同じ名前のキーがあると両者を結合したくなるからです。
+
 どのフィールドも任意のままです。claim を出さないプロバイダや、claim が加わる前に発行された GitHub の
 トークンでは、そのフィールドを `None` に写します。claim がないことを理由に、交換がトークンを拒むことは
 ありません。これらのフィールドはジョブを記述するもので、認可には使わないからです。同じ理由で、3つの id は文字列に
-加えて数値も受け付けます。GitHub はこれらの型を文書化しておらず、数値を捨てるとジョブへのリンクが黙って
+加えて数値も受け付けます。GitHub はこれらの型を文書化しておらず、数値を捨てるとジョブが記録から黙って
 欠けるからです。
 
-`OidcProvider` は、`repository_claim` と同じように各 claim の名前を持ちます。さらに `job_url` の
-テンプレートを持ち、フィールドからジョブのページの URL を組み立てます。GitHub Actions のテンプレートは
-`https://github.com/{repository}/actions/runs/{run_id}/job/{check_run_id}` です。URL を組み立てるのは、
-`run_id` と `check_run_id` が両方そろうときに限ります。テンプレートをプロバイダの表に置く理由は、claim の
-名前を置く理由と同じです。将来のプロバイダとの違いは、この文字列1つだけに収まります。
+`OidcProvider` は、`repository_claim` と同じように各 claim の名前を持ちます。
 
 ### 単位 2 — ジョブをマシンセッションに持たせる
 
 交換は、claim を1つのジョブ記録にまとめます。ジョブ記録は camelCase のキーから文字列への写像で、値の
-ないフィールドは省きます。キーは `jobUrl`、`runAttempt`、`workflowRef`、`ref`、`sha`、`environment`、
-`triggeredBy` です。
+ないフィールドは省きます。キーは `runId`、`runAttempt`、`checkRunId`、`workflowRef`、`ref`、`sha`、
+`environment`、`triggeredBy` です。リポジトリは監査エントリ自身が名指しするので、記録には入れません。
 
-ジョブ記録には、リポジトリ、`run_id`、`check_run_id` を入れません。3つとも `jobUrl` に含まれており、
-リポジトリは監査エントリ自身も名指しするからです。再実行でも URL は変わらないので、`runAttempt` は残します。
-代わりに、実行の id で探すときは、専用のキーではなく `jobUrl` の中を照合することになります。現在、監査ログを
-読み出すコードはないので、この不便を被る呼び出し元はまだありません。
+ジョブ記録は、id をジョブのページへのリンクにまとめず、個別の値のまま持ちます。リンクのホストはトークンに
+含まれないからです。GitHub Enterprise Server は同じパスを自身のホストで提供するので、github.com 向けに
+組み立てたリンクは別のリポジトリのページを開くか、何も開きません。片方の id だけで組み立てたリンクも、
+誤ったページを開きます。個別の id はどちらの場合も正しいままで、リンクが必要な読み手はそこから組み立てられます。
 
 セッションは、すでに持つ `org` と `kind` の隣にジョブ記録を保存します。
 
@@ -125,8 +121,9 @@ serve 自身の `jobId` を返すので、監査に同じ名前のキーがあ�
 {
   "repository": "acme/app",
   "actor": {
-    "jobUrl": "https://github.com/acme/app/actions/runs/123/job/456",
+    "runId": "123",
     "runAttempt": "1",
+    "checkRunId": "456",
     "ref": "refs/heads/main",
     "sha": "...",
     "triggeredBy": "octocat"

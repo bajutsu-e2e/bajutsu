@@ -127,7 +127,7 @@ def oidc_exchange(state: ServeState, token: str, org: str) -> tuple[Any, int, st
         f"minted a machine session for {identity} as {org}",
         repository=workload.repository,
         org=org,
-        job_url=ci_job.get("jobUrl"),
+        ci_job=ci_job,
     )
     # Audited as well as logged: each later entry this session writes names the same job, and this
     # entry is the one that ties it back to the moment the session began. Not guarded against a

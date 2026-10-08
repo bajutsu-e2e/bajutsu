@@ -809,7 +809,6 @@ def test_the_audit_entry_names_the_repository_with_no_user_row_behind_it(
 
 
 _JOB_CLAIMS = {"run_id": "123", "run_attempt": "2", "check_run_id": "456", "actor": "octocat"}
-_JOB_URL = "https://github.com/acme/app/actions/runs/123/job/456"
 
 
 def test_the_exchange_is_audited_with_the_job_that_presented_the_token(
@@ -827,7 +826,8 @@ def test_the_exchange_is_audited_with_the_job_that_presented_the_token(
         None,
     )
     assert row.detail["repository"] == "acme/app"
-    assert row.detail["actor"]["jobUrl"] == _JOB_URL
+    assert row.detail["actor"]["runId"] == "123"
+    assert row.detail["actor"]["checkRunId"] == "456"
     assert row.detail["actor"]["runAttempt"] == "2"
     assert row.detail["actor"]["triggeredBy"] == "octocat"
 
@@ -893,7 +893,7 @@ def test_every_backend_audits_a_machine_call_with_the_job_its_session_was_minted
         assert len(rows) == 2, f"both backends must audit {action}"
         for row in rows:
             assert row.detail["repository"] == "acme/app"
-            assert row.detail["actor"]["jobUrl"] == _JOB_URL
+            assert row.detail["actor"]["checkRunId"] == "456"
 
 
 def test_every_backend_hands_the_job_to_a_machine_dispatched_run(
@@ -929,7 +929,7 @@ def test_every_backend_hands_the_job_to_a_machine_dispatched_run(
 
     assert len(seen) == 2
     for job in seen:
-        assert job is not None and job["jobUrl"] == _JOB_URL
+        assert job is not None and job["checkRunId"] == "456"
 
 
 def test_a_machine_upload_audits_the_job_passed_with_it(
@@ -939,7 +939,7 @@ def test_a_machine_upload_audits_the_job_passed_with_it(
     state = _state(serve_engine, tmp_path, key)
     source = tmp_path / "app.zip"
     source.write_bytes(b"binary")
-    job = {"jobUrl": _JOB_URL}
+    job = {"runId": "123", "checkRunId": "456"}
     ops.bind_artifact(
         state,
         "binary",
