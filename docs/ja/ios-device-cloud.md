@@ -29,7 +29,7 @@ targets:
 
 ## 署名済みの実機用 runner
 
-実機にインストールできる XCUITest runner は、その実機が信頼するチームで署名したものに限られます。そのため Bajutsu は、Simulator 用 runner と違って、実機用 runner をビルド済みで同梱できません。各ユーザーは自分の Apple Developer アカウントで、`bajutsu runner build --device` を使って実機用 runner を一度だけビルドします。以後、`deviceType: device` を指定して `xcuitest.testRunner` を指定しないターゲットは、そのビルドに解決します。ターゲットの設定には、特定のユーザーに固有の値が入りません。
+実機にインストールできる XCUITest runner は、その実機が信頼するチームで署名したものに限られます。そのため Bajutsu は、Simulator 用 runner と違って、実機用 runner をビルド済みで同梱できません。各ユーザーは自分の Apple Developer アカウントで、`bajutsu runner build --device` を使って実機用 runner をビルドします。ビルドが必要になるのは、後述のビルドの入力の組み合わせごとに 1 回です。以後、`deviceType: device` を指定して `xcuitest.testRunner` を指定しないターゲットは、そのビルドに解決します。ターゲットの設定には、特定のユーザーに固有の値が入りません。
 
 ### 署名ファイル
 
@@ -49,12 +49,12 @@ bundleIdPrefix: com.acme           # host app = com.acme.bajutsu.runner-host,
 #   uitests: com.acme.e2e.runner-tests
 teamId: ABCDE12345                 # 必須
 signing: automatic                 # automatic（既定）または manual
-manual:                            # signing: manual のとき必須
-  identity: "Apple Development: Jane Doe (ABCDE12345)"
-  profile: "Acme Bajutsu Wildcard"           # すべての識別子を覆う 1 つのプロファイル、または
-  # profiles:                                # 署名する成果物ごとのプロファイル
-  #   host: "Acme Bajutsu Host"
-  #   runner: "Acme Bajutsu Runner"          # UI テストバンドルの .xctrunner アプリ
+# manual:                          # signing: manual のとき必須（automatic では無視）
+#   identity: "Apple Development: Jane Doe (ABCDE12345)"
+#   profile: "Acme Bajutsu Wildcard"         # すべての識別子を覆う 1 つのプロファイル、または
+#   profiles:                                # 署名する成果物ごとのプロファイル
+#     host: "Acme Bajutsu Host"
+#     runner: "Acme Bajutsu Runner"          # UI テストバンドルの .xctrunner アプリ
 ```
 
 このファイルには秘密情報が入りません。Team ID、証明書名、プロファイル名は、鍵とプロファイルを指す名前にすぎません。鍵とプロファイルそのものは、キーチェインと `~/Library/MobileDevice/Provisioning Profiles/` に残ります。

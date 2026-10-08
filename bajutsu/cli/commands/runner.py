@@ -47,16 +47,16 @@ def build(
         runner_source_root,
     )
 
+    if not device:
+        # The flag leaves room to fold the Simulator build (`make runner-bundle`) in later.
+        typer.echo("only --device is supported today: bajutsu runner build --device")
+        raise typer.Exit(2)
     if out is not None and out.exists() and (not out.is_dir() or any(out.iterdir())):
         # Merging over an older copy would leave files a signed bundle no longer lists in its
         # CodeResources, which the device then rejects; deleting a directory the user named is
         # not this command's call either.
         typer.echo(f"--out {out} must be an empty or absent directory")
         raise typer.Exit(1)
-    if not device:
-        # The flag leaves room to fold the Simulator build (`make runner-bundle`) in later.
-        typer.echo("only --device is supported today: bajutsu runner build --device")
-        raise typer.Exit(2)
     try:
         path = signing_file.find_signing_file(signing)
         if path is None:

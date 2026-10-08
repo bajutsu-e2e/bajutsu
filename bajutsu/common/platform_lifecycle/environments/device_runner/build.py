@@ -34,6 +34,9 @@ from .staging import PROJECT_NAME, runner_source_root, stage
 RUNNER_NAME = "BajutsuRunner.xctestrun"
 BUILD_COMMAND = "bajutsu runner build --device"
 _CACHE_DIR_NAME = "xcuitest-runner-device"
+# Bump when staging or spec rendering changes what a build produces from the same inputs, so an
+# entry built by the older logic becomes a miss instead of being reused.
+_BUILD_FORMAT = 1
 _PARTIAL_MARKER = ".partial-"
 # A signing build legitimately runs for many minutes (package resolution plus two signed products),
 # so a partial is presumed abandoned only after a full day, never while a concurrent build is live.
@@ -276,10 +279,13 @@ def cache_key(
     """A short digest of every input that changes the signed products.
 
     The manual block of an automatic-signing file is inert, so it is left out: editing it cannot
-    change what the build produces and must not invalidate the cache.
+    change what the build produces and must not invalidate the cache. The XcodeGen version is left
+    out too: the key is recomputed on every run, which must not require XcodeGen, and the products
+    are pinned by the Xcode build and ``_BUILD_FORMAT`` instead.
     """
     manual = signing.manual_signing
     payload = {
+        "format": _BUILD_FORMAT,
         "sources": source_hash,
         "teamId": signing.team_id,
         "signing": signing.signing,
@@ -473,7 +479,8 @@ def resolve_device_runner(
     that fills the cache instead.
 
     Raises:
-        DeviceRunnerError: No signing file, no runner sources, no matching build, or an expired one.
+        DeviceRunnerError: No signing file, no runner sources, no matching build, or an expired or
+            unreadable one; the last two name the ``--force`` rebuild.
     """
     toolchain = toolchain or Toolchain()
     path = find_signing_file(None, env)
@@ -496,7 +503,12 @@ def resolve_device_runner(
             f"no device runner is built for signing file {path} with the current sources and "
             f"Xcode; run `{BUILD_COMMAND}`"
         )
-    expired = expired_profiles(runner.parent, toolchain.now())
+    try:
+        expired = expired_profiles(runner.parent, toolchain.now())
+    except DeviceRunnerError as exc:
+        raise DeviceRunnerError(
+            f"{exc}; rebuild the device runner with `{BUILD_COMMAND} --force`"
+        ) from exc
     if expired:
         names = ", ".join(sorted({p.name for p in expired}))
         raise DeviceRunnerError(

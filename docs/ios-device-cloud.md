@@ -54,8 +54,8 @@ real-device work is useful on its own, before any cloud is involved.
 ## The signed device runner
 
 A real device installs an XCUITest runner signed by a team the device trusts. Bajutsu cannot ship
-such a runner prebuilt, unlike the Simulator runner. Each user builds the device runner once with
-`bajutsu runner build --device`. The build signs with that user's own Apple Developer account. A target with
+such a runner prebuilt, unlike the Simulator runner. Each user builds the device runner with
+`bajutsu runner build --device`. One build serves until an input listed under Building changes. The build signs with that user's own Apple Developer account. A target with
 `deviceType: device` and no `xcuitest.testRunner` then resolves to that build. The target config
 stays free of anything specific to one user.
 
@@ -82,12 +82,12 @@ bundleIdPrefix: com.acme           # host app = com.acme.bajutsu.runner-host,
 #   uitests: com.acme.e2e.runner-tests
 teamId: ABCDE12345                 # required
 signing: automatic                 # automatic (the default) or manual
-manual:                            # required when signing: manual
-  identity: "Apple Development: Jane Doe (ABCDE12345)"
-  profile: "Acme Bajutsu Wildcard"           # one profile covering every identifier, or
-  # profiles:                                # one profile per signed product
-  #   host: "Acme Bajutsu Host"
-  #   runner: "Acme Bajutsu Runner"          # the UI-test bundle's .xctrunner app
+# manual:                          # required when signing: manual (ignored under automatic)
+#   identity: "Apple Development: Jane Doe (ABCDE12345)"
+#   profile: "Acme Bajutsu Wildcard"         # one profile covering every identifier, or
+#   profiles:                                # one profile per signed product
+#     host: "Acme Bajutsu Host"
+#     runner: "Acme Bajutsu Runner"          # the UI-test bundle's .xctrunner app
 ```
 
 The file holds no secret. A team ID, a certificate name, and a profile name merely point at keys
@@ -132,10 +132,10 @@ every input that changes the signed products:
 - the Xcode build version;
 - for manual signing, the certificate hash and a digest of each profile file.
 
-A certificate or profile renewed under the same name yields a new key as a result. A repeat build
+A certificate or profile renewed under the same name yields a new key. A repeat build
 with unchanged inputs reuses the cached products, and `--force` rebuilds anyway. `--out DIR`
-copies the `Products` directory to `DIR` as well. Device Farm packaging needs that copy.
-The `.xctestrun` locates its test bundles beside itself.
+copies the `Products` directory to `DIR` as well. Device Farm packaging needs that copy: the
+`.xctestrun` expects its test bundles beside itself.
 
 ### What a run does
 

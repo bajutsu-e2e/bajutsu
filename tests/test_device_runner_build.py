@@ -513,6 +513,21 @@ def test_resolve_without_runner_sources_fails(
         build.resolve_device_runner(env=env, toolchain=FakeHost(tmp_path).toolchain())
 
 
+def test_resolve_names_the_force_rebuild_for_an_unreadable_embedded_profile(
+    tmp_path: Path, sources: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(build, "runner_source_root", lambda: sources)
+    host = FakeHost(tmp_path)
+    cache = tmp_path / "cache"
+    runner = build.build_device_runner(
+        AUTOMATIC, source_root=sources, toolchain=host.toolchain(), cache_root=cache
+    )
+    next(runner.parent.rglob("embedded.mobileprovision")).write_bytes(b"corrupt")
+    env = _signing_env(tmp_path, "bundleIdPrefix: com.acme\nteamId: TEAM1\n")
+    with pytest.raises(DeviceRunnerError, match=r"unreadable.*--force"):
+        build.resolve_device_runner(env=env, toolchain=host.toolchain(), cache_root=cache)
+
+
 def test_resolve_rejects_an_expired_build_with_the_force_hint(
     tmp_path: Path, sources: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

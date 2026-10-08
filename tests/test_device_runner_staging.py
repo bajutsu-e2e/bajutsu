@@ -65,6 +65,18 @@ def test_stripping_handles_a_multi_line_test_target() -> None:
     )
 
 
+def test_stripping_ignores_parentheses_in_strings_and_comments() -> None:
+    manifest = (
+        "targets: [\n"
+        '    .testTarget(name: "T", path: "Tests (iOS)/a\\")"), // keep (this\n'
+        '    /* ( */ .target(name: "A", path: "a"),\n'
+        "]\n"
+    )
+    stripped = staging.strip_test_targets(manifest)
+    assert ".testTarget" not in stripped
+    assert staging.declared_targets(stripped) == {"A"}
+
+
 def test_stripping_an_unbalanced_test_target_fails() -> None:
     with pytest.raises(staging.StagingError, match="unbalanced"):
         staging.strip_test_targets('.testTarget(name: "A"')

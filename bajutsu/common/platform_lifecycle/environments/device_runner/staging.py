@@ -94,12 +94,34 @@ def strip_test_targets(manifest: str) -> str:
 
 
 def _closing_paren(text: str, open_at: int) -> int:
-    """Index of the parenthesis that closes the one at *open_at*."""
+    """Index of the parenthesis that closes the one at *open_at*.
+
+    Skips string literals and comments, so a path such as ``"Tests (iOS)"`` or a parenthesis in a
+    comment never shifts the count.
+    """
     depth = 0
-    for i in range(open_at, len(text)):
+    i = open_at
+    while i < len(text):
+        if text.startswith("//", i):
+            newline = text.find("\n", i)
+            i = len(text) if newline < 0 else newline
+            continue
+        if text.startswith("/*", i):
+            close = text.find("*/", i + 2)
+            if close < 0:
+                break
+            i = close + 2
+            continue
+        if text[i] == '"':
+            i += 1
+            while i < len(text) and text[i] != '"':
+                i += 2 if text[i] == "\\" else 1
+            i += 1
+            continue
         depth += {"(": 1, ")": -1}.get(text[i], 0)
         if depth == 0:
             return i
+        i += 1
     raise StagingError("Package.swift: unbalanced .testTarget( declaration")
 
 

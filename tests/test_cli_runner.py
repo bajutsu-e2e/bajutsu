@@ -94,6 +94,15 @@ def test_out_refuses_a_non_empty_directory(
     assert calls == []
 
 
+def test_a_missing_device_flag_wins_over_a_bad_out(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "stale.txt").write_text("old")
+    result = runner.invoke(app, ["runner", "build", "--out", str(out)])
+    assert result.exit_code == 2
+    assert "--device" in result.output
+
+
 def test_out_refuses_a_regular_file(tmp_path: Path, signing_file: Path) -> None:
     out = tmp_path / "out.txt"
     out.write_text("x")
