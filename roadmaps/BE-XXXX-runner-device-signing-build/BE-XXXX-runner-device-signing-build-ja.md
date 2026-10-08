@@ -61,9 +61,12 @@
 ランナーは汎用なので、署名はターゲットではなく利用者の属性です。したがって、利用者ごとに 1 ファイルで足ります。
 Bajutsu は次の順で探し、最初に見つかったものを使います。
 
-1. コマンドラインの `--signing <path>`
+1. `bajutsu runner build` の `--signing <path>`。このフラグを持つのはビルドコマンドだけです。
 2. 環境変数 `BAJUTSU_SIGNING_FILE`
-3. `~/.config/bajutsu/signing.yaml`
+3. `$XDG_CONFIG_HOME/bajutsu/signing.yaml`。未設定なら `~/.config/bajutsu/signing.yaml`
+
+後述の実行時の解決段階が参照するのは、2 と 3 だけです。`--signing` だけでビルドした利用者は、実行時にも
+同じファイルを `BAJUTSU_SIGNING_FILE` で指定するか、`--out` で出力した成果物を `testRunner` に渡します。
 
 ファイルはリポジトリの外にあるため、コミットに混入しません。秘密は含みません。チーム ID、証明書名、
 profile 名が指す鍵と profile は、Keychain と `~/Library/MobileDevice/Provisioning Profiles/` に残ります。
@@ -115,6 +118,10 @@ wheel に取り込みます。パスを選んでコピーするのは、`Bajutsu
 ビルド出力まで wheel に入ってしまうからです。`Package.swift` は 2 つのテストターゲットを宣言していて、
 そのパスはステージング先にありません。Swift Package Manager（SPM）は、存在しないターゲットのパスを持つ
 マニフェストを拒否します。そのためステージングでは、この 2 ターゲットを除いたマニフェストを書き出します。
+このマニフェストは、コミット済みの `Package.swift` から導出します。ターゲット一覧の 2 つ目のコピーは
+持ちません。単体テストで、ステージング後のマニフェストが、コミット済みのものにあるテスト以外のすべての
+ターゲットを宣言していることを確かめます。後からターゲットが増えても、実機ビルドから黙って
+抜け落ちることはありません。
 
 ### 利用者ごとのプロジェクト生成
 
@@ -133,18 +140,43 @@ XcodeGen（`xcodegen`）が `project.yml` から Xcode プロジェクトを生�
 | `PROVISIONING_PROFILE_SPECIFIER`（手動） | `profile` または `profiles.host` | `profile` または `profiles.runner` |
 
 ステージング先の spec では、SPM パッケージのパスも `../..` からステージング先のルートへ書き換えます。
-そのうえで `xcodebuild build-for-testing -destination generic/platform=iOS` を実行します。
-`-allowProvisioningUpdates` を付けるのは自動署名のときだけです。最後に、現在の `runner-build-device` と同じく、
+そのうえで `xcodebuild build-for-testing -destination generic/platform=iOS -skipPackagePluginValidation`
+を実行します。`-skipPackagePluginValidation` は、`OpenAPIGenerator` ビルドプラグインを非対話で動かすために
+必要です。`-allowProvisioningUpdates` を付けるのは自動署名のときだけです。最後に、現在の `runner-build-device` と同じく、
 1 つだけある `*.xctestrun` を `BajutsuRunner.xctestrun` へコピーします。
 
 ### キャッシュとそのキー
 
-ビルド出力は `~/.cache/bajutsu/xcuitest-runner-device/<key>/Products/` に置きます。キーは、ランナーの
-ソースハッシュ、検証済みの署名項目（解決後の 2 つの識別子を含む）、Xcode のビルドバージョンをハッシュして作ります。どれかが変わると
-別のディレクトリになるため、古い署名済みランナーを再利用することはありません。キーが一致するディレクトリは、
-再ビルドせずに使います。コマンドは `.xctestrun` のパスを表示します。`--out <dir>` を付けると、`Products`
-ディレクトリ全体もそこへコピーします。`.xctestrun` はテストバンドルを相対パスで参照するため、
-Device Farm のパッケージ化にはディレクトリ全体が必要です。
+ビルド出力は、Bajutsu 共通のキャッシュルートの下の `xcuitest-runner-device/<key>/Products/` に置きます。
+キャッシュルートは、`_bundled_runner.py` の `_runner_cache_root()` が `XDG_CACHE_HOME` から導出するものです。
+キャッシュを移すホスト型のデプロイでも、署名済みビルドがサンドボックスの内側に収まります。
+
+キーは、次の 4 つをハッシュして作ります。
+
+- ステージングが何かを書き換える前の、元のランナーソースのハッシュ。チェックアウトでは、リポジトリルートに
+  対する `source_hash()` です。wheel の導入では、同じ関数を `bajutsu/_runner_source/` に適用します。
+  このディレクトリの構成はリポジトリのパスをそのまま写すので、同じリリースなら、チェックアウトと wheel で
+  同じキーになります。
+- 検証済みの署名項目（解決後の 2 つの識別子を含む）
+- Xcode のビルドバージョン
+- 手動署名では、解決した資産の指紋。ビルドが名前を挙げたインストール済み profile ファイルごとの SHA-256 と、
+  `security find-identity` が示す identity の証明書ハッシュです。同じ名前で profile や証明書を更新すると、
+  キーが変わります。
+
+自動署名には、こうした入力がありません。profile は Xcode がビルド中に発行するからです。そのため、
+キャッシュを使うたびに、キャッシュ済み成果物に埋め込まれた各 profile の有効期限も確かめます。
+期限が切れたランナーでは、`--force` で再ビルドするよう案内して実行を失敗させます。
+
+キャッシュヒットの条件は、ディレクトリが完全に揃っていることです。ビルドは最終ディレクトリの隣の一時
+ディレクトリに書き出し、`BajutsuRunner.xctestrun` が存在することを確かめてから、ディレクトリを所定の場所へ
+rename します。`_bundled_runner.py` の `materialize()` と同じ方式です。最終ディレクトリがあっても
+このファイルがなければ、読む側はミスとして扱います。ビルドの中断や並行した `--force` が、
+中途半端なディレクトリをヒットとして残すことはありません。並行 rename に負けた側は、勝った側が
+公開したディレクトリをそのまま使います。
+
+コマンドは `.xctestrun` のパスを表示します。`--out <dir>` を付けると、`Products` ディレクトリ全体も
+そこへコピーします。`.xctestrun` はテストバンドルを相対パスで参照するため、Device Farm のパッケージ化には
+ディレクトリ全体が必要です。
 
 ### コマンド
 
@@ -164,16 +196,18 @@ bajutsu runner build --device [--signing PATH] [--out DIR] [--force]
 
 `xcuitest.deviceType: device` は、現状では `testRunner` の明示を要求します
 （[BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md)）。環境に段階を 1 つ足します。
-`testRunner` がなければ、署名ファイルを探してキーを計算し、そのディレクトリがあればキャッシュ済みの
-`.xctestrun` を使います。ディレクトリがなければ、実行をすぐ失敗させ、実行すべき
-`bajutsu runner build --device` のコマンドをそのまま示します。実行中に暗黙でビルドすることはしません。
+`testRunner` がなければ、上の探索順の 2 と 3 で署名ファイルを探してキーを計算し、完全なディレクトリが
+あればキャッシュ済みの `.xctestrun` を使います。ミスの場合のエラーは 2 種類に分けます。署名ファイルが
+見つからなければ、実行を失敗させ、探した 2 か所を示します。ディレクトリがなければ、実行をすぐ失敗させ、
+実行すべき `bajutsu runner build --device` のコマンドをそのまま示します。実行中に暗黙でビルドすることはしません。
 署名ビルドは遅く、Keychain のプロンプトを出すことがあり、Apple 側に識別子を登録することもあるため、
 プール実行の途中に置くべきではないからです。`testRunner` を明示した場合は、引き続きキャッシュより優先します。
 
 ### showcase の Makefile
 
-`demos/showcase/Makefile` の `runner-build-device` は、`bajutsu runner build --device --signing $(SIGNING)`
-を呼ぶ形に置き換えます。出力先は、Device Farm の手順が使う `build/` 配下のままにします。
+`demos/showcase/Makefile` の `runner-build-device` は、`bajutsu runner build --device` を呼ぶ形に
+置き換えます。`SIGNING` が設定されているときだけ `--signing $(SIGNING)` を付けるので、未設定なら
+`BAJUTSU_SIGNING_FILE` と既定のパスが使われます。出力先は、Device Farm の手順が使う `build/` 配下のままにします。
 `DEVELOPMENT_TEAM` だけを渡す呼び出しは、ランナーについては使えなくなり、署名ファイルを案内する
 メッセージで失敗します。変えるのはランナーの経路だけです。`swiftui-archive-device` と
 `swiftui-ipa-device` は、これまでどおり `DEVELOPMENT_TEAM` からデモアプリをビルドします。
@@ -191,7 +225,9 @@ bajutsu runner build --device [--signing PATH] [--out DIR] [--force]
 ### 検証
 
 - どのホストでも動く単体テスト（Linux を含む）。署名ファイルの検証（`bundleIdPrefix` と `bundleIds` の排他を含む）と探索順、両方式の spec 上書き、
-  `xcodebuild` と `xcodegen` の引数の組み立て、キャッシュキーの安定性と感度、実行時の解決エラーを確かめます。
+  `xcodebuild` と `xcodegen` の引数の組み立て、キャッシュキーの安定性と感度（同じソースなら、チェックアウトと wheel の配置で同じキーになること、profile を
+更新するとキーが変わること）、アトミックな公開と不完全なディレクトリのミス、profile の有効期限、
+ステージング後のマニフェストのターゲット確認、実行時の解決エラーを確かめます。
   外部コマンドは注入した実行器の背後に置くので、テストに Xcode は要りません。
 - `make check` の外で行う実機の手動確認。別チームの識別子での自動署名ビルド、手動署名ビルド、
   `testRunner` なしでの 1 シナリオの実行を行います。
@@ -217,7 +253,7 @@ bajutsu runner build --device [--signing PATH] [--out DIR] [--force]
 
 - [ ] スパイク：実機 1 台で、手動ビルドに必要な profile（ホスト、`.xctrunner` アプリ、または 1 つの
   ワイルドカード）を特定し、`.xctrunner` の識別子を確認し、ステージング済みマニフェストと生成 spec の
-  方式でビルドできることを確認する。
+  方式でビルドできることを確認します。
 - [ ] 署名ファイルのモデル、検証（接頭辞または明示の `bundleIds`）、探索順（テスト付き）
 - [ ] ソースのステージング：`make runner-source`、`artifacts` の項目、ステージング用マニフェスト
 - [ ] プロジェクト spec の上書き、ビルドコマンドの組み立て、事前チェック、キャッシュ（テスト付き）

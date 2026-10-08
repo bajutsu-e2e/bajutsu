@@ -60,9 +60,13 @@ per-app differences still live in `targets.<name>` (prime directive 3).
 Signing is a property of the user, not of a target, because the runner is generic. One file per
 user therefore suffices. Bajutsu looks for it in this order, and the first hit wins:
 
-1. `--signing <path>` on the command line.
+1. `--signing <path>` on `bajutsu runner build`. Only the build command has this flag.
 2. The `BAJUTSU_SIGNING_FILE` environment variable.
-3. `~/.config/bajutsu/signing.yaml`.
+3. `$XDG_CONFIG_HOME/bajutsu/signing.yaml`, falling back to `~/.config/bajutsu/signing.yaml`.
+
+The run-time tier below consults entries 2 and 3 only. A user who builds with `--signing`
+alone must set `BAJUTSU_SIGNING_FILE` to the same file when running, or pass the built products
+through `--out` and `testRunner`.
 
 The file lives outside the repository, so a commit cannot carry it. It holds no secret: team IDs,
 certificate names, and profile names identify keys and profiles that stay in the Keychain and in
@@ -120,7 +124,10 @@ through the `artifacts` entry in `pyproject.toml`, as `_xcuitest_runner/` is tod
 selected paths avoids `force-include` on `BajutsuKit/`, which would drag its build output into the
 wheel. `Package.swift` declares two test targets whose paths the staged tree lacks, and Swift
 Package Manager (SPM) rejects a manifest with a missing target path. The staging step therefore
-writes a manifest without those two targets.
+writes a manifest without those two targets. That manifest is derived from the committed
+`Package.swift` rather than kept as a second copy of its target list. A unit test asserts that the
+staged manifest still declares every non-test target the committed one does, so a target added
+later cannot go missing from the device build silently.
 
 ### Generating a per-user project
 
@@ -138,18 +145,42 @@ settings cannot do. The staged copy changes, never the committed file.
 | `PROVISIONING_PROFILE_SPECIFIER` (manual) | `profile` or `profiles.host` | `profile` or `profiles.runner` |
 
 The staged spec also rewrites the SPM package path from `../..` to the staged root. The build then
-runs `xcodebuild build-for-testing -destination generic/platform=iOS`, adding
-`-allowProvisioningUpdates` for automatic signing only, and copies the single `*.xctestrun` to
+runs `xcodebuild build-for-testing -destination generic/platform=iOS
+-skipPackagePluginValidation` (the `OpenAPIGenerator` build plugin needs that flag
+non-interactively), adding `-allowProvisioningUpdates` for automatic signing only, and copies the single `*.xctestrun` to
 `BajutsuRunner.xctestrun`, as `runner-build-device` does today.
 
 ### The cache and its key
 
-The build output goes to `~/.cache/bajutsu/xcuitest-runner-device/<key>/Products/`. The key hashes
-the runner source hash, the validated signing fields (with the two resolved identifiers), and the Xcode build version. A change to
-any of them yields a new directory, so a stale signed runner is never reused. A matching directory
-is reused without rebuilding. The command prints the `.xctestrun` path, and `--out <dir>` also
-copies the whole `Products` directory there, which the Device Farm package step needs because the
-`.xctestrun` refers to its test bundles by relative path.
+The build output goes to `xcuitest-runner-device/<key>/Products/` under the shared Bajutsu cache
+root, the one `_runner_cache_root()` in `_bundled_runner.py` derives from `XDG_CACHE_HOME`. A hosted
+deployment that relocates caches therefore keeps the signed build inside its sandbox.
+
+The key hashes four things:
+
+- The hash of the pristine runner sources, taken before staging rewrites anything. In a checkout it
+  is `source_hash()` over the repository root. In a wheel install it is the same function over
+  `bajutsu/_runner_source/`, whose layout mirrors the repository paths. A checkout and a wheel
+  install of the same release then produce the same key.
+- The validated signing fields, with the two resolved identifiers.
+- The Xcode build version.
+- For manual signing, fingerprints of the resolved assets: the SHA-256 of each installed profile
+  file the build names, and the certificate hash `security find-identity` reports for the identity.
+  A profile or certificate renewed under the same name then yields a new key.
+
+Automatic signing has no such inputs, because Xcode mints the profile during the build. Every cache
+hit therefore also checks the expiration date of each profile embedded in the cached products. An
+expired runner fails the run with a message to rebuild using `--force`.
+
+A hit requires a complete directory. The build writes into a temporary directory beside the final
+one, confirms that `BajutsuRunner.xctestrun` exists, and renames the directory into place, as
+`materialize()` in `_bundled_runner.py` does. A reader that finds the final directory without that
+file treats it as a miss, so an interrupted build or a concurrent `--force` never leaves a
+half-populated hit. A losing concurrent rename keeps the directory the winner published.
+
+The command prints the `.xctestrun` path. `--out <dir>` also copies the whole `Products` directory
+there, which the Device Farm package step needs because the `.xctestrun` refers to its test
+bundles by relative path.
 
 ### Command
 
@@ -169,9 +200,11 @@ bajutsu runner build --device [--signing PATH] [--out DIR] [--force]
 
 `xcuitest.deviceType: device` currently demands an explicit `testRunner`
 ([BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md)). The environment
-gains one tier: with no `testRunner`, it finds the signing file, computes the key, and uses the
-cached `.xctestrun` if the directory exists. If the directory is absent, the run fails at once
-with the exact `bajutsu runner build --device` command to run. The run never builds implicitly,
+gains one tier: with no `testRunner`, it finds the signing file through lookup entries 2 and 3 above,
+computes the key, and uses the cached `.xctestrun` if a complete directory exists. Two distinct
+errors cover the misses. If no signing file is found, the run fails and names both lookup
+locations. If the directory is absent, the run fails at once with the exact
+`bajutsu runner build --device` command to run. The run never builds implicitly,
 because a signing build is slow, can raise a Keychain prompt, and can register identifiers with
 Apple, and none of that belongs in the middle of a pooled run. An explicit `testRunner` still wins
 over the cache.
@@ -179,8 +212,9 @@ over the cache.
 ### The showcase Makefile
 
 `runner-build-device` in `demos/showcase/Makefile` becomes a call to `bajutsu runner build
---device --signing $(SIGNING)` and keeps the `build/` output path the Device Farm runbook uses.
-The `DEVELOPMENT_TEAM`-only invocation stops working for the runner and fails with a message that
+--device`. It appends `--signing $(SIGNING)` only when `SIGNING` is set, so an unset value falls
+through to `BAJUTSU_SIGNING_FILE` and the default path. It keeps the `build/` output path the
+Device Farm runbook uses. The `DEVELOPMENT_TEAM`-only invocation stops working for the runner and fails with a message that
 points at the signing file. Only the runner path changes. `swiftui-archive-device` and
 `swiftui-ipa-device` keep building the demo app from `DEVELOPMENT_TEAM`.
 
@@ -199,7 +233,9 @@ points at the signing file. Only the runner path changes. `swiftui-archive-devic
 - Unit tests on any host (including Linux): signing-file validation (including the
   `bundleIdPrefix` and `bundleIds` exclusivity) and lookup order, spec
   override rendering for both modes, `xcodebuild` and `xcodegen` argument construction, cache-key
-  stability and sensitivity, and the run-time resolution error. The external commands sit behind
+  stability and sensitivity (a checkout and a wheel layout of the same sources share a key; a
+renewed profile changes it), atomic publication and the incomplete-directory miss, profile
+expiry, the staged-manifest target check, and the run-time resolution errors. The external commands sit behind
   an injected runner, so none of these tests needs Xcode.
 - A manual proof on real hardware, outside `make check`: build with automatic signing under a
   second team's identifiers, build with manual signing, and run one scenario on a device with no
