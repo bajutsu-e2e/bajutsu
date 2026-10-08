@@ -14,6 +14,7 @@ repository's outstanding sessions without retiring its org.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -871,6 +872,31 @@ def test_the_exchange_audit_names_the_repository_the_way_its_session_does(
 
     (row,) = _audit_rows(state)
     assert row.target == "acme/app"
+
+
+def test_a_failed_exchange_audit_write_does_not_cost_the_pipeline_its_token(
+    serve_engine: Callable[..., Engine], tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """By the time the entry is written the token's `jti` is spent, so a 500 here would leave a
+    pipeline that cannot retry with the token it already fetched. The exchange still answers 200,
+    and the failure is loud in the operator log instead."""
+    key = _key()
+    state = _state(serve_engine, tmp_path, key)
+    assert state.repository is not None
+
+    def broken(**_kwargs: Any) -> None:
+        raise RuntimeError("audit table unavailable")
+
+    state.repository.record_audit = broken  # type: ignore[method-assign]
+    with caplog.at_level(logging.ERROR):
+        payload, status, sid = ops.oidc_exchange(state, _token(key, **_JOB_CLAIMS), "acme")
+
+    assert status == 200 and sid is not None and payload["ok"] is True
+    assert state.auth.valid_session(sid)
+    assert any(
+        record.levelno == logging.ERROR and getattr(record, "event", "") == "oidc.audit_failed"
+        for record in caplog.records
+    )
 
 
 def test_every_backend_audits_a_machine_call_with_the_job_its_session_was_minted_for(

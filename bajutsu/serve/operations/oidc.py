@@ -130,14 +130,28 @@ def oidc_exchange(state: ServeState, token: str, org: str) -> tuple[Any, int, st
         ci_job=ci_job,
     )
     # Audited as well as logged: each later entry this session writes names the same job, and this
-    # entry is the one that ties it back to the moment the session began. Not guarded against a
-    # failed write: like every other audit call it fails the request loudly, since an exchange that
-    # answered 200 with no trace of it is the gap the audit trail exists to close.
-    # The target is folded like the session's own entries' `repository` key, so one repository's
-    # history is not split by the casing of the claim it happened to present.
-    _record_audit(
-        state, identity, org, "oidc.exchange", workload.repository.lower(), {}, ci_job=ci_job
-    )
+    # entry ties them back to the moment the session began. The target is folded like those
+    # entries' own `repository` key, so one repository's history is not split by the casing of the
+    # claim it happened to present.
+    #
+    # A failed write is logged and swallowed, unlike every other audit call, because this one runs
+    # after `spend_oidc_jti`: a 500 here would burn the pipeline's one-shot token (resending it is
+    # refused as a replay) for an entry no later entry depends on.
+    try:
+        _record_audit(
+            state, identity, org, "oidc.exchange", workload.repository.lower(), {}, ci_job=ci_job
+        )
+    except Exception as e:
+        oplog.log_event(
+            _logger,
+            "oidc.audit_failed",
+            f"could not audit the exchange for {identity} as {org}; the session was still minted",
+            level=logging.ERROR,
+            error=f"{type(e).__name__}: {e}",
+            repository=workload.repository,
+            org=org,
+            ci_job=ci_job,
+        )
     return {"ok": True, "org": org, "repository": workload.repository}, 200, sid
 
 

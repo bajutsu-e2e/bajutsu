@@ -140,6 +140,12 @@ The exchange also writes an audit entry of its own, action `oidc.exchange`, with
 its target and the same detail payload. Today `serve` logs an exchange to the operator log alone.
 An entry in the audit log ties each later entry's job back to the moment its session began.
 
+This is the one audit write that does not fail its request. It runs after the token's `jti` is
+spent, so a failed write answering 500 would leave the pipeline with a burned one-shot token:
+resending it is refused as a replay. The exchange logs the failure at ERROR under the event
+`oidc.audit_failed` and still returns the session. No later entry depends on this one, since each
+carries the job on its own.
+
 ### Unit 4 — Tests and documentation
 
 Tests cover each unit. One test checks the claim mapping, absent claims included. Another runs a
