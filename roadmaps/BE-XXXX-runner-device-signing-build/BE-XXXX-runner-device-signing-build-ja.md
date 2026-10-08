@@ -69,8 +69,11 @@ Bajutsu は次の順で探し、最初に見つかったものを使います。
 profile 名が指す鍵と profile は、Keychain と `~/Library/MobileDevice/Provisioning Profiles/` に残ります。
 
 ```yaml
-bundleIdPrefix: com.acme           # 必須。ランナーのホストアプリ = <prefix>.bajutsu.runner-host、
+bundleIdPrefix: com.acme           # ランナーのホストアプリ = <prefix>.bajutsu.runner-host、
                                    # UI テストバンドル = <prefix>.bajutsu.runner-uitests
+# bundleIds:                       # bundleIdPrefix の代わりに、2 つの識別子を自分で指定する
+#   host: com.acme.e2e.runner-host
+#   uitests: com.acme.e2e.runner-tests
 teamId: ABCDE12345                 # 必須
 signing: automatic                 # automatic（既定）| manual
 manual:                            # signing: manual のとき必須
@@ -81,10 +84,20 @@ manual:                            # signing: manual のとき必須
     runner: "Acme Bajutsu Runner"            # UI テストバンドルの .xctrunner アプリ
 ```
 
-読み込み時に、ターゲットの設定と同様に pydantic のモデルで検証します。未知のキー、`bundleIdPrefix` や
-`teamId` の欠落、`identity` のない `signing: manual`、`profile` と `profiles` の両方を書いた、または
-両方とも書かない `manual` ブロックを拒否します。既定の接頭辞は用意しません。既定値を置くと、
-この項目が取り除こうとする衝突を再び招くからです。
+`bundleIdPrefix` と `bundleIds` は、どちらか一方を必ず書きます。接頭辞の形は、2 つの識別子を導出します。
+`bundleIds` の形は、2 つを名前で直接指定します。Apple Developer アカウントに、別名の明示型 App ID と
+profile がすでにある利用者や、組織が命名を制限している利用者のための形です。どちらの形でも、
+UI テストバンドルの `.xctrunner` アプリの識別子は `<uitests の識別子>.xctrunner` になります。
+識別子ごとの profile で手動署名する利用者は、この 3 つ目の識別子に合う profile も用意する必要があります。
+
+読み込み時に、ターゲットの設定と同様に pydantic のモデルで検証します。未知のキー、`teamId` の欠落、
+`identity` のない `signing: manual` を拒否します。`profile` と `profiles` の両方を書いた、または
+両方とも書かない `manual` ブロックも拒否します。さらに、`bundleIdPrefix` と `bundleIds` の両方を書いた、
+または両方とも書かないファイル、`host` か `uitests` を欠く `bundleIds`、2 つの値が等しい `bundleIds` も
+拒否します。既定の接頭辞は用意しません。既定値を置くと、この項目が取り除こうとする衝突を再び招くからです。
+ビルドはターゲットを知らないため、ランナーの識別子と操作対象アプリの識別子の比較はできません。
+ランナーの識別子がアプリの識別子と等しいと、インストールでアプリが上書きされます。この点はドキュメントで
+注意を促します。
 
 ### ソースのステージング
 
@@ -112,7 +125,7 @@ XcodeGen（`xcodegen`）が `project.yml` から Xcode プロジェクトを生�
 
 | 設定 | ランナーのホストアプリのターゲット | UI テストターゲット |
 |---|---|---|
-| `PRODUCT_BUNDLE_IDENTIFIER` | `<prefix>.bajutsu.runner-host` | `<prefix>.bajutsu.runner-uitests` |
+| `PRODUCT_BUNDLE_IDENTIFIER` | `<prefix>.bajutsu.runner-host`、または `bundleIds.host` | `<prefix>.bajutsu.runner-uitests`、または `bundleIds.uitests` |
 | `DEVELOPMENT_TEAM` | `teamId` | `teamId` |
 | `CODE_SIGNING_ALLOWED` | `YES` | `YES` |
 | `CODE_SIGN_STYLE` | `Automatic` または `Manual` | 同左 |
@@ -127,7 +140,7 @@ XcodeGen（`xcodegen`）が `project.yml` から Xcode プロジェクトを生�
 ### キャッシュとそのキー
 
 ビルド出力は `~/.cache/bajutsu/xcuitest-runner-device/<key>/Products/` に置きます。キーは、ランナーの
-ソースハッシュ、検証済みの署名項目、Xcode のビルドバージョンをハッシュして作ります。どれかが変わると
+ソースハッシュ、検証済みの署名項目（解決後の 2 つの識別子を含む）、Xcode のビルドバージョンをハッシュして作ります。どれかが変わると
 別のディレクトリになるため、古い署名済みランナーを再利用することはありません。キーが一致するディレクトリは、
 再ビルドせずに使います。コマンドは `.xctestrun` のパスを表示します。`--out <dir>` を付けると、`Products`
 ディレクトリ全体もそこへコピーします。`.xctestrun` はテストバンドルを相対パスで参照するため、
@@ -177,7 +190,7 @@ bajutsu runner build --device [--signing PATH] [--out DIR] [--force]
 
 ### 検証
 
-- どのホストでも動く単体テスト（Linux を含む）。署名ファイルの検証と探索順、両方式の spec 上書き、
+- どのホストでも動く単体テスト（Linux を含む）。署名ファイルの検証（`bundleIdPrefix` と `bundleIds` の排他を含む）と探索順、両方式の spec 上書き、
   `xcodebuild` と `xcodegen` の引数の組み立て、キャッシュキーの安定性と感度、実行時の解決エラーを確かめます。
   外部コマンドは注入した実行器の背後に置くので、テストに Xcode は要りません。
 - `make check` の外で行う実機の手動確認。別チームの識別子での自動署名ビルド、手動署名ビルド、
@@ -205,7 +218,7 @@ bajutsu runner build --device [--signing PATH] [--out DIR] [--force]
 - [ ] スパイク：実機 1 台で、手動ビルドに必要な profile（ホスト、`.xctrunner` アプリ、または 1 つの
   ワイルドカード）を特定し、`.xctrunner` の識別子を確認し、ステージング済みマニフェストと生成 spec の
   方式でビルドできることを確認する。
-- [ ] 署名ファイルのモデル、検証、探索順（テスト付き）
+- [ ] 署名ファイルのモデル、検証（接頭辞または明示の `bundleIds`）、探索順（テスト付き）
 - [ ] ソースのステージング：`make runner-source`、`artifacts` の項目、ステージング用マニフェスト
 - [ ] プロジェクト spec の上書き、ビルドコマンドの組み立て、事前チェック、キャッシュ（テスト付き）
 - [ ] `bajutsu runner build --device` コマンド

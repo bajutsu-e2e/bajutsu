@@ -69,8 +69,11 @@ certificate names, and profile names identify keys and profiles that stay in the
 `~/Library/MobileDevice/Provisioning Profiles/`.
 
 ```yaml
-bundleIdPrefix: com.acme           # required; runner host app = <prefix>.bajutsu.runner-host,
+bundleIdPrefix: com.acme           # runner host app = <prefix>.bajutsu.runner-host,
                                    # UI-test bundle = <prefix>.bajutsu.runner-uitests
+# bundleIds:                       # instead of bundleIdPrefix: name both identifiers yourself
+#   host: com.acme.e2e.runner-host
+#   uitests: com.acme.e2e.runner-tests
 teamId: ABCDE12345                 # required
 signing: automatic                 # automatic (default) | manual
 manual:                            # required when signing: manual
@@ -81,10 +84,25 @@ manual:                            # required when signing: manual
     runner: "Acme Bajutsu Runner"            # the .xctrunner app of the UI-test bundle
 ```
 
-A pydantic model validates the file at load, like the target config. It rejects an unknown key,
-a missing `bundleIdPrefix` or `teamId`, `signing: manual` without `identity`, and a `manual`
-block that gives both or neither of `profile` and `profiles`. There is no default prefix, because
-any default would recreate the collision this item removes.
+The file gives either `bundleIdPrefix` or `bundleIds`, never both. The prefix form derives both
+identifiers. The `bundleIds` form names them. It serves a user whose Apple Developer account already
+holds explicit App IDs and profiles under other names, or whose organization restricts naming.
+
+In either form, the UI-test bundle's `.xctrunner` app takes the identifier
+`<uitests identifier>.xctrunner`. A user who signs manually with per-identifier profiles must supply
+a profile for that third identifier as well.
+
+A pydantic model validates the file at load, like the target config. Validation fails on:
+
+- an unknown key, a missing `teamId`, or `signing: manual` without `identity`;
+- a `manual` block that gives both or neither of `profile` and `profiles`;
+- a file that gives both or neither of `bundleIdPrefix` and `bundleIds`;
+- a `bundleIds` block that lacks `host` or `uitests`, or whose two values are equal.
+
+There is no default prefix, because any default would recreate the collision this item removes.
+The build knows no target, so it cannot compare the runner identifiers with the identifier of the
+app under test. The documentation warns that a runner identifier equal to the app's identifier
+makes the install overwrite the app.
 
 ### Staging the sources
 
@@ -112,7 +130,7 @@ settings cannot do. The staged copy changes, never the committed file.
 
 | Setting | Runner host app target | UI-test target |
 |---|---|---|
-| `PRODUCT_BUNDLE_IDENTIFIER` | `<prefix>.bajutsu.runner-host` | `<prefix>.bajutsu.runner-uitests` |
+| `PRODUCT_BUNDLE_IDENTIFIER` | `<prefix>.bajutsu.runner-host`, or `bundleIds.host` | `<prefix>.bajutsu.runner-uitests`, or `bundleIds.uitests` |
 | `DEVELOPMENT_TEAM` | `teamId` | `teamId` |
 | `CODE_SIGNING_ALLOWED` | `YES` | `YES` |
 | `CODE_SIGN_STYLE` | `Automatic` or `Manual` | same |
@@ -127,7 +145,7 @@ runs `xcodebuild build-for-testing -destination generic/platform=iOS`, adding
 ### The cache and its key
 
 The build output goes to `~/.cache/bajutsu/xcuitest-runner-device/<key>/Products/`. The key hashes
-the runner source hash, the validated signing fields, and the Xcode build version. A change to
+the runner source hash, the validated signing fields (with the two resolved identifiers), and the Xcode build version. A change to
 any of them yields a new directory, so a stale signed runner is never reused. A matching directory
 is reused without rebuilding. The command prints the `.xctestrun` path, and `--out <dir>` also
 copies the whole `Products` directory there, which the Device Farm package step needs because the
@@ -178,7 +196,8 @@ points at the signing file. Only the runner path changes. `swiftui-archive-devic
 
 ### Verification
 
-- Unit tests on any host (including Linux): signing-file validation and lookup order, spec
+- Unit tests on any host (including Linux): signing-file validation (including the
+  `bundleIdPrefix` and `bundleIds` exclusivity) and lookup order, spec
   override rendering for both modes, `xcodebuild` and `xcodegen` argument construction, cache-key
   stability and sensitivity, and the run-time resolution error. The external commands sit behind
   an injected runner, so none of these tests needs Xcode.
@@ -209,7 +228,7 @@ points at the signing file. Only the runner path changes. `swiftui-archive-devic
 - [ ] Spike: on one real device, find which profiles a manual build needs (host, the `.xctrunner`
   app, or one wildcard), confirm the `.xctrunner` identifier, and confirm the staged-manifest and
   generated-spec approach builds.
-- [ ] Signing file model, validation, and lookup order, with tests.
+- [ ] Signing file model, validation (prefix or explicit `bundleIds`), and lookup order, with tests.
 - [ ] Source staging: `make runner-source`, the `artifacts` entry, and the staged manifest.
 - [ ] Project spec override, build command construction, preflight, and cache, with tests.
 - [ ] `bajutsu runner build --device` command.
