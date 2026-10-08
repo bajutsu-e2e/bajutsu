@@ -3405,9 +3405,8 @@ def _assert_read_only(simctl_calls: list[list[str]]) -> None:
     assert all(c[4:6] == ["launchctl", "list"] for c in simctl_calls if c[2:3] == ["spawn"])
 
 
-# Every per-scenario input the cold path honors; the attach start must ignore each of them.
-_RICH_PRE = Preconditions(erase=False, deeplink="app://x", locale="ja_JP")
-_PERMISSIONS = {"camera": "grant"}
+# A scenario locale the cold path pins through `spawn … defaults write`; the attach start must not.
+_RICH_PRE = Preconditions(erase=False, locale="ja_JP")
 
 
 def _attach_env(run: simctl.RunFn, udid: str = "UDID") -> XcuitestEnvironment:
@@ -3422,7 +3421,7 @@ def test_attach_drives_the_running_app_without_touching_the_device(
     popen_argvs, popen_envs, simctl_calls, run = _attach_toolchain(monkeypatch)
     env = _attach_env(run)
     eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
-    env.start(eff, _RICH_PRE, permissions=_PERMISSIONS)
+    env.start(eff, _RICH_PRE)
 
     assert env.attach_outcome == "attached"
     assert len(popen_argvs) == 1
@@ -3440,17 +3439,13 @@ def test_attach_launches_an_installed_app_that_is_not_running(
 ) -> None:
     popen_argvs, popen_envs, simctl_calls, run = _attach_toolchain(monkeypatch, running=False)
     env = _attach_env(run)
-    env.start(
-        _sim_eff(test_runner=str(_write_runner(tmp_path))), _RICH_PRE, permissions=_PERMISSIONS
-    )
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), _RICH_PRE)
 
     assert env.attach_outcome == "launched"
     assert len(popen_argvs) == 1
     # The runner launches it, with the target's launch env/args, and still erases nothing.
     assert "BAJUTSU_ATTACH" not in popen_envs[0]
     assert "BAJUTSU_LAUNCH_ARGS" in popen_envs[0]
-    # The runner opens a forwarded deeplink after launch; the fallback forwards none.
-    assert "BAJUTSU_DEEPLINK" not in popen_envs[0]
     _assert_read_only(simctl_calls)
 
 
@@ -3529,6 +3524,30 @@ def test_attach_never_boots_a_device(
         env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions(erase=False))
     assert popen_argvs == []
     assert "boot" not in _verbs(simctl_calls)
+
+
+@pytest.mark.parametrize(
+    ("pre", "permissions", "message"),
+    [
+        (Preconditions(erase=False, deeplink="app://x"), None, "never opens a deeplink"),
+        (Preconditions(erase=False), {"camera": "grant"}, "never changes the permissions"),
+    ],
+)
+def test_attach_refuses_inputs_it_cannot_apply(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    pre: Preconditions,
+    permissions: dict[str, str] | None,
+    message: str,
+) -> None:
+    # Dropping either in silence would leave a caller running against an app whose deeplink never
+    # opened or whose grant never landed.
+    popen_argvs, _, _, run = _attach_toolchain(monkeypatch)
+    with pytest.raises(simctl.DeviceError, match=message):
+        _attach_env(run).start(
+            _sim_eff(test_runner=str(_write_runner(tmp_path))), pre, permissions=permissions
+        )
+    assert popen_argvs == []
 
 
 def test_attach_refuses_erase_and_a_real_device(

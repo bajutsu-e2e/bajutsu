@@ -88,8 +88,15 @@ def test_app_container_exists_is_false_only_for_an_absent_container() -> None:
     def absent(args: list[str], e: Mapping[str, str] | None = None) -> str:
         raise subprocess.CalledProcessError(2, args, stderr="No such file or directory")
 
+    def shut_down(args: list[str], e: Mapping[str, str] | None = None) -> str:
+        raise subprocess.CalledProcessError(149, args, stderr="Unable to lookup in current state")
+
     assert simctl.Env("U", run=lambda a, e: "/path/to.app").app_container_exists("com.x") is True
     assert simctl.Env("U", run=absent).app_container_exists("com.x") is False
+    # Any other simctl failure is the device's, not a missing app, and is not reported as one.
+    with pytest.raises(subprocess.CalledProcessError):
+        simctl.Env("U", run=shut_down).app_container_exists("com.x")
+    assert simctl.Env("U", run=shut_down).is_installed("com.x") is False  # the lenient reading
     # Unlike `is_installed`, a wedged device is not reported as "not installed" (BE-0455).
     with pytest.raises(simctl.DeviceTimeout):
         simctl.Env("U", run=_timing_out).app_container_exists("com.x")

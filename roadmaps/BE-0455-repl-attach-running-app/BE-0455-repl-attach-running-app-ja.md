@@ -119,7 +119,7 @@ attach の起動は、アプリを terminate して再起動するウォーム�
   は変わらず、`activate()` は不要でした。ランナーには `BAJUTSU_ATTACH` モード
   （`RunnerServer.forwardedAttach`）を加えました。このモードは `launch()` とウォッチドッグを飛ばし、アプリが
   `runningForeground` でなければサーバーを開く前に失敗します。そのため、バックグラウンドのアプリや、判定の
-  後で終了したアプリは、空のツリーを返さずに大きく失敗します。`simctl.Env` には `is_app_running` と
+  後で終了したアプリは、空のツリーを返さずに明示的なエラーで終了します。`simctl.Env` には `is_app_running` と
   `app_container_exists` を加えました。`XcuitestEnvironment` には `request_attach` と attach の起動経路を
   加えました。この経路は boot 済みかを確かめ、判定し、install 済みかを確かめたうえで、回復処理なしで 1 回だけ
   spawn します。あわせて `release_runner` も加えました。`launch_driver` には `skip_readiness` を加え、readiness の

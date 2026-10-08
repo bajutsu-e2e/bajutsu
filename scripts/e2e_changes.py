@@ -288,6 +288,9 @@ _LANE_PATHS: dict[str, str] = {
         # rather than swept into the shared core: only the iOS and Android lanes boot real devices, so
         # the web lane never invokes it and must not re-run its whole fleet when it changes.
         r"|scripts/assert_pool_isolation\.py$"
+        # The attach end-to-end case this lane's `actuation` job runs (BE-0455): only the iOS lane
+        # invokes it, so a change to it must fire this lane and no other.
+        r"|scripts/repl_attach_e2e\.sh$"
         r"|BajutsuKit/"
         # The SwiftPM manifest lives at the repo root (not under BajutsuKit/) so it resolves via
         # `.package(url:)` from another repo, which SPM's git-based resolution requires — but it's

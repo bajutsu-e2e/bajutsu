@@ -39,6 +39,8 @@ def launch_driver(
 ) -> tuple[base.Driver, ReadinessResult]:
     """Bring a device up, launch the app under config + scenario env, and return a ready driver.
 
+    With `skip_readiness` the driver is returned as soon as the environment has started, unverified.
+
     The iOS backend runs the simctl lifecycle (erase → boot → install → launch). simctl `erase`
     needs a shut-down device, so an erase run shuts down first (shutdown → erase → boot); any simctl
     step that fails (e.g. the app isn't installed) is surfaced as a clean `simctl.DeviceError` so the
@@ -73,8 +75,8 @@ def launch_driver(
             waiting for the launch screen `readyWhen` names would only time out.
 
     Returns:
-        The driver bound to the launched app (already polled until its UI has rendered), paired with
-        the readiness gate's outcome (which signal declared it ready, or that readiness timed out) —
+        The driver bound to the launched app (already polled until its UI has rendered, unless
+        `skip_readiness` skipped that poll), paired with the readiness gate's outcome (which signal declared it ready, or that readiness timed out) —
         carried so a first-wait timeout can be diagnosed from artifacts (BE-0231).
 
     Raises:

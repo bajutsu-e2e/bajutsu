@@ -64,6 +64,9 @@ _PBCOPY_MAX_ATTEMPTS = 5
 _PBCOPY_RETRY_DELAY_S = 1.5
 _PBCOPY_TIMEOUT_S = 30.0
 _PBCOPY_TIMEOUT_EXIT = 60  # simctl's ETIMEDOUT — the one transient exit worth retrying
+# `simctl get_app_container` on an app the device does not have: ENOENT. Measured on Xcode 26.6; an
+# unknown device exits 148 and a shut-down one 149, and neither is an absent app (BE-0455).
+_ABSENT_CONTAINER_EXIT = 2
 
 
 class Env:
@@ -149,28 +152,31 @@ class Env:
         return True
 
     def is_installed(self, bundle_id: str) -> bool:
+        # The lenient reading of the one probe: any failure, a hung device included, is "not
+        # installed", which the cold path answers by installing.
         try:
-            self._run(get_app_container_cmd(self.udid, bundle_id), None)
+            return self.app_container_exists(bundle_id)
         except DeviceTimeout as exc:
             _probe_timed_out(exc, "not installed")
             return False
         except subprocess.CalledProcessError:
             return False
-        else:
-            return True
 
     def app_container_exists(self, bundle_id: str) -> bool:
         """Whether `bundle_id` is installed, failing loudly on a device that cannot answer (BE-0455).
 
-        The strict sibling of `is_installed`: only an absent container (`CalledProcessError`) reads
-        as "not installed". A `DeviceTimeout` propagates, because `repl --attach` turns `False` into
-        an "install it first" error, and telling an operator to install an app on a wedged Simulator
-        would send them after the wrong fault.
+        The strict sibling of `is_installed`: only an absent container reads as "not installed".
+        simctl reports that one as `ENOENT` (exit 2); an unknown or shut-down device, or an
+        unavailable CoreSimulator, exits otherwise and propagates, as does a `DeviceTimeout`.
+        `repl --attach` turns `False` into an "install it first" error, and telling an operator to
+        install an app on a wedged Simulator would send them after the wrong fault.
         """
         try:
             self._run(get_app_container_cmd(self.udid, bundle_id), None)
-        except subprocess.CalledProcessError:
-            return False
+        except subprocess.CalledProcessError as exc:
+            if exc.returncode == _ABSENT_CONTAINER_EXIT:
+                return False
+            raise
         return True
 
     def is_app_running(self, bundle_id: str) -> bool:

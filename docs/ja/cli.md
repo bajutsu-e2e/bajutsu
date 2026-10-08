@@ -545,7 +545,7 @@ bajutsu repl --target <name> [options]
 | `--erase / --no-erase` | live 経路以外は erase | 起動前に erase（アプリはインストール済みである必要）。live の `--udid https://…` 経路は erase を受け付けないため、その経路の既定は off になり、そこで明示的に `--erase` を指定すると CLI エラーで終了します |
 | `--headed / --no-headed` | アプリの `headless` | web backend: ヘッドレスではなく目に見える（低速再生の）ブラウザを調べます。省略時はアプリの `headless` 設定に従います |
 | `--browser` | アプリの `browser`（既定 chromium） | web backend: 調べる対象の Playwright レンダリングエンジン。`chromium` / `firefox` / `webkit` から選びます。省略時はターゲットの `browser` config に従います |
-| `--attach` | off | ローカルの iOS Simulator（`xcuitest`）専用です。起動中の Simulator で動いているアプリに、そのままの状態で接続します。erase、インストール、再起動はしません（後述の「起動中のアプリへの接続」を参照） |
+| `--attach` | off | ローカルの iOS Simulator（`xcuitest`）専用です。起動済みの Simulator で動いているアプリに、そのままの状態で接続します。erase、インストール、再起動はしません（後述の「起動中のアプリへの接続」を参照） |
 | `--config` | `bajutsu.config.yaml` | config |
 
 アプリが立ち上がると、シェルは `bajutsu>` のプロンプトを出します。
@@ -647,7 +647,7 @@ bajutsu repl --target <name> [options]
 
 ### 起動中のアプリへの接続
 
-`--attach` を付けると、起動中の Simulator 上のアプリに、操作者が残したままの状態でシェルを接続します
+`--attach` を付けると、起動済みの Simulator 上のアプリに、操作者が残したままの状態でシェルを接続します
 （[BE-0455](../../roadmaps/BE-0455-repl-attach-running-app/BE-0455-repl-attach-running-app-ja.md)）。
 フラグなしのシェルは、まずアプリを起動します。その起動は、動いているプロセスを新しいプロセスに置き換えます。
 その結果、操作者がたどり着いた画面、ログイン状態、Xcode から接続したデバッガが失われます。

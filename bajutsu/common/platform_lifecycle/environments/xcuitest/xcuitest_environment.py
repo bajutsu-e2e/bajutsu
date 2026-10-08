@@ -327,7 +327,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self._replacement_requested = False
 
         if self._attach:
-            return self._start_attached(eff, pre, device_type, extra_env)
+            return self._start_attached(eff, pre, device_type, extra_env, permissions)
 
         if device_type == "device":
             # A real device is not managed through simctl: it is already powered on, its build is
@@ -411,6 +411,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         pre: Preconditions,
         device_type: str,
         extra_env: Mapping[str, str] | None,
+        permissions: Mapping[str, str] | None,
     ) -> base.Driver:
         """Bring the runner up over the app the operator left running, or launch it bare (BE-0455)."""
         # The CLI rejects these combinations before any device is touched; repeated here so no other
@@ -419,6 +420,14 @@ class XcuitestEnvironment(_DeviceEnvironment):
             raise simctl.DeviceError("attach is only supported on the local iOS Simulator")
         if pre.erase:
             raise simctl.DeviceError("attach never erases the device it attaches to")
+        # Neither is applied on attach, so a caller asking for one is refused rather than left to run
+        # against an app whose deeplink never opened or whose grant never landed.
+        if pre.deeplink is not None:
+            raise simctl.DeviceError("attach never opens a deeplink in the app it attaches to")
+        if permissions:
+            raise simctl.DeviceError(
+                "attach never changes the permissions of the app it attaches to"
+            )
         # Attach never boots a device, because booting is device-wide. The listing is read first so a
         # wedged CoreSimulator is not reported as "nothing booted": `resolve_udid` leaves the `booted`
         # alias unresolved on both, and only a listing that did answer tells them apart.
