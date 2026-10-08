@@ -136,11 +136,12 @@ the run, poll it to completion, download the artifacts, and print Bajutsu's verd
 exit code is `0` only when every scenario passed.
 
 For the iOS showcase, pass `--platform ios` to select the XCUITest backend and the iOS app upload
-type. Build the device-signed `.ipa` and runner first (BE-0288):
+type. Build the device-signed `.ipa` and runner first (BE-0288). The runner build reads your
+[signing file](ios-device-cloud.md#the-signing-file) (BE-0456):
 
 ```bash
 make -C demos/showcase swiftui-ipa-device    DEVELOPMENT_TEAM=<your-10-char-team-id>
-make -C demos/showcase runner-build-device   DEVELOPMENT_TEAM=<your-10-char-team-id>
+make -C demos/showcase runner-build-device
 ```
 
 Then run the submitter (dry-run with `--package-only`; drop it and add `--project-arn` /
@@ -332,18 +333,21 @@ iOS route end to end therefore needs both an **Apple Developer account** — to 
 unsigned and runs anywhere, with no Apple or AWS account). Running it is a manual, human procedure:
 
 1. Create a Device Farm project and a device pool of iOS devices in `us-west-2`; note their ARNs.
-2. Build the two device-signed artifacts, passing your 10-character Apple Team ID (with that team
-   signed into Xcode, so `-allowProvisioningUpdates` can mint the development profile):
+2. Build the two device-signed artifacts. The app takes your 10-character Apple Team ID. Sign that
+   team into Xcode, so `-allowProvisioningUpdates` can mint the development profile. The runner
+   reads your [signing file](ios-device-cloud.md#the-signing-file) instead (BE-0456). Pass
+   `SIGNING=<path>` to name one explicitly:
 
    ```bash
    make -C demos/showcase swiftui-ipa-device    DEVELOPMENT_TEAM=<your-10-char-team-id>
-   make -C demos/showcase runner-build-device   DEVELOPMENT_TEAM=<your-10-char-team-id>
+   make -C demos/showcase runner-build-device
    ```
 
    The first emits the app `.ipa` at `demos/showcase/ios/swiftui/build/export-device/BajutsuShowcaseSwiftUI.ipa`;
    the second emits the device-signed `BajutsuRunner.xctestrun` under
-   `BajutsuKit/Runner/build/dd-device/Build/Products`. A device build with `DEVELOPMENT_TEAM` unset
-   fails fast with a clear message rather than producing an unsigned artifact.
+   `BajutsuKit/Runner/build/dd-device/Build/Products`. An app build with `DEVELOPMENT_TEAM` unset,
+   or a runner build with no signing file, fails fast with a clear message rather than producing an
+   unsigned artifact.
 3. Run the submitter against one scenario, e.g. `scenarios/firstlook.yaml`, with the iOS platform
    selected — the same `--platform ios` command from [Using the submitter](#using-the-submitter)
    above, with its `--package-only` dry-run flag dropped and `--project-arn <project-arn>

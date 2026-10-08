@@ -90,6 +90,12 @@ def _group_by_claude_use(app: typer.Typer) -> None:
         cap = capabilities.by_command(name)
         if cap is not None:
             info.rich_help_panel = _CLAUDE_USING_PANEL if cap.uses_claude else _CLAUDE_FREE_PANEL
+    # A command group (`bajutsu runner …`) is registered apart from plain commands but is one entry in
+    # `--help` all the same, so it is classified by the same table.
+    for group in app.registered_groups:
+        cap = capabilities.by_command(group.name or "")
+        if cap is not None:
+            group.rich_help_panel = _CLAUDE_USING_PANEL if cap.uses_claude else _CLAUDE_FREE_PANEL
 
 
 @cache

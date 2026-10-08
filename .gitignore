@@ -65,6 +65,9 @@ BajutsuKit/Runner/*.xcodeproj/
 # at release time and force-included via pyproject `artifacts`; the compiled products are never
 # committed (regenerated per Xcode/SDK), so ignore them here.
 bajutsu/_xcuitest_runner/
+# The runner sources a wheel ships for `bajutsu runner build --device` (BE-0456), copied by
+# `make runner-source`; the originals are already tracked under BajutsuKit/.
+bajutsu/_runner_source/
 .claude/launch.json
 .claude/worktrees/
 DerivedData/

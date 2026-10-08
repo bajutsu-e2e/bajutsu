@@ -115,6 +115,18 @@ into the action (`${secrets.X}`), and **masks the literal value everywhere it wo
 evidence** ([evidence](evidence.md#masking-redact)). The scenario source keeps the `${secrets.X}`
 token, never the value.
 
+### Device runner signing (outside the config, BE-0456)
+
+A real iOS device needs an XCUITest runner signed by the user's own Apple Developer team. The target
+config carries none of that signing by design. The config travels with the repository, so a team ID
+written there would reach every other user. A per-user signing file holds those settings instead,
+outside the repository.
+
+`bajutsu runner build --device` reads that file. A target with `xcuitest.deviceType: device` and no
+`xcuitest.testRunner` then resolves to the build.
+[iOS on a real device](ios-device-cloud.md#the-signing-file) gives the file format and its lookup
+order.
+
 ### AI provider (`ai:`, BE-0047)
 
 The AI paths — `record`, `crawl`, and `triage --ai` — reach the model through

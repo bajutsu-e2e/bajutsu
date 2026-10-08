@@ -28,6 +28,8 @@ from bajutsu.common.platform_lifecycle.environments import _bundled_runner, xcui
 
 # The spawn reads `bundled_products_dir` from `_functions`'s own globals since BE-0411 split
 # the package, so patching the package's re-export would not reach it.
+from bajutsu.common.platform_lifecycle.environments.device_runner.errors import DeviceRunnerError
+from bajutsu.common.platform_lifecycle.environments.device_runner.signing import SIGNING_FILE_ENV
 from bajutsu.common.platform_lifecycle.environments.xcuitest import _functions as xcuitest_impl
 
 
@@ -144,10 +146,15 @@ def test_explicit_test_runner_never_checks_bundle_freshness(
     assert xcuitest._resolve_runner(cfg, "simulator") == runner
 
 
+def _no_device_build() -> Path:
+    raise DeviceRunnerError("no device runner is built; run `bajutsu runner build --device`")
+
+
 def test_device_tier_never_checks_bundle_freshness(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(xcuitest_impl, "ensure_bundled_runner_fresh", _boom)
+    monkeypatch.setattr(xcuitest_impl, "resolve_device_runner", _no_device_build)
     cfg = XcuitestConfig.model_validate({"deviceType": "device"})
-    with pytest.raises(simctl.DeviceError, match="deviceType: device requires"):
+    with pytest.raises(simctl.DeviceError, match="bajutsu runner build --device"):
         xcuitest._resolve_runner(cfg, "device")
 
 
@@ -163,9 +170,30 @@ def test_device_without_a_test_runner_never_uses_the_bundle(
     # A real device must not silently take a Simulator runner it cannot install (BE-0288).
     bundle = _products(tmp_path / "bundle")
     monkeypatch.setattr(xcuitest_impl, "bundled_products_dir", lambda: bundle)
+    monkeypatch.setattr(xcuitest_impl, "resolve_device_runner", _no_device_build)
     cfg = XcuitestConfig.model_validate({"deviceType": "device"})
-    with pytest.raises(simctl.DeviceError, match="deviceType: device requires"):
+    with pytest.raises(simctl.DeviceError, match="bajutsu runner build --device"):
         xcuitest._resolve_runner(cfg, "device")
+
+
+def test_device_without_a_test_runner_uses_the_signed_device_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # BE-0456: the cached per-user build fills the gap an explicit testRunner used to.
+    built = tmp_path / "Products" / "BajutsuRunner.xctestrun"
+    monkeypatch.setattr(xcuitest_impl, "resolve_device_runner", lambda: built)
+    cfg = XcuitestConfig.model_validate({"deviceType": "device"})
+    assert xcuitest._resolve_runner(cfg, "device") == built
+
+
+def test_an_explicit_test_runner_wins_over_the_device_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(xcuitest_impl, "resolve_device_runner", _no_device_build)
+    explicit = tmp_path / "Signed.xctestrun"
+    explicit.write_bytes(b"")
+    cfg = XcuitestConfig.model_validate({"deviceType": "device", "testRunner": str(explicit)})
+    assert xcuitest._resolve_runner(cfg, "device") == explicit
 
 
 # --- materialize-to-cache: copy once, reuse a warm, version-keyed cache --- #
@@ -362,7 +390,7 @@ def test_bundled_products_dir_found_when_staged(
 
 
 def _write_bajutsukit_fixture(root: Path) -> dict[str, bytes]:
-    """Write a minimal BajutsuKit tree covering every `_HASH_SOURCE_PATHS` entry.
+    """Write a minimal BajutsuKit tree covering every `HASH_SOURCE_PATHS` entry.
 
     Returns the relative-path -> content map, so a test can flip one entry and know exactly which
     hashed line that changes.
@@ -416,7 +444,7 @@ def test_source_hash_ignores_files_outside_the_hashed_paths(tmp_path: Path) -> N
 
 
 def test_source_hash_raises_on_a_missing_hashed_path(tmp_path: Path) -> None:
-    # A `_HASH_SOURCE_PATHS` entry that moves or is renamed (this project's own history hit exactly
+    # A `HASH_SOURCE_PATHS` entry that moves or is renamed (this project's own history hit exactly
     # this with `BajutsuKit/Package.swift` -> `Package.swift`) must fail loudly rather than silently
     # shrink the hashed set — a quietly smaller input would stop noticing edits under the moved path.
     contents = _write_bajutsukit_fixture(tmp_path)
@@ -672,15 +700,47 @@ def test_runner_source_reports_no_bundle_present(monkeypatch: pytest.MonkeyPatch
     )
 
 
-def test_runner_source_reports_device_requires_test_runner(
+def test_runner_source_reports_a_device_without_a_signing_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(
         xcuitest_impl, "bundled_products_dir", lambda: _products(tmp_path / "bundle")
     )
+    monkeypatch.delenv(SIGNING_FILE_ENV, raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    source = xcuitest.runner_source(None, "device")
+    assert source.startswith("none: xcuitest.deviceType: device needs xcuitest.testRunner")
+    assert str(tmp_path / "xdg" / "bajutsu" / "signing.yaml") in source
+
+
+def test_runner_source_reports_the_device_build_signing_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    signing = tmp_path / "signing.yaml"
+    signing.write_text("bundleIdPrefix: com.acme\nteamId: T\n")
+    monkeypatch.setenv(SIGNING_FILE_ENV, str(signing))
     assert xcuitest.runner_source(None, "device") == (
-        "none: xcuitest.deviceType: device requires an explicit testRunner"
+        "device build: would use the signed runner `bajutsu runner build --device` caches "
+        f"(signing file {signing}; not validated here)"
     )
+
+
+def test_an_invalid_signing_file_fails_a_device_run_loudly(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    signing = tmp_path / "signing.yaml"
+    signing.write_text("teamId: T\n")
+    monkeypatch.setenv(SIGNING_FILE_ENV, str(signing))
+    cfg = XcuitestConfig.model_validate({"deviceType": "device"})
+    with pytest.raises(simctl.DeviceError, match="invalid signing file"):
+        xcuitest._resolve_runner(cfg, "device")
+
+
+def test_runner_source_reports_a_signing_file_env_pointing_nowhere(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv(SIGNING_FILE_ENV, str(tmp_path / "missing.yaml"))
+    assert xcuitest.runner_source(None, "device").startswith("none: signing file not found")
 
 
 def test_runner_source_reports_an_existing_test_runner(tmp_path: Path) -> None:

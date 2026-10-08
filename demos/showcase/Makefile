@@ -75,6 +75,8 @@ runner-build:
 # parameterized on an Apple Developer team, never hardcoded: pass DEVELOPMENT_TEAM=<10-char Team ID>
 # with that team signed into Xcode, so -allowProvisioningUpdates can mint the development profile.
 # Device Farm re-signs the uploaded .ipa with its own profile, so a development export is enough.
+# The runner is the exception: `runner-build-device` signs from the per-user signing file instead
+# (BE-0456), because its bundle identifiers must belong to the signing team too.
 # The Simulator recipes above are untouched — device signing is turned on only here, via command-line
 # build settings, so `make check` and the Simulator lanes stay unsigned. See docs/ios-device-cloud.md
 # and demos/showcase/devicefarm/showcase.devicefarm.ios.config.yaml.
@@ -108,19 +110,18 @@ swiftui-ipa-device: swiftui-archive-device
 		-exportPath build/export-device -exportOptionsPlist build/ExportOptions.plist -allowProvisioningUpdates
 	@echo "device .ipa: $(SWIFTUI_EXPORT)/BajutsuShowcaseSwiftUI.ipa"
 
-# The device XCUITest runner (signed .xctestrun). The runner project defaults CODE_SIGNING_ALLOWED=NO
-# for the Simulator; a real device requires signing, so override it here only. A separate derivedData
-# path keeps the device .xctestrun from colliding with the Simulator one under the glob below. The
-# .xctestrun's __TESTROOT__ points beside the built products, so package the whole Products dir.
-# Stale per-SDK .xctestrun files are deleted before the build for the same reason as runner-build.
+# The device XCUITest runner (signed .xctestrun), built by `bajutsu runner build --device` (BE-0456)
+# from the per-user signing file: bundle identifiers, team, and automatic or manual signing all come
+# from it, so DEVELOPMENT_TEAM no longer signs the runner. SIGNING=<path> picks a file explicitly;
+# unset, the command falls through to $$BAJUTSU_SIGNING_FILE and ~/.config/bajutsu/signing.yaml.
+# The build lands in Bajutsu's cache and --out copies its whole Products dir to the path the Device
+# Farm runbook packages, since the .xctestrun's __TESTROOT__ points beside the built products.
 runner-build-device:
-	$(require_team)
-	rm -f $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner_*.xctestrun
-	cd $(RUNNER) && xcodegen generate
-	cd $(RUNNER) && xcodebuild build-for-testing -project BajutsuRunner.xcodeproj -scheme BajutsuRunner \
-		-destination 'generic/platform=iOS' -derivedDataPath build/dd-device -skipPackagePluginValidation \
-		-allowProvisioningUpdates CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=$(DEVELOPMENT_TEAM)
-	cp $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner_*.xctestrun $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner.xctestrun
+	@if [ -n "$(DEVELOPMENT_TEAM)" ] && [ -z "$(SIGNING)" ]; then \
+		echo "note: DEVELOPMENT_TEAM does not sign the runner; it reads the signing file (docs/ios-device-cloud.md)"; \
+	fi
+	rm -rf $(RUNNER_DEVICE_PRODUCTS)
+	cd $(ROOT) && uv run bajutsu runner build --device --out $(RUNNER_DEVICE_PRODUCTS) $(if $(SIGNING),--signing $(SIGNING))
 	@echo "device .xctestrun: $(RUNNER_DEVICE_PRODUCTS)/BajutsuRunner.xctestrun (package its Products dir alongside)"
 
 # Run the shared id-based scenarios against the a11y apps on a booted Simulator. `--backend ios`

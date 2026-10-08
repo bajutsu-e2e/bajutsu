@@ -51,9 +51,27 @@ def test_every_command_lands_in_a_claude_help_panel() -> None:
     # independently of the click name, so guard end-to-end that every command got one of the two
     # boundary panels — an unassigned one keeps Typer's default placeholder (not a str), which would
     # leave it ungrouped rather than fail any other test.
-    panels = {info.rich_help_panel for info in app.registered_commands}
+    panels = {info.rich_help_panel for info in app.registered_commands} | {
+        group.rich_help_panel for group in app.registered_groups
+    }
     assert all(isinstance(p, str) for p in panels), "a command was left without a help panel"
     assert len(panels) == 2, f"expected exactly the two Claude-boundary panels, got {panels}"
+
+
+def test_an_unclassified_group_keeps_typers_default_panel() -> None:
+    # Grouping only ever assigns a panel from `capabilities`; an unknown group is left untouched,
+    # which `test_classification_matches_the_registered_command_set_exactly` then catches.
+    from bajutsu.cli import _group_by_claude_use
+
+    scratch = typer.Typer()
+    scratch.add_typer(typer.Typer(), name="not-a-command")
+    _group_by_claude_use(scratch)
+    assert not isinstance(scratch.registered_groups[0].rich_help_panel, str)
+
+
+def test_the_runner_group_lands_in_the_claude_free_panel() -> None:
+    panels = {group.name: group.rich_help_panel for group in app.registered_groups}
+    assert panels["runner"] == "Claude-free (zero-config)"
 
 
 def test_flag_gated_commands_name_the_flag_that_reaches_claude() -> None:

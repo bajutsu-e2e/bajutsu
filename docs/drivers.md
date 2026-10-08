@@ -180,8 +180,8 @@ than resolving through frame-center coordinates. Needs Xcode's `xcodebuild`.
 > no app-side cooperation. A Simulator run needs no runner config at all: when a target names neither
 > `xcuitest.testRunner` nor `xcuitest.build`, it resolves to the Simulator runner bundled in the wheel
 > as package data (BE-0292) — an explicit `testRunner` or `build` still overrides that default, and
-> `deviceType: device` still requires an explicit signed runner, since Bajutsu cannot ship one signed
-> for the operator's team. The backend is **validated on-device** (iPhone 17 Pro, recent iOS) via
+> `deviceType: device` resolves to the runner the user built and signed with `bajutsu runner build
+> --device` (BE-0456), since Bajutsu cannot ship one signed for the operator's team. The backend is **validated on-device** (iPhone 17 Pro, recent iOS) via
 > `make -C demos/showcase run-swiftui` + the `ios-e2e.yml` CI workflow. The XCUITest backend needs no
 > pip extra — Xcode supplies `xcodebuild`.
 

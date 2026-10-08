@@ -27,6 +27,84 @@ targets:
 
 実機ではさらに、`simctl` が行うシミュレータの起動準備を省きます。この省略により、シミュレータの経路が当然としている 3 つの前提が落ちます。デバイスの消去、ローカルの `appPath` からのアプリのインストール、そして権限の事前付与です。実機でこれらのいずれかを必要とするシナリオは、黙って何もしないのではなく、はっきりと失敗します。後述の Device Farm ルートでは、代わりにクラウドがアプリをインストールします。この同じキーはローカル接続の iPhone や iPad も駆動するので、実機対応の作業は、クラウドが関わる前から単体で役立ちます。
 
+## 署名済みの実機用 runner
+
+実機にインストールできる XCUITest runner は、その実機が信頼するチームで署名したものに限られます。そのため Bajutsu は、Simulator 用 runner と違って、実機用 runner をビルド済みで同梱できません。各ユーザーは自分の Apple Developer アカウントで、`bajutsu runner build --device` を使って実機用 runner をビルドします。ビルドが必要になるのは、後述のビルドの入力の組み合わせごとに 1 回です。以後、`deviceType: device` を指定して `xcuitest.testRunner` を指定しないターゲットは、そのビルドに解決します。ターゲットの設定には、特定のユーザーに固有の値が入りません。
+
+### 署名ファイル
+
+署名はターゲットではなくユーザーに属します。runner は汎用で、ターゲットの設定はリポジトリを通じて共有されます。設定に Team ID を書くと、その値がほかのすべてのユーザーに届いてしまいます。そこで署名の設定は、リポジトリの外に置くユーザーごとのファイルに書きます。Bajutsu は次の順にファイルを探し、最初に見つかったものを使います。
+
+1. `bajutsu runner build` の `--signing <path>`（このフラグはビルドコマンドにしかありません）
+2. 環境変数 `BAJUTSU_SIGNING_FILE`
+3. `$XDG_CONFIG_HOME/bajutsu/signing.yaml`（未設定なら `~/.config/bajutsu/signing.yaml`）
+
+実行時に参照するのは 2 と 3 だけです。`--signing` でビルドしたユーザーは、実行時に `BAJUTSU_SIGNING_FILE` で同じファイルを指定する必要があります。もう 1 つの方法は、`--out` で成果物をコピーし、そのパスを `testRunner` に指定することです。
+
+```yaml
+bundleIdPrefix: com.acme           # host app = com.acme.bajutsu.runner-host,
+                                   # UI-test bundle = com.acme.bajutsu.runner-uitests
+# bundleIds:                       # bundleIdPrefix の代わりに、2 つの識別子を自分で指定する
+#   host: com.acme.e2e.runner-host
+#   uitests: com.acme.e2e.runner-tests
+teamId: ABCDE12345                 # 必須
+signing: automatic                 # automatic（既定）または manual
+# manual:                          # signing: manual のとき必須（automatic では無視）
+#   identity: "Apple Development: Jane Doe (ABCDE12345)"
+#   profile: "Acme Bajutsu Wildcard"         # すべての識別子を覆う 1 つのプロファイル、または
+#   profiles:                                # 署名する成果物ごとのプロファイル
+#     host: "Acme Bajutsu Host"
+#     runner: "Acme Bajutsu Runner"          # UI テストバンドルの .xctrunner アプリ
+```
+
+このファイルには秘密情報が入りません。Team ID、証明書名、プロファイル名は、鍵とプロファイルを指す名前にすぎません。鍵とプロファイルそのものは、キーチェインと `~/Library/MobileDevice/Provisioning Profiles/` に残ります。
+
+| キー | 意味 |
+|---|---|
+| `bundleIdPrefix` | runner の 2 つの識別子を導出します。このキーか `bundleIds` のどちらか一方だけを指定します。 |
+| `bundleIds.host`、`bundleIds.uitests` | 2 つの識別子を直接指定します。App ID とプロファイルを別の名前ですでに持っているアカウント向けです。2 つの値は異なっている必要があります。 |
+| `teamId` | 2 つの成果物に署名する Apple Developer のチームです。 |
+| `signing` | `automatic` では Xcode がプロファイルを発行します。`manual` では下の証明書とプロファイルを固定します。 |
+| `manual.identity` | コード署名の ID です。名前か証明書のハッシュで指定します。 |
+| `manual.profile` / `manual.profiles` | すべての成果物に共通の 1 つのプロファイルか、runner のホストアプリ（`profiles.host`）と `.xctrunner` アプリ（`profiles.runner`）それぞれのプロファイルです。どちらか一方の形で指定します。期限内のプロファイルが同じ名前で 2 つ以上あるときは、プロファイルの `UUID` フィールドの値で指定します。 |
+
+UI テストバンドルの `.xctrunner` アプリは、`<uitests の識別子>.xctrunner` という識別子を持ちます。成果物ごとのプロファイルで手動署名する場合は、この識別子のプロファイルも必要です。
+
+runner の識別子は、テスト対象のアプリの識別子と別にしてください。アプリと同じ識別子の runner をインストールすると、アプリが上書きされます。ビルドはターゲットの情報を持たないため、Bajutsu はこの衝突を検出できません。
+
+### ビルド
+
+```bash
+bajutsu runner build --device [--signing PATH] [--out DIR] [--force]
+```
+
+コマンドは次の 3 段階で動きます。
+
+1. 前提条件を確認します。対象は macOS、`xcodebuild`、`xcodegen` です。手動署名では、署名 ID と指定したすべてのプロファイルも確認します。足りないものは、それぞれ対処法と一緒に表示します。
+2. runner のソースを作業用ディレクトリにコピーし、そのコピーを署名ファイルに合わせて書き換えます。チェックアウトには手を加えません。wheel でインストールした環境では、wheel に同梱したソースのコピーを使います。
+3. 作業用のコピーを `xcodebuild build-for-testing` でビルドし、できあがった `BajutsuRunner.xctestrun` のパスを表示します。
+
+成果物は Bajutsu のキャッシュの `xcuitest-runner-device/<key>/Products/` に置きます。キーには、署名済みの成果物を変えるすべての入力が入ります。
+
+- runner のソース
+- 署名の設定（解決後の 2 つの識別子を含む）
+- Xcode のビルドバージョン
+- 手動署名では、証明書のハッシュと各プロファイルファイルのダイジェスト
+
+このため、同じ名前のまま更新した証明書やプロファイルは、新しいキーになります。入力が変わらないビルドはキャッシュ済みの成果物を再利用し、`--force` を付けると再利用せずにビルドし直します。`--out DIR` は、`Products` ディレクトリ全体を `DIR` にもコピーします。Device Farm へのパッケージングにはこのコピーが必要です。`.xctestrun` は、自身の隣にあるテストバンドルを参照するためです。
+
+### 実行時の動作
+
+`deviceType: device` を指定し `testRunner` を指定しない実行は、署名ファイルを読んで同じキーを計算し、キャッシュ済みの `.xctestrun` を使います。明示した `testRunner` は、引き続きキャッシュより優先します。
+
+実行中に runner をビルドすることはありません。署名付きのビルドは時間がかかり、キーチェインのプロンプトを出すことがあり、Apple に識別子を登録することもあるからです。キャッシュが使えない場合は、すぐに失敗して対処法を示します。
+
+- **署名ファイルがない**：エラーに 2 つの探索場所を示します。
+- **現在の入力に対応するビルドがない**：エラーに `bajutsu runner build --device` を示します。
+- **キャッシュ済みのビルドのプロファイルが期限切れ**：エラーに `bajutsu runner build --device --force` を示します。
+
+`bajutsu doctor` は、実機ターゲットが使う署名ファイルを表示します。この表示のためにビルドやキーの計算はしません。
+
 ## デバイスクラウドへの 2 つのルート
 
 どちらのルートも、上で述べた実機版の XCUITest の核を共有します。両者が異なるのは、デバイスをどう予約し、実行がそこへどう到達するかです。
@@ -80,6 +158,8 @@ bajutsu run --target showcase-swiftui-live --config demos/showcase/live/showcase
 - [AWS Device Farm](devicefarm.md) — バッチルート。サブミッター、テスト仕様、手動の実証。
 - [ドライバー](drivers.md) — `Driver` インターフェースと、その背後のバックエンド（XCUITest を含む）。
 - [設定](configuration.md) — ターゲットの `xcuitest.deviceType` と `deviceProvider` のキー。
+- [コマンドリファレンス](cli.md#runner) — `bajutsu runner build --device`。
 - [BE-0019 — XCUITest バックエンド](../../roadmaps/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md)
 - [BE-0236 — デバイスクラウドのプロバイダー抽象化](../../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)
 - [BE-0238 — iOS のデバイスクラウド実行](../../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md)
+- [BE-0456 — 利用者ごとに署名する XCUITest ランナーの実機ビルド](../../roadmaps/BE-0456-runner-device-signing-build/BE-0456-runner-device-signing-build-ja.md)

@@ -62,11 +62,11 @@ uv run python scripts/devicefarm_submit.py \
 
 `--package SRC=ARCNAME` はそれぞれ、ファイルまたはディレクトリを `ARCNAME` の位置でテストパッケージに追加します（arcname に `.` を指定すると、ディレクトリをパッケージのルートに展開します）。渡すシナリオや設定のパスは、パッケージの**内側**でのパスです。`--package .=.` で Bajutsu をパッケージすると、`pyproject.toml` と `tests/` ディレクトリがルートに置かれ、サブミッターは空の `requirements.txt` をルートに合成します。これにより、実際のインストールはテスト仕様が行いつつ、アップロードは Device Farm の APPIUM_PYTHON_TEST_PACKAGE 検証を満たします。`--package-only` を外して `--project-arn` と `--device-pool-arn` を加えれば（環境に AWS の認証情報を設定したうえで）、実行を投入し、完了までポーリングし、成果物をダウンロードして、Bajutsu の判定を表示します。プロセスの終了コードが `0` になるのは、すべてのシナリオが合格したときだけです。
 
-iOS ショーケースの場合は `--platform ios` を渡し、XCUITest バックエンドと iOS アプリのアップロード種別を選択します。先にデバイス署名済みの `.ipa` とランナーをビルドします（BE-0288）。
+iOS ショーケースの場合は `--platform ios` を渡し、XCUITest バックエンドと iOS アプリのアップロード種別を選択します。先にデバイス署名済みの `.ipa` とランナーをビルドします（BE-0288）。ランナーのビルドは、ユーザーごとの[署名ファイル](ios-device-cloud.md#署名ファイル)を読みます（BE-0456）。
 
 ```bash
 make -C demos/showcase swiftui-ipa-device    DEVELOPMENT_TEAM=<10 文字の Team ID>
-make -C demos/showcase runner-build-device   DEVELOPMENT_TEAM=<10 文字の Team ID>
+make -C demos/showcase runner-build-device
 ```
 
 次にサブミッターを実行します（`--package-only` でドライランになります。投入する場合は外して `--project-arn` と `--device-pool-arn` を追加してください）。
@@ -192,14 +192,14 @@ def make_proxy_hook() -> ProxyHook:
 iOS には、Android の経路にはない未知が加わります。バッチのアップロードが**署名済みのデバイスビルド**を伴わなければならない点です。Device Farm はアプリを物理デバイスへインストールするため、シミュレーター用レーンが出力する未署名の `.app` ではなく、デバイス用の `.ipa` が必要になります。さらに XCUITest ランナーは、あらかじめデバイスで有効な署名を持っていなければなりません。Device Farm はアプリを再署名しますが、ランナーは再署名しないためです（BE-0288）。したがって iOS の経路をエンドツーエンドで実証するには、ビルドに署名するための **Apple Developer アカウント**と、**AWS Device Farm アカウント**の両方が必要です。そのため、これは決定的な `make check` ゲート（未署名のまま、Apple や AWS のアカウントなしでどこでも動きます）には**含めません**。実施は手動の手順とします。
 
 1. `us-west-2` に Device Farm のプロジェクトと iOS デバイスのデバイスプールを作成し、それぞれの ARN を控えます。
-2. 署名済みのデバイス成果物を 2 つビルドします。10 文字の Apple Team ID を渡してください（その team を Xcode にサインインさせておくと、`-allowProvisioningUpdates` が開発用プロファイルを発行できます）。
+2. 署名済みのデバイス成果物を 2 つビルドします。アプリには 10 文字の Apple Team ID を渡してください。その team を Xcode にサインインさせておくと、`-allowProvisioningUpdates` が開発用プロファイルを発行できます。ランナーは代わりに[署名ファイル](ios-device-cloud.md#署名ファイル)を読みます（BE-0456）。ファイルを明示するときは `SIGNING=<path>` を渡します。
 
    ```bash
    make -C demos/showcase swiftui-ipa-device    DEVELOPMENT_TEAM=<10 文字の Team ID>
-   make -C demos/showcase runner-build-device   DEVELOPMENT_TEAM=<10 文字の Team ID>
+   make -C demos/showcase runner-build-device
    ```
 
-   1 つ目はアプリの `.ipa` を `demos/showcase/ios/swiftui/build/export-device/BajutsuShowcaseSwiftUI.ipa` に出力します。2 つ目はデバイス署名済みの `BajutsuRunner.xctestrun` を `BajutsuKit/Runner/build/dd-device/Build/Products` の下に出力します。`DEVELOPMENT_TEAM` が未設定のままデバイスビルドを走らせると、未署名の成果物を作る代わりに、明確なメッセージとともに早期に失敗します。
+   1 つ目はアプリの `.ipa` を `demos/showcase/ios/swiftui/build/export-device/BajutsuShowcaseSwiftUI.ipa` に出力します。2 つ目はデバイス署名済みの `BajutsuRunner.xctestrun` を `BajutsuKit/Runner/build/dd-device/Build/Products` の下に出力します。未署名の成果物を作ることはありません。`DEVELOPMENT_TEAM` が未設定のアプリのビルドと、署名ファイルがないランナーのビルドは、明確なメッセージとともに早期に失敗します。
 3. iOS プラットフォームを選択して、1 つのシナリオ（たとえば `scenarios/firstlook.yaml`）を投入します。使うのは上記の [サブミッターの使い方](#サブミッターの使い方) と同じ `--platform ios` のコマンドで、そのドライラン用の `--package-only` を外し、代わりに `--project-arn <project-arn> --device-pool-arn <device-pool-arn>` を加えて実行を投入します。そのコマンドはランナーの `Products` ディレクトリをまるごとパッケージ（`--package BajutsuKit/Runner/build/dd-device/Build/Products=.`）するため、`.xctestrun` がその隣で `__TESTROOT__` として参照するテストバンドルも一緒にアップロードされます。ファイル単体では足りません。`--platform ios` は、XCUITest バックエンド、`IOS_APP` のアップロード種別、そして予約デバイスが解決に使う `--udid "$DEVICEFARM_DEVICE_UDID"` 引数を選択します。
 4. ダウンロードした成果物から、シナリオが期待どおりの判定を持つ `manifest.json` を生成したことを確認します。Android の経路と同じく、サブミッターは CUSTOMER_ARTIFACT の zip（マニフェストを含む `runs/` ツリー）を保存先に展開し、Device Farm のファイル形式の成果物はその隣の `logs/` サブディレクトリに書き出します。判定は Bajutsu 自身の `manifest.json` から読み取り、Device Farm の PASSED/FAILED の分類からは読み取りません。落とされたエンタイトルメントに依存する機能では再署名後の挙動を、`simctl` に支えられたデバイス制御や権限付与を使うシナリオでは preflight によるスキップを、それぞれ見込んでください。いずれも上記の[実機の注意事項](#ios-再署名と実機のケーパビリティ)の 2 点です。
 

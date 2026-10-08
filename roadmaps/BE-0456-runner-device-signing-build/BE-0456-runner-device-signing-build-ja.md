@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0456](BE-0456-runner-device-signing-build-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0456") |
+| 実装 PR | [#2140](https://github.com/bajutsu-e2e/bajutsu/pull/2140)（単位 2〜8） |
 | トピック | デバイスクラウド実行 |
 | 関連 | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md), [BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build-ja.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md) |
 <!-- /BE-METADATA -->
@@ -254,15 +255,35 @@ bajutsu runner build --device [--signing PATH] [--out DIR] [--force]
 - [ ] スパイク：実機 1 台で、手動ビルドに必要な profile（ホスト、`.xctrunner` アプリ、または 1 つの
   ワイルドカード）を特定し、`.xctrunner` の識別子を確認し、ステージング済みマニフェストと生成 spec の
   方式でビルドできることを確認します。
-- [ ] 署名ファイルのモデル、検証（接頭辞または明示の `bundleIds`）、探索順（テスト付き）
-- [ ] ソースのステージング：`make runner-source`、`artifacts` の項目、ステージング用マニフェスト
-- [ ] プロジェクト spec の上書き、ビルドコマンドの組み立て、事前チェック、キャッシュ（テスト付き）
-- [ ] `bajutsu runner build --device` コマンド
-- [ ] XCUITest 環境の実行時解決の段階と、未ビルド時のエラー
-- [ ] `demos/showcase/Makefile` の `runner-build-device` のラッパー化
-- [ ] 両言語のドキュメント：`docs/ios-device-cloud.md`、`docs/devicefarm.md`、`docs/cli.md`、
+- [x] 署名ファイルのモデル、検証（接頭辞または明示の `bundleIds`）、探索順（テスト付き）
+- [x] ソースのステージング：`make runner-source`、`artifacts` の項目、ステージング用マニフェスト
+- [x] プロジェクト spec の上書き、ビルドコマンドの組み立て、事前チェック、キャッシュ（テスト付き）
+- [x] `bajutsu runner build --device` コマンド
+- [x] XCUITest 環境の実行時解決の段階と、未ビルド時のエラー
+- [x] `demos/showcase/Makefile` の `runner-build-device` のラッパー化
+- [x] 両言語のドキュメント：`docs/ios-device-cloud.md`、`docs/devicefarm.md`、`docs/cli.md`、
   `docs/configuration.md`、および `docs/architecture.md` のモジュール一覧
 - [ ] 実機での手動確認（Apple Developer アカウントとデバイスが必要）
+
+ログ：
+
+- 2026-10-08：[#2140](https://github.com/bajutsu-e2e/bajutsu/pull/2140) で単位 2〜8 を実装しました。署名ファイルと探索順、ソースのステージング（`make runner-source`
+  と wheel の `artifacts` の項目）、ユーザーごとのプロジェクト spec、事前チェックとコンテンツをキーにした
+  キャッシュを伴うビルド、`bajutsu runner build --device`、実行時の解決の段階、showcase の
+  `runner-build-device` のラッパー、両言語のドキュメントです。スパイクと実機での確認は、どちらも
+  Apple Developer アカウントとデバイスが必要なため、未完了のまま残しています。現在のコードに合わせて、
+  設計から次の点を変えました。
+  - 設計にあるキャッシュルートの関数 `_runner_cache_root()` は存在しませんでした。共有のルートは
+    `_bundled_runner.py` の `bajutsu_cache_root()` とし、Simulator 用のキャッシュもこの関数を使います。
+  - ステージングと `make runner-source` が共有するため、`_HASH_SOURCE_PATHS` と `_repo_root()` を
+    公開名（`HASH_SOURCE_PATHS`、`repo_root()`）にしました。
+  - `bajutsu runner build --device` で、キャッシュに当たったビルドの埋め込みプロファイルが期限切れの
+    場合は、`--force` と同じくその場でビルドし直します。実行時に同じ状態になった場合は、引き続き失敗し、
+    `--force` 付きのコマンドを示します。
+  - `bajutsu doctor` は、実機ターゲットが使う署名ファイルを表示するだけで、キャッシュのキーは計算しません。
+    キーの計算には `xcodebuild -version` と、手動署名では `security` の実行が必要になるためです。
+  - `runner` コマンドグループには、ヘルプパネルの分類を別途追加しました。これまでのパネル分けは、
+    通常のコマンドしか対象にしていなかったためです。
 
 ## 参考
 

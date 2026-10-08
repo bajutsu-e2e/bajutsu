@@ -138,7 +138,9 @@ packages = ["bajutsu"]
 # step (`make runner-bundle`) and is gitignored, so force-include it as an artifact — otherwise
 # hatchling would honor .gitignore and drop it. The glob no-ops when the directory is absent (a
 # source checkout / Linux wheel), so the base wheel stays pure-Python. (BE-0292)
-artifacts = ["bajutsu/_xcuitest_runner/**"]
+# bajutsu/_runner_source/ is the same idea for the runner's sources (`make runner-source`, BE-0456),
+# copied path by path rather than force-including BajutsuKit/, which would drag its build output in.
+artifacts = ["bajutsu/_xcuitest_runner/**", "bajutsu/_runner_source/**"]
 
 [tool.ruff]
 line-length = 100

@@ -54,8 +54,8 @@ targets:
       deviceType: device
       # The XCUITest runner channel still drives the batch route, so it needs a device-built, signed
       # `.xctestrun` — Device Farm re-signs the app `.ipa` but not the test runner. Build it for a real
-      # device with `make -C demos/showcase runner-build-device DEVELOPMENT_TEAM=<Team ID>` (the device
-      # twin of `runner-build`), then package its whole Products dir — the `.xctestrun` references its
+      # device with `make -C demos/showcase runner-build-device` (the device twin of `runner-build`,
+      # signed from your signing file — see docs/ios-device-cloud.md), then package its whole Products dir — the `.xctestrun` references its
       # test bundles by `__TESTROOT__` beside them — and point `testRunner` at its path inside the
       # uploaded package. The app `.ipa` comes from `make -C demos/showcase swiftui-ipa-device`.
       testRunner: BajutsuRunner.xctestrun

@@ -93,6 +93,12 @@ config の `defaults.redact` と `targets.<name>.redact` は **union** されま
 
 `secrets:` は **環境変数名のリスト**で（`defaults` と `targets.<name>` の両方で宣言でき、`resolve` が和集合にします）、シナリオが入力に使える `${secrets.X}` 変数の宣言元です。`bajutsu run` は実行時に、宣言された各名前を環境から解決し、その値を action に展開（`${secrets.X}`）したうえで、**証跡に現れる箇所すべてでその実値をマスク**します（[evidence](evidence.md#マスキングredact)）。シナリオ source には `${secrets.X}` トークンだけが残り、実値は残りません。
 
+### 実機用 runner の署名（設定の外、BE-0456）
+
+iOS の実機では、ユーザー自身の Apple Developer チームで署名した XCUITest runner が必要です。ターゲットの設定には、この署名に関する値を意図して入れていません。設定はリポジトリとともに共有されるので、そこに書いた Team ID がほかのすべてのユーザーに届いてしまうためです。代わりに、リポジトリの外に置くユーザーごとの署名ファイルが、bundle identifier、チーム、署名方式を持ちます。
+
+`bajutsu runner build --device` がこのファイルを読みます。以後、`xcuitest.deviceType: device` を指定して `xcuitest.testRunner` を指定しないターゲットは、そのビルドに解決します。ファイルの形式と探索順は [iOS の実機](ios-device-cloud.md#署名ファイル)で説明しています。
+
 ### AI プロバイダ（`ai:`、BE-0047）
 
 AI 経路、すなわち `record`、`crawl`、`triage --ai` は、任意の `ai` ブロックで設定した一つのプロバイダを通じてモデルへ到達します。このブロックは `defaults` と `targets.<name>` の両方で宣言でき、**フィールドごと**にマージされます（同じフィールドはターゲット側の値が勝ちます）。解決結果は `Effective.ai` に入るので、CLI と `serve` が一つの真実を共有します。これが「あなたの AI、あなたのキー、あなたのデータ」を支える仕組みです。どの AI 経路も、あなたが設定したキーとエンドポイントの下で動き、決定的な `run` ゲートはモデルをまったく呼びません（[BE-0047](../../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)）。
