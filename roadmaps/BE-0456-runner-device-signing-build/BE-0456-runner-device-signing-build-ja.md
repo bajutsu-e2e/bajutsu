@@ -1,14 +1,14 @@
-[English](BE-XXXX-runner-device-signing-build.md) · **日本語**
+[English](BE-0456-runner-device-signing-build.md) · **日本語**
 
-# BE-XXXX — 利用者ごとに署名する XCUITest ランナーの実機ビルド
+# BE-0456 — 利用者ごとに署名する XCUITest ランナーの実機ビルド
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-runner-device-signing-build-ja.md) |
+| 提案 | [BE-0456](BE-0456-runner-device-signing-build-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0456") |
 | トピック | デバイスクラウド実行 |
 | 関連 | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md), [BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build-ja.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md) |
 <!-- /BE-METADATA -->

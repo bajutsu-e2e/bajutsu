@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-runner-device-signing-build-ja.md)
+**English** · [日本語](BE-0456-runner-device-signing-build-ja.md)
 
-# BE-XXXX — Per-user signed device build of the XCUITest runner
+# BE-0456 — Per-user signed device build of the XCUITest runner
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-runner-device-signing-build.md) |
+| Proposal | [BE-0456](BE-0456-runner-device-signing-build.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0456") |
 | Topic | Device-cloud execution |
 | Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md), [BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md) |
 <!-- /BE-METADATA -->
