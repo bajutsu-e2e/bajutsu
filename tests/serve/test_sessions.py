@@ -292,6 +292,15 @@ def test_a_stored_ci_job_that_is_not_a_string_mapping_reads_as_absent(stored: ob
     assert principal.ci_job is None
 
 
+def test_a_machine_principal_with_a_ci_job_stays_hashable() -> None:
+    """`Principal` is a frozen dataclass, whose generated `__hash__` covers every field. The job
+    record is a dict, so without excluding it a principal would hash for a person and raise only
+    for a pipeline — the one shape that carries a job — while equality still tells two jobs apart."""
+    a = Principal("repo:acme/app", "acme", MACHINE, {"runId": "1"})
+    b = Principal("repo:acme/app", "acme", MACHINE, {"runId": "2"})
+    assert len({a, b}) == 2
+
+
 def test_every_store_enforces_a_per_session_expiry(
     serve_engine: Callable[..., Engine],
 ) -> None:

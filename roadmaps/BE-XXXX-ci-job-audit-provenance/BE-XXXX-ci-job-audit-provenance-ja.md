@@ -180,6 +180,6 @@ run の監査 detail を確かめます。4つ目は `oidc.exchange` のエン�
 ## 参考
 
 - [BE-0414 — GitHub Actions の OIDC トークンで CI のジョブを serve に認証させる](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md)
-- [GitHub Docs — OpenID Connect reference](https://docs.github.com/en/actions/reference/security/oidc) (the claim table, `check_run_id` included)
-- [GitHub Docs — OpenID Connect](https://docs.github.com/en/actions/concepts/security/openid-connect) (an example token payload, `sha` included)
+- [GitHub Docs — OpenID Connect reference](https://docs.github.com/en/actions/reference/security/oidc)（`check_run_id` を含む claim の一覧）
+- [GitHub Docs — OpenID Connect](https://docs.github.com/en/actions/concepts/security/openid-connect)（`sha` を含むトークンのペイロードの例）
 - `bajutsu/serve/oidc.py`、`bajutsu/serve/operations/oidc.py`、`bajutsu/serve/authz.py`

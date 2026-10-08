@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 #: A session belongs either to a person who signed in, or to a CI pipeline that exchanged an OIDC
@@ -94,7 +94,9 @@ class Principal:
     identity: str | None
     org: str | None = None
     kind: PrincipalKind = HUMAN
-    ci_job: dict[str, str] | None = None
+    # Out of the hash, in the equality: a dict member would make the generated `__hash__` raise for
+    # the one shape that carries a job, while two principals for different jobs still compare unequal.
+    ci_job: dict[str, str] | None = field(default=None, hash=False)
 
     @classmethod
     def from_stored(
