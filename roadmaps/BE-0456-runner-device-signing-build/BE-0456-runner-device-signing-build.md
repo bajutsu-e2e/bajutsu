@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0456") |
+| Implementing PR | [#2140](https://github.com/bajutsu-e2e/bajutsu/pull/2140) (units 2–8) |
 | Topic | Device-cloud execution |
 | Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md), [BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md) |
 <!-- /BE-METADATA -->
@@ -276,7 +277,7 @@ expiry, the staged-manifest target check, and the run-time resolution errors. Th
 
 Log:
 
-- 2026-10-08 — Landed units 2–8: the signing file and its lookup order, source staging
+- 2026-10-08 — [#2140](https://github.com/bajutsu-e2e/bajutsu/pull/2140) landed units 2–8: the signing file and its lookup order, source staging
   (`make runner-source` and the wheel `artifacts` entry), the per-user project spec, the build with
   its preflight and content-keyed cache, `bajutsu runner build --device`, the run-time resolution
   tier, the showcase `runner-build-device` wrapper, and the docs in both languages. The spike and

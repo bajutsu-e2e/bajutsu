@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0456") |
+| 実装 PR | [#2140](https://github.com/bajutsu-e2e/bajutsu/pull/2140)（単位 2〜8） |
 | トピック | デバイスクラウド実行 |
 | 関連 | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend-ja.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md), [BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build-ja.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md) |
 <!-- /BE-METADATA -->
@@ -266,7 +267,7 @@ bajutsu runner build --device [--signing PATH] [--out DIR] [--force]
 
 ログ：
 
-- 2026-10-08：単位 2〜8 を実装しました。署名ファイルと探索順、ソースのステージング（`make runner-source`
+- 2026-10-08：[#2140](https://github.com/bajutsu-e2e/bajutsu/pull/2140) で単位 2〜8 を実装しました。署名ファイルと探索順、ソースのステージング（`make runner-source`
   と wheel の `artifacts` の項目）、ユーザーごとのプロジェクト spec、事前チェックとコンテンツをキーにした
   キャッシュを伴うビルド、`bajutsu runner build --device`、実行時の解決の段階、showcase の
   `runner-build-device` のラッパー、両言語のドキュメントです。スパイクと実機での確認は、どちらも
