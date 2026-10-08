@@ -89,7 +89,7 @@ def bundled_runner_build_info() -> dict[str, str] | None:
 # replaced used (`scripts/xcuitest-runner-hash.sh`, removed in the same change) — matching the
 # algorithm, not just the inputs, is what keeps a checkout mid-migration from seeing every
 # already-fresh bundle flip to "stale" at once.
-_HASH_SOURCE_PATHS = (
+HASH_SOURCE_PATHS = (
     "Package.swift",
     "BajutsuKit/Sources",
     "BajutsuKit/Runner/Host",
@@ -98,7 +98,7 @@ _HASH_SOURCE_PATHS = (
 )
 
 
-def _repo_root() -> Path:
+def repo_root() -> Path:
     """The checkout root one level above the installed ``bajutsu`` package, where ``BajutsuKit/`` lives."""
     return Path(__file__).resolve().parents[4]
 
@@ -111,14 +111,14 @@ def runner_source_present(*, root: Path | None = None) -> bool:
     an installed distribution (where it can only ever be whatever the wheel shipped). *root* overrides
     the checkout root (tests inject a ``tmp_path``).
     """
-    return ((root or _repo_root()) / "BajutsuKit" / "Runner" / "project.yml").is_file()
+    return ((root or repo_root()) / "BajutsuKit" / "Runner" / "project.yml").is_file()
 
 
 def source_hash(*, root: Path | None = None) -> str:
     """Content hash of the sources that feed the bundled runner (BE-0292's freshness check).
 
     Reproduces the shasum-of-shasums the removed ``scripts/xcuitest-runner-hash.sh`` used: hash each
-    file under ``_HASH_SOURCE_PATHS``, then hash the concatenation of ``"<digest>  <relative
+    file under ``HASH_SOURCE_PATHS``, then hash the concatenation of ``"<digest>  <relative
     path>\\n"`` lines (sorted by path), exactly as piping ``find | sort -z | xargs shasum -a 256 |
     shasum -a 256`` formatted them. Call only when ``runner_source_present()`` is true; a wheel
     install has nothing under these paths to hash. *root* overrides the checkout root (tests inject a
@@ -129,9 +129,9 @@ def source_hash(*, root: Path | None = None) -> str:
     ``BajutsuKit/Package.swift`` -> ``Package.swift`` (which this project's own history hit mid-port)
     would otherwise stop marking the bundle stale for edits under the moved path.
     """
-    root = root or _repo_root()
+    root = root or repo_root()
     files: list[Path] = []
-    for rel in _HASH_SOURCE_PATHS:
+    for rel in HASH_SOURCE_PATHS:
         target = root / rel
         if target.is_file():
             files.append(target)
@@ -150,11 +150,16 @@ def source_hash(*, root: Path | None = None) -> str:
     return hashlib.sha256("".join(lines).encode()).hexdigest()
 
 
-def _cache_root() -> Path:
-    """The per-user cache root for the materialized runner, honoring ``XDG_CACHE_HOME``."""
+def bajutsu_cache_root() -> Path:
+    """The per-user Bajutsu cache root, honoring ``XDG_CACHE_HOME`` (shared with the device build)."""
     base = os.environ.get("XDG_CACHE_HOME")
     root = Path(base) if base else Path.home() / ".cache"
-    return root / "bajutsu" / "xcuitest-runner"
+    return root / "bajutsu"
+
+
+def _cache_root() -> Path:
+    """The per-user cache root for the materialized runner."""
+    return bajutsu_cache_root() / "xcuitest-runner"
 
 
 def _products_digest(source: Path) -> str:
@@ -331,7 +336,7 @@ def _rebuild_bundle() -> None:
     try:
         subprocess.run(
             ["make", "runner-bundle"],  # noqa: S607 — make resolved on PATH; argv list
-            cwd=_repo_root(),
+            cwd=repo_root(),
             check=True,
         )
     except (subprocess.CalledProcessError, OSError) as exc:

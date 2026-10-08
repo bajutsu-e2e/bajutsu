@@ -1155,6 +1155,32 @@ validation). No options.
 bajutsu schema > bajutsu.schema.json
 ```
 
+## `runner`
+
+Builds the generic XCUITest runner.
+
+Its one subcommand today, `build --device`, signs the runner for a real iPhone or iPad. The signing
+comes from the per-user signing file, and the build lands in a cache. A target with
+`xcuitest.deviceType: device` and no `testRunner` then resolves to that cache. The build is an
+authoring step on macOS with Xcode, and never runs inside `bajutsu run`.
+[iOS on a real device](ios-device-cloud.md#the-signed-device-runner) covers the signing file, the
+cache key, and the errors a run reports.
+
+```bash
+bajutsu runner build --device [--signing PATH] [--out DIR] [--force]
+```
+
+| Option | Meaning |
+|---|---|
+| `--device` | Build the signed device runner. Required today; the flag leaves room for the Simulator build later. |
+| `--signing PATH` | The signing file. Defaults to `BAJUTSU_SIGNING_FILE`, then `~/.config/bajutsu/signing.yaml` (honoring `XDG_CONFIG_HOME`). |
+| `--out DIR` | Also copy the whole `Products` directory to `DIR`, for packaging (the Device Farm route). `DIR` must be empty or absent. |
+| `--force` | Rebuild even when a matching build is cached. |
+
+A successful build prints the path of the cached runner, with exit status zero. Omitting `--device` exits with
+status 2. Any other outcome exits with status 1 and names the cause. The cause is a missing prerequisite, an error in the
+signing file, or a build error.
+
 ## Environment variables (.env)
 
 `_bootstrap` (`@app.callback`) loads `.env` before every command (implementation: `bajutsu/dotenv.py`).
@@ -1174,6 +1200,8 @@ bajutsu schema > bajutsu.schema.json
   through the official `ant` CLI — run `ant auth login` (a browser-based OAuth/SSO sign-in) so a
   Claude Pro/Max/Console seat is billed instead of an API key; `ANTHROPIC_PROFILE` selects a named CLI
   profile. **No `ANTHROPIC_API_KEY`** is needed, and every AI path keeps full vision.
+- `BAJUTSU_SIGNING_FILE` (BE-0456): the per-user signing file for the device runner, read by
+  [`runner build --device`](#runner) and by a run on a real device.
 
 ```bash
 # .env — Anthropic (default)

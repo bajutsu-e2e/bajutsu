@@ -51,6 +51,107 @@ device fails loudly rather than silently doing nothing, and the Device Farm rout
 app through the cloud instead. This same key drives a locally attached iPhone or iPad, so the
 real-device work is useful on its own, before any cloud is involved.
 
+## The signed device runner
+
+A real device installs an XCUITest runner signed by a team the device trusts. Bajutsu cannot ship
+such a runner prebuilt, unlike the Simulator runner. Each user builds the device runner once with
+`bajutsu runner build --device`. The build signs with that user's own Apple Developer account. A target with
+`deviceType: device` and no `xcuitest.testRunner` then resolves to that build. The target config
+stays free of anything specific to one user.
+
+### The signing file
+
+Signing belongs to the user, not to a target. The runner stays generic, and the target config
+travels through the repository. A team ID written in the config would reach every other user. The
+settings live in a per-user file outside the repository instead. Bajutsu looks for the file in
+this order, and the first hit wins:
+
+1. `--signing <path>` on `bajutsu runner build` (the build command alone has this flag).
+2. The `BAJUTSU_SIGNING_FILE` environment variable.
+3. `$XDG_CONFIG_HOME/bajutsu/signing.yaml`, falling back to `~/.config/bajutsu/signing.yaml`.
+
+A run consults entries 2 and 3 alone. A user who builds with `--signing` must point
+`BAJUTSU_SIGNING_FILE` at the same file when running. The alternative is to copy the products out
+with `--out` and name them in `testRunner`.
+
+```yaml
+bundleIdPrefix: com.acme           # host app = com.acme.bajutsu.runner-host,
+                                   # UI-test bundle = com.acme.bajutsu.runner-uitests
+# bundleIds:                       # instead of bundleIdPrefix: name both identifiers yourself
+#   host: com.acme.e2e.runner-host
+#   uitests: com.acme.e2e.runner-tests
+teamId: ABCDE12345                 # required
+signing: automatic                 # automatic (the default) or manual
+manual:                            # required when signing: manual
+  identity: "Apple Development: Jane Doe (ABCDE12345)"
+  profile: "Acme Bajutsu Wildcard"           # one profile covering every identifier, or
+  # profiles:                                # one profile per signed product
+  #   host: "Acme Bajutsu Host"
+  #   runner: "Acme Bajutsu Runner"          # the UI-test bundle's .xctrunner app
+```
+
+The file holds no secret. A team ID, a certificate name, and a profile name merely point at keys
+and profiles. Those stay in the Keychain and in `~/Library/MobileDevice/Provisioning Profiles/`.
+
+| Key | Meaning |
+|---|---|
+| `bundleIdPrefix` | Derives both runner identifiers. Give this key or `bundleIds`, never both. |
+| `bundleIds.host`, `bundleIds.uitests` | Name the two identifiers outright, for an account that already holds App IDs and profiles under other names. The two values must differ. |
+| `teamId` | The Apple Developer team that signs both products. |
+| `signing` | `automatic` lets Xcode mint the profiles. `manual` pins the certificate and profiles below. |
+| `manual.identity` | The codesigning identity, by name or by its certificate hash. |
+| `manual.profile` / `manual.profiles` | One profile for every product, or one each for the runner's main app (`profiles.host`) and the `.xctrunner` app (`profiles.runner`). Give exactly one form. When two unexpired profiles share a name, give the profile by the identifier in its `UUID` field instead. |
+
+The UI-test bundle's `.xctrunner` app takes the identifier `<uitests identifier>.xctrunner`. A
+manual build with one profile per product needs a profile for that identifier too.
+
+Keep the runner identifiers distinct from the app under test. A runner that shares the app's
+identifier overwrites the app when it installs. Bajutsu cannot check for that clash, because the
+build knows no target.
+
+### Building
+
+```bash
+bajutsu runner build --device [--signing PATH] [--out DIR] [--force]
+```
+
+The command works in three steps:
+
+1. Check the prerequisites: macOS, `xcodebuild`, and `xcodegen`. Manual signing adds the identity
+   and every named profile. Each gap appears with its fix.
+2. Copy the runner sources into a scratch directory, and rewrite that copy for the signing file.
+   The checkout stays untouched. In a wheel install, the sources come from a copy the wheel ships.
+3. Build the scratch copy with `xcodebuild build-for-testing`, and print the path of the built
+   `BajutsuRunner.xctestrun`.
+
+The products land in Bajutsu's cache under `xcuitest-runner-device/<key>/Products/`. The key covers
+every input that changes the signed products:
+
+- the runner sources;
+- the signing fields, with both resolved identifiers;
+- the Xcode build version;
+- for manual signing, the certificate hash and a digest of each profile file.
+
+A certificate or profile renewed under the same name yields a new key as a result. A repeat build
+with unchanged inputs reuses the cached products, and `--force` rebuilds anyway. `--out DIR`
+copies the `Products` directory to `DIR` as well. Device Farm packaging needs that copy.
+The `.xctestrun` locates its test bundles beside itself.
+
+### What a run does
+
+A run with `deviceType: device` and no `testRunner` reads the signing file and computes the same
+key. The run then uses the cached `.xctestrun`. An explicit `testRunner` still wins over the cache.
+
+A run never builds the runner itself. A signing build is slow, can raise a Keychain prompt, and can
+register identifiers with Apple. Each miss fails at once and names the fix:
+
+- **No signing file:** the error names both lookup locations.
+- **No build for the current inputs:** the error names `bajutsu runner build --device`.
+- **An expired profile:** the error names `bajutsu runner build --device --force`.
+
+`bajutsu doctor` reports which signing file a device target would use. The report builds nothing and
+computes no key.
+
 ## Two routes to a device cloud
 
 Both routes share the real-device XCUITest core above; they differ in how a device is reserved and
@@ -154,6 +255,8 @@ two caveats in the batch context, including the specific entitlement keys Device
   proof of concept.
 - [Drivers](drivers.md) — the `Driver` interface and the backends behind it, including XCUITest.
 - [Configuration](configuration.md) — the `xcuitest.deviceType` and `deviceProvider` target keys.
+- [Command reference](cli.md#runner) — `bajutsu runner build --device`.
 - [BE-0019 — XCUITest backend](../roadmaps/BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)
 - [BE-0236 — device-cloud provider abstraction](../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md)
 - [BE-0238 — iOS device-cloud execution](../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md)
+- [BE-0456 — per-user signed device build of the XCUITest runner](../roadmaps/BE-0456-runner-device-signing-build/BE-0456-runner-device-signing-build.md)

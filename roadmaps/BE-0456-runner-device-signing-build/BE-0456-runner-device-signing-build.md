@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0456](BE-0456-runner-device-signing-build.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0456") |
 | Topic | Device-cloud execution |
 | Related | [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md), [BE-0288](../BE-0288-ios-device-signing-batch-build/BE-0288-ios-device-signing-batch-build.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner.md) |
@@ -264,15 +264,34 @@ expiry, the staged-manifest target check, and the run-time resolution errors. Th
 - [ ] Spike: on one real device, find which profiles a manual build needs (host, the `.xctrunner`
   app, or one wildcard), confirm the `.xctrunner` identifier, and confirm the staged-manifest and
   generated-spec approach builds.
-- [ ] Signing file model, validation (prefix or explicit `bundleIds`), and lookup order, with tests.
-- [ ] Source staging: `make runner-source`, the `artifacts` entry, and the staged manifest.
-- [ ] Project spec override, build command construction, preflight, and cache, with tests.
-- [ ] `bajutsu runner build --device` command.
-- [ ] Run-time resolution tier in the XCUITest environment, with the missing-build error.
-- [ ] `demos/showcase/Makefile` wrapper for `runner-build-device`.
-- [ ] Docs in both languages: `docs/ios-device-cloud.md`, `docs/devicefarm.md`, `docs/cli.md`,
+- [x] Signing file model, validation (prefix or explicit `bundleIds`), and lookup order, with tests.
+- [x] Source staging: `make runner-source`, the `artifacts` entry, and the staged manifest.
+- [x] Project spec override, build command construction, preflight, and cache, with tests.
+- [x] `bajutsu runner build --device` command.
+- [x] Run-time resolution tier in the XCUITest environment, with the missing-build error.
+- [x] `demos/showcase/Makefile` wrapper for `runner-build-device`.
+- [x] Docs in both languages: `docs/ios-device-cloud.md`, `docs/devicefarm.md`, `docs/cli.md`,
   `docs/configuration.md`, plus the module list in `docs/architecture.md`.
 - [ ] Manual real-device proof (needs an Apple Developer account and a device).
+
+Log:
+
+- 2026-10-08 — Landed units 2–8: the signing file and its lookup order, source staging
+  (`make runner-source` and the wheel `artifacts` entry), the per-user project spec, the build with
+  its preflight and content-keyed cache, `bajutsu runner build --device`, the run-time resolution
+  tier, the showcase `runner-build-device` wrapper, and the docs in both languages. The spike and
+  the real-device proof stay open, because both need an Apple Developer account and a device.
+  Deviations from the design, against today's tree:
+  - The cache root helper the design names, `_runner_cache_root()`, did not exist. The shared root
+    is now `bajutsu_cache_root()` in `_bundled_runner.py`, and the Simulator cache builds on it.
+  - `_HASH_SOURCE_PATHS` and `_repo_root()` became public (`HASH_SOURCE_PATHS`, `repo_root()`), since
+    staging and `make runner-source` now share them.
+  - A `bajutsu runner build --device` cache hit whose embedded profile has expired rebuilds in
+    place, as with `--force`. A run still fails on that same state and names the `--force` command.
+  - `bajutsu doctor` names the signing file a device target would use, without keying the cache:
+    the key needs `xcodebuild -version` and, for manual signing, `security`.
+  - The `runner` command group needed its own help-panel classification, because the panel
+    grouping previously walked plain commands alone.
 
 ## References
 

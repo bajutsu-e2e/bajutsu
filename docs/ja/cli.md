@@ -911,6 +911,25 @@ bajutsu lint <scenario.yaml>
 bajutsu schema > bajutsu.schema.json
 ```
 
+## `runner`
+
+汎用の XCUITest runner をビルドします。
+
+現在のサブコマンドは `build --device` の 1 つだけで、実機の iPhone や iPad 向けに runner を署名してビルドします。署名はユーザーごとの署名ファイルから取り、ビルド結果はキャッシュに置きます。以後、`xcuitest.deviceType: device` を指定して `testRunner` を指定しないターゲットは、そのキャッシュに解決します。このビルドは Xcode のある macOS で行うオーサリングの手順で、`bajutsu run` の中では動きません。署名ファイル、キャッシュのキー、実行時のエラーは [iOS の実機](ios-device-cloud.md#署名済みの実機用-runner)で説明しています。
+
+```bash
+bajutsu runner build --device [--signing PATH] [--out DIR] [--force]
+```
+
+| オプション | 意味 |
+|---|---|
+| `--device` | 署名済みの実機用 runner をビルドします。現在は必須です。このフラグは、将来 Simulator 用のビルドを加える余地として残しています。 |
+| `--signing PATH` | 署名ファイルです。省略すると `BAJUTSU_SIGNING_FILE`、次に `~/.config/bajutsu/signing.yaml`（`XDG_CONFIG_HOME` に従います）を使います。 |
+| `--out DIR` | `Products` ディレクトリ全体を `DIR` にもコピーします。パッケージング（Device Farm の経路）用です。`DIR` は空か、存在しないディレクトリにします。 |
+| `--force` | 一致するビルドがキャッシュにあっても、ビルドし直します。 |
+
+ビルドに成功すると、キャッシュした runner のパスを表示し、終了コード 0 で終了します。`--device` を省くと使い方の誤りとして終了コード 2 で終了します。それ以外の場合は終了コード 1 で終了し、原因を示します。原因は、前提条件の不足、署名ファイルの誤り、ビルドの失敗のいずれかです。
+
 ## 環境変数（.env）
 
 `_bootstrap`（`@app.callback`）が全コマンドの前に `.env` を読みます（実装: `bajutsu/dotenv.py`）。
@@ -930,6 +949,8 @@ bajutsu schema > bajutsu.schema.json
   すると、API キーの代わりに Claude の Pro / Max / Console のシートに課金されます。`ANTHROPIC_PROFILE`
   で名前付きの CLI プロファイルを選べます。**`ANTHROPIC_API_KEY` は不要**で、すべての AI 経路で画像も
   そのまま使えます。
+- `BAJUTSU_SIGNING_FILE`（BE-0456）: 実機用 runner のユーザーごとの署名ファイルです。
+  [`runner build --device`](#runner) と、実機での実行が読みます。
 
 ```bash
 # .env：Anthropic（既定）

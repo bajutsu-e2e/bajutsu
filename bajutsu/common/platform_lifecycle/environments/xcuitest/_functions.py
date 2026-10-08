@@ -27,6 +27,15 @@ from bajutsu.common.platform_lifecycle.environments._bundled_runner import (
     ensure_bundled_runner_fresh,
     materialize,
 )
+from bajutsu.common.platform_lifecycle.environments.device_runner.build import (
+    BUILD_COMMAND,
+    resolve_device_runner,
+)
+from bajutsu.common.platform_lifecycle.environments.device_runner.errors import DeviceRunnerError
+from bajutsu.common.platform_lifecycle.environments.device_runner.signing import (
+    describe_lookup,
+    find_signing_file,
+)
 
 from ._attempt_failure import _AttemptFailure
 from ._recovery import _Recovery
@@ -657,7 +666,8 @@ def _resolve_runner(xcfg: XcuitestConfig | None, device_type: str) -> Path:
     Precedence keeps explicit config above the default. A configured `testRunner` is used, built on
     demand via `build` when the file is missing. With neither configured, a Simulator run falls back
     to the wheel-bundled generic runner (BE-0292), materialized into a writable cache; a real device
-    instead fails loudly, since its runner must be signed (BE-0288) and is not bundled. In a dev
+    instead takes the per-user signed build `bajutsu runner build --device` cached (BE-0456), and
+    fails loudly — never building mid-run — when there is none. In a dev
     checkout, `ensure_bundled_runner_fresh` rebuilds that fallback first when BajutsuKit's own source
     has moved past it, so this tier never silently serves a stale bundle.
     """
@@ -680,10 +690,10 @@ def _resolve_runner(xcfg: XcuitestConfig | None, device_type: str) -> Path:
         return runner_path
 
     if tier == "device":
-        raise simctl.DeviceError(
-            "xcuitest.deviceType: device requires an explicit xcuitest.testRunner "
-            "(a real-device runner must be signed and is not bundled; see BE-0288)"
-        )
+        try:
+            return resolve_device_runner()
+        except DeviceRunnerError as exc:
+            raise simctl.DeviceError(str(exc)) from exc
     ensure_bundled_runner_fresh()
     products = bundled_products_dir()
     if products is None:
@@ -718,7 +728,21 @@ def runner_source(xcfg: XcuitestConfig | None, device_type: str) -> str:
             return f"testRunner: {test_runner} (missing, built on demand via: {build})"
         return f"testRunner: {test_runner} (missing, no build configured)"
     if tier == "device":
-        return "none: xcuitest.deviceType: device requires an explicit testRunner"
+        # Names the signing file only: keying the cached build would run `xcodebuild -version` and,
+        # for manual signing, `security`, which a disclosure has no business doing.
+        try:
+            signing_path = find_signing_file()
+        except DeviceRunnerError as exc:
+            return f"none: {exc}"
+        if signing_path is None:
+            return (
+                "none: xcuitest.deviceType: device needs xcuitest.testRunner or a signing file "
+                f"({describe_lookup()})"
+            )
+        return (
+            f"device build: would use the signed runner `{BUILD_COMMAND}` caches "
+            f"(signing file {signing_path}; not validated here)"
+        )
     if bundled_products_dir() is None:
         return "none: no bundled runner in this build (set xcuitest.testRunner)"
     return "bundled (wheel-shipped Simulator runner)"
