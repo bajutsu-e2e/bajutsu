@@ -100,10 +100,14 @@ skip_on_real_device: str | None = Field(default=None, alias="skipOnRealDevice")
 | On `use` or `group` | `expand.py` copies the modifier onto each expanded step; `_no_modifiers_on_use` gains it as a second exception beside `target` (BE-0446) |
 | On a target group (`steps:` with `target`) | `_target_group` accepts it; `_expand_target_groups` (`models/scenario/_targets.py`) and the component path in `expand.py` stamp it onto each nested step |
 | On `manual` or `setPrimaryTarget` | Rejected at load |
+| On an `if`, `forEach`, `web`, or `app` block holding a `manual` step | Rejected at load; on `use` or `group`, the copied modifier reaches the nested `manual` at expansion and is rejected there |
 
 The two rejections have different reasons. A `manual` step exists to stop a run where a human took
 over. Skipping it would hide that stop. A `setPrimaryTarget` step changes how later steps resolve their
-target, so skipping it would change the meaning of the rest of the scenario.
+target, so skipping it would change the meaning of the rest of the scenario. `_targets.py:320`
+already confines `setPrimaryTarget` to top-level steps, so no block can cover one. A `manual` step has
+no such limit, which is why a covering block is rejected too. Otherwise the block would bypass the
+per-step rule and turn the loud stop into a silent pass.
 
 `Scenario` gains a map under the same key:
 
@@ -217,8 +221,19 @@ usual, even in a scenario whose other targets are real devices.
 
 `StepOutcome` (`bajutsu/common/orchestrator/types/step_outcome.py`) has no skipped state today. It
 carries `ok: bool` and `reason`. It gains `skipped: bool = False`, and `reason` holds the modifier's
-text. A skipped step makes no assertion, so it cannot turn a failing scenario green. Each report
-format renders the skip at the granularity it has:
+text.
+
+A skipped `assert` step removes a check rather than satisfying it. The item still allows the opt-out
+on an `assert`: a check that reads Simulator-only state, such as the place a `setLocation` set, is the
+case this item exists for. Three rules keep a removed check from reading as a pass:
+
+- A skipped assertion is never counted as passed. The report lists it as skipped, with its reason.
+- A scenario in which every assertion is skipped on a real device fails, rather than reporting green
+  with nothing checked. The scenario-level `expect` counts as an assertion here.
+- The lint names each covered `assert` step on a real-device target as an advisory line, so the
+  reviewer sees which checks a real-device run drops. The advisory never fails the lint.
+
+Each report format renders the skip at the granularity it has:
 
 | Format | Rendering |
 |---|---|
@@ -313,7 +328,8 @@ The target-blind check becomes worth revisiting once Android can express a real 
 - [ ] Send the selected target and the file path in the serve editor's `/api/lint` request, and
   resolve the path within the bound scenarios directory
 - [ ] Run the real-device checks in the run preflight on a real-device target alone
-- [ ] Skip covered steps in the step loop on a real-device target
+- [ ] Skip covered steps in the step loop on a real-device target, and fail a scenario whose every
+  assertion was skipped
 - [ ] Skip the named preconditions on a real device, and ignore the `appPath` install, each with a notice
 - [ ] Add `skippedPreconditions` to `RunResult` and render it in the manifest, HTML, JUnit, and CTRF reports
 - [ ] Document both opt-outs and the lint in `docs/` and `docs/ja/`: `dsl-grammar.md`, `scenarios.md`,
