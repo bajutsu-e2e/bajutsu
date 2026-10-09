@@ -19,3 +19,4 @@ class _Prompts(TypedDict):
     tracking: dict[str, list[_Shape]]
     paste: dict[str, list[_Shape]]
     savePassword: dict[str, list[_Shape]]
+    localNetwork: dict[str, list[_Shape]]

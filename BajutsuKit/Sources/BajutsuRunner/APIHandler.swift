@@ -74,7 +74,9 @@ final class APIHandler: APIProtocol {
         }
         InterruptionPolicyStore.shared.setPolicy(
             InterruptionPolicy(
-                rules: body.rules.map { InterruptionRule(identify: $0.identify, tap: $0.tap) },
+                rules: body.rules.map {
+                    InterruptionRule(identify: $0.identify, tap: $0.tap, exclude: $0.exclude ?? [])
+                },
                 governs: body.governs
             )
         )

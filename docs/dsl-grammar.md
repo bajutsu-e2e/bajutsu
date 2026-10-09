@@ -168,7 +168,7 @@ SystemAlertHandling ::= boolean                                   # true = on wi
                    visionInstruction?: string,              # free text; reaches no command — `run` rejects it
                    pollInterval?: number,                    # native poll cadence, seconds (default 1)
                    frozenScreenTimeout?: number }            # frozen-screen stop, seconds (default 10, 0 = off)
-SystemAlertRule ::= { prompt: notifications|tracking|paste|savePassword, choice: grant|deny }  # unique prompt per list
+SystemAlertRule ::= { prompt: notifications|tracking|paste|savePassword|localNetwork, choice: grant|deny }  # unique prompt per list
                 # savePassword is guard-only: iOS raises it in-process, so the in-tree dismissal
                 # alone answers it and the handleSystemAlert step below rejects it (BE-0406)
 
@@ -208,7 +208,7 @@ Action    ::=
   | { pinch:       { sel: <Selector>, scale: number } }    # scale > 0  (>1 in, <1 out)
   | { rotate:      { sel: <Selector>, radians: number } }  # >0 clockwise
   | { handleSystemAlert: { sel: <Selector>, timeout: number } }  # tap an iOS SpringBoard permission prompt (iOS/XCUITest only); sel accepts only label/labelMatches/index
-  | { handleSystemAlert: { prompt: notifications|tracking|paste, choice: grant|deny, timeout: number } }  # same step, label resolved from the run's locale (BE-0320), or by position under an uncovered language (BE-0445); savePassword is not nameable here (BE-0406)
+  | { handleSystemAlert: { prompt: notifications|tracking|paste|localNetwork, choice: grant|deny, timeout: number } }  # same step, label resolved from the run's locale (BE-0320), or by position under an uncovered language (BE-0445); savePassword is not nameable here (BE-0406)
   | { wait:        <Wait> }
   | { sleep:       { seconds: number, reason: string } }  # fixed pause: 0 < seconds <= 30, reason non-blank; the one exception to condition waits
   | { assert:      list(<Assertion>) }

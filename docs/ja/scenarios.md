@@ -215,8 +215,17 @@ CLI の `--system-alert-handling` / `--no-system-alert-handling` フラグは**�
 | `tracking` | ✅ | ✅ | — |
 | `paste` | ✅ | ✅ | — |
 | `savePassword` | — | — | ✅ |
+| `localNetwork` | ✅ | ✅ | — |
 
-はじめの 3 つは SpringBoard が持ち主なので、ステップとネイティブ照会の両方が届き、ツリーには現れません。`savePassword` はちょうど裏返しです。iOS がアプリ自身のプロセスに出すため `springboard.alerts` は決して列挙できず、ツリー内のタップだけが片付けられます。したがって `savePassword` を名指しした `handleSystemAlert` ステップは解析時に拒否されます。このステップは SpringBoard の照会しか読まないので、空のボタン一覧を締め切りまでポーリングするしかないからです（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。
+`savePassword` 以外は SpringBoard が持ち主なので、ステップとネイティブ照会の両方が届き、ツリーには現れません。`savePassword` はちょうど裏返しです。iOS がアプリ自身のプロセスに出すため `springboard.alerts` は決して列挙できず、ツリー内のタップだけが片付けられます。したがって `savePassword` を名指しした `handleSystemAlert` ステップは解析時に拒否されます。このステップは SpringBoard の照会しか読まないので、空のボタン一覧を締め切りまでポーリングするしかないからです（[BE-0406](../../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts-ja.md)）。
+
+`localNetwork` は、iOS のローカルネットワークの許可を求めるプロンプトです。実機では、アプリが初めてホストへ報告するときに、Bajutsu 自身のネットワークの collector がこのプロンプトを出させます（[iOS を実機とデバイスクラウドで動かす](ios-device-cloud.md)を参照してください）。ボタンは通知のプロンプトと同じなので、ボタンだけでは 2 つを区別できません。そこでガードはアラートのタイトルも読みます。タイトルは、アプリ名を `%@` に置き換えた Apple の雛形にそろえます。`localNetwork` のルールはこの雛形を識別に使い、`notifications` のルールはこの雛形を除外します。したがって、`notifications` のルールがローカルネットワークのプロンプトに答えることはなく、逆も同じです。ネットワークのやり取りを記録する実機のターゲットは、ほかのプロンプトと同じように宣言します。
+
+```yaml
+systemAlertHandling:
+  rules:
+    - { prompt: localNetwork, choice: grant }
+```
 
 他の 3 つのプロンプトが 1 通りの見え方しか持たないのに対し、`savePassword` は 3 通りの見え方を持ちます。
 
@@ -308,7 +317,7 @@ BE-0401 と BE-0406 は下記のキーをエイリアスなしで削除しまし
 - handleSystemAlert: { prompt: notifications, choice: grant, timeout: 5 }
 ```
 
-`prompt` は `notifications`、`tracking`、`paste` のいずれかで、`choice` は `grant` か `deny` です。ガード自身の `rules` は、このステップが取れない 4 つ目のプロンプト `savePassword` も取ります。ステップのほうは解析時にこれを拒否します（上記の[面の一覧](#複数のプロンプトに違う答えを返す-rules)を参照）。ボタンを意味で指定するため、同じファイルが `en_US` でも `ja_JP` でもプロンプトを許可します。どちらの言語のテキストも作者が書き写す必要はありません。これは英語だけを使う場合にも役立ちます。英語の拒否ボタンのアポストロフィは、手で打った label が持つ ASCII 文字ではなく、活字体のアポストロフィ（`Don’t Allow`、`Don’t Allow Paste`）だからです。
+`prompt` は `notifications`、`tracking`、`paste`、`localNetwork` のいずれかで、`choice` は `grant` か `deny` です。ガード自身の `rules` は、このステップが取れないプロンプト `savePassword` も取ります。ステップのほうは解析時にこれを拒否します（上記の[面の一覧](#複数のプロンプトに違う答えを返す-rules)を参照）。ボタンを意味で指定するため、同じファイルが `en_US` でも `ja_JP` でもプロンプトを許可します。どちらの言語のテキストも作者が書き写す必要はありません。これは英語だけを使う場合にも役立ちます。英語の拒否ボタンのアポストロフィは、手で打った label が持つ ASCII 文字ではなく、活字体のアポストロフィ（`Don’t Allow`、`Don’t Allow Paste`）だからです。
 
 label の対応表が扱う言語は英語と日本語です。それ以外の言語では、ステップはボタンの位置で答えます（[BE-0445](../../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer-ja.md)）。3 つのプロンプトのどれでも、SpringBoard は拒否側のボタンを 1 番目に、許可側のボタンを 2 番目に並べます。この並びは、英語と日本語では iOS 18.6 と 26.5 で、アラビア語では 26.5 で、各ボタンを実際に押してアプリに残る許可状態を読み取って確かめたものです。ここでいう並びは SpringBoard が報告する順序で、画面上の左右ではありません。アラビア語では通知プロンプトの拒否側のボタンが右側に描かれますが、報告される順序ではやはり 1 番目です。したがって `choice: grant` は 2 つのうち 2 番目のボタンを、`choice: deny` は 1 番目のボタンを押します。ボタンの数が 2 つでないアラートには、この規則は何も指しません。その場合ステップはタイムアウトまで待ち、見えたボタンを挙げて失敗します。規則を測っていないアラートで、位置だけを頼りに押すわけにはいかないからです。この規則が指すのはボタンで、プロンプトではありません。SpringBoard のタイトルとメッセージも言語ごとに訳されるので、言語が変わっても 2 ボタンのプロンプト同士を見分けられる手がかりはありません。ステップが待っているあいだに出た 2 ボタンの SpringBoard アラートは、どれも位置で答えられます。ステップは、プロンプトを出す操作の直後に置いてください。locale を持たない呼び出し（`record` の再生）も同じ規則で答えます。ステップのレポート行には、押したボタンと、それを選んだ規則（`sel`、`label table: <locale>`、`position: button 2 of 2` のいずれか）が出ます。ほかのアラートは、これまでどおり `sel` でボタンを指定します。
 

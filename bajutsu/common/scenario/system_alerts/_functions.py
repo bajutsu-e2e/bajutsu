@@ -18,7 +18,29 @@ from .uncovered_system_alert_locale import UncoveredSystemAlertLocale
 # cross-process pasteboard read, neither of which that vocabulary has an entry for because no
 # `simctl` command can pre-answer them. `savePassword` (BE-0406) is the first entry not owned by
 # SpringBoard — see `_SURFACES`.
-SystemAlertPrompt = Literal["notifications", "tracking", "paste", "savePassword"]
+SystemAlertPrompt = Literal["notifications", "tracking", "paste", "savePassword", "localNetwork"]
+
+# The prefix of the one entry an alert's *title* contributes to the labels a rule matches against,
+# beside its buttons. The title names the app, so it is first reduced to Apple's own template: every
+# “…”-quoted span becomes “%@”, which is exactly how the shipped strings spell the placeholder. The
+# prefix keeps the entry from ever equalling a real button label.
+TITLE_MARKER = "title: "
+
+
+def alert_title_marker(title: str) -> str:
+    """The label-like entry an alert's title contributes to rule matching (see `TITLE_MARKER`)."""
+    return TITLE_MARKER + re.sub(r"“[^”]*”", "“%@”", title)
+
+
+# `localNetwork` (iOS 14's Local Network privacy prompt) shares its buttons with `notifications` in
+# every language below, so its title is what tells the two apart: `localNetwork` names the title's
+# marker among its identifying labels, and `notifications` excludes it. Transcribed from
+# `NetworkExtension.framework/<lang>.lproj/Localizable.strings` (`APP_WANTS_LOCAL_NETWORK_HEADER`,
+# `ALLOW_BUTTON`, `DONT_ALLOW_BUTTON`), identical on the iOS 18.6, 26.5 and 27.0 runtimes.
+_LOCAL_NETWORK_TITLE = {
+    "en": TITLE_MARKER + "Allow “%@” to find devices on local networks?",
+    "ja": TITLE_MARKER + "“%@”がローカルネットワーク上のデバイスを見つけることを許可しますか?",
+}
 
 # What the author means, rather than which button says it. `deny` is the prompt's negative choice,
 # which is not always a plain refusal — ATT's is "Ask App Not to Track".
@@ -43,12 +65,30 @@ _LABELS: _Prompts = {
                 "identifying": ("Allow", "Don’t Allow"),
                 "grant": "Allow",
                 "deny": "Don’t Allow",
-                "excludes": (),
+                "excludes": (_LOCAL_NETWORK_TITLE["en"],),
             }
         ],
         "ja": [
             {
                 "identifying": ("許可", "許可しない"),
+                "grant": "許可",
+                "deny": "許可しない",
+                "excludes": (_LOCAL_NETWORK_TITLE["ja"],),
+            }
+        ],
+    },
+    "localNetwork": {
+        "en": [
+            {
+                "identifying": ("Allow", "Don’t Allow", _LOCAL_NETWORK_TITLE["en"]),
+                "grant": "Allow",
+                "deny": "Don’t Allow",
+                "excludes": (),
+            }
+        ],
+        "ja": [
+            {
+                "identifying": ("許可", "許可しない", _LOCAL_NETWORK_TITLE["ja"]),
                 "grant": "許可",
                 "deny": "許可しない",
                 "excludes": (),
@@ -136,13 +176,15 @@ _LABELS: _Prompts = {
 }
 
 
-# SpringBoard owns the first three, so each reaches the step and the native probe and nothing else.
+# SpringBoard owns every prompt but `savePassword`, so each reaches the step and the native probe and
+# nothing else.
 # `savePassword` is the mirror image: the in-tree dismissal alone.
 _SURFACES: _PromptSurfaces = {
     "notifications": {"step": True, "native": True, "in_tree": False},
     "tracking": {"step": True, "native": True, "in_tree": False},
     "paste": {"step": True, "native": True, "in_tree": False},
     "savePassword": {"step": False, "native": False, "in_tree": True},
+    "localNetwork": {"step": True, "native": True, "in_tree": False},
 }
 
 
@@ -158,10 +200,13 @@ _DENY_THEN_GRANT: dict[SystemAlertChoice, SystemAlertRole] = {
     "deny": SystemAlertRole(ordinal=0, count=2),
     "grant": SystemAlertRole(ordinal=1, count=2),
 }
+# `localNetwork` was read on a real iPhone (iOS 27.0.1, English): deny, then grant — the
+# same order as the three above. Its other languages are not yet measured.
 _ROLES: dict[SystemAlertPrompt, dict[SystemAlertChoice, SystemAlertRole]] = {
     "notifications": _DENY_THEN_GRANT,
     "tracking": _DENY_THEN_GRANT,
     "paste": _DENY_THEN_GRANT,
+    "localNetwork": _DENY_THEN_GRANT,
 }
 
 

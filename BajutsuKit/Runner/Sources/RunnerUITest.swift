@@ -57,7 +57,11 @@ final class RunnerUITest: XCTestCase {
             guard policy.governs else { return false }
             let buttons = alert.buttons
             let labels = (0..<buttons.count).map { buttons.element(boundBy: $0).label }
-            guard let label = policy.label(for: labels) else {
+            // The title joins the matched labels as a marker, so a prompt sharing another's buttons
+            // (Local Network and notifications) is told apart the way the Python guard tells it.
+            let title = alert.label
+            let matched = title.isEmpty ? labels : labels + [alertTitleMarker(title)]
+            guard let label = policy.label(for: matched) else {
                 // A `labels` carrying no real button text is the same benign race `button.exists`
                 // guards below: the alert lost the race with its own dismissal between XCUITest
                 // flagging the interruption and this query — `buttons.count` can already reflect

@@ -48,7 +48,9 @@ class FakeDriver:
         # What `push_interruption_policy` last handed this backend, and what the runner-side
         # interruption monitor should report having tapped and declined — both inert here, so a
         # test can drive the orchestrator side of that exchange without a Simulator.
-        self.interruption_policy: tuple[list[tuple[set[str], str]], bool] | None = None
+        self.interruption_policy: (
+            tuple[list[tuple[set[str], str] | tuple[set[str], str, set[str]]], bool] | None
+        ) = None
         self.interruptions_to_drain: list[str] = []
         self.interruptions_declined_to_drain: list[list[str]] = []
         # Notification banners the runner-side monitor should report having swiped away (BE-0416),
@@ -289,10 +291,20 @@ class FakeDriver:
         return self.notification_banner
 
     def set_interruption_policy(
-        self, rules: Sequence[tuple[frozenset[str], str]], governs: bool
+        self, rules: Sequence[tuple[frozenset[str], str, frozenset[str]]], governs: bool
     ) -> None:
-        """Record the policy the orchestrator pushed, so a test can assert what the backend was told."""
-        self.interruption_policy = ([(set(identify), tap) for identify, tap in rules], governs)
+        """Record the policy the orchestrator pushed, so a test can assert what the backend was told.
+
+        A rule with no exclusions is recorded as its identifying labels and tap alone, the shape
+        nearly every assertion compares against; one with exclusions carries them third.
+        """
+        self.interruption_policy = (
+            [
+                (set(identify), tap, set(exclude)) if exclude else (set(identify), tap)
+                for identify, tap, exclude in rules
+            ],
+            governs,
+        )
 
     def drain_interruptions(self) -> base.DrainedInterruptions:
         """Hand back (and clear) whatever the three `*_to_drain` lists were seeded with."""

@@ -13,6 +13,7 @@ from ._functions import (
     alert_block_note,
     identified_alert_rules,
     matching_alert_rule,
+    observed_alert_labels,
     selector_names_button,
     subtract_labels,
     uncleared_prompt_note,
@@ -801,7 +802,7 @@ class AlertGuardConfig:
         """
         if base.Capability.HANDLE_SYSTEM_ALERT not in driver.capabilities():
             return "incapable", None, []
-        buttons = driver.system_alert_labels()
+        buttons = observed_alert_labels(driver)
         if not buttons:
             return "absent", None, []
         if reserved is not None and selector_names_button(reserved, buttons):

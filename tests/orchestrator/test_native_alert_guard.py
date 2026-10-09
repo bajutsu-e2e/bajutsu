@@ -1230,22 +1230,29 @@ def test_push_interruption_policy_omits_a_rule_the_backend_can_never_meet() -> N
     assert driver.interruption_policy[0] == [({"Allow", "Don't Allow"}, "Don't Allow")]
 
 
-def test_push_interruption_policy_refuses_a_reachable_rule_carrying_an_exclusion_set() -> None:
-    # No such shape exists today — every excluded one is in-tree-only, and dropped above — so this
-    # fails loudly rather than letting a later addition reach the runner with its exclusion silently
-    # discarded, which is exactly the subset-match collision the drop avoids.
+def test_push_interruption_policy_carries_a_reachable_rule_s_exclusion_set() -> None:
+    # `notifications` excludes the Local Network title's marker; dropping the exclusion on the way to
+    # the runner would let the monitor answer that prompt by the notification rule.
     from bajutsu.common.orchestrator import push_interruption_policy
 
     excluding = ResolvedAlertRule(
-        identifying_labels=frozenset({"Save", "Not Now"}),
-        tap_label="Not Now",
-        excluded_labels=frozenset({"Never for This Card"}),
+        identifying_labels=frozenset({"Allow", "Don’t Allow"}),
+        tap_label="Allow",
+        excluded_labels=frozenset({"title: Allow “%@” to find devices on local networks?"}),
         native=True,
     )
     driver = FakeDriver([])
-    with pytest.raises(ValueError, match="exclusion set"):
-        push_interruption_policy(driver, AlertGuardConfig(rules=[excluding]))
-    assert driver.interruption_policy is None  # refused outright, not half-pushed
+    push_interruption_policy(driver, AlertGuardConfig(rules=[excluding]))
+    assert driver.interruption_policy == (
+        [
+            (
+                {"Allow", "Don’t Allow"},
+                "Allow",
+                {"title: Allow “%@” to find devices on local networks?"},
+            )
+        ],
+        True,
+    )
 
 
 def test_push_interruption_policy_clears_it_when_the_scenario_disables_the_guard() -> None:
@@ -4435,3 +4442,73 @@ def test_withdraw_is_a_no_op_when_there_is_no_event_to_take_back() -> None:
     # shape would be.
     _withdraw(alerts, AlertEvent(label="Allow"))
     assert alerts == [AlertEvent(label="Allow")]
+
+
+# --- Local Network: the prompt sharing notifications' buttons, told apart by its title ---------- #
+
+
+def _rules_for(prompt: str, choice: str) -> list[ResolvedAlertRule]:
+    from bajutsu.common.scenario.system_alerts import system_alert_shapes
+
+    return [
+        ResolvedAlertRule(
+            identifying_labels=shape.identifying_labels,
+            tap_label=shape.tap_label,
+            excluded_labels=shape.excluded_labels,
+            native=True,
+        )
+        for shape in system_alert_shapes(prompt, choice, "en_US")  # type: ignore[arg-type]
+    ]
+
+
+class _TitledFake(FakeDriver):
+    """A fake whose SpringBoard alert also reports a title, as the XCUITest runner does."""
+
+    def __init__(self, labels: list[str], title: str) -> None:
+        super().__init__([])
+        self.system_alert_buttons = [_button(label) for label in labels]
+        self.title = title
+
+    def system_alert_titles(self) -> list[str]:
+        return [self.title] if self.system_alert_buttons else []
+
+
+_LOCAL_NETWORK_TITLE = "Allow “Showcase SwiftUI” to find devices on local networks?"
+_NOTIFICATIONS_TITLE = "“Showcase SwiftUI” Would Like to Send You Notifications"
+
+
+def test_a_local_network_rule_answers_the_local_network_prompt_by_its_title() -> None:
+    guard = AlertGuardConfig(rules=_rules_for("localNetwork", "grant"))
+    driver = _TitledFake(["Don’t Allow", "Allow"], _LOCAL_NETWORK_TITLE)
+    state, event, _ = guard.probe_native(driver)
+    assert state == "dismissed"
+    assert event == AlertEvent(label="Allow")
+
+
+def test_a_local_network_rule_leaves_a_notifications_prompt_alone() -> None:
+    # Same buttons, different title: the rule names the Local Network title's marker, so it does not
+    # identify the notification prompt.
+    guard = AlertGuardConfig(rules=_rules_for("localNetwork", "grant"))
+    driver = _TitledFake(["Don’t Allow", "Allow"], _NOTIFICATIONS_TITLE)
+    state, event, _ = guard.probe_native(driver)
+    assert (state, event) == ("unhandled", None)
+    assert driver.actions == []
+
+
+def test_a_notifications_rule_leaves_the_local_network_prompt_alone() -> None:
+    # The notifications shape excludes the Local Network title's marker, so declaring notifications
+    # never answers the prompt Bajutsu's own collector raised.
+    guard = AlertGuardConfig(rules=_rules_for("notifications", "grant"))
+    driver = _TitledFake(["Don’t Allow", "Allow"], _LOCAL_NETWORK_TITLE)
+    state, _, seen = guard.probe_native(driver)
+    assert state == "unhandled"
+    assert driver.actions == []
+    assert "title: Allow “%@” to find devices on local networks?" in seen  # named in the report
+
+
+def test_a_notifications_rule_still_answers_a_backend_reporting_no_titles() -> None:
+    # A backend without titles contributes buttons alone, exactly as before.
+    guard = AlertGuardConfig(rules=_rules_for("notifications", "deny"))
+    driver = _fake_with_alert(["Don’t Allow", "Allow"])
+    state, event, _ = guard.probe_native(driver)
+    assert (state, event) == ("dismissed", AlertEvent(label="Don’t Allow"))

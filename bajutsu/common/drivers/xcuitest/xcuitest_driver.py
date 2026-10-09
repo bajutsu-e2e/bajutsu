@@ -212,6 +212,10 @@ class XcuitestDriver:
         self._screen: base.Point | None = None
         # What this driver actually actuated, drained per step by the run loop.
         self._actuations = ActuationLog()
+        # The titles of the SpringBoard alerts the latest `system_alert_labels` read saw, from that
+        # same `/systemAlert/query` reply, so the guard can tell apart two prompts sharing buttons
+        # without a second cross-process query (`system_alert_titles`).
+        self._alert_titles: list[str] = []
         # The raw `GET /elements` body behind the last query (`base.RawSourceProvider`, the `rawTree`
         # capture kind), kept undecoded: `last_raw_source()` is read only on the rare step that actually
         # requests `rawTree` capture, so decoding here on every query — the common, capture-off case —
@@ -811,7 +815,8 @@ class XcuitestDriver:
         # had declared held the screen for the whole call and the step failed for a prompt it never
         # saw. `timeout` stays on the signature so every backend keeps one shape; every caller now
         # passes zero.
-        buttons, handles = self._parse_elements(self._transport("POST", "/systemAlert/query", {}))
+        elements, handles = self._parse_elements(self._transport("POST", "/systemAlert/query", {}))
+        buttons, _ = _split_alert_titles(elements)
         if not buttons:
             raise base.ElementNotFound(f"no system alert is showing: {sel!r}")
         el = base.resolve_unique(buttons, sel)
@@ -842,8 +847,18 @@ class XcuitestDriver:
         prompt is showing and which button its policy should tap. Unlabeled buttons are dropped:
         the policy resolves by visible label.
         """
-        buttons, _ = self._parse_elements(self._transport("POST", "/systemAlert/query", {}))
+        elements, _ = self._parse_elements(self._transport("POST", "/systemAlert/query", {}))
+        buttons, self._alert_titles = _split_alert_titles(elements)
         return [label for b in buttons if (label := b["label"])]
+
+    def system_alert_titles(self) -> list[str]:
+        """The titles of the alerts the latest `system_alert_labels` read saw, [] when none.
+
+        Read off that same reply rather than queried again, so a caller pairing the two pays one
+        round trip. The reactive guard needs it for prompts whose buttons alone cannot tell them
+        apart: Local Network and notifications both offer "Allow" / "Don't Allow".
+        """
+        return list(self._alert_titles)
 
     def app_crash_signal(self) -> str | None:
         """Whether the app under test has crashed, from `XCUIApplication.state` (BE-0424).
@@ -880,7 +895,7 @@ class XcuitestDriver:
         return banners[0]["frame"] if banners else None
 
     def set_interruption_policy(
-        self, rules: Sequence[tuple[frozenset[str], str]], governs: bool
+        self, rules: Sequence[tuple[frozenset[str], str, frozenset[str]]], governs: bool
     ) -> None:
         """Push the button policy the runner's interruption monitor applies.
 
@@ -904,7 +919,14 @@ class XcuitestDriver:
             "POST",
             "/interruptionPolicy",
             {
-                "rules": [{"identify": sorted(identify), "tap": tap} for identify, tap in rules],
+                "rules": [
+                    {
+                        "identify": sorted(identify),
+                        "tap": tap,
+                        **({"exclude": sorted(exclude)} if exclude else {}),
+                    }
+                    for identify, tap, exclude in rules
+                ],
                 "governs": governs,
             },
         )
@@ -1105,3 +1127,16 @@ def _post_target(transport: TransportFn, bundle_id: str) -> None:
         raise XcuitestChannelError(
             f"runner could not retarget to {bundle_id!r}: the handler raised (status={reply.status})"
         )
+
+
+# The identifier the runner gives the one non-button entry it adds per SpringBoard alert to a
+# `/systemAlert/query` reply: the alert's own title, as its label. Kept out of every button list, so
+# a selector or a position rule only ever counts and resolves real buttons.
+_ALERT_TITLE_ID = "bajutsu.systemAlert.title"
+
+
+def _split_alert_titles(elements: list[base.Element]) -> tuple[list[base.Element], list[str]]:
+    """A `/systemAlert/query` reply's buttons, and the titles of the alerts they sit on."""
+    buttons = [el for el in elements if el["identifier"] != _ALERT_TITLE_ID]
+    titles = [el["label"] for el in elements if el["identifier"] == _ALERT_TITLE_ID and el["label"]]
+    return buttons, titles

@@ -1992,6 +1992,29 @@ def test_system_alert_labels_returns_empty_when_no_alert_is_up() -> None:
     assert _driver(lambda m, p, b: _elements()).system_alert_labels() == []
 
 
+def test_the_alert_title_is_kept_out_of_the_buttons_and_read_from_the_same_reply() -> None:
+    # The runner adds one titled entry per alert; it must never count as a button (a position rule
+    # counts buttons), and the title is served from that reply with no second query.
+    calls: list[str] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        calls.append(path)
+        return _elements(
+            _el_wire("h-deny", label="Don’t Allow", traits=["button"]),
+            _el_wire("h-allow", label="Allow", traits=["button"]),
+            _el_wire(
+                "h-title",
+                "bajutsu.systemAlert.title",
+                label="Allow “Showcase” to find devices on local networks?",
+            ),
+        )
+
+    driver = _driver(transport)
+    assert driver.system_alert_labels() == ["Don’t Allow", "Allow"]
+    assert driver.system_alert_titles() == ["Allow “Showcase” to find devices on local networks?"]
+    assert calls == ["/systemAlert/query"]
+
+
 # --- notification_banner_frame (BE-0416): the proactive guard's non-blocking presence read --------
 
 
@@ -2031,14 +2054,27 @@ def test_set_interruption_policy_sends_the_rules_and_governs() -> None:
         return _Reply(status="ok")
 
     _driver(transport).set_interruption_policy(
-        [(frozenset({"Allow", "Don't Allow"}), "Don't Allow")], True
+        [
+            (frozenset({"Allow", "Don't Allow"}), "Don't Allow", frozenset()),
+            (frozenset({"Allow", "Don't Allow"}), "Allow", frozenset({"title: B", "title: A"})),
+        ],
+        True,
     )
     assert sent == [
         (
             "POST",
             "/interruptionPolicy",
             {
-                "rules": [{"identify": ["Allow", "Don't Allow"], "tap": "Don't Allow"}],
+                # An exclusion set travels sorted, and a rule without one carries no key at all, so
+                # an older runner's body is unchanged for every rule that needs none.
+                "rules": [
+                    {"identify": ["Allow", "Don't Allow"], "tap": "Don't Allow"},
+                    {
+                        "identify": ["Allow", "Don't Allow"],
+                        "tap": "Allow",
+                        "exclude": ["title: A", "title: B"],
+                    },
+                ],
                 "governs": True,
             },
         )

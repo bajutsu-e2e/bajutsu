@@ -8,11 +8,32 @@ import Foundation
 public struct InterruptionRule: Sendable, Equatable {
     public let identify: [String]
     public let tap: String
+    /// Labels whose presence rules this rule out, as `excluded_labels` does on the Python side. The
+    /// one real case: `notifications` excludes the Local Network prompt's title marker, since the
+    /// two prompts share their buttons.
+    public let exclude: [String]
 
-    public init(identify: [String], tap: String) {
+    public init(identify: [String], tap: String, exclude: [String] = []) {
         self.identify = identify
         self.tap = tap
+        self.exclude = exclude
     }
+}
+
+/// The prefix of the entry an alert's title adds to the labels a rule matches against.
+///
+/// Mirrors `bajutsu.common.scenario.system_alerts.TITLE_MARKER`; the two must stay byte-identical,
+/// since the Python side resolves the rules and this side matches them.
+public let alertTitleMarkerPrefix = "title: "
+
+/// The label-like entry an alert's title contributes: the title reduced to Apple's own template.
+///
+/// A title names the app, so every “…”-quoted span becomes “%@”, which is how the shipped strings
+/// spell the placeholder. Mirrors `alert_title_marker` on the Python side.
+public func alertTitleMarker(_ title: String) -> String {
+    alertTitleMarkerPrefix
+        + title.replacingOccurrences(
+            of: "“[^”]*”", with: "“%@”", options: .regularExpression)
 }
 
 /// Which button to press on an out-of-process alert that interrupts an XCUITest interaction.
@@ -54,11 +75,17 @@ public struct InterruptionPolicy: Sendable, Equatable {
     /// described, and never a loop, because that handler does clear the alert. Since BE-0406 Unit 2b
     /// there is no built-in fallback here: an alert no rule identifies is always declined, and
     /// `governs` decides only whether that decline gets recorded.
+    ///
+    /// `buttons` may carry the alert's title marker (`alertTitleMarker`) beside its buttons, which a
+    /// rule identifies or excludes like any other label.
     public func label(for buttons: [String]) -> String? {
         func presentExactlyOnce(_ label: String) -> Bool {
             buttons.filter { $0 == label }.count == 1
         }
-        for rule in rules where rule.identify.allSatisfy(presentExactlyOnce) {
+        for rule in rules
+        where rule.identify.allSatisfy(presentExactlyOnce)
+            && !rule.exclude.contains(where: buttons.contains)
+        {
             return rule.tap
         }
         return nil

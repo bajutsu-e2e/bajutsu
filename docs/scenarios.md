@@ -288,13 +288,29 @@ surfaces can declare and answer it:
 | `tracking` | ✅ | ✅ | — |
 | `paste` | ✅ | ✅ | — |
 | `savePassword` | — | — | ✅ |
+| `localNetwork` | ✅ | ✅ | — |
 
-SpringBoard owns the first three, so the step and the native probe both reach them and the tree never
+SpringBoard owns every prompt but `savePassword`, so the step and the native probe both reach them and the tree never
 sees them. `savePassword` is the mirror image: iOS raises it inside the application's own process, so
 `springboard.alerts` never enumerates it and the in-tree dismissal alone can clear it. A
 `handleSystemAlert` step naming `savePassword` is therefore rejected at parse time — that step reads
 the SpringBoard query alone, so it could only poll an empty button list until its deadline
 ([BE-0406](../roadmaps/BE-0406-system-alert-declared-prompts/BE-0406-system-alert-declared-prompts.md)).
+
+`localNetwork` is the iOS Local Network permission prompt. On a real device, Bajutsu's own network
+collector raises it the first time the app reports to the host
+([iOS on a real device](ios-device-cloud.md#device-to-host-an-exchanged-host-address)). Its buttons
+are the same as the notification prompt's, so the buttons alone cannot tell the two apart. The guard
+reads the alert's title too. It reduces the title to Apple's template, with the app's name replaced
+by `%@`. The `localNetwork` rule names that template, and the `notifications` rule excludes it. A
+`notifications` rule therefore never answers the Local Network prompt, and the reverse holds too. A
+real-device target that records network exchanges declares it like any other prompt:
+
+```yaml
+systemAlertHandling:
+  rules:
+    - { prompt: localNetwork, choice: grant }
+```
 
 `savePassword` also renders three ways, where the other three prompts each render one:
 
@@ -447,8 +463,8 @@ resolves the label the pinned `locale` renders
 - handleSystemAlert: { prompt: notifications, choice: grant, timeout: 5 }
 ```
 
-`prompt` is `notifications`, `tracking`, or `paste`; `choice` is `grant` or `deny`. The guard's own
-`rules` take a fourth prompt this step cannot, `savePassword`, which the step rejects at parse time —
+`prompt` is `notifications`, `tracking`, `paste`, or `localNetwork`; `choice` is `grant` or `deny`. The guard's own
+`rules` take one more prompt this step cannot, `savePassword`, which the step rejects at parse time —
 see [the surfaces table](#answering-more-than-one-prompt-differently-rules) above. One step names the
 button by its meaning, so the same file grants the prompt under `en_US` and under `ja_JP` without an
 author transcribing either language's text — worth having even for English alone, whose deny buttons

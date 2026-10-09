@@ -533,19 +533,12 @@ class _StepRunner:
             return False, [], []
         # Resolvable without raising: the label table covers this locale, checked just above.
         shape = system_alert_shapes(hsa.prompt, hsa.choice, self.cfg.locale)[0]
-        if shape.excluded_labels:
-            # `push_interruption_policy` refuses outright to push a native-reachable rule that
-            # carries an exclusion set (the wire format has no room for one, and a silently dropped
-            # exclusion would be matched by subset on the runner) \u2014 unreachable today because no
-            # step-capable prompt's shape carries one (`_SURFACES` marks every prompt with an
-            # exclusion `step: False`), but if one ever does, this reservation must not be the thing
-            # that raises past this step's own try/finally and aborts every scenario after it
-            # (BE-0406 Unit 2b review finding). Skipping the reservation is the honest answer: a
-            # shape needing an exclusion to tell it apart from another alert cannot be reserved
-            # without that exclusion, and the monitor cannot express one.
-            return False, [], []
+        # The exclusion travels with it, so the monitor rules out what the guard would: the
+        # `notifications` reservation must not answer a Local Network prompt sharing its buttons.
         reservation = ResolvedAlertRule(
-            identifying_labels=shape.identifying_labels, tap_label=shape.tap_label
+            identifying_labels=shape.identifying_labels,
+            tap_label=shape.tap_label,
+            excluded_labels=shape.excluded_labels,
         )
         # `setPolicy` clears the monitor's pending drain along with the policy it installs
         # (`InterruptionPolicyStore.setPolicy`), so an interruption the pre-step baseline capture,

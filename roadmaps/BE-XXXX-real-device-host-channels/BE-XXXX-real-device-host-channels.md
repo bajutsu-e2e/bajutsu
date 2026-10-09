@@ -128,6 +128,22 @@ The collector gains one route, `GET /ping`, which answers 204 to an authenticate
 changes no state. The existing `GET /commands` cannot serve as the probe, because it drains the
 control channel's queue.
 
+### Answering the Local Network prompt: `localNetwork`
+
+The device-to-host route raises the iOS Local Network prompt, so `systemAlertHandling.rules` gains a
+`localNetwork` prompt. Its buttons are the notification prompt's ("Allow" / "Don’t Allow"), so the
+guard also reads the alert's title. The runner's `/systemAlert/query` adds one untappable entry per
+alert, carrying its title. The guard reduces that title to Apple's template, with every “…”-quoted span
+(the app's name) replaced by “%@”, and adds it to the matched labels with a `title: ` prefix.
+
+- `localNetwork` names that marker among its identifying labels.
+- `notifications` excludes it, so neither rule answers the other's prompt.
+- The interruption policy carries a rule's exclusions to the runner, which builds the same marker.
+
+The templates come from `NetworkExtension.framework` (`APP_WANTS_LOCAL_NETWORK_HEADER`), identical on
+iOS 18.6, 26.5, and 27.0, in English and Japanese. A scenario or target declares
+`{ prompt: localNetwork, choice: grant }` like any other prompt; nothing answers it implicitly.
+
 ### Checking the routes: `bajutsu doctor`
 
 `bajutsu doctor --environment-only` gains two lines for a `deviceType: device` target. The first
@@ -238,6 +254,8 @@ network scenario on the same device.
 - [x] Collector host: candidate resolution, all-interface binding, URL list, fail-fast error, `GET /ping`.
 - [x] BajutsuKit: candidate selection by authenticated probe, and the interceptor guard.
 - [x] `bajutsu doctor`: the usbmuxd and host-address lines for a real-device target.
+- [x] `localNetwork` prompt: title marker, runner title entries, and exclusions in the
+  interruption policy.
 - [x] Docs in both languages: `docs/ios-device-cloud.md`, `docs/configuration.md`,
   `docs/devicefarm.md`, `docs/architecture.md`.
 - [ ] Manual real-device proof: `firstlook` on a USB-attached iPhone, then a network scenario.
@@ -251,6 +269,13 @@ Log:
   over USB at a 30-second startup ceiling. The `nativeZ`, WebView, and collector units followed after
   the device was unplugged, so the real-device proof stays open for them. Both manual units stay
   open, so the item stays In progress.
+
+- 2026-10-10 — The rest of the real-device proof, on the same iPhone over USB. A first run without
+  a rule stopped at the Local Network prompt. With `{ prompt: localNetwork, choice: grant }`, the
+  guard identified the prompt by its title and tapped "Allow". After the grant, `firstlook` and
+  `network_mock` both passed, and `network_mock` recorded its stubbed `POST /post` (201) over the
+  host-address route. One gap stays open. On a fresh install, the app raises the prompt during
+  launch. The scenario's first tap can land on the prompt before the guard's next poll clears it.
 
 ## References
 

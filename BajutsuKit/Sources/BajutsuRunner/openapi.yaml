@@ -660,6 +660,14 @@ components:
         tap:
           type: string
           description: The label to press once this rule's prompt is identified.
+        exclude:
+          type: array
+          description: >-
+            Labels whose presence rules this rule out. An alert's title joins its labels as a
+            `title: `-prefixed marker, so `notifications` excludes the Local Network prompt's
+            title, the one prompt sharing its buttons. Absent means none.
+          items:
+            type: string
     InterruptionsReply:
       type: object
       required: [labels, unmatched, banners]

@@ -74,6 +74,16 @@ usbmuxd は、ホストから実機への一方向の接続しか運べません
 
 collector には `GET /ping` のルートを 1 つ追加します。認証済みの要求に 204 を返し、状態は何も変えません。既存の `GET /commands` は制御チャネルのキューを空にするので、確認用には使えません。
 
+### ローカルネットワークのプロンプトへの応答：`localNetwork`
+
+実機からホストへの経路は、iOS のローカルネットワークのプロンプトを出させます。そこで `systemAlertHandling.rules` に `localNetwork` プロンプトを加えます。ボタンは通知のプロンプトと同じ（「Allow」と「Don’t Allow」）なので、ガードはアラートのタイトルも読みます。runner の `/systemAlert/query` は、アラートごとにタイトルを持つタップできない項目を 1 つ加えます。ガードはタイトルを Apple の雛形にそろえます。“…”で囲まれた部分（アプリ名）は `“%@”` に置き換えます。そして `title: ` を前に付けて、照合する文言に加えます。
+
+- `localNetwork` は、この目印を識別用の文言に含めます。
+- `notifications` はこの目印を除外するので、どちらのルールも相手のプロンプトには答えません。
+- 割り込みのポリシーは、ルールの除外用の文言も runner に渡します。runner も同じ目印を作ります。
+
+雛形は `NetworkExtension.framework`（`APP_WANTS_LOCAL_NETWORK_HEADER`）から取りました。英語と日本語のどちらでも、iOS 18.6、26.5、27.0 で同じです。シナリオやターゲットは、ほかのプロンプトと同じく `{ prompt: localNetwork, choice: grant }` と宣言します。宣言がなければ、何も自動では答えません。
+
 ### 経路の確認：`bajutsu doctor`
 
 `bajutsu doctor --environment-only` は、`deviceType: device` のターゲットに対して 2 行を追加で出力します。1 行目は、usbmuxd が実機を列挙しているかと、その接続方式です。2 行目は、アプリが受け取るホストアドレスの一覧と、その取得元です。デバイスクラウドのジョブでは `bajutsu run` の前に doctor を実行できます。欠けた経路は、起動のタイムアウトではなく 1 行の出力として見つかります。
@@ -136,6 +146,7 @@ runner のポートには、ホストで空いていた番号を実機でも使�
 - [x] collector のホスト：候補の解決、全インタフェースでの待ち受け、URL の一覧、早期の失敗のエラー、`GET /ping`
 - [x] BajutsuKit：認証付きの確認による候補の選択と、インターセプタの除外
 - [x] `bajutsu doctor`：実機のターゲットに対する usbmuxd とホストアドレスの行
+- [x] `localNetwork` プロンプト：タイトルの目印、runner のタイトルの項目、割り込みのポリシーでの除外
 - [x] 両言語のドキュメント：`docs/ios-device-cloud.md`、`docs/configuration.md`、`docs/devicefarm.md`、`docs/architecture.md`
 - [ ] 実機での手動確認：USB 接続の iPhone で `firstlook`、続けてネットワークのシナリオ
 - [ ] Device Farm での診断の実行：予約した iOS 実機で `bajutsu doctor --environment-only`、続けて `firstlook`
@@ -143,6 +154,8 @@ runner のポートには、ホストで空いていた番号を実機でも使�
 ログ：
 
 - 2026-10-09 — [#2143](https://github.com/bajutsu-e2e/bajutsu/pull/2143) で、コードのすべての単位とドキュメントを実装しました。最初のコミットは runner だけを橋渡しし、iPhone 14 Pro（iOS 27.0.1）を USB で接続して、起動の上限 30 秒で `firstlook` に合格しました。`nativeZ`、WebView、collector の単位は実機を外した後に実装したので、これらの実機での確認は残っています。手動の 2 つの単位が残っているので、状態は実装中のままです。
+
+- 2026-10-10 — 残りの実機での確認を、同じ iPhone を USB で接続して行いました。ルールなしの最初の実行は、ローカルネットワークのプロンプトで止まりました。`{ prompt: localNetwork, choice: grant }` を宣言すると、ガードはタイトルでプロンプトを見分け、「Allow」をタップしました。許可した後は `firstlook` と `network_mock` の両方に合格し、`network_mock` はスタブが応答した `POST /post`（201）をホストアドレスの経路で記録しました。1 つ課題が残っています。新しくインストールした直後は、アプリが起動中にプロンプトを出します。そのため、ガードの次のポーリングが片付ける前に、シナリオの最初のタップがプロンプトに当たることがあります。
 
 ## 参考
 
