@@ -19,6 +19,7 @@ from typing import Any
 
 import pytest
 
+from bajutsu.common.platform_lifecycle.environments.xcuitest import _usbmux as usbmux
 from bajutsu.common.platform_lifecycle.environments.xcuitest._usbmux import (
     UsbmuxError,
     UsbmuxForwarder,
@@ -231,5 +232,31 @@ def test_close_stops_accepting_and_is_idempotent(mux_path: Path) -> None:
         fwd.close()
         with pytest.raises(ConnectionRefusedError):
             socket.create_connection(("127.0.0.1", port), timeout=1).close()
+    finally:
+        mux.close()
+
+
+def test_a_silent_usbmuxd_fails_within_the_handshake_ceiling(
+    mux_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A mux that accepts but never answers must not hang the spawn or a health-probe thread.
+    monkeypatch.setattr(usbmux, "_HANDSHAKE_TIMEOUT", 0.2)
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(str(mux_path))
+    server.listen(1)
+    try:
+        with pytest.raises(UsbmuxError, match="did not answer"):
+            device_id(_UDID, str(mux_path))
+    finally:
+        server.close()
+
+
+def test_a_joined_tunnel_carries_no_idle_deadline(mux_path: Path, echo_port: int) -> None:
+    # The handshake ceiling is for the exchange with usbmuxd only; the driver keeps the joined
+    # connection open between calls, so it must not time out while idle.
+    mux = _FakeUsbmuxd(mux_path, [_device(3, _UDID, "USB")], {8100: echo_port})
+    try:
+        with connect(_UDID, 8100, str(mux_path)) as sock:
+            assert sock.gettimeout() is None
     finally:
         mux.close()

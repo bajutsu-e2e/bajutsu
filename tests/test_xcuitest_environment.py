@@ -311,6 +311,23 @@ def test_an_unbridgeable_device_fails_the_spawn_with_its_reason(
         env.start(_device_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
 
 
+def test_a_spawn_that_fails_after_bridging_closes_the_bridge(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The retry loop discards only an attempt that spawned, so a failure between opening the bridge
+    # and `Popen` returning must close it here, or its listener and accept thread outlive the run.
+    def _popen(*_a: Any, **_k: Any) -> _FakeProc:
+        raise OSError("xcodebuild: not found")
+
+    monkeypatch.setattr(subprocess, "Popen", _popen)
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    with pytest.raises(simctl.DeviceError, match="failed to start xcodebuild"):
+        env.start(_device_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    assert _FakeForwarder.instances
+    assert all(bridge.closed for bridge in _FakeForwarder.instances)
+    assert env._forwarder is None
+
+
 # --- the live-route boundary: an Appium endpoint routes around the udid machinery (BE-0238) --- #
 
 

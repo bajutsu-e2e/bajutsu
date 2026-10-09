@@ -32,6 +32,9 @@ _PROG = "bajutsu"
 # which during a cold spawn just means the runner is still starting.
 _RESULT_OK = 0
 _CHUNK = 64 * 1024
+# A ceiling on each usbmuxd request/reply exchange, so a mux that stops answering fails the spawn or
+# the one connection instead of hanging a thread; a joined tunnel drops it (`connect`).
+_HANDSHAKE_TIMEOUT = 5.0
 
 
 class UsbmuxError(OSError):
@@ -46,7 +49,10 @@ def _send(sock: socket.socket, payload: dict[str, Any], tag: int = 1) -> None:
 def _recv_exact(sock: socket.socket, n: int) -> bytes:
     buf = bytearray()
     while len(buf) < n:
-        chunk = sock.recv(n - len(buf))
+        try:
+            chunk = sock.recv(n - len(buf))
+        except TimeoutError as exc:
+            raise UsbmuxError(f"usbmuxd did not answer within {_HANDSHAKE_TIMEOUT}s") from exc
         if not chunk:
             raise UsbmuxError("usbmuxd closed the connection mid-reply")
         buf += chunk
@@ -63,6 +69,7 @@ def _recv(sock: socket.socket) -> dict[str, Any]:
 
 def _mux_socket(socket_path: str) -> socket.socket:
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(_HANDSHAKE_TIMEOUT)
     try:
         sock.connect(socket_path)
     except OSError as exc:
@@ -114,7 +121,9 @@ def connect(udid: str, port: int, socket_path: str = USBMUXD_SOCKET) -> socket.s
     if result != _RESULT_OK:
         sock.close()
         raise UsbmuxError(f"usbmuxd refused device port {port} on {udid} (result {result})")
-    # From here the socket is the raw byte stream to the device port.
+    # From here the socket is the raw byte stream to the device port, which the driver keeps open
+    # between calls, so it carries no idle deadline of its own.
+    sock.settimeout(None)
     return sock
 
 

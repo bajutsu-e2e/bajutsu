@@ -51,10 +51,11 @@ device fails loudly rather than silently doing nothing, and the Device Farm rout
 app through the cloud instead. This same key drives a locally attached iPhone or iPad, so the
 real-device work is useful on its own, before any cloud is involved.
 
-The runner serves its HTTP channel on the device's own loopback address. A Simulator shares the
-host's loopback, so the host reaches that port directly. A real device does not, so with
-`deviceType: device` Bajutsu bridges the port through usbmuxd, the macOS service that Xcode and
-`iproxy` also use to reach a USB-attached device. Bajutsu opens a listener on the host's
+The runner serves its Hypertext Transfer Protocol (HTTP) channel on the device's own loopback
+address. A Simulator shares the host's loopback, so the host reaches that port directly. A real
+device does not, so with `deviceType: device` Bajutsu bridges the port through usbmuxd, the macOS
+service that Xcode and `iproxy` also use to reach a device attached over Universal Serial Bus (USB).
+Bajutsu opens a listener on the host's
 `127.0.0.1` and tells the runner to bind the same port number on the device. Each connection to that
 listener is tunnelled to the device through a usbmuxd `Connect` request. This is the iOS counterpart
 of the `adb forward` the Android resident channel sets up. It needs no extra host tool, because

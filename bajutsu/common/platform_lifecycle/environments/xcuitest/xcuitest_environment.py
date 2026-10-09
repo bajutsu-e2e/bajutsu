@@ -62,7 +62,7 @@ from ._functions import (
 from ._recovery import _Recovery
 from ._shared import _logger
 from ._spawned import _Spawned
-from ._usbmux import UsbmuxError, UsbmuxForwarder
+from ._usbmux import UsbmuxForwarder
 
 # Overrides the directory the runner subprocess's combined stdout/stderr is captured into, one file
 # per cold spawn. Capture is on by default (BE-0319 unit 1): a startup failure or mid-run crash is
@@ -923,6 +923,18 @@ class XcuitestEnvironment(_DeviceEnvironment):
         surviving attempt's state is the environment's, which warm reuse and teardown then own.
         """
         self._runner_port = self._runner_channel_port(device_type)
+        try:
+            return self._spawn_on_port(runner_path, forwarded_base, device_type)
+        except BaseException:
+            # The retry loop discards only an attempt that spawned; one that failed before then
+            # would otherwise leave the bridge's listener and accept thread running.
+            self._close_forwarder()
+            raise
+
+    def _spawn_on_port(
+        self, runner_path: Path, forwarded_base: Mapping[str, str], device_type: str
+    ) -> _Spawned:
+        """`_spawn_runner`'s body once `_runner_port` is set: patch, spawn, and build the driver."""
         forwarded = {"BAJUTSU_RUNNER_PORT": str(self._runner_port), **forwarded_base}
         # `xcodebuild` does not pass its own environment through to the test-runner process
         # inside the Simulator, so the runner reads these from the .xctestrun's per-target
@@ -1036,17 +1048,14 @@ class XcuitestEnvironment(_DeviceEnvironment):
         bridge to the same number on the device — the iOS counterpart of the resident Android
         channel's `adb forward`.
         """
-        if (
-            self._forwarder is not None
-        ):  # a previous attempt's bridge, should a discard have missed it
-            self._forwarder.close()
-            self._forwarder = None
+        self._close_forwarder()  # a previous attempt's bridge, should a discard have missed it
         if device_type != "device":
             return _allocate_port()
         forwarder = UsbmuxForwarder(self._udid)
         try:
             port = forwarder.start()
-        except UsbmuxError as exc:
+        except OSError as exc:  # usbmuxd unreachable or silent, the device unlisted, or no bind
+            forwarder.close()
             raise simctl.DeviceError(
                 f"cannot bridge to the runner on device {self._udid}: {exc}"
             ) from exc
@@ -1863,9 +1872,13 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 self._patched_runner.unlink(missing_ok=True)
                 self._patched_runner = None
             self._reusable = False
-            if self._forwarder is not None:
-                self._forwarder.close()
-                self._forwarder = None
+            self._close_forwarder()
+
+    def _close_forwarder(self) -> None:
+        """Close the real-device port bridge, if one is open; a no-op on the Simulator."""
+        if self._forwarder is not None:
+            self._forwarder.close()
+            self._forwarder = None
 
     def _terminate_app_under_test(self) -> None:
         """Best-effort `simctl terminate` of the app the runner launched (Simulator only).
