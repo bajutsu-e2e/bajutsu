@@ -70,6 +70,10 @@ BE-0238 はこの preflight の判定に依存しています。
 唯一の根拠は、`capabilities_for_run` が実機で外す能力の集合です（`backends.py:236-243`）。
 新しい関数 `real_device_dropped_capabilities()` がこの集合を返し、`capabilities_for_run` と lint の両方が呼びます。
 実機の絞り込みに能力を足せば、同じコミットで lint の判定も変わります。
+この集合のうち `DEVICE_GROUP` だけは、`unsupported` が扱いません。`_REQUIREMENTS` に項目がないためです。
+デバイスグループは `_preflight_targets`（`pipeline.py:345,349`）が `unsupported` より先に、独自に拒否します。
+lint もこの拒否を再現し、実機のターゲットをメンバーに含む `deviceGroups:` の宣言をエラーにします。
+デバイスグループがなければ実行も進められないため、除外記法は用意しません。
 
 ステップと能力の対応表はすでにあります。
 `capability_preflight.py`（`bajutsu/common/capability/` 配下）の `_REQUIREMENTS` がその表です。
@@ -95,8 +99,8 @@ skip_on_real_device: str | None = Field(default=None, alias="skipOnRealDevice")
 | 値 | 空白でない理由の文字列。`Sleep.reason` と同じ検証を使い、空や空白だけの値は読み込み時に失敗します |
 | アクションがちょうど1つという検査 | `steps/_shared.py` の `_MODIFIERS` にこのフィールドを加え、アクションとして数えないようにします |
 | `if`、`forEach`、`web`、`app` に付けた場合 | 内側のすべてのステップが対象になります |
-| `use` と `group` に付けた場合 | `expand.py` が展開後の各ステップへ修飾子を複製します。`_no_modifiers_on_use` は、`target`（BE-0446）に続く2つ目の例外としてこの修飾子を受け入れます |
-| ターゲットグループ（`target` 付きの `steps:`）に付けた場合 | `_target_group` が受け入れ、`_expand_target_groups`（`models/scenario/_targets.py`）と `expand.py` のコンポーネント経路が内側の各ステップへ複製します |
+| `use` と `group` に付けた場合 | `expand.py` は、自身の修飾子を持たない展開後のステップに修飾子を付け、同じ理由なら受け入れ、異なる理由なら拒否します。これは `_merge_target`（`expand.py:79`）が `target` にすでに適用している規則です。`_no_modifiers_on_use` は、`target`（BE-0446）に続く2つ目の例外としてこの修飾子を受け入れます |
+| ターゲットグループ（`target` 付きの `steps:`）に付けた場合 | `_target_group` が受け入れ、`_expand_target_groups`（`models/scenario/_targets.py`）と `expand.py` のコンポーネント経路が、同じ `_merge_target` の規則で内側の各ステップへ複製します |
 | `manual` と `setPrimaryTarget` に付けた場合 | 読み込み時に拒否します |
 | `manual` ステップを含む `if`、`forEach`、`web`、`app` ブロックに付けた場合 | 読み込み時に拒否します。`use` と `group` では、複製された修飾子が展開時に内側の `manual` に届き、そこで拒否します |
 
@@ -139,9 +143,9 @@ def lint_diagnostics(
 
 | 検査 | 指摘する条件 |
 |---|---|
-| ステップ | `unsupported` が示すステップの場所を、どの `skipOnRealDevice` 修飾子も対象にしていない |
-| 前提条件 | `erase`、`seedPhotos`、`permissions` のいずれかのサービスが有効で、シナリオの対応表に名前がない |
-| 飛ばすステップの `extract` | `skipOnRealDevice` の対象のステップが `extract` を持つ |
+| ステップ | `unsupported` が示すステップの場所を、どの `skipOnRealDevice` 修飾子も対象にしていません。`scenario.permissions` の場所はここでは除き、次の行に任せます。シナリオ単位のフィールドは、ステップ修飾子では覆えないためです |
+| 前提条件 | `erase`、`seedPhotos`、または `permissions` のいずれかのサービスが有効で、シナリオの対応表に名前がありません |
+| 飛ばすステップの `extract` | `skipOnRealDevice` の対象のステップが `extract` を持ちます |
 
 3つ目の検査は、後続のステップが `extract` の設定する変数を読むことがあるためです。
 実機では飛ばしたステップがその変数を設定しないため、後続のステップは見当違いの原因を示すエラーで失敗します。
@@ -177,6 +181,8 @@ lint は、実行時と同じ方法でターゲットを解決します。
 
 - 自身の `targets` を宣言するシナリオには `--target` は不要です。lint は宣言された各ターゲットを設定から解決します。
 - 何も宣言しないシナリオは、`--target` で指定したターゲットを使います。
+  このようなシナリオで `--config` だけを渡し `--target` を省くと、指摘なしで通すのではなく、使い方の誤りとして終了コード 2 で終わります。
+  フラグの付け忘れで指摘が隠れることはありません（`doctor` もすでに `--target` を必須にしています。`doctor.py:208`）。
 
 `xcuitest_targets_real_device(eff)` が真のターゲットを実機とみなします。この関数は `bajutsu/common/config/accessors.py:79` にあります。
 検査は、実行の preflight と同じくターゲットごとに行います（`_preflight_targets`、`pipeline.py:336-357`）。
@@ -184,7 +190,7 @@ lint は、実行時と同じ方法でターゲットを解決します。
 Simulator のターゲットへ振り分けられたステップは、同じシナリオの別のターゲットが実機でも指摘しません。
 前提条件と `permissions` はシナリオ単位で、ランナーは宣言されたすべてのターゲットに適用します（`_lease_targets`）。
 そのため前提条件の検査は、宣言されたターゲットのどれか1つが実機であれば動きます。
-解決したターゲットに実機が1つもなければ、lint は新しい指摘を出しません。
+どちらのフラグもない場合と、解決したターゲットに実機が1つもない場合、lint は新しい指摘を出しません。
 serve のエディタの lint（`bajutsu/serve/operations/lint.py`）は保存前のテキストを扱うため、`/api/lint` のリクエスト本文に2つの入力を追加します。
 1つ目はエディタで選択中のターゲット名で、serve はリクエストに結び付いた設定でこれを解決します。
 2つ目はシナリオファイルのパスで、`load_expanded_scenarios` がディスク上のファイルに対して行うのと同じように、コンポーネントの参照の起点になります。
@@ -275,7 +281,9 @@ BE-0238 の実機のターゲットは、アプリの事前インストールを
 - **実機向けの代替の分岐。** 実機で別のステップを実行するには `if` の拡張が必要です。
   この拡張は除外の記法より広いため、別の項目で扱います。
 - **`web:` と `app:` ブロックの内側のステップ。** preflight は現状、これらのブロックの内側を走査しません（`capability_preflight.py:93-99`）。
-  この項目はこの欠落を引き継ぎ、走査の範囲は広げません。
+  シミュレータ専用の判定については、この項目はこの欠落を引き継ぎ、走査の範囲は広げません。
+  例外は `extract` の検査です。`web:` や `app:` のステップに付けた `skipOnRealDevice` は、実行時にブロック全体を飛ばします。
+  そのためこの検査は `web.steps` と `app.steps` も走査し、ブロック内で飛ばされる `extract` もほかと同じく報告します。
 
 ## 検討した代替案
 
@@ -304,7 +312,7 @@ BE-0238 の実機のターゲットは、アプリの事前インストールを
 - [ ] シナリオ直下の対応表 `skipOnRealDevice` と読み込み時の規則を追加する
 - [ ] `real_device_dropped_capabilities()` を切り出し、`capabilities_for_run` と共有する
 - [ ] `(ステップ, covering_reason, 理由)` の3つ組を返す `unsupported` の別版を追加する
-- [ ] 実機向けの検査（ステップ、前提条件、飛ばすステップの `extract`）を、展開後のシナリオに対して行うよう `lint_text` と `lint_diagnostics` に追加する
+- [ ] 実機向けの検査（ステップ、前提条件、飛ばすステップの `extract`、デバイスグループ）を、展開後のシナリオに対して行うよう `lint_text` と `lint_diagnostics` に追加する
 - [ ] `bajutsu lint` に `--config` と `--target` を追加し、宣言されたターゲットを解決して、各ターゲットを振り分けられたステップで検査する
 - [ ] serve のエディタの `/api/lint` リクエストで選択中のターゲットとファイルのパスを送り、パスを結び付いたシナリオディレクトリの中で解決する
 - [ ] 実機のターゲットに限り、実行の preflight で実機向けに検査する

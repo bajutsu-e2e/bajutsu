@@ -73,6 +73,11 @@ This item keeps no second list of Simulator-only steps. The single source of tru
 set: the one `capabilities_for_run` drops for a real device (`backends.py:236-243`). A new function,
 `real_device_dropped_capabilities()`, returns that set. Both `capabilities_for_run` and the lint call
 the new function. A token added to the real-device narrowing thus changes the lint in the same commit.
+`DEVICE_GROUP` is the one member of that set that `unsupported` does not act on: it has no
+`_REQUIREMENTS` entry, because `_preflight_targets` (`pipeline.py:345,349`) refuses a device group on its
+own, ahead of `unsupported`. The lint mirrors that refusal. A `deviceGroups:` declaration whose member
+is a real-device target is a lint error. No opt-out covers it, because the run cannot proceed without
+the device group either.
 
 The table that maps a step to its capability already exists. `_REQUIREMENTS` in
 `bajutsu/common/capability/capability_preflight.py` pairs each device-control step with its BE-0212
@@ -97,8 +102,8 @@ skip_on_real_device: str | None = Field(default=None, alias="skipOnRealDevice")
 | Value | A non-blank reason string, validated like `Sleep.reason`; an empty or blank value fails at load |
 | Exactly-one-action check | `_MODIFIERS` in `steps/_shared.py` gains the field, so the check does not count it as an action |
 | On `if`, `forEach`, `web`, or `app` | Covers every nested step |
-| On `use` or `group` | `expand.py` copies the modifier onto each expanded step; `_no_modifiers_on_use` gains it as a second exception beside `target` (BE-0446) |
-| On a target group (`steps:` with `target`) | `_target_group` accepts it; `_expand_target_groups` (`models/scenario/_targets.py`) and the component path in `expand.py` stamp it onto each nested step |
+| On `use` or `group` | `expand.py` stamps the modifier onto each expanded step that carries none of its own, accepts an identical reason, and refuses one naming a different reason — the rule `_merge_target` (`expand.py:79`) already applies to `target`; `_no_modifiers_on_use` gains it as a second exception beside `target` (BE-0446) |
+| On a target group (`steps:` with `target`) | `_target_group` accepts it; `_expand_target_groups` (`models/scenario/_targets.py`) and the component path in `expand.py` stamp it onto each nested step under the same `_merge_target` rule |
 | On `manual` or `setPrimaryTarget` | Rejected at load |
 | On an `if`, `forEach`, `web`, or `app` block holding a `manual` step | Rejected at load; on `use` or `group`, the copied modifier reaches the nested `manual` at expansion and is rejected there |
 
@@ -142,7 +147,7 @@ once the grammar passes:
 
 | Check | Finding when |
 |---|---|
-| Steps | `unsupported` names a step location that no `skipOnRealDevice` modifier covers |
+| Steps | `unsupported` names a step location that no `skipOnRealDevice` modifier covers; the `scenario.permissions` locations are excluded here, since no step modifier can cover a scenario-level field, and are left to the row below |
 | Preconditions | `erase`, `seedPhotos`, or a `permissions` service is in effect, and the scenario map does not name it |
 | `extract` on a skipped step | A step covered by `skipOnRealDevice` carries `extract` |
 
@@ -182,7 +187,9 @@ The command-line interface gains `--config <path>` and `--target <name>` in
 
 - A scenario that declares its own `targets` needs no `--target`. The lint resolves each declared
   target from the config.
-- A scenario that declares none uses the target `--target` names.
+- A scenario that declares none uses the target `--target` names. For such a scenario, `--config`
+  without `--target` exits 2 as a usage error rather than linting clean, so a forgotten flag cannot
+  hide a finding (`doctor` already requires `--target`, `doctor.py:208`).
 
 A target counts as a real device when `xcuitest_targets_real_device(eff)` holds for it
 (`bajutsu/common/config/accessors.py:79`). The checks then follow the run preflight per target
@@ -190,8 +197,8 @@ A target counts as a real device when `xcuitest_targets_real_device(eff)` holds 
 (`_steps_for_target`) against its own capability set. A step routed to a Simulator target is never
 flagged, even when a sibling target is a real device. Preconditions and `permissions` are
 scenario-level, and the runner applies them to every declared target (`_lease_targets`). The
-precondition check therefore fires when any declared target is a real device. When no resolved target
-is a real device, the lint reports nothing new.
+precondition check therefore fires when any declared target is a real device. With neither flag, or
+when no resolved target is a real device, the lint reports nothing new.
 
 The serve editor's lint (`bajutsu/serve/operations/lint.py`) works on unsaved text, so it needs two
 more inputs in the `/api/lint` request body. The first is the editor's selected target name, which the
@@ -288,7 +295,10 @@ function decides whether a crash retry may force an `erase`, which is a separate
 - **A real-device alternative branch.** Running a different step on a real device would extend `if`.
   That extension is broader than an opt-out and belongs in its own item.
 - **Steps inside `web:` and `app:` blocks.** The preflight does not walk into these blocks today
-  (`capability_preflight.py:93-99`). This item inherits that gap and does not widen the walk.
+  (`capability_preflight.py:93-99`). This item inherits that gap for the Simulator-only classification
+  and does not widen the walk. The `extract` check is the one exception, since a `skipOnRealDevice` on a
+  `web:` / `app:` step skips the whole block at run time: that check walks `web.steps` / `app.steps` so
+  a skipped `extract` inside a block is reported like any other.
 
 ## Alternatives considered
 
@@ -321,7 +331,7 @@ The target-blind check becomes worth revisiting once Android can express a real 
 - [ ] Add the scenario-level `skipOnRealDevice` map with its load-time rules
 - [ ] Extract `real_device_dropped_capabilities()` and share it with `capabilities_for_run`
 - [ ] Add the variant of `unsupported` that yields `(step, covering_reason, reason)` triples
-- [ ] Add the real-device checks (steps, preconditions, `extract` on a skipped step) to `lint_text` and
+- [ ] Add the real-device checks (steps, preconditions, `extract` on a skipped step, device groups) to `lint_text` and
   `lint_diagnostics`, run on the expanded scenario
 - [ ] Add `--config` and `--target` to `bajutsu lint`, resolving declared targets and checking each
   target on its routed steps
