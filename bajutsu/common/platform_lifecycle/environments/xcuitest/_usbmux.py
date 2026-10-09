@@ -169,6 +169,10 @@ class UsbmuxForwarder:
         """Stop accepting and drop every open tunnel; safe to call twice."""
         listener, self._listener = self._listener, None
         if listener is not None:
+            # On Linux a bare close() neither wakes the thread blocked in accept() nor stops the
+            # socket listening; shutdown() does both (macOS answers it with ENOTCONN, suppressed).
+            with contextlib.suppress(OSError):
+                listener.shutdown(socket.SHUT_RDWR)
             with contextlib.suppress(OSError):
                 listener.close()
         with self._lock:

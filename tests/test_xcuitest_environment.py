@@ -254,7 +254,9 @@ def test_a_real_device_runner_is_reached_through_a_usbmux_bridge(
     patched_env: dict[str, str] = {}
 
     class _FakeDriver:
-        def await_ready(self, timeout: float) -> None: ...
+        def await_ready(self, timeout: float) -> None:
+            return None
+
         def health_ready(self) -> bool:
             return True
 
