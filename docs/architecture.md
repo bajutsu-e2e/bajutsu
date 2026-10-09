@@ -458,7 +458,10 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   `testRunner`/`build` still overrides it (BE-0292). A real device (`deviceType: device`) with no
   `testRunner` resolves instead to the per-user signed build that `bajutsu runner build --device`
   cached (`environments/device_runner/`, BE-0456), and fails with the build command when none
-  exists; a run never builds a signed runner itself. In a checkout that ships `BajutsuKit/`'s own source, that bundle rebuilds itself
+  exists; a run never builds a signed runner itself. A real device does not share the host's
+  loopback, so its runner port is bridged through usbmuxd (`environments/xcuitest/_usbmux.py`): a
+  host `127.0.0.1` listener tunnels each connection to the same port on the device, the iOS
+  counterpart of the Android resident channel's `adb forward`. In a checkout that ships `BajutsuKit/`'s own source, that bundle rebuilds itself
   whenever the source has moved past it — `bajutsu run`, pytest, and `make serve` alike resolve the
   runner through the same rebuild-if-stale function
   (`docs/specs/xcuitest-bundled-runner-auto-refresh.md`)

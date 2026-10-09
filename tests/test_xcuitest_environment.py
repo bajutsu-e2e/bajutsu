@@ -18,7 +18,7 @@ import subprocess
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -61,6 +61,35 @@ from bajutsu.common.platform_lifecycle.environments.xcuitest import (
 from bajutsu.common.scenario import Preconditions
 
 _DEVICE_UDID = "00008030-000A1B2C3D4E"  # a physical-device id shape (not a simctl UUID)
+
+
+class _FakeForwarder:
+    """Stands in for the usbmuxd bridge a real-device spawn opens; the gate has no usbmuxd."""
+
+    instances: ClassVar[list[_FakeForwarder]] = []
+    fail_with: ClassVar[Exception | None] = None
+
+    def __init__(self, udid: str) -> None:
+        self.udid = udid
+        self.port = 0
+        self.closed = False
+        _FakeForwarder.instances.append(self)
+
+    def start(self) -> int:
+        if _FakeForwarder.fail_with is not None:
+            raise _FakeForwarder.fail_with
+        self.port = 5150 + len(_FakeForwarder.instances)
+        return self.port
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@pytest.fixture(autouse=True)
+def _fake_usbmux(monkeypatch: pytest.MonkeyPatch) -> None:
+    _FakeForwarder.instances = []
+    _FakeForwarder.fail_with = None
+    monkeypatch.setattr(xcuitest_env_impl, "UsbmuxForwarder", _FakeForwarder)
 
 
 def _device_eff(*, app_path: str | None = None, test_runner: str | None = None) -> Effective:
@@ -208,6 +237,76 @@ def test_a_real_device_never_enters_the_recovery_ladder(
         env.start(_device_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
     assert simctl_calls == []  # no probe, no reboot, and above all no `simctl create`
     assert env.replaced_device() is None
+
+
+def _env_of(patched: Path) -> dict[str, str]:
+    with patched.open("rb") as f:
+        return dict(plistlib.load(f)["Target"]["TestingEnvironmentVariables"])
+
+
+def test_a_real_device_runner_is_reached_through_a_usbmux_bridge(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The runner binds the *device's* loopback, which the host does not share, so the port it is
+    # told to bind is the host end of a bridge to the same number on the device, and the driver
+    # dials that same number. The discard closes the bridge with the runner.
+    ports: list[int] = []
+    patched_env: dict[str, str] = {}
+
+    class _FakeDriver:
+        def await_ready(self, timeout: float) -> None: ...
+        def health_ready(self) -> bool:
+            return True
+
+    def _make_driver(*_a: Any, runner_port: int = 0, **_k: Any) -> _FakeDriver:
+        ports.append(runner_port)
+        return _FakeDriver()
+
+    def _popen(argv: list[str], **_kw: Any) -> _FakeProc:
+        patched_env.update(_env_of(Path(argv[argv.index("-xctestrun") + 1])))
+        return _FakeProc()
+
+    monkeypatch.setattr(subprocess, "Popen", _popen)
+    monkeypatch.setattr(backends, "make_driver", _make_driver)
+    monkeypatch.setattr(
+        xcuitest_env_impl, "_allocate_port", lambda: pytest.fail("a real device needs the bridge")
+    )
+    _patch_group_signals(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    env.start(_device_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+
+    (bridge,) = _FakeForwarder.instances
+    assert bridge.udid == _DEVICE_UDID
+    assert patched_env["BAJUTSU_RUNNER_PORT"] == str(bridge.port)
+    assert ports == [bridge.port]
+    env._discard_runner(warn_on_crash=False, keep_log=True)
+    assert bridge.closed
+
+
+def test_a_simulator_runner_opens_no_bridge(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The Simulator shares the host's loopback, so its path is unchanged: a plain free port.
+    _, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(_sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
+    assert _FakeForwarder.instances == []
+
+
+def test_an_unbridgeable_device_fails_the_spawn_with_its_reason(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A device usbmuxd does not list (unplugged, untrusted) fails before `xcodebuild` is spawned,
+    # naming the cause rather than surfacing later as a startup timeout.
+    from bajutsu.common.platform_lifecycle.environments.xcuitest._usbmux import UsbmuxError
+
+    _FakeForwarder.fail_with = UsbmuxError("usbmuxd does not list device")
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda *_a, **_k: pytest.fail("no spawn without a bridge")
+    )
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    with pytest.raises(simctl.DeviceError, match="cannot bridge to the runner"):
+        env.start(_device_eff(test_runner=str(_write_runner(tmp_path))), Preconditions())
 
 
 # --- the live-route boundary: an Appium endpoint routes around the udid machinery (BE-0238) --- #
