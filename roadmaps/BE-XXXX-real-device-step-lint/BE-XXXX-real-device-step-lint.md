@@ -129,7 +129,8 @@ def lint_diagnostics(
 ) -> list[Diagnostic]: ...
 ```
 
-`RealDeviceLint` carries the device capability set and the target's resolved `erase` default.
+`RealDeviceLint` is keyed by target name. For each target it carries the run's capability set, the
+resolved `erase` default, and whether the target is a real device.
 `source` is the scenario file's path. The real-device checks expand components relative to it, so
 they require `source` whenever `real_device` is given. With
 `real_device=None`, the default, both functions behave as today. Given a value, they run three checks
@@ -173,9 +174,20 @@ triples. `covering_reason` is the nearest `skipOnRealDevice` on the step or on a
 line. A finding inside a component thus lands on the `use:` line that pulled the component in.
 
 The command-line interface gains `--config <path>` and `--target <name>` in
-`bajutsu/cli/commands/lint.py`. The new checks run when `xcuitest_targets_real_device(eff)` holds for
-the named target (`bajutsu/common/config/accessors.py:79`). Without `--target`, or against a Simulator
-target, the lint reports nothing new.
+`bajutsu/cli/commands/lint.py`. The lint resolves targets the way the run does:
+
+- A scenario that declares its own `targets` needs no `--target`. The lint resolves each declared
+  target from the config.
+- A scenario that declares none uses the target `--target` names.
+
+A target counts as a real device when `xcuitest_targets_real_device(eff)` holds for it
+(`bajutsu/common/config/accessors.py:79`). The checks then follow the run preflight per target
+(`_preflight_targets`, `pipeline.py:336-357`). Each target is judged on the steps routed to it
+(`_steps_for_target`) against its own capability set. A step routed to a Simulator target is never
+flagged, even when a sibling target is a real device. Preconditions and `permissions` are
+scenario-level, and the runner applies them to every declared target (`_lease_targets`). The
+precondition check therefore fires when any declared target is a real device. When no resolved target
+is a real device, the lint reports nothing new.
 
 The serve editor's lint (`bajutsu/serve/operations/lint.py`) works on unsaved text, so it needs two
 more inputs in the `/api/lint` request body. The first is the editor's selected target name, which the
@@ -199,14 +211,28 @@ real-device target. It excludes covered locations there, and only there. Every o
 (`backends.py:402`). A covered `setLocation` thus still fails fast on an Android target, where nothing
 would skip it.
 
-On a real-device target, the step loop skips a step that carries `skipOnRealDevice`. It checks once,
-right before executing the step. On the Simulator the step runs as usual.
+The step loop skips a step that carries `skipOnRealDevice` when the step's routed target is a real
+device. It checks once, right before executing the step. A step routed to a Simulator target runs as
+usual, even in a scenario whose other targets are real devices.
 
 `StepOutcome` (`bajutsu/common/orchestrator/types/step_outcome.py`) has no skipped state today. It
 carries `ok: bool` and `reason`. It gains `skipped: bool = False`, and `reason` holds the modifier's
-text. Every report format renders a skipped step as skipped, never as passed. The formats are the
-manifest, the HyperText Markup Language (HTML) report, JUnit, and Common Test Report Format (CTRF). A
-skipped step makes no assertion, so it cannot turn a failing scenario green.
+text. A skipped step makes no assertion, so it cannot turn a failing scenario green. Each report
+format renders the skip at the granularity it has:
+
+| Format | Rendering |
+|---|---|
+| Manifest | Each step record carries `skipped` and its reason |
+| HyperText Markup Language (HTML) report | The step row reads as skipped, never as passed, with its reason |
+| JUnit | Unchanged verdict: one `<testcase>` per scenario (`junit_xml`, `report/manifest.py:320-335`) |
+| Common Test Report Format (CTRF) | The test keeps its status; its step record (`report/ctrf.py`) gets status `skipped` and the reason in `extra` |
+
+JUnit has no step records, so it cannot show a skipped step as a status. Marking the whole
+`<testcase>` `<skipped>` would misreport a scenario whose other steps and assertions ran. The scenario
+therefore keeps its own verdict. Its `<properties>` gain `bajutsu.skippedSteps` and
+`bajutsu.skippedPreconditions`, and `<system-out>` lists each skipped step with its reason. CTRF
+already carries one record per step, so a skipped step shows there as a step status. Skipped
+preconditions go in the test's `extra` field.
 
 ### The install-and-launch preconditions
 
@@ -230,7 +256,7 @@ that `seedPhotos` requires `erase: true` (`preconditions.py:38`) stays.
 A skipped precondition is not a step, so `StepOutcome.skipped` cannot record it. `RunResult`
 (`bajutsu/common/orchestrator/types/run_result.py`) gains `skipped_preconditions: dict[str, str]`,
 written to the manifest as `skippedPreconditions` and mapping each name to its reason. The HTML report,
-JUnit, and CTRF render the field beside the scenario's verdict.
+JUnit, and CTRF render the field the same way as skipped steps, never as a change to the verdict.
 
 The `appPath` install needs no opt-out. The scenario cannot name it, since it lives in the target
 config. A real-device target in BE-0238 already expects the app to be installed in advance.
@@ -270,7 +296,8 @@ The target-blind check becomes worth revisiting once Android can express a real 
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Add `skipped` to `StepOutcome` and render it in the manifest, HTML, JUnit, and CTRF reports
+- [ ] Add `skipped` to `StepOutcome`; render it per step in the manifest, HTML, and CTRF, and as
+  metadata in JUnit, keeping the scenario verdict
 - [ ] Add the `skipOnRealDevice` step modifier with its load-time rules, including the
   `_no_modifiers_on_use` and `_target_group` exceptions
 - [ ] Copy the modifier onto expanded steps in `use`, `group`, and target-group expansion
@@ -281,7 +308,8 @@ The target-blind check becomes worth revisiting once Android can express a real 
 - [ ] Add the variant of `unsupported` that yields `(step, covering_reason, reason)` triples
 - [ ] Add the real-device checks (steps, preconditions, `extract` on a skipped step) to `lint_text` and
   `lint_diagnostics`, run on the expanded scenario
-- [ ] Add `--config` and `--target` to `bajutsu lint`
+- [ ] Add `--config` and `--target` to `bajutsu lint`, resolving declared targets and checking each
+  target on its routed steps
 - [ ] Send the selected target and the file path in the serve editor's `/api/lint` request, and
   resolve the path within the bound scenarios directory
 - [ ] Run the real-device checks in the run preflight on a real-device target alone

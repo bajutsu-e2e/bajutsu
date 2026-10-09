@@ -127,7 +127,8 @@ def lint_diagnostics(
 ) -> list[Diagnostic]: ...
 ```
 
-`RealDeviceLint` は、実機の能力集合と、ターゲットで解決した `erase` のデフォルト値を持ちます。
+`RealDeviceLint` はターゲット名をキーにします。
+ターゲットごとに、実行時の能力集合、解決した `erase` のデフォルト値、実機かどうかを持ちます。
 `source` はシナリオファイルのパスです。実機向けの検査はこのパスを起点にコンポーネントを展開するため、`real_device` を渡すときは `source` も必須です。
 デフォルトの `real_device=None` では、どちらの関数も現状と同じに振る舞います。
 値を渡すと、文法の検査が通ったあとで次の3つを検査します。
@@ -168,9 +169,18 @@ lint は各ステップの `source_loc` を読み、既存の走査（`_resolve_
 コンポーネントの中の指摘は、そのコンポーネントを取り込んだ `use:` の行に付きます。
 
 コマンドラインインタフェース（CLI）には、`bajutsu/cli/commands/lint.py` で `--config <path>` と `--target <name>` を追加します。
-新しい検査は、指定したターゲットで `xcuitest_targets_real_device(eff)` が真のときに動きます。
-この関数は `bajutsu/common/config/accessors.py:79` にあります。
-`--target` を省いた場合と、Simulator のターゲットを指定した場合、lint は新しい指摘を出しません。
+lint は、実行時と同じ方法でターゲットを解決します。
+
+- 自身の `targets` を宣言するシナリオには `--target` は不要です。lint は宣言された各ターゲットを設定から解決します。
+- 何も宣言しないシナリオは、`--target` で指定したターゲットを使います。
+
+`xcuitest_targets_real_device(eff)` が真のターゲットを実機とみなします。この関数は `bajutsu/common/config/accessors.py:79` にあります。
+検査は、実行の preflight と同じくターゲットごとに行います（`_preflight_targets`、`pipeline.py:336-357`）。
+各ターゲットは、そこへ振り分けられたステップ（`_steps_for_target`）について、自身の能力集合で判定されます。
+Simulator のターゲットへ振り分けられたステップは、同じシナリオの別のターゲットが実機でも指摘しません。
+前提条件と `permissions` はシナリオ単位で、ランナーは宣言されたすべてのターゲットに適用します（`_lease_targets`）。
+そのため前提条件の検査は、宣言されたターゲットのどれか1つが実機であれば動きます。
+解決したターゲットに実機が1つもなければ、lint は新しい指摘を出しません。
 serve のエディタの lint（`bajutsu/serve/operations/lint.py`）は保存前のテキストを扱うため、`/api/lint` のリクエスト本文に2つの入力を追加します。
 1つ目はエディタで選択中のターゲット名で、serve はリクエストに結び付いた設定でこれを解決します。
 2つ目はシナリオファイルのパスで、`load_expanded_scenarios` がディスク上のファイルに対して行うのと同じように、コンポーネントの参照の起点になります。
@@ -191,15 +201,28 @@ serve は既存の `_scenario_path(scenarios_dir, p)`（`bajutsu/serve/helpers.p
 `unsupported` の他の呼び出し元は現状の振る舞いを保ちます。Simulator の実行、他のバックエンド、`doctor`、アクチュエータの選択（`backends.py:402`）です。
 そのため、`skipOnRealDevice` を付けた `setLocation` も、Android のターゲットでは飛ばす仕組みがないため、従来どおり早期に失敗します。
 
-実機のターゲットでは、ステップのループが `skipOnRealDevice` 付きのステップを飛ばします。
-判定はステップを実行する直前に1回だけ行います。Simulator では、そのステップを通常どおり実行します。
+ステップのループは、振り分け先のターゲットが実機のとき、`skipOnRealDevice` 付きのステップを飛ばします。
+判定はステップを実行する直前に1回だけ行います。
+Simulator のターゲットへ振り分けられたステップは、ほかのターゲットが実機のシナリオでも通常どおり実行します。
 
 `StepOutcome`（`bajutsu/common/orchestrator/types/step_outcome.py`）には、現状スキップの状態がありません。
 持つのは `ok: bool` と `reason` だけです。
 ここに `skipped: bool = False` を追加し、`reason` に修飾子の文字列を入れます。
-すべてのレポート形式が、スキップしたステップを合格ではなくスキップとして描きます。
-対象の形式は、マニフェスト、HTML レポート、JUnit、Common Test Report Format（CTRF）です。
 スキップしたステップはアサーションを行わないため、失敗するシナリオを合格に変えることはありません。
+各レポート形式は、その形式が持つ粒度でスキップを描きます。
+
+| 形式 | 描き方 |
+|---|---|
+| マニフェスト | 各ステップの記録が `skipped` と理由を持ちます |
+| HTML レポート | ステップの行を合格ではなくスキップとして、理由とともに示します |
+| JUnit | 判定は変えません。シナリオごとに1つの `<testcase>` のままです（`junit_xml`、`report/manifest.py:320-335`） |
+| Common Test Report Format（CTRF） | テストの状態は変えず、ステップの記録（`report/ctrf.py`）の状態を `skipped` にし、理由を `extra` に入れます |
+
+JUnit にはステップの記録がないため、スキップしたステップを状態として示せません。
+`<testcase>` 全体を `<skipped>` にすると、ほかのステップやアサーションを実行したシナリオを誤って報告します。
+そこでシナリオは自身の判定を保ちます。
+`<properties>` に `bajutsu.skippedSteps` と `bajutsu.skippedPreconditions` を加え、`<system-out>` に飛ばした各ステップと理由を列挙します。
+CTRF はステップごとの記録をすでに持つため、飛ばしたステップはステップの状態として示せます。飛ばした前提条件は、テストの `extra` 欄に記録します。
 
 ### インストールと起動の前提条件
 
@@ -223,7 +246,7 @@ serve は既存の `_scenario_path(scenarios_dir, p)`（`bajutsu/serve/helpers.p
 前提条件はステップではないため、`StepOutcome.skipped` では記録できません。
 `RunResult`（`bajutsu/common/orchestrator/types/run_result.py`）に `skipped_preconditions: dict[str, str]` を追加します。
 マニフェストには `skippedPreconditions` として書き出し、各前提条件の名前を理由に対応付けます。
-HTML レポート、JUnit、CTRF は、この欄をシナリオの判定の横に描画します。
+HTML レポート、JUnit、CTRF は、この欄を飛ばしたステップと同じ方法で描き、判定は変えません。
 
 `appPath` のインストールには除外記法を求めません。ターゲットの設定にあるため、シナリオからは名指しできないからです。
 BE-0238 の実機のターゲットは、アプリの事前インストールをすでに前提にしています。
@@ -262,7 +285,7 @@ BE-0238 の実機のターゲットは、アプリの事前インストールを
 > 作業の進行に合わせて更新してください。チェックリストは「詳細設計」の MECE な作業分解
 > （作業単位ごとに 1 つのチェックボックス）を反映し、ログには変更内容と日付を古い順に記録して PR へのリンクを付けます。
 
-- [ ] `StepOutcome` に `skipped` を追加し、マニフェスト、HTML、JUnit、CTRF の各レポートで描画する
+- [ ] `StepOutcome` に `skipped` を追加し、マニフェスト、HTML、CTRF ではステップごとに、JUnit ではシナリオの判定を保ったままメタデータとして描画する
 - [ ] ステップ修飾子 `skipOnRealDevice` と読み込み時の規則を追加する（`_no_modifiers_on_use` と `_target_group` の例外を含む）
 - [ ] `use`、`group`、ターゲットグループの展開で、展開後のステップへ修飾子を複製する
 - [ ] `_expand_target_groups` と `expand.py` で全ステップに `source_loc` を記録し（再展開でも保持）、展開の処理にテキストを入力とする入口を追加する
@@ -270,7 +293,7 @@ BE-0238 の実機のターゲットは、アプリの事前インストールを
 - [ ] `real_device_dropped_capabilities()` を切り出し、`capabilities_for_run` と共有する
 - [ ] `(ステップ, covering_reason, 理由)` の3つ組を返す `unsupported` の別版を追加する
 - [ ] 実機向けの検査（ステップ、前提条件、飛ばすステップの `extract`）を、展開後のシナリオに対して行うよう `lint_text` と `lint_diagnostics` に追加する
-- [ ] `bajutsu lint` に `--config` と `--target` を追加する
+- [ ] `bajutsu lint` に `--config` と `--target` を追加し、宣言されたターゲットを解決して、各ターゲットを振り分けられたステップで検査する
 - [ ] serve のエディタの `/api/lint` リクエストで選択中のターゲットとファイルのパスを送り、パスを結び付いたシナリオディレクトリの中で解決する
 - [ ] 実機のターゲットに限り、実行の preflight で実機向けに検査する
 - [ ] 実機のターゲットで、ステップのループが `skipOnRealDevice` 付きのステップを飛ばす
