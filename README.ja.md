@@ -121,7 +121,7 @@ orchestrator、証跡、config、レポート）は [`bajutsu/common/`](bajutsu/
   agent に切り替えられます。原因 + 最小修正案を出す、CI ゲートから外れた助言です
 - 配線済み CLI: `run` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` /
   `export` / `trace` / `report` / `triage` / `record` / `crawl` / `repl` / `codegen` / `approve` /
-  `serve` / `mcp` / `worker` / `lint` / `schema`
+  `serve` / `mcp` / `worker` / `lint` / `schema` / `runner`
 - **MCP サーバ**（`bajutsu mcp`）: `run` と `doctor` を MCP ツールとして、run の証跡
   （manifest / report / JUnit / artifact）をリソースとして公開し、Claude Desktop / Code 連携に
   使えます

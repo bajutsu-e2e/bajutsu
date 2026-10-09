@@ -125,7 +125,7 @@ Implemented and covered by tests (run without a Simulator):
   agent — root cause + minimal-fix suggestions; advisory, off the CI path
 - The wired CLI: `run` / `doctor` / `audit` / `coverage` / `impact` / `stats` / `flakiness` /
   `export` / `trace` / `report` / `triage` / `record` / `crawl` / `repl` / `codegen` / `approve` /
-  `serve` / `mcp` / `worker` / `lint` / `schema`
+  `serve` / `mcp` / `worker` / `lint` / `schema` / `runner`
 - **MCP server** (`bajutsu mcp`): exposes `run` and `doctor` as MCP tools and run evidence
   (manifest / report / JUnit / artifacts) as resources, for Claude Desktop / Code integration
 - **Web UI** (`bajutsu serve`): author (`record` / `crawl`), edit, and run scenarios; browse
