@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-real-device-step-lint-ja.md)
+**English** · [日本語](BE-0457-real-device-step-lint-ja.md)
 
-# BE-XXXX — Lint Simulator-only steps against a real-device target, with an explicit skipOnRealDevice opt-out
+# BE-0457 — Lint Simulator-only steps against a real-device target, with an explicit skipOnRealDevice opt-out
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-real-device-step-lint.md) |
+| Proposal | [BE-0457](BE-0457-real-device-step-lint.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0457") |
 | Topic | Platform support |
 | Related | [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md) |
 <!-- /BE-METADATA -->
