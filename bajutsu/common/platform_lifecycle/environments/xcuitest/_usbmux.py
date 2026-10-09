@@ -91,6 +91,20 @@ def device_id(udid: str, socket_path: str = USBMUXD_SOCKET) -> int:
     Raises:
         UsbmuxError: usbmuxd is unreachable or does not list the device.
     """
+    return int(_listing(udid, socket_path)["DeviceID"])
+
+
+def device_connection(udid: str, socket_path: str = USBMUXD_SOCKET) -> str:
+    """How usbmuxd reaches the device `udid` (`USB` or `Network`), for a diagnostic.
+
+    Raises:
+        UsbmuxError: usbmuxd is unreachable or does not list the device.
+    """
+    return str(_listing(udid, socket_path).get("Properties", {}).get("ConnectionType", "unknown"))
+
+
+def _listing(udid: str, socket_path: str) -> dict[str, Any]:
+    """usbmuxd's entry for `udid`, a USB attachment ahead of a network one."""
     with _mux_socket(socket_path) as sock:
         _send(sock, {"MessageType": "ListDevices"})
         listed = _recv(sock).get("DeviceList", [])
@@ -104,7 +118,7 @@ def device_id(udid: str, socket_path: str = USBMUXD_SOCKET) -> int:
     if not matches:
         raise UsbmuxError(f"usbmuxd does not list device {udid}; is it attached and trusted?")
     matches.sort(key=lambda d: d.get("Properties", {}).get("ConnectionType") != "USB")
-    return int(matches[0]["DeviceID"])
+    return dict(matches[0])
 
 
 def connect(udid: str, port: int, socket_path: str = USBMUXD_SOCKET) -> socket.socket:

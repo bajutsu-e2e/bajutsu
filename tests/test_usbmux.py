@@ -27,6 +27,7 @@ from bajutsu.common.platform_lifecycle.environments.xcuitest._usbmux import (
     UsbmuxForwarder,
     UsbmuxRefused,
     connect,
+    device_connection,
     device_id,
 )
 
@@ -350,4 +351,12 @@ def test_the_forwarder_can_target_a_port_the_device_chose(mux_path: Path, echo_p
         assert socket.ntohs(mux.connects[0]["PortNumber"]) == 47001
     finally:
         fwd.close()
+        mux.close()
+
+
+def test_device_connection_names_the_attachment_usbmuxd_prefers(mux_path: Path) -> None:
+    mux = _FakeUsbmuxd(mux_path, [_device(7, _UDID, "Network"), _device(3, _UDID, "USB")], {})
+    try:
+        assert device_connection(_UDID, str(mux_path)) == "USB"
+    finally:
         mux.close()

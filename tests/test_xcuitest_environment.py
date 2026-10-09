@@ -58,6 +58,7 @@ from bajutsu.common.platform_lifecycle.environments.xcuitest import (
 from bajutsu.common.platform_lifecycle.environments.xcuitest import (
     xcuitest_environment as xcuitest_env_impl,
 )
+from bajutsu.common.platform_lifecycle.protocols import CollectorHost
 from bajutsu.common.scenario import Preconditions
 
 _DEVICE_UDID = "00008030-000A1B2C3D4E"  # a physical-device id shape (not a simctl UUID)
@@ -427,6 +428,64 @@ def test_a_failed_real_device_start_closes_the_nativez_bridge(
         )
     assert all(bridge.closed for bridge in _FakeForwarder.instances)
     assert env._zorder_forwarder is None
+
+
+def test_the_simulator_collector_stays_on_the_loopback() -> None:
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=lambda *_a, **_k: "")
+    assert env.collector_host(_sim_eff(test_runner="R.xctestrun")) == CollectorHost()
+    assert env.reach_device_port(_sim_eff(test_runner="R.xctestrun"), 4100)[0] == 4100
+    assert _FakeForwarder.instances == []
+
+
+def test_a_real_device_collector_binds_everywhere_and_offers_the_host_addresses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BAJUTSU_HOST_ADDRESS", "192.0.2.7,fd00::1")
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    assert env.collector_host(_device_eff()) == CollectorHost(
+        bind="::", advertised=("192.0.2.7", "fd00::1")
+    )
+
+
+def test_a_real_device_with_no_host_address_fails_naming_the_fix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("BAJUTSU_HOST_ADDRESS", raising=False)
+    monkeypatch.setattr(
+        "bajutsu.common.platform_lifecycle.environments.xcuitest._host_address._ifconfig",
+        lambda: "",
+    )
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    with pytest.raises(simctl.DeviceError, match=r"xcuitest\.hostAddress or BAJUTSU_HOST_ADDRESS"):
+        env.collector_host(_device_eff())
+
+
+def test_a_real_device_with_an_unusable_host_address_fails_naming_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BAJUTSU_HOST_ADDRESS", "192.0.2.7:8080")
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    with pytest.raises(simctl.DeviceError, match=r"BAJUTSU_HOST_ADDRESS: '192\.0\.2\.7:8080'"):
+        env.collector_host(_device_eff())
+
+
+def test_a_real_device_reaches_a_device_port_through_a_usbmux_bridge() -> None:
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    host_port, close = env.reach_device_port(_device_eff(), 4100)
+    (bridge,) = _FakeForwarder.instances
+    assert (bridge.device_port, bridge.port) == (4100, host_port)
+    close()
+    assert bridge.closed
+
+
+def test_an_unreachable_device_port_fails_with_the_device_named() -> None:
+    from bajutsu.common.platform_lifecycle.environments.xcuitest._usbmux import UsbmuxError
+
+    _FakeForwarder.fail_with = UsbmuxError("usbmuxd does not list device")
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    with pytest.raises(simctl.DeviceError, match=f"port 4100 on device {_DEVICE_UDID}"):
+        env.reach_device_port(_device_eff(), 4100)
+    assert all(b.closed for b in _FakeForwarder.instances)
 
 
 # --- the live-route boundary: an Appium endpoint routes around the udid machinery (BE-0238) --- #

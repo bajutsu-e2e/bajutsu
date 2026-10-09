@@ -13,6 +13,8 @@ from bajutsu.common.evidence.network import Collector
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.scenario import Preconditions, Scenario
 
+from .collector_host import CollectorHost
+
 
 @runtime_checkable
 class RunEnvironment(Protocol):
@@ -141,7 +143,8 @@ class RunEnvironment(Protocol):
 
         Gated raise: the runner calls this *only when* `observes_network_via_driver()` is `True`, so a
         platform that returns `False` there may leave this raising `NotImplementedError` — the check
-        makes the raise unreachable. This is the only Protocol method permitted to raise.
+        makes the raise unreachable. This is the only Protocol method permitted to raise to decline; a
+        real failure elsewhere (`collector_host`, `reach_device_port`) raises `DeviceError`.
         """
 
     def bridge_collector(self, port: int) -> Callable[[], None]:
@@ -155,6 +158,28 @@ class RunEnvironment(Protocol):
         iOS Simulator shares the Mac's loopback, so most platforms need nothing and return a no-op; the
         Android emulator's loopback is its own, so `AndroidEnvironment` tunnels the port back with
         `adb reverse` (BE-0283). Returns the teardown thunk (removes the tunnel), never `None`.
+        """
+
+    def collector_host(self, eff: Effective) -> CollectorHost:
+        """Where this lease's network collector binds, and the addresses the app is offered for it.
+
+        The loopback, on every platform whose app shares the host's loopback or reaches it through a
+        tunnel. A real iOS device has neither, so it binds every interface and offers the host's
+        routable addresses.
+
+        Raises:
+            DeviceError: the target needs an address offered and none can be resolved, before any
+                device work.
+        """
+
+    def reach_device_port(self, eff: Effective, port: int) -> tuple[int, Callable[[], None]]:
+        """The host port that reaches `port` on the leased device, and the teardown that closes it.
+
+        No-op implementation: `port` itself and a no-op thunk, wherever the host already reaches the
+        device's loopback (the Simulator). A real iOS device bridges it over usbmuxd.
+
+        Raises:
+            DeviceError: the bridge cannot open (usbmuxd unreachable, or the device unlisted).
         """
 
     def mirrors_collector_port_on_device(self) -> bool:

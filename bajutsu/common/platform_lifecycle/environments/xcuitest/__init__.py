@@ -48,9 +48,11 @@ from ._functions import (
     effective_device_type,
     runner_source,
 )
+from ._host_address import HOST_ADDRESS_ENV, HostAddressError, HostCandidates, host_candidates
 from ._recovery import _Recovery as _Recovery
 from ._shared import _logger as _logger
 from ._spawned import _Spawned as _Spawned
+from ._usbmux import UsbmuxError, device_connection
 from .xcuitest_environment import _DEFAULT_RUNNER_LOG_DIR as _DEFAULT_RUNNER_LOG_DIR
 from .xcuitest_environment import _RESULT_BUNDLE_ENV as _RESULT_BUNDLE_ENV
 from .xcuitest_environment import _RUNNER_LOG_ENV as _RUNNER_LOG_ENV
@@ -59,10 +61,16 @@ from .xcuitest_environment import _WARM_HEALTH_TIMEOUT as _WARM_HEALTH_TIMEOUT
 from .xcuitest_environment import XcuitestEnvironment
 
 __all__ = [
+    "HOST_ADDRESS_ENV",
+    "HostAddressError",
+    "HostCandidates",
+    "UsbmuxError",
     "XcuitestEnvironment",
     "bundled_runner_staleness_note",
     "bundled_runner_toolchain_note",
     "bundled_runner_toolchain_warning",
+    "device_connection",
     "effective_device_type",
+    "host_candidates",
     "runner_source",
 ]

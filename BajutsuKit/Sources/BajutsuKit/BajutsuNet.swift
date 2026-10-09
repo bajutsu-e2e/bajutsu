@@ -4,7 +4,9 @@ import Foundation
 ///
 /// A Simulator app shares the Mac's loopback, so when bajutsu runs a scenario it
 /// starts a collector on `127.0.0.1:<port>` and injects its URL into the app via the
-/// `BAJUTSU_COLLECTOR` launch env. `BajutsuNet.startIfEnabled()` activates a
+/// `BAJUTSU_COLLECTOR` launch env. A real device shares no loopback with the Mac, so there
+/// the value lists one URL per host address the device might route to, and the app keeps
+/// the first that answers (`reachableCollector`). `BajutsuNet.startIfEnabled()` activates a
 /// `URLProtocol` that records each request/response the app makes and POSTs it to the
 /// collector, where a step's `request` assertion can check it.
 ///
@@ -51,9 +53,9 @@ public enum BajutsuNet {
         // Ahead of the guard for the same reason: the driver asks for a stacking order on any run,
         // and the responder gates itself on the port and token the host injected (BE-0355).
         BajutsuZOrder.startIfEnabled(environment: environment)
-        if let raw = environment["BAJUTSU_COLLECTOR"], let url = URL(string: repairedURL(raw)) {
-            collectorURL = url
+        if let raw = environment["BAJUTSU_COLLECTOR"] {
             collectorToken = environment["BAJUTSU_COLLECTOR_TOKEN"]
+            collectorURL = reachableCollector(candidateURLs(raw), token: collectorToken)
         }
         #if BAJUTSU_ENABLE_CONTROL_CHANNEL
         // The one inbound direction (BE-0365), and the only feature here that a compilation
@@ -119,6 +121,51 @@ public enum BajutsuNet {
         return out
     }
 
+    /// The candidate collector URLs in `BAJUTSU_COLLECTOR`, in the host's preference order.
+    ///
+    /// One URL on the Simulator; one per host address on a real device. Each is repaired on its own,
+    /// since `xcodebuild` collapses the `//` of every URL in the value, not only the first.
+    static func candidateURLs(_ raw: String) -> [URL] {
+        raw.split(separator: ",").compactMap { piece in
+            URL(string: repairedURL(piece.trimmingCharacters(in: .whitespaces)))
+        }
+    }
+
+    /// Asks one candidate whether it is this run's collector: `completion(true)` on a 204.
+    typealias CollectorProbe = (_ url: URL, _ token: String?, _ completion: @escaping (Bool) -> Void) -> Void
+
+    /// The first candidate, in the host's order, that answers an authenticated `GET /ping`.
+    ///
+    /// A single candidate is taken as is, with no probe, so the Simulator's launch is unchanged. With
+    /// several, every candidate is probed at once, and the launch waits only until the choice is
+    /// settled: a candidate has answered and every one ahead of it has failed. An unreachable address
+    /// later in the list therefore costs nothing; one ahead of the answer costs up to `timeout`.
+    /// Reports start only once the collector is known, so none made early in the launch is lost.
+    /// No answer leaves the app reporting nothing, as an app launched without a collector does.
+    static func reachableCollector(
+        _ candidates: [URL], token: String?, timeout: TimeInterval = 2,
+        probe: CollectorProbe = pingCollector
+    ) -> URL? {
+        guard candidates.count > 1 else { return candidates.first }
+        let answers = ProbeAnswers(count: candidates.count)
+        for (index, url) in candidates.enumerated() {
+            probe(url, token) { ok in answers.record(index, ok) }
+        }
+        answers.waitUntilSettled(timeout: timeout)
+        return answers.firstAnswered().map { candidates[$0] }
+    }
+
+    /// The production probe: an authenticated `GET <url>/ping` on a session nothing intercepts.
+    static func pingCollector(_ url: URL, _ token: String?, _ completion: @escaping (Bool) -> Void) {
+        var req = URLRequest(url: url.appendingPathComponent("ping"), timeoutInterval: 2)
+        if let token {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        reportSession.dataTask(with: req) { _, response, _ in
+            completion((response as? HTTPURLResponse)?.statusCode == 204)
+        }.resume()
+    }
+
     /// POST a JSON payload to the collector, fire-and-forget, bearer-authenticated with the
     /// per-run token. Shared by `report` above and `BajutsuScreen`'s transition report, so the
     /// request-construction boilerplate (headers, auth, serialization) is written once.
@@ -142,5 +189,49 @@ public enum BajutsuNet {
             req.httpBody = data
             session.dataTask(with: req).resume()  // fire-and-forget
         }
+    }
+}
+
+/// Each candidate's probe result (nil until it returns), written from the probes' own queues.
+private final class ProbeAnswers: @unchecked Sendable {
+    private let lock = NSLock()
+    private let settled = DispatchSemaphore(value: 0)
+    private var results: [Bool?]
+    private var signalled = false
+
+    init(count: Int) { results = Array(repeating: nil, count: count) }
+
+    func record(_ index: Int, _ ok: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard results[index] == nil else { return }
+        results[index] = ok
+        if !signalled, isSettled() {
+            signalled = true
+            settled.signal()
+        }
+    }
+
+    func waitUntilSettled(timeout: TimeInterval) {
+        _ = settled.wait(timeout: .now() + timeout)
+    }
+
+    /// The first candidate known to have answered, in the host's order.
+    func firstAnswered() -> Int? {
+        lock.lock()
+        defer { lock.unlock() }
+        return results.firstIndex(of: true)
+    }
+
+    /// Settled once the first unresolved-or-answered slot is an answer, or every probe has failed.
+    private func isSettled() -> Bool {
+        for result in results {
+            switch result {
+            case .some(true): return true
+            case .some(false): continue
+            case .none: return false
+            }
+        }
+        return true
     }
 }

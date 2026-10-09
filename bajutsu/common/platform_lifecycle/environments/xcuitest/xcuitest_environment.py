@@ -28,6 +28,7 @@ from bajutsu.common.platform_lifecycle import readiness
 from bajutsu.common.platform_lifecycle.device_control import device_control
 from bajutsu.common.platform_lifecycle.environments._bundled_runner import _products_digest
 from bajutsu.common.platform_lifecycle.environments.ios import _DeviceEnvironment
+from bajutsu.common.platform_lifecycle.protocols import CollectorHost
 from bajutsu.common.scenario import Preconditions, Relaunch, Scenario
 from bajutsu.crawl import Reset
 
@@ -59,6 +60,7 @@ from ._functions import (
     _zorder_client,
     effective_device_type,
 )
+from ._host_address import HOST_ADDRESS_ENV, HostAddressError, host_candidates
 from ._recovery import _Recovery
 from ._shared import _logger
 from ._spawned import _Spawned
@@ -1981,6 +1983,44 @@ class XcuitestEnvironment(_DeviceEnvironment):
             else:
                 self._runner_log.unlink(missing_ok=True)
         self._runner_log = None
+
+    def collector_host(self, eff: Effective) -> CollectorHost:
+        """Loopback on the Simulator; on a real device, every interface and the host's addresses.
+
+        A real device shares no loopback with the host, and usbmuxd carries no connection the device
+        opens, so the app is offered the host addresses it might route to and probes them itself.
+        """
+        xcfg = require_ios(eff).xcuitest
+        if effective_device_type(xcfg) != "device":
+            return CollectorHost()
+        try:
+            found = host_candidates(xcfg.host_address if xcfg is not None else None)
+        except HostAddressError as exc:
+            raise simctl.DeviceError(str(exc)) from exc
+        if not found.addresses:
+            raise simctl.DeviceError(
+                "the network collector needs a host address a real device can reach, and none was "
+                f"found ({found.source}); set xcuitest.hostAddress or {HOST_ADDRESS_ENV}"
+            )
+        return CollectorHost(bind="::", advertised=found.addresses)
+
+    def reach_device_port(self, eff: Effective, port: int) -> tuple[int, Callable[[], None]]:
+        """`port` itself on the Simulator; on a real device, the host end of a usbmuxd bridge to it.
+
+        Raises:
+            DeviceError: usbmuxd is unreachable or does not list the device.
+        """
+        if effective_device_type(require_ios(eff).xcuitest) != "device":
+            return port, lambda: None
+        forwarder = UsbmuxForwarder(self._udid, device_port=port)
+        try:
+            host_port = forwarder.start()
+        except OSError as exc:
+            forwarder.close()
+            raise simctl.DeviceError(
+                f"cannot bridge to port {port} on device {self._udid}: {exc}"
+            ) from exc
+        return host_port, forwarder.close
 
     def has_reusable_resident(self) -> bool:
         return self._reusable  # BE-0291: a Simulator start left a warm runner the pool should keep

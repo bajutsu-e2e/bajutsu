@@ -9,6 +9,7 @@ import threading
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from _runner import _eff, _el, _web_eff
@@ -20,7 +21,7 @@ from bajutsu.common.drivers.fake import FakeDriver, FakeNetworkCollector
 from bajutsu.common.drivers.webview import WebViewBridge
 from bajutsu.common.evidence import FileSink
 from bajutsu.common.evidence.network import NetworkCollector, NetworkExchange, ScreenTransition
-from bajutsu.common.platform_lifecycle import ProvisionProfile
+from bajutsu.common.platform_lifecycle import CollectorHost, ProvisionProfile
 from bajutsu.common.runner import ReadinessResult, device_pool, device_relauncher
 from bajutsu.common.scenario import Relaunch, Scenario
 
@@ -515,6 +516,12 @@ class _RecordingEnv:
         self.provision = provision  # the ProvisionProfile device_pool threaded through (BE-0236)
         self.started = False
         self.torn = False
+        # The collector host this env reports, and every device port a lease asked it to reach (a
+        # real iOS device's usbmuxd bridge). The offset makes a bridged host port visibly distinct.
+        self.collector_host_value = CollectorHost()
+        self.reached_ports: list[int] = []
+        self.closed_reaches: list[int] = []
+        self.reach_offset = 0
         # A device this env replaced during `start` (None: the leased device is the one that
         # ran, which is every platform but the XCUITest Simulator's vanished-device path).
         self.replacement = replacement
@@ -559,7 +566,8 @@ class _RecordingEnv:
         self.bridged_before_launch = False
         self.bridge_torn = False
 
-    def start(self, eff: Effective, pre: object, **_: object) -> base.Driver:
+    def start(self, eff: Effective, pre: object, **kw: object) -> base.Driver:
+        self.launch_env = cast("dict[str, str]", kw.get("extra_env") or {})
         self.bridged_before_launch = self.bridged_port is not None
         self.start_count += 1
         if self.fail_start:
@@ -577,6 +585,17 @@ class _RecordingEnv:
 
     def mirrors_collector_port_on_device(self) -> bool:
         return True  # stands in for Android, the backend whose bridge mirrors the port
+
+    def collector_host(self, eff: Effective) -> CollectorHost:
+        return self.collector_host_value
+
+    def reach_device_port(self, eff: Effective, port: int) -> tuple[int, Callable[[], None]]:
+        self.reached_ports.append(port)
+
+        def close() -> None:
+            self.closed_reaches.append(port)
+
+        return port + self.reach_offset, close
 
     def bridge_collector(self, port: int) -> Callable[[], None]:
         self.bridged_port = port
@@ -701,6 +720,110 @@ def test_device_pool_resolves_actuator_per_scenario_and_tears_down_its_own_env(
         assert xc_env.actuator == "xcuitest" and xc_env.started  # resolved to the other actuator
         pinch_lease.release()
         assert xc_env.torn
+    finally:
+        shutdown()
+
+
+def _recording_pool(
+    monkeypatch: pytest.MonkeyPatch, configure: Callable[[_RecordingEnv], None]
+) -> tuple[list[_RecordingEnv], Any, Any]:
+    """A one-device pool over `_RecordingEnv`s that `configure` shapes before the pool uses them."""
+    created: list[_RecordingEnv] = []
+
+    def fake_env_for(
+        actuator: str,
+        udid: str,
+        env_run: object = None,
+        *,
+        provision: object = None,
+        respawn: bool = False,
+    ) -> _RecordingEnv:
+        env = _RecordingEnv(actuator, udid, provision)
+        configure(env)
+        created.append(env)
+        return env
+
+    monkeypatch.setattr("bajutsu.common.runner.pool.environment_for", fake_env_for)
+    monkeypatch.setattr(_RecordingEnv, "mirrors_collector_port_on_device", lambda self: False)
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=True,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    return created, lease, shutdown
+
+
+def test_device_pool_offers_every_advertised_host_address_to_the_app(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real iOS device shares no loopback with the host, so its environment binds the collector on
+    every interface and offers each routable host address; the app receives one URL per address, in
+    the environment's order, and IPv6 literals bracketed as a URL requires."""
+
+    def configure(env: _RecordingEnv) -> None:
+        env.collector_host_value = CollectorHost(bind="::", advertised=("192.0.2.7", "fd00::1"))
+
+    binds: list[str] = []
+    original_start = NetworkCollector.start
+
+    def _recording_start(self: NetworkCollector, port: int = 0, *, host: str = "127.0.0.1") -> int:
+        binds.append(host)
+        return original_start(self, port, host="127.0.0.1")  # the test host binds the loopback
+
+    monkeypatch.setattr(NetworkCollector, "start", _recording_start)
+    created, lease, shutdown = _recording_pool(monkeypatch, configure)
+    assert binds == ["::"]  # every interface, so the device can reach whichever address it picks
+    try:
+        la = lease(_eff(), _scn("a"))
+        port = cast("NetworkCollector", la.collector).port
+        assert created[1].launch_env["BAJUTSU_COLLECTOR"] == (
+            f"http://192.0.2.7:{port},http://[fd00::1]:{port}"
+        )
+        la.release()
+    finally:
+        shutdown()
+
+
+def test_device_pool_fails_before_any_device_work_without_a_host_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The environment raises when no address can be offered; the pool lets that surface before a
+    collector starts or a lease is handed out."""
+
+    def configure(env: _RecordingEnv) -> None:
+        def _raise(eff: Effective) -> CollectorHost:
+            raise simctl.DeviceError("set xcuitest.hostAddress")
+
+        env.collector_host = _raise  # type: ignore[method-assign]
+
+    with pytest.raises(simctl.DeviceError, match="hostAddress"):
+        _recording_pool(monkeypatch, configure)
+
+
+def test_device_pool_reaches_the_webview_bridge_through_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The app binds the injected WebView port on the device; the host client dials whatever host
+    port the environment says reaches it (a usbmuxd bridge on a real device), and the lease's release
+    closes that bridge."""
+
+    def configure(env: _RecordingEnv) -> None:
+        env.reach_offset = 1000
+
+    created, lease, shutdown = _recording_pool(monkeypatch, configure)
+    try:
+        la = lease(_eff(), _scn("a"))
+        env = created[1]
+        (device_port,) = env.reached_ports
+        assert env.launch_env["BAJUTSU_WEBVIEW_PORT"] == str(device_port)
+        assert cast(WebViewBridge, la.webview_bridge).port == device_port + 1000
+        assert env.closed_reaches == []
+        la.release()
+        assert env.closed_reaches == [device_port]
     finally:
         shutdown()
 

@@ -119,7 +119,7 @@ Bajutsu は Python パッケージとして実装します。現行のパッケ�
 
 **技術選定**
 - CLI：`Typer`（or Click）／設定とシナリオの検証：`pydantic`
-- 外部ツール連携：`subprocess` で `xcrun simctl` / `xcodebuild` を呼び、常駐 XCUITest runner とは loopback HTTP で通信し、各々の出力をパース
+- 外部ツール連携：`subprocess` で `xcrun simctl` / `xcodebuild` を呼び、常駐 XCUITest runner とは loopback HTTP で通信し（実機では usbmuxd で橋渡しし）、各々の出力をパース
 - LLM：`anthropic` SDK（Claude）。シナリオと要素ダンプは prompt cache に載せてトークン削減
 - 配布：`pipx install bajutsu` を想定
 

@@ -127,6 +127,26 @@ outside the repository.
 [iOS on a real device](ios-device-cloud.md#the-signing-file) gives the file format and its lookup
 order.
 
+### Real-device host address (`xcuitest.hostAddress`)
+
+A real iOS device does not share the host's loopback. An app on one reaches the network collector on
+a host address instead. By default, each run offers the app every routable address of the host's
+active interfaces. The app keeps the first one that answers. Some host interfaces can be out of the
+device's reach. `xcuitest.hostAddress` narrows the list to the addresses it names, comma-separated:
+
+```yaml
+targets:
+  my-app:
+    xcuitest:
+      deviceType: device
+      hostAddress: 192.168.1.20
+```
+
+The `BAJUTSU_HOST_ADDRESS` environment variable overrides the key. A host whose address changes with
+each job can set it per run, without editing the config. The key has no effect on the Simulator.
+[iOS on a real device](ios-device-cloud.md#device-to-host-an-exchanged-host-address) describes the
+exchange.
+
 ### AI provider (`ai:`, BE-0047)
 
 The AI paths — `record`, `crawl`, and `triage --ai` — reach the model through

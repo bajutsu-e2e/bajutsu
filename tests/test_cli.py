@@ -1385,6 +1385,69 @@ def test_xcuitest_runner_summary_empty_for_other_actuators() -> None:
     assert xcuitest_runner_summary(eff, "idb") == []
 
 
+def _device_target(extra: str = "") -> Effective:
+    return resolve(
+        load_config(
+            "targets: { demo: { bundleId: com.x, xcuitest: { deviceType: device" + extra + " } } }"
+        ),
+        "demo",
+    )
+
+
+def test_real_device_channel_summary_reports_usbmux_and_the_host_addresses() -> None:
+    # A device-cloud job runs doctor before `run` to see which route is missing, without a run.
+    from bajutsu.cli.commands.doctor import real_device_channel_summary
+    from bajutsu.common.platform_lifecycle.environments.xcuitest import HostCandidates
+
+    lines = real_device_channel_summary(
+        _device_target(),
+        "xcuitest",
+        "UDID-1",
+        connection=lambda udid: "USB",
+        candidates=lambda configured: HostCandidates(("192.0.2.7",), "host interfaces"),
+    )
+    assert lines == [
+        "real-device channel: usbmuxd reaches UDID-1 over USB",
+        "collector host addresses (host interfaces): 192.0.2.7",
+    ]
+
+
+def test_real_device_channel_summary_flags_each_missing_route() -> None:
+    from bajutsu.cli.commands.doctor import real_device_channel_summary
+    from bajutsu.common.platform_lifecycle.environments.xcuitest import (
+        HostCandidates,
+        UsbmuxError,
+    )
+
+    def _unlisted(udid: str) -> str:
+        raise UsbmuxError(f"usbmuxd does not list device {udid}")
+
+    seen: list[str | None] = []
+
+    def _none(configured: str | None) -> HostCandidates:
+        seen.append(configured)
+        return HostCandidates((), "xcuitest.hostAddress")
+
+    lines = real_device_channel_summary(
+        _device_target(", hostAddress: ' '"),
+        "xcuitest",
+        "UDID-1",
+        connection=_unlisted,
+        candidates=_none,
+    )
+    assert lines[0] == "  ✘ real-device channel: usbmuxd does not list device UDID-1"
+    assert "BAJUTSU_HOST_ADDRESS" in lines[1]
+    assert seen == [" "]  # the target's own hostAddress is what gets resolved
+
+
+def test_real_device_channel_summary_is_empty_off_a_real_device() -> None:
+    from bajutsu.cli.commands.doctor import real_device_channel_summary
+
+    sim = resolve(load_config("targets: { demo: { bundleId: com.x } }"), "demo")
+    assert real_device_channel_summary(sim, "xcuitest", "booted") == []
+    assert real_device_channel_summary(_device_target(), "fake", "booted") == []
+
+
 def test_tool_version_degrades_on_failure_and_reads_stderr(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3069,3 +3132,48 @@ def test_arming_a_swap_announces_markers_it_now_hides(capsys: pytest.CaptureFixt
     _arm_mock_swaps([shows_markers, no_visual], channel_available=_channel_always)
     err = capsys.readouterr().err
     assert "hidden for each screenshot" in err and "marked" in err and "plain" not in err
+
+
+def test_doctor_prints_the_real_device_channel_lines(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The disclosure block prints whatever the summary resolves, so a device-cloud job reads it.
+    from bajutsu.cli.commands import doctor as doctor_cmd
+
+    monkeypatch.setattr(doctor_cmd, "actuator_resolution_summary", lambda *a, **k: [])
+    monkeypatch.setattr(doctor_cmd, "xcuitest_runner_summary", lambda *a, **k: [])
+    monkeypatch.setattr(
+        doctor_cmd, "real_device_channel_summary", lambda *a, **k: ["real-device channel: ok"]
+    )
+    doctor_cmd._print_disclosures(_device_target(), ["xcuitest"], "UDID-1", "xcuitest")
+    assert "real-device channel: ok" in capsys.readouterr().out
+
+
+def test_real_device_channel_summary_asks_for_a_udid_instead_of_probing_booted() -> None:
+    # doctor's own `--udid` default names a Simulator; a real device has no "booted" to look up.
+    from bajutsu.cli.commands.doctor import real_device_channel_summary
+    from bajutsu.common.platform_lifecycle.environments.xcuitest import HostCandidates
+
+    def _never(udid: str) -> str:
+        pytest.fail("a 'booted' udid must not reach usbmuxd")
+
+    lines = real_device_channel_summary(
+        _device_target(),
+        "xcuitest",
+        "booted",
+        connection=_never,
+        candidates=lambda configured: HostCandidates(("192.0.2.7",), "host interfaces"),
+    )
+    assert lines[0] == "  ✘ real-device channel: pass --udid <device udid> to check usbmuxd"
+
+
+def test_real_device_channel_summary_reports_an_unusable_host_address() -> None:
+    from bajutsu.cli.commands.doctor import real_device_channel_summary
+
+    lines = real_device_channel_summary(
+        _device_target(", hostAddress: '1.2.3.4:5'"),
+        "xcuitest",
+        "UDID-1",
+        connection=lambda u: "USB",
+    )
+    assert lines[1].startswith("  ✘ xcuitest.hostAddress: '1.2.3.4:5'")

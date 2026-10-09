@@ -51,26 +51,79 @@ device fails loudly rather than silently doing nothing, and the Device Farm rout
 app through the cloud instead. This same key drives a locally attached iPhone or iPad, so the
 real-device work is useful on its own, before any cloud is involved.
 
-The runner serves its Hypertext Transfer Protocol (HTTP) channel on the device's own loopback
-address. A Simulator shares the host's loopback, so the host reaches that port directly. A real
-device does not, so with `deviceType: device` Bajutsu bridges the port through usbmuxd, the macOS
-service that Xcode and `iproxy` also use to reach a device attached over Universal Serial Bus (USB).
-Bajutsu opens a listener on the host's
-`127.0.0.1` and tells the runner to bind the same port number on the device. Each connection to that
-listener is tunnelled to the device through a usbmuxd `Connect` request. This is the iOS counterpart
-of the `adb forward` the Android resident channel sets up. It needs no extra host tool, because
-Bajutsu speaks the usbmuxd protocol directly over `/var/run/usbmuxd`. A device that usbmuxd does not
-list, because it is unplugged or has not trusted the host, fails the spawn at once with that reason
-rather than as a startup timeout. The bridge prefers a USB attachment and falls back to a network one
-when usbmuxd lists only that. The Device Farm route depends on the same bridge, so it works only
-where usbmuxd on the Device Farm host lists the reserved device. That has not yet been verified on
-Device Farm.
+## Reaching a real device's channels
 
-An app that links BajutsuKit also answers the diagnostic `nativeZ` field (each element's real
-front-to-back position) from a responder on the device's loopback. On a real device Bajutsu reaches
-that responder through a second usbmuxd bridge, opened for each scenario's lease. If that bridge
-cannot open, the run continues and `nativeZ` is left absent, the same result as an app without the
-responder.
+On the Simulator, the host and the app share one loopback address, `127.0.0.1`. Every channel
+between Bajutsu and an iOS app relies on that. A real device has a loopback of its own. With
+`deviceType: device`, each channel crosses the host–device boundary another way. The table lists
+how.
+
+| Channel | Who listens | Direction | On a real device |
+|---|---|---|---|
+| XCUITest runner | the runner, on the device | host → device | usbmuxd bridge |
+| `nativeZ` responder | the app, on the device | host → device | usbmuxd bridge |
+| WebView bridge | the app, on the device | host → device | usbmuxd bridge |
+| Network collector | Bajutsu, on the host | device → host | an exchanged host address |
+
+### Host to device: the usbmuxd bridge
+
+usbmuxd is the macOS service that Xcode and `iproxy` use to reach a device. Its `Connect` request
+joins a socket to a port on the device's loopback. Bajutsu speaks the usbmuxd protocol itself, over
+`/var/run/usbmuxd`. The host needs no extra tool. Bajutsu listens on the host's `127.0.0.1` for each
+channel. It tunnels every connection to the device port. The Android resident channel does the same
+with `adb forward`.
+
+The bridge prefers a device attached over Universal Serial Bus (USB). It falls back to a network
+attachment when usbmuxd lists nothing else. Suppose usbmuxd does not list the device at all. An
+unplugged or untrusted device is the usual cause. The runner's spawn then fails at once and names
+that reason, instead of timing out. The `nativeZ` field is diagnostic. A `nativeZ` bridge that cannot
+open leaves the field absent and lets the run continue.
+
+The listeners on the device stay on its loopback. The runner has no authentication, so it must stay
+out of reach of the network.
+
+### Device to host: an exchanged host address
+
+The app reports network exchanges to a collector on the host. usbmuxd carries no connection that the
+device opens. This channel needs a host address the device can route to. On a real device, the
+collector binds every interface of the host. The app receives one collector URL per candidate host
+address. Before it reports anything, the app sends each candidate an authenticated `GET /ping`. It
+keeps the first candidate, in the host's order, that answers. The collector answers 401 to a request
+without the per-run token. This run's app alone holds that token.
+
+Bajutsu resolves the candidates at each run. A host whose address changes keeps working that way. The
+candidates come from the first of these sources that has a value:
+
+1. The `BAJUTSU_HOST_ADDRESS` environment variable.
+2. The target's `xcuitest.hostAddress`
+   ([configuration](configuration.md#real-device-host-address-xcuitesthostaddress)).
+3. Every routable IPv4 and IPv6 address of the host's active interfaces. The list includes the IPv6
+   address of the CoreDevice tunnel. Xcode itself uses that tunnel for a real-device test.
+
+Suppose a run records network exchanges and no candidate exists. The run then fails before any
+device work, and the error names both settings. A device that reaches none of the candidates records
+no exchanges. A network assertion then fails on the empty record.
+
+Two properties of this route need care on the device side:
+
+- From iOS 14, an app asks for **Local Network permission** before its first local-network
+  connection. The probe makes such a connection. The app under test needs an
+  `NSLocalNetworkUsageDescription` entry in its `Info.plist`. The device must also grant the
+  permission. Until it does, the probe gets no answer. The system alert can also cover the app's
+  first screen. A fresh install, as on every Device Farm job, starts without the permission. Nobody
+  has yet measured this on a device.
+- The probe and every report travel as **cleartext** HTTP over the chosen route. The token travels
+  the same way. On a shared network, pin `BAJUTSU_HOST_ADDRESS` to the
+  CoreDevice tunnel's address instead.
+
+### Checking the channels before a run
+
+Run `bajutsu doctor --udid <udid> --environment-only` for a `deviceType: device` target. It reports
+both routes. It shows whether usbmuxd lists the device, and over which attachment.
+It also lists the host addresses that the app would receive. A device-cloud job can run it before
+`bajutsu run` to see which route its host lacks. The two lines inform and never change doctor's exit
+status. The Device Farm route depends on the same two
+routes. Nobody has verified them on Device Farm yet.
 
 ## The signed device runner
 

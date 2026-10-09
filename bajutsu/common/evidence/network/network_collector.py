@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import errno
 import secrets
+import socket
 import threading
 import time
 from collections.abc import Callable, Sequence
@@ -213,18 +214,21 @@ class NetworkCollector:
 
     # --- lifecycle ---
 
-    def start(self, port: int = 0) -> int:
-        """Start the receiver on the loopback interface and begin accepting the app's POSTs.
+    def start(self, port: int = 0, *, host: str = "127.0.0.1") -> int:
+        """Start the receiver and begin accepting the app's POSTs.
 
         Args:
-            port: TCP port to bind on `127.0.0.1`; `0` requests an ephemeral port.
+            port: TCP port to bind; `0` requests an ephemeral port.
+            host: The address to bind. The loopback, unless the app runs on a real device that does
+                not share it; `"::"` then binds every IPv4 and IPv6 interface, which the per-run token
+                every request must carry keeps closed to anything but this run's app.
 
         Returns:
             The actual bound port (resolved when `port` is `0`), to inject into the app via
             `BAJUTSU_COLLECTOR`.
         """
         self.token = secrets.token_urlsafe()
-        server = ThreadingHTTPServer(("127.0.0.1", port), _make_handler(self))
+        server = _bind(host, port, _make_handler(self))
         self.port = server.server_address[1]
         self._server = server
         # Poll often (vs the 0.5s default) so `stop()`'s shutdown() returns promptly — it blocks
@@ -288,3 +292,26 @@ class NetworkCollector:
             self._thread.join()  # serve_forever has returned; join so no stale thread lingers
             self._thread = None
         self.port = 0
+
+
+def _bind(host: str, port: int, handler: Any) -> ThreadingHTTPServer:
+    """The receiver's server on `host`; `::` falls back to every IPv4 interface without IPv6."""
+    if host != "::":
+        return ThreadingHTTPServer((host, port), handler)
+    try:
+        return _DualStackServer((host, port), handler)
+    except OSError as exc:
+        if exc.errno not in (errno.EAFNOSUPPORT, errno.EADDRNOTAVAIL):
+            raise
+        return ThreadingHTTPServer(("0.0.0.0", port), handler)  # noqa: S104 — token-gated, see start()
+
+
+class _DualStackServer(ThreadingHTTPServer):
+    """A `ThreadingHTTPServer` on `::` that also accepts IPv4, for a real device's collector."""
+
+    address_family = socket.AF_INET6
+
+    def server_bind(self) -> None:
+        # Off by default on some hosts; a candidate list mixes both families, so accept both.
+        self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        super().server_bind()

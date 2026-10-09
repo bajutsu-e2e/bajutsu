@@ -18,6 +18,7 @@ from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.platform_lifecycle import (
     AndroidEnvironment,
+    CollectorHost,
     FakeEnvironment,
     WebEnvironment,
     XcuitestEnvironment,
@@ -922,3 +923,17 @@ def test_xcuitest_environment_forwards_preconditions_to_runner_env(
     assert target_env["BAJUTSU_DEEPLINK"] == "myapp://home"
     # bundle id of the app under test (so one generic runner drives any app)
     assert target_env["BAJUTSU_BUNDLE_ID"] == "com.example.demo"
+
+
+def test_every_platform_that_shares_a_loopback_declines_the_real_device_hooks() -> None:
+    # The two hooks a real iOS device answers differently (BE: real-device host channels) decline
+    # with the loopback and the port itself everywhere else — a no-op, never a raise.
+    for env, eff in (
+        (FakeEnvironment("fake", "UDID"), _eff()),
+        (WebEnvironment("playwright"), _web_eff(base_url="http://x/")),
+        (AndroidEnvironment("adb", "SER"), _eff()),
+    ):
+        assert env.collector_host(eff) == CollectorHost()
+        port, close = env.reach_device_port(eff, 4100)
+        assert port == 4100
+        close()  # a callable no-op

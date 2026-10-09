@@ -18,3 +18,7 @@ class XcuitestConfig(_Model):
     # (the BE-0019 default) or a real `device`. It only selects the `-destination` platform and
     # whether simctl device-prep applies; an unknown value fails closed here at config load.
     device_type: Literal["simulator", "device"] = Field(default="simulator", alias="deviceType")
+    # The host address(es) a real device reaches the network collector on, comma-separated. Unset,
+    # the run offers every routable address of the host's interfaces and the app keeps the one that
+    # answers; `BAJUTSU_HOST_ADDRESS` overrides this for a host whose address changes per run.
+    host_address: str | None = Field(default=None, alias="hostAddress")

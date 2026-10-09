@@ -1131,3 +1131,87 @@ def test_every_in_app_capability_has_exactly_one_command_shape() -> None:
     tables = {InAppCapability.STUB_TABLE}
     assert toggles.isdisjoint(tables)
     assert set(InAppCapability) == toggles | tables
+
+
+# --- the real-device reachability probe and binding --------------------------------------------
+
+
+def _status(url: str, token: str | None, method: str = "GET") -> int:
+    headers = {"Authorization": f"Bearer {token}"} if token is not None else {}
+    req = urllib.request.Request(
+        url, headers=headers, method=method, data=b"{}" if method == "POST" else None
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return int(resp.status)
+    except urllib.error.HTTPError as err:
+        with err:
+            return int(err.code)
+
+
+def test_ping_answers_an_authenticated_probe_and_changes_nothing() -> None:
+    # The app's probe of each offered host address: 204 with the token, 401 without, and a POST
+    # never lands in the exchanges a `request` assertion reads.
+    c = NetworkCollector()
+    port = c.start()
+    try:
+        assert _status(f"http://127.0.0.1:{port}/ping", c.token) == 204
+        assert _status(f"http://127.0.0.1:{port}/ping", None) == 401
+        assert _status(f"http://127.0.0.1:{port}/ping", c.token, method="POST") == 405
+        assert c.snapshot() == []
+    finally:
+        c.stop()
+
+
+def _has_ipv6_loopback() -> bool:
+    """Whether this host has `::1`; a container may run with IPv6 off, where `::` falls back."""
+    try:
+        with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as s:
+            s.bind(("::1", 0))
+    except OSError:
+        return False
+    return True
+
+
+def test_a_dual_stack_collector_answers_on_ipv4_and_ipv6() -> None:
+    # A real device is offered both families, so the `::` binding must accept either.
+    c = NetworkCollector()
+    port = c.start(host="::")
+    try:
+        assert _status(f"http://127.0.0.1:{port}/ping", c.token) == 204
+        if _has_ipv6_loopback():
+            assert _status(f"http://[::1]:{port}/ping", c.token) == 204
+    finally:
+        c.stop()
+
+
+def test_a_host_without_ipv6_falls_back_to_every_ipv4_interface(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import errno
+
+    from bajutsu.common.evidence.network import network_collector
+
+    def _no_ipv6(*_a: object, **_k: object) -> None:
+        raise OSError(errno.EAFNOSUPPORT, "Address family not supported")
+
+    monkeypatch.setattr(network_collector, "_DualStackServer", _no_ipv6)
+    c = NetworkCollector()
+    port = c.start(host="::")
+    try:
+        assert _status(f"http://127.0.0.1:{port}/ping", c.token) == 204
+    finally:
+        c.stop()
+
+
+def test_any_other_bind_error_on_the_dual_stack_surfaces(monkeypatch: pytest.MonkeyPatch) -> None:
+    import errno
+
+    from bajutsu.common.evidence.network import network_collector
+
+    def _in_use(*_a: object, **_k: object) -> None:
+        raise OSError(errno.EADDRINUSE, "Address already in use")
+
+    monkeypatch.setattr(network_collector, "_DualStackServer", _in_use)
+    with pytest.raises(OSError, match="already in use"):
+        NetworkCollector().start(host="::")

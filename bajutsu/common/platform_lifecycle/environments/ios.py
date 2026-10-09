@@ -16,6 +16,7 @@ from bajutsu.common.evidence.network import Collector
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.platform_lifecycle import readiness
 from bajutsu.common.platform_lifecycle.device_control import device_control
+from bajutsu.common.platform_lifecycle.protocols import CollectorHost
 from bajutsu.common.platform_lifecycle.relaunchers import device_relauncher
 from bajutsu.common.scenario import Preconditions, Scenario
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
@@ -59,6 +60,12 @@ class _DeviceEnvironment:
 
     def observes_network_via_driver(self) -> bool:
         return False  # the app reports to an external collector via BAJUTSU_COLLECTOR
+
+    def collector_host(self, eff: Effective) -> CollectorHost:  # noqa: ARG002  # Environment shape
+        return CollectorHost()  # the Simulator shares the Mac's loopback
+
+    def reach_device_port(self, eff: Effective, port: int) -> tuple[int, Callable[[], None]]:  # noqa: ARG002  # Environment shape
+        return port, lambda: None  # nothing between the host and the port to bridge
 
     def mirrors_collector_port_on_device(self) -> bool:
         return False  # the Simulator shares the Mac's loopback: nothing binds the port device-side

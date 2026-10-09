@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 import typer
@@ -32,9 +33,15 @@ from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.doctor import DoctorProbeError, probe_screen, render, score
 from bajutsu.common.drivers import base
 from bajutsu.common.platform_lifecycle.environments.xcuitest import (
+    HOST_ADDRESS_ENV,
+    HostAddressError,
+    HostCandidates,
+    UsbmuxError,
     bundled_runner_staleness_note,
     bundled_runner_toolchain_note,
+    device_connection,
     effective_device_type,
+    host_candidates,
     runner_source,
 )
 from bajutsu.common.scenario import load_scenario_file
@@ -162,6 +169,48 @@ def xcuitest_runner_summary(eff: Effective, actuator: str) -> list[str]:
     return lines
 
 
+def real_device_channel_summary(
+    eff: Effective,
+    actuator: str,
+    udid: str,
+    *,
+    connection: Callable[[str], str] = device_connection,
+    candidates: Callable[[str | None], HostCandidates] = host_candidates,
+) -> list[str]:
+    """How a real-device run would reach its channels, so a device-cloud job can check before a run.
+
+    The host reaches the runner, `nativeZ`, and the WebView bridge through usbmuxd, so this reports
+    whether usbmuxd lists the device; the app reaches the network collector on a host address, so
+    this lists the addresses it would be offered. Informational, like every disclosure: a `✘` line
+    does not change doctor's exit status. Empty for the Simulator and other actuators.
+    """
+    if actuator != "xcuitest":
+        return []
+    xcfg = require_ios(eff).xcuitest
+    if effective_device_type(xcfg) != "device":
+        return []
+    if udid == "booted":
+        # doctor's own default names a Simulator; a real device has no "booted" alias to look up.
+        lines = ["  ✘ real-device channel: pass --udid <device udid> to check usbmuxd"]
+    else:
+        try:
+            lines = [f"real-device channel: usbmuxd reaches {udid} over {connection(udid)}"]
+        except UsbmuxError as exc:
+            lines = [f"  ✘ real-device channel: {exc}"]
+    try:
+        found = candidates(xcfg.host_address if xcfg is not None else None)
+    except HostAddressError as exc:
+        return [*lines, f"  ✘ {exc}"]
+    if found.addresses:
+        lines.append(f"collector host addresses ({found.source}): {', '.join(found.addresses)}")
+    else:
+        lines.append(
+            f"  ✘ no collector host address ({found.source}); set xcuitest.hostAddress or "
+            f"{HOST_ADDRESS_ENV} for a scenario that records network exchanges"
+        )
+    return lines
+
+
 def _capability_preflight(scenario: str, actuator: str, eff: Effective, udid: str) -> bool:
     """Print the scenario's capability preflight and report whether it failed; exit 2 if missing.
 
@@ -200,6 +249,13 @@ def _print_disclosures(eff: Effective, backends: list[str], udid: str, actuator:
     # Which runner tier an xcuitest target resolves to (BE-0292): bundled, testRunner, or build.
     if runner_summary := xcuitest_runner_summary(eff, actuator):
         for line in runner_summary:
+            typer.echo(line)
+        typer.echo("")
+
+    # How a real device's channels would be reached: usbmuxd host-to-device, a host address
+    # device-to-host. A device-cloud job can run this before `run` to see which one is missing.
+    if channel_summary := real_device_channel_summary(eff, actuator, udid):
+        for line in channel_summary:
             typer.echo(line)
         typer.echo("")
 
