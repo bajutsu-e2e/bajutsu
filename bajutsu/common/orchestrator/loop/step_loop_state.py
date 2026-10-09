@@ -40,6 +40,9 @@ class StepLoopState:
     # is skipped. It holds only a tree we actually read; a step that took no read leaves it None so
     # the next `before` reads fresh, and a `web` block resets it (the tree is a different driver's).
     prev_after: list[base.Element] | None = None
+    # Whether the scenario's first step has run the guard once before acting (`_clear_entry_alert`).
+    # Scenario-scoped like the counter, so a nested group's first step does not run it again.
+    entry_alert_checked: bool = False
     # The previous step's `after.png` artifact, reused as this step's `before.png` (BE-0407 Unit 1)
     # instead of a fresh `driver.screenshot()`: nothing actuates between the two, so they are the
     # identical pixels. Set only when the shutter actually wrote a screenshot (a `NullSink` writes

@@ -19,6 +19,7 @@ from conftest import guard_rule
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.orchestrator import AlertEvent, AlertGuardConfig
+from bajutsu.common.orchestrator.loop._step_runner import _StepRunner
 from bajutsu.common.orchestrator.types import (
     ResolvedAlertRule,
     alert_block_note,
@@ -1703,7 +1704,12 @@ def test_the_end_of_step_guard_keeps_a_stuck_tree_note_after_a_different_tree_ta
     assert "StuckBtn" in guard.blocked_note
 
 
-def test_a_note_from_a_cleared_stacked_call_does_not_survive_a_retry_that_passes() -> None:
+def test_a_note_from_a_cleared_stacked_call_does_not_survive_a_retry_that_passes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The alert is seeded from the start to stand for one arriving mid-step; the scenario-entry
+    # check would clear it before the step that this test is about ever meets it.
+    monkeypatch.setattr(_StepRunner, "_clear_entry_alert", lambda *_a, **_k: None)
     # The step-runner's `not ok` conjunct, pinned (BE-0418 review finding): a cleared stacked call's
     # note explains a failure the retry still has, but when the dismiss reveals the step's own
     # target and the retry lands, the step passed — the still-unhandled second alert's note must not
@@ -4328,9 +4334,12 @@ def test_a_blocked_expect_names_the_alert_in_the_scenario_s_own_failure() -> Non
     )
 
 
-def test_a_note_from_a_cleared_stacked_expect_call_still_reaches_the_scenario_s_own_failure() -> (
-    None
-):
+def test_a_note_from_a_cleared_stacked_expect_call_still_reaches_the_scenario_s_own_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The alert is seeded from the start to stand for one arriving mid-step; the scenario-entry
+    # check would clear it before the step that this test is about ever meets it.
+    monkeypatch.setattr(_StepRunner, "_clear_entry_alert", lambda *_a, **_k: None)
     # The `expect` twin of `test_a_note_from_a_cleared_stacked_call_still_reaches_the_step_s_own_
     # failure`: `expect_block_note` must reach the scenario's own failure even though the guard's
     # call cleared something, since a multi-round call can clear a stacked alert while leaving a
@@ -4512,3 +4521,48 @@ def test_a_notifications_rule_still_answers_a_backend_reporting_no_titles() -> N
     driver = _fake_with_alert(["Don’t Allow", "Allow"])
     state, event, _ = guard.probe_native(driver)
     assert (state, event) == ("dismissed", AlertEvent(label="Don’t Allow"))
+
+
+# --- the scenario-entry check: a declared prompt already up before the first act ---------------- #
+
+
+def test_a_declared_prompt_up_at_scenario_start_is_cleared_before_the_first_tap() -> None:
+    # A launch-time prompt (Local Network on a real device) is up before step one; the first tap
+    # must not land on it. Cleared once, natively, and reported on the first step.
+    from bajutsu.common.orchestrator import run_scenario
+    from bajutsu.common.scenario import load_scenarios
+
+    go = _button("Go")
+    go["identifier"] = "go"
+
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "handle_system_alert":
+            d.system_alert_buttons = []
+
+    driver = _fake_with_alert(["Don't Allow", "Allow"], react=react)
+    driver.screen = [go]
+    result = run_scenario(
+        driver,
+        load_scenarios("- name: t\n  steps:\n    - tap: { id: go }\n")[0],
+        alert_guard=AlertGuardConfig(rules=[guard_rule("Allow")]),
+    )
+    assert result.ok, result.failure
+    assert result.steps[0].alerts == [AlertEvent(label="Allow")]
+    taps = [kind for kind, _ in driver.actions]
+    assert taps.index("handle_system_alert") < taps.index("tap")  # cleared before the act
+
+
+def test_the_scenario_entry_check_leaves_an_undeclared_prompt_alone() -> None:
+    from bajutsu.common.orchestrator import run_scenario
+    from bajutsu.common.scenario import load_scenarios
+
+    go = _button("Go")
+    go["identifier"] = "go"
+    driver = _fake_with_alert(["Weird Button"])
+    driver.screen = [go]
+    run_scenario(
+        driver,
+        load_scenarios("- name: t\n  steps:\n    - tap: { id: go }\n")[0],
+        alert_guard=AlertGuardConfig(rules=[guard_rule("Allow")]),
+    )
+    assert "handle_system_alert" not in [kind for kind, _ in driver.actions]

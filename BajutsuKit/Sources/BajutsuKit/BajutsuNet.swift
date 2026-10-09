@@ -14,7 +14,16 @@ import Foundation
 /// that production never sets, and don't ship it in release builds. Activation is a
 /// no-op unless `BAJUTSU_COLLECTOR` is present.
 public enum BajutsuNet {
-    static private(set) var collectorURL: URL?
+    /// The collector this app reports to: the one URL on the Simulator, or on a real device the
+    /// candidate that answered (nil while the search runs, and after it gives up).
+    static var collectorURL: URL? { resolution.url }
+    /// Every collector URL this run was offered, so the interceptor never reports a probe or a
+    /// report sent to one of them, whichever the search ends up choosing.
+    static private(set) var collectorCandidates: [URL] = []
+    /// Where reports go, or wait while a real device's collector is still being found.
+    static let resolution = CollectorResolution { payload, url in
+        postJSON(payload, to: url, token: collectorToken, session: reportSession)
+    }
     /// Per-run shared token (`BAJUTSU_COLLECTOR_TOKEN`) attached to each report POST so the
     /// collector accepts only this run's app; nil unless bajutsu injected one.
     static private(set) var collectorToken: String?
@@ -55,7 +64,23 @@ public enum BajutsuNet {
         BajutsuZOrder.startIfEnabled(environment: environment)
         if let raw = environment["BAJUTSU_COLLECTOR"] {
             collectorToken = environment["BAJUTSU_COLLECTOR_TOKEN"]
-            collectorURL = reachableCollector(candidateURLs(raw), token: collectorToken)
+            let candidates = candidateURLs(raw)
+            collectorCandidates = candidates
+            if candidates.count > 1 {
+                // A real device: found in the background, so the launch never waits on the Local
+                // Network prompt the search itself raises (`CollectorResolution`).
+                resolution.search(candidates, token: collectorToken) { url in
+                    #if BAJUTSU_ENABLE_CONTROL_CHANNEL
+                    BajutsuControlChannel.startIfEnabled(
+                        environment: environment, collector: url, token: collectorToken
+                    )
+                    #else
+                    _ = url
+                    #endif
+                }
+            } else {
+                resolution.settle(candidates.first)
+            }
         }
         #if BAJUTSU_ENABLE_CONTROL_CHANNEL
         // The one inbound direction (BE-0365), and the only feature here that a compilation
@@ -66,7 +91,7 @@ public enum BajutsuNet {
         )
         #endif
         // Register the interceptor if there is anything to do: observe and/or stub.
-        guard collectorURL != nil || !BajutsuMocks.shared.rules.isEmpty else { return }
+        guard resolution.isExpected || !BajutsuMocks.shared.rules.isEmpty else { return }
         URLProtocol.registerClass(BajutsuURLProtocol.self)
         BajutsuURLProtocol.installIntoDefaultConfigurations()
         BajutsuWebView.startIfEnabled(environment: environment)
@@ -77,7 +102,7 @@ public enum BajutsuNet {
         request: URLRequest, requestBody: Data?, response: URLResponse?, body: Data,
         startedAt: Date, error: Error?, mocked: Bool = false
     ) {
-        guard let collectorURL else { return }
+        guard resolution.isExpected else { return }
         let http = response as? HTTPURLResponse
         let durationMs = Date().timeIntervalSince(startedAt) * 1000
         // Surface the exchange to the host app's UI (same data POSTed below).
@@ -112,7 +137,7 @@ public enum BajutsuNet {
         if let s = String(data: body, encoding: .utf8), !s.isEmpty {
             payload["responseBody"] = s
         }
-        postJSON(payload, to: collectorURL, token: collectorToken, session: reportSession)
+        resolution.send(payload, path: nil)
     }
 
     private static func stringHeaders(_ headers: [AnyHashable: Any]) -> [String: String] {
@@ -136,12 +161,11 @@ public enum BajutsuNet {
 
     /// The first candidate, in the host's order, that answers an authenticated `GET /ping`.
     ///
-    /// A single candidate is taken as is, with no probe, so the Simulator's launch is unchanged. With
-    /// several, every candidate is probed at once, and the launch waits only until the choice is
-    /// settled: a candidate has answered and every one ahead of it has failed. An unreachable address
-    /// later in the list therefore costs nothing; one ahead of the answer costs up to `timeout`.
-    /// Reports start only once the collector is known, so none made early in the launch is lost.
-    /// No answer leaves the app reporting nothing, as an app launched without a collector does.
+    /// One round of the background search (`CollectorResolution.search`). A single candidate is
+    /// taken as is, with no probe. With several, every candidate is probed at once, and the round
+    /// returns as soon as the choice is settled: a candidate has answered and every one ahead of it
+    /// has failed. An unreachable address later in the list therefore costs nothing; one ahead of
+    /// the answer costs up to `timeout`. Nil means no candidate answered this round.
     static func reachableCollector(
         _ candidates: [URL], token: String?, timeout: TimeInterval = 2,
         probe: CollectorProbe = pingCollector

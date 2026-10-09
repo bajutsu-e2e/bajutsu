@@ -312,6 +312,12 @@ systemAlertHandling:
     - { prompt: localNetwork, choice: grant }
 ```
 
+The app raises this prompt during launch, before the scenario's first step. The guard otherwise first looks inside a pending wait. A first `tap` could then land on the
+prompt. To prevent that, the guard reads the SpringBoard query once before the first step. It answers a declared
+prompt already on screen.
+That read is native alone. It never taps the app's own buttons. It leaves an undeclared alert
+alone.
+
 `savePassword` also renders three ways, where the other three prompts each render one:
 
 | Rendering | English | Japanese |

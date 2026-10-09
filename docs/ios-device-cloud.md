@@ -87,9 +87,11 @@ out of reach of the network.
 The app reports network exchanges to a collector on the host. usbmuxd carries no connection that the
 device opens. This channel needs a host address the device can route to. On a real device, the
 collector binds every interface of the host. The app receives one collector URL per candidate host
-address. Before it reports anything, the app sends each candidate an authenticated `GET /ping`. It
-keeps the first candidate, in the host's order, that answers. The collector answers 401 to a request
-without the per-run token. This run's app alone holds that token.
+address. The app sends each candidate an authenticated `GET /ping`. It keeps the first one, in the
+host's order, that answers. The search runs in the background, so the launch never waits for it. It
+retries for up to two minutes. Reports the app makes meanwhile wait, and go out in order once a
+collector answers. The collector answers 401 to a request without the per-run token. This run's app
+alone holds that token.
 
 Bajutsu resolves the candidates at each run. A host whose address changes keeps working that way. The
 candidates come from the first of these sources that has a value:
@@ -107,11 +109,12 @@ no exchanges. A network assertion then fails on the empty record.
 Two properties of this route need care on the device side:
 
 - From iOS 14, an app asks for **Local Network permission** before its first local-network
-  connection. The probe makes such a connection. The app under test needs an
-  `NSLocalNetworkUsageDescription` entry in its `Info.plist`. The device must also grant the
-  permission. Until it does, the probe gets no answer. The system alert can also cover the app's
-  first screen. A fresh install, as on every Device Farm job, starts without the permission. Nobody
-  has yet measured this on a device.
+  connection. The search makes such a connection, so a fresh install raises the prompt during
+  launch. Every Device Farm job is a fresh install. Declare `{ prompt: localNetwork, choice: grant }`
+  in `systemAlertHandling.rules` ([scenarios](scenarios.md)). The guard then answers the prompt,
+  including one already up when the scenario starts. Until the grant, the search gets no answer and
+  the reports wait. We measured this on an iPhone
+  with iOS 27.0.1. iOS showed the prompt even with no `NSLocalNetworkUsageDescription` entry.
 - The probe and every report travel as **cleartext** HTTP over the chosen route. The token travels
   the same way. On a shared network, pin `BAJUTSU_HOST_ADDRESS` to the
   CoreDevice tunnel's address instead.

@@ -550,6 +550,30 @@ class _StepRunner:
         push_interruption_policy(driver, replace(guard, rules=[*guard.rules, reservation]))
         return True, drained.alerts, drained.undeclared
 
+    def _clear_entry_alert(self, driver: base.Driver, alerts: list[AlertEvent]) -> None:
+        """Run the guard once before the scenario's first act, for a prompt raised during launch.
+
+        A permission prompt the app raises while it launches (iOS's Local Network prompt, raised by
+        the app's first report to a real device's collector) is up before step one, which may not
+        wait at all, or wait for an element the prompt only covers. The guard otherwise first polls
+        inside a pending wait, so a first tap would land on the prompt instead of the app. One
+        guarded read costs one native query when nothing is up, and answers only declared prompts.
+        """
+        guard = self.cfg.alert_guard
+        if guard is None or not guard.native_rules:
+            return
+        # The native SpringBoard path alone: a launch-time prompt is a system one, and the in-tree
+        # dismissal would tap the app's own buttons before the scenario asked anything of it.
+        state, event, _ = guard.probe_native(driver)
+        if state == "dismissed" and event is not None:
+            alerts.append(event)
+            settle_after_alert_dismiss(
+                driver,
+                self.cfg.clock,
+                transitions=self.cfg.transitions,
+                cancelled=self.cfg.cancelled,
+            )
+
     def _handle_lifecycle(
         self,
         step: Step,
@@ -1072,6 +1096,12 @@ class _StepRunner:
         # so the merge below is a no-op there.
         reserved_alerts: list[AlertEvent] = []
         reserved_undeclared: list[UndeclaredInterruption] = []
+        # A declared prompt already up when the scenario starts, cleared before its first act.
+        entry_alerts: list[AlertEvent] = []
+        if not self.state.entry_alert_checked:
+            self.state.entry_alert_checked = True
+            if front_failure is None:
+                self._clear_entry_alert(active_driver, entry_alerts)
         # The label a `handleSystemAlert` step tapped, for `outcome.system_alert` (BE-0445).
         system_alert_taps: list[str] = []
         if front_failure is not None or (guard is not None and guard.failure is not None):
@@ -1281,6 +1311,7 @@ class _StepRunner:
                     push_interruption_policy(active_driver, self.cfg.alert_guard)
         outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
         outcome.duration_s = self.cfg.clock.now() - start
+        outcome.alerts.extend(entry_alerts)
         if reserved_alerts or reserved_undeclared:
             outcome.alerts.extend(reserved_alerts)
             if reserved_undeclared:

@@ -117,9 +117,12 @@ picks one that answers.
 4. **Injection.** `BAJUTSU_COLLECTOR` carries one URL per candidate, separated by commas. A single
    URL, as on the Simulator, keeps today's format.
 5. **Selection in the app.** BajutsuKit splits the value. With more than one candidate, it probes
-   each with an authenticated `GET /ping` in parallel, bounded at two seconds, before it registers
-   its interceptor. It keeps the first candidate, in the host's order, that answered 204. With no
-   answer, the app reports nothing, as an app without a collector does today.
+   each with an authenticated `GET /ping` in parallel. It keeps the first candidate, in the host's
+   order, that answered 204. The search runs in the background, so the launch never waits for it.
+   It retries every second for up to two minutes, because a fresh install holds every
+   local-network connection until the Local Network prompt is answered. Reports made meanwhile wait
+   in a bounded buffer and go out in order once a collector answers. With no answer by the
+   deadline, the buffer is dropped and the app reports nothing, as an app without a collector does.
 6. **Interceptor guard.** BajutsuKit's `URLProtocol` skips loopback requests, so its own report
    POSTs are never intercepted and re-reported. A collector on a network address would slip past
    that guard. The guard now also skips the chosen collector's host and port.
@@ -143,6 +146,11 @@ alert, carrying its title. The guard reduces that title to Apple's template, wit
 The templates come from `NetworkExtension.framework` (`APP_WANTS_LOCAL_NETWORK_HEADER`), identical on
 iOS 18.6, 26.5, and 27.0, in English and Japanese. A scenario or target declares
 `{ prompt: localNetwork, choice: grant }` like any other prompt; nothing answers it implicitly.
+
+The prompt is raised during launch, before the first step, while the guard otherwise first looks
+inside a pending wait. A first `tap` would land on it. The guard therefore runs its native probe once
+before a scenario's first step. That probe answers a declared prompt already on screen, records it
+on the first step, and touches neither the app's own buttons nor an undeclared alert.
 
 ### Checking the routes: `bajutsu doctor`
 
@@ -256,6 +264,8 @@ network scenario on the same device.
 - [x] `bajutsu doctor`: the usbmuxd and host-address lines for a real-device target.
 - [x] `localNetwork` prompt: title marker, runner title entries, and exclusions in the
   interruption policy.
+- [x] Scenario-entry native probe for a declared prompt raised during launch.
+- [x] BajutsuKit: background collector search with buffered reports.
 - [x] Docs in both languages: `docs/ios-device-cloud.md`, `docs/configuration.md`,
   `docs/devicefarm.md`, `docs/architecture.md`.
 - [ ] Manual real-device proof: `firstlook` on a USB-attached iPhone, then a network scenario.
@@ -274,8 +284,9 @@ Log:
   a rule stopped at the Local Network prompt. With `{ prompt: localNetwork, choice: grant }`, the
   guard identified the prompt by its title and tapped "Allow". After the grant, `firstlook` and
   `network_mock` both passed, and `network_mock` recorded its stubbed `POST /post` (201) over the
-  host-address route. One gap stays open. On a fresh install, the app raises the prompt during
-  launch. The scenario's first tap can land on the prompt before the guard's next poll clears it.
+  host-address route. On a fresh install, two gaps followed: the scenario's first tap landed on the
+  prompt, and the app's two-second probe at launch timed out while the prompt held its connections.
+  The scenario-entry probe and the background search with buffered reports close both.
 
 ## References
 
