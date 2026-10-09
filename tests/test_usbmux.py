@@ -8,10 +8,12 @@ refusal, and byte forwarding are all exercised without a device or the real `/va
 from __future__ import annotations
 
 import contextlib
+import logging
 import plistlib
 import socket
 import struct
 import threading
+import time
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
@@ -23,6 +25,7 @@ from bajutsu.common.platform_lifecycle.environments.xcuitest import _usbmux as u
 from bajutsu.common.platform_lifecycle.environments.xcuitest._usbmux import (
     UsbmuxError,
     UsbmuxForwarder,
+    UsbmuxRefused,
     connect,
     device_id,
 )
@@ -97,6 +100,14 @@ def _splice(a: socket.socket, b: socket.socket) -> None:
     threading.Thread(target=_copy, args=(b, a), daemon=True).start()
 
 
+def _read_to_eof(sock: socket.socket) -> bytes:
+    """`recv`, counting a reset as the EOF it equally signals (the peer closed with data unread)."""
+    try:
+        return sock.recv(4096)
+    except ConnectionResetError:
+        return b""
+
+
 def _device(device_id: int, serial: str, connection: str) -> dict[str, Any]:
     return {
         "DeviceID": device_id,
@@ -167,7 +178,7 @@ def test_an_unreachable_usbmuxd_is_a_usbmux_error(tmp_path: Path) -> None:
 def test_connect_sends_the_port_in_network_order_and_reports_a_refusal(mux_path: Path) -> None:
     mux = _FakeUsbmuxd(mux_path, [_device(3, _UDID, "USB")], {})
     try:
-        with pytest.raises(UsbmuxError, match="refused device port 8100"):
+        with pytest.raises(UsbmuxRefused, match="refused device port 8100"):
             connect(_UDID, 8100, str(mux_path))
         assert mux.connects[0]["DeviceID"] == 3
         assert mux.connects[0]["PortNumber"] == socket.htons(8100)
@@ -259,4 +270,56 @@ def test_a_joined_tunnel_carries_no_idle_deadline(mux_path: Path, echo_port: int
         with connect(_UDID, 8100, str(mux_path)) as sock:
             assert sock.gettimeout() is None
     finally:
+        mux.close()
+
+
+def test_close_wakes_a_live_tunnel(mux_path: Path) -> None:
+    # `close()` runs on the main thread while both pump threads sit in `recv()` on a live tunnel;
+    # shutting the sockets down is what wakes them, so the host side must read EOF promptly.
+    silent = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    silent.bind(("127.0.0.1", 0))
+    silent.listen(1)
+    mux = _FakeUsbmuxd(mux_path, [_device(3, _UDID, "USB")], {})
+    fwd = UsbmuxForwarder(_UDID, socket_path=str(mux_path))
+    try:
+        port = fwd.start()
+        mux.ports[port] = silent.getsockname()[1]
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as client:
+            silent.settimeout(5)
+            device_side, _ = silent.accept()  # the splice is live and idle
+            deadline = time.monotonic() + 5
+            while not fwd._open and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert fwd._open, "the tunnel never registered as open"
+            fwd.close()
+            assert _read_to_eof(client) == b""
+            device_side.close()
+    finally:
+        fwd.close()
+        mux.close()
+        silent.close()
+
+
+def test_a_vanished_device_is_reported_as_a_warning(
+    mux_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A device that drops off usbmuxd mid-run is not "not ready yet": the driver only sees EOF, so
+    # the reason must surface above DEBUG, naming the device.
+    mux = _FakeUsbmuxd(mux_path, [_device(3, _UDID, "USB")], {})
+    fwd = UsbmuxForwarder(_UDID, socket_path=str(mux_path))
+    try:
+        port = fwd.start()
+        mux.devices = []
+        with (
+            caplog.at_level(logging.WARNING),
+            socket.create_connection(("127.0.0.1", port), timeout=5) as client,
+        ):
+            assert _read_to_eof(client) == b""
+        assert any(
+            _UDID in r.getMessage() and "does not list" in r.getMessage()
+            for r in caplog.records
+            if r.levelno == logging.WARNING
+        )
+    finally:
+        fwd.close()
         mux.close()

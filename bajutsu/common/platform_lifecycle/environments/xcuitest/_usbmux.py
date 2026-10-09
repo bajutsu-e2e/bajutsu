@@ -41,6 +41,10 @@ class UsbmuxError(OSError):
     """usbmuxd is unreachable, does not list the device, or refused a request."""
 
 
+class UsbmuxRefused(UsbmuxError):
+    """The device port has no listener: during a cold spawn, the runner is not up yet."""
+
+
 def _send(sock: socket.socket, payload: dict[str, Any], tag: int = 1) -> None:
     body = plistlib.dumps({"ClientVersionString": _PROG, "ProgName": _PROG, **payload})
     sock.sendall(_HEADER.pack(_HEADER.size + len(body), _PLIST_VERSION, _PLIST_MESSAGE, tag) + body)
@@ -120,7 +124,7 @@ def connect(udid: str, port: int, socket_path: str = USBMUXD_SOCKET) -> socket.s
         raise
     if result != _RESULT_OK:
         sock.close()
-        raise UsbmuxError(f"usbmuxd refused device port {port} on {udid} (result {result})")
+        raise UsbmuxRefused(f"usbmuxd refused device port {port} on {udid} (result {result})")
     # From here the socket is the raw byte stream to the device port, which the driver keeps open
     # between calls, so it carries no idle deadline of its own.
     sock.settimeout(None)
@@ -204,8 +208,15 @@ class UsbmuxForwarder:
     def _serve(self, client: socket.socket) -> None:
         try:
             device = connect(self._udid, self.port, self._socket_path)
-        except OSError as exc:
+        except UsbmuxRefused as exc:
+            # The expected answer to nearly every `/health` probe while the runner starts.
             _logger.debug("usbmux forward %s → device: %s", self.port, exc)
+            client.close()
+            return
+        except OSError as exc:
+            # The bridge itself is gone (device unplugged, untrusted, rebooted): the driver only
+            # sees EOF, so this is the one place the real reason is reported.
+            _logger.warning("usbmux forward %s → device %s failed: %s", self.port, self._udid, exc)
             client.close()
             return
         with self._lock:
