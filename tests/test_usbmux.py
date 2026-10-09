@@ -55,6 +55,7 @@ class _FakeUsbmuxd:
         self.devices = devices
         self.ports = ports
         self.connects: list[dict[str, Any]] = []
+        self._socks: list[socket.socket] = []
         self._server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._server.bind(self.path)
         self._server.listen(8)
@@ -62,6 +63,8 @@ class _FakeUsbmuxd:
 
     def close(self) -> None:
         self._server.close()
+        for sock in self._socks:
+            sock.close()
 
     def _loop(self) -> None:
         while True:
@@ -72,6 +75,13 @@ class _FakeUsbmuxd:
             threading.Thread(target=self._handle, args=(client,), daemon=True).start()
 
     def _handle(self, client: socket.socket) -> None:
+        # `close()` may tear the sockets down under a handler still mid-exchange; that is the test
+        # ending, not a fault to report from a background thread.
+        with contextlib.suppress(OSError, struct.error, plistlib.InvalidFileException):
+            self._exchange(client)
+
+    def _exchange(self, client: socket.socket) -> None:
+        self._socks.append(client)
         msg = _read_msg(client)
         if msg["MessageType"] == "ListDevices":
             _write_msg(client, {"DeviceList": self.devices})
@@ -85,6 +95,7 @@ class _FakeUsbmuxd:
             return
         _write_msg(client, {"MessageType": "Result", "Number": 0})
         device = socket.create_connection(("127.0.0.1", self.ports[port]))
+        self._socks.append(device)
         _splice(client, device)
 
 
@@ -320,6 +331,23 @@ def test_a_vanished_device_is_reported_as_a_warning(
             for r in caplog.records
             if r.levelno == logging.WARNING
         )
+    finally:
+        fwd.close()
+        mux.close()
+
+
+def test_the_forwarder_can_target_a_port_the_device_chose(mux_path: Path, echo_port: int) -> None:
+    # The app's `nativeZ` responder binds a port the host injected before the bridge existed, so the
+    # host end is ephemeral and the tunnel targets that fixed device port instead.
+    mux = _FakeUsbmuxd(mux_path, [_device(3, _UDID, "USB")], {47001: echo_port})
+    fwd = UsbmuxForwarder(_UDID, device_port=47001, socket_path=str(mux_path))
+    try:
+        port = fwd.start()
+        assert fwd.device_port == 47001 != port
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as s:
+            s.sendall(b"GET /zorder")
+            assert s.recv(4096) == b"echo:GET /zorder"
+        assert socket.ntohs(mux.connects[0]["PortNumber"]) == 47001
     finally:
         fwd.close()
         mux.close()

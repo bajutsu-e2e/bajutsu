@@ -22,7 +22,7 @@ from bajutsu.common.config import Effective, require_ios
 from bajutsu.common.devices import os as device_os
 from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.zorder import ZOrderSource
+from bajutsu.common.drivers.zorder import ZOrderResponder, ZOrderSource
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.platform_lifecycle import readiness
 from bajutsu.common.platform_lifecycle.device_control import device_control
@@ -164,6 +164,9 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # The host→device port bridge a real-device runner is reached through; None on the Simulator,
         # whose loopback the host already shares (`_spawn_runner`).
         self._forwarder: UsbmuxForwarder | None = None
+        # The same bridge for the app's `nativeZ` responder on a real device (BE-0355), held per
+        # lease rather than per spawn attempt: the responder lives in the app, not the runner.
+        self._zorder_forwarder: UsbmuxForwarder | None = None
         self._patched_runner: Path | None = None
         # Where the current runner's captured output went; a mid-run-crash warning and a startup
         # failure both point at it (`_runner_log_hint`). Capture is on by default (BE-0319 unit 1).
@@ -323,7 +326,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # The app answers `nativeZ` on the port this run injected, so the client is built from the
         # same launch env the app will read (BE-0355). Held on the environment rather than threaded
         # through the spawn path, so a warm resume reuses the responder its own launch set up.
-        self._zorder = _zorder_client(extra_env)
+        self._zorder = self._zorder_channel(_zorder_client(extra_env), device_type)
         # Read once and cleared here rather than where it is honored, so no `start` can leave a stale
         # escalation behind for a later lease — including the real-device route below, which returns
         # before the rung and has no simctl to mint a device through anyway.
@@ -354,7 +357,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     "permission grants use simctl and do not apply to a real device "
                     "(xcuitest.deviceType: device)"
                 )
-            return self._spawn_cold(eff, pre, device_type, extra_env, permissions)
+            try:
+                return self._spawn_cold(eff, pre, device_type, extra_env, permissions)
+            except BaseException:
+                # No driver comes back, so no teardown will close the lease's `nativeZ` bridge.
+                self._close_zorder_forwarder()
+                raise
 
         # A pending escalation (BE-0354) is served before anything else touches the device: the run
         # pipeline asked for a replacement because an erase was already tried on this one and did not
@@ -1874,6 +1882,34 @@ class XcuitestEnvironment(_DeviceEnvironment):
             self._reusable = False
             self._close_forwarder()
 
+    def _zorder_channel(
+        self, client: ZOrderResponder | None, device_type: str
+    ) -> ZOrderResponder | None:
+        """`client` as the driver should reach it: through a usbmuxd bridge on a real device.
+
+        The app's responder binds the device's loopback (`BajutsuZOrder.swift`), which the host
+        does not share. A bridge that cannot be opened leaves `nativeZ` absent rather than failing
+        the run: it is diagnostic, the same honest absence an app without a responder reports.
+        """
+        self._close_zorder_forwarder()  # a previous lease's, should its teardown have missed it
+        if client is None or device_type != "device":
+            return client
+        forwarder = UsbmuxForwarder(self._udid, device_port=client.port)
+        try:
+            port = forwarder.start()
+        except OSError as exc:
+            forwarder.close()
+            _logger.warning("nativeZ unavailable: cannot bridge to device %s: %s", self._udid, exc)
+            return None
+        self._zorder_forwarder = forwarder
+        return ZOrderResponder(port=port, token=client.token)
+
+    def _close_zorder_forwarder(self) -> None:
+        """Close the lease's real-device `nativeZ` bridge, if one is open."""
+        if self._zorder_forwarder is not None:
+            self._zorder_forwarder.close()
+            self._zorder_forwarder = None
+
     def _close_forwarder(self) -> None:
         """Close the real-device port bridge, if one is open; a no-op on the Simulator."""
         if self._forwarder is not None:
@@ -1975,6 +2011,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             self.release_runner()
             return
         self._discard_runner()
+        self._close_zorder_forwarder()
         super().teardown(driver, eff)
 
 

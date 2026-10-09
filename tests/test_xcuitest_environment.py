@@ -69,8 +69,9 @@ class _FakeForwarder:
     instances: ClassVar[list[_FakeForwarder]] = []
     fail_with: ClassVar[Exception | None] = None
 
-    def __init__(self, udid: str) -> None:
+    def __init__(self, udid: str, *, device_port: int | None = None) -> None:
         self.udid = udid
+        self.device_port = device_port
         self.port = 0
         self.closed = False
         _FakeForwarder.instances.append(self)
@@ -326,6 +327,106 @@ def test_a_spawn_that_fails_after_bridging_closes_the_bridge(
     assert _FakeForwarder.instances
     assert all(bridge.closed for bridge in _FakeForwarder.instances)
     assert env._forwarder is None
+
+
+_ZORDER_ENV = {"BAJUTSU_ZORDER_PORT": "47001", "BAJUTSU_ZORDER_TOKEN": "tok"}
+
+
+def _start_with_zorder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, udid: str, eff: Effective
+) -> tuple[XcuitestEnvironment, list[Any]]:
+    """Start with a `nativeZ` port injected; returns the env and each driver's `zorder` argument."""
+    zorders: list[Any] = []
+
+    class _FakeDriver:
+        def await_ready(self, timeout: float) -> None:
+            return None
+
+        def health_ready(self) -> bool:
+            return True
+
+    def _make_driver(*_a: Any, zorder: Any = None, **_k: Any) -> _FakeDriver:
+        zorders.append(zorder)
+        return _FakeDriver()
+
+    monkeypatch.setattr(subprocess, "Popen", lambda *_a, **_k: _FakeProc())
+    monkeypatch.setattr(backends, "make_driver", _make_driver)
+    _patch_group_signals(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", udid, env_run=lambda *_a, **_k: "")
+    env.start(eff, Preconditions(), extra_env=_ZORDER_ENV)
+    return env, zorders
+
+
+def test_a_real_device_reaches_the_nativez_responder_through_its_own_bridge(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The app's responder binds the injected port on the *device's* loopback, so the driver dials
+    # the host end of a second bridge to exactly that port, with the same token. The bridge lives
+    # for the lease, not one spawn attempt, and teardown closes it.
+    eff = _device_eff(test_runner=str(_write_runner(tmp_path)))
+    env, zorders = _start_with_zorder(monkeypatch, tmp_path, _DEVICE_UDID, eff)
+
+    (zbridge,) = [b for b in _FakeForwarder.instances if b.device_port == 47001]
+    (zorder,) = zorders
+    assert zorder.port == zbridge.port != 47001
+    assert zorder.token == "tok"
+    env._discard_runner(warn_on_crash=False, keep_log=True)
+    assert not zbridge.closed  # a retried spawn keeps the lease's responder bridge
+    env.teardown(FakeDriver([]), eff)
+    assert zbridge.closed
+
+
+def test_the_simulator_reaches_the_nativez_responder_directly(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env.start(
+        _sim_eff(test_runner=str(_write_runner(tmp_path))), Preconditions(), extra_env=_ZORDER_ENV
+    )
+    assert _FakeForwarder.instances == []
+    assert env._zorder is not None
+    assert getattr(env._zorder, "port", None) == 47001
+
+
+def test_an_unbridgeable_nativez_responder_leaves_nativez_absent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # `nativeZ` is diagnostic: a bridge that cannot open must not fail the run, only drop it.
+    from bajutsu.common.platform_lifecycle.environments.xcuitest._usbmux import UsbmuxError
+
+    original_start = _FakeForwarder.start
+
+    def _start(self: _FakeForwarder) -> int:
+        if self.device_port is not None:
+            raise UsbmuxError("usbmuxd does not list device")
+        return original_start(self)
+
+    monkeypatch.setattr(_FakeForwarder, "start", _start)
+    eff = _device_eff(test_runner=str(_write_runner(tmp_path)))
+    with caplog.at_level("WARNING"):
+        _, zorders = _start_with_zorder(monkeypatch, tmp_path, _DEVICE_UDID, eff)
+    assert zorders == [None]
+    assert any("nativeZ unavailable" in r.getMessage() for r in caplog.records)
+
+
+def test_a_failed_real_device_start_closes_the_nativez_bridge(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # No driver comes back, so no teardown will run: the start itself must close the bridge.
+    def _popen(*_a: Any, **_k: Any) -> _FakeProc:
+        raise OSError("xcodebuild: not found")
+
+    monkeypatch.setattr(subprocess, "Popen", _popen)
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    with pytest.raises(simctl.DeviceError):
+        env.start(
+            _device_eff(test_runner=str(_write_runner(tmp_path))),
+            Preconditions(),
+            extra_env=_ZORDER_ENV,
+        )
+    assert all(bridge.closed for bridge in _FakeForwarder.instances)
+    assert env._zorder_forwarder is None
 
 
 # --- the live-route boundary: an Appium endpoint routes around the udid machinery (BE-0238) --- #

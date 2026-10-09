@@ -141,16 +141,20 @@ def _pump(src: socket.socket, dst: socket.socket) -> None:
 
 
 class UsbmuxForwarder:
-    """Listen on host `127.0.0.1:<port>` and tunnel each connection to the same port on a device.
+    """Listen on host `127.0.0.1:<port>` and tunnel each connection to a port on a device.
 
-    `start` binds an ephemeral host port and returns it; the caller hands that number to the
-    runner as the port to bind on the device, so one number names both ends and no second
-    allocation can race the first. A connection the device refuses (the runner is not listening yet)
-    is closed at once, which the driver's health poll reads as not-ready and retries.
+    `start` binds an ephemeral host port and returns it. With no `device_port`, the tunnel targets
+    that same number on the device: the caller hands it to the runner as the port to bind, so one
+    number names both ends and no second allocation can race the first. A `device_port` targets a
+    port the device side already chose instead (the app's `nativeZ` responder). A connection the
+    device refuses (nothing listening yet) is closed at once, which a health poll reads as not-ready.
     """
 
-    def __init__(self, udid: str, *, socket_path: str = USBMUXD_SOCKET) -> None:
+    def __init__(
+        self, udid: str, *, device_port: int | None = None, socket_path: str = USBMUXD_SOCKET
+    ) -> None:
         self._udid = udid
+        self._device_port = device_port
         self._socket_path = socket_path
         self._listener: socket.socket | None = None
         self._open: set[socket.socket] = set()
@@ -177,6 +181,11 @@ class UsbmuxForwarder:
             target=self._accept_loop, name=f"usbmux-fwd-{self.port}", daemon=True
         ).start()
         return self.port
+
+    @property
+    def device_port(self) -> int:
+        """The device port each connection is tunnelled to."""
+        return self._device_port if self._device_port is not None else self.port
 
     def close(self) -> None:
         """Stop accepting and drop every open tunnel; safe to call twice."""
@@ -207,7 +216,7 @@ class UsbmuxForwarder:
 
     def _serve(self, client: socket.socket) -> None:
         try:
-            device = connect(self._udid, self.port, self._socket_path)
+            device = connect(self._udid, self.device_port, self._socket_path)
         except UsbmuxRefused as exc:
             # The expected answer to nearly every `/health` probe while the runner starts.
             _logger.debug("usbmux forward %s → device: %s", self.port, exc)

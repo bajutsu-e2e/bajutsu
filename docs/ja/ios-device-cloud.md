@@ -29,6 +29,8 @@ targets:
 
 runner は Hypertext Transfer Protocol（HTTP）のチャネルを、実機自身のループバックアドレスで待ち受けます。シミュレータはホストとループバックを共有するので、ホストはそのポートに直接つながります。実機はループバックを共有しません。そこで `deviceType: device` のとき、Bajutsu はそのポートを usbmuxd 経由で橋渡しします。usbmuxd は、Xcode や `iproxy` が Universal Serial Bus（USB）接続の実機と通信するときにも使う macOS のサービスです。Bajutsu はホストの `127.0.0.1` で待ち受けを開き、実機上で同じ番号のポートを使うよう runner に伝えます。この待ち受けへの各接続は、usbmuxd の `Connect` 要求によって実機へトンネルされます。Android の常駐チャネルが設定する `adb forward` に相当する仕組みです。Bajutsu は `/var/run/usbmuxd` 上で usbmuxd のプロトコルを直接話すので、ホストに追加のツールは要りません。抜かれている、またはホストを信頼していないために usbmuxd が列挙しない実機では、起動のタイムアウトを待たずに、その理由を示して起動がすぐ失敗します。橋渡しは USB 接続を優先し、usbmuxd がネットワーク接続しか列挙しないときはそちらを使います。Device Farm のルートも同じ橋渡しに依存するので、Device Farm のホスト上の usbmuxd が予約した実機を列挙する場合に限り動作します。この点は、Device Farm ではまだ検証していません。
 
+BajutsuKit をリンクしたアプリは、診断用の `nativeZ` フィールド（各要素の実際の前後関係）にも、実機のループバック上の応答器で答えます。実機の場合、Bajutsu はこの応答器にも usbmuxd の 2 本目の橋渡しで接続します。この橋渡しはシナリオのリースごとに開きます。開けなかったときは `nativeZ` を欠けたままにして実行を続けます。応答器を持たないアプリと同じ結果です。
+
 ## 署名済みの実機用 runner
 
 実機にインストールできる XCUITest runner は、その実機が信頼するチームで署名したものに限られます。そのため Bajutsu は、Simulator 用 runner と違って、実機用 runner をビルド済みで同梱できません。各ユーザーは自分の Apple Developer アカウントで、`bajutsu runner build --device` を使って実機用 runner をビルドします。ビルドが必要になるのは、後述のビルドの入力の組み合わせごとに 1 回です。以後、`deviceType: device` を指定して `xcuitest.testRunner` を指定しないターゲットは、そのビルドに解決します。ターゲットの設定には、特定のユーザーに固有の値が入りません。

@@ -66,6 +66,12 @@ when usbmuxd lists only that. The Device Farm route depends on the same bridge, 
 where usbmuxd on the Device Farm host lists the reserved device. That has not yet been verified on
 Device Farm.
 
+An app that links BajutsuKit also answers the diagnostic `nativeZ` field (each element's real
+front-to-back position) from a responder on the device's loopback. On a real device Bajutsu reaches
+that responder through a second usbmuxd bridge, opened for each scenario's lease. If that bridge
+cannot open, the run continues and `nativeZ` is left absent, the same result as an app without the
+responder.
+
 ## The signed device runner
 
 A real device installs an XCUITest runner signed by a team the device trusts. Bajutsu cannot ship
