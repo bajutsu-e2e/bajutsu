@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-real-device-host-channels-ja.md)
+**English** · [日本語](BE-0458-real-device-host-channels-ja.md)
 
-# BE-XXXX — Reach a real iOS device's channels without a shared loopback
+# BE-0458 — Reach a real iOS device's channels without a shared loopback
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-real-device-host-channels.md) |
+| Proposal | [BE-0458](BE-0458-real-device-host-channels.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0458") |
 | Implementing PR | [#2143](https://github.com/bajutsu-e2e/bajutsu/pull/2143) |
 | Topic | Device-cloud execution |
 | Related | [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md), [BE-0456](../BE-0456-runner-device-signing-build/BE-0456-runner-device-signing-build.md), [BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture.md), [BE-0355](../BE-0355-native-z-position/BE-0355-native-z-position.md), [BE-0037](../BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support.md) |

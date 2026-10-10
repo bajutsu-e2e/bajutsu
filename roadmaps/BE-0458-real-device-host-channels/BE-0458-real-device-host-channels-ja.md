@@ -1,14 +1,14 @@
-[English](BE-XXXX-real-device-host-channels.md) · **日本語**
+[English](BE-0458-real-device-host-channels.md) · **日本語**
 
-# BE-XXXX — 共有ループバックなしで iOS 実機のチャネルに到達する
+# BE-0458 — 共有ループバックなしで iOS 実機のチャネルに到達する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-real-device-host-channels-ja.md) |
+| 提案 | [BE-0458](BE-0458-real-device-host-channels-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0458") |
 | 実装 PR | [#2143](https://github.com/bajutsu-e2e/bajutsu/pull/2143) |
 | トピック | デバイスクラウド実行 |
 | 関連 | [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md), [BE-0456](../BE-0456-runner-device-signing-build/BE-0456-runner-device-signing-build-ja.md), [BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture-ja.md), [BE-0355](../BE-0355-native-z-position/BE-0355-native-z-position-ja.md), [BE-0037](../BE-0037-webview-hybrid-support/BE-0037-webview-hybrid-support-ja.md) |
