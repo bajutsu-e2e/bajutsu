@@ -156,10 +156,21 @@ of availability, which this item leaves out.
 ### Freshness without a clock
 
 The collector refuses a nonce that it has already accepted. It keeps every accepted nonce in a set
-for its whole lifetime, which is one run. With the control channel on, the app polls
-`/commands` every 0.15 seconds, and a one-hour run accepts some 24,000 nonces. At 22 characters
-each, the set stays within a few megabytes. `clear()` between scenarios leaves the set alone. A request captured in one scenario
-must stay refused in the next.
+for its whole lifetime, which is one run. `clear()` between scenarios leaves the set alone. A request
+captured in one scenario must stay refused in the next.
+
+The set grows with every signed request the run accepts: each report, transition, and
+acknowledgement, plus each `/commands` poll. Its memory grows linearly, at about 100 bytes per
+nonce in a Python set, and has no fixed upper bound. Two facts keep that cost in proportion:
+
+- **Reports.** An exchange or transition report already leaves its whole record in the collector's
+  memory, which is far larger than its nonce. The nonce adds a small fraction to a cost the run
+  already pays.
+- **Polls.** The control channel polls `/commands` every 0.15 seconds, some 24,000 polls an hour.
+  Polls store nothing else, so they set the floor: about 2.4 MB per hour of polling.
+
+A run of 100,000 signed requests thus holds about 10 MB of nonces. The implementation records the
+set's size in the run log, so a run whose nonce memory matters is visible rather than inferred.
 
 A timestamp in the canonical form would bound the set, but the device's clock is not the host's. A
 skew window would turn a slow clock into a flaky rejection, against prime directive 2. A per-run
@@ -237,8 +248,10 @@ the loopback:
   app keeps a working Simulator run.
 
 On a real device, an older BajutsuKit's bearer header gets a 401, and the run records no exchanges.
-That outcome must name its cause. The collector counts the bearer headers that it refused. When the
-count is above zero, the run log carries one warning. The warning says that the app's BajutsuKit
+That outcome must name its cause. The collector counts the refused bearer headers whose value
+matches this run's token, compared in constant time; every other bearer header gets the same 401
+uncounted. A host that reaches the all-interface listener with a made-up value then cannot raise a
+false warning. When the count is above zero, the run log carries one warning. The warning says that the app's BajutsuKit
 predates signed requests and needs a rebuild for a real-device run.
 
 ### The host announces the scheme
@@ -304,8 +317,11 @@ The fast gate covers the collector without a device:
 - Of two concurrent copies of one signed request, the collector accepts one and never both.
 - While it reads a large body whose signature does not match, the collector stays within the spool's
   memory bound, then drops the spool. It records a large signed body whole.
-- The collector accepts a bearer header on a loopback binding. It refuses and counts one on an
-  all-interface binding.
+- The collector accepts a bearer header on a loopback binding.
+- On an all-interface binding, the collector refuses a bearer header that carries the run's token,
+  counts it, and logs the warning.
+- On an all-interface binding, the collector refuses a bearer header with any other value, and
+  neither counts it nor logs a warning.
 - Every authenticated answer carries a signature that verifies against the request's nonce.
 - Fixed vectors pin both formats, including a report POST to the collector's bare URL, whose path
   is `/`. A request vector holds the token, method, path, nonce, body, and
