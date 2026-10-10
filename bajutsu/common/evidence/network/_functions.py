@@ -18,6 +18,9 @@ if TYPE_CHECKING:
 _TRANSITIONS_PATH = "/transitions"
 _COMMANDS_PATH = "/commands"
 _ACKNOWLEDGE_PATH = "/commands/ack"
+# The app's reachability probe for a real device offered several host addresses: authenticated like
+# every route, and stateless, unlike `/commands`, whose GET drains the queue.
+_PING_PATH = "/ping"
 
 
 def _no_transitions() -> list[tuple[ScreenTransition, float]]:
@@ -78,6 +81,11 @@ def _make_handler(collector: NetworkCollector) -> type[BaseHTTPRequestHandler]: 
             if route == _ACKNOWLEDGE_PATH:
                 self._acknowledge(data)
                 return
+            if route == _PING_PATH:
+                # The probe is a GET; a POST here must not land in the catch-all as an exchange.
+                self.send_response(405)
+                self.end_headers()
+                return
             if route == _COMMANDS_PATH or route.startswith(f"{_COMMANDS_PATH}/"):
                 # The drain is a GET, so a POST anywhere in the channel's namespace is a mistake —
                 # most plausibly an acknowledgement sent one path segment short. Answering it here
@@ -114,6 +122,10 @@ def _make_handler(collector: NetworkCollector) -> type[BaseHTTPRequestHandler]: 
                 return
             if self._route() == _COMMANDS_PATH:
                 self._send_pending_commands()
+                return
+            if self._route() == _PING_PATH:
+                self.send_response(204)
+                self.end_headers()
                 return
             # Nothing else is served over GET. Answering 404 rather than the bare 200 this handler
             # used to give every path is what stops an app polling a mistyped or version-skewed

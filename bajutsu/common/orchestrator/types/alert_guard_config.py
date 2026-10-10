@@ -10,9 +10,11 @@ from bajutsu.common.drivers import base
 from bajutsu.common.drivers.elements import tree_buttons, tree_signature
 
 from ._functions import (
+    AlertTitleCheck,
     alert_block_note,
     identified_alert_rules,
     matching_alert_rule,
+    observed_alert_labels,
     selector_names_button,
     subtract_labels,
     uncleared_prompt_note,
@@ -750,6 +752,7 @@ class AlertGuardConfig:
         driver: base.Driver,
         reserved: base.Selector | None = None,
         *,
+        reserved_title: AlertTitleCheck | None = None,
         dismissed: frozenset[frozenset[str]] = frozenset(),
     ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
         """Query and, where possible, clear a system alert natively; report what happened.
@@ -778,6 +781,9 @@ class AlertGuardConfig:
         Args:
             reserved: A waiting `handleSystemAlert` step's own selector, when one is running
                 (BE-0406). An alert it names is left untouched — see `selector_names_button`.
+            reserved_title: That step's `prompt_title_check`, when it names a prompt. An alert
+                whose title rules out the step's prompt is not reserved, even when it offers the
+                step's button: the step will not tap it, so the guard must stay free to.
             dismissed: `identifying_labels` sets naming every rule `__call__` (BE-0418) has
                 already dismissed this call, checked *before* tapping — not merely deduplicated
                 after the fact — so a lingering fade never reaches a second real tap on the
@@ -801,10 +807,14 @@ class AlertGuardConfig:
         """
         if base.Capability.HANDLE_SYSTEM_ALERT not in driver.capabilities():
             return "incapable", None, []
-        buttons = driver.system_alert_labels()
+        buttons = observed_alert_labels(driver)
         if not buttons:
             return "absent", None, []
-        if reserved is not None and selector_names_button(reserved, buttons):
+        if (
+            reserved is not None
+            and selector_names_button(reserved, buttons)
+            and (reserved_title is None or reserved_title(buttons))
+        ):
             # The step is waiting on this very alert and taps it on its own next read. Not
             # "absent": an alert *is* up, and "absent" is the one answer licensing an in-tree tap.
             return "reserved", None, list(buttons)

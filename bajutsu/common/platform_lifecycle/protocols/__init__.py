@@ -15,7 +15,8 @@ package root, and the two hand-rolled readiness loops in `readiness.py`.
 
 The seam serves two commands, so its Protocol is split by command rather than carried as one flat
 surface: `RunEnvironment` is the `run` lease (`start`, `device_catalog`, `relauncher`, `controller`,
-`teardown`, `hook_collector`, `bridge_collector`, the run predicates, `replaced_device` for a lease
+`teardown`, `hook_collector`, `bridge_collector`, `collector_host`, `reach_device_port`, the run
+predicates, `replaced_device` for a lease
 that moved to another device, and the two device-identity queries `resolve_device` /
 `captures_video`); `CrawlEnvironment` is the `crawl` lease (`has_devices`,
 `plan_lanes`, and the `crawl_*` methods). Every concrete platform implements both, and `Environment`
@@ -37,11 +38,15 @@ A method a platform has no use for is declined in exactly one of three ways, cho
 - **Gated raise** — only for a method the caller invokes *solely when* a predicate is true:
   `hook_collector`, which the runner calls only after `observes_network_via_driver()`. A platform
   that returns `False` from the predicate may leave `hook_collector` raising `NotImplementedError`,
-  because the check makes the raise unreachable. This is the *only* method that may raise.
+  because the check makes the raise unreachable. This is the *only* method that may raise to
+  decline; a real failure (`collector_host` with no address to offer, `reach_device_port` with no
+  bridge) still raises `DeviceError`, as `start` does.
 - **No-op implementation** — for a method whose return type is not itself optional (the caller
   invokes the value it gets back, so there is no null to hand it): `bridge_collector`, whose iOS/web
   decline is `lambda: None` — a real, callable teardown thunk that does nothing — rather than `None`
   or a raise, because the caller always calls the returned thunk unconditionally at release.
+  `reach_device_port` declines the same way, handing back the port itself with such a thunk, and
+  `collector_host` with the loopback `CollectorHost()`.
 
 This taxonomy governs a *capability method a platform has no use for*, so two members sit outside it
 rather than inventing a fourth idiom. A **predicate** answers rather than declines: `has_reusable_resident`
@@ -78,6 +83,8 @@ A new `Environment` (extend `environment_for`) must, at minimum:
    unless `observes_network_via_driver()` returns `True`. `bridge_collector` returns a real teardown
    thunk if the platform's device needs the host collector tunneled to it (Android); `lambda: None`
    otherwise (a Simulator shares the host loopback, and a driver-observed platform never reaches it).
+   `collector_host` returns `CollectorHost()` (the loopback) and `reach_device_port` returns the port
+   itself with `lambda: None`, unless the device shares no loopback with the host (a real iOS device).
    `has_reusable_resident` / `end_lease` (BE-0291) default to "no warm resident" (`False` / delegate
    to `teardown`); implement them only for a platform whose `start` spawns an expensive resident
    worth amortizing across leases (XCUITest's `xcodebuild` runner). `replaced_device` defaults to
@@ -97,6 +104,7 @@ Follow the "not applicable" contract above for every method the platform decline
 third idiom.
 """
 
+from .collector_host import LOOPBACK, CollectorHost
 from .crawl_environment import CrawlEnvironment
 from .environment import Environment
 from .provision_profile import ProvisionProfile
@@ -104,6 +112,8 @@ from .readiness_result import ReadinessResult
 from .run_environment import RunEnvironment
 
 __all__ = [
+    "LOOPBACK",
+    "CollectorHost",
     "CrawlEnvironment",
     "Environment",
     "ProvisionProfile",

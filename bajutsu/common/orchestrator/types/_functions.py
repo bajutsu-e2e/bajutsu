@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.actuation import ActuationReporter, Drained
 from bajutsu.common.evidence.network import NetworkExchange
+from bajutsu.common.scenario.system_alerts import (
+    TITLE_MARKER,
+    SystemAlertChoice,
+    SystemAlertPrompt,
+    alert_title_marker,
+    labels_cover,
+    system_alert_shapes,
+)
 
 from .alert_event import AlertEvent
 from .drained_interruption_events import DrainedInterruptionEvents
@@ -204,7 +212,58 @@ def subtract_labels(buttons: Sequence[str], shapes: Iterable[frozenset[str]]) ->
         for label in shape:
             if label in leftover:
                 leftover.remove(label)
-    return leftover
+    # A title marker (`observed_alert_labels`) is no button: only `localNetwork` names its own, so
+    # every other dismissed alert would otherwise leave its title behind as a phantom unhandled one.
+    return [label for label in leftover if not label.startswith(TITLE_MARKER)]
+
+
+def observed_alert_labels(driver: base.Driver) -> list[str]:
+    """What the reactive guard matches rules against: the alert's buttons, then its title's marker.
+
+    The title joins as one more label (`system_alerts.alert_title_marker`), so a prompt whose
+    buttons another prompt shares — Local Network and notifications both offer "Allow" / "Don't
+    Allow" — is identified by naming that marker, or ruled out by excluding it, with no change to the
+    accept test below. A backend with no titles to report (`system_alert_titles` absent) contributes
+    its buttons alone, as before.
+    """
+    buttons = driver.system_alert_labels()
+    titles = getattr(driver, "system_alert_titles", None)
+    if not buttons or not callable(titles):
+        return buttons
+    return [*buttons, *(alert_title_marker(title) for title in titles())]
+
+
+AlertTitleCheck = Callable[[Sequence[str]], bool]
+
+
+def prompt_title_check(
+    prompt: SystemAlertPrompt, choice: SystemAlertChoice, locale: str | None
+) -> AlertTitleCheck | None:
+    """Whether a read (`observed_alert_labels`) can be the prompt a `handleSystemAlert` step names.
+
+    The step taps by one button label, which Local Network and notifications share; the title tells
+    them apart. A read passes when some shape of the prompt has every title marker it identifies by
+    and no label it excludes. Buttons are left to the step's own selector, so a backend reporting no
+    titles passes every prompt but `localNetwork`, whose shape names its title. None where the
+    label table does not cover `locale`, since then the step has no shape to check.
+    """
+    if locale is None or not labels_cover(prompt, locale):
+        return None
+    shapes = system_alert_shapes(prompt, choice, locale)
+
+    def check(observed: Sequence[str]) -> bool:
+        present = set(observed)
+        return any(
+            not (shape.excluded_labels & present)
+            and all(
+                label in present
+                for label in shape.identifying_labels
+                if label.startswith(TITLE_MARKER)
+            )
+            for shape in shapes
+        )
+
+    return check
 
 
 def identified_alert_rules(
@@ -265,9 +324,9 @@ def push_interruption_policy(driver: base.Driver, guard: AlertGuardConfig | None
 
     A rule the monitor can never meet is dropped rather than pushed: this surface exists for an
     alert in another process interrupting an XCUITest interaction, and one raised into the
-    application's own process never reaches it. Dropping it is not merely tidy — the Swift side
-    matches a rule by subset, so pushing an in-tree-only shape would re-open there the collision an
-    `excluded_labels` set closes here (BE-0406).
+    application's own process never reaches it. Each rule carries its `excluded_labels` too, so the
+    monitor's accept test is this side's: `notifications` excludes the Local Network title's marker,
+    and without the exclusion the monitor would answer that prompt by the notification rule.
 
     `governs` is true for any scenario whose guard is on, independent of whether any rule survived
     the drop above: a real declaration filtered down to nothing this surface can act on is not the
@@ -276,25 +335,15 @@ def push_interruption_policy(driver: base.Driver, guard: AlertGuardConfig | None
     rather than skipping the call, so a scenario that switched the guard off does not inherit the
     previous scenario's policy from the resident runner. A backend that does not implement
     `InterruptionPolicyTarget` is simply never asked.
-
-    Raises:
-        ValueError: a rule this surface *can* meet carries an exclusion set. No such shape exists
-            today — by construction, since every excluded shape is in-tree-only and dropped above —
-            and one added later must fail loudly here rather than reach the monitor with its
-            exclusion silently discarded, which is the subset-match collision this drop avoids.
     """
     if not isinstance(driver, base.InterruptionPolicyTarget):
         return
-    rules: list[tuple[frozenset[str], str]] = []
+    rules: list[tuple[frozenset[str], str, frozenset[str]]] = []
     if guard is not None:
         reachable = [rule for rule in guard.rules if rule.native]
-        excluding = [rule.tap_label for rule in reachable if rule.excluded_labels]
-        if excluding:
-            raise ValueError(
-                "interruption policy cannot carry an exclusion set; rules tapping "
-                f"{', '.join(sorted(excluding))} would be matched by subset on the runner"
-            )
-        rules = [(rule.identifying_labels, rule.tap_label) for rule in reachable]
+        rules = [
+            (rule.identifying_labels, rule.tap_label, rule.excluded_labels) for rule in reachable
+        ]
     driver.set_interruption_policy(rules, guard is not None)
 
 

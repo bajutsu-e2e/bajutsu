@@ -70,7 +70,7 @@ final class Router {
                 200,
                 [
                     "labels": drained.tapped, "unmatched": drained.declined,
-                    "banners": drained.banners,
+                    "banners": drained.banners, "tappedAlerts": drained.tappedAlerts,
                 ]
             )
         case ("POST", "/systemAlert/query"):
@@ -106,7 +106,8 @@ final class Router {
             guard let identify = $0["identify"] as? [String], let tap = $0["tap"] as? String else {
                 return nil
             }
-            return InterruptionRule(identify: identify, tap: tap)
+            return InterruptionRule(
+                identify: identify, tap: tap, exclude: $0["exclude"] as? [String] ?? [])
         }
         InterruptionPolicyStore.shared.setPolicy(InterruptionPolicy(rules: rules, governs: governs))
         return .json(200, ["status": "ok"])

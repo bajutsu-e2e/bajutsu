@@ -14,6 +14,7 @@ from bajutsu.common.config import (
     android_package,
     ios_bundle_id,
     load_config,
+    require_ios,
     resolve,
     web_base_url,
     web_engine,
@@ -104,10 +105,18 @@ def doctor_check(
         return len(simctl.booted_udids(run=state.simctl))
 
     # The shared assembly gives the panel the same env checks the CLI reports (BE-0199).
+    # A real-device target swaps the booted-Simulator check for usbmuxd reaching the device, the
+    # same swap the CLI doctor makes.
+    real_device = None
+    if actuator == "xcuitest":
+        from bajutsu.common.platform_lifecycle.environments.xcuitest import real_device_check
+
+        real_device = real_device_check(require_ios(eff).xcuitest, actuator, udid)
     env_checks = preflight.doctor_environment_checks(
         actuator,
         booted_count=booted_count,
         web_engine=web_engine(eff),
+        real_device=real_device,
     )
     all_checks = cfg_checks + env_checks
     ok = preflight.passed(all_checks)

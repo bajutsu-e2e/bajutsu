@@ -74,7 +74,9 @@ final class APIHandler: APIProtocol {
         }
         InterruptionPolicyStore.shared.setPolicy(
             InterruptionPolicy(
-                rules: body.rules.map { InterruptionRule(identify: $0.identify, tap: $0.tap) },
+                rules: body.rules.map {
+                    InterruptionRule(identify: $0.identify, tap: $0.tap, exclude: $0.exclude ?? [])
+                },
                 governs: body.governs
             )
         )
@@ -90,7 +92,8 @@ final class APIHandler: APIProtocol {
     ) async throws -> Operations.drainInterruptions.Output {
         let drained = InterruptionPolicyStore.shared.drain()
         let reply = Components.Schemas.InterruptionsReply(
-            labels: drained.tapped, unmatched: drained.declined, banners: drained.banners
+            labels: drained.tapped, unmatched: drained.declined, banners: drained.banners,
+            tappedAlerts: drained.tappedAlerts
         )
         return .ok(.init(body: .json(reply)))
     }
@@ -422,6 +425,7 @@ final class APIHandler: APIProtocol {
         reply.labels = drained.tapped
         reply.unmatched = drained.declined
         reply.banners = drained.banners
+        reply.tappedAlerts = drained.tappedAlerts
         return reply
     }
 

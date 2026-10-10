@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 import typer
@@ -32,9 +33,14 @@ from bajutsu.common.devices import errors as device_errors
 from bajutsu.common.doctor import DoctorProbeError, probe_screen, render, score
 from bajutsu.common.drivers import base
 from bajutsu.common.platform_lifecycle.environments.xcuitest import (
+    HOST_ADDRESS_ENV,
+    HostAddressError,
+    HostCandidates,
     bundled_runner_staleness_note,
     bundled_runner_toolchain_note,
     effective_device_type,
+    host_candidates,
+    real_device_check,
     runner_source,
 )
 from bajutsu.common.scenario import load_scenario_file
@@ -162,6 +168,43 @@ def xcuitest_runner_summary(eff: Effective, actuator: str) -> list[str]:
     return lines
 
 
+def real_device_host_addresses(
+    eff: Effective,
+    actuator: str,
+    *,
+    candidates: Callable[[str | None], HostCandidates] = host_candidates,
+) -> list[str]:
+    """The host addresses a real-device run would offer the app for the network collector.
+
+    The other route, usbmuxd to the device, is a runnability check (`real_device_check`), since a
+    device it cannot reach runs nothing. These addresses only matter to a scenario that records
+    network exchanges, so a missing one is reported here and does not change doctor's exit status.
+    Empty for the Simulator and other actuators.
+    """
+    if actuator != "xcuitest":
+        return []
+    xcfg = require_ios(eff).xcuitest
+    if effective_device_type(xcfg) != "device":
+        return []
+    try:
+        found = candidates(xcfg.host_address if xcfg is not None else None)
+    except HostAddressError as exc:
+        return [f"  ✘ {exc}"]
+    if found.addresses:
+        return [f"collector host addresses ({found.source}): {', '.join(found.addresses)}"]
+    return [
+        f"  ✘ no collector host address ({found.source}); set xcuitest.hostAddress or "
+        f"{HOST_ADDRESS_ENV} for a scenario that records network exchanges"
+    ]
+
+
+def _real_device_check(eff: Effective, actuator: str, udid: str) -> preflight.Check | None:
+    """The usbmuxd reachability check for a real-device iOS target, None for every other target."""
+    if actuator != "xcuitest":
+        return None
+    return real_device_check(require_ios(eff).xcuitest, actuator, udid)
+
+
 def _capability_preflight(scenario: str, actuator: str, eff: Effective, udid: str) -> bool:
     """Print the scenario's capability preflight and report whether it failed; exit 2 if missing.
 
@@ -200,6 +243,13 @@ def _print_disclosures(eff: Effective, backends: list[str], udid: str, actuator:
     # Which runner tier an xcuitest target resolves to (BE-0292): bundled, testRunner, or build.
     if runner_summary := xcuitest_runner_summary(eff, actuator):
         for line in runner_summary:
+            typer.echo(line)
+        typer.echo("")
+
+    # The host addresses a real device would be offered for the collector; the usbmuxd route is a
+    # runnability check below, since without it nothing runs.
+    if addresses := real_device_host_addresses(eff, actuator):
+        for line in addresses:
             typer.echo(line)
         typer.echo("")
 
@@ -261,6 +311,7 @@ def doctor(
         actuator,
         booted_count=booted_count,
         web_engine=web_engine(eff),
+        real_device=_real_device_check(eff, actuator, udid),
     )
     checks = cfg_checks + env_checks
     if checks:

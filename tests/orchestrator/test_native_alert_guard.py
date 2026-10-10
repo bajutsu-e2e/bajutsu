@@ -19,6 +19,7 @@ from conftest import guard_rule
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.orchestrator import AlertEvent, AlertGuardConfig
+from bajutsu.common.orchestrator.loop._step_runner import _StepRunner
 from bajutsu.common.orchestrator.types import (
     ResolvedAlertRule,
     alert_block_note,
@@ -1230,22 +1231,29 @@ def test_push_interruption_policy_omits_a_rule_the_backend_can_never_meet() -> N
     assert driver.interruption_policy[0] == [({"Allow", "Don't Allow"}, "Don't Allow")]
 
 
-def test_push_interruption_policy_refuses_a_reachable_rule_carrying_an_exclusion_set() -> None:
-    # No such shape exists today — every excluded one is in-tree-only, and dropped above — so this
-    # fails loudly rather than letting a later addition reach the runner with its exclusion silently
-    # discarded, which is exactly the subset-match collision the drop avoids.
+def test_push_interruption_policy_carries_a_reachable_rule_s_exclusion_set() -> None:
+    # `notifications` excludes the Local Network title's marker; dropping the exclusion on the way to
+    # the runner would let the monitor answer that prompt by the notification rule.
     from bajutsu.common.orchestrator import push_interruption_policy
 
     excluding = ResolvedAlertRule(
-        identifying_labels=frozenset({"Save", "Not Now"}),
-        tap_label="Not Now",
-        excluded_labels=frozenset({"Never for This Card"}),
+        identifying_labels=frozenset({"Allow", "Don’t Allow"}),
+        tap_label="Allow",
+        excluded_labels=frozenset({"title: Allow “%@” to find devices on local networks?"}),
         native=True,
     )
     driver = FakeDriver([])
-    with pytest.raises(ValueError, match="exclusion set"):
-        push_interruption_policy(driver, AlertGuardConfig(rules=[excluding]))
-    assert driver.interruption_policy is None  # refused outright, not half-pushed
+    push_interruption_policy(driver, AlertGuardConfig(rules=[excluding]))
+    assert driver.interruption_policy == (
+        [
+            (
+                {"Allow", "Don’t Allow"},
+                "Allow",
+                {"title: Allow “%@” to find devices on local networks?"},
+            )
+        ],
+        True,
+    )
 
 
 def test_push_interruption_policy_clears_it_when_the_scenario_disables_the_guard() -> None:
@@ -1696,7 +1704,12 @@ def test_the_end_of_step_guard_keeps_a_stuck_tree_note_after_a_different_tree_ta
     assert "StuckBtn" in guard.blocked_note
 
 
-def test_a_note_from_a_cleared_stacked_call_does_not_survive_a_retry_that_passes() -> None:
+def test_a_note_from_a_cleared_stacked_call_does_not_survive_a_retry_that_passes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The alert is seeded from the start to stand for one arriving mid-step; the scenario-entry
+    # check would clear it before the step that this test is about ever meets it.
+    monkeypatch.setattr(_StepRunner, "_clear_entry_alert", lambda *_a, **_k: None)
     # The step-runner's `not ok` conjunct, pinned (BE-0418 review finding): a cleared stacked call's
     # note explains a failure the retry still has, but when the dismiss reveals the step's own
     # target and the retry lands, the step passed — the still-unhandled second alert's note must not
@@ -4321,9 +4334,12 @@ def test_a_blocked_expect_names_the_alert_in_the_scenario_s_own_failure() -> Non
     )
 
 
-def test_a_note_from_a_cleared_stacked_expect_call_still_reaches_the_scenario_s_own_failure() -> (
-    None
-):
+def test_a_note_from_a_cleared_stacked_expect_call_still_reaches_the_scenario_s_own_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The alert is seeded from the start to stand for one arriving mid-step; the scenario-entry
+    # check would clear it before the step that this test is about ever meets it.
+    monkeypatch.setattr(_StepRunner, "_clear_entry_alert", lambda *_a, **_k: None)
     # The `expect` twin of `test_a_note_from_a_cleared_stacked_call_still_reaches_the_step_s_own_
     # failure`: `expect_block_note` must reach the scenario's own failure even though the guard's
     # call cleared something, since a multi-round call can clear a stacked alert while leaving a
@@ -4435,3 +4451,243 @@ def test_withdraw_is_a_no_op_when_there_is_no_event_to_take_back() -> None:
     # shape would be.
     _withdraw(alerts, AlertEvent(label="Allow"))
     assert alerts == [AlertEvent(label="Allow")]
+
+
+# --- Local Network: the prompt sharing notifications' buttons, told apart by its title ---------- #
+
+
+def _rules_for(prompt: str, choice: str) -> list[ResolvedAlertRule]:
+    from bajutsu.common.scenario.system_alerts import system_alert_shapes
+
+    return [
+        ResolvedAlertRule(
+            identifying_labels=shape.identifying_labels,
+            tap_label=shape.tap_label,
+            excluded_labels=shape.excluded_labels,
+            native=True,
+        )
+        for shape in system_alert_shapes(prompt, choice, "en_US")  # type: ignore[arg-type]
+    ]
+
+
+class _TitledFake(FakeDriver):
+    """A fake whose SpringBoard alert also reports a title, as the XCUITest runner does."""
+
+    def __init__(self, labels: list[str], title: str) -> None:
+        super().__init__([])
+        self.system_alert_buttons = [_button(label) for label in labels]
+        self.title = title
+
+    def system_alert_titles(self) -> list[str]:
+        return [self.title] if self.system_alert_buttons else []
+
+
+_LOCAL_NETWORK_TITLE = "Allow “Showcase SwiftUI” to find devices on local networks?"
+_NOTIFICATIONS_TITLE = "“Showcase SwiftUI” Would Like to Send You Notifications"
+
+
+def test_a_local_network_rule_answers_the_local_network_prompt_by_its_title() -> None:
+    guard = AlertGuardConfig(rules=_rules_for("localNetwork", "grant"))
+    driver = _TitledFake(["Don’t Allow", "Allow"], _LOCAL_NETWORK_TITLE)
+    state, event, _ = guard.probe_native(driver)
+    assert state == "dismissed"
+    assert event == AlertEvent(label="Allow")
+
+
+def test_a_local_network_rule_leaves_a_notifications_prompt_alone() -> None:
+    # Same buttons, different title: the rule names the Local Network title's marker, so it does not
+    # identify the notification prompt.
+    guard = AlertGuardConfig(rules=_rules_for("localNetwork", "grant"))
+    driver = _TitledFake(["Don’t Allow", "Allow"], _NOTIFICATIONS_TITLE)
+    state, event, _ = guard.probe_native(driver)
+    assert (state, event) == ("unhandled", None)
+    assert driver.actions == []
+
+
+def test_a_notifications_rule_leaves_the_local_network_prompt_alone() -> None:
+    # The notifications shape excludes the Local Network title's marker, so declaring notifications
+    # never answers the prompt Bajutsu's own collector raised.
+    guard = AlertGuardConfig(rules=_rules_for("notifications", "grant"))
+    driver = _TitledFake(["Don’t Allow", "Allow"], _LOCAL_NETWORK_TITLE)
+    state, _, seen = guard.probe_native(driver)
+    assert state == "unhandled"
+    assert driver.actions == []
+    assert "title: Allow “%@” to find devices on local networks?" in seen  # named in the report
+
+
+def test_a_notifications_rule_still_answers_a_backend_reporting_no_titles() -> None:
+    # A backend without titles contributes buttons alone, exactly as before.
+    guard = AlertGuardConfig(rules=_rules_for("notifications", "deny"))
+    driver = _fake_with_alert(["Don’t Allow", "Allow"])
+    state, event, _ = guard.probe_native(driver)
+    assert (state, event) == ("dismissed", AlertEvent(label="Don’t Allow"))
+
+
+# --- the scenario-entry check: a declared prompt already up before the first act ---------------- #
+
+
+def test_a_declared_prompt_up_at_scenario_start_is_cleared_before_the_first_tap() -> None:
+    # A launch-time prompt (Local Network on a real device) is up before step one; the first tap
+    # must not land on it. Cleared once, natively, and reported on the first step.
+    from bajutsu.common.orchestrator import run_scenario
+    from bajutsu.common.scenario import load_scenarios
+
+    go = _button("Go")
+    go["identifier"] = "go"
+
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "handle_system_alert":
+            d.system_alert_buttons = []
+
+    driver = _fake_with_alert(["Don't Allow", "Allow"], react=react)
+    driver.screen = [go]
+    result = run_scenario(
+        driver,
+        load_scenarios("- name: t\n  steps:\n    - tap: { id: go }\n")[0],
+        alert_guard=AlertGuardConfig(rules=[guard_rule("Allow")]),
+    )
+    assert result.ok, result.failure
+    assert result.steps[0].alerts == [AlertEvent(label="Allow")]
+    taps = [kind for kind, _ in driver.actions]
+    assert taps.index("handle_system_alert") < taps.index("tap")  # cleared before the act
+
+
+def test_the_scenario_entry_check_leaves_an_undeclared_prompt_alone() -> None:
+    from bajutsu.common.orchestrator import run_scenario
+    from bajutsu.common.scenario import load_scenarios
+
+    go = _button("Go")
+    go["identifier"] = "go"
+    driver = _fake_with_alert(["Weird Button"])
+    driver.screen = [go]
+    run_scenario(
+        driver,
+        load_scenarios("- name: t\n  steps:\n    - tap: { id: go }\n")[0],
+        alert_guard=AlertGuardConfig(rules=[guard_rule("Allow")]),
+    )
+    assert "handle_system_alert" not in [kind for kind, _ in driver.actions]
+
+
+def test_the_scenario_entry_check_leaves_a_first_handle_system_alert_step_its_prompt() -> None:
+    # A rule denies the prompt, but step one grants it (BE-0406): the entry check must not answer
+    # it first, or the step would wait for a prompt already gone.
+    from bajutsu.common.orchestrator import run_scenario
+    from bajutsu.common.scenario import load_scenarios
+
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "handle_system_alert":
+            d.system_alert_buttons = []
+
+    driver = _fake_with_alert(["Don't Allow", "Allow"], react=react)
+    result = run_scenario(
+        driver,
+        load_scenarios(
+            "- name: t\n  steps:\n    - handleSystemAlert: { sel: { label: Allow }, timeout: 5 }\n"
+        )[0],
+        alert_guard=AlertGuardConfig(
+            rules=[guard_rule("Don't Allow", identifying=("Don't Allow", "Allow"))]
+        ),
+    )
+    assert result.ok, result.failure
+    tapped = [arg for kind, arg in driver.actions if kind == "handle_system_alert"]
+    assert tapped == [({"label": "Allow"}, 0.0)]
+
+
+def test_a_dismissed_alert_leaves_no_title_behind_as_an_unhandled_one() -> None:
+    # Only `localNetwork` names its title, so a notifications dismissal must not leave the
+    # notification title's marker over as if a second, unhandled alert were up.
+    from bajutsu.common.orchestrator.types._functions import subtract_labels
+
+    guard = AlertGuardConfig(rules=_rules_for("notifications", "grant"))
+    driver = _TitledFake(["Don’t Allow", "Allow"], _NOTIFICATIONS_TITLE)
+    state, _, seen = guard.probe_native(driver)
+    assert state == "dismissed"
+    shapes = [rule.identifying_labels for rule in guard.native_rules]
+    assert subtract_labels(seen, shapes) == []
+
+    # The whole call: the tapped prompt goes, and the guard reports it cleared with no block note.
+    class _Clearing(_TitledFake):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            super().handle_system_alert(sel, timeout)
+            self.system_alert_buttons = []
+
+    alerts: list[AlertEvent] = []
+    fresh = AlertGuardConfig(rules=_rules_for("notifications", "grant"))
+    cleared = _Clearing(["Don’t Allow", "Allow"], _NOTIFICATIONS_TITLE)
+    assert fresh(cleared, alerts, settle=lambda: None)
+    assert alerts == [AlertEvent(label="Allow")]
+    assert "title:" not in (fresh.blocked_note or "")
+
+
+class _PromptSequence(FakeDriver):
+    """SpringBoard shows each titled prompt in turn; a tap on any button dismisses the current one."""
+
+    def __init__(self, prompts: list[tuple[list[str], str]]) -> None:
+        super().__init__([])
+        self.prompts = list(prompts)
+        self._show()
+
+    def _show(self) -> None:
+        self.system_alert_buttons = (
+            [_button(label) for label in self.prompts[0][0]] if self.prompts else []
+        )
+
+    def system_alert_titles(self) -> list[str]:
+        return [self.prompts[0][1]] if self.prompts else []
+
+    def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+        super().handle_system_alert(sel, timeout)
+        self.prompts.pop(0)
+        self._show()
+
+
+def test_a_notifications_step_leaves_the_local_network_prompt_to_its_rule() -> None:
+    # Both prompts offer "Allow". The Local Network one is up at launch; the step names
+    # notifications, so it must not tap it. The rule answers it, then the step answers its own.
+    from _orch import FakeClock
+
+    from bajutsu.common.orchestrator import run_scenario
+    from bajutsu.common.scenario import load_scenarios
+
+    driver = _PromptSequence(
+        [
+            (["Don’t Allow", "Allow"], _LOCAL_NETWORK_TITLE),
+            (["Don’t Allow", "Allow"], _NOTIFICATIONS_TITLE),
+        ]
+    )
+    result = run_scenario(
+        driver,
+        load_scenarios(
+            "- name: t\n  steps:\n"
+            "    - handleSystemAlert: { prompt: notifications, choice: deny, timeout: 5 }\n"
+        )[0],
+        clock=FakeClock(),
+        locale="en_US",
+        alert_guard=AlertGuardConfig(rules=_rules_for("localNetwork", "grant")),
+    )
+    assert result.ok, result.failure
+    assert result.steps[0].alerts == [AlertEvent(label="Allow")]  # the rule's Local Network grant
+    tapped = [arg[0]["label"] for kind, arg in driver.actions if kind == "handle_system_alert"]  # type: ignore[index]
+    assert tapped == ["Allow", "Don’t Allow"]
+    assert driver.prompts == []
+
+
+def test_a_notifications_step_does_not_tap_a_local_network_prompt_mid_wait() -> None:
+    # Without a guard nothing may answer it, so the step times out rather than deny the wrong prompt.
+    from _orch import FakeClock
+
+    from bajutsu.common.orchestrator.types import prompt_title_check
+    from bajutsu.common.orchestrator.waits import wait_for_system_alert
+
+    driver = _PromptSequence([(["Don’t Allow", "Allow"], _LOCAL_NETWORK_TITLE)])
+    ok, reason = wait_for_system_alert(
+        driver,
+        {"label": "Don’t Allow"},
+        1.0,
+        FakeClock(),
+        title_check=prompt_title_check("notifications", "deny", "en_US"),
+    )
+    assert not ok
+    assert "title:" not in reason
+    assert "its title is not the step's prompt" in reason
+    assert "handle_system_alert" not in [kind for kind, _ in driver.actions]

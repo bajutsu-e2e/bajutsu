@@ -26,6 +26,14 @@ private final class SystemAlertButtonBacking {
     init(ordinal: Int) { self.ordinal = ordinal }
 }
 
+/// An alert title's backing. Inert: a title is read for matching, never acted on, so a tap by its
+/// handle fails the `SystemAlertButtonBacking` cast in `tapSystemAlertButton` and reports not found.
+private final class SystemAlertTitleBacking {}
+
+/// The identifier of the title entry `querySystemAlertButtons` adds per alert; the Python driver's
+/// `_ALERT_TITLE_ID` must stay identical.
+private let systemAlertTitleIdentifier = "bajutsu.systemAlert.title"
+
 /// The notification banner's backing (BE-0416). Inert: nothing ever acts on a banner by handle —
 /// Unit 3's dismiss is a raw-coordinate swipe through the existing `/swipe` route, not a tap
 /// resolved from this snapshot — but `ElementSnapshot.backingElement` still needs some identity.
@@ -381,7 +389,7 @@ final class XcuitestElementProvider: ElementProviding {
         guard springboard.alerts.firstMatch.exists else { return [] }
         let buttons = springboard.alerts.buttons
         let count = buttons.count
-        return (0..<count).map { i in
+        let snapshots = (0..<count).map { i in
             let button = buttons.element(boundBy: i)
             return ElementSnapshot(
                 identifier: nil,
@@ -392,6 +400,23 @@ final class XcuitestElementProvider: ElementProviding {
                 backingElement: SystemAlertButtonBacking(ordinal: i)
             )
         }
+        // One untappable entry per alert carrying its title, so the driver can tell apart prompts
+        // whose buttons match (Local Network and notifications). The driver keeps it out of every
+        // button list by this identifier.
+        let alerts = springboard.alerts
+        let titles = (0..<alerts.count).compactMap { i -> ElementSnapshot? in
+            let alert = alerts.element(boundBy: i)
+            guard let title = nonEmpty(alert.label) else { return nil }
+            return ElementSnapshot(
+                identifier: systemAlertTitleIdentifier,
+                label: title,
+                value: nil,
+                traits: [],
+                frame: frameTuple(alert.frame),
+                backingElement: SystemAlertTitleBacking()
+            )
+        }
+        return snapshots + titles
     }
 
     func tapSystemAlertButton(backingElement: AnyObject) -> TapResult {

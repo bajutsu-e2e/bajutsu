@@ -12,11 +12,16 @@ from bajutsu.common.cancellation import RunCancelled
 from bajutsu.common.drivers import base, tracing
 from bajutsu.common.drivers.webview import WebContextDriver
 from bajutsu.common.evidence import Artifact, NullSink, intervals, start_after_screenshot
-from bajutsu.common.orchestrator.actions import _action_of, _step_label
+from bajutsu.common.orchestrator.actions import (
+    _action_of,
+    _step_label,
+    handle_system_alert_selector,
+)
 from bajutsu.common.orchestrator.evidence_rules import _collect_captures, _kind_of, _run_extract
 from bajutsu.common.orchestrator.substitution import _interp_step, _resolve_system_alert
 from bajutsu.common.orchestrator.types import (
     AlertEvent,
+    AlertTitleCheck,
     ResolvedAlertRule,
     StepGate,
     StepOutcome,
@@ -25,6 +30,7 @@ from bajutsu.common.orchestrator.types import (
     UndeclaredInterruption,
     drain_actuations,
     drain_interruptions,
+    prompt_title_check,
     push_interruption_policy,
     undeclared_interruption_note,
 )
@@ -533,19 +539,12 @@ class _StepRunner:
             return False, [], []
         # Resolvable without raising: the label table covers this locale, checked just above.
         shape = system_alert_shapes(hsa.prompt, hsa.choice, self.cfg.locale)[0]
-        if shape.excluded_labels:
-            # `push_interruption_policy` refuses outright to push a native-reachable rule that
-            # carries an exclusion set (the wire format has no room for one, and a silently dropped
-            # exclusion would be matched by subset on the runner) \u2014 unreachable today because no
-            # step-capable prompt's shape carries one (`_SURFACES` marks every prompt with an
-            # exclusion `step: False`), but if one ever does, this reservation must not be the thing
-            # that raises past this step's own try/finally and aborts every scenario after it
-            # (BE-0406 Unit 2b review finding). Skipping the reservation is the honest answer: a
-            # shape needing an exclusion to tell it apart from another alert cannot be reserved
-            # without that exclusion, and the monitor cannot express one.
-            return False, [], []
+        # The exclusion travels with it, so the monitor rules out what the guard would: the
+        # `notifications` reservation must not answer a Local Network prompt sharing its buttons.
         reservation = ResolvedAlertRule(
-            identifying_labels=shape.identifying_labels, tap_label=shape.tap_label
+            identifying_labels=shape.identifying_labels,
+            tap_label=shape.tap_label,
+            excluded_labels=shape.excluded_labels,
         )
         # `setPolicy` clears the monitor's pending drain along with the policy it installs
         # (`InterruptionPolicyStore.setPolicy`), so an interruption the pre-step baseline capture,
@@ -556,6 +555,49 @@ class _StepRunner:
         drained = drain_interruptions(driver)
         push_interruption_policy(driver, replace(guard, rules=[*guard.rules, reservation]))
         return True, drained.alerts, drained.undeclared
+
+    def _system_alert_title(self, step: Step) -> AlertTitleCheck | None:
+        """The title check of a `prompt`/`choice` `handleSystemAlert` step, else None."""
+        hsa = step.handle_system_alert
+        if hsa is None or hsa.prompt is None or hsa.choice is None:
+            return None
+        return prompt_title_check(hsa.prompt, hsa.choice, self.cfg.locale)
+
+    def _clear_entry_alert(self, driver: base.Driver, alerts: list[AlertEvent], step: Step) -> None:
+        """Run the guard once before the scenario's first act, for a prompt raised during launch.
+
+        A permission prompt the app raises while it launches (iOS's Local Network prompt, raised by
+        the app's first report to a real device's collector) is up before step one, which may not
+        wait at all, or wait for an element the prompt only covers. The guard otherwise first polls
+        inside a pending wait, so a first tap would land on the prompt instead of the app. One
+        guarded read costs one native query when nothing is up, and answers only declared prompts.
+        """
+        guard = self.cfg.alert_guard
+        if guard is None or not guard.native_rules:
+            return
+        # A first `handleSystemAlert` step answers its own prompt, and may want the opposite of a
+        # rule's choice for it (BE-0406), so that prompt is reserved for it as its wait reserves it.
+        # One whose title rules the step's prompt out (Local Network under a notifications step)
+        # stays the guard's. A `sel`-form step names no prompt to check, so the probe leaves it all.
+        reserved: base.Selector | None = None
+        title = self._system_alert_title(step)
+        if step.handle_system_alert is not None:
+            if title is None:
+                return
+            # Resolvable to a label: a title check exists only where the label table covers it.
+            target = handle_system_alert_selector(_resolve_system_alert(step, self.cfg.locale))
+            reserved = target if isinstance(target, dict) else None
+        # The native SpringBoard path alone: a launch-time prompt is a system one, and the in-tree
+        # dismissal would tap the app's own buttons before the scenario asked anything of it.
+        state, event, _ = guard.probe_native(driver, reserved, reserved_title=title)
+        if state == "dismissed" and event is not None:
+            alerts.append(event)
+            settle_after_alert_dismiss(
+                driver,
+                self.cfg.clock,
+                transitions=self.cfg.transitions,
+                cancelled=self.cfg.cancelled,
+            )
 
     def _handle_lifecycle(
         self,
@@ -1079,8 +1121,17 @@ class _StepRunner:
         # so the merge below is a no-op there.
         reserved_alerts: list[AlertEvent] = []
         reserved_undeclared: list[UndeclaredInterruption] = []
+        # A declared prompt already up when the scenario starts, cleared before its first act.
+        entry_alerts: list[AlertEvent] = []
+        if not self.state.entry_alert_checked:
+            self.state.entry_alert_checked = True
+            if front_failure is None:
+                self._clear_entry_alert(active_driver, entry_alerts, step)
         # The label a `handleSystemAlert` step tapped, for `outcome.system_alert` (BE-0445).
         system_alert_taps: list[str] = []
+        # The title its prompt must show, so the step never taps a look-alike prompt (Local Network
+        # shares notifications' buttons) and the guard stays free to answer that one.
+        system_alert_title = self._system_alert_title(step)
         if front_failure is not None or (guard is not None and guard.failure is not None):
             # The pre-act clear already decided the outcome (a recovery step failed, or the app is
             # behind another member's): skip the step's own action rather than poke a screen that
@@ -1125,6 +1176,7 @@ class _StepRunner:
                     alert_guard=self.cfg.alert_guard,
                     alerts=outcome.alerts,
                     system_alert_taps=system_alert_taps,
+                    system_alert_title=system_alert_title,
                     on_wait_tick=wait_tick,
                     transitions=self.cfg.transitions,
                     on_interrupt_poll=tip_poll,
@@ -1199,6 +1251,7 @@ class _StepRunner:
                             wait_trace=wait_trace,
                             selection=self.state.selection,
                             system_alert_taps=system_alert_taps,
+                            system_alert_title=system_alert_title,
                             on_wait_tick=wait_tick,
                             transitions=self.cfg.transitions,
                             on_interrupt_poll=tip_poll,
@@ -1249,6 +1302,7 @@ class _StepRunner:
                                 wait_trace=wait_trace,
                                 selection=self.state.selection,
                                 system_alert_taps=system_alert_taps,
+                                system_alert_title=system_alert_title,
                                 on_wait_tick=wait_tick,
                                 transitions=self.cfg.transitions,
                                 on_interrupt_poll=tip_poll,
@@ -1288,6 +1342,7 @@ class _StepRunner:
                     push_interruption_policy(active_driver, self.cfg.alert_guard)
         outcome.ok, outcome.reason, outcome.assertion_results = ok, reason, results
         outcome.duration_s = self.cfg.clock.now() - start
+        outcome.alerts.extend(entry_alerts)
         if reserved_alerts or reserved_undeclared:
             outcome.alerts.extend(reserved_alerts)
             if reserved_undeclared:

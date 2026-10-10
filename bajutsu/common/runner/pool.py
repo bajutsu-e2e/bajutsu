@@ -34,6 +34,8 @@ from bajutsu.common.orchestrator.evidence_rules import requested_intervals
 # `device_control` / `device_relauncher` live with the platform lifecycle now; re-exported so
 # `from bajutsu.common.runner import device_control, device_relauncher` keeps its import unchanged.
 from bajutsu.common.platform_lifecycle import (
+    LOOPBACK,
+    CollectorHost,
     ProvisionProfile,
     RunEnvironment,
     device_control,
@@ -52,20 +54,39 @@ _logger = logging.getLogger(__name__)
 
 
 def _alloc_webview_bridge(
-    lease_env: object,
-) -> tuple[WebViewBridge | None, int | None]:
+    lease_env: RunEnvironment, eff: Effective
+) -> tuple[WebViewBridge | None, int | None, Callable[[], None]]:
     """Allocate a WebView bridge for platforms that need one (iOS, not web).
 
-    Returns (bridge, port) or (None, None) when the platform doesn't use the bridge.
+    Returns the host-side client, the port the app binds on the device, and the teardown of whatever
+    joins the two (a usbmuxd bridge on a real device, nothing where the host shares the device's
+    loopback); `(None, None, no-op)` when the platform doesn't use the bridge.
     """
-    if getattr(lease_env, "observes_network_via_driver", lambda: False)():
-        return None, None
+    if lease_env.observes_network_via_driver():
+        return None, None, _no_release
     import socket
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
-    return WebViewBridge(port=port), port
+    host_port, release = lease_env.reach_device_port(eff, port)
+    return WebViewBridge(port=host_port), port, release
+
+
+def _no_release() -> None:
+    pass
+
+
+def _chain(first: Callable[[], None], then: Callable[[], None]) -> Callable[[], None]:
+    """One teardown that runs `first` and then `then`, even when `first` raises."""
+
+    def _both() -> None:
+        try:
+            first()
+        finally:
+            then()
+
+    return _both
 
 
 def _alloc_zorder(lease_env: object) -> tuple[int, str] | None:
@@ -172,6 +193,13 @@ def device_pool(  # noqa: C901, PLR0915
     # decide whether BE-0365's control channel can be armed for a scenario, so a change to which
     # runs pre-start a collector has to be reflected there too.
     collectors: dict[str, NetworkCollector] = {}
+    # Resolved once, before any collector starts or any device is touched: a real iOS device that no
+    # host address can be offered to fails here, naming the setting that fixes it.
+    collector_host = (
+        pool_env.collector_host(eff)
+        if network and not pool_env.observes_network_via_driver()
+        else CollectorHost()
+    )
     if network and not pool_env.observes_network_via_driver():
         try:
             for udid in udids:
@@ -181,8 +209,10 @@ def device_pool(  # noqa: C901, PLR0915
                 # platform sharing the host's loopback keeps the OS-chosen port it always had.
                 if pool_env.mirrors_collector_port_on_device():
                     collector.start_bridgeable()
-                else:
+                elif collector_host.bind == LOOPBACK:
                     collector.start()
+                else:
+                    collector.start(host=collector_host.bind)
                 collectors[udid] = collector
         except Exception:
             # A socket already stopped for one device must not stop the rollback of the rest, or
@@ -399,12 +429,14 @@ def device_pool(  # noqa: C901, PLR0915
                 collector = None  # resolved after launch from the live page
             extra_env: dict[str, str] = {}
             if isinstance(collector, NetworkCollector):
-                extra_env["BAJUTSU_COLLECTOR"] = f"http://127.0.0.1:{collector.port}"
+                extra_env["BAJUTSU_COLLECTOR"] = collector_host.collector_env(collector.port)
                 extra_env["BAJUTSU_COLLECTOR_TOKEN"] = collector.token
                 # Make the host collector reachable from the leased device before launch (Android
                 # tunnels the port with `adb reverse`; iOS shares the loopback and no-ops) — BE-0283.
                 release_bridge = lease_env.bridge_collector(collector.port)
-            webview_bridge, webview_port = _alloc_webview_bridge(lease_env)
+            webview_bridge, webview_port, release_webview = _alloc_webview_bridge(lease_env, eff)
+            # Joined to the collector's teardown, so every path that releases one releases both.
+            release_bridge = _chain(release_bridge, release_webview)
             if webview_port is not None:
                 extra_env["BAJUTSU_WEBVIEW_PORT"] = str(webview_port)
             zorder = _alloc_zorder(lease_env)

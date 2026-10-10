@@ -35,6 +35,15 @@ final class BajutsuURLProtocol: URLProtocol, URLSessionDataDelegate {
         where url.host == loopback || text.contains("/\(loopback):") || text.contains("/\(loopback)/") {
             return false
         }
+        // A real device reports to the collector on a host address, not the loopback, so the
+        // guard above does not cover it; the chosen collector is skipped by host and port instead.
+        // Every offered candidate, not only the chosen one: the search probes them all, and a report
+        // may be on its way to one before the choice is known.
+        if BajutsuNet.collectorCandidates.contains(where: {
+            $0.host != nil && $0.host == url.host && $0.port == url.port
+        }) {
+            return false
+        }
         return (url.scheme == "http" || url.scheme == "https")
     }
 

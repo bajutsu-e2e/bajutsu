@@ -99,6 +99,20 @@ iOS の実機では、ユーザー自身の Apple Developer チームで署名�
 
 `bajutsu runner build --device` がこのファイルを読みます。以後、`xcuitest.deviceType: device` を指定して `xcuitest.testRunner` を指定しないターゲットは、そのビルドに解決します。ファイルの形式と探索順は [iOS の実機](ios-device-cloud.md#署名ファイル)で説明しています。
 
+### 実機のホストアドレス（`xcuitest.hostAddress`）
+
+実機の iOS デバイスは、ホストとループバックを共有しません。そのため実機上のアプリは、ホストのアドレスを使ってネットワークの collector に接続します。デフォルトでは、実行のたびに、ホストの有効なインタフェースが持つ経路のあるアドレスをすべてアプリに渡します。アプリは、最初に応答したアドレスを使います。ホストのインタフェースには、実機から届かないものも含まれる場合があります。`xcuitest.hostAddress` は、渡すアドレスを指定したもの（カンマ区切り）に絞ります。
+
+```yaml
+targets:
+  my-app:
+    xcuitest:
+      deviceType: device
+      hostAddress: 192.168.1.20
+```
+
+環境変数 `BAJUTSU_HOST_ADDRESS` は、この設定より優先します。ジョブごとにアドレスが変わるホストでは、設定を書き換えず、実行ごとに環境変数で指定できます。シミュレータでは、この設定は何もしません。取り決めの仕組みは [iOS を実機とデバイスクラウドで動かす](ios-device-cloud.md) で説明しています。
+
 ### AI プロバイダ（`ai:`、BE-0047）
 
 AI 経路、すなわち `record`、`crawl`、`triage --ai` は、任意の `ai` ブロックで設定した一つのプロバイダを通じてモデルへ到達します。このブロックは `defaults` と `targets.<name>` の両方で宣言でき、**フィールドごと**にマージされます（同じフィールドはターゲット側の値が勝ちます）。解決結果は `Effective.ai` に入るので、CLI と `serve` が一つの真実を共有します。これが「あなたの AI、あなたのキー、あなたのデータ」を支える仕組みです。どの AI 経路も、あなたが設定したキーとエンドポイントの下で動き、決定的な `run` ゲートはモデルをまったく呼びません（[BE-0047](../../roadmaps/BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty-ja.md)）。

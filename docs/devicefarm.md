@@ -67,6 +67,13 @@ locally attached device.
   work, with a clear reason, rather than failing late with a `simctl` error mid-run. The on-device
   capabilities the XCTest runner drives itself — query, elements, screenshots, taps, and two-finger
   gestures — are unaffected.
+- **Two routes join the host and the app.** A physical device has its own loopback. Bajutsu bridges the runner and the in-app responders over usbmuxd. The app
+  reports network exchanges to a host address that each run offers it, or to the one that
+  `BAJUTSU_HOST_ADDRESS` names. Run `bajutsu doctor --udid "$DEVICEFARM_DEVICE_UDID" --environment-only` on the Device Farm host
+  before `bajutsu run`. It fails when usbmuxd does not list the reserved device. It also lists the
+  host addresses that the app would receive. A fresh install also lacks the iOS Local Network permission that the second route needs. Nobody
+  has verified either route on Device Farm yet
+  ([iOS on a real device](ios-device-cloud.md#reaching-a-real-devices-channels)).
 
 ## The test spec
 

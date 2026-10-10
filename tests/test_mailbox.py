@@ -160,6 +160,7 @@ from bajutsu.common.drivers import base  # noqa: E402
 from bajutsu.common.drivers.fake import FakeDriver  # noqa: E402
 from bajutsu.common.orchestrator import AlertGuardConfig, run_scenario  # noqa: E402
 from bajutsu.common.orchestrator.loop import _do_email  # noqa: E402
+from bajutsu.common.orchestrator.loop._step_runner import _StepRunner  # noqa: E402
 from bajutsu.common.scenario import Scenario  # noqa: E402
 
 
@@ -326,7 +327,10 @@ def test_email_requires_positive_timeout() -> None:
         )
 
 
-def test_on_blocked_retry_preserves_the_mailbox() -> None:
+def test_on_blocked_retry_preserves_the_mailbox(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The alert is seeded from the start to stand for one arriving later in the run; the
+    # scenario-entry check would clear it before the phase this test is about ever meets it.
+    monkeypatch.setattr(_StepRunner, "_clear_entry_alert", lambda *_a, **_k: None)
     # Regression: the retry-after-on_blocked path must still pass the mailbox, or a transient first
     # failure would be masked by a spurious "no mailbox configured" on the retry.
 

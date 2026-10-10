@@ -11,6 +11,7 @@ independently of the driver.
 
 from __future__ import annotations
 
+import pytest
 from _orch import FakeClock, _scenario
 from conftest import AlertingDriver, el, guard_rule
 
@@ -19,6 +20,7 @@ from bajutsu.common.drivers.actuation import MAX_RECORDS, Actuation, ActuationLo
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.orchestrator import AlertGuardConfig, run_scenario
 from bajutsu.common.orchestrator.actions.handlers._gesture_math import _scroll_gesture
+from bajutsu.common.orchestrator.loop._step_runner import _StepRunner
 
 _BUTTON = el("settings.open", frame=(20.0, 100.0, 80.0, 40.0))
 _TITLE = el("home.title", frame=(0.0, 0.0, 200.0, 60.0))
@@ -136,7 +138,12 @@ class _FlakyTapDriver(AlertingDriver):
             raise base.ElementNotFound("a system prompt swallowed the tap")
 
 
-def test_a_step_retried_after_an_alert_carries_both_attempts_in_order() -> None:
+def test_a_step_retried_after_an_alert_carries_both_attempts_in_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The alert is seeded from the start to stand for one arriving mid-step; the scenario-entry
+    # check would clear it before the step that this test is about ever meets it.
+    monkeypatch.setattr(_StepRunner, "_clear_entry_alert", lambda *_a, **_k: None)
     """The guard dismisses a prompt and the body runs again; both taps really happened."""
     driver = _FlakyTapDriver([el("blocked.button", frame=(0.0, 0.0, 10.0, 10.0))])
 

@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Literal
 
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import XcuitestConfig
-from bajutsu.common.drivers.zorder import ZOrderResponder, ZOrderSource
+from bajutsu.common.drivers.zorder import ZOrderResponder
 from bajutsu.common.platform_lifecycle.environments._bundled_runner import (
     bundled_products_dir,
     bundled_runner_build_info,
@@ -185,7 +185,7 @@ def _terminate_process_group(proc: subprocess.Popen[bytes]) -> None:
         proc.wait(timeout=5)
 
 
-def _zorder_client(extra_env: Mapping[str, str] | None) -> ZOrderSource | None:
+def _zorder_client(extra_env: Mapping[str, str] | None) -> ZOrderResponder | None:
     """The `nativeZ` responder client for a launch, or None when this run allocated no port.
 
     The port and token come from the same launch env the app reads (BE-0355), so host and app agree

@@ -166,7 +166,7 @@ SystemAlertHandling ::= boolean                              # true=規則なし
                    visionInstruction?: string,              # 自由記述。どのコマンドにも届かない。run は拒否する
                    pollInterval?: number,                    # ネイティブのポーリング間隔・秒（既定 1）
                    frozenScreenTimeout?: number }            # 止まった画面での打ち切り・秒（既定 10、0 で無効）
-SystemAlertRule ::= { prompt: notifications|tracking|paste|savePassword, choice: grant|deny }  # 1リストにつきプロンプトは一意
+SystemAlertRule ::= { prompt: notifications|tracking|paste|savePassword|localNetwork, choice: grant|deny }  # 1リストにつきプロンプトは一意
                 # savePassword はガード専用。iOS がプロセス内に出すため、ツリー内タップだけが答えられる。
                 # 後述の handleSystemAlert ステップはこれを拒否する（BE-0406）
 
@@ -205,7 +205,7 @@ Action    ::=
   | { pinch:       { sel: <Selector>, scale: number } }    # scale > 0  （>1 拡大, <1 縮小）
   | { rotate:      { sel: <Selector>, radians: number } }  # >0 時計回り
   | { handleSystemAlert: { sel: <Selector>, timeout: number } }  # iOS SpringBoard の権限プロンプトを tap（iOS/XCUITest 専用）。sel は label/labelMatches/index のみ
-  | { handleSystemAlert: { prompt: notifications|tracking|paste, choice: grant|deny, timeout: number } }  # 同じステップ。label は run の locale から解決し、対応表にない言語ではボタンの位置で解決する（BE-0320、BE-0445）。savePassword はここでは名指しできない（BE-0406）
+  | { handleSystemAlert: { prompt: notifications|tracking|paste|localNetwork, choice: grant|deny, timeout: number } }  # 同じステップ。label は run の locale から解決し、対応表にない言語ではボタンの位置で解決する（BE-0320、BE-0445）。savePassword はここでは名指しできない（BE-0406）
   | { wait:        <Wait> }
   | { sleep:       { seconds: number, reason: string } }  # 固定の待機: 0 < seconds <= 30、reason は空白不可。条件待機の唯一の例外
   | { assert:      list(<Assertion>) }

@@ -185,12 +185,19 @@ def _parse_drain_fold(raw: bytes | None) -> base.DrainedInterruptions:
         if isinstance(unmatched, list)
         else []
     )
+    tapped_alerts = body.get("tappedAlerts")
     # A runner predating BE-0416 omits `banners` entirely; an empty list is the same answer as far as
-    # any caller is concerned, since such a runner never swiped a banner away to report.
+    # any caller is concerned, since such a runner never swiped a banner away to report. One
+    # predating `tappedAlerts` omits it too, and every tap then reads as an unknown alert.
     return base.DrainedInterruptions(
         tapped=_string_list(body.get("labels")),
         declined=declined,
         banners=_string_list(body.get("banners")),
+        tapped_alerts=(
+            [_string_list(group) for group in tapped_alerts]
+            if isinstance(tapped_alerts, list)
+            else []
+        ),
     )
 
 

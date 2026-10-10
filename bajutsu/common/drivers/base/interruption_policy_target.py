@@ -19,7 +19,7 @@ class InterruptionPolicyTarget(Protocol):
     opposite of the least-destructive policy the guard applies, and invisible to the run's report.
 
     `set_interruption_policy` hands over the labels `AlertGuardConfig` has already resolved (a rule's
-    identifying label set with the label it taps) and whether the guard governs this scenario at all,
+    identifying label set, the label it taps, and the labels that rule it out) and whether the guard governs this scenario at all,
     so the decision stays in the orchestrator and the backend only applies it. `drain_interruptions`
     takes back what it answered, what it declined, and what it swiped away, so a dismissal reaches
     the report as an `AlertEvent`, an undeclared interruption can fail the step/expect that met it
@@ -28,9 +28,13 @@ class InterruptionPolicyTarget(Protocol):
     """
 
     def set_interruption_policy(
-        self, rules: Sequence[tuple[frozenset[str], str]], governs: bool
+        self, rules: Sequence[tuple[frozenset[str], str, frozenset[str]]], governs: bool
     ) -> None:
-        """Hand the backend the buttons it may press on an interrupting alert."""
+        """Hand the backend the buttons it may press on an interrupting alert.
+
+        Each rule is its identifying labels, the label it taps, and the labels whose presence rules
+        it out — the same accept test `identified_alert_rules` applies on this side.
+        """
         ...
 
     def drain_interruptions(self) -> DrainedInterruptions:

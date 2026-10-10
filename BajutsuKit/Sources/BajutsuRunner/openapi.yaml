@@ -623,6 +623,15 @@ components:
             two alone. Separate from `labels` because a banner carries no button (BE-0416).
           items:
             type: string
+        tappedAlerts:
+          type: array
+          description: >-
+            Per entry of `labels`, what the monitor matched that alert by, folded in for the same
+            reason as `labels` above. See `InterruptionsReply.tappedAlerts`.
+          items:
+            type: array
+            items:
+              type: string
     ErrorReply:
       type: object
       required: [status, message]
@@ -660,6 +669,14 @@ components:
         tap:
           type: string
           description: The label to press once this rule's prompt is identified.
+        exclude:
+          type: array
+          description: >-
+            Labels whose presence rules this rule out. An alert's title joins its labels as a
+            `title: `-prefixed marker, so `notifications` excludes the Local Network prompt's
+            title, the one prompt sharing its buttons. Absent means none.
+          items:
+            type: string
     InterruptionsReply:
       type: object
       required: [labels, unmatched, banners]
@@ -686,6 +703,17 @@ components:
             since it carries no button for a rule to identify.
           items:
             type: string
+        tappedAlerts:
+          type: array
+          description: >-
+            Per entry of `labels`, in the same order, what the monitor matched that alert by: its
+            buttons plus its `title: `-prefixed title marker. A label alone cannot say which prompt
+            it answered, since Local Network and notifications both tap "Allow". Absent from a
+            runner predating it, which a client reads as every tap's alert being unknown.
+          items:
+            type: array
+            items:
+              type: string
     EmptyRequest:
       type: object
       description: >-

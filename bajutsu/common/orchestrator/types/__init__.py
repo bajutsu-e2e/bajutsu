@@ -8,15 +8,16 @@ from ._functions import _BLOCKED_SCREEN_NOTE as _BLOCKED_SCREEN_NOTE
 from ._functions import _UNCLEARED_PROMPT_NOTE as _UNCLEARED_PROMPT_NOTE
 from ._functions import _UNDECLARED_INTERRUPTION_NOTE as _UNDECLARED_INTERRUPTION_NOTE
 from ._functions import _UNHANDLED_ALERT_NOTE as _UNHANDLED_ALERT_NOTE
-from ._functions import _alert_button as _alert_button
-from ._functions import _no_network as _no_network
 from ._functions import (
+    AlertTitleCheck,
     alert_block_note,
     collapsed_tree_note,
     drain_actuations,
     drain_interruptions,
     identified_alert_rules,
     matching_alert_rule,
+    observed_alert_labels,
+    prompt_title_check,
     push_interruption_policy,
     sanitize_source_stem,
     scenario_slug,
@@ -25,6 +26,8 @@ from ._functions import (
     uncleared_prompt_note,
     undeclared_interruption_note,
 )
+from ._functions import _alert_button as _alert_button
+from ._functions import _no_network as _no_network
 from ._shared import BlockedHandler, NetworkSource, ProgressFn, RelaunchFn, WallClock
 from .alert_event import AlertEvent
 from .alert_guard_config import _NATIVE_TAP_TIMEOUT as _NATIVE_TAP_TIMEOUT
@@ -59,6 +62,7 @@ __all__ = [
     "DEFAULT_FROZEN_SCREEN_TIMEOUT",
     "AlertEvent",
     "AlertGuardConfig",
+    "AlertTitleCheck",
     "BlockedHandler",
     "Clock",
     "DeviceControl",
@@ -88,6 +92,8 @@ __all__ = [
     "drain_interruptions",
     "identified_alert_rules",
     "matching_alert_rule",
+    "observed_alert_labels",
+    "prompt_title_check",
     "push_interruption_policy",
     "sanitize_source_stem",
     "scenario_slug",

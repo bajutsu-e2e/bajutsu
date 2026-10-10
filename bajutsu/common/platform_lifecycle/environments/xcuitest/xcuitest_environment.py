@@ -22,12 +22,13 @@ from bajutsu.common.config import Effective, require_ios
 from bajutsu.common.devices import os as device_os
 from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.zorder import ZOrderSource
+from bajutsu.common.drivers.zorder import ZOrderResponder, ZOrderSource
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.platform_lifecycle import readiness
 from bajutsu.common.platform_lifecycle.device_control import device_control
 from bajutsu.common.platform_lifecycle.environments._bundled_runner import _products_digest
 from bajutsu.common.platform_lifecycle.environments.ios import _DeviceEnvironment
+from bajutsu.common.platform_lifecycle.protocols import CollectorHost
 from bajutsu.common.scenario import Preconditions, Relaunch, Scenario
 from bajutsu.crawl import Reset
 
@@ -59,9 +60,11 @@ from ._functions import (
     _zorder_client,
     effective_device_type,
 )
+from ._host_address import HOST_ADDRESS_ENV, HostAddressError, host_candidates
 from ._recovery import _Recovery
 from ._shared import _logger
 from ._spawned import _Spawned
+from ._usbmux import UsbmuxForwarder
 
 # Overrides the directory the runner subprocess's combined stdout/stderr is captured into, one file
 # per cold spawn. Capture is on by default (BE-0319 unit 1): a startup failure or mid-run crash is
@@ -160,6 +163,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # because it is compared against a file's `st_mtime`.
         self._runner_spawned_at: float = 0.0
         self._runner_port: int = 0
+        # The host→device port bridge a real-device runner is reached through; None on the Simulator,
+        # whose loopback the host already shares (`_spawn_runner`).
+        self._forwarder: UsbmuxForwarder | None = None
+        # The same bridge for the app's `nativeZ` responder on a real device (BE-0355), held per
+        # lease rather than per spawn attempt: the responder lives in the app, not the runner.
+        self._zorder_forwarder: UsbmuxForwarder | None = None
         self._patched_runner: Path | None = None
         # Where the current runner's captured output went; a mid-run-crash warning and a startup
         # failure both point at it (`_runner_log_hint`). Capture is on by default (BE-0319 unit 1).
@@ -281,13 +290,19 @@ class XcuitestEnvironment(_DeviceEnvironment):
         permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
         stale = self._group
-        driver = self._start(
-            eff,
-            pre,
-            extra_env=extra_env,
-            record_video_dir=record_video_dir,
-            permissions=permissions,
-        )
+        try:
+            driver = self._start(
+                eff,
+                pre,
+                extra_env=extra_env,
+                record_video_dir=record_video_dir,
+                permissions=permissions,
+            )
+        except BaseException:
+            # No driver comes back, so no teardown will close the lease's `nativeZ` bridge, which
+            # `_start` opens before any precondition can refuse the lease.
+            self._close_zorder_forwarder()
+            raise
         bundle_id = require_ios(eff).bundle_id
         if stale is not None and stale.current != bundle_id:
             # A warm runner a previous lease's device group retargeted still addresses that lease's
@@ -319,7 +334,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # The app answers `nativeZ` on the port this run injected, so the client is built from the
         # same launch env the app will read (BE-0355). Held on the environment rather than threaded
         # through the spawn path, so a warm resume reuses the responder its own launch set up.
-        self._zorder = _zorder_client(extra_env)
+        self._zorder = self._zorder_channel(_zorder_client(extra_env), device_type)
         # Read once and cleared here rather than where it is honored, so no `start` can leave a stale
         # escalation behind for a later lease — including the real-device route below, which returns
         # before the rung and has no simctl to mint a device through anyway.
@@ -918,7 +933,19 @@ class XcuitestEnvironment(_DeviceEnvironment):
         channel driver. Returns a `_Spawned` reading from this environment's just-set state — the
         surviving attempt's state is the environment's, which warm reuse and teardown then own.
         """
-        self._runner_port = _allocate_port()
+        self._runner_port = self._runner_channel_port(device_type)
+        try:
+            return self._spawn_on_port(runner_path, forwarded_base, device_type)
+        except BaseException:
+            # The retry loop discards only an attempt that spawned; one that failed before then
+            # would otherwise leave the bridge's listener and accept thread running.
+            self._close_forwarder()
+            raise
+
+    def _spawn_on_port(
+        self, runner_path: Path, forwarded_base: Mapping[str, str], device_type: str
+    ) -> _Spawned:
+        """`_spawn_runner`'s body once `_runner_port` is set: patch, spawn, and build the driver."""
         forwarded = {"BAJUTSU_RUNNER_PORT": str(self._runner_port), **forwarded_base}
         # `xcodebuild` does not pass its own environment through to the test-runner process
         # inside the Simulator, so the runner reads these from the .xctestrun's per-target
@@ -1023,6 +1050,28 @@ class XcuitestEnvironment(_DeviceEnvironment):
             discard=lambda: self._discard_runner(warn_on_crash=False, keep_log=True),
             run_ended=self._run_ended,
         )
+
+    def _runner_channel_port(self, device_type: str) -> int:
+        """The port the runner binds and the driver dials, bridged to the device when it is real.
+
+        The runner binds its server on its own loopback. A Simulator shares the host's, so a free
+        host port is enough; a real device does not, so the port is the host end of a usbmuxd
+        bridge to the same number on the device — the iOS counterpart of the resident Android
+        channel's `adb forward`.
+        """
+        self._close_forwarder()  # a previous attempt's bridge, should a discard have missed it
+        if device_type != "device":
+            return _allocate_port()
+        forwarder = UsbmuxForwarder(self._udid)
+        try:
+            port = forwarder.start()
+        except OSError as exc:  # usbmuxd unreachable or silent, the device unlisted, or no bind
+            forwarder.close()
+            raise simctl.DeviceError(
+                f"cannot bridge to the runner on device {self._udid}: {exc}"
+            ) from exc
+        self._forwarder = forwarder
+        return port
 
     def _resume_warm(
         self,
@@ -1834,6 +1883,41 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 self._patched_runner.unlink(missing_ok=True)
                 self._patched_runner = None
             self._reusable = False
+            self._close_forwarder()
+
+    def _zorder_channel(
+        self, client: ZOrderResponder | None, device_type: str
+    ) -> ZOrderResponder | None:
+        """`client` as the driver should reach it: through a usbmuxd bridge on a real device.
+
+        The app's responder binds the device's loopback (`BajutsuZOrder.swift`), which the host
+        does not share. A bridge that cannot be opened leaves `nativeZ` absent rather than failing
+        the run: it is diagnostic, the same honest absence an app without a responder reports.
+        """
+        self._close_zorder_forwarder()  # a previous lease's, should its teardown have missed it
+        if client is None or device_type != "device":
+            return client
+        forwarder = UsbmuxForwarder(self._udid, device_port=client.port)
+        try:
+            port = forwarder.start()
+        except OSError as exc:
+            forwarder.close()
+            _logger.warning("nativeZ unavailable: cannot bridge to device %s: %s", self._udid, exc)
+            return None
+        self._zorder_forwarder = forwarder
+        return ZOrderResponder(port=port, token=client.token)
+
+    def _close_zorder_forwarder(self) -> None:
+        """Close the lease's real-device `nativeZ` bridge, if one is open."""
+        if self._zorder_forwarder is not None:
+            self._zorder_forwarder.close()
+            self._zorder_forwarder = None
+
+    def _close_forwarder(self) -> None:
+        """Close the real-device port bridge, if one is open; a no-op on the Simulator."""
+        if self._forwarder is not None:
+            self._forwarder.close()
+            self._forwarder = None
 
     def _terminate_app_under_test(self) -> None:
         """Best-effort `simctl terminate` of the app the runner launched (Simulator only).
@@ -1901,6 +1985,44 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 self._runner_log.unlink(missing_ok=True)
         self._runner_log = None
 
+    def collector_host(self, eff: Effective) -> CollectorHost:
+        """Loopback on the Simulator; on a real device, every interface and the host's addresses.
+
+        A real device shares no loopback with the host, and usbmuxd carries no connection the device
+        opens, so the app is offered the host addresses it might route to and probes them itself.
+        """
+        xcfg = require_ios(eff).xcuitest
+        if effective_device_type(xcfg) != "device":
+            return CollectorHost()
+        try:
+            found = host_candidates(xcfg.host_address if xcfg is not None else None)
+        except HostAddressError as exc:
+            raise simctl.DeviceError(str(exc)) from exc
+        if not found.addresses:
+            raise simctl.DeviceError(
+                "the network collector needs a host address a real device can reach, and none was "
+                f"found ({found.source}); set xcuitest.hostAddress or {HOST_ADDRESS_ENV}"
+            )
+        return CollectorHost(bind="::", advertised=found.addresses)
+
+    def reach_device_port(self, eff: Effective, port: int) -> tuple[int, Callable[[], None]]:
+        """`port` itself on the Simulator; on a real device, the host end of a usbmuxd bridge to it.
+
+        Raises:
+            DeviceError: usbmuxd is unreachable or does not list the device.
+        """
+        if effective_device_type(require_ios(eff).xcuitest) != "device":
+            return port, lambda: None
+        forwarder = UsbmuxForwarder(self._udid, device_port=port)
+        try:
+            host_port = forwarder.start()
+        except OSError as exc:
+            forwarder.close()
+            raise simctl.DeviceError(
+                f"cannot bridge to port {port} on device {self._udid}: {exc}"
+            ) from exc
+        return host_port, forwarder.close
+
     def has_reusable_resident(self) -> bool:
         return self._reusable  # BE-0291: a Simulator start left a warm runner the pool should keep
 
@@ -1930,6 +2052,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             self.release_runner()
             return
         self._discard_runner()
+        self._close_zorder_forwarder()
         super().teardown(driver, eff)
 
 

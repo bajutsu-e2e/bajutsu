@@ -12,14 +12,17 @@ from bajutsu.common.evidence.network import TransitionSource, _no_transitions
 from bajutsu.common.orchestrator.types import (
     AlertEvent,
     AlertGuardConfig,
+    AlertTitleCheck,
     Clock,
     NetworkSource,
     UndeclaredInterruption,
     _no_network,
+    observed_alert_labels,
     selector_names_button,
     undeclared_interruption_note,
 )
 from bajutsu.common.scenario import Gone, SystemAlertRole, Wait, WaitRequest
+from bajutsu.common.scenario.system_alerts import TITLE_MARKER
 
 from ._alert_guard_gate import _AlertGuardGate
 from ._heartbeat import _Heartbeat
@@ -171,6 +174,7 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
     alert_guard: AlertGuardConfig | None = None,
     alerts: list[AlertEvent] | None = None,
     tapped: list[str] | None = None,
+    title_check: AlertTitleCheck | None = None,
     cancelled: CancelSource = not_cancelled,
 ) -> tuple[bool, str]:
     """Wait for the system alert `sel` names and tap it, clearing declared interruptions meanwhile.
@@ -198,6 +202,9 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
             condition wait — the shape `record`'s replay gets.
         alerts: The step's outcome list, which the guard appends each prompt it dismissed to.
         tapped: Receives the label of the button the step itself tapped, for the report.
+        title_check: The step's `prompt_title_check`, when it names a prompt. A read whose title
+            rules out that prompt is not tapped, even when it offers the step's button: Local
+            Network and notifications share theirs. The gate then stays free to answer it.
         cancelled: Consulted once per poll, right where the deadline is, so a cancelled run is
             noticed within one tick instead of actuating the device for the rest of the timeout
             (BE-0370). It raises rather than returning a verdict: the prompt neither appeared nor
@@ -234,6 +241,7 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
             guard=alert_guard,
             alerts=alerts if alerts is not None else [],
             reserved=sel,
+            reserved_title=title_check,
         )
         if alert_guard is not None and role is None
         else None
@@ -249,11 +257,18 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
     # button the alert really offers, twice — and because the wait polls on rather than failing at
     # once, so nothing else would ever say so (determinism first: never tap whichever matched first).
     ambiguous = False
+    # Whether the latest read offered `sel`'s button under another prompt's title (`title_check`).
+    other_prompt = False
     while True:
         t0 = clock.now()
         if last_read is None or t0 - last_read >= _SYSTEM_ALERT_POLL:
             last_read = t0
-            seen = driver.system_alert_labels()
+            observed = (
+                observed_alert_labels(driver)
+                if title_check is not None
+                else driver.system_alert_labels()
+            )
+            seen = [label for label in observed if not label.startswith(TITLE_MARKER)]
             ambiguous = False
             picked: str | None = None
             if role is not None:
@@ -262,7 +277,10 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
             # Decided from the labels already in hand: `handle_system_alert` issues its own
             # cross-process query, so tapping speculatively would double this step's query rate for
             # the whole time an interruption the step is not waiting for holds the screen.
-            if sel is not None and selector_names_button(sel, seen):
+            named = sel is not None and selector_names_button(sel, seen)
+            # The button is there, but the title says the alert is another prompt sharing it.
+            other_prompt = named and title_check is not None and not title_check(observed)
+            if sel is not None and named and not other_prompt:
                 try:
                     driver.handle_system_alert(sel, _STEP_TAP_TIMEOUT)
                 except base.ElementNotFound:
@@ -293,7 +311,7 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
                 # end, reintroduced by the mechanism meant to close it. A backend without the
                 # opt-in, or one nothing has pushed a policy to, drains nothing and falls through
                 # unchanged.
-                answered = _policy_answered_alert(driver, sel, alerts, tapped)
+                answered = _policy_answered_alert(driver, sel, alerts, tapped, title_check)
                 if answered is not None:
                     return answered
         if gate is not None:
@@ -302,7 +320,10 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
             raise RunCancelled
         if clock.now() >= deadline:
             return False, _with_block_note(
-                _alert_timeout_reason(wanted, timeout, seen, ambiguous, role=role), gate
+                _alert_timeout_reason(
+                    wanted, timeout, seen, ambiguous, role=role, other_prompt=other_prompt
+                ),
+                gate,
             )
         _adaptive_sleep(clock, t0)
 
@@ -326,20 +347,28 @@ def _policy_answered_alert(
     sel: base.Selector | None,
     alerts: list[AlertEvent] | None,
     tapped: list[str] | None = None,
+    title_check: AlertTitleCheck | None = None,
 ) -> tuple[bool, str] | None:
     """Drain what a governing policy's monitor answered between polls; the verdict it settles, if any.
 
     Split out of `wait_for_system_alert` (BE-0386); the reasoning for draining here at all lives at
-    its one call site.
+    its one call site. A tap counts as the step's own only when it pressed `sel`'s button on an
+    alert `title_check` accepts: a rule answering a look-alike prompt with the same button (Local
+    Network under a notifications step) is that rule's dismissal, not the step's verdict. A tap whose
+    alert the runner did not report keeps the label-only match an older runner allows.
     """
     drained = driver.drain_interruptions()
-    # A position rule with no alert read yet names no label, and nothing reserved one for the
-    # monitor either, so no label it tapped can be the step's own.
-    matched = (
-        []
-        if sel is None
-        else [label for label in drained.tapped if selector_names_button(sel, [label])]
-    )
+
+    def is_own(index: int, label: str) -> bool:
+        # A position rule with no alert read yet names no label, and nothing reserved one for the
+        # monitor either, so no label it tapped can be the step's own.
+        if sel is None or not selector_names_button(sel, [label]):
+            return False
+        alert = drained.alert_of(index)
+        return title_check is None or not alert or title_check(alert)
+
+    own = [is_own(index, label) for index, label in enumerate(drained.tapped)]
+    matched = [label for label, mine in zip(drained.tapped, own, strict=True) if mine]
     if alerts is not None:
         # A tapped label that is not `sel`'s own is some other declared rule's alert,
         # resolved by the monitor while this step happened to be polling — draining it
@@ -348,7 +377,7 @@ def _policy_answered_alert(
         # notification banner swiped away during the same poll is drained here too, for
         # the identical reason: it can never be `sel`'s own alert (BE-0416), so it always
         # belongs in `unrelated`'s company rather than the matched-alert branch below.
-        unrelated = [label for label in drained.tapped if label not in matched]
+        unrelated = [label for label, mine in zip(drained.tapped, own, strict=True) if not mine]
         alerts.extend(AlertEvent(label=label) for label in unrelated)
         alerts.extend(AlertEvent(label=text, kind="notificationBanner") for text in drained.banners)
     if matched:
@@ -375,6 +404,7 @@ def _alert_timeout_reason(
     ambiguous: bool,
     *,
     role: SystemAlertRole | None = None,
+    other_prompt: bool = False,
 ) -> str:
     """What the `handleSystemAlert` step saw, for the timeout it is about to report (BE-0406).
 
@@ -391,6 +421,11 @@ def _alert_timeout_reason(
             f"position rule {wanted} names no button on an alert offering {len(seen)} "
             f"({offered}) within {timeout}s; this run's language is outside the label table, so "
             "name the button with sel.label instead"
+        )
+    if other_prompt:
+        return (
+            f"a system alert offering {wanted} stayed up for {timeout}s, but its title is not the "
+            f"step's prompt (the alert on screen offered: {offered}); declare a rule for that prompt"
         )
     if ambiguous:
         fix = " — add index to pick one" if role is None else ""

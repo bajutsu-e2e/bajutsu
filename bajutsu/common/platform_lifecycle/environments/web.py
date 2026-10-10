@@ -14,6 +14,7 @@ from bajutsu.common.evidence import intervals
 from bajutsu.common.evidence.network import Collector
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.platform_lifecycle import readiness
+from bajutsu.common.platform_lifecycle.protocols import CollectorHost
 from bajutsu.common.platform_lifecycle.relaunchers import _web_relauncher
 from bajutsu.common.scenario import Preconditions, Scenario
 from bajutsu.crawl import AliveCheck, ClearBlocking, Recover, Reset
@@ -70,6 +71,12 @@ class WebEnvironment:
 
     def observes_network_via_driver(self) -> bool:
         return True  # Playwright observes the live page natively
+
+    def collector_host(self, eff: Effective) -> CollectorHost:  # noqa: ARG002  # Environment shape
+        return CollectorHost()  # no device: the browser runs on the host
+
+    def reach_device_port(self, eff: Effective, port: int) -> tuple[int, Callable[[], None]]:  # noqa: ARG002  # Environment shape
+        return port, lambda: None  # nothing between the host and the port to bridge
 
     def mirrors_collector_port_on_device(self) -> bool:
         return False  # no device and no pre-started collector to bridge

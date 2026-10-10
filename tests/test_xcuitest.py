@@ -1992,6 +1992,29 @@ def test_system_alert_labels_returns_empty_when_no_alert_is_up() -> None:
     assert _driver(lambda m, p, b: _elements()).system_alert_labels() == []
 
 
+def test_the_alert_title_is_kept_out_of_the_buttons_and_read_from_the_same_reply() -> None:
+    # The runner adds one titled entry per alert; it must never count as a button (a position rule
+    # counts buttons), and the title is served from that reply with no second query.
+    calls: list[str] = []
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        calls.append(path)
+        return _elements(
+            _el_wire("h-deny", label="Don’t Allow", traits=["button"]),
+            _el_wire("h-allow", label="Allow", traits=["button"]),
+            _el_wire(
+                "h-title",
+                "bajutsu.systemAlert.title",
+                label="Allow “Showcase” to find devices on local networks?",
+            ),
+        )
+
+    driver = _driver(transport)
+    assert driver.system_alert_labels() == ["Don’t Allow", "Allow"]
+    assert driver.system_alert_titles() == ["Allow “Showcase” to find devices on local networks?"]
+    assert calls == ["/systemAlert/query"]
+
+
 # --- notification_banner_frame (BE-0416): the proactive guard's non-blocking presence read --------
 
 
@@ -2031,14 +2054,27 @@ def test_set_interruption_policy_sends_the_rules_and_governs() -> None:
         return _Reply(status="ok")
 
     _driver(transport).set_interruption_policy(
-        [(frozenset({"Allow", "Don't Allow"}), "Don't Allow")], True
+        [
+            (frozenset({"Allow", "Don't Allow"}), "Don't Allow", frozenset()),
+            (frozenset({"Allow", "Don't Allow"}), "Allow", frozenset({"title: B", "title: A"})),
+        ],
+        True,
     )
     assert sent == [
         (
             "POST",
             "/interruptionPolicy",
             {
-                "rules": [{"identify": ["Allow", "Don't Allow"], "tap": "Don't Allow"}],
+                # An exclusion set travels sorted, and a rule without one carries no key at all, so
+                # an older runner's body is unchanged for every rule that needs none.
+                "rules": [
+                    {"identify": ["Allow", "Don't Allow"], "tap": "Don't Allow"},
+                    {
+                        "identify": ["Allow", "Don't Allow"],
+                        "tap": "Allow",
+                        "exclude": ["title: A", "title: B"],
+                    },
+                ],
                 "governs": True,
             },
         )
@@ -2075,6 +2111,33 @@ def test_drain_interruptions_reads_the_banners_the_monitor_swiped_away() -> None
     assert drained.banners == ["Ready for Apple Intelligence"]
     assert drained.tapped == []
     assert drained.declined == []
+
+
+def test_drain_interruptions_reads_the_alert_each_tap_answered() -> None:
+    # The label alone cannot say which prompt was answered; the matched alert travels beside it.
+    alert = ["Don’t Allow", "Allow", "title: Allow “%@” to find devices on local networks?"]
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        return _Reply(
+            status="ok",
+            raw=json.dumps(
+                {"labels": ["Allow", "Not Now"], "unmatched": [], "tappedAlerts": [alert]}
+            ).encode(),
+        )
+
+    drained = _driver(transport).drain_interruptions()
+    assert drained.tapped == ["Allow", "Not Now"]
+    assert (drained.alert_of(0), drained.alert_of(1)) == (alert, [])  # short list: unknown
+
+
+def test_merged_drains_keep_each_tap_with_its_own_alert() -> None:
+    # A first drain from a runner that omitted the alerts must not shift the second's onto it.
+    first = base.DrainedInterruptions(tapped=["Not Now"], declined=[], banners=[])
+    later = base.DrainedInterruptions(
+        tapped=["Allow"], declined=[], banners=[], tapped_alerts=[["Allow", "title: x"]]
+    )
+    merged = first.merged_with(later)
+    assert (merged.alert_of(0), merged.alert_of(1)) == ([], ["Allow", "title: x"])
 
 
 def test_drain_interruptions_reads_no_banners_from_a_runner_that_predates_them() -> None:

@@ -6,6 +6,7 @@ import json
 import struct
 from pathlib import Path
 
+import pytest
 from conftest import GUARD_LABEL, AlertingDriver, FakeBackend, FakeBlock, ShotDriver, guard_rule
 
 from bajutsu.common.agents.alerts import AlertDecision, ClaudeAlertLocator, SystemAlertGuard
@@ -15,6 +16,7 @@ from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.evidence import FileSink
 from bajutsu.common.orchestrator import AlertEvent, AlertGuardConfig, run_scenario
+from bajutsu.common.orchestrator.loop._step_runner import _StepRunner
 from bajutsu.common.scenario import Step, load_scenarios
 from bajutsu.record.loop import record as record_loop
 
@@ -319,7 +321,10 @@ def _el(identifier: str) -> base.Element:
     }
 
 
-def test_on_blocked_retries_expect_after_recovery() -> None:
+def test_on_blocked_retries_expect_after_recovery(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The alert is seeded from the start to stand for one arriving later in the run; the
+    # scenario-entry check would clear it before the phase this test is about ever meets it.
+    monkeypatch.setattr(_StepRunner, "_clear_entry_alert", lambda *_a, **_k: None)
     # A system alert can cover the screen exactly when expect runs; the guard must
     # clear it there too, not only during steps.
     here, later = _el("here"), _el("later")
@@ -448,7 +453,12 @@ def test_undeclared_interruption_during_a_declining_probe_still_fails_expect() -
     assert "Not Now" in result.failure
 
 
-def test_undeclared_interruption_during_the_expect_retry_still_fails_it() -> None:
+def test_undeclared_interruption_during_the_expect_retry_still_fails_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The alert is seeded from the start to stand for one arriving later in the run; the
+    # scenario-entry check would clear it before the phase this test is about ever meets it.
+    monkeypatch.setattr(_StepRunner, "_clear_entry_alert", lambda *_a, **_k: None)
     # The retry's own queries can be interrupted too, distinct from the matched dismissal that
     # triggered the retry in the first place. Without the second expect-phase drain this seeds, an
     # interruption here would go unreported — nothing else drains this phase after the retry.

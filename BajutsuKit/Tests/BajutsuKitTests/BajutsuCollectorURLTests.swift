@@ -44,4 +44,73 @@ final class BajutsuCollectorURLTests: XCTestCase {
         let request = URLRequest(url: URL(string: "https://example.com/api")!)
         XCTAssertTrue(BajutsuURLProtocol.canInit(with: request))
     }
+
+    // MARK: - a real device's candidate collectors
+
+    func testEveryCandidateIsSplitAndRepairedOnItsOwn() {
+        let urls = BajutsuNet.candidateURLs("http:/192.0.2.7:4100, http:/[fd00::1]:4100")
+        XCTAssertEqual(urls.map(\.host), ["192.0.2.7", "fd00::1"])
+        XCTAssertEqual(urls.map(\.port), [4100, 4100])
+    }
+
+    func testASingleHostAddressIsStillProbed() {
+        // A real device offered one address (Device Farm's explicit one) is not the Simulator's
+        // shared loopback, so it is confirmed like any other before reports go to it.
+        let url = URL(string: "http://192.0.2.7:4100")!
+        var probed: [URL] = []
+        let chosen = BajutsuNet.reachableCollector([url], token: "t") { candidate, _, done in
+            probed.append(candidate)
+            done(true)
+        }
+        XCTAssertEqual(probed, [url])
+        XCTAssertEqual(chosen, url)
+    }
+
+    func testTheLoopbackCollectorIsTakenWithoutAProbe() {
+        let url = URL(string: "http://127.0.0.1:4100")!
+        let chosen = BajutsuNet.reachableCollector([url], token: "t") { _, _, _ in
+            XCTFail("the Simulator's one collector must not be probed")
+        }
+        XCTAssertEqual(chosen, url)
+    }
+
+    func testTheFirstCandidateInTheHostsOrderThatAnswersIsKept() {
+        // The later candidate answers first; the host's order still decides, so the choice does
+        // not depend on which probe happened to return sooner.
+        let first = URL(string: "http://192.0.2.7:4100")!
+        let second = URL(string: "http://198.51.100.9:4100")!
+        let third = URL(string: "http://203.0.113.4:4100")!
+        let chosen = BajutsuNet.reachableCollector([first, second, third], token: "t") { url, token, done in
+            XCTAssertEqual(token, "t")
+            if url == third {
+                done(true)
+            } else if url == second {
+                DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { done(true) }
+            } else {
+                done(false)
+            }
+        }
+        XCTAssertEqual(chosen, second)
+    }
+
+    func testNoAnswerWithinTheBoundLeavesNoCollector() {
+        let urls = [URL(string: "http://192.0.2.7:4100")!, URL(string: "http://192.0.2.8:4100")!]
+        let started = Date()
+        let chosen = BajutsuNet.reachableCollector(urls, token: nil, timeout: 0.1) { _, _, _ in }
+        XCTAssertNil(chosen)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 1)
+    }
+
+    func testAnUnreachableLaterCandidateDoesNotDelayTheLaunch() {
+        // The first candidate answers and the second never returns (a dropped packet): the choice is
+        // settled the moment the first answers, so the launch does not wait out the timeout.
+        let first = URL(string: "http://192.0.2.7:4100")!
+        let silent = URL(string: "http://198.51.100.9:4100")!
+        let started = Date()
+        let chosen = BajutsuNet.reachableCollector([first, silent], token: nil, timeout: 5) { url, _, done in
+            if url == first { done(true) }
+        }
+        XCTAssertEqual(chosen, first)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 1)
+    }
 }

@@ -233,3 +233,26 @@ def test_every_springboard_prompt_covers_the_same_languages() -> None:
     # language. A language added for one prompt alone would break that, so pin them together.
     springboard = [p for p in get_args(SystemAlertPrompt) if alert_surfaces(p)["native"]]
     assert len({covered_languages(p) for p in springboard}) == 1
+
+
+def test_an_alert_title_reduces_to_apple_s_own_template() -> None:
+    from bajutsu.common.scenario.system_alerts import alert_title_marker
+
+    assert alert_title_marker("Allow “Showcase SwiftUI” to find devices on local networks?") == (
+        "title: Allow “%@” to find devices on local networks?"
+    )
+    assert alert_title_marker(
+        "“ショーケース”がローカルネットワーク上のデバイスを見つけることを許可しますか?"
+    ) == ("title: “%@”がローカルネットワーク上のデバイスを見つけることを許可しますか?")
+    assert alert_title_marker("No quotes") == "title: No quotes"
+
+
+def test_local_network_and_notifications_are_told_apart_by_the_title_alone() -> None:
+    from bajutsu.common.scenario.system_alerts import system_alert_shapes
+
+    for locale in ("en_US", "ja_JP"):
+        (local,) = system_alert_shapes("localNetwork", "grant", locale)
+        (notif,) = system_alert_shapes("notifications", "grant", locale)
+        marker = next(label for label in local.identifying_labels if label.startswith("title: "))
+        assert local.identifying_labels - {marker} == notif.identifying_labels  # same buttons
+        assert marker in notif.excluded_labels

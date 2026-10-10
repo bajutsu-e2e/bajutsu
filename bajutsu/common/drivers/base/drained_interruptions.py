@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -20,11 +20,22 @@ class DrainedInterruptions:
     tapped label names the button the scenario's own policy chose, while a banner has no button to
     name and no policy to choose it — it is answered on every run, since nothing a scenario can
     declare would identify one.
+
+    `tapped_alerts` is, per tapped label, everything the monitor matched that alert by: its buttons
+    plus its title's marker. A label alone cannot say which prompt it answered (Local Network and
+    notifications both tap "Allow"), so a `handleSystemAlert` step checks the title here before it
+    counts a monitor's tap as its own. Shorter than `tapped` from a runner predating it; read it
+    through `alert_of`, which answers an empty list for a tap whose alert is unknown.
     """
 
     tapped: list[str]
     declined: list[list[str]]
     banners: list[str]
+    tapped_alerts: list[list[str]] = field(default_factory=list)
+
+    def alert_of(self, index: int) -> list[str]:
+        """What the monitor matched the `index`-th tap by, or empty when the runner did not say."""
+        return self.tapped_alerts[index] if index < len(self.tapped_alerts) else []
 
     @classmethod
     def empty(cls) -> DrainedInterruptions:
@@ -37,4 +48,8 @@ class DrainedInterruptions:
             tapped=self.tapped + later.tapped,
             declined=self.declined + later.declined,
             banners=self.banners + later.banners,
+            # Aligned per drain first, so a runner that omitted them cannot shift `later`'s alerts
+            # onto this drain's taps.
+            tapped_alerts=[self.alert_of(i) for i in range(len(self.tapped))]
+            + [later.alert_of(i) for i in range(len(later.tapped))],
         )
