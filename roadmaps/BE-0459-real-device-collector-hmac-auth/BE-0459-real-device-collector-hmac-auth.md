@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-real-device-collector-hmac-auth-ja.md)
+**English** · [日本語](BE-0459-real-device-collector-hmac-auth-ja.md)
 
-# BE-XXXX — Sign real-device collector traffic instead of sending its token in cleartext
+# BE-0459 — Sign real-device collector traffic instead of sending its token in cleartext
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-real-device-collector-hmac-auth.md) |
+| Proposal | [BE-0459](BE-0459-real-device-collector-hmac-auth.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0459") |
 | Topic | Security hardening |
 | Related | [BE-0115](../BE-0115-inprocess-collector-auth/BE-0115-inprocess-collector-auth.md), [BE-0365](../BE-0365-in-app-control-channel/BE-0365-in-app-control-channel.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md), [BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture.md) |
 <!-- /BE-METADATA -->

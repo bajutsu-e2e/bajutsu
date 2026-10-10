@@ -1,14 +1,14 @@
-[English](BE-XXXX-real-device-collector-hmac-auth.md) · **日本語**
+[English](BE-0459-real-device-collector-hmac-auth.md) · **日本語**
 
-# BE-XXXX — 実機からコレクターへの通信に署名し、トークンを平文で送らないようにする
+# BE-0459 — 実機からコレクターへの通信に署名し、トークンを平文で送らないようにする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-real-device-collector-hmac-auth-ja.md) |
+| 提案 | [BE-0459](BE-0459-real-device-collector-hmac-auth-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0459") |
 | トピック | セキュリティ強化 |
 | 関連 | [BE-0115](../BE-0115-inprocess-collector-auth/BE-0115-inprocess-collector-auth-ja.md), [BE-0365](../BE-0365-in-app-control-channel/BE-0365-in-app-control-channel-ja.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md), [BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture-ja.md) |
 <!-- /BE-METADATA -->
