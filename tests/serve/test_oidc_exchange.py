@@ -14,6 +14,7 @@ repository's outstanding sessions without retiring its org.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -808,6 +809,191 @@ def test_the_audit_entry_names_the_repository_with_no_user_row_behind_it(
         assert row.detail["repository"] == "acme/app"
 
 
+_JOB_CLAIMS = {"run_id": "123", "run_attempt": "2", "check_run_id": "456", "actor": "octocat"}
+
+
+def test_the_exchange_is_audited_with_the_job_that_presented_the_token(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    key = _key()
+    state = _state(serve_engine, tmp_path, key)
+    _machine(state, key, "acme", **_JOB_CLAIMS)
+
+    (row,) = _audit_rows(state)
+    assert (row.action, row.target, row.org_id, row.actor_id) == (
+        "oidc.exchange",
+        "acme/app",
+        "acme",
+        None,
+    )
+    assert row.detail["repository"] == "acme/app"
+    assert row.detail["actor"]["runId"] == "123"
+    assert row.detail["actor"]["checkRunId"] == "456"
+    assert row.detail["actor"]["runAttempt"] == "2"
+    assert row.detail["actor"]["triggeredBy"] == "octocat"
+
+
+def _zip_bytes() -> bytes:
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("app.txt", "binary")
+    return buffer.getvalue()
+
+
+def _post_raw(port: int, path: str, data: bytes, *, cookie: str) -> int:
+    import urllib.error
+    import urllib.request
+
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}",
+        data=data,
+        headers={"Cookie": f"bajutsu_session={cookie}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request) as response:
+            return int(response.status)
+    except urllib.error.HTTPError as e:
+        return e.code
+
+
+def test_the_exchange_audit_names_the_repository_the_way_its_session_does(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    """The roster matches case-insensitively, so `Acme/App` is admitted — and the session's own
+    entries fold it. An exchange row keeping the claim's casing would split one repository's
+    history in two for anyone filtering the audit log by repository."""
+    key = _key()
+    state = _state(serve_engine, tmp_path, key)
+    _machine(state, key, "acme", repository="Acme/App")
+
+    (row,) = _audit_rows(state)
+    assert row.target == "acme/app"
+
+
+def test_a_failed_exchange_audit_write_does_not_cost_the_pipeline_its_token(
+    serve_engine: Callable[..., Engine], tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """By the time the entry is written the token's `jti` is spent, so a 500 here would leave a
+    pipeline that cannot retry with the token it already fetched. The exchange still answers 200,
+    and the failure is loud in the operator log instead."""
+    key = _key()
+    state = _state(serve_engine, tmp_path, key)
+    assert state.repository is not None
+
+    def broken(**_kwargs: Any) -> None:
+        raise RuntimeError("audit table unavailable")
+
+    state.repository.record_audit = broken  # type: ignore[method-assign]
+    with caplog.at_level(logging.ERROR):
+        payload, status, sid = ops.oidc_exchange(state, _token(key, **_JOB_CLAIMS), "acme")
+
+    assert status == 200 and sid is not None and payload["ok"] is True
+    assert state.auth.valid_session(sid)
+    assert any(
+        record.levelno == logging.ERROR and getattr(record, "event", "") == "oidc.audit_failed"
+        for record in caplog.records
+    )
+
+
+def test_every_backend_audits_a_machine_call_with_the_job_its_session_was_minted_for(
+    tmp_path: Path,
+) -> None:
+    """Two jobs of one repository share its identity, so the job record on the session is the one
+    thing that tells their audit entries apart. The probe goes through `RequestCtx` and the upload
+    through each backend's raw-body handler, so both carriers are covered."""
+    from fastapi.testclient import TestClient
+
+    from bajutsu.serve.server.app import make_app
+
+    key = _key()
+    state = _state(_threaded(tmp_path), tmp_path, key)
+    sid = _machine(state, key, "acme", **_JOB_CLAIMS)
+    probe = "/api/artifacts/exists?kind=binary&sha256=" + "e" * 64
+    upload = "/api/artifacts/binary"
+
+    client = TestClient(make_app(state))
+    client.cookies.set("bajutsu_session", sid)
+    assert client.get(probe).status_code == 200
+    assert client.post(upload, content=_zip_bytes()).status_code == 200
+
+    server, port = _serve(state)
+    try:
+        assert _get(port, probe, cookie=sid)[0] == 200
+        assert _post_raw(port, upload, _zip_bytes(), cookie=sid) == 200
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    for action in ("artifact:binary:exists", "artifact:binary"):
+        rows = [row for row in _audit_rows(state) if row.action == action]
+        assert len(rows) == 2, f"both backends must audit {action}"
+        for row in rows:
+            assert row.detail["repository"] == "acme/app"
+            assert row.detail["actor"]["checkRunId"] == "456"
+
+
+def test_every_backend_hands_the_job_to_a_machine_dispatched_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from bajutsu.serve import operations
+    from bajutsu.serve.server.app import make_app
+
+    seen: list[dict[str, str] | None] = []
+
+    def fake_start_run(_state: Any, _body: Any, **kwargs: Any) -> tuple[Any, int]:
+        seen.append(kwargs["ci_job"])
+        return {"jobId": "j"}, 200
+
+    monkeypatch.setattr(operations, "start_run", fake_start_run)
+    key = _key()
+    state = _state(_threaded(tmp_path), tmp_path, key)
+    sid = _machine(state, key, "acme", **_JOB_CLAIMS)
+    body = {"scenario": "smoke.yaml", "target": "demo"}
+
+    client = TestClient(make_app(state))
+    client.cookies.set("bajutsu_session", sid)
+    assert client.post("/api/run", json=body).status_code == 200
+
+    server, port = _serve(state)
+    try:
+        assert _post(port, "/api/run", body, cookie=sid)[0] == 200
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert len(seen) == 2
+    for job in seen:
+        assert job is not None and job["checkRunId"] == "456"
+
+
+def test_a_machine_upload_audits_the_job_passed_with_it(
+    serve_engine: Callable[..., Engine], tmp_path: Path
+) -> None:
+    key = _key()
+    state = _state(serve_engine, tmp_path, key)
+    source = tmp_path / "app.zip"
+    source.write_bytes(b"binary")
+    job = {"runId": "123", "checkRunId": "456"}
+    ops.bind_artifact(
+        state,
+        "binary",
+        source,
+        sha256="c" * 64,
+        actor="repo:acme/app",
+        machine_org="acme",
+        ci_job=job,
+    )
+
+    (row,) = _audit_rows(state)
+    assert row.detail == {"sha256": "c" * 64, "repository": "acme/app", "actor": job}
+
+
 def test_a_human_audit_entry_is_unchanged(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
@@ -821,7 +1007,7 @@ def test_a_human_audit_entry_is_unchanged(
     ops.bind_artifact(state, "binary", source, sha256="d" * 64, actor=actor)
 
     (row,) = _audit_rows(state)
-    assert row.actor_id == actor and "repository" not in row.detail
+    assert row.actor_id == actor and "repository" not in row.detail and "actor" not in row.detail
 
 
 def test_a_job_belonging_to_another_org_reads_as_missing(
@@ -1051,7 +1237,7 @@ def test_an_allowlisted_read_is_audited_even_if_the_session_expires_mid_request(
         server.server_close()
 
     # One row per backend, each naming the repository the gate read rather than dropping the entry.
-    rows = _audit_rows(state)
+    rows = [row for row in _audit_rows(state) if row.action != "oidc.exchange"]
     assert len(rows) == 2, "both backends must audit the probe"
     for row in rows:
         assert row.org_id == "acme"

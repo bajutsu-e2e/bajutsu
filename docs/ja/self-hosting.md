@@ -635,6 +635,33 @@ job の id と見分けがつきません。「権限がない」と返せば、
 埋めるために合成のユーザーを作れば、`/api/orgs` が開示する名簿にパイプラインが並んでしまいます。有無を問う
 呼び出しも publish と並べて監査します。ビルドがすでにあると判明して終えたパイプラインも、記録を残します。
 
+**監査エントリはジョブも名指しします。** 1つのリポジトリは多くのジョブを動かすので、リポジトリだけでは
+再実行と元の実行を区別できません。交換はトークンにあるジョブの claim をセッションに保存し、そのセッションが
+書くすべてのエントリは、detail の `actor` の下にジョブの記録を持ちます。交換そのものも、同じ記録を持つ
+`oidc.exchange` のエントリを書きます。この1回の書き込みが失敗しても、交換はセッションを返し、失敗を
+`oidc.audit_failed` として ERROR で記録します。トークンはすでに使用済みで、500 を返すとジョブが再試行できなく
+なるからです。
+
+```json
+{
+  "repository": "acme/app",
+  "actor": {
+    "runId": "123",
+    "runAttempt": "1",
+    "checkRunId": "456",
+    "ref": "refs/heads/main",
+    "workflowRef": "acme/app/.github/workflows/e2e.yml@refs/heads/main",
+    "sha": "…",
+    "triggeredBy": "octocat"
+  }
+}
+```
+
+`runId` と `checkRunId` の組で1つのジョブが決まり、`runAttempt` で再実行と元の実行を区別します。github.com
+では、ジョブのページは `https://github.com/<repository>/actions/runs/<runId>/job/<checkRunId>` です。
+GitHub Enterprise Server では、同じパスを自身のホストで提供します。トークンにはホストが含まれないので、`serve` は
+リンクを保存せず、リンクを組み立てる id を個別に保存します。トークンにない claim は、null として書かずに記録から省きます。
+
 **マシンセッションを終わらせる。** GitHub が発行したトークンは、何をしても期限まで生き続けます。マシン
 セッションは `serve` 自身が発行したものなので、`serve` から失効させられます。
 

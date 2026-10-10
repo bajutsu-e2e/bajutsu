@@ -23,6 +23,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from bajutsu.serve import oplog
+from bajutsu.serve.authz import _record_audit
 from bajutsu.serve.oidc import JwksCache, OidcError, verify
 from bajutsu.serve.orgs import orgs_from_db
 from bajutsu.serve.sessions import MACHINE, machine_identity
@@ -116,14 +117,41 @@ def oidc_exchange(state: ServeState, token: str, org: str) -> tuple[Any, int, st
     # non-None at all for the session to be revocable: `revoke_identities` works by identity, and
     # never touches a session carrying none.
     identity = machine_identity(workload.repository)
-    sid = state.auth.issue_session(identity, expires_at=expires_at, org=org, kind=MACHINE)
+    ci_job = workload.ci_job()
+    sid = state.auth.issue_session(
+        identity, expires_at=expires_at, org=org, kind=MACHINE, ci_job=ci_job
+    )
     oplog.log_event(
         _logger,
         "oidc.exchange",
         f"minted a machine session for {identity} as {org}",
         repository=workload.repository,
         org=org,
+        ci_job=ci_job,
     )
+    # Audited as well as logged: each later entry this session writes names the same job, and this
+    # entry ties them back to the moment the session began. The target is folded like those
+    # entries' own `repository` key, so one repository's history is not split by the casing of the
+    # claim it happened to present.
+    #
+    # A failed write is logged and swallowed, unlike every other audit call, because this one runs
+    # after `spend_oidc_jti`: a 500 here would burn the pipeline's one-shot token (resending it is
+    # refused as a replay) for an entry no later entry depends on.
+    try:
+        _record_audit(
+            state, identity, org, "oidc.exchange", workload.repository.lower(), {}, ci_job=ci_job
+        )
+    except Exception as e:
+        oplog.log_event(
+            _logger,
+            "oidc.audit_failed",
+            f"could not audit the exchange for {identity} as {org}; the session was still minted",
+            level=logging.ERROR,
+            error=f"{type(e).__name__}: {e}",
+            repository=workload.repository,
+            org=org,
+            ci_job=ci_job,
+        )
     return {"ok": True, "org": org, "repository": workload.repository}, 200, sid
 
 

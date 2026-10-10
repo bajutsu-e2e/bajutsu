@@ -42,9 +42,10 @@ class InMemorySessionStore:
         expires_at: datetime | None = None,
         org: str | None = None,
         kind: PrincipalKind = HUMAN,
+        ci_job: dict[str, str] | None = None,
     ) -> str:
         sid = secrets.token_urlsafe(32)
-        entry = _Entry(Principal(identity=identity, org=org, kind=kind), expires_at)
+        entry = _Entry(Principal(identity=identity, org=org, kind=kind, ci_job=ci_job), expires_at)
         with self._lock:
             self._sessions[sid] = entry
         return sid
