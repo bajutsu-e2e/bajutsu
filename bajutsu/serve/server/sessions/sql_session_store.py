@@ -46,6 +46,7 @@ class SqlSessionStore:
         expires_at: datetime | None = None,
         org: str | None = None,
         kind: PrincipalKind = HUMAN,
+        ci_job: dict[str, str] | None = None,
     ) -> str:
         from sqlalchemy.orm import Session
 
@@ -59,7 +60,9 @@ class SqlSessionStore:
         expires = store_expiry if expires_at is None else min(expires_at, store_expiry)
         with Session(self._engine) as session:
             session.add(
-                SessionRecord(id=sid, identity=identity, expires_at=expires, org=org, kind=kind)
+                SessionRecord(
+                    id=sid, identity=identity, expires_at=expires, org=org, kind=kind, ci_job=ci_job
+                )
             )
             session.commit()
         return sid
@@ -75,7 +78,7 @@ class SqlSessionStore:
         row = self._live(sid)
         if row is None:
             return None
-        return Principal.from_stored(row.identity, row.org, row.kind)
+        return Principal.from_stored(row.identity, row.org, row.kind, row.ci_job)
 
     def _live(self, sid: str) -> SessionRecord | None:
         """The row *sid* names while it is still live. Expiry is enforced on read; nothing sweeps

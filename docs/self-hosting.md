@@ -662,6 +662,34 @@ entry's detail payload. A synthetic user filling that column would join the rost
 discloses. `serve` audits the probe beside the uploads, so a pipeline that finds its build already
 stored still leaves a trace.
 
+**An audit entry names the job, too.** One repository runs many jobs, so the repository alone cannot
+tell a rerun from the run it retried. The exchange keeps the job's claims from the token on the
+session, and every entry that session writes carries them under `actor` in the detail payload. The
+exchange itself writes an `oidc.exchange` entry with the same record. If that one write fails, the
+exchange still returns the session and logs the failure at ERROR as `oidc.audit_failed`, because the
+token is already spent and a 500 would leave the job unable to retry.
+
+```json
+{
+  "repository": "acme/app",
+  "actor": {
+    "runId": "123",
+    "runAttempt": "1",
+    "checkRunId": "456",
+    "ref": "refs/heads/main",
+    "workflowRef": "acme/app/.github/workflows/e2e.yml@refs/heads/main",
+    "sha": "…",
+    "triggeredBy": "octocat"
+  }
+}
+```
+
+`runId` and `checkRunId` together name one job, and `runAttempt` tells a rerun from the run it
+retried. On github.com the job's page is
+`https://github.com/<repository>/actions/runs/<runId>/job/<checkRunId>`; a GitHub Enterprise Server
+serves the same path on its own host. `serve` stores the parts rather than that link, because the host
+is not in the token. A claim the token lacks is left out of the record rather than written as null.
+
 **Ending a machine session.** A GitHub-issued token runs until it expires, whatever you do. A
 machine session is one `serve` minted, and `serve` can revoke it:
 

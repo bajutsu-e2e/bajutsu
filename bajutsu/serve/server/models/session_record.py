@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import DateTime
 
+from ._shared import _JSON
 from .base import Base
 
 
@@ -24,3 +26,6 @@ class SessionRecord(Base):
     # none of — NULL for a human session, whose org comes from that row.
     org: Mapped[str | None] = mapped_column(default=None)
     kind: Mapped[str | None] = mapped_column(default=None)
+    # The CI job a machine session was minted for, which the audit trail records in place of a
+    # user. NULL for a human session and for a machine row predating the column.
+    ci_job: Mapped[dict[str, Any] | None] = mapped_column(_JSON, default=None)

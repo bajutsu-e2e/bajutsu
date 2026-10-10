@@ -98,15 +98,18 @@ class _FastapiCtx:
         self,
         request: Request,
         body: dict[str, Any],
+        *,
         actor: Callable[[], str | None],
         session: Callable[[], str | None],
         machine_org: Callable[[], str | None],
+        ci_job: Callable[[], dict[str, str] | None],
     ) -> None:
         self._request = request
         self._body = body
         self._actor = actor
         self._session = session
         self._machine_org = machine_org
+        self._ci_job = ci_job
 
     def path_param(self, name: str) -> str:
         return str(self._request.path_params[name])
@@ -125,6 +128,9 @@ class _FastapiCtx:
 
     def machine_org(self) -> str | None:
         return self._machine_org()
+
+    def ci_job(self) -> dict[str, str] | None:
+        return self._ci_job()
 
 
 def _serve_artifact(art: Any, request: Request, *, filename: str | None = None) -> Response:
@@ -184,6 +190,12 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
         """
         org = getattr(request.state, "machine_org", None)
         return org if isinstance(org, str) else None
+
+    def _ci_job(request: Request) -> dict[str, str] | None:
+        """The CI job a machine principal's session was minted for, stashed by `_security_gate`
+        beside `machine_org` from the same principal read."""
+        job = getattr(request.state, "ci_job", None)
+        return job if isinstance(job, dict) else None
 
     def _session(request: Request) -> str | None:
         """This request's login-session id, or None for a shared-token caller (BE-0393 unit 2) — the
@@ -250,6 +262,7 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
                 request.state.gate_actor = principal.identity
             if is_machine and principal is not None:
                 request.state.machine_org = principal.org
+                request.state.ci_job = principal.ci_job
             # Enforce the user's role on mutating endpoints for an OAuth session (an identity)
             # when a database is wired (BE-0015 7c-2); token/Bearer has no identity and stays
             # full-access. A machine principal never reaches that gate — the allowlist above is
@@ -517,6 +530,7 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
                     sha256=received.digest(),
                     actor=_actor(request),
                     machine_org=_machine_org(request),
+                    ci_job=_ci_job(request),
                 )
             )
         finally:
@@ -591,9 +605,10 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
             ctx = _FastapiCtx(
                 request,
                 body,
-                lambda: _actor(request),
-                lambda: _session(request),
-                lambda: _machine_org(request),
+                actor=lambda: _actor(request),
+                session=lambda: _session(request),
+                machine_org=lambda: _machine_org(request),
+                ci_job=lambda: _ci_job(request),
             )
             # The `ops` call blocks (disk / network / subprocess), so run it off the event loop —
             # uniformly, so a route like the from-Git config bind or compose stays non-blocking

@@ -370,6 +370,7 @@ def start_run(  # noqa: C901, PLR0911
     actor: str | None = None,
     session: str | None = None,
     machine_org: str | None = None,
+    ci_job: dict[str, str] | None = None,
 ) -> tuple[Any, int]:
     binding = state.binding_for(session, state.org_for(actor, machine_org))
     cfg = binding.config
@@ -516,7 +517,13 @@ def start_run(  # noqa: C901, PLR0911
         return capped
     assert job is not None
     _record_audit(
-        state, actor, org, "run", f"{target}/{body['scenario']}", {"backend": backend or None}
+        state,
+        actor,
+        org,
+        "run",
+        f"{target}/{body['scenario']}",
+        {"backend": backend or None},
+        ci_job=ci_job,
     )
     return {"jobId": job.id}, 200
 

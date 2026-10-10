@@ -303,6 +303,7 @@ def bind_artifact(
     sha256: str,
     actor: str | None = None,
     machine_org: str | None = None,
+    ci_job: dict[str, str] | None = None,
 ) -> tuple[Any, int]:
     """Store one independently-uploaded artifact (BE-0268): persist it to the object store when one
     is configured (mirrors `bind_upload_config`'s own store write) and cache it locally
@@ -325,7 +326,7 @@ def bind_artifact(
         materialize_artifact(src_path, _artifacts_dir(state), org, kind, sha256)
     except OSError as e:
         return {"error": f"could not cache the {kind} artifact: {e}"}, 400
-    _record_audit(state, actor, org, f"artifact:{kind}", sha256, {"sha256": sha256})
+    _record_audit(state, actor, org, f"artifact:{kind}", sha256, {"sha256": sha256}, ci_job=ci_job)
     return {"ok": True, "kind": kind, "sha256": sha256, "size": size}, 200
 
 
@@ -369,6 +370,7 @@ def artifact_exists(
     *,
     actor: str | None = None,
     machine_org: str | None = None,
+    ci_job: dict[str, str] | None = None,
 ) -> tuple[Any, int]:
     """Whether a *kind*/*sha256* artifact is already stored for this actor's org (BE-0268) — lets a
     client skip re-uploading bytes it already sent, whether or not an object store is configured.
@@ -386,7 +388,15 @@ def artifact_exists(
     # the first call in its sequence, so without this the audit trail for a CI run starts at the
     # upload and never shows the job that probed, found the build already stored, and skipped it
     # (BE-0414 unit 3).
-    _record_audit(state, actor, org, f"artifact:{kind}:exists", str(sha256), {"exists": exists})
+    _record_audit(
+        state,
+        actor,
+        org,
+        f"artifact:{kind}:exists",
+        str(sha256),
+        {"exists": exists},
+        ci_job=ci_job,
+    )
     return {"exists": exists}, 200
 
 
