@@ -47,7 +47,7 @@ runner のメインスレッドが 1 本であることが、問い合わせの�
 プロセスの境界は、1 つの判断を 2 つの言語に分けてもいます。SpringBoard のボタンは runner が渡された
 方針で押し、アプリ側のボタンは Python が同じ方針を解決し直してタップします。
 
-ウォッチャーを runner へ移せば、この分裂はなくなります。runner は時計、直列の操作キュー、両方のアラート面を
+ウォッチャーを runner へ移せば、この分裂はなくなります。runner は時計、直列の操作キュー、SpringBoard とアプリの両方のアラートを
 持っているので、1 回の走査で、あらゆる種類のプロンプトに 1 つの方針で答えられます。オーケストレータは
 アラートの問い合わせをやめ、すでに読んでいる地点で runner の記録を読みます。シナリオの書き方は変わらず、
 新しい言語モデル呼び出しが実行に入ることもありません（主要原則 1）。
@@ -74,8 +74,10 @@ runner 内で走査するコストは未知です。SpringBoard への問い合�
 は、単独なら安価です。`app.alerts` に入らないアプリ側アラートの走査にはアプリツリーのスナップショット
 が要り、はるかに重くなります。使い捨ての runner ビルドが、既定の 1 秒間隔で両方を走査しながら、
 上の 4 つの iOS バージョンでショーケースのスイートを走らせます。step の所要時間を基準と比べ、runner の
-クラッシュを数えます。Unit 2 から 8 への関門は、step の所要時間が実行ごとのばらつきを超えて変わらない
-ことと、クラッシュがゼロであることです。SpringBoard が通ってアプリ側の走査が通らなければ、Unit 5 を
+クラッシュを数えます。Unit 2 から 8 への関門は次のとおりです。iOS バージョンごとに、同じホストで、基準の runner で
+ショーケースのスイートを 10 回、走査つきで 10 回走らせます。走査つきの step 所要時間の中央値が
+基準の中央値の 5 % 以内、95 パーセンタイルが 10 % 以内で、runner をクラッシュさせる実行がなければ、
+走査は通ります。この閾値はレビュー用の初期値で、実測値とともに本項目に記録します。SpringBoard が通ってアプリ側の走査が通らなければ、Unit 5 を
 外して SpringBoard 側に絞ります。SpringBoard の走査が通らなければ、本項目は Rejected にします。絞った場合、薄いゲートはアプリ側のアラートに対して `_dismiss_from_tree` を呼び続けるので、「パスワードを保存」シートは引き続き扱われます。この呼び出しの許可は Unit 3 で述べます。
 この調査では、待機自身の `/elements` 通信のあいだに、監視がすでにアラートへ答えているかどうかも記録
 します。その答えで、`/elements` の通信中にも走査が要るかどうかが決まるからです。プロダクトコードは足しません。
@@ -106,10 +108,13 @@ runner 内で走査するコストは未知です。SpringBoard への問い合�
 - **予約**：`handleSystemAlert` step は自分でアラートをタップします。そのためウォッチャーは、そのアラート
   だけは触らず、ほかのアラートには答え続けなければなりません。現在のゲートが `reserved=sel`
   （`waits/_functions.py`）で行っているのと同じです。オーケストレータは step の前に、別のエンドポイント
-  `POST /alertWatcher/reservation` で step のセレクタを push します。step のあとには、空の本体で予約を
-  解きます。このエンドポイントは記録の保管先も push 済みの方針も変えません。`POST /interruptionPolicy`
-  は `setPolicy` が保留中の記録を消すからです。プロンプト形式の step の冒頭で `_reserve_declared_alert`
-  が行うような `POST /interruptionPolicy` の push は、予約に触れません。ウォッチャーは、セレクタが
+  `POST /alertWatcher/reservation` で step のセレクタを push します。オーケストレータは、今方針を戻している
+  `finally`（`loop/_step_runner.py`）と同じ場所で、空の本体で予約を解きます。そのため、失敗した
+  step、例外を出した step、タイムアウトした step も、予約を残しません。このエンドポイントは記録の保管先も push 済みの方針も変えません。`POST /interruptionPolicy`
+  は `setPolicy` が保留中の記録を消すからです。シナリオを始める方針の push は、新しい方針世代を運びます。
+  新しい世代の push は、以前の世代から残った予約を解くので、常駐する runner が古いセレクタを次の
+  シナリオへ持ち込むことはありません。同じ世代の中の push は、予約に触れません。プロンプト形式の
+  step の冒頭で `_reserve_declared_alert` が行う push が、その例です。ウォッチャーは、セレクタが
   ボタンの 1 つを名指しするアラートを飛ばします。Swift は、現在 `selector_names_button` が使う
   `base.matches` の部分集合を移します。対象は `label`、`labelMatches`、`value`、`traits` です。`id`
   は現在と同じく何も予約しません。これは `probe_native` の `reserved` 引数をウォッチャーへ引き継ぎます。
@@ -119,8 +124,11 @@ runner 内で走査するコストは未知です。SpringBoard への問い合�
 からです。移植を Python に揃えておくために、2 つの歯止めを置きます。
 
 - 両方のテストスイートが走らせる、セレクタとボタン一覧の共有フィクスチャ。
-- シナリオの読み込み時の検査。Python の `re` と Foundation の `NSRegularExpression` で読みが違う
-  `labelMatches` のパターンを拒否します。判定できないときも拒否します。
+- Python の `re` と Foundation の `NSRegularExpression` で読みが違う `labelMatches` のパターンを
+  拒否する検査。この検査は、`ALERT_WATCHER` バックエンドで `handleSystemAlert` step が予約する
+  セレクタに適用します。シナリオ読み込み時のすべての `labelMatches` には適用しません。ほかの
+  バックエンドはすべて Python の `re` で `labelMatches` を読み、そこで通るシナリオは読み込めなければ
+  ならないからです。判定できないときは拒否し、step は名前つきで失敗します。
 
 BE-0399 の監視は残します。2 回の走査のあいだに操作へ割り込んだアラートには、同じ方針で引き続き答え、
 ウォッチャーと監視は記録の保管先を共有します。
@@ -132,8 +140,10 @@ BE-0399 の監視は残します。2 回の走査のあいだに操作へ割り�
 `_AlertGuardGate` と並ぶ薄いゲートを組み立てます。runner は保留中の記録を `/elements` の応答ごとに畳み込み、スナップショットと不可分に drain
 します。これは `/tap` の先例にならったもので、`/tap` の応答はすでに drain したラベルを運んでいます
 （BE-0407 Unit 6）。XCUITest ドライバは、畳み込まれた記録を、`/tap` の drain 結果を
-すでに保持している持ち越し（`_drain_carry`）に加えます。`drain_interruptions()` は今の規則を保ちます。
-持ち越しが最新ならそれだけを返し、そうでなければ `POST /interruptionPolicy/drain` の結果と合わせて返します。`POST /interruptionPolicy/drain` は、一回きりの地点（step 終了時と
+すでに保持している持ち越し（`_drain_carry`）に加えます。`ALERT_WATCHER` を宣言するバックエンドでは、`drain_interruptions()` は今の持ち越しだけの近道をやめます。
+ウォッチャーは自分の時計で記録するので、直前の呼び出しが畳み込んだタップだったというだけでは、
+持ち越しはもう完全ではありません。drain のたびに `POST /interruptionPolicy/drain` へ問い合わせ、その
+応答を持ち越しと合わせて返します。`POST /interruptionPolicy/drain` は、一回きりの地点（step 終了時と
 シナリオ終了時）と、Unit 4 の失敗時の drain のために残ります。`POST /interruptionPolicy` の push も
 保留中の記録を drain して応答に畳み込み、ドライバはこれを `/elements` の畳み込みと同じく
 `_drain_carry` に加えます。現在の `_reserve_declared_alert` は、プロンプト形式の step の前後で、
@@ -141,24 +151,41 @@ drain と push を 2 回の要求に分けて送ります。そのあいだに�
 unidentified のアラートを記録しても、`setPolicy` が読まれないまま消してしまいます。push の中で
 drain すれば、この隙間はなくなります。
 
-薄いゲートは、ポーリングのたびに、そのポーリングの `/elements` 応答に畳み込まれた記録を読みます。
-読み取りに余分な往復は要りません。記録は消費せず、報告用の event も出しません。読んだ記録は 2 つの用途に
+`bajutsu/common/drivers/base/` に、`InterruptionPolicyTarget` と並ぶ狭いドライバプロトコル
+`AlertWatcherTarget` を置きます。`peek_interruptions()` は、前回の drain 以降に畳み込まれた記録を、
+消費せずに返します。`system_alert_showing()` は、直近の `/elements` 応答にある SpringBoard 存在ビットを
+返します。`ALERT_WATCHER` トークンは、これを実装するバックエンドの印です。そのため薄いゲートは、
+`XcuitestDriver` や `_drain_carry` に踏み込みません。
+
+薄いゲートは、ポーリングのたびに、そのポーリングの `/elements` 応答に畳み込まれた記録を `peek_interruptions()` で読みます。
+読み取りに余分な往復は要りません。この呼び出しは記録を消費せず、ゲートは報告用の event も出しません。読んだ記録は 2 つの用途に
 使います。1 つは、unidentified と辞退の記録から作る、塞がれた画面の注記です。もう 1 つは、Unit 4 の
 step 単位の応答済みアラートのリストです。
 `probe_native` は呼ばず、タップもせず、画面についてのラッチも持ちません。例外は Unit 1 で絞った場合で、そのときは `_dismiss_from_tree` を呼び続けます。
 その場合、runner は `/elements` の応答にもう 1 つの事実を畳み込みます。直近の走査で SpringBoard の
 アラートか予約中のアラートが見つかったかどうかです。薄いゲートが `_dismiss_from_tree` を呼ぶのは、
-このビットが立っていないときだけで、`poll_interval` ごとに最大 1 回です。これが今の `probed_absent`
-による許可の置き換えです。
+`system_alert_showing()` が偽のときだけで、`poll_interval` ごとに最大 1 回です。これが今の
+`probed_absent` による許可の置き換えです。ビットはポーリング単位の関門のままです。
+ビットは 1 間隔ぶん古いことがあるので、ツリー内のタップは runner にも再確認を求めます。ツリー内の
+消去の `/tap` 要求は `requireNoSystemAlert` を運び、runner はタップの直前に `operations` キューで
+`springboard.alerts` を問い合わせます。アラートが出ていれば、`system-alert-showing` でタップを
+拒否します。そのため、監視や XCUITest の既定のハンドラが先に SpringBoard のアラートに答えてしまう
+タップは、一度も通りません。
 
 記録の持ち主は 1 つです。step 終了時の drain（`bajutsu/common/orchestrator/loop/_step_runner.py` の
 `_drain_step_interruptions`）が、記録を step の `AlertEvent` に変える唯一の場所であり続けます。
-unidentified や辞退の記録で step を失敗させるのも、今と同じくこの drain です。この規則がないと、
+unidentified や辞退の記録で step を失敗させるのも、今と同じくこの drain です。この drain は、step の最後のドライバ呼び出しのあとに走ります。step 後の
+証拠の読み取りも含みます（現在は `loop/_step_runner.py` の `_drain_step_interruptions` が、遅延実行される
+step 後の証拠の読み取りより前に走ります）。そのため、あとの `/elements` 応答が畳み込んだ記録が、次の
+step のレポートに紛れ込むことはありません。この規則がないと、
 ウォッチャーの応答がレポートに 2 回、ゲートから 1 回と drain から 1 回、載ってしまいます。
 
 capability があるとき、step runner は step 終了時にもシナリオ終了時にも `AlertGuardConfig.__call__`
 を呼びません。`__call__` が今行う drain と step 全体のリトライは、Unit 4 の失敗時の drain と step ごと
 1 回のリトライが置き換え、`__call__` の戻り値 `cleared` がリトライを左右することもなくなります。
+`expect` の経路は、現在 `__call__` の前に独自に interruption を drain します（`loop/_functions.py`）。
+この経路も同じ規則に従います。capability があるとき `__call__` は呼ばず、drain が返した記録は結果に
+畳み込み、Unit 4 の 1 回のリトライの合図に使います。
 step 終了時の drain は、引き続き唯一の報告者で、unidentified や辞退の記録があれば step を失敗させます。
 絞った場合、`dismiss_from_tree_once` は、同じ SpringBoard 存在ビットのもとで step 終了時に走り続けます。
 それ以外の一回きりの読み取りは drain のエンドポイントを使います。capability を持たないバックエンド（adb、Playwright、および
@@ -206,9 +233,9 @@ Unit 1 は観測した最長の待ち時間を記録します。
 ウォッチャーは、識別ラベルがそれぞれアプリのスナップショットのボタンにちょうど 1 回ずつ現れ、
 除外ラベルが 1 つもないルールを照合し、名指しされたボタンをタップします。
 アプリ側のアラートをタップするのは、予約中のものも含めて SpringBoard のアラートが見つからなかった走査に
-限ります。現在の `probed_absent` による許可と同じ順序です。SpringBoard のアラートが出たまま XCUITest が
+限ります。ウォッチャーは、同じ走査の中で、タップの直前に SpringBoard を確かめます。現在の `probed_absent` による許可と同じ順序です。SpringBoard のアラートが出たまま XCUITest が
 タップすると、監視がそのアラートに先に答えてしまうからです。
-`push_interruption_policy` が除外の組を拒む制約は、ツリー内ルールに限って外します。
+`push_interruption_policy` の拒否は、ネイティブで届くルールについては残します。除外の組を持つそのようなルールは、除外を捨てたまま監視の部分一致に届くのではなく、はっきり失敗しなければなりません。ツリー内ルールは push の前に捨てられていたのでこの拒否に届いたことがなく、これからは `exclude` リストを持って送られます。
 
 `_dismiss_from_tree` が今持っているペース配分は、タップと一緒に移ります。ただし数値は動きません。
 再タップの遅延、1 回の表示あたりのタップ回数の上限、タップ不能時の見切りの上限は、
@@ -239,12 +266,13 @@ capability を持たないバックエンドのために残ります。絞った
 - **Swift**：`BajutsuKit/Tests/BajutsuRunnerTests/` の `FakeElementProvider` で、ウォッチャーの間隔、
   処理中の見送り、予約の照合（共有フィクスチャを使います）、除外と広い順の照合、「ちょうど 1 回」の
   照合、1 回の表示につき 1 件の unidentified 記録、`/elements` 応答に畳み込まれた記録、その応答の SpringBoard 存在ビット、
-  `/interruptionPolicy` 応答に畳み込まれた記録、見切りの上限を、
+  `/tap` の `requireNoSystemAlert` による再確認、`/interruptionPolicy` 応答に畳み込まれた記録、見切りの上限を、
   Simulator なしで動かします。
 - **Python**：fake アクチュエータが capability を実装します。試験するのは次の 7 つです。
-  - 記録の持ち主が 1 つであること。薄いゲートは畳み込み記録を読むだけで報告せず、step 終了時の drain が各記録を 1 回だけ報告すること。
+  - 記録の持ち主が 1 つであること。薄いゲートは `peek_interruptions()` で畳み込み記録を読むだけで報告せず、step 終了時の drain が各記録を
+    1 回だけ報告し、その drain が step 後の証拠の読み取りのあとに走ること。
   - unidentified の記録で step を名前つきで失敗させること。
-  - `handleSystemAlert` の前後で予約を push して解くことと、読み込み時の `labelMatches` の検査。
+  - `handleSystemAlert` の前後で予約を push して解くことと、範囲を絞った `labelMatches` の検査。
   - step 単位の event リストをもとに、配信前の失敗のあとで step ごとに 1 回だけリトライすること。
     結果が不明な書き込みのあとには走りません。
   - *gave up* 記録から `uncleared_prompt_note` の文面を組み、step 終了時の drain の結果でその `AlertEvent` を取り下げること。

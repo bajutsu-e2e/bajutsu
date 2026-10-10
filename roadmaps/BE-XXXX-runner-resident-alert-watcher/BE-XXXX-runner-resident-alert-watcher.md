@@ -71,8 +71,12 @@ The cost of an in-runner sweep is unknown. A SpringBoard query (`springboard.ale
 is cheap in isolation. An application-side sweep for an alert that is not in `app.alerts` needs a
 snapshot of the application tree, which is far heavier. A throwaway runner build sweeps both at the
 default one-second interval while the showcase suite runs on the four iOS versions above. It
-measures step duration against the baseline and counts runner crashes. The gate for Units 2 to 8 is
-no step-duration change beyond run-to-run noise and zero crashes. If SpringBoard passes and the
+measures step duration against the baseline and counts runner crashes. The gate for Units 2 to 8 follows.
+Per iOS version, the spike runs the showcase suite ten times on the baseline runner and ten times
+with the sweep, on the same host. The sweep passes when its median step duration is within 5 % of
+the baseline median, its 95th-percentile step duration is within 10 %, and no run crashes the
+runner. The thresholds are starting values for review, recorded with the measured numbers in this
+item. If SpringBoard passes and the
 application sweep fails, Unit 5 is dropped and this item narrows to the SpringBoard half; if the
 SpringBoard sweep fails, the item is Rejected. In that narrowed form the thin gate keeps calling
 `_dismiss_from_tree` for application-owned alerts, so the "Save Password" sheet stays handled. Unit 3 states the licence for that call. The spike also records whether the monitor already
@@ -106,11 +110,15 @@ says otherwise, so a scenario that disables the guard never inherits a running w
 - **Reservation.** A `handleSystemAlert` step taps its own alert, so the watcher must leave that one
   alert alone and keep answering every other alert, as today's gate does with `reserved=sel`
   (`waits/_functions.py`). The orchestrator pushes the step's selector before the step through a
-  separate endpoint, `POST /alertWatcher/reservation`. It clears the reservation after the step with
-  an empty body. The endpoint leaves the record store and the pushed policy untouched, because
-  `POST /interruptionPolicy` clears pending records in `setPolicy`. A `POST /interruptionPolicy`
-  push, such as the one `_reserve_declared_alert` makes at the start of a prompt-form step, leaves
-  the reservation alone. The watcher skips an alert one of whose buttons the selector names. Swift
+  separate endpoint, `POST /alertWatcher/reservation`. The orchestrator clears the reservation with
+  an empty body in the same `finally` that restores the policy today (`loop/_step_runner.py`), so a
+  step that fails, raises, or times out leaves no reservation behind. The endpoint leaves the record
+  store and the pushed policy untouched, because `POST /interruptionPolicy` clears pending records
+  in `setPolicy`. The policy push that starts a scenario carries a new policy generation. A push
+  with a new generation clears any reservation left from an earlier generation, so a resident
+  runner never carries a stale selector into the next scenario. A push within the same generation,
+  such as the one `_reserve_declared_alert` makes at the start of a prompt-form step, leaves the
+  reservation alone. The watcher skips an alert one of whose buttons the selector names. Swift
   ports the subset of `base.matches` that `selector_names_button` uses today: `label`,
   `labelMatches`, `value`, and `traits`. An `id` reserves nothing, as today. This carries the
   `reserved` argument of `probe_native` over to the watcher.
@@ -120,8 +128,11 @@ The reservation accepts that cost because suspending the watcher would leave a s
 unanswered. Two guards hold the port to Python:
 
 - a shared fixture of selectors and button lists that both test suites run;
-- a check at scenario load that rejects a `labelMatches` pattern Python's `re` and Foundation's
-  `NSRegularExpression` read differently. When the check cannot decide, it rejects.
+- a check that rejects a `labelMatches` pattern Python's `re` and Foundation's
+  `NSRegularExpression` read differently. The check applies to the selector a `handleSystemAlert`
+  step reserves on an `ALERT_WATCHER` backend, not to every `labelMatches` at scenario load, because
+  every other backend reads `labelMatches` with Python's `re` and a scenario that runs green there
+  must keep loading. When the check cannot decide, it rejects, and the step fails by name.
 
 The monitor from BE-0399 stays. It still answers an alert that interrupts an interaction between two
 sweeps, under the same policy, and the watcher and the monitor share one record store.
@@ -133,8 +144,10 @@ advertises it, `bajutsu/common/orchestrator/waits/` builds a thin gate beside `_
 instead of the full one. The runner folds the pending records into each `/elements` reply, draining them
 atomically with the snapshot, following the precedent of `/tap`, whose reply already carries the
 drained labels (BE-0407 Unit 6). The XCUITest driver adds the folded records to the carry that already holds `/tap`'s drained
-labels (`_drain_carry`). `drain_interruptions()` keeps today's rule: it returns the carry alone
-when the carry is current, and merges it with `POST /interruptionPolicy/drain` otherwise. `POST /interruptionPolicy/drain` remains for
+labels (`_drain_carry`). On a backend advertising `ALERT_WATCHER`, `drain_interruptions()` retires today's carry-only
+fast path. The watcher records on its own clock, so a carry is no longer complete merely because the
+last call was the tap that folded it. Every drain asks `POST /interruptionPolicy/drain` and merges
+the reply with the carry. `POST /interruptionPolicy/drain` remains for
 the one-shot points (end of step, end of scenario) and Unit 4's failure-time drain. A
 `POST /interruptionPolicy` push also drains the pending records and folds them into its reply, and
 the driver adds them to `_drain_carry` like an `/elements` fold. Today `_reserve_declared_alert`
@@ -142,24 +155,44 @@ drains and then pushes in two requests, both before and after a prompt-form step
 that lands between them would record an answer, or an unidentified alert, that `setPolicy` then
 wipes unread. Draining inside the push closes that window.
 
-On each poll the thin gate reads the records folded into that poll's `/elements` reply, so reading
-costs no extra round trip. It reads them without consuming them and emits no report events. It uses
+A narrow driver protocol, `AlertWatcherTarget` in `bajutsu/common/drivers/base/`, joins
+`InterruptionPolicyTarget`. Its `peek_interruptions()` returns the records folded since the last
+drain without consuming them, and its `system_alert_showing()` returns the SpringBoard-present bit
+from the latest `/elements` reply. The `ALERT_WATCHER` token marks a backend that implements it, so
+the thin gate never reaches into `XcuitestDriver` or `_drain_carry`.
+
+On each poll the thin gate reads the records folded into that poll's `/elements` reply through
+`peek_interruptions()`, so reading costs no extra round trip. That call does not consume them, and
+the gate emits no report events. It uses
 them for two things. One is the blocked-screen note, built from unidentified and declined records.
 The other is Unit 4's step-scoped list of answered alerts. It never calls `probe_native`, never taps, and keeps no latch about the screen. The one exception is the narrowed form from Unit 1, where it keeps
 calling `_dismiss_from_tree`. There the runner folds one more fact into the `/elements` reply:
 whether its last sweep found a SpringBoard alert or a reserved alert. The thin gate calls
-`_dismiss_from_tree` only when that bit is clear, and at most once per `poll_interval`. This
-replaces today's `probed_absent` licence.
+`_dismiss_from_tree` only when `system_alert_showing()` is false, and at most once per
+`poll_interval`. This replaces today's `probed_absent` licence. The bit remains the poll-level gate.
+The bit can be one interval old, so the in-tree tap also asks the runner to re-check. The `/tap`
+request for an in-tree dismissal carries `requireNoSystemAlert`, and the runner queries
+`springboard.alerts` on the `operations` queue immediately before the tap. It refuses the tap with
+`system-alert-showing` when an alert is up, so no tap ever lets the monitor or XCUITest's default
+handler answer a SpringBoard alert first.
 
 Each record has one owner. The end-of-step drain (`_drain_step_interruptions` in
 `bajutsu/common/orchestrator/loop/_step_runner.py`) stays the one place that turns records into the
 step's `AlertEvent`s. It also fails the step on an unidentified or declined record, as it does today.
+The drain runs after the step's last driver call, post-step evidence reads included (today
+`_drain_step_interruptions` runs before the lazy post-step evidence reads in
+`loop/_step_runner.py`), so a record folded by a later `/elements` reply cannot slip into the next
+step's report.
 Without this rule, each watcher answer would appear twice in the report, once from the gate and once
 from the drain.
 
 Under the capability, the step runner does not call `AlertGuardConfig.__call__` at the end of a
 step or scenario. Unit 4's failure-time drain and once-per-step retry replace the drain and the
 whole-step retry that `__call__` performs today, and its `cleared` return no longer gates a retry.
+The `expect` path, which drains interruptions before its own `__call__` today
+(`loop/_functions.py`), follows the same rule: under the capability it does not call `__call__`, and
+the records its drain returns are folded into the outcome and serve as the signal for Unit 4's one
+retry.
 The end-of-step drain stays the sole reporter and fails the step on unidentified or declined
 records. In the narrowed form, `dismiss_from_tree_once` keeps running at the end of a step under the
 same SpringBoard-present bit. The remaining one-shot reads use the drain endpoint. A backend without the
@@ -212,9 +245,12 @@ the rules in `AlertGuardConfig.tree_dedup_rules` order, so a nested shape's wide
 first. The watcher matches a rule when every identifying label is on the application snapshot's
 buttons exactly once and no excluded label is present, then taps the named button.
 It taps an application-owned alert only on a sweep that found no SpringBoard alert, the reserved one
-included. That keeps the order today's `probed_absent` licence enforces: an XCUITest tap made while
+included. The watcher checks SpringBoard in the same sweep, immediately before the tap. That keeps the order today's `probed_absent` licence enforces: an XCUITest tap made while
 a SpringBoard alert is up would let the monitor answer that alert first.
-`push_interruption_policy`'s refusal of exclusion sets is lifted for in-tree rules alone.
+The refusal in `push_interruption_policy` stays for a native-reachable rule: one carrying an
+exclusion set must still fail loudly rather than reach the monitor's subset match with the
+exclusion discarded. In-tree rules never reached that refusal, because the push dropped them first,
+and now travel with their `exclude` list instead.
 
 The pacing that `_dismiss_from_tree` carries today moves with the tap. Its numbers do not move: the
 re-tap delay, the per-showing tap ceiling, and the not-tappable give-up bound move from
@@ -245,14 +281,16 @@ backends without the capability. In the narrowed form Unit 6 deletes the native 
 - **Swift.** `FakeElementProvider` in `BajutsuKit/Tests/BajutsuRunnerTests/` drives the watcher's
   interval, skip-when-busy, and give-up bound. It also drives reservation matching against the
   shared fixture, exclusion and widest-first matching, exactly-once matching, the once-per-showing
-  unidentified record, and the records folded into the `/elements` reply, the SpringBoard-present bit in that reply, and
-  the records folded into the `/interruptionPolicy` reply. None of these tests
+  unidentified record, and the records folded into the `/elements` reply, the SpringBoard-present bit in that reply, the
+  `requireNoSystemAlert` re-check on `/tap`, and the records folded into the `/interruptionPolicy`
+  reply. None of these tests
   needs a Simulator.
 - **Python.** The fake actuator implements the capability. Tests cover seven behaviors:
-  - the single-owner rule: the thin gate reads the folded records without reporting them, and the
-    end-of-step drain reports each record once;
+  - the single-owner rule: the thin gate reads the folded records through `peek_interruptions()`
+    without reporting them, the end-of-step drain reports each record once, and the end-of-step
+    drain runs after post-step evidence reads;
   - the failure by name on an unidentified record;
-  - the reservation push and clear around `handleSystemAlert`, and the load-time `labelMatches`
+  - the reservation push and clear around `handleSystemAlert`, and the scoped `labelMatches`
     check;
   - the once-per-step retry, fed by the step-scoped event list, after a pre-delivery failure and
     never after a write whose outcome is unknown;
