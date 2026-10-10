@@ -290,13 +290,19 @@ class XcuitestEnvironment(_DeviceEnvironment):
         permissions: Mapping[str, str] | None = None,
     ) -> base.Driver:
         stale = self._group
-        driver = self._start(
-            eff,
-            pre,
-            extra_env=extra_env,
-            record_video_dir=record_video_dir,
-            permissions=permissions,
-        )
+        try:
+            driver = self._start(
+                eff,
+                pre,
+                extra_env=extra_env,
+                record_video_dir=record_video_dir,
+                permissions=permissions,
+            )
+        except BaseException:
+            # No driver comes back, so no teardown will close the lease's `nativeZ` bridge, which
+            # `_start` opens before any precondition can refuse the lease.
+            self._close_zorder_forwarder()
+            raise
         bundle_id = require_ios(eff).bundle_id
         if stale is not None and stale.current != bundle_id:
             # A warm runner a previous lease's device group retargeted still addresses that lease's
@@ -359,12 +365,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
                     "permission grants use simctl and do not apply to a real device "
                     "(xcuitest.deviceType: device)"
                 )
-            try:
-                return self._spawn_cold(eff, pre, device_type, extra_env, permissions)
-            except BaseException:
-                # No driver comes back, so no teardown will close the lease's `nativeZ` bridge.
-                self._close_zorder_forwarder()
-                raise
+            return self._spawn_cold(eff, pre, device_type, extra_env, permissions)
 
         # A pending escalation (BE-0354) is served before anything else touches the device: the run
         # pipeline asked for a replacement because an erase was already tried on this one and did not

@@ -430,6 +430,22 @@ def test_a_failed_real_device_start_closes_the_nativez_bridge(
     assert env._zorder_forwarder is None
 
 
+@pytest.mark.parametrize(
+    ("app_path", "pre"),
+    [("build/App.app", Preconditions()), (None, Preconditions(erase=True))],
+)
+def test_a_refused_real_device_start_closes_the_nativez_bridge(
+    app_path: str | None, pre: Preconditions
+) -> None:
+    # A simctl-only precondition is refused after the bridge opened; no teardown follows.
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    with pytest.raises(simctl.DeviceError, match="real device"):
+        env.start(_device_eff(app_path=app_path), pre, extra_env=_ZORDER_ENV)
+    assert [b.device_port for b in _FakeForwarder.instances] == [47001]
+    assert all(bridge.closed for bridge in _FakeForwarder.instances)
+    assert env._zorder_forwarder is None
+
+
 def test_the_simulator_collector_stays_on_the_loopback() -> None:
     env = XcuitestEnvironment("xcuitest", "UDID", env_run=lambda *_a, **_k: "")
     assert env.collector_host(_sim_eff(test_runner="R.xctestrun")) == CollectorHost()

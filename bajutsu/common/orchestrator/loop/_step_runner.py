@@ -1100,7 +1100,9 @@ class _StepRunner:
         entry_alerts: list[AlertEvent] = []
         if not self.state.entry_alert_checked:
             self.state.entry_alert_checked = True
-            if front_failure is None:
+            # A first `handleSystemAlert` step answers a launch-time prompt itself, and may want the
+            # opposite of a rule's choice for it (BE-0406), so its own guarded wait clears it instead.
+            if front_failure is None and step.handle_system_alert is None:
                 self._clear_entry_alert(active_driver, entry_alerts)
         # The label a `handleSystemAlert` step tapped, for `outcome.system_alert` (BE-0445).
         system_alert_taps: list[str] = []

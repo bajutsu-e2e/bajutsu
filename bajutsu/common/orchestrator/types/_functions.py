@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.actuation import ActuationReporter, Drained
 from bajutsu.common.evidence.network import NetworkExchange
-from bajutsu.common.scenario.system_alerts import alert_title_marker
+from bajutsu.common.scenario.system_alerts import TITLE_MARKER, alert_title_marker
 
 from .alert_event import AlertEvent
 from .drained_interruption_events import DrainedInterruptionEvents
@@ -205,7 +205,9 @@ def subtract_labels(buttons: Sequence[str], shapes: Iterable[frozenset[str]]) ->
         for label in shape:
             if label in leftover:
                 leftover.remove(label)
-    return leftover
+    # A title marker (`observed_alert_labels`) is no button: only `localNetwork` names its own, so
+    # every other dismissed alert would otherwise leave its title behind as a phantom unhandled one.
+    return [label for label in leftover if not label.startswith(TITLE_MARKER)]
 
 
 def observed_alert_labels(driver: base.Driver) -> list[str]:

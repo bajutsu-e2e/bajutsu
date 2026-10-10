@@ -121,8 +121,9 @@ picks one that answers.
    order, that answered 204. The search runs in the background, so the launch never waits for it.
    It retries every second for up to two minutes, because a fresh install holds every
    local-network connection until the Local Network prompt is answered. Reports made meanwhile wait
-   in a bounded buffer and go out in order once a collector answers. With no answer by the
+   in a buffer of 1,000 and go out in order once a collector answers. With no answer by the
    deadline, the buffer is dropped and the app reports nothing, as an app without a collector does.
+   Either loss, an overflow or a discarded buffer, goes to the device log with its count.
 6. **Interceptor guard.** BajutsuKit's `URLProtocol` skips loopback requests, so its own report
    POSTs are never intercepted and re-reported. A collector on a network address would slip past
    that guard. The guard now also skips the chosen collector's host and port.

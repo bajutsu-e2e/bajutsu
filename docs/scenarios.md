@@ -316,9 +316,10 @@ The app raises this prompt during launch, before the scenario's first step. The 
 prompt. To prevent that, the guard reads the SpringBoard query once before the first step. It answers a declared
 prompt already on screen.
 That read is native alone. It never taps the app's own buttons. It leaves an undeclared alert
-alone.
+alone. A scenario whose first step is a `handleSystemAlert` skips the read. That step answers a
+launch-time prompt itself. It may even choose the opposite of a rule's choice.
 
-`savePassword` also renders three ways, where the other three prompts each render one:
+`savePassword` also renders three ways, where the other four prompts each render one:
 
 | Rendering | English | Japanese |
 |---|---|---|

@@ -4566,3 +4566,54 @@ def test_the_scenario_entry_check_leaves_an_undeclared_prompt_alone() -> None:
         alert_guard=AlertGuardConfig(rules=[guard_rule("Allow")]),
     )
     assert "handle_system_alert" not in [kind for kind, _ in driver.actions]
+
+
+def test_the_scenario_entry_check_leaves_a_first_handle_system_alert_step_its_prompt() -> None:
+    # A rule denies the prompt, but step one grants it (BE-0406): the entry check must not answer
+    # it first, or the step would wait for a prompt already gone.
+    from bajutsu.common.orchestrator import run_scenario
+    from bajutsu.common.scenario import load_scenarios
+
+    def react(d: FakeDriver, kind: str, _arg: object) -> None:
+        if kind == "handle_system_alert":
+            d.system_alert_buttons = []
+
+    driver = _fake_with_alert(["Don't Allow", "Allow"], react=react)
+    result = run_scenario(
+        driver,
+        load_scenarios(
+            "- name: t\n  steps:\n    - handleSystemAlert: { sel: { label: Allow }, timeout: 5 }\n"
+        )[0],
+        alert_guard=AlertGuardConfig(
+            rules=[guard_rule("Don't Allow", identifying=("Don't Allow", "Allow"))]
+        ),
+    )
+    assert result.ok, result.failure
+    tapped = [arg for kind, arg in driver.actions if kind == "handle_system_alert"]
+    assert tapped == [({"label": "Allow"}, 0.0)]
+
+
+def test_a_dismissed_alert_leaves_no_title_behind_as_an_unhandled_one() -> None:
+    # Only `localNetwork` names its title, so a notifications dismissal must not leave the
+    # notification title's marker over as if a second, unhandled alert were up.
+    from bajutsu.common.orchestrator.types._functions import subtract_labels
+
+    guard = AlertGuardConfig(rules=_rules_for("notifications", "grant"))
+    driver = _TitledFake(["Don’t Allow", "Allow"], _NOTIFICATIONS_TITLE)
+    state, _, seen = guard.probe_native(driver)
+    assert state == "dismissed"
+    shapes = [rule.identifying_labels for rule in guard.native_rules]
+    assert subtract_labels(seen, shapes) == []
+
+    # The whole call: the tapped prompt goes, and the guard reports it cleared with no block note.
+    class _Clearing(_TitledFake):
+        def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+            super().handle_system_alert(sel, timeout)
+            self.system_alert_buttons = []
+
+    alerts: list[AlertEvent] = []
+    fresh = AlertGuardConfig(rules=_rules_for("notifications", "grant"))
+    cleared = _Clearing(["Don’t Allow", "Allow"], _NOTIFICATIONS_TITLE)
+    assert fresh(cleared, alerts, settle=lambda: None)
+    assert alerts == [AlertEvent(label="Allow")]
+    assert "title:" not in (fresh.blocked_note or "")

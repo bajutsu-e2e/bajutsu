@@ -25,7 +25,8 @@ final class CollectorResolution: @unchecked Sendable {
     private let capacity: Int
     private let post: Post
 
-    /// Reports dropped because the buffer was full, so a long search loses the newest, not silently.
+    /// Reports dropped because the buffer was full: a long search loses the newest, and says so in
+    /// the device log, where a partial network record would otherwise have no explanation.
     private(set) var dropped = 0
 
     init(capacity: Int = 1000, post: @escaping Post) {
@@ -92,6 +93,9 @@ final class CollectorResolution: @unchecked Sendable {
                 buffer.append(Pending(payload: payload, path: path))
             } else {
                 dropped += 1
+                if dropped == 1 {
+                    NSLog("BajutsuKit: collector buffer full (%d reports); dropping newer ones", capacity)
+                }
             }
         }
         lock.unlock()
@@ -102,9 +106,16 @@ final class CollectorResolution: @unchecked Sendable {
         resolved = url
         searching = false
         let held = buffer
+        let lost = dropped
         buffer = []
         lock.unlock()
-        guard let url else { return }
+        guard let url else {
+            NSLog("BajutsuKit: no collector answered; discarding %d held reports", held.count)
+            return
+        }
+        if lost > 0 {
+            NSLog("BajutsuKit: collector found; %d reports were dropped while searching", lost)
+        }
         for report in held {
             post(report.payload, Self.target(url, report.path))
         }

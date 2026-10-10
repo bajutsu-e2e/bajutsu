@@ -89,9 +89,9 @@ device opens. This channel needs a host address the device can route to. On a re
 collector binds every interface of the host. The app receives one collector URL per candidate host
 address. The app sends each candidate an authenticated `GET /ping`. It keeps the first one, in the
 host's order, that answers. The search runs in the background, so the launch never waits for it. It
-retries for up to two minutes. Reports the app makes meanwhile wait, and go out in order once a
-collector answers. The collector answers 401 to a request without the per-run token. This run's app
-alone holds that token.
+retries for up to two minutes. Up to 1,000 reports the app makes meanwhile wait. They go out in
+order once a collector answers. The app writes any report it drops to the device log. The collector
+answers 401 to a request without the per-run token. This run's app alone holds that token.
 
 Bajutsu resolves the candidates at each run. A host whose address changes keeps working that way. The
 candidates come from the first of these sources that has a value:
