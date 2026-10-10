@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 from pydantic import ValidationError
@@ -26,6 +27,7 @@ from bajutsu.common.evidence.network import (
     NetworkCollector,
     NetworkExchange,
     ScreenTransition,
+    _hmac_auth,
 )
 from bajutsu.common.orchestrator import run_scenario
 from bajutsu.common.scenario import (
@@ -1136,11 +1138,20 @@ def test_every_in_app_capability_has_exactly_one_command_shape() -> None:
 # --- the real-device reachability probe and binding --------------------------------------------
 
 
-def _status(url: str, token: str | None, method: str = "GET") -> int:
-    headers = {"Authorization": f"Bearer {token}"} if token is not None else {}
-    req = urllib.request.Request(
-        url, headers=headers, method=method, data=b"{}" if method == "POST" else None
-    )
+def _status(url: str, token: str | None, method: str = "GET", *, signed: bool = False) -> int:
+    body = b"{}" if method == "POST" else None
+    headers: dict[str, str] = {}
+    if token is not None:
+        # A binding beyond the loopback refuses the bearer header, so the real-device tests sign
+        # (BE-0459).
+        headers["Authorization"] = (
+            _hmac_auth.authorization(
+                token, method, urlsplit(url).path, body or b"", _hmac_auth.new_nonce()
+            )
+            if signed
+            else f"Bearer {token}"
+        )
+    req = urllib.request.Request(url, headers=headers, method=method, data=body)
     try:
         with urllib.request.urlopen(req) as resp:
             return int(resp.status)
@@ -1178,9 +1189,9 @@ def test_a_dual_stack_collector_answers_on_ipv4_and_ipv6() -> None:
     c = NetworkCollector()
     port = c.start(host="::")
     try:
-        assert _status(f"http://127.0.0.1:{port}/ping", c.token) == 204
+        assert _status(f"http://127.0.0.1:{port}/ping", c.token, signed=True) == 204
         if _has_ipv6_loopback():
-            assert _status(f"http://[::1]:{port}/ping", c.token) == 204
+            assert _status(f"http://[::1]:{port}/ping", c.token, signed=True) == 204
     finally:
         c.stop()
 
@@ -1199,7 +1210,7 @@ def test_a_host_without_ipv6_falls_back_to_every_ipv4_interface(
     c = NetworkCollector()
     port = c.start(host="::")
     try:
-        assert _status(f"http://127.0.0.1:{port}/ping", c.token) == 204
+        assert _status(f"http://127.0.0.1:{port}/ping", c.token, signed=True) == 204
     finally:
         c.stop()
 

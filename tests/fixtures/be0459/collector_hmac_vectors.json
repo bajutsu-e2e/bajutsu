@@ -1,0 +1,105 @@
+{
+  "_comment": "BE-0459: fixed vectors for the collector's signed scheme. Python (tests/test_collector_hmac.py) and BajutsuKit (CollectorSigningTests.swift) both check them byte for byte; regenerate only with a deliberate scheme change.",
+  "requests": [
+    {
+      "token": "fixture",
+      "method": "POST",
+      "path": "/",
+      "nonce": "AAECAwQFBgcICQoLDA0ODw",
+      "body": "{\"method\":\"GET\",\"url\":\"https://example.test/a\",\"status\":200}",
+      "signature": "58nBMOQp23llyh6WnPFNVR1U4uG5saMihqnSJ8pb1oM"
+    },
+    {
+      "token": "fixture",
+      "method": "POST",
+      "path": "/transitions",
+      "nonce": "EBESExQVFhcYGRobHB0eHw",
+      "body": "{\"kind\":\"screenChanged\",\"timestamp\":12.5}",
+      "signature": "1RBU8Md48vBpVvi8yVE7tLUgfg1ng3FMxIcSwQbkT7k"
+    },
+    {
+      "token": "fixture",
+      "method": "GET",
+      "path": "/commands",
+      "nonce": "ICEiIyQlJicoKSorLC0uLw",
+      "body": "",
+      "signature": "vgXMt1e-u1i2nVCbjEKQne-IeCUDNRauIE7TjfNMZEc"
+    },
+    {
+      "token": "fixture",
+      "method": "POST",
+      "path": "/commands/ack",
+      "nonce": "MDEyMzQ1Njc4OTo7PD0-Pw",
+      "body": "{\"id\":\"c1\",\"applied\":true}",
+      "signature": "wd11fmcLuXCt2ceY8-VgcuBU_eK8JHJDZE5SJ-oE4fA"
+    },
+    {
+      "token": "fixture",
+      "method": "GET",
+      "path": "/ping",
+      "nonce": "QEFCQ0RFRkdISUpLTE1OTw",
+      "body": "",
+      "signature": "q8hSBwA7BBRM7SUfxKm7EjtTcEYLr4dw7ZJjFaAtjFk"
+    },
+    {
+      "token": "fixture",
+      "method": "POST",
+      "path": "/api%2Fv1/items",
+      "nonce": "UFFSU1RVVldYWVpbXF1eXw",
+      "body": "[]",
+      "signature": "-07lNskNI1fQesQR6nXRrHxQqeMvnPJkSVCpuzms_dY"
+    }
+  ],
+  "answers": [
+    {
+      "token": "fixture",
+      "nonce": "ICEiIyQlJicoKSorLC0uLw",
+      "status": 200,
+      "body": "[{\"id\":\"c1\",\"kind\":\"toggle\"}]",
+      "signature": "CqedXR1lyEShsw_U52IGaTQ9TFFz2jGlKFIQBM4vjT0"
+    },
+    {
+      "token": "fixture",
+      "nonce": "QEFCQ0RFRkdISUpLTE1OTw",
+      "status": 204,
+      "body": "",
+      "signature": "mpqLxjCT9Q8xVPsICVE1pMe8OctYMJ5oGbt2aoBJyTU"
+    },
+    {
+      "token": "fixture",
+      "nonce": "AAECAwQFBgcICQoLDA0ODw",
+      "status": 204,
+      "body": "",
+      "signature": "YWOafPanud535uHgn75_Yq7weuC6mjagSrJTHkfIvBM"
+    },
+    {
+      "token": "fixture",
+      "nonce": "MDEyMzQ1Njc4OTo7PD0-Pw",
+      "status": 400,
+      "body": "",
+      "signature": "njVKleciIXQY4qMMX-GSrVACh6yGsPhwDhZnTLukG9I"
+    }
+  ],
+  "paths": [
+    {
+      "target": "/",
+      "path": "/"
+    },
+    {
+      "target": "",
+      "path": "/"
+    },
+    {
+      "target": "/ping",
+      "path": "/ping"
+    },
+    {
+      "target": "/commands?since=3",
+      "path": "/commands"
+    },
+    {
+      "target": "/a%20b/c",
+      "path": "/a%20b/c"
+    }
+  ]
+}

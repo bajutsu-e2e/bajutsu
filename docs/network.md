@@ -26,10 +26,15 @@ A Simulator app runs as a host process and shares the Mac's loopback, so:
    per-run shared token via `BAJUTSU_COLLECTOR_TOKEN`.
 2. The app (linked with **BajutsuKit**) installs a `URLProtocol` that records each
    request/response and POSTs it to the collector — **after TLS (Transport Layer Security)** (no proxy, no CA / certificate authority), so it
-   works regardless of which backend drives the app and is readable programmatically. Each POST carries the token as an
-   `Authorization: Bearer` header, and the collector rejects any request without the
-   matching token (401), so another local process can't inject fabricated exchanges into
-   the run's evidence.
+   works regardless of which backend drives the app and is readable programmatically. Each POST
+   proves the token. The collector rejects any request that does not (401). Another local process
+   thus can't inject fabricated exchanges into the run's evidence.
+   - bajutsu always announces `BAJUTSU_COLLECTOR_AUTH=hmac`. A current BajutsuKit then signs each
+     request with the token.
+   - An older BajutsuKit sends the token as an `Authorization: Bearer` header instead. A loopback
+     collector still accepts that header.
+   - On a real device the collector accepts signed requests alone
+     ([the real-device guide](ios-device-cloud.md#how-the-device-to-host-route-is-authenticated)).
 3. The collector keeps the exchanges in memory; a step's `request` assertion is evaluated
    against them in real time, and bajutsu writes them (redacted) to `<sid>/network.json` as
    scenario evidence.

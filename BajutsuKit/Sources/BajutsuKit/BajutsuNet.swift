@@ -22,11 +22,12 @@ public enum BajutsuNet {
     static private(set) var collectorCandidates: [URL] = []
     /// Where reports go, or wait while a real device's collector is still being found.
     static let resolution = CollectorResolution { payload, url in
-        postJSON(payload, to: url, token: collectorToken, session: reportSession)
+        postJSON(payload, to: url, credential: collectorCredential, session: reportSession)
     }
-    /// Per-run shared token (`BAJUTSU_COLLECTOR_TOKEN`) attached to each report POST so the
-    /// collector accepts only this run's app; nil unless bajutsu injected one.
-    static private(set) var collectorToken: String?
+    /// The per-run token (`BAJUTSU_COLLECTOR_TOKEN`) every request to the collector proves, so the
+    /// collector accepts only this run's app — signed when the host announces it
+    /// (`BAJUTSU_COLLECTOR_AUTH`, BE-0459), else as a bearer header; nil unless bajutsu injected one.
+    static private(set) var collectorCredential: CollectorCredential?
 
     /// One JSON line per exchange is POSTed to the collector. The reporting session
     /// is kept separate so the report POST is never itself intercepted.
@@ -63,17 +64,17 @@ public enum BajutsuNet {
         // and the responder gates itself on the port and token the host injected (BE-0355).
         BajutsuZOrder.startIfEnabled(environment: environment)
         if let raw = environment["BAJUTSU_COLLECTOR"] {
-            collectorToken = environment["BAJUTSU_COLLECTOR_TOKEN"]
+            collectorCredential = CollectorCredential(environment: environment)
             let candidates = candidateURLs(raw)
             collectorCandidates = candidates
             if !onLoopback(candidates) {
                 // A real device, even with one host address: found in the background, so the launch
                 // never waits on the Local Network prompt the search itself raises, and reports made
                 // while that prompt holds the connection wait in order (`CollectorResolution`).
-                resolution.search(candidates, token: collectorToken) { url in
+                resolution.search(candidates, credential: collectorCredential) { url in
                     #if BAJUTSU_ENABLE_CONTROL_CHANNEL
                     BajutsuControlChannel.startIfEnabled(
-                        environment: environment, collector: url, token: collectorToken
+                        environment: environment, collector: url, credential: collectorCredential
                     )
                     #else
                     _ = url
@@ -88,7 +89,7 @@ public enum BajutsuNet {
         // condition has to select before its launch-env key can reach it. It polls the collector
         // resolved just above, so it is started after that and is inert without it.
         BajutsuControlChannel.startIfEnabled(
-            environment: environment, collector: collectorURL, token: collectorToken
+            environment: environment, collector: collectorURL, credential: collectorCredential
         )
         #endif
         // Register the interceptor if there is anything to do: observe and/or stub.
@@ -162,8 +163,11 @@ public enum BajutsuNet {
         candidates.allSatisfy { ["127.0.0.1", "localhost", "::1"].contains($0.host ?? "") }
     }
 
-    /// Asks one candidate whether it is this run's collector: `completion(true)` on a 204.
-    typealias CollectorProbe = (_ url: URL, _ token: String?, _ completion: @escaping (Bool) -> Void) -> Void
+    /// Asks one candidate whether it is this run's collector: `completion(true)` on a 204 that, for
+    /// a signed probe, carries the collector's signature over this probe's nonce.
+    typealias CollectorProbe = (
+        _ url: URL, _ credential: CollectorCredential?, _ completion: @escaping (Bool) -> Void
+    ) -> Void
 
     /// The first candidate, in the host's order, that answers an authenticated `GET /ping`.
     ///
@@ -173,31 +177,54 @@ public enum BajutsuNet {
     /// has failed. An unreachable address later in the list therefore costs nothing; one ahead of
     /// the answer costs up to `timeout`. Nil means no candidate answered this round.
     static func reachableCollector(
-        _ candidates: [URL], token: String?, timeout: TimeInterval = 2,
+        _ candidates: [URL], credential: CollectorCredential?, timeout: TimeInterval = 2,
         probe: CollectorProbe = pingCollector
     ) -> URL? {
         guard !onLoopback(candidates) else { return candidates.first }
         let answers = ProbeAnswers(count: candidates.count)
         for (index, url) in candidates.enumerated() {
-            probe(url, token) { ok in answers.record(index, ok) }
+            probe(url, credential) { ok in answers.record(index, ok) }
         }
         answers.waitUntilSettled(timeout: timeout)
         return answers.firstAnswered().map { candidates[$0] }
     }
 
     /// The production probe: an authenticated `GET <url>/ping` on a session nothing intercepts.
-    static func pingCollector(_ url: URL, _ token: String?, _ completion: @escaping (Bool) -> Void) {
+    ///
+    /// Signed, each candidate gets its own nonce: one shared nonce would let whichever copy reached
+    /// the collector first win, and arrival order would replace the host's preference order. The
+    /// nonce is also the challenge — only the collector can sign an answer bound to it (BE-0459).
+    static func pingCollector(
+        _ url: URL, _ credential: CollectorCredential?, _ completion: @escaping (Bool) -> Void
+    ) {
         var req = URLRequest(url: url.appendingPathComponent("ping"), timeoutInterval: 2)
-        if let token {
-            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-        reportSession.dataTask(with: req) { _, response, _ in
-            completion((response as? HTTPURLResponse)?.statusCode == 204)
+        // A cached answer would carry a signature over an earlier probe's nonce and fail every round.
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        let nonce = credential?.authorize(&req)
+        reportSession.dataTask(with: req) { data, response, _ in
+            let http = response as? HTTPURLResponse
+            let answered = probeAnswered(http, body: data, credential: credential, nonce: nonce)
+            if !answered, http?.statusCode == 204 {
+                // Otherwise indistinguishable from an unreachable address once the search gives up.
+                NSLog("BajutsuKit: %@ answered the probe without a valid collector signature", url.absoluteString)
+            }
+            completion(answered)
         }.resume()
     }
 
-    /// POST a JSON payload to the collector, fire-and-forget, bearer-authenticated with the
-    /// per-run token. Shared by `report` above and `BajutsuScreen`'s transition report, so the
+    /// Whether a probe's answer names its candidate as this run's collector.
+    ///
+    /// A 409 means a copy of this probe reached the collector first; like any other miss, the
+    /// search's next round asks again with a fresh nonce.
+    static func probeAnswered(
+        _ response: HTTPURLResponse?, body: Data?, credential: CollectorCredential?, nonce: String?
+    ) -> Bool {
+        guard response?.statusCode == 204 else { return false }
+        return credential?.accepts(response, body: body, nonce: nonce) ?? true
+    }
+
+    /// POST a JSON payload to the collector, fire-and-forget, authenticated with the per-run
+    /// credential. Shared by `report` above and `BajutsuScreen`'s transition report, so the
     /// request-construction boilerplate (headers, auth, serialization) is written once.
     ///
     /// Serialization and the `dataTask` handoff are dispatched off the caller's thread. `report`
@@ -207,16 +234,19 @@ public enum BajutsuNet {
     /// depends on to observe the UI settling. Keeping this off that thread avoids adding new
     /// main-thread work to a callback XCTest's automation session is already timing-sensitive
     /// around.
-    static func postJSON(_ payload: [String: Any], to url: URL, token: String?, session: URLSession) {
+    ///
+    /// The collector's answer is signed too, but nothing here acts on it, so it goes unverified.
+    static func postJSON(
+        _ payload: [String: Any], to url: URL, credential: CollectorCredential?, session: URLSession
+    ) {
         DispatchQueue.global(qos: .utility).async {
             guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
             var req = URLRequest(url: url)
             req.httpMethod = "POST"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            if let token {
-                req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            }
+            // The body is set first: a signature covers it.
             req.httpBody = data
+            _ = credential?.authorize(&req)
             session.dataTask(with: req).resume()  // fire-and-forget
         }
     }
