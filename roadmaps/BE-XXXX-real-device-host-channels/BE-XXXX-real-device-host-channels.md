@@ -268,7 +268,7 @@ network scenario on the same device.
 - [x] BajutsuKit: background collector search with buffered reports.
 - [x] Docs in both languages: `docs/ios-device-cloud.md`, `docs/configuration.md`,
   `docs/devicefarm.md`, `docs/architecture.md`.
-- [ ] Manual real-device proof: `firstlook` on a USB-attached iPhone, then a network scenario.
+- [x] Manual real-device proof: `firstlook` on a USB-attached iPhone, then a network scenario.
 - [ ] Device Farm diagnostic run: `bajutsu doctor --environment-only`, then `firstlook`, on a
   reserved iOS device.
 
@@ -287,6 +287,18 @@ Log:
   host-address route. On a fresh install, two gaps followed: the scenario's first tap landed on the
   prompt, and the app's two-second probe at launch timed out while the prompt held its connections.
   The scenario-entry probe and the background search with buffered reports close both.
+- 2026-10-10 — The manual real-device proof, at commit 61633cb66, on the same iPhone 14 Pro
+  (iOS 27.0.1) over USB, from a fresh install of the showcase app:
+  - `bajutsu doctor --environment-only` reported usbmuxd reaching the device over USB, and five host
+    addresses from the host's interfaces.
+  - `network_mock` passed. The scenario-entry probe answered the Local Network prompt with "Allow"
+    on step 0, and `network.json` recorded the stubbed `POST /post` (201).
+  - `firstlook` passed with a 30-second startup ceiling. Its `elements.json` carried `nativeZ` on the
+    identified elements, so the `nativeZ` bridge answered.
+  - A probe through `reach_device_port` reached the app's WebView bridge (`GET /webview/dom`
+    answered 200 with an empty list), while the same port on the host's loopback refused the
+    connection.
+  The Device Farm diagnostic run stays open.
 
 ## References
 

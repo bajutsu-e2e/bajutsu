@@ -152,7 +152,7 @@ runner のポートには、ホストで空いていた番号を実機でも使�
 - [x] 起動中に出た宣言済みのプロンプトに対する、シナリオ開始時のネイティブの照会
 - [x] BajutsuKit：報告をためながら裏で受け口を探す仕組み
 - [x] 両言語のドキュメント：`docs/ios-device-cloud.md`、`docs/configuration.md`、`docs/devicefarm.md`、`docs/architecture.md`
-- [ ] 実機での手動確認：USB 接続の iPhone で `firstlook`、続けてネットワークのシナリオ
+- [x] 実機での手動確認：USB 接続の iPhone で `firstlook`、続けてネットワークのシナリオ
 - [ ] Device Farm での診断の実行：予約した iOS 実機で `bajutsu doctor --environment-only`、続けて `firstlook`
 
 ログ：
@@ -160,6 +160,12 @@ runner のポートには、ホストで空いていた番号を実機でも使�
 - 2026-10-09 — [#2143](https://github.com/bajutsu-e2e/bajutsu/pull/2143) で、コードのすべての単位とドキュメントを実装しました。最初のコミットは runner だけを橋渡しし、iPhone 14 Pro（iOS 27.0.1）を USB で接続して、起動の上限 30 秒で `firstlook` に合格しました。`nativeZ`、WebView、collector の単位は実機を外した後に実装したので、これらの実機での確認は残っています。手動の 2 つの単位が残っているので、状態は実装中のままです。
 
 - 2026-10-10 — 残りの実機での確認を、同じ iPhone を USB で接続して行いました。ルールなしの最初の実行は、ローカルネットワークのプロンプトで止まりました。`{ prompt: localNetwork, choice: grant }` を宣言すると、ガードはタイトルでプロンプトを見分け、「Allow」をタップしました。許可した後は `firstlook` と `network_mock` の両方に合格し、`network_mock` はスタブが応答した `POST /post`（201）をホストアドレスの経路で記録しました。新しくインストールした直後は、2 つの課題がありました。1 つは、シナリオの最初のタップがプロンプトに当たったことです。もう 1 つは、プロンプトで接続が保留されている間に、起動時の 2 秒の確認が時間切れになったことです。シナリオ開始時の照会と、報告をためながら裏で受け口を探す仕組みで、両方を解消しました。
+- 2026-10-10 — 実機での手動確認を、コミット 61633cb66 で行いました。同じ iPhone 14 Pro（iOS 27.0.1）を USB で接続し、showcase アプリを新しくインストールした状態から始めました。
+  - `bajutsu doctor --environment-only` は、usbmuxd が USB で実機に届くことと、ホストのインタフェースから得た 5 つのホストアドレスを報告しました。
+  - `network_mock` に合格しました。シナリオ開始時の照会が、手順 0 でローカルネットワークのプロンプトに「Allow」と答えました。`network.json` には、スタブが応答した `POST /post`（201）が記録されました。
+  - `firstlook` に、起動の上限 30 秒で合格しました。`elements.json` では識別子のある要素に `nativeZ` が付いていたので、`nativeZ` の橋渡しも応答しています。
+  - `reach_device_port` 経由の確認で、アプリの WebView ブリッジに届きました（`GET /webview/dom` が 200 と空の一覧を返しました）。一方、同じポートにホストのループバックで接続すると、接続を拒否されました。
+  Device Farm での診断の実行は残っています。
 
 ## 参考
 
