@@ -41,6 +41,7 @@ from bajutsu.common.orchestrator.types import (
     DEFAULT_ALERT_POLL_INTERVAL,
     AlertEvent,
     AlertGuardConfig,
+    AlertTitleCheck,
     Clock,
     DeviceControl,
     MailboxReader,
@@ -396,6 +397,7 @@ def _run_step_body(
     alert_guard: AlertGuardConfig | None = None,
     alerts: list[AlertEvent] | None = None,
     system_alert_taps: list[str] | None = None,
+    system_alert_title: AlertTitleCheck | None = None,
     on_wait_tick: WaitTick | None = None,
     transitions: TransitionSource = _no_transitions,
     on_interrupt_poll: Callable[[list[base.Element]], bool] | None = None,
@@ -418,7 +420,8 @@ def _run_step_body(
     timeout is diagnosable from artifacts (BE-0231 Unit 1). ``alert_guard``/``alerts``, when given
     for a ``wait`` or ``handleSystemAlert`` step, drive the alert guard while that step's own wait
     runs (BE-0269, BE-0406); other step kinds ignore them. ``system_alert_taps`` receives the label
-    a ``handleSystemAlert`` step tapped, for the report (BE-0445). ``on_interrupt_poll``, when given for a
+    a ``handleSystemAlert`` step tapped, for the report (BE-0445), and ``system_alert_title`` is
+    that step's title check (``prompt_title_check``). ``on_interrupt_poll``, when given for a
     wait step, is passed to ``_wait`` so a scenario's ``interrupts`` handlers can clear an
     interstitial screen mid-wait (BE-0314). ``cancelled`` reaches the step kinds that poll —
     ``wait``, ``handleSystemAlert``, ``assert``, and ``email`` — so each notices a cancelled run
@@ -458,6 +461,7 @@ def _run_step_body(
                 alert_guard=alert_guard,
                 alerts=alerts,
                 tapped=system_alert_taps,
+                title_check=system_alert_title,
                 cancelled=cancelled,
             )
             if ok and selection is not None:

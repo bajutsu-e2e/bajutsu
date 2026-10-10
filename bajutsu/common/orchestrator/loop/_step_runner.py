@@ -12,11 +12,16 @@ from bajutsu.common.cancellation import RunCancelled
 from bajutsu.common.drivers import base, tracing
 from bajutsu.common.drivers.webview import WebContextDriver
 from bajutsu.common.evidence import Artifact, NullSink, intervals, start_after_screenshot
-from bajutsu.common.orchestrator.actions import _action_of, _step_label
+from bajutsu.common.orchestrator.actions import (
+    _action_of,
+    _step_label,
+    handle_system_alert_selector,
+)
 from bajutsu.common.orchestrator.evidence_rules import _collect_captures, _kind_of, _run_extract
 from bajutsu.common.orchestrator.substitution import _interp_step, _resolve_system_alert
 from bajutsu.common.orchestrator.types import (
     AlertEvent,
+    AlertTitleCheck,
     ResolvedAlertRule,
     StepGate,
     StepOutcome,
@@ -25,6 +30,7 @@ from bajutsu.common.orchestrator.types import (
     UndeclaredInterruption,
     drain_actuations,
     drain_interruptions,
+    prompt_title_check,
     push_interruption_policy,
     undeclared_interruption_note,
 )
@@ -550,7 +556,14 @@ class _StepRunner:
         push_interruption_policy(driver, replace(guard, rules=[*guard.rules, reservation]))
         return True, drained.alerts, drained.undeclared
 
-    def _clear_entry_alert(self, driver: base.Driver, alerts: list[AlertEvent]) -> None:
+    def _system_alert_title(self, step: Step) -> AlertTitleCheck | None:
+        """The title check of a `prompt`/`choice` `handleSystemAlert` step, else None."""
+        hsa = step.handle_system_alert
+        if hsa is None or hsa.prompt is None or hsa.choice is None:
+            return None
+        return prompt_title_check(hsa.prompt, hsa.choice, self.cfg.locale)
+
+    def _clear_entry_alert(self, driver: base.Driver, alerts: list[AlertEvent], step: Step) -> None:
         """Run the guard once before the scenario's first act, for a prompt raised during launch.
 
         A permission prompt the app raises while it launches (iOS's Local Network prompt, raised by
@@ -562,9 +575,21 @@ class _StepRunner:
         guard = self.cfg.alert_guard
         if guard is None or not guard.native_rules:
             return
+        # A first `handleSystemAlert` step answers its own prompt, and may want the opposite of a
+        # rule's choice for it (BE-0406), so that prompt is reserved for it as its wait reserves it.
+        # One whose title rules the step's prompt out (Local Network under a notifications step)
+        # stays the guard's. A `sel`-form step names no prompt to check, so the probe leaves it all.
+        reserved: base.Selector | None = None
+        title = self._system_alert_title(step)
+        if step.handle_system_alert is not None:
+            if title is None:
+                return
+            # Resolvable to a label: a title check exists only where the label table covers it.
+            target = handle_system_alert_selector(_resolve_system_alert(step, self.cfg.locale))
+            reserved = target if isinstance(target, dict) else None
         # The native SpringBoard path alone: a launch-time prompt is a system one, and the in-tree
         # dismissal would tap the app's own buttons before the scenario asked anything of it.
-        state, event, _ = guard.probe_native(driver)
+        state, event, _ = guard.probe_native(driver, reserved, reserved_title=title)
         if state == "dismissed" and event is not None:
             alerts.append(event)
             settle_after_alert_dismiss(
@@ -1100,12 +1125,13 @@ class _StepRunner:
         entry_alerts: list[AlertEvent] = []
         if not self.state.entry_alert_checked:
             self.state.entry_alert_checked = True
-            # A first `handleSystemAlert` step answers a launch-time prompt itself, and may want the
-            # opposite of a rule's choice for it (BE-0406), so its own guarded wait clears it instead.
-            if front_failure is None and step.handle_system_alert is None:
-                self._clear_entry_alert(active_driver, entry_alerts)
+            if front_failure is None:
+                self._clear_entry_alert(active_driver, entry_alerts, step)
         # The label a `handleSystemAlert` step tapped, for `outcome.system_alert` (BE-0445).
         system_alert_taps: list[str] = []
+        # The title its prompt must show, so the step never taps a look-alike prompt (Local Network
+        # shares notifications' buttons) and the guard stays free to answer that one.
+        system_alert_title = self._system_alert_title(step)
         if front_failure is not None or (guard is not None and guard.failure is not None):
             # The pre-act clear already decided the outcome (a recovery step failed, or the app is
             # behind another member's): skip the step's own action rather than poke a screen that
@@ -1150,6 +1176,7 @@ class _StepRunner:
                     alert_guard=self.cfg.alert_guard,
                     alerts=outcome.alerts,
                     system_alert_taps=system_alert_taps,
+                    system_alert_title=system_alert_title,
                     on_wait_tick=wait_tick,
                     transitions=self.cfg.transitions,
                     on_interrupt_poll=tip_poll,
@@ -1224,6 +1251,7 @@ class _StepRunner:
                             wait_trace=wait_trace,
                             selection=self.state.selection,
                             system_alert_taps=system_alert_taps,
+                            system_alert_title=system_alert_title,
                             on_wait_tick=wait_tick,
                             transitions=self.cfg.transitions,
                             on_interrupt_poll=tip_poll,
@@ -1274,6 +1302,7 @@ class _StepRunner:
                                 wait_trace=wait_trace,
                                 selection=self.state.selection,
                                 system_alert_taps=system_alert_taps,
+                                system_alert_title=system_alert_title,
                                 on_wait_tick=wait_tick,
                                 transitions=self.cfg.transitions,
                                 on_interrupt_poll=tip_poll,

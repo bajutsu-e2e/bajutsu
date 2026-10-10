@@ -116,8 +116,9 @@ picks one that answers.
    the local network that lacks the token gets a 401. The Simulator keeps the loopback binding.
 4. **Injection.** `BAJUTSU_COLLECTOR` carries one URL per candidate, separated by commas. A single
    URL, as on the Simulator, keeps today's format.
-5. **Selection in the app.** BajutsuKit splits the value. With more than one candidate, it probes
-   each with an authenticated `GET /ping` in parallel. It keeps the first candidate, in the host's
+5. **Selection in the app.** BajutsuKit splits the value. Unless the value is the Simulator's
+   loopback URL, it probes each candidate with an authenticated `GET /ping` in parallel, even a
+   single one. It keeps the first candidate, in the host's
    order, that answered 204. The search runs in the background, so the launch never waits for it.
    It retries every second for up to two minutes, because a fresh install holds every
    local-network connection until the Local Network prompt is answered. Reports made meanwhile wait
@@ -126,7 +127,8 @@ picks one that answers.
    Either loss, an overflow or a discarded buffer, goes to the device log with its count.
 6. **Interceptor guard.** BajutsuKit's `URLProtocol` skips loopback requests, so its own report
    POSTs are never intercepted and re-reported. A collector on a network address would slip past
-   that guard. The guard now also skips the chosen collector's host and port.
+   that guard. The guard now also skips the host and port of every offered candidate, since the
+   search probes them all.
 
 The collector gains one route, `GET /ping`, which answers 204 to an authenticated request and
 changes no state. The existing `GET /commands` cannot serve as the probe, because it drains the
@@ -190,11 +192,12 @@ cold-spawn retry allocates another number.
 Two device-side properties of the host-address route carry over to every real device:
 
 - **Local Network permission.** From iOS 14, an app asks before its first local-network connection,
-  and the probe is one. The app under test needs `NSLocalNetworkUsageDescription`, and the device
-  must grant the permission. A fresh install, as on every Device Farm job, starts without it. Until
-  then, the probe gets no answer, and the system alert can cover the first screen. The manual proof
-  measures this on a fresh install. App Transport Security (ATS) and cleartext HTTP to an IP literal
-  need the same check.
+  and the probe is one. The device must grant the permission. A fresh install, as on every Device
+  Farm job, starts without it. Until then, the probe gets no answer, and the system alert can cover
+  the first screen. The manual proof measured this on a fresh install of the showcase app. That app
+  declares neither `NSLocalNetworkUsageDescription` nor an App Transport Security (ATS) exception.
+  iOS still showed the prompt. Once the guard granted it, cleartext HTTP to the host's IP address
+  went through.
 - **Cleartext.** The probe and every report travel as plain HTTP, token included. The docs advise
   pinning `BAJUTSU_HOST_ADDRESS` to the CoreDevice tunnel's address on a shared network.
 

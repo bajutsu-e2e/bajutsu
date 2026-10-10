@@ -9,6 +9,7 @@ from bajutsu.common.drivers.elements import shows_app_ui, tree_buttons, tree_sig
 from bajutsu.common.orchestrator.types import (
     AlertEvent,
     AlertGuardConfig,
+    AlertTitleCheck,
     Clock,
     alert_block_note,
     collapsed_tree_note,
@@ -79,6 +80,9 @@ class _AlertGuardGate:
     # The selector a `handleSystemAlert` step running this gate is itself waiting on (BE-0406), so
     # the guard leaves that step's own prompt alone. None for a `wait` step, which names no prompt.
     reserved: base.Selector | None = None
+    # That step's title check (`prompt_title_check`), so an alert whose title rules out the step's
+    # prompt stays the guard's to answer even when it offers the step's button.
+    reserved_title: AlertTitleCheck | None = None
     _native: bool = field(init=False)
     _last_native: float | None = None
     _collapsed_polls: int = 0
@@ -326,7 +330,9 @@ class _AlertGuardGate:
         probed_absent = False
         if self._last_native is None or now - self._last_native >= self.guard.poll_interval:
             self._last_native = now
-            state, event, buttons = self.guard.probe_native(self.driver, self.reserved)
+            state, event, buttons = self.guard.probe_native(
+                self.driver, self.reserved, reserved_title=self.reserved_title
+            )
             # `dismissed` is never passed here, unlike `AlertGuardConfig.__call__`'s own loop
             # (BE-0418) -- this poll never accumulates state across calls, so `_resolve_alert_rule`'s
             # subset-based retry (the only path that can return `None`) never runs, and

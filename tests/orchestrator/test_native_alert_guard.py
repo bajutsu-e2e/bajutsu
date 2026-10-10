@@ -4617,3 +4617,76 @@ def test_a_dismissed_alert_leaves_no_title_behind_as_an_unhandled_one() -> None:
     assert fresh(cleared, alerts, settle=lambda: None)
     assert alerts == [AlertEvent(label="Allow")]
     assert "title:" not in (fresh.blocked_note or "")
+
+
+class _PromptSequence(FakeDriver):
+    """SpringBoard shows each titled prompt in turn; a tap on any button dismisses the current one."""
+
+    def __init__(self, prompts: list[tuple[list[str], str]]) -> None:
+        super().__init__([])
+        self.prompts = list(prompts)
+        self._show()
+
+    def _show(self) -> None:
+        self.system_alert_buttons = (
+            [_button(label) for label in self.prompts[0][0]] if self.prompts else []
+        )
+
+    def system_alert_titles(self) -> list[str]:
+        return [self.prompts[0][1]] if self.prompts else []
+
+    def handle_system_alert(self, sel: base.Selector, timeout: float) -> None:
+        super().handle_system_alert(sel, timeout)
+        self.prompts.pop(0)
+        self._show()
+
+
+def test_a_notifications_step_leaves_the_local_network_prompt_to_its_rule() -> None:
+    # Both prompts offer "Allow". The Local Network one is up at launch; the step names
+    # notifications, so it must not tap it. The rule answers it, then the step answers its own.
+    from _orch import FakeClock
+
+    from bajutsu.common.orchestrator import run_scenario
+    from bajutsu.common.scenario import load_scenarios
+
+    driver = _PromptSequence(
+        [
+            (["Don’t Allow", "Allow"], _LOCAL_NETWORK_TITLE),
+            (["Don’t Allow", "Allow"], _NOTIFICATIONS_TITLE),
+        ]
+    )
+    result = run_scenario(
+        driver,
+        load_scenarios(
+            "- name: t\n  steps:\n"
+            "    - handleSystemAlert: { prompt: notifications, choice: deny, timeout: 5 }\n"
+        )[0],
+        clock=FakeClock(),
+        locale="en_US",
+        alert_guard=AlertGuardConfig(rules=_rules_for("localNetwork", "grant")),
+    )
+    assert result.ok, result.failure
+    assert result.steps[0].alerts == [AlertEvent(label="Allow")]  # the rule's Local Network grant
+    tapped = [arg[0]["label"] for kind, arg in driver.actions if kind == "handle_system_alert"]  # type: ignore[index]
+    assert tapped == ["Allow", "Don’t Allow"]
+    assert driver.prompts == []
+
+
+def test_a_notifications_step_does_not_tap_a_local_network_prompt_mid_wait() -> None:
+    # Without a guard nothing may answer it, so the step times out rather than deny the wrong prompt.
+    from _orch import FakeClock
+
+    from bajutsu.common.orchestrator.types import prompt_title_check
+    from bajutsu.common.orchestrator.waits import wait_for_system_alert
+
+    driver = _PromptSequence([(["Don’t Allow", "Allow"], _LOCAL_NETWORK_TITLE)])
+    ok, reason = wait_for_system_alert(
+        driver,
+        {"label": "Don’t Allow"},
+        1.0,
+        FakeClock(),
+        title_check=prompt_title_check("notifications", "deny", "en_US"),
+    )
+    assert not ok
+    assert "title:" not in reason
+    assert "handle_system_alert" not in [kind for kind, _ in driver.actions]

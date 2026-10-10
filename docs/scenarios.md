@@ -316,8 +316,13 @@ The app raises this prompt during launch, before the scenario's first step. The 
 prompt. To prevent that, the guard reads the SpringBoard query once before the first step. It answers a declared
 prompt already on screen.
 That read is native alone. It never taps the app's own buttons. It leaves an undeclared alert
-alone. A scenario whose first step is a `handleSystemAlert` skips the read. That step answers a
-launch-time prompt itself. It may even choose the opposite of a rule's choice.
+alone. A first `handleSystemAlert` step keeps its own prompt. The step may choose the opposite of a
+rule's choice. A step names a prompt by `prompt`, so the title still tells a look-alike apart. A
+Local Network prompt in front of a `notifications` step still goes to its rule. A step written with
+`sel` names no prompt, so the guard skips the read for it.
+
+A `handleSystemAlert` step checks the title the same way. A step naming `notifications` never taps
+the Local Network prompt, even though both offer its button.
 
 `savePassword` also renders three ways, where the other four prompts each render one:
 

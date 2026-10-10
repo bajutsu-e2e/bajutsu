@@ -66,9 +66,10 @@ public enum BajutsuNet {
             collectorToken = environment["BAJUTSU_COLLECTOR_TOKEN"]
             let candidates = candidateURLs(raw)
             collectorCandidates = candidates
-            if candidates.count > 1 {
-                // A real device: found in the background, so the launch never waits on the Local
-                // Network prompt the search itself raises (`CollectorResolution`).
+            if !onLoopback(candidates) {
+                // A real device, even with one host address: found in the background, so the launch
+                // never waits on the Local Network prompt the search itself raises, and reports made
+                // while that prompt holds the connection wait in order (`CollectorResolution`).
                 resolution.search(candidates, token: collectorToken) { url in
                     #if BAJUTSU_ENABLE_CONTROL_CHANNEL
                     BajutsuControlChannel.startIfEnabled(
@@ -156,13 +157,18 @@ public enum BajutsuNet {
         }
     }
 
+    /// Whether every candidate is the loopback: the Simulator's one collector, shared with the Mac.
+    static func onLoopback(_ candidates: [URL]) -> Bool {
+        candidates.allSatisfy { ["127.0.0.1", "localhost", "::1"].contains($0.host ?? "") }
+    }
+
     /// Asks one candidate whether it is this run's collector: `completion(true)` on a 204.
     typealias CollectorProbe = (_ url: URL, _ token: String?, _ completion: @escaping (Bool) -> Void) -> Void
 
     /// The first candidate, in the host's order, that answers an authenticated `GET /ping`.
     ///
-    /// One round of the background search (`CollectorResolution.search`). A single candidate is
-    /// taken as is, with no probe. With several, every candidate is probed at once, and the round
+    /// One round of the background search (`CollectorResolution.search`). The Simulator's loopback
+    /// collector is taken as is, with no probe. Otherwise every candidate is probed at once, and the round
     /// returns as soon as the choice is settled: a candidate has answered and every one ahead of it
     /// has failed. An unreachable address later in the list therefore costs nothing; one ahead of
     /// the answer costs up to `timeout`. Nil means no candidate answered this round.
@@ -170,7 +176,7 @@ public enum BajutsuNet {
         _ candidates: [URL], token: String?, timeout: TimeInterval = 2,
         probe: CollectorProbe = pingCollector
     ) -> URL? {
-        guard candidates.count > 1 else { return candidates.first }
+        guard !onLoopback(candidates) else { return candidates.first }
         let answers = ProbeAnswers(count: candidates.count)
         for (index, url) in candidates.enumerated() {
             probe(url, token) { ok in answers.record(index, ok) }

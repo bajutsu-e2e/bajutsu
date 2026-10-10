@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.actuation import ActuationReporter, Drained
 from bajutsu.common.evidence.network import NetworkExchange
-from bajutsu.common.scenario.system_alerts import TITLE_MARKER, alert_title_marker
+from bajutsu.common.scenario.system_alerts import (
+    TITLE_MARKER,
+    SystemAlertChoice,
+    SystemAlertPrompt,
+    alert_title_marker,
+    labels_cover,
+    system_alert_shapes,
+)
 
 from .alert_event import AlertEvent
 from .drained_interruption_events import DrainedInterruptionEvents
@@ -224,6 +231,39 @@ def observed_alert_labels(driver: base.Driver) -> list[str]:
     if not buttons or not callable(titles):
         return buttons
     return [*buttons, *(alert_title_marker(title) for title in titles())]
+
+
+AlertTitleCheck = Callable[[Sequence[str]], bool]
+
+
+def prompt_title_check(
+    prompt: SystemAlertPrompt, choice: SystemAlertChoice, locale: str | None
+) -> AlertTitleCheck | None:
+    """Whether a read (`observed_alert_labels`) can be the prompt a `handleSystemAlert` step names.
+
+    The step taps by one button label, which Local Network and notifications share; the title tells
+    them apart. A read passes when some shape of the prompt has every title marker it identifies by
+    and no label it excludes. Buttons are left to the step's own selector, so a backend reporting no
+    titles passes every prompt but `localNetwork`, whose shape names its title. None where the
+    label table does not cover `locale`, since then the step has no shape to check.
+    """
+    if locale is None or not labels_cover(prompt, locale):
+        return None
+    shapes = system_alert_shapes(prompt, choice, locale)
+
+    def check(observed: Sequence[str]) -> bool:
+        present = set(observed)
+        return any(
+            not (shape.excluded_labels & present)
+            and all(
+                label in present
+                for label in shape.identifying_labels
+                if label.startswith(TITLE_MARKER)
+            )
+            for shape in shapes
+        )
+
+    return check
 
 
 def identified_alert_rules(

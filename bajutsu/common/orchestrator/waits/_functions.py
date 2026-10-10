@@ -12,14 +12,17 @@ from bajutsu.common.evidence.network import TransitionSource, _no_transitions
 from bajutsu.common.orchestrator.types import (
     AlertEvent,
     AlertGuardConfig,
+    AlertTitleCheck,
     Clock,
     NetworkSource,
     UndeclaredInterruption,
     _no_network,
+    observed_alert_labels,
     selector_names_button,
     undeclared_interruption_note,
 )
 from bajutsu.common.scenario import Gone, SystemAlertRole, Wait, WaitRequest
+from bajutsu.common.scenario.system_alerts import TITLE_MARKER
 
 from ._alert_guard_gate import _AlertGuardGate
 from ._heartbeat import _Heartbeat
@@ -171,6 +174,7 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
     alert_guard: AlertGuardConfig | None = None,
     alerts: list[AlertEvent] | None = None,
     tapped: list[str] | None = None,
+    title_check: AlertTitleCheck | None = None,
     cancelled: CancelSource = not_cancelled,
 ) -> tuple[bool, str]:
     """Wait for the system alert `sel` names and tap it, clearing declared interruptions meanwhile.
@@ -198,6 +202,9 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
             condition wait — the shape `record`'s replay gets.
         alerts: The step's outcome list, which the guard appends each prompt it dismissed to.
         tapped: Receives the label of the button the step itself tapped, for the report.
+        title_check: The step's `prompt_title_check`, when it names a prompt. A read whose title
+            rules out that prompt is not tapped, even when it offers the step's button: Local
+            Network and notifications share theirs. The gate then stays free to answer it.
         cancelled: Consulted once per poll, right where the deadline is, so a cancelled run is
             noticed within one tick instead of actuating the device for the rest of the timeout
             (BE-0370). It raises rather than returning a verdict: the prompt neither appeared nor
@@ -234,6 +241,7 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
             guard=alert_guard,
             alerts=alerts if alerts is not None else [],
             reserved=sel,
+            reserved_title=title_check,
         )
         if alert_guard is not None and role is None
         else None
@@ -253,7 +261,12 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
         t0 = clock.now()
         if last_read is None or t0 - last_read >= _SYSTEM_ALERT_POLL:
             last_read = t0
-            seen = driver.system_alert_labels()
+            observed = (
+                observed_alert_labels(driver)
+                if title_check is not None
+                else driver.system_alert_labels()
+            )
+            seen = [label for label in observed if not label.startswith(TITLE_MARKER)]
             ambiguous = False
             picked: str | None = None
             if role is not None:
@@ -262,7 +275,11 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
             # Decided from the labels already in hand: `handle_system_alert` issues its own
             # cross-process query, so tapping speculatively would double this step's query rate for
             # the whole time an interruption the step is not waiting for holds the screen.
-            if sel is not None and selector_names_button(sel, seen):
+            if (
+                sel is not None
+                and selector_names_button(sel, seen)
+                and (title_check is None or title_check(observed))
+            ):
                 try:
                     driver.handle_system_alert(sel, _STEP_TAP_TIMEOUT)
                 except base.ElementNotFound:

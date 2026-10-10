@@ -53,7 +53,20 @@ final class BajutsuCollectorURLTests: XCTestCase {
         XCTAssertEqual(urls.map(\.port), [4100, 4100])
     }
 
-    func testASingleCandidateIsTakenWithoutAProbe() {
+    func testASingleHostAddressIsStillProbed() {
+        // A real device offered one address (Device Farm's explicit one) is not the Simulator's
+        // shared loopback, so it is confirmed like any other before reports go to it.
+        let url = URL(string: "http://192.0.2.7:4100")!
+        var probed: [URL] = []
+        let chosen = BajutsuNet.reachableCollector([url], token: "t") { candidate, _, done in
+            probed.append(candidate)
+            done(true)
+        }
+        XCTAssertEqual(probed, [url])
+        XCTAssertEqual(chosen, url)
+    }
+
+    func testTheLoopbackCollectorIsTakenWithoutAProbe() {
         let url = URL(string: "http://127.0.0.1:4100")!
         let chosen = BajutsuNet.reachableCollector([url], token: "t") { _, _, _ in
             XCTFail("the Simulator's one collector must not be probed")

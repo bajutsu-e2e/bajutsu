@@ -19,6 +19,7 @@ from bajutsu.common.orchestrator import (
     _wait,
     run_scenario,
 )
+from bajutsu.common.orchestrator.types import AlertTitleCheck
 from bajutsu.common.orchestrator.waits import _TRANSITION_QUIESCENCE
 from bajutsu.common.scenario import Wait
 
@@ -894,6 +895,7 @@ def test_wait_guard_asserts_probe_native_never_reports_already_dismissed() -> No
             driver: base.Driver,
             reserved: base.Selector | None = None,
             *,
+            reserved_title: AlertTitleCheck | None = None,
             dismissed: frozenset[frozenset[str]] = frozenset(),
         ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
             return "already_dismissed", None, []
@@ -948,6 +950,7 @@ def test_wait_guard_never_taps_the_tree_while_a_native_alert_races() -> None:
             driver: base.Driver,
             reserved: base.Selector | None = None,
             *,
+            reserved_title: AlertTitleCheck | None = None,
             dismissed: frozenset[frozenset[str]] = frozenset(),
         ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
             return "absent", None, ["Allow", "Don't Allow"]
@@ -1058,6 +1061,7 @@ def test_wait_guard_keeps_an_unhandled_note_when_a_matched_alert_races() -> None
             driver: base.Driver,
             reserved: base.Selector | None = None,
             *,
+            reserved_title: AlertTitleCheck | None = None,
             dismissed: frozenset[frozenset[str]] = frozenset(),
         ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
             self.polls += 1
@@ -1255,6 +1259,7 @@ def test_wait_guard_does_not_double_count_a_label_two_declared_rules_share() -> 
             driver: base.Driver,
             reserved: base.Selector | None = None,
             *,
+            reserved_title: AlertTitleCheck | None = None,
             dismissed: frozenset[frozenset[str]] = frozenset(),
         ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
             return "absent", None, ["Allow", "Don't Allow", "Ask App Not to Track"]
@@ -1289,6 +1294,7 @@ def test_wait_guard_does_not_subtract_a_native_rule_an_excluded_label_rules_out(
             driver: base.Driver,
             reserved: base.Selector | None = None,
             *,
+            reserved_title: AlertTitleCheck | None = None,
             dismissed: frozenset[frozenset[str]] = frozenset(),
         ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
             return "absent", None, ["Save", "Not Now", "Never for This Card"]
@@ -2407,6 +2413,7 @@ def test_wait_guard_does_not_credit_a_rule_matching_alert_rule_would_refuse() ->
             driver: base.Driver,
             reserved: base.Selector | None = None,
             *,
+            reserved_title: AlertTitleCheck | None = None,
             dismissed: frozenset[frozenset[str]] = frozenset(),
         ) -> tuple[NativeAlertState, AlertEvent | None, list[str]]:
             return "absent", None, ["Allow", "Don't Allow", "Allow", "Don't Allow", "Allow Paste"]
