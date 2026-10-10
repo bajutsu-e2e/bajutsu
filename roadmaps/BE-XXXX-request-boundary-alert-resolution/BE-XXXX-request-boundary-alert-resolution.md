@@ -90,8 +90,7 @@ and 26.5:
    95th-percentile (p95) time of one `springboard.alerts.firstMatch.exists` call. That number sets
    the check's rate limit.
 3. **The time `/elements` takes when it presses a button.** BE-0399's activity log shows one
-   press at about 1.6 seconds. The spike compares the longest observed `/elements` against the
-   15-second read window (`bajutsu/common/drivers/xcuitest/_functions.py`).
+   press at about 1.6 seconds. The spike compares the longest observed `/elements` against the 30-second actuation window that a resolving read gets (Unit 2, `_ACTUATION_TIMEOUT_SECONDS` in `bajutsu/common/drivers/xcuitest/_functions.py`).
 4. **The cost per step.** Per version and on one host, the showcase suite runs ten
    times on the baseline runner and ten times on the candidate. The candidate passes when its median
    step duration is within 5 % of the baseline. Its p95 step duration must be within 10 %, and no
@@ -112,13 +111,13 @@ or `inTree`. A plain read stays a pure read. With `true`, the handler runs four 
    `InterruptionPolicy.label(for:)` picks a button, the handler taps it and records *answered*. When
    no rule picks one, the handler taps nothing and records *unidentified* on every check. A native
    rule's showing is keyed on the matched rule's identifying labels, so one showing is recorded *answered* once.
-   It is pressed again only under the pacing memo described below. The key re-arms when a later check no longer finds it, and when an actuation the monitor interrupted completes, because XCUITest synthesizes the interaction only after the alert is gone. Without the second trigger, a prompt that recurs between two checks, such as the paste prompt on every paste, would read as the first showing still up. The monitor would record no *answered* for it, and its presses would count toward the first showing's ceiling. A SpringBoard *answered* record is immediate, because the runner pressed the button. The alert is usually gone by the end of the press. A press that did not land is pressed again under the memo.
+   It is pressed again only under the pacing memo described below. The key re-arms when a later check no longer finds it, and when an actuation on the application that the runner synthesizes (a `/tap`, a gesture, typing, or step 3's in-tree tap) completes after the press, because XCUITest synthesizes such an interaction only once no alert blocks it. A press on a SpringBoard alert's own button (step 1's, the monitor's, `/systemAlert/resolve`'s, or `/systemAlert/tap`'s) re-arms no key, because XCUITest synthesizes it while the alert is still up. The actuation the monitor interrupted still re-arms the key when it completes. Without this distinction, a press that did not land would re-arm its own key, and the showing would be recorded *answered* again and never reach the tap ceiling. A refused actuation (`not-found`, `not-hittable`, or `stale`) synthesized nothing, so it re-arms no key. This second trigger never re-arms an in-tree key either, because an in-tree alert does not block synthesis. An actuation the monitor interrupted completes after the monitor's press, and one it did not interrupt shows the alert was already gone. Without the second trigger, a prompt that recurs between two checks, such as the paste prompt on every paste, would read as the first showing still up. The monitor would record no *answered* for it, and its presses would count toward the first showing's ceiling. A SpringBoard *answered* record is immediate, because the runner pressed the button. The alert is usually gone by the end of the press. A press that did not land is pressed again under the memo.
 2. **Take the application snapshot**, as a plain `/elements` does.
 3. **Apply the in-tree rules.** A pushed in-tree rule matches when every identifying label appears
    exactly once among the snapshot's labelled buttons that carry no identifier (the set `tree_buttons` in `bajutsu/common/drivers/elements.py` builds today) and no excluded label appears. The handler tries the rules in the order they arrive (Python sends `tree_dedup_rules` order), so a nested shape's wider sibling comes
-   first. On a match it re-checks SpringBoard in the same handler. It taps only when no SpringBoard alert is up; otherwise it leaves the in-tree alert for a later request. It then takes a fresh snapshot. The in-tree tap records *answered* at the tap, meaning the runner pressed this button.
+   first. On a match it consults the pacing memo first, and re-checks SpringBoard in the same handler only when the memo would let it tap. That re-check counts toward step 1's `pollIntervalSeconds` limit, except that it always runs in a request whose own step 1 just queried SpringBoard. A match the memo withholds or declines, or one that falls inside that limit, leaves the in-tree alert for a later request without querying SpringBoard. It taps only when the re-check finds no SpringBoard alert; otherwise it leaves the in-tree alert for a later request. It then takes a fresh snapshot. The in-tree tap records *answered* at the tap, meaning the runner pressed this button.
 4. **Reply.** The reply returns the tree with the records this request drained. `/tap` already folds
-   its drained records into its reply in the same way (BE-0407 Unit 6, `APIHandler.swift`). The reply always carries the records field, empty when nothing happened. It also carries `springboardChecked`, which is `true` when this reply's own step 1 queried SpringBoard and found no alert, and step 3's re-check, when it ran, found none either. It carries `withheld` too, which is `true` when the pacing memo kept this request from pressing a showing an earlier resolving read already answered, inside the re-tap delay. The driver raises
+   its drained records into its reply in the same way (BE-0407 Unit 6, `APIHandler.swift`). The reply always carries the records field, empty when nothing happened. It also carries `springboardChecked`, which is `true` when this reply's own step 1 queried SpringBoard and found no alert, and step 3's re-check, when it ran, found none either. It carries `withheld` too, which is `true` when the pacing memo kept this request from pressing a showing that already holds a key, inside the re-tap delay, whichever path answered it first: an earlier resolving read, the interruption monitor, or `/systemAlert/resolve`. The driver raises
    `XcuitestChannelError` when a `resolveAlerts` reply lacks the records field, so a stale runner build fails
    loudly instead of returning a plain tree.
 
@@ -171,7 +170,7 @@ Inside a scenario, Python drains before it pushes. The push at scenario start
   after a relaunch.
 - The pushes inside a scenario (`_reserve_declared_alert` and its restore) keep the keys and the memo.
   A showing that spans them is neither re-pressed early nor recorded twice.
-- A key re-arms when its alert is gone.
+- A key re-arms when its alert is gone. A native key also re-arms when a synthesized actuation completes after the press (Unit 2, step 1).
 
 The wire format gains two optional fields per rule: an `exclude` list, and the rule's surface
 (`native` or `inTree`, from `ResolvedAlertRule`). At the policy level it also gains `pollIntervalSeconds`, the three pacing values above, and the `scenarioStart` mark. `ResolvedAlertRule` carries `native` and `in_tree` as two independent flags. No declared prompt sets both today, and `push_interruption_policy` raises `ValueError` on a rule that does, as it already does for a native-reachable rule with an exclusion set, rather than pushing it on one surface only. `push_interruption_policy`
@@ -187,7 +186,7 @@ re-send a read whose response timed out after delivery. The driver treats a `res
 like a write instead: it retries a request that was never delivered and fails loudly after delivery.
 The change goes in `_is_retry_eligible` (`bajutsu/common/drivers/xcuitest/_functions.py`), which
 today treats every `GET` as idempotent. BE-0287's crash-recovery re-issue uses the same predicate,
-so one change covers both.
+so one change covers both. For the same reason, `_timeout_for`, which gives every `GET` the 15-second read window because a read can lean on that retry, gives a `resolveAlerts` read the 30-second actuation window (`_ACTUATION_TIMEOUT_SECONDS`) that a write gets.
 
 ### Unit 3 — A `POST /systemAlert/resolve` endpoint
 
@@ -195,7 +194,7 @@ so one change covers both.
 an in-tree *answered* record carries its surface through the drain, so an application-owned button
 that shares the step's label is reported as an unrelated alert and never passes the step.
 
-The step keeps its own `/systemAlert/query` polls, which never resolve anything. The tree reads the step makes alongside them go through `query_resolving(inTree)`. That mode runs Unit 2's steps 2 to 4 and skips the
+The step keeps its own `/systemAlert/query` polls, which never resolve anything. Under a governing guard, a step that names its button by label makes its tree reads alongside them through `query_resolving(inTree)`, and it is the only kind of step that calls `resolve_system_alert` below. A step answering by position (BE-0445) and a step with the guard off make no tree reads and send no `/systemAlert/resolve`, because their waits run without the gate today. That mode runs Unit 2's steps 2 to 4 and skips the
 SpringBoard check in step 1, so an application-owned alert such as the Save Password sheet is still
 cleared while the step waits (BE-0406). Step 3's SpringBoard re-check finds the step's own alert and
 withholds the in-tree tap, as `probe_native`'s `"reserved"` answer does today. When the alert the
@@ -204,8 +203,7 @@ step sees does not match the step's selector, Python decides so with the existin
 
 The request carries the button labels the step's last `/systemAlert/query` saw. The runner answers
 only when the alert showing now offers exactly that label set. Otherwise it returns `changed` and
-taps nothing, so the step's own alert, arriving in place of the one Python judged, is never answered by policy. It shares Unit 2's per-showing key and pacing memo. A showing it already answered is pressed again only after the re-tap delay, up to the per-showing ceiling, and is then recorded *gave up*. A re-press records no new *answered*. A call the memo withholds taps nothing and returns a fifth reply, `pending`, so the step never reads a withheld call as a press. When no alert is showing, the endpoint returns `absent`. When it finds an alert that no
-rule names, it returns `unidentified` and taps nothing. The `handleSystemAlert` step keeps waiting,
+taps nothing, so the step's own alert, arriving in place of the one Python judged, is never answered by policy. It shares Unit 2's per-showing key and pacing memo. A showing it already answered is pressed again only after the re-tap delay, up to the per-showing ceiling, and is then recorded *gave up*. A re-press records no new *answered*. A call the memo withholds taps nothing and returns a fifth reply, `pending`, so the step never reads a withheld call as a press. When no alert is showing, the endpoint returns `absent`. When it finds an alert that no rule names, it records *unidentified*, returns `unidentified`, and taps nothing. The `handleSystemAlert` step keeps waiting,
 as it does today.
 
 ### Unit 4 — The thin Python path
@@ -241,14 +239,13 @@ tap is synthesized. A `not-hittable` refusal returns before `tap()` runs
 the SpringBoard check.
 
 Under a governing guard, on a definite `not-found` or `not-hittable` refusal from the runner, or an `ElementNotFound` that a handle-based actuation (`tap`, `double_tap`, `long_press`, `pinch`, `rotate`, `set_picker_value`) raises from its own plain handle read, before it sends its request or while it re-resolves a stale handle, or an `ElementNotFound` that an action handler raises from its selector-resolution read (Unit 4), the step resolves the selector again through `query_resolving(true, force_check=True)`, a resolving `/elements` that skips the
-SpringBoard rate limit. When that reply's records show an answer, or the reply sets `withheld`, the step waits for the screen to settle through the existing `settle_after_alert_dismiss` (`waits/_functions.py`), as `AlertGuardConfig.__call__`'s rounds do today. It then runs the step body once more, at the end-of-step site described below. Either way,
-the reply's records supply the blocked-screen note, so a refused tap under an unnamed alert still
+SpringBoard rate limit. When that reply's records show an answer, when the reply sets `withheld`, or when a resolving read the failed body run made (a guarded wait's poll or a selector-resolution read) returned an *answered* record, the step waits for the screen to settle through the existing `settle_after_alert_dismiss` (`waits/_functions.py`), as `AlertGuardConfig.__call__`'s rounds do today. The last case covers an alert that the body's own read answered and that is gone by the time of the recovery read, so the recovery read alone shows neither an answer nor `withheld`. It then runs the step body once more, at the end-of-step site described below. Whether or not the body runs again, the reply's records supply the blocked-screen note, so a refused tap under an unnamed alert still
 fails with that note rather than a bare `not-hittable`. It never follows a write
 whose outcome is unknown, because a second delivery could double-actuate (BE-0207).
 
 A failed check keeps a one-time recovery of the same kind. The `assert` step, the `expect`
 phase, `extract`, and `if` keep reading through `Driver.query`, so a read never
-changes the screen in the middle of a check. When an `assert` step or the `expect` phase fails under a governing guard, the step sends one `query_resolving(true, force_check=True)`, which skips the SpringBoard rate limit. When that reply shows an answer or sets `withheld`, the step waits through `settle_after_alert_dismiss` and the check runs once more: a failed `assert` re-runs the step body at the end-of-step site below, and a failed `expect` is evaluated again in its own phase. Either way, the reply's records supply the blocked-screen note that `__call__` supplies today. An `extract` takes no recovery, as today: it runs after the end-of-step site and its drain (`loop/_step_runner.py`), so a recovery there would leave its records for the next step's drain, and re-running a mutating step's body to repeat it would actuate twice.
+changes the screen in the middle of a check. When an `assert` step or the `expect` phase fails under a governing guard, the step sends one `query_resolving(true, force_check=True)`, which skips the SpringBoard rate limit. When that reply shows an answer or sets `withheld`, the step waits through `settle_after_alert_dismiss` and the check runs once more: a failed `assert` re-runs the step body at the end-of-step site below, and a failed `expect` is evaluated again in its own phase. Whether or not the check runs again, the reply's records supply the blocked-screen note that `__call__` supplies today. An `extract` takes no recovery, as today: it runs after the end-of-step site and its drain (`loop/_step_runner.py`), so a recovery there would leave its records for the next step's drain, and re-running a mutating step's body to repeat it would actuate twice.
 An `if` condition never fails, so it takes no recovery: as today, a condition that an alert makes
 false takes the `else` branch.
 The `expect` phase runs after the last end-of-step drain, so it drains once more after its
@@ -258,7 +255,7 @@ the next scenario's first drain.
 
 Under the capability, two other paths no longer run. The end-of-step retry in
 `AlertGuardConfig.__call__` (BE-0418) stays off. The `expect` path's own call to `__call__`
-(`bajutsu/common/orchestrator/loop/_functions.py`) stays off too. The recovery for a refused actuation and for a failed `assert` runs at the end-of-step site that `__call__` occupies today, after the TipKit retry, and re-runs the step body once. It never runs inside the step body, so the TipKit retry's second body run cannot spend a second one. As a result, a step makes at most one alert retry, whether it follows a refused actuation or a failed check. The TipKit retry after `_dismiss_blocking_tip` (`loop/_step_runner.py`) is unchanged.
+(`bajutsu/common/orchestrator/loop/_functions.py`) stays off too. The recovery for a refused actuation and for a failed `assert` runs at the end-of-step site that `__call__` occupies today, after the TipKit retry, and re-runs the step body once. It never runs inside the step body, so the TipKit retry's second body run cannot spend a second one. As a result, a step makes at most one alert retry, whether it follows a refused actuation or a failed check. The TipKit retry after `_dismiss_blocking_tip` (`loop/_step_runner.py`) is unchanged. A `handleSystemAlert` step that answers by position (BE-0445) waits without the gate, so today `__call__` at the end-of-step site is the only place a failed one learns what blocked the screen. Under a governing guard, such a step takes the same recovery at that site. It sends one `query_resolving(true, force_check=True)`, whose records supply the blocked-screen note. On an answer or `withheld`, it settles through `settle_after_alert_dismiss` and re-runs the step body once. A failed `handleSystemAlert` step that names its button by label still takes no end-of-step recovery, as today, because its own wait already drove the guard.
 
 ### Unit 6 — Prevention
 
@@ -294,7 +291,7 @@ A backend without the capability keeps today's gate. The explicit `handleSystemA
   - the handler's step order and the SpringBoard rate limit;
   - `inTree` skipping step 1, and step 3's SpringBoard re-check withholding the in-tree tap while a SpringBoard alert is up;
   - the `InterruptionPolicyStore` entry point the interruption monitor calls answering "press, do not record" for a showing that already has a key, inside the re-tap delay and past the ceiling alike. The monitor's closure (`RunnerUITest.swift`) sits outside the `BajutsuRunner` package target these tests build, so the decision lives in that entry point;
-  - an actuation that completes after a monitor press re-arming that key, so a prompt that recurs before the next check is recorded *answered* on each showing;
+  - an actuation that completes after a press, whether or not the monitor interrupted it, re-arming that native key, so a prompt that recurs before the next check is recorded *answered* on each showing, while a refused actuation re-arms nothing, a press on a SpringBoard alert's own button (step 1, the monitor, `/systemAlert/resolve`) re-arms nothing, so an unlanded native press still reaches the ceiling and *gave up*, and no actuation re-arms an in-tree key;
   - `forceCheck` skipping the SpringBoard rate limit;
   - exclusion, matching in the order the rules arrive (Swift never reorders them), *unidentified*
     recorded on every check, and a native showing tapped and recorded once;
@@ -319,14 +316,17 @@ A backend without the capability keeps today's gate. The explicit `handleSystemA
   - the retry after a `not-hittable` tap on a target an in-tree sheet still covers because step 3 deferred it, with its recovery read forced;
   - a refused tap on a target that a just-answered, still-fading alert covers, whose forced recovery read the pacing memo withholds, settling and re-running once on `withheld`;
   - a `swipe` whose selector-resolution read raises `ElementNotFound` under a SpringBoard alert the rate-limited check skipped, sending one forced recovery read and re-running once on an answer;
+  - a refused tap, or a selector-resolution `ElementNotFound`, after the body's own resolving read answered an in-tree alert that is gone by the recovery read, settling and re-running once;
   - a failed `assert` or `expect` check sending one `query_resolving(true, force_check=True)`, settling through `settle_after_alert_dismiss` and re-running once on an answer, and taking its note from that reply;
   - a failed `extract` sending no recovery read and never re-running the step body;
+  - a failed position-rule `handleSystemAlert` step (BE-0445) sending one `query_resolving(true, force_check=True)` at the end-of-step site and taking its blocked-screen note from that reply, while a failed label-named one sends none;
   - a TipKit retry or alert retry re-run sending `query_resolving(true)` for its guarded waits;
   - a failed `expect` check's recovery records reported by the `expect` phase's own drain, never by the next scenario's;
   - no call to `AlertGuardConfig.__call__` under the capability, from either the end-of-step retry or the `expect` path;
   - a backend without `HANDLE_SYSTEM_ALERT` still taps no in-tree prompt once `__call__`'s halves are gone;
   - `_is_retry_eligible` refusing to re-send a delivered `resolveAlerts` read, in both the BE-0207 retry and the BE-0287 recovery re-issue;
   - `XcuitestChannelError` on a `resolveAlerts` reply that lacks the records field;
+  - `_timeout_for` giving a `resolveAlerts` read the actuation window;
   - the collapsed-tree proxy stops a wait early only on a reply whose `springboardChecked` is true;
   - `query_resolving` returns each reply's records and also folds them into the carry;
   - an in-tree answer whose label matches the step's selector does not pass a `handleSystemAlert` step;
