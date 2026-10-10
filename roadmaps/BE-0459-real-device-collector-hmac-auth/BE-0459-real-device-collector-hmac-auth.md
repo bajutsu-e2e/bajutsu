@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0459](BE-0459-real-device-collector-hmac-auth.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0459") |
-| Implementing PR | [#2150](https://github.com/bajutsu-e2e/bajutsu/pull/2150) (units 1–7) |
+| Implementing PR | [#2150](https://github.com/bajutsu-e2e/bajutsu/pull/2150) (units 1–8) |
 | Topic | Security hardening |
 | Related | [BE-0115](../BE-0115-inprocess-collector-auth/BE-0115-inprocess-collector-auth.md), [BE-0365](../BE-0365-in-app-control-channel/BE-0365-in-app-control-channel.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md), [BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture.md) |
 <!-- /BE-METADATA -->
@@ -408,7 +408,7 @@ The device proof is manual. It checks the three observations from *Motivation*:
 - [x] BajutsuKit: signed requests from `postJSON`, the probe, and the control channel's drain.
 - [x] BajutsuKit: answer verification and 409 handling in the probe and the control channel.
 - [x] Docs in both languages: `docs/ios-device-cloud.md` and `docs/architecture.md`.
-- [ ] Manual real-device proof on `network_mock`: packet capture, replayed report, bearer request.
+- [x] Manual real-device proof on `network_mock`: packet capture, replayed report, bearer request.
 
 Log:
 
@@ -423,7 +423,15 @@ Log:
   `BAJUTSU_COLLECTOR_AUTH=hmac`. BajutsuKit signs through `CollectorCredential` and verifies the
   `/commands` and probe answers. It keeps polling after a 409. The device-cloud, architecture, and
   network pages describe the scheme in both languages, `docs/network.md` included because it
-  described the bearer header. Unit 8 needs a USB-attached iPhone and stays open.
+  described the bearer header.
+- [#2150](https://github.com/bajutsu-e2e/bajutsu/pull/2150) — Unit 8. `network_mock` passed on a USB-attached iPhone 14 Pro, with the collector
+  bound on `::`. All 14 requests the device sent (`GET /ping`, `POST /`, and `POST /transitions`)
+  carried the signed header. None carried a bearer header or the token's bytes. The capture was taken
+  inside the collector, recording every byte each device connection delivered: on plain HTTP those
+  are the bytes that crossed the wire, and an unprivileged session cannot open the host's packet
+  capture device. The captured `POST /` report, replayed mid-run, got a 409. `network.json` held one
+  exchange for the device's one `POST /`. A bearer request carrying the run's token got a 401, and
+  the run log warned once.
 
 ## References
 

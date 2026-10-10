@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0459](BE-0459-real-device-collector-hmac-auth-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0459") |
-| 実装 PR | [#2150](https://github.com/bajutsu-e2e/bajutsu/pull/2150)（単位 1〜7） |
+| 実装 PR | [#2150](https://github.com/bajutsu-e2e/bajutsu/pull/2150)（単位 1〜8） |
 | トピック | セキュリティ強化 |
 | 関連 | [BE-0115](../BE-0115-inprocess-collector-auth/BE-0115-inprocess-collector-auth-ja.md), [BE-0365](../BE-0365-in-app-control-channel/BE-0365-in-app-control-channel-ja.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md), [BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture-ja.md) |
 <!-- /BE-METADATA -->
@@ -393,7 +393,7 @@ BajutsuKit のユニットテストは、同じベクターを Swift から検�
 - [x] BajutsuKit：`postJSON`、プローブ、制御チャネルの取り出しでのリクエストへの署名
 - [x] BajutsuKit：プローブと制御チャネルでの応答の検証と 409 の扱い
 - [x] 両言語のドキュメント：`docs/ios-device-cloud.md` と `docs/architecture.md`
-- [ ] `network_mock` での実機の手動確認：パケットキャプチャ、再送した報告、Bearer のリクエスト
+- [x] `network_mock` での実機の手動確認：パケットキャプチャ、再送した報告、Bearer のリクエスト
 
 ログ：
 
@@ -406,8 +406,16 @@ BajutsuKit のユニットテストは、同じベクターを Swift から検�
   ノンスの数は、コレクターの停止時に実行ログへ出します。`BAJUTSU_LOG_LEVEL=info` のときに表示されます。プールは `BAJUTSU_COLLECTOR_AUTH=hmac` を通知します。BajutsuKit は
   `CollectorCredential` で署名し、`/commands` とプローブの応答を検証します。409 の後もポーリングを
   続けます。実機クラウド、アーキテクチャ、ネットワークの各ページで、両言語とも署名方式を説明しました。
-  `docs/network.md` も Bearer ヘッダーを説明していたため更新しました。単位 8 は USB で接続した
-  iPhone が必要なため、未完了のままです。
+  `docs/network.md` も Bearer ヘッダーを説明していたため更新しました。
+- [#2150](https://github.com/bajutsu-e2e/bajutsu/pull/2150) — 単位 8。USB で接続した iPhone 14 Pro で、コレクターを `::` で待ち受けさせて
+  `network_mock` を実行し、成功しました。実機が送った 14 件の要求（`GET /ping`、`POST /`、
+  `POST /transitions`）は、すべて署名付きのヘッダーを持っていました。Bearer ヘッダーやトークンの
+  バイト列を含む要求は 1 件もありませんでした。記録はコレクターの内部で取り、実機の各接続から届いた
+  バイト列をすべて残しました。暗号化しない HTTP では、このバイト列が通信路を流れたものと同じです。
+  権限のないセッションでは、ホストのパケットキャプチャ用デバイスを開けないため、この方法を選びました。
+  記録した `POST /` の報告を実行中に再送すると、409 が返りました。`network.json` には、実機が送った
+  1 件の `POST /` に対応する 1 件だけが残りました。実行のトークンを持つ Bearer の要求には 401 が返り、
+  実行ログに警告が 1 回出ました。
 
 ## 参考
 
