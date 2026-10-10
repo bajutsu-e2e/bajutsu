@@ -53,6 +53,8 @@ class FakeDriver:
         ) = None
         self.interruptions_to_drain: list[str] = []
         self.interruptions_declined_to_drain: list[list[str]] = []
+        # Per seeded tapped label, what the monitor matched its alert by (buttons and title marker).
+        self.interruption_alerts_to_drain: list[list[str]] = []
         # Notification banners the runner-side monitor should report having swiped away (BE-0416),
         # seeded the same way and just as inert.
         self.banners_to_drain: list[str] = []
@@ -314,7 +316,13 @@ class FakeDriver:
             [],
         )
         banners, self.banners_to_drain = list(self.banners_to_drain), []
-        return base.DrainedInterruptions(tapped=tapped, declined=declined, banners=banners)
+        tapped_alerts, self.interruption_alerts_to_drain = (
+            list(self.interruption_alerts_to_drain),
+            [],
+        )
+        return base.DrainedInterruptions(
+            tapped=tapped, declined=declined, banners=banners, tapped_alerts=tapped_alerts
+        )
 
     def dismiss_blocking_tip(self, tree: list[base.Element] | None = None) -> bool:
         # Mirrors the real driver: a tip is the region *and* the container together, absence is

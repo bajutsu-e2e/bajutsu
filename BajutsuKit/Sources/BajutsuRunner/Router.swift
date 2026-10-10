@@ -70,7 +70,7 @@ final class Router {
                 200,
                 [
                     "labels": drained.tapped, "unmatched": drained.declined,
-                    "banners": drained.banners,
+                    "banners": drained.banners, "tappedAlerts": drained.tappedAlerts,
                 ]
             )
         case ("POST", "/systemAlert/query"):

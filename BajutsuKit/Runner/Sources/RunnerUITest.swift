@@ -80,7 +80,7 @@ final class RunnerUITest: XCTestCase {
             button.tap()
             // Recorded so the driver can report this as an `AlertEvent`: a prompt answered here
             // being missing from the report is the failure this mechanism exists to end.
-            InterruptionPolicyStore.shared.record(label)
+            InterruptionPolicyStore.shared.record(label, alert: matched)
             return true
         }
     }

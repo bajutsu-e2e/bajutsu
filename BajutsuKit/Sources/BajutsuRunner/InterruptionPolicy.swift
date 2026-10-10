@@ -143,6 +143,9 @@ public final class InterruptionPolicyStore: @unchecked Sendable {
     private let lock = NSLock()
     private var _policy = InterruptionPolicy()
     private var _tapped: [String] = []
+    /// Per tapped label, what the policy matched its alert by: the buttons plus the title marker.
+    /// The label alone cannot say which prompt it answered, since two prompts can share it.
+    private var _tappedAlerts: [[String]] = []
     private var _declined: [[String]] = []
     private var _banners: [String] = []
 
@@ -162,14 +165,16 @@ public final class InterruptionPolicyStore: @unchecked Sendable {
         defer { lock.unlock() }
         _policy = policy
         _tapped = []
+        _tappedAlerts = []
         _declined = []
         _banners = []
     }
 
-    public func record(_ label: String) {
+    public func record(_ label: String, alert: [String] = []) {
         lock.lock()
         defer { lock.unlock() }
         _tapped.append(label)
+        _tappedAlerts.append(alert)
     }
 
     /// Records the buttons of an alert `governs` covered but no rule identified, before declining.
@@ -190,16 +195,18 @@ public final class InterruptionPolicyStore: @unchecked Sendable {
         _banners.append(label)
     }
 
-    /// Returns what was tapped, declined and swiped away since the last drain, and clears all three.
-    public func drain() -> (tapped: [String], declined: [[String]], banners: [String]) {
+    /// Returns what was tapped (with each tap's alert), declined and swiped away since the last
+    /// drain, and clears them all.
+    public func drain() -> (
+        tapped: [String], tappedAlerts: [[String]], declined: [[String]], banners: [String]
+    ) {
         lock.lock()
         defer { lock.unlock() }
-        let tapped = _tapped
-        let declined = _declined
-        let banners = _banners
+        let drained = (_tapped, _tappedAlerts, _declined, _banners)
         _tapped = []
+        _tappedAlerts = []
         _declined = []
         _banners = []
-        return (tapped, declined, banners)
+        return drained
     }
 }

@@ -183,7 +183,7 @@ final class TransportParityTests: XCTestCase {
                 "/tap (\(result))",
                 // `/tap`'s interruption-drain fold (BE-0407 Unit 6) is a deliberate difference from
                 // the legacy `Router`, which never gains it — pinned separately in `TapDrainFoldTests`.
-                ignoringKeys: ["labels", "unmatched", "banners"]
+                ignoringKeys: ["labels", "unmatched", "banners", "tappedAlerts"]
             )
             try assertSame(
                 try wire("POST", "/isHittable", json: ["handle": handle.live]),
@@ -218,7 +218,7 @@ final class TransportParityTests: XCTestCase {
             try wire("POST", "/tap", json: ["point": [12.5, 34]]),
             try reference("POST", "/tap", json: ["point": [12.5, 34]]),
             "/tap (coordinate)",
-            ignoringKeys: ["labels", "unmatched", "banners"]
+            ignoringKeys: ["labels", "unmatched", "banners", "tappedAlerts"]
         )
         XCTAssertEqual(provider.tapPointCalls.count, 1, "the coordinate path must reach the provider")
         try assertSame(
@@ -365,6 +365,17 @@ final class TransportParityTests: XCTestCase {
             JSONSerialization.jsonObject(with: second.body) as? [String: Any]
         )
         XCTAssertEqual(secondJSON["banners"] as? [String], [])
+    }
+
+    func testInterruptionPolicyDrainReportsTheAlertEachTapAnswered() throws {
+        // Both transports carry each tap's matched alert beside its label, in the same order.
+        InterruptionPolicyStore.shared.setPolicy(InterruptionPolicy(governs: true))
+        let alert = ["Don’t Allow", "Allow", "title: Allow “%@” to find devices on local networks?"]
+        InterruptionPolicyStore.shared.record("Allow", alert: alert)
+        let reply = try wire("POST", "/interruptionPolicy/drain", json: [:])
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: reply.body) as? [String: Any])
+        XCTAssertEqual(json["labels"] as? [String], ["Allow"])
+        XCTAssertEqual(json["tappedAlerts"] as? [[String]], [alert])
     }
 
     func testScreenshotServesRawPNGOverTheWire() throws {

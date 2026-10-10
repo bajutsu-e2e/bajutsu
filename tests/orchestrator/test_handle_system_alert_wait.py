@@ -521,3 +521,62 @@ def test_the_fake_driver_refuses_a_single_shot_call_with_no_alert_showing() -> N
 
     with pytest.raises(base.ElementNotFound, match="no system alert is showing"):
         driver.handle_system_alert({"label": "Allow"}, 0.0)
+
+
+# --- a monitor tap counts as the step's own only on the step's own prompt -----------------------
+
+_LOCAL_NETWORK_ALERT = [
+    "Don’t Allow",
+    "Allow",
+    "title: Allow “%@” to find devices on local networks?",
+]
+_NOTIFICATIONS_ALERT = ["Don’t Allow", "Allow", "title: “%@” Would Like to Send You Notifications"]
+
+
+def test_a_monitor_tap_on_a_look_alike_prompt_is_not_the_steps_own() -> None:
+    # The monitor's `localNetwork` rule pressed "Allow" on the Local Network prompt. A notifications
+    # step names the same button, but the title says it was another prompt: recorded, not credited.
+    from bajutsu.common.orchestrator.types import prompt_title_check
+
+    driver = FakeDriver([])
+    driver.interruptions_to_drain = ["Allow"]
+    driver.interruption_alerts_to_drain = [_LOCAL_NETWORK_ALERT]
+    alerts: list[AlertEvent] = []
+    tapped: list[str] = []
+
+    ok, reason = wait_for_system_alert(
+        driver,
+        {"label": "Allow"},
+        0.5,
+        _LogicalClock(),
+        alerts=alerts,
+        tapped=tapped,
+        title_check=prompt_title_check("notifications", "grant", "en_US"),
+    )
+
+    assert not ok
+    assert "no system alert appeared" in reason
+    assert alerts == [AlertEvent(label="Allow")]  # the rule's dismissal, still reported
+    assert tapped == []
+
+
+def test_a_monitor_tap_on_the_steps_own_prompt_still_finishes_the_step() -> None:
+    from bajutsu.common.orchestrator.types import prompt_title_check
+
+    driver = FakeDriver([])
+    driver.interruptions_to_drain = ["Allow"]
+    driver.interruption_alerts_to_drain = [_NOTIFICATIONS_ALERT]
+    tapped: list[str] = []
+
+    ok, reason = wait_for_system_alert(
+        driver,
+        {"label": "Allow"},
+        5.0,
+        _LogicalClock(),
+        alerts=[],
+        tapped=tapped,
+        title_check=prompt_title_check("notifications", "grant", "en_US"),
+    )
+
+    assert ok, reason
+    assert tapped == ["Allow"]

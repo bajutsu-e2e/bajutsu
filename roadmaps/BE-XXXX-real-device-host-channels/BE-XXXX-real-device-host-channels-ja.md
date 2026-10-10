@@ -81,6 +81,7 @@ collector には `GET /ping` のルートを 1 つ追加します。認証済み
 - `localNetwork` は、この目印を識別用の文言に含めます。
 - `notifications` はこの目印を除外するので、どちらのルールも相手のプロンプトには答えません。
 - 割り込みのポリシーは、ルールの除外用の文言も runner に渡します。runner も同じ目印を作ります。
+- プロンプトを名指しした `handleSystemAlert` の手順は、タップの前にタイトルを確かめます。モニタのタップを自分のタップとして数える前にも、タイトルを確かめます。そのため、モニタのドレインは、タップした文言と並べて、そのアラートを照合した文言も返します（`tappedAlerts`）。
 
 雛形は `NetworkExtension.framework`（`APP_WANTS_LOCAL_NETWORK_HEADER`）から取りました。英語と日本語のどちらでも、iOS 18.6、26.5、27.0 で同じです。シナリオやターゲットは、ほかのプロンプトと同じく `{ prompt: localNetwork, choice: grant }` と宣言します。宣言がなければ、何も自動では答えません。
 

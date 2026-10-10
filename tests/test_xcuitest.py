@@ -2113,6 +2113,33 @@ def test_drain_interruptions_reads_the_banners_the_monitor_swiped_away() -> None
     assert drained.declined == []
 
 
+def test_drain_interruptions_reads_the_alert_each_tap_answered() -> None:
+    # The label alone cannot say which prompt was answered; the matched alert travels beside it.
+    alert = ["Don’t Allow", "Allow", "title: Allow “%@” to find devices on local networks?"]
+
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        return _Reply(
+            status="ok",
+            raw=json.dumps(
+                {"labels": ["Allow", "Not Now"], "unmatched": [], "tappedAlerts": [alert]}
+            ).encode(),
+        )
+
+    drained = _driver(transport).drain_interruptions()
+    assert drained.tapped == ["Allow", "Not Now"]
+    assert (drained.alert_of(0), drained.alert_of(1)) == (alert, [])  # short list: unknown
+
+
+def test_merged_drains_keep_each_tap_with_its_own_alert() -> None:
+    # A first drain from a runner that omitted the alerts must not shift the second's onto it.
+    first = base.DrainedInterruptions(tapped=["Not Now"], declined=[], banners=[])
+    later = base.DrainedInterruptions(
+        tapped=["Allow"], declined=[], banners=[], tapped_alerts=[["Allow", "title: x"]]
+    )
+    merged = first.merged_with(later)
+    assert (merged.alert_of(0), merged.alert_of(1)) == ([], ["Allow", "title: x"])
+
+
 def test_drain_interruptions_reads_no_banners_from_a_runner_that_predates_them() -> None:
     # A pinned older `testRunner` build omits `banners` entirely. It never swiped one away either,
     # so an absent field and an empty one are the same answer here — unlike the `/tap` fold, where

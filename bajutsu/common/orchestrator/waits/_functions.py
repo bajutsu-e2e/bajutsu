@@ -311,7 +311,7 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
                 # end, reintroduced by the mechanism meant to close it. A backend without the
                 # opt-in, or one nothing has pushed a policy to, drains nothing and falls through
                 # unchanged.
-                answered = _policy_answered_alert(driver, sel, alerts, tapped)
+                answered = _policy_answered_alert(driver, sel, alerts, tapped, title_check)
                 if answered is not None:
                     return answered
         if gate is not None:
@@ -347,20 +347,28 @@ def _policy_answered_alert(
     sel: base.Selector | None,
     alerts: list[AlertEvent] | None,
     tapped: list[str] | None = None,
+    title_check: AlertTitleCheck | None = None,
 ) -> tuple[bool, str] | None:
     """Drain what a governing policy's monitor answered between polls; the verdict it settles, if any.
 
     Split out of `wait_for_system_alert` (BE-0386); the reasoning for draining here at all lives at
-    its one call site.
+    its one call site. A tap counts as the step's own only when it pressed `sel`'s button on an
+    alert `title_check` accepts: a rule answering a look-alike prompt with the same button (Local
+    Network under a notifications step) is that rule's dismissal, not the step's verdict. A tap whose
+    alert the runner did not report keeps the label-only match an older runner allows.
     """
     drained = driver.drain_interruptions()
-    # A position rule with no alert read yet names no label, and nothing reserved one for the
-    # monitor either, so no label it tapped can be the step's own.
-    matched = (
-        []
-        if sel is None
-        else [label for label in drained.tapped if selector_names_button(sel, [label])]
-    )
+
+    def is_own(index: int, label: str) -> bool:
+        # A position rule with no alert read yet names no label, and nothing reserved one for the
+        # monitor either, so no label it tapped can be the step's own.
+        if sel is None or not selector_names_button(sel, [label]):
+            return False
+        alert = drained.alert_of(index)
+        return title_check is None or not alert or title_check(alert)
+
+    own = [is_own(index, label) for index, label in enumerate(drained.tapped)]
+    matched = [label for label, mine in zip(drained.tapped, own, strict=True) if mine]
     if alerts is not None:
         # A tapped label that is not `sel`'s own is some other declared rule's alert,
         # resolved by the monitor while this step happened to be polling — draining it
@@ -369,7 +377,7 @@ def _policy_answered_alert(
         # notification banner swiped away during the same poll is drained here too, for
         # the identical reason: it can never be `sel`'s own alert (BE-0416), so it always
         # belongs in `unrelated`'s company rather than the matched-alert branch below.
-        unrelated = [label for label in drained.tapped if label not in matched]
+        unrelated = [label for label, mine in zip(drained.tapped, own, strict=True) if not mine]
         alerts.extend(AlertEvent(label=label) for label in unrelated)
         alerts.extend(AlertEvent(label=text, kind="notificationBanner") for text in drained.banners)
     if matched:

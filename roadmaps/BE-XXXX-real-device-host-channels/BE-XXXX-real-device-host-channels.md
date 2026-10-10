@@ -145,6 +145,10 @@ alert, carrying its title. The guard reduces that title to Apple's template, wit
 - `localNetwork` names that marker among its identifying labels.
 - `notifications` excludes it, so neither rule answers the other's prompt.
 - The interruption policy carries a rule's exclusions to the runner, which builds the same marker.
+- A `handleSystemAlert` step that names a prompt checks the title before it taps. The runner can
+  also tap a prompt during an interruption. The step runs the same check before it counts such a
+  tap as its own. The runner's drain lists the labels that matched each tapped alert
+  (`tappedAlerts`).
 
 The templates come from `NetworkExtension.framework` (`APP_WANTS_LOCAL_NETWORK_HEADER`), identical on
 iOS 18.6, 26.5, and 27.0, in English and Japanese. A scenario or target declares

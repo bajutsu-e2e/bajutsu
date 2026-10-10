@@ -57,6 +57,7 @@ final class APIHandlerParityTests: XCTestCase {
         payload["labels"] = nil
         payload["unmatched"] = nil
         payload["banners"] = nil
+        payload["tappedAlerts"] = nil
         return payload
     }
 

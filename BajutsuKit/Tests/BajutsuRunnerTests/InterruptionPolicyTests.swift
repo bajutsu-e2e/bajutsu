@@ -91,4 +91,15 @@ final class InterruptionPolicyTests: XCTestCase {
                 for: ["Don’t Allow", "Allow", "title: “%@” Would Like to Send You Notifications"]),
             "Allow")
     }
+
+    func testDrainReportsTheAlertEachTapAnswered() {
+        // The label alone cannot tell Local Network from notifications; the matched alert can.
+        let store = InterruptionPolicyStore()
+        store.record("Allow", alert: ["Don’t Allow", "Allow", Self.localNetworkMarker])
+        store.record("Not Now")
+        let drained = store.drain()
+        XCTAssertEqual(drained.tapped, ["Allow", "Not Now"])
+        XCTAssertEqual(drained.tappedAlerts, [["Don’t Allow", "Allow", Self.localNetworkMarker], []])
+        XCTAssertTrue(store.drain().tappedAlerts.isEmpty)
+    }
 }
