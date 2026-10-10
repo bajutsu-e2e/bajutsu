@@ -75,7 +75,7 @@ measures step duration against the baseline and counts runner crashes. The gate 
 no step-duration change beyond run-to-run noise and zero crashes. If SpringBoard passes and the
 application sweep fails, Unit 5 is dropped and this item narrows to the SpringBoard half; if the
 SpringBoard sweep fails, the item is Rejected. In that narrowed form the thin gate keeps calling
-`_dismiss_from_tree` for application-owned alerts, so the "Save Password" sheet stays handled. The spike also records whether the monitor already
+`_dismiss_from_tree` for application-owned alerts, so the "Save Password" sheet stays handled. Unit 3 states the licence for that call. The spike also records whether the monitor already
 answers an alert during the wait's own `/elements` traffic, because the answer decides whether a sweep is needed while `/elements` traffic is in flight. It adds no product code.
 
 ### Unit 2 — A runner-resident watcher for SpringBoard alerts
@@ -135,13 +135,21 @@ atomically with the snapshot, following the precedent of `/tap`, whose reply alr
 drained labels (BE-0407 Unit 6). The XCUITest driver adds the folded records to the carry that already holds `/tap`'s drained
 labels (`_drain_carry`). `drain_interruptions()` keeps today's rule: it returns the carry alone
 when the carry is current, and merges it with `POST /interruptionPolicy/drain` otherwise. `POST /interruptionPolicy/drain` remains for
-the one-shot points (end of step, end of scenario) and Unit 4's failure-time drain.
+the one-shot points (end of step, end of scenario) and Unit 4's failure-time drain. A
+`POST /interruptionPolicy` push also drains the pending records and folds them into its reply, and
+the driver adds them to `_drain_carry` like an `/elements` fold. Today `_reserve_declared_alert`
+drains and then pushes in two requests, both before and after a prompt-form step. A watcher sweep
+that lands between them would record an answer, or an unidentified alert, that `setPolicy` then
+wipes unread. Draining inside the push closes that window.
 
 On each poll the thin gate reads the records folded into that poll's `/elements` reply, so reading
 costs no extra round trip. It reads them without consuming them and emits no report events. It uses
 them for two things. One is the blocked-screen note, built from unidentified and declined records.
 The other is Unit 4's step-scoped list of answered alerts. It never calls `probe_native`, never taps, and keeps no latch about the screen. The one exception is the narrowed form from Unit 1, where it keeps
-calling `_dismiss_from_tree`.
+calling `_dismiss_from_tree`. There the runner folds one more fact into the `/elements` reply:
+whether its last sweep found a SpringBoard alert or a reserved alert. The thin gate calls
+`_dismiss_from_tree` only when that bit is clear, and at most once per `poll_interval`. This
+replaces today's `probed_absent` licence.
 
 Each record has one owner. The end-of-step drain (`_drain_step_interruptions` in
 `bajutsu/common/orchestrator/loop/_step_runner.py`) stays the one place that turns records into the
@@ -149,8 +157,12 @@ step's `AlertEvent`s. It also fails the step on an unidentified or declined reco
 Without this rule, each watcher answer would appear twice in the report, once from the gate and once
 from the drain.
 
-The end-of-step and end-of-scenario one-shot paths (`AlertGuardConfig.__call__`,
-`dismiss_from_tree_once`) read the records through the drain endpoint. A backend without the
+Under the capability, the step runner does not call `AlertGuardConfig.__call__` at the end of a
+step or scenario. Unit 4's failure-time drain and once-per-step retry replace the drain and the
+whole-step retry that `__call__` performs today, and its `cleared` return no longer gates a retry.
+The end-of-step drain stays the sole reporter and fails the step on unidentified or declined
+records. In the narrowed form, `dismiss_from_tree_once` keeps running at the end of a step under the
+same SpringBoard-present bit. The remaining one-shot reads use the drain endpoint. A backend without the
 capability (adb, Playwright, or the fake driver when a test leaves the capability off) keeps
 `_AlertGuardGate` unchanged until Unit 6 removes its XCUITest-only branches.
 
@@ -173,7 +185,11 @@ A step can still meet an alert in two ways, and each has its own answer.
   failure the orchestrator drains once more, to pick up an answer recorded after the last poll. The
   records it drains are folded into the step's outcome, the same way `_reserve_declared_alert`'s
   pre-push drain does today, so nothing it picks up is lost from the report. It then checks the
-  step-scoped list together with the answered records this drain returned. If either holds an answered event, it resolves the selector again and
+  step-scoped list together with the answered records this drain returned. In the narrowed form, the
+  step-scoped list also holds the `AlertEvent`s that the thin gate's `_dismiss_from_tree` produced
+  during the step. The failure path also runs `dismiss_from_tree_once`, under the
+  SpringBoard-present bit, before this check and adds its event. A step whose target the "Save
+  Password" sheet covered therefore keeps the retry that `__call__` gives it today. If either holds an answered event, it resolves the selector again and
   issues the actuation once more. Runner records stay timestamp-free, so the step boundary, not a
   clock, defines the window.
 
@@ -183,7 +199,9 @@ whose outcome is unknown after delivery, because a second delivery could double-
 item keeps that rule. A definite `not-found` or `not-hittable` refusal is not such a write, since
 the runner refused it without acting. The retry runs once per step
 and only with an answered record in hand, so an unrelated failure is never masked. The report lists
-both the answered alert and the retry.
+both the answered alert and the retry. Under the capability this retry is the step's one retry: the
+end-of-step retry that `AlertGuardConfig.__call__` gates today does not run, so a step cannot retry
+twice and no second path can re-issue a write whose outcome is unknown.
 
 ### Unit 5 — Application-owned alerts in the watcher
 
@@ -193,6 +211,9 @@ body; today `push_interruption_policy` drops them before the push. The wire form
 the rules in `AlertGuardConfig.tree_dedup_rules` order, so a nested shape's wider sibling comes
 first. The watcher matches a rule when every identifying label is on the application snapshot's
 buttons exactly once and no excluded label is present, then taps the named button.
+It taps an application-owned alert only on a sweep that found no SpringBoard alert, the reserved one
+included. That keeps the order today's `probed_absent` licence enforces: an XCUITest tap made while
+a SpringBoard alert is up would let the monitor answer that alert first.
 `push_interruption_policy`'s refusal of exclusion sets is lifted for in-tree rules alone.
 
 The pacing that `_dismiss_from_tree` carries today moves with the tap. Its numbers do not move: the
@@ -217,16 +238,17 @@ and the XCUITest-specific branches of the collapsed-tree proxy. No flag restores
 second switch would be a second vocabulary for one behavior. The explicit `handleSystemAlert` step
 keeps `/systemAlert/query` and `/systemAlert/tap` (BE-0316). The collapsed-tree proxy stays for
 backends without the capability. In the narrowed form Unit 6 deletes the native probe alone and keeps
-`_dismiss_from_tree`.
+`_dismiss_from_tree`, which waits for the SpringBoard-present bit that Unit 3 describes.
 
 ### Unit 7 — Verification
 
 - **Swift.** `FakeElementProvider` in `BajutsuKit/Tests/BajutsuRunnerTests/` drives the watcher's
   interval, skip-when-busy, and give-up bound. It also drives reservation matching against the
   shared fixture, exclusion and widest-first matching, exactly-once matching, the once-per-showing
-  unidentified record, and the records folded into the `/elements` reply. None of these tests
+  unidentified record, and the records folded into the `/elements` reply, the SpringBoard-present bit in that reply, and
+  the records folded into the `/interruptionPolicy` reply. None of these tests
   needs a Simulator.
-- **Python.** The fake actuator implements the capability. Tests cover five behaviors:
+- **Python.** The fake actuator implements the capability. Tests cover seven behaviors:
   - the single-owner rule: the thin gate reads the folded records without reporting them, and the
     end-of-step drain reports each record once;
   - the failure by name on an unidentified record;
@@ -235,7 +257,10 @@ backends without the capability. In the narrowed form Unit 6 deletes the native 
   - the once-per-step retry, fed by the step-scoped event list, after a pre-delivery failure and
     never after a write whose outcome is unknown;
   - the composition of the `uncleared_prompt_note` text from a *gave up* record, and the withdrawal
-    of its `AlertEvent` in the end-of-step drain's result.
+    of its `AlertEvent` in the end-of-step drain's result;
+  - in the narrowed form, the in-tree tap waits for a clear SpringBoard-present bit, and an in-tree
+    dismissal arms the once-per-step retry;
+  - under the capability, the end-of-step `AlertGuardConfig.__call__` retry does not run.
 - **On device.** `demos/showcase/scenarios/permission.yaml` and BE-0399's two-prompt scenario run
   green on the four iOS versions with Unit 6's deletion applied.
 

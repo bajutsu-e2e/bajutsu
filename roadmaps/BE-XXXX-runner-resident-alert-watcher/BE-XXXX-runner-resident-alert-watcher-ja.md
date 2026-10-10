@@ -47,7 +47,7 @@ runner のメインスレッドが 1 本であることが、問い合わせの�
 プロセスの境界は、1 つの判断を 2 つの言語に分けてもいます。SpringBoard のボタンは runner が渡された
 方針で押し、アプリ側のボタンは Python が同じ方針を解決し直してタップします。
 
-ウォッチャーを runner へ移せば、この分裂はなくなります。runner は時計と直列の操作キューと両方のアラート面を
+ウォッチャーを runner へ移せば、この分裂はなくなります。runner は時計、直列の操作キュー、両方のアラート面を
 持っているので、1 回の走査で、あらゆる種類のプロンプトに 1 つの方針で答えられます。オーケストレータは
 アラートの問い合わせをやめ、すでに読んでいる地点で runner の記録を読みます。シナリオの書き方は変わらず、
 新しい言語モデル呼び出しが実行に入ることもありません（主要原則 1）。
@@ -76,7 +76,7 @@ runner 内で走査するコストは未知です。SpringBoard への問い合�
 上の 4 つの iOS バージョンでショーケースのスイートを走らせます。step の所要時間を基準と比べ、runner の
 クラッシュを数えます。Unit 2 から 8 への関門は、step の所要時間が実行ごとのばらつきを超えて変わらない
 ことと、クラッシュがゼロであることです。SpringBoard が通ってアプリ側の走査が通らなければ、Unit 5 を
-外して SpringBoard 側に絞ります。SpringBoard の走査が通らなければ、本項目は Rejected にします。絞った場合、薄いゲートはアプリ側のアラートに対して `_dismiss_from_tree` を呼び続けるので、「パスワードを保存」シートは引き続き扱われます。
+外して SpringBoard 側に絞ります。SpringBoard の走査が通らなければ、本項目は Rejected にします。絞った場合、薄いゲートはアプリ側のアラートに対して `_dismiss_from_tree` を呼び続けるので、「パスワードを保存」シートは引き続き扱われます。この呼び出しの許可は Unit 3 で述べます。
 この調査では、待機自身の `/elements` 通信のあいだに、監視がすでにアラートへ答えているかどうかも記録
 します。その答えで、`/elements` の通信中にも走査が要るかどうかが決まるからです。プロダクトコードは足しません。
 
@@ -134,21 +134,34 @@ BE-0399 の監視は残します。2 回の走査のあいだに操作へ割り�
 （BE-0407 Unit 6）。XCUITest ドライバは、畳み込まれた記録を、`/tap` の drain 結果を
 すでに保持している持ち越し（`_drain_carry`）に加えます。`drain_interruptions()` は今の規則を保ちます。
 持ち越しが最新ならそれだけを返し、そうでなければ `POST /interruptionPolicy/drain` の結果と合わせて返します。`POST /interruptionPolicy/drain` は、一回きりの地点（step 終了時と
-シナリオ終了時）と、Unit 4 の失敗時の drain のために残ります。
+シナリオ終了時）と、Unit 4 の失敗時の drain のために残ります。`POST /interruptionPolicy` の push も
+保留中の記録を drain して応答に畳み込み、ドライバはこれを `/elements` の畳み込みと同じく
+`_drain_carry` に加えます。現在の `_reserve_declared_alert` は、プロンプト形式の step の前後で、
+drain と push を 2 回の要求に分けて送ります。そのあいだにウォッチャーの走査が入ると、応答や
+unidentified のアラートを記録しても、`setPolicy` が読まれないまま消してしまいます。push の中で
+drain すれば、この隙間はなくなります。
 
 薄いゲートは、ポーリングのたびに、そのポーリングの `/elements` 応答に畳み込まれた記録を読みます。
 読み取りに余分な往復は要りません。記録は消費せず、報告用の event も出しません。読んだ記録は 2 つの用途に
 使います。1 つは、unidentified と辞退の記録から作る、塞がれた画面の注記です。もう 1 つは、Unit 4 の
 step 単位の応答済みアラートのリストです。
 `probe_native` は呼ばず、タップもせず、画面についてのラッチも持ちません。例外は Unit 1 で絞った場合で、そのときは `_dismiss_from_tree` を呼び続けます。
+その場合、runner は `/elements` の応答にもう 1 つの事実を畳み込みます。直近の走査で SpringBoard の
+アラートか予約中のアラートが見つかったかどうかです。薄いゲートが `_dismiss_from_tree` を呼ぶのは、
+このビットが立っていないときだけで、`poll_interval` ごとに最大 1 回です。これが今の `probed_absent`
+による許可の置き換えです。
 
 記録の持ち主は 1 つです。step 終了時の drain（`bajutsu/common/orchestrator/loop/_step_runner.py` の
 `_drain_step_interruptions`）が、記録を step の `AlertEvent` に変える唯一の場所であり続けます。
 unidentified や辞退の記録で step を失敗させるのも、今と同じくこの drain です。この規則がないと、
 ウォッチャーの応答がレポートに 2 回、ゲートから 1 回と drain から 1 回、載ってしまいます。
 
-step 終了時とシナリオ終了時の一回きりの経路（`AlertGuardConfig.__call__` と `dismiss_from_tree_once`）
-も、drain のエンドポイントで記録を読みます。capability を持たないバックエンド（adb、Playwright、および
+capability があるとき、step runner は step 終了時にもシナリオ終了時にも `AlertGuardConfig.__call__`
+を呼びません。`__call__` が今行う drain と step 全体のリトライは、Unit 4 の失敗時の drain と step ごと
+1 回のリトライが置き換え、`__call__` の戻り値 `cleared` がリトライを左右することもなくなります。
+step 終了時の drain は、引き続き唯一の報告者で、unidentified や辞退の記録があれば step を失敗させます。
+絞った場合、`dismiss_from_tree_once` は、同じ SpringBoard 存在ビットのもとで step 終了時に走り続けます。
+それ以外の一回きりの読み取りは drain のエンドポイントを使います。capability を持たないバックエンド（adb、Playwright、および
 試験で capability を切った fake ドライバ）は、Unit 6 が XCUITest 専用の分岐を取り除くまで、`_AlertGuardGate` をそのまま使います。
 
 ### Unit 4：応答済みのアラートに出会った step
@@ -169,6 +182,10 @@ Unit 1 は観測した最長の待ち時間を記録します。
   もう一度 drain して、最後のポーリングのあとに記録された応答を拾います。drain した記録は、
   `_reserve_declared_alert` の push 前の drain が今そうしているように、step の結果に畳み込みます。
   拾ったものがレポートから落ちることはありません。そのうえで、step 単位のリストと、この drain が返した応答済みの記録を調べます。
+  絞った場合、step 単位のリストには、step のあいだに薄いゲートの `_dismiss_from_tree` が出した
+  `AlertEvent` も入ります。さらに失敗時の処理は、この確認の前に、SpringBoard 存在ビットのもとで
+  `dismiss_from_tree_once` を走らせ、その event も加えます。こうして、「パスワードを保存」シートに
+  対象を覆われた step も、今 `__call__` が与えているリトライを失いません。
   どちらかに応答済みのものがあれば、セレクタを解決し直し、操作をもう一度だけ出します。runner の記録は
   タイムスタンプを持たないままです。窓を決めるのは時計ではなく、step の境界です。
 
@@ -176,7 +193,9 @@ Unit 1 は観測した最長の待ち時間を記録します。
 配信後に結果が不明な書き込みの再送を禁じています。本項目もこの規則を保ちます。`not-found` や
 `not-hittable` の明確な拒否は runner が実行せずに断ったものなので、これに当たりません。リトライは step ごとに 1 回で、応答の記録が
 手元にあるときに限ります。関係のない失敗を隠すことはありません。レポートには、応答したアラートとリトライ
-の両方を載せます。
+の両方を載せます。capability があるとき、このリトライが step の唯一のリトライです。`AlertGuardConfig.__call__`
+が今ゲートしている step 終了時のリトライは走らないので、step が 2 回リトライすることはなく、結果が不明な
+書き込みを再送できる第二の経路も残りません。
 
 ### Unit 5：ウォッチャーでアプリ側のアラートを扱う
 
@@ -186,6 +205,9 @@ Unit 1 は観測した最長の待ち時間を記録します。
 `AlertGuardConfig.tree_dedup_rules` の順（入れ子の形は広いほうが先）でルールを push します。
 ウォッチャーは、識別ラベルがそれぞれアプリのスナップショットのボタンにちょうど 1 回ずつ現れ、
 除外ラベルが 1 つもないルールを照合し、名指しされたボタンをタップします。
+アプリ側のアラートをタップするのは、予約中のものも含めて SpringBoard のアラートが見つからなかった走査に
+限ります。現在の `probed_absent` による許可と同じ順序です。SpringBoard のアラートが出たまま XCUITest が
+タップすると、監視がそのアラートに先に答えてしまうからです。
 `push_interruption_policy` が除外の組を拒む制約は、ツリー内ルールに限って外します。
 
 `_dismiss_from_tree` が今持っているペース配分は、タップと一緒に移ります。ただし数値は動きません。
@@ -210,21 +232,25 @@ Unit 2 から 5 が実機で通ったあと、Python 側はウォッチャーが
 崩れたツリーのプロキシのうち XCUITest 固有の分岐です。これらを元に戻すフラグは作りません。2 つ目の
 スイッチは、同じ挙動の第二の語彙になるからです。明示的な `handleSystemAlert` step は、
 `/systemAlert/query` と `/systemAlert/tap` を引き続き使います（BE-0316）。崩れたツリーのプロキシは、
-capability を持たないバックエンドのために残ります。絞った場合、Unit 6 が削除するのはネイティブプローブだけで、`_dismiss_from_tree` は残します。
+capability を持たないバックエンドのために残ります。絞った場合、Unit 6 が削除するのはネイティブプローブだけで、`_dismiss_from_tree` は残します。これは Unit 3 の SpringBoard 存在ビットを待ちます。
 
 ### Unit 7：検証
 
 - **Swift**：`BajutsuKit/Tests/BajutsuRunnerTests/` の `FakeElementProvider` で、ウォッチャーの間隔、
   処理中の見送り、予約の照合（共有フィクスチャを使います）、除外と広い順の照合、「ちょうど 1 回」の
-  照合、1 回の表示につき 1 件の unidentified 記録、`/elements` 応答に畳み込まれた記録、見切りの上限を、
+  照合、1 回の表示につき 1 件の unidentified 記録、`/elements` 応答に畳み込まれた記録、その応答の SpringBoard 存在ビット、
+  `/interruptionPolicy` 応答に畳み込まれた記録、見切りの上限を、
   Simulator なしで動かします。
-- **Python**：fake アクチュエータが capability を実装します。試験するのは次の 5 つです。
+- **Python**：fake アクチュエータが capability を実装します。試験するのは次の 7 つです。
   - 記録の持ち主が 1 つであること。薄いゲートは畳み込み記録を読むだけで報告せず、step 終了時の drain が各記録を 1 回だけ報告すること。
   - unidentified の記録で step を名前つきで失敗させること。
   - `handleSystemAlert` の前後で予約を push して解くことと、読み込み時の `labelMatches` の検査。
   - step 単位の event リストをもとに、配信前の失敗のあとで step ごとに 1 回だけリトライすること。
     結果が不明な書き込みのあとには走りません。
   - *gave up* 記録から `uncleared_prompt_note` の文面を組み、step 終了時の drain の結果でその `AlertEvent` を取り下げること。
+  - 絞った場合、ツリー内のタップが SpringBoard 存在ビットが立っていない状態を待つことと、ツリー内の
+    消去が step ごと 1 回のリトライを起こすこと。
+  - capability があるとき、step 終了時の `AlertGuardConfig.__call__` のリトライが走らないこと。
 - **実機**：`demos/showcase/scenarios/permission.yaml` と BE-0399 の 2 プロンプトのシナリオが、Unit 6
   の削除を適用した状態で、4 つの iOS バージョンで通ります。
 
