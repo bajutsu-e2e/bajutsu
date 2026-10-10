@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ci-job-audit-provenance-ja.md)
+**English** · [日本語](BE-0460-ci-job-audit-provenance-ja.md)
 
-# BE-XXXX — Record which CI job acted in a machine principal's audit entries
+# BE-0460 — Record which CI job acted in a machine principal's audit entries
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ci-job-audit-provenance.md) |
+| Proposal | [BE-0460](BE-0460-ci-job-audit-provenance.md) |
 | Author | [@paihu](https://github.com/paihu) |
 | Status | **Implemented** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0460") |
 | Implementing PR | [#2135](https://github.com/bajutsu-e2e/bajutsu/pull/2135) |
 | Topic | Hosting the web UI |
 | Related | [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md), [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) |
