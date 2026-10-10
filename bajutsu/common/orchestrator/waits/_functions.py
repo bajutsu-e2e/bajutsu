@@ -257,6 +257,8 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
     # button the alert really offers, twice — and because the wait polls on rather than failing at
     # once, so nothing else would ever say so (determinism first: never tap whichever matched first).
     ambiguous = False
+    # Whether the latest read offered `sel`'s button under another prompt's title (`title_check`).
+    other_prompt = False
     while True:
         t0 = clock.now()
         if last_read is None or t0 - last_read >= _SYSTEM_ALERT_POLL:
@@ -275,11 +277,10 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
             # Decided from the labels already in hand: `handle_system_alert` issues its own
             # cross-process query, so tapping speculatively would double this step's query rate for
             # the whole time an interruption the step is not waiting for holds the screen.
-            if (
-                sel is not None
-                and selector_names_button(sel, seen)
-                and (title_check is None or title_check(observed))
-            ):
+            named = sel is not None and selector_names_button(sel, seen)
+            # The button is there, but the title says the alert is another prompt sharing it.
+            other_prompt = named and title_check is not None and not title_check(observed)
+            if sel is not None and named and not other_prompt:
                 try:
                     driver.handle_system_alert(sel, _STEP_TAP_TIMEOUT)
                 except base.ElementNotFound:
@@ -319,7 +320,10 @@ def wait_for_system_alert(  # noqa: C901  # the step's one wait state machine (B
             raise RunCancelled
         if clock.now() >= deadline:
             return False, _with_block_note(
-                _alert_timeout_reason(wanted, timeout, seen, ambiguous, role=role), gate
+                _alert_timeout_reason(
+                    wanted, timeout, seen, ambiguous, role=role, other_prompt=other_prompt
+                ),
+                gate,
             )
         _adaptive_sleep(clock, t0)
 
@@ -392,6 +396,7 @@ def _alert_timeout_reason(
     ambiguous: bool,
     *,
     role: SystemAlertRole | None = None,
+    other_prompt: bool = False,
 ) -> str:
     """What the `handleSystemAlert` step saw, for the timeout it is about to report (BE-0406).
 
@@ -408,6 +413,11 @@ def _alert_timeout_reason(
             f"position rule {wanted} names no button on an alert offering {len(seen)} "
             f"({offered}) within {timeout}s; this run's language is outside the label table, so "
             "name the button with sel.label instead"
+        )
+    if other_prompt:
+        return (
+            f"a system alert offering {wanted} stayed up for {timeout}s, but its title is not the "
+            f"step's prompt (the alert on screen offered: {offered}); declare a rule for that prompt"
         )
     if ambiguous:
         fix = " — add index to pick one" if role is None else ""

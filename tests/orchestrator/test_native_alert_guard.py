@@ -4689,4 +4689,5 @@ def test_a_notifications_step_does_not_tap_a_local_network_prompt_mid_wait() -> 
     )
     assert not ok
     assert "title:" not in reason
+    assert "its title is not the step's prompt" in reason
     assert "handle_system_alert" not in [kind for kind, _ in driver.actions]
