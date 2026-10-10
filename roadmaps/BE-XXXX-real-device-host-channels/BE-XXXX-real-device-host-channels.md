@@ -316,6 +316,17 @@ Log:
     answered 200 with an empty list), while the same port on the host's loopback refused the
     connection.
   The Device Farm diagnostic run stays open.
+- 2026-10-10 — A device re-check at commit 978ddc8c5, after the self-review fixes. We rebuilt the
+  runner and the showcase app, and installed the app fresh.
+  - A scenario raised both look-alike prompts. It requested notifications and answered them with
+    `handleSystemAlert: { prompt: notifications, choice: grant }`, beside the target's
+    `localNetwork` rule. It passed. The scenario-entry probe answered the Local Network prompt on
+    step 0, and the step itself tapped "Allow" on the notification prompt.
+  - `firstlook` and `network_mock` passed again.
+  - The runner's interruption path did not run on the device. We switched the entry probe off. The
+    first tap then landed on the Local Network prompt, and XCUITest raised no interruption. The
+    guard answered the prompt in the next wait instead. Unit tests cover the interruption path. The
+    device runner build compiled its change.
 
 ## References
 
