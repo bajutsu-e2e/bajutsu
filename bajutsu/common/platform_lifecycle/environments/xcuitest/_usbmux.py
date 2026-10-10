@@ -16,7 +16,11 @@ import plistlib
 import socket
 import struct
 import threading
+from collections.abc import Callable
 from typing import Any
+
+from bajutsu.common.capability.preflight import Check
+from bajutsu.common.config import XcuitestConfig
 
 _logger = logging.getLogger(__name__)
 
@@ -101,6 +105,39 @@ def device_connection(udid: str, socket_path: str = USBMUXD_SOCKET) -> str:
         UsbmuxError: usbmuxd is unreachable or does not list the device.
     """
     return str(_listing(udid, socket_path).get("Properties", {}).get("ConnectionType", "unknown"))
+
+
+def device_reachability(udid: str, socket_path: str = USBMUXD_SOCKET) -> tuple[bool, str]:
+    """Whether the host reaches the real device `udid` over usbmuxd, and a line saying how or why not.
+
+    For `doctor`, whose default `--udid` is a Simulator's `booted`, an alias a real device does not
+    have: that case names the missing flag instead of asking usbmuxd for a device called "booted".
+    """
+    if udid == "booted":
+        return False, "pass --udid <device udid>; a real device has no booted alias"
+    try:
+        return True, f"usbmuxd reaches {udid} over {device_connection(udid, socket_path)}"
+    except UsbmuxError as exc:
+        return False, str(exc)
+
+
+def real_device_check(
+    xcfg: XcuitestConfig | None,
+    actuator: str,
+    udid: str,
+    *,
+    reach: Callable[[str], tuple[bool, str]] | None = None,
+) -> Check | None:
+    """`doctor`'s runnability check for a real-device target, or None for any other target.
+
+    A real device needs no booted Simulator, so this check stands in that one's place
+    (`preflight.doctor_environment_checks`): the host reaches the runner, `nativeZ`, and the WebView
+    bridge over usbmuxd, so a device usbmuxd does not list is not runnable.
+    """
+    if actuator != "xcuitest" or xcfg is None or xcfg.device_type != "device":
+        return None
+    ok, detail = (reach or device_reachability)(udid)
+    return Check("real device reachable", ok, detail)
 
 
 def _listing(udid: str, socket_path: str) -> dict[str, Any]:

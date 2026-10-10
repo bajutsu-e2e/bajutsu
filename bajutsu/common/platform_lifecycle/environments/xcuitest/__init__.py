@@ -52,7 +52,7 @@ from ._host_address import HOST_ADDRESS_ENV, HostAddressError, HostCandidates, h
 from ._recovery import _Recovery as _Recovery
 from ._shared import _logger as _logger
 from ._spawned import _Spawned as _Spawned
-from ._usbmux import UsbmuxError, device_connection
+from ._usbmux import UsbmuxError, device_connection, device_reachability, real_device_check
 from .xcuitest_environment import _DEFAULT_RUNNER_LOG_DIR as _DEFAULT_RUNNER_LOG_DIR
 from .xcuitest_environment import _RESULT_BUNDLE_ENV as _RESULT_BUNDLE_ENV
 from .xcuitest_environment import _RUNNER_LOG_ENV as _RUNNER_LOG_ENV
@@ -70,7 +70,9 @@ __all__ = [
     "bundled_runner_toolchain_note",
     "bundled_runner_toolchain_warning",
     "device_connection",
+    "device_reachability",
     "effective_device_type",
     "host_candidates",
+    "real_device_check",
     "runner_source",
 ]

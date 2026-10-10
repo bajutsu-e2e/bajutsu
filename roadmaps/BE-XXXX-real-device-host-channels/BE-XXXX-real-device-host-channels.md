@@ -154,10 +154,19 @@ on the first step, and touches neither the app's own buttons nor an undeclared a
 
 ### Checking the routes: `bajutsu doctor`
 
-`bajutsu doctor --environment-only` gains two lines for a `deviceType: device` target. The first
-reports whether usbmuxd lists the device, and over which attachment. The second lists the host
-addresses the app would receive, with their source. A device-cloud job can run doctor before
-`bajutsu run`, so a missing route shows up as one line instead of a startup timeout.
+`bajutsu doctor --environment-only` reports both routes for a `deviceType: device` target, in the
+CLI and the serve panel alike.
+
+- **usbmuxd, as a runnability check.** A real device needs no booted Simulator, so the
+  booted-Simulator check gives way to one asking whether usbmuxd lists the device, and over which
+  attachment. A device usbmuxd does not list fails it, and doctor exits non-zero. The default
+  `--udid booted` names a Simulator, so on a real-device target that check asks for `--udid`.
+- **Host addresses, as information.** Doctor lists the addresses the app would receive, with their
+  source. A missing one leaves the exit status alone, since only a network-recording scenario needs
+  one.
+
+A device-cloud job can run doctor before `bajutsu run`, so a missing route shows up as one line
+instead of a startup timeout.
 
 ### Device Farm
 

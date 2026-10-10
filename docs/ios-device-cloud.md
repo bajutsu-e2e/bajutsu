@@ -122,11 +122,12 @@ Two properties of this route need care on the device side:
 ### Checking the channels before a run
 
 Run `bajutsu doctor --udid <udid> --environment-only` for a `deviceType: device` target. It reports
-both routes. It shows whether usbmuxd lists the device, and over which attachment.
-It also lists the host addresses that the app would receive. A device-cloud job can run it before
-`bajutsu run` to see which route its host lacks. The two lines inform and never change doctor's exit
-status. The Device Farm route depends on the same two
-routes. Nobody has verified them on Device Farm yet.
+both routes. A real device needs no booted Simulator. In that check's place,
+doctor checks whether usbmuxd lists the device, and over which attachment. A device usbmuxd does not list
+fails that check, and doctor exits non-zero. Doctor also lists the host addresses that the app would
+receive. That list informs alone, since a scenario recording network exchanges is the one that needs it. A
+device-cloud job can run doctor before `bajutsu run` to see which route its host lacks. The Device
+Farm route depends on the same two routes. Nobody has verified them on Device Farm yet.
 
 ## The signed device runner
 

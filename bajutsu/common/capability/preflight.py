@@ -193,6 +193,7 @@ def doctor_environment_checks(
     booted_count: Callable[[], int],
     web_engine: str,
     which: Which = shutil.which,
+    real_device: Check | None = None,
 ) -> list[Check]:
     """The environment checks `doctor` reports for `backend`, shared by the CLI and serve (BE-0199).
 
@@ -200,7 +201,14 @@ def doctor_environment_checks(
     there is no cheaper actuator to merge in and no idb_companion version pin to report. The wrapper
     is kept so the CLI and the serve panel stay on one shared entry point and never drift on how they
     answer "is this target healthy?".
+
+    Args:
+        real_device: For a real-device target (`xcuitest.deviceType: device`), whether the host
+            reaches that device. It replaces the booted-Simulator check, which such a target never
+            needs.
     """
+    if real_device is not None:
+        return [*runnability(backend, which=which, web_engine=web_engine), real_device]
     return runnability(backend, which=which, booted_count=booted_count, web_engine=web_engine)
 
 

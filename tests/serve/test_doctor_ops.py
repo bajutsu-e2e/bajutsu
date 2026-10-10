@@ -367,3 +367,31 @@ def test_score_null_when_runnability_fails(tmp_path: Path, monkeypatch: pytest.M
     assert payload["ok"] is False
     assert payload["score"] is None
     assert called is False  # never touch a device the runnability gate already failed
+
+
+def test_a_real_device_target_checks_usbmuxd_instead_of_a_booted_simulator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The panel makes the CLI's swap: no Simulator count for a real device, whose runnability is
+    # whether usbmuxd reaches it.
+    from bajutsu.common.platform_lifecycle.environments.xcuitest import _usbmux
+
+    monkeypatch.setattr(
+        _usbmux, "device_reachability", lambda udid: (False, f"usbmuxd does not list device {udid}")
+    )
+    monkeypatch.setattr(
+        simctl, "booted_udids", lambda run=None: pytest.fail("a real device counts no Simulators")
+    )
+    state = _state(
+        tmp_path,
+        "defaults: { backend: [xcuitest] }\ntargets:\n"
+        "  demo: { bundleId: com.demo, xcuitest: { deviceType: device } }\n",
+    )
+    payload, status = ops.doctor_check(state, {"target": "demo", "udid": "00008120-AAAA"})
+    assert status == 200
+    assert payload["ok"] is False
+    names = [c["name"] for c in payload["checks"]]
+    assert "real device reachable" in names
+    assert "Simulator booted" not in names
+    (check,) = [c for c in payload["checks"] if c["name"] == "real device reachable"]
+    assert "does not list device 00008120-AAAA" in check["detail"]
