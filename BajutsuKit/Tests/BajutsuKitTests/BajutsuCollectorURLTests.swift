@@ -58,7 +58,7 @@ final class BajutsuCollectorURLTests: XCTestCase {
         // shared loopback, so it is confirmed like any other before reports go to it.
         let url = URL(string: "http://192.0.2.7:4100")!
         var probed: [URL] = []
-        let chosen = BajutsuNet.reachableCollector([url], token: "t") { candidate, _, done in
+        let chosen = BajutsuNet.reachableCollector([url], credential: .bearer("t")) { candidate, _, done in
             probed.append(candidate)
             done(true)
         }
@@ -68,7 +68,7 @@ final class BajutsuCollectorURLTests: XCTestCase {
 
     func testTheLoopbackCollectorIsTakenWithoutAProbe() {
         let url = URL(string: "http://127.0.0.1:4100")!
-        let chosen = BajutsuNet.reachableCollector([url], token: "t") { _, _, _ in
+        let chosen = BajutsuNet.reachableCollector([url], credential: .bearer("t")) { _, _, _ in
             XCTFail("the Simulator's one collector must not be probed")
         }
         XCTAssertEqual(chosen, url)
@@ -80,8 +80,8 @@ final class BajutsuCollectorURLTests: XCTestCase {
         let first = URL(string: "http://192.0.2.7:4100")!
         let second = URL(string: "http://198.51.100.9:4100")!
         let third = URL(string: "http://203.0.113.4:4100")!
-        let chosen = BajutsuNet.reachableCollector([first, second, third], token: "t") { url, token, done in
-            XCTAssertEqual(token, "t")
+        let chosen = BajutsuNet.reachableCollector([first, second, third], credential: .bearer("t")) { url, credential, done in
+            XCTAssertEqual(credential?.token, "t")
             if url == third {
                 done(true)
             } else if url == second {
@@ -96,7 +96,7 @@ final class BajutsuCollectorURLTests: XCTestCase {
     func testNoAnswerWithinTheBoundLeavesNoCollector() {
         let urls = [URL(string: "http://192.0.2.7:4100")!, URL(string: "http://192.0.2.8:4100")!]
         let started = Date()
-        let chosen = BajutsuNet.reachableCollector(urls, token: nil, timeout: 0.1) { _, _, _ in }
+        let chosen = BajutsuNet.reachableCollector(urls, credential: nil, timeout: 0.1) { _, _, _ in }
         XCTAssertNil(chosen)
         XCTAssertLessThan(Date().timeIntervalSince(started), 1)
     }
@@ -107,7 +107,7 @@ final class BajutsuCollectorURLTests: XCTestCase {
         let first = URL(string: "http://192.0.2.7:4100")!
         let silent = URL(string: "http://198.51.100.9:4100")!
         let started = Date()
-        let chosen = BajutsuNet.reachableCollector([first, silent], token: nil, timeout: 5) { url, _, done in
+        let chosen = BajutsuNet.reachableCollector([first, silent], credential: nil, timeout: 5) { url, _, done in
             if url == first { done(true) }
         }
         XCTAssertEqual(chosen, first)

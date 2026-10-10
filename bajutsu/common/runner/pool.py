@@ -431,6 +431,10 @@ def device_pool(  # noqa: C901, PLR0915
             if isinstance(collector, NetworkCollector):
                 extra_env["BAJUTSU_COLLECTOR"] = collector_host.collector_env(collector.port)
                 extra_env["BAJUTSU_COLLECTOR_TOKEN"] = collector.token
+                # Announce the signed scheme on every route (BE-0459): BajutsuKit signs only when
+                # told to, so a newer kit still talks bearer to an older Bajutsu that names nothing.
+                # It travels beside the token, so nothing on the network route can strip it.
+                extra_env["BAJUTSU_COLLECTOR_AUTH"] = "hmac"
                 # Make the host collector reachable from the leased device before launch (Android
                 # tunnels the port with `adb reverse`; iOS shares the loopback and no-ops) — BE-0283.
                 release_bridge = lease_env.bridge_collector(collector.port)

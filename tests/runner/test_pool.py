@@ -783,6 +783,8 @@ def test_device_pool_offers_every_advertised_host_address_to_the_app(
         assert created[1].launch_env["BAJUTSU_COLLECTOR"] == (
             f"http://192.0.2.7:{port},http://[fd00::1]:{port}"
         )
+        # The signed scheme is announced beside the token, so the app signs its reports (BE-0459).
+        assert created[1].launch_env["BAJUTSU_COLLECTOR_AUTH"] == "hmac"
         la.release()
     finally:
         shutdown()

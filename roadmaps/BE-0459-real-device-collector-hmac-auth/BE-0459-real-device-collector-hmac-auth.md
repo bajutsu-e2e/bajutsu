@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0459](BE-0459-real-device-collector-hmac-auth.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0459") |
 | Topic | Security hardening |
 | Related | [BE-0115](../BE-0115-inprocess-collector-auth/BE-0115-inprocess-collector-auth.md), [BE-0365](../BE-0365-in-app-control-channel/BE-0365-in-app-control-channel.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md), [BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture.md) |
@@ -400,14 +400,29 @@ The device proof is manual. It checks the three observations from *Motivation*:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Collector: canonical forms, signing, verification, and the shared test vectors.
-- [ ] Collector: scheme dispatch, the spooled body read, the nonce set with 409, and signed answers.
-- [ ] Collector: bearer refused beyond the loopback, with the refusal count and its run-log warning.
-- [ ] Pool and BajutsuKit: the `BAJUTSU_COLLECTOR_AUTH` announcement and the bearer fallback.
-- [ ] BajutsuKit: signed requests from `postJSON`, the probe, and the control channel's drain.
-- [ ] BajutsuKit: answer verification and 409 handling in the probe and the control channel.
-- [ ] Docs in both languages: `docs/ios-device-cloud.md` and `docs/architecture.md`.
+- [x] Collector: canonical forms, signing, verification, and the shared test vectors.
+- [x] Collector: scheme dispatch, the spooled body read, the nonce set with 409, and signed answers.
+- [x] Collector: bearer refused beyond the loopback, with the refusal count and its run-log warning.
+- [x] Pool and BajutsuKit: the `BAJUTSU_COLLECTOR_AUTH` announcement and the bearer fallback.
+- [x] BajutsuKit: signed requests from `postJSON`, the probe, and the control channel's drain.
+- [x] BajutsuKit: answer verification and 409 handling in the probe and the control channel.
+- [x] Docs in both languages: `docs/ios-device-cloud.md` and `docs/architecture.md`.
 - [ ] Manual real-device proof on `network_mock`: packet capture, replayed report, bearer request.
+
+Log:
+
+- PR_PENDING — Units 1–7. Added the signed scheme (`_hmac_auth.py`) and the fixed vectors in
+  `tests/fixtures/be0459/`, which the Python and Swift suites both check. The collector now
+  dispatches on the `Authorization` scheme, spools the body while hashing it, and refuses a spent
+  nonce with 409. It signs every authenticated answer and refuses the bearer header beyond the
+  loopback. The collector logs the outdated-BajutsuKit warning itself, at the first refused bearer
+  that carries the run's token, rather than at teardown from the pool: the failing scenario is read
+  while the run is still going. The nonce count reaches the run log when the collector stops, at
+  `BAJUTSU_LOG_LEVEL=info`. The pool announces
+  `BAJUTSU_COLLECTOR_AUTH=hmac`. BajutsuKit signs through `CollectorCredential` and verifies the
+  `/commands` and probe answers. It keeps polling after a 409. The device-cloud, architecture, and
+  network pages describe the scheme in both languages, `docs/network.md` included because it
+  described the bearer header. Unit 8 needs a USB-attached iPhone and stays open.
 
 ## References
 

@@ -4,8 +4,10 @@ How traffic is observed (DESIGN: network): a Simulator app runs as a host proces
 and shares the Mac's loopback, so the app POSTs each request/response it makes to a
 small collector bajutsu runs on `127.0.0.1:<port>` (the port is injected into the app
 via launch env, `BAJUTSU_COLLECTOR`, and a per-run shared token via
-`BAJUTSU_COLLECTOR_TOKEN` — the collector accepts only POSTs bearing that token, so
-another local process can't inject fabricated exchanges). The collector keeps the
+`BAJUTSU_COLLECTOR_TOKEN` — the collector accepts only requests that prove that token, so
+another local process can't inject fabricated exchanges). A current BajutsuKit signs each request
+with the token rather than sending it (BE-0459, `_hmac_auth`), and a collector bound beyond the
+loopback, for a real device, accepts the signed scheme alone. The collector keeps the
 exchanges in memory so a step's `request` assertion can be evaluated in real time, and
 dumps them to `network.json` as scenario evidence.
 

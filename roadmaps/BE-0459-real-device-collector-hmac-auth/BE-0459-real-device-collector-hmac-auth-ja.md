@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0459](BE-0459-real-device-collector-hmac-auth-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0459") |
 | トピック | セキュリティ強化 |
 | 関連 | [BE-0115](../BE-0115-inprocess-collector-auth/BE-0115-inprocess-collector-auth-ja.md), [BE-0365](../BE-0365-in-app-control-channel/BE-0365-in-app-control-channel-ja.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md), [BE-0283](../BE-0283-android-network-capture/BE-0283-android-network-capture-ja.md) |
@@ -385,14 +385,28 @@ BajutsuKit のユニットテストは、同じベクターを Swift から検�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] コレクター：正規形、署名、検証、共有のテストベクター
-- [ ] コレクター：方式の振り分け、本文の退避つき読み込み、409 を返すノンスの集合、応答への署名
-- [ ] コレクター：ループバック外での Bearer の拒否、拒否数の計数、実行ログの警告
-- [ ] プールと BajutsuKit：`BAJUTSU_COLLECTOR_AUTH` による通知と Bearer へのフォールバック
-- [ ] BajutsuKit：`postJSON`、プローブ、制御チャネルの取り出しでのリクエストへの署名
-- [ ] BajutsuKit：プローブと制御チャネルでの応答の検証と 409 の扱い
-- [ ] 両言語のドキュメント：`docs/ios-device-cloud.md` と `docs/architecture.md`
+- [x] コレクター：正規形、署名、検証、共有のテストベクター
+- [x] コレクター：方式の振り分け、本文の退避つき読み込み、409 を返すノンスの集合、応答への署名
+- [x] コレクター：ループバック外での Bearer の拒否、拒否数の計数、実行ログの警告
+- [x] プールと BajutsuKit：`BAJUTSU_COLLECTOR_AUTH` による通知と Bearer へのフォールバック
+- [x] BajutsuKit：`postJSON`、プローブ、制御チャネルの取り出しでのリクエストへの署名
+- [x] BajutsuKit：プローブと制御チャネルでの応答の検証と 409 の扱い
+- [x] 両言語のドキュメント：`docs/ios-device-cloud.md` と `docs/architecture.md`
 - [ ] `network_mock` での実機の手動確認：パケットキャプチャ、再送した報告、Bearer のリクエスト
+
+ログ：
+
+- PR_PENDING — 単位 1〜7。署名方式（`_hmac_auth.py`）と、`tests/fixtures/be0459/` の固定ベクターを
+  追加しました。固定ベクターは Python と Swift の両方のテストが確認します。コレクターは
+  `Authorization` の方式で処理を振り分け、本文をハッシュしながら退避し、使用済みのノンスを 409 で
+  拒否します。認証済みの応答にはすべて署名し、ループバックの外では Bearer ヘッダーを拒否します。
+  古い BajutsuKit についての警告は、プールが後片付けのときに出すのではなく、実行のトークンを持つ
+  Bearer を初めて拒否した時点でコレクター自身が出します。失敗したシナリオを読むのは実行の途中だからです。
+  ノンスの数は、コレクターの停止時に実行ログへ出します。`BAJUTSU_LOG_LEVEL=info` のときに表示されます。プールは `BAJUTSU_COLLECTOR_AUTH=hmac` を通知します。BajutsuKit は
+  `CollectorCredential` で署名し、`/commands` とプローブの応答を検証します。409 の後もポーリングを
+  続けます。実機クラウド、アーキテクチャ、ネットワークの各ページで、両言語とも署名方式を説明しました。
+  `docs/network.md` も Bearer ヘッダーを説明していたため更新しました。単位 8 は USB で接続した
+  iPhone が必要なため、未完了のままです。
 
 ## 参考
 

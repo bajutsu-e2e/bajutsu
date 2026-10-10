@@ -87,11 +87,14 @@ out of reach of the network.
 The app reports network exchanges to a collector on the host. usbmuxd carries no connection that the
 device opens. This channel needs a host address the device can route to. On a real device, the
 collector binds every interface of the host. The app receives one collector URL per candidate host
-address. The app sends each candidate an authenticated `GET /ping`. It keeps the first one, in the
-host's order, that answers. The search runs in the background, so the launch never waits for it. It
+address. The app sends each candidate a signed `GET /ping`. It keeps the first one, in the host's
+order, that answers with the collector's signature. The search runs in the background, so the launch never waits for it. It
 retries for up to two minutes. Up to 1,000 reports the app makes meanwhile wait. They go out in
-order once a collector answers. The app writes any report it drops to the device log. The collector
-answers 401 to a request without the per-run token. This run's app alone holds that token.
+order once a collector answers. The app writes any report it drops to the device log. Every
+request must prove the per-run token, which this run's app alone holds. The token itself never
+crosses the network, as
+[how the device-to-host route is authenticated](#how-the-device-to-host-route-is-authenticated)
+describes.
 
 Bajutsu resolves the candidates at each run. A host whose address changes keeps working that way. The
 candidates come from the first of these sources that has a value:
@@ -115,9 +118,43 @@ Two properties of this route need care on the device side:
   including one already up when the scenario starts. Until the grant, the search gets no answer and
   the reports wait. We measured this on an iPhone
   with iOS 27.0.1. iOS showed the prompt even with no `NSLocalNetworkUsageDescription` entry.
-- The probe and every report travel as **cleartext** HTTP over the chosen route. The token travels
-  the same way. On a shared network, pin `BAJUTSU_HOST_ADDRESS` to the
-  CoreDevice tunnel's address instead.
+- The probe and every report travel as plain HTTP over the chosen route. The token stays off the
+  wire. Each report's captured bodies still travel in the clear. On a shared network, pin
+  `BAJUTSU_HOST_ADDRESS` to the CoreDevice tunnel's address.
+
+### How the device-to-host route is authenticated
+
+The device reaches the collector over a network that Bajutsu does not control. On Amazon Web
+Services (AWS) Device Farm, the network belongs to the farm. A reader of a request carrying the
+per-run token could copy the token. With the token, that reader could write fabricated exchanges into
+the run's evidence. The app and the collector prove the token to each other instead. Each side
+computes a Keyed-Hash Message Authentication Code (HMAC) with the token as its key:
+
+- **Requests are signed.** Each request carries
+  `Authorization: Bajutsu-HMAC-SHA256 nonce=<nonce>, signature=<signature>`. The signature covers
+  the method, the path, a fresh random nonce, and a digest of the body. The digest uses the Secure
+  Hash Algorithm (SHA) with 256 bits.
+- **A replay is refused.** The collector keeps every nonce it has accepted for the whole run. A
+  copied request gets a 409 and adds nothing to `network.json`.
+- **Answers are signed.** The collector signs each answer against the request's nonce, in the
+  `X-Bajutsu-Signature` header. The app applies a `/commands` answer once its signature verifies.
+  A probe answer without a valid signature never wins the search.
+- **The bearer header is refused.** Beyond the loopback, the collector answers 401 to a bearer
+  header. The run log warns once when such a header carried this run's
+  token. That warning means the app's BajutsuKit predates signed requests and needs a rebuild.
+
+Bajutsu announces the signed method in the launch environment. It sets `BAJUTSU_COLLECTOR_AUTH=hmac`
+beside `BAJUTSU_COLLECTOR_TOKEN`. An app built against an older BajutsuKit ignores the announcement.
+A newer BajutsuKit driven by an older Bajutsu sees no announcement. That BajutsuKit then sends the
+bearer header the older collector expects.
+
+The signed method keeps the token secret. It also proves that each request and answer is genuine
+and fresh. Two properties stay out of its reach:
+
+- **Readable bodies.** A party on the route can read the captured bodies in each report.
+- **No availability guarantee.** A party on the route can drop or delay a request. The step that
+  waits on that request then fails on its existing timeout. No forged exchange or command reaches
+  the verdict.
 
 ### Checking the channels before a run
 

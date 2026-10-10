@@ -1,0 +1,105 @@
+{
+  "_comment": "BE-0459: fixed vectors for the collector's signed scheme. Python (tests/test_collector_hmac.py) and BajutsuKit (CollectorSigningTests.swift) both check them byte for byte; regenerate only with a deliberate scheme change.",
+  "requests": [
+    {
+      "token": "dGVzdC10b2tlbi1mb3ItYmUwNDU5",
+      "method": "POST",
+      "path": "/",
+      "nonce": "AAECAwQFBgcICQoLDA0ODw",
+      "body": "{\"method\":\"GET\",\"url\":\"https://example.test/a\",\"status\":200}",
+      "signature": "2B-_7CkZ_exijDVj7iY9r1J4SyGsG0nuaixoATcZYvw"
+    },
+    {
+      "token": "dGVzdC10b2tlbi1mb3ItYmUwNDU5",
+      "method": "POST",
+      "path": "/transitions",
+      "nonce": "EBESExQVFhcYGRobHB0eHw",
+      "body": "{\"kind\":\"screenChanged\",\"timestamp\":12.5}",
+      "signature": "ZB3kEaxcq0Fmjc2RIjJFY4H_7fwcglXuZByWI2rKb94"
+    },
+    {
+      "token": "dGVzdC10b2tlbi1mb3ItYmUwNDU5",
+      "method": "GET",
+      "path": "/commands",
+      "nonce": "ICEiIyQlJicoKSorLC0uLw",
+      "body": "",
+      "signature": "tOhpZdm8bOOVLCNRuD8GawIk88h45BjN7USUQvTN7rw"
+    },
+    {
+      "token": "dGVzdC10b2tlbi1mb3ItYmUwNDU5",
+      "method": "POST",
+      "path": "/commands/ack",
+      "nonce": "MDEyMzQ1Njc4OTo7PD0-Pw",
+      "body": "{\"id\":\"c1\",\"applied\":true}",
+      "signature": "1ry7xvrAnX6oI4Q0IcG2_M_Vd9tv54jyeqFA-XQDTa4"
+    },
+    {
+      "token": "dGVzdC10b2tlbi1mb3ItYmUwNDU5",
+      "method": "GET",
+      "path": "/ping",
+      "nonce": "QEFCQ0RFRkdISUpLTE1OTw",
+      "body": "",
+      "signature": "vub-wAg6g6fUa3CpK03wDp56ewkff4Ah1WfOrkfkyJ8"
+    },
+    {
+      "token": "dGVzdC10b2tlbi1mb3ItYmUwNDU5",
+      "method": "POST",
+      "path": "/api%2Fv1/items",
+      "nonce": "UFFSU1RVVldYWVpbXF1eXw",
+      "body": "[]",
+      "signature": "_6EgCikdVhP2KfAlUzjfzfwM2Q2KlXwTZNlR4VCDqAw"
+    }
+  ],
+  "answers": [
+    {
+      "token": "dGVzdC10b2tlbi1mb3ItYmUwNDU5",
+      "nonce": "ICEiIyQlJicoKSorLC0uLw",
+      "status": 200,
+      "body": "[{\"id\":\"c1\",\"kind\":\"toggle\"}]",
+      "signature": "FK9cBTdS5n9mneSehsukHDSIWad3SF1EmFZtP_RsAW0"
+    },
+    {
+      "token": "dGVzdC10b2tlbi1mb3ItYmUwNDU5",
+      "nonce": "QEFCQ0RFRkdISUpLTE1OTw",
+      "status": 204,
+      "body": "",
+      "signature": "Hih0YxzXjhRoLK1GYRNOiNqmeHgl7eh4FddxC-cfxEM"
+    },
+    {
+      "token": "dGVzdC10b2tlbi1mb3ItYmUwNDU5",
+      "nonce": "AAECAwQFBgcICQoLDA0ODw",
+      "status": 204,
+      "body": "",
+      "signature": "RzwtM1jqvcqA7lSjqc_CWBq6A5fd2bBR9FopghTS-TU"
+    },
+    {
+      "token": "dGVzdC10b2tlbi1mb3ItYmUwNDU5",
+      "nonce": "MDEyMzQ1Njc4OTo7PD0-Pw",
+      "status": 400,
+      "body": "",
+      "signature": "tBZfi0zU0lA9W1weSiIem1Vd45Pcr1GEi42MI6EBGFg"
+    }
+  ],
+  "paths": [
+    {
+      "target": "/",
+      "path": "/"
+    },
+    {
+      "target": "",
+      "path": "/"
+    },
+    {
+      "target": "/ping",
+      "path": "/ping"
+    },
+    {
+      "target": "/commands?since=3",
+      "path": "/commands"
+    },
+    {
+      "target": "/a%20b/c",
+      "path": "/a%20b/c"
+    }
+  ]
+}

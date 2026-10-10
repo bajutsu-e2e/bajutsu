@@ -61,7 +61,7 @@ final class CollectorResolution: @unchecked Sendable {
     /// `onSettled` runs once with the chosen URL, or nil when the search gave up, after the buffer
     /// has been flushed or discarded.
     func search(
-        _ candidates: [URL], token: String?, deadline: TimeInterval = 120, retry: TimeInterval = 1,
+        _ candidates: [URL], credential: CollectorCredential?, deadline: TimeInterval = 120, retry: TimeInterval = 1,
         probe: @escaping BajutsuNet.CollectorProbe = BajutsuNet.pingCollector,
         onSettled: @escaping (URL?) -> Void = { _ in }
     ) {
@@ -72,7 +72,7 @@ final class CollectorResolution: @unchecked Sendable {
             let end = Date().addingTimeInterval(deadline)
             var found: URL?
             repeat {
-                found = BajutsuNet.reachableCollector(candidates, token: token, probe: probe)
+                found = BajutsuNet.reachableCollector(candidates, credential: credential, probe: probe)
                 if found == nil, Date() < end { Thread.sleep(forTimeInterval: retry) }
             } while found == nil && Date() < end
             finish(found)

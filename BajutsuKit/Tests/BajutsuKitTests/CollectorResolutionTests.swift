@@ -31,7 +31,7 @@ final class CollectorResolutionTests: XCTestCase {
         let rounds = Rounds()
         let settled = expectation(description: "settled")
         resolution.search(
-            [first, second], token: "t", deadline: 5, retry: 0.01,
+            [first, second], credential: .bearer("t"), deadline: 5, retry: 0.01,
             probe: { url, _, done in done(rounds.answer(url, after: 2, from: self.second)) },
             onSettled: { url in
                 XCTAssertEqual(url, self.second)
@@ -52,7 +52,7 @@ final class CollectorResolutionTests: XCTestCase {
         let resolution = CollectorResolution { payload, url in posts.add(payload, url) }
         let settled = expectation(description: "gave up")
         resolution.search(
-            [first, second], token: nil, deadline: 0.05, retry: 0.01,
+            [first, second], credential: nil, deadline: 0.05, retry: 0.01,
             probe: { _, _, done in done(false) },
             onSettled: { url in
                 XCTAssertNil(url)
@@ -67,7 +67,7 @@ final class CollectorResolutionTests: XCTestCase {
 
     func testAFullBufferCountsWhatItCouldNotHold() {
         let resolution = CollectorResolution(capacity: 1) { _, _ in }
-        resolution.search([first, second], token: nil, deadline: 5, retry: 0.5, probe: { _, _, _ in })
+        resolution.search([first, second], credential: nil, deadline: 5, retry: 0.5, probe: { _, _, _ in })
         resolution.send(["n": "a"], path: nil)
         resolution.send(["n": "b"], path: nil)
         XCTAssertEqual(resolution.dropped, 1)

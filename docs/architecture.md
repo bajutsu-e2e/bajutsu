@@ -464,8 +464,14 @@ Android; on iOS it rests on the fast suite's bookkeeping proof alone.
   host `127.0.0.1` listener tunnels each connection to the port on the device, the iOS counterpart
   of the Android resident channel's `adb forward`. The network collector runs the other way, so on a
   real device it binds every interface and the app is offered the host's addresses
-  (`collector_host`, `environments/xcuitest/_host_address.py`), keeping the first that answers an
-  authenticated `GET /ping`. In a checkout that ships `BajutsuKit/`'s own source, that bundle rebuilds itself
+  (`collector_host`, `environments/xcuitest/_host_address.py`), keeping the first that answers a
+  signed `GET /ping` with the collector's own signature. Beyond the loopback the token never
+  travels: the app signs every request with a Keyed-Hash Message Authentication Code (HMAC) over
+  its method, path, nonce, and body, the collector refuses a reused nonce (409) and any bearer
+  header (401), and it signs each answer against the request's nonce
+  (`common/evidence/network/_hmac_auth.py`, BE-0459). The pool announces the signed method with
+  `BAJUTSU_COLLECTOR_AUTH=hmac`; a loopback collector still accepts a bearer header, for Android
+  and for an app built against an older BajutsuKit. In a checkout that ships `BajutsuKit/`'s own source, that bundle rebuilds itself
   whenever the source has moved past it — `bajutsu run`, pytest, and `make serve` alike resolve the
   runner through the same rebuild-if-stale function
   (`docs/specs/xcuitest-bundled-runner-auto-refresh.md`)
